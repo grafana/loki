@@ -12,6 +12,8 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/user"
 	"github.com/thanos-io/objstore"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 )
 
 func BenchmarkWriteMetastores(b *testing.B) {
@@ -19,7 +21,7 @@ func BenchmarkWriteMetastores(b *testing.B) {
 	bucket := objstore.NewInMemBucket()
 	tenantID := "test-tenant"
 
-	toc := NewTableOfContentsWriter(Config{}, bucket, tenantID, log.NewNopLogger())
+	toc := NewTableOfContentsWriter(Config{}, bucket, log.NewNopLogger())
 
 	// Set limits for the test
 	toc.backoff = backoff.New(context.TODO(), backoff.Config{
@@ -44,7 +46,12 @@ func BenchmarkWriteMetastores(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		// Test writing metastores
 		stats := stats[i%len(stats)]
-		err := toc.WriteEntry(ctx, "path", stats.MinTimestamp, stats.MaxTimestamp)
+		err := toc.WriteEntry(ctx, "path", multitenancy.TimeRangeSet{
+			tenantID: multitenancy.TimeRange{
+				MinTime: stats.MinTimestamp,
+				MaxTime: stats.MaxTimestamp,
+			},
+		})
 		require.NoError(b, err)
 	}
 
@@ -56,7 +63,7 @@ func TestWriteMetastores(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	tenantID := "test-tenant"
 
-	toc := NewTableOfContentsWriter(Config{}, bucket, tenantID, log.NewNopLogger())
+	toc := NewTableOfContentsWriter(Config{}, bucket, log.NewNopLogger())
 
 	// Set limits for the test
 	toc.backoff = backoff.New(context.TODO(), backoff.Config{
@@ -76,7 +83,12 @@ func TestWriteMetastores(t *testing.T) {
 	require.Len(t, bucket.Objects(), 0)
 
 	// Test writing metastores
-	err := toc.WriteEntry(ctx, "test-dataobj-path", stats.MinTimestamp, stats.MaxTimestamp)
+	err := toc.WriteEntry(ctx, "test-dataobj-path", multitenancy.TimeRangeSet{
+		tenantID: multitenancy.TimeRange{
+			MinTime: stats.MinTimestamp,
+			MaxTime: stats.MaxTimestamp,
+		},
+	})
 	require.NoError(t, err)
 
 	require.Len(t, bucket.Objects(), 1)
@@ -90,7 +102,12 @@ func TestWriteMetastores(t *testing.T) {
 		MaxTimestamp: now,
 	}
 
-	err = toc.WriteEntry(ctx, "different-dataobj-path", flushResult2.MinTimestamp, flushResult2.MaxTimestamp)
+	err = toc.WriteEntry(ctx, "different-dataobj-path", multitenancy.TimeRangeSet{
+		tenantID: multitenancy.TimeRange{
+			MinTime: flushResult2.MinTimestamp,
+			MaxTime: flushResult2.MaxTimestamp,
+		},
+	})
 	require.NoError(t, err)
 
 	require.Len(t, bucket.Objects(), 1)
@@ -201,7 +218,7 @@ func TestDataObjectsPaths(t *testing.T) {
 					IndexStoragePrefix: tt.prefix,
 					EnabledTenantIDs:   tt.enabledTenantIDs,
 				},
-			}, bucket, tenantID, log.NewNopLogger())
+			}, bucket, log.NewNopLogger())
 
 			// Set limits for the test
 			toc.backoff = backoff.New(context.TODO(), backoff.Config{
@@ -252,7 +269,12 @@ func TestDataObjectsPaths(t *testing.T) {
 			}
 
 			for _, tc := range testCases {
-				err := toc.WriteEntry(ctx, tc.path, tc.startTime, tc.endTime)
+				err := toc.WriteEntry(ctx, tc.path, multitenancy.TimeRangeSet{
+					tenantID: multitenancy.TimeRange{
+						MinTime: tc.startTime,
+						MaxTime: tc.endTime,
+					},
+				})
 				require.NoError(t, err)
 			}
 

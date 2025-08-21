@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -26,7 +25,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
@@ -96,31 +94,13 @@ func NewIndexBuilder(
 	scratchStore scratch.Store,
 	reg prometheus.Registerer,
 ) (*Builder, error) {
-	kafkaCfg.AutoCreateTopicEnabled = true
-	kafkaCfg.AutoCreateTopicDefaultPartitions = 64
-	eventConsumerClient, err := client.NewReaderClient(
-		"index_builder",
-		kafkaCfg,
-		logger,
-		reg,
-		kgo.ConsumeTopics(kafkaCfg.Topic),
-		kgo.InstanceID(instanceID),
-		kgo.SessionTimeout(3*time.Minute),
-		kgo.ConsumerGroup(indexConsumerGroup),
-		kgo.RebalanceTimeout(5*time.Minute),
-		kgo.DisableAutoCommit(),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kafka consumer client: %w", err)
-	}
-
-	reg = prometheus.WrapRegistererWith(prometheus.Labels{
+	builderReg := prometheus.WrapRegistererWith(prometheus.Labels{
 		"topic":     kafkaCfg.Topic,
 		"component": "index_builder",
 	}, reg)
 
 	metrics := newIndexBuilderMetrics()
-	if err := metrics.register(reg); err != nil {
+	if err := metrics.register(builderReg); err != nil {
 		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
 	}
 
@@ -130,7 +110,7 @@ func NewIndexBuilder(
 	}
 	calculator := NewCalculator(builder)
 
-	if err := builder.RegisterMetrics(reg); err != nil {
+	if err := builder.RegisterMetrics(builderReg); err != nil {
 		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
 	}
 
@@ -142,7 +122,6 @@ func NewIndexBuilder(
 	s := &Builder{
 		cfg:               cfg,
 		mCfg:              mCfg,
-		client:            eventConsumerClient,
 		logger:            logger,
 		bucket:            bucket,
 		downloadedObjects: downloadedObjects,
@@ -301,7 +280,7 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 		return processingErrors.Err()
 	}
 
-	minTime, maxTime := p.calculator.TimeRange()
+	tenantTimeRanges := p.calculator.TimeRanges()
 	obj, closer, err := p.calculator.Flush()
 	if err != nil {
 		return fmt.Errorf("failed to flush builder: %w", err)
@@ -323,12 +302,9 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 		return fmt.Errorf("failed to upload index: %w", err)
 	}
 
-	metastoreTocWriter := metastore.NewTableOfContentsWriter(p.mCfg, indexStorageBucket, events[0].Tenant, p.logger)
-	if minTime.IsZero() || maxTime.IsZero() {
-		return errors.New("failed to get min/max timestamps")
-	}
-	if err := metastoreTocWriter.WriteEntry(p.ctx, key, minTime, maxTime); err != nil {
-		return fmt.Errorf("failed to update metastore: %w", err)
+	metastoreTocWriter := metastore.NewTableOfContentsWriter(p.mCfg, indexStorageBucket, p.logger)
+	if err := metastoreTocWriter.WriteEntry(p.ctx, key, tenantTimeRanges); err != nil {
+		return fmt.Errorf("failed to update metastore ToC file: %w", err)
 	}
 
 	level.Info(p.logger).Log("msg", "finished building index", "tenant", events[0].Tenant, "events", len(events), "size", obj.Size(), "duration", time.Since(start))

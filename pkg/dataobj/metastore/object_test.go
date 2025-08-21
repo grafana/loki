@@ -16,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -84,7 +85,12 @@ func (b *testDataBuilder) addStreamAndFlush(stream logproto.Stream) {
 	path, err := b.uploader.Upload(b.t.Context(), obj)
 	require.NoError(b.t, err)
 
-	err = b.meta.WriteEntry(context.Background(), path, minTime, maxTime)
+	err = b.meta.WriteEntry(context.Background(), path, multitenancy.TimeRangeSet{
+		tenantID: multitenancy.TimeRange{
+			MinTime: minTime,
+			MaxTime: maxTime,
+		},
+	})
 	require.NoError(b.t, err)
 }
 
@@ -246,6 +252,7 @@ func TestValuesEmptyMatcher(t *testing.T) {
 
 func TestSectionsForStreamMatchers(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
+	testTenant := "test-tenant"
 
 	builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
 		TargetPageSize:          1024 * 1024,
@@ -260,7 +267,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 		lbls, err := syntax.ParseLabels(ts.Labels)
 		require.NoError(t, err)
 
-		newIdx, err := builder.AppendStream(streams.Stream{
+		newIdx, err := builder.AppendStream(testTenant, streams.Stream{
 			ID:               int64(i),
 			Labels:           lbls,
 			MinTimestamp:     ts.Entries[0].Timestamp,
@@ -268,11 +275,11 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 			UncompressedSize: 0,
 		})
 		require.NoError(t, err)
-		err = builder.ObserveLogLine("test-path", 0, newIdx, int64(i), ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
+		err = builder.ObserveLogLine(testTenant, "test-path", 0, newIdx, int64(i), ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
 		require.NoError(t, err)
 	}
 
-	minTime, maxTime := builder.TimeRange()
+	timeRanges := builder.TimeRanges()
 
 	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
@@ -286,9 +293,14 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	path, err := uploader.Upload(context.Background(), obj)
 	require.NoError(t, err)
 
-	metastoreTocWriter := NewTableOfContentsWriter(Config{}, bucket, tenantID, log.NewNopLogger())
+	metastoreTocWriter := NewTableOfContentsWriter(Config{}, bucket, log.NewNopLogger())
 
-	err = metastoreTocWriter.WriteEntry(context.Background(), path, minTime, maxTime)
+	err = metastoreTocWriter.WriteEntry(context.Background(), path, multitenancy.TimeRangeSet{
+		tenantID: multitenancy.TimeRange{
+			MinTime: timeRanges[tenantID].MinTime,
+			MaxTime: timeRanges[tenantID].MaxTime,
+		},
+	})
 	require.NoError(t, err)
 
 	mstore := NewObjectMetastore(StorageConfig{}, bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
@@ -368,7 +380,7 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	logger := log.NewLogfmtLogger(os.Stdout)
 	logger = log.With(logger, "test", t.Name())
 
-	meta := NewTableOfContentsWriter(Config{}, bucket, tenantID, logger)
+	meta := NewTableOfContentsWriter(Config{}, bucket, logger)
 	require.NoError(t, meta.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)

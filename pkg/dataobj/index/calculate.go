@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -40,8 +41,8 @@ func (c *Calculator) Reset() {
 	clear(c.indexStreamIDLookup)
 }
 
-func (c *Calculator) TimeRange() (minTime, maxTime time.Time) {
-	return c.indexobjBuilder.TimeRange()
+func (c *Calculator) TimeRanges() multitenancy.TimeRangeSet {
+	return c.indexobjBuilder.TimeRanges()
 }
 
 func (c *Calculator) Flush() (*dataobj.Object, io.Closer, error) {
@@ -98,7 +99,7 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 			break
 		}
 		for _, stream := range streamBuf[:n] {
-			newStreamID, err := c.indexobjBuilder.AppendStream(stream)
+			newStreamID, err := c.indexobjBuilder.AppendStream(section.Tenant, stream)
 			if err != nil {
 				return fmt.Errorf("failed to append to stream: %w", err)
 			}
@@ -172,7 +173,7 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		// Lock the mutex once per read for perf reasons.
 		c.builderMtx.Lock()
 		for _, log := range logsInfo[:n] {
-			err = c.indexobjBuilder.ObserveLogLine(log.objectPath, log.sectionIdx, log.streamID, c.indexStreamIDLookup[log.streamID], log.timestamp, log.length)
+			err = c.indexobjBuilder.ObserveLogLine(section.Tenant, log.objectPath, log.sectionIdx, log.streamID, c.indexStreamIDLookup[log.streamID], log.timestamp, log.length)
 			if err != nil {
 				c.builderMtx.Unlock()
 				return fmt.Errorf("failed to observe log line: %w", err)
@@ -188,7 +189,7 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 			return fmt.Errorf("failed to marshal bloom filter: %w", err)
 		}
 		c.builderMtx.Lock()
-		err = c.indexobjBuilder.AppendColumnIndex(objectPath, sectionIdx, columnName, columnIndexes[columnName], bloomBytes)
+		err = c.indexobjBuilder.AppendColumnIndex(section.Tenant, objectPath, sectionIdx, columnName, columnIndexes[columnName], bloomBytes)
 		c.builderMtx.Unlock()
 		if err != nil {
 			return fmt.Errorf("failed to append column index: %w", err)

@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -168,11 +169,13 @@ type recordingTocWriter struct {
 	*metastore.TableOfContentsWriter
 }
 
-func (m *recordingTocWriter) WriteEntry(ctx context.Context, dataobjPath string, minTimestamp, maxTimestamp time.Time) error {
-	m.entries = append(m.entries, recordedTocEntry{
-		DataObjectPath: dataobjPath,
-		MinTimestamp:   minTimestamp,
-		MaxTimestamp:   maxTimestamp,
-	})
-	return m.TableOfContentsWriter.WriteEntry(ctx, dataobjPath, minTimestamp, maxTimestamp)
+func (m *recordingTocWriter) WriteEntry(ctx context.Context, dataobjPath string, timeRanges multitenancy.TimeRangeSet) error {
+	for _, timeRange := range timeRanges {
+		m.entries = append(m.entries, recordedTocEntry{
+			DataObjectPath: dataobjPath,
+			MinTimestamp:   timeRange.MinTime,
+			MaxTimestamp:   timeRange.MaxTime,
+		})
+	}
+	return m.TableOfContentsWriter.WriteEntry(ctx, dataobjPath, timeRanges)
 }
