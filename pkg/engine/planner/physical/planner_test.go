@@ -105,7 +105,6 @@ func locations(t *testing.T, plan *Plan, nodes []Node) []string {
 
 	visitor := &nodeCollectVisitor{
 		onVisitDataObjScan: func(scan *DataObjScan) error {
-			print("VISITED NODE", scan.Location)
 			res = append(res, string(scan.Location))
 			return nil
 		},
