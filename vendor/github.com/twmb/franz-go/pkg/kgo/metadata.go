@@ -75,6 +75,20 @@ func (cl *Client) PartitionLeader(topic string, partition int32) (leader, leader
 	return p.leader, p.leaderEpoch, p.loadErr
 }
 
+var noid2t = make(map[[16]byte]string)
+
+func (cl *Client) id2tMap() map[[16]byte]string {
+	v := cl.id2t.Load()
+	if v == nil {
+		return noid2t
+	}
+	m := v.(map[[16]byte]string)
+	if m == nil {
+		return noid2t
+	}
+	return m
+}
+
 // waitmeta returns immediately if metadata was updated within the last second,
 // otherwise this waits for up to wait for a metadata update to complete.
 func (cl *Client) waitmeta(ctx context.Context, wait time.Duration, why string) {
@@ -225,6 +239,7 @@ loop:
 		}
 
 		retryWhy, err := cl.updateMetadata()
+		lastAt = time.Now()
 		if retryWhy != nil || err != nil {
 			// If err is non-nil, the metadata request failed
 			// itself and already retried 3x; we do not loop more.
@@ -267,12 +282,13 @@ loop:
 		if err == nil {
 			cl.metawait.signal()
 			cl.consumer.doOnMetadataUpdate()
-			lastAt = time.Now()
 			consecutiveErrors = 0
 			continue
 		}
 
 		consecutiveErrors++
+		// We sleep a bit in case the max metadata age is very small;
+		// typically this sleep is inconsequential.
 		after := time.NewTimer(cl.cfg.retryBackoff(consecutiveErrors))
 	backoff:
 		select {
@@ -331,6 +347,35 @@ func (cl *Client) updateMetadata() (retryWhy multiUpdateWhy, err error) {
 		}
 	}
 
+	// If the user has auto topic creation while producing AND is consuming
+	// via regex, we need to send a separate metadata request with unknown
+	// produce topics before our standard metadata request. The standard
+	// metadata request is send with a nil Topics field (requesting all),
+	// which prevents us from ever creating the topics.
+	var unknownCreateResp map[string]*metadataTopic
+	if all && cl.cfg.allowAutoTopicCreation {
+		cl.producer.unknownTopicsMu.Lock()
+		if len(cl.producer.unknownTopics) > 0 {
+			unknownTopics := make([]string, 0, len(cl.producer.unknownTopics))
+			for unknown := range cl.producer.unknownTopics {
+				unknownTopics = append(unknownTopics, unknown)
+			}
+			var err error
+			unknownCreateResp, err = cl.fetchTopicMetadata(false, unknownTopics)
+			if err != nil {
+				// We bump all produce topics even though we
+				// only explicitly requested unknown ones; this
+				// is a general request failure and we want to
+				// note it (also this is simpler...).
+				cl.bumpMetadataFailForTopics(
+					tpsProducerLoad,
+					err,
+				)
+			}
+		}
+		cl.producer.unknownTopicsMu.Unlock()
+	}
+
 	latest, err := cl.fetchTopicMetadata(all, reqTopics)
 	if err != nil {
 		cl.bumpMetadataFailForTopics( // bump load failures for all topics
@@ -341,14 +386,31 @@ func (cl *Client) updateMetadata() (retryWhy multiUpdateWhy, err error) {
 	}
 	groupExternal.updateLatest(latest)
 
+	// If regex consuming AND we issued a metadata request to forcefully
+	// create topics, we merge any topics missing into the all-request from
+	// the create-request. It is possible we want to keep failed creation
+	// errors.
+	for t, mt := range unknownCreateResp {
+		if _, ok := latest[t]; !ok {
+			latest[t] = mt
+		}
+	}
+
 	// If we are consuming with regex and fetched all topics, the metadata
 	// may have returned topics the consumer is not yet tracking. We ensure
 	// that we will store the topics at the end of our metadata update.
 	tpsConsumerLoad := tpsConsumer.load()
 	if all {
 		allTopics := make([]string, 0, len(latest))
-		for topic := range latest {
-			allTopics = append(allTopics, topic)
+		for topic, mt := range latest {
+			// loadErr should only be non-nil when requesting all
+			// topics if this is with auto-topic-creation && the
+			// creation failed. That is, we should not consume the
+			// topic since we just tried creating it and creating
+			// it failed.
+			if mt.loadErr == nil {
+				allTopics = append(allTopics, topic)
+			}
 		}
 
 		// We filter out topics will not match any of our regex's.
@@ -460,6 +522,7 @@ type metadataTopic struct {
 	loadErr    error
 	isInternal bool
 	topic      string
+	id         [16]byte
 	partitions []metadataPartition
 }
 
@@ -471,6 +534,7 @@ func (mt *metadataTopic) newPartitions(cl *Client, isProduce bool) *topicPartiti
 		partitions:         make([]*topicPartition, 0, n),
 		writablePartitions: make([]*topicPartition, 0, n),
 		topic:              mt.topic,
+		id:                 mt.id,
 		when:               time.Now().Unix(),
 	}
 	for i := range mt.partitions {
@@ -535,17 +599,14 @@ func (mp metadataPartition) newPartition(cl *Client, isProduce bool) *topicParti
 // fetchTopicMetadata fetches metadata for all reqTopics and returns new
 // topicPartitionsData for each topic.
 func (cl *Client) fetchTopicMetadata(all bool, reqTopics []string) (map[string]*metadataTopic, error) {
-	_, meta, err := cl.fetchMetadataForTopics(cl.ctx, all, reqTopics)
+	_, meta, err := cl.fetchMetadataForTopics(cl.ctx, all, reqTopics, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// Since we've fetched the metadata for some topics we can optimistically cache it
-	// for mapped metadata too. This may reduce the number of Metadata requests issued
-	// by the client.
-	cl.storeCachedMappedMetadata(meta, nil)
-
 	topics := make(map[string]*metadataTopic, len(meta.Topics))
+	id2t := make(map[[16]byte]string, len(meta.Topics))
+	defer cl.id2t.Store(id2t)
 
 	// Even if metadata returns a leader epoch, we do not use it unless we
 	// can validate it per OffsetForLeaderEpoch. Some brokers may have an
@@ -560,10 +621,13 @@ func (cl *Client) fetchTopicMetadata(all bool, reqTopics []string) (map[string]*
 		}
 		topic := *topicMeta.Topic
 
+		id2t[topicMeta.TopicID] = topic
+
 		mt := &metadataTopic{
 			loadErr:    kerr.ErrorForCode(topicMeta.ErrorCode),
 			isInternal: topicMeta.IsInternal,
 			topic:      topic,
+			id:         topicMeta.TopicID,
 			partitions: make([]metadataPartition, 0, len(topicMeta.Partitions)),
 		}
 
@@ -671,6 +735,7 @@ func (cl *Client) mergeTopicPartitions(
 	lv.loadErr = r.loadErr
 	lv.isInternal = r.isInternal
 	lv.topic = r.topic
+	lv.id = r.id
 	if lv.when == 0 {
 		lv.when = r.when
 	}
