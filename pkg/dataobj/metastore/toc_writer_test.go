@@ -73,7 +73,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		reader, err := bucket.Get(context.Background(), tableOfContentsPath(unixTime(0), ""))
+		reader, err := bucket.Get(context.Background(), tableOfContentsPath(tenantID, unixTime(0), ""))
 		require.NoError(t, err)
 
 		object, err := io.ReadAll(reader)
@@ -114,7 +114,7 @@ func newInMemoryBucket(t *testing.T, tenantID string, window time.Time, obj *dat
 
 	var (
 		bucket = objstore.NewInMemBucket()
-		path   = tableOfContentsPath(window, "")
+		path   = tableOfContentsPath(tenantID, window, "")
 	)
 
 	if obj != nil && obj.Size() > 0 {

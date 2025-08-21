@@ -193,7 +193,7 @@ func (s *DataObjStore) buildIndex() error {
 		}
 		defer closer.Close()
 
-		key, err := index.ObjectKey(context.Background(), obj)
+		key, err := index.ObjectKey(context.Background(), s.tenantID, obj)
 		if err != nil {
 			return fmt.Errorf("failed to create object key: %w", err)
 		}

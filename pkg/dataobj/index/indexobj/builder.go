@@ -185,6 +185,7 @@ func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.
 	tenantIndexPointers, ok := b.indexPointers[tenantID]
 	if !ok {
 		tenantIndexPointers = indexpointers.NewBuilder(b.metrics.indexPointers, int(b.cfg.TargetPageSize))
+		tenantIndexPointers.SetTenant(tenantID)
 		b.indexPointers[tenantID] = tenantIndexPointers
 	}
 

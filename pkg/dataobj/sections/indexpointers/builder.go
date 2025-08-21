@@ -30,6 +30,8 @@ type Builder struct {
 	metrics  *Metrics
 	pageSize int
 
+	tenant string
+
 	indexPointers []*IndexPointer
 }
 
@@ -45,6 +47,10 @@ func NewBuilder(metrics *Metrics, pageSize int) *Builder {
 }
 
 func (b *Builder) Type() dataobj.SectionType { return sectionType }
+
+func (b *Builder) SetTenant(tenant string) {
+	b.tenant = tenant
+}
 
 // Append adds a new index pointer to the builder.
 func (b *Builder) Append(path string, startTs time.Time, endTs time.Time) {
@@ -110,6 +116,16 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	if err := b.encodeTo(&enc); err != nil {
 		return 0, fmt.Errorf("building encoder: %w", err)
 	}
+
+	enc.SetSortInfo(&datasetmd_v2.SortInfo{
+		ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
+			{
+				ColumnIndex: 1, // timestamp
+				Direction:   datasetmd_v2.SORT_DIRECTION_DESCENDING,
+			},
+		},
+	})
+	enc.SetTenant(b.tenant)
 
 	n, err = enc.Flush(w)
 	if err == nil {
