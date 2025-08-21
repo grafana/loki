@@ -139,13 +139,13 @@ func TestLogfmtTokenizer(t *testing.T) {
 			for tokenizer.Next() {
 				key := tokenizer.Key()
 				value1 := tokenizer.Value()
-				
+
 				// For idempotent test case, verify multiple calls return same value
 				if tt.name == "multiple calls to Value() are idempotent" {
 					value2 := tokenizer.Value()
 					require.Equal(t, value1, value2, "Multiple calls to Value() should return same result")
 				}
-				
+
 				results = append(results, struct {
 					key   string
 					value string
@@ -952,9 +952,9 @@ func TestTokenizerErrorHandling(t *testing.T) {
 		{
 			name:          "error at start of input (position 0)",
 			input:         "==bad level=info",
-			requestedKeys: []string{}, // Get all keys to see the error
+			requestedKeys: []string{},          // Get all keys to see the error
 			expectedKVs:   map[string]string{}, // Empty result since tokenizer stops at invalid start
-			errorChecks:   nil, // No error is reported since tokenizer stops immediately
+			errorChecks:   nil,                 // No error is reported since tokenizer stops immediately
 			description:   "Should stop immediately when encountering == at start",
 		},
 	}

@@ -40,12 +40,12 @@ func (r *ExpressionResolver) resolveBinaryOp(op *logical.BinOp) (Expression, err
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve left operand: %w", err)
 	}
-	
+
 	right, err := r.ResolveExpression(op.Right)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve right operand: %w", err)
 	}
-	
+
 	return &BinaryExpr{
 		Left:  left,
 		Right: right,
@@ -56,7 +56,7 @@ func (r *ExpressionResolver) resolveBinaryOp(op *logical.BinOp) (Expression, err
 func (r *ExpressionResolver) resolveColumnRef(ref *logical.ColumnRef) (Expression, error) {
 	columnType := ref.Ref.Type
 	columnName := ref.Ref.Column
-	
+
 	// If the column type is ambiguous, resolve it using the registry
 	if columnType == types.ColumnTypeAmbiguous {
 		if r.registry != nil {
@@ -70,7 +70,7 @@ func (r *ExpressionResolver) resolveColumnRef(ref *logical.ColumnRef) (Expressio
 			}
 		}
 	}
-	
+
 	return &ColumnExpr{
 		Ref: types.ColumnRef{
 			Column: columnName,
