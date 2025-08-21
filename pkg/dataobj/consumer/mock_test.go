@@ -297,7 +297,7 @@ type recordingTocWriter struct {
 	*metastore.TableOfContentsWriter
 }
 
-func (m *recordingTocWriter) WriteEntry(ctx context.Context, dataobjPath string, timeRanges multitenancy.TimeRangeSet) error {
+func (m *recordingTocWriter) WriteEntry(ctx context.Context, dataobjPath string, timeRanges []multitenancy.TimeRange) error {
 	for _, timeRange := range timeRanges {
 		m.entries = append(m.entries, recordedTocEntry{
 			DataObjectPath: dataobjPath,

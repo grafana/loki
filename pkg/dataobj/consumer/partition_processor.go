@@ -47,7 +47,7 @@ type producer interface {
 }
 
 type tocWriter interface {
-	WriteEntry(ctx context.Context, dataobjPath string, timeRanges multitenancy.TimeRangeSet) error
+	WriteEntry(ctx context.Context, dataobjPath string, timeRanges []multitenancy.TimeRange) error
 }
 
 type partitionProcessor struct {
@@ -342,8 +342,9 @@ func (p *partitionProcessor) flush() error {
 	}
 
 	// TODO(benclive): Remove this Update once the indexes are being built from the metastore events
-	if err := p.metastoreTocWriter.WriteEntry(p.ctx, objectPath, multitenancy.TimeRangeSet{
-		string(p.tenantID): multitenancy.TimeRange{
+	if err := p.metastoreTocWriter.WriteEntry(p.ctx, objectPath, []multitenancy.TimeRange{
+		{
+			Tenant:  multitenancy.TenantID(p.tenantID),
 			MinTime: minTime,
 			MaxTime: maxTime,
 		},

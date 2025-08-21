@@ -150,8 +150,9 @@ func (s *DataObjStore) flush() error {
 	}
 
 	// Update logs metastore's table of contents with the new data object
-	err = s.logsMetastoreToc.WriteEntry(context.Background(), path, multitenancy.TimeRangeSet{
-		s.tenantID: multitenancy.TimeRange{
+	err = s.logsMetastoreToc.WriteEntry(context.Background(), path, []multitenancy.TimeRange{
+		{
+			Tenant:  multitenancy.TenantID(s.tenantID),
 			MinTime: minTime,
 			MaxTime: maxTime,
 		},

@@ -11,13 +11,12 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/logproto"
-
-	"github.com/grafana/loki/pkg/push"
 )
 
 var testCalculatorConfig = indexobj.BuilderConfig{
@@ -119,10 +118,11 @@ func TestCalculator_Calculate(t *testing.T) {
 		defer closer.Close()
 
 		require.Greater(t, obj.Size(), int64(0))
-		require.False(t, timeRanges[""].MinTime.IsZero())
-		require.Equal(t, timeRanges[""].MinTime, time.Unix(10, 0).UTC())
-		require.False(t, timeRanges[""].MaxTime.IsZero())
-		require.Equal(t, timeRanges[""].MaxTime, time.Unix(25, 0).UTC())
+		require.Equal(t, len(timeRanges), 1)
+		require.False(t, timeRanges[0].MinTime.IsZero())
+		require.Equal(t, timeRanges[0].MinTime, time.Unix(10, 0).UTC())
+		require.False(t, timeRanges[0].MaxTime.IsZero())
+		require.Equal(t, timeRanges[0].MaxTime, time.Unix(25, 0).UTC())
 
 		// Confirm we have multiple pointers sections
 		count := obj.Sections().Count(pointers.CheckSection)

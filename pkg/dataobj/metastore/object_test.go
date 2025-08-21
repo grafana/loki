@@ -85,8 +85,9 @@ func (b *testDataBuilder) addStreamAndFlush(stream logproto.Stream) {
 	path, err := b.uploader.Upload(b.t.Context(), obj)
 	require.NoError(b.t, err)
 
-	err = b.meta.WriteEntry(context.Background(), path, multitenancy.TimeRangeSet{
-		tenantID: multitenancy.TimeRange{
+	err = b.meta.WriteEntry(context.Background(), path, []multitenancy.TimeRange{
+		{
+			Tenant:  multitenancy.TenantID(tenantID),
 			MinTime: minTime,
 			MaxTime: maxTime,
 		},
@@ -252,7 +253,7 @@ func TestValuesEmptyMatcher(t *testing.T) {
 
 func TestSectionsForStreamMatchers(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
-	testTenant := "test-tenant"
+	testTenant := multitenancy.TenantID("test-tenant")
 
 	builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
 		TargetPageSize:          1024 * 1024,
@@ -295,10 +296,11 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 
 	metastoreTocWriter := NewTableOfContentsWriter(Config{}, bucket, tenantID, log.NewNopLogger())
 
-	err = metastoreTocWriter.WriteEntry(context.Background(), path, multitenancy.TimeRangeSet{
-		tenantID: multitenancy.TimeRange{
-			MinTime: timeRanges[tenantID].MinTime,
-			MaxTime: timeRanges[tenantID].MaxTime,
+	err = metastoreTocWriter.WriteEntry(context.Background(), path, []multitenancy.TimeRange{
+		{
+			Tenant:  multitenancy.TenantID(tenantID),
+			MinTime: timeRanges[0].MinTime,
+			MaxTime: timeRanges[0].MaxTime,
 		},
 	})
 	require.NoError(t, err)

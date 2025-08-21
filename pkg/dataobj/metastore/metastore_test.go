@@ -46,8 +46,9 @@ func BenchmarkWriteMetastores(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		// Test writing metastores
 		stats := stats[i%len(stats)]
-		err := toc.WriteEntry(ctx, "path", multitenancy.TimeRangeSet{
-			tenantID: multitenancy.TimeRange{
+		err := toc.WriteEntry(ctx, "path", []multitenancy.TimeRange{
+			{
+				Tenant:  multitenancy.TenantID(tenantID),
 				MinTime: stats.MinTimestamp,
 				MaxTime: stats.MaxTimestamp,
 			},
@@ -83,8 +84,9 @@ func TestWriteMetastores(t *testing.T) {
 	require.Len(t, bucket.Objects(), 0)
 
 	// Test writing metastores
-	err := toc.WriteEntry(ctx, "test-dataobj-path", multitenancy.TimeRangeSet{
-		tenantID: multitenancy.TimeRange{
+	err := toc.WriteEntry(ctx, "test-dataobj-path", []multitenancy.TimeRange{
+		{
+			Tenant:  multitenancy.TenantID(tenantID),
 			MinTime: stats.MinTimestamp,
 			MaxTime: stats.MaxTimestamp,
 		},
@@ -102,8 +104,9 @@ func TestWriteMetastores(t *testing.T) {
 		MaxTimestamp: now,
 	}
 
-	err = toc.WriteEntry(ctx, "different-dataobj-path", multitenancy.TimeRangeSet{
-		tenantID: multitenancy.TimeRange{
+	err = toc.WriteEntry(ctx, "different-dataobj-path", []multitenancy.TimeRange{
+		{
+			Tenant:  multitenancy.TenantID(tenantID),
 			MinTime: flushResult2.MinTimestamp,
 			MaxTime: flushResult2.MaxTimestamp,
 		},
@@ -269,8 +272,9 @@ func TestDataObjectsPaths(t *testing.T) {
 			}
 
 			for _, tc := range testCases {
-				err := toc.WriteEntry(ctx, tc.path, multitenancy.TimeRangeSet{
-					tenantID: multitenancy.TimeRange{
+				err := toc.WriteEntry(ctx, tc.path, []multitenancy.TimeRange{
+					{
+						Tenant:  multitenancy.TenantID(tenantID),
 						MinTime: tc.startTime,
 						MaxTime: tc.endTime,
 					},

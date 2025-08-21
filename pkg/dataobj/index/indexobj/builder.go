@@ -119,10 +119,10 @@ type Builder struct {
 
 	currentSizeEstimate int
 
-	builder       *dataobj.Builder                  // Inner builder for accumulating sections.
-	streams       map[string]*streams.Builder       // The key is the TenantID.
-	pointers      map[string]*pointers.Builder      // The key is the TenantID.
-	indexPointers map[string]*indexpointers.Builder // The key is the TenantID.
+	builder       *dataobj.Builder                                 // Inner builder for accumulating sections.
+	streams       map[multitenancy.TenantID]*streams.Builder       // The key is the TenantID.
+	pointers      map[multitenancy.TenantID]*pointers.Builder      // The key is the TenantID.
+	indexPointers map[multitenancy.TenantID]*indexpointers.Builder // The key is the TenantID.
 
 	state builderState
 }
@@ -161,9 +161,9 @@ func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store) (*Builder, error)
 		labelCache: labelCache,
 
 		builder:       dataobj.NewBuilder(scratchStore),
-		streams:       make(map[string]*streams.Builder),
-		pointers:      make(map[string]*pointers.Builder),
-		indexPointers: make(map[string]*indexpointers.Builder),
+		streams:       make(map[multitenancy.TenantID]*streams.Builder),
+		pointers:      make(map[multitenancy.TenantID]*pointers.Builder),
+		indexPointers: make(map[multitenancy.TenantID]*indexpointers.Builder),
 	}, nil
 }
 
@@ -171,7 +171,7 @@ func (b *Builder) GetEstimatedSize() int {
 	return b.currentSizeEstimate
 }
 
-func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.Time, endTs time.Time) error {
+func (b *Builder) AppendIndexPointer(tenantID multitenancy.TenantID, path string, startTs time.Time, endTs time.Time) error {
 	b.metrics.appendsTotal.Inc()
 	newEntrySize := len(path) + 1 + 1 // path, startTs, endTs
 
@@ -203,7 +203,7 @@ func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.
 }
 
 // AppendStream appends a stream to the object's stream section, returning the stream ID within this object.
-func (b *Builder) AppendStream(tenantID string, stream streams.Stream) (int64, error) {
+func (b *Builder) AppendStream(tenantID multitenancy.TenantID, stream streams.Stream) (int64, error) {
 	b.metrics.appendsTotal.Inc()
 
 	newEntrySize := labelsEstimate(stream.Labels) + 2
@@ -263,7 +263,7 @@ func labelsEstimate(ls labels.Labels) int {
 //
 // Once a Builder is full, call [Builder.Flush] to flush the buffered data,
 // then call Append again with the same entry.
-func (b *Builder) ObserveLogLine(tenantID string, path string, section int64, streamIDInObject int64, streamIDInIndex int64, ts time.Time, uncompressedSize int64) error {
+func (b *Builder) ObserveLogLine(tenantID multitenancy.TenantID, path string, section int64, streamIDInObject int64, streamIDInIndex int64, ts time.Time, uncompressedSize int64) error {
 	// Check whether the buffer is full before a stream can be appended; this is
 	// tends to overestimate, but we may still go over our target size.
 	//
@@ -306,7 +306,7 @@ func (b *Builder) ObserveLogLine(tenantID string, path string, section int64, st
 //
 // Once a Builder is full, call [Builder.Flush] to flush the buffered data,
 // then call Append again with the same entry.
-func (b *Builder) AppendColumnIndex(tenantID string, path string, section int64, columnName string, columnIndex int64, valuesBloom []byte) error {
+func (b *Builder) AppendColumnIndex(tenantID multitenancy.TenantID, path string, section int64, columnName string, columnIndex int64, valuesBloom []byte) error {
 	// Check whether the buffer is full before a stream can be appended; this is
 	// tends to overestimate, but we may still go over our target size.
 	//
@@ -360,14 +360,15 @@ func (b *Builder) estimatedSize() int {
 }
 
 // TimeRanges returns the time range of the data in the builder, by tenant.
-func (b *Builder) TimeRanges() multitenancy.TimeRangeSet {
-	timeRanges := make(multitenancy.TimeRangeSet, len(b.streams))
+func (b *Builder) TimeRanges() []multitenancy.TimeRange {
+	timeRanges := make([]multitenancy.TimeRange, len(b.streams))
 	for tenantID, tenantStreams := range b.streams {
 		minTime, maxTime := tenantStreams.TimeRange()
-		timeRanges[tenantID] = multitenancy.TimeRange{
+		timeRanges = append(timeRanges, multitenancy.TimeRange{
+			Tenant:  multitenancy.TenantID(tenantID),
 			MinTime: minTime,
 			MaxTime: maxTime,
-		}
+		})
 	}
 	return timeRanges
 }
@@ -375,7 +376,8 @@ func (b *Builder) TimeRanges() multitenancy.TimeRangeSet {
 // Flush flushes all buffered data to the buffer provided. Calling Flush can result
 // in a no-op if there is no buffered data to flush.
 //
-// [Builder.Reset] is called after a successful Flush to discard any pending data and allow new data to be appended.
+// [Builder.Reset] is called after a successful Flush to discard any pending
+// data and allow new data to be appended.
 func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	if b.state == builderStateEmpty {
 		return nil, nil, ErrBuilderEmpty
@@ -453,15 +455,9 @@ func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error 
 // Reset discards pending data and resets the builder to an empty state.
 func (b *Builder) Reset() {
 	b.builder.Reset()
-	for _, tenantStreams := range b.streams {
-		tenantStreams.Reset()
-	}
-	for _, tenantPointers := range b.pointers {
-		tenantPointers.Reset()
-	}
-	for _, tenantIndexPointers := range b.indexPointers {
-		tenantIndexPointers.Reset()
-	}
+	clear(b.streams)
+	clear(b.pointers)
+	clear(b.indexPointers)
 
 	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0

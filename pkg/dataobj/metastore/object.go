@@ -112,10 +112,11 @@ func iterTableOfContentsPaths(tenantID string, start, end time.Time, prefix stri
 
 	return func(yield func(t string, timeRange multitenancy.TimeRange) bool) {
 		for tocWindow := minTocWindow; !tocWindow.After(maxTocWindow); tocWindow = tocWindow.Add(metastoreWindowSize) {
-			if !yield(tableOfContentsPath(tenantID, tocWindow, prefix), multitenancy.TimeRange{
+			tocTimeRange := multitenancy.TimeRange{
 				MinTime: tocWindow,
 				MaxTime: tocWindow.Add(metastoreWindowSize),
-			}) {
+			}
+			if !yield(tableOfContentsPath(tenantID, tocWindow, prefix), tocTimeRange) {
 				return
 			}
 		}

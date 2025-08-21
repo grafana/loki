@@ -1,27 +1,15 @@
 package multitenancy
 
 import (
-	"iter"
 	"time"
 )
 
+// TimeRange represents a time range for a specific tenant.
 type TimeRange struct {
+	Tenant  TenantID
 	MinTime time.Time
 	MaxTime time.Time
 }
 
-type TimeRangesIterator interface {
-	Iter() iter.Seq2[string, TimeRange]
-}
-
-type TimeRangeSet map[string]TimeRange
-
-func (t TimeRangeSet) Iter() iter.Seq2[string, TimeRange] {
-	return func(yield func(tenant string, timeRange TimeRange) bool) {
-		for tenant, timeRange := range t {
-			if !yield(tenant, timeRange) {
-				return
-			}
-		}
-	}
-}
+// TenantID wraps a singular tenant ID string.
+type TenantID string
