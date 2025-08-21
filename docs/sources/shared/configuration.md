@@ -1157,6 +1157,12 @@ dataobj:
       # CLI flag: -dataobj-metastore.enabled-tenant-ids
       [enabled_tenant_ids: <string> | default = ""]
 
+    # Experimental: The ratio of log partitions to metastore partitions. For
+    # example, a value of 10 means there is 1 metastore partition for every 10
+    # log partitions.
+    # CLI flag: -dataobj-metastore.partition-ratio
+    [partition_ratio: <int> | default = 10]
+
   querier:
     # Enable the dataobj querier.
     # CLI flag: -dataobj-querier-enabled
