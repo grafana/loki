@@ -365,10 +365,22 @@ func (b *BlobStorage) getOAuthToken() (azcore.TokenCredential, error) {
 func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	var storageObjects []client.StorageObject
 	var commonPrefixes []client.StorageCommonPrefix
-
-	containerClient, err := container.NewClient(b.fmtContainerURL(), b.tc, nil)
-	if err != nil {
-		return nil, nil, err
+	var containerClient *container.Client
+	var err error
+	if b.cfg.UseManagedIdentity {
+		containerClient, err = container.NewClient(b.fmtContainerURL(), b.tc, nil)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else {
+		cred, err := azblob.NewSharedKeyCredential(b.cfg.StorageAccountName, b.cfg.StorageAccountKey.String())
+		if err != nil {
+			return nil, nil, err
+		}
+		containerClient, err = container.NewClientWithSharedKeyCredential(b.fmtResourceURL(), cred, nil)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	maxResults := int32(b.cfg.MaxResults)
 	pager := containerClient.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
