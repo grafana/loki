@@ -509,6 +509,26 @@ func Benchmark_optParseExtractLogLevelFromLogLineLogfmt(b *testing.B) {
 	}
 }
 
+func Test_DetectLogLevelFromStructuredMetadata(t *testing.T) {
+	ld := newFieldDetector(
+		validationContext{
+			discoverLogLevels:       true,
+			allowStructuredMetadata: true,
+			logLevelFields:          []string{"level", "LEVEL", "Level", "severity", "SEVERITY", "Severity", "lvl", "LVL", "Lvl"},
+		})
+
+	entry := logproto.Entry{
+		Line: "this is a log line",
+		StructuredMetadata: push.LabelsAdapter{
+			{Name: "severity_text", Value: "info"},
+			{Name: "severity_number", Value: "9"},
+		},
+	}
+	labels := logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)
+	detectedLogLevel := ld.detectLogLevelFromLogEntry(entry, labels)
+	require.Equal(t, constants.LogLevelInfo, detectedLogLevel)
+}
+
 func Test_DetectGenericFields_Enabled(t *testing.T) {
 	t.Run("disabled if map is empty", func(t *testing.T) {
 		detector := newFieldDetector(

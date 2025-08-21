@@ -10,7 +10,6 @@ import (
 
 	"github.com/buger/jsonparser"
 	"github.com/prometheus/prometheus/model/labels"
-	"go.opentelemetry.io/collector/pdata/plog"
 
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -153,19 +152,18 @@ func (l *FieldDetector) detectLogLevelFromLogEntry(entry logproto.Entry, structu
 		if err != nil {
 			return constants.LogLevelInfo
 		}
-		if otlpSeverityNumber == int(plog.SeverityNumberUnspecified) {
-			return constants.LogLevelUnknown
-		} else if otlpSeverityNumber <= int(plog.SeverityNumberTrace4) {
+
+		if otlpSeverityNumber >= 1 && otlpSeverityNumber <= 4 {
 			return constants.LogLevelTrace
-		} else if otlpSeverityNumber <= int(plog.SeverityNumberDebug4) {
+		} else if otlpSeverityNumber >= 5 && otlpSeverityNumber <= 8 {
 			return constants.LogLevelDebug
-		} else if otlpSeverityNumber <= int(plog.SeverityNumberInfo4) {
+		} else if otlpSeverityNumber >= 9 && otlpSeverityNumber <= 12 {
 			return constants.LogLevelInfo
-		} else if otlpSeverityNumber <= int(plog.SeverityNumberWarn4) {
+		} else if otlpSeverityNumber >= 13 && otlpSeverityNumber <= 16 {
 			return constants.LogLevelWarn
-		} else if otlpSeverityNumber <= int(plog.SeverityNumberError4) {
+		} else if otlpSeverityNumber >= 17 && otlpSeverityNumber <= 20 {
 			return constants.LogLevelError
-		} else if otlpSeverityNumber <= int(plog.SeverityNumberFatal4) {
+		} else if otlpSeverityNumber >= 21 && otlpSeverityNumber <= 24 {
 			return constants.LogLevelFatal
 		}
 		return constants.LogLevelUnknown
