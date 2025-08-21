@@ -528,7 +528,37 @@ This document provides a test-driven development plan for implementing logfmt pa
 
 ## Section 9: Aggregation Integration
 
-### 9.1 Range Aggregation Over Parsed Numeric
+### 9.1 Convert String Hints to NumericType
+
+**Behavior**: Key collector's string type hints should be converted to NumericType for Parse instruction.
+
+**Test** (NEW):
+- File: `pkg/engine/planner/logical/planner_test.go`
+- Query: `{} | logfmt | unwrap bytes | sum_over_time([5m])`
+- Assert Parse instruction has NumericHints with bytes → NumericInt64
+
+**Expected Failure**: NumericHints is nil
+
+**Implementation**:
+- After calling CollectRequestedKeys, convert string hints to NumericType
+- Map "int64" → NumericInt64, "float64" → NumericFloat64
+- Pass NumericHints to Parse instruction
+
+### 9.2 Handle Duration Type Hints
+
+**Behavior**: Duration unwrap should map to NumericFloat64 (since duration_seconds returns float).
+
+**Test** (NEW):
+- Query: `{} | logfmt | unwrap duration_seconds(response_time) | sum_over_time([5m])`
+- Assert Parse instruction has NumericHints with response_time → NumericFloat64
+
+**Expected Failure**: Duration hint not converted
+
+**Implementation**:
+- Map "duration" → NumericFloat64
+- Duration will be parsed as string initially, then cast to float64 seconds
+
+### 9.3 Range Aggregation Over Parsed Numeric
 
 **Behavior**: sum_over_time should work on parsed numeric field.
 
@@ -545,7 +575,7 @@ This document provides a test-driven development plan for implementing logfmt pa
 - Range aggregation finds column
 - Performs sum correctly
 
-### 9.2 Vector Aggregation Groups By Parsed Label
+### 9.4 Vector Aggregation Groups By Parsed Label
 
 **Behavior**: Vector aggregation should group by parsed string field.
 
@@ -561,7 +591,7 @@ This document provides a test-driven development plan for implementing logfmt pa
 - Vector aggregation recognizes parsed columns
 - Groups correctly
 
-### 9.3 Count Over Time with Parsed Filter
+### 9.5 Count Over Time with Parsed Filter
 
 **Behavior**: count_over_time should count only matching parsed values.
 

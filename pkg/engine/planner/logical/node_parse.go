@@ -14,6 +14,15 @@ const (
 	ParserJSON
 )
 
+// NumericType represents the numeric type to cast a parsed field to
+type NumericType int
+
+const (
+	NumericNone NumericType = iota
+	NumericInt64
+	NumericFloat64
+)
+
 // Parse represents a parsing instruction that extracts fields from log lines.
 // It takes a table relation as input and produces a new table relation with
 // additional columns for the parsed fields.
@@ -23,6 +32,7 @@ type Parse struct {
 	Table         Value // The table relation to parse from
 	Kind          ParserKind
 	RequestedKeys []string
+	NumericHints  map[string]NumericType // Fields that should be cast to numeric types
 }
 
 // Name returns an identifier for the Parse operation.

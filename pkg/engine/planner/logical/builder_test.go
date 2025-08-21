@@ -3,8 +3,9 @@ package logical
 import (
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 func TestBuilderParse(t *testing.T) {
@@ -22,7 +23,7 @@ func TestBuilderParse(t *testing.T) {
 		)
 
 		// Add Parse operation
-		builder = builder.Parse(ParserLogfmt, []string{"level", "status"})
+		builder = builder.Parse(ParserLogfmt, []string{"level", "status"}, nil)
 
 		// Add Select after Parse
 		builder = builder.Select(

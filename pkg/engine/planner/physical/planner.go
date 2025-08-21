@@ -385,6 +385,41 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) 
 			return nil, err
 		}
 	}
+
+	// If there are numeric hints, insert a CastNode
+	if len(lp.NumericHints) > 0 {
+		var casts []Cast
+		for column, numType := range lp.NumericHints {
+			var castType CastType
+			switch numType {
+			case logical.NumericInt64:
+				castType = CastTypeInt64
+			case logical.NumericFloat64:
+				castType = CastTypeFloat64
+			default:
+				continue // Skip unknown types
+			}
+			casts = append(casts, Cast{
+				Column: column,
+				Type:   castType,
+			})
+		}
+
+		if len(casts) > 0 {
+			castNode := &CastNode{
+				Casts: casts,
+			}
+			p.plan.addNode(castNode)
+
+			// Connect: ParseNode -> CastNode
+			if err := p.plan.addEdge(Edge{Parent: castNode, Child: node}); err != nil {
+				return nil, err
+			}
+
+			return []Node{castNode}, nil
+		}
+	}
+
 	return []Node{node}, nil
 }
 
