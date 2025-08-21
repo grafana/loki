@@ -160,14 +160,14 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 
 	// Change the active partitions in the ring
 	t.Log("Changing active partitions from [0,1] to [0,1,2]")
-	mockRing.setPartitionIDs([]int32{0, 1, 2})
+	mockRing.partitionIDs = []int32{0, 1, 2}
 
 	// Wait for rebalancing to occur and stabilize
 	time.Sleep(7 * time.Second)
 
 	// Change active partitions again
 	t.Log("Changing active partitions from [0,1,2] to [0,1,2,3]")
-	mockRing.setPartitionIDs([]int32{0, 1, 2, 3})
+	mockRing.partitionIDs = []int32{0, 1, 2, 3}
 
 	// Wait for final rebalancing
 	time.Sleep(7 * time.Second)
@@ -305,27 +305,22 @@ func TestPartitionContinuityDuringRebalance(t *testing.T) {
 
 	// Let initial setup stabilize and verify consumer1 is reading
 	time.Sleep(2 * time.Second)
-	offsetMu.Lock()
 	require.Greater(t, lastOffset, int64(0), "consumer1 should have read some records from partition 0")
 	initialOffset := lastOffset
-	offsetMu.Unlock()
 
 	// Add second consumer and change active partitions
 	t.Log("Adding consumer2 and changing active partitions from [0,1] to [0,1,2]")
 	consumer2 := createConsumer("consumer2")
 	defer consumer2.Close()
-	mockRing.setPartitionIDs([]int32{0, 1, 2})
+	mockRing.partitionIDs = []int32{0, 1, 2}
 
 	// Let it run for a while
 	time.Sleep(5 * time.Second)
 
 	// Verify partition 0 continued reading without reset
-	offsetMu.Lock()
-	finalOffset := lastOffset
-	offsetMu.Unlock()
-	require.Greater(t, finalOffset, initialOffset,
+	require.Greater(t, lastOffset, initialOffset,
 		"partition 0 should have continued reading from last offset (%d)", initialOffset)
-	t.Logf("Partition 0 read from offset %d to %d during rebalance", initialOffset, finalOffset)
+	t.Logf("Partition 0 read from offset %d to %d during rebalance", initialOffset, lastOffset)
 
 	// Stop everything
 	cancel()

@@ -3,7 +3,6 @@ package consumer
 import (
 	"context"
 	"sort"
-	"sync"
 	"testing"
 	"time"
 
@@ -22,21 +21,12 @@ type memberUpdate struct {
 }
 
 type mockPartitionRing struct {
-	mu           sync.RWMutex
 	partitionIDs []int32
 }
 
 // Mock implementation of PartitionRing interface
 func (m *mockPartitionRing) PartitionIDs() []int32 {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
 	return m.partitionIDs
-}
-
-func (m *mockPartitionRing) setPartitionIDs(ids []int32) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.partitionIDs = ids
 }
 
 type mockPartitionRingReader struct {
@@ -47,10 +37,7 @@ func (m *mockPartitionRingReader) PartitionRing() *ring.PartitionRing {
 	desc := ring.PartitionRingDesc{
 		Partitions: make(map[int32]ring.PartitionDesc),
 	}
-	m.ring.mu.RLock()
-	partitionIDs := m.ring.partitionIDs
-	m.ring.mu.RUnlock()
-	for _, id := range partitionIDs {
+	for _, id := range m.ring.partitionIDs {
 		desc.Partitions[id] = ring.PartitionDesc{
 			Id:     id,
 			State:  ring.PartitionActive,
