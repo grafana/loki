@@ -2,6 +2,7 @@ package metastore
 
 import (
 	"flag"
+	fmt "fmt"
 
 	"github.com/grafana/dskit/flagext"
 )
@@ -21,6 +22,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate validates the metastore settings.
 func (c *Config) Validate() error {
+	if c.PartitionRatio <= 0 {
+		return fmt.Errorf("partition_ratio must be greater than 0, got %d", c.PartitionRatio)
+	}
 	return nil
 }
 
