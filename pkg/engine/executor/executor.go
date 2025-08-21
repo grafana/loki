@@ -408,7 +408,8 @@ func (c *Context) executeParse(ctx context.Context, parse *physical.ParseNode, i
 		return errorPipeline(ctx, fmt.Errorf("parse expects exactly one input, got %d", len(inputs)))
 	}
 
-	// For now, just return the input pipeline unchanged
-	// This is the minimal implementation to pass the tests
-	return inputs[0]
+	// Use memory allocator from context or default
+	allocator := memory.DefaultAllocator
+
+	return NewParsePipeline(parse, inputs[0], allocator)
 }
