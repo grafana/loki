@@ -48,10 +48,10 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		}
 
 		// Extract messages into string slice for parsing
-		messages := make([]string, stringCol.Len())
+		messages := make([]string, 0, stringCol.Len())
 		for i := 0; i < stringCol.Len(); i++ {
 			if stringCol.IsValid(i) {
-				messages[i] = stringCol.Value(i)
+				messages = append(messages, stringCol.Value(i))
 			}
 		}
 
