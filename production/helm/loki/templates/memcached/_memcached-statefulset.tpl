@@ -61,7 +61,7 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml $.ctx.Values.memcached.podSecurityContext | nindent 8 }}
-      {{- with .dnsConfig | default .Values.loki.dnsConfig }}
+      {{- with .dnsConfig | default $.Values.loki.dnsConfig }}
       dnsConfig:
         {{- toYaml . | nindent 8 }}
       {{- end }}
