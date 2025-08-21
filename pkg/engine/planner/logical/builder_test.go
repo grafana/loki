@@ -3,8 +3,9 @@ package logical
 import (
 	"testing"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 func TestBuilderParse(t *testing.T) {
