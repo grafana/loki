@@ -185,6 +185,7 @@ func (b *Builder) AppendIndexPointer(tenantID multitenancy.TenantID, path string
 	tenantIndexPointers, ok := b.indexPointers[tenantID]
 	if !ok {
 		tenantIndexPointers = indexpointers.NewBuilder(b.metrics.indexPointers, int(b.cfg.TargetPageSize))
+		tenantIndexPointers.SetTenant(string(tenantID))
 		b.indexPointers[tenantID] = tenantIndexPointers
 	}
 
@@ -283,6 +284,7 @@ func (b *Builder) ObserveLogLine(tenantID multitenancy.TenantID, path string, se
 	tenantPointers, ok := b.pointers[tenantID]
 	if !ok {
 		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize))
+		tenantPointers.SetTenant(string(tenantID))
 		b.pointers[tenantID] = tenantPointers
 	}
 	tenantPointers.ObserveStream(path, section, streamIDInObject, streamIDInIndex, ts, uncompressedSize)
@@ -326,6 +328,7 @@ func (b *Builder) AppendColumnIndex(tenantID multitenancy.TenantID, path string,
 	tenantPointers, ok := b.pointers[tenantID]
 	if !ok {
 		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize))
+		tenantPointers.SetTenant(string(tenantID))
 		b.pointers[tenantID] = tenantPointers
 	}
 	tenantPointers.RecordColumnIndex(path, section, columnName, columnIndex, valuesBloom)
