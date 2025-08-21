@@ -30,6 +30,7 @@ import (
 // builder allows mocking of [logsobj.Builder] in tests.
 type builder interface {
 	Append(stream logproto.Stream) error
+	GetEstimatedSize() int
 	Flush() (*dataobj.Object, io.Closer, error)
 	TimeRange() (time.Time, time.Time)
 	UnregisterMetrics(prometheus.Registerer)
@@ -38,6 +39,10 @@ type builder interface {
 // committer allows mocking of certain [kgo.Client] methods in tests.
 type committer interface {
 	CommitRecords(ctx context.Context, records ...*kgo.Record) error
+}
+
+type producer interface {
+	ProduceSync(ctx context.Context, records ...*kgo.Record) kgo.ProduceResults
 }
 
 type tocWriter interface {
@@ -69,7 +74,10 @@ type partitionProcessor struct {
 	// Idle stream handling
 	idleFlushTimeout time.Duration
 	// The initial value is the zero time.
-	lastFlush    time.Time
+	lastFlushed time.Time
+
+	// lastModified is used to know when the idle is exceeded.
+	// The initial value is zero and must be reset to zero after each flush.
 	lastModified time.Time
 
 	// Metrics
@@ -82,7 +90,8 @@ type partitionProcessor struct {
 	reg    prometheus.Registerer
 	logger log.Logger
 
-	eventsProducerClient *kgo.Client
+	eventsProducerClient    producer
+	metastorePartitionRatio int32
 
 	// Used for tests.
 	clock quartz.Clock
@@ -133,25 +142,26 @@ func newPartitionProcessor(
 	}
 
 	return &partitionProcessor{
-		committer:            client,
-		logger:               log.With(logger, "topic", topic, "partition", partition, "tenant", tenantID),
-		topic:                topic,
-		partition:            partition,
-		records:              make(chan *kgo.Record, 1000),
-		ctx:                  ctx,
-		cancel:               cancel,
-		decoder:              decoder,
-		reg:                  reg,
-		builderCfg:           builderCfg,
-		bucket:               bucket,
-		scratchStore:         scratchStore,
-		tenantID:             []byte(tenantID),
-		metrics:              metrics,
-		uploader:             uploader,
-		metastoreTocWriter:   metastoreTocWriter,
-		idleFlushTimeout:     idleFlushTimeout,
-		eventsProducerClient: eventsProducerClient,
-		clock:                quartz.NewReal(),
+		committer:               client,
+		logger:                  log.With(logger, "topic", topic, "partition", partition, "tenant", tenantID),
+		topic:                   topic,
+		partition:               partition,
+		records:                 make(chan *kgo.Record, 1000),
+		ctx:                     ctx,
+		cancel:                  cancel,
+		decoder:                 decoder,
+		reg:                     reg,
+		builderCfg:              builderCfg,
+		bucket:                  bucket,
+		scratchStore:            scratchStore,
+		tenantID:                []byte(tenantID),
+		metrics:                 metrics,
+		uploader:                uploader,
+		metastoreTocWriter:      metastoreTocWriter,
+		idleFlushTimeout:        idleFlushTimeout,
+		eventsProducerClient:    eventsProducerClient,
+		clock:                   quartz.NewReal(),
+		metastorePartitionRatio: int32(metastoreCfg.PartitionRatio),
 	}
 }
 
@@ -226,10 +236,6 @@ func (p *partitionProcessor) initBuilder() error {
 }
 
 func (p *partitionProcessor) emitObjectWrittenEvent(objectPath string) error {
-	if p.eventsProducerClient == nil {
-		return nil
-	}
-
 	event := &metastore.ObjectWrittenEvent{
 		Tenant:     string(p.tenantID),
 		ObjectPath: objectPath,
@@ -242,17 +248,15 @@ func (p *partitionProcessor) emitObjectWrittenEvent(objectPath string) error {
 		return err
 	}
 
-	// Emitting the event is non-critical so we don't need to wait for it.
-	// We can just log the error and move on.
-	p.eventsProducerClient.Produce(p.ctx, &kgo.Record{
-		Value: eventBytes,
-	}, func(_ *kgo.Record, err error) {
-		if err != nil {
-			level.Error(p.logger).Log("msg", "failed to produce metastore event", "err", err)
-		}
-	})
+	// Apply the partition ratio to the incoming partition to find the metastore topic partition.
+	// This has the effect of concentrating the log partitions to fewer metastore partitions for later processing.
+	partition := p.partition / p.metastorePartitionRatio
 
-	return nil
+	results := p.eventsProducerClient.ProduceSync(p.ctx, &kgo.Record{
+		Partition: partition,
+		Value:     eventBytes,
+	})
+	return results.FirstErr()
 }
 
 func (p *partitionProcessor) processRecord(record *kgo.Record) {
@@ -346,7 +350,8 @@ func (p *partitionProcessor) flush() error {
 		return err
 	}
 
-	p.lastFlush = p.clock.Now()
+	p.lastModified = time.Time{}
+	p.lastFlushed = p.clock.Now()
 
 	return nil
 }
@@ -392,9 +397,13 @@ func (p *partitionProcessor) idleFlush() (bool, error) {
 	return true, nil
 }
 
-// isIdle returns true if the partition has exceeded the idle flush timeout.
+// needsIdleFlush returns true if the partition has exceeded the idle timeout
+// and the builder has some data buffered.
 func (p *partitionProcessor) needsIdleFlush() bool {
-	if p.builder == nil {
+	// This is a safety check to make sure we never flush empty data objects.
+	// It should never happen that lastModified is non-zero while the builder
+	// is either uninitialized or empty.
+	if p.builder == nil || p.builder.GetEstimatedSize() == 0 {
 		return false
 	}
 	if p.lastModified.IsZero() {

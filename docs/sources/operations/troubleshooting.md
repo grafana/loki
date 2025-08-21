@@ -164,22 +164,6 @@ sure Promtail is tailing the logs you would expect.
 You can check the Promtail log by looking in `/var/log/containers` at the
 Promtail container log.
 
-## Enable tracing for Loki
-
-Loki can be traced using [Jaeger](https://www.jaegertracing.io/) by setting
-the environment variable `JAEGER_AGENT_HOST` to the hostname and port where
-Jaeger is running.
-
-If you deploy with Helm, use the following command:
-
-```bash
-$ helm upgrade --install loki loki/loki --set "loki.tracing.enabled=true"
-  --set "read.extraEnv[0].name=JAEGER_AGENT_HOST"    --set "read.extraEnv[0].value=<JAEGER_AGENT_HOST>"
-  --set "write.extraEnv[0].name=JAEGER_AGENT_HOST"   --set "write.extraEnv[0].value=<JAEGER_AGENT_HOST>"
-  --set "backend.extraEnv[0].name=JAEGER_AGENT_HOST" --set "backend.extraEnv[0].value=<JAEGER_AGENT_HOST>"
-  --set "gateway.extraEnv[0].name=JAEGER_AGENT_HOST" --set "gateway.extraEnv[0].value=<JAEGER_AGENT_HOST>"
-```
-
 ## Running Loki with Istio Sidecars
 
 An Istio sidecar runs alongside a Pod. It intercepts all traffic to and from the Pod. 
