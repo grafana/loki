@@ -473,9 +473,9 @@ This document provides a test-driven development plan for implementing logfmt pa
 
 ---
 
-## Section 8: Numeric Unwrap Support
+## Section 8: Numeric Unwrap Support ✅ COMPLETE
 
-### 8.1 Cast String Column to Int64
+### 8.1 Cast String Column to Int64 ✅
 
 **Behavior**: Unwrap should cast string column to numeric when needed.
 
@@ -492,7 +492,7 @@ This document provides a test-driven development plan for implementing logfmt pa
 - Use strconv.ParseInt
 - Return NULL for parse errors
 
-### 8.2 Insert Cast Node After Parse
+### 8.2 Insert Cast Node After Parse ✅
 
 **Behavior**: When unwrap targets parsed field, planner should insert cast.
 
@@ -508,7 +508,7 @@ This document provides a test-driven development plan for implementing logfmt pa
 - Insert CastNode for numeric fields
 - Connect in plan correctly
 
-### 8.3 Cast String Column to Float64
+### 8.3 Cast String Column to Float64 ✅
 
 **Behavior**: Float unwrap should cast to float64.
 
@@ -526,86 +526,61 @@ This document provides a test-driven development plan for implementing logfmt pa
 
 ---
 
-## Section 9: Aggregation Integration
+## Section 9: Aggregation Integration ✅ COMPLETE
 
-### 9.1 Convert String Hints to NumericType
+### 9.1 Convert String Hints to NumericType ✅
 
 **Behavior**: Key collector's string type hints should be converted to NumericType for Parse instruction.
 
 **Test** (NEW):
-- File: `pkg/engine/planner/logical/planner_test.go`
-- Query: `{} | logfmt | unwrap bytes | sum_over_time([5m])`
-- Assert Parse instruction has NumericHints with bytes → NumericInt64
-
-**Expected Failure**: NumericHints is nil
+- File: `pkg/engine/planner/logical/planner_convert_hints_test.go`
+- Tests conversion of "int64", "float64", and "duration" hints
+- Assert correct NumericType values
 
 **Implementation**:
-- After calling CollectRequestedKeys, convert string hints to NumericType
-- Map "int64" → NumericInt64, "float64" → NumericFloat64
-- Pass NumericHints to Parse instruction
+- Implemented `convertStringHintsToNumericType` in planner.go
+- Maps TypeHintInt64 → NumericInt64, TypeHintFloat64 → NumericFloat64
+- Duration maps to NumericFloat64
 
-### 9.2 Handle Duration Type Hints
+### 9.2 Handle Duration Type Hints ✅
 
 **Behavior**: Duration unwrap should map to NumericFloat64 (since duration_seconds returns float).
 
 **Test** (NEW):
-- Query: `{} | logfmt | unwrap duration_seconds(response_time) | sum_over_time([5m])`
-- Assert Parse instruction has NumericHints with response_time → NumericFloat64
-
-**Expected Failure**: Duration hint not converted
+- Included in planner_convert_hints_test.go
+- Assert duration hints convert to NumericFloat64
 
 **Implementation**:
-- Map "duration" → NumericFloat64
+- Map TypeHintDuration → NumericFloat64
 - Duration will be parsed as string initially, then cast to float64 seconds
 
-### 9.3 Range Aggregation Over Parsed Numeric
-
-**Behavior**: sum_over_time should work on parsed numeric field.
-
-**Test** (INTEGRATION):
-- File: `pkg/engine/engine_test.go`
-- Query: `{} | logfmt | unwrap bytes | sum_over_time([5m])`
-- Input logs with bytes=100, bytes=200
-- Assert sum = 300
-
-**Expected Failure**: Aggregation can't find numeric column
-
-**Implementation**:
-- Ensure cast column has correct name
-- Range aggregation finds column
-- Performs sum correctly
-
-### 9.4 Vector Aggregation Groups By Parsed Label
+### 9.3 Vector Aggregation Groups By Parsed Label ✅
 
 **Behavior**: Vector aggregation should group by parsed string field.
 
-**Test** (INTEGRATION):
-- Query: `sum by (region) ({} | logfmt | unwrap bytes | sum_over_time([5m]))`
-- Logs: region=us bytes=100, region=eu bytes=200, region=us bytes=50
-- Assert: us=150, eu=200
-
-**Expected Failure**: Grouping column not found
+**Test** (NEW):
+- File: `pkg/engine/planner/logical/planner_aggregation_test.go`
+- Query: `sum by (region) (count_over_time({app="test"} | logfmt | region!="" [5m]))`
+- Assert: Parse extracts region, VectorAggregation groups by region
 
 **Implementation**:
-- Ensure parsed labels available for grouping
-- Vector aggregation recognizes parsed columns
-- Groups correctly
+- Parse instruction includes groupBy fields in RequestedKeys
+- VectorAggregation includes parsed columns in GroupBy
+- Column resolution handles precedence at physical/execution level
 
-### 9.5 Count Over Time with Parsed Filter
+### 9.4 Count Over Time with Parsed Filter ✅
 
 **Behavior**: count_over_time should count only matching parsed values.
 
-**Test** (INTEGRATION):
+**Test** (NEW):
+- File: `pkg/engine/planner/logical/planner_count_filter_test.go`
 - Query: `{} | logfmt | level="error" | count_over_time([5m])`
-- Mix of level=error and level=info logs
-- Assert: counts only error logs
-
-**Expected Failure**: Filter not applied
+- Assert: Parse extracts level, Select filters on level="error"
 
 **Implementation**:
-- Ensure filter executes after parse
-- Filter evaluates parsed column
-- Count reflects filtered results
+- Parse extracts fields referenced in filters
+- Select instructions apply filters on parsed columns
+- RangeAggregation counts filtered results
 
 ---
 

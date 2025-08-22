@@ -149,7 +149,7 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 	}
 
 	// Collect keys for logfmt parsing on the full sample expression
-	requestedKeys, _ := CollectRequestedKeys(e)
+	requestedKeys, stringHints := CollectRequestedKeys(e)
 
 	var (
 		err error
@@ -223,7 +223,8 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 
 	// Add Parse operation if we found logfmt and have keys to extract
 	if hasLogfmtParser && len(requestedKeys) > 0 {
-		builder = builder.Parse(ParserLogfmt, requestedKeys, nil)
+		numericHints := convertStringHintsToNumericType(stringHints)
+		builder = builder.Parse(ParserLogfmt, requestedKeys, numericHints)
 	}
 
 	builder = builder.RangeAggregation(
@@ -407,4 +408,29 @@ func parseShards(shards []string) (*ShardInfo, error) {
 		return noShard, fmt.Errorf("unsupported shard variant: %s", variant)
 	}
 	return NewShard(parsed[0].PowerOfTwo.Shard, parsed[0].PowerOfTwo.Of), nil
+}
+
+// convertStringHintsToNumericType converts string type hints from the key collector
+// to NumericType values for the Parse instruction.
+func convertStringHintsToNumericType(hints map[string]string) map[string]NumericType {
+	if hints == nil {
+		return nil
+	}
+
+	numericHints := make(map[string]NumericType)
+	for key, hint := range hints {
+		// getUnwrapTypeHint only returns TypeHintInt64, TypeHintFloat64, or TypeHintDuration
+		switch hint {
+		case TypeHintInt64:
+			numericHints[key] = NumericInt64
+		case TypeHintFloat64:
+			numericHints[key] = NumericFloat64
+		case TypeHintDuration:
+			// Duration fields are parsed as strings initially, then cast to float64 seconds
+			numericHints[key] = NumericFloat64
+		}
+		// No default case - we only handle the types that getUnwrapTypeHint can return
+	}
+
+	return numericHints
 }
