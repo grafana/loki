@@ -72,8 +72,8 @@ func TestPlan(t *testing.T) {
 		_ = p.addEdge(Edge{Parent: merge, Child: scan2})
 
 		n := p.NodeByID("merge")
-		require.Len(t, p.Parents(n), 0)  // no parents
-		require.Len(t, p.Children(n), 2) // both scan nodes
+		require.Equal(t, p.Parent(n), nil) // no parent
+		require.Len(t, p.Children(n), 2)   // both scan nodes
 	})
 
 	t.Run("graph can be walked in pre-order and post-order", func(t *testing.T) {
