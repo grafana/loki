@@ -185,7 +185,7 @@ func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.
 	tenantIndexPointers, ok := b.indexPointers[tenantID]
 	if !ok {
 		tenantIndexPointers = indexpointers.NewBuilder(b.metrics.indexPointers, int(b.cfg.TargetPageSize))
-		tenantIndexPointers.SetTenant(string(tenantID))
+		tenantIndexPointers.SetTenant(tenantID)
 		b.indexPointers[tenantID] = tenantIndexPointers
 	}
 
@@ -328,7 +328,7 @@ func (b *Builder) AppendColumnIndex(tenantID string, path string, section int64,
 	tenantPointers, ok := b.pointers[tenantID]
 	if !ok {
 		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize))
-		tenantPointers.SetTenant(string(tenantID))
+		tenantPointers.SetTenant(tenantID)
 		b.pointers[tenantID] = tenantPointers
 	}
 	tenantPointers.RecordColumnIndex(path, section, columnName, columnIndex, valuesBloom)
