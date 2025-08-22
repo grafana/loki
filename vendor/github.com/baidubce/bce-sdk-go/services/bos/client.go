@@ -69,6 +69,8 @@ type BosClientConfiguration struct {
 	RedirectDisabled      bool
 	PathStyleEnable       bool
 	DisableKeepAlives     bool
+	NoVerifySSL           bool
+	retryPolicy           bce.RetryPolicy
 	DialTimeout           *time.Duration // timeout of building a connection
 	KeepAlive             *time.Duration // interval between keep-alive probes for an active connection
 	ReadTimeout           *time.Duration // read timeout of net.Conn
@@ -77,6 +79,7 @@ type BosClientConfiguration struct {
 	IdleConnectionTimeout *time.Duration // http.Transport.IdleConnTimeout
 	ResponseHeaderTimeout *time.Duration // http.Transport.ResponseHeaderTimeout
 	HTTPClientTimeout     *time.Duration // http.Client.Timeout
+	HTTPClient            *http.Client   // customized http client to send request
 }
 
 func NewBosClientConfig(ak, sk, endpoint string) *BosClientConfiguration {
@@ -87,6 +90,8 @@ func NewBosClientConfig(ak, sk, endpoint string) *BosClientConfiguration {
 		RedirectDisabled:  false,
 		PathStyleEnable:   false,
 		DisableKeepAlives: false,
+		NoVerifySSL:       false,
+		retryPolicy:       bce.DEFAULT_RETRY_POLICY,
 	}
 }
 
@@ -117,6 +122,11 @@ func (cfg *BosClientConfiguration) WithPathStyleEnable(val bool) *BosClientConfi
 
 func (cfg *BosClientConfiguration) WithDisableKeepAlives(val bool) *BosClientConfiguration {
 	cfg.DisableKeepAlives = val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithNoVerifySSL(val bool) *BosClientConfiguration {
+	cfg.NoVerifySSL = val
 	return cfg
 }
 
@@ -157,6 +167,16 @@ func (cfg *BosClientConfiguration) WithResponseHeaderTimeout(val time.Duration) 
 
 func (cfg *BosClientConfiguration) WithHttpClientTimeout(val time.Duration) *BosClientConfiguration {
 	cfg.HTTPClientTimeout = &val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithRetryPolicy(val bce.RetryPolicy) *BosClientConfiguration {
+	cfg.retryPolicy = val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithHttpClient(val http.Client) *BosClientConfiguration {
+	cfg.HTTPClient = &val
 	return cfg
 }
 
@@ -220,10 +240,11 @@ func NewClientWithConfig(config *BosClientConfiguration) (*Client, error) {
 		UserAgent:                 bce.DEFAULT_USER_AGENT,
 		Credentials:               credentials,
 		SignOption:                defaultSignOptions,
-		Retry:                     bce.DEFAULT_RETRY_POLICY,
+		Retry:                     config.retryPolicy,
 		ConnectionTimeoutInMillis: bce.DEFAULT_CONNECTION_TIMEOUT_IN_MILLIS,
 		RedirectDisabled:          config.RedirectDisabled,
 		DisableKeepAlives:         config.DisableKeepAlives,
+		NoVerifySSL:               config.NoVerifySSL,
 		DialTimeout:               config.DialTimeout,
 		KeepAlive:                 config.KeepAlive,
 		ReadTimeout:               config.ReadTimeout,
@@ -232,6 +253,7 @@ func NewClientWithConfig(config *BosClientConfiguration) (*Client, error) {
 		IdleConnectionTimeout:     config.IdleConnectionTimeout,
 		ResponseHeaderTimeout:     config.ResponseHeaderTimeout,
 		HTTPClientTimeout:         config.HTTPClientTimeout,
+		HTTPClient:                config.HTTPClient,
 	}
 	v1Signer := &auth.BceV1Signer{}
 	defaultContext := &api.BosContext{
@@ -1438,6 +1460,45 @@ func (c *Client) GetObjectToFileWithContext(ctx context.Context, bucket, object,
 		return fmt.Errorf("written content size does not match the response content")
 	}
 	return nil
+}
+
+// SetObjectMeta - set the given object metadata
+//
+// PARAMS:
+//   - bucket: the name of the bucket
+//   - object: the name of the object
+//   - args: new object meta value for changing
+//   - options: option func to set various requeset headers
+//
+// RETURNS:
+//   - error: any error if it occurs
+func (c *Client) SetObjectMeta(bucket, object string, args *api.SetObjectMetaArgs,
+	options ...api.Option) error {
+	cpArgs := &api.CopyObjectArgs{
+		ObjectMeta:        args.ObjectMeta,
+		ObjectExpires:     args.ObjectExpires,
+		MetadataDirective: api.METADATA_DIRECTIVE_UPDATE,
+	}
+	source := fmt.Sprintf("/%s/%s", bucket, object)
+	_, err := api.CopyObject(c, bucket, object, source, cpArgs, c.BosContext, options...)
+	return err
+}
+
+// SetObjectMetaWithContext - support to cancel request by context.Context
+func (c *Client) SetObjectMetaWithContext(ctx context.Context, bucket, object string,
+	args *api.SetObjectMetaArgs, options ...api.Option) error {
+	cpArgs := &api.CopyObjectArgs{
+		ObjectMeta:        args.ObjectMeta,
+		ObjectExpires:     args.ObjectExpires,
+		MetadataDirective: api.METADATA_DIRECTIVE_UPDATE,
+	}
+	source := fmt.Sprintf("/%s/%s", bucket, object)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	_, err := api.CopyObject(c, bucket, object, source, cpArgs, bosContext, options...)
+	return err
 }
 
 // GetObjectMeta - get the given object metadata

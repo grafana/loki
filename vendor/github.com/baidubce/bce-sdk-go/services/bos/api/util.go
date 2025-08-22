@@ -33,6 +33,7 @@ import (
 const (
 	METADATA_DIRECTIVE_COPY    = "copy"
 	METADATA_DIRECTIVE_REPLACE = "replace"
+	METADATA_DIRECTIVE_UPDATE  = "update"
 
 	STORAGE_CLASS_STANDARD        = "STANDARD"
 	STORAGE_CLASS_STANDARD_IA     = "STANDARD_IA"
@@ -146,7 +147,9 @@ func getCnameUri(uri string) string {
 }
 
 func validMetadataDirective(val string) bool {
-	if val == METADATA_DIRECTIVE_COPY || val == METADATA_DIRECTIVE_REPLACE {
+	if val == METADATA_DIRECTIVE_COPY ||
+		val == METADATA_DIRECTIVE_REPLACE ||
+		val == METADATA_DIRECTIVE_UPDATE {
 		return true
 	}
 	return false
@@ -322,7 +325,11 @@ func setUserMetadata(req *BosRequest, meta map[string]string) error {
 		if len(k)+len(v) > 32*1024 {
 			return bce.NewBceClientError("MetadataTooLarge")
 		}
-		req.SetHeader(http.BCE_USER_METADATA_PREFIX+k, v)
+		// to lower and deduplicate
+		userMetaHeader := http.BCE_USER_METADATA_PREFIX + strings.ToLower(k)
+		if _, ok := req.Headers()[userMetaHeader]; !ok {
+			req.SetHeader(userMetaHeader, v)
+		}
 	}
 	return nil
 }

@@ -376,6 +376,11 @@ type CopyObjectResult struct {
 	VersionId    string `json:"versionId"`
 }
 
+type SetObjectMetaArgs struct {
+	ObjectMeta
+	ObjectExpires int
+}
+
 type ObjectMeta struct {
 	CacheControl       string
 	ContentDisposition string
