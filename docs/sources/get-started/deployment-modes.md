@@ -30,7 +30,7 @@ Query parallelization is limited by the number of instances and the setting `max
 
 ## Simple Scalable
 
-The simple scalable deployment is the default configuration installed by the [Loki Helm Chart](../../setup/install/helm/). This deployment mode is the easiest way to deploy Loki at scale. It strikes a balance between deploying in [monolithic mode](#monolithic-mode) or deploying each component as a [separate microservice](#microservices-mode).
+The simple scalable deployment is the default configuration installed by the [Loki Helm Chart](../../setup/install/helm/). This deployment mode is the easiest way to deploy Loki at scale. It strikes a balance between deploying in [monolithic mode](#monolithic-mode) or deploying each component as a [separate microservice](#microservices-mode). Simple scalable deployment is also referred to as SSD.
 
 {{< admonition type="note" >}}
 This deployment mode is sometimes referred to by the acronym SSD for simple scalable deployment, not to be confused with solid state drives. Loki uses an object store.
@@ -62,7 +62,7 @@ The three execution paths in simple scalable mode are each activated by appendin
 The simple scalable deployment mode requires a reverse proxy to be deployed in front of Loki, to direct client API requests to either the read or write nodes. The Loki Helm chart includes a default reverse proxy configuration, using Nginx.
 
 ## Microservices mode
-The microservices deployment mode runs components of Loki as distinct processes. Each process is invoked specifying its `target`.
+The microservices deployment mode runs components of Loki as distinct processes. The microservices deployment is also referred to as a Distributed deployment. Each process is invoked specifying its `target`.
 For release 3.2 the components are:
 
 - Bloom Builder (experimental)
