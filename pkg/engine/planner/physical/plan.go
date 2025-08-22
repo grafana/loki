@@ -227,11 +227,11 @@ func idxOf(arr []Node, n Node) (int, error) {
 // This maintains the graph's connectivity by creating direct edges from the parent
 // to each child of the removed node. The function also cleans up all references to
 // the node in the plan's internal data structures.
-func (p *Plan) eliminateNode(node Node) error {
+func (p *Plan) eliminateNode(node Node) {
 	parent := p.Parent(node)
 	idx, err := idxOf(p.children[parent], node)
-	if err != nil {
-		return err
+	if err != nil { // node not found, so nothing to eliminate
+		return
 	}
 	prevChildren := p.children[parent][0:idx]
 	nextChildren := p.children[parent][idx+1:]
@@ -247,7 +247,6 @@ func (p *Plan) eliminateNode(node Node) error {
 	p.children[node] = nil
 	p.nodes.remove(node)
 	delete(p.nodesByID, node.ID())
-	return nil
 }
 
 // Len returns the number of nodes in the graph
