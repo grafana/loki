@@ -92,20 +92,6 @@ type ClusterOptions struct {
 	ConnMaxIdleTime time.Duration
 	ConnMaxLifetime time.Duration
 
-	// ReadBufferSize is the size of the bufio.Reader buffer for each connection.
-	// Larger buffers can improve performance for commands that return large responses.
-	// Smaller buffers can improve memory usage for larger pools.
-	//
-	// default: 256KiB (262144 bytes)
-	ReadBufferSize int
-
-	// WriteBufferSize is the size of the bufio.Writer buffer for each connection.
-	// Larger buffers can improve performance for large pipelines and commands with many arguments.
-	// Smaller buffers can improve memory usage for larger pools.
-	//
-	// default: 256KiB (262144 bytes)
-	WriteBufferSize int
-
 	TLSConfig *tls.Config
 
 	// DisableIndentity - Disable set-lib on connect.
@@ -140,12 +126,6 @@ func (opt *ClusterOptions) init() {
 
 	if opt.PoolSize == 0 {
 		opt.PoolSize = 5 * runtime.GOMAXPROCS(0)
-	}
-	if opt.ReadBufferSize == 0 {
-		opt.ReadBufferSize = proto.DefaultBufferSize
-	}
-	if opt.WriteBufferSize == 0 {
-		opt.WriteBufferSize = proto.DefaultBufferSize
 	}
 
 	switch opt.ReadTimeout {
@@ -338,8 +318,6 @@ func (opt *ClusterOptions) clientOptions() *Options {
 		MaxActiveConns:   opt.MaxActiveConns,
 		ConnMaxIdleTime:  opt.ConnMaxIdleTime,
 		ConnMaxLifetime:  opt.ConnMaxLifetime,
-		ReadBufferSize:   opt.ReadBufferSize,
-		WriteBufferSize:  opt.WriteBufferSize,
 		DisableIdentity:  opt.DisableIdentity,
 		DisableIndentity: opt.DisableIdentity,
 		IdentitySuffix:   opt.IdentitySuffix,
@@ -362,9 +340,9 @@ type clusterNode struct {
 	latency    uint32 // atomic
 	generation uint32 // atomic
 	failing    uint32 // atomic
-	loaded     uint32 // atomic
 
-	// last time the latency measurement was performed for the node, stored in nanoseconds from epoch
+	// last time the latency measurement was performed for the node, stored in nanoseconds
+	// from epoch
 	lastLatencyMeasurement int64 // atomic
 }
 
@@ -428,7 +406,6 @@ func (n *clusterNode) Latency() time.Duration {
 
 func (n *clusterNode) MarkAsFailing() {
 	atomic.StoreUint32(&n.failing, uint32(time.Now().Unix()))
-	atomic.StoreUint32(&n.loaded, 0)
 }
 
 func (n *clusterNode) Failing() bool {
@@ -472,21 +449,11 @@ func (n *clusterNode) SetLastLatencyMeasurement(t time.Time) {
 }
 
 func (n *clusterNode) Loading() bool {
-	loaded := atomic.LoadUint32(&n.loaded)
-	if loaded == 1 {
-		return false
-	}
-
-	// check if the node is loading
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 
 	err := n.Client.Ping(ctx).Err()
-	loading := err != nil && isLoadingError(err)
-	if !loading {
-		atomic.StoreUint32(&n.loaded, 1)
-	}
-	return loading
+	return err != nil && isLoadingError(err)
 }
 
 //------------------------------------------------------------------------------
@@ -501,12 +468,13 @@ type clusterNodes struct {
 	closed      bool
 	onNewNode   []func(rdb *Client)
 
-	generation uint32 // atomic
+	_generation uint32 // atomic
 }
 
 func newClusterNodes(opt *ClusterOptions) *clusterNodes {
 	return &clusterNodes{
-		opt:   opt,
+		opt: opt,
+
 		addrs: opt.Addrs,
 		nodes: make(map[string]*clusterNode),
 	}
@@ -566,11 +534,12 @@ func (c *clusterNodes) Addrs() ([]string, error) {
 }
 
 func (c *clusterNodes) NextGeneration() uint32 {
-	return atomic.AddUint32(&c.generation, 1)
+	return atomic.AddUint32(&c._generation, 1)
 }
 
 // GC removes unused nodes.
 func (c *clusterNodes) GC(generation uint32) {
+	//nolint:prealloc
 	var collected []*clusterNode
 
 	c.mu.Lock()
@@ -623,20 +592,23 @@ func (c *clusterNodes) GetOrCreate(addr string) (*clusterNode, error) {
 		fn(node.Client)
 	}
 
-	c.addrs = appendIfNotExist(c.addrs, addr)
+	c.addrs = appendIfNotExists(c.addrs, addr)
 	c.nodes[addr] = node
 
 	return node, nil
 }
 
 func (c *clusterNodes) get(addr string) (*clusterNode, error) {
+	var node *clusterNode
+	var err error
 	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	if c.closed {
-		return nil, pool.ErrClosed
+		err = pool.ErrClosed
+	} else {
+		node = c.nodes[addr]
 	}
-	return c.nodes[addr], nil
+	c.mu.RUnlock()
+	return node, err
 }
 
 func (c *clusterNodes) All() ([]*clusterNode, error) {
@@ -667,9 +639,8 @@ func (c *clusterNodes) Random() (*clusterNode, error) {
 //------------------------------------------------------------------------------
 
 type clusterSlot struct {
-	start int
-	end   int
-	nodes []*clusterNode
+	start, end int
+	nodes      []*clusterNode
 }
 
 type clusterSlotSlice []*clusterSlot
@@ -729,9 +700,9 @@ func newClusterState(
 			nodes = append(nodes, node)
 
 			if i == 0 {
-				c.Masters = appendIfNotExist(c.Masters, node)
+				c.Masters = appendUniqueNode(c.Masters, node)
 			} else {
-				c.Slaves = appendIfNotExist(c.Slaves, node)
+				c.Slaves = appendUniqueNode(c.Slaves, node)
 			}
 		}
 
@@ -1008,6 +979,13 @@ func (c *ClusterClient) Close() error {
 	return c.nodes.Close()
 }
 
+// Do create a Cmd from the args and processes the cmd.
+func (c *ClusterClient) Do(ctx context.Context, args ...interface{}) *Cmd {
+	cmd := NewCmd(ctx, args...)
+	_ = c.Process(ctx, cmd)
+	return cmd
+}
+
 func (c *ClusterClient) Process(ctx context.Context, cmd Cmder) error {
 	err := c.processHook(ctx, cmd)
 	cmd.SetErr(err)
@@ -1015,7 +993,7 @@ func (c *ClusterClient) Process(ctx context.Context, cmd Cmder) error {
 }
 
 func (c *ClusterClient) process(ctx context.Context, cmd Cmder) error {
-	slot := c.cmdSlot(cmd, -1)
+	slot := c.cmdSlot(cmd)
 	var node *clusterNode
 	var moved bool
 	var ask bool
@@ -1290,7 +1268,7 @@ func (c *ClusterClient) loadState(ctx context.Context) (*clusterState, error) {
 			continue
 		}
 
-		return newClusterState(c.nodes, slots, addr)
+		return newClusterState(c.nodes, slots, node.Client.opt.Addr)
 	}
 
 	/*
@@ -1361,13 +1339,9 @@ func (c *ClusterClient) mapCmdsByNode(ctx context.Context, cmdsMap *cmdsMap, cmd
 		return err
 	}
 
-	preferredRandomSlot := -1
 	if c.opt.ReadOnly && c.cmdsAreReadOnly(ctx, cmds) {
 		for _, cmd := range cmds {
-			slot := c.cmdSlot(cmd, preferredRandomSlot)
-			if preferredRandomSlot == -1 {
-				preferredRandomSlot = slot
-			}
+			slot := c.cmdSlot(cmd)
 			node, err := c.slotReadOnlyNode(state, slot)
 			if err != nil {
 				return err
@@ -1378,10 +1352,7 @@ func (c *ClusterClient) mapCmdsByNode(ctx context.Context, cmdsMap *cmdsMap, cmd
 	}
 
 	for _, cmd := range cmds {
-		slot := c.cmdSlot(cmd, preferredRandomSlot)
-		if preferredRandomSlot == -1 {
-			preferredRandomSlot = slot
-		}
+		slot := c.cmdSlot(cmd)
 		node, err := state.slotMasterNode(slot)
 		if err != nil {
 			return err
@@ -1533,88 +1504,58 @@ func (c *ClusterClient) processTxPipeline(ctx context.Context, cmds []Cmder) err
 	// Trim multi .. exec.
 	cmds = cmds[1 : len(cmds)-1]
 
-	if len(cmds) == 0 {
-		return nil
-	}
-
 	state, err := c.state.Get(ctx)
 	if err != nil {
 		setCmdsErr(cmds, err)
 		return err
 	}
 
-	keyedCmdsBySlot := c.slottedKeyedCommands(cmds)
-	slot := -1
-	switch len(keyedCmdsBySlot) {
-	case 0:
-		slot = hashtag.RandomSlot()
-	case 1:
-		for sl := range keyedCmdsBySlot {
-			slot = sl
-			break
+	cmdsMap := c.mapCmdsBySlot(cmds)
+	for slot, cmds := range cmdsMap {
+		node, err := state.slotMasterNode(slot)
+		if err != nil {
+			setCmdsErr(cmds, err)
+			continue
 		}
-	default:
-		// TxPipeline does not support cross slot transaction.
-		setCmdsErr(cmds, ErrCrossSlot)
-		return ErrCrossSlot
-	}
 
-	node, err := state.slotMasterNode(slot)
-	if err != nil {
-		setCmdsErr(cmds, err)
-		return err
-	}
-
-	cmdsMap := map[*clusterNode][]Cmder{node: cmds}
-	for attempt := 0; attempt <= c.opt.MaxRedirects; attempt++ {
-		if attempt > 0 {
-			if err := internal.Sleep(ctx, c.retryBackoff(attempt)); err != nil {
-				setCmdsErr(cmds, err)
-				return err
+		cmdsMap := map[*clusterNode][]Cmder{node: cmds}
+		for attempt := 0; attempt <= c.opt.MaxRedirects; attempt++ {
+			if attempt > 0 {
+				if err := internal.Sleep(ctx, c.retryBackoff(attempt)); err != nil {
+					setCmdsErr(cmds, err)
+					return err
+				}
 			}
-		}
 
-		failedCmds := newCmdsMap()
-		var wg sync.WaitGroup
+			failedCmds := newCmdsMap()
+			var wg sync.WaitGroup
 
-		for node, cmds := range cmdsMap {
-			wg.Add(1)
-			go func(node *clusterNode, cmds []Cmder) {
-				defer wg.Done()
-				c.processTxPipelineNode(ctx, node, cmds, failedCmds)
-			}(node, cmds)
-		}
+			for node, cmds := range cmdsMap {
+				wg.Add(1)
+				go func(node *clusterNode, cmds []Cmder) {
+					defer wg.Done()
+					c.processTxPipelineNode(ctx, node, cmds, failedCmds)
+				}(node, cmds)
+			}
 
-		wg.Wait()
-		if len(failedCmds.m) == 0 {
-			break
+			wg.Wait()
+			if len(failedCmds.m) == 0 {
+				break
+			}
+			cmdsMap = failedCmds.m
 		}
-		cmdsMap = failedCmds.m
 	}
 
 	return cmdsFirstErr(cmds)
 }
 
-// slottedKeyedCommands returns a map of slot to commands taking into account
-// only commands that have keys.
-func (c *ClusterClient) slottedKeyedCommands(cmds []Cmder) map[int][]Cmder {
-	cmdsSlots := map[int][]Cmder{}
-
-	preferredRandomSlot := -1
+func (c *ClusterClient) mapCmdsBySlot(cmds []Cmder) map[int][]Cmder {
+	cmdsMap := make(map[int][]Cmder)
 	for _, cmd := range cmds {
-		if cmdFirstKeyPos(cmd) == 0 {
-			continue
-		}
-
-		slot := c.cmdSlot(cmd, preferredRandomSlot)
-		if preferredRandomSlot == -1 {
-			preferredRandomSlot = slot
-		}
-
-		cmdsSlots[slot] = append(cmdsSlots[slot], cmd)
+		slot := c.cmdSlot(cmd)
+		cmdsMap[slot] = append(cmdsMap[slot], cmd)
 	}
-
-	return cmdsSlots
+	return cmdsMap
 }
 
 func (c *ClusterClient) processTxPipelineNode(
@@ -1929,20 +1870,17 @@ func (c *ClusterClient) cmdInfo(ctx context.Context, name string) *CommandInfo {
 	return info
 }
 
-func (c *ClusterClient) cmdSlot(cmd Cmder, preferredRandomSlot int) int {
+func (c *ClusterClient) cmdSlot(cmd Cmder) int {
 	args := cmd.Args()
 	if args[0] == "cluster" && (args[1] == "getkeysinslot" || args[1] == "countkeysinslot") {
 		return args[2].(int)
 	}
 
-	return cmdSlot(cmd, cmdFirstKeyPos(cmd), preferredRandomSlot)
+	return cmdSlot(cmd, cmdFirstKeyPos(cmd))
 }
 
-func cmdSlot(cmd Cmder, pos int, preferredRandomSlot int) int {
+func cmdSlot(cmd Cmder, pos int) int {
 	if pos == 0 {
-		if preferredRandomSlot != -1 {
-			return preferredRandomSlot
-		}
 		return hashtag.RandomSlot()
 	}
 	firstKey := cmd.stringArg(pos)
@@ -2012,7 +1950,7 @@ func (c *ClusterClient) MasterForKey(ctx context.Context, key string) (*Client, 
 	if err != nil {
 		return nil, err
 	}
-	return node.Client, nil
+	return node.Client, err
 }
 
 func (c *ClusterClient) context(ctx context.Context) context.Context {
@@ -2022,13 +1960,26 @@ func (c *ClusterClient) context(ctx context.Context) context.Context {
 	return context.Background()
 }
 
-func appendIfNotExist[T comparable](vals []T, newVal T) []T {
-	for _, v := range vals {
-		if v == newVal {
-			return vals
+func appendUniqueNode(nodes []*clusterNode, node *clusterNode) []*clusterNode {
+	for _, n := range nodes {
+		if n == node {
+			return nodes
 		}
 	}
-	return append(vals, newVal)
+	return append(nodes, node)
+}
+
+func appendIfNotExists(ss []string, es ...string) []string {
+loop:
+	for _, e := range es {
+		for _, s := range ss {
+			if s == e {
+				continue loop
+			}
+		}
+		ss = append(ss, e)
+	}
+	return ss
 }
 
 //------------------------------------------------------------------------------
