@@ -87,7 +87,7 @@ func (b *testDataBuilder) addStreamAndFlush(stream logproto.Stream) {
 
 	err = b.meta.WriteEntry(context.Background(), path, []multitenancy.TimeRange{
 		{
-			Tenant:  multitenancy.TenantID(tenantID),
+			Tenant:  tenantID,
 			MinTime: minTime,
 			MaxTime: maxTime,
 		},
@@ -253,7 +253,6 @@ func TestValuesEmptyMatcher(t *testing.T) {
 
 func TestSectionsForStreamMatchers(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), tenantID)
-	testTenant := multitenancy.TenantID("test-tenant")
 
 	builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
 		TargetPageSize:          1024 * 1024,
@@ -268,7 +267,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 		lbls, err := syntax.ParseLabels(ts.Labels)
 		require.NoError(t, err)
 
-		newIdx, err := builder.AppendStream(testTenant, streams.Stream{
+		newIdx, err := builder.AppendStream(tenantID, streams.Stream{
 			ID:               int64(i),
 			Labels:           lbls,
 			MinTimestamp:     ts.Entries[0].Timestamp,
@@ -276,11 +275,12 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 			UncompressedSize: 0,
 		})
 		require.NoError(t, err)
-		err = builder.ObserveLogLine(testTenant, "test-path", 0, newIdx, int64(i), ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
+		err = builder.ObserveLogLine(tenantID, "test-path", 0, newIdx, int64(i), ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
 		require.NoError(t, err)
 	}
 
 	timeRanges := builder.TimeRanges()
+	require.Len(t, timeRanges, 1)
 
 	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
@@ -294,11 +294,11 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	path, err := uploader.Upload(context.Background(), obj)
 	require.NoError(t, err)
 
-	metastoreTocWriter := NewTableOfContentsWriter(Config{}, bucket, tenantID, log.NewNopLogger())
+	metastoreTocWriter := NewTableOfContentsWriter(Config{}, bucket, log.NewNopLogger())
 
 	err = metastoreTocWriter.WriteEntry(context.Background(), path, []multitenancy.TimeRange{
 		{
-			Tenant:  multitenancy.TenantID(tenantID),
+			Tenant:  tenantID,
 			MinTime: timeRanges[0].MinTime,
 			MaxTime: timeRanges[0].MaxTime,
 		},
@@ -382,7 +382,7 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	logger := log.NewLogfmtLogger(os.Stdout)
 	logger = log.With(logger, "test", t.Name())
 
-	meta := NewTableOfContentsWriter(Config{}, bucket, tenantID, logger)
+	meta := NewTableOfContentsWriter(Config{}, bucket, logger)
 	require.NoError(t, meta.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)

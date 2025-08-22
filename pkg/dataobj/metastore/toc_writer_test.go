@@ -44,7 +44,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		writer := NewTableOfContentsWriter(Config{}, bucket, log.NewNopLogger())
 		err = writer.WriteEntry(context.Background(), "testdata/metastore.obj", []multitenancy.TimeRange{
 			{
-				Tenant:  multitenancy.TenantID(tenantID),
+				Tenant:  tenantID,
 				MinTime: unixTime(20),
 				MaxTime: unixTime(30),
 			},
@@ -68,7 +68,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		writer := newTableOfContentsWriter(t, tenantID, bucket, builder)
 		err = writer.WriteEntry(context.Background(), "testdata/metastore.obj", []multitenancy.TimeRange{
 			{
-				Tenant:  multitenancy.TenantID(tenantID),
+				Tenant:  tenantID,
 				MinTime: unixTime(0),
 				MaxTime: unixTime(30),
 			},
@@ -95,7 +95,6 @@ func newTableOfContentsWriter(t *testing.T, tenantID string, bucket objstore.Buc
 	updater := &TableOfContentsWriter{
 		tocBuilder: tocBuilder,
 		bucket:     bucket,
-		tenantID:   tenantID,
 		metrics:    newTableOfContentsMetrics(),
 		logger:     log.NewNopLogger(),
 		backoff: backoff.New(context.TODO(), backoff.Config{

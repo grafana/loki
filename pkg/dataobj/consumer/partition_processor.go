@@ -344,7 +344,7 @@ func (p *partitionProcessor) flush() error {
 	// TODO(benclive): Remove this Update once the indexes are being built from the metastore events
 	if err := p.metastoreTocWriter.WriteEntry(p.ctx, objectPath, []multitenancy.TimeRange{
 		{
-			Tenant:  multitenancy.TenantID(p.tenantID),
+			Tenant:  string(p.tenantID),
 			MinTime: minTime,
 			MaxTime: maxTime,
 		},

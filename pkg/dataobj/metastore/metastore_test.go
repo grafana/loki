@@ -21,7 +21,7 @@ func BenchmarkWriteMetastores(b *testing.B) {
 	bucket := objstore.NewInMemBucket()
 	tenantID := "test-tenant"
 
-	toc := NewTableOfContentsWriter(Config{}, bucket, tenantID, log.NewNopLogger())
+	toc := NewTableOfContentsWriter(Config{}, bucket, log.NewNopLogger())
 
 	// Set limits for the test
 	toc.backoff = backoff.New(context.TODO(), backoff.Config{
@@ -48,7 +48,7 @@ func BenchmarkWriteMetastores(b *testing.B) {
 		stats := stats[i%len(stats)]
 		err := toc.WriteEntry(ctx, "path", []multitenancy.TimeRange{
 			{
-				Tenant:  multitenancy.TenantID(tenantID),
+				Tenant:  tenantID,
 				MinTime: stats.MinTimestamp,
 				MaxTime: stats.MaxTimestamp,
 			},
@@ -64,7 +64,7 @@ func TestWriteMetastores(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	tenantID := "test-tenant"
 
-	toc := NewTableOfContentsWriter(Config{}, bucket, tenantID, log.NewNopLogger())
+	toc := NewTableOfContentsWriter(Config{}, bucket, log.NewNopLogger())
 
 	// Set limits for the test
 	toc.backoff = backoff.New(context.TODO(), backoff.Config{
@@ -86,7 +86,7 @@ func TestWriteMetastores(t *testing.T) {
 	// Test writing metastores
 	err := toc.WriteEntry(ctx, "test-dataobj-path", []multitenancy.TimeRange{
 		{
-			Tenant:  multitenancy.TenantID(tenantID),
+			Tenant:  tenantID,
 			MinTime: stats.MinTimestamp,
 			MaxTime: stats.MaxTimestamp,
 		},
@@ -106,7 +106,7 @@ func TestWriteMetastores(t *testing.T) {
 
 	err = toc.WriteEntry(ctx, "different-dataobj-path", []multitenancy.TimeRange{
 		{
-			Tenant:  multitenancy.TenantID(tenantID),
+			Tenant:  tenantID,
 			MinTime: flushResult2.MinTimestamp,
 			MaxTime: flushResult2.MaxTimestamp,
 		},
@@ -221,7 +221,7 @@ func TestDataObjectsPaths(t *testing.T) {
 					IndexStoragePrefix: tt.prefix,
 					EnabledTenantIDs:   tt.enabledTenantIDs,
 				},
-			}, bucket, tenantID, log.NewNopLogger())
+			}, bucket, log.NewNopLogger())
 
 			// Set limits for the test
 			toc.backoff = backoff.New(context.TODO(), backoff.Config{
@@ -274,7 +274,7 @@ func TestDataObjectsPaths(t *testing.T) {
 			for _, tc := range testCases {
 				err := toc.WriteEntry(ctx, tc.path, []multitenancy.TimeRange{
 					{
-						Tenant:  multitenancy.TenantID(tenantID),
+						Tenant:  tenantID,
 						MinTime: tc.startTime,
 						MaxTime: tc.endTime,
 					},

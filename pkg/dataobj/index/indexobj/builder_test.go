@@ -10,7 +10,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
@@ -99,7 +98,7 @@ func TestBuilder(t *testing.T) {
 		builder, err := NewBuilder(testBuilderConfig, nil)
 		require.NoError(t, err)
 
-		tenants := []multitenancy.TenantID{"test-tenant-1", "test-tenant-2"}
+		tenants := []string{"test-tenant-1", "test-tenant-2"}
 
 		for i, stream := range testStreams {
 			tenant := tenants[i%len(tenants)]

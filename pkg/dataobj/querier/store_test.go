@@ -514,7 +514,7 @@ func (b *testDataBuilder) flush() {
 	// Update metastore with the new data object
 	err = b.meta.WriteEntry(context.Background(), path, []multitenancy.TimeRange{
 		{
-			Tenant:  multitenancy.TenantID(b.tenantID),
+			Tenant:  b.tenantID,
 			MinTime: minTime,
 			MaxTime: maxTime,
 		},

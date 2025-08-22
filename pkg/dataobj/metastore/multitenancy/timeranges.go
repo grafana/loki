@@ -6,10 +6,7 @@ import (
 
 // TimeRange represents a time range for a specific tenant.
 type TimeRange struct {
-	Tenant  TenantID
+	Tenant  string
 	MinTime time.Time
 	MaxTime time.Time
 }
-
-// TenantID wraps a singular tenant ID string.
-type TenantID string

@@ -213,7 +213,7 @@ func (m *TableOfContentsWriter) copyFromExistingToc(ctx context.Context, tocObje
 		if err != nil {
 			return errors.Wrap(err, "opening section")
 		}
-		tenantID := multitenancy.TenantID(section.Tenant)
+		tenantID := section.Tenant
 		indexPointersReader.Reset(sec)
 		for n, err := indexPointersReader.Read(ctx, pbuf); n > 0; n, err = indexPointersReader.Read(ctx, pbuf) {
 			if err != nil && err != io.EOF {
