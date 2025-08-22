@@ -314,7 +314,7 @@ func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []
 		return emptyPipeline()
 	}
 
-	pipeline, err := NewMergePipeline(inputs)
+	pipeline, err := newMergePipeline(inputs, 1)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
