@@ -137,4 +137,28 @@ func TestPlan(t *testing.T) {
 			}, visitor.visited)
 		})
 	})
+	t.Run("adding edge to node with existing parent fails", func(t *testing.T) {
+		p := &Plan{}
+		parent1 := p.addNode(&SortMerge{id: "parent1"})
+		parent2 := p.addNode(&SortMerge{id: "parent2"})
+		child := p.addNode(&DataObjScan{id: "child"})
+
+		err := p.addEdge(Edge{Parent: parent1, Child: child})
+		require.Nil(t, err)
+		err = p.addEdge(Edge{Parent: parent2, Child: child})
+		require.ErrorContains(t, err, "already has parent")
+	})
+
+	t.Run("child ordering is preserved", func(t *testing.T) {
+		p := &Plan{}
+		parent := p.addNode(&SortMerge{id: "parent"})
+		child1 := p.addNode(&SortMerge{id: "child1"})
+		child2 := p.addNode(&DataObjScan{id: "child2"})
+		err := p.addEdge(Edge{Parent: parent, Child: child1})
+		require.Nil(t, err)
+		err = p.addEdge(Edge{Parent: parent, Child: child2})
+		require.Nil(t, err)
+		require.Equal(t, p.children[parent], []Node{child1, child2})
+	})
+
 }

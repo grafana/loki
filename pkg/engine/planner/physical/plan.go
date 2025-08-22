@@ -220,7 +220,7 @@ func idxOf(arr []Node, n Node) (int, error) {
 			return i, nil
 		}
 	}
-	return -1, fmt.Errorf("Node %s not found in array", n.ID())
+	return -1, fmt.Errorf("node %s not found in array", n.ID())
 }
 
 // eliminateNode removes a node from the plan and reconnects its parent to its children.
@@ -229,15 +229,17 @@ func idxOf(arr []Node, n Node) (int, error) {
 // the node in the plan's internal data structures.
 func (p *Plan) eliminateNode(node Node) {
 	parent := p.Parent(node)
-	idx, err := idxOf(p.children[parent], node)
-	if err != nil { // node not found, so nothing to eliminate
-		return
+	if parent != nil {
+		idx, err := idxOf(p.children[parent], node)
+		if err != nil { // node not found, so nothing to eliminate
+			return
+		}
+		prevChildren := p.children[parent][0:idx]
+		nextChildren := p.children[parent][idx+1:]
+		allChildren := append(prevChildren, p.children[node]...)
+		allChildren = append(allChildren, nextChildren...)
+		p.children[parent] = allChildren
 	}
-	prevChildren := p.children[parent][0:idx]
-	nextChildren := p.children[parent][idx+1:]
-	allChildren := append(prevChildren, p.children[node]...)
-	allChildren = append(allChildren, nextChildren...)
-	p.children[parent] = allChildren
 
 	for _, child := range p.Children(node) {
 		p.parents[child] = p.Parent(node)
