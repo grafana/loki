@@ -28,28 +28,12 @@ type Conn struct {
 }
 
 func NewConn(netConn net.Conn) *Conn {
-	return NewConnWithBufferSize(netConn, proto.DefaultBufferSize, proto.DefaultBufferSize)
-}
-
-func NewConnWithBufferSize(netConn net.Conn, readBufSize, writeBufSize int) *Conn {
 	cn := &Conn{
 		netConn:   netConn,
 		createdAt: time.Now(),
 	}
-
-	// Use specified buffer sizes, or fall back to 0.5MiB defaults if 0
-	if readBufSize > 0 {
-		cn.rd = proto.NewReaderSize(netConn, readBufSize)
-	} else {
-		cn.rd = proto.NewReader(netConn) // Uses 0.5MiB default
-	}
-
-	if writeBufSize > 0 {
-		cn.bw = bufio.NewWriterSize(netConn, writeBufSize)
-	} else {
-		cn.bw = bufio.NewWriterSize(netConn, proto.DefaultBufferSize)
-	}
-
+	cn.rd = proto.NewReader(netConn)
+	cn.bw = bufio.NewWriter(netConn)
 	cn.wr = proto.NewWriter(cn.bw)
 	cn.SetUsedAt(time.Now())
 	return cn

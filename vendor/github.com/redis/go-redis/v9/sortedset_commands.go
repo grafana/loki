@@ -4,8 +4,6 @@ import (
 	"context"
 	"strings"
 	"time"
-
-	"github.com/redis/go-redis/v9/internal/hashtag"
 )
 
 type SortedSetCmdable interface {
@@ -259,15 +257,16 @@ func (c cmdable) ZInterWithScores(ctx context.Context, store *ZStore) *ZSliceCmd
 }
 
 func (c cmdable) ZInterCard(ctx context.Context, limit int64, keys ...string) *IntCmd {
-	numKeys := len(keys)
-	args := make([]interface{}, 4+numKeys)
+	args := make([]interface{}, 4+len(keys))
 	args[0] = "zintercard"
-	args[1] = numKeys
+	numkeys := int64(0)
 	for i, key := range keys {
 		args[2+i] = key
+		numkeys++
 	}
-	args[2+numKeys] = "limit"
-	args[3+numKeys] = limit
+	args[1] = numkeys
+	args[2+numkeys] = "limit"
+	args[3+numkeys] = limit
 	cmd := NewIntCmd(ctx, args...)
 	_ = c(ctx, cmd)
 	return cmd
@@ -721,9 +720,6 @@ func (c cmdable) ZScan(ctx context.Context, key string, cursor uint64, match str
 		args = append(args, "count", count)
 	}
 	cmd := NewScanCmd(ctx, c, args...)
-	if hashtag.Present(match) {
-		cmd.SetFirstKeyPos(4)
-	}
 	_ = c(ctx, cmd)
 	return cmd
 }
