@@ -14,7 +14,7 @@ const (
 	NodeTypeProjection
 	NodeTypeFilter
 	NodeTypeLimit
-	NodeTypeRangeAggreation
+	NodeTypeRangeAggregation
 	NodeTypeVectorAggregation
 	NodeTypeMerge
 )
@@ -33,7 +33,7 @@ func (t NodeType) String() string {
 		return "Filter"
 	case NodeTypeLimit:
 		return "Limit"
-	case NodeTypeRangeAggreation:
+	case NodeTypeRangeAggregation:
 		return "RangeAggregation"
 	case NodeTypeVectorAggregation:
 		return "VectorAggregation"
