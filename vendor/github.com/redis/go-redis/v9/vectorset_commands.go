@@ -287,7 +287,8 @@ type VSimArgs struct {
 	FilterEF int64
 	Truth    bool
 	NoThread bool
-	Epsilon  float64
+	// The `VSim` command in Redis has the option, by the doc in Redis.io don't have.
+	// Epsilon float64
 }
 
 func (v VSimArgs) appendArgs(args []any) []any {
@@ -309,13 +310,13 @@ func (v VSimArgs) appendArgs(args []any) []any {
 	if v.NoThread {
 		args = append(args, "nothread")
 	}
-	if v.Epsilon > 0 {
-		args = append(args, "Epsilon", v.Epsilon)
-	}
+	// if v.Epsilon > 0 {
+	//	args = append(args, "Epsilon", v.Epsilon)
+	// }
 	return args
 }
 
-// `VSIM key (ELE | FP32 | VALUES num) (vector | element) [COUNT num] [EPSILON delta]
+// `VSIM key (ELE | FP32 | VALUES num) (vector | element) [COUNT num]
 // [EF search-exploration-factor] [FILTER expression] [FILTER-EF max-filtering-effort] [TRUTH] [NOTHREAD]`
 // note: the API is experimental and may be subject to change.
 func (c cmdable) VSimWithArgs(ctx context.Context, key string, val Vector, simArgs *VSimArgs) *StringSliceCmd {
@@ -330,7 +331,7 @@ func (c cmdable) VSimWithArgs(ctx context.Context, key string, val Vector, simAr
 	return cmd
 }
 
-// `VSIM key (ELE | FP32 | VALUES num) (vector | element) [WITHSCORES] [COUNT num] [EPSILON delta]
+// `VSIM key (ELE | FP32 | VALUES num) (vector | element) [WITHSCORES] [COUNT num]
 // [EF search-exploration-factor] [FILTER expression] [FILTER-EF max-filtering-effort] [TRUTH] [NOTHREAD]`
 // note: the API is experimental and may be subject to change.
 func (c cmdable) VSimWithArgsWithScores(ctx context.Context, key string, val Vector, simArgs *VSimArgs) *VectorScoreSliceCmd {
