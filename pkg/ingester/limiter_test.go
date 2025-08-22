@@ -138,7 +138,7 @@ func TestStreamCountLimiter_AssertNewStreamAllowed(t *testing.T) {
 				return testData.streams
 			}
 			streamCountLimiter := newStreamCountLimiter("test", defaultCountSupplier, limiter, ownedStreamSvc)
-			actual := streamCountLimiter.AssertNewStreamAllowed("test")
+			actual := streamCountLimiter.AssertNewStreamAllowed("test", "")
 
 			assert.Equal(t, testData.expected, actual)
 		})
@@ -367,4 +367,103 @@ func TestConvertGlobalToLocalLimit_PartitionRing(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLimiter_GetStreamCountLimit(t *testing.T) {
+	// Create a mock limits implementation
+	mockLimits := &mockLimits{
+		maxLocalStreams:  100,
+		maxGlobalStreams: 1000,
+		policyLimits: map[string]struct {
+			local  int
+			global int
+		}{
+			"finance": {local: 50, global: 500},
+			"ops":     {local: 25, global: 250},
+		},
+	}
+
+	// Create a simple ring strategy for testing
+	ringStrategy := &mockRingStrategy{
+		healthyInstances:  2,
+		replicationFactor: 1,
+	}
+
+	limiter := &Limiter{
+		limits:       mockLimits,
+		ringStrategy: ringStrategy,
+	}
+
+	// Test with no policy - should use original method
+	calculated, local, global, adjusted := limiter.GetStreamCountLimit("tenant1", "")
+	require.Equal(t, 100, local)
+	require.Equal(t, 1000, global)
+	require.Equal(t, 500, adjusted)   // 1000 / 2 * 1
+	require.Equal(t, 100, calculated) // min(100, 500)
+
+	// Test with finance policy - should use policy-specific limits
+	calculated, local, global, adjusted = limiter.GetStreamCountLimit("tenant1", "finance")
+	require.Equal(t, 50, local)
+	require.Equal(t, 500, global)
+	require.Equal(t, 250, adjusted)  // 500 / 2 * 1
+	require.Equal(t, 50, calculated) // min(50, 250)
+
+	// Test with ops policy - should use policy-specific limits
+	calculated, local, global, adjusted = limiter.GetStreamCountLimit("tenant1", "ops")
+	require.Equal(t, 25, local)
+	require.Equal(t, 250, global)
+	require.Equal(t, 125, adjusted)  // 250 / 2 * 1
+	require.Equal(t, 25, calculated) // min(25, 125)
+
+	// Test with non-existent policy - should use original limits
+	calculated, local, global, adjusted = limiter.GetStreamCountLimit("tenant1", "nonexistent")
+	require.Equal(t, 100, local)
+	require.Equal(t, 1000, global)
+	require.Equal(t, 500, adjusted)   // 1000 / 2 * 1
+	require.Equal(t, 100, calculated) // min(100, 500)
+}
+
+// Mock implementations for testing
+type mockLimits struct {
+	Limits
+	maxLocalStreams  int
+	maxGlobalStreams int
+	policyLimits     map[string]struct {
+		local  int
+		global int
+	}
+}
+
+func (m *mockLimits) MaxLocalStreamsPerUser(userID string) int {
+	return m.maxLocalStreams
+}
+
+func (m *mockLimits) MaxGlobalStreamsPerUser(userID string) int {
+	return m.maxGlobalStreams
+}
+
+func (m *mockLimits) PolicyMaxLocalStreamsPerUser(userID, policy string) int {
+	if policyLimit, exists := m.policyLimits[policy]; exists {
+		return policyLimit.local
+	}
+	return 0
+}
+
+func (m *mockLimits) PolicyMaxGlobalStreamsPerUser(userID, policy string) int {
+	if policyLimit, exists := m.policyLimits[policy]; exists {
+		return policyLimit.global
+	}
+	return 0
+}
+
+type mockRingStrategy struct {
+	healthyInstances  int
+	replicationFactor int
+}
+
+func (m *mockRingStrategy) convertGlobalToLocalLimit(globalLimit int, _ string) int {
+	if globalLimit == 0 || m.replicationFactor == 0 {
+		return 0
+	}
+	return int(float64(globalLimit) / float64(m.healthyInstances) * float64(m.replicationFactor))
 }

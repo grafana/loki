@@ -31,6 +31,8 @@ type Limits interface {
 	UseOwnedStreamCount(userID string) bool
 	MaxLocalStreamsPerUser(userID string) int
 	MaxGlobalStreamsPerUser(userID string) int
+	PolicyMaxLocalStreamsPerUser(userID, policy string) int
+	PolicyMaxGlobalStreamsPerUser(userID, policy string) int
 	PerStreamRateLimit(userID string) validation.RateLimit
 	ShardStreams(userID string) shardstreams.Config
 	IngestionPartitionsTenantShardSize(userID string) int
@@ -90,13 +92,26 @@ func (l *Limiter) UnorderedWrites(userID string) bool {
 	return l.limits.UnorderedWrites(userID)
 }
 
-func (l *Limiter) GetStreamCountLimit(tenantID string) (calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit int) {
+func (l *Limiter) GetStreamCountLimit(tenantID string, policy string) (calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit int) {
 	// Start by setting the local limit either from override or default
 	localLimit = l.limits.MaxLocalStreamsPerUser(tenantID)
 
 	// We can assume that streams are evenly distributed across ingesters
 	// so we do convert the global limit into a local limit
 	globalLimit = l.limits.MaxGlobalStreamsPerUser(tenantID)
+
+	// Check for policy-specific overrides if policy is specified
+	if policy != "" {
+		policyLocalLimit := l.limits.PolicyMaxLocalStreamsPerUser(tenantID, policy)
+		if policyLocalLimit > 0 {
+			localLimit = policyLocalLimit
+		}
+		policyGlobalLimit := l.limits.PolicyMaxGlobalStreamsPerUser(tenantID, policy)
+		if policyGlobalLimit > 0 {
+			globalLimit = policyGlobalLimit
+		}
+	}
+
 	adjustedGlobalLimit = l.ringStrategy.convertGlobalToLocalLimit(globalLimit, tenantID)
 
 	// Set the calculated limit to the lesser of the local limit or the new calculated global limit
@@ -209,9 +224,9 @@ func newStreamCountLimiter(tenantID string, defaultStreamCountSupplier supplier[
 	}
 }
 
-func (l *streamCountLimiter) AssertNewStreamAllowed(tenantID string) error {
+func (l *streamCountLimiter) AssertNewStreamAllowed(tenantID string, policy string) error {
 	streamCountSupplier, fixedLimitSupplier := l.getSuppliers(tenantID)
-	calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit := l.getCurrentLimit(tenantID, fixedLimitSupplier)
+	calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit := l.getCurrentLimit(tenantID, policy, fixedLimitSupplier)
 	actualStreamsCount := streamCountSupplier()
 	if actualStreamsCount < calculatedLimit {
 		return nil
@@ -220,8 +235,8 @@ func (l *streamCountLimiter) AssertNewStreamAllowed(tenantID string) error {
 	return fmt.Errorf(errMaxStreamsPerUserLimitExceeded, tenantID, actualStreamsCount, calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit)
 }
 
-func (l *streamCountLimiter) getCurrentLimit(tenantID string, fixedLimitSupplier supplier[int]) (calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit int) {
-	calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit = l.limiter.GetStreamCountLimit(tenantID)
+func (l *streamCountLimiter) getCurrentLimit(tenantID, policy string, fixedLimitSupplier supplier[int]) (calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit int) {
+	calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit = l.limiter.GetStreamCountLimit(tenantID, policy)
 	fixedLimit := fixedLimitSupplier()
 	if fixedLimit > calculatedLimit {
 		calculatedLimit = fixedLimit

@@ -301,9 +301,6 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	retentionHours := util.RetentionHours(i.tenantsRetention.RetentionPeriodFor(i.instanceID, labels))
 	mapping := i.limiter.limits.PoliciesStreamMapping(i.instanceID)
 	policies := mapping.PolicyFor(labels)
-	if record != nil {
-		err = i.streamCountLimiter.AssertNewStreamAllowed(i.instanceID)
-	}
 
 	// NOTE: We previously resolved the policy on distributors and logged when multiple policies were matched.
 	// As on distributors, we use the first policy by alphabetical order.
@@ -319,6 +316,10 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 				"policies", strings.Join(policies, ","),
 			)
 		}
+	}
+
+	if record != nil {
+		err = i.streamCountLimiter.AssertNewStreamAllowed(i.instanceID, policy)
 	}
 
 	if err != nil {

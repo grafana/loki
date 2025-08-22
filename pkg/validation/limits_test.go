@@ -231,6 +231,7 @@ ruler_remote_write_headers:
 				EnforcedLabels:            []string{},
 				PolicyEnforcedLabels:      map[string][]string{},
 				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverridenLimits:     map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
@@ -254,6 +255,7 @@ ruler_remote_write_headers:
 				EnforcedLabels:            []string{},
 				PolicyEnforcedLabels:      map[string][]string{},
 				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverridenLimits:     map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
@@ -281,6 +283,7 @@ retention_stream:
 				EnforcedLabels:            []string{},
 				PolicyEnforcedLabels:      map[string][]string{},
 				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverridenLimits:     map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
@@ -307,6 +310,7 @@ reject_old_samples: true
 				EnforcedLabels:            []string{},
 				PolicyEnforcedLabels:      map[string][]string{},
 				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverridenLimits:     map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
@@ -334,6 +338,7 @@ query_timeout: 5m
 				EnforcedLabels:            []string{},
 				PolicyEnforcedLabels:      map[string][]string{},
 				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverridenLimits:     map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
@@ -595,4 +600,43 @@ pattern_rate_threshold: 0.0
 			require.Equal(t, tc.expected, actual)
 		})
 	}
+}
+
+func TestLimits_PolicyOverridenLimits(t *testing.T) {
+	limits := &Limits{
+		PolicyOverridenLimits: map[string]PolicyOverridableLimits{
+			"finance": {
+				MaxLocalStreamsPerUser:  100,
+				MaxGlobalStreamsPerUser: 1000,
+			},
+			"ops": {
+				MaxLocalStreamsPerUser:  50,
+				MaxGlobalStreamsPerUser: 500,
+			},
+		},
+	}
+
+	overrides := &Overrides{
+		defaultLimits: limits,
+		tenantLimits:  nil,
+	}
+
+	// Test policy-specific limits
+	require.Equal(t, 100, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "finance"))
+	require.Equal(t, 1000, overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance"))
+	require.Equal(t, 50, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "ops"))
+	require.Equal(t, 500, overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "ops"))
+
+	// Test non-existent policy returns 0
+	require.Equal(t, 0, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "nonexistent"))
+	require.Equal(t, 0, overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "nonexistent"))
+
+	// Test empty policy returns 0
+	require.Equal(t, 0, overrides.PolicyMaxLocalStreamsPerUser("tenant1", ""))
+	require.Equal(t, 0, overrides.PolicyMaxGlobalStreamsPerUser("tenant1", ""))
+
+	// Test nil PolicyOverridenLimits returns 0
+	limits.PolicyOverridenLimits = nil
+	require.Equal(t, 0, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "finance"))
+	require.Equal(t, 0, overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance"))
 }
