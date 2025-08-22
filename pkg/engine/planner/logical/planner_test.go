@@ -257,3 +257,355 @@ func TestCanExecuteQuery(t *testing.T) {
 		})
 	}
 }
+
+func TestConvertStringHintsFunction(t *testing.T) {
+	t.Run("converts int64 hint", func(t *testing.T) {
+		stringHints := map[string]string{
+			"bytes": TypeHintInt64,
+		}
+
+		result := convertStringHintsToNumericType(stringHints)
+
+		require.NotNil(t, result)
+		require.Contains(t, result, "bytes")
+		require.Equal(t, NumericInt64, result["bytes"])
+	})
+
+	t.Run("converts float64 hint", func(t *testing.T) {
+		stringHints := map[string]string{
+			"response_time": TypeHintFloat64,
+		}
+
+		result := convertStringHintsToNumericType(stringHints)
+
+		require.NotNil(t, result)
+		require.Contains(t, result, "response_time")
+		require.Equal(t, NumericFloat64, result["response_time"])
+	})
+
+	t.Run("converts duration hint to float64", func(t *testing.T) {
+		stringHints := map[string]string{
+			"duration_field": TypeHintDuration,
+		}
+
+		result := convertStringHintsToNumericType(stringHints)
+
+		require.NotNil(t, result)
+		require.Contains(t, result, "duration_field")
+		require.Equal(t, NumericFloat64, result["duration_field"])
+	})
+
+	t.Run("handles multiple hints", func(t *testing.T) {
+		stringHints := map[string]string{
+			"bytes":         TypeHintInt64,
+			"response_time": TypeHintFloat64,
+			"duration":      TypeHintDuration,
+		}
+
+		result := convertStringHintsToNumericType(stringHints)
+
+		require.NotNil(t, result)
+		require.Len(t, result, 3)
+		require.Equal(t, NumericInt64, result["bytes"])
+		require.Equal(t, NumericFloat64, result["response_time"])
+		require.Equal(t, NumericFloat64, result["duration"])
+	})
+
+	t.Run("returns nil for nil input", func(t *testing.T) {
+		result := convertStringHintsToNumericType(nil)
+
+		require.Nil(t, result)
+	})
+
+	t.Run("returns empty map for empty input", func(t *testing.T) {
+		stringHints := map[string]string{}
+
+		result := convertStringHintsToNumericType(stringHints)
+
+		require.NotNil(t, result)
+		require.Empty(t, result)
+	})
+}
+
+func TestPlannerCreatesParseFromLogfmt(t *testing.T) {
+	t.Run("Planner creates Parse instruction from LogfmtParserExpr in metric query", func(t *testing.T) {
+		// Query with logfmt parser followed by label filter in an instant metric query
+		q := &query{
+			statement: `sum by (level) (count_over_time({app="test"} | logfmt | level="error" [5m]))`,
+			start:     3600,
+			end:       7200,
+			interval:  5 * time.Minute,
+		}
+
+		plan, err := BuildPlan(q)
+		require.NoError(t, err)
+		require.NotNil(t, plan)
+
+		// Find the Parse instruction in the plan
+		var parseInst *Parse
+		for _, inst := range plan.Instructions {
+			if p, ok := inst.(*Parse); ok {
+				parseInst = p
+				break
+			}
+		}
+
+		// Assert Parse instruction was created
+		require.NotNil(t, parseInst, "Parse instruction should be created for logfmt")
+		require.Equal(t, ParserLogfmt, parseInst.Kind)
+		// The key collector should have identified that "level" needs to be extracted
+		require.Contains(t, parseInst.RequestedKeys, "level")
+	})
+}
+
+func TestCountOverTimeWithParsedFilter(t *testing.T) {
+	t.Run("count_over_time should count only matching parsed values", func(t *testing.T) {
+		// Test that count_over_time counts only logs where parsed field matches filter
+		// Query: sum by (app) (count_over_time({app="test"} | logfmt | level="error" [5m]))
+		// This should:
+		// 1. Parse logfmt to extract "level" field
+		// 2. Filter to only logs where level="error"
+		// 3. Count those filtered logs over 5m windows
+		q := &query{
+			statement: `sum by (app) (count_over_time({app="test"} | logfmt | level="error" [5m]))`,
+			start:     time.Now().Unix(),
+			end:       time.Now().Unix(),
+			direction: logproto.FORWARD,
+			limit:     1000,
+		}
+
+		// Build the logical plan
+		plan, err := BuildPlan(q)
+		require.NoError(t, err)
+		require.NotNil(t, plan)
+
+		// Find the Parse instruction
+		var parseInst *Parse
+		for _, inst := range plan.Instructions {
+			if p, ok := inst.(*Parse); ok {
+				parseInst = p
+				break
+			}
+		}
+
+		// Assert Parse instruction extracts "level" field for filtering
+		require.NotNil(t, parseInst, "Parse instruction should exist")
+		require.Contains(t, parseInst.RequestedKeys, "level",
+			"Parse should extract 'level' field for filtering")
+
+		// Find Select instructions that should filter on parsed "level" field
+		var foundLevelFilter bool
+		for _, inst := range plan.Instructions {
+			if sel, ok := inst.(*Select); ok {
+				// Check if this Select filters on level="error"
+				if binOp, ok := sel.Predicate.(*BinOp); ok {
+					if colRef, ok := binOp.Left.(*ColumnRef); ok {
+						if colRef.Name() == "ambiguous.level" {
+							foundLevelFilter = true
+							// Verify it's checking for "error"
+							if lit, ok := binOp.Right.(*Literal); ok {
+								require.Equal(t, "error", lit.Value(),
+									"Filter should check level='error'")
+							}
+						}
+					}
+				}
+			}
+		}
+		require.True(t, foundLevelFilter,
+			"Should have a Select instruction filtering on parsed 'level' field")
+	})
+
+	t.Run("multiple parsed field filters should all be applied", func(t *testing.T) {
+		// Test with multiple parsed field filters
+		// Query: sum by (app) (count_over_time({app="test"} | logfmt | level="error" | method="GET" [5m]))
+		// Note: Using string comparison since numeric filters are not implemented
+		q := &query{
+			statement: `sum by (app) (count_over_time({app="test"} | logfmt | level="error" | method="GET" [5m]))`,
+			start:     time.Now().Unix(),
+			end:       time.Now().Unix(),
+			direction: logproto.FORWARD,
+			limit:     1000,
+		}
+
+		// Build the logical plan
+		plan, err := BuildPlan(q)
+		require.NoError(t, err)
+		require.NotNil(t, plan)
+
+		// Find the Parse instruction
+		var parseInst *Parse
+		for _, inst := range plan.Instructions {
+			if p, ok := inst.(*Parse); ok {
+				parseInst = p
+				break
+			}
+		}
+
+		// Assert Parse instruction extracts both "level" and "method" fields
+		require.NotNil(t, parseInst, "Parse instruction should exist")
+		require.Contains(t, parseInst.RequestedKeys, "level",
+			"Parse should extract 'level' field")
+		require.Contains(t, parseInst.RequestedKeys, "method",
+			"Parse should extract 'method' field")
+
+		// Count the number of Select instructions that filter on parsed fields
+		var levelFilterFound, methodFilterFound bool
+		for _, inst := range plan.Instructions {
+			if sel, ok := inst.(*Select); ok {
+				if binOp, ok := sel.Predicate.(*BinOp); ok {
+					if colRef, ok := binOp.Left.(*ColumnRef); ok {
+						name := colRef.Name()
+						switch name {
+						case "ambiguous.level":
+							levelFilterFound = true
+						case "ambiguous.method":
+							methodFilterFound = true
+						}
+					}
+				}
+			}
+		}
+
+		require.True(t, levelFilterFound, "Should have filter for 'level' field")
+		require.True(t, methodFilterFound, "Should have filter for 'method' field")
+	})
+
+	t.Run("parsed filter with no aggregation grouping", func(t *testing.T) {
+		// Test without groupBy - just sum of all counts
+		// Query: sum(count_over_time({app="test"} | logfmt | level="error" [5m]))
+		// Note: This should fail because current implementation requires groupBy
+		q := &query{
+			statement: `sum(count_over_time({app="test"} | logfmt | level="error" [5m]))`,
+			start:     time.Now().Unix(),
+			end:       time.Now().Unix(),
+			direction: logproto.FORWARD,
+			limit:     1000,
+		}
+
+		// This should fail as the current implementation requires groupBy
+		_, err := BuildPlan(q)
+		require.Error(t, err, "Should fail without groupBy labels")
+		require.Contains(t, err.Error(), "unimplemented",
+			"Should indicate this is not yet implemented")
+	})
+}
+
+func TestVectorAggregationGroupsByParsedLabel(t *testing.T) {
+	t.Run("vector aggregation should group by parsed string field", func(t *testing.T) {
+		// Test that vector aggregation can group by a field extracted from logfmt parsing
+		// Query: sum by (region) (count_over_time({app="test"} | logfmt | region!="" [5m]))
+		// The "region" field comes from logfmt parsing, not from stream labels
+		q := &query{
+			statement: `sum by (region) (count_over_time({app="test"} | logfmt | region!="" [5m]))`,
+			start:     time.Now().Unix(),
+			end:       time.Now().Unix(),
+			direction: logproto.FORWARD,
+			limit:     1000,
+		}
+
+		// Build the logical plan
+		plan, err := BuildPlan(q)
+		require.NoError(t, err)
+		require.NotNil(t, plan)
+
+		// Find the Parse instruction
+		var parseInst *Parse
+		for _, inst := range plan.Instructions {
+			if p, ok := inst.(*Parse); ok {
+				parseInst = p
+				break
+			}
+		}
+
+		require.NotNil(t, parseInst, "Parse instruction should exist")
+		require.Contains(t, parseInst.RequestedKeys, "region",
+			"Parse should extract 'region' field for grouping")
+
+		// Find the VectorAggregation instruction
+		var vecAggInst *VectorAggregation
+		for _, inst := range plan.Instructions {
+			if va, ok := inst.(*VectorAggregation); ok {
+				vecAggInst = va
+				break
+			}
+		}
+
+		// Assert VectorAggregation exists and groups by "region"
+		require.NotNil(t, vecAggInst, "VectorAggregation instruction should exist")
+
+		// Check that region is in the GroupBy columns
+		foundRegion := false
+		var actualNames []string
+		for _, col := range vecAggInst.GroupBy {
+			actualNames = append(actualNames, col.Name())
+			if col.Name() == "ambiguous.region" {
+				foundRegion = true
+				break
+			}
+		}
+		require.True(t, foundRegion,
+			"VectorAggregation should group by 'ambiguous.region' column. Actual columns: %v", actualNames)
+	})
+
+	t.Run("vector aggregation should handle multiple parsed fields in groupBy", func(t *testing.T) {
+		// Test grouping by multiple fields where some come from logfmt parsing
+		// Query: sum by (app, region, env) (count_over_time({app="test"} | logfmt [5m]))
+		// "app" is a stream label, "region" and "env" come from logfmt parsing
+		q := &query{
+			statement: `sum by (app, region, env) (count_over_time({app="test"} | logfmt [5m]))`,
+			start:     time.Now().Unix(),
+			end:       time.Now().Unix(),
+			direction: logproto.FORWARD,
+			limit:     1000,
+		}
+
+		// Build the logical plan
+		plan, err := BuildPlan(q)
+		require.NoError(t, err)
+		require.NotNil(t, plan)
+
+		// Find the Parse instruction
+		var parseInst *Parse
+		for _, inst := range plan.Instructions {
+			if p, ok := inst.(*Parse); ok {
+				parseInst = p
+				break
+			}
+		}
+
+		// Assert Parse instruction extracts the parsed fields (region, env)
+		// but not the stream label (app)
+		require.NotNil(t, parseInst, "Parse instruction should exist")
+		require.Contains(t, parseInst.RequestedKeys, "region",
+			"Parse should extract 'region' field")
+		require.Contains(t, parseInst.RequestedKeys, "env",
+			"Parse should extract 'env' field")
+		// Note: "app" should NOT be in RequestedKeys as it's a stream label
+
+		// Find the VectorAggregation instruction
+		var vecAggInst *VectorAggregation
+		for _, inst := range plan.Instructions {
+			if va, ok := inst.(*VectorAggregation); ok {
+				vecAggInst = va
+				break
+			}
+		}
+
+		// Assert VectorAggregation groups by all three fields
+		require.NotNil(t, vecAggInst, "VectorAggregation instruction should exist")
+		require.Len(t, vecAggInst.GroupBy, 3, "Should group by 3 columns")
+
+		// Check that all fields are present
+		groupByNames := make(map[string]bool)
+		var actualNames []string
+		for _, col := range vecAggInst.GroupBy {
+			name := col.Name()
+			groupByNames[name] = true
+			actualNames = append(actualNames, name)
+		}
+		require.True(t, groupByNames["ambiguous.app"], "Should group by 'app'. Actual columns: %v", actualNames)
+		require.True(t, groupByNames["ambiguous.region"], "Should group by 'region'. Actual columns: %v", actualNames)
+		require.True(t, groupByNames["ambiguous.env"], "Should group by 'env'. Actual columns: %v", actualNames)
+	})
+}
