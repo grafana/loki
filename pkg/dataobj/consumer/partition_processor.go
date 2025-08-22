@@ -137,7 +137,7 @@ func newPartitionProcessor(
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
 
-	metastoreTocWriter := metastore.NewTableOfContentsWriter(metastoreCfg, bucket, tenantID, logger)
+	metastoreTocWriter := metastore.NewTableOfContentsWriter(metastoreCfg, bucket, logger)
 	if err := metastoreTocWriter.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register metastore updater metrics", "err", err)
 	}

@@ -20,7 +20,7 @@ import (
 )
 
 func TestTableOfContentsWriter(t *testing.T) {
-	t.Run("append new top-level object to new metastore v2", func(t *testing.T) {
+	t.Run("append new top-level object to new metastore", func(t *testing.T) {
 		tenantID := "test"
 		tocBuilder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
 			TargetPageSize:          tocBuilderCfg.TargetPageSize,
@@ -41,7 +41,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		bucket := newInMemoryBucket(t, tenantID, unixTime(0), obj)
 		tocBuilder.Reset()
 
-		writer := NewTableOfContentsWriter(Config{}, bucket, tenantID, log.NewNopLogger())
+		writer := NewTableOfContentsWriter(Config{}, bucket, log.NewNopLogger())
 		err = writer.WriteEntry(context.Background(), "testdata/metastore.obj", []multitenancy.TimeRange{
 			{
 				Tenant:  multitenancy.TenantID(tenantID),

@@ -322,7 +322,7 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 		return fmt.Errorf("failed to upload index: %w", err)
 	}
 
-	metastoreTocWriter := metastore.NewTableOfContentsWriter(p.mCfg, indexStorageBucket, events[0].Tenant, p.logger)
+	metastoreTocWriter := metastore.NewTableOfContentsWriter(p.mCfg, indexStorageBucket, p.logger)
 	if err := metastoreTocWriter.WriteEntry(p.ctx, key, tenantTimeRanges); err != nil {
 		return fmt.Errorf("failed to update metastore ToC file: %w", err)
 	}

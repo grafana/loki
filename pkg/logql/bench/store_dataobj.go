@@ -88,12 +88,12 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 	}
 
 	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
-	logsMetastoreToc := metastore.NewTableOfContentsWriter(metastore.Config{}, bucket, tenantID, logger)
+	logsMetastoreToc := metastore.NewTableOfContentsWriter(metastore.Config{}, bucket, logger)
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)
 
 	// Create prefixed bucket & metastore for indexes
 	indexWriterBucket := objstore.NewPrefixedBucket(bucket, indexDirPrefix)
-	indexMetastoreToc := metastore.NewTableOfContentsWriter(metastore.Config{}, indexWriterBucket, tenantID, logger)
+	indexMetastoreToc := metastore.NewTableOfContentsWriter(metastore.Config{}, indexWriterBucket, logger)
 
 	return &DataObjStore{
 		dir:               storeDir,
