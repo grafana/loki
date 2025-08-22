@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -82,22 +83,93 @@ func (r *rangeAggregationPipeline) init() {
 		upperbound = r.opts.endTs
 	)
 
-	r.matchingTimeWindows = func(t time.Time) []time.Time {
-		if t.Compare(lowerbound) <= 0 || t.Compare(upperbound) > 0 {
-			return nil // out of range
-		}
-
-		var ret []time.Time
-		for _, window := range windows {
-			if t.Compare(window.startTs) > 0 && t.Compare(window.endTs) <= 0 {
-				ret = append(ret, window.endTs)
+	// Use arithmetic-based O(1) lookup for aligned windows
+	if r.opts.step > 0 && r.opts.step == r.opts.rangeInterval {
+		r.matchingTimeWindows = r.createArithmeticMatcher(windows, lowerbound, upperbound)
+	} else {
+		// Fall back to existing binary search for non-aligned windows
+		r.matchingTimeWindows = func(t time.Time) []time.Time {
+			if t.Compare(lowerbound) <= 0 || t.Compare(upperbound) > 0 {
+				return nil // out of range
 			}
-		}
 
-		return ret
+			// For small number of windows, linear search is more efficient
+			if len(windows) <= 10 {
+				var ret []time.Time
+				for _, window := range windows {
+					if t.Compare(window.startTs) > 0 && t.Compare(window.endTs) <= 0 {
+						ret = append(ret, window.endTs)
+					}
+				}
+				return ret
+			}
+
+			// Use binary search for larger number of windows
+			// Find the first window where t <= endTs (could contain t)
+			firstIdx := sort.Search(len(windows), func(i int) bool {
+				return t.Compare(windows[i].endTs) <= 0
+			})
+
+			// Find the first window where t > startTs (could contain t)
+			lastIdx := sort.Search(len(windows), func(i int) bool {
+				return t.Compare(windows[i].startTs) > 0
+			})
+
+			// The matching windows are in the range [lastIdx, firstIdx-1]
+			// But we need to verify each window actually contains t
+			var result []time.Time
+			for i := lastIdx; i < firstIdx; i++ {
+				window := windows[i]
+				if t.Compare(window.startTs) > 0 && t.Compare(window.endTs) <= 0 {
+					result = append(result, window.endTs)
+				}
+			}
+
+			return result
+		}
 	}
 
 	r.aggregator = newAggregator(r.opts.partitionBy, len(windows))
+}
+
+// O(1) arithmetic lookup for aligned windows (step == rangeInterval)
+func (r *rangeAggregationPipeline) createArithmeticMatcher(
+	windows []struct{ startTs, endTs time.Time },
+	lowerbound, upperbound time.Time,
+) func(time.Time) []time.Time {
+	startNs := r.opts.startTs.UnixNano()
+	stepNs := r.opts.step.Nanoseconds()
+
+	return func(t time.Time) []time.Time {
+		tNs := t.UnixNano()
+
+		// For aligned windows, window i covers: (startTs + i*step - step, startTs + i*step]
+		// This means: t > startTs + i*step - step && t <= startTs + i*step
+		// So: t > startTs + (i-1)*step && t <= startTs + i*step
+
+		// Calculate window index
+		// We want: t > startTs + (i-1)*step && t <= startTs + i*step
+		// This means: t > startTs + i*step - step && t <= startTs + i*step
+		// So: i*step >= t - startTs && i*step > t - startTs - step
+		// Therefore: i = ceil((t - startTs) / step)
+
+		windowIndex := (tNs - startNs + stepNs - 1) / stepNs
+
+		// Check bounds - this handles all out-of-range cases
+		if windowIndex < 0 || windowIndex >= int64(len(windows)) {
+			return nil
+		}
+
+		// Verify the timestamp is actually within this window
+		// This is required because the arithmetic formula doesn't perfectly handle
+		// the exclusive/inclusive boundary conditions
+		window := windows[windowIndex]
+		if t.Compare(window.startTs) > 0 && t.Compare(window.endTs) <= 0 {
+			return []time.Time{window.endTs}
+		}
+
+		return nil
+	}
 }
 
 // Read reads the next value into its state.
