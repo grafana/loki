@@ -24,6 +24,7 @@ type (
 		c    *Cluster
 		gs   *groups
 		name string
+		typ  string
 
 		state groupState
 
@@ -137,6 +138,7 @@ func (gs *groups) newGroup(name string) *group {
 		c:         gs.c,
 		gs:        gs,
 		name:      name,
+		typ:       "classic", // only supported group type at the moment; group-coordinator/src/main/java/org/apache/kafka/coordinator/group/Group.java
 		members:   make(map[string]*groupMember),
 		pending:   make(map[string]*groupMember),
 		protocols: make(map[string]int),
@@ -235,6 +237,14 @@ func (gs *groups) handleList(creq *clientReq) *kmsg.ListGroupsResponse {
 		}
 	}
 
+	var types map[string]struct{}
+	if len(req.TypesFilter) > 0 {
+		types = make(map[string]struct{})
+		for _, typ := range req.TypesFilter {
+			types[typ] = struct{}{}
+		}
+	}
+
 	for _, g := range gs.gs {
 		if g.c.coordinator(g.name).node != creq.cc.b.node {
 			continue
@@ -245,10 +255,16 @@ func (gs *groups) handleList(creq *clientReq) *kmsg.ListGroupsResponse {
 					return
 				}
 			}
+			if types != nil {
+				if _, ok := types[g.typ]; !ok {
+					return
+				}
+			}
 			sg := kmsg.NewListGroupsResponseGroup()
 			sg.Group = g.name
 			sg.ProtocolType = g.protocolType
 			sg.GroupState = g.state.String()
+			sg.GroupType = g.typ
 			resp.Groups = append(resp.Groups, sg)
 		})
 	}
@@ -275,6 +291,9 @@ func (gs *groups) handleDescribe(creq *clientReq) *kmsg.DescribeGroupsResponse {
 		g, ok := gs.gs[rg]
 		if !ok {
 			sg.State = groupDead.String()
+			if req.Version >= 6 {
+				sg.ErrorCode = kerr.GroupIDNotFound.Code
+			}
 			continue
 		}
 		if !g.waitControl(func() {

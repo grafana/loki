@@ -82,10 +82,6 @@ func (m *Merge) read(ctx context.Context) (arrow.Record, error) {
 
 // Close implements Pipeline.
 func (m *Merge) Close() {
-	if m.state.batch != nil {
-		m.state.batch.Release()
-	}
-
 	for i, input := range m.inputs {
 		// exhausted inputs are already closed
 		if !m.exhausted[i] {
