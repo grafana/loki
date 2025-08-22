@@ -137,8 +137,8 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 		clock := quartz.NewMock(t)
 		p := newTestPartitionProcessor(t, clock)
 
-		producer := &mockProducer{}
-		p.eventsProducerClient = producer
+		client := &mockKafka{}
+		p.eventsProducerClient = client
 		p.partition = 23
 
 		// All timestamps should be zero.
@@ -169,9 +169,9 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 		require.NoError(t, p.flush())
 
 		// Check that the metastore event was emitted.
-		require.Len(t, producer.results, 1)
+		require.Len(t, client.produced, 1)
 		// Partition should be the processor's partition divided by the partition ratio, in integer division.
-		require.Equal(t, int32(2), producer.results[0].Partition)
+		require.Equal(t, int32(2), client.produced[0].Partition)
 	})
 }
 
@@ -384,6 +384,6 @@ func newTestPartitionProcessor(_ *testing.T, clock quartz.Clock) *partitionProce
 		nil,
 	)
 	p.clock = clock
-	p.eventsProducerClient = &mockProducer{}
+	p.eventsProducerClient = &mockKafka{}
 	return p
 }
