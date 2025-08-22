@@ -443,16 +443,16 @@ func NewRecordFormatter(layout string) (*RecordFormatter, error) {
 				layout = layout[len("compression}"):]
 				f.fns = append(f.fns, func(b []byte, _ *FetchPartition, r *Record) []byte {
 					return writeR(b, r, func(b []byte, r *Record) []byte {
-						switch CompressionCodecType(r.Attrs.CompressionType()) {
-						case CodecNone:
+						switch codecType(r.Attrs.CompressionType()) {
+						case codecNone:
 							return append(b, "none"...)
-						case CodecGzip:
+						case codecGzip:
 							return append(b, "gzip"...)
-						case CodecSnappy:
+						case codecSnappy:
 							return append(b, "snappy"...)
-						case CodecLz4:
+						case codecLZ4:
 							return append(b, "lz4"...)
-						case CodecZstd:
+						case codecZstd:
 							return append(b, "zstd"...)
 						default:
 							return append(b, "unknown"...)
@@ -1603,12 +1603,11 @@ func (*RecordReader) parseReadSize(layout string, dst *uint64, needBrace bool) (
 
 				switch state {
 				default: // stateUnknown
-					switch b {
-					case 't':
+					if b == 't' {
 						state = stateTrue
 						last = b
 						return 1
-					case 'f':
+					} else if b == 'f' {
 						state = stateFalse
 						last = b
 						return 1

@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"iter"
 	"math"
 	"math/rand"
 	"net"
@@ -70,7 +69,6 @@ type cfg struct {
 	/////////////////////
 
 	id                     *string // client ID
-	ctx                    context.Context
 	dialFn                 func(context.Context, string, string) (net.Conn, error)
 	dialTimeout            time.Duration
 	dialTLS                *tls.Config
@@ -86,8 +84,6 @@ type cfg struct {
 	maxVersions *kversion.Versions
 	minVersions *kversion.Versions
 
-	onRebootstrapRequired func() ([]string, error)
-
 	retryBackoff func(int) time.Duration
 	retries      int64
 	retryTimeout func(int16) time.Duration
@@ -102,11 +98,7 @@ type cfg struct {
 
 	sasls []sasl.Mechanism
 
-	disableClientMetrics bool
-	userMetrics          func() iter.Seq[Metric]
-
 	hooks hooks
-	pools pools
 
 	//////////////////////
 	// PRODUCER SECTION //
@@ -119,22 +111,20 @@ type cfg struct {
 	maxProduceInflight int                // if idempotency is disabled, we allow a configurable max inflight
 	compression        []CompressionCodec // order of preference
 
-	defaultProduceTopic       string
-	defaultProduceTopicAlways bool
-	maxRecordBatchBytes       int32
-	maxBufferedRecords        int64
-	maxBufferedBytes          int64
-	produceTimeout            time.Duration
-	recordRetries             int64
-	maxUnknownFailures        int64
-	linger                    time.Duration
-	recordTimeout             time.Duration
-	manualFlushing            bool
-	txnBackoff                time.Duration
-	missingTopicDelete        time.Duration
+	defaultProduceTopic string
+	maxRecordBatchBytes int32
+	maxBufferedRecords  int64
+	maxBufferedBytes    int64
+	produceTimeout      time.Duration
+	recordRetries       int64
+	maxUnknownFailures  int64
+	linger              time.Duration
+	recordTimeout       time.Duration
+	manualFlushing      bool
+	txnBackoff          time.Duration
+	missingTopicDelete  time.Duration
 
 	partitioner Partitioner
-	compressor  Compressor
 
 	stopOnDataLoss bool
 	onDataLoss     func(string, int32)
@@ -147,22 +137,15 @@ type cfg struct {
 	minBytes       int32
 	maxBytes       lazyI32
 	maxPartBytes   lazyI32
-	startOffset    Offset
 	resetOffset    Offset
-	setStartOffset bool
-	setResetOffset bool
 	isolationLevel int8
 	keepControl    bool
 	rack           string
 	preferLagFn    PreferLagFn
-	decompressor   Decompressor
 
-	maxConcurrentFetches      int
-	disableFetchSessions      bool
-	keepRetryableFetchErrors  bool
-	disableFetchCRCValidation bool
-
-	recheckPreferredReplicaInterval time.Duration
+	maxConcurrentFetches     int
+	disableFetchSessions     bool
+	keepRetryableFetchErrors bool
 
 	topics     map[string]*regexp.Regexp   // topics to consume; if regex is true, values are compiled regular expressions
 	partitions map[string]map[int32]Offset // partitions to directly consume from
@@ -201,8 +184,6 @@ type cfg struct {
 	autocommitMarks    bool
 	autocommitInterval time.Duration
 	commitCallback     func(*Client, *kmsg.OffsetCommitRequest, *kmsg.OffsetCommitResponse, error)
-
-	disableNextGenBalancer bool
 }
 
 func (cfg *cfg) validate() error {
@@ -311,10 +292,6 @@ func (cfg *cfg) validate() error {
 		{name: "metadata min age", v: int64(cfg.metadataMinAge), allowed: int64(10 * time.Millisecond), badcmp: i64lt, durs: true},
 		{v: int64(cfg.metadataMaxAge), allowed: int64(cfg.metadataMinAge), badcmp: i64lt, fmt: "metadata max age %v is erroneously less than metadata min age %v", durs: true},
 
-		// 10ms <= preferred recheck interval <= 7d
-		{name: "recheck preferred replica interval", v: int64(cfg.recheckPreferredReplicaInterval), allowed: int64(10 * time.Millisecond), badcmp: i64lt, durs: true},
-		{name: "recheck preferred replica interval", v: int64(cfg.recheckPreferredReplicaInterval), allowed: int64(7 * 24 * time.Hour), badcmp: i64gt, durs: true},
-
 		// Some random producer settings.
 		{name: "max buffered records", v: cfg.maxBufferedRecords, allowed: 1, badcmp: i64lt},
 		{name: "max buffered bytes", v: cfg.maxBufferedBytes, allowed: 0, badcmp: i64lt},
@@ -355,10 +332,6 @@ func (cfg *cfg) validate() error {
 			}
 			return fmt.Errorf("%s %v is %s than allowed %v", limit.name, limit.v, cmp, limit.allowed)
 		}
-	}
-
-	if cfg.defaultProduceTopicAlways && cfg.defaultProduceTopic == "" {
-		return errors.New("invalid empty DefaultProduceTopic when using DefaultProduceTopicAlways")
 	}
 
 	if cfg.dialFn != nil {
@@ -416,12 +389,6 @@ func (cfg *cfg) validate() error {
 	}
 	cfg.hooks = processedHooks
 
-	processedPools, err := processPools(cfg.pools)
-	if err != nil {
-		return err
-	}
-	cfg.pools = processedPools
-
 	return nil
 }
 
@@ -444,25 +411,6 @@ func processHooks(hooks []Hook) ([]Hook, error) {
 		}
 	}
 	return processedHooks, nil
-}
-
-// Same as the above, but for pools.
-func processPools(pools []Pool) ([]Pool, error) {
-	var processedPools []Pool
-	for _, pool := range pools {
-		if implementsAnyPool(pool) {
-			processedPools = append(processedPools, pool)
-		} else if morePools, ok := pool.([]Pool); ok {
-			more, err := processPools(morePools)
-			if err != nil {
-				return nil, err
-			}
-			processedPools = append(processedPools, more...)
-		} else {
-			return nil, errors.New("found an argument that implements no pool interfaces")
-		}
-	}
-	return processedPools, nil
 }
 
 var reVersion = regexp.MustCompile(`^[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?$`)
@@ -499,7 +447,7 @@ func defaultCfg() cfg {
 		logger: new(nopLogger),
 
 		seedBrokers: []string{"127.0.0.1"},
-		maxVersions: kversion.Stable(), // kversion bumps what is returned from Stable on the same release we add support for new features to kgo
+		maxVersions: kversion.Stable(),
 
 		retryBackoff: func() func(int) time.Duration {
 			var rngMu sync.Mutex
@@ -507,7 +455,7 @@ func defaultCfg() cfg {
 			return func(fails int) time.Duration {
 				const (
 					min = 250 * time.Millisecond
-					max = 5 * time.Second
+					max = 5 * time.Second / 2
 				)
 				if fails <= 0 {
 					return min
@@ -563,13 +511,10 @@ func defaultCfg() cfg {
 		minBytes:       1,
 		maxBytes:       50 << 20,
 		maxPartBytes:   1 << 20,
-		startOffset:    NewOffset().AtStart(),
 		resetOffset:    NewOffset().AtStart(),
 		isolationLevel: 0,
 
 		maxConcurrentFetches: 0, // unbounded default
-
-		recheckPreferredReplicaInterval: 30 * time.Minute,
 
 		///////////
 		// group //
@@ -621,13 +566,6 @@ func SoftwareNameAndVersion(name, version string) Opt {
 // It is invalid to use a nil logger; doing so will cause panics.
 func WithLogger(l Logger) Opt {
 	return clientOpt{func(cfg *cfg) { cfg.logger = &wrappedLogger{l} }}
-}
-
-// WithContext sets the client to use a custom context.
-//
-// By default, the client uses context.Background.
-func WithContext(ctx context.Context) Opt {
-	return clientOpt{func(cfg *cfg) { cfg.ctx = ctx }}
 }
 
 // RequestTimeoutOverhead uses the given time as overhead while deadlining
@@ -879,25 +817,10 @@ func SASL(sasls ...sasl.Mechanism) Opt {
 // Hooks can be used to layer in metrics (such as Prometheus hooks) or anything
 // else. The client will call all hooks in order. See the Hooks interface for
 // more information, as well as any interface that contains "Hook" in the name
-// to know the available hooks. A single hook can implement any or all hook
+// to know the available hooks. A single hook can implement zero or all hook
 // interfaces, and only the hooks that it implements will be called.
 func WithHooks(hooks ...Hook) Opt {
 	return clientOpt{func(cfg *cfg) { cfg.hooks = append(cfg.hooks, hooks...) }}
-}
-
-// WithPools sets memory pools to use wherever relevant.
-//
-// Pools can be used to optimize memory usage for data that is frequently
-// thrown away after a short usage. For a list of all supported pools, look at
-// the documentation for any interface that begins with "Pool". Multiple pools
-// may be used; the first pool that is received from is the first pull put back
-// into. A single pool can implement any or all pool interfaces.
-//
-// If you use pools for fetching, the record Context field will be populated.
-// This field is used for recycling the underlying memory once Recycle is
-// called; do not clear the field.
-func WithPools(pools ...Pool) Opt {
-	return clientOpt{func(cfg *cfg) { cfg.pools = append(cfg.pools, pools...) }}
 }
 
 // ConcurrentTransactionsBackoff sets the backoff interval to use during
@@ -927,55 +850,6 @@ func ConsiderMissingTopicDeletedAfter(t time.Duration) Opt {
 	return clientOpt{func(cfg *cfg) { cfg.missingTopicDelete = t }}
 }
 
-// OnRebootstrapRequired sets the function to call when a metadata response has
-// the REBOOTSTRAP_REQUIRED errored. The function should return new seed
-// brokers for the client to use, or an error. Internally, the client will then
-// call UpdateSeedBrokers with the seeds you return. All other live connections
-// to brokers are stopped and active requests are failed.
-//
-// The REBOOTSTRAP_REQUIRED error was introduced in Kafka 4.0, as a way for
-// Kafka to tell the client that the client needs to stop all non seed broker
-// connections to stop and for the client to query the seed brokers again.
-// Franz-go by default already periodically sends a request to a seed broker
-// to prevent a scenario where all previously discovered brokers are down
-// or unavailable, so this client does not have as much of a need for
-// REBOOTSTRAP_REQUIRED. That said, this function can be useful if Kafka knows
-// the client should specifically talk to seed brokers next, and this function
-// allows you a chance to update your seed brokers at the same time. If you
-// do not want to update your seed brokers, you can just return the same value
-// that you use in your [SeedBrokers] configuration option.
-//
-// You can read KIP-1102 for more info about this option.
-func OnRebootstrapRequired(fn func() ([]string, error)) Opt {
-	return clientOpt{func(cfg *cfg) { cfg.onRebootstrapRequired = fn }}
-}
-
-// DisableClientMetrics opts out of collecting and sending client metrics to
-// the broker (if the broker supports receiving client metrics). By default,
-// clients are recommended to gather a small set of metrics to help cluster
-// operators debug client issues (rather than relying on clients which may not
-// be instrumented at all).
-//
-// For more details on client metrics, see KIP-714.
-func DisableClientMetrics() Opt {
-	return clientOpt{func(cfg *cfg) { cfg.disableClientMetrics = true }}
-}
-
-// UserMetricsFn sets the function to call to add user metrics when rolling up
-// client metrics to send to the broker. Every metric rollup, fn is called and
-// returns an iterator. All metrics returned from the iterator are included in
-// the client metric aggregation and are sent to the broker. It is your
-// responsibility to ensure the metric name is formatted correctly (namespaced
-// and following OpenTelemetry format), and you need to ensure your Sum metrics
-// are monotonically increasing. See the documentation on [Metric] for more
-// details.
-//
-// For more details about the client sending metrics, see KIP-714. For more
-// details about enhancing client metrics with user metrics, see KIP-1076.
-func UserMetricsFn(fn func() iter.Seq[Metric]) Opt {
-	return clientOpt{func(cfg *cfg) { cfg.userMetrics = fn }}
-}
-
 ////////////////////////////
 // PRODUCER CONFIGURATION //
 ////////////////////////////
@@ -987,13 +861,6 @@ func UserMetricsFn(fn func() iter.Seq[Metric]) Opt {
 // cannot be produced and will be failed immediately.
 func DefaultProduceTopic(t string) ProducerOpt {
 	return producerOpt{func(cfg *cfg) { cfg.defaultProduceTopic = t }}
-}
-
-// DefaultProduceTopicAlways sets the client to ALWAYS produce to the
-// [DefaultProduceTopic], overriding any Topic field that may be present
-// in the Record when producing.
-func DefaultProduceTopicAlways() ProducerOpt {
-	return producerOpt{func(cfg *cfg) { cfg.defaultProduceTopicAlways = true }}
 }
 
 // Acks represents the number of acks a broker leader must have before
@@ -1055,29 +922,16 @@ func MaxProduceRequestsInflightPerBroker(n int) ProducerOpt {
 // ProducerBatchCompression sets the compression codec to use for producing
 // records.
 //
-// Compression is chosen in the order preferred based on broker support. For
-// example, zstd compression was introduced in Kafka 2.1, so the preference can
-// be first zstd, fallback snappy, fallback none.
+// Compression is chosen in the order preferred based on broker support.  For
+// example, zstd compression was introduced in Kafka 2.1, so the preference
+// can be first zstd, fallback snappy, fallback none.
 //
 // The default preference is [snappy, none], which should be fine for all old
 // consumers since snappy compression has existed since Kafka 0.8.0.  To use
 // zstd, your brokers must be at least 2.1 and all consumers must be upgraded
 // to support decoding zstd records.
-//
-// Alternatively, if you want finer control over compression you can use
-// [WithCompressor] for complete control.
 func ProducerBatchCompression(preference ...CompressionCodec) ProducerOpt {
 	return producerOpt{func(cfg *cfg) { cfg.compression = preference }}
-}
-
-// WithCompressor allows you to completely control how produce batches are
-// compressed, allowing you to use alternative libraries than what franz-go
-// supports, allowing you to have more control over memory & pooling, and
-// other benefits. It is recommended to just use [ProducerBatchCompression]
-// for simplicity (or specify nothing, which opts into snappy by default).
-// The client default compressor is the [DefaultCompressor].
-func WithCompressor(compressor Compressor) ProducerOpt {
-	return producerOpt{func(cfg *cfg) { cfg.compressor = compressor }}
 }
 
 // ProducerBatchMaxBytes upper bounds the size of a record batch, overriding
@@ -1088,7 +942,7 @@ func WithCompressor(compressor Compressor) ProducerOpt {
 // many record batches for many topics.
 //
 // If a single record encodes larger than this number (before compression), it
-// will not be written and a callback will have the appropriate error.
+// will will not be written and a callback will have the appropriate error.
 //
 // Note that this is the maximum size of a record batch before compression. If
 // a batch compresses poorly and actually grows the batch, the uncompressed
@@ -1245,7 +1099,7 @@ func ManualFlushing() ProducerOpt {
 // only to produce a later one successfully. This also allows for easier
 // sequence number ordering internally.
 //
-// The timeout is only evaluated before writing a request or after a
+// The timeout is only evaluated evaluated before writing a request or after a
 // produce response. Thus, a sink backoff may delay record timeout slightly.
 //
 // This option is roughly equivalent to delivery.timeout.ms.
@@ -1375,73 +1229,33 @@ func MaxConcurrentFetches(n int) ConsumerOpt {
 	return consumerOpt{func(cfg *cfg) { cfg.maxConcurrentFetches = n }}
 }
 
-// ConsumeStartOffset sets the offset to start consuming from when consuming a
-// partition for the first time. If you do not set [ConsumeResetOffset], this
-// is also the offset to reset to if the client sees an OffsetOutOfRange error
-// while consuming a partition. The default is NewOffset().AtStart(), i.e.,
-// start processing a partition from the earliest offset. If using this option,
-// it is strongly recommended to also set ConsumeResetOffset.
+// ConsumeResetOffset sets the offset to start consuming from, or if
+// OffsetOutOfRange is seen while fetching, to restart consuming from. The
+// default is NewOffset().AtStart(), i.e., the earliest offset.
 //
-// If you use an exact or relative offsets and the offset ends up out of range,
-// the client chooses the nearest of either the log start offset or the log end
-// offset. For example, using At(3) when the partition starts at 8 results in
-// the partition being consumed from offset 8.
+// For direct consumers, this is the offset that partitions begin to consume
+// from. For group consumers, this is the offset that partitions begin to
+// consume from if a partition has no commits. If partitions have commits, the
+// commit offset is used. While fetching, if OffsetOutOfRange is encountered,
+// the partition resets to ConsumeResetOffset. Using [NoResetOffset] stops
+// consuming a partition if the client encounters OffsetOutOfRange. Using
+// [Offset.AtCommitted] prevents consuming a partition in a group if the
+// partition has no prior commits.
 //
-// For group consuming, you can use [Offset.AtCommitted] to prevent starting
-// consuming a partition in a group if the partition has no prior commits.
+// If you use an exact offset or relative offsets and the offset ends up out of
+// range, the client chooses the nearest of either the log start offset or the
+// high watermark: using At(3) when the partition starts at 8 results in the
+// partition being consumed from offset 8.
 //
-// The following determines the offset for when a partition is seen for the
-// first time:
+// In short form, the following determines the offset for when a partition is
+// seen for the first time, or reset while fetching:
 //
-//	at start?                         => start at the log start offset
-//	at end?                           => start at the log end offset
-//	at exact?                         => start at the an exact offset (3 means offset 3)
-//	relative?                         => start at the the above, + / - the relative amount
-//	exact/relative are out of bounds? => start at the nearest boundary (start or end)
-//	after millisec?                   => start at first offset after millisec if one exists, else log end offset
-//
-// To match Kafka's auto.offset.reset which is used for both the start offset
-// and the reset offset,
-//
-//	NewOffset().AtStart()     == auto.offset.reset "earliest"
-//	NewOffset().AtEnd()       == auto.offset.reset "latest"
-//	NewOffset().AtCommitted() == auto.offset.reset "none"
-//
-// Be sure to check the documentation for [ConsumeResetOffset], especially if
-// you rely on this option as the reset offset as well.
-func ConsumeStartOffset(offset Offset) ConsumerOpt {
-	return consumerOpt{func(cfg *cfg) { cfg.startOffset, cfg.setStartOffset = offset, true }}
-}
-
-// ConsumeResetOffset sets the offset to reset to if the client ever sees
-// OffsetOutOfRange while fetching. If you do not set [ConsumeStartOffset],
-// this is also the offset to start consuming from when consuming a partition
-// for the first time. The default is NewOffset().AtStart(), i.e., reset to the
-// earliest offset. If using this option, it is strongly recommended to also
-// set ConsumeStartOffset.
-//
-// This option is *only* used if a consumer seeds OffsetOutOfRange on the
-// *first* fetch of a partition. If the consumer has consumed the partition at
-// all and sees the error, it will automatically reset to the first offset
-// after the timestamp of the last successfully consumed offset. If data loss
-// occurred such that even the last successfully consumed offset is lost, the
-// client automatically resets to the new current end offset. If you want to
-// disable offset resetting entirely, you can use [NoResetOffset].
-//
-// If you use an exact or relative offsets and the offset ends up out of range,
-// the client chooses the nearest of either the log start offset or the log end
-// offset. For example, using At(3) when the partition starts at 8 results in
-// the partition being consumed from offset 8.
-//
-// The following determines the offset for when a partition is seen for the
-// first time, or reset while fetching:
-//
-//	at start?                         => reset to the log start offset
-//	at end?                           => reset to the log end offset
-//	at exact?                         => reset to the an exact offset (3 means offset 3)
-//	relative?                         => reset to the the above, + / - the relative amount
-//	exact/relative are out of bounds? => reset to the nearest boundary (start or end)
-//	after millisec?                   => reset to the first offset after millisec if one exists, else the log end offset
+//	reset at start?                        => log start offset
+//	reset at end?                          => high watermark
+//	reset at exact?                        => this exact offset (3 means offset 3)
+//	reset relative?                        => the above, + / - the relative amount
+//	reset exact or relative out of bounds? => nearest boundary (start or end)
+//	reset after millisec?                  => high watermark, or first offset after millisec if one exists
 //
 // To match Kafka's auto.offset.reset,
 //
@@ -1449,14 +1263,11 @@ func ConsumeStartOffset(offset Offset) ConsumerOpt {
 //	NewOffset().AtEnd()       == auto.offset.reset "latest"
 //	NewOffset().AtCommitted() == auto.offset.reset "none"
 //
-// With the above, make sure to use [NoResetOffset] if you want to stop
+// With the above, make sure to use NoResetOffset() if you want to stop
 // consuming when you encounter OffsetOutOfRange. It is highly recommended
-// to read the docs for all Offset methods.
-//
-// Be sure to check the documentation for [ConsumeStartOffset], especially if
-// you rely on this option as the start offset as well.
+// to read the docs for all Offset methods to see a few other alternatives.
 func ConsumeResetOffset(offset Offset) ConsumerOpt {
-	return consumerOpt{func(cfg *cfg) { cfg.resetOffset, cfg.setResetOffset = offset, true }}
+	return consumerOpt{func(cfg *cfg) { cfg.resetOffset = offset }}
 }
 
 // Rack specifies where the client is physically located and changes fetch
@@ -1538,7 +1349,7 @@ func ConsumeRegex() ConsumerOpt {
 
 // DisableFetchSessions sets the client to not use fetch sessions (Kafka 1.0+).
 //
-// A "fetch session" is a way to reduce bandwidth for fetch requests &
+// A "fetch session" is is a way to reduce bandwidth for fetch requests &
 // responses, and to potentially reduce the amount of work that brokers have to
 // do to handle fetch requests. A fetch session opts into the broker tracking
 // some state of what the client is interested in. For example, say that you
@@ -1586,14 +1397,6 @@ func ConsumePreferringLagFn(fn PreferLagFn) ConsumerOpt {
 	return consumerOpt{func(cfg *cfg) { cfg.preferLagFn = fn }}
 }
 
-// WithDecompressor allows you to completely control how fetch batches are
-// decompressed, allowing you to use alternative libraries than what franz-go
-// supports, allowing you to have more control over memory & pooling, and other
-// benefits. The client default compressor is the [DefaultDecompressor].
-func WithDecompressor(decompressor Decompressor) ConsumerOpt {
-	return consumerOpt{func(cfg *cfg) { cfg.decompressor = decompressor }}
-}
-
 // KeepRetryableFetchErrors switches the client to always return any retryable
 // broker error when fetching, rather than stripping them. By default, the
 // client strips retryable errors from fetch responses; these are usually
@@ -1606,26 +1409,6 @@ func WithDecompressor(decompressor Decompressor) ConsumerOpt {
 // errors being returned in fetches (and ignore the other errors).
 func KeepRetryableFetchErrors() ConsumerOpt {
 	return consumerOpt{func(cfg *cfg) { cfg.keepRetryableFetchErrors = true }}
-}
-
-// DisableFetchCRCValidation disables crc32 checksum validation when fetching.
-// This should only be used if you are working with a broker that does not
-// properly support CRCs in record batches.
-func DisableFetchCRCValidation() ConsumerOpt {
-	return consumerOpt{func(cfg *cfg) { cfg.disableFetchCRCValidation = true }}
-}
-
-// RecheckPreferredReplicaInterval configures how long the consumer should
-// fetch from a preferred replica before switching back to the leader.
-// Periodically switching back to the leader allows the leader to re-choose a
-// perhaps better preferred replica (say you added a new cluster, or added
-// nodes to an existing cluster, or something else changed). For implementation
-// simplicity, the interval is checked after fetch responses, meaning one more
-// request can be issued after the interval has elapsed.
-//
-// The default interval is 30 minutes.
-func RecheckPreferredReplicaInterval(interval time.Duration) ConsumerOpt {
-	return consumerOpt{func(cfg *cfg) { cfg.recheckPreferredReplicaInterval = interval }}
 }
 
 //////////////////////////////////
@@ -1973,22 +1756,3 @@ func AutoCommitCallback(fn func(*Client, *kmsg.OffsetCommitRequest, *kmsg.Offset
 		}
 	}}
 }
-
-// !!! Only uncomment once we trust the broker implementation!
-// !!! And add this option to Opt!
-//
-// DisableNextGenRebalancer opts out of the "next gen" rebalancer that is
-// the default as of Kafka 4.0+. The client opts in to the next gen rebalancer
-// automatically if the broker supports it AND if you are using either the
-// [RangeBalancer] or [StickyBalancer] or [CooperativeStickyBalancer]. If you
-// use your own rebalancer or use the [RoundRobinBalancer] or are talking to
-// a broker that does not support the next gen balancer, the client uses the
-// old client-driven group balancing behavior.
-//
-// You may want to use this function if you notice a regression or run into
-// a broker or client bug, or if you prefer the performance of the old
-// client driven rebalancers.
-//  func DisableNextGenRebalancer() GroupOpt {
-//  	return groupOpt{func(cfg *cfg) { cfg.disableNextGenBalancer = true }}
-//  }
-//
