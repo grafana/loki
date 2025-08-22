@@ -5,8 +5,6 @@ import (
 	"crypto/tls"
 	"net"
 	"time"
-
-	"github.com/redis/go-redis/v9/auth"
 )
 
 // UniversalOptions information is required by UniversalClient to establish
@@ -28,27 +26,9 @@ type UniversalOptions struct {
 	Dialer    func(ctx context.Context, network, addr string) (net.Conn, error)
 	OnConnect func(ctx context.Context, cn *Conn) error
 
-	Protocol int
-	Username string
-	Password string
-	// CredentialsProvider allows the username and password to be updated
-	// before reconnecting. It should return the current username and password.
-	CredentialsProvider func() (username string, password string)
-
-	// CredentialsProviderContext is an enhanced parameter of CredentialsProvider,
-	// done to maintain API compatibility. In the future,
-	// there might be a merge between CredentialsProviderContext and CredentialsProvider.
-	// There will be a conflict between them; if CredentialsProviderContext exists, we will ignore CredentialsProvider.
-	CredentialsProviderContext func(ctx context.Context) (username string, password string, err error)
-
-	// StreamingCredentialsProvider is used to retrieve the credentials
-	// for the connection from an external source. Those credentials may change
-	// during the connection lifetime. This is useful for managed identity
-	// scenarios where the credentials are retrieved from an external source.
-	//
-	// Currently, this is a placeholder for the future implementation.
-	StreamingCredentialsProvider auth.StreamingCredentialsProvider
-
+	Protocol         int
+	Username         string
+	Password         string
 	SentinelUsername string
 	SentinelPassword string
 
@@ -116,12 +96,9 @@ func (o *UniversalOptions) Cluster() *ClusterOptions {
 		Dialer:     o.Dialer,
 		OnConnect:  o.OnConnect,
 
-		Protocol:                     o.Protocol,
-		Username:                     o.Username,
-		Password:                     o.Password,
-		CredentialsProvider:          o.CredentialsProvider,
-		CredentialsProviderContext:   o.CredentialsProviderContext,
-		StreamingCredentialsProvider: o.StreamingCredentialsProvider,
+		Protocol: o.Protocol,
+		Username: o.Username,
+		Password: o.Password,
 
 		MaxRedirects:   o.MaxRedirects,
 		ReadOnly:       o.ReadOnly,
@@ -170,14 +147,10 @@ func (o *UniversalOptions) Failover() *FailoverOptions {
 		Dialer:    o.Dialer,
 		OnConnect: o.OnConnect,
 
-		DB:                           o.DB,
-		Protocol:                     o.Protocol,
-		Username:                     o.Username,
-		Password:                     o.Password,
-		CredentialsProvider:          o.CredentialsProvider,
-		CredentialsProviderContext:   o.CredentialsProviderContext,
-		StreamingCredentialsProvider: o.StreamingCredentialsProvider,
-
+		DB:               o.DB,
+		Protocol:         o.Protocol,
+		Username:         o.Username,
+		Password:         o.Password,
 		SentinelUsername: o.SentinelUsername,
 		SentinelPassword: o.SentinelPassword,
 
@@ -226,13 +199,10 @@ func (o *UniversalOptions) Simple() *Options {
 		Dialer:     o.Dialer,
 		OnConnect:  o.OnConnect,
 
-		DB:                           o.DB,
-		Protocol:                     o.Protocol,
-		Username:                     o.Username,
-		Password:                     o.Password,
-		CredentialsProvider:          o.CredentialsProvider,
-		CredentialsProviderContext:   o.CredentialsProviderContext,
-		StreamingCredentialsProvider: o.StreamingCredentialsProvider,
+		DB:       o.DB,
+		Protocol: o.Protocol,
+		Username: o.Username,
+		Password: o.Password,
 
 		MaxRetries:      o.MaxRetries,
 		MinRetryBackoff: o.MinRetryBackoff,

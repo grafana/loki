@@ -80,9 +80,8 @@ type FieldSchema struct {
 }
 
 type FTVectorArgs struct {
-	FlatOptions   *FTFlatOptions
-	HNSWOptions   *FTHNSWOptions
-	VamanaOptions *FTVamanaOptions
+	FlatOptions *FTFlatOptions
+	HNSWOptions *FTHNSWOptions
 }
 
 type FTFlatOptions struct {
@@ -102,19 +101,6 @@ type FTHNSWOptions struct {
 	MaxAllowedEdgesPerNode int
 	EFRunTime              int
 	Epsilon                float64
-}
-
-type FTVamanaOptions struct {
-	Type                   string
-	Dim                    int
-	DistanceMetric         string
-	Compression            string
-	ConstructionWindowSize int
-	GraphMaxDegree         int
-	SearchWindowSize       int
-	Epsilon                float64
-	TrainingThreshold      int
-	ReduceDim              int
 }
 
 type FTDropIndexOptions struct {
@@ -488,7 +474,6 @@ type Document struct {
 	Payload *string
 	SortKey *string
 	Fields  map[string]string
-	Error   error
 }
 
 type AggregateQuery []interface{}
@@ -513,7 +498,7 @@ func (c cmdable) FTAggregate(ctx context.Context, index string, query string) *M
 	return cmd
 }
 
-func FTAggregateQuery(query string, options *FTAggregateOptions) (AggregateQuery, error) {
+func FTAggregateQuery(query string, options *FTAggregateOptions) AggregateQuery {
 	queryArgs := []interface{}{query}
 	if options != nil {
 		if options.Verbatim {
@@ -529,7 +514,7 @@ func FTAggregateQuery(query string, options *FTAggregateOptions) (AggregateQuery
 		}
 
 		if options.LoadAll && options.Load != nil {
-			return nil, fmt.Errorf("FT.AGGREGATE: LOADALL and LOAD are mutually exclusive")
+			panic("FT.AGGREGATE: LOADALL and LOAD are mutually exclusive")
 		}
 		if options.LoadAll {
 			queryArgs = append(queryArgs, "LOAD", "*")
@@ -585,7 +570,7 @@ func FTAggregateQuery(query string, options *FTAggregateOptions) (AggregateQuery
 			for _, sortBy := range options.SortBy {
 				sortByOptions = append(sortByOptions, sortBy.FieldName)
 				if sortBy.Asc && sortBy.Desc {
-					return nil, fmt.Errorf("FT.AGGREGATE: ASC and DESC are mutually exclusive")
+					panic("FT.AGGREGATE: ASC and DESC are mutually exclusive")
 				}
 				if sortBy.Asc {
 					sortByOptions = append(sortByOptions, "ASC")
@@ -630,7 +615,7 @@ func FTAggregateQuery(query string, options *FTAggregateOptions) (AggregateQuery
 			queryArgs = append(queryArgs, "DIALECT", 2)
 		}
 	}
-	return queryArgs, nil
+	return queryArgs
 }
 
 func ProcessAggregateResult(data []interface{}) (*FTAggregateResult, error) {
@@ -732,9 +717,7 @@ func (c cmdable) FTAggregateWithArgs(ctx context.Context, index string, query st
 			args = append(args, "ADDSCORES")
 		}
 		if options.LoadAll && options.Load != nil {
-			cmd := NewAggregateCmd(ctx, args...)
-			cmd.SetErr(fmt.Errorf("FT.AGGREGATE: LOADALL and LOAD are mutually exclusive"))
-			return cmd
+			panic("FT.AGGREGATE: LOADALL and LOAD are mutually exclusive")
 		}
 		if options.LoadAll {
 			args = append(args, "LOAD", "*")
@@ -787,9 +770,7 @@ func (c cmdable) FTAggregateWithArgs(ctx context.Context, index string, query st
 			for _, sortBy := range options.SortBy {
 				sortByOptions = append(sortByOptions, sortBy.FieldName)
 				if sortBy.Asc && sortBy.Desc {
-					cmd := NewAggregateCmd(ctx, args...)
-					cmd.SetErr(fmt.Errorf("FT.AGGREGATE: ASC and DESC are mutually exclusive"))
-					return cmd
+					panic("FT.AGGREGATE: ASC and DESC are mutually exclusive")
 				}
 				if sortBy.Asc {
 					sortByOptions = append(sortByOptions, "ASC")
@@ -937,9 +918,7 @@ func (c cmdable) FTCreate(ctx context.Context, index string, options *FTCreateOp
 			args = append(args, "ON", "JSON")
 		}
 		if options.OnHash && options.OnJSON {
-			cmd := NewStatusCmd(ctx, args...)
-			cmd.SetErr(fmt.Errorf("FT.CREATE: ON HASH and ON JSON are mutually exclusive"))
-			return cmd
+			panic("FT.CREATE: ON HASH and ON JSON are mutually exclusive")
 		}
 		if options.Prefix != nil {
 			args = append(args, "PREFIX", len(options.Prefix))
@@ -990,16 +969,12 @@ func (c cmdable) FTCreate(ctx context.Context, index string, options *FTCreateOp
 		}
 	}
 	if schema == nil {
-		cmd := NewStatusCmd(ctx, args...)
-		cmd.SetErr(fmt.Errorf("FT.CREATE: SCHEMA is required"))
-		return cmd
+		panic("FT.CREATE: SCHEMA is required")
 	}
 	args = append(args, "SCHEMA")
 	for _, schema := range schema {
 		if schema.FieldName == "" || schema.FieldType == SearchFieldTypeInvalid {
-			cmd := NewStatusCmd(ctx, args...)
-			cmd.SetErr(fmt.Errorf("FT.CREATE: SCHEMA FieldName and FieldType are required"))
-			return cmd
+			panic("FT.CREATE: SCHEMA FieldName and FieldType are required")
 		}
 		args = append(args, schema.FieldName)
 		if schema.As != "" {
@@ -1008,32 +983,15 @@ func (c cmdable) FTCreate(ctx context.Context, index string, options *FTCreateOp
 		args = append(args, schema.FieldType.String())
 		if schema.VectorArgs != nil {
 			if schema.FieldType != SearchFieldTypeVector {
-				cmd := NewStatusCmd(ctx, args...)
-				cmd.SetErr(fmt.Errorf("FT.CREATE: SCHEMA FieldType VECTOR is required for VectorArgs"))
-				return cmd
+				panic("FT.CREATE: SCHEMA FieldType VECTOR is required for VectorArgs")
 			}
-			// Check mutual exclusivity of vector options
-			optionCount := 0
-			if schema.VectorArgs.FlatOptions != nil {
-				optionCount++
-			}
-			if schema.VectorArgs.HNSWOptions != nil {
-				optionCount++
-			}
-			if schema.VectorArgs.VamanaOptions != nil {
-				optionCount++
-			}
-			if optionCount != 1 {
-				cmd := NewStatusCmd(ctx, args...)
-				cmd.SetErr(fmt.Errorf("FT.CREATE: SCHEMA VectorArgs must have exactly one of FlatOptions, HNSWOptions, or VamanaOptions"))
-				return cmd
+			if schema.VectorArgs.FlatOptions != nil && schema.VectorArgs.HNSWOptions != nil {
+				panic("FT.CREATE: SCHEMA VectorArgs FlatOptions and HNSWOptions are mutually exclusive")
 			}
 			if schema.VectorArgs.FlatOptions != nil {
 				args = append(args, "FLAT")
 				if schema.VectorArgs.FlatOptions.Type == "" || schema.VectorArgs.FlatOptions.Dim == 0 || schema.VectorArgs.FlatOptions.DistanceMetric == "" {
-					cmd := NewStatusCmd(ctx, args...)
-					cmd.SetErr(fmt.Errorf("FT.CREATE: Type, Dim and DistanceMetric are required for VECTOR FLAT"))
-					return cmd
+					panic("FT.CREATE: Type, Dim and DistanceMetric are required for VECTOR FLAT")
 				}
 				flatArgs := []interface{}{
 					"TYPE", schema.VectorArgs.FlatOptions.Type,
@@ -1052,9 +1010,7 @@ func (c cmdable) FTCreate(ctx context.Context, index string, options *FTCreateOp
 			if schema.VectorArgs.HNSWOptions != nil {
 				args = append(args, "HNSW")
 				if schema.VectorArgs.HNSWOptions.Type == "" || schema.VectorArgs.HNSWOptions.Dim == 0 || schema.VectorArgs.HNSWOptions.DistanceMetric == "" {
-					cmd := NewStatusCmd(ctx, args...)
-					cmd.SetErr(fmt.Errorf("FT.CREATE: Type, Dim and DistanceMetric are required for VECTOR HNSW"))
-					return cmd
+					panic("FT.CREATE: Type, Dim and DistanceMetric are required for VECTOR HNSW")
 				}
 				hnswArgs := []interface{}{
 					"TYPE", schema.VectorArgs.HNSWOptions.Type,
@@ -1079,48 +1035,10 @@ func (c cmdable) FTCreate(ctx context.Context, index string, options *FTCreateOp
 				args = append(args, len(hnswArgs))
 				args = append(args, hnswArgs...)
 			}
-			if schema.VectorArgs.VamanaOptions != nil {
-				args = append(args, "SVS-VAMANA")
-				if schema.VectorArgs.VamanaOptions.Type == "" || schema.VectorArgs.VamanaOptions.Dim == 0 || schema.VectorArgs.VamanaOptions.DistanceMetric == "" {
-					cmd := NewStatusCmd(ctx, args...)
-					cmd.SetErr(fmt.Errorf("FT.CREATE: Type, Dim and DistanceMetric are required for VECTOR VAMANA"))
-					return cmd
-				}
-				vamanaArgs := []interface{}{
-					"TYPE", schema.VectorArgs.VamanaOptions.Type,
-					"DIM", schema.VectorArgs.VamanaOptions.Dim,
-					"DISTANCE_METRIC", schema.VectorArgs.VamanaOptions.DistanceMetric,
-				}
-				if schema.VectorArgs.VamanaOptions.Compression != "" {
-					vamanaArgs = append(vamanaArgs, "COMPRESSION", schema.VectorArgs.VamanaOptions.Compression)
-				}
-				if schema.VectorArgs.VamanaOptions.ConstructionWindowSize > 0 {
-					vamanaArgs = append(vamanaArgs, "CONSTRUCTION_WINDOW_SIZE", schema.VectorArgs.VamanaOptions.ConstructionWindowSize)
-				}
-				if schema.VectorArgs.VamanaOptions.GraphMaxDegree > 0 {
-					vamanaArgs = append(vamanaArgs, "GRAPH_MAX_DEGREE", schema.VectorArgs.VamanaOptions.GraphMaxDegree)
-				}
-				if schema.VectorArgs.VamanaOptions.SearchWindowSize > 0 {
-					vamanaArgs = append(vamanaArgs, "SEARCH_WINDOW_SIZE", schema.VectorArgs.VamanaOptions.SearchWindowSize)
-				}
-				if schema.VectorArgs.VamanaOptions.Epsilon > 0 {
-					vamanaArgs = append(vamanaArgs, "EPSILON", schema.VectorArgs.VamanaOptions.Epsilon)
-				}
-				if schema.VectorArgs.VamanaOptions.TrainingThreshold > 0 {
-					vamanaArgs = append(vamanaArgs, "TRAINING_THRESHOLD", schema.VectorArgs.VamanaOptions.TrainingThreshold)
-				}
-				if schema.VectorArgs.VamanaOptions.ReduceDim > 0 {
-					vamanaArgs = append(vamanaArgs, "REDUCE", schema.VectorArgs.VamanaOptions.ReduceDim)
-				}
-				args = append(args, len(vamanaArgs))
-				args = append(args, vamanaArgs...)
-			}
 		}
 		if schema.GeoShapeFieldType != "" {
 			if schema.FieldType != SearchFieldTypeGeoShape {
-				cmd := NewStatusCmd(ctx, args...)
-				cmd.SetErr(fmt.Errorf("FT.CREATE: SCHEMA FieldType GEOSHAPE is required for GeoShapeFieldType"))
-				return cmd
+				panic("FT.CREATE: SCHEMA FieldType GEOSHAPE is required for GeoShapeFieldType")
 			}
 			args = append(args, schema.GeoShapeFieldType)
 		}
@@ -1278,7 +1196,7 @@ func (c cmdable) FTExplainWithArgs(ctx context.Context, index string, query stri
 // FTExplainCli - Returns the execution plan for a complex query. [Not Implemented]
 // For more information, see https://redis.io/commands/ft.explaincli/
 func (c cmdable) FTExplainCli(ctx context.Context, key, path string) error {
-	return fmt.Errorf("FTExplainCli is not implemented")
+	panic("not implemented")
 }
 
 func parseFTInfo(data map[string]interface{}) (FTInfoResult, error) {
@@ -1736,13 +1654,7 @@ func parseFTSearch(data []interface{}, noContent, withScores, withPayloads, with
 		if i < len(data) {
 			fields, ok := data[i].([]interface{})
 			if !ok {
-				if data[i] == proto.Nil || data[i] == nil {
-					doc.Error = proto.Nil
-					doc.Fields = map[string]string{}
-					fields = []interface{}{}
-				} else {
-					return FTSearchResult{}, fmt.Errorf("invalid document fields format")
-				}
+				return FTSearchResult{}, fmt.Errorf("invalid document fields format")
 			}
 
 			for j := 0; j < len(fields); j += 2 {
@@ -1839,7 +1751,7 @@ type SearchQuery []interface{}
 // For more information, please refer to the Redis documentation about [FT.SEARCH].
 //
 // [FT.SEARCH]: (https://redis.io/commands/ft.search/)
-func FTSearchQuery(query string, options *FTSearchOptions) (SearchQuery, error) {
+func FTSearchQuery(query string, options *FTSearchOptions) SearchQuery {
 	queryArgs := []interface{}{query}
 	if options != nil {
 		if options.NoContent {
@@ -1919,7 +1831,7 @@ func FTSearchQuery(query string, options *FTSearchOptions) (SearchQuery, error) 
 			for _, sortBy := range options.SortBy {
 				queryArgs = append(queryArgs, sortBy.FieldName)
 				if sortBy.Asc && sortBy.Desc {
-					return nil, fmt.Errorf("FT.SEARCH: ASC and DESC are mutually exclusive")
+					panic("FT.SEARCH: ASC and DESC are mutually exclusive")
 				}
 				if sortBy.Asc {
 					queryArgs = append(queryArgs, "ASC")
@@ -1947,7 +1859,7 @@ func FTSearchQuery(query string, options *FTSearchOptions) (SearchQuery, error) 
 			queryArgs = append(queryArgs, "DIALECT", 2)
 		}
 	}
-	return queryArgs, nil
+	return queryArgs
 }
 
 // FTSearchWithArgs - Executes a search query on an index with additional options.
@@ -2036,9 +1948,7 @@ func (c cmdable) FTSearchWithArgs(ctx context.Context, index string, query strin
 			for _, sortBy := range options.SortBy {
 				args = append(args, sortBy.FieldName)
 				if sortBy.Asc && sortBy.Desc {
-					cmd := newFTSearchCmd(ctx, options, args...)
-					cmd.SetErr(fmt.Errorf("FT.SEARCH: ASC and DESC are mutually exclusive"))
-					return cmd
+					panic("FT.SEARCH: ASC and DESC are mutually exclusive")
 				}
 				if sortBy.Asc {
 					args = append(args, "ASC")
