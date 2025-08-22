@@ -11,13 +11,17 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
-[//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
+## Unreleased
 
 - [ENHANCEMENT] add namespaceOverride [#18707](https://github.com/grafana/loki/pull/18707)
-- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for loki in bloom-builder. [#18549](https://github.com/grafana/loki/pull/18549)
-- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-planner. [#18552](https://github.com/grafana/loki/pull/18552)
-- [FEATURE] Support separate loki ruler storage configuration [#18510](https://github.com/grafana/loki/pull/18510)
 
+## 6.37.0
+
+- [FEATURE] Support separate loki ruler storage configuration [#18510](https://github.com/grafana/loki/pull/18510)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-gateway. [#18551](https://github.com/grafana/loki/pull/18551)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for loki in bloom-builder. [#18549](https://github.com/grafana/loki/pull/1854
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-planner. [#18552](https://github.com/grafana/loki/pull/18552)
+- [BUGFIX] Revert Thanos object store configuration from ruler storage config to fix compatibility issues with RuleStoreConfig that caused parsing errors during Helm upgrades.
 
 ## 6.36.1
 - [BUGFIX] Fix missing s3 field in lokiStorageConfig templated value.[#18791](https://github.com/grafana/loki/pull/18791)

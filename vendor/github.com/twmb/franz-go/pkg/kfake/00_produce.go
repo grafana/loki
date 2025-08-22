@@ -16,7 +16,7 @@ import (
 // * Multiple batches in one produce
 // * Compact
 
-func init() { regKey(0, 3, 10) }
+func init() { regKey(0, 3, 12) }
 
 func (c *Cluster) handleProduce(b *broker, kreq kmsg.Request) (kmsg.Response, error) {
 	var (
