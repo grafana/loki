@@ -5374,8 +5374,8 @@ type BackendService struct {
 	// connection before the connection was redirected to the load balancer. -
 	// MAGLEV: used as a drop in replacement for the ring hash load balancer.
 	// Maglev is not as stable as ring hash but has faster table lookup build times
-	// and host selection times. For more information about Maglev, see
-	// https://ai.google/research/pubs/pub44824 - WEIGHTED_ROUND_ROBIN:
+	// and host selection times. For more information about Maglev, see Maglev: A
+	// Fast and Reliable Software Network Load Balancer. - WEIGHTED_ROUND_ROBIN:
 	// Per-endpoint Weighted Round Robin Load Balancing using weights computed from
 	// Backend reported Custom Metrics. If set, the Backend Service responses are
 	// expected to contain non-standard HTTP response header field
@@ -5400,8 +5400,8 @@ type BackendService struct {
 	//   "MAGLEV" - This algorithm implements consistent hashing to backends.
 	// Maglev can be used as a drop in replacement for the ring hash load balancer.
 	// Maglev is not as stable as ring hash but has faster table lookup build times
-	// and host selection times. For more information about Maglev, see
-	// https://ai.google/research/pubs/pub44824
+	// and host selection times. For more information about Maglev, see Maglev: A
+	// Fast and Reliable Software Network Load Balancer.
 	//   "ORIGINAL_DESTINATION" - Backend host is selected based on the client
 	// connection metadata, i.e., connections are opened to the same address as the
 	// destination address of the incoming connection before the connection was
@@ -5538,8 +5538,8 @@ type BackendService struct {
 	// backends and health checks must be both empty.
 	ServiceBindings []string `json:"serviceBindings,omitempty"`
 	// ServiceLbPolicy: URL to networkservices.ServiceLbPolicy resource. Can only
-	// be set if load balancing scheme is EXTERNAL, EXTERNAL_MANAGED,
-	// INTERNAL_MANAGED or INTERNAL_SELF_MANAGED and the scope is global.
+	// be set if load balancing scheme is EXTERNAL_MANAGED, INTERNAL_MANAGED or
+	// INTERNAL_SELF_MANAGED and the scope is global.
 	ServiceLbPolicy string `json:"serviceLbPolicy,omitempty"`
 	// SessionAffinity: Type of session affinity to use. The default is NONE. Only
 	// NONE and HEADER_FIELD are supported when the backend service is referenced
@@ -6770,8 +6770,8 @@ type BackendServiceLocalityLoadBalancingPolicyConfigPolicy struct {
 	//   "MAGLEV" - This algorithm implements consistent hashing to backends.
 	// Maglev can be used as a drop in replacement for the ring hash load balancer.
 	// Maglev is not as stable as ring hash but has faster table lookup build times
-	// and host selection times. For more information about Maglev, see
-	// https://ai.google/research/pubs/pub44824
+	// and host selection times. For more information about Maglev, see Maglev: A
+	// Fast and Reliable Software Network Load Balancer.
 	//   "ORIGINAL_DESTINATION" - Backend host is selected based on the client
 	// connection metadata, i.e., connections are opened to the same address as the
 	// destination address of the incoming connection before the connection was
@@ -52956,9 +52956,9 @@ func (s TargetHttpsProxiesSetSslCertificatesRequest) MarshalJSON() ([]byte, erro
 // (/compute/docs/reference/rest/v1/targetHttpsProxies) * Regional
 // (/compute/docs/reference/rest/v1/regionTargetHttpsProxies) A target HTTPS
 // proxy is a component of Google Cloud HTTPS load balancers. *
-// targetHttpProxies are used by global external Application Load Balancers,
+// targetHttpsProxies are used by global external Application Load Balancers,
 // classic Application Load Balancers, cross-region internal Application Load
-// Balancers, and Traffic Director. * regionTargetHttpProxies are used by
+// Balancers, and Traffic Director. * regionTargetHttpsProxies are used by
 // regional internal Application Load Balancers and regional external
 // Application Load Balancers. Forwarding rules reference a target HTTPS proxy,
 // and the target proxy then references a URL map. For more information, read
@@ -56273,6 +56273,8 @@ type UpcomingMaintenance struct {
 	//   "FAILURE_MEMORY" - Maintenance due to memory errors.
 	//   "FAILURE_NETWORK" - Maintenance due to network errors.
 	//   "FAILURE_NVLINK" - Maintenance due to NVLink failure.
+	//   "FAILURE_REDUNDANT_HARDWARE_FAULT" - Maintenance due to redundant hardware
+	// fault.
 	//   "INFRASTRUCTURE_RELOCATION" - Maintenance due to infrastructure
 	// relocation.
 	//   "MAINTENANCE_REASON_UNKNOWN" - Unknown maintenance reason. Do not use this
