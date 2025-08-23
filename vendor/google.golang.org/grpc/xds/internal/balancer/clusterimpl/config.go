@@ -55,15 +55,3 @@ func parseConfig(c json.RawMessage) (*LBConfig, error) {
 	}
 	return &cfg, nil
 }
-
-func equalDropCategories(a, b []DropConfig) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
