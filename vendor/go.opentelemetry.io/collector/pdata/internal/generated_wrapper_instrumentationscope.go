@@ -7,6 +7,9 @@
 package internal
 
 import (
+	"fmt"
+	"sync"
+
 	otlpcommon "go.opentelemetry.io/collector/pdata/internal/data/protogen/common/v1"
 	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
@@ -29,25 +32,59 @@ func NewInstrumentationScope(orig *otlpcommon.InstrumentationScope, state *State
 	return InstrumentationScope{orig: orig, state: state}
 }
 
-func GenerateTestInstrumentationScope() InstrumentationScope {
-	orig := otlpcommon.InstrumentationScope{}
-	FillOrigTestInstrumentationScope(&orig)
-	state := StateMutable
-	return NewInstrumentationScope(&orig, &state)
+var (
+	protoPoolInstrumentationScope = sync.Pool{
+		New: func() any {
+			return &otlpcommon.InstrumentationScope{}
+		},
+	}
+)
+
+func NewOrigInstrumentationScope() *otlpcommon.InstrumentationScope {
+	if !UseProtoPooling.IsEnabled() {
+		return &otlpcommon.InstrumentationScope{}
+	}
+	return protoPoolInstrumentationScope.Get().(*otlpcommon.InstrumentationScope)
+}
+
+func DeleteOrigInstrumentationScope(orig *otlpcommon.InstrumentationScope, nullable bool) {
+	if orig == nil {
+		return
+	}
+
+	if !UseProtoPooling.IsEnabled() {
+		orig.Reset()
+		return
+	}
+
+	for i := range orig.Attributes {
+		DeleteOrigKeyValue(&orig.Attributes[i], false)
+	}
+
+	orig.Reset()
+	if nullable {
+		protoPoolInstrumentationScope.Put(orig)
+	}
 }
 
 func CopyOrigInstrumentationScope(dest, src *otlpcommon.InstrumentationScope) {
+	// If copying to same object, just return.
+	if src == dest {
+		return
+	}
 	dest.Name = src.Name
 	dest.Version = src.Version
 	dest.Attributes = CopyOrigKeyValueSlice(dest.Attributes, src.Attributes)
 	dest.DroppedAttributesCount = src.DroppedAttributesCount
 }
 
-func FillOrigTestInstrumentationScope(orig *otlpcommon.InstrumentationScope) {
+func GenTestOrigInstrumentationScope() *otlpcommon.InstrumentationScope {
+	orig := NewOrigInstrumentationScope()
 	orig.Name = "test_name"
 	orig.Version = "test_version"
 	orig.Attributes = GenerateOrigTestKeyValueSlice()
 	orig.DroppedAttributesCount = uint32(13)
+	return orig
 }
 
 // MarshalJSONOrig marshals all properties from the current struct to the destination stream.
@@ -80,21 +117,24 @@ func MarshalJSONOrigInstrumentationScope(orig *otlpcommon.InstrumentationScope, 
 
 // UnmarshalJSONOrigInstrumentationScope unmarshals all properties from the current struct from the source iterator.
 func UnmarshalJSONOrigInstrumentationScope(orig *otlpcommon.InstrumentationScope, iter *json.Iterator) {
-	iter.ReadObjectCB(func(iter *json.Iterator, f string) bool {
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
 		case "name":
 			orig.Name = iter.ReadString()
 		case "version":
 			orig.Version = iter.ReadString()
 		case "attributes":
-			orig.Attributes = UnmarshalJSONOrigKeyValueSlice(iter)
+			for iter.ReadArray() {
+				orig.Attributes = append(orig.Attributes, otlpcommon.KeyValue{})
+				UnmarshalJSONOrigKeyValue(&orig.Attributes[len(orig.Attributes)-1], iter)
+			}
+
 		case "droppedAttributesCount", "dropped_attributes_count":
 			orig.DroppedAttributesCount = iter.ReadUint32()
 		default:
 			iter.Skip()
 		}
-		return true
-	})
+	}
 }
 
 func SizeProtoOrigInstrumentationScope(orig *otlpcommon.InstrumentationScope) int {
@@ -139,7 +179,7 @@ func MarshalProtoOrigInstrumentationScope(orig *otlpcommon.InstrumentationScope,
 		pos--
 		buf[pos] = 0x12
 	}
-	for i := range orig.Attributes {
+	for i := len(orig.Attributes) - 1; i >= 0; i-- {
 		l = MarshalProtoOrigKeyValue(&orig.Attributes[i], buf[:pos])
 		pos -= l
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
@@ -155,5 +195,77 @@ func MarshalProtoOrigInstrumentationScope(orig *otlpcommon.InstrumentationScope,
 }
 
 func UnmarshalProtoOrigInstrumentationScope(orig *otlpcommon.InstrumentationScope, buf []byte) error {
-	return orig.Unmarshal(buf)
+	var err error
+	var fieldNum int32
+	var wireType proto.WireType
+
+	l := len(buf)
+	pos := 0
+	for pos < l {
+		// If in a group parsing, move to the next tag.
+		fieldNum, wireType, pos, err = proto.ConsumeTag(buf, pos)
+		if err != nil {
+			return err
+		}
+		switch fieldNum {
+
+		case 1:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			orig.Name = string(buf[startPos:pos])
+
+		case 2:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field Version", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			orig.Version = string(buf[startPos:pos])
+
+		case 3:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field Attributes", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			orig.Attributes = append(orig.Attributes, otlpcommon.KeyValue{})
+			err = UnmarshalProtoOrigKeyValue(&orig.Attributes[len(orig.Attributes)-1], buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+
+		case 4:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field DroppedAttributesCount", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.DroppedAttributesCount = uint32(num)
+		default:
+			pos, err = proto.ConsumeUnknown(buf, pos, wireType)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

@@ -34,8 +34,7 @@ func newSummaryDataPointSlice(orig *[]*otlpmetrics.SummaryDataPoint, state *inte
 // Can use "EnsureCapacity" to initialize with a given capacity.
 func NewSummaryDataPointSlice() SummaryDataPointSlice {
 	orig := []*otlpmetrics.SummaryDataPoint(nil)
-	state := internal.StateMutable
-	return newSummaryDataPointSlice(&orig, &state)
+	return newSummaryDataPointSlice(&orig, internal.NewState())
 }
 
 // Len returns the number of elements in the slice.
@@ -100,7 +99,7 @@ func (es SummaryDataPointSlice) EnsureCapacity(newCap int) {
 // It returns the newly added SummaryDataPoint.
 func (es SummaryDataPointSlice) AppendEmpty() SummaryDataPoint {
 	es.state.AssertMutable()
-	*es.orig = append(*es.orig, &otlpmetrics.SummaryDataPoint{})
+	*es.orig = append(*es.orig, internal.NewOrigSummaryDataPoint())
 	return es.At(es.Len() - 1)
 }
 
@@ -129,7 +128,9 @@ func (es SummaryDataPointSlice) RemoveIf(f func(SummaryDataPoint) bool) {
 	newLen := 0
 	for i := 0; i < len(*es.orig); i++ {
 		if f(es.At(i)) {
+			internal.DeleteOrigSummaryDataPoint((*es.orig)[i], true)
 			(*es.orig)[i] = nil
+
 			continue
 		}
 		if newLen == i {
@@ -138,6 +139,7 @@ func (es SummaryDataPointSlice) RemoveIf(f func(SummaryDataPoint) bool) {
 			continue
 		}
 		(*es.orig)[newLen] = (*es.orig)[i]
+		// Cannot delete here since we just move the data(or pointer to data) to a different position in the slice.
 		(*es.orig)[i] = nil
 		newLen++
 	}
@@ -147,6 +149,9 @@ func (es SummaryDataPointSlice) RemoveIf(f func(SummaryDataPoint) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es SummaryDataPointSlice) CopyTo(dest SummaryDataPointSlice) {
 	dest.state.AssertMutable()
+	if es.orig == dest.orig {
+		return
+	}
 	*dest.orig = internal.CopyOrigSummaryDataPointSlice(*dest.orig, *es.orig)
 }
 

@@ -7,19 +7,59 @@
 package internal
 
 import (
+	"fmt"
+	"sync"
+
 	otlpcollectortrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/trace/v1"
 	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
+var (
+	protoPoolExportTracePartialSuccess = sync.Pool{
+		New: func() any {
+			return &otlpcollectortrace.ExportTracePartialSuccess{}
+		},
+	}
+)
+
+func NewOrigExportTracePartialSuccess() *otlpcollectortrace.ExportTracePartialSuccess {
+	if !UseProtoPooling.IsEnabled() {
+		return &otlpcollectortrace.ExportTracePartialSuccess{}
+	}
+	return protoPoolExportTracePartialSuccess.Get().(*otlpcollectortrace.ExportTracePartialSuccess)
+}
+
+func DeleteOrigExportTracePartialSuccess(orig *otlpcollectortrace.ExportTracePartialSuccess, nullable bool) {
+	if orig == nil {
+		return
+	}
+
+	if !UseProtoPooling.IsEnabled() {
+		orig.Reset()
+		return
+	}
+
+	orig.Reset()
+	if nullable {
+		protoPoolExportTracePartialSuccess.Put(orig)
+	}
+}
+
 func CopyOrigExportTracePartialSuccess(dest, src *otlpcollectortrace.ExportTracePartialSuccess) {
+	// If copying to same object, just return.
+	if src == dest {
+		return
+	}
 	dest.RejectedSpans = src.RejectedSpans
 	dest.ErrorMessage = src.ErrorMessage
 }
 
-func FillOrigTestExportTracePartialSuccess(orig *otlpcollectortrace.ExportTracePartialSuccess) {
+func GenTestOrigExportTracePartialSuccess() *otlpcollectortrace.ExportTracePartialSuccess {
+	orig := NewOrigExportTracePartialSuccess()
 	orig.RejectedSpans = int64(13)
 	orig.ErrorMessage = "test_errormessage"
+	return orig
 }
 
 // MarshalJSONOrig marshals all properties from the current struct to the destination stream.
@@ -38,7 +78,7 @@ func MarshalJSONOrigExportTracePartialSuccess(orig *otlpcollectortrace.ExportTra
 
 // UnmarshalJSONOrigExportPartialSuccess unmarshals all properties from the current struct from the source iterator.
 func UnmarshalJSONOrigExportTracePartialSuccess(orig *otlpcollectortrace.ExportTracePartialSuccess, iter *json.Iterator) {
-	iter.ReadObjectCB(func(iter *json.Iterator, f string) bool {
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
 		case "rejectedSpans", "rejected_spans":
 			orig.RejectedSpans = iter.ReadInt64()
@@ -47,8 +87,7 @@ func UnmarshalJSONOrigExportTracePartialSuccess(orig *otlpcollectortrace.ExportT
 		default:
 			iter.Skip()
 		}
-		return true
-	})
+	}
 }
 
 func SizeProtoOrigExportTracePartialSuccess(orig *otlpcollectortrace.ExportTracePartialSuccess) int {
@@ -86,5 +125,49 @@ func MarshalProtoOrigExportTracePartialSuccess(orig *otlpcollectortrace.ExportTr
 }
 
 func UnmarshalProtoOrigExportTracePartialSuccess(orig *otlpcollectortrace.ExportTracePartialSuccess, buf []byte) error {
-	return orig.Unmarshal(buf)
+	var err error
+	var fieldNum int32
+	var wireType proto.WireType
+
+	l := len(buf)
+	pos := 0
+	for pos < l {
+		// If in a group parsing, move to the next tag.
+		fieldNum, wireType, pos, err = proto.ConsumeTag(buf, pos)
+		if err != nil {
+			return err
+		}
+		switch fieldNum {
+
+		case 1:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field RejectedSpans", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.RejectedSpans = int64(num)
+
+		case 2:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field ErrorMessage", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			orig.ErrorMessage = string(buf[startPos:pos])
+		default:
+			pos, err = proto.ConsumeUnknown(buf, pos, wireType)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
