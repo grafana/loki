@@ -250,9 +250,7 @@ module Fluent
         if @compress == :gzip
           req.add_field('Content-Encoding', 'gzip')
           io = StringIO.new
-          gz = Zlib::GzipWriter.new(io)
-          gz.write(payload)
-          gz.close
+          Zlib::GzipWriter.wrap(io) { |gz| gz.write(payload) }
           req.body = io.string
         else
           req.body = payload
