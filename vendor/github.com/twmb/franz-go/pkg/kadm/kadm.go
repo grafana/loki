@@ -500,6 +500,13 @@ func (s TopicsSet) Merge(other TopicsSet) {
 	}
 }
 
+// Merge topics merges topic names into this set.
+func (s TopicsSet) MergeTopics(ts []string) {
+	for _, t := range ts {
+		s.Add(t)
+	}
+}
+
 // IntoList returns this set as a list.
 func (s TopicsSet) IntoList() TopicsList {
 	l := make(TopicsList, 0, len(s))

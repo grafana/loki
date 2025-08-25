@@ -66,11 +66,6 @@ func (v *vectorAggregationPipeline) Read(ctx context.Context) error {
 		return v.state.err
 	}
 
-	// release previous batch before creating a new one
-	if v.state.batch != nil {
-		v.state.batch.Release()
-	}
-
 	record, err := v.read(ctx)
 	v.state = newState(record, err)
 
@@ -155,10 +150,6 @@ func (v *vectorAggregationPipeline) Value() (arrow.Record, error) {
 
 // Close closes the resources of the pipeline.
 func (v *vectorAggregationPipeline) Close() {
-	if v.state.batch != nil {
-		v.state.batch.Release()
-	}
-
 	for _, input := range v.inputs {
 		input.Close()
 	}
