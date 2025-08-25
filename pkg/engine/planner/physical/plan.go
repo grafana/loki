@@ -214,30 +214,20 @@ func (p *Plan) addEdge(e Edge) error {
 	return nil
 }
 
-func idxOf(arr []Node, n Node) (int, error) {
-	for i, node := range arr {
-		if node == n {
-			return i, nil
-		}
-	}
-	return -1, fmt.Errorf("node %s not found in array", n.ID())
-}
-
 // eliminateNode removes a node from the plan and reconnects its parent to its children.
 // This maintains the graph's connectivity by creating direct edges from the parent
 // to each child of the removed node. The function also cleans up all references to
 // the node in the plan's internal data structures.
+// If the node passed in does not have a parent, all of its children will be promoted
+// to root nodes (which will cause errors down the line if there is more than one root node).
 func (p *Plan) eliminateNode(node Node) {
 	parent := p.Parent(node)
 	if parent != nil {
-		idx, err := idxOf(p.children[parent], node)
-		if err != nil { // node not found, so nothing to eliminate
-			return
-		}
-		prevChildren := p.children[parent][0:idx]
-		nextChildren := p.children[parent][idx+1:]
-		allChildren := append(prevChildren, p.children[node]...)
-		allChildren = append(allChildren, nextChildren...)
+		idx := slices.Index(p.children[parent], node)
+		// First get rid of the node to be deleted
+		allChildren := append(p.children[parent][0:idx], p.children[parent][idx+1:]...)
+		// Then insert all the children of the node
+		allChildren = slices.Insert(allChildren, idx, p.children[node]...)
 		p.children[parent] = allChildren
 	}
 
