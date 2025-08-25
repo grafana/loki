@@ -57,10 +57,17 @@ var _ Pipeline = (*KWayMerge)(nil)
 
 // Close implements Pipeline.
 func (p *KWayMerge) Close() {
-	// Release last batch
-	if p.state.batch != nil {
-		p.state.batch.Release()
+	// NOTE: We don't release p.state.batch because it's a slice of a batch
+	// in p.batches, not a record we own.
+
+	// Release all batches we're holding
+	// We
+	for _, batch := range p.batches {
+		if batch != nil {
+			batch.Release()
+		}
 	}
+
 	for _, input := range p.inputs {
 		input.Close()
 	}
@@ -118,10 +125,10 @@ func (p *KWayMerge) init(ctx context.Context) {
 // Return the slice of that record using the two offsets, and update the stored offset of the returned record for the next call to Read.
 func (p *KWayMerge) read(ctx context.Context) error {
 start:
-	// Release previous batch
-	if p.state.batch != nil {
-		p.state.batch.Release()
-	}
+	// NOTE: We don't release p.state.batch here because it's a slice of the original
+	// batch in p.batches[i], not a record we own. The slice shares the underlying
+	// data with the original, so releasing it would corrupt the original.
+	// The original batches are managed in the loop below.
 
 	timestamps := make([]int64, 0, len(p.inputs))
 	inputIndexes := make([]int, 0, len(p.inputs))
@@ -136,6 +143,12 @@ loop:
 		// Load next batch if it hasn't been loaded yet, or if current one is already fully consumed
 		// Read another batch as long as the input yields zero-length batches.
 		for p.batches[i] == nil || p.offsets[i] == p.batches[i].NumRows() {
+			// Release the old batch if we're loading a new one
+			if p.batches[i] != nil && p.offsets[i] == p.batches[i].NumRows() {
+				p.batches[i].Release()
+				p.batches[i] = nil
+			}
+
 			// Reset offset
 			p.offsets[i] = 0
 
@@ -144,6 +157,9 @@ loop:
 			if err != nil {
 				if errors.Is(err, EOF) {
 					p.exhausted[i] = true
+					if p.batches[i] != nil {
+						p.batches[i].Release()
+					}
 					p.batches[i] = nil // remove reference to arrow.Record from slice
 					continue loop
 				}
@@ -152,7 +168,12 @@ loop:
 
 			// It is safe to use the value from the Value() call, because the error is already checked after the Read() call.
 			// In case the input is exhausted (reached EOF), the return value is `nil`, however, since the flag `p.exhausted[i]` is set, the value will never be read.
-			p.batches[i], _ = p.inputs[i].Value()
+			newBatch, _ := p.inputs[i].Value()
+			// The pipeline owns this batch now, so we need to retain it
+			if newBatch != nil {
+				newBatch.Retain()
+			}
+			p.batches[i] = newBatch
 		}
 
 		// Fetch timestamp value at current offset
