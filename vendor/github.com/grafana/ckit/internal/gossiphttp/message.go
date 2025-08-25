@@ -58,8 +58,9 @@ func readMessage(r io.Reader) ([]byte, error) {
 
 // writeMessage writes a message to an [io.Writer].
 func writeMessage(w io.Writer, message []byte) error {
-	if len(message) > math.MaxUint32 {
-		return fmt.Errorf("message length %d exceeds size limit %d", len(message), math.MaxUint32)
+	// Note(salvacorts): We need to cast to uint to avoid overflows on 32-bit systems (e.g. arm docker images)
+	if uint(len(message)) > math.MaxUint32 {
+		return fmt.Errorf("message length %d exceeds size limit %d", len(message), uint32(math.MaxUint32))
 	}
 
 	header := headerPool.Get().(*header)
