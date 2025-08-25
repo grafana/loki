@@ -457,9 +457,7 @@ func (i *instance) removeStream(s *stream) {
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
 		memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
 		streamsCountStats.Add(-1)
-
-		// TODO: We should also remove it from the policy stream counts
-		i.ownedStreamsSvc.trackRemovedStream(s.fp, noPolicy)
+		i.ownedStreamsSvc.trackRemovedStream(s.fp, s.policy)
 	}
 }
 
