@@ -61,6 +61,7 @@ func (p *KWayMerge) Close() {
 			batch.Release()
 		}
 	}
+
 	for _, input := range p.inputs {
 		input.Close()
 	}

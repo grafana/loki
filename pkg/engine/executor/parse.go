@@ -8,6 +8,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
@@ -74,9 +75,18 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 			newFields = append(newFields, schema.Field(i))
 		}
 		for _, header := range headers {
+			// Add metadata to mark these as parsed columns
+			metadata := arrow.NewMetadata([]string{
+				types.MetadataKeyColumnType,
+				types.MetadataKeyColumnDataType,
+			}, []string{
+				types.ColumnTypeParsed.String(),
+				datatype.Loki.String.String(),
+			})
 			newFields = append(newFields, arrow.Field{
-				Name: header,
-				Type: arrow.BinaryTypes.String,
+				Name:     header,
+				Type:     arrow.BinaryTypes.String,
+				Metadata: metadata,
 			})
 		}
 		newSchema := arrow.NewSchema(newFields, nil)
