@@ -118,23 +118,6 @@ func (s nodeSet) contains(node Node) bool {
 	return ok
 }
 
-func (s nodeSet) sorted() []Node {
-	nodes := make([]Node, 0, len(s))
-	for node := range s {
-		nodes = append(nodes, node)
-	}
-	slices.SortFunc(nodes, func(a, b Node) int {
-		if a.ID() > b.ID() {
-			return 1
-		}
-		if a.ID() < b.ID() {
-			return -1
-		}
-		return 0
-	})
-	return nodes
-}
-
 // Plan represents a physical execution plan as a directed acyclic graph (DAG).
 // It maintains the relationships between nodes, tracking parent-child connections
 // and providing methods for graph traversal and manipulation.
