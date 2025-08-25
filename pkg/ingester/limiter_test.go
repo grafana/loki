@@ -467,22 +467,22 @@ type mockLimits struct {
 	}
 }
 
-func (m *mockLimits) MaxLocalStreamsPerUser(userID string) int {
+func (m *mockLimits) MaxLocalStreamsPerUser(_ string) int {
 	return m.maxLocalStreams
 }
 
-func (m *mockLimits) MaxGlobalStreamsPerUser(userID string) int {
+func (m *mockLimits) MaxGlobalStreamsPerUser(_ string) int {
 	return m.maxGlobalStreams
 }
 
-func (m *mockLimits) PolicyMaxLocalStreamsPerUser(userID, policy string) int {
+func (m *mockLimits) PolicyMaxLocalStreamsPerUser(_, policy string) int {
 	if policyLimit, exists := m.policyLimits[policy]; exists {
 		return policyLimit.local
 	}
 	return 0
 }
 
-func (m *mockLimits) PolicyMaxGlobalStreamsPerUser(userID, policy string) int {
+func (m *mockLimits) PolicyMaxGlobalStreamsPerUser(_, policy string) int {
 	if policyLimit, exists := m.policyLimits[policy]; exists {
 		return policyLimit.global
 	}
