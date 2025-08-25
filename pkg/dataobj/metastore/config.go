@@ -2,23 +2,29 @@ package metastore
 
 import (
 	"flag"
+	fmt "fmt"
 
 	"github.com/grafana/dskit/flagext"
 )
 
 // Config is the configuration block for the metastore settings.
 type Config struct {
-	Storage StorageConfig `yaml:"storage" experimental:"true"`
+	Storage        StorageConfig `yaml:"storage" experimental:"true"`
+	PartitionRatio int           `yaml:"partition_ratio" experimental:"true"`
 }
 
 // RegisterFlags registers the flags for the metastore settings.
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	prefix := "dataobj-metastore."
 	c.Storage.RegisterFlagsWithPrefix(prefix, f)
+	f.IntVar(&c.PartitionRatio, prefix+"partition-ratio", 10, "Experimental: The ratio of log partitions to metastore partitions. For example, a value of 10 means there is 1 metastore partition for every 10 log partitions.")
 }
 
 // Validate validates the metastore settings.
 func (c *Config) Validate() error {
+	if c.PartitionRatio <= 0 {
+		return fmt.Errorf("partition_ratio must be greater than 0, got %d", c.PartitionRatio)
+	}
 	return nil
 }
 

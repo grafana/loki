@@ -5,22 +5,23 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/twmb/franz-go/pkg/kerr"
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
-func init() { regKey(18, 0, 3) }
+func init() { regKey(18, 0, 4) }
 
 func (c *Cluster) handleApiVersions(kreq kmsg.Request) (kmsg.Response, error) {
 	req := kreq.(*kmsg.ApiVersionsRequest)
 	resp := req.ResponseKind().(*kmsg.ApiVersionsResponse)
 
-	if resp.Version > 3 {
+	if resp.Version > 3 && resp.Version > apiVersionsKeys[18].MaxVersion {
 		resp.Version = 0 // downgrades to 0 if the version is unknown
+		resp.ErrorCode = kerr.UnsupportedVersion.Code
 	}
 
-	if err := checkReqVersion(req.Key(), req.Version); err != nil {
-		return nil, err
-	}
+	// We do not checkReqVersion for ApiVersions; if the client uses a
+	// version larger than we support, we auto-downgrade.
 
 	// If we are handling ApiVersions, our package is initialized and we
 	// build our response once.
