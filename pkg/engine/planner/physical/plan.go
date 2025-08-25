@@ -207,11 +207,10 @@ func (p *Plan) eliminateNode(node Node) {
 	parent := p.Parent(node)
 	if parent != nil {
 		idx := slices.Index(p.children[parent], node)
-		// First get rid of the node to be deleted
-		allChildren := append(p.children[parent][0:idx], p.children[parent][idx+1:]...)
-		// Then insert all the children of the node
-		allChildren = slices.Insert(allChildren, idx, p.children[node]...)
-		p.children[parent] = allChildren
+
+		// Replace node's entry in the parent's children with the children of node.
+		oldChildren := p.children[parent]
+		p.children[parent] = slices.Replace(oldChildren, idx, idx+1, p.children[node]...)
 	}
 
 	for _, child := range p.Children(node) {
