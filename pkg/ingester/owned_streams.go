@@ -67,6 +67,13 @@ func (s *ownedStreamService) getPolicyStreamCount(policy string) int {
 	return 0
 }
 
+// getActivePolicyCount returns the number of policies that currently have active streams
+func (s *ownedStreamService) getActivePolicyCount() int {
+	s.policyLock.RLock()
+	defer s.policyLock.RUnlock()
+	return len(s.policyStreamCounts)
+}
+
 func (s *ownedStreamService) updateFixedLimit() (old, newVal int32) {
 	newLimit, _, _, _ := s.limiter.GetStreamCountLimit(s.tenantID, noPolicy)
 	return s.fixedLimit.Swap(int32(newLimit)), int32(newLimit)
@@ -116,6 +123,10 @@ func (s *ownedStreamService) trackRemovedStream(fp model.Fingerprint, policy str
 		s.policyLock.Lock()
 		if policyCount, exists := s.policyStreamCounts[policy]; exists {
 			policyCount.Dec()
+			// Clean up policy if count reaches zero to prevent unbounded map growth
+			if policyCount.Load() == 0 {
+				delete(s.policyStreamCounts, policy)
+			}
 		}
 		s.policyLock.Unlock()
 	}
@@ -128,11 +139,9 @@ func (s *ownedStreamService) resetStreamCounts() {
 	notOwnedStreamsMetric.Sub(float64(len(s.notOwnedStreams)))
 	s.notOwnedStreams = make(map[model.Fingerprint]any)
 
-	// Reset policy-specific stream counts
+	// Reset policy-specific stream counts and clean up the map
 	s.policyLock.Lock()
-	for _, policyCount := range s.policyStreamCounts {
-		policyCount.Store(0)
-	}
+	s.policyStreamCounts = make(map[string]*atomic.Int64)
 	s.policyLock.Unlock()
 }
 
