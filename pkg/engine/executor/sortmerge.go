@@ -62,6 +62,7 @@ func (p *KWayMerge) Close() {
 			batch.Release()
 		}
 	}
+
 	for _, input := range p.inputs {
 		input.Close()
 	}
@@ -154,7 +155,12 @@ loop:
 
 			// It is safe to use the value from the Value() call, because the error is already checked after the Read() call.
 			// In case the input is exhausted (reached EOF), the return value is `nil`, however, since the flag `p.exhausted[i]` is set, the value will never be read.
-			p.batches[i], _ = p.inputs[i].Value()
+			newBatch, _ := p.inputs[i].Value()
+			// The pipeline owns this batch now, so we need to retain it
+			if newBatch != nil {
+				newBatch.Retain()
+			}
+			p.batches[i] = newBatch
 		}
 
 		// Fetch timestamp value at current offset

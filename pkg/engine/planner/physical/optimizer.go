@@ -199,6 +199,13 @@ func (r *projectionPushdown) apply(node Node) bool {
 		projections[len(node.PartitionBy)] = &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}
 
 		return r.applyProjectionPushdown(node, projections, false)
+	case *ParseNode:
+		// Parse nodes need the message column to extract fields from log lines
+		projections := []ColumnExpression{
+			&ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinMessage, Type: types.ColumnTypeBuiltin}},
+		}
+		// Apply projection pushdown, but only add to existing projections (for metric queries)
+		return r.applyProjectionPushdown(node, projections, true)
 	case *Filter:
 		projections := extractColumnsFromPredicates(node.Predicates)
 		if len(projections) == 0 {
