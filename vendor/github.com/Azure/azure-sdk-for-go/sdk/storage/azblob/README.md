@@ -1,4 +1,7 @@
 # Azure Blob Storage module for Go
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/Azure/azure-sdk-for-go/sdk/azblob)](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob)
+[![Build Status](https://dev.azure.com/azure-sdk/public/_apis/build/status/go/go%20-%20azdatalake%20-%20ci?branchName=main)](https://dev.azure.com/azure-sdk/public/_build/latest?definitionId=2854&branchName=main)
+[![Code Coverage](https://img.shields.io/azure-devops/coverage/azure-sdk/public/2854/main)](https://img.shields.io/azure-devops/coverage/azure-sdk/public/2854/main)
 
 > Service Version: 2023-11-03
 
@@ -19,7 +22,7 @@ Key links:
 
 ### Prerequisites
 
-- Go, version 1.18 or higher - [Install Go](https://go.dev/doc/install)
+- [Supported](https://aka.ms/azsdk/go/supported-versions) version of Go - [Install Go](https://go.dev/doc/install)
 - Azure subscription - [Create a free account](https://azure.microsoft.com/free/)
 - Azure storage account - To create a storage account, use tools including the [Azure portal][storage_account_create_portal],
 [Azure PowerShell][storage_account_create_ps], or the [Azure CLI][storage_account_create_cli].
@@ -246,7 +249,7 @@ For more information see the [Code of Conduct FAQ][coc_faq]
 or contact [opencode@microsoft.com][coc_contact] with any
 additional questions or comments.
 
-![Impressions](https://azure-sdk-impressions.azurewebsites.net/api/impressions/azure-sdk-for-go%2Fsdk%2Fstorage%2Fazblob%2FREADME.png)
+
 
 <!-- LINKS -->
 [source]: https://github.com/Azure/azure-sdk-for-go/tree/main/sdk/storage/azblob

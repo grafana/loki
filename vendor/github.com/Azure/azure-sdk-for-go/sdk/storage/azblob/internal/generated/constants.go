@@ -6,4 +6,4 @@
 
 package generated
 
-const ServiceVersion = "2023-11-03"
+const ServiceVersion = "2025-11-05"

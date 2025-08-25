@@ -27,7 +27,8 @@ var RootResourceID = &ResourceID{
 }
 
 // ResourceID represents a resource ID such as `/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/myRg`.
-// Don't create this type directly, use ParseResourceID instead.
+// Don't create this type directly, use [ParseResourceID] instead. Fields are considered immutable and shouldn't be
+// modified after creation.
 type ResourceID struct {
 	// Parent is the parent ResourceID of this instance.
 	// Can be nil if there is no parent.
@@ -85,28 +86,6 @@ func ParseResourceID(id string) (*ResourceID, error) {
 
 // String returns the string of the ResourceID
 func (id *ResourceID) String() string {
-	if len(id.stringValue) > 0 {
-		return id.stringValue
-	}
-
-	if id.Parent == nil {
-		return ""
-	}
-
-	builder := strings.Builder{}
-	builder.WriteString(id.Parent.String())
-
-	if id.isChild {
-		builder.WriteString(fmt.Sprintf("/%s", id.ResourceType.lastType()))
-		if len(id.Name) > 0 {
-			builder.WriteString(fmt.Sprintf("/%s", id.Name))
-		}
-	} else {
-		builder.WriteString(fmt.Sprintf("/providers/%s/%s/%s", id.ResourceType.Namespace, id.ResourceType.Type, id.Name))
-	}
-
-	id.stringValue = builder.String()
-
 	return id.stringValue
 }
 
@@ -185,6 +164,15 @@ func (id *ResourceID) init(parent *ResourceID, resourceType ResourceType, name s
 	id.isChild = isChild
 	id.ResourceType = resourceType
 	id.Name = name
+	id.stringValue = id.Parent.String()
+	if id.isChild {
+		id.stringValue += "/" + id.ResourceType.lastType()
+		if id.Name != "" {
+			id.stringValue += "/" + id.Name
+		}
+	} else {
+		id.stringValue += fmt.Sprintf("/providers/%s/%s/%s", id.ResourceType.Namespace, id.ResourceType.Type, id.Name)
+	}
 }
 
 func appendNext(parent *ResourceID, parts []string, id string) (*ResourceID, error) {

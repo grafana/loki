@@ -523,6 +523,8 @@ type CopyFromURLOptions struct {
 	BlobTags map[string]string
 	// Only Bearer type is supported. Credentials should be a valid OAuth access token to copy source.
 	CopySourceAuthorization *string
+	// File request Intent. Valid value is backup.
+	FileRequestIntent *FileRequestIntentType
 	// Specifies the date time when the blobs immutability policy is set to expire.
 	ImmutabilityPolicyExpiry *time.Time
 	// Specifies the immutability policy mode to set on the blob.
@@ -558,6 +560,7 @@ func (o *CopyFromURLOptions) format() (*generated.BlobClientCopyFromURLOptions, 
 		CopySourceAuthorization:  o.CopySourceAuthorization,
 		ImmutabilityPolicyExpiry: o.ImmutabilityPolicyExpiry,
 		ImmutabilityPolicyMode:   o.ImmutabilityPolicyMode,
+		FileRequestIntent:        o.FileRequestIntent,
 		LegalHold:                o.LegalHold,
 		Metadata:                 o.Metadata,
 		SourceContentMD5:         o.SourceContentMD5,

@@ -233,3 +233,17 @@ func (s SourceContentValidationTypeMD5) Apply(src generated.SourceContentSetter)
 func (SourceContentValidationTypeMD5) notPubliclyImplementable() {}
 
 var _ SourceContentValidationType = (SourceContentValidationTypeMD5)(nil)
+
+// FileRequestIntentType is file request intent with  valid value as Backup
+type FileRequestIntentType = generated.FileShareTokenIntent
+
+const (
+	FileRequestIntentTypeBackup FileRequestIntentType = "backup"
+)
+
+// PossibleFileRequestIntentTypeValues returns the possible values for the FileRequestIntentType const type.
+func PossibleFileRequestIntentTypeValues() []FileRequestIntentType {
+	return []FileRequestIntentType{
+		FileRequestIntentTypeBackup,
+	}
+}
