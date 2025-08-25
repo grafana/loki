@@ -64,6 +64,14 @@ cloud.google.com/go/pubsub/apiv1/pubsubpb
 cloud.google.com/go/pubsub/internal
 cloud.google.com/go/pubsub/internal/distribution
 cloud.google.com/go/pubsub/internal/scheduler
+# cloud.google.com/go/pubsub/v2 v2.0.0
+## explicit; go 1.23.0
+cloud.google.com/go/pubsub/v2
+cloud.google.com/go/pubsub/v2/apiv1
+cloud.google.com/go/pubsub/v2/apiv1/pubsubpb
+cloud.google.com/go/pubsub/v2/internal
+cloud.google.com/go/pubsub/v2/internal/distribution
+cloud.google.com/go/pubsub/v2/internal/scheduler
 # cloud.google.com/go/storage v1.56.1
 ## explicit; go 1.23.0
 cloud.google.com/go/storage
@@ -835,8 +843,8 @@ github.com/fluent/fluent-bit-go/output
 ## explicit; go 1.17
 github.com/fsnotify/fsnotify
 github.com/fsnotify/fsnotify/internal
-# github.com/fsouza/fake-gcs-server v1.52.2
-## explicit; go 1.23
+# github.com/fsouza/fake-gcs-server v1.52.3
+## explicit; go 1.24.0
 github.com/fsouza/fake-gcs-server/fakestorage
 github.com/fsouza/fake-gcs-server/internal/backend
 github.com/fsouza/fake-gcs-server/internal/checksum
