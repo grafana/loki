@@ -299,24 +299,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	}
 
 	retentionHours := util.RetentionHours(i.tenantsRetention.RetentionPeriodFor(i.instanceID, labels))
-	mapping := i.limiter.limits.PoliciesStreamMapping(i.instanceID)
-	policies := mapping.PolicyFor(labels)
-
-	// NOTE: We previously resolved the policy on distributors and logged when multiple policies were matched.
-	// As on distributors, we use the first policy by alphabetical order.
-	var policy string
-	if len(policies) > 0 {
-		policy = policies[0]
-		if len(policies) > 1 {
-			level.Warn(util_log.Logger).Log(
-				"msg", "multiple policies matched for the same stream",
-				"org_id", i.instanceID,
-				"stream", pushReqStream.Labels,
-				"policy", policy,
-				"policies", strings.Join(policies, ","),
-			)
-		}
-	}
+	policy := i.resolvePolicyForStream(labels)
 
 	if record != nil {
 		err = i.streamCountLimiter.AssertNewStreamAllowed(i.instanceID, policy)
@@ -335,7 +318,7 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 		return nil, fmt.Errorf("failed to create stream: %w", err)
 	}
 
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours)
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -353,6 +336,27 @@ func (i *instance) createStream(ctx context.Context, pushReqStream logproto.Stre
 	return s, nil
 }
 
+func (i *instance) resolvePolicyForStream(labels labels.Labels) string {
+	mapping := i.limiter.limits.PoliciesStreamMapping(i.instanceID)
+	policies := mapping.PolicyFor(labels)
+	// NOTE: We previously resolved the policy on distributors and logged when multiple policies were matched.
+	// As on distributors, we use the first policy by alphabetical order.
+	var policy string
+	if len(policies) > 0 {
+		policy = policies[0]
+		if len(policies) > 1 {
+			level.Warn(util_log.Logger).Log(
+				"msg", "multiple policies matched for the same stream",
+				"org_id", i.instanceID,
+				"stream", labels.String(),
+				"policy", policy,
+				"policies", strings.Join(policies, ","),
+			)
+		}
+	}
+	return policy
+}
+
 func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logproto.Stream, err error, labels labels.Labels, retentionHours, policy, format string) (*stream, error) {
 	if i.configs.LogStreamCreation(i.instanceID) || i.cfg.KafkaIngestion.Enabled {
 		l := level.Debug(util_log.Logger)
@@ -366,6 +370,7 @@ func (i *instance) onStreamCreationError(ctx context.Context, pushReqStream logp
 			"org_id", i.instanceID,
 			"err", err,
 			"stream", pushReqStream.Labels,
+			"policy", policy,
 		)
 	}
 
@@ -385,7 +390,7 @@ func (i *instance) onStreamCreated(s *stream) {
 	i.addTailersToNewStream(s)
 	streamsCountStats.Add(1)
 	// we count newly created stream as owned
-	i.ownedStreamsSvc.trackStreamOwnership(s.fp, true)
+	i.ownedStreamsSvc.trackStreamOwnership(s.fp, true, s.policy)
 	if i.configs.LogStreamCreation(i.instanceID) {
 		level.Debug(util_log.Logger).Log(
 			"msg", "successfully created stream",
@@ -404,7 +409,9 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) (*st
 	}
 
 	retentionHours := util.RetentionHours(i.tenantsRetention.RetentionPeriodFor(i.instanceID, ls))
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours)
+	policy := i.resolvePolicyForStream(ls)
+
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter.rateLimitStrategy, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures, i.configs, retentionHours, policy)
 
 	i.onStreamCreated(s)
 
@@ -450,7 +457,9 @@ func (i *instance) removeStream(s *stream) {
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
 		memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
 		streamsCountStats.Add(-1)
-		i.ownedStreamsSvc.trackRemovedStream(s.fp)
+
+		// TODO: We should also remove it from the policy stream counts
+		i.ownedStreamsSvc.trackRemovedStream(s.fp, noPolicy)
 	}
 }
 
@@ -1234,7 +1243,7 @@ func (i *instance) updateOwnedStreams(isOwnedStream func(*stream) (bool, error))
 				return false, err
 			}
 
-			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedStream)
+			i.ownedStreamsSvc.trackStreamOwnership(s.fp, ownedStream, s.policy)
 			return true, nil
 		})
 	})

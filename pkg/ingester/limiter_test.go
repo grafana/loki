@@ -395,7 +395,7 @@ func TestLimiter_GetStreamCountLimit(t *testing.T) {
 	}
 
 	// Test with no policy - should use original method
-	calculated, local, global, adjusted := limiter.GetStreamCountLimit("tenant1", "")
+	calculated, local, global, adjusted := limiter.GetStreamCountLimit("tenant1", noPolicy)
 	require.Equal(t, 100, local)
 	require.Equal(t, 1000, global)
 	require.Equal(t, 500, adjusted)   // 1000 / 2 * 1
@@ -421,6 +421,59 @@ func TestLimiter_GetStreamCountLimit(t *testing.T) {
 	require.Equal(t, 1000, global)
 	require.Equal(t, 500, adjusted)   // 1000 / 2 * 1
 	require.Equal(t, 100, calculated) // min(100, 500)
+}
+
+func TestStreamCountLimiter_PolicyLimitsTakePrecedence(t *testing.T) {
+	// Create a mock limits implementation
+	mockLimits := &mockLimits{
+		maxLocalStreams:  200,
+		maxGlobalStreams: 2000,
+		policyLimits: map[string]struct {
+			local  int
+			global int
+		}{
+			"finance": {local: 100, global: 1000},
+		},
+	}
+
+	// Create a simple ring strategy for testing
+	ringStrategy := &mockRingStrategy{
+		healthyInstances:  2,
+		replicationFactor: 1,
+	}
+
+	limiter := &Limiter{
+		limits:       mockLimits,
+		ringStrategy: ringStrategy,
+	}
+
+	// Create a stream count limiter with a fixed limit supplier that returns 150
+	fixedLimitSupplier := func() int { return 150 }
+	streamCountLimiter := &streamCountLimiter{
+		limiter: limiter,
+	}
+
+	// Test 1: No policy specified - fixed limit should be applied
+	// No-policy limit: min(200, 2000/2) = min(200, 1000) = 200
+	// Fixed limit: 150
+	// Expected: 200 (the higher of the two)
+	calculated, _, _, _ := streamCountLimiter.getCurrentLimit("tenant1", noPolicy, fixedLimitSupplier)
+	require.Equal(t, 200, calculated, "Without policy, should use the higher of calculated and fixed limits")
+
+	// Test 2: Policy specified - policy limit should take precedence over fixed limit
+	// Policy limit: min(100, 1000/2) = min(100, 500) = 100
+	// Fixed limit: 150 (should be ignored when policy is specified)
+	// Expected: 100 (policy limit takes precedence)
+	calculated, _, _, _ = streamCountLimiter.getCurrentLimit("tenant1", "finance", fixedLimitSupplier)
+	require.Equal(t, 100, calculated, "With policy, policy limit should take precedence over fixed limit")
+
+	// Test 3: Verify that policy limits are actually being enforced
+	// This ensures the policy override is working correctly
+	calculated, local, global, adjusted := streamCountLimiter.getCurrentLimit("tenant1", "finance", fixedLimitSupplier)
+	require.Equal(t, 100, local, "Policy local limit should be 100")
+	require.Equal(t, 1000, global, "Policy global limit should be 1000")
+	require.Equal(t, 500, adjusted, "Policy adjusted global limit should be 500")
+	require.Equal(t, 100, calculated, "Policy calculated limit should be 100")
 }
 
 // Mock implementations for testing

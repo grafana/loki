@@ -101,7 +101,8 @@ func (l *Limiter) GetStreamCountLimit(tenantID string, policy string) (calculate
 	globalLimit = l.limits.MaxGlobalStreamsPerUser(tenantID)
 
 	// Check for policy-specific overrides if policy is specified
-	if policy != "" {
+	// NOTE: Whereas for the regular stream limits 0 means no limit, for policy limit 0 means no per-policy limit override is specified
+	if policy != noPolicy {
 		policyLocalLimit := l.limits.PolicyMaxLocalStreamsPerUser(tenantID, policy)
 		if policyLocalLimit > 0 {
 			localLimit = policyLocalLimit
@@ -225,7 +226,7 @@ func newStreamCountLimiter(tenantID string, defaultStreamCountSupplier supplier[
 }
 
 func (l *streamCountLimiter) AssertNewStreamAllowed(tenantID string, policy string) error {
-	streamCountSupplier, fixedLimitSupplier := l.getSuppliers(tenantID)
+	streamCountSupplier, fixedLimitSupplier := l.getSuppliers(tenantID, policy)
 	calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit := l.getCurrentLimit(tenantID, policy, fixedLimitSupplier)
 	actualStreamsCount := streamCountSupplier()
 	if actualStreamsCount < calculatedLimit {
@@ -237,16 +238,30 @@ func (l *streamCountLimiter) AssertNewStreamAllowed(tenantID string, policy stri
 
 func (l *streamCountLimiter) getCurrentLimit(tenantID, policy string, fixedLimitSupplier supplier[int]) (calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit int) {
 	calculatedLimit, localLimit, globalLimit, adjustedGlobalLimit = l.limiter.GetStreamCountLimit(tenantID, policy)
-	fixedLimit := fixedLimitSupplier()
-	if fixedLimit > calculatedLimit {
-		calculatedLimit = fixedLimit
+
+	// Only apply fixed limit if no policy is specified
+	// Policy limits should take precedence over fixed limits
+	if policy == noPolicy {
+		fixedLimit := fixedLimitSupplier()
+		if fixedLimit > calculatedLimit {
+			calculatedLimit = fixedLimit
+		}
 	}
+
 	return
 }
 
-func (l *streamCountLimiter) getSuppliers(tenant string) (streamCountSupplier, fixedLimitSupplier supplier[int]) {
+func (l *streamCountLimiter) getSuppliers(tenant string, policy string) (streamCountSupplier, fixedLimitSupplier supplier[int]) {
 	if l.limiter.limits.UseOwnedStreamCount(tenant) {
-		return l.ownedStreamSvc.getOwnedStreamCount, l.ownedStreamSvc.getFixedLimit
+		streamCountSupplier := func() int {
+			return l.ownedStreamSvc.getOwnedStreamCount()
+		}
+		if policy != noPolicy {
+			streamCountSupplier = func() int {
+				return l.ownedStreamSvc.getPolicyStreamCount(policy)
+			}
+		}
+		return streamCountSupplier, l.ownedStreamSvc.getFixedLimit
 	}
 	return l.defaultStreamCountSupplier, noopFixedLimitSupplier
 }
