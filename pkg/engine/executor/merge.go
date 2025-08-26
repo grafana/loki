@@ -9,18 +9,13 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 )
 
-var errorCancelled = errors.New("cancelled by merge pipeline")
-
-// Merge is a pipeline that takes N inputs and paralelly consumes them.
-// It completely exhausts the open inputs before loading the next one.
-
-// InputState tracks the processing state of each input pipeline
-type InputState int
+// inputState tracks the processing state of each input pipeline
+type inputState int
 
 const (
-	InputNotStarted InputState = iota
-	InputInProgress
-	InputCompleted
+	inputNotStarted inputState = iota
+	inputInProgress
+	inputCompleted
 )
 
 // workerResult represents a result from an input pipeline
@@ -31,14 +26,12 @@ type workerResult struct {
 	completed bool // true when this input is fully exhausted
 }
 
-// Merge processes N inputs with configurable parallelism.
-// It maintains exactly maxConcurrency inputs in-progress at any time,
-// completely exhausting each input before moving to the next one.
+// Merge processes N inputs with configurable concurrency.
 type Merge struct {
 	inputs         []Pipeline
 	maxConcurrency int
 
-	inputStates []InputState
+	inputStates []inputState
 	mu          sync.RWMutex // protect input state changes
 
 	resultCh chan workerResult
@@ -55,9 +48,13 @@ type Merge struct {
 var _ Pipeline = (*Merge)(nil)
 
 // newMergePipeline creates a new merge pipeline that merges N inputs into a single output.
+//
 // maxConcurrency controls how many inputs are processed simultaneously.
-// Set maxConcurrency to 0 or negative for full parallelism (one goroutine per input).
-// Set maxConcurrency to 1 for sequential processing.
+// It also controls the number of open prefetch Pipelines to allow all of these inputs
+// to load the next record in parallel.
+//
+// Set maxConcurrency to 1 to sequentially process each input.
+// A value of 0 or less defaults the concurrency to number of inputs.
 func newMergePipeline(inputs []Pipeline, maxConcurrency int) (*Merge, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("merge pipeline: no inputs provided")
@@ -71,7 +68,7 @@ func newMergePipeline(inputs []Pipeline, maxConcurrency int) (*Merge, error) {
 	return &Merge{
 		inputs:         inputs,
 		maxConcurrency: maxConcurrency,
-		inputStates:    make([]InputState, len(inputs)),
+		inputStates:    make([]inputState, len(inputs)),
 	}, nil
 }
 
@@ -118,7 +115,7 @@ func (m *Merge) inputWorker() {
 
 // processInput completely exhausts a single input pipeline
 func (m *Merge) processInput(inputIdx int) {
-	m.updateInputState(inputIdx, InputInProgress)
+	m.updateInputState(inputIdx, inputInProgress)
 
 	input := newPrefetchingPipeline(m.inputs[inputIdx])
 	defer input.Close()
@@ -156,7 +153,7 @@ func (m *Merge) processInput(inputIdx int) {
 }
 
 // updateInputState safely updates the state of an input
-func (m *Merge) updateInputState(inputIdx int, state InputState) {
+func (m *Merge) updateInputState(inputIdx int, state inputState) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.inputStates[inputIdx] = state
@@ -168,7 +165,7 @@ func (m *Merge) allInputsCompleted() bool {
 	defer m.mu.RUnlock()
 
 	for _, state := range m.inputStates {
-		if state != InputCompleted {
+		if state != inputCompleted {
 			return false
 		}
 	}
@@ -197,7 +194,7 @@ func (m *Merge) Read(ctx context.Context) error {
 
 			if result.err != nil {
 				if errors.Is(result.err, EOF) {
-					m.updateInputState(result.inputIdx, InputCompleted)
+					m.updateInputState(result.inputIdx, inputCompleted)
 					if m.allInputsCompleted() {
 						m.state = Exhausted
 						return fmt.Errorf("run merge: %w", m.state.err)

@@ -133,7 +133,7 @@ func TestMerge_concurrency(t *testing.T) {
 			recordRows := make(arrowtest.Rows, numRows)
 
 			for k := range numRows {
-				recordRows[k] = map[string]interface{}{
+				recordRows[k] = map[string]any{
 					"ts":  int64(i*100 + j*10 + k),
 					"msg": fmt.Sprintf("%s_row_%d", recordID, k),
 				}
