@@ -7,21 +7,66 @@
 package internal
 
 import (
+	"fmt"
+	"sync"
+
 	otlptrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/trace/v1"
 	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
+var (
+	protoPoolScopeSpans = sync.Pool{
+		New: func() any {
+			return &otlptrace.ScopeSpans{}
+		},
+	}
+)
+
+func NewOrigScopeSpans() *otlptrace.ScopeSpans {
+	if !UseProtoPooling.IsEnabled() {
+		return &otlptrace.ScopeSpans{}
+	}
+	return protoPoolScopeSpans.Get().(*otlptrace.ScopeSpans)
+}
+
+func DeleteOrigScopeSpans(orig *otlptrace.ScopeSpans, nullable bool) {
+	if orig == nil {
+		return
+	}
+
+	if !UseProtoPooling.IsEnabled() {
+		orig.Reset()
+		return
+	}
+
+	DeleteOrigInstrumentationScope(&orig.Scope, false)
+	for i := range orig.Spans {
+		DeleteOrigSpan(orig.Spans[i], true)
+	}
+
+	orig.Reset()
+	if nullable {
+		protoPoolScopeSpans.Put(orig)
+	}
+}
+
 func CopyOrigScopeSpans(dest, src *otlptrace.ScopeSpans) {
+	// If copying to same object, just return.
+	if src == dest {
+		return
+	}
 	CopyOrigInstrumentationScope(&dest.Scope, &src.Scope)
 	dest.Spans = CopyOrigSpanSlice(dest.Spans, src.Spans)
 	dest.SchemaUrl = src.SchemaUrl
 }
 
-func FillOrigTestScopeSpans(orig *otlptrace.ScopeSpans) {
-	FillOrigTestInstrumentationScope(&orig.Scope)
+func GenTestOrigScopeSpans() *otlptrace.ScopeSpans {
+	orig := NewOrigScopeSpans()
+	orig.Scope = *GenTestOrigInstrumentationScope()
 	orig.Spans = GenerateOrigTestSpanSlice()
 	orig.SchemaUrl = "test_schemaurl"
+	return orig
 }
 
 // MarshalJSONOrig marshals all properties from the current struct to the destination stream.
@@ -48,19 +93,22 @@ func MarshalJSONOrigScopeSpans(orig *otlptrace.ScopeSpans, dest *json.Stream) {
 
 // UnmarshalJSONOrigScopeSpans unmarshals all properties from the current struct from the source iterator.
 func UnmarshalJSONOrigScopeSpans(orig *otlptrace.ScopeSpans, iter *json.Iterator) {
-	iter.ReadObjectCB(func(iter *json.Iterator, f string) bool {
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
 		case "scope":
 			UnmarshalJSONOrigInstrumentationScope(&orig.Scope, iter)
 		case "spans":
-			orig.Spans = UnmarshalJSONOrigSpanSlice(iter)
+			for iter.ReadArray() {
+				orig.Spans = append(orig.Spans, NewOrigSpan())
+				UnmarshalJSONOrigSpan(orig.Spans[len(orig.Spans)-1], iter)
+			}
+
 		case "schemaUrl", "schema_url":
 			orig.SchemaUrl = iter.ReadString()
 		default:
 			iter.Skip()
 		}
-		return true
-	})
+	}
 }
 
 func SizeProtoOrigScopeSpans(orig *otlptrace.ScopeSpans) int {
@@ -91,7 +139,7 @@ func MarshalProtoOrigScopeSpans(orig *otlptrace.ScopeSpans, buf []byte) int {
 	pos--
 	buf[pos] = 0xa
 
-	for i := range orig.Spans {
+	for i := len(orig.Spans) - 1; i >= 0; i-- {
 		l = MarshalProtoOrigSpan(orig.Spans[i], buf[:pos])
 		pos -= l
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
@@ -110,5 +158,69 @@ func MarshalProtoOrigScopeSpans(orig *otlptrace.ScopeSpans, buf []byte) int {
 }
 
 func UnmarshalProtoOrigScopeSpans(orig *otlptrace.ScopeSpans, buf []byte) error {
-	return orig.Unmarshal(buf)
+	var err error
+	var fieldNum int32
+	var wireType proto.WireType
+
+	l := len(buf)
+	pos := 0
+	for pos < l {
+		// If in a group parsing, move to the next tag.
+		fieldNum, wireType, pos, err = proto.ConsumeTag(buf, pos)
+		if err != nil {
+			return err
+		}
+		switch fieldNum {
+
+		case 1:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field Scope", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+
+			err = UnmarshalProtoOrigInstrumentationScope(&orig.Scope, buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+
+		case 2:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field Spans", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			orig.Spans = append(orig.Spans, NewOrigSpan())
+			err = UnmarshalProtoOrigSpan(orig.Spans[len(orig.Spans)-1], buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+
+		case 3:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field SchemaUrl", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			orig.SchemaUrl = string(buf[startPos:pos])
+		default:
+			pos, err = proto.ConsumeUnknown(buf, pos, wireType)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

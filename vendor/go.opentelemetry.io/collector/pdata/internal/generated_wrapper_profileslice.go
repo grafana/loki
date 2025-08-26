@@ -8,7 +8,6 @@ package internal
 
 import (
 	otlpprofiles "go.opentelemetry.io/collector/pdata/internal/data/protogen/profiles/v1development"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 func CopyOrigProfileSlice(dest, src []*otlpprofiles.Profile) []*otlpprofiles.Profile {
@@ -19,19 +18,20 @@ func CopyOrigProfileSlice(dest, src []*otlpprofiles.Profile) []*otlpprofiles.Pro
 		copy(newDest, dest)
 		// Add new pointers for missing elements from len(dest) to len(srt).
 		for i := len(dest); i < len(src); i++ {
-			newDest[i] = &otlpprofiles.Profile{}
+			newDest[i] = NewOrigProfile()
 		}
 	} else {
 		newDest = dest[:len(src)]
 		// Cleanup the rest of the elements so GC can free the memory.
 		// This can happen when len(src) < len(dest) < cap(dest).
 		for i := len(src); i < len(dest); i++ {
+			DeleteOrigProfile(dest[i], true)
 			dest[i] = nil
 		}
 		// Add new pointers for missing elements.
 		// This can happen when len(dest) < len(src) < cap(dest).
 		for i := len(dest); i < len(src); i++ {
-			newDest[i] = &otlpprofiles.Profile{}
+			newDest[i] = NewOrigProfile()
 		}
 	}
 	for i := range src {
@@ -41,21 +41,11 @@ func CopyOrigProfileSlice(dest, src []*otlpprofiles.Profile) []*otlpprofiles.Pro
 }
 
 func GenerateOrigTestProfileSlice() []*otlpprofiles.Profile {
-	orig := make([]*otlpprofiles.Profile, 7)
-	for i := 0; i < 7; i++ {
-		orig[i] = &otlpprofiles.Profile{}
-		FillOrigTestProfile(orig[i])
-	}
-	return orig
-}
-
-// UnmarshalJSONOrigProfileSlice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONOrigProfileSlice(iter *json.Iterator) []*otlpprofiles.Profile {
-	var orig []*otlpprofiles.Profile
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		orig = append(orig, &otlpprofiles.Profile{})
-		UnmarshalJSONOrigProfile(orig[len(orig)-1], iter)
-		return true
-	})
+	orig := make([]*otlpprofiles.Profile, 5)
+	orig[0] = NewOrigProfile()
+	orig[1] = GenTestOrigProfile()
+	orig[2] = NewOrigProfile()
+	orig[3] = GenTestOrigProfile()
+	orig[4] = NewOrigProfile()
 	return orig
 }

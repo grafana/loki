@@ -34,8 +34,7 @@ func newMetric(orig *otlpmetrics.Metric, state *internal.State) Metric {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewMetric() Metric {
-	state := internal.StateMutable
-	return newMetric(&otlpmetrics.Metric{}, &state)
+	return newMetric(internal.NewOrigMetric(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -47,8 +46,8 @@ func (ms Metric) MoveTo(dest Metric) {
 	if ms.orig == dest.orig {
 		return
 	}
-	*dest.orig = *ms.orig
-	*ms.orig = otlpmetrics.Metric{}
+	internal.DeleteOrigMetric(dest.orig, false)
+	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Name returns the name associated with this Metric.
@@ -123,9 +122,15 @@ func (ms Metric) Gauge() Gauge {
 // Calling this function on zero-initialized Metric will cause a panic.
 func (ms Metric) SetEmptyGauge() Gauge {
 	ms.state.AssertMutable()
-	val := &otlpmetrics.Gauge{}
-	ms.orig.Data = &otlpmetrics.Metric_Gauge{Gauge: val}
-	return newGauge(val, ms.state)
+	var ov *otlpmetrics.Metric_Gauge
+	if !internal.UseProtoPooling.IsEnabled() {
+		ov = &otlpmetrics.Metric_Gauge{}
+	} else {
+		ov = internal.ProtoPoolMetric_Gauge.Get().(*otlpmetrics.Metric_Gauge)
+	}
+	ov.Gauge = internal.NewOrigGauge()
+	ms.orig.Data = ov
+	return newGauge(ov.Gauge, ms.state)
 }
 
 // Sum returns the sum associated with this Metric.
@@ -149,9 +154,15 @@ func (ms Metric) Sum() Sum {
 // Calling this function on zero-initialized Metric will cause a panic.
 func (ms Metric) SetEmptySum() Sum {
 	ms.state.AssertMutable()
-	val := &otlpmetrics.Sum{}
-	ms.orig.Data = &otlpmetrics.Metric_Sum{Sum: val}
-	return newSum(val, ms.state)
+	var ov *otlpmetrics.Metric_Sum
+	if !internal.UseProtoPooling.IsEnabled() {
+		ov = &otlpmetrics.Metric_Sum{}
+	} else {
+		ov = internal.ProtoPoolMetric_Sum.Get().(*otlpmetrics.Metric_Sum)
+	}
+	ov.Sum = internal.NewOrigSum()
+	ms.orig.Data = ov
+	return newSum(ov.Sum, ms.state)
 }
 
 // Histogram returns the histogram associated with this Metric.
@@ -175,9 +186,15 @@ func (ms Metric) Histogram() Histogram {
 // Calling this function on zero-initialized Metric will cause a panic.
 func (ms Metric) SetEmptyHistogram() Histogram {
 	ms.state.AssertMutable()
-	val := &otlpmetrics.Histogram{}
-	ms.orig.Data = &otlpmetrics.Metric_Histogram{Histogram: val}
-	return newHistogram(val, ms.state)
+	var ov *otlpmetrics.Metric_Histogram
+	if !internal.UseProtoPooling.IsEnabled() {
+		ov = &otlpmetrics.Metric_Histogram{}
+	} else {
+		ov = internal.ProtoPoolMetric_Histogram.Get().(*otlpmetrics.Metric_Histogram)
+	}
+	ov.Histogram = internal.NewOrigHistogram()
+	ms.orig.Data = ov
+	return newHistogram(ov.Histogram, ms.state)
 }
 
 // ExponentialHistogram returns the exponentialhistogram associated with this Metric.
@@ -201,9 +218,15 @@ func (ms Metric) ExponentialHistogram() ExponentialHistogram {
 // Calling this function on zero-initialized Metric will cause a panic.
 func (ms Metric) SetEmptyExponentialHistogram() ExponentialHistogram {
 	ms.state.AssertMutable()
-	val := &otlpmetrics.ExponentialHistogram{}
-	ms.orig.Data = &otlpmetrics.Metric_ExponentialHistogram{ExponentialHistogram: val}
-	return newExponentialHistogram(val, ms.state)
+	var ov *otlpmetrics.Metric_ExponentialHistogram
+	if !internal.UseProtoPooling.IsEnabled() {
+		ov = &otlpmetrics.Metric_ExponentialHistogram{}
+	} else {
+		ov = internal.ProtoPoolMetric_ExponentialHistogram.Get().(*otlpmetrics.Metric_ExponentialHistogram)
+	}
+	ov.ExponentialHistogram = internal.NewOrigExponentialHistogram()
+	ms.orig.Data = ov
+	return newExponentialHistogram(ov.ExponentialHistogram, ms.state)
 }
 
 // Summary returns the summary associated with this Metric.
@@ -227,9 +250,15 @@ func (ms Metric) Summary() Summary {
 // Calling this function on zero-initialized Metric will cause a panic.
 func (ms Metric) SetEmptySummary() Summary {
 	ms.state.AssertMutable()
-	val := &otlpmetrics.Summary{}
-	ms.orig.Data = &otlpmetrics.Metric_Summary{Summary: val}
-	return newSummary(val, ms.state)
+	var ov *otlpmetrics.Metric_Summary
+	if !internal.UseProtoPooling.IsEnabled() {
+		ov = &otlpmetrics.Metric_Summary{}
+	} else {
+		ov = internal.ProtoPoolMetric_Summary.Get().(*otlpmetrics.Metric_Summary)
+	}
+	ov.Summary = internal.NewOrigSummary()
+	ms.orig.Data = ov
+	return newSummary(ov.Summary, ms.state)
 }
 
 // Metadata returns the Metadata associated with this Metric.

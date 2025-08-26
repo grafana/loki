@@ -6,10 +6,6 @@
 
 package internal
 
-import (
-	"go.opentelemetry.io/collector/pdata/internal/json"
-)
-
 type StringSlice struct {
 	orig  *[]string
 	state *State
@@ -29,8 +25,7 @@ func NewStringSlice(orig *[]string, state *State) StringSlice {
 
 func GenerateTestStringSlice() StringSlice {
 	orig := GenerateOrigTestStringSlice()
-	state := StateMutable
-	return NewStringSlice(&orig, &state)
+	return NewStringSlice(&orig, NewState())
 }
 
 func CopyOrigStringSlice(dst, src []string) []string {
@@ -39,14 +34,4 @@ func CopyOrigStringSlice(dst, src []string) []string {
 
 func GenerateOrigTestStringSlice() []string {
 	return []string{"a", "b", "c"}
-}
-
-// UnmarshalJSONOrigStringSlice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONOrigStringSlice(iter *json.Iterator) []string {
-	var orig []string
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		orig = append(orig, iter.ReadString())
-		return true
-	})
-	return orig
 }

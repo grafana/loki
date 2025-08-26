@@ -20,7 +20,7 @@ var (
 
 	// idRegexp is used to validate the ID of a Gate.
 	// IDs' characters must be alphanumeric or dots.
-	idRegexp = regexp.MustCompile(`^[0-9a-zA-Z\.]*$`)
+	idRegexp = regexp.MustCompile(`^[0-9a-zA-Z.]*$`)
 )
 
 // ErrAlreadyRegistered is returned when adding a Gate that is already registered.

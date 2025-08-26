@@ -8,7 +8,6 @@ package internal
 
 import (
 	otlptrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/trace/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 func CopyOrigResourceSpansSlice(dest, src []*otlptrace.ResourceSpans) []*otlptrace.ResourceSpans {
@@ -19,19 +18,20 @@ func CopyOrigResourceSpansSlice(dest, src []*otlptrace.ResourceSpans) []*otlptra
 		copy(newDest, dest)
 		// Add new pointers for missing elements from len(dest) to len(srt).
 		for i := len(dest); i < len(src); i++ {
-			newDest[i] = &otlptrace.ResourceSpans{}
+			newDest[i] = NewOrigResourceSpans()
 		}
 	} else {
 		newDest = dest[:len(src)]
 		// Cleanup the rest of the elements so GC can free the memory.
 		// This can happen when len(src) < len(dest) < cap(dest).
 		for i := len(src); i < len(dest); i++ {
+			DeleteOrigResourceSpans(dest[i], true)
 			dest[i] = nil
 		}
 		// Add new pointers for missing elements.
 		// This can happen when len(dest) < len(src) < cap(dest).
 		for i := len(dest); i < len(src); i++ {
-			newDest[i] = &otlptrace.ResourceSpans{}
+			newDest[i] = NewOrigResourceSpans()
 		}
 	}
 	for i := range src {
@@ -41,21 +41,11 @@ func CopyOrigResourceSpansSlice(dest, src []*otlptrace.ResourceSpans) []*otlptra
 }
 
 func GenerateOrigTestResourceSpansSlice() []*otlptrace.ResourceSpans {
-	orig := make([]*otlptrace.ResourceSpans, 7)
-	for i := 0; i < 7; i++ {
-		orig[i] = &otlptrace.ResourceSpans{}
-		FillOrigTestResourceSpans(orig[i])
-	}
-	return orig
-}
-
-// UnmarshalJSONOrigResourceSpansSlice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONOrigResourceSpansSlice(iter *json.Iterator) []*otlptrace.ResourceSpans {
-	var orig []*otlptrace.ResourceSpans
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		orig = append(orig, &otlptrace.ResourceSpans{})
-		UnmarshalJSONOrigResourceSpans(orig[len(orig)-1], iter)
-		return true
-	})
+	orig := make([]*otlptrace.ResourceSpans, 5)
+	orig[0] = NewOrigResourceSpans()
+	orig[1] = GenTestOrigResourceSpans()
+	orig[2] = NewOrigResourceSpans()
+	orig[3] = GenTestOrigResourceSpans()
+	orig[4] = NewOrigResourceSpans()
 	return orig
 }

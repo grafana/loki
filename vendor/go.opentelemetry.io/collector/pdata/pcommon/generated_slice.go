@@ -30,8 +30,7 @@ func newSlice(orig *[]otlpcommon.AnyValue, state *internal.State) Slice {
 // Can use "EnsureCapacity" to initialize with a given capacity.
 func NewSlice() Slice {
 	orig := []otlpcommon.AnyValue(nil)
-	state := internal.StateMutable
-	return newSlice(&orig, &state)
+	return newSlice(&orig, internal.NewState())
 }
 
 // Len returns the number of elements in the slice.
@@ -125,7 +124,7 @@ func (es Slice) RemoveIf(f func(Value) bool) {
 	newLen := 0
 	for i := 0; i < len(*es.getOrig()); i++ {
 		if f(es.At(i)) {
-			(*es.getOrig())[i] = otlpcommon.AnyValue{}
+			internal.DeleteOrigAnyValue(&(*es.getOrig())[i], false)
 			continue
 		}
 		if newLen == i {
@@ -134,7 +133,7 @@ func (es Slice) RemoveIf(f func(Value) bool) {
 			continue
 		}
 		(*es.getOrig())[newLen] = (*es.getOrig())[i]
-		(*es.getOrig())[i] = otlpcommon.AnyValue{}
+		(*es.getOrig())[i].Reset()
 		newLen++
 	}
 	*es.getOrig() = (*es.getOrig())[:newLen]
@@ -143,6 +142,9 @@ func (es Slice) RemoveIf(f func(Value) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es Slice) CopyTo(dest Slice) {
 	dest.getState().AssertMutable()
+	if es.getOrig() == dest.getOrig() {
+		return
+	}
 	*dest.getOrig() = internal.CopyOrigAnyValueSlice(*dest.getOrig(), *es.getOrig())
 }
 
