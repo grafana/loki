@@ -338,182 +338,146 @@ func (m *mockTenantLimitsWithDefaults) AllowStructuredMetadata(userID string) bo
 	return false
 }
 
-func TestDrilldownConfigResponseStructure(t *testing.T) {
-	// Test that the drilldown config handler returns the filtered limits as JSON
+func TestDrilldownConfig(t *testing.T) {
+	testCases := []struct {
+		name                   string
+		limits                 *validation.Limits
+		allowlist              []string
+		patternEnabled         bool
+		expectedStatus         int
+		expectedContentType    string
+		verifyResponse         func(t *testing.T, response DrilldownConfigResponse)
+	}{
+		{
+			name: "response structure with all fields and pattern enabled",
+			limits: &validation.Limits{
+				IngestionRateMB:         10.5,
+				IngestionBurstSizeMB:    15.0,
+				MaxLineSizeTruncate:     true,
+				MaxLineSize:             256,
+				MaxLabelNameLength:      100,
+				MaxLabelValueLength:     500,
+				MaxLabelNamesPerSeries:  30,
+				MaxQuerySeries:          1000,
+				MaxEntriesLimitPerQuery: 5000,
+				QueryTimeout:            model.Duration(60 * time.Second),
+				MaxLocalStreamsPerUser:  500,
+				MaxGlobalStreamsPerUser: 1000,
+				RetentionPeriod:         model.Duration(24 * time.Hour),
+				MaxQueryParallelism:     32,
+			},
+			allowlist:           []string{}, // Empty allowlist = all fields
+			patternEnabled:      true,
+			expectedStatus:      200,
+			expectedContentType: "application/json",
+			verifyResponse: func(t *testing.T, response DrilldownConfigResponse) {
+				// Response should have a limits field containing the filtered limits
+				require.NotNil(t, response.Limits)
 
-	limits := &validation.Limits{
-		IngestionRateMB:         10.5,
-		IngestionBurstSizeMB:    15.0,
-		MaxLineSizeTruncate:     true,
-		MaxLineSize:             256,
-		MaxLabelNameLength:      100,
-		MaxLabelValueLength:     500,
-		MaxLabelNamesPerSeries:  30,
-		MaxQuerySeries:          1000,
-		MaxEntriesLimitPerQuery: 5000,
-		QueryTimeout:            model.Duration(60 * time.Second),
-		MaxLocalStreamsPerUser:  500,
-		MaxGlobalStreamsPerUser: 1000,
-		RetentionPeriod:         model.Duration(24 * time.Hour),
-		MaxQueryParallelism:     32,
-	}
+				// Check a few key fields to verify the limits were included
+				assert.Equal(t, float64(10.5), response.Limits["ingestion_rate_mb"])
+				assert.Equal(t, float64(15), response.Limits["ingestion_burst_size_mb"])
+				assert.Equal(t, float64(100), response.Limits["max_label_name_length"])
+				assert.Equal(t, float64(1000), response.Limits["max_query_series"])
+				assert.Equal(t, float64(500), response.Limits["max_streams_per_user"])
 
-	mockTenantLimits := &mockTenantLimits{limits: limits}
+				// Check pattern ingester enabled field
+				assert.Equal(t, true, response.PatternIngesterEnabled)
 
-	loki := &Loki{
-		TenantLimits: mockTenantLimits,
-		Cfg: Config{
-			TenantLimitsAllowPublish: []string{}, // Empty allowlist = all fields
-			Pattern: pattern.Config{
-				Enabled: true, // Pattern ingester is enabled
+				// Check version field is present (we don't check the exact value as it may vary)
+				assert.NotEmpty(t, response.Version)
+			},
+		},
+		{
+			name: "pattern ingester disabled",
+			limits: &validation.Limits{
+				IngestionRateMB: 10.5,
+				MaxQuerySeries:  1000,
+			},
+			allowlist:           []string{},
+			patternEnabled:      false,
+			expectedStatus:      200,
+			expectedContentType: "application/json",
+			verifyResponse: func(t *testing.T, response DrilldownConfigResponse) {
+				// Pattern ingester should be disabled
+				assert.Equal(t, false, response.PatternIngesterEnabled)
+
+				// Version should still be present
+				assert.NotEmpty(t, response.Version)
+			},
+		},
+		{
+			name: "with allowlist filter",
+			limits: &validation.Limits{
+				IngestionRateMB:        10.5,
+				MaxQuerySeries:         1000,
+				MaxLocalStreamsPerUser: 500,
+				MaxLabelNameLength:     100,
+			},
+			allowlist:           []string{"ingestion_rate_mb", "max_query_series"},
+			patternEnabled:      false,
+			expectedStatus:      200,
+			expectedContentType: "application/json",
+			verifyResponse: func(t *testing.T, response DrilldownConfigResponse) {
+				// Response should have a limits field
+				require.NotNil(t, response.Limits)
+
+				// Should only contain allowed fields
+				assert.Contains(t, response.Limits, "ingestion_rate_mb")
+				assert.Contains(t, response.Limits, "max_query_series")
+
+				// Should NOT contain filtered out fields
+				assert.NotContains(t, response.Limits, "max_streams_per_user")
+				assert.NotContains(t, response.Limits, "max_label_name_length")
+
+				// Verify values for allowed fields
+				assert.Equal(t, float64(10.5), response.Limits["ingestion_rate_mb"])
+				assert.Equal(t, float64(1000), response.Limits["max_query_series"])
 			},
 		},
 	}
 
-	handler := loki.drilldownConfigHandler()
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockTenantLimits := &mockTenantLimits{limits: tc.limits}
 
-	req := httptest.NewRequest("GET", "/loki/api/v1/config", nil)
-	req.Header.Set("X-Scope-OrgID", "test-tenant")
+			loki := &Loki{
+				TenantLimits: mockTenantLimits,
+				Cfg: Config{
+					TenantLimitsAllowPublish: tc.allowlist,
+					Pattern: pattern.Config{
+						Enabled: tc.patternEnabled,
+					},
+				},
+			}
 
-	w := httptest.NewRecorder()
-	handler(w, req)
+			handler := loki.drilldownConfigHandler()
 
-	resp := w.Result()
-	defer resp.Body.Close()
+			req := httptest.NewRequest("GET", "/loki/api/v1/config", nil)
+			req.Header.Set("X-Scope-OrgID", "test-tenant")
 
-	// Should return 200 OK
-	require.Equal(t, 200, resp.StatusCode)
+			w := httptest.NewRecorder()
+			handler(w, req)
 
-	// Should return JSON by default
-	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+			resp := w.Result()
+			defer resp.Body.Close()
 
-	// Parse response
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+			// Verify status code and content type
+			require.Equal(t, tc.expectedStatus, resp.StatusCode)
+			assert.Equal(t, tc.expectedContentType, resp.Header.Get("Content-Type"))
 
-	var response DrilldownConfigResponse
-	err = json.Unmarshal(body, &response)
-	require.NoError(t, err, "Response should be valid JSON")
+			// Parse response
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
 
-	// Response should have a limits field containing the filtered limits
-	require.NotNil(t, response.Limits)
+			var response DrilldownConfigResponse
+			err = json.Unmarshal(body, &response)
+			require.NoError(t, err, "Response should be valid JSON")
 
-	// Check a few key fields to verify the limits were included
-	assert.Equal(t, float64(10.5), response.Limits["ingestion_rate_mb"])
-	assert.Equal(t, float64(15), response.Limits["ingestion_burst_size_mb"])
-	assert.Equal(t, float64(100), response.Limits["max_label_name_length"])
-	assert.Equal(t, float64(1000), response.Limits["max_query_series"])
-	assert.Equal(t, float64(500), response.Limits["max_streams_per_user"])
-
-	// Check pattern ingester enabled field
-	assert.Equal(t, true, response.PatternIngesterEnabled)
-
-	// Check version field is present (we don't check the exact value as it may vary)
-	assert.NotEmpty(t, response.Version)
-}
-
-func TestDrilldownConfigPatternIngesterDisabled(t *testing.T) {
-	// Test that pattern ingester enabled field reflects the config
-
-	limits := &validation.Limits{
-		IngestionRateMB: 10.5,
-		MaxQuerySeries:  1000,
+			// Run test-specific verifications
+			tc.verifyResponse(t, response)
+		})
 	}
-
-	mockTenantLimits := &mockTenantLimits{limits: limits}
-
-	loki := &Loki{
-		TenantLimits: mockTenantLimits,
-		Cfg: Config{
-			TenantLimitsAllowPublish: []string{},
-			Pattern: pattern.Config{
-				Enabled: false, // Pattern ingester is disabled
-			},
-		},
-	}
-
-	handler := loki.drilldownConfigHandler()
-
-	req := httptest.NewRequest("GET", "/loki/api/v1/config", nil)
-	req.Header.Set("X-Scope-OrgID", "test-tenant")
-
-	w := httptest.NewRecorder()
-	handler(w, req)
-
-	resp := w.Result()
-	defer resp.Body.Close()
-
-	require.Equal(t, 200, resp.StatusCode)
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-
-	var response DrilldownConfigResponse
-	err = json.Unmarshal(body, &response)
-	require.NoError(t, err)
-
-	// Pattern ingester should be disabled
-	assert.Equal(t, false, response.PatternIngesterEnabled)
-
-	// Version should still be present
-	assert.NotEmpty(t, response.Version)
-}
-
-func TestDrilldownConfigWithAllowlist(t *testing.T) {
-	// Test that the drilldown config handler respects the allowlist filter
-
-	limits := &validation.Limits{
-		IngestionRateMB:        10.5,
-		MaxQuerySeries:         1000,
-		MaxLocalStreamsPerUser: 500,
-		MaxLabelNameLength:     100,
-	}
-
-	mockTenantLimits := &mockTenantLimits{limits: limits}
-
-	loki := &Loki{
-		TenantLimits: mockTenantLimits,
-		Cfg: Config{
-			// Only allow specific fields
-			TenantLimitsAllowPublish: []string{"ingestion_rate_mb", "max_query_series"},
-		},
-	}
-
-	handler := loki.drilldownConfigHandler()
-
-	req := httptest.NewRequest("GET", "/loki/api/v1/config", nil)
-	req.Header.Set("X-Scope-OrgID", "test-tenant")
-
-	w := httptest.NewRecorder()
-	handler(w, req)
-
-	resp := w.Result()
-	defer resp.Body.Close()
-
-	require.Equal(t, 200, resp.StatusCode)
-	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
-
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-
-	var response DrilldownConfigResponse
-	err = json.Unmarshal(body, &response)
-	require.NoError(t, err)
-
-	// Response should have a limits field
-	require.NotNil(t, response.Limits)
-
-	// Should only contain allowed fields
-	assert.Contains(t, response.Limits, "ingestion_rate_mb")
-	assert.Contains(t, response.Limits, "max_query_series")
-
-	// Should NOT contain filtered out fields
-	assert.NotContains(t, response.Limits, "max_streams_per_user")
-	assert.NotContains(t, response.Limits, "max_label_name_length")
-
-	// Verify values for allowed fields
-	assert.Equal(t, float64(10.5), response.Limits["ingestion_rate_mb"])
-	assert.Equal(t, float64(1000), response.Limits["max_query_series"])
 }
 
 func TestFilterLimitFieldsReturnsJSONMap(t *testing.T) {
