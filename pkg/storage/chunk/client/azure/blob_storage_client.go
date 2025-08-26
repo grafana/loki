@@ -377,13 +377,13 @@ func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]cli
 		if err != nil {
 			return nil, nil, err
 		}
-		containerClient, err = container.NewClientWithSharedKeyCredential(b.fmtResourceURL(), cred, nil)
+		containerClient, err = container.NewClientWithSharedKeyCredential(b.fmtContainerURL(), cred, nil)
 		if err != nil {
 			return nil, nil, err
 		}
 	}
 	maxResults := int32(b.cfg.MaxResults)
-	pager := containerClient.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
+	pager := containerClient.NewListBlobsHierarchyPager(delimiter, &container.ListBlobsHierarchyOptions{
 		Include:    container.ListBlobsInclude{Metadata: true, Tags: true},
 		MaxResults: &maxResults,
 		Prefix:     &prefix,
