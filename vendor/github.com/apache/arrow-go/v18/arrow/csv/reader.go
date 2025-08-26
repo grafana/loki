@@ -106,8 +106,7 @@ func NewInferringReader(r io.Reader, opts ...Option) *Reader {
 // NewReader panics if the given schema contains fields that have types that are not
 // primitive types.
 func NewReader(r io.Reader, schema *arrow.Schema, opts ...Option) *Reader {
-	validate(schema)
-
+	validateRead(schema)
 	rr := &Reader{
 		r:                csv.NewReader(r),
 		schema:           schema,
@@ -803,7 +802,7 @@ func (r *Reader) parseListLike(field array.ListLikeBuilder, str string) {
 		field.AppendNull()
 		return
 	}
-	if !(strings.HasPrefix(str, "{") && strings.HasSuffix(str, "}")) {
+	if !strings.HasPrefix(str, "{") || !strings.HasSuffix(str, "}") {
 		r.err = errors.New("invalid list format. should start with '{' and end with '}'")
 		return
 	}
@@ -831,7 +830,7 @@ func (r *Reader) parseFixedSizeList(field *array.FixedSizeListBuilder, str strin
 		field.AppendNull()
 		return
 	}
-	if !(strings.HasPrefix(str, "{") && strings.HasSuffix(str, "}")) {
+	if !strings.HasPrefix(str, "{") || !strings.HasSuffix(str, "}") {
 		r.err = errors.New("invalid list format. should start with '{' and end with '}'")
 		return
 	}

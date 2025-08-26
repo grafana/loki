@@ -65,12 +65,12 @@
   <entry type="CommentSingle" style="italic #9ca0b0"/>
   <entry type="CommentMultiline" style="italic #9ca0b0"/>
   <entry type="CommentSpecial" style="italic #9ca0b0"/>
-  <entry type="CommentHashbang" style="italic #9ca0b0"/>
+  <entry type="CommentHashbang" style="italic #acb0be"/>
   <entry type="CommentPreproc" style="italic #9ca0b0"/>
   <entry type="CommentPreprocFile" style="bold #9ca0b0"/>
   <entry type="Generic" style="#4c4f69"/>
   <entry type="GenericInserted" style="bg:#ccd0da #40a02b"/>
-  <entry type="GenericDeleted" style="#d20f39 bg:#ccd0da"/>
+  <entry type="GenericDeleted" style="bg:#ccd0da #d20f39"/>
   <entry type="GenericEmph" style="italic #4c4f69"/>
   <entry type="GenericStrong" style="bold #4c4f69"/>
   <entry type="GenericUnderline" style="underline #4c4f69"/>

@@ -434,6 +434,9 @@ volume_range [<flags>] <query>
 detected-fields [<flags>] <query> [<field>]
     Run a query for detected fields..
 
+delete <command> [<args> ...]
+    Manage log deletion requests.
+
     The "detected-fields" command will return information about fields detected
     using either the "logfmt" or "json" parser against the log lines returned by
     the provided query for the provided time range.
@@ -1605,6 +1608,447 @@ Args:
   [<field>]  The name of the field.
 ```
 
+### `delete` command reference
+
+The output of `logcli help delete`:
+
+```shell
+usage: logcli delete <command> [<args> ...]
+
+Manage log deletion requests.
+
+
+Flags:
+      --[no-]help             Show context-sensitive help (also try --help-long
+                              and --help-man).
+      --[no-]version          Show application version.
+  -q, --[no-]quiet            Suppress query metadata
+      --[no-]stats            Show query statistics
+  -o, --output=default        Specify output mode [default, raw, jsonl].
+                              raw suppresses log labels and timestamp.
+  -z, --timezone=Local        Specify the timezone to use when formatting output
+                              timestamps [Local, UTC]
+      --output-timestamp-format=rfc3339  
+                              Specify the format of timestamps in the default
+                              output mode [rfc3339, rfc3339nano, rfc822z,
+                              rfc1123z, stampmicro, stampmilli, stampnano,
+                              unixdate]
+      --cpuprofile=""         Specify the location for writing a CPU profile.
+      --memprofile=""         Specify the location for writing a memory profile.
+      --[no-]stdin            Take input logs from stdin
+      --addr="http://localhost:3100"  
+                              Server address. Can also be set using LOKI_ADDR
+                              env var. ($LOKI_ADDR)
+      --username=""           Username for HTTP basic auth. Can also be set
+                              using LOKI_USERNAME env var. ($LOKI_USERNAME)
+      --password=""           Password for HTTP basic auth. Can also be set
+                              using LOKI_PASSWORD env var. ($LOKI_PASSWORD)
+      --ca-cert=""            Path to the server Certificate Authority.
+                              Can also be set using LOKI_CA_CERT_PATH env var.
+                              ($LOKI_CA_CERT_PATH)
+      --[no-]tls-skip-verify  Server certificate TLS skip verify. Can also
+                              be set using LOKI_TLS_SKIP_VERIFY env var.
+                              ($LOKI_TLS_SKIP_VERIFY)
+      --cert=""               Path to the client certificate. Can also
+                              be set using LOKI_CLIENT_CERT_PATH env var.
+                              ($LOKI_CLIENT_CERT_PATH)
+      --key=""                Path to the client certificate key. Can also
+                              be set using LOKI_CLIENT_KEY_PATH env var.
+                              ($LOKI_CLIENT_KEY_PATH)
+      --org-id=""             adds X-Scope-OrgID to API requests for
+                              representing tenant ID. Useful for requesting
+                              tenant data when bypassing an auth gateway.
+                              Can also be set using LOKI_ORG_ID env var.
+                              ($LOKI_ORG_ID)
+      --query-tags=""         adds X-Query-Tags http header to API requests.
+                              This header value will be part of `metrics.go`
+                              statistics. Useful for tracking the query.
+                              Can also be set using LOKI_QUERY_TAGS env var.
+                              ($LOKI_QUERY_TAGS)
+      --[no-]nocache          adds Cache-Control: no-cache http header to API
+                              requests. Can also be set using LOKI_NO_CACHE env
+                              var. ($LOKI_NO_CACHE)
+      --bearer-token=""       adds the Authorization header to API requests for
+                              authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN env var. ($LOKI_BEARER_TOKEN)
+      --bearer-token-file=""  adds the Authorization header to API requests
+                              for authentication purposes. Can also be
+                              set using LOKI_BEARER_TOKEN_FILE env var.
+                              ($LOKI_BEARER_TOKEN_FILE)
+      --retries=0             How many times to retry each query when
+                              getting an error response from Loki. Can also
+                              be set using LOKI_CLIENT_RETRIES env var.
+                              ($LOKI_CLIENT_RETRIES)
+      --min-backoff=0         Minimum backoff time between retries. Can also
+                              be set using LOKI_CLIENT_MIN_BACKOFF env var.
+                              ($LOKI_CLIENT_MIN_BACKOFF)
+      --max-backoff=0         Maximum backoff time between retries. Can also
+                              be set using LOKI_CLIENT_MAX_BACKOFF env var.
+                              ($LOKI_CLIENT_MAX_BACKOFF)
+      --auth-header="Authorization"  
+                              The authorization header used. Can also
+                              be set using LOKI_AUTH_HEADER env var.
+                              ($LOKI_AUTH_HEADER)
+      --proxy-url=""          The http or https proxy to use when
+                              making requests. Can also be set
+                              using LOKI_HTTP_PROXY_URL env var.
+                              ($LOKI_HTTP_PROXY_URL)
+      --[no-]compress         Request that Loki compress returned
+                              data in transit. Can also be set
+                              using LOKI_HTTP_COMPRESSION env var.
+                              ($LOKI_HTTP_COMPRESSION)
+      --[no-]envproxy         Use ProxyFromEnvironment to use net/http
+                              ProxyFromEnvironment configuration, eg HTTP_PROXY
+                              ($LOKI_ENV_PROXY)
+
+Subcommands:
+delete create [<flags>] <query>
+    Create a new log deletion request.
+
+    The "delete create" command creates a new log deletion request for the
+    specified query and time range.
+
+    Example:
+
+      logcli delete create '{job="app"}' --from="2023-01-01T00:00:00Z" --to="2023-01-02T00:00:00Z"
+
+delete list
+    List existing log deletion requests.
+
+    The "delete list" command lists all existing log deletion requests for the
+    tenant.
+
+    Example:
+
+      logcli delete list
+      logcli delete list --output=json
+
+delete cancel --request-id=REQUEST-ID [<flags>]
+    Cancel a log deletion request.
+
+    The "delete cancel" command cancels an existing log deletion request by ID.
+
+    Example:
+
+      logcli delete cancel --request-id="abc123"
+      logcli delete cancel --request-id="abc123" --force
+```
+
+### `delete create` command reference
+
+The output of `logcli help delete create`:
+
+```shell
+usage: logcli delete create [<flags>] <query>
+
+Create a new log deletion request.
+
+The "delete create" command creates a new log deletion request for the specified
+query and time range.
+
+Example:
+
+  logcli delete create '{job="app"}' --from="2023-01-01T00:00:00Z" --to="2023-01-02T00:00:00Z"
+
+
+Flags:
+      --[no-]help             Show context-sensitive help (also try --help-long
+                              and --help-man).
+      --[no-]version          Show application version.
+  -q, --[no-]quiet            Suppress query metadata
+      --[no-]stats            Show query statistics
+  -o, --output=default        Specify output mode [default, raw, jsonl].
+                              raw suppresses log labels and timestamp.
+  -z, --timezone=Local        Specify the timezone to use when formatting output
+                              timestamps [Local, UTC]
+      --output-timestamp-format=rfc3339  
+                              Specify the format of timestamps in the default
+                              output mode [rfc3339, rfc3339nano, rfc822z,
+                              rfc1123z, stampmicro, stampmilli, stampnano,
+                              unixdate]
+      --cpuprofile=""         Specify the location for writing a CPU profile.
+      --memprofile=""         Specify the location for writing a memory profile.
+      --[no-]stdin            Take input logs from stdin
+      --addr="http://localhost:3100"  
+                              Server address. Can also be set using LOKI_ADDR
+                              env var. ($LOKI_ADDR)
+      --username=""           Username for HTTP basic auth. Can also be set
+                              using LOKI_USERNAME env var. ($LOKI_USERNAME)
+      --password=""           Password for HTTP basic auth. Can also be set
+                              using LOKI_PASSWORD env var. ($LOKI_PASSWORD)
+      --ca-cert=""            Path to the server Certificate Authority.
+                              Can also be set using LOKI_CA_CERT_PATH env var.
+                              ($LOKI_CA_CERT_PATH)
+      --[no-]tls-skip-verify  Server certificate TLS skip verify. Can also
+                              be set using LOKI_TLS_SKIP_VERIFY env var.
+                              ($LOKI_TLS_SKIP_VERIFY)
+      --cert=""               Path to the client certificate. Can also
+                              be set using LOKI_CLIENT_CERT_PATH env var.
+                              ($LOKI_CLIENT_CERT_PATH)
+      --key=""                Path to the client certificate key. Can also
+                              be set using LOKI_CLIENT_KEY_PATH env var.
+                              ($LOKI_CLIENT_KEY_PATH)
+      --org-id=""             adds X-Scope-OrgID to API requests for
+                              representing tenant ID. Useful for requesting
+                              tenant data when bypassing an auth gateway.
+                              Can also be set using LOKI_ORG_ID env var.
+                              ($LOKI_ORG_ID)
+      --query-tags=""         adds X-Query-Tags http header to API requests.
+                              This header value will be part of `metrics.go`
+                              statistics. Useful for tracking the query.
+                              Can also be set using LOKI_QUERY_TAGS env var.
+                              ($LOKI_QUERY_TAGS)
+      --[no-]nocache          adds Cache-Control: no-cache http header to API
+                              requests. Can also be set using LOKI_NO_CACHE env
+                              var. ($LOKI_NO_CACHE)
+      --bearer-token=""       adds the Authorization header to API requests for
+                              authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN env var. ($LOKI_BEARER_TOKEN)
+      --bearer-token-file=""  adds the Authorization header to API requests
+                              for authentication purposes. Can also be
+                              set using LOKI_BEARER_TOKEN_FILE env var.
+                              ($LOKI_BEARER_TOKEN_FILE)
+      --retries=0             How many times to retry each query when
+                              getting an error response from Loki. Can also
+                              be set using LOKI_CLIENT_RETRIES env var.
+                              ($LOKI_CLIENT_RETRIES)
+      --min-backoff=0         Minimum backoff time between retries. Can also
+                              be set using LOKI_CLIENT_MIN_BACKOFF env var.
+                              ($LOKI_CLIENT_MIN_BACKOFF)
+      --max-backoff=0         Maximum backoff time between retries. Can also
+                              be set using LOKI_CLIENT_MAX_BACKOFF env var.
+                              ($LOKI_CLIENT_MAX_BACKOFF)
+      --auth-header="Authorization"  
+                              The authorization header used. Can also
+                              be set using LOKI_AUTH_HEADER env var.
+                              ($LOKI_AUTH_HEADER)
+      --proxy-url=""          The http or https proxy to use when
+                              making requests. Can also be set
+                              using LOKI_HTTP_PROXY_URL env var.
+                              ($LOKI_HTTP_PROXY_URL)
+      --[no-]compress         Request that Loki compress returned
+                              data in transit. Can also be set
+                              using LOKI_HTTP_COMPRESSION env var.
+                              ($LOKI_HTTP_COMPRESSION)
+      --[no-]envproxy         Use ProxyFromEnvironment to use net/http
+                              ProxyFromEnvironment configuration, eg HTTP_PROXY
+                              ($LOKI_ENV_PROXY)
+      --since=1h              Lookback window.
+      --from=FROM             Start time for deletion (inclusive)
+      --to=TO                 End time for deletion (exclusive)
+      --max-interval=MAX-INTERVAL  
+                              Maximum time interval for delete request
+
+Args:
+  <query>  LogQL query to match log lines for deletion (e.g. '{job="app"}')
+```
+
+### `delete list` command reference
+
+The output of `logcli help delete list`:
+
+```shell
+usage: logcli delete list
+
+List existing log deletion requests.
+
+The "delete list" command lists all existing log deletion requests for the
+tenant.
+
+Example:
+
+  logcli delete list
+  logcli delete list --output=json
+
+
+Flags:
+      --[no-]help             Show context-sensitive help (also try --help-long
+                              and --help-man).
+      --[no-]version          Show application version.
+  -q, --[no-]quiet            Suppress query metadata
+      --[no-]stats            Show query statistics
+  -o, --output=default        Specify output mode [default, raw, jsonl].
+                              raw suppresses log labels and timestamp.
+  -z, --timezone=Local        Specify the timezone to use when formatting output
+                              timestamps [Local, UTC]
+      --output-timestamp-format=rfc3339  
+                              Specify the format of timestamps in the default
+                              output mode [rfc3339, rfc3339nano, rfc822z,
+                              rfc1123z, stampmicro, stampmilli, stampnano,
+                              unixdate]
+      --cpuprofile=""         Specify the location for writing a CPU profile.
+      --memprofile=""         Specify the location for writing a memory profile.
+      --[no-]stdin            Take input logs from stdin
+      --addr="http://localhost:3100"  
+                              Server address. Can also be set using LOKI_ADDR
+                              env var. ($LOKI_ADDR)
+      --username=""           Username for HTTP basic auth. Can also be set
+                              using LOKI_USERNAME env var. ($LOKI_USERNAME)
+      --password=""           Password for HTTP basic auth. Can also be set
+                              using LOKI_PASSWORD env var. ($LOKI_PASSWORD)
+      --ca-cert=""            Path to the server Certificate Authority.
+                              Can also be set using LOKI_CA_CERT_PATH env var.
+                              ($LOKI_CA_CERT_PATH)
+      --[no-]tls-skip-verify  Server certificate TLS skip verify. Can also
+                              be set using LOKI_TLS_SKIP_VERIFY env var.
+                              ($LOKI_TLS_SKIP_VERIFY)
+      --cert=""               Path to the client certificate. Can also
+                              be set using LOKI_CLIENT_CERT_PATH env var.
+                              ($LOKI_CLIENT_CERT_PATH)
+      --key=""                Path to the client certificate key. Can also
+                              be set using LOKI_CLIENT_KEY_PATH env var.
+                              ($LOKI_CLIENT_KEY_PATH)
+      --org-id=""             adds X-Scope-OrgID to API requests for
+                              representing tenant ID. Useful for requesting
+                              tenant data when bypassing an auth gateway.
+                              Can also be set using LOKI_ORG_ID env var.
+                              ($LOKI_ORG_ID)
+      --query-tags=""         adds X-Query-Tags http header to API requests.
+                              This header value will be part of `metrics.go`
+                              statistics. Useful for tracking the query.
+                              Can also be set using LOKI_QUERY_TAGS env var.
+                              ($LOKI_QUERY_TAGS)
+      --[no-]nocache          adds Cache-Control: no-cache http header to API
+                              requests. Can also be set using LOKI_NO_CACHE env
+                              var. ($LOKI_NO_CACHE)
+      --bearer-token=""       adds the Authorization header to API requests for
+                              authentication purposes. Can also be set using
+                              LOKI_BEARER_TOKEN env var. ($LOKI_BEARER_TOKEN)
+      --bearer-token-file=""  adds the Authorization header to API requests
+                              for authentication purposes. Can also be
+                              set using LOKI_BEARER_TOKEN_FILE env var.
+                              ($LOKI_BEARER_TOKEN_FILE)
+      --retries=0             How many times to retry each query when
+                              getting an error response from Loki. Can also
+                              be set using LOKI_CLIENT_RETRIES env var.
+                              ($LOKI_CLIENT_RETRIES)
+      --min-backoff=0         Minimum backoff time between retries. Can also
+                              be set using LOKI_CLIENT_MIN_BACKOFF env var.
+                              ($LOKI_CLIENT_MIN_BACKOFF)
+      --max-backoff=0         Maximum backoff time between retries. Can also
+                              be set using LOKI_CLIENT_MAX_BACKOFF env var.
+                              ($LOKI_CLIENT_MAX_BACKOFF)
+      --auth-header="Authorization"  
+                              The authorization header used. Can also
+                              be set using LOKI_AUTH_HEADER env var.
+                              ($LOKI_AUTH_HEADER)
+      --proxy-url=""          The http or https proxy to use when
+                              making requests. Can also be set
+                              using LOKI_HTTP_PROXY_URL env var.
+                              ($LOKI_HTTP_PROXY_URL)
+      --[no-]compress         Request that Loki compress returned
+                              data in transit. Can also be set
+                              using LOKI_HTTP_COMPRESSION env var.
+                              ($LOKI_HTTP_COMPRESSION)
+      --[no-]envproxy         Use ProxyFromEnvironment to use net/http
+                              ProxyFromEnvironment configuration, eg HTTP_PROXY
+                              ($LOKI_ENV_PROXY)
+```
+
+### `delete cancel` command reference
+
+The output of `logcli help delete cancel`:
+
+```shell
+usage: logcli delete cancel --request-id=REQUEST-ID [<flags>]
+
+Cancel a log deletion request.
+
+The "delete cancel" command cancels an existing log deletion request by ID.
+
+Example:
+
+  logcli delete cancel --request-id="abc123"
+  logcli delete cancel --request-id="abc123" --force
+
+
+Flags:
+      --[no-]help              Show context-sensitive help (also try --help-long
+                               and --help-man).
+      --[no-]version           Show application version.
+  -q, --[no-]quiet             Suppress query metadata
+      --[no-]stats             Show query statistics
+  -o, --output=default         Specify output mode [default, raw, jsonl].
+                               raw suppresses log labels and timestamp.
+  -z, --timezone=Local         Specify the timezone to use when formatting
+                               output timestamps [Local, UTC]
+      --output-timestamp-format=rfc3339  
+                               Specify the format of timestamps in the default
+                               output mode [rfc3339, rfc3339nano, rfc822z,
+                               rfc1123z, stampmicro, stampmilli, stampnano,
+                               unixdate]
+      --cpuprofile=""          Specify the location for writing a CPU profile.
+      --memprofile=""          Specify the location for writing a memory
+                               profile.
+      --[no-]stdin             Take input logs from stdin
+      --addr="http://localhost:3100"  
+                               Server address. Can also be set using LOKI_ADDR
+                               env var. ($LOKI_ADDR)
+      --username=""            Username for HTTP basic auth. Can also be set
+                               using LOKI_USERNAME env var. ($LOKI_USERNAME)
+      --password=""            Password for HTTP basic auth. Can also be set
+                               using LOKI_PASSWORD env var. ($LOKI_PASSWORD)
+      --ca-cert=""             Path to the server Certificate Authority.
+                               Can also be set using LOKI_CA_CERT_PATH env var.
+                               ($LOKI_CA_CERT_PATH)
+      --[no-]tls-skip-verify   Server certificate TLS skip verify. Can also
+                               be set using LOKI_TLS_SKIP_VERIFY env var.
+                               ($LOKI_TLS_SKIP_VERIFY)
+      --cert=""                Path to the client certificate. Can also
+                               be set using LOKI_CLIENT_CERT_PATH env var.
+                               ($LOKI_CLIENT_CERT_PATH)
+      --key=""                 Path to the client certificate key. Can also
+                               be set using LOKI_CLIENT_KEY_PATH env var.
+                               ($LOKI_CLIENT_KEY_PATH)
+      --org-id=""              adds X-Scope-OrgID to API requests for
+                               representing tenant ID. Useful for requesting
+                               tenant data when bypassing an auth gateway.
+                               Can also be set using LOKI_ORG_ID env var.
+                               ($LOKI_ORG_ID)
+      --query-tags=""          adds X-Query-Tags http header to API requests.
+                               This header value will be part of `metrics.go`
+                               statistics. Useful for tracking the query.
+                               Can also be set using LOKI_QUERY_TAGS env var.
+                               ($LOKI_QUERY_TAGS)
+      --[no-]nocache           adds Cache-Control: no-cache http header to API
+                               requests. Can also be set using LOKI_NO_CACHE env
+                               var. ($LOKI_NO_CACHE)
+      --bearer-token=""        adds the Authorization header to API requests for
+                               authentication purposes. Can also be set using
+                               LOKI_BEARER_TOKEN env var. ($LOKI_BEARER_TOKEN)
+      --bearer-token-file=""   adds the Authorization header to API requests
+                               for authentication purposes. Can also be
+                               set using LOKI_BEARER_TOKEN_FILE env var.
+                               ($LOKI_BEARER_TOKEN_FILE)
+      --retries=0              How many times to retry each query when
+                               getting an error response from Loki. Can also
+                               be set using LOKI_CLIENT_RETRIES env var.
+                               ($LOKI_CLIENT_RETRIES)
+      --min-backoff=0          Minimum backoff time between retries. Can also
+                               be set using LOKI_CLIENT_MIN_BACKOFF env var.
+                               ($LOKI_CLIENT_MIN_BACKOFF)
+      --max-backoff=0          Maximum backoff time between retries. Can also
+                               be set using LOKI_CLIENT_MAX_BACKOFF env var.
+                               ($LOKI_CLIENT_MAX_BACKOFF)
+      --auth-header="Authorization"  
+                               The authorization header used. Can also
+                               be set using LOKI_AUTH_HEADER env var.
+                               ($LOKI_AUTH_HEADER)
+      --proxy-url=""           The http or https proxy to use when
+                               making requests. Can also be set
+                               using LOKI_HTTP_PROXY_URL env var.
+                               ($LOKI_HTTP_PROXY_URL)
+      --[no-]compress          Request that Loki compress returned
+                               data in transit. Can also be set
+                               using LOKI_HTTP_COMPRESSION env var.
+                               ($LOKI_HTTP_COMPRESSION)
+      --[no-]envproxy          Use ProxyFromEnvironment to use net/http
+                               ProxyFromEnvironment configuration, eg HTTP_PROXY
+                               ($LOKI_ENV_PROXY)
+      --request-id=REQUEST-ID  ID of the delete request to cancel
+      --[no-]force             Force cancellation of partially completed request
+```
+
 ### Use `--stdin` to query locally
 
 You can use the logcli `–stdin` argument to run a command against a log file on your local machine, instead of a Loki instance. This lets you use LogQL to query a local log file without having to load the file into Loki, for example if you have downloaded a log file and want to query it outside of Loki.
@@ -1718,6 +2162,24 @@ logcli series -q --match='{namespace="loki",container_name="loki"}'
 
 ```bash
 {app="loki", container_name="loki", controller_revision_hash="loki-57c9df47f4", filename="/var/log/pods/loki_loki-0_8ed03ded-bacb-4b13-a6fe-53a445a15887/loki/0.log", instance="loki-0", job="loki/loki", name="loki", namespace="loki", release="loki", statefulset_kubernetes_io_pod_name="loki-0", stream="stderr"}
+```
+
+Delete all logs for a specific job within a time range:
+
+```bash
+logcli delete create '{job="app"}' --from="2023-01-01T00:00:00Z" --to="2023-01-02T00:00:00Z"
+```
+
+List all deletion requests:
+
+```bash
+logcli delete list
+```
+
+Cancel a specific deletion request:
+
+```bash
+logcli delete cancel --request-id="abc123"
 ```
 
 ## Troubleshoot logcli

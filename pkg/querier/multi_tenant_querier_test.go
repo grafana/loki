@@ -220,12 +220,12 @@ func newSampleIterator() iter.SampleIterator {
 		iter.NewSeriesIterator(logproto.Series{
 			Labels:     labelFoo.String(),
 			Samples:    samples,
-			StreamHash: labelFoo.Hash(),
+			StreamHash: labels.StableHash(labelFoo),
 		}),
 		iter.NewSeriesIterator(logproto.Series{
 			Labels:     labelBar.String(),
 			Samples:    samples,
-			StreamHash: labelBar.Hash(),
+			StreamHash: labels.StableHash(labelBar),
 		}),
 	})
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
@@ -16,12 +17,28 @@ import (
 	compactor_grpc "github.com/grafana/loki/v3/pkg/compactor/client/grpc"
 )
 
+const (
+	jobTimeout = 5 * time.Minute
+	jobRetries = 3
+)
+
 // mockBuilder implements the Builder interface for testing
 type mockBuilder struct {
-	jobsToBuild []*compactor_grpc.Job
+	jobsToBuild   []*compactor_grpc.Job
+	jobsSentCount atomic.Int32
+	jobsSucceeded atomic.Int32
+	jobsFailed    atomic.Int32
 }
 
-func (m *mockBuilder) OnJobResponse(_ *compactor_grpc.JobResult) {}
+func (m *mockBuilder) OnJobResponse(res *compactor_grpc.JobResult) error {
+	if res.Error != "" {
+		m.jobsFailed.Inc()
+	} else {
+		m.jobsSucceeded.Inc()
+	}
+
+	return nil
+}
 
 func (m *mockBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *compactor_grpc.Job) {
 	for _, job := range m.jobsToBuild {
@@ -29,6 +46,7 @@ func (m *mockBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *compactor_
 		case <-ctx.Done():
 			return
 		case jobsChan <- job:
+			m.jobsSentCount.Inc()
 		}
 	}
 
@@ -36,7 +54,7 @@ func (m *mockBuilder) BuildJobs(ctx context.Context, jobsChan chan<- *compactor_
 	<-ctx.Done()
 }
 
-func server(t *testing.T, q *Queue) (*grpc.ClientConn, func()) {
+func setupGRPC(t *testing.T, q *Queue) (*grpc.ClientConn, func()) {
 	buffer := 101024 * 1024
 	lis := bufconn.Listen(buffer)
 
@@ -65,22 +83,22 @@ func server(t *testing.T, q *Queue) (*grpc.ClientConn, func()) {
 }
 
 func TestQueue_RegisterBuilder(t *testing.T) {
-	q := New()
+	q := NewQueue(nil)
 	builder := &mockBuilder{}
 
 	// Register builder successfully
-	err := q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, builder)
+	err := q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, builder, jobTimeout, jobRetries)
 	require.NoError(t, err)
 
 	// Try to register same builder type again
-	err = q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, builder)
+	err = q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, builder, jobTimeout, jobRetries)
 	require.ErrorIs(t, err, ErrJobTypeAlreadyRegistered)
 }
 
 func TestQueue_Loop(t *testing.T) {
-	q := New()
+	q := NewQueue(nil)
 
-	conn, closer := server(t, q)
+	conn, closer := setupGRPC(t, q)
 	defer closer()
 
 	// Create a couple of test jobs
@@ -96,8 +114,8 @@ func TestQueue_Loop(t *testing.T) {
 		jobsToBuild: jobs,
 	}
 
-	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, builder))
-	require.NoError(t, q.Start(context.Background()))
+	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, builder, jobTimeout, jobRetries))
+	go q.Start(context.Background())
 
 	// Dequeue the job
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -115,7 +133,7 @@ func TestQueue_Loop(t *testing.T) {
 	q.processingJobsMtx.RLock()
 	require.Equal(t, 1, len(q.processingJobs))
 	require.Equal(t, jobs[0], q.processingJobs[jobs[0].Id].job)
-	require.Equal(t, 0, q.processingJobs[jobs[0].Id].retryCount)
+	require.Equal(t, 3, q.processingJobs[jobs[0].Id].attemptsLeft)
 	q.processingJobsMtx.RUnlock()
 
 	// another Recv call on client1Stream without calling the Send call should get blocked
@@ -140,9 +158,9 @@ func TestQueue_Loop(t *testing.T) {
 	q.processingJobsMtx.RLock()
 	require.Equal(t, 2, len(q.processingJobs))
 	require.Equal(t, jobs[0], q.processingJobs[jobs[0].Id].job)
-	require.Equal(t, 0, q.processingJobs[jobs[0].Id].retryCount)
+	require.Equal(t, 3, q.processingJobs[jobs[0].Id].attemptsLeft)
 	require.Equal(t, jobs[1], q.processingJobs[jobs[1].Id].job)
-	require.Equal(t, 0, q.processingJobs[jobs[1].Id].retryCount)
+	require.Equal(t, 3, q.processingJobs[jobs[1].Id].attemptsLeft)
 	q.processingJobsMtx.RUnlock()
 
 	// sending a response on client1Stream should get it unblocked to Recv the next job
@@ -159,16 +177,15 @@ func TestQueue_Loop(t *testing.T) {
 	q.processingJobsMtx.RLock()
 	require.Equal(t, 2, len(q.processingJobs))
 	require.Equal(t, jobs[1], q.processingJobs[jobs[1].Id].job)
-	require.Equal(t, 0, q.processingJobs[jobs[1].Id].retryCount)
+	require.Equal(t, 3, q.processingJobs[jobs[1].Id].attemptsLeft)
 	require.Equal(t, jobs[2], q.processingJobs[jobs[2].Id].job)
-	require.Equal(t, 0, q.processingJobs[jobs[2].Id].retryCount)
+	require.Equal(t, 3, q.processingJobs[jobs[2].Id].attemptsLeft)
 	q.processingJobsMtx.RUnlock()
 }
 
 func TestQueue_ReportJobResult(t *testing.T) {
-	ctx := context.Background()
-	q := New()
-	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}))
+	q := newQueue(time.Second, nil)
+	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}, jobTimeout, jobRetries))
 
 	// Create a test job
 	job := &compactor_grpc.Job{
@@ -179,14 +196,14 @@ func TestQueue_ReportJobResult(t *testing.T) {
 	// Add job to processing jobs
 	q.processingJobsMtx.Lock()
 	q.processingJobs[job.Id] = &processingJob{
-		job:        job,
-		dequeued:   time.Now(),
-		retryCount: 0,
+		job:          job,
+		dequeued:     time.Now(),
+		attemptsLeft: 2,
 	}
 	q.processingJobsMtx.Unlock()
 
 	// Test successful response
-	err := q.reportJobResult(ctx, &compactor_grpc.JobResult{
+	err := q.reportJobResult(&compactor_grpc.JobResult{
 		JobId:   job.Id,
 		JobType: job.Type,
 	})
@@ -202,25 +219,18 @@ func TestQueue_ReportJobResult(t *testing.T) {
 	job.Id = "retry-job"
 	q.processingJobsMtx.Lock()
 	q.processingJobs[job.Id] = &processingJob{
-		job:        job,
-		dequeued:   time.Now(),
-		retryCount: 0,
+		job:          job,
+		dequeued:     time.Now(),
+		attemptsLeft: 2,
 	}
 	q.processingJobsMtx.Unlock()
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-
-		err := q.reportJobResult(ctx, &compactor_grpc.JobResult{
-			JobId:   job.Id,
-			JobType: job.Type,
-			Error:   "test error",
-		})
-		require.NoError(t, err)
-	}()
+	err = q.reportJobResult(&compactor_grpc.JobResult{
+		JobId:   job.Id,
+		JobType: job.Type,
+		Error:   "test error",
+	})
+	require.NoError(t, err)
 
 	// Verify job is requeued with timeout
 	select {
@@ -230,19 +240,18 @@ func TestQueue_ReportJobResult(t *testing.T) {
 		t.Fatal("job was not requeued")
 	}
 
-	wg.Wait()
-
 	// Verify retry count is incremented
 	q.processingJobsMtx.RLock()
 	pj, exists := q.processingJobs[job.Id]
 	q.processingJobsMtx.RUnlock()
 	require.True(t, exists)
-	require.Equal(t, 1, pj.retryCount)
+	require.Equal(t, 1, pj.attemptsLeft)
 }
 
 func TestQueue_JobTimeout(t *testing.T) {
-	q := newQueue(50 * time.Millisecond)
-	q.jobTimeout = 100 * time.Millisecond // Short timeout for testing
+	q := newQueue(50*time.Millisecond, nil)
+	// Short job timeout for testing
+	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}, 100*time.Millisecond, jobRetries))
 
 	// Create a test job
 	job := &compactor_grpc.Job{
@@ -253,9 +262,9 @@ func TestQueue_JobTimeout(t *testing.T) {
 	// Add job to processing jobs with old dequeued time
 	q.processingJobsMtx.Lock()
 	q.processingJobs[job.Id] = &processingJob{
-		job:        job,
-		dequeued:   time.Now().Add(-200 * time.Millisecond),
-		retryCount: 0,
+		job:          job,
+		dequeued:     time.Now().Add(-200 * time.Millisecond),
+		attemptsLeft: 2,
 	}
 	q.processingJobsMtx.Unlock()
 
@@ -272,21 +281,32 @@ func TestQueue_JobTimeout(t *testing.T) {
 
 	// Verify job is removed from processing jobs
 	q.processingJobsMtx.RLock()
-	_, exists := q.processingJobs[job.Id]
+	pj, exists := q.processingJobs[job.Id]
+	require.True(t, exists)
+	require.Equal(t, 1, pj.attemptsLeft)
 	q.processingJobsMtx.RUnlock()
-	require.False(t, exists)
 }
 
 func TestQueue_Close(t *testing.T) {
-	q := New()
+	q := NewQueue(nil)
 
-	// Close the queue
-	q.Close()
+	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}, jobTimeout, jobRetries))
 
-	// Verify queue is closed
-	require.True(t, q.closed.Load())
+	wg := sync.WaitGroup{}
+	ctx, cancel := context.WithCancel(context.Background())
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		q.Start(ctx)
+	}()
 
-	// Verify channel is closed
+	// cancel the context to stop all the builders and close the queue
+	cancel()
+
+	// wait for everything to stop before we check for closed channel
+	wg.Wait()
+
+	// Verify queue channel is closed
 	select {
 	case _, ok := <-q.queue:
 		require.False(t, ok)

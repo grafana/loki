@@ -17,6 +17,9 @@
       "ap-east-1" : {
         "description" : "Asia Pacific (Hong Kong)"
       },
+      "ap-east-2" : {
+        "description" : "Asia Pacific (Taipei)"
+      },
       "ap-northeast-1" : {
         "description" : "Asia Pacific (Tokyo)"
       },
@@ -208,6 +211,9 @@
     },
     "regionRegex" : "^eu\\-isoe\\-\\w+\\-\\d+$",
     "regions" : {
+      "aws-iso-e-global" : {
+        "description" : "AWS ISOE (Europe) global region"
+      },
       "eu-isoe-west-1" : {
         "description" : "EU ISOE West"
       }
@@ -232,6 +238,22 @@
       },
       "us-isof-south-1" : {
         "description" : "US ISOF SOUTH"
+      }
+    }
+  }, {
+    "id" : "aws-eusc",
+    "outputs" : {
+      "dnsSuffix" : "amazonaws.eu",
+      "dualStackDnsSuffix" : "amazonaws.eu",
+      "implicitGlobalRegion" : "eusc-de-east-1",
+      "name" : "aws-eusc",
+      "supportsDualStack" : false,
+      "supportsFIPS" : true
+    },
+    "regionRegex" : "^eusc\\-(de)\\-\\w+\\-\\d+$",
+    "regions" : {
+      "eusc-de-east-1" : {
+        "description" : "EU (Germany)"
       }
     }
   } ],

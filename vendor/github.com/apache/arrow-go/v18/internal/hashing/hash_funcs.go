@@ -17,11 +17,45 @@
 package hashing
 
 import (
+	"math"
 	"math/bits"
 	"unsafe"
 
 	"github.com/zeebo/xxh3"
 )
+
+func hash[T fixedLenMemoTypes](val T, alg uint64) uint64 {
+	switch v := any(val).(type) {
+	case int8:
+		return hashInt(uint64(v), alg)
+	case uint8:
+		return hashInt(uint64(v), alg)
+	case int16:
+		return hashInt(uint64(v), alg)
+	case uint16:
+		return hashInt(uint64(v), alg)
+	case int32:
+		return hashInt(uint64(v), alg)
+	case uint32:
+		return hashInt(uint64(v), alg)
+	case int64:
+		return hashInt(uint64(v), alg)
+	case uint64:
+		return hashInt(v, alg)
+	case float32:
+		if math.IsNaN(float64(v)) {
+			return hashFloat32(float32(math.NaN()), alg)
+		}
+		return hashFloat32(v, alg)
+	case float64:
+		if math.IsNaN(v) {
+			return hashFloat64(math.NaN(), alg)
+		}
+		return hashFloat64(v, alg)
+	default:
+		panic("unsupported type for hashing")
+	}
+}
 
 func hashInt(val uint64, alg uint64) uint64 {
 	// Two of xxhash's prime multipliers (which are chosen for their

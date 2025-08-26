@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -85,7 +84,7 @@ func TestBloomBuilding(t *testing.T) {
 		"-bloom-build.enabled=true",
 		"-bloom-build.enable=true",
 		"-bloom-build.builder.planner-address=localhost:9095", // hack to succeed config validation
-		"-bloom-build.planner.interval=15s",
+		"-bloom-build.planner.interval=10s",
 		"-bloom-build.planner.min-table-offset=0", // Disable table offset so we process today's data.
 		"-bloom.cache-list-ops=0",                 // Disable cache list operations to avoid caching issues.
 		"-bloom-build.planning-strategy=split_by_series_chunks_size",
@@ -237,9 +236,9 @@ func checkSeriesInBlooms(
 	series []labels.Labels,
 ) {
 	for _, lbs := range series {
-		seriesFP := model.Fingerprint(lbs.Hash())
+		seriesFP := model.Fingerprint(labels.StableHash(lbs))
 
-		metas, err := bloomStore.FetchMetas(context.Background(), bloomshipper.MetaSearchParams{
+		metas, err := bloomStore.FetchMetas(t.Context(), bloomshipper.MetaSearchParams{
 			TenantID: tenantID,
 			Interval: bloomshipper.NewInterval(model.TimeFromUnix(now.Add(-24*time.Hour).Unix()), model.TimeFromUnix(now.Unix())),
 			Keyspace: v1.NewBounds(seriesFP, seriesFP),
@@ -260,7 +259,7 @@ func checkSeriesInBlooms(
 		// Only one block should be relevant.
 		require.Len(t, relevantBlocks, 1)
 
-		queriers, err := bloomStore.FetchBlocks(context.Background(), relevantBlocks)
+		queriers, err := bloomStore.FetchBlocks(t.Context(), relevantBlocks)
 		require.NoError(t, err)
 		require.Len(t, queriers, 1)
 		querier := queriers[0]

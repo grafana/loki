@@ -17,6 +17,7 @@
 package textparse
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -32,6 +33,7 @@ import (
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/value"
+	"github.com/prometheus/prometheus/schema"
 )
 
 type promlexer struct {
@@ -160,16 +162,19 @@ type PromParser struct {
 	// of the metric name and label names and values for this series.
 	// p.offsets[0] is the start character of the metric name.
 	// p.offsets[1] is the end of the metric name.
-	// Subsequently, p.offsets is a pair of pair of offsets for the positions
+	// Subsequently, p.offsets is a pair of offsets for the positions
 	// of the label name and value start and end characters.
 	offsets []int
+
+	enableTypeAndUnitLabels bool
 }
 
 // NewPromParser returns a new parser of the byte slice.
-func NewPromParser(b []byte, st *labels.SymbolTable) Parser {
+func NewPromParser(b []byte, st *labels.SymbolTable, enableTypeAndUnitLabels bool) Parser {
 	return &PromParser{
-		l:       &promlexer{b: append(b, '\n')},
-		builder: labels.NewScratchBuilderWithSymbolTable(st, 16),
+		l:                       &promlexer{b: append(b, '\n')},
+		builder:                 labels.NewScratchBuilderWithSymbolTable(st, 16),
+		enableTypeAndUnitLabels: enableTypeAndUnitLabels,
 	}
 }
 
@@ -184,7 +189,7 @@ func (p *PromParser) Series() ([]byte, *int64, float64) {
 
 // Histogram returns (nil, nil, nil, nil) for now because the Prometheus text
 // format does not support sparse histograms yet.
-func (p *PromParser) Histogram() ([]byte, *int64, *histogram.Histogram, *histogram.FloatHistogram) {
+func (*PromParser) Histogram() ([]byte, *int64, *histogram.Histogram, *histogram.FloatHistogram) {
 	return nil, nil, nil, nil
 }
 
@@ -195,7 +200,7 @@ func (p *PromParser) Help() ([]byte, []byte) {
 	m := p.l.b[p.offsets[0]:p.offsets[1]]
 
 	// Replacer causes allocations. Replace only when necessary.
-	if strings.IndexByte(yoloString(p.text), byte('\\')) >= 0 {
+	if bytes.IndexByte(p.text, byte('\\')) >= 0 {
 		return m, []byte(helpReplacer.Replace(string(p.text)))
 	}
 	return m, p.text
@@ -211,7 +216,7 @@ func (p *PromParser) Type() ([]byte, model.MetricType) {
 // Unit returns the metric name and unit in the current entry.
 // Must only be called after Next returned a unit entry.
 // The returned byte slices become invalid after the next call to Next.
-func (p *PromParser) Unit() ([]byte, []byte) {
+func (*PromParser) Unit() ([]byte, []byte) {
 	// The Prometheus format does not have units.
 	return nil, nil
 }
@@ -230,16 +235,31 @@ func (p *PromParser) Labels(l *labels.Labels) {
 	s := string(p.series)
 	p.builder.Reset()
 	metricName := unreplace(s[p.offsets[0]-p.start : p.offsets[1]-p.start])
-	p.builder.Add(labels.MetricName, metricName)
 
+	m := schema.Metadata{
+		Name: metricName,
+		// NOTE(bwplotka): There is a known case where the type is wrong on a broken exposition
+		// (see the TestPromParse windspeed metric). Fixing it would require extra
+		// allocs and benchmarks. Since it was always broken, don't fix for now.
+		Type: p.mtype,
+	}
+
+	if p.enableTypeAndUnitLabels {
+		m.AddToLabels(&p.builder)
+	} else {
+		p.builder.Add(labels.MetricName, metricName)
+	}
 	for i := 2; i < len(p.offsets); i += 4 {
 		a := p.offsets[i] - p.start
 		b := p.offsets[i+1] - p.start
 		label := unreplace(s[a:b])
+		if p.enableTypeAndUnitLabels && !m.IsEmptyFor(label) {
+			// Dropping user provided metadata labels, if found in the OM metadata.
+			continue
+		}
 		c := p.offsets[i+2] - p.start
 		d := p.offsets[i+3] - p.start
 		value := normalizeFloatsInLabelValues(p.mtype, label, unreplace(s[c:d]))
-
 		p.builder.Add(label, value)
 	}
 
@@ -250,13 +270,13 @@ func (p *PromParser) Labels(l *labels.Labels) {
 // Exemplar implements the Parser interface. However, since the classic
 // Prometheus text format does not support exemplars, this implementation simply
 // returns false and does nothing else.
-func (p *PromParser) Exemplar(*exemplar.Exemplar) bool {
+func (*PromParser) Exemplar(*exemplar.Exemplar) bool {
 	return false
 }
 
 // CreatedTimestamp returns 0 as it's not implemented yet.
 // TODO(bwplotka): https://github.com/prometheus/prometheus/issues/12980
-func (p *PromParser) CreatedTimestamp() int64 {
+func (*PromParser) CreatedTimestamp() int64 {
 	return 0
 }
 

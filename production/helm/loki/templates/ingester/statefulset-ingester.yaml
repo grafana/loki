@@ -8,6 +8,9 @@ metadata:
   labels:
     {{- include "loki.ingesterLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
+    {{- with .Values.ingester.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   {{- with .Values.loki.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}

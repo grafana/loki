@@ -162,7 +162,7 @@ On a high level, the read path in Loki works as follows:
 1. The querier lazily loads data from the backing store and runs the query against it if ingesters returned no or insufficient data.
 1. The querier iterates over all received data and deduplicates, returning the result of the sub-query to the query frontend.
 1. The query frontend waits for all sub-queries of a query to be finished and returned by the queriers.
-1. The query frontend merges the indvidual results into a final result and return it to the client.
+1. The query frontend merges the individual results into a final result and return it to the client.
 
 Refer to [Components](../components/) for a more detailed description of the components involved in the read path.
 

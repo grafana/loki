@@ -106,12 +106,12 @@ func newSeriesCleaner(bucket *bbolt.Bucket, config config.PeriodConfig, tableNam
 
 func (s *seriesCleaner) CleanupSeries(userID []byte, lbls labels.Labels) error {
 	// We need to add metric name label as well if it is missing since the series ids are calculated including that.
-	if lbls.Get(labels.MetricName) == "" {
-		lbls = append(lbls, labels.Label{
-			Name:  labels.MetricName,
-			Value: logMetricName,
-		})
+	builder := labels.NewBuilder(lbls)
+	if builder.Get(labels.MetricName) == "" {
+		builder.Set(labels.MetricName, logMetricName)
 	}
+	lbls = builder.Labels()
+
 	_, indexEntries, err := s.schema.GetCacheKeysAndLabelWriteEntries(s.tableInterval.Start, s.tableInterval.End, string(userID), logMetricName, lbls, "")
 	if err != nil {
 		return err
@@ -136,12 +136,11 @@ func (s *seriesCleaner) CleanupSeries(userID []byte, lbls labels.Labels) error {
 
 func (s *seriesCleaner) RemoveChunk(from, through model.Time, userID []byte, lbls labels.Labels, chunkID string) error {
 	// We need to add metric name label as well if it is missing since the series ids are calculated including that.
-	if lbls.Get(labels.MetricName) == "" {
-		lbls = append(lbls, labels.Label{
-			Name:  labels.MetricName,
-			Value: logMetricName,
-		})
+	builder := labels.NewBuilder(lbls)
+	if builder.Get(labels.MetricName) == "" {
+		builder.Set(labels.MetricName, logMetricName)
 	}
+	lbls = builder.Labels()
 
 	indexEntries, err := s.schema.GetChunkWriteEntries(from, through, string(userID), logMetricName, lbls, chunkID)
 	if err != nil {

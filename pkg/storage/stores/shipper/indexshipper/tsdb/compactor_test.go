@@ -188,7 +188,7 @@ func buildStream(lbls labels.Labels, chunks index.ChunkMetas, userLabel string) 
 	}
 	return stream{
 		labels: lbls,
-		fp:     model.Fingerprint(lbls.Hash()),
+		fp:     model.Fingerprint(labels.StableHash(lbls)),
 		chunks: chunks,
 	}
 }
@@ -641,7 +641,7 @@ func chunkMetasToRetentionChunk(schemaCfg config.SchemaConfig, userID string, lb
 
 func chunkMetaToChunkRef(userID string, chunkMeta index.ChunkMeta, lbls labels.Labels) logproto.ChunkRef {
 	return logproto.ChunkRef{
-		Fingerprint: lbls.Hash(),
+		Fingerprint: labels.StableHash(lbls),
 		UserID:      userID,
 		From:        chunkMeta.From(),
 		Through:     chunkMeta.Through(),
@@ -858,7 +858,8 @@ func TestCompactedIndex(t *testing.T) {
 			}
 
 			for _, chk := range tc.addChunks {
-				_, err := compactedIndex.IndexChunk(chk)
+				approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
+				_, err := compactedIndex.IndexChunk(chk.ChunkRef, chk.Metric, uint32(approxKB), uint32(chk.Data.Entries()))
 				require.NoError(t, err)
 			}
 

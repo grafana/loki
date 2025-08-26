@@ -5,7 +5,7 @@
 *.output
 *.tgz
 *.exe
-__debug_bin
+__debug_bin*
 requirements.lock
 mixin/vendor/
 cmd/loki/loki
@@ -36,7 +36,6 @@ dist
 .aws-sam
 .idea
 pkg/loki/wal
-tools/lambda-promtail/main
 tools/dev/kafka/data/
 pkg/ui/frontend/node_modules/*
 pkg/ui/frontend/.vite/*

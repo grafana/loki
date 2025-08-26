@@ -269,7 +269,7 @@ returned as string slices or arrays. eg: `MYVAR_slice=a b c` becomes `slice: [a,
 ```go
 	k.Load(env.ProviderWithValue("MYVAR_", ".", func(s string, v string) (string, interface{}) {
 		// Strip out the MYVAR_ prefix and lowercase and get the key while also replacing
-		// the _ character with . in the key (koanf delimeter).
+		// the _ character with . in the key (koanf delimiter).
 		key := strings.Replace(strings.ToLower(strings.TrimPrefix(s, "MYVAR_")), "_", ".", -1)
 
 		// If there is a space in the value, split the value into a slice by the space.
@@ -660,7 +660,7 @@ Install with `go get -u github.com/knadh/koanf/providers/$provider`
 | ------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | file      | `file.Provider(filepath string)`                              | Reads a file and returns the raw bytes to be parsed.                                                                                                                                  |
 | fs      | `fs.Provider(f fs.FS, filepath string)`                              | (**Experimental**) Reads a file from fs.FS and returns the raw bytes to be parsed. The provider requires `go v1.16` or higher.                                            |
-| basicflag | `basicflag.Provider(f *flag.FlagSet, delim string)`           | Takes an stdlib `flag.FlagSet`                                                                                                                                                        |
+| basicflag | `basicflag.Provider(f *flag.FlagSet, delim string)`           | Takes a stdlib `flag.FlagSet`                                                                                                                                                        |
 | posflag   | `posflag.Provider(f *pflag.FlagSet, delim string)`            | Takes an `spf13/pflag.FlagSet` (advanced POSIX compatible flags with multiple types) and provides a nested config map based on delim.                                                 |
 | env       | `env.Provider(prefix, delim string, f func(s string) string)` | Takes an optional prefix to filter env variables by, an optional function that takes and returns a string to transform env variables, and returns a nested config map based on delim. |
 | confmap   | `confmap.Provider(mp map[string]interface{}, delim string)`   | Takes a premade `map[string]interface{}` conf map. If delim is provided, the keys are assumed to be flattened, thus unflattened using delim.                                          |
@@ -672,6 +672,8 @@ Install with `go get -u github.com/knadh/koanf/providers/$provider`
 | etcd/v2     | `etcd.Provider(etcd.Config{})`                              | CNCF etcd provider                                                                                                                           |
 | consul/v2     | `consul.Provider(consul.Config{})`                              | Hashicorp Consul provider                                                                                                                           |
 | parameterstore/v2 | `parameterstore.Provider(parameterstore.Config{})` | AWS Systems Manager Parameter Store provider |
+| cliflagv2  |  `cliflagv2.Provider(ctx *cli.Context, delimiter string)` |  Reads commands and flags from urfave/cli/v2 context including global flags and nested command flags and provides a nested config map based on delim. |
+| cliflagv3  |  `cliflagv3.Provider(ctx *cli.Context, delimiter string)` |  Reads commands and flags from urfave/cli/v3 and provides a nested config map based on delim. |
 
 
 ### Bundled Parsers
@@ -694,7 +696,7 @@ Install with `go get -u github.com/knadh/koanf/parsers/$parser`
 ### Third-party Providers
 | Package             | Provider                                                      | Description                                                                                                                                                                           |
 | ------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| github.com/defensestation/koanf/providers/secretsmanager     | `vault.SecretsMananger(secretsmanager.Config{}, f func(s string) string)`                              | AWS Secrets Manager provider, takes map or string as a value from store                                                						  |
+| github.com/defensestation/koanf/providers/secretsmanager     | `vault.SecretsManager(secretsmanager.Config{}, f func(s string) string)`                              | AWS Secrets Manager provider, takes map or string as a value from store                                                						  |
 | github.com/defensestation/koanf/providers/parameterstore     | `vault.ParameterStore(parameterstore.Config{}, f func(s string) string)`                              | AWS ParameterStore provider, an optional function that takes and returns a string to transform env variables                                                 						  |
 
 

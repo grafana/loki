@@ -86,7 +86,7 @@ func TestFrontend_ServeHTTP(t *testing.T) {
 				},
 			}, "test", readRing, log.NewNopLogger(), prometheus.NewRegistry())
 			require.NoError(t, err)
-			f.gatherer = &mockExceedsLimitsGatherer{
+			f.limitsClient = &mockLimitsClient{
 				t:                            t,
 				expectedExceedsLimitsRequest: test.expectedExceedsLimitsRequest,
 				exceedsLimitsResponses:       test.exceedsLimitsResponses,

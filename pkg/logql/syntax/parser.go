@@ -222,6 +222,11 @@ func validateSampleExpr(expr SampleExpr) error {
 			}
 		}
 		return validateSampleExpr(e.Left)
+	case *LabelReplaceExpr:
+		if e.err != nil {
+			return e.err
+		}
+		return validateSampleExpr(e.Left)
 	default:
 		selector, err := e.Selector()
 		if err != nil {

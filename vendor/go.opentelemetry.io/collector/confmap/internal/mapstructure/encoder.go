@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/go-viper/mapstructure/v2"
-	"gopkg.in/yaml.v3"
+	yaml "sigs.k8s.io/yaml/goyaml.v3"
 )
 
 const (
@@ -141,6 +141,11 @@ func (e *Encoder) encodeSlice(value reflect.Value) (any, error) {
 			Kind:   value.Kind(),
 		}
 	}
+
+	if value.IsNil() {
+		return []any(nil), nil
+	}
+
 	result := make([]any, value.Len())
 	for i := 0; i < value.Len(); i++ {
 		var err error
@@ -160,7 +165,12 @@ func (e *Encoder) encodeMap(value reflect.Value) (any, error) {
 			Kind:   value.Kind(),
 		}
 	}
-	result := make(map[string]any)
+
+	var result map[string]any
+	if value.Len() > 0 || !value.IsNil() {
+		result = make(map[string]any)
+	}
+
 	iterator := value.MapRange()
 	for iterator.Next() {
 		encoded, err := e.encode(iterator.Key())

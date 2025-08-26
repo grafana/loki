@@ -388,6 +388,30 @@ var ParseTestCases = []struct {
 		in:  `min({ foo = "bar" }[5m])`,
 		err: logqlmodel.NewParseError("syntax error: unexpected RANGE", 0, 20),
 	},
+	{
+		in: `avg(
+					label_replace(
+						count_over_time({ foo = "bar" }[5h]) or 0,
+						"bar",
+						"$1$2",
+						"foo",
+						"(.*).(.*)"
+					)
+				) by (bar,foo)`,
+		err: logqlmodel.NewParseError("unexpected literal for right leg of logical/set binary operation (or): 0.000000", 0, 0),
+	},
+	{
+		in: `avg(
+					label_replace(
+						count_over_time({ foo = "bar" }[5h]) or sum_over_time({ foo = "bar" }[5h]),
+						"bar",
+						"$1$2",
+						"foo",
+						"(.*).(.*)"
+					)
+				) by (bar,foo)`,
+		err: logqlmodel.NewParseError("invalid aggregation sum_over_time without unwrap", 0, 0),
+	},
 	// line filter for ip-matcher
 	{
 		in: `{foo="bar"} |= "baz" |= ip("123.123.123.123")`,

@@ -18,10 +18,10 @@ import (
 func TestVectorAggregationPipeline(t *testing.T) {
 	// input schema with timestamp, value and group by columns
 	fields := []arrow.Field{
-		{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
-		{Name: types.ColumnNameGeneratedValue, Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Integer)},
-		{Name: "env", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String)},
-		{Name: "service", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.String)},
+		{Name: types.ColumnNameBuiltinTimestamp, Type: datatype.Arrow.Timestamp, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
+		{Name: types.ColumnNameGeneratedValue, Type: datatype.Arrow.Integer, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Integer)},
+		{Name: "env", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)},
+		{Name: "service", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)},
 	}
 
 	now := time.Now().UTC()
@@ -84,12 +84,12 @@ func TestVectorAggregationPipeline(t *testing.T) {
 		},
 	}
 
-	pipeline, err := NewVectorAggregationPipeline([]Pipeline{input1, input2}, groupBy, expressionEvaluator{})
+	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, groupBy, expressionEvaluator{})
 	require.NoError(t, err)
 	defer pipeline.Close()
 
 	// Read the pipeline output
-	err = pipeline.Read()
+	err = pipeline.Read(t.Context())
 	require.NoError(t, err)
 	record, err := pipeline.Value()
 	require.NoError(t, err)

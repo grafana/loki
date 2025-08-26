@@ -25,6 +25,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -61,13 +62,13 @@ type QuerierAPI struct {
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
-func NewQuerierAPI(cfg Config, querier Querier, limits querier_limits.Limits, store objstore.Bucket, reg prometheus.Registerer, logger log.Logger) *QuerierAPI {
+func NewQuerierAPI(cfg Config, mCfg metastore.StorageConfig, querier Querier, limits querier_limits.Limits, store objstore.Bucket, reg prometheus.Registerer, logger log.Logger) *QuerierAPI {
 	return &QuerierAPI{
 		cfg:      cfg,
 		limits:   limits,
 		querier:  querier,
 		engineV1: logql.NewEngine(cfg.Engine, querier, limits, logger),
-		engineV2: engine.New(cfg.Engine, store, limits, reg, logger),
+		engineV2: engine.New(cfg.Engine, mCfg, store, limits, reg, logger),
 		logger:   logger,
 	}
 }
@@ -124,6 +125,22 @@ func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.Lo
 	if err != nil {
 		return logqlmodel.Result{}, err
 	}
+
+	if q.cfg.Engine.EnableV2Engine && hasDataObjectsAvailable(params.Start(), params.End()) {
+		query := q.engineV2.Query(params)
+		result, err := query.Exec(ctx)
+		if err == nil {
+			return result, err
+		}
+
+		logger := utillog.WithContext(ctx, q.logger)
+		if !errors.Is(err, engine.ErrNotSupported) {
+			level.Error(logger).Log("msg", "query execution failed with new query engine", "err", err)
+			return result, errors.Wrap(err, "failed with new execution engine")
+		}
+		level.Warn(logger).Log("msg", "falling back to legacy query engine", "err", err)
+	}
+
 	query := q.engineV1.Query(params)
 	return query.Exec(ctx)
 }
@@ -447,18 +464,27 @@ func (q *QuerierAPI) PatternsHandler(ctx context.Context, req *logproto.QueryPat
 	}
 
 	// Query store for older data by converting to LogQL query
+	// Only query the store if pattern persistence is enabled for this tenant
 	if storeQueryInterval != nil && !q.cfg.QueryIngesterOnly && q.engineV1 != nil {
-		g.Go(func() error {
-			storeReq := *req
-			storeReq.Start = storeQueryInterval.start
-			storeReq.End = storeQueryInterval.end
-			resp, err := q.queryStoreForPatterns(ctx, &storeReq)
-			if err != nil {
-				return err
-			}
-			responses.add(resp)
-			return nil
-		})
+		tenantID, err := tenant.TenantID(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		// Only query the store if pattern persistence is enabled for this tenant
+		if q.limits.PatternPersistenceEnabled(tenantID) {
+			g.Go(func() error {
+				storeReq := *req
+				storeReq.Start = storeQueryInterval.start
+				storeReq.End = storeQueryInterval.end
+				resp, err := q.queryStoreForPatterns(ctx, &storeReq)
+				if err != nil {
+					return err
+				}
+				responses.add(resp)
+				return nil
+			})
+		}
 	}
 
 	if err := g.Wait(); err != nil {

@@ -1,8 +1,8 @@
 package streams_test
 
 import (
-	"bytes"
 	"context"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -33,8 +33,9 @@ func Test(t *testing.T) {
 		tracker.Record(tc.Labels, tc.Time, tc.Size)
 	}
 
-	buf, err := buildObject(tracker)
+	obj, closer, err := buildObject(tracker)
 	require.NoError(t, err)
+	defer closer.Close()
 
 	expect := []streams.Stream{
 		{
@@ -55,9 +56,6 @@ func Test(t *testing.T) {
 		},
 	}
 
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf), int64(len(buf)))
-	require.NoError(t, err)
-
 	var actual []streams.Stream
 	for result := range streams.Iter(context.Background(), obj) {
 		stream, err := result.Value()
@@ -70,24 +68,20 @@ func Test(t *testing.T) {
 }
 
 func copyLabels(in labels.Labels) labels.Labels {
-	lb := make(labels.Labels, len(in))
-	for i, label := range in {
-		lb[i] = labels.Label{
-			Name:  strings.Clone(label.Name),
-			Value: strings.Clone(label.Value),
-		}
-	}
-	return lb
+	builder := labels.NewScratchBuilder(in.Len())
+
+	in.Range(func(l labels.Label) {
+		builder.Add(strings.Clone(l.Name), strings.Clone(l.Value))
+	})
+
+	builder.Sort()
+	return builder.Labels()
 }
 
-func buildObject(st *streams.Builder) ([]byte, error) {
-	var buf bytes.Buffer
-
-	builder := dataobj.NewBuilder()
+func buildObject(st *streams.Builder) (*dataobj.Object, io.Closer, error) {
+	builder := dataobj.NewBuilder(nil)
 	if err := builder.Append(st); err != nil {
-		return nil, err
-	} else if _, err := builder.Flush(&buf); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return buf.Bytes(), nil
+	return builder.Flush()
 }

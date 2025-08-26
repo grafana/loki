@@ -56,9 +56,14 @@ func NewOTelOrJaegerFromEnv(serviceName string, logger log.Logger, opts ...OTelO
 		return newOTelFromJaegerEnv(serviceName, logger, opts...)
 	}
 
-	level.Info(logger).Log("msg", "Configuring tracing with OTel auto exporter")
+	if env, found := findNonEmptyEnv("OTEL_TRACES_EXPORTER", "OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"); found {
+		level.Info(logger).Log("msg", "Configuring OpenTelemetry tracing", "detected_env_var", env)
+		return NewOTelFromEnv(serviceName, logger, opts...)
+	}
 
-	return NewOTelFromEnv(serviceName, logger, opts...)
+	// No tracing is configured, so don't initialize the tracer as it would complain on every span about localhost:4718 not accepting traces.
+	return ioCloser(func() error { return nil }), nil
+
 }
 
 func findNonEmptyEnv(envVars ...string) (string, bool) {

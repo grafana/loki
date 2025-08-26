@@ -64,9 +64,9 @@ func newPageBuilder(opts BuilderOptions) (*pageBuilder, error) {
 	)
 
 	presenceEnc := newBitmapEncoder(presenceBuffer)
-	valuesEnc, ok := newValueEncoder(opts.Value, opts.Encoding, valuesWriter)
+	valuesEnc, ok := newValueEncoder(opts.Type.Physical, opts.Encoding, valuesWriter)
 	if !ok {
-		return nil, fmt.Errorf("no encoder available for %s/%s", opts.Value, opts.Encoding)
+		return nil, fmt.Errorf("no encoder available for %s/%s", opts.Type.Physical, opts.Encoding)
 	}
 
 	return &pageBuilder{
@@ -175,26 +175,26 @@ func (b *pageBuilder) updateMinMax(value Value) {
 	// We'll init minValue/maxValue if this is our first non-NULL value (b.values == 0).
 	// This allows us to only avoid comparing against NULL values, which would lead to
 	// NULL always being the min.
-	if b.values == 0 || CompareValues(value, b.minValue) < 0 {
+	if b.values == 0 || CompareValues(&value, &b.minValue) < 0 {
 		b.minValue = value
 	}
-	if b.values == 0 || CompareValues(value, b.maxValue) > 0 {
+	if b.values == 0 || CompareValues(&value, &b.maxValue) > 0 {
 		b.maxValue = value
 	}
 }
 
 func valueSize(v Value) int {
 	switch v.Type() {
-	case datasetmd.VALUE_TYPE_INT64:
+	case datasetmd.PHYSICAL_TYPE_INT64:
 		// Assuming that int64s are written as varints.
 		return streamio.VarintSize(v.Int64())
 
-	case datasetmd.VALUE_TYPE_UINT64:
+	case datasetmd.PHYSICAL_TYPE_UINT64:
 		// Assuming that uint64s are written as uvarints.
 		return streamio.UvarintSize(v.Uint64())
 
-	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
-		arr := v.ByteArray()
+	case datasetmd.PHYSICAL_TYPE_BINARY:
+		arr := v.Binary()
 		return binary.Size(len(arr)) + len(arr)
 	}
 
@@ -263,7 +263,7 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 	checksum := crc32.Checksum(finalData.Bytes(), checksumTable)
 
 	page := MemPage{
-		Info: PageInfo{
+		Desc: PageDesc{
 			UncompressedSize: headerSize + presenceSize + b.valuesWriter.BytesWritten(),
 			CompressedSize:   finalData.Len(),
 			CRC32:            checksum,
@@ -291,7 +291,6 @@ func (b *pageBuilder) buildStats() *datasetmd.Statistics {
 }
 
 func (b *pageBuilder) buildRangeStats(dst *datasetmd.Statistics) {
-
 	minValueBytes, err := b.minValue.MarshalBinary()
 	if err != nil {
 		panic(fmt.Sprintf("pageBuilder.buildStats: failed to marshal min value: %s", err))

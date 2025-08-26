@@ -5,45 +5,68 @@ package confmap // import "go.opentelemetry.io/collector/confmap"
 
 import (
 	"reflect"
+
+	"github.com/gobwas/glob"
+	"github.com/knadh/koanf/maps"
 )
 
 func mergeAppend(src, dest map[string]any) error {
 	// mergeAppend recursively merges the src map into the dest map (left to right),
 	// modifying and expanding the dest map in the process.
-	// This function does not overwrite lists, and ensures that the final value is a name-aware
-	// copy of lists from src and dest.
+	// This function does not overwrite component lists, and ensures that the
+	// final value is a name-aware copy of lists from src and dest.
 
-	for sKey, sVal := range src {
-		dVal, dOk := dest[sKey]
-		if !dOk {
-			// key is not present in destination config. Hence, add it to destination map
-			dest[sKey] = sVal
+	// Compile the globs once
+	patterns := []string{
+		"service::extensions",
+		"service::**::receivers",
+		"service::**::exporters",
+	}
+	var globs []glob.Glob
+	for _, p := range patterns {
+		if g, err := glob.Compile(p); err == nil {
+			globs = append(globs, g)
+		}
+	}
+
+	// Flatten both source and destination maps
+	srcFlat, _ := maps.Flatten(src, []string{}, KeyDelimiter)
+	destFlat, _ := maps.Flatten(dest, []string{}, KeyDelimiter)
+
+	for sKey, sVal := range srcFlat {
+		if !isMatch(sKey, globs) {
 			continue
+		}
+
+		dVal, dOk := destFlat[sKey]
+		if !dOk {
+			continue // Let maps.Merge handle missing keys
 		}
 
 		srcVal := reflect.ValueOf(sVal)
 		destVal := reflect.ValueOf(dVal)
 
-		if destVal.Kind() != srcVal.Kind() {
-			// different kinds. Override the destination map
-			dest[sKey] = sVal
-			continue
-		}
-
-		switch srcVal.Kind() {
-		case reflect.Array, reflect.Slice:
-			// both of them are array. Merge them
-			dest[sKey] = mergeSlice(srcVal, destVal)
-		case reflect.Map:
-			// both of them are maps. Recursively call the mergeAppend
-			_ = mergeAppend(sVal.(map[string]any), dVal.(map[string]any))
-		default:
-			// any other datatype. Override the destination map
-			dest[sKey] = sVal
+		// Only merge if the value is a slice or array; let maps.Merge handle other types
+		if srcVal.Kind() == reflect.Slice || srcVal.Kind() == reflect.Array {
+			srcFlat[sKey] = mergeSlice(srcVal, destVal)
 		}
 	}
 
+	// Unflatten and merge
+	mergedSrc := maps.Unflatten(srcFlat, KeyDelimiter)
+	maps.Merge(mergedSrc, dest)
+
 	return nil
+}
+
+// isMatch checks if a key matches any glob in the list
+func isMatch(key string, globs []glob.Glob) bool {
+	for _, g := range globs {
+		if g.Match(key) {
+			return true
+		}
+	}
+	return false
 }
 
 func mergeSlice(src, dest reflect.Value) any {
@@ -63,7 +86,7 @@ func mergeSlice(src, dest reflect.Value) any {
 
 func isPresent(slice reflect.Value, val reflect.Value) bool {
 	for i := 0; i < slice.Len(); i++ {
-		if slice.Index(i).Equal(val) {
+		if reflect.DeepEqual(val.Interface(), slice.Index(i).Interface()) {
 			return true
 		}
 	}

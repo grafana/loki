@@ -50,10 +50,10 @@ func NewBooleanData(data arrow.ArrayData) *Boolean {
 }
 
 func (a *Boolean) Value(i int) bool {
-	if i < 0 || i >= a.array.data.length {
+	if i < 0 || i >= a.data.length {
 		panic("arrow/array: index out of range")
 	}
-	return bitutil.BitIsSet(a.values, a.array.data.offset+i)
+	return bitutil.BitIsSet(a.values, a.data.offset+i)
 }
 
 func (a *Boolean) ValueStr(i int) string {

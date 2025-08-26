@@ -130,9 +130,9 @@ func Test_windowPages(t *testing.T) {
 	}
 }
 
-type fakePageDesc struct{ Info *datasetmd.PageInfo }
+type fakePageDesc struct{ Info *datasetmd.PageDesc }
 
-func (f *fakePageDesc) GetInfo() *datasetmd.PageInfo { return f.Info }
+func (f *fakePageDesc) GetInfo() *datasetmd.PageDesc { return f.Info }
 
 func (f *fakePageDesc) GoString() string {
 	return fmt.Sprintf("(start: %d, size: %d)", f.Info.DataOffset, f.Info.DataSize)
@@ -140,7 +140,7 @@ func (f *fakePageDesc) GoString() string {
 
 func newFakePage(offset, size uint64) *fakePageDesc {
 	return &fakePageDesc{
-		Info: &datasetmd.PageInfo{
+		Info: &datasetmd.PageDesc{
 			DataOffset: offset,
 			DataSize:   size,
 		},

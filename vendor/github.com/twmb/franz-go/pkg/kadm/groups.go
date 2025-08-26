@@ -93,6 +93,27 @@ func (d *DescribedGroup) AssignedPartitions() TopicsSet {
 	return s
 }
 
+// JoinTopics returns the set of topics that all members are interested in
+// consuming.
+//
+// This function is only relevant for groups of time "consumer".
+func (d DescribedGroup) JoinTopics() []string {
+	s := make(map[string]struct{})
+	for _, m := range d.Members {
+		if c, ok := m.Join.AsConsumer(); ok {
+			for _, t := range c.Topics {
+				s[t] = struct{}{}
+			}
+		}
+	}
+	ks := make([]string, 0, len(s))
+	for k := range s {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
+}
+
 // DescribedGroup contains data from a describe groups response for a single
 // group.
 type DescribedGroup struct {
@@ -130,6 +151,29 @@ func (ds DescribedGroups) AssignedPartitions() TopicsSet {
 		}
 	}
 	return s
+}
+
+// JoinTopics returns the set of topics that all members are interested in
+// consuming. This is the all-group analogue to DescribedGroup.JoinTopics.
+//
+// This function is only relevant for groups of time "consumer".
+func (ds DescribedGroups) JoinTopics() []string {
+	s := make(map[string]struct{})
+	for _, g := range ds {
+		for _, m := range g.Members {
+			if c, ok := m.Join.AsConsumer(); ok {
+				for _, t := range c.Topics {
+					s[t] = struct{}{}
+				}
+			}
+		}
+	}
+	ks := make([]string, 0, len(s))
+	for k := range s {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
 }
 
 // Sorted returns all groups sorted by group name.
@@ -1441,7 +1485,12 @@ func (cl *Client) Lag(ctx context.Context, groups ...string) (DescribedGroupLags
 		return nil, err
 	case errors.As(err, &se) && !se.AllFailed:
 		for _, se := range se.Errs {
-			for _, g := range se.Req.(*kmsg.DescribeGroupsRequest).Groups {
+			// can be ListGroupsRequest as well
+			req, ok := se.Req.(*kmsg.DescribeGroupsRequest)
+			if !ok {
+				continue
+			}
+			for _, g := range req.Groups {
 				lags[g] = DescribedGroupLag{
 					Group:       g,
 					Coordinator: se.Broker,
@@ -1498,9 +1547,12 @@ func (cl *Client) Lag(ctx context.Context, groups ...string) (DescribedGroupLags
 	}
 
 	// We have to list the start & end offset for all assigned and
-	// committed partitions.
+	// committed partitions, as well as any topics that group members
+	// WANT to consume (maybe they have not yet been committed to and
+	// we are currently eagerly rebalancing).
 	var startOffsets, endOffsets ListedOffsets
 	listPartitions := described.AssignedPartitions()
+	listPartitions.MergeTopics(described.JoinTopics())
 	listPartitions.Merge(fetched.CommittedPartitions())
 	if topics := listPartitions.Topics(); len(topics) > 0 {
 		for _, list := range []struct {
@@ -1565,6 +1617,7 @@ func (cl *Client) Lag(ctx context.Context, groups ...string) (DescribedGroupLags
 //	commits := FetchManyOffsets(ctx, group)
 //	var endOffsets ListedOffsets
 //	listPartitions := described.AssignedPartitions()
+//	listPartitions.MergeTopics(described.JoinTopics())
 //	listPartitions.Merge(commits.CommittedPartitions()
 //	if topics := listPartitions.Topics(); len(topics) > 0 {
 //		endOffsets = ListEndOffsets(ctx, listPartitions.Topics())
@@ -1715,6 +1768,20 @@ func CalculateGroupLagWithStartOffsets(
 					Err:       perr,
 				}
 
+			}
+		}
+
+		// For all members, we prime the lag map with the topics the
+		// member is interested in. It is possible the group is
+		// rebalancing (no partitions assigned!) and that topics have
+		// not been committed to.
+		j, ok := m.Join.AsConsumer()
+		if !ok {
+			continue
+		}
+		for _, t := range j.Topics {
+			if _, ok := l[t]; !ok {
+				l[t] = make(map[int32]GroupMemberLag)
 			}
 		}
 	}

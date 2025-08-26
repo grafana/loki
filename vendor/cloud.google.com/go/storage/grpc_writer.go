@@ -76,11 +76,50 @@ func withBidiWriteObjectRedirectionErrorRetries(s *settings) (newr *retryConfig)
 	return newr
 }
 
-func (c *grpcStorageClient) OpenWriter(params *openWriterParams, opts ...storageOption) (*io.PipeWriter, error) {
+type flushResult struct {
+	err    error
+	offset int64
+}
+
+type gRPCInternalWriter struct {
+	flushSupported  bool
+	flushInProgress bool
+
+	pw *io.PipeWriter
+
+	flushComplete chan flushResult
+}
+
+func (giw *gRPCInternalWriter) Flush() (int64, error) {
+	if !giw.flushSupported {
+		return 0, errors.New("Flush is supported only if Writer.Append is set to true")
+	}
+
+	giw.flushInProgress = true
+	giw.pw.Close()
+
+	// Return the offset based on flushComplete.
+	r := <-giw.flushComplete
+	return r.offset, r.err
+}
+
+// Forward other methods to *io.PipeWriter
+func (giw *gRPCInternalWriter) Write(p []byte) (int, error) {
+	return giw.pw.Write(p)
+}
+
+func (giw *gRPCInternalWriter) Close() error {
+	return giw.pw.Close()
+}
+
+func (giw *gRPCInternalWriter) CloseWithError(err error) error {
+	return giw.pw.CloseWithError(err)
+}
+
+func (c *grpcStorageClient) OpenWriter(params *openWriterParams, opts ...storageOption) (internalWriter, error) {
 	var offset int64
 	errorf := params.setError
 	setObj := params.setObj
-	setFlush := params.setFlush
 	pr, pw := io.Pipe()
 
 	s := callSettings(c.settings, opts...)
@@ -97,12 +136,7 @@ func (c *grpcStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 	}
 	s.retry.maxRetryDuration = retryDeadline
 
-	// Set Flush func for use by exported Writer.Flush.
-	var gw *gRPCWriter
-	setFlush(func() (int64, error) {
-		return gw.flush()
-	})
-	gw, err := newGRPCWriter(c, s, params, pr, pr, pw, params.setPipeWriter)
+	gw, err := newGRPCWriter(c, s, params, pr, pr, pw)
 	if err != nil {
 		errorf(err)
 		pr.CloseWithError(err)
@@ -114,7 +148,7 @@ func (c *grpcStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 
 	// If we are taking over an appendable object, send the first message here
 	// to get the append offset.
-	if params.appendGen > 0 {
+	if params.append && params.appendGen >= 0 {
 		// Create the buffer sender. This opens a stream and blocks until we
 		// get a response that tells us what offset to write from.
 		wbs, err := gw.newGRPCAppendTakeoverWriteBufferSender(params.ctx)
@@ -167,10 +201,10 @@ func (c *grpcStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 				offset += int64(recvd)
 				// If this buffer upload was triggered by a flush, reset and
 				// communicate back the result.
-				if gw.flushInProgress {
+				if gw.iw.flushInProgress {
 					gw.setSize(offset)
-					gw.flushInProgress = false
-					gw.flushComplete <- flushResult{offset: offset, err: err}
+					gw.iw.flushInProgress = false
+					gw.iw.flushComplete <- flushResult{offset: offset, err: err}
 				}
 				if err != nil {
 					return err
@@ -192,10 +226,10 @@ func (c *grpcStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 		close(params.donec)
 	}()
 
-	return pw, nil
+	return gw.iw, nil
 }
 
-func newGRPCWriter(c *grpcStorageClient, s *settings, params *openWriterParams, r io.Reader, pr *io.PipeReader, pw *io.PipeWriter, setPipeWriter func(*io.PipeWriter)) (*gRPCWriter, error) {
+func newGRPCWriter(c *grpcStorageClient, s *settings, params *openWriterParams, r io.Reader, pr *io.PipeReader, pw *io.PipeWriter) (*gRPCWriter, error) {
 	if params.attrs.Retention != nil {
 		// TO-DO: remove once ObjectRetention is available - see b/308194853
 		return nil, status.Errorf(codes.Unimplemented, "storage: object retention is not supported in gRPC")
@@ -223,7 +257,7 @@ func newGRPCWriter(c *grpcStorageClient, s *settings, params *openWriterParams, 
 		Appendable: proto.Bool(params.append),
 	}
 	var appendSpec *storagepb.AppendObjectSpec
-	if params.appendGen > 0 {
+	if params.append && params.appendGen >= 0 {
 		appendSpec = &storagepb.AppendObjectSpec{
 			Bucket:     bucketResourceName(globalProjectAlias, params.bucket),
 			Object:     params.attrs.Name,
@@ -236,12 +270,17 @@ func newGRPCWriter(c *grpcStorageClient, s *settings, params *openWriterParams, 
 	}
 
 	return &gRPCWriter{
-		buf:                   make([]byte, size),
-		c:                     c,
-		ctx:                   params.ctx,
-		reader:                r,
-		pw:                    pw,
-		pr:                    pr,
+		buf:    make([]byte, size),
+		c:      c,
+		ctx:    params.ctx,
+		reader: r,
+		pr:     pr,
+		iw: &gRPCInternalWriter{
+			flushSupported:  params.append,
+			flushInProgress: false,
+			pw:              pw,
+			flushComplete:   make(chan flushResult),
+		},
 		bucket:                params.bucket,
 		attrs:                 params.attrs,
 		conds:                 params.conds,
@@ -256,20 +295,17 @@ func newGRPCWriter(c *grpcStorageClient, s *settings, params *openWriterParams, 
 		forceEmptyContentType: params.forceEmptyContentType,
 		append:                params.append,
 		finalizeOnClose:       params.finalizeOnClose,
-		setPipeWriter:         setPipeWriter,
-		flushComplete:         make(chan flushResult),
 	}, nil
 }
 
 // gRPCWriter is a wrapper around the the gRPC client-stream API that manages
 // sending chunks of data provided by the user over the stream.
 type gRPCWriter struct {
-	c             *grpcStorageClient
-	buf           []byte
-	reader        io.Reader
-	pr            *io.PipeReader // Keep track of pr and pw to update post-flush
-	pw            *io.PipeWriter
-	setPipeWriter func(*io.PipeWriter) // used to set in parent storage.Writer
+	c      *grpcStorageClient
+	buf    []byte
+	reader io.Reader
+	pr     *io.PipeReader // Keep track of pr to update post-flush
+	iw     *gRPCInternalWriter
 
 	ctx context.Context
 
@@ -289,14 +325,7 @@ type gRPCWriter struct {
 	append                bool
 	finalizeOnClose       bool
 
-	streamSender    gRPCBidiWriteBufferSender
-	flushInProgress bool             // true when the pipe is being recreated for a flush.
-	flushComplete   chan flushResult // use to signal back to flush call that flush to server was completed.
-}
-
-type flushResult struct {
-	err    error
-	offset int64
+	streamSender gRPCBidiWriteBufferSender
 }
 
 func bucketContext(ctx context.Context, bucket string) context.Context {
@@ -625,34 +654,17 @@ func (w *gRPCWriter) read() (int, bool, error) {
 	if err == io.EOF {
 		err = nil
 		// EOF can come from Writer.Flush or Writer.Close.
-		if w.flushInProgress {
+		if w.iw.flushInProgress {
 			// Reset pipe for additional writes after the flush.
 			pr, pw := io.Pipe()
 			w.reader = pr
-			w.pw = pw
 			w.pr = pr
-			w.setPipeWriter(pw)
+			w.iw.pw = pw
 		} else {
 			done = true
 		}
 	}
 	return recvd, done, err
-}
-
-// flush flushes the current buffer regardless of whether it is full or not.
-// It's the implementation for Writer.Flush.
-func (w *gRPCWriter) flush() (int64, error) {
-	if !w.append {
-		return 0, errors.New("Flush is supported only if Writer.Append is set to true")
-	}
-
-	// Close PipeWriter to trigger EOF on read side of the stream.
-	w.flushInProgress = true
-	w.pw.Close()
-
-	// Wait for flush to complete
-	result := <-w.flushComplete
-	return result.offset, result.err
 }
 
 func checkCanceled(err error) error {
@@ -703,6 +715,7 @@ func (w *gRPCWriter) newGRPCAppendableObjectBufferSender() (*gRPCAppendBidiWrite
 		finalizeOnClose:   w.finalizeOnClose,
 		forceFirstMessage: true,
 		progress:          w.progress,
+		flushOffset:       -1, // We should ack flushes to length 0.
 	}
 	return s, nil
 }
@@ -958,9 +971,7 @@ func (s *gRPCAppendBidiWriteBufferSender) sendOnConnectedStream(buf []byte, offs
 		// this allows the server to send multiple responses if it wants to.
 		flushOffset := s.flushOffset
 
-		// Await a response on the stream. Loop at least once or until the
-		// persisted offset matches the flush offset.
-		for {
+		for flushOffset < offset+int64(len(buf)) {
 			resp, ok := <-s.recvs
 			if !ok {
 				return nil, s.recvErr
@@ -977,9 +988,6 @@ func (s *gRPCAppendBidiWriteBufferSender) sendOnConnectedStream(buf []byte, offs
 			// should return it.
 			if resp.GetResource() != nil {
 				obj = resp.GetResource()
-			}
-			if flushOffset <= offset+int64(len(buf)) {
-				break
 			}
 		}
 		if s.flushOffset < flushOffset {

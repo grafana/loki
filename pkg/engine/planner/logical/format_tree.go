@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"github.com/grafana/loki/v3/pkg/engine/planner/internal/tree"
 )
 
@@ -135,13 +136,10 @@ func (t *treeFormatter) convertRangeAggregation(r *RangeAggregation) *tree.Node 
 	properties := []tree.Property{
 		tree.NewProperty("table", false, r.Table.Name()),
 		tree.NewProperty("operation", false, r.Operation),
-		tree.NewProperty("start_ts", false, r.Start),
-		tree.NewProperty("end_ts", false, r.End),
+		tree.NewProperty("start_ts", false, util.FormatTimeRFC3339Nano(r.Start)),
+		tree.NewProperty("end_ts", false, util.FormatTimeRFC3339Nano(r.End)),
+		tree.NewProperty("step", false, r.Step),
 		tree.NewProperty("range", false, r.RangeInterval),
-	}
-
-	if r.Step != nil {
-		properties = append(properties, tree.NewProperty("step", false, r.Step))
 	}
 
 	if len(r.PartitionBy) > 0 {

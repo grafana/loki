@@ -30,6 +30,24 @@ smithy-build:
 smithy-clean:
 	cd codegen && ./gradlew clean
 
+GRADLE_RETRIES := 3
+GRADLE_SLEEP := 2
+
+# We're making a call to ./gradlew to trigger downloading Gradle and
+# starting the daemon. Any call works, so using `./gradlew help`
+ensure-gradle-up:
+	@cd codegen && for i in $(shell seq 1 $(GRADLE_RETRIES)); do \
+		echo "Checking if Gradle daemon is up, attempt $$i..."; \
+		if ./gradlew help; then \
+			echo "Gradle daemon is up!"; \
+			exit 0; \
+		fi; \
+		echo "Failed to start Gradle, retrying in $(GRADLE_SLEEP) seconds..."; \
+		sleep $(GRADLE_SLEEP); \
+	done; \
+	echo "Failed to start Gradle after $(GRADLE_RETRIES) attempts."; \
+	exit 1
+
 ##################
 # Linting/Verify #
 ##################
@@ -51,12 +69,10 @@ cover:
 .PHONY: unit unit-race unit-test unit-race-test
 
 unit: verify
-	go vet ${BUILD_TAGS} --all ./... && \
 	go test ${BUILD_TAGS} ${RUN_NONE} ./... && \
 	go test -timeout=1m ${UNIT_TEST_TAGS} ./...
 
 unit-race: verify
-	go vet ${BUILD_TAGS} --all ./... && \
 	go test ${BUILD_TAGS} ${RUN_NONE} ./... && \
 	go test -timeout=1m ${UNIT_TEST_TAGS} -race -cpu=4 ./...
 

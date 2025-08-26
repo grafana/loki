@@ -19,6 +19,7 @@ package xdsresource
 
 import (
 	"google.golang.org/grpc/internal/pretty"
+	xdsclient "google.golang.org/grpc/xds/internal/clients/xdsclient"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -145,4 +146,10 @@ func (d *delegatingEndpointsWatcher) AmbientError(err error, onDone func()) {
 func WatchEndpoints(p Producer, name string, w EndpointsWatcher) (cancel func()) {
 	delegator := &delegatingEndpointsWatcher{watcher: w}
 	return p.WatchResource(endpointsType, name, delegator)
+}
+
+// NewGenericEndpointsResourceTypeDecoder returns a xdsclient.Decoder that
+// wraps the xdsresource.endpointsType.
+func NewGenericEndpointsResourceTypeDecoder() xdsclient.Decoder {
+	return &GenericResourceTypeDecoder{ResourceType: endpointsType}
 }

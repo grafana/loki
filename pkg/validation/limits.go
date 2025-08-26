@@ -72,19 +72,20 @@ const (
 // to support user-friendly duration format (e.g: "1h30m45s") in JSON value.
 type Limits struct {
 	// Distributor enforced limits.
-	IngestionRateStrategy       string           `yaml:"ingestion_rate_strategy" json:"ingestion_rate_strategy"`
-	IngestionRateMB             float64          `yaml:"ingestion_rate_mb" json:"ingestion_rate_mb"`
-	IngestionBurstSizeMB        float64          `yaml:"ingestion_burst_size_mb" json:"ingestion_burst_size_mb"`
-	MaxLabelNameLength          int              `yaml:"max_label_name_length" json:"max_label_name_length"`
-	MaxLabelValueLength         int              `yaml:"max_label_value_length" json:"max_label_value_length"`
-	MaxLabelNamesPerSeries      int              `yaml:"max_label_names_per_series" json:"max_label_names_per_series"`
-	RejectOldSamples            bool             `yaml:"reject_old_samples" json:"reject_old_samples"`
-	RejectOldSamplesMaxAge      model.Duration   `yaml:"reject_old_samples_max_age" json:"reject_old_samples_max_age"`
-	CreationGracePeriod         model.Duration   `yaml:"creation_grace_period" json:"creation_grace_period"`
-	MaxLineSize                 flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
-	MaxLineSizeTruncate         bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
-	IncrementDuplicateTimestamp bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
-	SimulatedPushLatency        time.Duration    `yaml:"simulated_push_latency" json:"simulated_push_latency" doc:"description=Simulated latency to add to push requests. Used for testing. Set to 0s to disable."`
+	IngestionRateStrategy         string           `yaml:"ingestion_rate_strategy" json:"ingestion_rate_strategy"`
+	IngestionRateMB               float64          `yaml:"ingestion_rate_mb" json:"ingestion_rate_mb"`
+	IngestionBurstSizeMB          float64          `yaml:"ingestion_burst_size_mb" json:"ingestion_burst_size_mb"`
+	MaxLabelNameLength            int              `yaml:"max_label_name_length" json:"max_label_name_length"`
+	MaxLabelValueLength           int              `yaml:"max_label_value_length" json:"max_label_value_length"`
+	MaxLabelNamesPerSeries        int              `yaml:"max_label_names_per_series" json:"max_label_names_per_series"`
+	RejectOldSamples              bool             `yaml:"reject_old_samples" json:"reject_old_samples"`
+	RejectOldSamplesMaxAge        model.Duration   `yaml:"reject_old_samples_max_age" json:"reject_old_samples_max_age"`
+	CreationGracePeriod           model.Duration   `yaml:"creation_grace_period" json:"creation_grace_period"`
+	MaxLineSize                   flagext.ByteSize `yaml:"max_line_size" json:"max_line_size"`
+	MaxLineSizeTruncate           bool             `yaml:"max_line_size_truncate" json:"max_line_size_truncate"`
+	MaxLineSizeTruncateIdentifier string           `yaml:"max_line_size_truncate_identifier" json:"max_line_size_truncate_identifier"`
+	IncrementDuplicateTimestamp   bool             `yaml:"increment_duplicate_timestamp" json:"increment_duplicate_timestamp"`
+	SimulatedPushLatency          time.Duration    `yaml:"simulated_push_latency" json:"simulated_push_latency" doc:"description=Simulated latency to add to push requests. Used for testing. Set to 0s to disable."`
 
 	// LogQL engine options
 	EnableMultiVariantQueries bool `yaml:"enable_multi_variant_queries" json:"enable_multi_variant_queries"`
@@ -239,6 +240,10 @@ type Limits struct {
 	PolicyEnforcedLabels      map[string][]string           `yaml:"policy_enforced_labels" json:"policy_enforced_labels" category:"experimental" doc:"description=Map of policies to enforced labels. The policy '*' is the global policy, which is applied to all streams and can be extended by other policies. Example:\n policy_enforced_labels: \n  policy1: \n    - label1 \n    - label2 \n  policy2: \n    - label3 \n    - label4\n  '*':\n    - label5"`
 	PolicyStreamMapping       PolicyStreamMapping           `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors with a priority. Experimental.  Example:\n policy_stream_mapping: \n  finance: \n    - selector: '{namespace=\"prod\", container=\"billing\"}' \n      priority: 2 \n  ops: \n    - selector: '{namespace=\"prod\", container=\"ops\"}' \n      priority: 1 \n  staging: \n    - selector: '{namespace=\"staging\"}' \n      priority: 1"`
 
+	// DefaultPolicyStreamMapping contains the default policy stream mappings that are merged with per-tenant mappings.
+	// This field is not exposed in YAML/JSON as it's set programmatically.
+	DefaultPolicyStreamMapping PolicyStreamMapping `yaml:"-" json:"-"`
+
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
 	ShardAggregations []string `yaml:"shard_aggregations,omitempty" json:"shard_aggregations,omitempty" doc:"description=List of LogQL vector and range aggregations that should be sharded."`
@@ -248,6 +253,8 @@ type Limits struct {
 	PatternIngesterTokenizableJSONFieldsDelete  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_delete"  json:"pattern_ingester_tokenizable_json_fields_delete"  doc:"hidden"`
 	MetricAggregationEnabled                    bool                         `yaml:"metric_aggregation_enabled"                       json:"metric_aggregation_enabled"`
 	PatternPersistenceEnabled                   bool                         `yaml:"pattern_persistence_enabled"                      json:"pattern_persistence_enabled"`
+	PatternPersistenceGranularity               model.Duration               `yaml:"pattern_persistence_granularity"                  json:"pattern_persistence_granularity"`
+	PatternRateThreshold                        float64                      `yaml:"pattern_rate_threshold"                           json:"pattern_rate_threshold"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
@@ -283,6 +290,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxLineSize.Set("256KB")
 	f.Var(&l.MaxLineSize, "distributor.max-line-size", "Maximum line size on ingestion path. Example: 256kb. Any log line exceeding this limit will be discarded unless `distributor.max-line-size-truncate` is set which in case it is truncated instead of discarding it completely. There is no limit when unset or set to 0.")
 	f.BoolVar(&l.MaxLineSizeTruncate, "distributor.max-line-size-truncate", false, "Whether to truncate lines that exceed max_line_size.")
+	f.StringVar(&l.MaxLineSizeTruncateIdentifier, "distributor.max-line-size-truncate-identifier", "", "Identifier that is added at the end of a truncated log line.")
 	f.IntVar(&l.MaxLabelNameLength, "validation.max-length-label-name", 1024, "Maximum length accepted for label names.")
 	f.IntVar(&l.MaxLabelValueLength, "validation.max-length-label-value", 2048, "Maximum length accepted for label value. This setting also applies to the metric name.")
 	f.IntVar(&l.MaxLabelNamesPerSeries, "validation.max-label-names-per-series", 15, "Maximum number of label names per series.")
@@ -476,6 +484,13 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		false,
 		"Enable persistence of patterns detected at ingest. When enabled, patterns for pushed streams will be written back into Loki as a special __pattern__ stream.",
 	)
+	f.Var(&l.PatternPersistenceGranularity, "limits.pattern-persistence-granularity", "The time granularity for persisting patterns. Controls how many data points are written when patterns are flushed. Set to 0 to use the default from the pattern ingester configuration.")
+	f.Float64Var(
+		&l.PatternRateThreshold,
+		"limits.pattern-rate-threshold",
+		1.0,
+		"Minimum pattern rate (samples per second) required for a pattern to be persisted. Patterns with lower rates will be filtered out during persistence.",
+	)
 
 	f.DurationVar(&l.SimulatedPushLatency, "limits.simulated-push-latency", 0, "Simulated latency to add to push requests. This is used to test the performance of the write path under different latency conditions.")
 
@@ -491,6 +506,12 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 func (l *Limits) SetGlobalOTLPConfig(cfg push.GlobalOTLPConfig) {
 	l.GlobalOTLPConfig = cfg
 	l.OTLPConfig.ApplyGlobalOTLPConfig(cfg)
+}
+
+// SetDefaultPolicyStreamMapping sets DefaultPolicyStreamMapping which is used while unmarshaling per-tenant policy stream mappings to use the default mappings.
+func (l *Limits) SetDefaultPolicyStreamMapping(cfg PolicyStreamMapping) error {
+	l.DefaultPolicyStreamMapping = cfg
+	return l.PolicyStreamMapping.ApplyDefaultPolicyStreamMappings(cfg)
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -517,6 +538,10 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if defaultLimits != nil {
 		// apply relevant bits from global otlp config
 		l.OTLPConfig.ApplyGlobalOTLPConfig(defaultLimits.GlobalOTLPConfig)
+		// apply default policy stream mappings
+		if err := l.PolicyStreamMapping.ApplyDefaultPolicyStreamMappings(defaultLimits.DefaultPolicyStreamMapping); err != nil {
+			return errors.Wrap(err, "applying default policy stream mappings")
+		}
 	}
 	return nil
 }
@@ -824,6 +849,11 @@ func (o *Overrides) MaxLineSize(userID string) int {
 // MaxLineSizeTruncate returns whether lines longer than max should be truncated.
 func (o *Overrides) MaxLineSizeTruncate(userID string) bool {
 	return o.getOverridesForUser(userID).MaxLineSizeTruncate
+}
+
+// MaxLineSizeTruncateIdentifier returns whether lines longer than max should be truncated.
+func (o *Overrides) MaxLineSizeTruncateIdentifier(userID string) string {
+	return o.getOverridesForUser(userID).MaxLineSizeTruncateIdentifier
 }
 
 // MaxEntriesLimitPerQuery returns the limit to number of entries the querier should return per query.
@@ -1224,6 +1254,14 @@ func (o *Overrides) MetricAggregationEnabled(userID string) bool {
 
 func (o *Overrides) PatternPersistenceEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).PatternPersistenceEnabled
+}
+
+func (o *Overrides) PersistenceGranularity(userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).PatternPersistenceGranularity)
+}
+
+func (o *Overrides) PatternRateThreshold(userID string) float64 {
+	return o.getOverridesForUser(userID).PatternRateThreshold
 }
 
 func (o *Overrides) EnableMultiVariantQueries(userID string) bool {

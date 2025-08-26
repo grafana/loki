@@ -18,24 +18,44 @@
 package xdsclient
 
 import (
+	"context"
+	"sync"
+
 	"google.golang.org/grpc/internal/xds/bootstrap"
-	"google.golang.org/grpc/xds/internal/xdsclient/load"
+	"google.golang.org/grpc/xds/internal/clients"
+	"google.golang.org/grpc/xds/internal/clients/grpctransport"
+	"google.golang.org/grpc/xds/internal/clients/lrsclient"
 )
 
 // ReportLoad starts a load reporting stream to the given server. All load
 // reports to the same server share the LRS stream.
 //
-// It returns a Store for the user to report loads, a function to cancel the
-// load reporting stream.
-func (c *clientImpl) ReportLoad(server *bootstrap.ServerConfig) (*load.Store, func()) {
-	xc, releaseChannelRef, err := c.getChannelForLRS(server)
-	if err != nil {
-		c.logger.Warningf("Failed to create a channel to the management server to report load: %v", server, err)
-		return nil, func() {}
+// It returns a lrsclient.LoadStore for the user to report loads.
+func (c *clientImpl) ReportLoad(server *bootstrap.ServerConfig) (*lrsclient.LoadStore, func(context.Context)) {
+	if c.lrsClient == nil {
+		lrsC, err := lrsclient.New(lrsclient.Config{
+			Node:             c.xdsClientConfig.Node,
+			TransportBuilder: c.xdsClientConfig.TransportBuilder,
+		})
+		if err != nil {
+			c.logger.Warningf("Failed to create an lrs client to the management server to report load: %v", server, err)
+			return nil, func(context.Context) {}
+		}
+		c.lrsClient = lrsC
 	}
-	load, stopLoadReporting := xc.reportLoad()
-	return load, func() {
-		stopLoadReporting()
-		releaseChannelRef()
+
+	load, err := c.lrsClient.ReportLoad(clients.ServerIdentifier{
+		ServerURI: server.ServerURI(),
+		Extensions: grpctransport.ServerIdentifierExtension{
+			ConfigName: server.SelectedCreds().Type,
+		},
+	})
+	if err != nil {
+		c.logger.Warningf("Failed to create a load store to the management server to report load: %v", server, err)
+		return nil, func(context.Context) {}
+	}
+	var loadStop sync.Once
+	return load, func(ctx context.Context) {
+		loadStop.Do(func() { load.Stop(ctx) })
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"testing"
-	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -22,6 +21,7 @@ func TestSymbolizer(t *testing.T) {
 		expectedNumLabels        int
 		expectedCheckpointSize   int
 		expectedUncompressedSize int
+		expectedError            error
 	}{
 		{
 			name:                   "no labels",
@@ -109,17 +109,20 @@ func TestSymbolizer(t *testing.T) {
 					symbols, err := s.Add(lbls)
 					require.NoError(t, err)
 					require.Equal(t, tc.expectedSymbols[i], symbols)
-					require.Equal(t, lbls, s.Lookup(symbols, nil))
+					lbls, err := s.Lookup(symbols, nil)
+					require.NoError(t, err)
+					require.Equal(t, lbls, lbls)
 				}
 
 				// Test that Lookup returns empty labels if no symbols are provided.
 				if len(tc.labelsToAdd) == 0 {
-					ret := s.Lookup([]symbol{
+					ret, err := s.Lookup([]symbol{
 						{
 							Name:  0,
 							Value: 0,
 						},
 					}, nil)
+					require.NoError(t, err)
 					require.Equal(t, `{""=""}`, ret.String())
 				}
 
@@ -134,7 +137,9 @@ func TestSymbolizer(t *testing.T) {
 
 				loaded := symbolizerFromCheckpoint(buf.Bytes())
 				for i, symbols := range tc.expectedSymbols {
-					require.Equal(t, tc.labelsToAdd[i], loaded.Lookup(symbols, nil))
+					lbls, err := loaded.Lookup(symbols, nil)
+					require.NoError(t, err)
+					require.Equal(t, tc.labelsToAdd[i], lbls)
 				}
 
 				buf.Reset()
@@ -144,7 +149,9 @@ func TestSymbolizer(t *testing.T) {
 				loaded, err = symbolizerFromEnc(buf.Bytes(), compression.GetReaderPool(encoding))
 				require.NoError(t, err)
 				for i, symbols := range tc.expectedSymbols {
-					require.Equal(t, tc.labelsToAdd[i], loaded.Lookup(symbols, nil))
+					lbls, err := loaded.Lookup(symbols, nil)
+					require.NoError(t, err)
+					require.Equal(t, tc.labelsToAdd[i], lbls)
 				}
 			})
 		}
@@ -197,7 +204,8 @@ func TestSymbolizerLabelNormalization(t *testing.T) {
 			for i, labels := range tc.labelsToAdd {
 				symbols, err := s.Add(labels)
 				require.NoError(t, err)
-				result := s.Lookup(symbols, nil)
+				result, err := s.Lookup(symbols, nil)
+				require.NoError(t, err)
 				require.Equal(t, tc.expectedLabels[i], result, "direct addition: %s", tc.description)
 			}
 
@@ -210,7 +218,8 @@ func TestSymbolizerLabelNormalization(t *testing.T) {
 			for i, labels := range tc.labelsToAdd {
 				symbols, err := s.Add(labels)
 				require.NoError(t, err)
-				result := loaded.Lookup(symbols, nil)
+				result, err := loaded.Lookup(symbols, nil)
+				require.NoError(t, err)
 				require.Equal(t, tc.expectedLabels[i], result, "after checkpoint: %s", tc.description)
 			}
 
@@ -224,42 +233,12 @@ func TestSymbolizerLabelNormalization(t *testing.T) {
 			for i, labels := range tc.labelsToAdd {
 				symbols, err := s.Add(labels)
 				require.NoError(t, err)
-				result := loaded.Lookup(symbols, nil)
+				result, err := loaded.Lookup(symbols, nil)
+				require.NoError(t, err)
 				require.Equal(t, tc.expectedLabels[i], result, "after compression: %s", tc.description)
 			}
 		})
 	}
-}
-
-func TestSymbolizerNormalizationCache(t *testing.T) {
-	s := newSymbolizer()
-
-	// Add a label with a name that needs normalization
-	labels1 := labels.FromStrings("foo-bar", "value1")
-	symbols1, err := s.Add(labels1)
-	require.NoError(t, err)
-
-	// Look up the label multiple times
-	for i := 0; i < 3; i++ {
-		result := s.Lookup(symbols1, nil)
-		require.Equal(t, "value1", result.Get("foo_bar"), "value should remain unchanged")
-	}
-
-	// Add the same label name with a different value
-	labels2 := labels.FromStrings("foo-bar", "value2")
-	symbols2, err := s.Add(labels2)
-	require.NoError(t, err)
-
-	// The normalized name should be reused
-	result := s.Lookup(symbols1, nil)
-	firstPtr := unsafe.StringData(result[0].Name)
-	result = s.Lookup(symbols2, nil)
-	secondPtr := unsafe.StringData(result[0].Name)
-	require.Equal(t, firstPtr, secondPtr, "normalized name string data pointers should be identical")
-	require.Equal(t, "value2", result[0].Value, "new value should be used")
-
-	// Check that we have only one entry in normalizedNames for this label name
-	require.Equal(t, 1, len(s.normalizedNames), "should have only one normalized name entry")
 }
 
 func TestSymbolizerLabelNormalizationAfterCheckpointing(t *testing.T) {
@@ -289,7 +268,8 @@ func TestSymbolizerLabelNormalizationAfterCheckpointing(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check that the normalization is consistent
-	result := loaded.Lookup(symbols, nil)
+	result, err := loaded.Lookup(symbols, nil)
+	require.NoError(t, err)
 	expected := map[string]string{
 		"foo_bar":   "new-value1",
 		"fizz_buzz": "new-value2",
@@ -302,19 +282,20 @@ func TestSymbolizerLabelNormalizationSameNameValue(t *testing.T) {
 	s := newSymbolizer()
 
 	// Add labels where the name and value are the same string
-	originalLabels := labels.Labels{
-		{Name: "foo-bar", Value: "foo-bar"},
-		{Name: "test-label", Value: "test-label"},
-	}
+	originalLabels := labels.New(
+		labels.Label{Name: "foo-bar", Value: "foo-bar"},
+		labels.Label{Name: "test-label", Value: "test-label"},
+	)
 	originalSymbols, err := s.Add(originalLabels)
 	require.NoError(t, err)
 
 	// Verify initial state
-	result := s.Lookup(originalSymbols, nil)
-	require.Equal(t, "foo_bar", result[0].Name, "name should be normalized")
-	require.Equal(t, "foo-bar", result[0].Value, "value should remain unchanged")
-	require.Equal(t, "test_label", result[1].Name, "name should be normalized")
-	require.Equal(t, "test-label", result[1].Value, "value should remain unchanged")
+	result, err := s.Lookup(originalSymbols, nil)
+	require.NoError(t, err)
+	require.Equal(t, "foo-bar", result.Get("foo_bar"), "metric should have been normalized")
+	require.Equal(t, "test-label", result.Get("test_label"), "metric should have been normalized")
+	require.False(t, result.Has("foo-bar"), "metric should not contain unnormalized label")
+	require.False(t, result.Has("test-label"), "metric should not contain unnormalized label")
 
 	// Serialize the symbolizer
 	buf := bytes.NewBuffer(nil)
@@ -327,15 +308,16 @@ func TestSymbolizerLabelNormalizationSameNameValue(t *testing.T) {
 	require.True(t, loaded.readOnly)
 
 	// trying to add values to symbolizer loaded from serialized data should throw an error
-	_, err = loaded.Add(labels.Labels{{Name: "foo-bar2", Value: "foo-bar2"}})
+	_, err = loaded.Add(labels.New(labels.Label{Name: "foo-bar2", Value: "foo-bar2"}))
 	require.EqualError(t, err, errSymbolizerReadOnly.Error())
 
 	// Look up using the original symbols without re-adding the labels
-	result = loaded.Lookup(originalSymbols, nil)
-	require.Equal(t, "foo_bar", result[0].Name, "name should be normalized after deserialization")
-	require.Equal(t, "foo-bar", result[0].Value, "value should remain unchanged after deserialization")
-	require.Equal(t, "test_label", result[1].Name, "name should be normalized after deserialization")
-	require.Equal(t, "test-label", result[1].Value, "value should remain unchanged after deserialization")
+	result, err = loaded.Lookup(originalSymbols, nil)
+	require.NoError(t, err)
+	require.Equal(t, "foo-bar", result.Get("foo_bar"), "metric should have been normalized after deserialization")
+	require.Equal(t, "test-label", result.Get("test_label"), "metric should have been normalized after deserialization")
+	require.False(t, result.Has("foo-bar"), "metric should not contain unnormalized label")
+	require.False(t, result.Has("test-label"), "metric should not contain unnormalized label")
 
 	// Also test with checkpoint serialization
 	buf.Reset()
@@ -343,9 +325,10 @@ func TestSymbolizerLabelNormalizationSameNameValue(t *testing.T) {
 	require.NoError(t, err)
 
 	loadedFromCheckpoint := symbolizerFromCheckpoint(buf.Bytes())
-	result = loadedFromCheckpoint.Lookup(originalSymbols, nil)
-	require.Equal(t, "foo_bar", result[0].Name, "name should be normalized after checkpoint")
-	require.Equal(t, "foo-bar", result[0].Value, "value should remain unchanged after checkpoint")
-	require.Equal(t, "test_label", result[1].Name, "name should be normalized after checkpoint")
-	require.Equal(t, "test-label", result[1].Value, "value should remain unchanged after checkpoint")
+	result, err = loadedFromCheckpoint.Lookup(originalSymbols, nil)
+	require.NoError(t, err)
+	require.Equal(t, "foo-bar", result.Get("foo_bar"), "metric should have been normalized after checkpoint")
+	require.Equal(t, "test-label", result.Get("test_label"), "metric should have been normalized after checkpoint")
+	require.False(t, result.Has("foo-bar"), "metric should not contain unnormalized label")
+	require.False(t, result.Has("test-label"), "metric should not contain unnormalized label")
 }

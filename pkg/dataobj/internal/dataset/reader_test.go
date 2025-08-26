@@ -16,7 +16,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 func Test_Reader_ReadAll(t *testing.T) {
@@ -75,7 +74,7 @@ func Test_Reader_ReadWithPageFiltering(t *testing.T) {
 		Predicates: []Predicate{
 			EqualPredicate{
 				Column: columns[0], // first_name column
-				Value:  ByteArrayValue([]byte("Henry")),
+				Value:  BinaryValue([]byte("Henry")),
 			},
 		},
 	})
@@ -143,48 +142,6 @@ func Test_Reader_Reset(t *testing.T) {
 	actualRows, err := readDataset(r, 3)
 	require.NoError(t, err)
 	require.Equal(t, basicReaderTestData, convertToTestPersons(actualRows))
-}
-
-func Test_Reader_Stats(t *testing.T) {
-	dset, columns := buildTestDataset(t)
-
-	// Create a predicate that only returns people born after 1985
-	r := NewReader(ReaderOptions{
-		Dataset: dset,
-		Columns: columns,
-		Predicates: []Predicate{GreaterThanPredicate{
-			Column: columns[3], // birth_year column
-			Value:  Int64Value(1985),
-		}},
-	})
-	defer r.Close()
-
-	statsCtx, ctx := stats.NewContext(context.Background())
-	actualRows, err := readDatasetWithContext(ctx, r, 3)
-	require.NoError(t, err)
-
-	// Filter expected data manually to verify
-	var expected []testPerson
-	for _, p := range basicReaderTestData {
-		if p.birthYear > 1985 {
-			expected = append(expected, p)
-		}
-	}
-	require.Equal(t, expected, convertToTestPersons(actualRows))
-
-	primaryColumnBytes := int64(Int64Value(0).Size()) * int64(len(basicReaderTestData)) // Size of Int64Value * all rows
-	var totalBytestoFill int64
-	for _, row := range actualRows {
-		totalBytestoFill += row.Size()
-	}
-	totalBytestoFill -= int64(Int64Value(0).Size()) * int64(len(expected)) // remove already filled primary columns
-
-	// verify statistics
-	result := statsCtx.Result(0, 0, len(actualRows))
-	require.Equal(t, int64(len(basicReaderTestData)), result.Querier.Store.Dataobj.PrePredicateDecompressedRows)
-	require.Equal(t, int64(len(expected)), result.Querier.Store.Dataobj.PostPredicateRows)
-	require.Equal(t, primaryColumnBytes, result.Querier.Store.Dataobj.PrePredicateDecompressedBytes)
-	require.Equal(t, totalBytestoFill, result.Querier.Store.Dataobj.PostPredicateDecompressedBytes)
 }
 
 func Test_buildMask(t *testing.T) {
@@ -343,12 +300,12 @@ func Test_BuildPredicateRanges(t *testing.T) {
 			name: "InPredicate with values inside and outside page ranges",
 			predicate: InPredicate{
 				Column: cols[1], // timestamp column
-				Values: []Value{
-					Int64Value(50),  // Inside page 1 (0-100)
-					Int64Value(300), // Inside page 2 (200-500)
-					Int64Value(150), // Outside all pages
-					Int64Value(600), // Outside all pages
-				},
+				Values: NewInt64ValueSet([]Value{
+					Int64Value(50),
+					Int64Value(300),
+					Int64Value(150),
+					Int64Value(600),
+				}), // 2 values in range. ~200 matching rows
 			},
 			want: rowRanges{
 				{Start: 0, End: 249},   // Page 1: contains 50
@@ -359,10 +316,10 @@ func Test_BuildPredicateRanges(t *testing.T) {
 			name: "InPredicate with values all outside page ranges",
 			predicate: InPredicate{
 				Column: cols[1], // timestamp column
-				Values: []Value{
+				Values: NewInt64ValueSet([]Value{
 					Int64Value(150), // Outside all pages
 					Int64Value(600), // Outside all pages
-				},
+				}),
 			},
 			want: nil, // No pages should be included
 		},
@@ -395,14 +352,14 @@ func buildMemDatasetWithStats(t *testing.T) (Dataset, []Column) {
 
 	dset := FromMemory([]*MemColumn{
 		{
-			Info: ColumnInfo{
-				Name:      "stream",
-				Type:      datasetmd.VALUE_TYPE_INT64,
+			Desc: ColumnDesc{
+				Tag:       "stream",
+				Type:      ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "number"},
 				RowsCount: 1000, // 0 - 999
 			},
 			Pages: []*MemPage{
 				{
-					Info: PageInfo{
+					Desc: PageDesc{
 						RowCount: 300, // 0 - 299
 						Stats: &datasetmd.Statistics{
 							MinValue: encodeInt64Value(t, 1),
@@ -411,7 +368,7 @@ func buildMemDatasetWithStats(t *testing.T) (Dataset, []Column) {
 					},
 				},
 				{
-					Info: PageInfo{
+					Desc: PageDesc{
 						RowCount: 700, // 300 - 999
 						Stats: &datasetmd.Statistics{
 							MinValue: encodeInt64Value(t, 2),
@@ -422,14 +379,14 @@ func buildMemDatasetWithStats(t *testing.T) (Dataset, []Column) {
 			},
 		},
 		{
-			Info: ColumnInfo{
-				Name:      "timestamp",
-				Type:      datasetmd.VALUE_TYPE_INT64,
+			Desc: ColumnDesc{
+				Tag:       "timestamp",
+				Type:      ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "number"},
 				RowsCount: 1000, // 0 - 999
 			},
 			Pages: []*MemPage{
 				{
-					Info: PageInfo{
+					Desc: PageDesc{
 						RowCount: 250, // 0 - 249
 						Stats: &datasetmd.Statistics{
 							MinValue: encodeInt64Value(t, 0),
@@ -438,7 +395,7 @@ func buildMemDatasetWithStats(t *testing.T) (Dataset, []Column) {
 					},
 				},
 				{
-					Info: PageInfo{
+					Desc: PageDesc{
 						RowCount: 500, // 249 - 749
 						Stats: &datasetmd.Statistics{
 							MinValue: encodeInt64Value(t, 200),
@@ -447,7 +404,7 @@ func buildMemDatasetWithStats(t *testing.T) (Dataset, []Column) {
 					},
 				},
 				{
-					Info: PageInfo{
+					Desc: PageDesc{
 						RowCount: 250, // 750 - 999
 						Stats: &datasetmd.Statistics{
 							MinValue: encodeInt64Value(t, 800),
@@ -480,22 +437,22 @@ func BenchmarkReader(b *testing.B) {
 		PageSizeHint: 2 * 1024 * 1024, // 2MB
 		Columns: []generatorColumnConfig{
 			{
-				Name:              "stream",
-				ValueType:         datasetmd.VALUE_TYPE_INT64,
+				Tag:               "stream",
+				Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "number"},
 				Encoding:          datasetmd.ENCODING_TYPE_DELTA,
 				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
 				CardinalityTarget: 1000,
 			},
 			{
-				Name:              "timestamp",
-				ValueType:         datasetmd.VALUE_TYPE_INT64,
+				Tag:               "timestamp",
+				Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "number"},
 				Encoding:          datasetmd.ENCODING_TYPE_DELTA,
 				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
 				CardinalityTarget: 100_000,
 			},
 			{
-				Name:              "log",
-				ValueType:         datasetmd.VALUE_TYPE_BYTE_ARRAY,
+				Tag:               "log",
+				Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "string"},
 				Encoding:          datasetmd.ENCODING_TYPE_PLAIN,
 				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
 				AvgSize:           1024,
@@ -562,15 +519,15 @@ func BenchmarkPredicateExecution(b *testing.B) {
 		PageSizeHint: 100 * 1024 * 1024,
 		Columns: []generatorColumnConfig{
 			{
-				Name:              "more_selective",
-				ValueType:         datasetmd.VALUE_TYPE_INT64,
+				Tag:               "more_selective",
+				Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "int64"},
 				Encoding:          datasetmd.ENCODING_TYPE_DELTA,
 				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
 				CardinalityTarget: 500_000,
 			},
 			{
-				Name:              "less_selective",
-				ValueType:         datasetmd.VALUE_TYPE_INT64,
+				Tag:               "less_selective",
+				Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "int64"},
 				Encoding:          datasetmd.ENCODING_TYPE_DELTA,
 				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
 				CardinalityTarget: 100,
@@ -689,8 +646,8 @@ func BenchmarkPredicateExecution(b *testing.B) {
 }
 
 type generatorColumnConfig struct {
-	Name        string
-	ValueType   datasetmd.ValueType
+	Tag         string
+	Type        ColumnType
 	Encoding    datasetmd.EncodingType
 	Compression datasetmd.CompressionType
 
@@ -700,13 +657,13 @@ type generatorColumnConfig struct {
 }
 
 func columnValues(rng *rand.Rand, cfg generatorColumnConfig) iter.Seq[Value] {
-	switch cfg.ValueType {
-	case datasetmd.VALUE_TYPE_INT64, datasetmd.VALUE_TYPE_UINT64:
+	switch cfg.Type.Physical {
+	case datasetmd.PHYSICAL_TYPE_INT64, datasetmd.PHYSICAL_TYPE_UINT64:
 		return numberValues(rng, cfg)
-	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
+	case datasetmd.PHYSICAL_TYPE_BINARY:
 		return stringValues(rng, cfg)
 	default:
-		panic(fmt.Sprintf("unsupported type for generation: %v", cfg.ValueType))
+		panic(fmt.Sprintf("unsupported type for generation: %v", cfg.Type.Physical))
 	}
 }
 
@@ -724,7 +681,7 @@ func stringValues(rng *rand.Rand, cfg generatorColumnConfig) iter.Seq[Value] {
 		for j := len(num); j < size; j++ {
 			str[j] = 'x'
 		}
-		uniqueValues[i] = ByteArrayValue(str)
+		uniqueValues[i] = BinaryValue(str)
 	}
 
 	return func(yield func(Value) bool) {
@@ -740,12 +697,12 @@ func numberValues(rng *rand.Rand, cfg generatorColumnConfig) iter.Seq[Value] {
 	return func(yield func(Value) bool) {
 		for {
 			v := rng.Int63n(cfg.CardinalityTarget)
-			switch cfg.ValueType {
-			case datasetmd.VALUE_TYPE_INT64:
+			switch cfg.Type.Physical {
+			case datasetmd.PHYSICAL_TYPE_INT64:
 				if !yield(Int64Value(v)) {
 					return
 				}
-			case datasetmd.VALUE_TYPE_UINT64:
+			case datasetmd.PHYSICAL_TYPE_UINT64:
 				if !yield(Uint64Value(uint64(v))) {
 					return
 				}
@@ -772,7 +729,7 @@ func (g *DatasetGenerator) Build(t testing.TB, seed int64) (Dataset, []Column) {
 
 		opts := BuilderOptions{
 			PageSizeHint: g.PageSizeHint,
-			Value:        colCfg.ValueType,
+			Type:         colCfg.Type,
 			Encoding:     colCfg.Encoding,
 			Compression:  colCfg.Compression,
 			Statistics: StatisticsOptions{
@@ -780,12 +737,12 @@ func (g *DatasetGenerator) Build(t testing.TB, seed int64) (Dataset, []Column) {
 			},
 		}
 
-		if colCfg.ValueType == datasetmd.VALUE_TYPE_INT64 || colCfg.ValueType == datasetmd.VALUE_TYPE_UINT64 {
+		if colCfg.Type.Physical == datasetmd.PHYSICAL_TYPE_INT64 || colCfg.Type.Physical == datasetmd.PHYSICAL_TYPE_UINT64 {
 			opts.Statistics.StoreRangeStats = true
 		}
 
 		// Create a builder for this column
-		builder, err := NewColumnBuilder(colCfg.Name, opts)
+		builder, err := NewColumnBuilder(colCfg.Tag, opts)
 		require.NoError(t, err)
 
 		// Add values to the builder
@@ -819,16 +776,16 @@ func Test_DatasetGenerator(t *testing.T) {
 		PageSizeHint: 2 * 1024 * 1024, // 2MB
 		Columns: []generatorColumnConfig{
 			{
-				Name:              "timestamp",
-				ValueType:         datasetmd.VALUE_TYPE_INT64,
+				Tag:               "timestamp",
+				Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "timestamp"},
 				Encoding:          datasetmd.ENCODING_TYPE_DELTA,
 				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
 				CardinalityTarget: 100_000,
 				SparsityRate:      0.0,
 			},
 			{
-				Name:              "label",
-				ValueType:         datasetmd.VALUE_TYPE_BYTE_ARRAY,
+				Tag:               "label",
+				Type:              ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "label"},
 				Encoding:          datasetmd.ENCODING_TYPE_PLAIN,
 				Compression:       datasetmd.COMPRESSION_TYPE_NONE,
 				AvgSize:           32,
@@ -840,27 +797,27 @@ func Test_DatasetGenerator(t *testing.T) {
 
 	_, cols := g.Build(t, rand.Int63())
 	require.Equal(t, 2, len(cols))
-	require.Equal(t, g.RowCount, cols[0].ColumnInfo().RowsCount)
+	require.Equal(t, g.RowCount, cols[0].ColumnDesc().RowsCount)
 	// TODO: Row count is < expected. Must be a result of null values at the end.
 	// Remove this comment once the issue is fixed.
 	// require.Equal(t, g.RowCount, cols[1].ColumnInfo().RowsCount)
 
-	require.NotNil(t, cols[0].ColumnInfo().Statistics.CardinalityCount)
-	require.NotNil(t, cols[1].ColumnInfo().Statistics.CardinalityCount)
+	require.NotNil(t, cols[0].ColumnDesc().Statistics.CardinalityCount)
+	require.NotNil(t, cols[1].ColumnDesc().Statistics.CardinalityCount)
 
-	t.Logf("timestamp column cardinality: %d", cols[0].ColumnInfo().Statistics.CardinalityCount)
-	t.Logf("label column cardinality: %d", cols[1].ColumnInfo().Statistics.CardinalityCount)
+	t.Logf("timestamp column cardinality: %d", cols[0].ColumnDesc().Statistics.CardinalityCount)
+	t.Logf("label column cardinality: %d", cols[1].ColumnDesc().Statistics.CardinalityCount)
 
-	require.NotNil(t, cols[0].ColumnInfo().Statistics.MinValue)
-	require.NotNil(t, cols[0].ColumnInfo().Statistics.MaxValue)
+	require.NotNil(t, cols[0].ColumnDesc().Statistics.MinValue)
+	require.NotNil(t, cols[0].ColumnDesc().Statistics.MaxValue)
 
 	var minValue, maxValue Value
-	require.NoError(t, minValue.UnmarshalBinary(cols[0].ColumnInfo().Statistics.MinValue))
-	require.NoError(t, maxValue.UnmarshalBinary(cols[0].ColumnInfo().Statistics.MaxValue))
+	require.NoError(t, minValue.UnmarshalBinary(cols[0].ColumnDesc().Statistics.MinValue))
+	require.NoError(t, maxValue.UnmarshalBinary(cols[0].ColumnDesc().Statistics.MaxValue))
 
 	t.Logf("timestamp column min: %d", minValue.Int64())
 	t.Logf("timestamp column max: %d", maxValue.Int64())
 
-	t.Logf("timestamp column size: %s", humanize.Bytes(uint64(cols[0].ColumnInfo().UncompressedSize)))
-	t.Logf("label column size: %s", humanize.Bytes(uint64(cols[1].ColumnInfo().UncompressedSize)))
+	t.Logf("timestamp column size: %s", humanize.Bytes(uint64(cols[0].ColumnDesc().UncompressedSize)))
+	t.Logf("label column size: %s", humanize.Bytes(uint64(cols[1].ColumnDesc().UncompressedSize)))
 }

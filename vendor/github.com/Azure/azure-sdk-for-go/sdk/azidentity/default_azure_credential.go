@@ -8,6 +8,7 @@ package azidentity
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 
@@ -15,6 +16,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/internal/log"
 )
+
+const azureTokenCredentials = "AZURE_TOKEN_CREDENTIALS"
 
 // DefaultAzureCredentialOptions contains optional parameters for DefaultAzureCredential.
 // These options may not apply to all credentials in the chain.
@@ -36,7 +39,7 @@ type DefaultAzureCredentialOptions struct {
 	// the application responsible for ensuring the configured authority is valid and trustworthy.
 	DisableInstanceDiscovery bool
 
-	// TenantID sets the default tenant for authentication via the Azure CLI and workload identity.
+	// TenantID sets the default tenant for authentication via the Azure CLI, Azure Developer CLI, and workload identity.
 	TenantID string
 }
 
@@ -67,8 +70,22 @@ type DefaultAzureCredential struct {
 
 // NewDefaultAzureCredential creates a DefaultAzureCredential. Pass nil for options to accept defaults.
 func NewDefaultAzureCredential(options *DefaultAzureCredentialOptions) (*DefaultAzureCredential, error) {
-	var creds []azcore.TokenCredential
-	var errorMessages []string
+	var (
+		creds                   []azcore.TokenCredential
+		errorMessages           []string
+		includeDev, includeProd = true, true
+	)
+
+	if c, ok := os.LookupEnv(azureTokenCredentials); ok {
+		switch c {
+		case "dev":
+			includeProd = false
+		case "prod":
+			includeDev = false
+		default:
+			return nil, fmt.Errorf(`invalid %s value %q. Valid values are "dev" and "prod"`, azureTokenCredentials, c)
+		}
+	}
 
 	if options == nil {
 		options = &DefaultAzureCredentialOptions{}
@@ -80,60 +97,63 @@ func NewDefaultAzureCredential(options *DefaultAzureCredentialOptions) (*Default
 		}
 	}
 
-	envCred, err := NewEnvironmentCredential(&EnvironmentCredentialOptions{
-		ClientOptions:              options.ClientOptions,
-		DisableInstanceDiscovery:   options.DisableInstanceDiscovery,
-		additionallyAllowedTenants: additionalTenants,
-	})
-	if err == nil {
-		creds = append(creds, envCred)
-	} else {
-		errorMessages = append(errorMessages, "EnvironmentCredential: "+err.Error())
-		creds = append(creds, &defaultCredentialErrorReporter{credType: "EnvironmentCredential", err: err})
-	}
+	if includeProd {
+		envCred, err := NewEnvironmentCredential(&EnvironmentCredentialOptions{
+			ClientOptions:              options.ClientOptions,
+			DisableInstanceDiscovery:   options.DisableInstanceDiscovery,
+			additionallyAllowedTenants: additionalTenants,
+		})
+		if err == nil {
+			creds = append(creds, envCred)
+		} else {
+			errorMessages = append(errorMessages, "EnvironmentCredential: "+err.Error())
+			creds = append(creds, &defaultCredentialErrorReporter{credType: "EnvironmentCredential", err: err})
+		}
 
-	wic, err := NewWorkloadIdentityCredential(&WorkloadIdentityCredentialOptions{
-		AdditionallyAllowedTenants: additionalTenants,
-		ClientOptions:              options.ClientOptions,
-		DisableInstanceDiscovery:   options.DisableInstanceDiscovery,
-		TenantID:                   options.TenantID,
-	})
-	if err == nil {
-		creds = append(creds, wic)
-	} else {
-		errorMessages = append(errorMessages, credNameWorkloadIdentity+": "+err.Error())
-		creds = append(creds, &defaultCredentialErrorReporter{credType: credNameWorkloadIdentity, err: err})
-	}
+		wic, err := NewWorkloadIdentityCredential(&WorkloadIdentityCredentialOptions{
+			AdditionallyAllowedTenants: additionalTenants,
+			ClientOptions:              options.ClientOptions,
+			DisableInstanceDiscovery:   options.DisableInstanceDiscovery,
+			TenantID:                   options.TenantID,
+		})
+		if err == nil {
+			creds = append(creds, wic)
+		} else {
+			errorMessages = append(errorMessages, credNameWorkloadIdentity+": "+err.Error())
+			creds = append(creds, &defaultCredentialErrorReporter{credType: credNameWorkloadIdentity, err: err})
+		}
 
-	o := &ManagedIdentityCredentialOptions{ClientOptions: options.ClientOptions, dac: true}
-	if ID, ok := os.LookupEnv(azureClientID); ok {
-		o.ID = ClientID(ID)
+		o := &ManagedIdentityCredentialOptions{ClientOptions: options.ClientOptions, dac: true}
+		if ID, ok := os.LookupEnv(azureClientID); ok {
+			o.ID = ClientID(ID)
+		}
+		miCred, err := NewManagedIdentityCredential(o)
+		if err == nil {
+			creds = append(creds, miCred)
+		} else {
+			errorMessages = append(errorMessages, credNameManagedIdentity+": "+err.Error())
+			creds = append(creds, &defaultCredentialErrorReporter{credType: credNameManagedIdentity, err: err})
+		}
 	}
-	miCred, err := NewManagedIdentityCredential(o)
-	if err == nil {
-		creds = append(creds, miCred)
-	} else {
-		errorMessages = append(errorMessages, credNameManagedIdentity+": "+err.Error())
-		creds = append(creds, &defaultCredentialErrorReporter{credType: credNameManagedIdentity, err: err})
-	}
+	if includeDev {
+		azCred, err := NewAzureCLICredential(&AzureCLICredentialOptions{AdditionallyAllowedTenants: additionalTenants, TenantID: options.TenantID})
+		if err == nil {
+			creds = append(creds, azCred)
+		} else {
+			errorMessages = append(errorMessages, credNameAzureCLI+": "+err.Error())
+			creds = append(creds, &defaultCredentialErrorReporter{credType: credNameAzureCLI, err: err})
+		}
 
-	cliCred, err := NewAzureCLICredential(&AzureCLICredentialOptions{AdditionallyAllowedTenants: additionalTenants, TenantID: options.TenantID})
-	if err == nil {
-		creds = append(creds, cliCred)
-	} else {
-		errorMessages = append(errorMessages, credNameAzureCLI+": "+err.Error())
-		creds = append(creds, &defaultCredentialErrorReporter{credType: credNameAzureCLI, err: err})
-	}
-
-	azdCred, err := NewAzureDeveloperCLICredential(&AzureDeveloperCLICredentialOptions{
-		AdditionallyAllowedTenants: additionalTenants,
-		TenantID:                   options.TenantID,
-	})
-	if err == nil {
-		creds = append(creds, azdCred)
-	} else {
-		errorMessages = append(errorMessages, credNameAzureDeveloperCLI+": "+err.Error())
-		creds = append(creds, &defaultCredentialErrorReporter{credType: credNameAzureDeveloperCLI, err: err})
+		azdCred, err := NewAzureDeveloperCLICredential(&AzureDeveloperCLICredentialOptions{
+			AdditionallyAllowedTenants: additionalTenants,
+			TenantID:                   options.TenantID,
+		})
+		if err == nil {
+			creds = append(creds, azdCred)
+		} else {
+			errorMessages = append(errorMessages, credNameAzureDeveloperCLI+": "+err.Error())
+			creds = append(creds, &defaultCredentialErrorReporter{credType: credNameAzureDeveloperCLI, err: err})
+		}
 	}
 
 	if len(errorMessages) > 0 {

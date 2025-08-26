@@ -72,14 +72,14 @@ func (m mockIndex) AddSeries(ref storage.SeriesRef, l labels.Labels, chunks ...C
 	if _, ok := m.series[ref]; ok {
 		return errors.Errorf("series with reference %d already added", ref)
 	}
-	for _, lbl := range l {
+	l.Range(func(lbl labels.Label) {
 		m.symbols[lbl.Name] = struct{}{}
 		m.symbols[lbl.Value] = struct{}{}
 		if _, ok := m.postings[lbl]; !ok {
 			m.postings[lbl] = []storage.SeriesRef{}
 		}
 		m.postings[lbl] = append(m.postings[lbl], ref)
-	}
+	})
 	m.postings[allPostingsKey] = append(m.postings[allPostingsKey], ref)
 
 	s := series{l: l}
@@ -118,7 +118,8 @@ func (m mockIndex) Series(ref storage.SeriesRef, lset *labels.Labels, chks *[]Ch
 	if !ok {
 		return errors.New("not found")
 	}
-	*lset = append((*lset)[:0], s.l...)
+
+	lset.CopyFrom(s.l)
 	*chks = append((*chks)[:0], s.chunks...)
 
 	return nil
@@ -174,10 +175,10 @@ func TestIndexRW_Postings(t *testing.T) {
 
 	// Postings lists are only written if a series with the respective
 	// reference was added before.
-	require.NoError(t, iw.AddSeries(1, series[0], model.Fingerprint(series[0].Hash())))
-	require.NoError(t, iw.AddSeries(2, series[1], model.Fingerprint(series[1].Hash())))
-	require.NoError(t, iw.AddSeries(3, series[2], model.Fingerprint(series[2].Hash())))
-	require.NoError(t, iw.AddSeries(4, series[3], model.Fingerprint(series[3].Hash())))
+	require.NoError(t, iw.AddSeries(1, series[0], model.Fingerprint(labels.StableHash(series[0]))))
+	require.NoError(t, iw.AddSeries(2, series[1], model.Fingerprint(labels.StableHash(series[1]))))
+	require.NoError(t, iw.AddSeries(3, series[2], model.Fingerprint(labels.StableHash(series[2]))))
+	require.NoError(t, iw.AddSeries(4, series[3], model.Fingerprint(labels.StableHash(series[3]))))
 
 	_, err = iw.Close(false)
 	require.NoError(t, err)
@@ -262,11 +263,11 @@ func TestPostingsMany(t *testing.T) {
 	}
 
 	sort.Slice(series, func(i, j int) bool {
-		return series[i].Hash() < series[j].Hash()
+		return labels.StableHash(series[i]) < labels.StableHash(series[j])
 	})
 
 	for i, s := range series {
-		require.NoError(t, iw.AddSeries(storage.SeriesRef(i), s, model.Fingerprint(s.Hash())))
+		require.NoError(t, iw.AddSeries(storage.SeriesRef(i), s, model.Fingerprint(labels.StableHash(s))))
 	}
 	_, err = iw.Close(false)
 	require.NoError(t, err)
@@ -328,7 +329,7 @@ func TestPostingsMany(t *testing.T) {
 
 		// sort expected values by label hash instead of lexicographically by labelset
 		sort.Slice(exp, func(i, j int) bool {
-			return labels.FromStrings("i", exp[i], "foo", "bar").Hash() < labels.FromStrings("i", exp[j], "foo", "bar").Hash()
+			return labels.StableHash(labels.FromStrings("i", exp[i], "foo", "bar")) < labels.StableHash(labels.FromStrings("i", exp[j], "foo", "bar"))
 		})
 
 		require.Equal(t, exp, got, fmt.Sprintf("input: %v", c.in))
@@ -343,15 +344,15 @@ func TestPersistence_index_e2e(t *testing.T) {
 
 	// Sort labels as the index writer expects series in sorted order by fingerprint.
 	sort.Slice(lbls, func(i, j int) bool {
-		return lbls[i].Hash() < lbls[j].Hash()
+		return labels.StableHash(lbls[i]) < labels.StableHash(lbls[j])
 	})
 
 	symbols := map[string]struct{}{}
 	for _, lset := range lbls {
-		for _, l := range lset {
+		lset.Range(func(l labels.Label) {
 			symbols[l.Name] = struct{}{}
 			symbols[l.Value] = struct{}{}
-		}
+		})
 	}
 
 	var input indexWriterSeriesSlice
@@ -394,18 +395,18 @@ func TestPersistence_index_e2e(t *testing.T) {
 	mi := newMockIndex()
 
 	for i, s := range input {
-		err = iw.AddSeries(storage.SeriesRef(i), s.labels, model.Fingerprint(s.labels.Hash()), s.chunks...)
+		err = iw.AddSeries(storage.SeriesRef(i), s.labels, model.Fingerprint(labels.StableHash(s.labels)), s.chunks...)
 		require.NoError(t, err)
 		require.NoError(t, mi.AddSeries(storage.SeriesRef(i), s.labels, s.chunks...))
 
-		for _, l := range s.labels {
+		s.labels.Range(func(l labels.Label) {
 			valset, ok := values[l.Name]
 			if !ok {
 				valset = map[string]struct{}{}
 				values[l.Name] = valset
 			}
 			valset[l.Value] = struct{}{}
-		}
+		})
 		postings.Add(storage.SeriesRef(i), s.labels)
 	}
 
@@ -560,16 +561,16 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 	dir := t.TempDir()
 
 	lbls := []labels.Labels{
-		{{Name: "fizz", Value: "buzz"}},
-		{{Name: "ping", Value: "pong"}},
+		labels.New(labels.Label{Name: "fizz", Value: "buzz"}),
+		labels.New(labels.Label{Name: "ping", Value: "pong"}),
 	}
 
 	symbols := map[string]struct{}{}
 	for _, lset := range lbls {
-		for _, l := range lset {
+		lset.Range(func(l labels.Label) {
 			symbols[l.Name] = struct{}{}
 			symbols[l.Value] = struct{}{}
-		}
+		})
 	}
 
 	now := model.Now()
@@ -741,7 +742,7 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 			}
 
 			for i, l := range lbls {
-				err = iw.AddSeries(storage.SeriesRef(i), l, model.Fingerprint(l.Hash()), tc.chunkMetas...)
+				err = iw.AddSeries(storage.SeriesRef(i), l, model.Fingerprint(labels.StableHash(l)), tc.chunkMetas...)
 				require.NoError(t, err)
 			}
 
@@ -957,15 +958,15 @@ func BenchmarkInitReader_ReadOffsetTable(b *testing.B) {
 
 	// Sort labels as the index writer expects series in sorted order by fingerprint.
 	sort.Slice(lbls, func(i, j int) bool {
-		return lbls[i].Hash() < lbls[j].Hash()
+		return labels.StableHash(lbls[i]) < labels.StableHash(lbls[j])
 	})
 
 	symbols := map[string]struct{}{}
 	for _, lset := range lbls {
-		for _, l := range lset {
+		lset.Range(func(l labels.Label) {
 			symbols[l.Name] = struct{}{}
 			symbols[l.Value] = struct{}{}
-		}
+		})
 	}
 
 	var input indexWriterSeriesSlice
@@ -997,7 +998,7 @@ func BenchmarkInitReader_ReadOffsetTable(b *testing.B) {
 	}
 
 	for i, s := range input {
-		err = iw.AddSeries(storage.SeriesRef(i), s.labels, model.Fingerprint(s.labels.Hash()), s.chunks...)
+		err = iw.AddSeries(storage.SeriesRef(i), s.labels, model.Fingerprint(labels.StableHash(s.labels)), s.chunks...)
 		require.NoError(b, err)
 	}
 

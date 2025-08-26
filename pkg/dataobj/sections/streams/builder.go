@@ -3,7 +3,6 @@ package streams
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"sync"
 	"time"
 
@@ -14,9 +13,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // A Stream is an individual stream within a data object.
@@ -34,7 +33,7 @@ type Stream struct {
 	UncompressedSize int64
 
 	// Labels of the stream.
-	Labels labels.Labels //
+	Labels labels.Labels
 
 	// Total number of log records in the stream.
 	Rows int
@@ -43,7 +42,7 @@ type Stream struct {
 // Reset zeroes all values in the stream struct so it can be reused.
 func (s *Stream) Reset() {
 	s.ID = 0
-	s.Labels = nil
+	s.Labels = labels.EmptyLabels()
 	s.MinTimestamp = time.Time{}
 	s.MaxTimestamp = time.Time{}
 	s.UncompressedSize = 0
@@ -62,6 +61,10 @@ type Builder struct {
 	pageSize int
 	lastID   atomic.Int64
 	lookup   map[uint64][]*Stream
+
+	// The optional tenant that owns the builder. If specified, the section
+	// must only contain streams owned by the tenant, and no other tenants.
+	tenant string
 
 	// Size of all label values across all streams; used for
 	// [Streams.EstimatedSize]. Resets on [Streams.Reset].
@@ -88,6 +91,13 @@ func NewBuilder(metrics *Metrics, pageSize int) *Builder {
 		ordered:  make([]*Stream, 0, 1024),
 	}
 }
+
+// Tenant returns the optional tenant that owns the builder.
+func (b *Builder) Tenant() string { return b.tenant }
+
+// SetTenant sets the tenant that owns the builder. A builder can be made
+// multi-tenant by passing an empty string.
+func (b *Builder) SetTenant(tenant string) { b.tenant = tenant }
 
 // Type returns the [dataobj.SectionType] of the streams builder.
 func (b *Builder) Type() dataobj.SectionType { return sectionType }
@@ -164,7 +174,7 @@ func (b *Builder) EstimatedSize() int {
 }
 
 func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
-	hash := streamLabels.Hash()
+	hash := labels.StableHash(streamLabels)
 	matches, ok := b.lookup[hash]
 	if !ok {
 		return b.addStream(hash, streamLabels)
@@ -180,13 +190,9 @@ func (b *Builder) getOrAddStream(streamLabels labels.Labels) *Stream {
 }
 
 func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
-	// Ensure streamLabels are sorted prior to adding to ensure consistent column
-	// ordering.
-	sort.Sort(streamLabels)
-
-	for _, lbl := range streamLabels {
-		b.currentLabelsSize += len(lbl.Value)
-	}
+	streamLabels.Range(func(l labels.Label) {
+		b.currentLabelsSize += len(l.Value)
+	})
 
 	newStream := streamPool.Get().(*Stream)
 	newStream.Reset()
@@ -202,7 +208,7 @@ func (b *Builder) addStream(hash uint64, streamLabels labels.Labels) *Stream {
 // StreamID returns the stream ID for the provided streamLabels. If the stream
 // has not been recorded, StreamID returns 0.
 func (b *Builder) StreamID(streamLabels labels.Labels) int64 {
-	hash := streamLabels.Hash()
+	hash := labels.StableHash(streamLabels)
 	matches, ok := b.lookup[hash]
 	if !ok {
 		return 0
@@ -224,20 +230,23 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	timer := prometheus.NewTimer(b.metrics.encodeSeconds)
 	defer timer.ObserveDuration()
 
-	var streamsEnc encoder
-	defer streamsEnc.Reset()
-	if err := b.encodeTo(&streamsEnc); err != nil {
+	var columnarEnc columnar.Encoder
+	defer columnarEnc.Reset()
+
+	if err := b.encodeTo(&columnarEnc); err != nil {
 		return 0, fmt.Errorf("building encoder: %w", err)
 	}
 
-	n, err = streamsEnc.Flush(w)
+	columnarEnc.SetTenant(b.tenant)
+
+	n, err = columnarEnc.Flush(w)
 	if err == nil {
 		b.Reset()
 	}
 	return n, err
 }
 
-func (b *Builder) encodeTo(enc *encoder) error {
+func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	// TODO(rfratto): handle one section becoming too large. This can happen when
 	// the number of columns is very wide. There are two approaches to handle
 	// this:
@@ -246,23 +255,23 @@ func (b *Builder) encodeTo(enc *encoder) error {
 	// 2. Move some columns into an aggregated column which holds multiple label
 	//    keys and values.
 
-	idBuilder, err := numberColumnBuilder(b.pageSize)
+	idBuilder, err := numberColumnBuilder(ColumnTypeStreamID, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating ID column: %w", err)
 	}
-	minTimestampBuilder, err := numberColumnBuilder(b.pageSize)
+	minTimestampBuilder, err := numberColumnBuilder(ColumnTypeMinTimestamp, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating minimum timestamp column: %w", err)
 	}
-	maxTimestampBuilder, err := numberColumnBuilder(b.pageSize)
+	maxTimestampBuilder, err := numberColumnBuilder(ColumnTypeMaxTimestamp, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating maximum timestamp column: %w", err)
 	}
-	rowsCountBuilder, err := numberColumnBuilder(b.pageSize)
+	rowsCountBuilder, err := numberColumnBuilder(ColumnTypeRows, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating rows column: %w", err)
 	}
-	uncompressedSizeBuilder, err := numberColumnBuilder(b.pageSize)
+	uncompressedSizeBuilder, err := numberColumnBuilder(ColumnTypeUncompressedSize, b.pageSize)
 	if err != nil {
 		return fmt.Errorf("creating uncompressed size column: %w", err)
 	}
@@ -280,9 +289,12 @@ func (b *Builder) encodeTo(enc *encoder) error {
 
 		builder, err := dataset.NewColumnBuilder(name, dataset.BuilderOptions{
 			PageSizeHint: b.pageSize,
-			Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
-			Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
-			Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
+			Type: dataset.ColumnType{
+				Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+				Logical:  ColumnTypeLabel.String(),
+			},
+			Encoding:    datasetmd.ENCODING_TYPE_PLAIN,
+			Compression: datasetmd.COMPRESSION_TYPE_ZSTD,
 			Statistics: dataset.StatisticsOptions{
 				StoreRangeStats: true,
 			},
@@ -305,12 +317,16 @@ func (b *Builder) encodeTo(enc *encoder) error {
 		_ = rowsCountBuilder.Append(i, dataset.Int64Value(int64(stream.Rows)))
 		_ = uncompressedSizeBuilder.Append(i, dataset.Int64Value(stream.UncompressedSize))
 
-		for _, label := range stream.Labels {
+		err := stream.Labels.Validate(func(label labels.Label) error {
 			builder, err := getLabelColumn(label.Name)
 			if err != nil {
 				return fmt.Errorf("getting label column: %w", err)
 			}
-			_ = builder.Append(i, dataset.ByteArrayValue([]byte(label.Value)))
+			_ = builder.Append(i, dataset.BinaryValue([]byte(label.Value)))
+			return nil
+		})
+		if err != nil {
+			return err
 		}
 	}
 
@@ -319,11 +335,11 @@ func (b *Builder) encodeTo(enc *encoder) error {
 	// encoding API.
 	{
 		var errs []error
-		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_STREAM_ID, idBuilder))
-		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_MIN_TIMESTAMP, minTimestampBuilder))
-		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_MAX_TIMESTAMP, maxTimestampBuilder))
-		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_ROWS, rowsCountBuilder))
-		errs = append(errs, encodeColumn(enc, streamsmd.COLUMN_TYPE_UNCOMPRESSED_SIZE, uncompressedSizeBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeStreamID, idBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeMinTimestamp, minTimestampBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeMaxTimestamp, maxTimestampBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeRows, rowsCountBuilder))
+		errs = append(errs, encodeColumn(enc, ColumnTypeUncompressedSize, uncompressedSizeBuilder))
 		if err := errors.Join(errs...); err != nil {
 			return fmt.Errorf("encoding columns: %w", err)
 		}
@@ -334,7 +350,7 @@ func (b *Builder) encodeTo(enc *encoder) error {
 		// of rows as the other columns (which is the number of streams).
 		labelBuilder.Backfill(len(b.ordered))
 
-		err := encodeColumn(enc, streamsmd.COLUMN_TYPE_LABEL, labelBuilder)
+		err := encodeColumn(enc, ColumnTypeLabel, labelBuilder)
 		if err != nil {
 			return fmt.Errorf("encoding label column: %w", err)
 		}
@@ -343,25 +359,28 @@ func (b *Builder) encodeTo(enc *encoder) error {
 	return nil
 }
 
-func numberColumnBuilder(pageSize int) (*dataset.ColumnBuilder, error) {
+func numberColumnBuilder(columnType ColumnType, pageSize int) (*dataset.ColumnBuilder, error) {
 	return dataset.NewColumnBuilder("", dataset.BuilderOptions{
 		PageSizeHint: pageSize,
-		Value:        datasetmd.VALUE_TYPE_INT64,
-		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_INT64,
+			Logical:  columnType.String(),
+		},
+		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
+		Compression: datasetmd.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
 	})
 }
 
-func encodeColumn(enc *encoder, columnType streamsmd.ColumnType, builder *dataset.ColumnBuilder) error {
+func encodeColumn(enc *columnar.Encoder, columnType ColumnType, builder *dataset.ColumnBuilder) error {
 	column, err := builder.Flush()
 	if err != nil {
 		return fmt.Errorf("flushing %s column: %w", columnType, err)
 	}
 
-	columnEnc, err := enc.OpenColumn(columnType, &column.Info)
+	columnEnc, err := enc.OpenColumn(column.ColumnDesc())
 	if err != nil {
 		return fmt.Errorf("opening %s column encoder: %w", columnType, err)
 	}
@@ -370,6 +389,10 @@ func encodeColumn(enc *encoder, columnType streamsmd.ColumnType, builder *datase
 		// successfully committed.
 		_ = columnEnc.Discard()
 	}()
+	if len(column.Pages) == 0 {
+		// Column has no data; discard.
+		return nil
+	}
 
 	for _, page := range column.Pages {
 		err := columnEnc.AppendPage(page)
@@ -388,6 +411,7 @@ func (b *Builder) Reset() {
 		streamPool.Put(stream)
 	}
 	clear(b.lookup)
+	b.tenant = ""
 	b.ordered = sliceclear.Clear(b.ordered)
 	b.currentLabelsSize = 0
 	b.globalMinTimestamp = time.Time{}

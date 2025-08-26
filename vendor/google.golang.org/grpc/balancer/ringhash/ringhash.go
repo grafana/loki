@@ -268,7 +268,7 @@ func (b *ringhashBalancer) updatePickerLocked() {
 		sort.Slice(endpointStates, func(i, j int) bool {
 			return endpointStates[i].hashKey < endpointStates[j].hashKey
 		})
-		var idleBalancer balancer.ExitIdler
+		var idleBalancer endpointsharding.ExitIdler
 		for _, es := range endpointStates {
 			connState := es.state.ConnectivityState
 			if connState == connectivity.Connecting {
@@ -399,7 +399,7 @@ type endpointState struct {
 	// overridden, for example based on EDS endpoint metadata.
 	hashKey  string
 	weight   uint32
-	balancer balancer.ExitIdler
+	balancer endpointsharding.ExitIdler
 
 	// state is updated by the balancer while receiving resolver updates from
 	// the channel and picker updates from its children. Access to it is guarded

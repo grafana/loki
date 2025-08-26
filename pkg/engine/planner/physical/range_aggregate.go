@@ -16,7 +16,7 @@ type RangeAggregation struct {
 	Operation types.RangeAggregationType
 	Start     time.Time
 	End       time.Time
-	Step      *time.Duration // optional for instant queries
+	Step      time.Duration // optional for instant queries
 	Range     time.Duration
 }
 
@@ -29,7 +29,7 @@ func (r *RangeAggregation) ID() string {
 }
 
 func (r *RangeAggregation) Type() NodeType {
-	return NodeTypeRangeAggreation
+	return NodeTypeRangeAggregation
 }
 
 func (r *RangeAggregation) Accept(v Visitor) error {

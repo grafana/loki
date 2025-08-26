@@ -8,7 +8,6 @@ import (
 	"sort"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/sliceclear"
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 type columnReader struct {
@@ -42,7 +41,6 @@ func (cr *columnReader) Read(ctx context.Context, v []Value) (n int, err error) 
 			return 0, err
 		}
 	}
-	statistics := stats.FromContext(ctx)
 
 	for n < len(v) {
 		// Make sure our reader is initialized to the right page for the row we
@@ -54,15 +52,12 @@ func (cr *columnReader) Read(ctx context.Context, v []Value) (n int, err error) 
 			if err != nil {
 				return n, err
 			}
-			if pageIndex != cr.pageIndex {
-				statistics.AddPagesScanned(1)
-			}
 
 			switch cr.reader {
 			case nil:
-				cr.reader = newPageReader(page, cr.column.ColumnInfo().Type, cr.column.ColumnInfo().Compression)
+				cr.reader = newPageReader(page, cr.column.ColumnDesc().Type.Physical, cr.column.ColumnDesc().Compression)
 			default:
-				cr.reader.Reset(page, cr.column.ColumnInfo().Type, cr.column.ColumnInfo().Compression)
+				cr.reader.Reset(page, cr.column.ColumnDesc().Type.Physical, cr.column.ColumnDesc().Compression)
 			}
 
 			cr.pageIndex = pageIndex
@@ -123,7 +118,7 @@ func (cr *columnReader) init(ctx context.Context) error {
 			return err
 		}
 
-		endRow := startRow + uint64(page.PageInfo().RowCount) - 1
+		endRow := startRow + uint64(page.PageDesc().RowCount) - 1
 
 		// TODO(rfratto): including page count in the column info metadata would
 		// allow us to set the capacity of cr.pages and cr.ranges more precisely.
@@ -167,7 +162,7 @@ func (cr *columnReader) Seek(offset int64, whence int) (int64, error) {
 		cr.nextRow += offset
 
 	case io.SeekEnd:
-		lastRow := int64(cr.column.ColumnInfo().RowsCount)
+		lastRow := int64(cr.column.ColumnDesc().RowsCount)
 		if lastRow+offset < 0 {
 			return 0, errors.New("invalid offset")
 		}
@@ -194,7 +189,7 @@ func (cr *columnReader) Reset(column Column) {
 
 	if cr.reader != nil {
 		// Resetting takes the place of calling Close here.
-		cr.reader.Reset(nil, column.ColumnInfo().Type, column.ColumnInfo().Compression)
+		cr.reader.Reset(nil, column.ColumnDesc().Type.Physical, column.ColumnDesc().Compression)
 	}
 
 	cr.nextRow = 0

@@ -11,7 +11,7 @@ import (
 
 const MaxInternedStrings = 1024
 
-var EmptyLabelsResult = NewLabelsResult(labels.EmptyLabels().String(), labels.EmptyLabels().Hash(), labels.EmptyLabels(), labels.EmptyLabels(), labels.EmptyLabels())
+var EmptyLabelsResult = NewLabelsResult(labels.EmptyLabels().String(), labels.StableHash(labels.EmptyLabels()), labels.EmptyLabels(), labels.EmptyLabels(), labels.EmptyLabels())
 
 // LabelsResult is a computed labels result that contains the labels set with associated string and hash.
 // The is mainly used for caching and returning labels computations out of pipelines and stages.
@@ -775,7 +775,7 @@ func (b *LabelsBuilder) toBaseGroup() LabelsResult {
 	} else {
 		lbs = labels.NewBuilder(b.base).Keep(b.groups...).Labels()
 	}
-	res := NewLabelsResult(lbs.String(), lbs.Hash(), lbs, labels.EmptyLabels(), labels.EmptyLabels())
+	res := NewLabelsResult(lbs.String(), labels.StableHash(lbs), lbs, labels.EmptyLabels(), labels.EmptyLabels())
 	b.groupedResult = res
 	return res
 }

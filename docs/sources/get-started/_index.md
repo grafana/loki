@@ -3,6 +3,8 @@ title: Get started with Grafana Loki
 menuTitle: Get started
 weight: 200
 description: Provides an overview of the steps for implementing Grafana Loki to collect and view logs.
+aliases:
+  - /getting-started/
 ---
 
 # Get started with Grafana Loki

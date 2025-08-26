@@ -1,8 +1,8 @@
 package logs_test
 
 import (
-	"bytes"
 	"context"
+	"io"
 	"testing"
 	"time"
 
@@ -16,22 +16,22 @@ import (
 func Test(t *testing.T) {
 	records := []logs.Record{
 		{
+			StreamID:  2,
+			Timestamp: time.Unix(10, 0),
+			Metadata:  labels.New(labels.Label{Name: "cluster", Value: "test"}, labels.Label{Name: "app", Value: "foo"}),
+			Line:      []byte("foo bar"),
+		},
+		{
 			StreamID:  1,
 			Timestamp: time.Unix(10, 0),
-			Metadata:  nil,
+			Metadata:  labels.EmptyLabels(),
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
 			Timestamp: time.Unix(100, 0),
-			Metadata:  []labels.Label{{Name: "cluster", Value: "test"}, {Name: "app", Value: "bar"}},
+			Metadata:  labels.New(labels.Label{Name: "cluster", Value: "test"}, labels.Label{Name: "app", Value: "bar"}),
 			Line:      []byte("goodbye world"),
-		},
-		{
-			StreamID:  1,
-			Timestamp: time.Unix(5, 0),
-			Metadata:  []labels.Label{{Name: "cluster", Value: "test"}, {Name: "app", Value: "foo"}},
-			Line:      []byte("foo bar"),
 		},
 	}
 
@@ -46,34 +46,32 @@ func Test(t *testing.T) {
 		tracker.Append(record)
 	}
 
-	buf, err := buildObject(tracker)
+	obj, closer, err := buildObject(tracker)
 	require.NoError(t, err)
+	defer closer.Close()
 
-	// The order of records should be sorted by stream ID then timestamp, and all
+	// The order of records should be sorted by timestamp DESC then stream ID, and all
 	// metadata should be sorted by key then value.
 	expect := []logs.Record{
 		{
-			StreamID:  1,
-			Timestamp: time.Unix(5, 0),
-			Metadata:  []labels.Label{{Name: "app", Value: "foo"}, {Name: "cluster", Value: "test"}},
-			Line:      []byte("foo bar"),
+			StreamID:  2,
+			Timestamp: time.Unix(100, 0),
+			Metadata:  labels.New(labels.Label{Name: "app", Value: "bar"}, labels.Label{Name: "cluster", Value: "test"}),
+			Line:      []byte("goodbye world"),
 		},
 		{
 			StreamID:  1,
 			Timestamp: time.Unix(10, 0),
-			Metadata:  []labels.Label{},
+			Metadata:  labels.EmptyLabels(),
 			Line:      []byte("hello world"),
 		},
 		{
 			StreamID:  2,
-			Timestamp: time.Unix(100, 0),
-			Metadata:  []labels.Label{{Name: "app", Value: "bar"}, {Name: "cluster", Value: "test"}},
-			Line:      []byte("goodbye world"),
+			Timestamp: time.Unix(10, 0),
+			Metadata:  labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "cluster", Value: "test"}),
+			Line:      []byte("foo bar"),
 		},
 	}
-
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf), int64(len(buf)))
-	require.NoError(t, err)
 
 	i := 0
 	for result := range logs.Iter(context.Background(), obj) {
@@ -84,14 +82,10 @@ func Test(t *testing.T) {
 	}
 }
 
-func buildObject(lt *logs.Builder) ([]byte, error) {
-	var buf bytes.Buffer
-
-	builder := dataobj.NewBuilder()
+func buildObject(lt *logs.Builder) (*dataobj.Object, io.Closer, error) {
+	builder := dataobj.NewBuilder(nil)
 	if err := builder.Append(lt); err != nil {
-		return nil, err
-	} else if _, err := builder.Flush(&buf); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return buf.Bytes(), nil
+	return builder.Flush()
 }

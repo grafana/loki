@@ -16,7 +16,7 @@ type Confmap struct {
 
 // Provider returns a confmap Provider that takes a flat or nested
 // map[string]interface{}. If a delim is provided, it indicates that the
-// keys are flat and the map needs to be unflatted by delim.
+// keys are flat and the map needs to be unflattened by delim.
 func Provider(mp map[string]interface{}, delim string) *Confmap {
 	cp := maps.Copy(mp)
 	maps.IntfaceKeysToStrings(cp)

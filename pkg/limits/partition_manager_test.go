@@ -61,6 +61,24 @@ func TestPartitionManager_Assign(t *testing.T) {
 	}, m.partitions)
 }
 
+func TestPartitionManager_CheckReady(t *testing.T) {
+	m, err := newPartitionManager(prometheus.NewRegistry())
+	require.NoError(t, err)
+	c := quartz.NewMock(t)
+	m.clock = c
+	c.Advance(1)
+	m.Assign([]int32{1, 2})
+	require.False(t, m.CheckReady())
+	m.SetReplaying(1, 10)
+	require.False(t, m.CheckReady())
+	m.SetReady(1)
+	require.False(t, m.CheckReady())
+	m.SetReplaying(2, 10)
+	require.False(t, m.CheckReady())
+	m.SetReady(2)
+	require.True(t, m.CheckReady())
+}
+
 func TestPartitionManager_GetState(t *testing.T) {
 	m, err := newPartitionManager(prometheus.NewRegistry())
 	require.NoError(t, err)

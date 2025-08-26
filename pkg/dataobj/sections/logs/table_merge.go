@@ -9,7 +9,6 @@ import (
 	"math"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
@@ -86,8 +85,8 @@ func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.Compres
 	maxValue := result.Value(dataset.Row{
 		Index: math.MaxInt,
 		Values: []dataset.Value{
-			dataset.Int64Value(math.MaxInt64),
-			dataset.Int64Value(math.MaxInt64),
+			dataset.Int64Value(math.MaxInt64), // StreamID
+			dataset.Int64Value(math.MinInt64), // Timestamp
 		},
 	})
 
@@ -113,14 +112,14 @@ func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.Compres
 			value := row.Values[i]
 
 			switch column.Type {
-			case logsmd.COLUMN_TYPE_STREAM_ID:
+			case ColumnTypeStreamID:
 				_ = streamIDBuilder.Append(rows, value)
-			case logsmd.COLUMN_TYPE_TIMESTAMP:
+			case ColumnTypeTimestamp:
 				_ = timestampBuilder.Append(rows, value)
-			case logsmd.COLUMN_TYPE_METADATA:
-				columnBuilder := buf.Metadata(column.Info.Name, pageSize, compressionOpts)
+			case ColumnTypeMetadata:
+				columnBuilder := buf.Metadata(column.Desc.Tag, pageSize, compressionOpts)
 				_ = columnBuilder.Append(rows, value)
-			case logsmd.COLUMN_TYPE_MESSAGE:
+			case ColumnTypeMessage:
 				_ = messageBuilder.Append(rows, value)
 			default:
 				return nil, fmt.Errorf("unknown column type %s", column.Type)
@@ -209,8 +208,8 @@ func compareRows(a, b dataset.Row) int {
 		bTimestamp = b.Values[1].Int64()
 	)
 
-	if res := cmp.Compare(aStreamID, bStreamID); res != 0 {
+	if res := cmp.Compare(bTimestamp, aTimestamp); res != 0 {
 		return res
 	}
-	return cmp.Compare(aTimestamp, bTimestamp)
+	return cmp.Compare(aStreamID, bStreamID)
 }

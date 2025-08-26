@@ -171,7 +171,7 @@ func TestBinary_Filter(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.f.String(), func(t *testing.T) {
-			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
 			_, got := tt.f.Process(0, nil, b)
 			require.Equal(t, tt.want, got)
@@ -204,7 +204,7 @@ func TestBytes_Filter(t *testing.T) {
 		f := NewBytesLabelFilter(LabelFilterEqual, "bar", tt.expectedBytes)
 		lbs := labels.FromStrings("bar", tt.label)
 		t.Run(f.String(), func(t *testing.T) {
-			b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
+			b := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 			b.Reset()
 			_, got := f.Process(0, nil, b)
 			require.Equal(t, tt.want, got)
@@ -272,7 +272,7 @@ func TestErrorFiltering(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.f.String(), func(t *testing.T) {
-			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			b := NewBaseLabelsBuilder().ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			b.Reset()
 			b.SetErr(tt.err)
 			_, got := tt.f.Process(0, nil, b)
@@ -410,7 +410,7 @@ func TestStringLabelFilter(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, ok := tc.filter.Process(0, []byte("sample log line"), NewBaseLabelsBuilder().ForLabels(tc.labels, tc.labels.Hash()))
+			_, ok := tc.filter.Process(0, []byte("sample log line"), NewBaseLabelsBuilder().ForLabels(tc.labels, labels.StableHash(tc.labels)))
 			assert.Equal(t, tc.shouldMatch, ok)
 		})
 	}

@@ -18,7 +18,6 @@ func (cfg *Config) Validate() error {
 	if err := cfg.UploaderConfig.Validate(); err != nil {
 		return err
 	}
-
 	return cfg.BuilderConfig.Validate()
 }
 

@@ -1,4 +1,5 @@
-package registry // import "github.com/docker/docker/api/types/registry"
+package registry
+
 import (
 	"context"
 	"encoding/base64"
@@ -82,6 +83,8 @@ func DecodeAuthConfig(authEncoded string) (*AuthConfig, error) {
 // Like [DecodeAuthConfig], this function always returns an [AuthConfig], even if an
 // error occurs. It is up to the caller to decide if authentication is required,
 // and if the error can be ignored.
+//
+// Deprecated: this function is no longer used and will be removed in the next release.
 func DecodeAuthConfigBody(rdr io.ReadCloser) (*AuthConfig, error) {
 	return decodeAuthConfigFromReader(rdr)
 }

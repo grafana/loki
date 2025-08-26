@@ -24,7 +24,7 @@ type byteBufferBuilder struct {
 
 func newByteBufferBuilder(mem memory.Allocator) *byteBufferBuilder {
 	bbb := &byteBufferBuilder{bufferBuilder: bufferBuilder{mem: mem}}
-	bbb.bufferBuilder.refCount.Add(1)
+	bbb.refCount.Add(1)
 	return bbb
 }
 

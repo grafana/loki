@@ -326,6 +326,20 @@ func Test_detectLogLevelFromLogEntry(t *testing.T) {
 			},
 			expectedLogLevel: constants.LogLevelInfo,
 		},
+		{
+			name: "logfmt log line with a info with short level",
+			entry: logproto.Entry{
+				Line: `FOO=bar MSG="message that should qualify to unknown when there is no level defined" LEVEL=Inf`,
+			},
+			expectedLogLevel: constants.LogLevelInfo,
+		},
+		{
+			name: "logfmt log line with a info with full level",
+			entry: logproto.Entry{
+				Line: `FOO=bar MSG="message that should qualify to unknown when there is no level defined" LEVEL=Information`,
+			},
+			expectedLogLevel: constants.LogLevelInfo,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			detectedLogLevel := ld.detectLogLevelFromLogEntry(tc.entry, logproto.FromLabelAdaptersToLabels(tc.entry.StructuredMetadata))

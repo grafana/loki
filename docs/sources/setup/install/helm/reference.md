@@ -61,6 +61,7 @@ This is the generated reference for the Loki Helm Chart values.
   "hostAliases": [],
   "initContainers": [],
   "labels": {},
+  "livenessProbe": {},
   "nodeSelector": {},
   "podSecurityContext": {
     "runAsGroup": 10001,
@@ -80,6 +81,7 @@ This is the generated reference for the Loki Helm Chart values.
     "annotations": {},
     "labels": {}
   },
+  "startupProbe": {},
   "strategy": {
     "type": "RollingUpdate"
   },
@@ -199,6 +201,15 @@ This is the generated reference for the Loki Helm Chart values.
 </td>
 		</tr>
 		<tr>
+			<td>adminApi.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>adminApi.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for admin-api Pods</td>
@@ -262,6 +273,15 @@ This is the generated reference for the Loki Helm Chart values.
   "annotations": {},
   "labels": {}
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -352,6 +372,7 @@ This is the generated reference for the Loki Helm Chart values.
       "emptyDir": {}
     },
     "enableStatefulSetAutoDeletePVC": true,
+    "labels": {},
     "selector": null,
     "size": "10Gi",
     "storageClass": null,
@@ -582,6 +603,15 @@ null
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
 			<td><pre lang="json">
 true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for volume claim</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1160,6 +1190,7 @@ null
     ],
     "enableStatefulSetAutoDeletePVC": false,
     "enabled": false,
+    "labels": {},
     "whenDeleted": "Retain",
     "whenScaled": "Retain"
   },
@@ -1178,6 +1209,7 @@ null
   },
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
 }
@@ -1376,6 +1408,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>bloomGateway.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for bloom gateway PVCs</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomGateway.podAnnotations</td>
 			<td>object</td>
 			<td>Annotations for bloom-gateway pods</td>
@@ -1484,6 +1525,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomGateway.startupProbe</td>
+			<td>object</td>
+			<td>startup probe settings for ingester pods. If empty, use `loki.startupProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomGateway.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the bloom-gateway to shutdown before it is killed</td>
@@ -1541,9 +1591,10 @@ null
   "livenessProbe": {},
   "nodeSelector": {},
   "persistence": {
-    "annotations": {},
     "claims": [
       {
+        "annotations": {},
+        "labels": {},
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -1569,6 +1620,7 @@ null
   },
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
 }
@@ -1722,7 +1774,16 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>bloomPlanner.persistence.annotations</td>
+			<td>bloomPlanner.persistence.claims</td>
+			<td>list</td>
+			<td>List of the bloom-planner PVCs</td>
+			<td><pre lang="list">
+
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.claims[0].annotations</td>
 			<td>object</td>
 			<td>Annotations for bloom-planner PVCs</td>
 			<td><pre lang="json">
@@ -1731,11 +1792,11 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>bloomPlanner.persistence.claims</td>
-			<td>list</td>
-			<td>List of the bloom-planner PVCs</td>
-			<td><pre lang="list">
-
+			<td>bloomPlanner.persistence.claims[0].labels</td>
+			<td>object</td>
+			<td>Labels for bloom planner PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1875,6 +1936,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomPlanner.startupProbe</td>
+			<td>object</td>
+			<td>startup probe settings for ingester pods. If empty use `loki.startupProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomPlanner.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the bloom-planner to shutdown before it is killed</td>
@@ -1889,6 +1959,15 @@ null
 			<td>Tolerations for bloom-planner pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.addresses</td>
+			<td>string</td>
+			<td>Comma separated addresses list in DNS Service Discovery format</td>
+			<td><pre lang="json">
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.suffix ) }}.{{ $.Release.Namespace }}.svc"
 </pre>
 </td>
 		</tr>
@@ -2010,11 +2089,458 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.l2</td>
+			<td>object</td>
+			<td>l2 memcache configuration</td>
+			<td><pre lang="json">
+{
+  "addresses": "dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ $.Release.Namespace }}.svc",
+  "affinity": {},
+  "allocatedMemory": 8192,
+  "annotations": {},
+  "batchSize": 4,
+  "connectionLimit": 16384,
+  "defaultValidity": "0s",
+  "enabled": false,
+  "extraArgs": {},
+  "extraContainers": [],
+  "extraExtendedOptions": "",
+  "extraVolumeMounts": [],
+  "extraVolumes": [],
+  "initContainers": [],
+  "l2ChunkCacheHandoff": "345600s",
+  "maxItemMemory": 5,
+  "maxUnavailable": 1,
+  "nodeSelector": {},
+  "parallelism": 5,
+  "persistence": {
+    "enabled": false,
+    "labels": {},
+    "mountPath": "/data",
+    "storageClass": null,
+    "storageSize": "10G"
+  },
+  "podAnnotations": {},
+  "podLabels": {},
+  "podManagementPolicy": "Parallel",
+  "port": 11211,
+  "priorityClassName": null,
+  "replicas": 1,
+  "resources": null,
+  "service": {
+    "annotations": {},
+    "labels": {}
+  },
+  "statefulStrategy": {
+    "type": "RollingUpdate"
+  },
+  "suffix": "l2",
+  "terminationGracePeriodSeconds": 60,
+  "timeout": "2000ms",
+  "tolerations": [],
+  "topologySpreadConstraints": [],
+  "writebackBuffer": 500000,
+  "writebackParallelism": 1,
+  "writebackSizeLimit": "500MB"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.addresses</td>
+			<td>string</td>
+			<td>Comma separated addresses list in DNS Service Discovery format</td>
+			<td><pre lang="json">
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ $.Release.Namespace }}.svc"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.affinity</td>
+			<td>object</td>
+			<td>Affinity for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.allocatedMemory</td>
+			<td>int</td>
+			<td>Amount of memory allocated to chunks-cache-l2 for object storage (in MB).</td>
+			<td><pre lang="json">
+8192
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.annotations</td>
+			<td>object</td>
+			<td>Annotations for the chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.batchSize</td>
+			<td>int</td>
+			<td>Batchsize for sending and receiving chunks from chunks cache</td>
+			<td><pre lang="json">
+4
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.connectionLimit</td>
+			<td>int</td>
+			<td>Maximum number of connections allowed</td>
+			<td><pre lang="json">
+16384
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.defaultValidity</td>
+			<td>string</td>
+			<td>Specify how long cached chunks should be stored in the chunks-cache-l2 before being expired</td>
+			<td><pre lang="json">
+"0s"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.enabled</td>
+			<td>bool</td>
+			<td>Specifies whether memcached based chunks-cache-l2 should be enabled</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.extraArgs</td>
+			<td>object</td>
+			<td>Additional CLI args for chunks-cache-l2</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.extraContainers</td>
+			<td>list</td>
+			<td>Additional containers to be added to the chunks-cache-l2 pod.</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.extraExtendedOptions</td>
+			<td>string</td>
+			<td>Add extended options for chunks-cache-l2 memcached container. The format is the same as for the memcached -o/--extend flag. Example: extraExtendedOptions: 'tls,no_hashexpand'</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Additional volume mounts to be added to the chunks-cache-l2 pod (applies to both memcached and exporter containers). Example: extraVolumeMounts: - name: extra-volume   mountPath: /etc/extra-volume   readOnly: true</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.extraVolumes</td>
+			<td>list</td>
+			<td>Additional volumes to be added to the chunks-cache-l2 pod (applies to both memcached and exporter containers). Example: extraVolumes: - name: extra-volume   secret:    secretName: extra-volume-secret</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.initContainers</td>
+			<td>list</td>
+			<td>Extra init containers for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.l2ChunkCacheHandoff</td>
+			<td>string</td>
+			<td>The age of chunks should be transfered from l1 cache to l2 4 days</td>
+			<td><pre lang="json">
+"345600s"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.maxItemMemory</td>
+			<td>int</td>
+			<td>Maximum item memory for chunks-cache-l2 (in MB).</td>
+			<td><pre lang="json">
+5
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for chunks-cach-l2 pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.parallelism</td>
+			<td>int</td>
+			<td>Parallel threads for sending and receiving chunks from chunks cache</td>
+			<td><pre lang="json">
+5
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.persistence</td>
+			<td>object</td>
+			<td>Persistence settings for the chunks-cache-l2</td>
+			<td><pre lang="json">
+{
+  "enabled": false,
+  "labels": {},
+  "mountPath": "/data",
+  "storageClass": null,
+  "storageSize": "10G"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable creating PVCs for the chunks-cache-l2</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.persistence.mountPath</td>
+			<td>string</td>
+			<td>Volume mount path</td>
+			<td><pre lang="json">
+"/data"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.persistence.storageClass</td>
+			<td>string</td>
+			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.persistence.storageSize</td>
+			<td>string</td>
+			<td>Size of persistent disk, must be in G or Gi</td>
+			<td><pre lang="json">
+"10G"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.podLabels</td>
+			<td>object</td>
+			<td>Labels for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.podManagementPolicy</td>
+			<td>string</td>
+			<td>Management policy for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+"Parallel"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.port</td>
+			<td>int</td>
+			<td>Port of the chunks-cache-l2 service</td>
+			<td><pre lang="json">
+11211
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.replicas</td>
+			<td>int</td>
+			<td>Specify how long cached chunks should be stored in the chunks-cache-l2 before being expired</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.resources</td>
+			<td>string</td>
+			<td>Resource requests and limits for the chunks-cache-l2 By default a safe memory limit will be requested based on allocatedMemory value (floor (* 1.2 allocatedMemory)).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.service</td>
+			<td>object</td>
+			<td>Service annotations and labels</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "labels": {}
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.statefulStrategy</td>
+			<td>object</td>
+			<td>Stateful chunks-cache strategy</td>
+			<td><pre lang="json">
+{
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.suffix</td>
+			<td>string</td>
+			<td>Append to the name of the resources to make names different for l1 and l2</td>
+			<td><pre lang="json">
+"l2"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the chunks-cache-l2 to shutdown before it is killed</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.timeout</td>
+			<td>string</td>
+			<td>Memcached operation timeout</td>
+			<td><pre lang="json">
+"2000ms"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>topologySpreadConstraints allows to customize the default topologySpreadConstraints. This can be either a single dict as shown below or a slice of topologySpreadConstraints. labelSelector is taken from the constraint itself (if it exists) or is generated by the chart using the same selectors as for services.</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.writebackBuffer</td>
+			<td>int</td>
+			<td>Max number of objects to use for cache write back</td>
+			<td><pre lang="json">
+500000
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.writebackParallelism</td>
+			<td>int</td>
+			<td>Number of parallel threads for cache write back</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.writebackSizeLimit</td>
+			<td>string</td>
+			<td>Max memory to use for cache write back</td>
+			<td><pre lang="json">
+"500MB"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.maxItemMemory</td>
 			<td>int</td>
 			<td>Maximum item memory for chunks-cache (in MB).</td>
 			<td><pre lang="json">
 5
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
 </pre>
 </td>
 		</tr>
@@ -2043,6 +2569,7 @@ true
 			<td><pre lang="json">
 {
   "enabled": false,
+  "labels": {},
   "mountPath": "/data",
   "storageClass": null,
   "storageSize": "10G"
@@ -2096,17 +2623,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>chunksCache.podDisruptionBudget</td>
-			<td>object</td>
-			<td>Pod Disruption Budget</td>
-			<td><pre lang="json">
-{
-  "maxUnavailable": 1
-}
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>chunksCache.podLabels</td>
 			<td>object</td>
 			<td>Labels for chunks-cache pods</td>
@@ -2145,7 +2661,7 @@ null
 		<tr>
 			<td>chunksCache.replicas</td>
 			<td>int</td>
-			<td>Total number of chunks-cache replicas</td>
+			<td>Specify how long cached chunks should be stored in the chunks-cache before being expired</td>
 			<td><pre lang="json">
 1
 </pre>
@@ -2180,6 +2696,15 @@ null
 {
   "type": "RollingUpdate"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.suffix</td>
+			<td>string</td>
+			<td>Append to the name of the resources to make names different for l1 and l2</td>
+			<td><pre lang="json">
+""
 </pre>
 </td>
 		</tr>
@@ -2295,9 +2820,10 @@ null
   "livenessProbe": {},
   "nodeSelector": {},
   "persistence": {
-    "annotations": {},
     "claims": [
       {
+        "annotations": {},
+        "labels": {},
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -2478,7 +3004,16 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>compactor.persistence.annotations</td>
+			<td>compactor.persistence.claims</td>
+			<td>list</td>
+			<td>List of the compactor PVCs</td>
+			<td><pre lang="list">
+
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.persistence.claims[0].annotations</td>
 			<td>object</td>
 			<td>Annotations for compactor PVCs</td>
 			<td><pre lang="json">
@@ -2487,11 +3022,11 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>compactor.persistence.claims</td>
-			<td>list</td>
-			<td>List of the compactor PVCs</td>
-			<td><pre lang="list">
-
+			<td>compactor.persistence.claims[0].labels</td>
+			<td>object</td>
+			<td>Labels for compactor PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2727,7 +3262,8 @@ null
   "serviceLabels": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
-  "topologySpreadConstraints": []
+  "topologySpreadConstraints": [],
+  "trafficDistribution": ""
 }
 </pre>
 </td>
@@ -3059,6 +3595,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>distributor.trafficDistribution</td>
+			<td>string</td>
+			<td>trafficDistribution for distributor service</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise</td>
 			<td>object</td>
 			<td>Configuration for running Enterprise Loki</td>
@@ -3068,7 +3613,6 @@ null
     "enabled": true
   },
   "adminToken": {
-    "additionalNamespaces": [],
     "secret": null
   },
   "canarySecret": null,
@@ -3083,7 +3627,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.5.1"
+    "tag": "3.5.2"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3117,30 +3661,8 @@ null
     },
     "tolerations": []
   },
-  "tokengen": {
-    "adminTokenSecret": null,
-    "affinity": {},
-    "annotations": {},
-    "enabled": true,
-    "env": [],
-    "extraArgs": [],
-    "extraEnvFrom": [],
-    "extraVolumeMounts": [],
-    "extraVolumes": [],
-    "labels": {},
-    "nodeSelector": {},
-    "priorityClassName": "",
-    "securityContext": {
-      "fsGroup": 10001,
-      "runAsGroup": 10001,
-      "runAsNonRoot": true,
-      "runAsUser": 10001
-    },
-    "targetModule": "tokengen",
-    "tolerations": []
-  },
   "useExternalLicense": false,
-  "version": "3.4.0"
+  "version": "3.5.2"
 }
 </pre>
 </td>
@@ -3157,18 +3679,9 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>enterprise.adminToken.additionalNamespaces</td>
-			<td>list</td>
-			<td>Additional namespace to also create the token in. Useful if your Grafana instance is in a different namespace</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>enterprise.adminToken.secret</td>
 			<td>string</td>
-			<td>Alternative name for admin token secret, needed by tokengen and provisioner jobs</td>
+			<td>Name of external secret containing the admin token for enterprise provisioner This secret must exist before deploying and must contain a key named 'token'</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -3260,7 +3773,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.5.1"
+"3.5.2"
 </pre>
 </td>
 		</tr>
@@ -3278,7 +3791,7 @@ null
 		<tr>
 			<td>enterprise.provisioner</td>
 			<td>object</td>
-			<td>Configuration for `provisioner` target Note: Uses tokengenJob.adminTokenSecret value to mount the admin token used to call the admin api.</td>
+			<td>Configuration for `provisioner` target Note: Uses enterprise.adminToken.secret value to mount the admin token used to call the admin api.</td>
 			<td><pre lang="json">
 {
   "additionalTenants": [],
@@ -3507,176 +4020,6 @@ null
 			<td>enterprise.provisioner.tolerations</td>
 			<td>list</td>
 			<td>Tolerations for tokengen Pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen</td>
-			<td>object</td>
-			<td>Configuration for `tokengen` target</td>
-			<td><pre lang="json">
-{
-  "adminTokenSecret": null,
-  "affinity": {},
-  "annotations": {},
-  "enabled": true,
-  "env": [],
-  "extraArgs": [],
-  "extraEnvFrom": [],
-  "extraVolumeMounts": [],
-  "extraVolumes": [],
-  "labels": {},
-  "nodeSelector": {},
-  "priorityClassName": "",
-  "securityContext": {
-    "fsGroup": 10001,
-    "runAsGroup": 10001,
-    "runAsNonRoot": true,
-    "runAsUser": 10001
-  },
-  "targetModule": "tokengen",
-  "tolerations": []
-}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.adminTokenSecret</td>
-			<td>string</td>
-			<td>Name of the secret to store the admin token.</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.affinity</td>
-			<td>object</td>
-			<td>Affinity for tokengen Pods</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.annotations</td>
-			<td>object</td>
-			<td>Additional annotations for the `tokengen` Job</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.enabled</td>
-			<td>bool</td>
-			<td>Whether the job should be part of the deployment</td>
-			<td><pre lang="json">
-true
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.env</td>
-			<td>list</td>
-			<td>Additional Kubernetes environment</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.extraArgs</td>
-			<td>list</td>
-			<td>Additional CLI arguments for the `tokengen` target</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.extraEnvFrom</td>
-			<td>list</td>
-			<td>Environment variables from secrets or configmaps to add to the tokengen pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.extraVolumeMounts</td>
-			<td>list</td>
-			<td>Additional volume mounts for Pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.extraVolumes</td>
-			<td>list</td>
-			<td>Additional volumes for Pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.labels</td>
-			<td>object</td>
-			<td>Additional labels for the `tokengen` Job</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.nodeSelector</td>
-			<td>object</td>
-			<td>Node selector for tokengen Pods</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.priorityClassName</td>
-			<td>string</td>
-			<td>The name of the PriorityClass for tokengen Pods</td>
-			<td><pre lang="json">
-""
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.securityContext</td>
-			<td>object</td>
-			<td>Run containers as user `enterprise-logs(uid=10001)`</td>
-			<td><pre lang="json">
-{
-  "fsGroup": 10001,
-  "runAsGroup": 10001,
-  "runAsNonRoot": true,
-  "runAsUser": 10001
-}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.targetModule</td>
-			<td>string</td>
-			<td>Comma-separated list of Loki modules to load for tokengen</td>
-			<td><pre lang="json">
-"tokengen"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.tolerations</td>
-			<td>list</td>
-			<td>Tolerations for tokengen Job</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4247,7 +4590,7 @@ null
 			<td>string</td>
 			<td>The gateway image tag</td>
 			<td><pre lang="json">
-"1.28-alpine"
+"1.29-alpine"
 </pre>
 </td>
 		</tr>
@@ -4388,6 +4731,15 @@ See values.yaml
 			<td>gateway.nginxConfig.httpSnippet</td>
 			<td>string</td>
 			<td>Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.locationSnippet</td>
+			<td>string</td>
+			<td>Allows appending custom configuration inside every location block, useful for authentication or setting headers that are not inherited from the server block, passed through the `tpl` function to allow templating.</td>
 			<td><pre lang="json">
 "{{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}"
 </pre>
@@ -4784,6 +5136,7 @@ null
     "enableStatefulSetAutoDeletePVC": false,
     "enabled": false,
     "inMemory": false,
+    "labels": {},
     "size": "10Gi",
     "storageClass": null,
     "whenDeleted": "Retain",
@@ -4989,6 +5342,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for index gateway PVCs</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.persistence.size</td>
 			<td>string</td>
 			<td>Size of persistent or memory disk</td>
@@ -5167,6 +5529,7 @@ null
     "tag": null
   },
   "initContainers": [],
+  "labels": {},
   "lifecycle": {},
   "livenessProbe": {},
   "maxUnavailable": 1,
@@ -5847,10 +6210,14 @@ null
   "ingressClassName": "",
   "labels": {},
   "paths": {
+    "compactor": [
+      "/loki/api/v1/delete"
+    ],
     "distributor": [
       "/api/prom/push",
       "/loki/api/v1/push",
-      "/otlp/v1/logs"
+      "/otlp/v1/logs",
+      "/ui"
     ],
     "queryFrontend": [
       "/api/prom/query",
@@ -5898,6 +6265,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>ingress.paths.compactor</td>
+			<td>list</td>
+			<td>Paths that are exposed by Loki Compactor. If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.compactorFullname"}}`. If deployment mode is SimpleScalable, the requests are forwarded to k8s service: `{{"loki.backendFullname"}}`. If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`</td>
+			<td><pre lang="json">
+[
+  "/loki/api/v1/delete"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ingress.paths.distributor</td>
 			<td>list</td>
 			<td>Paths that are exposed by Loki Distributor. If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.distributorFullname"}}`. If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.writeFullname"}}`. If deployment mode is SingleBinary, the requests are forwarded to the central/single k8s service: `{{"loki.singleBinaryFullname"}}`</td>
@@ -5905,7 +6283,8 @@ null
 [
   "/api/prom/push",
   "/loki/api/v1/push",
-  "/otlp/v1/logs"
+  "/otlp/v1/logs",
+  "/ui"
 ]
 </pre>
 </td>
@@ -5973,66 +6352,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>kubectlImage</td>
-			<td>object</td>
-			<td>kubetclImage is used in the enterprise provisioner and tokengen jobs</td>
-			<td><pre lang="json">
-{
-  "digest": null,
-  "pullPolicy": "IfNotPresent",
-  "registry": "docker.io",
-  "repository": "bitnami/kubectl",
-  "tag": null
-}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.digest</td>
-			<td>string</td>
-			<td>Overrides the image tag with an image digest</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.pullPolicy</td>
-			<td>string</td>
-			<td>Docker image pull policy</td>
-			<td><pre lang="json">
-"IfNotPresent"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.registry</td>
-			<td>string</td>
-			<td>The Docker registry</td>
-			<td><pre lang="json">
-"docker.io"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.repository</td>
-			<td>string</td>
-			<td>Docker image repository</td>
-			<td><pre lang="json">
-"bitnami/kubectl"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.tag</td>
-			<td>string</td>
-			<td>Overrides the image tag whose default is the chart's appVersion</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>loki</td>
 			<td>object</td>
 			<td>Configuration for running Loki</td>
@@ -6060,12 +6379,21 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.block_builder</td>
+			<td>object</td>
+			<td>Optional block builder configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.commonConfig</td>
 			<td>object</td>
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration</td>
 			<td><pre lang="json">
 {
-  "compactor_address": "{{ include \"loki.compactorAddress\" . }}",
+  "compactor_grpc_address": "{{ include \"loki.compactorAddress\" . }}",
   "path_prefix": "/var/loki",
   "replication_factor": 3
 }
@@ -6073,9 +6401,27 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.commonConfig.compactor_grpc_address</td>
+			<td>string</td>
+			<td>The gRPC address of the compactor. The use of compactor_grpc_address is prefered over compactor_address. If a customized compactor_address is set, compactor_grpc_address should be set to an empty string.</td>
+			<td><pre lang="json">
+"{{ include \"loki.compactorAddress\" . }}"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.compactor</td>
 			<td>object</td>
 			<td>Optional compactor configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.compactor_grpc_client</td>
+			<td>object</td>
+			<td>Optional compactor grpc client configuration</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6202,7 +6548,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.5.1"
+"3.5.3"
 </pre>
 </td>
 		</tr>
@@ -6221,6 +6567,15 @@ null
 			<td>loki.ingester</td>
 			<td>object</td>
 			<td>Optional ingester configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.ingester_client</td>
+			<td>object</td>
+			<td>Optional ingester client configuration</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6252,26 +6607,11 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>loki.memcached</td>
+			<td>loki.operational_config</td>
 			<td>object</td>
-			<td>Configure memcached as an external cache for chunk and results cache. Disabled by default must enable and specify a host for each cache you would like to use.</td>
+			<td>Optional operational configuration</td>
 			<td><pre lang="json">
-{
-  "chunk_cache": {
-    "batch_size": 256,
-    "enabled": false,
-    "host": "",
-    "parallelism": 10,
-    "service": "memcached-client"
-  },
-  "results_cache": {
-    "default_validity": "12h",
-    "enabled": false,
-    "host": "",
-    "service": "memcached-client",
-    "timeout": "500ms"
-  }
-}
+{}
 </pre>
 </td>
 		</tr>
@@ -6435,7 +6775,6 @@ null
     "userAssignedId": null
   },
   "filesystem": {
-    "admin_api_directory": "/var/loki/admin",
     "chunks_directory": "/var/loki/chunks",
     "rules_directory": "/var/loki/rules"
   },
@@ -6554,7 +6893,7 @@ null
 		<tr>
 			<td>loki.tenants</td>
 			<td>list</td>
-			<td>Tenants list to be created on nginx htpasswd file, with name and password keys</td>
+			<td>Tenants list to be created on nginx htpasswd file, with name and password or passwordHash keys<br><br> Example: <pre> tenants:<br>   - name: "test-user-1"<br>     password: "test-password-1"<br>   - name: "test-user-2"<br>     passwordHash: "$2y$10$7O40CaY1yz7fu9O24k2/u.ct/wELYHRBsn25v/7AyuQ8E8hrLqpva" # generated using `htpasswd -nbBC10 test-user-2 test-password-2` </pre></td>
 			<td><pre lang="json">
 []
 </pre>
@@ -6736,6 +7075,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.kind</td>
+			<td>string</td>
+			<td>The type of the loki canary k8s rollout. This can be a DaemonSet or Deployment.</td>
+			<td><pre lang="json">
+"DaemonSet"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.labelname</td>
 			<td>string</td>
 			<td>The name of the label to look for at loki when doing the checks.</td>
@@ -6875,6 +7223,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>memcached.enabled</td>
+			<td>bool</td>
+			<td>Enable the built in memcached server provided by the chart</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcached.image.pullPolicy</td>
 			<td>string</td>
 			<td>Memcached Docker image pull policy</td>
@@ -6902,6 +7259,23 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>memcached.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe for memcached pods</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 3,
+  "initialDelaySeconds": 30,
+  "periodSeconds": 10,
+  "tcpSocket": {
+    "port": "client"
+  },
+  "timeoutSeconds": 5
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcached.podSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext override for memcached pods</td>
@@ -6921,6 +7295,23 @@ false
 			<td>The name of the PriorityClass for memcached pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcached.readinessProbe</td>
+			<td>object</td>
+			<td>Readiness probe for memcached pods (probe port defaults to container port)</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 6,
+  "initialDelaySeconds": 5,
+  "periodSeconds": 5,
+  "tcpSocket": {
+    "port": "client"
+  },
+  "timeoutSeconds": 3
+}
 </pre>
 </td>
 		</tr>
@@ -6983,6 +7374,42 @@ true
 			<td></td>
 			<td><pre lang="json">
 "v0.15.3"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe for memcached exporter</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 3,
+  "httpGet": {
+    "path": "/metrics",
+    "port": "http-metrics"
+  },
+  "initialDelaySeconds": 30,
+  "periodSeconds": 10,
+  "timeoutSeconds": 5
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.readinessProbe</td>
+			<td>object</td>
+			<td>Readiness probe for memcached exporter</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 3,
+  "httpGet": {
+    "path": "/metrics",
+    "port": "http-metrics"
+  },
+  "initialDelaySeconds": 5,
+  "periodSeconds": 5,
+  "timeoutSeconds": 3
+}
 </pre>
 </td>
 		</tr>
@@ -8169,11 +8596,13 @@ null
   },
   "initContainers": [],
   "livenessProbe": {},
+  "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
-    "annotations": {},
     "claims": [
       {
+        "annotations": {},
+        "labels": {},
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -8346,18 +8775,18 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>patternIngester.nodeSelector</td>
-			<td>object</td>
-			<td>Node selector for pattern ingester pods</td>
+			<td>patternIngester.maxUnavailable</td>
+			<td>string</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
 			<td><pre lang="json">
-{}
+null
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>patternIngester.persistence.annotations</td>
+			<td>patternIngester.nodeSelector</td>
 			<td>object</td>
-			<td>Annotations for pattern ingester PVCs</td>
+			<td>Node selector for pattern ingester pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -8369,6 +8798,24 @@ null
 			<td>List of the pattern ingester PVCs</td>
 			<td><pre lang="list">
 
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.persistence.claims[0].annotations</td>
+			<td>object</td>
+			<td>Annotations for pattern ingester PVCs</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.persistence.claims[0].labels</td>
+			<td>object</td>
+			<td>Labels for pattern ingester PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -8597,12 +9044,6 @@ null
   "maxSurge": 0,
   "maxUnavailable": null,
   "nodeSelector": {},
-  "persistence": {
-    "annotations": {},
-    "enabled": false,
-    "size": "10Gi",
-    "storageClass": null
-  },
   "podAnnotations": {},
   "podLabels": {},
   "priorityClassName": null,
@@ -8879,42 +9320,6 @@ null
 			<td>Node selector for querier pods</td>
 			<td><pre lang="json">
 {}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>querier.persistence.annotations</td>
-			<td>object</td>
-			<td>Annotations for querier PVCs</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>querier.persistence.enabled</td>
-			<td>bool</td>
-			<td>Enable creating PVCs for the querier cache</td>
-			<td><pre lang="json">
-false
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>querier.persistence.size</td>
-			<td>string</td>
-			<td>Size of persistent disk</td>
-			<td><pre lang="json">
-"10Gi"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>querier.persistence.storageClass</td>
-			<td>string</td>
-			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
-			<td><pre lang="json">
-null
 </pre>
 </td>
 		</tr>
@@ -9687,6 +10092,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>rbac.sccAllowHostDirVolumePlugin</td>
+			<td>bool</td>
+			<td>Toggle this to true to allow the use of hostPath volumes on OpenShift</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>rbac.sccEnabled</td>
 			<td>bool</td>
 			<td>For OpenShift set pspEnabled to 'false' and sccEnabled to 'true' to use the SecurityContextConstraints.</td>
@@ -9743,6 +10157,7 @@ false
   "persistence": {
     "annotations": {},
     "enableStatefulSetAutoDeletePVC": true,
+    "labels": {},
     "selector": null,
     "size": "10Gi",
     "storageClass": null
@@ -9972,6 +10387,7 @@ false
 {
   "annotations": {},
   "enableStatefulSetAutoDeletePVC": true,
+  "labels": {},
   "selector": null,
   "size": "10Gi",
   "storageClass": null
@@ -9994,6 +10410,15 @@ false
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
 			<td><pre lang="json">
 true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for volume claim</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -10142,6 +10567,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>resultsCache.addresses</td>
+			<td>string</td>
+			<td>Comma separated addresses list in DNS Service Discovery format</td>
+			<td><pre lang="json">
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"results-cache\") }}.{{ $.Release.Namespace }}.svc"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>resultsCache.affinity</td>
 			<td>object</td>
 			<td>Affinity for results-cache pods</td>
@@ -10259,6 +10693,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>resultsCache.maxUnavailable</td>
+			<td>int</td>
+			<td>Pod Disruption Budget maxUnavailable</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>resultsCache.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for results-cache pods</td>
@@ -10274,6 +10717,7 @@ true
 			<td><pre lang="json">
 {
   "enabled": false,
+  "labels": {},
   "mountPath": "/data",
   "storageClass": null,
   "storageSize": "10G"
@@ -10287,6 +10731,15 @@ true
 			<td>Enable creating PVCs for the results-cache</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.labels</td>
+			<td>object</td>
+			<td>PVC additional labels</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -10323,17 +10776,6 @@ null
 			<td>Annotations for results-cache pods</td>
 			<td><pre lang="json">
 {}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>resultsCache.podDisruptionBudget</td>
-			<td>object</td>
-			<td>Pod Disruption Budget</td>
-			<td><pre lang="json">
-{
-  "maxUnavailable": 1
-}
 </pre>
 </td>
 		</tr>
@@ -10568,6 +11010,7 @@ null
   "persistence": {
     "annotations": {},
     "enabled": false,
+    "labels": {},
     "size": "10Gi",
     "storageClass": null
   },
@@ -10618,7 +11061,7 @@ null
 		<tr>
 			<td>ruler.directories</td>
 			<td>object</td>
-			<td>Directories containing rules files</td>
+			<td>Directories containing rules files. If used, you must also configure `loki.rulerConfig.storage` to use local storage.</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -10774,6 +11217,15 @@ null
 			<td>Enable creating PVCs which is required when using recording rules</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for ruler PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -10989,7 +11441,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.3"
+"1.30.7"
 </pre>
 </td>
 		</tr>
@@ -11035,6 +11487,15 @@ true
 			<td>Folder into which the rules will be placed.</td>
 			<td><pre lang="json">
 "/rules"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.folderAnnotation</td>
+			<td>string</td>
+			<td>The annotation overwriting the folder value. The annotation value can be either an absolute or a relative path. Relative paths will be relative to FOLDER. Useful for multi-tenancy setups.</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -11142,6 +11603,15 @@ null
 			<td>Set to true to skip tls verification for kube api calls.</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe definition. Probe is disabled on the sidecar by default.</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -11340,6 +11810,15 @@ true
 			<td>Enable persistent disk</td>
 			<td><pre lang="json">
 true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for volume claim</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -12135,6 +12614,15 @@ null
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for volume claim</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>

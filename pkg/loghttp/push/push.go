@@ -45,18 +45,18 @@ var (
 		Namespace: constants.Loki,
 		Name:      "distributor_bytes_received_total",
 		Help:      "The total number of uncompressed bytes received per tenant. Includes structured metadata bytes.",
-	}, []string{"tenant", "retention_hours", "is_internal_stream", "policy"})
+	}, []string{"tenant", "retention_hours", "is_internal_stream", "policy", "format"})
 
 	structuredMetadataBytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "distributor_structured_metadata_bytes_received_total",
 		Help:      "The total number of uncompressed bytes received per tenant for entries' structured metadata",
-	}, []string{"tenant", "retention_hours", "is_internal_stream", "policy"})
+	}, []string{"tenant", "retention_hours", "is_internal_stream", "policy", "format"})
 	linesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
 		Name:      "distributor_lines_received_total",
 		Help:      "The total number of lines received per tenant",
-	}, []string{"tenant", "is_internal_stream", "policy"})
+	}, []string{"tenant", "is_internal_stream", "policy", "format"})
 
 	otlpExporterStreams = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
@@ -68,7 +68,7 @@ var (
 		Namespace: constants.Loki,
 		Name:      "distributor_lag_ms_total",
 		Help:      "The difference in time (in millis) between when a distributor receives a push request and the most recent log timestamp in that request",
-	}, []string{"tenant", "userAgent"})
+	}, []string{"tenant", "userAgent", "format"})
 
 	bytesReceivedStats                   = analytics.NewCounter("distributor_bytes_received")
 	structuredMetadataBytesReceivedStats = analytics.NewCounter("distributor_structured_metadata_bytes_received")
@@ -157,7 +157,7 @@ type Stats struct {
 	IsInternalStream bool // True for aggregated metrics or pattern streams
 }
 
-func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP string) (*logproto.PushRequest, *Stats, error) {
+func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP, format string) (*logproto.PushRequest, *Stats, error) {
 	req, pushStats, err := pushRequestParser(userID, r, limits, tenantConfigs, maxRecvMsgSize, tracker, streamResolver, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
 		if errors.Is(err, loki_util.ErrMessageSizeTooLarge) {
@@ -178,7 +178,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 			retentionHours := RetentionPeriodToString(retentionPeriod)
 			// Add guard clause to prevent negative values from being passed to Prometheus counters
 			if size >= 0 {
-				bytesIngested.WithLabelValues(userID, retentionHours, isInternalStream, policyName).Add(float64(size))
+				bytesIngested.WithLabelValues(userID, retentionHours, isInternalStream, policyName, format).Add(float64(size))
 				bytesReceivedStats.Inc(size)
 			} else {
 				level.Error(logger).Log(
@@ -199,8 +199,8 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 
 			// Add guard clause to prevent negative values from being passed to Prometheus counters
 			if size >= 0 {
-				structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours, isInternalStream, policyName).Add(float64(size))
-				bytesIngested.WithLabelValues(userID, retentionHours, isInternalStream, policyName).Add(float64(size))
+				structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours, isInternalStream, policyName, format).Add(float64(size))
+				bytesIngested.WithLabelValues(userID, retentionHours, isInternalStream, policyName, format).Add(float64(size))
 				bytesReceivedStats.Inc(size)
 				structuredMetadataBytesReceivedStats.Inc(size)
 			} else {
@@ -222,7 +222,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 	// incrementing tenant metrics if we have a tenant.
 	for policy, numLines := range pushStats.PolicyNumLines {
 		if numLines != 0 && userID != "" {
-			linesIngested.WithLabelValues(userID, isInternalStream, policy).Add(float64(numLines))
+			linesIngested.WithLabelValues(userID, isInternalStream, policy, format).Add(float64(numLines))
 		}
 		totalNumLines += numLines
 	}
@@ -262,7 +262,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 	// ingestion lag no matter what.
 	if mostRecentLagMs >= 0 && mostRecentLagMs < 1_000_000_000 {
 		// we're filtering out anything over 1B -- the OTLP endpoints often really mess with this metric...
-		distributorLagByUserAgent.WithLabelValues(userID, userAgent).Add(float64(mostRecentLagMs))
+		distributorLagByUserAgent.WithLabelValues(userID, userAgent, format).Add(float64(mostRecentLagMs))
 	}
 
 	if tenantConfigs != nil && tenantConfigs.LogHashOfLabels(userID) {
@@ -451,7 +451,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		}
 
 		if tracker != nil && !pushStats.IsInternalStream {
-			tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(totalBytesReceived))
+			tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(totalBytesReceived), "loki")
 		}
 
 		req.Streams[i] = s
