@@ -65,7 +65,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 
 		bucket := newInMemoryBucket(t, tenantID, unixTime(0), nil)
 
-		writer := newTableOfContentsWriter(t, tenantID, bucket, builder)
+		writer := newTableOfContentsWriter(t, bucket, builder)
 		err = writer.WriteEntry(context.Background(), "testdata/metastore.obj", []multitenancy.TimeRange{
 			{
 				Tenant:  tenantID,
@@ -89,7 +89,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 	})
 }
 
-func newTableOfContentsWriter(t *testing.T, tenantID string, bucket objstore.Bucket, tocBuilder *indexobj.Builder) *TableOfContentsWriter {
+func newTableOfContentsWriter(t *testing.T, bucket objstore.Bucket, tocBuilder *indexobj.Builder) *TableOfContentsWriter {
 	t.Helper()
 
 	updater := &TableOfContentsWriter{

@@ -98,8 +98,8 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
 	for _, timeRange := range tenantTimeRanges {
-		prefix := storagePrefixFor(m.cfg.Storage, string(timeRange.Tenant))
-		for tocPath := range iterTableOfContentsPaths(string(timeRange.Tenant), timeRange.MinTime, timeRange.MaxTime, prefix) {
+		prefix := storagePrefixFor(m.cfg.Storage, timeRange.Tenant)
+		for tocPath := range iterTableOfContentsPaths(timeRange.Tenant, timeRange.MinTime, timeRange.MaxTime, prefix) {
 			m.backoff.Reset()
 			for m.backoff.Ongoing() {
 				err = m.bucket.GetAndReplace(ctx, tocPath, func(existing io.ReadCloser) (io.ReadCloser, error) {
