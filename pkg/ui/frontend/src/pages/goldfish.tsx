@@ -31,7 +31,7 @@ export default function GoldfishPage() {
   const [page, setPage] = useState(1);
   const pageSize = 10; // Reduced since we're showing more detail per query
   
-  const { data, isLoading, error, refetch, totalPages } = useGoldfishQueries(
+  const { data, isLoading, error, refetch, totalPages, traceId } = useGoldfishQueries(
     page, 
     pageSize, 
     selectedOutcome, 
@@ -212,7 +212,26 @@ export default function GoldfishPage() {
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  Failed to load queries: {(error as Error).message}
+                  <div className="space-y-2">
+                    <div>Failed to load queries: {(error as Error).message}</div>
+                    {traceId && (
+                      <div className="text-xs">
+                        <span className="font-semibold">Trace ID: </span>
+                        <code className="bg-destructive/10 px-1 py-0.5 rounded">{traceId}</code>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="ml-2 h-6 px-2 text-xs"
+                          onClick={() => {
+                            // Copy trace ID to clipboard
+                            navigator.clipboard.writeText(traceId);
+                          }}
+                        >
+                          Copy
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </AlertDescription>
               </Alert>
             )}

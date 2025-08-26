@@ -43,6 +43,7 @@ type Service struct {
 	logger          log.Logger
 	reg             prometheus.Registerer
 	goldfishStorage goldfish.Storage
+	goldfishMetrics *GoldfishMetrics
 }
 
 func NewService(cfg Config, router *mux.Router, logger log.Logger, reg prometheus.Registerer) (*Service, error) {
@@ -89,6 +90,12 @@ func NewService(cfg Config, router *mux.Router, logger log.Logger, reg prometheu
 		client:    httpClient,
 		localAddr: advertiseAddr,
 	}
+	
+	// Initialize metrics if goldfish is enabled
+	if cfg.Goldfish.Enable {
+		svc.goldfishMetrics = NewGoldfishMetrics(reg)
+	}
+	
 	svc.Service = services.NewBasicService(nil, svc.run, svc.stop)
 	if err := svc.initUIFs(); err != nil {
 		return nil, err

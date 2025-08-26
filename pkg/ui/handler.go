@@ -2,6 +2,7 @@
 package ui
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net/http/httputil"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
@@ -212,10 +214,45 @@ func (s *Service) writeJSONError(w http.ResponseWriter, code int, message string
 	}
 }
 
+// writeJSONErrorWithTrace writes a JSON error response with trace ID
+func (s *Service) writeJSONErrorWithTrace(w http.ResponseWriter, code int, message string, traceID string) {
+	w.Header().Set("Content-Type", contentTypeJSON)
+	if traceID != "" {
+		w.Header().Set("X-Trace-Id", traceID)
+	}
+	w.WriteHeader(code)
+	
+	errorResp := map[string]string{"error": message}
+	if traceID != "" {
+		errorResp["traceId"] = traceID
+	}
+	
+	if err := json.NewEncoder(w).Encode(errorResp); err != nil {
+		level.Error(s.logger).Log("msg", "failed to encode error response", "err", err, "trace_id", traceID)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
 func (s *Service) goldfishQueriesHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Extract trace context from headers
+		traceID := r.Header.Get("X-Trace-Id")
+		spanID := r.Header.Get("X-Span-Id")
+		parentSpanID := r.Header.Get("X-Parent-Span-Id")
+		
+		// If we have a trace ID from the frontend, propagate it
+		if traceID != "" {
+			w.Header().Set("X-Trace-Id", traceID)
+			// Add trace context to request context for downstream use
+			ctx := r.Context()
+			ctx = context.WithValue(ctx, "trace-id", traceID)
+			ctx = context.WithValue(ctx, "span-id", spanID)
+			ctx = context.WithValue(ctx, "parent-span-id", parentSpanID)
+			r = r.WithContext(ctx)
+		}
+		
 		if !s.cfg.Goldfish.Enable {
-			s.writeJSONError(w, http.StatusNotFound, "goldfish feature is disabled")
+			s.writeJSONErrorWithTrace(w, http.StatusNotFound, "goldfish feature is disabled", traceID)
 			return
 		}
 
@@ -271,18 +308,40 @@ func (s *Service) goldfishQueriesHandler() http.Handler {
 			}
 		}
 
-		// Get sampled queries
-		response, err := s.GetSampledQueries(page, pageSize, filter)
+		// Track request metrics
+		startTime := time.Now()
+		
+		// Get sampled queries with trace context
+		response, err := s.GetSampledQueriesWithContext(r.Context(), page, pageSize, filter)
+		
+		// Record metrics
+		duration := time.Since(startTime).Seconds()
+		if s.goldfishMetrics != nil {
+			if err != nil {
+				s.goldfishMetrics.IncrementRequests("error", filter.Outcome)
+				s.goldfishMetrics.IncrementErrors("query_failed")
+			} else {
+				s.goldfishMetrics.IncrementRequests("success", filter.Outcome)
+				if response != nil {
+					s.goldfishMetrics.RecordQueryRows("sampled_queries", float64(len(response.Queries)))
+				}
+			}
+			s.goldfishMetrics.RecordQueryDuration("api_request", "unknown", "complete", duration)
+		}
+		
 		if err != nil {
-			level.Error(s.logger).Log("msg", "failed to get sampled queries", "err", err)
-			s.writeJSONError(w, http.StatusInternalServerError, "failed to retrieve sampled queries")
+			level.Error(s.logger).Log("msg", "failed to get sampled queries", "err", err, "trace_id", traceID, "duration_s", duration)
+			s.writeJSONErrorWithTrace(w, http.StatusInternalServerError, "failed to retrieve sampled queries", traceID)
 			return
 		}
 
 		w.Header().Set("Content-Type", contentTypeJSON)
 		if err := json.NewEncoder(w).Encode(response); err != nil {
-			level.Error(s.logger).Log("msg", "failed to encode goldfish response", "err", err)
-			s.writeJSONError(w, http.StatusInternalServerError, "failed to encode response")
+			level.Error(s.logger).Log("msg", "failed to encode goldfish response", "err", err, "trace_id", traceID)
+			s.writeJSONErrorWithTrace(w, http.StatusInternalServerError, "failed to encode response", traceID)
+			if s.goldfishMetrics != nil {
+				s.goldfishMetrics.IncrementErrors("encode_failed")
+			}
 			return
 		}
 	})

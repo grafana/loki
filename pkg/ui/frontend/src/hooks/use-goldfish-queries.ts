@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchSampledQueries } from '@/lib/goldfish-api';
 import { OutcomeFilter, OUTCOME_ALL, OUTCOME_MATCH, OUTCOME_MISMATCH, OUTCOME_ERROR } from '@/types/goldfish';
@@ -16,31 +16,63 @@ export function useGoldfishQueries(
   user?: string,
   newEngine?: boolean
 ) {
+  const [currentTraceId, setCurrentTraceId] = useState<string | null>(null);
+  
   // Main query always fetches all data
   const mainQuery = useQuery({
     queryKey: ['goldfish-queries', page, pageSize, OUTCOME_ALL, tenant, user, newEngine],
-    queryFn: () => fetchSampledQueries(page, pageSize, OUTCOME_ALL, tenant, user, newEngine),
+    queryFn: async () => {
+      const result = await fetchSampledQueries(page, pageSize, OUTCOME_ALL, tenant, user, newEngine);
+      setCurrentTraceId(result.traceId);
+      
+      if (result.error) {
+        throw result.error;
+      }
+      
+      return result.data;
+    },
     ...QUERY_OPTIONS,
   });
 
   // Background queries for specific filters
   const matchQuery = useQuery({
     queryKey: ['goldfish-queries', page, pageSize, OUTCOME_MATCH, tenant, user, newEngine],
-    queryFn: () => fetchSampledQueries(page, pageSize, OUTCOME_MATCH, tenant, user, newEngine),
+    queryFn: async () => {
+      const result = await fetchSampledQueries(page, pageSize, OUTCOME_MATCH, tenant, user, newEngine);
+      if (selectedOutcome === OUTCOME_MATCH) {
+        setCurrentTraceId(result.traceId);
+      }
+      if (result.error) throw result.error;
+      return result.data;
+    },
     enabled: selectedOutcome === OUTCOME_MATCH,
     ...QUERY_OPTIONS,
   });
 
   const mismatchQuery = useQuery({
     queryKey: ['goldfish-queries', page, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine],
-    queryFn: () => fetchSampledQueries(page, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine),
+    queryFn: async () => {
+      const result = await fetchSampledQueries(page, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine);
+      if (selectedOutcome === OUTCOME_MISMATCH) {
+        setCurrentTraceId(result.traceId);
+      }
+      if (result.error) throw result.error;
+      return result.data;
+    },
     enabled: selectedOutcome === OUTCOME_MISMATCH,
     ...QUERY_OPTIONS,
   });
 
   const errorQuery = useQuery({
     queryKey: ['goldfish-queries', page, pageSize, OUTCOME_ERROR, tenant, user, newEngine],
-    queryFn: () => fetchSampledQueries(page, pageSize, OUTCOME_ERROR, tenant, user, newEngine),
+    queryFn: async () => {
+      const result = await fetchSampledQueries(page, pageSize, OUTCOME_ERROR, tenant, user, newEngine);
+      if (selectedOutcome === OUTCOME_ERROR) {
+        setCurrentTraceId(result.traceId);
+      }
+      if (result.error) throw result.error;
+      return result.data;
+    },
     enabled: selectedOutcome === OUTCOME_ERROR,
     ...QUERY_OPTIONS,
   });
@@ -53,7 +85,11 @@ export function useGoldfishQueries(
   // Prefetch next page for main query
   useQuery({
     queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_ALL, tenant, user, newEngine],
-    queryFn: () => fetchSampledQueries(page + 1, pageSize, OUTCOME_ALL, tenant, user, newEngine),
+    queryFn: async () => {
+      const result = await fetchSampledQueries(page + 1, pageSize, OUTCOME_ALL, tenant, user, newEngine);
+      if (result.error) throw result.error;
+      return result.data;
+    },
     enabled: totalPages > 1 && page < totalPages,
     ...QUERY_OPTIONS,
   });
@@ -61,21 +97,33 @@ export function useGoldfishQueries(
   // Prefetch next page for specific filter outcomes
   useQuery({
     queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_MATCH, tenant, user, newEngine],
-    queryFn: () => fetchSampledQueries(page + 1, pageSize, OUTCOME_MATCH, tenant, user, newEngine),
+    queryFn: async () => {
+      const result = await fetchSampledQueries(page + 1, pageSize, OUTCOME_MATCH, tenant, user, newEngine);
+      if (result.error) throw result.error;
+      return result.data;
+    },
     enabled: selectedOutcome === OUTCOME_MATCH && totalPages > 1 && page < totalPages,
     ...QUERY_OPTIONS,
   });
 
   useQuery({
     queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine],
-    queryFn: () => fetchSampledQueries(page + 1, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine),
+    queryFn: async () => {
+      const result = await fetchSampledQueries(page + 1, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine);
+      if (result.error) throw result.error;
+      return result.data;
+    },
     enabled: selectedOutcome === OUTCOME_MISMATCH && totalPages > 1 && page < totalPages,
     ...QUERY_OPTIONS,
   });
 
   useQuery({
     queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_ERROR, tenant, user, newEngine],
-    queryFn: () => fetchSampledQueries(page + 1, pageSize, OUTCOME_ERROR, tenant, user, newEngine),
+    queryFn: async () => {
+      const result = await fetchSampledQueries(page + 1, pageSize, OUTCOME_ERROR, tenant, user, newEngine);
+      if (result.error) throw result.error;
+      return result.data;
+    },
     enabled: selectedOutcome === OUTCOME_ERROR && totalPages > 1 && page < totalPages,
     ...QUERY_OPTIONS,
   });
@@ -100,5 +148,6 @@ export function useGoldfishQueries(
     error: mainQuery.error,
     refetch: mainQuery.refetch,
     totalPages,
+    traceId: currentTraceId,
   };
 }
