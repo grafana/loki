@@ -84,25 +84,6 @@ func diffConfig(defaultConfig, actualConfig map[interface{}]interface{}) (map[in
 	return output, nil
 }
 
-// convertToJSONMap recursively converts map[interface{}]interface{} to map[string]interface{}
-func convertToJSONMap(v any) any {
-	switch x := v.(type) {
-	case map[any]any:
-		m := make(map[string]any)
-		for k, v := range x {
-			if ks, ok := k.(string); ok {
-				m[ks] = convertToJSONMap(v)
-			}
-		}
-		return m
-	case []any:
-		for i, v := range x {
-			x[i] = convertToJSONMap(v)
-		}
-	}
-	return v
-}
-
 func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var output any
