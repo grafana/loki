@@ -219,6 +219,7 @@ func (b *Builder) AppendStream(tenantID string, stream streams.Stream) (int64, e
 	tenantStreams, ok := b.streams[tenantID]
 	if !ok {
 		tenantStreams = streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize))
+		tenantStreams.SetTenant(tenantID)
 		b.streams[tenantID] = tenantStreams
 	}
 	// Record the stream in the stream section.
