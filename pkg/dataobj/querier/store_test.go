@@ -472,7 +472,7 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	require.NoError(t, err)
 
 	// Create required directories for metastore
-	metastoreDir := filepath.Join(dir, "tenant-"+tenantID, "metastore")
+	metastoreDir := filepath.Join(dir, "multi-tenant", "metastore")
 	require.NoError(t, os.MkdirAll(metastoreDir, 0o755))
 
 	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
