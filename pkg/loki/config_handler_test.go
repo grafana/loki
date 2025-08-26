@@ -16,15 +16,15 @@ import (
 )
 
 type diffConfigMock struct {
-	MyInt          int          `yaml:"my_int" json:"my_int"`
-	MyFloat        float64      `yaml:"my_float" json:"my_float"`
-	MySlice        []string     `yaml:"my_slice" json:"my_slice"`
-	IgnoredField   func() error `yaml:"-" json:"-"`
+	MyInt          int          `yaml:"my_int"`
+	MyFloat        float64      `yaml:"my_float"`
+	MySlice        []string     `yaml:"my_slice"`
+	IgnoredField   func() error `yaml:"-"`
 	MyNestedStruct struct {
-		MyString      string   `yaml:"my_string" json:"my_string"`
-		MyBool        bool     `yaml:"my_bool" json:"my_bool"`
-		MyEmptyStruct struct{} `yaml:"my_empty_struct" json:"my_empty_struct"`
-	} `yaml:"my_nested_struct" json:"my_nested_struct"`
+		MyString      string   `yaml:"my_string"`
+		MyBool        bool     `yaml:"my_bool"`
+		MyEmptyStruct struct{} `yaml:"my_empty_struct"`
+	} `yaml:"my_nested_struct"`
 }
 
 func newDefaultDiffConfigMock() *diffConfigMock {
@@ -119,46 +119,6 @@ func TestConfigDiffHandler(t *testing.T) {
 			assert.Equal(t, tc.expectedBody, string(body))
 		})
 	}
-
-}
-
-func TestFunctionFieldJSONMarshaling(t *testing.T) {
-	// Demonstrate the actual problem: function fields can't be marshaled to JSON
-
-	type StructWithFunc struct {
-		Name     string
-		Callback func() error // This causes JSON marshaling to fail
-	}
-
-	s := StructWithFunc{
-		Name:     "test",
-		Callback: func() error { return nil },
-	}
-
-	//nolint:staticcheck // SA1026: Intentionally testing marshaling of unsupported function type
-	_, err := json.Marshal(s)
-	assert.Error(t, err, "Should fail to marshal struct with function field")
-	assert.Contains(t, err.Error(), "unsupported type")
-
-	// But if we tag it with json:"-", it works
-	type StructWithIgnoredFunc struct {
-		Name     string
-		Callback func() error `json:"-"` // This is ignored during JSON marshaling
-	}
-
-	s2 := StructWithIgnoredFunc{
-		Name:     "test",
-		Callback: func() error { return nil },
-	}
-
-	data, err := json.Marshal(s2)
-	assert.NoError(t, err, "Should succeed when function field is ignored")
-
-	var result map[string]any
-	err = json.Unmarshal(data, &result)
-	assert.NoError(t, err, "Should succeed unmarshaling valid JSON")
-	assert.Equal(t, "test", result["Name"])
-	assert.NotContains(t, result, "Callback")
 }
 
 func TestLimitsDirectJSONMarshaling(t *testing.T) {
