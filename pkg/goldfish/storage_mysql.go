@@ -167,7 +167,7 @@ func (s *MySQLStorage) StoreComparisonResult(ctx context.Context, result *Compar
 
 	query := `
 		INSERT INTO comparison_outcomes (
-			correlation_id, comparison_status, 
+			correlation_id, comparison_status,
 			difference_details, performance_metrics,
 			compared_at
 		) VALUES (?, ?, ?, ?, ?)
@@ -213,42 +213,51 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 	// Build WHERE clause for tenant/user/engine filters
 	whereClause, whereArgs := buildWhereClause(filter)
 
-	// Build HAVING clause based on outcome filter
-	// Using HAVING clause to filter on computed status without subqueries
-	var havingClause string
-	var queryArgs []any
-
-	// Add WHERE args first
-	queryArgs = append(queryArgs, whereArgs...)
-
+	// Build optional outcome condition placed in WHERE (not HAVING)
+	outcomeCondition := ""
 	if outcome != OutcomeAll {
-		havingClause = `HAVING comparison_status = ?`
-		queryArgs = append(queryArgs, outcome)
+		switch outcome {
+		case OutcomeError:
+			outcomeCondition = "(co.comparison_status = 'error' OR (co.correlation_id IS NULL AND (sq.cell_a_status_code NOT BETWEEN 200 AND 299 OR sq.cell_b_status_code NOT BETWEEN 200 AND 299)))"
+		case OutcomeMatch:
+			outcomeCondition = "(co.comparison_status = 'match' OR (co.correlation_id IS NULL AND sq.cell_a_status_code BETWEEN 200 AND 299 AND sq.cell_b_status_code BETWEEN 200 AND 299 AND sq.cell_a_response_hash = sq.cell_b_response_hash))"
+		case OutcomeMismatch:
+			outcomeCondition = "(co.comparison_status = 'mismatch' OR (co.correlation_id IS NULL AND sq.cell_a_status_code BETWEEN 200 AND 299 AND sq.cell_b_status_code BETWEEN 200 AND 299 AND sq.cell_a_response_hash <> sq.cell_b_response_hash))"
+		default:
+			// Shouldn't happen due to validation above, but keep safe default
+			outcomeCondition = ""
+		}
 	}
 
-	// Get total count with filtering - optimized without subquery
+	// Prepare total count query
 	var total int
-	countQuery := `
-		SELECT COUNT(*) FROM (
-			SELECT 
-				sq.correlation_id,
-				CASE
-					WHEN co.comparison_status IS NOT NULL THEN co.comparison_status
-					WHEN (sq.cell_a_status_code NOT BETWEEN 200 AND 299 OR sq.cell_b_status_code NOT BETWEEN 200 AND 299) THEN 'error'
-					WHEN sq.cell_a_response_hash = sq.cell_b_response_hash THEN 'match'
-					ELSE 'mismatch'
-				END as comparison_status
-			FROM sampled_queries sq
-			LEFT JOIN comparison_outcomes co ON sq.correlation_id = co.correlation_id
-			` + whereClause + `
-			` + havingClause + `
-		) as filtered
-	`
+	var countQuery string
+	var countArgs []any
+
+	// Start with base WHERE args
+	countArgs = append(countArgs, whereArgs...)
+
+	if outcome == OutcomeAll {
+		// No join or CASE needed when counting all
+		countQuery = `SELECT COUNT(*) FROM sampled_queries sq ` + whereClause
+	} else {
+		// Join only when filtering by outcome and push logic into WHERE
+		// Compose filters with proper AND/WHERE combination
+		filters := whereClause
+		if outcomeCondition != "" {
+			if filters == "" {
+				filters = "WHERE " + outcomeCondition
+			} else {
+				filters = filters + " AND " + outcomeCondition
+			}
+		}
+		countQuery = `SELECT COUNT(*) FROM sampled_queries sq LEFT JOIN comparison_outcomes co ON sq.correlation_id = co.correlation_id ` + filters
+	}
 
 	// Debug logging
-	level.Debug(s.logger).Log("ui-component", "goldfish", "msg", "executing count query", "query", countQuery, "args", queryArgs)
+	level.Debug(s.logger).Log("ui-component", "goldfish", "msg", "executing count query", "query", countQuery, "args", countArgs)
 
-	err := s.db.QueryRowContext(ctx, countQuery, queryArgs...).Scan(&total)
+	err := s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
 	if err != nil {
 		level.Error(s.logger).Log("ui-component", "goldfish", "msg", "count query failed", "err", err)
 		return nil, err
@@ -256,32 +265,70 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 
 	level.Debug(s.logger).Log("ui-component", "goldfish", "msg", "count query result", "total", total)
 
-	// Get paginated results - optimized query without nested subqueries
-	query := `
-		SELECT
-			sq.correlation_id, sq.tenant_id, sq.user, sq.query, sq.query_type, sq.start_time, sq.end_time, sq.step_duration,
-			sq.cell_a_exec_time_ms, sq.cell_b_exec_time_ms, sq.cell_a_queue_time_ms, sq.cell_b_queue_time_ms,
-			sq.cell_a_bytes_processed, sq.cell_b_bytes_processed, sq.cell_a_lines_processed, sq.cell_b_lines_processed,
-			sq.cell_a_bytes_per_second, sq.cell_b_bytes_per_second, sq.cell_a_lines_per_second, sq.cell_b_lines_per_second,
-			sq.cell_a_entries_returned, sq.cell_b_entries_returned, sq.cell_a_splits, sq.cell_b_splits,
-			sq.cell_a_shards, sq.cell_b_shards, sq.cell_a_response_hash, sq.cell_b_response_hash,
-			sq.cell_a_response_size, sq.cell_b_response_size, sq.cell_a_status_code, sq.cell_b_status_code,
-			sq.cell_a_trace_id, sq.cell_b_trace_id,
-			sq.cell_a_span_id, sq.cell_b_span_id,
-			sq.sampled_at, sq.created_at,
-			CASE
-				WHEN co.comparison_status IS NOT NULL THEN co.comparison_status
-				WHEN (sq.cell_a_status_code NOT BETWEEN 200 AND 299 OR sq.cell_b_status_code NOT BETWEEN 200 AND 299) THEN 'error'
-				WHEN sq.cell_a_response_hash = sq.cell_b_response_hash THEN 'match'
-				ELSE 'mismatch'
-			END as comparison_status
-		FROM sampled_queries sq FORCE INDEX (idx_sampled_queries_sampled_at_desc)
-		LEFT JOIN comparison_outcomes co ON sq.correlation_id = co.correlation_id
-		` + whereClause + `
-		` + havingClause + `
-		ORDER BY sq.sampled_at DESC 
-		LIMIT ? OFFSET ?
-	`
+	// Get paginated results - remove unnecessary CASE/HAVING and JOIN when outcome=all
+	// Build conditional FORCE INDEX hint: only when no tenant/user filters
+	forceIndexHint := ""
+	if filter.Tenant == "" && filter.User == "" {
+		forceIndexHint = " FORCE INDEX (idx_sampled_queries_sampled_at_desc)"
+	}
+
+	var (
+		query     string
+		queryArgs []any
+	)
+
+	// Start with base WHERE args for main query
+	queryArgs = append(queryArgs, whereArgs...)
+
+	if outcome == OutcomeAll {
+		// No join and no CASE needed; UI computes status
+		query = `
+            SELECT
+                sq.correlation_id, sq.tenant_id, sq.user, sq.query, sq.query_type, sq.start_time, sq.end_time, sq.step_duration,
+                sq.cell_a_exec_time_ms, sq.cell_b_exec_time_ms, sq.cell_a_queue_time_ms, sq.cell_b_queue_time_ms,
+                sq.cell_a_bytes_processed, sq.cell_b_bytes_processed, sq.cell_a_lines_processed, sq.cell_b_lines_processed,
+                sq.cell_a_bytes_per_second, sq.cell_b_bytes_per_second, sq.cell_a_lines_per_second, sq.cell_b_lines_per_second,
+                sq.cell_a_entries_returned, sq.cell_b_entries_returned, sq.cell_a_splits, sq.cell_b_splits,
+                sq.cell_a_shards, sq.cell_b_shards, sq.cell_a_response_hash, sq.cell_b_response_hash,
+                sq.cell_a_response_size, sq.cell_b_response_size, sq.cell_a_status_code, sq.cell_b_status_code,
+                sq.cell_a_trace_id, sq.cell_b_trace_id,
+                sq.cell_a_span_id, sq.cell_b_span_id,
+                sq.sampled_at, sq.created_at
+            FROM sampled_queries sq` + forceIndexHint + `
+            ` + whereClause + `
+            ORDER BY sq.sampled_at DESC
+            LIMIT ? OFFSET ?
+        `
+	} else {
+		// Filter by outcome via WHERE clause
+		filters := whereClause
+		if outcomeCondition != "" {
+			if filters == "" {
+				filters = "WHERE " + outcomeCondition
+			} else {
+				filters = filters + " AND " + outcomeCondition
+			}
+		}
+
+		query = `
+            SELECT
+                sq.correlation_id, sq.tenant_id, sq.user, sq.query, sq.query_type, sq.start_time, sq.end_time, sq.step_duration,
+                sq.cell_a_exec_time_ms, sq.cell_b_exec_time_ms, sq.cell_a_queue_time_ms, sq.cell_b_queue_time_ms,
+                sq.cell_a_bytes_processed, sq.cell_b_bytes_processed, sq.cell_a_lines_processed, sq.cell_b_lines_processed,
+                sq.cell_a_bytes_per_second, sq.cell_b_bytes_per_second, sq.cell_a_lines_per_second, sq.cell_b_lines_per_second,
+                sq.cell_a_entries_returned, sq.cell_b_entries_returned, sq.cell_a_splits, sq.cell_b_splits,
+                sq.cell_a_shards, sq.cell_b_shards, sq.cell_a_response_hash, sq.cell_b_response_hash,
+                sq.cell_a_response_size, sq.cell_b_response_size, sq.cell_a_status_code, sq.cell_b_status_code,
+                sq.cell_a_trace_id, sq.cell_b_trace_id,
+                sq.cell_a_span_id, sq.cell_b_span_id,
+                sq.sampled_at, sq.created_at
+            FROM sampled_queries sq
+            LEFT JOIN comparison_outcomes co ON sq.correlation_id = co.correlation_id
+            ` + filters + `
+            ORDER BY sq.sampled_at DESC
+            LIMIT ? OFFSET ?
+        `
+	}
 
 	// Add pagination parameters to queryArgs
 	queryArgs = append(queryArgs, pageSize, offset)
@@ -300,7 +347,6 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 	for rows.Next() {
 		var q QuerySample
 		var stepDurationMs int64
-		var comparisonStatus string
 		var createdAt time.Time
 		// Use sql.NullString for nullable span ID columns
 		var cellASpanID, cellBSpanID sql.NullString
@@ -316,7 +362,6 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 			&q.CellATraceID, &q.CellBTraceID,
 			&cellASpanID, &cellBSpanID,
 			&q.SampledAt, &createdAt,
-			&comparisonStatus,
 		)
 		if err != nil {
 			return nil, err
