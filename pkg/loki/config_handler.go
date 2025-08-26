@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
-	"strings"
 
 	"github.com/grafana/dskit/tenant"
 	"gopkg.in/yaml.v2"
@@ -83,47 +82,6 @@ func diffConfig(defaultConfig, actualConfig map[interface{}]interface{}) (map[in
 	}
 
 	return output, nil
-}
-
-// writeResponse writes the response in JSON or YAML based on Accept header
-func writeResponse(w http.ResponseWriter, r *http.Request, v interface{}) {
-	acceptHeader := r.Header.Get("Accept")
-
-	// Check if client accepts JSON
-	if strings.Contains(acceptHeader, "application/json") {
-		w.Header().Set("Content-Type", "application/json")
-
-		// For JSON, we always convert through YAML first to ensure consistent behavior:
-		// 1. It handles function fields gracefully (via yaml:"-" tags)
-		// 2. It produces consistent output whether the input is a struct or map
-		// 3. It respects the same field visibility rules as YAML output
-
-		var dataToMarshal any
-
-		// Check if v is already a map (from diff mode)
-		if mapData, isMap := v.(map[any]any); isMap {
-			// Already a map, just convert to JSON-compatible format
-			dataToMarshal = convertToJSONMap(mapData)
-		} else {
-			// Convert struct to map via YAML roundtrip
-			mapData, err := yamlMarshalUnmarshal(v)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			dataToMarshal = convertToJSONMap(mapData)
-		}
-
-		data, err := json.Marshal(dataToMarshal)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		_, _ = w.Write(data)
-	} else {
-		// Default to YAML for backward compatibility
-		writeYAMLResponse(w, v)
-	}
 }
 
 // convertToJSONMap recursively converts map[interface{}]interface{} to map[string]interface{}
