@@ -168,6 +168,9 @@ type EngineOpts struct {
 	// Batch size of the v2 execution engine.
 	BatchSize int `yaml:"batch_size" category:"experimental"`
 
+	// PipelineConcurreny controls the number of inputs processed simultaneously by the pipeline operators.
+	PipelineConcurreny int `yaml:"pipeline_concurrency" category:"experimental"`
+
 	// DataobjScanPageCacheSize determines how many bytes of future page data
 	// should be downloaded before it's immediately needed. Used to reduce the
 	// number of roundtrips to object storage. Setting to zero disables
@@ -185,6 +188,7 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 	f.BoolVar(&opts.EnableV2Engine, prefix+"enable-v2-engine", false, "Experimental: Enable next generation query engine for supported queries.")
 	f.IntVar(&opts.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
 	f.Var(&opts.DataobjScanPageCacheSize, prefix+"dataobjscan-page-cache-size", "Experimental: Maximum total size of future pages for DataObjScan to download before they are needed, for roundtrip reduction to object storage. Setting to zero disables downloading future pages. Only used in the next generation query engine.")
+	f.IntVar(&opts.PipelineConcurreny, prefix+"pipeline-concurrency", 4, "Experimental: The number of inputs processed simultaneously by the pipeline operators.")
 
 	// Log executing query by default
 	opts.LogExecutingQuery = true

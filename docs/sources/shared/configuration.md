@@ -4919,6 +4919,11 @@ engine:
   # CLI flag: -querier.engine.batch-size
   [batch_size: <int> | default = 100]
 
+  # Experimental: The number of inputs processed simultaneously by the pipeline
+  # operators.
+  # CLI flag: -querier.engine.pipeline-concurrency
+  [pipeline_concurrency: <int> | default = 4]
+
   # Experimental: Maximum total size of future pages for DataObjScan to download
   # before they are needed, for roundtrip reduction to object storage. Setting
   # to zero disables downloading future pages. Only used in the next generation
