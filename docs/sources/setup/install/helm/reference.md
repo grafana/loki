@@ -7526,81 +7526,6 @@ false
 </td>
 		</tr>
 		<tr>
-			<td>monitoring</td>
-			<td>object</td>
-			<td>DEPRECATED Monitoring section determines which monitoring features to enable, this section is being replaced by https://github.com/grafana/meta-monitoring-chart</td>
-			<td><pre lang="json">
-{
-  "dashboards": {
-    "annotations": {},
-    "enabled": false,
-    "labels": {
-      "grafana_dashboard": "1"
-    },
-    "namespace": null
-  },
-  "rules": {
-    "additionalGroups": [],
-    "additionalRuleLabels": {},
-    "alerting": true,
-    "annotations": {},
-    "disabled": {},
-    "enabled": false,
-    "labels": {},
-    "namespace": null
-  },
-  "selfMonitoring": {
-    "enabled": false,
-    "grafanaAgent": {
-      "annotations": {},
-      "enableConfigReadAPI": false,
-      "installOperator": false,
-      "labels": {},
-      "priorityClassName": null,
-      "resources": {},
-      "tolerations": []
-    },
-    "logsInstance": {
-      "annotations": {},
-      "clients": null,
-      "labels": {}
-    },
-    "podLogs": {
-      "additionalPipelineStages": [],
-      "annotations": {},
-      "apiVersion": "monitoring.grafana.com/v1alpha1",
-      "labels": {},
-      "relabelings": []
-    },
-    "tenant": {
-      "name": "self-monitoring",
-      "password": null,
-      "secretNamespace": "{{ .Release.Namespace }}"
-    }
-  },
-  "serviceMonitor": {
-    "annotations": {},
-    "enabled": false,
-    "interval": "15s",
-    "labels": {},
-    "metricRelabelings": [],
-    "metricsInstance": {
-      "annotations": {},
-      "enabled": true,
-      "labels": {},
-      "remoteWrite": null
-    },
-    "namespaceSelector": {},
-    "relabelings": [],
-    "scheme": "http",
-    "scrapeTimeout": null,
-    "tlsConfig": null
-  }
-}
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>monitoring.dashboards.annotations</td>
 			<td>object</td>
 			<td>Additional annotations for the dashboards ConfigMap</td>
@@ -7635,24 +7560,6 @@ false
 			<td>Alternative namespace to create dashboards ConfigMap in</td>
 			<td><pre lang="json">
 null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.rules</td>
-			<td>object</td>
-			<td>DEPRECATED Recording rules for monitoring Loki, required for some dashboards</td>
-			<td><pre lang="json">
-{
-  "additionalGroups": [],
-  "additionalRuleLabels": {},
-  "alerting": true,
-  "annotations": {},
-  "disabled": {},
-  "enabled": false,
-  "labels": {},
-  "namespace": null
-}
 </pre>
 </td>
 		</tr>
@@ -7731,7 +7638,7 @@ null
 		<tr>
 			<td>monitoring.selfMonitoring</td>
 			<td>object</td>
-			<td>DEPRECATED Self monitoring determines whether Loki should scrape its own logs. This feature currently relies on the Grafana Agent Operator being installed, which is installed by default using the grafana-agent-operator sub-chart. It will create custom resources for GrafanaAgent, LogsInstance, and PodLogs to configure scrape configs to scrape its own logs with the labels expected by the included dashboards.</td>
+			<td>DEPRECATED Self monitoring determines whether Loki should scrape its own logs. This feature relies on Grafana Agent Operator, which is deprecated. It will create custom resources for GrafanaAgent, LogsInstance, and PodLogs to configure scrape configs to scrape its own logs with the labels expected by the included dashboards.</td>
 			<td><pre lang="json">
 {
   "enabled": false,
@@ -8005,7 +7912,7 @@ false
 		<tr>
 			<td>monitoring.serviceMonitor.metricsInstance</td>
 			<td>object</td>
-			<td>If defined, will create a MetricsInstance for the Grafana Agent Operator.</td>
+			<td>DEPRECATED If defined, will create a MetricsInstance for the Grafana Agent Operator.</td>
 			<td><pre lang="json">
 {
   "annotations": {},
