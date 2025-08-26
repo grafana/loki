@@ -11,6 +11,10 @@ type AddPartitionsToTxnResponse struct {
 	Errors       map[string][]*PartitionError
 }
 
+func (a *AddPartitionsToTxnResponse) setVersion(v int16) {
+	a.Version = v
+}
+
 func (a *AddPartitionsToTxnResponse) encode(pe packetEncoder) error {
 	pe.putInt32(int32(a.ThrottleTime / time.Millisecond))
 	if err := pe.putArrayLength(len(a.Errors)); err != nil {
@@ -74,7 +78,7 @@ func (a *AddPartitionsToTxnResponse) decode(pd packetDecoder, version int16) (er
 }
 
 func (a *AddPartitionsToTxnResponse) key() int16 {
-	return 24
+	return apiKeyAddPartitionsToTxn
 }
 
 func (a *AddPartitionsToTxnResponse) version() int16 {

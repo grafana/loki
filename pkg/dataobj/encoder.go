@@ -22,14 +22,6 @@ const (
 	fileFormatVersion = 0x1
 )
 
-// Legacy section types; these can be removed once support for the Kind field
-// is completely removed.
-var (
-	legacySectionTypeInvalid = SectionType{}
-	legacySectionTypeStreams = SectionType{"github.com/grafana/loki", "streams"}
-	legacySectionTypeLogs    = SectionType{"github.com/grafana/loki", "logs"}
-)
-
 // encoder encodes a data object. Data objects are hierarchical, split into
 // distinct sections that contain their own hierarchy.
 type encoder struct {
@@ -46,6 +38,19 @@ type encoder struct {
 	typeRefLookup    map[SectionType]uint32
 }
 
+type sectionInfo struct {
+	Type SectionType
+
+	Data     sectionRegion
+	Metadata sectionRegion
+
+	Tenant string // Owning tenant of the section, if any.
+
+	// ExtensionData holds additional encoded info about the section, written to
+	// the file-level metadata.
+	ExtensionData []byte
+}
+
 // newEncoder creates a new Encoder which writes a data object to the provided
 // writer.
 func newEncoder(store scratch.Store) *encoder {
@@ -57,22 +62,24 @@ func newEncoder(store scratch.Store) *encoder {
 
 // AppendSection appends a section to the data object. AppendSection panics if
 // typ is not SectionTypeLogs or SectionTypeStreams.
-func (enc *encoder) AppendSection(typ SectionType, data, metadata []byte) {
+func (enc *encoder) AppendSection(typ SectionType, opts *WriteSectionOptions, data, metadata []byte) {
 	var (
 		dataHandle     = enc.store.Put(data)
 		metadataHandle = enc.store.Put(metadata)
 	)
 
-	enc.sections = append(enc.sections, sectionInfo{
+	si := sectionInfo{
 		Type: typ,
 
-		Data:     dataHandle,
-		Metadata: metadataHandle,
+		Data:     sectionRegion{Handle: dataHandle, Size: len(data)},
+		Metadata: sectionRegion{Handle: metadataHandle, Size: len(metadata)},
+	}
+	if opts != nil {
+		si.Tenant = opts.Tenant
+		si.ExtensionData = slices.Clone(opts.ExtensionData) // Avoid retaining references to caller memory.
+	}
 
-		DataSize:     len(data),
-		MetadataSize: len(metadata),
-	})
-
+	enc.sections = append(enc.sections, si)
 	enc.totalBytes += len(data) + len(metadata)
 }
 
@@ -80,7 +87,7 @@ func (enc *encoder) AppendSection(typ SectionType, data, metadata []byte) {
 // one.
 func (enc *encoder) getTypeRef(typ SectionType) uint32 {
 	if !enc.typesReady {
-		enc.initLegacyTypeRefs()
+		enc.initTypeRefs()
 	}
 
 	ref, ok := enc.typeRefLookup[typ]
@@ -92,45 +99,41 @@ func (enc *encoder) getTypeRef(typ SectionType) uint32 {
 				NamespaceRef: enc.getDictionaryKey(typ.Namespace),
 				KindRef:      enc.getDictionaryKey(typ.Kind),
 			},
+			Version: typ.Version,
 		})
 		return enc.typeRefLookup[typ]
 	}
 	return ref
 }
 
-func (enc *encoder) initLegacyTypeRefs() {
-	// Reserve the zero index in the dictionary for an invalid entry. This is
-	// only required for the type refs, but it's still easier to debug.
-	enc.dictionary = []string{"", "github.com/grafana/loki", "streams", "logs"}
-
-	enc.dictionaryLookup = map[string]uint32{
-		"":                        0,
-		"github.com/grafana/loki": 1,
-		"streams":                 2,
-		"logs":                    3,
-	}
+func (enc *encoder) initTypeRefs() {
+	enc.initDictionary()
 
 	enc.rawTypes = []*filemd.SectionType{
 		{NameRef: nil}, // Invalid type.
-		{NameRef: &filemd.SectionType_NameRef{NamespaceRef: 1, KindRef: 2}}, // Streams.
-		{NameRef: &filemd.SectionType_NameRef{NamespaceRef: 1, KindRef: 3}}, // Logs.
 	}
 
-	enc.typeRefLookup = map[SectionType]uint32{
-		legacySectionTypeInvalid: 0,
-		legacySectionTypeStreams: 1,
-		legacySectionTypeLogs:    2,
-	}
+	var invalidType SectionType // Zero value for SectionType is reserved for invalid types.
+	enc.typeRefLookup = map[SectionType]uint32{invalidType: 0}
 
 	enc.typesReady = true
+}
+
+func (enc *encoder) initDictionary() {
+	if len(enc.dictionary) > 0 && len(enc.dictionaryLookup) > 0 {
+		return // Already initialized.
+	}
+
+	// Reserve the zero index in the dictionary for an invalid entry. This is
+	// only required for the type refs, but it's still easier to debug.
+	enc.dictionary = []string{""}
+	enc.dictionaryLookup = map[string]uint32{"": 0}
 }
 
 // getDictionaryKey returns the dictionary key for the given text or creates a
 // new entry.
 func (enc *encoder) getDictionaryKey(text string) uint32 {
-	if enc.dictionaryLookup == nil {
-		enc.dictionaryLookup = make(map[string]uint32)
-	}
+	enc.initDictionary()
 
 	key, ok := enc.dictionaryLookup[text]
 	if ok {
@@ -144,29 +147,43 @@ func (enc *encoder) getDictionaryKey(text string) uint32 {
 }
 
 func (enc *encoder) Metadata() (proto.Message, error) {
-	sections := make([]*filemd.SectionInfo, len(enc.sections))
+	enc.initDictionary()
 
 	offset := enc.startOffset
 
-	for i, info := range enc.sections {
-		dataOffset := offset                     // Data starts at the current total offset
-		metaOffset := dataOffset + info.DataSize // Metadata starts right after data
+	// The data regions and metadata regions of all sections are encoded
+	// contiguously. To represent this in the SectionInfo headers, we update
+	// them in two passes, once for the data and once for the metadata.
+	sections := make([]*filemd.SectionInfo, len(enc.sections))
 
+	// Determine data region locations.
+	for i, info := range enc.sections {
 		sections[i] = &filemd.SectionInfo{
 			TypeRef: enc.getTypeRef(info.Type),
 			Layout: &filemd.SectionLayout{
 				Data: &filemd.Region{
-					Offset: uint64(dataOffset),
-					Length: uint64(info.DataSize),
-				},
-				Metadata: &filemd.Region{
-					Offset: uint64(metaOffset),
-					Length: uint64(info.MetadataSize),
+					Offset: uint64(offset),
+					Length: uint64(info.Data.Size),
 				},
 			},
+
+			ExtensionData: info.ExtensionData,
+			TenantRef:     enc.getDictionaryKey(info.Tenant),
 		}
 
-		offset += info.DataSize + info.MetadataSize
+		offset += info.Data.Size
+	}
+
+	// Determine metadta region location.
+	for i, info := range enc.sections {
+		// sections[i] is initialized in the previous loop, so we can directly
+		// update the layout to include the metadata region.
+		sections[i].Layout.Metadata = &filemd.Region{
+			Offset: uint64(offset),
+			Length: uint64(info.Metadata.Size),
+		}
+
+		offset += info.Metadata.Size
 	}
 
 	return &filemd.Metadata{
@@ -221,10 +238,22 @@ func (enc *encoder) Flush() (*snapshot, error) {
 		return nil, fmt.Errorf("writing magic tailer: %w", err)
 	}
 
+	// Convert our sections into regions for the snapshot to use. The order of
+	// regions *must* match the order of offset+length written in
+	// [encoder.Metadata]: all the data regions, followed by all the metadata
+	// regions.
+	regions := make([]sectionRegion, 0, len(enc.sections)*2)
+	for _, sec := range enc.sections {
+		regions = append(regions, sec.Data)
+	}
+	for _, sec := range enc.sections {
+		regions = append(regions, sec.Metadata)
+	}
+
 	snapshot, err := newSnapshot(
 		enc.store,
 		magic, // header
-		slices.Clone(enc.sections),
+		regions,
 		tailerBuffer.Bytes(), // tailer
 	)
 	if err != nil {
@@ -243,6 +272,7 @@ func (enc *encoder) Reset() {
 
 	enc.typesReady = false
 	enc.dictionary = nil
+	enc.dictionaryLookup = nil
 	enc.rawTypes = nil
 	enc.typeRefLookup = nil
 }

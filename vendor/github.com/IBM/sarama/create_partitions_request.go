@@ -9,6 +9,10 @@ type CreatePartitionsRequest struct {
 	ValidateOnly    bool
 }
 
+func (c *CreatePartitionsRequest) setVersion(v int16) {
+	c.Version = v
+}
+
 func (c *CreatePartitionsRequest) encode(pe packetEncoder) error {
 	if err := pe.putArrayLength(len(c.TopicPartitions)); err != nil {
 		return err
@@ -61,7 +65,7 @@ func (c *CreatePartitionsRequest) decode(pd packetDecoder, version int16) (err e
 }
 
 func (r *CreatePartitionsRequest) key() int16 {
-	return 37
+	return apiKeyCreatePartitions
 }
 
 func (r *CreatePartitionsRequest) version() int16 {

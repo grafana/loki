@@ -7,6 +7,9 @@
 package internal
 
 import (
+	"fmt"
+	"sync"
+
 	otlpcollectormetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/metrics/v1"
 	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
@@ -29,19 +32,53 @@ func NewMetrics(orig *otlpcollectormetrics.ExportMetricsServiceRequest, state *S
 	return Metrics{orig: orig, state: state}
 }
 
-func GenerateTestMetrics() Metrics {
-	orig := otlpcollectormetrics.ExportMetricsServiceRequest{}
-	FillOrigTestExportMetricsServiceRequest(&orig)
-	state := StateMutable
-	return NewMetrics(&orig, &state)
+var (
+	protoPoolExportMetricsServiceRequest = sync.Pool{
+		New: func() any {
+			return &otlpcollectormetrics.ExportMetricsServiceRequest{}
+		},
+	}
+)
+
+func NewOrigExportMetricsServiceRequest() *otlpcollectormetrics.ExportMetricsServiceRequest {
+	if !UseProtoPooling.IsEnabled() {
+		return &otlpcollectormetrics.ExportMetricsServiceRequest{}
+	}
+	return protoPoolExportMetricsServiceRequest.Get().(*otlpcollectormetrics.ExportMetricsServiceRequest)
+}
+
+func DeleteOrigExportMetricsServiceRequest(orig *otlpcollectormetrics.ExportMetricsServiceRequest, nullable bool) {
+	if orig == nil {
+		return
+	}
+
+	if !UseProtoPooling.IsEnabled() {
+		orig.Reset()
+		return
+	}
+
+	for i := range orig.ResourceMetrics {
+		DeleteOrigResourceMetrics(orig.ResourceMetrics[i], true)
+	}
+
+	orig.Reset()
+	if nullable {
+		protoPoolExportMetricsServiceRequest.Put(orig)
+	}
 }
 
 func CopyOrigExportMetricsServiceRequest(dest, src *otlpcollectormetrics.ExportMetricsServiceRequest) {
+	// If copying to same object, just return.
+	if src == dest {
+		return
+	}
 	dest.ResourceMetrics = CopyOrigResourceMetricsSlice(dest.ResourceMetrics, src.ResourceMetrics)
 }
 
-func FillOrigTestExportMetricsServiceRequest(orig *otlpcollectormetrics.ExportMetricsServiceRequest) {
+func GenTestOrigExportMetricsServiceRequest() *otlpcollectormetrics.ExportMetricsServiceRequest {
+	orig := NewOrigExportMetricsServiceRequest()
 	orig.ResourceMetrics = GenerateOrigTestResourceMetricsSlice()
+	return orig
 }
 
 // MarshalJSONOrig marshals all properties from the current struct to the destination stream.
@@ -62,15 +99,18 @@ func MarshalJSONOrigExportMetricsServiceRequest(orig *otlpcollectormetrics.Expor
 
 // UnmarshalJSONOrigMetrics unmarshals all properties from the current struct from the source iterator.
 func UnmarshalJSONOrigExportMetricsServiceRequest(orig *otlpcollectormetrics.ExportMetricsServiceRequest, iter *json.Iterator) {
-	iter.ReadObjectCB(func(iter *json.Iterator, f string) bool {
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
 		case "resourceMetrics", "resource_metrics":
-			orig.ResourceMetrics = UnmarshalJSONOrigResourceMetricsSlice(iter)
+			for iter.ReadArray() {
+				orig.ResourceMetrics = append(orig.ResourceMetrics, NewOrigResourceMetrics())
+				UnmarshalJSONOrigResourceMetrics(orig.ResourceMetrics[len(orig.ResourceMetrics)-1], iter)
+			}
+
 		default:
 			iter.Skip()
 		}
-		return true
-	})
+	}
 }
 
 func SizeProtoOrigExportMetricsServiceRequest(orig *otlpcollectormetrics.ExportMetricsServiceRequest) int {
@@ -88,7 +128,7 @@ func MarshalProtoOrigExportMetricsServiceRequest(orig *otlpcollectormetrics.Expo
 	pos := len(buf)
 	var l int
 	_ = l
-	for i := range orig.ResourceMetrics {
+	for i := len(orig.ResourceMetrics) - 1; i >= 0; i-- {
 		l = MarshalProtoOrigResourceMetrics(orig.ResourceMetrics[i], buf[:pos])
 		pos -= l
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
@@ -99,5 +139,41 @@ func MarshalProtoOrigExportMetricsServiceRequest(orig *otlpcollectormetrics.Expo
 }
 
 func UnmarshalProtoOrigExportMetricsServiceRequest(orig *otlpcollectormetrics.ExportMetricsServiceRequest, buf []byte) error {
-	return orig.Unmarshal(buf)
+	var err error
+	var fieldNum int32
+	var wireType proto.WireType
+
+	l := len(buf)
+	pos := 0
+	for pos < l {
+		// If in a group parsing, move to the next tag.
+		fieldNum, wireType, pos, err = proto.ConsumeTag(buf, pos)
+		if err != nil {
+			return err
+		}
+		switch fieldNum {
+
+		case 1:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field ResourceMetrics", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			orig.ResourceMetrics = append(orig.ResourceMetrics, NewOrigResourceMetrics())
+			err = UnmarshalProtoOrigResourceMetrics(orig.ResourceMetrics[len(orig.ResourceMetrics)-1], buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+		default:
+			pos, err = proto.ConsumeUnknown(buf, pos, wireType)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

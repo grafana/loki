@@ -385,7 +385,7 @@
                            "mode": "absolute",
                            "steps": [ ]
                         },
-                        "unit": "%"
+                        "unit": "percentunit"
                      },
                      "overrides": [ ]
                   },
@@ -404,7 +404,7 @@
                   "stack": true,
                   "targets": [
                      {
-                        "expr": "\n                              (\n                                sum(rate(loki_distributor_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\",}[$__rate_interval])) - \n                                (sum(rate(loki_discarded_bytes_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\",}[$__rate_interval])) or vector(0))\n                              ) / sum(rate(loki_distributor_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\",}[$__rate_interval])) * 100\n                            ",
+                        "expr": "(sum(rate(loki_distributor_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\",}[$__rate_interval])) - (sum(rate(loki_discarded_bytes_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\",}[$__rate_interval])) or vector(0))) / sum(rate(loki_distributor_bytes_received_total{cluster=~\"$cluster\",job=~\"($namespace)/(loki.*|enterprise-logs)-write\",}[$__rate_interval])) * 100",
                         "format": "time_series",
                         "legendFormat": "acceptance rate",
                         "legendLink": null

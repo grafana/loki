@@ -34,16 +34,6 @@ import (
 
 func init() {
 	clusterspecifier.Register(rls{})
-
-	// TODO: Remove these once the RLS env var is removed.
-	internal.RegisterRLSClusterSpecifierPluginForTesting = func() {
-		clusterspecifier.Register(rls{})
-	}
-	internal.UnregisterRLSClusterSpecifierPluginForTesting = func() {
-		for _, typeURL := range rls.TypeURLs(rls{}) {
-			clusterspecifier.UnregisterForTesting(typeURL)
-		}
-	}
 }
 
 type rls struct{}

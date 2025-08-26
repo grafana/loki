@@ -297,6 +297,21 @@ type PutObjectArgs struct {
 	// alternative Options please refer to service/bos/api/option.go
 }
 
+type OptionsObjectArgs struct {
+	Origin         string
+	RequestMethod  string
+	RequestHeaders []string
+}
+
+type OptionsObjectResult struct {
+	AllowCredentials bool
+	AllowHeaders     []string
+	AllowMethods     []string
+	AllowOrigin      string
+	ExposeHeaders    []string
+	MaxAge           int
+}
+
 type PostObjectArgs struct {
 	Expiration         time.Duration
 	ContentLengthLower int64
@@ -359,6 +374,11 @@ type CopyObjectResult struct {
 	LastModified string `json:"lastModified"`
 	ETag         string `json:"eTag"`
 	VersionId    string `json:"versionId"`
+}
+
+type SetObjectMetaArgs struct {
+	ObjectMeta
+	ObjectExpires int
 }
 
 type ObjectMeta struct {

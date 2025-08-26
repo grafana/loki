@@ -8,33 +8,118 @@ package internal
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
+	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/data"
+	otlpcommon "go.opentelemetry.io/collector/pdata/internal/data/protogen/common/v1"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
+var (
+	protoPoolExemplar = sync.Pool{
+		New: func() any {
+			return &otlpmetrics.Exemplar{}
+		},
+	}
+
+	ProtoPoolExemplar_AsDouble = sync.Pool{
+		New: func() any {
+			return &otlpmetrics.Exemplar_AsDouble{}
+		},
+	}
+
+	ProtoPoolExemplar_AsInt = sync.Pool{
+		New: func() any {
+			return &otlpmetrics.Exemplar_AsInt{}
+		},
+	}
+)
+
+func NewOrigExemplar() *otlpmetrics.Exemplar {
+	if !UseProtoPooling.IsEnabled() {
+		return &otlpmetrics.Exemplar{}
+	}
+	return protoPoolExemplar.Get().(*otlpmetrics.Exemplar)
+}
+
+func DeleteOrigExemplar(orig *otlpmetrics.Exemplar, nullable bool) {
+	if orig == nil {
+		return
+	}
+
+	if !UseProtoPooling.IsEnabled() {
+		orig.Reset()
+		return
+	}
+
+	for i := range orig.FilteredAttributes {
+		DeleteOrigKeyValue(&orig.FilteredAttributes[i], false)
+	}
+	switch ov := orig.Value.(type) {
+	case *otlpmetrics.Exemplar_AsDouble:
+		if UseProtoPooling.IsEnabled() {
+			ov.AsDouble = float64(0)
+			ProtoPoolExemplar_AsDouble.Put(ov)
+		}
+	case *otlpmetrics.Exemplar_AsInt:
+		if UseProtoPooling.IsEnabled() {
+			ov.AsInt = int64(0)
+			ProtoPoolExemplar_AsInt.Put(ov)
+		}
+
+	}
+	DeleteOrigSpanID(&orig.SpanId, false)
+	DeleteOrigTraceID(&orig.TraceId, false)
+
+	orig.Reset()
+	if nullable {
+		protoPoolExemplar.Put(orig)
+	}
+}
+
 func CopyOrigExemplar(dest, src *otlpmetrics.Exemplar) {
+	// If copying to same object, just return.
+	if src == dest {
+		return
+	}
 	dest.FilteredAttributes = CopyOrigKeyValueSlice(dest.FilteredAttributes, src.FilteredAttributes)
 	dest.TimeUnixNano = src.TimeUnixNano
 	switch t := src.Value.(type) {
 	case *otlpmetrics.Exemplar_AsDouble:
-		dest.Value = &otlpmetrics.Exemplar_AsDouble{AsDouble: t.AsDouble}
+		var ov *otlpmetrics.Exemplar_AsDouble
+		if !UseProtoPooling.IsEnabled() {
+			ov = &otlpmetrics.Exemplar_AsDouble{}
+		} else {
+			ov = ProtoPoolExemplar_AsDouble.Get().(*otlpmetrics.Exemplar_AsDouble)
+		}
+		ov.AsDouble = t.AsDouble
+		dest.Value = ov
 	case *otlpmetrics.Exemplar_AsInt:
-		dest.Value = &otlpmetrics.Exemplar_AsInt{AsInt: t.AsInt}
+		var ov *otlpmetrics.Exemplar_AsInt
+		if !UseProtoPooling.IsEnabled() {
+			ov = &otlpmetrics.Exemplar_AsInt{}
+		} else {
+			ov = ProtoPoolExemplar_AsInt.Get().(*otlpmetrics.Exemplar_AsInt)
+		}
+		ov.AsInt = t.AsInt
+		dest.Value = ov
 	}
 	dest.SpanId = src.SpanId
 	dest.TraceId = src.TraceId
 }
 
-func FillOrigTestExemplar(orig *otlpmetrics.Exemplar) {
+func GenTestOrigExemplar() *otlpmetrics.Exemplar {
+	orig := NewOrigExemplar()
 	orig.FilteredAttributes = GenerateOrigTestKeyValueSlice()
 	orig.TimeUnixNano = 1234567890
 	orig.Value = &otlpmetrics.Exemplar_AsInt{AsInt: int64(13)}
 	orig.SpanId = data.SpanID([8]byte{8, 7, 6, 5, 4, 3, 2, 1})
 	orig.TraceId = data.TraceID([16]byte{1, 2, 3, 4, 5, 6, 7, 8, 8, 7, 6, 5, 4, 3, 2, 1})
+	return orig
 }
 
 // MarshalJSONOrig marshals all properties from the current struct to the destination stream.
@@ -54,13 +139,13 @@ func MarshalJSONOrigExemplar(orig *otlpmetrics.Exemplar, dest *json.Stream) {
 		dest.WriteObjectField("timeUnixNano")
 		dest.WriteUint64(orig.TimeUnixNano)
 	}
-	switch orig.Value.(type) {
+	switch orig := orig.Value.(type) {
 	case *otlpmetrics.Exemplar_AsDouble:
 		dest.WriteObjectField("asDouble")
-		dest.WriteFloat64(orig.Value.(*otlpmetrics.Exemplar_AsDouble).AsDouble)
+		dest.WriteFloat64(orig.AsDouble)
 	case *otlpmetrics.Exemplar_AsInt:
 		dest.WriteObjectField("asInt")
-		dest.WriteInt64(orig.Value.(*otlpmetrics.Exemplar_AsInt).AsInt)
+		dest.WriteInt64(orig.AsInt)
 	}
 	if orig.SpanId != data.SpanID([8]byte{}) {
 		dest.WriteObjectField("spanId")
@@ -75,30 +160,49 @@ func MarshalJSONOrigExemplar(orig *otlpmetrics.Exemplar, dest *json.Stream) {
 
 // UnmarshalJSONOrigExemplar unmarshals all properties from the current struct from the source iterator.
 func UnmarshalJSONOrigExemplar(orig *otlpmetrics.Exemplar, iter *json.Iterator) {
-	iter.ReadObjectCB(func(iter *json.Iterator, f string) bool {
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
 		case "filteredAttributes", "filtered_attributes":
-			orig.FilteredAttributes = UnmarshalJSONOrigKeyValueSlice(iter)
+			for iter.ReadArray() {
+				orig.FilteredAttributes = append(orig.FilteredAttributes, otlpcommon.KeyValue{})
+				UnmarshalJSONOrigKeyValue(&orig.FilteredAttributes[len(orig.FilteredAttributes)-1], iter)
+			}
+
 		case "timeUnixNano", "time_unix_nano":
 			orig.TimeUnixNano = iter.ReadUint64()
 
 		case "asDouble", "as_double":
-			orig.Value = &otlpmetrics.Exemplar_AsDouble{
-				AsDouble: iter.ReadFloat64(),
+			{
+				var ov *otlpmetrics.Exemplar_AsDouble
+				if !UseProtoPooling.IsEnabled() {
+					ov = &otlpmetrics.Exemplar_AsDouble{}
+				} else {
+					ov = ProtoPoolExemplar_AsDouble.Get().(*otlpmetrics.Exemplar_AsDouble)
+				}
+				ov.AsDouble = iter.ReadFloat64()
+				orig.Value = ov
 			}
+
 		case "asInt", "as_int":
-			orig.Value = &otlpmetrics.Exemplar_AsInt{
-				AsInt: iter.ReadInt64(),
+			{
+				var ov *otlpmetrics.Exemplar_AsInt
+				if !UseProtoPooling.IsEnabled() {
+					ov = &otlpmetrics.Exemplar_AsInt{}
+				} else {
+					ov = ProtoPoolExemplar_AsInt.Get().(*otlpmetrics.Exemplar_AsInt)
+				}
+				ov.AsInt = iter.ReadInt64()
+				orig.Value = ov
 			}
+
 		case "spanId", "span_id":
-			orig.SpanId.UnmarshalJSONIter(iter)
+			UnmarshalJSONOrigSpanID(&orig.SpanId, iter)
 		case "traceId", "trace_id":
-			orig.TraceId.UnmarshalJSONIter(iter)
+			UnmarshalJSONOrigTraceID(&orig.TraceId, iter)
 		default:
 			iter.Skip()
 		}
-		return true
-	})
+	}
 }
 
 func SizeProtoOrigExemplar(orig *otlpmetrics.Exemplar) int {
@@ -112,7 +216,10 @@ func SizeProtoOrigExemplar(orig *otlpmetrics.Exemplar) int {
 	if orig.TimeUnixNano != 0 {
 		n += 9
 	}
-	switch orig.Value.(type) {
+	switch orig := orig.Value.(type) {
+	case nil:
+		_ = orig
+		break
 	case *otlpmetrics.Exemplar_AsDouble:
 		n += 9
 	case *otlpmetrics.Exemplar_AsInt:
@@ -129,7 +236,7 @@ func MarshalProtoOrigExemplar(orig *otlpmetrics.Exemplar, buf []byte) int {
 	pos := len(buf)
 	var l int
 	_ = l
-	for i := range orig.FilteredAttributes {
+	for i := len(orig.FilteredAttributes) - 1; i >= 0; i-- {
 		l = MarshalProtoOrigKeyValue(&orig.FilteredAttributes[i], buf[:pos])
 		pos -= l
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
@@ -142,16 +249,16 @@ func MarshalProtoOrigExemplar(orig *otlpmetrics.Exemplar, buf []byte) int {
 		pos--
 		buf[pos] = 0x11
 	}
-	switch orig.Value.(type) {
+	switch orig := orig.Value.(type) {
 	case *otlpmetrics.Exemplar_AsDouble:
 		pos -= 8
-		binary.LittleEndian.PutUint64(buf[pos:], math.Float64bits(orig.Value.(*otlpmetrics.Exemplar_AsDouble).AsDouble))
+		binary.LittleEndian.PutUint64(buf[pos:], math.Float64bits(orig.AsDouble))
 		pos--
 		buf[pos] = 0x19
 
 	case *otlpmetrics.Exemplar_AsInt:
 		pos -= 8
-		binary.LittleEndian.PutUint64(buf[pos:], uint64(orig.Value.(*otlpmetrics.Exemplar_AsInt).AsInt))
+		binary.LittleEndian.PutUint64(buf[pos:], uint64(orig.AsInt))
 		pos--
 		buf[pos] = 0x31
 
@@ -173,5 +280,121 @@ func MarshalProtoOrigExemplar(orig *otlpmetrics.Exemplar, buf []byte) int {
 }
 
 func UnmarshalProtoOrigExemplar(orig *otlpmetrics.Exemplar, buf []byte) error {
-	return orig.Unmarshal(buf)
+	var err error
+	var fieldNum int32
+	var wireType proto.WireType
+
+	l := len(buf)
+	pos := 0
+	for pos < l {
+		// If in a group parsing, move to the next tag.
+		fieldNum, wireType, pos, err = proto.ConsumeTag(buf, pos)
+		if err != nil {
+			return err
+		}
+		switch fieldNum {
+
+		case 7:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field FilteredAttributes", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			orig.FilteredAttributes = append(orig.FilteredAttributes, otlpcommon.KeyValue{})
+			err = UnmarshalProtoOrigKeyValue(&orig.FilteredAttributes[len(orig.FilteredAttributes)-1], buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+
+		case 2:
+			if wireType != proto.WireTypeI64 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TimeUnixNano", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeI64(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.TimeUnixNano = uint64(num)
+
+		case 3:
+			if wireType != proto.WireTypeI64 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AsDouble", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeI64(buf, pos)
+			if err != nil {
+				return err
+			}
+			var ov *otlpmetrics.Exemplar_AsDouble
+			if !UseProtoPooling.IsEnabled() {
+				ov = &otlpmetrics.Exemplar_AsDouble{}
+			} else {
+				ov = ProtoPoolExemplar_AsDouble.Get().(*otlpmetrics.Exemplar_AsDouble)
+			}
+			ov.AsDouble = math.Float64frombits(num)
+			orig.Value = ov
+
+		case 6:
+			if wireType != proto.WireTypeI64 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AsInt", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeI64(buf, pos)
+			if err != nil {
+				return err
+			}
+			var ov *otlpmetrics.Exemplar_AsInt
+			if !UseProtoPooling.IsEnabled() {
+				ov = &otlpmetrics.Exemplar_AsInt{}
+			} else {
+				ov = ProtoPoolExemplar_AsInt.Get().(*otlpmetrics.Exemplar_AsInt)
+			}
+			ov.AsInt = int64(num)
+			orig.Value = ov
+
+		case 4:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field SpanId", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+
+			err = UnmarshalProtoOrigSpanID(&orig.SpanId, buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+
+		case 5:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field TraceId", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+
+			err = UnmarshalProtoOrigTraceID(&orig.TraceId, buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+		default:
+			pos, err = proto.ConsumeUnknown(buf, pos, wireType)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

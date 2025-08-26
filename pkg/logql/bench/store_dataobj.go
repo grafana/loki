@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/querier"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -28,24 +29,26 @@ import (
 
 // DataObjStore implements Store using the dataobj format
 type DataObjStore struct {
-	dir      string
-	tenantID string
-	builder  *logsobj.Builder
-	buf      *bytes.Buffer
-	uploader *uploader.Uploader
-	meta     *metastore.Updater
+	dir              string
+	tenantID         string
+	builder          *logsobj.Builder
+	buf              *bytes.Buffer
+	uploader         *uploader.Uploader
+	logsMetastoreToc *metastore.TableOfContentsWriter
 
 	bucket objstore.Bucket
 
+	// Index files have their own, separate, metastore directory, with their own table of contents.
 	indexWriterBucket objstore.Bucket
-	indexMetastore    *metastore.Updater
+	indexMetastoreToc *metastore.TableOfContentsWriter
 
 	logger log.Logger
 }
 
 // NewDataObjStore creates a new DataObjStore
 func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
-	// Create store-specific directory
+	// NOTE(rfratto): DataObjStore should use a dataobj subdirectory to imitate
+	// production setup: a dataobj subdirectory in the location used for chunks.
 	storeDir := filepath.Join(dir, "dataobj")
 	if err := os.MkdirAll(storeDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create directory: %w", err)
@@ -85,12 +88,12 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 	}
 
 	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
-	meta := metastore.NewUpdater(metastore.Config{}, bucket, nil, tenantID, logger)
+	logsMetastoreToc := metastore.NewTableOfContentsWriter(metastore.Config{}, bucket, logger)
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)
 
 	// Create prefixed bucket & metastore for indexes
 	indexWriterBucket := objstore.NewPrefixedBucket(bucket, indexDirPrefix)
-	indexMetastore := metastore.NewUpdater(metastore.Config{}, indexWriterBucket, nil, tenantID, logger)
+	indexMetastoreToc := metastore.NewTableOfContentsWriter(metastore.Config{}, indexWriterBucket, logger)
 
 	return &DataObjStore{
 		dir:               storeDir,
@@ -98,11 +101,11 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 		builder:           builder,
 		buf:               bytes.NewBuffer(make([]byte, 0, 128*1024*1024)), // 128MB buffer
 		uploader:          uploader,
-		meta:              meta,
+		logsMetastoreToc:  logsMetastoreToc,
 		bucket:            bucket,
 		logger:            logger,
 		indexWriterBucket: indexWriterBucket,
-		indexMetastore:    indexMetastore,
+		indexMetastoreToc: indexMetastoreToc,
 	}, nil
 }
 
@@ -146,8 +149,14 @@ func (s *DataObjStore) flush() error {
 		return fmt.Errorf("failed to upload data object: %w", err)
 	}
 
-	// Update metastore with the new data object
-	err = s.meta.Update(context.Background(), path, minTime, maxTime)
+	// Update logs metastore's table of contents with the new data object
+	err = s.logsMetastoreToc.WriteEntry(context.Background(), path, []multitenancy.TimeRange{
+		{
+			Tenant:  s.tenantID,
+			MinTime: minTime,
+			MaxTime: maxTime,
+		},
+	})
 	if err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}
@@ -178,7 +187,7 @@ func (s *DataObjStore) Close() error {
 
 func (s *DataObjStore) buildIndex() error {
 	flushAndUpload := func(calculator *index.Calculator) error {
-		minTime, maxTime := calculator.TimeRange()
+		timeRanges := calculator.TimeRanges()
 		obj, closer, err := calculator.Flush()
 		if err != nil {
 			return fmt.Errorf("failed to flush index: %w", err)
@@ -201,7 +210,7 @@ func (s *DataObjStore) buildIndex() error {
 			return fmt.Errorf("failed to upload index: %w", err)
 		}
 
-		err = s.indexMetastore.Update(context.Background(), key, minTime, maxTime)
+		err = s.indexMetastoreToc.WriteEntry(context.Background(), key, timeRanges)
 		if err != nil {
 			return fmt.Errorf("failed to update metastore: %w", err)
 		}

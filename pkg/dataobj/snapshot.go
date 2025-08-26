@@ -22,27 +22,25 @@ type snapshot struct {
 	// Regions to read from (sorted by offset).
 	regions []snapshotRegion
 
-	header   []byte
-	sections []sectionInfo
-	tailer   []byte
+	header         []byte
+	sectionRegions []sectionRegion
+	tailer         []byte
 }
 
-type sectionInfo struct {
-	Type SectionType
-
-	Data, Metadata         scratch.Handle
-	DataSize, MetadataSize int
+type sectionRegion struct {
+	Handle scratch.Handle
+	Size   int
 }
 
 // newSnapshot creates a new snapshot for the given data. [sectionHandle]s
 // passed to the newSnapshot are owned by the snapshot, and are deleted
 // by the snapshot when calling [snapshot.Close].
-func newSnapshot(store scratch.Store, header []byte, sections []sectionInfo, tailer []byte) (*snapshot, error) {
+func newSnapshot(store scratch.Store, header []byte, sectionRegions []sectionRegion, tailer []byte) (*snapshot, error) {
 	s := &snapshot{
-		store:    store,
-		header:   header,
-		sections: sections,
-		tailer:   tailer,
+		store:          store,
+		header:         header,
+		sectionRegions: sectionRegions,
+		tailer:         tailer,
 	}
 
 	if err := s.initRegions(); err != nil {
@@ -56,9 +54,8 @@ func (s *snapshot) initRegions() error {
 		return nopReadSeekerCloser{bytes.NewReader(s.header)}, nil
 	})
 
-	for _, section := range s.sections {
-		s.addRegion(int64(section.DataSize), func() (io.ReadSeekCloser, error) { return s.store.Read(section.Data) })
-		s.addRegion(int64(section.MetadataSize), func() (io.ReadSeekCloser, error) { return s.store.Read(section.Metadata) })
+	for _, sectionRegion := range s.sectionRegions {
+		s.addRegion(int64(sectionRegion.Size), func() (io.ReadSeekCloser, error) { return s.store.Read(sectionRegion.Handle) })
 	}
 
 	s.addRegion(int64(len(s.tailer)), func() (io.ReadSeekCloser, error) {
@@ -143,9 +140,8 @@ func (s *snapshot) Size() int64 {
 // handles from the backing scratch store.
 func (s *snapshot) Close() error {
 	var errs []error
-	for _, section := range s.sections {
-		errs = append(errs, s.store.Remove(section.Data))
-		errs = append(errs, s.store.Remove(section.Metadata))
+	for _, section := range s.sectionRegions {
+		errs = append(errs, s.store.Remove(section.Handle))
 	}
 	return errors.Join(errs...)
 }

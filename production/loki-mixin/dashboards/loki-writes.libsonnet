@@ -99,7 +99,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                         .addRow(
                           $.row((if $._config.ssd.enabled then 'Write Path' else 'Distributor') + ' - Data Ingestion')
                           .addPanel(
-                            $.newQueryPanel('Data Acceptance Rate', '%') +
+                            $.newQueryPanel('Data Acceptance Rate', 'percentunit') +
                             $.queryPanel('(sum(rate(loki_distributor_bytes_received_total{%s}[$__rate_interval])) - (sum(rate(loki_discarded_bytes_total{%s}[$__rate_interval])) or vector(0))) / sum(rate(loki_distributor_bytes_received_total{%s}[$__rate_interval])) * 100' % [dashboards['loki-writes.json'].distributorSelector, dashboards['loki-writes.json'].distributorSelector, dashboards['loki-writes.json'].distributorSelector], 'acceptance rate') + {
                               stack: true,
                               yAxes: [

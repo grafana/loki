@@ -86,9 +86,6 @@ test-mysql: add-gowork
 test-turso: add-gowork
 	go test $(GO_TEST_FLAGS) ./internal/testing/integration -run='TestTurso' | tparse --follow -sort=elapsed
 
-test-vertica: add-gowork
-	go test $(GO_TEST_FLAGS) ./internal/testing/integration -run='TestVertica' | tparse --follow -sort=elapsed
-
 test-ydb: add-gowork
 	go test $(GO_TEST_FLAGS) ./internal/testing/integration -run='TestYDB' | tparse --follow -sort=elapsed
 

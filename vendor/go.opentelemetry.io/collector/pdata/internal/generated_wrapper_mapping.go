@@ -7,12 +7,50 @@
 package internal
 
 import (
+	"fmt"
+	"sync"
+
 	otlpprofiles "go.opentelemetry.io/collector/pdata/internal/data/protogen/profiles/v1development"
 	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
+var (
+	protoPoolMapping = sync.Pool{
+		New: func() any {
+			return &otlpprofiles.Mapping{}
+		},
+	}
+)
+
+func NewOrigMapping() *otlpprofiles.Mapping {
+	if !UseProtoPooling.IsEnabled() {
+		return &otlpprofiles.Mapping{}
+	}
+	return protoPoolMapping.Get().(*otlpprofiles.Mapping)
+}
+
+func DeleteOrigMapping(orig *otlpprofiles.Mapping, nullable bool) {
+	if orig == nil {
+		return
+	}
+
+	if !UseProtoPooling.IsEnabled() {
+		orig.Reset()
+		return
+	}
+
+	orig.Reset()
+	if nullable {
+		protoPoolMapping.Put(orig)
+	}
+}
+
 func CopyOrigMapping(dest, src *otlpprofiles.Mapping) {
+	// If copying to same object, just return.
+	if src == dest {
+		return
+	}
 	dest.MemoryStart = src.MemoryStart
 	dest.MemoryLimit = src.MemoryLimit
 	dest.FileOffset = src.FileOffset
@@ -24,7 +62,8 @@ func CopyOrigMapping(dest, src *otlpprofiles.Mapping) {
 	dest.HasInlineFrames = src.HasInlineFrames
 }
 
-func FillOrigTestMapping(orig *otlpprofiles.Mapping) {
+func GenTestOrigMapping() *otlpprofiles.Mapping {
+	orig := NewOrigMapping()
 	orig.MemoryStart = uint64(13)
 	orig.MemoryLimit = uint64(13)
 	orig.FileOffset = uint64(13)
@@ -34,6 +73,7 @@ func FillOrigTestMapping(orig *otlpprofiles.Mapping) {
 	orig.HasFilenames = true
 	orig.HasLineNumbers = true
 	orig.HasInlineFrames = true
+	return orig
 }
 
 // MarshalJSONOrig marshals all properties from the current struct to the destination stream.
@@ -86,7 +126,7 @@ func MarshalJSONOrigMapping(orig *otlpprofiles.Mapping, dest *json.Stream) {
 
 // UnmarshalJSONOrigMapping unmarshals all properties from the current struct from the source iterator.
 func UnmarshalJSONOrigMapping(orig *otlpprofiles.Mapping, iter *json.Iterator) {
-	iter.ReadObjectCB(func(iter *json.Iterator, f string) bool {
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
 		case "memoryStart", "memory_start":
 			orig.MemoryStart = iter.ReadUint64()
@@ -97,7 +137,10 @@ func UnmarshalJSONOrigMapping(orig *otlpprofiles.Mapping, iter *json.Iterator) {
 		case "filenameStrindex", "filename_strindex":
 			orig.FilenameStrindex = iter.ReadInt32()
 		case "attributeIndices", "attribute_indices":
-			orig.AttributeIndices = UnmarshalJSONOrigInt32Slice(iter)
+			for iter.ReadArray() {
+				orig.AttributeIndices = append(orig.AttributeIndices, iter.ReadInt32())
+			}
+
 		case "hasFunctions", "has_functions":
 			orig.HasFunctions = iter.ReadBool()
 		case "hasFilenames", "has_filenames":
@@ -109,8 +152,7 @@ func UnmarshalJSONOrigMapping(orig *otlpprofiles.Mapping, iter *json.Iterator) {
 		default:
 			iter.Skip()
 		}
-		return true
-	})
+	}
 }
 
 func SizeProtoOrigMapping(orig *otlpprofiles.Mapping) int {
@@ -229,5 +271,142 @@ func MarshalProtoOrigMapping(orig *otlpprofiles.Mapping, buf []byte) int {
 }
 
 func UnmarshalProtoOrigMapping(orig *otlpprofiles.Mapping, buf []byte) error {
-	return orig.Unmarshal(buf)
+	var err error
+	var fieldNum int32
+	var wireType proto.WireType
+
+	l := len(buf)
+	pos := 0
+	for pos < l {
+		// If in a group parsing, move to the next tag.
+		fieldNum, wireType, pos, err = proto.ConsumeTag(buf, pos)
+		if err != nil {
+			return err
+		}
+		switch fieldNum {
+
+		case 1:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field MemoryStart", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.MemoryStart = uint64(num)
+
+		case 2:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field MemoryLimit", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.MemoryLimit = uint64(num)
+
+		case 3:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field FileOffset", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.FileOffset = uint64(num)
+
+		case 4:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field FilenameStrindex", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.FilenameStrindex = int32(num)
+		case 5:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field AttributeIndices", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			var num uint64
+			for startPos < pos {
+				num, startPos, err = proto.ConsumeVarint(buf[:pos], startPos)
+				if err != nil {
+					return err
+				}
+				orig.AttributeIndices = append(orig.AttributeIndices, int32(num))
+			}
+			if startPos != pos {
+				return fmt.Errorf("proto: invalid field len = %d for field AttributeIndices", pos-startPos)
+			}
+
+		case 6:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field HasFunctions", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.HasFunctions = num != 0
+
+		case 7:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field HasFilenames", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.HasFilenames = num != 0
+
+		case 8:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field HasLineNumbers", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.HasLineNumbers = num != 0
+
+		case 9:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field HasInlineFrames", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.HasInlineFrames = num != 0
+		default:
+			pos, err = proto.ConsumeUnknown(buf, pos, wireType)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

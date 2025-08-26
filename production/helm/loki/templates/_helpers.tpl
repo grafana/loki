@@ -210,10 +210,7 @@ filesystem:
 Storage config for ruler
 */}}
 {{- define "loki.rulerStorageConfig" -}}
-{{- if .Values.loki.storage.use_thanos_objstore -}}
-type: {{ .Values.loki.storage.object_store.type | quote }}
-{{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 0 }}
-{{- else if .Values.minio.enabled -}}
+{{- if .Values.minio.enabled -}}
 type: "s3"
 s3:
   bucketnames: ruler
@@ -286,6 +283,9 @@ Storage config S3
 )
 (omit . "bucketnames" "s3ForcePathStyle" "s3" "endpoint" "region" "secretAccessKey" "accessKeyId" "signatureVersion" "disable_dualstack" "http_config" "backoff_config" "sse")
 | toYaml | nindent 0 }}
+{{- with .s3 }}
+s3: {{ . }}
+{{- end }}
 {{- with .endpoint }}
 endpoint: {{ . }}
 {{- end }}
@@ -372,11 +372,7 @@ chunk_delimiter: {{ . }}
 {{/* Loki ruler config */}}
 {{- define "loki.rulerConfig" }}
 ruler:
-  storage:
-    {{- include "loki.rulerStorageConfig" . | nindent 4}}
-{{- if (not (empty .Values.loki.rulerConfig)) }}
-{{- toYaml .Values.loki.rulerConfig | nindent 2}}
-{{- end }}
+{{- mergeOverwrite (dict "storage" (include "loki.rulerStorageConfig" . | fromYaml)) (.Values.loki.rulerConfig | default dict) | toYaml | nindent 2 }}
 {{- end }}
 
 {{/* Ruler Thanos Storage Config */}}

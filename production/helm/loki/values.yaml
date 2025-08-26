@@ -71,6 +71,8 @@ loki:
       port: http-metrics
     initialDelaySeconds: 30
     timeoutSeconds: 1
+  # Configures the startup probe for all of the Loki pods
+  startupProbe: {}
   image:
     # -- The Docker registry
     registry: docker.io
@@ -526,6 +528,10 @@ loki:
         index:
           prefix: index_
           period: 24h
+  ## A separate loki ruler storage configuration can be provided via rulerStorage.storage section:
+  ##  rulerConfig:
+  ##    storage:
+  ##      type: local
   # -- Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler
   rulerConfig:
     wal:
@@ -2647,6 +2653,8 @@ bloomGateway:
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- startup probe settings for ingester pods. If empty, use `loki.startupProbe`
+  startupProbe: {}
   # -- Resource requests and limits for the bloom-gateway
   resources: {}
   # -- Containers to add to the bloom-gateway pods
@@ -2697,6 +2705,7 @@ bloomGateway:
     annotations: {}
     # -- Set this toggle to false to opt out of automounting API credentials for the service account
     automountServiceAccountToken: true
+
 # -- Configuration for the bloom-planner
 bloomPlanner:
   # -- Number of replicas for the bloom-planner
@@ -2748,6 +2757,8 @@ bloomPlanner:
   readinessProbe: {}
   # -- liveness probe settings for ingester pods. If empty use `loki.livenessProbe`
   livenessProbe: {}
+  # -- startup probe settings for ingester pods. If empty use `loki.startupProbe`
+  startupProbe: {}
   # -- Resource requests and limits for the bloom-planner
   resources: {}
   # -- Containers to add to the bloom-planner pods
@@ -2798,6 +2809,7 @@ bloomPlanner:
     annotations: {}
     # -- Set this toggle to false to opt out of automounting API credentials for the service account
     automountServiceAccountToken: true
+
 # -- Configuration for the bloom-builder
 bloomBuilder:
   # -- Number of replicas for the bloom-builder
@@ -2888,6 +2900,7 @@ bloomBuilder:
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
     grpc: ""
+
 # -- Configuration for the pattern ingester
 patternIngester:
   # -- Number of replicas for the pattern ingester

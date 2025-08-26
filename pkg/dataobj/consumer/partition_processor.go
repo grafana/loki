@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"strconv"
 	"sync"
 	"time"
@@ -16,37 +18,67 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
+// builder allows mocking of [logsobj.Builder] in tests.
+type builder interface {
+	Append(stream logproto.Stream) error
+	GetEstimatedSize() int
+	Flush() (*dataobj.Object, io.Closer, error)
+	TimeRange() (time.Time, time.Time)
+	UnregisterMetrics(prometheus.Registerer)
+}
+
+// committer allows mocking of certain [kgo.Client] methods in tests.
+type committer interface {
+	CommitRecords(ctx context.Context, records ...*kgo.Record) error
+}
+
+type producer interface {
+	ProduceSync(ctx context.Context, records ...*kgo.Record) kgo.ProduceResults
+}
+
+type tocWriter interface {
+	WriteEntry(ctx context.Context, dataobjPath string, timeRanges []multitenancy.TimeRange) error
+}
+
 type partitionProcessor struct {
 	// Kafka client and topic/partition info
-	client    *kgo.Client
+	committer committer
 	topic     string
 	partition int32
 	tenantID  []byte
 	// Processing pipeline
-	records          chan *kgo.Record
-	builder          *logsobj.Builder
-	decoder          *kafka.Decoder
-	uploader         *uploader.Uploader
-	metastoreUpdater *metastore.Updater
+	records chan *kgo.Record
+	// lastRecord contains the last record appended to the builder. It is used
+	// to commit the correct offset after a flush.
+	lastRecord         *kgo.Record
+	builder            builder
+	decoder            *kafka.Decoder
+	uploader           *uploader.Uploader
+	metastoreTocWriter tocWriter
 
 	// Builder initialization
 	builderOnce  sync.Once
 	builderCfg   logsobj.BuilderConfig
 	bucket       objstore.Bucket
-	bufPool      *sync.Pool
 	scratchStore scratch.Store
 
 	// Idle stream handling
 	idleFlushTimeout time.Duration
 	// The initial value is the zero time.
-	lastFlush    time.Time
+	lastFlushed time.Time
+
+	// lastModified is used to know when the idle is exceeded.
+	// The initial value is zero and must be reset to zero after each flush.
 	lastModified time.Time
 
 	// Metrics
@@ -59,7 +91,8 @@ type partitionProcessor struct {
 	reg    prometheus.Registerer
 	logger log.Logger
 
-	eventsProducerClient *kgo.Client
+	eventsProducerClient    producer
+	metastorePartitionRatio int32
 
 	// Used for tests.
 	clock quartz.Clock
@@ -79,7 +112,6 @@ func newPartitionProcessor(
 	partition int32,
 	logger log.Logger,
 	reg prometheus.Registerer,
-	bufPool *sync.Pool,
 	idleFlushTimeout time.Duration,
 	eventsProducerClient *kgo.Client,
 ) *partitionProcessor {
@@ -105,32 +137,32 @@ func newPartitionProcessor(
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
 
-	metastoreUpdater := metastore.NewUpdater(metastoreCfg, bucket, scratchStore, tenantID, logger)
-	if err := metastoreUpdater.RegisterMetrics(reg); err != nil {
+	metastoreTocWriter := metastore.NewTableOfContentsWriter(metastoreCfg, bucket, logger)
+	if err := metastoreTocWriter.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register metastore updater metrics", "err", err)
 	}
 
 	return &partitionProcessor{
-		client:               client,
-		logger:               log.With(logger, "topic", topic, "partition", partition, "tenant", tenantID),
-		topic:                topic,
-		partition:            partition,
-		records:              make(chan *kgo.Record, 1000),
-		ctx:                  ctx,
-		cancel:               cancel,
-		decoder:              decoder,
-		reg:                  reg,
-		builderCfg:           builderCfg,
-		bucket:               bucket,
-		scratchStore:         scratchStore,
-		tenantID:             []byte(tenantID),
-		metrics:              metrics,
-		uploader:             uploader,
-		metastoreUpdater:     metastoreUpdater,
-		bufPool:              bufPool,
-		idleFlushTimeout:     idleFlushTimeout,
-		eventsProducerClient: eventsProducerClient,
-		clock:                quartz.NewReal(),
+		committer:               client,
+		logger:                  log.With(logger, "topic", topic, "partition", partition, "tenant", tenantID),
+		topic:                   topic,
+		partition:               partition,
+		records:                 make(chan *kgo.Record, 1000),
+		ctx:                     ctx,
+		cancel:                  cancel,
+		decoder:                 decoder,
+		reg:                     reg,
+		builderCfg:              builderCfg,
+		bucket:                  bucket,
+		scratchStore:            scratchStore,
+		tenantID:                []byte(tenantID),
+		metrics:                 metrics,
+		uploader:                uploader,
+		metastoreTocWriter:      metastoreTocWriter,
+		idleFlushTimeout:        idleFlushTimeout,
+		eventsProducerClient:    eventsProducerClient,
+		clock:                   quartz.NewReal(),
+		metastorePartitionRatio: int32(metastoreCfg.PartitionRatio),
 	}
 }
 
@@ -204,42 +236,7 @@ func (p *partitionProcessor) initBuilder() error {
 	return initErr
 }
 
-func (p *partitionProcessor) flush() error {
-	minTime, maxTime := p.builder.TimeRange()
-
-	obj, closer, err := p.builder.Flush()
-	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
-		return err
-	}
-	defer closer.Close()
-
-	objectPath, err := p.uploader.Upload(p.ctx, obj)
-	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to upload object", "err", err)
-		return err
-	}
-
-	if err := p.metastoreUpdater.Update(p.ctx, objectPath, minTime, maxTime); err != nil {
-		level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
-		return err
-	}
-
-	if err := p.emitObjectWrittenEvent(objectPath); err != nil {
-		level.Error(p.logger).Log("msg", "failed to emit event", "err", err)
-		return err
-	}
-
-	p.lastFlush = p.clock.Now()
-
-	return nil
-}
-
 func (p *partitionProcessor) emitObjectWrittenEvent(objectPath string) error {
-	if p.eventsProducerClient == nil {
-		return nil
-	}
-
 	event := &metastore.ObjectWrittenEvent{
 		Tenant:     string(p.tenantID),
 		ObjectPath: objectPath,
@@ -252,17 +249,15 @@ func (p *partitionProcessor) emitObjectWrittenEvent(objectPath string) error {
 		return err
 	}
 
-	// Emitting the event is non-critical so we don't need to wait for it.
-	// We can just log the error and move on.
-	p.eventsProducerClient.Produce(p.ctx, &kgo.Record{
-		Value: eventBytes,
-	}, func(_ *kgo.Record, err error) {
-		if err != nil {
-			level.Error(p.logger).Log("msg", "failed to produce metastore event", "err", err)
-		}
-	})
+	// Apply the partition ratio to the incoming partition to find the metastore topic partition.
+	// This has the effect of concentrating the log partitions to fewer metastore partitions for later processing.
+	partition := p.partition / p.metastorePartitionRatio
 
-	return nil
+	results := p.eventsProducerClient.ProduceSync(p.ctx, &kgo.Record{
+		Partition: partition,
+		Value:     eventBytes,
+	})
+	return results.FirstErr()
 }
 
 func (p *partitionProcessor) processRecord(record *kgo.Record) {
@@ -297,13 +292,8 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			return
 		}
 
-		if err := p.flush(); err != nil {
-			level.Error(p.logger).Log("msg", "failed to flush stream", "err", err)
-			return
-		}
-
-		if err := p.commitRecords(record); err != nil {
-			level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
+		if err := p.flushAndCommit(); err != nil {
+			level.Error(p.logger).Log("msg", "failed to flush and commit", "err", err)
 			return
 		}
 
@@ -314,21 +304,82 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 		}
 	}
 
+	p.lastRecord = record
 	p.lastModified = p.clock.Now()
 }
 
-func (p *partitionProcessor) commitRecords(record *kgo.Record) error {
+// flushAndCommit flushes the builder and, if successful, commits the offset
+// of the last record processed. It expects that the last record processed
+// was also the last record appended to the builder. If not, data loss can
+// occur should the consumer restart or a partition rebalance occur
+func (p *partitionProcessor) flushAndCommit() error {
+	if err := p.flush(); err != nil {
+		return fmt.Errorf("failed to flush: %w", err)
+	}
+	if err := p.commit(); err != nil {
+		return fmt.Errorf("failed to commit offset: %w", err)
+	}
+	return nil
+}
+
+// flush builds a complete data object from the builder, uploads it, records
+// it in the metastore, and emits an object written event to the events topic.
+func (p *partitionProcessor) flush() error {
+	// The time range must be read before the flush as the builder is reset
+	// at the end of each flush, resetting the time range.
+	minTime, maxTime := p.builder.TimeRange()
+	obj, closer, err := p.builder.Flush()
+	if err != nil {
+		level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
+		return err
+	}
+	defer closer.Close()
+
+	objectPath, err := p.uploader.Upload(p.ctx, obj)
+	if err != nil {
+		level.Error(p.logger).Log("msg", "failed to upload object", "err", err)
+		return err
+	}
+
+	// TODO(benclive): Remove this Update once the indexes are being built from the metastore events
+	if err := p.metastoreTocWriter.WriteEntry(p.ctx, objectPath, []multitenancy.TimeRange{
+		{
+			Tenant:  string(p.tenantID),
+			MinTime: minTime,
+			MaxTime: maxTime,
+		},
+	}); err != nil {
+		level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
+		return err
+	}
+
+	if err := p.emitObjectWrittenEvent(objectPath); err != nil {
+		level.Error(p.logger).Log("msg", "failed to emit event", "err", err)
+		return err
+	}
+
+	p.lastModified = time.Time{}
+	p.lastFlushed = p.clock.Now()
+
+	return nil
+}
+
+// commits the offset of the last record processed. It should be called after
+// each successful flush to avoid duplicate data in consecutive data objects.
+func (p *partitionProcessor) commit() error {
+	if p.lastRecord == nil {
+		return errors.New("failed to commit offset, no records processed")
+	}
 	backoff := backoff.New(p.ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: 10 * time.Second,
 		MaxRetries: 20,
 	})
-
 	var lastErr error
 	backoff.Reset()
 	for backoff.Ongoing() {
 		p.metrics.incCommitsTotal()
-		err := p.client.CommitRecords(p.ctx, record)
+		err := p.committer.CommitRecords(p.ctx, p.lastRecord)
 		if err == nil {
 			return nil
 		}
@@ -348,15 +399,19 @@ func (p *partitionProcessor) idleFlush() (bool, error) {
 	if !p.needsIdleFlush() {
 		return false, nil
 	}
-	if err := p.flush(); err != nil {
+	if err := p.flushAndCommit(); err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
-// isIdle returns true if the partition has exceeded the idle flush timeout.
+// needsIdleFlush returns true if the partition has exceeded the idle timeout
+// and the builder has some data buffered.
 func (p *partitionProcessor) needsIdleFlush() bool {
-	if p.builder == nil {
+	// This is a safety check to make sure we never flush empty data objects.
+	// It should never happen that lastModified is non-zero while the builder
+	// is either uninitialized or empty.
+	if p.builder == nil || p.builder.GetEstimatedSize() == 0 {
 		return false
 	}
 	if p.lastModified.IsZero() {

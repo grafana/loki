@@ -1146,11 +1146,6 @@ dataobj:
     [events_per_index: <int> | default = 32]
 
   metastore:
-    updater:
-      # The format to use for the metastore top-level index objects.
-      # CLI flag: -dataobj-metastore.storage-format
-      [storage_format: <string> | default = "v1"]
-
     storage:
       # Experimental: A prefix to use for storing indexes in object storage.
       # Used to separate the metastore & index files during initial testing.
@@ -1161,6 +1156,12 @@ dataobj:
       # empty, all tenants will be enabled.
       # CLI flag: -dataobj-metastore.enabled-tenant-ids
       [enabled_tenant_ids: <string> | default = ""]
+
+    # Experimental: The ratio of log partitions to metastore partitions. For
+    # example, a value of 10 means there is 1 metastore partition for every 10
+    # log partitions.
+    # CLI flag: -dataobj-metastore.partition-ratio
+    [partition_ratio: <int> | default = 10]
 
   querier:
     # Enable the dataobj querier.
@@ -2664,10 +2665,9 @@ compactor_ring:
 [horizontal_scaling_mode: <string> | default = "disabled"]
 
 worker_config:
-  # Number of sub-workers to run for concurrent processing of jobs. Setting it
-  # to 0 will run a subworker per available CPU core.
+  # Number of sub-workers to run for concurrent processing of jobs.
   # CLI flag: -compactor.worker.num-sub-workers
-  [num_sub_workers: <int> | default = 0]
+  [num_sub_workers: <int> | default = 4]
 
 jobs_config:
   deletion:
@@ -2916,6 +2916,9 @@ otlp_config:
   # List of default otlp resource attributes to be picked as index labels
   # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
   [default_resource_attributes_as_index_labels: <list of strings> | default = [service.name service.namespace service.instance.id deployment.environment deployment.environment.name cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.pod.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]]
+
+# Default policy stream mappings that are merged with per-tenant mappings.
+[default_policy_stream_mappings: <map of string to list of PriorityStreams>]
 
 # Enable writes to Kafka during Push requests.
 # CLI flag: -distributor.kafka-writes-enabled
