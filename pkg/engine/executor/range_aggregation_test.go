@@ -97,6 +97,111 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 	require.ElementsMatch(t, expect, rows)
 }
 
+func TestArithmeticMatchers(t *testing.T) {
+	// Test that our arithmetic matchers work correctly by testing the full pipeline
+	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+	defer alloc.AssertSize(t, 0)
+
+	fields := []arrow.Field{
+		{Name: types.ColumnNameBuiltinTimestamp, Type: datatype.Arrow.Timestamp, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
+		{Name: "env", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.Loki.String)},
+	}
+	schema := arrow.NewSchema(fields, nil)
+
+	rows := []arrowtest.Rows{{
+		{"timestamp": time.Unix(10, 0).UTC(), "env": "prod"},
+		{"timestamp": time.Unix(15, 0).UTC(), "env": "prod"},
+		{"timestamp": time.Unix(20, 0).UTC(), "env": "prod"},
+	}}
+
+	partitionBy := []physical.ColumnExpression{
+		&physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: "env",
+				Type:   types.ColumnTypeAmbiguous,
+			},
+		},
+	}
+
+	t.Run("aligned windows", func(t *testing.T) {
+		opts := rangeAggregationOptions{
+			partitionBy:   partitionBy,
+			startTs:       time.Unix(10, 0),
+			endTs:         time.Unix(40, 0),
+			rangeInterval: 10 * time.Second,
+			step:          10 * time.Second, // step == range for aligned
+		}
+
+		input := NewArrowtestPipeline(alloc, schema, rows...)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{input}, expressionEvaluator{}, opts)
+		require.NoError(t, err)
+		defer pipeline.Close()
+
+		err = pipeline.Read(t.Context())
+		require.NoError(t, err)
+		record, err := pipeline.Value()
+		require.NoError(t, err)
+		defer record.Release()
+
+		// Should have results for aligned windows
+		rows, err := arrowtest.RecordRows(record)
+		require.NoError(t, err)
+		require.Greater(t, len(rows), 0)
+	})
+
+	t.Run("gapped windows", func(t *testing.T) {
+		opts := rangeAggregationOptions{
+			partitionBy:   partitionBy,
+			startTs:       time.Unix(10, 0),
+			endTs:         time.Unix(40, 0),
+			rangeInterval: 5 * time.Second,
+			step:          10 * time.Second, // step > range for gapped
+		}
+
+		input := NewArrowtestPipeline(alloc, schema, rows...)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{input}, expressionEvaluator{}, opts)
+		require.NoError(t, err)
+		defer pipeline.Close()
+
+		err = pipeline.Read(t.Context())
+		require.NoError(t, err)
+		record, err := pipeline.Value()
+		require.NoError(t, err)
+		defer record.Release()
+
+		// Should have results for gapped windows
+		rows, err := arrowtest.RecordRows(record)
+		require.NoError(t, err)
+		require.Greater(t, len(rows), 0)
+	})
+
+	t.Run("overlapping windows", func(t *testing.T) {
+		opts := rangeAggregationOptions{
+			partitionBy:   partitionBy,
+			startTs:       time.Unix(10, 0),
+			endTs:         time.Unix(40, 0),
+			rangeInterval: 10 * time.Second,
+			step:          5 * time.Second, // range > step for overlapping
+		}
+
+		input := NewArrowtestPipeline(alloc, schema, rows...)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{input}, expressionEvaluator{}, opts)
+		require.NoError(t, err)
+		defer pipeline.Close()
+
+		err = pipeline.Read(t.Context())
+		require.NoError(t, err)
+		record, err := pipeline.Value()
+		require.NoError(t, err)
+		defer record.Release()
+
+		// Should have results for overlapping windows
+		rows, err := arrowtest.RecordRows(record)
+		require.NoError(t, err)
+		require.Greater(t, len(rows), 0)
+	})
+}
+
 func TestRangeAggregationPipeline(t *testing.T) {
 	// Test RangeAggregationPipeline for range queries (step > 0).
 	// 1. Overlapping windows (range > step) - data points can appear in multiple windows
@@ -311,4 +416,328 @@ func TestRangeAggregationPipeline(t *testing.T) {
 		}))
 		require.ElementsMatch(t, expect, rows)
 	})
+}
+
+func TestCreateAlignedMatcher(t *testing.T) {
+	var (
+		startTS       = time.Unix(1000, 0)
+		endTS         = time.Unix(2000, 0)
+		step          = 100 * time.Second
+		rangeInterval = 100 * time.Second // step = range
+		opts          = rangeAggregationOptions{
+			startTs:       startTS,
+			endTs:         endTS,
+			rangeInterval: rangeInterval,
+			step:          step,
+		}
+	)
+
+	pipeline := &rangeAggregationPipeline{
+		opts: opts,
+	}
+	pipeline.init()
+
+	tests := []struct {
+		name       string
+		timestamps []time.Time
+		expected   []time.Time
+	}{
+		{
+			name: "ts outside matching range",
+			timestamps: []time.Time{
+				// ts <= startTS - step
+				time.Unix(890, 0),
+				time.Unix(900, 0),
+				// ts > endTS
+				time.Unix(2000, 1),
+				time.Unix(2050, 0),
+			},
+		},
+		{
+			name: "ts on inclusive boundary",
+			timestamps: []time.Time{
+				time.Unix(1000, 0),
+				time.Unix(1100, 0),
+				time.Unix(1200, 0),
+				time.Unix(2000, 0),
+			},
+			expected: []time.Time{
+				time.Unix(1000, 0),
+				time.Unix(1100, 0),
+				time.Unix(1200, 0),
+				time.Unix(2000, 0),
+			},
+		},
+		{
+			name: "ts inside windows",
+			timestamps: []time.Time{
+				time.Unix(999, 0),
+				time.Unix(1050, 0),
+				time.Unix(1099, 999999999),
+				time.Unix(1150, 0),
+				time.Unix(1250, 0),
+				time.Unix(1950, 0),
+				time.Unix(1950, 1),
+			},
+			expected: []time.Time{
+				time.Unix(1000, 0),
+				time.Unix(1100, 0),
+				time.Unix(1100, 0),
+				time.Unix(1200, 0),
+				time.Unix(1300, 0),
+				time.Unix(2000, 0),
+				time.Unix(2000, 0),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for i, ts := range tt.timestamps {
+				got := pipeline.matchingTimeWindows(ts)
+
+				if tt.expected != nil {
+					require.Len(t, got, 1, "timestamp %v should match exactly one window", ts)
+					require.Equal(t, tt.expected[i], got[0])
+				} else {
+					require.Nil(t, got, "timestamp %v should not match any window", ts)
+				}
+			}
+		})
+	}
+}
+
+func TestCreateGappedMatcher(t *testing.T) {
+	var (
+		startTS       = time.Unix(1000, 0)
+		endTS         = time.Unix(2000, 0)
+		step          = 100 * time.Second
+		rangeInterval = 50 * time.Second
+
+		opts = rangeAggregationOptions{
+			startTs:       startTS,
+			endTs:         endTS,
+			rangeInterval: rangeInterval,
+			step:          step,
+		}
+	)
+
+	pipeline := &rangeAggregationPipeline{
+		opts: opts,
+	}
+	pipeline.init()
+
+	tests := []struct {
+		name       string
+		timestamps []time.Time
+		expected   []time.Time
+	}{
+		{
+			name: "ts outside matching range",
+			timestamps: []time.Time{
+				// ts <= startTS
+				time.Unix(900, 0),
+				time.Unix(910, 0),
+				time.Unix(950, 0),
+				// ts > endTS
+				time.Unix(2000, 1),
+				time.Unix(2050, 0),
+			},
+		},
+		{
+			name: "ts on inclusive boundary",
+			timestamps: []time.Time{
+				time.Unix(1000, 0),
+				time.Unix(1500, 0),
+				time.Unix(2000, 0),
+			},
+			expected: []time.Time{
+				time.Unix(1000, 0),
+				time.Unix(1500, 0),
+				time.Unix(2000, 0),
+			},
+		},
+		{
+			name: "ts inside windows",
+			timestamps: []time.Time{
+				time.Unix(950, 1), // right after open interval
+				time.Unix(1080, 0),
+				time.Unix(1570, 0),
+				time.Unix(1999, 999999999),
+			},
+			expected: []time.Time{
+				time.Unix(1000, 0),
+				time.Unix(1100, 0),
+				time.Unix(1600, 0),
+				time.Unix(2000, 0),
+			},
+		},
+		{
+			name: "ts falling in gaps",
+			timestamps: []time.Time{
+				time.Unix(1040, 0),
+				time.Unix(1820, 0),
+				time.Unix(1949, 999999999),
+			},
+		},
+		{
+			name: "ts falling on exclusive boundary",
+			timestamps: []time.Time{
+				time.Unix(1050, 0),
+				time.Unix(1550, 0),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for i, ts := range tt.timestamps {
+				got := pipeline.matchingTimeWindows(ts)
+
+				if tt.expected != nil {
+					require.Len(t, got, 1, "timestamp %v should match exactly one window", ts)
+					require.Equal(t, tt.expected[i], got[0])
+				} else {
+					require.Nil(t, got, "timestamp %v should not match any window", ts)
+				}
+			}
+		})
+	}
+}
+
+func TestCreateOverlappingMatcher(t *testing.T) {
+	var (
+		startTs       = time.Unix(10, 0)
+		endTs         = time.Unix(40, 0)
+		rangeInterval = 10 * time.Second
+		step          = 5 * time.Second
+
+		// This creates overlapping windows:
+		// Window 0: (0, 10]
+		// Window 1: (5, 15]
+		// Window 2: (10, 20]
+		// Window 3: (15, 25]
+		// Window 4: (20, 30]
+		// Window 5: (25, 35]
+		// Window 6: (30, 40]
+
+		opts = rangeAggregationOptions{
+			startTs:       startTs,
+			endTs:         endTs,
+			rangeInterval: rangeInterval,
+			step:          step,
+		}
+	)
+
+	pipeline := &rangeAggregationPipeline{
+		opts: opts,
+	}
+	pipeline.init()
+
+	testCases := []struct {
+		name      string
+		timestamp time.Time
+		expected  []time.Time // expected window end times
+	}{
+		{
+			name:      "timestamp in single window only",
+			timestamp: time.Unix(1, 0), // only in window 0
+			expected:  []time.Time{time.Unix(10, 0)},
+		},
+		{
+			name:      "timestamp in overlap between windows 0 and 1",
+			timestamp: time.Unix(8, 0), // in both window 0 and 1
+			expected:  []time.Time{time.Unix(10, 0), time.Unix(15, 0)},
+		},
+		{
+			name:      "timestamp in overlap between windows 1 and 2",
+			timestamp: time.Unix(12, 0), // in both window 1 and 2
+			expected:  []time.Time{time.Unix(15, 0), time.Unix(20, 0)},
+		},
+		{
+			name:      "timestamp in overlap between windows 2 and 3",
+			timestamp: time.Unix(18, 0), // in both window 2 and 3
+			expected:  []time.Time{time.Unix(20, 0), time.Unix(25, 0)},
+		},
+		{
+			name:      "timestamp in overlap between windows 3 and 4",
+			timestamp: time.Unix(22, 0), // in both window 3 and 4
+			expected:  []time.Time{time.Unix(25, 0), time.Unix(30, 0)},
+		},
+		{
+			name:      "timestamp in overlap between windows 4 and 5",
+			timestamp: time.Unix(28, 0), // in both window 4 and 5
+			expected:  []time.Time{time.Unix(30, 0), time.Unix(35, 0)},
+		},
+		{
+			name:      "timestamp in overlap between windows 5 and 6",
+			timestamp: time.Unix(32, 0), // in both window 5 and 6
+			expected:  []time.Time{time.Unix(35, 0), time.Unix(40, 0)},
+		},
+		{
+			name:      "timestamp in single window at end",
+			timestamp: time.Unix(39, 0), // only in window 6
+			expected:  []time.Time{time.Unix(40, 0)},
+		},
+		{
+			name:      "timestamp at window boundary (inclusive)",
+			timestamp: time.Unix(10, 0), // at end of window 0, start of window 1
+			expected:  []time.Time{time.Unix(10, 0), time.Unix(15, 0)},
+		},
+		{
+			name:      "timestamp at window boundary (inclusive) 2",
+			timestamp: time.Unix(15, 0), // at end of window 1, start of window 2
+			expected:  []time.Time{time.Unix(15, 0), time.Unix(20, 0)},
+		},
+		{
+			name:      "timestamp at window boundary (inclusive) 3",
+			timestamp: time.Unix(20, 0), // at end of window 2, start of window 3
+			expected:  []time.Time{time.Unix(20, 0), time.Unix(25, 0)},
+		},
+		{
+			name:      "timestamp at window boundary (inclusive) 4",
+			timestamp: time.Unix(25, 0), // at end of window 3, start of window 4
+			expected:  []time.Time{time.Unix(25, 0), time.Unix(30, 0)},
+		},
+		{
+			name:      "timestamp at window boundary (inclusive) 5",
+			timestamp: time.Unix(30, 0), // at end of window 4, start of window 5
+			expected:  []time.Time{time.Unix(30, 0), time.Unix(35, 0)},
+		},
+		{
+			name:      "timestamp at window boundary (inclusive) 6",
+			timestamp: time.Unix(35, 0), // at end of window 5, start of window 6
+			expected:  []time.Time{time.Unix(35, 0), time.Unix(40, 0)},
+		},
+		{
+			name:      "timestamp at final window boundary",
+			timestamp: time.Unix(40, 0), // at end of window 6
+			expected:  []time.Time{time.Unix(40, 0)},
+		},
+		{
+			name:      "timestamp before first window",
+			timestamp: time.Unix(0, 0), // before any window
+			expected:  nil,
+		},
+		{
+			name:      "timestamp after last window",
+			timestamp: time.Unix(41, 0), // after all windows
+			expected:  nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := pipeline.matchingTimeWindows(tc.timestamp)
+
+			if tc.expected == nil {
+				require.Nil(t, result, "timestamp %v should not match any window", tc.timestamp)
+			} else {
+				require.ElementsMatch(t, tc.expected, result,
+					"timestamp %v should match windows ending at %v, got %v",
+					tc.timestamp, tc.expected, result)
+			}
+		})
+	}
+
 }
