@@ -8,7 +8,6 @@ package internal
 
 import (
 	otlpcommon "go.opentelemetry.io/collector/pdata/internal/data/protogen/common/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 type EntityRefSlice struct {
@@ -30,8 +29,7 @@ func NewEntityRefSlice(orig *[]*otlpcommon.EntityRef, state *State) EntityRefSli
 
 func GenerateTestEntityRefSlice() EntityRefSlice {
 	orig := GenerateOrigTestEntityRefSlice()
-	state := StateMutable
-	return NewEntityRefSlice(&orig, &state)
+	return NewEntityRefSlice(&orig, NewState())
 }
 
 func CopyOrigEntityRefSlice(dest, src []*otlpcommon.EntityRef) []*otlpcommon.EntityRef {
@@ -42,19 +40,20 @@ func CopyOrigEntityRefSlice(dest, src []*otlpcommon.EntityRef) []*otlpcommon.Ent
 		copy(newDest, dest)
 		// Add new pointers for missing elements from len(dest) to len(srt).
 		for i := len(dest); i < len(src); i++ {
-			newDest[i] = &otlpcommon.EntityRef{}
+			newDest[i] = NewOrigEntityRef()
 		}
 	} else {
 		newDest = dest[:len(src)]
 		// Cleanup the rest of the elements so GC can free the memory.
 		// This can happen when len(src) < len(dest) < cap(dest).
 		for i := len(src); i < len(dest); i++ {
+			DeleteOrigEntityRef(dest[i], true)
 			dest[i] = nil
 		}
 		// Add new pointers for missing elements.
 		// This can happen when len(dest) < len(src) < cap(dest).
 		for i := len(dest); i < len(src); i++ {
-			newDest[i] = &otlpcommon.EntityRef{}
+			newDest[i] = NewOrigEntityRef()
 		}
 	}
 	for i := range src {
@@ -64,21 +63,11 @@ func CopyOrigEntityRefSlice(dest, src []*otlpcommon.EntityRef) []*otlpcommon.Ent
 }
 
 func GenerateOrigTestEntityRefSlice() []*otlpcommon.EntityRef {
-	orig := make([]*otlpcommon.EntityRef, 7)
-	for i := 0; i < 7; i++ {
-		orig[i] = &otlpcommon.EntityRef{}
-		FillOrigTestEntityRef(orig[i])
-	}
-	return orig
-}
-
-// UnmarshalJSONOrigEntityRefSlice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONOrigEntityRefSlice(iter *json.Iterator) []*otlpcommon.EntityRef {
-	var orig []*otlpcommon.EntityRef
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		orig = append(orig, &otlpcommon.EntityRef{})
-		UnmarshalJSONOrigEntityRef(orig[len(orig)-1], iter)
-		return true
-	})
+	orig := make([]*otlpcommon.EntityRef, 5)
+	orig[0] = NewOrigEntityRef()
+	orig[1] = GenTestOrigEntityRef()
+	orig[2] = NewOrigEntityRef()
+	orig[3] = GenTestOrigEntityRef()
+	orig[4] = NewOrigEntityRef()
 	return orig
 }

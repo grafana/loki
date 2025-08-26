@@ -51,6 +51,7 @@ func (a RecordAttrs) TimestampType() int8 {
 // CompressionType signifies with which algorithm this record was compressed.
 //
 // 0 is no compression, 1 is gzip, 2 is snappy, 3 is lz4, and 4 is zstd.
+// The returned uint8 can be converted directly to a [CompressionCodecType].
 func (a RecordAttrs) CompressionType() uint8 {
 	return a.attrs & 0b0000_0111
 }

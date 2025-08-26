@@ -132,6 +132,47 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 		require.Equal(t, now, p.lastFlushed)
 		require.True(t, p.lastModified.IsZero())
 	})
+
+	t.Run("has emitted metastore event", func(t *testing.T) {
+		clock := quartz.NewMock(t)
+		p := newTestPartitionProcessor(t, clock)
+
+		client := &mockKafka{}
+		p.eventsProducerClient = client
+		p.partition = 23
+
+		// All timestamps should be zero.
+		require.True(t, p.lastFlushed.IsZero())
+		require.True(t, p.lastModified.IsZero())
+
+		// Push a stream.
+		now := clock.Now()
+		s := logproto.Stream{
+			Labels: `{service="test"}`,
+			Entries: []push.Entry{{
+				Timestamp: now,
+				Line:      "abc",
+			}},
+		}
+		b, err := s.Marshal()
+		require.NoError(t, err)
+		p.processRecord(&kgo.Record{
+			Key:       []byte("test-tenant"),
+			Value:     b,
+			Timestamp: now,
+		})
+
+		// No flush should have occurred, we will flush ourselves instead.
+		require.True(t, p.lastFlushed.IsZero())
+
+		// Flush the data object. The last modified time should also be reset.
+		require.NoError(t, p.flush())
+
+		// Check that the metastore event was emitted.
+		require.Len(t, client.produced, 1)
+		// Partition should be the processor's partition divided by the partition ratio, in integer division.
+		require.Equal(t, int32(2), client.produced[0].Partition)
+	})
 }
 
 func TestPartitionProcessor_IdleFlush(t *testing.T) {
@@ -328,7 +369,9 @@ func newTestPartitionProcessor(_ *testing.T, clock quartz.Clock) *partitionProce
 		&kgo.Client{},
 		testBuilderConfig,
 		uploader.Config{},
-		metastore.Config{},
+		metastore.Config{
+			PartitionRatio: 10,
+		},
 		newMockBucket(),
 		nil,
 		"test-tenant",
@@ -341,5 +384,6 @@ func newTestPartitionProcessor(_ *testing.T, clock quartz.Clock) *partitionProce
 		nil,
 	)
 	p.clock = clock
+	p.eventsProducerClient = &mockKafka{}
 	return p
 }
