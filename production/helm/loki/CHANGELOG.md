@@ -14,7 +14,6 @@ Entries should include a reference to the pull request that introduced the chang
 ## Unreleased
 
 
-
 ## 6.37.0
 
 - [FEATURE] Support separate loki ruler storage configuration [#18510](https://github.com/grafana/loki/pull/18510)
