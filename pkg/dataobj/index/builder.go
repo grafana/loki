@@ -87,6 +87,7 @@ type Builder struct {
 	logger                     log.Logger
 	activeCalculationPartition int32
 	cancelActiveCalculation    context.CancelCauseFunc
+	partitionsMutex            sync.Mutex
 }
 
 func NewIndexBuilder(
@@ -137,7 +138,6 @@ func NewIndexBuilder(
 	}
 
 	kafkaCfg.AutoCreateTopicEnabled = true
-	kafkaCfg.AutoCreateTopicDefaultPartitions = 64
 	eventConsumerClient, err := client.NewReaderClient(
 		"index_builder",
 		kafkaCfg,
@@ -150,6 +150,7 @@ func NewIndexBuilder(
 		kgo.RebalanceTimeout(5*time.Minute),
 		kgo.DisableAutoCommit(),
 		kgo.OnPartitionsRevoked(s.handlePartitionsRevoked),
+		kgo.OnPartitionsAssigned(s.handlePartitionsAssigned),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka consumer client: %w", err)
@@ -161,9 +162,25 @@ func NewIndexBuilder(
 	return s, nil
 }
 
-func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, partitions map[string][]int32) {
-	level.Info(p.logger).Log("msg", "partitions revoked", "partitions", partitions)
-	for _, partitions := range partitions {
+func (p *Builder) handlePartitionsAssigned(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
+	level.Info(p.logger).Log("msg", "partitions assigned", "partitions", topics)
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
+
+	for _, partitions := range topics {
+		for _, partition := range partitions {
+			p.bufferedEvents[partition] = make([]metastore.ObjectWrittenEvent, 0)
+		}
+	}
+}
+
+// This is not thread-safe
+func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
+	level.Info(p.logger).Log("msg", "partitions revoked", "partitions", topics)
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
+
+	for _, partitions := range topics {
 		for _, partition := range partitions {
 			delete(p.bufferedEvents, partition)
 			if p.activeCalculationPartition == partition && p.cancelActiveCalculation != nil {
@@ -242,42 +259,72 @@ func (p *Builder) stopping(failureCase error) error {
 }
 
 func (p *Builder) processRecord(record *kgo.Record) {
+	var eventsToIndex []metastore.ObjectWrittenEvent
+	var calculationCtx context.Context
+
 	event := &metastore.ObjectWrittenEvent{}
 	if err := event.Unmarshal(record.Value); err != nil {
 		level.Error(p.logger).Log("msg", "failed to unmarshal metastore event", "err", err)
 		return
 	}
+
 	p.bufferedEvents[record.Partition] = append(p.bufferedEvents[record.Partition], *event)
 	level.Info(p.logger).Log("msg", "buffered new event for partition", "count", len(p.bufferedEvents[record.Partition]), "partition", record.Partition)
 
-	if len(p.bufferedEvents[record.Partition]) >= p.cfg.EventsPerIndex {
-		// Create a sub-context for the index build, so we can cancel it if the partition is revoked.
-		var calculationCtx context.Context
+	func() {
+		// Initialise index builds in a thread-safe way
+		p.partitionsMutex.Lock()
+		defer p.partitionsMutex.Unlock()
+		partitionEvents, ok := p.bufferedEvents[record.Partition]
+		if !ok {
+			// We don't own this partition anymore as it was just revoked. Abort further processing.
+			return
+		}
+		eventsToIndex = make([]metastore.ObjectWrittenEvent, len(partitionEvents))
+		copy(eventsToIndex, partitionEvents)
+
+		// Optimistically initialise a new build context
 		p.activeCalculationPartition = record.Partition
 		calculationCtx, p.cancelActiveCalculation = context.WithCancelCause(p.ctx)
-		defer p.cancelActiveCalculation(nil)
+	}()
+	if len(eventsToIndex) < p.cfg.EventsPerIndex {
+		return
+	}
 
-		// Build the index.
-		err := p.buildIndex(calculationCtx, p.bufferedEvents[record.Partition][:len(p.bufferedEvents[record.Partition])])
-		if err != nil {
-			if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
-				level.Info(p.logger).Log("msg", "partition revoked, aborting index build", "partition", p.activeCalculationPartition)
-				return
-			}
-			level.Error(p.logger).Log("msg", "failed to build index", "err", err, "partition", p.activeCalculationPartition)
+	defer func() {
+		// Teardown index building in a thread-safe way
+		p.partitionsMutex.Lock()
+		defer p.partitionsMutex.Unlock()
+
+		p.cancelActiveCalculation(nil)
+
+		if _, ok := p.bufferedEvents[record.Partition]; !ok {
+			// We don't own this partition anymore as it was just revoked. The revocation process has already cleaned up any map entries.
 			return
 		}
-
-		// Commit back to the partition we just built. This is always the record we just received, otherwise we would not have triggered the build.
-		if err := p.commitRecords(calculationCtx, record); err != nil {
-			if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
-				level.Info(p.logger).Log("msg", "partition revoked, aborting index commit", "partition", p.activeCalculationPartition)
-				return
-			}
-			level.Error(p.logger).Log("msg", "failed to commit records", "err", err, "partition", p.activeCalculationPartition)
-			return
-		}
+		// We still own this partition, just truncate the events for future processing.
 		p.bufferedEvents[record.Partition] = p.bufferedEvents[record.Partition][:0]
+	}()
+
+	// Build the index.
+	err := p.buildIndex(calculationCtx, eventsToIndex)
+	if err != nil {
+		if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
+			level.Info(p.logger).Log("msg", "partition revoked, aborting index build", "partition", p.activeCalculationPartition)
+			return
+		}
+		level.Error(p.logger).Log("msg", "failed to build index", "err", err, "partition", p.activeCalculationPartition)
+		return
+	}
+
+	// Commit back to the partition we just built. This is always the record we just received, otherwise we would not have triggered the build.
+	if err := p.commitRecords(calculationCtx, record); err != nil {
+		if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
+			level.Info(p.logger).Log("msg", "partition revoked, aborting index commit", "partition", p.activeCalculationPartition)
+			return
+		}
+		level.Error(p.logger).Log("msg", "failed to commit records", "err", err, "partition", p.activeCalculationPartition)
+		return
 	}
 }
 

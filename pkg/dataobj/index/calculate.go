@@ -30,7 +30,7 @@ type Calculator struct {
 }
 
 func NewCalculator(indexobjBuilder *indexobj.Builder) *Calculator {
-	return &Calculator{indexobjBuilder: indexobjBuilder, builderMtx: sync.Mutex{}}
+	return &Calculator{indexobjBuilder: indexobjBuilder}
 }
 
 func (c *Calculator) Reset() {
