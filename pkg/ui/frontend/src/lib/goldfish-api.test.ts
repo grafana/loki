@@ -35,7 +35,7 @@ describe('goldfish-api', () => {
         ok: true,
         json: async () => ({
           queries: [],
-          total: 0,
+          hasMore: false,
           page: 1,
           pageSize: 20,
         }),
@@ -60,7 +60,7 @@ describe('goldfish-api', () => {
         ok: true,
         json: async () => ({
           queries: [],
-          total: 5,
+          hasMore: true,
           page: 2,
           pageSize: 15,
         }),
@@ -80,7 +80,7 @@ describe('goldfish-api', () => {
       // Setup: Mock successful API response
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ queries: [], total: 0, page: 1, pageSize: 20 }),
+        json: async () => ({ queries: [], hasMore: false, page: 1, pageSize: 20 }),
       });
 
       // Act: Call with OUTCOME_ALL
@@ -116,7 +116,7 @@ describe('goldfish-api', () => {
       // Setup: Mock successful API response
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ queries: [], total: 0, page: 1, pageSize: 20 }),
+        json: async () => ({ queries: [], hasMore: false, page: 1, pageSize: 20 }),
       });
 
       // Act: Call with tenant filter
@@ -133,7 +133,7 @@ describe('goldfish-api', () => {
       // Setup: Mock successful API response
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ queries: [], total: 0, page: 1, pageSize: 20 }),
+        json: async () => ({ queries: [], hasMore: false, page: 1, pageSize: 20 }),
       });
 
       // Act: Call with user filter
@@ -150,7 +150,7 @@ describe('goldfish-api', () => {
       // Setup: Mock successful API response
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ queries: [], total: 0, page: 1, pageSize: 20 }),
+        json: async () => ({ queries: [], hasMore: false, page: 1, pageSize: 20 }),
       });
 
       // Act: Call with newEngine filter set to true
@@ -167,7 +167,7 @@ describe('goldfish-api', () => {
       // Setup: Mock successful API response
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ queries: [], total: 0, page: 1, pageSize: 20 }),
+        json: async () => ({ queries: [], hasMore: false, page: 1, pageSize: 20 }),
       });
 
       // Act: Call with newEngine filter set to false
@@ -184,7 +184,7 @@ describe('goldfish-api', () => {
       // Setup: Mock successful API response
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ queries: [], total: 0, page: 1, pageSize: 20 }),
+        json: async () => ({ queries: [], hasMore: false, page: 1, pageSize: 20 }),
       });
 
       // Act: Call with all filters
@@ -201,7 +201,7 @@ describe('goldfish-api', () => {
       // Setup: Mock successful API response
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ queries: [], total: 0, page: 1, pageSize: 20 }),
+        json: async () => ({ queries: [], hasMore: false, page: 1, pageSize: 20 }),
       });
 
       // Act: Call with tenant set to "all"
@@ -218,7 +218,7 @@ describe('goldfish-api', () => {
       // Setup: Mock successful API response
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ queries: [], total: 0, page: 1, pageSize: 20 }),
+        json: async () => ({ queries: [], hasMore: false, page: 1, pageSize: 20 }),
       });
 
       // Act: Call with user set to "all"
@@ -238,7 +238,7 @@ describe('goldfish-api', () => {
       // Setup: Mock successful response
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ queries: [], total: 0, page: 1, pageSize: 20 }),
+        json: async () => ({ queries: [], hasMore: false, page: 1, pageSize: 20 }),
       });
 
       // Act: Make API call

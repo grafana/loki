@@ -198,65 +198,19 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 	if pageSize < 1 || pageSize > 1000 {
 		pageSize = 20 // Default page size
 	}
-
-	// Validate outcome parameter against allowed values
-	outcome := filter.Outcome
-	switch outcome {
-	case OutcomeAll, OutcomeMatch, OutcomeMismatch, OutcomeError:
-		// Valid values - proceed
-	default:
-		outcome = OutcomeAll // Default to all if invalid
-	}
-
+	
 	offset := (page - 1) * pageSize
 
-	// Build WHERE clause for tenant/user/engine filters
+	// Build WHERE clause for tenant/user/engine/time filters
 	whereClause, whereArgs := buildWhereClause(filter)
 
-	// Build HAVING clause based on outcome filter
-	// Using HAVING clause to filter on computed status without subqueries
-	var havingClause string
-	var queryArgs []any
-
-	// Add WHERE args first
-	queryArgs = append(queryArgs, whereArgs...)
-
-	if outcome != OutcomeAll {
-		havingClause = `HAVING comparison_status = ?`
-		queryArgs = append(queryArgs, outcome)
+	// Get paginated results - optimized query with proper index hints
+	// Use filter_composite index when filters are present, otherwise use sampled_at_desc
+	indexHint := "idx_sampled_queries_sampled_at_desc"
+	if filter.Tenant != "" || filter.User != "" {
+		indexHint = "idx_sampled_queries_filter_composite"
 	}
-
-	// Get total count with filtering - optimized without subquery
-	var total int
-	countQuery := `
-		SELECT COUNT(*) FROM (
-			SELECT 
-				sq.correlation_id,
-				CASE
-					WHEN co.comparison_status IS NOT NULL THEN co.comparison_status
-					WHEN (sq.cell_a_status_code NOT BETWEEN 200 AND 299 OR sq.cell_b_status_code NOT BETWEEN 200 AND 299) THEN 'error'
-					WHEN sq.cell_a_response_hash = sq.cell_b_response_hash THEN 'match'
-					ELSE 'mismatch'
-				END as comparison_status
-			FROM sampled_queries sq
-			LEFT JOIN comparison_outcomes co ON sq.correlation_id = co.correlation_id
-			` + whereClause + `
-			` + havingClause + `
-		) as filtered
-	`
-
-	// Debug logging
-	level.Debug(s.logger).Log("ui-component", "goldfish", "msg", "executing count query", "query", countQuery, "args", queryArgs)
-
-	err := s.db.QueryRowContext(ctx, countQuery, queryArgs...).Scan(&total)
-	if err != nil {
-		level.Error(s.logger).Log("ui-component", "goldfish", "msg", "count query failed", "err", err)
-		return nil, err
-	}
-
-	level.Debug(s.logger).Log("ui-component", "goldfish", "msg", "count query result", "total", total)
-
-	// Get paginated results - optimized query without nested subqueries
+	
 	query := `
 		SELECT
 			sq.correlation_id, sq.tenant_id, sq.user, sq.query, sq.query_type, sq.start_time, sq.end_time, sq.step_duration,
@@ -275,16 +229,17 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 				WHEN sq.cell_a_response_hash = sq.cell_b_response_hash THEN 'match'
 				ELSE 'mismatch'
 			END as comparison_status
-		FROM sampled_queries sq FORCE INDEX (idx_sampled_queries_sampled_at_desc)
-		LEFT JOIN comparison_outcomes co ON sq.correlation_id = co.correlation_id
+		FROM sampled_queries sq USE INDEX (` + indexHint + `)
+		LEFT JOIN comparison_outcomes co USE INDEX (idx_comparison_outcomes_correlation_status)
+			ON sq.correlation_id = co.correlation_id
 		` + whereClause + `
-		` + havingClause + `
 		ORDER BY sq.sampled_at DESC 
 		LIMIT ? OFFSET ?
 	`
 
-	// Add pagination parameters to queryArgs
-	queryArgs = append(queryArgs, pageSize, offset)
+	// Fetch one extra record to determine if there are more pages
+	// We'll fetch pageSize+1 records, then check if we got more than pageSize
+	queryArgs := append(whereArgs, pageSize+1, offset)
 
 	// Debug logging
 	level.Debug(s.logger).Log("ui-component", "goldfish", "msg", "executing main query", "query", query, "args", queryArgs)
@@ -340,9 +295,17 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 		return nil, err
 	}
 
+	// Check if we have more records than requested
+	hasMore := false
+	if len(queries) > pageSize {
+		hasMore = true
+		// Trim the result to the requested page size
+		queries = queries[:pageSize]
+	}
+
 	return &APIResponse{
 		Queries:  queries,
-		Total:    total,
+		HasMore:  hasMore,
 		Page:     page,
 		PageSize: pageSize,
 	}, nil
@@ -357,6 +320,33 @@ func (s *MySQLStorage) Close() error {
 func buildWhereClause(filter QueryFilter) (string, []any) {
 	var conditions []string
 	var args []any
+
+	// Add time range filters
+	if !filter.From.IsZero() {
+		conditions = append(conditions, "sq.sampled_at >= ?")
+		args = append(args, filter.From)
+	}
+
+	if !filter.To.IsZero() {
+		conditions = append(conditions, "sq.sampled_at <= ?")
+		args = append(args, filter.To)
+	}
+
+	// Add outcome filter using WHERE clause instead of HAVING
+	// This improves performance by filtering rows before aggregation
+	switch filter.Outcome {
+	case OutcomeMatch:
+		// Both cells returned success (2xx) and have matching response hashes
+		conditions = append(conditions, "(sq.cell_a_status_code >= 200 AND sq.cell_a_status_code < 300 AND sq.cell_b_status_code >= 200 AND sq.cell_b_status_code < 300 AND sq.cell_a_response_hash = sq.cell_b_response_hash)")
+	case OutcomeMismatch:
+		// Both cells returned success (2xx) but have different response hashes
+		conditions = append(conditions, "(sq.cell_a_status_code >= 200 AND sq.cell_a_status_code < 300 AND sq.cell_b_status_code >= 200 AND sq.cell_b_status_code < 300 AND sq.cell_a_response_hash != sq.cell_b_response_hash)")
+	case OutcomeError:
+		// At least one cell returned an error (non-2xx)
+		conditions = append(conditions, "(sq.cell_a_status_code < 200 OR sq.cell_a_status_code >= 300 OR sq.cell_b_status_code < 200 OR sq.cell_b_status_code >= 300)")
+	case OutcomeAll:
+		// No filtering - include all results
+	}
 
 	// Add tenant filter
 	if filter.Tenant != "" {
@@ -384,6 +374,43 @@ func buildWhereClause(filter QueryFilter) (string, []any) {
 	// Combine conditions
 	if len(conditions) == 0 {
 		return "", nil
+	}
+
+	whereClause := "WHERE " + strings.Join(conditions, " AND ")
+	return whereClause, args
+}
+
+// buildWhereClauseWithPartitionPruning adds partition pruning to the WHERE clause
+func buildWhereClauseWithPartitionPruning(filter QueryFilter, partitionHint time.Time) (string, []any) {
+	var conditions []string
+	var args []any
+
+	// Add partition pruning condition first for optimal query planning
+	// This ensures MySQL prunes partitions before evaluating other conditions
+	conditions = append(conditions, "sq.sampled_at >= ?")
+	args = append(args, partitionHint)
+
+	// Add tenant filter
+	if filter.Tenant != "" {
+		conditions = append(conditions, "sq.tenant_id = ?")
+		args = append(args, filter.Tenant)
+	}
+
+	// Add user filter
+	if filter.User != "" {
+		conditions = append(conditions, "sq.user = ?")
+		args = append(args, filter.User)
+	}
+
+	// Add new engine filter
+	if filter.UsedNewEngine != nil {
+		if *filter.UsedNewEngine {
+			// Either cell used new engine
+			conditions = append(conditions, "(sq.cell_a_used_new_engine = 1 OR sq.cell_b_used_new_engine = 1)")
+		} else {
+			// Neither cell used new engine
+			conditions = append(conditions, "sq.cell_a_used_new_engine = 0 AND sq.cell_b_used_new_engine = 0")
+		}
 	}
 
 	whereClause := "WHERE " + strings.Join(conditions, " AND ")

@@ -193,7 +193,7 @@ describe('GoldfishPage', () => {
   beforeEach(() => {
     mockFetchSampledQueries.mockResolvedValue({
       queries: mockQueries,
-      total: 25, // More than pageSize to enable prefetching
+      hasMore: true, // Has more pages to enable prefetching
       page: 1,
       pageSize: 10,
     });
@@ -218,7 +218,7 @@ describe('GoldfishPage', () => {
 
       mockFetchSampledQueries.mockResolvedValue({
         queries: queriesWithUser,
-        total: 2,
+        hasMore: false,
         page: 1,
         pageSize: 10,
       });
@@ -242,13 +242,13 @@ describe('GoldfishPage', () => {
       mockFetchSampledQueries
         .mockResolvedValueOnce({
           queries: mockQueries,
-          total: 3,
+          hasMore: false,
           page: 1,
           pageSize: 10,
         })
         .mockResolvedValueOnce({
           queries: [mockQueries[0]], // Only match query
-          total: 1,
+          hasMore: false,
           page: 1,
           pageSize: 10,
         });
@@ -283,19 +283,19 @@ describe('GoldfishPage', () => {
       mockFetchSampledQueries
         .mockResolvedValueOnce({
           queries: mockQueries,
-          total: 3,
+          hasMore: false,
           page: 1,
           pageSize: 10,
         })
         .mockResolvedValueOnce({
           queries: [mockQueries[1]], // Only mismatch query
-          total: 1,
+          hasMore: false,
           page: 1,
           pageSize: 10,
         })
         .mockResolvedValueOnce({
           queries: [mockQueries[2]], // Only error query
-          total: 1,
+          hasMore: false,
           page: 1,
           pageSize: 10,
         });
@@ -512,13 +512,13 @@ describe('GoldfishPage', () => {
       mockFetchSampledQueries
         .mockResolvedValueOnce({
           queries: mockQueries,
-          total: 3,
+          hasMore: false,
           page: 1,
           pageSize: 10,
         })
         .mockResolvedValueOnce({
           queries: mockFilteredQueries,
-          total: 1,
+          hasMore: false,
           page: 1,
           pageSize: 10,
         });
@@ -547,7 +547,7 @@ describe('GoldfishPage', () => {
       mockFetchSampledQueries
         .mockResolvedValueOnce({
           queries: mockQueries,
-          total: 3,
+          hasMore: false,
           page: 1,
           pageSize: 10,
         })
@@ -611,7 +611,7 @@ describe('GoldfishPage', () => {
       // Mock response with only one page
       mockFetchSampledQueries.mockResolvedValue({
         queries: [mockQueries[0]],
-        total: 1,
+        hasMore: false,
         page: 1,
         pageSize: 10,
       });
@@ -637,13 +637,13 @@ describe('GoldfishPage', () => {
       mockFetchSampledQueries
         .mockResolvedValueOnce({
           queries: page1Queries,
-          total: 25,
+          hasMore: true,
           page: 1,
           pageSize: 10,
         })
         .mockResolvedValueOnce({
           queries: page2Queries,
-          total: 25,
+          hasMore: true,
           page: 2,
           pageSize: 10,
         });
@@ -681,13 +681,13 @@ describe('GoldfishPage', () => {
       mockFetchSampledQueries
         .mockResolvedValueOnce({
           queries: page1Queries,
-          total: 25,
+          hasMore: true,
           page: 1,
           pageSize: 10,
         })
         .mockResolvedValueOnce({
           queries: page2Queries,
-          total: 25,
+          hasMore: true,
           page: 2,
           pageSize: 10,
         });
@@ -734,7 +734,7 @@ describe('GoldfishPage', () => {
       mockFetchSampledQueries
         .mockResolvedValueOnce({
           queries: page1Queries,
-          total: 25,
+          hasMore: true,
           page: 1,
           pageSize: 10,
         })
@@ -759,7 +759,7 @@ describe('GoldfishPage', () => {
       // Complete the prefetch
       resolvePrefetch!({
         queries: page2Queries,
-        total: 25,
+        hasMore: true,
         page: 2,
         pageSize: 10,
       });
@@ -800,7 +800,7 @@ describe('GoldfishPage', () => {
 
       mockFetchSampledQueries.mockResolvedValue({
         queries: queriesWithDifferentUsers,
-        total: 3,
+        hasMore: false,
         page: 1,
         pageSize: 10,
       });
@@ -884,7 +884,7 @@ describe('GoldfishPage', () => {
 
       mockFetchSampledQueries.mockResolvedValue({
         queries: queriesWithDifferentUsers,
-        total: 2,
+        hasMore: false,
         page: 1,
         pageSize: 10,
       });
@@ -972,14 +972,14 @@ describe('GoldfishPage', () => {
       mockFetchSampledQueries
         .mockResolvedValueOnce({
           queries: queriesWithEngineInfo,
-          total: 4,
+          hasMore: false,
           page: 1,
           pageSize: 10,
         })
         // Mock response when new engine filter is applied
         .mockResolvedValueOnce({
           queries: [queriesWithEngineInfo[0], queriesWithEngineInfo[1]], // Only new engine queries
-          total: 2,
+          hasMore: false,
           page: 1,
           pageSize: 10,
         });
@@ -1036,7 +1036,7 @@ describe('GoldfishPage', () => {
       // Mock response with new engine filter applied (URL param is true)
       mockFetchSampledQueries.mockResolvedValue({
         queries: [queriesWithEngineInfo[0]], // Only new engine query
-        total: 1,
+        hasMore: false,
         page: 1,
         pageSize: 10,
       });

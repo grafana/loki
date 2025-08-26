@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useGoldfishQueries } from "@/hooks/use-goldfish-queries";
+import { useGoldfishQueriesLoadMore } from "@/hooks/use-goldfish-queries-loadmore";
 import { QueryDiffView } from "@/components/goldfish/query-diff-view";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,12 +14,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { RefreshCw, AlertCircle, CheckCircle2, XCircle, Rocket } from "lucide-react";
-import { OutcomeFilter, OUTCOME_ALL, OUTCOME_MATCH, OUTCOME_MISMATCH, OUTCOME_ERROR, SampledQuery } from "@/types/goldfish";
+import { RefreshCw, AlertCircle, CheckCircle2, XCircle, Rocket, ChevronDown } from "lucide-react";
+import { OutcomeFilter, OUTCOME_ALL, OUTCOME_MATCH, OUTCOME_MISMATCH, OUTCOME_ERROR } from "@/types/goldfish";
 import { PageContainer } from "@/layout/page-container";
 
 
-export default function GoldfishPage() {
+export default function GoldfishPageLoadMore() {
   const [searchParams, setSearchParams] = useSearchParams();
   
   const [selectedTenant, setSelectedTenant] = useState<string | undefined>(undefined);
@@ -28,33 +28,36 @@ export default function GoldfishPage() {
   const [showNewEngineOnly, setShowNewEngineOnly] = useState(() => {
     return searchParams.get("newEngine") === "true";
   });
-  const [page, setPage] = useState(1);
-  const pageSize = 10; // Reduced since we're showing more detail per query
+  const pageSize = 20; // Increased since we're using load more pattern
   
-  const { data, isLoading, error, refetch, hasMore, traceId } = useGoldfishQueries(
-    page, 
+  const { 
+    queries, 
+    isLoading, 
+    isLoadingMore,
+    error, 
+    hasMore, 
+    loadMore, 
+    refresh, 
+    traceId 
+  } = useGoldfishQueriesLoadMore(
     pageSize, 
     selectedOutcome, 
     selectedTenant, 
     selectedUser, 
     showNewEngineOnly ? true : undefined
   );
-  const allQueries = useMemo(() => (data as { queries: SampledQuery[] })?.queries || [], [data]);
   
   // We need a separate query to get all unique tenants and users
-  // For now, we'll use the current page's data, but ideally this would be a separate endpoint
+  // For now, we'll use the current data, but ideally this would be a separate endpoint
   const uniqueTenants = useMemo(() => {
-    const tenants = new Set(allQueries.map((q) => q.tenantId));
+    const tenants = new Set(queries.map((q) => q.tenantId));
     return Array.from(tenants).sort();
-  }, [allQueries]);
+  }, [queries]);
   
   const uniqueUsers = useMemo(() => {
-    const users = new Set(allQueries.map((q) => q.user).filter((u) => u && u !== "unknown"));
+    const users = new Set(queries.map((q) => q.user).filter((u) => u && u !== "unknown"));
     return Array.from(users).sort();
-  }, [allQueries]);
-  
-  // Queries are now filtered on the backend, no need for client-side filtering
-  const filteredQueries = allQueries;
+  }, [queries]);
 
   // Update URL params when filter changes
   useEffect(() => {
@@ -81,7 +84,7 @@ export default function GoldfishPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => refetch()}
+              onClick={refresh}
               disabled={isLoading}
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
@@ -96,106 +99,91 @@ export default function GoldfishPage() {
               <Button
                 variant={selectedOutcome === OUTCOME_ALL ? "default" : "ghost"}
                 size="sm"
-                onClick={() => {
-                  setSelectedOutcome(OUTCOME_ALL);
-                  setPage(1);
-                }}
-                disabled={isLoading}
-                className="text-sm"
+                onClick={() => setSelectedOutcome(OUTCOME_ALL)}
+                className="px-3 py-1"
               >
                 All
               </Button>
               <Button
                 variant={selectedOutcome === OUTCOME_MATCH ? "default" : "ghost"}
                 size="sm"
-                onClick={() => {
-                  setSelectedOutcome(OUTCOME_MATCH);
-                  setPage(1);
-                }}
-                disabled={isLoading}
-                className="text-sm"
+                onClick={() => setSelectedOutcome(OUTCOME_MATCH)}
+                className="px-3 py-1"
               >
-                <CheckCircle2 className="h-4 w-4 mr-1" />
+                <CheckCircle2 className="h-3 w-3 mr-1" />
                 Match
               </Button>
               <Button
                 variant={selectedOutcome === OUTCOME_MISMATCH ? "default" : "ghost"}
                 size="sm"
-                onClick={() => {
-                  setSelectedOutcome(OUTCOME_MISMATCH);
-                  setPage(1);
-                }}
-                disabled={isLoading}
-                className="text-sm"
+                onClick={() => setSelectedOutcome(OUTCOME_MISMATCH)}
+                className="px-3 py-1"
               >
-                <XCircle className="h-4 w-4 mr-1" />
+                <XCircle className="h-3 w-3 mr-1" />
                 Mismatch
               </Button>
               <Button
                 variant={selectedOutcome === OUTCOME_ERROR ? "default" : "ghost"}
                 size="sm"
-                onClick={() => {
-                  setSelectedOutcome(OUTCOME_ERROR);
-                  setPage(1);
-                }}
-                disabled={isLoading}
-                className="text-sm"
+                onClick={() => setSelectedOutcome(OUTCOME_ERROR)}
+                className="px-3 py-1"
               >
-                <AlertCircle className="h-4 w-4 mr-1" />
+                <AlertCircle className="h-3 w-3 mr-1" />
                 Error
               </Button>
             </div>
             
             {/* Other Filters - Right Aligned */}
-            <div className="flex items-center gap-4">
-            <Select
-              value={selectedTenant}
-              onValueChange={setSelectedTenant}
-              disabled={isLoading || uniqueTenants.length === 0}
-            >
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Filter by tenant" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Tenants</SelectItem>
-                {uniqueTenants.map((tenant) => (
-                  <SelectItem key={tenant} value={tenant}>
-                    {tenant}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            
-            <Select
-              value={selectedUser}
-              onValueChange={setSelectedUser}
-              disabled={isLoading || uniqueUsers.length === 0}
-            >
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Filter by user" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Users</SelectItem>
-                {uniqueUsers.map((user) => (
-                  <SelectItem key={user} value={user}>
-                    {user}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            
-            <div className="flex items-center space-x-2">
-              <Checkbox 
-                id="new-engine-only"
+            <div className="flex items-center gap-3">
+              {/* Tenant Filter */}
+              {uniqueTenants.length > 0 && (
+                <Select
+                  value={selectedTenant || "all"}
+                  onValueChange={(value) => setSelectedTenant(value === "all" ? undefined : value)}
+                >
+                  <SelectTrigger className="w-[140px] h-8">
+                    <SelectValue placeholder="Tenant" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Tenants</SelectItem>
+                    {uniqueTenants.map((tenant) => (
+                      <SelectItem key={tenant} value={tenant}>
+                        {tenant}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              
+              {/* User Filter */}
+              {uniqueUsers.length > 0 && (
+                <Select
+                  value={selectedUser || "all"}
+                  onValueChange={(value) => setSelectedUser(value === "all" ? undefined : value)}
+                >
+                  <SelectTrigger className="w-[140px] h-8">
+                    <SelectValue placeholder="User" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Users</SelectItem>
+                    {uniqueUsers.map((user) => (
+                      <SelectItem key={user} value={user}>
+                        {user}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              
+              {/* New Engine Filter */}
+              <div className="flex items-center space-x-2">
+              <Checkbox
+                id="new-engine"
                 checked={showNewEngineOnly}
-                onCheckedChange={(checked) => {
-                  setShowNewEngineOnly(checked as boolean);
-                  setPage(1);
-                }}
-                disabled={isLoading}
+                onCheckedChange={(checked) => setShowNewEngineOnly(checked as boolean)}
               />
-              <label 
-                htmlFor="new-engine-only"
+              <label
+                htmlFor="new-engine"
                 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center cursor-pointer"
               >
                 <Rocket className="h-4 w-4 mr-1" />
@@ -236,57 +224,72 @@ export default function GoldfishPage() {
               </Alert>
             )}
             
-            {isLoading ? (
-              // Loading skeletons
+            {isLoading && queries.length === 0 ? (
+              // Initial loading skeletons
               <div className="space-y-4">
                 {Array.from({ length: 3 }).map((_, i) => (
                   <Skeleton key={i} className="h-96 w-full" />
                 ))}
               </div>
-            ) : filteredQueries.length === 0 ? (
+            ) : queries.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 No queries found
                 {selectedTenant && ` for tenant ${selectedTenant}`}
                 {selectedUser && ` for user ${selectedUser}`}
               </div>
             ) : (
-              <div className="space-y-4">
-                {filteredQueries.map((query) => (
-                  <QueryDiffView key={query.correlationId} query={query} />
-                ))}
-              </div>
-            )}
-            
-            {(hasMore || page > 1) && !isLoading && (
-              <div className="flex items-center justify-between pt-4">
-                <div className="text-sm text-muted-foreground">
-                  Page {page}
+              <>
+                <div className="space-y-4">
+                  {queries.map((query) => (
+                    <QueryDiffView key={query.correlationId} query={query} />
+                  ))}
                 </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setPage(p => Math.max(1, p - 1));
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    disabled={page === 1}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setPage(p => p + 1);
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    disabled={!hasMore}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
+                
+                {/* Load More Section */}
+                {hasMore && (
+                  <div className="flex justify-center pt-6">
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      onClick={loadMore}
+                      disabled={isLoadingMore}
+                      className="min-w-[200px]"
+                    >
+                      {isLoadingMore ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="h-4 w-4 mr-2" />
+                          Load More
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+                
+                {/* Loading indicator for more items */}
+                {isLoadingMore && (
+                  <div className="space-y-4">
+                    {Array.from({ length: 2 }).map((_, i) => (
+                      <Skeleton key={`loading-${i}`} className="h-96 w-full" />
+                    ))}
+                  </div>
+                )}
+                
+                {/* End of results indicator */}
+                {!hasMore && queries.length > 0 && (
+                  <div className="text-center py-6 text-muted-foreground text-sm">
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="h-px bg-border flex-1 max-w-xs" />
+                      <span>End of results ({queries.length} queries)</span>
+                      <div className="h-px bg-border flex-1 max-w-xs" />
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </CardContent>

@@ -39,7 +39,7 @@ describe('useGoldfishQueries', () => {
     it('passes tenant filter to API call', async () => {
       const mockData = {
         queries: [],
-        total: 0,
+        hasMore: false,
         page: 1,
         pageSize: 20,
       };
@@ -60,7 +60,7 @@ describe('useGoldfishQueries', () => {
     it('passes user filter to API call', async () => {
       const mockData = {
         queries: [],
-        total: 0,
+        hasMore: false,
         page: 1,
         pageSize: 20,
       };
@@ -81,7 +81,7 @@ describe('useGoldfishQueries', () => {
     it('passes newEngine filter to API call', async () => {
       const mockData = {
         queries: [],
-        total: 0,
+        hasMore: false,
         page: 1,
         pageSize: 20,
       };
@@ -102,7 +102,7 @@ describe('useGoldfishQueries', () => {
     it('passes all filters to API call', async () => {
       const mockData = {
         queries: [],
-        total: 0,
+        hasMore: false,
         page: 1,
         pageSize: 20,
       };
@@ -123,7 +123,7 @@ describe('useGoldfishQueries', () => {
     it('refetches data when filters change', async () => {
       const mockData = {
         queries: [],
-        total: 0,
+        hasMore: false,
         page: 1,
         pageSize: 20,
       };
@@ -178,7 +178,7 @@ describe('useGoldfishQueries', () => {
     it('returns loading state initially', () => {
       mockFetchSampledQueries.mockResolvedValueOnce({
         queries: [],
-        total: 0,
+        hasMore: false,
         page: 1,
         pageSize: 20,
       });
@@ -237,7 +237,7 @@ describe('useGoldfishQueries', () => {
             cellBUsedNewEngine: false,
           },
         ],
-        total: 1,
+        hasMore: false,
         page: 1,
         pageSize: 20,
       };
@@ -270,7 +270,7 @@ describe('useGoldfishQueries', () => {
     it('refetches data when page changes', async () => {
       const mockData = {
         queries: [],
-        total: 0,
+        hasMore: false,
         page: 1,
         pageSize: 20,
       };

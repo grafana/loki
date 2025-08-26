@@ -80,7 +80,7 @@ export interface ComparisonOutcome {
 
 export interface GoldfishAPIResponse {
   queries: SampledQuery[];
-  total: number;
+  hasMore: boolean;
   page: number;
   pageSize: number;
 }

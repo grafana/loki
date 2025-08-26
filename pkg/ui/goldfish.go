@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/url"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/goldfish"
 )
 
@@ -119,13 +121,21 @@ type ComparisonOutcome struct {
 // GoldfishAPIResponse represents the paginated API response
 type GoldfishAPIResponse struct {
 	Queries  []SampledQuery `json:"queries"`
-	Total    int            `json:"total"`
+	HasMore  bool           `json:"hasMore"`
 	Page     int            `json:"page"`
 	PageSize int            `json:"pageSize"`
 }
 
 // GetSampledQueries retrieves sampled queries from the database with pagination and outcome filtering
 func (s *Service) GetSampledQueries(page, pageSize int, filter goldfish.QueryFilter) (*GoldfishAPIResponse, error) {
+	return s.GetSampledQueriesWithContext(context.Background(), page, pageSize, filter)
+}
+
+// GetSampledQueriesWithContext retrieves sampled queries with trace context
+func (s *Service) GetSampledQueriesWithContext(ctx context.Context, page, pageSize int, filter goldfish.QueryFilter) (*GoldfishAPIResponse, error) {
+	// Extract trace ID for logging
+	traceID, _ := ctx.Value("trace-id").(string)
+
 	if !s.cfg.Goldfish.Enable {
 		return nil, ErrGoldfishDisabled
 	}
@@ -134,9 +144,82 @@ func (s *Service) GetSampledQueries(page, pageSize int, filter goldfish.QueryFil
 		return nil, ErrGoldfishNotConfigured
 	}
 
-	// Call the storage layer which returns QuerySample
-	resp, err := s.goldfishStorage.GetSampledQueries(context.Background(), page, pageSize, filter)
+	// Apply time range defaults and validation
+	// Check if only one time bound is specified (invalid state)
+	fromIsZero := filter.From.IsZero()
+	toIsZero := filter.To.IsZero()
+
+	if fromIsZero != toIsZero {
+		// One is set but not the other - this is an error
+		return nil, fmt.Errorf("both From and To must be specified, or neither")
+	}
+
+	// If both are zero, apply defaults (last hour)
+	if fromIsZero && toIsZero {
+		now := s.now()
+		filter.To = now
+		filter.From = now.Add(-time.Hour)
+	}
+
+	// Log the query with trace context
+	if traceID != "" {
+		level.Debug(s.logger).Log(
+			"msg", "fetching sampled queries",
+			"trace_id", traceID,
+			"page", page,
+			"pageSize", pageSize,
+			"filter", fmt.Sprintf("%+v", filter),
+		)
+	}
+
+	// Call the storage layer with context and track metrics
+	queryStart := s.now()
+	resp, err := s.goldfishStorage.GetSampledQueries(ctx, page, pageSize, filter)
+	queryDuration := time.Since(queryStart).Seconds()
+
+	// Record database query metrics with partition info
+	if s.goldfishMetrics != nil {
+		status := "success"
+		if err != nil {
+			status = "error"
+			s.goldfishMetrics.IncrementErrors("db_query")
+		}
+
+		// Calculate which partitions were likely accessed
+		// With 6-hour partitions, we can track this more precisely
+		partitionRange := "last_24h"
+		if filter.Outcome != "" && filter.Outcome != goldfish.OutcomeAll {
+			partitionRange = "last_48h"
+		}
+		if filter.Tenant != "" || filter.User != "" {
+			partitionRange = "last_72h"
+		}
+
+		s.goldfishMetrics.RecordQueryDuration("get_sampled_queries", partitionRange, status, queryDuration)
+		s.goldfishMetrics.IncrementPartitionAccess(partitionRange, "get_sampled_queries")
+
+		if resp != nil {
+			s.goldfishMetrics.RecordQueryRows("get_sampled_queries", float64(len(resp.Queries)))
+
+			// Track data recency to validate partition strategy
+			if len(resp.Queries) > 0 {
+				oldestQuery := resp.Queries[len(resp.Queries)-1]
+				hoursOld := time.Since(oldestQuery.SampledAt).Hours()
+				partitionsAccessed := int(math.Ceil(hoursOld / 6))
+				level.Debug(s.logger).Log(
+					"msg", "query data recency",
+					"oldest_hours", hoursOld,
+					"partitions_accessed", partitionsAccessed,
+					"trace_id", traceID,
+				)
+			}
+		}
+	}
+
 	if err != nil {
+		if traceID != "" {
+			level.Error(s.logger).Log("msg", "failed to fetch from storage", "err", err, "trace_id", traceID, "query_duration_s", queryDuration)
+		}
 		return nil, err
 	}
 
@@ -235,7 +318,7 @@ func (s *Service) GetSampledQueries(page, pageSize int, filter goldfish.QueryFil
 
 	return &GoldfishAPIResponse{
 		Queries:  queries,
-		Total:    resp.Total,
+		HasMore:  resp.HasMore,
 		Page:     resp.Page,
 		PageSize: resp.PageSize,
 	}, nil

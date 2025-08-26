@@ -94,4 +94,5 @@ type QueryFilter struct {
 	Tenant        string
 	User          string
 	UsedNewEngine *bool // pointer to handle true/false/nil states
+	From, To      time.Time
 }
