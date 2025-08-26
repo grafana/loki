@@ -167,6 +167,106 @@ func Test_DetectLogLevels(t *testing.T) {
 			Value: constants.LogLevelTrace,
 		})
 	})
+
+	t.Run("detected_level with uppercase value gets normalized to lowercase", func(t *testing.T) {
+		limits, ingester := setup(true)
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		// Create a write request with detected_level in uppercase
+		writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`}, false, false, false)
+		writeReq.Streams[0].Entries[0].Line = `some log message`
+		writeReq.Streams[0].Entries[0].StructuredMetadata = push.LabelsAdapter{
+			{
+				Name:  constants.LevelLabel, // detected_level
+				Value: "ERROR",              // Uppercase value
+			},
+		}
+
+		_, err := distributors[0].Push(ctx, writeReq)
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Equal(t, `{foo="bar"}`, topVal.Streams[0].Labels)
+
+		// Verify that detected_level is normalized to lowercase
+		sm := topVal.Streams[0].Entries[0].StructuredMetadata
+		require.Len(t, sm, 1)
+		require.Equal(t, constants.LevelLabel, sm[0].Name)
+		require.Equal(t, constants.LogLevelError, sm[0].Value) // Should be lowercase "error"
+	})
+
+	t.Run("detected_level with mixed case value gets normalized to lowercase", func(t *testing.T) {
+		// Test various mixed case values
+		testCases := []struct {
+			input    string
+			expected string
+		}{
+			{"WaRn", constants.LogLevelWarn},
+			{"InFo", constants.LogLevelInfo},
+			{"CRITICAL", constants.LogLevelCritical},
+			{"Debug", constants.LogLevelDebug},
+			{"FaTaL", constants.LogLevelFatal},
+			{"tRaCe", constants.LogLevelTrace},
+		}
+
+		for _, tc := range testCases {
+			// Create a fresh setup for each test case
+			limits, ingester := setup(true)
+			distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+
+			writeReq := makeWriteRequestWithLabels(1, 10, []string{`{foo="bar"}`}, false, false, false)
+			writeReq.Streams[0].Entries[0].Line = `test log`
+			writeReq.Streams[0].Entries[0].StructuredMetadata = push.LabelsAdapter{
+				{
+					Name:  constants.LevelLabel,
+					Value: tc.input,
+				},
+			}
+
+			_, err := distributors[0].Push(ctx, writeReq)
+			require.NoError(t, err)
+			topVal := ingester.Peek()
+
+			sm := topVal.Streams[0].Entries[0].StructuredMetadata
+			require.Len(t, sm, 1)
+			require.Equal(t, constants.LevelLabel, sm[0].Name)
+			require.Equal(t, tc.expected, sm[0].Value, "Input %q should normalize to %q", tc.input, tc.expected)
+		}
+	})
+
+	t.Run("level from stream labels gets normalized to lowercase in detected_level", func(t *testing.T) {
+		// Test various mixed case values in stream labels
+		testCases := []struct {
+			streamLabel string
+			expected    string
+		}{
+			{`{foo="bar", level="ERROR"}`, constants.LogLevelError},
+			{`{foo="bar", level="WaRn"}`, constants.LogLevelWarn},
+			{`{foo="bar", level="InFo"}`, constants.LogLevelInfo},
+			{`{foo="bar", level="CRITICAL"}`, constants.LogLevelCritical},
+			{`{foo="bar", level="Debug"}`, constants.LogLevelDebug},
+			{`{foo="bar", level="FaTaL"}`, constants.LogLevelFatal},
+			{`{foo="bar", level="tRaCe"}`, constants.LogLevelTrace},
+		}
+
+		for _, tc := range testCases {
+			// Create a fresh setup for each test case
+			limits, ingester := setup(true)
+			distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+
+			writeReq := makeWriteRequestWithLabels(1, 10, []string{tc.streamLabel}, false, false, false)
+			writeReq.Streams[0].Entries[0].Line = `log message without level`
+
+			_, err := distributors[0].Push(ctx, writeReq)
+			require.NoError(t, err)
+			topVal := ingester.Peek()
+
+			// Verify that detected_level is normalized to lowercase
+			sm := topVal.Streams[0].Entries[0].StructuredMetadata
+			require.Len(t, sm, 1, "Expected detected_level in structured metadata for stream label %s", tc.streamLabel)
+			require.Equal(t, constants.LevelLabel, sm[0].Name)
+			require.Equal(t, tc.expected, sm[0].Value, "Stream label %q should normalize to %q in detected_level", tc.streamLabel, tc.expected)
+		}
+	})
 }
 
 func Test_detectLogLevelFromLogEntry(t *testing.T) {
