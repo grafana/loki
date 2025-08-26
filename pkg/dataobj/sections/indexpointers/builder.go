@@ -29,6 +29,7 @@ type IndexPointer struct {
 type Builder struct {
 	metrics  *Metrics
 	pageSize int
+	tenant   string
 
 	indexPointers []*IndexPointer
 }
@@ -43,6 +44,12 @@ func NewBuilder(metrics *Metrics, pageSize int) *Builder {
 		indexPointers: make([]*IndexPointer, 0, 1024),
 	}
 }
+
+func (b *Builder) SetTenant(tenant string) {
+	b.tenant = tenant
+}
+
+func (b *Builder) Tenant() string { return b.tenant }
 
 func (b *Builder) Type() dataobj.SectionType { return sectionType }
 
@@ -110,6 +117,8 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	if err := b.encodeTo(&enc); err != nil {
 		return 0, fmt.Errorf("building encoder: %w", err)
 	}
+
+	enc.SetTenant(b.tenant)
 
 	n, err = enc.Flush(w)
 	if err == nil {
