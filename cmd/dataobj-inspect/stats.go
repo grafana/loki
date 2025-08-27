@@ -73,7 +73,7 @@ func (cmd *statsCommand) printStreamsSectionStats(ctx context.Context, offset in
 		humanize.Bytes(stats.UncompressedSize),
 	)
 	for _, col := range stats.Columns {
-		fmt.Printf("\t\tname: %s, type: %v, %d populated rows, %v compressed (%v), %v uncompressed\n", col.Name, col.Type[12:], col.ValuesCount, humanize.Bytes(col.CompressedSize), col.Compression[17:], humanize.Bytes(col.UncompressedSize))
+		fmt.Printf("\t\tname: %s, type: %v, %d populated rows, %v compressed (%v), %v uncompressed\n", col.Name, col.Type, col.ValuesCount, humanize.Bytes(col.CompressedSize), col.Compression[17:], humanize.Bytes(col.UncompressedSize))
 	}
 }
 
@@ -96,7 +96,7 @@ func (cmd *statsCommand) printLogsSectionStats(ctx context.Context, offset int, 
 		humanize.Bytes(stats.UncompressedSize),
 	)
 	for _, col := range stats.Columns {
-		fmt.Printf("\t\tname: %s, type: %v, %d populated rows, %v compressed (%v), %v uncompressed\n", col.Name, col.Type[12:], col.ValuesCount, humanize.Bytes(col.CompressedSize), col.Compression[17:], humanize.Bytes(col.UncompressedSize))
+		fmt.Printf("\t\tname: %s, type: %v, %d populated rows, %v compressed (%v), %v uncompressed\n", col.Name, col.Type, col.ValuesCount, humanize.Bytes(col.CompressedSize), col.Compression[17:], humanize.Bytes(col.UncompressedSize))
 	}
 }
 
