@@ -18,11 +18,11 @@ Helm chart for Grafana Loki and Grafana Enterprise Logs supporting monolithic, s
 | https://grafana.github.io/helm-charts | grafana-agent-operator(grafana-agent-operator) | 0.5.1 |
 | https://grafana.github.io/helm-charts | rollout_operator(rollout-operator) | 0.32.0 |
 
-Find more information in the Loki Helm Chart [documentation](https://grafana.com/docs/loki/next/installation/helm).
+Find more information in the Loki Helm Chart [documentation](https://grafana.com/docs/loki/latest/setup/install/helm/).
 
 ## Contributing
 
-Please see our [Contributing Guidelines](./CONTRIBUTING.md) for detailed information about contributing to the Loki Helm Chart.
+Please see our [Helm Contributing Guidelines](./CONTRIBUTING.md) for detailed information about contributing to the Loki Helm Chart.
 
 ## Releases
 
