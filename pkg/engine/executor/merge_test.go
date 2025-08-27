@@ -75,7 +75,7 @@ func TestMerge(t *testing.T) {
 		pipelineB = NewArrowtestPipeline(alloc, schema, rowsInput2...)
 	)
 
-	m, err := newMergePipeline([]Pipeline{pipelineA, pipelineB}, 1)
+	m, err := newMergePipeline([]Pipeline{pipelineA, pipelineB}, 0)
 	require.NoError(t, err)
 
 	var got []arrowtest.Rows
@@ -147,7 +147,7 @@ func TestMerge_concurrency(t *testing.T) {
 	}
 
 	// Test different concurrency settings
-	for _, maxConcurrency := range []int{1, 3, 5, 10} {
+	for _, maxConcurrency := range []int{1, 3, 5, 10, -1} {
 		t.Run(fmt.Sprintf("concurrency=%d", maxConcurrency), func(t *testing.T) {
 			// Create fresh pipelines using the pre-generated data
 			pipelines := make([]Pipeline, 10)
