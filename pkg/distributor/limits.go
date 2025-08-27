@@ -48,4 +48,6 @@ type Limits interface {
 	IngestionPartitionsTenantShardSize(userID string) int
 
 	SimulatedPushLatency(userID string) time.Duration
+
+	SegmentationRules(userID string) []string
 }
