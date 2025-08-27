@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
-    createdAt: "2025-06-11T13:21:40Z"
+    createdAt: "2025-09-05T10:45:04Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -1016,6 +1016,17 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:dynamic
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-logging
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-network
+      - description: |-
+          NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+          When enabled, the operator creates NetworkPolicies to control ingress/egress between
+          Loki components and related services.
+          Values: "" (default behavior), "false", "true".
+        displayName: Network Policies
+        path: tenants.networkPolicies
+        x-descriptors:
+        - 'urn:alm:descriptor:com.tectonic.ui:select:'
+        - urn:alm:descriptor:com.tectonic.ui:select:false
+        - urn:alm:descriptor:com.tectonic.ui:select:true
       - description: Openshift defines the configuration specific to Openshift modes.
         displayName: Openshift
         path: tenants.openshift
@@ -1695,6 +1706,7 @@ spec:
           - config.openshift.io
           resources:
           - apiservers
+          - clusterversions
           - dnses
           - proxies
           verbs:
@@ -1774,6 +1786,17 @@ spec:
           - ingresses
           verbs:
           - create
+          - get
+          - list
+          - update
+          - watch
+        - apiGroups:
+          - networking.k8s.io
+          resources:
+          - networkpolicies
+          verbs:
+          - create
+          - delete
           - get
           - list
           - update

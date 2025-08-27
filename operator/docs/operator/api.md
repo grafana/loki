@@ -2519,6 +2519,33 @@ using an in-process OpenPolicyAgent Rego authorizer.</p>
 </tr></tbody>
 </table>
 
+## NetworkPoliciesType { #loki-grafana-com-v1-NetworkPoliciesType }
+(<code>string</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-TenantsSpec">TenantsSpec</a>)
+</p>
+<div>
+<p>NetworkPoliciesType defines the network policies configuration mode.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;&#34;</p></td>
+<td><p>NetworkPoliciesDefault when no explicit value is set, inherits default behavior.</p>
+</td>
+</tr><tr><td><p>&#34;false&#34;</p></td>
+<td><p>NetworkPoliciesDisabled when NetworkPolicies are explicitly disabled.</p>
+</td>
+</tr><tr><td><p>&#34;true&#34;</p></td>
+<td><p>NetworkPoliciesEnabled when NetworkPolicies are explicitly enabled.</p>
+</td>
+</tr></tbody>
+</table>
+
 ## OIDCSpec { #loki-grafana-com-v1-OIDCSpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-AuthenticationSpec">AuthenticationSpec</a>)
@@ -4853,6 +4880,23 @@ AuthorizationSpec
 <td>
 <em>(Optional)</em>
 <p>Authorization defines the lokistack-gateway component authorization configuration spec per tenant.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>networkPolicies</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-NetworkPoliciesType">
+NetworkPoliciesType
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+When enabled, the operator creates NetworkPolicies to control ingress/egress between
+Loki components and related services.
+Values: &ldquo;&rdquo; (default behavior), &ldquo;false&rdquo;, &ldquo;true&rdquo;.</p>
 </td>
 </tr>
 <tr>

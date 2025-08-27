@@ -252,6 +252,20 @@ const (
 	OpenshiftNetwork ModeType = "openshift-network"
 )
 
+// NetworkPoliciesType defines the network policies configuration mode.
+//
+// +kubebuilder:validation:Enum="";"false";"true"
+type NetworkPoliciesType string
+
+const (
+	// NetworkPoliciesDefault when no explicit value is set, inherits default behavior.
+	NetworkPoliciesDefault NetworkPoliciesType = ""
+	// NetworkPoliciesDisabled when NetworkPolicies are explicitly disabled.
+	NetworkPoliciesDisabled NetworkPoliciesType = "false"
+	// NetworkPoliciesEnabled when NetworkPolicies are explicitly enabled.
+	NetworkPoliciesEnabled NetworkPoliciesType = "true"
+)
+
 // TenantsSpec defines the mode, authentication and authorization
 // configuration of the lokiStack gateway component.
 type TenantsSpec struct {
@@ -274,6 +288,16 @@ type TenantsSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Authorization"
 	Authorization *AuthorizationSpec `json:"authorization,omitempty"`
+
+	// NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+	// When enabled, the operator creates NetworkPolicies to control ingress/egress between
+	// Loki components and related services.
+	// Values: "" (default behavior), "false", "true".
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:","urn:alm:descriptor:com.tectonic.ui:select:false","urn:alm:descriptor:com.tectonic.ui:select:true"},displayName="Network Policies"
+	NetworkPolicies NetworkPoliciesType `json:"networkPolicies,omitempty"`
 
 	// Openshift defines the configuration specific to Openshift modes.
 	//
