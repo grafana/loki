@@ -35,6 +35,7 @@ import (
 //   - Route
 //   - PrometheusRule
 //   - PodDisruptionBudget
+//   - NetworkPolicy
 func MutateFuncFor(existing, desired client.Object, depAnnotations map[string]string) controllerutil.MutateFn {
 	return func() error {
 		existingAnnotations := existing.GetAnnotations()
@@ -137,6 +138,11 @@ func MutateFuncFor(existing, desired client.Object, depAnnotations map[string]st
 			pdb := existing.(*policyv1.PodDisruptionBudget)
 			wantPdb := desired.(*policyv1.PodDisruptionBudget)
 			mutatePodDisruptionBudget(pdb, wantPdb)
+
+		case *networkingv1.NetworkPolicy:
+			np := existing.(*networkingv1.NetworkPolicy)
+			wantNp := desired.(*networkingv1.NetworkPolicy)
+			mutateNetworkPolicy(np, wantNp)
 
 		default:
 			t := reflect.TypeOf(existing).String()
@@ -272,4 +278,10 @@ func mutatePodSpec(existing *corev1.PodSpec, desired *corev1.PodSpec) {
 	existing.Tolerations = desired.Tolerations
 	existing.TopologySpreadConstraints = desired.TopologySpreadConstraints
 	existing.Volumes = desired.Volumes
+}
+
+func mutateNetworkPolicy(existing, desired *networkingv1.NetworkPolicy) {
+	existing.Annotations = desired.Annotations
+	existing.Labels = desired.Labels
+	existing.Spec = desired.Spec
 }
