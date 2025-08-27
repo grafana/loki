@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -46,7 +47,7 @@ type producer interface {
 }
 
 type tocWriter interface {
-	WriteEntry(ctx context.Context, dataobjPath string, minTimestamp, maxTimestamp time.Time) error
+	WriteEntry(ctx context.Context, dataobjPath string, timeRanges []multitenancy.TimeRange) error
 }
 
 type partitionProcessor struct {
@@ -136,7 +137,7 @@ func newPartitionProcessor(
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
 
-	metastoreTocWriter := metastore.NewTableOfContentsWriter(metastoreCfg, bucket, tenantID, logger)
+	metastoreTocWriter := metastore.NewTableOfContentsWriter(metastoreCfg, bucket, logger)
 	if err := metastoreTocWriter.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register metastore updater metrics", "err", err)
 	}
@@ -340,7 +341,14 @@ func (p *partitionProcessor) flush() error {
 		return err
 	}
 
-	if err := p.metastoreTocWriter.WriteEntry(p.ctx, objectPath, minTime, maxTime); err != nil {
+	// TODO(benclive): Remove this Update once the indexes are being built from the metastore events
+	if err := p.metastoreTocWriter.WriteEntry(p.ctx, objectPath, []multitenancy.TimeRange{
+		{
+			Tenant:  string(p.tenantID),
+			MinTime: minTime,
+			MaxTime: maxTime,
+		},
+	}); err != nil {
 		level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
 		return err
 	}

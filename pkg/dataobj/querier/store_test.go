@@ -19,6 +19,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -475,7 +476,7 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	}, nil)
 	require.NoError(t, err)
 
-	meta := metastore.NewTableOfContentsWriter(metastore.Config{}, bucket, tenantID, log.NewNopLogger())
+	meta := metastore.NewTableOfContentsWriter(metastore.Config{}, bucket, log.NewNopLogger())
 	require.NoError(t, meta.RegisterMetrics(prometheus.NewRegistry()))
 
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, log.NewNopLogger())
@@ -511,7 +512,13 @@ func (b *testDataBuilder) flush() {
 	require.NoError(b.t, err)
 
 	// Update metastore with the new data object
-	err = b.meta.WriteEntry(context.Background(), path, minTime, maxTime)
+	err = b.meta.WriteEntry(context.Background(), path, []multitenancy.TimeRange{
+		{
+			Tenant:  b.tenantID,
+			MinTime: minTime,
+			MaxTime: maxTime,
+		},
+	})
 	require.NoError(b.t, err)
 
 	b.builder.Reset()

@@ -113,16 +113,17 @@ func TestCalculator_Calculate(t *testing.T) {
 		}
 
 		// Verify we can flush the results
-		minTime, maxTime := calculator.TimeRange()
+		timeRanges := calculator.TimeRanges()
 		obj, closer, err := calculator.Flush()
 		require.NoError(t, err)
 		defer closer.Close()
 
 		require.Greater(t, obj.Size(), int64(0))
-		require.False(t, minTime.IsZero())
-		require.Equal(t, minTime, time.Unix(10, 0).UTC())
-		require.False(t, maxTime.IsZero())
-		require.Equal(t, maxTime, time.Unix(25, 0).UTC())
+		require.Equal(t, len(timeRanges), 1)
+		require.False(t, timeRanges[0].MinTime.IsZero())
+		require.Equal(t, timeRanges[0].MinTime, time.Unix(10, 0).UTC())
+		require.False(t, timeRanges[0].MaxTime.IsZero())
+		require.Equal(t, timeRanges[0].MaxTime, time.Unix(25, 0).UTC())
 
 		// Confirm we have multiple pointers sections
 		count := obj.Sections().Count(pointers.CheckSection)
