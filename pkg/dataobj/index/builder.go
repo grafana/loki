@@ -255,7 +255,6 @@ func (p *Builder) processRecord(record *kgo.Record) {
 }
 
 func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
-	indexStorageBucket := objstore.NewPrefixedBucket(p.bucket, p.mCfg.Storage.IndexStoragePrefix)
 	level.Info(p.logger).Log("msg", "building index", "events", len(events), "tenant", events[0].Tenant)
 	start := time.Now()
 
@@ -318,11 +317,17 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 	}
 	defer reader.Close()
 
-	if err := indexStorageBucket.Upload(p.ctx, key, reader); err != nil {
-		return fmt.Errorf("failed to upload index: %w", err)
+	{
+		// We always need to upload to the index storage bucket
+		indexUploadBucket := objstore.NewPrefixedBucket(p.bucket, p.mCfg.Storage.IndexStoragePrefix)
+		if err := indexUploadBucket.Upload(p.ctx, key, reader); err != nil {
+			return fmt.Errorf("failed to upload index: %w", err)
+		}
 	}
 
-	metastoreTocWriter := metastore.NewTableOfContentsWriter(p.mCfg, indexStorageBucket, p.logger)
+	// The ToC writer will conditionally apply the prefix for enabled tenants, so we need to use the base bucket to avoid double prefixing.
+	// In this case, it will always apply the prefix here because we only build indexes for enabled tenants.
+	metastoreTocWriter := metastore.NewTableOfContentsWriter(p.mCfg, p.bucket, p.logger)
 	if err := metastoreTocWriter.WriteEntry(p.ctx, key, tenantTimeRanges); err != nil {
 		return fmt.Errorf("failed to update metastore ToC file: %w", err)
 	}
