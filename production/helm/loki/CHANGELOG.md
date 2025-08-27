@@ -15,6 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [FEATURE] Support separate loki ruler storage configuration [#18510](https://github.com/grafana/loki/pull/18510)
 - [ENHANCEMENT] add namespaceOverride [#18707](https://github.com/grafana/loki/pull/18707)
+- [ENHANCEMENT] Allow liveness and readiness probes to be customized for the loki-quierier [#19020](https://github.com/grafana/loki/pull/19020)
 
 ## 6.37.0
 
