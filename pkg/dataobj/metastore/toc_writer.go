@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 )
 
@@ -35,7 +36,6 @@ var tocBuilderCfg = indexobj.BuilderConfig{
 type TableOfContentsWriter struct {
 	cfg        Config
 	tocBuilder *indexobj.Builder // New index pointer based builder.
-	tenantID   string
 	metrics    *tocMetrics
 	bucket     objstore.Bucket
 	logger     log.Logger
@@ -46,15 +46,14 @@ type TableOfContentsWriter struct {
 }
 
 // NewTableOfContentsWriter creates a new Writer for adding entries to the metastore's Table of Contents files.
-func NewTableOfContentsWriter(cfg Config, bucket objstore.Bucket, tenantID string, logger log.Logger) *TableOfContentsWriter {
+func NewTableOfContentsWriter(cfg Config, bucket objstore.Bucket, logger log.Logger) *TableOfContentsWriter {
 	metrics := newTableOfContentsMetrics()
 
 	return &TableOfContentsWriter{
-		cfg:      cfg,
-		bucket:   bucket,
-		metrics:  metrics,
-		logger:   logger,
-		tenantID: tenantID,
+		cfg:     cfg,
+		bucket:  bucket,
+		metrics: metrics,
+		logger:  logger,
 		backoff: backoff.New(context.TODO(), backoff.Config{
 			MinBackoff: 50 * time.Millisecond,
 			MaxBackoff: 10 * time.Second,
@@ -86,7 +85,7 @@ func (m *TableOfContentsWriter) initBuilder() error {
 }
 
 // WriteEntry adds the provided path to the Table of Contents file. The min/max timestamps are stored as metastore for the new entry can be accessed by time.
-func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath string, minTimestamp, maxTimestamp time.Time) error {
+func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath string, tenantTimeRanges []multitenancy.TimeRange) error {
 	var err error
 	processingTime := prometheus.NewTimer(m.metrics.tocProcessingTime)
 	defer processingTime.ObserveDuration()
@@ -98,85 +97,87 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
-	prefix := storagePrefixFor(m.cfg.Storage, m.tenantID)
-	for metastorePath := range iterTableOfContentsPaths(m.tenantID, minTimestamp, maxTimestamp, prefix) {
-		m.backoff.Reset()
-		for m.backoff.Ongoing() {
-			err = m.bucket.GetAndReplace(ctx, metastorePath, func(existing io.ReadCloser) (io.ReadCloser, error) {
-				if existing != nil {
-					defer existing.Close()
-				}
-
-				m.buf.Reset()
-				m.tocBuilder.Reset()
-
-				if existing != nil {
-					_, err := io.Copy(m.buf, existing)
-					if err != nil {
-						return nil, errors.Wrap(err, "copying to local buffer")
+	for _, timeRange := range tenantTimeRanges {
+		prefix := storagePrefixFor(m.cfg.Storage, timeRange.Tenant)
+		for tocPath := range iterTableOfContentsPaths(timeRange.Tenant, timeRange.MinTime, timeRange.MaxTime, prefix) {
+			m.backoff.Reset()
+			for m.backoff.Ongoing() {
+				err = m.bucket.GetAndReplace(ctx, tocPath, func(existing io.ReadCloser) (io.ReadCloser, error) {
+					if existing != nil {
+						defer existing.Close()
 					}
-				}
 
-				if m.buf.Len() > 0 {
-					replayDuration := prometheus.NewTimer(m.metrics.tocReplayTime)
-					object, err := dataobj.FromReaderAt(bytes.NewReader(m.buf.Bytes()), int64(m.buf.Len()))
-					if err != nil {
-						return nil, errors.Wrap(err, "creating object from buffer")
+					m.buf.Reset()
+					m.tocBuilder.Reset()
+
+					if existing != nil {
+						_, err := io.Copy(m.buf, existing)
+						if err != nil {
+							return nil, errors.Wrap(err, "copying to local buffer")
+						}
 					}
-					err = m.copyFromExistingToc(ctx, object)
-					if err != nil {
-						return nil, errors.Wrap(err, "reading existing metastore version")
+
+					if m.buf.Len() > 0 {
+						replayDuration := prometheus.NewTimer(m.metrics.tocReplayTime)
+						object, err := dataobj.FromReaderAt(bytes.NewReader(m.buf.Bytes()), int64(m.buf.Len()))
+						if err != nil {
+							return nil, errors.Wrap(err, "creating object from buffer")
+						}
+						err = m.copyFromExistingToc(ctx, object)
+						if err != nil {
+							return nil, errors.Wrap(err, "reading existing metastore version")
+						}
+						replayDuration.ObserveDuration()
 					}
-					replayDuration.ObserveDuration()
+
+					encodingDuration := prometheus.NewTimer(m.metrics.tocEncodingTime)
+					err := m.tocBuilder.AppendIndexPointer(timeRange.Tenant, dataobjPath, timeRange.MinTime, timeRange.MaxTime)
+					if err != nil {
+						return nil, errors.Wrap(err, "appending index pointer")
+					}
+
+					var (
+						obj    *dataobj.Object
+						closer io.Closer
+					)
+
+					obj, closer, err = m.tocBuilder.Flush()
+					if err != nil {
+						return nil, errors.Wrap(err, "flushing metastore builder")
+					}
+
+					reader, err := obj.Reader(ctx)
+					if err != nil {
+						_ = closer.Close()
+						return nil, err
+					}
+
+					encodingDuration.ObserveDuration()
+					return &wrappedReadCloser{
+						rc: reader,
+						OnClose: func() error {
+							// We must close our object reader before closing the object
+							// itself.
+							var errs []error
+							errs = append(errs, reader.Close())
+							errs = append(errs, closer.Close())
+							return stderrors.Join(errs...)
+						},
+					}, nil
+				})
+				if err == nil {
+					level.Info(m.logger).Log("msg", "successfully merged & updated metastore", "metastore", tocPath)
+					m.metrics.incTableOfContentsWrites(statusSuccess)
+					break
 				}
-
-				encodingDuration := prometheus.NewTimer(m.metrics.tocEncodingTime)
-				err := m.tocBuilder.AppendIndexPointer(dataobjPath, minTimestamp, maxTimestamp)
-				if err != nil {
-					return nil, errors.Wrap(err, "appending index pointer")
-				}
-
-				var (
-					obj    *dataobj.Object
-					closer io.Closer
-				)
-
-				obj, closer, err = m.tocBuilder.Flush()
-				if err != nil {
-					return nil, errors.Wrap(err, "flushing metastore builder")
-				}
-
-				reader, err := obj.Reader(ctx)
-				if err != nil {
-					_ = closer.Close()
-					return nil, err
-				}
-
-				encodingDuration.ObserveDuration()
-				return &wrappedReadCloser{
-					rc: reader,
-					OnClose: func() error {
-						// We must close our object reader before closing the object
-						// itself.
-						var errs []error
-						errs = append(errs, reader.Close())
-						errs = append(errs, closer.Close())
-						return stderrors.Join(errs...)
-					},
-				}, nil
-			})
-			if err == nil {
-				level.Info(m.logger).Log("msg", "successfully merged & updated metastore", "metastore", metastorePath)
-				m.metrics.incMetastoreWrites(statusSuccess)
-				break
+				level.Error(m.logger).Log("msg", "failed to get and replace metastore object", "err", err, "metastore", tocPath)
+				m.metrics.incTableOfContentsWrites(statusFailure)
+				m.backoff.Wait()
 			}
-			level.Error(m.logger).Log("msg", "failed to get and replace metastore object", "err", err, "metastore", metastorePath)
-			m.metrics.incMetastoreWrites(statusFailure)
-			m.backoff.Wait()
-		}
 
-		// Reset at the end too so we don't leave our memory hanging around between calls.
-		m.tocBuilder.Reset()
+			// Reset at the end too so we don't leave our memory hanging around between calls.
+			m.tocBuilder.Reset()
+		}
 	}
 	return err
 }
@@ -212,13 +213,14 @@ func (m *TableOfContentsWriter) copyFromExistingToc(ctx context.Context, tocObje
 		if err != nil {
 			return errors.Wrap(err, "opening section")
 		}
+		tenantID := section.Tenant
 		indexPointersReader.Reset(sec)
 		for n, err := indexPointersReader.Read(ctx, pbuf); n > 0; n, err = indexPointersReader.Read(ctx, pbuf) {
 			if err != nil && err != io.EOF {
 				return errors.Wrap(err, "reading index pointers")
 			}
 			for _, indexPointer := range pbuf[:n] {
-				err = m.tocBuilder.AppendIndexPointer(indexPointer.Path, indexPointer.StartTs, indexPointer.EndTs)
+				err = m.tocBuilder.AppendIndexPointer(tenantID, indexPointer.Path, indexPointer.StartTs, indexPointer.EndTs)
 				if err != nil {
 					return errors.Wrap(err, "appending index pointers")
 				}

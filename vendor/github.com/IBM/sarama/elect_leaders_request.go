@@ -7,6 +7,10 @@ type ElectLeadersRequest struct {
 	TimeoutMs       int32
 }
 
+func (r *ElectLeadersRequest) setVersion(v int16) {
+	r.Version = v
+}
+
 func (r *ElectLeadersRequest) encode(pe packetEncoder) error {
 	if r.Version > 0 {
 		pe.putInt8(int8(r.Type))
@@ -105,7 +109,7 @@ func (r *ElectLeadersRequest) decode(pd packetDecoder, version int16) (err error
 }
 
 func (r *ElectLeadersRequest) key() int16 {
-	return 43
+	return apiKeyElectLeaders
 }
 
 func (r *ElectLeadersRequest) version() int16 {

@@ -195,11 +195,12 @@ func (p prefetchWrapper) prefetch(ctx context.Context) error {
 				return s.err
 			}
 			s.batch, s.err = p.Pipeline.Value()
-			s.batch.Retain()
+
 			// Sending to channel will block until the batch is read by the parent pipeline.
 			// If the context is cancelled while waiting to send, we return.
 			select {
 			case <-ctx.Done():
+				// The record is dropped, release it immediately.
 				s.batch.Release()
 				return ctx.Err()
 			case p.ch <- s:
@@ -209,11 +210,8 @@ func (p prefetchWrapper) prefetch(ctx context.Context) error {
 }
 
 func (p *prefetchWrapper) read(_ context.Context) error {
-	// Release previously retained batch
-	if p.state.batch != nil {
-		p.state.batch.Release()
-	}
 	p.state = <-p.ch
+
 	// Reading from a channel that is closed while waiting yields a zero-value.
 	// In that case, the pipeline should produce an error state.
 	if p.state.err == nil && p.state.batch == nil {
@@ -238,11 +236,9 @@ func (p *prefetchWrapper) Close() {
 		// This check can only be done if p.cancel is non-nil, otherwise we may
 		// deadlock if [prefetchWrapper.Close] is called before
 		// [prefetchWrapper.init].
-		<-p.ch
-	}
-	if p.state.batch != nil {
-		p.state.batch.Release()
-		p.state = state{}
+		if state, ok := <-p.ch; ok && state.batch != nil {
+			state.batch.Release()
+		}
 	}
 	p.Pipeline.Close()
 }

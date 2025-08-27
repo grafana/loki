@@ -114,10 +114,6 @@ func (r *rangeAggregationPipeline) Read(ctx context.Context) error {
 		return r.state.err
 	}
 
-	if r.state.batch != nil {
-		r.state.batch.Release()
-	}
-
 	record, err := r.read(ctx)
 	r.state = newState(record, err)
 
@@ -215,11 +211,6 @@ func (r *rangeAggregationPipeline) Value() (arrow.Record, error) {
 // Close closes the resources of the pipeline.
 // The implementation must close all the of the pipeline's inputs.
 func (r *rangeAggregationPipeline) Close() {
-	// Release last batch
-	if r.state.batch != nil {
-		r.state.batch.Release()
-	}
-
 	for _, input := range r.inputs {
 		input.Close()
 	}
