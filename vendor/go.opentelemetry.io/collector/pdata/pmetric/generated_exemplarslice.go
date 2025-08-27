@@ -33,8 +33,7 @@ func newExemplarSlice(orig *[]otlpmetrics.Exemplar, state *internal.State) Exemp
 // Can use "EnsureCapacity" to initialize with a given capacity.
 func NewExemplarSlice() ExemplarSlice {
 	orig := []otlpmetrics.Exemplar(nil)
-	state := internal.StateMutable
-	return newExemplarSlice(&orig, &state)
+	return newExemplarSlice(&orig, internal.NewState())
 }
 
 // Len returns the number of elements in the slice.
@@ -128,7 +127,7 @@ func (es ExemplarSlice) RemoveIf(f func(Exemplar) bool) {
 	newLen := 0
 	for i := 0; i < len(*es.orig); i++ {
 		if f(es.At(i)) {
-			(*es.orig)[i] = otlpmetrics.Exemplar{}
+			internal.DeleteOrigExemplar(&(*es.orig)[i], false)
 			continue
 		}
 		if newLen == i {
@@ -137,7 +136,7 @@ func (es ExemplarSlice) RemoveIf(f func(Exemplar) bool) {
 			continue
 		}
 		(*es.orig)[newLen] = (*es.orig)[i]
-		(*es.orig)[i] = otlpmetrics.Exemplar{}
+		(*es.orig)[i].Reset()
 		newLen++
 	}
 	*es.orig = (*es.orig)[:newLen]
@@ -146,5 +145,8 @@ func (es ExemplarSlice) RemoveIf(f func(Exemplar) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es ExemplarSlice) CopyTo(dest ExemplarSlice) {
 	dest.state.AssertMutable()
+	if es.orig == dest.orig {
+		return
+	}
 	*dest.orig = internal.CopyOrigExemplarSlice(*dest.orig, *es.orig)
 }

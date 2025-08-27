@@ -7,6 +7,9 @@
 package internal
 
 import (
+	"fmt"
+	"sync"
+
 	otlpcollectortrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/trace/v1"
 	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
@@ -29,19 +32,53 @@ func NewTraces(orig *otlpcollectortrace.ExportTraceServiceRequest, state *State)
 	return Traces{orig: orig, state: state}
 }
 
-func GenerateTestTraces() Traces {
-	orig := otlpcollectortrace.ExportTraceServiceRequest{}
-	FillOrigTestExportTraceServiceRequest(&orig)
-	state := StateMutable
-	return NewTraces(&orig, &state)
+var (
+	protoPoolExportTraceServiceRequest = sync.Pool{
+		New: func() any {
+			return &otlpcollectortrace.ExportTraceServiceRequest{}
+		},
+	}
+)
+
+func NewOrigExportTraceServiceRequest() *otlpcollectortrace.ExportTraceServiceRequest {
+	if !UseProtoPooling.IsEnabled() {
+		return &otlpcollectortrace.ExportTraceServiceRequest{}
+	}
+	return protoPoolExportTraceServiceRequest.Get().(*otlpcollectortrace.ExportTraceServiceRequest)
+}
+
+func DeleteOrigExportTraceServiceRequest(orig *otlpcollectortrace.ExportTraceServiceRequest, nullable bool) {
+	if orig == nil {
+		return
+	}
+
+	if !UseProtoPooling.IsEnabled() {
+		orig.Reset()
+		return
+	}
+
+	for i := range orig.ResourceSpans {
+		DeleteOrigResourceSpans(orig.ResourceSpans[i], true)
+	}
+
+	orig.Reset()
+	if nullable {
+		protoPoolExportTraceServiceRequest.Put(orig)
+	}
 }
 
 func CopyOrigExportTraceServiceRequest(dest, src *otlpcollectortrace.ExportTraceServiceRequest) {
+	// If copying to same object, just return.
+	if src == dest {
+		return
+	}
 	dest.ResourceSpans = CopyOrigResourceSpansSlice(dest.ResourceSpans, src.ResourceSpans)
 }
 
-func FillOrigTestExportTraceServiceRequest(orig *otlpcollectortrace.ExportTraceServiceRequest) {
+func GenTestOrigExportTraceServiceRequest() *otlpcollectortrace.ExportTraceServiceRequest {
+	orig := NewOrigExportTraceServiceRequest()
 	orig.ResourceSpans = GenerateOrigTestResourceSpansSlice()
+	return orig
 }
 
 // MarshalJSONOrig marshals all properties from the current struct to the destination stream.
@@ -62,15 +99,18 @@ func MarshalJSONOrigExportTraceServiceRequest(orig *otlpcollectortrace.ExportTra
 
 // UnmarshalJSONOrigTraces unmarshals all properties from the current struct from the source iterator.
 func UnmarshalJSONOrigExportTraceServiceRequest(orig *otlpcollectortrace.ExportTraceServiceRequest, iter *json.Iterator) {
-	iter.ReadObjectCB(func(iter *json.Iterator, f string) bool {
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
 		case "resourceSpans", "resource_spans":
-			orig.ResourceSpans = UnmarshalJSONOrigResourceSpansSlice(iter)
+			for iter.ReadArray() {
+				orig.ResourceSpans = append(orig.ResourceSpans, NewOrigResourceSpans())
+				UnmarshalJSONOrigResourceSpans(orig.ResourceSpans[len(orig.ResourceSpans)-1], iter)
+			}
+
 		default:
 			iter.Skip()
 		}
-		return true
-	})
+	}
 }
 
 func SizeProtoOrigExportTraceServiceRequest(orig *otlpcollectortrace.ExportTraceServiceRequest) int {
@@ -88,7 +128,7 @@ func MarshalProtoOrigExportTraceServiceRequest(orig *otlpcollectortrace.ExportTr
 	pos := len(buf)
 	var l int
 	_ = l
-	for i := range orig.ResourceSpans {
+	for i := len(orig.ResourceSpans) - 1; i >= 0; i-- {
 		l = MarshalProtoOrigResourceSpans(orig.ResourceSpans[i], buf[:pos])
 		pos -= l
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
@@ -99,5 +139,41 @@ func MarshalProtoOrigExportTraceServiceRequest(orig *otlpcollectortrace.ExportTr
 }
 
 func UnmarshalProtoOrigExportTraceServiceRequest(orig *otlpcollectortrace.ExportTraceServiceRequest, buf []byte) error {
-	return orig.Unmarshal(buf)
+	var err error
+	var fieldNum int32
+	var wireType proto.WireType
+
+	l := len(buf)
+	pos := 0
+	for pos < l {
+		// If in a group parsing, move to the next tag.
+		fieldNum, wireType, pos, err = proto.ConsumeTag(buf, pos)
+		if err != nil {
+			return err
+		}
+		switch fieldNum {
+
+		case 1:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field ResourceSpans", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			orig.ResourceSpans = append(orig.ResourceSpans, NewOrigResourceSpans())
+			err = UnmarshalProtoOrigResourceSpans(orig.ResourceSpans[len(orig.ResourceSpans)-1], buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+		default:
+			pos, err = proto.ConsumeUnknown(buf, pos, wireType)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

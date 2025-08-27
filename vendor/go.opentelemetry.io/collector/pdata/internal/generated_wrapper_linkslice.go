@@ -8,7 +8,6 @@ package internal
 
 import (
 	otlpprofiles "go.opentelemetry.io/collector/pdata/internal/data/protogen/profiles/v1development"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 func CopyOrigLinkSlice(dest, src []*otlpprofiles.Link) []*otlpprofiles.Link {
@@ -19,19 +18,20 @@ func CopyOrigLinkSlice(dest, src []*otlpprofiles.Link) []*otlpprofiles.Link {
 		copy(newDest, dest)
 		// Add new pointers for missing elements from len(dest) to len(srt).
 		for i := len(dest); i < len(src); i++ {
-			newDest[i] = &otlpprofiles.Link{}
+			newDest[i] = NewOrigLink()
 		}
 	} else {
 		newDest = dest[:len(src)]
 		// Cleanup the rest of the elements so GC can free the memory.
 		// This can happen when len(src) < len(dest) < cap(dest).
 		for i := len(src); i < len(dest); i++ {
+			DeleteOrigLink(dest[i], true)
 			dest[i] = nil
 		}
 		// Add new pointers for missing elements.
 		// This can happen when len(dest) < len(src) < cap(dest).
 		for i := len(dest); i < len(src); i++ {
-			newDest[i] = &otlpprofiles.Link{}
+			newDest[i] = NewOrigLink()
 		}
 	}
 	for i := range src {
@@ -41,21 +41,11 @@ func CopyOrigLinkSlice(dest, src []*otlpprofiles.Link) []*otlpprofiles.Link {
 }
 
 func GenerateOrigTestLinkSlice() []*otlpprofiles.Link {
-	orig := make([]*otlpprofiles.Link, 7)
-	for i := 0; i < 7; i++ {
-		orig[i] = &otlpprofiles.Link{}
-		FillOrigTestLink(orig[i])
-	}
-	return orig
-}
-
-// UnmarshalJSONOrigLinkSlice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONOrigLinkSlice(iter *json.Iterator) []*otlpprofiles.Link {
-	var orig []*otlpprofiles.Link
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		orig = append(orig, &otlpprofiles.Link{})
-		UnmarshalJSONOrigLink(orig[len(orig)-1], iter)
-		return true
-	})
+	orig := make([]*otlpprofiles.Link, 5)
+	orig[0] = NewOrigLink()
+	orig[1] = GenTestOrigLink()
+	orig[2] = NewOrigLink()
+	orig[3] = GenTestOrigLink()
+	orig[4] = NewOrigLink()
 	return orig
 }

@@ -34,8 +34,7 @@ func newSpanEventSlice(orig *[]*otlptrace.Span_Event, state *internal.State) Spa
 // Can use "EnsureCapacity" to initialize with a given capacity.
 func NewSpanEventSlice() SpanEventSlice {
 	orig := []*otlptrace.Span_Event(nil)
-	state := internal.StateMutable
-	return newSpanEventSlice(&orig, &state)
+	return newSpanEventSlice(&orig, internal.NewState())
 }
 
 // Len returns the number of elements in the slice.
@@ -100,7 +99,7 @@ func (es SpanEventSlice) EnsureCapacity(newCap int) {
 // It returns the newly added SpanEvent.
 func (es SpanEventSlice) AppendEmpty() SpanEvent {
 	es.state.AssertMutable()
-	*es.orig = append(*es.orig, &otlptrace.Span_Event{})
+	*es.orig = append(*es.orig, internal.NewOrigSpan_Event())
 	return es.At(es.Len() - 1)
 }
 
@@ -129,7 +128,9 @@ func (es SpanEventSlice) RemoveIf(f func(SpanEvent) bool) {
 	newLen := 0
 	for i := 0; i < len(*es.orig); i++ {
 		if f(es.At(i)) {
+			internal.DeleteOrigSpan_Event((*es.orig)[i], true)
 			(*es.orig)[i] = nil
+
 			continue
 		}
 		if newLen == i {
@@ -138,6 +139,7 @@ func (es SpanEventSlice) RemoveIf(f func(SpanEvent) bool) {
 			continue
 		}
 		(*es.orig)[newLen] = (*es.orig)[i]
+		// Cannot delete here since we just move the data(or pointer to data) to a different position in the slice.
 		(*es.orig)[i] = nil
 		newLen++
 	}
@@ -147,6 +149,9 @@ func (es SpanEventSlice) RemoveIf(f func(SpanEvent) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es SpanEventSlice) CopyTo(dest SpanEventSlice) {
 	dest.state.AssertMutable()
+	if es.orig == dest.orig {
+		return
+	}
 	*dest.orig = internal.CopyOrigSpan_EventSlice(*dest.orig, *es.orig)
 }
 
