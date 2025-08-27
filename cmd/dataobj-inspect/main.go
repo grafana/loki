@@ -7,7 +7,7 @@ import (
 	"github.com/alecthomas/kingpin/v2"
 )
 
-func exitWithError(err error) {
+func exitWithErr(err error) {
 	fmt.Fprint(os.Stderr, err.Error())
 	os.Exit(1)
 }

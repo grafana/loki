@@ -14,6 +14,8 @@ Entries should include a reference to the pull request that introduced the chang
 ## Unreleased
 
 - [ENHANCEMENT] Expand `extraObjects` to have more flexibility in templating [#13252](https://github.com/grafana/loki/pull/13252)
+- [FEATURE] Support separate loki ruler storage configuration [#18510](https://github.com/grafana/loki/pull/18510)
+- [ENHANCEMENT] add namespaceOverride [#18707](https://github.com/grafana/loki/pull/18707)
 
 ## 6.37.0
 
@@ -21,6 +23,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-gateway. [#18551](https://github.com/grafana/loki/pull/18551)
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for loki in bloom-builder. [#18549](https://github.com/grafana/loki/pull/1854
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-planner. [#18552](https://github.com/grafana/loki/pull/18552)
+- [FEATURE] Support separate loki ruler storage configuration [#18510](https://github.com/grafana/loki/pull/18510)
 - [BUGFIX] Revert Thanos object store configuration from ruler storage config to fix compatibility issues with RuleStoreConfig that caused parsing errors during Helm upgrades.
 
 ## 6.36.1
