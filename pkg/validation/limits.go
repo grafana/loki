@@ -244,8 +244,8 @@ type Limits struct {
 	// This field is not exposed in YAML/JSON as it's set programmatically.
 	DefaultPolicyStreamMapping PolicyStreamMapping `yaml:"-" json:"-"`
 
-	// PolicyOverridenLimits contains per-policy overrides for stream count limits.
-	PolicyOverridenLimits map[string]PolicyOverridableLimits `yaml:"policy_overriden_limits" json:"policy_overriden_limits" doc:"hidden"`
+	// PolicyOverrideLimits contains per-policy overrides for stream count limits.
+	PolicyOverrideLimits map[string]PolicyOverridableLimits `yaml:"policy_override_limits" json:"policy_override_limits" doc:"hidden"`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
@@ -719,10 +719,10 @@ func (o *Overrides) PolicyMaxLocalStreamsPerUser(userID, policy string) int {
 		return 0
 	}
 	limits := o.getOverridesForUser(userID)
-	if len(limits.PolicyOverridenLimits) == 0 {
+	if len(limits.PolicyOverrideLimits) == 0 {
 		return 0
 	}
-	if policyLimits, exists := limits.PolicyOverridenLimits[policy]; exists {
+	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
 		return policyLimits.MaxLocalStreamsPerUser
 	}
 	return 0
@@ -741,10 +741,10 @@ func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) int {
 		return 0
 	}
 	limits := o.getOverridesForUser(userID)
-	if len(limits.PolicyOverridenLimits) == 0 {
+	if len(limits.PolicyOverrideLimits) == 0 {
 		return 0
 	}
-	if policyLimits, exists := limits.PolicyOverridenLimits[policy]; exists {
+	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
 		return policyLimits.MaxGlobalStreamsPerUser
 	}
 	return 0
