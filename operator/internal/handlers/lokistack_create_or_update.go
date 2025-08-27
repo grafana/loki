@@ -19,6 +19,8 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
+	"github.com/grafana/loki/operator/internal/handlers/internal/networkpolicy"
+	"github.com/grafana/loki/operator/internal/handlers/internal/openshift"
 	"github.com/grafana/loki/operator/internal/handlers/internal/rules"
 	"github.com/grafana/loki/operator/internal/handlers/internal/serviceaccounts"
 	"github.com/grafana/loki/operator/internal/handlers/internal/storage"
@@ -57,6 +59,12 @@ func CreateOrUpdateLokiStack(
 	if gwImg == "" {
 		gwImg = manifests.DefaultLokiStackGatewayImage
 	}
+
+	openShiftVersion, isOpenShift, err := openshift.FetchVersion(ctx, k)
+	if err != nil {
+		return "", err
+	}
+	featureGate := manifests.NewFeatureGate(isOpenShift, openShiftVersion)
 
 	objStore, err := storage.BuildOptions(ctx, k, &stack, fg)
 	if err != nil {
@@ -109,6 +117,7 @@ func CreateOrUpdateLokiStack(
 		Timeouts:               timeoutConfig,
 		Tenants:                tenants,
 		OpenShiftOptions:       ocpOptions,
+		FeatureGate:            featureGate,
 	}
 
 	ll.Info("begin building manifests")
@@ -205,6 +214,10 @@ func CreateOrUpdateLokiStack(
 
 	if errCount > 0 {
 		return "", kverrors.New("failed to configure lokistack resources", "name", req.NamespacedName)
+	}
+
+	if err := networkpolicy.Cleanup(ctx, ll, k, req, &stack, featureGate); err != nil {
+		return "", err
 	}
 
 	return objStore.CredentialMode, nil
