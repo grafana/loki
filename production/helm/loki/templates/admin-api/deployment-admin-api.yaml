@@ -3,6 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ template "enterprise-logs.adminApiFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "enterprise-logs.adminApiLabels" . | nindent 4 }}
     {{- with .Values.adminApi.labels }}
