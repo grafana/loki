@@ -189,6 +189,7 @@ func TestCanExecuteQuery(t *testing.T) {
 		},
 		{
 			statement: `{env="prod"} | logfmt`,
+			expected:  true,
 		},
 		{
 			statement: `{env="prod"} | logfmt foo="bar"`,
@@ -204,6 +205,7 @@ func TestCanExecuteQuery(t *testing.T) {
 		},
 		{
 			statement: `{env="prod"} |= "metrics.go" | logfmt`,
+			expected:  true,
 		},
 		{
 			statement: `{env="prod"} | line_format "{.cluster}"`,
@@ -608,4 +610,114 @@ func TestVectorAggregationGroupsByParsedLabel(t *testing.T) {
 		require.True(t, groupByNames["ambiguous.region"], "Should group by 'region'. Actual columns: %v", actualNames)
 		require.True(t, groupByNames["ambiguous.env"], "Should group by 'env'. Actual columns: %v", actualNames)
 	})
+}
+
+func TestBuildPlanForLogQuery_LogfmtParsing(t *testing.T) {
+	t.Run("creates Parse instruction for log query with logfmt and filters", func(t *testing.T) {
+		q := &query{
+			statement: `{app="test"} | logfmt | level="error"`,
+			start:     3600,
+			end:       7200,
+			direction: logproto.BACKWARD,
+			limit:     1000,
+		}
+
+		plan, err := BuildPlan(q)
+		require.NoError(t, err)
+
+		// Find Parse instruction
+		var parseInst *Parse
+		for _, inst := range plan.Instructions {
+			if p, ok := inst.(*Parse); ok {
+				parseInst = p
+				break
+			}
+		}
+
+		require.NotNil(t, parseInst, "should create Parse instruction")
+		require.Equal(t, ParserLogfmt, parseInst.Kind)
+		require.Contains(t, parseInst.RequestedKeys, "level",
+			"should parse only filtered field")
+	})
+
+	t.Run("creates Parse with empty keys for logfmt without filters", func(t *testing.T) {
+		q := &query{
+			statement: `{app="test"} | logfmt`,
+			start:     3600,
+			end:       7200,
+			direction: logproto.BACKWARD,
+			limit:     1000,
+		}
+
+		plan, err := BuildPlan(q)
+		require.NoError(t, err)
+
+		var parseInst *Parse
+		for _, inst := range plan.Instructions {
+			if p, ok := inst.(*Parse); ok {
+				parseInst = p
+				break
+			}
+		}
+
+		require.NotNil(t, parseInst, "should create Parse instruction")
+		require.Empty(t, parseInst.RequestedKeys,
+			"empty keys means parse all fields")
+	})
+
+	t.Run("creates Parse with filter keys only for metric queries", func(t *testing.T) {
+		q := &query{
+			statement: `sum by (foo) (count_over_time({app="test"} | logfmt | level="error" [5m]))`,
+			start:     3600,
+			end:       7200,
+			direction: logproto.BACKWARD,
+			limit:     1000,
+		}
+
+		plan, err := BuildPlan(q)
+		require.NoError(t, err)
+
+		var parseInst *Parse
+		for _, inst := range plan.Instructions {
+			if p, ok := inst.(*Parse); ok {
+				parseInst = p
+				break
+			}
+		}
+
+		require.NotNil(t, parseInst, "should create Parse instruction")
+		require.Equal(t, ParserLogfmt, parseInst.Kind)
+		require.Contains(t, parseInst.RequestedKeys, "level",
+			"should parse only filtered field")
+	})
+}
+
+func TestMetricQueryMergesFilterAndMetricKeys(t *testing.T) {
+	t.Run("Parse instruction contains both filter and metric keys", func(t *testing.T) {
+		q := &query{
+			statement: `sum by (region) (count_over_time({app="test"} | logfmt | level="error" [5m]))`,
+			start:     3600,
+			end:       7200,
+		}
+
+		plan, err := BuildPlan(q)
+		require.NoError(t, err)
+
+		var parseInst *Parse
+		for _, inst := range plan.Instructions {
+			if p, ok := inst.(*Parse); ok {
+				parseInst = p
+				break
+			}
+		}
+
+		require.NotNil(t, parseInst)
+		require.Equal(t, ParserLogfmt, parseInst.Kind)
+		require.Len(t, parseInst.RequestedKeys, 2, "should collect both filter and metric keys")
+		require.Contains(t, parseInst.RequestedKeys, "level", "filter key")
+		require.Contains(t, parseInst.RequestedKeys, "region", "groupBy key")
+	})
+
+	// TODO(twhitney): Add test for unwrap keys when sum_over_time or other aggregations with unwrap support are implemented
+	// Currently only count_over_time is supported, which doesn't support unwrap
 }

@@ -27,7 +27,7 @@ func BuildPlan(params logql.Params) (*Plan, error) {
 
 	switch e := params.GetExpression().(type) {
 	case syntax.LogSelectorExpr:
-		builder, err = buildPlanForLogQuery(e, params, false, 0)
+		builder, err = buildPlanForLogQuery(e, params, false, 0, nil, nil)
 	case syntax.SampleExpr:
 		builder, err = buildPlanForSampleQuery(e, params)
 	default:
@@ -44,11 +44,20 @@ func BuildPlan(params logql.Params) (*Plan, error) {
 // buildPlanForLogQuery builds logical plan operations by traversing [syntax.LogSelectorExpr]
 // isMetricQuery should be set to true if this expr is encountered when processing a [syntax.SampleExpr].
 // rangeInterval should be set to a non-zero value if the query contains [$range].
-func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMetricQuery bool, rangeInterval time.Duration) (*Builder, error) {
+// requestedKeys and numericHints are used for metric queries to specify what to parse.
+func buildPlanForLogQuery(
+	expr syntax.LogSelectorExpr,
+	params logql.Params,
+	isMetricQuery bool,
+	rangeInterval time.Duration,
+	requiredKeys []string,
+	numericHints map[string]NumericType,
+) (*Builder, error) {
 	var (
-		err        error
-		selector   Value
-		predicates []Value
+		err             error
+		selector        Value
+		predicates      []Value
+		hasLogfmtParser bool
 	)
 
 	// TODO(chaudum): Implement a Walk function that can return an error
@@ -73,12 +82,8 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 			}
 			return true
 		case *syntax.LogfmtParserExpr:
-			// For metric queries, logfmt parsing is handled in buildPlanForSampleQuery
-			if isMetricQuery {
-				return true // continue traversing to find label filters
-			}
-			err = errUnimplemented
-			return false
+			hasLogfmtParser = true
+			return true // continue traversing to find label filters
 		case *syntax.LineParserExpr, *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
 			*syntax.LineFmtExpr, *syntax.LabelFmtExpr,
 			*syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
@@ -107,7 +112,14 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 		},
 	)
 
-	// Parse operation will be added from buildPlanForSampleQuery if needed
+	// Add Parse instruction if logfmt was detected
+	if hasLogfmtParser {
+		filterKeys, _ := collectLogfmtFilterKeys(expr)
+		//TODO(twhitney): key collection functions sort the keys, so we should add logic that relies on them being sorted to merge them
+		// sorted, while removing duplicates
+		requiredKeys = append(requiredKeys, filterKeys...)
+		builder = builder.Parse(ParserLogfmt, requiredKeys, numericHints)
+	}
 
 	direction := params.Direction()
 	if !isMetricQuery && direction == logproto.FORWARD {
@@ -148,8 +160,8 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 		return nil, fmt.Errorf("only instant metric queries are supported: %w", errUnimplemented)
 	}
 
-	// Collect keys for logfmt parsing on the full sample expression
-	requestedKeys, stringHints := CollectRequestedKeys(e)
+	// Collect metric-specific keys (groupBy and unwrap) from the full sample expression
+	metricKeys, stringHints := collectLogfmtMetricKeys(e)
 
 	var (
 		err error
@@ -157,15 +169,14 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 		rangeAggType  types.RangeAggregationType
 		rangeInterval time.Duration
 
-		vecAggType      types.VectorAggregationType
-		groupBy         []ColumnRef
-		hasLogfmtParser bool
+		vecAggType types.VectorAggregationType
+		groupBy    []ColumnRef
 	)
 
 	e.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
 		case *syntax.LogfmtParserExpr:
-			hasLogfmtParser = true
+			// Logfmt detection is now handled in CollectLogfmtMetricKeys
 			return true
 		case *syntax.LogRangeExpr, *syntax.PipelineExpr, *syntax.MatchersExpr, *syntax.LabelFilterExpr:
 			// Continue traversing into these expressions to find logfmt
@@ -216,16 +227,14 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 		return nil, err
 	}
 
-	builder, err := buildPlanForLogQuery(logSelectorExpr, params, true, rangeInterval)
+	// Pass metric keys and hints to buildPlanForLogQuery
+	numericHints := convertStringHintsToNumericType(stringHints)
+	builder, err := buildPlanForLogQuery(logSelectorExpr, params, true, rangeInterval, metricKeys, numericHints)
 	if err != nil {
 		return nil, err
 	}
 
-	// Add Parse operation if we found logfmt and have keys to extract
-	if hasLogfmtParser && len(requestedKeys) > 0 {
-		numericHints := convertStringHintsToNumericType(stringHints)
-		builder = builder.Parse(ParserLogfmt, requestedKeys, numericHints)
-	}
+	// Parse instruction is now added in buildPlanForLogQuery
 
 	builder = builder.RangeAggregation(
 		nil, rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,
