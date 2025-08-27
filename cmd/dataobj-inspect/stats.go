@@ -31,16 +31,16 @@ func (cmd *statsCommand) run(c *kingpin.ParseContext) error {
 func (cmd *statsCommand) printStats(name string) {
 	f, err := os.Open(name)
 	if err != nil {
-		exitWithError(fmt.Errorf("failed to open file: %w", err))
+		exitWithErr(fmt.Errorf("failed to open file: %w", err))
 	}
 	defer func() { _ = f.Close() }()
 	fi, err := f.Stat()
 	if err != nil {
-		exitWithError(fmt.Errorf("failed to read fileinfo: %w", err))
+		exitWithErr(fmt.Errorf("failed to read fileinfo: %w", err))
 	}
 	dataObj, err := dataobj.FromReaderAt(f, fi.Size())
 	if err != nil {
-		exitWithError(fmt.Errorf("failed to read dataobj: %w", err))
+		exitWithErr(fmt.Errorf("failed to read dataobj: %w", err))
 	}
 	for offset, sec := range dataObj.Sections() {
 		switch {
@@ -49,7 +49,7 @@ func (cmd *statsCommand) printStats(name string) {
 		case logs.CheckSection(sec):
 			cmd.printLogsSectionStats(context.TODO(), offset, sec)
 		default:
-			exitWithError(errors.New("unknown section"))
+			exitWithErr(errors.New("unknown section"))
 		}
 	}
 }
@@ -57,11 +57,11 @@ func (cmd *statsCommand) printStats(name string) {
 func (cmd *statsCommand) printStreamsSectionStats(ctx context.Context, offset int, sec *dataobj.Section) {
 	streamsSec, err := streams.Open(ctx, sec)
 	if err != nil {
-		exitWithError(fmt.Errorf("failed to open streams section: %w", err))
+		exitWithErr(fmt.Errorf("failed to open streams section: %w", err))
 	}
 	stats, err := streams.ReadStats(ctx, streamsSec)
 	if err != nil {
-		exitWithError(fmt.Errorf("failed to read section stats: %w", err))
+		exitWithErr(fmt.Errorf("failed to read section stats: %w", err))
 	}
 	bold := color.New(color.Bold)
 	bold.Println("Streams section:")
@@ -80,11 +80,11 @@ func (cmd *statsCommand) printStreamsSectionStats(ctx context.Context, offset in
 func (cmd *statsCommand) printLogsSectionStats(ctx context.Context, offset int, sec *dataobj.Section) {
 	logsSec, err := logs.Open(ctx, sec)
 	if err != nil {
-		exitWithError(fmt.Errorf("failed to open logs section: %w", err))
+		exitWithErr(fmt.Errorf("failed to open logs section: %w", err))
 	}
 	stats, err := logs.ReadStats(ctx, logsSec)
 	if err != nil {
-		exitWithError(fmt.Errorf("failed to read section stats: %w", err))
+		exitWithErr(fmt.Errorf("failed to read section stats: %w", err))
 	}
 	bold := color.New(color.Bold)
 	bold.Println("Logs section:")
