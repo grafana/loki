@@ -257,7 +257,7 @@ type mockCalculator struct {
 	object *dataobj.Object
 }
 
-func (c *mockCalculator) Calculate(ctx context.Context, logger log.Logger, object *dataobj.Object, objectPath string) error {
+func (c *mockCalculator) Calculate(_ context.Context, _ log.Logger, object *dataobj.Object, _ string) error {
 	c.count++
 	c.object = object
 	return nil
@@ -282,7 +282,7 @@ func (c *mockCalculator) Reset() {}
 // A mockKafkaClient implements the kafkaClient interface for tests.
 type mockKafkaClient struct{}
 
-func (m *mockKafkaClient) CommitRecords(_ context.Context, records ...*kgo.Record) error {
+func (m *mockKafkaClient) CommitRecords(_ context.Context, _ ...*kgo.Record) error {
 	return nil
 }
 
