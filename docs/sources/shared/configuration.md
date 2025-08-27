@@ -264,7 +264,7 @@ block_builder:
   # threshold is exceeded the head block will be cut and compressed inside the
   # chunk.
   # CLI flag: -blockbuilder.chunks-block-size
-  [chunk_block_size: <int> | default = 256KB]
+  [chunk_block_size: <int> | default = 262144]
 
   # A target _compressed_ size in bytes for chunks. This is a desired size not
   # an exact size, chunks may be slightly bigger or significantly smaller if
@@ -272,7 +272,7 @@ block_builder:
   # creates chunks with a fixed 10 blocks, a non zero value will create chunks
   # with a variable number of blocks to meet the target size.
   # CLI flag: -blockbuilder.chunk-target-size
-  [chunk_target_size: <int> | default = 1536KB]
+  [chunk_target_size: <int> | default = 1572864]
 
   # The algorithm to use for compressing chunk. (none, gzip, lz4-64k, snappy,
   # lz4-256k, lz4-1M, lz4, flate, zstd)
