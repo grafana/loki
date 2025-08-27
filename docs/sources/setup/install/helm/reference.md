@@ -841,6 +841,7 @@ null
     "repository": null,
     "tag": null
   },
+  "initContainers": [],
   "maxUnavailable": null,
   "nodeSelector": {},
   "podAnnotations": {},
@@ -1062,6 +1063,15 @@ null
 			<td>Docker image tag for the bloom-builder image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the bloom-builder pods</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -3326,6 +3336,7 @@ null
     "repository": null,
     "tag": null
   },
+  "initContainers": [],
   "maxSurge": 0,
   "maxUnavailable": null,
   "nodeSelector": {},
@@ -3551,6 +3562,15 @@ null
 			<td>Docker image tag for the distributor image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the distributor pods</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -9620,6 +9640,7 @@ Defaults to allow skew no more then 1 node
     "repository": null,
     "tag": null
   },
+  "initContainers": [],
   "maxUnavailable": null,
   "nodeSelector": {},
   "podAnnotations": {},
@@ -9847,6 +9868,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryFrontend.initContainers</td>
+			<td>list</td>
+			<td>init containers to add to the query-frontend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryFrontend.maxUnavailable</td>
 			<td>string</td>
 			<td>Pod Disruption Budget maxUnavailable</td>
@@ -9998,6 +10028,7 @@ null
     "repository": null,
     "tag": null
   },
+  "initContainers": [],
   "maxUnavailable": 1,
   "nodeSelector": {},
   "podAnnotations": {},
@@ -10121,6 +10152,15 @@ null
 			<td>Docker image tag for the query-scheduler image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.initContainers</td>
+			<td>list</td>
+			<td>init containers to add to the query-scheduler pods</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -10318,6 +10358,7 @@ false
     "repository": null,
     "tag": null
   },
+  "initContainers": [],
   "legacyReadTarget": false,
   "lifecycle": {},
   "livenessProbe": {},
@@ -10512,6 +10553,15 @@ null
 			<td>Docker image tag for the read image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.initContainers</td>
+			<td>list</td>
+			<td>init containers to add to the read pods</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
