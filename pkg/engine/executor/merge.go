@@ -32,8 +32,15 @@ func newMergePipeline(inputs []Pipeline, maxPrefetch int) (*Merge, error) {
 	}
 
 	// Default to number of inputs if maxConcurrency is negative or exceeds the number of inputs.
-	if maxPrefetch < 0 || maxPrefetch > len(inputs) {
-		maxPrefetch = len(inputs)
+	if maxPrefetch < 0 || maxPrefetch >= len(inputs) {
+		maxPrefetch = len(inputs) - 1
+	}
+
+	// Wrap inputs into prefetching pipeline.
+	for i := range inputs {
+		// Only wrap input, but do not call init() on it, as it would start prefetching.
+		// Prefetching is started in the [Merge.init] function
+		inputs[i] = newPrefetchingPipeline(inputs[i])
 	}
 
 	return &Merge{
@@ -46,7 +53,29 @@ func (m *Merge) init(ctx context.Context) {
 	if m.initialized {
 		return
 	}
+
+	// Initialize pre-fetching of inputs defined by maxPrefetch.
+	// The first/current input is always initialized.
+	for i := range m.inputs {
+		if i <= m.maxPrefetch {
+			m.startPrefetchingInputAtIndex(ctx, i)
+		}
+	}
+
 	m.initialized = true
+}
+
+// startPrefetchingInputAtIndex initializes the input at given index i,
+// if the index is not out of bounds and if the input is of type [prefetchWrapper].
+// Initializing the input will start its prefetching.
+func (m *Merge) startPrefetchingInputAtIndex(ctx context.Context, i int) {
+	if i >= len(m.inputs) {
+		return
+	}
+	inp, ok := m.inputs[i].(*prefetchWrapper)
+	if ok {
+		inp.init(ctx)
+	}
 }
 
 // Read reads the next value into its state.
@@ -60,7 +89,7 @@ func (m *Merge) Read(ctx context.Context) error {
 	m.state = newState(record, err)
 
 	if err != nil {
-		return fmt.Errorf("run merge: %w", err)
+		return err
 	}
 
 	return nil
@@ -78,7 +107,10 @@ func (m *Merge) read(ctx context.Context) (arrow.Record, error) {
 		if err := input.Read(ctx); err != nil {
 			if errors.Is(err, EOF) {
 				input.Close()
+				// Proceed to the next input
 				m.currInput++
+				// Initialize the next input so it starts prefetching
+				m.startPrefetchingInputAtIndex(ctx, m.currInput+m.maxPrefetch)
 				continue
 			}
 

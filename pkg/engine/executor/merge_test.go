@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -14,128 +13,34 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
-var (
-	recordsInput1 = []arrowtest.Rows{
-		{
-			{"ts": int64(10), "table": "A", "line": "line A1"},
-			{"ts": int64(15), "table": "A", "line": "line A2"},
-			{"ts": int64(5), "table": "A", "line": "line A3"},
-			{"ts": int64(20), "table": "A", "line": "line A4"},
-		},
-		{
-			{"ts": int64(1), "table": "A", "line": "line A5"},
-			{"ts": int64(50), "table": "A", "line": "line A6"},
-		},
-	}
-
-	recordsInput2 = []arrowtest.Rows{
-		{
-			{"ts": int64(100), "table": "B", "line": "line B1"},
-			{"ts": int64(75), "table": "B", "line": "line B2"},
-			{"ts": int64(25), "table": "B", "line": "line B3"},
-		},
-		{
-			{"ts": int64(13), "table": "B", "line": "line B4"},
-			{"ts": int64(15), "table": "B", "line": "line B5"},
-		},
-		{
-			{"ts": int64(23), "table": "B", "line": "line B6"},
-			{"ts": int64(55), "table": "B", "line": "line B7"},
-		},
-	}
-)
-
 func TestMerge(t *testing.T) {
 	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer alloc.AssertSize(t, 0)
 
-	var (
-		rowsInput1 = []arrowtest.Rows{{
-			{"timestamp": time.Unix(1, 0).UTC(), "message": "line A"},
-			{"timestamp": time.Unix(6, 0).UTC(), "message": "line F"},
-		}, {
-			{"timestamp": time.Unix(2, 0).UTC(), "message": "line B"},
-			{"timestamp": time.Unix(7, 0).UTC(), "message": "line G"},
-		}, {
-			{"timestamp": time.Unix(3, 0).UTC(), "message": "line C"},
-			{"timestamp": time.Unix(8, 0).UTC(), "message": "line H"},
-		}}
-		rowsInput2 = []arrowtest.Rows{{
-			{"timestamp": time.Unix(4, 0).UTC(), "message": "line D"},
-			{"timestamp": time.Unix(9, 0).UTC(), "message": "line I"},
-		}, {
-			{"timestamp": time.Unix(5, 0).UTC(), "message": "line E"},
-			{"timestamp": time.Unix(10, 0).UTC(), "message": "line J"},
-		}}
-
-		// pick schema from one of [arrowtest.Rows] as all of them have the same schema
-		schema = rowsInput1[0].Schema()
-
-		pipelineA = NewArrowtestPipeline(alloc, schema, rowsInput1...)
-		pipelineB = NewArrowtestPipeline(alloc, schema, rowsInput2...)
-	)
-
-	m, err := newMergePipeline([]Pipeline{pipelineA, pipelineB}, 0)
-	require.NoError(t, err)
-
-	var got []arrowtest.Rows
-	ctx := context.Background()
-	for {
-		err = m.Read(ctx)
-		if err != nil {
-			break
-		}
-
-		rec, _ := m.Value()
-		defer rec.Release()
-
-		rows, err := arrowtest.RecordRows(rec)
-		require.NoError(t, err)
-
-		got = append(got, rows)
-	}
-
-	require.ErrorIs(t, err, EOF)
-
-	require.Equal(t, append(rowsInput1, rowsInput2...), got)
-}
-
-func TestMerge_concurrency(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	schema := arrow.NewSchema([]arrow.Field{
-		{
-			Name:     "ts",
-			Type:     arrow.PrimitiveTypes.Int64,
-			Nullable: true,
-		},
-		{
-			Name:     "msg",
-			Type:     arrow.BinaryTypes.String,
-			Nullable: true,
-		},
+		{Name: "timestamp", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
+		{Name: "message", Type: arrow.BinaryTypes.String, Nullable: true},
 	}, nil)
 
-	pipelineInputs := make([][]arrowtest.Rows, 10)
+	n := 3 // number of inputs
+	inputRows := make([][]arrowtest.Rows, n)
 	var expectedRows []arrowtest.Rows
 
 	// create records for each input pipeline
-	for i := range len(pipelineInputs) {
+	for i := range len(inputRows) {
 		// Each pipeline has 2-4 records with unique identifiers
-		numRecords := 2 + (i % 3) // 2, 3, or 4 records per pipeline
+		numRecords := 2 + (i % n) // 2, 3, or 4 records per pipeline
 		rows := make([]arrowtest.Rows, numRecords)
 
 		for j := range numRecords {
-			recordID := fmt.Sprintf("pipeline_%d_record_%d", i, j)
 			// Each record has 3-5 rows
-			numRows := 3 + (j % 3) // 3, 4, or 5 rows per record
+			numRows := 3 + (j % n) // 3, 4, or 5 rows per record
 			recordRows := make(arrowtest.Rows, numRows)
 
 			for k := range numRows {
 				recordRows[k] = map[string]any{
-					"ts":  int64(i*100 + j*10 + k),
-					"msg": fmt.Sprintf("%s_row_%d", recordID, k),
+					"timestamp": int64(i*100 + j*10 + k),
+					"message":   fmt.Sprintf("input=%d record=%d row=%d", i, j, k),
 				}
 			}
 			rows[j] = recordRows
@@ -143,29 +48,36 @@ func TestMerge_concurrency(t *testing.T) {
 
 		// Accumulate expected rows
 		expectedRows = append(expectedRows, rows...)
-		pipelineInputs[i] = rows
+		inputRows[i] = rows
 	}
 
 	// Test different concurrency settings
-	for _, maxConcurrency := range []int{1, 3, 5, 10, -1} {
-		t.Run(fmt.Sprintf("concurrency=%d", maxConcurrency), func(t *testing.T) {
-			// Create fresh pipelines using the pre-generated data
-			pipelines := make([]Pipeline, 10)
-			for i := range len(pipelines) {
-				pipelines[i] = NewArrowtestPipeline(alloc, schema, pipelineInputs[i]...)
+	//  0 ... no prefetching of next input / only current input is prefetched
+	//  1 ... next input is prefetched
+	//  3 ... number of prefetched inputs is equal to the number of inputs
+	//  5 ... number of prefetched inputs is greater than the number of inputs
+	// -1 ... unlimited/all inputs are prefetched
+	for _, maxPrefetch := range []int{0, 1, n, 5, -1} {
+
+		t.Run(fmt.Sprintf("context=full/maxPrefetch=%d", maxPrefetch), func(t *testing.T) {
+			// Create fresh inputs using the pre-generated data
+			inputs := make([]Pipeline, n)
+			for i := range len(inputs) {
+				inputs[i] = NewArrowtestPipeline(alloc, schema, inputRows[i]...)
 			}
 
-			m, err := newMergePipeline(pipelines, maxConcurrency)
+			m, err := newMergePipeline(inputs, maxPrefetch)
 			require.NoError(t, err)
 			defer m.Close()
 
-			ctx := context.Background()
+			ctx := t.Context()
 			var actualRows []arrowtest.Rows
 
 			// Read all records from the merge pipeline
 			for {
 				err := m.Read(ctx)
 				if errors.Is(err, EOF) {
+					t.Log("stop reading from pipeline:", err)
 					break
 				}
 				require.NoError(t, err, "Unexpected error during read")
@@ -180,7 +92,46 @@ func TestMerge_concurrency(t *testing.T) {
 			}
 
 			// Compare actual vs expected rows
-			require.ElementsMatch(t, expectedRows, actualRows)
+			// Order of processed inputs must stay the same
+			require.Equal(t, expectedRows, actualRows)
 		})
+
+		t.Run(fmt.Sprintf("context=canceled/maxPrefetch=%d", maxPrefetch), func(t *testing.T) {
+			// Create fresh inputs using the pre-generated data
+			inputs := make([]Pipeline, n)
+			for i := range len(inputs) {
+				inputs[i] = NewArrowtestPipeline(alloc, schema, inputRows[i]...)
+			}
+
+			m, err := newMergePipeline(inputs, maxPrefetch)
+			require.NoError(t, err)
+			defer m.Close()
+
+			ctx := t.Context()
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+
+			// Read all records from the merge pipeline until context is canceled
+			iter := -1
+			for {
+				iter++
+				if iter == 3 {
+					cancel()
+				}
+
+				err := m.Read(ctx)
+				if errors.Is(err, EOF) || errors.Is(err, context.Canceled) {
+					t.Log("stop reading from pipeline:", err)
+					break
+				}
+				require.NoError(t, err, "Unexpected error during read")
+
+				rec, _ := m.Value()
+				defer rec.Release()
+			}
+		})
+
+		t.Log("current allocations", alloc.CurrentAlloc())
+		alloc.AssertSize(t, 0)
 	}
 }
