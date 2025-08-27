@@ -156,6 +156,16 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Disable service monitor for nginx service.
 
+- [FEATURE] Added the possibility in the ingester to set, per zone (zoneA, zoneB, zoneC) the volume claim templates propreties.
+
+## 6.26.0
+
+- [CHANGE] Changed version of Grafana Loki to 3.4.0
+
+## 6.25.1
+
+- [BUGFIX] Disable service monitor for nginx service.
+
 ## 6.25.0
 
 - [BUGFIX] Removed minio-mc init container from admin-api.
