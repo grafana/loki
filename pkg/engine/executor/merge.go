@@ -26,10 +26,11 @@ type workerResult struct {
 	completed bool // true when this input is fully exhausted
 }
 
-// Merge processes N inputs with configurable concurrency.
+// Merge is a pipeline that takes N inputs and sequentially consumes each one of them.
+// It completely exhausts an input before moving to the next one.
 type Merge struct {
-	inputs         []Pipeline
-	maxConcurrency int
+	inputs      []Pipeline
+	maxPrefetch int
 
 	inputStates []inputState
 	mu          sync.RWMutex // protect input state changes
@@ -49,26 +50,24 @@ var _ Pipeline = (*Merge)(nil)
 
 // newMergePipeline creates a new merge pipeline that merges N inputs into a single output.
 //
-// maxConcurrency controls how many inputs are processed simultaneously.
-// It also controls the number of open prefetch Pipelines to allow all of these inputs
-// to load the next record in parallel.
-//
-// Set maxConcurrency to 1 to sequentially process each input.
-// A value of 0 or less defaults the concurrency to number of inputs.
-func newMergePipeline(inputs []Pipeline, maxConcurrency int) (*Merge, error) {
+// The argument maxPrefetch controls how many inputs are prefetched simultaneously while the current one is consumed.
+// Set maxPrefetch to 0 to disable prefetching of the next input.
+// Set maxPrefetch to 1 to prefetch only the next input, and so on.
+// Set maxPrefetch to -1 to pretetch all inputs at once.
+func newMergePipeline(inputs []Pipeline, maxPrefetch int) (*Merge, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("merge pipeline: no inputs provided")
 	}
 
-	// default to number of inputs if maxConcurrency is 0 or negative.
-	if maxConcurrency <= 0 || maxConcurrency > len(inputs) {
-		maxConcurrency = len(inputs)
+	// Default to number of inputs if maxConcurrency is negative or exceeds the number of inputs.
+	if maxPrefetch < 0 || maxPrefetch > len(inputs) {
+		maxPrefetch = len(inputs)
 	}
 
 	return &Merge{
-		inputs:         inputs,
-		maxConcurrency: maxConcurrency,
-		inputStates:    make([]inputState, len(inputs)),
+		inputs:      inputs,
+		maxPrefetch: maxPrefetch,
+		inputStates: make([]inputState, len(inputs)),
 	}, nil
 }
 
@@ -82,13 +81,13 @@ func (m *Merge) init(ctx context.Context) {
 	// Buffer size equals maxConcurrency to ensure workers can send results without blocking
 	// while maintaining backpressure: when buffer is full, workers block on send until
 	// parent consumes results.
-	m.resultCh = make(chan workerResult, m.maxConcurrency)
+	m.resultCh = make(chan workerResult, m.maxPrefetch)
 
 	m.inputCh = make(chan int, len(m.inputs))
 	for i := range m.inputs {
 		m.inputCh <- i // fill the pool with input indices
 	}
-	for range m.maxConcurrency {
+	for range m.maxPrefetch {
 		m.wg.Add(1)
 		go m.inputWorker()
 	}

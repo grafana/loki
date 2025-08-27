@@ -194,7 +194,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 		cfg := executor.Config{
 			BatchSize:                int64(e.opts.BatchSize),
-			MergePipelineConcurrency: e.opts.PipelineConcurreny,
+			MergePipelineConcurrency: e.opts.MergePrefetchConcurrency,
 			Bucket:                   e.bucket,
 			DataobjScanPageCacheSize: int64(e.opts.DataobjScanPageCacheSize),
 		}

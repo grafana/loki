@@ -4913,10 +4913,12 @@ engine:
   # CLI flag: -querier.engine.batch-size
   [batch_size: <int> | default = 100]
 
-  # Experimental: The number of inputs processed simultaneously by the pipeline
-  # operators.
-  # CLI flag: -querier.engine.pipeline-concurrency
-  [pipeline_concurrency: <int> | default = 4]
+  # Experimental: The number of inputs that are prefetched simultaneously by any
+  # Merge node. A value of 0 means that only the currently processed input is
+  # prefetched, 1 means that only the next input is prefetched, and so on. A
+  # negative value means that all inputs are be prefetched in parallel.
+  # CLI flag: -querier.engine.merge-prefetch-concurrency
+  [merge_prefetch_concurrency: <int> | default = 1]
 
   # Experimental: Maximum total size of future pages for DataObjScan to download
   # before they are needed, for roundtrip reduction to object storage. Setting

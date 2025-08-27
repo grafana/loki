@@ -23,18 +23,18 @@ import (
 var tracer = otel.Tracer("pkg/engine/executor")
 
 type Config struct {
-	BatchSize                int64
-	MergePipelineConcurrency int
-	Bucket                   objstore.Bucket
+	BatchSize int64
+	Bucket    objstore.Bucket
 
 	DataobjScanPageCacheSize int64
+	MergePipelineConcurrency int
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
 		plan:                     plan,
 		batchSize:                cfg.BatchSize,
-		mergePipelineConcurrency: cfg.MergePipelineConcurrency,
+		mergePrefetchConcurrency: cfg.MergePipelineConcurrency,
 		bucket:                   cfg.Bucket,
 		logger:                   logger,
 
@@ -52,8 +52,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 
 // Context is the execution context
 type Context struct {
-	mergePipelineConcurrency int
-	batchSize                int64
+	batchSize int64
 
 	logger    log.Logger
 	plan      *physical.Plan
@@ -61,6 +60,7 @@ type Context struct {
 	bucket    objstore.Bucket
 
 	dataobjScanPageCacheSize int64
+	mergePrefetchConcurrency int
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -318,7 +318,7 @@ func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []
 		return emptyPipeline()
 	}
 
-	pipeline, err := newMergePipeline(inputs, c.mergePipelineConcurrency)
+	pipeline, err := newMergePipeline(inputs, c.mergePrefetchConcurrency)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
