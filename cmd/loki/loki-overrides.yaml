@@ -1,0 +1,9 @@
+configs:
+  '1':
+    log_push_request: false
+    log_push_request_streams: false
+overrides:
+  '1':
+    allow_structured_metadata: true
+    pattern_persistence_enabled: true
+    volume_enabled: true
