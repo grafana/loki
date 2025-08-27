@@ -40,6 +40,7 @@ func (b *Builder) Limit(skip uint32, fetch uint32) *Builder {
 }
 
 // Parse applies a [Parse] operation to the Builder.
+// TODO(twhitney): make sure the requestedKeys are sorted and unique
 func (b *Builder) Parse(kind ParserKind, requestedKeys []string, numericHints map[string]NumericType) *Builder {
 	return &Builder{
 		val: &Parse{
