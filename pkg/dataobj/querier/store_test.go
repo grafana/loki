@@ -40,11 +40,13 @@ func TestStore_SelectSamples(t *testing.T) {
 	builder := newTestDataBuilder(t, testTenant)
 	defer builder.close()
 
+	ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
+	ctx = user.InjectOrgID(ctx, testTenant)
+
 	// Setup test data
-	now := setupTestData(t, builder)
+	now := setupTestData(t, ctx, builder)
 	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
-	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
 		// NOTE(rfratto): Do not add tests for shards without a way to have
@@ -201,11 +203,13 @@ func TestStore_SelectLogs(t *testing.T) {
 	builder := newTestDataBuilder(t, testTenant)
 	defer builder.close()
 
+	ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
+	ctx = user.InjectOrgID(ctx, testTenant)
+
 	// Setup test data
-	now := setupTestData(t, builder)
+	now := setupTestData(t, ctx, builder)
 	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewLogfmtLogger(os.Stdout), meta)
-	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
 		// NOTE(rfratto): Do not add tests for shards without a way to have
@@ -367,7 +371,7 @@ func TestStore_SelectLogs(t *testing.T) {
 	}
 }
 
-func setupTestData(t *testing.T, builder *testDataBuilder) time.Time {
+func setupTestData(t *testing.T, ctx context.Context, builder *testDataBuilder) time.Time {
 	t.Helper()
 	now := time.Unix(0, int64(time.Hour)).UTC()
 
@@ -378,7 +382,7 @@ func setupTestData(t *testing.T, builder *testDataBuilder) time.Time {
 		logproto.Entry{Timestamp: now.Add(-2 * time.Hour).Add(30 * time.Second), Line: "foo_before2"},
 		logproto.Entry{Timestamp: now.Add(-2 * time.Hour).Add(45 * time.Second), Line: "foo_before3"},
 	)
-	builder.flush()
+	builder.flush(ctx)
 
 	// Data within query range
 	builder.addStream(
@@ -394,7 +398,7 @@ func setupTestData(t *testing.T, builder *testDataBuilder) time.Time {
 		logproto.Entry{Timestamp: now.Add(20 * time.Second), Line: "foo6"},
 		logproto.Entry{Timestamp: now.Add(35 * time.Second), Line: "foo7"},
 	)
-	builder.flush()
+	builder.flush(ctx)
 
 	builder.addStream(
 		`{app="bar", env="prod"}`,
@@ -409,7 +413,7 @@ func setupTestData(t *testing.T, builder *testDataBuilder) time.Time {
 		logproto.Entry{Timestamp: now.Add(18 * time.Second), Line: "bar6"},
 		logproto.Entry{Timestamp: now.Add(38 * time.Second), Line: "bar7"},
 	)
-	builder.flush()
+	builder.flush(ctx)
 
 	builder.addStream(
 		`{app="baz", env="prod", team="a"}`,
@@ -418,7 +422,7 @@ func setupTestData(t *testing.T, builder *testDataBuilder) time.Time {
 		logproto.Entry{Timestamp: now.Add(32 * time.Second), Line: "baz3"},
 		logproto.Entry{Timestamp: now.Add(42 * time.Second), Line: "baz4"},
 	)
-	builder.flush()
+	builder.flush(ctx)
 
 	// Data after the query range (should not be included in results)
 	builder.addStream(
@@ -427,7 +431,7 @@ func setupTestData(t *testing.T, builder *testDataBuilder) time.Time {
 		logproto.Entry{Timestamp: now.Add(2 * time.Hour).Add(30 * time.Second), Line: "foo_after2"},
 		logproto.Entry{Timestamp: now.Add(2 * time.Hour).Add(45 * time.Second), Line: "foo_after3"},
 	)
-	builder.flush()
+	builder.flush(ctx)
 
 	return now
 }
@@ -501,18 +505,18 @@ func (b *testDataBuilder) addStream(labels string, entries ...logproto.Entry) {
 	require.NoError(b.t, err)
 }
 
-func (b *testDataBuilder) flush() {
+func (b *testDataBuilder) flush(ctx context.Context) {
 	minTime, maxTime := b.builder.TimeRange()
 	obj, closer, err := b.builder.Flush()
 	require.NoError(b.t, err)
 	defer closer.Close()
 
 	// Upload the data object using the uploader
-	path, err := b.uploader.Upload(b.t.Context(), obj)
+	path, err := b.uploader.Upload(ctx, obj)
 	require.NoError(b.t, err)
 
 	// Update metastore with the new data object
-	err = b.meta.WriteEntry(context.Background(), path, []multitenancy.TimeRange{
+	err = b.meta.WriteEntry(ctx, path, []multitenancy.TimeRange{
 		{
 			Tenant:  b.tenantID,
 			MinTime: minTime,

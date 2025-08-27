@@ -9,7 +9,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/user"
 	"github.com/thanos-io/objstore"
 
@@ -17,18 +16,10 @@ import (
 )
 
 func BenchmarkWriteMetastores(b *testing.B) {
-	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	tenantID := "test-tenant"
 
 	toc := NewTableOfContentsWriter(Config{}, bucket, log.NewNopLogger())
-
-	// Set limits for the test
-	toc.backoff = backoff.New(context.TODO(), backoff.Config{
-		MinBackoff: 10 * time.Millisecond,
-		MaxBackoff: 100 * time.Millisecond,
-		MaxRetries: 3,
-	})
 
 	// Add test data spanning multiple metastore windows
 	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
@@ -44,34 +35,31 @@ func BenchmarkWriteMetastores(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		// Test writing metastores
-		stats := stats[i%len(stats)]
-		err := toc.WriteEntry(ctx, "path", []multitenancy.TimeRange{
-			{
-				Tenant:  tenantID,
-				MinTime: stats.MinTimestamp,
-				MaxTime: stats.MaxTimestamp,
-			},
-		})
-		require.NoError(b, err)
+		{
+			ctx, cancel := context.WithTimeout(b.Context(), time.Second)
+			defer cancel()
+			// Test writing metastores
+			stats := stats[i%len(stats)]
+			err := toc.WriteEntry(ctx, "path", []multitenancy.TimeRange{
+				{
+					Tenant:  tenantID,
+					MinTime: stats.MinTimestamp,
+					MaxTime: stats.MaxTimestamp,
+				},
+			})
+			require.NoError(b, err)
+		}
 	}
 
 	require.Len(b, bucket.Objects(), 1)
 }
 
 func TestWriteMetastores(t *testing.T) {
-	ctx := context.Background()
 	bucket := objstore.NewInMemBucket()
 	tenantID := "test-tenant"
 
+	ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
 	toc := NewTableOfContentsWriter(Config{}, bucket, log.NewNopLogger())
-
-	// Set limits for the test
-	toc.backoff = backoff.New(context.TODO(), backoff.Config{
-		MinBackoff: 10 * time.Millisecond,
-		MaxBackoff: 100 * time.Millisecond,
-		MaxRetries: 3,
-	})
 
 	// Add test data spanning multiple metastore windows
 	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
@@ -212,9 +200,11 @@ func TestDataObjectsPaths(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
+			ctx = user.InjectOrgID(ctx, tenantID)
+
 			bucket := objstore.NewInMemBucket()
 			tenantID := "test-tenant"
-			ctx := user.InjectOrgID(context.Background(), tenantID)
 
 			toc := NewTableOfContentsWriter(Config{
 				Storage: StorageConfig{
@@ -222,13 +212,6 @@ func TestDataObjectsPaths(t *testing.T) {
 					EnabledTenantIDs:   tt.enabledTenantIDs,
 				},
 			}, bucket, log.NewNopLogger())
-
-			// Set limits for the test
-			toc.backoff = backoff.New(context.TODO(), backoff.Config{
-				MinBackoff: 10 * time.Millisecond,
-				MaxBackoff: 100 * time.Millisecond,
-				MaxRetries: 3,
-			})
 
 			// Create test data spanning multiple metastore windows
 			now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)

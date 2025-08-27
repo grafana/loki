@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -93,14 +92,10 @@ func newTableOfContentsWriter(t *testing.T, bucket objstore.Bucket, tocBuilder *
 	t.Helper()
 
 	updater := &TableOfContentsWriter{
-		tocBuilder: tocBuilder,
-		bucket:     bucket,
-		metrics:    newTableOfContentsMetrics(),
-		logger:     log.NewNopLogger(),
-		backoff: backoff.New(context.TODO(), backoff.Config{
-			MinBackoff: 50 * time.Millisecond,
-			MaxBackoff: 10 * time.Second,
-		}),
+		tocBuilder:  tocBuilder,
+		bucket:      bucket,
+		metrics:     newTableOfContentsMetrics(),
+		logger:      log.NewNopLogger(),
 		builderOnce: sync.Once{},
 		buf:         bytes.NewBuffer(make([]byte, 0, tocBuilderCfg.TargetObjectSize)),
 	}
