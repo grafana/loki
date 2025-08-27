@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -301,7 +300,7 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 		return processingErrors.Err()
 	}
 
-	minTime, maxTime := p.calculator.TimeRange()
+	tenantTimeRanges := p.calculator.TimeRanges()
 	obj, closer, err := p.calculator.Flush()
 	if err != nil {
 		return fmt.Errorf("failed to flush builder: %w", err)
@@ -323,12 +322,9 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 		return fmt.Errorf("failed to upload index: %w", err)
 	}
 
-	metastoreTocWriter := metastore.NewTableOfContentsWriter(p.mCfg, indexStorageBucket, events[0].Tenant, p.logger)
-	if minTime.IsZero() || maxTime.IsZero() {
-		return errors.New("failed to get min/max timestamps")
-	}
-	if err := metastoreTocWriter.WriteEntry(p.ctx, key, minTime, maxTime); err != nil {
-		return fmt.Errorf("failed to update metastore: %w", err)
+	metastoreTocWriter := metastore.NewTableOfContentsWriter(p.mCfg, indexStorageBucket, p.logger)
+	if err := metastoreTocWriter.WriteEntry(p.ctx, key, tenantTimeRanges); err != nil {
+		return fmt.Errorf("failed to update metastore ToC file: %w", err)
 	}
 
 	level.Info(p.logger).Log("msg", "finished building index", "tenant", events[0].Tenant, "events", len(events), "size", obj.Size(), "duration", time.Since(start))

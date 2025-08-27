@@ -75,6 +75,10 @@ type OffsetResponse struct {
 	Blocks         map[string]map[int32]*OffsetResponseBlock
 }
 
+func (r *OffsetResponse) setVersion(v int16) {
+	r.Version = v
+}
+
 func (r *OffsetResponse) decode(pd packetDecoder, version int16) (err error) {
 	if version >= 2 {
 		r.ThrottleTimeMs, err = pd.getInt32()
@@ -174,7 +178,7 @@ func (r *OffsetResponse) encode(pe packetEncoder) (err error) {
 }
 
 func (r *OffsetResponse) key() int16 {
-	return 2
+	return apiKeyListOffsets
 }
 
 func (r *OffsetResponse) version() int16 {

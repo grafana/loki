@@ -33,7 +33,7 @@ type ProviderOption interface {
 //	    return err
 //	}
 //	// Create a provider with the custom store.
-//	provider, err := goose.NewProvider("", db, nil, goose.WithStore(store))
+//	provider, err := goose.NewProvider(goose.DialectCustom, db, nil, goose.WithStore(store))
 //	if err != nil {
 //	    return err
 //	}
@@ -173,6 +173,15 @@ func WithLogger(l Logger) ProviderOption {
 	})
 }
 
+// WithIsolateDDL executes DDL operations separately from DML operations. This is useful for
+// databases like AWS Aurora DSQL that don't support mixing DDL and DML within the same transaction.
+func WithIsolateDDL(b bool) ProviderOption {
+	return configFunc(func(c *config) error {
+		c.isolateDDL = b
+		return nil
+	})
+}
+
 type config struct {
 	store database.Store
 
@@ -192,6 +201,7 @@ type config struct {
 	disableVersioning     bool
 	allowMissing          bool
 	disableGlobalRegistry bool
+	isolateDDL            bool
 
 	logger Logger
 }

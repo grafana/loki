@@ -79,6 +79,7 @@ type streamKey struct {
 type Builder struct {
 	metrics  *Metrics
 	pageSize int
+	tenant   string
 
 	// streamLookup is a map of the stream ID in this index object to the pointer.
 	streamLookup map[streamKey]*SectionPointer
@@ -102,6 +103,12 @@ func NewBuilder(metrics *Metrics, pageSize int) *Builder {
 		pointers:     make([]*SectionPointer, 0, 1024),
 	}
 }
+
+func (b *Builder) SetTenant(tenant string) {
+	b.tenant = tenant
+}
+
+func (b *Builder) Tenant() string { return b.tenant }
 
 // Type returns the [dataobj.SectionType] of the pointers builder.
 func (b *Builder) Type() dataobj.SectionType { return sectionType }
@@ -205,6 +212,8 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	if err := b.encodeTo(&pointersEnc); err != nil {
 		return 0, fmt.Errorf("building encoder: %w", err)
 	}
+
+	pointersEnc.SetTenant(b.tenant)
 
 	n, err = pointersEnc.Flush(w)
 	if err == nil {
