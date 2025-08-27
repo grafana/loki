@@ -46,6 +46,6 @@ func ReadStats(ctx context.Context, obj *dataobj.Object) (*Stats, error) {
 	}
 	// A tenant can have multiple sections, so we must deduplicate them.
 	slices.Sort(s.Tenants)
-	slices.Compact(s.Tenants)
+	s.Tenants = slices.Compact(s.Tenants)
 	return &s, nil
 }
