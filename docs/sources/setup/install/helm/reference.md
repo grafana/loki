@@ -2019,7 +2019,7 @@ null
 			<td>string</td>
 			<td>Comma separated addresses list in DNS Service Discovery format</td>
 			<td><pre lang="json">
-"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.suffix ) }}.{{ $.Release.Namespace }}.svc"
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc"
 </pre>
 </td>
 		</tr>
@@ -2146,7 +2146,7 @@ true
 			<td>l2 memcache configuration</td>
 			<td><pre lang="json">
 {
-  "addresses": "dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ $.Release.Namespace }}.svc",
+  "addresses": "dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc",
   "affinity": {},
   "allocatedMemory": 8192,
   "annotations": {},
@@ -2203,7 +2203,7 @@ true
 			<td>string</td>
 			<td>Comma separated addresses list in DNS Service Discovery format</td>
 			<td><pre lang="json">
-"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ $.Release.Namespace }}.svc"
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc"
 </pre>
 </td>
 		</tr>
@@ -7709,7 +7709,7 @@ false
     "tenant": {
       "name": "self-monitoring",
       "password": null,
-      "secretNamespace": "{{ .Release.Namespace }}"
+      "secretNamespace": "{{ include \"loki.namespace\" . }}"
     }
   },
   "serviceMonitor": {
@@ -7893,7 +7893,7 @@ null
   "tenant": {
     "name": "self-monitoring",
     "password": null,
-    "secretNamespace": "{{ .Release.Namespace }}"
+    "secretNamespace": "{{ include \"loki.namespace\" . }}"
   }
 }
 </pre>
@@ -8059,7 +8059,7 @@ null
 {
   "name": "self-monitoring",
   "password": null,
-  "secretNamespace": "{{ .Release.Namespace }}"
+  "secretNamespace": "{{ include \"loki.namespace\" . }}"
 }
 </pre>
 </td>
@@ -8086,8 +8086,8 @@ null
 			<td>monitoring.selfMonitoring.tenant.secretNamespace</td>
 			<td>string</td>
 			<td>Namespace to create additional tenant token secret in. Useful if your Grafana instance is in a separate namespace. Token will still be created in the canary namespace.</td>
-			<td><pre lang="json">
-"{{ .Release.Namespace }}"
+			<td><pre lang="">
+The same namespace as the loki chart is installed in.
 </pre>
 </td>
 		</tr>
@@ -8235,6 +8235,15 @@ null
 			<td>nameOverride</td>
 			<td>string</td>
 			<td>Overrides the chart's name</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>namespaceOverride</td>
+			<td>string</td>
+			<td>Overrides the chart's namespace</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -10766,7 +10775,7 @@ null
 			<td>string</td>
 			<td>Comma separated addresses list in DNS Service Discovery format</td>
 			<td><pre lang="json">
-"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"results-cache\") }}.{{ $.Release.Namespace }}.svc"
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"results-cache\") }}.{{ include \"loki.namespace\" $ }}.svc"
 </pre>
 </td>
 		</tr>

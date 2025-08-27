@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [ENHANCEMENT] add namespaceOverride [#18707](https://github.com/grafana/loki/pull/18707)
+
 
 ## 6.37.0
 
