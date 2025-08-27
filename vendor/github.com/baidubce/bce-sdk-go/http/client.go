@@ -21,6 +21,7 @@ package http
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"net/http"
 	"net/url"
@@ -154,6 +155,7 @@ func (c *timeoutConn) SetWriteDeadline(t time.Time) error { return c.conn.SetWri
 type ClientConfig struct {
 	RedirectDisabled      bool
 	DisableKeepAlives     bool
+	NoVerifySSL           bool
 	DialTimeout           *time.Duration
 	KeepAlive             *time.Duration
 	ReadTimeout           *time.Duration
@@ -162,6 +164,7 @@ type ClientConfig struct {
 	IdleConnectionTimeout *time.Duration
 	ResponseHeaderTimeout *time.Duration
 	HTTPClientTimeout     *time.Duration
+	HTTPClient            *http.Client
 }
 
 var DefaultClientConfig = ClientConfig{
@@ -265,11 +268,20 @@ func NewTransportCustom(config *ClientConfig) *http.Transport {
 		ResponseHeaderTimeout: *config.ResponseHeaderTimeout,
 		IdleConnTimeout:       *config.IdleConnectionTimeout,
 	}
+	if config.NoVerifySSL {
+		transport.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
+	}
 	return transport
 }
 
 func InitClientWithTimeout(config *ClientConfig) {
 	customizeInit.Do(func() {
+		if config.HTTPClient != nil {
+			httpClient = config.HTTPClient
+			return
+		}
 		config = MergeWithDefaultConfig(config)
 		transport = NewTransportCustom(config)
 		httpClient = &http.Client{

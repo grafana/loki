@@ -367,6 +367,9 @@ This is the generated reference for the Loki Helm Chart values.
   "initContainers": [],
   "nodeSelector": {},
   "persistence": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
     "annotations": {},
     "dataVolumeParameters": {
       "emptyDir": {}
@@ -387,7 +390,8 @@ This is the generated reference for the Loki Helm Chart values.
   "selectorLabels": {},
   "service": {
     "annotations": {},
-    "labels": {}
+    "labels": {},
+    "type": "ClusterIP"
   },
   "targetModule": "backend",
   "terminationGracePeriodSeconds": 300,
@@ -578,6 +582,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.persistence.annotations</td>
 			<td>object</td>
 			<td>Annotations for volume claim</td>
@@ -729,6 +744,15 @@ null
 			<td>Additional labels for backend Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.service.type</td>
+			<td>string</td>
+			<td>Service type for backend Service</td>
+			<td><pre lang="json">
+"ClusterIP"
 </pre>
 </td>
 		</tr>
@@ -1183,6 +1207,9 @@ null
     "annotations": {},
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -1209,6 +1236,7 @@ null
   },
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
 }
@@ -1380,6 +1408,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomGateway.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomGateway.persistence.claims[0].size</td>
 			<td>string</td>
 			<td>Size of persistent disk</td>
@@ -1524,6 +1563,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomGateway.startupProbe</td>
+			<td>object</td>
+			<td>startup probe settings for ingester pods. If empty, use `loki.startupProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomGateway.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the bloom-gateway to shutdown before it is killed</td>
@@ -1583,6 +1631,9 @@ null
   "persistence": {
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
         "annotations": {},
         "labels": {},
         "name": "data",
@@ -1769,6 +1820,17 @@ null
 			<td>List of the bloom-planner PVCs</td>
 			<td><pre lang="list">
 
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -2812,6 +2874,9 @@ null
   "persistence": {
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
         "annotations": {},
         "labels": {},
         "name": "data",
@@ -2841,6 +2906,7 @@ null
   },
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
 }
@@ -2999,6 +3065,17 @@ null
 			<td>List of the compactor PVCs</td>
 			<td><pre lang="list">
 
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -3165,6 +3242,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>compactor.serviceType</td>
+			<td>string</td>
+			<td>Service type for compactor service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>compactor.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the compactor to shutdown before it is killed</td>
@@ -3250,6 +3336,7 @@ null
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
   "topologySpreadConstraints": [],
@@ -3554,6 +3641,15 @@ null
 			<td>Labels for distributor service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.serviceType</td>
+			<td>string</td>
+			<td>Service type for distributor service</td>
+			<td><pre lang="json">
+"ClusterIP"
 </pre>
 </td>
 		</tr>
@@ -5122,6 +5218,9 @@ null
   "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
     "annotations": {},
     "enableStatefulSetAutoDeletePVC": false,
     "enabled": false,
@@ -5139,6 +5238,7 @@ null
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": [],
@@ -5296,6 +5396,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.persistence.annotations</td>
 			<td>object</td>
 			<td>Annotations for index gateway PVCs</td>
@@ -5422,6 +5533,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.serviceType</td>
+			<td>string</td>
+			<td>Service type for index-gateway service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the index-gateway to shutdown before it is killed.</td>
@@ -5527,6 +5647,9 @@ null
   "persistence": {
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -5547,6 +5670,7 @@ null
   "rolloutGroupPrefix": null,
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": [
@@ -5860,6 +5984,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>ingester.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ingester.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -5946,6 +6081,15 @@ false
 			<td>Labels for ingestor service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.serviceType</td>
+			<td>string</td>
+			<td>Service type for ingestor service</td>
+			<td><pre lang="json">
+"ClusterIP"
 </pre>
 </td>
 		</tr>
@@ -8591,6 +8735,9 @@ null
   "persistence": {
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
         "annotations": {},
         "labels": {},
         "name": "data",
@@ -8788,6 +8935,17 @@ null
 			<td>List of the pattern ingester PVCs</td>
 			<td><pre lang="list">
 
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -9041,6 +9199,7 @@ null
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
   "topologySpreadConstraints": [
@@ -9377,6 +9536,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>querier.serviceType</td>
+			<td>string</td>
+			<td>Service Type for querier service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>querier.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the querier to shutdown before it is killed</td>
@@ -9461,6 +9629,7 @@ Defaults to allow skew no more then 1 node
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
   "topologySpreadConstraints": []
@@ -9755,6 +9924,15 @@ null
 			<td>Labels for query-frontend service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.serviceType</td>
+			<td>string</td>
+			<td>Service Type for query-frontend service</td>
+			<td><pre lang="json">
+"ClusterIP"
 </pre>
 </td>
 		</tr>
@@ -10145,6 +10323,9 @@ false
   "livenessProbe": {},
   "nodeSelector": {},
   "persistence": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
     "annotations": {},
     "enableStatefulSetAutoDeletePVC": true,
     "labels": {},
@@ -10161,7 +10342,8 @@ false
   "selectorLabels": {},
   "service": {
     "annotations": {},
-    "labels": {}
+    "labels": {},
+    "type": "ClusterIP"
   },
   "targetModule": "read",
   "terminationGracePeriodSeconds": 30,
@@ -10375,6 +10557,9 @@ false
 			<td>read.persistence is used only if legacyReadTarget is set to true</td>
 			<td><pre lang="json">
 {
+  "accessModes": [
+    "ReadWriteOnce"
+  ],
   "annotations": {},
   "enableStatefulSetAutoDeletePVC": true,
   "labels": {},
@@ -10382,6 +10567,17 @@ false
   "size": "10Gi",
   "storageClass": null
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -10517,6 +10713,15 @@ null
 			<td>Additional labels for read Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.service.type</td>
+			<td>string</td>
+			<td>Service Type for read Service</td>
+			<td><pre lang="json">
+"ClusterIP"
 </pre>
 </td>
 		</tr>
@@ -10998,6 +11203,9 @@ null
   "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
     "annotations": {},
     "enabled": false,
     "labels": {},
@@ -11189,6 +11397,17 @@ null
 			<td>Node selector for ruler pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -11777,6 +11996,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.persistence.annotations</td>
 			<td>object</td>
 			<td>Annotations for volume claim</td>
@@ -11908,6 +12138,15 @@ null
 			<td>Additional labels for single binary Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.service.type</td>
+			<td>string</td>
+			<td>Service Type for single binary Service</td>
+			<td><pre lang="json">
+"ClusterIP"
 </pre>
 </td>
 		</tr>
@@ -12579,6 +12818,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.persistence.annotations</td>
 			<td>object</td>
 			<td>Annotations for volume claim</td>
@@ -12730,6 +12980,15 @@ null
 			<td>Additional labels for write Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.service.type</td>
+			<td>string</td>
+			<td>Service Type for write Service</td>
+			<td><pre lang="json">
+"ClusterIP"
 </pre>
 </td>
 		</tr>

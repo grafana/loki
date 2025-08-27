@@ -332,7 +332,7 @@ func (srv *Server) ListenAndServe() error {
 		return srv.serveTCP(l)
 	case "tcp-tls", "tcp4-tls", "tcp6-tls":
 		if srv.TLSConfig == nil || (len(srv.TLSConfig.Certificates) == 0 && srv.TLSConfig.GetCertificate == nil) {
-			return errors.New("dns: neither Certificates nor GetCertificate set in Config")
+			return errors.New("neither Certificates nor GetCertificate set in config")
 		}
 		network := strings.TrimSuffix(srv.Net, "-tls")
 		l, err := listenTCP(network, addr, srv.ReusePort, srv.ReuseAddr)

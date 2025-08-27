@@ -240,6 +240,10 @@ type Limits struct {
 	PolicyEnforcedLabels      map[string][]string           `yaml:"policy_enforced_labels" json:"policy_enforced_labels" category:"experimental" doc:"description=Map of policies to enforced labels. The policy '*' is the global policy, which is applied to all streams and can be extended by other policies. Example:\n policy_enforced_labels: \n  policy1: \n    - label1 \n    - label2 \n  policy2: \n    - label3 \n    - label4\n  '*':\n    - label5"`
 	PolicyStreamMapping       PolicyStreamMapping           `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors with a priority. Experimental.  Example:\n policy_stream_mapping: \n  finance: \n    - selector: '{namespace=\"prod\", container=\"billing\"}' \n      priority: 2 \n  ops: \n    - selector: '{namespace=\"prod\", container=\"ops\"}' \n      priority: 1 \n  staging: \n    - selector: '{namespace=\"staging\"}' \n      priority: 1"`
 
+	// DefaultPolicyStreamMapping contains the default policy stream mappings that are merged with per-tenant mappings.
+	// This field is not exposed in YAML/JSON as it's set programmatically.
+	DefaultPolicyStreamMapping PolicyStreamMapping `yaml:"-" json:"-"`
+
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
 	ShardAggregations []string `yaml:"shard_aggregations,omitempty" json:"shard_aggregations,omitempty" doc:"description=List of LogQL vector and range aggregations that should be sharded."`
@@ -504,6 +508,12 @@ func (l *Limits) SetGlobalOTLPConfig(cfg push.GlobalOTLPConfig) {
 	l.OTLPConfig.ApplyGlobalOTLPConfig(cfg)
 }
 
+// SetDefaultPolicyStreamMapping sets DefaultPolicyStreamMapping which is used while unmarshaling per-tenant policy stream mappings to use the default mappings.
+func (l *Limits) SetDefaultPolicyStreamMapping(cfg PolicyStreamMapping) error {
+	l.DefaultPolicyStreamMapping = cfg
+	return l.PolicyStreamMapping.ApplyDefaultPolicyStreamMappings(cfg)
+}
+
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// We want to set c to the defaults and then overwrite it with the input.
@@ -528,6 +538,10 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if defaultLimits != nil {
 		// apply relevant bits from global otlp config
 		l.OTLPConfig.ApplyGlobalOTLPConfig(defaultLimits.GlobalOTLPConfig)
+		// apply default policy stream mappings
+		if err := l.PolicyStreamMapping.ApplyDefaultPolicyStreamMappings(defaultLimits.DefaultPolicyStreamMapping); err != nil {
+			return errors.Wrap(err, "applying default policy stream mappings")
+		}
 	}
 	return nil
 }

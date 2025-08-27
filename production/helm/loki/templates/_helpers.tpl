@@ -210,10 +210,7 @@ filesystem:
 Storage config for ruler
 */}}
 {{- define "loki.rulerStorageConfig" -}}
-{{- if .Values.loki.storage.use_thanos_objstore -}}
-type: {{ .Values.loki.storage.object_store.type | quote }}
-{{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 0 }}
-{{- else if .Values.minio.enabled -}}
+{{- if .Values.minio.enabled -}}
 type: "s3"
 s3:
   bucketnames: ruler
@@ -375,11 +372,7 @@ chunk_delimiter: {{ . }}
 {{/* Loki ruler config */}}
 {{- define "loki.rulerConfig" }}
 ruler:
-  storage:
-    {{- include "loki.rulerStorageConfig" . | nindent 4}}
-{{- if (not (empty .Values.loki.rulerConfig)) }}
-{{- toYaml .Values.loki.rulerConfig | nindent 2}}
-{{- end }}
+{{- mergeOverwrite (dict "storage" (include "loki.rulerStorageConfig" . | fromYaml)) (.Values.loki.rulerConfig | default dict) | toYaml | nindent 2 }}
 {{- end }}
 
 {{/* Ruler Thanos Storage Config */}}
@@ -762,15 +755,15 @@ http {
   }
 
   server {
-    {{- if (.Values.gateway.nginxConfig.ssl) }}
-    listen             8080 ssl;
+    {{- if .Values.gateway.nginxConfig.ssl }}
+    listen             {{ .Values.gateway.containerPort }} ssl;
     {{- if .Values.gateway.nginxConfig.enableIPv6 }}
-    listen             [::]:8080 ssl;
+    listen             [::]:{{ .Values.gateway.containerPort }} ssl;
     {{- end }}
     {{- else }}
-    listen             8080;
+    listen             {{ .Values.gateway.containerPort }};
     {{- if .Values.gateway.nginxConfig.enableIPv6 }}
-    listen             [::]:8080;
+    listen             [::]:{{ .Values.gateway.containerPort }};
     {{- end }}
     {{- end }}
 

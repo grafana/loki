@@ -44,6 +44,11 @@ func main() {
 
 	// Set the global OTLP config which is needed in per tenant otlp config
 	config.LimitsConfig.SetGlobalOTLPConfig(config.Distributor.OTLPConfig)
+	// Set the default policy stream mappings which are needed in per tenant policy stream mappings
+	if err := config.LimitsConfig.SetDefaultPolicyStreamMapping(config.Distributor.DefaultPolicyStreamMappings); err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to set default policy stream mappings", "err", err.Error())
+		exit(1)
+	}
 	// This global is set to the config passed into the last call to `NewOverrides`. If we don't
 	// call it atleast once, the defaults are set to an empty struct.
 	// We call it with the flag values so that the config file unmarshalling only overrides the values set in the config.

@@ -8,7 +8,6 @@ package internal
 
 import (
 	otlplogs "go.opentelemetry.io/collector/pdata/internal/data/protogen/logs/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 func CopyOrigScopeLogsSlice(dest, src []*otlplogs.ScopeLogs) []*otlplogs.ScopeLogs {
@@ -19,19 +18,20 @@ func CopyOrigScopeLogsSlice(dest, src []*otlplogs.ScopeLogs) []*otlplogs.ScopeLo
 		copy(newDest, dest)
 		// Add new pointers for missing elements from len(dest) to len(srt).
 		for i := len(dest); i < len(src); i++ {
-			newDest[i] = &otlplogs.ScopeLogs{}
+			newDest[i] = NewOrigScopeLogs()
 		}
 	} else {
 		newDest = dest[:len(src)]
 		// Cleanup the rest of the elements so GC can free the memory.
 		// This can happen when len(src) < len(dest) < cap(dest).
 		for i := len(src); i < len(dest); i++ {
+			DeleteOrigScopeLogs(dest[i], true)
 			dest[i] = nil
 		}
 		// Add new pointers for missing elements.
 		// This can happen when len(dest) < len(src) < cap(dest).
 		for i := len(dest); i < len(src); i++ {
-			newDest[i] = &otlplogs.ScopeLogs{}
+			newDest[i] = NewOrigScopeLogs()
 		}
 	}
 	for i := range src {
@@ -41,21 +41,11 @@ func CopyOrigScopeLogsSlice(dest, src []*otlplogs.ScopeLogs) []*otlplogs.ScopeLo
 }
 
 func GenerateOrigTestScopeLogsSlice() []*otlplogs.ScopeLogs {
-	orig := make([]*otlplogs.ScopeLogs, 7)
-	for i := 0; i < 7; i++ {
-		orig[i] = &otlplogs.ScopeLogs{}
-		FillOrigTestScopeLogs(orig[i])
-	}
-	return orig
-}
-
-// UnmarshalJSONOrigScopeLogsSlice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONOrigScopeLogsSlice(iter *json.Iterator) []*otlplogs.ScopeLogs {
-	var orig []*otlplogs.ScopeLogs
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		orig = append(orig, &otlplogs.ScopeLogs{})
-		UnmarshalJSONOrigScopeLogs(orig[len(orig)-1], iter)
-		return true
-	})
+	orig := make([]*otlplogs.ScopeLogs, 5)
+	orig[0] = NewOrigScopeLogs()
+	orig[1] = GenTestOrigScopeLogs()
+	orig[2] = NewOrigScopeLogs()
+	orig[3] = GenTestOrigScopeLogs()
+	orig[4] = NewOrigScopeLogs()
 	return orig
 }

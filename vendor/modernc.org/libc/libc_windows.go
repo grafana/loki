@@ -244,10 +244,18 @@ var (
 	procWcsncpy  = modcrt.NewProc("wcsncpy")
 	procWcsrchr  = modcrt.NewProc("wcsrchr")
 
-	moducrt         = windows.NewLazySystemDLL("ucrtbase.dll")
-	procFindfirst32 = moducrt.NewProc("_findfirst32")
-	procFindnext32  = moducrt.NewProc("_findnext32")
-	procStat64i32   = moducrt.NewProc("_stat64i32")
+	moducrt             = windows.NewLazySystemDLL("ucrtbase.dll")
+	procFindfirst32     = moducrt.NewProc("_findfirst32")
+	procFindnext32      = moducrt.NewProc("_findnext32")
+	procStat64i32       = moducrt.NewProc("_stat64i32")
+	procWchmod          = moducrt.NewProc("_wchmod")
+	procWfindfirst32    = moducrt.NewProc("_wfindfirst32")
+	procWfindfirst64i32 = moducrt.NewProc("_wfindfirst64i32")
+	procWfindnext32     = moducrt.NewProc("_wfindnext32")
+	procWfindnext64i32  = moducrt.NewProc("_wfindnext64i32")
+	procWmkdir          = moducrt.NewProc("_wmkdir")
+	procWstat32         = moducrt.NewProc("_wstat32")
+	procWstat64i32      = moducrt.NewProc("_wstat64i32")
 )
 
 var (
@@ -7774,4 +7782,76 @@ func X_strnicmp(tls *TLS, __Str1 uintptr, __Str2 uintptr, __MaxCount types.Size_
 
 func X__builtin_ctz(t *TLS, n uint32) int32 {
 	return int32(mbits.TrailingZeros32(n))
+}
+
+// intptr_t _wfindfirst64i32(const wchar_t *filespec, struct _wfinddata64i32_t *fileinfo);
+func X_wfindfirst64i32(tls *TLS, filespec, fileinfo uintptr) (r types.Intptr_t) {
+	r0, _, err := procWfindfirst64i32.Call(filespec, fileinfo)
+	if err != windows.NOERROR {
+		tls.setErrno(int32(err.(windows.Errno)))
+	}
+	return types.Intptr_t(r0)
+}
+
+// int _wfindnext64i32(intptr_t handle, struct _wfinddata64i32_t *fileinfo);
+func X_wfindnext64i32(tls *TLS, handle types.Intptr_t, fileinfo uintptr) (r int32) {
+	r0, _, err := procWfindnext64i32.Call(uintptr(handle), fileinfo)
+	if err != windows.NOERROR {
+		tls.setErrno(int32(err.(windows.Errno)))
+	}
+	return int32(r0)
+}
+
+// int _wchmod( const wchar_t *filename, int pmode );
+func X_wchmod(tls *TLS, filename uintptr, pmode int32) (r int32) {
+	r0, _, err := procWchmod.Call(filename, uintptr(pmode))
+	if err != windows.NOERROR {
+		tls.setErrno(int32(err.(windows.Errno)))
+	}
+	return int32(r0)
+}
+
+// int _wmkdir(const wchar_t *dirname);
+func X_wmkdir(tls *TLS, dirname uintptr) (r int32) {
+	r0, _, err := procWmkdir.Call(dirname)
+	if err != windows.NOERROR {
+		tls.setErrno(int32(err.(windows.Errno)))
+	}
+	return int32(r0)
+}
+
+// int _wstat64i32(const wchar_t *path, struct _stat64i32 *buffer);
+func X_wstat64i32(tls *TLS, path, buffer uintptr) (r int32) {
+	r0, _, err := procWstat64i32.Call(path, buffer)
+	if err != windows.NOERROR {
+		tls.setErrno(int32(err.(windows.Errno)))
+	}
+	return int32(r0)
+}
+
+// intptr_t _wfindfirst32(const wchar_t *filespec, struct _wfinddata32_t *fileinfo);
+func X_wfindfirst32(tls *TLS, filespec, fileinfo uintptr) (r types.Intptr_t) {
+	r0, _, err := procWfindfirst32.Call(filespec, fileinfo)
+	if err != windows.NOERROR {
+		tls.setErrno(int32(err.(windows.Errno)))
+	}
+	return types.Intptr_t(r0)
+}
+
+// int _wfindnext32(intptr_t handle, struct _wfinddata32_t *fileinfo);
+func X_wfindnext32(tls *TLS, handle types.Intptr_t, fileinfo uintptr) (r int32) {
+	r0, _, err := procWfindnext32.Call(uintptr(handle), fileinfo)
+	if err != windows.NOERROR {
+		tls.setErrno(int32(err.(windows.Errno)))
+	}
+	return int32(r0)
+}
+
+// int _wstat32(const wchar_t *path, struct __stat32 *buffer);
+func X_wstat32(tls *TLS, path, buffer uintptr) (r int32) {
+	r0, _, err := procWstat32.Call(path, buffer)
+	if err != windows.NOERROR {
+		tls.setErrno(int32(err.(windows.Errno)))
+	}
+	return int32(r0)
 }
