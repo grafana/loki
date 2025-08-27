@@ -37,7 +37,7 @@ type sampleWithLabels struct {
 
 func TestStore_SelectSamples(t *testing.T) {
 	const testTenant = "test-tenant"
-	builder := newTestDataBuilder(t, testTenant)
+	builder := newTestDataBuilder(t)
 	defer builder.close()
 
 	ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
@@ -200,7 +200,7 @@ func TestStore_SelectSamples(t *testing.T) {
 
 func TestStore_SelectLogs(t *testing.T) {
 	const testTenant = "test-tenant"
-	builder := newTestDataBuilder(t, testTenant)
+	builder := newTestDataBuilder(t)
 	defer builder.close()
 
 	ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
@@ -377,6 +377,7 @@ func setupTestData(ctx context.Context, t *testing.T, builder *testDataBuilder) 
 
 	// Data before the query range (should not be included in results)
 	builder.addStream(
+		"tenant",
 		`{app="foo", env="prod"}`,
 		logproto.Entry{Timestamp: now.Add(-2 * time.Hour), Line: "foo_before1"},
 		logproto.Entry{Timestamp: now.Add(-2 * time.Hour).Add(30 * time.Second), Line: "foo_before2"},
@@ -386,6 +387,7 @@ func setupTestData(ctx context.Context, t *testing.T, builder *testDataBuilder) 
 
 	// Data within query range
 	builder.addStream(
+		"tenant",
 		`{app="foo", env="prod"}`,
 		logproto.Entry{Timestamp: now, Line: "foo1"},
 		logproto.Entry{Timestamp: now.Add(30 * time.Second), Line: "foo2"},
@@ -393,6 +395,7 @@ func setupTestData(ctx context.Context, t *testing.T, builder *testDataBuilder) 
 		logproto.Entry{Timestamp: now.Add(50 * time.Second), Line: "foo4"},
 	)
 	builder.addStream(
+		"tenant",
 		`{app="foo", env="dev"}`,
 		logproto.Entry{Timestamp: now.Add(10 * time.Second), Line: "foo5"},
 		logproto.Entry{Timestamp: now.Add(20 * time.Second), Line: "foo6"},
@@ -401,6 +404,7 @@ func setupTestData(ctx context.Context, t *testing.T, builder *testDataBuilder) 
 	builder.flush(ctx)
 
 	builder.addStream(
+		"tenant",
 		`{app="bar", env="prod"}`,
 		logproto.Entry{Timestamp: now.Add(5 * time.Second), Line: "bar1"},
 		logproto.Entry{Timestamp: now.Add(15 * time.Second), Line: "bar2"},
@@ -408,6 +412,7 @@ func setupTestData(ctx context.Context, t *testing.T, builder *testDataBuilder) 
 		logproto.Entry{Timestamp: now.Add(40 * time.Second), Line: "bar4"},
 	)
 	builder.addStream(
+		"tenant",
 		`{app="bar", env="dev"}`,
 		logproto.Entry{Timestamp: now.Add(8 * time.Second), Line: "bar5"},
 		logproto.Entry{Timestamp: now.Add(18 * time.Second), Line: "bar6"},
@@ -416,6 +421,7 @@ func setupTestData(ctx context.Context, t *testing.T, builder *testDataBuilder) 
 	builder.flush(ctx)
 
 	builder.addStream(
+		"tenant",
 		`{app="baz", env="prod", team="a"}`,
 		logproto.Entry{Timestamp: now.Add(12 * time.Second), Line: "baz1"},
 		logproto.Entry{Timestamp: now.Add(22 * time.Second), Line: "baz2"},
@@ -426,6 +432,7 @@ func setupTestData(ctx context.Context, t *testing.T, builder *testDataBuilder) 
 
 	// Data after the query range (should not be included in results)
 	builder.addStream(
+		"tenant",
 		`{app="foo", env="prod"}`,
 		logproto.Entry{Timestamp: now.Add(2 * time.Hour), Line: "foo_after1"},
 		logproto.Entry{Timestamp: now.Add(2 * time.Hour).Add(30 * time.Second), Line: "foo_after2"},
@@ -455,13 +462,12 @@ type testDataBuilder struct {
 	bucket objstore.Bucket
 	dir    string
 
-	tenantID string
 	builder  *logsobj.Builder
 	meta     *metastore.TableOfContentsWriter
 	uploader *uploader.Uploader
 }
 
-func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
+func newTestDataBuilder(t *testing.T) *testDataBuilder {
 	dir := t.TempDir()
 	bucket, err := filesystem.NewBucket(dir)
 	require.NoError(t, err)
@@ -483,22 +489,21 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	meta := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
 	require.NoError(t, meta.RegisterMetrics(prometheus.NewRegistry()))
 
-	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, log.NewNopLogger())
+	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
 	require.NoError(t, uploader.RegisterMetrics(prometheus.NewRegistry()))
 
 	return &testDataBuilder{
 		t:        t,
 		bucket:   bucket,
 		dir:      dir,
-		tenantID: tenantID,
 		builder:  builder,
 		meta:     meta,
 		uploader: uploader,
 	}
 }
 
-func (b *testDataBuilder) addStream(labels string, entries ...logproto.Entry) {
-	err := b.builder.Append(logproto.Stream{
+func (b *testDataBuilder) addStream(tenant, labels string, entries ...logproto.Entry) {
+	err := b.builder.Append(tenant, logproto.Stream{
 		Labels:  labels,
 		Entries: entries,
 	})
@@ -506,7 +511,7 @@ func (b *testDataBuilder) addStream(labels string, entries ...logproto.Entry) {
 }
 
 func (b *testDataBuilder) flush(ctx context.Context) {
-	minTime, maxTime := b.builder.TimeRange()
+	timeRanges := b.builder.TimeRanges()
 	obj, closer, err := b.builder.Flush()
 	require.NoError(b.t, err)
 	defer closer.Close()
@@ -515,15 +520,17 @@ func (b *testDataBuilder) flush(ctx context.Context) {
 	path, err := b.uploader.Upload(ctx, obj)
 	require.NoError(b.t, err)
 
-	// Update metastore with the new data object
-	err = b.meta.WriteEntry(ctx, path, []multitenancy.TimeRange{
-		{
-			Tenant:  b.tenantID,
-			MinTime: minTime,
-			MaxTime: maxTime,
-		},
-	})
-	require.NoError(b.t, err)
+	for _, r := range timeRanges {
+		// Update metastore with the new data object
+		err = b.meta.WriteEntry(ctx, path, []multitenancy.TimeRange{
+			{
+				Tenant:  r.Tenant,
+				MinTime: r.MinTime,
+				MaxTime: r.MaxTime,
+			},
+		})
+		require.NoError(b.t, err)
+	}
 
 	b.builder.Reset()
 }

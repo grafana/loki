@@ -48,7 +48,6 @@ func TestBuilder(t *testing.T) {
 				},
 			},
 		},
-
 		{
 			Labels: `{cluster="test",app="bar"}`,
 			Entries: []push.Entry{
@@ -76,7 +75,7 @@ func TestBuilder(t *testing.T) {
 		require.NoError(t, err)
 
 		for _, entry := range testStreams {
-			require.NoError(t, builder.Append(entry))
+			require.NoError(t, builder.Append("tenant", entry))
 		}
 		obj, closer, err := builder.Flush()
 		require.NoError(t, err)
@@ -99,7 +98,7 @@ func TestBuilder_Append(t *testing.T) {
 	for {
 		require.NoError(t, ctx.Err())
 
-		err := builder.Append(logproto.Stream{
+		err := builder.Append("test", logproto.Stream{
 			Labels: `{cluster="test",app="foo"}`,
 			Entries: []push.Entry{{
 				Timestamp: time.Now().UTC(),
