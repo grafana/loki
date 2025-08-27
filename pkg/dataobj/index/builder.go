@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/scratch"
@@ -55,6 +57,21 @@ const (
 	indexConsumerGroup = "index-builder"
 )
 
+// An interface for the methods needed from a calculator. Useful for testing.
+type calculator interface {
+	Calculate(context.Context, log.Logger, *dataobj.Object, string) error
+	Flush() (*dataobj.Object, io.Closer, error)
+	TimeRanges() []multitenancy.TimeRange
+	Reset()
+}
+
+// An interface for the methods needed from a kafka client. Useful for testing.
+type kafkaClient interface {
+	PollRecords(context.Context, int) kgo.Fetches
+	CommitRecords(context.Context, ...*kgo.Record) error
+	Close()
+}
+
 type Builder struct {
 	services.Service
 
@@ -62,20 +79,22 @@ type Builder struct {
 	mCfg metastore.Config
 
 	// Kafka client and topic/partition info
-	client *kgo.Client
+	client kafkaClient
 	topic  string
 
 	// Processing pipeline
 	downloadQueue     chan metastore.ObjectWrittenEvent
 	downloadedObjects chan downloadedObject
-	calculator        *Calculator
+	calculator        calculator
+	tocWriter         *metastore.TableOfContentsWriter
 
 	bufferedEvents map[int32][]metastore.ObjectWrittenEvent
 
 	// Builder initialization
-	builderCfg   indexobj.BuilderConfig
-	bucket       objstore.Bucket
-	scratchStore scratch.Store
+	builderCfg         indexobj.BuilderConfig
+	objectBucket       objstore.Bucket
+	indexStorageBucket objstore.Bucket // The bucket to store the indexes might not be the same one as where we read the objects from
+	scratchStore       scratch.Store
 
 	// Metrics
 	metrics *indexBuilderMetrics
@@ -116,6 +135,9 @@ func NewIndexBuilder(
 	}
 	calculator := NewCalculator(builder)
 
+	indexStorageBucket := objstore.NewPrefixedBucket(bucket, mCfg.IndexStoragePrefix)
+	tocWriter := metastore.NewTableOfContentsWriter(indexStorageBucket, logger)
+
 	if err := builder.RegisterMetrics(builderReg); err != nil {
 		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
 	}
@@ -126,15 +148,17 @@ func NewIndexBuilder(
 	downloadedObjects := make(chan downloadedObject, 1)
 
 	s := &Builder{
-		cfg:               cfg,
-		mCfg:              mCfg,
-		logger:            logger,
-		bucket:            bucket,
-		downloadedObjects: downloadedObjects,
-		downloadQueue:     downloadQueue,
-		metrics:           metrics,
-		calculator:        calculator,
-		bufferedEvents:    make(map[int32][]metastore.ObjectWrittenEvent),
+		cfg:                cfg,
+		mCfg:               mCfg,
+		logger:             logger,
+		objectBucket:       bucket,
+		indexStorageBucket: indexStorageBucket,
+		tocWriter:          tocWriter,
+		downloadedObjects:  downloadedObjects,
+		downloadQueue:      downloadQueue,
+		metrics:            metrics,
+		calculator:         calculator,
+		bufferedEvents:     make(map[int32][]metastore.ObjectWrittenEvent),
 	}
 
 	kafkaCfg.AutoCreateTopicEnabled = true
@@ -162,8 +186,16 @@ func NewIndexBuilder(
 	return s, nil
 }
 
+func asString(partitions map[string][]int32) string {
+	out := []string{}
+	for topic, partitions := range partitions {
+		out = append(out, fmt.Sprintf("%s: %v", topic, partitions))
+	}
+	return strings.Join(out, ", ")
+}
+
 func (p *Builder) handlePartitionsAssigned(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
-	level.Info(p.logger).Log("msg", "partitions assigned", "partitions", topics)
+	level.Info(p.logger).Log("msg", "partitions assigned", "partitions", asString(topics))
 	p.partitionsMutex.Lock()
 	defer p.partitionsMutex.Unlock()
 
@@ -176,7 +208,7 @@ func (p *Builder) handlePartitionsAssigned(_ context.Context, _ *kgo.Client, top
 
 // This is not thread-safe
 func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
-	level.Info(p.logger).Log("msg", "partitions revoked", "partitions", topics)
+	level.Info(p.logger).Log("msg", "partitions revoked", "partitions", asString(topics))
 	p.partitionsMutex.Lock()
 	defer p.partitionsMutex.Unlock()
 
@@ -201,7 +233,7 @@ func (p *Builder) run(ctx context.Context) error {
 			objLogger := log.With(p.logger, "object_path", event.ObjectPath)
 			downloadStart := time.Now()
 
-			objectReader, err := p.bucket.Get(p.ctx, event.ObjectPath)
+			objectReader, err := p.objectBucket.Get(p.ctx, event.ObjectPath)
 			if err != nil {
 				p.downloadedObjects <- downloadedObject{
 					event: event,
@@ -259,52 +291,12 @@ func (p *Builder) stopping(failureCase error) error {
 }
 
 func (p *Builder) processRecord(record *kgo.Record) {
-	var eventsToIndex []metastore.ObjectWrittenEvent
-	var calculationCtx context.Context
-
-	event := &metastore.ObjectWrittenEvent{}
-	if err := event.Unmarshal(record.Value); err != nil {
-		level.Error(p.logger).Log("msg", "failed to unmarshal metastore event", "err", err)
-		return
-	}
-
-	p.bufferedEvents[record.Partition] = append(p.bufferedEvents[record.Partition], *event)
-	level.Info(p.logger).Log("msg", "buffered new event for partition", "count", len(p.bufferedEvents[record.Partition]), "partition", record.Partition)
-
-	func() {
-		// Initialise index builds in a thread-safe way
-		p.partitionsMutex.Lock()
-		defer p.partitionsMutex.Unlock()
-		partitionEvents, ok := p.bufferedEvents[record.Partition]
-		if !ok {
-			// We don't own this partition anymore as it was just revoked. Abort further processing.
-			return
-		}
-		eventsToIndex = make([]metastore.ObjectWrittenEvent, len(partitionEvents))
-		copy(eventsToIndex, partitionEvents)
-
-		// Optimistically initialise a new build context
-		p.activeCalculationPartition = record.Partition
-		calculationCtx, p.cancelActiveCalculation = context.WithCancelCause(p.ctx)
-	}()
+	calculationCtx, eventsToIndex := p.appendRecord(record)
 	if len(eventsToIndex) < p.cfg.EventsPerIndex {
 		return
 	}
 
-	defer func() {
-		// Teardown index building in a thread-safe way
-		p.partitionsMutex.Lock()
-		defer p.partitionsMutex.Unlock()
-
-		p.cancelActiveCalculation(nil)
-
-		if _, ok := p.bufferedEvents[record.Partition]; !ok {
-			// We don't own this partition anymore as it was just revoked. The revocation process has already cleaned up any map entries.
-			return
-		}
-		// We still own this partition, just truncate the events for future processing.
-		p.bufferedEvents[record.Partition] = p.bufferedEvents[record.Partition][:0]
-	}()
+	defer p.cleanupPartition(record.Partition)
 
 	// Build the index.
 	err := p.buildIndex(calculationCtx, eventsToIndex)
@@ -328,16 +320,58 @@ func (p *Builder) processRecord(record *kgo.Record) {
 	}
 }
 
-<<<<<<< HEAD
-func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
-	level.Info(p.logger).Log("msg", "building index", "events", len(events), "tenant", events[0].Tenant)
-=======
+// Appends a record and returns a slice of records to index. The slice will be empty if no indexing is required.
+func (p *Builder) appendRecord(record *kgo.Record) (context.Context, []metastore.ObjectWrittenEvent) {
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
+
+	event := &metastore.ObjectWrittenEvent{}
+	if err := event.Unmarshal(record.Value); err != nil {
+		level.Error(p.logger).Log("msg", "failed to unmarshal metastore event", "err", err)
+		return nil, nil
+	}
+
+	_, ok := p.bufferedEvents[record.Partition]
+	if !ok {
+		// We don't own this partition anymore as it was just revoked. Abort further processing.
+		return nil, nil
+	}
+
+	p.bufferedEvents[record.Partition] = append(p.bufferedEvents[record.Partition], *event)
+	level.Info(p.logger).Log("msg", "buffered new event for partition", "count", len(p.bufferedEvents[record.Partition]), "partition", record.Partition)
+
+	if len(p.bufferedEvents[record.Partition]) < p.cfg.EventsPerIndex {
+		// No more work to do
+		return nil, nil
+	}
+
+	var calculationCtx context.Context
+	eventsToIndex := make([]metastore.ObjectWrittenEvent, len(p.bufferedEvents[record.Partition]))
+	copy(eventsToIndex, p.bufferedEvents[record.Partition])
+
+	p.activeCalculationPartition = record.Partition
+	calculationCtx, p.cancelActiveCalculation = context.WithCancelCause(p.ctx)
+
+	return calculationCtx, eventsToIndex
+}
+
+func (p *Builder) cleanupPartition(partition int32) {
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
+
+	p.cancelActiveCalculation(nil)
+
+	if _, ok := p.bufferedEvents[partition]; !ok {
+		// We don't own this partition anymore as it was just revoked. The revocation process has already cleaned up any map entries.
+		return
+	}
+	// We still own this partition, just truncate the events for future processing.
+	p.bufferedEvents[partition] = p.bufferedEvents[partition][:0]
+}
+
 func (p *Builder) buildIndex(ctx context.Context, events []metastore.ObjectWrittenEvent) error {
 	level.Info(p.logger).Log("msg", "building index", "events", len(events), "partition", p.activeCalculationPartition)
->>>>>>> 032fd55624 (Connect up the index-builder service with the new index objects)
 	start := time.Now()
-
-	indexStorageBucket := objstore.NewPrefixedBucket(p.bucket, p.mCfg.IndexStoragePrefix)
 
 	// Observe processing delay
 	writeTime, err := time.Parse(time.RFC3339, events[0].WriteTime)
@@ -398,24 +432,11 @@ func (p *Builder) buildIndex(ctx context.Context, events []metastore.ObjectWritt
 	}
 	defer reader.Close()
 
-	{
-		// We always need to upload to the index storage bucket
-		indexUploadBucket := objstore.NewPrefixedBucket(p.bucket, p.mCfg.Storage.IndexStoragePrefix)
-		if err := indexUploadBucket.Upload(p.ctx, key, reader); err != nil {
-			return fmt.Errorf("failed to upload index: %w", err)
-		}
+	if err := p.indexStorageBucket.Upload(ctx, key, reader); err != nil {
+		return fmt.Errorf("failed to upload index: %w", err)
 	}
 
-	// Support processing old objects without tenant information, by replacing the missing tenant information with the tenant from the events.
-	for i := range tenantTimeRanges {
-		if tenantTimeRanges[i].Tenant == "" {
-			tenantTimeRanges[i].Tenant = events[0].Tenant
-		}
-	}
-
-	// The ToC writer will conditionally apply the prefix for enabled tenants, so we need to use the base bucket to avoid double prefixing.
-	// In this case, it will always apply the prefix here because we only build indexes for enabled tenants.
-	metastoreTocWriter := metastore.NewTableOfContentsWriter(p.mCfg, p.bucket, p.logger)
+	metastoreTocWriter := metastore.NewTableOfContentsWriter(p.indexStorageBucket, p.logger)
 	if err := metastoreTocWriter.WriteEntry(p.ctx, key, tenantTimeRanges); err != nil {
 		return fmt.Errorf("failed to update metastore ToC file: %w", err)
 	}
