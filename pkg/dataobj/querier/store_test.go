@@ -44,7 +44,7 @@ func TestStore_SelectSamples(t *testing.T) {
 	ctx = user.InjectOrgID(ctx, testTenant)
 
 	// Setup test data
-	now := setupTestData(t, ctx, builder)
+	now := setupTestData(ctx, t, builder)
 	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 
@@ -207,7 +207,7 @@ func TestStore_SelectLogs(t *testing.T) {
 	ctx = user.InjectOrgID(ctx, testTenant)
 
 	// Setup test data
-	now := setupTestData(t, ctx, builder)
+	now := setupTestData(ctx, t, builder)
 	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewLogfmtLogger(os.Stdout), meta)
 
@@ -371,7 +371,7 @@ func TestStore_SelectLogs(t *testing.T) {
 	}
 }
 
-func setupTestData(t *testing.T, ctx context.Context, builder *testDataBuilder) time.Time {
+func setupTestData(ctx context.Context, t *testing.T, builder *testDataBuilder) time.Time {
 	t.Helper()
 	now := time.Unix(0, int64(time.Hour)).UTC()
 
