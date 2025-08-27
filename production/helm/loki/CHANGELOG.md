@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 6.38.0
+
 - [FEATURE] Support separate loki ruler storage configuration [#18510](https://github.com/grafana/loki/pull/18510)
 - [ENHANCEMENT] add namespaceOverride [#18707](https://github.com/grafana/loki/pull/18707)
 
