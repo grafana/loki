@@ -39,7 +39,6 @@ type TableOfContentsWriter struct {
 	metrics    *tocMetrics
 	bucket     objstore.Bucket
 	logger     log.Logger
-	backoff    *backoff.Backoff
 	buf        *bytes.Buffer
 
 	builderOnce sync.Once
@@ -50,14 +49,10 @@ func NewTableOfContentsWriter(cfg Config, bucket objstore.Bucket, logger log.Log
 	metrics := newTableOfContentsMetrics()
 
 	return &TableOfContentsWriter{
-		cfg:     cfg,
-		bucket:  bucket,
-		metrics: metrics,
-		logger:  logger,
-		backoff: backoff.New(context.TODO(), backoff.Config{
-			MinBackoff: 50 * time.Millisecond,
-			MaxBackoff: 10 * time.Second,
-		}),
+		cfg:         cfg,
+		bucket:      bucket,
+		metrics:     metrics,
+		logger:      logger,
 		builderOnce: sync.Once{},
 	}
 }
@@ -72,6 +67,7 @@ func (m *TableOfContentsWriter) UnregisterMetrics(reg prometheus.Registerer) {
 
 func (m *TableOfContentsWriter) initBuilder() error {
 	var initErr error
+
 	m.builderOnce.Do(func() {
 		m.buf = bytes.NewBuffer(make([]byte, 0, tocBuilderCfg.TargetObjectSize))
 		indexBuilder, err := indexobj.NewBuilder(tocBuilderCfg, nil)
@@ -100,8 +96,11 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 	for _, timeRange := range tenantTimeRanges {
 		prefix := storagePrefixFor(m.cfg.Storage, timeRange.Tenant)
 		for tocPath := range iterTableOfContentsPaths(timeRange.Tenant, timeRange.MinTime, timeRange.MaxTime, prefix) {
-			m.backoff.Reset()
-			for m.backoff.Ongoing() {
+			b := backoff.New(ctx, backoff.Config{
+				MinBackoff: 50 * time.Millisecond,
+				MaxBackoff: 10 * time.Second,
+			})
+			for b.Ongoing() {
 				err = m.bucket.GetAndReplace(ctx, tocPath, func(existing io.ReadCloser) (io.ReadCloser, error) {
 					if existing != nil {
 						defer existing.Close()
@@ -172,7 +171,7 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 				}
 				level.Error(m.logger).Log("msg", "failed to get and replace metastore object", "err", err, "metastore", tocPath)
 				m.metrics.incTableOfContentsWrites(statusFailure)
-				m.backoff.Wait()
+				b.Wait()
 			}
 
 			// Reset at the end too so we don't leave our memory hanging around between calls.
