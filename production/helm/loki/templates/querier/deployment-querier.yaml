@@ -104,13 +104,13 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
-          {{- with .Values.loki.livenessProbe }}
+          {{- if .Values.loki.livenessProbe }}
           livenessProbe:
-            {{- toYaml . | nindent 12 }}
+            {{- mergeOverwrite (deepCopy (default dict .Values.loki.livenessProbe)) (default dict .Values.querier.livenessProbe) | toYaml | nindent 12 }}
           {{- end }}
-          {{- with .Values.loki.readinessProbe }}
+          {{- if .Values.loki.readinessProbe }}
           readinessProbe:
-            {{- toYaml . | nindent 12 }}
+            {{- mergeOverwrite (deepCopy (default dict .Values.loki.readinessProbe)) (default dict .Values.querier.readinessProbe) | toYaml | nindent 12 }}
           {{- end }}
           volumeMounts:
             - name: config
