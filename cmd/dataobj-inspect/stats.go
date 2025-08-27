@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/dataobj/tools"
 )
 
 // statsCommand prints stats for each data object in files.
@@ -38,16 +39,32 @@ func (cmd *statsCommand) printStats(name string) {
 	if err != nil {
 		exitWithErr(fmt.Errorf("failed to read fileinfo: %w", err))
 	}
-	dataObj, err := dataobj.FromReaderAt(f, fi.Size())
+	obj, err := dataobj.FromReaderAt(f, fi.Size())
 	if err != nil {
 		exitWithErr(fmt.Errorf("failed to read dataobj: %w", err))
 	}
-	for offset, sec := range dataObj.Sections() {
+	cmd.printObjStats(context.TODO(), obj)
+}
+
+func (cmd *statsCommand) printObjStats(ctx context.Context, obj *dataobj.Object) {
+	stats, err := tools.ReadStats(ctx, obj)
+	if err != nil {
+		exitWithErr(fmt.Errorf("failed to read data object stats: %w", err))
+	}
+	bold := color.New(color.Bold)
+	bold.Println("Object:")
+	fmt.Printf(
+		"\tsize: %v, sections: %d, tenants: %d\n",
+		humanize.Bytes(stats.Size),
+		stats.Sections,
+		len(stats.Tenants),
+	)
+	for offset, sec := range obj.Sections() {
 		switch {
 		case streams.CheckSection(sec):
-			cmd.printStreamsSectionStats(context.TODO(), offset, sec)
+			cmd.printStreamsSectionStats(ctx, offset, sec)
 		case logs.CheckSection(sec):
-			cmd.printLogsSectionStats(context.TODO(), offset, sec)
+			cmd.printLogsSectionStats(ctx, offset, sec)
 		default:
 			exitWithErr(errors.New("unknown section"))
 		}
@@ -66,14 +83,22 @@ func (cmd *statsCommand) printStreamsSectionStats(ctx context.Context, offset in
 	bold := color.New(color.Bold)
 	bold.Println("Streams section:")
 	bold.Printf(
-		"\toffset: %d, columns: %d, compressed size: %v; uncompressed size %v\n",
+		"\toffset: %d, tenant: %s,columns: %d, compressed size: %v, uncompressed size %v\n",
 		offset,
+		streamsSec.Tenant(),
 		len(stats.Columns),
 		humanize.Bytes(stats.CompressedSize),
 		humanize.Bytes(stats.UncompressedSize),
 	)
 	for _, col := range stats.Columns {
-		fmt.Printf("\t\tname: %s, type: %v, %d populated rows, %v compressed (%v), %v uncompressed\n", col.Name, col.Type, col.ValuesCount, humanize.Bytes(col.CompressedSize), col.Compression[17:], humanize.Bytes(col.UncompressedSize))
+		fmt.Printf(
+			"\t\tname: %s, type: %v, %d populated rows, %v compressed (%v), %v uncompressed\n",
+			col.Name,
+			col.Type,
+			col.ValuesCount,
+			humanize.Bytes(col.CompressedSize),
+			col.Compression[17:],
+			humanize.Bytes(col.UncompressedSize))
 	}
 }
 
@@ -89,14 +114,22 @@ func (cmd *statsCommand) printLogsSectionStats(ctx context.Context, offset int, 
 	bold := color.New(color.Bold)
 	bold.Println("Logs section:")
 	bold.Printf(
-		"\toffset: %d, columns: %d, compressed size: %v; uncompressed size %v\n",
+		"\toffset: %d, tenant: %s, columns: %d, compressed size: %v, uncompressed size %v\n",
 		offset,
+		logsSec.Tenant(),
 		len(stats.Columns),
 		humanize.Bytes(stats.CompressedSize),
 		humanize.Bytes(stats.UncompressedSize),
 	)
 	for _, col := range stats.Columns {
-		fmt.Printf("\t\tname: %s, type: %v, %d populated rows, %v compressed (%v), %v uncompressed\n", col.Name, col.Type, col.ValuesCount, humanize.Bytes(col.CompressedSize), col.Compression[17:], humanize.Bytes(col.UncompressedSize))
+		fmt.Printf(
+			"\t\tname: %s, type: %v, %d populated rows, %v compressed (%v), %v uncompressed\n",
+			col.Name,
+			col.Type,
+			col.ValuesCount,
+			humanize.Bytes(col.CompressedSize),
+			col.Compression[17:],
+			humanize.Bytes(col.UncompressedSize))
 	}
 }
 
