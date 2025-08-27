@@ -83,7 +83,7 @@ func (cmd *statsCommand) printStreamsSectionStats(ctx context.Context, offset in
 	bold := color.New(color.Bold)
 	bold.Println("Streams section:")
 	bold.Printf(
-		"\toffset: %d, tenant: %s,columns: %d, compressed size: %v, uncompressed size %v\n",
+		"\toffset: %d, tenant: %s, columns: %d, compressed size: %v, uncompressed size %v\n",
 		offset,
 		streamsSec.Tenant(),
 		len(stats.Columns),
