@@ -103,12 +103,12 @@ type mockBuilder struct {
 	nextErr error
 }
 
-func (m *mockBuilder) Append(stream logproto.Stream) error {
+func (m *mockBuilder) Append(tenant string, stream logproto.Stream) error {
 	if err := m.nextErr; err != nil {
 		m.nextErr = nil
 		return err
 	}
-	return m.builder.Append(stream)
+	return m.builder.Append(tenant, stream)
 }
 
 func (m *mockBuilder) GetEstimatedSize() int {
@@ -123,8 +123,8 @@ func (m *mockBuilder) Flush() (*dataobj.Object, io.Closer, error) {
 	return m.builder.Flush()
 }
 
-func (m *mockBuilder) TimeRange() (time.Time, time.Time) {
-	return m.builder.TimeRange()
+func (m *mockBuilder) TimeRanges() []multitenancy.TimeRange {
+	return m.builder.TimeRanges()
 }
 
 func (m *mockBuilder) UnregisterMetrics(r prometheus.Registerer) {
@@ -222,7 +222,7 @@ type mockPartitionProcessorFactory struct {
 	calls int
 }
 
-func (m *mockPartitionProcessorFactory) New(_ context.Context, _ *kgo.Client, _ string, _ int32, _ string, _ int32) processor {
+func (m *mockPartitionProcessorFactory) New(_ context.Context, _ *kgo.Client, _ string, _ int32) processor {
 	m.calls++
 	return &mockPartitionProcessor{}
 }
@@ -258,7 +258,7 @@ type mockPartitionProcessorLifecycler struct {
 	processors map[string]map[int32]struct{}
 }
 
-func (m *mockPartitionProcessorLifecycler) Register(_ context.Context, _ *kgo.Client, _ string, _ int32, topic string, partition int32) {
+func (m *mockPartitionProcessorLifecycler) Register(_ context.Context, _ *kgo.Client, topic string, partition int32) {
 	if m.processors == nil {
 		m.processors = make(map[string]map[int32]struct{})
 	}

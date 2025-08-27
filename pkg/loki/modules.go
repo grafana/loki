@@ -2203,7 +2203,6 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 		t.Cfg.KafkaConfig,
 		t.Cfg.DataObj.Consumer,
 		t.Cfg.DataObj.Metastore,
-		t.Cfg.Distributor.TenantTopic.TopicPrefix,
 		store,
 		t.scratchStore,
 		t.Cfg.Ingester.LifecyclerConfig.ID,

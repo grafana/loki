@@ -7,13 +7,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/twmb/franz-go/pkg/kgo"
-
-	"github.com/grafana/loki/v3/pkg/distributor"
 )
 
 // processorLifecycler allows mocking of partition processor lifecycler in tests.
 type processorLifecycler interface {
-	Register(ctx context.Context, client *kgo.Client, tenant string, virtualShard int32, topic string, partition int32)
+	Register(ctx context.Context, client *kgo.Client, topic string, partition int32)
 	Deregister(ctx context.Context, topic string, partition int32)
 	Stop(ctx context.Context)
 }
@@ -21,7 +19,6 @@ type processorLifecycler interface {
 // partitionLifecycler manages assignment and revocation of partitions.
 type partitionLifecycler struct {
 	processors processorLifecycler
-	codec      distributor.TenantPrefixCodec
 	logger     log.Logger
 	done       bool
 	mtx        sync.Mutex
@@ -30,12 +27,10 @@ type partitionLifecycler struct {
 // newPartitionLifecycler returns a new partitionLifecycler.
 func newPartitionLifecycler(
 	processors processorLifecycler,
-	codec distributor.TenantPrefixCodec,
 	logger log.Logger,
 ) *partitionLifecycler {
 	return &partitionLifecycler{
 		processors: processors,
-		codec:      codec,
 		logger:     logger,
 	}
 }
@@ -52,13 +47,8 @@ func (l *partitionLifecycler) Assign(
 		return
 	}
 	for topic, partitions := range topics {
-		tenant, virtualShard, err := l.codec.Decode(topic)
-		if err != nil {
-			level.Error(l.logger).Log("msg", "failed to decode topic", "topic", topic, "err", err)
-			continue
-		}
 		for _, partition := range partitions {
-			l.processors.Register(ctx, client, tenant, virtualShard, topic, partition)
+			l.processors.Register(ctx, client, topic, partition)
 		}
 	}
 }
