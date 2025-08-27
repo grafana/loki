@@ -110,16 +110,16 @@ type Config struct {
 
 	KafkaConfig kafka.Config `yaml:"-"`
 
-	DataObjTeeConfig DataObjTeeConfig `yaml:"dataobj_tee"`
+	SegmentTee SegmentTeeConfig `yaml:"segment_topic" category:"experimental"`
 }
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.OTLPConfig.RegisterFlags(fs)
 	cfg.DistributorRing.RegisterFlags(fs)
-	cfg.DataObjTeeConfig.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
+	cfg.SegmentTee.RegisterFlags(fs)
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
@@ -132,8 +132,9 @@ func (cfg *Config) Validate() error {
 	if !cfg.KafkaEnabled && !cfg.IngesterEnabled {
 		return fmt.Errorf("at least one of kafka and ingestor writes must be enabled")
 	}
-	if err := cfg.DataObjTeeConfig.Validate(); err != nil {
-		return err
+
+	if err := cfg.SegmentTee.Validate(); err != nil {
+		return fmt.Errorf("failed to validate segment tee config: %w", err)
 	}
 	return nil
 }
@@ -266,6 +267,9 @@ func New(
 		limitsFrontendClientPool,
 	)
 
+	// Initialize ingestLimits early so it can be used by SegmentTopicWriter
+	ingestLimits := newIngestLimits(limitsFrontendClient, registerer)
+
 	// Create the configured ingestion rate limit strategy (local or global).
 	var ingestionRateStrategy limiter.RateLimiterStrategy
 	var distributorsLifecycler *ring.BasicLifecycler
@@ -292,18 +296,14 @@ func New(
 		kafkaWriter = kafka_client.NewProducer("distributor", kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
 
-		if cfg.DataObjTeeConfig.Enabled {
-			dataObjTee, err := NewDataObjTee(
-				&cfg.DataObjTeeConfig,
-				kafkaClient,
-				dataObjConsumerPartitionRing,
-				logger,
-				registerer,
-			)
+		if cfg.SegmentTee.Enabled {
+			// Create SegmentTopicWriter with ingestLimits
+			segmentWriter, err := NewSegmentTopicWriter(cfg.SegmentTee, kafkaClient, overrides, partitionRing, ingestLimits, registerer, logger)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create data object tee: %w", err)
+				return nil, fmt.Errorf("failed to start segment topic writer: %w", err)
 			}
-			tee = WrapTee(tee, dataObjTee)
+
+			tee = WrapTee(tee, segmentWriter)
 		}
 	}
 
@@ -377,7 +377,7 @@ func New(
 		writeFailuresManager:  writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 		kafkaWriter:           kafkaWriter,
 		partitionRing:         partitionRing,
-		ingestLimits:          newIngestLimits(limitsFrontendClient, registerer),
+		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
 	}
 
