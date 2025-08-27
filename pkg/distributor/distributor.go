@@ -111,7 +111,8 @@ type Config struct {
 	KafkaConfig kafka.Config `yaml:"-"`
 
 	// TODO: cleanup config
-	TenantTopic TenantTopicConfig `yaml:"tenant_topic" category:"experimental"`
+	TenantTopic  TenantTopicConfig  `yaml:"tenant_topic" category:"experimental"`
+	SegmentTopic SegmentTopicConfig `yaml:"segment_topic" category:"experimental"`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -121,6 +122,7 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 	cfg.TenantTopic.RegisterFlags(fs)
+	cfg.SegmentTopic.RegisterFlags(fs)
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
@@ -135,6 +137,9 @@ func (cfg *Config) Validate() error {
 	}
 	if err := cfg.TenantTopic.Validate(); err != nil {
 		return errors.Wrap(err, "validating tenant topic config")
+	}
+	if err := cfg.SegmentTopic.Validate(); err != nil {
+		return errors.Wrap(err, "validating segment topic config")
 	}
 	return nil
 }
@@ -300,6 +305,15 @@ func New(
 			}
 
 			tee = WrapTee(tee, w)
+		}
+
+		if cfg.SegmentTopic.Enabled {
+			segmentWriter, err := NewSegmentTopicWriter(cfg.SegmentTopic, kafkaClient, overrides, registerer, logger)
+			if err != nil {
+				return nil, fmt.Errorf("failed to start segment topic writer: %w", err)
+			}
+
+			tee = WrapTee(tee, segmentWriter)
 		}
 	}
 
