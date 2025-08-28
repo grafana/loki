@@ -54,10 +54,13 @@ func (cmd *statsCommand) printObjStats(ctx context.Context, obj *dataobj.Object)
 	bold := color.New(color.Bold)
 	bold.Println("Object:")
 	fmt.Printf(
-		"\tsize: %v, sections: %d, tenants: %d\n",
+		"\tsize: %v, sections: %d, tenants: %d, sections per tenant: p50: %.2f, p95: %.2f, p99: %.2f\n",
 		humanize.Bytes(stats.Size),
 		stats.Sections,
 		len(stats.Tenants),
+		stats.SectionsPerTenantStats.Median,
+		stats.SectionsPerTenantStats.P95,
+		stats.SectionsPerTenantStats.P99,
 	)
 	for offset, sec := range obj.Sections() {
 		switch {
