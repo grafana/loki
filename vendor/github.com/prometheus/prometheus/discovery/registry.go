@@ -266,7 +266,7 @@ func replaceYAMLTypeError(err error, oldTyp, newTyp reflect.Type) error {
 func RegisterSDMetrics(registerer prometheus.Registerer, rmm RefreshMetricsManager) (map[string]DiscovererMetrics, error) {
 	err := rmm.Register()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create service discovery refresh metrics: %w", err)
+		return nil, errors.New("failed to create service discovery refresh metrics")
 	}
 
 	metrics := make(map[string]DiscovererMetrics)
@@ -274,7 +274,7 @@ func RegisterSDMetrics(registerer prometheus.Registerer, rmm RefreshMetricsManag
 		currentSdMetrics := conf.NewDiscovererMetrics(registerer, rmm)
 		err = currentSdMetrics.Register()
 		if err != nil {
-			return nil, fmt.Errorf("failed to create service discovery metrics: %w", err)
+			return nil, errors.New("failed to create service discovery metrics")
 		}
 		metrics[conf.Name()] = currentSdMetrics
 	}

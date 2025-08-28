@@ -24,9 +24,9 @@ type marathonMetrics struct {
 }
 
 // Register implements discovery.DiscovererMetrics.
-func (*marathonMetrics) Register() error {
+func (m *marathonMetrics) Register() error {
 	return nil
 }
 
 // Unregister implements discovery.DiscovererMetrics.
-func (*marathonMetrics) Unregister() {}
+func (m *marathonMetrics) Unregister() {}

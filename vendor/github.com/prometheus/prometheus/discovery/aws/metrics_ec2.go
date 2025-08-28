@@ -24,9 +24,9 @@ type ec2Metrics struct {
 var _ discovery.DiscovererMetrics = (*ec2Metrics)(nil)
 
 // Register implements discovery.DiscovererMetrics.
-func (*ec2Metrics) Register() error {
+func (m *ec2Metrics) Register() error {
 	return nil
 }
 
 // Unregister implements discovery.DiscovererMetrics.
-func (*ec2Metrics) Unregister() {}
+func (m *ec2Metrics) Unregister() {}

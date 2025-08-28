@@ -248,17 +248,6 @@ func (ls Labels) WithoutEmpty() Labels {
 	return ls
 }
 
-// ByteSize returns the approximate size of the labels in bytes including
-// the two string headers size for name and value.
-// Slice header size is ignored because it should be amortized to zero.
-func (ls Labels) ByteSize() uint64 {
-	var size uint64 = 0
-	for _, l := range ls {
-		size += uint64(len(l.Name)+len(l.Value)) + 2*uint64(unsafe.Sizeof(""))
-	}
-	return size
-}
-
 // Equal returns whether the two label sets are equal.
 func Equal(ls, o Labels) bool {
 	return slices.Equal(ls, o)
@@ -453,7 +442,7 @@ func NewScratchBuilder(n int) ScratchBuilder {
 }
 
 // NewBuilderWithSymbolTable creates a Builder, for api parity with dedupelabels.
-func NewBuilderWithSymbolTable(*SymbolTable) *Builder {
+func NewBuilderWithSymbolTable(_ *SymbolTable) *Builder {
 	return NewBuilder(EmptyLabels())
 }
 
@@ -462,7 +451,7 @@ func NewScratchBuilderWithSymbolTable(_ *SymbolTable, n int) ScratchBuilder {
 	return NewScratchBuilder(n)
 }
 
-func (b *ScratchBuilder) SetSymbolTable(*SymbolTable) {
+func (b *ScratchBuilder) SetSymbolTable(_ *SymbolTable) {
 	// no-op
 }
 

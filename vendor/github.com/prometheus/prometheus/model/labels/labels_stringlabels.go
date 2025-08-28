@@ -283,13 +283,6 @@ func (ls Labels) WithoutEmpty() Labels {
 	return ls
 }
 
-// ByteSize returns the approximate size of the labels in bytes.
-// String header size is ignored because it should be amortized to zero
-// because it may be shared across multiple copies of the Labels.
-func (ls Labels) ByteSize() uint64 {
-	return uint64(len(ls.data))
-}
-
 // Equal returns whether the two label sets are equal.
 func Equal(ls, o Labels) bool {
 	return ls.data == o.data
@@ -449,11 +442,11 @@ func (ls Labels) DropReserved(shouldDropFn func(name string) bool) Labels {
 }
 
 // InternStrings is a no-op because it would only save when the whole set of labels is identical.
-func (*Labels) InternStrings(func(string) string) {
+func (ls *Labels) InternStrings(_ func(string) string) {
 }
 
 // ReleaseStrings is a no-op for the same reason as InternStrings.
-func (Labels) ReleaseStrings(func(string)) {
+func (ls Labels) ReleaseStrings(_ func(string)) {
 }
 
 // Builder allows modifying Labels.
@@ -664,10 +657,10 @@ type SymbolTable struct{}
 
 func NewSymbolTable() *SymbolTable { return nil }
 
-func (*SymbolTable) Len() int { return 0 }
+func (t *SymbolTable) Len() int { return 0 }
 
 // NewBuilderWithSymbolTable creates a Builder, for api parity with dedupelabels.
-func NewBuilderWithSymbolTable(*SymbolTable) *Builder {
+func NewBuilderWithSymbolTable(_ *SymbolTable) *Builder {
 	return NewBuilder(EmptyLabels())
 }
 
@@ -676,7 +669,7 @@ func NewScratchBuilderWithSymbolTable(_ *SymbolTable, n int) ScratchBuilder {
 	return NewScratchBuilder(n)
 }
 
-func (*ScratchBuilder) SetSymbolTable(*SymbolTable) {
+func (b *ScratchBuilder) SetSymbolTable(_ *SymbolTable) {
 	// no-op
 }
 
