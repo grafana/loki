@@ -294,13 +294,8 @@ func TestV2QueryEngine(t *testing.T) {
 		assert.LessOrEqual(t, regionCounts["us-west"], 2.0, "us-west region should have at most 2 logs in the 5m window")
 	})
 
-	t.Run("metric instant query with logfmt groupby and filter", func(t *testing.T) {
-		// TODO: This test is currently expected to fail due to a limitation in the v2 engine.
-		// The filter on parsed fields (status="200") is being applied before the parse stage,
-		// so the status field doesn't exist yet when the filter is evaluated.
-		// This needs to be fixed in the query planner to ensure correct operation ordering.
-		t.Skip("Skipping test - v2 engine doesn't yet support filtering on parsed fields in metric queries")
 
+	t.Run("metric instant query with logfmt groupby and filter", func(t *testing.T) {
 		// Instant metric query that groups by one logfmt field (region) and filters by another (status)
 		// This tests that multiple parsed fields can be used in different parts of the query
 		query := `sum by (region) (count_over_time({job="api"} | logfmt | status="200" [5m]))`

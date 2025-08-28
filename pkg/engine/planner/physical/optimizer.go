@@ -2,6 +2,7 @@ package physical
 
 import (
 	"slices"
+	"sort"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -267,6 +268,77 @@ func (r *projectionPushdown) applyProjectionPushdown(node Node, projections []Co
 }
 
 var _ rule = (*projectionPushdown)(nil)
+
+// parseKeysPushdown determines which keys need to be parsed based on downstream operations
+type parseKeysPushdown struct {
+	plan *Plan
+}
+
+// apply implements rule.
+func (r *parseKeysPushdown) apply(node Node) bool {
+	switch node := node.(type) {
+	case *ParseNode:
+		// Check if any downstream nodes need keys
+		requiredKeys := r.collectRequiredKeys(node)
+		if len(requiredKeys) == 0 {
+			return false
+		}
+		node.RequestedKeys = requiredKeys
+		return true
+	}
+	return false
+}
+
+func (r *parseKeysPushdown) collectRequiredKeys(parseNode Node) []string {
+	keysMap := make(map[string]bool)
+	
+	// Walk through ancestors to find nodes that need parsed fields
+	r.walkAncestors(parseNode, func(n Node) {
+		switch n := n.(type) {
+		case *Filter:
+			// Extract columns from filter predicates
+			collectAmbiguousColumns(extractColumnsFromPredicates(n.Predicates), keysMap)
+		case *VectorAggregation:
+			// Extract columns from GroupBy
+			collectAmbiguousColumns(n.GroupBy, keysMap)
+		case *RangeAggregation:
+			// Extract columns from PartitionBy
+			collectAmbiguousColumns(n.PartitionBy, keysMap)
+		}
+	})
+	
+	// Convert map to sorted slice
+	keys := make([]string, 0, len(keysMap))
+	for k := range keysMap {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// collectAmbiguousColumns adds ambiguous column names to the keysMap.
+// It only collects columns with ColumnTypeAmbiguous, skipping labels and builtins.
+func collectAmbiguousColumns(columns []ColumnExpression, keysMap map[string]bool) {
+	for _, col := range columns {
+		if colExpr, ok := col.(*ColumnExpr); ok {
+			// Only collect ambiguous columns (might need parsing)
+			// Skip labels (from stream selector) and builtins (like timestamp/message)
+			if colExpr.Ref.Type == types.ColumnTypeAmbiguous {
+				keysMap[colExpr.Ref.Column] = true
+			}
+		}
+	}
+}
+
+func (r *parseKeysPushdown) walkAncestors(node Node, visit func(Node)) {
+	parent := r.plan.Parent(node)
+	if parent != nil {
+		visit(parent)
+		r.walkAncestors(parent, visit)
+	}
+}
+
+var _ rule = (*parseKeysPushdown)(nil)
 
 // optimization represents a single optimization pass and can hold multiple rules.
 type optimization struct {

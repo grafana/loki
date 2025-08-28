@@ -10,9 +10,21 @@ import (
 type ParserKind int
 
 const (
-	ParserLogfmt ParserKind = iota
+	ParserInvalid ParserKind = iota
+	ParserLogfmt
 	ParserJSON
 )
+
+func (p *ParserKind) String() string {
+	switch *p {
+	case ParserLogfmt:
+		return "logfmt"
+	case ParserJSON:
+		return "json"
+	default:
+		return "invalid"
+	}
+}
 
 // NumericType represents the numeric type to cast a parsed field to
 type NumericType int

@@ -57,17 +57,11 @@ func TestInsertCastNodeAfterParse(t *testing.T) {
 		require.NotNil(t, parseNode, "Should have a ParseNode")
 
 		// Check that ParseNode has a CastNode as a parent in the plan
-		parents := physicalPlan.Parents(parseNode)
-		require.Len(t, parents, 1, "ParseNode should have exactly one parent")
+		parent := physicalPlan.Parent(parseNode)
+		require.NotNil(t, parent, "ParseNode should have a parent")
 
-		var castNode *CastNode
-		for _, parent := range parents {
-			if cast, ok := parent.(*CastNode); ok {
-				castNode = cast
-				break
-			}
-		}
-		require.NotNil(t, castNode, "ParseNode's parent should be a CastNode")
+		castNode, ok := parent.(*CastNode)
+		require.True(t, ok, "ParseNode's parent should be a CastNode")
 
 		// Verify the cast configuration
 		require.Equal(t, 1, len(castNode.Casts))

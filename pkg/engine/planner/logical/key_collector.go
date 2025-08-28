@@ -1,9 +1,6 @@
 package logical
 
 import (
-	"sort"
-
-	"github.com/grafana/loki/v3/pkg/logql/log"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
@@ -51,61 +48,13 @@ func getUnwrapTypeHint(unwrap *syntax.UnwrapExpr) string {
 	}
 }
 
-// collectLogfmtFilterKeys walks the AST and collects keys from label filters
-// that appear after a logfmt parser. This is used for both log and metric queries
-// to determine which fields need to be parsed for filtering.
+// collectLogfmtMetricKeys collects type hints for unwrap operations in metric queries.
+// This is used to determine how to cast parsed values during query execution.
 //
 // Returns:
-//   - keys: sorted list of unique keys from label filters after logfmt
-//   - hasLogfmt: true if a logfmt parser was found
-func collectLogfmtFilterKeys(expr syntax.Expr) ([]string, bool) {
-	keysMap := make(map[string]bool)
-	var foundLogfmt bool
-
-	// Use the visitor pattern to walk the AST
-	visitor := &syntax.DepthFirstTraversal{
-		VisitLogfmtParserFn: func(_ syntax.RootVisitor, _ *syntax.LogfmtParserExpr) {
-			foundLogfmt = true
-		},
-		VisitLabelFilterFn: func(_ syntax.RootVisitor, e *syntax.LabelFilterExpr) {
-			// If we found a logfmt parser and now have a label filter,
-			// collect the label names using RequiredLabelNames()
-			if foundLogfmt && e.LabelFilterer != nil {
-				// All LabelFilterers implement the Stage interface which has RequiredLabelNames()
-				if stage, ok := e.LabelFilterer.(log.Stage); ok {
-					for _, key := range stage.RequiredLabelNames() {
-						keysMap[key] = true
-					}
-				}
-			}
-		},
-	}
-
-	expr.Accept(visitor)
-
-	// If no logfmt was found, return empty
-	if !foundLogfmt {
-		return []string{}, false
-	}
-
-	// Convert map to sorted slice
-	keys := make([]string, 0, len(keysMap))
-	for key := range keysMap {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	return keys, true
-}
-
-// collectLogfmtMetricKeys collects keys needed for metric aggregations from logfmt parsing.
-// This includes groupBy labels from vector aggregations and unwrap identifiers with type hints.
-//
-// Returns:
-//   - keys: sorted list of unique keys needed for metric operations
+//   - keys: empty slice (kept for compatibility, will be removed later)
 //   - hints: map of field name to type hint for unwrap operations
 func collectLogfmtMetricKeys(expr syntax.Expr) ([]string, map[string]string) {
-	keysMap := make(map[string]bool)
 	hints := make(map[string]string)
 	var foundLogfmt bool
 
@@ -122,7 +71,6 @@ func collectLogfmtMetricKeys(expr syntax.Expr) ([]string, map[string]string) {
 			// If we found a logfmt parser and there's an unwrap expression,
 			// collect the unwrap identifier and its type hint
 			if foundLogfmt && e.Unwrap != nil {
-				keysMap[e.Unwrap.Identifier] = true
 				hints[e.Unwrap.Identifier] = getUnwrapTypeHint(e.Unwrap)
 			}
 		},
@@ -133,38 +81,13 @@ func collectLogfmtMetricKeys(expr syntax.Expr) ([]string, map[string]string) {
 			}
 			// Then check for unwrap in the embedded LogRangeExpr
 			if foundLogfmt && e.Left != nil && e.Left.Unwrap != nil {
-				keysMap[e.Left.Unwrap.Identifier] = true
 				hints[e.Left.Unwrap.Identifier] = getUnwrapTypeHint(e.Left.Unwrap)
-			}
-		},
-		VisitVectorAggregationFn: func(v syntax.RootVisitor, e *syntax.VectorAggregationExpr) {
-			// First, visit the child expression to find logfmt
-			if e.Left != nil {
-				e.Left.Accept(v)
-			}
-			// If we found a logfmt parser and there's a groupBy clause,
-			// collect all groupBy labels
-			if foundLogfmt && e.Grouping != nil {
-				for _, label := range e.Grouping.Groups {
-					keysMap[label] = true
-				}
 			}
 		},
 	}
 
 	expr.Accept(visitor)
 
-	// If no logfmt was found, return empty
-	if !foundLogfmt {
-		return []string{}, map[string]string{}
-	}
-
-	// Convert map to sorted slice
-	keys := make([]string, 0, len(keysMap))
-	for key := range keysMap {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-
-	return keys, hints
+	// Return empty keys slice and hints map
+	return []string{}, hints
 }

@@ -22,8 +22,8 @@ func TestBuilderParse(t *testing.T) {
 			},
 		)
 
-		// Add Parse operation
-		builder = builder.Parse(ParserLogfmt, []string{"level", "status"}, nil)
+		// Add Parse operation (keys would normally be determined by optimizer)
+		builder = builder.Parse(ParserLogfmt, []string{}, nil)
 
 		// Add Select after Parse
 		builder = builder.Select(
@@ -48,7 +48,7 @@ func TestBuilderParse(t *testing.T) {
 		// 5: Return
 		expectedSSA := `%1 = EQ label.app "users"
 %2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
-%3 = PARSE %2 [kind=0, keys=[level status]]
+%3 = PARSE %2 [kind=1, keys=[]]
 %4 = EQ parsed.level "error"
 %5 = SELECT %3 [predicate=%4]
 RETURN %5
@@ -60,6 +60,6 @@ RETURN %5
 		parseInst, ok := plan.Instructions[2].(*Parse)
 		require.True(t, ok, "Instruction 2 should be Parse")
 		require.Equal(t, ParserLogfmt, parseInst.Kind)
-		require.Equal(t, []string{"level", "status"}, parseInst.RequestedKeys)
+		require.Empty(t, parseInst.RequestedKeys, "keys are determined by optimizer")
 	})
 }

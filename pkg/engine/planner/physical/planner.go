@@ -71,10 +71,9 @@ func (pc *Context) GetResolveTimeRange() (from, through time.Time) {
 //     a) Push down the limit of the Limit node to the DataObjScan nodes.
 //     b) Push down the predicate from the Filter node to the DataObjScan nodes.
 type Planner struct {
-	context  *Context
-	catalog  Catalog
-	plan     *Plan
-	registry *ColumnRegistry
+	context *Context
+	catalog Catalog
+	plan    *Plan
 }
 
 // NewPlanner creates a new planner instance with the given context.
@@ -85,14 +84,6 @@ func NewPlanner(ctx *Context, catalog Catalog) *Planner {
 	}
 }
 
-// NewPlannerWithRegistry creates a new planner instance with column registry support.
-func NewPlannerWithRegistry(ctx *Context, catalog Catalog) *Planner {
-	return &Planner{
-		context:  ctx,
-		catalog:  catalog,
-		registry: NewColumnRegistry(),
-	}
-}
 
 // Build converts a given logical plan into a physical plan and returns an error if the conversion fails.
 // The resulting plan can be accessed using [Planner.Plan].
@@ -101,11 +92,6 @@ func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
 	for _, inst := range lp.Instructions {
 		switch inst := inst.(type) {
 		case *logical.Return:
-			// If we have a registry, do a pre-pass to register all columns
-			if p.registry != nil {
-				p.registerColumns(inst.Value)
-			}
-
 			nodes, err := p.process(inst.Value, p.context)
 			if err != nil {
 				return nil, err
@@ -126,17 +112,6 @@ func (p *Planner) reset() {
 
 // Convert a predicate from an [logical.Instruction] into an [Expression].
 func (p *Planner) convertPredicate(inst logical.Value) Expression {
-	// If we have a registry, use ExpressionResolver to resolve ambiguous columns
-	if p.registry != nil {
-		resolver := NewExpressionResolver(p.registry)
-		expr, err := resolver.ResolveExpression(inst)
-		if err == nil {
-			return expr
-		}
-		// Fall back to original logic if resolution fails
-	}
-
-	// Original conversion logic (used when no registry or as fallback)
 	switch inst := inst.(type) {
 	case *logical.UnaryOp:
 		return &UnaryExpr{
@@ -424,7 +399,7 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) 
 }
 
 // Optimize tries to optimize the plan by pushing down filter predicates and limits
-// to the scan nodes.
+// to the scan nodes, and pushing down parse keys to the parse nodes.
 func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 	for i, root := range plan.Roots() {
 		optimizations := []*optimization{
@@ -442,6 +417,10 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			newOptimization("ProjectionPushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
 			),
+			// ParseKeysPushdown determines which keys need parsing based on upstream operations
+			newOptimization("ParseKeysPushdown", plan).withRules(
+				&parseKeysPushdown{plan: plan},
+			),
 		}
 		optimizer := newOptimizer(plan, optimizations)
 		optimizer.optimize(root)
@@ -452,63 +431,3 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 	return plan, nil
 }
 
-// registerColumns does a pre-pass through the logical plan to register all columns
-// This ensures that columns are registered before they are resolved in predicates
-func (p *Planner) registerColumns(inst logical.Value) {
-	switch inst := inst.(type) {
-	case *logical.MakeTable:
-		// Register stream labels from selector
-		labels := extractLabelsFromSelector(inst.Selector)
-		if len(labels) > 0 {
-			_ = p.registry.RegisterLabelColumns(labels)
-		}
-	case *logical.Parse:
-		// Register parsed columns
-		if len(inst.RequestedKeys) > 0 {
-			_ = p.registry.RegisterParsedColumns(inst.RequestedKeys)
-		}
-		// Continue traversing
-		p.registerColumns(inst.Table)
-	case *logical.Select:
-		// Continue traversing
-		p.registerColumns(inst.Table)
-	case *logical.Sort:
-		// Continue traversing
-		p.registerColumns(inst.Table)
-	case *logical.Limit:
-		// Continue traversing
-		p.registerColumns(inst.Table)
-	case *logical.RangeAggregation:
-		// Continue traversing
-		p.registerColumns(inst.Table)
-	case *logical.VectorAggregation:
-		// Continue traversing
-		p.registerColumns(inst.Table)
-		// Other node types don't have child tables or don't need registration
-	}
-}
-
-// extractLabelsFromSelector walks a logical selector expression and extracts label column names
-func extractLabelsFromSelector(selector logical.Value) []string {
-	labels := make(map[string]bool)
-	extractLabelsRecursive(selector, labels)
-
-	result := make([]string, 0, len(labels))
-	for label := range labels {
-		result = append(result, label)
-	}
-	return result
-}
-
-func extractLabelsRecursive(val logical.Value, labels map[string]bool) {
-	switch v := val.(type) {
-	case *logical.BinOp:
-		extractLabelsRecursive(v.Left, labels)
-		extractLabelsRecursive(v.Right, labels)
-	case *logical.ColumnRef:
-		if v.Ref.Type == types.ColumnTypeLabel {
-			labels[v.Ref.Column] = true
-		}
-		// Literals and other types don't have labels
-	}
-}

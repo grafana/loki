@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -356,7 +357,8 @@ func TestPlannerCreatesParseFromLogfmt(t *testing.T) {
 		require.NotNil(t, parseInst, "Parse instruction should be created for logfmt")
 		require.Equal(t, ParserLogfmt, parseInst.Kind)
 		// The key collector should have identified that "level" needs to be extracted
-		require.Contains(t, parseInst.RequestedKeys, "level")
+		// RequestedKeys are determined by the physical planner's optimizer, not the logical planner
+		require.Empty(t, parseInst.RequestedKeys, "logical planner should not set RequestedKeys")
 	})
 }
 
@@ -392,8 +394,9 @@ func TestCountOverTimeWithParsedFilter(t *testing.T) {
 
 		// Assert Parse instruction extracts "level" field for filtering
 		require.NotNil(t, parseInst, "Parse instruction should exist")
-		require.Contains(t, parseInst.RequestedKeys, "level",
-			"Parse should extract 'level' field for filtering")
+		// RequestedKeys are determined by the physical planner's optimizer
+		require.Empty(t, parseInst.RequestedKeys,
+			"logical planner should not set RequestedKeys")
 
 		// Find Select instructions that should filter on parsed "level" field
 		var foundLevelFilter bool
@@ -446,10 +449,9 @@ func TestCountOverTimeWithParsedFilter(t *testing.T) {
 
 		// Assert Parse instruction extracts both "level" and "method" fields
 		require.NotNil(t, parseInst, "Parse instruction should exist")
-		require.Contains(t, parseInst.RequestedKeys, "level",
-			"Parse should extract 'level' field")
-		require.Contains(t, parseInst.RequestedKeys, "method",
-			"Parse should extract 'method' field")
+		// RequestedKeys are determined by the physical planner's optimizer
+		require.Empty(t, parseInst.RequestedKeys,
+			"logical planner should not set RequestedKeys")
 
 		// Count the number of Select instructions that filter on parsed fields
 		var levelFilterFound, methodFilterFound bool
@@ -521,8 +523,9 @@ func TestVectorAggregationGroupsByParsedLabel(t *testing.T) {
 		}
 
 		require.NotNil(t, parseInst, "Parse instruction should exist")
-		require.Contains(t, parseInst.RequestedKeys, "region",
-			"Parse should extract 'region' field for grouping")
+		// RequestedKeys are determined by the physical planner's optimizer
+		require.Empty(t, parseInst.RequestedKeys,
+			"logical planner should not set RequestedKeys")
 
 		// Find the VectorAggregation instruction
 		var vecAggInst *VectorAggregation
@@ -579,10 +582,9 @@ func TestVectorAggregationGroupsByParsedLabel(t *testing.T) {
 		// Assert Parse instruction extracts the parsed fields (region, env)
 		// but not the stream label (app)
 		require.NotNil(t, parseInst, "Parse instruction should exist")
-		require.Contains(t, parseInst.RequestedKeys, "region",
-			"Parse should extract 'region' field")
-		require.Contains(t, parseInst.RequestedKeys, "env",
-			"Parse should extract 'env' field")
+		// RequestedKeys are determined by the physical planner's optimizer
+		require.Empty(t, parseInst.RequestedKeys,
+			"logical planner should not set RequestedKeys")
 		// Note: "app" should NOT be in RequestedKeys as it's a stream label
 
 		// Find the VectorAggregation instruction
@@ -606,7 +608,7 @@ func TestVectorAggregationGroupsByParsedLabel(t *testing.T) {
 			groupByNames[name] = true
 			actualNames = append(actualNames, name)
 		}
-		require.True(t, groupByNames["ambiguous.app"], "Should group by 'app'. Actual columns: %v", actualNames)
+		require.True(t, groupByNames["label.app"], "Should group by 'app' as label. Actual columns: %v", actualNames)
 		require.True(t, groupByNames["ambiguous.region"], "Should group by 'region'. Actual columns: %v", actualNames)
 		require.True(t, groupByNames["ambiguous.env"], "Should group by 'env'. Actual columns: %v", actualNames)
 	})
@@ -636,8 +638,9 @@ func TestBuildPlanForLogQuery_LogfmtParsing(t *testing.T) {
 
 		require.NotNil(t, parseInst, "should create Parse instruction")
 		require.Equal(t, ParserLogfmt, parseInst.Kind)
-		require.Contains(t, parseInst.RequestedKeys, "level",
-			"should parse only filtered field")
+		// RequestedKeys are determined by the physical planner's optimizer
+		require.Empty(t, parseInst.RequestedKeys,
+			"logical planner should not set RequestedKeys")
 	})
 
 	t.Run("creates Parse with empty keys for logfmt without filters", func(t *testing.T) {
@@ -687,13 +690,14 @@ func TestBuildPlanForLogQuery_LogfmtParsing(t *testing.T) {
 
 		require.NotNil(t, parseInst, "should create Parse instruction")
 		require.Equal(t, ParserLogfmt, parseInst.Kind)
-		require.Contains(t, parseInst.RequestedKeys, "level",
-			"should parse only filtered field")
+		// RequestedKeys are determined by the physical planner's optimizer
+		require.Empty(t, parseInst.RequestedKeys,
+			"logical planner should not set RequestedKeys")
 	})
 }
 
-func TestMetricQueryMergesFilterAndMetricKeys(t *testing.T) {
-	t.Run("Parse instruction contains both filter and metric keys", func(t *testing.T) {
+func TestMetricQueryCreatesParseInstruction(t *testing.T) {
+	t.Run("Parse instruction is created but keys are determined by optimizer", func(t *testing.T) {
 		q := &query{
 			statement: `sum by (region) (count_over_time({app="test"} | logfmt | level="error" [5m]))`,
 			start:     3600,
@@ -713,11 +717,114 @@ func TestMetricQueryMergesFilterAndMetricKeys(t *testing.T) {
 
 		require.NotNil(t, parseInst)
 		require.Equal(t, ParserLogfmt, parseInst.Kind)
-		require.Len(t, parseInst.RequestedKeys, 2, "should collect both filter and metric keys")
-		require.Contains(t, parseInst.RequestedKeys, "level", "filter key")
-		require.Contains(t, parseInst.RequestedKeys, "region", "groupBy key")
+		// RequestedKeys are now determined by the physical planner's parseKeysPushdown optimizer
+		require.Empty(t, parseInst.RequestedKeys, "logical planner should not set RequestedKeys")
 	})
 
 	// TODO(twhitney): Add test for unwrap keys when sum_over_time or other aggregations with unwrap support are implemented
 	// Currently only count_over_time is supported, which doesn't support unwrap
+}
+
+func TestLogicalPlannerIdentifiesStreamLabels(t *testing.T) {
+	tests := []struct {
+		name             string
+		query            string
+		wantStreamLabels map[string]bool             // Labels from stream selector
+		checkColumns     map[string]types.ColumnType // Columns to check and their expected types
+	}{
+		{
+			name:  "simple log query with stream selector",
+			query: `{app="test", env="prod"}`,
+			wantStreamLabels: map[string]bool{
+				"app": true,
+				"env": true,
+			},
+			checkColumns: map[string]types.ColumnType{
+				"app": types.ColumnTypeLabel, // Stream selector label
+				"env": types.ColumnTypeLabel, // Stream selector label
+			},
+		},
+		{
+			name:  "metric query with stream labels and groupby",
+			query: `sum by(app, region, status) (count_over_time({app="test", region="us"} | logfmt [5m]))`,
+			wantStreamLabels: map[string]bool{
+				"app":    true,
+				"region": true,
+			},
+			checkColumns: map[string]types.ColumnType{
+				"app":    types.ColumnTypeLabel,     // Stream selector label (used in groupby)
+				"region": types.ColumnTypeLabel,     // Stream selector label (used in groupby)
+				"status": types.ColumnTypeAmbiguous, // groupby label (not in stream selector)
+			},
+		},
+		{
+			name:  "metric query with stream labels and filter",
+			query: `sum by(app, region) (count_over_time({app="test", region="us"} | logfmt | status="200" [5m]))`,
+			wantStreamLabels: map[string]bool{
+				"app":    true,
+				"region": true,
+			},
+			checkColumns: map[string]types.ColumnType{
+				"app":    types.ColumnTypeLabel,     // Stream selector label (used in groupby)
+				"region": types.ColumnTypeLabel,     // Stream selector label (used in groupby)
+				"status": types.ColumnTypeAmbiguous, // groupby label (not in stream selector)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create params for the query - use instant query
+			now := time.Now()
+			params, err := logql.NewLiteralParams(
+				tt.query,
+				now, // instant query at now
+				now,
+				0, // no step for instant query
+				0,
+				logproto.BACKWARD, // backward for log queries
+				1000,
+				nil,
+				nil,
+			)
+			require.NoError(t, err)
+
+			// Build the logical plan
+			logicalPlan, err := BuildPlan(params)
+			require.NoError(t, err)
+
+			// Get the root value from the plan - need to extract from instructions
+			require.NotNil(t, logicalPlan)
+			require.GreaterOrEqual(t, len(logicalPlan.Instructions), 1)
+
+			// Walk ALL instructions to find column references
+			foundColumns := make(map[string]types.ColumnType)
+			for _, inst := range logicalPlan.Instructions {
+				switch node := inst.(type) {
+				case *BinOp:
+					// Check left side if it's a column reference
+					if colRef, ok := node.Left.(*ColumnRef); ok {
+						foundColumns[colRef.Ref.Column] = colRef.Ref.Type
+					}
+				case *VectorAggregation:
+					// Check GroupBy columns
+					for _, col := range node.GroupBy {
+						foundColumns[col.Ref.Column] = col.Ref.Type
+					}
+				case *RangeAggregation:
+					// Check PartitionBy columns
+					for _, col := range node.PartitionBy {
+						foundColumns[col.Ref.Column] = col.Ref.Type
+					}
+				}
+			}
+
+			// Verify the expected columns have the right types
+			for colName, expectedType := range tt.checkColumns {
+				actualType, found := foundColumns[colName]
+				require.True(t, found, "Column %s not found in plan", colName)
+				require.Equal(t, expectedType, actualType, "Column %s has wrong type", colName)
+			}
+		})
+	}
 }

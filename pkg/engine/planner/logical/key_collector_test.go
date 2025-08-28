@@ -8,52 +8,29 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-func TestCollectLogfmtFilterKeys(t *testing.T) {
-	t.Run("collects fields from label filters after logfmt", func(t *testing.T) {
-		expr := syntax.MustParseExpr(`{app="test"} | logfmt | level="error" | method="GET"`)
-		keys, hasLogfmt := collectLogfmtFilterKeys(expr)
-
-		require.True(t, hasLogfmt, "should detect logfmt parser")
-		require.ElementsMatch(t, []string{"level", "method"}, keys,
-			"should collect all filtered field names")
-	})
-
-	t.Run("returns empty keys when logfmt has no filters", func(t *testing.T) {
-		expr := syntax.MustParseExpr(`{app="test"} | logfmt`)
-		keys, hasLogfmt := collectLogfmtFilterKeys(expr)
-
-		require.True(t, hasLogfmt, "should detect logfmt parser")
-		require.Empty(t, keys, "should return empty keys for parse-all scenario")
-	})
-
-	t.Run("returns false when no logfmt parser", func(t *testing.T) {
-		expr := syntax.MustParseExpr(`{app="test"} | level="error"`)
-		keys, hasLogfmt := collectLogfmtFilterKeys(expr)
-
-		require.False(t, hasLogfmt, "should not detect logfmt")
-		require.Empty(t, keys, "should return empty keys")
-	})
-}
-
 func TestCollectLogfmtMetricKeys(t *testing.T) {
-	t.Run("collects groupBy labels from vector aggregation", func(t *testing.T) {
-		expr := syntax.MustParseExpr(`sum by (level, region) (count_over_time({app="test"} | logfmt [5m]))`)
-		keys, hints := collectLogfmtMetricKeys(expr)
-
-		require.Len(t, keys, 2, "should collect grouping labels")
-		require.Contains(t, keys, "level", "should collect groupBy label")
-		require.Contains(t, keys, "region", "should collect groupBy label")
-		require.Empty(t, hints, "should return empty hints since there is no unwrap")
-	})
-
-	t.Run("collects unwrap identifier with type hint", func(t *testing.T) {
+	t.Run("returns empty keys but collects unwrap type hints", func(t *testing.T) {
 		expr := syntax.MustParseExpr(`sum by (app) (sum_over_time({app="test"} | logfmt | unwrap bytes [5m]))`)
 		keys, hints := collectLogfmtMetricKeys(expr)
 
-		require.Len(t, keys, 2, "should collect unwrap field and grouping label")
-		require.Contains(t, keys, "bytes", "should collect unwrap field")
-		require.Contains(t, keys, "app", "should collect unwrap field")
-		require.Equal(t, "int64", hints["bytes"], "should have correct type hint")
+		require.Empty(t, keys, "should return empty keys array")
+		require.Equal(t, "int64", hints["bytes"], "should have correct type hint for bytes")
+	})
+
+	t.Run("collects duration type hint for duration unwrap", func(t *testing.T) {
+		expr := syntax.MustParseExpr(`sum by (app) (sum_over_time({app="test"} | logfmt | unwrap duration [5m]))`)
+		keys, hints := collectLogfmtMetricKeys(expr)
+
+		require.Empty(t, keys, "should return empty keys array")
+		require.Equal(t, "duration", hints["duration"], "should have correct type hint for duration")
+	})
+
+	t.Run("defaults to float64 for unspecified types", func(t *testing.T) {
+		expr := syntax.MustParseExpr(`sum by (app) (sum_over_time({app="test"} | logfmt | unwrap latency [5m]))`)
+		keys, hints := collectLogfmtMetricKeys(expr)
+
+		require.Empty(t, keys, "should return empty keys array")
+		require.Equal(t, "float64", hints["latency"], "should default to float64 type hint")
 	})
 
 	t.Run("returns empty for queries without logfmt", func(t *testing.T) {
@@ -63,4 +40,81 @@ func TestCollectLogfmtMetricKeys(t *testing.T) {
 		require.Empty(t, keys, "should return empty keys without logfmt")
 		require.Empty(t, hints, "should return empty hints without logfmt")
 	})
+
+	t.Run("returns empty for count_over_time without unwrap", func(t *testing.T) {
+		expr := syntax.MustParseExpr(`sum by (region) (count_over_time({job="api"} | logfmt | status="200" [5m]))`)
+		keys, hints := collectLogfmtMetricKeys(expr)
+
+		require.Empty(t, keys, "should return empty keys array")
+		require.Empty(t, hints, "should have no hints for count_over_time")
+	})
+}
+
+func TestGetUnwrapTypeHint(t *testing.T) {
+	tests := []struct {
+		name     string
+		unwrap   *syntax.UnwrapExpr
+		expected string
+	}{
+		{
+			name:     "nil unwrap returns float64",
+			unwrap:   nil,
+			expected: "float64",
+		},
+		{
+			name: "bytes operation returns int64",
+			unwrap: &syntax.UnwrapExpr{
+				Operation:  "bytes",
+				Identifier: "foo",
+			},
+			expected: "int64",
+		},
+		{
+			name: "duration operation returns duration",
+			unwrap: &syntax.UnwrapExpr{
+				Operation:  "duration",
+				Identifier: "foo",
+			},
+			expected: "duration",
+		},
+		{
+			name: "duration_seconds operation returns duration",
+			unwrap: &syntax.UnwrapExpr{
+				Operation:  "duration_seconds",
+				Identifier: "foo",
+			},
+			expected: "duration",
+		},
+		{
+			name: "bytes identifier without operation returns int64",
+			unwrap: &syntax.UnwrapExpr{
+				Operation:  "",
+				Identifier: "bytes",
+			},
+			expected: "int64",
+		},
+		{
+			name: "duration identifier without operation returns duration",
+			unwrap: &syntax.UnwrapExpr{
+				Operation:  "",
+				Identifier: "duration",
+			},
+			expected: "duration",
+		},
+		{
+			name: "unknown identifier defaults to float64",
+			unwrap: &syntax.UnwrapExpr{
+				Operation:  "",
+				Identifier: "latency",
+			},
+			expected: "float64",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := getUnwrapTypeHint(tt.unwrap)
+			require.Equal(t, tt.expected, result)
+		})
+	}
 }
