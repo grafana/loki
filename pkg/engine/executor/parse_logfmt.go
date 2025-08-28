@@ -2,10 +2,13 @@ package executor
 
 import (
 	"sort"
+	"unsafe"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
+
+	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 )
 
 // BuildLogfmtColumns builds Arrow columns from logfmt input lines
@@ -109,4 +112,43 @@ func determineColumnKeys(requestedKeys []string, parsedLines []map[string]string
 	sort.Strings(columnKeys)
 
 	return columnKeys
+}
+
+// TokenizeLogfmt parses logfmt input using the standard decoder
+// Returns a map of key-value pairs with last-wins semantics for duplicates
+// If requestedKeys is provided, the result will be filtered to only include those keys
+func TokenizeLogfmt(input string, requestedKeys []string) (map[string]string, error) {
+	result := make(map[string]string)
+	decoder := logfmt.NewDecoder(unsafeBytes(input))
+
+	// Parse all key-value pairs
+	for !decoder.EOL() && decoder.ScanKeyval() {
+		key := string(decoder.Key())
+		value := string(decoder.Value())
+		// Last-wins semantics for duplicates
+		result[key] = value
+	}
+
+	// Check for parsing errors
+	if err := decoder.Err(); err != nil {
+		return result, err
+	}
+
+	// Filter to requested keys if specified
+	if len(requestedKeys) > 0 {
+		filteredResult := make(map[string]string)
+		for _, key := range requestedKeys {
+			if value, ok := result[key]; ok {
+				filteredResult[key] = value
+			}
+		}
+		return filteredResult, nil
+	}
+
+	return result, nil
+}
+
+// unsafeBytes converts a string to []byte without allocation
+func unsafeBytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
