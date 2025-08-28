@@ -42,14 +42,14 @@ func ReadStats(_ context.Context, obj *dataobj.Object) (*Stats, error) {
 	// A tenant can have multiple sections, so we must deduplicate them.
 	slices.Sort(s.Tenants)
 	s.Tenants = slices.Compact(s.Tenants)
-	calculateSectionsPerTenantStats(&s)
-	calculateSectionSizeStats(&s)
+	calcSectionsPerTenantStats(&s)
+	calcSectionSizeStats(&s)
 	return &s, nil
 }
 
-// calculateSectionsPerTenantsStats calculates the median and other
+// calcSectionsPerTenantStats calculates the median and other
 // percentiles for the number of sections per tenant.
-func calculateSectionsPerTenantStats(s *Stats) {
+func calcSectionsPerTenantStats(s *Stats) {
 	if len(s.TenantSections) == 0 {
 		return
 	}
@@ -57,51 +57,38 @@ func calculateSectionsPerTenantStats(s *Stats) {
 	for _, n := range s.TenantSections {
 		counts = append(counts, n)
 	}
-	// Data must be sorted to calculate percentiles.
-	slices.Sort(counts)
-	n := len(counts)
-	if n%2 == 0 {
-		s.SectionsPerTenantStats.Median = float64(counts[n/2-1]+counts[n/2]) / 2.0
-	} else {
-		s.SectionsPerTenantStats.Median = float64(counts[n/2])
-	}
-	idx := int(float64(n) * 0.95)
-	if idx >= n {
-		idx = n - 1
-	}
-	s.SectionsPerTenantStats.P95 = float64(counts[idx])
-	idx = int(float64(n) * 0.99)
-	if idx >= n {
-		idx = n - 1
-	}
-	s.SectionsPerTenantStats.P99 = float64(counts[idx])
+	calcPercentiles(counts, &s.SectionsPerTenantStats)
 }
 
-// calculateSectionSizes calculates the median and other percentiles for the
+// calcSectionSizeStats calculates the median and other percentiles for the
 // size of sections.
-func calculateSectionSizeStats(s *Stats) {
+func calcSectionSizeStats(s *Stats) {
 	if len(s.SectionSizes) == 0 {
 		return
 	}
 	// Make a copy of the section sizes.
 	sizes := make([]uint64, len(s.SectionSizes))
 	copy(sizes, s.SectionSizes)
+	calcPercentiles(sizes, &s.SectionSizeStats)
+}
+
+func calcPercentiles[T int | uint | int64 | uint64](input []T, s *PercentileStats) {
 	// Data must be sorted to calculate percentiles.
-	slices.Sort(sizes)
-	n := len(sizes)
+	slices.Sort(input)
+	n := len(input)
 	if n%2 == 0 {
-		s.SectionSizeStats.Median = float64(sizes[n/2-1]+sizes[n/2]) / 2.0
+		s.Median = float64(input[n/2-1]+input[n/2]) / 2.0
 	} else {
-		s.SectionSizeStats.Median = float64(sizes[n/2])
+		s.Median = float64(input[n/2])
 	}
 	idx := int(float64(n) * 0.95)
 	if idx >= n {
 		idx = n - 1
 	}
-	s.SectionSizeStats.P95 = float64(sizes[idx])
+	s.P95 = float64(input[idx])
 	idx = int(float64(n) * 0.99)
 	if idx >= n {
 		idx = n - 1
 	}
-	s.SectionSizeStats.P99 = float64(sizes[idx])
+	s.P99 = float64(input[idx])
 }
