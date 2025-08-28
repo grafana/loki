@@ -13,12 +13,20 @@ import (
 type Stats struct {
 	Size           uint64
 	Sections       int
+	SectionSizes   []uint64
 	Tenants        []string
 	TenantSections map[string]int
 	SectionsPerTenantStats
+	SectionSizeStats
 }
 
 type SectionsPerTenantStats struct {
+	Median float64
+	P95    float64
+	P99    float64
+}
+
+type SectionSizeStats struct {
 	Median float64
 	P95    float64
 	P99    float64
@@ -33,15 +41,20 @@ func ReadStats(_ context.Context, obj *dataobj.Object) (*Stats, error) {
 	s.TenantSections = make(map[string]int)
 	for _, sec := range obj.Sections() {
 		s.Sections++
+		s.SectionSizes = append(s.SectionSizes, uint64(sec.Reader.DataSize()+sec.Reader.MetadataSize()))
 		s.Tenants = append(s.Tenants, sec.Tenant)
+		s.TenantSections[sec.Tenant]++
 	}
 	// A tenant can have multiple sections, so we must deduplicate them.
 	slices.Sort(s.Tenants)
 	s.Tenants = slices.Compact(s.Tenants)
 	calculateSectionsPerTenantStats(&s)
+	calculateSectionSizeStats(&s)
 	return &s, nil
 }
 
+// calculateSectionsPerTenantsStats calculates the median and other
+// percentiles for the number of sections per tenant.
 func calculateSectionsPerTenantStats(s *Stats) {
 	if len(s.TenantSections) == 0 {
 		return
@@ -68,4 +81,33 @@ func calculateSectionsPerTenantStats(s *Stats) {
 		idx = n - 1
 	}
 	s.SectionsPerTenantStats.P99 = float64(counts[idx])
+}
+
+// calculateSectionSizes calculates the median and other percentiles for the
+// size of sections.
+func calculateSectionSizeStats(s *Stats) {
+	if len(s.SectionSizes) == 0 {
+		return
+	}
+	// Make a copy of the section sizes.
+	sizes := make([]uint64, len(s.SectionSizes))
+	copy(sizes, s.SectionSizes)
+	// Data must be sorted to calculate percentiles.
+	slices.Sort(sizes)
+	n := len(sizes)
+	if n%2 == 0 {
+		s.SectionSizeStats.Median = float64(sizes[n/2-1]+sizes[n/2]) / 2.0
+	} else {
+		s.SectionSizeStats.Median = float64(sizes[n/2])
+	}
+	idx := int(float64(n) * 0.95)
+	if idx >= n {
+		idx = n - 1
+	}
+	s.SectionSizeStats.P95 = float64(sizes[idx])
+	idx = int(float64(n) * 0.99)
+	if idx >= n {
+		idx = n - 1
+	}
+	s.SectionSizeStats.P99 = float64(sizes[idx])
 }
