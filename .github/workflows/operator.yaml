@@ -49,7 +49,7 @@ jobs:
     - name: Lint
       uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8
       with:
-        version: v2.0.2
+        version: v2.3.0
         args: --timeout=5m
         working-directory: ./operator
     - name: Check prometheus rules
