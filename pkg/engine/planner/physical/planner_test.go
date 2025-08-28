@@ -21,13 +21,13 @@ type catalog struct {
 	streamsByObject map[string]objectMeta
 }
 
-// ResolveDataObj implements Catalog.
-func (c *catalog) ResolveDataObj(e Expression, from, through time.Time) ([]FilteredShardDescriptor, error) {
-	return c.ResolveDataObjWithShard(e, nil, noShard, from, through)
+// ResolveShardDescriptors implements Catalog.
+func (c *catalog) ResolveShardDescriptors(e Expression, from, through time.Time) ([]FilteredShardDescriptor, error) {
+	return c.ResolveShardDescriptorsWithShard(e, nil, noShard, from, through)
 }
 
 // ResolveDataObjForShard implements Catalog.
-func (c *catalog) ResolveDataObjWithShard(_ Expression, _ []Expression, shard ShardInfo, from, through time.Time) ([]FilteredShardDescriptor, error) {
+func (c *catalog) ResolveShardDescriptorsWithShard(_ Expression, _ []Expression, shard ShardInfo, from, through time.Time) ([]FilteredShardDescriptor, error) {
 	paths := make([]string, 0, len(c.streamsByObject))
 	streams := make([][]int64, 0, len(c.streamsByObject))
 	sections := make([]int, 0, len(c.streamsByObject))
@@ -93,7 +93,7 @@ func TestMockCatalog(t *testing.T) {
 		},
 	} {
 		t.Run("shard "+tt.shard.String(), func(t *testing.T) {
-			filteredShardDescriptors, err := catalog.ResolveDataObjWithShard(nil, nil, tt.shard, timeStart, timeEnd)
+			filteredShardDescriptors, err := catalog.ResolveShardDescriptorsWithShard(nil, nil, tt.shard, timeStart, timeEnd)
 			require.Nil(t, err)
 			require.ElementsMatch(t, tt.expDescriptors, filteredShardDescriptors)
 		})

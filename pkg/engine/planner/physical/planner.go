@@ -152,7 +152,7 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 	return nil, nil
 }
 
-func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, groupRange TimeRange, baseNode Node, ctx *Context) error {
+func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, baseNode Node, ctx *Context) error {
 	scans := []Node{}
 	for _, descriptor := range currentGroup {
 		// output current group to nodes
@@ -162,7 +162,6 @@ func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, groupRa
 				StreamIDs: descriptor.Streams,
 				Section:   section,
 				Direction: ctx.direction,
-				TimeRange: descriptor.TimeRange,
 			}
 			p.plan.addNode(scan)
 			scans = append(scans, scan)
@@ -170,9 +169,8 @@ func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, groupRa
 	}
 	if len(scans) > 1 && ctx.direction != UNSORTED {
 		sortMerge := &SortMerge{
-			Column:    newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
-			Order:     ctx.direction, // apply direction from previously visited Sort node
-			TimeRange: groupRange,
+			Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+			Order:  ctx.direction, // apply direction from previously visited Sort node
 		}
 		p.plan.addNode(sortMerge)
 		for _, scan := range scans {
@@ -193,6 +191,28 @@ func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, groupRa
 	return nil
 }
 
+func overlappingShardDescriptors(filteredShardDescriptors []FilteredShardDescriptor) [][]FilteredShardDescriptor {
+	// Ensure that shard descriptors are sorted by end time
+	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
+		return filteredShardDescriptors[i].TimeRange.End.Before(filteredShardDescriptors[j].TimeRange.End)
+	})
+
+	groups := make([][]FilteredShardDescriptor, 0, len(filteredShardDescriptors))
+	var tr TimeRange
+	for i, shardDesc := range filteredShardDescriptors {
+		if i == 0 || !tr.Overlaps(shardDesc.TimeRange) {
+			// Create new group for first item or if item does not overlap with previous group
+			groups = append(groups, []FilteredShardDescriptor{shardDesc})
+			tr = shardDesc.TimeRange
+		} else {
+			// Append to existing group
+			groups[len(groups)-1] = append(groups[len(groups)-1], shardDesc)
+			tr = tr.Merge(shardDesc.TimeRange)
+		}
+	}
+	return groups
+}
+
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
 func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node, error) {
 	shard, ok := lp.Shard.(*logical.ShardInfo)
@@ -207,7 +227,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 
 	from, through := ctx.GetResolveTimeRange()
 
-	filteredShardDescriptors, err := p.catalog.ResolveDataObjWithShard(p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
+	filteredShardDescriptors, err := p.catalog.ResolveShardDescriptorsWithShard(p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
 	if err != nil {
 		return nil, err
 	}
@@ -216,33 +236,15 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 	})
 	merge := &Merge{}
 	p.plan.addNode(merge)
-	var currentGroup []FilteredShardDescriptor
-	var groupRange TimeRange
-	for i := range filteredShardDescriptors {
-		if groupRange.Start.IsZero() {
-			groupRange = filteredShardDescriptors[i].TimeRange
-			currentGroup = append(currentGroup, filteredShardDescriptors[i])
-		} else {
-			if groupRange.Overlaps(filteredShardDescriptors[i].TimeRange) {
-				currentGroup = append(currentGroup, filteredShardDescriptors[i])
-				groupRange = groupRange.Merge(filteredShardDescriptors[i].TimeRange)
-			} else {
-				if err := p.buildNodeGroup(currentGroup, groupRange, merge, ctx); err != nil {
-					return nil, err
-				}
-				currentGroup = []FilteredShardDescriptor{filteredShardDescriptors[i]}
-				groupRange = filteredShardDescriptors[i].TimeRange
-			}
+	groups := overlappingShardDescriptors(filteredShardDescriptors)
+
+	for _, gr := range groups {
+		if err := p.buildNodeGroup(gr, merge, ctx); err != nil {
+			return nil, err
 		}
 	}
-	// Clean up the last remaining group
-	if err := p.buildNodeGroup(currentGroup, groupRange, merge, ctx); err != nil {
-		return nil, err
-	}
-	nodes := make([]Node, 0)
-	nodes = append(nodes, merge)
 
-	return nodes, nil
+	return []Node{merge}, nil
 }
 
 // Convert [logical.Select] into one [Filter] node.
@@ -270,9 +272,8 @@ func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]Node, error) {
 		order = ASC
 	}
 	node := &SortMerge{
-		Column:    &ColumnExpr{Ref: lp.Column.Ref},
-		Order:     order,
-		TimeRange: TimeRange{Start: ctx.from, End: ctx.through},
+		Column: &ColumnExpr{Ref: lp.Column.Ref},
+		Order:  order,
 	}
 
 	p.plan.addNode(node)
