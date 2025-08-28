@@ -273,20 +273,22 @@ func TestPlannerCreatesParseFromLogfmt(t *testing.T) {
 
 		plan, err := BuildPlan(q)
 		require.NoError(t, err)
-		require.NotNil(t, plan)
 
-		// Find the Parse instruction in the plan
-		var parseInst *Parse
-		for _, inst := range plan.Instructions {
-			if p, ok := inst.(*Parse); ok {
-				parseInst = p
-				break
-			}
-		}
-
-		// Assert Parse instruction was created
-		require.NotNil(t, parseInst, "Parse instruction should be created for logfmt")
-		require.Equal(t, ParserLogfmt, parseInst.Kind)
+		// Assert against the correct SSA representation
+		expected := `%1 = EQ label.app "test"
+%2 = MAKETABLE [selector=%1, predicates=[%8], shard=0_of_1]
+%3 = PARSE %2 [kind=1]
+%4 = GTE builtin.timestamp 1970-01-01T00:55:00Z
+%5 = SELECT %3 [predicate=%4]
+%6 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%7 = SELECT %5 [predicate=%6]
+%8 = EQ ambiguous.level "error"
+%9 = SELECT %7 [predicate=%8]
+%10 = RANGE_AGGREGATION %9 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
+RETURN %11
+`
+		require.Equal(t, expected, plan.String())
 	})
 
 	t.Run("creates Parse instruction for log query", func(t *testing.T) {
@@ -301,17 +303,21 @@ func TestPlannerCreatesParseFromLogfmt(t *testing.T) {
 		plan, err := BuildPlan(q)
 		require.NoError(t, err)
 
-		// Find Parse instruction
-		var parseInst *Parse
-		for _, inst := range plan.Instructions {
-			if p, ok := inst.(*Parse); ok {
-				parseInst = p
-				break
-			}
-		}
-
-		require.NotNil(t, parseInst, "should create Parse instruction")
-		require.Equal(t, ParserLogfmt, parseInst.Kind)
+		// Assert against the SSA representation for log query
+		expected := `%1 = EQ label.app "test"
+%2 = MAKETABLE [selector=%1, predicates=[%9], shard=0_of_1]
+%3 = PARSE %2 [kind=1]
+%4 = SORT %3 [column=builtin.timestamp, asc=false, nulls_first=false]
+%5 = GTE builtin.timestamp 1970-01-01T01:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%8 = SELECT %6 [predicate=%7]
+%9 = EQ ambiguous.level "error"
+%10 = SELECT %8 [predicate=%9]
+%11 = LIMIT %10 [skip=0, fetch=1000]
+RETURN %11
+`
+		require.Equal(t, expected, plan.String())
 	})
 }
 

@@ -273,7 +273,7 @@ func TestV2QueryEngine(t *testing.T) {
 		// The api job logs are:
 		// - to-45min: outside window
 		// - to-40min: outside window
-		// - to-35min: outside window  
+		// - to-35min: outside window
 		// - to-30min: level=debug msg="cache hit" status=200 region=us-west (INCLUDED)
 		// - to-25min: outside window
 		// So we expect 1 log for us-west region

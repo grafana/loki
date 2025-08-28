@@ -95,12 +95,13 @@ func TestBuildLogfmtColumns(t *testing.T) {
 			}{
 				// Regular columns
 				{
-					values: []string{"info", "error", "unclosed status=500"},
-					nulls:  []bool{false, false, false}, // unclosed quote still returns partial value
+					// When parser hits error, it stops parsing the rest of the line
+					values: []string{"info", "", ""},
+					nulls:  []bool{false, true, true}, // NULL for both error lines
 				},
 				{
 					values: []string{"200", "", ""},
-					nulls:  []bool{false, false, true}, // status has empty value for double equals, null for unclosed quote
+					nulls:  []bool{false, true, true}, // status is NULL for both error lines
 				},
 				// Error columns (appended when errors occur)
 				{
@@ -108,7 +109,7 @@ func TestBuildLogfmtColumns(t *testing.T) {
 					nulls:  []bool{true, false, false},
 				},
 				{
-					values: []string{"", "logfmt syntax error at pos 7 : unexpected '='", "logfmt syntax error at pos 6 : unterminated quoted value"},
+					values: []string{"", "logfmt syntax error at pos 8 : unexpected '='", "logfmt syntax error at pos 27 : unterminated quoted value"},
 					nulls:  []bool{true, false, false},
 				},
 			},
@@ -216,33 +217,24 @@ func TestBuildLogfmtColumns(t *testing.T) {
 				"msg=\"unclosed duration=100ms code=400", // Unclosed quote error
 				"level=debug method=POST",                // Valid line
 			},
-			requestedKeys:   nil, // nil means extract all keys
-			expectedHeaders: []string{"code", "level", "method", "msg", "status", "__error__", "__error_details__"},
+			requestedKeys: nil, // nil means extract all keys
+			// When errors occur, only keys that were successfully parsed before the error are included
+			expectedHeaders: []string{"level", "method", "status", "__error__", "__error_details__"},
 			expected: []struct {
 				values []string
 				nulls  []bool
 			}{
-				// Should get all unique keys across all lines (including partial extraction from error lines)
-				// Keys in alphabetical order: code, level, method, msg, status
-				{
-					// code column
-					values: []string{"", "500", "", ""},
-					nulls:  []bool{true, false, true, true},
-				},
+				// Should get only keys that were successfully parsed
+				// Keys in alphabetical order: level, method, status (code and msg are missing due to parse errors)
 				{
 					// level column
 					values: []string{"info", "", "", "debug"},
-					nulls:  []bool{false, false, true, false}, // empty string for double equals error
+					nulls:  []bool{false, true, true, false}, // NULL when parse error occurs before level
 				},
 				{
 					// method column
 					values: []string{"GET", "", "", "POST"},
 					nulls:  []bool{false, true, true, false},
-				},
-				{
-					// msg column (from unclosed quote line - gets entire rest of line)
-					values: []string{"", "", "unclosed duration=100ms code=400", ""},
-					nulls:  []bool{true, true, false, true},
 				},
 				{
 					// status column
@@ -257,7 +249,7 @@ func TestBuildLogfmtColumns(t *testing.T) {
 				},
 				{
 					// __error_details__ column
-					values: []string{"", "logfmt syntax error at pos 6 : unexpected '='", "logfmt syntax error at pos 4 : unterminated quoted value", ""},
+					values: []string{"", "logfmt syntax error at pos 7 : unexpected '='", "logfmt syntax error at pos 38 : unterminated quoted value", ""},
 					nulls:  []bool{true, false, false, true},
 				},
 			},
@@ -266,12 +258,26 @@ func TestBuildLogfmtColumns(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Call the function that should build Arrow columns
-			headers, columns, err := BuildLogfmtColumns(tt.input, tt.requestedKeys, memory.DefaultAllocator)
+			// Create an Arrow string array from the input strings
+			builder := array.NewStringBuilder(memory.DefaultAllocator)
+			defer builder.Release()
 
-			require.NoError(t, err)
+			for _, str := range tt.input {
+				builder.Append(str)
+			}
+			inputArray := builder.NewStringArray()
+			defer inputArray.Release()
+
+			// Call the function that should build Arrow columns
+			headers, columns := BuildLogfmtColumns(inputArray, tt.requestedKeys, memory.DefaultAllocator)
+
 			require.Equal(t, tt.expectedHeaders, headers, "Headers should match expected")
 			require.Len(t, columns, len(tt.expected), "Should return expected number of columns")
+
+			// Verify that each parsed column has the same number of rows as the input array
+			for _, col := range columns {
+				require.Equal(t, inputArray.Len(), col.Len())
+			}
 
 			// Verify each column
 			for i, expectedCol := range tt.expected {

@@ -277,7 +277,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		logical.ParserLogfmt,
 	).Select(
 		&logical.BinOp{
-			Left:  logical.NewColumnRef("level", types.ColumnTypeParsed),
+			Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
 			Right: logical.NewLiteral("error"),
 			Op:    types.BinaryOpEq,
 		},
@@ -294,6 +294,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 	planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
 
 	physicalPlan, err := planner.Build(logicalPlan)
+	t.Logf("Physical plan\n%s\n", PrintAsTree(physicalPlan))
 	require.NoError(t, err)
 
 	// Verify ParseNode exists in correct position
@@ -310,8 +311,14 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 	parseNode, ok := children[0].(*ParseNode)
 	require.True(t, ok, "Filter's child should be ParseNode")
 	require.Equal(t, logical.ParserLogfmt, parseNode.Kind)
-	// RequestedKeys will be set by the optimizer, not during conversion
 	require.Empty(t, parseNode.RequestedKeys)
+
+	physicalPlan, err = planner.Optimize(physicalPlan)
+	t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+	require.NoError(t, err)
+  
+  // optimization pushed filter columns down to parse node
+	require.Equal(t, []string{"level"}, parseNode.RequestedKeys)
 }
 
 func TestPlanner_Convert_RangeAggregations(t *testing.T) {
