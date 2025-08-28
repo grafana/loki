@@ -757,7 +757,7 @@ func Benchmark_Parser(b *testing.B) {
 			b.Run("no labels hints", func(b *testing.B) {
 				b.ReportAllocs()
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
-				for n := 0; n < b.N; n++ {
+				for b.Loop() {
 					builder.Reset()
 					_, _ = tt.s.Process(0, line, builder)
 					builder.LabelsResult()
@@ -769,7 +769,7 @@ func Benchmark_Parser(b *testing.B) {
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 				builder.parserKeyHints = NewParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "", nil)
 
-				for n := 0; n < b.N; n++ {
+				for b.Loop() {
 					builder.Reset()
 					_, _ = tt.s.Process(0, line, builder)
 					builder.LabelsResult()
@@ -781,7 +781,7 @@ func Benchmark_Parser(b *testing.B) {
 				stages := []Stage{NewStringLabelFilter(tt.LabelFilterParseHint)}
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 				builder.parserKeyHints = NewParserHint(nil, nil, false, false, ", nil", stages)
-				for n := 0; n < b.N; n++ {
+				for b.Loop() {
 					builder.Reset()
 					_, _ = tt.s.Process(0, line, builder)
 					builder.LabelsResult()
@@ -844,7 +844,7 @@ func Benchmark_Parser_JSONPath(b *testing.B) {
 			b.Run("no labels hints", func(b *testing.B) {
 				b.ReportAllocs()
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
-				for n := 0; n < b.N; n++ {
+				for b.Loop() {
 					builder.Reset()
 					_, _ = tt.s.Process(0, line, builder)
 					builder.LabelsResult()
@@ -884,7 +884,7 @@ func Benchmark_Parser_JSONPath(b *testing.B) {
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 				builder.parserKeyHints = NewParserHint(tt.LabelParseHints, tt.LabelParseHints, false, false, "", nil)
 
-				for n := 0; n < b.N; n++ {
+				for b.Loop() {
 					builder.Reset()
 					_, _ = tt.s.Process(0, line, builder)
 					builder.LabelsResult()
@@ -917,7 +917,7 @@ func Benchmark_Parser_JSONPath(b *testing.B) {
 				stages := []Stage{NewStringLabelFilter(tt.LabelFilterParseHint)}
 				builder := NewBaseLabelsBuilder().ForLabels(lbs, labels.StableHash(lbs))
 				builder.parserKeyHints = NewParserHint(nil, nil, false, false, ", nil", stages)
-				for n := 0; n < b.N; n++ {
+				for b.Loop() {
 					builder.Reset()
 					_, _ = tt.s.Process(0, line, builder)
 					builder.LabelsResult()
@@ -969,7 +969,7 @@ func BenchmarkKeyExtraction(b *testing.B) {
 		b.Run(bb.name, func(b *testing.B) {
 			b.ResetTimer()
 
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				lbs.Reset()
 				_, result = bb.p.Process(0, bb.line, lbs)
 			}
@@ -1787,7 +1787,7 @@ func BenchmarkJsonExpressionParser(b *testing.B) {
 		b.Run(bb.name, func(b *testing.B) {
 			b.ResetTimer()
 
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				lbs.Reset()
 				_, result = bb.p.Process(0, bb.line, lbs)
 			}

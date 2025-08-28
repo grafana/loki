@@ -72,7 +72,7 @@ func (v *LabelSet) Set(s string) error {
 }
 
 // UnmarshalYAML the Unmarshaler interface of the yaml pkg.
-func (v *LabelSet) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (v *LabelSet) UnmarshalYAML(unmarshal func(any) error) error {
 	lbSet := model.LabelSet{}
 	err := unmarshal(&lbSet)
 	if err != nil {
@@ -83,7 +83,7 @@ func (v *LabelSet) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // MarshalYAML implements yaml.Marshaller.
-func (v LabelSet) MarshalYAML() (interface{}, error) {
+func (v LabelSet) MarshalYAML() (any, error) {
 	out, err := yaml.Marshal(util.ModelLabelSetToMap(v.LabelSet))
 	if err != nil {
 		return nil, err

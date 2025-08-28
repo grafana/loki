@@ -82,7 +82,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		stats, err := indexClient.Stats(context.Background(), "", indexStartYesterday-1000, model.Now()+1000, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.NoError(b, err)
 		require.Equal(b, uint64(200), stats.Chunks)

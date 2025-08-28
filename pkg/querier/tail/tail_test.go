@@ -104,7 +104,7 @@ func TestTailer(t *testing.T) {
 				require.NoError(t, err)
 
 				require.Equal(t, maxBufferedTailResponses, len(responses))
-				for i := 0; i < maxBufferedTailResponses; i++ {
+				for i := range maxBufferedTailResponses {
 					assert.Equal(t, maxEntriesPerTailResponse, countEntriesInStreams(responses[i].Streams))
 					assert.Equal(t, 0, len(responses[1].DroppedEntries))
 				}
@@ -134,7 +134,7 @@ func TestTailer(t *testing.T) {
 				require.NoError(t, err)
 
 				require.Equal(t, maxBufferedTailResponses, len(responses))
-				for i := 0; i < maxBufferedTailResponses; i++ {
+				for i := range maxBufferedTailResponses {
 					assert.Equal(t, maxEntriesPerTailResponse, countEntriesInStreams(responses[i].Streams))
 					assert.Equal(t, 0, len(responses[1].DroppedEntries))
 				}

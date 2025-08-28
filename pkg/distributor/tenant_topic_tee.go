@@ -242,7 +242,7 @@ func (r *ShardedPartitionResolver) createShard(ctx context.Context, tenant strin
 	topic := r.codec.Encode(tenant, shard)
 	replicationFactor := 2 // TODO: expose RF
 
-	_, err, _ := r.sflight.Do(topic, func() (interface{}, error) {
+	_, err, _ := r.sflight.Do(topic, func() (any, error) {
 		return r.admin.CreateTopic(
 			ctx,
 			1,

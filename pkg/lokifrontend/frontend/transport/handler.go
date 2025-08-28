@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -143,9 +144,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hs := w.Header()
-	for h, vs := range resp.Header {
-		hs[h] = vs
-	}
+	maps.Copy(hs, resp.Header)
 
 	if f.cfg.QueryStatsEnabled {
 		writeServiceTimingHeader(queryResponseTime, hs, stats)
@@ -173,7 +172,7 @@ func (f *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // reportSlowQuery reports slow queries.
 func (f *Handler) reportSlowQuery(r *http.Request, queryString url.Values, queryResponseTime time.Duration) {
-	logMessage := append([]interface{}{
+	logMessage := append([]any{
 		"msg", "slow query detected",
 		"method", r.Method,
 		"host", r.Host,
@@ -201,7 +200,7 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 	f.activeUsers.UpdateUserTimestamp(userID, time.Now())
 
 	// Log stats.
-	logMessage := append([]interface{}{
+	logMessage := append([]any{
 		"msg", "query stats",
 		"component", "query-frontend",
 		"method", r.Method,
@@ -219,7 +218,7 @@ func (f *Handler) reportQueryStats(r *http.Request, queryString url.Values, quer
 	level.Info(util_log.WithContext(r.Context(), f.log)).Log(logMessage...)
 }
 
-func formatRequestHeaders(h *http.Header, headersToLog []string) (fields []interface{}) {
+func formatRequestHeaders(h *http.Header, headersToLog []string) (fields []any) {
 	for _, s := range headersToLog {
 		if v := h.Get(s); v != "" {
 			fields = append(fields, fmt.Sprintf("header_%s", strings.ReplaceAll(strings.ToLower(s), "-", "_")), v)
@@ -242,7 +241,7 @@ func (f *Handler) parseRequestQueryString(r *http.Request, bodyBuf bytes.Buffer)
 	return r.Form
 }
 
-func formatQueryString(queryString url.Values) (fields []interface{}) {
+func formatQueryString(queryString url.Values) (fields []any) {
 	for k, v := range queryString {
 		fields = append(fields, fmt.Sprintf("param_%s", k), strings.Join(v, ","))
 	}

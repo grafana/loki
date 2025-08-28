@@ -146,55 +146,55 @@ func TestTenantStage_Process(t *testing.T) {
 	tests := map[string]struct {
 		config         *TenantConfig
 		inputLabels    model.LabelSet
-		inputExtracted map[string]interface{}
+		inputExtracted map[string]any
 		expectedTenant *string
 	}{
 		"should not set the tenant if the source field is not defined in the extracted map": {
 			config:         &TenantConfig{Source: "tenant_id"},
 			inputLabels:    model.LabelSet{},
-			inputExtracted: map[string]interface{}{},
+			inputExtracted: map[string]any{},
 			expectedTenant: nil,
 		},
 		"should not override the tenant if the source field is not defined in the extracted map": {
 			config:         &TenantConfig{Source: "tenant_id"},
 			inputLabels:    model.LabelSet{client.ReservedLabelTenantID: "foo"},
-			inputExtracted: map[string]interface{}{},
+			inputExtracted: map[string]any{},
 			expectedTenant: lokiutil.StringRef("foo"),
 		},
 		"should set the tenant if the source field is defined in the extracted map": {
 			config:         &TenantConfig{Source: "tenant_id"},
 			inputLabels:    model.LabelSet{},
-			inputExtracted: map[string]interface{}{"tenant_id": "bar"},
+			inputExtracted: map[string]any{"tenant_id": "bar"},
 			expectedTenant: lokiutil.StringRef("bar"),
 		},
 		"should set the tenant if the label is defined in the label map": {
 			config:         &TenantConfig{Label: "tenant_id"},
 			inputLabels:    model.LabelSet{"tenant_id": "bar"},
-			inputExtracted: map[string]interface{}{},
+			inputExtracted: map[string]any{},
 			expectedTenant: lokiutil.StringRef("bar"),
 		},
 		"should override the tenant if the source field is defined in the extracted map": {
 			config:         &TenantConfig{Source: "tenant_id"},
 			inputLabels:    model.LabelSet{client.ReservedLabelTenantID: "foo"},
-			inputExtracted: map[string]interface{}{"tenant_id": "bar"},
+			inputExtracted: map[string]any{"tenant_id": "bar"},
 			expectedTenant: lokiutil.StringRef("bar"),
 		},
 		"should not set the tenant if the source field data type can't be converted to string": {
 			config:         &TenantConfig{Source: "tenant_id"},
 			inputLabels:    model.LabelSet{},
-			inputExtracted: map[string]interface{}{"tenant_id": []string{"bar"}},
+			inputExtracted: map[string]any{"tenant_id": []string{"bar"}},
 			expectedTenant: nil,
 		},
 		"should set the tenant with the configured static value": {
 			config:         &TenantConfig{Value: "bar"},
 			inputLabels:    model.LabelSet{},
-			inputExtracted: map[string]interface{}{},
+			inputExtracted: map[string]any{},
 			expectedTenant: lokiutil.StringRef("bar"),
 		},
 		"should override the tenant with the configured static value": {
 			config:         &TenantConfig{Value: "bar"},
 			inputLabels:    model.LabelSet{client.ReservedLabelTenantID: "foo"},
-			inputExtracted: map[string]interface{}{},
+			inputExtracted: map[string]any{},
 			expectedTenant: lokiutil.StringRef("bar"),
 		},
 	}

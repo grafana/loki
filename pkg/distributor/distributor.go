@@ -1059,7 +1059,7 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 
 	entriesPerShard := int(math.Ceil(float64(len(stream.Entries)) / float64(totalShards)))
 	startShard := d.shardTracker.LastShardNum(tenantID, stream.Hash)
-	for i := 0; i < streamCount; i++ {
+	for i := range streamCount {
 		shardNum := (startShard + i) % totalShards
 		shard := d.createShard(streamLabels, streamPattern, shardNum, entriesPerShard)
 

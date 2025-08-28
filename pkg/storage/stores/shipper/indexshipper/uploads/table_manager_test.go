@@ -48,10 +48,10 @@ func TestTableManager(t *testing.T) {
 	testTableManager, stopFunc := buildTestTableManager(t, testDir)
 	defer stopFunc()
 
-	for tableIdx := 0; tableIdx < 2; tableIdx++ {
+	for tableIdx := range 2 {
 		tableName := "table-" + strconv.Itoa(tableIdx)
 		t.Run(tableName, func(t *testing.T) {
-			for userIdx := 0; userIdx < 2; userIdx++ {
+			for userIdx := range 2 {
 				userID := "user-" + strconv.Itoa(userIdx)
 				t.Run(userID, func(t *testing.T) {
 					userIndexPath := filepath.Join(testDir, tableName, userID)

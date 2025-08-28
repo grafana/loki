@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -400,7 +401,7 @@ func (r *markerProcessor) availablePath() ([]string, []time.Time, error) {
 	if len(found) == 0 {
 		return nil, nil, nil
 	}
-	sort.Slice(found, func(i, j int) bool { return found[i] < found[j] })
+	slices.Sort(found)
 	res := make([]string, len(found))
 	resTime := make([]time.Time, len(found))
 	for i, f := range found {

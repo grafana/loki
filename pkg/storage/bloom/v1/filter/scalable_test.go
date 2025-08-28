@@ -31,7 +31,7 @@ func TestScalableBloomK(t *testing.T) {
 // filters.
 func TestScalableFillRatio(t *testing.T) {
 	f := NewScalableBloomFilter(100, 0.1, 0.8)
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		f.Add([]byte(strconv.Itoa(i)))
 	}
 
@@ -83,7 +83,7 @@ func TestScalableBloomTestAndAdd(t *testing.T) {
 		t.Error("`c` should not be a member")
 	}
 
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		f.Add([]byte(strconv.Itoa(i)))
 	}
 
@@ -96,7 +96,7 @@ func TestScalableBloomTestAndAdd(t *testing.T) {
 // Ensures that ScalableBloomFilter can be serialized and deserialized without errors.
 func TestScalableBloomGob(t *testing.T) {
 	f := NewScalableBloomFilter(10, 0.1, 0.8)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		f.Add([]byte(strconv.Itoa(i)))
 	}
 
@@ -117,7 +117,7 @@ func TestScalableBloomGob(t *testing.T) {
 
 func TestScalableBloomFilterLazyReader(t *testing.T) {
 	filter := NewScalableBloomFilter(10, 0.1, 0.8)
-	for i := 0; i < 2000; i++ {
+	for i := range 2000 {
 		if i%2 == 0 {
 			filter.Add([]byte(strconv.Itoa(i)))
 		}
@@ -146,56 +146,53 @@ func TestScalableBloomFilterLazyReader(t *testing.T) {
 }
 
 func BenchmarkScalableBloomAdd(b *testing.B) {
-	b.StopTimer()
+
 	f := NewScalableBloomFilter(100000, 0.1, 0.8)
 	data := make([][]byte, b.N)
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		data[i] = []byte(strconv.Itoa(i))
 	}
-	b.StartTimer()
 
-	for n := 0; n < b.N; n++ {
+	for n := 0; b.Loop(); n++ {
 		f.Add(data[n])
 	}
 }
 
 func BenchmarkScalableBloomTest(b *testing.B) {
-	b.StopTimer()
+
 	f := NewScalableBloomFilter(100000, 0.1, 0.8)
 	data := make([][]byte, b.N)
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		data[i] = []byte(strconv.Itoa(i))
 	}
-	b.StartTimer()
 
-	for n := 0; n < b.N; n++ {
+	for n := 0; b.Loop(); n++ {
 		f.Test(data[n])
 	}
 }
 
 func BenchmarkScalableBloomTestAndAdd(b *testing.B) {
-	b.StopTimer()
+
 	f := NewScalableBloomFilter(100000, 0.1, 0.8)
 	data := make([][]byte, b.N)
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		data[i] = []byte(strconv.Itoa(i))
 	}
-	b.StartTimer()
 
-	for n := 0; n < b.N; n++ {
+	for n := 0; b.Loop(); n++ {
 		f.TestAndAdd(data[n])
 	}
 }
 
 func BenchmarkRead(b *testing.B) {
-	b.StopTimer()
+
 	keys := int(1e6)
 	f := NewScalableBloomFilter(1<<10, 0.1, 0.8)
-	for i := 0; i < keys; i++ {
+	for i := range keys {
 		f.Add([]byte(strconv.Itoa(i)))
 	}
-	b.StartTimer()
-	for i := 0; i < b.N; i++ {
+
+	for i := 0; b.Loop(); i++ {
 		f.Test([]byte(strconv.Itoa(i)))
 	}
 }

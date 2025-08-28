@@ -94,7 +94,7 @@ func buildMockChunkRef(t *testing.T, num int) []chunk.Chunk {
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
-	for i := 0; i < num; i++ {
+	for i := range num {
 		chk := newChunk(chunkfmt, headfmt, buildTestStreams(fooLabelsWithName, timeRange{
 			from: now.Add(time.Duration(i) * time.Minute),
 			to:   now.Add(time.Duration(i+1) * time.Minute),
@@ -111,7 +111,7 @@ func buildMockChunkRef(t *testing.T, num int) []chunk.Chunk {
 
 func buildMockFetchers(num int) []*fetcher.Fetcher {
 	var fetchers []*fetcher.Fetcher
-	for i := 0; i < num; i++ {
+	for range num {
 		fetchers = append(fetchers, &fetcher.Fetcher{})
 	}
 

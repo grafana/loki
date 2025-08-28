@@ -71,7 +71,7 @@ func setupFrontend(t *testing.T, cfg Config, schedulerReplyFunc func(f *Frontend
 	})
 
 	// Wait for frontend to connect to scheduler.
-	test.Poll(t, 1*time.Second, 1, func() interface{} {
+	test.Poll(t, 1*time.Second, 1, func() any {
 		ms.mu.Lock()
 		defer ms.mu.Unlock()
 
@@ -208,7 +208,7 @@ func TestFrontendCancellation(t *testing.T) {
 	require.Nil(t, resp)
 
 	// We wait a bit to make sure scheduler receives the cancellation request.
-	test.Poll(t, time.Second, 2, func() interface{} {
+	test.Poll(t, time.Second, 2, func() any {
 		ms.mu.Lock()
 		defer ms.mu.Unlock()
 
@@ -237,7 +237,7 @@ func TestFrontendWorkerCancellation(t *testing.T) {
 	// send multiple requests > maxconcurrency of scheduler. So that it keeps all the frontend worker busy in serving requests.
 	reqCount := testFrontendWorkerConcurrency + 5
 	var wg sync.WaitGroup
-	for i := 0; i < reqCount; i++ {
+	for range reqCount {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -251,7 +251,7 @@ func TestFrontendWorkerCancellation(t *testing.T) {
 
 	// We wait a bit to make sure scheduler receives the cancellation request.
 	// 2 * reqCount because for every request, should also be corresponding cancel request
-	test.Poll(t, 5*time.Second, 2*reqCount, func() interface{} {
+	test.Poll(t, 5*time.Second, 2*reqCount, func() any {
 		ms.mu.Lock()
 		defer ms.mu.Unlock()
 
@@ -324,7 +324,7 @@ func TestFrontendStoppingWaitsForEmptyInflightRequests(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	for i := 0; i < inflightRequests; i++ {
+	for range inflightRequests {
 		go func() {
 			_, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.HTTPRequest{})
 			require.NoError(t, err)

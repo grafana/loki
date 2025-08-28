@@ -468,7 +468,7 @@ func BenchmarkLineLabelFilters(b *testing.B) {
 			f := NewStringLabelFilter(matcher)
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_, result = f.Process(0, line, lbl)
 			}
 		})

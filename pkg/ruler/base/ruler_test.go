@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -584,7 +585,7 @@ func TestGetRules(t *testing.T) {
 				}
 
 				if tc.sharding {
-					err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+					err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 						d, _ := in.(*ring.Desc)
 						if d == nil {
 							d = ring.NewDesc()
@@ -1536,7 +1537,7 @@ func TestSharding(t *testing.T) {
 			}
 
 			if tc.setupRing != nil {
-				err := kvStore.CAS(context.Background(), ringKey, func(in interface{}) (out interface{}, retry bool, err error) {
+				err := kvStore.CAS(context.Background(), ringKey, func(in any) (out any, retry bool, err error) {
 					d, _ := in.(*ring.Desc)
 					if d == nil {
 						d = ring.NewDesc()
@@ -1591,9 +1592,7 @@ func userToken(user string, skip int) uint32 {
 }
 
 func sortTokens(tokens []uint32) []uint32 {
-	sort.Slice(tokens, func(i, j int) bool {
-		return tokens[i] < tokens[j]
-	})
+	slices.Sort(tokens)
 	return tokens
 }
 

@@ -48,7 +48,7 @@ func TestSchemaTimeEncoding(t *testing.T) {
 	assert.Equal(t, uint32(0), decodeTime(encodeTime(0)), "0")
 	assert.Equal(t, uint32(math.MaxUint32), decodeTime(encodeTime(math.MaxUint32)), "MaxUint32")
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		a, b := uint32(rand.Int31()), uint32(rand.Int31())
 
 		assert.Equal(t, a, decodeTime(encodeTime(a)), "a")

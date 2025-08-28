@@ -71,7 +71,7 @@ func (s *Store) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]
 	var result []logproto.SeriesIdentifier
 
 	// Convert sync.Map to slice
-	uniqueSeries.Range(func(_, value interface{}) bool {
+	uniqueSeries.Range(func(_, value any) bool {
 		if sid, ok := value.(logproto.SeriesIdentifier); ok {
 			result = append(result, sid)
 		}
@@ -107,7 +107,7 @@ func (s *Store) LabelNamesForMetricName(ctx context.Context, _ string, from, thr
 	}
 
 	names := []string{}
-	uniqueNames.Range(func(key, _ interface{}) bool {
+	uniqueNames.Range(func(key, _ any) bool {
 		names = append(names, key.(string))
 		return true
 	})
@@ -149,7 +149,7 @@ func (s *Store) LabelValuesForMetricName(ctx context.Context, _ string, from, th
 	}
 
 	values := []string{}
-	uniqueValues.Range(func(key, _ interface{}) bool {
+	uniqueValues.Range(func(key, _ any) bool {
 		values = append(values, key.(string))
 		return true
 	})

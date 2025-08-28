@@ -43,7 +43,7 @@ func validateSamplingConfig(cfg *SamplingConfig) error {
 // newSamplingStage creates a SamplingStage from config
 // code from jaeger project.
 // github.com/uber/jaeger-client-go@v2.30.0+incompatible/tracer.go:126
-func newSamplingStage(logger log.Logger, config interface{}, registerer prometheus.Registerer) (Stage, error) {
+func newSamplingStage(logger log.Logger, config any, registerer prometheus.Registerer) (Stage, error) {
 	cfg := &SamplingConfig{}
 	err := mapstructure.WeakDecode(config, cfg)
 	if err != nil {

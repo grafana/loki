@@ -72,7 +72,7 @@ type Config struct {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
-func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 	*c = DefaultConfig
 
 	type plain Config
@@ -80,7 +80,7 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // MarshalYAML implements yaml.Marshaler.
-func (c Config) MarshalYAML() (interface{}, error) {
+func (c Config) MarshalYAML() (any, error) {
 	// We want users to be able to marshal instance.Configs directly without
 	// *needing* to call instance.MarshalConfig, so we call it internally
 	// here and return a map.
@@ -440,10 +440,7 @@ func (i *Instance) truncateLoop(ctx context.Context, wal walStorage, cfg *Config
 			//
 			// Subtracting a duration from ts will delay when it will be considered
 			// inactive and scheduled for deletion.
-			ts := i.getRemoteWriteTimestamp() - i.cfg.MinAge.Milliseconds()
-			if ts < 0 {
-				ts = 0
-			}
+			ts := max(i.getRemoteWriteTimestamp()-i.cfg.MinAge.Milliseconds(), 0)
 
 			// Network issues can prevent the result of getRemoteWriteTimestamp from
 			// changing. We don't want data in the WAL to grow forever, so we set a cap
@@ -482,7 +479,7 @@ func (i *Instance) getRemoteWriteTimestamp() int64 {
 	}
 
 	lbls := make([]string, len(i.cfg.RemoteWrite))
-	for idx := 0; idx < len(lbls); idx++ {
+	for idx := range lbls {
 		lbls[idx] = i.cfg.RemoteWrite[idx].Name
 	}
 

@@ -72,14 +72,14 @@ func (pq *priorityqueue) Swap(i, j int) {
 	pq.streams[i], pq.streams[j] = pq.streams[j], pq.streams[i]
 }
 
-func (pq *priorityqueue) Push(x interface{}) {
+func (pq *priorityqueue) Push(x any) {
 	stream := x.(*logproto.Stream)
 	pq.streams = append(pq.streams, stream)
 }
 
 // Pop returns a stream with one entry. It pops the first entry of the first stream
 // then re-pushes the remainder of that stream if non-empty back into the queue
-func (pq *priorityqueue) Pop() interface{} {
+func (pq *priorityqueue) Pop() any {
 	n := pq.Len()
 	stream := pq.streams[n-1]
 	pq.streams[n-1] = nil // avoid memory leak

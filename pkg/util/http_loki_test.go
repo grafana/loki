@@ -12,7 +12,7 @@ func BenchmarkDecompressFromBuffer(b *testing.B) {
 	buf.Grow(100)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		decompressFromBuffer(&buf, 1000, RawSnappy, nil) //nolint:errcheck
 	}
 }

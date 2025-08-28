@@ -27,7 +27,7 @@ configs:
 	chunk, err := chunk.ParseExternalKey("fake", key)
 	require.Nil(b, err)
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = cfg.ExternalKey(chunk.ChunkRef)
 	}
 }

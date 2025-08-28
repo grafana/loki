@@ -57,7 +57,7 @@ func TestSliceIterRemaining(t *testing.T) {
 	ln := 5
 	itr := NewSliceIter(make([]int, ln))
 
-	for i := 0; i < ln; i++ {
+	for i := range ln {
 		require.Equal(t, ln-i, itr.Remaining())
 		require.True(t, itr.Next())
 		require.Equal(t, ln-i-1, itr.Remaining())

@@ -168,10 +168,10 @@ func Test_TargetRun(t *testing.T) {
 				tg.run()
 			}()
 
-			for i := 0; i < 10; i++ {
+			for i := range 10 {
 				claim.Send(&sarama.ConsumerMessage{
 					Timestamp: time.Unix(0, int64(i)),
-					Value:     []byte(fmt.Sprintf("%d", i)),
+					Value:     fmt.Appendf(nil, "%d", i),
 					Key:       []byte(tt.inMessageKey),
 				})
 			}

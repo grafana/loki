@@ -294,7 +294,7 @@ func TestFetcher_DownloadQueue(t *testing.T) {
 			q.enqueue(r)
 		}
 
-		for i := 0; i < count; i++ {
+		for i := range count {
 			select {
 			case err := <-errorsCh:
 				require.False(t, true, "got %+v should have received a response instead", err)
@@ -309,7 +309,7 @@ func TestFetcher_DownloadQueue(t *testing.T) {
 
 func buildDownloadRequest(ctx context.Context, count int, resCh chan downloadResponse[bool], errCh chan error) []downloadRequest[bool, bool] {
 	requests := make([]downloadRequest[bool, bool], count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		requests[i] = downloadRequest[bool, bool]{
 			ctx:     ctx,
 			item:    false,
@@ -456,7 +456,7 @@ func Benchmark_Fetcher_processMetasCacheResponse(b *testing.B) {
 	keys := make([]string, 0, b.N)
 	bufs := make([][]byte, 0, b.N)
 
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		minFp := model.Fingerprint(uint64(i) * step)
 		maxFp := model.Fingerprint(uint64(i)*step + step)
 

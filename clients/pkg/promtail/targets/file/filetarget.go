@@ -181,7 +181,7 @@ func (t *FileTarget) Labels() model.LabelSet {
 }
 
 // Details implements a Target
-func (t *FileTarget) Details() interface{} {
+func (t *FileTarget) Details() any {
 	files := map[string]int64{}
 	t.readersMutex.Lock()
 	for fileName := range t.readers {

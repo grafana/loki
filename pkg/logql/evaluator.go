@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -466,11 +467,8 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 			} else {
 				b := labels.NewScratchBuilder(len(e.expr.Grouping.Groups))
 				metric.Range(func(l labels.Label) {
-					for _, n := range e.expr.Grouping.Groups {
-						if l.Name == n {
-							b.Add(l.Name, l.Value)
-							break
-						}
+					if slices.Contains(e.expr.Grouping.Groups, l.Name) {
+						b.Add(l.Name, l.Value)
 					}
 				})
 				m = b.Labels()
@@ -483,10 +481,7 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 			}
 
 			inputVecLen := len(vec)
-			resultSize := e.expr.Params
-			if e.expr.Params > inputVecLen {
-				resultSize = inputVecLen
-			}
+			resultSize := min(e.expr.Params, inputVecLen)
 			if e.expr.Operation == syntax.OpTypeStdvar || e.expr.Operation == syntax.OpTypeStddev {
 				result[groupingKey].value = 0.0
 			} else if e.expr.Operation == syntax.OpTypeTopK {
@@ -1099,10 +1094,8 @@ func resultMetric(lhs, rhs labels.Labels, opts *syntax.BinOpOptions) labels.Labe
 		if matching.Card == syntax.CardOneToOne {
 			if matching.On {
 				lhs.Range(func(l labels.Label) {
-					for _, n := range matching.MatchingLabels {
-						if l.Name == n {
-							return
-						}
+					if slices.Contains(matching.MatchingLabels, l.Name) {
+						return
 					}
 					lb.Del(l.Name)
 				})

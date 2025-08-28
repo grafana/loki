@@ -34,7 +34,7 @@ func injectIntoGRPCRequest(ctx context.Context) (context.Context, error) {
 	return newCtx, nil
 }
 
-func ClientQueryLimitsInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+func ClientQueryLimitsInterceptor(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	ctx, err := injectIntoGRPCRequest(ctx)
 	if err != nil {
 		return err
@@ -77,7 +77,7 @@ func extractFromGRPCRequest(ctx context.Context) (context.Context, error) {
 	return InjectQueryLimitsContext(ctx, *limits), nil
 }
 
-func ServerQueryLimitsInterceptor(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+func ServerQueryLimitsInterceptor(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 	ctx, err := extractFromGRPCRequest(ctx)
 	if err != nil {
 		return nil, err
@@ -86,7 +86,7 @@ func ServerQueryLimitsInterceptor(ctx context.Context, req interface{}, _ *grpc.
 	return handler(ctx, req)
 }
 
-func StreamServerQueryLimitsInterceptor(srv interface{}, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+func StreamServerQueryLimitsInterceptor(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 	ctx, err := extractFromGRPCRequest(ss.Context())
 	if err != nil {
 		return err

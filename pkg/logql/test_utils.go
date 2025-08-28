@@ -268,7 +268,7 @@ func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQu
 // with the exception of the "index" label is modulo'd into a shard
 func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueField bool) (streams []logproto.Stream) {
 	r := rand.New(rand.NewSource(42)) //#nosec G404 -- Generation of test data only, no need for a cryptographic PRNG -- nosemgrep: math-random-used
-	for i := 0; i < nStreams; i++ {
+	for i := range nStreams {
 		// labels
 		stream := logproto.Stream{}
 		ls := []labels.Label{{Name: "index", Value: fmt.Sprintf("%d", i)}}

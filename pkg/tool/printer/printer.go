@@ -43,7 +43,7 @@ func (p *Printer) Println(a string) {
 
 // Printf is a convenience wrapper for fmt.Printf with support for color
 // codes.
-func (p *Printer) Printf(format string, a ...interface{}) {
+func (p *Printer) Printf(format string, a ...any) {
 	fmt.Printf(p.colorizer.Color(format), a...)
 }
 

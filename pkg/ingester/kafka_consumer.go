@@ -133,7 +133,7 @@ func (kc *kafkaConsumer) consume(ctx context.Context, records []partition.Record
 	// ordered.
 	success := make([]*int64, len(records))
 
-	for i := 0; i < numWorkers; i++ {
+	for range numWorkers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

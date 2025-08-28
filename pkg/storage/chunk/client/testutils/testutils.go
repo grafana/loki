@@ -75,7 +75,7 @@ func Setup(fixture Fixture, tableName string) (index.Client, chunkclient.Client,
 func CreateChunks(scfg config.SchemaConfig, startIndex, batchSize int, from model.Time, through model.Time) ([]string, []chunk.Chunk, error) {
 	keys := []string{}
 	chunks := []chunk.Chunk{}
-	for j := 0; j < batchSize; j++ {
+	for j := range batchSize {
 		chunk := DummyChunkFor(from, through, labels.New(
 			labels.Label{Name: model.MetricNameLabel, Value: "foo"},
 			labels.Label{Name: "index", Value: strconv.Itoa(startIndex*batchSize + j)},

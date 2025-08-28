@@ -65,10 +65,10 @@ type Report struct {
 	IntervalPeriod         float64   `json:"intervalPeriod"`
 	Target                 string    `json:"target"`
 	prom.PrometheusVersion `json:"version"`
-	Os                     string                 `json:"os"`
-	Arch                   string                 `json:"arch"`
-	Edition                string                 `json:"edition"`
-	Metrics                map[string]interface{} `json:"metrics"`
+	Os                     string         `json:"os"`
+	Arch                   string         `json:"arch"`
+	Edition                string         `json:"edition"`
+	Metrics                map[string]any `json:"metrics"`
 }
 
 // sendReport sends the report to the stats server
@@ -130,8 +130,8 @@ func buildReport(seed *ClusterSeed, interval time.Time) Report {
 }
 
 // buildMetrics builds the metrics part of the report to be sent to the stats server
-func buildMetrics() map[string]interface{} {
-	result := map[string]interface{}{
+func buildMetrics() map[string]any {
+	result := map[string]any{
 		"memstats":      memstats(),
 		"num_cpu":       runtime.NumCPU(),
 		"num_goroutine": runtime.NumGoroutine(),
@@ -144,7 +144,7 @@ func buildMetrics() map[string]interface{} {
 		if !strings.HasPrefix(kv.Key, statsPrefix) || kv.Key == statsPrefix+targetKey || kv.Key == statsPrefix+editionKey || kv.Key == statsPrefix+cpuUsageKey {
 			return
 		}
-		var value interface{}
+		var value any
 		switch v := kv.Value.(type) {
 		case *expvar.Int:
 			value = v.Value()
@@ -168,10 +168,10 @@ func buildMetrics() map[string]interface{} {
 	return result
 }
 
-func memstats() interface{} {
+func memstats() any {
 	stats := new(runtime.MemStats)
 	runtime.ReadMemStats(stats)
-	return map[string]interface{}{
+	return map[string]any{
 		"alloc":           stats.Alloc,
 		"total_alloc":     stats.TotalAlloc,
 		"sys":             stats.Sys,
@@ -309,12 +309,12 @@ func (s *Statistics) String() string {
 	return string(b)
 }
 
-func (s *Statistics) Value() map[string]interface{} {
+func (s *Statistics) Value() map[string]any {
 	stdvar := s.value.Load() / float64(s.count.Load())
 	stddev := math.Sqrt(stdvar)
 	minVal := s.min.Load()
 	maxVal := s.max.Load()
-	result := map[string]interface{}{
+	result := map[string]any{
 		"avg":   s.avg.Load(),
 		"count": s.count.Load(),
 	}
@@ -422,8 +422,8 @@ func (c *Counter) String() string {
 	return string(b)
 }
 
-func (c *Counter) Value() map[string]interface{} {
-	return map[string]interface{}{
+func (c *Counter) Value() map[string]any {
+	return map[string]any{
 		"total": c.total.Load(),
 		"rate":  c.rate.Load(),
 	}

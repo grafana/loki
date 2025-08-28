@@ -616,7 +616,7 @@ func BenchmarkIndexCaching(b *testing.B) {
 
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err := store.Put(ctx, []chunk.Chunk{fooChunk1})
 		require.NoError(b, err)
 	}
@@ -754,7 +754,7 @@ func dummyChunkWithFormat(t testing.TB, now model.Time, metric labels.Labels, fo
 	chunkStart := now.Add(-time.Hour)
 
 	chk := chunkenc.NewMemChunk(format, compression.GZIP, headfmt, 256*1024, 0)
-	for i := 0; i < samples; i++ {
+	for i := range samples {
 		ts := time.Duration(i) * 15 * time.Second
 		dup, err := chk.Append(&logproto.Entry{Timestamp: chunkStart.Time().Add(ts), Line: fmt.Sprintf("line %d", i)})
 		require.False(t, dup)

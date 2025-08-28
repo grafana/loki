@@ -255,7 +255,7 @@ func markForDelete(
 
 		chunksFound = true
 		seriesStart := chunks[0].From
-		for i := 0; i < len(chunks); i++ {
+		for i := range chunks {
 			if chunks[i].From < seriesStart {
 				seriesStart = chunks[i].From
 			}

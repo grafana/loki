@@ -135,7 +135,7 @@ func RecordRangeAndInstantQueryMetrics(
 		hashedQuery = util.HashedQuery(query)
 	)
 
-	logValues := make([]interface{}, 0, 50)
+	logValues := make([]any, 0, 50)
 
 	var bloomRatio float64 // what % are filtered
 	if stats.Index.TotalChunks > 0 {
@@ -146,7 +146,7 @@ func RecordRangeAndInstantQueryMetrics(
 		cardinalityEstimate = r.F.HyperLogLog.Estimate()
 	}
 
-	logValues = append(logValues, []interface{}{
+	logValues = append(logValues, []any{
 		"latency", latencyType, // this can be used to filter log lines.
 		"query", query,
 		"query_hash", hashedQuery,
@@ -345,7 +345,7 @@ func RecordSeriesQueryMetrics(ctx context.Context, log log.Logger, start, end ti
 
 	shard := extractShard(shards)
 
-	logValues := make([]interface{}, 0, 15)
+	logValues := make([]any, 0, 15)
 	logValues = append(logValues,
 		"latency", latencyType,
 		"query_type", queryType,
@@ -392,7 +392,7 @@ func RecordStatsQueryMetrics(ctx context.Context, log log.Logger, start, end tim
 		latencyType = latencyTypeSlow
 	}
 
-	logValues := make([]interface{}, 0, 15)
+	logValues := make([]any, 0, 15)
 	logValues = append(logValues,
 		"latency", latencyType,
 		"query_type", queryType,
@@ -438,7 +438,7 @@ func RecordShardsQueryMetrics(
 	if stats.Index.TotalChunks > 0 {
 		bloomRatio = float64(stats.Index.TotalChunks-stats.Index.PostFilterChunks) / float64(stats.Index.TotalChunks)
 	}
-	logValues := make([]interface{}, 0, 15)
+	logValues := make([]any, 0, 15)
 	logValues = append(logValues,
 		"latency", latencyType,
 		"query_type", queryType,

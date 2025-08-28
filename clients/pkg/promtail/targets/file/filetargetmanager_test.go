@@ -103,7 +103,7 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		_, err = f.WriteString("test\n")
 		if err != nil {
 			t.Fatal(err)
@@ -163,7 +163,7 @@ func TestWatchEntireDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		_, err = f.WriteString("test\n")
 		if err != nil {
 			t.Fatal(err)
@@ -222,7 +222,7 @@ func TestFileRolls(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		_, err = f.WriteString("test1\n")
 		if err != nil {
 			t.Fatal(err)
@@ -242,7 +242,7 @@ func TestFileRolls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		_, err = f.WriteString("test2\n")
 		if err != nil {
 			t.Fatal(err)
@@ -295,7 +295,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		_, err = f.WriteString("test1\n")
 		if err != nil {
 			t.Fatal(err)
@@ -321,7 +321,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		_, err = f.WriteString("test2\n")
 		if err != nil {
 			t.Fatal(err)
@@ -380,7 +380,7 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		_, err = f1.WriteString("test1\n")
 		if err != nil {
 			t.Fatal(err)
@@ -490,12 +490,12 @@ func TestDeadlockStartWatchingDuringSync(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			dir := filepath.Join(newLogDir, fmt.Sprintf("%d", i))
 			err := os.MkdirAll(dir, 0o750)
 			assert.NoError(t, err)
 			time.Sleep(1 * time.Millisecond)
-			for j := 0; j < 100; j++ {
+			for j := range 100 {
 				logFile := filepath.Join(dir, fmt.Sprintf("test%d.log", j))
 				f, err := os.Create(logFile)
 				assert.NoError(t, err)
@@ -520,7 +520,7 @@ func TestDeadlockStartWatchingDuringSync(t *testing.T) {
 		},
 		Source: "",
 	}
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		ftm.syncers[""].sync([]*targetgroup.Group{&tg}, ftm.targetEventHandler)
 	}
 	<-done

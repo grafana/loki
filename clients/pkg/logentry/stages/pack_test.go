@@ -122,7 +122,7 @@ func Test_packStage_Run(t *testing.T) {
 				IngestTimestamp: &reallyFalse,
 			},
 			inputEntry: Entry{
-				Extracted: map[string]interface{}{},
+				Extracted: map[string]any{},
 				Entry: api.Entry{
 					Labels: model.LabelSet{
 						"foo": "bar",
@@ -154,7 +154,7 @@ func Test_packStage_Run(t *testing.T) {
 				IngestTimestamp: &reallyFalse,
 			},
 			inputEntry: Entry{
-				Extracted: map[string]interface{}{},
+				Extracted: map[string]any{},
 				Entry: api.Entry{
 					Labels: model.LabelSet{
 						"foo": "bar",
@@ -185,7 +185,7 @@ func Test_packStage_Run(t *testing.T) {
 				IngestTimestamp: &reallyFalse,
 			},
 			inputEntry: Entry{
-				Extracted: map[string]interface{}{},
+				Extracted: map[string]any{},
 				Entry: api.Entry{
 					Labels: model.LabelSet{
 						"foo": "bar",
@@ -214,7 +214,7 @@ func Test_packStage_Run(t *testing.T) {
 				IngestTimestamp: &reallyFalse,
 			},
 			inputEntry: Entry{
-				Extracted: map[string]interface{}{
+				Extracted: map[string]any{
 					"extr1": "etr1val",
 					"extr2": "etr2val",
 				},
@@ -248,7 +248,7 @@ func Test_packStage_Run(t *testing.T) {
 				IngestTimestamp: &reallyFalse,
 			},
 			inputEntry: Entry{
-				Extracted: map[string]interface{}{
+				Extracted: map[string]any{
 					"extr1": "etr1val",
 					"extr2": []int{1, 2, 3},
 				},
@@ -282,7 +282,7 @@ func Test_packStage_Run(t *testing.T) {
 				IngestTimestamp: &reallyFalse,
 			},
 			inputEntry: Entry{
-				Extracted: map[string]interface{}{
+				Extracted: map[string]any{
 					"extr1":   "etr1val",
 					"ex\"tr2": `"fd"`,
 				},
@@ -316,7 +316,7 @@ func Test_packStage_Run(t *testing.T) {
 				IngestTimestamp: &reallyTrue,
 			},
 			inputEntry: Entry{
-				Extracted: map[string]interface{}{},
+				Extracted: map[string]any{},
 				Entry: api.Entry{
 					Labels: model.LabelSet{
 						"foo": "bar",

@@ -89,10 +89,10 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 
 		// an array of data per params will be returned by the querier.
 		// This is to cover logql that requires multiple queries.
-		data   interface{}
-		params interface{}
+		data   any
+		params any
 
-		expected interface{}
+		expected any
 	}{
 		{
 			`rate({app="foo"} | unwrap foo [30s])`,
@@ -218,10 +218,10 @@ func TestEngine_InstantQuery(t *testing.T) {
 
 		// an array of data per params will be returned by the querier.
 		// This is to cover logql that requires multiple queries.
-		data   interface{}
-		params interface{}
+		data   any
+		params any
 
-		expected interface{}
+		expected any
 	}{
 		{
 			`rate({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), logproto.BACKWARD, 10,
@@ -1026,8 +1026,8 @@ func TestEngine_RangeQuery(t *testing.T) {
 
 		// an array of streams per SelectParams will be returned by the querier.
 		// This is to cover logql that requires multiple queries.
-		data   interface{}
-		params interface{}
+		data   any
+		params any
 
 		expected promql_parser.Value
 	}{
@@ -2330,10 +2330,10 @@ func TestEngine_Variants_InstantQuery(t *testing.T) {
 
 		// an array of data per params will be returned by the querier.
 		// This is to cover logql that requires multiple queries.
-		data   interface{}
-		params interface{}
+		data   any
+		params any
 
-		expected interface{}
+		expected any
 	}{
 		{
 			`variants(bytes_over_time({app="foo"}[1m]), count_over_time({app="foo"}[1m])) of ({app="foo"}[1m])`,
@@ -2766,8 +2766,8 @@ func TestEngine_Variants_RangeQuery(t *testing.T) {
 
 		// an array of streams per SelectParams will be returned by the querier.
 		// This is to cover logql that requires multiple queries.
-		data   interface{}
-		params interface{}
+		data   any
+		params any
 
 		expected promql_parser.Value
 	}{
@@ -3276,8 +3276,8 @@ func benchmarkRangeQuery(testsize int64, b *testing.B) {
 	eng := NewEngine(EngineOpts{}, getLocalQuerier(testsize), NoLimits, log.NewNopLogger())
 	start := time.Unix(0, 0)
 	end := time.Unix(testsize, 0)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		for _, test := range []struct {
 			qs        string
 			direction logproto.Direction
@@ -3467,7 +3467,7 @@ type querierRecorder struct {
 	match   bool
 }
 
-func newQuerierRecorder(t *testing.T, data interface{}, params interface{}) *querierRecorder {
+func newQuerierRecorder(t *testing.T, data any, params any) *querierRecorder {
 	t.Helper()
 	streams := map[string][]logproto.Stream{}
 	if streamsIn, ok := data.([][]logproto.Stream); ok {
@@ -3573,7 +3573,7 @@ func (q *querierRecorder) SelectSamples(
 	return iter.NewMultiSeriesIterator(series), nil
 }
 
-func paramsID(p interface{}) string {
+func paramsID(p any) string {
 	switch params := p.(type) {
 	case SelectLogParams:
 	case SelectSampleParams:
@@ -3600,7 +3600,7 @@ func newStream(n int64, f generator, lbsString string) logproto.Stream {
 		panic(err)
 	}
 	entries := []logproto.Entry{}
-	for i := int64(0); i < n; i++ {
+	for i := range n {
 		entries = append(entries, f(i).Entry)
 	}
 	return logproto.Stream{
@@ -3615,7 +3615,7 @@ func newSeries(n int64, f generator, lbsString string) logproto.Series {
 		panic(err)
 	}
 	samples := []logproto.Sample{}
-	for i := int64(0); i < n; i++ {
+	for i := range n {
 		samples = append(samples, f(i).Sample)
 	}
 	return logproto.Series{
@@ -3894,7 +3894,7 @@ func TestJoinSampleVector_LogsDrilldownBehavior(t *testing.T) {
 				seriesOffset := test.vectorSize // Start naming series after the initial vector
 				for _, additionalSize := range test.additionalVectors {
 					additionalVec := make(promql.Vector, additionalSize)
-					for i := 0; i < additionalSize; i++ {
+					for i := range additionalSize {
 						additionalVec[i] = promql.Sample{
 							T:      120 * 1000, // Different timestamp for subsequent steps
 							F:      float64(seriesOffset + i + 1),

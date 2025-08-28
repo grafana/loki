@@ -179,7 +179,7 @@ func (h *Target) Ready() bool {
 	return true
 }
 
-func (h *Target) Details() interface{} {
+func (h *Target) Details() any {
 	return map[string]string{}
 }
 

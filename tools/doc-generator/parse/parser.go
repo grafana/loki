@@ -37,12 +37,12 @@ var (
 // If string is non-empty, it will be added as comment.
 // If yaml value is non-empty, it will be marshaled as yaml under the same key as it would appear in config.
 type ExamplerConfig interface {
-	ExampleDoc() (comment string, yaml interface{})
+	ExampleDoc() (comment string, yaml any)
 }
 
 type FieldExample struct {
 	Comment string
-	Yaml    interface{}
+	Yaml    any
 }
 
 type ConfigBlock struct {
@@ -125,11 +125,11 @@ func Flags(cfg flagext.Registerer) map[uintptr]*flag.Flag {
 
 // Config returns a slice of ConfigBlocks. The first ConfigBlock is a recursively expanded cfg.
 // The remaining entries in the slice are all (root or not) ConfigBlocks.
-func Config(cfg interface{}, flags map[uintptr]*flag.Flag, rootBlocks []RootBlock) ([]*ConfigBlock, error) {
+func Config(cfg any, flags map[uintptr]*flag.Flag, rootBlocks []RootBlock) ([]*ConfigBlock, error) {
 	return config(nil, cfg, flags, rootBlocks)
 }
 
-func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, rootBlocks []RootBlock) ([]*ConfigBlock, error) {
+func config(block *ConfigBlock, cfg any, flags map[uintptr]*flag.Flag, rootBlocks []RootBlock) ([]*ConfigBlock, error) {
 	var blocks []*ConfigBlock
 
 	// If the input block is nil it means we're generating the doc for the top-level block
@@ -509,11 +509,11 @@ func getFieldExample(fieldKey string, fieldType reflect.Type) *FieldExample {
 	comment, yml := ex.ExampleDoc()
 	return &FieldExample{
 		Comment: comment,
-		Yaml:    map[string]interface{}{fieldKey: yml},
+		Yaml:    map[string]any{fieldKey: yml},
 	}
 }
 
-func getCustomFieldEntry(cfg interface{}, field reflect.StructField, fieldValue reflect.Value, flags map[uintptr]*flag.Flag) (*ConfigEntry, error) {
+func getCustomFieldEntry(cfg any, field reflect.StructField, fieldValue reflect.Value, flags map[uintptr]*flag.Flag) (*ConfigEntry, error) {
 	if field.Type == reflect.TypeOf(log.Level{}) {
 		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
 		if err != nil || fieldFlag == nil {
@@ -626,7 +626,7 @@ func isFieldInline(f reflect.StructField) bool {
 	return yamlFieldInlineParser.MatchString(f.Tag.Get("yaml"))
 }
 
-func getFieldDescription(cfg interface{}, field reflect.StructField, fallback string) string {
+func getFieldDescription(cfg any, field reflect.StructField, fallback string) string {
 	// Set prefix
 	prefix := ""
 	if isFieldDeprecated(field) {
@@ -682,7 +682,7 @@ func parseDocTag(f reflect.StructField) map[string]string {
 		return cfg
 	}
 
-	for _, entry := range strings.Split(tag, "|") {
+	for entry := range strings.SplitSeq(tag, "|") {
 		parts := strings.SplitN(entry, "=", 2)
 
 		switch len(parts) {

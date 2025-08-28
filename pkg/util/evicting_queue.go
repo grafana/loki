@@ -9,7 +9,7 @@ type EvictingQueue struct {
 	sync.RWMutex
 
 	capacity int
-	entries  []interface{}
+	entries  []any
 	onEvict  func()
 }
 
@@ -20,7 +20,7 @@ func NewEvictingQueue(capacity int, onEvict func()) (*EvictingQueue, error) {
 
 	queue := &EvictingQueue{
 		onEvict: onEvict,
-		entries: make([]interface{}, 0, capacity),
+		entries: make([]any, 0, capacity),
 	}
 
 	err := queue.SetCapacity(capacity)
@@ -31,7 +31,7 @@ func NewEvictingQueue(capacity int, onEvict func()) (*EvictingQueue, error) {
 	return queue, nil
 }
 
-func (q *EvictingQueue) Append(entry interface{}) {
+func (q *EvictingQueue) Append(entry any) {
 	q.Lock()
 	defer q.Unlock()
 
@@ -49,7 +49,7 @@ func (q *EvictingQueue) evictOldest() {
 	q.entries = append(q.entries[:0], q.entries[start:]...)
 }
 
-func (q *EvictingQueue) Entries() []interface{} {
+func (q *EvictingQueue) Entries() []any {
 	q.RLock()
 	defer q.RUnlock()
 

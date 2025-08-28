@@ -36,7 +36,7 @@ func TestRedisCache(t *testing.T) {
 
 	require.Len(t, found, nHit)
 	require.Len(t, missed, 0)
-	for i := 0; i < nHit; i++ {
+	for i := range nHit {
 		require.Equal(t, keys[i], found[i])
 		require.Equal(t, bufs[i], data[i])
 	}
@@ -46,7 +46,7 @@ func TestRedisCache(t *testing.T) {
 
 	require.Len(t, found, 0)
 	require.Len(t, missed, nMiss)
-	for i := 0; i < nMiss; i++ {
+	for i := range nMiss {
 		require.Equal(t, miss[i], missed[i])
 	}
 }

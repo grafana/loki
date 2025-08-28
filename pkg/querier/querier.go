@@ -440,7 +440,7 @@ func (q *SingleTenantQuerier) awaitSeries(ctx context.Context, req *logproto.Ser
 	}
 
 	var sets [][]logproto.SeriesIdentifier
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		select {
 		case err := <-errs:
 			return nil, err

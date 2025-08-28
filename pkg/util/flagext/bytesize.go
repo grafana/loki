@@ -27,7 +27,7 @@ func (bs *ByteSize) Set(s string) error {
 	return nil
 }
 
-func (bs ByteSize) Get() interface{} {
+func (bs ByteSize) Get() any {
 	return bs.Val()
 }
 
@@ -36,7 +36,7 @@ func (bs ByteSize) Val() int {
 }
 
 // UnmarshalYAML the Unmarshaler interface of the yaml pkg.
-func (bs *ByteSize) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (bs *ByteSize) UnmarshalYAML(unmarshal func(any) error) error {
 	var str string
 	err := unmarshal(&str)
 	if err != nil {
@@ -48,7 +48,7 @@ func (bs *ByteSize) UnmarshalYAML(unmarshal func(interface{}) error) error {
 
 // MarshalYAML implements yaml.Marshaller.
 // Use a string representation for consistency
-func (bs ByteSize) MarshalYAML() (interface{}, error) {
+func (bs ByteSize) MarshalYAML() (any, error) {
 	return bs.String(), nil
 }
 

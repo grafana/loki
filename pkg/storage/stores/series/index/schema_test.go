@@ -166,7 +166,7 @@ func BenchmarkEncodeLabelsJson(b *testing.B) {
 	json := jsoniter.ConfigFastest
 	var data []byte
 	var err error
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		data, err = json.Marshal(lbs)
 		if err != nil {
 			panic(err)
@@ -193,7 +193,7 @@ func BenchmarkEncodeLabelsString(b *testing.B) {
 	})
 	var data []byte
 	var err error
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		data = []byte(lbs.String())
 		decoded, err = parser.ParseMetric(string(data))
 		if err != nil {
@@ -206,7 +206,7 @@ func BenchmarkEncodeLabelsString(b *testing.B) {
 
 func TestV10IndexQueries(t *testing.T) {
 	fromShards := func(n int) (res []Query) {
-		for i := 0; i < n; i++ {
+		for i := range n {
 			res = append(res, Query{
 				TableName:       "tbl",
 				HashValue:       fmt.Sprintf("%02d:%s:%s:%s", i, "hash", "metric", "label"),

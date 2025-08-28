@@ -145,7 +145,7 @@ func BenchmarkClientWriteTo(b *testing.B) {
 		b.Run(fmt.Sprintf("num writers %d, with %d lines written in total", tc.numWriters, tc.totalLines),
 			func(b *testing.B) {
 				require.True(b, tc.totalLines%tc.numWriters == 0, "total lines must be divisible by num of writers")
-				for n := 0; n < b.N; n++ {
+				for b.Loop() {
 					bench(tc.numWriters, tc.totalLines, b)
 				}
 			})
@@ -175,7 +175,7 @@ func bench(numWriters, totalLines int, b *testing.B) {
 
 	// spin up the numWriters routines
 	writersWG := sync.WaitGroup{}
-	for n := 0; n < numWriters; n++ {
+	for n := range numWriters {
 		writersWG.Add(1)
 		go func(n int) {
 			defer writersWG.Done()
@@ -222,7 +222,7 @@ func startWriter(segmentNum, seriesToReset int, target *clientWriteTo, lines int
 	target.StoreSeries([]record.RefSeries{series}, segmentNum)
 
 	// write lines with that series
-	for i := 0; i < lines; i++ {
+	for i := range lines {
 		_ = target.AppendEntries(wal.RefEntries{
 			Ref: series.Ref,
 			Entries: []logproto.Entry{

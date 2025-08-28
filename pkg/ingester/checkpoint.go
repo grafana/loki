@@ -362,7 +362,7 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 }
 
 // Buckets [64KB to 256MB] by 2
-var recordBufferPool = prompool.New(1<<16, 1<<28, 2, func(size int) interface{} { return make([]byte, 0, size) })
+var recordBufferPool = prompool.New(1<<16, 1<<28, 2, func(size int) any { return make([]byte, 0, size) })
 
 func (w *WALCheckpointWriter) Write(s *Series) error {
 	size := s.Size() + 1 // +1 for header
@@ -431,7 +431,7 @@ func lastCheckpoint(dir string) (string, int, error) {
 		checkpointDir string
 	)
 	// There may be multiple checkpoints left, so select the one with max index.
-	for i := 0; i < len(dirs); i++ {
+	for i := range dirs {
 		di := dirs[i]
 
 		idx, err := checkpointIndex(di.Name(), false)

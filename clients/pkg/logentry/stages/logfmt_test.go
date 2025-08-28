@@ -42,12 +42,12 @@ func TestPipeline_Logfmt(t *testing.T) {
 	tests := map[string]struct {
 		config          string
 		entry           string
-		expectedExtract map[string]interface{}
+		expectedExtract map[string]any
 	}{
 		"successfully run a pipeline with 1 logfmt stage without source": {
 			testLogfmtYamlSingleStageWithoutSource,
 			testLogfmtLogLine,
-			map[string]interface{}{
+			map[string]any{
 				"out":      "this is a log line",
 				"app":      "loki",
 				"duration": "125",
@@ -56,7 +56,7 @@ func TestPipeline_Logfmt(t *testing.T) {
 		"successfully run a pipeline with 2 logfmt stages with source": {
 			testLogfmtYamlMultiStageWithSource,
 			testLogfmtLogLine,
-			map[string]interface{}{
+			map[string]any{
 				"extra": "user=foo",
 				"user":  "foo",
 			},
@@ -85,9 +85,9 @@ func TestLogfmtYamlMapStructure(t *testing.T) {
 	t.Parallel()
 
 	// testing that we can use yaml data into mapstructure.
-	var mapstruct map[interface{}]interface{}
+	var mapstruct map[any]any
 	assert.NoError(t, yaml.Unmarshal([]byte(testLogfmtCfg), &mapstruct))
-	p, ok := mapstruct["logfmt"].(map[interface{}]interface{})
+	p, ok := mapstruct["logfmt"].(map[any]any)
 	assert.True(t, ok)
 	got, err := parseLogfmtConfig(p)
 	assert.NoError(t, err)
@@ -104,7 +104,7 @@ func TestLogfmtConfig_validate(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		config           interface{}
+		config           any
 		wantMappingCount int
 		err              error
 	}{
@@ -114,12 +114,12 @@ func TestLogfmtConfig_validate(t *testing.T) {
 			errors.New(ErrMappingRequired),
 		},
 		"no mapping": {
-			map[string]interface{}{},
+			map[string]any{},
 			0,
 			errors.New(ErrMappingRequired),
 		},
 		"empty source": {
-			map[string]interface{}{
+			map[string]any{
 				"mapping": map[string]string{
 					"extr1": "expr",
 				},
@@ -129,7 +129,7 @@ func TestLogfmtConfig_validate(t *testing.T) {
 			errors.New(ErrEmptyLogfmtStageSource),
 		},
 		"valid without source": {
-			map[string]interface{}{
+			map[string]any{
 				"mapping": map[string]string{
 					"foo1": "foo",
 					"foo2": "",
@@ -139,7 +139,7 @@ func TestLogfmtConfig_validate(t *testing.T) {
 			nil,
 		},
 		"valid with source": {
-			map[string]interface{}{
+			map[string]any{
 				"mapping": map[string]string{
 					"foo1": "foo",
 					"foo2": "",
@@ -176,13 +176,13 @@ var testLogfmtLogFixture = `
 func TestLogfmtParser_Parse(t *testing.T) {
 	t.Parallel()
 	tests := map[string]struct {
-		config          interface{}
-		extracted       map[string]interface{}
+		config          any
+		extracted       map[string]any
 		entry           string
-		expectedExtract map[string]interface{}
+		expectedExtract map[string]any
 	}{
 		"successfully decode logfmt on entry": {
-			map[string]interface{}{
+			map[string]any{
 				"mapping": map[string]string{
 					"time":    "",
 					"app":     "",
@@ -191,9 +191,9 @@ func TestLogfmtParser_Parse(t *testing.T) {
 					"message": "",
 				},
 			},
-			map[string]interface{}{},
+			map[string]any{},
 			testLogfmtLogFixture,
-			map[string]interface{}{
+			map[string]any{
 				"time":    "2012-11-01T22:08:41+00:00",
 				"app":     "loki",
 				"level":   "WARN",
@@ -202,7 +202,7 @@ func TestLogfmtParser_Parse(t *testing.T) {
 			},
 		},
 		"successfully decode logfmt on extracted[source]": {
-			map[string]interface{}{
+			map[string]any{
 				"mapping": map[string]string{
 					"time":    "",
 					"app":     "",
@@ -212,11 +212,11 @@ func TestLogfmtParser_Parse(t *testing.T) {
 				},
 				"source": "log",
 			},
-			map[string]interface{}{
+			map[string]any{
 				"log": testLogfmtLogFixture,
 			},
 			"{}",
-			map[string]interface{}{
+			map[string]any{
 				"time":    "2012-11-01T22:08:41+00:00",
 				"app":     "loki",
 				"level":   "WARN",
@@ -226,53 +226,53 @@ func TestLogfmtParser_Parse(t *testing.T) {
 			},
 		},
 		"missing extracted[source]": {
-			map[string]interface{}{
+			map[string]any{
 				"mapping": map[string]string{
 					"app": "",
 				},
 				"source": "log",
 			},
-			map[string]interface{}{},
+			map[string]any{},
 			testLogfmtLogFixture,
-			map[string]interface{}{},
+			map[string]any{},
 		},
 		"invalid logfmt on entry": {
-			map[string]interface{}{
+			map[string]any{
 				"mapping": map[string]string{
 					"expr1": "",
 				},
 			},
-			map[string]interface{}{},
+			map[string]any{},
 			"{\"invalid\":\"logfmt\"}",
-			map[string]interface{}{},
+			map[string]any{},
 		},
 		"invalid logfmt on extracted[source]": {
-			map[string]interface{}{
+			map[string]any{
 				"mapping": map[string]string{
 					"app": "",
 				},
 				"source": "log",
 			},
-			map[string]interface{}{
+			map[string]any{
 				"log": "not logfmt",
 			},
 			testLogfmtLogFixture,
-			map[string]interface{}{
+			map[string]any{
 				"log": "not logfmt",
 			},
 		},
 		"nil source": {
-			map[string]interface{}{
+			map[string]any{
 				"mapping": map[string]string{
 					"app": "",
 				},
 				"source": "log",
 			},
-			map[string]interface{}{
+			map[string]any{
 				"log": nil,
 			},
 			testLogfmtLogFixture,
-			map[string]interface{}{
+			map[string]any{
 				"log": nil,
 			},
 		},

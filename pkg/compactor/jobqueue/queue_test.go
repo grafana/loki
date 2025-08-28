@@ -103,7 +103,7 @@ func TestQueue_Loop(t *testing.T) {
 
 	// Create a couple of test jobs
 	var jobs []*compactor_grpc.Job
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		jobs = append(jobs, &compactor_grpc.Job{
 			Id:   fmt.Sprintf("test-job-%d", i),
 			Type: compactor_grpc.JOB_TYPE_DELETION,

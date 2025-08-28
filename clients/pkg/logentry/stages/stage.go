@@ -49,12 +49,12 @@ const (
 // Processor takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
 // timestamp and log entry
 type Processor interface {
-	Process(labels model.LabelSet, extracted map[string]interface{}, time *time.Time, entry *string)
+	Process(labels model.LabelSet, extracted map[string]any, time *time.Time, entry *string)
 	Name() string
 }
 
 type Entry struct {
-	Extracted map[string]interface{}
+	Extracted map[string]any
 	api.Entry
 }
 
@@ -114,7 +114,7 @@ func toStage(p Processor) Stage {
 
 type StageCreationParams struct {
 	logger     log.Logger
-	config     interface{}
+	config     any
 	registerer prometheus.Registerer
 	jobName    *string
 }
@@ -215,7 +215,7 @@ func initCreators() {
 
 // New creates a new stage for the given type and configuration.
 func New(logger log.Logger, jobName *string, stageType string,
-	cfg interface{}, registerer prometheus.Registerer) (Stage, error) {
+	cfg any, registerer prometheus.Registerer) (Stage, error) {
 	initCreators()
 	creator, ok := stageCreators[stageType]
 	if !ok {

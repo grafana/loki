@@ -92,7 +92,7 @@ func AssertPipelinesEqual(t testing.TB, left, right Pipeline) {
 
 		// Compare rows until one of the batches is exhausted
 		compareRows := min(leftRemain, rightRemain)
-		for i := int64(0); i < compareRows; i++ {
+		for range compareRows {
 			// Compare all columns for this row
 			for j := 0; j < int(leftBatch.NumCols()); j++ {
 				colName := leftBatch.ColumnName(j)

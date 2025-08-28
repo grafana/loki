@@ -24,7 +24,7 @@ type BloomTokenizer struct {
 	logger  log.Logger
 
 	maxBloomSize int // size in bytes
-	cache        map[string]interface{}
+	cache        map[string]any
 }
 
 const cacheSize = 150000
@@ -40,7 +40,7 @@ func NewBloomTokenizer(maxBloomSize int, metrics *Metrics, logger log.Logger) *B
 	return &BloomTokenizer{
 		metrics:      metrics,
 		logger:       logger,
-		cache:        make(map[string]interface{}, cacheSize),
+		cache:        make(map[string]any, cacheSize),
 		maxBloomSize: maxBloomSize,
 	}
 }

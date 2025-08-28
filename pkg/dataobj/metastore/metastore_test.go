@@ -25,16 +25,15 @@ func BenchmarkWriteMetastores(b *testing.B) {
 	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
 
 	stats := make([]flushStats, 1000)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		stats[i] = flushStats{
 			MinTimestamp: now.Add(-1 * time.Hour).Add(time.Duration(i) * time.Millisecond),
 			MaxTimestamp: now,
 		}
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		{
 			ctx, cancel := context.WithTimeout(b.Context(), time.Second)
 			defer cancel()

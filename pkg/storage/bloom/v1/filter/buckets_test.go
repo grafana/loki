@@ -74,7 +74,7 @@ func TestBucketsIncrementAndGetAndSet(t *testing.T) {
 // Ensures that Reset restores the Buckets to the original state.
 func TestBucketsReset(t *testing.T) {
 	b := NewBuckets(5, 2)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		b.Increment(uint(i), 1)
 	}
 
@@ -82,7 +82,7 @@ func TestBucketsReset(t *testing.T) {
 		t.Error("Returned Buckets should be the same instance")
 	}
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if c := b.Get(uint(i)); c != 0 {
 			t.Errorf("Expected 0, got %d", c)
 		}
@@ -92,7 +92,7 @@ func TestBucketsReset(t *testing.T) {
 // Ensures that Buckets can be serialized and deserialized without errors.
 func TestBucketsGob(t *testing.T) {
 	b := NewBuckets(5, 2)
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		b.Increment(uint(i), 1)
 	}
 
@@ -113,7 +113,7 @@ func TestBucketsGob(t *testing.T) {
 
 func TestBucketsLazyReader(t *testing.T) {
 	filter := NewBuckets(10000, 10)
-	for i := 0; i < 2000; i++ {
+	for i := range 2000 {
 		if i%2 == 0 {
 			filter.Set(uint(i), 1)
 		}
@@ -137,14 +137,14 @@ func TestBucketsLazyReader(t *testing.T) {
 
 func BenchmarkBucketsIncrement(b *testing.B) {
 	buckets := NewBuckets(10000, 10)
-	for n := 0; n < b.N; n++ {
+	for n := 0; b.Loop(); n++ {
 		buckets.Increment(uint(n)%10000, 1)
 	}
 }
 
 func BenchmarkBucketsSet(b *testing.B) {
 	buckets := NewBuckets(10000, 10)
-	for n := 0; n < b.N; n++ {
+	for n := 0; b.Loop(); n++ {
 		buckets.Set(uint(n)%10000, 1)
 	}
 }
@@ -152,11 +152,11 @@ func BenchmarkBucketsSet(b *testing.B) {
 func BenchmarkBucketsGet(b *testing.B) {
 	b.StopTimer()
 	buckets := NewBuckets(10000, 10)
-	for n := 0; n < b.N; n++ {
+	for n := 0; b.Loop(); n++ {
 		buckets.Set(uint(n)%10000, 1)
 	}
 	b.StartTimer()
-	for n := 0; n < b.N; n++ {
+	for n := 0; b.Loop(); n++ {
 		buckets.Get(uint(n) % 10000)
 	}
 }

@@ -183,7 +183,7 @@ func TestCRI_tags(t *testing.T) {
 
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := map[string]interface{}{
+			cfg := map[string]any{
 				"max_partial_lines":              tt.maxPartialLines,
 				"max_partial_line_size":          tt.maxPartialLineSize,
 				"max_partial_line_size_truncate": tt.maxPartialLineSizeTruncate,
@@ -269,7 +269,7 @@ func TestNewCri(t *testing.T) {
 	for tName, tt := range tests {
 		t.Run(tName, func(t *testing.T) {
 			t.Parallel()
-			cfg := map[string]interface{}{}
+			cfg := map[string]any{}
 			p, err := NewCRI(util_log.Logger, cfg, prometheus.DefaultRegisterer)
 			if err != nil {
 				t.Fatalf("failed to create CRI parser: %s", err)

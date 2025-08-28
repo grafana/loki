@@ -66,7 +66,7 @@ func TestResetConcurrency(t *testing.T) {
 				w.AddressAdded(fmt.Sprintf("127.0.0.1:%d", i))
 			}
 
-			test.Poll(t, 250*time.Millisecond, tt.expectedConcurrency, func() interface{} {
+			test.Poll(t, 250*time.Millisecond, tt.expectedConcurrency, func() any {
 				return getConcurrentProcessors(w)
 			})
 

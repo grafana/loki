@@ -15,7 +15,7 @@ import (
 var tracer = otel.Tracer("pkg/storage/chunk/client/util")
 
 var decodeContextPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return chunk.NewDecodeContext()
 	},
 }
@@ -60,7 +60,7 @@ func GetParallelChunks(ctx context.Context, maxParallel int, chunks []chunk.Chun
 
 	result := make([]chunk.Chunk, 0, len(chunks))
 	var lastErr error
-	for i := 0; i < len(chunks); i++ {
+	for range chunks {
 		select {
 		case chunk := <-processedChunks:
 			result = append(result, chunk)

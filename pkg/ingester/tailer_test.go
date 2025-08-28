@@ -36,7 +36,7 @@ func TestTailer_RoundTrip(t *testing.T) {
 	var entries []logproto.Entry
 	for i := 0; i < numStreams; i += 3 {
 		var iterEntries []logproto.Entry
-		for j := 0; j < 3; j++ {
+		for j := range 3 {
 			iterEntries = append(iterEntries, logproto.Entry{Timestamp: time.Unix(0, int64(i+j)), Line: fmt.Sprintf("line %d", i+j)})
 		}
 		entries = append(entries, iterEntries...)
@@ -78,7 +78,7 @@ func TestTailer_sendRaceConditionOnSendWhileClosing(t *testing.T) {
 		},
 	}
 
-	for run := 0; run < runs; run++ {
+	for range runs {
 		expr, err := syntax.ParseLogSelector(stream.Labels, true)
 		require.NoError(t, err)
 		tailer, err := newTailer("org-id", expr, nil, 10)
@@ -381,7 +381,7 @@ func Benchmark_isClosed(t *testing.B) {
 	require.Equal(t, false, tail.isClosed())
 
 	t.ResetTimer()
-	for i := 0; i < t.N; i++ {
+	for t.Loop() {
 		tail.isClosed()
 	}
 

@@ -341,7 +341,7 @@ func symbolizerFromCheckpoint(b []byte) *symbolizer {
 		normalizedNames: make(map[uint32]string, numLabels/2),
 	}
 
-	for i := 0; i < numLabels; i++ {
+	for i := range numLabels {
 		label := string(db.bytes(db.uvarint()))
 		s.labels = append(s.labels, label)
 		s.symbolsMap[label] = uint32(i)
@@ -379,7 +379,7 @@ func symbolizerFromEnc(b []byte, pool compression.ReaderPool) (*symbolizer, erro
 		buf          []byte
 	)
 
-	for i := 0; i < numLabels; i++ {
+	for range numLabels {
 		var lWidth, labelSize, lastAttempt int
 		for lWidth == 0 { // Read until both varints have enough bytes.
 			n, err := reader.Read(readBuf[readBufValid:])

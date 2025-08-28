@@ -471,7 +471,7 @@ func (i *Ingester) setupAutoForget() {
 
 		var forgetList []string
 		for range ticker.C {
-			err := i.lifecycler.KVStore.CAS(ctx, RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+			err := i.lifecycler.KVStore.CAS(ctx, RingKey, func(in any) (out any, retry bool, err error) {
 				forgetList = forgetList[:0]
 				if in == nil {
 					return nil, false, nil

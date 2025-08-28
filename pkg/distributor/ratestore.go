@@ -311,7 +311,7 @@ func (s *rateStore) getRatesFromIngesters(ctx context.Context, clients chan inge
 func (s *rateStore) ratesPerStream(responses chan *logproto.StreamRatesResponse, totalResponses int) map[string]map[uint64]*logproto.StreamRate {
 	var maxRate int64
 	streamRates := map[string]map[uint64]*logproto.StreamRate{}
-	for i := 0; i < totalResponses; i++ {
+	for range totalResponses {
 		resp := <-responses
 		if resp == nil {
 			continue

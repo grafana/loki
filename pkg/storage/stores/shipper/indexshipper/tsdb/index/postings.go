@@ -36,7 +36,7 @@ const ensureOrderBatchSize = 1024
 
 // ensureOrderBatchPool is a pool used to recycle batches passed to workers in MemPostings.EnsureOrder().
 var ensureOrderBatchPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return make([][]storage.SeriesRef, 0, ensureOrderBatchSize)
 	},
 }
@@ -234,7 +234,7 @@ func (p *MemPostings) EnsureOrder() {
 	var wg sync.WaitGroup
 	wg.Add(n)
 
-	for i := 0; i < n; i++ {
+	for range n {
 		go func() {
 			for job := range workc {
 				for _, l := range job {
@@ -531,11 +531,11 @@ func (h postingsHeap) Len() int           { return len(h) }
 func (h postingsHeap) Less(i, j int) bool { return h[i].At() < h[j].At() }
 func (h *postingsHeap) Swap(i, j int)     { (*h)[i], (*h)[j] = (*h)[j], (*h)[i] }
 
-func (h *postingsHeap) Push(x interface{}) {
+func (h *postingsHeap) Push(x any) {
 	*h = append(*h, x.(Postings))
 }
 
-func (h *postingsHeap) Pop() interface{} {
+func (h *postingsHeap) Pop() any {
 	old := *h
 	n := len(old)
 	x := old[n-1]

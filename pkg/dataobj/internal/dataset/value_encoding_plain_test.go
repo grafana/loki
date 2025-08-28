@@ -118,7 +118,7 @@ func Test_plainBytesEncoder_reusingValues(t *testing.T) {
 func Benchmark_plainBytesEncoder_Append(b *testing.B) {
 	enc := newPlainBytesEncoder(streamio.Discard)
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for _, v := range testStrings {
 			_ = enc.Encode(BinaryValue([]byte(v)))
 		}
@@ -139,8 +139,8 @@ func Benchmark_plainBytesDecoder_Decode(b *testing.B) {
 	}
 
 	var err error
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		for {
 			_, err = dec.Decode(decBuf[:batchSize])
 			if errors.Is(err, io.EOF) {

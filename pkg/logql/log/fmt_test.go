@@ -983,7 +983,7 @@ func TestMapPoolPanic(_ *testing.T) {
 		builder,
 	)
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		wgFinished.Add(1)
 		go func() {
 			wg.Wait()
@@ -995,7 +995,7 @@ func TestMapPoolPanic(_ *testing.T) {
 			wgFinished.Done()
 		}()
 	}
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		wgFinished.Add(1)
 		j := i
 		go func() {

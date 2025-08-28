@@ -29,7 +29,7 @@ func (m *mockTableQuerier) MultiQueries(_ context.Context, queries []index.Query
 
 func (m *mockTableQuerier) hasQueries(t *testing.T, count int) {
 	require.Len(t, m.queries, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		idx := strconv.Itoa(i)
 
 		require.Equal(t, m.queries[idx], index.Query{
@@ -76,7 +76,7 @@ func TestDoParallelQueries(t *testing.T) {
 
 func buildQueries(n int) []index.Query {
 	queries := make([]index.Query, 0, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		idx := strconv.Itoa(i)
 		queries = append(queries, index.Query{
 			HashValue:  idx,
@@ -243,7 +243,8 @@ func Benchmark_DedupeCallback(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		deduper(q, batch1)
 	}
 }
@@ -279,7 +280,7 @@ func benchmarkMultiQueries(b *testing.B, n int) {
 		ctx := context.Background()
 		b.ReportAllocs()
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_ = DoParallelQueries(ctx, func(_ context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 				for _, query := range queries {
 					callback(query, batch{

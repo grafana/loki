@@ -603,7 +603,7 @@ func parseIndexEntries(_ context.Context, entries []series_index.Entry, matcher 
 }
 
 var entriesPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		s := make([]series_index.Entry, 0, 1024)
 		return &s
 	},

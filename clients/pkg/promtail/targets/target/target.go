@@ -57,7 +57,7 @@ type Target interface {
 	// Ready tells if the targets is ready
 	Ready() bool
 	// Details is additional information about this target specific to its type
-	Details() interface{}
+	Details() any
 }
 
 // IsDropped tells if a target has been dropped
@@ -99,6 +99,6 @@ func (d *droppedTarget) Ready() bool {
 }
 
 // Details implements Target it contains a message explaining the reason for dropping it
-func (d *droppedTarget) Details() interface{} {
+func (d *droppedTarget) Details() any {
 	return d.reason
 }

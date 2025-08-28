@@ -103,7 +103,7 @@ func BenchmarkGetMetricsWithLabelNames(b *testing.B) {
 
 	// Generate metrics and add them to a metric family.
 	mf := &dto.MetricFamily{Metric: make([]*dto.Metric, 0, numMetrics)}
-	for i := 0; i < numMetrics; i++ {
+	for i := range numMetrics {
 		labels := []*dto.LabelPair{{
 			Name:  proto.String("unique"),
 			Value: proto.String(strconv.Itoa(i)),
@@ -125,7 +125,7 @@ func BenchmarkGetMetricsWithLabelNames(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		out := getMetricsWithLabelNames(mf, []string{"label_1", "label_2", "label_3"}, nil)
 
 		if expected := 1; len(out) != expected {
@@ -471,22 +471,22 @@ func TestFloat64PrecisionStability(t *testing.T) {
 		labelNames := []string{"label_one", "label_two"}
 
 		g := promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{Name: "test_gauge"}, labelNames)
-		for i := 0; i < cardinality; i++ {
+		for i := range cardinality {
 			g.WithLabelValues("a", strconv.Itoa(i)).Set(randomGenerator.Float64())
 		}
 
 		c := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{Name: "test_counter"}, labelNames)
-		for i := 0; i < cardinality; i++ {
+		for i := range cardinality {
 			c.WithLabelValues("a", strconv.Itoa(i)).Add(randomGenerator.Float64())
 		}
 
 		h := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{Name: "test_histogram", Buckets: []float64{0.1, 0.5, 1}}, labelNames)
-		for i := 0; i < cardinality; i++ {
+		for i := range cardinality {
 			h.WithLabelValues("a", strconv.Itoa(i)).Observe(randomGenerator.Float64())
 		}
 
 		s := promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{Name: "test_summary"}, labelNames)
-		for i := 0; i < cardinality; i++ {
+		for i := range cardinality {
 			s.WithLabelValues("a", strconv.Itoa(i)).Observe(randomGenerator.Float64())
 		}
 
@@ -496,7 +496,7 @@ func TestFloat64PrecisionStability(t *testing.T) {
 	// Ensure multiple runs always return the same exact results.
 	expected := map[string][]*dto.Metric{}
 
-	for run := 0; run < numRuns; run++ {
+	for run := range numRuns {
 		mf := registries.BuildMetricFamiliesPerUser(nil)
 
 		gauge := collectMetrics(t, func(out chan prometheus.Metric) {
@@ -923,22 +923,22 @@ func setupTestMetrics() *testMetrics {
 		labelNames := []string{"label_one", "label_two"}
 
 		g := promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{Name: "test_gauge"}, labelNames)
-		for i := 0; i < cardinality; i++ {
+		for i := range cardinality {
 			g.WithLabelValues("a", strconv.Itoa(i)).Set(float64(userID))
 		}
 
 		c := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{Name: "test_counter"}, labelNames)
-		for i := 0; i < cardinality; i++ {
+		for i := range cardinality {
 			c.WithLabelValues("a", strconv.Itoa(i)).Add(float64(userID))
 		}
 
 		h := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{Name: "test_histogram", Buckets: []float64{1, 3, 5}}, labelNames)
-		for i := 0; i < cardinality; i++ {
+		for i := range cardinality {
 			h.WithLabelValues("a", strconv.Itoa(i)).Observe(float64(userID))
 		}
 
 		s := promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{Name: "test_summary"}, labelNames)
-		for i := 0; i < cardinality; i++ {
+		for i := range cardinality {
 			s.WithLabelValues("a", strconv.Itoa(i)).Observe(float64(userID))
 		}
 
@@ -1057,7 +1057,7 @@ func BenchmarkGetLabels_SmallSet(b *testing.B) {
 	m.WithLabelValues("worst", "user3").Inc()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		if _, err := GetLabels(m, map[string]string{"user": "user1", "reason": "worse"}); err != nil {
 			b.Fatal(err)
 		}
@@ -1086,7 +1086,7 @@ func BenchmarkGetLabels_MediumSet(b *testing.B) {
 	}
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		if _, err := GetLabels(m, map[string]string{"user": "user1", "reason": "worse"}); err != nil {
 			b.Fatal(err)
 		}

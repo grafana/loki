@@ -148,7 +148,7 @@ func TestManager_WALEnabled(t *testing.T) {
 		"wal_enabled": "true",
 	}
 	var totalLines = 100
-	for i := 0; i < totalLines; i++ {
+	for i := range totalLines {
 		writer.Chan() <- api.Entry{
 			Labels: testLabels,
 			Entry: logproto.Entry{
@@ -209,7 +209,7 @@ func TestManager_WALDisabled(t *testing.T) {
 		"pizza-flavour": "fugazzeta",
 	}
 	var totalLines = 100
-	for i := 0; i < totalLines; i++ {
+	for i := range totalLines {
 		manager.Chan() <- api.Entry{
 			Labels: testLabels,
 			Entry: logproto.Entry{
@@ -296,7 +296,7 @@ func TestManager_WALDisabled_MultipleConfigs(t *testing.T) {
 		"pizza-flavour": "fugazzeta",
 	}
 	var totalLines = 100
-	for i := 0; i < totalLines; i++ {
+	for i := range totalLines {
 		manager.Chan() <- api.Entry{
 			Labels: testLabels,
 			Entry: logproto.Entry{

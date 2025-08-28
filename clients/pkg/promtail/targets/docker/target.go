@@ -301,7 +301,7 @@ func (t *Target) Labels() model.LabelSet {
 }
 
 // Details returns target-specific details.
-func (t *Target) Details() interface{} {
+func (t *Target) Details() any {
 	var errMsg string
 	if t.err != nil {
 		errMsg = t.err.Error()

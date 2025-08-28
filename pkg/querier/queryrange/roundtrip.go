@@ -402,8 +402,8 @@ func newRoundTripper(
 }
 
 // Helper function to create and log query execution details
-func logQueryExecution(ctx context.Context, logger log.Logger, values ...interface{}) {
-	logValues := append([]interface{}{"msg", "executing query"}, values...)
+func logQueryExecution(ctx context.Context, logger log.Logger, values ...any) {
+	logValues := append([]any{"msg", "executing query"}, values...)
 
 	// Extract and append tags from context
 	tags := httpreq.ExtractQueryTagsFromContext(ctx)

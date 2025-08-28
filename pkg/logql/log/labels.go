@@ -2,6 +2,8 @@ package log
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"sync"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -101,12 +103,7 @@ var allCategories = []LabelCategory{
 }
 
 func categoriesContain(categories []LabelCategory, category LabelCategory) bool {
-	for _, c := range categories {
-		if c == category {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(categories, category)
 }
 
 // BaseLabelsBuilder is a label builder used by pipeline and stages.
@@ -293,10 +290,8 @@ func (b *LabelsBuilder) getWithCategory(key string) (string, LabelCategory, bool
 			}
 		}
 	}
-	for _, d := range b.del {
-		if d == key {
-			return "", InvalidCategory, false
-		}
+	if slices.Contains(b.del, key) {
+		return "", InvalidCategory, false
 	}
 
 	value := b.base.Get(key)
@@ -473,10 +468,8 @@ func (b *LabelsBuilder) UnsortedLabels(buf []labels.Label, categories ...LabelCa
 	if categoriesContain(categories, StreamLabel) {
 		b.base.Range(func(l labels.Label) {
 			// Skip stream labels to be deleted
-			for _, n := range b.del {
-				if l.Name == n {
-					return
-				}
+			if slices.Contains(b.del, l.Name) {
+				return
 			}
 
 			// Skip stream labels which value will be replaced by structured metadata
@@ -525,7 +518,7 @@ type stringMapPool struct {
 func newStringMapPool() *stringMapPool {
 	return &stringMapPool{
 		pool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return make(map[string]string)
 			},
 		},
@@ -551,9 +544,7 @@ func (b *LabelsBuilder) IntoMap(m map[string]string) {
 		if b.baseMap == nil {
 			b.baseMap = b.base.Map()
 		}
-		for k, v := range b.baseMap {
-			m[k] = v
-		}
+		maps.Copy(m, b.baseMap)
 		return
 	}
 	b.buf = b.UnsortedLabels(b.buf)
@@ -717,20 +708,15 @@ Outer:
 
 func (b *LabelsBuilder) withoutResult() LabelsResult {
 	if b.buf == nil {
-		size := b.base.Len() + b.sizeAdd() - len(b.del) - len(b.groups)
-		if size < 0 {
-			size = 0
-		}
+		size := max(b.base.Len()+b.sizeAdd()-len(b.del)-len(b.groups), 0)
 		b.buf = make([]labels.Label, 0, size)
 	} else {
 		b.buf = b.buf[:0]
 	}
 
 	b.base.Range(func(l labels.Label) {
-		for _, n := range b.del {
-			if l.Name == n {
-				return
-			}
+		if slices.Contains(b.del, l.Name) {
+			return
 		}
 		for _, lbls := range b.add {
 			for _, la := range lbls {
@@ -739,10 +725,8 @@ func (b *LabelsBuilder) withoutResult() LabelsResult {
 				}
 			}
 		}
-		for _, lg := range b.groups {
-			if l.Name == lg {
-				return
-			}
+		if slices.Contains(b.groups, l.Name) {
+			return
 		}
 		b.buf = append(b.buf, l)
 	})

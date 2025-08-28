@@ -237,7 +237,7 @@ func BenchmarkTenantEntryIteratorLabels(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		tenantIter.Labels()
 	}
 }
@@ -542,14 +542,14 @@ func TestMultiTenantQuerier_DetectedLabels(t *testing.T) {
 			mockSetup: func(q *querierMock) {
 				// Create sketches for app and env labels
 				appSketch := hyperloglog.New()
-				for i := 0; i < 100; i++ {
-					appSketch.Insert([]byte(fmt.Sprintf("app-value-%d", i)))
+				for i := range 100 {
+					appSketch.Insert(fmt.Appendf(nil, "app-value-%d", i))
 				}
 				appSketchData, _ := appSketch.MarshalBinary()
 
 				envSketch := hyperloglog.New()
-				for i := 0; i < 50; i++ {
-					envSketch.Insert([]byte(fmt.Sprintf("env-value-%d", i)))
+				for i := range 50 {
+					envSketch.Insert(fmt.Appendf(nil, "env-value-%d", i))
 				}
 				envSketchData, _ := envSketch.MarshalBinary()
 
@@ -572,27 +572,27 @@ func TestMultiTenantQuerier_DetectedLabels(t *testing.T) {
 			mockSetup: func(q *querierMock) {
 				// Create sketches for tenant 1
 				appSketch1 := hyperloglog.New()
-				for i := 0; i < 100; i++ {
-					appSketch1.Insert([]byte(fmt.Sprintf("app-value-%d", i)))
+				for i := range 100 {
+					appSketch1.Insert(fmt.Appendf(nil, "app-value-%d", i))
 				}
 				appSketch1Data, _ := appSketch1.MarshalBinary()
 
 				envSketch := hyperloglog.New()
-				for i := 0; i < 50; i++ {
-					envSketch.Insert([]byte(fmt.Sprintf("env-value-%d", i)))
+				for i := range 50 {
+					envSketch.Insert(fmt.Appendf(nil, "env-value-%d", i))
 				}
 				envSketchData, _ := envSketch.MarshalBinary()
 
 				// Create sketches for tenant 2
 				appSketch2 := hyperloglog.New()
 				for i := 50; i < 150; i++ { // 50 new values + 50 overlapping values
-					appSketch2.Insert([]byte(fmt.Sprintf("app-value-%d", i)))
+					appSketch2.Insert(fmt.Appendf(nil, "app-value-%d", i))
 				}
 				appSketch2Data, _ := appSketch2.MarshalBinary()
 
 				serviceSketch := hyperloglog.New()
-				for i := 0; i < 75; i++ {
-					serviceSketch.Insert([]byte(fmt.Sprintf("service-value-%d", i)))
+				for i := range 75 {
+					serviceSketch.Insert(fmt.Appendf(nil, "service-value-%d", i))
 				}
 				serviceSketchData, _ := serviceSketch.MarshalBinary()
 
@@ -629,27 +629,27 @@ func TestMultiTenantQuerier_DetectedLabels(t *testing.T) {
 			mockSetup: func(q *querierMock) {
 				// Create sketches for tenant 1
 				app1Sketch := hyperloglog.New()
-				for i := 0; i < 100; i++ {
-					app1Sketch.Insert([]byte(fmt.Sprintf("app1-value-%d", i)))
+				for i := range 100 {
+					app1Sketch.Insert(fmt.Appendf(nil, "app1-value-%d", i))
 				}
 				app1SketchData, _ := app1Sketch.MarshalBinary()
 
 				env1Sketch := hyperloglog.New()
-				for i := 0; i < 50; i++ {
-					env1Sketch.Insert([]byte(fmt.Sprintf("env1-value-%d", i)))
+				for i := range 50 {
+					env1Sketch.Insert(fmt.Appendf(nil, "env1-value-%d", i))
 				}
 				env1SketchData, _ := env1Sketch.MarshalBinary()
 
 				// Create sketches for tenant 2
 				app2Sketch := hyperloglog.New()
-				for i := 0; i < 200; i++ {
-					app2Sketch.Insert([]byte(fmt.Sprintf("app2-value-%d", i)))
+				for i := range 200 {
+					app2Sketch.Insert(fmt.Appendf(nil, "app2-value-%d", i))
 				}
 				app2SketchData, _ := app2Sketch.MarshalBinary()
 
 				env2Sketch := hyperloglog.New()
-				for i := 0; i < 75; i++ {
-					env2Sketch.Insert([]byte(fmt.Sprintf("env2-value-%d", i)))
+				for i := range 75 {
+					env2Sketch.Insert(fmt.Appendf(nil, "env2-value-%d", i))
 				}
 				env2SketchData, _ := env2Sketch.MarshalBinary()
 

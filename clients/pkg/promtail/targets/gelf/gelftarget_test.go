@@ -66,7 +66,7 @@ func Test_Gelf(t *testing.T) {
 	baseTs := float64(time.Unix(10, 0).Unix()) + 0.250
 	ts := baseTs
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		require.NoError(t, w.WriteMessage(&gelf.Message{
 			Short:    "short",
 			Full:     "full",
@@ -75,7 +75,7 @@ func Test_Gelf(t *testing.T) {
 			TimeUnix: ts,
 			Level:    gelf.LOG_ERR,
 			Facility: "gelftest",
-			Extra: map[string]interface{}{
+			Extra: map[string]any{
 				"_foo": "bar",
 			},
 		}))
@@ -138,7 +138,7 @@ func Test_GelfChunksUnordered(t *testing.T) {
 	chunksA := createChunks(t, "a")
 	chunksB := createChunks(t, "b")
 	// send messages(a, b) chunks in order: chunk-0a, chunk-0b, chunk-1a, chunk-1b
-	for i := 0; i < len(chunksB); i++ {
+	for i := range chunksB {
 		writeA, err := connection.Write(chunksA[i])
 		require.NoError(t, err)
 		require.Equal(t, len(chunksA[i]), writeA)
@@ -176,7 +176,7 @@ func splitToChunks(messageBytes []byte) ([][]byte, error) {
 	}
 	chunks := make([][]byte, 0, chunksCount)
 	bytesLeft := len(messageBytes)
-	for i := uint8(0); i < chunksCount; i++ {
+	for i := range chunksCount {
 		buf := make([]byte, 0, gelf.ChunkSize)
 		buf = append(buf, magicChunked...)
 		buf = append(buf, messageID...)

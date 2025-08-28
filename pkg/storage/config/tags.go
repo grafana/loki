@@ -32,7 +32,7 @@ func (ts *Tags) Set(s string) error {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
-func (ts *Tags) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (ts *Tags) UnmarshalYAML(unmarshal func(any) error) error {
 	var m map[string]string
 	if err := unmarshal(&m); err != nil {
 		return err

@@ -104,10 +104,10 @@ func BenchmarkHeapCountMinSketchVectorAdd(b *testing.B) {
 		events[i] = labels.FromStrings("event", fmt.Sprintf("%d", i%uniqueEventsCount))
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
+	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		for _, event := range events {
 			v.Add(event, rand.Float64())
 			if len(v.Metrics) > maxLabels || cap(v.Metrics) > maxLabels+1 {

@@ -101,7 +101,7 @@ func Benchmark_UnwrapSeries(b *testing.B) {
 	// Actual run
 	b.ResetTimer()
 	b.ReportAllocs()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		resp := &QueryResponse{}
 		err := resp.Unmarshal(body)
 		require.NoError(b, err)

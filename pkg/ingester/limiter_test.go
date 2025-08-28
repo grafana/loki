@@ -304,7 +304,7 @@ func newMockPartitionRingWithPartitions(activeCount int, inactiveCount int) *rin
 		Owners:     map[string]ring.OwnerDesc{},
 	}
 
-	for i := 0; i < activeCount; i++ {
+	for i := range activeCount {
 		id := int32(i)
 
 		partitionRing.Partitions[id] = ring.PartitionDesc{

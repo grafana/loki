@@ -200,7 +200,7 @@ func TestTimestampValidation(t *testing.T) {
 func TestTimestampStage_Process(t *testing.T) {
 	tests := map[string]struct {
 		config    TimestampConfig
-		extracted map[string]interface{}
+		extracted map[string]any
 		expected  time.Time
 	}{
 		"set success": {
@@ -208,7 +208,7 @@ func TestTimestampStage_Process(t *testing.T) {
 				Source: "ts",
 				Format: time.RFC3339,
 			},
-			map[string]interface{}{
+			map[string]any{
 				"somethigelse": "notimportant",
 				"ts":           "2106-01-02T23:04:05-04:00",
 			},
@@ -219,7 +219,7 @@ func TestTimestampStage_Process(t *testing.T) {
 				Source: "ts",
 				Format: "Unix",
 			},
-			map[string]interface{}{
+			map[string]any{
 				"somethigelse": "notimportant",
 				"ts":           "1562708916",
 			},
@@ -230,7 +230,7 @@ func TestTimestampStage_Process(t *testing.T) {
 				Source: "ts",
 				Format: "Unix",
 			},
-			map[string]interface{}{
+			map[string]any{
 				"somethigelse": "notimportant",
 				"ts":           "1562708916.414123",
 			},
@@ -241,7 +241,7 @@ func TestTimestampStage_Process(t *testing.T) {
 				Source: "ts",
 				Format: "Unix",
 			},
-			map[string]interface{}{
+			map[string]any{
 				"somethigelse": "notimportant",
 				"ts":           "1562708916.000000123",
 			},
@@ -252,7 +252,7 @@ func TestTimestampStage_Process(t *testing.T) {
 				Source: "ts",
 				Format: "UnixMs",
 			},
-			map[string]interface{}{
+			map[string]any{
 				"somethigelse": "notimportant",
 				"ts":           "1562708916414",
 			},
@@ -263,7 +263,7 @@ func TestTimestampStage_Process(t *testing.T) {
 				Source: "ts",
 				Format: "UnixUs",
 			},
-			map[string]interface{}{
+			map[string]any{
 				"somethigelse": "notimportant",
 				"ts":           "1562708916414123",
 			},
@@ -274,7 +274,7 @@ func TestTimestampStage_Process(t *testing.T) {
 				Source: "ts",
 				Format: "UnixNs",
 			},
-			map[string]interface{}{
+			map[string]any{
 				"somethigelse": "notimportant",
 				"ts":           "1562708916000000123",
 			},
@@ -286,7 +286,7 @@ func TestTimestampStage_Process(t *testing.T) {
 				Format:   "2006-01-02 15:04:05",
 				Location: &validLocationString,
 			},
-			map[string]interface{}{
+			map[string]any{
 				"somethigelse": "notimportant",
 				"ts":           "2019-07-22 20:29:32",
 			},
@@ -312,7 +312,7 @@ func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
 	type inputEntry struct {
 		timestamp time.Time
 		labels    model.LabelSet
-		extracted map[string]interface{}
+		extracted map[string]any
 	}
 
 	tests := map[string]struct {
@@ -327,8 +327,8 @@ func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
 				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
 			},
 			inputEntries: []inputEntry{
-				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
-				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.500000000Z"}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]any{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]any{"time": "2019-10-01T01:02:03.500000000Z"}},
 			},
 			expectedTimestamps: []time.Time{
 				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
@@ -342,9 +342,9 @@ func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
 				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
 			},
 			inputEntries: []inputEntry{
-				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
-				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{}},
-				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]any{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]any{}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]any{}},
 			},
 			expectedTimestamps: []time.Time{
 				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
@@ -359,11 +359,11 @@ func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
 				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
 			},
 			inputEntries: []inputEntry{
-				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/1.log"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
-				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/2.log"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.800000000Z"}},
-				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/1.log"}, extracted: map[string]interface{}{}},
-				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/2.log"}, extracted: map[string]interface{}{}},
-				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/1.log"}, extracted: map[string]interface{}{}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/1.log"}, extracted: map[string]any{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/2.log"}, extracted: map[string]any{"time": "2019-10-01T01:02:03.800000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/1.log"}, extracted: map[string]any{}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/2.log"}, extracted: map[string]any{}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/1.log"}, extracted: map[string]any{}},
 			},
 			expectedTimestamps: []time.Time{
 				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
@@ -380,8 +380,8 @@ func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
 				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
 			},
 			inputEntries: []inputEntry{
-				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/1.log"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
-				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/2.log"}, extracted: map[string]interface{}{}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/1.log"}, extracted: map[string]any{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"filename": "/2.log"}, extracted: map[string]any{}},
 			},
 			expectedTimestamps: []time.Time{
 				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
@@ -395,8 +395,8 @@ func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
 				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureSkip),
 			},
 			inputEntries: []inputEntry{
-				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
-				{timestamp: time.Unix(1, 0), extracted: map[string]interface{}{}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]any{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), extracted: map[string]any{}},
 			},
 			expectedTimestamps: []time.Time{
 				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),
@@ -410,12 +410,12 @@ func TestTimestampStage_ProcessActionOnFailure(t *testing.T) {
 				ActionOnFailure: lokiutil.StringRef(TimestampActionOnFailureFudge),
 			},
 			inputEntries: []inputEntry{
-				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.400000000Z"}},
-				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "1"}, extracted: map[string]interface{}{"time": "2019-10-01T01:02:03.800000000Z"}},
-				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}, extracted: map[string]interface{}{}},
-				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "1"}, extracted: map[string]interface{}{}},
-				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}, extracted: map[string]interface{}{}},
-				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "1"}, extracted: map[string]interface{}{}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}, extracted: map[string]any{"time": "2019-10-01T01:02:03.400000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "1"}, extracted: map[string]any{"time": "2019-10-01T01:02:03.800000000Z"}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}, extracted: map[string]any{}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "1"}, extracted: map[string]any{}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "m", "uniq0": "1", "uniq1": "1"}, extracted: map[string]any{}},
+				{timestamp: time.Unix(1, 0), labels: model.LabelSet{"app": "l", "uniq0": "0", "uniq1": "1"}, extracted: map[string]any{}},
 			},
 			expectedTimestamps: []time.Time{
 				mustParseTime(time.RFC3339Nano, "2019-10-01T01:02:03.400000000Z"),

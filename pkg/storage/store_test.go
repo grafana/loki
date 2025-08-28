@@ -118,7 +118,7 @@ func Benchmark_store_SelectSample(b *testing.B) {
 	} {
 		b.Run(test, func(b *testing.B) {
 			sampleCount := 0
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				iter, err := chunkStore.SelectSamples(ctx, logql.SelectSampleParams{
 					SampleQueryRequest: newSampleQuery(test, time.Unix(0, start.UnixNano()), time.Unix(0, (24*time.Hour.Nanoseconds())+start.UnixNano()), nil, nil),
 				})
@@ -158,7 +158,7 @@ func benchmarkStoreQuery(b *testing.B, query *logproto.QueryRequest) {
 			}
 		}
 	}()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		iter, err := chunkStore.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: query})
 		if err != nil {
 			b.Fatal(err)

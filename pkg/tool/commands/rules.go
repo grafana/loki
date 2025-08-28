@@ -735,7 +735,7 @@ func checkDuplicates(groups []rwrulefmt.RuleGroup) []compareRuleType {
 				metric: ruleMetric(rule),
 				label:  rule.Labels,
 			}
-			for i := 0; i < index; i++ {
+			for i := range index {
 				t := compareRuleType{
 					metric: ruleMetric(group.Rules[i]),
 					label:  group.Rules[i].Labels,

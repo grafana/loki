@@ -36,7 +36,7 @@ func TestConfigDiffHandler(t *testing.T) {
 		name               string
 		expectedStatusCode int
 		expectedBody       string
-		actualConfig       func() interface{}
+		actualConfig       func() any
 	}{
 		{
 			name:               "no config parameters overridden",
@@ -45,7 +45,7 @@ func TestConfigDiffHandler(t *testing.T) {
 		},
 		{
 			name: "slice changed",
-			actualConfig: func() interface{} {
+			actualConfig: func() any {
 				c := newDefaultDiffConfigMock()
 				c.MySlice = append(c.MySlice, "value3")
 				return c
@@ -58,7 +58,7 @@ func TestConfigDiffHandler(t *testing.T) {
 		},
 		{
 			name: "string in nested struct changed",
-			actualConfig: func() interface{} {
+			actualConfig: func() any {
 				c := newDefaultDiffConfigMock()
 				c.MyNestedStruct.MyString = "string2"
 				return c
@@ -69,7 +69,7 @@ func TestConfigDiffHandler(t *testing.T) {
 		},
 		{
 			name: "bool in nested struct changed",
-			actualConfig: func() interface{} {
+			actualConfig: func() any {
 				c := newDefaultDiffConfigMock()
 				c.MyNestedStruct.MyBool = true
 				return c
@@ -80,7 +80,7 @@ func TestConfigDiffHandler(t *testing.T) {
 		},
 		{
 			name: "test invalid input",
-			actualConfig: func() interface{} {
+			actualConfig: func() any {
 				c := "x"
 				return &c
 			},
@@ -92,7 +92,7 @@ func TestConfigDiffHandler(t *testing.T) {
 		defaultCfg := newDefaultDiffConfigMock()
 		t.Run(tc.name, func(t *testing.T) {
 
-			var actualCfg interface{}
+			var actualCfg any
 			if tc.actualConfig != nil {
 				actualCfg = tc.actualConfig()
 			} else {

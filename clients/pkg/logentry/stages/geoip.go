@@ -74,7 +74,7 @@ func validateGeoIPConfig(c *GeoIPConfig) error {
 	return nil
 }
 
-func newGeoIPStage(logger log.Logger, configs interface{}) (Stage, error) {
+func newGeoIPStage(logger log.Logger, configs any) (Stage, error) {
 	cfgs := &GeoIPConfig{}
 	err := mapstructure.Decode(configs, cfgs)
 	if err != nil {
@@ -128,7 +128,7 @@ func (*geoIPStage) Cleanup() {
 	// no-op
 }
 
-func (g *geoIPStage) process(labels model.LabelSet, extracted map[string]interface{}, _ *time.Time, _ *string) {
+func (g *geoIPStage) process(labels model.LabelSet, extracted map[string]any, _ *time.Time, _ *string) {
 	var ip net.IP
 	if g.cfgs.Source != nil {
 		if _, ok := extracted[*g.cfgs.Source]; !ok {

@@ -58,7 +58,7 @@ func Test_OwnedStreamService(t *testing.T) {
 
 	group := sync.WaitGroup{}
 	group.Add(100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		go func(i int) {
 			defer group.Done()
 			service.trackStreamOwnership(model.Fingerprint(i+1000), true)
@@ -67,7 +67,7 @@ func Test_OwnedStreamService(t *testing.T) {
 	group.Wait()
 
 	group.Add(100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		go func(i int) {
 			defer group.Done()
 			service.trackRemovedStream(model.Fingerprint(i + 1000))

@@ -273,7 +273,7 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 
 	// Process the results as they are downloaded
 	processingErrors := multierror.New()
-	for i := 0; i < len(events); i++ {
+	for range events {
 		obj := <-p.downloadedObjects
 		objLogger := log.With(p.logger, "object_path", obj.event.ObjectPath)
 		level.Info(objLogger).Log("msg", "processing object")

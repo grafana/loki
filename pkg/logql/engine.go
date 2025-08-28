@@ -278,7 +278,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	if q.logExecQuery {
 		queryHash := util.HashedQuery(q.params.QueryString())
 
-		logValues := []interface{}{
+		logValues := []any{
 			"msg", "executing query",
 			"query", q.params.QueryString(),
 			"query_hash", queryHash,

@@ -38,7 +38,7 @@ func (r runtimeConfigValues) validate() error {
 	return nil
 }
 
-func loadRuntimeConfig(r io.Reader) (interface{}, error) {
+func loadRuntimeConfig(r io.Reader) (any, error) {
 	overrides := &runtimeConfigValues{}
 
 	decoder := yaml.NewDecoder(r)

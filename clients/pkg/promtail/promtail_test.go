@@ -251,7 +251,7 @@ func createStartupFile(t *testing.T, filename string) int {
 }
 
 func verifyFile(t *testing.T, expected int, prefix string, entries []logproto.Entry) {
-	for i := 0; i < expected; i++ {
+	for i := range expected {
 		if entries[i].Line != fmt.Sprintf("%s%d", prefix, i) {
 			t.Errorf("Received out of order or incorrect log event, expected test%d, received %s", i, entries[i].Line)
 		}
@@ -259,13 +259,13 @@ func verifyFile(t *testing.T, expected int, prefix string, entries []logproto.En
 }
 
 func verifyPipeline(t *testing.T, expected int, expectedEntries map[string]int, entries []logproto.Entry, labels []labels.Labels, expectedLabels map[string]int) {
-	for i := 0; i < expected; i++ {
+	for i := range expected {
 		if _, ok := expectedLabels[labels[i].String()]; !ok {
 			t.Errorf("Did not receive expected labels, expected %v, received %s", expectedLabels, labels[i])
 		}
 	}
 
-	for i := 0; i < expected; i++ {
+	for i := range expected {
 		if _, ok := expectedEntries[entries[i].Line]; !ok {
 			t.Errorf("Did not receive expected log entry, expected %v, received %s", expectedEntries, entries[i].Line)
 		}
@@ -294,7 +294,7 @@ func singleFile(t *testing.T, filename string, prefix string) int {
 		t.Fatal(err)
 	}
 	entries := 100
-	for i := 0; i < entries; i++ {
+	for i := range entries {
 		entry := fmt.Sprintf("%s%d\n", prefix, i)
 		_, err = f.WriteString(entry)
 		if err != nil {
@@ -329,7 +329,7 @@ func fileRoll(t *testing.T, filename string, prefix string) int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		entry := fmt.Sprintf("%s%d\n", prefix, i)
 		_, err = f.WriteString(entry)
 		if err != nil {
@@ -374,7 +374,7 @@ func symlinkRoll(t *testing.T, testDir string, filename string, prefix string) i
 	if err := os.Symlink(symlinkFile, filename); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		entry := fmt.Sprintf("%s%d\n", prefix, i)
 		_, err = f.WriteString(entry)
 		if err != nil {
@@ -416,7 +416,7 @@ func subdirSingleFile(t *testing.T, filename string, prefix string) int {
 		t.Fatal(err)
 	}
 	entries := 100
-	for i := 0; i < entries; i++ {
+	for i := range entries {
 		entry := fmt.Sprintf("%s%d\n", prefix, i)
 		_, err = f.WriteString(entry)
 		if err != nil {

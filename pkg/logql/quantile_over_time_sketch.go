@@ -26,7 +26,7 @@ type (
 )
 
 var streamHashPool = sync.Pool{
-	New: func() interface{} { return make(map[uint64]int) },
+	New: func() any { return make(map[uint64]int) },
 }
 
 func (q ProbabilisticQuantileVector) Merge(right ProbabilisticQuantileVector) (ProbabilisticQuantileVector, error) {

@@ -70,7 +70,7 @@ func Test_Memberlist(t *testing.T) {
 	// create a first memberlist to get a valid listening port.
 	initMKV := createMemberlist(t, 0, -1)
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		go func(i int) {
 			leader, err := NewReporter(Config{
 				Leader:  true,
@@ -90,7 +90,7 @@ func Test_Memberlist(t *testing.T) {
 	}
 
 	var UID []string
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		cluster := <-result
 		require.NotNil(t, cluster)
 		UID = append(UID, cluster.UID)

@@ -51,7 +51,7 @@ func TestPrunePatterns(t *testing.T) {
 			name: "Limit patterns to maxPatterns",
 			inputSeries: func() []*logproto.PatternSeries {
 				series := make([]*logproto.PatternSeries, maxPatterns+10)
-				for i := 0; i < maxPatterns+10; i++ {
+				for i := range maxPatterns + 10 {
 					series[i] = &logproto.PatternSeries{
 						Pattern: `{app="test"}`,
 						Samples: []*logproto.PatternSample{{Value: int64(maxPatterns + 10 - i)}},
@@ -62,7 +62,7 @@ func TestPrunePatterns(t *testing.T) {
 			minClusterSize: 0,
 			expectedSeries: func() []*logproto.PatternSeries {
 				series := make([]*logproto.PatternSeries, maxPatterns)
-				for i := 0; i < maxPatterns; i++ {
+				for i := range maxPatterns {
 					series[i] = &logproto.PatternSeries{
 						Pattern: `{app="test"}`,
 						Samples: []*logproto.PatternSample{{Value: int64(maxPatterns + 10 - i)}},

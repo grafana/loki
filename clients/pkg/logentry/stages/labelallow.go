@@ -24,7 +24,7 @@ func validateLabelAllowConfig(c LabelAllowConfig) error {
 	return nil
 }
 
-func newLabelAllowStage(configs interface{}) (Stage, error) {
+func newLabelAllowStage(configs any) (Stage, error) {
 	cfgs := &LabelAllowConfig{}
 	err := mapstructure.Decode(configs, cfgs)
 	if err != nil {
@@ -51,7 +51,7 @@ type labelAllowStage struct {
 }
 
 // Process implements Stage
-func (l *labelAllowStage) Process(labels model.LabelSet, _ map[string]interface{}, _ *time.Time, _ *string) {
+func (l *labelAllowStage) Process(labels model.LabelSet, _ map[string]any, _ *time.Time, _ *string) {
 	for label := range labels {
 		if _, ok := l.labels[string(label)]; !ok {
 			delete(labels, label)

@@ -25,7 +25,7 @@ func Test_LeaderElection(t *testing.T) {
 		Directory: t.TempDir(),
 	})
 	require.NoError(t, err)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		go func() {
 			r, err := NewReporter(Config{Leader: true, Enabled: true}, kv.Config{
 				Store: "inmemory",
@@ -35,7 +35,7 @@ func Test_LeaderElection(t *testing.T) {
 			result <- r.cluster
 		}()
 	}
-	for i := 0; i < 7; i++ {
+	for range 7 {
 		go func() {
 			r, err := NewReporter(Config{Leader: false, Enabled: true}, kv.Config{
 				Store: "inmemory",
@@ -47,7 +47,7 @@ func Test_LeaderElection(t *testing.T) {
 	}
 
 	var UID []string
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		cluster := <-result
 		require.NotNil(t, cluster)
 		UID = append(UID, cluster.UID)

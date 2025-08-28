@@ -40,7 +40,7 @@ func AddRecordsToDB(t testing.TB, path string, start, numRecords int, bucketName
 }
 
 func AddRecordsToBatch(batch index.WriteBatch, tableName string, start, numRecords int) {
-	for i := 0; i < numRecords; i++ {
+	for i := range numRecords {
 		rec := []byte(strconv.Itoa(start + i))
 		batch.Add(tableName, "", rec, rec)
 	}

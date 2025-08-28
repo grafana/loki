@@ -201,6 +201,7 @@ func prepareBinaryExpr(e *parser.BinaryExpr, label string, rule string) error {
 		if lbl == label {
 			return nil
 		}
+		return nil
 	}
 
 	log.WithFields(

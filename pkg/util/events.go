@@ -13,8 +13,8 @@ import (
 
 var (
 	// interface{} vars to avoid allocation on every call
-	key   interface{} = "level" // masquerade as a level like debug, warn
-	event interface{} = "event"
+	key   any = "level" // masquerade as a level like debug, warn
+	event any = "event"
 
 	eventLogger = log.NewNopLogger()
 )
@@ -46,7 +46,7 @@ type samplingFilter struct {
 	count atomic.Int64
 }
 
-func (e *samplingFilter) Log(keyvals ...interface{}) error {
+func (e *samplingFilter) Log(keyvals ...any) error {
 	count := e.count.Inc()
 	if count%int64(e.freq) == 0 {
 		return e.next.Log(keyvals...)

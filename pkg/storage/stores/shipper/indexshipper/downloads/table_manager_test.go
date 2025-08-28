@@ -151,7 +151,7 @@ func TestTableManager_ensureQueryReadiness(t *testing.T) {
 	}
 
 	// setup 10 tables with 5 latest tables having user index for user1 and user2
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		tableName := buildTableName(i)
 		tableManager.tables[tableName] = &mockTable{}
 		mockIndexStorageClient.tablesInStorage = append(mockIndexStorageClient.tablesInStorage, tableName)
@@ -350,7 +350,7 @@ func TestTableManager_loadTables(t *testing.T) {
 	cachePath := filepath.Join(tempDir, cacheDirName)
 
 	var tables []string
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		tables = append(tables, buildTableName(i))
 	}
 	users := []string{"", "user1"}

@@ -92,7 +92,7 @@ func fillStore(cm storage.ClientMetrics) error {
 	// insert 5 streams with a random logs every nanoseconds
 	// the string is randomize so chunks are big ~2mb
 	// take ~1min to build 1gib of data
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		wgPush.Add(1)
 		go func(j int) {
 			defer wgPush.Done()

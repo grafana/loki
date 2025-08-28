@@ -209,11 +209,11 @@ func (c *queryClientMock) CloseSend() error {
 	return nil
 }
 
-func (c *queryClientMock) SendMsg(_ interface{}) error {
+func (c *queryClientMock) SendMsg(_ any) error {
 	return nil
 }
 
-func (c *queryClientMock) RecvMsg(_ interface{}) error {
+func (c *queryClientMock) RecvMsg(_ any) error {
 	return nil
 }
 
@@ -252,11 +252,11 @@ func (c *querySampleClientMock) CloseSend() error {
 	return nil
 }
 
-func (c *querySampleClientMock) SendMsg(_ interface{}) error {
+func (c *querySampleClientMock) SendMsg(_ any) error {
 	return nil
 }
 
-func (c *querySampleClientMock) RecvMsg(_ interface{}) error {
+func (c *querySampleClientMock) RecvMsg(_ any) error {
 	return nil
 }
 
@@ -399,14 +399,14 @@ func (p partitionRingMock) PartitionRing() *ring.PartitionRing {
 func newPartitionInstanceRingMock(ingesterRing ring.InstanceRingReader, ingesters []ring.InstanceDesc, numPartitions int, ingestersPerPartition int) *ring.PartitionInstanceRing {
 	partitions := make(map[int32]ring.PartitionDesc)
 	owners := make(map[string]ring.OwnerDesc)
-	for i := 0; i < numPartitions; i++ {
+	for i := range numPartitions {
 		partitions[int32(i)] = ring.PartitionDesc{
 			Id:     int32(i),
 			State:  ring.PartitionActive,
 			Tokens: []uint32{uint32(i)},
 		}
 
-		for j := 0; j < ingestersPerPartition; j++ {
+		for j := range ingestersPerPartition {
 			ingesterIdx := i*ingestersPerPartition + j
 			if ingesterIdx < len(ingesters) {
 				owners[ingesters[ingesterIdx].Id] = ring.OwnerDesc{

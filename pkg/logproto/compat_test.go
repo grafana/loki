@@ -30,7 +30,7 @@ func TestStdlibJsonMarshalForSample(t *testing.T) {
 	testMarshalling(t, json.Marshal, "json: error calling MarshalJSON for type logproto.LegacySample: test sample")
 }
 
-func testMarshalling(t *testing.T, marshalFn func(v interface{}) ([]byte, error), expectedError string) {
+func testMarshalling(t *testing.T, marshalFn func(v any) ([]byte, error), expectedError string) {
 	isTesting = true
 	defer func() { isTesting = false }()
 
@@ -58,7 +58,7 @@ func TestStdlibJsonUnmarshalForSample(t *testing.T) {
 	testUnmarshalling(t, json.Unmarshal, "test sample")
 }
 
-func testUnmarshalling(t *testing.T, unmarshalFn func(data []byte, v interface{}) error, expectedError string) {
+func testUnmarshalling(t *testing.T, unmarshalFn func(data []byte, v any) error, expectedError string) {
 	isTesting = true
 	defer func() { isTesting = false }()
 
@@ -398,14 +398,14 @@ func TestVolumeRequestSpanLogging(t *testing.T) {
 
 func benchmarkMergeLabelResponses(b *testing.B, responses []*LabelResponse) {
 	b.ReportAllocs()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		MergeLabelResponses(responses) //nolint:errcheck
 	}
 }
 
 func benchmarkMergeSeriesResponses(b *testing.B, responses []*SeriesResponse) {
 	b.ReportAllocs()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		MergeSeriesResponses(responses) //nolint:errcheck
 	}
 }
@@ -440,7 +440,7 @@ func BenchmarkMergeSomeSeriesResponses(b *testing.B) {
 
 func BenchmarkMergeManyLabelResponses(b *testing.B) {
 	responses := []*LabelResponse{}
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		responses = append(responses, &LabelResponse{Values: []string{fmt.Sprintf("test%d", i)}})
 	}
 	benchmarkMergeLabelResponses(b, responses)
@@ -448,7 +448,7 @@ func BenchmarkMergeManyLabelResponses(b *testing.B) {
 
 func BenchmarkMergeManySeriesResponses(b *testing.B) {
 	responses := []*SeriesResponse{}
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		test := fmt.Sprintf("test%d", i)
 		responses = append(responses, &SeriesResponse{Series: []SeriesIdentifier{{Labels: MustNewSeriesEntries(test, test)}}})
 	}

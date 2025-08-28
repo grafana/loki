@@ -145,7 +145,7 @@ func Test_multilineStage_MaxWaitTime(t *testing.T) {
 
 func simpleEntry(line, label string) Entry {
 	return Entry{
-		Extracted: map[string]interface{}{},
+		Extracted: map[string]any{},
 		Entry: api.Entry{
 			Labels: model.LabelSet{"value": model.LabelValue(label)},
 			Entry: logproto.Entry{

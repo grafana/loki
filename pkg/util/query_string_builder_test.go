@@ -12,15 +12,15 @@ func TestQueryStringBuilder(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		input           map[string]interface{}
+		input           map[string]any
 		expectedEncoded string
 	}{
 		"should return an empty query string on no params": {
-			input:           map[string]interface{}{},
+			input:           map[string]any{},
 			expectedEncoded: "",
 		},
 		"should return the URL encoded query string parameters": {
-			input: map[string]interface{}{
+			input: map[string]any{
 				"float32":    float32(123.456),
 				"float64":    float64(123.456),
 				"float64int": float64(12345.0),

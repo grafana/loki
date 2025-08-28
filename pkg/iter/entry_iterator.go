@@ -586,7 +586,7 @@ func (i *reverseIterator) Close() error {
 }
 
 var entryBufferPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &entryBuffer{
 			entries: make([]entryWithLabels, 0, 1024),
 		}

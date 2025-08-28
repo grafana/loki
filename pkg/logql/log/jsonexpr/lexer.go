@@ -10,7 +10,7 @@ import (
 
 type Scanner struct {
 	buf   *bufio.Reader
-	data  []interface{}
+	data  []any
 	err   error
 	debug bool
 }

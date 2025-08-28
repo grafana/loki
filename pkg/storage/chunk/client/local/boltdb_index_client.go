@@ -271,7 +271,7 @@ func QueryWithCursor(_ context.Context, c *bbolt.Cursor, query index.Query, call
 }
 
 var batchPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &cursorBatch{
 			start:     bytes.NewBuffer(make([]byte, 0, 1024)),
 			rowPrefix: bytes.NewBuffer(make([]byte, 0, 1024)),

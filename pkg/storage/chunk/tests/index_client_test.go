@@ -22,14 +22,14 @@ func TestIndexBasic(t *testing.T) {
 	forAllFixtures(t, func(t *testing.T, client index.Client, _ client.Client) {
 		// Write out 30 entries, into different hash and range values.
 		batch := client.NewWriteBatch()
-		for i := 0; i < 30; i++ {
+		for i := range 30 {
 			batch.Add(tableName, fmt.Sprintf("hash%d", i), []byte(fmt.Sprintf("range%d", i)), nil)
 		}
 		err := client.BatchWrite(ctx, batch)
 		require.NoError(t, err)
 
 		// Make sure we get back the correct entries by hash value.
-		for i := 0; i < 30; i++ {
+		for i := range 30 {
 			entries := []index.Query{
 				{
 					TableName: tableName,
@@ -212,7 +212,7 @@ func TestCardinalityLimit(t *testing.T) {
 
 		client = index.NewCachingIndexClient(client, cache.NewMockCache(), time.Minute, limits, log.NewNopLogger(), false)
 		batch := client.NewWriteBatch()
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			batch.Add(tableName, "bar", []byte(strconv.Itoa(i)), []byte(strconv.Itoa(i)))
 		}
 		err = client.BatchWrite(ctx, batch)

@@ -31,7 +31,7 @@ func NewBytePoolAllocator(minSize, maxSize int, factor float64) *BytePool {
 	return &BytePool{
 		pool: pool.New(
 			minSize, maxSize, factor,
-			func(size int) interface{} {
+			func(size int) any {
 				return make([]byte, size)
 			}),
 	}

@@ -3,6 +3,7 @@ package push
 import (
 	"flag"
 	"fmt"
+	"slices"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/prometheus/model/relabel"
@@ -88,14 +89,12 @@ func (c *OTLPConfig) ApplyGlobalOTLPConfig(config GlobalOTLPConfig) {
 }
 
 func (c *OTLPConfig) actionForAttribute(attribute string, cfgs []AttributesConfig) Action {
-	for i := 0; i < len(cfgs); i++ {
+	for i := range cfgs {
 		if cfgs[i].Regex.Regexp != nil && cfgs[i].Regex.MatchString(attribute) {
 			return cfgs[i].Action
 		}
-		for _, cfgAttr := range cfgs[i].Attributes {
-			if cfgAttr == attribute {
-				return cfgs[i].Action
-			}
+		if slices.Contains(cfgs[i].Attributes, attribute) {
+			return cfgs[i].Action
 		}
 	}
 
@@ -130,7 +129,7 @@ type AttributesConfig struct {
 	Regex      relabel.Regexp `yaml:"regex,omitempty" doc:"description=Regex to choose attributes to configure how to store them or drop them altogether"`
 }
 
-func (c *AttributesConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *AttributesConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	type plain AttributesConfig
 	if err := unmarshal((*plain)(c)); err != nil {
 		return err

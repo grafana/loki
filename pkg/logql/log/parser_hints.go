@@ -1,6 +1,7 @@
 package log
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -189,12 +190,7 @@ func NewParserHint(requiredLabelNames, groups []string, without, noLabels bool, 
 }
 
 func containsError(hints []string) bool {
-	for _, s := range hints {
-		if s == logqlmodel.ErrorLabel {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(hints, logqlmodel.ErrorLabel)
 }
 
 // appendLabelHints Appends the label to the list of hints with and without the duplicate suffix.

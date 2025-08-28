@@ -470,7 +470,7 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 	num := db.uvarint()
 	bc.blocks = make([]block, 0, num)
 
-	for i := 0; i < num; i++ {
+	for range num {
 		var blk block
 		// Read #entries.
 		blk.numEntries = db.uvarint()

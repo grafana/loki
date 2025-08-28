@@ -198,7 +198,7 @@ type Drain struct {
 	tokenizer       LineTokenizer
 	format          string
 	tokens          []string
-	state           interface{}
+	state           any
 	limiter         *limiter
 	pruning         bool
 }

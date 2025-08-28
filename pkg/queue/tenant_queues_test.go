@@ -119,7 +119,7 @@ func TestQueuesWithConsumers(t *testing.T) {
 	users := 1000
 
 	// Add some consumers.
-	for ix := 0; ix < consumers; ix++ {
+	for ix := range consumers {
 		qid := fmt.Sprintf("consumer-%d", ix)
 		uq.addConsumerToConnection(qid)
 
@@ -132,7 +132,7 @@ func TestQueuesWithConsumers(t *testing.T) {
 	assert.NoError(t, isConsistent(uq))
 
 	// Add user queues.
-	for u := 0; u < users; u++ {
+	for u := range users {
 		uid := fmt.Sprintf("user-%d", u)
 		getOrAdd(t, uq, uid)
 
@@ -145,7 +145,7 @@ func TestQueuesWithConsumers(t *testing.T) {
 	// and compute mean and stdDev.
 	consumerMap := make(map[string]int)
 
-	for q := 0; q < consumers; q++ {
+	for q := range consumers {
 		qid := fmt.Sprintf("consumer-%d", q)
 
 		lastUserIndex := StartIndex
@@ -197,7 +197,7 @@ func TestQueuesConsistency(t *testing.T) {
 
 			conns := map[string]int{}
 
-			for i := 0; i < 10000; i++ {
+			for i := range 10000 {
 				switch r.Int() % 6 {
 				case 0:
 					q, err := uq.getOrAddQueue(generateTenant(r), generateActor(r))
@@ -249,7 +249,7 @@ func TestQueues_ForgetDelay(t *testing.T) {
 	}
 
 	// Add user queues.
-	for i := 0; i < numUsers; i++ {
+	for i := range numUsers {
 		userID := fmt.Sprintf("user-%d", i)
 		getOrAdd(t, uq, userID)
 	}
@@ -341,7 +341,7 @@ func TestQueues_ForgetDelay_ShouldCorrectlyHandleConsumerReconnectingBeforeForge
 	}
 
 	// Add user queues.
-	for i := 0; i < numUsers; i++ {
+	for i := range numUsers {
 		userID := fmt.Sprintf("user-%d", i)
 		getOrAdd(t, uq, userID)
 	}
@@ -507,14 +507,14 @@ func TestShuffleConsumersCorrectness(t *testing.T) {
 	const consumersCount = 100
 
 	var allSortedConsumers []string
-	for i := 0; i < consumersCount; i++ {
+	for i := range consumersCount {
 		allSortedConsumers = append(allSortedConsumers, fmt.Sprintf("%d", i))
 	}
 	sort.Strings(allSortedConsumers)
 
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	const tests = 1000
-	for i := 0; i < tests; i++ {
+	for range tests {
 		toSelect := r.Intn(consumersCount)
 		if toSelect == 0 {
 			toSelect = 3

@@ -115,13 +115,13 @@ func Test_parseConfig(t *testing.T) {
 				labelKeys:     nil,
 				removeKeys:    []string{"buzz", "fuzz"},
 				dropSingleKey: false,
-				labelMap: map[string]interface{}{
-					"kubernetes": map[string]interface{}{
+				labelMap: map[string]any{
+					"kubernetes": map[string]any{
 						"container_name": "container",
 						"host":           "host",
 						"namespace_name": "namespace",
 						"pod_name":       "instance",
-						"labels": map[string]interface{}{
+						"labels": map[string]any{
 							"component": "component",
 							"tier":      "tier",
 						},

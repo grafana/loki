@@ -19,7 +19,7 @@ func TestPool(t *testing.T) {
 		t.Run(enc.String(), func(t *testing.T) {
 			var wg sync.WaitGroup
 
-			for i := 0; i < 200; i++ {
+			for range 200 {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()

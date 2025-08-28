@@ -1006,7 +1006,7 @@ func randSeries(rand *rand.Rand) promql.Series {
 func randLabels(rand *rand.Rand) labels.Labels {
 	nLabels := rand.Intn(100)
 	b := labels.NewScratchBuilder(nLabels)
-	for i := 0; i < nLabels; i++ {
+	for range nLabels {
 		l := randLabel(rand)
 		b.Add(l.Name, l.Value)
 	}
@@ -1017,7 +1017,7 @@ func randLabels(rand *rand.Rand) labels.Labels {
 func randEntries(rand *rand.Rand) []logproto.Entry {
 	var entries []logproto.Entry
 	nEntries := rand.Intn(100)
-	for i := 0; i < nEntries; i++ {
+	for range nEntries {
 		l, _ := quick.Value(reflect.TypeOf(""), rand)
 		entries = append(entries, logproto.Entry{Timestamp: time.Now(), Line: l.Interface().(string)})
 	}
@@ -1072,7 +1072,7 @@ func Test_EncodeResult_And_ResultValue_Parity(t *testing.T) {
 func Benchmark_Encode(b *testing.B) {
 	buf := bytes.NewBuffer(nil)
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		for _, queryTest := range queryTests {
 			require.NoError(b, WriteQueryResponseJSON(queryTest.actual, nil, stats.Result{}, buf, nil))
 			buf.Reset()

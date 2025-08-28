@@ -349,7 +349,7 @@ func Test_MarshalTailResponse(t *testing.T) {
 
 func Test_QueryResponseMarshalLoop(t *testing.T) {
 	for i, queryTest := range queryTests {
-		var r map[string]interface{}
+		var r map[string]any
 
 		err := json.Unmarshal([]byte(queryTest.expected), &r)
 		require.NoError(t, err)
@@ -389,12 +389,12 @@ func Test_TailResponseMarshalLoop(t *testing.T) {
 	}
 }
 
-func testJSONBytesEqual(t *testing.T, expected []byte, actual []byte, msg string, args ...interface{}) {
-	var expectedValue map[string]interface{}
+func testJSONBytesEqual(t *testing.T, expected []byte, actual []byte, msg string, args ...any) {
+	var expectedValue map[string]any
 	err := json.Unmarshal(expected, &expectedValue)
 	require.NoError(t, err)
 
-	var actualValue map[string]interface{}
+	var actualValue map[string]any
 	err = json.Unmarshal(actual, &actualValue)
 	require.NoError(t, err)
 

@@ -24,7 +24,7 @@ func TestSamplingPipeline(t *testing.T) {
 	require.NoError(t, err)
 
 	entries := make([]Entry, 0)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		entries = append(entries, newEntry(nil, nil, testMatchLogLineApp1, time.Now()))
 	}
 

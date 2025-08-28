@@ -448,7 +448,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 	numDBs := 10
 
 	dbsToSetup := make(map[string]IndexFileConfig)
-	for i := 0; i < numDBs; i++ {
+	for i := range numDBs {
 		dbsToSetup[fmt.Sprint(i)] = IndexFileConfig{
 			CompressFile: i%2 == 0,
 		}

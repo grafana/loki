@@ -37,7 +37,7 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 
 func Test_forEntriesEarlyReturn(t *testing.T) {
 	hb := newUnorderedHeadBlock(UnorderedHeadBlockFmt, newSymbolizer())
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		dup, err := hb.Append(int64(i), fmt.Sprint(i), labels.FromStrings("i", fmt.Sprint(i)))
 		require.False(t, dup)
 		require.Nil(t, err)
@@ -297,7 +297,7 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 func TestHeadBlockInterop(t *testing.T) {
 	unordered, ordered := newUnorderedHeadBlock(UnorderedHeadBlockFmt, newSymbolizer()), &headBlock{}
 	unorderedWithStructuredMetadata := newUnorderedHeadBlock(UnorderedWithStructuredMetadataHeadBlockFmt, newSymbolizer())
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		metaLabels := labels.FromStrings("foo", fmt.Sprint(99-i))
 		dup, err := unordered.Append(int64(99-i), fmt.Sprint(99-i), metaLabels)
 		require.False(t, dup)
@@ -420,7 +420,7 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 			// isn't included in our timing info
 			writes := make([]entry, 0, nWrites)
 			rnd := rand.NewSource(0)
-			for i := 0; i < nWrites; i++ {
+			for i := range nWrites {
 				ts := int64(i)
 				if tc.unorderedWrites {
 					ts = rnd.Int63()
@@ -443,7 +443,7 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 				name += " with structured metadata"
 			}
 			b.Run(name, func(b *testing.B) {
-				for n := 0; n < b.N; n++ {
+				for b.Loop() {
 					writeFn := tc.fn()
 					for _, w := range writes {
 						writeFn(w.t, w.s, w.structuredMetadata)
@@ -456,7 +456,7 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 
 func TestUnorderedChunkIterators(t *testing.T) {
 	c := NewMemChunk(ChunkFormatV4, compression.Snappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		// push in reverse order
 		dup, err := c.Append(&logproto.Entry{
 			Timestamp: time.Unix(int64(99-i), 0),
@@ -491,7 +491,7 @@ func TestUnorderedChunkIterators(t *testing.T) {
 		countExtractor,
 	)
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		require.Equal(t, true, forward.Next())
 		require.Equal(t, true, backward.Next())
 		require.Equal(t, true, smpl.Next())
@@ -537,7 +537,7 @@ func BenchmarkUnorderedRead(b *testing.B) {
 	b.Run("itr", func(b *testing.B) {
 		for _, tc := range tcs {
 			b.Run(tc.desc, func(b *testing.B) {
-				for n := 0; n < b.N; n++ {
+				for b.Loop() {
 					iterator, err := tc.c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
 					if err != nil {
 						panic(err)
@@ -556,7 +556,7 @@ func BenchmarkUnorderedRead(b *testing.B) {
 	b.Run("smpl", func(b *testing.B) {
 		for _, tc := range tcs {
 			b.Run(tc.desc, func(b *testing.B) {
-				for n := 0; n < b.N; n++ {
+				for b.Loop() {
 					iterator := tc.c.SampleIterator(
 						context.Background(),
 						time.Unix(0, 0),

@@ -32,7 +32,7 @@ func TestAccumulatedStreams(t *testing.T) {
 		acc.Push(x)
 	}
 
-	for i := 0; i < lim; i++ {
+	for i := range lim {
 		got := acc.Pop().(*logproto.Stream)
 		require.Equal(t, fmt.Sprintf(`{n="%d"}`, i%nStreams), got.Labels)
 		exp := (nStreams*(end-start) - lim + i) / nStreams
@@ -70,9 +70,9 @@ func TestDownstreamAccumulatorSimple(t *testing.T) {
 	require.Equal(t, 10, len(got), "correct number of streams")
 
 	// each stream should have the top 3 entries
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		require.Equal(t, 3, len(got[i].Entries), "correct number of entries in stream")
-		for j := 0; j < 3; j++ {
+		for j := range 3 {
 			require.Equal(t, time.Unix(int64(9-j), 0), got[i].Entries[j].Timestamp, "correct timestamp")
 		}
 	}
@@ -89,7 +89,7 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 			lim := 30
 
 			payloads := make([]logqlmodel.Streams, 0, nQueries)
-			for i := 0; i < nQueries; i++ {
+			for i := range nQueries {
 				start := i * delta
 				end := start + delta
 				streams := newStreams(time.Unix(int64(start), 0), time.Unix(int64(end), 0), time.Second, streamsPerQuery, direction)
@@ -117,7 +117,7 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 			require.NoError(t, err)
 
 			acc := NewStreamAccumulator(params)
-			for i := 0; i < nQueries; i++ {
+			for i := range nQueries {
 				err := acc.Accumulate(context.Background(), logqlmodel.Result{
 					Data: payloads[i],
 				}, i)
@@ -129,19 +129,19 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 			require.Equal(t, int64(nQueries), acc.Result()[0].Statistics.Summary.Shards)
 
 			// each stream should have the top 3 entries
-			for i := 0; i < streamsPerQuery; i++ {
+			for i := range streamsPerQuery {
 				stream := got[i]
 				require.Equal(t, fmt.Sprintf(`{n="%d"}`, i), stream.Labels, "correct labels")
 				ln := lim / streamsPerQuery
 				require.Equal(t, ln, len(stream.Entries), "correct number of entries in stream")
 				switch direction {
 				case logproto.BACKWARD:
-					for i := 0; i < ln; i++ {
+					for i := range ln {
 						offset := delta*nQueries - 1 - i
 						require.Equal(t, time.Unix(int64(offset), 0), stream.Entries[i].Timestamp, "correct timestamp")
 					}
 				default:
-					for i := 0; i < ln; i++ {
+					for i := range ln {
 						offset := i
 						require.Equal(t, time.Unix(int64(offset), 0), stream.Entries[i].Timestamp, "correct timestamp")
 					}
@@ -199,7 +199,7 @@ func BenchmarkAccumulator(b *testing.B) {
 		b.Run(acc, func(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 
 				acc := tc.newAcc(params, tc.results)
 				for i, r := range tc.results {
@@ -219,7 +219,7 @@ func newStreamResults() []logqlmodel.Result {
 	streamsPerQuery := 50
 
 	results := make([]logqlmodel.Result, nQueries)
-	for i := 0; i < nQueries; i++ {
+	for i := range nQueries {
 		start := i * delta
 		end := start + delta
 		streams := newStreams(time.Unix(int64(start), 0), time.Unix(int64(end), 0), time.Second, streamsPerQuery, logproto.BACKWARD)
@@ -278,7 +278,7 @@ func newStreamWithDirection(start, end time.Time, delta time.Duration, ls string
 }
 
 func newStreams(start, end time.Time, delta time.Duration, n int, direction logproto.Direction) (res []*logproto.Stream) {
-	for i := 0; i < n; i++ {
+	for i := range n {
 		res = append(res, newStreamWithDirection(start, end, delta, fmt.Sprintf(`{n="%d"}`, i), direction))
 	}
 	return res
@@ -287,7 +287,7 @@ func newStreams(start, end time.Time, delta time.Duration, n int, direction logp
 func newRandomSketch() sketch.QuantileSketch {
 	r := rand.New(rand.NewSource(42))
 	s := sketch.NewDDSketch()
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		_ = s.Add(r.Float64())
 	}
 	return s

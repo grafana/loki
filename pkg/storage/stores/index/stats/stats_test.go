@@ -11,7 +11,7 @@ import (
 func TestStatsBloom_Stream(t *testing.T) {
 	sb := BloomPool.Get()
 	var wg sync.WaitGroup
-	for i := 0; i < 40; i++ {
+	for i := range 40 {
 		wg.Add(1)
 		go func(x int) {
 			sb.AddStream(model.Fingerprint(x % 2))

@@ -299,7 +299,7 @@ func TestGoldfishQueriesHandler_FiltersErrorOutcome(t *testing.T) {
 func TestGoldfishQueriesHandler_PaginationAndInputValidation(t *testing.T) {
 	// Create 25 test queries
 	queries := make([]goldfish.QuerySample, 25)
-	for i := 0; i < 25; i++ {
+	for i := range 25 {
 		queries[i] = createTestQuerySample(string(rune('a'+i)), "tenant1", 200, 200, "hash1", "hash1")
 	}
 

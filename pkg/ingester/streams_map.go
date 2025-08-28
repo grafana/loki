@@ -83,7 +83,7 @@ func (m *streamsMap) WithRLock(fn func()) {
 func (m *streamsMap) ForEach(fn func(s *stream) (bool, error)) error {
 	var c bool
 	var err error
-	m.streams.Range(func(_, value interface{}) bool {
+	m.streams.Range(func(_, value any) bool {
 		c, err = fn(value.(*stream))
 		return c
 	})
@@ -94,14 +94,14 @@ func (m *streamsMap) Len() int {
 	return int(m.streamsCounter.Load())
 }
 
-func (m *streamsMap) load(mp *sync.Map, key interface{}) (*stream, bool) {
+func (m *streamsMap) load(mp *sync.Map, key any) (*stream, bool) {
 	if v, ok := mp.Load(key); ok {
 		return v.(*stream), true
 	}
 	return nil, false
 }
 
-func (m *streamsMap) store(key interface{}, s *stream) {
+func (m *streamsMap) store(key any, s *stream) {
 	if labelsString, ok := key.(string); ok {
 		m.streams.Store(labelsString, s)
 	} else {
@@ -113,7 +113,7 @@ func (m *streamsMap) store(key interface{}, s *stream) {
 
 // newStreamFn: Called if not loaded, with consistencyMtx locked. Must not be nil
 // postLoadFn: Called if loaded, with consistencyMtx read-locked at least. Can be nil
-func (m *streamsMap) loadOrStoreNew(mp *sync.Map, key interface{}, newStreamFn func() (*stream, error), postLoadFn func(*stream) error) (*stream, bool, error) {
+func (m *streamsMap) loadOrStoreNew(mp *sync.Map, key any, newStreamFn func() (*stream, error), postLoadFn func(*stream) error) (*stream, bool, error) {
 	var s *stream
 	var loaded bool
 	var err error

@@ -151,7 +151,7 @@ type PeriodConfig struct {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaller.
-func (cfg *PeriodConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *PeriodConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	type plain PeriodConfig
 	err := unmarshal((*plain)(cfg))
 	if err != nil {
@@ -192,12 +192,12 @@ type DayTime struct {
 }
 
 // MarshalYAML implements yaml.Marshaller.
-func (d DayTime) MarshalYAML() (interface{}, error) {
+func (d DayTime) MarshalYAML() (any, error) {
 	return d.String(), nil
 }
 
 // UnmarshalYAML implements yaml.Unmarshaller.
-func (d *DayTime) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (d *DayTime) UnmarshalYAML(unmarshal func(any) error) error {
 	var from string
 	if err := unmarshal(&from); err != nil {
 		return err
@@ -541,7 +541,7 @@ func (cfg *IndexPeriodicTableConfig) Validate() error {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	g := struct {
 		PathPrefix string         `yaml:"path_prefix"`
 		Prefix     string         `yaml:"prefix"`
@@ -561,7 +561,7 @@ func (cfg *IndexPeriodicTableConfig) UnmarshalYAML(unmarshal func(interface{}) e
 }
 
 // MarshalYAML implements the yaml.Marshaler interface.
-func (cfg IndexPeriodicTableConfig) MarshalYAML() (interface{}, error) {
+func (cfg IndexPeriodicTableConfig) MarshalYAML() (any, error) {
 	g := &struct {
 		PathPrefix string         `yaml:"path_prefix"`
 		Prefix     string         `yaml:"prefix"`
@@ -601,7 +601,7 @@ type PeriodicTableConfig struct {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *PeriodicTableConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *PeriodicTableConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	g := struct {
 		Prefix string         `yaml:"prefix"`
 		Period model.Duration `yaml:"period"`
@@ -619,7 +619,7 @@ func (cfg *PeriodicTableConfig) UnmarshalYAML(unmarshal func(interface{}) error)
 }
 
 // MarshalYAML implements the yaml.Marshaler interface.
-func (cfg PeriodicTableConfig) MarshalYAML() (interface{}, error) {
+func (cfg PeriodicTableConfig) MarshalYAML() (any, error) {
 	g := &struct {
 		Prefix string         `yaml:"prefix"`
 		Period model.Duration `yaml:"period"`

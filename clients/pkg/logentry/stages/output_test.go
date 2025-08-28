@@ -104,14 +104,14 @@ func TestOutputValidation(t *testing.T) {
 func TestOutputStage_Process(t *testing.T) {
 	tests := map[string]struct {
 		config         OutputConfig
-		extracted      map[string]interface{}
+		extracted      map[string]any
 		expectedOutput string
 	}{
 		"sets output": {
 			OutputConfig{
 				Source: "out",
 			},
-			map[string]interface{}{
+			map[string]any{
 				"something": "notimportant",
 				"out":       "outmessage",
 			},

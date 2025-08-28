@@ -68,7 +68,7 @@ func TestMemcachedJumpHashSelector_PickSever(t *testing.T) {
 	// to make sure different IPs were discovered during SetServers
 	distribution := make(map[string]int)
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		key := fmt.Sprintf("key-%d", i)
 		addr, err := s.PickServer(key)
 		require.NoError(t, err)

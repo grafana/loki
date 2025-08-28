@@ -66,7 +66,7 @@ func validateMatcherConfig(cfg *MatcherConfig) (logql.Expr, error) {
 }
 
 // newMatcherStage creates a new matcherStage from config
-func newMatcherStage(logger log.Logger, jobName *string, config interface{}, registerer prometheus.Registerer) (Stage, error) {
+func newMatcherStage(logger log.Logger, jobName *string, config any, registerer prometheus.Registerer) (Stage, error) {
 	cfg := &MatcherConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {

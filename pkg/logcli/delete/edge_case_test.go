@@ -396,7 +396,7 @@ func TestEdgeCasesTimeConversion(t *testing.T) {
 // Helper functions for edge case testing
 func generateLongString(length int) string {
 	result := make([]byte, length)
-	for i := 0; i < length; i++ {
+	for i := range length {
 		result[i] = 'a' + byte(i%26)
 	}
 	return string(result)
@@ -404,7 +404,7 @@ func generateLongString(length int) string {
 
 func generateLargeRequestList(count int) []client.DeleteRequest {
 	requests := make([]client.DeleteRequest, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		requests[i] = client.DeleteRequest{
 			StartTime: int64(1000 + i),
 			EndTime:   int64(2000 + i),

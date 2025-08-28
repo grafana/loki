@@ -60,7 +60,7 @@ func TestMultiIndex(t *testing.T) {
 	n := 5
 	var indices []Index
 	dir := t.TempDir()
-	for i := 0; i < n; i++ {
+	for range n {
 		indices = append(indices, BuildIndex(t, dir, cases))
 	}
 

@@ -1803,7 +1803,7 @@ func Test_codec_MergeResponse_DetectedFieldsResponse(t *testing.T) {
 		fooSketch := hyperloglog.New()
 
 		for i := 0; i < int(cardinality); i++ {
-			fooSketch.Insert([]byte(fmt.Sprintf("value %d", i)))
+			fooSketch.Insert(fmt.Appendf(nil, "value %d", i))
 		}
 		marshalledSketch, err := fooSketch.MarshalBinary()
 		require.NoError(t, err)
@@ -2499,7 +2499,7 @@ func BenchmarkResponseMerge(b *testing.B) {
 	} {
 		input := mkResps(resps, streams, logsPerStream, logproto.FORWARD)
 		b.Run(tc.desc, func(b *testing.B) {
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				tc.fn(input, tc.limit, logproto.FORWARD)
 			}
 		})
@@ -2507,9 +2507,9 @@ func BenchmarkResponseMerge(b *testing.B) {
 }
 
 func mkResps(nResps, nStreams, nLogs int, direction logproto.Direction) (resps []*LokiResponse) {
-	for i := 0; i < nResps; i++ {
+	for i := range nResps {
 		r := &LokiResponse{}
-		for j := 0; j < nStreams; j++ {
+		for j := range nStreams {
 			stream := logproto.Stream{
 				Labels: fmt.Sprintf(`{foo="%d"}`, j),
 			}
@@ -2572,7 +2572,7 @@ func Benchmark_CodecDecodeLogs(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_, _ = reader.Seek(0, io.SeekStart)
 		result, err := DefaultCodec.DecodeResponse(ctx, resp, &LokiRequest{
 			Limit:     100,
@@ -2609,10 +2609,10 @@ func Benchmark_CodecDecodeSamples(b *testing.B) {
 	require.Nil(b, err)
 	reader := bytes.NewReader(buf)
 	resp.Body = io.NopCloser(reader)
-	b.ResetTimer()
+
 	b.ReportAllocs()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_, _ = reader.Seek(0, io.SeekStart)
 		result, err := DefaultCodec.DecodeResponse(ctx, resp, &LokiRequest{
 			Limit:     100,
@@ -2660,7 +2660,7 @@ func Benchmark_CodecDecodeSeries(b *testing.B) {
 		b.Run(bm.accept, func(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				_, _ = reader.Seek(0, io.SeekStart)
 				result, err := DefaultCodec.DecodeResponse(ctx, resp, &LokiSeriesRequest{
 					StartTs: start,
@@ -2685,10 +2685,9 @@ func Benchmark_MergeResponses(b *testing.B) {
 		}
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		result, err := DefaultCodec.MergeResponse(responses...)
 		require.Nil(b, err)
 		require.NotNil(b, result)
@@ -2696,12 +2695,12 @@ func Benchmark_MergeResponses(b *testing.B) {
 }
 
 func generateMatrix() (res []queryrangebase.SampleStream) {
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		s := queryrangebase.SampleStream{
 			Labels:  []logproto.LabelAdapter{},
 			Samples: []logproto.LegacySample{},
 		}
-		for j := 0; j < 1000; j++ {
+		for j := range 1000 {
 			s.Samples = append(s.Samples, logproto.LegacySample{
 				Value:       float64(j),
 				TimestampMs: int64(j),
@@ -2713,11 +2712,11 @@ func generateMatrix() (res []queryrangebase.SampleStream) {
 }
 
 func generateStream() (res []logproto.Stream) {
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		s := logproto.Stream{
 			Labels: fmt.Sprintf(`{foo="%d", buzz="bar", cluster="us-central2", namespace="loki-dev", container="query-frontend"}`, i),
 		}
-		for j := 0; j < 10; j++ {
+		for j := range 10 {
 			s.Entries = append(s.Entries, logproto.Entry{Timestamp: time.Now(), Line: fmt.Sprintf("%d\nyolo", j)})
 		}
 		res = append(res, s)
@@ -2726,9 +2725,9 @@ func generateStream() (res []logproto.Stream) {
 }
 
 func generateSeries() (res []logproto.SeriesIdentifier) {
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		labels := make([]logproto.SeriesIdentifier_LabelsEntry, 100)
-		for l := 0; l < 100; l++ {
+		for l := range 100 {
 			labels[l] = logproto.SeriesIdentifier_LabelsEntry{Key: fmt.Sprintf("%d-%d", i, l), Value: strconv.Itoa(l)}
 		}
 		res = append(res, logproto.SeriesIdentifier{Labels: labels})

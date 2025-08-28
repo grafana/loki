@@ -10,7 +10,7 @@ type componentRef struct {
 
 var (
 	componentPools = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &componentRef{
 				components: make([][]byte, 0, 5),
 			}

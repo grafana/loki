@@ -1017,7 +1017,7 @@ func (w *Creator) writePostingsToTmpFiles() error {
 			_ = d.Be64() // skip fingerprint
 			// See if label names we want are in the series.
 			numLabels := d.Uvarint()
-			for i := 0; i < numLabels; i++ {
+			for range numLabels {
 				lno := uint32(d.Uvarint())
 				lvo := uint32(d.Uvarint())
 
@@ -2020,7 +2020,7 @@ func (dec *Decoder) LabelNamesOffsetsFor(b []byte) ([]uint32, error) {
 	k := d.Uvarint()
 
 	offsets := make([]uint32, k)
-	for i := 0; i < k; i++ {
+	for i := range k {
 		offsets[i] = uint32(d.Uvarint())
 		_ = d.Uvarint() // skip the label value
 
@@ -2038,7 +2038,7 @@ func (dec *Decoder) LabelValueFor(b []byte, label string) (string, error) {
 	_ = d.Be64() // skip fingerprint
 	k := d.Uvarint()
 
-	for i := 0; i < k; i++ {
+	for range k {
 		lno := uint32(d.Uvarint())
 		lvo := uint32(d.Uvarint())
 
@@ -2148,7 +2148,7 @@ func (dec *Decoder) prepSeries(b []byte, lbls *labels.Labels, chks *[]ChunkMeta)
 	fprint := d.Be64()
 	k := d.Uvarint()
 
-	for i := 0; i < k; i++ {
+	for range k {
 		lno := uint32(d.Uvarint())
 		lvo := uint32(d.Uvarint())
 
@@ -2194,7 +2194,7 @@ func (dec *Decoder) prepSeriesBy(b []byte, lbls *labels.Labels, chks *[]ChunkMet
 	fprint := d.Be64()
 	k := d.Uvarint()
 
-	for i := 0; i < k; i++ {
+	for range k {
 		lno := uint32(d.Uvarint())
 		lvo := uint32(d.Uvarint())
 
@@ -2256,7 +2256,7 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 
 	relevantPages := chunkPageMarkersPool.Get(nMarkers)
 	defer chunkPageMarkersPool.Put(relevantPages)
-	for i := 0; i < nMarkers; i++ {
+	for range nMarkers {
 		var marker chunkPageMarker
 		marker.decode(d)
 		if overlap(from, through, marker.MinTime, marker.MaxTime) {
@@ -2332,7 +2332,7 @@ func (dec *Decoder) readChunkStatsV3(d *encoding.Decbuf, from, through int64) (r
 func (dec *Decoder) accumulateChunkStats(d *encoding.Decbuf, nChunks int, from, through int64) (res ChunkStats, err error) {
 	var prevMaxT int64
 	chunkMeta := &ChunkMeta{}
-	for i := 0; i < nChunks; i++ {
+	for range nChunks {
 		if err := readChunkMeta(d, prevMaxT, chunkMeta); err != nil {
 			return res, errors.Wrap(d.Err(), "read meta for chunk")
 		}

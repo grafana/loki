@@ -57,7 +57,7 @@ type replaceStage struct {
 }
 
 // newReplaceStage creates a newReplaceStage
-func newReplaceStage(logger log.Logger, config interface{}) (Stage, error) {
+func newReplaceStage(logger log.Logger, config any) (Stage, error) {
 	cfg, err := parseReplaceConfig(config)
 	if err != nil {
 		return nil, err
@@ -75,7 +75,7 @@ func newReplaceStage(logger log.Logger, config interface{}) (Stage, error) {
 }
 
 // parseReplaceConfig processes an incoming configuration into a ReplaceConfig
-func parseReplaceConfig(config interface{}) (*ReplaceConfig, error) {
+func parseReplaceConfig(config any) (*ReplaceConfig, error) {
 	cfg := &ReplaceConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -85,7 +85,7 @@ func parseReplaceConfig(config interface{}) (*ReplaceConfig, error) {
 }
 
 // Process implements Stage
-func (r *replaceStage) Process(_ model.LabelSet, extracted map[string]interface{}, _ *time.Time, entry *string) {
+func (r *replaceStage) Process(_ model.LabelSet, extracted map[string]any, _ *time.Time, entry *string) {
 	// If a source key is provided, the replace stage should process it
 	// from the extracted map, otherwise should fallback to the entry
 	input := entry
@@ -200,7 +200,7 @@ func (r *replaceStage) getReplacedEntry(matchAllIndex [][]int, input string, td 
 	return result + input[previousInputEndIndex:], capturedMap, nil
 }
 
-func (r *replaceStage) getTemplateData(extracted map[string]interface{}) map[string]string {
+func (r *replaceStage) getTemplateData(extracted map[string]any) map[string]string {
 	td := make(map[string]string)
 	for k, v := range extracted {
 		s, err := getString(v)

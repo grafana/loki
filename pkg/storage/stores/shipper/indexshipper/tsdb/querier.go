@@ -308,7 +308,7 @@ func labelValuesWithMatchers(r IndexReader, name string, matchers ...*labels.Mat
 		return nil, err
 	}
 
-	dedupe := map[string]interface{}{}
+	dedupe := map[string]any{}
 	for p.Next() {
 		v, err := r.LabelValueFor(p.At(), name)
 		if err != nil {

@@ -2,6 +2,7 @@ package logql
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/go-kit/log"
@@ -86,13 +87,7 @@ func (qb *queryBlocker) block(q *validation.BlockedQuery, typ string, logger log
 		return true
 	}
 
-	matched := false
-	for _, qt := range q.Types {
-		if qt == typ {
-			matched = true
-			break
-		}
-	}
+	matched := slices.Contains(q.Types, typ)
 
 	// query would be blocked, but it didn't match specified types
 	if !matched {

@@ -504,7 +504,7 @@ func BenchmarkDeleteCreateQuery(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err := query.CreateQuery(mockClient)
 		if err != nil {
 			b.Fatal(err)
@@ -514,7 +514,7 @@ func BenchmarkDeleteCreateQuery(b *testing.B) {
 
 func BenchmarkDeleteListQuery(b *testing.B) {
 	deleteRequests := make([]client.DeleteRequest, 100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		deleteRequests[i] = client.DeleteRequest{
 			StartTime: int64(1000 + i),
 			EndTime:   int64(2000 + i),
@@ -527,7 +527,7 @@ func BenchmarkDeleteListQuery(b *testing.B) {
 	query := Query{Quiet: true}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err := query.ListQuery(mockClient)
 		if err != nil {
 			b.Fatal(err)

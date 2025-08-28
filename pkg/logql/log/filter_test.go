@@ -120,7 +120,7 @@ func Test_SimplifiedRegex(t *testing.T) {
 
 func allunicode() string {
 	var b []byte
-	for i := 0x00; i < 0x10FFFF; i++ {
+	for i := range 0x10FFFF {
 		b = append(b, byte(i))
 	}
 	return string(b)
@@ -204,12 +204,12 @@ func benchmarkRegex(b *testing.B, re, line string, match bool) {
 	}
 	b.ResetTimer()
 	b.Run(fmt.Sprintf("default_%v_%s", match, re), func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			m = d.Filter(l)
 		}
 	})
 	b.Run(fmt.Sprintf("simplified_%v_%s", match, re), func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			m = s.Filter(l)
 		}
 	})
@@ -377,7 +377,7 @@ func BenchmarkContainsLower(b *testing.B) {
 		b.Run(c.name, func(b *testing.B) {
 			line := []byte(c.line)
 			substr := []byte(c.substr)
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				m = containsLower(line, substr)
 			}
 			if m != c.expected {

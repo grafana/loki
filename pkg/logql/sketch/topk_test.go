@@ -24,7 +24,7 @@ func TestTopkCardinality(t *testing.T) {
 	maxVal := 1000000
 	topk, err := newCMSTopK(100, 10, 10)
 	assert.NoError(t, err)
-	for i := 0; i < maxVal; i++ {
+	for i := range maxVal {
 		topk.Observe(strconv.Itoa(i))
 	}
 	c, bigEnough := topk.Cardinality()
@@ -34,7 +34,7 @@ func TestTopkCardinality(t *testing.T) {
 
 	topk, err = NewCMSTopkForCardinality(nil, 100, maxVal)
 	assert.NoError(t, err)
-	for i := 0; i < maxVal; i++ {
+	for i := range maxVal {
 		topk.Observe(strconv.Itoa(i))
 	}
 	c, bigEnough = topk.Cardinality()
@@ -95,7 +95,7 @@ func TestTopK_Merge(t *testing.T) {
 outer:
 	for i := nStreams - k; i < nStreams; i++ {
 		eventName = strconv.Itoa(i)
-		for j := 0; j < len(mergedTopk); j++ {
+		for j := range mergedTopk {
 			if mergedTopk[j].Event == eventName {
 				continue outer
 			}
@@ -120,7 +120,7 @@ outer:
 outer2:
 	for i := nStreams - k; i < nStreams; i++ {
 		eventName = strconv.Itoa(i)
-		for j := 0; j < len(singleTopk); j++ {
+		for j := range singleTopk {
 			if singleTopk[j].Event == eventName {
 				continue outer2
 			}

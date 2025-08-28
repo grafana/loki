@@ -18,7 +18,7 @@ type parser struct {
 }
 
 var parserPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		p := &parser{
 			p: &exprParserImpl{},
 		}

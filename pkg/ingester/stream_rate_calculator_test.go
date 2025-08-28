@@ -12,11 +12,11 @@ func TestStreamRateCalculator(t *testing.T) {
 	calc := NewStreamRateCalculator()
 	defer calc.Stop()
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		calc.Record("tenant 1", 1, 1, 100)
 	}
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		calc.Record("tenant 2", 1, 1, 100)
 	}
 

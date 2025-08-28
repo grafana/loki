@@ -13,10 +13,10 @@ import (
 )
 
 // PipelineStages contains configuration for each stage within a pipeline
-type PipelineStages = []interface{}
+type PipelineStages = []any
 
 // PipelineStage contains configuration for a single pipeline stage
-type PipelineStage = map[interface{}]interface{}
+type PipelineStage = map[any]any
 
 var rateLimiter *rate.Limiter
 var rateLimiterDrop bool
@@ -168,7 +168,7 @@ func (p *Pipeline) Wrap(next api.EntryHandler) api.EntryHandler {
 		defer close(pipelineIn)
 		for e := range handlerIn {
 			pipelineIn <- Entry{
-				Extracted: map[string]interface{}{},
+				Extracted: map[string]any{},
 				Entry:     e,
 			}
 		}

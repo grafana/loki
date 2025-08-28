@@ -50,7 +50,7 @@ func (s *Stream) Reset() {
 }
 
 var streamPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &Stream{}
 	},
 }

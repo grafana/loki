@@ -41,7 +41,7 @@ func TestMemPostings_ensureOrder(t *testing.T) {
 	p := NewUnorderedMemPostings()
 	p.m["a"] = map[string][]storage.SeriesRef{}
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		l := make([]storage.SeriesRef, 100)
 		for j := range l {
 			l[j] = storage.SeriesRef(rand.Uint64())
@@ -110,7 +110,7 @@ func BenchmarkMemPostings_ensureOrder(b *testing.B) {
 
 			b.ResetTimer()
 
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				p.EnsureOrder()
 				p.ordered = false
 			}
@@ -304,7 +304,7 @@ func BenchmarkIntersect(t *testing.B) {
 
 		bench.ResetTimer()
 		bench.ReportAllocs()
-		for i := 0; i < bench.N; i++ {
+		for bench.Loop() {
 			if _, err := ExpandPostings(Intersect(i1, i2, i3, i4)); err != nil {
 				bench.Fatal(err)
 			}
@@ -314,7 +314,7 @@ func BenchmarkIntersect(t *testing.B) {
 	t.Run("LongPostings2", func(bench *testing.B) {
 		var a, b, c, d []storage.SeriesRef
 
-		for i := 0; i < 12500000; i++ {
+		for i := range 12500000 {
 			a = append(a, storage.SeriesRef(i))
 		}
 		for i := 7500000; i < 12500000; i++ {
@@ -334,7 +334,7 @@ func BenchmarkIntersect(t *testing.B) {
 
 		bench.ResetTimer()
 		bench.ReportAllocs()
-		for i := 0; i < bench.N; i++ {
+		for bench.Loop() {
 			if _, err := ExpandPostings(Intersect(i1, i2, i3, i4)); err != nil {
 				bench.Fatal(err)
 			}
@@ -346,7 +346,7 @@ func BenchmarkIntersect(t *testing.B) {
 		var its []Postings
 
 		// 100000 matchers(k=100000).
-		for i := 0; i < 100000; i++ {
+		for range 100000 {
 			var temp []storage.SeriesRef
 			for j := storage.SeriesRef(1); j < 100; j++ {
 				temp = append(temp, j)
@@ -356,7 +356,7 @@ func BenchmarkIntersect(t *testing.B) {
 
 		bench.ResetTimer()
 		bench.ReportAllocs()
-		for i := 0; i < bench.N; i++ {
+		for bench.Loop() {
 			if _, err := ExpandPostings(Intersect(its...)); err != nil {
 				bench.Fatal(err)
 			}
@@ -710,14 +710,14 @@ func TestBigEndian(t *testing.T) {
 	}
 
 	beLst := make([]byte, num*4)
-	for i := 0; i < num; i++ {
+	for i := range num {
 		b := beLst[i*4 : i*4+4]
 		binary.BigEndian.PutUint32(b, ls[i])
 	}
 
 	t.Run("Iteration", func(t *testing.T) {
 		bep := NewBigEndianPostings(beLst)
-		for i := 0; i < num; i++ {
+		for i := range num {
 			require.True(t, bep.Next())
 			require.Equal(t, storage.SeriesRef(ls[i]), bep.At())
 		}
@@ -882,7 +882,7 @@ func BenchmarkPostings_Stats(b *testing.B) {
 		}
 	}
 	createPostingsLabelValues("__name__", "metrics_name_can_be_very_big_and_bad", 1e3)
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		createPostingsLabelValues(fmt.Sprintf("host-%d", i), "metrics_name_can_be_very_big_and_bad", 1e3)
 		createPostingsLabelValues(fmt.Sprintf("instance-%d", i), "10.0.IP.", 1e3)
 		createPostingsLabelValues(fmt.Sprintf("job-%d", i), "Small_Job_name", 1e3)
@@ -895,7 +895,8 @@ func BenchmarkPostings_Stats(b *testing.B) {
 		createPostingsLabelValues(fmt.Sprintf("request_id-%d", i), "owner_name_work-", 1e3)
 	}
 	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+
+	for b.Loop() {
 		p.Stats("__name__")
 	}
 }
@@ -939,13 +940,13 @@ func TestShardedPostings(t *testing.T) {
 	}
 	shard := NewShard(0, 2)
 	var refs []storage.SeriesRef
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		refs = append(refs, storage.SeriesRef(i))
 	}
 	ps := newListPostings(refs...)
 	shardedPostings := NewShardedPostings(ps, shard, offsets)
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		require.Equal(t, true, shardedPostings.Next())
 		require.Equal(t, storage.SeriesRef(i), shardedPostings.At())
 	}

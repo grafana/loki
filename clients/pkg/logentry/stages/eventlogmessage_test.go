@@ -50,13 +50,13 @@ func TestEventLogMessage_simple(t *testing.T) {
 		config          string
 		sourcekey       string
 		msgdata         string
-		extractedValues map[string]interface{}
+		extractedValues map[string]any
 	}{
 		"successfully ran a pipeline with sample event log message stage using default source": {
 			testEvtLogMsgYamlDefaults,
 			"message",
 			testEvtLogMsgSimple,
-			map[string]interface{}{
+			map[string]any{
 				"Key1": "Value 1",
 				"Key2": "Value 2",
 				"Key3": "Value: 3",
@@ -67,7 +67,7 @@ func TestEventLogMessage_simple(t *testing.T) {
 			testEvtLogMsgYamlCustomSource,
 			"Message",
 			testEvtLogMsgSimple,
-			map[string]interface{}{
+			map[string]any{
 				"Key1": "Value 1",
 				"Key2": "Value 2",
 				"Key3": "Value: 3",
@@ -78,7 +78,7 @@ func TestEventLogMessage_simple(t *testing.T) {
 			testEvtLogMsgYamlDefaults,
 			"message",
 			testEvtLogMsgInvalidLabels,
-			map[string]interface{}{
+			map[string]any{
 				"Key_1": "Value 1",
 				"_Key2": "Value 2",
 				"Key_3": "Value 3",
@@ -90,7 +90,7 @@ func TestEventLogMessage_simple(t *testing.T) {
 			testEvtLogMsgYamlDefaults,
 			"message",
 			testEvtLogMsgOverwriteTest,
-			map[string]interface{}{
+			map[string]any{
 				"test":           "existing value",
 				"test_extracted": "new value",
 			},
@@ -99,7 +99,7 @@ func TestEventLogMessage_simple(t *testing.T) {
 			testEvtLogMsgYamlOverwriteExisting,
 			"message",
 			testEvtLogMsgOverwriteTest,
-			map[string]interface{}{
+			map[string]any{
 				"test": "new value",
 			},
 		},
@@ -114,7 +114,7 @@ func TestEventLogMessage_simple(t *testing.T) {
 			pl, err := NewPipeline(util_log.Logger, loadConfig(testData.config), nil, prometheus.DefaultRegisterer)
 			assert.NoError(t, err, "Expected pipeline creation to not result in error")
 			out := processEntries(pl,
-				newEntry(map[string]interface{}{
+				newEntry(map[string]any{
 					testData.sourcekey: testData.msgdata,
 					"test":             "existing value",
 				}, nil, testData.msgdata, time.Now()))[0]
@@ -127,23 +127,23 @@ func TestEventLogMessageConfig_validate(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		config interface{}
+		config any
 		err    error
 	}{
 		"invalid config": {
-			map[string]interface{}{
+			map[string]any{
 				"source": 1,
 			},
 			errors.New("1 error(s) decoding:\n\n* 'source' expected type 'string', got unconvertible type 'int', value: '1'"),
 		},
 		"invalid source": {
-			map[string]interface{}{
+			map[string]any{
 				"source": "the message",
 			},
 			fmt.Errorf(ErrInvalidLabelName, "the message"),
 		},
 		"empty source": {
-			map[string]interface{}{
+			map[string]any{
 				"source": "",
 			},
 			fmt.Errorf(ErrInvalidLabelName, ""),
@@ -178,13 +178,13 @@ func TestEventLogMessage_Real(t *testing.T) {
 		config          string
 		sourcekey       string
 		msgdata         string
-		extractedValues map[string]interface{}
+		extractedValues map[string]any
 	}{
 		"successfully ran a pipeline with network event log message stage using default source": {
 			testEvtLogMsgYamlDefaults,
 			"message",
 			testEvtLogMsgNetworkConn,
-			map[string]interface{}{
+			map[string]any{
 				"Network_connection_detected": "",
 				"RuleName":                    "Usermode",
 				"UtcTime":                     "2023-01-31 08:07:23.782",
@@ -210,7 +210,7 @@ func TestEventLogMessage_Real(t *testing.T) {
 			testEvtLogMsgYamlCustomSource,
 			"Message",
 			testEvtLogMsgNetworkConn,
-			map[string]interface{}{
+			map[string]any{
 				"Network_connection_detected": "",
 				"RuleName":                    "Usermode",
 				"UtcTime":                     "2023-01-31 08:07:23.782",
@@ -236,7 +236,7 @@ func TestEventLogMessage_Real(t *testing.T) {
 			testEvtLogMsgYamlDropInvalidLabels,
 			"message",
 			testEvtLogMsgNetworkConn,
-			map[string]interface{}{
+			map[string]any{
 				"RuleName":            "Usermode",
 				"UtcTime":             "2023-01-31 08:07:23.782",
 				"ProcessGuid":         "{44ffd2c7-cc3a-63d8-2002-000000000d00}",
@@ -268,7 +268,7 @@ func TestEventLogMessage_Real(t *testing.T) {
 			pl, err := NewPipeline(util_log.Logger, loadConfig(testData.config), nil, prometheus.DefaultRegisterer)
 			assert.NoError(t, err, "Expected pipeline creation to not result in error")
 			out := processEntries(pl,
-				newEntry(map[string]interface{}{testData.sourcekey: testData.msgdata}, nil, testData.msgdata, time.Now()))[0]
+				newEntry(map[string]any{testData.sourcekey: testData.msgdata}, nil, testData.msgdata, time.Now()))[0]
 			assert.Equal(t, testData.extractedValues, out.Extracted)
 		})
 	}
@@ -286,31 +286,31 @@ func TestEventLogMessage_invalid(t *testing.T) {
 		config          string
 		sourcekey       string
 		msgdata         string
-		extractedValues map[string]interface{}
+		extractedValues map[string]any
 	}{
 		"successfully ran a pipeline with an invalid event log message": {
 			testEvtLogMsgYamlDefaults,
 			"message",
 			testEvtLogMsgInvalidStructure,
-			map[string]interface{}{},
+			map[string]any{},
 		},
 		"successfully ran a pipeline with sample event log message stage on the wrong default source": {
 			testEvtLogMsgYamlDefaults,
 			"notmessage",
 			testEvtLogMsgSimple,
-			map[string]interface{}{},
+			map[string]any{},
 		},
 		"successfully ran a pipeline with sample event log message stage dropping invalid labels": {
 			testEvtLogMsgYamlDropInvalidLabels,
 			"message",
 			testEvtLogMsgInvalidLabels,
-			map[string]interface{}{},
+			map[string]any{},
 		},
 		"successfully ran a pipeline with an invalid event log message value (not UTF-8)": {
 			testEvtLogMsgYamlDefaults,
 			"message",
 			testEvtLogMsgInvalidValue,
-			map[string]interface{}{},
+			map[string]any{},
 		},
 	}
 
@@ -323,7 +323,7 @@ func TestEventLogMessage_invalid(t *testing.T) {
 			pl, err := NewPipeline(util_log.Logger, loadConfig(testData.config), nil, prometheus.DefaultRegisterer)
 			assert.NoError(t, err, "Expected pipeline creation to not result in error")
 			out := processEntries(pl,
-				newEntry(map[string]interface{}{testData.sourcekey: testData.msgdata}, nil, testData.msgdata, time.Now()))[0]
+				newEntry(map[string]any{testData.sourcekey: testData.msgdata}, nil, testData.msgdata, time.Now()))[0]
 			assert.Equal(t, testData.extractedValues, out.Extracted)
 		})
 	}
@@ -335,7 +335,7 @@ func TestEventLogMessage_invalidString(t *testing.T) {
 	pl, err := NewPipeline(util_log.Logger, loadConfig(testEvtLogMsgYamlDefaults), nil, prometheus.DefaultRegisterer)
 	assert.NoError(t, err, "Expected pipeline creation to not result in error")
 	out := processEntries(pl,
-		newEntry(map[string]interface{}{"message": nil}, nil, "", time.Now()))
+		newEntry(map[string]any{"message": nil}, nil, "", time.Now()))
 	assert.Len(t, out, 0, "No output should be produced with a nil input")
 }
 
@@ -346,7 +346,7 @@ var (
 )
 
 func BenchmarkSplittingKeyValuesRegex(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		var val string
 		resultKey := RegexSplitKeyValue.Split(inputJustKey, 2)
 		if len(resultKey) > 1 {
@@ -361,7 +361,7 @@ func BenchmarkSplittingKeyValuesRegex(b *testing.B) {
 }
 
 func BenchmarkSplittingKeyValuesSplitTrim(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		var val string
 		resultKey := strings.SplitN(inputJustKey, ":", 2)
 		if len(resultKey) > 1 {
@@ -376,7 +376,7 @@ func BenchmarkSplittingKeyValuesSplitTrim(b *testing.B) {
 }
 
 func BenchmarkSplittingKeyValuesSplitSubstr(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		var val string
 		resultKey := strings.SplitN(inputJustKey, ":", 2)
 		if len(resultKey) > 1 && len(resultKey[1]) > 0 {

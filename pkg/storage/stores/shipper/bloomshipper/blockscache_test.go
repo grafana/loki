@@ -274,7 +274,7 @@ func prepareBenchmark(b *testing.B) map[string]BlockDirectory {
 	b.Helper()
 
 	entries := make(map[string]BlockDirectory)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		key := fmt.Sprintf("block-%04x", i)
 		entries[key] = BlockDirectory{
 			BlockRef: BlockRef{},
@@ -310,7 +310,7 @@ func Benchmark_BlocksCacheOld(b *testing.B) {
 		err := cache.Store(ctx, []string{k}, []BlockDirectory{v})
 		require.NoError(b, err)
 	}
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		// read
 		for k := range entries {
 			_, _ = cache.Get(ctx, k)
@@ -339,7 +339,7 @@ func Benchmark_BlocksCacheNew(b *testing.B) {
 		_ = cache.PutMany(ctx, []string{k}, []BlockDirectory{v})
 	}
 	// read
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		for k := range entries {
 			_, _ = cache.Get(ctx, k)
 		}

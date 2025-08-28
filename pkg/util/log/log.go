@@ -192,7 +192,7 @@ func (pl *prometheusLogger) Set(option level.Option) {
 }
 
 // Log increments the appropriate Prometheus counter depending on the log level.
-func (pl *prometheusLogger) Log(kv ...interface{}) error {
+func (pl *prometheusLogger) Log(kv ...any) error {
 	pl.logger.Log(kv...)
 	l := "unknown"
 	for i := 1; i < len(kv); i += 2 {

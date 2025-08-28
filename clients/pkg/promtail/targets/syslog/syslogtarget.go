@@ -273,7 +273,7 @@ func (t *SyslogTarget) Labels() model.LabelSet {
 }
 
 // Details returns target-specific details.
-func (t *SyslogTarget) Details() interface{} {
+func (t *SyslogTarget) Details() any {
 	return map[string]string{}
 }
 

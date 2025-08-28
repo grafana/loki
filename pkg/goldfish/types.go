@@ -55,7 +55,7 @@ type QueryStats struct {
 type ComparisonResult struct {
 	CorrelationID      string
 	ComparisonStatus   ComparisonStatus
-	DifferenceDetails  map[string]interface{}
+	DifferenceDetails  map[string]any
 	PerformanceMetrics PerformanceMetrics
 	ComparedAt         time.Time
 }

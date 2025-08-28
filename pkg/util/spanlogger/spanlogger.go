@@ -28,7 +28,7 @@ type SpanLogger = spanlogger.SpanLogger
 
 // NewOTel makes a new OTel SpanLogger with a log.Logger to send logs to. The provided context will have the logger attached
 // to it and can be retrieved with FromContext.
-func NewOTel(ctx context.Context, logger log.Logger, tracer trace.Tracer, method string, kvps ...interface{}) (*SpanLogger, context.Context) {
+func NewOTel(ctx context.Context, logger log.Logger, tracer trace.Tracer, method string, kvps ...any) (*SpanLogger, context.Context) {
 	return spanlogger.NewOTel(ctx, logger, tracer, method, resolver, kvps...)
 }
 

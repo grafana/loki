@@ -222,7 +222,7 @@ func unsafeGetString(buf []byte) string {
 }
 
 var writerPool = sync.Pool{
-	New: func() interface{} { return snappy.NewBufferedWriter(nil) },
+	New: func() any { return snappy.NewBufferedWriter(nil) },
 }
 
 // Encode writes the chunk into a buffer, and calculates the checksum.

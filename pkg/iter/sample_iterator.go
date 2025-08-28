@@ -124,11 +124,11 @@ func NewSampleIteratorHeap(its []SampleIterator) SampleIteratorHeap {
 func (h SampleIteratorHeap) Len() int             { return len(h.its) }
 func (h SampleIteratorHeap) Swap(i, j int)        { h.its[i], h.its[j] = h.its[j], h.its[i] }
 func (h SampleIteratorHeap) Peek() SampleIterator { return h.its[0] }
-func (h *SampleIteratorHeap) Push(x interface{}) {
+func (h *SampleIteratorHeap) Push(x any) {
 	h.its = append(h.its, x.(SampleIterator))
 }
 
-func (h *SampleIteratorHeap) Pop() interface{} {
+func (h *SampleIteratorHeap) Pop() any {
 	n := len(h.its)
 	x := h.its[n-1]
 	h.its = h.its[0 : n-1]

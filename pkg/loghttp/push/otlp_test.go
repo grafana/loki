@@ -228,7 +228,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				ld.ResourceLogs().At(0).ScopeLogs().AppendEmpty()
 				ld.ResourceLogs().At(0).ScopeLogs().At(0).Scope().SetName("fizz")
 				ld.ResourceLogs().At(0).ScopeLogs().At(0).Scope().Attributes().PutStr("op", "buzz")
-				for i := 0; i < 2; i++ {
+				for i := range 2 {
 					ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().AppendEmpty()
 					ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(i).Body().SetStr(fmt.Sprintf("test body - %d", i))
 					ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(i).SetTimestamp(pcommon.Timestamp(now.UnixNano()))
@@ -320,7 +320,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				ld.ResourceLogs().At(0).ScopeLogs().AppendEmpty()
 				ld.ResourceLogs().At(0).ScopeLogs().At(0).Scope().SetName("fizz")
 				ld.ResourceLogs().At(0).ScopeLogs().At(0).Scope().Attributes().PutEmptyMap("scope.nested").PutStr("foo", "bar")
-				for i := 0; i < 2; i++ {
+				for i := range 2 {
 					ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().AppendEmpty()
 					ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(i).Body().SetStr(fmt.Sprintf("test body - %d", i))
 					ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(i).SetTimestamp(pcommon.Timestamp(now.UnixNano()))
@@ -463,7 +463,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				ld.ResourceLogs().At(0).ScopeLogs().At(0).Scope().SetName("fizz")
 				ld.ResourceLogs().At(0).ScopeLogs().At(0).Scope().Attributes().PutStr("drop.function", "login")
 				ld.ResourceLogs().At(0).ScopeLogs().At(0).Scope().Attributes().PutEmptyMap("scope.nested").PutStr("foo", "bar")
-				for i := 0; i < 2; i++ {
+				for i := range 2 {
 					ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().AppendEmpty()
 					ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(i).Body().SetStr(fmt.Sprintf("test body - %d", i))
 					ld.ResourceLogs().At(0).ScopeLogs().At(0).LogRecords().At(i).SetTimestamp(pcommon.Timestamp(now.UnixNano()))

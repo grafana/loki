@@ -591,26 +591,26 @@ func Benchmark_Pipeline(b *testing.B) {
 
 	b.Run("pipeline bytes", func(b *testing.B) {
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			resLine, resLbs, resMatches = sp.Process(0, line, labels.EmptyLabels())
 		}
 	})
 	b.Run("pipeline string", func(b *testing.B) {
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			resLineString, resLbs, resMatches = sp.ProcessString(0, lineString, labels.EmptyLabels())
 		}
 	})
 
 	b.Run("pipeline bytes no invalid structured metadata", func(b *testing.B) {
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			resLine, resLbs, resMatches = sp.Process(0, line, labels.FromStrings("valid_name", "foo"))
 		}
 	})
 	b.Run("pipeline string with invalid structured metadata", func(b *testing.B) {
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			resLine, resLbs, resMatches = sp.Process(0, line, labels.FromStrings("valid_name", "foo"))
 		}
 	})
@@ -620,7 +620,7 @@ func Benchmark_Pipeline(b *testing.B) {
 	ex := extractor.ForStream(lbs)
 	b.Run("line extractor bytes", func(b *testing.B) {
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			samples, ok := ex.Process(0, line, labels.EmptyLabels())
 			if ok && len(samples) > 0 {
 				resSample = samples[0].Value
@@ -633,7 +633,7 @@ func Benchmark_Pipeline(b *testing.B) {
 	})
 	b.Run("line extractor string", func(b *testing.B) {
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			samples, ok := ex.ProcessString(0, lineString, labels.EmptyLabels())
 			if ok && len(samples) > 0 {
 				resSample = samples[0].Value
@@ -651,7 +651,7 @@ func Benchmark_Pipeline(b *testing.B) {
 
 	b.Run("label extractor bytes", func(b *testing.B) {
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			samples, ok := ex.Process(0, line, labels.EmptyLabels())
 			if ok && len(samples) > 0 {
 				resSample = samples[0].Value
@@ -664,7 +664,7 @@ func Benchmark_Pipeline(b *testing.B) {
 	})
 	b.Run("label extractor string", func(b *testing.B) {
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			samples, ok := ex.ProcessString(0, lineString, labels.EmptyLabels())
 			if ok && len(samples) > 0 {
 				resSample = samples[0].Value
@@ -703,7 +703,7 @@ func jsonBenchmark(b *testing.B, parser Stage) {
 	)
 	b.ResetTimer()
 	sp := p.ForStream(lbs)
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		resLine, resLbs, resMatches = sp.Process(0, line, labels.EmptyLabels())
 
 		if !resMatches {
@@ -726,7 +726,7 @@ func invalidJSONBenchmark(b *testing.B, parser Stage) {
 	line := []byte(`invalid json`)
 	b.ResetTimer()
 	sp := p.ForStream(labels.EmptyLabels())
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		resLine, resLbs, resMatches = sp.Process(0, line, labels.EmptyLabels())
 
 		if !resMatches {
@@ -784,7 +784,7 @@ func logfmtBenchmark(b *testing.B, parser Stage) {
 	)
 	b.ResetTimer()
 	sp := p.ForStream(lbs)
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		resLine, resLbs, resMatches = sp.Process(0, line, labels.EmptyLabels())
 
 		if !resMatches {

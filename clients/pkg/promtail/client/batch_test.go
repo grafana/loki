@@ -142,7 +142,7 @@ func TestHashCollisions(t *testing.T) {
 
 	const entriesPerLabel = 10
 
-	for i := 0; i < entriesPerLabel; i++ {
+	for i := range entriesPerLabel {
 		_ = b.add(api.Entry{Labels: ls1, Entry: logproto.Entry{Timestamp: time.Now(), Line: fmt.Sprintf("line %d", i)}})
 
 		_ = b.add(api.Entry{Labels: ls2, Entry: logproto.Entry{Timestamp: time.Now(), Line: fmt.Sprintf("line %d", i)}})
@@ -173,9 +173,8 @@ func BenchmarkLabelsMapToString(b *testing.B) {
 	labelSet["label2"] = "value3"
 	labelSet["__tenant_id__"] = "another_value"
 
-	b.ResetTimer()
 	var r string
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		// store in r prevent the compiler eliminating the function call.
 		r = labelsMapToString(labelSet, ReservedLabelTenantID)
 	}

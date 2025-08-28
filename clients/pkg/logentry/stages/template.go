@@ -81,7 +81,7 @@ func validateTemplateConfig(cfg *TemplateConfig) (*template.Template, error) {
 }
 
 // newTemplateStage creates a new templateStage
-func newTemplateStage(logger log.Logger, config interface{}) (Stage, error) {
+func newTemplateStage(logger log.Logger, config any) (Stage, error) {
 	cfg := &TemplateConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -107,11 +107,11 @@ type templateStage struct {
 }
 
 // Process implements Stage
-func (o *templateStage) Process(_ model.LabelSet, extracted map[string]interface{}, _ *time.Time, entry *string) {
+func (o *templateStage) Process(_ model.LabelSet, extracted map[string]any, _ *time.Time, entry *string) {
 	if o.cfgs == nil {
 		return
 	}
-	td := make(map[string]interface{})
+	td := make(map[string]any)
 	for k, v := range extracted {
 		s, err := getString(v)
 		if err != nil {

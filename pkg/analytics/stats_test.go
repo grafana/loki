@@ -56,11 +56,11 @@ func Test_BuildReport(t *testing.T) {
 	require.Equal(t, r.Metrics["compression"], "lz4")
 	require.Equal(t, r.Metrics["compression_ratio"], int64(100))
 	require.Equal(t, r.Metrics["size_mb"], 200.1)
-	require.Equal(t, r.Metrics["lines_written"].(map[string]interface{})["total"], int64(200))
-	require.Equal(t, r.Metrics["query_throughput"].(map[string]interface{})["min"], float64(5))
-	require.Equal(t, r.Metrics["query_throughput"].(map[string]interface{})["max"], float64(300))
-	require.Equal(t, r.Metrics["query_throughput"].(map[string]interface{})["count"], int64(3))
-	require.Equal(t, r.Metrics["query_throughput"].(map[string]interface{})["avg"], float64(25+300+5)/3)
+	require.Equal(t, r.Metrics["lines_written"].(map[string]any)["total"], int64(200))
+	require.Equal(t, r.Metrics["query_throughput"].(map[string]any)["min"], float64(5))
+	require.Equal(t, r.Metrics["query_throughput"].(map[string]any)["max"], float64(300))
+	require.Equal(t, r.Metrics["query_throughput"].(map[string]any)["count"], int64(3))
+	require.Equal(t, r.Metrics["query_throughput"].(map[string]any)["avg"], float64(25+300+5)/3)
 	require.Equal(t, r.Metrics["active_tenants"], int64(3))
 
 	out, _ := jsoniter.MarshalIndent(r, "", " ")
@@ -120,7 +120,7 @@ func TestStatistic(t *testing.T) {
 func TestWordCounter(t *testing.T) {
 	w := NewWordCounter("test_words_count")
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

@@ -180,7 +180,7 @@ func mergeDeletes(reqs []deletionproto.DeleteRequest) []deletionproto.DeleteRequ
 	mergedRequests := []deletionproto.DeleteRequest{} // Declare this way so the return value is [] rather than null
 	// find the start and end of shards of same request and merge them
 	i := 0
-	for j := 0; j < len(reqs); j++ {
+	for j := range reqs {
 		// if this is not the last request in the list and the next request belongs to same shard then keep looking further
 		if j < len(reqs)-1 && reqs[i].RequestID == reqs[j+1].RequestID {
 			continue

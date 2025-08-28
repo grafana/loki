@@ -191,16 +191,15 @@ func Benchmark_DecodePushRequest(b *testing.B) {
 		]
 	}`
 	var entries strings.Builder
-	for i := 0; i < 10000; i++ {
+	for range 10000 {
 		entries.WriteString(`[ "123456789012345", "WARN  [CompactionExecutor:61771] 2021-01-12 09:40:23,192 TimeWindowCompactionController.java:41 - You are running with sstables overlapping checks disabled, it can result in loss of data" ],`)
 	}
 	requestString := fmt.Sprintf(requestFmt, entries.String()[:len(entries.String())-1])
 	r := strings.NewReader("")
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		var actual logproto.PushRequest
 		r.Reset(requestString)
 		err := DecodePushRequest(r, &actual)

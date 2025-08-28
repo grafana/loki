@@ -606,7 +606,7 @@ func putMetasForLastNDays(t *testing.T, schemaCfg storageconfig.SchemaConfig, bl
 		bloomClient, err := bloomStore.Client(dayTable.ModelTime())
 		require.NoErrorf(t, err, "failed to get bloom client for day %d: %s", day, err)
 
-		for i := 0; i < metasPerDay; i++ {
+		for i := range metasPerDay {
 			err = bloomClient.PutMeta(context.Background(), bloomshipper.Meta{
 				MetaRef: bloomshipper.MetaRef{
 					Ref: bloomshipper.Ref{

@@ -142,7 +142,7 @@ func validateCriConfig(cfg *CriConfig) error {
 }
 
 // NewCRI creates a CRI format specific pipeline stage
-func NewCRI(logger log.Logger, config interface{}, registerer prometheus.Registerer) (Stage, error) {
+func NewCRI(logger log.Logger, config any, registerer prometheus.Registerer) (Stage, error) {
 	base := PipelineStages{
 		PipelineStage{
 			StageTypeRegex: RegexConfig{

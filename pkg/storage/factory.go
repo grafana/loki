@@ -88,7 +88,7 @@ type StoreLimits interface {
 type NamedAWSStorageConfig aws.StorageConfig
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedAWSStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedAWSStorageConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	flagext.DefaultValues((*aws.StorageConfig)(cfg))
 	return unmarshal((*aws.StorageConfig)(cfg))
 }
@@ -100,7 +100,7 @@ func (cfg *NamedAWSStorageConfig) Validate() error {
 type NamedBlobStorageConfig azure.BlobStorageConfig
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedBlobStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedBlobStorageConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	flagext.DefaultValues((*azure.BlobStorageConfig)(cfg))
 	return unmarshal((*azure.BlobStorageConfig)(cfg))
 }
@@ -112,7 +112,7 @@ func (cfg *NamedBlobStorageConfig) Validate() error {
 type NamedBOSStorageConfig baidubce.BOSStorageConfig
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedBOSStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedBOSStorageConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	flagext.DefaultValues((*baidubce.BOSStorageConfig)(cfg))
 	return unmarshal((*baidubce.BOSStorageConfig)(cfg))
 }
@@ -120,7 +120,7 @@ func (cfg *NamedBOSStorageConfig) UnmarshalYAML(unmarshal func(interface{}) erro
 type NamedFSConfig local.FSConfig
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedFSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedFSConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	flagext.DefaultValues((*local.FSConfig)(cfg))
 	return unmarshal((*local.FSConfig)(cfg))
 }
@@ -128,7 +128,7 @@ func (cfg *NamedFSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error
 type NamedGCSConfig gcp.GCSConfig
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedGCSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedGCSConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	flagext.DefaultValues((*gcp.GCSConfig)(cfg))
 	return unmarshal((*gcp.GCSConfig)(cfg))
 }
@@ -136,7 +136,7 @@ func (cfg *NamedGCSConfig) UnmarshalYAML(unmarshal func(interface{}) error) erro
 type NamedOssConfig alibaba.OssConfig
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedOssConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedOssConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	flagext.DefaultValues((*alibaba.OssConfig)(cfg))
 	return unmarshal((*alibaba.OssConfig)(cfg))
 }
@@ -144,7 +144,7 @@ func (cfg *NamedOssConfig) UnmarshalYAML(unmarshal func(interface{}) error) erro
 type NamedSwiftConfig openstack.SwiftConfig
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedSwiftConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedSwiftConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	flagext.DefaultValues((*openstack.SwiftConfig)(cfg))
 	return unmarshal((*openstack.SwiftConfig)(cfg))
 }
@@ -156,7 +156,7 @@ func (cfg *NamedSwiftConfig) Validate() error {
 type NamedCOSConfig ibmcloud.COSConfig
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedCOSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedCOSConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	flagext.DefaultValues((*ibmcloud.COSConfig)(cfg))
 	return unmarshal((*ibmcloud.COSConfig)(cfg))
 }

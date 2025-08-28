@@ -43,7 +43,7 @@ func TestBasicManager_ApplyConfig(t *testing.T) {
 
 		cm := NewBasicManager(DefaultBasicManagerConfig, NewMetrics(nil), logger, spawner)
 
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			err := cm.ApplyConfig(Config{Name: "test"})
 			require.NoError(t, err)
 		}
@@ -67,7 +67,7 @@ func TestBasicManager_ApplyConfig(t *testing.T) {
 
 		cm := NewBasicManager(DefaultBasicManagerConfig, NewMetrics(nil), logger, spawner)
 
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			err := cm.ApplyConfig(Config{Name: "test"})
 			require.NoError(t, err)
 		}

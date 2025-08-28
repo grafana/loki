@@ -105,7 +105,7 @@ type TableManagerConfig struct {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface. To support RetentionPeriod.
-func (cfg *TableManagerConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *TableManagerConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	// If we call unmarshal on TableManagerConfig, it will call UnmarshalYAML leading to infinite recursion.
 	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
 	// again, we have to hide it using a type indirection.
@@ -122,7 +122,7 @@ func (cfg *TableManagerConfig) UnmarshalYAML(unmarshal func(interface{}) error) 
 }
 
 // MarshalYAML implements the yaml.Marshaler interface. To support RetentionPeriod.
-func (cfg *TableManagerConfig) MarshalYAML() (interface{}, error) {
+func (cfg *TableManagerConfig) MarshalYAML() (any, error) {
 	cfg.RetentionPeriodModel = model.Duration(cfg.RetentionPeriod)
 	return cfg, nil
 }

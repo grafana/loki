@@ -250,7 +250,7 @@ func (f *Fetcher) FetchBlocks(ctx context.Context, refs []BlockRef, opts ...Fetc
 	// The problem is keeping the order of the responses.
 
 	var enqueueTime time.Duration
-	for i := 0; i < n; i++ {
+	for i := range n {
 		key := cacheKey(refs[i])
 		dir, isFound, err := f.fromCache(ctx, key, cfg.CacheGetOptions...)
 		if err != nil {
@@ -509,7 +509,7 @@ func newDownloadQueue[T any, R any](size, workers int, process processFunc[T, R]
 		process:  process,
 		logger:   logger,
 	}
-	for i := 0; i < workers; i++ {
+	for range workers {
 		q.wg.Add(1)
 		go q.runWorker()
 	}

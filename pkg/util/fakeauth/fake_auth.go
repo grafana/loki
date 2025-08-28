@@ -20,7 +20,7 @@ func SetupAuthMiddleware(config *server.Config, enabled bool, noGRPCAuthOn []str
 			ignoredMethods[m] = true
 		}
 
-		config.GRPCMiddleware = append(config.GRPCMiddleware, func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+		config.GRPCMiddleware = append(config.GRPCMiddleware, func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 			if ignoredMethods[info.FullMethod] {
 				return handler(ctx, req)
 			}
@@ -28,7 +28,7 @@ func SetupAuthMiddleware(config *server.Config, enabled bool, noGRPCAuthOn []str
 		})
 
 		config.GRPCStreamMiddleware = append(config.GRPCStreamMiddleware,
-			func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+			func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 				if ignoredMethods[info.FullMethod] {
 					return handler(srv, ss)
 				}
@@ -55,12 +55,12 @@ var fakeHTTPAuthMiddleware = middleware.Func(func(next http.Handler) http.Handle
 	})
 })
 
-var fakeGRPCAuthUniaryMiddleware = func(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+var fakeGRPCAuthUniaryMiddleware = func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 	ctx = user.InjectOrgID(ctx, "fake")
 	return handler(ctx, req)
 }
 
-var fakeGRPCAuthStreamMiddleware = func(srv interface{}, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+var fakeGRPCAuthStreamMiddleware = func(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 	ctx := user.InjectOrgID(ss.Context(), "fake")
 	return handler(srv, serverStream{
 		ctx:          ctx,

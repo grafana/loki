@@ -147,7 +147,7 @@ func (s PowerOfTwoStrategy) Shards(expr syntax.Expr) ([]ShardWithChunkRefs, uint
 	}
 
 	res := make([]ShardWithChunkRefs, 0, factor)
-	for i := 0; i < factor; i++ {
+	for i := range factor {
 		res = append(
 			res,
 			ShardWithChunkRefs{

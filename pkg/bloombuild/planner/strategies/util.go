@@ -23,7 +23,7 @@ func SplitFingerprintKeyspaceByFactor(factor int) []v1.FingerprintBounds {
 	// Calculate the size of each range.
 	rangeSize := keyspaceSize / uint64(factor)
 
-	for i := 0; i < factor; i++ {
+	for i := range factor {
 		// Calculate the start and end of the range.
 		start := uint64(i) * rangeSize
 		end := start + rangeSize - 1
@@ -53,7 +53,7 @@ func FindGapsInFingerprintBounds(ownershipRange v1.FingerprintBounds, metas []v1
 	var nonOverlapping []v1.FingerprintBounds
 	// First, we reduce the metas into a smaller set by combining overlaps. They must be sorted.
 	var cur *v1.FingerprintBounds
-	for i := 0; i < len(metas); i++ {
+	for i := range metas {
 		j := i + 1
 
 		// first iteration (i == 0), set the current meta

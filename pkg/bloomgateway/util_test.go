@@ -155,7 +155,7 @@ func TestPartitionTasksByBlock(t *testing.T) {
 
 		// ensure bound membership
 		expectedFingerprints := make([]*logproto.GroupedChunkRefs, nSeries)
-		for i := 0; i < nSeries; i++ {
+		for i := range nSeries {
 			expectedFingerprints[i] = &logproto.GroupedChunkRefs{Fingerprint: uint64(startFp + i)}
 		}
 
@@ -170,7 +170,7 @@ func TestPartitionTasksByBlock(t *testing.T) {
 		}
 
 		task := Task{}
-		for i := 0; i < 300; i++ {
+		for i := range 300 {
 			task.series = append(task.series, &logproto.GroupedChunkRefs{Fingerprint: uint64(i)})
 		}
 
@@ -476,7 +476,7 @@ func createBlocks(t *testing.T, tenant string, n int, from, through model.Time, 
 	series := make([][]v1.SeriesWithBlooms, 0, n)
 
 	step := (maxFp - minFp) / model.Fingerprint(n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		fromFp := minFp + (step * model.Fingerprint(i))
 		throughFp := fromFp + step - 1
 		// last block needs to include maxFp

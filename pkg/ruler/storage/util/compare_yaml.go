@@ -11,7 +11,7 @@ import (
 
 // CompareYAML marshals a and b to YAML and ensures that their contents are
 // equal. If either Marshal fails, CompareYAML returns false.
-func CompareYAML(a, b interface{}) bool {
+func CompareYAML(a, b any) bool {
 	aBytes, err := yaml.Marshal(a)
 	if err != nil {
 		return false

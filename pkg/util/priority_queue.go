@@ -32,11 +32,11 @@ func (q queue) Swap(i, j int)      { q[i], q[j] = q[j], q[i] }
 
 // Push and Pop use pointer receivers because they modify the slice's length,
 // not just its contents.
-func (q *queue) Push(x interface{}) {
+func (q *queue) Push(x any) {
 	*q = append(*q, x.(Op))
 }
 
-func (q *queue) Pop() interface{} {
+func (q *queue) Pop() any {
 	old := *q
 	n := len(old)
 	x := old[n-1]

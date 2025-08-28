@@ -64,7 +64,7 @@ func benchmarkParseIndexEntries(i int64, regex string, b *testing.B) {
 		b.Fatal(err)
 	}
 	b.StartTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		keys, err := parseIndexEntries(ctx, entries, matcher)
 		if err != nil {
 			b.Fatal(err)

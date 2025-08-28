@@ -155,7 +155,7 @@ func TestLoki_AppendOptionalInternalServer(t *testing.T) {
 
 func getRandomPorts(n int) []int {
 	portListeners := []net.Listener{}
-	for i := 0; i < n; i++ {
+	for range n {
 		listener, err := net.Listen("tcp", ":0")
 		if err != nil {
 			panic(err)
@@ -165,7 +165,7 @@ func getRandomPorts(n int) []int {
 	}
 
 	portNumbers := []int{}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		port := portListeners[i].Addr().(*net.TCPAddr).Port
 		portNumbers = append(portNumbers, port)
 		if err := portListeners[i].Close(); err != nil {

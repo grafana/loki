@@ -399,7 +399,7 @@ func TestChunkPageMarkerEncodeDecode(t *testing.T) {
 }
 
 func mkChks(n int) (chks []ChunkMeta) {
-	for i := 0; i < n; i++ {
+	for i := range n {
 		chks = append(chks, chkFrom(i))
 	}
 	return chks
@@ -729,7 +729,7 @@ func BenchmarkChunkStats(b *testing.B) {
 				w.addChunks(chks, &primary, &scratch, ChunkPageSize)
 
 				dec := newDecoder(nil, DefaultMaxChunksToBypassMarkerLookup)
-				for i := 0; i < b.N; i++ {
+				for b.Loop() {
 					decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
 
 					_, _ = dec.readChunkStats(version, &decbuf, 1, from, through)
@@ -754,7 +754,7 @@ func BenchmarkReadChunks(b *testing.B) {
 				w.addChunks(chks, &primary, &scratch, ChunkPageSize)
 
 				dec := newDecoder(nil, DefaultMaxChunksToBypassMarkerLookup)
-				for i := 0; i < b.N; i++ {
+				for b.Loop() {
 					decbuf := encoding.DecWrap(tsdb_enc.Decbuf{B: primary.Get()})
 
 					_ = dec.readChunks(version, &decbuf, 1, from, through, &res)

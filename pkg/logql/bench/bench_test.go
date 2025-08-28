@@ -350,7 +350,7 @@ func BenchmarkLogQL(b *testing.B) {
 				b.ReportAllocs()
 				b.ResetTimer()
 
-				for i := 0; i < b.N; i++ {
+				for b.Loop() {
 					ctx, cancel := context.WithTimeout(ctx, time.Minute)
 					defer cancel()
 					r, err := q.Exec(ctx)

@@ -327,7 +327,7 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query index.Query, cal
 
 type dynamoDBRequest interface {
 	Send() error
-	Data() interface{}
+	Data() any
 	Error() error
 	Retryable() bool
 }
@@ -348,7 +348,7 @@ type dynamoDBRequestAdapter struct {
 	request *request.Request
 }
 
-func (a dynamoDBRequestAdapter) Data() interface{} {
+func (a dynamoDBRequestAdapter) Data() any {
 	return a.request.Data
 }
 

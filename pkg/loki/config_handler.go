@@ -9,13 +9,13 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-func yamlMarshalUnmarshal(in interface{}) (map[interface{}]interface{}, error) {
+func yamlMarshalUnmarshal(in any) (map[any]any, error) {
 	yamlBytes, err := yaml.Marshal(in)
 	if err != nil {
 		return nil, err
 	}
 
-	object := make(map[interface{}]interface{})
+	object := make(map[any]any)
 	if err := yaml.Unmarshal(yamlBytes, object); err != nil {
 		return nil, err
 	}
@@ -23,8 +23,8 @@ func yamlMarshalUnmarshal(in interface{}) (map[interface{}]interface{}, error) {
 	return object, nil
 }
 
-func diffConfig(defaultConfig, actualConfig map[interface{}]interface{}) (map[interface{}]interface{}, error) {
-	output := make(map[interface{}]interface{})
+func diffConfig(defaultConfig, actualConfig map[any]any) (map[any]any, error) {
+	output := make(map[any]any)
 
 	for key, value := range actualConfig {
 
@@ -50,8 +50,8 @@ func diffConfig(defaultConfig, actualConfig map[interface{}]interface{}) (map[in
 			if !ok || defaultV != v {
 				output[key] = v
 			}
-		case []interface{}:
-			defaultV, ok := defaultValue.([]interface{})
+		case []any:
+			defaultV, ok := defaultValue.([]any)
 			if !ok || !reflect.DeepEqual(defaultV, v) {
 				output[key] = v
 			}
@@ -60,8 +60,8 @@ func diffConfig(defaultConfig, actualConfig map[interface{}]interface{}) (map[in
 			if !ok || !reflect.DeepEqual(defaultV, v) {
 				output[key] = v
 			}
-		case map[interface{}]interface{}:
-			defaultV, ok := defaultValue.(map[interface{}]interface{})
+		case map[any]any:
+			defaultV, ok := defaultValue.(map[any]any)
 			if !ok {
 				output[key] = value
 			}
@@ -80,9 +80,9 @@ func diffConfig(defaultConfig, actualConfig map[interface{}]interface{}) (map[in
 	return output, nil
 }
 
-func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFunc {
+func configHandler(actualCfg any, defaultCfg any) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var output interface{}
+		var output any
 		switch r.URL.Query().Get("mode") {
 		case "diff":
 			defaultCfgObj, err := yamlMarshalUnmarshal(defaultCfg)
@@ -176,7 +176,7 @@ func (t *Loki) tenantLimitsHandler() func(http.ResponseWriter, *http.Request) {
 }
 
 // writeYAMLResponse writes some YAML as a HTTP response.
-func writeYAMLResponse(w http.ResponseWriter, v interface{}) {
+func writeYAMLResponse(w http.ResponseWriter, v any) {
 	// There is not standardised content-type for YAML, text/plain ensures the
 	// YAML is displayed in the browser instead of offered as a download
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")

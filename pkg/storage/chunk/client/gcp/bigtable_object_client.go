@@ -155,7 +155,7 @@ func (s *bigtableObjectClient) GetChunks(ctx context.Context, input []chunk.Chun
 	}
 
 	output := make([]chunk.Chunk, 0, len(input))
-	for i := 0; i < len(input); i++ {
+	for range input {
 		select {
 		case c := <-outs:
 			output = append(output, c)
