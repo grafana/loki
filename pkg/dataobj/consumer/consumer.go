@@ -89,8 +89,27 @@ func (c *consumer) Run(ctx context.Context) error {
 
 func (c *consumer) pollFetches(ctx context.Context) error {
 	fetches := c.client.PollFetches(ctx)
-	if err := fetches.Err(); err != nil {
-		return err
+	// If the client is closed, or the context was canceled, return the error
+	// as no fetches were polled. We use this instead of [kgo.IsClientClosed]
+	// so we can also check if the context was canceled.
+	if err := fetches.Err0(); err != nil {
+		if errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
+			return err
+		}
+	}
+	// We also need to check if there are errors from the fetches. However,
+	// just because an error occurred, this does not mean we fetched no
+	// records. It is possible to have errors for some fetches and records
+	// for others at the same time.
+	var lastFetchErr error
+	fetches.EachError(func(topic string, partition int32, err error) {
+		level.Error(c.logger).Log("msg", "failed to fetch records", "topic", topic, "partition", partition, "err", err.Error())
+		lastFetchErr = err
+	})
+	// If all fetches returned an error we should also return an error so the
+	// caller can choose to backoff between attempts.
+	if lastFetchErr != nil && fetches.Empty() {
+		return errors.New("all fetches returned errors, no records fetched")
 	}
 	fetches.EachPartition(c.processFetchTopicPartition(ctx))
 	return nil
