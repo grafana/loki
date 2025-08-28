@@ -339,18 +339,6 @@ func (p *partitionProcessor) flush() error {
 		return err
 	}
 
-	// TODO(benclive): Remove this Update once the indexes are being built from the metastore events
-	if err := p.metastoreTocWriter.WriteEntry(p.ctx, objectPath, []multitenancy.TimeRange{
-		{
-			Tenant:  string(p.tenantID),
-			MinTime: minTime,
-			MaxTime: maxTime,
-		},
-	}); err != nil {
-		level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
-		return err
-	}
-
 	if err := p.emitObjectWrittenEvent(objectPath); err != nil {
 		level.Error(p.logger).Log("msg", "failed to emit metastore event", "err", err)
 		return err
