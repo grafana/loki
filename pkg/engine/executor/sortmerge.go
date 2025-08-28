@@ -57,9 +57,10 @@ var _ Pipeline = (*KWayMerge)(nil)
 
 // Close implements Pipeline.
 func (p *KWayMerge) Close() {
-	// Release last batch
-	if p.state.batch != nil {
-		p.state.batch.Release()
+	for _, batch := range p.batches {
+		if batch != nil {
+			batch.Release()
+		}
 	}
 	for _, input := range p.inputs {
 		input.Close()
@@ -118,11 +119,6 @@ func (p *KWayMerge) init(ctx context.Context) {
 // Return the slice of that record using the two offsets, and update the stored offset of the returned record for the next call to Read.
 func (p *KWayMerge) read(ctx context.Context) error {
 start:
-	// Release previous batch
-	if p.state.batch != nil {
-		p.state.batch.Release()
-	}
-
 	timestamps := make([]int64, 0, len(p.inputs))
 	inputIndexes := make([]int, 0, len(p.inputs))
 
@@ -136,15 +132,21 @@ loop:
 		// Load next batch if it hasn't been loaded yet, or if current one is already fully consumed
 		// Read another batch as long as the input yields zero-length batches.
 		for p.batches[i] == nil || p.offsets[i] == p.batches[i].NumRows() {
-			// Reset offset
+			// Reset offset for input at index i
 			p.offsets[i] = 0
 
-			// Read from input
+			// Release previously fully consumed batch
+			if p.batches[i] != nil {
+				p.batches[i].Release()
+				p.batches[i] = nil // remove reference to arrow.Record from slice
+			}
+
+			// Read next batch from input at index i
+			// If it reaches EOF, mark the input as exhausted and continue with the next input.
 			err := p.inputs[i].Read(ctx)
 			if err != nil {
 				if errors.Is(err, EOF) {
 					p.exhausted[i] = true
-					p.batches[i] = nil // remove reference to arrow.Record from slice
 					continue loop
 				}
 				return err
