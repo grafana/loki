@@ -316,8 +316,8 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 	physicalPlan, err = planner.Optimize(physicalPlan)
 	t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
 	require.NoError(t, err)
-  
-  // optimization pushed filter columns down to parse node
+
+	// optimization pushed filter columns down to parse node
 	require.Equal(t, []string{"level"}, parseNode.RequestedKeys)
 }
 

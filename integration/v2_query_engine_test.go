@@ -32,6 +32,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
@@ -58,7 +59,7 @@ func TestV2QueryEngine(t *testing.T) {
 	// Create dataobj files before starting the cluster
 	// Get the shared path from the cluster
 	sharedPath := clu.ClusterSharedPath()
-	_, err := createDataObjFiles(t, sharedPath, tenantID, to)
+	_, err := createDataObjFiles(sharedPath, tenantID, to)
 	require.NoError(t, err, "Failed to create dataobj files")
 
 	// Start all components with v2 engine enabled
@@ -422,13 +423,6 @@ func queryWithWarnings(tenantID, baseURL, query string, start, end time.Time, re
 	return json.NewDecoder(httpResp.Body).Decode(resp)
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // QueryResponseWithWarnings extends the client Response to include warnings
 type QueryResponseWithWarnings struct {
 	Status   string          `json:"status"`
@@ -438,7 +432,7 @@ type QueryResponseWithWarnings struct {
 
 // createDataObjFiles creates dataobj files in the cluster's shared directory
 // so that the v2 engine can read them. Returns the bucket for cleanup.
-func createDataObjFiles(t *testing.T, sharedPath string, tenantID string, oldTime time.Time) (objstore.Bucket, error) {
+func createDataObjFiles(sharedPath string, tenantID string, oldTime time.Time) (objstore.Bucket, error) {
 	// Create dataobj directory structure - v2 engine expects files in fs-store-1/dataobj
 	dataobjDir := filepath.Join(sharedPath, "fs-store-1", "dataobj")
 	if err := os.MkdirAll(dataobjDir, 0755); err != nil {
@@ -476,7 +470,7 @@ func createDataObjFiles(t *testing.T, sharedPath string, tenantID string, oldTim
 	}
 
 	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
-	metastoreToc := metastore.NewTableOfContentsWriter(metastore.Config{}, bucket, tenantID, logger)
+	metastoreToc := metastore.NewTableOfContentsWriter(bucket, logger)
 	uploaderObj := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)
 
 	// Create test log streams - same data as we push in the test
@@ -545,7 +539,8 @@ func createDataObjFiles(t *testing.T, sharedPath string, tenantID string, oldTim
 	}
 
 	// Update metastore ToC
-	if err := metastoreToc.WriteEntry(context.Background(), path, minTime, maxTime); err != nil {
+	timeRange := multitenancy.TimeRange{Tenant: tenantID, MinTime: minTime, MaxTime: maxTime}
+	if err := metastoreToc.WriteEntry(context.Background(), path, []multitenancy.TimeRange{timeRange}); err != nil {
 		return nil, fmt.Errorf("failed to update metastore: %w", err)
 	}
 
@@ -561,7 +556,7 @@ func createDataObjFiles(t *testing.T, sharedPath string, tenantID string, oldTim
 func buildIndex(bucket objstore.Bucket, tenantID string, logger log.Logger) error {
 	indexDirPrefix := "index/v0"
 	indexWriterBucket := objstore.NewPrefixedBucket(bucket, indexDirPrefix)
-	indexMetastoreToc := metastore.NewTableOfContentsWriter(metastore.Config{}, indexWriterBucket, tenantID, logger)
+	indexMetastoreToc := metastore.NewTableOfContentsWriter(indexWriterBucket, logger)
 
 	builder, err := indexobj.NewBuilder(indexobj.BuilderConfig{
 		TargetPageSize:          128 * 1024,        // 128KB
@@ -597,7 +592,8 @@ func buildIndex(bucket objstore.Bucket, tenantID string, logger log.Logger) erro
 	}
 
 	// Check if calculator has data before flushing
-	minTime, maxTime := calculator.TimeRange()
+	timeRanges := calculator.TimeRanges()
+	minTime, maxTime := timeRanges[0].MinTime, timeRanges[0].MaxTime
 	if minTime.IsZero() && maxTime.IsZero() {
 		// No index data, skip index creation
 		return nil
@@ -610,7 +606,7 @@ func buildIndex(bucket objstore.Bucket, tenantID string, logger log.Logger) erro
 	}
 	defer closer.Close()
 
-	key, err := index.ObjectKey(context.Background(), tenantID, obj)
+	key, err := index.ObjectKey(context.Background(), obj)
 	if err != nil {
 		return fmt.Errorf("failed to create object key: %w", err)
 	}
@@ -625,7 +621,8 @@ func buildIndex(bucket objstore.Bucket, tenantID string, logger log.Logger) erro
 		return fmt.Errorf("failed to upload index: %w", err)
 	}
 
-	if err := indexMetastoreToc.WriteEntry(context.Background(), key, minTime, maxTime); err != nil {
+	timeRange := multitenancy.TimeRange{Tenant: tenantID, MinTime: minTime, MaxTime: maxTime}
+	if err := indexMetastoreToc.WriteEntry(context.Background(), key, []multitenancy.TimeRange{timeRange}); err != nil {
 		return fmt.Errorf("failed to update index metastore: %w", err)
 	}
 
