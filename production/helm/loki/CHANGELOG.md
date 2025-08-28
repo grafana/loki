@@ -14,8 +14,14 @@ Entries should include a reference to the pull request that introduced the chang
 ## Unreleased
 
 - [ENHANCEMENT] Expand `extraObjects` to have more flexibility in templating [#13252](https://github.com/grafana/loki/pull/13252)
-- [FEATURE] Support separate loki ruler storage configuration [#18510](https://github.com/grafana/loki/pull/18510)
-- [ENHANCEMENT] add namespaceOverride [#18707](https://github.com/grafana/loki/pull/18707)
+
+## 6.38.0
+
+- [FEATURE] Make access modes for persistence on all PVCs and StatefulSets editable [#13474](https://github.com/grafana/loki/pull/13474)
+- [FEATURE] Allow enabling user namespaces [#18661](https://github.com/grafana/loki/pull/18661)
+- [FEATURE] Allow configuring service types. [#18708](https://github.com/grafana/loki/pull/18708)
+- [ENHANCEMENT] Add namespaceOverride [#18707](https://github.com/grafana/loki/pull/18707)
+- [BUGFIX] Use gateway container port as nginx server port [#18774](https://github.com/grafana/loki/pull/18774)
 
 ## 6.37.0
 
