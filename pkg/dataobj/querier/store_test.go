@@ -45,7 +45,7 @@ func TestStore_SelectSamples(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(ctx, t, builder)
-	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
+	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 
 	tests := []struct {
@@ -208,7 +208,7 @@ func TestStore_SelectLogs(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(ctx, t, builder)
-	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
+	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewLogfmtLogger(os.Stdout), meta)
 
 	tests := []struct {
@@ -467,7 +467,7 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	require.NoError(t, err)
 
 	// Create required directories for metastore
-	metastoreDir := filepath.Join(dir, "tenant-"+tenantID, "metastore")
+	metastoreDir := filepath.Join(dir, "tocs")
 	require.NoError(t, os.MkdirAll(metastoreDir, 0o755))
 
 	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
@@ -480,7 +480,7 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	}, nil)
 	require.NoError(t, err)
 
-	meta := metastore.NewTableOfContentsWriter(metastore.Config{}, bucket, log.NewNopLogger())
+	meta := metastore.NewTableOfContentsWriter(bucket, log.NewNopLogger())
 	require.NoError(t, meta.RegisterMetrics(prometheus.NewRegistry()))
 
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, log.NewNopLogger())

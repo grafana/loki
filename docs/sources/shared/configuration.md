@@ -1146,16 +1146,10 @@ dataobj:
     [events_per_index: <int> | default = 32]
 
   metastore:
-    storage:
-      # Experimental: A prefix to use for storing indexes in object storage.
-      # Used to separate the metastore & index files during initial testing.
-      # CLI flag: -dataobj-metastore.index-storage-prefix
-      [index_storage_prefix: <string> | default = "index/v0/"]
-
-      # Experimental: A list of tenant IDs to enable index building for. If
-      # empty, all tenants will be enabled.
-      # CLI flag: -dataobj-metastore.enabled-tenant-ids
-      [enabled_tenant_ids: <string> | default = ""]
+    # Experimental: A prefix to use for storing indexes in object storage. Used
+    # for testing only.
+    # CLI flag: -dataobj-metastore.index-storage-prefix
+    [index_storage_prefix: <string> | default = "index/v0"]
 
     # Experimental: The ratio of log partitions to metastore partitions. For
     # example, a value of 10 means there is 1 metastore partition for every 10

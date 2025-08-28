@@ -5,10 +5,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"slices"
 	"sync"
 	"time"
 
@@ -24,10 +24,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
+
+var ErrPartitionRevoked = errors.New("partition revoked")
 
 type Config struct {
 	indexobj.BuilderConfig `yaml:",inline"`
@@ -50,8 +53,23 @@ type downloadedObject struct {
 }
 
 const (
-	indexConsumerGroup = "metastore-event-reader"
+	indexConsumerGroup = "index-builder"
 )
+
+// An interface for the methods needed from a calculator. Useful for testing.
+type calculator interface {
+	Calculate(context.Context, log.Logger, *dataobj.Object, string) error
+	Flush() (*dataobj.Object, io.Closer, error)
+	TimeRanges() []multitenancy.TimeRange
+	Reset()
+}
+
+// An interface for the methods needed from a kafka client. Useful for testing.
+type kafkaClient interface {
+	PollRecords(context.Context, int) kgo.Fetches
+	CommitRecords(context.Context, ...*kgo.Record) error
+	Close()
+}
 
 type Builder struct {
 	services.Service
@@ -60,29 +78,34 @@ type Builder struct {
 	mCfg metastore.Config
 
 	// Kafka client and topic/partition info
-	client *kgo.Client
+	client kafkaClient
 	topic  string
 
 	// Processing pipeline
 	downloadQueue     chan metastore.ObjectWrittenEvent
 	downloadedObjects chan downloadedObject
-	calculator        *Calculator
+	calculator        calculator
+	tocWriter         *metastore.TableOfContentsWriter
 
-	bufferedEvents map[string][]metastore.ObjectWrittenEvent
+	bufferedEvents map[int32][]metastore.ObjectWrittenEvent
 
 	// Builder initialization
-	builderCfg   indexobj.BuilderConfig
-	bucket       objstore.Bucket
-	scratchStore scratch.Store
+	builderCfg         indexobj.BuilderConfig
+	objectBucket       objstore.Bucket
+	indexStorageBucket objstore.Bucket // The bucket to store the indexes might not be the same one as where we read the objects from
+	scratchStore       scratch.Store
 
 	// Metrics
 	metrics *indexBuilderMetrics
 
 	// Control and coordination
-	ctx    context.Context
-	cancel context.CancelCauseFunc
-	wg     sync.WaitGroup
-	logger log.Logger
+	ctx                        context.Context
+	cancel                     context.CancelCauseFunc
+	wg                         sync.WaitGroup
+	logger                     log.Logger
+	activeCalculationPartition int32
+	cancelActiveCalculation    context.CancelCauseFunc
+	partitionsMutex            sync.Mutex
 }
 
 func NewIndexBuilder(
@@ -95,8 +118,49 @@ func NewIndexBuilder(
 	scratchStore scratch.Store,
 	reg prometheus.Registerer,
 ) (*Builder, error) {
+	builderReg := prometheus.WrapRegistererWith(prometheus.Labels{
+		"topic":     kafkaCfg.Topic,
+		"component": "index_builder",
+	}, reg)
+
+	metrics := newIndexBuilderMetrics()
+	if err := metrics.register(builderReg); err != nil {
+		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
+	}
+
+	builder, err := indexobj.NewBuilder(cfg.BuilderConfig, scratchStore)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create index builder: %w", err)
+	}
+	calculator := NewCalculator(builder)
+
+	indexStorageBucket := objstore.NewPrefixedBucket(bucket, mCfg.IndexStoragePrefix)
+	tocWriter := metastore.NewTableOfContentsWriter(indexStorageBucket, logger)
+
+	if err := builder.RegisterMetrics(builderReg); err != nil {
+		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
+	}
+
+	// Set up queues to download the next object (I/O bound) while processing the current one (CPU bound) in order to maximize throughput.
+	// Setting the channel buffer sizes caps the total memory usage by only keeping up to 3 objects in memory at a time: One being processed, one fully downloaded and one being downloaded from the queue.
+	downloadQueue := make(chan metastore.ObjectWrittenEvent, cfg.EventsPerIndex)
+	downloadedObjects := make(chan downloadedObject, 1)
+
+	s := &Builder{
+		cfg:                cfg,
+		mCfg:               mCfg,
+		logger:             logger,
+		objectBucket:       bucket,
+		indexStorageBucket: indexStorageBucket,
+		tocWriter:          tocWriter,
+		downloadedObjects:  downloadedObjects,
+		downloadQueue:      downloadQueue,
+		metrics:            metrics,
+		calculator:         calculator,
+		bufferedEvents:     make(map[int32][]metastore.ObjectWrittenEvent),
+	}
+
 	kafkaCfg.AutoCreateTopicEnabled = true
-	kafkaCfg.AutoCreateTopicDefaultPartitions = 64
 	eventConsumerClient, err := client.NewReaderClient(
 		"index_builder",
 		kafkaCfg,
@@ -108,52 +172,43 @@ func NewIndexBuilder(
 		kgo.ConsumerGroup(indexConsumerGroup),
 		kgo.RebalanceTimeout(5*time.Minute),
 		kgo.DisableAutoCommit(),
+		kgo.OnPartitionsRevoked(s.handlePartitionsRevoked),
+		kgo.OnPartitionsAssigned(s.handlePartitionsAssigned),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka consumer client: %w", err)
 	}
-
-	reg = prometheus.WrapRegistererWith(prometheus.Labels{
-		"topic":     kafkaCfg.Topic,
-		"component": "index_builder",
-	}, reg)
-
-	metrics := newIndexBuilderMetrics()
-	if err := metrics.register(reg); err != nil {
-		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
-	}
-
-	builder, err := indexobj.NewBuilder(cfg.BuilderConfig, scratchStore)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create index builder: %w", err)
-	}
-	calculator := NewCalculator(builder)
-
-	if err := builder.RegisterMetrics(reg); err != nil {
-		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
-	}
-
-	// Set up queues to download the next object (I/O bound) while processing the current one (CPU bound) in order to maximize throughput.
-	// Setting the channel buffer sizes caps the total memory usage by only keeping up to 3 objects in memory at a time: One being processed, one fully downloaded and one being downloaded from the queue.
-	downloadQueue := make(chan metastore.ObjectWrittenEvent, cfg.EventsPerIndex)
-	downloadedObjects := make(chan downloadedObject, 1)
-
-	s := &Builder{
-		cfg:               cfg,
-		mCfg:              mCfg,
-		client:            eventConsumerClient,
-		logger:            logger,
-		bucket:            bucket,
-		downloadedObjects: downloadedObjects,
-		downloadQueue:     downloadQueue,
-		metrics:           metrics,
-		calculator:        calculator,
-		bufferedEvents:    make(map[string][]metastore.ObjectWrittenEvent),
-	}
+	s.client = eventConsumerClient
 
 	s.Service = services.NewBasicService(nil, s.run, s.stopping)
 
 	return s, nil
+}
+
+func (p *Builder) handlePartitionsAssigned(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
+
+	for _, partitions := range topics {
+		for _, partition := range partitions {
+			p.bufferedEvents[partition] = make([]metastore.ObjectWrittenEvent, 0)
+		}
+	}
+}
+
+// This is not thread-safe
+func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
+
+	for _, partitions := range topics {
+		for _, partition := range partitions {
+			delete(p.bufferedEvents, partition)
+			if p.activeCalculationPartition == partition && p.cancelActiveCalculation != nil {
+				p.cancelActiveCalculation(ErrPartitionRevoked)
+			}
+		}
+	}
 }
 
 func (p *Builder) run(ctx context.Context) error {
@@ -167,7 +222,7 @@ func (p *Builder) run(ctx context.Context) error {
 			objLogger := log.With(p.logger, "object_path", event.ObjectPath)
 			downloadStart := time.Now()
 
-			objectReader, err := p.bucket.Get(p.ctx, event.ObjectPath)
+			objectReader, err := p.objectBucket.Get(p.ctx, event.ObjectPath)
 			if err != nil {
 				p.downloadedObjects <- downloadedObject{
 					event: event,
@@ -224,38 +279,86 @@ func (p *Builder) stopping(failureCase error) error {
 	return nil
 }
 
+// processRecord processes a single record. It is not safe for concurrent use.
 func (p *Builder) processRecord(record *kgo.Record) {
-	event := &metastore.ObjectWrittenEvent{}
-	if err := event.Unmarshal(record.Value); err != nil {
-		level.Error(p.logger).Log("msg", "failed to unmarshal metastore event", "err", err)
+	calculationCtx, eventsToIndex := p.appendRecord(record)
+	if len(eventsToIndex) < p.cfg.EventsPerIndex {
 		return
 	}
-	p.bufferedEvents[event.Tenant] = append(p.bufferedEvents[event.Tenant], *event)
-	level.Info(p.logger).Log("msg", "buffered new event for tenant", "count", len(p.bufferedEvents[event.Tenant]), "tenant", event.Tenant)
 
-	if len(p.bufferedEvents[event.Tenant]) >= p.cfg.EventsPerIndex {
-		if !slices.Contains(p.mCfg.Storage.EnabledTenantIDs, event.Tenant) {
-			// TODO(benclive): Remove this check once builders handle multi-tenancy when building indexes.
-			level.Info(p.logger).Log("msg", "skipping index build for disabled tenant", "tenant", event.Tenant)
-			p.bufferedEvents[event.Tenant] = p.bufferedEvents[event.Tenant][:0]
+	defer p.cleanupPartition(record.Partition)
+
+	// Build the index.
+	err := p.buildIndex(calculationCtx, eventsToIndex)
+	if err != nil {
+		if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
+			level.Debug(p.logger).Log("msg", "partition revoked, aborting index build", "partition", p.activeCalculationPartition)
 			return
 		}
-		err := p.buildIndex(p.bufferedEvents[event.Tenant][:len(p.bufferedEvents[event.Tenant])])
-		if err != nil {
-			// TODO(benclive): Improve error handling for failed index builds.
-			panic(err)
-		}
+		level.Error(p.logger).Log("msg", "failed to build index", "err", err, "partition", p.activeCalculationPartition)
+		return
+	}
 
-		if err := p.commitRecords(record); err != nil {
-			level.Warn(p.logger).Log("msg", "failed to commit records", "err", err)
+	// Commit back to the partition we just built. This is always the record we just received, otherwise we would not have triggered the build.
+	if err := p.commitRecords(calculationCtx, record); err != nil {
+		if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
+			level.Debug(p.logger).Log("msg", "partition revoked, aborting index commit", "partition", p.activeCalculationPartition)
 			return
 		}
-		p.bufferedEvents[event.Tenant] = p.bufferedEvents[event.Tenant][:0]
+		level.Error(p.logger).Log("msg", "failed to commit records", "err", err, "partition", p.activeCalculationPartition)
+		return
 	}
 }
 
-func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
-	level.Info(p.logger).Log("msg", "building index", "events", len(events), "tenant", events[0].Tenant)
+// Appends a record and returns a slice of records to index. The slice will be empty if no indexing is required.
+func (p *Builder) appendRecord(record *kgo.Record) (context.Context, []metastore.ObjectWrittenEvent) {
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
+
+	event := &metastore.ObjectWrittenEvent{}
+	if err := event.Unmarshal(record.Value); err != nil {
+		level.Error(p.logger).Log("msg", "failed to unmarshal metastore event", "err", err)
+		return nil, nil
+	}
+
+	_, ok := p.bufferedEvents[record.Partition]
+	if !ok {
+		// We don't own this partition anymore as it was just revoked. Abort further processing.
+		return nil, nil
+	}
+
+	p.bufferedEvents[record.Partition] = append(p.bufferedEvents[record.Partition], *event)
+	level.Debug(p.logger).Log("msg", "buffered new event for partition", "count", len(p.bufferedEvents[record.Partition]), "partition", record.Partition)
+
+	if len(p.bufferedEvents[record.Partition]) < p.cfg.EventsPerIndex {
+		// No more work to do
+		return nil, nil
+	}
+
+	var calculationCtx context.Context
+	eventsToIndex := make([]metastore.ObjectWrittenEvent, len(p.bufferedEvents[record.Partition]))
+	copy(eventsToIndex, p.bufferedEvents[record.Partition])
+
+	p.activeCalculationPartition = record.Partition
+	calculationCtx, p.cancelActiveCalculation = context.WithCancelCause(p.ctx)
+
+	return calculationCtx, eventsToIndex
+}
+
+func (p *Builder) cleanupPartition(partition int32) {
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
+
+	p.cancelActiveCalculation(nil)
+
+	if _, ok := p.bufferedEvents[partition]; ok {
+		// We still own this partition, so truncate the events for future processing.
+		p.bufferedEvents[partition] = p.bufferedEvents[partition][:0]
+	}
+}
+
+func (p *Builder) buildIndex(ctx context.Context, events []metastore.ObjectWrittenEvent) error {
+	level.Debug(p.logger).Log("msg", "building index", "events", len(events), "partition", p.activeCalculationPartition)
 	start := time.Now()
 
 	// Observe processing delay
@@ -276,7 +379,7 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 	for i := 0; i < len(events); i++ {
 		obj := <-p.downloadedObjects
 		objLogger := log.With(p.logger, "object_path", obj.event.ObjectPath)
-		level.Info(objLogger).Log("msg", "processing object")
+		level.Debug(objLogger).Log("msg", "processing object")
 
 		if obj.err != nil {
 			processingErrors.Add(fmt.Errorf("failed to download object: %w", obj.err))
@@ -289,7 +392,7 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 			continue
 		}
 
-		if err := p.calculator.Calculate(p.ctx, objLogger, reader, obj.event.ObjectPath); err != nil {
+		if err := p.calculator.Calculate(ctx, objLogger, reader, obj.event.ObjectPath); err != nil {
 			processingErrors.Add(fmt.Errorf("failed to calculate index: %w", err))
 			continue
 		}
@@ -306,38 +409,32 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 	}
 	defer closer.Close()
 
-	key, err := ObjectKey(p.ctx, events[0].Tenant, obj)
+	key, err := ObjectKey(ctx, obj)
 	if err != nil {
 		return fmt.Errorf("failed to generate object key: %w", err)
 	}
 
-	reader, err := obj.Reader(p.ctx)
+	reader, err := obj.Reader(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to read object: %w", err)
 	}
 	defer reader.Close()
 
-	{
-		// We always need to upload to the index storage bucket
-		indexUploadBucket := objstore.NewPrefixedBucket(p.bucket, p.mCfg.Storage.IndexStoragePrefix)
-		if err := indexUploadBucket.Upload(p.ctx, key, reader); err != nil {
-			return fmt.Errorf("failed to upload index: %w", err)
-		}
+	if err := p.indexStorageBucket.Upload(ctx, key, reader); err != nil {
+		return fmt.Errorf("failed to upload index: %w", err)
 	}
 
-	// The ToC writer will conditionally apply the prefix for enabled tenants, so we need to use the base bucket to avoid double prefixing.
-	// In this case, it will always apply the prefix here because we only build indexes for enabled tenants.
-	metastoreTocWriter := metastore.NewTableOfContentsWriter(p.mCfg, p.bucket, p.logger)
+	metastoreTocWriter := metastore.NewTableOfContentsWriter(p.indexStorageBucket, p.logger)
 	if err := metastoreTocWriter.WriteEntry(p.ctx, key, tenantTimeRanges); err != nil {
 		return fmt.Errorf("failed to update metastore ToC file: %w", err)
 	}
 
-	level.Info(p.logger).Log("msg", "finished building index", "tenant", events[0].Tenant, "events", len(events), "size", obj.Size(), "duration", time.Since(start))
+	level.Debug(p.logger).Log("msg", "finished building new index file", "partition", p.activeCalculationPartition, "events", len(events), "size", obj.Size(), "duration", time.Since(start), "tenants", len(tenantTimeRanges), "path", key)
 	return nil
 }
 
 // ObjectKey determines the key in object storage to upload the object to, based on our path scheme.
-func ObjectKey(ctx context.Context, tenantID string, object *dataobj.Object) (string, error) {
+func ObjectKey(ctx context.Context, object *dataobj.Object) (string, error) {
 	h := sha256.New224()
 
 	reader, err := object.Reader(ctx)
@@ -351,14 +448,14 @@ func ObjectKey(ctx context.Context, tenantID string, object *dataobj.Object) (st
 	}
 
 	var sumBytes [sha256.Size224]byte
-	sum := h.Sum(sumBytes[:])
+	sum := h.Sum(sumBytes[:0])
 	sumStr := hex.EncodeToString(sum[:])
 
-	return fmt.Sprintf("tenant-%s/indexes/%s/%s", tenantID, sumStr[:2], sumStr[2:]), nil
+	return fmt.Sprintf("indexes/%s/%s", sumStr[:2], sumStr[2:]), nil
 }
 
-func (p *Builder) commitRecords(record *kgo.Record) error {
-	backoff := backoff.New(p.ctx, backoff.Config{
+func (p *Builder) commitRecords(ctx context.Context, record *kgo.Record) error {
+	backoff := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: 10 * time.Second,
 		MaxRetries: 20,
@@ -368,7 +465,7 @@ func (p *Builder) commitRecords(record *kgo.Record) error {
 	backoff.Reset()
 	for backoff.Ongoing() {
 		p.metrics.incCommitsTotal()
-		err := p.client.CommitRecords(p.ctx, record)
+		err := p.client.CommitRecords(ctx, record)
 		if err == nil {
 			return nil
 		}

@@ -8,7 +8,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/grafana/dskit/tenant"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
@@ -74,33 +73,7 @@ func (c *MetastoreCatalog) ResolveDataObjWithShard(selector Expression, predicat
 		return nil, nil, nil, errors.New("no metastore to resolve objects")
 	}
 
-	tenants, err := tenant.TenantIDs(c.ctx)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	switch c.metastore.ResolveStrategy(tenants) {
-	case metastore.ResolveStrategyTypeDirect:
-		return c.resolveDataObj(selector, shard, from, through)
-	case metastore.ResolveStrategyTypeIndex:
-		return c.resolveDataObjWithIndex(selector, predicates, shard, from, through)
-	default:
-		return nil, nil, nil, fmt.Errorf("invalid catalogue type: %d", c.metastore.ResolveStrategy(tenants))
-	}
-}
-
-func (c *MetastoreCatalog) resolveDataObj(selector Expression, shard ShardInfo, from, through time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
-	matchers, err := expressionToMatchers(selector, false)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to convert selector expression into matchers: %w", err)
-	}
-
-	paths, streamIDs, numSections, err := c.metastore.StreamIDs(c.ctx, from, through, matchers...)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to resolve data object locations: %w", err)
-	}
-
-	return filterForShard(shard, paths, streamIDs, numSections)
+	return c.resolveDataObjWithIndex(selector, predicates, shard, from, through)
 }
 
 func filterForShard(shard ShardInfo, paths []string, streamIDs [][]int64, numSections []int) ([]DataObjLocation, [][]int64, [][]int, error) {
