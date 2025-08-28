@@ -98,18 +98,22 @@ func (c *consumer) pollFetches(ctx context.Context) error {
 		}
 	}
 	// We also need to check if there are errors from the fetches. However,
-	// just because an error occurred, this does not mean we fetched no
-	// records. It is possible to have errors for some fetches and records
-	// for others at the same time.
-	var lastFetchErr error
+	// just because a fetch failed, it does not mean we fetched no records.
+	// It is possible to have errors for some fetches and records for others
+	// at the same time.
+	var numFetchErrs int
 	fetches.EachError(func(topic string, partition int32, err error) {
 		level.Error(c.logger).Log("msg", "failed to fetch records", "topic", topic, "partition", partition, "err", err.Error())
-		lastFetchErr = err
+		numFetchErrs++
 	})
-	// If all fetches returned an error we should also return an error so the
-	// caller can choose to backoff between attempts.
-	if lastFetchErr != nil && fetches.Empty() {
-		return errors.New("all fetches returned errors, no records fetched")
+	// If we fetched no records, we can assume this is because all fetches
+	// failed. We return an error so the caller can decide whether to backoff
+	// between attempts.
+	if fetches.Empty() {
+		if numFetchErrs > 0 {
+			return fmt.Errorf("no records fetched, %d fetches failed", numFetchErrs)
+		}
+		return errors.New("no records fetched")
 	}
 	fetches.EachPartition(c.processFetchTopicPartition(ctx))
 	return nil
