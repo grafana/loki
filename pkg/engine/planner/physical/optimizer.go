@@ -322,7 +322,7 @@ func (r *parseKeysPushdown) pushKeysToParseNodes(node Node, keys []string) bool 
 		for _, k := range node.RequestedKeys {
 			existingKeys[k] = true
 		}
-		
+
 		// Add new keys
 		changed := false
 		for _, k := range keys {
@@ -331,7 +331,7 @@ func (r *parseKeysPushdown) pushKeysToParseNodes(node Node, keys []string) bool 
 				changed = true
 			}
 		}
-		
+
 		if changed {
 			// Convert back to sorted slice
 			newKeys := make([]string, 0, len(existingKeys))
@@ -343,7 +343,7 @@ func (r *parseKeysPushdown) pushKeysToParseNodes(node Node, keys []string) bool 
 		}
 		return changed
 	}
-	
+
 	// Not a ParseNode - continue searching in children
 	anyChanged := false
 	for _, child := range r.plan.Children(node) {
@@ -358,7 +358,7 @@ func extractKeysFromFilter(node *Filter) []string {
 	columns := extractColumnsFromPredicates(node.Predicates)
 	keysMap := make(map[string]bool)
 	collectAmbiguousColumns(columns, keysMap)
-	
+
 	keys := make([]string, 0, len(keysMap))
 	for k := range keysMap {
 		keys = append(keys, k)
@@ -370,7 +370,7 @@ func extractKeysFromFilter(node *Filter) []string {
 func extractKeysFromVectorAggregation(node *VectorAggregation) []string {
 	keysMap := make(map[string]bool)
 	collectAmbiguousColumns(node.GroupBy, keysMap)
-	
+
 	keys := make([]string, 0, len(keysMap))
 	for k := range keysMap {
 		keys = append(keys, k)
@@ -382,7 +382,7 @@ func extractKeysFromVectorAggregation(node *VectorAggregation) []string {
 func extractKeysFromRangeAggregation(node *RangeAggregation) []string {
 	keysMap := make(map[string]bool)
 	collectAmbiguousColumns(node.PartitionBy, keysMap)
-	
+
 	keys := make([]string, 0, len(keysMap))
 	for k := range keysMap {
 		keys = append(keys, k)

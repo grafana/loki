@@ -15,8 +15,8 @@ import (
 // Returns the column headers, the Arrow columns, and any error
 func BuildLogfmtColumns(input *array.String, requestedKeys []string, allocator memory.Allocator) ([]string, []arrow.Array) {
 	var columnOrder []string
+	var errorList []error
 	columnBuilders := make(map[string]*array.StringBuilder)
-	errorList := make([]error, 0, input.Len())
 	hasAnyError := false
 
 	if len(requestedKeys) > 0 {
