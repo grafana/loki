@@ -13,12 +13,11 @@ func TestParseInstruction(t *testing.T) {
 			id: "make_table_1",
 		}
 
-		// Create Parse instruction with parser type and requested keys
+		// Create Parse instruction with parser type
 		parse := &Parse{
-			id:            "parse_1",
-			Table:         makeTable,
-			Kind:          ParserLogfmt,
-			RequestedKeys: []string{"level", "status"},
+			id:    "parse_1",
+			Table: makeTable,
+			Kind:  ParserLogfmt,
 		}
 
 		// Create a logical plan
@@ -33,7 +32,6 @@ func TestParseInstruction(t *testing.T) {
 
 		parsedInstruction := plan.Instructions[0].(*Parse)
 		require.Equal(t, ParserLogfmt, parsedInstruction.Kind)
-		require.Equal(t, []string{"level", "status"}, parsedInstruction.RequestedKeys)
 		require.Equal(t, "parse_1", parsedInstruction.Name())
 		require.NotNil(t, parsedInstruction.Table)
 	})

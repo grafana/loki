@@ -27,7 +27,7 @@ func BuildPlan(params logql.Params) (*Plan, error) {
 
 	switch e := params.GetExpression().(type) {
 	case syntax.LogSelectorExpr:
-		builder, err = buildPlanForLogQuery(e, params, false, 0, nil, nil)
+		builder, err = buildPlanForLogQuery(e, params, false, 0)
 	case syntax.SampleExpr:
 		builder, err = buildPlanForSampleQuery(e, params)
 	default:
@@ -44,14 +44,11 @@ func BuildPlan(params logql.Params) (*Plan, error) {
 // buildPlanForLogQuery builds logical plan operations by traversing [syntax.LogSelectorExpr]
 // isMetricQuery should be set to true if this expr is encountered when processing a [syntax.SampleExpr].
 // rangeInterval should be set to a non-zero value if the query contains [$range].
-// requestedKeys and numericHints are used for metric queries to specify what to parse.
 func buildPlanForLogQuery(
 	expr syntax.LogSelectorExpr,
 	params logql.Params,
 	isMetricQuery bool,
 	rangeInterval time.Duration,
-	requiredKeys []string,
-	numericHints map[string]NumericType,
 ) (*Builder, error) {
 	var (
 		err             error
@@ -114,11 +111,7 @@ func buildPlanForLogQuery(
 
 	// Add Parse instruction if logfmt was detected
 	if hasLogfmtParser {
-		filterKeys, _ := collectLogfmtFilterKeys(expr)
-		//TODO(twhitney): key collection functions sort the keys, so we should add logic that relies on them being sorted to merge them
-		// sorted, while removing duplicates
-		requiredKeys = append(requiredKeys, filterKeys...)
-		builder = builder.Parse(ParserLogfmt, requiredKeys, numericHints)
+		builder = builder.Parse(ParserLogfmt)
 	}
 
 	direction := params.Direction()
@@ -160,12 +153,15 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 		return nil, fmt.Errorf("only instant metric queries are supported: %w", errUnimplemented)
 	}
 
-	// Collect metric-specific keys (groupBy and unwrap) from the full sample expression
-	metricKeys, stringHints := collectLogfmtMetricKeys(e)
+	// Extract stream labels early so we can use them for column type determination
+	logSelectorExpr, err := e.Selector()
+	if err != nil {
+		return nil, err
+	}
+	streamLabels := extractStreamLabels(logSelectorExpr)
 
 	var (
-		err error
-
+		walkErr       error
 		rangeAggType  types.RangeAggregationType
 		rangeInterval time.Duration
 
@@ -185,7 +181,7 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 			// only count operation is supported for range aggregation.
 			// offsets are not yet supported.
 			if e.Operation != syntax.OpRangeTypeCount || e.Left.Offset != 0 {
-				err = errUnimplemented
+				walkErr = errUnimplemented
 				return false
 			}
 
@@ -198,14 +194,19 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 			// grouping by atleast one label is required.
 			if e.Operation != syntax.OpTypeSum ||
 				e.Grouping == nil || len(e.Grouping.Groups) == 0 || e.Grouping.Without {
-				err = errUnimplemented
+				walkErr = errUnimplemented
 				return false
 			}
 
 			vecAggType = types.VectorAggregationTypeSum
 			groupBy = make([]ColumnRef, 0, len(e.Grouping.Groups))
 			for _, group := range e.Grouping.Groups {
-				groupBy = append(groupBy, *NewColumnRef(group, types.ColumnTypeAmbiguous))
+				// Determine column type based on whether it's a stream label
+				colType := types.ColumnTypeAmbiguous
+				if streamLabels[group] {
+					colType = types.ColumnTypeLabel
+				}
+				groupBy = append(groupBy, *NewColumnRef(group, colType))
 			}
 
 			return true
@@ -214,24 +215,17 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 			return true
 		}
 	})
-	if err != nil {
-		return nil, err
+	if walkErr != nil {
+		return nil, walkErr
 	}
 
 	if rangeAggType == types.RangeAggregationTypeInvalid || vecAggType == types.VectorAggregationTypeInvalid {
 		return nil, errUnimplemented
 	}
 
-	logSelectorExpr, err := e.Selector()
-	if err != nil {
-		return nil, err
-	}
-
-	// Pass metric keys and hints to buildPlanForLogQuery
-	numericHints := convertStringHintsToNumericType(stringHints)
-	builder, err := buildPlanForLogQuery(logSelectorExpr, params, true, rangeInterval, metricKeys, numericHints)
-	if err != nil {
-		return nil, err
+	builder, walkErr := buildPlanForLogQuery(logSelectorExpr, params, true, rangeInterval)
+	if walkErr != nil {
+		return nil, walkErr
 	}
 
 	// Parse instruction is now added in buildPlanForLogQuery
@@ -241,6 +235,19 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 	).VectorAggregation(groupBy, vecAggType)
 
 	return builder, nil
+}
+
+// extractStreamLabels extracts the label names from a stream selector
+func extractStreamLabels(selector syntax.LogSelectorExpr) map[string]bool {
+	labels := make(map[string]bool)
+
+	// Get matchers from the selector
+	matchers := selector.Matchers()
+	for _, matcher := range matchers {
+		labels[matcher.Name] = true
+	}
+
+	return labels
 }
 
 func convertLabelMatchers(matchers []*labels.Matcher) Value {
@@ -417,29 +424,4 @@ func parseShards(shards []string) (*ShardInfo, error) {
 		return noShard, fmt.Errorf("unsupported shard variant: %s", variant)
 	}
 	return NewShard(parsed[0].PowerOfTwo.Shard, parsed[0].PowerOfTwo.Of), nil
-}
-
-// convertStringHintsToNumericType converts string type hints from the key collector
-// to NumericType values for the Parse instruction.
-func convertStringHintsToNumericType(hints map[string]string) map[string]NumericType {
-	if hints == nil {
-		return nil
-	}
-
-	numericHints := make(map[string]NumericType)
-	for key, hint := range hints {
-		// getUnwrapTypeHint only returns TypeHintInt64, TypeHintFloat64, or TypeHintDuration
-		switch hint {
-		case TypeHintInt64:
-			numericHints[key] = NumericInt64
-		case TypeHintFloat64:
-			numericHints[key] = NumericFloat64
-		case TypeHintDuration:
-			// Duration fields are parsed as strings initially, then cast to float64 seconds
-			numericHints[key] = NumericFloat64
-		}
-		// No default case - we only handle the types that getUnwrapTypeHint can return
-	}
-
-	return numericHints
 }

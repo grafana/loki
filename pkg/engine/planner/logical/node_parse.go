@@ -10,18 +10,21 @@ import (
 type ParserKind int
 
 const (
-	ParserLogfmt ParserKind = iota
+	ParserInvalid ParserKind = iota
+	ParserLogfmt
 	ParserJSON
 )
 
-// NumericType represents the numeric type to cast a parsed field to
-type NumericType int
-
-const (
-	NumericNone NumericType = iota
-	NumericInt64
-	NumericFloat64
-)
+func (p *ParserKind) String() string {
+	switch *p {
+	case ParserLogfmt:
+		return "logfmt"
+	case ParserJSON:
+		return "json"
+	default:
+		return "invalid"
+	}
+}
 
 // Parse represents a parsing instruction that extracts fields from log lines.
 // It takes a table relation as input and produces a new table relation with
@@ -29,10 +32,8 @@ const (
 type Parse struct {
 	id string
 
-	Table         Value // The table relation to parse from
-	Kind          ParserKind
-	RequestedKeys []string
-	NumericHints  map[string]NumericType // Fields that should be cast to numeric types
+	Table Value // The table relation to parse from
+	Kind  ParserKind
 }
 
 // Name returns an identifier for the Parse operation.
@@ -45,13 +46,11 @@ func (p *Parse) Name() string {
 
 // String returns the string representation of the Parse instruction
 func (p *Parse) String() string {
-	return fmt.Sprintf("PARSE %s [kind=%v, keys=%v]", p.Table.Name(), p.Kind, p.RequestedKeys)
+	return fmt.Sprintf("PARSE %s [kind=%v]", p.Table.Name(), p.Kind)
 }
 
 // Schema returns the schema of the Parse operation.
-// Parse adds columns for the requested keys to the input table schema.
 func (p *Parse) Schema() *schema.Schema {
-	// For now, return the input schema. We'll enhance this when we implement column registration.
 	return p.Table.Schema()
 }
 

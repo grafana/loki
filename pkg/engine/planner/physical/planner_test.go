@@ -275,8 +275,6 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		},
 	).Parse(
 		logical.ParserLogfmt,
-		[]string{"level", "status"},
-		nil,
 	).Select(
 		&logical.BinOp{
 			Left:  logical.NewColumnRef("level", types.ColumnTypeParsed),
@@ -312,7 +310,8 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 	parseNode, ok := children[0].(*ParseNode)
 	require.True(t, ok, "Filter's child should be ParseNode")
 	require.Equal(t, logical.ParserLogfmt, parseNode.Kind)
-	require.Equal(t, []string{"level", "status"}, parseNode.RequestedKeys)
+	// RequestedKeys will be set by the optimizer, not during conversion
+	require.Empty(t, parseNode.RequestedKeys)
 }
 
 func TestPlanner_Convert_RangeAggregations(t *testing.T) {
