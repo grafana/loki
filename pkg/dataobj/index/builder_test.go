@@ -206,7 +206,7 @@ func TestIndexBuilder(t *testing.T) {
 func readAllSectionPointers(t *testing.T, bucket objstore.Bucket) []pointers.SectionPointer {
 	var out []pointers.SectionPointer
 
-	err := bucket.Iter(context.Background(), "multi-tenant/indexes/", func(name string) error {
+	err := bucket.Iter(context.Background(), "indexes/", func(name string) error {
 		objReader, err := bucket.Get(context.Background(), name)
 		require.NoError(t, err)
 		defer objReader.Close()

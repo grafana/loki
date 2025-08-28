@@ -119,20 +119,20 @@ func TestIterTableOfContentsPaths(t *testing.T) {
 			name:     "within single window",
 			start:    now,
 			end:      now.Add(1 * time.Hour),
-			expected: []string{"tables-of-contents/2025-01-01T12_00_00Z.toc"},
+			expected: []string{"tocs/2025-01-01T12_00_00Z.toc"},
 		},
 		{
 			name:     "same start and end",
 			start:    now,
 			end:      now,
-			expected: []string{"tables-of-contents/2025-01-01T12_00_00Z.toc"},
+			expected: []string{"tocs/2025-01-01T12_00_00Z.toc"},
 		},
 		{
 			name:  "begin at start of window",
 			start: now.Add(-3 * time.Hour),
 			end:   now,
 			expected: []string{
-				"tables-of-contents/2025-01-01T12_00_00Z.toc",
+				"tocs/2025-01-01T12_00_00Z.toc",
 			},
 		},
 		{
@@ -140,8 +140,8 @@ func TestIterTableOfContentsPaths(t *testing.T) {
 			start: now.Add(-4 * time.Hour),
 			end:   now.Add(-3 * time.Hour),
 			expected: []string{
-				"tables-of-contents/2025-01-01T00_00_00Z.toc",
-				"tables-of-contents/2025-01-01T12_00_00Z.toc",
+				"tocs/2025-01-01T00_00_00Z.toc",
+				"tocs/2025-01-01T12_00_00Z.toc",
 			},
 		},
 		{
@@ -149,8 +149,8 @@ func TestIterTableOfContentsPaths(t *testing.T) {
 			start: now.Add(-12 * time.Hour),
 			end:   now,
 			expected: []string{
-				"tables-of-contents/2025-01-01T00_00_00Z.toc",
-				"tables-of-contents/2025-01-01T12_00_00Z.toc",
+				"tocs/2025-01-01T00_00_00Z.toc",
+				"tocs/2025-01-01T12_00_00Z.toc",
 			},
 		},
 		{
@@ -158,11 +158,11 @@ func TestIterTableOfContentsPaths(t *testing.T) {
 			start: now,
 			end:   now.Add(48 * time.Hour),
 			expected: []string{
-				"tables-of-contents/2025-01-01T12_00_00Z.toc",
-				"tables-of-contents/2025-01-02T00_00_00Z.toc",
-				"tables-of-contents/2025-01-02T12_00_00Z.toc",
-				"tables-of-contents/2025-01-03T00_00_00Z.toc",
-				"tables-of-contents/2025-01-03T12_00_00Z.toc",
+				"tocs/2025-01-01T12_00_00Z.toc",
+				"tocs/2025-01-02T00_00_00Z.toc",
+				"tocs/2025-01-02T12_00_00Z.toc",
+				"tocs/2025-01-03T00_00_00Z.toc",
+				"tocs/2025-01-03T12_00_00Z.toc",
 			},
 		},
 		{
@@ -170,9 +170,9 @@ func TestIterTableOfContentsPaths(t *testing.T) {
 			start: time.Date(2024, 12, 31, 3, 0, 0, 0, time.UTC),
 			end:   time.Date(2025, 1, 1, 9, 0, 0, 0, time.UTC),
 			expected: []string{
-				"tables-of-contents/2024-12-31T00_00_00Z.toc",
-				"tables-of-contents/2024-12-31T12_00_00Z.toc",
-				"tables-of-contents/2025-01-01T00_00_00Z.toc",
+				"tocs/2024-12-31T00_00_00Z.toc",
+				"tocs/2024-12-31T12_00_00Z.toc",
+				"tocs/2025-01-01T00_00_00Z.toc",
 			},
 		},
 	} {

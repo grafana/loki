@@ -21,7 +21,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -46,10 +45,6 @@ type producer interface {
 	ProduceSync(ctx context.Context, records ...*kgo.Record) kgo.ProduceResults
 }
 
-type tocWriter interface {
-	WriteEntry(ctx context.Context, dataobjPath string, timeRanges []multitenancy.TimeRange) error
-}
-
 type partitionProcessor struct {
 	// Kafka client and topic/partition info
 	committer committer
@@ -60,11 +55,10 @@ type partitionProcessor struct {
 	records chan *kgo.Record
 	// lastRecord contains the last record appended to the builder. It is used
 	// to commit the correct offset after a flush.
-	lastRecord         *kgo.Record
-	builder            builder
-	decoder            *kafka.Decoder
-	uploader           *uploader.Uploader
-	metastoreTocWriter tocWriter
+	lastRecord *kgo.Record
+	builder    builder
+	decoder    *kafka.Decoder
+	uploader   *uploader.Uploader
 
 	// Builder initialization
 	builderOnce  sync.Once
@@ -137,11 +131,6 @@ func newPartitionProcessor(
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
 
-	metastoreTocWriter := metastore.NewTableOfContentsWriter(bucket, logger)
-	if err := metastoreTocWriter.RegisterMetrics(reg); err != nil {
-		level.Error(logger).Log("msg", "failed to register metastore updater metrics", "err", err)
-	}
-
 	return &partitionProcessor{
 		committer:               client,
 		logger:                  log.With(logger, "topic", topic, "partition", partition, "tenant", tenantID),
@@ -158,7 +147,6 @@ func newPartitionProcessor(
 		tenantID:                []byte(tenantID),
 		metrics:                 metrics,
 		uploader:                uploader,
-		metastoreTocWriter:      metastoreTocWriter,
 		idleFlushTimeout:        idleFlushTimeout,
 		eventsProducerClient:    eventsProducerClient,
 		clock:                   quartz.NewReal(),

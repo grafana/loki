@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"strings"
 	"sync"
 	"time"
 
@@ -186,16 +185,7 @@ func NewIndexBuilder(
 	return s, nil
 }
 
-func asString(partitions map[string][]int32) string {
-	out := []string{}
-	for topic, partitions := range partitions {
-		out = append(out, fmt.Sprintf("%s: %v", topic, partitions))
-	}
-	return strings.Join(out, ", ")
-}
-
 func (p *Builder) handlePartitionsAssigned(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
-	level.Info(p.logger).Log("msg", "partitions assigned", "partitions", asString(topics))
 	p.partitionsMutex.Lock()
 	defer p.partitionsMutex.Unlock()
 
@@ -208,7 +198,6 @@ func (p *Builder) handlePartitionsAssigned(_ context.Context, _ *kgo.Client, top
 
 // This is not thread-safe
 func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
-	level.Info(p.logger).Log("msg", "partitions revoked", "partitions", asString(topics))
 	p.partitionsMutex.Lock()
 	defer p.partitionsMutex.Unlock()
 
@@ -290,6 +279,7 @@ func (p *Builder) stopping(failureCase error) error {
 	return nil
 }
 
+// processRecord processes a single record. It is not safe for concurrent use.
 func (p *Builder) processRecord(record *kgo.Record) {
 	calculationCtx, eventsToIndex := p.appendRecord(record)
 	if len(eventsToIndex) < p.cfg.EventsPerIndex {
@@ -302,7 +292,7 @@ func (p *Builder) processRecord(record *kgo.Record) {
 	err := p.buildIndex(calculationCtx, eventsToIndex)
 	if err != nil {
 		if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
-			level.Info(p.logger).Log("msg", "partition revoked, aborting index build", "partition", p.activeCalculationPartition)
+			level.Debug(p.logger).Log("msg", "partition revoked, aborting index build", "partition", p.activeCalculationPartition)
 			return
 		}
 		level.Error(p.logger).Log("msg", "failed to build index", "err", err, "partition", p.activeCalculationPartition)
@@ -312,7 +302,7 @@ func (p *Builder) processRecord(record *kgo.Record) {
 	// Commit back to the partition we just built. This is always the record we just received, otherwise we would not have triggered the build.
 	if err := p.commitRecords(calculationCtx, record); err != nil {
 		if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
-			level.Info(p.logger).Log("msg", "partition revoked, aborting index commit", "partition", p.activeCalculationPartition)
+			level.Debug(p.logger).Log("msg", "partition revoked, aborting index commit", "partition", p.activeCalculationPartition)
 			return
 		}
 		level.Error(p.logger).Log("msg", "failed to commit records", "err", err, "partition", p.activeCalculationPartition)
@@ -338,7 +328,7 @@ func (p *Builder) appendRecord(record *kgo.Record) (context.Context, []metastore
 	}
 
 	p.bufferedEvents[record.Partition] = append(p.bufferedEvents[record.Partition], *event)
-	level.Info(p.logger).Log("msg", "buffered new event for partition", "count", len(p.bufferedEvents[record.Partition]), "partition", record.Partition)
+	level.Debug(p.logger).Log("msg", "buffered new event for partition", "count", len(p.bufferedEvents[record.Partition]), "partition", record.Partition)
 
 	if len(p.bufferedEvents[record.Partition]) < p.cfg.EventsPerIndex {
 		// No more work to do
@@ -361,16 +351,14 @@ func (p *Builder) cleanupPartition(partition int32) {
 
 	p.cancelActiveCalculation(nil)
 
-	if _, ok := p.bufferedEvents[partition]; !ok {
-		// We don't own this partition anymore as it was just revoked. The revocation process has already cleaned up any map entries.
-		return
+	if _, ok := p.bufferedEvents[partition]; ok {
+		// We still own this partition, so truncate the events for future processing.
+		p.bufferedEvents[partition] = p.bufferedEvents[partition][:0]
 	}
-	// We still own this partition, just truncate the events for future processing.
-	p.bufferedEvents[partition] = p.bufferedEvents[partition][:0]
 }
 
 func (p *Builder) buildIndex(ctx context.Context, events []metastore.ObjectWrittenEvent) error {
-	level.Info(p.logger).Log("msg", "building index", "events", len(events), "partition", p.activeCalculationPartition)
+	level.Debug(p.logger).Log("msg", "building index", "events", len(events), "partition", p.activeCalculationPartition)
 	start := time.Now()
 
 	// Observe processing delay
@@ -391,7 +379,7 @@ func (p *Builder) buildIndex(ctx context.Context, events []metastore.ObjectWritt
 	for i := 0; i < len(events); i++ {
 		obj := <-p.downloadedObjects
 		objLogger := log.With(p.logger, "object_path", obj.event.ObjectPath)
-		level.Info(objLogger).Log("msg", "processing object")
+		level.Debug(objLogger).Log("msg", "processing object")
 
 		if obj.err != nil {
 			processingErrors.Add(fmt.Errorf("failed to download object: %w", obj.err))
@@ -441,7 +429,7 @@ func (p *Builder) buildIndex(ctx context.Context, events []metastore.ObjectWritt
 		return fmt.Errorf("failed to update metastore ToC file: %w", err)
 	}
 
-	level.Info(p.logger).Log("msg", "finished building new index file", "partition", p.activeCalculationPartition, "events", len(events), "size", obj.Size(), "duration", time.Since(start), "tenants", len(tenantTimeRanges), "path", key)
+	level.Debug(p.logger).Log("msg", "finished building new index file", "partition", p.activeCalculationPartition, "events", len(events), "size", obj.Size(), "duration", time.Since(start), "tenants", len(tenantTimeRanges), "path", key)
 	return nil
 }
 
@@ -463,7 +451,7 @@ func ObjectKey(ctx context.Context, object *dataobj.Object) (string, error) {
 	sum := h.Sum(sumBytes[:0])
 	sumStr := hex.EncodeToString(sum[:])
 
-	return fmt.Sprintf("multi-tenant/indexes/%s/%s", sumStr[:2], sumStr[2:]), nil
+	return fmt.Sprintf("indexes/%s/%s", sumStr[:2], sumStr[2:]), nil
 }
 
 func (p *Builder) commitRecords(ctx context.Context, record *kgo.Record) error {

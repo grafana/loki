@@ -83,9 +83,9 @@ func (d *DataobjSectionDescriptor) Merge(pointer pointers.SectionPointer) {
 	}
 }
 
-// Table of Content files are stored in well-known locations that can be computed with the time range required.
+// Table of Content files are stored in well-known locations that can be computed from a known time.
 func tableOfContentsPath(window time.Time) string {
-	return fmt.Sprintf("tables-of-contents/%s.toc", strings.Replace(window.Format(time.RFC3339), ":", "_", -1))
+	return fmt.Sprintf("tocs/%s.toc", strings.Replace(window.Format(time.RFC3339), ":", "_", -1))
 }
 
 func iterTableOfContentsPaths(start, end time.Time) iter.Seq2[string, multitenancy.TimeRange] {
