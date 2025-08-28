@@ -325,7 +325,6 @@ func (p *partitionProcessor) flushAndCommit() error {
 func (p *partitionProcessor) flush() error {
 	// The time range must be read before the flush as the builder is reset
 	// at the end of each flush, resetting the time range.
-	minTime, maxTime := p.builder.TimeRange()
 	obj, closer, err := p.builder.Flush()
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
