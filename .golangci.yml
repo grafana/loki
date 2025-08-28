@@ -1,118 +1,100 @@
 # This file contains all available configuration options
 # with their default values.
 version: "2"
-
 # options for analysis running
 run:
-  # define go version
-  go: "1.24"
-
   # default concurrency is a available CPU number
   concurrency: 16
-
-  # timeout for analysis, e.g. 30s, 5m, default is 1m
-  timeout: 10m
-
-  # exit code when at least one issue was found, default is 1
-  issues-exit-code: 1
-
-  # include test files or not, default is true
-  tests: true
-
+  # define go version
+  go: "1.24"
   # list of build tags, all linters use it. Default is empty list.
   build-tags:
     - cgo
     - integration
     - slicelabels
-
+  # exit code when at least one issue was found, default is 1
+  issues-exit-code: 1
+  # include test files or not, default is true
+  tests: true
 # output configuration options
 output:
   formats:
-    # colored-line-number|line-number|json|tab|checkstyle, default is "colored-line-number"
     text:
+      path: stdout
+      print-linter-name: true
       print-issued-lines: true
       colors: true
-      print-linter-name: true
-
-formatters:
-  enable:
-  - goimports
-  - gofmt
-  - goimports
-  settings:
-    goimports:
-      local-prefixes:
-        - github.com/grafana/loki/pkg,github.com/grafana/loki/tools
-
 linters:
+  enable:
+    - copyloopvar
+    - depguard
+    - errcheck
+    - gochecksumtype
+    - goconst
+    - govet
+    - ineffassign
+    - misspell
+    - revive
+    - staticcheck
+    - unconvert
+  disable:
+    - unparam
+    - unused
   settings:
     depguard:
       rules:
         Main:
           deny:
-            - desc: "Use github.com/go-kit/log instead of github.com/go-kit/kit/log"
-              pkg: github.com/go-kit/kit/log
-
+            - pkg: github.com/go-kit/kit/log
+              desc: Use github.com/go-kit/log instead of github.com/go-kit/kit/log
     misspell:
       ignore-rules:
         - strat
-  enable:
-    - errcheck
-    - goconst
-    - revive
-    - ineffassign
-    - misspell
-    - unconvert
-    - govet
-    - depguard
-    - copyloopvar
-    - staticcheck
-    - gochecksumtype
-  disable:
-    - unused
-    - unparam
   exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
+      - path: pkg/scheduler/scheduler.go
+        text: 'SA1019: msg.GetHttpRequest is deprecated: Do not use'
       - linters:
-          - all
-        text: "Error return value of .*log\\.Logger\\)\\.Log\x60 is not checked"
-      - linters:
-          - all
-        text: "Error return value of .*.Log.* is not checked"
-      - linters:
-          - all
-        text: "Error return value of `` is not checked"
-      - linters:
-          - all
-        text: "Error return value of `.*WriteString` is not checked"
-
-      - linters:
-          - all
-        path: pkg/scheduler/scheduler.go
-      - path: '(.+)_test\.go'
-        linters:
           - goconst
-      - linters:
-          - all
-        path: pkg/scheduler/scheduler.go
-        text: "SA1019: msg.GetHttpRequest is deprecated: Do not use"
-      - linters:
-          - all
-        path: "win_eventlog$"
-      - linters:
-          - all
-        path: "operator"
-      - linters:
-          - all
-        path: ".*.pb.go"
-      - linters:
-          - all
-        path: ".*.y.go"
-      - linters:
-          - all
-        path: ".*.rl.go"
-      - linters:
-          - all
-        path: ".*.deepcopy.go"
+        path: (.+)_test\.go
+      - path: (.+)\.go$
+        text: Error return value of .*log\.Logger\)\.Log\x60 is not checked
+      - path: (.+)\.go$
+        text: Error return value of .*.Log.* is not checked
+      - path: (.+)\.go$
+        text: Error return value of `` is not checked
+      - path: (.+)\.go$
+        text: Error return value of `.*WriteString` is not checked
+    paths:
+      - .*.pb.go
+      - .*.y.go
+      - .*.rl.go
+      - .*.deepcopy.go
+      - win_eventlog$
+      - operator
 issues:
   fix: true
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/grafana/loki/pkg
+        - github.com/grafana/loki/tools
+  exclusions:
+    generated: lax
+    paths:
+      - .*.pb.go
+      - .*.y.go
+      - .*.rl.go
+      - .*.deepcopy.go
+      - win_eventlog$
+      - operator
