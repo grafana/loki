@@ -389,7 +389,7 @@ func TestCreateAlignedMatcher(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			for i, ts := range tt.timestamps {
-				got := pipeline.matchingTimeWindows(ts)
+				got := pipeline.windowsForTimestamp(ts)
 
 				if tt.expected != nil {
 					require.Len(t, got, 1, "timestamp %v should match exactly one window", ts)
@@ -487,7 +487,7 @@ func TestCreateGappedMatcher(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			for i, ts := range tt.timestamps {
-				got := pipeline.matchingTimeWindows(ts)
+				got := pipeline.windowsForTimestamp(ts)
 
 				if tt.expected != nil {
 					require.Len(t, got, 1, "timestamp %v should match exactly one window", ts)
@@ -623,7 +623,7 @@ func TestCreateOverlappingMatcher(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := pipeline.matchingTimeWindows(tc.timestamp)
+			result := pipeline.windowsForTimestamp(tc.timestamp)
 
 			if tc.expected == nil {
 				require.Nil(t, result, "timestamp %v should not match any window", tc.timestamp)

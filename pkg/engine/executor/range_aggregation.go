@@ -25,6 +25,17 @@ type rangeAggregationOptions struct {
 	step          time.Duration // step used for range queries
 }
 
+// window is a time interval where start is exclusive and end is inclusive
+// Refer to [logql.batchRangeVectorIterator].
+type window struct {
+	start, end time.Time
+}
+
+// timestampMatchingWindowsFunc resolves matching range interval windows for a specific timestamp.
+// It returns a list of end timestamps of the matching windows.
+// The list can be empty if the timestamp is out of bounds or does not match any of the range windows.
+type timestampMatchingWindowsFunc func(time.Time) []time.Time
+
 // rangeAggregationPipeline is a pipeline that performs aggregations over a time window.
 //
 // 1. It reads from the input pipelines
@@ -38,8 +49,8 @@ type rangeAggregationPipeline struct {
 	inputsExhausted bool // indicates if all inputs are exhausted
 
 	aggregator          *aggregator
-	matchingTimeWindows func(t time.Time) []time.Time // function to find matching time windows for a given timestamp
-	evaluator           expressionEvaluator           // used to evaluate column expressions
+	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
+	evaluator           expressionEvaluator          // used to evaluate column expressions
 	opts                rangeAggregationOptions
 }
 
@@ -54,21 +65,10 @@ func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluato
 }
 
 func (r *rangeAggregationPipeline) init() {
-	windows := []struct {
-		// lower bound is not inclusive
-		// refer to [logql.batchRangeVectorIterator]
-		startTs time.Time
-		endTs   time.Time
-	}{}
+	windows := []window{}
 	cur := r.opts.startTs
 	for cur.Compare(r.opts.endTs) <= 0 {
-		windows = append(windows, struct {
-			startTs time.Time
-			endTs   time.Time
-		}{
-			startTs: cur.Add(-r.opts.rangeInterval),
-			endTs:   cur,
-		})
+		windows = append(windows, window{start: cur.Add(-r.opts.rangeInterval), end: cur})
 
 		if r.opts.step == 0 {
 			break
@@ -83,21 +83,40 @@ func (r *rangeAggregationPipeline) init() {
 		upperbound = r.opts.endTs
 	)
 
-	switch true {
-	case r.opts.step == 0: // for instant queries
-		r.matchingTimeWindows = func(t time.Time) []time.Time {
+	switch {
+	case r.opts.step == 0:
+		// For instant queries, step == 0, meaning that all samples fall into the one and same step.
+		// A sample timestamp will always match the only time window available, unless the timestamp it out of range.
+		// steps         |---------x-------|
+		// window        |---------x-------|
+		r.windowsForTimestamp = func(t time.Time) []time.Time {
 			if t.Compare(lowerbound) <= 0 || t.Compare(upperbound) > 0 {
 				return nil // out of range
 			}
 
-			return []time.Time{windows[0].endTs}
+			return []time.Time{windows[0].end}
 		}
 	case r.opts.step == r.opts.rangeInterval:
-		r.matchingTimeWindows = r.createAlignedMatcher(windows, lowerbound, upperbound)
+		// If the step is equal to the range interval (e.g. when used $__auto in Grafana), then a sample timestamp matches exactly one time window.
+		// steps         |-----|---x-|-----|
+		// window                    |-----|
+		// window              |---x-|
+		// window        |-----|
+		r.windowsForTimestamp = r.createAlignedMatcher(windows, lowerbound, upperbound)
 	case r.opts.step > r.opts.rangeInterval:
-		r.matchingTimeWindows = r.createGappedMatcher(windows, lowerbound, upperbound)
+		// If the step is greater than the range interval, then a sample timestamp matches either one time window or no time window (and will be discarded).
+		// steps         |-----|---x-|-----|
+		// window                       |--|
+		// window                 |x-|
+		// window           |--|
+		r.windowsForTimestamp = r.createGappedMatcher(windows, lowerbound, upperbound)
 	case r.opts.step < r.opts.rangeInterval:
-		r.matchingTimeWindows = r.createOverlappingMatcher(windows, lowerbound, upperbound)
+		// If the step is smaller than the range interval, then a sample timestamp matches either one or multiple time windows.
+		// steps         |-----|---x-|-----|
+		// window                 |x-------|
+		// window           |------x-|
+		// window     |--------|
+		r.windowsForTimestamp = r.createOverlappingMatcher(windows, lowerbound, upperbound)
 	default:
 		panic("invalid step and range interval")
 	}
@@ -186,8 +205,8 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 			tsCol := vec.ToArray().(*array.Timestamp)
 
 			for row := range int(record.NumRows()) {
-				windows := r.matchingTimeWindows(tsCol.Value(row).ToTime(arrow.Nanosecond))
-				if len(windows) == 0 {
+				windowTimestamps := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
+				if len(windowTimestamps) == 0 {
 					continue // out of range, skip this row
 				}
 
@@ -197,7 +216,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 					labelValues[col] = arr.Value(row)
 				}
 
-				for _, ts := range windows {
+				for _, ts := range windowTimestamps {
 					r.aggregator.Add(ts, 1, labelValues)
 				}
 			}
@@ -231,10 +250,7 @@ func (r *rangeAggregationPipeline) Transport() Transport {
 	return Local
 }
 
-func (r *rangeAggregationPipeline) createAlignedMatcher(
-	windows []struct{ startTs, endTs time.Time },
-	lowerbound, upperbound time.Time,
-) func(time.Time) []time.Time {
+func (r *rangeAggregationPipeline) createAlignedMatcher(windows []window, lowerbound, upperbound time.Time) timestampMatchingWindowsFunc {
 	startNs := r.opts.startTs.UnixNano()
 	stepNs := r.opts.step.Nanoseconds()
 
@@ -252,14 +268,11 @@ func (r *rangeAggregationPipeline) createAlignedMatcher(
 
 		// endTs can be calculated, but doing a window look-up instead for
 		// convinience as it is pre-calculated for other scenarios.
-		return []time.Time{windows[windowIndex].endTs}
+		return []time.Time{windows[windowIndex].end}
 	}
 }
 
-func (r *rangeAggregationPipeline) createGappedMatcher(
-	windows []struct{ startTs, endTs time.Time },
-	lowerbound, upperbound time.Time,
-) func(time.Time) []time.Time {
+func (r *rangeAggregationPipeline) createGappedMatcher(windows []window, lowerbound, upperbound time.Time) timestampMatchingWindowsFunc {
 	startNs := r.opts.startTs.UnixNano()
 	stepNs := r.opts.step.Nanoseconds()
 
@@ -280,18 +293,15 @@ func (r *rangeAggregationPipeline) createGappedMatcher(
 		window := windows[windowIndex]
 
 		// Verify the timestamp is within the window (not in a gap)
-		if tNs > window.startTs.UnixNano() {
-			return []time.Time{window.endTs}
+		if tNs > window.start.UnixNano() {
+			return []time.Time{window.end}
 		}
 
 		return nil // timestamp is in a gap
 	}
 }
 
-func (r *rangeAggregationPipeline) createOverlappingMatcher(
-	windows []struct{ startTs, endTs time.Time },
-	lowerbound, upperbound time.Time,
-) func(time.Time) []time.Time {
+func (r *rangeAggregationPipeline) createOverlappingMatcher(windows []window, lowerbound, upperbound time.Time) timestampMatchingWindowsFunc {
 	return func(t time.Time) []time.Time {
 		// out of bounds check
 		if t.Compare(lowerbound) <= 0 || t.Compare(upperbound) > 0 {
@@ -302,7 +312,7 @@ func (r *rangeAggregationPipeline) createOverlappingMatcher(
 		// We need to find the last window where t > window.startTs
 		// so search for the first window where t <= window.startTs
 		firstOOBIndex := sort.Search(len(windows), func(i int) bool {
-			return t.Compare(windows[i].startTs) <= 0
+			return t.Compare(windows[i].start) <= 0
 		})
 
 		windowIndex := firstOOBIndex - 1
@@ -314,9 +324,9 @@ func (r *rangeAggregationPipeline) createOverlappingMatcher(
 		var result []time.Time
 		for i := windowIndex; i >= 0; i-- {
 			window := windows[i]
-			if t.Compare(window.startTs) > 0 && t.Compare(window.endTs) <= 0 {
-				result = append(result, window.endTs)
-			} else if t.Compare(window.endTs) > 0 {
+			if t.Compare(window.start) > 0 && t.Compare(window.end) <= 0 {
+				result = append(result, window.end)
+			} else if t.Compare(window.end) > 0 {
 				// we've gone past all possible matches
 				break
 			}
