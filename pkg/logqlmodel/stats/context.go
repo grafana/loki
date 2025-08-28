@@ -652,6 +652,7 @@ func (r Result) KVList() []any {
 		"Querier.CompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.CompressedBytes)),
 		"Querier.TotalDuplicates", r.Querier.Store.Chunk.TotalDuplicates,
 		"Querier.QueryReferencedStructuredMetadata", r.Querier.Store.QueryReferencedStructured,
+		"Querier.QueryUsedV2Engine", r.Querier.Store.QueryUsedV2Engine,
 	}
 
 	if r.QueryUsedV2Engine() {
