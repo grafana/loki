@@ -325,6 +325,13 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 		}
 	}
 
+	// If we didn't find any tenant information in the processed objects themselves, override it with the tenant from the events
+	for _, timeRange := range tenantTimeRanges {
+		if timeRange.Tenant == "" {
+			timeRange.Tenant = events[0].Tenant
+		}
+	}
+
 	// The ToC writer will conditionally apply the prefix for enabled tenants, so we need to use the base bucket to avoid double prefixing.
 	// In this case, it will always apply the prefix here because we only build indexes for enabled tenants.
 	metastoreTocWriter := metastore.NewTableOfContentsWriter(p.mCfg, p.bucket, p.logger)
