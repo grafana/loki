@@ -11,22 +11,16 @@ import (
 )
 
 type Stats struct {
-	Size           uint64
-	Sections       int
-	SectionSizes   []uint64
-	Tenants        []string
-	TenantSections map[string]int
-	SectionsPerTenantStats
-	SectionSizeStats
+	Size                   uint64
+	Sections               int
+	SectionSizes           []uint64
+	Tenants                []string
+	TenantSections         map[string]int
+	SectionsPerTenantStats PercentileStats
+	SectionSizeStats       PercentileStats
 }
 
-type SectionsPerTenantStats struct {
-	Median float64
-	P95    float64
-	P99    float64
-}
-
-type SectionSizeStats struct {
+type PercentileStats struct {
 	Median float64
 	P95    float64
 	P99    float64
