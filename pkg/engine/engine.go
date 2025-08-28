@@ -102,6 +102,8 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	statsCtx, ctx := stats.NewContext(ctx)
 	metadataCtx, ctx := metadata.NewContext(ctx)
 
+	statsCtx.SetQueryUsedV2Engine()
+
 	logger := utillog.WithContext(ctx, e.logger)
 	logger = log.With(logger, "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","), "engine", "v2")
 
