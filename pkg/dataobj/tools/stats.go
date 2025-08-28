@@ -5,12 +5,9 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"slices"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
 
 type Stats struct {
@@ -36,26 +33,7 @@ func ReadStats(ctx context.Context, obj *dataobj.Object) (*Stats, error) {
 	s.TenantSections = make(map[string]int)
 	for _, sec := range obj.Sections() {
 		s.Sections++
-		switch {
-		case streams.CheckSection(sec):
-			streamsSec, err := streams.Open(ctx, sec)
-			if err != nil {
-				return nil, err
-			}
-			tenant := streamsSec.Tenant()
-			s.Tenants = append(s.Tenants, tenant)
-			s.TenantSections[tenant]++
-		case logs.CheckSection(sec):
-			logsSec, err := logs.Open(ctx, sec)
-			if err != nil {
-				return nil, err
-			}
-			tenant := logsSec.Tenant()
-			s.Tenants = append(s.Tenants, tenant)
-			s.TenantSections[tenant]++
-		default:
-			return nil, errors.New("unknown section type")
-		}
+		s.Tenants = append(s.Tenants, sec.Tenant)
 	}
 	// A tenant can have multiple sections, so we must deduplicate them.
 	slices.Sort(s.Tenants)
