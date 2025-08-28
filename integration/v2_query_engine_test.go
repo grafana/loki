@@ -50,7 +50,9 @@ func TestV2QueryEngine(t *testing.T) {
 	// The v2 engine requires data to be older than 1 hour, using Before() check
 	// so we need to be strictly before 1 hour, not exactly 1 hour
 	now := time.Now()
-	to := now.Add(-90 * time.Minute) // 1.5 hours ago
+	// Truncate to second precision to make test behavior more predictable
+	// This ensures timestamps like "to - 45min" are exactly at minute boundaries
+	to := now.Add(-90 * time.Minute).Truncate(time.Second) // 1.5 hours ago
 	from := to.Add(-2 * time.Hour)
 
 	// Create dataobj files before starting the cluster
@@ -227,18 +229,14 @@ func TestV2QueryEngine(t *testing.T) {
 		assert.Equal(t, count, 2.0, "Should have counted log llines for job='system'")
 	})
 
-	// Instant queries currently go through the query frontend when using -target=all,
-	// and the query frontend doesn't preserve v2 engine settings. This is a known limitation.
-	// TODO: Enable these tests when query frontend supports v2 engine or when we can bypass it.
 	t.Run("metric instant query with logfmt groupby", func(t *testing.T) {
 		// Instant metric query with count_over_time and grouping by parsed logfmt field
 		// This tests the v2 engine's logfmt support for metric queries
-
 		query := `sum by (region) (count_over_time({job="api"} | logfmt [5m]))`
 
 		// Make an instant query at a time that includes our data
-		// Use the middle of our time range for the instant query
-		instantTime := to.Add(-30 * time.Minute)
+		// Use a time slightly after to-30min to ensure we capture logs properly
+		instantTime := to.Add(-29 * time.Minute)
 		v := url.Values{}
 		v.Set("query", query)
 		v.Set("time", strconv.FormatInt(instantTime.Unix(), 10))
@@ -270,11 +268,15 @@ func TestV2QueryEngine(t *testing.T) {
 			"Expected v2 engine warning for instant metric query with logfmt")
 
 		// Check the actual metric results
-		// At instantTime (to - 30min), looking back 5 minutes includes logs from to-35min to to-30min
-		// That includes:
-		// - to-35min: level=info msg="processing" status=200 region=us-west
-		// - to-30min: level=debug msg="cache hit" status=200 region=us-west
-		// So we expect 2 logs for us-west region
+		// At instantTime (to - 29min), looking back 5 minutes includes logs from (to-34min, to-29min]
+		// Start boundary is EXCLUSIVE, end boundary is INCLUSIVE
+		// The api job logs are:
+		// - to-45min: outside window
+		// - to-40min: outside window
+		// - to-35min: outside window  
+		// - to-30min: level=debug msg="cache hit" status=200 region=us-west (INCLUDED)
+		// - to-25min: outside window
+		// So we expect 1 log for us-west region
 		assert.Equal(t, "vector", respWithWarnings.Data.ResultType)
 
 		// Build a map of region -> count from the results
@@ -287,26 +289,19 @@ func TestV2QueryEngine(t *testing.T) {
 			}
 		}
 
-		// We expect us-west region with logs in the 5m window
-		// Due to time boundary conditions, we might get 1 or 2 logs
+		// We expect us-west region with 1 log in the 5m window
+		// Only the log at to-30min falls within (to-34min, to-29min]
 		require.Len(t, regionCounts, 1, "Should have exactly one region")
-		assert.GreaterOrEqual(t, regionCounts["us-west"], 1.0, "us-west region should have at least 1 log in the 5m window")
-		assert.LessOrEqual(t, regionCounts["us-west"], 2.0, "us-west region should have at most 2 logs in the 5m window")
+		assert.Equal(t, 1.0, regionCounts["us-west"], "us-west region should have 1 log in the 5m window")
 	})
 
 	t.Run("metric instant query with logfmt groupby and filter", func(t *testing.T) {
-		// TODO: This test is currently expected to fail due to a limitation in the v2 engine.
-		// The filter on parsed fields (status="200") is being applied before the parse stage,
-		// so the status field doesn't exist yet when the filter is evaluated.
-		// This needs to be fixed in the query planner to ensure correct operation ordering.
-		t.Skip("Skipping test - v2 engine doesn't yet support filtering on parsed fields in metric queries")
-
 		// Instant metric query that groups by one logfmt field (region) and filters by another (status)
 		// This tests that multiple parsed fields can be used in different parts of the query
-		query := `sum by (region) (count_over_time({job="api"} | logfmt | status="200" [5m]))`
+		query := `sum by (region) (count_over_time({job="api"} | logfmt | status="200" [20m]))`
 
 		// Make an instant query at a time that includes our data
-		instantTime := to.Add(-30 * time.Minute)
+		instantTime := to.Add(-25 * time.Minute)
 		v := url.Values{}
 		v.Set("query", query)
 		v.Set("time", strconv.FormatInt(instantTime.Unix(), 10))
@@ -341,14 +336,15 @@ func TestV2QueryEngine(t *testing.T) {
 			"Expected v2 engine warning for instant metric query with logfmt filter")
 
 		// Check the actual metric results
-		// At instantTime (to - 30min), looking back 5 minutes includes logs from to-35min to to-30min
+		// At instantTime (to - 25min), looking back 20 minutes includes logs from (to-45min, to-25min]
+		// Start boundary is EXCLUSIVE, end boundary is INCLUSIVE
 		// The api job logs are:
-		// - to-45min: status=200 region=us-east
-		// - to-40min: status=500 region=us-east (filtered out)
+		// - to-45min: status=200 region=us-east (EXCLUDED - exactly at start boundary)
+		// - to-40min: status=500 region=us-east (filtered out by status!=200)
 		// - to-35min: status=200 region=us-west (included)
 		// - to-30min: status=200 region=us-west (included)
-		// - to-25min: status=504 region=eu-central (outside window)
-		// So we expect only us-west region with status=200 logs
+		// - to-25min: status=504 region=eu-central (included but filtered out by status!=200)
+		// So we expect only us-west region with 2 logs
 		assert.Equal(t, "vector", respWithWarnings.Data.ResultType)
 
 		// Build a map of region -> count from the results
@@ -361,10 +357,12 @@ func TestV2QueryEngine(t *testing.T) {
 			}
 		}
 
-		// We expect only us-west region (both logs have status=200)
-		// us-east would be filtered out as the log at to-40min has status=500
-		require.Len(t, regionCounts, 1, "Should have exactly one region after filtering by status=200")
-		assert.Equal(t, 2.0, regionCounts["us-west"], "us-west region should have 2 logs with status=200 in the 5m window")
+		// We expect only us-west region with status=200 logs:
+		// The log at to-45min is excluded (at exact start boundary)
+		// The log at to-40min has status=500 so it's filtered out
+		// us-west: 2 logs at to-35min and to-30min with status=200
+		require.Len(t, regionCounts, 1, "Should have one region after filtering by status=200")
+		assert.Equal(t, 2.0, regionCounts["us-west"], "us-west region should have 2 logs with status=200")
 	})
 
 }

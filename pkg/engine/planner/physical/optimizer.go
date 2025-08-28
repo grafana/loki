@@ -2,6 +2,7 @@ package physical
 
 import (
 	"slices"
+	"sort"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -267,6 +268,144 @@ func (r *projectionPushdown) applyProjectionPushdown(node Node, projections []Co
 }
 
 var _ rule = (*projectionPushdown)(nil)
+
+// parseKeysPushdown determines which keys need to be parsed based on downstream operations
+type parseKeysPushdown struct {
+	plan *Plan
+}
+
+// apply implements rule.
+func (r *parseKeysPushdown) apply(node Node) bool {
+	changed := false
+	switch node := node.(type) {
+	case *Filter:
+		keys := extractKeysFromFilter(node)
+		if len(keys) > 0 {
+			if ok := r.applyKeysPushdown(node, keys); ok {
+				changed = true
+			}
+		}
+	case *VectorAggregation:
+		keys := extractKeysFromVectorAggregation(node)
+		if len(keys) > 0 {
+			if ok := r.applyKeysPushdown(node, keys); ok {
+				changed = true
+			}
+		}
+	case *RangeAggregation:
+		keys := extractKeysFromRangeAggregation(node)
+		if len(keys) > 0 {
+			if ok := r.applyKeysPushdown(node, keys); ok {
+				changed = true
+			}
+		}
+	}
+	return changed
+}
+
+func (r *parseKeysPushdown) applyKeysPushdown(node Node, keys []string) bool {
+	// Try to push keys to ParseNodes in all children
+	anyChanged := false
+	for _, child := range r.plan.Children(node) {
+		if changed := r.pushKeysToParseNodes(child, keys); changed {
+			anyChanged = true
+		}
+	}
+	return anyChanged
+}
+
+func (r *parseKeysPushdown) pushKeysToParseNodes(node Node, keys []string) bool {
+	switch node := node.(type) {
+	case *ParseNode:
+		// Found a ParseNode - update its keys
+		existingKeys := make(map[string]bool)
+		for _, k := range node.RequestedKeys {
+			existingKeys[k] = true
+		}
+		
+		// Add new keys
+		changed := false
+		for _, k := range keys {
+			if !existingKeys[k] {
+				existingKeys[k] = true
+				changed = true
+			}
+		}
+		
+		if changed {
+			// Convert back to sorted slice
+			newKeys := make([]string, 0, len(existingKeys))
+			for k := range existingKeys {
+				newKeys = append(newKeys, k)
+			}
+			sort.Strings(newKeys)
+			node.RequestedKeys = newKeys
+		}
+		return changed
+	}
+	
+	// Not a ParseNode - continue searching in children
+	anyChanged := false
+	for _, child := range r.plan.Children(node) {
+		if changed := r.pushKeysToParseNodes(child, keys); changed {
+			anyChanged = true
+		}
+	}
+	return anyChanged
+}
+
+func extractKeysFromFilter(node *Filter) []string {
+	columns := extractColumnsFromPredicates(node.Predicates)
+	keysMap := make(map[string]bool)
+	collectAmbiguousColumns(columns, keysMap)
+	
+	keys := make([]string, 0, len(keysMap))
+	for k := range keysMap {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func extractKeysFromVectorAggregation(node *VectorAggregation) []string {
+	keysMap := make(map[string]bool)
+	collectAmbiguousColumns(node.GroupBy, keysMap)
+	
+	keys := make([]string, 0, len(keysMap))
+	for k := range keysMap {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func extractKeysFromRangeAggregation(node *RangeAggregation) []string {
+	keysMap := make(map[string]bool)
+	collectAmbiguousColumns(node.PartitionBy, keysMap)
+	
+	keys := make([]string, 0, len(keysMap))
+	for k := range keysMap {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// collectAmbiguousColumns adds ambiguous column names to the keysMap.
+// It only collects columns with ColumnTypeAmbiguous, skipping labels and builtins.
+func collectAmbiguousColumns(columns []ColumnExpression, keysMap map[string]bool) {
+	for _, col := range columns {
+		if colExpr, ok := col.(*ColumnExpr); ok {
+			// Only collect ambiguous columns (might need parsing)
+			// Skip labels (from stream selector) and builtins (like timestamp/message)
+			if colExpr.Ref.Type == types.ColumnTypeAmbiguous {
+				keysMap[colExpr.Ref.Column] = true
+			}
+		}
+	}
+}
+
+var _ rule = (*parseKeysPushdown)(nil)
 
 // optimization represents a single optimization pass and can hold multiple rules.
 type optimization struct {

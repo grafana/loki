@@ -22,7 +22,7 @@ func TestConvertLogicalParseToPhysicalParseNode(t *testing.T) {
 			Shard: logical.NewShard(0, 1),
 		},
 	)
-	builder = builder.Parse(logical.ParserLogfmt, []string{"level", "status"}, nil)
+	builder = builder.Parse(logical.ParserLogfmt)
 	logicalPlan, err := builder.ToPlan()
 	require.NoError(t, err)
 
@@ -53,7 +53,8 @@ func TestConvertLogicalParseToPhysicalParseNode(t *testing.T) {
 
 	require.NotNil(t, visitor.parseNode, "Physical plan should contain a ParseNode")
 	require.Equal(t, logical.ParserLogfmt, visitor.parseNode.Kind)
-	require.Equal(t, []string{"level", "status"}, visitor.parseNode.RequestedKeys)
+	// RequestedKeys will be set by the optimizer
+	require.Empty(t, visitor.parseNode.RequestedKeys)
 }
 
 // Helper visitor to collect ParseNode
@@ -111,8 +112,7 @@ func (c *mockCatalog) ResolveDataObjWithShard(_ Expression, _ []Expression, _ Sh
 func TestVisitorCanVisitParseNode(t *testing.T) {
 	// Create a ParseNode
 	parseNode := &ParseNode{
-		Kind:          logical.ParserLogfmt,
-		RequestedKeys: []string{"level", "status"},
+		Kind: logical.ParserLogfmt,
 	}
 
 	// Create a plan and add the node
