@@ -60,7 +60,10 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 				return fmt.Errorf("failed to process stream section path=%s section=%d: %w", objectPath, i, err)
 			}
 			// This is safe as each data object has just one streams section per tenant, which means different sections cannot overwrite the results of each other.
-			streamIDLookupByTenant.Store(section.Tenant, streamIDLookup)
+			_, exists := streamIDLookupByTenant.LoadOrStore(section.Tenant, streamIDLookup)
+			if exists {
+				panic("multiple streams sections for the same tenant within one data object")
+			}
 			return nil
 		})
 	}

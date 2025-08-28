@@ -5,21 +5,18 @@ package metastore
 
 import (
 	fmt "fmt"
+	proto "github.com/gogo/protobuf/proto"
 	io "io"
 	math "math"
 	math_bits "math/bits"
 	reflect "reflect"
 	strings "strings"
-
-	proto "github.com/gogo/protobuf/proto"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
-var (
-	_ = proto.Marshal
-	_ = fmt.Errorf
-	_ = math.Inf
-)
+var _ = proto.Marshal
+var _ = fmt.Errorf
+var _ = math.Inf
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the proto package it is being compiled against.
@@ -38,11 +35,9 @@ func (*ObjectWrittenEvent) ProtoMessage() {}
 func (*ObjectWrittenEvent) Descriptor() ([]byte, []int) {
 	return fileDescriptor_fdfd617758a99d3c, []int{0}
 }
-
 func (m *ObjectWrittenEvent) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-
 func (m *ObjectWrittenEvent) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
 		return xxx_messageInfo_ObjectWrittenEvent.Marshal(b, m, deterministic)
@@ -55,15 +50,12 @@ func (m *ObjectWrittenEvent) XXX_Marshal(b []byte, deterministic bool) ([]byte, 
 		return b[:n], nil
 	}
 }
-
 func (m *ObjectWrittenEvent) XXX_Merge(src proto.Message) {
 	xxx_messageInfo_ObjectWrittenEvent.Merge(m, src)
 }
-
 func (m *ObjectWrittenEvent) XXX_Size() int {
 	return m.Size()
 }
-
 func (m *ObjectWrittenEvent) XXX_DiscardUnknown() {
 	xxx_messageInfo_ObjectWrittenEvent.DiscardUnknown(m)
 }
@@ -137,7 +129,6 @@ func (this *ObjectWrittenEvent) Equal(that interface{}) bool {
 	}
 	return true
 }
-
 func (this *ObjectWrittenEvent) GoString() string {
 	if this == nil {
 		return "nil"
@@ -149,7 +140,6 @@ func (this *ObjectWrittenEvent) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-
 func valueToGoStringMetastore(v interface{}, typ string) string {
 	rv := reflect.ValueOf(v)
 	if rv.IsNil() {
@@ -158,7 +148,6 @@ func valueToGoStringMetastore(v interface{}, typ string) string {
 	pv := reflect.Indirect(rv).Interface()
 	return fmt.Sprintf("func(v %v) *%v { return &v } ( %#v )", typ, typ, pv)
 }
-
 func (m *ObjectWrittenEvent) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -207,7 +196,6 @@ func encodeVarintMetastore(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	return base
 }
-
 func (m *ObjectWrittenEvent) Size() (n int) {
 	if m == nil {
 		return 0
@@ -228,24 +216,20 @@ func (m *ObjectWrittenEvent) Size() (n int) {
 func sovMetastore(x uint64) (n int) {
 	return (math_bits.Len64(x|1) + 6) / 7
 }
-
 func sozMetastore(x uint64) (n int) {
 	return sovMetastore(uint64((x << 1) ^ uint64((int64(x) >> 63))))
 }
-
 func (this *ObjectWrittenEvent) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{
-		`&ObjectWrittenEvent{`,
+	s := strings.Join([]string{`&ObjectWrittenEvent{`,
 		`ObjectPath:` + fmt.Sprintf("%v", this.ObjectPath) + `,`,
 		`WriteTime:` + fmt.Sprintf("%v", this.WriteTime) + `,`,
 		`}`,
 	}, "")
 	return s
 }
-
 func valueToStringMetastore(v interface{}) string {
 	rv := reflect.ValueOf(v)
 	if rv.IsNil() {
@@ -254,7 +238,6 @@ func valueToStringMetastore(v interface{}) string {
 	pv := reflect.Indirect(rv).Interface()
 	return fmt.Sprintf("*%v", pv)
 }
-
 func (m *ObjectWrittenEvent) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -372,7 +355,6 @@ func (m *ObjectWrittenEvent) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-
 func skipMetastore(dAtA []byte) (n int, err error) {
 	l := len(dAtA)
 	iNdEx := 0
