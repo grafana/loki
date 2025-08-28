@@ -13,7 +13,7 @@ import (
 
 // BuildLogfmtColumns builds Arrow columns from logfmt input lines
 // Returns the column headers, the Arrow columns, and any error
-func BuildLogfmtColumns(input []string, requestedKeys []string, allocator memory.Allocator) ([]string, []arrow.Array, error) {
+func BuildLogfmtColumns(input *array.String, requestedKeys []string, allocator memory.Allocator) ([]string, []arrow.Array) {
 	// Parse each line and store results
 	parsedLines, lineErrors, hasAnyError := parseLogfmtLines(input, requestedKeys)
 
@@ -67,17 +67,18 @@ func BuildLogfmtColumns(input []string, requestedKeys []string, allocator memory
 		headers = append(headers, "__error__", "__error_details__")
 	}
 
-	return headers, columns, nil
+	return headers, columns
 }
 
 // parseLogfmtLines parses each input line and returns the results along with any errors
-func parseLogfmtLines(input []string, requestedKeys []string) ([]map[string]string, []error, bool) {
-	parsedLines := make([]map[string]string, 0, len(input))
-	lineErrors := make([]error, 0, len(input))
+func parseLogfmtLines(input *array.String, requestedKeys []string) ([]map[string]string, []error, bool) {
+	parsedLines := make([]map[string]string, 0, input.Len())
+	lineErrors := make([]error, 0, input.Len())
 	hasAnyError := false
 
-	for _, line := range input {
+	for i := 0; i < input.Len(); i++ {
 		// Use our existing tokenizer to parse the line
+		line := input.Value(i)
 		result, err := TokenizeLogfmt(line, requestedKeys)
 		lineErrors = append(lineErrors, err)
 		if err != nil {

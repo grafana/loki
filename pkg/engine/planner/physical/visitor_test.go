@@ -93,8 +93,3 @@ func (v *nodeCollectVisitor) VisitParse(n *ParseNode) error {
 	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
 	return nil
 }
-
-func (v *nodeCollectVisitor) VisitCast(n *CastNode) error {
-	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
-	return nil
-}

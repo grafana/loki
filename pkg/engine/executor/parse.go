@@ -27,6 +27,8 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		if err != nil {
 			return failureState(err)
 		}
+		// Batch needs to be released here since it won't be passed to the caller and won't be reused after
+		// this call to newGenericPipeline.
 		defer batch.Release()
 
 		// Find the message column
@@ -48,23 +50,12 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 			return failureState(fmt.Errorf("message column is not a string column"))
 		}
 
-		// Extract messages into string slice for parsing
-		messages := make([]string, 0, stringCol.Len())
-		for i := 0; i < stringCol.Len(); i++ {
-			if stringCol.IsValid(i) {
-				messages = append(messages, stringCol.Value(i))
-			}
-		}
-
 		// Parse logfmt based on the parser kind
 		var headers []string
 		var parsedColumns []arrow.Array
 		switch parse.Kind {
 		case logical.ParserLogfmt:
-			headers, parsedColumns, err = BuildLogfmtColumns(messages, parse.RequestedKeys, allocator)
-			if err != nil {
-				return failureState(fmt.Errorf("failed to parse logfmt: %w", err))
-			}
+			headers, parsedColumns = BuildLogfmtColumns(stringCol, parse.RequestedKeys, allocator)
 		default:
 			return failureState(fmt.Errorf("unsupported parser kind: %v", parse.Kind))
 		}
@@ -92,15 +83,26 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		newSchema := arrow.NewSchema(newFields, nil)
 
 		// Build new record with all columns
-		allColumns := make([]arrow.Array, 0, len(newFields))
+		numOriginalCols := int(batch.NumCols())
+		numParsedCols := len(parsedColumns)
+		allColumns := make([]arrow.Array, numOriginalCols+numParsedCols)
+
 		// Copy original columns
-		for i := int64(0); i < batch.NumCols(); i++ {
-			col := batch.Column(int(i))
+		for i := 0; i < numOriginalCols; i++ {
+			col := batch.Column(i)
 			col.Retain() // Retain since we're releasing the batch
-			allColumns = append(allColumns, col)
+			allColumns[i] = col
 		}
+
 		// Add parsed columns
-		allColumns = append(allColumns, parsedColumns...)
+		for i, col := range parsedColumns {
+			// Defenisve check added for clarity and safety, but BuildLogfmtColumns should already guarantee this
+			if col.Len() != stringCol.Len() {
+				return failureState(fmt.Errorf("parsed column %d (%s) has %d rows but expected %d",
+					i, headers[i], col.Len(), stringCol.Len()))
+			}
+			allColumns[numOriginalCols+i] = col
+		}
 
 		// Create the new record
 		newRecord := array.NewRecord(newSchema, allColumns, int64(stringCol.Len()))
