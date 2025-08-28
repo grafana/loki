@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
 
 var tracer = otel.Tracer("pkg/engine")
@@ -103,6 +104,10 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 	logger := utillog.WithContext(ctx, e.logger)
 	logger = log.With(logger, "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","), "engine", "v2")
+
+	// Inject the range config into the context for any calls to
+	// [rangeio.ReadRanges] to make use of.
+	ctx = rangeio.WithConfig(ctx, &e.opts.RangeConfig)
 
 	logicalPlan, err := func() (*logical.Plan, error) {
 		_, span := tracer.Start(ctx, "QueryEngine.Execute.logicalPlan")
