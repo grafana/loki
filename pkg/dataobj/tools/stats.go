@@ -27,7 +27,7 @@ type SectionsPerTenantStats struct {
 // ReadStats returns statistics about the data object. ReadStats returns an
 // error if the data object couldn't be inspected or if the provided ctx is
 // canceled.
-func ReadStats(ctx context.Context, obj *dataobj.Object) (*Stats, error) {
+func ReadStats(_ context.Context, obj *dataobj.Object) (*Stats, error) {
 	s := Stats{}
 	s.Size = uint64(obj.Size())
 	s.TenantSections = make(map[string]int)
