@@ -132,18 +132,21 @@ loop:
 		// Load next batch if it hasn't been loaded yet, or if current one is already fully consumed
 		// Read another batch as long as the input yields zero-length batches.
 		for p.batches[i] == nil || p.offsets[i] == p.batches[i].NumRows() {
-			// Reset offset
+			// Reset offset for input at index i
 			p.offsets[i] = 0
 
-			// Read from input
+			// Release previously fully consumed batch
+			if p.batches[i] != nil {
+				p.batches[i].Release()
+				p.batches[i] = nil // remove reference to arrow.Record from slice
+			}
+
+			// Read next batch from input at index i
+			// If it reaches EOF, mark the input as exhausted and continue with the next input.
 			err := p.inputs[i].Read(ctx)
 			if err != nil {
 				if errors.Is(err, EOF) {
 					p.exhausted[i] = true
-					if p.batches[i] != nil {
-						p.batches[i].Release()
-						p.batches[i] = nil // remove reference to arrow.Record from slice
-					}
 					continue loop
 				}
 				return err
