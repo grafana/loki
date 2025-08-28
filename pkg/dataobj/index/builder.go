@@ -50,7 +50,7 @@ type downloadedObject struct {
 }
 
 const (
-	indexConsumerGroup = "metastore-event-reader"
+	indexConsumerGroup = "metastore-event-reader-benclive"
 )
 
 type Builder struct {
@@ -326,9 +326,9 @@ func (p *Builder) buildIndex(events []metastore.ObjectWrittenEvent) error {
 	}
 
 	// If we didn't find any tenant information in the processed objects themselves, override it with the tenant from the events
-	for _, timeRange := range tenantTimeRanges {
-		if timeRange.Tenant == "" {
-			timeRange.Tenant = events[0].Tenant
+	for i := range tenantTimeRanges {
+		if tenantTimeRanges[i].Tenant == "" {
+			tenantTimeRanges[i].Tenant = events[0].Tenant
 		}
 	}
 
