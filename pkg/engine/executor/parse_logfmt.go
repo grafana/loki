@@ -14,45 +14,36 @@ import (
 // BuildLogfmtColumns builds Arrow columns from logfmt input lines
 // Returns the column headers, the Arrow columns, and any error
 func BuildLogfmtColumns(input *array.String, requestedKeys []string, allocator memory.Allocator) ([]string, []arrow.Array) {
-	// Parse each line and store results
-	parsedLines, lineErrors, hasAnyError := parseLogfmtLines(input, requestedKeys)
+	var columnOrder []string
+	columnBuilders := make(map[string]*array.StringBuilder)
+	errorList := make([]error, 0, input.Len())
+	hasAnyError := false
 
-	// Determine which columns to build
-	columnKeys := determineColumnKeys(requestedKeys, parsedLines)
-
-	// Build columns for each key
-	columnsNeeded := len(columnKeys)
-	if hasAnyError {
-		columnsNeeded += 2 // +2 for potential error columns
+	if len(requestedKeys) > 0 {
+		// Fast path: parse only requested keys
+		columnOrder, errorList, hasAnyError = parseRequestedKeys(input, requestedKeys, columnBuilders, allocator)
+	} else {
+		// Dynamic path: discover columns as we parse
+		columnOrder, errorList, hasAnyError = parseAllKeys(input, columnBuilders, allocator)
 	}
-	columns := make([]arrow.Array, 0, columnsNeeded)
-	headers := make([]string, 0, columnsNeeded)
 
-	for _, key := range columnKeys {
-		builder := array.NewStringBuilder(allocator)
-		defer builder.Release()
+	// Build final arrays
+	columns := make([]arrow.Array, 0, len(columnOrder)+2)
+	headers := make([]string, 0, len(columnOrder)+2)
 
-		// Add values for this key from each line
-		for _, parsedLine := range parsedLines {
-			if value, ok := parsedLine[key]; ok {
-				builder.Append(value)
-			} else {
-				builder.AppendNull()
-			}
-		}
-
+	for _, key := range columnOrder {
+		builder := columnBuilders[key]
 		columns = append(columns, builder.NewArray())
 		headers = append(headers, key)
+		builder.Release()
 	}
 
-	// Add error columns if any errors occurred
+	// Add error columns if needed
 	if hasAnyError {
 		errorBuilder := array.NewStringBuilder(allocator)
-		defer errorBuilder.Release()
 		errorDetailsBuilder := array.NewStringBuilder(allocator)
-		defer errorDetailsBuilder.Release()
 
-		for _, err := range lineErrors {
+		for _, err := range errorList {
 			if err != nil {
 				errorBuilder.Append("LogfmtParserErr")
 				errorDetailsBuilder.Append(err.Error())
@@ -65,54 +56,97 @@ func BuildLogfmtColumns(input *array.String, requestedKeys []string, allocator m
 		columns = append(columns, errorBuilder.NewArray())
 		columns = append(columns, errorDetailsBuilder.NewArray())
 		headers = append(headers, "__error__", "__error_details__")
+
+		errorBuilder.Release()
+		errorDetailsBuilder.Release()
 	}
 
 	return headers, columns
 }
 
-// parseLogfmtLines parses each input line and returns the results along with any errors
-func parseLogfmtLines(input *array.String, requestedKeys []string) ([]map[string]string, []error, bool) {
-	parsedLines := make([]map[string]string, 0, input.Len())
-	lineErrors := make([]error, 0, input.Len())
+// parseRequestedKeys handles the fast path when specific keys are requested
+// Pre-creates all column builders and processes lines with known columns
+func parseRequestedKeys(input *array.String, requestedKeys []string, columnBuilders map[string]*array.StringBuilder, allocator memory.Allocator) ([]string, []error, bool) {
+	columnOrder := make([]string, 0, len(requestedKeys))
+	errorList := make([]error, 0, input.Len())
 	hasAnyError := false
 
+	// Pre-create all builders
+	for _, key := range requestedKeys {
+		columnBuilders[key] = array.NewStringBuilder(allocator)
+		columnOrder = append(columnOrder, key)
+	}
+
+	// Process each line
 	for i := 0; i < input.Len(); i++ {
-		// Use our existing tokenizer to parse the line
 		line := input.Value(i)
-		result, err := TokenizeLogfmt(line, requestedKeys)
-		lineErrors = append(lineErrors, err)
+		parsed, err := TokenizeLogfmt(line, requestedKeys) // Already filtered
+		errorList = append(errorList, err)
 		if err != nil {
 			hasAnyError = true
 		}
-		parsedLines = append(parsedLines, result)
-	}
 
-	return parsedLines, lineErrors, hasAnyError
-}
-
-// determineColumnKeys determines which columns to build based on requested keys or parsed data
-func determineColumnKeys(requestedKeys []string, parsedLines []map[string]string) []string {
-	if len(requestedKeys) > 0 {
-		// Use requested keys as columns
-		return requestedKeys
-	}
-
-	// Extract all unique keys from all lines
-	uniqueKeys := make(map[string]bool)
-	for _, parsedLine := range parsedLines {
-		for key := range parsedLine {
-			uniqueKeys[key] = true
+		// Append values for all requested keys
+		for _, key := range requestedKeys {
+			if value, ok := parsed[key]; ok {
+				columnBuilders[key].Append(value)
+			} else {
+				columnBuilders[key].AppendNull()
+			}
 		}
 	}
 
-	// Sort keys alphabetically for consistent ordering
-	columnKeys := make([]string, 0, len(uniqueKeys))
-	for key := range uniqueKeys {
-		columnKeys = append(columnKeys, key)
-	}
-	sort.Strings(columnKeys)
+	return columnOrder, errorList, hasAnyError
+}
 
-	return columnKeys
+// parseAllKeys handles the dynamic path when no specific keys are requested
+// Discovers columns dynamically as lines are parsed
+func parseAllKeys(input *array.String, columnBuilders map[string]*array.StringBuilder, allocator memory.Allocator) ([]string, []error, bool) {
+	columnOrder := []string{}
+	errorList := make([]error, 0, input.Len())
+	hasAnyError := false
+
+	for i := 0; i < input.Len(); i++ {
+		line := input.Value(i)
+		parsed, err := TokenizeLogfmt(line, nil) // Get all keys
+		errorList = append(errorList, err)
+		if err != nil {
+			hasAnyError = true
+		}
+
+		// Track which keys we've seen this row
+		seenKeys := make(map[string]bool)
+
+		// Add values for parsed keys
+		for key, value := range parsed {
+			seenKeys[key] = true
+			builder, exists := columnBuilders[key]
+			if !exists {
+				// New column discovered - create and backfill
+				builder = array.NewStringBuilder(allocator)
+				columnBuilders[key] = builder
+				columnOrder = append(columnOrder, key)
+
+				// Backfill NULLs for previous rows
+				for j := 0; j < i; j++ {
+					builder.AppendNull()
+				}
+			}
+			builder.Append(value)
+		}
+
+		// Append NULLs for columns not in this row
+		for _, key := range columnOrder {
+			if !seenKeys[key] {
+				columnBuilders[key].AppendNull()
+			}
+		}
+	}
+
+	// Sort column order for consistency
+	sort.Strings(columnOrder)
+
+	return columnOrder, errorList, hasAnyError
 }
 
 // TokenizeLogfmt parses logfmt input using the standard decoder
