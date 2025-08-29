@@ -12,6 +12,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/klauspost/compress/zstd"
+	"github.com/pierrec/lz4/v4"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/otlptranslator"
@@ -32,6 +34,8 @@ import (
 const (
 	pbContentType       = "application/x-protobuf"
 	gzipContentEncoding = "gzip"
+	zstdContentEncoding = "zstd"
+	lz4ContentEncoding  = "lz4"
 	attrServiceName     = "service.name"
 
 	OTLPSeverityNumber = "severity_number"
@@ -61,7 +65,8 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (plog.Lo
 		// reader is over limit, the result will be bigger than max.
 		body = io.LimitReader(bodySize, int64(maxRecvMsgSize)+1)
 	}
-	if pushStats.ContentEncoding == gzipContentEncoding {
+	switch pushStats.ContentEncoding {
+	case gzipContentEncoding:
 		r, err := gzip.NewReader(bodySize)
 		if err != nil {
 			return plog.NewLogs(), err
@@ -70,6 +75,18 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (plog.Lo
 		defer func(reader *gzip.Reader) {
 			_ = reader.Close()
 		}(r)
+	case zstdContentEncoding:
+		var err error
+		body, err = zstd.NewReader(body)
+		if err != nil {
+			return plog.NewLogs(), err
+		}
+	case lz4ContentEncoding:
+		body = io.NopCloser(lz4.NewReader(body))
+	case "":
+		// no content encoding, use the body as is
+	default:
+		return plog.NewLogs(), errors.Errorf("unsupported content encoding %s: only gzip, lz4 and zstd are supported", pushStats.ContentEncoding)
 	}
 	buf, err := io.ReadAll(body)
 	if err != nil {
