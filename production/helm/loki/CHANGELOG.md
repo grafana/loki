@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [ENHANCEMENT] add missing dnsConfig to `admin-api`, `bloom-builder`, `bloom-gateway`, `bloom-planner`, `compactor`, `distributor`, `index-gateway`, `ingester`, `memcached`, `overrides-exporter`, `pattern-ingester`, and `query-scheduler`. [#18903](https://github.com/grafana/loki/pull/18903)
+
 ## 6.38.0
 
 - [FEATURE] Make access modes for persistence on all PVCs and StatefulSets editable [#13474](https://github.com/grafana/loki/pull/13474)
@@ -29,10 +31,6 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-planner. [#18552](https://github.com/grafana/loki/pull/18552)
 - [FEATURE] Support separate loki ruler storage configuration [#18510](https://github.com/grafana/loki/pull/18510)
 - [BUGFIX] Revert Thanos object store configuration from ruler storage config to fix compatibility issues with RuleStoreConfig that caused parsing errors during Helm upgrades.
-
-
-- [ENHANCEMENT] add missing dnsConfig to `admin-api`, `bloom-builder`, `bloom-gateway`, `bloom-planner`, `compactor`, `distributor`, `index-gateway`, `ingester`, `memcached`, `overrides-exporter`, `pattern-ingester`, and `query-scheduler`. [#18903](https://github.com/grafana/loki/pull/18903)
-
 
 ## 6.36.1
 - [BUGFIX] Fix missing s3 field in lokiStorageConfig templated value.[#18791](https://github.com/grafana/loki/pull/18791)
