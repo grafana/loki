@@ -105,8 +105,8 @@ func (c *consumer) pollFetches(ctx context.Context) error {
 
 func (c *consumer) processFetchTopicPartition(_ context.Context) func(kgo.FetchTopicPartition) {
 	return func(fetch kgo.FetchTopicPartition) {
-		if fetch.Err != nil {
-			level.Error(c.logger).Log("msg", "failed to fetch records for topic partition", "topic", fetch.Topic, "partition", fetch.Partition, "err", fetch.Err.Error())
+		if err := fetch.Err; err != nil {
+			level.Error(c.logger).Log("msg", "failed to fetch records for topic partition", "topic", fetch.Topic, "partition", fetch.Partition, "err", err.Error())
 			return
 		}
 		// If there are no records for this partition then skip it.
