@@ -78,25 +78,7 @@ func (r *rangeAggregationPipeline) init() {
 	}
 
 	f := newMatcherFactoryFromOpts(r.opts)
-
-	switch {
-	case r.opts.step == 0:
-		// For instant queries, step == 0, meaning that all samples fall into the one and same step.
-		// A sample timestamp will always match the only time window available, unless the timestamp it out of range.
-		r.windowsForTimestamp = f.createExactMatcher(windows)
-	case r.opts.step == r.opts.rangeInterval:
-		// If the step is equal to the range interval (e.g. when used $__auto in Grafana), then a sample timestamp matches exactly one time window.
-		r.windowsForTimestamp = f.createAlignedMatcher(windows)
-	case r.opts.step > r.opts.rangeInterval:
-		// If the step is greater than the range interval, then a sample timestamp matches either one time window or no time window (and will be discarded).
-		r.windowsForTimestamp = f.createGappedMatcher(windows)
-	case r.opts.step < r.opts.rangeInterval:
-		// If the step is smaller than the range interval, then a sample timestamp matches either one or multiple time windows.
-		r.windowsForTimestamp = f.createOverlappingMatcher(windows)
-	default:
-		panic("invalid step and range interval")
-	}
-
+	r.windowsForTimestamp = f.createMatcher(windows)
 	r.aggregator = newAggregator(r.opts.partitionBy, len(windows))
 }
 
@@ -242,6 +224,26 @@ type matcherFactory struct {
 	interval   time.Duration
 	lowerbound time.Time
 	upperbound time.Time
+}
+
+func (f *matcherFactory) createMatcher(windows []window) timestampMatchingWindowsFunc {
+	switch {
+	case f.step == 0:
+		// For instant queries, step == 0, meaning that all samples fall into the one and same step.
+		// A sample timestamp will always match the only time window available, unless the timestamp it out of range.
+		return f.createExactMatcher(windows)
+	case r.opts.step == r.opts.rangeInterval:
+		// If the step is equal to the range interval (e.g. when used $__auto in Grafana), then a sample timestamp matches exactly one time window.
+		return f.createAlignedMatcher(windows)
+	case r.opts.step > r.opts.rangeInterval:
+		// If the step is greater than the range interval, then a sample timestamp matches either one time window or no time window (and will be discarded).
+		return f.createGappedMatcher(windows)
+	case r.opts.step < r.opts.rangeInterval:
+		// If the step is smaller than the range interval, then a sample timestamp matches either one or multiple time windows.
+		return f.createOverlappingMatcher(windows)
+	default:
+		panic("invalid step and range interval")
+	}
 }
 
 // createExactMatcher is used for instant queries.
