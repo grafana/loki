@@ -3,6 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "loki.tableManagerFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.tableManagerLabels" . | nindent 4 }}
   annotations:
@@ -46,6 +47,9 @@ spec:
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.tableManager.terminationGracePeriodSeconds }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.tableManager.hostUsers) }}
+      hostUsers: {{ .Values.tableManager.hostUsers }}
+      {{- end }}
       containers:
         - name: table-manager
           image: {{ include "loki.image" . }}
@@ -73,10 +77,14 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
-          readinessProbe:
-            {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
+          {{- with .Values.loki.livenessProbe }}
           livenessProbe:
-            {{- toYaml .Values.loki.livenessProbe | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.loki.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config

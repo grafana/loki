@@ -43,11 +43,12 @@ type topkBatch struct {
 	// retained records into a new record only containing the current top K rows.
 	MaxUnused int
 
-	ready     bool // True if all fields below are initialized.
-	nextID    int
-	mapper    *arrowagg.Mapper
-	heap      *topk.Heap[*topkReference]
-	usedCount map[arrow.Record]int
+	ready       bool // True if all fields below are initialized.
+	nextID      int
+	mapper      *arrowagg.Mapper
+	heap        *topk.Heap[*topkReference]
+	usedCount   map[arrow.Record]int
+	usedSchemas map[*arrow.Schema]int
 }
 
 // topkReference is a reference to a row in a record that is part of the
@@ -102,15 +103,22 @@ func (b *topkBatch) put(rec arrow.Record) {
 		switch res {
 		case topk.PushResultPushed:
 			b.usedCount[rec]++
+			b.usedSchemas[rec.Schema()]++
 			rec.Retain()
 
 		case topk.PushResultReplaced:
 			b.usedCount[rec]++
+			b.usedSchemas[rec.Schema()]++
 			rec.Retain()
 
 			b.usedCount[prev.Record]--
+			b.usedSchemas[prev.Record.Schema()]--
 			if b.usedCount[prev.Record] == 0 {
 				delete(b.usedCount, prev.Record)
+			}
+			if b.usedSchemas[prev.Record.Schema()] == 0 {
+				b.mapper.RemoveSchema(prev.Record.Schema())
+				delete(b.usedSchemas, prev.Record.Schema())
 			}
 			prev.Record.Release()
 		}
@@ -131,6 +139,7 @@ func (b *topkBatch) init() {
 	}
 	b.mapper = arrowagg.NewMapper(b.Fields)
 	b.usedCount = make(map[arrow.Record]int)
+	b.usedSchemas = make(map[*arrow.Schema]int)
 	b.ready = true
 }
 
@@ -257,5 +266,7 @@ func (b *topkBatch) Reset() {
 			rec.Release()
 		}
 	}
+
 	clear(b.usedCount)
+	clear(b.usedSchemas)
 }

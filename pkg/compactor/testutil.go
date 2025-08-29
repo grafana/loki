@@ -82,7 +82,7 @@ func SetupTable(t *testing.T, path string, commonDBsConfig IndexesConfig, perUse
 	idx := 0
 	for filename, content := range commonIndexes {
 		filePath := filepath.Join(path, strings.TrimSuffix(filename, ".gz"))
-		require.NoError(t, os.WriteFile(filePath, []byte(content), 0640)) // #nosec G306 -- this is fencing off the "other" permissions
+		require.NoError(t, os.WriteFile(filePath, []byte(content), 0640)) // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
 		if strings.HasSuffix(filename, ".gz") {
 			compressFile(t, filePath)
 		}
@@ -93,7 +93,7 @@ func SetupTable(t *testing.T, path string, commonDBsConfig IndexesConfig, perUse
 		require.NoError(t, util.EnsureDirectory(filepath.Join(path, userID)))
 		for filename, content := range files {
 			filePath := filepath.Join(path, userID, strings.TrimSuffix(filename, ".gz"))
-			require.NoError(t, os.WriteFile(filePath, []byte(content), 0640)) // #nosec G306 -- this is fencing off the "other" permissions
+			require.NoError(t, os.WriteFile(filePath, []byte(content), 0640)) // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
 			if strings.HasSuffix(filename, ".gz") {
 				compressFile(t, filePath)
 			}

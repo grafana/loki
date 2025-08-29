@@ -5,7 +5,7 @@ apiVersion: apps/v1
 kind: {{ .kind }}
 metadata:
   name: {{ include "loki-canary.fullname" $ }}
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" $ }}
   labels:
     {{- include "loki-canary.labels" $ | nindent 4 }}
 spec:
@@ -19,6 +19,7 @@ spec:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 1
+  revisionHistoryLimit: {{ $.Values.loki.revisionHistoryLimit }}
   {{- else }}
   {{- with .updateStrategy }}
   updateStrategy:
@@ -43,6 +44,9 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- include "loki-canary.priorityClassName" $ | nindent 6 }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" $)) (kindIs "bool" .hostUsers) }}
+      hostUsers: {{ .hostUsers }}
+      {{- end }}
       securityContext:
         {{- toYaml $.Values.loki.podSecurityContext | nindent 8 }}
       containers:

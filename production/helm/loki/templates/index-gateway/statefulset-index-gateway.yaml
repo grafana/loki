@@ -4,7 +4,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.indexGatewayFullname" . }}
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.indexGatewayLabels" . | nindent 4 }}
   {{- with .Values.loki.annotations }}
@@ -59,6 +59,9 @@ spec:
       hostAliases:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.indexGateway.hostUsers) }}
+      hostUsers: {{ .Values.indexGateway.hostUsers }}
+      {{- end }}
       {{- include "loki.indexGatewayPriorityClassName" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
@@ -99,10 +102,14 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
-          readinessProbe:
-            {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
+          {{- with .Values.loki.livenessProbe }}
           livenessProbe:
-            {{- toYaml .Values.loki.livenessProbe | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.loki.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config
@@ -178,9 +185,13 @@ spec:
         annotations:
           {{- . | toYaml | nindent 10 }}
         {{- end }}
+        {{- with .Values.indexGateway.persistence.labels }}
+        labels:
+          {{- . | toYaml | nindent 10 }}
+        {{- end }}
       spec:
         accessModes:
-          - ReadWriteOnce
+          {{- toYaml .Values.indexGateway.persistence.accessModes | nindent 10 }}
         {{- with .Values.indexGateway.persistence.storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
         {{- end }}

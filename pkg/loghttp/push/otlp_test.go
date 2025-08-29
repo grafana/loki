@@ -584,7 +584,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				return "others"
 			}
 
-			pushReq := otlpToLokiPushRequest(
+			pushReq, err := otlpToLokiPushRequest(
 				context.Background(),
 				tc.generateLogs(),
 				"foo",
@@ -597,6 +597,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 				streamResolver,
 				constants.OTLP,
 			)
+			require.NoError(t, err)
 			require.Equal(t, tc.expectedPushRequest, *pushReq)
 			require.Equal(t, tc.expectedStats, *stats)
 
@@ -696,7 +697,8 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, res := otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig(defaultGlobalOTLPConfig), false, nil)
+			_, res, err := otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig(defaultGlobalOTLPConfig), false, nil)
+			require.NoError(t, err)
 			require.Equal(t, tc.expectedResp, res)
 		})
 	}
@@ -804,7 +806,9 @@ func TestAttributesToLabels(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.expectedResp, attributesToLabels(tc.buildAttrs(), ""))
+			lbls, err := attributesToLabels(tc.buildAttrs(), "")
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedResp, lbls)
 		})
 	}
 }
@@ -921,7 +925,7 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 	}
 
 	// Convert OTLP logs to Loki push request
-	pushReq := otlpToLokiPushRequest(
+	pushReq, err := otlpToLokiPushRequest(
 		context.Background(),
 		generateLogs(),
 		"test-user",
@@ -934,6 +938,7 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 		streamResolver,
 		"otlp",
 	)
+	require.NoError(t, err)
 
 	// Debug: Print the actual streams we got
 	t.Logf("Number of streams: %d", len(pushReq.Streams))
@@ -1023,7 +1028,7 @@ func TestOTLPStructuredMetadataCalculation(t *testing.T) {
 	}
 
 	// Convert OTLP logs to Loki push request
-	pushReq := otlpToLokiPushRequest(
+	pushReq, err := otlpToLokiPushRequest(
 		context.Background(),
 		generateLogs(),
 		"test-user",
@@ -1036,6 +1041,7 @@ func TestOTLPStructuredMetadataCalculation(t *testing.T) {
 		streamResolver,
 		constants.OTLP,
 	)
+	require.NoError(t, err)
 
 	// Verify there is exactly one stream
 	require.Equal(t, 1, len(pushReq.Streams))
@@ -1208,7 +1214,7 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 	}
 
 	// Convert OTLP logs to Loki push request
-	pushReq := otlpToLokiPushRequest(
+	pushReq, err := otlpToLokiPushRequest(
 		context.Background(),
 		generateLogs(),
 		"test-user",
@@ -1221,6 +1227,7 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 		streamResolver,
 		constants.OTLP,
 	)
+	require.NoError(t, err)
 
 	// Debug: Print the actual streams we got
 	t.Logf("Number of streams: %d", len(pushReq.Streams))

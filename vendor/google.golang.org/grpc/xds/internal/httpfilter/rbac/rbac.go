@@ -25,7 +25,6 @@ import (
 	"fmt"
 	"strings"
 
-	"google.golang.org/grpc/internal"
 	"google.golang.org/grpc/internal/resolver"
 	"google.golang.org/grpc/internal/xds/rbac"
 	"google.golang.org/grpc/xds/internal/httpfilter"
@@ -38,16 +37,6 @@ import (
 
 func init() {
 	httpfilter.Register(builder{})
-
-	// TODO: Remove these once the RBAC env var is removed.
-	internal.RegisterRBACHTTPFilterForTesting = func() {
-		httpfilter.Register(builder{})
-	}
-	internal.UnregisterRBACHTTPFilterForTesting = func() {
-		for _, typeURL := range builder.TypeURLs(builder{}) {
-			httpfilter.UnregisterForTesting(typeURL)
-		}
-	}
 }
 
 type builder struct {

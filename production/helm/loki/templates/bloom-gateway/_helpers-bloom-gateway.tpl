@@ -22,11 +22,31 @@ app.kubernetes.io/component: bloom-gateway
 {{- end }}
 
 {{/*
+bloom gateway livenessProbe
+*/}}
+{{- define "loki.bloomGateway.livenessProbe" }}
+{{- with .Values.bloomGateway.livenessProbe | default .Values.loki.livenessProbe }}
+livenessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
 bloom gateway readinessProbe
 */}}
 {{- define "loki.bloomGateway.readinessProbe" }}
 {{- with .Values.bloomGateway.readinessProbe | default .Values.loki.readinessProbe }}
 readinessProbe:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+bloom gateway startupProbe
+*/}}
+{{- define "loki.bloomGateway.startupProbe" }}
+{{- with .Values.bloomGateway.startupProbe | default .Values.loki.startupProbe }}
+startupProbe:
   {{- toYaml . | nindent 2 }}
 {{- end }}
 {{- end }}

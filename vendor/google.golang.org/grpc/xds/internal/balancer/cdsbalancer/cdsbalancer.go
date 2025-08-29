@@ -530,13 +530,11 @@ func (b *cdsBalancer) onClusterUpdate(name string, update xdsresource.ClusterUpd
 	}
 	// We no longer need the clusters that we did not see in this iteration of
 	// generateDMsForCluster().
-	for cluster := range clustersSeen {
-		state, ok := b.watchers[cluster]
-		if ok {
-			continue
+	for cluster, state := range b.watchers {
+		if !clustersSeen[cluster] {
+			state.cancelWatch()
+			delete(b.watchers, cluster)
 		}
-		state.cancelWatch()
-		delete(b.watchers, cluster)
 	}
 }
 

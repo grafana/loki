@@ -4,7 +4,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.compactorFullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.compactorLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
@@ -45,7 +45,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
+      {{- if semverCompare ">=1.19-0" (include "loki.kubeVersion" .) }}
       {{- with .Values.compactor.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
@@ -59,6 +59,9 @@ spec:
       {{- with .Values.compactor.hostAliases }}
       hostAliases:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.compactor.hostUsers) }}
+      hostUsers: {{ .Values.compactor.hostUsers }}
       {{- end }}
       {{- include "loki.compactorPriorityClassName" . | nindent 6 }}
       securityContext:
@@ -178,9 +181,13 @@ spec:
         annotations:
           {{- . | toYaml | nindent 10 }}
         {{- end }}
+        {{- with .labels }}
+        labels:
+          {{- . | toYaml | nindent 10 }}
+        {{- end }}
       spec:
         accessModes:
-          - ReadWriteOnce
+          {{- toYaml .accessModes | nindent 10 }}
         {{- with .storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
         {{- end }}

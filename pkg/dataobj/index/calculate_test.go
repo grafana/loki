@@ -1,7 +1,6 @@
 package index
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -11,6 +10,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
+
+	"github.com/thanos-io/objstore/providers/filesystem"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
@@ -39,7 +40,7 @@ func createTestLogObject(t *testing.T) *dataobj.Object {
 		TargetSectionSize:       1 << 21,
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	// Add test streams with structured metadata
@@ -92,42 +93,82 @@ func createTestLogObject(t *testing.T) *dataobj.Object {
 		require.NoError(t, err)
 	}
 
-	buf := bytes.NewBuffer(nil)
-	_, err = builder.Flush(buf)
+	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
-
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	require.NoError(t, err)
+	t.Cleanup(func() { closer.Close() })
 
 	return obj
 }
 
 func TestCalculator_Calculate(t *testing.T) {
-	t.Run("successful calculation", func(t *testing.T) {
-		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig)
+	logger := log.NewNopLogger()
+	t.Run("successful calculation from readerAt", func(t *testing.T) {
+		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil)
 		require.NoError(t, err)
 
 		calculator := NewCalculator(indexBuilder)
 		for i := 0; i < 10; i++ {
 			obj := createTestLogObject(t)
-			logger := log.NewNopLogger()
 
 			err = calculator.Calculate(context.Background(), logger, obj, fmt.Sprintf("test/path-%d", i))
 			require.NoError(t, err)
 		}
 
 		// Verify we can flush the results
-		buf := bytes.NewBuffer(nil)
-		stats, err := calculator.Flush(buf)
+		timeRanges := calculator.TimeRanges()
+		obj, closer, err := calculator.Flush()
 		require.NoError(t, err)
-		require.Greater(t, buf.Len(), 0)
-		require.False(t, stats.MinTimestamp.IsZero())
-		require.Equal(t, stats.MinTimestamp, time.Unix(10, 0).UTC())
-		require.False(t, stats.MaxTimestamp.IsZero())
-		require.Equal(t, stats.MaxTimestamp, time.Unix(25, 0).UTC())
+		defer closer.Close()
 
-		obj, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+		require.Greater(t, obj.Size(), int64(0))
+		require.Equal(t, len(timeRanges), 1)
+		require.False(t, timeRanges[0].MinTime.IsZero())
+		require.Equal(t, timeRanges[0].MinTime, time.Unix(10, 0).UTC())
+		require.False(t, timeRanges[0].MaxTime.IsZero())
+		require.Equal(t, timeRanges[0].MaxTime, time.Unix(25, 0).UTC())
+
+		// Confirm we have multiple pointers sections
+		count := obj.Sections().Count(pointers.CheckSection)
+		require.Greater(t, count, 1)
+
+		requireValidPointers(t, obj)
+	})
+
+	t.Run("successful calculation from FS bucket", func(t *testing.T) {
+		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil)
 		require.NoError(t, err)
+
+		bucket, err := filesystem.NewBucket(t.TempDir())
+		require.NoError(t, err)
+
+		calculator := NewCalculator(indexBuilder)
+		for i := 0; i < 10; i++ {
+			obj := createTestLogObject(t)
+
+			// Upload to bucket
+			reader, err := obj.Reader(context.Background())
+			require.NoError(t, err)
+			err = bucket.Upload(context.Background(), fmt.Sprintf("obj-%d", i), reader)
+			require.NoError(t, err)
+			bucketObj, err := dataobj.FromBucket(context.Background(), bucket, fmt.Sprintf("obj-%d", i))
+			require.NoError(t, err)
+
+			err = calculator.Calculate(context.Background(), logger, bucketObj, fmt.Sprintf("test/path-%d", i))
+			require.NoError(t, err)
+		}
+
+		// Verify we can flush the results
+		timeRanges := calculator.TimeRanges()
+		obj, closer, err := calculator.Flush()
+		require.NoError(t, err)
+		defer closer.Close()
+
+		require.Greater(t, obj.Size(), int64(0))
+		require.Equal(t, len(timeRanges), 1)
+		require.False(t, timeRanges[0].MinTime.IsZero())
+		require.Equal(t, timeRanges[0].MinTime, time.Unix(10, 0).UTC())
+		require.False(t, timeRanges[0].MaxTime.IsZero())
+		require.Equal(t, timeRanges[0].MaxTime, time.Unix(25, 0).UTC())
 
 		// Confirm we have multiple pointers sections
 		count := obj.Sections().Count(pointers.CheckSection)

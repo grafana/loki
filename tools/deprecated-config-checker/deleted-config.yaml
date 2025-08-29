@@ -21,6 +21,8 @@ common:
   storage:
     s3: &s3_deletes
       sse_encryption: "Encryption for all S3 buckets is now SSE-S3. Configure .sse field instead."
+    filesystem:
+      admin_api_directory: "Removed in 3.5.0. This field is no longer supported or recognized by Loki."
 
 ruler:
   storage:

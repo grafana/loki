@@ -49,24 +49,15 @@ type Catalog interface {
 
 // MetastoreCatalog is the default implementation of [Catalog].
 type MetastoreCatalog struct {
-	ctx           context.Context
-	metastore     metastore.Metastore
-	catalogueType CatalogueType
+	ctx       context.Context
+	metastore metastore.Metastore
 }
 
-type CatalogueType int
-
-const (
-	CatalogueTypeDirect CatalogueType = iota
-	CatalogueTypeIndex
-)
-
 // NewMetastoreCatalog creates a new instance of [MetastoreCatalog] for query planning.
-func NewMetastoreCatalog(ctx context.Context, ms metastore.Metastore, catalogueType CatalogueType) *MetastoreCatalog {
+func NewMetastoreCatalog(ctx context.Context, ms metastore.Metastore) *MetastoreCatalog {
 	return &MetastoreCatalog{
-		ctx:           ctx,
-		metastore:     ms,
-		catalogueType: catalogueType,
+		ctx:       ctx,
+		metastore: ms,
 	}
 }
 
@@ -82,28 +73,7 @@ func (c *MetastoreCatalog) ResolveDataObjWithShard(selector Expression, predicat
 		return nil, nil, nil, errors.New("no metastore to resolve objects")
 	}
 
-	switch c.catalogueType {
-	case CatalogueTypeDirect:
-		return c.resolveDataObj(selector, shard, from, through)
-	case CatalogueTypeIndex:
-		return c.resolveDataObjWithIndex(selector, predicates, shard, from, through)
-	default:
-		return nil, nil, nil, fmt.Errorf("invalid catalogue type: %d", c.catalogueType)
-	}
-}
-
-func (c *MetastoreCatalog) resolveDataObj(selector Expression, shard ShardInfo, from, through time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
-	matchers, err := expressionToMatchers(selector, false)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to convert selector expression into matchers: %w", err)
-	}
-
-	paths, streamIDs, numSections, err := c.metastore.StreamIDs(c.ctx, from, through, matchers...)
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to resolve data object locations: %w", err)
-	}
-
-	return filterForShard(shard, paths, streamIDs, numSections)
+	return c.resolveDataObjWithIndex(selector, predicates, shard, from, through)
 }
 
 func filterForShard(shard ShardInfo, paths []string, streamIDs [][]int64, numSections []int) ([]DataObjLocation, [][]int64, [][]int, error) {

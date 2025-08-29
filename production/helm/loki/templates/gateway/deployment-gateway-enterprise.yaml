@@ -5,6 +5,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ template "loki.gatewayFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.gatewayLabels" . | nindent 4 }}
     {{- with .Values.enterpriseGateway.labels }}
@@ -21,6 +22,7 @@ spec:
       {{- include "loki.gatewaySelectorLabels" . | nindent 6 }}
   strategy:
     {{- toYaml .Values.enterpriseGateway.strategy | nindent 4 }}
+  revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }} 
   template:
     metadata:
       labels:
@@ -38,7 +40,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
+      {{- if semverCompare ">=1.19-0" (include "loki.kubeVersion" .) }}
       {{- with .Values.enterpriseGateway.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
@@ -60,6 +62,9 @@ spec:
       hostAliases:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.enterpriseGateway.hostUsers) }}
+      hostUsers: {{ .Values.enterpriseGateway.hostUsers }}
+      {{- end }}
       containers:
         - name: gateway
           image: "{{ template "loki.image" . }}"
@@ -76,22 +81,22 @@ spec:
             - -admin.client.s3.insecure={{ .Values.loki.storage.s3.insecure }}
             {{- end }}
             {{- if and $isDistributed .Values.enterpriseGateway.useDefaultProxyURLs }}
-            - -gateway.proxy.default.url=http://{{ template "loki.fullname" . }}-admin-api.{{ .Release.Namespace }}.svc:3100
-            - -gateway.proxy.admin-api.url=http://{{ template "loki.fullname" . }}-admin-api.{{ .Release.Namespace }}.svc:3100
-            - -gateway.proxy.distributor.url=dns:///{{ template "loki.fullname" . }}-distributor-headless.{{ .Release.Namespace }}.svc:9095
-            - -gateway.proxy.ingester.url=http://{{ template "loki.fullname" . }}-ingester.{{ .Release.Namespace }}.svc:3100
-            - -gateway.proxy.query-frontend.url=http://{{ template "loki.fullname" . }}-query-frontend.{{ .Release.Namespace }}.svc:3100
-            - -gateway.proxy.ruler.url=http://{{ template "loki.fullname" . }}-ruler.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.default.url=http://{{ template "loki.fullname" . }}-admin-api.{{ include "loki.namespace" . }}.svc:3100
+            - -gateway.proxy.admin-api.url=http://{{ template "loki.fullname" . }}-admin-api.{{ include "loki.namespace" . }}.svc:3100
+            - -gateway.proxy.distributor.url=dns:///{{ template "loki.fullname" . }}-distributor-headless.{{ include "loki.namespace" . }}.svc:9095
+            - -gateway.proxy.ingester.url=http://{{ template "loki.fullname" . }}-ingester.{{ include "loki.namespace" . }}.svc:3100
+            - -gateway.proxy.query-frontend.url=http://{{ template "loki.fullname" . }}-query-frontend.{{ include "loki.namespace" . }}.svc:3100
+            - -gateway.proxy.ruler.url=http://{{ template "loki.fullname" . }}-ruler.{{ include "loki.namespace" . }}.svc:3100
             {{- end }}
             {{- if and $isSimpleScalable .Values.enterpriseGateway.useDefaultProxyURLs }}
-            - -gateway.proxy.default.url=http://{{ template "enterprise-logs.adminApiFullname" . }}.{{ .Release.Namespace }}.svc:3100
-            - -gateway.proxy.admin-api.url=http://{{ template "enterprise-logs.adminApiFullname" . }}.{{ .Release.Namespace }}.svc:3100
-            - -gateway.proxy.compactor.url=http://{{ template "loki.backendFullname" . }}-headless.{{ .Release.Namespace }}.svc:3100
-            - -gateway.proxy.distributor.url=dns:///{{ template "loki.writeFullname" . }}-headless.{{ .Release.Namespace }}.svc:9095
-            - -gateway.proxy.ingester.url=http://{{ template "loki.writeFullname" . }}.{{ .Release.Namespace }}.svc:3100
-            - -gateway.proxy.query-frontend.url=http://{{ template "loki.readFullname" . }}.{{ .Release.Namespace }}.svc:3100
-            - -gateway.proxy.ruler.url=http://{{ template "loki.backendFullname" . }}-headless.{{ .Release.Namespace }}.svc:3100
-            - -gateway.proxy.query-scheduler.url=http://{{ template "loki.backendFullname" . }}-headless.{{ .Release.Namespace }}.svc:3100
+            - -gateway.proxy.default.url=http://{{ template "enterprise-logs.adminApiFullname" . }}.{{ include "loki.namespace" . }}.svc:3100
+            - -gateway.proxy.admin-api.url=http://{{ template "enterprise-logs.adminApiFullname" . }}.{{ include "loki.namespace" . }}.svc:3100
+            - -gateway.proxy.compactor.url=http://{{ template "loki.backendFullname" . }}-headless.{{ include "loki.namespace" . }}.svc:3100
+            - -gateway.proxy.distributor.url=dns:///{{ template "loki.writeFullname" . }}-headless.{{ include "loki.namespace" . }}.svc:9095
+            - -gateway.proxy.ingester.url=http://{{ template "loki.writeFullname" . }}.{{ include "loki.namespace" . }}.svc:3100
+            - -gateway.proxy.query-frontend.url=http://{{ template "loki.readFullname" . }}.{{ include "loki.namespace" . }}.svc:3100
+            - -gateway.proxy.ruler.url=http://{{ template "loki.backendFullname" . }}-headless.{{ include "loki.namespace" . }}.svc:3100
+            - -gateway.proxy.query-scheduler.url=http://{{ template "loki.backendFullname" . }}-headless.{{ include "loki.namespace" . }}.svc:3100
             {{- end }}
             {{- range $key, $value := .Values.enterpriseGateway.extraArgs }}
             - "-{{ $key }}={{ $value }}"

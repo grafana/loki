@@ -49,6 +49,8 @@ type PartnerAttachmentCreateRequest struct {
 	BGP BGP `json:"bgp,omitempty"`
 	// RedundancyZone is the redundancy zone of the Partner Attachment
 	RedundancyZone string `json:"redundancy_zone,omitempty"`
+	// ParentUuid is the uuid of the parent Partner Attachment if there is one
+	ParentUuid string `json:"parent_uuid,omitempty"`
 }
 
 type partnerAttachmentRequestBody struct {
@@ -66,6 +68,8 @@ type partnerAttachmentRequestBody struct {
 	BGP *BGPInput `json:"bgp,omitempty"`
 	// RedundancyZone is the redundancy zone of the Partner Attachment
 	RedundancyZone string `json:"redundancy_zone,omitempty"`
+	// ParentUuid is the uuid of the parent Partner Attachment if there is one
+	ParentUuid string `json:"parent_uuid,omitempty"`
 }
 
 func (req *PartnerAttachmentCreateRequest) buildReq() *partnerAttachmentRequestBody {
@@ -76,6 +80,7 @@ func (req *PartnerAttachmentCreateRequest) buildReq() *partnerAttachmentRequestB
 		NaaSProvider:              req.NaaSProvider,
 		VPCIDs:                    req.VPCIDs,
 		RedundancyZone:            req.RedundancyZone,
+		ParentUuid:                req.ParentUuid,
 	}
 
 	if req.BGP != (BGP{}) {
@@ -198,6 +203,11 @@ type PartnerAttachment struct {
 	RedundancyZone string `json:"redundancy_zone,omitempty"`
 	// CreatedAt is time when this Partner Attachment was first created
 	CreatedAt time.Time `json:"created_at,omitempty"`
+	// ParentUuid is the uuid of the parent Partner Attachment if there is one
+	ParentUuid string `json:"parent_uuid,omitempty"`
+	// Children is a slice of children Partner Attachment UUIDs associated
+	// with the given Partner Attachment if there are any
+	Children []string `json:"children,omitempty"`
 }
 
 type partnerNetworkConnectAttachmentRoot struct {

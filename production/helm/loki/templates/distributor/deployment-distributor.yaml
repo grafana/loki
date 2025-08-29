@@ -4,7 +4,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "loki.distributorFullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.distributorLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
@@ -41,7 +41,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
+      {{- if semverCompare ">=1.19-0" (include "loki.kubeVersion" .) }}
       {{- with .Values.distributor.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
@@ -55,6 +55,9 @@ spec:
       {{- with .Values.distributor.hostAliases }}
       hostAliases:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.distributor.hostUsers) }}
+      hostUsers: {{ .Values.distributor.hostUsers }}
       {{- end }}
       {{- include "loki.distributorPriorityClassName" . | nindent 6 }}
       securityContext:
@@ -101,10 +104,14 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
-          readinessProbe:
-            {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
+          {{- with .Values.loki.livenessProbe }}
           livenessProbe:
-            {{- toYaml .Values.loki.livenessProbe | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.loki.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config

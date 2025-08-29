@@ -19,6 +19,9 @@ type (
 	// included if the inner Predicate is false.
 	NotPredicate struct{ Inner Predicate }
 
+	// TruePredicate is a [Predicate] which always returns true.
+	TruePredicate struct{}
+
 	// FalsePredicate is a [Predicate] which always returns false.
 	FalsePredicate struct{}
 
@@ -70,6 +73,7 @@ type (
 func (AndPredicate) isPredicate()         {}
 func (OrPredicate) isPredicate()          {}
 func (NotPredicate) isPredicate()         {}
+func (TruePredicate) isPredicate()        {}
 func (FalsePredicate) isPredicate()       {}
 func (EqualPredicate) isPredicate()       {}
 func (InPredicate) isPredicate()          {}
@@ -98,6 +102,7 @@ func walkPredicate(p Predicate, fn func(Predicate) bool) {
 	case NotPredicate:
 		walkPredicate(p.Inner, fn)
 
+	case TruePredicate: // No children.
 	case FalsePredicate: // No children.
 	case EqualPredicate: // No children.
 	case InPredicate: // No children.

@@ -2,7 +2,9 @@ package api
 
 import (
 	"fmt"
+	"mime/multipart"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/baidubce/bce-sdk-go/bce"
@@ -13,8 +15,9 @@ import (
 type optionType string
 
 const (
-	optionHeader optionType = "HttpHeader"    // HTTP Header
-	optionParam  optionType = "HttpParameter" // URL parameter
+	optionHeader    optionType = "HttpHeader"    // HTTP Header
+	optionParam     optionType = "HttpParameter" // URL parameter
+	optionPostField optionType = "PostField"     // URL parameter
 )
 
 type (
@@ -23,7 +26,8 @@ type (
 		Type  optionType
 	}
 	// Set various options of HTTP request
-	Option func(params map[string]optionValue) error
+	Option    func(params map[string]optionValue) error
+	GetOption func(params map[string]interface{}) error
 )
 
 // An option to set Cache-Control header
@@ -31,14 +35,29 @@ func CacheControl(value string) Option {
 	return setHeader(http.CACHE_CONTROL, value)
 }
 
+// An option to set Cache-Control field to multipart form
+func PostCacheControl(value string) Option {
+	return setPostField(http.CACHE_CONTROL, value)
+}
+
 // An option to set Content-Disposition header
 func ContentDisposition(value string) Option {
 	return setHeader(http.CONTENT_DISPOSITION, value)
 }
 
+// An option to add Content-Disposition field to multipart form
+func PostContentDisposition(value string) Option {
+	return setPostField(http.CONTENT_DISPOSITION, value)
+}
+
 // An option to set Content-Encoding header
 func ContentEncoding(value string) Option {
 	return setHeader(http.CONTENT_ENCODING, value)
+}
+
+// An option to set Content-Encoding field to multipart form
+func PostContentEncoding(value string) Option {
+	return setPostField(http.CONTENT_ENCODING, value)
 }
 
 // An option to set Content-Language header
@@ -69,6 +88,11 @@ func Range(start, end int64) Option {
 // An option to set Content-Type header
 func ContentType(value string) Option {
 	return setHeader(http.CONTENT_TYPE, value)
+}
+
+// An option to set Content-Type field to multipart form
+func PostContentType(value string) Option {
+	return setPostField(http.CONTENT_TYPE, value)
 }
 
 // An option to set Date header
@@ -122,7 +146,7 @@ func ContentCrc32(crc32 uint32) Option {
 
 // An option to set X-Bce-Content-Crc32c header
 func ContentCrc32c(crc32c uint32) Option {
-	return setHeader(http.BCE_CONTENT_CRC32, strconv.FormatUint(uint64(crc32c), 10))
+	return setHeader(http.BCE_CONTENT_CRC32C, strconv.FormatUint(uint64(crc32c), 10))
 }
 
 // An option to set X-Bce-Content-Crc32c-Flag header
@@ -130,12 +154,17 @@ func ContentCrc32cFlag(crc32cFlag bool) Option {
 	if !crc32cFlag {
 		return nil
 	}
-	return setHeader(http.BCE_CONTENT_CRC32, strconv.FormatBool(crc32cFlag))
+	return setHeader(http.BCE_CONTENT_CRC32C_FLAG, strconv.FormatBool(crc32cFlag))
 }
 
 // An option to set X-Bce-Meta-* header
 func UserMeta(key, value string) Option {
 	return setHeader(http.BCE_USER_METADATA_PREFIX+key, value)
+}
+
+// An option to add X-Bce-Meta-* field to multipart form
+func PostUserMeta(key, value string) Option {
+	return setPostField(http.BCE_USER_METADATA_PREFIX+key, value)
 }
 
 // An option to set X-Bce-Security-Token header
@@ -304,8 +333,12 @@ func SetParam(key string, value interface{}) Option {
 	return setParam(key, value)
 }
 
+func SetPostField(key string, value interface{}) Option {
+	return setPostField(key, value)
+}
+
 func setHeader(key string, value interface{}) Option {
-	if str, ok := value.(string); ok && str == "" {
+	if str, ok := value.(string); !ok || str == "" {
 		return nil
 	}
 	return func(params map[string]optionValue) error {
@@ -323,6 +356,19 @@ func setParam(key string, value interface{}) Option {
 			return nil
 		}
 		params[key] = optionValue{value, optionParam}
+		return nil
+	}
+}
+
+func setPostField(key string, value interface{}) Option {
+	if str, ok := value.(string); !ok || str == "" {
+		return nil
+	}
+	return func(params map[string]optionValue) error {
+		if value == nil {
+			return nil
+		}
+		params[key] = optionValue{value, optionPostField}
 		return nil
 	}
 }
@@ -350,6 +396,67 @@ func handleOptions(request *BosRequest, options []Option) error {
 	}
 	if aclMethods > 1 {
 		return bce.NewBceClientError("BOS only support one acl setting method at the same time")
+	}
+	return nil
+}
+
+func handlePostOptions(w *multipart.Writer, options []Option) error {
+	params := make(map[string]optionValue)
+	for _, option := range options {
+		if option != nil {
+			if err := option(params); err != nil {
+				return err
+			}
+		}
+	}
+	for k, v := range params {
+		if v.Type == optionPostField {
+			err := w.WriteField(k, v.Value.(string))
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func getHeader(key string, value interface{}) GetOption {
+	return func(params map[string]interface{}) error {
+		if value == nil {
+			return nil
+		}
+		params[key] = value
+		return nil
+	}
+}
+
+func handleGetOptions(response *BosResponse, options []GetOption) error {
+	params := make(map[string]interface{})
+	for _, option := range options {
+		if option != nil {
+			if err := option(params); err != nil {
+				return err
+			}
+		}
+	}
+
+	headers := response.Headers()
+	for k, v := range params {
+		if val, ok := headers[toHttpHeaderKey(k)]; ok && v != nil {
+			if vReal, ok := v.(*string); ok {
+				*vReal = val
+			}
+			if vReal, ok := v.(*bool); ok {
+				*vReal, _ = strconv.ParseBool(val)
+			}
+			if vReal, ok := v.(*int); ok {
+				vint, _ := strconv.ParseInt(val, 10, 64)
+				*vReal = int(vint)
+			}
+			if vReal, ok := v.(*[]string); ok {
+				*vReal = strings.Split(val, ",")
+			}
+		}
 	}
 	return nil
 }

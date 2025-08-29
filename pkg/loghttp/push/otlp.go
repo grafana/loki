@@ -47,8 +47,8 @@ func ParseOTLPRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		return nil, nil, err
 	}
 
-	req := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, limits.OTLPConfig(userID), tenantConfigs, limits.DiscoverServiceName(userID), tracker, stats, logger, streamResolver, constants.OTLP)
-	return req, stats, nil
+	req, err := otlpToLokiPushRequest(r.Context(), otlpLogs, userID, limits.OTLPConfig(userID), tenantConfigs, limits.DiscoverServiceName(userID), tracker, stats, logger, streamResolver, constants.OTLP)
+	return req, stats, err
 }
 
 func extractLogs(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (plog.Logs, error) {
@@ -106,9 +106,9 @@ func extractLogs(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (plog.Lo
 	return req.Logs(), nil
 }
 
-func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otlpConfig OTLPConfig, tenantConfigs *runtime.TenantConfigs, discoverServiceName []string, tracker UsageTracker, stats *Stats, logger log.Logger, streamResolver StreamResolver, format string) *logproto.PushRequest {
+func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otlpConfig OTLPConfig, tenantConfigs *runtime.TenantConfigs, discoverServiceName []string, tracker UsageTracker, stats *Stats, logger log.Logger, streamResolver StreamResolver, format string) (*logproto.PushRequest, error) {
 	if ld.LogRecordCount() == 0 {
-		return &logproto.PushRequest{}
+		return &logproto.PushRequest{}, nil
 	}
 
 	rls := ld.ResourceLogs()
@@ -142,13 +142,18 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		if v, ok := resAttrs.Get(attrServiceName); ok && v.AsString() != "" {
 			hasServiceName = true
 		}
+		var rangeErr error
 		resAttrs.Range(func(k string, v pcommon.Value) bool {
 			action := otlpConfig.ActionForResourceAttribute(k)
 			if action == Drop {
 				return true
 			}
 
-			attributeAsLabels := attributeToLabels(k, v, "")
+			attributeAsLabels, err := attributeToLabels(k, v, "")
+			if err != nil {
+				rangeErr = err
+				return false
+			}
 			if action == IndexLabel {
 				for _, lbl := range attributeAsLabels {
 					streamLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
@@ -172,6 +177,9 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 
 			return true
 		})
+		if rangeErr != nil {
+			return nil, rangeErr
+		}
 
 		if !hasServiceName && shouldDiscoverServiceName {
 			streamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(ServiceUnknown)
@@ -251,19 +259,27 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 
 			// use fields and attributes from scope as structured metadata
 			scopeAttributesAsStructuredMetadata := make(push.LabelsAdapter, 0, scopeAttrs.Len()+3)
+			var rangeErr error
 			scopeAttrs.Range(func(k string, v pcommon.Value) bool {
 				action := otlpConfig.ActionForScopeAttribute(k)
 				if action == Drop {
 					return true
 				}
 
-				attributeAsLabels := attributeToLabels(k, v, "")
+				attributeAsLabels, err := attributeToLabels(k, v, "")
+				if err != nil {
+					rangeErr = err
+					return false
+				}
 				if action == StructuredMetadata {
 					scopeAttributesAsStructuredMetadata = append(scopeAttributesAsStructuredMetadata, attributeAsLabels...)
 				}
 
 				return true
 			})
+			if rangeErr != nil {
+				return nil, rangeErr
+			}
 
 			if scopeName := scope.Name(); scopeName != "" {
 				scopeAttributesAsStructuredMetadata = append(scopeAttributesAsStructuredMetadata, push.LabelAdapter{
@@ -293,7 +309,10 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				log := logs.At(k)
 
 				// Use the existing function that already handles log attributes properly
-				logLabels, entry := otlpLogToPushEntry(log, otlpConfig, logServiceNameDiscovery, pushedLabels)
+				logLabels, entry, err := otlpLogToPushEntry(log, otlpConfig, logServiceNameDiscovery, pushedLabels)
+				if err != nil {
+					return nil, err
+				}
 				if entry.Timestamp.After(mostRecentEntryTimestamp) {
 					mostRecentEntryTimestamp = entry.Timestamp
 				}
@@ -415,23 +434,28 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		otlpExporterStreams.WithLabelValues(userID).Inc()
 	}
 
-	return pr
+	return pr, nil
 }
 
 // otlpLogToPushEntry converts an OTLP log record to a Loki push.Entry.
-func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNameDiscovery bool, pushedLabels model.LabelSet) (model.LabelSet, push.Entry) {
+func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNameDiscovery bool, pushedLabels model.LabelSet) (model.LabelSet, push.Entry, error) {
 	// copy log attributes and all the fields from log(except log.Body) to structured metadata
 	logAttrs := log.Attributes()
 	structuredMetadata := make(push.LabelsAdapter, 0, logAttrs.Len()+7)
 	logLabels := make(model.LabelSet)
 
+	var rangeErr error
 	logAttrs.Range(func(k string, v pcommon.Value) bool {
 		action := otlpConfig.ActionForLogAttribute(k)
 		if action == Drop {
 			return true
 		}
 
-		attributeAsLabels := attributeToLabels(k, v, "")
+		attributeAsLabels, err := attributeToLabels(k, v, "")
+		if err != nil {
+			rangeErr = err
+			return false
+		}
 		if action == StructuredMetadata {
 			structuredMetadata = append(structuredMetadata, attributeAsLabels...)
 		}
@@ -447,6 +471,9 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNam
 
 		return true
 	})
+	if rangeErr != nil {
+		return nil, push.Entry{}, rangeErr
+	}
 
 	// if log.Timestamp() is 0, we would have already stored log.ObservedTimestamp as log timestamp so no need to store again in structured metadata
 	if log.Timestamp() != 0 && log.ObservedTimestamp() != 0 {
@@ -508,24 +535,30 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNam
 		Timestamp:          timestampFromLogRecord(log),
 		Line:               log.Body().AsString(),
 		StructuredMetadata: structuredMetadata,
-	}
+	}, nil
 }
 
-func attributesToLabels(attrs pcommon.Map, prefix string) push.LabelsAdapter {
+func attributesToLabels(attrs pcommon.Map, prefix string) (push.LabelsAdapter, error) {
 	labelsAdapter := make(push.LabelsAdapter, 0, attrs.Len())
 	if attrs.Len() == 0 {
-		return labelsAdapter
+		return labelsAdapter, nil
 	}
 
+	var rangeErr error
 	attrs.Range(func(k string, v pcommon.Value) bool {
-		labelsAdapter = append(labelsAdapter, attributeToLabels(k, v, prefix)...)
+		lbls, err := attributeToLabels(k, v, prefix)
+		if err != nil {
+			rangeErr = err
+			return false
+		}
+		labelsAdapter = append(labelsAdapter, lbls...)
 		return true
 	})
 
-	return labelsAdapter
+	return labelsAdapter, rangeErr
 }
 
-func attributeToLabels(k string, v pcommon.Value, prefix string) push.LabelsAdapter {
+func attributeToLabels(k string, v pcommon.Value, prefix string) (push.LabelsAdapter, error) {
 	var labelsAdapter push.LabelsAdapter
 
 	keyWithPrefix := k
@@ -534,23 +567,35 @@ func attributeToLabels(k string, v pcommon.Value, prefix string) push.LabelsAdap
 	}
 
 	labelNamer := otlptranslator.LabelNamer{}
-	keyWithPrefix = labelNamer.Build(keyWithPrefix)
+	keyWithPrefix, err := labelNamer.Build(keyWithPrefix)
+	if err != nil {
+		return nil, fmt.Errorf("symbolizer lookup: %w", err)
+	}
 
 	typ := v.Type()
 	if typ == pcommon.ValueTypeMap {
 		mv := v.Map()
 		labelsAdapter = make(push.LabelsAdapter, 0, mv.Len())
+		var rangeErr error
 		mv.Range(func(k string, v pcommon.Value) bool {
-			labelsAdapter = append(labelsAdapter, attributeToLabels(k, v, keyWithPrefix)...)
+			lbls, err := attributeToLabels(k, v, keyWithPrefix)
+			if err != nil {
+				rangeErr = fmt.Errorf("symbolizer lookup: %w", err)
+				return false
+			}
+			labelsAdapter = append(labelsAdapter, lbls...)
 			return true
 		})
+		if rangeErr != nil {
+			return nil, rangeErr
+		}
 	} else {
 		labelsAdapter = push.LabelsAdapter{
 			push.LabelAdapter{Name: keyWithPrefix, Value: v.AsString()},
 		}
 	}
 
-	return labelsAdapter
+	return labelsAdapter, nil
 }
 
 func timestampFromLogRecord(lr plog.LogRecord) time.Time {

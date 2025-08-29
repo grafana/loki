@@ -91,7 +91,7 @@ Regex log stream newlines:
 A log pipeline can be appended to a log stream selector to further process and filter log streams. It is composed of a set of expressions. Each expression is executed in left to right sequence for each log line. If an expression filters out a log line, the pipeline will stop processing the current log line and start processing the next log line.
 
 Some expressions can mutate the log content and respective labels,
-which will be then be available for further filtering and processing in subsequent expressions.
+which will then be available for further filtering and processing in subsequent expressions.
 An example that mutates is the expression
 
 ```

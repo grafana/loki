@@ -2,11 +2,11 @@
 package indexobj
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/grafana/dskit/flagext"
@@ -15,9 +15,11 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 // ErrBuilderFull is returned by [Builder.Append] when the buffer is
@@ -117,10 +119,10 @@ type Builder struct {
 
 	currentSizeEstimate int
 
-	builder       *dataobj.Builder // Inner builder for accumulating sections.
-	streams       *streams.Builder
-	pointers      *pointers.Builder
-	indexPointers *indexpointers.Builder
+	builder       *dataobj.Builder                  // Inner builder for accumulating sections.
+	streams       map[string]*streams.Builder       // The key is the TenantID.
+	pointers      map[string]*pointers.Builder      // The key is the TenantID.
+	indexPointers map[string]*indexpointers.Builder // The key is the TenantID.
 
 	state builderState
 }
@@ -138,7 +140,7 @@ const (
 // NewBuilder creates a new [Builder] which stores log-oriented data objects.
 //
 // NewBuilder returns an error if the provided config is invalid.
-func NewBuilder(cfg BuilderConfig) (*Builder, error) {
+func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store) (*Builder, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -148,6 +150,7 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 		return nil, fmt.Errorf("failed to create LRU cache: %w", err)
 	}
 
+	// TODO: Add metrics for number of tenants in each object
 	metrics := newBuilderMetrics()
 	metrics.ObserveConfig(cfg)
 
@@ -157,10 +160,10 @@ func NewBuilder(cfg BuilderConfig) (*Builder, error) {
 
 		labelCache: labelCache,
 
-		builder:       dataobj.NewBuilder(),
-		streams:       streams.NewBuilder(metrics.streams, int(cfg.TargetPageSize)),
-		pointers:      pointers.NewBuilder(metrics.pointers, int(cfg.TargetPageSize)),
-		indexPointers: indexpointers.NewBuilder(metrics.indexPointers, int(cfg.TargetPageSize)),
+		builder:       dataobj.NewBuilder(scratchStore),
+		streams:       make(map[string]*streams.Builder),
+		pointers:      make(map[string]*pointers.Builder),
+		indexPointers: make(map[string]*indexpointers.Builder),
 	}, nil
 }
 
@@ -168,7 +171,7 @@ func (b *Builder) GetEstimatedSize() int {
 	return b.currentSizeEstimate
 }
 
-func (b *Builder) AppendIndexPointer(path string, startTs time.Time, endTs time.Time) error {
+func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.Time, endTs time.Time) error {
 	b.metrics.appendsTotal.Inc()
 	newEntrySize := len(path) + 1 + 1 // path, startTs, endTs
 
@@ -179,10 +182,17 @@ func (b *Builder) AppendIndexPointer(path string, startTs time.Time, endTs time.
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
-	b.indexPointers.Append(path, startTs, endTs)
+	tenantIndexPointers, ok := b.indexPointers[tenantID]
+	if !ok {
+		tenantIndexPointers = indexpointers.NewBuilder(b.metrics.indexPointers, int(b.cfg.TargetPageSize))
+		tenantIndexPointers.SetTenant(tenantID)
+		b.indexPointers[tenantID] = tenantIndexPointers
+	}
 
-	if b.indexPointers.EstimatedSize() > int(b.cfg.TargetSectionSize) {
-		if err := b.builder.Append(b.indexPointers); err != nil {
+	tenantIndexPointers.Append(path, startTs, endTs)
+
+	if tenantIndexPointers.EstimatedSize() > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(tenantIndexPointers); err != nil {
 			return err
 		}
 	}
@@ -194,7 +204,7 @@ func (b *Builder) AppendIndexPointer(path string, startTs time.Time, endTs time.
 }
 
 // AppendStream appends a stream to the object's stream section, returning the stream ID within this object.
-func (b *Builder) AppendStream(stream streams.Stream) (int64, error) {
+func (b *Builder) AppendStream(tenantID string, stream streams.Stream) (int64, error) {
 	b.metrics.appendsTotal.Inc()
 
 	newEntrySize := labelsEstimate(stream.Labels) + 2
@@ -206,15 +216,21 @@ func (b *Builder) AppendStream(stream streams.Stream) (int64, error) {
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
+	tenantStreams, ok := b.streams[tenantID]
+	if !ok {
+		tenantStreams = streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize))
+		tenantStreams.SetTenant(tenantID)
+		b.streams[tenantID] = tenantStreams
+	}
 	// Record the stream in the stream section.
 	// Once to capture the min timestamp and uncompressed size, again to record the max timestamp.
-	streamID := b.streams.Record(stream.Labels, stream.MinTimestamp, stream.UncompressedSize)
-	_ = b.streams.Record(stream.Labels, stream.MaxTimestamp, 0)
+	streamID := tenantStreams.Record(stream.Labels, stream.MinTimestamp, stream.UncompressedSize)
+	_ = tenantStreams.Record(stream.Labels, stream.MaxTimestamp, 0)
 
 	// If our logs section has gotten big enough, we want to flush it to the
 	// encoder and start a new section.
-	if b.pointers.EstimatedSize() > int(b.cfg.TargetSectionSize) {
-		if err := b.builder.Append(b.pointers); err != nil {
+	if tenantStreams.EstimatedSize() > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(tenantStreams); err != nil {
 			b.metrics.appendFailures.Inc()
 			return 0, err
 		}
@@ -249,7 +265,7 @@ func labelsEstimate(ls labels.Labels) int {
 //
 // Once a Builder is full, call [Builder.Flush] to flush the buffered data,
 // then call Append again with the same entry.
-func (b *Builder) ObserveLogLine(path string, section int64, streamIDInObject int64, streamIDInIndex int64, ts time.Time, uncompressedSize int64) error {
+func (b *Builder) ObserveLogLine(tenantID string, path string, section int64, streamIDInObject int64, streamIDInIndex int64, ts time.Time, uncompressedSize int64) error {
 	// Check whether the buffer is full before a stream can be appended; this is
 	// tends to overestimate, but we may still go over our target size.
 	//
@@ -266,12 +282,18 @@ func (b *Builder) ObserveLogLine(path string, section int64, streamIDInObject in
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
-	b.pointers.ObserveStream(path, section, streamIDInObject, streamIDInIndex, ts, uncompressedSize)
+	tenantPointers, ok := b.pointers[tenantID]
+	if !ok {
+		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize))
+		tenantPointers.SetTenant(tenantID)
+		b.pointers[tenantID] = tenantPointers
+	}
+	tenantPointers.ObserveStream(path, section, streamIDInObject, streamIDInIndex, ts, uncompressedSize)
 
 	// If our logs section has gotten big enough, we want to flush it to the
 	// encoder and start a new section.
-	if b.pointers.EstimatedSize() > int(b.cfg.TargetSectionSize) {
-		if err := b.builder.Append(b.pointers); err != nil {
+	if tenantPointers.EstimatedSize() > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(tenantPointers); err != nil {
 			return err
 		}
 	}
@@ -287,7 +309,7 @@ func (b *Builder) ObserveLogLine(path string, section int64, streamIDInObject in
 //
 // Once a Builder is full, call [Builder.Flush] to flush the buffered data,
 // then call Append again with the same entry.
-func (b *Builder) AppendColumnIndex(path string, section int64, columnName string, columnIndex int64, valuesBloom []byte) error {
+func (b *Builder) AppendColumnIndex(tenantID string, path string, section int64, columnName string, columnIndex int64, valuesBloom []byte) error {
 	// Check whether the buffer is full before a stream can be appended; this is
 	// tends to overestimate, but we may still go over our target size.
 	//
@@ -304,12 +326,18 @@ func (b *Builder) AppendColumnIndex(path string, section int64, columnName strin
 	timer := prometheus.NewTimer(b.metrics.appendTime)
 	defer timer.ObserveDuration()
 
-	b.pointers.RecordColumnIndex(path, section, columnName, columnIndex, valuesBloom)
+	tenantPointers, ok := b.pointers[tenantID]
+	if !ok {
+		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize))
+		tenantPointers.SetTenant(tenantID)
+		b.pointers[tenantID] = tenantPointers
+	}
+	tenantPointers.RecordColumnIndex(path, section, columnName, columnIndex, valuesBloom)
 
 	// If our logs section has gotten big enough, we want to flush it to the
 	// encoder and start a new section.
-	if b.pointers.EstimatedSize() > int(b.cfg.TargetSectionSize) {
-		if err := b.builder.Append(b.pointers); err != nil {
+	if tenantPointers.EstimatedSize() > int(b.cfg.TargetSectionSize) {
+		if err := b.builder.Append(tenantPointers); err != nil {
 			return err
 		}
 	}
@@ -321,73 +349,77 @@ func (b *Builder) AppendColumnIndex(path string, section int64, columnName strin
 
 func (b *Builder) estimatedSize() int {
 	var size int
-	size += b.streams.EstimatedSize()
-	size += b.pointers.EstimatedSize()
-	size += b.indexPointers.EstimatedSize()
+	for _, tenantStreams := range b.streams {
+		size += tenantStreams.EstimatedSize()
+	}
+	for _, tenantPointers := range b.pointers {
+		size += tenantPointers.EstimatedSize()
+	}
+	for _, tenantIndexPointers := range b.indexPointers {
+		size += tenantIndexPointers.EstimatedSize()
+	}
 	size += b.builder.Bytes()
 	b.metrics.sizeEstimate.Set(float64(size))
 	return size
 }
 
-type FlushStats struct {
-	MinTimestamp time.Time
-	MaxTimestamp time.Time
+// TimeRanges returns the time range of the data in the builder, by tenant.
+func (b *Builder) TimeRanges() []multitenancy.TimeRange {
+	timeRanges := make([]multitenancy.TimeRange, 0, len(b.streams))
+	for tenantID, tenantStreams := range b.streams {
+		minTime, maxTime := tenantStreams.TimeRange()
+		timeRanges = append(timeRanges, multitenancy.TimeRange{
+			Tenant:  tenantID,
+			MinTime: minTime,
+			MaxTime: maxTime,
+		})
+	}
+	return timeRanges
 }
 
 // Flush flushes all buffered data to the buffer provided. Calling Flush can result
 // in a no-op if there is no buffered data to flush.
 //
-// [Builder.Reset] is called after a successful Flush to discard any pending data and allow new data to be appended.
-func (b *Builder) Flush(output *bytes.Buffer) (FlushStats, error) {
+// [Builder.Reset] is called after a successful Flush to discard any pending
+// data and allow new data to be appended.
+func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	if b.state == builderStateEmpty {
-		return FlushStats{}, ErrBuilderEmpty
+		return nil, nil, ErrBuilderEmpty
 	}
 
 	b.metrics.flushTotal.Inc()
 	timer := prometheus.NewTimer(b.metrics.buildTime)
 	defer timer.ObserveDuration()
 
-	// Appending sections resets them, so we need to load the time range before
-	// appending.
-	minTime, maxTime := b.streams.TimeRange()
-
-	// Flush sections one more time in case they have data.
 	var flushErrors []error
 
-	flushErrors = append(flushErrors, b.builder.Append(b.streams))
-	flushErrors = append(flushErrors, b.builder.Append(b.pointers))
-	flushErrors = append(flushErrors, b.builder.Append(b.indexPointers))
+	for _, tenantStreams := range b.streams {
+		flushErrors = append(flushErrors, b.builder.Append(tenantStreams))
+	}
+	for _, tenantPointers := range b.pointers {
+		flushErrors = append(flushErrors, b.builder.Append(tenantPointers))
+	}
+	for _, tenantIndexPointers := range b.indexPointers {
+		flushErrors = append(flushErrors, b.builder.Append(tenantIndexPointers))
+	}
 
 	if err := errors.Join(flushErrors...); err != nil {
 		b.metrics.flushFailures.Inc()
-		return FlushStats{}, fmt.Errorf("building object: %w", err)
+		return nil, nil, fmt.Errorf("building object: %w", err)
 	}
 
-	sz, err := b.builder.Flush(output)
+	obj, closer, err := b.builder.Flush()
 	if err != nil {
 		b.metrics.flushFailures.Inc()
-		return FlushStats{}, fmt.Errorf("building object: %w", err)
+		return nil, nil, fmt.Errorf("flushing object: %w", err)
 	}
 
-	b.metrics.builtSize.Observe(float64(sz))
-
-	var (
-		// We don't know if output was empty before calling Flush, so we only start
-		// reading from where we know writing began.
-
-		objReader = bytes.NewReader(output.Bytes()[output.Len()-int(sz):])
-		objLength = sz
-	)
-	obj, err := dataobj.FromReaderAt(objReader, objLength)
-	if err != nil {
-		b.metrics.flushFailures.Inc()
-		return FlushStats{}, fmt.Errorf("failed to create readable object: %w", err)
-	}
+	b.metrics.builtSize.Observe(float64(obj.Size()))
 
 	err = b.observeObject(context.Background(), obj)
 
 	b.Reset()
-	return FlushStats{MinTimestamp: minTime, MaxTimestamp: maxTime}, err
+	return obj, closer, err
 }
 
 func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error {
@@ -427,9 +459,9 @@ func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error 
 // Reset discards pending data and resets the builder to an empty state.
 func (b *Builder) Reset() {
 	b.builder.Reset()
-	b.streams.Reset()
-	b.pointers.Reset()
-	b.indexPointers.Reset()
+	clear(b.streams)
+	clear(b.pointers)
+	clear(b.indexPointers)
 
 	b.metrics.sizeEstimate.Set(0)
 	b.currentSizeEstimate = 0

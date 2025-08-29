@@ -196,7 +196,7 @@ func Test_StructuredMetadataStage(t *testing.T) {
 			pl, err := NewPipeline(util_log.Logger, loadConfig(test.pipelineStagesYaml), nil, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
 			result := processEntries(pl, newEntry(nil, test.streamLabels, test.logLine, time.Now()))[0]
-			require.Equal(t, test.expectedStructuredMetadata, result.StructuredMetadata)
+			require.ElementsMatch(t, test.expectedStructuredMetadata, result.StructuredMetadata)
 			if test.expectedLabels != nil {
 				require.Equal(t, test.expectedLabels, result.Labels)
 			} else {

@@ -4,7 +4,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "loki.bloomBuilderFullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.bloomBuilderLabels" . | nindent 4 }}
   {{- with .Values.loki.annotations }}
@@ -49,6 +49,9 @@ spec:
       hostAliases:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.bloomBuilder.hostUsers) }}
+      hostUsers: {{ .Values.bloomBuilder.hostUsers }}
+      {{- end }}
       {{- include "loki.bloomBuilderPriorityClassName" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
@@ -87,8 +90,18 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
+          {{- with .Values.loki.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.loki.readinessProbe }}
           readinessProbe:
-            {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.loki.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config

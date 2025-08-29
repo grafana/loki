@@ -3,6 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ template "enterprise-logs.adminApiFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "enterprise-logs.adminApiLabels" . | nindent 4 }}
     {{- with .Values.adminApi.labels }}
@@ -20,6 +21,7 @@ spec:
       {{- include "enterprise-logs.adminApiSelectorLabels" . | nindent 6 }}
   strategy:
     {{- toYaml .Values.adminApi.strategy | nindent 4 }}
+  revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}  
   template:
     metadata:
       labels:
@@ -38,7 +40,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
+      {{- if semverCompare ">=1.19-0" (include "loki.kubeVersion" .) }}
       {{- with .Values.adminApi.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
@@ -57,6 +59,9 @@ spec:
       {{- with .Values.adminApi.hostAliases }}
       hostAliases:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.adminApi.hostUsers) }}
+      hostUsers: {{ .Values.adminApi.hostUsers }}
       {{- end }}
       containers:
         - name: admin-api
@@ -96,8 +101,18 @@ spec:
             - name: http-memberlist
               containerPort: 7946
               protocol: TCP
+          {{- with .Values.adminApi.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.adminApi.readinessProbe }}
           readinessProbe:
-            {{- toYaml .Values.adminApi.readinessProbe | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.adminApi.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.adminApi.resources | nindent 12 }}
           securityContext:

@@ -29,6 +29,7 @@ func TestSortMerge(t *testing.T) {
 					Type:   types.ColumnTypeBuiltin,
 				},
 			},
+			Order: physical.ASC,
 		}
 
 		inputs := []Pipeline{

@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
@@ -177,8 +178,8 @@ func TestAddDeleteRequestHandler(t *testing.T) {
 
 func TestCancelDeleteRequestHandler(t *testing.T) {
 	t.Run("it removes unprocessed delete requests from the store when force is true", func(t *testing.T) {
-		stored := []DeleteRequest{
-			{RequestID: "test-request", UserID: "org-id", Query: "test-query", SequenceNum: 1, Status: StatusReceived, CreatedAt: now.Add(-2 * time.Hour)},
+		stored := []deletionproto.DeleteRequest{
+			{RequestID: "test-request", UserID: "org-id", Query: "test-query", SequenceNum: 1, Status: deletionproto.StatusReceived, CreatedAt: now.Add(-2 * time.Hour)},
 		}
 		store := &mockDeleteRequestsStore{}
 		store.getResult = stored
@@ -205,10 +206,10 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 	})
 
 	t.Run("it returns an error when parts of the query have started to be processed", func(t *testing.T) {
-		stored := []DeleteRequest{
-			{RequestID: "test-request-1", CreatedAt: now, Status: StatusProcessed},
-			{RequestID: "test-request-1", CreatedAt: now, Status: StatusReceived},
-			{RequestID: "test-request-1", CreatedAt: now, Status: StatusProcessed},
+		stored := []deletionproto.DeleteRequest{
+			{RequestID: "test-request-1", CreatedAt: now, Status: deletionproto.StatusProcessed},
+			{RequestID: "test-request-1", CreatedAt: now, Status: deletionproto.StatusReceived},
+			{RequestID: "test-request-1", CreatedAt: now, Status: deletionproto.StatusProcessed},
 		}
 		store := &mockDeleteRequestsStore{}
 		store.getResult = stored
@@ -246,7 +247,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 	})
 
 	t.Run("error removing from the store", func(t *testing.T) {
-		stored := []DeleteRequest{{RequestID: "test-request", UserID: "org-id", Query: "test-query", Status: StatusReceived, CreatedAt: now}}
+		stored := []deletionproto.DeleteRequest{{RequestID: "test-request", UserID: "org-id", Query: "test-query", Status: deletionproto.StatusReceived, CreatedAt: now}}
 		store := &mockDeleteRequestsStore{}
 		store.getResult = stored
 		store.removeErr = errors.New("something bad")
@@ -297,7 +298,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 		})
 
 		t.Run("all requests in group are already processed", func(t *testing.T) {
-			stored := []DeleteRequest{{RequestID: "test-request", UserID: "org-id", Query: "test-query", Status: StatusProcessed}}
+			stored := []deletionproto.DeleteRequest{{RequestID: "test-request", UserID: "org-id", Query: "test-query", Status: deletionproto.StatusProcessed}}
 			store := &mockDeleteRequestsStore{}
 			store.getResult = stored
 
@@ -320,7 +321,7 @@ func TestCancelDeleteRequestHandler(t *testing.T) {
 func TestGetAllDeleteRequestsHandler(t *testing.T) {
 	t.Run("it gets all the delete requests for the user", func(t *testing.T) {
 		store := &mockDeleteRequestsStore{}
-		store.getAllResult = []DeleteRequest{{RequestID: "test-request-1", Status: StatusReceived}, {RequestID: "test-request-2", Status: StatusReceived}}
+		store.getAllResult = []deletionproto.DeleteRequest{{RequestID: "test-request-1", Status: deletionproto.StatusReceived}, {RequestID: "test-request-2", Status: deletionproto.StatusReceived}}
 		h := NewDeleteRequestHandler(store, 0, 0, nil)
 
 		for _, forQuerytimeFiltering := range []bool{false, true} {
@@ -332,7 +333,7 @@ func TestGetAllDeleteRequestsHandler(t *testing.T) {
 			require.Equal(t, w.Code, http.StatusOK)
 			require.Equal(t, store.getAllUser, "org-id")
 
-			var result []DeleteRequest
+			var result []deletionproto.DeleteRequest
 			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
 			require.ElementsMatch(t, store.getAllResult, result)
 			require.Equal(t, forQuerytimeFiltering, store.getAllRequestedForQuerytimeFiltering)
@@ -402,7 +403,7 @@ func toTime(t string) model.Time {
 	return model.Time(modelTime)
 }
 
-func verifyRequestSplits(t *testing.T, from, to model.Time, shardInterval time.Duration, reqs []DeleteRequest) {
+func verifyRequestSplits(t *testing.T, from, to model.Time, shardInterval time.Duration, reqs []deleteRequest) {
 	numExpectedRequests := 3
 	shardAlignedStart := model.TimeFromUnixNano(time.Unix(0, from.UnixNano()-from.UnixNano()%shardInterval.Nanoseconds()).UnixNano())
 	if !from.Equal(shardAlignedStart) {

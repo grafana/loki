@@ -317,30 +317,30 @@ func (e *EDNS0_SUBNET) pack() ([]byte, error) {
 		// "dig" sets AddressFamily to 0 if SourceNetmask is also 0
 		// We might don't need to complain either
 		if e.SourceNetmask != 0 {
-			return nil, errors.New("dns: bad address family")
+			return nil, errors.New("bad address family")
 		}
 	case 1:
 		if e.SourceNetmask > net.IPv4len*8 {
-			return nil, errors.New("dns: bad netmask")
+			return nil, errors.New("bad netmask")
 		}
 		if len(e.Address.To4()) != net.IPv4len {
-			return nil, errors.New("dns: bad address")
+			return nil, errors.New("bad address")
 		}
 		ip := e.Address.To4().Mask(net.CIDRMask(int(e.SourceNetmask), net.IPv4len*8))
 		needLength := (e.SourceNetmask + 8 - 1) / 8 // division rounding up
 		b = append(b, ip[:needLength]...)
 	case 2:
 		if e.SourceNetmask > net.IPv6len*8 {
-			return nil, errors.New("dns: bad netmask")
+			return nil, errors.New("bad netmask")
 		}
 		if len(e.Address) != net.IPv6len {
-			return nil, errors.New("dns: bad address")
+			return nil, errors.New("bad address")
 		}
 		ip := e.Address.Mask(net.CIDRMask(int(e.SourceNetmask), net.IPv6len*8))
 		needLength := (e.SourceNetmask + 8 - 1) / 8 // division rounding up
 		b = append(b, ip[:needLength]...)
 	default:
-		return nil, errors.New("dns: bad address family")
+		return nil, errors.New("bad address family")
 	}
 	return b, nil
 }
@@ -357,25 +357,25 @@ func (e *EDNS0_SUBNET) unpack(b []byte) error {
 		// "dig" sets AddressFamily to 0 if SourceNetmask is also 0
 		// It's okay to accept such a packet
 		if e.SourceNetmask != 0 {
-			return errors.New("dns: bad address family")
+			return errors.New("bad address family")
 		}
 		e.Address = net.IPv4(0, 0, 0, 0)
 	case 1:
 		if e.SourceNetmask > net.IPv4len*8 || e.SourceScope > net.IPv4len*8 {
-			return errors.New("dns: bad netmask")
+			return errors.New("bad netmask")
 		}
 		addr := make(net.IP, net.IPv4len)
 		copy(addr, b[4:])
 		e.Address = addr.To16()
 	case 2:
 		if e.SourceNetmask > net.IPv6len*8 || e.SourceScope > net.IPv6len*8 {
-			return errors.New("dns: bad netmask")
+			return errors.New("bad netmask")
 		}
 		addr := make(net.IP, net.IPv6len)
 		copy(addr, b[4:])
 		e.Address = addr
 	default:
-		return errors.New("dns: bad address family")
+		return errors.New("bad address family")
 	}
 	return nil
 }
@@ -720,7 +720,7 @@ func (e *EDNS0_TCP_KEEPALIVE) unpack(b []byte) error {
 	case 2:
 		e.Timeout = binary.BigEndian.Uint16(b)
 	default:
-		return fmt.Errorf("dns: length mismatch, want 0/2 but got %d", len(b))
+		return fmt.Errorf("length mismatch, want 0/2 but got %d", len(b))
 	}
 	return nil
 }

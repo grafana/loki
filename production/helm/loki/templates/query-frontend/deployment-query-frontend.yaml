@@ -4,7 +4,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "loki.queryFrontendFullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.queryFrontendLabels" . | nindent 4 }}
   {{- with .Values.loki.annotations }}
@@ -40,7 +40,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
+      {{- if semverCompare ">=1.19-0" (include "loki.kubeVersion" .) }}
       {{- with .Values.queryFrontend.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
@@ -54,6 +54,9 @@ spec:
       {{- with .Values.queryFrontend.hostAliases }}
       hostAliases:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.queryFrontend.hostUsers) }}
+      hostUsers: {{ .Values.queryFrontend.hostUsers }}
       {{- end }}
       {{- include "loki.queryFrontendPriorityClassName" . | nindent 6 }}
       securityContext:
@@ -93,8 +96,10 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
+          {{- with .Values.loki.readinessProbe }}
           readinessProbe:
-            {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config

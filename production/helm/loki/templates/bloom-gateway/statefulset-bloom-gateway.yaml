@@ -4,7 +4,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.bloomGatewayFullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.bloomGatewayLabels" . | nindent 4 }}
   {{- with .Values.loki.annotations }}
@@ -53,6 +53,9 @@ spec:
       hostAliases:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.bloomGateway.hostUsers) }}
+      hostUsers: {{ .Values.bloomGateway.hostUsers }}
+      {{- end }}
       {{- include "loki.bloomGatewayPriorityClassName" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
@@ -95,7 +98,9 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
+          {{- include "loki.bloomGateway.livenessProbe" . | nindent 10 }}
           {{- include "loki.bloomGateway.readinessProbe" . | nindent 10 }}
+          {{- include "loki.bloomGateway.startupProbe" . | nindent 10 }}
           volumeMounts:
             - name: temp
               mountPath: /tmp
@@ -166,9 +171,13 @@ spec:
         annotations:
           {{- . | toYaml | nindent 10 }}
         {{- end }}
+        {{- with .labels }}
+        labels:
+          {{- . | toYaml | nindent 10 }}
+        {{- end }}
       spec:
         accessModes:
-          - ReadWriteOnce
+          {{- toYaml .accessModes | nindent 10 }}
         {{- with .storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
         {{- end }}

@@ -1,3 +1,8 @@
+## Changed
+
+  - Defined a custom error, ErrUnexpectedSignatureAlgorithm, returned when a JWS
+    header contains an unsupported signature algorithm.
+
 # v4.0.4
 
 ## Fixed

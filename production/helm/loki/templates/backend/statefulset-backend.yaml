@@ -5,7 +5,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.backendFullname" . }}
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.backendLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
@@ -69,6 +69,9 @@ spec:
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.backend.terminationGracePeriodSeconds }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.backend.hostUsers) }}
+      hostUsers: {{ .Values.backend.hostUsers }}
+      {{- end }}
       {{- if .Values.backend.initContainers }}
       initContainers:
         {{- with .Values.backend.initContainers }}
@@ -106,8 +109,10 @@ spec:
           {{- end }}
           securityContext:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
+          {{- with .Values.loki.readinessProbe }}
           readinessProbe:
-            {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config
@@ -191,6 +196,10 @@ spec:
           readinessProbe:
           {{- toYaml .Values.sidecar.readinessProbe | nindent 12 }}
           {{- end }}
+          {{- if .Values.sidecar.startupProbe }}
+          startupProbe:
+          {{- toYaml .Values.sidecar.startupProbe | nindent 12 }}
+          {{- end }}
           {{- if .Values.sidecar.resources }}
           resources:
           {{- toYaml .Values.sidecar.resources | nindent 12 }}
@@ -269,9 +278,13 @@ spec:
         annotations:
           {{- toYaml . | nindent 10 }}
         {{- end }}
+        {{- with .Values.backend.persistence.labels }}
+        labels:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
       spec:
         accessModes:
-          - ReadWriteOnce
+          {{- toYaml .Values.backend.persistence.accessModes | nindent 10 }}
         {{- with .Values.backend.persistence.storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
         {{- end }}

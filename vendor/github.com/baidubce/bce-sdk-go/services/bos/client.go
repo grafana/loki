@@ -19,6 +19,7 @@
 package bos
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -68,6 +69,8 @@ type BosClientConfiguration struct {
 	RedirectDisabled      bool
 	PathStyleEnable       bool
 	DisableKeepAlives     bool
+	NoVerifySSL           bool
+	retryPolicy           bce.RetryPolicy
 	DialTimeout           *time.Duration // timeout of building a connection
 	KeepAlive             *time.Duration // interval between keep-alive probes for an active connection
 	ReadTimeout           *time.Duration // read timeout of net.Conn
@@ -76,6 +79,7 @@ type BosClientConfiguration struct {
 	IdleConnectionTimeout *time.Duration // http.Transport.IdleConnTimeout
 	ResponseHeaderTimeout *time.Duration // http.Transport.ResponseHeaderTimeout
 	HTTPClientTimeout     *time.Duration // http.Client.Timeout
+	HTTPClient            *http.Client   // customized http client to send request
 }
 
 func NewBosClientConfig(ak, sk, endpoint string) *BosClientConfiguration {
@@ -86,6 +90,8 @@ func NewBosClientConfig(ak, sk, endpoint string) *BosClientConfiguration {
 		RedirectDisabled:  false,
 		PathStyleEnable:   false,
 		DisableKeepAlives: false,
+		NoVerifySSL:       false,
+		retryPolicy:       bce.DEFAULT_RETRY_POLICY,
 	}
 }
 
@@ -116,6 +122,11 @@ func (cfg *BosClientConfiguration) WithPathStyleEnable(val bool) *BosClientConfi
 
 func (cfg *BosClientConfiguration) WithDisableKeepAlives(val bool) *BosClientConfiguration {
 	cfg.DisableKeepAlives = val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithNoVerifySSL(val bool) *BosClientConfiguration {
+	cfg.NoVerifySSL = val
 	return cfg
 }
 
@@ -156,6 +167,16 @@ func (cfg *BosClientConfiguration) WithResponseHeaderTimeout(val time.Duration) 
 
 func (cfg *BosClientConfiguration) WithHttpClientTimeout(val time.Duration) *BosClientConfiguration {
 	cfg.HTTPClientTimeout = &val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithRetryPolicy(val bce.RetryPolicy) *BosClientConfiguration {
+	cfg.retryPolicy = val
+	return cfg
+}
+
+func (cfg *BosClientConfiguration) WithHttpClient(val http.Client) *BosClientConfiguration {
+	cfg.HTTPClient = &val
 	return cfg
 }
 
@@ -219,10 +240,11 @@ func NewClientWithConfig(config *BosClientConfiguration) (*Client, error) {
 		UserAgent:                 bce.DEFAULT_USER_AGENT,
 		Credentials:               credentials,
 		SignOption:                defaultSignOptions,
-		Retry:                     bce.DEFAULT_RETRY_POLICY,
+		Retry:                     config.retryPolicy,
 		ConnectionTimeoutInMillis: bce.DEFAULT_CONNECTION_TIMEOUT_IN_MILLIS,
 		RedirectDisabled:          config.RedirectDisabled,
 		DisableKeepAlives:         config.DisableKeepAlives,
+		NoVerifySSL:               config.NoVerifySSL,
 		DialTimeout:               config.DialTimeout,
 		KeepAlive:                 config.KeepAlive,
 		ReadTimeout:               config.ReadTimeout,
@@ -231,6 +253,7 @@ func NewClientWithConfig(config *BosClientConfiguration) (*Client, error) {
 		IdleConnectionTimeout:     config.IdleConnectionTimeout,
 		ResponseHeaderTimeout:     config.ResponseHeaderTimeout,
 		HTTPClientTimeout:         config.HTTPClientTimeout,
+		HTTPClient:                config.HTTPClient,
 	}
 	v1Signer := &auth.BceV1Signer{}
 	defaultContext := &api.BosContext{
@@ -1243,6 +1266,54 @@ func (c *Client) PutObjectWithCallback(bucket, object string, body *bce.Body,
 	return etag, putObjectResult, err
 }
 
+func (c *Client) PostObjectFromBytes(bucket, object string, content []byte, args *api.PostObjectArgs,
+	options ...api.Option) (*api.PostObjectResult, error) {
+	byteBuf := bytes.NewBuffer(content)
+	return api.PostObject(c, bucket, object, byteBuf, args, c.BosContext, options...)
+}
+
+func (c *Client) PostObjectFromString(bucket, object, content string, args *api.PostObjectArgs,
+	options ...api.Option) (*api.PostObjectResult, error) {
+	byteBuf := bytes.NewBuffer([]byte(content))
+	return api.PostObject(c, bucket, object, byteBuf, args, c.BosContext, options...)
+}
+
+func (c *Client) PostObjectFromFile(bucket, object, fileName string, args *api.PostObjectArgs,
+	options ...api.Option) (*api.PostObjectResult, error) {
+	file, err := os.Open(fileName)
+	if err != nil {
+		return nil, err
+	}
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	byteBuf := &bytes.Buffer{}
+	n, err := io.CopyN(byteBuf, file, fileInfo.Size())
+	if err != nil {
+		return nil, err
+	}
+	if n != fileInfo.Size() {
+		return nil, bce.NewBceClientError("unexpected EOF.")
+	}
+	return api.PostObject(c, bucket, object, byteBuf, args, c.BosContext, options...)
+}
+
+func (c *Client) PostObjectFromStream(bucket, object string, content io.Reader, args *api.PostObjectArgs,
+	options ...api.Option) (*api.PostObjectResult, error) {
+	byteBuf := &bytes.Buffer{}
+	_, err := io.Copy(byteBuf, content)
+	if err != nil {
+		return nil, err
+	}
+	return api.PostObject(c, bucket, object, byteBuf, args, c.BosContext, options...)
+}
+
+func (c *Client) OptionsObject(bucket, object string, args *api.OptionsObjectArgs,
+	options ...api.Option) (*api.OptionsObjectResult, error) {
+	return api.OptionsObject(c, bucket, object, args, c.BosContext, options...)
+}
+
 // CopyObject - copy a remote object to another one
 //
 // PARAMS:
@@ -1389,6 +1460,45 @@ func (c *Client) GetObjectToFileWithContext(ctx context.Context, bucket, object,
 		return fmt.Errorf("written content size does not match the response content")
 	}
 	return nil
+}
+
+// SetObjectMeta - set the given object metadata
+//
+// PARAMS:
+//   - bucket: the name of the bucket
+//   - object: the name of the object
+//   - args: new object meta value for changing
+//   - options: option func to set various requeset headers
+//
+// RETURNS:
+//   - error: any error if it occurs
+func (c *Client) SetObjectMeta(bucket, object string, args *api.SetObjectMetaArgs,
+	options ...api.Option) error {
+	cpArgs := &api.CopyObjectArgs{
+		ObjectMeta:        args.ObjectMeta,
+		ObjectExpires:     args.ObjectExpires,
+		MetadataDirective: api.METADATA_DIRECTIVE_UPDATE,
+	}
+	source := fmt.Sprintf("/%s/%s", bucket, object)
+	_, err := api.CopyObject(c, bucket, object, source, cpArgs, c.BosContext, options...)
+	return err
+}
+
+// SetObjectMetaWithContext - support to cancel request by context.Context
+func (c *Client) SetObjectMetaWithContext(ctx context.Context, bucket, object string,
+	args *api.SetObjectMetaArgs, options ...api.Option) error {
+	cpArgs := &api.CopyObjectArgs{
+		ObjectMeta:        args.ObjectMeta,
+		ObjectExpires:     args.ObjectExpires,
+		MetadataDirective: api.METADATA_DIRECTIVE_UPDATE,
+	}
+	source := fmt.Sprintf("/%s/%s", bucket, object)
+	bosContext := &api.BosContext{
+		PathStyleEnable: c.BosContext.PathStyleEnable,
+		Ctx:             ctx,
+	}
+	_, err := api.CopyObject(c, bucket, object, source, cpArgs, bosContext, options...)
+	return err
 }
 
 // GetObjectMeta - get the given object metadata
@@ -2896,4 +3006,73 @@ func (c *Client) PutBucketVersioning(bucket string, putBucketVersioningArgs *api
 
 func (c *Client) GetBucketVersioning(bucket string, options ...api.Option) (*api.BucketVersioningArgs, error) {
 	return api.GetBucketVersioning(c, bucket, c.BosContext, options...)
+}
+
+func (c *Client) PutBucketInventory(bucket string, args *api.PutBucketInventoryArgs, options ...api.Option) error {
+	return api.PutBucketInventory(c, bucket, args, c.BosContext, options...)
+}
+
+func (c *Client) GetBucketInventory(bucket, id string, options ...api.Option) (*api.PutBucketInventoryArgs, error) {
+	return api.GetBucketInventory(c, bucket, id, c.BosContext, options...)
+}
+
+func (c *Client) ListBucketInventory(bucket string, options ...api.Option) (*api.ListBucketInventoryResult, error) {
+	return api.ListBucketInventory(c, bucket, c.BosContext, options...)
+}
+
+func (c *Client) DeleteBucketInventory(bucket, id string, options ...api.Option) error {
+	return api.DeleteBucketInventory(c, bucket, id, c.BosContext, options...)
+}
+
+func (c *Client) PutBucketQuota(bucket string, args *api.BucketQuotaArgs, options ...api.Option) error {
+	return api.PutBucketQuota(c, bucket, args, c.BosContext, options...)
+}
+
+func (c *Client) GetBucketQuota(bucket string, options ...api.Option) (*api.BucketQuotaArgs, error) {
+	return api.GetBucketQuota(c, bucket, c.BosContext, options...)
+}
+
+func (c *Client) DeleteBucketQuota(bucket string, options ...api.Option) error {
+	return api.DeleteBucketQuota(c, bucket, c.BosContext, options...)
+}
+
+func (c *Client) PutBucketRequestPayment(bucket string, args *api.RequestPaymentArgs, options ...api.Option) error {
+	return api.PutBucketRequestPayment(c, bucket, args, c.BosContext, options...)
+}
+
+func (c *Client) GetBucketRequestPayment(bucket string, options ...api.Option) (*api.RequestPaymentArgs, error) {
+	return api.GetBucketRequestPayment(c, bucket, c.BosContext, options...)
+}
+
+func (c *Client) InitBucketObjectLock(bucket string, args *api.InitBucketObjectLockArgs, options ...api.Option) error {
+	return api.InitBucketObjectLock(c, bucket, args, c.BosContext, options...)
+}
+
+func (c *Client) GetBucketObjectLock(bucket string, options ...api.Option) (*api.BucketObjectLockResult, error) {
+	return api.GetBucketObjectLock(c, bucket, c.BosContext, options...)
+}
+
+func (c *Client) DeleteBucketObjectLock(bucket string, options ...api.Option) error {
+	return api.DeleteBucketObjectLock(c, bucket, c.BosContext, options...)
+}
+
+func (c *Client) CompleteBucketObjectLock(bucket string, options ...api.Option) error {
+	return api.CompleteBucketObjectLock(c, bucket, c.BosContext, options...)
+}
+
+func (c *Client) ExtendBucketObjectLock(bucket string, args *api.ExtendBucketObjectLockArgs,
+	options ...api.Option) error {
+	return api.ExtendBucketObjectLock(c, bucket, args, c.BosContext, options...)
+}
+
+func (c *Client) PutUserQuota(args *api.UserQuotaArgs, options ...api.Option) error {
+	return api.PutUserQuota(c, args, c.BosContext, options...)
+}
+
+func (c *Client) GetUserQuota(options ...api.Option) (*api.UserQuotaArgs, error) {
+	return api.GetUserQuota(c, c.BosContext, options...)
+}
+
+func (c *Client) DeleteUserQuota(options ...api.Option) error {
+	return api.DeleteUserQuota(c, c.BosContext, options...)
 }

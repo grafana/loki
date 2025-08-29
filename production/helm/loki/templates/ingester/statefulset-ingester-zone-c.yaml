@@ -5,12 +5,15 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.ingesterFullname" . }}-zone-c
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.ingesterLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
     name: {{ include "loki.prefixIngesterName" . }}ingester-zone-c
     rollout-group: {{ include "loki.prefixRolloutGroup" . }}ingester
+    {{- with .Values.ingester.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   annotations:
     rollout-max-unavailable: "{{ include "loki.ingester.maxUnavailable" (dict "ctx" . "replicas" $replicas)}}"
     {{- with .Values.loki.annotations }}
@@ -24,7 +27,7 @@ spec:
   replicas: {{ $replicas }}
 {{- end }}
   podManagementPolicy: Parallel
-  serviceName: {{ include "loki.ingesterFullname" . }}-zone-c
+  serviceName: {{ include "loki.ingesterFullname" . }}-zone-c-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
   {{- if and (semverCompare ">= 1.23-0" (include "loki.kubeVersion" .)) (.Values.ingester.persistence.enableStatefulSetAutoDeletePVC)  }}
   {{/*
@@ -66,7 +69,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
+      {{- if semverCompare ">=1.19-0" (include "loki.kubeVersion" .) }}
       {{- with .Values.ingester.topologySpreadConstraints }}
       topologySpreadConstraints:
         {{- toYaml . | nindent 8 }}
@@ -80,6 +83,9 @@ spec:
       {{- with .Values.ingester.hostAliases }}
       hostAliases:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.ingester.hostUsers) }}
+      hostUsers: {{ .Values.ingester.hostUsers }}
       {{- end }}
       {{- include "loki.ingesterPriorityClassName" . | nindent 6 }}
       securityContext:
@@ -221,7 +227,7 @@ spec:
         {{- end }}
       spec:
         accessModes:
-          - ReadWriteOnce
+          {{- toYaml .accessModes | nindent 10 }}
         {{- with .storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
         {{- end }}
