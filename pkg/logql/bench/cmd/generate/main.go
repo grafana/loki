@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/grafana/loki/v3/pkg/logql/bench"
 )
@@ -22,6 +23,13 @@ func main() {
 	if *clearFolder {
 		if err := os.RemoveAll(*dir); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to clear output directory: %v\n", err)
+			os.Exit(1)
+		}
+		// Temporary workaround for a bug in the Thanos object client for filesystem
+		// which errors when calling GetAndReplace on an object in a directory that does not exist.
+		tocDir := filepath.Join(*dir, "dataobj", "tocs")
+		if err := os.MkdirAll(tocDir, 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create output directory %d: %v\n", tocDir, err)
 			os.Exit(1)
 		}
 	}
