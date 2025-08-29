@@ -1,4 +1,6 @@
-{{- if and .Values.enterprise.enabled .Values.enterprise.adminApi.enabled }}
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if and .Values.enterprise.enabled .Values.enterprise.adminApi.enabled $isDistributed }}
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
