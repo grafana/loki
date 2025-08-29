@@ -49,6 +49,10 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.overridesExporter.dnsConfig | default .Values.loki.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.overridesExporter.hostAliases }}
       hostAliases:
         {{- toYaml . | nindent 8 }}
