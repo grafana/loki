@@ -11,14 +11,16 @@ import (
 )
 
 type Stats struct {
-	Size           uint64
-	Sections       int
-	Tenants        []string
-	TenantSections map[string]int
-	SectionsPerTenantStats
+	Size                   uint64
+	Sections               int
+	SectionSizes           []uint64
+	Tenants                []string
+	TenantSections         map[string]int
+	SectionsPerTenantStats PercentileStats
+	SectionSizeStats       PercentileStats
 }
 
-type SectionsPerTenantStats struct {
+type PercentileStats struct {
 	Median float64
 	P95    float64
 	P99    float64
@@ -33,16 +35,21 @@ func ReadStats(_ context.Context, obj *dataobj.Object) (*Stats, error) {
 	s.TenantSections = make(map[string]int)
 	for _, sec := range obj.Sections() {
 		s.Sections++
+		s.SectionSizes = append(s.SectionSizes, uint64(sec.Reader.DataSize()+sec.Reader.MetadataSize()))
 		s.Tenants = append(s.Tenants, sec.Tenant)
+		s.TenantSections[sec.Tenant]++
 	}
 	// A tenant can have multiple sections, so we must deduplicate them.
 	slices.Sort(s.Tenants)
 	s.Tenants = slices.Compact(s.Tenants)
-	calculateSectionsPerTenantStats(&s)
+	calcSectionsPerTenantStats(&s)
+	calcSectionSizeStats(&s)
 	return &s, nil
 }
 
-func calculateSectionsPerTenantStats(s *Stats) {
+// calcSectionsPerTenantStats calculates the median and other
+// percentiles for the number of sections per tenant.
+func calcSectionsPerTenantStats(s *Stats) {
 	if len(s.TenantSections) == 0 {
 		return
 	}
@@ -50,22 +57,38 @@ func calculateSectionsPerTenantStats(s *Stats) {
 	for _, n := range s.TenantSections {
 		counts = append(counts, n)
 	}
+	calcPercentiles(counts, &s.SectionsPerTenantStats)
+}
+
+// calcSectionSizeStats calculates the median and other percentiles for the
+// size of sections.
+func calcSectionSizeStats(s *Stats) {
+	if len(s.SectionSizes) == 0 {
+		return
+	}
+	// Make a copy of the section sizes.
+	sizes := make([]uint64, len(s.SectionSizes))
+	copy(sizes, s.SectionSizes)
+	calcPercentiles(sizes, &s.SectionSizeStats)
+}
+
+func calcPercentiles[T int | uint | int64 | uint64](input []T, s *PercentileStats) {
 	// Data must be sorted to calculate percentiles.
-	slices.Sort(counts)
-	n := len(counts)
+	slices.Sort(input)
+	n := len(input)
 	if n%2 == 0 {
-		s.SectionsPerTenantStats.Median = float64(counts[n/2-1]+counts[n/2]) / 2.0
+		s.Median = float64(input[n/2-1]+input[n/2]) / 2.0
 	} else {
-		s.SectionsPerTenantStats.Median = float64(counts[n/2])
+		s.Median = float64(input[n/2])
 	}
 	idx := int(float64(n) * 0.95)
 	if idx >= n {
 		idx = n - 1
 	}
-	s.SectionsPerTenantStats.P95 = float64(counts[idx])
+	s.P95 = float64(input[idx])
 	idx = int(float64(n) * 0.99)
 	if idx >= n {
 		idx = n - 1
 	}
-	s.SectionsPerTenantStats.P99 = float64(counts[idx])
+	s.P99 = float64(input[idx])
 }
