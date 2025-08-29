@@ -31,16 +31,16 @@ func (cmd *listStreamsCommand) run(c *kingpin.ParseContext) error {
 func (cmd *listStreamsCommand) listStreamsInFile(name string) {
 	f, err := os.Open(name)
 	if err != nil {
-		exitWithError(fmt.Errorf("failed to open file: %w", err))
+		exitWithErr(fmt.Errorf("failed to open file: %w", err))
 	}
 	defer func() { _ = f.Close() }()
 	fi, err := f.Stat()
 	if err != nil {
-		exitWithError(fmt.Errorf("failed to read fileinfo: %w", err))
+		exitWithErr(fmt.Errorf("failed to read fileinfo: %w", err))
 	}
 	dataObj, err := dataobj.FromReaderAt(f, fi.Size())
 	if err != nil {
-		exitWithError(fmt.Errorf("failed to read dataobj: %w", err))
+		exitWithErr(fmt.Errorf("failed to read dataobj: %w", err))
 	}
 	cmd.listStreams(context.TODO(), dataObj)
 }
@@ -54,13 +54,13 @@ func (cmd *listStreamsCommand) listStreams(ctx context.Context, dataObj *dataobj
 		if streams.CheckSection(sec) {
 			streamsSec, err := streams.Open(ctx, sec)
 			if err != nil {
-				exitWithError(fmt.Errorf("failed to open streams section: %w", err))
+				exitWithErr(fmt.Errorf("failed to open streams section: %w", err))
 			}
 			r := streams.NewRowReader(streamsSec)
 			for {
 				n, err := r.Read(ctx, tmp)
 				if err != nil && !errors.Is(err, io.EOF) {
-					exitWithError(err)
+					exitWithErr(err)
 				}
 				if n == 0 && errors.Is(err, io.EOF) {
 					break

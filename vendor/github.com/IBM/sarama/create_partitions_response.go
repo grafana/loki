@@ -11,6 +11,10 @@ type CreatePartitionsResponse struct {
 	TopicPartitionErrors map[string]*TopicPartitionError
 }
 
+func (c *CreatePartitionsResponse) setVersion(v int16) {
+	c.Version = v
+}
+
 func (c *CreatePartitionsResponse) encode(pe packetEncoder) error {
 	pe.putInt32(int32(c.ThrottleTime / time.Millisecond))
 	if err := pe.putArrayLength(len(c.TopicPartitionErrors)); err != nil {
@@ -57,7 +61,7 @@ func (c *CreatePartitionsResponse) decode(pd packetDecoder, version int16) (err 
 }
 
 func (r *CreatePartitionsResponse) key() int16 {
-	return 37
+	return apiKeyCreatePartitions
 }
 
 func (r *CreatePartitionsResponse) version() int16 {

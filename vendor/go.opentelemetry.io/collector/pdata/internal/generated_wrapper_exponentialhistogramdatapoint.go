@@ -8,14 +8,102 @@ package internal
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
+	"sync"
 
+	otlpcommon "go.opentelemetry.io/collector/pdata/internal/data/protogen/common/v1"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
+var (
+	protoPoolExponentialHistogramDataPoint = sync.Pool{
+		New: func() any {
+			return &otlpmetrics.ExponentialHistogramDataPoint{}
+		},
+	}
+	ProtoPoolExponentialHistogramDataPoint_Sum = sync.Pool{
+		New: func() any {
+			return &otlpmetrics.ExponentialHistogramDataPoint_Sum{}
+		},
+	}
+
+	ProtoPoolExponentialHistogramDataPoint_Min = sync.Pool{
+		New: func() any {
+			return &otlpmetrics.ExponentialHistogramDataPoint_Min{}
+		},
+	}
+
+	ProtoPoolExponentialHistogramDataPoint_Max = sync.Pool{
+		New: func() any {
+			return &otlpmetrics.ExponentialHistogramDataPoint_Max{}
+		},
+	}
+)
+
+func NewOrigExponentialHistogramDataPoint() *otlpmetrics.ExponentialHistogramDataPoint {
+	if !UseProtoPooling.IsEnabled() {
+		return &otlpmetrics.ExponentialHistogramDataPoint{}
+	}
+	return protoPoolExponentialHistogramDataPoint.Get().(*otlpmetrics.ExponentialHistogramDataPoint)
+}
+
+func DeleteOrigExponentialHistogramDataPoint(orig *otlpmetrics.ExponentialHistogramDataPoint, nullable bool) {
+	if orig == nil {
+		return
+	}
+
+	if !UseProtoPooling.IsEnabled() {
+		orig.Reset()
+		return
+	}
+
+	for i := range orig.Attributes {
+		DeleteOrigKeyValue(&orig.Attributes[i], false)
+	}
+	switch ov := orig.Sum_.(type) {
+	case *otlpmetrics.ExponentialHistogramDataPoint_Sum:
+		if UseProtoPooling.IsEnabled() {
+			ov.Sum = float64(0)
+			ProtoPoolExponentialHistogramDataPoint_Sum.Put(ov)
+		}
+
+	}
+	DeleteOrigExponentialHistogramDataPoint_Buckets(&orig.Positive, false)
+	DeleteOrigExponentialHistogramDataPoint_Buckets(&orig.Negative, false)
+	for i := range orig.Exemplars {
+		DeleteOrigExemplar(&orig.Exemplars[i], false)
+	}
+	switch ov := orig.Min_.(type) {
+	case *otlpmetrics.ExponentialHistogramDataPoint_Min:
+		if UseProtoPooling.IsEnabled() {
+			ov.Min = float64(0)
+			ProtoPoolExponentialHistogramDataPoint_Min.Put(ov)
+		}
+
+	}
+	switch ov := orig.Max_.(type) {
+	case *otlpmetrics.ExponentialHistogramDataPoint_Max:
+		if UseProtoPooling.IsEnabled() {
+			ov.Max = float64(0)
+			ProtoPoolExponentialHistogramDataPoint_Max.Put(ov)
+		}
+
+	}
+
+	orig.Reset()
+	if nullable {
+		protoPoolExponentialHistogramDataPoint.Put(orig)
+	}
+}
+
 func CopyOrigExponentialHistogramDataPoint(dest, src *otlpmetrics.ExponentialHistogramDataPoint) {
+	// If copying to same object, just return.
+	if src == dest {
+		return
+	}
 	dest.Attributes = CopyOrigKeyValueSlice(dest.Attributes, src.Attributes)
 	dest.StartTimeUnixNano = src.StartTimeUnixNano
 	dest.TimeUnixNano = src.TimeUnixNano
@@ -59,7 +147,8 @@ func CopyOrigExponentialHistogramDataPoint(dest, src *otlpmetrics.ExponentialHis
 	dest.ZeroThreshold = src.ZeroThreshold
 }
 
-func FillOrigTestExponentialHistogramDataPoint(orig *otlpmetrics.ExponentialHistogramDataPoint) {
+func GenTestOrigExponentialHistogramDataPoint() *otlpmetrics.ExponentialHistogramDataPoint {
+	orig := NewOrigExponentialHistogramDataPoint()
 	orig.Attributes = GenerateOrigTestKeyValueSlice()
 	orig.StartTimeUnixNano = 1234567890
 	orig.TimeUnixNano = 1234567890
@@ -67,13 +156,14 @@ func FillOrigTestExponentialHistogramDataPoint(orig *otlpmetrics.ExponentialHist
 	orig.Sum_ = &otlpmetrics.ExponentialHistogramDataPoint_Sum{Sum: float64(3.1415926)}
 	orig.Scale = int32(13)
 	orig.ZeroCount = uint64(13)
-	FillOrigTestExponentialHistogramDataPoint_Buckets(&orig.Positive)
-	FillOrigTestExponentialHistogramDataPoint_Buckets(&orig.Negative)
+	orig.Positive = *GenTestOrigExponentialHistogramDataPoint_Buckets()
+	orig.Negative = *GenTestOrigExponentialHistogramDataPoint_Buckets()
 	orig.Flags = 1
 	orig.Exemplars = GenerateOrigTestExemplarSlice()
 	orig.Min_ = &otlpmetrics.ExponentialHistogramDataPoint_Min{Min: float64(3.1415926)}
 	orig.Max_ = &otlpmetrics.ExponentialHistogramDataPoint_Max{Max: float64(3.1415926)}
 	orig.ZeroThreshold = float64(3.1415926)
+	return orig
 }
 
 // MarshalJSONOrig marshals all properties from the current struct to the destination stream.
@@ -101,9 +191,9 @@ func MarshalJSONOrigExponentialHistogramDataPoint(orig *otlpmetrics.ExponentialH
 		dest.WriteObjectField("count")
 		dest.WriteUint64(orig.Count)
 	}
-	if orig.Sum_ != nil {
+	if orig, ok := orig.Sum_.(*otlpmetrics.ExponentialHistogramDataPoint_Sum); ok {
 		dest.WriteObjectField("sum")
-		dest.WriteFloat64(orig.Sum_.(*otlpmetrics.ExponentialHistogramDataPoint_Sum).Sum)
+		dest.WriteFloat64(orig.Sum)
 	}
 	if orig.Scale != int32(0) {
 		dest.WriteObjectField("scale")
@@ -131,13 +221,13 @@ func MarshalJSONOrigExponentialHistogramDataPoint(orig *otlpmetrics.ExponentialH
 		}
 		dest.WriteArrayEnd()
 	}
-	if orig.Min_ != nil {
+	if orig, ok := orig.Min_.(*otlpmetrics.ExponentialHistogramDataPoint_Min); ok {
 		dest.WriteObjectField("min")
-		dest.WriteFloat64(orig.Min_.(*otlpmetrics.ExponentialHistogramDataPoint_Min).Min)
+		dest.WriteFloat64(orig.Min)
 	}
-	if orig.Max_ != nil {
+	if orig, ok := orig.Max_.(*otlpmetrics.ExponentialHistogramDataPoint_Max); ok {
 		dest.WriteObjectField("max")
-		dest.WriteFloat64(orig.Max_.(*otlpmetrics.ExponentialHistogramDataPoint_Max).Max)
+		dest.WriteFloat64(orig.Max)
 	}
 	if orig.ZeroThreshold != float64(0) {
 		dest.WriteObjectField("zeroThreshold")
@@ -148,10 +238,14 @@ func MarshalJSONOrigExponentialHistogramDataPoint(orig *otlpmetrics.ExponentialH
 
 // UnmarshalJSONOrigExponentialHistogramDataPoint unmarshals all properties from the current struct from the source iterator.
 func UnmarshalJSONOrigExponentialHistogramDataPoint(orig *otlpmetrics.ExponentialHistogramDataPoint, iter *json.Iterator) {
-	iter.ReadObjectCB(func(iter *json.Iterator, f string) bool {
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
 		case "attributes":
-			orig.Attributes = UnmarshalJSONOrigKeyValueSlice(iter)
+			for iter.ReadArray() {
+				orig.Attributes = append(orig.Attributes, otlpcommon.KeyValue{})
+				UnmarshalJSONOrigKeyValue(&orig.Attributes[len(orig.Attributes)-1], iter)
+			}
+
 		case "startTimeUnixNano", "start_time_unix_nano":
 			orig.StartTimeUnixNano = iter.ReadUint64()
 		case "timeUnixNano", "time_unix_nano":
@@ -159,7 +253,17 @@ func UnmarshalJSONOrigExponentialHistogramDataPoint(orig *otlpmetrics.Exponentia
 		case "count":
 			orig.Count = iter.ReadUint64()
 		case "sum":
-			orig.Sum_ = &otlpmetrics.ExponentialHistogramDataPoint_Sum{Sum: iter.ReadFloat64()}
+			{
+				var ov *otlpmetrics.ExponentialHistogramDataPoint_Sum
+				if !UseProtoPooling.IsEnabled() {
+					ov = &otlpmetrics.ExponentialHistogramDataPoint_Sum{}
+				} else {
+					ov = ProtoPoolExponentialHistogramDataPoint_Sum.Get().(*otlpmetrics.ExponentialHistogramDataPoint_Sum)
+				}
+				ov.Sum = iter.ReadFloat64()
+				orig.Sum_ = ov
+			}
+
 		case "scale":
 			orig.Scale = iter.ReadInt32()
 		case "zeroCount", "zero_count":
@@ -171,18 +275,41 @@ func UnmarshalJSONOrigExponentialHistogramDataPoint(orig *otlpmetrics.Exponentia
 		case "flags":
 			orig.Flags = iter.ReadUint32()
 		case "exemplars":
-			orig.Exemplars = UnmarshalJSONOrigExemplarSlice(iter)
+			for iter.ReadArray() {
+				orig.Exemplars = append(orig.Exemplars, otlpmetrics.Exemplar{})
+				UnmarshalJSONOrigExemplar(&orig.Exemplars[len(orig.Exemplars)-1], iter)
+			}
+
 		case "min":
-			orig.Min_ = &otlpmetrics.ExponentialHistogramDataPoint_Min{Min: iter.ReadFloat64()}
+			{
+				var ov *otlpmetrics.ExponentialHistogramDataPoint_Min
+				if !UseProtoPooling.IsEnabled() {
+					ov = &otlpmetrics.ExponentialHistogramDataPoint_Min{}
+				} else {
+					ov = ProtoPoolExponentialHistogramDataPoint_Min.Get().(*otlpmetrics.ExponentialHistogramDataPoint_Min)
+				}
+				ov.Min = iter.ReadFloat64()
+				orig.Min_ = ov
+			}
+
 		case "max":
-			orig.Max_ = &otlpmetrics.ExponentialHistogramDataPoint_Max{Max: iter.ReadFloat64()}
+			{
+				var ov *otlpmetrics.ExponentialHistogramDataPoint_Max
+				if !UseProtoPooling.IsEnabled() {
+					ov = &otlpmetrics.ExponentialHistogramDataPoint_Max{}
+				} else {
+					ov = ProtoPoolExponentialHistogramDataPoint_Max.Get().(*otlpmetrics.ExponentialHistogramDataPoint_Max)
+				}
+				ov.Max = iter.ReadFloat64()
+				orig.Max_ = ov
+			}
+
 		case "zeroThreshold", "zero_threshold":
 			orig.ZeroThreshold = iter.ReadFloat64()
 		default:
 			iter.Skip()
 		}
-		return true
-	})
+	}
 }
 
 func SizeProtoOrigExponentialHistogramDataPoint(orig *otlpmetrics.ExponentialHistogramDataPoint) int {
@@ -202,7 +329,8 @@ func SizeProtoOrigExponentialHistogramDataPoint(orig *otlpmetrics.ExponentialHis
 	if orig.Count != 0 {
 		n += 9
 	}
-	if orig.Sum_ != nil {
+	if orig, ok := orig.Sum_.(*otlpmetrics.ExponentialHistogramDataPoint_Sum); ok {
+		_ = orig
 		n += 9
 	}
 	if orig.Scale != 0 {
@@ -222,10 +350,12 @@ func SizeProtoOrigExponentialHistogramDataPoint(orig *otlpmetrics.ExponentialHis
 		l = SizeProtoOrigExemplar(&orig.Exemplars[i])
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	if orig.Min_ != nil {
+	if orig, ok := orig.Min_.(*otlpmetrics.ExponentialHistogramDataPoint_Min); ok {
+		_ = orig
 		n += 9
 	}
-	if orig.Max_ != nil {
+	if orig, ok := orig.Max_.(*otlpmetrics.ExponentialHistogramDataPoint_Max); ok {
+		_ = orig
 		n += 9
 	}
 	if orig.ZeroThreshold != 0 {
@@ -238,7 +368,7 @@ func MarshalProtoOrigExponentialHistogramDataPoint(orig *otlpmetrics.Exponential
 	pos := len(buf)
 	var l int
 	_ = l
-	for i := range orig.Attributes {
+	for i := len(orig.Attributes) - 1; i >= 0; i-- {
 		l = MarshalProtoOrigKeyValue(&orig.Attributes[i], buf[:pos])
 		pos -= l
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
@@ -263,12 +393,11 @@ func MarshalProtoOrigExponentialHistogramDataPoint(orig *otlpmetrics.Exponential
 		pos--
 		buf[pos] = 0x21
 	}
-	if orig.Sum_ != nil {
+	if orig, ok := orig.Sum_.(*otlpmetrics.ExponentialHistogramDataPoint_Sum); ok {
 		pos -= 8
-		binary.LittleEndian.PutUint64(buf[pos:], math.Float64bits(orig.Sum_.(*otlpmetrics.ExponentialHistogramDataPoint_Sum).Sum))
+		binary.LittleEndian.PutUint64(buf[pos:], math.Float64bits(orig.Sum))
 		pos--
 		buf[pos] = 0x29
-
 	}
 	if orig.Scale != 0 {
 		pos = proto.EncodeVarint(buf, pos, uint64((uint32(orig.Scale)<<1)^uint32(orig.Scale>>31)))
@@ -299,26 +428,24 @@ func MarshalProtoOrigExponentialHistogramDataPoint(orig *otlpmetrics.Exponential
 		pos--
 		buf[pos] = 0x50
 	}
-	for i := range orig.Exemplars {
+	for i := len(orig.Exemplars) - 1; i >= 0; i-- {
 		l = MarshalProtoOrigExemplar(&orig.Exemplars[i], buf[:pos])
 		pos -= l
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
 		pos--
 		buf[pos] = 0x5a
 	}
-	if orig.Min_ != nil {
+	if orig, ok := orig.Min_.(*otlpmetrics.ExponentialHistogramDataPoint_Min); ok {
 		pos -= 8
-		binary.LittleEndian.PutUint64(buf[pos:], math.Float64bits(orig.Min_.(*otlpmetrics.ExponentialHistogramDataPoint_Min).Min))
+		binary.LittleEndian.PutUint64(buf[pos:], math.Float64bits(orig.Min))
 		pos--
 		buf[pos] = 0x61
-
 	}
-	if orig.Max_ != nil {
+	if orig, ok := orig.Max_.(*otlpmetrics.ExponentialHistogramDataPoint_Max); ok {
 		pos -= 8
-		binary.LittleEndian.PutUint64(buf[pos:], math.Float64bits(orig.Max_.(*otlpmetrics.ExponentialHistogramDataPoint_Max).Max))
+		binary.LittleEndian.PutUint64(buf[pos:], math.Float64bits(orig.Max))
 		pos--
 		buf[pos] = 0x69
-
 	}
 	if orig.ZeroThreshold != 0 {
 		pos -= 8
@@ -330,5 +457,227 @@ func MarshalProtoOrigExponentialHistogramDataPoint(orig *otlpmetrics.Exponential
 }
 
 func UnmarshalProtoOrigExponentialHistogramDataPoint(orig *otlpmetrics.ExponentialHistogramDataPoint, buf []byte) error {
-	return orig.Unmarshal(buf)
+	var err error
+	var fieldNum int32
+	var wireType proto.WireType
+
+	l := len(buf)
+	pos := 0
+	for pos < l {
+		// If in a group parsing, move to the next tag.
+		fieldNum, wireType, pos, err = proto.ConsumeTag(buf, pos)
+		if err != nil {
+			return err
+		}
+		switch fieldNum {
+
+		case 1:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field Attributes", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			orig.Attributes = append(orig.Attributes, otlpcommon.KeyValue{})
+			err = UnmarshalProtoOrigKeyValue(&orig.Attributes[len(orig.Attributes)-1], buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+
+		case 2:
+			if wireType != proto.WireTypeI64 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StartTimeUnixNano", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeI64(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.StartTimeUnixNano = uint64(num)
+
+		case 3:
+			if wireType != proto.WireTypeI64 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TimeUnixNano", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeI64(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.TimeUnixNano = uint64(num)
+
+		case 4:
+			if wireType != proto.WireTypeI64 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Count", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeI64(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.Count = uint64(num)
+
+		case 5:
+			if wireType != proto.WireTypeI64 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Sum", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeI64(buf, pos)
+			if err != nil {
+				return err
+			}
+			var ov *otlpmetrics.ExponentialHistogramDataPoint_Sum
+			if !UseProtoPooling.IsEnabled() {
+				ov = &otlpmetrics.ExponentialHistogramDataPoint_Sum{}
+			} else {
+				ov = ProtoPoolExponentialHistogramDataPoint_Sum.Get().(*otlpmetrics.ExponentialHistogramDataPoint_Sum)
+			}
+			ov.Sum = math.Float64frombits(num)
+			orig.Sum_ = ov
+
+		case 6:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field Scale", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.Scale = int32(uint32(num>>1) ^ uint32(int32((num&1)<<31)>>31))
+
+		case 7:
+			if wireType != proto.WireTypeI64 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ZeroCount", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeI64(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.ZeroCount = uint64(num)
+
+		case 8:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field Positive", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+
+			err = UnmarshalProtoOrigExponentialHistogramDataPoint_Buckets(&orig.Positive, buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+
+		case 9:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field Negative", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+
+			err = UnmarshalProtoOrigExponentialHistogramDataPoint_Buckets(&orig.Negative, buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+
+		case 10:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field Flags", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.Flags = uint32(num)
+
+		case 11:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field Exemplars", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			orig.Exemplars = append(orig.Exemplars, otlpmetrics.Exemplar{})
+			err = UnmarshalProtoOrigExemplar(&orig.Exemplars[len(orig.Exemplars)-1], buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+
+		case 12:
+			if wireType != proto.WireTypeI64 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Min", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeI64(buf, pos)
+			if err != nil {
+				return err
+			}
+			var ov *otlpmetrics.ExponentialHistogramDataPoint_Min
+			if !UseProtoPooling.IsEnabled() {
+				ov = &otlpmetrics.ExponentialHistogramDataPoint_Min{}
+			} else {
+				ov = ProtoPoolExponentialHistogramDataPoint_Min.Get().(*otlpmetrics.ExponentialHistogramDataPoint_Min)
+			}
+			ov.Min = math.Float64frombits(num)
+			orig.Min_ = ov
+
+		case 13:
+			if wireType != proto.WireTypeI64 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Max", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeI64(buf, pos)
+			if err != nil {
+				return err
+			}
+			var ov *otlpmetrics.ExponentialHistogramDataPoint_Max
+			if !UseProtoPooling.IsEnabled() {
+				ov = &otlpmetrics.ExponentialHistogramDataPoint_Max{}
+			} else {
+				ov = ProtoPoolExponentialHistogramDataPoint_Max.Get().(*otlpmetrics.ExponentialHistogramDataPoint_Max)
+			}
+			ov.Max = math.Float64frombits(num)
+			orig.Max_ = ov
+
+		case 14:
+			if wireType != proto.WireTypeI64 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ZeroThreshold", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeI64(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.ZeroThreshold = math.Float64frombits(num)
+		default:
+			pos, err = proto.ConsumeUnknown(buf, pos, wireType)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

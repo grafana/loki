@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
 
 var errStoreUnimplemented = errors.New("store does not implement this operation")
@@ -29,7 +30,8 @@ func NewDataObjV2EngineStore(dataDir string, tenantID string) (*DataObjV2EngineS
 	return dataobjV2StoreWithOpts(dataDir, tenantID, logql.EngineOpts{
 		EnableV2Engine: true,
 		BatchSize:      512,
-	}, metastore.StorageConfig{})
+		RangeConfig:    rangeio.DefaultConfig,
+	}, metastore.Config{})
 }
 
 // NewDataObjV2EngineWithIndexesStore creates a new store that uses the v2 dataobj engine but also with index support.
@@ -38,12 +40,13 @@ func NewDataObjV2EngineWithIndexesStore(dataDir string, tenantID string) (*DataO
 	return dataobjV2StoreWithOpts(dataDir, tenantID, logql.EngineOpts{
 		EnableV2Engine: true,
 		BatchSize:      512,
-	}, metastore.StorageConfig{
+		RangeConfig:    rangeio.DefaultConfig,
+	}, metastore.Config{
 		IndexStoragePrefix: "index/v0",
 	})
 }
 
-func dataobjV2StoreWithOpts(dataDir string, tenantID string, engineOpts logql.EngineOpts, cfg metastore.StorageConfig) (*DataObjV2EngineStore, error) {
+func dataobjV2StoreWithOpts(dataDir string, tenantID string, engineOpts logql.EngineOpts, cfg metastore.Config) (*DataObjV2EngineStore, error) {
 	logger := log.NewNopLogger()
 
 	// Setup filesystem client as objstore.Bucket
