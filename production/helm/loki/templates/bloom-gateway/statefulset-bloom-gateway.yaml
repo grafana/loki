@@ -126,7 +126,7 @@ spec:
         {{- end }}
       {{- with .Values.bloomGateway.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.bloomGateway.nodeSelector }}
       nodeSelector:
