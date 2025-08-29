@@ -11,10 +11,18 @@ import (
 	"runtime"
 	"slices"
 	"sort"
+	"time"
 
+	"github.com/dustin/go-humanize"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 )
+
+var tracer = otel.Tracer("pkg/util/rangeio")
 
 // Range represents a range of data to be read.
 type Range struct {
@@ -98,6 +106,14 @@ func (cfg *Config) RegisterFlags(prefix string, fs *flag.FlagSet) {
 	fs.IntVar(&cfg.MinRangeSize, prefix+"min-range-size", DefaultConfig.MinRangeSize, "Experimental: minimum size of a byte range")
 }
 
+// effectiveParallelism returns the effective parallelism limit.
+func (cfg *Config) effectiveParallelism() int {
+	if cfg.MaxParallelism <= 0 {
+		return runtime.NumCPU()
+	}
+	return cfg.MaxParallelism
+}
+
 // DefaultConfig holds the default values for [Config].
 var DefaultConfig = Config{
 	// Benchmarks of GCS and S3 revealed that more parallelism is always better.
@@ -134,20 +150,26 @@ var DefaultConfig = Config{
 // ReadRanges only returns [io.EOF] if one of the ranges is beyond the end of
 // the input source.
 func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
+	// We store our own start time so we can calculate read throughput at the
+	// end.
+	startTime := time.Now()
+	ctx, span := tracer.Start(ctx, "ReadRanges", trace.WithTimestamp(startTime))
+	defer span.End()
+
 	cfg := configFromContext(ctx)
 	if cfg == nil {
 		cfg = &DefaultConfig
+		span.SetAttributes(attribute.Bool("config.default", true))
 	}
-
 	optimized := optimizeRanges(cfg, ranges)
+	span.AddEvent("optimized ranges")
+
+	// Once we optimized the ranges we can set up the rest of our attributes.
+	span.SetAttributes(readRangesAttributes(cfg, ranges, optimized)...)
+	defer injectThroughputAttribute(span, startTime, optimized)
 
 	g, ctx := errgroup.WithContext(ctx)
-
-	parallelismLimit := cfg.MaxParallelism
-	if parallelismLimit <= 0 {
-		parallelismLimit = runtime.NumCPU()
-	}
-	g.SetLimit(parallelismLimit)
+	g.SetLimit(cfg.effectiveParallelism())
 
 	var gotEOF atomic.Bool
 
@@ -158,7 +180,8 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 		}
 
 		g.Go(func() error {
-			n, err := r.ReadRange(ctx, targetRange)
+			tr := tracedReader{inner: r}
+			n, err := tr.ReadRange(ctx, targetRange)
 
 			// ReadRange must return a non-nil error if it read fewer than the
 			// requested amount of bytes.
@@ -179,8 +202,11 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 	}
 
 	if err := g.Wait(); err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return err
 	}
+
+	span.AddEvent("finished reading ranges")
 
 	// Now that we read the ranges, we can copy the data back into the original
 	// slice.
@@ -216,6 +242,9 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 			output = output[copied:]
 		}
 	}
+
+	span.AddEvent("copied data to inputs")
+	span.SetStatus(codes.Ok, "") // Even if we got [io.EOF], we treat the operation as successful here.
 
 	if gotEOF.Load() {
 		return io.EOF
@@ -319,7 +348,7 @@ func optimizeRanges(cfg *Config, in []Range) []Range {
 	// ranges until we have enough.
 	//
 	// This is a no-op if we already have enough ranges.
-	for i := 0; i < len(coalescedChunks) && len(coalescedChunks) < cfg.MaxParallelism; {
+	for i := 0; i < len(coalescedChunks) && len(coalescedChunks) < cfg.effectiveParallelism(); {
 		// Ignore ranges which are too small or where splitting would cause them
 		// to become too small.
 		if coalescedChunks[i].Length < (cfg.MinRangeSize * 2) {
@@ -354,4 +383,71 @@ func optimizeRanges(cfg *Config, in []Range) []Range {
 		}
 	}
 	return out
+}
+
+func rangesSize(ranges []Range) uint64 {
+	var total uint64
+	for _, r := range ranges {
+		total += uint64(r.Len())
+	}
+	return total
+}
+
+// readRangesAttributes retrieves attributes about [ReadRanges] to be injected in spans.
+func readRangesAttributes(cfg *Config, ranges, optimizedRanges []Range) []attribute.KeyValue {
+	origSize := rangesSize(ranges)
+	optimizedSize := rangesSize(optimizedRanges)
+
+	return []attribute.KeyValue{
+		attribute.Int("config.max_paralleism", cfg.MaxParallelism),
+		attribute.Stringer("config.coalesce_size", bytesStringer(uint64(cfg.CoalesceSize))),
+		attribute.Stringer("config.max_range_size", bytesStringer(uint64(cfg.MaxRangeSize))),
+		attribute.Stringer("config.min_range_size", bytesStringer(uint64(cfg.MinRangeSize))),
+		attribute.Int("config.effective_parlalelism", cfg.effectiveParallelism()),
+
+		attribute.Int("input.ranges.count", len(ranges)),
+		attribute.Stringer("input.ranges.size", bytesStringer(origSize)),
+
+		attribute.Int("optimized.ranges.count", len(optimizedRanges)),
+		attribute.Stringer("optimized.ranges.size", bytesStringer(optimizedSize)),
+	}
+}
+
+func injectThroughputAttribute(span trace.Span, startTime time.Time, optimizedRanges []Range) {
+	size := rangesSize(optimizedRanges)
+
+	bytesPerSec := float64(size) / time.Since(startTime).Seconds()
+	span.SetAttributes(attribute.Stringer("optimized.ranges.throughput", bytesStringer(uint64(bytesPerSec))))
+}
+
+type bytesStringer uint64
+
+func (s bytesStringer) String() string {
+	return humanize.Bytes(uint64(s))
+}
+
+// tracedReader injects span events after reading a range.
+type tracedReader struct {
+	inner Reader
+}
+
+func (tr tracedReader) ReadRange(ctx context.Context, r Range) (int, error) {
+	start := time.Now()
+	span := trace.SpanFromContext(ctx)
+
+	n, err := tr.inner.ReadRange(ctx, r)
+
+	if span.IsRecording() {
+		bytesPerSec := float64(r.Len()) / time.Since(start).Seconds()
+
+		span.AddEvent("read optimized range", trace.WithAttributes(
+			attribute.Int64("offset", r.Offset),
+			attribute.Int64("len", r.Len()),
+			attribute.Int("read.size", n),
+			attribute.Stringer("read.duration", time.Since(start)),
+			attribute.Stringer("read.throughput", bytesStringer(uint64(bytesPerSec))),
+		))
+	}
+
+	return n, err
 }
