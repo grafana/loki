@@ -48,7 +48,7 @@ func (c *Calculator) Flush() (*dataobj.Object, io.Closer, error) {
 // Calculate reads the log data from the input logs object and appends the resulting indexes to calculator's builder.
 // Calculate is not thread-safe.
 func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *dataobj.Object, objectPath string) error {
-	g, ctx := errgroup.WithContext(ctx)
+	g, streamsCtx := errgroup.WithContext(ctx)
 	g.SetLimit(runtime.GOMAXPROCS(0))
 	streamIDLookupByTenant := sync.Map{}
 
@@ -56,7 +56,7 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	for i, section := range reader.Sections().Filter(streams.CheckSection) {
 		g.Go(func() error {
 			streamIDLookup := make(map[int64]int64)
-			if err := c.processStreamsSection(ctx, section, streamIDLookup); err != nil {
+			if err := c.processStreamsSection(streamsCtx, section, streamIDLookup); err != nil {
 				return fmt.Errorf("failed to process stream section path=%s section=%d: %w", objectPath, i, err)
 			}
 			// This is safe as each data object has just one streams section per tenant, which means different sections cannot overwrite the results of each other.
@@ -73,7 +73,7 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 		return err
 	}
 
-	g, ctx = errgroup.WithContext(ctx)
+	g, logsCtx := errgroup.WithContext(ctx)
 	g.SetLimit(runtime.GOMAXPROCS(0))
 	// Logs Section: these can be processed in parallel once we have the stream IDs for the tenant.
 	// TODO(benclive): Start processing logs sections as soon as the stream sections are done, tenant by tenant. That way we don't need to wait for the biggest stream sections before processing the logs.
@@ -86,7 +86,7 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 			}
 			// 1. A bloom filter for each column in the logs section.
 			// 2. A per-section stream time-range index using min/max of each stream in the logs section. StreamIDs will reference the aggregate stream section.
-			if err := c.processLogsSection(ctx, sectionLogger, objectPath, section, int64(i), streamIDLookup.(map[int64]int64)); err != nil {
+			if err := c.processLogsSection(logsCtx, sectionLogger, objectPath, section, int64(i), streamIDLookup.(map[int64]int64)); err != nil {
 				return fmt.Errorf("failed to process logs section path=%s section=%d: %w", objectPath, i, err)
 			}
 			return nil
