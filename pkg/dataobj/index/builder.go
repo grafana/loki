@@ -251,8 +251,12 @@ func (p *Builder) run(ctx context.Context) error {
 	level.Info(p.logger).Log("msg", "started index builder service")
 	for {
 		fetches := p.client.PollRecords(ctx, -1)
-		if fetches.IsClientClosed() || ctx.Err() != nil {
-			return ctx.Err()
+		if err := fetches.Err0(); err != nil {
+			if errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
+				return err
+			}
+			// Some other error occurred. We will check it in
+			// [processFetchTopicPartition] instead.
 		}
 		if errs := fetches.Errors(); len(errs) > 0 {
 			level.Error(p.logger).Log("msg", "error fetching records", "err", errs)
