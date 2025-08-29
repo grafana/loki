@@ -127,10 +127,7 @@ func (m *Manager) Run(tsets <-chan map[string][]*targetgroup.Group) error {
 	go m.reloader()
 	for {
 		select {
-		case ts, ok := <-tsets:
-			if !ok {
-				break
-			}
+		case ts := <-tsets:
 			m.updateTsets(ts)
 
 			select {
