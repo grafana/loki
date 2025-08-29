@@ -44,11 +44,17 @@ func BuildPlan(params logql.Params) (*Plan, error) {
 // buildPlanForLogQuery builds logical plan operations by traversing [syntax.LogSelectorExpr]
 // isMetricQuery should be set to true if this expr is encountered when processing a [syntax.SampleExpr].
 // rangeInterval should be set to a non-zero value if the query contains [$range].
-func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMetricQuery bool, rangeInterval time.Duration) (*Builder, error) {
+func buildPlanForLogQuery(
+	expr syntax.LogSelectorExpr,
+	params logql.Params,
+	isMetricQuery bool,
+	rangeInterval time.Duration,
+) (*Builder, error) {
 	var (
-		err        error
-		selector   Value
-		predicates []Value
+		err             error
+		selector        Value
+		predicates      []Value
+		hasLogfmtParser bool
 	)
 
 	// TODO(chaudum): Implement a Walk function that can return an error
@@ -72,7 +78,10 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 				predicates = append(predicates, val)
 			}
 			return true
-		case *syntax.LineParserExpr, *syntax.LogfmtParserExpr, *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
+		case *syntax.LogfmtParserExpr:
+			hasLogfmtParser = true
+			return true // continue traversing to find label filters
+		case *syntax.LineParserExpr, *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
 			*syntax.LineFmtExpr, *syntax.LabelFmtExpr,
 			*syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
 			err = errUnimplemented
@@ -99,6 +108,11 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 			Shard:      shard,
 		},
 	)
+
+	// Add Parse instruction if logfmt was detected
+	if hasLogfmtParser {
+		builder = builder.Parse(ParserLogfmt)
+	}
 
 	direction := params.Direction()
 	if !isMetricQuery && direction == logproto.FORWARD {
@@ -135,9 +149,19 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 }
 
 func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder, error) {
-	var (
-		err error
+	if params.Step() > 0 {
+		return nil, fmt.Errorf("only instant metric queries are supported: %w", errUnimplemented)
+	}
 
+	// Extract stream labels early so we can use them for column type determination
+	logSelectorExpr, err := e.Selector()
+	if err != nil {
+		return nil, err
+	}
+	streamLabels := extractStreamLabels(logSelectorExpr)
+
+	var (
+		walkErr       error
 		rangeAggType  types.RangeAggregationType
 		rangeInterval time.Duration
 
@@ -147,62 +171,83 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 
 	e.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
+		case *syntax.LogfmtParserExpr:
+			// Logfmt detection is now handled in CollectLogfmtMetricKeys
+			return true
+		case *syntax.LogRangeExpr, *syntax.PipelineExpr, *syntax.MatchersExpr, *syntax.LabelFilterExpr:
+			// Continue traversing into these expressions to find logfmt
+			return true
 		case *syntax.RangeAggregationExpr:
 			// only count operation is supported for range aggregation.
 			// offsets are not yet supported.
 			if e.Operation != syntax.OpRangeTypeCount || e.Left.Offset != 0 {
-				err = errUnimplemented
+				walkErr = errUnimplemented
 				return false
 			}
 
 			rangeAggType = types.RangeAggregationTypeCount
 			rangeInterval = e.Left.Interval
-			return false // do not traverse log range query
+			return true // continue traversing to find logfmt
 
 		case *syntax.VectorAggregationExpr:
 			// only sum operation is supported for vector aggregation
 			// grouping by atleast one label is required.
 			if e.Operation != syntax.OpTypeSum ||
 				e.Grouping == nil || len(e.Grouping.Groups) == 0 || e.Grouping.Without {
-				err = errUnimplemented
+				walkErr = errUnimplemented
 				return false
 			}
 
 			vecAggType = types.VectorAggregationTypeSum
 			groupBy = make([]ColumnRef, 0, len(e.Grouping.Groups))
 			for _, group := range e.Grouping.Groups {
-				groupBy = append(groupBy, *NewColumnRef(group, types.ColumnTypeAmbiguous))
+				// Determine column type based on whether it's a stream label
+				colType := types.ColumnTypeAmbiguous
+				if streamLabels[group] {
+					colType = types.ColumnTypeLabel
+				}
+				groupBy = append(groupBy, *NewColumnRef(group, colType))
 			}
 
 			return true
 		default:
-			err = errUnimplemented
-			return false // do not traverse children
+			// For other expressions, just continue traversing
+			return true
 		}
 	})
-	if err != nil {
-		return nil, err
+	if walkErr != nil {
+		return nil, walkErr
 	}
 
 	if rangeAggType == types.RangeAggregationTypeInvalid || vecAggType == types.VectorAggregationTypeInvalid {
 		return nil, errUnimplemented
 	}
 
-	logSelectorExpr, err := e.Selector()
-	if err != nil {
-		return nil, err
+	builder, walkErr := buildPlanForLogQuery(logSelectorExpr, params, true, rangeInterval)
+	if walkErr != nil {
+		return nil, walkErr
 	}
 
-	builder, err := buildPlanForLogQuery(logSelectorExpr, params, true, rangeInterval)
-	if err != nil {
-		return nil, err
-	}
+	// Parse instruction is now added in buildPlanForLogQuery
 
 	builder = builder.RangeAggregation(
 		nil, rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,
 	).VectorAggregation(groupBy, vecAggType)
 
 	return builder, nil
+}
+
+// extractStreamLabels extracts the label names from a stream selector
+func extractStreamLabels(selector syntax.LogSelectorExpr) map[string]bool {
+	labels := make(map[string]bool)
+
+	// Get matchers from the selector
+	matchers := selector.Matchers()
+	for _, matcher := range matchers {
+		labels[matcher.Name] = true
+	}
+
+	return labels
 }
 
 func convertLabelMatchers(matchers []*labels.Matcher) Value {
