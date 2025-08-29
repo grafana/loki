@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -320,8 +321,7 @@ func (r *rangeAggregationPipeline) createOverlappingMatcher(windows []window, lo
 
 		// Iterate backwards from last matching window to find all matches
 		var result []window
-		for i := windowIndex; i >= 0; i-- {
-			window := windows[i]
+		for _, window := range slices.Backward(windows[:windowIndex]) {
 			if t.Compare(window.start) > 0 && t.Compare(window.end) <= 0 {
 				result = append(result, window)
 			} else if t.Compare(window.end) > 0 {
