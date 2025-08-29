@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [ENHANCEMENT] Allow scaling querier with keda. [#16873](https://github.com/grafana/loki/pull/16873)
+
 ## 6.38.0
 
 - [FEATURE] Make access modes for persistence on all PVCs and StatefulSets editable [#13474](https://github.com/grafana/loki/pull/13474)
@@ -64,7 +66,6 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Refactor loki health probes so `.Values.loki.livenessProbe` and `.Values.loki.startupProbe` can be unset with `{}` [#18575](https://github.com/grafana/loki/pull/18575)
 - [BUGFIX] Make loki.storage.bucketNames are optional, if builtin minio is enabled. [#18653](https://github.com/grafana/loki/pull/18653)
 - [BUGFIX] Add comments, clarifying ruler setup. [#18607](https://github.com/grafana/loki/pull/18607)
-- [ENHANCEMENT] Allow scaling querier with keda. [#16873](https://github.com/grafana/loki/pull/16873)
 
 ## 6.34.0
 
