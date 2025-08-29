@@ -269,7 +269,7 @@ GCP recommends [Workload Identity Federation](https://cloud.google.com/iam/docs/
 
 ```yaml
 storage_config:
-   tsdb_shipper:
+  tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
     cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space

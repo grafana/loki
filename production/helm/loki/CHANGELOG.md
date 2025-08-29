@@ -13,8 +13,14 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 6.38.0
 
 - un-deprecate all features in `monitoring` block except grafana-agent-operator [#19001](https://github.com/grafana/loki/pull/19001)
+- [FEATURE] Make access modes for persistence on all PVCs and StatefulSets editable [#13474](https://github.com/grafana/loki/pull/13474)
+- [FEATURE] Allow enabling user namespaces [#18661](https://github.com/grafana/loki/pull/18661)
+- [FEATURE] Allow configuring service types. [#18708](https://github.com/grafana/loki/pull/18708)
+- [ENHANCEMENT] Add namespaceOverride [#18707](https://github.com/grafana/loki/pull/18707)
+- [BUGFIX] Use gateway container port as nginx server port [#18774](https://github.com/grafana/loki/pull/18774)
 
 ## 6.37.0
 
@@ -22,6 +28,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-gateway. [#18551](https://github.com/grafana/loki/pull/18551)
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for loki in bloom-builder. [#18549](https://github.com/grafana/loki/pull/1854
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to bloom-planner. [#18552](https://github.com/grafana/loki/pull/18552)
+- [FEATURE] Support separate loki ruler storage configuration [#18510](https://github.com/grafana/loki/pull/18510)
 - [BUGFIX] Revert Thanos object store configuration from ruler storage config to fix compatibility issues with RuleStoreConfig that caused parsing errors during Helm upgrades.
 
 ## 6.36.1
@@ -37,6 +44,9 @@ Entries should include a reference to the pull request that introduced the chang
 - [CHANGE] `enterprise.adminToken.secret` now refers to an externally-created secret name (required when `enterprise.provisioner.enabled` is true). [#18803](https://github.com/grafana/loki/pull/18803)
 - [ENHANCEMENT] Add validation to ensure `enterprise.adminToken.secret` is set when provisioner is enabled. [#18803](https://github.com/grafana/loki/pull/18803)
 - [BUGFIX] Websocket related proxy_set_header to locations back to resolve high CPU usage. [#18800](https://github.com/grafana/loki/pull/18800). **CAUTION**: Any customized proxy_set_header configuration are moved from `gateway.nginxConfig.httpSnippet` to `gateway.nginxConfig.locationSnippet`. Users that using different authentication methods (e.g. `mTLS`) in the gateway should check their configuration and update it accordingly.
+
+
+- [FEATURE] Allow configuring service types. [#18708](https://github.com/grafana/loki/pull/18708)
 
 ## 6.35.1
 

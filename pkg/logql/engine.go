@@ -38,6 +38,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	logutil "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 	"github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
@@ -175,6 +176,9 @@ type EngineOpts struct {
 	//
 	// This setting is only used when the v2 engine is being used.
 	DataobjScanPageCacheSize flagext.Bytes `yaml:"dataobjscan_page_cache_size" category:"experimental"`
+
+	// RangeConfig determines how to optimize range reads in the V2 engine.
+	RangeConfig rangeio.Config `yaml:"range_reads" category:"experimental" doc:"description=Configures how to read byte ranges from object storage when using the V2 engine."`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -188,6 +192,8 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 
 	// Log executing query by default
 	opts.LogExecutingQuery = true
+
+	opts.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
 }
 
 func (opts *EngineOpts) applyDefault() {
