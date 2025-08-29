@@ -32,9 +32,8 @@ type window struct {
 }
 
 // timestampMatchingWindowsFunc resolves matching range interval windows for a specific timestamp.
-// It returns a list of end timestamps of the matching windows.
 // The list can be empty if the timestamp is out of bounds or does not match any of the range windows.
-type timestampMatchingWindowsFunc func(time.Time) []time.Time
+type timestampMatchingWindowsFunc func(time.Time) []window
 
 // rangeAggregationPipeline is a pipeline that performs aggregations over a time window.
 //
@@ -89,12 +88,11 @@ func (r *rangeAggregationPipeline) init() {
 		// A sample timestamp will always match the only time window available, unless the timestamp it out of range.
 		// steps         |---------x-------|
 		// window        |---------x-------|
-		r.windowsForTimestamp = func(t time.Time) []time.Time {
+		r.windowsForTimestamp = func(t time.Time) []window {
 			if t.Compare(lowerbound) <= 0 || t.Compare(upperbound) > 0 {
 				return nil // out of range
 			}
-
-			return []time.Time{windows[0].end}
+			return []window{windows[0]}
 		}
 	case r.opts.step == r.opts.rangeInterval:
 		// If the step is equal to the range interval (e.g. when used $__auto in Grafana), then a sample timestamp matches exactly one time window.
@@ -205,8 +203,8 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 			tsCol := vec.ToArray().(*array.Timestamp)
 
 			for row := range int(record.NumRows()) {
-				windowTimestamps := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
-				if len(windowTimestamps) == 0 {
+				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
+				if len(windows) == 0 {
 					continue // out of range, skip this row
 				}
 
@@ -216,8 +214,8 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 					labelValues[col] = arr.Value(row)
 				}
 
-				for _, ts := range windowTimestamps {
-					r.aggregator.Add(ts, 1, labelValues)
+				for _, w := range windows {
+					r.aggregator.Add(w.end, 1, labelValues)
 				}
 			}
 		}
@@ -254,7 +252,7 @@ func (r *rangeAggregationPipeline) createAlignedMatcher(windows []window, lowerb
 	startNs := r.opts.startTs.UnixNano()
 	stepNs := r.opts.step.Nanoseconds()
 
-	return func(t time.Time) []time.Time {
+	return func(t time.Time) []window {
 		tNs := t.UnixNano()
 
 		// out of bounds check
@@ -268,7 +266,7 @@ func (r *rangeAggregationPipeline) createAlignedMatcher(windows []window, lowerb
 
 		// endTs can be calculated, but doing a window look-up instead for
 		// convinience as it is pre-calculated for other scenarios.
-		return []time.Time{windows[windowIndex].end}
+		return []window{windows[windowIndex]}
 	}
 }
 
@@ -276,7 +274,7 @@ func (r *rangeAggregationPipeline) createGappedMatcher(windows []window, lowerbo
 	startNs := r.opts.startTs.UnixNano()
 	stepNs := r.opts.step.Nanoseconds()
 
-	return func(t time.Time) []time.Time {
+	return func(t time.Time) []window {
 		tNs := t.UnixNano()
 
 		// out of bounds check
@@ -290,11 +288,11 @@ func (r *rangeAggregationPipeline) createGappedMatcher(windows []window, lowerbo
 		// 2. Additionally check if t is within the window (not in a gap)
 
 		windowIndex := (tNs - startNs + stepNs - 1) / stepNs
-		window := windows[windowIndex]
+		matchingWindow := windows[windowIndex]
 
 		// Verify the timestamp is within the window (not in a gap)
-		if tNs > window.start.UnixNano() {
-			return []time.Time{window.end}
+		if tNs > matchingWindow.start.UnixNano() {
+			return []window{matchingWindow}
 		}
 
 		return nil // timestamp is in a gap
@@ -302,7 +300,7 @@ func (r *rangeAggregationPipeline) createGappedMatcher(windows []window, lowerbo
 }
 
 func (r *rangeAggregationPipeline) createOverlappingMatcher(windows []window, lowerbound, upperbound time.Time) timestampMatchingWindowsFunc {
-	return func(t time.Time) []time.Time {
+	return func(t time.Time) []window {
 		// out of bounds check
 		if t.Compare(lowerbound) <= 0 || t.Compare(upperbound) > 0 {
 			return nil
@@ -321,11 +319,11 @@ func (r *rangeAggregationPipeline) createOverlappingMatcher(windows []window, lo
 		}
 
 		// Iterate backwards from last matching window to find all matches
-		var result []time.Time
+		var result []window
 		for i := windowIndex; i >= 0; i-- {
 			window := windows[i]
 			if t.Compare(window.start) > 0 && t.Compare(window.end) <= 0 {
-				result = append(result, window.end)
+				result = append(result, window)
 			} else if t.Compare(window.end) > 0 {
 				// we've gone past all possible matches
 				break
