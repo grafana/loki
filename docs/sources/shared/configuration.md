@@ -1146,16 +1146,10 @@ dataobj:
     [events_per_index: <int> | default = 32]
 
   metastore:
-    storage:
-      # Experimental: A prefix to use for storing indexes in object storage.
-      # Used to separate the metastore & index files during initial testing.
-      # CLI flag: -dataobj-metastore.index-storage-prefix
-      [index_storage_prefix: <string> | default = "index/v0/"]
-
-      # Experimental: A list of tenant IDs to enable index building for. If
-      # empty, all tenants will be enabled.
-      # CLI flag: -dataobj-metastore.enabled-tenant-ids
-      [enabled_tenant_ids: <string> | default = ""]
+    # Experimental: A prefix to use for storing indexes in object storage. Used
+    # for testing only.
+    # CLI flag: -dataobj-metastore.index-storage-prefix
+    [index_storage_prefix: <string> | default = "index/v0"]
 
     # Experimental: The ratio of log partitions to metastore partitions. For
     # example, a value of 10 means there is 1 metastore partition for every 10
@@ -4925,6 +4919,26 @@ engine:
   # query engine.
   # CLI flag: -querier.engine.dataobjscan-page-cache-size
   [dataobjscan_page_cache_size: <int> | default = 0B]
+
+  # Configures how to read byte ranges from object storage when using the V2
+  # engine.
+  range_reads:
+    # Experimental: maximum number of parallel reads
+    # CLI flag: -querier.engine.range-reads.max-parallelism
+    [max_parallelism: <int> | default = 10]
+
+    # Experimental: maximum distance (in bytes) between ranges that causes them
+    # to be coalesced into a single range
+    # CLI flag: -querier.engine.range-reads.coalesce-size
+    [coalesce_size: <int> | default = 1048576]
+
+    # Experimental: maximum size of a byte range
+    # CLI flag: -querier.engine.range-reads.max-range-size
+    [max_range_size: <int> | default = 8388608]
+
+    # Experimental: minimum size of a byte range
+    # CLI flag: -querier.engine.range-reads.min-range-size
+    [min_range_size: <int> | default = 1048576]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
