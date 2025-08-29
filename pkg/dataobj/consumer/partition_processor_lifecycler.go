@@ -18,7 +18,7 @@ type processor interface {
 
 // processorFactory allows mocking of partition processor factory in tests.
 type processorFactory interface {
-	New(ctx context.Context, client *kgo.Client, tenant string, virtualShard int32, topic string, partition int32) processor
+	New(ctx context.Context, client *kgo.Client, topic string, partition int32) processor
 }
 
 // partitionProcessorListener is an interface that listens to registering
@@ -76,8 +76,6 @@ func (l *partitionProcessorLifecycler) RemoveListener(listener partitionProcesso
 func (l *partitionProcessorLifecycler) Register(
 	ctx context.Context,
 	client *kgo.Client,
-	tenant string,
-	virtualShard int32,
 	topic string,
 	partition int32,
 ) {
@@ -91,7 +89,7 @@ func (l *partitionProcessorLifecycler) Register(
 	}
 	_, ok = processorsByTopic[partition]
 	if !ok {
-		processor := l.factory.New(ctx, client, tenant, virtualShard, topic, partition)
+		processor := l.factory.New(ctx, client, topic, partition)
 		processorsByTopic[partition] = processor
 		processor.start()
 		for _, listener := range l.listeners {

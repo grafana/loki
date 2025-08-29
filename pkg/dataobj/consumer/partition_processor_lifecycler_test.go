@@ -43,22 +43,22 @@ func TestPartitionProcessorLifecycler_Register(t *testing.T) {
 	require.Empty(t, l.processors)
 	// Register a topic and partition.
 	require.Equal(t, 0, m.calls)
-	l.Register(context.TODO(), nil, "tenant1", 0, "tenant1", 0)
-	require.Len(t, l.processors["tenant1"], 1)
+	l.Register(context.TODO(), nil, "topic1", 0)
+	require.Len(t, l.processors["topic1"], 1)
 	require.Equal(t, 1, m.calls)
 	// Registering the same topic and partition a second time should not call
 	// the factory.
-	l.Register(context.TODO(), nil, "tenant1", 0, "tenant1", 0)
-	require.Len(t, l.processors["tenant1"], 1)
+	l.Register(context.TODO(), nil, "topic1", 0)
+	require.Len(t, l.processors["topic1"], 1)
 	require.Equal(t, 1, m.calls)
 	// Register another partition for the same tenant.
-	l.Register(context.TODO(), nil, "tenant1", 1, "tenant1", 1)
-	require.Len(t, l.processors["tenant1"], 2)
+	l.Register(context.TODO(), nil, "topic1", 1)
+	require.Len(t, l.processors["topic1"], 2)
 	require.Equal(t, 2, m.calls)
 	// Register another topic and partition for a different tenant.
-	l.Register(context.TODO(), nil, "tenant2", 0, "tenant2", 0)
-	require.Len(t, l.processors["tenant1"], 2)
-	require.Len(t, l.processors["tenant2"], 1)
+	l.Register(context.TODO(), nil, "topic2", 1)
+	require.Len(t, l.processors["topic1"], 2)
+	require.Len(t, l.processors["topic2"], 1)
 	require.Equal(t, 3, m.calls)
 }
 
@@ -68,20 +68,20 @@ func TestPartitionProcessorLifecycler_Deregister(t *testing.T) {
 	require.Empty(t, l.processors)
 	// Register a topic and partition.
 	require.Equal(t, 0, m.calls)
-	l.Register(context.TODO(), nil, "tenant1", 0, "tenant1", 0)
-	l.Register(context.TODO(), nil, "tenant1", 1, "tenant1", 1)
-	l.Register(context.TODO(), nil, "tenant2", 0, "tenant2", 0)
-	require.Len(t, l.processors["tenant1"], 2)
-	require.Len(t, l.processors["tenant2"], 1)
+	l.Register(context.TODO(), nil, "topic1", 0)
+	l.Register(context.TODO(), nil, "topic1", 1)
+	l.Register(context.TODO(), nil, "topic2", 0)
+	require.Len(t, l.processors["topic1"], 2)
+	require.Len(t, l.processors["topic2"], 1)
 	// Deregister a partition for a tenant.
-	l.Deregister(context.TODO(), "tenant1", 0)
-	require.Len(t, l.processors["tenant1"], 1)
+	l.Deregister(context.TODO(), "topic1", 0)
+	require.Len(t, l.processors["topic1"], 1)
 	// Check that the correct partition was deregistered.
-	require.Nil(t, l.processors["tenant1"][0])
-	require.NotNil(t, l.processors["tenant1"][1])
-	require.Len(t, l.processors["tenant2"], 1)
+	require.Nil(t, l.processors["topic1"][0])
+	require.NotNil(t, l.processors["topic1"][1])
+	require.Len(t, l.processors["topic2"], 1)
 	// Deregister the last partition for the tenant.
-	l.Deregister(context.TODO(), "tenant1", 1)
-	require.Nil(t, l.processors["tenant1"])
-	require.Len(t, l.processors["tenant2"], 1)
+	l.Deregister(context.TODO(), "topic1", 1)
+	require.Nil(t, l.processors["topic1"])
+	require.Len(t, l.processors["topic2"], 1)
 }

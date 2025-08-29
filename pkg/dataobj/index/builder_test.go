@@ -52,7 +52,7 @@ func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucke
 			Labels:  fmt.Sprintf("{app=\"%s\",stream=\"%d\"}", app, i),
 			Entries: []logproto.Entry{{Timestamp: time.Now(), Line: fmt.Sprintf("line %d", i)}},
 		}
-		err = candidate.Append(stream)
+		err = candidate.Append("tenant", stream)
 		require.NoError(t, err)
 	}
 
