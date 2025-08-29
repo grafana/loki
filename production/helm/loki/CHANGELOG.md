@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [FEATURE] Use named ports for memcached services targetports. [#18990](https://github.com/grafana/loki/pull/18990)
+
 ## 6.38.0
 
 - [FEATURE] Make access modes for persistence on all PVCs and StatefulSets editable [#13474](https://github.com/grafana/loki/pull/13474)
@@ -20,7 +22,6 @@ Entries should include a reference to the pull request that introduced the chang
 - [FEATURE] Allow configuring service types. [#18708](https://github.com/grafana/loki/pull/18708)
 - [ENHANCEMENT] Add namespaceOverride [#18707](https://github.com/grafana/loki/pull/18707)
 - [BUGFIX] Use gateway container port as nginx server port [#18774](https://github.com/grafana/loki/pull/18774)
-- [FEATURE] Use named ports for memcached services targetports. [#18990](https://github.com/grafana/loki/pull/18990)
 
 ## 6.37.0
 
