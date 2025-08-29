@@ -27,16 +27,16 @@ type Config struct {
 	Bucket    objstore.Bucket
 
 	DataobjScanPageCacheSize int64
-	MergePipelineConcurrency int
+	MergePrefetchCount       int
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
-		plan:                     plan,
-		batchSize:                cfg.BatchSize,
-		mergePrefetchConcurrency: cfg.MergePipelineConcurrency,
-		bucket:                   cfg.Bucket,
-		logger:                   logger,
+		plan:               plan,
+		batchSize:          cfg.BatchSize,
+		mergePrefetchCount: cfg.MergePrefetchCount,
+		bucket:             cfg.Bucket,
+		logger:             logger,
 
 		dataobjScanPageCacheSize: cfg.DataobjScanPageCacheSize,
 	}
@@ -60,7 +60,7 @@ type Context struct {
 	bucket    objstore.Bucket
 
 	dataobjScanPageCacheSize int64
-	mergePrefetchConcurrency int
+	mergePrefetchCount       int
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -318,7 +318,7 @@ func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []
 		return emptyPipeline()
 	}
 
-	pipeline, err := newMergePipeline(inputs, c.mergePrefetchConcurrency)
+	pipeline, err := newMergePipeline(inputs, c.mergePrefetchCount)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
