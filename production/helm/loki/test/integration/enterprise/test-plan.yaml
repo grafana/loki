@@ -1,12 +1,12 @@
 ---
 apiVersion: helm-chart-toolbox.grafana.com/v1
 kind: TestPlan
-name: single-binary
+name: enterprise
 subject:
   releaseName: loki
   namespace: loki
   path: ../../..
-  valuesFile: default-single-binary-values.yaml
+  valuesFile: enterprise.yaml
   extraArgs:
     - --dependency-update
     - --set
@@ -16,6 +16,7 @@ cluster:
   type: kind
 
 dependencies:
+  - file: monitoring-secret.yaml
   - file: log-generator.yaml
   - preset: grafana
     overrides:
@@ -37,43 +38,55 @@ tests:
     values:
       checks:
         - kind: StatefulSet
-          name: loki
+          name: enterprise-logs-backend
           namespace: loki
         - kind: StatefulSet
-          name: loki-chunks-cache
+          name: enterprise-logs-write
           namespace: loki
         - kind: StatefulSet
-          name: loki-results-cache
+          name: loki-enterprise-logs-chunks-cache
+          namespace: loki
+        - kind: StatefulSet
+          name: loki-enterprise-logs-results-cache
+          namespace: loki
+        - kind: Deployment
+          name: enterprise-logs-read
+          namespace: loki
+        - kind: Deployment
+          name: loki-enterprise-logs-gateway
           namespace: loki
 
         # Loki services
         - kind: Service
-          name: loki
+          name: enterprise-logs-backend
           namespace: loki
         - kind: Service
-          name: loki-canary
+          name: enterprise-logs-read
           namespace: loki
         - kind: Service
-          name: loki-chunks-cache
+          name: enterprise-logs-write
           namespace: loki
         - kind: Service
-          name: loki-gateway
+          name: enterprise-logs-canary
           namespace: loki
         - kind: Service
-          name: loki-headless
+          name: loki-enterprise-logs-chunks-cache
           namespace: loki
         - kind: Service
-          name: loki-memberlist
+          name: loki-enterprise-logs-gateway
           namespace: loki
         - kind: Service
-          name: loki-results-cache
+          name: enterprise-logs-memberlist
+          namespace: loki
+        - kind: Service
+          name: loki-enterprise-logs-results-cache
           namespace: loki
 
   - type: query-test
     values:
       tests:
         - env:
-            LOKI_URL: http://loki.loki.svc:3100/loki/api/v1/query
+            LOKI_URL: http://loki-enterprise-logs-gateway.loki.svc/loki/api/v1/query
             LOKI_TENANTID: 1
           queries:
             - query: count_over_time({source="log-generator"}[1h])
