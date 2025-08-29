@@ -294,7 +294,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	path, err := uploader.Upload(context.Background(), obj)
 	require.NoError(t, err)
 
-	metastoreTocWriter := NewTableOfContentsWriter(Config{}, bucket, log.NewNopLogger())
+	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
 
 	err = metastoreTocWriter.WriteEntry(context.Background(), path, []multitenancy.TimeRange{
 		{
@@ -305,7 +305,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	mstore := NewObjectMetastore(StorageConfig{}, bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
+	mstore := NewObjectMetastore(bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
 
 	tests := []struct {
 		name       string
@@ -357,7 +357,7 @@ func queryMetastore(t *testing.T, tenantID string, mfunc func(context.Context, t
 		builder.addStreamAndFlush(stream)
 	}
 
-	mstore := NewObjectMetastore(StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
+	mstore := NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
 	defer func() {
 		require.NoError(t, mstore.bucket.Close())
 	}()
@@ -382,7 +382,7 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	logger := log.NewLogfmtLogger(os.Stdout)
 	logger = log.With(logger, "test", t.Name())
 
-	meta := NewTableOfContentsWriter(Config{}, bucket, logger)
+	meta := NewTableOfContentsWriter(bucket, logger)
 	require.NoError(t, meta.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)

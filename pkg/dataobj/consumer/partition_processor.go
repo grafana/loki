@@ -21,7 +21,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -46,10 +45,6 @@ type producer interface {
 	ProduceSync(ctx context.Context, records ...*kgo.Record) kgo.ProduceResults
 }
 
-type tocWriter interface {
-	WriteEntry(ctx context.Context, dataobjPath string, timeRanges []multitenancy.TimeRange) error
-}
-
 type partitionProcessor struct {
 	// Kafka client and topic/partition info
 	committer committer
@@ -60,11 +55,10 @@ type partitionProcessor struct {
 	records chan *kgo.Record
 	// lastRecord contains the last record appended to the builder. It is used
 	// to commit the correct offset after a flush.
-	lastRecord         *kgo.Record
-	builder            builder
-	decoder            *kafka.Decoder
-	uploader           *uploader.Uploader
-	metastoreTocWriter tocWriter
+	lastRecord *kgo.Record
+	builder    builder
+	decoder    *kafka.Decoder
+	uploader   *uploader.Uploader
 
 	// Builder initialization
 	builderOnce  sync.Once
@@ -137,11 +131,6 @@ func newPartitionProcessor(
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
 
-	metastoreTocWriter := metastore.NewTableOfContentsWriter(metastoreCfg, bucket, logger)
-	if err := metastoreTocWriter.RegisterMetrics(reg); err != nil {
-		level.Error(logger).Log("msg", "failed to register metastore updater metrics", "err", err)
-	}
-
 	return &partitionProcessor{
 		committer:               client,
 		logger:                  log.With(logger, "topic", topic, "partition", partition, "tenant", tenantID),
@@ -158,7 +147,6 @@ func newPartitionProcessor(
 		tenantID:                []byte(tenantID),
 		metrics:                 metrics,
 		uploader:                uploader,
-		metastoreTocWriter:      metastoreTocWriter,
 		idleFlushTimeout:        idleFlushTimeout,
 		eventsProducerClient:    eventsProducerClient,
 		clock:                   quartz.NewReal(),
@@ -238,14 +226,12 @@ func (p *partitionProcessor) initBuilder() error {
 
 func (p *partitionProcessor) emitObjectWrittenEvent(objectPath string) error {
 	event := &metastore.ObjectWrittenEvent{
-		Tenant:     string(p.tenantID),
 		ObjectPath: objectPath,
 		WriteTime:  p.clock.Now().Format(time.RFC3339),
 	}
 
 	eventBytes, err := event.Marshal()
 	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to marshal metastore event", "err", err)
 		return err
 	}
 
@@ -327,7 +313,6 @@ func (p *partitionProcessor) flushAndCommit() error {
 func (p *partitionProcessor) flush() error {
 	// The time range must be read before the flush as the builder is reset
 	// at the end of each flush, resetting the time range.
-	minTime, maxTime := p.builder.TimeRange()
 	obj, closer, err := p.builder.Flush()
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
@@ -341,20 +326,8 @@ func (p *partitionProcessor) flush() error {
 		return err
 	}
 
-	// TODO(benclive): Remove this Update once the indexes are being built from the metastore events
-	if err := p.metastoreTocWriter.WriteEntry(p.ctx, objectPath, []multitenancy.TimeRange{
-		{
-			Tenant:  string(p.tenantID),
-			MinTime: minTime,
-			MaxTime: maxTime,
-		},
-	}); err != nil {
-		level.Error(p.logger).Log("msg", "failed to update metastore", "err", err)
-		return err
-	}
-
 	if err := p.emitObjectWrittenEvent(objectPath); err != nil {
-		level.Error(p.logger).Log("msg", "failed to emit event", "err", err)
+		level.Error(p.logger).Log("msg", "failed to emit metastore event", "err", err)
 		return err
 	}
 
