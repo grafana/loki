@@ -85,6 +85,7 @@ func (m *Merge) Read(ctx context.Context) error {
 		return m.state.err
 	}
 
+	m.init(ctx)
 	record, err := m.read(ctx)
 	m.state = newState(record, err)
 
