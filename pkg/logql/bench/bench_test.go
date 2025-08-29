@@ -36,13 +36,12 @@ var (
 const testTenant = "test-tenant"
 
 const (
-	StoreDataObj                    = "dataobj"
-	StoreDataObjV2Engine            = "dataobj-engine"
-	StoreDataObjV2EngineWithIndexes = "dataobj-engine-with-indexes"
-	StoreChunk                      = "chunk"
+	StoreDataObj         = "dataobj"
+	StoreDataObjV2Engine = "dataobj-engine"
+	StoreChunk           = "chunk"
 )
 
-var allStores = []string{StoreDataObj, StoreDataObjV2Engine, StoreDataObjV2EngineWithIndexes, StoreChunk}
+var allStores = []string{StoreDataObj, StoreDataObjV2Engine, StoreChunk}
 
 //go:generate go run ./cmd/generate/main.go -size 2147483648 -dir ./data -tenant test-tenant
 
@@ -63,12 +62,6 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) logql.Engine {
 			tb.Fatal(err)
 		}
 
-		return store.engine
-	case StoreDataObjV2EngineWithIndexes:
-		store, err := NewDataObjV2EngineWithIndexesStore(DefaultDataDir, testTenant)
-		if err != nil {
-			tb.Fatal(err)
-		}
 		return store.engine
 	case StoreDataObj:
 		store, err := NewDataObjStore(DefaultDataDir, testTenant)

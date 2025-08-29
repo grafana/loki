@@ -31,16 +31,6 @@ func NewDataObjV2EngineStore(dataDir string, tenantID string) (*DataObjV2EngineS
 		EnableV2Engine: true,
 		BatchSize:      512,
 		RangeConfig:    rangeio.DefaultConfig,
-	}, metastore.Config{})
-}
-
-// NewDataObjV2EngineWithIndexesStore creates a new store that uses the v2 dataobj engine but also with index support.
-// This is useful for comparing results between when an index is available and when it is not. Once tested, the indexed engine will be the default.
-func NewDataObjV2EngineWithIndexesStore(dataDir string, tenantID string) (*DataObjV2EngineStore, error) {
-	return dataobjV2StoreWithOpts(dataDir, tenantID, logql.EngineOpts{
-		EnableV2Engine: true,
-		BatchSize:      512,
-		RangeConfig:    rangeio.DefaultConfig,
 	}, metastore.Config{
 		IndexStoragePrefix: "index/v0",
 	})
