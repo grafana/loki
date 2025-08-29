@@ -7810,7 +7810,7 @@ false
 		<tr>
 			<td>monitoring</td>
 			<td>object</td>
-			<td>DEPRECATED Monitoring section determines which monitoring features to enable, this section is being replaced by https://github.com/grafana/meta-monitoring-chart</td>
+			<td>Monitoring section determines which monitoring features to enable</td>
 			<td><pre lang="json">
 {
   "dashboards": {
@@ -7917,6 +7917,24 @@ false
 			<td>Alternative namespace to create dashboards ConfigMap in</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.rules</td>
+			<td>object</td>
+			<td>Recording rules for monitoring Loki, required for some dashboards</td>
+			<td><pre lang="json">
+{
+  "additionalGroups": [],
+  "additionalRuleLabels": {},
+  "alerting": true,
+  "annotations": {},
+  "disabled": {},
+  "enabled": false,
+  "labels": {},
+  "namespace": null
+}
 </pre>
 </td>
 		</tr>
@@ -8218,6 +8236,32 @@ null
 			<td>Namespace to create additional tenant token secret in. Useful if your Grafana instance is in a separate namespace. Token will still be created in the canary namespace.</td>
 			<td><pre lang="">
 The same namespace as the loki chart is installed in.
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.serviceMonitor</td>
+			<td>object</td>
+			<td>ServiceMonitor configuration</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "enabled": false,
+  "interval": "15s",
+  "labels": {},
+  "metricRelabelings": [],
+  "metricsInstance": {
+    "annotations": {},
+    "enabled": true,
+    "labels": {},
+    "remoteWrite": null
+  },
+  "namespaceSelector": {},
+  "relabelings": [],
+  "scheme": "http",
+  "scrapeTimeout": null,
+  "tlsConfig": null
+}
 </pre>
 </td>
 		</tr>
