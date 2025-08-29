@@ -290,11 +290,6 @@ func (c *Cluster) AddComponent(name string, flags ...string) *Component {
 	return component
 }
 
-// ClusterSharedPath returns the path to the shared directory between all components in the cluster.
-func (c *Cluster) ClusterSharedPath() string {
-	return c.sharedPath
-}
-
 type Component struct {
 	loki    *loki.Loki
 	name    string
