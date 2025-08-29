@@ -98,6 +98,14 @@ func (cfg *Config) RegisterFlags(prefix string, fs *flag.FlagSet) {
 	fs.IntVar(&cfg.MinRangeSize, prefix+"min-range-size", DefaultConfig.MinRangeSize, "Experimental: minimum size of a byte range")
 }
 
+// effectiveParallelism returns the effective parallelism limit.
+func (cfg *Config) effectiveParallelism() int {
+	if cfg.MaxParallelism <= 0 {
+		return runtime.NumCPU()
+	}
+	return cfg.MaxParallelism
+}
+
 // DefaultConfig holds the default values for [Config].
 var DefaultConfig = Config{
 	// Benchmarks of GCS and S3 revealed that more parallelism is always better.
@@ -142,12 +150,7 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 	optimized := optimizeRanges(cfg, ranges)
 
 	g, ctx := errgroup.WithContext(ctx)
-
-	parallelismLimit := cfg.MaxParallelism
-	if parallelismLimit <= 0 {
-		parallelismLimit = runtime.NumCPU()
-	}
-	g.SetLimit(parallelismLimit)
+	g.SetLimit(cfg.effectiveParallelism())
 
 	var gotEOF atomic.Bool
 
@@ -319,7 +322,7 @@ func optimizeRanges(cfg *Config, in []Range) []Range {
 	// ranges until we have enough.
 	//
 	// This is a no-op if we already have enough ranges.
-	for i := 0; i < len(coalescedChunks) && len(coalescedChunks) < cfg.MaxParallelism; {
+	for i := 0; i < len(coalescedChunks) && len(coalescedChunks) < cfg.effectiveParallelism(); {
 		// Ignore ranges which are too small or where splitting would cause them
 		// to become too small.
 		if coalescedChunks[i].Length < (cfg.MinRangeSize * 2) {
