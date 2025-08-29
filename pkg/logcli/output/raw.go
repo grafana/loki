@@ -22,11 +22,12 @@ func NewRaw(writer io.Writer, options *LogOutputOptions) LogOutput {
 }
 
 // Format a log entry as is
-func (o *RawOutput) FormatAndPrintln(_ time.Time, _ loghttp.LabelSet, _ int, line string) {
+func (o *RawOutput) FormatAndPrintln(_ time.Time, _ loghttp.LabelSet, _ int, line string) error {
 	if len(line) > 0 && line[len(line)-1] == '\n' {
 		line = line[:len(line)-1]
 	}
-	fmt.Fprintln(o.w, line)
+	_, err := fmt.Fprintln(o.w, line)
+	return err
 }
 
 // WithWriter returns a copy of the LogOutput with the writer set to the given writer
