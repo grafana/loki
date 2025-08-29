@@ -4323,10 +4323,10 @@ shard_streams:
   # CLI flag: -shard-streams.logging-enabled
   [logging_enabled: <boolean> | default = false]
 
-  # Threshold used to cut a new shard. Default (1536KB) means if a rate is above
-  # 1536KB/s, it will be sharded into two streams.
+  # Threshold used to cut a new shard. Default (1572864) means if a rate is
+  # above 1536KB/s, it will be sharded into two streams.
   # CLI flag: -shard-streams.desired-rate
-  [desired_rate: <int> | default = 1536KB]
+  [desired_rate: <int> | default = 1572864]
 
 [blocked_queries: <blocked_query...>]
 

@@ -1232,7 +1232,7 @@ func TestStreamShardingUsage(t *testing.T) {
 
 	t.Run("test default configuration", func(t *testing.T) {
 		require.Equal(t, true, defaultShardStreamsCfg.Enabled)
-		require.Equal(t, "1536KB", defaultShardStreamsCfg.DesiredRate.String())
+		require.Equal(t, 1572864, defaultShardStreamsCfg.DesiredRate.String())
 		require.Equal(t, false, defaultShardStreamsCfg.LoggingEnabled)
 	})
 

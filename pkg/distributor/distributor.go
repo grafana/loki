@@ -1339,9 +1339,9 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 //
 // desiredRate is expected to be given in bytes.
 func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, pushSize int, tenantID string, streamShardcfg shardstreams.Config) int {
-	if streamShardcfg.DesiredRate.Val() <= 0 {
+	if streamShardcfg.DesiredRate <= 0 {
 		if streamShardcfg.LoggingEnabled {
-			level.Error(logger).Log("msg", "invalid desired rate", "desired_rate", streamShardcfg.DesiredRate.String())
+			level.Error(logger).Log("msg", "invalid desired rate", "desired_rate", streamShardcfg.DesiredRate)
 		}
 		return 1
 	}
@@ -1359,7 +1359,7 @@ func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, 
 		pushRate = 1
 	}
 
-	shards := calculateShards(rate, int(float64(pushSize)*pushRate), streamShardcfg.DesiredRate.Val())
+	shards := calculateShards(rate, int(float64(pushSize)*pushRate), streamShardcfg.DesiredRate)
 	if shards == 0 {
 		// 1 shard is enough for the given stream.
 		return 1

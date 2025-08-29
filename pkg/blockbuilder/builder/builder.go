@@ -38,8 +38,8 @@ type Config struct {
 	ConcurrentFlushes int `yaml:"concurrent_flushes"`
 	ConcurrentWriters int `yaml:"concurrent_writers"`
 
-	BlockSize       int  `yaml:"chunk_block_size"`
-	TargetChunkSize int  `yaml:"chunk_target_size"`
+	BlockSize       int               `yaml:"chunk_block_size"`
+	TargetChunkSize int               `yaml:"chunk_target_size"`
 	ChunkEncoding   string            `yaml:"chunk_encoding"`
 	parsedEncoding  compression.Codec `yaml:"-"` // placeholder for validated encoding
 	MaxChunkAge     time.Duration     `yaml:"max_chunk_age"`
@@ -57,7 +57,7 @@ type Config struct {
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.ConcurrentFlushes, prefix+"concurrent-flushes", 1, "How many flushes can happen concurrently")
 	f.IntVar(&cfg.ConcurrentWriters, prefix+"concurrent-writers", 1, "How many workers to process writes, defaults to number of available cpus")
-	f.IntVar(&cfg.BlockSize, prefix+"chunks-block-size", 262144, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.") // 256 KB
+	f.IntVar(&cfg.BlockSize, prefix+"chunks-block-size", 262144, "The targeted _uncompressed_ size in bytes of a chunk block When this threshold is exceeded the head block will be cut and compressed inside the chunk.")                                                                                                                                                                                                                    // 256 KB
 	f.IntVar(&cfg.TargetChunkSize, prefix+"chunk-target-size", 1572864, "A target _compressed_ size in bytes for chunks. This is a desired size not an exact size, chunks may be slightly bigger or significantly smaller if they get flushed for other reasons (e.g. chunk_idle_period). A value of 0 creates chunks with a fixed 10 blocks, a non zero value will create chunks with a variable number of blocks to meet the target size.") // 1.5 MB
 	f.StringVar(&cfg.ChunkEncoding, prefix+"chunk-encoding", compression.Snappy.String(), fmt.Sprintf("The algorithm to use for compressing chunk. (%s)", compression.SupportedCodecs()))
 	f.DurationVar(&cfg.MaxChunkAge, prefix+"max-chunk-age", 2*time.Hour, "The maximum duration of a timeseries chunk in memory. If a timeseries runs for longer than this, the current chunk will be flushed to the store and a new chunk created.")
