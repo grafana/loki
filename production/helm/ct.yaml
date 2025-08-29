@@ -1,6 +1,5 @@
----
-remote: origin
-target-branch: main
+additional-commands:
+  - helm unittest --strict --file 'unittests/**/*.yaml' {{ .Path }}
 chart-dirs:
   - production/helm
 chart-repos:
@@ -8,4 +7,7 @@ chart-repos:
   - minio=https://charts.min.io
   - prometheus-community=https://prometheus-community.github.io/helm-charts
 check-version-increment: false
+remote: origin
+target-branch: main
+use-helmignore: true
 validate-maintainers: false
