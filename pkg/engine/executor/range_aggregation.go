@@ -232,13 +232,13 @@ func (f *matcherFactory) createMatcher(windows []window) timestampMatchingWindow
 		// For instant queries, step == 0, meaning that all samples fall into the one and same step.
 		// A sample timestamp will always match the only time window available, unless the timestamp it out of range.
 		return f.createExactMatcher(windows)
-	case r.opts.step == r.opts.rangeInterval:
+	case f.step == f.interval:
 		// If the step is equal to the range interval (e.g. when used $__auto in Grafana), then a sample timestamp matches exactly one time window.
 		return f.createAlignedMatcher(windows)
-	case r.opts.step > r.opts.rangeInterval:
+	case f.step > f.interval:
 		// If the step is greater than the range interval, then a sample timestamp matches either one time window or no time window (and will be discarded).
 		return f.createGappedMatcher(windows)
-	case r.opts.step < r.opts.rangeInterval:
+	case f.step < f.interval:
 		// If the step is smaller than the range interval, then a sample timestamp matches either one or multiple time windows.
 		return f.createOverlappingMatcher(windows)
 	default:
