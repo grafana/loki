@@ -111,11 +111,10 @@ func TestMerge(t *testing.T) {
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
 
-			// Read all records from the merge pipeline until context is canceled
-			iter := -1
+			var gotRows int64 = 0
 			for {
-				iter++
-				if iter == 3 {
+				// Cancel the context once half of the expected/generated rows was consumed
+				if gotRows > int64(len(expectedRows)/2) {
 					cancel()
 				}
 
@@ -127,7 +126,8 @@ func TestMerge(t *testing.T) {
 				require.NoError(t, err, "Unexpected error during read")
 
 				rec, _ := m.Value()
-				defer rec.Release()
+				gotRows += rec.NumRows()
+				rec.Release()
 			}
 		})
 
