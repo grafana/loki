@@ -96,24 +96,8 @@ func (c *consumer) pollFetches(ctx context.Context) error {
 		if errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
 			return err
 		}
-	}
-	// We also need to check if there are errors from the fetches. However,
-	// just because a fetch failed, it does not mean we fetched no records.
-	// It is possible to have errors for some fetches and records for others
-	// at the same time.
-	var numFetchErrs int
-	fetches.EachError(func(topic string, partition int32, err error) {
-		level.Error(c.logger).Log("msg", "failed to fetch records", "topic", topic, "partition", partition, "err", err.Error())
-		numFetchErrs++
-	})
-	// If we fetched no records, we can assume this is because all fetches
-	// failed. We return an error so the caller can decide whether to backoff
-	// between attempts.
-	if fetches.Empty() {
-		if numFetchErrs > 0 {
-			return fmt.Errorf("no records fetched, %d fetches failed", numFetchErrs)
-		}
-		return errors.New("no records fetched")
+		// Some other error occurred. We will check it in
+		// [processFetchTopicPartition] instead.
 	}
 	fetches.EachPartition(c.processFetchTopicPartition(ctx))
 	return nil
@@ -121,6 +105,10 @@ func (c *consumer) pollFetches(ctx context.Context) error {
 
 func (c *consumer) processFetchTopicPartition(_ context.Context) func(kgo.FetchTopicPartition) {
 	return func(fetch kgo.FetchTopicPartition) {
+		if fetch.Err != nil {
+			level.Error(c.logger).Log("msg", "failed to fetch records for topic partition", "topic", fetch.Topic, "partition", fetch.Partition, "err", fetch.Err.Error())
+			return
+		}
 		// If there are no records for this partition then skip it.
 		if len(fetch.Records) == 0 {
 			return
