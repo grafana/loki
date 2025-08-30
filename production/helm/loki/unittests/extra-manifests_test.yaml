@@ -1,0 +1,199 @@
+suite: test extra-manifests
+templates:
+  - extra-manifests.yaml
+tests:
+  - it: should render nothing when extraObjects is empty
+    set:
+      extraObjects: []
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render nothing when extraObjects is not set
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render single string object
+    set:
+      extraObjects:
+        - |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: test-configmap
+            namespace: default
+          data:
+            key: value
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.name
+          value: test-configmap
+      - equal:
+          path: data.key
+          value: value
+
+  - it: should render single map object
+    set:
+      extraObjects:
+        - apiVersion: v1
+          kind: Secret
+          metadata:
+            name: test-secret
+            namespace: default
+          type: Opaque
+          data:
+            password: cGFzc3dvcmQ=
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Secret
+      - equal:
+          path: metadata.name
+          value: test-secret
+      - equal:
+          path: type
+          value: Opaque
+      - equal:
+          path: data.password
+          value: cGFzc3dvcmQ=
+
+  - it: should render multiple objects with mixed types
+    set:
+      extraObjects:
+        - |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: configmap-1
+          data:
+            config: value1
+        - apiVersion: v1
+          kind: Service
+          metadata:
+            name: test-service
+          spec:
+            selector:
+              app: test
+            ports:
+              - port: 80
+        - |
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
+            name: test-deployment
+          spec:
+            replicas: 2
+    asserts:
+      - hasDocuments:
+          count: 3
+      - equal:
+          path: kind
+          value: ConfigMap
+          documentSelector:
+            path: .metadata.name
+            value: configmap-1
+      - equal:
+          path: data.config
+          value: value1
+          documentSelector:
+            path: kind
+            value: ConfigMap
+      - equal:
+          path: kind
+          value: Service
+          documentSelector:
+            path: metadata.name
+            value: test-service
+      - equal:
+          path: spec.ports[0].port
+          value: 80
+          documentSelector:
+            path: kind
+            value: Service
+      - equal:
+          path: kind
+          value: Deployment
+          documentSelector:
+            path: metadata.name
+            value: test-deployment
+      - equal:
+          path: spec.replicas
+          value: 2
+          documentSelector:
+            path: kind
+            value: Deployment
+
+  - it: should handle templating with helm values
+    set:
+      nameOverride: my-loki
+      extraObjects:
+        - |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: {{ include "loki.name" . }}-extra-config
+            labels:
+              {{- include "loki.labels" . | nindent 4 }}
+          data:
+            config: templated-value
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.name
+          value: my-loki-extra-config
+      - isNotEmpty:
+          path: metadata.labels
+
+  - it: should render object with namespace from template
+    set:
+      extraObjects:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: test-cm
+            namespace: "{{ .Release.Namespace }}"
+          data:
+            key: value
+    release:
+      namespace: test-namespace
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.namespace
+          value: test-namespace
+
+  - it: should handle complex nested structures
+    set:
+      extraObjects:
+        - apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: complex-config
+          data:
+            config.yaml: |
+              server:
+                port: 8080
+                host: localhost
+              database:
+                url: postgres://localhost:5432/db
+                pool_size: 10
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.name
+          value: complex-config
+      - isNotEmpty:
+          path: data["config.yaml"]
