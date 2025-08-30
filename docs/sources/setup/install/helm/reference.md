@@ -4505,10 +4505,10 @@ true
 		</tr>
 		<tr>
 			<td>extraObjects</td>
-			<td>list</td>
+			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-[]
+null
 </pre>
 </td>
 		</tr>
