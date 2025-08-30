@@ -4,7 +4,7 @@
 
 [Smithy](https://smithy.io/) code generators for Go and the accompanying smithy-go runtime.
 
-The smithy-go runtime requires a minimum version of Go 1.20.
+The smithy-go runtime requires a minimum version of Go 1.22.
 
 **WARNING: All interfaces are subject to change.**
 
@@ -77,7 +77,7 @@ example created from `smithy init`:
       "service": "example.weather#Weather",
       "module": "github.com/example/weather",
       "generateGoMod": true,
-      "goDirective": "1.20"
+      "goDirective": "1.22"
     }
   }
 }

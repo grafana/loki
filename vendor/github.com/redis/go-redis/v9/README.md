@@ -20,6 +20,7 @@ In `go-redis` we are aiming to support the last three releases of Redis. Current
 - [Redis 7.2](https://raw.githubusercontent.com/redis/redis/7.2/00-RELEASENOTES) - using Redis Stack 7.2 for modules support
 - [Redis 7.4](https://raw.githubusercontent.com/redis/redis/7.4/00-RELEASENOTES) - using Redis Stack 7.4 for modules support
 - [Redis 8.0](https://raw.githubusercontent.com/redis/redis/8.0/00-RELEASENOTES) - using Redis CE 8.0 where modules are included
+- [Redis 8.2](https://raw.githubusercontent.com/redis/redis/8.2/00-RELEASENOTES) - using Redis CE 8.2 where modules are included
 
 Although the `go.mod` states it requires at minimum `go 1.18`, our CI is configured to run the tests against all three
 versions of Redis and latest two versions of Go ([1.23](https://go.dev/doc/devel/release#go1.23.0),
@@ -77,6 +78,7 @@ key value NoSQL database that uses RocksDB as storage engine and is compatible w
 - [Redis Ring](https://redis.uptrace.dev/guide/ring.html).
 - [Redis Performance Monitoring](https://redis.uptrace.dev/guide/redis-performance-monitoring.html).
 - [Redis Probabilistic [RedisStack]](https://redis.io/docs/data-types/probabilistic/)
+- [Customizable read and write buffers size.](#custom-buffer-sizes)
 
 ## Installation
 
@@ -297,6 +299,18 @@ func main() {
 ```
 
 
+### Buffer Size Configuration
+
+go-redis uses 0.5MiB read and write buffers by default for optimal performance. For high-throughput applications or large pipelines, you can customize buffer sizes:
+
+```go
+rdb := redis.NewClient(&redis.Options{
+    Addr:            "localhost:6379",
+    ReadBufferSize:  1024 * 1024, // 1MiB read buffer
+    WriteBufferSize: 1024 * 1024, // 1MiB write buffer
+})
+```
+
 ### Advanced Configuration
 
 go-redis supports extending the client identification phase to allow projects to send their own custom client identification.
@@ -360,6 +374,21 @@ For example:
 ```
 You can find further details in the [query dialect documentation](https://redis.io/docs/latest/develop/interact/search-and-query/advanced-concepts/dialects/).
 
+#### Custom buffer sizes
+Prior to v9.12, the buffer size was the default go value of 4096 bytes. Starting from v9.12, 
+go-redis uses 256KiB read and write buffers by default for optimal performance.
+For high-throughput applications or large pipelines, you can customize buffer sizes:
+
+```go
+rdb := redis.NewClient(&redis.Options{
+    Addr:            "localhost:6379",
+    ReadBufferSize:  1024 * 1024, // 1MiB read buffer
+    WriteBufferSize: 1024 * 1024, // 1MiB write buffer
+})
+```
+
+**Important**: If you experience any issues with the default buffer sizes, please try setting them to the go default of 4096 bytes.
+
 ## Contributing
 We welcome contributions to the go-redis library! If you have a bug fix, feature request, or improvement, please open an issue or pull request on GitHub.
 We appreciate your help in making go-redis better for everyone.
@@ -399,6 +428,7 @@ vals, err := rdb.Eval(ctx, "return {KEYS[1],ARGV[1]}", []string{"key"}, "hello")
 // custom command
 res, err := rdb.Do(ctx, "set", "key", "value").Result()
 ```
+
 
 ## Run the test
 
