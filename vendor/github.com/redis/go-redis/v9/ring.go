@@ -13,14 +13,22 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/dgryski/go-rendezvous" //nolint
+	"github.com/redis/go-redis/v9/auth"
 
 	"github.com/redis/go-redis/v9/internal"
 	"github.com/redis/go-redis/v9/internal/hashtag"
 	"github.com/redis/go-redis/v9/internal/pool"
+	"github.com/redis/go-redis/v9/internal/proto"
 	"github.com/redis/go-redis/v9/internal/rand"
 )
 
 var errRingShardsDown = errors.New("redis: all ring shards are down")
+
+// defaultHeartbeatFn is the default function used to check the shard liveness
+var defaultHeartbeatFn = func(ctx context.Context, client *Client) bool {
+	err := client.Ping(ctx).Err()
+	return err == nil || err == pool.ErrPoolTimeout
+}
 
 //------------------------------------------------------------------------------
 
@@ -54,9 +62,13 @@ type RingOptions struct {
 	// ClientName will execute the `CLIENT SETNAME ClientName` command for each conn.
 	ClientName string
 
-	// Frequency of PING commands sent to check shards availability.
+	// Frequency of executing HeartbeatFn to check shards availability.
 	// Shard is considered down after 3 subsequent failed checks.
 	HeartbeatFrequency time.Duration
+
+	// A function used to check the shard liveness
+	// if not set, defaults to defaultHeartbeatFn
+	HeartbeatFn func(ctx context.Context, client *Client) bool
 
 	// NewConsistentHash returns a consistent hash that is used
 	// to distribute keys across the shards.
@@ -73,7 +85,24 @@ type RingOptions struct {
 	Protocol int
 	Username string
 	Password string
-	DB       int
+	// CredentialsProvider allows the username and password to be updated
+	// before reconnecting. It should return the current username and password.
+	CredentialsProvider func() (username string, password string)
+
+	// CredentialsProviderContext is an enhanced parameter of CredentialsProvider,
+	// done to maintain API compatibility. In the future,
+	// there might be a merge between CredentialsProviderContext and CredentialsProvider.
+	// There will be a conflict between them; if CredentialsProviderContext exists, we will ignore CredentialsProvider.
+	CredentialsProviderContext func(ctx context.Context) (username string, password string, err error)
+
+	// StreamingCredentialsProvider is used to retrieve the credentials
+	// for the connection from an external source. Those credentials may change
+	// during the connection lifetime. This is useful for managed identity
+	// scenarios where the credentials are retrieved from an external source.
+	//
+	// Currently, this is a placeholder for the future implementation.
+	StreamingCredentialsProvider auth.StreamingCredentialsProvider
+	DB                           int
 
 	MaxRetries      int
 	MinRetryBackoff time.Duration
@@ -94,6 +123,20 @@ type RingOptions struct {
 	MaxActiveConns  int
 	ConnMaxIdleTime time.Duration
 	ConnMaxLifetime time.Duration
+
+	// ReadBufferSize is the size of the bufio.Reader buffer for each connection.
+	// Larger buffers can improve performance for commands that return large responses.
+	// Smaller buffers can improve memory usage for larger pools.
+	//
+	// default: 256KiB (262144 bytes)
+	ReadBufferSize int
+
+	// WriteBufferSize is the size of the bufio.Writer buffer for each connection.
+	// Larger buffers can improve performance for large pipelines and commands with many arguments.
+	// Smaller buffers can improve memory usage for larger pools.
+	//
+	// default: 256KiB (262144 bytes)
+	WriteBufferSize int
 
 	TLSConfig *tls.Config
 	Limiter   Limiter
@@ -124,6 +167,10 @@ func (opt *RingOptions) init() {
 		opt.HeartbeatFrequency = 500 * time.Millisecond
 	}
 
+	if opt.HeartbeatFn == nil {
+		opt.HeartbeatFn = defaultHeartbeatFn
+	}
+
 	if opt.NewConsistentHash == nil {
 		opt.NewConsistentHash = newRendezvous
 	}
@@ -146,6 +193,13 @@ func (opt *RingOptions) init() {
 	case 0:
 		opt.MaxRetryBackoff = 512 * time.Millisecond
 	}
+
+	if opt.ReadBufferSize == 0 {
+		opt.ReadBufferSize = proto.DefaultBufferSize
+	}
+	if opt.WriteBufferSize == 0 {
+		opt.WriteBufferSize = proto.DefaultBufferSize
+	}
 }
 
 func (opt *RingOptions) clientOptions() *Options {
@@ -154,10 +208,13 @@ func (opt *RingOptions) clientOptions() *Options {
 		Dialer:     opt.Dialer,
 		OnConnect:  opt.OnConnect,
 
-		Protocol: opt.Protocol,
-		Username: opt.Username,
-		Password: opt.Password,
-		DB:       opt.DB,
+		Protocol:                     opt.Protocol,
+		Username:                     opt.Username,
+		Password:                     opt.Password,
+		CredentialsProvider:          opt.CredentialsProvider,
+		CredentialsProviderContext:   opt.CredentialsProviderContext,
+		StreamingCredentialsProvider: opt.StreamingCredentialsProvider,
+		DB:                           opt.DB,
 
 		MaxRetries: -1,
 
@@ -174,6 +231,8 @@ func (opt *RingOptions) clientOptions() *Options {
 		MaxActiveConns:  opt.MaxActiveConns,
 		ConnMaxIdleTime: opt.ConnMaxIdleTime,
 		ConnMaxLifetime: opt.ConnMaxLifetime,
+		ReadBufferSize:  opt.ReadBufferSize,
+		WriteBufferSize: opt.WriteBufferSize,
 
 		TLSConfig: opt.TLSConfig,
 		Limiter:   opt.Limiter,
@@ -405,7 +464,12 @@ func (c *ringSharding) GetByName(shardName string) (*ringShard, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	return c.shards.m[shardName], nil
+	shard, ok := c.shards.m[shardName]
+	if !ok {
+		return nil, errors.New("redis: the shard is not in the ring")
+	}
+
+	return shard, nil
 }
 
 func (c *ringSharding) Random() (*ringShard, error) {
@@ -424,8 +488,7 @@ func (c *ringSharding) Heartbeat(ctx context.Context, frequency time.Duration) {
 
 			// note: `c.List()` return a shadow copy of `[]*ringShard`.
 			for _, shard := range c.List() {
-				err := shard.Client.Ping(ctx).Err()
-				isUp := err == nil || err == pool.ErrPoolTimeout
+				isUp := c.opt.HeartbeatFn(ctx, shard.Client)
 				if shard.Vote(isUp) {
 					internal.Logger.Printf(ctx, "ring shard state changed: %s", shard)
 					rebalance = true
@@ -556,13 +619,6 @@ func NewRing(opt *RingOptions) *Ring {
 
 func (c *Ring) SetAddrs(addrs map[string]string) {
 	c.sharding.SetAddrs(addrs)
-}
-
-// Do create a Cmd from the args and processes the cmd.
-func (c *Ring) Do(ctx context.Context, args ...interface{}) *Cmd {
-	cmd := NewCmd(ctx, args...)
-	_ = c.Process(ctx, cmd)
-	return cmd
 }
 
 func (c *Ring) Process(ctx context.Context, cmd Cmder) error {
@@ -779,6 +835,8 @@ func (c *Ring) generalProcessPipeline(
 	}
 
 	var wg sync.WaitGroup
+	errs := make(chan error, len(cmdsMap))
+
 	for hash, cmds := range cmdsMap {
 		wg.Add(1)
 		go func(hash string, cmds []Cmder) {
@@ -791,16 +849,24 @@ func (c *Ring) generalProcessPipeline(
 				return
 			}
 
+			hook := shard.Client.processPipelineHook
 			if tx {
 				cmds = wrapMultiExec(ctx, cmds)
-				_ = shard.Client.processTxPipelineHook(ctx, cmds)
-			} else {
-				_ = shard.Client.processPipelineHook(ctx, cmds)
+				hook = shard.Client.processTxPipelineHook
+			}
+
+			if err = hook(ctx, cmds); err != nil {
+				errs <- err
 			}
 		}(hash, cmds)
 	}
 
 	wg.Wait()
+	close(errs)
+
+	if err := <-errs; err != nil {
+		return err
+	}
 	return cmdsFirstErr(cmds)
 }
 
