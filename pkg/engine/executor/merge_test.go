@@ -111,7 +111,7 @@ func TestMerge(t *testing.T) {
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
 
-			var gotRows int64 = 0
+			var gotRows int64
 			for {
 				// Cancel the context once half of the expected/generated rows was consumed
 				if gotRows > int64(len(expectedRows)/2) {
