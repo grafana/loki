@@ -117,6 +117,7 @@ func newStream(
 	writeFailures *writefailures.Manager,
 	configs *runtime.TenantConfigs,
 	retentionHours string,
+	policy string,
 ) *stream {
 	hashNoShard, _ := ls.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
@@ -139,6 +140,7 @@ func newStream(
 
 		configs:        configs,
 		retentionHours: retentionHours,
+		policy:         policy,
 	}
 }
 
