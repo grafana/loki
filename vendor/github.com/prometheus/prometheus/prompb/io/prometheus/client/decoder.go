@@ -146,11 +146,11 @@ func (m *MetricStreamingDecoder) resetMetric() {
 	}
 }
 
-func (*MetricStreamingDecoder) GetMetric() {
+func (m *MetricStreamingDecoder) GetMetric() {
 	panic("don't use GetMetric, use Metric directly")
 }
 
-func (*MetricStreamingDecoder) GetLabel() {
+func (m *MetricStreamingDecoder) GetLabel() {
 	panic("don't use GetLabel, use Label instead")
 }
 
