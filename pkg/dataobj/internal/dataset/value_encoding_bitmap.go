@@ -383,7 +383,7 @@ func (enc *bitmapEncoder) flushBitpacked() error {
 	for outputByte := 0; outputByte < width; outputByte++ {
 		var b byte
 
-		for i := 0; i < 8; i++ {
+		for i := range 8 {
 			outputBit := outputByte*8 + i
 			inputIndex := outputBit / width
 			inputBit := outputBit % width

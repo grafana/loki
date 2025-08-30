@@ -252,7 +252,7 @@ func Test_BitPrefixConsistentMapping(t *testing.T) {
 	b, err := NewBitPrefixWithShards(32)
 	require.Nil(t, err)
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		lbs := labels.FromStrings(
 			"foo", "bar",
 			"hi", fmt.Sprint(i),
@@ -264,7 +264,7 @@ func Test_BitPrefixConsistentMapping(t *testing.T) {
 	}
 
 	shardMax := uint32(8)
-	for i := uint32(0); i < shardMax; i++ {
+	for i := range shardMax {
 		shard := logql.NewPowerOfTwoShard(index.ShardAnnotation{
 			Shard: i,
 			Of:    shardMax,

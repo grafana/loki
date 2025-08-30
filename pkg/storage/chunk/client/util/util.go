@@ -31,7 +31,7 @@ func DoParallelQueries(
 	incomingErrors := make(chan error)
 	n := min(len(queries), QueryParallelism)
 	// Run n parallel goroutines fetching queries from the queue
-	for i := 0; i < n; i++ {
+	for range n {
 		go func() {
 			ctx, sp := tracer.Start(ctx, "DoParallelQueries-worker")
 			defer sp.End()
@@ -54,7 +54,7 @@ func DoParallelQueries(
 
 	// Now receive all the results.
 	var lastErr error
-	for i := 0; i < len(queries); i++ {
+	for range queries {
 		err := <-incomingErrors
 		if err != nil {
 			lastErr = err

@@ -180,7 +180,7 @@ func (h *pushTarget) Ready() bool {
 	return true
 }
 
-func (h *pushTarget) Details() interface{} {
+func (h *pushTarget) Details() any {
 	return map[string]string{}
 }
 

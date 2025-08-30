@@ -142,10 +142,10 @@ func (m mockSchedulerForFrontendFrontendLoopServer) Context() context.Context {
 	panic("implement me")
 }
 
-func (m mockSchedulerForFrontendFrontendLoopServer) SendMsg(_ interface{}) error {
+func (m mockSchedulerForFrontendFrontendLoopServer) SendMsg(_ any) error {
 	panic("implement me")
 }
 
-func (m mockSchedulerForFrontendFrontendLoopServer) RecvMsg(_ interface{}) error {
+func (m mockSchedulerForFrontendFrontendLoopServer) RecvMsg(_ any) error {
 	panic("implement me")
 }

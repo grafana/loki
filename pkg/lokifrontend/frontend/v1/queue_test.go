@@ -100,7 +100,7 @@ func TestRoundRobinQueues(t *testing.T) {
 
 	f := setupFrontend(t, config)
 
-	for i := 0; i < requests; i++ {
+	for i := range requests {
 		userID := fmt.Sprint(i / tenants)
 		ctx := user.InjectOrgID(context.Background(), userID)
 
@@ -166,5 +166,5 @@ func (p *processServerMock) SetHeader(_ metadata.MD) error  { return nil }
 func (p *processServerMock) SendHeader(_ metadata.MD) error { return nil }
 func (p *processServerMock) SetTrailer(_ metadata.MD)       {}
 func (p *processServerMock) Context() context.Context       { return p.ctx }
-func (p *processServerMock) SendMsg(_ interface{}) error    { return nil }
-func (p *processServerMock) RecvMsg(_ interface{}) error    { return nil }
+func (p *processServerMock) SendMsg(_ any) error            { return nil }
+func (p *processServerMock) RecvMsg(_ any) error            { return nil }

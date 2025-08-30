@@ -14,7 +14,7 @@ import (
 var res uint64
 
 func Benchmark_fnv64a(b *testing.B) {
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		for i := 0; i < len(testdata.LogsBytes); i++ {
 			h := fnv.New64a()
 			_, _ = h.Write(testdata.LogsBytes[i])
@@ -24,7 +24,7 @@ func Benchmark_fnv64a(b *testing.B) {
 }
 
 func Benchmark_fnv64a_third_party(b *testing.B) {
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		for i := 0; i < len(testdata.LogsBytes); i++ {
 			res = fnv1a.HashBytes64(testdata.LogsBytes[i])
 		}
@@ -32,7 +32,7 @@ func Benchmark_fnv64a_third_party(b *testing.B) {
 }
 
 func Benchmark_xxhash(b *testing.B) {
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		for i := 0; i < len(testdata.LogsBytes); i++ {
 			res = xxhash.Sum64(testdata.LogsBytes[i])
 		}

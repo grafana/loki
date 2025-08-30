@@ -20,7 +20,7 @@ const (
 )
 
 var parserPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		p := &parser{
 			p:      &syntaxParserImpl{},
 			Reader: strings.NewReader(""),

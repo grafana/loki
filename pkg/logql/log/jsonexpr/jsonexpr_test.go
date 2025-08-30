@@ -13,67 +13,67 @@ func TestJSONExpressionParser(t *testing.T) {
 	tests := []struct {
 		name       string
 		expression string
-		want       []interface{}
+		want       []any
 		error      error
 	}{
 		{
 			"single field",
 			"app",
-			[]interface{}{"app"},
+			[]any{"app"},
 			nil,
 		},
 		{
 			"top-level field with spaces",
 			`["field with space"]`,
-			[]interface{}{"field with space"},
+			[]any{"field with space"},
 			nil,
 		},
 		{
 			"top-level field with UTF8",
 			`["field with ÜFT8👌"]`,
-			[]interface{}{"field with ÜFT8👌"},
+			[]any{"field with ÜFT8👌"},
 			nil,
 		},
 		{
 			"top-level array access",
 			`[0]`,
-			[]interface{}{0},
+			[]any{0},
 			nil,
 		},
 		{
 			"nested field",
 			`pod.uuid`,
-			[]interface{}{"pod", "uuid"},
+			[]any{"pod", "uuid"},
 			nil,
 		},
 		{
 			"nested field alternate syntax",
 			`pod["uuid"]`,
-			[]interface{}{"pod", "uuid"},
+			[]any{"pod", "uuid"},
 			nil,
 		},
 		{
 			"nested field alternate syntax 2",
 			`["pod"]["uuid"]`,
-			[]interface{}{"pod", "uuid"},
+			[]any{"pod", "uuid"},
 			nil,
 		},
 		{
 			"array access",
 			`pod.deployment.params[0]`,
-			[]interface{}{"pod", "deployment", "params", 0},
+			[]any{"pod", "deployment", "params", 0},
 			nil,
 		},
 		{
 			"multi-level array access",
 			`pod.deployment.params[0].param`,
-			[]interface{}{"pod", "deployment", "params", 0, "param"},
+			[]any{"pod", "deployment", "params", 0, "param"},
 			nil,
 		},
 		{
 			"multi-level array access alternate syntax",
 			`pod.deployment.params[0]["param"]`,
-			[]interface{}{"pod", "deployment", "params", 0, "param"},
+			[]any{"pod", "deployment", "params", 0, "param"},
 			nil,
 		},
 		{
@@ -122,7 +122,7 @@ func TestJSONExpressionParser(t *testing.T) {
 		{
 			"identifier with number",
 			`utf8`,
-			[]interface{}{"utf8"},
+			[]any{"utf8"},
 			nil,
 		},
 	}

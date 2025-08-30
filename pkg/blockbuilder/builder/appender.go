@@ -387,7 +387,7 @@ func (s *stream) Push(entries []push.Entry) (closed []*chunkenc.MemChunk, err er
 	}
 
 	// bytesAdded, err := s.storeEntries(ctx, toStore, usageTracker)
-	for i := 0; i < len(entries); i++ {
+	for i := range entries {
 
 		// cut the chunk if the new addition overflows target size
 		if !s.chunk.SpaceFor(&entries[i]) {

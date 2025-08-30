@@ -222,7 +222,7 @@ func (t *Target) Ready() bool {
 	return t.running.Load()
 }
 
-func (t *Target) Details() interface{} {
+func (t *Target) Details() any {
 	fields, _ := Fields(FieldsType(t.config.FieldsType), t.config.AdditionalFields)
 	var errMsg string
 	if t.err != nil {
@@ -245,7 +245,7 @@ type pullRequest struct {
 func splitRequests(start, end time.Time, workers int) []pullRequest {
 	perWorker := end.Sub(start) / time.Duration(workers)
 	var requests []pullRequest
-	for i := 0; i < workers; i++ {
+	for i := range workers {
 		r := pullRequest{
 			start: start.Add(time.Duration(i) * perWorker),
 			end:   start.Add(time.Duration(i+1) * perWorker),

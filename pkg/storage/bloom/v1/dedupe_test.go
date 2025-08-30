@@ -17,7 +17,7 @@ func TestMergeDedupeIter(t *testing.T) {
 		queriers  = make([]iter.PeekIterator[*SeriesWithBlooms], 4)
 	)
 
-	for i := 0; i < len(queriers); i++ {
+	for i := range queriers {
 		queriers[i] = iter.NewPeekIter(iter.NewSliceIter(dataPtr))
 	}
 
@@ -35,7 +35,7 @@ func TestMergeDedupeIter(t *testing.T) {
 		iter.NewPeekIter(mbq),
 	)
 
-	for i := 0; i < len(data); i++ {
+	for i := range data {
 		require.True(t, deduper.Next())
 		exp := data[i].Series.Fingerprint
 		got := deduper.At().Series.Fingerprint

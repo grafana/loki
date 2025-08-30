@@ -85,7 +85,7 @@ func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.
 	}
 
 	c.wait.Add(chunkDecodeParallelism)
-	for i := 0; i < chunkDecodeParallelism; i++ {
+	for range chunkDecodeParallelism {
 		go c.worker()
 	}
 

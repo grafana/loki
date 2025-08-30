@@ -182,7 +182,7 @@ func (t *Target) Labels() model.LabelSet {
 }
 
 // Details returns target-specific details.
-func (t *Target) Details() interface{} {
+func (t *Target) Details() any {
 	return map[string]string{}
 }
 

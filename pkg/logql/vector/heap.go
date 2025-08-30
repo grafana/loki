@@ -23,11 +23,11 @@ func (s HeapByMaxValue) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
 
-func (s *HeapByMaxValue) Push(x interface{}) {
+func (s *HeapByMaxValue) Push(x any) {
 	*s = append(*s, *(x.(*promql.Sample)))
 }
 
-func (s *HeapByMaxValue) Pop() interface{} {
+func (s *HeapByMaxValue) Pop() any {
 	old := *s
 	n := len(old)
 	el := old[n-1]
@@ -52,11 +52,11 @@ func (s HeapByMinValue) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
 
-func (s *HeapByMinValue) Push(x interface{}) {
+func (s *HeapByMinValue) Push(x any) {
 	*s = append(*s, *(x.(*promql.Sample)))
 }
 
-func (s *HeapByMinValue) Pop() interface{} {
+func (s *HeapByMinValue) Pop() any {
 	old := *s
 	n := len(old)
 	el := old[n-1]

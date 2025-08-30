@@ -147,7 +147,7 @@ func newMockRingWithClientPool(_ *testing.T, name string, clients []*mockLimitsP
 	factory := &mockFactory{
 		clients: make(map[string]proto.IngestLimitsClient),
 	}
-	for i := 0; i < len(clients); i++ {
+	for i := range clients {
 		factory.clients[instances[i].Addr] = clients[i]
 	}
 	// Set up the client pool for the mock clients.

@@ -214,12 +214,12 @@ func (m *querierLoopClientMock) Context() context.Context {
 	return args.Get(0).(context.Context)
 }
 
-func (m *querierLoopClientMock) SendMsg(msg interface{}) error {
+func (m *querierLoopClientMock) SendMsg(msg any) error {
 	args := m.Called(msg)
 	return args.Error(0)
 }
 
-func (m *querierLoopClientMock) RecvMsg(msg interface{}) error {
+func (m *querierLoopClientMock) RecvMsg(msg any) error {
 	args := m.Called(msg)
 	return args.Error(0)
 }

@@ -41,7 +41,7 @@ func validateGaugeConfig(config *GaugeConfig) error {
 	return nil
 }
 
-func parseGaugeConfig(config interface{}) (*GaugeConfig, error) {
+func parseGaugeConfig(config any) (*GaugeConfig, error) {
 	cfg := &GaugeConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -57,7 +57,7 @@ type Gauges struct {
 }
 
 // NewGauges creates a new gauge vec.
-func NewGauges(name, help string, config interface{}, maxIdleSec int64) (*Gauges, error) {
+func NewGauges(name, help string, config any, maxIdleSec int64) (*Gauges, error) {
 	cfg, err := parseGaugeConfig(config)
 	if err != nil {
 		return nil, err

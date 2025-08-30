@@ -31,7 +31,7 @@ func (m NotificationRateLimitMap) Set(s string) error {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
-func (m NotificationRateLimitMap) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (m NotificationRateLimitMap) UnmarshalYAML(unmarshal func(any) error) error {
 	newMap := map[string]float64{}
 	return m.updateMap(unmarshal(newMap), newMap)
 }
@@ -51,6 +51,6 @@ func (m NotificationRateLimitMap) updateMap(unmarshalErr error, newMap map[strin
 }
 
 // MarshalYAML implements yaml.Marshaler.
-func (m NotificationRateLimitMap) MarshalYAML() (interface{}, error) {
+func (m NotificationRateLimitMap) MarshalYAML() (any, error) {
 	return map[string]float64(m), nil
 }

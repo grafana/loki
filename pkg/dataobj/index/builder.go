@@ -380,7 +380,7 @@ func (p *Builder) buildIndex(ctx context.Context, events []metastore.ObjectWritt
 
 	// Process the results as they are downloaded
 	processingErrors := multierror.New()
-	for i := 0; i < len(events); i++ {
+	for range events {
 		obj := <-p.downloadedObjects
 		objLogger := log.With(p.logger, "object_path", obj.event.ObjectPath)
 		level.Debug(objLogger).Log("msg", "processing object")

@@ -53,7 +53,7 @@ func TestIndexSet_Init(t *testing.T) {
 	indexesSetup = buildListOfExpectedIndexes(userID, 0, 10)
 
 	// check index set twice; first run to have new files to download, second run to test with no changes in storage.
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		checkIndexSet()
 	}
 
@@ -117,7 +117,7 @@ func TestIndexSet_Sync(t *testing.T) {
 	require.NoError(t, indexSet.Sync(context.Background()))
 
 	// check index set twice; first run to have new files to download, second run to test with no changes in storage.
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		checkIndexSet()
 	}
 

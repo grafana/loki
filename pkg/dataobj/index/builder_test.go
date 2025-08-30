@@ -47,7 +47,7 @@ func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucke
 	}, nil)
 	require.NoError(t, err)
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		stream := logproto.Stream{
 			Labels:  fmt.Sprintf("{app=\"%s\",stream=\"%d\"}", app, i),
 			Entries: []logproto.Entry{{Timestamp: time.Now(), Line: fmt.Sprintf("line %d", i)}},
@@ -185,7 +185,7 @@ func TestIndexBuilder(t *testing.T) {
 	buildLogObject(t, "testing", "test-path-1", bucket)
 	buildLogObject(t, "three", "test-path-2", bucket)
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		event := metastore.ObjectWrittenEvent{
 			ObjectPath: fmt.Sprintf("test-path-%d", i),
 			WriteTime:  time.Now().Format(time.RFC3339),

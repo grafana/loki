@@ -138,7 +138,7 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 	go func() {
 		i := 0
 		for ctx.Err() == nil {
-			for partition := 0; partition < totalPartitions; partition++ {
+			for partition := range totalPartitions {
 				err := producer.ProduceSync(ctx, &kgo.Record{
 					Topic:     "test-topic",
 					Partition: int32(partition),
@@ -181,7 +181,7 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 	// Verify no duplicates were processed and count records per partition
 	partitionCounts := make(map[int32]int)
 	partitionConsumers := make(map[int32]map[string]struct{})
-	processedRecords.Range(func(key, value interface{}) bool {
+	processedRecords.Range(func(key, value any) bool {
 		k := key.(recordKey)
 		partitionCounts[k.partition]++
 		if _, ok := partitionConsumers[k.partition]; !ok {
@@ -286,12 +286,12 @@ func TestPartitionContinuityDuringRebalance(t *testing.T) {
 	go func() {
 		i := 0
 		for ctx.Err() == nil {
-			for partition := 0; partition < totalPartitions; partition++ {
+			for partition := range totalPartitions {
 				err := producer.ProduceSync(ctx, &kgo.Record{
 					Topic:     "test-topic",
 					Partition: int32(partition),
-					Key:       []byte(fmt.Sprintf("key-%d", i)),
-					Value:     []byte(fmt.Sprintf("value-%d", i)),
+					Key:       fmt.Appendf(nil, "key-%d", i),
+					Value:     fmt.Appendf(nil, "value-%d", i),
 				}).FirstErr()
 				if err != nil {
 					t.Logf("Error producing to partition %d: %v", partition, err)

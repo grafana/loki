@@ -201,11 +201,11 @@ func BenchmarkGroupChunkRefs(b *testing.B) {
 	chunkRefs := make([]*logproto.ChunkRef, 0, n*m)
 	series := make(map[uint64]labels.Labels, n)
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		s := labels.FromStrings("app", fmt.Sprintf("%d", i))
 		sFP := labels.StableHash(s)
 		series[sFP] = s
-		for j := 0; j < m; j++ {
+		for j := range m {
 			chunkRefs = append(chunkRefs, &logproto.ChunkRef{
 				Fingerprint: sFP,
 				UserID:      "tenant",

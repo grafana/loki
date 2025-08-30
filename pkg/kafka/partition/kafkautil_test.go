@@ -32,7 +32,7 @@ func TestKafkaGetGroupLag(t *testing.T) {
 
 	var producedRecords []kgo.Record
 	kafkaTime := time.Now().Add(-12 * time.Hour)
-	for i := int64(0); i < numRecords; i++ {
+	for range int64(numRecords) {
 		kafkaTime = kafkaTime.Add(time.Minute)
 
 		// Produce and keep records to partition 0.

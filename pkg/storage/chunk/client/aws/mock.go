@@ -247,7 +247,7 @@ func (m *mockDynamoDBClient) QueryPagesWithContext(_ aws.Context, input *dynamod
 }
 
 type dynamoDBMockRequest struct {
-	result interface{}
+	result any
 	err    error
 }
 
@@ -255,7 +255,7 @@ func (m *dynamoDBMockRequest) Send() error {
 	return m.err
 }
 
-func (m *dynamoDBMockRequest) Data() interface{} {
+func (m *dynamoDBMockRequest) Data() any {
 	return m.result
 }
 

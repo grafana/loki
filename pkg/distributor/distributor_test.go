@@ -533,7 +533,7 @@ func TestDistributorPushConcurrently(t *testing.T) {
 
 	numReq := 1
 	var wg sync.WaitGroup
-	for i := 0; i < numReq; i++ {
+	for i := range numReq {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
@@ -570,7 +570,7 @@ func TestDistributorPushConcurrently(t *testing.T) {
 	}
 	assert.Equal(t, numReq*3, counter) // RF=3
 	// each stream is present 3 times
-	for i := 0; i < numReq; i++ {
+	for i := range numReq {
 		l := fmt.Sprintf(`{instance="bar-%d"}`, i)
 		assert.Equal(t, 3, labels[l], "stream %s expected 3 times, got %d", l, labels[l])
 		l = fmt.Sprintf(`{app="foo-%d"}`, i)
@@ -1199,7 +1199,7 @@ func TestStreamShardByTime(t *testing.T) {
 
 func generateEntries(n int) []logproto.Entry {
 	var entries []logproto.Entry
-	for i := 0; i < n; i++ {
+	for i := range n {
 		entries = append(entries, logproto.Entry{
 			Line:      fmt.Sprintf("log line %d", i),
 			Timestamp: time.Now(),
@@ -1246,7 +1246,7 @@ func BenchmarkShardStream(b *testing.B) {
 		stream.Entries = allEntries
 
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			d.shardStream(stream, 0, "fake") //nolint:errcheck
 		}
 	})
@@ -1256,7 +1256,7 @@ func BenchmarkShardStream(b *testing.B) {
 		stream.Entries = nil
 
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			d.shardStream(stream, 0, "fake") //nolint:errcheck
 		}
 	})
@@ -1266,7 +1266,7 @@ func BenchmarkShardStream(b *testing.B) {
 		stream.Entries = allEntries
 
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			d.shardStream(stream, 0, "fake") //nolint:errcheck
 		}
 	})
@@ -1276,7 +1276,7 @@ func BenchmarkShardStream(b *testing.B) {
 		stream.Entries = nil
 
 		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			d.shardStream(stream, 0, "fake") //nolint:errcheck
 		}
 	})
@@ -1290,7 +1290,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	request := makeWriteRequest(10, 10)
 	streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
 	vCtx := d.validator.getValidationContextForTime(testTime, "123")
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
 		_, _, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream, streamResolver, constants.Loki)
@@ -1363,7 +1363,7 @@ func Benchmark_Push(b *testing.B) {
 	b.ReportAllocs()
 
 	b.Run("no structured metadata", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, false, false, false)
 			_, err := distributors[0].Push(ctx, request)
 			if err != nil {
@@ -1373,7 +1373,7 @@ func Benchmark_Push(b *testing.B) {
 	})
 
 	b.Run("all valid structured metadata", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, true, false, false)
 			_, err := distributors[0].Push(ctx, request)
 			if err != nil {
@@ -1383,7 +1383,7 @@ func Benchmark_Push(b *testing.B) {
 	})
 
 	b.Run("structured metadata with invalid names", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, true, true, false)
 			_, err := distributors[0].Push(ctx, request)
 			if err != nil {
@@ -1393,7 +1393,7 @@ func Benchmark_Push(b *testing.B) {
 	})
 
 	b.Run("structured metadata with invalid values", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, true, false, true)
 			_, err := distributors[0].Push(ctx, request)
 			if err != nil {
@@ -1403,7 +1403,7 @@ func Benchmark_Push(b *testing.B) {
 	})
 
 	b.Run("structured metadata with invalid names and values", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			request := makeWriteRequestWithLabels(100000, 100, []string{`{foo="bar"}`}, true, true, true)
 			_, err := distributors[0].Push(ctx, request)
 			if err != nil {
@@ -1589,10 +1589,9 @@ func Benchmark_PushWithLineTruncation(b *testing.B) {
 	distributors, _ := prepare(&testing.T{}, 1, 5, limits, nil)
 	request := makeWriteRequest(100000, 100)
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 
 		_, err := distributors[0].Push(ctx, request)
 		if err != nil {
@@ -1840,7 +1839,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 	t.Helper()
 
 	ingesters := make([]mockIngester, numIngesters)
-	for i := 0; i < numIngesters; i++ {
+	for i := range numIngesters {
 		ingesters[i] = mockIngester{}
 	}
 
@@ -1862,7 +1861,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 	kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
 
 	err := kvStore.CAS(context.Background(), ingester.RingKey,
-		func(_ interface{}) (interface{}, bool, error) {
+		func(_ any) (any, bool, error) {
 			return &ring.Desc{
 				Ingesters: ingesterDescs,
 			}, true, nil
@@ -1915,7 +1914,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 	require.NoError(t, err)
 
 	distributors := make([]*Distributor, numDistributors)
-	for i := 0; i < numDistributors; i++ {
+	for i := range numDistributors {
 		var distributorConfig Config
 		var clientConfig client.Config
 		flagext.DefaultValues(&distributorConfig, &clientConfig)
@@ -1946,7 +1945,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 	}
 
 	if distributors[0].distributorsLifecycler != nil {
-		test.Poll(t, time.Second, numDistributors, func() interface{} {
+		test.Poll(t, time.Second, numDistributors, func() any {
 			return distributors[0].HealthyInstancesCount()
 		})
 	}
@@ -1964,10 +1963,10 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 
 func makeWriteRequestWithLabelsWithLevel(lines, size int, labels []string, level string) *logproto.PushRequest {
 	streams := make([]logproto.Stream, len(labels))
-	for i := 0; i < len(labels); i++ {
+	for i := range labels {
 		stream := logproto.Stream{Labels: labels[i]}
 
-		for j := 0; j < lines; j++ {
+		for j := range lines {
 			// Construct the log line, honoring the input size
 			line := "msg=an error occurred " + strconv.Itoa(j) + strings.Repeat("0", size) + " severity=" + level
 
@@ -1987,10 +1986,10 @@ func makeWriteRequestWithLabelsWithLevel(lines, size int, labels []string, level
 
 func makeWriteRequestWithLabels(lines, size int, labels []string, addStructuredMetadata, invalidName, invalidValue bool) *logproto.PushRequest {
 	streams := make([]logproto.Stream, len(labels))
-	for i := 0; i < len(labels); i++ {
+	for i := range labels {
 		stream := logproto.Stream{Labels: labels[i]}
 
-		for j := 0; j < lines; j++ {
+		for j := range lines {
 			// Construct the log line, honoring the input size
 			line := strconv.Itoa(j) + strings.Repeat("0", size)
 			line = line[:size]
@@ -2253,7 +2252,7 @@ func BenchmarkDistributor_PushWithPolicies(b *testing.B) {
 		distributors, _ := prepare(&testing.T{}, 1, 3, limits, nil)
 		req := makeWriteRequestWithLabels(10, 10, []string{lbs}, false, false, false)
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			distributors[0].Push(ctx, req) //nolint:errcheck
 		}
 	})
@@ -2273,7 +2272,7 @@ func BenchmarkDistributor_PushWithPolicies(b *testing.B) {
 			req := makeWriteRequestWithLabels(10, 10, []string{lbs}, false, false, false)
 			distributors, _ := prepare(&testing.T{}, 1, 3, limits, nil)
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				distributors[0].Push(ctx, req) //nolint:errcheck
 			}
 		})
@@ -2294,7 +2293,7 @@ func BenchmarkDistributor_PushWithPolicies(b *testing.B) {
 			req := makeWriteRequestWithLabels(10, 10, []string{lbs}, false, false, false)
 			distributors, _ := prepare(&testing.T{}, 1, 3, limits, nil)
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				distributors[0].Push(ctx, req) //nolint:errcheck
 			}
 		})

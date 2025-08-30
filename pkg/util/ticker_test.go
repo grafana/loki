@@ -9,7 +9,7 @@ import (
 
 func TestJitter(t *testing.T) {
 	j := NewJitter(time.Second, 100*time.Millisecond)
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		d := j.Duration()
 		require.Greater(t, d, 900*time.Millisecond)
 		require.Less(t, d, 1100*time.Millisecond)

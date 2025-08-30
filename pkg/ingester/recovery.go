@@ -345,7 +345,7 @@ func RecoverCheckpoint(reader WALReader, recoverer Recoverer) error {
 
 type recoveryInput struct {
 	userID string
-	data   interface{}
+	data   any
 }
 
 // recoverGeneric enables reusing the ability to recover from WALs of different types
@@ -370,7 +370,7 @@ func recoverGeneric(
 	errCh := make(chan error)
 	inputs := make([]chan recoveryInput, 0, nWorkers)
 	wg.Add(nWorkers)
-	for i := 0; i < nWorkers; i++ {
+	for i := range nWorkers {
 		inputs = append(inputs, make(chan recoveryInput))
 
 		go func(input <-chan recoveryInput) {

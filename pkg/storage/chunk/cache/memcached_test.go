@@ -86,7 +86,7 @@ func testMemcache(t *testing.T, memcache *cache.Memcached) {
 	bufs := make([][]byte, 0, numKeys)
 
 	// Insert 1000 keys skipping all multiples of 5.
-	for i := 0; i < numKeys; i++ {
+	for i := range numKeys {
 		keysIncMissing = append(keysIncMissing, fmt.Sprint(i))
 		if i%5 == 0 {
 			continue
@@ -99,7 +99,7 @@ func testMemcache(t *testing.T, memcache *cache.Memcached) {
 	require.NoError(t, err)
 
 	found, bufs, missing, _ := memcache.Fetch(ctx, keysIncMissing)
-	for i := 0; i < numKeys; i++ {
+	for i := range numKeys {
 		if i%5 == 0 {
 			require.Equal(t, fmt.Sprint(i), missing[0])
 			missing = missing[1:]
@@ -162,7 +162,7 @@ func testMemcacheFailing(t *testing.T, memcache *cache.Memcached) {
 	keys := make([]string, 0, numKeys)
 	bufs := make([][]byte, 0, numKeys)
 	// Insert 1000 keys skipping all multiples of 5.
-	for i := 0; i < numKeys; i++ {
+	for i := range numKeys {
 		keysIncMissing = append(keysIncMissing, fmt.Sprint(i))
 		if i%5 == 0 {
 			continue
@@ -173,7 +173,7 @@ func testMemcacheFailing(t *testing.T, memcache *cache.Memcached) {
 	err := memcache.Store(ctx, keys, bufs)
 	require.NoError(t, err)
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		found, bufs, missing, _ := memcache.Fetch(ctx, keysIncMissing)
 
 		require.Equal(t, len(found), len(bufs))

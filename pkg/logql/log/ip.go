@@ -22,7 +22,7 @@ const (
 )
 
 // Should be one of the netip.Addr, netip.Prefix, netipx.IPRange.
-type IPMatcher interface{}
+type IPMatcher any
 
 type IPLineFilter struct {
 	ip *ipFilter

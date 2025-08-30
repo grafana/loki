@@ -183,7 +183,7 @@ func RecordAndReportRuleQueryMetrics(qf rules.QueryFunc, queryTime prometheus.Co
 			queryTime.Add(querySeconds)
 
 			// Log ruler query stats.
-			logMessage := []interface{}{
+			logMessage := []any{
 				"msg", "query stats",
 				"component", "ruler",
 				"cortex_ruler_query_seconds_total", querySeconds,

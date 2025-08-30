@@ -77,11 +77,11 @@ func TestFusedQuerier(t *testing.T) {
 	nReqs := numSeries / n
 	var inputs [][]Request
 	var resChans []chan Output
-	for i := 0; i < nReqs; i++ {
+	for i := range nReqs {
 		ch := make(chan Output)
 		var reqs []Request
 		// find n series for each
-		for j := 0; j < n; j++ {
+		for j := range n {
 			idx := numSeries/nReqs*i + j
 			reqs = append(reqs, Request{
 				Recorder: NewBloomRecorder(context.Background(), "unknown"),
@@ -253,7 +253,7 @@ func TestLazyBloomIter_Seek_ResetError(t *testing.T) {
 	numSeries := 4
 	data := make([]SeriesWithBlooms, 0, numSeries)
 
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		var series Series
 		series.Fingerprint = model.Fingerprint(i)
 		series.Chunks = []ChunkRef{
@@ -419,13 +419,13 @@ func setupBlockForBenchmark(b *testing.B) (*BlockQuerier, [][]Request, []chan Ou
 	seriesPerRequest := 100
 	var requestChains [][]Request
 	var responseChans []chan Output
-	for i := 0; i < numRequestChains; i++ {
+	for i := range numRequestChains {
 		var reqs []Request
 		// ensure they use the same channel
 		ch := make(chan Output)
 		// evenly spread out the series queried within a single request chain
 		// to mimic series distribution across keyspace
-		for j := 0; j < seriesPerRequest; j++ {
+		for j := range seriesPerRequest {
 			// add the chain index (i) for a little jitter
 			idx := numSeries*j/seriesPerRequest + i
 			if idx >= numSeries {
@@ -468,7 +468,7 @@ func BenchmarkBlockQuerying(b *testing.B) {
 
 		var itrs []v2.PeekIterator[Request]
 
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			itrs = itrs[:0]
 			for _, reqs := range requestChains {
 				itrs = append(itrs, v2.NewPeekIter(v2.NewSliceIter(reqs)))

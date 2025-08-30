@@ -124,7 +124,7 @@ func TestConcurrentPushes(t *testing.T) {
 	startChannel := make(chan struct{})
 
 	wg := sync.WaitGroup{}
-	for i := 0; i < concurrent; i++ {
+	for range concurrent {
 		l := makeRandomLabels()
 		for uniqueLabels[l.String()] {
 			l = makeRandomLabels()
@@ -139,7 +139,7 @@ func TestConcurrentPushes(t *testing.T) {
 
 			tt := time.Now().Add(-5 * time.Minute)
 
-			for i := 0; i < iterations; i++ {
+			for range iterations {
 				err := inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
 					{Labels: labels, Entries: entries(entriesPerIteration, tt)},
 				}})
@@ -178,7 +178,7 @@ func TestGetStreamRates(t *testing.T) {
 	labelsByHash := map[uint64]labels.Labels{}
 
 	wg := sync.WaitGroup{}
-	for i := 0; i < concurrent; i++ {
+	for range concurrent {
 		l := makeRandomLabels()
 		for uniqueLabels[l.String()] {
 			l = makeRandomLabels()
@@ -194,7 +194,7 @@ func TestGetStreamRates(t *testing.T) {
 
 			tt := time.Now().Add(-5 * time.Minute)
 
-			for i := 0; i < iterations; i++ {
+			for range iterations {
 				// each iteration generated the entries [hello 0, hello 100) for a total of 790 bytes per push
 				_ = inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{
 					{Labels: labels, Entries: entries(entriesPerIteration, tt)},
@@ -267,7 +267,7 @@ func TestSyncPeriod(t *testing.T) {
 	tt := time.Now()
 
 	var result []logproto.Entry
-	for i := 0; i < entries; i++ {
+	for i := range entries {
 		result = append(result, logproto.Entry{Timestamp: tt, Line: fmt.Sprintf("hello %d", i)})
 		tt = tt.Add(time.Duration(1 + rand.Int63n(randomStep.Nanoseconds())))
 	}
@@ -494,7 +494,7 @@ func Test_SeriesQuery(t *testing.T) {
 
 func entries(n int, t time.Time) []logproto.Entry {
 	result := make([]logproto.Entry, 0, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		result = append(result, logproto.Entry{Timestamp: t, Line: fmt.Sprintf("hello %d", i)})
 		t = t.Add(time.Nanosecond)
 	}
@@ -520,7 +520,7 @@ func Benchmark_PushInstance(b *testing.B) {
 	i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, nil, nil, NewStreamRateCalculator(), nil, nil, tenantsRetention)
 	ctx := context.Background()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_ = i.Push(ctx, &logproto.PushRequest{
 			Streams: []logproto.Stream{
 				{
@@ -566,13 +566,13 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	require.NoError(b, err)
 	t, err := newTailer("foo", expr, nil, 10)
 	require.NoError(b, err)
-	for i := 0; i < 10000; i++ {
+	for range 10000 {
 		require.NoError(b, inst.Push(ctx, &logproto.PushRequest{
 			Streams: []logproto.Stream{},
 		}))
 	}
 	b.Run("addNewTailer", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			_ = inst.addNewTailer(context.Background(), t)
 		}
 	})
@@ -583,7 +583,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	retentionHours := util.RetentionHours(tenantsRetention.RetentionPeriodFor("test", lbs))
 
 	b.Run("addTailersToNewStream", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter.rateLimitStrategy, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours))
 		}
 	})
@@ -592,18 +592,13 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 func Benchmark_OnceSwitch(b *testing.B) {
 	threads := runtime.GOMAXPROCS(0)
 
-	// limit threads
-	if threads > 4 {
-		threads = 4
-	}
-
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		x := &OnceSwitch{}
 		var wg sync.WaitGroup
 		for i := 0; i < threads; i++ {
 			wg.Add(1)
 			go func() {
-				for i := 0; i < 1000; i++ {
+				for range 1000 {
 					x.Trigger()
 				}
 				wg.Done()
@@ -1613,7 +1608,7 @@ func defaultInstance(t *testing.T) *instance {
 
 // inserts 160 bytes into the instance. 90 for the dispatcher label and 70 for the worker label
 func insertData(t *testing.T, instance *instance) {
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		// nolint
 		stream := "dispatcher"
 		if i%2 == 0 {

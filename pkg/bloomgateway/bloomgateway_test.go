@@ -714,7 +714,7 @@ func BenchmarkFilterChunkRefs(b *testing.B) {
 		}
 		return &outputs
 	}
-	responseP.New = func() interface{} {
+	responseP.New = func() any {
 		return mkOutputs()
 	}
 
@@ -731,7 +731,7 @@ func BenchmarkFilterChunkRefs(b *testing.B) {
 		},
 	} {
 		b.Run(tc.desc, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				req := mkInput()
 				ptr := responseP.Get().(*[]v1.Output)
 				resps := *ptr

@@ -89,7 +89,7 @@ func GetUnsafeString(buf []byte) string {
 	return *((*string)(unsafe.Pointer(&buf))) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
 
-func logPanic(p interface{}) {
+func logPanic(p any) {
 	stack := make([]byte, maxStackSize)
 	stack = stack[:runtime.Stack(stack, true)]
 	// keep a multiline stack

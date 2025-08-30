@@ -24,7 +24,7 @@ func validateLabelDropConfig(c LabelDropConfig) error {
 	return nil
 }
 
-func newLabelDropStage(configs interface{}) (Stage, error) {
+func newLabelDropStage(configs any) (Stage, error) {
 	cfgs := &LabelDropConfig{}
 	err := mapstructure.Decode(configs, cfgs)
 	if err != nil {
@@ -46,7 +46,7 @@ type labelDropStage struct {
 }
 
 // Process implements Stage
-func (l *labelDropStage) Process(labels model.LabelSet, _ map[string]interface{}, _ *time.Time, _ *string) {
+func (l *labelDropStage) Process(labels model.LabelSet, _ map[string]any, _ *time.Time, _ *string) {
 	for _, label := range l.cfgs {
 		delete(labels, model.LabelName(label))
 	}

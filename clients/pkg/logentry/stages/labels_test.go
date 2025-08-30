@@ -137,7 +137,7 @@ func TestLabelStage_Process(t *testing.T) {
 	sourceName := "diff_source"
 	tests := map[string]struct {
 		config         LabelsConfig
-		extractedData  map[string]interface{}
+		extractedData  map[string]any
 		inputLabels    model.LabelSet
 		expectedLabels model.LabelSet
 	}{
@@ -145,7 +145,7 @@ func TestLabelStage_Process(t *testing.T) {
 			LabelsConfig{
 				"testLabel": nil,
 			},
-			map[string]interface{}{
+			map[string]any{
 				"testLabel": "testValue",
 			},
 			model.LabelSet{},
@@ -157,7 +157,7 @@ func TestLabelStage_Process(t *testing.T) {
 			LabelsConfig{
 				"testLabel": &sourceName,
 			},
-			map[string]interface{}{
+			map[string]any{
 				sourceName: "testValue",
 			},
 			model.LabelSet{},
@@ -169,7 +169,7 @@ func TestLabelStage_Process(t *testing.T) {
 			LabelsConfig{
 				"testLabel": &sourceName,
 			},
-			map[string]interface{}{},
+			map[string]any{},
 			model.LabelSet{},
 			model.LabelSet{},
 		},

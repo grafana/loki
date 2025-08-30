@@ -515,7 +515,7 @@ func (l *Limits) SetDefaultPolicyStreamMapping(cfg PolicyStreamMapping) error {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (l *Limits) UnmarshalYAML(unmarshal func(any) error) error {
 	// We want to set c to the defaults and then overwrite it with the input.
 	// To make unmarshal fill the plain data struct rather than calling UnmarshalYAML
 	// again, we have to hide it using a type indirection.  See prometheus/config.
@@ -1325,11 +1325,11 @@ func (sm *OverwriteMarshalingStringMap) UnmarshalJSON(val []byte) error {
 
 // MarshalYAML explicitly uses the the type receiver and not pointer receiver
 // or it won't be called
-func (sm OverwriteMarshalingStringMap) MarshalYAML() (interface{}, error) {
+func (sm OverwriteMarshalingStringMap) MarshalYAML() (any, error) {
 	return sm.m, nil
 }
 
-func (sm *OverwriteMarshalingStringMap) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (sm *OverwriteMarshalingStringMap) UnmarshalYAML(unmarshal func(any) error) error {
 	var def map[string]string
 
 	err := unmarshal(&def)

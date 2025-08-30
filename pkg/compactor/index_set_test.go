@@ -104,7 +104,7 @@ func TestIndexSet_ApplyIndexUpdates(t *testing.T) {
 	userID := "u1"
 	var chunksToDelete []string
 	var expectedChunksToRemove []string
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		chunkID := schemaCfg.ExternalKey(logproto.ChunkRef{
 			Fingerprint: uint64(i),
 			UserID:      userID,

@@ -17,7 +17,7 @@ func validateHistogramConfig(_ *HistogramConfig) error {
 	return nil
 }
 
-func parseHistogramConfig(config interface{}) (*HistogramConfig, error) {
+func parseHistogramConfig(config any) (*HistogramConfig, error) {
 	cfg := &HistogramConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -33,7 +33,7 @@ type Histograms struct {
 }
 
 // NewHistograms creates a new histogram vec.
-func NewHistograms(name, help string, config interface{}, maxIdleSec int64) (*Histograms, error) {
+func NewHistograms(name, help string, config any, maxIdleSec int64) (*Histograms, error) {
 	cfg, err := parseHistogramConfig(config)
 	if err != nil {
 		return nil, err

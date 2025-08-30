@@ -44,7 +44,7 @@ type InvertedIndex struct {
 
 func NewWithShards(totalShards uint32) *InvertedIndex {
 	shards := make([]*indexShard, totalShards)
-	for i := uint32(0); i < totalShards; i++ {
+	for i := range totalShards {
 		shards[i] = &indexShard{
 			idx:   map[string]indexEntry{},
 			shard: i,
@@ -64,7 +64,7 @@ func (ii *InvertedIndex) getShards(shard *index.ShardAnnotation) []*indexShard {
 	totalRequested := ii.totalShards / shard.Of
 	result := make([]*indexShard, totalRequested)
 	var j int
-	for i := uint32(0); i < totalRequested; i++ {
+	for i := range totalRequested {
 		subShard := ((shard.Shard) + (i * shard.Of))
 		result[j] = ii.shards[subShard]
 		j++
@@ -99,12 +99,12 @@ func (ii *InvertedIndex) Add(labels []logproto.LabelAdapter, fp model.Fingerprin
 
 var (
 	bufferPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return bytes.NewBuffer(make([]byte, 0, 1000))
 		},
 	}
 	base64Pool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return bytes.NewBuffer(make([]byte, 0, base64.RawStdEncoding.EncodedLen(sha256.Size)))
 		},
 	}

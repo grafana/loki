@@ -25,10 +25,9 @@ func BenchmarkPrometheusCodec_DecodeResponse(b *testing.B) {
 	require.NoError(b, err)
 	b.Log("test prometheus response size:", len(encodedRes))
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_, err := PrometheusCodecForRangeQueries.DecodeResponse(context.Background(), &http.Response{
 			StatusCode:    200,
 			Body:          io.NopCloser(bytes.NewReader(encodedRes)),
@@ -47,10 +46,9 @@ func BenchmarkPrometheusCodec_EncodeResponse(b *testing.B) {
 	// Generate a mocked response and marshal it.
 	res := mockPrometheusResponse(numSeries, numSamplesPerSeries)
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_, err := PrometheusCodecForRangeQueries.EncodeResponse(context.Background(), nil, res)
 		require.NoError(b, err)
 	}
@@ -58,10 +56,10 @@ func BenchmarkPrometheusCodec_EncodeResponse(b *testing.B) {
 
 func mockPrometheusResponse(numSeries, numSamplesPerSeries int) *PrometheusResponse {
 	stream := make([]SampleStream, numSeries)
-	for s := 0; s < numSeries; s++ {
+	for s := range numSeries {
 		// Generate random samples.
 		samples := make([]logproto.LegacySample, numSamplesPerSeries)
-		for i := 0; i < numSamplesPerSeries; i++ {
+		for i := range numSamplesPerSeries {
 			samples[i] = logproto.LegacySample{
 				Value:       rand.Float64(),
 				TimestampMs: int64(i),

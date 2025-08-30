@@ -129,7 +129,7 @@ func BenchmarkJoinQuantileSketchVector(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		iter := newQuantileSketchIterator(newfakePeekingSampleIterator(samples), selRange, step.Nanoseconds(), start.UnixNano(), end.UnixNano(), offset)
 		ev := &QuantileSketchStepEvaluator{
 			iter: iter,
@@ -170,7 +170,7 @@ func BenchmarkQuantileBatchRangeVectorIteratorAt(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
 
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				_, r := it.At()
 				r.QuantileSketchVec().Release()
 			}

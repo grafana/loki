@@ -57,7 +57,7 @@ type regexStage struct {
 }
 
 // newRegexStage creates a newRegexStage
-func newRegexStage(logger log.Logger, config interface{}) (Stage, error) {
+func newRegexStage(logger log.Logger, config any) (Stage, error) {
 	cfg, err := parseRegexConfig(config)
 	if err != nil {
 		return nil, err
@@ -74,7 +74,7 @@ func newRegexStage(logger log.Logger, config interface{}) (Stage, error) {
 }
 
 // parseRegexConfig processes an incoming configuration into a RegexConfig
-func parseRegexConfig(config interface{}) (*RegexConfig, error) {
+func parseRegexConfig(config any) (*RegexConfig, error) {
 	cfg := &RegexConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -84,7 +84,7 @@ func parseRegexConfig(config interface{}) (*RegexConfig, error) {
 }
 
 // Process implements Stage
-func (r *regexStage) Process(_ model.LabelSet, extracted map[string]interface{}, _ *time.Time, entry *string) {
+func (r *regexStage) Process(_ model.LabelSet, extracted map[string]any, _ *time.Time, entry *string) {
 	// If a source key is provided, the regex stage should process it
 	// from the extracted map, otherwise should fallback to the entry
 	input := entry

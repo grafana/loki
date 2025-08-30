@@ -62,12 +62,12 @@ var (
 
 func BenchmarkHash(b *testing.B) {
 	b.Run("sha256", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			result = labelsSeriesIDHash(logproto.FromLabelAdaptersToLabels(lbs)) % 16
 		}
 	})
 	b.Run("xxash", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			var fp uint64
 			fp, buf = logproto.FromLabelAdaptersToLabels(lbs).HashWithoutLabels(buf, []string(nil)...)
 			result = util.HashFP(model.Fingerprint(fp)) % 16
@@ -145,7 +145,7 @@ func Test_ConsistentMapping(t *testing.T) {
 	a := NewWithShards(16)
 	b := NewWithShards(32)
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		lbs := labels.FromStrings(
 			"foo", "bar",
 			"hi", fmt.Sprint(i),
@@ -155,7 +155,7 @@ func Test_ConsistentMapping(t *testing.T) {
 	}
 
 	shardMax := 8
-	for i := 0; i < shardMax; i++ {
+	for i := range shardMax {
 		shard := logql.NewPowerOfTwoShard(index.ShardAnnotation{
 			Shard: uint32(i),
 			Of:    uint32(shardMax),

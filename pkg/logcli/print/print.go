@@ -204,7 +204,7 @@ type kvLogger struct {
 	*tabwriter.Writer
 }
 
-func (k kvLogger) Log(keyvals ...interface{}) error {
+func (k kvLogger) Log(keyvals ...any) error {
 	for i := 0; i < len(keyvals); i += 2 {
 		fmt.Fprintln(k.Writer, color.BlueString("%s", keyvals[i]), "\t", fmt.Sprintf("%v", keyvals[i+1]))
 	}

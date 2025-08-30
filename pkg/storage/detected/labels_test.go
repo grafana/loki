@@ -44,7 +44,7 @@ func TestUnmarshaledDetectedLabel_Merge(t *testing.T) {
 	t.Run("merge valid sketches", func(t *testing.T) {
 		// Create first sketch
 		sketch1 := hyperloglog.New()
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			sketch1.Insert([]byte("value1-" + string(rune(i))))
 		}
 		sketch1Data, err := sketch1.MarshalBinary()
@@ -106,7 +106,7 @@ func TestMergeLabels(t *testing.T) {
 		labelNames := []string{"app", "env", "service"}
 		for _, name := range labelNames {
 			sketch := hyperloglog.New()
-			for i := 0; i < 100; i++ {
+			for i := range 100 {
 				sketch.Insert([]byte(name + "-value-" + string(rune(i))))
 			}
 			sketchData, err := sketch.MarshalBinary()
@@ -133,7 +133,7 @@ func TestMergeLabels(t *testing.T) {
 
 		// Create first app label sketch
 		sketch1 := hyperloglog.New()
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			sketch1.Insert([]byte("app-value-" + string(rune(i))))
 		}
 		sketch1Data, err := sketch1.MarshalBinary()
@@ -189,7 +189,7 @@ func TestMergeLabels(t *testing.T) {
 
 	t.Run("different label names with identical sketches", func(t *testing.T) {
 		sketch := hyperloglog.New()
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			sketch.Insert([]byte("value-" + string(rune(i))))
 		}
 		sketchData, err := sketch.MarshalBinary()
@@ -241,7 +241,7 @@ func TestMergeLabels(t *testing.T) {
 	t.Run("high cardinality", func(t *testing.T) {
 		sketch := hyperloglog.New()
 		// Insert 100k values
-		for i := 0; i < 100000; i++ {
+		for i := range 100000 {
 			sketch.Insert([]byte("value-" + string(rune(i))))
 		}
 		sketchData, err := sketch.MarshalBinary()

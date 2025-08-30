@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
@@ -477,9 +478,7 @@ func compareCompactedTable(t *testing.T, srcTable string, tableCompactor *tableC
 			if _, ok := compactedRecords[bucketName]; !ok {
 				compactedRecords[bucketName] = make(map[string]string)
 			}
-			for k, v := range records {
-				compactedRecords[bucketName][k] = v
-			}
+			maps.Copy(compactedRecords[bucketName], records)
 		}
 	}
 
@@ -488,9 +487,7 @@ func compareCompactedTable(t *testing.T, srcTable string, tableCompactor *tableC
 			if _, ok := expectedRecords[bucketName]; !ok {
 				expectedRecords[bucketName] = make(map[string]string)
 			}
-			for k, v := range records {
-				expectedRecords[bucketName][k] = v
-			}
+			maps.Copy(expectedRecords[bucketName], records)
 		}
 	}
 
@@ -499,9 +496,7 @@ func compareCompactedTable(t *testing.T, srcTable string, tableCompactor *tableC
 			if _, ok := compactedRecords[userID]; !ok {
 				compactedRecords[userID] = make(map[string]string)
 			}
-			for k, v := range userRecords {
-				compactedRecords[userID][k] = v
-			}
+			maps.Copy(compactedRecords[userID], userRecords)
 		}
 
 		for bucketName, records := range readIndexFromFiles(t, filepath.Join(srcTable, userID)) {
@@ -509,9 +504,7 @@ func compareCompactedTable(t *testing.T, srcTable string, tableCompactor *tableC
 			if _, ok := expectedRecords[userID]; !ok {
 				expectedRecords[userID] = make(map[string]string)
 			}
-			for k, v := range records {
-				expectedRecords[userID][k] = v
-			}
+			maps.Copy(expectedRecords[userID], records)
 		}
 	}
 
@@ -546,9 +539,7 @@ func readIndexFromFiles(t *testing.T, tablePath string) map[string]map[string]st
 			if _, ok := dbRecords[bucketName]; !ok {
 				dbRecords[bucketName] = make(map[string]string)
 			}
-			for k, v := range records {
-				dbRecords[bucketName][k] = v
-			}
+			maps.Copy(dbRecords[bucketName], records)
 		}
 		require.NoError(t, db.Close())
 	}

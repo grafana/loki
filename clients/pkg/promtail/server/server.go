@@ -187,11 +187,11 @@ func (s *PromtailServer) serviceDiscovery(rw http.ResponseWriter, req *http.Requ
 		PageTitle:    "Service Discovery",
 		ExternalURL:  s.externalURL,
 		TemplateFuncs: template.FuncMap{
-			"fileTargetDetails": func(details interface{}) map[string]int64 {
+			"fileTargetDetails": func(details any) map[string]int64 {
 				// you can't cast with a text template in go so this is a helper
 				return details.(map[string]int64)
 			},
-			"dropReason": func(details interface{}) string {
+			"dropReason": func(details any) string {
 				if reason, ok := details.(string); ok {
 					return reason
 				}
@@ -234,11 +234,11 @@ func (s *PromtailServer) targets(rw http.ResponseWriter, req *http.Request) {
 		PageTitle:    "Targets",
 		ExternalURL:  s.externalURL,
 		TemplateFuncs: template.FuncMap{
-			"fileTargetDetails": func(details interface{}) map[string]int64 {
+			"fileTargetDetails": func(details any) map[string]int64 {
 				// you can't cast with a text template in go so this is a helper
 				return details.(map[string]int64)
 			},
-			"journalTargetDetails": func(details interface{}) map[string]string {
+			"journalTargetDetails": func(details any) map[string]string {
 				// you can't cast with a text template in go so this is a helper
 				return details.(map[string]string)
 			},

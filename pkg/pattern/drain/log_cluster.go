@@ -14,8 +14,8 @@ type LogCluster struct {
 	id         int
 	Size       int
 	Tokens     []string
-	TokenState interface{}
-	Stringer   func([]string, interface{}) string
+	TokenState any
+	Stringer   func([]string, any) string
 
 	Chunks Chunks
 }

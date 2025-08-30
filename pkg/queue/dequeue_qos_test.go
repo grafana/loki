@@ -31,8 +31,8 @@ type req struct {
 func enqueueRequestsForActor(t testing.TB, actor []string, useActor bool, queue *RequestQueue, numSubRequests int, d time.Duration) {
 	tenant := "tenant"
 	serializedActor := strings.Join(actor, "|")
-	for x := 0; x < numRequestsPerActor; x++ {
-		for y := 0; y < numSubRequests; y++ {
+	for x := range numRequestsPerActor {
+		for y := range numSubRequests {
 			r := &req{
 				duration:   d,
 				queryID:    x,
@@ -73,7 +73,7 @@ func BenchmarkQueryFairness(t *testing.B) {
 			var wg sync.WaitGroup
 			var responseCount atomic.Int64
 			// Simulate querier loop
-			for q := 0; q < numQueriers; q++ {
+			for q := range numQueriers {
 				wg.Add(1)
 				go func(id string) {
 					defer wg.Done()

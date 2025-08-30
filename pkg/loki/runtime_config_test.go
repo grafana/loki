@@ -135,7 +135,7 @@ func newTestRuntimeconfig(t *testing.T, yaml string) runtime.TenantConfigProvide
 	require.NoError(t, err)
 	path := f.Name()
 	// fake loader to load from string instead of file.
-	loader := func(_ io.Reader) (interface{}, error) {
+	loader := func(_ io.Reader) (any, error) {
 		return loadRuntimeConfig(strings.NewReader(yaml))
 	}
 	cfg := runtimeconfig.Config{
@@ -171,7 +171,7 @@ func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {
 	require.NoError(t, err)
 	path := f.Name()
 	// fake loader to load from string instead of file.
-	loader := func(_ io.Reader) (interface{}, error) {
+	loader := func(_ io.Reader) (any, error) {
 		return loadRuntimeConfig(strings.NewReader(yaml))
 	}
 	cfg := runtimeconfig.Config{

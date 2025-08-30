@@ -159,10 +159,10 @@ pipeline_stages:
 `
 
 func loadConfig(yml string) stages.PipelineStages {
-	var config map[string]interface{}
+	var config map[string]any
 	err := yaml.Unmarshal([]byte(yml), &config)
 	if err != nil {
 		panic(err)
 	}
-	return config["pipeline_stages"].([]interface{})
+	return config["pipeline_stages"].([]any)
 }

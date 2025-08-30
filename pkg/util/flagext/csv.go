@@ -47,7 +47,7 @@ func (v CSV[T]) Get() []T {
 }
 
 // UnmarshalYAML implements yaml.Unmarshaler.
-func (v *CSV[T]) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (v *CSV[T]) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
 		return err
@@ -57,6 +57,6 @@ func (v *CSV[T]) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // MarshalYAML implements yaml.Marshaler.
-func (v CSV[T]) MarshalYAML() (interface{}, error) {
+func (v CSV[T]) MarshalYAML() (any, error) {
 	return v.String(), nil
 }

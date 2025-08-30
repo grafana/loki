@@ -65,7 +65,7 @@ func NewPartitionedBloomFilterWithCapacity(m uint, fpRate float64) *PartitionedB
 	)
 	partitions := make([]*Buckets, k)
 
-	for i := uint(0); i < k; i++ {
+	for i := range k {
 		partitions[i] = NewBuckets(s, 1)
 	}
 

@@ -432,7 +432,7 @@ func (m RangeMapper) rangeSplit(expr syntax.SampleExpr, rangeInterval time.Durat
 	}
 
 	var downstreams *ConcatSampleExpr
-	for split := 0; split < splitCount; split++ {
+	for split := range splitCount {
 		splitOffset := time.Duration(split) * m.splitByInterval
 		// The range interval of the last downstream query can be smaller than the split interval
 		splitRangeInterval := m.splitByInterval

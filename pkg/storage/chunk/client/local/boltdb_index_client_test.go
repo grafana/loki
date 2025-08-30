@@ -131,7 +131,7 @@ func Test_CreateTable_BoltdbRW(t *testing.T) {
 	require.NoError(t, err)
 
 	batch := indexClient.NewWriteBatch()
-	batch.Add(tableName, fmt.Sprintf("hash%s", "test"), []byte(fmt.Sprintf("range%s", "value")), nil)
+	batch.Add(tableName, fmt.Sprintf("hash%s", "test"), fmt.Appendf(nil, "range%s", "value"), nil)
 
 	err = indexClient.BatchWrite(context.Background(), batch)
 	require.NoError(t, err)
@@ -159,7 +159,7 @@ func Test_CreateTable_BoltdbRW(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, []index.Entry{
-		{RangeValue: []byte(fmt.Sprintf("range%s", "value"))},
+		{RangeValue: fmt.Appendf(nil, "range%s", "value")},
 	}, have)
 }
 
@@ -278,7 +278,7 @@ func Benchmark_Query(b *testing.B) {
 	require.NoError(b, err)
 
 	batch := indexClient.NewWriteBatch()
-	batch.Add(tableName, fmt.Sprintf("hash%s", "test"), []byte(fmt.Sprintf("range%s", "value")), nil)
+	batch.Add(tableName, fmt.Sprintf("hash%s", "test"), fmt.Appendf(nil, "range%s", "value"), nil)
 
 	err = indexClient.BatchWrite(context.Background(), batch)
 	require.NoError(b, err)
@@ -296,7 +296,7 @@ func Benchmark_Query(b *testing.B) {
 	}
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		err = indexClient.query(context.Background(), entry, func(_ index.Query, read index.ReadBatchResult) bool {
 			iter := read.Iterator()
 			//nolint:revive

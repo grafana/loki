@@ -17,7 +17,7 @@ func BenchmarkHashKernel(b *testing.B) {
 	var data [4]byte
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		binary.LittleEndian.PutUint32(data[:], uint32(i))
 		hashKernel(data[:], hsh)
 	}

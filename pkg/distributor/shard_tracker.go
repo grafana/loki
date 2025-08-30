@@ -34,7 +34,7 @@ func NewShardTracker() *ShardTracker {
 		locks:        make([]stripeLock, defaultStripeSize),
 	}
 
-	for i := 0; i < defaultStripeSize; i++ {
+	for i := range defaultStripeSize {
 		tracker.currentShard[i] = make(map[string]int)
 	}
 

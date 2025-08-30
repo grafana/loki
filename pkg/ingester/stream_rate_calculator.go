@@ -42,7 +42,7 @@ func NewStreamRateCalculator() *StreamRateCalculator {
 		stopchan: make(chan struct{}),
 	}
 
-	for i := 0; i < defaultStripeSize; i++ {
+	for i := range defaultStripeSize {
 		calc.samples[i] = make(map[string]map[uint64]logproto.StreamRate)
 	}
 

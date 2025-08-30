@@ -277,7 +277,7 @@ func TestTable_EnsureQueryReadiness(t *testing.T) {
 			}
 
 			// Running it multiple times should not have an impact other than updating last used at time
-			for i := 0; i < 2; i++ {
+			for range 2 {
 				require.NoError(t, table.EnsureQueryReadiness(context.Background(), tc.usersToDoQueryReadinessFor))
 				require.Len(t, table.indexSets, len(tc.usersToDoQueryReadinessFor)+1)
 				for _, userID := range append(tc.usersToDoQueryReadinessFor, "") {

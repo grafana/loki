@@ -33,8 +33,8 @@ var (
 
 // DropConfig contains the configuration for a dropStage
 type DropConfig struct {
-	DropReason *string     `mapstructure:"drop_counter_reason"`
-	Source     interface{} `mapstructure:"source"`
+	DropReason *string `mapstructure:"drop_counter_reason"`
+	Source     any     `mapstructure:"source"`
 	source     *[]string
 	Value      *string `mapstructure:"value"`
 	Separator  *string `mapstructure:"separator"`
@@ -104,9 +104,9 @@ func validateDropConfig(cfg *DropConfig) error {
 }
 
 // unifySourceField unify Source into a slice of strings
-func unifySourceField(s interface{}) ([]string, error) {
+func unifySourceField(s any) ([]string, error) {
 	switch s := s.(type) {
-	case []interface{}:
+	case []any:
 		r := make([]string, len(s))
 		for i := range s {
 			r[i] = s[i].(string)
@@ -121,7 +121,7 @@ func unifySourceField(s interface{}) ([]string, error) {
 }
 
 // newDropStage creates a DropStage from config
-func newDropStage(logger log.Logger, config interface{}, registerer prometheus.Registerer) (Stage, error) {
+func newDropStage(logger log.Logger, config any, registerer prometheus.Registerer) (Stage, error) {
 	cfg := &DropConfig{}
 	err := mapstructure.WeakDecode(config, cfg)
 	if err != nil {

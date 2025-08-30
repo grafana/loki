@@ -68,7 +68,7 @@ func Fuzz_delta(f *testing.F) {
 		)
 
 		var numbers []int64
-		for i := 0; i < count; i++ {
+		for range count {
 			v := rnd.Int63()
 			numbers = append(numbers, v)
 			require.NoError(t, enc.Encode(Int64Value(v)))
@@ -95,7 +95,7 @@ func Benchmark_deltaEncoder_Encode(b *testing.B) {
 		enc := newDeltaEncoder(streamio.Discard)
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for i := 0; b.Loop(); i++ {
 			_ = enc.Encode(Int64Value(int64(i)))
 		}
 	})
@@ -104,7 +104,7 @@ func Benchmark_deltaEncoder_Encode(b *testing.B) {
 		enc := newDeltaEncoder(streamio.Discard)
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for i := 0; b.Loop(); i++ {
 			if i%2 == 0 {
 				_ = enc.Encode(Int64Value(0))
 			} else {
@@ -119,7 +119,7 @@ func Benchmark_deltaEncoder_Encode(b *testing.B) {
 
 		b.ResetTimer()
 
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_ = enc.Encode(Int64Value(rnd.Int63()))
 		}
 	})
@@ -134,12 +134,12 @@ func Benchmark_deltaDecoder_Decode(b *testing.B) {
 			dec = newDeltaDecoder(&buf)
 		)
 
-		for i := 0; i < b.N; i++ {
+		for i := 0; b.Loop(); i++ {
 			_ = enc.Encode(Int64Value(int64(i)))
 		}
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = dec.decode()
 		}
 	})
@@ -152,7 +152,7 @@ func Benchmark_deltaDecoder_Decode(b *testing.B) {
 			dec = newDeltaDecoder(&buf)
 		)
 
-		for i := 0; i < b.N; i++ {
+		for i := 0; b.Loop(); i++ {
 			if i%2 == 0 {
 				_ = enc.Encode(Int64Value(0))
 			} else {
@@ -161,7 +161,7 @@ func Benchmark_deltaDecoder_Decode(b *testing.B) {
 		}
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = dec.decode()
 		}
 	})
@@ -176,12 +176,12 @@ func Benchmark_deltaDecoder_Decode(b *testing.B) {
 			dec = newDeltaDecoder(&buf)
 		)
 
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_ = enc.Encode(Int64Value(rnd.Int63()))
 		}
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = dec.decode()
 		}
 	})

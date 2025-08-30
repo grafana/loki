@@ -24,7 +24,7 @@ func NewServerInterceptors(r prometheus.Registerer) *ServerInterceptors {
 		Help:      "Total amount of requests served by the index gateway",
 	}, []string{"operation", "status", "tenant"})
 
-	perTenantRequestCount := func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+	perTenantRequestCount := func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 		tenantID, err := tenant.TenantID(ctx)
 		if err != nil {
 			// ignore requests without tenantID

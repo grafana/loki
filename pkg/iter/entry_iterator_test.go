@@ -195,7 +195,7 @@ type generator func(i int64) logproto.Entry
 
 func mkStreamIterator(f generator, labels string) EntryIterator {
 	entries := []logproto.Entry{}
-	for i := int64(0); i < testSize; i++ {
+	for i := range int64(testSize) {
 		entries = append(entries, f(i))
 	}
 	return NewStreamIterator(logproto.Stream{
@@ -260,7 +260,7 @@ func TestMergeIteratorDeduplication(t *testing.T) {
 		},
 	}
 	assertIt := func(it EntryIterator, reversed bool, length int) {
-		for i := 0; i < length; i++ {
+		for i := range length {
 			j := i
 			if reversed {
 				j = length - 1 - i
@@ -335,7 +335,7 @@ func TestMergeIteratorWithoutLabels(t *testing.T) {
 		NewStreamIterator(foo),
 	}, logproto.FORWARD)
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 
 		require.True(t, it.Next())
 		require.NoError(t, it.Err())
@@ -701,12 +701,12 @@ func BenchmarkSortIterator(b *testing.B) {
 		entriesCount = 10000
 		streamsCount = 100
 	)
-	for i := 0; i < streamsCount; i++ {
+	for i := range streamsCount {
 		streams = append(streams, logproto.Stream{
 			Labels: fmt.Sprintf(`{i="%d"}`, i),
 		})
 	}
-	for i := 0; i < entriesCount; i++ {
+	for i := range entriesCount {
 		streams[i%streamsCount].Entries = append(streams[i%streamsCount].Entries, logproto.Entry{
 			Timestamp: time.Unix(0, int64(streamsCount-i)),
 			Line:      fmt.Sprintf("%d", i),
@@ -719,10 +719,10 @@ func BenchmarkSortIterator(b *testing.B) {
 	b.Run("merge sort", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			b.StopTimer()
 			var itrs []EntryIterator
-			for i := 0; i < streamsCount; i++ {
+			for i := range streamsCount {
 				itrs = append(itrs, NewStreamIterator(streams[i]))
 			}
 			b.StartTimer()
@@ -737,10 +737,10 @@ func BenchmarkSortIterator(b *testing.B) {
 	b.Run("merge sort dedupe", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			b.StopTimer()
 			var itrs []EntryIterator
-			for i := 0; i < streamsCount; i++ {
+			for i := range streamsCount {
 				itrs = append(itrs, NewStreamIterator(streams[i]))
 				itrs = append(itrs, NewStreamIterator(streams[i]))
 			}
@@ -756,10 +756,10 @@ func BenchmarkSortIterator(b *testing.B) {
 	b.Run("sort", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			b.StopTimer()
 			var itrs []EntryIterator
-			for i := 0; i < streamsCount; i++ {
+			for i := range streamsCount {
 				itrs = append(itrs, NewStreamIterator(streams[i]))
 			}
 			b.StartTimer()

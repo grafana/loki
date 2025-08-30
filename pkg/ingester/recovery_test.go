@@ -55,7 +55,7 @@ func (m *MemoryWALReader) Record() []byte { return m.xs[0] }
 func buildMemoryReader(users, totalStreams, entriesPerStream int, withStructuredMetadata bool) (*MemoryWALReader, []*wal.Record) {
 	var recs []*wal.Record
 	reader := &MemoryWALReader{}
-	for i := 0; i < totalStreams; i++ {
+	for i := range totalStreams {
 		user := fmt.Sprintf("%d", i%users)
 		recs = append(recs, &wal.Record{
 			UserID: user,
@@ -73,7 +73,7 @@ func buildMemoryReader(users, totalStreams, entriesPerStream int, withStructured
 		})
 
 		var entries []logproto.Entry
-		for j := 0; j < entriesPerStream; j++ {
+		for j := range entriesPerStream {
 			entry := logproto.Entry{
 				Timestamp: time.Unix(int64(j), 0),
 				Line:      fmt.Sprintf("%d", j),

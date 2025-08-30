@@ -282,7 +282,7 @@ func BenchmarkWriter_WriteEntries(b *testing.B) {
 	}
 	for _, testCase := range cases {
 		b.Run(fmt.Sprintf("%d lines, %d different label sets", testCase.lines, testCase.labelSetsCount), func(b *testing.B) {
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				benchWriteEntries(b, testCase.lines, testCase.labelSetsCount)
 			}
 		})
@@ -303,7 +303,7 @@ func benchWriteEntries(b *testing.B, lines, labelSetCount int) {
 		writer.Stop()
 	}()
 
-	for i := 0; i < lines; i++ {
+	for i := range lines {
 		writer.Chan() <- api.Entry{
 			Labels: model.LabelSet{
 				"someLabel": model.LabelValue(fmt.Sprint(i % labelSetCount)),

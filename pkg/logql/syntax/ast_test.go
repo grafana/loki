@@ -860,7 +860,7 @@ func BenchmarkContainsFilter(b *testing.B) {
 
 			b.ResetTimer()
 			sp := p.ForStream(labelBar)
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				for _, line := range lines {
 					sp.Process(0, line, labels.EmptyLabels())
 				}
@@ -1068,7 +1068,7 @@ func BenchmarkReorderedPipeline(b *testing.B) {
 	sp := p.ForStream(labels.EmptyLabels())
 
 	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		_, _, result = sp.Process(0, logfmtLine, labels.EmptyLabels())
 	}
 }
@@ -1145,7 +1145,7 @@ func TestCombineFilters(t *testing.T) {
 	}
 
 	var combineFilter StageExpr
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		combineFilter = combineFilters(in)
 	}
 

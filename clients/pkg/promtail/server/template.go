@@ -20,7 +20,7 @@ import (
 type templateOptions struct {
 	ExternalURL                   *url.URL
 	Name, PageTitle, BuildVersion string
-	Data                          interface{}
+	Data                          any
 	TemplateFuncs                 template_text.FuncMap
 }
 

@@ -38,7 +38,7 @@ func TestActiveUserConcurrentUpdateAndPurge(t *testing.T) {
 
 	latestTS := atomic.NewInt64(0)
 
-	for j := 0; j < count; j++ {
+	for range count {
 		done.Add(1)
 
 		go func() {
@@ -56,7 +56,7 @@ func TestActiveUserConcurrentUpdateAndPurge(t *testing.T) {
 	}
 
 	previousLatest := int64(0)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		time.Sleep(100 * time.Millisecond)
 
 		latest := latestTS.Load()
@@ -87,7 +87,7 @@ func BenchmarkActiveUsers_UpdateUserTimestamp(b *testing.B) {
 
 			startGoroutinesDoingUpdates(b, c, as)
 
-			for i := 0; i < b.N; i++ {
+			for i := 0; b.Loop(); i++ {
 				as.UpdateUserTimestamp("test", int64(i))
 			}
 		})
@@ -101,7 +101,7 @@ func BenchmarkActiveUsers_Purge(b *testing.B) {
 
 			startGoroutinesDoingUpdates(b, c, as)
 
-			for i := 0; i < b.N; i++ {
+			for i := 0; b.Loop(); i++ {
 				as.PurgeInactiveUsers(int64(i))
 			}
 		})
@@ -113,7 +113,7 @@ func startGoroutinesDoingUpdates(b *testing.B, count int, as *ActiveUsers) {
 	stop := atomic.NewBool(false)
 
 	started := sync.WaitGroup{}
-	for j := 0; j < count; j++ {
+	for j := range count {
 		done.Add(1)
 		started.Add(1)
 		userID := fmt.Sprintf("user-%d", j)

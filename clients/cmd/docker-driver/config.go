@@ -215,8 +215,8 @@ func parseConfig(logCtx logger.Info) (*config, error) {
 	if !ok {
 		extlbs = defaultExternalLabels
 	}
-	lvs := strings.Split(extlbs, ",")
-	for _, lv := range lvs {
+	lvs := strings.SplitSeq(extlbs, ",")
+	for lv := range lvs {
 		lvparts := strings.Split(lv, "=")
 		if len(lvparts) != 2 {
 			return nil, fmt.Errorf("%s: invalid external labels: %s", driverName, extlbs)
@@ -383,7 +383,7 @@ func parseBoolean(key string, logCtx logger.Info, defaultValue bool) (bool, erro
 }
 
 // loadConfig read YAML-formatted config from filename into cfg.
-func loadConfig(filename string, cfg interface{}) error {
+func loadConfig(filename string, cfg any) error {
 	buf, err := os.ReadFile(filename)
 	if err != nil {
 		return errors.Wrap(err, "Error reading config file")

@@ -334,7 +334,7 @@ func TestFullPushApiFlow(t *testing.T) {
 	jsonStr := createStream()
 
 	// 2. Parse the raw values first and verify what's getting unmarshaled
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	err := jsoniter.Unmarshal([]byte(jsonStr), &parsed)
 	require.NoError(t, err)
 
@@ -342,10 +342,10 @@ func TestFullPushApiFlow(t *testing.T) {
 	t.Logf("Parsed JSON: %+v", parsed)
 
 	// 4. Manually extract the structured metadata to see what's happening
-	streams := parsed["streams"].([]interface{})
-	values := streams[0].(map[string]interface{})["values"].([]interface{})
-	entry := values[0].([]interface{})
-	metadata := entry[2].(map[string]interface{})
+	streams := parsed["streams"].([]any)
+	values := streams[0].(map[string]any)["values"].([]any)
+	entry := values[0].([]any)
+	metadata := entry[2].(map[string]any)
 
 	t.Logf("Raw metadata: %+v", metadata)
 	require.Equal(t, "a\nb\nc", metadata["message"], "JSON unmarshal should preserve newlines")

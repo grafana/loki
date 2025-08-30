@@ -88,7 +88,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			require.NoError(t, err)
 
 			newLines := make([]logproto.Entry, numLogs)
-			for i := 0; i < numLogs; i++ {
+			for i := range numLogs {
 				newLines[i] = logproto.Entry{Timestamp: time.Unix(int64(i), 0), Line: "log"}
 			}
 
@@ -280,9 +280,9 @@ func TestStreamIterator(t *testing.T) {
 	} {
 		t.Run(chk.name, func(t *testing.T) {
 			var s stream
-			for i := int64(0); i < chunks; i++ {
+			for i := range int64(chunks) {
 				chunk := chk.new()
-				for j := int64(0); j < entries; j++ {
+				for j := range int64(entries) {
 					k := i*entries + j
 					dup, err := chunk.Append(&logproto.Entry{
 						Timestamp: time.Unix(k, 0),
@@ -294,7 +294,7 @@ func TestStreamIterator(t *testing.T) {
 				s.chunks = append(s.chunks, chunkDesc{chunk: chunk})
 			}
 
-			for i := 0; i < 100; i++ {
+			for range 100 {
 				from := rand.Intn(chunks*entries - 1)
 				length := rand.Intn(chunks*entries-from) + 1
 				iter, err := s.Iterator(context.TODO(), nil, time.Unix(int64(from), 0), time.Unix(int64(from+length), 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(s.labels))
@@ -304,7 +304,7 @@ func TestStreamIterator(t *testing.T) {
 				_ = iter.Close()
 			}
 
-			for i := 0; i < 100; i++ {
+			for range 100 {
 				from := rand.Intn(entries - 1)
 				length := rand.Intn(chunks*entries-from) + 1
 				iter, err := s.Iterator(context.TODO(), nil, time.Unix(int64(from), 0), time.Unix(int64(from+length), 0), logproto.BACKWARD, log.NewNoopPipeline().ForStream(s.labels))
@@ -628,7 +628,7 @@ func Benchmark_PushStream(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		rec := recordPool.GetRecord()
 		_, err := s.Push(ctx, e, rec, 0, true, false, nil, "loki")
 		require.NoError(b, err)

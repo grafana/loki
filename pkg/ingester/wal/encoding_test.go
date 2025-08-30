@@ -245,7 +245,7 @@ func Benchmark_EncodeEntries(b *testing.B) {
 	for _, withStructuredMetadata := range []bool{true, false} {
 		b.Run(fmt.Sprintf("structuredMetadata=%t", withStructuredMetadata), func(b *testing.B) {
 			var entries []logproto.Entry
-			for i := int64(0); i < 10000; i++ {
+			for i := range int64(10000) {
 				entry := logproto.Entry{
 					Timestamp: time.Unix(0, i),
 					Line:      fmt.Sprintf("long line with a lot of data like a log %d", i),
@@ -279,7 +279,7 @@ func Benchmark_EncodeEntries(b *testing.B) {
 			buf := recordPool.GetBytes()
 			defer recordPool.PutBytes(buf)
 
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				*buf = record.EncodeEntries(CurrentEntriesRec, *buf)
 			}
 		})
@@ -290,7 +290,7 @@ func Benchmark_DecodeWAL(b *testing.B) {
 	for _, withStructuredMetadata := range []bool{true, false} {
 		b.Run(fmt.Sprintf("structuredMetadata=%t", withStructuredMetadata), func(b *testing.B) {
 			var entries []logproto.Entry
-			for i := int64(0); i < 10000; i++ {
+			for i := range int64(10000) {
 				entry := logproto.Entry{
 					Timestamp: time.Unix(0, i),
 					Line:      fmt.Sprintf("long line with a lot of data like a log %d", i),
@@ -325,7 +325,7 @@ func Benchmark_DecodeWAL(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				require.NoError(b, DecodeRecord(buf, rec))
 			}
 		})

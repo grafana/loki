@@ -32,7 +32,7 @@ func validateLabelStaticConfig(c StaticLabelConfig) error {
 	return nil
 }
 
-func newStaticLabelsStage(logger log.Logger, configs interface{}) (Stage, error) {
+func newStaticLabelsStage(logger log.Logger, configs any) (Stage, error) {
 	cfgs := &StaticLabelConfig{}
 	err := mapstructure.Decode(configs, cfgs)
 	if err != nil {
@@ -56,7 +56,7 @@ type StaticLabelStage struct {
 }
 
 // Process implements Stage
-func (l *StaticLabelStage) Process(labels model.LabelSet, _ map[string]interface{}, _ *time.Time, _ *string) {
+func (l *StaticLabelStage) Process(labels model.LabelSet, _ map[string]any, _ *time.Time, _ *string) {
 
 	for lName, lSrc := range l.cfgs {
 		if lSrc == nil || *lSrc == "" {

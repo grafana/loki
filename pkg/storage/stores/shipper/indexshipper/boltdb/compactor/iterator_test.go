@@ -238,7 +238,7 @@ func Benchmark_ChunkIterator(b *testing.B) {
 	store := newTestStore(b, cm)
 	chunkfmt, headfmt, err := allSchemas[0].config.ChunkFormat()
 	require.NoError(b, err)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		require.NoError(b, store.Put(context.TODO(),
 			[]chunk.Chunk{
 				createChunk(b, chunkfmt, headfmt, "1",
@@ -254,7 +254,7 @@ func Benchmark_ChunkIterator(b *testing.B) {
 	var total int
 	_ = store.indexTables()[0].Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket(local.IndexBucketName)
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			err := ForEachSeries(context.Background(), bucket, allSchemas[0].config, func(series retention.Series) (err error) {
 				total += len(series.Chunks())
 				return nil

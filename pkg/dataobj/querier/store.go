@@ -442,7 +442,7 @@ func shardObjects(
 		sectionsString.WriteString(fmt.Sprintf("%v ", sections))
 	}
 
-	logParams := []interface{}{
+	logParams := []any{
 		"msg", "sharding sections",
 		"sharded_factor", shard.String(),
 		"total_objects", len(objects),

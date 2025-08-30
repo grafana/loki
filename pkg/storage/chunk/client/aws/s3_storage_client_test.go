@@ -534,7 +534,7 @@ type testCommonPrefixesS3Client struct {
 func (m *testCommonPrefixesS3Client) ListObjectsV2WithContext(aws.Context, *s3.ListObjectsV2Input, ...request.Option) (*s3.ListObjectsV2Output, error) {
 	var commonPrefixes []*s3.CommonPrefix
 	commonPrefix := "common-prefix-repeated/"
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		commonPrefixes = append(commonPrefixes, &s3.CommonPrefix{Prefix: aws.String(commonPrefix)})
 	}
 	return &s3.ListObjectsV2Output{CommonPrefixes: commonPrefixes, IsTruncated: aws.Bool(false)}, nil

@@ -284,7 +284,7 @@ func (q *Queue) deleteTask(taskPath string) error {
 }
 
 func (q *Queue) TotalPending() (total int) {
-	q.pendingTasks.Range(func(_, _ interface{}) bool {
+	q.pendingTasks.Range(func(_, _ any) bool {
 		total++
 		return true
 	})

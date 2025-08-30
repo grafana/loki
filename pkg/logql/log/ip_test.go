@@ -260,7 +260,7 @@ func Benchmark_IPFilter(b *testing.B) {
 			require.NoError(b, err)
 			b.ResetTimer()
 
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				for _, l := range line {
 					_ = stage.filter(l)
 				}

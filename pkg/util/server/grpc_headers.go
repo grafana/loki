@@ -41,7 +41,7 @@ func extractHTTPHeadersFromGRPCRequest(ctx context.Context) context.Context {
 	return httpreq.InjectHeader(ctx, httpreq.LokiDisablePipelineWrappersHeader, headerValues[0])
 }
 
-func UnaryClientHTTPHeadersInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+func UnaryClientHTTPHeadersInterceptor(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 	return invoker(injectHTTPHeadersIntoGRPCRequest(ctx), method, req, reply, cc, opts...)
 }
 
@@ -49,11 +49,11 @@ func StreamClientHTTPHeadersInterceptor(ctx context.Context, desc *grpc.StreamDe
 	return streamer(injectHTTPHeadersIntoGRPCRequest(ctx), desc, cc, method, opts...)
 }
 
-func UnaryServerHTTPHeadersnIterceptor(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+func UnaryServerHTTPHeadersnIterceptor(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 	return handler(extractHTTPHeadersFromGRPCRequest(ctx), req)
 }
 
-func StreamServerHTTPHeadersInterceptor(srv interface{}, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+func StreamServerHTTPHeadersInterceptor(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 	return handler(srv, serverStream{
 		ctx:          extractHTTPHeadersFromGRPCRequest(ss.Context()),
 		ServerStream: ss,

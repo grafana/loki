@@ -1,8 +1,8 @@
 package util
 
 type Queue interface {
-	Append(entry interface{})
-	Entries() []interface{}
+	Append(entry any)
+	Entries() []any
 	Length() int
 	Clear()
 }

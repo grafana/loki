@@ -473,7 +473,7 @@ func (c *Config) HasServiceDiscoveryConfig() bool {
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *Config) UnmarshalYAML(unmarshal func(any) error) error {
 	*c = DefaultScrapeConfig
 
 	type plain Config

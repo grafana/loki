@@ -13,9 +13,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
-func newEntry(ex map[string]interface{}, lbs model.LabelSet, line string, ts time.Time) Entry {
+func newEntry(ex map[string]any, lbs model.LabelSet, line string, ts time.Time) Entry {
 	if ex == nil {
-		ex = map[string]interface{}{}
+		ex = map[string]any{}
 	}
 	if lbs == nil {
 		lbs = model.LabelSet{}

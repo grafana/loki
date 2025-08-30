@@ -320,7 +320,7 @@ func (c *DefaultClient) doQuery(
 	return &r, nil
 }
 
-func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{}) error {
+func (c *DefaultClient) doRequest(path, query string, quiet bool, out any) error {
 	us, err := buildURL(c.Address, path, query)
 	if err != nil {
 		return err

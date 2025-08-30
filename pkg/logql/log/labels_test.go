@@ -492,8 +492,7 @@ func BenchmarkStreamLineSampleExtractor_Process(b *testing.B) {
 	streamEx := ex.ForStream(baseLabels)
 	b.ReportAllocs()
 	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, _ = streamEx.Process(time.Now().UnixNano(), testLine, structuredMeta)
 	}
 }
@@ -505,7 +504,7 @@ func BenchmarkLabelsBuilder_Add(b *testing.B) {
 		b.Run(fmt.Sprintf("size_%d", size), func(b *testing.B) {
 			// Pre-generate labels that should be added
 			newB := labels.NewScratchBuilder(size)
-			for i := 0; i < size; i++ {
+			for i := range size {
 				newB.Add(fmt.Sprintf("label_%d", i), fmt.Sprintf("value_%d", i))
 			}
 			newLabels := newB.Labels()
@@ -516,7 +515,7 @@ func BenchmarkLabelsBuilder_Add(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
 
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				builder.Reset()
 				builder.Add(StructuredMetadataLabel, newLabels)
 			}

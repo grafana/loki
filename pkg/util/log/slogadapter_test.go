@@ -18,7 +18,7 @@ type mockLogger struct {
 	mock.Mock
 }
 
-func (m *mockLogger) Log(keyvals ...interface{}) error {
+func (m *mockLogger) Log(keyvals ...any) error {
 	args := m.Called(keyvals...)
 	return args.Error(0)
 }

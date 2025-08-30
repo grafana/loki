@@ -41,7 +41,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 	tests := []struct {
 		name     string
 		args     args
-		wantType interface{}
+		wantType any
 		wantErr  assert.ErrorAssertionFunc
 	}{
 		{
@@ -105,7 +105,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 					SubscriptionType: "magic",
 				},
 			},
-			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
+			wantErr: func(t assert.TestingT, err error, i ...any) bool {
 				return assert.ErrorContains(t, err, "invalid subscription type: magic", i...)
 			},
 		},

@@ -539,7 +539,7 @@ func BenchmarkRetentionPeriodToString(b *testing.B) {
 	for _, tc := range testCases {
 		b.Run(tc.name, func(b *testing.B) {
 			b.ReportAllocs()
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				RetentionPeriodToString(tc.retentionPeriod)
 			}
 		})

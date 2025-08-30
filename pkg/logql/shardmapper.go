@@ -380,7 +380,7 @@ func (m ShardMapper) mapApproxTopk(expr *syntax.VectorAggregationExpr, forceNoSh
 	}
 
 	downstreams := make([]DownstreamSampleExpr, 0, shards)
-	for shard := 0; shard < shards; shard++ {
+	for shard := range shards {
 		s := NewPowerOfTwoShard(index.ShardAnnotation{
 			Shard: uint32(shard),
 			Of:    uint32(shards),

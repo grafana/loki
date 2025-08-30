@@ -182,7 +182,7 @@ func (q *tenantQueues) getNextQueueForConsumer(lastUserIndex QueueIndex, consume
 	}
 
 	maxIters := len(q.mapping.keys) + 1
-	for iters := 0; iters < maxIters; iters++ {
+	for range maxIters {
 		tq, err := q.mapping.GetNext(uid)
 		if err == ErrOutOfBounds {
 			uid = StartIndex
@@ -342,7 +342,7 @@ func shuffleConsumersForTenants(userSeed int64, consumersToSelect int, allSorted
 	scratchpad = append(scratchpad, allSortedConsumers...)
 
 	last := len(scratchpad) - 1
-	for i := 0; i < consumersToSelect; i++ {
+	for range consumersToSelect {
 		r := rnd.Intn(last + 1)
 		result[scratchpad[r]] = struct{}{}
 		// move selected item to the end, it won't be selected anymore.

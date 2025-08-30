@@ -37,7 +37,7 @@ type MetricConfig struct {
 	Prefix       string  `mapstructure:"prefix"`
 	IdleDuration *string `mapstructure:"max_idle_duration"`
 	maxIdleSec   int64
-	Config       interface{} `mapstructure:"config"`
+	Config       any `mapstructure:"config"`
 }
 
 // MetricsConfig is a set of configured metrics.
@@ -85,7 +85,7 @@ func validateMetricsConfig(cfg MetricsConfig) error {
 }
 
 // newMetricStage creates a new set of metrics to process for each log entry
-func newMetricStage(logger log.Logger, config interface{}, registry prometheus.Registerer) (Stage, error) {
+func newMetricStage(logger log.Logger, config any, registry prometheus.Registerer) (Stage, error) {
 	cfgs := &MetricsConfig{}
 	err := mapstructure.Decode(config, cfgs)
 	if err != nil {
@@ -156,7 +156,7 @@ func (m *metricStage) Run(in chan Entry) chan Entry {
 }
 
 // Process implements Stage
-func (m *metricStage) Process(labels model.LabelSet, extracted map[string]interface{}, _ *time.Time, entry *string) {
+func (m *metricStage) Process(labels model.LabelSet, extracted map[string]any, _ *time.Time, entry *string) {
 	for name, collector := range m.metrics {
 		// There is a special case for counters where we count even if there is no match in the extracted map.
 		if c, ok := collector.(*metric.Counters); ok {
@@ -207,7 +207,7 @@ func (m *metricStage) Cleanup() {
 
 // recordCounter will update a counter metric
 // nolint:goconst
-func (m *metricStage) recordCounter(name string, counter *metric.Counters, labels model.LabelSet, v interface{}) {
+func (m *metricStage) recordCounter(name string, counter *metric.Counters, labels model.LabelSet, v any) {
 	// If value matching is defined, make sure value matches.
 	if counter.Cfg.Value != nil {
 		stringVal, err := getString(v)
@@ -240,7 +240,7 @@ func (m *metricStage) recordCounter(name string, counter *metric.Counters, label
 }
 
 // recordGauge will update a gauge metric
-func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels model.LabelSet, v interface{}) {
+func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels model.LabelSet, v any) {
 	// If value matching is defined, make sure value matches.
 	if gauge.Cfg.Value != nil {
 		stringVal, err := getString(v)
@@ -293,7 +293,7 @@ func (m *metricStage) recordGauge(name string, gauge *metric.Gauges, labels mode
 }
 
 // recordHistogram will update a Histogram metric
-func (m *metricStage) recordHistogram(name string, histogram *metric.Histograms, labels model.LabelSet, v interface{}) {
+func (m *metricStage) recordHistogram(name string, histogram *metric.Histograms, labels model.LabelSet, v any) {
 	// If value matching is defined, make sure value matches.
 	if histogram.Cfg.Value != nil {
 		stringVal, err := getString(v)
@@ -320,7 +320,7 @@ func (m *metricStage) recordHistogram(name string, histogram *metric.Histograms,
 }
 
 // getFloat will take the provided value and return a float64 if possible
-func getFloat(unk interface{}) (float64, error) {
+func getFloat(unk any) (float64, error) {
 	switch i := unk.(type) {
 	case float64:
 		return i, nil

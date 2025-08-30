@@ -66,14 +66,14 @@ var pipelineString = `
     level:
 `
 var pipeline = PipelineConfig{
-	PipelineStages: []interface{}{
-		map[interface{}]interface{}{
-			"regex": map[interface{}]interface{}{
+	PipelineStages: []any{
+		map[any]any{
+			"regex": map[any]any{
 				"expression": "(level|lvl|severity)=(?P<level>\\w+)",
 			},
 		},
-		map[interface{}]interface{}{
-			"labels": map[interface{}]interface{}{
+		map[any]any{
+			"labels": map[any]any{
 				"level": nil,
 			},
 		},

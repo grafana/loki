@@ -187,7 +187,7 @@ func TestInstance(t *testing.T) {
 	runInstance(t, inst)
 
 	// Wait until mockWalStorage is initialized.
-	test.Poll(t, 10*time.Second, true, func() interface{} {
+	test.Poll(t, 10*time.Second, true, func() any {
 		mockStorage.mut.Lock()
 		defer mockStorage.mut.Unlock()
 		return inst.Ready()
@@ -197,7 +197,7 @@ func TestInstance(t *testing.T) {
 	refTime := time.Now().UnixNano()
 
 	count := 3
-	for i := 0; i < count; i++ {
+	for i := range count {
 		_, err := app.Append(0, labels.FromStrings("__name__", "test", "iter", fmt.Sprintf("%v", i)), refTime-int64(i), float64(i))
 
 		require.NoError(t, err)

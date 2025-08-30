@@ -57,7 +57,7 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 		// Check put / get works
 		keys := []string{}
 		values := [][]byte{}
-		for i := 0; i < cnt; i++ {
+		for i := range cnt {
 			key := fmt.Sprintf("%02d", i)
 			value := make([]byte, len(key), valueCap)
 			copy(value, key)
@@ -78,7 +78,7 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
 		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
 
-		for i := 0; i < cnt; i++ {
+		for i := range cnt {
 			key := fmt.Sprintf("%02d", i)
 			value, ok := c.Get(ctx, key)
 			require.True(t, ok)
@@ -117,7 +117,7 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 		assert.Equal(t, testutil.ToFloat64(c.entriesCurrent), float64(c.lru.Len()))
 		assert.Equal(t, testutil.ToFloat64(c.memoryBytes), float64(cnt*sizeOf(itemTemplate)))
 
-		for i := 0; i < cnt-evicted; i++ {
+		for i := range cnt - evicted {
 			_, ok := c.Get(ctx, fmt.Sprintf("%02d", i))
 			require.False(t, ok)
 		}
@@ -154,7 +154,7 @@ func TestEmbeddedCacheEviction(t *testing.T) {
 		for i := cnt; i < cnt+evicted; i++ {
 			value, ok := c.Get(ctx, fmt.Sprintf("%02d", i))
 			require.True(t, ok)
-			require.Equal(t, []byte(fmt.Sprintf("%02d", i*2)), value)
+			require.Equal(t, fmt.Appendf(nil, "%02d", i*2), value)
 		}
 
 		assert.Equal(t, testutil.ToFloat64(c.entriesAddedNew), float64(cnt+evicted))

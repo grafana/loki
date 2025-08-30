@@ -10,7 +10,7 @@ import (
 
 func Test(t *testing.T) {
 	s := make([]*int, 0, 10)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		s = append(s, new(int))
 	}
 
@@ -22,7 +22,7 @@ func Test(t *testing.T) {
 	// zeroed out.
 	full := s[:cap(s)]
 	require.Equal(t, 10, len(full))
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		require.Nil(t, full[i], "element %d was not zeroed; this can cause memory leaks", i)
 	}
 }

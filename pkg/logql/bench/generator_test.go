@@ -80,7 +80,7 @@ func TestGenerateDatasetDeterminism(t *testing.T) {
 	require.Equal(t, numBatchesToCompare, len(batches2), "Number of batches from second generator should match expected count")
 
 	// Compare each batch
-	for i := 0; i < numBatchesToCompare; i++ {
+	for i := range numBatchesToCompare {
 		batch1 := batches1[i]
 		batch2 := batches2[i]
 

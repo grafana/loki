@@ -21,7 +21,7 @@ func TestTable(t *testing.T) {
 	testTable := NewTable(testTableName, storageClient)
 	defer testTable.Stop()
 
-	for userIdx := 0; userIdx < 2; userIdx++ {
+	for userIdx := range 2 {
 		userID := "user-" + strconv.Itoa(userIdx)
 		t.Run(userID, func(t *testing.T) {
 			userIndexPath := filepath.Join(tempDir, testTableName, userID)

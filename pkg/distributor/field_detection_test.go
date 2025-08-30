@@ -672,7 +672,7 @@ func Benchmark_extractLogLevelFromLogLine(b *testing.B) {
 			logLevelFields:          []string{"level", "LEVEL", "Level", "severity", "SEVERITY", "Severity", "lvl", "LVL", "Lvl"},
 		},
 	}
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		level := ld.extractLogLevelFromLogLine(logLine)
 		require.Equal(b, constants.LogLevelUnknown, level)
 	}
@@ -697,7 +697,7 @@ func Benchmark_optParseExtractLogLevelFromLogLineJson(b *testing.B) {
 	for name, logLine := range tests {
 		b.Run(name, func(b *testing.B) {
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				_ = ld.extractLogLevelFromLogLine(logLine)
 			}
 		})
@@ -713,7 +713,7 @@ func Benchmark_optParseExtractLogLevelFromLogLineLogfmt(b *testing.B) {
 			logLevelFields:          []string{"level", "LEVEL", "Level", "severity", "SEVERITY", "Severity", "lvl", "LVL", "Lvl"},
 		})
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		level := ld.extractLogLevelFromLogLine(logLine)
 		require.Equal(b, constants.LogLevelInfo, level)
 	}

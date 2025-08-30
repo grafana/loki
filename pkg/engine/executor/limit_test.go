@@ -151,7 +151,7 @@ func TestLimitPipeline_Skip_Fetch(t *testing.T) {
 	require.Equal(t, int64(4), batch.NumRows())
 
 	// Check values to ensure we got the right rows
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		expectedVal := string(rune('0' + 4 + i))
 		actualVal := batch.Column(0).ValueStr(i)
 		require.Equal(t, expectedVal, actualVal)

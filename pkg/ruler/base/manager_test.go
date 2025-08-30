@@ -42,7 +42,7 @@ func TestSyncRuleGroups(t *testing.T) {
 	mgr := getManager(m, user)
 	require.NotNil(t, mgr)
 
-	test.Poll(t, 1*time.Second, true, func() interface{} {
+	test.Poll(t, 1*time.Second, true, func() any {
 		return mgr.(*mockRulesManager).running.Load()
 	})
 
@@ -58,7 +58,7 @@ func TestSyncRuleGroups(t *testing.T) {
 	require.Nil(t, getManager(m, user))
 
 	// Make sure old manager was stopped.
-	test.Poll(t, 1*time.Second, false, func() interface{} {
+	test.Poll(t, 1*time.Second, false, func() any {
 		return mgr.(*mockRulesManager).running.Load()
 	})
 
@@ -76,7 +76,7 @@ func TestSyncRuleGroups(t *testing.T) {
 	require.NotNil(t, newMgr)
 	require.True(t, mgr != newMgr)
 
-	test.Poll(t, 1*time.Second, true, func() interface{} {
+	test.Poll(t, 1*time.Second, true, func() any {
 		return newMgr.(*mockRulesManager).running.Load()
 	})
 
@@ -89,7 +89,7 @@ func TestSyncRuleGroups(t *testing.T) {
 
 	m.Stop()
 
-	test.Poll(t, 1*time.Second, false, func() interface{} {
+	test.Poll(t, 1*time.Second, false, func() any {
 		return newMgr.(*mockRulesManager).running.Load()
 	})
 }

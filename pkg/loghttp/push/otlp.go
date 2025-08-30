@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -162,12 +164,9 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 					}
 
 					if !hasServiceName && shouldDiscoverServiceName {
-						for _, labelName := range discoverServiceName {
-							if lbl.Name == labelName {
-								streamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(lbl.Value)
-								hasServiceName = true
-								break
-							}
+						if slices.Contains(discoverServiceName, lbl.Name) {
+							streamLabels[model.LabelName(LabelServiceName)] = model.LabelValue(lbl.Value)
+							hasServiceName = true
 						}
 					}
 				}
@@ -324,12 +323,8 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				if len(logLabels) > 0 {
 					// Combine resource labels with log attributes
 					combinedLabels := make(model.LabelSet, len(streamLabels)+len(logLabels))
-					for k, v := range streamLabels {
-						combinedLabels[k] = v
-					}
-					for k, v := range logLabels {
-						combinedLabels[k] = v
-					}
+					maps.Copy(combinedLabels, streamLabels)
+					maps.Copy(combinedLabels, logLabels)
 
 					if err := combinedLabels.Validate(); err != nil {
 						stats.Errs = append(stats.Errs, fmt.Errorf("invalid labels with log attributes: %w", err))

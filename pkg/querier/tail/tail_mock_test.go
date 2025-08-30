@@ -93,11 +93,11 @@ func (c *tailClientMock) Context() context.Context {
 	return context.Background()
 }
 
-func (c *tailClientMock) SendMsg(_ interface{}) error {
+func (c *tailClientMock) SendMsg(_ any) error {
 	return nil
 }
 
-func (c *tailClientMock) RecvMsg(_ interface{}) error {
+func (c *tailClientMock) RecvMsg(_ any) error {
 	return nil
 }
 

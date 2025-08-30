@@ -462,7 +462,7 @@ func TestMetricStage_Process(t *testing.T) {
 		},
 	}
 	regexHTTPFixture := `11.11.11.11 - frank [25/Jan/2000:14:00:01 -0500] "GET /1986.js HTTP/1.1" 200 932ms"`
-	regexConfig := map[string]interface{}{
+	regexConfig := map[string]any{
 		"expression": "(?P<get>\"GET).*HTTP/1.1\" (?P<status>\\d*) (?P<time>\\d*ms)",
 	}
 	timeSource := "time"

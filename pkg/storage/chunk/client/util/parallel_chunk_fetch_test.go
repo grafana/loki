@@ -11,7 +11,7 @@ func BenchmarkGetParallelChunks(b *testing.B) {
 	ctx := context.Background()
 	in := make([]chunk.Chunk, 1024)
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		res, err := GetParallelChunks(ctx, 150, in,
 			func(_ context.Context, _ *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
 				return c, nil

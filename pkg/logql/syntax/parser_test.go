@@ -3495,7 +3495,7 @@ func Benchmark_PipelineCombined(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		line, lbs, matches = sp.Process(0, in, labels.EmptyLabels())
 	}
 	require.True(b, matches)
@@ -3529,7 +3529,7 @@ func Benchmark_MetricPipelineCombined(b *testing.B) {
 		)
 		b.ReportAllocs()
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			samples, matches = sp.Process(0, in, labels.EmptyLabels())
 		}
 
@@ -3570,7 +3570,7 @@ var c []*labels.Matcher
 func Benchmark_ParseMatchers(b *testing.B) {
 	s := `{cpu="10",endpoint="https",instance="10.253.57.87:9100",job="node-exporter",mode="idle",namespace="observability",pod="node-exporter-l454v",service="node-exporter"}`
 	var err error
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		c, err = ParseMatchers(s, true)
 		require.NoError(b, err)
 	}
@@ -3582,13 +3582,13 @@ func Benchmark_CompareParseLabels(b *testing.B) {
 	s := `{cpu="10",endpoint="https",instance="10.253.57.87:9100",job="node-exporter",mode="idle",namespace="observability",pod="node-exporter-l454v",service="node-exporter"}`
 	var err error
 	b.Run("logql", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			c, err = ParseMatchers(s, true)
 			require.NoError(b, err)
 		}
 	})
 	b.Run("promql", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
+		for b.Loop() {
 			lbs, err = ParseLabels(s)
 			require.NoError(b, err)
 		}

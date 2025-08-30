@@ -10,7 +10,7 @@ var (
 	ChunkMetasPool       PoolChunkMetas
 	chunkPageMarkersPool = poolChunkPageMarkers{
 		// pools of lengths 64->1024
-		pool: pool.New(64, 1024, 2, func(sz int) interface{} {
+		pool: pool.New(64, 1024, 2, func(sz int) any {
 			return make(chunkPageMarkers, 0, sz)
 		}),
 	}

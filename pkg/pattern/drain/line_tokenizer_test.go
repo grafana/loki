@@ -183,7 +183,7 @@ func BenchmarkSplittingTokenizer(b *testing.B) {
 		b.Run(tc.name, func(b *testing.B) {
 			b.ResetTimer()
 			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				tokenizer.Tokenize(tc.line, nil, nil, nil)
 			}
 		})

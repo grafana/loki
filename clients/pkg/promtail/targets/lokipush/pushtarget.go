@@ -235,7 +235,7 @@ func (t *PushTarget) Labels() model.LabelSet {
 }
 
 // Details returns target-specific details.
-func (t *PushTarget) Details() interface{} {
+func (t *PushTarget) Details() any {
 	return map[string]string{}
 }
 

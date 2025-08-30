@@ -75,7 +75,7 @@ func TestMatchPipeline(t *testing.T) {
 
 	// Process the second log line which should extract the output from the `msg` field
 	e.Line = testMatchLogLineApp2
-	e.Extracted = map[string]interface{}{}
+	e.Extracted = map[string]any{}
 	in <- e
 	e = <-out
 	assert.Equal(t, "app2 log line", e.Line)
@@ -159,7 +159,7 @@ func TestMatcher(t *testing.T) {
 			}
 			if s != nil {
 
-				out := processEntries(s, newEntry(map[string]interface{}{
+				out := processEntries(s, newEntry(map[string]any{
 					"test_label": "unimportant value",
 				}, toLabelSet(tt.labels), "foo", time.Now()))
 
@@ -193,12 +193,12 @@ func Test_validateMatcherConfig(t *testing.T) {
 		{"pipeline name required", &MatcherConfig{PipelineName: &empty}, true},
 		{"selector required", &MatcherConfig{PipelineName: &notempty, Selector: ""}, true},
 		{"nil stages without dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, Action: MatchActionKeep, Stages: nil}, true},
-		{"empty stages without dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, Action: MatchActionKeep, Stages: []interface{}{}}, true},
-		{"stages with dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, Action: MatchActionDrop, Stages: []interface{}{""}}, true},
-		{"empty stages dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, Action: MatchActionDrop, Stages: []interface{}{}}, false},
-		{"stages without dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, Action: MatchActionKeep, Stages: []interface{}{""}}, false},
-		{"bad selector", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo}`, Action: MatchActionKeep, Stages: []interface{}{""}}, true},
-		{"bad action", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo}`, Action: "nope", Stages: []interface{}{""}}, true},
+		{"empty stages without dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, Action: MatchActionKeep, Stages: []any{}}, true},
+		{"stages with dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, Action: MatchActionDrop, Stages: []any{""}}, true},
+		{"empty stages dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, Action: MatchActionDrop, Stages: []any{}}, false},
+		{"stages without dropping", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo"}`, Action: MatchActionKeep, Stages: []any{""}}, false},
+		{"bad selector", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo}`, Action: MatchActionKeep, Stages: []any{""}}, true},
+		{"bad action", &MatcherConfig{PipelineName: &notempty, Selector: `{app="foo}`, Action: "nope", Stages: []any{""}}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

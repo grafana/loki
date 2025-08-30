@@ -69,7 +69,7 @@ func BenchmarkReadlines(b *testing.B) {
 				cfg:     &scrapeconfig.DecompressionConfig{InitialDelay: 0, Format: "gz"},
 			}
 
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				newDec := decBase
 				newDec.metrics = NewMetrics(prometheus.NewRegistry())
 				newDec.done = make(chan struct{})

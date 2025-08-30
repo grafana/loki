@@ -10,7 +10,7 @@ type SlicePool[T any] struct {
 
 func NewSlicePool[T any](minSize, maxSize int, factor float64) *SlicePool[T] {
 	return &SlicePool[T]{
-		p: pool.New(minSize, maxSize, factor, func(i int) interface{} {
+		p: pool.New(minSize, maxSize, factor, func(i int) any {
 			return make([]T, 0, i)
 		}),
 	}

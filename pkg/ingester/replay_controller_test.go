@@ -47,7 +47,7 @@ func TestReplayController(t *testing.T) {
 	n := 5
 	wg.Add(n)
 
-	for i := 0; i < n; i++ {
+	for range n {
 		// In order to prevent all the goroutines from running before they've added bytes
 		// to the internal count, introduce a brief sleep.
 		time.Sleep(time.Millisecond)

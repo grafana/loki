@@ -202,7 +202,7 @@ func Benchmark_matcher_Matches(b *testing.B) {
 			require.NoError(b, err)
 			b.ResetTimer()
 			l := []byte(tt.in)
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				res = m.Matches(l)
 			}
 		})

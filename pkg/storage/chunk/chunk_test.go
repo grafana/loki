@@ -32,7 +32,7 @@ func dummyChunkForEncoding(now model.Time, metric labels.Labels, samples int) Ch
 	c := newDummyChunk()
 	chunkStart := now.Add(-time.Hour)
 
-	for i := 0; i < samples; i++ {
+	for i := range samples {
 		t := time.Duration(i) * 15 * time.Second
 		nc, err := c.Add(model.SamplePair{Timestamp: chunkStart.Add(t), Value: model.SampleValue(i)})
 		if err != nil {
@@ -205,18 +205,18 @@ func benchmarkDecode(b *testing.B, batchSize int) {
 
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		decodeContext := NewDecodeContext()
 		b.StopTimer()
 		chunks := make([]Chunk, batchSize)
 		// Copy across the metadata so the check works out ok
-		for j := 0; j < batchSize; j++ {
+		for j := range batchSize {
 			chunks[j] = chunk
 			chunks[j].Metric = labels.EmptyLabels()
 			chunks[j].Data = nil
 		}
 		b.StartTimer()
-		for j := 0; j < batchSize; j++ {
+		for j := range batchSize {
 			err := chunks[j].Decode(decodeContext, buf)
 			require.NoError(b, err)
 		}
@@ -236,21 +236,21 @@ func BenchmarkParseLegacyExternalKey(b *testing.B) {
 }
 
 func BenchmarkRootParseNewExternalKey(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := parseNewExternalKey("fake", "fake/57f628c7f6d57aad:162c699f000:162c69a07eb:eb242d99")
 		require.NoError(b, err)
 	}
 }
 
 func BenchmarkRootParseNewerExternalKey(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := parseNewerExternalKey("fake", "fake/57f628c7f6d57aad/162c699f000:162c69a07eb:eb242d99")
 		require.NoError(b, err)
 	}
 }
 
 func benchmarkParseExternalKey(b *testing.B, key string) {
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := ParseExternalKey("fake", key)
 		require.NoError(b, err)
 	}

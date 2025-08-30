@@ -81,7 +81,7 @@ type multilineState struct {
 }
 
 // newMultilineStage creates a MulitlineStage from config
-func newMultilineStage(logger log.Logger, config interface{}) (Stage, error) {
+func newMultilineStage(logger log.Logger, config any) (Stage, error) {
 	cfg := &MultilineConfig{}
 	err := mapstructure.WeakDecode(config, cfg)
 	if err != nil {

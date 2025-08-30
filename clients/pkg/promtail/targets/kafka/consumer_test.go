@@ -31,7 +31,7 @@ func (f *fakeTarget) Type() target.TargetType          { return "" }
 func (f *fakeTarget) DiscoveredLabels() model.LabelSet { return nil }
 func (f *fakeTarget) Labels() model.LabelSet           { return f.lbs }
 func (f *fakeTarget) Ready() bool                      { return true }
-func (f *fakeTarget) Details() interface{}             { return nil }
+func (f *fakeTarget) Details() any                     { return nil }
 
 func Test_ComsumerConsume(t *testing.T) {
 	var (

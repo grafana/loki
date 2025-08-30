@@ -20,19 +20,19 @@ import (
 
 var (
 	recordsPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			records := make([]logs.Record, 1024)
 			return &records
 		},
 	}
 	samplesPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			samples := make([]logproto.Sample, 0, 1024)
 			return &samples
 		},
 	}
 	entryWithLabelsPool = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			entries := make([]entryWithLabels, 0, 1024)
 			return &entries
 		},

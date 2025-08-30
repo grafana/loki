@@ -73,7 +73,7 @@ func (h HeaderAuth) IsEnabled() bool {
 }
 
 // WriteJSONResponse writes some JSON as a HTTP response.
-func WriteJSONResponse(w http.ResponseWriter, v interface{}) {
+func WriteJSONResponse(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 
 	data, err := json.Marshal(v)
@@ -89,7 +89,7 @@ func WriteJSONResponse(w http.ResponseWriter, v interface{}) {
 }
 
 // WriteYAMLResponse writes some YAML as a HTTP response.
-func WriteYAMLResponse(w http.ResponseWriter, v interface{}) {
+func WriteYAMLResponse(w http.ResponseWriter, v any) {
 	// There is not standardised content-type for YAML, text/plain ensures the
 	// YAML is displayed in the browser instead of offered as a download
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -124,7 +124,7 @@ func WriteHTMLResponse(w http.ResponseWriter, message string) {
 
 // RenderHTTPResponse either responds with json or a rendered html page using the passed in template
 // by checking the Accepts header
-func RenderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Template, r *http.Request) {
+func RenderHTTPResponse(w http.ResponseWriter, v any, t *template.Template, r *http.Request) {
 	accept := r.Header.Get("Accept")
 	if strings.Contains(accept, "application/json") {
 		WriteJSONResponse(w, v)
@@ -138,7 +138,7 @@ func RenderHTTPResponse(w http.ResponseWriter, v interface{}, t *template.Templa
 }
 
 // StreamWriteYAMLResponse stream writes data as http response
-func StreamWriteYAMLResponse(w http.ResponseWriter, iter chan interface{}, logger log.Logger) {
+func StreamWriteYAMLResponse(w http.ResponseWriter, iter chan any, logger log.Logger) {
 	w.Header().Set("Content-Type", "application/yaml")
 	for v := range iter {
 		data, err := yaml.Marshal(v)

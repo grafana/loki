@@ -122,7 +122,7 @@ func TestGatewayClient_RingMode(t *testing.T) {
 	s := 3  // shard size
 
 	nodes := make([]*mockIndexGatewayServer, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		nodes[i] = &mockIndexGatewayServer{}
 	}
 
@@ -143,7 +143,7 @@ func TestGatewayClient_RingMode(t *testing.T) {
 	t.Cleanup(func() { closer.Close() })
 
 	err := kvStore.CAS(context.Background(), ringKey,
-		func(_ interface{}) (interface{}, bool, error) {
+		func(_ any) (any, bool, error) {
 			return &ring.Desc{
 				Ingesters: nodeDescs,
 			}, true, nil
@@ -248,7 +248,7 @@ func TestGatewayClient(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
 	queries := []index.Query{}
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		queries = append(queries, index.Query{
 			TableName:        fmt.Sprintf("%s%d", tableNamePrefix, i),
 			HashValue:        fmt.Sprintf("%s%d", hashValuePrefix, i),

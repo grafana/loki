@@ -444,7 +444,7 @@ func (p *Planner) processTenantTaskResults(
 
 	var tasksSucceed int
 	newMetas := make([]bloomshipper.Meta, 0, totalTasks)
-	for i := 0; i < totalTasks; i++ {
+	for range totalTasks {
 		select {
 		case <-ctx.Done():
 			if err := ctx.Err(); err != nil && !errors.Is(err, context.Canceled) {

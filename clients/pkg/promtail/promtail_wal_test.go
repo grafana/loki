@@ -123,7 +123,7 @@ func TestPromtailWithWAL_SingleTenant(t *testing.T) {
 	writerWG.Add(1)
 	go func() {
 		defer writerWG.Done()
-		for i := 0; i < entriesToWrite; i++ {
+		for i := range entriesToWrite {
 			_, err = logsFile.WriteString(fmt.Sprintf("log line # %d\n", i))
 			if err != nil {
 				logCh <- fmt.Sprintf("error writing to log file. Err: %s", err.Error())
@@ -261,7 +261,7 @@ func TestPromtailWithWAL_MultipleTenants(t *testing.T) {
 	writerWG.Add(1)
 	go func() {
 		defer writerWG.Done()
-		for i := 0; i < entriesToWrite; i++ {
+		for i := range entriesToWrite {
 			logFunc(fmt.Sprintf("logging something %d", i), fmt.Sprint(i%expectedTenantCounts))
 		}
 	}()
@@ -276,7 +276,7 @@ func TestPromtailWithWAL_MultipleTenants(t *testing.T) {
 	// assert over received entries
 	require.Len(t, received, expectedTenantCounts, "not expected tenant count")
 	mu.Lock()
-	for tenantID := 0; tenantID < expectedTenantCounts; tenantID++ {
+	for tenantID := range expectedTenantCounts {
 		// we should've received at least entriesToWrite / expectedTenantCounts
 		require.GreaterOrEqual(t, len(received[fmt.Sprint(tenantID)][expectedLabelSet]), entriesToWrite/expectedTenantCounts)
 	}

@@ -48,7 +48,7 @@ func validateCounterConfig(config *CounterConfig) error {
 	return nil
 }
 
-func parseCounterConfig(config interface{}) (*CounterConfig, error) {
+func parseCounterConfig(config any) (*CounterConfig, error) {
 	cfg := &CounterConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -64,7 +64,7 @@ type Counters struct {
 }
 
 // NewCounters creates a new counter vec.
-func NewCounters(name, help string, config interface{}, maxIdleSec int64) (*Counters, error) {
+func NewCounters(name, help string, config any, maxIdleSec int64) (*Counters, error) {
 	cfg, err := parseCounterConfig(config)
 	if err != nil {
 		return nil, err

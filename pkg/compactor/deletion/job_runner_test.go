@@ -330,7 +330,7 @@ func TestJobRunner_Run_ConcurrentChunkProcessing(t *testing.T) {
 
 	var chks []storage_chunk.Chunk
 
-	for i := 0; i < 24; i++ {
+	for i := range 24 {
 		chkStart := yesterdaysTableInterval.Start.Add(time.Duration(i) * time.Hour)
 		chkEnd := chkStart.Add(time.Hour)
 		chk := createTestChunk(t, userID, lblFoo, chkStart, chkEnd, "test data", logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar")), time.Minute)

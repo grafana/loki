@@ -344,7 +344,7 @@ func Benchmark_DecodeMergeEncodeCycle(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		// Decode
 		qresps = qresps[:0]
 		for i, httpResp := range httpResponses {

@@ -487,7 +487,7 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 func (l *PatternParser) RequiredLabelNames() []string { return []string{} }
 
 type LogfmtExpressionParser struct {
-	expressions map[string][]interface{}
+	expressions map[string][]any
 	dec         *logfmt.Decoder
 	keys        internedStringSet
 	strict      bool
@@ -497,7 +497,7 @@ func NewLogfmtExpressionParser(expressions []LabelExtractionExpr, strict bool) (
 	if len(expressions) == 0 {
 		return nil, fmt.Errorf("no logfmt expression provided")
 	}
-	paths := make(map[string][]interface{}, len(expressions))
+	paths := make(map[string][]any, len(expressions))
 
 	for _, exp := range expressions {
 		path, err := logfmt.Parse(exp.Expression, false)
@@ -645,7 +645,7 @@ func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpression
 	}, nil
 }
 
-func JSONPathToStrings(paths []interface{}) []string {
+func JSONPathToStrings(paths []any) []string {
 	stringPaths := make([]string, 0, len(paths))
 	for _, p := range paths {
 		switch v := p.(type) {

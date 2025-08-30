@@ -326,12 +326,12 @@ func BenchmarkSortSampleIterator(b *testing.B) {
 		entriesCount = 10000
 		seriesCount  = 100
 	)
-	for i := 0; i < seriesCount; i++ {
+	for i := range seriesCount {
 		series = append(series, logproto.Series{
 			Labels: fmt.Sprintf(`{i="%d"}`, i),
 		})
 	}
-	for i := 0; i < entriesCount; i++ {
+	for i := range entriesCount {
 		series[i%seriesCount].Samples = append(series[i%seriesCount].Samples, logproto.Sample{
 			Timestamp: int64(seriesCount - i),
 			Value:     float64(i),
@@ -343,10 +343,10 @@ func BenchmarkSortSampleIterator(b *testing.B) {
 
 	b.Run("merge", func(b *testing.B) {
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			b.StopTimer()
 			var itrs []SampleIterator
-			for i := 0; i < seriesCount; i++ {
+			for i := range seriesCount {
 				itrs = append(itrs, NewSeriesIterator(series[i]))
 			}
 			b.StartTimer()
@@ -359,10 +359,10 @@ func BenchmarkSortSampleIterator(b *testing.B) {
 	})
 	b.Run("sort", func(b *testing.B) {
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			b.StopTimer()
 			var itrs []SampleIterator
-			for i := 0; i < seriesCount; i++ {
+			for i := range seriesCount {
 				itrs = append(itrs, NewSeriesIterator(series[i]))
 			}
 			b.StartTimer()

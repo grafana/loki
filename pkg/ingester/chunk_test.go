@@ -55,7 +55,7 @@ func TestIterator(t *testing.T) {
 	} {
 		t.Run(chk.name, func(t *testing.T) {
 			chunk := chk.new()
-			for i := int64(0); i < entries; i++ {
+			for i := range int64(entries) {
 				dup, err := chunk.Append(&logproto.Entry{
 					Timestamp: time.Unix(i, 0),
 					Line:      fmt.Sprintf("line %d", i),
@@ -64,7 +64,7 @@ func TestIterator(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			for i := 0; i < entries; i++ {
+			for range entries {
 				from := rand.Intn(entries - 1)
 				length := rand.Intn(entries-from) + 1
 				iter, err := chunk.Iterator(context.TODO(), time.Unix(int64(from), 0), time.Unix(int64(from+length), 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
@@ -73,7 +73,7 @@ func TestIterator(t *testing.T) {
 				_ = iter.Close()
 			}
 
-			for i := 0; i < entries; i++ {
+			for range entries {
 				from := rand.Intn(entries - 1)
 				length := rand.Intn(entries-from) + 1
 				iter, err := chunk.Iterator(context.TODO(), time.Unix(int64(from), 0), time.Unix(int64(from+length), 0), logproto.BACKWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))

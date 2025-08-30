@@ -341,7 +341,7 @@ func Benchmark_SyslogTarget(b *testing.B) {
 			b.ResetTimer()
 
 			c, _ := net.Dial(tt.protocol, addr)
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				_ = writeMessagesToStream(c, messages, tt.formatFunc)
 			}
 			c.Close()

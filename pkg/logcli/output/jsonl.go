@@ -18,7 +18,7 @@ type JSONLOutput struct {
 
 // Format a log entry as json line
 func (o *JSONLOutput) FormatAndPrintln(ts time.Time, lbls loghttp.LabelSet, _ int, line string) {
-	entry := map[string]interface{}{
+	entry := map[string]any{
 		"timestamp": ts.In(o.options.Timezone),
 		"line":      line,
 	}

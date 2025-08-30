@@ -70,7 +70,7 @@ func MkBasicSeriesWithBlooms(nSeries int, fromFp, throughFp model.Fingerprint, f
 	step := (throughFp - fromFp) / model.Fingerprint(nSeries)
 	timeDelta := time.Duration(throughTs.Sub(fromTs).Nanoseconds() / int64(numChunksPerSeries))
 
-	for i := 0; i < nSeries; i++ {
+	for i := range nSeries {
 		var series Series
 		var blooms []*Bloom
 
@@ -87,7 +87,7 @@ func MkBasicSeriesWithBlooms(nSeries int, fromFp, throughFp model.Fingerprint, f
 		keys := make([][]byte, 0, int(step))
 
 		chunkBatchSize := (series.Chunks.Len() + numBloomsPerSeries - 1) / numBloomsPerSeries
-		for j := 0; j < numBloomsPerSeries; j++ {
+		for j := range numBloomsPerSeries {
 			bloom := NewBloom()
 
 			batchStart, batchEnd := j*chunkBatchSize, min(series.Chunks.Len(), (j+1)*chunkBatchSize)

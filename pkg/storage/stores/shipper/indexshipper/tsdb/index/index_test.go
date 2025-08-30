@@ -455,7 +455,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 
 		sort.Strings(res)
 		require.Equal(t, len(v), len(res))
-		for i := 0; i < len(v); i++ {
+		for i := range v {
 			require.Equal(t, v[i], res[i])
 		}
 	}
@@ -514,7 +514,7 @@ func TestSymbols(t *testing.T) {
 	symbolsStart := buf.Len()
 	buf.PutBE32int(204) // Length of symbols table.
 	buf.PutBE32int(100) // Number of symbols.
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		// i represents index in unicode characters table.
 		buf.PutUvarintStr(string(rune(i))) // Symbol.
 	}
@@ -783,7 +783,7 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 			d.Be64()
 			k := d.Uvarint()
 
-			for i := 0; i < k; i++ {
+			for range k {
 				d.Uvarint()
 				d.Uvarint()
 			}
@@ -1010,7 +1010,7 @@ func BenchmarkInitReader_ReadOffsetTable(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		r, err := newReader(RealByteSlice(bs), io.NopCloser(nil))
 		require.NoError(b, err)
 		require.NoError(b, r.Close())

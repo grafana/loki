@@ -24,9 +24,9 @@ func server(t *testing.T, h *GRPCRequestHandler) (compactor_client_grpc.Compacto
 	buffer := 101024 * 1024
 	lis := bufconn.Listen(buffer)
 
-	baseServer := grpc.NewServer(grpc.ChainStreamInterceptor(func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	baseServer := grpc.NewServer(grpc.ChainStreamInterceptor(func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
-	}), grpc.ChainUnaryInterceptor(func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+	}), grpc.ChainUnaryInterceptor(func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 		return middleware.ServerUserHeaderInterceptor(ctx, req, info, handler)
 	}))
 

@@ -1436,7 +1436,7 @@ func BenchmarkQuerierDetectedFields(b *testing.B) {
 		limits,
 	)
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		ctx := context.Background()
 		ctx = user.InjectOrgID(ctx, "test-tenant")
 

@@ -191,7 +191,7 @@ func Test_BuilderLoop(t *testing.T) {
 
 			// Create builders and call planner.BuilderLoop
 			builders := make([]*fakeBuilder, 0, nBuilders)
-			for i := 0; i < nBuilders; i++ {
+			for i := range nBuilders {
 				builder := newMockBuilder(fmt.Sprintf("builder-%d", i))
 				builders = append(builders, builder)
 
@@ -214,7 +214,7 @@ func Test_BuilderLoop(t *testing.T) {
 			require.Equal(t, 0, planner.tasksQueue.TotalPending())
 
 			// consume all tasks result to free up the channel for the next round of tasks
-			for i := 0; i < nTasks; i++ {
+			for range nTasks {
 				<-resultsCh
 			}
 
@@ -403,8 +403,7 @@ func Test_processTenantTaskResults(t *testing.T) {
 			err = plannertest.PutMetas(bloomClient, tc.originalMetas)
 			require.NoError(t, err)
 
-			ctx, ctxCancel := context.WithCancel(context.Background())
-			defer ctxCancel()
+			ctx := t.Context()
 			resultsCh := make(chan *protos.TaskResult, len(tc.taskResults))
 
 			var wg sync.WaitGroup
@@ -757,7 +756,7 @@ func (f *fakeBuilder) Recv() (*protos.BuilderToPlanner, error) {
 func createTasks(n int, resultsCh chan *protos.TaskResult) []*QueueTask {
 	tasks := make([]*QueueTask, 0, n)
 	// Enqueue tasks
-	for i := 0; i < n; i++ {
+	for i := range n {
 		task := NewQueueTask(
 			context.Background(), time.Now(),
 			protos.NewTask(config.NewDayTable(plannertest.TestDay, "fake"), "fakeTenant", v1.NewBounds(model.Fingerprint(i), model.Fingerprint(i+10)), plannertest.TsdbID(1), nil).ToProtoTask(),

@@ -278,7 +278,7 @@ func benchmarkBitmapEncoder(b *testing.B, width int) {
 
 		b.ResetTimer()
 
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_ = enc.Encode(Uint64Value(1))
 		}
 		_ = enc.Flush()
@@ -291,7 +291,7 @@ func benchmarkBitmapEncoder(b *testing.B, width int) {
 		enc := newBitmapEncoder(&cw)
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for i := 0; b.Loop(); i++ {
 			_ = enc.Encode(Uint64Value(uint64(i % width)))
 		}
 		_ = enc.Flush()
@@ -306,7 +306,7 @@ func benchmarkBitmapEncoder(b *testing.B, width int) {
 		enc := newBitmapEncoder(&cw)
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_ = enc.Encode(Uint64Value(uint64(rnd.Int63()) % uint64(width)))
 		}
 		_ = enc.Flush()
@@ -333,13 +333,13 @@ func benchmarkBitmapDecoder(b *testing.B, width int) {
 			dec = newBitmapDecoder(&buf)
 		)
 
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_ = enc.Encode(Uint64Value(1))
 		}
 		_ = enc.Flush()
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = dec.decode()
 		}
 	})
@@ -352,13 +352,13 @@ func benchmarkBitmapDecoder(b *testing.B, width int) {
 			dec = newBitmapDecoder(&buf)
 		)
 
-		for i := 0; i < b.N; i++ {
+		for i := 0; b.Loop(); i++ {
 			_ = enc.Encode(Uint64Value(uint64(i % width)))
 		}
 		_ = enc.Flush()
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = dec.decode()
 		}
 	})
@@ -372,13 +372,13 @@ func benchmarkBitmapDecoder(b *testing.B, width int) {
 			dec = newBitmapDecoder(&buf)
 		)
 
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_ = enc.Encode(Uint64Value(uint64(rnd.Int63()) % uint64(width)))
 		}
 		_ = enc.Flush()
 
 		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			_, _ = dec.decode()
 		}
 	})
@@ -394,9 +394,9 @@ func Benchmark_bitmap_EncodeN(b *testing.B) {
 			var cw countingWriter
 			enc := newBitmapEncoder(&cw)
 
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				// Encode the same value multiple times
-				for j := 0; j < runLength; j++ {
+				for range runLength {
 					_ = enc.Encode(Uint64Value(42))
 				}
 				_ = enc.Flush()
@@ -408,7 +408,7 @@ func Benchmark_bitmap_EncodeN(b *testing.B) {
 			var cw countingWriter
 			enc := newBitmapEncoder(&cw)
 
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				// Encode the same value once with count
 				_ = enc.EncodeN(Uint64Value(42), uint64(runLength))
 				_ = enc.Flush()

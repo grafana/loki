@@ -36,7 +36,7 @@ func TestChunksBasic(t *testing.T) {
 
 		// Write a few batches of chunks.
 		written := []string{}
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			keys, chunks, err := testutils.CreateChunks(s, i, batchSize, model.Now().Add(-time.Hour), model.Now())
 			require.NoError(t, err)
 			written = append(written, keys...)
@@ -45,7 +45,7 @@ func TestChunksBasic(t *testing.T) {
 		}
 
 		// Get a few batches of chunks.
-		for batch := 0; batch < 50; batch++ {
+		for range 50 {
 			keysToGet := map[string]struct{}{}
 			chunksToGet := []chunk.Chunk{}
 			for len(chunksToGet) < batchSize {
@@ -65,7 +65,7 @@ func TestChunksBasic(t *testing.T) {
 
 			sort.Sort(ByKey{chunksToGet, s})
 			sort.Sort(ByKey{chunksWeGot, s})
-			for i := 0; i < len(chunksWeGot); i++ {
+			for i := range chunksWeGot {
 				require.Equal(t, s.ExternalKey(chunksToGet[i].ChunkRef), s.ExternalKey(chunksWeGot[i].ChunkRef), strconv.Itoa(i))
 			}
 		}

@@ -249,7 +249,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 				},
 			},
 		})
-		for i := 0; i < 30; i++ {
+		for i := range 30 {
 			err = inst.Push(context.Background(), &push.PushRequest{
 				Streams: []push.Stream{
 					{

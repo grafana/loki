@@ -109,7 +109,7 @@ func BenchmarkEncodeDecode(b *testing.B) {
 	stream := generateStream(1000, 200)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		records, err := Encode(0, "test-tenant", stream, 10<<20)
 		if err != nil {
 			b.Fatal(err)
@@ -130,7 +130,7 @@ func generateStream(entries, lineLength int) logproto.Stream {
 		Entries: make([]logproto.Entry, entries),
 	}
 
-	for i := 0; i < entries; i++ {
+	for i := range entries {
 		stream.Entries[i] = logproto.Entry{
 			Timestamp: time.Now(),
 			Line:      generateRandomString(lineLength),

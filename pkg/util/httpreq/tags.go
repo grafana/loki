@@ -77,7 +77,7 @@ func ExtractQueryMetricsMiddleware() middleware.Interface {
 // e.g: `Source=foo,Feature=beta` -> []interface{}{"source", "foo", "feature", "beta"}
 // so that we could log nicely!
 // If queryTags is not in canonical form then its completely ignored (e.g: `key1=value1,key2=value`)
-func TagsToKeyValues(queryTags string) []interface{} {
+func TagsToKeyValues(queryTags string) []any {
 	toks := strings.FieldsFunc(queryTags, func(r rune) bool {
 		return r == ','
 	})
@@ -95,7 +95,7 @@ func TagsToKeyValues(queryTags string) []interface{} {
 		vals = append(vals, strings.ToLower(val[0]), val[1])
 	}
 
-	res := make([]interface{}, 0, len(vals))
+	res := make([]any, 0, len(vals))
 
 	for _, val := range vals {
 		res = append(res, val)

@@ -162,7 +162,7 @@ func (ns *NamedStores) OverrideConfig(storeCfg *Config, namedStore string) error
 type NamedS3StorageConfig s3.Config
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedS3StorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedS3StorageConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	flagext.DefaultValues((*s3.Config)(cfg))
 	return unmarshal((*s3.Config)(cfg))
 }
@@ -174,7 +174,7 @@ func (cfg *NamedS3StorageConfig) Validate() error {
 type NamedGCSStorageConfig gcs.Config
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedGCSStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedGCSStorageConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	flagext.DefaultValues((*gcs.Config)(cfg))
 	return unmarshal((*gcs.Config)(cfg))
 }
@@ -182,7 +182,7 @@ func (cfg *NamedGCSStorageConfig) UnmarshalYAML(unmarshal func(interface{}) erro
 type NamedAzureStorageConfig azure.Config
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedAzureStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedAzureStorageConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	flagext.DefaultValues((*azure.Config)(cfg))
 	return unmarshal((*azure.Config)(cfg))
 }
@@ -190,7 +190,7 @@ func (cfg *NamedAzureStorageConfig) UnmarshalYAML(unmarshal func(interface{}) er
 type NamedSwiftStorageConfig swift.Config
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedSwiftStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedSwiftStorageConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	flagext.DefaultValues((*swift.Config)(cfg))
 	return unmarshal((*swift.Config)(cfg))
 }
@@ -198,7 +198,7 @@ func (cfg *NamedSwiftStorageConfig) UnmarshalYAML(unmarshal func(interface{}) er
 type NamedFilesystemStorageConfig filesystem.Config
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
-func (cfg *NamedFilesystemStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (cfg *NamedFilesystemStorageConfig) UnmarshalYAML(unmarshal func(any) error) error {
 	flagext.DefaultValues((*filesystem.Config)(cfg))
 	return unmarshal((*filesystem.Config)(cfg))
 }

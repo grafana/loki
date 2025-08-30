@@ -373,7 +373,7 @@ func (c *Component) MergedConfig() ([]byte, error) {
 	periodStart := config.DayTime{Time: c.cluster.initedAt.Add(-24 * time.Hour)}
 	additionalPeriodStart := config.DayTime{Time: c.cluster.initedAt.Add(-7 * 24 * time.Hour)}
 
-	if err := configTemplate.Execute(&sb, map[string]interface{}{
+	if err := configTemplate.Execute(&sb, map[string]any{
 		"dataPath":       c.dataPath,
 		"sharedDataPath": c.cluster.sharedPath,
 	}); err != nil {
@@ -391,7 +391,7 @@ func (c *Component) MergedConfig() ([]byte, error) {
 	for _, periodCfg := range c.cluster.periodCfgs {
 		var buf bytes.Buffer
 		if err := template.Must(template.New("schema").Parse(periodCfg)).
-			Execute(&buf, map[string]interface{}{
+			Execute(&buf, map[string]any{
 				"curPeriodStart":        periodStart.String(),
 				"additionalPeriodStart": additionalPeriodStart.String(),
 				"schemaVer":             c.cluster.schemaVer,

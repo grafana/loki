@@ -39,7 +39,7 @@ func validateLabelsConfig(c LabelsConfig) error {
 }
 
 // newLabelStage creates a new label stage to set labels from extracted data
-func newLabelStage(logger log.Logger, configs interface{}) (Stage, error) {
+func newLabelStage(logger log.Logger, configs any) (Stage, error) {
 	cfgs := &LabelsConfig{}
 	err := mapstructure.Decode(configs, cfgs)
 	if err != nil {
@@ -62,7 +62,7 @@ type labelStage struct {
 }
 
 // Process implements Stage
-func (l *labelStage) Process(labels model.LabelSet, extracted map[string]interface{}, _ *time.Time, _ *string) {
+func (l *labelStage) Process(labels model.LabelSet, extracted map[string]any, _ *time.Time, _ *string) {
 	processLabelsConfigs(l.logger, extracted, l.cfgs, func(_, labelName model.LabelName, labelValue model.LabelValue) {
 		labels[labelName] = labelValue
 	})
@@ -70,7 +70,7 @@ func (l *labelStage) Process(labels model.LabelSet, extracted map[string]interfa
 
 type labelsConsumer func(source, labelName model.LabelName, labelValue model.LabelValue)
 
-func processLabelsConfigs(logger log.Logger, extracted map[string]interface{}, configs LabelsConfig, consumer labelsConsumer) {
+func processLabelsConfigs(logger log.Logger, extracted map[string]any, configs LabelsConfig, consumer labelsConsumer) {
 	for lName, lSrc := range configs {
 		source := *lSrc
 		if lValue, ok := extracted[source]; ok {

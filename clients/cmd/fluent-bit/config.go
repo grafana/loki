@@ -50,7 +50,7 @@ type config struct {
 	labelKeys            []string
 	lineFormat           format
 	dropSingleKey        bool
-	labelMap             map[string]interface{}
+	labelMap             map[string]any
 }
 
 func parseConfig(cfg ConfigGetter) (*config, error) {

@@ -101,13 +101,13 @@ func newOwnedStreamsIngesterStrategy(ingesterID string, ingestersRing ring.ReadR
 		ingesterID:    ingesterID,
 		ingestersRing: ingestersRing,
 		logger:        logger,
-		descsBufPool: sync.Pool{New: func() interface{} {
+		descsBufPool: sync.Pool{New: func() any {
 			return make([]ring.InstanceDesc, ingestersRing.ReplicationFactor()+1)
 		}},
-		hostsBufPool: sync.Pool{New: func() interface{} {
+		hostsBufPool: sync.Pool{New: func() any {
 			return make([]string, ingestersRing.ReplicationFactor()+1)
 		}},
-		zoneBufPool: sync.Pool{New: func() interface{} {
+		zoneBufPool: sync.Pool{New: func() any {
 			return make([]string, ingestersRing.ZonesCount()+1)
 		}},
 	}

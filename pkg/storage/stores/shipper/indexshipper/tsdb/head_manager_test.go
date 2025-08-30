@@ -273,7 +273,7 @@ func Test_HeadManager_RecoverHead_CorruptedWAL(t *testing.T) {
 			name: "last record torn",
 			setupFunc: func(t *testing.T, walPath string, w *headWAL) {
 				// write enough records to fill a WAL page.
-				for i := 0; i < 1000; i++ {
+				for i := range 1000 {
 					require.Nil(t, w.Log(&WALRecord{
 						UserID:      "tenant1",
 						Fingerprint: labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`)),
@@ -747,7 +747,7 @@ func BenchmarkTenantHeads(b *testing.B) {
 			heads := newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger())
 			// 1000 series across 100 tenants
 			nTenants := 10
-			for i := 0; i < 1000; i++ {
+			for i := range 1000 {
 				tenant := i % nTenants
 				ls := mustParseLabels(fmt.Sprintf(`{foo="bar", i="%d"}`, i))
 				heads.Append(fmt.Sprint(tenant), ls, labels.StableHash(ls), index.ChunkMetas{
@@ -755,7 +755,7 @@ func BenchmarkTenantHeads(b *testing.B) {
 				})
 			}
 
-			for n := 0; n < b.N; n++ {
+			for b.Loop() {
 				var wg sync.WaitGroup
 				for r := 0; r < tc.readers; r++ {
 					wg.Add(1)

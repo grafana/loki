@@ -97,7 +97,7 @@ func TestLokiPushTarget(t *testing.T) {
 		"stream":             "stream1",
 		"__anotherdroplabel": "dropme",
 	}
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		pc.Chan() <- api.Entry{
 			Labels: labels,
 			Entry: logproto.Entry{
@@ -183,7 +183,7 @@ func TestPlaintextPushTarget(t *testing.T) {
 	// Send some logs
 	ts := time.Now()
 	body := new(bytes.Buffer)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		body.WriteString("line" + strconv.Itoa(i))
 		_, err := http.Post(fmt.Sprintf("http://%s:%d/promtail/api/v1/raw", localhost, port), "text/json", body)
 		require.NoError(t, err)

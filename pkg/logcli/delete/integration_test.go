@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -342,12 +343,7 @@ func (m *workflowMockClient) GetDetectedFields(string, string, int, int, time.Ti
 
 // Helper functions
 func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slice, item)
 }
 
 func parseInt64(s string) int64 {

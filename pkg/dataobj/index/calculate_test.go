@@ -107,7 +107,7 @@ func TestCalculator_Calculate(t *testing.T) {
 		require.NoError(t, err)
 
 		calculator := NewCalculator(indexBuilder)
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			obj := createTestLogObject(t)
 
 			err = calculator.Calculate(context.Background(), logger, obj, fmt.Sprintf("test/path-%d", i))

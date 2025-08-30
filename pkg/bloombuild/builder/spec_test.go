@@ -33,7 +33,7 @@ func blocksFromSchemaWithRange(t *testing.T, n int, options v1.BlockOptions, fro
 
 	seriesPerBlock := numSeries / n
 
-	for i := 0; i < n; i++ {
+	for i := range n {
 		// references for linking in memory reader+writer
 		indexBuf := bytes.NewBuffer(nil)
 		bloomsBuf := bytes.NewBuffer(nil)

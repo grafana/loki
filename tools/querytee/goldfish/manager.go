@@ -183,7 +183,7 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 	}
 
 	// Build log fields
-	logFields := []interface{}{
+	logFields := []any{
 		"msg", "query comparison completed",
 		"correlation_id", correlationID,
 		"tenant", sample.TenantID,

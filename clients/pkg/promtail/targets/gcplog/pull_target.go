@@ -161,7 +161,7 @@ func (t *pullTarget) Labels() model.LabelSet {
 	return t.config.Labels
 }
 
-func (t *pullTarget) Details() interface{} {
+func (t *pullTarget) Details() any {
 	return nil
 }
 

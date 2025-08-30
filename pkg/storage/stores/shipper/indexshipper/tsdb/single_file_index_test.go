@@ -250,7 +250,7 @@ func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		chkRefs, err := tsdbIndex.GetChunkRefs(context.Background(), "fake", queryFrom, queryThrough, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		require.NoError(b, err)
 		require.Len(b, chkRefs, numChunksToMatch*2)
@@ -748,7 +748,7 @@ func TestTSDBIndex_Volume(t *testing.T) {
 
 func BenchmarkTSDBIndex_Volume(b *testing.B) {
 	var series []LoadableSeries
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		series = append(series, LoadableSeries{
 			Labels: mustParseLabels(fmt.Sprintf(`{foo="bar", fizz="fizz%d", buzz="buzz%d",bar="bar%d", bozz="bozz%d"}`, i, i, i, i)),
 			Chunks: []index.ChunkMeta{
@@ -778,7 +778,7 @@ func BenchmarkTSDBIndex_Volume(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		acc := seriesvolume.NewAccumulator(10, 10)
 		err := tsdbIndex.Volume(ctx, "fake", from, through, acc, nil, nil, nil, seriesvolume.Series, labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"))
 		require.NoError(b, err)

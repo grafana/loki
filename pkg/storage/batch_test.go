@@ -1780,7 +1780,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 	b.ResetTimer()
 	statsCtx, ctx := stats.NewContext(user.InjectOrgID(context.Background(), "fake"))
 	start := time.Now()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		it, err := st.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
 			Selector:  `{foo="bar"}`,
 			Direction: logproto.BACKWARD,

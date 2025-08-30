@@ -159,7 +159,7 @@ func Benchmark_RangeVectorIteratorCompare(b *testing.B) {
 
 	b.Run("streaming agg", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			it, err := buildStreamingIt()
 			if err != nil {
 				b.Fatal(err)
@@ -172,7 +172,7 @@ func Benchmark_RangeVectorIteratorCompare(b *testing.B) {
 
 	b.Run("batch agg", func(b *testing.B) {
 		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
+		for b.Loop() {
 			it, err := buildBatchIt()
 			if err != nil {
 				b.Fatal(err)
@@ -199,7 +199,7 @@ func Benchmark_RangeVectorIterator(b *testing.B) {
 		time.Unix(100, 0),
 	}
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		i := 0
 		it, err := newRangeVectorIterator(newfakePeekingSampleIterator(samples),
 			&syntax.RangeAggregationExpr{Operation: syntax.OpRangeTypeCount}, tt.selRange,
@@ -609,7 +609,7 @@ func TestQuantiles(t *testing.T) {
 						r := rand.New(rand.NewSource(42))
 						z := rand.NewZipf(r, s, v, 1_000)
 						values := make(vector.HeapByMaxValue, 0)
-						for i := 0; i < samplesCount; i++ {
+						for range samplesCount {
 
 							value := float64(z.Uint64())
 							values = append(values, promql.Sample{F: value})

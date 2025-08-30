@@ -507,7 +507,7 @@ func TestCompactor_Compact(t *testing.T) {
 					// setup multi-tenant indexes
 					for _, multiTenantIndexConfig := range tc.multiTenantIndexConfigs {
 						userStreams := map[string][]stream{}
-						for i := 0; i < numUsers; i++ {
+						for i := range numUsers {
 							userID := buildUserID(i)
 							userStreams[userID] = []stream{}
 
@@ -528,7 +528,7 @@ func TestCompactor_Compact(t *testing.T) {
 
 					// setup per-tenant indexes i.e compacted ones
 					for _, perTenantIndexConfig := range tc.perTenantIndexConfigs {
-						for i := 0; i < numUsers; i++ {
+						for i := range numUsers {
 							userID := buildUserID(i)
 
 							var streams []stream

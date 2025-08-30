@@ -84,16 +84,15 @@ func Benchmark_FlushLoop(b *testing.B) {
 		_, ing = newTestStore(b, defaultIngesterTestConfig(b), nil)
 	)
 
-	for i := 0; i < size; i++ {
+	for range size {
 		descs = append(descs, buildChunkDecs(b))
 	}
 
-	b.ResetTimer()
 	b.ReportAllocs()
 
-	for n := 0; n < b.N; n++ {
+	for b.Loop() {
 		var wg sync.WaitGroup
-		for i := 0; i < size; i++ {
+		for i := range size {
 			wg.Add(1)
 			go func(loop int) {
 				defer wg.Done()
@@ -542,14 +541,14 @@ func pushTestSamples(t *testing.T, ing logproto.PusherServer) map[string][]logpr
 
 func buildTestStreams(offset int) []logproto.Stream {
 	var m []logproto.Stream
-	for i := 0; i < numSeries; i++ {
+	for i := range numSeries {
 		ss := logproto.Stream{
 			Labels: model.Metric{
 				"name":         model.LabelValue(fmt.Sprintf("testmetric_%d", i)),
 				model.JobLabel: "testjob",
 			}.String(),
 		}
-		for j := 0; j < samplesPerSeries; j++ {
+		for j := range samplesPerSeries {
 			ss.Entries = append(ss.Entries, logproto.Entry{
 				Timestamp: time.Unix(int64(i+j+offset), 0),
 				Line:      "line",

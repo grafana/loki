@@ -28,7 +28,7 @@ type eventLogMessageStage struct {
 }
 
 // Create a event log message stage, including validating any supplied configuration
-func newEventLogMessageStage(logger log.Logger, config interface{}) (Stage, error) {
+func newEventLogMessageStage(logger log.Logger, config any) (Stage, error) {
 	cfg, err := parseEventLogMessageConfig(config)
 	if err != nil {
 		return nil, err
@@ -45,7 +45,7 @@ func newEventLogMessageStage(logger log.Logger, config interface{}) (Stage, erro
 }
 
 // Parse the event log message configuration, creating a default configuration struct otherwise
-func parseEventLogMessageConfig(config interface{}) (*EventLogMessageConfig, error) {
+func parseEventLogMessageConfig(config any) (*EventLogMessageConfig, error) {
 	cfg := &EventLogMessageConfig{}
 	err := mapstructure.Decode(config, cfg)
 	if err != nil {
@@ -87,7 +87,7 @@ func (m *eventLogMessageStage) Run(in chan Entry) chan Entry {
 
 // Process a event log message from extracted with the specified key, adding additional
 // entries into the extracted map
-func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, key string) error {
+func (m *eventLogMessageStage) processEntry(extracted map[string]any, key string) error {
 	value, ok := extracted[key]
 	if !ok {
 		if Debug {
@@ -100,8 +100,8 @@ func (m *eventLogMessageStage) processEntry(extracted map[string]interface{}, ke
 		level.Warn(m.logger).Log("msg", "invalid label value parsed", "value", value)
 		return err
 	}
-	lines := strings.Split(s, "\r\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(s, "\r\n")
+	for line := range lines {
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) < 2 {
 			level.Warn(m.logger).Log("msg", "invalid line parsed from message", "line", line)

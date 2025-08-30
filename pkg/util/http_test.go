@@ -123,7 +123,7 @@ func TestStreamWriteYAMLResponse(t *testing.T) {
 	w := httptest.NewRecorder()
 
 	done := make(chan struct{})
-	iter := make(chan interface{})
+	iter := make(chan any)
 	go func() {
 		util.StreamWriteYAMLResponse(w, iter, util_log.Logger)
 		close(done)

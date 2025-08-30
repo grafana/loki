@@ -343,7 +343,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry, usa
 
 	var invalid []entryWithError
 	storedEntries := make([]logproto.Entry, 0, len(entries))
-	for i := 0; i < len(entries); i++ {
+	for i := range entries {
 		chunk := &s.chunks[len(s.chunks)-1]
 		if chunk.closed || !chunk.chunk.SpaceFor(&entries[i]) || s.cutChunkForSynchronization(entries[i].Timestamp, s.highestTs, chunk, s.cfg.SyncPeriod, s.cfg.SyncMinUtilization) {
 			chunk = s.cutChunk(ctx)

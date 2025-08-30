@@ -229,7 +229,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 	linesReceivedStats.Inc(totalNumLines)
 	mostRecentLagMs := time.Since(pushStats.MostRecentEntryTimestamp).Milliseconds()
 
-	logValues := []interface{}{
+	logValues := []any{
 		"msg", "push request parsed",
 		"path", r.URL.Path,
 		"contentType", pushStats.ContentType,

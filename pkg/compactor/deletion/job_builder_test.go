@@ -537,7 +537,7 @@ func mustMarshalPayload(job *deletionproto.DeletionJob) []byte {
 
 func buildStorageUpdates(jobNumStart, numJobs int) deletionproto.StorageUpdates {
 	s := deletionproto.StorageUpdates{}
-	for i := 0; i < numJobs; i++ {
+	for i := range numJobs {
 		jobNum := jobNumStart + i
 		s.ChunksToDelete = append(s.ChunksToDelete, fmt.Sprintf("%d-d", jobNum))
 		s.ChunksToDeIndex = append(s.ChunksToDeIndex, fmt.Sprintf("%d-i", jobNum))

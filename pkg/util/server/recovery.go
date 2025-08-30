@@ -52,7 +52,7 @@ var (
 	})
 )
 
-func onPanic(p interface{}) error {
+func onPanic(p any) error {
 	stack := make([]byte, maxStacksize)
 	stack = stack[:runtime.Stack(stack, true)]
 	// keep a multiline stack

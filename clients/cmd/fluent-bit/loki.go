@@ -47,7 +47,7 @@ func newPlugin(cfg *config, logger log.Logger, metrics *client.Metrics) (*loki, 
 }
 
 // sendRecord send fluentbit records to loki as an entry.
-func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
+func (l *loki) sendRecord(r map[any]any, ts time.Time) error {
 	records := toStringMap(r)
 	level.Debug(l.logger).Log("msg", "processing records", "records", fmt.Sprintf("%+v", records))
 	lbs := model.LabelSet{}
@@ -93,15 +93,15 @@ func (l *loki) sendRecord(r map[interface{}]interface{}, ts time.Time) error {
 
 // prevent base64-encoding []byte values (default json.Encoder rule) by
 // converting them to strings
-func toStringSlice(slice []interface{}) []interface{} {
-	var s []interface{}
+func toStringSlice(slice []any) []any {
+	var s []any
 	for _, v := range slice {
 		switch t := v.(type) {
 		case []byte:
 			s = append(s, string(t))
-		case map[interface{}]interface{}:
+		case map[any]any:
 			s = append(s, toStringMap(t))
-		case []interface{}:
+		case []any:
 			s = append(s, toStringSlice(t))
 		default:
 			s = append(s, t)
@@ -110,8 +110,8 @@ func toStringSlice(slice []interface{}) []interface{} {
 	return s
 }
 
-func toStringMap(record map[interface{}]interface{}) map[string]interface{} {
-	m := make(map[string]interface{})
+func toStringMap(record map[any]any) map[string]any {
+	m := make(map[string]any)
 	for k, v := range record {
 		key, ok := k.(string)
 		if !ok {
@@ -120,9 +120,9 @@ func toStringMap(record map[interface{}]interface{}) map[string]interface{} {
 		switch t := v.(type) {
 		case []byte:
 			m[key] = string(t)
-		case map[interface{}]interface{}:
+		case map[any]any:
 			m[key] = toStringMap(t)
-		case []interface{}:
+		case []any:
 			m[key] = toStringSlice(t)
 		default:
 			m[key] = v
@@ -132,16 +132,16 @@ func toStringMap(record map[interface{}]interface{}) map[string]interface{} {
 	return m
 }
 
-func autoLabels(records map[string]interface{}, kuberneteslbs model.LabelSet) error {
+func autoLabels(records map[string]any, kuberneteslbs model.LabelSet) error {
 	kube, ok := records["kubernetes"]
 	if !ok {
 		return errors.New("kubernetes labels not found, no labels will be added")
 	}
 
-	for k, v := range kube.(map[string]interface{}) {
+	for k, v := range kube.(map[string]any) {
 		switch k {
 		case "labels":
-			for m, n := range v.(map[string]interface{}) {
+			for m, n := range v.(map[string]any) {
 				kuberneteslbs[model.LabelName(keyReplacer.Replace(m))] = model.LabelValue(fmt.Sprintf("%v", n))
 			}
 		case "docker_id", "pod_id", "annotations":
@@ -155,7 +155,7 @@ func autoLabels(records map[string]interface{}, kuberneteslbs model.LabelSet) er
 	return nil
 }
 
-func extractLabels(records map[string]interface{}, keys []string) model.LabelSet {
+func extractLabels(records map[string]any, keys []string) model.LabelSet {
 	res := model.LabelSet{}
 	for _, k := range keys {
 		v, ok := records[k]
@@ -177,12 +177,12 @@ func extractLabels(records map[string]interface{}, keys []string) model.LabelSet
 }
 
 // mapLabels convert records into labels using a json map[string]interface{} mapping
-func mapLabels(records map[string]interface{}, mapping map[string]interface{}, res model.LabelSet) {
+func mapLabels(records map[string]any, mapping map[string]any, res model.LabelSet) {
 	for k, v := range mapping {
 		switch nextKey := v.(type) {
 		// if the next level is a map we are expecting we need to move deeper in the tree
-		case map[string]interface{}:
-			if nextValue, ok := records[k].(map[string]interface{}); ok {
+		case map[string]any:
+			if nextValue, ok := records[k].(map[string]any); ok {
 				// recursively search through the next level map.
 				mapLabels(nextValue, nextKey, res)
 			}
@@ -199,7 +199,7 @@ func mapLabels(records map[string]interface{}, mapping map[string]interface{}, r
 	}
 }
 
-func getRecordValue(key string, records map[string]interface{}) (string, bool) {
+func getRecordValue(key string, records map[string]any) (string, bool) {
 	if value, ok := records[key]; ok {
 		switch typedVal := value.(type) {
 		case string:
@@ -213,18 +213,18 @@ func getRecordValue(key string, records map[string]interface{}) (string, bool) {
 	return "", false
 }
 
-func removeKeys(records map[string]interface{}, keys []string) {
+func removeKeys(records map[string]any, keys []string) {
 	for _, k := range keys {
 		delete(records, k)
 	}
 }
 
-func (l *loki) createLine(records map[string]interface{}, f format) (string, error) {
+func (l *loki) createLine(records map[string]any, f format) (string, error) {
 	switch f {
 	case jsonFormat:
 		for k, v := range records {
 			if s, ok := v.(string); ok && (strings.Contains(s, "{") || strings.Contains(s, "[")) {
-				var data interface{}
+				var data any
 				err := json.Unmarshal([]byte(s), &data)
 				if err != nil {
 					// keep this debug as it can be very verbose

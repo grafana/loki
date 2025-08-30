@@ -373,7 +373,7 @@ func (s *SeriesWithMeta) Decode(
 
 	n := dec.Uvarint()
 	s.Fields = NewSet[Field](n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		var f Field
 		err = f.Decode(dec, version)
 		if err != nil {

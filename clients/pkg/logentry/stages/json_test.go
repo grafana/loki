@@ -54,12 +54,12 @@ func TestPipeline_JSON(t *testing.T) {
 	tests := map[string]struct {
 		config          string
 		entry           string
-		expectedExtract map[string]interface{}
+		expectedExtract map[string]any
 	}{
 		"successfully run a pipeline with 1 json stage without source": {
 			testJSONYamlSingleStageWithoutSource,
 			testJSONLogLine,
-			map[string]interface{}{
+			map[string]any{
 				"out":      "this is a log line",
 				"app":      "loki",
 				"nested":   "{\"child\":\"value\"}",
@@ -70,7 +70,7 @@ func TestPipeline_JSON(t *testing.T) {
 		"successfully run a pipeline with 2 json stages with source": {
 			testJSONYamlMultiStageWithSource,
 			testJSONLogLine,
-			map[string]interface{}{
+			map[string]any{
 				"extra": "{\"user\":\"marco\"}",
 				"user":  "marco",
 			},
@@ -99,10 +99,10 @@ func TestYamlMapStructure(t *testing.T) {
 	t.Parallel()
 
 	// testing that we can use yaml data into mapstructure.
-	var mapstruct map[interface{}]interface{}
+	var mapstruct map[any]any
 	err := yaml.Unmarshal([]byte(cfg), &mapstruct)
 	assert.NoError(t, err, "error while un-marshalling config: %s", err)
-	p, ok := mapstruct["json"].(map[interface{}]interface{})
+	p, ok := mapstruct["json"].(map[any]any)
 	assert.True(t, ok, "could not read parser %+v", mapstruct["json"])
 	got, err := parseJSONConfig(p)
 	assert.NoError(t, err, "could not create parser from yaml: %s", err)
@@ -119,7 +119,7 @@ func TestJSONConfig_validate(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		config        interface{}
+		config        any
 		wantExprCount int
 		err           error
 	}{
@@ -129,13 +129,13 @@ func TestJSONConfig_validate(t *testing.T) {
 			errors.New(ErrExpressionsRequired),
 		},
 		"no expressions": {
-			map[string]interface{}{},
+			map[string]any{},
 			0,
 			errors.New(ErrExpressionsRequired),
 		},
 		"invalid expression": {
-			map[string]interface{}{
-				"expressions": map[string]interface{}{
+			map[string]any{
+				"expressions": map[string]any{
 					"extr1": "3##@$#33",
 				},
 			},
@@ -143,8 +143,8 @@ func TestJSONConfig_validate(t *testing.T) {
 			errors.Wrap(errors.New("SyntaxError: Unknown char: '#'"), ErrCouldNotCompileJMES),
 		},
 		"empty source": {
-			map[string]interface{}{
-				"expressions": map[string]interface{}{
+			map[string]any{
+				"expressions": map[string]any{
 					"extr1": "expr",
 				},
 				"source": "",
@@ -153,7 +153,7 @@ func TestJSONConfig_validate(t *testing.T) {
 			errors.New(ErrEmptyJSONStageSource),
 		},
 		"valid without source": {
-			map[string]interface{}{
+			map[string]any{
 				"expressions": map[string]string{
 					"expr1": "expr",
 					"expr2": "",
@@ -164,7 +164,7 @@ func TestJSONConfig_validate(t *testing.T) {
 			nil,
 		},
 		"valid with source": {
-			map[string]interface{}{
+			map[string]any{
 				"expressions": map[string]string{
 					"expr1": "expr",
 					"expr2": "",
@@ -214,13 +214,13 @@ var logFixture = `
 func TestJSONParser_Parse(t *testing.T) {
 	t.Parallel()
 	tests := map[string]struct {
-		config          interface{}
-		extracted       map[string]interface{}
+		config          any
+		extracted       map[string]any
 		entry           string
-		expectedExtract map[string]interface{}
+		expectedExtract map[string]any
 	}{
 		"successfully decode json on entry": {
-			map[string]interface{}{
+			map[string]any{
 				"expressions": map[string]string{
 					"time":      "",
 					"app":       "",
@@ -234,9 +234,9 @@ func TestJSONParser_Parse(t *testing.T) {
 					"complex":   "complex.log.array[1].test3",
 				},
 			},
-			map[string]interface{}{},
+			map[string]any{},
 			logFixture,
-			map[string]interface{}{
+			map[string]any{
 				"time":      "2012-11-01T22:08:41+00:00",
 				"app":       "loki",
 				"component": "[\"parser\",\"type\"]",
@@ -250,7 +250,7 @@ func TestJSONParser_Parse(t *testing.T) {
 			},
 		},
 		"successfully decode json on extracted[source]": {
-			map[string]interface{}{
+			map[string]any{
 				"expressions": map[string]string{
 					"time":      "",
 					"app":       "",
@@ -265,11 +265,11 @@ func TestJSONParser_Parse(t *testing.T) {
 				},
 				"source": "log",
 			},
-			map[string]interface{}{
+			map[string]any{
 				"log": logFixture,
 			},
 			"{}",
-			map[string]interface{}{
+			map[string]any{
 				"time":      "2012-11-01T22:08:41+00:00",
 				"app":       "loki",
 				"component": "[\"parser\",\"type\"]",
@@ -284,53 +284,53 @@ func TestJSONParser_Parse(t *testing.T) {
 			},
 		},
 		"missing extracted[source]": {
-			map[string]interface{}{
+			map[string]any{
 				"expressions": map[string]string{
 					"app": "",
 				},
 				"source": "log",
 			},
-			map[string]interface{}{},
+			map[string]any{},
 			logFixture,
-			map[string]interface{}{},
+			map[string]any{},
 		},
 		"invalid json on entry": {
-			map[string]interface{}{
+			map[string]any{
 				"expressions": map[string]string{
 					"expr1": "",
 				},
 			},
-			map[string]interface{}{},
+			map[string]any{},
 			"ts=now log=notjson",
-			map[string]interface{}{},
+			map[string]any{},
 		},
 		"invalid json on extracted[source]": {
-			map[string]interface{}{
+			map[string]any{
 				"expressions": map[string]string{
 					"app": "",
 				},
 				"source": "log",
 			},
-			map[string]interface{}{
+			map[string]any{
 				"log": "not a json",
 			},
 			logFixture,
-			map[string]interface{}{
+			map[string]any{
 				"log": "not a json",
 			},
 		},
 		"nil source": {
-			map[string]interface{}{
+			map[string]any{
 				"expressions": map[string]string{
 					"app": "",
 				},
 				"source": "log",
 			},
-			map[string]interface{}{
+			map[string]any{
 				"log": nil,
 			},
 			logFixture,
-			map[string]interface{}{
+			map[string]any{
 				"log": nil,
 			},
 		},
@@ -356,12 +356,12 @@ func TestValidateJSONDrop(t *testing.T) {
 	s, err := newJSONStage(util_log.Logger, matchConfig)
 	assert.NoError(t, err, "withMatcher() error = %v", err)
 	assert.NotNil(t, s, "newJSONStage failed to create the pipeline stage and was nil")
-	out := processEntries(s, newEntry(map[string]interface{}{
+	out := processEntries(s, newEntry(map[string]any{
 		"test_label": "unimportant value",
 	}, toLabelSet(labels), `{"page": 1, "fruits": ["apple", "peach"]}`, time.Now()))
 	assert.Equal(t, 1, len(out), "stage should have kept one valid json line but got %v", out)
 
-	out = processEntries(s, newEntry(map[string]interface{}{
+	out = processEntries(s, newEntry(map[string]any{
 		"test_label": "unimportant value",
 	}, toLabelSet(labels), `{"page": 1, fruits": ["apple", "peach"]}`, time.Now()))
 	assert.Equal(t, 0, len(out), "stage should have kept zero valid json line but got %v", out)

@@ -205,7 +205,7 @@ func TestDownstreamHandler(t *testing.T) {
 
 // Consumes the locks in an instance, making sure they're all available. Does not replace them and thus instance is unusable after. This is a cleanup test to ensure internal state
 func ensureParallelism(t *testing.T, in *instance, n int) {
-	for i := 0; i < n; i++ {
+	for range n {
 		select {
 		case <-in.locks:
 		case <-time.After(time.Second):
