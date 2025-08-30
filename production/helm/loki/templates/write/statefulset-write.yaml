@@ -146,7 +146,7 @@ spec:
         {{- end }}
       {{- with .Values.write.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.write.dnsConfig }}
       dnsConfig:
@@ -158,7 +158,7 @@ spec:
       {{- end }}
       {{- with .Values.write.topologySpreadConstraints }}
       topologySpreadConstraints:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.write.tolerations }}
       tolerations:

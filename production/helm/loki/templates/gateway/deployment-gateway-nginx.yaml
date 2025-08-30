@@ -101,7 +101,7 @@ spec:
         {{- end }}
       {{- with .Values.gateway.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.gateway.dnsConfig }}
       dnsConfig:
@@ -113,7 +113,7 @@ spec:
       {{- end }}
       {{- with .Values.gateway.topologySpreadConstraints }}
       topologySpreadConstraints:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.gateway.tolerations }}
       tolerations:

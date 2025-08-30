@@ -94,7 +94,7 @@ spec:
           securityContext: {{- toYaml .Values.enterprise.provisioner.containerSecurityContext | nindent 12 }}
       {{- with .Values.enterprise.provisioner.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.enterprise.provisioner.nodeSelector }}
       nodeSelector:
