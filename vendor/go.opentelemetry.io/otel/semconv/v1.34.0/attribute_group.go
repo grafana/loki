@@ -3467,6 +3467,13 @@ func ContainerImageTags(val ...string) attribute.KeyValue {
 	return ContainerImageTagsKey.StringSlice(val)
 }
 
+// ContainerLabel returns an attribute KeyValue conforming to the
+// "container.label" semantic conventions. It represents the container labels,
+// `<key>` being the label name, the value being the label value.
+func ContainerLabel(key string, val string) attribute.KeyValue {
+	return attribute.String("container.label."+key, val)
+}
+
 // ContainerName returns an attribute KeyValue conforming to the "container.name"
 // semantic conventions. It represents the container name used by container
 // runtime.
@@ -3792,6 +3799,22 @@ func DBOperationBatchSize(val int) attribute.KeyValue {
 // operation or command being executed.
 func DBOperationName(val string) attribute.KeyValue {
 	return DBOperationNameKey.String(val)
+}
+
+// DBOperationParameter returns an attribute KeyValue conforming to the
+// "db.operation.parameter" semantic conventions. It represents a database
+// operation parameter, with `<key>` being the parameter name, and the attribute
+// value being a string representation of the parameter value.
+func DBOperationParameter(key string, val string) attribute.KeyValue {
+	return attribute.String("db.operation.parameter."+key, val)
+}
+
+// DBQueryParameter returns an attribute KeyValue conforming to the
+// "db.query.parameter" semantic conventions. It represents a database query
+// parameter, with `<key>` being the parameter name, and the attribute value
+// being a string representation of the parameter value.
+func DBQueryParameter(key string, val string) attribute.KeyValue {
+	return attribute.String("db.query.parameter."+key, val)
 }
 
 // DBQuerySummary returns an attribute KeyValue conforming to the
@@ -7312,6 +7335,14 @@ func HTTPRequestBodySize(val int) attribute.KeyValue {
 	return HTTPRequestBodySizeKey.Int(val)
 }
 
+// HTTPRequestHeader returns an attribute KeyValue conforming to the
+// "http.request.header" semantic conventions. It represents the HTTP request
+// headers, `<key>` being the normalized HTTP Header name (lowercase), the value
+// being the header values.
+func HTTPRequestHeader(key string, val ...string) attribute.KeyValue {
+	return attribute.StringSlice("http.request.header."+key, val)
+}
+
 // HTTPRequestMethodOriginal returns an attribute KeyValue conforming to the
 // "http.request.method_original" semantic conventions. It represents the
 // original HTTP method sent by the client in the request line.
@@ -7345,6 +7376,14 @@ func HTTPRequestSize(val int) attribute.KeyValue {
 // [Content-Length]: https://www.rfc-editor.org/rfc/rfc9110.html#field.content-length
 func HTTPResponseBodySize(val int) attribute.KeyValue {
 	return HTTPResponseBodySizeKey.Int(val)
+}
+
+// HTTPResponseHeader returns an attribute KeyValue conforming to the
+// "http.response.header" semantic conventions. It represents the HTTP response
+// headers, `<key>` being the normalized HTTP Header name (lowercase), the value
+// being the header values.
+func HTTPResponseHeader(key string, val ...string) attribute.KeyValue {
+	return attribute.StringSlice("http.response.header."+key, val)
 }
 
 // HTTPResponseSize returns an attribute KeyValue conforming to the
@@ -8001,6 +8040,22 @@ func K8SContainerStatusLastTerminatedReason(val string) attribute.KeyValue {
 	return K8SContainerStatusLastTerminatedReasonKey.String(val)
 }
 
+// K8SCronJobAnnotation returns an attribute KeyValue conforming to the
+// "k8s.cronjob.annotation" semantic conventions. It represents the cronjob
+// annotation placed on the CronJob, the `<key>` being the annotation name, the
+// value being the annotation value.
+func K8SCronJobAnnotation(key string, val string) attribute.KeyValue {
+	return attribute.String("k8s.cronjob.annotation."+key, val)
+}
+
+// K8SCronJobLabel returns an attribute KeyValue conforming to the
+// "k8s.cronjob.label" semantic conventions. It represents the label placed on
+// the CronJob, the `<key>` being the label name, the value being the label
+// value.
+func K8SCronJobLabel(key string, val string) attribute.KeyValue {
+	return attribute.String("k8s.cronjob.label."+key, val)
+}
+
 // K8SCronJobName returns an attribute KeyValue conforming to the
 // "k8s.cronjob.name" semantic conventions. It represents the name of the
 // CronJob.
@@ -8012,6 +8067,20 @@ func K8SCronJobName(val string) attribute.KeyValue {
 // "k8s.cronjob.uid" semantic conventions. It represents the UID of the CronJob.
 func K8SCronJobUID(val string) attribute.KeyValue {
 	return K8SCronJobUIDKey.String(val)
+}
+
+// K8SDaemonSetAnnotation returns an attribute KeyValue conforming to the
+// "k8s.daemonset.annotation" semantic conventions. It represents the annotation
+// key-value pairs placed on the DaemonSet.
+func K8SDaemonSetAnnotation(key string, val string) attribute.KeyValue {
+	return attribute.String("k8s.daemonset.annotation."+key, val)
+}
+
+// K8SDaemonSetLabel returns an attribute KeyValue conforming to the
+// "k8s.daemonset.label" semantic conventions. It represents the label key-value
+// pairs placed on the DaemonSet.
+func K8SDaemonSetLabel(key string, val string) attribute.KeyValue {
+	return attribute.String("k8s.daemonset.label."+key, val)
 }
 
 // K8SDaemonSetName returns an attribute KeyValue conforming to the
@@ -8026,6 +8095,20 @@ func K8SDaemonSetName(val string) attribute.KeyValue {
 // DaemonSet.
 func K8SDaemonSetUID(val string) attribute.KeyValue {
 	return K8SDaemonSetUIDKey.String(val)
+}
+
+// K8SDeploymentAnnotation returns an attribute KeyValue conforming to the
+// "k8s.deployment.annotation" semantic conventions. It represents the annotation
+// key-value pairs placed on the Deployment.
+func K8SDeploymentAnnotation(key string, val string) attribute.KeyValue {
+	return attribute.String("k8s.deployment.annotation."+key, val)
+}
+
+// K8SDeploymentLabel returns an attribute KeyValue conforming to the
+// "k8s.deployment.label" semantic conventions. It represents the label key-value
+// pairs placed on the Deployment.
+func K8SDeploymentLabel(key string, val string) attribute.KeyValue {
+	return attribute.String("k8s.deployment.label."+key, val)
 }
 
 // K8SDeploymentName returns an attribute KeyValue conforming to the
@@ -8054,6 +8137,20 @@ func K8SHPAUID(val string) attribute.KeyValue {
 	return K8SHPAUIDKey.String(val)
 }
 
+// K8SJobAnnotation returns an attribute KeyValue conforming to the
+// "k8s.job.annotation" semantic conventions. It represents the annotation
+// key-value pairs placed on the Job.
+func K8SJobAnnotation(key string, val string) attribute.KeyValue {
+	return attribute.String("k8s.job.annotation."+key, val)
+}
+
+// K8SJobLabel returns an attribute KeyValue conforming to the "k8s.job.label"
+// semantic conventions. It represents the label key-value pairs placed on the
+// Job.
+func K8SJobLabel(key string, val string) attribute.KeyValue {
+	return attribute.String("k8s.job.label."+key, val)
+}
+
 // K8SJobName returns an attribute KeyValue conforming to the "k8s.job.name"
 // semantic conventions. It represents the name of the Job.
 func K8SJobName(val string) attribute.KeyValue {
@@ -8066,11 +8163,41 @@ func K8SJobUID(val string) attribute.KeyValue {
 	return K8SJobUIDKey.String(val)
 }
 
+// K8SNamespaceAnnotation returns an attribute KeyValue conforming to the
+// "k8s.namespace.annotation" semantic conventions. It represents the annotation
+// key-value pairs placed on the Namespace.
+func K8SNamespaceAnnotation(key string, val string) attribute.KeyValue {
+	return attribute.String("k8s.namespace.annotation."+key, val)
+}
+
+// K8SNamespaceLabel returns an attribute KeyValue conforming to the
+// "k8s.namespace.label" semantic conventions. It represents the label key-value
+// pairs placed on the Namespace.
+func K8SNamespaceLabel(key string, val string) attribute.KeyValue {
+	return attribute.String("k8s.namespace.label."+key, val)
+}
+
 // K8SNamespaceName returns an attribute KeyValue conforming to the
 // "k8s.namespace.name" semantic conventions. It represents the name of the
 // namespace that the pod is running in.
 func K8SNamespaceName(val string) attribute.KeyValue {
 	return K8SNamespaceNameKey.String(val)
+}
+
+// K8SNodeAnnotation returns an attribute KeyValue conforming to the
+// "k8s.node.annotation" semantic conventions. It represents the annotation
+// placed on the Node, the `<key>` being the annotation name, the value being the
+// annotation value, even if the value is empty.
+func K8SNodeAnnotation(key string, val string) attribute.KeyValue {
+	return attribute.String("k8s.node.annotation."+key, val)
+}
+
+// K8SNodeLabel returns an attribute KeyValue conforming to the "k8s.node.label"
+// semantic conventions. It represents the label placed on the Node, the `<key>`
+// being the label name, the value being the label value, even if the value is
+// empty.
+func K8SNodeLabel(key string, val string) attribute.KeyValue {
+	return attribute.String("k8s.node.label."+key, val)
 }
 
 // K8SNodeName returns an attribute KeyValue conforming to the "k8s.node.name"
@@ -8085,6 +8212,21 @@ func K8SNodeUID(val string) attribute.KeyValue {
 	return K8SNodeUIDKey.String(val)
 }
 
+// K8SPodAnnotation returns an attribute KeyValue conforming to the
+// "k8s.pod.annotation" semantic conventions. It represents the annotation placed
+// on the Pod, the `<key>` being the annotation name, the value being the
+// annotation value.
+func K8SPodAnnotation(key string, val string) attribute.KeyValue {
+	return attribute.String("k8s.pod.annotation."+key, val)
+}
+
+// K8SPodLabel returns an attribute KeyValue conforming to the "k8s.pod.label"
+// semantic conventions. It represents the label placed on the Pod, the `<key>`
+// being the label name, the value being the label value.
+func K8SPodLabel(key string, val string) attribute.KeyValue {
+	return attribute.String("k8s.pod.label."+key, val)
+}
+
 // K8SPodName returns an attribute KeyValue conforming to the "k8s.pod.name"
 // semantic conventions. It represents the name of the Pod.
 func K8SPodName(val string) attribute.KeyValue {
@@ -8095,6 +8237,20 @@ func K8SPodName(val string) attribute.KeyValue {
 // semantic conventions. It represents the UID of the Pod.
 func K8SPodUID(val string) attribute.KeyValue {
 	return K8SPodUIDKey.String(val)
+}
+
+// K8SReplicaSetAnnotation returns an attribute KeyValue conforming to the
+// "k8s.replicaset.annotation" semantic conventions. It represents the annotation
+// key-value pairs placed on the ReplicaSet.
+func K8SReplicaSetAnnotation(key string, val string) attribute.KeyValue {
+	return attribute.String("k8s.replicaset.annotation."+key, val)
+}
+
+// K8SReplicaSetLabel returns an attribute KeyValue conforming to the
+// "k8s.replicaset.label" semantic conventions. It represents the label key-value
+// pairs placed on the ReplicaSet.
+func K8SReplicaSetLabel(key string, val string) attribute.KeyValue {
+	return attribute.String("k8s.replicaset.label."+key, val)
 }
 
 // K8SReplicaSetName returns an attribute KeyValue conforming to the
@@ -8137,6 +8293,20 @@ func K8SResourceQuotaName(val string) attribute.KeyValue {
 // resource quota.
 func K8SResourceQuotaUID(val string) attribute.KeyValue {
 	return K8SResourceQuotaUIDKey.String(val)
+}
+
+// K8SStatefulSetAnnotation returns an attribute KeyValue conforming to the
+// "k8s.statefulset.annotation" semantic conventions. It represents the
+// annotation key-value pairs placed on the StatefulSet.
+func K8SStatefulSetAnnotation(key string, val string) attribute.KeyValue {
+	return attribute.String("k8s.statefulset.annotation."+key, val)
+}
+
+// K8SStatefulSetLabel returns an attribute KeyValue conforming to the
+// "k8s.statefulset.label" semantic conventions. It represents the label
+// key-value pairs placed on the StatefulSet.
+func K8SStatefulSetLabel(key string, val string) attribute.KeyValue {
+	return attribute.String("k8s.statefulset.label."+key, val)
 }
 
 // K8SStatefulSetName returns an attribute KeyValue conforming to the
@@ -10497,6 +10667,14 @@ func ProcessCreationTime(val string) attribute.KeyValue {
 	return ProcessCreationTimeKey.String(val)
 }
 
+// ProcessEnvironmentVariable returns an attribute KeyValue conforming to the
+// "process.environment_variable" semantic conventions. It represents the process
+// environment variables, <key> being the environment variable name, the value
+// being the environment variable value.
+func ProcessEnvironmentVariable(key string, val string) attribute.KeyValue {
+	return attribute.String("process.environment_variable."+key, val)
+}
+
 // ProcessExecutableBuildIDGNU returns an attribute KeyValue conforming to the
 // "process.executable.build_id.gnu" semantic conventions. It represents the GNU
 // build ID as found in the `.note.gnu.build-id` ELF section (hex string).
@@ -10964,6 +11142,38 @@ const (
 	// Examples:
 	RPCSystemKey = attribute.Key("rpc.system")
 )
+
+// RPCConnectRPCRequestMetadata returns an attribute KeyValue conforming to the
+// "rpc.connect_rpc.request.metadata" semantic conventions. It represents the
+// connect request metadata, `<key>` being the normalized Connect Metadata key
+// (lowercase), the value being the metadata values.
+func RPCConnectRPCRequestMetadata(key string, val ...string) attribute.KeyValue {
+	return attribute.StringSlice("rpc.connect_rpc.request.metadata."+key, val)
+}
+
+// RPCConnectRPCResponseMetadata returns an attribute KeyValue conforming to the
+// "rpc.connect_rpc.response.metadata" semantic conventions. It represents the
+// connect response metadata, `<key>` being the normalized Connect Metadata key
+// (lowercase), the value being the metadata values.
+func RPCConnectRPCResponseMetadata(key string, val ...string) attribute.KeyValue {
+	return attribute.StringSlice("rpc.connect_rpc.response.metadata."+key, val)
+}
+
+// RPCGRPCRequestMetadata returns an attribute KeyValue conforming to the
+// "rpc.grpc.request.metadata" semantic conventions. It represents the gRPC
+// request metadata, `<key>` being the normalized gRPC Metadata key (lowercase),
+// the value being the metadata values.
+func RPCGRPCRequestMetadata(key string, val ...string) attribute.KeyValue {
+	return attribute.StringSlice("rpc.grpc.request.metadata."+key, val)
+}
+
+// RPCGRPCResponseMetadata returns an attribute KeyValue conforming to the
+// "rpc.grpc.response.metadata" semantic conventions. It represents the gRPC
+// response metadata, `<key>` being the normalized gRPC Metadata key (lowercase),
+// the value being the metadata values.
+func RPCGRPCResponseMetadata(key string, val ...string) attribute.KeyValue {
+	return attribute.StringSlice("rpc.grpc.response.metadata."+key, val)
+}
 
 // RPCJSONRPCErrorCode returns an attribute KeyValue conforming to the
 // "rpc.jsonrpc.error_code" semantic conventions. It represents the `error.code`
