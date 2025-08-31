@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [FEATURE] Add configurable `livenessProbe` to single binary StatefulSet. [#19072](https://github.com/grafana/loki/pull/19072)
+
 ## 6.38.0
 
 - [FEATURE] Make access modes for persistence on all PVCs and StatefulSets editable [#13474](https://github.com/grafana/loki/pull/13474)
