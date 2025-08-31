@@ -35,7 +35,7 @@ spec:
       {{- include "loki.selectorLabels" . | nindent 6 }}
   egress:
     - ports:
-        - port: dns
+        - port: 53
           protocol: UDP
       to:
         - namespaceSelector: {}
