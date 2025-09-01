@@ -117,9 +117,14 @@ func TestBuilder_Append(t *testing.T) {
 	require.NoError(t, err)
 	defer closer.Close()
 
-	require.Equal(t, 1, obj.Sections().Count(streams.CheckSection))
-	require.Greater(t, obj.Sections().Count(logs.CheckSection), 1)
-	for _, section := range obj.Sections().Filter(logs.CheckSection) {
+	// When a section builder is reset, which happens on ErrBuilderFull, the
+	// tenant is reset too. We must check that the tenant is added back
+	// to the section builder otherwise tenant will be absent from successive
+	// sections.
+	secs := obj.Sections()
+	require.Equal(t, 1, secs.Count(streams.CheckSection))
+	require.Greater(t, secs.Count(logs.CheckSection), 1)
+	for _, section := range secs.Filter(logs.CheckSection) {
 		require.Equal(t, tenant, section.Tenant)
 	}
 }
