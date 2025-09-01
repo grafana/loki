@@ -38,10 +38,11 @@ var ErrNotSupported = errors.New("feature not supported in new query engine")
 func New(opts logql.EngineOpts, cfg metastore.Config, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
 	var ms metastore.Metastore
 	if bucket != nil {
+		indexBucket := bucket
 		if cfg.IndexStoragePrefix != "" {
-			bucket = objstore.NewPrefixedBucket(bucket, cfg.IndexStoragePrefix)
+			indexBucket = objstore.NewPrefixedBucket(bucket, cfg.IndexStoragePrefix)
 		}
-		ms = metastore.NewObjectMetastore(bucket, logger, reg)
+		ms = metastore.NewObjectMetastore(indexBucket, logger, reg)
 	}
 
 	if opts.BatchSize <= 0 {
@@ -193,6 +194,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 		cfg := executor.Config{
 			BatchSize:                int64(e.opts.BatchSize),
+			MergePrefetchCount:       e.opts.MergePrefetchCount,
 			Bucket:                   e.bucket,
 			DataobjScanPageCacheSize: int64(e.opts.DataobjScanPageCacheSize),
 		}

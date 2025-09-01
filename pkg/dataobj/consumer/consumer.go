@@ -89,8 +89,15 @@ func (c *consumer) Run(ctx context.Context) error {
 
 func (c *consumer) pollFetches(ctx context.Context) error {
 	fetches := c.client.PollFetches(ctx)
-	if err := fetches.Err(); err != nil {
-		return err
+	// If the client is closed, or the context was canceled, return the error
+	// as no fetches were polled. We use this instead of [kgo.IsClientClosed]
+	// so we can also check if the context was canceled.
+	if err := fetches.Err0(); err != nil {
+		if errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
+			return err
+		}
+		// Some other error occurred. We will check it in
+		// [processFetchTopicPartition] instead.
 	}
 	fetches.EachPartition(c.processFetchTopicPartition(ctx))
 	return nil
@@ -98,6 +105,10 @@ func (c *consumer) pollFetches(ctx context.Context) error {
 
 func (c *consumer) processFetchTopicPartition(_ context.Context) func(kgo.FetchTopicPartition) {
 	return func(fetch kgo.FetchTopicPartition) {
+		if err := fetch.Err; err != nil {
+			level.Error(c.logger).Log("msg", "failed to fetch records for topic partition", "topic", fetch.Topic, "partition", fetch.Partition, "err", err.Error())
+			return
+		}
 		// If there are no records for this partition then skip it.
 		if len(fetch.Records) == 0 {
 			return

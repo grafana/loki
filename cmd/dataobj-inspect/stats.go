@@ -54,10 +54,19 @@ func (cmd *statsCommand) printObjStats(ctx context.Context, obj *dataobj.Object)
 	bold := color.New(color.Bold)
 	bold.Println("Object:")
 	fmt.Printf(
-		"\tsize: %v, sections: %d, tenants: %d, sections per tenant: p50: %.2f, p95: %.2f, p99: %.2f\n",
+		"\tcompressed size: %v, sections: %d, tenants: %d\n",
 		humanize.Bytes(stats.Size),
 		stats.Sections,
 		len(stats.Tenants),
+	)
+	fmt.Printf(
+		"\tcompressed section sizes:\n\t\tp50: %v, p95: %v, p99: %v\n",
+		humanize.Bytes(uint64(stats.SectionSizeStats.Median)),
+		humanize.Bytes(uint64(stats.SectionSizeStats.P95)),
+		humanize.Bytes(uint64(stats.SectionSizeStats.P99)),
+	)
+	fmt.Printf(
+		"\tnumber of sections per tenant:\n\t\tp50: %.2f, p95: %.2f, p99: %.2f\n",
 		stats.SectionsPerTenantStats.Median,
 		stats.SectionsPerTenantStats.P95,
 		stats.SectionsPerTenantStats.P99,
