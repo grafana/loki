@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -346,9 +347,7 @@ func (f *matcherFactory) createOverlappingMatcher(windows []window) timestampMat
 
 		// Iterate backwards from last matching window to find all matches
 		var result []window
-		// for _, window := range slices.Backward(windows[:windowIndex]) {
-		for i := windowIndex; i >= 0; i-- {
-			window := windows[i]
+		for _, window := range slices.Backward(windows[:windowIndex+1]) {
 			if t.Compare(window.start) > 0 && t.Compare(window.end) <= 0 {
 				result = append(result, window)
 			} else if t.Compare(window.end) > 0 {
