@@ -235,6 +235,8 @@ func (b *Builder) Append(tenant string, stream logproto.Stream) error {
 			if err := b.builder.Append(lb); err != nil {
 				return err
 			}
+			// We need to set the tenant again after flushing because the builder is reset.
+			lb.SetTenant(tenant)
 		}
 	}
 
