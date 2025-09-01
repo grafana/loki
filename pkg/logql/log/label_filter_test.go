@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
