@@ -251,19 +251,23 @@ func (p *Builder) run(ctx context.Context) error {
 	level.Info(p.logger).Log("msg", "started index builder service")
 	for {
 		fetches := p.client.PollRecords(ctx, -1)
-		if fetches.IsClientClosed() || ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if errs := fetches.Errors(); len(errs) > 0 {
-			level.Error(p.logger).Log("msg", "error fetching records", "err", errs)
-			continue
+		if err := fetches.Err0(); err != nil {
+			if errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
+				return err
+			}
+			// Some other error occurred. We will check it in
+			// [processFetchTopicPartition] instead.
 		}
 		if fetches.Empty() {
 			continue
 		}
-		fetches.EachPartition(func(ftp kgo.FetchTopicPartition) {
+		fetches.EachPartition(func(fetch kgo.FetchTopicPartition) {
+			if err := fetch.Err; err != nil {
+				level.Error(p.logger).Log("msg", "failed to fetch records for topic partition", "topic", fetch.Topic, "partition", fetch.Partition, "err", err.Error())
+				return
+			}
 			// TODO(benclive): Verify if we need to return re-poll ASAP or if sequential processing is good enough.
-			for _, record := range ftp.Records {
+			for _, record := range fetch.Records {
 				p.processRecord(record)
 			}
 		})

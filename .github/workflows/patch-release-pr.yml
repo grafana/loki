@@ -117,7 +117,7 @@ jobs:
           --target-branch "$(echo $OUTPUTS_BRANCH | tr -d '"')" \
           --token "$(echo $OUTPUTS_TOKEN | tr -d '"')" \
           --dry-run ${{ fromJSON(env.DRY_RUN) }}
-
+        
       working-directory: "lib"
   dist:
     needs:
@@ -235,7 +235,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -308,7 +308,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -381,7 +381,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -460,7 +460,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -533,7 +533,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -612,7 +612,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -691,7 +691,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -771,7 +771,7 @@ jobs:
       run: |
         mkdir -p images
         mkdir -p plugins
-
+        
         platform="$(echo "${{ matrix.arch}}" |  sed  "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -863,7 +863,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -942,7 +942,7 @@ jobs:
       name: "Parse image platform"
       run: |
         mkdir -p images
-
+        
         platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
         echo "platform=${platform}" >> $GITHUB_OUTPUT
         echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
@@ -1041,7 +1041,7 @@ jobs:
       name: "get release version"
       run: |
         npm install
-
+        
         if [[ -z "${{ env.RELEASE_AS }}" ]]; then
           npm exec -- release-please release-pr \
             --consider-all-branches \
@@ -1071,16 +1071,16 @@ jobs:
             --token "$OUTPUTS_TOKEN" \
             --release-as "${{ env.RELEASE_AS }}"
         fi
-
+        
         cat release.json
-
-        if [[ `jq length release.json` -gt 1 ]]; then
+        
+        if [[ `jq length release.json` -gt 1 ]]; then 
           echo 'release-please would create more than 1 PR, so cannot determine correct version'
           echo "pr_created=false" >> $GITHUB_OUTPUT
           exit 1
         fi
-
-        if [[ `jq length release.json` -eq 0 ]]; then
+        
+        if [[ `jq length release.json` -eq 0 ]]; then 
           echo "pr_created=false" >> $GITHUB_OUTPUT
         else
           version="$(npm run --silent get-version)"
