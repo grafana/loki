@@ -19,7 +19,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -520,18 +519,7 @@ func (b *testDataBuilder) flush(ctx context.Context) {
 	path, err := b.uploader.Upload(ctx, obj)
 	require.NoError(b.t, err)
 
-	for _, r := range timeRanges {
-		// Update metastore with the new data object
-		err = b.meta.WriteEntry(ctx, path, []multitenancy.TimeRange{
-			{
-				Tenant:  r.Tenant,
-				MinTime: r.MinTime,
-				MaxTime: r.MaxTime,
-			},
-		})
-		require.NoError(b.t, err)
-	}
-
+	require.NoError(b.t, b.meta.WriteEntry(ctx, path, timeRanges))
 	b.builder.Reset()
 }
 

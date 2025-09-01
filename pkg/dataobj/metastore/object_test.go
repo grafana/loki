@@ -85,16 +85,7 @@ func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Strea
 	path, err := b.uploader.Upload(b.t.Context(), obj)
 	require.NoError(b.t, err)
 
-	for _, r := range timeRanges {
-		err = b.meta.WriteEntry(context.Background(), path, []multitenancy.TimeRange{
-			{
-				Tenant:  r.Tenant,
-				MinTime: r.MinTime,
-				MaxTime: r.MaxTime,
-			},
-		})
-		require.NoError(b.t, err)
-	}
+	require.NoError(b.t, b.meta.WriteEntry(context.Background(), path, timeRanges))
 }
 
 func TestStreamIDs(t *testing.T) {
