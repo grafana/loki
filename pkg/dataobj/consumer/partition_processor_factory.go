@@ -58,8 +58,6 @@ func newPartitionProcessorFactory(
 func (f *partitionProcessorFactory) New(
 	ctx context.Context,
 	client *kgo.Client,
-	tenant string,
-	virtualShard int32,
 	topic string,
 	partition int32,
 ) processor {
@@ -71,8 +69,6 @@ func (f *partitionProcessorFactory) New(
 		f.metastoreCfg,
 		f.bucket,
 		f.scratchStore,
-		tenant,
-		virtualShard,
 		topic,
 		partition,
 		f.logger,
