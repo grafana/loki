@@ -158,8 +158,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		j.lbs.Set(ParsedLabel, unsafeGetBytes(sanitizedKey), j.valueBuffer)
 
 		if j.captureJSONPath {
-			// TODO: very this is ok. buildJSONPathFromPrefixBuffer uses and unsafe string
-			j.lbs.SetJSONPath(sanitizedKey, []string{unsafeGetString(key)})
+			j.lbs.SetJSONPath(sanitizedKey, []string{string(key)})
 		}
 
 		if !j.parserHints.ShouldContinueParsingLine(sanitizedKey, j.lbs) {
@@ -269,7 +268,6 @@ func readValue(v []byte, dataType jsonparser.ValueType, buf []byte) []byte {
 }
 
 func unescapeJSONString(b, buf []byte) []byte {
-	//var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
 	bU, err := jsonparser.Unescape(b, buf[:])
 	if err != nil {
 		return nil
@@ -277,7 +275,6 @@ func unescapeJSONString(b, buf []byte) []byte {
 
 	res := unsafeGetString(bU)
 	if strings.ContainsRune(res, utf8.RuneError) {
-		// TODO: verify that this works
 		return []byte(strings.Map(removeInvalidUtf, res))
 	}
 

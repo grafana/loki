@@ -724,9 +724,9 @@ func jsonBenchmark(b *testing.B, parser Stage, lines int) {
 				b.Fatalf("resulting line not ok: %s\n", line)
 			}
 
-			//if resLbs.Parsed().Get("context_file") != "metrics.go" {
-			//	b.Fatalf("label was not extracted correctly! context_file was %v, expected metrics.go, %+v\n", resLbs.Parsed().Get("context_file"), resLbs.Parsed())
-			//}
+			if resLbs.Parsed().Get("context_file") != "metrics.go" {
+				b.Fatalf("label was not extracted correctly! context_file was %v, expected metrics.go, %+v\n", resLbs.Parsed().Get("context_file"), resLbs.Parsed())
+			}
 		}
 	}
 }

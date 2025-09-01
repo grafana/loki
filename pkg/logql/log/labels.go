@@ -143,19 +143,20 @@ type LabelsBuilder struct {
 	*BaseLabelsBuilder
 }
 
+const initialLabelsCapacity = 16
+
 // NewBaseLabelsBuilderWithGrouping creates a new base labels builder with grouping to compute results.
 func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint, without, noLabels bool) *BaseLabelsBuilder {
 	if parserKeyHints == nil {
 		parserKeyHints = NoParserHints()
 	}
 
-	const labelsCapacity = 16
 	return &BaseLabelsBuilder{
 		del: make([]string, 0, 5),
 		add: [numValidCategories]*columnarLabels{
-			StreamLabel:             newColumnarLabels(labelsCapacity),
-			StructuredMetadataLabel: newColumnarLabels(labelsCapacity),
-			ParsedLabel:             newColumnarLabels(labelsCapacity),
+			StreamLabel:             newColumnarLabels(initialLabelsCapacity),
+			StructuredMetadataLabel: newColumnarLabels(initialLabelsCapacity),
+			ParsedLabel:             newColumnarLabels(initialLabelsCapacity),
 		},
 		resultCache:    make(map[uint64]LabelsResult),
 		hasher:         newHasher(),
@@ -200,7 +201,7 @@ func (b *BaseLabelsBuilder) Reset() {
 		if b.add[k] != nil {
 			b.add[k].reset()
 		} else {
-			b.add[k] = newColumnarLabels(0)
+			b.add[k] = newColumnarLabels(initialLabelsCapacity)
 		}
 	}
 	b.err = ""

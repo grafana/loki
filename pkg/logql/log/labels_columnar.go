@@ -5,6 +5,15 @@ import (
 	"slices"
 )
 
+// stringColumn is a columnar representation of a string slice. The bytes of all
+// strings are stored in a single bytes slice `data`. The `offsets` slice points
+// to the start of each string in `data`. The first entry will always be 0. All
+// following entries are the accumulated length of all previous strings.
+//
+// Strings are always accessed via the `indices` slices. It points to the index
+// of the string in the `offsets` slice. This technique allows deleting and
+// sorting without copying the data. E.g. sorting just sorts the indices but not
+// `data` not `offsets`.
 type stringColumn struct {
 	data    []byte
 	offsets []int
@@ -21,6 +30,7 @@ func newStringColumn(capacity int) *stringColumn {
 	}
 }
 
+// add appends a new string
 func (s *stringColumn) add(value []byte) {
 	// The old values length is the offset of the new value
 	s.offsets = append(s.offsets, len(s.data))
@@ -44,6 +54,7 @@ func (s *stringColumn) reset() {
 	s.indices = s.indices[:0]
 }
 
+// get returns the string at the given index.
 func (s *stringColumn) get(i int) []byte {
 	index := s.indices[i]
 	start := s.offsets[index]
@@ -55,6 +66,7 @@ func (s *stringColumn) get(i int) []byte {
 	return s.data[start:end]
 }
 
+// index returns the index of the string in the column.
 func (s *stringColumn) index(value []byte) int {
 	idx := bytes.Index(s.data, value)
 	if idx == -1 {
