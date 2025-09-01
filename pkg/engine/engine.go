@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
@@ -28,6 +27,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	utillog "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
 
 var tracer = otel.Tracer("pkg/engine")
@@ -35,10 +35,14 @@ var tracer = otel.Tracer("pkg/engine")
 var ErrNotSupported = errors.New("feature not supported in new query engine")
 
 // New creates a new instance of the query engine that implements the [logql.Engine] interface.
-func New(opts logql.EngineOpts, cfg metastore.StorageConfig, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
+func New(opts logql.EngineOpts, cfg metastore.Config, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
 	var ms metastore.Metastore
 	if bucket != nil {
-		ms = metastore.NewObjectMetastore(cfg, bucket, logger, reg)
+		indexBucket := bucket
+		if cfg.IndexStoragePrefix != "" {
+			indexBucket = objstore.NewPrefixedBucket(bucket, cfg.IndexStoragePrefix)
+		}
+		ms = metastore.NewObjectMetastore(indexBucket, logger, reg)
 	}
 
 	if opts.BatchSize <= 0 {
@@ -101,8 +105,14 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	statsCtx, ctx := stats.NewContext(ctx)
 	metadataCtx, ctx := metadata.NewContext(ctx)
 
+	statsCtx.SetQueryUsedV2Engine()
+
 	logger := utillog.WithContext(ctx, e.logger)
 	logger = log.With(logger, "query", params.QueryString(), "shard", strings.Join(params.Shards(), ","), "engine", "v2")
+
+	// Inject the range config into the context for any calls to
+	// [rangeio.ReadRanges] to make use of.
+	ctx = rangeio.WithConfig(ctx, &e.opts.RangeConfig)
 
 	logicalPlan, err := func() (*logical.Plan, error) {
 		_, span := tracer.Start(ctx, "QueryEngine.Execute.logicalPlan")
@@ -184,6 +194,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 		cfg := executor.Config{
 			BatchSize:                int64(e.opts.BatchSize),
+			MergePrefetchCount:       e.opts.MergePrefetchCount,
 			Bucket:                   e.bucket,
 			DataobjScanPageCacheSize: int64(e.opts.DataobjScanPageCacheSize),
 		}
@@ -227,18 +238,12 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	stats := statsCtx.Result(durFull, queueTime, builder.Len())
 
-	tenants, err := tenant.TenantIDs(ctx)
-	if err != nil {
-		return logqlmodel.Result{}, err
-	}
-
 	level.Debug(logger).Log(
 		"msg", "finished executing with new engine",
 		"duration_logical_planning", durLogicalPlanning,
 		"duration_physical_planning", durPhysicalPlanning,
 		"duration_execution", durExecution,
 		"duration_full", durFull,
-		"index_resolution_strategy", e.metastore.ResolveStrategy(tenants),
 	)
 
 	metadataCtx.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")

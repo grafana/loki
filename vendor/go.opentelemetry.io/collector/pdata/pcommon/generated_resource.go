@@ -29,8 +29,7 @@ func newResource(orig *otlpresource.Resource, state *internal.State) Resource {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewResource() Resource {
-	state := internal.StateMutable
-	return newResource(&otlpresource.Resource{}, &state)
+	return newResource(internal.NewOrigResource(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -42,8 +41,8 @@ func (ms Resource) MoveTo(dest Resource) {
 	if ms.getOrig() == dest.getOrig() {
 		return
 	}
-	*dest.getOrig() = *ms.getOrig()
-	*ms.getOrig() = otlpresource.Resource{}
+	internal.DeleteOrigResource(dest.getOrig(), false)
+	*dest.getOrig(), *ms.getOrig() = *ms.getOrig(), *dest.getOrig()
 }
 
 // Attributes returns the Attributes associated with this Resource.

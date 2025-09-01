@@ -18,6 +18,10 @@ type DeleteRecordsRequest struct {
 	Timeout time.Duration
 }
 
+func (d *DeleteRecordsRequest) setVersion(v int16) {
+	d.Version = v
+}
+
 func (d *DeleteRecordsRequest) encode(pe packetEncoder) error {
 	if err := pe.putArrayLength(len(d.Topics)); err != nil {
 		return err
@@ -71,7 +75,7 @@ func (d *DeleteRecordsRequest) decode(pd packetDecoder, version int16) error {
 }
 
 func (d *DeleteRecordsRequest) key() int16 {
-	return 21
+	return apiKeyDeleteRecords
 }
 
 func (d *DeleteRecordsRequest) version() int16 {

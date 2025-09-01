@@ -1,6 +1,7 @@
 package manifests
 
 import (
+	"maps"
 	"strings"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -146,9 +147,7 @@ func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Ob
 				}
 
 				a := openshift.ServiceAccountAnnotations(opts.OpenShiftOptions)
-				for key, value := range a {
-					sa.Annotations[key] = value
-				}
+				maps.Copy(sa.Annotations, a)
 			}
 		}
 

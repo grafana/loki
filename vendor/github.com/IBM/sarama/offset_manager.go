@@ -289,11 +289,12 @@ func (om *offsetManager) flushToBroker() {
 
 func sendOffsetCommit(coordinator *Broker, req *OffsetCommitRequest) (*OffsetCommitResponse, *responsePromise, error) {
 	resp := new(OffsetCommitResponse)
-	responseHeaderVersion := resp.headerVersion()
-	promise, err := coordinator.send(req, true, responseHeaderVersion)
+
+	promise, err := coordinator.send(req, resp)
 	if err != nil {
 		return nil, nil, err
 	}
+
 	return resp, promise, nil
 }
 

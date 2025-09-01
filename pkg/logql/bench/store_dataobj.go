@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/querier"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -49,24 +50,27 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 	// NOTE(rfratto): DataObjStore should use a dataobj subdirectory to imitate
 	// production setup: a dataobj subdirectory in the location used for chunks.
 	storeDir := filepath.Join(dir, "dataobj")
-	if err := os.MkdirAll(storeDir, 0o755); err != nil {
+	logsTocDir := filepath.Join(storeDir, "tocs")
+	if err := os.MkdirAll(logsTocDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	// Create required directories for metastore and tenant
+	// Create required directories for tenant
 	tenantDir := filepath.Join(storeDir, "tenant-"+tenantID)
-	metastoreDir := filepath.Join(tenantDir, "metastore")
-	if err := os.MkdirAll(metastoreDir, 0o755); err != nil {
+	if err := os.MkdirAll(tenantDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create metastore directory: %w", err)
 	}
 
 	// Create required directories for index
 	indexDirPrefix := "index/v0"
 	indexDir := filepath.Join(storeDir, indexDirPrefix)
-	tenantIndexDir := filepath.Join(indexDir, "tenant-"+tenantID)
-	metastoreIndexDir := filepath.Join(tenantIndexDir, "metastore")
-	if err := os.MkdirAll(metastoreIndexDir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create index directory: %w", err)
+	tocDir := filepath.Join(indexDir, "tocs")
+	if err := os.MkdirAll(tocDir, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create toc directory: %w", err)
+	}
+	indexesDir := filepath.Join(indexDir, "indexes")
+	if err := os.MkdirAll(indexesDir, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create indexes directory: %w", err)
 	}
 
 	bucket, err := filesystem.NewBucket(storeDir)
@@ -87,12 +91,12 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 	}
 
 	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
-	logsMetastoreToc := metastore.NewTableOfContentsWriter(metastore.Config{}, bucket, tenantID, logger)
+	logsMetastoreToc := metastore.NewTableOfContentsWriter(bucket, logger)
 	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)
 
 	// Create prefixed bucket & metastore for indexes
 	indexWriterBucket := objstore.NewPrefixedBucket(bucket, indexDirPrefix)
-	indexMetastoreToc := metastore.NewTableOfContentsWriter(metastore.Config{}, indexWriterBucket, tenantID, logger)
+	indexMetastoreToc := metastore.NewTableOfContentsWriter(indexWriterBucket, logger)
 
 	return &DataObjStore{
 		dir:               storeDir,
@@ -128,7 +132,7 @@ func (s *DataObjStore) Write(_ context.Context, streams []logproto.Stream) error
 }
 
 func (s *DataObjStore) Querier() (logql.Querier, error) {
-	return querier.NewStore(s.bucket, s.logger, metastore.NewObjectMetastore(metastore.StorageConfig{}, s.bucket, s.logger, prometheus.DefaultRegisterer)), nil
+	return querier.NewStore(s.bucket, s.logger, metastore.NewObjectMetastore(s.bucket, s.logger, prometheus.DefaultRegisterer)), nil
 }
 
 func (s *DataObjStore) flush() error {
@@ -149,7 +153,13 @@ func (s *DataObjStore) flush() error {
 	}
 
 	// Update logs metastore's table of contents with the new data object
-	err = s.logsMetastoreToc.WriteEntry(context.Background(), path, minTime, maxTime)
+	err = s.logsMetastoreToc.WriteEntry(context.Background(), path, []multitenancy.TimeRange{
+		{
+			Tenant:  s.tenantID,
+			MinTime: minTime,
+			MaxTime: maxTime,
+		},
+	})
 	if err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}
@@ -180,14 +190,14 @@ func (s *DataObjStore) Close() error {
 
 func (s *DataObjStore) buildIndex() error {
 	flushAndUpload := func(calculator *index.Calculator) error {
-		minTime, maxTime := calculator.TimeRange()
+		timeRanges := calculator.TimeRanges()
 		obj, closer, err := calculator.Flush()
 		if err != nil {
 			return fmt.Errorf("failed to flush index: %w", err)
 		}
 		defer closer.Close()
 
-		key, err := index.ObjectKey(context.Background(), s.tenantID, obj)
+		key, err := index.ObjectKey(context.Background(), obj)
 		if err != nil {
 			return fmt.Errorf("failed to create object key: %w", err)
 		}
@@ -203,7 +213,7 @@ func (s *DataObjStore) buildIndex() error {
 			return fmt.Errorf("failed to upload index: %w", err)
 		}
 
-		err = s.indexMetastoreToc.WriteEntry(context.Background(), key, minTime, maxTime)
+		err = s.indexMetastoreToc.WriteEntry(context.Background(), key, timeRanges)
 		if err != nil {
 			return fmt.Errorf("failed to update metastore: %w", err)
 		}

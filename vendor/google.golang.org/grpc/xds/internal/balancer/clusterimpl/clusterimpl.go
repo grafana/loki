@@ -27,6 +27,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -128,7 +129,7 @@ type clusterImplBalancer struct {
 // indicating if a new picker needs to be generated.
 func (b *clusterImplBalancer) handleDropAndRequestCountLocked(newConfig *LBConfig) bool {
 	var updatePicker bool
-	if !equalDropCategories(b.dropCategories, newConfig.DropCategories) {
+	if !slices.Equal(b.dropCategories, newConfig.DropCategories) {
 		b.dropCategories = newConfig.DropCategories
 		b.drops = make([]*dropper, 0, len(newConfig.DropCategories))
 		for _, c := range newConfig.DropCategories {
