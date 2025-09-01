@@ -328,6 +328,16 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 			predicates: nil,
 			wantCount:  0,
 		},
+		{
+			name: "matching selector with unsupported predicate type",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "bar", "something"),
+			},
+			wantCount: 1,
+		},
 	}
 
 	for _, tt := range tests {
