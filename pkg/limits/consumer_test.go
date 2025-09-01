@@ -51,16 +51,18 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		m.SetReplaying(1, 1000)
 		// Create a usage store, we will use this to check if the record
 		// was stored.
-		u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
+		s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
 		require.NoError(t, err)
-		u.clock = clock
-		c := newConsumer(&kafka, m, u, newOffsetReadinessCheck(m), "zone1",
+		s.clock = clock
+		c := newConsumer(&kafka, m, s, newOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
 		ctx := context.Background()
 		require.NoError(t, c.pollFetches(ctx))
 		// Check that the record was stored.
 		var n int
-		u.Iter(func(_ string, _ int32, _ streamUsage) { n++ })
+		for range s.ActiveStreams() {
+			n++
+		}
 		require.Equal(t, 1, n)
 	})
 
@@ -101,16 +103,18 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		m.SetReady(1)
 		// Create a usage store, we will use this to check if the record
 		// was discarded.
-		u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
+		s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
 		require.NoError(t, err)
-		u.clock = clock
-		c := newConsumer(&kafka, m, u, newOffsetReadinessCheck(m), "zone1",
+		s.clock = clock
+		c := newConsumer(&kafka, m, s, newOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
 		ctx := context.Background()
 		require.NoError(t, c.pollFetches(ctx))
 		// Check that the record was discarded.
 		var n int
-		u.Iter(func(_ string, _ int32, _ streamUsage) { n++ })
+		for range s.ActiveStreams() {
+			n++
+		}
 		require.Equal(t, 0, n)
 	})
 }
@@ -180,10 +184,10 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	// has been consumed.
 	m.SetReplaying(1, 2)
 	// We don't need the usage store for this test.
-	u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
+	s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
 	require.NoError(t, err)
-	u.clock = clock
-	c := newConsumer(&kafka, m, u, newOffsetReadinessCheck(m), "zone1",
+	s.clock = clock
+	c := newConsumer(&kafka, m, s, newOffsetReadinessCheck(m), "zone1",
 		log.NewNopLogger(), prometheus.NewRegistry())
 	// The first poll should fetch the first record.
 	ctx := context.Background()
@@ -195,7 +199,9 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	require.Equal(t, partitionReplaying, state)
 	// Check that the record was stored.
 	var n int
-	u.Iter(func(_ string, _ int32, _ streamUsage) { n++ })
+	for range s.ActiveStreams() {
+		n++
+	}
 	require.Equal(t, 1, n)
 	// The second poll should fetch the second (and last) record.
 	require.NoError(t, c.pollFetches(ctx))
@@ -206,6 +212,8 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	require.Equal(t, partitionReady, state)
 	// Check that the record was stored.
 	n = 0
-	u.Iter(func(_ string, _ int32, _ streamUsage) { n++ })
+	for range s.ActiveStreams() {
+		n++
+	}
 	require.Equal(t, 2, n)
 }
