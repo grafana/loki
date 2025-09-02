@@ -40,7 +40,7 @@ type TimeRange struct {
 	End   time.Time
 }
 
-func NewTimeRange(start, end time.Time) (TimeRange, error) {
+func newTimeRange(start, end time.Time) (TimeRange, error) {
 	if end.Before(start) {
 		return TimeRange{}, fmt.Errorf("cannot have end time (%v) before start time (%v)", end, start)
 	}
@@ -48,7 +48,7 @@ func NewTimeRange(start, end time.Time) (TimeRange, error) {
 }
 
 func (t *TimeRange) Overlaps(secondRange TimeRange) bool {
-	return ((secondRange.Start.Before(t.End) || time.Time.Equal(secondRange.Start, t.End)) && (t.Start.Before(secondRange.End) || time.Time.Equal(t.Start, secondRange.End)))
+	return !t.Start.After(secondRange.End) && !secondRange.Start.After(t.End)
 }
 
 func (t *TimeRange) Merge(secondRange TimeRange) TimeRange {
@@ -162,7 +162,7 @@ func filterForShard(shard ShardInfo, paths []string, streamIDs [][]int64, numSec
 			filteredDescriptor.Location = DataObjLocation(paths[i])
 			filteredDescriptor.Sections = sec
 			filteredDescriptor.Streams = streamIDs[i]
-			tr, err := NewTimeRange(from, through)
+			tr, err := newTimeRange(from, through)
 			if err != nil {
 				return nil, err
 			}
@@ -216,7 +216,7 @@ func filterDescriptorsForShard(shard ShardInfo, sectionDescriptors []*metastore.
 		if int(desc.SectionIdx)%int(shard.Of) == int(shard.Shard) {
 			filteredDescriptor.Streams = desc.StreamIDs
 			filteredDescriptor.Sections = []int{int(desc.SectionIdx)}
-			tr, err := NewTimeRange(desc.Start, desc.End)
+			tr, err := newTimeRange(desc.Start, desc.End)
 			if err != nil {
 				return nil, err
 			}
