@@ -828,6 +828,8 @@ lokiCanary:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 1
+  # -- Replicas for the `loki-canary` when using a Deployment
+  replicas: 1
 ######################################################################################################################
 #
 # Service Accounts and Kubernetes RBAC
