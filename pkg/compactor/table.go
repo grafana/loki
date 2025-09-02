@@ -3,7 +3,6 @@ package compactor
 import (
 	"context"
 	"fmt"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"os"
 	"path/filepath"
 	"sync"
@@ -17,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	chunk_util "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"

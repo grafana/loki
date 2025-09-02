@@ -170,12 +170,7 @@ func (c ChunkMetas) chunkPos(chk ChunkMeta) int {
 }
 
 func (c ChunkMetas) HasChunk(chk ChunkMeta) bool {
-	pos := c.chunkPos(chk)
-	if pos < 0 {
-		return false
-	}
-
-	return true
+	return c.chunkPos(chk) >= 0
 }
 
 // Some of these fields can realistically be 32bit, but
