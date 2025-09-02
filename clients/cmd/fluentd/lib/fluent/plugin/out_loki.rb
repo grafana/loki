@@ -249,9 +249,9 @@ module Fluent
         payload = Yajl.dump(body)
         if @compress == :gzip
           req.add_field('Content-Encoding', 'gzip')
-          io = StringIO.new
-          Zlib::GzipWriter.wrap(io) { |gz| gz.write(payload) }
-          req.body = io.string
+          compressed = StringIO.new
+          Zlib::GzipWriter.wrap(compressed) { |gz| gz.write(payload) }
+          req.body = compressed.string
         else
           req.body = payload
         end
