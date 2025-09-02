@@ -59,6 +59,7 @@ This is the generated reference for the Loki Helm Chart values.
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "initContainers": [],
   "labels": {},
   "livenessProbe": {},
@@ -131,7 +132,7 @@ This is the generated reference for the Loki Helm Chart values.
 		<tr>
 			<td>adminApi.extraContainers</td>
 			<td>list</td>
-			<td>Conifgure optional extraContainers</td>
+			<td>Configure optional extraContainers</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -179,6 +180,15 @@ This is the generated reference for the Loki Helm Chart values.
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in admin-api pods</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -359,6 +369,7 @@ This is the generated reference for the Loki Helm Chart values.
   "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -367,6 +378,9 @@ This is the generated reference for the Loki Helm Chart values.
   "initContainers": [],
   "nodeSelector": {},
   "persistence": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
     "annotations": {},
     "dataVolumeParameters": {
       "emptyDir": {}
@@ -387,7 +401,8 @@ This is the generated reference for the Loki Helm Chart values.
   "selectorLabels": {},
   "service": {
     "annotations": {},
-    "labels": {}
+    "labels": {},
+    "type": "ClusterIP"
   },
   "targetModule": "backend",
   "terminationGracePeriodSeconds": 300,
@@ -533,6 +548,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the backend pods.</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the backend image. Overrides `loki.image.registry`</td>
@@ -574,6 +598,17 @@ null
 			<td>Node selector for backend pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -733,6 +768,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.service.type</td>
+			<td>string</td>
+			<td>Service type for backend Service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.targetModule</td>
 			<td>string</td>
 			<td>Comma-separated list of Loki modules to load for the backend</td>
@@ -812,6 +856,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -1016,6 +1061,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomBuilder.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the boom-builder</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomBuilder.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the bloom-builder image. Overrides `loki.image.registry`</td>
@@ -1181,6 +1235,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -1193,6 +1248,9 @@ null
     "annotations": {},
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -1319,6 +1377,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomGateway.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the bloom-gateway</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomGateway.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the bloom-gateway image. Overrides `loki.image.registry`</td>
@@ -1387,6 +1454,17 @@ null
 			<td>List of the bloom-gateway PVCs</td>
 			<td><pre lang="list">
 
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -1592,6 +1670,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -1603,6 +1682,9 @@ null
   "persistence": {
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
         "annotations": {},
         "labels": {},
         "name": "data",
@@ -1730,6 +1812,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomPlanner.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the bloom-planner</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomPlanner.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the bloom-planner image. Overrides `loki.image.registry`</td>
@@ -1789,6 +1880,17 @@ null
 			<td>List of the bloom-planner PVCs</td>
 			<td><pre lang="list">
 
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -1977,7 +2079,7 @@ null
 			<td>string</td>
 			<td>Comma separated addresses list in DNS Service Discovery format</td>
 			<td><pre lang="json">
-"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.suffix ) }}.{{ $.Release.Namespace }}.svc"
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc"
 </pre>
 </td>
 		</tr>
@@ -2090,6 +2192,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in chunks-cache pods</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.initContainers</td>
 			<td>list</td>
 			<td>Extra init containers for chunks-cache pods</td>
@@ -2104,7 +2215,7 @@ true
 			<td>l2 memcache configuration</td>
 			<td><pre lang="json">
 {
-  "addresses": "dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ $.Release.Namespace }}.svc",
+  "addresses": "dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc",
   "affinity": {},
   "allocatedMemory": 8192,
   "annotations": {},
@@ -2117,6 +2228,7 @@ true
   "extraExtendedOptions": "",
   "extraVolumeMounts": [],
   "extraVolumes": [],
+  "hostUsers": "nil",
   "initContainers": [],
   "l2ChunkCacheHandoff": "345600s",
   "maxItemMemory": 5,
@@ -2161,7 +2273,7 @@ true
 			<td>string</td>
 			<td>Comma separated addresses list in DNS Service Discovery format</td>
 			<td><pre lang="json">
-"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ $.Release.Namespace }}.svc"
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc"
 </pre>
 </td>
 		</tr>
@@ -2270,6 +2382,15 @@ false
 			<td>Additional volumes to be added to the chunks-cache-l2 pod (applies to both memcached and exporter containers). Example: extraVolumes: - name: extra-volume   secret:    secretName: extra-volume-secret</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -2821,6 +2942,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -2832,6 +2954,9 @@ null
   "persistence": {
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
         "annotations": {},
         "labels": {},
         "name": "data",
@@ -2861,6 +2986,7 @@ null
   },
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
 }
@@ -2960,6 +3086,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>compactor.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the compactor</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>compactor.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the compactor image. Overrides `loki.image.registry`</td>
@@ -3019,6 +3154,17 @@ null
 			<td>List of the compactor PVCs</td>
 			<td><pre lang="list">
 
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -3185,6 +3331,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>compactor.serviceType</td>
+			<td>string</td>
+			<td>Service type for compactor service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>compactor.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the compactor to shutdown before it is killed</td>
@@ -3255,6 +3410,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -3271,6 +3427,7 @@ null
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
   "topologySpreadConstraints": [],
@@ -3462,6 +3619,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>distributor.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the distributor</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>distributor.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the distributor image. Overrides `loki.image.registry`</td>
@@ -3588,6 +3754,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>distributor.serviceType</td>
+			<td>string</td>
+			<td>Service type for distributor service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>distributor.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the distributor to shutdown before it is killed</td>
@@ -3662,6 +3837,7 @@ null
     "extraVolumeMounts": [],
     "extraVolumes": [],
     "hookType": "post-install",
+    "hostUsers": "nil",
     "image": {
       "digest": null,
       "pullPolicy": "IfNotPresent",
@@ -3823,6 +3999,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hookType": "post-install",
+  "hostUsers": "nil",
   "image": {
     "digest": null,
     "pullPolicy": "IfNotPresent",
@@ -3857,7 +4034,7 @@ null
 		<tr>
 			<td>enterprise.provisioner.affinity</td>
 			<td>object</td>
-			<td>Affinity for tokengen Pods</td>
+			<td>Affinity for provisioner Pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3923,6 +4100,15 @@ true
 			<td>Hook type(s) to customize when the job runs.  defaults to post-install</td>
 			<td><pre lang="json">
 "post-install"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.provisioner.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in provisioner pods</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -3998,7 +4184,7 @@ null
 		<tr>
 			<td>enterprise.provisioner.nodeSelector</td>
 			<td>object</td>
-			<td>Node selector for tokengen Pods</td>
+			<td>Node selector for provisioner Pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -4039,7 +4225,7 @@ null
 		<tr>
 			<td>enterprise.provisioner.tolerations</td>
 			<td>list</td>
-			<td>Tolerations for tokengen Pods</td>
+			<td>Tolerations for provisioner Pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4078,6 +4264,7 @@ false
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "initContainers": [],
   "labels": {},
   "nodeSelector": {},
@@ -4190,6 +4377,15 @@ false
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the `gateway` pod</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -4329,10 +4525,10 @@ true
 		</tr>
 		<tr>
 			<td>extraObjects</td>
-			<td>list</td>
+			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-[]
+null
 </pre>
 </td>
 		</tr>
@@ -4566,6 +4762,15 @@ true
 			<td>Volumes to add to the gateway pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the gateway</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -5142,6 +5347,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -5152,6 +5358,9 @@ null
   "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
     "annotations": {},
     "enableStatefulSetAutoDeletePVC": false,
     "enabled": false,
@@ -5169,6 +5378,7 @@ null
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": [],
@@ -5263,6 +5473,15 @@ Hard node anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the index-gateway</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the index-gateway image. Overrides `loki.image.registry`</td>
@@ -5322,6 +5541,17 @@ null
 			<td>Node selector for index-gateway pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -5452,6 +5682,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.serviceType</td>
+			<td>string</td>
+			<td>Service type for index-gateway service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the index-gateway to shutdown before it is killed.</td>
@@ -5543,6 +5782,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -5557,6 +5797,9 @@ null
   "persistence": {
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -5577,6 +5820,7 @@ null
   "rolloutGroupPrefix": null,
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": [
@@ -5809,6 +6053,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>ingester.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the ingester</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ingester.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the ingester image. Overrides `loki.image.registry`</td>
@@ -5886,6 +6139,17 @@ null
 			<td>List of the ingester PVCs</td>
 			<td><pre lang="list">
 
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -5976,6 +6240,15 @@ false
 			<td>Labels for ingestor service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.serviceType</td>
+			<td>string</td>
+			<td>Service type for ingestor service</td>
+			<td><pre lang="json">
+"ClusterIP"
 </pre>
 </td>
 		</tr>
@@ -7035,6 +7308,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in loki-canary pods</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.image</td>
 			<td>object</td>
 			<td>Image to use for loki canary</td>
@@ -7595,7 +7877,7 @@ false
     "tenant": {
       "name": "self-monitoring",
       "password": null,
-      "secretNamespace": "{{ .Release.Namespace }}"
+      "secretNamespace": "{{ include \"loki.namespace\" . }}"
     }
   },
   "serviceMonitor": {
@@ -7779,7 +8061,7 @@ null
   "tenant": {
     "name": "self-monitoring",
     "password": null,
-    "secretNamespace": "{{ .Release.Namespace }}"
+    "secretNamespace": "{{ include \"loki.namespace\" . }}"
   }
 }
 </pre>
@@ -7945,7 +8227,7 @@ null
 {
   "name": "self-monitoring",
   "password": null,
-  "secretNamespace": "{{ .Release.Namespace }}"
+  "secretNamespace": "{{ include \"loki.namespace\" . }}"
 }
 </pre>
 </td>
@@ -7972,8 +8254,8 @@ null
 			<td>monitoring.selfMonitoring.tenant.secretNamespace</td>
 			<td>string</td>
 			<td>Namespace to create additional tenant token secret in. Useful if your Grafana instance is in a separate namespace. Token will still be created in the canary namespace.</td>
-			<td><pre lang="json">
-"{{ .Release.Namespace }}"
+			<td><pre lang="">
+The same namespace as the loki chart is installed in.
 </pre>
 </td>
 		</tr>
@@ -8121,6 +8403,15 @@ null
 			<td>nameOverride</td>
 			<td>string</td>
 			<td>Overrides the chart's name</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>namespaceOverride</td>
+			<td>string</td>
+			<td>Overrides the chart's namespace</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -8311,6 +8602,7 @@ false
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -8431,6 +8723,15 @@ false
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the overrides-exporter</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -8609,6 +8910,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -8621,6 +8923,9 @@ null
   "persistence": {
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
         "annotations": {},
         "labels": {},
         "name": "data",
@@ -8750,6 +9055,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>patternIngester.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the pattern ingester</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>patternIngester.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the pattern ingester image. Overrides `loki.image.registry`</td>
@@ -8818,6 +9132,17 @@ null
 			<td>List of the pattern ingester PVCs</td>
 			<td><pre lang="list">
 
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -9055,6 +9380,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -9071,6 +9397,7 @@ null
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
   "topologySpreadConstraints": [
@@ -9281,6 +9608,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>querier.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the querier</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>querier.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the querier image. Overrides `loki.image.registry`</td>
@@ -9407,6 +9743,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>querier.serviceType</td>
+			<td>string</td>
+			<td>Service Type for querier service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>querier.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the querier to shutdown before it is killed</td>
@@ -9477,6 +9822,7 @@ Defaults to allow skew no more then 1 node
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -9492,6 +9838,7 @@ Defaults to allow skew no more then 1 node
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
   "topologySpreadConstraints": []
@@ -9682,6 +10029,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryFrontend.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the query-frontend</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryFrontend.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the query-frontend image. Overrides `loki.image.registry`</td>
@@ -9799,6 +10155,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryFrontend.serviceType</td>
+			<td>string</td>
+			<td>Service Type for query-frontend service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryFrontend.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the query-frontend to shutdown before it is killed</td>
@@ -9855,6 +10220,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -9957,6 +10323,15 @@ Hard node anti-affinity
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the query-scheduler</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -10185,6 +10560,7 @@ false
   "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -10196,6 +10572,9 @@ false
   "livenessProbe": {},
   "nodeSelector": {},
   "persistence": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
     "annotations": {},
     "enableStatefulSetAutoDeletePVC": true,
     "labels": {},
@@ -10212,7 +10591,8 @@ false
   "selectorLabels": {},
   "service": {
     "annotations": {},
-    "labels": {}
+    "labels": {},
+    "type": "ClusterIP"
   },
   "targetModule": "read",
   "terminationGracePeriodSeconds": 30,
@@ -10358,6 +10738,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the read pods.</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the read image. Overrides `loki.image.registry`</td>
@@ -10435,6 +10824,9 @@ false
 			<td>read.persistence is used only if legacyReadTarget is set to true</td>
 			<td><pre lang="json">
 {
+  "accessModes": [
+    "ReadWriteOnce"
+  ],
   "annotations": {},
   "enableStatefulSetAutoDeletePVC": true,
   "labels": {},
@@ -10442,6 +10834,17 @@ false
   "size": "10Gi",
   "storageClass": null
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -10581,6 +10984,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.service.type</td>
+			<td>string</td>
+			<td>Service Type for read Service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.targetModule</td>
 			<td>string</td>
 			<td>Comma-separated list of Loki modules to load for the read</td>
@@ -10621,7 +11033,7 @@ null
 			<td>string</td>
 			<td>Comma separated addresses list in DNS Service Discovery format</td>
 			<td><pre lang="json">
-"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"results-cache\") }}.{{ $.Release.Namespace }}.svc"
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"results-cache\") }}.{{ include \"loki.namespace\" $ }}.svc"
 </pre>
 </td>
 		</tr>
@@ -10721,6 +11133,15 @@ true
 			<td>Additional volumes to be added to the results-cache pod (applies to both memcached and exporter containers). Example: extraVolumes: - name: extra-volume   secret:    secretName: extra-volume-secret</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in results-cache pods</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -11049,6 +11470,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -11058,6 +11480,9 @@ null
   "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
     "annotations": {},
     "enabled": false,
     "labels": {},
@@ -11199,6 +11624,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>ruler.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the ruler</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ruler.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the ruler image. Overrides `loki.image.registry`</td>
@@ -11249,6 +11683,17 @@ null
 			<td>Node selector for ruler pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -11792,6 +12237,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the single binary pods</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the single binary image. Overrides `loki.image.registry`</td>
@@ -11833,6 +12287,17 @@ null
 			<td>Node selector for single binary pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -11972,6 +12437,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.service.type</td>
+			<td>string</td>
+			<td>Service Type for single binary Service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.targetModule</td>
 			<td>string</td>
 			<td>Comma-separated list of Loki modules to load for the single binary</td>
@@ -12028,6 +12502,7 @@ null
   "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -12146,6 +12621,15 @@ false
 			<td>Volumes to add to the table-manager pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in table-manager pods</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -12284,6 +12768,7 @@ false
   "annotations": {},
   "canaryServiceAddress": "http://loki-canary:3500/metrics",
   "enabled": true,
+  "hostUsers": "nil",
   "image": {
     "digest": null,
     "pullPolicy": "IfNotPresent",
@@ -12313,6 +12798,15 @@ false
 			<td>Used to directly query the metrics endpoint of the canary for testing, this approach avoids needing prometheus for testing. This in a newer approach to using prometheusAddress such that tests do not have a dependency on prometheus</td>
 			<td><pre lang="json">
 "http://loki-canary:3500/metrics"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>test.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in test pods</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -12585,6 +13079,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the write pods.</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the write image. Overrides `loki.image.registry`</td>
@@ -12635,6 +13138,17 @@ null
 			<td>Node selector for write pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -12790,6 +13304,15 @@ null
 			<td>Additional labels for write Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.service.type</td>
+			<td>string</td>
+			<td>Service Type for write Service</td>
+			<td><pre lang="json">
+"ClusterIP"
 </pre>
 </td>
 		</tr>

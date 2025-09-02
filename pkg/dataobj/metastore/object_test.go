@@ -73,11 +73,11 @@ type testDataBuilder struct {
 	uploader *uploader.Uploader
 }
 
-func (b *testDataBuilder) addStreamAndFlush(stream logproto.Stream) {
-	err := b.builder.Append(stream)
+func (b *testDataBuilder) addStreamAndFlush(tenant string, stream logproto.Stream) {
+	err := b.builder.Append(tenant, stream)
 	require.NoError(b.t, err)
 
-	minTime, maxTime := b.builder.TimeRange()
+	timeRanges := b.builder.TimeRanges()
 	obj, closer, err := b.builder.Flush()
 	require.NoError(b.t, err)
 	defer closer.Close()
@@ -85,14 +85,7 @@ func (b *testDataBuilder) addStreamAndFlush(stream logproto.Stream) {
 	path, err := b.uploader.Upload(b.t.Context(), obj)
 	require.NoError(b.t, err)
 
-	err = b.meta.WriteEntry(context.Background(), path, []multitenancy.TimeRange{
-		{
-			Tenant:  tenantID,
-			MinTime: minTime,
-			MaxTime: maxTime,
-		},
-	})
-	require.NoError(b.t, err)
+	require.NoError(b.t, b.meta.WriteEntry(context.Background(), path, timeRanges))
 }
 
 func TestStreamIDs(t *testing.T) {
@@ -288,13 +281,13 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 
 	bucket := objstore.NewInMemBucket()
 
-	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, log.NewNopLogger())
+	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, log.NewNopLogger())
 	require.NoError(t, uploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
 	path, err := uploader.Upload(context.Background(), obj)
 	require.NoError(t, err)
 
-	metastoreTocWriter := NewTableOfContentsWriter(Config{}, bucket, log.NewNopLogger())
+	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
 
 	err = metastoreTocWriter.WriteEntry(context.Background(), path, []multitenancy.TimeRange{
 		{
@@ -305,7 +298,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	mstore := NewObjectMetastore(StorageConfig{}, bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
+	mstore := NewObjectMetastore(bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
 
 	tests := []struct {
 		name       string
@@ -335,6 +328,16 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 			predicates: nil,
 			wantCount:  0,
 		},
+		{
+			name: "matching selector with unsupported predicate type",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "bar", "something"),
+			},
+			wantCount: 1,
+		},
 	}
 
 	for _, tt := range tests {
@@ -346,28 +349,28 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	}
 }
 
-func queryMetastore(t *testing.T, tenantID string, mfunc func(context.Context, time.Time, time.Time, Metastore)) {
+func queryMetastore(t *testing.T, tenant string, mfunc func(context.Context, time.Time, time.Time, Metastore)) {
 	now := time.Now().UTC()
 	start := now.Add(-time.Hour * 5)
 	end := now.Add(time.Hour * 5)
 
-	builder := newTestDataBuilder(t, tenantID)
+	builder := newTestDataBuilder(t)
 
 	for _, stream := range testStreams {
-		builder.addStreamAndFlush(stream)
+		builder.addStreamAndFlush(tenant, stream)
 	}
 
-	mstore := NewObjectMetastore(StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
+	mstore := NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
 	defer func() {
 		require.NoError(t, mstore.bucket.Close())
 	}()
 
-	ctx := user.InjectOrgID(context.Background(), tenantID)
+	ctx := user.InjectOrgID(context.Background(), tenant)
 
 	mfunc(ctx, start, end, mstore)
 }
 
-func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
+func newTestDataBuilder(t *testing.T) *testDataBuilder {
 	bucket := objstore.NewInMemBucket()
 
 	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
@@ -382,10 +385,10 @@ func newTestDataBuilder(t *testing.T, tenantID string) *testDataBuilder {
 	logger := log.NewLogfmtLogger(os.Stdout)
 	logger = log.With(logger, "test", t.Name())
 
-	meta := NewTableOfContentsWriter(Config{}, bucket, logger)
+	meta := NewTableOfContentsWriter(bucket, logger)
 	require.NoError(t, meta.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
-	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)
+	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, logger)
 	require.NoError(t, uploader.RegisterMetrics(prometheus.NewPedanticRegistry()))
 
 	return &testDataBuilder{

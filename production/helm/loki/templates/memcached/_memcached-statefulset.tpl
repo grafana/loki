@@ -20,7 +20,7 @@ metadata:
     name: "memcached-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}"
   annotations:
     {{- toYaml .annotations | nindent 4 }}
-  namespace: {{ $.ctx.Release.Namespace | quote }}
+  namespace: {{ include "loki.namespace" $.ctx | quote }}
 spec:
   podManagementPolicy: {{ .podManagementPolicy }}
   replicas: {{ .replicas }}
@@ -55,6 +55,9 @@ spec:
       serviceAccountName: {{ template "loki.serviceAccountName" $.ctx }}
       {{- if .priorityClassName }}
       priorityClassName: {{ .priorityClassName }}
+      {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" $.ctx)) (kindIs "bool" .hostUsers) }}
+      hostUsers: {{ .hostUsers }}
       {{- end }}
       securityContext:
         {{- toYaml $.ctx.Values.memcached.podSecurityContext | nindent 8 }}
