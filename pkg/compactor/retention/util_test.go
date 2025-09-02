@@ -172,15 +172,16 @@ func (t *table) CleanupSeries(_ []byte, _ labels.Labels) error {
 	return nil
 }
 
-func (t *table) RemoveChunk(_, _ model.Time, userID []byte, lbls labels.Labels, chunkID string) error {
+func (t *table) RemoveChunk(_, _ model.Time, userID []byte, lbls labels.Labels, chunkID string) (bool, error) {
 	seriesID := labels.NewBuilder(lbls).Set(labels.MetricName, "logs").Labels().String()
 	for i, chk := range t.chunks[string(userID)][seriesID] {
 		if getChunkID(chk) == chunkID {
 			t.chunks[string(userID)][seriesID] = append(t.chunks[string(userID)][seriesID][:i], t.chunks[string(userID)][seriesID][i+1:]...)
+			return true, nil
 		}
 	}
 
-	return nil
+	return false, nil
 }
 
 func newTable(name string) *table {

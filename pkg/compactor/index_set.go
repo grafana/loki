@@ -186,59 +186,67 @@ func (is *indexSet) runRetention(tableMarker retention.TableMarker) error {
 	return nil
 }
 
-// applyUpdates applies the given updates to the compacted index.
-func (is *indexSet) applyUpdates(labelsStr string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []deletion.Chunk) error {
+// applyUpdates applies the given updates to the compacted index. Returns list of chunks which were not indexed due to their missing source chunks.
+func (is *indexSet) applyUpdates(labelsStr string, rebuiltChunks map[string]deletion.Chunk, chunksToDeIndex []string) ([]deletion.Chunk, error) {
 	if is.compactedIndex == nil {
-		return fmt.Errorf("compacted index should be initialized before applying updates")
+		return nil, fmt.Errorf("compacted index should be initialized before applying updates")
 	}
 
 	userIDBytes := unsafeGetBytes(is.userID)
 	labels, err := syntax.ParseLabels(labelsStr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	for _, chunkID := range chunksToDelete {
+	chunksNotIndexed := make([]deletion.Chunk, 0, len(rebuiltChunks))
+	for chunkID, newChunk := range rebuiltChunks {
 		chk, err := chunk.ParseExternalKey(is.userID, chunkID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		err = is.compactedIndex.RemoveChunk(chk.From, chk.Through, userIDBytes, labels, chunkID)
+		sourceChunkExisted, err := is.compactedIndex.RemoveChunk(chk.From, chk.Through, userIDBytes, labels, chunkID)
 		if err != nil {
-			return err
+			return nil, err
 		}
+		if newChunk == nil {
+			// if we ended up removing the whole source chunk without building a new chunk, there is nothing to do further.
+			continue
+		}
+		if !sourceChunkExisted {
+			// if the source chunk was already removed from the index, we need not index the new chunk.
+			chunksNotIndexed = append(chunksNotIndexed, newChunk)
+			continue
+		}
+		_, err = is.compactedIndex.IndexChunk(logproto.ChunkRef{
+			Fingerprint: newChunk.GetFingerprint(),
+			UserID:      is.userID,
+			From:        newChunk.GetFrom(),
+			Through:     newChunk.GetThrough(),
+			Checksum:    newChunk.GetChecksum(),
+		}, labels, newChunk.GetSize(), newChunk.GetEntriesCount())
+		if err != nil {
+			return nil, err
+		}
+
 	}
 
 	for _, chunkID := range chunksToDeIndex {
 		chk, err := chunk.ParseExternalKey(is.userID, chunkID)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
-		err = is.compactedIndex.RemoveChunk(chk.From, chk.Through, userIDBytes, labels, chunkID)
+		_, err = is.compactedIndex.RemoveChunk(chk.From, chk.Through, userIDBytes, labels, chunkID)
 		if err != nil {
-			return err
-		}
-	}
-
-	for _, chk := range chunksToIndex {
-		_, err := is.compactedIndex.IndexChunk(logproto.ChunkRef{
-			Fingerprint: chk.GetFingerprint(),
-			UserID:      is.userID,
-			From:        chk.GetFrom(),
-			Through:     chk.GetThrough(),
-			Checksum:    chk.GetChecksum(),
-		}, labels, chk.GetSize(), chk.GetEntriesCount())
-		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	is.uploadCompactedDB = true
 	is.removeSourceObjects = true
 
-	return nil
+	return chunksNotIndexed, nil
 }
 
 // upload uploads the compacted index in compressed format.
