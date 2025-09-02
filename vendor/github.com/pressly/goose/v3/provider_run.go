@@ -172,7 +172,7 @@ func (p *Provider) runIndividually(
 	if err != nil {
 		return err
 	}
-	if useTx {
+	if useTx && !p.cfg.isolateDDL {
 		return beginTx(ctx, conn, func(tx *sql.Tx) error {
 			if err := p.runMigration(ctx, tx, m, direction); err != nil {
 				return err
@@ -316,20 +316,34 @@ func (p *Provider) tryEnsureVersionTable(ctx context.Context, conn *sql.Conn) er
 			}
 			// Fallthrough to create the table.
 		} else if err != nil {
-			return fmt.Errorf("failed to check if version table exists: %w", err)
+			return fmt.Errorf("check if version table exists: %w", err)
 		}
 
-		if err := beginTx(ctx, conn, func(tx *sql.Tx) error {
-			if err := p.store.CreateVersionTable(ctx, tx); err != nil {
-				return err
+		if p.cfg.isolateDDL {
+			// If isolation is enabled, we create the version table separately to ensure subsequent
+			// DML operations are not mixed with DDL.
+			if err := p.store.CreateVersionTable(ctx, conn); err != nil {
+				return retry.RetryableError(fmt.Errorf("create version table: %w", err))
 			}
-			return p.store.Insert(ctx, tx, database.InsertRequest{Version: 0})
-		}); err != nil {
-			// Mark the error as retryable so we can try again. It's possible that another instance
-			// is creating the table at the same time and the checks above will succeed on the next
-			// iteration.
-			return retry.RetryableError(fmt.Errorf("failed to create version table: %w", err))
+			if err := p.store.Insert(ctx, conn, database.InsertRequest{Version: 0}); err != nil {
+				return retry.RetryableError(fmt.Errorf("insert zero version: %w", err))
+			}
+		} else {
+			// If DDL isolation is not enabled, we can create the version table and insert the zero
+			// version in a single transaction.
+			if err := beginTx(ctx, conn, func(tx *sql.Tx) error {
+				if err := p.store.CreateVersionTable(ctx, tx); err != nil {
+					return err
+				}
+				return p.store.Insert(ctx, tx, database.InsertRequest{Version: 0})
+			}); err != nil {
+				// Mark the error as retryable so we can try again. It's possible that another instance
+				// is creating the table at the same time and the checks above will succeed on the next
+				// iteration.
+				return retry.RetryableError(fmt.Errorf("create version table: %w", err))
+			}
 		}
+
 		return nil
 	})
 }
@@ -431,7 +445,6 @@ func (p *Provider) runGo(ctx context.Context, db database.DBTxConn, m *Migration
 // runSQL is a helper function that runs the given SQL statements in the given direction. It must
 // only be called after the migration has been parsed.
 func (p *Provider) runSQL(ctx context.Context, db database.DBTxConn, m *Migration, direction bool) error {
-
 	if !m.sql.Parsed {
 		return fmt.Errorf("sql migrations must be parsed")
 	}

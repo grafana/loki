@@ -39,6 +39,8 @@ global:
 nameOverride: null
 # -- Overrides the chart's computed fullname
 fullnameOverride: null
+# -- Overrides the chart's namespace
+namespaceOverride: null
 # -- Overrides the chart's cluster label
 clusterLabelOverride: null
 # -- Image pull secrets for Docker images
@@ -330,7 +332,7 @@ loki:
       enabled: true
       discovery:
         join_peers:
-          - '{{ include "loki.queryFrontendFullname" . }}.{{ $.Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}'
+          - '{{ include "loki.queryFrontendFullname" . }}.{{ include "loki.namespace" . }}.svc.{{ .Values.global.clusterDomain }}'
     {{- end }}
     {{- with .Values.loki.querier }}
     querier:
@@ -696,14 +698,16 @@ enterprise:
     labels: {}
     # -- Additional annotations for the `provisioner` Job
     annotations: {}
-    # -- Affinity for tokengen Pods
+    # -- Affinity for provisioner Pods
     affinity: {}
-    # -- Node selector for tokengen Pods
+    # -- Node selector for provisioner Pods
     nodeSelector: {}
-    # -- Tolerations for tokengen Pods
+    # -- Tolerations for provisioner Pods
     tolerations: []
     # -- The name of the PriorityClass for provisioner Job
     priorityClassName: null
+    # -- Use the host's user namespace in provisioner pods
+    hostUsers: nil
     # -- Run containers as user `enterprise-logs(uid=10001)`
     securityContext:
       runAsNonRoot: true
@@ -759,6 +763,8 @@ test:
     digest: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
+  # -- Use the host's user namespace in test pods
+  hostUsers: nil
 # The Loki canary pushes logs to and queries from this loki installation to test
 # that it's working correctly
 lokiCanary:
@@ -803,6 +809,8 @@ lokiCanary:
   affinity: {}
   # -- The name of the PriorityClass for loki-canary pods
   priorityClassName: null
+  # -- Use the host's user namespace in loki-canary pods
+  hostUsers: nil
   # -- Image to use for loki canary
   image:
     # -- The Docker registry
@@ -982,7 +990,7 @@ adminApi:
   env: []
   # -- Configure optional initContainers
   initContainers: []
-  # -- Conifgure optional extraContainers
+  # -- Configure optional extraContainers
   extraContainers: []
   # -- Additional volumes for Pods
   extraVolumes: []
@@ -998,6 +1006,8 @@ adminApi:
   tolerations: []
   # -- Grace period to allow the admin-api to shutdown before it is killed
   terminationGracePeriodSeconds: 60
+  # -- Use the host's user namespace in admin-api pods
+  hostUsers: nil
 ######################################################################################################################
 #
 # Gateway and Ingress
@@ -1092,6 +1102,8 @@ gateway:
       drop:
         - ALL
     allowPrivilegeEscalation: false
+  # -- Use the host's user namespace in the gateway
+  hostUsers: nil
   # -- Resource requests and limits for the gateway
   resources: {}
   # -- Containers to add to the gateway pods
@@ -1232,6 +1244,8 @@ enterpriseGateway:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the `gateway` pod
+  hostUsers: nil
   # -- Additional CLI arguments for the `gateway` target
   extraArgs: {}
   # -- Environment variables from secrets or configmaps to add to the enterprise gateway pods
@@ -1428,6 +1442,8 @@ singleBinary:
     annotations: {}
     # -- Additional labels for single binary Service
     labels: {}
+    # -- Service Type for single binary Service
+    type: "ClusterIP"
   # -- Comma-separated list of Loki modules to load for the single binary
   targetModule: "all"
   # -- Labels for single binary service
@@ -1448,6 +1464,8 @@ singleBinary:
   resources: {}
   # -- Grace period to allow the single binary to shutdown before it is killed
   terminationGracePeriodSeconds: 30
+  # -- Use the host's user namespace in the single binary pods
+  hostUsers: nil
   # -- Affinity for single binary pods.
   # @default -- Hard node anti-affinity
   affinity:
@@ -1468,6 +1486,9 @@ singleBinary:
     enableStatefulSetAutoDeletePVC: true
     # -- Enable persistent disk
     enabled: true
+    # -- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Size of persistent disk
     size: 10Gi
     # -- Storage class to be used.
@@ -1541,6 +1562,8 @@ write:
     annotations: {}
     # -- Additional labels for write Service
     labels: {}
+    # -- Service Type for write Service
+    type: "ClusterIP"
   # -- Comma-separated list of Loki modules to load for the write
   targetModule: "write"
   # -- Additional CLI args for the write
@@ -1572,6 +1595,8 @@ write:
   # this must be increased. It must be long enough so writes can be gracefully shutdown flushing/transferring
   # all data and to successfully leave the member ring on shutdown.
   terminationGracePeriodSeconds: 300
+  # -- Use the host's user namespace in the write pods.
+  hostUsers: nil
   # -- Affinity for write pods.
   # @default -- Hard node anti-affinity
   affinity:
@@ -1594,6 +1619,9 @@ write:
   persistence:
     # -- Enable volume claims in pod spec
     volumeClaimsEnabled: true
+    # -- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Parameters used for the `data` volume when volumeClaimEnabled if false
     dataVolumeParameters:
       emptyDir: {}
@@ -1664,6 +1692,8 @@ read:
     annotations: {}
     # -- Additional labels for read Service
     labels: {}
+    # -- Service Type for read Service
+    type: ClusterIP
   # -- Comma-separated list of Loki modules to load for the read
   targetModule: "read"
   # -- Whether or not to use the 2 target type simple scalable mode (read, write) or the
@@ -1690,6 +1720,8 @@ read:
   livenessProbe: {}
   # -- Grace period to allow the read to shutdown before it is killed
   terminationGracePeriodSeconds: 30
+  # -- Use the host's user namespace in the read pods.
+  hostUsers: nil
   # -- Affinity for read pods.
   # @default -- Hard node anti-affinity
   affinity:
@@ -1713,6 +1745,9 @@ read:
   persistence:
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: true
+    # -- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Size of persistent disk
     size: 10Gi
     # -- Storage class to be used.
@@ -1778,6 +1813,8 @@ backend:
     annotations: {}
     # -- Additional labels for backend Service
     labels: {}
+    # -- Service type for backend Service
+    type: ClusterIP
   # -- Comma-separated list of Loki modules to load for the backend
   targetModule: "backend"
   # -- Additional CLI args for the backend
@@ -1800,6 +1837,8 @@ backend:
   # this must be increased. It must be long enough so backends can be gracefully shutdown flushing/transferring
   # all data and to successfully leave the member ring on shutdown.
   terminationGracePeriodSeconds: 300
+  # -- Use the host's user namespace in the backend pods.
+  hostUsers: nil
   # -- Affinity for backend pods.
   # @default -- Hard node anti-affinity
   affinity:
@@ -1822,6 +1861,9 @@ backend:
   persistence:
     # -- Enable volume claims in pod spec
     volumeClaimsEnabled: true
+    # -- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Parameters used for the `data` volume when volumeClaimEnabled if false
     dataVolumeParameters:
       emptyDir: {}
@@ -1859,6 +1901,8 @@ ingester:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the ingester
+  hostUsers: nil
   autoscaling:
     # -- Enable autoscaling for the ingester
     enabled: false
@@ -1906,6 +1950,8 @@ ingester:
   serviceLabels: {}
   # -- Annotations for ingestor service
   serviceAnnotations: {}
+  # -- Service type for ingestor service
+  serviceType: "ClusterIP"
   # -- Additional CLI args for the ingester
   extraArgs: []
   # -- Environment variables to add to the ingester pods
@@ -1972,6 +2018,9 @@ ingester:
     # @notationType -- list
     claims:
       - name: data
+        # -- Set access modes on the PersistentVolumeClaim
+        accessModes:
+          - ReadWriteOnce
         size: 10Gi
         #   -- Storage class to be used.
         #   If defined, storageClassName: <storageClass>.
@@ -2050,6 +2099,8 @@ distributor:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the distributor
+  hostUsers: nil
   autoscaling:
     # -- Enable autoscaling for the distributor
     enabled: false
@@ -2096,6 +2147,8 @@ distributor:
   serviceLabels: {}
   # -- Annotations for distributor service
   serviceAnnotations: {}
+  # -- Service type for distributor service
+  serviceType: ClusterIP
   # -- Additional CLI args for the distributor
   extraArgs: []
   # -- Environment variables to add to the distributor pods
@@ -2146,6 +2199,8 @@ querier:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the querier
+  hostUsers: nil
   autoscaling:
     # -- Enable autoscaling for the querier, this is only used if `indexGateway.enabled: true`
     enabled: false
@@ -2192,6 +2247,8 @@ querier:
   serviceLabels: {}
   # -- Annotations for querier service
   serviceAnnotations: {}
+  # -- Service Type for querier service
+  serviceType: "ClusterIP"
   # -- Additional CLI args for the querier
   extraArgs: []
   # -- Environment variables to add to the querier pods
@@ -2251,6 +2308,8 @@ queryFrontend:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the query-frontend
+  hostUsers: nil
   autoscaling:
     # -- Enable autoscaling for the query-frontend
     enabled: false
@@ -2297,6 +2356,8 @@ queryFrontend:
   serviceLabels: {}
   # -- Annotations for query-frontend service
   serviceAnnotations: {}
+  # -- Service Type for query-frontend service
+  serviceType: ClusterIP
   # -- Additional CLI args for the query-frontend
   extraArgs: []
   # -- Environment variables to add to the query-frontend pods
@@ -2345,6 +2406,8 @@ queryScheduler:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the query-scheduler
+  hostUsers: nil
   image:
     # -- The Docker registry for the query-scheduler image. Overrides `loki.image.registry`
     registry: null
@@ -2409,6 +2472,8 @@ indexGateway:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the index-gateway
+  hostUsers: nil
   image:
     # -- The Docker registry for the index-gateway image. Overrides `loki.image.registry`
     registry: null
@@ -2426,6 +2491,8 @@ indexGateway:
   serviceLabels: {}
   # -- Annotations for index-gateway service
   serviceAnnotations: {}
+  # -- Service type for index-gateway service
+  serviceType: "ClusterIP"
   # -- Additional CLI args for the index-gateway
   extraArgs: []
   # -- Environment variables to add to the index-gateway pods
@@ -2464,6 +2531,9 @@ indexGateway:
   persistence:
     # -- Enable creating PVCs which is required when using boltdb-shipper
     enabled: false
+    # -- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Use emptyDir with ramdisk for storage. **Please note that all data in indexGateway will be lost on pod restart**
     inMemory: false
     # -- Size of persistent or memory disk
@@ -2501,6 +2571,8 @@ compactor:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the compactor
+  hostUsers: nil
   image:
     # -- The Docker registry for the compactor image. Overrides `loki.image.registry`
     registry: null
@@ -2529,6 +2601,8 @@ compactor:
   serviceLabels: {}
   # -- Annotations for compactor service
   serviceAnnotations: {}
+  # -- Service type for compactor service
+  serviceType: "ClusterIP"
   # -- Additional CLI args for the compactor
   extraArgs: []
   # -- Environment variables to add to the compactor pods
@@ -2573,6 +2647,9 @@ compactor:
     # @notationType -- list
     claims:
       - name: data
+        # -- Set access modes on the PersistentVolumeClaim
+        accessModes:
+          - ReadWriteOnce
         size: 10Gi
         #   -- Storage class to be used.
         #   If defined, storageClassName: <storageClass>.
@@ -2611,6 +2688,8 @@ bloomGateway:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the bloom-gateway
+  hostUsers: nil
   image:
     # -- The Docker registry for the bloom-gateway image. Overrides `loki.image.registry`
     registry: null
@@ -2681,6 +2760,9 @@ bloomGateway:
     # @notationType -- list
     claims:
       - name: data
+        # -- Set access modes on the PersistentVolumeClaim
+        accessModes:
+          - ReadWriteOnce
         # -- Size of persistent disk
         size: 10Gi
         #   -- Storage class to be used.
@@ -2715,6 +2797,8 @@ bloomPlanner:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the bloom-planner
+  hostUsers: nil
   image:
     # -- The Docker registry for the bloom-planner image. Overrides `loki.image.registry`
     registry: null
@@ -2781,6 +2865,9 @@ bloomPlanner:
     # @notationType -- list
     claims:
       - name: data
+        # -- Set access modes on the PersistentVolumeClaim
+        accessModes:
+          - ReadWriteOnce
         # -- Size of persistent disk
         size: 10Gi
         #   -- Storage class to be used.
@@ -2819,6 +2906,8 @@ bloomBuilder:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the boom-builder
+  hostUsers: nil
   autoscaling:
     # -- Enable autoscaling for the bloom-builder
     enabled: false
@@ -2910,6 +2999,8 @@ patternIngester:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the pattern ingester
+  hostUsers: nil
   image:
     # -- The Docker registry for the pattern ingester image. Overrides `loki.image.registry`
     registry: null
@@ -2986,6 +3077,9 @@ patternIngester:
     # @notationType -- list
     claims:
       - name: data
+        # -- Set access modes on the PersistentVolumeClaim
+        accessModes:
+          - ReadWriteOnce
         size: 10Gi
         #   -- Storage class to be used.
         #   If defined, storageClassName: <storageClass>.
@@ -3028,6 +3122,8 @@ ruler:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the ruler
+  hostUsers: nil
   image:
     # -- The Docker registry for the ruler image. Overrides `loki.image.registry`
     registry: null
@@ -3087,6 +3183,9 @@ ruler:
   persistence:
     # -- Enable creating PVCs which is required when using recording rules
     enabled: false
+    # -- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Size of persistent disk
     size: 10Gi
     # -- Storage class to be used.
@@ -3180,6 +3279,8 @@ overridesExporter:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the overrides-exporter
+  hostUsers: nil
   image:
     # -- The Docker registry for the overrides-exporter image. Overrides `loki.image.registry`
     registry: null
@@ -3329,7 +3430,7 @@ resultsCache:
   # -- Specifies whether memcached based results-cache should be enabled
   enabled: true
   # -- Comma separated addresses list in DNS Service Discovery format
-  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "results-cache") }}.{{ $.Release.Namespace }}.svc
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "results-cache") }}.{{ include "loki.namespace" $ }}.svc
   # -- Specify how long cached results should be stored in the results-cache before being expired
   defaultValidity: 12h
   # -- Memcached operation timeout
@@ -3370,6 +3471,8 @@ resultsCache:
   maxUnavailable: 1
   # -- The name of the PriorityClass for results-cache pods
   priorityClassName: null
+  # -- Use the host's user namespace in results-cache pods
+  hostUsers: nil
   # -- Labels for results-cache pods
   podLabels: {}
   # -- Annotations for results-cache pods
@@ -3432,7 +3535,7 @@ chunksCache:
   # -- Specifies whether memcached based chunks-cache should be enabled
   enabled: true
   # -- Comma separated addresses list in DNS Service Discovery format
-  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.suffix ) }}.{{ $.Release.Namespace }}.svc
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.suffix ) }}.{{ include "loki.namespace" $ }}.svc
   # -- Batchsize for sending and receiving chunks from chunks cache
   batchSize: 4
   # -- Parallel threads for sending and receiving chunks from chunks cache
@@ -3477,6 +3580,8 @@ chunksCache:
   maxUnavailable: 1
   # -- The name of the PriorityClass for chunks-cache pods
   priorityClassName: null
+  # -- Use the host's user namespace in chunks-cache pods
+  hostUsers: nil
   # -- Labels for chunks-cache pods
   podLabels: {}
   # -- Annotations for chunks-cache pods
@@ -3542,7 +3647,7 @@ chunksCache:
     # -- Specifies whether memcached based chunks-cache-l2 should be enabled
     enabled: false
     # -- Comma separated addresses list in DNS Service Discovery format
-    addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.l2.suffix ) }}.{{ $.Release.Namespace }}.svc
+    addresses: 'dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.l2.suffix ) }}.{{ include "loki.namespace" $ }}.svc'
     # -- Batchsize for sending and receiving chunks from chunks cache
     batchSize: 4
     # -- Parallel threads for sending and receiving chunks from chunks cache
@@ -3587,6 +3692,8 @@ chunksCache:
     maxUnavailable: 1
     # -- The name of the PriorityClass for chunks-cache-l2 pods
     priorityClassName: null
+    # -- Use the host's user namespace in chunks-cache-l2 pods
+    hostUsers: nil
     # -- Labels for chunks-cache-l2 pods
     podLabels: {}
     # -- Annotations for chunks-cache-l2 pods
@@ -3912,7 +4019,8 @@ monitoring:
       password: null
       # -- Namespace to create additional tenant token secret in. Useful if your Grafana instance
       # is in a separate namespace. Token will still be created in the canary namespace.
-      secretNamespace: "{{ .Release.Namespace }}"
+      # @default -- The same namespace as the loki chart is installed in.
+      secretNamespace: '{{ include "loki.namespace" . }}'
     # -- DEPRECATED Grafana Agent configuration
     grafanaAgent:
       # -- DEPRECATED Controls whether to install the Grafana Agent Operator and its CRDs.
@@ -4002,6 +4110,8 @@ tableManager:
   extraContainers: []
   # -- Grace period to allow the table-manager to shutdown before it is killed
   terminationGracePeriodSeconds: 30
+  # -- Use the host's user namespace in table-manager pods
+  hostUsers: nil
   # -- Affinity for table-manager pods.
   # @default -- Hard node and anti-affinity
   affinity:
