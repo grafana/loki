@@ -8,7 +8,6 @@ package internal
 
 import (
 	otlpprofiles "go.opentelemetry.io/collector/pdata/internal/data/protogen/profiles/v1development"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 func CopyOrigValueTypeSlice(dest, src []*otlpprofiles.ValueType) []*otlpprofiles.ValueType {
@@ -19,19 +18,20 @@ func CopyOrigValueTypeSlice(dest, src []*otlpprofiles.ValueType) []*otlpprofiles
 		copy(newDest, dest)
 		// Add new pointers for missing elements from len(dest) to len(srt).
 		for i := len(dest); i < len(src); i++ {
-			newDest[i] = &otlpprofiles.ValueType{}
+			newDest[i] = NewOrigValueType()
 		}
 	} else {
 		newDest = dest[:len(src)]
 		// Cleanup the rest of the elements so GC can free the memory.
 		// This can happen when len(src) < len(dest) < cap(dest).
 		for i := len(src); i < len(dest); i++ {
+			DeleteOrigValueType(dest[i], true)
 			dest[i] = nil
 		}
 		// Add new pointers for missing elements.
 		// This can happen when len(dest) < len(src) < cap(dest).
 		for i := len(dest); i < len(src); i++ {
-			newDest[i] = &otlpprofiles.ValueType{}
+			newDest[i] = NewOrigValueType()
 		}
 	}
 	for i := range src {
@@ -41,21 +41,11 @@ func CopyOrigValueTypeSlice(dest, src []*otlpprofiles.ValueType) []*otlpprofiles
 }
 
 func GenerateOrigTestValueTypeSlice() []*otlpprofiles.ValueType {
-	orig := make([]*otlpprofiles.ValueType, 7)
-	for i := 0; i < 7; i++ {
-		orig[i] = &otlpprofiles.ValueType{}
-		FillOrigTestValueType(orig[i])
-	}
-	return orig
-}
-
-// UnmarshalJSONOrigValueTypeSlice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONOrigValueTypeSlice(iter *json.Iterator) []*otlpprofiles.ValueType {
-	var orig []*otlpprofiles.ValueType
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		orig = append(orig, &otlpprofiles.ValueType{})
-		UnmarshalJSONOrigValueType(orig[len(orig)-1], iter)
-		return true
-	})
+	orig := make([]*otlpprofiles.ValueType, 5)
+	orig[0] = NewOrigValueType()
+	orig[1] = GenTestOrigValueType()
+	orig[2] = NewOrigValueType()
+	orig[3] = GenTestOrigValueType()
+	orig[4] = NewOrigValueType()
 	return orig
 }

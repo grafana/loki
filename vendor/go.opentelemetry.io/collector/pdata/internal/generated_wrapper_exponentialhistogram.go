@@ -7,19 +7,63 @@
 package internal
 
 import (
+	"fmt"
+	"sync"
+
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
 	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
+var (
+	protoPoolExponentialHistogram = sync.Pool{
+		New: func() any {
+			return &otlpmetrics.ExponentialHistogram{}
+		},
+	}
+)
+
+func NewOrigExponentialHistogram() *otlpmetrics.ExponentialHistogram {
+	if !UseProtoPooling.IsEnabled() {
+		return &otlpmetrics.ExponentialHistogram{}
+	}
+	return protoPoolExponentialHistogram.Get().(*otlpmetrics.ExponentialHistogram)
+}
+
+func DeleteOrigExponentialHistogram(orig *otlpmetrics.ExponentialHistogram, nullable bool) {
+	if orig == nil {
+		return
+	}
+
+	if !UseProtoPooling.IsEnabled() {
+		orig.Reset()
+		return
+	}
+
+	for i := range orig.DataPoints {
+		DeleteOrigExponentialHistogramDataPoint(orig.DataPoints[i], true)
+	}
+
+	orig.Reset()
+	if nullable {
+		protoPoolExponentialHistogram.Put(orig)
+	}
+}
+
 func CopyOrigExponentialHistogram(dest, src *otlpmetrics.ExponentialHistogram) {
+	// If copying to same object, just return.
+	if src == dest {
+		return
+	}
 	dest.DataPoints = CopyOrigExponentialHistogramDataPointSlice(dest.DataPoints, src.DataPoints)
 	dest.AggregationTemporality = src.AggregationTemporality
 }
 
-func FillOrigTestExponentialHistogram(orig *otlpmetrics.ExponentialHistogram) {
+func GenTestOrigExponentialHistogram() *otlpmetrics.ExponentialHistogram {
+	orig := NewOrigExponentialHistogram()
 	orig.DataPoints = GenerateOrigTestExponentialHistogramDataPointSlice()
 	orig.AggregationTemporality = otlpmetrics.AggregationTemporality(1)
+	return orig
 }
 
 // MarshalJSONOrig marshals all properties from the current struct to the destination stream.
@@ -45,17 +89,20 @@ func MarshalJSONOrigExponentialHistogram(orig *otlpmetrics.ExponentialHistogram,
 
 // UnmarshalJSONOrigExponentialHistogram unmarshals all properties from the current struct from the source iterator.
 func UnmarshalJSONOrigExponentialHistogram(orig *otlpmetrics.ExponentialHistogram, iter *json.Iterator) {
-	iter.ReadObjectCB(func(iter *json.Iterator, f string) bool {
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
 		case "dataPoints", "data_points":
-			orig.DataPoints = UnmarshalJSONOrigExponentialHistogramDataPointSlice(iter)
+			for iter.ReadArray() {
+				orig.DataPoints = append(orig.DataPoints, NewOrigExponentialHistogramDataPoint())
+				UnmarshalJSONOrigExponentialHistogramDataPoint(orig.DataPoints[len(orig.DataPoints)-1], iter)
+			}
+
 		case "aggregationTemporality", "aggregation_temporality":
 			orig.AggregationTemporality = otlpmetrics.AggregationTemporality(iter.ReadEnumValue(otlpmetrics.AggregationTemporality_value))
 		default:
 			iter.Skip()
 		}
-		return true
-	})
+	}
 }
 
 func SizeProtoOrigExponentialHistogram(orig *otlpmetrics.ExponentialHistogram) int {
@@ -76,7 +123,7 @@ func MarshalProtoOrigExponentialHistogram(orig *otlpmetrics.ExponentialHistogram
 	pos := len(buf)
 	var l int
 	_ = l
-	for i := range orig.DataPoints {
+	for i := len(orig.DataPoints) - 1; i >= 0; i-- {
 		l = MarshalProtoOrigExponentialHistogramDataPoint(orig.DataPoints[i], buf[:pos])
 		pos -= l
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
@@ -92,5 +139,53 @@ func MarshalProtoOrigExponentialHistogram(orig *otlpmetrics.ExponentialHistogram
 }
 
 func UnmarshalProtoOrigExponentialHistogram(orig *otlpmetrics.ExponentialHistogram, buf []byte) error {
-	return orig.Unmarshal(buf)
+	var err error
+	var fieldNum int32
+	var wireType proto.WireType
+
+	l := len(buf)
+	pos := 0
+	for pos < l {
+		// If in a group parsing, move to the next tag.
+		fieldNum, wireType, pos, err = proto.ConsumeTag(buf, pos)
+		if err != nil {
+			return err
+		}
+		switch fieldNum {
+
+		case 1:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field DataPoints", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			orig.DataPoints = append(orig.DataPoints, NewOrigExponentialHistogramDataPoint())
+			err = UnmarshalProtoOrigExponentialHistogramDataPoint(orig.DataPoints[len(orig.DataPoints)-1], buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+
+		case 2:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field AggregationTemporality", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.AggregationTemporality = otlpmetrics.AggregationTemporality(num)
+		default:
+			pos, err = proto.ConsumeUnknown(buf, pos, wireType)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

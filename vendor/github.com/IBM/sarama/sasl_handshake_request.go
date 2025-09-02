@@ -5,6 +5,10 @@ type SaslHandshakeRequest struct {
 	Version   int16
 }
 
+func (r *SaslHandshakeRequest) setVersion(v int16) {
+	r.Version = v
+}
+
 func (r *SaslHandshakeRequest) encode(pe packetEncoder) error {
 	if err := pe.putString(r.Mechanism); err != nil {
 		return err
@@ -22,7 +26,7 @@ func (r *SaslHandshakeRequest) decode(pd packetDecoder, version int16) (err erro
 }
 
 func (r *SaslHandshakeRequest) key() int16 {
-	return 17
+	return apiKeySaslHandshake
 }
 
 func (r *SaslHandshakeRequest) version() int16 {

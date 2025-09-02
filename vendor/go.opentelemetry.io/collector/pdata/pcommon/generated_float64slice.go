@@ -31,8 +31,7 @@ func (ms Float64Slice) getState() *internal.State {
 // NewFloat64Slice creates a new empty Float64Slice.
 func NewFloat64Slice() Float64Slice {
 	orig := []float64(nil)
-	state := internal.StateMutable
-	return Float64Slice(internal.NewFloat64Slice(&orig, &state))
+	return Float64Slice(internal.NewFloat64Slice(&orig, internal.NewState()))
 }
 
 // AsRaw returns a copy of the []float64 slice.
@@ -131,6 +130,9 @@ func (ms Float64Slice) MoveAndAppendTo(dest Float64Slice) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (ms Float64Slice) CopyTo(dest Float64Slice) {
 	dest.getState().AssertMutable()
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
 	*dest.getOrig() = internal.CopyOrigFloat64Slice(*dest.getOrig(), *ms.getOrig())
 }
 

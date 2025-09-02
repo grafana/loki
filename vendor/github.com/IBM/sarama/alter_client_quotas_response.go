@@ -19,6 +19,10 @@ type AlterClientQuotasResponse struct {
 	Entries      []AlterClientQuotasEntryResponse // The quota configuration entries altered.
 }
 
+func (a *AlterClientQuotasResponse) setVersion(v int16) {
+	a.Version = v
+}
+
 type AlterClientQuotasEntryResponse struct {
 	ErrorCode KError                 // The error code, or `0` if the quota alteration succeeded.
 	ErrorMsg  *string                // The error message, or `null` if the quota alteration succeeded.
@@ -130,7 +134,7 @@ func (a *AlterClientQuotasEntryResponse) decode(pd packetDecoder, version int16)
 }
 
 func (a *AlterClientQuotasResponse) key() int16 {
-	return 49
+	return apiKeyAlterClientQuotas
 }
 
 func (a *AlterClientQuotasResponse) version() int16 {

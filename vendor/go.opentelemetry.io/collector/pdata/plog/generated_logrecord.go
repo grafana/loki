@@ -34,8 +34,7 @@ func newLogRecord(orig *otlplogs.LogRecord, state *internal.State) LogRecord {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewLogRecord() LogRecord {
-	state := internal.StateMutable
-	return newLogRecord(&otlplogs.LogRecord{}, &state)
+	return newLogRecord(internal.NewOrigLogRecord(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -47,8 +46,8 @@ func (ms LogRecord) MoveTo(dest LogRecord) {
 	if ms.orig == dest.orig {
 		return
 	}
-	*dest.orig = *ms.orig
-	*ms.orig = otlplogs.LogRecord{}
+	internal.DeleteOrigLogRecord(dest.orig, false)
+	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Timestamp returns the timestamp associated with this LogRecord.
