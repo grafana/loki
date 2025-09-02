@@ -337,27 +337,27 @@ func TestMatcher(t *testing.T) {
 		}{
 			{
 				name:      "timestamp exactly at lowerbound (exclusive boundary)",
-				timestamp: f.lowerbound,
+				timestamp: f.bounds.start,
 				expected:  nil, // should return nil as lowerbound is exclusive
 			},
 			{
 				name:      "timestamp greater than upperbound",
-				timestamp: f.upperbound.Add(1 * time.Nanosecond),
+				timestamp: f.bounds.end.Add(1 * time.Nanosecond),
 				expected:  nil, // should return nil as lowerbound is exclusive
 			},
 			{
 				name:      "timestamp exactly at upperbound (inclusive boundary)",
-				timestamp: f.upperbound,
+				timestamp: f.bounds.end,
 				expected:  []window{windows[0]}, // should return window as upperbound is inclusive
 			},
 			{
 				name:      "timestamp just after lowerbound",
-				timestamp: f.lowerbound.Add(1 * time.Nanosecond),
+				timestamp: f.bounds.start.Add(1 * time.Nanosecond),
 				expected:  []window{windows[0]},
 			},
 			{
 				name:      "timestamp just before upperbound",
-				timestamp: f.upperbound.Add(-1 * time.Nanosecond),
+				timestamp: f.bounds.end.Add(-1 * time.Nanosecond),
 				expected:  []window{windows[0]},
 			},
 			{
@@ -390,9 +390,9 @@ func TestMatcher(t *testing.T) {
 
 		t.Run("multiple windows (should return first)", func(t *testing.T) {
 			windows := []window{
-				{start: f.lowerbound, end: f.start},
-				{start: f.lowerbound.Add(100 * time.Second), end: f.start.Add(100 * time.Second)},
-				{start: f.lowerbound.Add(200 * time.Second), end: f.start.Add(200 * time.Second)},
+				{start: f.bounds.start, end: f.start},
+				{start: f.bounds.start.Add(100 * time.Second), end: f.start.Add(100 * time.Second)},
+				{start: f.bounds.start.Add(200 * time.Second), end: f.start.Add(200 * time.Second)},
 			}
 			matcher := f.createExactMatcher(windows)
 
@@ -427,27 +427,27 @@ func TestMatcher(t *testing.T) {
 		}{
 			{
 				name:      "timestamp exactly at lowerbound (exclusive boundary)",
-				timestamp: f.lowerbound,
+				timestamp: f.bounds.start,
 				expected:  nil, // should return nil as lowerbound is exclusive
 			},
 			{
 				name:      "timestamp greater than upperbound",
-				timestamp: f.upperbound.Add(1 * time.Nanosecond),
+				timestamp: f.bounds.end.Add(1 * time.Nanosecond),
 				expected:  nil, // should return nil as lowerbound is exclusive
 			},
 			{
 				name:      "timestamp exactly at upperbound (inclusive boundary)",
-				timestamp: f.upperbound,
+				timestamp: f.bounds.end,
 				expected:  []window{windows[2]}, // should return window as upperbound is inclusive
 			},
 			{
 				name:      "timestamp just after lowerbound",
-				timestamp: f.lowerbound.Add(1 * time.Nanosecond),
+				timestamp: f.bounds.start.Add(1 * time.Nanosecond),
 				expected:  []window{windows[0]},
 			},
 			{
 				name:      "timestamp just before upperbound",
-				timestamp: f.upperbound.Add(-1 * time.Nanosecond),
+				timestamp: f.bounds.end.Add(-1 * time.Nanosecond),
 				expected:  []window{windows[2]},
 			},
 			{
@@ -495,12 +495,12 @@ func TestMatcher(t *testing.T) {
 		}{
 			{
 				name:      "timestamp exactly at lowerbound (exclusive boundary)",
-				timestamp: f.lowerbound,
+				timestamp: f.bounds.start,
 				expected:  nil, // should return nil as lowerbound is exclusive
 			},
 			{
 				name:      "timestamp greater than upperbound",
-				timestamp: f.upperbound.Add(1 * time.Nanosecond),
+				timestamp: f.bounds.end.Add(1 * time.Nanosecond),
 				expected:  nil, // should return nil as lowerbound is exclusive
 			},
 			{
@@ -530,7 +530,7 @@ func TestMatcher(t *testing.T) {
 			},
 			{
 				name:      "timestamp just before upperbound",
-				timestamp: f.upperbound.Add(-1 * time.Nanosecond),
+				timestamp: f.bounds.end.Add(-1 * time.Nanosecond),
 				expected:  []window{windows[2]},
 			},
 			{
@@ -578,12 +578,12 @@ func TestMatcher(t *testing.T) {
 		}{
 			{
 				name:      "timestamp exactly at lowerbound (exclusive boundary)",
-				timestamp: f.lowerbound,
+				timestamp: f.bounds.start,
 				expected:  nil, // should return nil as lowerbound is exclusive
 			},
 			{
 				name:      "timestamp exactly at upperbound (inclusive boundary)",
-				timestamp: f.upperbound,
+				timestamp: f.bounds.end,
 				expected:  []window{windows[2]}, // should return window as upperbound is inclusive
 			},
 			{
@@ -603,7 +603,7 @@ func TestMatcher(t *testing.T) {
 			},
 			{
 				name:      "timestamp just before upperbound",
-				timestamp: f.upperbound.Add(-1 * time.Nanosecond),
+				timestamp: f.bounds.end.Add(-1 * time.Nanosecond),
 				expected:  []window{windows[2]},
 			},
 		}

@@ -32,6 +32,12 @@ type window struct {
 	start, end time.Time
 }
 
+// Contains returns if the timestamp t is within the bounds of the window.
+// The window start is exclusive, the window end is inclusive.
+func (w window) Contains(t time.Time) bool {
+	return t.After(w.start) && !t.After(w.end)
+}
+
 // timestampMatchingWindowsFunc resolves matching range interval windows for a specific timestamp.
 // The list can be empty if the timestamp is out of bounds or does not match any of the range windows.
 type timestampMatchingWindowsFunc func(time.Time) []window
@@ -211,20 +217,21 @@ func (r *rangeAggregationPipeline) Transport() Transport {
 
 func newMatcherFactoryFromOpts(opts rangeAggregationOptions) *matcherFactory {
 	return &matcherFactory{
-		start:      opts.startTs,
-		step:       opts.step,
-		interval:   opts.rangeInterval,
-		lowerbound: opts.startTs.Add(-opts.rangeInterval),
-		upperbound: opts.endTs,
+		start:    opts.startTs,
+		step:     opts.step,
+		interval: opts.rangeInterval,
+		bounds: window{
+			start: opts.startTs.Add(-opts.rangeInterval),
+			end:   opts.endTs,
+		},
 	}
 }
 
 type matcherFactory struct {
-	start      time.Time
-	step       time.Duration
-	interval   time.Duration
-	lowerbound time.Time
-	upperbound time.Time
+	start    time.Time
+	step     time.Duration
+	interval time.Duration
+	bounds   window
 }
 
 func (f *matcherFactory) createMatcher(windows []window) timestampMatchingWindowsFunc {
@@ -255,7 +262,7 @@ func (f *matcherFactory) createMatcher(windows []window) timestampMatchingWindow
 //	interval      |---------x-------|
 func (f *matcherFactory) createExactMatcher(windows []window) timestampMatchingWindowsFunc {
 	return func(t time.Time) []window {
-		if t.Compare(f.lowerbound) <= 0 || t.Compare(f.upperbound) > 0 {
+		if !f.bounds.Contains(t) {
 			return nil // out of range
 		}
 		if len(windows) == 0 {
@@ -277,7 +284,7 @@ func (f *matcherFactory) createAlignedMatcher(windows []window) timestampMatchin
 	stepNs := f.step.Nanoseconds()
 
 	return func(t time.Time) []window {
-		if t.Compare(f.lowerbound) <= 0 || t.Compare(f.upperbound) > 0 {
+		if !f.bounds.Contains(t) {
 			return nil // out of range
 		}
 
@@ -301,7 +308,7 @@ func (f *matcherFactory) createGappedMatcher(windows []window) timestampMatching
 	stepNs := f.step.Nanoseconds()
 
 	return func(t time.Time) []window {
-		if t.Compare(f.lowerbound) <= 0 || t.Compare(f.upperbound) > 0 {
+		if !f.bounds.Contains(t) {
 			return nil // out of range
 		}
 
@@ -328,7 +335,7 @@ func (f *matcherFactory) createGappedMatcher(windows []window) timestampMatching
 //	interval   |--------|
 func (f *matcherFactory) createOverlappingMatcher(windows []window) timestampMatchingWindowsFunc {
 	return func(t time.Time) []window {
-		if t.Compare(f.lowerbound) <= 0 || t.Compare(f.upperbound) > 0 {
+		if !f.bounds.Contains(t) {
 			return nil // out of range
 		}
 
