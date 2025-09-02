@@ -166,9 +166,9 @@ func (c *CompactedIndex) CleanupSeries(userID []byte, lbls labels.Labels) error 
 	return c.seriesCleaner.CleanupSeries(userID, lbls)
 }
 
-func (c *CompactedIndex) RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) error {
+func (c *CompactedIndex) RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) (bool, error) {
 	if err := c.setupIndexProcessors(); err != nil {
-		return err
+		return false, err
 	}
 
 	return c.seriesCleaner.RemoveChunk(from, through, userID, labels, chunkID)

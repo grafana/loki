@@ -365,20 +365,34 @@ func (c *compactedIndex) CleanupSeries(_ []byte, lbls labels.Labels) error {
 	return nil
 }
 
-func (c *compactedIndex) RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) error {
+// RemoveChunk notes details of the chunk to remove. Returns true/false for existence of the chunk.
+func (c *compactedIndex) RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) (bool, error) {
 	chk, err := chunk.ParseExternalKey(string(userID), chunkID)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	seriesID := labels.String()
+	chunkMeta := tsdbindex.ChunkMeta{
+		Checksum: chk.Checksum,
+		MinTime:  int64(from),
+		MaxTime:  int64(through),
+	}
+	hasChunk, err := c.builder.HasChunk(seriesID, chunkMeta)
+	if err != nil {
+		return false, err
+	}
+	if !hasChunk {
+		return false, nil
+	}
+
 	c.deleteChunks[seriesID] = append(c.deleteChunks[seriesID], tsdbindex.ChunkMeta{
 		Checksum: chk.Checksum,
 		MinTime:  int64(from),
 		MaxTime:  int64(through),
 	})
 
-	return nil
+	return true, nil
 }
 
 func (c *compactedIndex) Cleanup() {}

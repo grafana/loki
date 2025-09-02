@@ -134,7 +134,7 @@ func (s *seriesCleaner) CleanupSeries(userID []byte, lbls labels.Labels) error {
 	return nil
 }
 
-func (s *seriesCleaner) RemoveChunk(from, through model.Time, userID []byte, lbls labels.Labels, chunkID string) error {
+func (s *seriesCleaner) RemoveChunk(from, through model.Time, userID []byte, lbls labels.Labels, chunkID string) (bool, error) {
 	// We need to add metric name label as well if it is missing since the series ids are calculated including that.
 	builder := labels.NewBuilder(lbls)
 	if builder.Get(labels.MetricName) == "" {
@@ -144,20 +144,28 @@ func (s *seriesCleaner) RemoveChunk(from, through model.Time, userID []byte, lbl
 
 	indexEntries, err := s.schema.GetChunkWriteEntries(from, through, string(userID), logMetricName, lbls, chunkID)
 	if err != nil {
-		return err
+		return false, err
 	}
-
+	keys := make([][]byte, 0, len(indexEntries))
 	for _, indexEntry := range indexEntries {
 		key := make([]byte, 0, len(indexEntry.HashValue)+len(separator)+len(indexEntry.RangeValue))
 		key = append(key, []byte(indexEntry.HashValue)...)
 		key = append(key, []byte(separator)...)
 		key = append(key, indexEntry.RangeValue...)
 
+		if s.bucket.Get(key) == nil {
+			return false, nil
+		}
+
+		keys = append(keys, key)
+	}
+
+	for _, key := range keys {
 		err := s.bucket.Delete(key)
 		if err != nil {
-			return err
+			return false, err
 		}
 	}
 
-	return nil
+	return true, nil
 }
