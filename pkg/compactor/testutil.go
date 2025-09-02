@@ -168,6 +168,10 @@ func (c compactedIndex) IndexChunk(_ logproto.ChunkRef, _ labels.Labels, _ uint3
 	return true, nil
 }
 
+func (c compactedIndex) ChunkExists(_ []byte, _ labels.Labels, _ logproto.ChunkRef) (bool, error) {
+	return false, nil
+}
+
 func (c compactedIndex) CleanupSeries(_ []byte, _ labels.Labels) error {
 	return nil
 }

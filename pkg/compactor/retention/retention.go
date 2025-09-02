@@ -115,6 +115,7 @@ type IndexProcessor interface {
 	SeriesIterator
 	chunkIndexer
 	IndexCleaner
+	ChunkExists(userID []byte, lbls labels.Labels, chunkRef logproto.ChunkRef) (bool, error)
 }
 
 var errNoChunksFound = errors.New("no chunks found in table, please check if there are really no chunks and manually drop the table or " +

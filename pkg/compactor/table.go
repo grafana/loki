@@ -3,6 +3,7 @@ package compactor
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"os"
 	"path/filepath"
 	"sync"
@@ -262,6 +263,11 @@ func (t *table) openCompactedIndexForUpdates(idxSet *indexSet) error {
 
 // applyStorageUpdates applies storage updates for a single stream of a user
 func (t *table) applyStorageUpdates(userID, labelsStr string, rebuiltChunks map[string]deletion.Chunk, chunksToDeIndex []string) error {
+	labels, err := syntax.ParseLabels(labelsStr)
+	if err != nil {
+		return err
+	}
+
 	is, ok := t.indexSets[userID]
 	if !ok {
 		// Index for the user does not exist, likely removed by retention/deletion without line filter.
@@ -295,7 +301,7 @@ func (t *table) applyStorageUpdates(userID, labelsStr string, rebuiltChunks map[
 		}
 	}
 
-	chunksNotIndexed, err := is.applyUpdates(labelsStr, rebuiltChunks, chunksToDeIndex)
+	chunksNotIndexed, err := is.applyUpdates(labels, rebuiltChunks, chunksToDeIndex)
 	if err != nil {
 		return err
 	}
@@ -307,8 +313,24 @@ func (t *table) applyStorageUpdates(userID, labelsStr string, rebuiltChunks map[
 
 	// Remove the newly built chunks which were not indexed due to their source chunks missing from the current index.
 	// Source chunks could be deleted by retention or delete requests without line filters.
+	// However, since storage updates are supposed to be idempotent, see if the chunk was already indexed in previous attempts which also already removed the source chunk.
 	cfg := config.SchemaConfig{Configs: []config.PeriodConfig{t.periodConfig}}
 	for _, chk := range chunksNotIndexed {
+		chunkRef := logproto.ChunkRef{
+			Fingerprint: chk.GetFingerprint(),
+			UserID:      userID,
+			From:        chk.GetFrom(),
+			Through:     chk.GetThrough(),
+			Checksum:    chk.GetChecksum(),
+		}
+		chunkExists, err := is.chunkExists(labels, chunkRef)
+		if err != nil {
+			return err
+		}
+
+		if chunkExists {
+			continue
+		}
 		chunkID := cfg.ExternalKey(logproto.ChunkRef{
 			Fingerprint: chk.GetFingerprint(),
 			UserID:      userID,

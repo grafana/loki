@@ -131,6 +131,11 @@ type table struct {
 	chunks map[string]map[string][]logproto.ChunkRef
 }
 
+func (t *table) ChunkExists(_ []byte, _ labels.Labels, _ logproto.ChunkRef) (bool, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 func (t *table) ForEachSeries(ctx context.Context, callback SeriesCallback) error {
 	for userID := range t.chunks {
 		for seriesID := range t.chunks[userID] {

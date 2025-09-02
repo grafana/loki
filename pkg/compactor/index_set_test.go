@@ -17,16 +17,22 @@ import (
 
 type indexUpdatesRecorder struct {
 	CompactedIndex
-	missingChunksChecker func(chunkID string) bool
-	indexedChunks        map[string][]deletion.Chunk
-	removedChunks        map[string][]string
+	schemaCfg     config.SchemaConfig
+	indexedChunks map[string][]deletion.Chunk
+	removedChunks map[string][]string
+	missingChunks map[string]struct{}
 }
 
-func newIndexUpdatesRecorder(missingChunksChecker func(chunkID string) bool) *indexUpdatesRecorder {
+func newIndexUpdatesRecorder(schemaCfg config.SchemaConfig, missingChunks []string) *indexUpdatesRecorder {
+	missingChunksMap := map[string]struct{}{}
+	for _, chunk := range missingChunks {
+		missingChunksMap[chunk] = struct{}{}
+	}
 	return &indexUpdatesRecorder{
-		missingChunksChecker: missingChunksChecker,
-		indexedChunks:        map[string][]deletion.Chunk{},
-		removedChunks:        map[string][]string{},
+		schemaCfg:     schemaCfg,
+		indexedChunks: map[string][]deletion.Chunk{},
+		removedChunks: map[string][]string{},
+		missingChunks: missingChunksMap,
 	}
 }
 
@@ -51,7 +57,7 @@ func (i *indexUpdatesRecorder) IndexChunk(chunkRef logproto.ChunkRef, lbls label
 }
 
 func (i *indexUpdatesRecorder) RemoveChunk(_, _ model.Time, _ []byte, lbls labels.Labels, chunkID string) (bool, error) {
-	if i.missingChunksChecker != nil && i.missingChunksChecker(chunkID) {
+	if _, ok := i.missingChunks[chunkID]; ok {
 		return false, nil
 	}
 	lblsString := lbls.String()
@@ -64,6 +70,12 @@ func (i *indexUpdatesRecorder) RemoveChunk(_, _ model.Time, _ []byte, lbls label
 	i.removedChunks[lblsString] = removedChunks
 
 	return true, nil
+}
+
+func (i *indexUpdatesRecorder) ChunkExists(_ []byte, _ labels.Labels, chunkRef logproto.ChunkRef) (bool, error) {
+	chunkID := i.schemaCfg.ExternalKey(chunkRef)
+	_, ok := i.missingChunks[chunkID]
+	return !ok, nil
 }
 
 func (i *indexUpdatesRecorder) sortEntries() {
@@ -151,6 +163,7 @@ func TestIndexSet_ApplyIndexUpdates(t *testing.T) {
 
 	// build 10 chunks with only the first 5 having a new chunk built out of them
 	rebuiltChunks := make(map[string]deletion.Chunk)
+	var sourceChunkIDs []string
 	var expectedChunksToIndex []deletion.Chunk
 	for i := 10; i < 20; i++ {
 		chunkID := schemaCfg.ExternalKey(logproto.ChunkRef{
@@ -174,16 +187,17 @@ func TestIndexSet_ApplyIndexUpdates(t *testing.T) {
 		}
 		rebuiltChunks[chunkID] = newChunk
 		expectedChunksToRemove = append(expectedChunksToRemove, chunkID)
+		sourceChunkIDs = append(sourceChunkIDs, chunkID)
 	}
 
-	indexUpdatesRecorder := newIndexUpdatesRecorder(nil)
+	indexUpdatesRecorder := newIndexUpdatesRecorder(schemaCfg, nil)
 	idxSet := &indexSet{
 		userID:         userID,
 		compactedIndex: indexUpdatesRecorder,
 	}
 
 	lblFoo := labels.FromStrings("foo", "bar")
-	chunksNotIndexed, err := idxSet.applyUpdates(lblFoo.String(), rebuiltChunks, chunksToDeIndex)
+	chunksNotIndexed, err := idxSet.applyUpdates(lblFoo, rebuiltChunks, chunksToDeIndex)
 	require.NoError(t, err)
 	require.Len(t, chunksNotIndexed, 0)
 
@@ -196,14 +210,12 @@ func TestIndexSet_ApplyIndexUpdates(t *testing.T) {
 	require.Equal(t, map[string][]deletion.Chunk{lblFoo.String(): expectedChunksToIndex}, indexUpdatesRecorder.indexedChunks)
 
 	// make index updates recorder say all the chunk entries are missing
-	indexUpdatesRecorder = newIndexUpdatesRecorder(func(_ string) bool {
-		return true
-	})
+	indexUpdatesRecorder = newIndexUpdatesRecorder(schemaCfg, append(sourceChunkIDs, chunksToDeIndex...))
 	idxSet = &indexSet{
 		userID:         userID,
 		compactedIndex: indexUpdatesRecorder,
 	}
-	chunksNotIndexed, err = idxSet.applyUpdates(lblFoo.String(), rebuiltChunks, chunksToDeIndex)
+	chunksNotIndexed, err = idxSet.applyUpdates(lblFoo, rebuiltChunks, chunksToDeIndex)
 	require.NoError(t, err)
 	require.Len(t, chunksNotIndexed, len(expectedChunksToIndex))
 

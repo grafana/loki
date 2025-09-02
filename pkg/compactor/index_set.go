@@ -11,12 +11,12 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/compression"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
@@ -186,17 +186,22 @@ func (is *indexSet) runRetention(tableMarker retention.TableMarker) error {
 	return nil
 }
 
+func (is *indexSet) chunkExists(lbls labels.Labels, chunkRef logproto.ChunkRef) (bool, error) {
+	if is.compactedIndex == nil {
+		return false, fmt.Errorf("compacted index should be initialized before checking for existence of chunks")
+	}
+
+	userIDBytes := unsafeGetBytes(is.userID)
+	return is.compactedIndex.ChunkExists(userIDBytes, lbls, chunkRef)
+}
+
 // applyUpdates applies the given updates to the compacted index. Returns list of chunks which were not indexed due to their missing source chunks.
-func (is *indexSet) applyUpdates(labelsStr string, rebuiltChunks map[string]deletion.Chunk, chunksToDeIndex []string) ([]deletion.Chunk, error) {
+func (is *indexSet) applyUpdates(labels labels.Labels, rebuiltChunks map[string]deletion.Chunk, chunksToDeIndex []string) ([]deletion.Chunk, error) {
 	if is.compactedIndex == nil {
 		return nil, fmt.Errorf("compacted index should be initialized before applying updates")
 	}
 
 	userIDBytes := unsafeGetBytes(is.userID)
-	labels, err := syntax.ParseLabels(labelsStr)
-	if err != nil {
-		return nil, err
-	}
 
 	chunksNotIndexed := make([]deletion.Chunk, 0, len(rebuiltChunks))
 	for chunkID, newChunk := range rebuiltChunks {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -79,17 +80,18 @@ type seriesCleaner struct {
 	bucket        *bbolt.Bucket
 	config        config.PeriodConfig
 	schema        series_index.SeriesStoreSchema
+	schemaConfig  config.SchemaConfig
 
 	buf []byte
 }
 
-func newSeriesCleaner(bucket *bbolt.Bucket, config config.PeriodConfig, tableName string) *seriesCleaner {
-	schema, _ := series_index.CreateSchema(config)
+func newSeriesCleaner(bucket *bbolt.Bucket, periodConfig config.PeriodConfig, tableName string) *seriesCleaner {
+	schema, _ := series_index.CreateSchema(periodConfig)
 	var shards map[uint32]string
 
-	if config.RowShards != 0 {
+	if periodConfig.RowShards != 0 {
 		shards = map[uint32]string{}
-		for s := uint32(0); s <= config.RowShards; s++ {
+		for s := uint32(0); s <= periodConfig.RowShards; s++ {
 			shards[s] = fmt.Sprintf("%02d", s)
 		}
 	}
@@ -99,8 +101,9 @@ func newSeriesCleaner(bucket *bbolt.Bucket, config config.PeriodConfig, tableNam
 		schema:        schema,
 		bucket:        bucket,
 		buf:           make([]byte, 0, 1024),
-		config:        config,
+		config:        periodConfig,
 		shards:        shards,
+		schemaConfig:  config.SchemaConfig{Configs: []config.PeriodConfig{periodConfig}},
 	}
 }
 
@@ -164,6 +167,40 @@ func (s *seriesCleaner) RemoveChunk(from, through model.Time, userID []byte, lbl
 		err := s.bucket.Delete(key)
 		if err != nil {
 			return false, err
+		}
+	}
+
+	return true, nil
+}
+
+func (s *seriesCleaner) ChunkExists(userID []byte, lbls labels.Labels, chunkRef logproto.ChunkRef) (bool, error) {
+	// We need to add metric name label as well if it is missing since the series ids are calculated including that.
+	builder := labels.NewBuilder(lbls)
+	if builder.Get(labels.MetricName) == "" {
+		builder.Set(labels.MetricName, logMetricName)
+	}
+	lbls = builder.Labels()
+
+	chunkID := s.schemaConfig.ExternalKey(logproto.ChunkRef{
+		Fingerprint: chunkRef.Fingerprint,
+		UserID:      unsafeGetString(userID),
+		From:        chunkRef.From,
+		Through:     chunkRef.Through,
+		Checksum:    chunkRef.Checksum,
+	})
+
+	indexEntries, err := s.schema.GetChunkWriteEntries(chunkRef.From, chunkRef.Through, string(userID), logMetricName, lbls, chunkID)
+	if err != nil {
+		return false, err
+	}
+	for _, indexEntry := range indexEntries {
+		key := make([]byte, 0, len(indexEntry.HashValue)+len(separator)+len(indexEntry.RangeValue))
+		key = append(key, []byte(indexEntry.HashValue)...)
+		key = append(key, []byte(separator)...)
+		key = append(key, indexEntry.RangeValue...)
+
+		if s.bucket.Get(key) == nil {
+			return false, nil
 		}
 	}
 

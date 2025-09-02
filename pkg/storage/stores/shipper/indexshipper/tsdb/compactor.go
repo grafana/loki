@@ -395,6 +395,21 @@ func (c *compactedIndex) RemoveChunk(from, through model.Time, userID []byte, la
 	return true, nil
 }
 
+func (c *compactedIndex) ChunkExists(_ []byte, lbls labels.Labels, chunkRef logproto.ChunkRef) (bool, error) {
+	seriesID := lbls.String()
+	chunkMeta := tsdbindex.ChunkMeta{
+		Checksum: chunkRef.Checksum,
+		MinTime:  int64(chunkRef.From),
+		MaxTime:  int64(chunkRef.Through),
+	}
+	hasChunk, err := c.builder.HasChunk(seriesID, chunkMeta)
+	if err != nil {
+		return false, err
+	}
+
+	return hasChunk, nil
+}
+
 func (c *compactedIndex) Cleanup() {}
 
 // ToIndexFile creates an indexFile from the chunksmetas stored in the builder.

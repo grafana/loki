@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/logproto"
-	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
@@ -548,6 +547,8 @@ func TestTable_applyStorageUpdates(t *testing.T) {
 	}
 
 	// build 10 chunks with only the first 5 having a new chunk built out of them
+	var sourceChunkIDs []string
+	var newChunkIDs []string
 	rebuiltChunks := make(map[string]deletion.Chunk)
 	for i := 10; i < 20; i++ {
 		chunkID := schemaCfg.ExternalKey(logproto.ChunkRef{
@@ -567,8 +568,17 @@ func TestTable_applyStorageUpdates(t *testing.T) {
 				kb:          uint32(i),
 				entries:     uint32(i),
 			}
+			newChunkID := schemaCfg.ExternalKey(logproto.ChunkRef{
+				Fingerprint: newChunk.GetFingerprint(),
+				UserID:      user1,
+				From:        newChunk.GetFrom(),
+				Through:     newChunk.GetThrough(),
+				Checksum:    newChunk.GetChecksum(),
+			})
+			newChunkIDs = append(newChunkIDs, newChunkID)
 		}
 		rebuiltChunks[chunkID] = newChunk
+		sourceChunkIDs = append(sourceChunkIDs, chunkID)
 	}
 
 	lblFoo := labels.FromStrings("foo", "bar")
@@ -583,7 +593,7 @@ func TestTable_applyStorageUpdates(t *testing.T) {
 	}{
 		{
 			name:                 "no source chunks missing",
-			indexUpdatesRecorder: newIndexUpdatesRecorder(nil),
+			indexUpdatesRecorder: newIndexUpdatesRecorder(schemaCfg, nil),
 			expectedChunksToRemoveFromIndex: func() map[string][]string {
 				entries := make([]string, 0, len(chunksToDeIndex)+len(rebuiltChunks))
 				entries = append(entries, chunksToDeIndex...)
@@ -625,33 +635,12 @@ func TestTable_applyStorageUpdates(t *testing.T) {
 			},
 		},
 		{
-			name: "some source chunks missing",
-			indexUpdatesRecorder: newIndexUpdatesRecorder(func(chunkID string) bool {
-				chk, err := chunk.ParseExternalKey(user1, chunkID)
-				require.NoError(t, err)
-
-				return chk.From%2 == 0
-			}),
+			name:                 "some source chunks missing with all the new chunks already indexed",
+			indexUpdatesRecorder: newIndexUpdatesRecorder(schemaCfg, sourceChunkIDs[3:7]),
 			expectedChunksToRemoveFromIndex: func() map[string][]string {
-				entries := make([]string, 0, len(chunksToDeIndex)+len(rebuiltChunks))
-				for _, chunkID := range chunksToDeIndex {
-					chk, err := chunk.ParseExternalKey(user1, chunkID)
-					require.NoError(t, err)
-
-					if chk.From%2 == 0 {
-						continue
-					}
-					entries = append(entries, chunkID)
-				}
-				for chunkID := range rebuiltChunks {
-					chk, err := chunk.ParseExternalKey(user1, chunkID)
-					require.NoError(t, err)
-
-					if chk.From%2 == 0 {
-						continue
-					}
-					entries = append(entries, chunkID)
-				}
+				entries := append([]string{}, chunksToDeIndex...)
+				entries = append(entries, sourceChunkIDs[:3]...)
+				entries = append(entries, sourceChunkIDs[7:]...)
 
 				sort.Strings(entries)
 
@@ -659,17 +648,12 @@ func TestTable_applyStorageUpdates(t *testing.T) {
 			},
 			expectedChunksToAddToIndex: func() map[string][]deletion.Chunk {
 				chunks := make([]deletion.Chunk, 0, len(rebuiltChunks))
-				for sourceChunkID, newChunk := range rebuiltChunks {
+				for _, sourceChunkID := range sourceChunkIDs[7:] {
+					newChunk := rebuiltChunks[sourceChunkID]
 					if newChunk == nil {
 						continue
 					}
 
-					chk, err := chunk.ParseExternalKey(user1, sourceChunkID)
-					require.NoError(t, err)
-
-					if chk.From%2 == 0 {
-						continue
-					}
 					chunks = append(chunks, newChunk)
 				}
 
@@ -691,18 +675,54 @@ func TestTable_applyStorageUpdates(t *testing.T) {
 					chunkIDs = append(chunkIDs, chunkID)
 				}
 
-				// add the IDs of newly built chunks which had their source chunks missing
-				for sourceChunkID, newChunk := range rebuiltChunks {
+				sort.Strings(chunkIDs)
+				return chunkIDs
+			},
+		},
+		{
+			name:                 "some source chunks missing with none of the new chunks indexed",
+			indexUpdatesRecorder: newIndexUpdatesRecorder(schemaCfg, append(append([]string{}, sourceChunkIDs[3:7]...), newChunkIDs...)),
+			expectedChunksToRemoveFromIndex: func() map[string][]string {
+				entries := append([]string{}, chunksToDeIndex...)
+				entries = append(entries, sourceChunkIDs[:3]...)
+				entries = append(entries, sourceChunkIDs[7:]...)
+
+				sort.Strings(entries)
+
+				return map[string][]string{lblFoo.String(): entries}
+			},
+			expectedChunksToAddToIndex: func() map[string][]deletion.Chunk {
+				chunks := make([]deletion.Chunk, 0, len(rebuiltChunks))
+				for _, sourceChunkID := range sourceChunkIDs[7:] {
+					newChunk := rebuiltChunks[sourceChunkID]
 					if newChunk == nil {
 						continue
 					}
 
-					chk, err := chunk.ParseExternalKey(user1, sourceChunkID)
-					require.NoError(t, err)
+					chunks = append(chunks, newChunk)
+				}
 
-					if chk.From%2 != 0 {
-						continue
+				slices.SortFunc(chunks, func(a, b deletion.Chunk) int {
+					if a.GetFrom() < b.GetFrom() {
+						return -1
+					} else if a.GetFrom() > b.GetFrom() {
+						return 1
 					}
+					return 0
+				})
+
+				return map[string][]deletion.Chunk{lblFoo.String(): chunks}
+			},
+			expectedChunksMarkedForDeletion: func() []string {
+				chunkIDs := make([]string, 0, len(rebuiltChunks))
+				// add all the source chunkIDs for deletion
+				for chunkID := range rebuiltChunks {
+					chunkIDs = append(chunkIDs, chunkID)
+				}
+
+				// also add the new chunks for deletion which have their source chunks missing
+				for _, sourceChunkID := range sourceChunkIDs[5:7] {
+					newChunk := rebuiltChunks[sourceChunkID]
 					chunkID := schemaCfg.ExternalKey(logproto.ChunkRef{
 						Fingerprint: newChunk.GetFingerprint(),
 						UserID:      user1,
@@ -713,6 +733,65 @@ func TestTable_applyStorageUpdates(t *testing.T) {
 					chunkIDs = append(chunkIDs, chunkID)
 				}
 
+				sort.Strings(chunkIDs)
+				return chunkIDs
+			},
+		},
+		{
+			name:                 "all the source chunks missing with all the new chunks already indexed",
+			indexUpdatesRecorder: newIndexUpdatesRecorder(schemaCfg, sourceChunkIDs),
+			expectedChunksToRemoveFromIndex: func() map[string][]string {
+				// only the chunksToDeIndex should be removed from index
+				return map[string][]string{lblFoo.String(): chunksToDeIndex}
+			},
+			expectedChunksToAddToIndex: func() map[string][]deletion.Chunk {
+				// no chunks to index since we have no source chunks in the index
+				return map[string][]deletion.Chunk{}
+			},
+			expectedChunksMarkedForDeletion: func() []string {
+				chunkIDs := make([]string, 0, len(rebuiltChunks))
+				// add all the source chunkIDs for deletion
+				for chunkID := range rebuiltChunks {
+					chunkIDs = append(chunkIDs, chunkID)
+				}
+
+				sort.Strings(chunkIDs)
+				return chunkIDs
+			},
+		},
+		{
+			name:                 "all the source chunks missing with none of the new chunks indexed",
+			indexUpdatesRecorder: newIndexUpdatesRecorder(schemaCfg, append(append([]string{}, sourceChunkIDs...), newChunkIDs...)),
+			expectedChunksToRemoveFromIndex: func() map[string][]string {
+				// only the chunksToDeIndex should be removed from index
+				return map[string][]string{lblFoo.String(): chunksToDeIndex}
+			},
+			expectedChunksToAddToIndex: func() map[string][]deletion.Chunk {
+				// no chunks to index since we have no source chunks in the index
+				return map[string][]deletion.Chunk{}
+			},
+			expectedChunksMarkedForDeletion: func() []string {
+				chunkIDs := make([]string, 0, len(rebuiltChunks))
+				// add all the source chunkIDs for deletion
+				for chunkID := range rebuiltChunks {
+					chunkIDs = append(chunkIDs, chunkID)
+				}
+
+				// all the newly built chunks should be marked for deletion since their source chunks are missing from index
+				for _, newChunk := range rebuiltChunks {
+					if newChunk == nil {
+						continue
+					}
+
+					chunkID := schemaCfg.ExternalKey(logproto.ChunkRef{
+						Fingerprint: newChunk.GetFingerprint(),
+						UserID:      user1,
+						From:        newChunk.GetFrom(),
+						Through:     newChunk.GetThrough(),
+						Checksum:    newChunk.GetChecksum(),
+					})
+					chunkIDs = append(chunkIDs, chunkID)
+				}
 				sort.Strings(chunkIDs)
 				return chunkIDs
 			},
@@ -729,7 +808,7 @@ func TestTable_applyStorageUpdates(t *testing.T) {
 			expectedChunksMarkedForDeletion: func() []string {
 				chunkIDs := make([]string, 0, len(rebuiltChunks))
 
-				// add the IDs of all the newly built chunks to be marked for deletion
+				// all the newly built chunks should be marked for deletion since the whole user index is missing
 				for _, newChunk := range rebuiltChunks {
 					if newChunk == nil {
 						continue
