@@ -90,6 +90,12 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 		// get the chunk from storage
 		chks, err := chunkClient.GetChunks(ctx, []storage_chunk.Chunk{chk})
 		if err != nil {
+			// Do not fail processing of the job when we could not find a chunk in storage.
+			// The chunk could have been removed by the main compactor due to retention or a delete request without a line filter.
+			if chunkClient.IsChunkNotFoundErr(err) {
+				level.Warn(util_log.Logger).Log("msg", "skipping processing missing chunk", "chunk_id", chunkID)
+				return nil
+			}
 			return err
 		}
 
