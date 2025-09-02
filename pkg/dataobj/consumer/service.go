@@ -72,17 +72,21 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 		reg,
 	)
 	partitionLifecycler := newPartitionLifecycler(processorLifecycler, logger)
+	groupName := "dataobj-consumer"
+	if kafkaCfg.ConsumerGroup != "" {
+		groupName = kafkaCfg.ConsumerGroup
+	}
 	// The client calls the lifecycler whenever partitions are assigned or
 	// revoked. This is how we register and unregister processors.
 	consumerClient, err := kafka_consumer.NewGroupClient(
 		kafkaCfg,
 		partitionRing,
-		"dataobj-consumer",
+		groupName,
 		logger,
 		reg,
-		kgo.InstanceID(instanceID),
 		kgo.SessionTimeout(3*time.Minute),
 		kgo.RebalanceTimeout(5*time.Minute),
+		kgo.InstanceID(instanceID),
 		kgo.OnPartitionsAssigned(partitionLifecycler.Assign),
 		kgo.OnPartitionsRevoked(partitionLifecycler.Revoke),
 	)
