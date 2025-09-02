@@ -274,7 +274,7 @@ func (f *matcherFactory) createExactMatcher(windows []window) timestampMatchingW
 //	interval      |-----|
 func (f *matcherFactory) createAlignedMatcher(windows []window) timestampMatchingWindowsFunc {
 	startNs := f.start.UnixNano()
-	intervalNs := f.interval.Nanoseconds()
+	stepNs := f.step.Nanoseconds()
 
 	return func(t time.Time) []window {
 		if t.Compare(f.lowerbound) <= 0 || t.Compare(f.upperbound) > 0 {
@@ -283,8 +283,7 @@ func (f *matcherFactory) createAlignedMatcher(windows []window) timestampMatchin
 
 		tNs := t.UnixNano()
 		// valid timestamps for window i: t > startNs + (i-1) * intervalNs && t <= startNs + i * intervalNs
-		// i = ceil((t - startTs) / step)
-		windowIndex := (tNs - startNs + intervalNs - 1) / intervalNs
+		windowIndex := (tNs - startNs + stepNs - 1) / stepNs // subtract 1ns because we are calculating 0-based indexes
 		return []window{windows[windowIndex]}
 	}
 }
