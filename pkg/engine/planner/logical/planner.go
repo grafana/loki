@@ -51,10 +51,14 @@ func buildPlanForLogQuery(
 	rangeInterval time.Duration,
 ) (*Builder, error) {
 	var (
-		err             error
-		selector        Value
-		predicates      []Value
-		hasLogfmtParser bool
+		err      error
+		selector Value
+
+		// parse statements in LogQL introduce additional ambiguouity, requiring post
+		// parse filters to be tracked separately, and not included in maketable predicates
+		preParsePredicates  []Value
+		postParsePredicates []Value
+		hasLogfmtParser     bool
 	)
 
 	// TODO(chaudum): Implement a Walk function that can return an error
@@ -67,20 +71,24 @@ func buildPlanForLogQuery(
 			selector = convertLabelMatchers(e.Matchers())
 			return true
 		case *syntax.LineFilterExpr:
-			predicates = append(predicates, convertLineFilterExpr(e))
+			preParsePredicates = append(preParsePredicates, convertLineFilterExpr(e))
 			// We do not want to traverse the AST further down, because line filter expressions can be nested,
 			// which would lead to multiple predicates of the same expression.
 			return false // do not traverse children
+		case *syntax.LogfmtParserExpr:
+			hasLogfmtParser = true
+			return true // continue traversing to find label filters
 		case *syntax.LabelFilterExpr:
 			if val, innerErr := convertLabelFilter(e.LabelFilterer); innerErr != nil {
 				err = innerErr
 			} else {
-				predicates = append(predicates, val)
+				if !hasLogfmtParser {
+					preParsePredicates = append(preParsePredicates, val)
+				} else {
+					postParsePredicates = append(postParsePredicates, val)
+				}
 			}
 			return true
-		case *syntax.LogfmtParserExpr:
-			hasLogfmtParser = true
-			return true // continue traversing to find label filters
 		case *syntax.LineParserExpr, *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
 			*syntax.LineFmtExpr, *syntax.LabelFmtExpr,
 			*syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
@@ -104,15 +112,10 @@ func buildPlanForLogQuery(
 	builder := NewBuilder(
 		&MakeTable{
 			Selector:   selector,
-			Predicates: predicates,
+			Predicates: preParsePredicates,
 			Shard:      shard,
 		},
 	)
-
-	// Add Parse instruction if logfmt was detected
-	if hasLogfmtParser {
-		builder = builder.Parse(ParserLogfmt)
-	}
 
 	direction := params.Direction()
 	if !isMetricQuery && direction == logproto.FORWARD {
@@ -134,7 +137,13 @@ func buildPlanForLogQuery(
 		builder = builder.Select(value)
 	}
 
-	for _, value := range predicates {
+	for _, value := range preParsePredicates {
+		builder = builder.Select(value)
+	}
+	if hasLogfmtParser {
+		builder = builder.Parse(ParserLogfmt)
+	}
+	for _, value := range postParsePredicates {
 		builder = builder.Select(value)
 	}
 
@@ -149,19 +158,9 @@ func buildPlanForLogQuery(
 }
 
 func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder, error) {
-	if params.Step() > 0 {
-		return nil, fmt.Errorf("only instant metric queries are supported: %w", errUnimplemented)
-	}
-
-	// Extract stream labels early so we can use them for column type determination
-	logSelectorExpr, err := e.Selector()
-	if err != nil {
-		return nil, err
-	}
-	streamLabels := extractStreamLabels(logSelectorExpr)
-
 	var (
-		walkErr       error
+		err error
+
 		rangeAggType  types.RangeAggregationType
 		rangeInterval time.Duration
 
@@ -172,7 +171,6 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 	e.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
 		case *syntax.LogfmtParserExpr:
-			// Logfmt detection is now handled in CollectLogfmtMetricKeys
 			return true
 		case *syntax.LogRangeExpr, *syntax.PipelineExpr, *syntax.MatchersExpr, *syntax.LabelFilterExpr:
 			// Continue traversing into these expressions to find logfmt
@@ -181,7 +179,7 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 			// only count operation is supported for range aggregation.
 			// offsets are not yet supported.
 			if e.Operation != syntax.OpRangeTypeCount || e.Left.Offset != 0 {
-				walkErr = errUnimplemented
+				err = errUnimplemented
 				return false
 			}
 
@@ -194,19 +192,14 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 			// grouping by atleast one label is required.
 			if e.Operation != syntax.OpTypeSum ||
 				e.Grouping == nil || len(e.Grouping.Groups) == 0 || e.Grouping.Without {
-				walkErr = errUnimplemented
+				err = errUnimplemented
 				return false
 			}
 
 			vecAggType = types.VectorAggregationTypeSum
 			groupBy = make([]ColumnRef, 0, len(e.Grouping.Groups))
 			for _, group := range e.Grouping.Groups {
-				// Determine column type based on whether it's a stream label
-				colType := types.ColumnTypeAmbiguous
-				if streamLabels[group] {
-					colType = types.ColumnTypeLabel
-				}
-				groupBy = append(groupBy, *NewColumnRef(group, colType))
+				groupBy = append(groupBy, *NewColumnRef(group, types.ColumnTypeAmbiguous))
 			}
 
 			return true
@@ -215,39 +208,29 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 			return true
 		}
 	})
-	if walkErr != nil {
-		return nil, walkErr
+	if err != nil {
+		return nil, err
 	}
 
 	if rangeAggType == types.RangeAggregationTypeInvalid || vecAggType == types.VectorAggregationTypeInvalid {
 		return nil, errUnimplemented
 	}
 
-	builder, walkErr := buildPlanForLogQuery(logSelectorExpr, params, true, rangeInterval)
-	if walkErr != nil {
-		return nil, walkErr
+	logSelectorExpr, err := e.Selector()
+	if err != nil {
+		return nil, err
 	}
 
-	// Parse instruction is now added in buildPlanForLogQuery
+	builder, err := buildPlanForLogQuery(logSelectorExpr, params, true, rangeInterval)
+	if err != nil {
+		return nil, err
+	}
 
 	builder = builder.RangeAggregation(
 		nil, rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,
 	).VectorAggregation(groupBy, vecAggType)
 
 	return builder, nil
-}
-
-// extractStreamLabels extracts the label names from a stream selector
-func extractStreamLabels(selector syntax.LogSelectorExpr) map[string]bool {
-	labels := make(map[string]bool)
-
-	// Get matchers from the selector
-	matchers := selector.Matchers()
-	for _, matcher := range matchers {
-		labels[matcher.Name] = true
-	}
-
-	return labels
 }
 
 func convertLabelMatchers(matchers []*labels.Matcher) Value {

@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -275,13 +274,14 @@ func TestPlannerCreatesParseFromLogfmt(t *testing.T) {
 		require.NoError(t, err)
 
 		// Assert against the correct SSA representation
+		// Since there are no filters before logfmt, parse comes right after MAKETABLE
 		expected := `%1 = EQ label.app "test"
-%2 = MAKETABLE [selector=%1, predicates=[%8], shard=0_of_1]
-%3 = PARSE %2 [kind=1]
-%4 = GTE builtin.timestamp 1970-01-01T00:55:00Z
-%5 = SELECT %3 [predicate=%4]
-%6 = LT builtin.timestamp 1970-01-01T02:00:00Z
-%7 = SELECT %5 [predicate=%6]
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = GTE builtin.timestamp 1970-01-01T00:55:00Z
+%4 = SELECT %2 [predicate=%3]
+%5 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = PARSE %6 [kind=logfmt]
 %8 = EQ ambiguous.level "error"
 %9 = SELECT %7 [predicate=%8]
 %10 = RANGE_AGGREGATION %9 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
@@ -305,13 +305,13 @@ RETURN %11
 
 		// Assert against the SSA representation for log query
 		expected := `%1 = EQ label.app "test"
-%2 = MAKETABLE [selector=%1, predicates=[%9], shard=0_of_1]
-%3 = PARSE %2 [kind=1]
-%4 = SORT %3 [column=builtin.timestamp, asc=false, nulls_first=false]
-%5 = GTE builtin.timestamp 1970-01-01T01:00:00Z
-%6 = SELECT %4 [predicate=%5]
-%7 = LT builtin.timestamp 1970-01-01T02:00:00Z
-%8 = SELECT %6 [predicate=%7]
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = SORT %2 [column=builtin.timestamp, asc=false, nulls_first=false]
+%4 = GTE builtin.timestamp 1970-01-01T01:00:00Z
+%5 = SELECT %3 [predicate=%4]
+%6 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%7 = SELECT %5 [predicate=%6]
+%8 = PARSE %7 [kind=logfmt]
 %9 = EQ ambiguous.level "error"
 %10 = SELECT %8 [predicate=%9]
 %11 = LIMIT %10 [skip=0, fetch=1000]
@@ -319,108 +319,77 @@ RETURN %11
 `
 		require.Equal(t, expected, plan.String())
 	})
-}
 
-func TestLogicalPlannerIdentifiesStreamLabels(t *testing.T) {
-	tests := []struct {
-		name             string
-		query            string
-		wantStreamLabels map[string]bool             // Labels from stream selector
-		checkColumns     map[string]types.ColumnType // Columns to check and their expected types
-	}{
-		{
-			name:  "simple log query with stream selector",
-			query: `{app="test", env="prod"}`,
-			wantStreamLabels: map[string]bool{
-				"app": true,
-				"env": true,
-			},
-			checkColumns: map[string]types.ColumnType{
-				"app": types.ColumnTypeLabel, // Stream selector label
-				"env": types.ColumnTypeLabel, // Stream selector label
-			},
-		},
-		{
-			name:  "metric query with stream labels and groupby",
-			query: `sum by(app, region, status) (count_over_time({app="test", region="us"} | logfmt [5m]))`,
-			wantStreamLabels: map[string]bool{
-				"app":    true,
-				"region": true,
-			},
-			checkColumns: map[string]types.ColumnType{
-				"app":    types.ColumnTypeLabel,     // Stream selector label (used in groupby)
-				"region": types.ColumnTypeLabel,     // Stream selector label (used in groupby)
-				"status": types.ColumnTypeAmbiguous, // groupby label (not in stream selector)
-			},
-		},
-		{
-			name:  "metric query with stream labels and filter",
-			query: `sum by(app, region) (count_over_time({app="test", region="us"} | logfmt | status="200" [5m]))`,
-			wantStreamLabels: map[string]bool{
-				"app":    true,
-				"region": true,
-			},
-			checkColumns: map[string]types.ColumnType{
-				"app":    types.ColumnTypeLabel,     // Stream selector label (used in groupby)
-				"region": types.ColumnTypeLabel,     // Stream selector label (used in groupby)
-				"status": types.ColumnTypeAmbiguous, // groupby label (not in stream selector)
-			},
-		},
-	}
+	t.Run("preserves operation order with filters before and after parse", func(t *testing.T) {
+		// Test that filters before logfmt parse are applied before parsing,
+		// and filters after logfmt parse are applied after parsing.
+		// This is important for performance - we don't want to parse lines
+		// that will be filtered out.
+		q := &query{
+			statement: `{job="app"} |= "error" | label="value" | logfmt | level="debug"`,
+			start:     3600,
+			end:       7200,
+			direction: logproto.BACKWARD,
+			limit:     1000,
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create params for the query - use instant query
-			now := time.Now()
-			params, err := logql.NewLiteralParams(
-				tt.query,
-				now, // instant query at now
-				now,
-				0, // no step for instant query
-				0,
-				logproto.BACKWARD, // backward for log queries
-				1000,
-				nil,
-				nil,
-			)
-			require.NoError(t, err)
+		plan, err := BuildPlan(q)
+		require.NoError(t, err)
 
-			// Build the logical plan
-			logicalPlan, err := BuildPlan(params)
-			require.NoError(t, err)
+		// Expected behavior - PARSE should happen after filters that don't need parsed fields
+		expected := `%1 = EQ label.job "app"
+%2 = MAKETABLE [selector=%1, predicates=[%8, %10], shard=0_of_1]
+%3 = SORT %2 [column=builtin.timestamp, asc=false, nulls_first=false]
+%4 = GTE builtin.timestamp 1970-01-01T01:00:00Z
+%5 = SELECT %3 [predicate=%4]
+%6 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%7 = SELECT %5 [predicate=%6]
+%8 = MATCH_STR builtin.message "error"
+%9 = SELECT %7 [predicate=%8]
+%10 = EQ ambiguous.label "value"
+%11 = SELECT %9 [predicate=%10]
+%12 = PARSE %11 [kind=logfmt]
+%13 = EQ ambiguous.level "debug"
+%14 = SELECT %12 [predicate=%13]
+%15 = LIMIT %14 [skip=0, fetch=1000]
+RETURN %15
+`
 
-			// Get the root value from the plan - need to extract from instructions
-			require.NotNil(t, logicalPlan)
-			require.GreaterOrEqual(t, len(logicalPlan.Instructions), 1)
+		require.Equal(t, expected, plan.String(), "Operations should be in the correct order: LineFilter before Parse, LabelFilter after Parse")
+	})
 
-			// Walk ALL instructions to find column references
-			foundColumns := make(map[string]types.ColumnType)
-			for _, inst := range logicalPlan.Instructions {
-				switch node := inst.(type) {
-				case *BinOp:
-					// Check left side if it's a column reference
-					if colRef, ok := node.Left.(*ColumnRef); ok {
-						foundColumns[colRef.Ref.Column] = colRef.Ref.Type
-					}
-				case *VectorAggregation:
-					// Check GroupBy columns
-					for _, col := range node.GroupBy {
-						foundColumns[col.Ref.Column] = col.Ref.Type
-					}
-				case *RangeAggregation:
-					// Check PartitionBy columns
-					for _, col := range node.PartitionBy {
-						foundColumns[col.Ref.Column] = col.Ref.Type
-					}
-				}
-			}
+	t.Run("preserves operation order in metric query with filters before and after parse", func(t *testing.T) {
+		// Test that filters before logfmt parse are applied before parsing in metric queries too
+		q := &query{
+			statement: `sum by (level) (count_over_time({job="app"} |= "error" | label="value" | logfmt | level="debug" [5m]))`,
+			start:     3600,
+			end:       7200,
+			interval:  5 * time.Minute,
+		}
 
-			// Verify the expected columns have the right types
-			for colName, expectedType := range tt.checkColumns {
-				actualType, found := foundColumns[colName]
-				require.True(t, found, "Column %s not found in plan", colName)
-				require.Equal(t, expectedType, actualType, "Column %s has wrong type", colName)
-			}
-		})
-	}
+		plan, err := BuildPlan(q)
+		require.NoError(t, err)
+
+		// Expected behavior - PARSE should happen after filters that don't need parsed fields
+		// For metric queries: no SORT, but time range filters are applied earlier
+		expected := `%1 = EQ label.job "app"
+%2 = MAKETABLE [selector=%1, predicates=[%7, %9], shard=0_of_1]
+%3 = GTE builtin.timestamp 1970-01-01T00:55:00Z
+%4 = SELECT %2 [predicate=%3]
+%5 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = MATCH_STR builtin.message "error"
+%8 = SELECT %6 [predicate=%7]
+%9 = EQ ambiguous.label "value"
+%10 = SELECT %8 [predicate=%9]
+%11 = PARSE %10 [kind=logfmt]
+%12 = EQ ambiguous.level "debug"
+%13 = SELECT %11 [predicate=%12]
+%14 = RANGE_AGGREGATION %13 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%15 = VECTOR_AGGREGATION %14 [operation=sum, group_by=(ambiguous.level)]
+RETURN %15
+`
+
+		require.Equal(t, expected, plan.String(), "Metric query should preserve operation order: filters before parse, then parse, then filters after parse")
+	})
 }

@@ -15,8 +15,8 @@ const (
 	ParserJSON
 )
 
-func (p *ParserKind) String() string {
-	switch *p {
+func (p ParserKind) String() string {
+	switch p {
 	case ParserLogfmt:
 		return "logfmt"
 	case ParserJSON:
