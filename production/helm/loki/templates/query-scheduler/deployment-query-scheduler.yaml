@@ -49,6 +49,10 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.queryScheduler.dnsConfig | default .Values.loki.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.queryScheduler.hostAliases }}
       hostAliases:
         {{- toYaml . | nindent 8 }}
@@ -60,6 +64,10 @@ spec:
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.queryScheduler.terminationGracePeriodSeconds }}
+      {{- with .Values.queryScheduler.initContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: query-scheduler
           image: {{ include "loki.image" . }}

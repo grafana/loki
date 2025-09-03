@@ -45,6 +45,10 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.bloomBuilder.dnsConfig | default .Values.loki.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.bloomBuilder.hostAliases }}
       hostAliases:
         {{- toYaml . | nindent 8 }}
@@ -56,6 +60,10 @@ spec:
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.bloomBuilder.terminationGracePeriodSeconds }}
+      {{- with .Values.bloomBuilder.initContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: bloom-builder
           image: {{ include "loki.image" . }}
