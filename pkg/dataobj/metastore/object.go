@@ -416,6 +416,10 @@ func pointerPredicateFromMatchers(matchers ...*labels.Matcher) pointers.RowPredi
 		}
 	}
 
+	if len(predicates) == 0 {
+		return nil
+	}
+
 	current := predicates[0]
 
 	for _, predicate := range predicates[1:] {

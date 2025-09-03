@@ -13,7 +13,6 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
 	kafka_consumer "github.com/grafana/loki/v3/pkg/kafka/partitionring/consumer"
@@ -31,7 +30,7 @@ type Service struct {
 	reg                 prometheus.Registerer
 }
 
-func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, topicPrefix string, bucket objstore.Bucket, scratchStore scratch.Store, instanceID string, partitionRing ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *Service {
+func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, instanceID string, partitionRing ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *Service {
 	logger = log.With(logger, "component", "dataobj-consumer")
 
 	s := &Service{
@@ -72,10 +71,7 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, topicPrefix s
 		logger,
 		reg,
 	)
-	// When a partition is assigned or revoked, the partition lifecycler will
-	// register and unregister processors as needed via the processor lifecycler.
-	codec := distributor.TenantPrefixCodec(topicPrefix)
-	partitionLifecycler := newPartitionLifecycler(processorLifecycler, codec, logger)
+	partitionLifecycler := newPartitionLifecycler(processorLifecycler, logger)
 	// The client calls the lifecycler whenever partitions are assigned or
 	// revoked. This is how we register and unregister processors.
 	consumerClient, err := kafka_consumer.NewGroupClient(
