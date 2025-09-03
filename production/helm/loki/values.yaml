@@ -701,6 +701,7 @@ enterprise:
     # -- Additional annotations for the `provisioner` Job
     annotations: {}
     # -- Affinity for provisioner Pods
+    # The value will be passed through tpl.
     affinity: {}
     # -- Node selector for provisioner Pods
     nodeSelector: {}
@@ -1001,10 +1002,12 @@ adminApi:
   # -- Additional volume mounts for Pods
   extraVolumeMounts: []
   # -- Affinity for admin-api Pods
+  # The value will be passed through tpl.
   affinity: {}
   # -- Node selector for admin-api Pods
   nodeSelector: {}
   # -- Topology Spread Constraints for admin-api pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for admin-api Pods
   tolerations: []
@@ -1116,18 +1119,22 @@ gateway:
   terminationGracePeriodSeconds: 30
   # -- Affinity for gateway pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: gateway
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- DNS config for gateway pods
   dnsConfig: {}
   # -- Node selector for gateway pods
   nodeSelector: {}
   # -- Topology Spread Constraints for gateway pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for gateway pods
   tolerations: []
@@ -1301,10 +1308,12 @@ enterpriseGateway:
   # -- Additional volume mounts for Pods
   extraVolumeMounts: []
   # -- Affinity for gateway Pods
+  # The value will be passed through tpl.
   affinity: {}
   # -- Node selector for gateway Pods
   nodeSelector: {}
   # -- Topology Spread Constraints for enterprise-gateway pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for gateway Pods
   tolerations: []
@@ -1472,12 +1481,15 @@ singleBinary:
   hostUsers: nil
   # -- Affinity for single binary pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: single-binary
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- DNS config for single binary pods
   dnsConfig: {}
@@ -1603,18 +1615,22 @@ write:
   hostUsers: nil
   # -- Affinity for write pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: write
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- DNS config for write pods
   dnsConfig: {}
   # -- Node selector for write pods
   nodeSelector: {}
   # -- Topology Spread Constraints for write pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for write pods
   tolerations: []
@@ -1730,18 +1746,22 @@ read:
   hostUsers: nil
   # -- Affinity for read pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: read
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- DNS config for read pods
   dnsConfig: {}
   # -- Node selector for read pods
   nodeSelector: {}
   # -- Topology Spread Constraints for read pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for read pods
   tolerations: []
@@ -1847,18 +1867,22 @@ backend:
   hostUsers: nil
   # -- Affinity for backend pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: backend
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- DNS config for backend pods
   dnsConfig: {}
   # -- Node selector for backend pods
   nodeSelector: {}
   # -- Topology Spread Constraints for backend pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for backend pods
   tolerations: []
@@ -1984,6 +2008,7 @@ ingester:
   lifecycle: {}
   # -- topologySpread for ingester pods.
   # @default -- Defaults to allow skew no more than 1 node
+  # The value will be passed through tpl.
   topologySpreadConstraints:
     - maxSkew: 1
       topologyKey: kubernetes.io/hostname
@@ -1991,14 +2016,19 @@ ingester:
       labelSelector:
         matchLabels:
           app.kubernetes.io/component: ingester
+          app.kubernetes.io/name: '{{ include "loki.name" . }}'
+          app.kubernetes.io/instance: '{{ .Release.Name }}'
   # -- Affinity for ingester pods. Ignored if zoneAwareReplication is enabled.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: ingester
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: 1
@@ -2063,6 +2093,7 @@ ingester:
       # -- optionally define a node selector for this zone
       nodeSelector: null
       # -- optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host
+      # The value will be passed through tpl.
       extraAffinity: {}
       # -- Specific annotations to add to zone A statefulset
       annotations: {}
@@ -2072,6 +2103,7 @@ ingester:
       # -- optionally define a node selector for this zone
       nodeSelector: null
       # -- optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host
+      # The value will be passed through tpl.
       extraAffinity: {}
       # -- Specific annotations to add to zone B statefulset
       annotations: {}
@@ -2081,6 +2113,7 @@ ingester:
       # -- optionally define a node selector for this zone
       nodeSelector: null
       # -- optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host
+      # The value will be passed through tpl.
       extraAffinity: {}
       # -- Specific annotations to add to zone C statefulset
       annotations: {}
@@ -2179,12 +2212,15 @@ distributor:
   terminationGracePeriodSeconds: 30
   # -- Affinity for distributor pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: distributor
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
@@ -2193,6 +2229,7 @@ distributor:
   # -- Node selector for distributor pods
   nodeSelector: {}
   # -- Topology Spread Constraints for distributor pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for distributor pods
   tolerations: []
@@ -2281,6 +2318,7 @@ querier:
   terminationGracePeriodSeconds: 30
   # -- topologySpread for querier pods.
   # @default -- Defaults to allow skew no more then 1 node
+  # The value will be passed through tpl.
   topologySpreadConstraints:
     - maxSkew: 1
       topologyKey: kubernetes.io/hostname
@@ -2288,14 +2326,19 @@ querier:
       labelSelector:
         matchLabels:
           app.kubernetes.io/component: querier
+          app.kubernetes.io/name: '{{ include "loki.name" . }}'
+          app.kubernetes.io/instance: '{{ .Release.Name }}'
   # -- Affinity for querier pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: querier
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
@@ -2390,18 +2433,22 @@ queryFrontend:
   terminationGracePeriodSeconds: 30
   # -- Affinity for query-frontend pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: query-frontend
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Node selector for query-frontend pods
   nodeSelector: {}
   # -- Topology Spread Constraints for query-frontend pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for query-frontend pods
   tolerations: []
@@ -2461,18 +2508,22 @@ queryScheduler:
   terminationGracePeriodSeconds: 30
   # -- Affinity for query-scheduler pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: query-scheduler
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: 1
   # -- Node selector for query-scheduler pods
   nodeSelector: {}
   # -- Topology Spread Constraints for query-scheduler pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for query-scheduler pods
   tolerations: []
@@ -2533,18 +2584,22 @@ indexGateway:
   terminationGracePeriodSeconds: 300
   # -- Affinity for index-gateway pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: index-gateway
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Node selector for index-gateway pods
   nodeSelector: {}
   # -- Topology Spread Constraints for index-gateway pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for index-gateway pods
   tolerations: []
@@ -2612,12 +2667,15 @@ compactor:
   podAnnotations: {}
   # -- Affinity for compactor pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: compactor
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Labels for compactor service
   serviceLabels: {}
@@ -2731,12 +2789,15 @@ bloomGateway:
   podAnnotations: {}
   # -- Affinity for bloom-gateway pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: bloom-gateway
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Labels for bloom-gateway service
   serviceLabels: {}
@@ -2842,12 +2903,15 @@ bloomPlanner:
   podAnnotations: {}
   # -- Affinity for bloom-planner pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: bloom-planner
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Labels for bloom-planner service
   serviceLabels: {}
@@ -3002,12 +3066,15 @@ bloomBuilder:
   terminationGracePeriodSeconds: 30
   # -- Affinity for bloom-builder pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: bloom-builder
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
@@ -3050,12 +3117,15 @@ patternIngester:
   podAnnotations: {}
   # -- Affinity for pattern ingester pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: pattern-ingester
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
@@ -3088,6 +3158,7 @@ patternIngester:
   # -- Node selector for pattern ingester pods
   nodeSelector: {}
   # -- Topology Spread Constraints for pattern ingester pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for pattern ingester pods
   tolerations: []
@@ -3195,18 +3266,22 @@ ruler:
   terminationGracePeriodSeconds: 300
   # -- Affinity for ruler pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: ruler
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Node selector for ruler pods
   nodeSelector: {}
   # -- Topology Spread Constraints for ruler pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for ruler pods
   tolerations: []
@@ -3354,18 +3429,22 @@ overridesExporter:
   terminationGracePeriodSeconds: 300
   # -- Affinity for overrides-exporter pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: overrides-exporter
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Node selector for overrides-exporter pods
   nodeSelector: {}
   # -- Topology Spread Constraints for overrides-exporter pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for overrides-exporter pods
   tolerations: []
@@ -4156,12 +4235,15 @@ tableManager:
   hostUsers: nil
   # -- Affinity for table-manager pods.
   # @default -- Hard node and anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: table-manager
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- DNS config table-manager pods
   dnsConfig: {}

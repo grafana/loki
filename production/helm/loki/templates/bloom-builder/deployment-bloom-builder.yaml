@@ -133,7 +133,7 @@ spec:
         {{- end }}
       {{- with .Values.bloomBuilder.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.bloomBuilder.nodeSelector }}
       nodeSelector:

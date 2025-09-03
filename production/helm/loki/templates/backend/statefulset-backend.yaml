@@ -215,7 +215,7 @@ spec:
         {{- end }}
       {{- with .Values.backend.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.backend.dnsConfig | default .Values.loki.dnsConfig }}
       dnsConfig:
@@ -227,7 +227,7 @@ spec:
       {{- end }}
       {{- with .Values.backend.topologySpreadConstraints }}
       topologySpreadConstraints:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.backend.tolerations }}
       tolerations:

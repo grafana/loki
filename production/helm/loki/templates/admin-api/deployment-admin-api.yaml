@@ -23,7 +23,7 @@ spec:
       {{- include "enterprise-logs.adminApiSelectorLabels" . | nindent 6 }}
   strategy:
     {{- toYaml .Values.adminApi.strategy | nindent 4 }}
-  revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}  
+  revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
   template:
     metadata:
       labels:
@@ -45,7 +45,7 @@ spec:
       {{- if semverCompare ">=1.19-0" (include "loki.kubeVersion" .) }}
       {{- with .Values.adminApi.topologySpreadConstraints }}
       topologySpreadConstraints:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.adminApi.dnsConfig | default .Values.loki.dnsConfig }}
       dnsConfig:
@@ -137,7 +137,7 @@ spec:
       nodeSelector:
         {{- toYaml .Values.adminApi.nodeSelector | nindent 8 }}
       affinity:
-        {{- toYaml .Values.adminApi.affinity | nindent 8 }}
+        {{- tpl (.Values.adminApi.affinity | toYaml) . | nindent 8 }}
       tolerations:
         {{- toYaml .Values.adminApi.tolerations | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.adminApi.terminationGracePeriodSeconds }}
