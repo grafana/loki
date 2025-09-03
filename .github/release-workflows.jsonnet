@@ -165,7 +165,7 @@ local weeklyImageJobs = {
       },
       failCheck: {
         needs: ['changes', 'full'],
-        'if': '${{ always() && (cancelled() || contains(needs.*.result, \'cancelled\') || contains(needs.*.result, \'failure\')) }}',
+        'if': "${{ always() && (cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure')) }}",
         'runs-on': 'ubuntu-latest',
         steps: [
           {
