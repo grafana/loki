@@ -4,13 +4,19 @@ import (
 	"flag"
 	"fmt"
 
+	"hash/fnv"
+	"sort"
+	"strings"
+
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 // SegmentTopicConfig configures the SegmentTopicWriter
@@ -28,6 +34,9 @@ type SegmentTopicConfig struct {
 
 	// PartitionStrategy determines how partitions are assigned
 	PartitionStrategy string `yaml:"partition_strategy"`
+
+	// NumPartitions is the number of partitions for the topic
+	NumPartitions int `yaml:"num_partitions"`
 }
 
 // RegisterFlags registers the flags for the SegmentTopicConfig
@@ -39,6 +48,7 @@ func (cfg *SegmentTopicConfig) RegisterFlags(fs *flag.FlagSet) {
 	cfg.MaxRecordSizeBytes = kafka.MaxProducerRecordDataBytesLimit
 	fs.Var(&cfg.MaxRecordSizeBytes, "distributor.segment-topic.max-record-size-bytes", "Maximum size of a single Kafka record.")
 	fs.StringVar(&cfg.PartitionStrategy, "distributor.segment-topic.partition-strategy", "hash", "Partition strategy for segment topic writer (hash, round-robin, etc.).")
+	fs.IntVar(&cfg.NumPartitions, "distributor.segment-topic.num-partitions", 10, "Number of partitions for the segment topic.")
 }
 
 // Validate validates the SegmentTopicConfig
@@ -171,8 +181,69 @@ func (s *SegmentTopicWriter) write(tenant string, streams []KeyedStream) {
 
 // getPartition determines which partition to use for a given stream
 func (s *SegmentTopicWriter) getPartition(stream KeyedStream, tenant string) int32 {
-	// Simple hash-based partitioning for now
-	// This can be enhanced with more sophisticated segmentation strategies
-	hash := stream.HashKeyNoShard
-	return int32(hash % 10) // Assuming 10 partitions for now
+	partitioningKeys := s.limits.SegmentTopicPartitionKeys(tenant)
+
+	if len(partitioningKeys) == 0 {
+		// Fallback to old behavior
+		hash := stream.HashKeyNoShard
+		return int32(hash % uint64(s.cfg.NumPartitions))
+	}
+
+	// Use a map to build a unique set of labels for partitioning
+	partitioningLabels := make(map[string]string)
+	keysToUse := make(map[string]struct{})
+	for _, key := range partitioningKeys {
+		keysToUse[key] = struct{}{}
+	}
+
+	// Extract from stream labels
+	parsedLabels, err := syntax.ParseLabels(stream.Stream.Labels)
+	if err != nil {
+		s.logger.Log("msg", "failed to parse stream labels for partitioning", "tenant", tenant, "labels", stream.Stream.Labels, "err", err)
+	} else {
+		parsedLabels.Range(func(lbl labels.Label) {
+			if _, ok := keysToUse[lbl.Name]; ok {
+				partitioningLabels[lbl.Name] = lbl.Value
+			}
+		})
+	}
+
+	// Extract from structured metadata of each entry
+	for _, entry := range stream.Stream.Entries {
+		for _, sm := range entry.StructuredMetadata {
+			if _, ok := keysToUse[sm.Name]; ok {
+				partitioningLabels[sm.Name] = sm.Value
+			}
+		}
+	}
+
+	if len(partitioningLabels) == 0 {
+		// None of the partitioning keys were found, fallback to old behavior
+		hash := stream.HashKeyNoShard
+		return int32(hash % uint64(s.cfg.NumPartitions))
+	}
+
+	// Create a stable string representation of the partitioning labels
+	keys := make([]string, 0, len(partitioningLabels))
+	for k := range partitioningLabels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var sb strings.Builder
+	for i, k := range keys {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(k)
+		sb.WriteString("=")
+		sb.WriteString(partitioningLabels[k])
+	}
+
+	// Hash the string to determine the partition
+	hasher := fnv.New64a()
+	_, _ = hasher.Write([]byte(sb.String()))
+	hash := hasher.Sum64()
+
+	return int32(hash % uint64(s.cfg.NumPartitions))
 }
