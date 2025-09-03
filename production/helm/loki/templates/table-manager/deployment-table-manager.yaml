@@ -104,7 +104,7 @@ spec:
       affinity:
         {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
-      {{- with .Values.tableManager.dnsConfig }}
+      {{- with .Values.tableManager.dnsConfig | default .Values.loki.dnsConfig }}
       dnsConfig:
         {{- tpl . $ | nindent 8 }}
       {{- end }}

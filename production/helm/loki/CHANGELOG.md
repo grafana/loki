@@ -14,8 +14,11 @@ Entries should include a reference to the pull request that introduced the chang
 ## Unreleased
 
 - [FEATURE] add more specificity to affinity and topology spread constraints [#19061](https://github.com/grafana/loki/pull/19061)
-- [BUGFIX] Add init container configuration for backend, bloom builder, distributor, query-frontend, query-scheduler, read, write. [#18709](https://github.com/grafana/loki/pull/18709)
 - [ENHANCEMENT] Expand `extraObjects` to have more flexibility in templating [#13252](https://github.com/grafana/loki/pull/13252)
+- [ENHANCEMENT] add missing dnsConfig to `admin-api`, `bloom-builder`, `bloom-gateway`, `bloom-planner`, `compactor`, `distributor`, `index-gateway`, `ingester`, `memcached`, `overrides-exporter`, `pattern-ingester`, and `query-scheduler`. [#18903](https://github.com/grafana/loki/pull/18903)
+- [BUGFIX] Ensure the GEL admin-api resources are not created when using SimpleScalable deployment mode [#13655](https://github.com/grafana/loki/pull/13655)
+- [BUGFIX] Stop scrapping zonal ingester metrics twice when using ServiceMonitor. [#19000](https://github.com/grafana/loki/pull/19000)
+- [BUGFIX] Add init container configuration for backend, bloom builder, distributor, query-frontend, query-scheduler, read, write. [#18709](https://github.com/grafana/loki/pull/18709)
 
 ## 6.38.0
 

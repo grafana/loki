@@ -103,9 +103,9 @@ spec:
       affinity:
         {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
-      {{- with .Values.gateway.dnsConfig }}
+      {{- with .Values.gateway.dnsConfig | default .Values.loki.dnsConfig }}
       dnsConfig:
-        {{- tpl . $ | nindent 8 }}
+        {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.gateway.nodeSelector }}
       nodeSelector:
