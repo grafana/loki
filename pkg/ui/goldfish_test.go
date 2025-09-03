@@ -22,7 +22,7 @@ import (
 type mockStorage struct {
 	queries        []goldfish.QuerySample
 	capturedFilter goldfish.QueryFilter // Add this to capture the full filter
-  error          error
+	error          error
 }
 
 func (m *mockStorage) StoreQuerySample(_ context.Context, _ *goldfish.QuerySample) error {
@@ -34,13 +34,13 @@ func (m *mockStorage) StoreComparisonResult(_ context.Context, _ *goldfish.Compa
 }
 
 func (m *mockStorage) GetSampledQueries(_ context.Context, page, pageSize int, filter goldfish.QueryFilter) (*goldfish.APIResponse, error) {
-  if m.error != nil {
-    return nil, m.error
-  }
+	if m.error != nil {
+		return nil, m.error
+	}
 
 	// Capture the filter for test verification
 	m.capturedFilter = filter
-	
+
 	// Apply pagination
 	start := (page - 1) * pageSize
 	end := start + pageSize
@@ -360,11 +360,11 @@ func TestGoldfishQueriesHandler_ErrorCases(t *testing.T) {
 						Enable: true,
 					},
 				},
-				logger:          log.NewNopLogger(),
+				logger: log.NewNopLogger(),
 				goldfishStorage: &mockStorage{
-          error: errors.New("database connection failed"),
-        },
-				now:             time.Now,
+					error: errors.New("database connection failed"),
+				},
+				now: time.Now,
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedError:  "failed to retrieve sampled queries",
@@ -907,18 +907,86 @@ func TestGetSampledQueries_AppliesTimeDefaults(t *testing.T) {
 	}
 }
 
+func TestGoldfishQueriesHandler_ParsesTimeParameters(t *testing.T) {
+	t.Run("parses valid from and to parameters", func(t *testing.T) {
+		storage := &mockStorage{
+			queries: []goldfish.QuerySample{
+				createTestQuerySample("1", "tenant-a", 200, 200, "hash1", "hash1"),
+			},
+		}
+
+		service := createTestService(storage)
+		handler := service.goldfishQueriesHandler()
+
+		// Request with 'from' parameter in RFC3339 format (also need 'to' parameter due to validation)
+		req := httptest.NewRequest("GET", "/api/v1/goldfish/queries?from=2024-01-01T10:00:00Z&to=2024-01-01T11:00:00Z", nil)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+
+		// Verify the storage received the parsed times
+		expectedFromTime, _ := time.Parse(time.RFC3339, "2024-01-01T10:00:00Z")
+		expectedToTime, _ := time.Parse(time.RFC3339, "2024-01-01T11:00:00Z")
+		assert.Equal(t, expectedFromTime, storage.capturedFilter.From, "Expected 'from' time to be parsed and passed to storage")
+		assert.Equal(t, expectedToTime, storage.capturedFilter.To, "Expected 'to' time to be parsed and passed to storage")
+	})
+
+	t.Run("returns 400 for invalid from parameter", func(t *testing.T) {
+		storage := &mockStorage{
+			queries: []goldfish.QuerySample{},
+		}
+
+		service := createTestService(storage)
+		handler := service.goldfishQueriesHandler()
+
+		// Request with invalid 'from' parameter
+		req := httptest.NewRequest("GET", "/api/v1/goldfish/queries?from=invalid-date", nil)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+
+		var errorResp map[string]string
+		err := json.Unmarshal(rr.Body.Bytes(), &errorResp)
+		require.NoError(t, err)
+		assert.Contains(t, errorResp["error"], "from", "Error message should mention the 'from' parameter")
+	})
+
+	t.Run("returns 400 for invalid to parameter", func(t *testing.T) {
+		storage := &mockStorage{
+			queries: []goldfish.QuerySample{},
+		}
+
+		service := createTestService(storage)
+		handler := service.goldfishQueriesHandler()
+
+		// Request with valid 'from' but invalid 'to' parameter
+		req := httptest.NewRequest("GET", "/api/v1/goldfish/queries?from=2024-01-01T10:00:00Z&to=not-a-date", nil)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+
+		var errorResp map[string]string
+		err := json.Unmarshal(rr.Body.Bytes(), &errorResp)
+		require.NoError(t, err)
+		assert.Contains(t, errorResp["error"], "to", "Error message should mention the 'to' parameter")
+	})
+}
+
 func TestGoldfishQueriesHandler_FiltersByNewEngine(t *testing.T) {
 	// Test queries with new engine usage
 	queriesWithEngine := []goldfish.QuerySample{
 		createTestQuerySample("1", "tenant-a", 200, 200, "hash1", "hash1"),
-		createTestQuerySample("3", "tenant-b", 200, 200, "hash1", "hash1"), 
+		createTestQuerySample("3", "tenant-b", 200, 200, "hash1", "hash1"),
 		createTestQuerySample("4", "tenant-b", 200, 200, "hash2", "hash2"),
 	}
-	queriesWithEngine[0].CellAUsedNewEngine = true  // query 1 used new engine in cell A
+	queriesWithEngine[0].CellAUsedNewEngine = true // query 1 used new engine in cell A
 	queriesWithEngine[0].CellBUsedNewEngine = false
 	queriesWithEngine[1].CellAUsedNewEngine = false // query 3 used new engine in cell B
 	queriesWithEngine[1].CellBUsedNewEngine = true
-	queriesWithEngine[2].CellAUsedNewEngine = true  // query 4 used new engine in both cells
+	queriesWithEngine[2].CellAUsedNewEngine = true // query 4 used new engine in both cells
 	queriesWithEngine[2].CellBUsedNewEngine = true
 
 	// Test queries without new engine
@@ -935,11 +1003,11 @@ func TestGoldfishQueriesHandler_FiltersByNewEngine(t *testing.T) {
 		storage := &mockStorage{
 			queries: queriesWithEngine,
 		}
-		
+
 		service := createTestService(storage)
 
 		handler := service.goldfishQueriesHandler()
-		
+
 		// Test filtering by newEngine=true (queries that used new engine in at least one cell)
 		req := httptest.NewRequest("GET", "/api/v1/goldfish/queries?newEngine=true", nil)
 		rr := httptest.NewRecorder()
@@ -966,11 +1034,11 @@ func TestGoldfishQueriesHandler_FiltersByNewEngine(t *testing.T) {
 		storage := &mockStorage{
 			queries: queriesWithoutEngine,
 		}
-		
+
 		service := createTestService(storage)
-		
+
 		handler := service.goldfishQueriesHandler()
-		
+
 		// Test filtering by newEngine=false (queries that didn't use new engine in any cell)
 		req := httptest.NewRequest("GET", "/api/v1/goldfish/queries?newEngine=false", nil)
 		rr := httptest.NewRecorder()

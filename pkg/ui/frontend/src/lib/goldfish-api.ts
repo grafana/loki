@@ -14,7 +14,9 @@ export async function fetchSampledQueries(
   outcome?: OutcomeFilter,
   tenant?: string,
   user?: string,
-  newEngine?: boolean
+  newEngine?: boolean,
+  from?: Date,
+  to?: Date
 ): Promise<FetchResult<GoldfishAPIResponse>> {
   const params = new URLSearchParams({
     page: page.toString(),
@@ -35,6 +37,14 @@ export async function fetchSampledQueries(
   
   if (newEngine !== undefined) {
     params.append("newEngine", newEngine.toString());
+  }
+  
+  if (from) {
+    params.append("from", from.toISOString());
+  }
+  
+  if (to) {
+    params.append("to", to.toISOString());
   }
   
   // Create trace context for this request

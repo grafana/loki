@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchSampledQueries } from '@/lib/goldfish-api';
 import { OutcomeFilter, OUTCOME_ALL, OUTCOME_MATCH, OUTCOME_MISMATCH, OUTCOME_ERROR } from '@/types/goldfish';
@@ -14,15 +14,17 @@ export function useGoldfishQueries(
   selectedOutcome: OutcomeFilter,
   tenant?: string,
   user?: string,
-  newEngine?: boolean
+  newEngine?: boolean,
+  from?: Date,
+  to?: Date
 ) {
   const [currentTraceId, setCurrentTraceId] = useState<string | null>(null);
   
   // Main query always fetches all data
   const mainQuery = useQuery({
-    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_ALL, tenant, user, newEngine],
+    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_ALL, tenant, user, newEngine, from?.toISOString(), to?.toISOString()],
     queryFn: async () => {
-      const result = await fetchSampledQueries(page, pageSize, OUTCOME_ALL, tenant, user, newEngine);
+      const result = await fetchSampledQueries(page, pageSize, OUTCOME_ALL, tenant, user, newEngine, from, to);
       setCurrentTraceId(result.traceId);
       
       if (result.error) {
@@ -36,9 +38,9 @@ export function useGoldfishQueries(
 
   // Background queries for specific filters
   const matchQuery = useQuery({
-    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_MATCH, tenant, user, newEngine],
+    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_MATCH, tenant, user, newEngine, from?.toISOString(), to?.toISOString()],
     queryFn: async () => {
-      const result = await fetchSampledQueries(page, pageSize, OUTCOME_MATCH, tenant, user, newEngine);
+      const result = await fetchSampledQueries(page, pageSize, OUTCOME_MATCH, tenant, user, newEngine, from, to);
       if (selectedOutcome === OUTCOME_MATCH) {
         setCurrentTraceId(result.traceId);
       }
@@ -50,9 +52,9 @@ export function useGoldfishQueries(
   });
 
   const mismatchQuery = useQuery({
-    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine],
+    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine, from?.toISOString(), to?.toISOString()],
     queryFn: async () => {
-      const result = await fetchSampledQueries(page, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine);
+      const result = await fetchSampledQueries(page, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine, from, to);
       if (selectedOutcome === OUTCOME_MISMATCH) {
         setCurrentTraceId(result.traceId);
       }
@@ -64,9 +66,9 @@ export function useGoldfishQueries(
   });
 
   const errorQuery = useQuery({
-    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_ERROR, tenant, user, newEngine],
+    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_ERROR, tenant, user, newEngine, from?.toISOString(), to?.toISOString()],
     queryFn: async () => {
-      const result = await fetchSampledQueries(page, pageSize, OUTCOME_ERROR, tenant, user, newEngine);
+      const result = await fetchSampledQueries(page, pageSize, OUTCOME_ERROR, tenant, user, newEngine, from, to);
       if (selectedOutcome === OUTCOME_ERROR) {
         setCurrentTraceId(result.traceId);
       }
@@ -102,7 +104,7 @@ export function useGoldfishQueries(
       if (result.error) throw result.error;
       return result.data;
     },
-    enabled: selectedOutcome === OUTCOME_MATCH && totalPages > 1 && page < totalPages,
+    enabled: selectedOutcome === OUTCOME_MATCH && hasMore,
     ...QUERY_OPTIONS,
   });
 
@@ -113,7 +115,7 @@ export function useGoldfishQueries(
       if (result.error) throw result.error;
       return result.data;
     },
-    enabled: selectedOutcome === OUTCOME_MISMATCH && totalPages > 1 && page < totalPages,
+    enabled: selectedOutcome === OUTCOME_MISMATCH && hasMore,
     ...QUERY_OPTIONS,
   });
 
@@ -124,7 +126,7 @@ export function useGoldfishQueries(
       if (result.error) throw result.error;
       return result.data;
     },
-    enabled: selectedOutcome === OUTCOME_ERROR && totalPages > 1 && page < totalPages,
+    enabled: selectedOutcome === OUTCOME_ERROR && hasMore,
     ...QUERY_OPTIONS,
   });
 

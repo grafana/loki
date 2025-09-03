@@ -308,6 +308,25 @@ func (s *Service) goldfishQueriesHandler() http.Handler {
 			}
 		}
 
+		// Parse time parameters
+		if fromStr := r.URL.Query().Get("from"); fromStr != "" {
+			fromTime, err := time.Parse(time.RFC3339, fromStr)
+			if err != nil {
+				s.writeJSONError(w, http.StatusBadRequest, "Invalid 'from' parameter format. Use RFC3339 format (e.g., 2024-01-01T10:00:00Z)")
+				return
+			}
+			filter.From = fromTime
+		}
+
+		if toStr := r.URL.Query().Get("to"); toStr != "" {
+			toTime, err := time.Parse(time.RFC3339, toStr)
+			if err != nil {
+				s.writeJSONError(w, http.StatusBadRequest, "Invalid 'to' parameter format. Use RFC3339 format (e.g., 2024-01-01T10:00:00Z)")
+				return
+			}
+			filter.To = toTime
+		}
+
 		// Track request metrics
 		startTime := time.Now()
 		

@@ -43,7 +43,7 @@ describe('useGoldfishQueries', () => {
         page: 1,
         pageSize: 20,
       };
-      mockFetchSampledQueries.mockResolvedValueOnce(mockData);
+      mockFetchSampledQueries.mockResolvedValueOnce({ data: mockData, traceId: 'test-trace-id' });
 
       const { result } = renderHook(() => 
         useGoldfishQueries(1, 20, OUTCOME_ALL, 'tenant-xyz'),
@@ -64,7 +64,7 @@ describe('useGoldfishQueries', () => {
         page: 1,
         pageSize: 20,
       };
-      mockFetchSampledQueries.mockResolvedValueOnce(mockData);
+      mockFetchSampledQueries.mockResolvedValueOnce({ data: mockData, traceId: 'test-trace-id' });
 
       const { result } = renderHook(() => 
         useGoldfishQueries(1, 20, OUTCOME_ALL, undefined, 'alice'),
@@ -85,7 +85,7 @@ describe('useGoldfishQueries', () => {
         page: 1,
         pageSize: 20,
       };
-      mockFetchSampledQueries.mockResolvedValueOnce(mockData);
+      mockFetchSampledQueries.mockResolvedValueOnce({ data: mockData, traceId: 'test-trace-id' });
 
       const { result } = renderHook(() => 
         useGoldfishQueries(1, 20, OUTCOME_ALL, undefined, undefined, true),
@@ -106,7 +106,7 @@ describe('useGoldfishQueries', () => {
         page: 1,
         pageSize: 20,
       };
-      mockFetchSampledQueries.mockResolvedValueOnce(mockData);
+      mockFetchSampledQueries.mockResolvedValueOnce({ data: mockData, traceId: 'test-trace-id' });
 
       const { result } = renderHook(() => 
         useGoldfishQueries(2, 50, OUTCOME_MATCH, 'tenant-b', 'bob', false),
@@ -127,7 +127,7 @@ describe('useGoldfishQueries', () => {
         page: 1,
         pageSize: 20,
       };
-      mockFetchSampledQueries.mockResolvedValue(mockData);
+      mockFetchSampledQueries.mockResolvedValue({ data: mockData, traceId: 'test-trace-id' });
 
       const { result, rerender } = renderHook(
         ({ tenant, user, newEngine }: { tenant?: string; user?: string; newEngine?: boolean }) => 
@@ -177,10 +177,13 @@ describe('useGoldfishQueries', () => {
   describe('existing functionality', () => {
     it('returns loading state initially', () => {
       mockFetchSampledQueries.mockResolvedValueOnce({
-        queries: [],
-        hasMore: false,
-        page: 1,
-        pageSize: 20,
+        data: {
+          queries: [],
+          hasMore: false,
+          page: 1,
+          pageSize: 20,
+        },
+        traceId: 'test-trace-id',
       });
 
       const { result } = renderHook(() => useGoldfishQueries(1, 20, OUTCOME_ALL), { wrapper: createWrapper() });
@@ -241,7 +244,7 @@ describe('useGoldfishQueries', () => {
         page: 1,
         pageSize: 20,
       };
-      mockFetchSampledQueries.mockResolvedValueOnce(mockData);
+      mockFetchSampledQueries.mockResolvedValueOnce({ data: mockData, traceId: 'test-trace-id' });
 
       const { result } = renderHook(() => useGoldfishQueries(1, 20, OUTCOME_ALL), { wrapper: createWrapper() });
 
@@ -274,7 +277,7 @@ describe('useGoldfishQueries', () => {
         page: 1,
         pageSize: 20,
       };
-      mockFetchSampledQueries.mockResolvedValue(mockData);
+      mockFetchSampledQueries.mockResolvedValue({ data: mockData, traceId: 'test-trace-id' });
 
       const { result, rerender } = renderHook(
         ({ page }) => useGoldfishQueries(page, 20, OUTCOME_ALL),

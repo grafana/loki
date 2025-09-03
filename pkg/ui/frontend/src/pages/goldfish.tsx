@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useGoldfishQueries } from "@/hooks/use-goldfish-queries";
 import { QueryDiffView } from "@/components/goldfish/query-diff-view";
+import { TimeRangeSelector } from "@/components/goldfish/time-range-selector";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -31,13 +32,22 @@ export default function GoldfishPage() {
   const [page, setPage] = useState(1);
   const pageSize = 10; // Reduced since we're showing more detail per query
   
+  // Initialize time range to past hour
+  const [timeRange, setTimeRange] = useState<{ from: Date; to: Date }>(() => {
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    return { from: oneHourAgo, to: now };
+  });
+  
   const { data, isLoading, error, refetch, hasMore, traceId } = useGoldfishQueries(
     page, 
     pageSize, 
     selectedOutcome, 
     selectedTenant, 
     selectedUser, 
-    showNewEngineOnly ? true : undefined
+    showNewEngineOnly ? true : undefined,
+    timeRange.from,
+    timeRange.to
   );
   const allQueries = useMemo(() => (data as { queries: SampledQuery[] })?.queries || [], [data]);
   
@@ -89,10 +99,24 @@ export default function GoldfishPage() {
             </Button>
           </div>
           
-          {/* All Filters on One Line */}
-          <div className="flex items-center justify-between gap-4 mb-6">
-            {/* Outcome Filter Tabs - Left Aligned */}
-            <div className="flex items-center bg-muted p-1 rounded-lg">
+          {/* All Filters on Two Lines */}
+          <div className="space-y-3 mb-6">
+            {/* First Line: Time Range */}
+            <div className="flex items-center justify-between gap-4">
+              <TimeRangeSelector
+                from={timeRange.from}
+                to={timeRange.to}
+                onChange={(from, to) => setTimeRange({ from, to })}
+              />
+              <div className="text-sm text-muted-foreground">
+                Showing queries from selected time range
+              </div>
+            </div>
+            
+            {/* Second Line: Outcome Filter and Other Filters */}
+            <div className="flex items-center justify-between gap-4">
+              {/* Outcome Filter Tabs - Left Aligned */}
+              <div className="flex items-center bg-muted p-1 rounded-lg">
               <Button
                 variant={selectedOutcome === OUTCOME_ALL ? "default" : "ghost"}
                 size="sm"
@@ -201,10 +225,11 @@ export default function GoldfishPage() {
                 <Rocket className="h-4 w-4 mr-1" />
                 New Engine Only
               </label>
-            </div>
+              </div>
             </div>
           </div>
-        </CardHeader>
+        </div>
+      </CardHeader>
         
         <CardContent>
           <div className="space-y-4">
