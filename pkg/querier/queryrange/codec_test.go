@@ -1946,6 +1946,7 @@ var (
 				"totalChunksDownloaded": 0,
 				"chunkRefsFetchTime": 0,
 				"queryReferencedStructuredMetadata": false,
+				"queryUsedV2Engine": false,
 				"pipelineWrapperFilteredLines": 2
 			},
 			"totalBatches": 6,
@@ -1987,6 +1988,7 @@ var (
 				"totalChunksDownloaded": 18,
 				"chunkRefsFetchTime": 19,
 				"queryReferencedStructuredMetadata": true,
+				"queryUsedV2Engine": false,
 				"pipelineWrapperFilteredLines": 4
 			}
 		},

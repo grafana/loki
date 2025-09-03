@@ -34,7 +34,6 @@ var tocBuilderCfg = indexobj.BuilderConfig{
 // The TableOfContents (ToC) writer manages the metastore's Table of Contents files, which are a list of other data objects in storage for a particular time range.
 // The Table of Contents files are used to look up other objects based on a time range, either index files or the log objects themselves. All entries are expected to have an applicable time window.
 type TableOfContentsWriter struct {
-	cfg        Config
 	tocBuilder *indexobj.Builder // New index pointer based builder.
 	metrics    *tocMetrics
 	bucket     objstore.Bucket
@@ -45,11 +44,10 @@ type TableOfContentsWriter struct {
 }
 
 // NewTableOfContentsWriter creates a new Writer for adding entries to the metastore's Table of Contents files.
-func NewTableOfContentsWriter(cfg Config, bucket objstore.Bucket, logger log.Logger) *TableOfContentsWriter {
+func NewTableOfContentsWriter(bucket objstore.Bucket, logger log.Logger) *TableOfContentsWriter {
 	metrics := newTableOfContentsMetrics()
 
 	return &TableOfContentsWriter{
-		cfg:         cfg,
 		bucket:      bucket,
 		metrics:     metrics,
 		logger:      logger,
@@ -91,92 +89,104 @@ func (m *TableOfContentsWriter) WriteEntry(ctx context.Context, dataobjPath stri
 		return err
 	}
 
+	var globalMinTime, globalMaxTime time.Time
+	for _, timeRange := range tenantTimeRanges {
+		if globalMinTime.IsZero() || timeRange.MinTime.Before(globalMinTime) {
+			globalMinTime = timeRange.MinTime
+		}
+		if globalMaxTime.IsZero() || timeRange.MaxTime.After(globalMaxTime) {
+			globalMaxTime = timeRange.MaxTime
+		}
+	}
+
 	// Work our way through the metastore objects window by window, updating & creating them as needed.
 	// Each one handles its own retries in order to keep making progress in the event of a failure.
-	for _, timeRange := range tenantTimeRanges {
-		prefix := storagePrefixFor(m.cfg.Storage, timeRange.Tenant)
-		for tocPath := range iterTableOfContentsPaths(timeRange.Tenant, timeRange.MinTime, timeRange.MaxTime, prefix) {
-			b := backoff.New(ctx, backoff.Config{
-				MinBackoff: 50 * time.Millisecond,
-				MaxBackoff: 10 * time.Second,
-			})
-			for b.Ongoing() {
-				err = m.bucket.GetAndReplace(ctx, tocPath, func(existing io.ReadCloser) (io.ReadCloser, error) {
-					if existing != nil {
-						defer existing.Close()
-					}
-
-					m.buf.Reset()
-					m.tocBuilder.Reset()
-
-					if existing != nil {
-						_, err := io.Copy(m.buf, existing)
-						if err != nil {
-							return nil, errors.Wrap(err, "copying to local buffer")
-						}
-					}
-
-					if m.buf.Len() > 0 {
-						replayDuration := prometheus.NewTimer(m.metrics.tocReplayTime)
-						object, err := dataobj.FromReaderAt(bytes.NewReader(m.buf.Bytes()), int64(m.buf.Len()))
-						if err != nil {
-							return nil, errors.Wrap(err, "creating object from buffer")
-						}
-						err = m.copyFromExistingToc(ctx, object)
-						if err != nil {
-							return nil, errors.Wrap(err, "reading existing metastore version")
-						}
-						replayDuration.ObserveDuration()
-					}
-
-					encodingDuration := prometheus.NewTimer(m.metrics.tocEncodingTime)
-					err := m.tocBuilder.AppendIndexPointer(timeRange.Tenant, dataobjPath, timeRange.MinTime, timeRange.MaxTime)
-					if err != nil {
-						return nil, errors.Wrap(err, "appending index pointer")
-					}
-
-					var (
-						obj    *dataobj.Object
-						closer io.Closer
-					)
-
-					obj, closer, err = m.tocBuilder.Flush()
-					if err != nil {
-						return nil, errors.Wrap(err, "flushing metastore builder")
-					}
-
-					reader, err := obj.Reader(ctx)
-					if err != nil {
-						_ = closer.Close()
-						return nil, err
-					}
-
-					encodingDuration.ObserveDuration()
-					return &wrappedReadCloser{
-						rc: reader,
-						OnClose: func() error {
-							// We must close our object reader before closing the object
-							// itself.
-							var errs []error
-							errs = append(errs, reader.Close())
-							errs = append(errs, closer.Close())
-							return stderrors.Join(errs...)
-						},
-					}, nil
-				})
-				if err == nil {
-					level.Info(m.logger).Log("msg", "successfully merged & updated metastore", "metastore", tocPath)
-					m.metrics.incTableOfContentsWrites(statusSuccess)
-					break
+	for tocPath, tocTimeRange := range iterTableOfContentsPaths(globalMinTime, globalMaxTime) {
+		b := backoff.New(ctx, backoff.Config{
+			MinBackoff: 50 * time.Millisecond,
+			MaxBackoff: 10 * time.Second,
+		})
+		for b.Ongoing() {
+			err = m.bucket.GetAndReplace(ctx, tocPath, func(existing io.ReadCloser) (io.ReadCloser, error) {
+				if existing != nil {
+					defer existing.Close()
 				}
-				level.Error(m.logger).Log("msg", "failed to get and replace metastore object", "err", err, "metastore", tocPath)
-				m.metrics.incTableOfContentsWrites(statusFailure)
-				b.Wait()
-			}
 
-			// Reset at the end too so we don't leave our memory hanging around between calls.
-			m.tocBuilder.Reset()
+				m.buf.Reset()
+				m.tocBuilder.Reset()
+
+				if existing != nil {
+					_, err := io.Copy(m.buf, existing)
+					if err != nil {
+						return nil, errors.Wrap(err, "copying to local buffer")
+					}
+				}
+
+				if m.buf.Len() > 0 {
+					replayDuration := prometheus.NewTimer(m.metrics.tocReplayTime)
+					object, err := dataobj.FromReaderAt(bytes.NewReader(m.buf.Bytes()), int64(m.buf.Len()))
+					if err != nil {
+						return nil, errors.Wrap(err, "creating object from buffer")
+					}
+					err = m.copyFromExistingToc(ctx, object)
+					if err != nil {
+						return nil, errors.Wrap(err, "reading existing metastore version")
+					}
+					replayDuration.ObserveDuration()
+				}
+
+				encodingDuration := prometheus.NewTimer(m.metrics.tocEncodingTime)
+				// Append all the tenant time ranges that overlap with the current Table of Contents window.
+				for _, timeRange := range tenantTimeRanges {
+					if timeRange.MinTime.Before(tocTimeRange.MaxTime) && timeRange.MaxTime.After(tocTimeRange.MinTime) {
+						err := m.tocBuilder.AppendIndexPointer(timeRange.Tenant, dataobjPath, timeRange.MinTime, timeRange.MaxTime)
+						if err != nil {
+							return nil, errors.Wrap(err, "appending index pointer")
+						}
+					}
+				}
+
+				var (
+					obj    *dataobj.Object
+					closer io.Closer
+				)
+
+				obj, closer, err = m.tocBuilder.Flush()
+				if err != nil {
+					return nil, errors.Wrap(err, "flushing metastore builder")
+				}
+
+				reader, err := obj.Reader(ctx)
+				if err != nil {
+					_ = closer.Close()
+					return nil, err
+				}
+
+				encodingDuration.ObserveDuration()
+				return &wrappedReadCloser{
+					rc: reader,
+					OnClose: func() error {
+						// We must close our object reader before closing the object
+						// itself.
+						var errs []error
+						errs = append(errs, reader.Close())
+						errs = append(errs, closer.Close())
+						return stderrors.Join(errs...)
+					},
+				}, nil
+			})
+			if err == nil {
+				level.Info(m.logger).Log("msg", "successfully merged & updated metastore", "metastore", tocPath)
+				m.metrics.incTableOfContentsWrites(statusSuccess)
+				break
+			}
+			level.Error(m.logger).Log("msg", "failed to get and replace metastore object", "err", err, "metastore", tocPath)
+			m.metrics.incTableOfContentsWrites(statusFailure)
+			b.Wait()
 		}
+
+		// Reset at the end too so we don't leave our memory hanging around between calls.
+		m.tocBuilder.Reset()
 	}
 	return err
 }

@@ -18,8 +18,8 @@ import (
 
 var testBuilderConfig = BuilderConfig{
 	TargetPageSize:    2048,
-	TargetObjectSize:  1 << 22, // 4 MiB
-	TargetSectionSize: 1 << 21, // 2 MiB
+	TargetObjectSize:  1 << 20, // 1 MiB
+	TargetSectionSize: 1 << 19, // 512 KiB
 
 	BufferSize: 2048 * 8,
 
@@ -48,7 +48,6 @@ func TestBuilder(t *testing.T) {
 				},
 			},
 		},
-
 		{
 			Labels: `{cluster="test",app="bar"}`,
 			Entries: []push.Entry{
@@ -76,7 +75,7 @@ func TestBuilder(t *testing.T) {
 		require.NoError(t, err)
 
 		for _, entry := range testStreams {
-			require.NoError(t, builder.Append(entry))
+			require.NoError(t, builder.Append("tenant", entry))
 		}
 		obj, closer, err := builder.Flush()
 		require.NoError(t, err)
@@ -96,10 +95,12 @@ func TestBuilder_Append(t *testing.T) {
 	builder, err := NewBuilder(testBuilderConfig, nil)
 	require.NoError(t, err)
 
+	tenant := "test"
+
 	for {
 		require.NoError(t, ctx.Err())
 
-		err := builder.Append(logproto.Stream{
+		err := builder.Append(tenant, logproto.Stream{
 			Labels: `{cluster="test",app="foo"}`,
 			Entries: []push.Entry{{
 				Timestamp: time.Now().UTC(),
@@ -110,5 +111,20 @@ func TestBuilder_Append(t *testing.T) {
 			break
 		}
 		require.NoError(t, err)
+	}
+
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	// When a section builder is reset, which happens on ErrBuilderFull, the
+	// tenant is reset too. We must check that the tenant is added back
+	// to the section builder otherwise tenant will be absent from successive
+	// sections.
+	secs := obj.Sections()
+	require.Equal(t, 1, secs.Count(streams.CheckSection))
+	require.Greater(t, secs.Count(logs.CheckSection), 1)
+	for _, section := range secs.Filter(logs.CheckSection) {
+		require.Equal(t, tenant, section.Tenant)
 	}
 }
