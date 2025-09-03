@@ -33,6 +33,15 @@ const (
 	contentTypeJSON = "application/json"
 )
 
+// Context keys for trace information
+type contextKey string
+
+const (
+	traceIDKey      contextKey = "trace-id"
+	spanIDKey       contextKey = "span-id"
+	parentSpanIDKey contextKey = "parent-span-id"
+)
+
 //go:embed frontend/dist
 var uiFS embed.FS
 
@@ -221,12 +230,12 @@ func (s *Service) writeJSONErrorWithTrace(w http.ResponseWriter, code int, messa
 		w.Header().Set("X-Trace-Id", traceID)
 	}
 	w.WriteHeader(code)
-	
+
 	errorResp := map[string]string{"error": message}
 	if traceID != "" {
 		errorResp["traceId"] = traceID
 	}
-	
+
 	if err := json.NewEncoder(w).Encode(errorResp); err != nil {
 		level.Error(s.logger).Log("msg", "failed to encode error response", "err", err, "trace_id", traceID)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -239,18 +248,18 @@ func (s *Service) goldfishQueriesHandler() http.Handler {
 		traceID := r.Header.Get("X-Trace-Id")
 		spanID := r.Header.Get("X-Span-Id")
 		parentSpanID := r.Header.Get("X-Parent-Span-Id")
-		
+
 		// If we have a trace ID from the frontend, propagate it
 		if traceID != "" {
 			w.Header().Set("X-Trace-Id", traceID)
 			// Add trace context to request context for downstream use
 			ctx := r.Context()
-			ctx = context.WithValue(ctx, "trace-id", traceID)
-			ctx = context.WithValue(ctx, "span-id", spanID)
-			ctx = context.WithValue(ctx, "parent-span-id", parentSpanID)
+			ctx = context.WithValue(ctx, traceIDKey, traceID)
+			ctx = context.WithValue(ctx, spanIDKey, spanID)
+			ctx = context.WithValue(ctx, parentSpanIDKey, parentSpanID)
 			r = r.WithContext(ctx)
 		}
-		
+
 		if !s.cfg.Goldfish.Enable {
 			s.writeJSONErrorWithTrace(w, http.StatusNotFound, "goldfish feature is disabled", traceID)
 			return
@@ -329,10 +338,10 @@ func (s *Service) goldfishQueriesHandler() http.Handler {
 
 		// Track request metrics
 		startTime := time.Now()
-		
+
 		// Get sampled queries with trace context
 		response, err := s.GetSampledQueriesWithContext(r.Context(), page, pageSize, filter)
-		
+
 		// Record metrics
 		duration := time.Since(startTime).Seconds()
 		if s.goldfishMetrics != nil {
@@ -347,7 +356,7 @@ func (s *Service) goldfishQueriesHandler() http.Handler {
 			}
 			s.goldfishMetrics.RecordQueryDuration("api_request", "unknown", "complete", duration)
 		}
-		
+
 		if err != nil {
 			level.Error(s.logger).Log("msg", "failed to get sampled queries", "err", err, "trace_id", traceID, "duration_s", duration)
 			s.writeJSONErrorWithTrace(w, http.StatusInternalServerError, "failed to retrieve sampled queries", traceID)

@@ -98,9 +98,9 @@ export function useGoldfishQueries(
 
   // Prefetch next page for specific filter outcomes
   useQuery({
-    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_MATCH, tenant, user, newEngine],
+    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_MATCH, tenant, user, newEngine, from?.toISOString() ?? null, to?.toISOString() ?? null],
     queryFn: async () => {
-      const result = await fetchSampledQueries(page + 1, pageSize, OUTCOME_MATCH, tenant, user, newEngine);
+      const result = await fetchSampledQueries(page + 1, pageSize, OUTCOME_MATCH, tenant, user, newEngine, from ?? undefined, to ?? undefined);
       if (result.error) throw result.error;
       return result.data;
     },
@@ -109,9 +109,9 @@ export function useGoldfishQueries(
   });
 
   useQuery({
-    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine],
+    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine, from?.toISOString() ?? null, to?.toISOString() ?? null],
     queryFn: async () => {
-      const result = await fetchSampledQueries(page + 1, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine);
+      const result = await fetchSampledQueries(page + 1, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine, from ?? undefined, to ?? undefined);
       if (result.error) throw result.error;
       return result.data;
     },
@@ -120,9 +120,9 @@ export function useGoldfishQueries(
   });
 
   useQuery({
-    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_ERROR, tenant, user, newEngine],
+    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_ERROR, tenant, user, newEngine, from?.toISOString() ?? null, to?.toISOString() ?? null],
     queryFn: async () => {
-      const result = await fetchSampledQueries(page + 1, pageSize, OUTCOME_ERROR, tenant, user, newEngine);
+      const result = await fetchSampledQueries(page + 1, pageSize, OUTCOME_ERROR, tenant, user, newEngine, from ?? undefined, to ?? undefined);
       if (result.error) throw result.error;
       return result.data;
     },

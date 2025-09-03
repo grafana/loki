@@ -198,7 +198,7 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 	if pageSize < 1 || pageSize > 1000 {
 		pageSize = 20 // Default page size
 	}
-	
+
 	offset := (page - 1) * pageSize
 
 	// Build WHERE clause for tenant/user/engine/time filters
@@ -210,7 +210,7 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 	if filter.Tenant != "" || filter.User != "" {
 		indexHint = "idx_sampled_queries_filter_composite"
 	}
-	
+
 	query := `
 		SELECT
 			sq.correlation_id, sq.tenant_id, sq.user, sq.query, sq.query_type, sq.start_time, sq.end_time, sq.step_duration,

@@ -54,7 +54,7 @@ describe('useGoldfishQueries', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 20, OUTCOME_ALL, 'tenant-xyz', undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 20, OUTCOME_ALL, 'tenant-xyz', undefined, undefined, undefined, undefined);
     });
 
     it('passes user filter to API call', async () => {
@@ -75,7 +75,7 @@ describe('useGoldfishQueries', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 20, OUTCOME_ALL, undefined, 'alice', undefined);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 20, OUTCOME_ALL, undefined, 'alice', undefined, undefined, undefined);
     });
 
     it('passes newEngine filter to API call', async () => {
@@ -96,7 +96,7 @@ describe('useGoldfishQueries', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 20, OUTCOME_ALL, undefined, undefined, true);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 20, OUTCOME_ALL, undefined, undefined, true, undefined, undefined);
     });
 
     it('passes all filters to API call', async () => {
@@ -117,7 +117,7 @@ describe('useGoldfishQueries', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(2, 50, OUTCOME_MATCH, 'tenant-b', 'bob', false);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(2, 50, OUTCOME_MATCH, 'tenant-b', 'bob', false, undefined, undefined);
     });
 
     it('refetches data when filters change', async () => {
@@ -143,7 +143,7 @@ describe('useGoldfishQueries', () => {
       });
 
       expect(mockFetchSampledQueries).toHaveBeenCalledTimes(1);
-      expect(mockFetchSampledQueries).toHaveBeenLastCalledWith(1, 20, OUTCOME_ALL, undefined, undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenLastCalledWith(1, 20, OUTCOME_ALL, undefined, undefined, undefined, undefined, undefined);
 
       // Change tenant filter
       rerender({ tenant: 'tenant-new' });
@@ -152,7 +152,7 @@ describe('useGoldfishQueries', () => {
         expect(mockFetchSampledQueries).toHaveBeenCalledTimes(2);
       });
 
-      expect(mockFetchSampledQueries).toHaveBeenLastCalledWith(1, 20, OUTCOME_ALL, 'tenant-new', undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenLastCalledWith(1, 20, OUTCOME_ALL, 'tenant-new', undefined, undefined, undefined, undefined);
 
       // Change user filter
       rerender({ tenant: 'tenant-new', user: 'charlie' });
@@ -161,7 +161,7 @@ describe('useGoldfishQueries', () => {
         expect(mockFetchSampledQueries).toHaveBeenCalledTimes(3);
       });
 
-      expect(mockFetchSampledQueries).toHaveBeenLastCalledWith(1, 20, OUTCOME_ALL, 'tenant-new', 'charlie', undefined);
+      expect(mockFetchSampledQueries).toHaveBeenLastCalledWith(1, 20, OUTCOME_ALL, 'tenant-new', 'charlie', undefined, undefined, undefined);
 
       // Change newEngine filter
       rerender({ tenant: 'tenant-new', user: 'charlie', newEngine: true });
@@ -170,7 +170,7 @@ describe('useGoldfishQueries', () => {
         expect(mockFetchSampledQueries).toHaveBeenCalledTimes(4);
       });
 
-      expect(mockFetchSampledQueries).toHaveBeenLastCalledWith(1, 20, OUTCOME_ALL, 'tenant-new', 'charlie', true);
+      expect(mockFetchSampledQueries).toHaveBeenLastCalledWith(1, 20, OUTCOME_ALL, 'tenant-new', 'charlie', true, undefined, undefined);
     });
   });
 
@@ -299,7 +299,7 @@ describe('useGoldfishQueries', () => {
         expect(mockFetchSampledQueries).toHaveBeenCalledTimes(2);
       });
 
-      expect(mockFetchSampledQueries).toHaveBeenLastCalledWith(2, 20, OUTCOME_ALL, undefined, undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenLastCalledWith(2, 20, OUTCOME_ALL, undefined, undefined, undefined, undefined, undefined);
     });
   });
 });

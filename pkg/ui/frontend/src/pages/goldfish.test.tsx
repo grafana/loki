@@ -192,10 +192,13 @@ const renderGoldfishPage = () => {
 describe('GoldfishPage', () => {
   beforeEach(() => {
     mockFetchSampledQueries.mockResolvedValue({
-      queries: mockQueries,
-      hasMore: true, // Has more pages to enable prefetching
-      page: 1,
-      pageSize: 10,
+      data: {
+        queries: mockQueries,
+        hasMore: true, // Has more pages to enable prefetching
+        page: 1,
+        pageSize: 10,
+      },
+      traceId: 'test-trace-id',
     });
   });
 
@@ -217,10 +220,13 @@ describe('GoldfishPage', () => {
       ];
 
       mockFetchSampledQueries.mockResolvedValue({
-        queries: queriesWithUser,
-        hasMore: false,
-        page: 1,
-        pageSize: 10,
+        data: {
+          queries: queriesWithUser,
+          hasMore: false,
+          page: 1,
+          pageSize: 10,
+        },
+        traceId: 'test-trace-id',
       });
 
       renderGoldfishPage();
@@ -241,16 +247,22 @@ describe('GoldfishPage', () => {
       // Mock different responses for main query and match query
       mockFetchSampledQueries
         .mockResolvedValueOnce({
-          queries: mockQueries,
-          hasMore: false,
-          page: 1,
-          pageSize: 10,
+          data: {
+            queries: mockQueries,
+            hasMore: false,
+            page: 1,
+            pageSize: 10,
+          },
+          traceId: 'test-trace-id',
         })
         .mockResolvedValueOnce({
-          queries: [mockQueries[0]], // Only match query
-          hasMore: false,
-          page: 1,
-          pageSize: 10,
+          data: {
+            queries: [mockQueries[0]], // Only match query
+            hasMore: false,
+            page: 1,
+            pageSize: 10,
+          },
+          traceId: 'test-trace-id',
         });
 
       renderGoldfishPage();
@@ -282,22 +294,31 @@ describe('GoldfishPage', () => {
       // Mock different responses for different outcome filters
       mockFetchSampledQueries
         .mockResolvedValueOnce({
-          queries: mockQueries,
-          hasMore: false,
-          page: 1,
-          pageSize: 10,
+          data: {
+            queries: mockQueries,
+            hasMore: false,
+            page: 1,
+            pageSize: 10,
+          },
+          traceId: 'test-trace-id',
         })
         .mockResolvedValueOnce({
-          queries: [mockQueries[1]], // Only mismatch query
-          hasMore: false,
-          page: 1,
-          pageSize: 10,
+          data: {
+            queries: [mockQueries[1]], // Only mismatch query
+            hasMore: false,
+            page: 1,
+            pageSize: 10,
+          },
+          traceId: 'test-trace-id',
         })
         .mockResolvedValueOnce({
-          queries: [mockQueries[2]], // Only error query
-          hasMore: false,
-          page: 1,
-          pageSize: 10,
+          data: {
+            queries: [mockQueries[2]], // Only error query
+            hasMore: false,
+            page: 1,
+            pageSize: 10,
+          },
+          traceId: 'test-trace-id',
         });
 
       renderGoldfishPage();
@@ -350,16 +371,16 @@ describe('GoldfishPage', () => {
 
       // Should wait for background requests to be triggered
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH, undefined, undefined, undefined);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH, undefined, undefined, undefined, undefined, undefined);
       });
 
       // Primary query should have been called with OUTCOME_ALL first
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL, undefined, undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL, undefined, undefined, undefined, undefined, undefined);
       
       // Background queries should also be called when specific filters are selected
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH, undefined, undefined, undefined);
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MISMATCH, undefined, undefined, undefined);
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ERROR, undefined, undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH, undefined, undefined, undefined, undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MISMATCH, undefined, undefined, undefined, undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ERROR, undefined, undefined, undefined, undefined, undefined);
     });
 
     it('fetches data with OUTCOME_ALL regardless of selected filter', async () => {
@@ -371,7 +392,7 @@ describe('GoldfishPage', () => {
       });
 
       // Verify it was called with OUTCOME_ALL
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL, undefined, undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL, undefined, undefined, undefined, undefined, undefined);
     });
   });
 
@@ -389,12 +410,12 @@ describe('GoldfishPage', () => {
 
       // Should trigger background request with specific outcome
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH, undefined, undefined, undefined);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH, undefined, undefined, undefined, undefined, undefined);
       });
 
       // Should have multiple calls (initial + background + prefetch)
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH, undefined, undefined, undefined);
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL, undefined, undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH, undefined, undefined, undefined, undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL, undefined, undefined, undefined, undefined, undefined);
     });
 
     it('triggers background server request when switching to different outcomes', async () => {
@@ -410,7 +431,7 @@ describe('GoldfishPage', () => {
 
       // Should trigger background request with mismatch outcome
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MISMATCH, undefined, undefined, undefined);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MISMATCH, undefined, undefined, undefined, undefined, undefined);
       });
 
       // Click on Error filter
@@ -418,13 +439,13 @@ describe('GoldfishPage', () => {
 
       // Should trigger background request with error outcome
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ERROR, undefined, undefined, undefined);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ERROR, undefined, undefined, undefined, undefined, undefined);
       });
 
       // Should have called with different outcomes
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL, undefined, undefined, undefined);
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MISMATCH, undefined, undefined, undefined);
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ERROR, undefined, undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL, undefined, undefined, undefined, undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MISMATCH, undefined, undefined, undefined, undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ERROR, undefined, undefined, undefined, undefined, undefined);
     });
 
     it('does not trigger background request when selecting All filter', async () => {
@@ -439,7 +460,7 @@ describe('GoldfishPage', () => {
       fireEvent.click(screen.getByText('Match'));
 
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH, undefined, undefined, undefined);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH, undefined, undefined, undefined, undefined, undefined);
       });
 
       // Click on All filter
@@ -447,7 +468,7 @@ describe('GoldfishPage', () => {
 
       // Should not trigger additional background request for "All"
       // because we already have all data
-      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL, undefined, undefined, undefined);
+      expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_ALL, undefined, undefined, undefined, undefined, undefined);
       
       // Should not make additional calls for "All" outcome background query
       // (but prefetch calls may still happen)
@@ -511,16 +532,22 @@ describe('GoldfishPage', () => {
       // Set up mock to return different data for the background request
       mockFetchSampledQueries
         .mockResolvedValueOnce({
-          queries: mockQueries,
-          hasMore: false,
-          page: 1,
-          pageSize: 10,
+          data: {
+            queries: mockQueries,
+            hasMore: false,
+            page: 1,
+            pageSize: 10,
+          },
+          traceId: 'test-trace-id',
         })
         .mockResolvedValueOnce({
-          queries: mockFilteredQueries,
-          hasMore: false,
-          page: 1,
-          pageSize: 10,
+          data: {
+            queries: mockFilteredQueries,
+            hasMore: false,
+            page: 1,
+            pageSize: 10,
+          },
+          traceId: 'test-trace-id',
         });
 
       renderGoldfishPage();
@@ -546,10 +573,13 @@ describe('GoldfishPage', () => {
       // Mock server to return error for background request
       mockFetchSampledQueries
         .mockResolvedValueOnce({
-          queries: mockQueries,
-          hasMore: false,
-          page: 1,
-          pageSize: 10,
+          data: {
+            queries: mockQueries,
+            hasMore: false,
+            page: 1,
+            pageSize: 10,
+          },
+          traceId: 'test-trace-id',
         })
         .mockRejectedValueOnce(new Error('Server error'));
 
@@ -581,7 +611,7 @@ describe('GoldfishPage', () => {
 
       // Should eventually prefetch next page
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(2, 10, OUTCOME_ALL, undefined, undefined, undefined);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(2, 10, OUTCOME_ALL, undefined, undefined, undefined, undefined, undefined);
       });
     });
 
@@ -598,22 +628,25 @@ describe('GoldfishPage', () => {
 
       // Should trigger background request
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH, undefined, undefined, undefined);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(1, 10, OUTCOME_MATCH, undefined, undefined, undefined, undefined, undefined);
       });
 
       // Should eventually prefetch next page for the match filter
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(2, 10, OUTCOME_MATCH, undefined, undefined, undefined);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(2, 10, OUTCOME_MATCH, undefined, undefined, undefined, undefined, undefined);
       });
     });
 
     it('does not prefetch when there is only one page', async () => {
       // Mock response with only one page
       mockFetchSampledQueries.mockResolvedValue({
-        queries: [mockQueries[0]],
-        hasMore: false,
-        page: 1,
-        pageSize: 10,
+        data: {
+          queries: [mockQueries[0]],
+          hasMore: false,
+          page: 1,
+          pageSize: 10,
+        },
+        traceId: 'test-trace-id',
       });
 
       renderGoldfishPage();
@@ -636,16 +669,22 @@ describe('GoldfishPage', () => {
       
       mockFetchSampledQueries
         .mockResolvedValueOnce({
-          queries: page1Queries,
-          hasMore: true,
-          page: 1,
-          pageSize: 10,
+          data: {
+            queries: page1Queries,
+            hasMore: true,
+            page: 1,
+            pageSize: 10,
+          },
+          traceId: 'test-trace-id',
         })
         .mockResolvedValueOnce({
-          queries: page2Queries,
-          hasMore: true,
-          page: 2,
-          pageSize: 10,
+          data: {
+            queries: page2Queries,
+            hasMore: true,
+            page: 2,
+            pageSize: 10,
+          },
+          traceId: 'test-trace-id',
         });
 
       renderGoldfishPage();
@@ -657,7 +696,7 @@ describe('GoldfishPage', () => {
 
       // Wait for prefetch of page 2 to complete
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(2, 10, OUTCOME_ALL, undefined, undefined, undefined);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(2, 10, OUTCOME_ALL, undefined, undefined, undefined, undefined, undefined);
       });
 
       // Navigate to page 2
@@ -680,23 +719,29 @@ describe('GoldfishPage', () => {
       
       mockFetchSampledQueries
         .mockResolvedValueOnce({
-          queries: page1Queries,
-          hasMore: true,
-          page: 1,
-          pageSize: 10,
+          data: {
+            queries: page1Queries,
+            hasMore: true,
+            page: 1,
+            pageSize: 10,
+          },
+          traceId: 'test-trace-id',
         })
         .mockResolvedValueOnce({
-          queries: page2Queries,
-          hasMore: true,
-          page: 2,
-          pageSize: 10,
+          data: {
+            queries: page2Queries,
+            hasMore: true,
+            page: 2,
+            pageSize: 10,
+          },
+          traceId: 'test-trace-id',
         });
 
       renderGoldfishPage();
 
       // Wait for page 1 to load and prefetch to complete
       await waitFor(() => {
-        expect(mockFetchSampledQueries).toHaveBeenCalledWith(2, 10, OUTCOME_ALL, undefined, undefined, undefined);
+        expect(mockFetchSampledQueries).toHaveBeenCalledWith(2, 10, OUTCOME_ALL, undefined, undefined, undefined, undefined, undefined);
       }, { timeout: 5000 });
 
       // Should have exactly 2 calls: initial load + prefetch
@@ -716,9 +761,9 @@ describe('GoldfishPage', () => {
       expect(mockFetchSampledQueries).toHaveBeenCalledTimes(3);
       
       // Verify the calls are what we expect
-      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(1, 1, 10, OUTCOME_ALL, undefined, undefined, undefined); // Initial load
-      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(2, 2, 10, OUTCOME_ALL, undefined, undefined, undefined); // Prefetch page 2
-      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(3, 3, 10, OUTCOME_ALL, undefined, undefined, undefined); // Prefetch page 3
+      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(1, 1, 10, OUTCOME_ALL, undefined, undefined, undefined, undefined, undefined); // Initial load
+      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(2, 2, 10, OUTCOME_ALL, undefined, undefined, undefined, undefined, undefined); // Prefetch page 2
+      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(3, 3, 10, OUTCOME_ALL, undefined, undefined, undefined, undefined, undefined); // Prefetch page 3
     }, 10000);
 
     it('waits for in-flight prefetch when navigating during prefetch', async () => {
@@ -733,10 +778,13 @@ describe('GoldfishPage', () => {
 
       mockFetchSampledQueries
         .mockResolvedValueOnce({
-          queries: page1Queries,
-          hasMore: true,
-          page: 1,
-          pageSize: 10,
+          data: {
+            queries: page1Queries,
+            hasMore: true,
+            page: 1,
+            pageSize: 10,
+          },
+          traceId: 'test-trace-id',
         })
         .mockImplementationOnce(() => prefetchPromise as any); // Slow prefetch
 
@@ -775,9 +823,9 @@ describe('GoldfishPage', () => {
       expect(mockFetchSampledQueries).toHaveBeenCalledTimes(3);
       
       // Verify the calls are what we expect
-      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(1, 1, 10, OUTCOME_ALL, undefined, undefined, undefined); // Initial load
-      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(2, 2, 10, OUTCOME_ALL, undefined, undefined, undefined); // Prefetch page 2
-      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(3, 3, 10, OUTCOME_ALL, undefined, undefined, undefined); // Prefetch page 3
+      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(1, 1, 10, OUTCOME_ALL, undefined, undefined, undefined, undefined, undefined); // Initial load
+      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(2, 2, 10, OUTCOME_ALL, undefined, undefined, undefined, undefined, undefined); // Prefetch page 2
+      expect(mockFetchSampledQueries).toHaveBeenNthCalledWith(3, 3, 10, OUTCOME_ALL, undefined, undefined, undefined, undefined, undefined); // Prefetch page 3
     }, 10000);
   });
 
@@ -799,10 +847,13 @@ describe('GoldfishPage', () => {
       ];
 
       mockFetchSampledQueries.mockResolvedValue({
-        queries: queriesWithDifferentUsers,
-        hasMore: false,
-        page: 1,
-        pageSize: 10,
+        data: {
+          queries: queriesWithDifferentUsers,
+          hasMore: false,
+          page: 1,
+          pageSize: 10,
+        },
+        traceId: 'test-trace-id',
       });
 
       const { rerender } = renderGoldfishPage();
@@ -883,10 +934,13 @@ describe('GoldfishPage', () => {
       ];
 
       mockFetchSampledQueries.mockResolvedValue({
-        queries: queriesWithDifferentUsers,
-        hasMore: false,
-        page: 1,
-        pageSize: 10,
+        data: {
+          queries: queriesWithDifferentUsers,
+          hasMore: false,
+          page: 1,
+          pageSize: 10,
+        },
+        traceId: 'test-trace-id',
       });
 
       // Test "All Users" filtering functionality by directly testing the filtering logic
@@ -971,17 +1025,23 @@ describe('GoldfishPage', () => {
       // Mock initial load (no filter)
       mockFetchSampledQueries
         .mockResolvedValueOnce({
-          queries: queriesWithEngineInfo,
-          hasMore: false,
-          page: 1,
-          pageSize: 10,
+          data: {
+            queries: queriesWithEngineInfo,
+            hasMore: false,
+            page: 1,
+            pageSize: 10,
+          },
+          traceId: 'test-trace-id',
         })
         // Mock response when new engine filter is applied
         .mockResolvedValueOnce({
-          queries: [queriesWithEngineInfo[0], queriesWithEngineInfo[1]], // Only new engine queries
-          hasMore: false,
-          page: 1,
-          pageSize: 10,
+          data: {
+            queries: [queriesWithEngineInfo[0], queriesWithEngineInfo[1]], // Only new engine queries
+            hasMore: false,
+            page: 1,
+            pageSize: 10,
+          },
+          traceId: 'test-trace-id',
         });
 
       render(<GoldfishPage />, {
@@ -1035,10 +1095,13 @@ describe('GoldfishPage', () => {
 
       // Mock response with new engine filter applied (URL param is true)
       mockFetchSampledQueries.mockResolvedValue({
-        queries: [queriesWithEngineInfo[0]], // Only new engine query
-        hasMore: false,
-        page: 1,
-        pageSize: 10,
+        data: {
+          queries: [queriesWithEngineInfo[0]], // Only new engine query
+          hasMore: false,
+          page: 1,
+          pageSize: 10,
+        },
+        traceId: 'test-trace-id',
       });
 
       // For this test, temporarily override the useSearchParams mock
