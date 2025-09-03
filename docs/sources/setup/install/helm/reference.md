@@ -6944,6 +6944,7 @@ null
 			<td><pre lang="json">
 {
   "fsGroup": 10001,
+  "fsGroupChangePolicy": "OnRootMismatch",
   "runAsGroup": 10001,
   "runAsNonRoot": true,
   "runAsUser": 10001
