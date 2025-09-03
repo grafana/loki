@@ -14,8 +14,8 @@ export function useGoldfishQueriesLoadMore(
   tenant?: string,
   user?: string,
   newEngine?: boolean,
-  from?: Date,
-  to?: Date
+  from?: Date | null,
+  to?: Date | null
 ) {
   const [currentTraceId, setCurrentTraceId] = useState<string | null>(null);
   const [allQueries, setAllQueries] = useState<SampledQuery[]>([]);
@@ -24,9 +24,9 @@ export function useGoldfishQueriesLoadMore(
   
   // Query for current page
   const query = useQuery({
-    queryKey: ['goldfish-queries-page', currentPage, pageSize, selectedOutcome, tenant, user, newEngine, from?.toISOString(), to?.toISOString()],
+    queryKey: ['goldfish-queries-page', currentPage, pageSize, selectedOutcome, tenant, user, newEngine, from?.toISOString() ?? null, to?.toISOString() ?? null],
     queryFn: async () => {
-      const result = await fetchSampledQueries(currentPage, pageSize, selectedOutcome, tenant, user, newEngine, from, to);
+      const result = await fetchSampledQueries(currentPage, pageSize, selectedOutcome, tenant, user, newEngine, from ?? undefined, to ?? undefined);
       setCurrentTraceId(result.traceId);
       
       if (result.error) {
@@ -46,7 +46,7 @@ export function useGoldfishQueriesLoadMore(
         setAllQueries(query.data.queries);
       } else {
         // Append for subsequent pages
-        setAllQueries(prev => [...prev, ...query.data.queries]);
+        setAllQueries(prev => [...prev, ...(query.data?.queries || [])]);
       }
       setHasMore(query.data?.hasMore || false);
     }

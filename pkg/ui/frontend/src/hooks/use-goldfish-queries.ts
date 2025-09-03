@@ -15,16 +15,16 @@ export function useGoldfishQueries(
   tenant?: string,
   user?: string,
   newEngine?: boolean,
-  from?: Date,
-  to?: Date
+  from?: Date | null,
+  to?: Date | null
 ) {
   const [currentTraceId, setCurrentTraceId] = useState<string | null>(null);
   
   // Main query always fetches all data
   const mainQuery = useQuery({
-    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_ALL, tenant, user, newEngine, from?.toISOString(), to?.toISOString()],
+    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_ALL, tenant, user, newEngine, from?.toISOString() ?? null, to?.toISOString() ?? null],
     queryFn: async () => {
-      const result = await fetchSampledQueries(page, pageSize, OUTCOME_ALL, tenant, user, newEngine, from, to);
+      const result = await fetchSampledQueries(page, pageSize, OUTCOME_ALL, tenant, user, newEngine, from ?? undefined, to ?? undefined);
       setCurrentTraceId(result.traceId);
       
       if (result.error) {
@@ -38,9 +38,9 @@ export function useGoldfishQueries(
 
   // Background queries for specific filters
   const matchQuery = useQuery({
-    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_MATCH, tenant, user, newEngine, from?.toISOString(), to?.toISOString()],
+    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_MATCH, tenant, user, newEngine, from?.toISOString() ?? null, to?.toISOString() ?? null],
     queryFn: async () => {
-      const result = await fetchSampledQueries(page, pageSize, OUTCOME_MATCH, tenant, user, newEngine, from, to);
+      const result = await fetchSampledQueries(page, pageSize, OUTCOME_MATCH, tenant, user, newEngine, from ?? undefined, to ?? undefined);
       if (selectedOutcome === OUTCOME_MATCH) {
         setCurrentTraceId(result.traceId);
       }
@@ -52,9 +52,9 @@ export function useGoldfishQueries(
   });
 
   const mismatchQuery = useQuery({
-    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine, from?.toISOString(), to?.toISOString()],
+    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine, from?.toISOString() ?? null, to?.toISOString() ?? null],
     queryFn: async () => {
-      const result = await fetchSampledQueries(page, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine, from, to);
+      const result = await fetchSampledQueries(page, pageSize, OUTCOME_MISMATCH, tenant, user, newEngine, from ?? undefined, to ?? undefined);
       if (selectedOutcome === OUTCOME_MISMATCH) {
         setCurrentTraceId(result.traceId);
       }
@@ -66,9 +66,9 @@ export function useGoldfishQueries(
   });
 
   const errorQuery = useQuery({
-    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_ERROR, tenant, user, newEngine, from?.toISOString(), to?.toISOString()],
+    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_ERROR, tenant, user, newEngine, from?.toISOString() ?? null, to?.toISOString() ?? null],
     queryFn: async () => {
-      const result = await fetchSampledQueries(page, pageSize, OUTCOME_ERROR, tenant, user, newEngine, from, to);
+      const result = await fetchSampledQueries(page, pageSize, OUTCOME_ERROR, tenant, user, newEngine, from ?? undefined, to ?? undefined);
       if (selectedOutcome === OUTCOME_ERROR) {
         setCurrentTraceId(result.traceId);
       }
@@ -86,9 +86,9 @@ export function useGoldfishQueries(
 
   // Prefetch next page for main query
   useQuery({
-    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_ALL, tenant, user, newEngine],
+    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_ALL, tenant, user, newEngine, from?.toISOString() ?? null, to?.toISOString() ?? null],
     queryFn: async () => {
-      const result = await fetchSampledQueries(page + 1, pageSize, OUTCOME_ALL, tenant, user, newEngine);
+      const result = await fetchSampledQueries(page + 1, pageSize, OUTCOME_ALL, tenant, user, newEngine, from ?? undefined, to ?? undefined);
       if (result.error) throw result.error;
       return result.data;
     },

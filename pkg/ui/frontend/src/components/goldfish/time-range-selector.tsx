@@ -7,9 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Clock } from 'lucide-react';
 
 interface TimeRangeSelectorProps {
-  from: Date;
-  to: Date;
-  onChange: (from: Date, to: Date) => void;
+  from: Date | null;
+  to: Date | null;
+  onChange: (from: Date | null, to: Date | null) => void;
 }
 
 type PresetRange = {
@@ -95,10 +95,11 @@ const PRESET_RANGES: PresetRange[] = [
 
 export function TimeRangeSelector({ from, to, onChange }: TimeRangeSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [selectedPreset, setSelectedPreset] = useState<string>('1h');
+  const [selectedPreset, setSelectedPreset] = useState<string>('');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [isCustom, setIsCustom] = useState(false);
+  const [isDefault, setIsDefault] = useState(from === null && to === null);
 
   // Format date for display
   const formatDate = (date: Date) => {
@@ -119,13 +120,24 @@ export function TimeRangeSelector({ from, to, onChange }: TimeRangeSelectorProps
 
   // Initialize custom dates when they change
   useEffect(() => {
-    setCustomFrom(formatForInput(from));
-    setCustomTo(formatForInput(to));
+    if (from && to) {
+      setCustomFrom(formatForInput(from));
+      setCustomTo(formatForInput(to));
+      setIsDefault(false);
+    } else {
+      // Use current time as default for the inputs
+      const now = new Date();
+      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+      setCustomFrom(formatForInput(oneHourAgo));
+      setCustomTo(formatForInput(now));
+      setIsDefault(true);
+    }
   }, [from, to]);
 
   const handlePresetChange = (value: string) => {
     setSelectedPreset(value);
     setIsCustom(false);
+    setIsDefault(false);
     const preset = PRESET_RANGES.find(p => p.value === value);
     if (preset) {
       const range = preset.getRange();
@@ -140,13 +152,25 @@ export function TimeRangeSelector({ from, to, onChange }: TimeRangeSelectorProps
       if (fromDate < toDate) {
         onChange(fromDate, toDate);
         setIsCustom(true);
+        setIsDefault(false);
         setIsOpen(false);
       }
     }
   };
 
+  const handleClear = () => {
+    onChange(null, null);
+    setSelectedPreset('');
+    setIsCustom(false);
+    setIsDefault(true);
+    setIsOpen(false);
+  };
+
   const getDisplayText = () => {
-    if (isCustom) {
+    if (isDefault) {
+      return 'Default (Last 1 hour)';
+    }
+    if (isCustom && from && to) {
       return `${formatDate(from)} - ${formatDate(to)}`;
     }
     const preset = PRESET_RANGES.find(p => p.value === selectedPreset);
@@ -163,13 +187,27 @@ export function TimeRangeSelector({ from, to, onChange }: TimeRangeSelectorProps
       </PopoverTrigger>
       <PopoverContent className="w-[320px] p-4" align="end">
         <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-medium">
+              Time Range
+            </Label>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClear}
+              className="h-8 px-2 text-xs"
+            >
+              Clear to Default
+            </Button>
+          </div>
+          
           <div>
             <Label htmlFor="preset" className="text-sm font-medium mb-2 block">
               Quick ranges
             </Label>
             <Select value={selectedPreset} onValueChange={handlePresetChange}>
               <SelectTrigger id="preset">
-                <SelectValue />
+                <SelectValue placeholder="Select a preset" />
               </SelectTrigger>
               <SelectContent>
                 {PRESET_RANGES.map(preset => (

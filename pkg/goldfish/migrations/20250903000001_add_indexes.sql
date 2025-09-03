@@ -16,8 +16,8 @@ CREATE INDEX idx_sampled_queries_correlation_composite ON sampled_queries(
 CREATE INDEX idx_sampled_queries_filter_composite ON sampled_queries(
     tenant_id,
     user,
-    sampled_at DESC,
-    correlation_id
+    correlation_id,
+    sampled_at DESC
 );
 
 -- Index for new engine filtering
@@ -27,10 +27,10 @@ CREATE INDEX idx_sampled_queries_engine_filter_composite ON sampled_queries(
     sampled_at DESC
 );
 CREATE INDEX idx_sampled_queries_cell_a_engine_filter ON sampled_queries(
-    cell_a_used_new_engine,
+    cell_a_used_new_engine
 );
 CREATE INDEX idx_sampled_queries_cell_b_engine_filter ON sampled_queries(
-    cell_b_used_new_engine,
+    cell_b_used_new_engine
 );
 
 -- Index for comparison_outcomes join performance
