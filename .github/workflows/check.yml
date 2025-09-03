@@ -32,6 +32,14 @@
       "run": "echo \"docs/helm-only; bypass source code check\""
     - "if": "${{ needs.changes.outputs.docs_or_helm_only != 'true' }}"
       "run": "test \"${{ needs.full.result }}\" = \"success\""
+  "failCheck":
+    "if": "${{ always() && (cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure')) }}"
+    "needs":
+    - "changes"
+    - "full"
+    "runs-on": "ubuntu-latest"
+    "steps":
+    - "run": "echo \"Some checks have failed!\" && exit 1"
   "full":
     "if": "${{ needs.changes.outputs.docs_or_helm_only != 'true' }}"
     "needs": "changes"

@@ -163,6 +163,17 @@ local weeklyImageJobs = {
           },
         ],
       },
+      failCheck: {
+        needs: ['changes', 'full'],
+        'if': '${{ always() && (cancelled() || contains(needs.*.result, \'cancelled\') || contains(needs.*.result, \'failure\')) }}',
+        'runs-on': 'ubuntu-latest',
+        steps: [
+          {
+            run: 'echo "Some checks have failed!" && exit 1',
+          },
+        ],
+      },
+
     },
   }),
   'images.yml': std.manifestYamlDoc({
