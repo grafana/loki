@@ -290,14 +290,6 @@ func (b *Builder) ObserveLogLine(tenantID string, path string, section int64, st
 	}
 	tenantPointers.ObserveStream(path, section, streamIDInObject, streamIDInIndex, ts, uncompressedSize)
 
-	// If our logs section has gotten big enough, we want to flush it to the
-	// encoder and start a new section.
-	if tenantPointers.EstimatedSize() > int(b.cfg.TargetSectionSize) {
-		if err := b.builder.Append(tenantPointers); err != nil {
-			return err
-		}
-	}
-
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
 	return nil

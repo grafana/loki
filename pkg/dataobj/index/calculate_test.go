@@ -16,7 +16,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/grafana/loki/pkg/push"
@@ -25,19 +27,19 @@ import (
 var testCalculatorConfig = indexobj.BuilderConfig{
 	TargetPageSize:          2048,
 	TargetObjectSize:        1 << 22, // 4 MiB
-	TargetSectionSize:       256,     // 2 MiB
+	TargetSectionSize:       1,       // pointers sections ignore section size; there must be a single pointers sectiton per tenant to maintain state.
 	BufferSize:              2048 * 8,
 	SectionStripeMergeLimit: 2,
 }
 
 // createTestLogObject creates a test data object with both streams and logs sections
-func createTestLogObject(t *testing.T) *dataobj.Object {
+func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
 	t.Helper()
 
 	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
 		TargetPageSize:          2048,
 		TargetObjectSize:        1 << 22,
-		TargetSectionSize:       1 << 21,
+		TargetSectionSize:       1 << 22,
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
 	}, nil)
@@ -88,14 +90,22 @@ func createTestLogObject(t *testing.T) *dataobj.Object {
 		},
 	}
 
-	for _, stream := range testStreams {
-		err := builder.Append("tenant", stream)
-		require.NoError(t, err)
+	for i := range tenants {
+		for _, stream := range testStreams {
+			err := builder.Append(fmt.Sprintf("tenant-%d", i), stream)
+			require.NoError(t, err)
+		}
 	}
 
 	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
 	t.Cleanup(func() { closer.Close() })
+
+	streamSections := obj.Sections().Count(streams.CheckSection)
+	require.Equal(t, tenants, streamSections)
+
+	logSections := obj.Sections().Count(logs.CheckSection)
+	require.Equal(t, tenants, logSections)
 
 	return obj
 }
@@ -103,14 +113,17 @@ func createTestLogObject(t *testing.T) *dataobj.Object {
 func TestCalculator_Calculate(t *testing.T) {
 	logger := log.NewNopLogger()
 	t.Run("successful calculation from readerAt", func(t *testing.T) {
+		tenants := 4
+		objects := 10
 		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil)
 		require.NoError(t, err)
 
 		calculator := NewCalculator(indexBuilder)
-		for i := 0; i < 10; i++ {
-			obj := createTestLogObject(t)
+		for i := 0; i < objects; i++ {
+			obj := createTestLogObject(t, tenants)
 
-			err = calculator.Calculate(context.Background(), logger, obj, fmt.Sprintf("test/path-%d", i))
+			path := fmt.Sprintf("test/path-%d", i)
+			err = calculator.Calculate(context.Background(), logger, obj, path)
 			require.NoError(t, err)
 		}
 
@@ -121,20 +134,25 @@ func TestCalculator_Calculate(t *testing.T) {
 		defer closer.Close()
 
 		require.Greater(t, obj.Size(), int64(0))
-		require.Equal(t, len(timeRanges), 1)
-		require.False(t, timeRanges[0].MinTime.IsZero())
-		require.Equal(t, timeRanges[0].MinTime, time.Unix(10, 0).UTC())
-		require.False(t, timeRanges[0].MaxTime.IsZero())
-		require.Equal(t, timeRanges[0].MaxTime, time.Unix(25, 0).UTC())
+		require.Equal(t, len(timeRanges), tenants)
+		for _, timeRange := range timeRanges {
+			require.NotEmpty(t, timeRange.Tenant)
+			require.False(t, timeRange.MinTime.IsZero())
+			require.Equal(t, timeRange.MinTime, time.Unix(10, 0).UTC())
+			require.False(t, timeRange.MaxTime.IsZero())
+			require.Equal(t, timeRange.MaxTime, time.Unix(25, 0).UTC())
+		}
 
 		// Confirm we have multiple pointers sections
 		count := obj.Sections().Count(pointers.CheckSection)
-		require.Greater(t, count, 1)
+		require.GreaterOrEqual(t, count, tenants)
 
-		requireValidPointers(t, obj)
+		requireValidPointers(t, obj, tenants)
 	})
 
 	t.Run("successful calculation from FS bucket", func(t *testing.T) {
+		tenants := 10
+		objects := 10
 		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil)
 		require.NoError(t, err)
 
@@ -142,8 +160,8 @@ func TestCalculator_Calculate(t *testing.T) {
 		require.NoError(t, err)
 
 		calculator := NewCalculator(indexBuilder)
-		for i := 0; i < 10; i++ {
-			obj := createTestLogObject(t)
+		for i := 0; i < objects; i++ {
+			obj := createTestLogObject(t, tenants)
 
 			// Upload to bucket
 			reader, err := obj.Reader(context.Background())
@@ -164,23 +182,29 @@ func TestCalculator_Calculate(t *testing.T) {
 		defer closer.Close()
 
 		require.Greater(t, obj.Size(), int64(0))
-		require.Equal(t, len(timeRanges), 1)
-		require.False(t, timeRanges[0].MinTime.IsZero())
-		require.Equal(t, timeRanges[0].MinTime, time.Unix(10, 0).UTC())
-		require.False(t, timeRanges[0].MaxTime.IsZero())
-		require.Equal(t, timeRanges[0].MaxTime, time.Unix(25, 0).UTC())
+		require.Equal(t, len(timeRanges), tenants)
+		for _, timeRange := range timeRanges {
+			require.NotEmpty(t, timeRange.Tenant)
+			require.False(t, timeRange.MinTime.IsZero())
+			require.Equal(t, timeRange.MinTime, time.Unix(10, 0).UTC())
+			require.False(t, timeRange.MaxTime.IsZero())
+			require.Equal(t, timeRange.MaxTime, time.Unix(25, 0).UTC())
+		}
 
 		// Confirm we have multiple pointers sections
 		count := obj.Sections().Count(pointers.CheckSection)
-		require.Greater(t, count, 1)
+		require.GreaterOrEqual(t, count, tenants)
 
-		requireValidPointers(t, obj)
+		requireValidPointers(t, obj, tenants)
 	})
 }
 
-func requireValidPointers(t *testing.T, obj *dataobj.Object) {
+func requireValidPointers(t *testing.T, obj *dataobj.Object, tenants int) {
 	totalPointers := 0
+	pointersByTenant := make(map[string]int)
 	for _, section := range obj.Sections().Filter(pointers.CheckSection) {
+		require.NotEmpty(t, section.Tenant)
+
 		sec, err := pointers.Open(context.Background(), section)
 		require.NoError(t, err)
 
@@ -198,6 +222,8 @@ func requireValidPointers(t *testing.T, obj *dataobj.Object) {
 				require.NotEqual(t, pointer.Path, "")
 				require.Greater(t, pointer.PointerKind, pointers.PointerKind(0))
 				if pointer.PointerKind == pointers.PointerKindStreamIndex {
+					key := fmt.Sprintf("%s:%s:%d", section.Tenant, pointer.Path, pointer.Section)
+					pointersByTenant[key]++
 					require.Greater(t, pointer.StreamIDRef, int64(0))
 					require.Greater(t, pointer.StreamID, int64(0))
 					require.Greater(t, pointer.StartTs, time.Unix(0, 0))
@@ -212,5 +238,10 @@ func requireValidPointers(t *testing.T, obj *dataobj.Object) {
 			}
 		}
 		require.Greater(t, totalPointers, 0)
+	}
+
+	// Expect two pointers for object section, per tenant. This is because we write two streams to the log objects.
+	for _, count := range pointersByTenant {
+		require.Equal(t, 2, count)
 	}
 }
