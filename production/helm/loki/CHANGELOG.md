@@ -14,6 +14,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## Unreleased
 
 - [ENHANCEMENT] add missing dnsConfig to `admin-api`, `bloom-builder`, `bloom-gateway`, `bloom-planner`, `compactor`, `distributor`, `index-gateway`, `ingester`, `memcached`, `overrides-exporter`, `pattern-ingester`, and `query-scheduler`. [#18903](https://github.com/grafana/loki/pull/18903)
+- [ENHANCEMENT] Expand `extraObjects` to have more flexibility in templating [#13252](https://github.com/grafana/loki/pull/13252)
 
 ## 6.38.0
 

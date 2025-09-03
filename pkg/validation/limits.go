@@ -244,6 +244,9 @@ type Limits struct {
 	// This field is not exposed in YAML/JSON as it's set programmatically.
 	DefaultPolicyStreamMapping PolicyStreamMapping `yaml:"-" json:"-"`
 
+	// PolicyOverrideLimits contains per-policy overrides for stream count limits.
+	PolicyOverrideLimits map[string]PolicyOverridableLimits `yaml:"policy_override_limits" json:"policy_override_limits" doc:"hidden"`
+
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
 	ShardAggregations []string `yaml:"shard_aggregations,omitempty" json:"shard_aggregations,omitempty" doc:"description=List of LogQL vector and range aggregations that should be sharded."`
@@ -709,10 +712,42 @@ func (o *Overrides) MaxLocalStreamsPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxLocalStreamsPerUser
 }
 
+// PolicyMaxLocalStreamsPerUser returns the maximum number of streams a user is allowed to store
+// in a single ingester for a specific policy. Returns 0 if no policy-specific override is set.
+func (o *Overrides) PolicyMaxLocalStreamsPerUser(userID, policy string) int {
+	if policy == "" {
+		return 0
+	}
+	limits := o.getOverridesForUser(userID)
+	if len(limits.PolicyOverrideLimits) == 0 {
+		return 0
+	}
+	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
+		return policyLimits.MaxLocalStreamsPerUser
+	}
+	return 0
+}
+
 // MaxGlobalStreamsPerUser returns the maximum number of streams a user is allowed to store
 // across the cluster.
 func (o *Overrides) MaxGlobalStreamsPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxGlobalStreamsPerUser
+}
+
+// PolicyMaxGlobalStreamsPerUser returns the maximum number of streams a user is allowed to store
+// across the cluster for a specific policy. Returns 0 if no policy-specific override is set.
+func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) int {
+	if policy == "" {
+		return 0
+	}
+	limits := o.getOverridesForUser(userID)
+	if len(limits.PolicyOverrideLimits) == 0 {
+		return 0
+	}
+	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
+		return policyLimits.MaxGlobalStreamsPerUser
+	}
+	return 0
 }
 
 // MaxChunksPerQuery returns the maximum number of chunks allowed per query.
@@ -1297,6 +1332,12 @@ func (o *Overrides) getOverridesForUser(userID string) *Limits {
 // as opposed to merging.
 type OverwriteMarshalingStringMap struct {
 	m map[string]string
+}
+
+// PolicyOverridableLimits contains limits that can be overridden on a per-policy basis.
+type PolicyOverridableLimits struct {
+	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user" json:"max_streams_per_user"`
+	MaxGlobalStreamsPerUser int `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user"`
 }
 
 func NewOverwriteMarshalingStringMap(m map[string]string) OverwriteMarshalingStringMap {
