@@ -58,6 +58,9 @@ jobs:
             echo "changed=true" >> $GITHUB_OUTPUT
           fi
 
+      - name: install helm unittest plugin
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --version 1.0.0
+
       - name: Run chart-testing (lint)
         run: ct lint --config "${CT_CONFIGFILE}"
         timeout-minutes: 10
