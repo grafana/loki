@@ -16,14 +16,9 @@ on:
 
 jobs:
   claude-review:
-    # Only run when the 'claude-review' label is added AND the actor is a member/owner of the org
+    # Only run when the 'claude-review' label is added
     if: |
-      github.event.label.name == 'claude-review' &&
-      (github.event.sender.type == 'User' && 
-       contains(fromJSON('["OWNER", "MEMBER"]'), github.event.sender.author_association))
-    
-    # Note: author_association can be: OWNER, MEMBER, COLLABORATOR, CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR, FIRST_TIMER, NONE
-    # We're only allowing OWNER and MEMBER to ensure Vault access works
+      github.event.label.name == 'claude-review'
     
     runs-on: ubuntu-latest
     permissions:

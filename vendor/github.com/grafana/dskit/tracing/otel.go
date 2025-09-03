@@ -64,7 +64,11 @@ func NewOTelFromEnv(serviceName string, logger log.Logger, opts ...OTelOption) (
 	if jaegerRemoteSampler, ok, err := maybeJaegerRemoteSamplerFromEnv(serviceName); err != nil {
 		return nil, fmt.Errorf("failed to create Jaeger remote sampler: %w", err)
 	} else if ok {
-		options = append(options, tracesdk.WithSampler(jaegerRemoteSampler))
+		options = append(options, tracesdk.WithSampler(&JaegerDebuggingSampler{jaegerRemoteSampler}))
+	} else {
+		// The default behaviour is to always sample (https://github.com/open-telemetry/opentelemetry-go/blob/2ce0ab20b0c054eb32a3143bc0746961cba88d19/sdk/trace/provider.go#L496),
+		// so we do the same, but wrap it with our sampler that adds support for the jaeger-debug-id HTTP header.
+		options = append(options, tracesdk.WithSampler(&JaegerDebuggingSampler{tracesdk.ParentBased(tracesdk.AlwaysSample())}))
 	}
 	options = append(options, cfg.tracerProviderOptions...)
 
@@ -277,6 +281,7 @@ func OTelPropagatorsFromEnv() []propagation.TextMapPropagator {
 			propagation.TraceContext{},
 			propagation.Baggage{},
 			jaegerpropagator.Jaeger{},
+			JaegerDebuggingPropagator{},
 		}
 	}
 
@@ -290,7 +295,7 @@ func OTelPropagatorsFromEnv() []propagation.TextMapPropagator {
 		case "baggage":
 			result = append(result, propagation.Baggage{})
 		case "jaeger":
-			result = append(result, jaegerpropagator.Jaeger{})
+			result = append(result, jaegerpropagator.Jaeger{}, JaegerDebuggingPropagator{})
 		case "none":
 			return nil
 		default:

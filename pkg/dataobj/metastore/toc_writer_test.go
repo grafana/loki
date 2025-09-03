@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -38,10 +37,10 @@ func TestTableOfContentsWriter(t *testing.T) {
 		require.NoError(t, err)
 		t.Cleanup(func() { closer.Close() })
 
-		bucket := newInMemoryBucket(t, tenantID, unixTime(0), obj)
+		bucket := newInMemoryBucket(t, unixTime(0), obj)
 		tocBuilder.Reset()
 
-		writer := NewTableOfContentsWriter(Config{}, bucket, log.NewNopLogger())
+		writer := NewTableOfContentsWriter(bucket, log.NewNopLogger())
 		err = writer.WriteEntry(context.Background(), "testdata/metastore.obj", []multitenancy.TimeRange{
 			{
 				Tenant:  tenantID,
@@ -63,7 +62,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		}, nil)
 		require.NoError(t, err)
 
-		bucket := newInMemoryBucket(t, tenantID, unixTime(0), nil)
+		bucket := newInMemoryBucket(t, unixTime(0), nil)
 
 		writer := newTableOfContentsWriter(t, bucket, builder)
 		err = writer.WriteEntry(context.Background(), "testdata/metastore.obj", []multitenancy.TimeRange{
@@ -75,7 +74,7 @@ func TestTableOfContentsWriter(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		reader, err := bucket.Get(context.Background(), tableOfContentsPath(tenantID, unixTime(0), ""))
+		reader, err := bucket.Get(context.Background(), tableOfContentsPath(unixTime(0)))
 		require.NoError(t, err)
 
 		object, err := io.ReadAll(reader)
@@ -93,14 +92,10 @@ func newTableOfContentsWriter(t *testing.T, bucket objstore.Bucket, tocBuilder *
 	t.Helper()
 
 	updater := &TableOfContentsWriter{
-		tocBuilder: tocBuilder,
-		bucket:     bucket,
-		metrics:    newTableOfContentsMetrics(),
-		logger:     log.NewNopLogger(),
-		backoff: backoff.New(context.TODO(), backoff.Config{
-			MinBackoff: 50 * time.Millisecond,
-			MaxBackoff: 10 * time.Second,
-		}),
+		tocBuilder:  tocBuilder,
+		bucket:      bucket,
+		metrics:     newTableOfContentsMetrics(),
+		logger:      log.NewNopLogger(),
 		builderOnce: sync.Once{},
 		buf:         bytes.NewBuffer(make([]byte, 0, tocBuilderCfg.TargetObjectSize)),
 	}
@@ -111,12 +106,12 @@ func newTableOfContentsWriter(t *testing.T, bucket objstore.Bucket, tocBuilder *
 	return updater
 }
 
-func newInMemoryBucket(t *testing.T, tenantID string, window time.Time, obj *dataobj.Object) objstore.Bucket {
+func newInMemoryBucket(t *testing.T, window time.Time, obj *dataobj.Object) objstore.Bucket {
 	t.Helper()
 
 	var (
 		bucket = objstore.NewInMemBucket()
-		path   = tableOfContentsPath(tenantID, window, "")
+		path   = tableOfContentsPath(window)
 	)
 
 	if obj != nil && obj.Size() > 0 {
