@@ -290,7 +290,7 @@ func Test_flush_not_owned_stream(t *testing.T) {
 	require.True(t, found)
 	fingerprint := instance.getHashForLabels(labels.FromStrings("app", "l"))
 	require.Equal(t, model.Fingerprint(16794418009594958), fingerprint)
-	instance.ownedStreamsSvc.trackStreamOwnership(fingerprint, false)
+	instance.ownedStreamsSvc.trackStreamOwnership(fingerprint, false, noPolicy)
 
 	time.Sleep(2 * cfg.FlushCheckPeriod)
 
