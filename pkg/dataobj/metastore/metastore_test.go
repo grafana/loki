@@ -2,7 +2,6 @@ package metastore
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -19,7 +18,7 @@ func BenchmarkWriteMetastores(b *testing.B) {
 	bucket := objstore.NewInMemBucket()
 	tenantID := "test-tenant"
 
-	toc := NewTableOfContentsWriter(Config{}, bucket, log.NewNopLogger())
+	toc := NewTableOfContentsWriter(bucket, log.NewNopLogger())
 
 	// Add test data spanning multiple metastore windows
 	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
@@ -59,7 +58,7 @@ func TestWriteMetastores(t *testing.T) {
 	tenantID := "test-tenant"
 
 	ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
-	toc := NewTableOfContentsWriter(Config{}, bucket, log.NewNopLogger())
+	toc := NewTableOfContentsWriter(bucket, log.NewNopLogger())
 
 	// Add test data spanning multiple metastore windows
 	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
@@ -108,7 +107,6 @@ func TestWriteMetastores(t *testing.T) {
 }
 
 func TestIterTableOfContentsPaths(t *testing.T) {
-	tenantID := "TEST"
 	now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
 
 	for _, tc := range []struct {
@@ -121,20 +119,20 @@ func TestIterTableOfContentsPaths(t *testing.T) {
 			name:     "within single window",
 			start:    now,
 			end:      now.Add(1 * time.Hour),
-			expected: []string{"tenant-TEST/metastore/2025-01-01T12_00_00Z.toc"},
+			expected: []string{"tocs/2025-01-01T12_00_00Z.toc"},
 		},
 		{
 			name:     "same start and end",
 			start:    now,
 			end:      now,
-			expected: []string{"tenant-TEST/metastore/2025-01-01T12_00_00Z.toc"},
+			expected: []string{"tocs/2025-01-01T12_00_00Z.toc"},
 		},
 		{
 			name:  "begin at start of window",
 			start: now.Add(-3 * time.Hour),
 			end:   now,
 			expected: []string{
-				"tenant-TEST/metastore/2025-01-01T12_00_00Z.toc",
+				"tocs/2025-01-01T12_00_00Z.toc",
 			},
 		},
 		{
@@ -142,8 +140,8 @@ func TestIterTableOfContentsPaths(t *testing.T) {
 			start: now.Add(-4 * time.Hour),
 			end:   now.Add(-3 * time.Hour),
 			expected: []string{
-				"tenant-TEST/metastore/2025-01-01T00_00_00Z.toc",
-				"tenant-TEST/metastore/2025-01-01T12_00_00Z.toc",
+				"tocs/2025-01-01T00_00_00Z.toc",
+				"tocs/2025-01-01T12_00_00Z.toc",
 			},
 		},
 		{
@@ -151,8 +149,8 @@ func TestIterTableOfContentsPaths(t *testing.T) {
 			start: now.Add(-12 * time.Hour),
 			end:   now,
 			expected: []string{
-				"tenant-TEST/metastore/2025-01-01T00_00_00Z.toc",
-				"tenant-TEST/metastore/2025-01-01T12_00_00Z.toc",
+				"tocs/2025-01-01T00_00_00Z.toc",
+				"tocs/2025-01-01T12_00_00Z.toc",
 			},
 		},
 		{
@@ -160,11 +158,11 @@ func TestIterTableOfContentsPaths(t *testing.T) {
 			start: now,
 			end:   now.Add(48 * time.Hour),
 			expected: []string{
-				"tenant-TEST/metastore/2025-01-01T12_00_00Z.toc",
-				"tenant-TEST/metastore/2025-01-02T00_00_00Z.toc",
-				"tenant-TEST/metastore/2025-01-02T12_00_00Z.toc",
-				"tenant-TEST/metastore/2025-01-03T00_00_00Z.toc",
-				"tenant-TEST/metastore/2025-01-03T12_00_00Z.toc",
+				"tocs/2025-01-01T12_00_00Z.toc",
+				"tocs/2025-01-02T00_00_00Z.toc",
+				"tocs/2025-01-02T12_00_00Z.toc",
+				"tocs/2025-01-03T00_00_00Z.toc",
+				"tocs/2025-01-03T12_00_00Z.toc",
 			},
 		},
 		{
@@ -172,14 +170,14 @@ func TestIterTableOfContentsPaths(t *testing.T) {
 			start: time.Date(2024, 12, 31, 3, 0, 0, 0, time.UTC),
 			end:   time.Date(2025, 1, 1, 9, 0, 0, 0, time.UTC),
 			expected: []string{
-				"tenant-TEST/metastore/2024-12-31T00_00_00Z.toc",
-				"tenant-TEST/metastore/2024-12-31T12_00_00Z.toc",
-				"tenant-TEST/metastore/2025-01-01T00_00_00Z.toc",
+				"tocs/2024-12-31T00_00_00Z.toc",
+				"tocs/2024-12-31T12_00_00Z.toc",
+				"tocs/2025-01-01T00_00_00Z.toc",
 			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			iter := iterTableOfContentsPaths(tenantID, tc.start, tc.end, "")
+			iter := iterTableOfContentsPaths(tc.start, tc.end)
 			actual := []string{}
 			for path := range iter {
 				actual = append(actual, path)
@@ -191,11 +189,10 @@ func TestIterTableOfContentsPaths(t *testing.T) {
 
 func TestDataObjectsPaths(t *testing.T) {
 	tests := []struct {
-		name             string
-		prefix           string
-		enabledTenantIDs []string
+		name   string
+		prefix string
 	}{
-		{name: "read", prefix: "test/v0", enabledTenantIDs: []string{"test-tenant"}},
+		{name: "read"},
 	}
 
 	for _, tt := range tests {
@@ -206,12 +203,7 @@ func TestDataObjectsPaths(t *testing.T) {
 			bucket := objstore.NewInMemBucket()
 			tenantID := "test-tenant"
 
-			toc := NewTableOfContentsWriter(Config{
-				Storage: StorageConfig{
-					IndexStoragePrefix: tt.prefix,
-					EnabledTenantIDs:   tt.enabledTenantIDs,
-				},
-			}, bucket, log.NewNopLogger())
+			toc := NewTableOfContentsWriter(bucket, log.NewNopLogger())
 
 			// Create test data spanning multiple metastore windows
 			now := time.Date(2025, 1, 1, 15, 0, 0, 0, time.UTC)
@@ -265,39 +257,36 @@ func TestDataObjectsPaths(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			ms := NewObjectMetastore(StorageConfig{
-				IndexStoragePrefix: tt.prefix,
-				EnabledTenantIDs:   tt.enabledTenantIDs,
-			}, bucket, log.NewNopLogger(), nil)
+			ms := NewObjectMetastore(bucket, log.NewNopLogger(), nil)
 
 			t.Run("finds objects within current window", func(t *testing.T) {
 				paths, err := ms.DataObjects(ctx, now.Add(-1*time.Hour), now)
 				require.NoError(t, err)
 				require.Len(t, paths, 2)
 
-				require.Contains(t, paths, fmt.Sprintf("%s/path1", tt.prefix))
-				require.Contains(t, paths, fmt.Sprintf("%s/path2", tt.prefix))
+				require.Contains(t, paths, "path1")
+				require.Contains(t, paths, "path2")
 			})
 
 			t.Run("finds objects across two 12h windows", func(t *testing.T) {
 				paths, err := ms.DataObjects(ctx, now.Add(-14*time.Hour), now)
 				require.NoError(t, err)
 				require.Len(t, paths, 4)
-				require.Contains(t, paths, fmt.Sprintf("%s/path1", tt.prefix))
-				require.Contains(t, paths, fmt.Sprintf("%s/path2", tt.prefix))
-				require.Contains(t, paths, fmt.Sprintf("%s/path3", tt.prefix))
-				require.Contains(t, paths, fmt.Sprintf("%s/path4", tt.prefix))
+				require.Contains(t, paths, "path1")
+				require.Contains(t, paths, "path2")
+				require.Contains(t, paths, "path3")
+				require.Contains(t, paths, "path4")
 			})
 
 			t.Run("finds objects across three 12h windows", func(t *testing.T) {
 				paths, err := ms.DataObjects(ctx, now.Add(-25*time.Hour), now)
 				require.NoError(t, err)
 				require.Len(t, paths, 5)
-				require.Contains(t, paths, fmt.Sprintf("%s/path1", tt.prefix))
-				require.Contains(t, paths, fmt.Sprintf("%s/path2", tt.prefix))
-				require.Contains(t, paths, fmt.Sprintf("%s/path3", tt.prefix))
-				require.Contains(t, paths, fmt.Sprintf("%s/path4", tt.prefix))
-				require.Contains(t, paths, fmt.Sprintf("%s/path5", tt.prefix))
+				require.Contains(t, paths, "path1")
+				require.Contains(t, paths, "path2")
+				require.Contains(t, paths, "path3")
+				require.Contains(t, paths, "path4")
+				require.Contains(t, paths, "path5")
 			})
 
 			t.Run("finds all objects across all windows", func(t *testing.T) {
@@ -305,12 +294,12 @@ func TestDataObjectsPaths(t *testing.T) {
 				require.NoError(t, err)
 				require.Len(t, paths, 6)
 
-				require.Contains(t, paths, fmt.Sprintf("%s/path1", tt.prefix))
-				require.Contains(t, paths, fmt.Sprintf("%s/path2", tt.prefix))
-				require.Contains(t, paths, fmt.Sprintf("%s/path3", tt.prefix))
-				require.Contains(t, paths, fmt.Sprintf("%s/path4", tt.prefix))
-				require.Contains(t, paths, fmt.Sprintf("%s/path5", tt.prefix))
-				require.Contains(t, paths, fmt.Sprintf("%s/path6", tt.prefix))
+				require.Contains(t, paths, "path1")
+				require.Contains(t, paths, "path2")
+				require.Contains(t, paths, "path3")
+				require.Contains(t, paths, "path4")
+				require.Contains(t, paths, "path5")
+				require.Contains(t, paths, "path6")
 			})
 
 			t.Run("returns empty list when no objects in range", func(t *testing.T) {
@@ -324,11 +313,11 @@ func TestDataObjectsPaths(t *testing.T) {
 				paths, err := ms.DataObjects(ctx, now.Add(-30*time.Hour), now)
 				require.NoError(t, err)
 				require.Len(t, paths, 5) // Should exclude path6 which is before -30h
-				require.Contains(t, paths, fmt.Sprintf("%s/path1", tt.prefix))
-				require.Contains(t, paths, fmt.Sprintf("%s/path2", tt.prefix))
-				require.Contains(t, paths, fmt.Sprintf("%s/path3", tt.prefix))
-				require.Contains(t, paths, fmt.Sprintf("%s/path4", tt.prefix))
-				require.Contains(t, paths, fmt.Sprintf("%s/path5", tt.prefix))
+				require.Contains(t, paths, "path1")
+				require.Contains(t, paths, "path2")
+				require.Contains(t, paths, "path3")
+				require.Contains(t, paths, "path4")
+				require.Contains(t, paths, "path5")
 			})
 		})
 	}

@@ -18,7 +18,7 @@ import (
 
 func TestStore_SelectSeries(t *testing.T) {
 	const testTenant = "test-tenant"
-	builder := newTestDataBuilder(t, testTenant)
+	builder := newTestDataBuilder(t)
 	defer builder.close()
 
 	ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
@@ -26,7 +26,7 @@ func TestStore_SelectSeries(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(ctx, t, builder)
-	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
+	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 
 	tests := []struct {
@@ -163,7 +163,7 @@ func TestStore_SelectSeries(t *testing.T) {
 
 func TestStore_LabelNamesForMetricName(t *testing.T) {
 	const testTenant = "test-tenant"
-	builder := newTestDataBuilder(t, testTenant)
+	builder := newTestDataBuilder(t)
 	defer builder.close()
 
 	ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
@@ -171,7 +171,7 @@ func TestStore_LabelNamesForMetricName(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(ctx, t, builder)
-	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
+	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 
 	tests := []struct {
@@ -233,7 +233,7 @@ func TestStore_LabelNamesForMetricName(t *testing.T) {
 
 func TestStore_LabelValuesForMetricName(t *testing.T) {
 	const testTenant = "test-tenant"
-	builder := newTestDataBuilder(t, testTenant)
+	builder := newTestDataBuilder(t)
 	defer builder.close()
 
 	ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
@@ -241,7 +241,7 @@ func TestStore_LabelValuesForMetricName(t *testing.T) {
 
 	// Setup test data
 	now := setupTestData(ctx, t, builder)
-	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
+	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 
 	tests := []struct {

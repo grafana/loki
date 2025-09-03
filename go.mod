@@ -52,9 +52,9 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/grafana/ckit v0.0.0-20250825110114-3ee952343746
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20250804145444-6ac601c94195
+	github.com/grafana/dskit v0.0.0-20250828173137-de14cf923eeb
 	github.com/grafana/go-gelf/v2 v2.0.1
-	github.com/grafana/gomemcache v0.0.0-20250318131618-74242eea118d
+	github.com/grafana/gomemcache v0.0.0-20250828162811-a96f6acee2fe
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 	github.com/grafana/tail v0.0.0-20230510142333-77b18831edf0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.2
