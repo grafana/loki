@@ -41,7 +41,7 @@ spec:
       {{- if semverCompare ">=1.19-0" (include "loki.kubeVersion" .) }}
       {{- with .Values.overridesExporter.topologySpreadConstraints }}
       topologySpreadConstraints:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- end }}
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
@@ -121,7 +121,7 @@ spec:
         {{- end }}
       {{- with .Values.overridesExporter.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.overridesExporter.nodeSelector }}
       nodeSelector:

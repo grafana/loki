@@ -22,7 +22,7 @@ spec:
       {{- include "loki.gatewaySelectorLabels" . | nindent 6 }}
   strategy:
     {{- toYaml .Values.enterpriseGateway.strategy | nindent 4 }}
-  revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }} 
+  revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
   template:
     metadata:
       labels:
@@ -43,9 +43,9 @@ spec:
       {{- if semverCompare ">=1.19-0" (include "loki.kubeVersion" .) }}
       {{- with .Values.enterpriseGateway.topologySpreadConstraints }}
       topologySpreadConstraints:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
-      {{- end }}    
+      {{- end }}
       serviceAccountName: {{ template "loki.serviceAccountName" . }}
       {{- if .Values.enterpriseGateway.priorityClassName }}
       priorityClassName: {{ .Values.enterpriseGateway.priorityClassName }}
@@ -135,7 +135,7 @@ spec:
       nodeSelector:
         {{- toYaml .Values.enterpriseGateway.nodeSelector | nindent 8 }}
       affinity:
-        {{- toYaml .Values.enterpriseGateway.affinity | nindent 8 }}
+        {{- tpl (.Values.enterpriseGateway.affinity | toYaml) . | nindent 8 }}
       tolerations:
         {{- toYaml .Values.enterpriseGateway.tolerations | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.enterpriseGateway.terminationGracePeriodSeconds }}
