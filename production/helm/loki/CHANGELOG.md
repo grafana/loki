@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 6.39.0
+
 - [FEATURE] add more specificity to affinity and topology spread constraints [#19061](https://github.com/grafana/loki/pull/19061)
 - [ENHANCEMENT] Expand `extraObjects` to have more flexibility in templating [#13252](https://github.com/grafana/loki/pull/13252)
 - [ENHANCEMENT] add missing dnsConfig to `admin-api`, `bloom-builder`, `bloom-gateway`, `bloom-planner`, `compactor`, `distributor`, `index-gateway`, `ingester`, `memcached`, `overrides-exporter`, `pattern-ingester`, and `query-scheduler`. [#18903](https://github.com/grafana/loki/pull/18903)
