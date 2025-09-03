@@ -120,7 +120,7 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 			c.builderMtx.Lock()
 			defer c.builderMtx.Unlock()
 			for _, stream := range streamBuf[:n] {
-				newStreamID, err := c.indexobjBuilder.AppendStream(streamSection.Tenant(), stream)
+				newStreamID, err := c.indexobjBuilder.AppendStream(section.Tenant, stream)
 				if err != nil {
 					return fmt.Errorf("failed to append to stream: %w", err)
 				}
@@ -152,7 +152,7 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		return fmt.Errorf("failed to open logs section: %w", err)
 	}
 
-	tenantID := logsSection.Tenant()
+	tenantID := section.Tenant
 
 	// Fetch the column statistics in order to init the bloom filters for each column
 	stats, err := logs.ReadStats(ctx, logsSection)
