@@ -113,6 +113,8 @@ loki:
     allowPrivilegeEscalation: false
   # -- Should enableServiceLinks be enabled. Default to enable
   enableServiceLinks: true
+  # -- DNS config for Loki pods
+  dnsConfig: {}
   ######################################################################################################################
   #
   # Loki Configuration
@@ -953,6 +955,8 @@ adminApi:
   labels: {}
   # -- Additional annotations for the `admin-api` Deployment
   annotations: {}
+  # -- DNSConfig for `admin-api` pods
+  dnsConfig: {}
   # -- Additional labels and annotations for the `admin-api` Service
   service:
     labels: {}
@@ -1898,6 +1902,8 @@ ingester:
   # -- Number of replicas for the ingester, when zoneAwareReplication.enabled is true, the total
   # number of replicas will match this value with each zone having 1/3rd of the total replicas.
   replicas: 0
+  # -- DNSConfig for ingester pods
+  dnsConfig: {}
   # -- hostAliases to add
   hostAliases: []
   #  - ip: 1.2.3.4
@@ -2103,6 +2109,8 @@ distributor:
   #      - domain.tld
   # -- Use the host's user namespace in the distributor
   hostUsers: nil
+  # -- DNSConfig for distributor pods
+  dnsConfig: {}
   autoscaling:
     # -- Enable autoscaling for the distributor
     enabled: false
@@ -2407,6 +2415,8 @@ queryScheduler:
   # It should be lower than `-querier.max-concurrent` to avoid generating back-pressure in queriers;
   # it's also recommended that this value evenly divides the latter
   replicas: 0
+  # -- DNSConfig for query-scheduler
+  dnsConfig: {}
   # -- hostAliases to add
   hostAliases: []
   #  - ip: 1.2.3.4
@@ -2475,6 +2485,8 @@ indexGateway:
   replicas: 0
   # -- Whether the index gateway should join the memberlist hashring
   joinMemberlist: true
+  # -- DNSConfig for index-gateway pods
+  dnsConfig: {}
   # -- hostAliases to add
   hostAliases: []
   #  - ip: 1.2.3.4
@@ -2581,6 +2593,8 @@ compactor:
   #      - domain.tld
   # -- Use the host's user namespace in the compactor
   hostUsers: nil
+  # -- DNSConfig for compactor pods
+  dnsConfig: {}
   image:
     # -- The Docker registry for the compactor image. Overrides `loki.image.registry`
     registry: null
@@ -2698,6 +2712,8 @@ bloomGateway:
   #      - domain.tld
   # -- Use the host's user namespace in the bloom-gateway
   hostUsers: nil
+  # -- DNSConfig for bloom-gateway pods
+  dnsConfig: {}
   image:
     # -- The Docker registry for the bloom-gateway image. Overrides `loki.image.registry`
     registry: null
@@ -2807,6 +2823,8 @@ bloomPlanner:
   #      - domain.tld
   # -- Use the host's user namespace in the bloom-planner
   hostUsers: nil
+  # -- DNSConfig for bloom-planner pods
+  dnsConfig: {}
   image:
     # -- The Docker registry for the bloom-planner image. Overrides `loki.image.registry`
     registry: null
@@ -2916,6 +2934,8 @@ bloomBuilder:
   #      - domain.tld
   # -- Use the host's user namespace in the boom-builder
   hostUsers: nil
+  # -- DNSConfig for bloom-builder pods
+  dnsConfig: {}
   autoscaling:
     # -- Enable autoscaling for the bloom-builder
     enabled: false
@@ -3004,6 +3024,8 @@ bloomBuilder:
 patternIngester:
   # -- Number of replicas for the pattern ingester
   replicas: 0
+  # -- DNSConfig for pattern ingester pods
+  dnsConfig: {}
   # -- hostAliases to add
   hostAliases: []
   #  - ip: 1.2.3.4
@@ -3284,6 +3306,8 @@ overridesExporter:
   enabled: false
   # -- Number of replicas for the overrides-exporter
   replicas: 0
+  # -- DNSConfig for overrides-exporter
+  dnsConfig: {}
   # -- hostAliases to add
   hostAliases: []
   #  - ip: 1.2.3.4
@@ -3479,6 +3503,8 @@ resultsCache:
   tolerations: []
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: 1
+  # -- DNSConfig for results-cache
+  dnsConfig: {}
   # -- The name of the PriorityClass for results-cache pods
   priorityClassName: null
   # -- Use the host's user namespace in results-cache pods
@@ -3588,6 +3614,8 @@ chunksCache:
   tolerations: []
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: 1
+  # -- DNSConfig for chunks-cache
+  dnsConfig: {}
   # -- The name of the PriorityClass for chunks-cache pods
   priorityClassName: null
   # -- Use the host's user namespace in chunks-cache pods
@@ -3700,6 +3728,8 @@ chunksCache:
     tolerations: []
     # -- Pod Disruption Budget maxUnavailable
     maxUnavailable: 1
+    # -- DNSConfig for chunks-cache-l2
+    dnsConfig: {}
     # -- The name of the PriorityClass for chunks-cache-l2 pods
     priorityClassName: null
     # -- Use the host's user namespace in chunks-cache-l2 pods
