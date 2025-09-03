@@ -4,7 +4,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "loki.bloomBuilderFullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.bloomBuilderLabels" . | nindent 4 }}
   {{- with .Values.loki.annotations }}
@@ -49,10 +49,17 @@ spec:
       hostAliases:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.bloomBuilder.hostUsers) }}
+      hostUsers: {{ .Values.bloomBuilder.hostUsers }}
+      {{- end }}
       {{- include "loki.bloomBuilderPriorityClassName" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.bloomBuilder.terminationGracePeriodSeconds }}
+      {{- with .Values.bloomBuilder.initContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: bloom-builder
           image: {{ include "loki.image" . }}

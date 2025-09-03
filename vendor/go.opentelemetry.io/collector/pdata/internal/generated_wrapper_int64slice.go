@@ -6,10 +6,6 @@
 
 package internal
 
-import (
-	"go.opentelemetry.io/collector/pdata/internal/json"
-)
-
 type Int64Slice struct {
 	orig  *[]int64
 	state *State
@@ -29,8 +25,7 @@ func NewInt64Slice(orig *[]int64, state *State) Int64Slice {
 
 func GenerateTestInt64Slice() Int64Slice {
 	orig := GenerateOrigTestInt64Slice()
-	state := StateMutable
-	return NewInt64Slice(&orig, &state)
+	return NewInt64Slice(&orig, NewState())
 }
 
 func CopyOrigInt64Slice(dst, src []int64) []int64 {
@@ -39,14 +34,4 @@ func CopyOrigInt64Slice(dst, src []int64) []int64 {
 
 func GenerateOrigTestInt64Slice() []int64 {
 	return []int64{1, 2, 3}
-}
-
-// UnmarshalJSONOrigInt64Slice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONOrigInt64Slice(iter *json.Iterator) []int64 {
-	var orig []int64
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		orig = append(orig, iter.ReadInt64())
-		return true
-	})
-	return orig
 }

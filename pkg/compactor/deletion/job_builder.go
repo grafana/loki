@@ -39,7 +39,7 @@ type StorageUpdatesIterator interface {
 	UserID() string
 	TableName() string
 	Err() error
-	ForEachSeries(callback func(labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error) error
+	ForEachSeries(callback func(labels string, rebuiltChunks map[string]Chunk, chunksToDeIndex []string) error) error
 }
 
 type jobDetails struct {
@@ -462,7 +462,7 @@ func (i *storageUpdatesCollection) reset(tableName, userID string) {
 }
 
 func (i *storageUpdatesCollection) addUpdates(labels string, result deletionproto.StorageUpdates) {
-	if len(result.ChunksToIndex)+len(result.ChunksToDeIndex)+len(result.ChunksToDelete) == 0 {
+	if len(result.RebuiltChunks)+len(result.ChunksToDeIndex) == 0 {
 		return
 	}
 
@@ -471,13 +471,16 @@ func (i *storageUpdatesCollection) addUpdates(labels string, result deletionprot
 
 	updates, ok := i.StorageUpdates[labels]
 	if !ok {
-		updates = deletionproto.StorageUpdates{}
+		updates = deletionproto.StorageUpdates{
+			RebuiltChunks: map[string]*deletionproto.Chunk{},
+		}
 		i.StorageUpdates[labels] = updates
 	}
 
-	updates.ChunksToDelete = append(updates.ChunksToDelete, result.ChunksToDelete...)
+	for chunkID, newChunk := range result.RebuiltChunks {
+		updates.RebuiltChunks[chunkID] = newChunk
+	}
 	updates.ChunksToDeIndex = append(updates.ChunksToDeIndex, result.ChunksToDeIndex...)
-	updates.ChunksToIndex = append(updates.ChunksToIndex, result.ChunksToIndex...)
 	i.StorageUpdates[labels] = updates
 }
 
@@ -485,7 +488,7 @@ func (i *storageUpdatesCollection) encode() ([]byte, error) {
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
 
-	return proto.Marshal(i)
+	return proto.Marshal(&i.StorageUpdatesCollection)
 }
 
 // storageUpdatesIterator helps with iterating through all the storage updates files built while processing of each segment in a manifest
@@ -497,7 +500,7 @@ type storageUpdatesIterator struct {
 	storageUpdatesTotal         *prometheus.CounterVec
 
 	currSegmentNum        int32
-	currUpdatesCollection *storageUpdatesCollection
+	currUpdatesCollection *deletionproto.StorageUpdatesCollection
 	err                   error
 }
 
@@ -547,7 +550,7 @@ func (i *storageUpdatesIterator) TableName() string {
 	return i.currUpdatesCollection.TableName
 }
 
-func (i *storageUpdatesIterator) getStorageUpdates(filepath string) (*storageUpdatesCollection, error) {
+func (i *storageUpdatesIterator) getStorageUpdates(filepath string) (*deletionproto.StorageUpdatesCollection, error) {
 	reader, _, err := i.deletionManifestStoreClient.GetObject(i.ctx, filepath)
 	if err != nil {
 		return nil, err
@@ -559,7 +562,7 @@ func (i *storageUpdatesIterator) getStorageUpdates(filepath string) (*storageUpd
 		return nil, err
 	}
 
-	var s storageUpdatesCollection
+	var s deletionproto.StorageUpdatesCollection
 	if err := proto.Unmarshal(storageUpdatesCollectionProto, &s); err != nil {
 		return nil, err
 	}
@@ -574,18 +577,22 @@ func (i *storageUpdatesIterator) Err() error {
 
 // ForEachSeries calls the given callback function for each series in the currently loaded updates collection.
 // It passes the labels for the series and updates to apply to the storage.
-func (i *storageUpdatesIterator) ForEachSeries(callback func(labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error) error {
+func (i *storageUpdatesIterator) ForEachSeries(callback func(labels string, rebuiltChunks map[string]Chunk, chunksToDeIndex []string) error) error {
 	for labels, updates := range i.currUpdatesCollection.StorageUpdates {
-		chunksToIndex := make([]Chunk, 0, len(updates.ChunksToIndex))
-		for i := range updates.ChunksToIndex {
-			chunksToIndex = append(chunksToIndex, &updates.ChunksToIndex[i])
+		rebuiltChunks := make(map[string]Chunk, len(updates.RebuiltChunks))
+		newChunksCount := 0
+		for chunkID, newChunk := range updates.RebuiltChunks {
+			if newChunk != nil {
+				newChunksCount++
+			}
+			rebuiltChunks[chunkID] = newChunk
 		}
-		if err := callback(labels, updates.ChunksToDelete, updates.ChunksToDeIndex, chunksToIndex); err != nil {
+		if err := callback(labels, rebuiltChunks, updates.ChunksToDeIndex); err != nil {
 			return err
 		}
-		i.storageUpdatesTotal.WithLabelValues(storageUpdateTypeDeleteChunk).Add(float64(len(updates.ChunksToDelete)))
+		i.storageUpdatesTotal.WithLabelValues(storageUpdateTypeDeleteChunk).Add(float64(len(updates.RebuiltChunks)))
 		i.storageUpdatesTotal.WithLabelValues(storageUpdateTypeDeIndexChunk).Add(float64(len(updates.ChunksToDeIndex)))
-		i.storageUpdatesTotal.WithLabelValues(storageUpdateTypeIndexChunk).Add(float64(len(updates.ChunksToIndex)))
+		i.storageUpdatesTotal.WithLabelValues(storageUpdateTypeIndexChunk).Add(float64(newChunksCount))
 	}
 
 	return nil

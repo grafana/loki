@@ -1043,7 +1043,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 
 			for _, deleteRequests := range mgr.currentBatch.deleteRequestsToProcess {
 				for _, dr := range deleteRequests.requests {
-					require.EqualValues(t, 0, dr.DeletedLines)
+					require.EqualValues(t, 0, dr.DeletedLines.Load())
 				}
 			}
 
