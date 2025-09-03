@@ -1,3 +1,4 @@
+# auth_enabled is actually turning on multi-tenancy, otherwise all requests get routed to "fake" tenant
 auth_enabled: true
 
 server:
