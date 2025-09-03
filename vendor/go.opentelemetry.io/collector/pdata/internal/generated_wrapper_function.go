@@ -7,23 +7,63 @@
 package internal
 
 import (
+	"fmt"
+	"sync"
+
 	otlpprofiles "go.opentelemetry.io/collector/pdata/internal/data/protogen/profiles/v1development"
 	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
+var (
+	protoPoolFunction = sync.Pool{
+		New: func() any {
+			return &otlpprofiles.Function{}
+		},
+	}
+)
+
+func NewOrigFunction() *otlpprofiles.Function {
+	if !UseProtoPooling.IsEnabled() {
+		return &otlpprofiles.Function{}
+	}
+	return protoPoolFunction.Get().(*otlpprofiles.Function)
+}
+
+func DeleteOrigFunction(orig *otlpprofiles.Function, nullable bool) {
+	if orig == nil {
+		return
+	}
+
+	if !UseProtoPooling.IsEnabled() {
+		orig.Reset()
+		return
+	}
+
+	orig.Reset()
+	if nullable {
+		protoPoolFunction.Put(orig)
+	}
+}
+
 func CopyOrigFunction(dest, src *otlpprofiles.Function) {
+	// If copying to same object, just return.
+	if src == dest {
+		return
+	}
 	dest.NameStrindex = src.NameStrindex
 	dest.SystemNameStrindex = src.SystemNameStrindex
 	dest.FilenameStrindex = src.FilenameStrindex
 	dest.StartLine = src.StartLine
 }
 
-func FillOrigTestFunction(orig *otlpprofiles.Function) {
+func GenTestOrigFunction() *otlpprofiles.Function {
+	orig := NewOrigFunction()
 	orig.NameStrindex = int32(13)
 	orig.SystemNameStrindex = int32(13)
 	orig.FilenameStrindex = int32(13)
 	orig.StartLine = int64(13)
+	return orig
 }
 
 // MarshalJSONOrig marshals all properties from the current struct to the destination stream.
@@ -50,7 +90,7 @@ func MarshalJSONOrigFunction(orig *otlpprofiles.Function, dest *json.Stream) {
 
 // UnmarshalJSONOrigFunction unmarshals all properties from the current struct from the source iterator.
 func UnmarshalJSONOrigFunction(orig *otlpprofiles.Function, iter *json.Iterator) {
-	iter.ReadObjectCB(func(iter *json.Iterator, f string) bool {
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
 		case "nameStrindex", "name_strindex":
 			orig.NameStrindex = iter.ReadInt32()
@@ -63,8 +103,7 @@ func UnmarshalJSONOrigFunction(orig *otlpprofiles.Function, iter *json.Iterator)
 		default:
 			iter.Skip()
 		}
-		return true
-	})
+	}
 }
 
 func SizeProtoOrigFunction(orig *otlpprofiles.Function) int {
@@ -114,5 +153,73 @@ func MarshalProtoOrigFunction(orig *otlpprofiles.Function, buf []byte) int {
 }
 
 func UnmarshalProtoOrigFunction(orig *otlpprofiles.Function, buf []byte) error {
-	return orig.Unmarshal(buf)
+	var err error
+	var fieldNum int32
+	var wireType proto.WireType
+
+	l := len(buf)
+	pos := 0
+	for pos < l {
+		// If in a group parsing, move to the next tag.
+		fieldNum, wireType, pos, err = proto.ConsumeTag(buf, pos)
+		if err != nil {
+			return err
+		}
+		switch fieldNum {
+
+		case 1:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field NameStrindex", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.NameStrindex = int32(num)
+
+		case 2:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field SystemNameStrindex", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.SystemNameStrindex = int32(num)
+
+		case 3:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field FilenameStrindex", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.FilenameStrindex = int32(num)
+
+		case 4:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field StartLine", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.StartLine = int64(num)
+		default:
+			pos, err = proto.ConsumeUnknown(buf, pos, wireType)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

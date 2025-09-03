@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/apache/arrow-go/v18/arrow"
 )
@@ -12,26 +11,71 @@ import (
 // Merge is a pipeline that takes N inputs and sequentially consumes each one of them.
 // It completely exhausts an input before moving to the next one.
 type Merge struct {
-	inputs    []Pipeline
-	exhausted []bool
-	state     state
+	inputs      []Pipeline
+	maxPrefetch int
+	initialized bool
+	currInput   int // index of the currently processed input
+	state       state
 }
 
 var _ Pipeline = (*Merge)(nil)
 
-func NewMergePipeline(inputs []Pipeline) (*Merge, error) {
+// newMergePipeline creates a new merge pipeline that merges N inputs into a single output.
+//
+// The argument maxPrefetch controls how many inputs are prefetched simultaneously while the current one is consumed.
+// Set maxPrefetch to 0 to disable prefetching of the next input.
+// Set maxPrefetch to 1 to prefetch only the next input, and so on.
+// Set maxPrefetch to -1 to pretetch all inputs at once.
+func newMergePipeline(inputs []Pipeline, maxPrefetch int) (*Merge, error) {
 	if len(inputs) == 0 {
-		return nil, fmt.Errorf("no inputs provided for merge pipeline")
+		return nil, fmt.Errorf("merge pipeline: no inputs provided")
 	}
 
+	// Default to number of inputs if maxConcurrency is negative or exceeds the number of inputs.
+	if maxPrefetch < 0 || maxPrefetch >= len(inputs) {
+		maxPrefetch = len(inputs) - 1
+	}
+
+	// Wrap inputs into prefetching pipeline.
 	for i := range inputs {
+		// Only wrap input, but do not call init() on it, as it would start prefetching.
+		// Prefetching is started in the [Merge.init] function
 		inputs[i] = newPrefetchingPipeline(inputs[i])
 	}
 
 	return &Merge{
-		inputs:    inputs,
-		exhausted: make([]bool, len(inputs)),
+		inputs:      inputs,
+		maxPrefetch: maxPrefetch,
 	}, nil
+}
+
+func (m *Merge) init(ctx context.Context) {
+	if m.initialized {
+		return
+	}
+
+	// Initialize pre-fetching of inputs defined by maxPrefetch.
+	// The first/current input is always initialized.
+	for i := range m.inputs {
+		if i <= m.maxPrefetch {
+			m.startPrefetchingInputAtIndex(ctx, i)
+		}
+	}
+
+	m.initialized = true
+}
+
+// startPrefetchingInputAtIndex initializes the input at given index i,
+// if the index is not out of bounds and if the input is of type [prefetchWrapper].
+// Initializing the input will start its prefetching.
+func (m *Merge) startPrefetchingInputAtIndex(ctx context.Context, i int) {
+	if i >= len(m.inputs) {
+		return
+	}
+	inp, ok := m.inputs[i].(*prefetchWrapper)
+	if ok {
+		inp.init(ctx)
+	}
 }
 
 // Read reads the next value into its state.
@@ -41,74 +85,65 @@ func (m *Merge) Read(ctx context.Context) error {
 		return m.state.err
 	}
 
-	if m.state.batch != nil {
-		m.state.batch.Release()
-	}
-
+	m.init(ctx)
 	record, err := m.read(ctx)
 	m.state = newState(record, err)
 
 	if err != nil {
-		return fmt.Errorf("run merge: %w", err)
+		return err
 	}
 
 	return nil
 }
 
 func (m *Merge) read(ctx context.Context) (arrow.Record, error) {
-	if !slices.Contains(m.exhausted, false) {
+	// All inputs have been consumed and are exhausted
+	if m.currInput >= len(m.inputs) {
 		return nil, EOF
 	}
 
-	for i, input := range m.inputs {
-		if m.exhausted[i] {
-			continue
-		}
+	for m.currInput < len(m.inputs) {
+		input := m.inputs[m.currInput]
 
 		if err := input.Read(ctx); err != nil {
 			if errors.Is(err, EOF) {
 				input.Close()
-				m.exhausted[i] = true
+				// Proceed to the next input
+				m.currInput++
+				// Initialize the next input so it starts prefetching
+				m.startPrefetchingInputAtIndex(ctx, m.currInput+m.maxPrefetch)
 				continue
 			}
 
 			return nil, err
 		}
 
-		// not updating reference counts as this pipeline is not consuming
-		// the record.
 		return input.Value()
 	}
 
-	// return EOF if none of the inputs returned a record.
+	// Return EOF if none of the inputs returned a record.
 	return nil, EOF
+}
+
+// Value returns the current value in state.
+func (m *Merge) Value() (arrow.Record, error) {
+	return m.state.Value()
 }
 
 // Close implements Pipeline.
 func (m *Merge) Close() {
-	if m.state.batch != nil {
-		m.state.batch.Release()
-	}
-
-	for i, input := range m.inputs {
-		// exhausted inputs are already closed
-		if !m.exhausted[i] {
-			input.Close()
-		}
+	// exhausted inputs are already closed
+	for _, input := range m.inputs[m.currInput:] {
+		input.Close()
 	}
 }
 
-// Inputs implements Pipeline.
+// Inputs returns the inputs of the pipeline.
 func (m *Merge) Inputs() []Pipeline {
 	return m.inputs
 }
 
-// Transport implements Pipeline.
+// Transport returns the type of transport of the implementation.
 func (m *Merge) Transport() Transport {
 	return Local
-}
-
-// Value implements Pipeline.
-func (m *Merge) Value() (arrow.Record, error) {
-	return m.state.Value()
 }

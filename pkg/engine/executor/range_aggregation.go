@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"sort"
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -24,6 +26,22 @@ type rangeAggregationOptions struct {
 	step          time.Duration // step used for range queries
 }
 
+// window is a time interval where start is exclusive and end is inclusive
+// Refer to [logql.batchRangeVectorIterator].
+type window struct {
+	start, end time.Time
+}
+
+// Contains returns if the timestamp t is within the bounds of the window.
+// The window start is exclusive, the window end is inclusive.
+func (w window) Contains(t time.Time) bool {
+	return t.After(w.start) && !t.After(w.end)
+}
+
+// timestampMatchingWindowsFunc resolves matching range interval windows for a specific timestamp.
+// The list can be empty if the timestamp is out of bounds or does not match any of the range windows.
+type timestampMatchingWindowsFunc func(time.Time) []window
+
 // rangeAggregationPipeline is a pipeline that performs aggregations over a time window.
 //
 // 1. It reads from the input pipelines
@@ -37,8 +55,8 @@ type rangeAggregationPipeline struct {
 	inputsExhausted bool // indicates if all inputs are exhausted
 
 	aggregator          *aggregator
-	matchingTimeWindows func(t time.Time) []time.Time // function to find matching time windows for a given timestamp
-	evaluator           expressionEvaluator           // used to evaluate column expressions
+	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
+	evaluator           expressionEvaluator          // used to evaluate column expressions
 	opts                rangeAggregationOptions
 }
 
@@ -53,21 +71,10 @@ func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluato
 }
 
 func (r *rangeAggregationPipeline) init() {
-	windows := []struct {
-		// lower bound is not inclusive
-		// refer to [logql.batchRangeVectorIterator]
-		startTs time.Time
-		endTs   time.Time
-	}{}
+	windows := []window{}
 	cur := r.opts.startTs
 	for cur.Compare(r.opts.endTs) <= 0 {
-		windows = append(windows, struct {
-			startTs time.Time
-			endTs   time.Time
-		}{
-			startTs: cur.Add(-r.opts.rangeInterval),
-			endTs:   cur,
-		})
+		windows = append(windows, window{start: cur.Add(-r.opts.rangeInterval), end: cur})
 
 		if r.opts.step == 0 {
 			break
@@ -77,26 +84,8 @@ func (r *rangeAggregationPipeline) init() {
 		cur = cur.Add(r.opts.step)
 	}
 
-	var (
-		lowerbound = r.opts.startTs.Add(-r.opts.rangeInterval)
-		upperbound = r.opts.endTs
-	)
-
-	r.matchingTimeWindows = func(t time.Time) []time.Time {
-		if t.Compare(lowerbound) <= 0 || t.Compare(upperbound) > 0 {
-			return nil // out of range
-		}
-
-		var ret []time.Time
-		for _, window := range windows {
-			if t.Compare(window.startTs) > 0 && t.Compare(window.endTs) <= 0 {
-				ret = append(ret, window.endTs)
-			}
-		}
-
-		return ret
-	}
-
+	f := newMatcherFactoryFromOpts(r.opts)
+	r.windowsForTimestamp = f.createMatcher(windows)
 	r.aggregator = newAggregator(r.opts.partitionBy, len(windows))
 }
 
@@ -112,10 +101,6 @@ func (r *rangeAggregationPipeline) Read(ctx context.Context) error {
 	if r.inputsExhausted {
 		r.state = failureState(EOF)
 		return r.state.err
-	}
-
-	if r.state.batch != nil {
-		r.state.batch.Release()
 	}
 
 	record, err := r.read(ctx)
@@ -185,7 +170,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 			tsCol := vec.ToArray().(*array.Timestamp)
 
 			for row := range int(record.NumRows()) {
-				windows := r.matchingTimeWindows(tsCol.Value(row).ToTime(arrow.Nanosecond))
+				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
 				if len(windows) == 0 {
 					continue // out of range, skip this row
 				}
@@ -196,8 +181,8 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 					labelValues[col] = arr.Value(row)
 				}
 
-				for _, ts := range windows {
-					r.aggregator.Add(ts, 1, labelValues)
+				for _, w := range windows {
+					r.aggregator.Add(w.end, 1, labelValues)
 				}
 			}
 		}
@@ -215,11 +200,6 @@ func (r *rangeAggregationPipeline) Value() (arrow.Record, error) {
 // Close closes the resources of the pipeline.
 // The implementation must close all the of the pipeline's inputs.
 func (r *rangeAggregationPipeline) Close() {
-	// Release last batch
-	if r.state.batch != nil {
-		r.state.batch.Release()
-	}
-
 	for _, input := range r.inputs {
 		input.Close()
 	}
@@ -233,4 +213,155 @@ func (r *rangeAggregationPipeline) Inputs() []Pipeline {
 // Transport returns the type of transport of the implementation.
 func (r *rangeAggregationPipeline) Transport() Transport {
 	return Local
+}
+
+func newMatcherFactoryFromOpts(opts rangeAggregationOptions) *matcherFactory {
+	return &matcherFactory{
+		start:    opts.startTs,
+		step:     opts.step,
+		interval: opts.rangeInterval,
+		bounds: window{
+			start: opts.startTs.Add(-opts.rangeInterval),
+			end:   opts.endTs,
+		},
+	}
+}
+
+type matcherFactory struct {
+	start    time.Time
+	step     time.Duration
+	interval time.Duration
+	bounds   window
+}
+
+func (f *matcherFactory) createMatcher(windows []window) timestampMatchingWindowsFunc {
+	switch {
+	case f.step == 0:
+		// For instant queries, step == 0, meaning that all samples fall into the one and same step.
+		// A sample timestamp will always match the only time window available, unless the timestamp it out of range.
+		return f.createExactMatcher(windows)
+	case f.step == f.interval:
+		// If the step is equal to the range interval (e.g. when used $__auto in Grafana), then a sample timestamp matches exactly one time window.
+		return f.createAlignedMatcher(windows)
+	case f.step > f.interval:
+		// If the step is greater than the range interval, then a sample timestamp matches either one time window or no time window (and will be discarded).
+		return f.createGappedMatcher(windows)
+	case f.step < f.interval:
+		// If the step is smaller than the range interval, then a sample timestamp matches either one or multiple time windows.
+		return f.createOverlappingMatcher(windows)
+	default:
+		panic("invalid step and range interval")
+	}
+}
+
+// createExactMatcher is used for instant queries.
+// The function returns a matcher that always returns the first aggregation window from the given windows if the timestamp is not out of range.
+// It is expected that len(windows) is exactly 1, but it is not enforced.
+//
+//	steps         |---------x-------|
+//	interval      |---------x-------|
+func (f *matcherFactory) createExactMatcher(windows []window) timestampMatchingWindowsFunc {
+	return func(t time.Time) []window {
+		if !f.bounds.Contains(t) {
+			return nil // out of range
+		}
+		if len(windows) == 0 {
+			return nil
+		}
+		return []window{windows[0]}
+	}
+}
+
+// createAlignedMatcher is used for range queries.
+// The function returns a matcher that always returns exactly one aggregation window that matches the timestamp if the timestamp is not out of range.
+//
+//	steps         |-----|---x-|-----|
+//	interval                  |-----|
+//	interval            |---x-|
+//	interval      |-----|
+func (f *matcherFactory) createAlignedMatcher(windows []window) timestampMatchingWindowsFunc {
+	startNs := f.start.UnixNano()
+	stepNs := f.step.Nanoseconds()
+
+	return func(t time.Time) []window {
+		if !f.bounds.Contains(t) {
+			return nil // out of range
+		}
+
+		tNs := t.UnixNano()
+		// valid timestamps for window i: t > startNs + (i-1) * intervalNs && t <= startNs + i * intervalNs
+		windowIndex := (tNs - startNs + stepNs - 1) / stepNs // subtract 1ns because we are calculating 0-based indexes
+		return []window{windows[windowIndex]}
+	}
+}
+
+// createGappedMatcher is used for range queries.
+// The function returns a matcher that either returns exactly one aggregation window that matches the timestamp, or none,
+// if the timestamp is out of bounds or within bounds, but is within a "gap" between the end of an interval and the beginning of the next interval.
+//
+//	steps         |-----|---x-|-----|
+//	interval                     |--|
+//	interval               |x-|
+//	interval         |--|
+func (f *matcherFactory) createGappedMatcher(windows []window) timestampMatchingWindowsFunc {
+	startNs := f.start.UnixNano()
+	stepNs := f.step.Nanoseconds()
+
+	return func(t time.Time) []window {
+		if !f.bounds.Contains(t) {
+			return nil // out of range
+		}
+
+		tNs := t.UnixNano()
+		// For gapped windows, window i covers: (start + i*step - interval, start + i*step]
+		windowIndex := (tNs - startNs + stepNs - 1) / stepNs // subtract 1ns because we are calculating 0-based indexes
+		matchingWindow := windows[windowIndex]
+
+		// Verify the timestamp is within the window (not in a gap)
+		if tNs > matchingWindow.start.UnixNano() {
+			return []window{matchingWindow}
+		}
+
+		return nil // timestamp is in a gap
+	}
+}
+
+// createOverlappingMatcher is used for range queries.
+// The function returns a matcher that returns one or more aggregation windows that match the timestamp, if the timestamp is not out of range.
+//
+//	steps         |-----|---x-|-----|
+//	interval               |x-------|
+//	interval         |------x-|
+//	interval   |--------|
+func (f *matcherFactory) createOverlappingMatcher(windows []window) timestampMatchingWindowsFunc {
+	return func(t time.Time) []window {
+		if !f.bounds.Contains(t) {
+			return nil // out of range
+		}
+
+		// Find the last window that could contain the timestamp.
+		// We need to find the last window where t > window.startTs
+		// so search for the first window where t <= window.startTs
+		firstOOBIndex := sort.Search(len(windows), func(i int) bool {
+			return t.Compare(windows[i].start) <= 0
+		})
+
+		windowIndex := firstOOBIndex - 1
+		if windowIndex < 0 {
+			return nil
+		}
+
+		// Iterate backwards from last matching window to find all matches
+		var result []window
+		for _, window := range slices.Backward(windows[:windowIndex+1]) {
+			if t.Compare(window.start) > 0 && t.Compare(window.end) <= 0 {
+				result = append(result, window)
+			} else if t.Compare(window.end) > 0 {
+				// we've gone past all possible matches
+				break
+			}
+		}
+
+		return result
+	}
 }

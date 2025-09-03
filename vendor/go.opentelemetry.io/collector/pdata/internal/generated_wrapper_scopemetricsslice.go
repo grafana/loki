@@ -8,7 +8,6 @@ package internal
 
 import (
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 func CopyOrigScopeMetricsSlice(dest, src []*otlpmetrics.ScopeMetrics) []*otlpmetrics.ScopeMetrics {
@@ -19,19 +18,20 @@ func CopyOrigScopeMetricsSlice(dest, src []*otlpmetrics.ScopeMetrics) []*otlpmet
 		copy(newDest, dest)
 		// Add new pointers for missing elements from len(dest) to len(srt).
 		for i := len(dest); i < len(src); i++ {
-			newDest[i] = &otlpmetrics.ScopeMetrics{}
+			newDest[i] = NewOrigScopeMetrics()
 		}
 	} else {
 		newDest = dest[:len(src)]
 		// Cleanup the rest of the elements so GC can free the memory.
 		// This can happen when len(src) < len(dest) < cap(dest).
 		for i := len(src); i < len(dest); i++ {
+			DeleteOrigScopeMetrics(dest[i], true)
 			dest[i] = nil
 		}
 		// Add new pointers for missing elements.
 		// This can happen when len(dest) < len(src) < cap(dest).
 		for i := len(dest); i < len(src); i++ {
-			newDest[i] = &otlpmetrics.ScopeMetrics{}
+			newDest[i] = NewOrigScopeMetrics()
 		}
 	}
 	for i := range src {
@@ -41,21 +41,11 @@ func CopyOrigScopeMetricsSlice(dest, src []*otlpmetrics.ScopeMetrics) []*otlpmet
 }
 
 func GenerateOrigTestScopeMetricsSlice() []*otlpmetrics.ScopeMetrics {
-	orig := make([]*otlpmetrics.ScopeMetrics, 7)
-	for i := 0; i < 7; i++ {
-		orig[i] = &otlpmetrics.ScopeMetrics{}
-		FillOrigTestScopeMetrics(orig[i])
-	}
-	return orig
-}
-
-// UnmarshalJSONOrigScopeMetricsSlice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONOrigScopeMetricsSlice(iter *json.Iterator) []*otlpmetrics.ScopeMetrics {
-	var orig []*otlpmetrics.ScopeMetrics
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		orig = append(orig, &otlpmetrics.ScopeMetrics{})
-		UnmarshalJSONOrigScopeMetrics(orig[len(orig)-1], iter)
-		return true
-	})
+	orig := make([]*otlpmetrics.ScopeMetrics, 5)
+	orig[0] = NewOrigScopeMetrics()
+	orig[1] = GenTestOrigScopeMetrics()
+	orig[2] = NewOrigScopeMetrics()
+	orig[3] = GenTestOrigScopeMetrics()
+	orig[4] = NewOrigScopeMetrics()
 	return orig
 }

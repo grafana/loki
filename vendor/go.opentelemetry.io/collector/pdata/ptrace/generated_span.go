@@ -35,8 +35,7 @@ func newSpan(orig *otlptrace.Span, state *internal.State) Span {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewSpan() Span {
-	state := internal.StateMutable
-	return newSpan(&otlptrace.Span{}, &state)
+	return newSpan(internal.NewOrigSpan(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -48,8 +47,8 @@ func (ms Span) MoveTo(dest Span) {
 	if ms.orig == dest.orig {
 		return
 	}
-	*dest.orig = *ms.orig
-	*ms.orig = otlptrace.Span{}
+	internal.DeleteOrigSpan(dest.orig, false)
+	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // TraceID returns the traceid associated with this Span.

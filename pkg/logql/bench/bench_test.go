@@ -36,13 +36,12 @@ var (
 const testTenant = "test-tenant"
 
 const (
-	StoreDataObj                    = "dataobj"
-	StoreDataObjV2Engine            = "dataobj-engine"
-	StoreDataObjV2EngineWithIndexes = "dataobj-engine-with-indexes"
-	StoreChunk                      = "chunk"
+	StoreDataObj         = "dataobj"
+	StoreDataObjV2Engine = "dataobj-engine"
+	StoreChunk           = "chunk"
 )
 
-var allStores = []string{StoreDataObj, StoreDataObjV2Engine, StoreDataObjV2EngineWithIndexes, StoreChunk}
+var allStores = []string{StoreDataObj, StoreDataObjV2Engine, StoreChunk}
 
 //go:generate go run ./cmd/generate/main.go -size 2147483648 -dir ./data -tenant test-tenant
 
@@ -63,12 +62,6 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) logql.Engine {
 			tb.Fatal(err)
 		}
 
-		return store.engine
-	case StoreDataObjV2EngineWithIndexes:
-		store, err := NewDataObjV2EngineWithIndexesStore(DefaultDataDir, testTenant)
-		if err != nil {
-			tb.Fatal(err)
-		}
 		return store.engine
 	case StoreDataObj:
 		store, err := NewDataObjStore(DefaultDataDir, testTenant)
@@ -392,4 +385,21 @@ func TestPrintBenchmarkQueries(t *testing.T) {
 	t.Logf("- Log queries: %d (will run in both directions)", logQueries)
 	t.Logf("- Metric queries: %d (forward only)", metricQueries)
 	t.Logf("- Total benchmark cases: %d", len(cases))
+}
+
+func TestStoresGenerateData(t *testing.T) {
+	dir := t.TempDir()
+
+	chunkStore, err := NewChunkStore(dir, testTenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataObjStore, err := NewDataObjStore(dir, testTenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	builder := NewBuilder(dir, DefaultOpt(), chunkStore, dataObjStore)
+	err = builder.Generate(context.Background(), 1024)
+	require.NoError(t, err)
 }

@@ -8,14 +8,66 @@ package internal
 
 import (
 	"encoding/binary"
+	"fmt"
+	"sync"
 
 	"go.opentelemetry.io/collector/pdata/internal/data"
+	otlpcommon "go.opentelemetry.io/collector/pdata/internal/data/protogen/common/v1"
 	otlptrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/trace/v1"
 	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
+var (
+	protoPoolSpan = sync.Pool{
+		New: func() any {
+			return &otlptrace.Span{}
+		},
+	}
+)
+
+func NewOrigSpan() *otlptrace.Span {
+	if !UseProtoPooling.IsEnabled() {
+		return &otlptrace.Span{}
+	}
+	return protoPoolSpan.Get().(*otlptrace.Span)
+}
+
+func DeleteOrigSpan(orig *otlptrace.Span, nullable bool) {
+	if orig == nil {
+		return
+	}
+
+	if !UseProtoPooling.IsEnabled() {
+		orig.Reset()
+		return
+	}
+
+	DeleteOrigTraceID(&orig.TraceId, false)
+	DeleteOrigSpanID(&orig.SpanId, false)
+	DeleteOrigSpanID(&orig.ParentSpanId, false)
+	for i := range orig.Attributes {
+		DeleteOrigKeyValue(&orig.Attributes[i], false)
+	}
+	for i := range orig.Events {
+		DeleteOrigSpan_Event(orig.Events[i], true)
+	}
+	for i := range orig.Links {
+		DeleteOrigSpan_Link(orig.Links[i], true)
+	}
+	DeleteOrigStatus(&orig.Status, false)
+
+	orig.Reset()
+	if nullable {
+		protoPoolSpan.Put(orig)
+	}
+}
+
 func CopyOrigSpan(dest, src *otlptrace.Span) {
+	// If copying to same object, just return.
+	if src == dest {
+		return
+	}
 	dest.TraceId = src.TraceId
 	dest.SpanId = src.SpanId
 	CopyOrigTraceState(&dest.TraceState, &src.TraceState)
@@ -34,10 +86,11 @@ func CopyOrigSpan(dest, src *otlptrace.Span) {
 	CopyOrigStatus(&dest.Status, &src.Status)
 }
 
-func FillOrigTestSpan(orig *otlptrace.Span) {
+func GenTestOrigSpan() *otlptrace.Span {
+	orig := NewOrigSpan()
 	orig.TraceId = data.TraceID([16]byte{1, 2, 3, 4, 5, 6, 7, 8, 8, 7, 6, 5, 4, 3, 2, 1})
 	orig.SpanId = data.SpanID([8]byte{8, 7, 6, 5, 4, 3, 2, 1})
-	FillOrigTestTraceState(&orig.TraceState)
+	orig.TraceState = *GenTestOrigTraceState()
 	orig.ParentSpanId = data.SpanID([8]byte{8, 7, 6, 5, 4, 3, 2, 1})
 	orig.Flags = uint32(13)
 	orig.Name = "test_name"
@@ -50,7 +103,8 @@ func FillOrigTestSpan(orig *otlptrace.Span) {
 	orig.DroppedEventsCount = uint32(13)
 	orig.Links = GenerateOrigTestSpan_LinkSlice()
 	orig.DroppedLinksCount = uint32(13)
-	FillOrigTestStatus(&orig.Status)
+	orig.Status = *GenTestOrigStatus()
+	return orig
 }
 
 // MarshalJSONOrig marshals all properties from the current struct to the destination stream.
@@ -142,16 +196,16 @@ func MarshalJSONOrigSpan(orig *otlptrace.Span, dest *json.Stream) {
 
 // UnmarshalJSONOrigSpan unmarshals all properties from the current struct from the source iterator.
 func UnmarshalJSONOrigSpan(orig *otlptrace.Span, iter *json.Iterator) {
-	iter.ReadObjectCB(func(iter *json.Iterator, f string) bool {
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
 		case "traceId", "trace_id":
-			orig.TraceId.UnmarshalJSONIter(iter)
+			UnmarshalJSONOrigTraceID(&orig.TraceId, iter)
 		case "spanId", "span_id":
-			orig.SpanId.UnmarshalJSONIter(iter)
+			UnmarshalJSONOrigSpanID(&orig.SpanId, iter)
 		case "traceState", "trace_state":
-			UnmarshalJSONOrigTraceState(&orig.TraceState, iter)
+			orig.TraceState = iter.ReadString()
 		case "parentSpanId", "parent_span_id":
-			orig.ParentSpanId.UnmarshalJSONIter(iter)
+			UnmarshalJSONOrigSpanID(&orig.ParentSpanId, iter)
 		case "flags":
 			orig.Flags = iter.ReadUint32()
 		case "name":
@@ -163,15 +217,27 @@ func UnmarshalJSONOrigSpan(orig *otlptrace.Span, iter *json.Iterator) {
 		case "endTimeUnixNano", "end_time_unix_nano":
 			orig.EndTimeUnixNano = iter.ReadUint64()
 		case "attributes":
-			orig.Attributes = UnmarshalJSONOrigKeyValueSlice(iter)
+			for iter.ReadArray() {
+				orig.Attributes = append(orig.Attributes, otlpcommon.KeyValue{})
+				UnmarshalJSONOrigKeyValue(&orig.Attributes[len(orig.Attributes)-1], iter)
+			}
+
 		case "droppedAttributesCount", "dropped_attributes_count":
 			orig.DroppedAttributesCount = iter.ReadUint32()
 		case "events":
-			orig.Events = UnmarshalJSONOrigSpan_EventSlice(iter)
+			for iter.ReadArray() {
+				orig.Events = append(orig.Events, NewOrigSpan_Event())
+				UnmarshalJSONOrigSpan_Event(orig.Events[len(orig.Events)-1], iter)
+			}
+
 		case "droppedEventsCount", "dropped_events_count":
 			orig.DroppedEventsCount = iter.ReadUint32()
 		case "links":
-			orig.Links = UnmarshalJSONOrigSpan_LinkSlice(iter)
+			for iter.ReadArray() {
+				orig.Links = append(orig.Links, NewOrigSpan_Link())
+				UnmarshalJSONOrigSpan_Link(orig.Links[len(orig.Links)-1], iter)
+			}
+
 		case "droppedLinksCount", "dropped_links_count":
 			orig.DroppedLinksCount = iter.ReadUint32()
 		case "status":
@@ -179,8 +245,7 @@ func UnmarshalJSONOrigSpan(orig *otlptrace.Span, iter *json.Iterator) {
 		default:
 			iter.Skip()
 		}
-		return true
-	})
+	}
 }
 
 func SizeProtoOrigSpan(orig *otlptrace.Span) int {
@@ -304,7 +369,7 @@ func MarshalProtoOrigSpan(orig *otlptrace.Span, buf []byte) int {
 		pos--
 		buf[pos] = 0x41
 	}
-	for i := range orig.Attributes {
+	for i := len(orig.Attributes) - 1; i >= 0; i-- {
 		l = MarshalProtoOrigKeyValue(&orig.Attributes[i], buf[:pos])
 		pos -= l
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
@@ -316,7 +381,7 @@ func MarshalProtoOrigSpan(orig *otlptrace.Span, buf []byte) int {
 		pos--
 		buf[pos] = 0x50
 	}
-	for i := range orig.Events {
+	for i := len(orig.Events) - 1; i >= 0; i-- {
 		l = MarshalProtoOrigSpan_Event(orig.Events[i], buf[:pos])
 		pos -= l
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
@@ -328,7 +393,7 @@ func MarshalProtoOrigSpan(orig *otlptrace.Span, buf []byte) int {
 		pos--
 		buf[pos] = 0x60
 	}
-	for i := range orig.Links {
+	for i := len(orig.Links) - 1; i >= 0; i-- {
 		l = MarshalProtoOrigSpan_Link(orig.Links[i], buf[:pos])
 		pos -= l
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
@@ -351,5 +416,245 @@ func MarshalProtoOrigSpan(orig *otlptrace.Span, buf []byte) int {
 }
 
 func UnmarshalProtoOrigSpan(orig *otlptrace.Span, buf []byte) error {
-	return orig.Unmarshal(buf)
+	var err error
+	var fieldNum int32
+	var wireType proto.WireType
+
+	l := len(buf)
+	pos := 0
+	for pos < l {
+		// If in a group parsing, move to the next tag.
+		fieldNum, wireType, pos, err = proto.ConsumeTag(buf, pos)
+		if err != nil {
+			return err
+		}
+		switch fieldNum {
+
+		case 1:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field TraceId", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+
+			err = UnmarshalProtoOrigTraceID(&orig.TraceId, buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+
+		case 2:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field SpanId", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+
+			err = UnmarshalProtoOrigSpanID(&orig.SpanId, buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+
+		case 3:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field TraceState", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			orig.TraceState = string(buf[startPos:pos])
+
+		case 4:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field ParentSpanId", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+
+			err = UnmarshalProtoOrigSpanID(&orig.ParentSpanId, buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+
+		case 16:
+			if wireType != proto.WireTypeI32 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Flags", wireType)
+			}
+			var num uint32
+			num, pos, err = proto.ConsumeI32(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.Flags = uint32(num)
+
+		case 5:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			orig.Name = string(buf[startPos:pos])
+
+		case 6:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field Kind", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.Kind = otlptrace.Span_SpanKind(num)
+
+		case 7:
+			if wireType != proto.WireTypeI64 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StartTimeUnixNano", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeI64(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.StartTimeUnixNano = uint64(num)
+
+		case 8:
+			if wireType != proto.WireTypeI64 {
+				return fmt.Errorf("proto: wrong wireType = %d for field EndTimeUnixNano", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeI64(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.EndTimeUnixNano = uint64(num)
+
+		case 9:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field Attributes", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			orig.Attributes = append(orig.Attributes, otlpcommon.KeyValue{})
+			err = UnmarshalProtoOrigKeyValue(&orig.Attributes[len(orig.Attributes)-1], buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+
+		case 10:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field DroppedAttributesCount", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.DroppedAttributesCount = uint32(num)
+
+		case 11:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field Events", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			orig.Events = append(orig.Events, NewOrigSpan_Event())
+			err = UnmarshalProtoOrigSpan_Event(orig.Events[len(orig.Events)-1], buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+
+		case 12:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field DroppedEventsCount", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.DroppedEventsCount = uint32(num)
+
+		case 13:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field Links", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			orig.Links = append(orig.Links, NewOrigSpan_Link())
+			err = UnmarshalProtoOrigSpan_Link(orig.Links[len(orig.Links)-1], buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+
+		case 14:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field DroppedLinksCount", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.DroppedLinksCount = uint32(num)
+
+		case 15:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field Status", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+
+			err = UnmarshalProtoOrigStatus(&orig.Status, buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+		default:
+			pos, err = proto.ConsumeUnknown(buf, pos, wireType)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

@@ -159,6 +159,7 @@ var _ Pipeline = (*instrumentedPipeline)(nil)
 
 func Test_prefetchWrapper_Read(t *testing.T) {
 	alloc := memory.NewCheckedAllocator(memory.NewGoAllocator())
+	defer alloc.AssertSize(t, 0)
 
 	batch1 := arrowtest.Rows{
 		{"message": "log line 1"},
@@ -172,14 +173,19 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 		{"message": "log line 5"},
 	}
 
-	pipeline := NewBufferedPipeline(
+	records := []arrow.Record{
 		batch1.Record(alloc, batch1.Schema()),
 		batch2.Record(alloc, batch2.Schema()),
 		batch3.Record(alloc, batch3.Schema()),
-	)
+	}
+	for _, rec := range records {
+		defer rec.Release()
+	}
 
+	pipeline := NewBufferedPipeline(records...)
 	instrumentedPipeline := newInstrumentedPipeline(pipeline)
 	prefetchingPipeline := newPrefetchingPipeline(instrumentedPipeline)
+	defer prefetchingPipeline.Close()
 
 	require.Equal(t, 0, instrumentedPipeline.callCount["Read"])
 
@@ -189,6 +195,7 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 	err := prefetchingPipeline.Read(ctx)
 	require.NoError(t, err)
 	v, _ := prefetchingPipeline.Value()
+	v.Release()
 	require.Equal(t, int64(2), v.NumRows())
 
 	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched
@@ -198,6 +205,7 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 	err = prefetchingPipeline.Read(ctx)
 	require.NoError(t, err)
 	v, _ = prefetchingPipeline.Value()
+	v.Release()
 	require.Equal(t, int64(2), v.NumRows())
 
 	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched
@@ -207,6 +215,7 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 	err = prefetchingPipeline.Read(ctx)
 	require.NoError(t, err)
 	v, _ = prefetchingPipeline.Value()
+	v.Release()
 	require.Equal(t, int64(1), v.NumRows())
 
 	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched
@@ -218,10 +227,6 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched
 	require.Equal(t, 4, instrumentedPipeline.callCount["Read"]) // 3 records + 1 EOF consumed
-
-	// Assert that records are released
-	prefetchingPipeline.Close()
-	alloc.AssertSize(t, 0)
 }
 
 func Test_prefetchWrapper_Close(t *testing.T) {

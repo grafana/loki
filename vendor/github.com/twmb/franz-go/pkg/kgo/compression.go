@@ -16,14 +16,27 @@ import (
 
 var byteBuffers = sync.Pool{New: func() any { return bytes.NewBuffer(make([]byte, 8<<10)) }}
 
-type codecType int8
+// CompressionCodecType is a bitfield specifying a Kafka-defined compression
+// codec. Per spec, only four compression codecs are supported. However, if
+// you control both the producer and consumer, you can technically override the
+// codec to anything.
+type CompressionCodecType int8
 
 const (
-	codecNone codecType = iota
-	codecGzip
-	codecSnappy
-	codecLZ4
-	codecZstd
+	// CodecNone is a compression codec signifying no compression is used.
+	CodecNone CompressionCodecType = iota
+	// CodecGzip is a compression codec signifying gzip compression.
+	CodecGzip
+	// CodecSnappy is a compression codec signifying snappy compression.
+	CodecSnappy
+	// CodecLz4 is a compression codec signifying lz4 compression.
+	CodecLz4
+	// CodecZstd is a compression codec signifying zstd compression.
+	CodecZstd
+
+	// CodecError is returned from compressing or decompressing if an error
+	// occurred.
+	CodecError = -1
 )
 
 // CompressionCodec configures how records are compressed before being sent.
@@ -32,25 +45,75 @@ const (
 // RecordBatch. All records in a RecordBatch are compressed into one record
 // for that batch.
 type CompressionCodec struct {
-	codec codecType
+	codec CompressionCodecType
 	level int
 }
 
 // NoCompression is a compression option that avoids compression. This can
 // always be used as a fallback compression.
-func NoCompression() CompressionCodec { return CompressionCodec{codecNone, 0} }
+func NoCompression() CompressionCodec { return CompressionCodec{CodecNone, 0} }
 
 // GzipCompression enables gzip compression with the default compression level.
-func GzipCompression() CompressionCodec { return CompressionCodec{codecGzip, gzip.DefaultCompression} }
+func GzipCompression() CompressionCodec { return CompressionCodec{CodecGzip, gzip.DefaultCompression} }
 
 // SnappyCompression enables snappy compression.
-func SnappyCompression() CompressionCodec { return CompressionCodec{codecSnappy, 0} }
+func SnappyCompression() CompressionCodec { return CompressionCodec{CodecSnappy, 0} }
 
 // Lz4Compression enables lz4 compression with the fastest compression level.
-func Lz4Compression() CompressionCodec { return CompressionCodec{codecLZ4, 0} }
+func Lz4Compression() CompressionCodec { return CompressionCodec{CodecLz4, 0} }
 
 // ZstdCompression enables zstd compression with the default compression level.
-func ZstdCompression() CompressionCodec { return CompressionCodec{codecZstd, 0} }
+func ZstdCompression() CompressionCodec { return CompressionCodec{CodecZstd, 0} }
+
+// CompressFlag is a flag to instruct the compressor.
+type CompressFlag uint16
+
+const (
+	// CompressDisableZstd instructs the compressor that zstd should not be
+	// used, even if the compressor supports it. This is used when
+	// producing to an old broker (pre Kafka v2.1) that does not yet
+	// support zstd compression. If you are confident you will only produce
+	// to new brokers, you can ignore this flag.
+	CompressDisableZstd CompressFlag = 1 + iota
+)
+
+func mkCompressFlags(produceRequestVersion int16) []CompressFlag {
+	if produceRequestVersion < 7 {
+		return []CompressFlag{CompressDisableZstd}
+	}
+	return nil
+}
+
+// Compressor is an interface that defines how produce batches are compressed.
+// You can override the default client internal compressor for more control
+// over what compressors to use, level, and memory reuse.
+type Compressor interface {
+	// Compress compresses src and returns the compressed data as well as
+	// the codec type that was used. The 'dst' [bytes.Buffer] argument is
+	// pooled within the client and reused across calls to Compress. You
+	// can use 'dst' to save memory and return 'dst.Bytes()'. The returned
+	// slice is fully used *before* 'dst' is put back into the internal
+	// pool. As an example, you can look at the franz-go internal
+	// implementation of the default compressor in compression.go.
+	//
+	// Flags may optionally be provided to direct the compressor to enable
+	// or disable features. New backwards compatible flags may be
+	// introduced. If you add features to your compressor, be sure to
+	// evaluate if new flags exist to opt into or out of features.
+	Compress(dst *bytes.Buffer, src []byte, flags ...CompressFlag) ([]byte, CompressionCodecType)
+}
+
+// Decompressor is an interface that defines how fetch batches are
+// decompressed. You can override the default client internal decompressor for
+// more control over what decompressors to use and memory reuse.
+type Decompressor interface {
+	// Decompress decompresses src, which is compressed with codecType,
+	// and returns the decompressed data or an error.
+	//
+	// If the decompression codec type is CodecNone, this should return
+	// the input slice.
+	Decompress(src []byte, codecType CompressionCodecType) ([]byte, error)
+}
 
 // WithLevel changes the compression codec's "level", effectively allowing for
 // higher or lower compression ratios at the expense of CPU speed.
@@ -65,18 +128,25 @@ func (c CompressionCodec) WithLevel(level int) CompressionCodec {
 }
 
 type compressor struct {
-	options  []codecType
+	options  []CompressionCodecType
 	gzPool   sync.Pool
 	lz4Pool  sync.Pool
 	zstdPool sync.Pool
 }
 
-func newCompressor(codecs ...CompressionCodec) (*compressor, error) {
+// DefaultCompressor returns the default client compressor. The returned
+// compressor will compress produce batches in preference-order of the
+// specified codecs. Usually, you only need to specify one codec. If you are
+// speaking to an old broker that may not support zstd, you may need to specify
+// a second compressor as fallback (old Kafka did not support zstd).  If no
+// codecs are specified, or the specified codec is CodecNone, this returns
+// 'nil, nil'. A compressor is only used within the client if it is non-nil.
+func DefaultCompressor(codecs ...CompressionCodec) (Compressor, error) {
 	if len(codecs) == 0 {
 		return nil, nil
 	}
 
-	used := make(map[codecType]bool) // we keep one type of codec per CompressionCodec
+	used := make(map[CompressionCodecType]bool) // we keep one type of codec per CompressionCodec
 	var keepIdx int
 	for _, codec := range codecs {
 		if _, exists := used[codec.codec]; exists {
@@ -100,9 +170,9 @@ out:
 	for _, codec := range codecs {
 		c.options = append(c.options, codec.codec)
 		switch codec.codec {
-		case codecNone:
+		case CodecNone:
 			break out
-		case codecGzip:
+		case CodecGzip:
 			level := gzip.DefaultCompression
 			if codec.level != 0 {
 				if _, err := gzip.NewWriterLevel(nil, codec.level); err != nil {
@@ -110,8 +180,8 @@ out:
 				}
 			}
 			c.gzPool = sync.Pool{New: func() any { c, _ := gzip.NewWriterLevel(nil, level); return c }}
-		case codecSnappy: // (no pool needed for snappy)
-		case codecLZ4:
+		case CodecSnappy: // (no pool needed for snappy)
+		case CodecLz4:
 			level := codec.level
 			if level < 0 {
 				level = 0 // 0 == lz4.Fast
@@ -127,7 +197,7 @@ out:
 			}
 			w.Close()
 			c.lz4Pool = sync.Pool{New: fn}
-		case codecZstd:
+		case CodecZstd:
 			opts := []zstd.EOption{
 				zstd.WithWindowSize(64 << 10),
 				zstd.WithEncoderConcurrency(1),
@@ -148,7 +218,7 @@ out:
 		}
 	}
 
-	if c.options[0] == codecNone {
+	if c.options[0] == CodecNone {
 		return nil, nil // first codec was passthrough
 	}
 
@@ -159,15 +229,17 @@ type zstdEncoder struct {
 	inner *zstd.Encoder
 }
 
-// Compress compresses src to buf, returning buf's inner slice once done or nil
-// if an error is encountered.
-//
-// The writer should be put back to its pool after the returned slice is done
-// being used.
-func (c *compressor) compress(dst *bytes.Buffer, src []byte, produceRequestVersion int16) ([]byte, codecType) {
-	var use codecType
+func (c *compressor) Compress(dst *bytes.Buffer, src []byte, flags ...CompressFlag) ([]byte, CompressionCodecType) {
+	var disableZstd bool
+	for _, flag := range flags {
+		if flag == CompressDisableZstd {
+			disableZstd = true
+		}
+	}
+
+	var use CompressionCodecType
 	for _, option := range c.options {
-		if option == codecZstd && produceRequestVersion < 7 {
+		if option == CodecZstd && disableZstd {
 			continue
 		}
 		use = option
@@ -176,31 +248,31 @@ func (c *compressor) compress(dst *bytes.Buffer, src []byte, produceRequestVersi
 
 	var out []byte
 	switch use {
-	case codecNone:
+	case CodecNone:
 		return src, 0
-	case codecGzip:
+	case CodecGzip:
 		gz := c.gzPool.Get().(*gzip.Writer)
 		defer c.gzPool.Put(gz)
 		gz.Reset(dst)
 		if _, err := gz.Write(src); err != nil {
-			return nil, -1
+			return nil, CodecError
 		}
 		if err := gz.Close(); err != nil {
-			return nil, -1
+			return nil, CodecError
 		}
 		out = dst.Bytes()
-	case codecLZ4:
+	case CodecLz4:
 		lz := c.lz4Pool.Get().(*lz4.Writer)
 		defer c.lz4Pool.Put(lz)
 		lz.Reset(dst)
 		if _, err := lz.Write(src); err != nil {
-			return nil, -1
+			return nil, CodecError
 		}
 		if err := lz.Close(); err != nil {
-			return nil, -1
+			return nil, CodecError
 		}
 		out = dst.Bytes()
-	case codecSnappy:
+	case CodecSnappy:
 		// Because the Snappy and Zstd codecs do not accept an io.Writer interface
 		// and directly take a []byte slice, here, the underlying []byte slice (`dst`)
 		// obtained from the bytes.Buffer{} from the pool is passed.
@@ -209,7 +281,7 @@ func (c *compressor) compress(dst *bytes.Buffer, src []byte, produceRequestVersi
 		// reading and writing via it's (eg: accessing via `Byte()`). For subsequent
 		// reads, the underlying slice has to be used directly.
 		//
-		// In this particular context, it is acceptable as there there are no subsequent
+		// In this particular context, it is acceptable as there are no subsequent
 		// operations performed on the buffer and it is immediately returned to the
 		// pool and `Reset()` the next time it is obtained and used where `compress()`
 		// is called.
@@ -217,7 +289,7 @@ func (c *compressor) compress(dst *bytes.Buffer, src []byte, produceRequestVersi
 			dst.Grow(l)
 		}
 		out = s2.EncodeSnappy(dst.Bytes(), src)
-	case codecZstd:
+	case CodecZstd:
 		zstdEnc := c.zstdPool.Get().(*zstdEncoder)
 		defer c.zstdPool.Put(zstdEnc)
 		if l := zstdEnc.inner.MaxEncodedSize(len(src)); l > dst.Cap() {
@@ -233,9 +305,13 @@ type decompressor struct {
 	ungzPool   sync.Pool
 	unlz4Pool  sync.Pool
 	unzstdPool sync.Pool
+	pools      pools
 }
 
-func newDecompressor() *decompressor {
+// DefaultDecompressor returns the default decompressor used by clients.
+// The first pool provided that implements PoolDecompressBytes will be
+// used where possible.
+func DefaultDecompressor(pools ...Pool) Decompressor {
 	d := &decompressor{
 		ungzPool: sync.Pool{
 			New: func() any { return new(gzip.Reader) },
@@ -256,6 +332,7 @@ func newDecompressor() *decompressor {
 				return r
 			},
 		},
+		pools: pools,
 	}
 	return d
 }
@@ -264,18 +341,44 @@ type zstdDecoder struct {
 	inner *zstd.Decoder
 }
 
-func (d *decompressor) decompress(src []byte, codec byte) ([]byte, error) {
-	// Early return in case there is no compression
-	compCodec := codecType(codec)
-	if compCodec == codecNone {
+func (d *decompressor) Decompress(src []byte, codecType CompressionCodecType) ([]byte, error) {
+	if codecType == CodecNone {
 		return src, nil
 	}
-	out := byteBuffers.Get().(*bytes.Buffer)
-	out.Reset()
-	defer byteBuffers.Put(out)
 
-	switch compCodec {
-	case codecGzip:
+	var (
+		out        *bytes.Buffer
+		rfn        func() []byte
+		userPooled bool
+	)
+	d.pools.each(func(p Pool) bool {
+		if pdecompressBytes, ok := p.(PoolDecompressBytes); ok {
+			s := pdecompressBytes.GetDecompressBytes(src, codecType)
+			out = bytes.NewBuffer(s)
+			rfn = out.Bytes
+			userPooled = true
+			return true
+		}
+		return false
+	})
+	if out == nil {
+		out = byteBuffers.Get().(*bytes.Buffer)
+		out.Reset()
+		defer byteBuffers.Put(out)
+		// We clone out.Bytes since we are pooling out ourselves; we
+		// need to clone before return since we immediately put into
+		// the pool.
+		//
+		// For user provided slices, we put back into the pool only
+		// after the user calls Recycle on every record that has a
+		// reference to the slice. Thus, we can return the original
+		// slice from the user-provided pool: it is only recycled
+		// at the end when the user says they are done.
+		rfn = func() []byte { return append([]byte(nil), out.Bytes()...) }
+	}
+
+	switch codecType {
+	case CodecGzip:
 		ungz := d.ungzPool.Get().(*gzip.Reader)
 		defer d.ungzPool.Put(ungz)
 		if err := ungz.Reset(bytes.NewReader(src)); err != nil {
@@ -284,8 +387,8 @@ func (d *decompressor) decompress(src []byte, codec byte) ([]byte, error) {
 		if _, err := io.Copy(out, ungz); err != nil {
 			return nil, err
 		}
-		return append([]byte(nil), out.Bytes()...), nil
-	case codecSnappy:
+		return rfn(), nil
+	case CodecSnappy:
 		if len(src) > 16 && bytes.HasPrefix(src, xerialPfx) {
 			return xerialDecode(src)
 		}
@@ -293,21 +396,27 @@ func (d *decompressor) decompress(src []byte, codec byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		if userPooled {
+			return decoded, nil
+		}
 		return append([]byte(nil), decoded...), nil
-	case codecLZ4:
+	case CodecLz4:
 		unlz4 := d.unlz4Pool.Get().(*lz4.Reader)
 		defer d.unlz4Pool.Put(unlz4)
 		unlz4.Reset(bytes.NewReader(src))
 		if _, err := io.Copy(out, unlz4); err != nil {
 			return nil, err
 		}
-		return append([]byte(nil), out.Bytes()...), nil
-	case codecZstd:
+		return rfn(), nil
+	case CodecZstd:
 		unzstd := d.unzstdPool.Get().(*zstdDecoder)
 		defer d.unzstdPool.Put(unzstd)
 		decoded, err := unzstd.inner.DecodeAll(src, out.Bytes())
 		if err != nil {
 			return nil, err
+		}
+		if userPooled {
+			return decoded, nil
 		}
 		return append([]byte(nil), decoded...), nil
 	default:
