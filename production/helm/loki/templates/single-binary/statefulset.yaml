@@ -33,7 +33,7 @@ spec:
   */}}
   persistentVolumeClaimRetentionPolicy:
     whenDeleted: Delete
-    whenScaled: Delete
+    whenScaled: Retain
   {{- end }}
   selector:
     matchLabels:
