@@ -24,10 +24,18 @@
 *.tmproj
 .vscode/
 
-# Other
-doc.yaml
-README.tpl
-README.md.gotmpl
-ci
-CHANGELOG.md
-CLAUDE.md
+# CI / testing
+distributed-values.yaml
+simple-scalable-values.yaml
+single-binary-values.yaml
+Makefile
+ci/
+scenarios/
+test/
+unittests/
+
+# docs
+*.md
+*.tpl
+*.gotmpl
+docs/
