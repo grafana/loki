@@ -409,7 +409,7 @@ func createCustomTransportForHTTPSProxy(tr *http.Transport, proxyURL *url.URL, t
 	}
 
 	// function that handles proxy connections differently.
-	tr.DialTLSContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+	tr.DialTLSContext = func(_ context.Context, network, addr string) (net.Conn, error) {
 		// Parse the address to determine if this is a proxy connection
 		host, _, err := net.SplitHostPort(addr)
 		if err != nil {
