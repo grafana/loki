@@ -137,10 +137,8 @@ func TestCalculator_Calculate(t *testing.T) {
 		require.Equal(t, len(timeRanges), tenants)
 		for _, timeRange := range timeRanges {
 			require.NotEmpty(t, timeRange.Tenant)
-			require.False(t, timeRange.MinTime.IsZero())
-			require.Equal(t, timeRange.MinTime, time.Unix(10, 0).UTC())
-			require.False(t, timeRange.MaxTime.IsZero())
-			require.Equal(t, timeRange.MaxTime, time.Unix(25, 0).UTC())
+			require.Equal(t, time.Unix(10, 0).UTC(), timeRange.MinTime)
+			require.Equal(t, time.Unix(25, 0).UTC(), timeRange.MaxTime)
 		}
 
 		// Confirm we have multiple pointers sections
