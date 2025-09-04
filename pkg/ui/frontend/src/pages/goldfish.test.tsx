@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import GoldfishPage from './goldfish';
 import * as goldfishApi from '@/lib/goldfish-api';
-import { OUTCOME_ALL, OUTCOME_MATCH, OUTCOME_MISMATCH, OUTCOME_ERROR, SampledQuery } from '@/types/goldfish';
+import { OUTCOME_ALL, OUTCOME_MATCH, OUTCOME_MISMATCH, OUTCOME_ERROR } from '@/types/goldfish';
 import { useGoldfishQueries } from "@/hooks/use-goldfish-queries";
 import { QueryDiffView } from "@/components/goldfish/query-diff-view";
 import { filterQueriesByOutcome } from "@/lib/goldfish-utils";
@@ -876,8 +876,7 @@ describe('GoldfishPage', () => {
         const page = 1;
         const pageSize = 10;
         
-        const { data } = useGoldfishQueries(page, pageSize, selectedOutcome);
-        const allQueries = useMemo(() => (data as { queries: SampledQuery[] })?.queries || [], [data]);
+        const { queries: allQueries } = useGoldfishQueries(page, pageSize, selectedOutcome);
         
         // Apply client-side filtering based on tenant, user, and outcome
         const filteredQueries = useMemo(() => {
@@ -951,8 +950,7 @@ describe('GoldfishPage', () => {
         const page = 1;
         const pageSize = 10;
         
-        const { data } = useGoldfishQueries(page, pageSize, selectedOutcome);
-        const allQueries = useMemo(() => (data as { queries: SampledQuery[] })?.queries || [], [data]);
+        const { queries: allQueries } = useGoldfishQueries(page, pageSize, selectedOutcome);
         
         // Apply client-side filtering based on tenant, user, and outcome
         const filteredQueries = useMemo(() => {

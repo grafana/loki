@@ -5,21 +5,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"math"
 	"net/url"
 	"time"
 
 	"github.com/go-kit/log/level"
 
 	"github.com/grafana/loki/v3/pkg/goldfish"
-)
-
-// Constants for outcome filtering
-const (
-	outcomeAll      = goldfish.OutcomeAll
-	outcomeMatch    = goldfish.OutcomeMatch
-	outcomeMismatch = goldfish.OutcomeMismatch
-	outcomeError    = goldfish.OutcomeError
 )
 
 // SampledQuery represents a sampled query from the database for API responses.
@@ -178,42 +169,13 @@ func (s *Service) GetSampledQueriesWithContext(ctx context.Context, page, pageSi
 	resp, err := s.goldfishStorage.GetSampledQueries(ctx, page, pageSize, filter)
 	queryDuration := time.Since(queryStart).Seconds()
 
-	// Record database query metrics with partition info
 	if s.goldfishMetrics != nil {
-		status := "success"
 		if err != nil {
-			status = "error"
 			s.goldfishMetrics.IncrementErrors("db_query")
 		}
 
-		// Calculate which partitions were likely accessed
-		// With 6-hour partitions, we can track this more precisely
-		partitionRange := "last_24h"
-		if filter.Outcome != "" && filter.Outcome != goldfish.OutcomeAll {
-			partitionRange = "last_48h"
-		}
-		if filter.Tenant != "" || filter.User != "" {
-			partitionRange = "last_72h"
-		}
-
-		s.goldfishMetrics.RecordQueryDuration("get_sampled_queries", partitionRange, status, queryDuration)
-		s.goldfishMetrics.IncrementPartitionAccess(partitionRange, "get_sampled_queries")
-
 		if resp != nil {
 			s.goldfishMetrics.RecordQueryRows("get_sampled_queries", float64(len(resp.Queries)))
-
-			// Track data recency to validate partition strategy
-			if len(resp.Queries) > 0 {
-				oldestQuery := resp.Queries[len(resp.Queries)-1]
-				hoursOld := time.Since(oldestQuery.SampledAt).Hours()
-				partitionsAccessed := int(math.Ceil(hoursOld / 6))
-				level.Debug(s.logger).Log(
-					"msg", "query data recency",
-					"oldest_hours", hoursOld,
-					"partitions_accessed", partitionsAccessed,
-					"trace_id", traceID,
-				)
-			}
 		}
 	}
 

@@ -204,36 +204,22 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 	// Build WHERE clause for tenant/user/engine/time filters
 	whereClause, whereArgs := buildWhereClause(filter)
 
-	// Get paginated results - optimized query with proper index hints
-	// Use filter_composite index when filters are present, otherwise use sampled_at_desc
-	indexHint := "idx_sampled_queries_sampled_at_desc"
-	if filter.Tenant != "" || filter.User != "" {
-		indexHint = "idx_sampled_queries_filter_composite"
-	}
-
 	query := `
 		SELECT
-			sq.correlation_id, sq.tenant_id, sq.user, sq.query, sq.query_type, sq.start_time, sq.end_time, sq.step_duration,
-			sq.cell_a_exec_time_ms, sq.cell_b_exec_time_ms, sq.cell_a_queue_time_ms, sq.cell_b_queue_time_ms,
-			sq.cell_a_bytes_processed, sq.cell_b_bytes_processed, sq.cell_a_lines_processed, sq.cell_b_lines_processed,
-			sq.cell_a_bytes_per_second, sq.cell_b_bytes_per_second, sq.cell_a_lines_per_second, sq.cell_b_lines_per_second,
-			sq.cell_a_entries_returned, sq.cell_b_entries_returned, sq.cell_a_splits, sq.cell_b_splits,
-			sq.cell_a_shards, sq.cell_b_shards, sq.cell_a_response_hash, sq.cell_b_response_hash,
-			sq.cell_a_response_size, sq.cell_b_response_size, sq.cell_a_status_code, sq.cell_b_status_code,
-			sq.cell_a_trace_id, sq.cell_b_trace_id,
-			sq.cell_a_span_id, sq.cell_b_span_id,
-			sq.sampled_at, sq.created_at,
-			CASE
-				WHEN co.comparison_status IS NOT NULL THEN co.comparison_status
-				WHEN (sq.cell_a_status_code NOT BETWEEN 200 AND 299 OR sq.cell_b_status_code NOT BETWEEN 200 AND 299) THEN 'error'
-				WHEN sq.cell_a_response_hash = sq.cell_b_response_hash THEN 'match'
-				ELSE 'mismatch'
-			END as comparison_status
-		FROM sampled_queries sq USE INDEX (` + indexHint + `)
-		LEFT JOIN comparison_outcomes co USE INDEX (idx_comparison_outcomes_correlation_status)
-			ON sq.correlation_id = co.correlation_id
+			correlation_id, tenant_id, user, query, query_type, start_time, end_time, step_duration,
+			cell_a_exec_time_ms, cell_b_exec_time_ms, cell_a_queue_time_ms, cell_b_queue_time_ms,
+			cell_a_bytes_processed, cell_b_bytes_processed, cell_a_lines_processed, cell_b_lines_processed,
+			cell_a_bytes_per_second, cell_b_bytes_per_second, cell_a_lines_per_second, cell_b_lines_per_second,
+			cell_a_entries_returned, cell_b_entries_returned, cell_a_splits, cell_b_splits,
+			cell_a_shards, cell_b_shards, cell_a_response_hash, cell_b_response_hash,
+			cell_a_response_size, cell_b_response_size, cell_a_status_code, cell_b_status_code,
+			cell_a_trace_id, cell_b_trace_id,
+			cell_a_span_id, cell_b_span_id,
+			cell_a_used_new_engine, cell_b_used_new_engine,
+			sampled_at, created_at
+		FROM sampled_queries
 		` + whereClause + `
-		ORDER BY sq.sampled_at DESC 
+		ORDER BY sampled_at DESC 
 		LIMIT ? OFFSET ?
 	`
 
@@ -255,7 +241,6 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 	for rows.Next() {
 		var q QuerySample
 		var stepDurationMs int64
-		var comparisonStatus string
 		var createdAt time.Time
 		// Use sql.NullString for nullable span ID columns
 		var cellASpanID, cellBSpanID sql.NullString
@@ -270,8 +255,8 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 			&q.CellAResponseSize, &q.CellBResponseSize, &q.CellAStatusCode, &q.CellBStatusCode,
 			&q.CellATraceID, &q.CellBTraceID,
 			&cellASpanID, &cellBSpanID,
+			&q.CellAUsedNewEngine, &q.CellBUsedNewEngine,
 			&q.SampledAt, &createdAt,
-			&comparisonStatus,
 		)
 		if err != nil {
 			return nil, err
@@ -323,40 +308,24 @@ func buildWhereClause(filter QueryFilter) (string, []any) {
 
 	// Add time range filters
 	if !filter.From.IsZero() {
-		conditions = append(conditions, "sq.sampled_at >= ?")
+		conditions = append(conditions, "sampled_at >= ?")
 		args = append(args, filter.From)
 	}
 
 	if !filter.To.IsZero() {
-		conditions = append(conditions, "sq.sampled_at <= ?")
+		conditions = append(conditions, "sampled_at <= ?")
 		args = append(args, filter.To)
-	}
-
-	// Add outcome filter using WHERE clause instead of HAVING
-	// This improves performance by filtering rows before aggregation
-	switch filter.Outcome {
-	case OutcomeMatch:
-		// Both cells returned success (2xx) and have matching response hashes
-		conditions = append(conditions, "(sq.cell_a_status_code >= 200 AND sq.cell_a_status_code < 300 AND sq.cell_b_status_code >= 200 AND sq.cell_b_status_code < 300 AND sq.cell_a_response_hash = sq.cell_b_response_hash)")
-	case OutcomeMismatch:
-		// Both cells returned success (2xx) but have different response hashes
-		conditions = append(conditions, "(sq.cell_a_status_code >= 200 AND sq.cell_a_status_code < 300 AND sq.cell_b_status_code >= 200 AND sq.cell_b_status_code < 300 AND sq.cell_a_response_hash != sq.cell_b_response_hash)")
-	case OutcomeError:
-		// At least one cell returned an error (non-2xx)
-		conditions = append(conditions, "(sq.cell_a_status_code < 200 OR sq.cell_a_status_code >= 300 OR sq.cell_b_status_code < 200 OR sq.cell_b_status_code >= 300)")
-	case OutcomeAll:
-		// No filtering - include all results
 	}
 
 	// Add tenant filter
 	if filter.Tenant != "" {
-		conditions = append(conditions, "sq.tenant_id = ?")
+		conditions = append(conditions, "tenant_id = ?")
 		args = append(args, filter.Tenant)
 	}
 
 	// Add user filter
 	if filter.User != "" {
-		conditions = append(conditions, "sq.user = ?")
+		conditions = append(conditions, "user = ?")
 		args = append(args, filter.User)
 	}
 
@@ -364,53 +333,16 @@ func buildWhereClause(filter QueryFilter) (string, []any) {
 	if filter.UsedNewEngine != nil {
 		if *filter.UsedNewEngine {
 			// Either cell used new engine
-			conditions = append(conditions, "(sq.cell_a_used_new_engine = 1 OR sq.cell_b_used_new_engine = 1)")
+			conditions = append(conditions, "(cell_a_used_new_engine = 1 OR cell_b_used_new_engine = 1)")
 		} else {
 			// Neither cell used new engine
-			conditions = append(conditions, "sq.cell_a_used_new_engine = 0 AND sq.cell_b_used_new_engine = 0")
+			conditions = append(conditions, "cell_a_used_new_engine = 0 AND cell_b_used_new_engine = 0")
 		}
 	}
 
 	// Combine conditions
 	if len(conditions) == 0 {
 		return "", nil
-	}
-
-	whereClause := "WHERE " + strings.Join(conditions, " AND ")
-	return whereClause, args
-}
-
-// buildWhereClauseWithPartitionPruning adds partition pruning to the WHERE clause
-func buildWhereClauseWithPartitionPruning(filter QueryFilter, partitionHint time.Time) (string, []any) {
-	var conditions []string
-	var args []any
-
-	// Add partition pruning condition first for optimal query planning
-	// This ensures MySQL prunes partitions before evaluating other conditions
-	conditions = append(conditions, "sq.sampled_at >= ?")
-	args = append(args, partitionHint)
-
-	// Add tenant filter
-	if filter.Tenant != "" {
-		conditions = append(conditions, "sq.tenant_id = ?")
-		args = append(args, filter.Tenant)
-	}
-
-	// Add user filter
-	if filter.User != "" {
-		conditions = append(conditions, "sq.user = ?")
-		args = append(args, filter.User)
-	}
-
-	// Add new engine filter
-	if filter.UsedNewEngine != nil {
-		if *filter.UsedNewEngine {
-			// Either cell used new engine
-			conditions = append(conditions, "(sq.cell_a_used_new_engine = 1 OR sq.cell_b_used_new_engine = 1)")
-		} else {
-			// Neither cell used new engine
-			conditions = append(conditions, "sq.cell_a_used_new_engine = 0 AND sq.cell_b_used_new_engine = 0")
-		}
 	}
 
 	whereClause := "WHERE " + strings.Join(conditions, " AND ")

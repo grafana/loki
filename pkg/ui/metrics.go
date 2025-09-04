@@ -11,7 +11,6 @@ type GoldfishMetrics struct {
 	requests          *prometheus.CounterVec
 	queryRows         *prometheus.HistogramVec
 	errors            *prometheus.CounterVec
-	partitionAccess   *prometheus.CounterVec
 	dbConnections     *prometheus.GaugeVec
 	dbConnectionWait  *prometheus.HistogramVec
 	dbConnectionError *prometheus.CounterVec
@@ -25,10 +24,10 @@ func NewGoldfishMetrics(reg prometheus.Registerer) *GoldfishMetrics {
 				Namespace: "loki",
 				Subsystem: "ui_goldfish",
 				Name:      "query_duration_seconds",
-				Help:      "Database query latency by partition",
+				Help:      "Database query latency",
 				Buckets:   prometheus.ExponentialBuckets(0.001, 2, 15), // 1ms to ~32s
 			},
-			[]string{"query_type", "partition", "status"},
+			[]string{"query_type", "status"},
 		),
 		requests: promauto.With(reg).NewCounterVec(
 			prometheus.CounterOpts{
@@ -37,7 +36,7 @@ func NewGoldfishMetrics(reg prometheus.Registerer) *GoldfishMetrics {
 				Name:      "requests_total",
 				Help:      "Total number of goldfish API requests",
 			},
-			[]string{"status", "outcome_filter"},
+			[]string{"status"},
 		),
 		queryRows: promauto.With(reg).NewHistogramVec(
 			prometheus.HistogramOpts{
@@ -57,15 +56,6 @@ func NewGoldfishMetrics(reg prometheus.Registerer) *GoldfishMetrics {
 				Help:      "Total number of errors by type",
 			},
 			[]string{"error_type"},
-		),
-		partitionAccess: promauto.With(reg).NewCounterVec(
-			prometheus.CounterOpts{
-				Namespace: "loki",
-				Subsystem: "ui_goldfish",
-				Name:      "partition_access_total",
-				Help:      "Track partition usage patterns",
-			},
-			[]string{"partition_name", "query_type"},
 		),
 		dbConnections: promauto.With(reg).NewGaugeVec(
 			prometheus.GaugeOpts{
@@ -99,13 +89,13 @@ func NewGoldfishMetrics(reg prometheus.Registerer) *GoldfishMetrics {
 }
 
 // RecordQueryDuration records the duration of a database query
-func (m *GoldfishMetrics) RecordQueryDuration(queryType, partition, status string, duration float64) {
-	m.queryDuration.WithLabelValues(queryType, partition, status).Observe(duration)
+func (m *GoldfishMetrics) RecordQueryDuration(queryType, status string, duration float64) {
+	m.queryDuration.WithLabelValues(queryType, status).Observe(duration)
 }
 
 // IncrementRequests increments the request counter
-func (m *GoldfishMetrics) IncrementRequests(status, outcomeFilter string) {
-	m.requests.WithLabelValues(status, outcomeFilter).Inc()
+func (m *GoldfishMetrics) IncrementRequests(status string) {
+	m.requests.WithLabelValues(status).Inc()
 }
 
 // RecordQueryRows records the number of rows returned
@@ -116,11 +106,6 @@ func (m *GoldfishMetrics) RecordQueryRows(queryType string, rows float64) {
 // IncrementErrors increments the error counter
 func (m *GoldfishMetrics) IncrementErrors(errorType string) {
 	m.errors.WithLabelValues(errorType).Inc()
-}
-
-// IncrementPartitionAccess tracks partition access
-func (m *GoldfishMetrics) IncrementPartitionAccess(partitionName, queryType string) {
-	m.partitionAccess.WithLabelValues(partitionName, queryType).Inc()
 }
 
 // SetDBConnections sets the current connection count

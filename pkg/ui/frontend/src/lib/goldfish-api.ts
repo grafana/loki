@@ -1,4 +1,4 @@
-import { GoldfishAPIResponse, OutcomeFilter, OUTCOME_ALL } from "@/types/goldfish";
+import { GoldfishAPIResponse } from "@/types/goldfish";
 import { absolutePath } from "../util";
 import { createTraceContext, createTraceHeaders, extractTraceId } from "./tracing";
 
@@ -11,7 +11,6 @@ export interface FetchResult<T> {
 export async function fetchSampledQueries(
   page: number = 1,
   pageSize: number = 20,
-  outcome?: OutcomeFilter,
   tenant?: string,
   user?: string,
   newEngine?: boolean,
@@ -22,10 +21,6 @@ export async function fetchSampledQueries(
     page: page.toString(),
     pageSize: pageSize.toString(),
   });
-  
-  if (outcome && outcome !== OUTCOME_ALL) {
-    params.append("outcome", outcome);
-  }
   
   if (tenant && tenant !== "all") {
     params.append("tenant", tenant);

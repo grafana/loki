@@ -528,7 +528,7 @@ func TestGoldfishConfig_LogsExploreSettings(t *testing.T) {
 		})
 
 		// Get sampled queries
-		response, err := service.GetSampledQueries(1, 10, goldfish.QueryFilter{Outcome: goldfish.OutcomeAll})
+		response, err := service.GetSampledQueries(1, 10, goldfish.QueryFilter{})
 
 		// Assert no error and configuration is accepted
 		require.NoError(t, err)
@@ -723,7 +723,7 @@ func TestGoldfishQueriesHandler_PartialExploreConfig(t *testing.T) {
 			// Missing TracesDatasourceUID
 		})
 
-		response, err := service.GetSampledQueries(1, 10, goldfish.QueryFilter{Outcome: goldfish.OutcomeAll})
+		response, err := service.GetSampledQueries(1, 10, goldfish.QueryFilter{})
 		require.NoError(t, err)
 
 		// Should not include trace links with partial config
@@ -741,7 +741,7 @@ func TestGoldfishQueriesHandler_PartialExploreConfig(t *testing.T) {
 			// Missing GrafanaURL
 		})
 
-		response, err := service.GetSampledQueries(1, 10, goldfish.QueryFilter{Outcome: goldfish.OutcomeAll})
+		response, err := service.GetSampledQueries(1, 10, goldfish.QueryFilter{})
 		require.NoError(t, err)
 
 		// Should not include trace links with partial config

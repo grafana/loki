@@ -282,18 +282,7 @@ func (s *Service) goldfishQueriesHandler() http.Handler {
 		}
 
 		// Build filter from query parameters
-		filter := goldfish.QueryFilter{
-			Outcome: goldfish.OutcomeAll, // default value
-		}
-
-		if outcomeStr := r.URL.Query().Get("outcome"); outcomeStr != "" {
-			switch strings.ToLower(outcomeStr) {
-			case goldfish.OutcomeAll, goldfish.OutcomeMatch, goldfish.OutcomeMismatch, goldfish.OutcomeError:
-				filter.Outcome = outcomeStr
-			default:
-				filter.Outcome = goldfish.OutcomeAll
-			}
-		}
+		filter := goldfish.QueryFilter{}
 
 		// Parse tenant filter
 		if tenant := r.URL.Query().Get("tenant"); tenant != "" {
@@ -346,15 +335,15 @@ func (s *Service) goldfishQueriesHandler() http.Handler {
 		duration := time.Since(startTime).Seconds()
 		if s.goldfishMetrics != nil {
 			if err != nil {
-				s.goldfishMetrics.IncrementRequests("error", filter.Outcome)
+				s.goldfishMetrics.IncrementRequests("error")
 				s.goldfishMetrics.IncrementErrors("query_failed")
 			} else {
-				s.goldfishMetrics.IncrementRequests("success", filter.Outcome)
+				s.goldfishMetrics.IncrementRequests("success")
 				if response != nil {
 					s.goldfishMetrics.RecordQueryRows("sampled_queries", float64(len(response.Queries)))
 				}
 			}
-			s.goldfishMetrics.RecordQueryDuration("api_request", "unknown", "complete", duration)
+			s.goldfishMetrics.RecordQueryDuration("api_request", "complete", duration)
 		}
 
 		if err != nil {

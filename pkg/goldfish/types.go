@@ -80,17 +80,8 @@ type PerformanceMetrics struct {
 	BytesRatio      float64
 }
 
-// Constants for outcome filtering
-const (
-	OutcomeAll      = "all"
-	OutcomeMatch    = "match"
-	OutcomeMismatch = "mismatch"
-	OutcomeError    = "error"
-)
-
 // QueryFilter contains filters for querying sampled queries
 type QueryFilter struct {
-	Outcome       string
 	Tenant        string
 	User          string
 	UsedNewEngine *bool // pointer to handle true/false/nil states

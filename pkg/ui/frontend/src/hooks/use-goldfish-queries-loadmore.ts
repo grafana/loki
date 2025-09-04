@@ -24,9 +24,9 @@ export function useGoldfishQueriesLoadMore(
   
   // Query for current page
   const query = useQuery({
-    queryKey: ['goldfish-queries-page', currentPage, pageSize, selectedOutcome, tenant, user, newEngine, from?.toISOString() ?? null, to?.toISOString() ?? null],
+    queryKey: ['goldfish-queries-page', currentPage, pageSize, tenant, user, newEngine, from?.toISOString() ?? null, to?.toISOString() ?? null],
     queryFn: async () => {
-      const result = await fetchSampledQueries(currentPage, pageSize, selectedOutcome, tenant, user, newEngine, from ?? undefined, to ?? undefined);
+      const result = await fetchSampledQueries(currentPage, pageSize, tenant, user, newEngine, from ?? undefined, to ?? undefined);
       setCurrentTraceId(result.traceId);
       
       if (result.error) {
@@ -38,19 +38,25 @@ export function useGoldfishQueriesLoadMore(
     ...QUERY_OPTIONS,
   });
 
-  // Update allQueries when new data arrives
+  // Update allQueries when new data arrives and apply frontend filtering
   useEffect(() => {
     if (query.data) {
+      // Filter queries based on outcome in the frontend
+      let filteredQueries = query.data.queries;
+      if (selectedOutcome && selectedOutcome !== 'all') {
+        filteredQueries = query.data.queries.filter(q => q.comparisonStatus === selectedOutcome);
+      }
+      
       if (currentPage === 1) {
         // Reset for first page or when filters change
-        setAllQueries(query.data.queries);
+        setAllQueries(filteredQueries);
       } else {
         // Append for subsequent pages
-        setAllQueries(prev => [...prev, ...(query.data?.queries || [])]);
+        setAllQueries(prev => [...prev, ...filteredQueries]);
       }
       setHasMore(query.data?.hasMore || false);
     }
-  }, [query.data, currentPage]);
+  }, [query.data, currentPage, selectedOutcome]);
 
   // Reset when filters change
   useEffect(() => {
