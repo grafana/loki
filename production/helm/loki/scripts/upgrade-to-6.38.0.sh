@@ -62,6 +62,11 @@ if [ -z "$RELEASE_NAME" ]; then
     error "Release name is required. Use -r to specify it."
 fi
 
+# Validate namespace exists if specified
+if [ -n "$NAMESPACE" ] && ! kubectl get namespace "$NAMESPACE" &> /dev/null; then
+    error "Namespace '$NAMESPACE' does not exist"
+fi
+
 # Build namespace flag for kubectl
 NAMESPACE_FLAG=""
 if [ -n "$NAMESPACE" ]; then
@@ -109,12 +114,13 @@ STATEFULSETS=(
     "${RELEASE_NAME}-bloom-gateway"
 )
 
-# Detect existing StatefulSets
+# Detect existing StatefulSets using label selector
 log "Detecting existing StatefulSets..."
 EXISTING_STATEFULSETS=()
+RELEASE_LABEL="app.kubernetes.io/instance=$RELEASE_NAME"
 
 for sts in "${STATEFULSETS[@]}"; do
-    if kubectl get statefulset "$sts" $NAMESPACE_FLAG &> /dev/null; then
+    if kubectl get statefulset "$sts" $NAMESPACE_FLAG -l "$RELEASE_LABEL" &> /dev/null; then
         EXISTING_STATEFULSETS+=("$sts")
         log "Found StatefulSet: $sts"
     fi
@@ -161,7 +167,7 @@ log "Performing Helm upgrade to version $TARGET_VERSION..."
 echo ""
 
 # Build helm upgrade command
-HELM_CMD="helm upgrade $RELEASE_NAME grafana/loki --version $TARGET_VERSION"
+HELM_CMD="helm upgrade $RELEASE_NAME grafana/loki --version $TARGET_VERSION --reuse-values"
 if [ -n "$NAMESPACE" ]; then
     HELM_CMD="$HELM_CMD --namespace $NAMESPACE"
 fi
