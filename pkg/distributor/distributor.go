@@ -564,6 +564,11 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 	var ingestionBlockedError error
 
+	// Get OTLP configuration for this tenant to determine conversion strategy
+	otlpConfig := d.validator.Limits.OTLPConfig(tenantID)
+	isUTF8Allowed := otlpConfig.ConversionStrategy == push.NoConversion
+	labelNamer := otlptranslator.LabelNamer{UTF8Allowed: isUTF8Allowed}
+
 	err = func() error {
 		sp := trace.SpanFromContext(ctx)
 		sp.AddEvent("start to validate request")
@@ -580,7 +585,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 			var lbs labels.Labels
 			var retentionHours, policy string
-			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(validationContext, stream.Labels, stream, streamResolver, format)
+			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(validationContext, stream.Labels, stream, streamResolver, format, isUTF8Allowed)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
@@ -620,12 +625,6 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			n := 0
 			pushSize := 0
 			prevTs := stream.Entries[0].Timestamp
-
-			// Get OTLP configuration for this tenant to determine conversion strategy
-			otlpConfig := d.validator.Limits.OTLPConfig(tenantID)
-
-			isUTF8Allowed := otlpConfig.ConversionStrategy == push.NoConversion
-			labelNamer := otlptranslator.LabelNamer{UTF8Allowed: isUTF8Allowed}
 
 			for _, entry := range stream.Entries {
 				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry, retentionHours, policy, format); err != nil {
@@ -729,7 +728,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	}
 
 	if !d.ingestionRateLimiter.AllowN(now, tenantID, validationContext.validationMetrics.aggregatedPushStats.lineSize) {
-		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited, streamResolver, format)
+		d.trackDiscardedData(ctx, req, validationContext, tenantID, validationContext.validationMetrics, validation.RateLimited, streamResolver, format, isUTF8Allowed)
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validationContext.validationMetrics.aggregatedPushStats.lineCount, validationContext.validationMetrics.aggregatedPushStats.lineSize)
 		d.writeFailuresManager.Log(tenantID, err)
@@ -889,6 +888,7 @@ func (d *Distributor) trackDiscardedData(
 	reason string,
 	streamResolver push.StreamResolver,
 	format string,
+	isUTF8Allowed bool,
 ) {
 	for policy, retentionToStats := range validationMetrics.policyPushStats {
 		for retentionHours, stats := range retentionToStats {
@@ -899,7 +899,7 @@ func (d *Distributor) trackDiscardedData(
 
 	if d.usageTracker != nil {
 		for _, stream := range req.Streams {
-			lbs, _, _, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream, streamResolver, format)
+			lbs, _, _, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream, streamResolver, format, isUTF8Allowed)
 			if err != nil {
 				continue
 			}
@@ -1293,14 +1293,21 @@ type labelData struct {
 }
 
 // parseStreamLabels parses stream labels using a request-scoped policy resolver
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream, streamResolver push.StreamResolver, format string) (labels.Labels, string, uint64, string, string, error) {
+func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream, streamResolver push.StreamResolver, format string, isUTF8Allowed bool) (labels.Labels, string, uint64, string, string, error) {
 	if val, ok := d.labelCache.Get(key); ok {
 		retentionHours := streamResolver.RetentionHoursFor(val.ls)
 		policy := streamResolver.PolicyFor(val.ls)
 		return val.ls, val.ls.String(), val.hash, retentionHours, policy, nil
 	}
+	var ls labels.Labels
+	var err error
 
-	ls, err := syntax.ParseLabelsWithDots(key)
+	if isUTF8Allowed {
+		ls, err = syntax.ParseLabelsWithDots(key)
+	} else {
+		ls, err = syntax.ParseLabels(key)
+	}
+
 	if err != nil {
 		retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, labels.EmptyLabels())
 		// TODO: check for global policy.
