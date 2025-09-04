@@ -106,7 +106,7 @@ func (s *symbolizer) Lookup(syms symbols, buf *labels.ScratchBuilder) (labels.La
 	}
 
 	// todo(shantanu): make sure we pass the correct utf-8 support using limits
-	labelNamer := otlptranslator.LabelNamer{UTF8Allowed: true}
+	labelNamer := otlptranslator.LabelNamer{UTF8Allowed: false}
 	for _, symbol := range syms {
 		// First check if we have a normalized name for this symbol
 		s.mtx.RLock()

@@ -1292,7 +1292,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream, streamResolver, constants.Loki)
+		_, _, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream, streamResolver, constants.Loki, false)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -1317,6 +1317,7 @@ func TestParseStreamLabels(t *testing.T) {
 				limits := &validation.Limits{}
 				flagext.DefaultValues(limits)
 				limits.MaxLabelNamesPerSeries = 1
+				limits.OTLPConfig.ConversionStrategy = loghttp_push.DotsToUnderscores
 				return limits
 			},
 			expectedLabels: labels.FromStrings(
@@ -1329,6 +1330,7 @@ func TestParseStreamLabels(t *testing.T) {
 			origLabels: `{user.id="123", order.ids="456", trace.id="789", span.id="abc"}`,
 			generateLimits: func() *validation.Limits {
 				limits := &validation.Limits{}
+				limits.OTLPConfig.ConversionStrategy = loghttp_push.NoConversion
 				flagext.DefaultValues(limits)
 				return limits
 			},
@@ -1346,10 +1348,11 @@ func TestParseStreamLabels(t *testing.T) {
 
 		vCtx := d.validator.getValidationContextForTime(testTime, "123")
 		streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
+		allowUTF8 := limits.OTLPConfig.ConversionStrategy == loghttp_push.NoConversion
 		t.Run(tc.name, func(t *testing.T) {
 			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(vCtx, tc.origLabels, logproto.Stream{
 				Labels: tc.origLabels,
-			}, streamResolver, constants.Loki)
+			}, streamResolver, constants.Loki, allowUTF8)
 			if tc.expectedErr != nil {
 				require.Equal(t, tc.expectedErr, err)
 				return

@@ -773,7 +773,7 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, res, err := otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig(defaultGlobalOTLPConfig), false, nil)
+			_, res, err := otlpLogToPushEntry(tc.buildLogRecord(), tc.otlpConfig, false, nil)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedResp, res)
 		})
