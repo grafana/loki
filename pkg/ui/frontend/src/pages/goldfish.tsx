@@ -37,7 +37,7 @@ export default function GoldfishPageLoadMore() {
     isLoading, 
     isLoadingMore,
     error, 
-    hasMore, 
+    hasMore,
     loadMore, 
     refresh, 
     traceId 
@@ -276,7 +276,9 @@ export default function GoldfishPageLoadMore() {
                   {selectedTenant && ` for tenant ${selectedTenant}`}
                   {selectedUser && ` for user ${selectedUser}`}</p>
                   {hasMore && (
-                    <p className="mt-2">Try loading more results to find matching queries</p>
+                    <p className="mt-2">
+                      Try loading more results to find matching queries
+                    </p>
                   )}
                 </div>
                 
@@ -352,7 +354,9 @@ export default function GoldfishPageLoadMore() {
                   <div className="text-center py-6 text-muted-foreground text-sm">
                     <div className="flex items-center justify-center gap-2">
                       <div className="h-px bg-border flex-1 max-w-xs" />
-                      <span>End of results ({queries.length} queries)</span>
+                      <span>
+                        No more results ({queries.length} total queries)
+                      </span>
                       <div className="h-px bg-border flex-1 max-w-xs" />
                     </div>
                   </div>
