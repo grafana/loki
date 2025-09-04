@@ -3,19 +3,13 @@ import { useSearchParams } from "react-router-dom";
 import { useGoldfishQueriesLoadMore } from "@/hooks/use-goldfish-queries-loadmore";
 import { QueryDiffView } from "@/components/goldfish/query-diff-view";
 import { TimeRangeSelector } from "@/components/goldfish/time-range-selector";
+import { UserFilterCombobox } from "@/components/goldfish/user-filter-combobox";
+import { TenantFilterSelect } from "@/components/goldfish/tenant-filter-select";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { RefreshCw, AlertCircle, CheckCircle2, XCircle, Rocket, ChevronDown } from "lucide-react";
 import { OutcomeFilter, OUTCOME_ALL, OUTCOME_MATCH, OUTCOME_MISMATCH, OUTCOME_ERROR } from "@/types/goldfish";
 import { PageContainer } from "@/layout/page-container";
@@ -57,17 +51,60 @@ export default function GoldfishPageLoadMore() {
     timeRange.to
   );
   
-  // We need a separate query to get all unique tenants and users
-  // For now, we'll use the current data, but ideally this would be a separate endpoint
+  // Store all seen tenants and users to maintain filters even when results are empty
+  const [allSeenTenants, setAllSeenTenants] = useState<Set<string>>(new Set());
+  const [allSeenUsers, setAllSeenUsers] = useState<Set<string>>(new Set());
+  const [hasInitialData, setHasInitialData] = useState(false);
+  
+  // Fetch initial unfiltered data to populate filter options
+  // This runs once on mount to get available tenants and users
+  useEffect(() => {
+    if (!hasInitialData && !isLoading) {
+      // Use the queries from the initial load to populate filters
+      if (queries.length > 0) {
+        const tenants = new Set<string>();
+        const users = new Set<string>();
+        queries.forEach(q => {
+          tenants.add(q.tenantId);
+          if (q.user && q.user !== "unknown") {
+            users.add(q.user);
+          }
+        });
+        setAllSeenTenants(tenants);
+        setAllSeenUsers(users);
+        setHasInitialData(true);
+      }
+    }
+  }, [queries, isLoading, hasInitialData]);
+  
+  // Continue to update seen tenants and users when we get new data
+  useEffect(() => {
+    if (queries.length > 0 && hasInitialData) {
+      setAllSeenTenants(prev => {
+        const newSet = new Set(prev);
+        queries.forEach(q => newSet.add(q.tenantId));
+        return newSet;
+      });
+      setAllSeenUsers(prev => {
+        const newSet = new Set(prev);
+        queries.forEach(q => {
+          if (q.user && q.user !== "unknown") {
+            newSet.add(q.user);
+          }
+        });
+        return newSet;
+      });
+    }
+  }, [queries, hasInitialData]);
+  
+  // Use all seen values for the dropdowns so they persist even when filtered
   const uniqueTenants = useMemo(() => {
-    const tenants = new Set(queries.map((q) => q.tenantId));
-    return Array.from(tenants).sort();
-  }, [queries]);
+    return Array.from(allSeenTenants).sort();
+  }, [allSeenTenants]);
   
   const uniqueUsers = useMemo(() => {
-    const users = new Set(queries.map((q) => q.user).filter((u) => u && u !== "unknown"));
-    return Array.from(users).sort();
-  }, [queries]);
+    return Array.from(allSeenUsers).sort();
+  }, [allSeenUsers]);
 
   // Update URL params when filter changes
   useEffect(() => {
@@ -159,44 +196,21 @@ export default function GoldfishPageLoadMore() {
             
             {/* Other Filters - Right Aligned */}
             <div className="flex items-center gap-3">
-              {/* Tenant Filter */}
+              {/* Tenant Filter - With clear button */}
               {uniqueTenants.length > 0 && (
-                <Select
-                  value={selectedTenant || "all"}
-                  onValueChange={(value) => setSelectedTenant(value === "all" ? undefined : value)}
-                >
-                  <SelectTrigger className="w-[140px] h-8">
-                    <SelectValue placeholder="Tenant" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Tenants</SelectItem>
-                    {uniqueTenants.map((tenant) => (
-                      <SelectItem key={tenant} value={tenant}>
-                        {tenant}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <TenantFilterSelect
+                  value={selectedTenant}
+                  onChange={setSelectedTenant}
+                  tenants={uniqueTenants}
+                />
               )}
               
-              {/* User Filter - Always visible with manual entry */}
-              <div className="relative">
-                <Input
-                  type="text"
-                  placeholder="Filter by user..."
-                  value={selectedUser || ""}
-                  onChange={(e) => setSelectedUser(e.target.value || undefined)}
-                  className="w-[180px] h-8"
-                  list="user-suggestions"
-                />
-                {uniqueUsers.length > 0 && (
-                  <datalist id="user-suggestions">
-                    {uniqueUsers.map((user) => (
-                      <option key={user} value={user} />
-                    ))}
-                  </datalist>
-                )}
-              </div>
+              {/* User Filter - Combobox with dropdown */}
+              <UserFilterCombobox
+                value={selectedUser}
+                onChange={setSelectedUser}
+                suggestions={uniqueUsers}
+              />
               
               {/* New Engine Filter */}
               <div className="flex items-center space-x-2">
@@ -256,11 +270,41 @@ export default function GoldfishPageLoadMore() {
                 ))}
               </div>
             ) : queries.length === 0 ? (
-              <div className="text-center py-12 text-muted-foreground">
-                No queries found
-                {selectedTenant && ` for tenant ${selectedTenant}`}
-                {selectedUser && ` for user ${selectedUser}`}
-              </div>
+              <>
+                <div className="text-center py-12 text-muted-foreground">
+                  <p>No queries found in current results
+                  {selectedTenant && ` for tenant ${selectedTenant}`}
+                  {selectedUser && ` for user ${selectedUser}`}</p>
+                  {hasMore && (
+                    <p className="mt-2">Try loading more results to find matching queries</p>
+                  )}
+                </div>
+                
+                {/* Show Load More button even when no queries match current filter */}
+                {hasMore && (
+                  <div className="flex justify-center pt-6">
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      onClick={loadMore}
+                      disabled={isLoadingMore}
+                      className="min-w-[200px]"
+                    >
+                      {isLoadingMore ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="h-4 w-4 mr-2" />
+                          Load More Results
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </>
             ) : (
               <>
                 <div className="space-y-4">
