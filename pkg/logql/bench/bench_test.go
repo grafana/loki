@@ -386,3 +386,20 @@ func TestPrintBenchmarkQueries(t *testing.T) {
 	t.Logf("- Metric queries: %d (forward only)", metricQueries)
 	t.Logf("- Total benchmark cases: %d", len(cases))
 }
+
+func TestStoresGenerateData(t *testing.T) {
+	dir := t.TempDir()
+
+	chunkStore, err := NewChunkStore(dir, testTenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataObjStore, err := NewDataObjStore(dir, testTenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	builder := NewBuilder(dir, DefaultOpt(), chunkStore, dataObjStore)
+	err = builder.Generate(context.Background(), 1024)
+	require.NoError(t, err)
+}
