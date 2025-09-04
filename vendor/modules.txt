@@ -1777,7 +1777,7 @@ github.com/puzpuzpuz/xsync/v3
 # github.com/rcrowley/go-metrics v0.0.0-20250401214520-65e299d6c5c9
 ## explicit
 github.com/rcrowley/go-metrics
-# github.com/redis/go-redis/v9 v9.10.0
+# github.com/redis/go-redis/v9 v9.13.0
 ## explicit; go 1.18
 github.com/redis/go-redis/v9
 github.com/redis/go-redis/v9/auth

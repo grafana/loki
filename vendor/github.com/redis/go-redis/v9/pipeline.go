@@ -7,7 +7,7 @@ import (
 
 type pipelineExecer func(context.Context, []Cmder) error
 
-// Pipeliner is an mechanism to realise Redis Pipeline technique.
+// Pipeliner is a mechanism to realise Redis Pipeline technique.
 //
 // Pipelining is a technique to extremely speed up processing by packing
 // operations to batches, send them at once to Redis and read a replies in a
@@ -23,21 +23,24 @@ type pipelineExecer func(context.Context, []Cmder) error
 type Pipeliner interface {
 	StatefulCmdable
 
-	// Len is to obtain the number of commands in the pipeline that have not yet been executed.
+	// Len obtains the number of commands in the pipeline that have not yet been executed.
 	Len() int
 
 	// Do is an API for executing any command.
 	// If a certain Redis command is not yet supported, you can use Do to execute it.
 	Do(ctx context.Context, args ...interface{}) *Cmd
 
-	// Process is to put the commands to be executed into the pipeline buffer.
+	// Process puts the commands to be executed into the pipeline buffer.
 	Process(ctx context.Context, cmd Cmder) error
 
-	// Discard is to discard all commands in the cache that have not yet been executed.
+	// Discard discards all commands in the pipeline buffer that have not yet been executed.
 	Discard()
 
-	// Exec is to send all the commands buffered in the pipeline to the redis-server.
+	// Exec sends all the commands buffered in the pipeline to the redis server.
 	Exec(ctx context.Context) ([]Cmder, error)
+
+	// Cmds returns the list of queued commands.
+	Cmds() []Cmder
 }
 
 var _ Pipeliner = (*Pipeline)(nil)
@@ -118,4 +121,8 @@ func (c *Pipeline) TxPipelined(ctx context.Context, fn func(Pipeliner) error) ([
 
 func (c *Pipeline) TxPipeline() Pipeliner {
 	return c
+}
+
+func (c *Pipeline) Cmds() []Cmder {
+	return c.cmds
 }
