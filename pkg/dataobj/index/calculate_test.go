@@ -27,9 +27,11 @@ import (
 var testCalculatorConfig = indexobj.BuilderConfig{
 	TargetPageSize:          2048,
 	TargetObjectSize:        1 << 22, // 4 MiB
-	TargetSectionSize:       1,       // pointers sections ignore section size; there must be a single pointers sectiton per tenant to maintain state.
 	BufferSize:              2048 * 8,
 	SectionStripeMergeLimit: 2,
+
+	// This is set low because Pointers & Streams sections ignore section size. There must be a single pointers section per tenant to maintain state.
+	TargetSectionSize: 1,
 }
 
 // createTestLogObject creates a test data object with both streams and logs sections
@@ -39,7 +41,7 @@ func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
 	builder, err := logsobj.NewBuilder(logsobj.BuilderConfig{
 		TargetPageSize:          2048,
 		TargetObjectSize:        1 << 22,
-		TargetSectionSize:       1 << 22,
+		TargetSectionSize:       1 << 21,
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
 	}, nil)
@@ -112,9 +114,10 @@ func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
 
 func TestCalculator_Calculate(t *testing.T) {
 	logger := log.NewNopLogger()
+	tenants := 4
+	objects := 10
+
 	t.Run("successful calculation from readerAt", func(t *testing.T) {
-		tenants := 4
-		objects := 10
 		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil)
 		require.NoError(t, err)
 
@@ -149,8 +152,6 @@ func TestCalculator_Calculate(t *testing.T) {
 	})
 
 	t.Run("successful calculation from FS bucket", func(t *testing.T) {
-		tenants := 10
-		objects := 10
 		indexBuilder, err := indexobj.NewBuilder(testCalculatorConfig, nil)
 		require.NoError(t, err)
 
@@ -238,7 +239,7 @@ func requireValidPointers(t *testing.T, obj *dataobj.Object, tenants int) {
 		require.Greater(t, totalPointers, 0)
 	}
 
-	// Expect two pointers for object section, per tenant. This is because we write two streams to the log objects.
+	// Expect two pointers for each object section, per tenant. This is because we write two streams to the log objects for every tenant.
 	for _, count := range pointersByTenant {
 		require.Equal(t, 2, count)
 	}

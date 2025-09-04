@@ -48,7 +48,6 @@ func (c *Calculator) Flush() (*dataobj.Object, io.Closer, error) {
 // Calculate reads the log data from the input logs object and appends the resulting indexes to calculator's builder.
 // Calculate is not thread-safe.
 func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *dataobj.Object, objectPath string) error {
-	fmt.Println("Calculate", objectPath)
 	g, streamsCtx := errgroup.WithContext(ctx)
 	g.SetLimit(runtime.GOMAXPROCS(0))
 	streamIDLookupByTenant := sync.Map{}
