@@ -89,7 +89,7 @@ func createTestLogObject(t *testing.T) *dataobj.Object {
 	}
 
 	for _, stream := range testStreams {
-		err := builder.Append(stream)
+		err := builder.Append("tenant", stream)
 		require.NoError(t, err)
 	}
 

@@ -34,10 +34,12 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/tap"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 
 	"github.com/grafana/dskit/clusterutil"
+	"github.com/grafana/dskit/grpcutil"
 	"github.com/grafana/dskit/httpgrpc"
 	httpgrpc_server "github.com/grafana/dskit/httpgrpc/server"
 	"github.com/grafana/dskit/log"
@@ -117,6 +119,7 @@ type Config struct {
 	HTTPLogClosedConnectionsWithoutResponse bool `yaml:"http_log_closed_connections_without_response_enabled"`
 
 	GRPCOptions                   []grpc.ServerOption            `yaml:"-"`
+	GRPCTapHandles                []tap.ServerInHandle           `yaml:"-"`
 	GRPCMiddleware                []grpc.UnaryServerInterceptor  `yaml:"-"`
 	GRPCStreamMiddleware          []grpc.StreamServerInterceptor `yaml:"-"`
 	HTTPMiddleware                []middleware.Interface         `yaml:"-"`
@@ -486,11 +489,14 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		grpc.StatsHandler(otelgrpc.NewServerHandler()),
 	}
 
+	var tapHandles []tap.ServerInHandle
+	tapHandles = append(tapHandles, cfg.GRPCTapHandles...)
 	if grpcServerLimit != nil {
-		grpcOptions = append(grpcOptions,
-			grpc.StatsHandler(grpcServerLimit),
-			grpc.InTapHandle(grpcServerLimit.TapHandle),
-		)
+		grpcOptions = append(grpcOptions, grpc.StatsHandler(grpcServerLimit))
+		tapHandles = append(tapHandles, grpcServerLimit.TapHandle)
+	}
+	if len(tapHandles) > 0 {
+		grpcOptions = append(grpcOptions, grpc.InTapHandle(grpcutil.ComposeTapHandles(tapHandles)))
 	}
 
 	if cfg.GRPCServerStatsTrackingEnabled {
