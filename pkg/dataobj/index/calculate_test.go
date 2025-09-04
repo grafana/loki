@@ -148,7 +148,7 @@ func TestCalculator_Calculate(t *testing.T) {
 		count := obj.Sections().Count(pointers.CheckSection)
 		require.GreaterOrEqual(t, count, tenants)
 
-		requireValidPointers(t, obj, tenants)
+		requireValidPointers(t, obj)
 	})
 
 	t.Run("successful calculation from FS bucket", func(t *testing.T) {
@@ -194,11 +194,11 @@ func TestCalculator_Calculate(t *testing.T) {
 		count := obj.Sections().Count(pointers.CheckSection)
 		require.GreaterOrEqual(t, count, tenants)
 
-		requireValidPointers(t, obj, tenants)
+		requireValidPointers(t, obj)
 	})
 }
 
-func requireValidPointers(t *testing.T, obj *dataobj.Object, tenants int) {
+func requireValidPointers(t *testing.T, obj *dataobj.Object) {
 	totalPointers := 0
 	pointersByTenant := make(map[string]int)
 	for _, section := range obj.Sections().Filter(pointers.CheckSection) {
