@@ -622,10 +622,10 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			prevTs := stream.Entries[0].Timestamp
 
 			// Get OTLP configuration for this tenant to determine conversion strategy
-			// todo(shantanu): make sure we pass the correct value as per limits
-			//otlpConfig := d.tenantConfigs.OTLPConfig(tenantID)
-			//isUTF8Allowed := otlpConfig.ConversionStrategy == push.NoConversion
-			labelNamer := otlptranslator.LabelNamer{UTF8Allowed: true}
+			otlpConfig := d.validator.Limits.OTLPConfig(tenantID)
+
+			isUTF8Allowed := otlpConfig.ConversionStrategy == push.NoConversion
+			labelNamer := otlptranslator.LabelNamer{UTF8Allowed: isUTF8Allowed}
 
 			for _, entry := range stream.Entries {
 				if err := d.validator.ValidateEntry(ctx, validationContext, lbs, entry, retentionHours, policy, format); err != nil {
