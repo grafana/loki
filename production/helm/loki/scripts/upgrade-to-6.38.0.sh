@@ -91,7 +91,7 @@ fi
 
 # Verify the release exists
 log "Checking if Helm release '${RELEASE_NAME}' exists..."
-if ! helm status "${RELEASE_NAME}" ${NAMESPACE_FLAG} &> /dev/null; then
+if ! helm status "${RELEASE_NAME}" "${NAMESPACE_FLAG}" &> /dev/null; then
     error "Helm release '${RELEASE_NAME}' not found"
 fi
 
@@ -126,7 +126,7 @@ EXISTING_STATEFULSETS=()
 RELEASE_LABEL="app.kubernetes.io/instance=${RELEASE_NAME}"
 
 for sts in "${STATEFULSETS[@]}"; do
-    if kubectl get statefulset "${sts}" ${NAMESPACE_FLAG} -l "${RELEASE_LABEL}" &> /dev/null; then
+    if kubectl get statefulset "${sts}" "${NAMESPACE_FLAG}" -l "${RELEASE_LABEL}" &> /dev/null; then
         EXISTING_STATEFULSETS+=("${sts}")
         log "Found StatefulSet: ${sts}"
     fi
@@ -158,7 +158,7 @@ else
     log "Orphaning StatefulSets..."
     for sts in "${EXISTING_STATEFULSETS[@]}"; do
         log "Orphaning StatefulSet: ${sts}"
-        if kubectl delete statefulset "${sts}" ${NAMESPACE_FLAG} --cascade=orphan; then
+        if kubectl delete statefulset "${sts}" "${NAMESPACE_FLAG}" --cascade=orphan; then
             success "Successfully orphaned: ${sts}"
         else
             error "Failed to orphan StatefulSet: ${sts}"
@@ -192,7 +192,7 @@ if ${HELM_CMD}; then
     # Check if StatefulSets were recreated
     RECREATED=0
     for sts in "${EXISTING_STATEFULSETS[@]}"; do
-        if kubectl get statefulset "${sts}" ${NAMESPACE_FLAG} &> /dev/null; then
+        if kubectl get statefulset "${sts}" "${NAMESPACE_FLAG}" &> /dev/null; then
             success "StatefulSet recreated: ${sts}"
             ((RECREATED++))
         else
