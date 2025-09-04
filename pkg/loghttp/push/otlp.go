@@ -172,7 +172,6 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				rangeErr = err
 				return false
 			}
-			attributeAsLabels := attributeToLabels(k, v, "", conversionStrategy)
 			if action == IndexLabel {
 				for _, lbl := range attributeAsLabels {
 					streamLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
@@ -590,12 +589,12 @@ func attributesToLabels(attrs pcommon.Map, prefix, conversionStrategy string) (p
 
 	var rangeErr error
 	attrs.Range(func(k string, v pcommon.Value) bool {
-		lbls, err := attributeToLabels(k, v, prefix)
+		lbls, err := attributeToLabels(k, v, prefix, conversionStrategy)
 		if err != nil {
 			rangeErr = err
 			return false
 		}
-		labelsAdapter = append(labelsAdapter, attributeToLabels(k, v, prefix, conversionStrategy)...)
+		labelsAdapter = append(labelsAdapter, lbls...)
 		return true
 	})
 
@@ -610,11 +609,11 @@ func attributeToLabels(k string, v pcommon.Value, prefix, conversionStrategy str
 		keyWithPrefix = prefix + "_" + k
 	}
 	isUTF8Allowed := conversionStrategy == NoConversion
-	labelNamer, err := otlptranslator.LabelNamer{UTF8Allowed: isUTF8Allowed}
+	labelNamer := otlptranslator.LabelNamer{UTF8Allowed: isUTF8Allowed}
+	keyWithPrefix, err := labelNamer.Build(keyWithPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("symbolizer lookup: %w", err)
 	}
-	keyWithPrefix = labelNamer.Build(keyWithPrefix)
 
 	typ := v.Type()
 	if typ == pcommon.ValueTypeMap {
@@ -622,12 +621,12 @@ func attributeToLabels(k string, v pcommon.Value, prefix, conversionStrategy str
 		labelsAdapter = make(push.LabelsAdapter, 0, mv.Len())
 		var rangeErr error
 		mv.Range(func(k string, v pcommon.Value) bool {
-			lbls, err := attributeToLabels(k, v, keyWithPrefix)
+			lbls, err := attributeToLabels(k, v, keyWithPrefix, conversionStrategy)
 			if err != nil {
 				rangeErr = fmt.Errorf("symbolizer lookup: %w", err)
 				return false
 			}
-			labelsAdapter = append(labelsAdapter, attributeToLabels(k, v, keyWithPrefix, conversionStrategy)...)
+			labelsAdapter = append(labelsAdapter, lbls...)
 			return true
 		})
 		if rangeErr != nil {
