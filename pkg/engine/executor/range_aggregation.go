@@ -50,7 +50,6 @@ type timestampMatchingWindowsFunc func(time.Time) []window
 //
 // Current version only supports counting for instant queries.
 type rangeAggregationPipeline struct {
-	state           state
 	inputs          []Pipeline
 	inputsExhausted bool // indicates if all inputs are exhausted
 
@@ -92,24 +91,12 @@ func (r *rangeAggregationPipeline) init() {
 // Read reads the next value into its state.
 // It returns an error if reading fails or when the pipeline is exhausted. In this case, the function returns EOF.
 // The implementation must retain the returned error in its state and return it with subsequent Value() calls.
-func (r *rangeAggregationPipeline) Read(ctx context.Context) error {
-	// if the state already has an error, do not attempt to read.
-	if r.state.err != nil {
-		return r.state.err
-	}
-
+func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.Record, error) {
 	if r.inputsExhausted {
-		r.state = failureState(EOF)
-		return r.state.err
+		return nil, EOF
 	}
 
-	record, err := r.read(ctx)
-	r.state = newState(record, err)
-
-	if err != nil {
-		return fmt.Errorf("run range aggregation: %w", err)
-	}
-	return nil
+	return r.read(ctx)
 }
 
 // TODOs:
@@ -135,16 +122,15 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 		inputsExhausted = true
 
 		for _, input := range r.inputs {
-			if err := input.Read(ctx); err != nil {
+			record, err := input.Read(ctx)
+			if err != nil {
 				if errors.Is(err, EOF) {
 					continue
 				}
-
 				return nil, err
 			}
 
 			inputsExhausted = false
-			record, _ := input.Value()
 			defer record.Release()
 
 			// extract all the columns that are used for partitioning
@@ -190,11 +176,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 
 	r.inputsExhausted = true
 	return r.aggregator.BuildRecord()
-}
-
-// Value returns the current value in state.
-func (r *rangeAggregationPipeline) Value() (arrow.Record, error) {
-	return r.state.Value()
 }
 
 // Close closes the resources of the pipeline.

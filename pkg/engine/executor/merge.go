@@ -80,20 +80,9 @@ func (m *Merge) startPrefetchingInputAtIndex(ctx context.Context, i int) {
 
 // Read reads the next value into its state.
 // It returns an error if reading fails or when the pipeline is exhausted.
-func (m *Merge) Read(ctx context.Context) error {
-	if m.state.err != nil {
-		return m.state.err
-	}
-
+func (m *Merge) Read(ctx context.Context) (arrow.Record, error) {
 	m.init(ctx)
-	record, err := m.read(ctx)
-	m.state = newState(record, err)
-
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return m.read(ctx)
 }
 
 func (m *Merge) read(ctx context.Context) (arrow.Record, error) {
@@ -104,8 +93,8 @@ func (m *Merge) read(ctx context.Context) (arrow.Record, error) {
 
 	for m.currInput < len(m.inputs) {
 		input := m.inputs[m.currInput]
-
-		if err := input.Read(ctx); err != nil {
+		rec, err := input.Read(ctx)
+		if err != nil {
 			if errors.Is(err, EOF) {
 				input.Close()
 				// Proceed to the next input
@@ -114,20 +103,13 @@ func (m *Merge) read(ctx context.Context) (arrow.Record, error) {
 				m.startPrefetchingInputAtIndex(ctx, m.currInput+m.maxPrefetch)
 				continue
 			}
-
 			return nil, err
 		}
-
-		return input.Value()
+		return rec, nil
 	}
 
 	// Return EOF if none of the inputs returned a record.
 	return nil, EOF
-}
-
-// Value returns the current value in state.
-func (m *Merge) Value() (arrow.Record, error) {
-	return m.state.Value()
 }
 
 // Close implements Pipeline.

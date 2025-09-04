@@ -89,9 +89,7 @@ func TestVectorAggregationPipeline(t *testing.T) {
 	defer pipeline.Close()
 
 	// Read the pipeline output
-	err = pipeline.Read(t.Context())
-	require.NoError(t, err)
-	record, err := pipeline.Value()
+	record, err := pipeline.Read(t.Context())
 	require.NoError(t, err)
 	defer record.Release()
 
