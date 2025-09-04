@@ -90,9 +90,8 @@ message Chunk {
 }
 
 message StorageUpdates {
-  repeated string chunksToDelete = 1;
+  map<string, Chunk> rebuiltChunks = 1; // source chunkIDs to remove => rebuilt chunks to index
   repeated string chunksToDeIndex = 2;
-  repeated Chunk chunksToIndex = 3 [(gogoproto.nullable) = false];
 }
 
 // StorageUpdatesCollection collects updates to be made to the storage for a single Segment

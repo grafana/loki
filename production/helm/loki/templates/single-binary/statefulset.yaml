@@ -218,9 +218,9 @@ spec:
         {{- end }}
       {{- with .Values.singleBinary.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
-      {{- with .Values.singleBinary.dnsConfig }}
+      {{- with .Values.singleBinary.dnsConfig | default .Values.loki.dnsConfig }}
       dnsConfig:
         {{- tpl . $ | nindent 8 }}
       {{- end }}
