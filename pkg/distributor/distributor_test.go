@@ -53,8 +53,9 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/test"
 	"github.com/grafana/loki/v3/pkg/validation"
 
-	"github.com/grafana/loki/pkg/push"
 	"go.opentelemetry.io/collector/pdata/plog"
+
+	"github.com/grafana/loki/pkg/push"
 )
 
 const (
