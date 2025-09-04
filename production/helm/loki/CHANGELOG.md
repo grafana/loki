@@ -18,7 +18,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.38.0
 
-- [FEATURE] Make access modes for persistence on all PVCs and StatefulSets editable [#13474](https://github.com/grafana/loki/pull/13474)
+- [FEATURE] **Breaking** Make access modes for persistence on all PVCs and StatefulSets editable [#13474](https://github.com/grafana/loki/pull/13474). Users will need to manually orphan StatefulSets before upgrading. **See**: [Helm chart upgrade guide](https://grafana.com/docs/loki/latest/setup/upgrade/upgrade-to-6x/#breaking-zone-aware-ingester-statefulset-servicename-fix-6340)
 - [FEATURE] Allow enabling user namespaces [#18661](https://github.com/grafana/loki/pull/18661)
 - [FEATURE] Allow configuring service types. [#18708](https://github.com/grafana/loki/pull/18708)
 - [ENHANCEMENT] Add namespaceOverride [#18707](https://github.com/grafana/loki/pull/18707)
