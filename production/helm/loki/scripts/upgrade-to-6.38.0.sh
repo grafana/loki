@@ -3,6 +3,11 @@ set -e
 
 # Loki Helm Chart Upgrade Script to 6.38.0+
 # This script safely orphans existing StatefulSets before upgrading
+#
+# WARNING: This script modifies Kubernetes resources and performs Helm upgrades.
+#          Use at your own risk. Always test in a non-production environment first.
+#          Ensure you have proper backups before running this script.
+#          The authors are not responsible for any data loss or service disruption.
 
 RELEASE_NAME=""
 NAMESPACE=""
@@ -48,29 +53,30 @@ success() {
 
 # Parse command line arguments
 while getopts "r:n:v:h" opt; do
-    case $opt in
-        r) RELEASE_NAME="$OPTARG" ;;
-        n) NAMESPACE="$OPTARG" ;;
-        v) TARGET_VERSION="$OPTARG" ;;
+    case ${opt} in
+        r) RELEASE_NAME="${OPTARG}" ;;
+        n) NAMESPACE="${OPTARG}" ;;
+        v) TARGET_VERSION="${OPTARG}" ;;
         h) usage ;;
-        \?) error "Invalid option -$OPTARG" ;;
+        \?) error "Invalid option -${OPTARG}" ;;
+        *) error "Unexpected option" ;;
     esac
 done
 
 # Validate required parameters
-if [ -z "$RELEASE_NAME" ]; then
+if [[ -z "${RELEASE_NAME}" ]]; then
     error "Release name is required. Use -r to specify it."
 fi
 
 # Validate namespace exists if specified
-if [ -n "$NAMESPACE" ] && ! kubectl get namespace "$NAMESPACE" &> /dev/null; then
-    error "Namespace '$NAMESPACE' does not exist"
+if [[ -n "${NAMESPACE}" ]] && ! kubectl get namespace "${NAMESPACE}" &> /dev/null; then
+    error "Namespace '${NAMESPACE}' does not exist"
 fi
 
 # Build namespace flag for kubectl
 NAMESPACE_FLAG=""
-if [ -n "$NAMESPACE" ]; then
-    NAMESPACE_FLAG="-n $NAMESPACE"
+if [[ -n "${NAMESPACE}" ]]; then
+    NAMESPACE_FLAG="-n ${NAMESPACE}"
 fi
 
 # Check if kubectl is available
@@ -84,9 +90,9 @@ if ! command -v helm &> /dev/null; then
 fi
 
 # Verify the release exists
-log "Checking if Helm release '$RELEASE_NAME' exists..."
-if ! helm status "$RELEASE_NAME" $NAMESPACE_FLAG &> /dev/null; then
-    error "Helm release '$RELEASE_NAME' not found"
+log "Checking if Helm release '${RELEASE_NAME}' exists..."
+if ! helm status "${RELEASE_NAME}" ${NAMESPACE_FLAG} &> /dev/null; then
+    error "Helm release '${RELEASE_NAME}' not found"
 fi
 
 # List of all possible StatefulSets to check
@@ -117,17 +123,17 @@ STATEFULSETS=(
 # Detect existing StatefulSets using label selector
 log "Detecting existing StatefulSets..."
 EXISTING_STATEFULSETS=()
-RELEASE_LABEL="app.kubernetes.io/instance=$RELEASE_NAME"
+RELEASE_LABEL="app.kubernetes.io/instance=${RELEASE_NAME}"
 
 for sts in "${STATEFULSETS[@]}"; do
-    if kubectl get statefulset "$sts" $NAMESPACE_FLAG -l "$RELEASE_LABEL" &> /dev/null; then
-        EXISTING_STATEFULSETS+=("$sts")
-        log "Found StatefulSet: $sts"
+    if kubectl get statefulset "${sts}" ${NAMESPACE_FLAG} -l "${RELEASE_LABEL}" &> /dev/null; then
+        EXISTING_STATEFULSETS+=("${sts}")
+        log "Found StatefulSet: ${sts}"
     fi
 done
 
-if [ ${#EXISTING_STATEFULSETS[@]} -eq 0 ]; then
-    warn "No StatefulSets found for release '$RELEASE_NAME'"
+if [[ ${#EXISTING_STATEFULSETS[@]} -eq 0 ]]; then
+    warn "No StatefulSets found for release '${RELEASE_NAME}'"
     log "Proceeding directly to Helm upgrade..."
 else
     log "Found ${#EXISTING_STATEFULSETS[@]} StatefulSet(s) that need to be orphaned"
@@ -136,14 +142,14 @@ else
     echo ""
     warn "The following StatefulSets will be orphaned (data will be preserved):"
     for sts in "${EXISTING_STATEFULSETS[@]}"; do
-        echo "  - $sts"
+        echo "  - ${sts}"
     done
     echo ""
     
     # Confirm before proceeding
     read -p "Do you want to continue? (y/N): " -n 1 -r
     echo ""
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    if [[ ! ${REPLY} =~ ^[Yy]$ ]]; then
         log "Operation cancelled by user"
         exit 0
     fi
@@ -151,11 +157,11 @@ else
     # Orphan the StatefulSets
     log "Orphaning StatefulSets..."
     for sts in "${EXISTING_STATEFULSETS[@]}"; do
-        log "Orphaning StatefulSet: $sts"
-        if kubectl delete statefulset "$sts" $NAMESPACE_FLAG --cascade=orphan; then
-            success "Successfully orphaned: $sts"
+        log "Orphaning StatefulSet: ${sts}"
+        if kubectl delete statefulset "${sts}" ${NAMESPACE_FLAG} --cascade=orphan; then
+            success "Successfully orphaned: ${sts}"
         else
-            error "Failed to orphan StatefulSet: $sts"
+            error "Failed to orphan StatefulSet: ${sts}"
         fi
     done
     
@@ -163,19 +169,19 @@ else
 fi
 
 # Perform the Helm upgrade
-log "Performing Helm upgrade to version $TARGET_VERSION..."
+log "Performing Helm upgrade to version ${TARGET_VERSION}..."
 echo ""
 
 # Build helm upgrade command
-HELM_CMD="helm upgrade $RELEASE_NAME grafana/loki --version $TARGET_VERSION --reuse-values"
-if [ -n "$NAMESPACE" ]; then
-    HELM_CMD="$HELM_CMD --namespace $NAMESPACE"
+HELM_CMD="helm upgrade ${RELEASE_NAME} grafana/loki --version ${TARGET_VERSION} --reuse-values"
+if [[ -n "${NAMESPACE}" ]]; then
+    HELM_CMD="${HELM_CMD} --namespace ${NAMESPACE}"
 fi
 
-log "Running: $HELM_CMD"
+log "Running: ${HELM_CMD}"
 echo ""
 
-if $HELM_CMD; then
+if ${HELM_CMD}; then
     success "Helm upgrade completed successfully!"
     echo ""
     log "Verifying StatefulSets are recreated..."
@@ -186,17 +192,17 @@ if $HELM_CMD; then
     # Check if StatefulSets were recreated
     RECREATED=0
     for sts in "${EXISTING_STATEFULSETS[@]}"; do
-        if kubectl get statefulset "$sts" $NAMESPACE_FLAG &> /dev/null; then
-            success "StatefulSet recreated: $sts"
+        if kubectl get statefulset "${sts}" ${NAMESPACE_FLAG} &> /dev/null; then
+            success "StatefulSet recreated: ${sts}"
             ((RECREATED++))
         else
-            warn "StatefulSet not found after upgrade: $sts"
+            warn "StatefulSet not found after upgrade: ${sts}"
         fi
     done
     
     echo ""
-    success "Upgrade complete! $RECREATED StatefulSet(s) recreated."
-    log "Monitor pod status with: kubectl get pods $NAMESPACE_FLAG -l app.kubernetes.io/instance=$RELEASE_NAME"
+    success "Upgrade complete! ${RECREATED} StatefulSet(s) recreated."
+    log "Monitor pod status with: kubectl get pods ${NAMESPACE_FLAG} -l app.kubernetes.io/instance=${RELEASE_NAME}"
 else
     error "Helm upgrade failed!"
 fi
