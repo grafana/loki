@@ -158,13 +158,18 @@ func MultiTenantRuleManager(cfg Config, evaluator Evaluator, overrides RulesLimi
 		// manager.This is used to back the memstore
 		groupLoader := NewCachingGroupLoader(GroupLoader{})
 
+		datasourceUID := overrides.RulerGrafanaDatasourceUID(userID)
+		if datasourceUID == "" {
+			datasourceUID = cfg.DatasourceUID
+		}
+
 		mgr := rules.NewManager(&rules.ManagerOptions{
 			Appendable:               registry,
 			Queryable:                memStore,
 			QueryFunc:                queryFn,
 			Context:                  user.InjectOrgID(ctx, userID),
 			ExternalURL:              cfg.ExternalURL.URL,
-			NotifyFunc:               ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String(), cfg.DatasourceUID),
+			NotifyFunc:               ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String(), datasourceUID),
 			Logger:                   util_log.SlogFromGoKit(logger),
 			Registerer:               reg,
 			OutageTolerance:          cfg.OutageTolerance,
