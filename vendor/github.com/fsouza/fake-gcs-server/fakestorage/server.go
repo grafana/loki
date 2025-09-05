@@ -44,7 +44,7 @@ const defaultPublicHost = "storage.googleapis.com"
 type Server struct {
 	backend      backend.Storage
 	uploads      sync.Map
-	transport    http.RoundTripper
+	transport    *muxTransport
 	ts           *httptest.Server
 	handler      http.Handler
 	options      Options
@@ -455,10 +455,8 @@ func (s *Server) publicHostMatcher(r *http.Request, rm *mux.RouteMatch) bool {
 
 // Stop stops the server, closing all connections.
 func (s *Server) Stop() {
+	s.transport.closed = true
 	if s.ts != nil {
-		if transport, ok := s.transport.(*http.Transport); ok {
-			transport.CloseIdleConnections()
-		}
 		s.ts.Close()
 	}
 }

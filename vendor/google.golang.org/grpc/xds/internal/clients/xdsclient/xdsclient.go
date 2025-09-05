@@ -101,8 +101,6 @@ type XDSClient struct {
 // New returns a new xDS Client configured with the provided config.
 func New(config Config) (*XDSClient, error) {
 	switch {
-	case config.Node.ID == "":
-		return nil, errors.New("xdsclient: node ID is empty")
 	case config.ResourceTypes == nil:
 		return nil, errors.New("xdsclient: resource types map is nil")
 	case config.TransportBuilder == nil:
@@ -436,6 +434,21 @@ func (cs *channelState) adsResourceDoesNotExist(typ ResourceType, resourceName s
 	defer cs.parent.channelsMu.Unlock()
 	for authority := range cs.interestedAuthorities {
 		authority.adsResourceDoesNotExist(typ, resourceName)
+	}
+}
+
+func (cs *channelState) adsResourceRemoveUnsubscribedCacheEntries(rType ResourceType) {
+	if cs.parent.done.HasFired() {
+		return
+	}
+
+	cs.parent.channelsMu.Lock()
+	defer cs.parent.channelsMu.Unlock()
+
+	for authority := range cs.interestedAuthorities {
+		authority.xdsClientSerializer.TrySchedule(func(context.Context) {
+			authority.removeUnsubscribedCacheEntries(rType)
+		})
 	}
 }
 

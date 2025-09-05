@@ -13,7 +13,7 @@ import (
 func init() {
 	// Register the encoding so instances of it can be dynamically created.
 	registerValueEncoding(
-		datasetmd.VALUE_TYPE_UINT64,
+		datasetmd.PHYSICAL_TYPE_UINT64,
 		datasetmd.ENCODING_TYPE_BITMAP,
 		func(w streamio.Writer) valueEncoder { return newBitmapEncoder(w) },
 		func(r streamio.Reader) valueDecoder { return newBitmapDecoder(r) },
@@ -104,9 +104,9 @@ func newBitmapEncoder(w streamio.Writer) *bitmapEncoder {
 	}
 }
 
-// ValueType returns [datasetmd.VALUE_TYPE_UINT64].
-func (enc *bitmapEncoder) ValueType() datasetmd.ValueType {
-	return datasetmd.VALUE_TYPE_UINT64
+// PhysicalType returns [datasetmd.PHYSICAL_TYPE_UINT64].
+func (enc *bitmapEncoder) PhysicalType() datasetmd.PhysicalType {
+	return datasetmd.PHYSICAL_TYPE_UINT64
 }
 
 // EncodingType returns [datasetmd.ENCODING_TYPE_BITMAP].
@@ -122,7 +122,7 @@ func (enc *bitmapEncoder) EncodingType() datasetmd.EncodingType {
 // Call [bitmapEncoder.Flush] to end the current run and flush any remaining
 // values.
 func (enc *bitmapEncoder) Encode(v Value) error {
-	if v.Type() != datasetmd.VALUE_TYPE_UINT64 {
+	if v.Type() != datasetmd.PHYSICAL_TYPE_UINT64 {
 		return fmt.Errorf("invalid value type %s", v.Type())
 	}
 	uv := v.Uint64()
@@ -179,7 +179,7 @@ func (enc *bitmapEncoder) Encode(v Value) error {
 }
 
 func (enc *bitmapEncoder) EncodeN(v Value, n uint64) error {
-	if v.Type() != datasetmd.VALUE_TYPE_UINT64 {
+	if v.Type() != datasetmd.PHYSICAL_TYPE_UINT64 {
 		return fmt.Errorf("invalid value type %s", v.Type())
 	}
 	uv := v.Uint64()
@@ -557,9 +557,9 @@ func newBitmapDecoder(r streamio.Reader) *bitmapDecoder {
 	return &bitmapDecoder{r: r}
 }
 
-// ValueType returns [datasetmd.VALUE_TYPE_UINT64].
-func (dec *bitmapDecoder) ValueType() datasetmd.ValueType {
-	return datasetmd.VALUE_TYPE_UINT64
+// PhysicalType returns [datasetmd.PHYSICAL_TYPE_UINT64].
+func (dec *bitmapDecoder) PhysicalType() datasetmd.PhysicalType {
+	return datasetmd.PHYSICAL_TYPE_UINT64
 }
 
 // EncodingType returns [datasetmd.ENCODING_TYPE_BITMAP].

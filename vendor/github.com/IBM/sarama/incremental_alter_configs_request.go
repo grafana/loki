@@ -16,6 +16,10 @@ type IncrementalAlterConfigsRequest struct {
 	ValidateOnly bool
 }
 
+func (a *IncrementalAlterConfigsRequest) setVersion(v int16) {
+	a.Version = v
+}
+
 type IncrementalAlterConfigsResource struct {
 	Type          ConfigResourceType
 	Name          string
@@ -158,7 +162,7 @@ func (a *IncrementalAlterConfigsEntry) decode(pd packetDecoder, version int16) e
 }
 
 func (a *IncrementalAlterConfigsRequest) key() int16 {
-	return 44
+	return apiKeyIncrementalAlterConfigs
 }
 
 func (a *IncrementalAlterConfigsRequest) version() int16 {

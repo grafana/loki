@@ -69,7 +69,6 @@ func TestCanApplyPredicate(t *testing.T) {
 
 var (
 	time1000 = datatype.Timestamp(1000000000)
-	time2000 = datatype.Timestamp(2000000000)
 )
 
 func dummyPlan() *Plan {

@@ -6,6 +6,7 @@ import (
 	"hash/fnv"
 	"strconv"
 
+	"github.com/grafana/loki/v3/pkg/goldfish"
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
@@ -24,10 +25,10 @@ func NewStatsExtractor() *StatsExtractor {
 // ExtractResponseData extracts performance statistics and metadata from a Loki response.
 // Returns QueryStats, content hash (FNV32), response size, whether new engine was used, and any parsing errors.
 // The content hash excludes performance statistics to ensure identical content produces identical hashes.
-func (e *StatsExtractor) ExtractResponseData(responseBody []byte, duration int64) (QueryStats, string, int64, bool, error) {
+func (e *StatsExtractor) ExtractResponseData(responseBody []byte, duration int64) (goldfish.QueryStats, string, int64, bool, error) {
 	var queryResp loghttp.QueryResponse
 	if err := json.Unmarshal(responseBody, &queryResp); err != nil {
-		return QueryStats{}, "", 0, false, fmt.Errorf("failed to parse query response: %w", err)
+		return goldfish.QueryStats{}, "", 0, false, fmt.Errorf("failed to parse query response: %w", err)
 	}
 
 	// Extract statistics from the response
@@ -46,8 +47,8 @@ func (e *StatsExtractor) ExtractResponseData(responseBody []byte, duration int64
 }
 
 // extractQueryStats converts stats.Result to our QueryStats format
-func (e *StatsExtractor) extractQueryStats(statsResult stats.Result, _ int64) QueryStats {
-	return QueryStats{
+func (e *StatsExtractor) extractQueryStats(statsResult stats.Result, _ int64) goldfish.QueryStats {
+	return goldfish.QueryStats{
 		ExecTimeMs:           int64(statsResult.Summary.ExecTime * 1000),  // Convert seconds to milliseconds
 		QueueTimeMs:          int64(statsResult.Summary.QueueTime * 1000), // Convert seconds to milliseconds
 		BytesProcessed:       statsResult.Summary.TotalBytesProcessed,
@@ -95,7 +96,7 @@ func (e *StatsExtractor) generateResponseHash(resp loghttp.QueryResponse) string
 // CompareStats compares two QueryStats and returns performance differences.
 // Returns a map of metric names to comparison details including ratios where applicable.
 // Division by zero is handled by omitting ratio calculations when the denominator is zero.
-func (e *StatsExtractor) CompareStats(cellA, cellB QueryStats) map[string]any {
+func (e *StatsExtractor) CompareStats(cellA, cellB goldfish.QueryStats) map[string]any {
 	differences := make(map[string]any)
 
 	// Compare execution times

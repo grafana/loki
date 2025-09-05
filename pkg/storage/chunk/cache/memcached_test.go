@@ -125,13 +125,13 @@ func newMockMemcacheFailing() *mockMemcacheFailing {
 	}
 }
 
-func (c *mockMemcacheFailing) GetMulti(keys []string, _ ...memcache.Option) (map[string]*memcache.Item, error) {
+func (c *mockMemcacheFailing) GetMulti(ctx context.Context, keys []string, _ ...memcache.Option) (map[string]*memcache.Item, error) {
 	calls := c.calls.Inc()
 	if calls%3 == 0 {
 		return nil, errors.New("fail")
 	}
 
-	return c.mockMemcache.GetMulti(keys)
+	return c.mockMemcache.GetMulti(ctx, keys)
 }
 
 func TestMemcacheFailure(t *testing.T) {

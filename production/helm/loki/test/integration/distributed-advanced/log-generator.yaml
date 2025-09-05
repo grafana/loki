@@ -1,0 +1,49 @@
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: grafana
+  namespace: default
+spec:
+  interval: 1m
+  url: https://grafana.github.io/helm-charts
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: log-generator
+  namespace: default
+spec:
+  interval: 1m
+  chart:
+    spec:
+      chart: alloy
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: default
+      interval: 1m
+  values:
+    controller:
+      type: deployment
+    alloy:
+      configMap:
+        content: |
+          logging {
+            level = "debug"
+            write_to = [loki.relabel.default.receiver]
+          }
+
+          loki.relabel "default" {
+            rule {
+              target_label = "source"
+              replacement = "log-generator"
+            }
+            forward_to = [loki.write.default.receiver]
+          }
+
+          loki.write "default" {
+            endpoint {
+              url = "http://loki-gateway.loki.svc/loki/api/v1/push"
+            }
+          }

@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useGoldfishQueries } from "@/hooks/use-goldfish-queries";
 import { QueryDiffView } from "@/components/goldfish/query-diff-view";
 import { Button } from "@/components/ui/button";
@@ -12,35 +13,59 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { RefreshCw, AlertCircle, CheckCircle2, XCircle } from "lucide-react";
-import { OutcomeFilter, OUTCOME_ALL, OUTCOME_MATCH, OUTCOME_MISMATCH, OUTCOME_ERROR } from "@/types/goldfish";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RefreshCw, AlertCircle, CheckCircle2, XCircle, Rocket } from "lucide-react";
+import { OutcomeFilter, OUTCOME_ALL, OUTCOME_MATCH, OUTCOME_MISMATCH, OUTCOME_ERROR, SampledQuery } from "@/types/goldfish";
 import { PageContainer } from "@/layout/page-container";
-import { filterQueriesByOutcome } from "@/lib/goldfish-utils";
 
 
 export default function GoldfishPage() {
-  const [selectedTenant, setSelectedTenant] = useState<string>("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  const [selectedTenant, setSelectedTenant] = useState<string | undefined>(undefined);
+  const [selectedUser, setSelectedUser] = useState<string | undefined>(undefined);
   const [selectedOutcome, setSelectedOutcome] = useState<OutcomeFilter>(OUTCOME_ALL);
+  const [showNewEngineOnly, setShowNewEngineOnly] = useState(() => {
+    return searchParams.get("newEngine") === "true";
+  });
   const [page, setPage] = useState(1);
   const pageSize = 10; // Reduced since we're showing more detail per query
   
-  const { data, isLoading, error, refetch, totalPages } = useGoldfishQueries(page, pageSize, selectedOutcome);
-  const allQueries = (data as any)?.queries || [];
+  const { data, isLoading, error, refetch, totalPages } = useGoldfishQueries(
+    page, 
+    pageSize, 
+    selectedOutcome, 
+    selectedTenant, 
+    selectedUser, 
+    showNewEngineOnly ? true : undefined
+  );
+  const allQueries = useMemo(() => (data as { queries: SampledQuery[] })?.queries || [], [data]);
   
-  // Extract unique tenants from queries
+  // We need a separate query to get all unique tenants and users
+  // For now, we'll use the current page's data, but ideally this would be a separate endpoint
   const uniqueTenants = useMemo(() => {
-    const tenants = new Set(allQueries.map((q: any) => q.tenantId));
+    const tenants = new Set(allQueries.map((q) => q.tenantId));
     return Array.from(tenants).sort();
   }, [allQueries]);
   
-  // Apply client-side filtering based on tenant and outcome
-  const filteredQueries = useMemo(() => {
-    const outcomeFiltered = filterQueriesByOutcome(allQueries, selectedOutcome);
-    return outcomeFiltered.filter(query => {
-      const matchesTenant = selectedTenant === "all" || query.tenantId === selectedTenant;
-      return matchesTenant;
-    });
-  }, [allQueries, selectedTenant, selectedOutcome]);
+  const uniqueUsers = useMemo(() => {
+    const users = new Set(allQueries.map((q) => q.user).filter((u) => u && u !== "unknown"));
+    return Array.from(users).sort();
+  }, [allQueries]);
+  
+  // Queries are now filtered on the backend, no need for client-side filtering
+  const filteredQueries = allQueries;
+
+  // Update URL params when filter changes
+  useEffect(() => {
+    const newSearchParams = new URLSearchParams(searchParams);
+    if (showNewEngineOnly) {
+      newSearchParams.set("newEngine", "true");
+    } else {
+      newSearchParams.delete("newEngine");
+    }
+    setSearchParams(newSearchParams, { replace: true });
+  }, [showNewEngineOnly, searchParams, setSearchParams]);
   
   return (
     <PageContainer>
@@ -64,8 +89,9 @@ export default function GoldfishPage() {
             </Button>
           </div>
           
-          {/* Outcome Filter Tabs */}
-          <div className="flex items-center justify-center gap-1 mb-6">
+          {/* All Filters on One Line */}
+          <div className="flex items-center justify-between gap-4 mb-6">
+            {/* Outcome Filter Tabs - Left Aligned */}
             <div className="flex items-center bg-muted p-1 rounded-lg">
               <Button
                 variant={selectedOutcome === OUTCOME_ALL ? "default" : "ghost"}
@@ -119,9 +145,9 @@ export default function GoldfishPage() {
                 Error
               </Button>
             </div>
-          </div>
-          
-          <div className="flex items-center justify-end gap-4 mb-6">
+            
+            {/* Other Filters - Right Aligned */}
+            <div className="flex items-center gap-4">
             <Select
               value={selectedTenant}
               onValueChange={setSelectedTenant}
@@ -132,13 +158,51 @@ export default function GoldfishPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Tenants</SelectItem>
-                {uniqueTenants.map((tenant: any) => (
+                {uniqueTenants.map((tenant) => (
                   <SelectItem key={tenant} value={tenant}>
                     {tenant}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            
+            <Select
+              value={selectedUser}
+              onValueChange={setSelectedUser}
+              disabled={isLoading || uniqueUsers.length === 0}
+            >
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Filter by user" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Users</SelectItem>
+                {uniqueUsers.map((user) => (
+                  <SelectItem key={user} value={user}>
+                    {user}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="new-engine-only"
+                checked={showNewEngineOnly}
+                onCheckedChange={(checked) => {
+                  setShowNewEngineOnly(checked as boolean);
+                  setPage(1);
+                }}
+                disabled={isLoading}
+              />
+              <label 
+                htmlFor="new-engine-only"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center cursor-pointer"
+              >
+                <Rocket className="h-4 w-4 mr-1" />
+                New Engine Only
+              </label>
+            </div>
+            </div>
           </div>
         </CardHeader>
         
@@ -163,11 +227,12 @@ export default function GoldfishPage() {
             ) : filteredQueries.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 No queries found
-                {selectedTenant !== "all" && ` for tenant ${selectedTenant}`}
+                {selectedTenant && ` for tenant ${selectedTenant}`}
+                {selectedUser && ` for user ${selectedUser}`}
               </div>
             ) : (
               <div className="space-y-4">
-                {filteredQueries.map((query: any) => (
+                {filteredQueries.map((query) => (
                   <QueryDiffView key={query.correlationId} query={query} />
                 ))}
               </div>

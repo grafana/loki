@@ -287,8 +287,8 @@ func securityConfigFromCluster(cluster *v3clusterpb.Cluster) (*SecurityConfig, e
 		return nil, fmt.Errorf("transport_socket field has unexpected name: %s", name)
 	}
 	tc := ts.GetTypedConfig()
-	if tc == nil || tc.TypeUrl != version.V3UpstreamTLSContextURL {
-		return nil, fmt.Errorf("transport_socket field has unexpected typeURL: %s", tc.TypeUrl)
+	if typeURL := tc.GetTypeUrl(); typeURL != version.V3UpstreamTLSContextURL {
+		return nil, fmt.Errorf("transport_socket missing typed_config or wrong type_url: %q", typeURL)
 	}
 	upstreamCtx := &v3tlspb.UpstreamTlsContext{}
 	if err := proto.Unmarshal(tc.GetValue(), upstreamCtx); err != nil {

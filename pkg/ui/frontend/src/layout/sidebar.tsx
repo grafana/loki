@@ -265,12 +265,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const filteredNavItems = React.useMemo(() => {
     return navItems.filter(item => {
       // Hide Goldfish if feature is disabled
-      if (item.title === "Goldfish" && !features.goldfish) {
+      if (item.title === "Goldfish" && !features.goldfish.enabled) {
         return false;
       }
       return true;
     });
-  }, [navItems, features.goldfish]);
+  }, [navItems, features.goldfish.enabled]);
 
   const isActive = React.useCallback(
     (url: string) => {

@@ -7,7 +7,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
-func init() { regKey(2, 0, 7) }
+func init() { regKey(2, 0, 10) }
 
 func (c *Cluster) handleListOffsets(b *broker, kreq kmsg.Request) (kmsg.Response, error) {
 	req := kreq.(*kmsg.ListOffsetsRequest)
@@ -77,11 +77,11 @@ func (c *Cluster) handleListOffsets(b *broker, kreq kmsg.Request) (kmsg.Response
 			default:
 				// returns the index of the first batch _after_ the requested timestamp
 				idx, _ := sort.Find(len(pd.batches), func(idx int) int {
-					maxEarlier := pd.batches[idx].maxEarlierTimestamp
+					maxTimestamp := pd.batches[idx].MaxTimestamp
 					switch {
-					case maxEarlier > rp.Timestamp:
+					case maxTimestamp > rp.Timestamp:
 						return -1
-					case maxEarlier == rp.Timestamp:
+					case maxTimestamp == rp.Timestamp:
 						return 0
 					default:
 						return 1
@@ -90,7 +90,22 @@ func (c *Cluster) handleListOffsets(b *broker, kreq kmsg.Request) (kmsg.Response
 				if idx == len(pd.batches) {
 					sp.Offset = -1
 				} else {
-					sp.Offset = pd.batches[idx].FirstOffset
+					batch := pd.batches[idx]
+					sp.Offset = batch.FirstOffset
+					sp.Timestamp = batch.FirstTimestamp
+					err := forEachBatchRecord(batch.RecordBatch, func(rec kmsg.Record) error {
+						timestamp := batch.FirstTimestamp + rec.TimestampDelta64
+						offset := batch.FirstOffset + int64(rec.OffsetDelta)
+						if timestamp <= rp.Timestamp {
+							sp.Offset = offset
+							sp.Timestamp = timestamp
+						}
+						return nil
+					})
+					if err != nil {
+						donep(rt.Topic, rp.Partition, kerr.CorruptMessage.Code)
+						continue
+					}
 				}
 			}
 		}

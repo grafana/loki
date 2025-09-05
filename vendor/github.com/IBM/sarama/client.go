@@ -166,6 +166,8 @@ type client struct {
 	cachedPartitionsResults map[string][maxPartitionIndex][]int32
 
 	lock sync.RWMutex // protects access to the maps that hold cluster state.
+
+	metadataRefresh metadataRefresh
 }
 
 // NewClient creates a new Client. It connects to one of the given broker addresses
@@ -192,7 +194,6 @@ func NewClient(addrs []string, conf *Config) (Client, error) {
 			conf.Version = V1_0_0_0
 		}
 	}
-
 	client := &client{
 		conf:                    conf,
 		closer:                  make(chan none),
@@ -203,6 +204,18 @@ func NewClient(addrs []string, conf *Config) (Client, error) {
 		cachedPartitionsResults: make(map[string][maxPartitionIndex][]int32),
 		coordinators:            make(map[string]int32),
 		transactionCoordinators: make(map[string]int32),
+	}
+	refresh := func(topics []string) error {
+		deadline := time.Time{}
+		if client.conf.Metadata.Timeout > 0 {
+			deadline = time.Now().Add(client.conf.Metadata.Timeout)
+		}
+		return client.tryRefreshMetadata(topics, client.conf.Metadata.Retry.Max, deadline)
+	}
+	if conf.Metadata.SingleFlight {
+		client.metadataRefresh = newSingleFlightRefresher(refresh)
+	} else {
+		client.metadataRefresh = refresh
 	}
 
 	if conf.Net.ResolveCanonicalBootstrapServers {
@@ -509,12 +522,7 @@ func (client *client) RefreshMetadata(topics ...string) error {
 			return ErrInvalidTopic // this is the error that 0.8.2 and later correctly return
 		}
 	}
-
-	deadline := time.Time{}
-	if client.conf.Metadata.Timeout > 0 {
-		deadline = time.Now().Add(client.conf.Metadata.Timeout)
-	}
-	return client.tryRefreshMetadata(topics, client.conf.Metadata.Retry.Max, deadline)
+	return client.metadataRefresh(topics)
 }
 
 func (client *client) GetOffset(topic string, partitionID int32, timestamp int64) (int64, error) {
@@ -994,7 +1002,7 @@ func (client *client) tryRefreshMetadata(topics []string, attemptsRemaining int,
 		if err == nil {
 			// When talking to the startup phase of a broker, it is possible to receive an empty metadata set. We should remove that broker and try next broker (https://issues.apache.org/jira/browse/KAFKA-7924).
 			if len(response.Brokers) == 0 {
-				Logger.Println("client/metadata receiving empty brokers from the metadata response when requesting the broker #%d at %s", broker.ID(), broker.addr)
+				Logger.Printf("client/metadata receiving empty brokers from the metadata response when requesting the broker #%d at %s", broker.ID(), broker.addr)
 				_ = broker.Close()
 				client.deregisterBroker(broker)
 				continue

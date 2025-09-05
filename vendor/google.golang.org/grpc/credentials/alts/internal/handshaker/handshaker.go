@@ -298,11 +298,11 @@ func (h *altsHandshaker) doHandshake(req *altspb.HandshakerReq) (net.Conn, *alts
 
 func (h *altsHandshaker) accessHandshakerService(req *altspb.HandshakerReq) (*altspb.HandshakerResp, error) {
 	if err := h.stream.Send(req); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to send ALTS handshaker request: %w", err)
 	}
 	resp, err := h.stream.Recv()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to receive ALTS handshaker response: %w", err)
 	}
 	return resp, nil
 }

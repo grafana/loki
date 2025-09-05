@@ -48,6 +48,7 @@ use (
 	./compute/metadata
 	./confidentialcomputing
 	./config
+	./configdelivery
 	./contactcenterinsights
 	./container
 	./containeranalysis
@@ -97,11 +98,13 @@ use (
 	./internal/gapicgen
 	./internal/generated/snippets
 	./internal/godocfx
+	./internal/librariangen
 	./internal/postprocessor
 	./internal/protoveneer
 	./iot
 	./kms
 	./language
+	./licensemanager
 	./lifesciences
 	./logging
 	./longrunning

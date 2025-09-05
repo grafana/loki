@@ -44,7 +44,6 @@ func NewSortMergePipeline(inputs []Pipeline, order physical.SortOrder, column ph
 // which is applied to the SortMerge as well as to the DataObjScan during query planning.
 type KWayMerge struct {
 	inputs      []Pipeline
-	state       state
 	initialized bool
 	batches     []arrow.Record
 	exhausted   []bool
@@ -57,9 +56,10 @@ var _ Pipeline = (*KWayMerge)(nil)
 
 // Close implements Pipeline.
 func (p *KWayMerge) Close() {
-	// Release last batch
-	if p.state.batch != nil {
-		p.state.batch.Release()
+	for _, batch := range p.batches {
+		if batch != nil {
+			batch.Release()
+		}
 	}
 	for _, input := range p.inputs {
 		input.Close()
@@ -72,7 +72,7 @@ func (p *KWayMerge) Inputs() []Pipeline {
 }
 
 // Read implements Pipeline.
-func (p *KWayMerge) Read(ctx context.Context) error {
+func (p *KWayMerge) Read(ctx context.Context) (arrow.Record, error) {
 	p.init(ctx)
 	return p.read(ctx)
 }
@@ -80,11 +80,6 @@ func (p *KWayMerge) Read(ctx context.Context) error {
 // Transport implements Pipeline.
 func (p *KWayMerge) Transport() Transport {
 	return Local
-}
-
-// Value implements Pipeline.
-func (p *KWayMerge) Value() (arrow.Record, error) {
-	return p.state.Value()
 }
 
 func (p *KWayMerge) init(ctx context.Context) {
@@ -116,13 +111,8 @@ func (p *KWayMerge) init(ctx context.Context) {
 // Track the top two winners (e.g., the record whose next value is the smallest and the record whose next value is the next smallest).
 // Find the largest offset in the starting record whose value is still less than the value of the runner-up record from the previous step.
 // Return the slice of that record using the two offsets, and update the stored offset of the returned record for the next call to Read.
-func (p *KWayMerge) read(ctx context.Context) error {
+func (p *KWayMerge) read(ctx context.Context) (arrow.Record, error) {
 start:
-	// Release previous batch
-	if p.state.batch != nil {
-		p.state.batch.Release()
-	}
-
 	timestamps := make([]int64, 0, len(p.inputs))
 	inputIndexes := make([]int, 0, len(p.inputs))
 
@@ -136,33 +126,37 @@ loop:
 		// Load next batch if it hasn't been loaded yet, or if current one is already fully consumed
 		// Read another batch as long as the input yields zero-length batches.
 		for p.batches[i] == nil || p.offsets[i] == p.batches[i].NumRows() {
-			// Reset offset
+			// Reset offset for input at index i
 			p.offsets[i] = 0
 
-			// Read from input
-			err := p.inputs[i].Read(ctx)
+			// Release previously fully consumed batch
+			if p.batches[i] != nil {
+				p.batches[i].Release()
+				p.batches[i] = nil // remove reference to arrow.Record from slice
+			}
+
+			// Read next batch from input at index i
+			// If it reaches EOF, mark the input as exhausted and continue with the next input.
+			rec, err := p.inputs[i].Read(ctx)
 			if err != nil {
 				if errors.Is(err, EOF) {
 					p.exhausted[i] = true
-					p.batches[i] = nil // remove reference to arrow.Record from slice
 					continue loop
 				}
-				return err
+				return nil, err
 			}
 
-			// It is safe to use the value from the Value() call, because the error is already checked after the Read() call.
-			// In case the input is exhausted (reached EOF), the return value is `nil`, however, since the flag `p.exhausted[i]` is set, the value will never be read.
-			p.batches[i], _ = p.inputs[i].Value()
+			p.batches[i] = rec
 		}
 
 		// Fetch timestamp value at current offset
 		col, err := p.columnEval(p.batches[i])
 		if err != nil {
-			return err
+			return nil, err
 		}
 		tsCol, ok := col.ToArray().(*array.Timestamp)
 		if !ok {
-			return errors.New("column is not a timestamp column")
+			return nil, errors.New("column is not a timestamp column")
 		}
 		ts := tsCol.Value(int(p.offsets[i]))
 
@@ -173,8 +167,7 @@ loop:
 
 	// Pipeline is exhausted if no more input batches are available
 	if !slices.Contains(p.exhausted, false) {
-		p.state = Exhausted
-		return p.state.err
+		return nil, EOF
 	}
 
 	if len(inputIndexes) == 0 {
@@ -189,13 +182,11 @@ loop:
 
 		// check against empty last batch
 		if start >= end || end == 0 {
-			p.state = Exhausted
-			return p.state.err
+			return nil, EOF
 		}
 
-		p.state = successState(p.batches[j].NewSlice(start, end))
 		p.offsets[j] = end
-		return nil
+		return p.batches[j].NewSlice(start, end), nil
 	}
 
 	sortIndexesByTimestamps(inputIndexes, timestamps, p.compare)
@@ -206,12 +197,12 @@ loop:
 	// Fetch timestamp value at current offset
 	col, err := p.columnEval(p.batches[j])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// We assume the column is a Uint64 array
 	tsCol, ok := col.ToArray().(*array.Timestamp)
 	if !ok {
-		return errors.New("column is not a timestamp column")
+		return nil, errors.New("column is not a timestamp column")
 	}
 
 	// Calculate start/end of the sub-slice of the record
@@ -226,14 +217,12 @@ loop:
 
 	// check against empty batch
 	if start > end || end == 0 {
-		p.state = successState(p.batches[j])
 		p.offsets[j] = end
-		return nil
+		return p.batches[j], nil
 	}
 
-	p.state = successState(p.batches[j].NewSlice(start, end))
 	p.offsets[j] = end
-	return nil
+	return p.batches[j].NewSlice(start, end), nil
 }
 
 func sortIndexesByTimestamps(indexes []int, timestamps []int64, lessFn compareFunc[int64]) {

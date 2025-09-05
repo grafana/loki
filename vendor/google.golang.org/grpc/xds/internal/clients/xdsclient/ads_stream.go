@@ -71,6 +71,7 @@ type adsStreamEventHandler interface {
 	onStreamError(error)                           // Called when the ADS stream breaks.
 	onWatchExpiry(ResourceType, string)            // Called when the watch timer expires for a resource.
 	onResponse(response, func()) ([]string, error) // Called when a response is received on the ADS stream.
+	onRequest(typeURL string)                      // Called when a request is about to be sent on the ADS stream.
 }
 
 // state corresponding to a resource type.
@@ -444,6 +445,11 @@ func (s *adsStreamImpl) sendMessageLocked(stream clients.Stream, names []string,
 		}
 	}
 
+	// Call the event handler to remove unsubscribed cache entries. It is to
+	// ensure the cache entries are deleted even if discovery request fails. In
+	// case of failure when the stream restarts, nonce is reset anyways.
+	s.eventHandler.onRequest(url)
+
 	msg, err := proto.Marshal(req)
 	if err != nil {
 		s.logger.Warningf("Failed to marshal DiscoveryRequest: %v", err)
@@ -460,6 +466,7 @@ func (s *adsStreamImpl) sendMessageLocked(stream clients.Stream, names []string,
 	} else if s.logger.V(2) {
 		s.logger.Warningf("ADS request sent for type %q, resources: %v, version: %q, nonce: %q", url, names, version, nonce)
 	}
+
 	return nil
 }
 

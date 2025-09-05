@@ -15,14 +15,34 @@ package otlptranslator
 import "strings"
 
 // UnitNamer is a helper for building compliant unit names.
+// It processes OpenTelemetry Protocol (OTLP) unit strings and converts them
+// to Prometheus-compliant unit names.
+//
+// Example usage:
+//
+//	namer := UnitNamer{UTF8Allowed: false}
+//	result := namer.Build("s")     // "seconds"
+//	result = namer.Build("By/s")   // "bytes_per_second"
 type UnitNamer struct {
 	UTF8Allowed bool
 }
 
 // Build builds a unit name for the specified unit string.
 // It processes the unit by splitting it into main and per components,
-// applying appropriate unit mappings, and cleaning up invalid characters
-// when the whole UTF-8 character set is not allowed.
+// applying unit mappings, and cleaning up invalid characters when UTF8Allowed is false.
+//
+// Unit mappings include:
+//   - Time: s→seconds, ms→milliseconds, h→hours
+//   - Bytes: By→bytes, KBy→kilobytes, MBy→megabytes
+//   - SI: m→meters, V→volts, W→watts
+//   - Special: 1→"" (empty), %→percent
+//
+// Examples:
+//
+//	namer := UnitNamer{UTF8Allowed: false}
+//	namer.Build("s")           // "seconds"
+//	namer.Build("requests/s")  // "requests_per_second"
+//	namer.Build("1")           // "" (dimensionless)
 func (un *UnitNamer) Build(unit string) string {
 	mainUnit, perUnit := buildUnitSuffixes(unit)
 	if !un.UTF8Allowed {

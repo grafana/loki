@@ -10,6 +10,10 @@ type DeleteGroupsResponse struct {
 	GroupErrorCodes map[string]KError
 }
 
+func (r *DeleteGroupsResponse) setVersion(v int16) {
+	r.Version = v
+}
+
 func (r *DeleteGroupsResponse) encode(pe packetEncoder) error {
 	pe.putInt32(int32(r.ThrottleTime / time.Millisecond))
 
@@ -59,7 +63,7 @@ func (r *DeleteGroupsResponse) decode(pd packetDecoder, version int16) error {
 }
 
 func (r *DeleteGroupsResponse) key() int16 {
-	return 42
+	return apiKeyDeleteGroups
 }
 
 func (r *DeleteGroupsResponse) version() int16 {

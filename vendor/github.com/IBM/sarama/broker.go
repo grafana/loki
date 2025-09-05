@@ -55,6 +55,7 @@ type Broker struct {
 	brokerRequestsInFlight     metrics.Counter
 	brokerThrottleTime         metrics.Histogram
 	brokerProtocolRequestsRate map[int16]metrics.Meter
+	brokerAPIVersions          apiVersionMap
 
 	kerberosAuthenticator               GSSAPIKerberosAuth
 	clientSessionReauthenticationTimeMs int64
@@ -129,7 +130,7 @@ type SCRAMClient interface {
 type responsePromise struct {
 	requestTime   time.Time
 	correlationID int32
-	headerVersion int16
+	response      protocolBody
 	handler       func([]byte, error)
 	packets       chan []byte
 	errors        chan error
@@ -174,8 +175,6 @@ func (b *Broker) Open(conf *Config) error {
 		return err
 	}
 
-	usingApiVersionsRequests := conf.Version.IsAtLeast(V2_4_0_0) && conf.ApiVersionsRequest
-
 	b.lock.Lock()
 
 	if b.metricRegistry == nil {
@@ -183,23 +182,8 @@ func (b *Broker) Open(conf *Config) error {
 	}
 
 	go withRecover(func() {
-		defer func() {
-			b.lock.Unlock()
+		defer b.lock.Unlock()
 
-			// Send an ApiVersionsRequest to identify the client (KIP-511).
-			// Ideally Sarama would use the response to control protocol versions,
-			// but for now just fire-and-forget just to send
-			if usingApiVersionsRequests {
-				_, err = b.ApiVersions(&ApiVersionsRequest{
-					Version:               3,
-					ClientSoftwareName:    defaultClientSoftwareName,
-					ClientSoftwareVersion: version(),
-				})
-				if err != nil {
-					Logger.Printf("Error while sending ApiVersionsRequest to broker %s: %s\n", b.addr, err)
-				}
-			}
-		}()
 		dialer := conf.getDialer()
 		b.conn, b.connErr = dialer.Dial("tcp", b.addr)
 		if b.connErr != nil {
@@ -230,6 +214,28 @@ func (b *Broker) Open(conf *Config) error {
 		// the same id (-1) and are already exposed through the global metrics above
 		if b.id >= 0 && !metrics.UseNilMetrics {
 			b.registerMetrics()
+		}
+
+		// Send an ApiVersionsRequest to identify the client (KIP-511).
+		// Store the response in the brokerAPIVersions map.
+		// It will be used to determine the supported API versions for each request.
+		// This should happen before SASL authentication: https://kafka.apache.org/26/protocol.html#api_versions
+		if conf.ApiVersionsRequest {
+			apiVersionsResponse, err := b.sendAndReceiveApiVersions(3)
+			if err != nil {
+				Logger.Printf("Error while sending ApiVersionsRequest to broker %s: %s\n", b.addr, err)
+				// send a v0 request in case remote cluster is < 2.4.0.0
+				apiVersionsResponse, _ = b.sendAndReceiveApiVersions(0)
+			}
+			if apiVersionsResponse != nil {
+				b.brokerAPIVersions = make(apiVersionMap, len(apiVersionsResponse.ApiKeys))
+				for _, key := range apiVersionsResponse.ApiKeys {
+					b.brokerAPIVersions[key.ApiKey] = &apiVersionRange{
+						minVersion: key.MinVersion,
+						maxVersion: key.MaxVersion,
+					}
+				}
+			}
 		}
 
 		if conf.Net.SASL.Mechanism == SASLTypeOAuth && conf.Net.SASL.Version == SASLHandshakeV0 {
@@ -449,7 +455,7 @@ func (b *Broker) AsyncProduce(request *ProduceRequest, cb ProduceCallback) error
 		// Create ProduceResponse early to provide the header version
 		res := new(ProduceResponse)
 		promise = &responsePromise{
-			headerVersion: res.headerVersion(),
+			response: res,
 			// Packets will be converted to a ProduceResponse in the responseReceiver goroutine
 			handler: func(packets []byte, err error) {
 				if err != nil {
@@ -964,26 +970,28 @@ func (b *Broker) write(buf []byte) (n int, err error) {
 }
 
 // b.lock must be held by caller
-func (b *Broker) send(rb protocolBody, promiseResponse bool, responseHeaderVersion int16) (*responsePromise, error) {
+//
+// a non-nil res results in a response promise being created
+func (b *Broker) send(req, res protocolBody) (*responsePromise, error) {
 	var promise *responsePromise
-	if promiseResponse {
+	if res != nil {
 		// Packets or error will be sent to the following channels
 		// once the response is received
-		promise = makeResponsePromise(responseHeaderVersion)
+		promise = makeResponsePromise(res)
 	}
 
-	if err := b.sendWithPromise(rb, promise); err != nil {
+	if err := b.sendWithPromise(req, promise); err != nil {
 		return nil, err
 	}
 
 	return promise, nil
 }
 
-func makeResponsePromise(responseHeaderVersion int16) *responsePromise {
+func makeResponsePromise(res protocolBody) *responsePromise {
 	promise := &responsePromise{
-		headerVersion: responseHeaderVersion,
-		packets:       make(chan []byte),
-		errors:        make(chan error),
+		response: res,
+		packets:  make(chan []byte),
+		errors:   make(chan error),
 	}
 	return promise
 }
@@ -1009,6 +1017,16 @@ func (b *Broker) sendWithPromise(rb protocolBody, promise *responsePromise) erro
 
 // b.lock must be held by caller
 func (b *Broker) sendInternal(rb protocolBody, promise *responsePromise) error {
+	// try restricting API version to ranges advertised by the broker
+	if err := restrictApiVersion(rb, b.brokerAPIVersions); err != nil {
+		return err
+	}
+
+	// response versions must always match their corresponding request's
+	if promise != nil && promise.response != nil {
+		promise.response.setVersion(rb.version())
+	}
+
 	if !b.conf.Version.IsAtLeast(rb.requiredVersion()) {
 		return ErrUnsupportedVersion
 	}
@@ -1050,12 +1068,8 @@ func (b *Broker) sendInternal(rb protocolBody, promise *responsePromise) error {
 func (b *Broker) sendAndReceive(req protocolBody, res protocolBody) error {
 	b.lock.Lock()
 	defer b.lock.Unlock()
-	responseHeaderVersion := int16(-1)
-	if res != nil {
-		responseHeaderVersion = res.headerVersion()
-	}
 
-	promise, err := b.send(req, res != nil, responseHeaderVersion)
+	promise, err := b.send(req, res)
 	if err != nil {
 		return err
 	}
@@ -1173,41 +1187,41 @@ func (b *Broker) encode(pe packetEncoder, version int16) (err error) {
 func (b *Broker) responseReceiver() {
 	var dead error
 
-	for response := range b.responses {
+	for promise := range b.responses {
 		if dead != nil {
 			// This was previously incremented in send() and
 			// we are not calling updateIncomingCommunicationMetrics()
 			b.addRequestInFlightMetrics(-1)
-			response.handle(nil, dead)
+			promise.handle(nil, dead)
 			continue
 		}
 
-		headerLength := getHeaderLength(response.headerVersion)
+		headerLength := getHeaderLength(promise.response.headerVersion())
 		header := make([]byte, headerLength)
 
 		bytesReadHeader, err := b.readFull(header)
-		requestLatency := time.Since(response.requestTime)
+		requestLatency := time.Since(promise.requestTime)
 		if err != nil {
 			b.updateIncomingCommunicationMetrics(bytesReadHeader, requestLatency)
 			dead = err
-			response.handle(nil, err)
+			promise.handle(nil, err)
 			continue
 		}
 
 		decodedHeader := responseHeader{}
-		err = versionedDecode(header, &decodedHeader, response.headerVersion, b.metricRegistry)
+		err = versionedDecode(header, &decodedHeader, promise.response.headerVersion(), b.metricRegistry)
 		if err != nil {
 			b.updateIncomingCommunicationMetrics(bytesReadHeader, requestLatency)
 			dead = err
-			response.handle(nil, err)
+			promise.handle(nil, err)
 			continue
 		}
-		if decodedHeader.correlationID != response.correlationID {
+		if decodedHeader.correlationID != promise.correlationID {
 			b.updateIncomingCommunicationMetrics(bytesReadHeader, requestLatency)
 			// TODO if decoded ID < cur ID, discard until we catch up
 			// TODO if decoded ID > cur ID, save it so when cur ID catches up we have a response
-			dead = PacketDecodingError{fmt.Sprintf("correlation ID didn't match, wanted %d, got %d", response.correlationID, decodedHeader.correlationID)}
-			response.handle(nil, dead)
+			dead = PacketDecodingError{fmt.Sprintf("correlation ID didn't match, wanted %d, got %d", promise.correlationID, decodedHeader.correlationID)}
+			promise.handle(nil, dead)
 			continue
 		}
 
@@ -1216,11 +1230,11 @@ func (b *Broker) responseReceiver() {
 		b.updateIncomingCommunicationMetrics(bytesReadHeader+bytesReadBody, requestLatency)
 		if err != nil {
 			dead = err
-			response.handle(nil, err)
+			promise.handle(nil, err)
 			continue
 		}
 
-		response.handle(buf, nil)
+		promise.handle(buf, nil)
 	}
 	close(b.done)
 }
@@ -1232,6 +1246,67 @@ func getHeaderLength(headerVersion int16) int8 {
 		// header contains additional tagged field length (0), we don't support actual tags yet.
 		return 9
 	}
+}
+
+func (b *Broker) sendAndReceiveApiVersions(v int16) (*ApiVersionsResponse, error) {
+	rb := &ApiVersionsRequest{
+		Version:               v,
+		ClientSoftwareName:    defaultClientSoftwareName,
+		ClientSoftwareVersion: version(),
+	}
+
+	req := &request{correlationID: b.correlationID, clientID: b.conf.ClientID, body: rb}
+	buf, err := encode(req, b.metricRegistry)
+	if err != nil {
+		return nil, err
+	}
+
+	requestTime := time.Now()
+	// Will be decremented in updateIncomingCommunicationMetrics (except error)
+	b.addRequestInFlightMetrics(1)
+	bytes, err := b.write(buf)
+	b.updateOutgoingCommunicationMetrics(bytes)
+	if err != nil {
+		b.addRequestInFlightMetrics(-1)
+		Logger.Printf("Failed to send ApiVersions request to %s: %s\n", b.addr, err)
+		return nil, err
+	}
+	b.correlationID++
+
+	// Kafka protocol response structure:
+	// - Message length (4 bytes): Total length of the response excluding this field
+	// - ResponseHeader v0 (4 bytes): Contains correlation ID for request-response matching
+	header := make([]byte, 8)
+	_, err = b.readFull(header)
+	if err != nil {
+		b.addRequestInFlightMetrics(-1)
+		Logger.Printf("Failed to read ApiVersions response header from %s: %s\n", b.addr, err)
+		return nil, err
+	}
+
+	length := binary.BigEndian.Uint32(header[:4])
+	// we're not using the correlation ID here, but it is part of the response header
+	// correlationID := binary.BigEndian.Uint32(header[4:])
+
+	payload := make([]byte, length-4)
+	n, err := b.readFull(payload)
+	if err != nil {
+		b.addRequestInFlightMetrics(-1)
+		Logger.Printf("Failed to read ApiVersions response payload from %s: %s\n", b.addr, err)
+		return nil, err
+	}
+
+	b.updateIncomingCommunicationMetrics(n+8, time.Since(requestTime))
+	res := &ApiVersionsResponse{}
+
+	err = versionedDecode(payload, res, rb.version(), b.metricRegistry)
+	if err != nil {
+		Logger.Printf("Failed to parse ApiVersions response from %s: %s\n", b.addr, err)
+		return nil, err
+	}
+
+	DebugLogger.Printf("Completed ApiVersions request to %s. Broker supports %d APIs\n", b.addr, len(res.ApiKeys))
+	return res, nil
 }
 
 func (b *Broker) authenticateViaSASLv0() error {
@@ -1250,7 +1325,7 @@ func (b *Broker) authenticateViaSASLv1() error {
 	if b.conf.Net.SASL.Handshake {
 		handshakeRequest := &SaslHandshakeRequest{Mechanism: string(b.conf.Net.SASL.Mechanism), Version: b.conf.Net.SASL.Version}
 		handshakeResponse := new(SaslHandshakeResponse)
-		prom := makeResponsePromise(handshakeResponse.version())
+		prom := makeResponsePromise(handshakeResponse)
 
 		handshakeErr := b.sendInternal(handshakeRequest, prom)
 		if handshakeErr != nil {
@@ -1271,7 +1346,7 @@ func (b *Broker) authenticateViaSASLv1() error {
 	authSendReceiver := func(authBytes []byte) (*SaslAuthenticateResponse, error) {
 		authenticateRequest := b.createSaslAuthenticateRequest(authBytes)
 		authenticateResponse := new(SaslAuthenticateResponse)
-		prom := makeResponsePromise(authenticateResponse.version())
+		prom := makeResponsePromise(authenticateResponse)
 		authErr := b.sendInternal(authenticateRequest, prom)
 		if authErr != nil {
 			Logger.Printf("Error while performing SASL Auth %s\n", b.addr)

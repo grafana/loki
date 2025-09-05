@@ -15,6 +15,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
+	"github.com/grafana/loki/v3/pkg/goldfish"
 )
 
 const (
@@ -162,8 +163,22 @@ func (s *Service) clusterSelfHandler() http.Handler {
 
 func (s *Service) featuresHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		goldfishFeature := map[string]any{
+			"enabled": s.cfg.Goldfish.Enable,
+		}
+
+		// Only include namespaces if goldfish is enabled and they are configured
+		if s.cfg.Goldfish.Enable {
+			if s.cfg.Goldfish.CellANamespace != "" {
+				goldfishFeature["cellANamespace"] = s.cfg.Goldfish.CellANamespace
+			}
+			if s.cfg.Goldfish.CellBNamespace != "" {
+				goldfishFeature["cellBNamespace"] = s.cfg.Goldfish.CellBNamespace
+			}
+		}
+
 		features := map[string]any{
-			"goldfish": s.cfg.Goldfish.Enable,
+			"goldfish": goldfishFeature,
 		}
 		w.Header().Set("Content-Type", contentTypeJSON)
 		if err := json.NewEncoder(w).Encode(features); err != nil {
@@ -215,23 +230,49 @@ func (s *Service) goldfishQueriesHandler() http.Handler {
 		}
 
 		if pageSizeStr := r.URL.Query().Get("pageSize"); pageSizeStr != "" {
-			if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= 100 {
-				pageSize = ps
+			if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 {
+				pageSize = min(ps, 1000)
 			}
 		}
 
-		var outcome string
+		// Build filter from query parameters
+		filter := goldfish.QueryFilter{
+			Outcome: goldfish.OutcomeAll, // default value
+		}
+
 		if outcomeStr := r.URL.Query().Get("outcome"); outcomeStr != "" {
 			switch strings.ToLower(outcomeStr) {
-			case "all", "match", "mismatch", "error":
-				outcome = outcomeStr
+			case goldfish.OutcomeAll, goldfish.OutcomeMatch, goldfish.OutcomeMismatch, goldfish.OutcomeError:
+				filter.Outcome = outcomeStr
 			default:
-				outcome = "all"
+				filter.Outcome = goldfish.OutcomeAll
+			}
+		}
+
+		// Parse tenant filter
+		if tenant := r.URL.Query().Get("tenant"); tenant != "" {
+			filter.Tenant = tenant
+		}
+
+		// Parse user filter
+		if user := r.URL.Query().Get("user"); user != "" {
+			filter.User = user
+		}
+
+		// Parse new engine filter
+		if newEngine := r.URL.Query().Get("newEngine"); newEngine != "" {
+			switch newEngine {
+			case "true":
+				val := true
+				filter.UsedNewEngine = &val
+			case "false":
+				val := false
+				filter.UsedNewEngine = &val
 			}
 		}
 
 		// Get sampled queries
-		response, err := s.GetSampledQueries(page, pageSize, outcome)
+		response, err := s.GetSampledQueries(page, pageSize, filter)
 		if err != nil {
 			level.Error(s.logger).Log("msg", "failed to get sampled queries", "err", err)
 			s.writeJSONError(w, http.StatusInternalServerError, "failed to retrieve sampled queries")

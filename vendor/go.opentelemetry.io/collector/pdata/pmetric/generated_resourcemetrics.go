@@ -9,7 +9,6 @@ package pmetric
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -34,8 +33,7 @@ func newResourceMetrics(orig *otlpmetrics.ResourceMetrics, state *internal.State
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewResourceMetrics() ResourceMetrics {
-	state := internal.StateMutable
-	return newResourceMetrics(&otlpmetrics.ResourceMetrics{}, &state)
+	return newResourceMetrics(internal.NewOrigResourceMetrics(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -47,13 +45,18 @@ func (ms ResourceMetrics) MoveTo(dest ResourceMetrics) {
 	if ms.orig == dest.orig {
 		return
 	}
-	*dest.orig = *ms.orig
-	*ms.orig = otlpmetrics.ResourceMetrics{}
+	internal.DeleteOrigResourceMetrics(dest.orig, false)
+	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Resource returns the resource associated with this ResourceMetrics.
 func (ms ResourceMetrics) Resource() pcommon.Resource {
 	return pcommon.Resource(internal.NewResource(&ms.orig.Resource, ms.state))
+}
+
+// ScopeMetrics returns the ScopeMetrics associated with this ResourceMetrics.
+func (ms ResourceMetrics) ScopeMetrics() ScopeMetricsSlice {
+	return newScopeMetricsSlice(&ms.orig.ScopeMetrics, ms.state)
 }
 
 // SchemaUrl returns the schemaurl associated with this ResourceMetrics.
@@ -67,35 +70,8 @@ func (ms ResourceMetrics) SetSchemaUrl(v string) {
 	ms.orig.SchemaUrl = v
 }
 
-// ScopeMetrics returns the ScopeMetrics associated with this ResourceMetrics.
-func (ms ResourceMetrics) ScopeMetrics() ScopeMetricsSlice {
-	return newScopeMetricsSlice(&ms.orig.ScopeMetrics, ms.state)
-}
-
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ResourceMetrics) CopyTo(dest ResourceMetrics) {
 	dest.state.AssertMutable()
-	copyOrigResourceMetrics(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms ResourceMetrics) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	dest.WriteObjectField("resource")
-	internal.MarshalJSONStreamResource(internal.NewResource(&ms.orig.Resource, ms.state), dest)
-	if ms.orig.SchemaUrl != "" {
-		dest.WriteObjectField("schemaUrl")
-		dest.WriteString(ms.orig.SchemaUrl)
-	}
-	if len(ms.orig.ScopeMetrics) > 0 {
-		dest.WriteObjectField("scopeMetrics")
-		ms.ScopeMetrics().marshalJSONStream(dest)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigResourceMetrics(dest, src *otlpmetrics.ResourceMetrics) {
-	internal.CopyOrigResource(&dest.Resource, &src.Resource)
-	dest.SchemaUrl = src.SchemaUrl
-	dest.ScopeMetrics = copyOrigScopeMetricsSlice(dest.ScopeMetrics, src.ScopeMetrics)
+	internal.CopyOrigResourceMetrics(dest.orig, ms.orig)
 }

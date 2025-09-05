@@ -9,6 +9,10 @@ type SaslAuthenticateResponse struct {
 	SessionLifetimeMs int64
 }
 
+func (r *SaslAuthenticateResponse) setVersion(v int16) {
+	r.Version = v
+}
+
 func (r *SaslAuthenticateResponse) encode(pe packetEncoder) error {
 	pe.putInt16(int16(r.Err))
 	if err := pe.putNullableString(r.ErrorMessage); err != nil {
@@ -48,7 +52,7 @@ func (r *SaslAuthenticateResponse) decode(pd packetDecoder, version int16) error
 }
 
 func (r *SaslAuthenticateResponse) key() int16 {
-	return APIKeySASLAuth
+	return apiKeySASLAuth
 }
 
 func (r *SaslAuthenticateResponse) version() int16 {

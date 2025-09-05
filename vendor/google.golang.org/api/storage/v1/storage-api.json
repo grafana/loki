@@ -253,7 +253,7 @@
       "location": "northamerica-south1"
     }
   ],
-  "etag": "\"31383438373536343936353833383831333836\"",
+  "etag": "\"3136333632333439343533383832363638313632\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -4544,7 +4544,7 @@
       }
     }
   },
-  "revision": "20250718",
+  "revision": "20250814",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
@@ -5400,6 +5400,16 @@
         "copySourceAcl": {
           "description": "If true, copies the source object's ACL; otherwise, uses the bucket's default object ACL. The default is false.",
           "type": "boolean"
+        },
+        "createdAfterTime": {
+          "description": "Restores only the objects that were created after this time.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "createdBeforeTime": {
+          "description": "Restores only the objects that were created before this time.",
+          "format": "date-time",
+          "type": "string"
         },
         "matchGlobs": {
           "description": "Restores only the objects matching any of the specified glob(s). If this parameter is not specified, all objects will be restored within the specified time range.",

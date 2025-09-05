@@ -146,6 +146,8 @@ message Store {
   int64 chunksDownloadTime = 3 [(gogoproto.jsontag) = "chunksDownloadTime"];
   // Whether the query referenced structured metadata
   bool queryReferencedStructured = 13 [(gogoproto.jsontag) = "queryReferencedStructuredMetadata"];
+  // Whether the V2 engine was used for some or all of the query.
+  bool queryUsedV2Engine = 14 [(gogoproto.jsontag) = "queryUsedV2Engine"];
 
   Chunk chunk = 4 [
     (gogoproto.nullable) = false,
@@ -199,6 +201,9 @@ message Dataobj {
 
   // Total possible rows in the data object
   int64 totalRowsAvailable = 12 [(gogoproto.jsontag) = "totalRowsAvailable"];
+
+  // Time spent fetching page metadata or data from object storage in nanoseconds.
+  int64 totalPageDownloadTime = 13 [(gogoproto.jsontag) = "totalPageDownloadTime"];
 }
 
 message Chunk {

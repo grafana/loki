@@ -3,14 +3,16 @@ package goldfish
 import (
 	"net/http"
 	"time"
+
+	"github.com/grafana/loki/v3/pkg/goldfish"
 )
 
 // CompareResponses compares performance statistics and hashes from QuerySample
-func CompareResponses(sample *QuerySample, performanceTolerance float64) ComparisonResult {
-	result := ComparisonResult{
+func CompareResponses(sample *goldfish.QuerySample, performanceTolerance float64) goldfish.ComparisonResult {
+	result := goldfish.ComparisonResult{
 		CorrelationID:     sample.CorrelationID,
 		DifferenceDetails: make(map[string]any),
-		PerformanceMetrics: PerformanceMetrics{
+		PerformanceMetrics: goldfish.PerformanceMetrics{
 			CellAQueryTime:  time.Duration(sample.CellAStats.ExecTimeMs) * time.Millisecond,
 			CellBQueryTime:  time.Duration(sample.CellBStats.ExecTimeMs) * time.Millisecond,
 			CellABytesTotal: sample.CellAResponseSize,
@@ -31,7 +33,7 @@ func CompareResponses(sample *QuerySample, performanceTolerance float64) Compari
 	switch {
 	case sample.CellAStatusCode != sample.CellBStatusCode:
 		// Different status codes always indicate a mismatch
-		result.ComparisonStatus = ComparisonStatusMismatch
+		result.ComparisonStatus = goldfish.ComparisonStatusMismatch
 		result.DifferenceDetails["status_code"] = map[string]any{
 			"cell_a": sample.CellAStatusCode,
 			"cell_b": sample.CellBStatusCode,
@@ -41,12 +43,12 @@ func CompareResponses(sample *QuerySample, performanceTolerance float64) Compari
 	case sample.CellAStatusCode == sample.CellBStatusCode && sample.CellAStatusCode != http.StatusOK:
 		// Same non-200 status codes indicate matching error behavior
 		// Both services are failing in the same way (e.g., both returning 404 for not found)
-		result.ComparisonStatus = ComparisonStatusMatch
+		result.ComparisonStatus = goldfish.ComparisonStatusMatch
 		return result
 
 	case sample.CellAResponseHash != sample.CellBResponseHash:
 		// Both returned 200 but with different content
-		result.ComparisonStatus = ComparisonStatusMismatch
+		result.ComparisonStatus = goldfish.ComparisonStatusMismatch
 		result.DifferenceDetails["content_hash"] = map[string]any{
 			"cell_a": sample.CellAResponseHash,
 			"cell_b": sample.CellBResponseHash,
@@ -55,7 +57,7 @@ func CompareResponses(sample *QuerySample, performanceTolerance float64) Compari
 
 	default:
 		// Both returned 200 with identical content
-		result.ComparisonStatus = ComparisonStatusMatch
+		result.ComparisonStatus = goldfish.ComparisonStatusMatch
 	}
 
 	// Still compare performance statistics for analysis, but don't change match status
@@ -65,7 +67,7 @@ func CompareResponses(sample *QuerySample, performanceTolerance float64) Compari
 }
 
 // compareQueryStats compares performance statistics between two queries
-func compareQueryStats(statsA, statsB QueryStats, result *ComparisonResult, tolerance float64) {
+func compareQueryStats(statsA, statsB goldfish.QueryStats, result *goldfish.ComparisonResult, tolerance float64) {
 
 	// Compare execution times (record variance for analysis)
 	if statsA.ExecTimeMs > 0 && statsB.ExecTimeMs > 0 {

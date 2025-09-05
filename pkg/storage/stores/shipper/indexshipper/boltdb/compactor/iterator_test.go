@@ -48,7 +48,10 @@ func Test_ChunkIterator(t *testing.T) {
 				return ForEachSeries(context.Background(), tx.Bucket(local.IndexBucketName), tt.config, func(series retention.Series) (err error) {
 					actual = append(actual, series.Chunks()...)
 					if string(series.UserID()) == c2.UserID {
-						return seriesCleaner.RemoveChunk(actual[1].From, actual[1].Through, series.UserID(), series.Labels(), actual[1].ChunkID)
+						chunkRemoved, err := seriesCleaner.RemoveChunk(actual[1].From, actual[1].Through, series.UserID(), series.Labels(), actual[1].ChunkID)
+						require.NoError(t, err)
+						require.True(t, chunkRemoved)
+						return nil
 					}
 					return nil
 				})
@@ -136,7 +139,9 @@ func Test_SeriesCleaner(t *testing.T) {
 				return ForEachSeries(context.Background(), tx.Bucket(local.IndexBucketName), tt.config, func(series retention.Series) (err error) {
 					if series.Labels().Get("bar") == "foo" {
 						for _, chk := range series.Chunks() {
-							require.NoError(t, seriesCleaner.RemoveChunk(chk.From, chk.Through, series.UserID(), series.Labels(), chk.ChunkID))
+							chunkExists, err := seriesCleaner.RemoveChunk(chk.From, chk.Through, series.UserID(), series.Labels(), chk.ChunkID)
+							require.NoError(t, err)
+							require.True(t, chunkExists)
 						}
 					}
 					return nil

@@ -285,6 +285,7 @@ func (q *Queue) reportJobResult(result *grpc.JobResult) error {
 			"job_id", result.JobId,
 			"job_type", result.JobType,
 		)
+		q.metrics.jobsDropped.Inc()
 	} else {
 		q.metrics.jobsProcessed.Inc()
 

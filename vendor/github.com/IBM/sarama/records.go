@@ -183,7 +183,7 @@ func (r *Records) isOverflow() (bool, error) {
 	return false, fmt.Errorf("unknown records type: %v", r.recordsType)
 }
 
-func (r *Records) recordsOffset() (*int64, error) {
+func (r *Records) nextOffset() (*int64, error) {
 	switch r.recordsType {
 	case unknownRecords:
 		return nil, nil
@@ -193,7 +193,8 @@ func (r *Records) recordsOffset() (*int64, error) {
 		if r.RecordBatch == nil {
 			return nil, nil
 		}
-		return &r.RecordBatch.FirstOffset, nil
+		nextOffset := r.RecordBatch.LastOffset() + 1
+		return &nextOffset, nil
 	}
 	return nil, fmt.Errorf("unknown records type: %v", r.recordsType)
 }

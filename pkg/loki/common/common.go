@@ -49,6 +49,13 @@ type Config struct {
 
 	// CompactorAddress is the grpc address of the compactor in the form host:port
 	CompactorGRPCAddress string `yaml:"compactor_grpc_address"`
+
+	// ScratchPath is a path to a directory where Loki can store temporary data.
+	// All files in this path with the extension ".lokiscratch" will be deleted
+	// on startup.
+	//
+	// If ScratchPath is not set, Loki will buffer temporary data in memory.
+	ScratchPath string `yaml:"scratch_path" experimental:"true"`
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
@@ -67,6 +74,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.CompactorAddress, "common.compactor-address", "", "the http address of the compactor in the form http://host:port")
 	f.StringVar(&c.CompactorGRPCAddress, "common.compactor-grpc-address", "", "the grpc address of the compactor in the form host:port")
 	f.StringVar(&c.PathPrefix, "common.path-prefix", "", "prefix for the path")
+	f.StringVar(&c.ScratchPath, "common.scratch-path", "", "Experimental: path to use for temporary data, where scratch data is supported.")
 }
 
 type Storage struct {

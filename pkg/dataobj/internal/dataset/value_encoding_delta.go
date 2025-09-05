@@ -12,7 +12,7 @@ import (
 func init() {
 	// Register the encoding so instances of it can be dynamically created.
 	registerValueEncoding(
-		datasetmd.VALUE_TYPE_INT64,
+		datasetmd.PHYSICAL_TYPE_INT64,
 		datasetmd.ENCODING_TYPE_DELTA,
 		func(w streamio.Writer) valueEncoder { return newDeltaEncoder(w) },
 		func(r streamio.Reader) valueDecoder { return newDeltaDecoder(r) },
@@ -35,9 +35,9 @@ func newDeltaEncoder(w streamio.Writer) *deltaEncoder {
 	return &enc
 }
 
-// ValueType returns [datasetmd.VALUE_TYPE_INT64].
-func (enc *deltaEncoder) ValueType() datasetmd.ValueType {
-	return datasetmd.VALUE_TYPE_INT64
+// PhysicalType returns [datasetmd.PHYSICAL_TYPE_INT64].
+func (enc *deltaEncoder) PhysicalType() datasetmd.PhysicalType {
+	return datasetmd.PHYSICAL_TYPE_INT64
 }
 
 // EncodingType returns [datasetmd.ENCODING_TYPE_DELTA].
@@ -47,7 +47,7 @@ func (enc *deltaEncoder) EncodingType() datasetmd.EncodingType {
 
 // Encode encodes a new value.
 func (enc *deltaEncoder) Encode(v Value) error {
-	if v.Type() != datasetmd.VALUE_TYPE_INT64 {
+	if v.Type() != datasetmd.PHYSICAL_TYPE_INT64 {
 		return fmt.Errorf("delta: invalid value type %v", v.Type())
 	}
 	iv := v.Int64()
@@ -84,9 +84,9 @@ func newDeltaDecoder(r streamio.Reader) *deltaDecoder {
 	return &dec
 }
 
-// ValueType returns [datasetmd.VALUE_TYPE_INT64].
-func (dec *deltaDecoder) ValueType() datasetmd.ValueType {
-	return datasetmd.VALUE_TYPE_INT64
+// PhysicalType returns [datasetmd.PHYSICAL_TYPE_INT64].
+func (dec *deltaDecoder) PhysicalType() datasetmd.PhysicalType {
+	return datasetmd.PHYSICAL_TYPE_INT64
 }
 
 // Type returns [datasetmd.ENCODING_TYPE_DELTA].

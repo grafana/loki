@@ -119,14 +119,13 @@ func (p *recordGenerator) Pipeline(batchSize int64, rows int64) Pipeline {
 func collect(t *testing.T, pipeline Pipeline) (batches int64, rows int64) {
 	ctx := t.Context()
 	for {
-		err := pipeline.Read(ctx)
+		batch, err := pipeline.Read(ctx)
 		if errors.Is(err, EOF) {
 			break
 		}
 		if err != nil {
 			t.Fatalf("did not expect error, got %s", err.Error())
 		}
-		batch, _ := pipeline.Value()
 		t.Log("batch", batch, "err", err)
 		batches++
 		rows += batch.NumRows()
@@ -141,8 +140,7 @@ type ArrowtestPipeline struct {
 	schema *arrow.Schema
 	rows   []arrowtest.Rows
 
-	cur   int
-	state state
+	cur int
 }
 
 var _ Pipeline = (*ArrowtestPipeline)(nil)
@@ -167,10 +165,9 @@ func NewArrowtestPipeline(alloc memory.Allocator, schema *arrow.Schema, rows ...
 // Read implements [Pipeline], converting the next [arrowtest.Rows] into a
 // [arrow.Record] and storing it in the pipeline's state. The state can then be
 // accessed via [ArrowtestPipeline.Value].
-func (p *ArrowtestPipeline) Read(_ context.Context) error {
+func (p *ArrowtestPipeline) Read(_ context.Context) (arrow.Record, error) {
 	if p.cur >= len(p.rows) {
-		p.state = Exhausted
-		return EOF
+		return nil, EOF
 	}
 
 	rows := p.rows[p.cur]
@@ -181,13 +178,8 @@ func (p *ArrowtestPipeline) Read(_ context.Context) error {
 	}
 
 	p.cur++
-	p.state.batch, p.state.err = rows.Record(p.alloc, schema), nil
-	return p.state.err
+	return rows.Record(p.alloc, schema), nil
 }
-
-// Value implements [Pipeline], returning the current record and error
-// determined by the latest call to [ArrowtestPipeline.Read].
-func (p *ArrowtestPipeline) Value() (arrow.Record, error) { return p.state.Value() }
 
 // Close implements [Pipeline], immediately exhausting the pipeline.
 func (p *ArrowtestPipeline) Close() { p.cur = math.MaxInt64 }

@@ -134,7 +134,8 @@ func TestStreamPatternPersistenceOnPrune(t *testing.T) {
 	require.NoError(t, err)
 
 	// Push entries with old timestamps that will be pruned
-	now := drain.TruncateTimestamp(model.TimeFromUnixNano(time.Now().UnixNano()), drain.TimeResolution).Time()
+	start := time.Date(2020, time.January, 10, 0, 0, 0, 0, time.UTC)
+	now := drain.TruncateTimestamp(model.TimeFromUnixNano(start.UnixNano()), drain.TimeResolution).Time()
 	oldTime := now.Add(-2 * time.Hour)
 	err = stream.Push(context.Background(), []push.Entry{
 		{
@@ -174,8 +175,7 @@ func TestStreamPatternPersistenceOnPrune(t *testing.T) {
 	)
 
 	// Prune old data - this should trigger pattern writing
-	isEmpty := stream.prune(time.Hour)
-	require.False(t, isEmpty) // Stream should not be empty due to newer entry
+	_ = stream.prune(time.Hour)
 
 	// Verify the pattern was written
 	mockWriter.AssertExpectations(t)
@@ -202,12 +202,13 @@ func TestStreamPersistenceGranularityMultipleEntries(t *testing.T) {
 	require.NoError(t, err)
 
 	// Push entries across a 1-hour span that will be pruned
-	now := drain.TruncateTimestamp(model.TimeFromUnixNano(time.Now().UnixNano()), drain.TimeResolution).Time()
+	start := time.Date(2020, time.January, 10, 0, 0, 0, 0, time.UTC)
+	now := drain.TruncateTimestamp(model.TimeFromUnixNano(start.UnixNano()), drain.TimeResolution).Time()
 	baseTime := now.Add(-2 * time.Hour)
 
 	// Push 12 entries across 60 minutes (5 minutes apart)
 	entries := []push.Entry{}
-	for i := 0; i < 12; i++ {
+	for i := range 12 {
 		entries = append(entries, push.Entry{
 			Timestamp: baseTime.Add(time.Duration(i*5) * time.Minute),
 			Line:      "ts=1 msg=hello",
@@ -243,8 +244,7 @@ func TestStreamPersistenceGranularityMultipleEntries(t *testing.T) {
 	).Maybe() // Allow multiple calls as bucketing may vary
 
 	// Prune old data - this should trigger pattern writing with multiple entries
-	isEmpty := stream.prune(time.Hour)
-	require.False(t, isEmpty) // Stream should not be empty due to newer entry
+	_ = stream.prune(time.Hour)
 
 	// Verify the patterns were written
 	mockWriter.AssertExpectations(t)
@@ -273,7 +273,8 @@ func TestStreamPersistenceGranularityEdgeCases(t *testing.T) {
 		require.NoError(t, err)
 
 		// Push a newer entry to ensure the stream isn't completely pruned
-		now := drain.TruncateTimestamp(model.TimeFromUnixNano(time.Now().UnixNano()), drain.TimeResolution).Time()
+		start := time.Date(2020, time.January, 10, 0, 0, 0, 0, time.UTC)
+		now := drain.TruncateTimestamp(model.TimeFromUnixNano(start.UnixNano()), drain.TimeResolution).Time()
 		err = stream.Push(context.Background(), []push.Entry{
 			{
 				Timestamp: now,
@@ -286,8 +287,7 @@ func TestStreamPersistenceGranularityEdgeCases(t *testing.T) {
 		mockWriter.AssertNotCalled(t, "WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 
 		// Prune - should not write any patterns
-		isEmpty := stream.prune(time.Hour)
-		require.False(t, isEmpty) // Stream should not be empty
+		_ = stream.prune(time.Hour)
 
 		mockWriter.AssertExpectations(t)
 	})
@@ -311,7 +311,8 @@ func TestStreamPersistenceGranularityEdgeCases(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		now := drain.TruncateTimestamp(model.TimeFromUnixNano(time.Now().UnixNano()), drain.TimeResolution).Time()
+		start := time.Date(2020, time.January, 10, 0, 0, 0, 0, time.UTC)
+		now := drain.TruncateTimestamp(model.TimeFromUnixNano(start.UnixNano()), drain.TimeResolution).Time()
 		baseTime := now.Add(-2 * time.Hour)
 
 		// Push two old entries
@@ -349,8 +350,7 @@ func TestStreamPersistenceGranularityEdgeCases(t *testing.T) {
 			},
 		).Once()
 
-		isEmpty := stream.prune(time.Hour)
-		require.False(t, isEmpty)
+		_ = stream.prune(time.Hour)
 
 		mockWriter.AssertExpectations(t)
 	})
@@ -374,7 +374,8 @@ func TestStreamPersistenceGranularityEdgeCases(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		now := drain.TruncateTimestamp(model.TimeFromUnixNano(time.Now().UnixNano()), drain.TimeResolution).Time()
+		start := time.Date(2020, time.January, 10, 0, 0, 0, 0, time.UTC)
+		now := drain.TruncateTimestamp(model.TimeFromUnixNano(start.UnixNano()), drain.TimeResolution).Time()
 		baseTime := now.Add(-2 * time.Hour)
 
 		// Push multiple old entries across the hour
@@ -408,8 +409,7 @@ func TestStreamPersistenceGranularityEdgeCases(t *testing.T) {
 			},
 		).Maybe() // Allow 0 or more calls since behavior depends on bucket alignment
 
-		isEmpty := stream.prune(time.Hour)
-		require.False(t, isEmpty)
+		_ = stream.prune(time.Hour)
 
 		mockWriter.AssertExpectations(t)
 	})

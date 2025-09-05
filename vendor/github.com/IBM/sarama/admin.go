@@ -251,22 +251,12 @@ func (ca *clusterAdmin) CreateTopic(topic string, detail *TopicDetail, validateO
 	topicDetails := make(map[string]*TopicDetail)
 	topicDetails[topic] = detail
 
-	request := &CreateTopicsRequest{
-		TopicDetails: topicDetails,
-		ValidateOnly: validateOnly,
-		Timeout:      ca.conf.Admin.Timeout,
-	}
-
-	if ca.conf.Version.IsAtLeast(V2_0_0_0) {
-		// Version 3 is the same as version 2 (brokers response before throttling)
-		request.Version = 3
-	} else if ca.conf.Version.IsAtLeast(V0_11_0_0) {
-		// Version 2 is the same as version 1 (response has ThrottleTime)
-		request.Version = 2
-	} else if ca.conf.Version.IsAtLeast(V0_10_2_0) {
-		// Version 1 adds validateOnly.
-		request.Version = 1
-	}
+	request := NewCreateTopicsRequest(
+		ca.conf.Version,
+		topicDetails,
+		ca.conf.Admin.Timeout,
+		validateOnly,
+	)
 
 	return ca.retryOnError(isRetriableControllerError, func() error {
 		b, err := ca.Controller()
@@ -423,7 +413,6 @@ func (ca *clusterAdmin) ListTopics() (map[string]TopicDetail, error) {
 		topicDetails.ConfigEntries = make(map[string]*string)
 
 		for _, entry := range resource.Configs {
-			entry := entry
 			// only include non-default non-sensitive config
 			// (don't actually think topic config will ever be sensitive)
 			if entry.Default || entry.Sensitive {

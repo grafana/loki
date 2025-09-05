@@ -1621,7 +1621,12 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	si.stats.AddDecompressedStructuredMetadataBytes(decompressedStructuredMetadataBytes)
 	si.stats.AddDecompressedBytes(decompressedBytes + decompressedStructuredMetadataBytes)
 
-	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], nil), true
+	lbls, err := si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], nil)
+	if err != nil {
+		si.err = fmt.Errorf("symbolizer lookup: %w", err)
+		return 0, nil, labels.EmptyLabels(), false
+	}
+	return ts, si.buf[:lineSize], lbls, true
 }
 
 func (si *bufferedIterator) Err() error { return si.err }

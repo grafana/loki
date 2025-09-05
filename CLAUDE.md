@@ -17,6 +17,20 @@ make format                   # format code (gofmt and goimports)
 
 **Note:** Use `BUILD_IN_CONTAINER=true NONINTERACTIVE=true make lint` to run linting in a container environment that matches CI exactly. The `NONINTERACTIVE=true` flag prevents Docker from trying to allocate a TTY, which is necessary in non-interactive environments like claude-code. The Makefile automatically detects and handles git worktrees by using `git rev-parse --git-dir` and `git rev-parse --git-common-dir` to mount the appropriate git directories, ensuring git commands work correctly in the container regardless of worktree structure.
 
+### Building the Frontend
+
+The Loki UI/frontend (different from the query-frontend) is located in pkg/ui/frontend and is built with [Vite](https://vitejs.dev/). 
+From pkg/ui/frontend, you can use the following commands.
+
+```bash
+make build          # build the frontend
+make check-deps     # check for vulnerabilities in the frontend dependencies
+make clean          # clean the frontend
+make dev            # start the frontend in development mode
+make lint           # lint the frontend code
+make test           # run the frontend tests
+```
+
 ## Code Style Guidelines
 - Follow standard Go formatting (gofmt/goimports)
 - Import order: standard lib, external packages, then Loki packages

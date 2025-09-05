@@ -15,6 +15,9 @@ import (
 	"github.com/grafana/dskit/spanlogger"
 )
 
+// Used to communicate, via a context, the number of replicas that are available for a DoUntilQuorum call.
+type availableReplicasContextKey struct{}
+
 // ReplicationSet describes the instances to talk to for a given key, and how
 // many errors to tolerate.
 type ReplicationSet struct {
@@ -136,6 +139,11 @@ type DoUntilQuorumConfig struct {
 	// This can be used to prioritise zones that are more likely to succeed, or are expected to complete
 	// faster, for example.
 	ZoneSorter ZoneSorter
+
+	// IncludeReplicaCount indicates that we should unclude in a DoUntilQuorum call, as part of the context, a count of the
+	// number of available replicas. This can be propagated to a replica and used to make informed decisions about load
+	// shedding.
+	IncludeReplicaCount bool
 }
 
 func (c DoUntilQuorumConfig) Validate() error {
@@ -245,6 +253,10 @@ func DoUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.Contex
 	var logger kitlog.Logger = cfg.Logger
 	if cfg.Logger == nil {
 		logger = kitlog.NewNopLogger()
+	}
+
+	if cfg.IncludeReplicaCount {
+		ctx = ContextWithAvailableReplicas(ctx, len(r.Instances))
 	}
 
 	resultsChan := make(chan instanceResult[T], len(r.Instances))
@@ -620,4 +632,17 @@ func hasReplicationSetChangedExcluding(before, after ReplicationSet, exclude fun
 	}
 
 	return false
+}
+
+// ContextWithAvailableReplicas returns a new context that can be used as part of a DoUntilQuorum call, with the number
+// of availableReplicas set. This can be later checked via GetAvailableReplicas.
+func ContextWithAvailableReplicas(ctx context.Context, availableReplicas int) context.Context {
+	return context.WithValue(ctx, availableReplicasContextKey{}, availableReplicas)
+}
+
+// GetAvailableReplicas returns the available replicas count from the context, if any, along with an ok flag indicating
+// if the availableReplicas was set.
+func GetAvailableReplicas(ctx context.Context) (int, bool) {
+	result, ok := ctx.Value(availableReplicasContextKey{}).(int)
+	return result, ok
 }

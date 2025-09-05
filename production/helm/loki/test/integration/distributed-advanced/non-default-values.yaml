@@ -1,0 +1,73 @@
+deploymentMode: Distributed
+loki:
+  commonConfig:
+    replication_factor: 1
+  useTestSchema: true
+  auth_enabled: false
+  storage:
+    bucketNames:
+      chunks: chunks
+      ruler: ruler
+      admin: admin
+  tenants:
+    - name: "test-user-1"
+      password: "test-password-1"
+    - name: "test-user-2"
+      passwordHash: "$2y$10$7O40CaY1yz7fu9O24k2/u.ct/wELYHRBsn25v/7AyuQ8E8hrLqpva"
+ingester:
+  replicas: 1
+  zoneAwareReplication:
+    enabled: false
+minio:
+  enabled: true
+read:
+  replicas: 0
+write:
+  replicas: 0
+backend:
+  replicas: 0
+ruler:
+  replicas: 1
+distributor:
+  replicas: 1
+memcached:
+  enabled: true
+  replicas: 1
+compactor:
+  replicas: 1
+indexGateway:
+  replicas: 1
+querier:
+  replicas: 1
+queryFrontend:
+  replicas: 1
+queryScheduler:
+  replicas: 1
+lokiCanary:
+  kind: Deployment
+chunksCache:
+  suffix: "l1"
+  enabled: true
+  allocatedMemory: 128
+  persistence:
+    labels:
+      foo: bar
+      baz: qux
+  l2:
+    enabled: true
+    replicas: 2
+    allocatedMemory: 128
+    persistence:
+      labels:
+        foo: bar
+        baz: qux
+resultsCache:
+  allocatedMemory: 128
+  persistence:
+    labels:
+      foo: bar
+      baz: qux
+gateway:
+  enabled: true
+  basicAuth:
+    enabled: false

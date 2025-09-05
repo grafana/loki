@@ -6,7 +6,7 @@ subject:
   releaseName: loki
   namespace: loki
   path: ../../..
-  valuesFile: ../../../ci/default-single-binary-values.yaml
+  valuesFile: default-single-binary-values.yaml
   extraArgs:
     - --dependency-update
     - --set

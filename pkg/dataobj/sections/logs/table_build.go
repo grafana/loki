@@ -29,13 +29,13 @@ func buildTable(buf *tableBuffer, pageSize int, compressionOpts dataset.Compress
 
 		_ = streamIDBuilder.Append(i, dataset.Int64Value(record.StreamID))
 		_ = timestampBuilder.Append(i, dataset.Int64Value(record.Timestamp.UnixNano()))
-		_ = messageBuilder.Append(i, dataset.ByteArrayValue(record.Line))
+		_ = messageBuilder.Append(i, dataset.BinaryValue(record.Line))
 
 		record.Metadata.Range(func(md labels.Label) {
 			// Passing around md.Value as an unsafe slice is safe here: appending
 			// values is always read-only and the byte slice will never be mutated.
 			metadataBuilder := buf.Metadata(md.Name, pageSize, compressionOpts)
-			_ = metadataBuilder.Append(i, dataset.ByteArrayValue(unsafeSlice(md.Value, 0)))
+			_ = metadataBuilder.Append(i, dataset.BinaryValue(unsafeSlice(md.Value, 0)))
 		})
 	}
 

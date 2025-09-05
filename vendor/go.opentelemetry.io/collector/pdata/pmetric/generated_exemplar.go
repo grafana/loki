@@ -10,7 +10,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/internal"
 	"go.opentelemetry.io/collector/pdata/internal/data"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -38,8 +37,7 @@ func newExemplar(orig *otlpmetrics.Exemplar, state *internal.State) Exemplar {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewExemplar() Exemplar {
-	state := internal.StateMutable
-	return newExemplar(&otlpmetrics.Exemplar{}, &state)
+	return newExemplar(internal.NewOrigExemplar(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -51,8 +49,13 @@ func (ms Exemplar) MoveTo(dest Exemplar) {
 	if ms.orig == dest.orig {
 		return
 	}
-	*dest.orig = *ms.orig
-	*ms.orig = otlpmetrics.Exemplar{}
+	internal.DeleteOrigExemplar(dest.orig, false)
+	*dest.orig, *ms.orig = *ms.orig, *dest.orig
+}
+
+// FilteredAttributes returns the FilteredAttributes associated with this Exemplar.
+func (ms Exemplar) FilteredAttributes() pcommon.Map {
+	return pcommon.Map(internal.NewMap(&ms.orig.FilteredAttributes, ms.state))
 }
 
 // Timestamp returns the timestamp associated with this Exemplar.
@@ -86,9 +89,14 @@ func (ms Exemplar) DoubleValue() float64 {
 // SetDoubleValue replaces the double associated with this Exemplar.
 func (ms Exemplar) SetDoubleValue(v float64) {
 	ms.state.AssertMutable()
-	ms.orig.Value = &otlpmetrics.Exemplar_AsDouble{
-		AsDouble: v,
+	var ov *otlpmetrics.Exemplar_AsDouble
+	if !internal.UseProtoPooling.IsEnabled() {
+		ov = &otlpmetrics.Exemplar_AsDouble{}
+	} else {
+		ov = internal.ProtoPoolExemplar_AsDouble.Get().(*otlpmetrics.Exemplar_AsDouble)
 	}
+	ov.AsDouble = v
+	ms.orig.Value = ov
 }
 
 // IntValue returns the int associated with this Exemplar.
@@ -99,25 +107,14 @@ func (ms Exemplar) IntValue() int64 {
 // SetIntValue replaces the int associated with this Exemplar.
 func (ms Exemplar) SetIntValue(v int64) {
 	ms.state.AssertMutable()
-	ms.orig.Value = &otlpmetrics.Exemplar_AsInt{
-		AsInt: v,
+	var ov *otlpmetrics.Exemplar_AsInt
+	if !internal.UseProtoPooling.IsEnabled() {
+		ov = &otlpmetrics.Exemplar_AsInt{}
+	} else {
+		ov = internal.ProtoPoolExemplar_AsInt.Get().(*otlpmetrics.Exemplar_AsInt)
 	}
-}
-
-// FilteredAttributes returns the FilteredAttributes associated with this Exemplar.
-func (ms Exemplar) FilteredAttributes() pcommon.Map {
-	return pcommon.Map(internal.NewMap(&ms.orig.FilteredAttributes, ms.state))
-}
-
-// TraceID returns the traceid associated with this Exemplar.
-func (ms Exemplar) TraceID() pcommon.TraceID {
-	return pcommon.TraceID(ms.orig.TraceId)
-}
-
-// SetTraceID replaces the traceid associated with this Exemplar.
-func (ms Exemplar) SetTraceID(v pcommon.TraceID) {
-	ms.state.AssertMutable()
-	ms.orig.TraceId = data.TraceID(v)
+	ov.AsInt = v
+	ms.orig.Value = ov
 }
 
 // SpanID returns the spanid associated with this Exemplar.
@@ -131,51 +128,19 @@ func (ms Exemplar) SetSpanID(v pcommon.SpanID) {
 	ms.orig.SpanId = data.SpanID(v)
 }
 
+// TraceID returns the traceid associated with this Exemplar.
+func (ms Exemplar) TraceID() pcommon.TraceID {
+	return pcommon.TraceID(ms.orig.TraceId)
+}
+
+// SetTraceID replaces the traceid associated with this Exemplar.
+func (ms Exemplar) SetTraceID(v pcommon.TraceID) {
+	ms.state.AssertMutable()
+	ms.orig.TraceId = data.TraceID(v)
+}
+
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Exemplar) CopyTo(dest Exemplar) {
 	dest.state.AssertMutable()
-	copyOrigExemplar(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms Exemplar) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	if ms.orig.TimeUnixNano != 0 {
-		dest.WriteObjectField("timeUnixNano")
-		dest.WriteUint64(ms.orig.TimeUnixNano)
-	}
-	switch ov := ms.orig.Value.(type) {
-	case *otlpmetrics.Exemplar_AsDouble:
-		dest.WriteObjectField("asDouble")
-		dest.WriteFloat64(ov.AsDouble)
-	case *otlpmetrics.Exemplar_AsInt:
-		dest.WriteObjectField("asInt")
-		dest.WriteInt64(ov.AsInt)
-	}
-	if len(ms.orig.FilteredAttributes) > 0 {
-		dest.WriteObjectField("filteredAttributes")
-		internal.MarshalJSONStreamMap(internal.NewMap(&ms.orig.FilteredAttributes, ms.state), dest)
-	}
-	if ms.orig.TraceId != data.TraceID([16]byte{}) {
-		dest.WriteObjectField("traceId")
-		ms.orig.TraceId.MarshalJSONStream(dest)
-	}
-	if ms.orig.SpanId != data.SpanID([8]byte{}) {
-		dest.WriteObjectField("spanId")
-		ms.orig.SpanId.MarshalJSONStream(dest)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigExemplar(dest, src *otlpmetrics.Exemplar) {
-	dest.TimeUnixNano = src.TimeUnixNano
-	switch t := src.Value.(type) {
-	case *otlpmetrics.Exemplar_AsDouble:
-		dest.Value = &otlpmetrics.Exemplar_AsDouble{AsDouble: t.AsDouble}
-	case *otlpmetrics.Exemplar_AsInt:
-		dest.Value = &otlpmetrics.Exemplar_AsInt{AsInt: t.AsInt}
-	}
-	dest.FilteredAttributes = internal.CopyOrigMap(dest.FilteredAttributes, src.FilteredAttributes)
-	dest.TraceId = src.TraceId
-	dest.SpanId = src.SpanId
+	internal.CopyOrigExemplar(dest.orig, ms.orig)
 }

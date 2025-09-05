@@ -2,7 +2,6 @@ package deletion
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"path"
 	"slices"
@@ -12,9 +11,11 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -24,38 +25,8 @@ var ErrNoChunksSelectedForDeletion = fmt.Errorf("no chunks selected for deletion
 
 const (
 	maxChunksPerSegment = 100000
-	manifestFileName    = "manifest.json"
+	manifestFileName    = "manifest.proto"
 )
-
-// ChunksGroup holds a group of chunks selected by the same set of requests
-type ChunksGroup struct {
-	Requests []DeleteRequest     `json:"requests"`
-	Chunks   map[string][]string `json:"chunks"` // mapping of series labels to a list of ChunkIDs
-}
-
-// segment holds limited chunks(upto maxChunksPerSegment) that needs to be processed.
-// It also helps segregate chunks belonging to different users/tables.
-type segment struct {
-	UserID       string        `json:"user_id"`
-	TableName    string        `json:"table_name"`
-	ChunksGroups []ChunksGroup `json:"chunk_groups"`
-	ChunksCount  int           `json:"chunks_count"`
-}
-
-// manifest represents the completion state and summary of discovering chunks which processing for the loaded deleteRequestBatch.
-// It serves two purposes:
-// 1. Acts as a completion marker indicating all chunks for the given delete requests have been found
-// 2. Stores a summary of data stored in segments:
-//   - Original and duplicate deletion requests
-//   - Total number of segments and chunks to be processed
-//
-// Once all the segments are processed, Requests and DuplicateRequests in the manifest could be marked as processed.
-type manifest struct {
-	Requests          []DeleteRequest `json:"requests"`
-	DuplicateRequests []DeleteRequest `json:"duplicate_requests"`
-	SegmentsCount     int             `json:"segments_count"`
-	ChunksCount       int             `json:"chunks_count"`
-}
 
 // deletionManifestBuilder helps with building the manifest for listing out which chunks to process for a batch of delete requests.
 // It is not meant to be used concurrently.
@@ -63,16 +34,16 @@ type deletionManifestBuilder struct {
 	deletionManifestStoreClient client.ObjectClient
 	deleteRequestBatch          *deleteRequestBatch
 
-	currentSegment            map[uint64]ChunksGroup
-	currentSegmentChunksCount int
+	currentSegment            map[uint64]deletionproto.ChunksGroup
+	currentSegmentChunksCount int32
 	currentUserID             string
 	currentTableName          string
 
-	allUserRequests    []*DeleteRequest
+	allUserRequests    []*deleteRequest
 	deletionInterval   model.Interval
 	creationTime       time.Time
-	segmentsCount      int
-	overallChunksCount int
+	segmentsCount      int32
+	overallChunksCount int32
 	logger             log.Logger
 }
 
@@ -93,7 +64,7 @@ func newDeletionManifestBuilder(deletionManifestStoreClient client.ObjectClient,
 	builder := &deletionManifestBuilder{
 		deletionManifestStoreClient: deletionManifestStoreClient,
 		deleteRequestBatch:          deleteRequestBatch,
-		currentSegment:              make(map[uint64]ChunksGroup),
+		currentSegment:              make(map[uint64]deletionproto.ChunksGroup),
 		creationTime:                now,
 		logger:                      log.With(util_log.Logger, "manifest", now.UnixNano()),
 	}
@@ -138,7 +109,7 @@ func (d *deletionManifestBuilder) AddSeries(ctx context.Context, tableName strin
 			return err
 		}
 		d.currentSegmentChunksCount = 0
-		d.currentSegment = make(map[uint64]ChunksGroup)
+		d.currentSegment = make(map[uint64]deletionproto.ChunksGroup)
 
 		d.currentUserID = string(series.UserID())
 		d.currentTableName = tableName
@@ -161,7 +132,7 @@ func (d *deletionManifestBuilder) AddSeries(ctx context.Context, tableName strin
 			d.currentSegmentChunksCount = 0
 			for chunksGroupIdentifier := range d.currentSegment {
 				group := d.currentSegment[chunksGroupIdentifier]
-				group.Chunks = map[string][]string{}
+				group.Chunks = map[string]deletionproto.ChunkIDs{}
 				d.currentSegment[chunksGroupIdentifier] = group
 			}
 		}
@@ -183,28 +154,33 @@ func (d *deletionManifestBuilder) AddSeries(ctx context.Context, tableName strin
 
 		if _, ok := d.currentSegment[chunksGroupIdentifier]; !ok {
 			// Iterate through d.allUserRequests and find which bits are turned on in chunksGroupIdentifier
-			var deleteRequests []DeleteRequest
+			var deleteRequests []deletionproto.DeleteRequest
 			for i := range d.allUserRequests {
 				if chunksGroupIdentifier&(1<<i) != 0 { // Check if the i-th bit is turned on
-					deleteRequest := d.allUserRequests[i]
-					deleteRequests = append(deleteRequests, DeleteRequest{
-						RequestID: deleteRequest.RequestID,
-						Query:     deleteRequest.Query,
-						StartTime: deleteRequest.StartTime,
-						EndTime:   deleteRequest.EndTime,
-						UserID:    deleteRequest.UserID,
+					request := d.allUserRequests[i]
+					deleteRequests = append(deleteRequests, deletionproto.DeleteRequest{
+						RequestID: request.RequestID,
+						Query:     request.Query,
+						StartTime: request.StartTime,
+						EndTime:   request.EndTime,
+						UserID:    request.UserID,
 					})
 				}
 			}
 
-			d.currentSegment[chunksGroupIdentifier] = ChunksGroup{
+			d.currentSegment[chunksGroupIdentifier] = deletionproto.ChunksGroup{
 				Requests: deleteRequests,
-				Chunks:   make(map[string][]string),
+				Chunks:   make(map[string]deletionproto.ChunkIDs),
 			}
 		}
 
 		group := d.currentSegment[chunksGroupIdentifier]
-		group.Chunks[currentLabels] = append(group.Chunks[currentLabels], chk.ChunkID)
+		chunks, ok := group.Chunks[currentLabels]
+		if !ok {
+			chunks = deletionproto.ChunkIDs{}
+		}
+		chunks.IDs = append(chunks.IDs, chk.ChunkID)
+		group.Chunks[currentLabels] = chunks
 		d.currentSegment[chunksGroupIdentifier] = group
 	}
 
@@ -223,14 +199,14 @@ func (d *deletionManifestBuilder) Finish(ctx context.Context) error {
 		"total_requests", d.deleteRequestBatch.requestCount(),
 	)
 
-	var requests []DeleteRequest
+	var requests []deletionproto.DeleteRequest
 	for userID := range d.deleteRequestBatch.deleteRequestsToProcess {
 		for i := range d.deleteRequestBatch.deleteRequestsToProcess[userID].requests {
-			requests = append(requests, *d.deleteRequestBatch.deleteRequestsToProcess[userID].requests[i])
+			requests = append(requests, d.deleteRequestBatch.deleteRequestsToProcess[userID].requests[i].DeleteRequest)
 		}
 	}
 
-	manifestJSON, err := json.Marshal(manifest{
+	manifestProto, err := proto.Marshal(&deletionproto.DeletionManifest{
 		Requests:          requests,
 		DuplicateRequests: d.deleteRequestBatch.duplicateRequests,
 		SegmentsCount:     d.segmentsCount,
@@ -240,7 +216,7 @@ func (d *deletionManifestBuilder) Finish(ctx context.Context) error {
 		return err
 	}
 
-	return d.deletionManifestStoreClient.PutObject(ctx, d.buildObjectKey(manifestFileName), strings.NewReader(unsafeGetString(manifestJSON)))
+	return d.deletionManifestStoreClient.PutObject(ctx, d.buildObjectKey(manifestFileName), strings.NewReader(unsafeGetString(manifestProto)))
 }
 
 func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
@@ -253,7 +229,7 @@ func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
 		"user_id", d.currentUserID,
 	)
 
-	b := segment{
+	b := deletionproto.Segment{
 		UserID:      d.currentUserID,
 		TableName:   d.currentTableName,
 		ChunksCount: d.currentSegmentChunksCount,
@@ -268,7 +244,7 @@ func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
 		return nil
 	}
 
-	slices.SortFunc(b.ChunksGroups, func(a, b ChunksGroup) int {
+	slices.SortFunc(b.ChunksGroups, func(a, b deletionproto.ChunksGroup) int {
 		if len(a.Requests) < len(b.Requests) {
 			return -1
 		} else if len(a.Requests) > len(b.Requests) {
@@ -277,7 +253,7 @@ func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
 
 		return 0
 	})
-	batchJSON, err := json.Marshal(b)
+	batchProto, err := proto.Marshal(&b)
 	if err != nil {
 		return err
 	}
@@ -286,7 +262,7 @@ func (d *deletionManifestBuilder) flushCurrentBatch(ctx context.Context) error {
 	d.overallChunksCount += d.currentSegmentChunksCount
 	d.currentSegmentChunksCount = 0
 
-	return d.deletionManifestStoreClient.PutObject(ctx, d.buildObjectKey(fmt.Sprintf("%d.json", d.segmentsCount-1)), strings.NewReader(unsafeGetString(batchJSON)))
+	return d.deletionManifestStoreClient.PutObject(ctx, d.buildObjectKey(fmt.Sprintf("%d.proto", d.segmentsCount-1)), strings.NewReader(unsafeGetString(batchProto)))
 }
 
 func (d *deletionManifestBuilder) buildObjectKey(filename string) string {
@@ -310,15 +286,15 @@ func storageHasValidManifest(ctx context.Context, deletionManifestStoreClient cl
 			continue
 		}
 
-		// Check if manifest.json exists in this directory
+		// Check if manifest.proto exists in this directory
 		manifestPath := path.Join(string(commonPrefix), manifestFileName)
-		exists, err := deletionManifestStoreClient.ObjectExists(ctx, manifestPath)
+		exists, err := objectExists(ctx, deletionManifestStoreClient, manifestPath)
 		if err != nil {
 			return false, err
 		}
 
 		if !exists {
-			// Skip directories without manifest.json
+			// Skip directories without manifest.proto
 			continue
 		}
 
@@ -343,7 +319,7 @@ func cleanupInvalidManifests(ctx context.Context, deletionManifestStoreClient cl
 			continue
 		}
 
-		// manifest without manifest.json is considered invalid
+		// manifest without manifest.proto is considered invalid
 		manifestPath := path.Join(string(commonPrefix), manifestFileName)
 		exists, err := objectExists(ctx, deletionManifestStoreClient, manifestPath)
 		if err != nil {
@@ -351,7 +327,7 @@ func cleanupInvalidManifests(ctx context.Context, deletionManifestStoreClient cl
 		}
 
 		if exists {
-			// Skip directories with manifest.json
+			// Skip directories with manifest.proto
 			continue
 		}
 

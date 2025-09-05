@@ -1645,6 +1645,12 @@ type BulkRestoreObjectsRequest struct {
 	// CopySourceAcl: If true, copies the source object's ACL; otherwise, uses the
 	// bucket's default object ACL. The default is false.
 	CopySourceAcl bool `json:"copySourceAcl,omitempty"`
+	// CreatedAfterTime: Restores only the objects that were created after this
+	// time.
+	CreatedAfterTime string `json:"createdAfterTime,omitempty"`
+	// CreatedBeforeTime: Restores only the objects that were created before this
+	// time.
+	CreatedBeforeTime string `json:"createdBeforeTime,omitempty"`
 	// MatchGlobs: Restores only the objects matching any of the specified glob(s).
 	// If this parameter is not specified, all objects will be restored within the
 	// specified time range.

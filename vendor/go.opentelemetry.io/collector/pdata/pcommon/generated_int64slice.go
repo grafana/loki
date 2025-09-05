@@ -31,8 +31,7 @@ func (ms Int64Slice) getState() *internal.State {
 // NewInt64Slice creates a new empty Int64Slice.
 func NewInt64Slice() Int64Slice {
 	orig := []int64(nil)
-	state := internal.StateMutable
-	return Int64Slice(internal.NewInt64Slice(&orig, &state))
+	return Int64Slice(internal.NewInt64Slice(&orig, internal.NewState()))
 }
 
 // AsRaw returns a copy of the []int64 slice.
@@ -131,6 +130,9 @@ func (ms Int64Slice) MoveAndAppendTo(dest Int64Slice) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (ms Int64Slice) CopyTo(dest Int64Slice) {
 	dest.getState().AssertMutable()
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
 	*dest.getOrig() = internal.CopyOrigInt64Slice(*dest.getOrig(), *ms.getOrig())
 }
 

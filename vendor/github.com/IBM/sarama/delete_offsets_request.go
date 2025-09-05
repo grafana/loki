@@ -6,6 +6,10 @@ type DeleteOffsetsRequest struct {
 	partitions map[string][]int32
 }
 
+func (r *DeleteOffsetsRequest) setVersion(v int16) {
+	r.Version = v
+}
+
 func (r *DeleteOffsetsRequest) encode(pe packetEncoder) (err error) {
 	err = pe.putString(r.Group)
 	if err != nil {
@@ -69,7 +73,7 @@ func (r *DeleteOffsetsRequest) decode(pd packetDecoder, version int16) (err erro
 }
 
 func (r *DeleteOffsetsRequest) key() int16 {
-	return 47
+	return apiKeyOffsetDelete
 }
 
 func (r *DeleteOffsetsRequest) version() int16 {

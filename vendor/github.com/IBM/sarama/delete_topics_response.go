@@ -8,6 +8,10 @@ type DeleteTopicsResponse struct {
 	TopicErrorCodes map[string]KError
 }
 
+func (d *DeleteTopicsResponse) setVersion(v int16) {
+	d.Version = v
+}
+
 func (d *DeleteTopicsResponse) encode(pe packetEncoder) error {
 	if d.Version >= 1 {
 		pe.putInt32(int32(d.ThrottleTime / time.Millisecond))
@@ -61,7 +65,7 @@ func (d *DeleteTopicsResponse) decode(pd packetDecoder, version int16) (err erro
 }
 
 func (d *DeleteTopicsResponse) key() int16 {
-	return 20
+	return apiKeyDeleteTopics
 }
 
 func (d *DeleteTopicsResponse) version() int16 {

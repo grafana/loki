@@ -138,6 +138,17 @@ func (c ChunkMetas) Add(chk ChunkMeta) ChunkMetas {
 // ToDo(Sandeep): See if we can do something about the assumption on sorted chunks.
 // Maybe always build ChunkMetas using Add method which should always keep the ChunkMetas deduped and sorted.
 func (c ChunkMetas) Drop(chk ChunkMeta) (ChunkMetas, bool) {
+	pos := c.chunkPos(chk)
+	if pos < 0 {
+		return c, false
+	}
+
+	return c[:pos+copy(c[pos:], c[pos+1:])], true
+}
+
+// chunkPos returns the position of the given ChunkMeta. It assumes existing ChunkMetas have already been sorted by using Finalize.
+// It returns -1 if the chunk doesn't exist.
+func (c ChunkMetas) chunkPos(chk ChunkMeta) int {
 	j := sort.Search(len(c), func(i int) bool {
 		ichk := c[i]
 		if ichk.MinTime != chk.MinTime {
@@ -152,10 +163,14 @@ func (c ChunkMetas) Drop(chk ChunkMeta) (ChunkMetas, bool) {
 	})
 
 	if j >= len(c) || c[j].Checksum != chk.Checksum || c[j].MinTime != chk.MinTime || c[j].MaxTime != chk.MaxTime {
-		return c, false
+		return -1
 	}
 
-	return c[:j+copy(c[j:], c[j+1:])], true
+	return j
+}
+
+func (c ChunkMetas) HasChunk(chk ChunkMeta) bool {
+	return c.chunkPos(chk) >= 0
 }
 
 // Some of these fields can realistically be 32bit, but

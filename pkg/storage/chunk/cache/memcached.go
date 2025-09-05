@@ -149,7 +149,7 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 		start = time.Now()
 		items map[string]*memcache.Item
 	)
-	items, err = c.memcache.GetMulti(keys)
+	items, err = c.memcache.GetMulti(ctx, keys)
 	c.requestDuration.After(ctx, "Memcache.GetMulti", memcacheStatusCode(err), start)
 	if err != nil {
 		return found, bufs, keys, err

@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -91,15 +92,15 @@ func TestPipeline(t *testing.T) {
 
 	// Reset caches
 	p.baseBuilder.del = []string{"foo", "bar"}
-	p.baseBuilder.add = [numValidCategories][]labels.Label{
-		ParsedLabel: {{Name: "baz", Value: "blip"}},
+	p.baseBuilder.add = [numValidCategories]*columnarLabels{
+		ParsedLabel: newColumnarLabelsFromStrings("baz", "blip"),
 	}
 
 	p.Reset()
 	require.Len(t, p.streamPipelines, 0)
 	require.Len(t, p.baseBuilder.del, 0)
 	for _, v := range p.baseBuilder.add {
-		require.Len(t, v, 0)
+		require.Equal(t, 0, v.len())
 	}
 }
 
@@ -167,15 +168,15 @@ func TestPipelineWithStructuredMetadata(t *testing.T) {
 
 	// Reset caches
 	p.baseBuilder.del = []string{"foo", "bar"}
-	p.baseBuilder.add = [numValidCategories][]labels.Label{
-		ParsedLabel: {{Name: "baz", Value: "blip"}},
+	p.baseBuilder.add = [numValidCategories]*columnarLabels{
+		ParsedLabel: newColumnarLabelsFromStrings("baz", "blip"),
 	}
 
 	p.Reset()
 	require.Len(t, p.streamPipelines, 0)
 	require.Len(t, p.baseBuilder.del, 0)
 	for _, v := range p.baseBuilder.add {
-		require.Len(t, v, 0)
+		require.Equal(t, 0, v.len())
 	}
 }
 
@@ -684,14 +685,24 @@ func mustFilter(f Filterer, err error) Filterer {
 	return f
 }
 
-func jsonBenchmark(b *testing.B, parser Stage) {
-	b.ReportAllocs()
+func jsonBenchmark(b *testing.B, parser Stage, lines int) {
 
 	p := NewPipeline([]Stage{
 		mustFilter(NewFilter("metrics.go", LineMatchEqual)).ToStage(),
 		parser,
 	})
-	line := []byte(`{"ts":"2020-12-27T09:15:54.333026285Z","error":"action could not be completed", "context":{"file": "metrics.go"}}`)
+	streams := make([][]byte, lines)
+	for i := 0; i < lines; i++ {
+		streams[i] = []byte(fmt.Sprintf(
+			`{
+				"ts":"2020-12-27T09:15:54.333026285Z",
+				"error":"action could not be completed",
+				"context":{"file": "metrics.go"},
+				"line": "line %d"
+			}`,
+			i, // disables caching
+		))
+	}
 	lbs := labels.FromStrings("cluster", "ops-tool1",
 		"name", "querier",
 		"pod", "querier-5896759c79-q7q9h",
@@ -701,17 +712,21 @@ func jsonBenchmark(b *testing.B, parser Stage) {
 		"job", "loki-dev/querier",
 		"pod_template_hash", "5896759c79",
 	)
+	b.ReportAllocs()
 	b.ResetTimer()
-	sp := p.ForStream(lbs)
 	for n := 0; n < b.N; n++ {
-		resLine, resLbs, resMatches = sp.Process(0, line, labels.EmptyLabels())
+		// ForStream creates the LabelsBuilder. Since it caches the results it must be created for each iteration.
+		sp := p.ForStream(lbs)
+		for _, line := range streams {
+			resLine, resLbs, resMatches = sp.Process(0, line, labels.EmptyLabels())
 
-		if !resMatches {
-			b.Fatalf("resulting line not ok: %s\n", line)
-		}
+			if !resMatches {
+				b.Fatalf("resulting line not ok: %s\n", line)
+			}
 
-		if resLbs.Labels().Get("context_file") != "metrics.go" {
-			b.Fatalf("label was not extracted correctly! %+v\n", resLbs)
+			if resLbs.Parsed().Get("context_file") != "metrics.go" {
+				b.Fatalf("label was not extracted correctly! context_file was %v, expected metrics.go, %+v\n", resLbs.Parsed().Get("context_file"), resLbs.Parsed())
+			}
 		}
 	}
 }
@@ -740,7 +755,11 @@ func invalidJSONBenchmark(b *testing.B, parser Stage) {
 }
 
 func BenchmarkJSONParser(b *testing.B) {
-	jsonBenchmark(b, NewJSONParser(false))
+	jsonBenchmark(b, NewJSONParser(false), 1)
+}
+
+func BenchmarkJSONParserHighCardinality(b *testing.B) {
+	jsonBenchmark(b, NewJSONParser(true), 100_000)
 }
 
 func BenchmarkJSONParserInvalidLine(b *testing.B) {
@@ -755,7 +774,7 @@ func BenchmarkJSONExpressionParser(b *testing.B) {
 		b.Fatal("cannot create new JSON expression parser")
 	}
 
-	jsonBenchmark(b, parser)
+	jsonBenchmark(b, parser, 1)
 }
 
 func BenchmarkJSONExpressionParserInvalidLine(b *testing.B) {
@@ -769,7 +788,7 @@ func BenchmarkJSONExpressionParserInvalidLine(b *testing.B) {
 	invalidJSONBenchmark(b, parser)
 }
 
-func logfmtBenchmark(b *testing.B, parser Stage) {
+func logfmtBenchmark(b *testing.B, parser Stage, lines int) {
 	b.ReportAllocs()
 
 	p := NewPipeline([]Stage{
@@ -777,7 +796,10 @@ func logfmtBenchmark(b *testing.B, parser Stage) {
 		parser,
 	})
 
-	line := []byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 org_id=29 traceID=29a0f088b047eb8c latency=fast query="{stream=\"stdout\",pod=\"loki-canary-xmjzp\"}" query_type=limited range_type=range length=20s step=1s duration=58.126671ms status=200 throughput_mb=2.496547 total_bytes_mb=0.145116`)
+	streams := make([][]byte, lines)
+	for i := 0; i < lines; i++ {
+		streams[i] = []byte(fmt.Sprintf(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 org_id=29 traceID=29a0f088b047eb8c latency=fast query="{stream=\"stdout\",pod=\"loki-canary-xmjzp\"}" query_type=limited range_type=range length=20s step=1s duration=58.126671ms status=200 throughput_mb=2.496547 total_bytes_mb=0.145116, line=%d`, i))
+	}
 	lbs := labels.FromStrings("cluster", "ops-tool1",
 		"name", "querier",
 		"ts", "2020-10-18T18:04:22.147378997Z",
@@ -785,20 +807,26 @@ func logfmtBenchmark(b *testing.B, parser Stage) {
 	b.ResetTimer()
 	sp := p.ForStream(lbs)
 	for n := 0; n < b.N; n++ {
-		resLine, resLbs, resMatches = sp.Process(0, line, labels.EmptyLabels())
+		for _, line := range streams {
+			resLine, resLbs, resMatches = sp.Process(0, line, labels.EmptyLabels())
 
-		if !resMatches {
-			b.Fatalf("resulting line not ok: %s\n", line)
-		}
+			if !resMatches {
+				b.Fatalf("resulting line not ok: %s\n", line)
+			}
 
-		if resLbs.Labels().Get("ts") != "2020-10-18T18:04:22.147378997Z" {
-			b.Fatalf("label was not extracted correctly! %+v\n", resLbs)
+			if resLbs.Stream().Get("ts") != "2020-10-18T18:04:22.147378997Z" {
+				b.Fatalf("label was not extracted correctly! ts was %v, expected 2020-10-18T18:04:22.147378997Z, %+v\n", resLbs.Stream().Get("ts"), resLbs)
+			}
 		}
 	}
 }
 
 func BenchmarkLogfmtParser(b *testing.B) {
-	logfmtBenchmark(b, NewLogfmtParser(false, false))
+	logfmtBenchmark(b, NewLogfmtParser(false, false), 1)
+}
+
+func BenchmarkLogfmtParserHighCardinality(b *testing.B) {
+	logfmtBenchmark(b, NewLogfmtParser(false, false), 100_000)
 }
 
 func BenchmarkLogfmtExpressionParser(b *testing.B) {
@@ -809,5 +837,5 @@ func BenchmarkLogfmtExpressionParser(b *testing.B) {
 		b.Fatal("cannot create new logfmt expression parser:", err.Error())
 	}
 
-	logfmtBenchmark(b, parser)
+	logfmtBenchmark(b, parser, 1)
 }

@@ -306,7 +306,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                        )
                        .addRowIf(
                          !$._config.ssd.enabled,
-                         $.row('TSBD Index')
+                         $.row('TSDB Index')
                          .addPanel(
                            $.newQueryPanel('QPS') +
                            $.newQpsPanel('loki_index_request_duration_seconds_count{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector)

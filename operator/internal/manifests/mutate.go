@@ -146,7 +146,7 @@ func MutateFuncFor(existing, desired client.Object, depAnnotations map[string]st
 	}
 }
 
-func mergeWithOverride(dst, src interface{}) error {
+func mergeWithOverride(dst, src any) error {
 	err := mergo.Merge(dst, src, mergo.WithOverride)
 	if err != nil {
 		return kverrors.Wrap(err, "unable to mergeWithOverride", "dst", dst, "src", src)

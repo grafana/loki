@@ -31,8 +31,7 @@ func (ms ByteSlice) getState() *internal.State {
 // NewByteSlice creates a new empty ByteSlice.
 func NewByteSlice() ByteSlice {
 	orig := []byte(nil)
-	state := internal.StateMutable
-	return ByteSlice(internal.NewByteSlice(&orig, &state))
+	return ByteSlice(internal.NewByteSlice(&orig, internal.NewState()))
 }
 
 // AsRaw returns a copy of the []byte slice.
@@ -131,6 +130,9 @@ func (ms ByteSlice) MoveAndAppendTo(dest ByteSlice) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (ms ByteSlice) CopyTo(dest ByteSlice) {
 	dest.getState().AssertMutable()
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
 	*dest.getOrig() = internal.CopyOrigByteSlice(*dest.getOrig(), *ms.getOrig())
 }
 

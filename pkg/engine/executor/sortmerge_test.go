@@ -42,7 +42,7 @@ func TestSortMerge(t *testing.T) {
 		require.NoError(t, err)
 
 		ctx := t.Context()
-		err = pipeline.Read(ctx)
+		_, err = pipeline.Read(ctx)
 		require.ErrorContains(t, err, "column is not a timestamp column")
 	})
 
@@ -70,14 +70,13 @@ func TestSortMerge(t *testing.T) {
 		timestamps := make([]arrow.Timestamp, 0, 30)
 		var batches, rows int64
 		for {
-			err := pipeline.Read(ctx)
+			batch, err := pipeline.Read(ctx)
 			if err == EOF {
 				break
 			}
 			if err != nil {
 				t.Fatalf("did not expect error, got %s", err.Error())
 			}
-			batch, _ := pipeline.Value()
 
 			tsCol, err := c.evaluator.eval(merge.Column, batch)
 			require.NoError(t, err)
@@ -118,14 +117,13 @@ func TestSortMerge(t *testing.T) {
 		timestamps := make([]arrow.Timestamp, 0, 30)
 		var batches, rows int64
 		for {
-			err := pipeline.Read(ctx)
+			batch, err := pipeline.Read(ctx)
 			if err == EOF {
 				break
 			}
 			if err != nil {
 				t.Fatalf("did not expect error, got %s", err.Error())
 			}
-			batch, _ := pipeline.Value()
 
 			tsCol, err := c.evaluator.eval(merge.Column, batch)
 			require.NoError(t, err)

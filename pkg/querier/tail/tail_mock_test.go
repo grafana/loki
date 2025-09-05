@@ -4,11 +4,10 @@ import (
 	"context"
 	"time"
 
+	"github.com/stretchr/testify/mock"
 	grpc_metadata "google.golang.org/grpc/metadata"
 
-	"github.com/stretchr/testify/mock"
-
-	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -113,17 +112,17 @@ func (c *tailClientMock) triggerRecv() {
 
 type mockDeleteGettter struct {
 	user    string
-	results []deletion.DeleteRequest
+	results []deletionproto.DeleteRequest
 }
 
-func newMockDeleteGettter(user string, results []deletion.DeleteRequest) *mockDeleteGettter {
+func newMockDeleteGettter(user string, results []deletionproto.DeleteRequest) *mockDeleteGettter {
 	return &mockDeleteGettter{
 		user:    user,
 		results: results,
 	}
 }
 
-func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]deletion.DeleteRequest, error) {
+func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]deletionproto.DeleteRequest, error) {
 	d.user = userID
 	return d.results, nil
 }

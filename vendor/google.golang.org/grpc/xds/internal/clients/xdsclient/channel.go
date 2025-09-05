@@ -59,6 +59,10 @@ type xdsChannelEventHandler interface {
 	// adsResourceDoesNotExist is called when the xdsChannel determines that a
 	// requested ADS resource does not exist.
 	adsResourceDoesNotExist(ResourceType, string)
+
+	// adsResourceRemoveUnsubscribedCacheEntries is called when the xdsChannel
+	// needs to remove unsubscribed cache entries.
+	adsResourceRemoveUnsubscribedCacheEntries(ResourceType)
 }
 
 // xdsChannelOpts holds the options for creating a new xdsChannel.
@@ -136,8 +140,32 @@ type xdsChannel struct {
 }
 
 func (xc *xdsChannel) close() {
+	if xc.closed.HasFired() {
+		return
+	}
 	xc.closed.Fire()
+
+	// Get the resource types that this specific ADS stream was handling
+	// before stopping it.
+	//
+	// TODO: Revisit if we can avoid acquiring the lock of ads (another type).
+	xc.ads.mu.Lock()
+	typesHandledByStream := make([]ResourceType, 0, len(xc.ads.resourceTypeState))
+	for typ := range xc.ads.resourceTypeState {
+		typesHandledByStream = append(typesHandledByStream, typ)
+	}
+	xc.ads.mu.Unlock()
+
 	xc.ads.Stop()
+
+	// Schedule removeUnsubscribedCacheEntries for the types this stream was handling,
+	// on all authorities that were interested in this channel.
+	if _, ok := xc.eventHandler.(*channelState); ok {
+		for _, typ := range typesHandledByStream {
+			xc.eventHandler.adsResourceRemoveUnsubscribedCacheEntries(typ)
+		}
+	}
+
 	xc.transport.Close()
 	xc.logger.Infof("Shutdown")
 }
@@ -226,6 +254,26 @@ func (xc *xdsChannel) onResponse(resp response, onDone func()) ([]string, error)
 
 	xc.eventHandler.adsResourceUpdate(rType, updates, md, onDone)
 	return names, err
+}
+
+// onRequest invoked when a request is about to be sent on the ADS stream. It
+// removes the cache entries for the resource type that are no longer subscribed to.
+func (xc *xdsChannel) onRequest(typeURL string) {
+	if xc.closed.HasFired() {
+		if xc.logger.V(2) {
+			xc.logger.Infof("Received an update from the ADS stream on closed ADS stream")
+		}
+		return
+	}
+
+	// Lookup the resource parser based on the resource type.
+	rType, ok := xc.clientConfig.ResourceTypes[typeURL]
+	if !ok {
+		logger.Warningf("Resource type URL %q unknown in response from server", typeURL)
+		return
+	}
+
+	xc.eventHandler.adsResourceRemoveUnsubscribedCacheEntries(rType)
 }
 
 // decodeResponse decodes the resources in the given ADS response.

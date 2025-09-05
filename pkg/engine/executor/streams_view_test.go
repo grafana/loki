@@ -1,7 +1,6 @@
 package executor
 
 import (
-	"bytes"
 	"iter"
 	"slices"
 	"testing"
@@ -145,19 +144,15 @@ func buildStreamsSection(t *testing.T, streamLabels []labels.Labels) *streams.Se
 		_ = streamsBuilder.Record(stream, time.Now().UTC(), 0)
 	}
 
-	objBuilder := dataobj.NewBuilder()
+	objBuilder := dataobj.NewBuilder(nil)
 	require.NoError(t, objBuilder.Append(streamsBuilder), "failed to append streams section")
 
-	var buf bytes.Buffer
-	_, err := objBuilder.Flush(&buf)
+	obj, closer, err := objBuilder.Flush()
 	require.NoError(t, err, "failed to flush dataobj")
-
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	require.NoError(t, err, "failed to create dataobj from reader")
+	t.Cleanup(func() { closer.Close() })
 
 	sec, err := streams.Open(t.Context(), obj.Sections()[0])
 	require.NoError(t, err, "failed to open streams section")
-
 	return sec
 }
 

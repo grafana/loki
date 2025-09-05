@@ -48,6 +48,10 @@ type ElectLeadersResponse struct {
 	ReplicaElectionResults map[string]map[int32]*PartitionResult
 }
 
+func (r *ElectLeadersResponse) setVersion(v int16) {
+	r.Version = v
+}
+
 func (r *ElectLeadersResponse) encode(pe packetEncoder) error {
 	pe.putInt32(r.ThrottleTimeMs)
 
@@ -140,7 +144,7 @@ func (r *ElectLeadersResponse) decode(pd packetDecoder, version int16) (err erro
 }
 
 func (r *ElectLeadersResponse) key() int16 {
-	return 43
+	return apiKeyElectLeaders
 }
 
 func (r *ElectLeadersResponse) version() int16 {

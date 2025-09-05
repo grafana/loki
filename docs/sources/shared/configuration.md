@@ -175,6 +175,26 @@ ui:
     # CLI flag: -ui.goldfish.max-idle-time
     [max_idle_time: <int> | default = 300]
 
+    # Base URL of Grafana instance for explore links.
+    # CLI flag: -ui.goldfish.grafana-url
+    [grafana_url: <string> | default = ""]
+
+    # UID of the traces datasource in Grafana.
+    # CLI flag: -ui.goldfish.traces-datasource-uid
+    [traces_datasource_uid: <string> | default = ""]
+
+    # UID of the Loki datasource in Grafana.
+    # CLI flag: -ui.goldfish.logs-datasource-uid
+    [logs_datasource_uid: <string> | default = ""]
+
+    # Namespace for Cell A logs.
+    # CLI flag: -ui.goldfish.cell-a-namespace
+    [cell_a_namespace: <string> | default = ""]
+
+    # Namespace for Cell B logs.
+    # CLI flag: -ui.goldfish.cell-b-namespace
+    [cell_b_namespace: <string> | default = ""]
+
   discovery:
     # List of peers to join the cluster. Supports multiple values separated by
     # commas. Each value can be a hostname, an IP address, or a DNS name (A/AAAA
@@ -1125,21 +1145,17 @@ dataobj:
     # CLI flag: -dataobj-index-builder.events-per-index
     [events_per_index: <int> | default = 32]
 
-    # Experimental: A prefix to use for storing indexes in object storage. Used
-    # to separate the metastore & index files during initial testing.
-    # CLI flag: -dataobj-index-builder.storage-prefix
-    [index_storage_prefix: <string> | default = "index/v0/"]
-
-    # Experimental: A list of tenant IDs to enable index building for. If empty,
-    # all tenants will be enabled.
-    # CLI flag: -dataobj-index-builder.enabled-tenant-ids
-    [enabled_tenant_ids: <string> | default = ""]
-
   metastore:
-    updater:
-      # The format to use for the metastore top-level index objects.
-      # CLI flag: -dataobj-metastore.storage-format
-      [storage_format: <string> | default = "v1"]
+    # Experimental: A prefix to use for storing indexes in object storage. Used
+    # for testing only.
+    # CLI flag: -dataobj-metastore.index-storage-prefix
+    [index_storage_prefix: <string> | default = "index/v0"]
+
+    # Experimental: The ratio of log partitions to metastore partitions. For
+    # example, a value of 10 means there is 1 metastore partition for every 10
+    # log partitions.
+    # CLI flag: -dataobj-metastore.partition-ratio
+    [partition_ratio: <int> | default = 10]
 
   querier:
     # Enable the dataobj querier.
@@ -2436,6 +2452,10 @@ ring:
 # the grpc address of the compactor in the form host:port
 # CLI flag: -common.compactor-grpc-address
 [compactor_grpc_address: <string> | default = ""]
+
+# Experimental: path to use for temporary data, where scratch data is supported.
+# CLI flag: -common.scratch-path
+[scratch_path: <string> | default = ""]
 ```
 
 ### compactor
@@ -2639,10 +2659,9 @@ compactor_ring:
 [horizontal_scaling_mode: <string> | default = "disabled"]
 
 worker_config:
-  # Number of sub-workers to run for concurrent processing of jobs. Setting it
-  # to 0 will run a subworker per available CPU core.
+  # Number of sub-workers to run for concurrent processing of jobs.
   # CLI flag: -compactor.worker.num-sub-workers
-  [num_sub_workers: <int> | default = 0]
+  [num_sub_workers: <int> | default = 4]
 
 jobs_config:
   deletion:
@@ -2892,6 +2911,9 @@ otlp_config:
   # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
   [default_resource_attributes_as_index_labels: <list of strings> | default = [service.name service.namespace service.instance.id deployment.environment deployment.environment.name cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.pod.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]]
 
+# Default policy stream mappings that are merged with per-tenant mappings.
+[default_policy_stream_mappings: <map of string to list of PriorityStreams>]
+
 # Enable writes to Kafka during Push requests.
 # CLI flag: -distributor.kafka-writes-enabled
 [kafka_writes_enabled: <boolean> | default = false]
@@ -2908,32 +2930,6 @@ otlp_config:
 # not enforced. Defaults to false.
 # CLI flag: -distributor.ingest-limits-dry-run-enabled
 [ingest_limits_dry_run_enabled: <boolean> | default = false]
-
-tenant_topic:
-  # Enable the tenant topic tee, which writes logs to Kafka topics based on
-  # tenant IDs instead of using multitenant topics/partitions.
-  # CLI flag: -distributor.tenant-topic-tee.enabled
-  [enabled: <boolean> | default = false]
-
-  # Prefix to prepend to tenant IDs to form the final Kafka topic name
-  # CLI flag: -distributor.tenant-topic-tee.topic-prefix
-  [topic_prefix: <string> | default = "loki.tenant"]
-
-  # Maximum number of bytes that can be buffered before producing to Kafka
-  # CLI flag: -distributor.tenant-topic-tee.max-buffered-bytes
-  [max_buffered_bytes: <int> | default = 100MiB]
-
-  # Maximum size of a single Kafka record in bytes
-  # CLI flag: -distributor.tenant-topic-tee.max-record-size-bytes
-  [max_record_size_bytes: <int> | default = 15MiB249KiB]
-
-  # Topic strategy to use. Valid values are 'simple' or 'automatic'
-  # CLI flag: -distributor.tenant-topic-tee.strategy
-  [strategy: <string> | default = "simple"]
-
-  # Target throughput per partition in bytes for the automatic strategy
-  # CLI flag: -distributor.tenant-topic-tee.target-throughput-per-partition
-  [target_throughput_per_partition: <int> | default = 10MiB]
 ```
 
 ### etcd
@@ -4891,12 +4887,39 @@ engine:
   # CLI flag: -querier.engine.batch-size
   [batch_size: <int> | default = 100]
 
+  # Experimental: The number of inputs that are prefetched simultaneously by any
+  # Merge node. A value of 0 means that only the currently processed input is
+  # prefetched, 1 means that only the next input is prefetched, and so on. A
+  # negative value means that all inputs are be prefetched in parallel.
+  # CLI flag: -querier.engine.merge-prefetch-count
+  [merge_prefetch_count: <int> | default = 0]
+
   # Experimental: Maximum total size of future pages for DataObjScan to download
   # before they are needed, for roundtrip reduction to object storage. Setting
   # to zero disables downloading future pages. Only used in the next generation
   # query engine.
   # CLI flag: -querier.engine.dataobjscan-page-cache-size
   [dataobjscan_page_cache_size: <int> | default = 0B]
+
+  # Configures how to read byte ranges from object storage when using the V2
+  # engine.
+  range_reads:
+    # Experimental: maximum number of parallel reads
+    # CLI flag: -querier.engine.range-reads.max-parallelism
+    [max_parallelism: <int> | default = 10]
+
+    # Experimental: maximum distance (in bytes) between ranges that causes them
+    # to be coalesced into a single range
+    # CLI flag: -querier.engine.range-reads.coalesce-size
+    [coalesce_size: <int> | default = 1048576]
+
+    # Experimental: maximum size of a byte range
+    # CLI flag: -querier.engine.range-reads.max-range-size
+    [max_range_size: <int> | default = 8388608]
+
+    # Experimental: minimum size of a byte range
+    # CLI flag: -querier.engine.range-reads.min-range-size
+    [min_range_size: <int> | default = 1048576]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
@@ -5926,7 +5949,7 @@ grpc_tls_config:
 
 # Comma separated list of headers to exclude from tracing spans. Only used if
 # server.trace-request-headers is true. The following headers are always
-# excluded: Authorization, Cookie, X-Csrf-Token.
+# excluded: Authorization, Cookie, X-Access-Token, X-Csrf-Token, X-Grafana-Id.
 # CLI flag: -server.trace-request-headers-exclude-list
 [trace_request_exclude_headers_list: <string> | default = ""]
 
@@ -5967,6 +5990,11 @@ cluster_validation:
     # validation check.
     # CLI flag: -server.cluster-validation.http.excluded-paths
     [excluded_paths: <string> | default = ""]
+
+    # Comma-separated list of user agents that are excluded from the cluster
+    # validation check.
+    # CLI flag: -server.cluster-validation.http.excluded-user-agents
+    [excluded_user_agents: <string> | default = ""]
 ```
 
 ### storage_config

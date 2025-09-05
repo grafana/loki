@@ -41,6 +41,7 @@ const emptyStats = `{
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
+			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
 			"chunk" :{
 				"compressedBytes": 0,
@@ -65,6 +66,7 @@ const emptyStats = `{
 				"prePredicateDecompressedRows": 0,
 				"prePredicateDecompressedBytes": 0,
 				"prePredicateDecompressedStructuredMetadataBytes": 0,
+				"totalPageDownloadTime": 0,
 				"totalRowsAvailable": 0
 			}
 		},
@@ -81,6 +83,7 @@ const emptyStats = `{
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
+			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
 			"chunk" :{
 				"compressedBytes": 0,
@@ -105,6 +108,7 @@ const emptyStats = `{
 				"prePredicateDecompressedRows": 0,
 				"prePredicateDecompressedBytes": 0,
 				"prePredicateDecompressedStructuredMetadataBytes": 0,
+				"totalPageDownloadTime": 0,
 				"totalRowsAvailable": 0
 			}
 		}

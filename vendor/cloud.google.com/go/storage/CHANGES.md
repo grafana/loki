@@ -1,6 +1,15 @@
 # Changes
 
 
+## [1.56.1](https://github.com/googleapis/google-cloud-go/compare/storage/v1.56.0...storage/v1.56.1) (2025-08-19)
+
+
+### Bug Fixes
+
+* **storage:** Fix redirect logic in MRD ([#12733](https://github.com/googleapis/google-cloud-go/issues/12733)) ([9f369f9](https://github.com/googleapis/google-cloud-go/commit/9f369f931853220550cabb3d67a5a5d3d9e137ba))
+* **storage:** Pass all user options to NewService ([#12615](https://github.com/googleapis/google-cloud-go/issues/12615)) ([77cdb83](https://github.com/googleapis/google-cloud-go/commit/77cdb832a374eba29e4de7699324a87f1d20eea3))
+* **storage:** ZB Reader redirect support ([#12703](https://github.com/googleapis/google-cloud-go/issues/12703)) ([3c7ea5c](https://github.com/googleapis/google-cloud-go/commit/3c7ea5ceb199d5787d36bf8f415f028bea66e3b5))
+
 ## [1.56.0](https://github.com/googleapis/google-cloud-go/compare/storage/v1.55.0...storage/v1.56.0) (2025-07-24)
 
 

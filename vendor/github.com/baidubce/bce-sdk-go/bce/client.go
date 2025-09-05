@@ -254,6 +254,7 @@ func NewBceClientWithTimeout(conf *BceClientConfiguration, sign auth.Signer) *Bc
 	clientConfig := &http.ClientConfig{
 		RedirectDisabled:      conf.RedirectDisabled,
 		DisableKeepAlives:     conf.DisableKeepAlives,
+		NoVerifySSL:           conf.NoVerifySSL,
 		DialTimeout:           conf.DialTimeout,
 		KeepAlive:             conf.KeepAlive,
 		ReadTimeout:           conf.ReadTimeout,
@@ -262,6 +263,7 @@ func NewBceClientWithTimeout(conf *BceClientConfiguration, sign auth.Signer) *Bc
 		IdleConnectionTimeout: conf.IdleConnectionTimeout,
 		ResponseHeaderTimeout: conf.ResponseHeaderTimeout,
 		HTTPClientTimeout:     conf.HTTPClientTimeout,
+		HTTPClient:            conf.HTTPClient,
 	}
 
 	http.InitClientWithTimeout(clientConfig)

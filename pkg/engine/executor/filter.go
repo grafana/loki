@@ -15,12 +15,7 @@ func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expres
 	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) state {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
-		err := input.Read(ctx)
-		if err != nil {
-			return failureState(err)
-		}
-
-		batch, err := input.Value()
+		batch, err := input.Read(ctx)
 		if err != nil {
 			return failureState(err)
 		}

@@ -293,6 +293,9 @@ func (a *authority) fallbackToServer(xc *xdsChannelWithConfig) bool {
 	// Subscribe to all existing resources from the new management server.
 	for typ, resources := range a.resources {
 		for name, state := range resources {
+			if len(state.watchers) == 0 {
+				continue
+			}
 			if a.logger.V(2) {
 				a.logger.Infof("Resubscribing to resource of type %q and name %q", typ.TypeName, name)
 			}
@@ -330,7 +333,9 @@ func (a *authority) adsResourceUpdate(serverConfig *ServerConfig, rType Resource
 //
 // Only executed in the context of a serializer callback.
 func (a *authority) handleADSResourceUpdate(serverConfig *ServerConfig, rType ResourceType, updates map[string]dataAndErrTuple, md xdsresource.UpdateMetadata, onDone func()) {
-	a.handleRevertingToPrimaryOnUpdate(serverConfig)
+	if !a.handleRevertingToPrimaryOnUpdate(serverConfig) {
+		return
+	}
 
 	// We build a list of callback funcs to invoke, and invoke them at the end
 	// of this method instead of inline (when handling the update for a
@@ -548,12 +553,23 @@ func (a *authority) handleADSResourceDoesNotExist(rType ResourceType, resourceNa
 // lower priority servers are closed and the active server is reverted to the
 // highest priority server that sent the update.
 //
+// The return value indicates whether subsequent processing of the resource
+// update should continue or not.
+//
 // This method is only executed in the context of a serializer callback.
-func (a *authority) handleRevertingToPrimaryOnUpdate(serverConfig *ServerConfig) {
-	if a.activeXDSChannel != nil && isServerConfigEqual(serverConfig, a.activeXDSChannel.serverConfig) {
+func (a *authority) handleRevertingToPrimaryOnUpdate(serverConfig *ServerConfig) bool {
+	if a.activeXDSChannel == nil {
+		// This can happen only when all watches on this authority have been
+		// removed, and the xdsChannels have been closed. This update should
+		// have been received prior to closing of the channel, and therefore
+		// must be ignored.
+		return false
+	}
+
+	if isServerConfigEqual(serverConfig, a.activeXDSChannel.serverConfig) {
 		// If the resource update is from the current active server, nothing
 		// needs to be done from fallback point of view.
-		return
+		return true
 	}
 
 	if a.logger.V(2) {
@@ -561,10 +577,23 @@ func (a *authority) handleRevertingToPrimaryOnUpdate(serverConfig *ServerConfig)
 	}
 
 	// If the resource update is not from the current active server, it means
-	// that we have received an update from a higher priority server and we need
-	// to revert back to it. This method guarantees that when an update is
-	// received from a server, all lower priority servers are closed.
+	// that we have received an update either from:
+	// - a server that has a higher priority than the current active server and
+	//   therefore we need to revert back to it and close all lower priority
+	//   servers, or,
+	// - a server that has a lower priority than the current active server. This
+	//   can happen when the server close and the response race against each
+	//   other. We can safely ignore this update, since we have already reverted
+	//   to the higher priority server, and closed all lower priority servers.
 	serverIdx := a.serverIndexForConfig(serverConfig)
+	activeServerIdx := a.serverIndexForConfig(a.activeXDSChannel.serverConfig)
+	if activeServerIdx < serverIdx {
+		return false
+	}
+
+	// At this point, we are guaranteed that we have received a response from a
+	// higher priority server compared to the current active server. So, we
+	// revert to the higher priorty server and close all lower priority ones.
 	a.activeXDSChannel = a.xdsChannelConfigs[serverIdx]
 
 	// Close all lower priority channels.
@@ -602,6 +631,7 @@ func (a *authority) handleRevertingToPrimaryOnUpdate(serverConfig *ServerConfig)
 		}
 		cfg.channel = nil
 	}
+	return true
 }
 
 // watchResource registers a new watcher for the specified resource type and
@@ -654,6 +684,17 @@ func (a *authority) watchResource(rType ResourceType, resourceName string, watch
 				xdsChannelConfigs: map[*xdsChannelWithConfig]bool{xdsChannel: true},
 			}
 			resources[resourceName] = state
+			xdsChannel.channel.subscribe(rType, resourceName)
+		} else if len(state.watchers) == 0 {
+			if a.logger.V(2) {
+				a.logger.Infof("Re-watch for type %q, resource name %q before unsubscription", rType.TypeName, resourceName)
+			}
+			// Add the active channel to the resource's channel configs if not
+			// already present.
+			state.xdsChannelConfigs[xdsChannel] = true
+			// Ensure the resource is subscribed on the active channel. We do this
+			// even if resource is present in cache as re-watches  might occur
+			// after unsubscribes or channel changes.
 			xdsChannel.channel.subscribe(rType, resourceName)
 		}
 		// Always add the new watcher to the set of watchers.
@@ -732,31 +773,15 @@ func (a *authority) unwatchResource(rType ResourceType, resourceName string, wat
 			}
 
 			// There are no more watchers for this resource. Unsubscribe this
-			// resource from all channels where it was subscribed to and delete
-			// the state associated with it.
+			// resource from all channels where it was subscribed to but do not
+			// delete the state associated with it in case the resource is
+			// re-requested later before un-subscription request is completed by
+			// the management server.
 			if a.logger.V(2) {
 				a.logger.Infof("Removing last watch for resource name %q", resourceName)
 			}
 			for xcc := range state.xdsChannelConfigs {
 				xcc.channel.unsubscribe(rType, resourceName)
-			}
-			delete(resources, resourceName)
-
-			// If there are no more watchers for this resource type, delete the
-			// resource type from the top-level map.
-			if len(resources) == 0 {
-				if a.logger.V(2) {
-					a.logger.Infof("Removing last watch for resource type %q", rType.TypeName)
-				}
-				delete(a.resources, rType)
-			}
-			// If there are no more watchers for any resource type, release the
-			// reference to the xdsChannels.
-			if len(a.resources) == 0 {
-				if a.logger.V(2) {
-					a.logger.Infof("Removing last watch for for any resource type, releasing reference to the xdsChannel")
-				}
-				a.closeXDSChannels()
 			}
 		}, func() { close(done) })
 		<-done
@@ -809,7 +834,7 @@ func (a *authority) closeXDSChannels() {
 func (a *authority) watcherExistsForUncachedResource() bool {
 	for _, resourceStates := range a.resources {
 		for _, state := range resourceStates {
-			if state.md.Status == xdsresource.ServiceStatusRequested {
+			if len(state.watchers) > 0 && state.md.Status == xdsresource.ServiceStatusRequested {
 				return true
 			}
 		}
@@ -841,6 +866,9 @@ func (a *authority) resourceConfig() []*v3statuspb.ClientConfig_GenericXdsConfig
 	for rType, resourceStates := range a.resources {
 		typeURL := rType.TypeURL
 		for name, state := range resourceStates {
+			if len(state.watchers) == 0 {
+				continue
+			}
 			var raw *anypb.Any
 			if state.cache != nil {
 				raw = &anypb.Any{TypeUrl: typeURL, Value: state.cache.Bytes()}
@@ -871,6 +899,43 @@ func (a *authority) close() {
 	<-a.xdsClientSerializer.Done()
 	if a.logger.V(2) {
 		a.logger.Infof("Closed")
+	}
+}
+
+// removeUnsubscribedCacheEntries iterates through all resources of the given type and
+// removes the state for resources that have no active watchers. This is called
+// after sending a discovery request to ensure that resources that were
+// unsubscribed (and thus have no watchers) are eventually removed from the
+// authority's cache.
+//
+// This method is only executed in the context of a serializer callback.
+func (a *authority) removeUnsubscribedCacheEntries(rType ResourceType) {
+	resources := a.resources[rType]
+	if resources == nil {
+		return
+	}
+
+	for name, state := range resources {
+		if len(state.watchers) == 0 {
+			if a.logger.V(2) {
+				a.logger.Infof("Removing resource state for %q of type %q as it has no watchers", name, rType.TypeName)
+			}
+			delete(resources, name)
+		}
+	}
+
+	if len(resources) == 0 {
+		if a.logger.V(2) {
+			a.logger.Infof("Removing resource type %q from cache as it has no more resources", rType.TypeName)
+		}
+		delete(a.resources, rType)
+	}
+
+	if len(a.resources) == 0 {
+		if a.logger.V(2) {
+			a.logger.Infof("Removing last watch for any resource type, releasing reference to the xdsChannels")
+		}
+		a.closeXDSChannels()
 	}
 }
 

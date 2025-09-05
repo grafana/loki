@@ -12,6 +12,10 @@ type AlterConfigsResponse struct {
 	Resources    []*AlterConfigsResourceResponse
 }
 
+func (a *AlterConfigsResponse) setVersion(v int16) {
+	a.Version = v
+}
+
 type AlterConfigError struct {
 	Err    KError
 	ErrMsg string
@@ -117,7 +121,7 @@ func (a *AlterConfigsResourceResponse) decode(pd packetDecoder, version int16) e
 }
 
 func (a *AlterConfigsResponse) key() int16 {
-	return 33
+	return apiKeyAlterConfigs
 }
 
 func (a *AlterConfigsResponse) version() int16 {

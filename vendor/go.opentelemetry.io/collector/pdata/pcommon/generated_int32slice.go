@@ -31,8 +31,7 @@ func (ms Int32Slice) getState() *internal.State {
 // NewInt32Slice creates a new empty Int32Slice.
 func NewInt32Slice() Int32Slice {
 	orig := []int32(nil)
-	state := internal.StateMutable
-	return Int32Slice(internal.NewInt32Slice(&orig, &state))
+	return Int32Slice(internal.NewInt32Slice(&orig, internal.NewState()))
 }
 
 // AsRaw returns a copy of the []int32 slice.
@@ -131,6 +130,9 @@ func (ms Int32Slice) MoveAndAppendTo(dest Int32Slice) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (ms Int32Slice) CopyTo(dest Int32Slice) {
 	dest.getState().AssertMutable()
+	if ms.getOrig() == dest.getOrig() {
+		return
+	}
 	*dest.getOrig() = internal.CopyOrigInt32Slice(*dest.getOrig(), *ms.getOrig())
 }
 

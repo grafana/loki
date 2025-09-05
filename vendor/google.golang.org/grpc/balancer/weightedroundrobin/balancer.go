@@ -60,7 +60,7 @@ var (
 	rrFallbackMetric = estats.RegisterInt64Count(estats.MetricDescriptor{
 		Name:           "grpc.lb.wrr.rr_fallback",
 		Description:    "EXPERIMENTAL. Number of scheduler updates in which there were not enough endpoints with valid weight, which caused the WRR policy to fall back to RR behavior.",
-		Unit:           "update",
+		Unit:           "{update}",
 		Labels:         []string{"grpc.target"},
 		OptionalLabels: []string{"grpc.lb.locality"},
 		Default:        false,
@@ -69,7 +69,7 @@ var (
 	endpointWeightNotYetUsableMetric = estats.RegisterInt64Count(estats.MetricDescriptor{
 		Name:           "grpc.lb.wrr.endpoint_weight_not_yet_usable",
 		Description:    "EXPERIMENTAL. Number of endpoints from each scheduler update that don't yet have usable weight information (i.e., either the load report has not yet been received, or it is within the blackout period).",
-		Unit:           "endpoint",
+		Unit:           "{endpoint}",
 		Labels:         []string{"grpc.target"},
 		OptionalLabels: []string{"grpc.lb.locality"},
 		Default:        false,
@@ -78,7 +78,7 @@ var (
 	endpointWeightStaleMetric = estats.RegisterInt64Count(estats.MetricDescriptor{
 		Name:           "grpc.lb.wrr.endpoint_weight_stale",
 		Description:    "EXPERIMENTAL. Number of endpoints from each scheduler update whose latest weight is older than the expiration period.",
-		Unit:           "endpoint",
+		Unit:           "{endpoint}",
 		Labels:         []string{"grpc.target"},
 		OptionalLabels: []string{"grpc.lb.locality"},
 		Default:        false,
@@ -86,7 +86,7 @@ var (
 	endpointWeightsMetric = estats.RegisterFloat64Histo(estats.MetricDescriptor{
 		Name:           "grpc.lb.wrr.endpoint_weights",
 		Description:    "EXPERIMENTAL. Weight of each endpoint, recorded on every scheduler update. Endpoints without usable weights will be recorded as weight 0.",
-		Unit:           "endpoint",
+		Unit:           "{endpoint}",
 		Labels:         []string{"grpc.target"},
 		OptionalLabels: []string{"grpc.lb.locality"},
 		Default:        false,

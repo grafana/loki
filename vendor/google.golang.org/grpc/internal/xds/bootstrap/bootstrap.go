@@ -106,12 +106,6 @@ func (scs *ServerConfigs) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &servers); err != nil {
 		return fmt.Errorf("xds: failed to JSON unmarshal server configurations during bootstrap: %v, config:\n%s", err, string(data))
 	}
-	// Only use the first server config if fallback support is disabled.
-	if !envconfig.XDSFallbackSupport {
-		if len(servers) > 1 {
-			servers = servers[:1]
-		}
-	}
 	*scs = servers
 	return nil
 }
