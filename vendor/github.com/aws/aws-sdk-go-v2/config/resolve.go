@@ -411,3 +411,34 @@ func resolveRetryMode(ctx context.Context, cfg *aws.Config, configs configs) err
 
 	return nil
 }
+
+func resolveInterceptors(ctx context.Context, cfg *aws.Config, configs configs) error {
+	// LoadOptions is the only thing that you can really configure interceptors
+	// on so just check that directly.
+	for _, c := range configs {
+		if loadopts, ok := c.(LoadOptions); ok {
+			cfg.Interceptors = loadopts.Interceptors.Copy()
+		}
+	}
+	return nil
+}
+
+func resolveAuthSchemePreference(ctx context.Context, cfg *aws.Config, configs configs) error {
+	if pref, ok := getAuthSchemePreference(ctx, configs); ok {
+		cfg.AuthSchemePreference = pref
+	}
+	return nil
+}
+
+func resolveServiceOptions(ctx context.Context, cfg *aws.Config, configs configs) error {
+	serviceOptions, found, err := getServiceOptions(ctx, configs)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+
+	cfg.ServiceOptions = serviceOptions
+	return nil
+}

@@ -468,12 +468,13 @@ func (ejvw *extJSONValueWriter) WriteRegex(pattern string, options string) error
 		return err
 	}
 
+	options = sortStringAlphebeticAscending(options)
 	var buf bytes.Buffer
 	buf.WriteString(`{"$regularExpression":{"pattern":`)
 	writeStringWithEscapes(pattern, &buf, ejvw.escapeHTML)
-	buf.WriteString(`,"options":"`)
-	buf.WriteString(sortStringAlphebeticAscending(options))
-	buf.WriteString(`"}},`)
+	buf.WriteString(`,"options":`)
+	writeStringWithEscapes(options, &buf, ejvw.escapeHTML)
+	buf.WriteString(`}},`)
 
 	ejvw.buf = append(ejvw.buf, buf.Bytes()...)
 

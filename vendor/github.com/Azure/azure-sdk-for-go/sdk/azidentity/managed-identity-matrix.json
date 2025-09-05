@@ -4,7 +4,7 @@
             "Agent": {
                 "msi_image": {
                     "ArmTemplateParameters": "@{deployResources = $true}",
-                    "OSVmImage": "env:LINUXNEXTVMIMAGE",
+                    "OSVmImage": "env:LINUXVMIMAGE",
                     "Pool": "env:LINUXPOOL"
                 }
             },

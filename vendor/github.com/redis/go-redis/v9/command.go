@@ -17,6 +17,55 @@ import (
 	"github.com/redis/go-redis/v9/internal/util"
 )
 
+// keylessCommands contains Redis commands that have empty key specifications (9th slot empty)
+// Only includes core Redis commands, excludes FT.*, ts.*, timeseries.*, search.* and subcommands
+var keylessCommands = map[string]struct{}{
+	"acl":          {},
+	"asking":       {},
+	"auth":         {},
+	"bgrewriteaof": {},
+	"bgsave":       {},
+	"client":       {},
+	"cluster":      {},
+	"config":       {},
+	"debug":        {},
+	"discard":      {},
+	"echo":         {},
+	"exec":         {},
+	"failover":     {},
+	"function":     {},
+	"hello":        {},
+	"latency":      {},
+	"lolwut":       {},
+	"module":       {},
+	"monitor":      {},
+	"multi":        {},
+	"pfselftest":   {},
+	"ping":         {},
+	"psubscribe":   {},
+	"psync":        {},
+	"publish":      {},
+	"pubsub":       {},
+	"punsubscribe": {},
+	"quit":         {},
+	"readonly":     {},
+	"readwrite":    {},
+	"replconf":     {},
+	"replicaof":    {},
+	"role":         {},
+	"save":         {},
+	"script":       {},
+	"select":       {},
+	"shutdown":     {},
+	"slaveof":      {},
+	"slowlog":      {},
+	"subscribe":    {},
+	"swapdb":       {},
+	"sync":         {},
+	"unsubscribe":  {},
+	"unwatch":      {},
+}
+
 type Cmder interface {
 	// command name.
 	// e.g. "set k v ex 10" -> "set", "cluster info" -> "cluster".
@@ -75,12 +124,22 @@ func writeCmd(wr *proto.Writer, cmd Cmder) error {
 	return wr.WriteArgs(cmd.Args())
 }
 
+// cmdFirstKeyPos returns the position of the first key in the command's arguments.
+// If the command does not have a key, it returns 0.
+// TODO: Use the data in CommandInfo to determine the first key position.
 func cmdFirstKeyPos(cmd Cmder) int {
 	if pos := cmd.firstKeyPos(); pos != 0 {
 		return int(pos)
 	}
 
-	switch cmd.Name() {
+	name := cmd.Name()
+
+	// first check if the command is keyless
+	if _, ok := keylessCommands[name]; ok {
+		return 0
+	}
+
+	switch name {
 	case "eval", "evalsha", "eval_ro", "evalsha_ro":
 		if cmd.stringArg(2) != "0" {
 			return 3
@@ -3584,15 +3643,14 @@ func (c *cmdsInfoCache) Get(ctx context.Context) (map[string]*CommandInfo, error
 			return err
 		}
 
+		lowerCmds := make(map[string]*CommandInfo, len(cmds))
+
 		// Extensions have cmd names in upper case. Convert them to lower case.
 		for k, v := range cmds {
-			lower := internal.ToLower(k)
-			if lower != k {
-				cmds[lower] = v
-			}
+			lowerCmds[internal.ToLower(k)] = v
 		}
 
-		c.cmds = cmds
+		c.cmds = lowerCmds
 		return nil
 	})
 	return c.cmds, err
@@ -5139,6 +5197,9 @@ type ClientInfo struct {
 	OutputListLength   int           // oll, output list length (replies are queued in this list when the buffer is full)
 	OutputMemory       int           // omem, output buffer memory usage
 	TotalMemory        int           // tot-mem, total memory consumed by this client in its various buffers
+	TotalNetIn         int           // tot-net-in, total network input
+	TotalNetOut        int           // tot-net-out, total network output
+	TotalCmds          int           // tot-cmds, total number of commands processed
 	IoThread           int           // io-thread id
 	Events             string        // file descriptor events (see below)
 	LastCmd            string        // cmd, last command played
@@ -5304,6 +5365,12 @@ func parseClientInfo(txt string) (info *ClientInfo, err error) {
 			info.OutputMemory, err = strconv.Atoi(val)
 		case "tot-mem":
 			info.TotalMemory, err = strconv.Atoi(val)
+		case "tot-net-in":
+			info.TotalNetIn, err = strconv.Atoi(val)
+		case "tot-net-out":
+			info.TotalNetOut, err = strconv.Atoi(val)
+		case "tot-cmds":
+			info.TotalCmds, err = strconv.Atoi(val)
 		case "events":
 			info.Events = val
 		case "cmd":
