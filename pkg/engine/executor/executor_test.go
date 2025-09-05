@@ -18,14 +18,14 @@ func TestExecutor(t *testing.T) {
 	t.Run("pipeline fails if plan is nil", func(t *testing.T) {
 		ctx := t.Context()
 		pipeline := Run(ctx, Config{}, nil, log.NewNopLogger())
-		err := pipeline.Read(ctx)
+		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, "failed to execute pipeline: plan is nil")
 	})
 
 	t.Run("pipeline fails if plan has no root node", func(t *testing.T) {
 		ctx := t.Context()
 		pipeline := Run(ctx, Config{}, &physical.Plan{}, log.NewNopLogger())
-		err := pipeline.Read(ctx)
+		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, "failed to execute pipeline: plan has no root node")
 	})
 }
@@ -35,7 +35,7 @@ func TestExecutor_SortMerge(t *testing.T) {
 		ctx := t.Context()
 		c := &Context{}
 		pipeline := c.executeSortMerge(ctx, &physical.SortMerge{}, nil)
-		err := pipeline.Read(ctx)
+		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, EOF.Error())
 	})
 }
@@ -45,7 +45,7 @@ func TestExecutor_Limit(t *testing.T) {
 		ctx := t.Context()
 		c := &Context{}
 		pipeline := c.executeLimit(ctx, &physical.Limit{}, nil)
-		err := pipeline.Read(ctx)
+		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, EOF.Error())
 	})
 
@@ -53,7 +53,7 @@ func TestExecutor_Limit(t *testing.T) {
 		ctx := t.Context()
 		c := &Context{}
 		pipeline := c.executeLimit(ctx, &physical.Limit{}, []Pipeline{emptyPipeline(), emptyPipeline()})
-		err := pipeline.Read(ctx)
+		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, "limit expects exactly one input, got 2")
 	})
 }
@@ -63,7 +63,7 @@ func TestExecutor_Filter(t *testing.T) {
 		ctx := t.Context()
 		c := &Context{}
 		pipeline := c.executeFilter(ctx, &physical.Filter{}, nil)
-		err := pipeline.Read(ctx)
+		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, EOF.Error())
 	})
 
@@ -71,7 +71,7 @@ func TestExecutor_Filter(t *testing.T) {
 		ctx := t.Context()
 		c := &Context{}
 		pipeline := c.executeFilter(ctx, &physical.Filter{}, []Pipeline{emptyPipeline(), emptyPipeline()})
-		err := pipeline.Read(ctx)
+		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, "filter expects exactly one input, got 2")
 	})
 }
@@ -81,7 +81,7 @@ func TestExecutor_Projection(t *testing.T) {
 		ctx := t.Context()
 		c := &Context{}
 		pipeline := c.executeProjection(ctx, &physical.Projection{}, nil)
-		err := pipeline.Read(ctx)
+		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, EOF.Error())
 	})
 
@@ -90,7 +90,7 @@ func TestExecutor_Projection(t *testing.T) {
 		cols := []physical.ColumnExpression{}
 		c := &Context{}
 		pipeline := c.executeProjection(ctx, &physical.Projection{Columns: cols}, []Pipeline{emptyPipeline()})
-		err := pipeline.Read(ctx)
+		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, "projection expects at least one column, got 0")
 	})
 
@@ -98,7 +98,7 @@ func TestExecutor_Projection(t *testing.T) {
 		ctx := t.Context()
 		c := &Context{}
 		pipeline := c.executeProjection(ctx, &physical.Projection{}, []Pipeline{emptyPipeline(), emptyPipeline()})
-		err := pipeline.Read(ctx)
+		_, err := pipeline.Read(ctx)
 		require.ErrorContains(t, err, "projection expects exactly one input, got 2")
 	})
 }

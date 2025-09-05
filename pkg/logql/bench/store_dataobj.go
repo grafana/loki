@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/querier"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -29,8 +28,8 @@ import (
 
 // DataObjStore implements Store using the dataobj format
 type DataObjStore struct {
-	dir              string
-	tenantID         string
+	path             string
+	tenant           string
 	builder          *logsobj.Builder
 	buf              *bytes.Buffer
 	uploader         *uploader.Uploader
@@ -46,34 +45,34 @@ type DataObjStore struct {
 }
 
 // NewDataObjStore creates a new DataObjStore
-func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
+func NewDataObjStore(path, tenant string) (*DataObjStore, error) {
 	// NOTE(rfratto): DataObjStore should use a dataobj subdirectory to imitate
 	// production setup: a dataobj subdirectory in the location used for chunks.
-	storeDir := filepath.Join(dir, "dataobj")
-	logsTocDir := filepath.Join(storeDir, "tocs")
-	if err := os.MkdirAll(logsTocDir, 0o755); err != nil {
+	basePath := filepath.Join(path, "dataobj")
+
+	objectsPath := filepath.Join(basePath, "objects")
+	if err := os.MkdirAll(objectsPath, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create object path: %w", err)
+	}
+
+	tocsPath := filepath.Join(basePath, "tocs")
+	if err := os.MkdirAll(tocsPath, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	// Create required directories for tenant
-	tenantDir := filepath.Join(storeDir, "tenant-"+tenantID)
-	if err := os.MkdirAll(tenantDir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create metastore directory: %w", err)
-	}
-
 	// Create required directories for index
-	indexDirPrefix := "index/v0"
-	indexDir := filepath.Join(storeDir, indexDirPrefix)
-	tocDir := filepath.Join(indexDir, "tocs")
+	indexPathPrefix := "index/v0"
+	indexPath := filepath.Join(basePath, indexPathPrefix)
+	tocDir := filepath.Join(indexPath, "tocs")
 	if err := os.MkdirAll(tocDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create toc directory: %w", err)
 	}
-	indexesDir := filepath.Join(indexDir, "indexes")
-	if err := os.MkdirAll(indexesDir, 0o755); err != nil {
+	indexesPath := filepath.Join(indexPath, "indexes")
+	if err := os.MkdirAll(indexesPath, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create indexes directory: %w", err)
 	}
 
-	bucket, err := filesystem.NewBucket(storeDir)
+	bucket, err := filesystem.NewBucket(basePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bucket: %w", err)
 	}
@@ -92,15 +91,14 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 
 	logger := level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowWarn())
 	logsMetastoreToc := metastore.NewTableOfContentsWriter(bucket, logger)
-	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, tenantID, logger)
+	uploader := uploader.New(uploader.Config{SHAPrefixSize: 2}, bucket, logger)
 
 	// Create prefixed bucket & metastore for indexes
-	indexWriterBucket := objstore.NewPrefixedBucket(bucket, indexDirPrefix)
+	indexWriterBucket := objstore.NewPrefixedBucket(bucket, indexPathPrefix)
 	indexMetastoreToc := metastore.NewTableOfContentsWriter(indexWriterBucket, logger)
 
 	return &DataObjStore{
-		dir:               storeDir,
-		tenantID:          tenantID,
+		tenant:            tenant,
 		builder:           builder,
 		buf:               bytes.NewBuffer(make([]byte, 0, 128*1024*1024)), // 128MB buffer
 		uploader:          uploader,
@@ -115,13 +113,13 @@ func NewDataObjStore(dir, tenantID string) (*DataObjStore, error) {
 // Write implements Store
 func (s *DataObjStore) Write(_ context.Context, streams []logproto.Stream) error {
 	for _, stream := range streams {
-		if err := s.builder.Append(stream); errors.Is(err, logsobj.ErrBuilderFull) {
+		if err := s.builder.Append(s.tenant, stream); errors.Is(err, logsobj.ErrBuilderFull) {
 			// If the builder is full, flush it and try again
 			if err := s.flush(); err != nil {
 				return fmt.Errorf("failed to flush builder: %w", err)
 			}
 			// Try appending again
-			if err := s.builder.Append(stream); err != nil {
+			if err := s.builder.Append(s.tenant, stream); err != nil {
 				return fmt.Errorf("failed to append stream after flush: %w", err)
 			}
 		} else if err != nil {
@@ -139,7 +137,7 @@ func (s *DataObjStore) flush() error {
 	// Reset the buffer
 	s.buf.Reset()
 
-	minTime, maxTime := s.builder.TimeRange()
+	timeRanges := s.builder.TimeRanges()
 	obj, closer, err := s.builder.Flush()
 	if err != nil {
 		return fmt.Errorf("failed to flush builder: %w", err)
@@ -152,15 +150,7 @@ func (s *DataObjStore) flush() error {
 		return fmt.Errorf("failed to upload data object: %w", err)
 	}
 
-	// Update logs metastore's table of contents with the new data object
-	err = s.logsMetastoreToc.WriteEntry(context.Background(), path, []multitenancy.TimeRange{
-		{
-			Tenant:  s.tenantID,
-			MinTime: minTime,
-			MaxTime: maxTime,
-		},
-	})
-	if err != nil {
+	if err = s.logsMetastoreToc.WriteEntry(context.Background(), path, timeRanges); err != nil {
 		return fmt.Errorf("failed to update metastore: %w", err)
 	}
 

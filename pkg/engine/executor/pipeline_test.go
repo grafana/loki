@@ -87,28 +87,20 @@ func TestCSVPipeline(t *testing.T) {
 		ctx := t.Context()
 
 		// First read should return the first record
-		err := pipeline.Read(ctx)
-		require.NoError(t, err)
-
-		batch, err := pipeline.Value()
+		batch, err := pipeline.Read(ctx)
 		require.NoError(t, err)
 		require.Equal(t, record1.NumRows(), batch.NumRows())
 		require.Equal(t, schema, batch.Schema())
 
 		// Second read should return the second record
-		err = pipeline.Read(ctx)
+		batch, err = pipeline.Read(ctx)
 		require.NoError(t, err)
 
-		batch, err = pipeline.Value()
-		require.NoError(t, err)
 		require.Equal(t, record2.NumRows(), batch.NumRows())
 		require.Equal(t, schema, batch.Schema())
 
 		// Third read should return EOF
-		err = pipeline.Read(ctx)
-		require.Equal(t, EOF, err)
-
-		_, err = pipeline.Value()
+		_, err = pipeline.Read(ctx)
 		require.Equal(t, EOF, err)
 	})
 }
@@ -138,7 +130,7 @@ func (i *instrumentedPipeline) Close() {
 }
 
 // Read implements Pipeline.
-func (i *instrumentedPipeline) Read(ctx context.Context) error {
+func (i *instrumentedPipeline) Read(ctx context.Context) (arrow.Record, error) {
 	i.callCount["Read"]++
 	return i.inner.Read(ctx)
 }
@@ -147,12 +139,6 @@ func (i *instrumentedPipeline) Read(ctx context.Context) error {
 func (i *instrumentedPipeline) Transport() Transport {
 	i.callCount["Transport"]++
 	return i.inner.Transport()
-}
-
-// Value implements Pipeline.
-func (i *instrumentedPipeline) Value() (arrow.Record, error) {
-	i.callCount["Value"]++
-	return i.inner.Value()
 }
 
 var _ Pipeline = (*instrumentedPipeline)(nil)
@@ -192,9 +178,8 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 	ctx := t.Context()
 
 	// Read first batch
-	err := prefetchingPipeline.Read(ctx)
+	v, err := prefetchingPipeline.Read(ctx)
 	require.NoError(t, err)
-	v, _ := prefetchingPipeline.Value()
 	v.Release()
 	require.Equal(t, int64(2), v.NumRows())
 
@@ -202,9 +187,8 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 	require.Equal(t, 2, instrumentedPipeline.callCount["Read"]) // 1 record consumed + 1 record pre-fetched
 
 	// Read second batch
-	err = prefetchingPipeline.Read(ctx)
+	v, err = prefetchingPipeline.Read(ctx)
 	require.NoError(t, err)
-	v, _ = prefetchingPipeline.Value()
 	v.Release()
 	require.Equal(t, int64(2), v.NumRows())
 
@@ -212,9 +196,8 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 	require.Equal(t, 3, instrumentedPipeline.callCount["Read"]) // 2 records consumed + 1 record pre-fetched
 
 	// Read third/last batch
-	err = prefetchingPipeline.Read(ctx)
+	v, err = prefetchingPipeline.Read(ctx)
 	require.NoError(t, err)
-	v, _ = prefetchingPipeline.Value()
 	v.Release()
 	require.Equal(t, int64(1), v.NumRows())
 
@@ -222,7 +205,7 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 	require.Equal(t, 4, instrumentedPipeline.callCount["Read"]) // 3 records consumed + 1 EOF pre-fetched
 
 	// Read EOF
-	err = prefetchingPipeline.Read(ctx)
+	_, err = prefetchingPipeline.Read(ctx)
 	require.ErrorContains(t, err, EOF.Error())
 
 	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched
@@ -232,7 +215,8 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 func Test_prefetchWrapper_Close(t *testing.T) {
 	t.Run("initialized prefetcher", func(t *testing.T) {
 		w := newPrefetchingPipeline(emptyPipeline())
-		require.ErrorIs(t, EOF, w.Read(t.Context()))
+		_, err := w.Read(t.Context())
+		require.ErrorIs(t, EOF, err)
 		require.NotPanics(t, w.Close)
 	})
 

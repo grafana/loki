@@ -194,6 +194,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 		cfg := executor.Config{
 			BatchSize:                int64(e.opts.BatchSize),
+			MergePrefetchCount:       e.opts.MergePrefetchCount,
 			Bucket:                   e.bucket,
 			DataobjScanPageCacheSize: int64(e.opts.DataobjScanPageCacheSize),
 		}
@@ -252,15 +253,11 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 func collectResult(ctx context.Context, pipeline executor.Pipeline, builder ResultBuilder) error {
 	for {
-		if err := pipeline.Read(ctx); err != nil {
+		rec, err := pipeline.Read(ctx)
+		if err != nil {
 			if errors.Is(err, executor.EOF) {
 				break
 			}
-			return err
-		}
-
-		rec, err := pipeline.Value()
-		if err != nil {
 			return err
 		}
 

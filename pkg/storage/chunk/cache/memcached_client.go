@@ -27,7 +27,7 @@ import (
 
 // MemcachedClient interface exists for mocking memcacheClient.
 type MemcachedClient interface {
-	GetMulti(keys []string, opts ...memcache.Option) (map[string]*memcache.Item, error)
+	GetMulti(ctx context.Context, keys []string, opts ...memcache.Option) (map[string]*memcache.Item, error)
 	Set(item *memcache.Item) error
 }
 

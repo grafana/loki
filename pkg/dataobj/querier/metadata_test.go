@@ -18,14 +18,14 @@ import (
 
 func TestStore_SelectSeries(t *testing.T) {
 	const testTenant = "test-tenant"
-	builder := newTestDataBuilder(t, testTenant)
+	builder := newTestDataBuilder(t)
 	defer builder.close()
 
 	ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
 	ctx = user.InjectOrgID(ctx, testTenant)
 
 	// Setup test data
-	now := setupTestData(ctx, t, builder)
+	now := setupTestData(ctx, t, builder, testTenant)
 	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 
@@ -163,14 +163,14 @@ func TestStore_SelectSeries(t *testing.T) {
 
 func TestStore_LabelNamesForMetricName(t *testing.T) {
 	const testTenant = "test-tenant"
-	builder := newTestDataBuilder(t, testTenant)
+	builder := newTestDataBuilder(t)
 	defer builder.close()
 
 	ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
 	ctx = user.InjectOrgID(ctx, testTenant)
 
 	// Setup test data
-	now := setupTestData(ctx, t, builder)
+	now := setupTestData(ctx, t, builder, testTenant)
 	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 
@@ -233,14 +233,14 @@ func TestStore_LabelNamesForMetricName(t *testing.T) {
 
 func TestStore_LabelValuesForMetricName(t *testing.T) {
 	const testTenant = "test-tenant"
-	builder := newTestDataBuilder(t, testTenant)
+	builder := newTestDataBuilder(t)
 	defer builder.close()
 
 	ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
 	ctx = user.InjectOrgID(ctx, testTenant)
 
 	// Setup test data
-	now := setupTestData(ctx, t, builder)
+	now := setupTestData(ctx, t, builder, testTenant)
 	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 

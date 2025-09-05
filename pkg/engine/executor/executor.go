@@ -8,6 +8,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/user"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -27,14 +28,16 @@ type Config struct {
 	Bucket    objstore.Bucket
 
 	DataobjScanPageCacheSize int64
+	MergePrefetchCount       int
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
-		plan:      plan,
-		batchSize: cfg.BatchSize,
-		bucket:    cfg.Bucket,
-		logger:    logger,
+		plan:               plan,
+		batchSize:          cfg.BatchSize,
+		mergePrefetchCount: cfg.MergePrefetchCount,
+		bucket:             cfg.Bucket,
+		logger:             logger,
 
 		dataobjScanPageCacheSize: cfg.DataobjScanPageCacheSize,
 	}
@@ -51,12 +54,14 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 // Context is the execution context
 type Context struct {
 	batchSize int64
+
 	logger    log.Logger
 	plan      *physical.Plan
 	evaluator expressionEvaluator
 	bucket    objstore.Bucket
 
 	dataobjScanPageCacheSize int64
+	mergePrefetchCount       int
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -126,7 +131,16 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		logsSection    *logs.Section
 	)
 
+	tenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return errorPipeline(ctx, fmt.Errorf("missing org ID: %w", err))
+	}
+
 	for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+		if sec.Tenant != tenant {
+			continue
+		}
+
 		if streamsSection != nil {
 			return errorPipeline(ctx, fmt.Errorf("multiple streams sections found in data object %q", node.Location))
 		}
@@ -316,7 +330,7 @@ func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []
 		return emptyPipeline()
 	}
 
-	pipeline, err := NewMergePipeline(inputs)
+	pipeline, err := newMergePipeline(inputs, c.mergePrefetchCount)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
