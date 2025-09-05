@@ -13,6 +13,9 @@ data:
       leaderElect: true
       resourceName: loki-operator.grafana.com
     featureGates:
+      #
+      # Component feature gates
+      #
       lokiStackGateway: true
       restrictedPodSecurityStandard: false
       #
