@@ -199,46 +199,46 @@ func (r *projectionPushdown) apply(node Node) bool {
 			return false
 		}
 
-		scanProjections := make([]ColumnExpression, len(node.PartitionBy)+1)
-		copy(scanProjections, node.PartitionBy)
+		projections := make([]ColumnExpression, len(node.PartitionBy)+1)
+		copy(projections, node.PartitionBy)
 		// Always project timestamp column
-		scanProjections[len(node.PartitionBy)] = &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}
+		projections[len(node.PartitionBy)] = &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}
 
-		additionalProjections := collectAmbiguousColumns(node.PartitionBy)
-		return r.applyProjectionPushdown(node, scanProjections, additionalProjections, false)
+		ambiguousProjections := collectAmbiguousColumns(node.PartitionBy)
+		return r.applyProjectionPushdown(node, projections, ambiguousProjections, false)
 	case *VectorAggregation:
 		if len(node.GroupBy) == 0 || node.Operation != types.VectorAggregationTypeSum {
 			return false
 		}
 
-		scanProjections := make([]ColumnExpression, len(node.GroupBy)+1)
-		copy(scanProjections, node.GroupBy)
+		projections := make([]ColumnExpression, len(node.GroupBy)+1)
+		copy(projections, node.GroupBy)
 		// Always project timestamp column
-		scanProjections[len(node.GroupBy)] = &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}
-		additionalProjections := collectAmbiguousColumns(node.GroupBy)
+		projections[len(node.GroupBy)] = &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}
+		ambiguousProjections := collectAmbiguousColumns(node.GroupBy)
 
-		return r.applyProjectionPushdown(node, scanProjections, additionalProjections, false)
+		return r.applyProjectionPushdown(node, projections, ambiguousProjections, false)
 
 	case *ParseNode:
 		// Parse nodes need the message column to extract fields from log lines
-		scanProjections := []ColumnExpression{
+		projections := []ColumnExpression{
 			&ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinMessage, Type: types.ColumnTypeBuiltin}},
 		}
 		// Apply projection pushdown, but only add to existing projections (for metric queries)
-		return r.applyProjectionPushdown(node, scanProjections, nil, true)
+		return r.applyProjectionPushdown(node, projections, nil, true)
 	case *Filter:
-		scanProjections := extractColumnsFromPredicates(node.Predicates)
-		if len(scanProjections) == 0 {
+		projections := extractColumnsFromPredicates(node.Predicates)
+		if len(projections) == 0 {
 			return false
 		}
-		additionalProjections := collectAmbiguousColumns(extractColumnsFromPredicates(node.Predicates))
+		ambiguousProjections := collectAmbiguousColumns(extractColumnsFromPredicates(node.Predicates))
 
 		// Filter nodes should only add their predicate columns to projections when
 		// there's already a projection list in the plan (indicating a metric query).
 		// For log queries that read all columns, filter columns should not be projected.
 		//
 		// Setting applyIfNotEmpty argument as true for this reason.
-		return r.applyProjectionPushdown(node, scanProjections, additionalProjections, true)
+		return r.applyProjectionPushdown(node, projections, ambiguousProjections, true)
 	}
 	return false
 }
@@ -248,8 +248,8 @@ func (r *projectionPushdown) apply(node Node) bool {
 // if applyIfNotEmpty is true, it will apply the projection pushdown only if the node has existing projections.
 func (r *projectionPushdown) applyProjectionPushdown(
 	node Node,
-	scanProjections []ColumnExpression,
-	additionalProjections []ColumnExpression,
+	projections []ColumnExpression,
+	ambiguousProjections []ColumnExpression,
 	applyIfNotEmpty bool,
 ) bool {
 	switch node := node.(type) {
@@ -260,7 +260,7 @@ func (r *projectionPushdown) applyProjectionPushdown(
 
 		// Add to scan projections if not already present
 		changed := false
-		for _, colExpr := range scanProjections {
+		for _, colExpr := range projections {
 			colExpr, ok := colExpr.(*ColumnExpr)
 			if !ok {
 				continue
@@ -284,7 +284,7 @@ func (r *projectionPushdown) applyProjectionPushdown(
 		return changed
 	case *ParseNode:
 		// Only apply the pushdown for Metric queries. Log queries should request all keys
-		if !r.isMetricQuery() || len(additionalProjections) == 0 {
+		if !r.isMetricQuery() || len(ambiguousProjections) == 0 {
 			return false
 		}
 
@@ -297,7 +297,7 @@ func (r *projectionPushdown) applyProjectionPushdown(
 		// Add new keys
 		changed := false
 
-		for _, p := range additionalProjections {
+		for _, p := range ambiguousProjections {
 			colExpr, ok := p.(*ColumnExpr)
 			if !ok {
 				continue
@@ -324,7 +324,7 @@ func (r *projectionPushdown) applyProjectionPushdown(
 
 	anyChanged := false
 	for _, child := range r.plan.Children(node) {
-		if changed := r.applyProjectionPushdown(child, scanProjections, additionalProjections, applyIfNotEmpty); changed {
+		if changed := r.applyProjectionPushdown(child, projections, ambiguousProjections, applyIfNotEmpty); changed {
 			anyChanged = true
 		}
 	}
