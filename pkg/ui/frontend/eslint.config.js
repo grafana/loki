@@ -58,10 +58,24 @@ export default [
         HTMLHeadingElement: 'readonly',
         HTMLTextAreaElement: 'readonly',
         HTMLOListElement: 'readonly',
+        HTMLUListElement: 'readonly',
         HTMLLIElement: 'readonly',
+        HTMLTableElement: 'readonly',
+        HTMLTableSectionElement: 'readonly',
+        HTMLTableRowElement: 'readonly',
+        HTMLTableCellElement: 'readonly',
+        HTMLTableCaptionElement: 'readonly',
         Element: 'readonly',
         Event: 'readonly',
         EventTarget: 'readonly',
+        KeyboardEvent: 'readonly',
+        MouseEvent: 'readonly',
+        AbortController: 'readonly',
+        AbortSignal: 'readonly',
+        URL: 'readonly',
+        crypto: 'readonly',
+        Location: 'readonly',
+        Crypto: 'readonly',
         // TypeScript/React
         React: 'readonly',
         NodeJS: 'readonly',
@@ -81,7 +95,7 @@ export default [
     }
   },
   {
-    files: ['src/components/ui/**/*'],
+    files: ['src/components/ui/**/*', 'src/contexts/**/*'],
     rules: {
       'react-refresh/only-export-components': 'off'
     }

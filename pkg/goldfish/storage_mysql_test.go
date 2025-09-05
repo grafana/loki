@@ -2,6 +2,7 @@ package goldfish
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -14,69 +15,109 @@ func TestQueryFilter_BuildWhereClause(t *testing.T) {
 		expectedArgs  []any
 	}{
 		{
-			name: "no filters",
-			filter: QueryFilter{
-				Outcome: OutcomeAll,
-			},
+			name:          "no filters",
+			filter:        QueryFilter{},
 			expectedWhere: "",
 			expectedArgs:  nil,
 		},
 		{
 			name: "tenant filter only",
 			filter: QueryFilter{
-				Outcome: OutcomeAll,
-				Tenant:  "tenant-b",
+				Tenant: "tenant-b",
 			},
-			expectedWhere: "WHERE sq.tenant_id = ?",
+			expectedWhere: "WHERE tenant_id = ?",
 			expectedArgs:  []any{"tenant-b"},
 		},
 		{
 			name: "user filter only",
 			filter: QueryFilter{
-				Outcome: OutcomeAll,
-				User:    "user123",
+				User: "user123",
 			},
-			expectedWhere: "WHERE sq.user = ?",
+			expectedWhere: "WHERE user = ?",
 			expectedArgs:  []any{"user123"},
 		},
 		{
 			name: "tenant and user filters",
 			filter: QueryFilter{
-				Outcome: OutcomeAll,
-				Tenant:  "tenant-b",
-				User:    "user123",
+				Tenant: "tenant-b",
+				User:   "user123",
 			},
-			expectedWhere: "WHERE sq.tenant_id = ? AND sq.user = ?",
+			expectedWhere: "WHERE tenant_id = ? AND user = ?",
 			expectedArgs:  []any{"tenant-b", "user123"},
 		},
 		{
 			name: "new engine filter true",
 			filter: QueryFilter{
-				Outcome:       OutcomeAll,
 				UsedNewEngine: boolPtr(true),
 			},
-			expectedWhere: "WHERE (sq.cell_a_used_new_engine = 1 OR sq.cell_b_used_new_engine = 1)",
+			expectedWhere: "WHERE (cell_a_used_new_engine = 1 OR cell_b_used_new_engine = 1)",
 			expectedArgs:  nil,
 		},
 		{
 			name: "new engine filter false",
 			filter: QueryFilter{
-				Outcome:       OutcomeAll,
 				UsedNewEngine: boolPtr(false),
 			},
-			expectedWhere: "WHERE sq.cell_a_used_new_engine = 0 AND sq.cell_b_used_new_engine = 0",
+			expectedWhere: "WHERE cell_a_used_new_engine = 0 AND cell_b_used_new_engine = 0",
 			expectedArgs:  nil,
 		},
 		{
 			name: "all filters combined",
 			filter: QueryFilter{
-				Outcome:       OutcomeAll,
 				Tenant:        "tenant-b",
 				User:          "user123",
 				UsedNewEngine: boolPtr(true),
 			},
-			expectedWhere: "WHERE sq.tenant_id = ? AND sq.user = ? AND (sq.cell_a_used_new_engine = 1 OR sq.cell_b_used_new_engine = 1)",
+			expectedWhere: "WHERE tenant_id = ? AND user = ? AND (cell_a_used_new_engine = 1 OR cell_b_used_new_engine = 1)",
 			expectedArgs:  []any{"tenant-b", "user123"},
+		},
+		{
+			name: "with time range specified",
+			filter: QueryFilter{
+				From: time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+				To:   time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+			},
+			expectedWhere: "WHERE sampled_at >= ? AND sampled_at <= ?",
+			expectedArgs: []any{
+				time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+				time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+			},
+		},
+		{
+			name: "time range with other filters",
+			filter: QueryFilter{
+				From:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+				To:     time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+				Tenant: "tenant-a",
+				User:   "user123",
+			},
+			expectedWhere: "WHERE sampled_at >= ? AND sampled_at <= ? AND tenant_id = ? AND user = ?",
+			expectedArgs: []any{
+				time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+				time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+				"tenant-a",
+				"user123",
+			},
+		},
+		{
+			name: "only From specified",
+			filter: QueryFilter{
+				From: time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+			},
+			expectedWhere: "WHERE sampled_at >= ?",
+			expectedArgs: []any{
+				time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+			},
+		},
+		{
+			name: "only To specified",
+			filter: QueryFilter{
+				To: time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+			},
+			expectedWhere: "WHERE sampled_at <= ?",
+			expectedArgs: []any{
+				time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+			},
 		},
 	}
 

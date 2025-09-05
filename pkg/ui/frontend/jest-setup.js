@@ -46,3 +46,9 @@ Object.defineProperty(window, 'scrollTo', {
   writable: true,
   value: jest.fn(),
 });
+
+// Mock scrollIntoView for DOM elements
+Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+  writable: true,
+  value: jest.fn(),
+});

@@ -36,7 +36,7 @@ func (m *mockStorage) GetSampledQueries(_ context.Context, page, pageSize int, _
 	// This is only used for UI, not needed in manager tests
 	return &goldfish.APIResponse{
 		Queries:  []goldfish.QuerySample{},
-		Total:    0,
+		HasMore:  false,
 		Page:     page,
 		PageSize: pageSize,
 	}, nil

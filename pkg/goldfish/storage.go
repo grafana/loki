@@ -20,7 +20,7 @@ type Storage interface {
 // APIResponse represents the paginated API response for UI
 type APIResponse struct {
 	Queries  []QuerySample `json:"queries"`
-	Total    int           `json:"total"`
+	HasMore  bool          `json:"hasMore"`
 	Page     int           `json:"page"`
 	PageSize int           `json:"pageSize"`
 }

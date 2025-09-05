@@ -2,8 +2,8 @@ import { getBasename, absolutePath } from './util';
 
 // Mock window.location for testing
 const mockLocation = (pathname: string) => {
-  delete (window as any).location;
-  (window as any).location = { pathname };
+  delete (window as unknown as { location?: Location }).location;
+  (window as unknown as { location: { pathname: string } }).location = { pathname };
 };
 
 describe('util functions', () => {

@@ -19,7 +19,7 @@ export function RingStats({
   const activeInstances = instancesByState["ACTIVE"] || 0;
   const inactiveInstances = Object.entries(instancesByState)
     .filter(([state]) => state !== "ACTIVE")
-    .reduce((sum, [_, count]) => sum + count, 0);
+    .reduce((sum, [, count]) => sum + count, 0);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
