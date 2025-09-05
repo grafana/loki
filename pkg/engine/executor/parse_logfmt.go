@@ -40,7 +40,7 @@ func parseKeys(input *array.String, requestedKeys []string, columnBuilders map[s
 	for i := 0; i < input.Len(); i++ {
 		line := input.Value(i)
 		parsed, err := TokenizeLogfmt(line, requestedKeys)
-		
+
 		// Handle error columns
 		if err != nil {
 			// Create error columns on first error
@@ -51,7 +51,7 @@ func parseKeys(input *array.String, requestedKeys []string, columnBuilders map[s
 				columnBuilders["__error_details__"] = errorDetailsBuilder
 				columnOrder = append(columnOrder, "__error__", "__error_details__")
 				hasErrorColumns = true
-				
+
 				// Backfill NULLs for previous rows
 				for j := 0; j < i; j++ {
 					errorBuilder.AppendNull()
