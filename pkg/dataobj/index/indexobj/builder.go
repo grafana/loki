@@ -227,15 +227,6 @@ func (b *Builder) AppendStream(tenantID string, stream streams.Stream) (int64, e
 	streamID := tenantStreams.Record(stream.Labels, stream.MinTimestamp, stream.UncompressedSize)
 	_ = tenantStreams.Record(stream.Labels, stream.MaxTimestamp, 0)
 
-	// If our logs section has gotten big enough, we want to flush it to the
-	// encoder and start a new section.
-	if tenantStreams.EstimatedSize() > int(b.cfg.TargetSectionSize) {
-		if err := b.builder.Append(tenantStreams); err != nil {
-			b.metrics.appendFailures.Inc()
-			return 0, err
-		}
-	}
-
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
 
@@ -289,14 +280,6 @@ func (b *Builder) ObserveLogLine(tenantID string, path string, section int64, st
 		b.pointers[tenantID] = tenantPointers
 	}
 	tenantPointers.ObserveStream(path, section, streamIDInObject, streamIDInIndex, ts, uncompressedSize)
-
-	// If our logs section has gotten big enough, we want to flush it to the
-	// encoder and start a new section.
-	if tenantPointers.EstimatedSize() > int(b.cfg.TargetSectionSize) {
-		if err := b.builder.Append(tenantPointers); err != nil {
-			return err
-		}
-	}
 
 	b.currentSizeEstimate = b.estimatedSize()
 	b.state = builderStateDirty
@@ -394,13 +377,19 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 	var flushErrors []error
 
 	for _, tenantStreams := range b.streams {
-		flushErrors = append(flushErrors, b.builder.Append(tenantStreams))
+		if tenantStreams.EstimatedSize() > 0 {
+			flushErrors = append(flushErrors, b.builder.Append(tenantStreams))
+		}
 	}
 	for _, tenantPointers := range b.pointers {
-		flushErrors = append(flushErrors, b.builder.Append(tenantPointers))
+		if tenantPointers.EstimatedSize() > 0 {
+			flushErrors = append(flushErrors, b.builder.Append(tenantPointers))
+		}
 	}
 	for _, tenantIndexPointers := range b.indexPointers {
-		flushErrors = append(flushErrors, b.builder.Append(tenantIndexPointers))
+		if tenantIndexPointers.EstimatedSize() > 0 {
+			flushErrors = append(flushErrors, b.builder.Append(tenantIndexPointers))
+		}
 	}
 
 	if err := errors.Join(flushErrors...); err != nil {

@@ -18,7 +18,6 @@ import (
 // It reads from the input pipeline, groups the data by specified columns,
 // and applies the aggregation function on each group.
 type vectorAggregationPipeline struct {
-	state           state
 	inputs          []Pipeline
 	inputsExhausted bool // indicates if all inputs are exhausted
 
@@ -56,23 +55,11 @@ func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnEx
 }
 
 // Read reads the next value into its state.
-func (v *vectorAggregationPipeline) Read(ctx context.Context) error {
-	if v.state.err != nil {
-		return v.state.err
-	}
-
+func (v *vectorAggregationPipeline) Read(ctx context.Context) (arrow.Record, error) {
 	if v.inputsExhausted {
-		v.state = failureState(EOF)
-		return v.state.err
+		return nil, EOF
 	}
-
-	record, err := v.read(ctx)
-	v.state = newState(record, err)
-
-	if err != nil {
-		return fmt.Errorf("run vector aggregation: %w", err)
-	}
-	return nil
+	return v.read(ctx)
 }
 
 func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, error) {
@@ -86,16 +73,15 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 		inputsExhausted = true
 
 		for _, input := range v.inputs {
-			if err := input.Read(ctx); err != nil {
+			record, err := input.Read(ctx)
+			if err != nil {
 				if errors.Is(err, EOF) {
 					continue
 				}
-
 				return nil, err
 			}
 
 			inputsExhausted = false
-			record, _ := input.Value()
 
 			// extract timestamp column
 			tsVec, err := v.tsEval(record)
@@ -141,11 +127,6 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 	v.inputsExhausted = true
 
 	return v.aggregator.BuildRecord()
-}
-
-// Value returns the current value in state.
-func (v *vectorAggregationPipeline) Value() (arrow.Record, error) {
-	return v.state.Value()
 }
 
 // Close closes the resources of the pipeline.

@@ -11,7 +11,6 @@ import (
 type BufferedPipeline struct {
 	records []arrow.Record
 	current int
-	state   state
 }
 
 // NewBufferedPipeline creates a new BufferedPipeline from a set of Arrow records.
@@ -26,28 +25,19 @@ func NewBufferedPipeline(records ...arrow.Record) *BufferedPipeline {
 	return &BufferedPipeline{
 		records: records,
 		current: -1, // Start before the first record
-		state:   failureState(EOF),
 	}
 }
 
 // Read implements Pipeline.
 // It advances to the next record and returns EOF when all records have been read.
-func (p *BufferedPipeline) Read(_ context.Context) error {
+func (p *BufferedPipeline) Read(_ context.Context) (arrow.Record, error) {
 	p.current++
 	if p.current >= len(p.records) {
-		p.state = failureState(EOF)
-		return EOF
+		return nil, EOF
 	}
 
 	// Get the next record. The caller is responsible for releasing it it.
-	p.state = successState(p.records[p.current])
-	return nil
-}
-
-// Value implements Pipeline.
-// It returns the current record and error state.
-func (p *BufferedPipeline) Value() (arrow.Record, error) {
-	return p.state.Value()
+	return p.records[p.current], nil
 }
 
 // Close implements Pipeline. It releases all unreturned records.
@@ -58,12 +48,6 @@ func (p *BufferedPipeline) Close() {
 			rec.Release()
 		}
 	}
-
-	if p.state.batch != nil {
-		p.state.batch.Release()
-		p.state.batch = nil
-	}
-
 	p.records = nil
 }
 

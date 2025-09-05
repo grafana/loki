@@ -78,9 +78,7 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 	defer pipeline.Close()
 
 	// Read the pipeline output
-	err = pipeline.Read(t.Context())
-	require.NoError(t, err)
-	record, err := pipeline.Value()
+	record, err := pipeline.Read(t.Context())
 	require.NoError(t, err)
 	defer record.Release()
 
@@ -169,9 +167,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 		require.NoError(t, err)
 		defer pipeline.Close()
 
-		err = pipeline.Read(t.Context())
-		require.NoError(t, err)
-		record, err := pipeline.Value()
+		record, err := pipeline.Read(t.Context())
 		require.NoError(t, err)
 		defer record.Release()
 
@@ -218,9 +214,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 		require.NoError(t, err)
 		defer pipeline.Close()
 
-		err = pipeline.Read(t.Context())
-		require.NoError(t, err)
-		record, err := pipeline.Value()
+		record, err := pipeline.Read(t.Context())
 		require.NoError(t, err)
 		defer record.Release()
 
@@ -280,9 +274,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 		require.NoError(t, err)
 		defer pipeline.Close()
 
-		err = pipeline.Read(t.Context())
-		require.NoError(t, err)
-		record, err := pipeline.Value()
+		record, err := pipeline.Read(t.Context())
 		require.NoError(t, err)
 		defer record.Release()
 
