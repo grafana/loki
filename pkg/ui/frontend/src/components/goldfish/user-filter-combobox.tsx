@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -25,13 +25,24 @@ interface UserFilterComboboxProps {
 export function UserFilterCombobox({ value, onChange, suggestions }: UserFilterComboboxProps) {
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState(value || "");
+  const [searchTerm, setSearchTerm] = useState(value || ""); // Used for filtering
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
 
-  const filteredSuggestions = suggestions.filter(user =>
-    user.toLowerCase().includes(inputValue.toLowerCase())
+  // Update state when value prop changes
+  useEffect(() => {
+    setInputValue(value || "");
+    setSearchTerm(value || "");
+  }, [value]);
+
+  // Deduplicate suggestions first, then filter based on searchTerm (not inputValue)
+  const uniqueSuggestions = Array.from(new Set(suggestions));
+  const filteredSuggestions = uniqueSuggestions.filter(user =>
+    user.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const handleSelect = (selectedValue: string) => {
     setInputValue(selectedValue);
+    setSearchTerm(selectedValue); // Update search term too
     onChange(selectedValue);
     setOpen(false);
   };
@@ -39,28 +50,59 @@ export function UserFilterCombobox({ value, onChange, suggestions }: UserFilterC
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
     setInputValue(newValue);
-    onChange(newValue || undefined);
     
-    // Filter suggestions based on new value
-    const newFilteredSuggestions = suggestions.filter(user =>
-      user.toLowerCase().includes(newValue.toLowerCase())
-    );
+    // Clear any existing debounce timer
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
     
-    // Keep dropdown open when typing if there are suggestions
-    if (newFilteredSuggestions.length > 0) {
-      setOpen(true);
-    } else {
-      setOpen(false);
+    // Debounce the search term update (1s delay)
+    debounceTimer.current = setTimeout(() => {
+      setSearchTerm(newValue);
+      onChange(newValue || undefined);
+      
+      // Check if we should show dropdown after debounce
+      const newFilteredSuggestions = uniqueSuggestions.filter(user =>
+        user.toLowerCase().includes(newValue.toLowerCase())
+      );
+      
+      if (newFilteredSuggestions.length > 0) {
+        setOpen(true);
+      }
+    }, 1000);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      // Clear debounce timer and apply immediately
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+      setSearchTerm(inputValue);
+      onChange(inputValue || undefined);
     }
   };
 
   const handleClear = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
     setInputValue("");
+    setSearchTerm("");
     onChange(undefined);
     setOpen(false);
   };
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+    };
+  }, []);
 
   const handleFocus = () => {
     if (filteredSuggestions.length > 0) {
@@ -69,7 +111,7 @@ export function UserFilterCombobox({ value, onChange, suggestions }: UserFilterC
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={() => {}}>
       <div className="relative flex items-center">
         <PopoverTrigger asChild>
           <Input
@@ -77,13 +119,18 @@ export function UserFilterCombobox({ value, onChange, suggestions }: UserFilterC
             placeholder="Filter by user..."
             value={inputValue}
             onChange={handleInputChange}
+            onKeyDown={handleKeyDown}
             onFocus={handleFocus}
-            onClick={() => {
-              if (filteredSuggestions.length > 0) {
-                setOpen(!open);
-              }
+            onBlur={() => {
+              // Small delay to allow clicking on suggestions
+              setTimeout(() => {
+                setOpen(false);
+              }, 200);
             }}
             className="w-[240px] h-8 pr-8"
+            aria-autocomplete="list"
+            aria-expanded={open}
+            aria-haspopup="listbox"
           />
         </PopoverTrigger>
         {inputValue && (
