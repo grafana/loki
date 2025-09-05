@@ -4,7 +4,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "loki.queryFrontendFullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.queryFrontendLabels" . | nindent 4 }}
     {{- with .Values.queryFrontend.serviceLabels }}
@@ -18,7 +18,7 @@ metadata:
     {{- toYaml . | nindent 4}}
     {{- end }}
 spec:
-  type: ClusterIP
+  type: {{ .Values.queryFrontend.serviceType }}
   publishNotReadyAddresses: true
   ports:
     - name: http-metrics

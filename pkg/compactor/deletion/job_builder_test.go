@@ -22,28 +22,30 @@ type tableUpdatesRecorder struct {
 	updates map[string]map[string]map[string]deletionproto.StorageUpdates
 }
 
-func (t *tableUpdatesRecorder) addStorageUpdates(tableName, userID, labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error {
+func (t *tableUpdatesRecorder) addStorageUpdates(tableName, userID, labels string, rebuiltChunks map[string]Chunk, chunksToDeIndex []string) error {
 	if _, ok := t.updates[tableName]; !ok {
 		t.updates[tableName] = map[string]map[string]deletionproto.StorageUpdates{
 			userID: {
-				labels: {},
+				labels: {
+					RebuiltChunks: map[string]*deletionproto.Chunk{},
+				},
 			},
 		}
 	}
 	if _, ok := t.updates[tableName][userID]; !ok {
 		t.updates[tableName][userID] = map[string]deletionproto.StorageUpdates{
-			labels: {},
+			labels: {
+				RebuiltChunks: map[string]*deletionproto.Chunk{},
+			},
 		}
 	}
 
 	updates := t.updates[tableName][userID][labels]
 
-	updates.ChunksToDelete = append(updates.ChunksToDelete, chunksToDelete...)
-	updates.ChunksToDeIndex = append(updates.ChunksToDeIndex, chunksToDeIndex...)
-	for i := range chunksToIndex {
-		updates.ChunksToIndex = append(updates.ChunksToIndex, *chunksToIndex[i].(*deletionproto.Chunk))
+	for chunkID, newChunk := range rebuiltChunks {
+		updates.RebuiltChunks[chunkID] = newChunk.(*deletionproto.Chunk)
 	}
-
+	updates.ChunksToDeIndex = append(updates.ChunksToDeIndex, chunksToDeIndex...)
 	t.updates[tableName][userID][labels] = updates
 
 	return nil
@@ -385,8 +387,8 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 
 			builder := NewJobBuilder(objectClient, func(_ context.Context, iterator StorageUpdatesIterator) error {
 				for iterator.Next() {
-					if err := iterator.ForEachSeries(func(labels string, chunksToDelete []string, chunksToDeIndex []string, chunksToIndex []Chunk) error {
-						return tableUpdatesRecorder.addStorageUpdates(iterator.TableName(), iterator.UserID(), labels, chunksToDelete, chunksToDeIndex, chunksToIndex)
+					if err := iterator.ForEachSeries(func(labels string, rebuiltChunks map[string]Chunk, chunksToDeIndex []string) error {
+						return tableUpdatesRecorder.addStorageUpdates(iterator.TableName(), iterator.UserID(), labels, rebuiltChunks, chunksToDeIndex)
 					}); err != nil {
 						return err
 					}
@@ -536,19 +538,20 @@ func mustMarshalPayload(job *deletionproto.DeletionJob) []byte {
 }
 
 func buildStorageUpdates(jobNumStart, numJobs int) deletionproto.StorageUpdates {
-	s := deletionproto.StorageUpdates{}
+	s := deletionproto.StorageUpdates{
+		RebuiltChunks: map[string]*deletionproto.Chunk{},
+	}
 	for i := 0; i < numJobs; i++ {
 		jobNum := jobNumStart + i
-		s.ChunksToDelete = append(s.ChunksToDelete, fmt.Sprintf("%d-d", jobNum))
-		s.ChunksToDeIndex = append(s.ChunksToDeIndex, fmt.Sprintf("%d-i", jobNum))
-		s.ChunksToIndex = append(s.ChunksToIndex, deletionproto.Chunk{
+		s.RebuiltChunks[fmt.Sprintf("%d-d", jobNum)] = &deletionproto.Chunk{
 			From:        model.Time(jobNum),
 			Through:     model.Time(jobNum),
 			Fingerprint: uint64(jobNum),
 			Checksum:    uint32(jobNum),
 			KB:          uint32(jobNum),
 			Entries:     uint32(jobNum),
-		})
+		}
+		s.ChunksToDeIndex = append(s.ChunksToDeIndex, fmt.Sprintf("%d-i", jobNum))
 	}
 
 	return s

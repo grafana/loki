@@ -8,7 +8,6 @@ package internal
 
 import (
 	otlpprofiles "go.opentelemetry.io/collector/pdata/internal/data/protogen/profiles/v1development"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 func CopyOrigFunctionSlice(dest, src []*otlpprofiles.Function) []*otlpprofiles.Function {
@@ -19,19 +18,20 @@ func CopyOrigFunctionSlice(dest, src []*otlpprofiles.Function) []*otlpprofiles.F
 		copy(newDest, dest)
 		// Add new pointers for missing elements from len(dest) to len(srt).
 		for i := len(dest); i < len(src); i++ {
-			newDest[i] = &otlpprofiles.Function{}
+			newDest[i] = NewOrigFunction()
 		}
 	} else {
 		newDest = dest[:len(src)]
 		// Cleanup the rest of the elements so GC can free the memory.
 		// This can happen when len(src) < len(dest) < cap(dest).
 		for i := len(src); i < len(dest); i++ {
+			DeleteOrigFunction(dest[i], true)
 			dest[i] = nil
 		}
 		// Add new pointers for missing elements.
 		// This can happen when len(dest) < len(src) < cap(dest).
 		for i := len(dest); i < len(src); i++ {
-			newDest[i] = &otlpprofiles.Function{}
+			newDest[i] = NewOrigFunction()
 		}
 	}
 	for i := range src {
@@ -41,21 +41,11 @@ func CopyOrigFunctionSlice(dest, src []*otlpprofiles.Function) []*otlpprofiles.F
 }
 
 func GenerateOrigTestFunctionSlice() []*otlpprofiles.Function {
-	orig := make([]*otlpprofiles.Function, 7)
-	for i := 0; i < 7; i++ {
-		orig[i] = &otlpprofiles.Function{}
-		FillOrigTestFunction(orig[i])
-	}
-	return orig
-}
-
-// UnmarshalJSONOrigFunctionSlice unmarshals all properties from the current struct from the source iterator.
-func UnmarshalJSONOrigFunctionSlice(iter *json.Iterator) []*otlpprofiles.Function {
-	var orig []*otlpprofiles.Function
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		orig = append(orig, &otlpprofiles.Function{})
-		UnmarshalJSONOrigFunction(orig[len(orig)-1], iter)
-		return true
-	})
+	orig := make([]*otlpprofiles.Function, 5)
+	orig[0] = NewOrigFunction()
+	orig[1] = GenTestOrigFunction()
+	orig[2] = NewOrigFunction()
+	orig[3] = GenTestOrigFunction()
+	orig[4] = NewOrigFunction()
 	return orig
 }

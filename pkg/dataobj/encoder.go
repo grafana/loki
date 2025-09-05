@@ -38,6 +38,19 @@ type encoder struct {
 	typeRefLookup    map[SectionType]uint32
 }
 
+type sectionInfo struct {
+	Type SectionType
+
+	Data     sectionRegion
+	Metadata sectionRegion
+
+	Tenant string // Owning tenant of the section, if any.
+
+	// ExtensionData holds additional encoded info about the section, written to
+	// the file-level metadata.
+	ExtensionData []byte
+}
+
 // newEncoder creates a new Encoder which writes a data object to the provided
 // writer.
 func newEncoder(store scratch.Store) *encoder {
@@ -58,11 +71,8 @@ func (enc *encoder) AppendSection(typ SectionType, opts *WriteSectionOptions, da
 	si := sectionInfo{
 		Type: typ,
 
-		Data:     dataHandle,
-		Metadata: metadataHandle,
-
-		DataSize:     len(data),
-		MetadataSize: len(metadata),
+		Data:     sectionRegion{Handle: dataHandle, Size: len(data)},
+		Metadata: sectionRegion{Handle: metadataHandle, Size: len(metadata)},
 	}
 	if opts != nil {
 		si.Tenant = opts.Tenant
@@ -139,24 +149,21 @@ func (enc *encoder) getDictionaryKey(text string) uint32 {
 func (enc *encoder) Metadata() (proto.Message, error) {
 	enc.initDictionary()
 
-	sections := make([]*filemd.SectionInfo, len(enc.sections))
-
 	offset := enc.startOffset
 
-	for i, info := range enc.sections {
-		dataOffset := offset                     // Data starts at the current total offset
-		metaOffset := dataOffset + info.DataSize // Metadata starts right after data
+	// The data regions and metadata regions of all sections are encoded
+	// contiguously. To represent this in the SectionInfo headers, we update
+	// them in two passes, once for the data and once for the metadata.
+	sections := make([]*filemd.SectionInfo, len(enc.sections))
 
+	// Determine data region locations.
+	for i, info := range enc.sections {
 		sections[i] = &filemd.SectionInfo{
 			TypeRef: enc.getTypeRef(info.Type),
 			Layout: &filemd.SectionLayout{
 				Data: &filemd.Region{
-					Offset: uint64(dataOffset),
-					Length: uint64(info.DataSize),
-				},
-				Metadata: &filemd.Region{
-					Offset: uint64(metaOffset),
-					Length: uint64(info.MetadataSize),
+					Offset: uint64(offset),
+					Length: uint64(info.Data.Size),
 				},
 			},
 
@@ -164,7 +171,19 @@ func (enc *encoder) Metadata() (proto.Message, error) {
 			TenantRef:     enc.getDictionaryKey(info.Tenant),
 		}
 
-		offset += info.DataSize + info.MetadataSize
+		offset += info.Data.Size
+	}
+
+	// Determine metadta region location.
+	for i, info := range enc.sections {
+		// sections[i] is initialized in the previous loop, so we can directly
+		// update the layout to include the metadata region.
+		sections[i].Layout.Metadata = &filemd.Region{
+			Offset: uint64(offset),
+			Length: uint64(info.Metadata.Size),
+		}
+
+		offset += info.Metadata.Size
 	}
 
 	return &filemd.Metadata{
@@ -219,10 +238,22 @@ func (enc *encoder) Flush() (*snapshot, error) {
 		return nil, fmt.Errorf("writing magic tailer: %w", err)
 	}
 
+	// Convert our sections into regions for the snapshot to use. The order of
+	// regions *must* match the order of offset+length written in
+	// [encoder.Metadata]: all the data regions, followed by all the metadata
+	// regions.
+	regions := make([]sectionRegion, 0, len(enc.sections)*2)
+	for _, sec := range enc.sections {
+		regions = append(regions, sec.Data)
+	}
+	for _, sec := range enc.sections {
+		regions = append(regions, sec.Metadata)
+	}
+
 	snapshot, err := newSnapshot(
 		enc.store,
 		magic, // header
-		slices.Clone(enc.sections),
+		regions,
 		tailerBuffer.Bytes(), // tailer
 	)
 	if err != nil {

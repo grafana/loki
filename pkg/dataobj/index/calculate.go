@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -26,22 +27,18 @@ import (
 type Calculator struct {
 	indexobjBuilder *indexobj.Builder
 	builderMtx      sync.Mutex
-
-	// indexStreamIDLookup is a mapping between the streamID in a logs object & a streamID in the index object.
-	indexStreamIDLookup map[int64]int64
 }
 
 func NewCalculator(indexobjBuilder *indexobj.Builder) *Calculator {
-	return &Calculator{indexobjBuilder: indexobjBuilder, builderMtx: sync.Mutex{}, indexStreamIDLookup: make(map[int64]int64)}
+	return &Calculator{indexobjBuilder: indexobjBuilder}
 }
 
 func (c *Calculator) Reset() {
 	c.indexobjBuilder.Reset()
-	clear(c.indexStreamIDLookup)
 }
 
-func (c *Calculator) TimeRange() (minTime, maxTime time.Time) {
-	return c.indexobjBuilder.TimeRange()
+func (c *Calculator) TimeRanges() []multitenancy.TimeRange {
+	return c.indexobjBuilder.TimeRanges()
 }
 
 func (c *Calculator) Flush() (*dataobj.Object, io.Closer, error) {
@@ -51,43 +48,65 @@ func (c *Calculator) Flush() (*dataobj.Object, io.Closer, error) {
 // Calculate reads the log data from the input logs object and appends the resulting indexes to calculator's builder.
 // Calculate is not thread-safe.
 func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *dataobj.Object, objectPath string) error {
-	// The mapping must be unique for every logs object
-	clear(c.indexStreamIDLookup)
+	g, streamsCtx := errgroup.WithContext(ctx)
+	g.SetLimit(runtime.GOMAXPROCS(0))
+	streamIDLookupByTenant := sync.Map{}
 
-	// Streams Section: process this section first to ensure all streams have been added to the builder and are given new IDs.
+	// Streams Section: process these first to ensure all streams have been added to the builder and are given new IDs.
 	for i, section := range reader.Sections().Filter(streams.CheckSection) {
-		if err := c.processStreamsSection(ctx, section); err != nil {
-			return fmt.Errorf("failed to process stream section path=%s section=%d: %w", objectPath, i, err)
-		}
+		g.Go(func() error {
+			streamIDLookup := make(map[int64]int64)
+			if err := c.processStreamsSection(streamsCtx, section, streamIDLookup); err != nil {
+				return fmt.Errorf("failed to process stream section path=%s section=%d: %w", objectPath, i, err)
+			}
+			// This is safe as each data object has just one streams section per tenant, which means different sections cannot overwrite the results of each other.
+			_, exists := streamIDLookupByTenant.LoadOrStore(section.Tenant, streamIDLookup)
+			if exists {
+				panic("multiple streams sections for the same tenant within one data object")
+			}
+			return nil
+		})
 	}
 
-	// Logs Section: these can be processed in parallel once we have the stream IDs. This work is heavily CPU bound so is limited to GOMAXPROCS parallelism.
-	g, ctx := errgroup.WithContext(ctx)
+	// Wait for the streams sections to be done.
+	if err := g.Wait(); err != nil {
+		return err
+	}
+
+	g, logsCtx := errgroup.WithContext(ctx)
 	g.SetLimit(runtime.GOMAXPROCS(0))
+	// Logs Section: these can be processed in parallel once we have the stream IDs for the tenant.
+	// TODO(benclive): Start processing logs sections as soon as the stream sections are done, tenant by tenant. That way we don't need to wait for the biggest stream sections before processing the logs.
 	for i, section := range reader.Sections().Filter(logs.CheckSection) {
 		g.Go(func() error {
 			sectionLogger := log.With(logger, "section", i)
+			streamIDLookup, ok := streamIDLookupByTenant.Load(section.Tenant)
+			if !ok {
+				return fmt.Errorf("stream ID lookup not found for tenant %s", section.Tenant)
+			}
 			// 1. A bloom filter for each column in the logs section.
 			// 2. A per-section stream time-range index using min/max of each stream in the logs section. StreamIDs will reference the aggregate stream section.
-			if err := c.processLogsSection(ctx, sectionLogger, objectPath, section, int64(i)); err != nil {
+			if err := c.processLogsSection(logsCtx, sectionLogger, objectPath, section, int64(i), streamIDLookup.(map[int64]int64)); err != nil {
 				return fmt.Errorf("failed to process logs section path=%s section=%d: %w", objectPath, i, err)
 			}
 			return nil
 		})
 	}
+
+	// Wait for the logs sections to be done.
 	if err := g.Wait(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj.Section) error {
+func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj.Section, streamIDLookup map[int64]int64) error {
 	streamSection, err := streams.Open(ctx, section)
 	if err != nil {
 		return fmt.Errorf("failed to open stream section: %w", err)
 	}
 
-	streamBuf := make([]streams.Stream, 2048)
+	streamBuf := make([]streams.Stream, 8192)
 	rowReader := streams.NewRowReader(streamSection)
 	for {
 		n, err := rowReader.Read(ctx, streamBuf)
@@ -97,20 +116,28 @@ func (c *Calculator) processStreamsSection(ctx context.Context, section *dataobj
 		if n == 0 && errors.Is(err, io.EOF) {
 			break
 		}
-		for _, stream := range streamBuf[:n] {
-			newStreamID, err := c.indexobjBuilder.AppendStream(stream)
-			if err != nil {
-				return fmt.Errorf("failed to append to stream: %w", err)
+		err = func() error {
+			c.builderMtx.Lock()
+			defer c.builderMtx.Unlock()
+			for _, stream := range streamBuf[:n] {
+				newStreamID, err := c.indexobjBuilder.AppendStream(section.Tenant, stream)
+				if err != nil {
+					return fmt.Errorf("failed to append to stream: %w", err)
+				}
+				streamIDLookup[stream.ID] = newStreamID
 			}
-			c.indexStreamIDLookup[stream.ID] = newStreamID
+			return nil
+		}()
+		if err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
 // processLogsSection reads information from the logs section in order to build index information in the c.indexobjBuilder.
-func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64) error {
-	logsBuf := make([]logs.Record, 1024)
+func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.Logger, objectPath string, section *dataobj.Section, sectionIdx int64, streamIDLookup map[int64]int64) error {
+	logsBuf := make([]logs.Record, 8192)
 	type logInfo struct {
 		objectPath string
 		sectionIdx int64
@@ -124,6 +151,8 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 	if err != nil {
 		return fmt.Errorf("failed to open logs section: %w", err)
 	}
+
+	tenantID := section.Tenant
 
 	// Fetch the column statistics in order to init the bloom filters for each column
 	stats, err := logs.ReadStats(ctx, logsSection)
@@ -172,7 +201,7 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 		// Lock the mutex once per read for perf reasons.
 		c.builderMtx.Lock()
 		for _, log := range logsInfo[:n] {
-			err = c.indexobjBuilder.ObserveLogLine(log.objectPath, log.sectionIdx, log.streamID, c.indexStreamIDLookup[log.streamID], log.timestamp, log.length)
+			err = c.indexobjBuilder.ObserveLogLine(tenantID, log.objectPath, log.sectionIdx, log.streamID, streamIDLookup[log.streamID], log.timestamp, log.length)
 			if err != nil {
 				c.builderMtx.Unlock()
 				return fmt.Errorf("failed to observe log line: %w", err)
@@ -188,7 +217,7 @@ func (c *Calculator) processLogsSection(ctx context.Context, sectionLogger log.L
 			return fmt.Errorf("failed to marshal bloom filter: %w", err)
 		}
 		c.builderMtx.Lock()
-		err = c.indexobjBuilder.AppendColumnIndex(objectPath, sectionIdx, columnName, columnIndexes[columnName], bloomBytes)
+		err = c.indexobjBuilder.AppendColumnIndex(tenantID, objectPath, sectionIdx, columnName, columnIndexes[columnName], bloomBytes)
 		c.builderMtx.Unlock()
 		if err != nil {
 			return fmt.Errorf("failed to append column index: %w", err)

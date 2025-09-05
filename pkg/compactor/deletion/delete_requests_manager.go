@@ -560,7 +560,7 @@ func (d *DeleteRequestsManager) MarkPhaseFinished() {
 		}
 
 		for _, deleteRequest := range userDeleteRequests.requests {
-			d.markRequestAsProcessed(deleteRequest.DeleteRequest, deleteRequest.DeletedLines)
+			d.markRequestAsProcessed(deleteRequest.DeleteRequest, deleteRequest.DeletedLines.Load())
 		}
 	}
 
