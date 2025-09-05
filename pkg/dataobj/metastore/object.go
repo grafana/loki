@@ -17,6 +17,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
@@ -221,6 +222,8 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	if err != nil {
 		return nil, err
 	}
+
+	level.Debug(m.logger).Log("msg", "resolved index files", "paths", strings.Join(indexPaths, ","))
 
 	// Search the stream sections of the matching objects to find matching streams
 	streamMatchers := streamPredicateFromMatchers(start, end, matchers...)
@@ -703,12 +706,19 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 }
 
 func forEachIndexPointer(ctx context.Context, object *dataobj.Object, predicate indexpointers.RowPredicate, f func(indexpointers.IndexPointer)) error {
+	targetTenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return fmt.Errorf("extracting org ID: %w", err)
+	}
 	var reader indexpointers.RowReader
 	defer reader.Close()
 
 	buf := make([]indexpointers.IndexPointer, 1024)
 
 	for _, section := range object.Sections().Filter(indexpointers.CheckSection) {
+		if section.Tenant != targetTenant {
+			continue
+		}
 		sec, err := indexpointers.Open(ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening section: %w", err)
@@ -740,13 +750,17 @@ func forEachIndexPointer(ctx context.Context, object *dataobj.Object, predicate 
 }
 
 func forEachStream(ctx context.Context, object *dataobj.Object, predicate streams.RowPredicate, f func(streams.Stream)) error {
+	targetTenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return fmt.Errorf("extracting org ID: %w", err)
+	}
 	var reader streams.RowReader
 	defer reader.Close()
 
 	buf := make([]streams.Stream, 1024)
 
-	for _, section := range object.Sections() {
-		if !streams.CheckSection(section) {
+	for _, section := range object.Sections().Filter(streams.CheckSection) {
+		if section.Tenant != targetTenant {
 			continue
 		}
 
@@ -779,12 +793,20 @@ func forEachStream(ctx context.Context, object *dataobj.Object, predicate stream
 }
 
 func forEachObjPointer(ctx context.Context, object *dataobj.Object, predicate pointers.RowPredicate, matchIDs []int64, f func(pointers.SectionPointer)) error {
+	targetTenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return fmt.Errorf("extracting org ID: %w", err)
+	}
 	var reader pointers.RowReader
 	defer reader.Close()
 
 	buf := make([]pointers.SectionPointer, 1024)
 
 	for _, section := range object.Sections().Filter(pointers.CheckSection) {
+		if section.Tenant != targetTenant {
+			continue
+		}
+
 		sec, err := pointers.Open(ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening section: %w", err)

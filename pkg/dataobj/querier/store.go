@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
@@ -462,10 +463,7 @@ func shardObjects(
 func findLogsSection(ctx context.Context, obj *dataobj.Object, index int) (*logs.Section, error) {
 	var count int
 
-	for _, section := range obj.Sections() {
-		if !logs.CheckSection(section) {
-			continue
-		}
+	for _, section := range obj.Sections().Filter(logs.CheckSection) {
 		if count == index {
 			return logs.Open(ctx, section)
 		}
@@ -476,8 +474,13 @@ func findLogsSection(ctx context.Context, obj *dataobj.Object, index int) (*logs
 }
 
 func findStreamsSection(ctx context.Context, obj *dataobj.Object) (*streams.Section, error) {
-	for _, section := range obj.Sections() {
-		if !streams.CheckSection(section) {
+	targetTenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("extracting org ID: %w", err)
+	}
+
+	for _, section := range obj.Sections().Filter(streams.CheckSection) {
+		if section.Tenant != targetTenant {
 			continue
 		}
 		return streams.Open(ctx, section)
@@ -636,12 +639,20 @@ func fetchSectionsStats(ctx context.Context, objects []object) ([]sectionsStats,
 	))
 	defer sp.AddEvent("fetched metadata")
 
+	targetTenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("extracting org ID: %w", err)
+	}
+
 	res := make([]sectionsStats, 0, len(objects))
 
 	for _, obj := range objects {
 		var stats sectionsStats
 
 		for _, section := range obj.Sections() {
+			if section.Tenant != targetTenant {
+				continue
+			}
 			switch {
 			case streams.CheckSection(section):
 				stats.StreamsSections++
