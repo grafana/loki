@@ -10,7 +10,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
-	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
@@ -54,7 +53,7 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		var headers []string
 		var parsedColumns []arrow.Array
 		switch parse.Kind {
-		case logical.ParserLogfmt:
+		case physical.ParserLogfmt:
 			headers, parsedColumns = BuildLogfmtColumns(stringCol, parse.RequestedKeys, allocator)
 		default:
 			return failureState(fmt.Errorf("unsupported parser kind: %v", parse.Kind))
@@ -67,17 +66,16 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		}
 		for _, header := range headers {
 			// Add metadata to mark these as parsed columns
-			metadata := arrow.NewMetadata([]string{
-				types.MetadataKeyColumnType,
-				types.MetadataKeyColumnDataType,
-			}, []string{
-				types.ColumnTypeParsed.String(),
-				datatype.Loki.String.String(),
-			})
+			metadata := datatype.ColumnMetadata(
+				types.ColumnTypeParsed,
+				datatype.Loki.String,
+			)
+
 			newFields = append(newFields, arrow.Field{
 				Name:     header,
 				Type:     arrow.BinaryTypes.String,
 				Metadata: metadata,
+				Nullable: true,
 			})
 		}
 		newSchema := arrow.NewSchema(newFields, nil)
@@ -88,7 +86,7 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		allColumns := make([]arrow.Array, numOriginalCols+numParsedCols)
 
 		// Copy original columns
-		for i := 0; i < numOriginalCols; i++ {
+		for i := range numOriginalCols {
 			col := batch.Column(i)
 			col.Retain() // Retain since we're releasing the batch
 			allColumns[i] = col

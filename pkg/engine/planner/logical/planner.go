@@ -56,7 +56,7 @@ func buildPlanForLogQuery(
 
 		// parse statements in LogQL introduce additional ambiguouity, requiring post
 		// parse filters to be tracked separately, and not included in maketable predicates
-		preParsePredicates  []Value
+		predicates          []Value
 		postParsePredicates []Value
 		hasLogfmtParser     bool
 	)
@@ -71,7 +71,7 @@ func buildPlanForLogQuery(
 			selector = convertLabelMatchers(e.Matchers())
 			return true
 		case *syntax.LineFilterExpr:
-			preParsePredicates = append(preParsePredicates, convertLineFilterExpr(e))
+			predicates = append(predicates, convertLineFilterExpr(e))
 			// We do not want to traverse the AST further down, because line filter expressions can be nested,
 			// which would lead to multiple predicates of the same expression.
 			return false // do not traverse children
@@ -83,7 +83,7 @@ func buildPlanForLogQuery(
 				err = innerErr
 			} else {
 				if !hasLogfmtParser {
-					preParsePredicates = append(preParsePredicates, val)
+					predicates = append(predicates, val)
 				} else {
 					postParsePredicates = append(postParsePredicates, val)
 				}
@@ -112,7 +112,7 @@ func buildPlanForLogQuery(
 	builder := NewBuilder(
 		&MakeTable{
 			Selector:   selector,
-			Predicates: preParsePredicates,
+			Predicates: predicates,
 			Shard:      shard,
 		},
 	)
@@ -137,7 +137,7 @@ func buildPlanForLogQuery(
 		builder = builder.Select(value)
 	}
 
-	for _, value := range preParsePredicates {
+	for _, value := range predicates {
 		builder = builder.Select(value)
 	}
 	if hasLogfmtParser {
@@ -172,9 +172,6 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 		switch e := e.(type) {
 		case *syntax.LogfmtParserExpr:
 			return true
-		case *syntax.LogRangeExpr, *syntax.PipelineExpr, *syntax.MatchersExpr, *syntax.LabelFilterExpr:
-			// Continue traversing into these expressions to find logfmt
-			return true
 		case *syntax.RangeAggregationExpr:
 			// only count operation is supported for range aggregation.
 			// offsets are not yet supported.
@@ -185,7 +182,7 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 
 			rangeAggType = types.RangeAggregationTypeCount
 			rangeInterval = e.Left.Interval
-			return true // continue traversing to find logfmt
+			return false // do not traverse log range query
 
 		case *syntax.VectorAggregationExpr:
 			// only sum operation is supported for vector aggregation
@@ -204,8 +201,8 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 
 			return true
 		default:
-			// For other expressions, just continue traversing
-			return true
+			err = errUnimplemented
+			return false // do not traverse children
 		}
 	})
 	if err != nil {
