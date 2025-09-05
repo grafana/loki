@@ -837,20 +837,50 @@ func TestCompactedIndex(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			compactedIndex := testCtx.buildCompactedIndex()
 
+			existingChunk := compactedIndex.builder.streams[testCtx.lbls1.String()].chunks[0]
+
+			// trying to remove a chunk for inexistent stream should return false for chunk existence
+			inexistentStream := testCtx.lbls1.MatchLabels(false, "a")
+			require.NotEqual(t, testCtx.lbls1.String(), inexistentStream.String())
+
+			chunkExisted, err := compactedIndex.RemoveChunk(
+				existingChunk.From(),
+				existingChunk.Through(),
+				[]byte(testCtx.userID),
+				inexistentStream,
+				testCtx.schemaCfg.ExternalKey(chunkMetaToChunkRef(testCtx.userID, existingChunk, testCtx.lbls1)),
+			)
+			require.NoError(t, err)
+			require.False(t, chunkExisted)
+
+			// trying to remove an inexistent chunk from an existing stream should return false for chunk existence
+			inexistentChunk := existingChunk
+			inexistentChunk.Checksum++
+			chunkExisted, err = compactedIndex.RemoveChunk(
+				inexistentChunk.From(),
+				inexistentChunk.Through(),
+				[]byte(testCtx.userID),
+				testCtx.lbls1,
+				testCtx.schemaCfg.ExternalKey(chunkMetaToChunkRef(testCtx.userID, inexistentChunk, testCtx.lbls1)),
+			)
+			require.NoError(t, err)
+			require.False(t, chunkExisted)
+
 			foundChunkEntries := map[string][]retention.Chunk{}
-			err := compactedIndex.ForEachSeries(context.Background(), func(series retention.Series) error {
+			err = compactedIndex.ForEachSeries(context.Background(), func(series retention.Series) error {
 				seriesIDStr := string(series.SeriesID())
 				foundChunkEntries[seriesIDStr] = append(foundChunkEntries[seriesIDStr], series.Chunks()...)
 				if chks, ok := tc.deleteChunks[string(series.SeriesID())]; ok {
 					for _, chk := range chks {
-						require.NoError(t, compactedIndex.RemoveChunk(chk.From, chk.Through, series.UserID(), series.Labels(), chk.ChunkID))
+						chunkExisted, err := compactedIndex.RemoveChunk(chk.From, chk.Through, series.UserID(), series.Labels(), chk.ChunkID)
+						require.NoError(t, err)
+						require.True(t, chunkExisted)
 					}
 				}
 
 				return nil
 			})
 			require.NoError(t, err)
-
 			require.Equal(t, testCtx.expectedChunkEntries, foundChunkEntries)
 
 			for _, lbls := range tc.deleteSeries {

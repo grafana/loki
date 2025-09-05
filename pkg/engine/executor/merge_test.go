@@ -2,96 +2,134 @@ package executor
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
-	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
-var (
-	recordsInput1 = []arrowtest.Rows{
-		{
-			{"ts": int64(10), "table": "A", "line": "line A1"},
-			{"ts": int64(15), "table": "A", "line": "line A2"},
-			{"ts": int64(5), "table": "A", "line": "line A3"},
-			{"ts": int64(20), "table": "A", "line": "line A4"},
-		},
-		{
-			{"ts": int64(1), "table": "A", "line": "line A5"},
-			{"ts": int64(50), "table": "A", "line": "line A6"},
-		},
-	}
-
-	recordsInput2 = []arrowtest.Rows{
-		{
-			{"ts": int64(100), "table": "B", "line": "line B1"},
-			{"ts": int64(75), "table": "B", "line": "line B2"},
-			{"ts": int64(25), "table": "B", "line": "line B3"},
-		},
-		{
-			{"ts": int64(13), "table": "B", "line": "line B4"},
-			{"ts": int64(15), "table": "B", "line": "line B5"},
-		},
-		{
-			{"ts": int64(23), "table": "B", "line": "line B6"},
-			{"ts": int64(55), "table": "B", "line": "line B7"},
-		},
-	}
-)
-
 func TestMerge(t *testing.T) {
 	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer alloc.AssertSize(t, 0)
 
-	var (
-		rowsInput1 = []arrowtest.Rows{{
-			{"timestamp": time.Unix(1, 0).UTC(), "message": "line A"},
-			{"timestamp": time.Unix(6, 0).UTC(), "message": "line F"},
-		}, {
-			{"timestamp": time.Unix(2, 0).UTC(), "message": "line B"},
-			{"timestamp": time.Unix(7, 0).UTC(), "message": "line G"},
-		}, {
-			{"timestamp": time.Unix(3, 0).UTC(), "message": "line C"},
-			{"timestamp": time.Unix(8, 0).UTC(), "message": "line H"},
-		}}
-		rowsInput2 = []arrowtest.Rows{{
-			{"timestamp": time.Unix(4, 0).UTC(), "message": "line D"},
-			{"timestamp": time.Unix(9, 0).UTC(), "message": "line I"},
-		}, {
-			{"timestamp": time.Unix(5, 0).UTC(), "message": "line E"},
-			{"timestamp": time.Unix(10, 0).UTC(), "message": "line J"},
-		}}
+	schema := arrow.NewSchema([]arrow.Field{
+		{Name: "timestamp", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
+		{Name: "message", Type: arrow.BinaryTypes.String, Nullable: true},
+	}, nil)
 
-		// pick schema from one of [arrowtest.Rows] as all of them have the same schema
-		schema = rowsInput1[0].Schema()
+	n := 3 // number of inputs
+	inputRows := make([][]arrowtest.Rows, n)
+	var expectedRows []arrowtest.Rows
 
-		pipelineA = NewArrowtestPipeline(alloc, schema, rowsInput1...)
-		pipelineB = NewArrowtestPipeline(alloc, schema, rowsInput2...)
-	)
+	// create records for each input pipeline
+	for i := range len(inputRows) {
+		// Each pipeline has 2-4 records with unique identifiers
+		numRecords := 2 + (i % n) // 2, 3, or 4 records per pipeline
+		rows := make([]arrowtest.Rows, numRecords)
 
-	m, err := NewMergePipeline([]Pipeline{pipelineA, pipelineB})
-	require.NoError(t, err)
+		for j := range numRecords {
+			// Each record has 3-5 rows
+			numRows := 3 + (j % n) // 3, 4, or 5 rows per record
+			recordRows := make(arrowtest.Rows, numRows)
 
-	var got []arrowtest.Rows
-	for {
-		err = m.Read(context.Background())
-		if err != nil {
-			break
+			for k := range numRows {
+				recordRows[k] = map[string]any{
+					"timestamp": int64(i*100 + j*10 + k),
+					"message":   fmt.Sprintf("input=%d record=%d row=%d", i, j, k),
+				}
+			}
+			rows[j] = recordRows
 		}
 
-		rec, _ := m.Value()
-		defer rec.Release()
-
-		rows, err := arrowtest.RecordRows(rec)
-		require.NoError(t, err)
-
-		got = append(got, rows)
+		// Accumulate expected rows
+		expectedRows = append(expectedRows, rows...)
+		inputRows[i] = rows
 	}
 
-	require.ErrorIs(t, err, EOF)
+	// Test different concurrency settings
+	//  0 ... no prefetching of next input / only current input is prefetched
+	//  1 ... next input is prefetched
+	//  3 ... number of prefetched inputs is equal to the number of inputs
+	//  5 ... number of prefetched inputs is greater than the number of inputs
+	// -1 ... unlimited/all inputs are prefetched
+	for _, maxPrefetch := range []int{0, 1, n, 5, -1} {
 
-	require.Equal(t, append(rowsInput1, rowsInput2...), got)
+		t.Run(fmt.Sprintf("context=full/maxPrefetch=%d", maxPrefetch), func(t *testing.T) {
+			// Create fresh inputs using the pre-generated data
+			inputs := make([]Pipeline, n)
+			for i := range len(inputs) {
+				inputs[i] = NewArrowtestPipeline(alloc, schema, inputRows[i]...)
+			}
+
+			m, err := newMergePipeline(inputs, maxPrefetch)
+			require.NoError(t, err)
+			defer m.Close()
+
+			ctx := t.Context()
+			var actualRows []arrowtest.Rows
+
+			// Read all records from the merge pipeline
+			for {
+				rec, err := m.Read(ctx)
+				if errors.Is(err, EOF) {
+					t.Log("stop reading from pipeline:", err)
+					break
+				}
+				require.NoError(t, err, "Unexpected error during read")
+
+				defer rec.Release()
+
+				rows, err := arrowtest.RecordRows(rec)
+				require.NoError(t, err)
+
+				actualRows = append(actualRows, rows)
+			}
+
+			// Compare actual vs expected rows
+			// Order of processed inputs must stay the same
+			require.Equal(t, expectedRows, actualRows)
+		})
+
+		t.Run(fmt.Sprintf("context=canceled/maxPrefetch=%d", maxPrefetch), func(t *testing.T) {
+			// Create fresh inputs using the pre-generated data
+			inputs := make([]Pipeline, n)
+			for i := range len(inputs) {
+				inputs[i] = NewArrowtestPipeline(alloc, schema, inputRows[i]...)
+			}
+
+			m, err := newMergePipeline(inputs, maxPrefetch)
+			require.NoError(t, err)
+			defer m.Close()
+
+			ctx := t.Context()
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+
+			var gotRows int64
+			for {
+				// Cancel the context once half of the expected/generated rows was consumed
+				if gotRows > int64(len(expectedRows)/2) {
+					cancel()
+				}
+
+				rec, err := m.Read(ctx)
+				if errors.Is(err, EOF) || errors.Is(err, context.Canceled) {
+					t.Log("stop reading from pipeline:", err)
+					break
+				}
+				require.NoError(t, err, "Unexpected error during read")
+
+				gotRows += rec.NumRows()
+				rec.Release()
+			}
+		})
+
+		t.Log("current allocations", alloc.CurrentAlloc())
+		alloc.AssertSize(t, 0)
+	}
 }
