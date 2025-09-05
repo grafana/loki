@@ -58,12 +58,16 @@ spec:
       {{- if semverCompare ">=1.19-0" (include "loki.kubeVersion" .) }}
       {{- with .Values.ingester.topologySpreadConstraints }}
       topologySpreadConstraints:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- end }}
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ingester.dnsConfig | default .Values.loki.dnsConfig }}
+      dnsConfig:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.ingester.hostAliases }}
@@ -145,7 +149,7 @@ spec:
         {{- end }}
       {{- with .Values.ingester.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.ingester.nodeSelector }}
       nodeSelector:

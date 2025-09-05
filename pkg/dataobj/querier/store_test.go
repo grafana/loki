@@ -43,7 +43,7 @@ func TestStore_SelectSamples(t *testing.T) {
 	ctx = user.InjectOrgID(ctx, testTenant)
 
 	// Setup test data
-	now := setupTestData(ctx, t, builder)
+	now := setupTestData(ctx, t, builder, testTenant)
 	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
 
@@ -206,7 +206,7 @@ func TestStore_SelectLogs(t *testing.T) {
 	ctx = user.InjectOrgID(ctx, testTenant)
 
 	// Setup test data
-	now := setupTestData(ctx, t, builder)
+	now := setupTestData(ctx, t, builder, testTenant)
 	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewLogfmtLogger(os.Stdout), meta)
 
@@ -370,13 +370,13 @@ func TestStore_SelectLogs(t *testing.T) {
 	}
 }
 
-func setupTestData(ctx context.Context, t *testing.T, builder *testDataBuilder) time.Time {
+func setupTestData(ctx context.Context, t *testing.T, builder *testDataBuilder, tenant string) time.Time {
 	t.Helper()
 	now := time.Unix(0, int64(time.Hour)).UTC()
 
 	// Data before the query range (should not be included in results)
 	builder.addStream(
-		"tenant",
+		tenant,
 		`{app="foo", env="prod"}`,
 		logproto.Entry{Timestamp: now.Add(-2 * time.Hour), Line: "foo_before1"},
 		logproto.Entry{Timestamp: now.Add(-2 * time.Hour).Add(30 * time.Second), Line: "foo_before2"},
@@ -386,7 +386,7 @@ func setupTestData(ctx context.Context, t *testing.T, builder *testDataBuilder) 
 
 	// Data within query range
 	builder.addStream(
-		"tenant",
+		tenant,
 		`{app="foo", env="prod"}`,
 		logproto.Entry{Timestamp: now, Line: "foo1"},
 		logproto.Entry{Timestamp: now.Add(30 * time.Second), Line: "foo2"},
@@ -394,7 +394,7 @@ func setupTestData(ctx context.Context, t *testing.T, builder *testDataBuilder) 
 		logproto.Entry{Timestamp: now.Add(50 * time.Second), Line: "foo4"},
 	)
 	builder.addStream(
-		"tenant",
+		tenant,
 		`{app="foo", env="dev"}`,
 		logproto.Entry{Timestamp: now.Add(10 * time.Second), Line: "foo5"},
 		logproto.Entry{Timestamp: now.Add(20 * time.Second), Line: "foo6"},
@@ -403,7 +403,7 @@ func setupTestData(ctx context.Context, t *testing.T, builder *testDataBuilder) 
 	builder.flush(ctx)
 
 	builder.addStream(
-		"tenant",
+		tenant,
 		`{app="bar", env="prod"}`,
 		logproto.Entry{Timestamp: now.Add(5 * time.Second), Line: "bar1"},
 		logproto.Entry{Timestamp: now.Add(15 * time.Second), Line: "bar2"},
@@ -411,7 +411,7 @@ func setupTestData(ctx context.Context, t *testing.T, builder *testDataBuilder) 
 		logproto.Entry{Timestamp: now.Add(40 * time.Second), Line: "bar4"},
 	)
 	builder.addStream(
-		"tenant",
+		tenant,
 		`{app="bar", env="dev"}`,
 		logproto.Entry{Timestamp: now.Add(8 * time.Second), Line: "bar5"},
 		logproto.Entry{Timestamp: now.Add(18 * time.Second), Line: "bar6"},
@@ -420,7 +420,7 @@ func setupTestData(ctx context.Context, t *testing.T, builder *testDataBuilder) 
 	builder.flush(ctx)
 
 	builder.addStream(
-		"tenant",
+		tenant,
 		`{app="baz", env="prod", team="a"}`,
 		logproto.Entry{Timestamp: now.Add(12 * time.Second), Line: "baz1"},
 		logproto.Entry{Timestamp: now.Add(22 * time.Second), Line: "baz2"},
@@ -431,7 +431,7 @@ func setupTestData(ctx context.Context, t *testing.T, builder *testDataBuilder) 
 
 	// Data after the query range (should not be included in results)
 	builder.addStream(
-		"tenant",
+		tenant,
 		`{app="foo", env="prod"}`,
 		logproto.Entry{Timestamp: now.Add(2 * time.Hour), Line: "foo_after1"},
 		logproto.Entry{Timestamp: now.Add(2 * time.Hour).Add(30 * time.Second), Line: "foo_after2"},

@@ -78,10 +78,9 @@ func Test_topk(t *testing.T) {
 	require.NoError(t, err, "should be able to create a topk pipeline")
 	defer topkPipeline.Close()
 
-	require.NoError(t, topkPipeline.Read(t.Context()), "should be able to read the sorted batch")
+	rec, err := topkPipeline.Read(t.Context())
+	require.NoError(t, err, "should be able to read the sorted batch")
 
-	rec, err := topkPipeline.Value()
-	require.NoError(t, err)
 	defer rec.Release()
 
 	expect := arrowtest.Rows{
@@ -111,9 +110,7 @@ func Test_topk_emptyPipelines(t *testing.T) {
 	require.NoError(t, err, "should be able to create a topk pipeline")
 	defer topkPipeline.Close()
 
-	require.ErrorIs(t, topkPipeline.Read(t.Context()), EOF, "should return EOF if there are no results")
-
-	rec, err := topkPipeline.Value()
-	require.Nil(t, rec, "should not return a record if there are no results")
+	rec, err := topkPipeline.Read(t.Context())
 	require.ErrorIs(t, err, EOF, "should return EOF if there are no results")
+	require.Nil(t, rec, "should not return a record if there are no results")
 }

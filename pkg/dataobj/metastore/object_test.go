@@ -16,7 +16,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -268,12 +267,27 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 			UncompressedSize: 0,
 		})
 		require.NoError(t, err)
-		err = builder.ObserveLogLine(tenantID, "test-path", 0, newIdx, int64(i), ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
+		err = builder.ObserveLogLine(tenantID, "test-path", 1, newIdx, int64(i), ts.Entries[0].Timestamp, int64(len(ts.Entries[0].Line)))
 		require.NoError(t, err)
 	}
 
+	// Add one more stream for a different tenant to ensure it is not resolved.
+	altTenant := "tenant-alt"
+	altTenantSection := int64(99) // Emulate a different section from a log object that doesn't collide with the main tenant's section
+	newIdx, err := builder.AppendStream(altTenant, streams.Stream{
+		ID:               1,
+		Labels:           labels.New(labels.Label{Name: "app", Value: "foo"}, labels.Label{Name: "tenant", Value: altTenant}),
+		MinTimestamp:     now.Add(-3 * time.Hour),
+		MaxTimestamp:     now.Add(-2 * time.Hour),
+		UncompressedSize: 5,
+	})
+	require.NoError(t, err)
+	err = builder.ObserveLogLine(altTenant, "test-path", altTenantSection, newIdx, 1, now.Add(-2*time.Hour), 5)
+	require.NoError(t, err)
+
+	// Build and store the object
 	timeRanges := builder.TimeRanges()
-	require.Len(t, timeRanges, 1)
+	require.Len(t, timeRanges, 2)
 
 	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
@@ -288,14 +302,7 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 	require.NoError(t, err)
 
 	metastoreTocWriter := NewTableOfContentsWriter(bucket, log.NewNopLogger())
-
-	err = metastoreTocWriter.WriteEntry(context.Background(), path, []multitenancy.TimeRange{
-		{
-			Tenant:  tenantID,
-			MinTime: timeRanges[0].MinTime,
-			MaxTime: timeRanges[0].MaxTime,
-		},
-	})
+	err = metastoreTocWriter.WriteEntry(context.Background(), path, timeRanges)
 	require.NoError(t, err)
 
 	mstore := NewObjectMetastore(bucket, log.NewNopLogger(), prometheus.NewPedanticRegistry())
@@ -345,6 +352,9 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 			sections, err := mstore.Sections(ctx, now.Add(-time.Hour), now.Add(time.Hour), tt.matchers, tt.predicates)
 			require.NoError(t, err)
 			require.Len(t, sections, tt.wantCount)
+			for _, section := range sections {
+				require.NotEqual(t, section.SectionIdx, altTenantSection)
+			}
 		})
 	}
 }

@@ -3,7 +3,6 @@ package deletion
 import (
 	"context"
 	"fmt"
-	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -143,9 +142,8 @@ func TestJobRunner_Run(t *testing.T) {
 				},
 			},
 			expectedResult: &deletionproto.StorageUpdates{
-				ChunksToDelete: []string{chunkKey(chk)},
-				ChunksToIndex: []deletionproto.Chunk{
-					{
+				RebuiltChunks: map[string]*deletionproto.Chunk{
+					chunkKey(chk): {
 						From:        yesterdaysTableInterval.Start.Add(time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
 						Fingerprint: labels.StableHash(lblFoo),
@@ -170,9 +168,8 @@ func TestJobRunner_Run(t *testing.T) {
 				},
 			},
 			expectedResult: &deletionproto.StorageUpdates{
-				ChunksToDelete: []string{chunkKey(chk)},
-				ChunksToIndex: []deletionproto.Chunk{
-					{
+				RebuiltChunks: map[string]*deletionproto.Chunk{
+					chunkKey(chk): {
 						From:        yesterdaysTableInterval.Start.Add(time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
 						Fingerprint: labels.StableHash(lblFoo),
@@ -203,9 +200,8 @@ func TestJobRunner_Run(t *testing.T) {
 				},
 			},
 			expectedResult: &deletionproto.StorageUpdates{
-				ChunksToDelete: []string{chunkKey(chk)},
-				ChunksToIndex: []deletionproto.Chunk{
-					{
+				RebuiltChunks: map[string]*deletionproto.Chunk{
+					chunkKey(chk): {
 						From:        yesterdaysTableInterval.Start.Add(2 * time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
 						Fingerprint: labels.StableHash(lblFoo),
@@ -224,9 +220,8 @@ func TestJobRunner_Run(t *testing.T) {
 				},
 			},
 			expectedResult: &deletionproto.StorageUpdates{
-				ChunksToDelete: []string{chunkKey(chk)},
-				ChunksToIndex: []deletionproto.Chunk{
-					{
+				RebuiltChunks: map[string]*deletionproto.Chunk{
+					chunkKey(chk): {
 						From:        yesterdaysTableInterval.Start.Add(3 * time.Hour).Add(time.Minute),
 						Through:     yesterdaysTableInterval.Start.Add(6 * time.Hour),
 						Fingerprint: labels.StableHash(lblFoo),
@@ -245,7 +240,9 @@ func TestJobRunner_Run(t *testing.T) {
 				},
 			},
 			expectedResult: &deletionproto.StorageUpdates{
-				ChunksToDelete: []string{chunkKey(chk)},
+				RebuiltChunks: map[string]*deletionproto.Chunk{
+					chunkKey(chk): nil,
+				},
 			},
 		},
 		{
@@ -300,18 +297,23 @@ func TestJobRunner_Run(t *testing.T) {
 			require.NoError(t, proto.Unmarshal(resultProto, result))
 
 			// For test cases where we expect no changes
-			if len(tc.expectedResult.ChunksToDelete) == 0 && len(tc.expectedResult.ChunksToIndex) == 0 {
+			if len(tc.expectedResult.RebuiltChunks) == 0 {
 				require.Equal(t, tc.expectedResult, result)
 				return
 			}
 
 			// For test cases where we expect changes
-			require.Equal(t, tc.expectedResult.ChunksToDelete, result.ChunksToDelete)
-			require.Equal(t, len(tc.expectedResult.ChunksToIndex), len(result.ChunksToIndex))
-			if len(result.ChunksToIndex) > 0 {
-				require.Equal(t, tc.expectedResult.ChunksToIndex[0].From, result.ChunksToIndex[0].From)
-				require.Equal(t, tc.expectedResult.ChunksToIndex[0].Through, result.ChunksToIndex[0].Through)
-				require.Equal(t, tc.expectedResult.ChunksToIndex[0].Fingerprint, result.ChunksToIndex[0].Fingerprint)
+			require.Equal(t, len(tc.expectedResult.RebuiltChunks), len(result.RebuiltChunks))
+			for chunkID := range tc.expectedResult.RebuiltChunks {
+				_, ok := result.RebuiltChunks[chunkID]
+				require.True(t, ok)
+				if tc.expectedResult.RebuiltChunks[chunkID] == nil {
+					require.Nil(t, result.RebuiltChunks[chunkID])
+				} else {
+					require.Equal(t, tc.expectedResult.RebuiltChunks[chunkID].From, result.RebuiltChunks[chunkID].From)
+					require.Equal(t, tc.expectedResult.RebuiltChunks[chunkID].Through, result.RebuiltChunks[chunkID].Through)
+					require.Equal(t, tc.expectedResult.RebuiltChunks[chunkID].Fingerprint, result.RebuiltChunks[chunkID].Fingerprint)
+				}
 			}
 		})
 	}
@@ -379,31 +381,24 @@ func TestJobRunner_Run_ConcurrentChunkProcessing(t *testing.T) {
 	}
 
 	expectedStorageUpdates := &deletionproto.StorageUpdates{
-		ChunksToDelete: []string{
-			chunkKey(chks[0]), // first partially deleted chunk to get removed by test-request-0
-			chunkKey(chks[5]), // adjoining chunk to a bunch of chunks selected for deletion by test-request-1\
-
-			chunkKey(chks[6]), ///////////////////////////////////////////////////////
-			chunkKey(chks[7]), //   chunks selected for deletion by test-request-1	//
-			chunkKey(chks[8]), //													//
-			chunkKey(chks[9]), ///////////////////////////////////////////////////////
-
-			chunkKey(chks[10]), // adjoining chunk to a bunch of chunks selected for deletion by test-request-1
-		},
-		ChunksToIndex: []deletionproto.Chunk{
-			{
+		RebuiltChunks: map[string]*deletionproto.Chunk{
+			chunkKey(chks[0]): {
 				// chunk recreated by test-request-0
 				From:        yesterdaysTableInterval.Start.Add(31 * time.Minute),
 				Through:     yesterdaysTableInterval.Start.Add(time.Hour),
 				Fingerprint: labels.StableHash(lblFoo),
 			},
-			{
+			chunkKey(chks[5]): {
 				// chunk recreated by test-request-1, removing just last line
 				From:        chks[5].From,
 				Through:     chks[5].Through.Add(-time.Minute),
 				Fingerprint: labels.StableHash(lblFoo),
 			},
-			{
+			chunkKey(chks[6]): nil, ///////////////////////////////////////////////////////
+			chunkKey(chks[7]): nil, //   chunks completely deleted by test-request-1	 //
+			chunkKey(chks[8]): nil, //													 //
+			chunkKey(chks[9]): nil, ///////////////////////////////////////////////////////
+			chunkKey(chks[10]): {
 				// chunk recreated by test-request-1, removing just first line
 				From:        chks[10].From.Add(time.Minute),
 				Through:     chks[10].Through,
@@ -440,32 +435,18 @@ func TestJobRunner_Run_ConcurrentChunkProcessing(t *testing.T) {
 	require.NoError(t, proto.Unmarshal(resultProto, result))
 
 	// verify we got the expected storage updates
-	require.Equal(t, len(expectedStorageUpdates.ChunksToIndex), len(result.ChunksToIndex))
-
-	slices.SortFunc(result.ChunksToIndex, func(a, b deletionproto.Chunk) int {
-		if a.From < b.From {
-			return -1
-		} else if a.From > b.From {
-			return 1
+	require.Equal(t, len(expectedStorageUpdates.RebuiltChunks), len(result.RebuiltChunks))
+	for chunkID := range expectedStorageUpdates.RebuiltChunks {
+		_, ok := result.RebuiltChunks[chunkID]
+		require.True(t, ok)
+		if expectedStorageUpdates.RebuiltChunks[chunkID] == nil {
+			require.Nil(t, result.RebuiltChunks[chunkID])
+		} else {
+			require.Equal(t, expectedStorageUpdates.RebuiltChunks[chunkID].From, result.RebuiltChunks[chunkID].From)
+			require.Equal(t, expectedStorageUpdates.RebuiltChunks[chunkID].Through, result.RebuiltChunks[chunkID].Through)
+			require.Equal(t, expectedStorageUpdates.RebuiltChunks[chunkID].Fingerprint, result.RebuiltChunks[chunkID].Fingerprint)
 		}
-
-		return 0
-	})
-	for i := range expectedStorageUpdates.ChunksToIndex {
-		require.Equal(t, expectedStorageUpdates.ChunksToIndex[i].From, result.ChunksToIndex[i].From)
-		require.Equal(t, expectedStorageUpdates.ChunksToIndex[i].Through, result.ChunksToIndex[i].Through)
-		require.Equal(t, expectedStorageUpdates.ChunksToIndex[i].Fingerprint, result.ChunksToIndex[i].Fingerprint)
 	}
-	slices.SortFunc(result.ChunksToDelete, func(a, b string) int {
-		if a < b {
-			return -1
-		} else if a > b {
-			return 1
-		}
-
-		return 0
-	})
-	require.Equal(t, expectedStorageUpdates.ChunksToDelete, result.ChunksToDelete)
 	require.Equal(t, expectedStorageUpdates.ChunksToDeIndex, result.ChunksToDeIndex)
 }
 
