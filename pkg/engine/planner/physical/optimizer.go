@@ -199,38 +199,59 @@ func (r *projectionPushdown) apply(node Node) bool {
 			return false
 		}
 
-		projections := make([]ColumnExpression, len(node.PartitionBy)+1)
-		copy(projections, node.PartitionBy)
+		scanProjections := make([]ColumnExpression, len(node.PartitionBy)+1)
+		copy(scanProjections, node.PartitionBy)
 		// Always project timestamp column
-		projections[len(node.PartitionBy)] = &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}
+		scanProjections[len(node.PartitionBy)] = &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}
 
-		return r.applyProjectionPushdown(node, projections, false)
+		additionalProjections := collectAmbiguousColumns(node.PartitionBy)
+		return r.applyProjectionPushdown(node, scanProjections, additionalProjections, false)
+	case *VectorAggregation:
+		if len(node.GroupBy) == 0 || node.Operation != types.VectorAggregationTypeSum {
+			return false
+		}
+
+		scanProjections := make([]ColumnExpression, len(node.GroupBy)+1)
+		copy(scanProjections, node.GroupBy)
+		// Always project timestamp column
+		scanProjections[len(node.GroupBy)] = &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}
+		additionalProjections := collectAmbiguousColumns(node.GroupBy)
+
+		return r.applyProjectionPushdown(node, scanProjections, additionalProjections, false)
+
 	case *ParseNode:
 		// Parse nodes need the message column to extract fields from log lines
-		projections := []ColumnExpression{
+		scanProjections := []ColumnExpression{
 			&ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinMessage, Type: types.ColumnTypeBuiltin}},
 		}
 		// Apply projection pushdown, but only add to existing projections (for metric queries)
-		return r.applyProjectionPushdown(node, projections, true)
+		return r.applyProjectionPushdown(node, scanProjections, nil, true)
 	case *Filter:
-		projections := extractColumnsFromPredicates(node.Predicates)
-		if len(projections) == 0 {
+		scanProjections := extractColumnsFromPredicates(node.Predicates)
+		if len(scanProjections) == 0 {
 			return false
 		}
+		additionalProjections := collectAmbiguousColumns(extractColumnsFromPredicates(node.Predicates))
 
 		// Filter nodes should only add their predicate columns to projections when
 		// there's already a projection list in the plan (indicating a metric query).
 		// For log queries that read all columns, filter columns should not be projected.
 		//
 		// Setting applyIfNotEmpty argument as true for this reason.
-		return r.applyProjectionPushdown(node, projections, true)
+		return r.applyProjectionPushdown(node, scanProjections, additionalProjections, true)
 	}
 	return false
 }
 
 // applyProjectionPushdown applies the projection pushdown rule to the given node.
+// we can't push all projections down to the scan node, since some may be referencing parsed columns.
 // if applyIfNotEmpty is true, it will apply the projection pushdown only if the node has existing projections.
-func (r *projectionPushdown) applyProjectionPushdown(node Node, projections []ColumnExpression, applyIfNotEmpty bool) bool {
+func (r *projectionPushdown) applyProjectionPushdown(
+	node Node,
+	scanProjections []ColumnExpression,
+	additionalProjections []ColumnExpression,
+	applyIfNotEmpty bool,
+) bool {
 	switch node := node.(type) {
 	case *DataObjScan:
 		if len(node.Projections) == 0 && applyIfNotEmpty {
@@ -239,7 +260,7 @@ func (r *projectionPushdown) applyProjectionPushdown(node Node, projections []Co
 
 		// Add to scan projections if not already present
 		changed := false
-		for _, colExpr := range projections {
+		for _, colExpr := range scanProjections {
 			colExpr, ok := colExpr.(*ColumnExpr)
 			if !ok {
 				continue
@@ -261,67 +282,12 @@ func (r *projectionPushdown) applyProjectionPushdown(node Node, projections []Co
 			}
 		}
 		return changed
-	}
-
-	anyChanged := false
-	for _, child := range r.plan.Children(node) {
-		if changed := r.applyProjectionPushdown(child, projections, applyIfNotEmpty); changed {
-			anyChanged = true
-		}
-	}
-	return anyChanged
-}
-
-var _ rule = (*projectionPushdown)(nil)
-
-// parseKeysPushdown determines which keys need to be parsed based on downstream operations
-type parseKeysPushdown struct {
-	plan *Plan
-}
-
-// apply implements rule.
-func (r *parseKeysPushdown) apply(node Node) bool {
-	changed := false
-	switch node := node.(type) {
-	case *Filter:
-		keys := extractKeysFromFilter(node)
-		if len(keys) > 0 {
-			if ok := r.applyKeysPushdown(node, keys); ok {
-				changed = true
-			}
-		}
-	case *VectorAggregation:
-		keys := extractKeysFromVectorAggregation(node)
-		if len(keys) > 0 {
-			if ok := r.applyKeysPushdown(node, keys); ok {
-				changed = true
-			}
-		}
-	case *RangeAggregation:
-		keys := extractKeysFromRangeAggregation(node)
-		if len(keys) > 0 {
-			if ok := r.applyKeysPushdown(node, keys); ok {
-				changed = true
-			}
-		}
-	}
-	return changed
-}
-
-func (r *parseKeysPushdown) applyKeysPushdown(node Node, keys []string) bool {
-	// Try to push keys to ParseNodes in all children
-	anyChanged := false
-	for _, child := range r.plan.Children(node) {
-		if changed := r.pushKeysToParseNodes(child, keys); changed {
-			anyChanged = true
-		}
-	}
-	return anyChanged
-}
-
-func (r *parseKeysPushdown) pushKeysToParseNodes(node Node, keys []string) bool {
-	switch node := node.(type) {
 	case *ParseNode:
+		// Only apply the pushdown for Metric queries. Log queries should request all keys
+		if !r.isMetricQuery() || len(additionalProjections) == 0 {
+			return false
+		}
+
 		// Found a ParseNode - update its keys
 		existingKeys := make(map[string]bool)
 		for _, k := range node.RequestedKeys {
@@ -330,9 +296,16 @@ func (r *parseKeysPushdown) pushKeysToParseNodes(node Node, keys []string) bool 
 
 		// Add new keys
 		changed := false
-		for _, k := range keys {
-			if !existingKeys[k] {
-				existingKeys[k] = true
+
+		for _, p := range additionalProjections {
+			colExpr, ok := p.(*ColumnExpr)
+			if !ok {
+				continue
+			}
+
+			// Only collect ambiguous columns to push to parse nodes
+			if colExpr.Ref.Type == types.ColumnTypeAmbiguous && !existingKeys[colExpr.Ref.Column] {
+				existingKeys[colExpr.Ref.Column] = true
 				changed = true
 			}
 		}
@@ -349,68 +322,45 @@ func (r *parseKeysPushdown) pushKeysToParseNodes(node Node, keys []string) bool 
 		return changed
 	}
 
-	// Not a ParseNode - continue searching in children
 	anyChanged := false
 	for _, child := range r.plan.Children(node) {
-		if changed := r.pushKeysToParseNodes(child, keys); changed {
+		if changed := r.applyProjectionPushdown(child, scanProjections, additionalProjections, applyIfNotEmpty); changed {
 			anyChanged = true
 		}
 	}
 	return anyChanged
 }
 
-func extractKeysFromFilter(node *Filter) []string {
-	columns := extractColumnsFromPredicates(node.Predicates)
-	keysMap := make(map[string]bool)
-	collectAmbiguousColumns(columns, keysMap)
-
-	keys := make([]string, 0, len(keysMap))
-	for k := range keysMap {
-		keys = append(keys, k)
+// isMetricQuery checks if the plan contains a RangeAggregation or VectorAggregation node, indicating a metric query
+func (r *projectionPushdown) isMetricQuery() bool {
+	for node := range r.plan.nodes {
+		if _, ok := node.(*RangeAggregation); ok {
+			return true
+		}
+		if _, ok := node.(*VectorAggregation); ok {
+			return true
+		}
 	}
-	sort.Strings(keys)
-	return keys
+	return false
 }
 
-func extractKeysFromVectorAggregation(node *VectorAggregation) []string {
-	keysMap := make(map[string]bool)
-	collectAmbiguousColumns(node.GroupBy, keysMap)
+var _ rule = (*projectionPushdown)(nil)
 
-	keys := make([]string, 0, len(keysMap))
-	for k := range keysMap {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func extractKeysFromRangeAggregation(node *RangeAggregation) []string {
-	keysMap := make(map[string]bool)
-	collectAmbiguousColumns(node.PartitionBy, keysMap)
-
-	keys := make([]string, 0, len(keysMap))
-	for k := range keysMap {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-// collectAmbiguousColumns adds ambiguous column names to the keysMap.
-// It only collects columns with ColumnTypeAmbiguous, skipping labels and builtins.
-func collectAmbiguousColumns(columns []ColumnExpression, keysMap map[string]bool) {
+// collectAmbiguousColumns filters columns down to only those with ColumnTypeAmbiguous
+func collectAmbiguousColumns(columns []ColumnExpression) []ColumnExpression {
+	result := make([]ColumnExpression, 0, len(columns))
 	for _, col := range columns {
 		if colExpr, ok := col.(*ColumnExpr); ok {
 			// Only collect ambiguous columns (might need parsing)
 			// Skip labels (from stream selector) and builtins (like timestamp/message)
 			if colExpr.Ref.Type == types.ColumnTypeAmbiguous {
-				keysMap[colExpr.Ref.Column] = true
+				result = append(result, col)
 			}
 		}
 	}
-}
 
-var _ rule = (*parseKeysPushdown)(nil)
+	return result
+}
 
 // optimization represents a single optimization pass and can hold multiple rules.
 type optimization struct {

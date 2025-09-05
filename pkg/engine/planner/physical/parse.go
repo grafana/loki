@@ -2,16 +2,34 @@ package physical
 
 import (
 	"fmt"
-
-	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 )
 
 // ParseNode represents a parsing operation in the physical plan.
 // It extracts structured fields from log lines using the specified parser.
 type ParseNode struct {
 	id            string
-	Kind          logical.ParserKind
+	Kind          ParserKind
 	RequestedKeys []string
+}
+
+// ParserKind represents the type of parser to use
+type ParserKind int
+
+const (
+	ParserInvalid ParserKind = iota
+	ParserLogfmt
+	ParserJSON
+)
+
+func (p ParserKind) String() string {
+	switch p {
+	case ParserLogfmt:
+		return "logfmt"
+	case ParserJSON:
+		return "json"
+	default:
+		return "invalid"
+	}
 }
 
 // ID returns a unique identifier for this ParseNode

@@ -5,13 +5,11 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
-	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
@@ -110,7 +108,7 @@ func TestExecutor_Parse(t *testing.T) {
 		ctx := t.Context()
 		c := &Context{}
 		pipeline := c.executeParse(ctx, &physical.ParseNode{
-			Kind:          logical.ParserLogfmt,
+			Kind:          physical.ParserLogfmt,
 			RequestedKeys: []string{"level", "status"},
 		}, nil)
 		err := pipeline.Read(ctx)
@@ -121,7 +119,7 @@ func TestExecutor_Parse(t *testing.T) {
 		ctx := t.Context()
 		c := &Context{}
 		pipeline := c.executeParse(ctx, &physical.ParseNode{
-			Kind:          logical.ParserLogfmt,
+			Kind:          physical.ParserLogfmt,
 			RequestedKeys: []string{"level"},
 		}, []Pipeline{emptyPipeline(), emptyPipeline()})
 		err := pipeline.Read(ctx)
@@ -131,11 +129,12 @@ func TestExecutor_Parse(t *testing.T) {
 
 func TestNewParsePipeline(t *testing.T) {
 	for _, tt := range []struct {
-		name                 string
-		schema               *arrow.Schema
-		input                arrowtest.Rows
-		expectedFields       int
-		expectedParsedOutput map[string][]string
+		name           string
+		schema         *arrow.Schema
+		input          arrowtest.Rows
+		requestedKeys  []string
+		expectedFields int
+		expectedOutput arrowtest.Rows
 	}{
 		{
 			name: "parse stage transforms records, adding columns parsed from message",
@@ -147,10 +146,12 @@ func TestNewParsePipeline(t *testing.T) {
 				{"message": "level=info status=200"},
 				{"message": "level=debug status=201"},
 			},
+			requestedKeys:  []string{"level", "status"},
 			expectedFields: 3, // 3 columns: message, level, status
-			expectedParsedOutput: map[string][]string{
-				"level":  {"error", "info", "debug"},
-				"status": {"500", "200", "201"},
+			expectedOutput: arrowtest.Rows{
+				{"message": "level=error status=500", "level": "error", "status": "500"},
+				{"message": "level=info status=200", "level": "info", "status": "200"},
+				{"message": "level=debug status=201", "level": "debug", "status": "201"},
 			},
 		},
 		{
@@ -164,10 +165,85 @@ func TestNewParsePipeline(t *testing.T) {
 				{"timestamp": time.Unix(1, 0).UTC(), "message": "level=error status=500", "app": "frontend"},
 				{"timestamp": time.Unix(2, 0).UTC(), "message": "level=info status=200", "app": "backend"},
 			},
+			requestedKeys:  []string{"level", "status"},
 			expectedFields: 5, // 5 columns: timestamp, message, app, level, status
-			expectedParsedOutput: map[string][]string{
-				"level":  {"error", "info"},
-				"status": {"500", "200"},
+			expectedOutput: arrowtest.Rows{
+				{"timestamp": time.Unix(1, 0).UTC(), "message": "level=error status=500", "app": "frontend", "level": "error", "status": "500"},
+				{"timestamp": time.Unix(2, 0).UTC(), "message": "level=info status=200", "app": "backend", "level": "info", "status": "200"},
+			},
+		},
+		{
+			name: "handle missing keys with NULL",
+			schema: arrow.NewSchema([]arrow.Field{
+				{Name: types.ColumnNameBuiltinMessage, Type: arrow.BinaryTypes.String},
+			}, nil),
+			input: arrowtest.Rows{
+				{"message": "level=error"},
+				{"message": "status=200"},
+				{"message": "level=info"},
+			},
+			requestedKeys:  []string{"level"},
+			expectedFields: 2, // 2 columns: message, level
+			expectedOutput: arrowtest.Rows{
+				{"message": "level=error", "level": "error"},
+				{"message": "status=200", "level": nil},
+				{"message": "level=info", "level": "info"},
+			},
+		},
+		{
+			name: "handle errors with error columns",
+			schema: arrow.NewSchema([]arrow.Field{
+				{Name: types.ColumnNameBuiltinMessage, Type: arrow.BinaryTypes.String},
+			}, nil),
+			input: arrowtest.Rows{
+				{"message": "level=info status=200"},       // No errors
+				{"message": "status==value level=error"},   // Double equals error on requested key
+				{"message": "level=\"unclosed status=500"}, // Unclosed quote error
+			},
+			requestedKeys:  []string{"level", "status"},
+			expectedFields: 5, // 5 columns: message, level, status, __error__, __error_details__
+			expectedOutput: arrowtest.Rows{
+				{"message": "level=info status=200", "level": "info", "status": "200", "__error__": nil, "__error_details__": nil},
+				{"message": "status==value level=error", "level": nil, "status": nil, "__error__": "LogfmtParserErr", "__error_details__": "logfmt syntax error at pos 8 : unexpected '='"},
+				{"message": "level=\"unclosed status=500", "level": nil, "status": nil, "__error__": "LogfmtParserErr", "__error_details__": "logfmt syntax error at pos 27 : unterminated quoted value"},
+			},
+		},
+		{
+			name: "extract all keys when none requested",
+			schema: arrow.NewSchema([]arrow.Field{
+				{Name: types.ColumnNameBuiltinMessage, Type: arrow.BinaryTypes.String},
+			}, nil),
+			input: arrowtest.Rows{
+				{"message": "level=info status=200 method=GET"},
+				{"message": "level=warn code=304"},
+				{"message": "level=error status=500 method=POST duration=123ms"},
+			},
+			requestedKeys:  nil, // nil means extract all keys
+			expectedFields: 6,   // 6 columns: message, code, duration, level, method, status
+			expectedOutput: arrowtest.Rows{
+				{"message": "level=info status=200 method=GET", "code": nil, "duration": nil, "level": "info", "method": "GET", "status": "200"},
+				{"message": "level=warn code=304", "code": "304", "duration": nil, "level": "warn", "method": nil, "status": nil},
+				{"message": "level=error status=500 method=POST duration=123ms", "code": nil, "duration": "123ms", "level": "error", "method": "POST", "status": "500"},
+			},
+		},
+		{
+			name: "extract all keys with errors when none requested",
+			schema: arrow.NewSchema([]arrow.Field{
+				{Name: types.ColumnNameBuiltinMessage, Type: arrow.BinaryTypes.String},
+			}, nil),
+			input: arrowtest.Rows{
+				{"message": "level=info status=200 method=GET"},       // Valid line
+				{"message": "level==error code=500"},                  // Double equals error
+				{"message": "msg=\"unclosed duration=100ms code=400"}, // Unclosed quote error
+				{"message": "level=debug method=POST"},                // Valid line
+			},
+			requestedKeys:  nil, // nil means extract all keys
+			expectedFields: 6,   // 6 columns: message, level, method, status, __error__, __error_details__
+			expectedOutput: arrowtest.Rows{
+				{"message": "level=info status=200 method=GET", "level": "info", "method": "GET", "status": "200", "__error__": nil, "__error_details__": nil},
+				{"message": "level==error code=500", "level": nil, "method": nil, "status": nil, "__error__": "LogfmtParserErr", "__error_details__": "logfmt syntax error at pos 7 : unexpected '='"},
+				{"message": "msg=\"unclosed duration=100ms code=400", "level": nil, "method": nil, "status": nil, "__error__": "LogfmtParserErr", "__error_details__": "logfmt syntax error at pos 38 : unterminated quoted value"},
+				{"message": "level=debug method=POST", "level": "debug", "method": "POST", "status": nil, "__error__": nil, "__error_details__": nil},
 			},
 		},
 	} {
@@ -181,8 +257,8 @@ func TestNewParsePipeline(t *testing.T) {
 
 			// Create ParseNode requesting "level" field
 			parseNode := &physical.ParseNode{
-				Kind:          logical.ParserLogfmt,
-				RequestedKeys: []string{"level", "status"},
+				Kind:          physical.ParserLogfmt,
+				RequestedKeys: tt.requestedKeys,
 			}
 
 			pipeline := NewParsePipeline(parseNode, input, memory.DefaultAllocator)
@@ -196,35 +272,14 @@ func TestNewParsePipeline(t *testing.T) {
 			require.NoError(t, err)
 			defer record.Release()
 
-			// Verify the output has both original message column and new level column
+			// Verify the output has the expected number of fields
 			outputSchema := record.Schema()
 			require.Equal(t, tt.expectedFields, outputSchema.NumFields())
 
-			verifyParseOutput(t, record, tt.expectedParsedOutput)
+			// Convert record to rows for comparison
+			actual, err := arrowtest.RecordRows(record)
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedOutput, actual)
 		})
-	}
-}
-
-func getColumnIndices(schema *arrow.Schema) map[string]int {
-	indices := make(map[string]int)
-	for i := 0; i < schema.NumFields(); i++ {
-		field := schema.Field(i)
-		indices[field.Name] = i
-	}
-	return indices
-}
-
-func verifyParseOutput(t *testing.T, record arrow.Record, expectedValues map[string][]string) {
-	columnIndices := getColumnIndices(record.Schema())
-
-	for colName, values := range expectedValues {
-		idx, ok := columnIndices[colName]
-		require.True(t, ok, "Column %s should exist", colName)
-
-		col := record.Column(idx).(*array.String)
-		for i, expectedVal := range values {
-			require.Equal(t, expectedVal, col.Value(i),
-				"Column %s row %d: expected %s", colName, i, expectedVal)
-		}
 	}
 }

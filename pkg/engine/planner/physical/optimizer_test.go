@@ -553,7 +553,7 @@ func TestOptimizer(t *testing.T) {
 	})
 }
 
-func TestParseKeysPushdown(t *testing.T) {
+func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 	tests := []struct {
 		name         string
 		buildLogical func() logical.Value
@@ -583,6 +583,7 @@ func TestParseKeysPushdown(t *testing.T) {
 			name: "ParseNode skips label and builtin columns, only collects ambiguous",
 			buildLogical: func() logical.Value {
 				// {app="test"} | logfmt | app="frontend" | level="error"
+				// This is a log query (no RangeAggregation) so should parse all keys
 				builder := logical.NewBuilder(&logical.MakeTable{
 					Selector: &logical.BinOp{
 						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
@@ -612,7 +613,7 @@ func TestParseKeysPushdown(t *testing.T) {
 
 				return builder.Value()
 			},
-			expectedKeys: []string{"level"}, // Only ambiguous column, not the label
+			expectedKeys: nil, // Log queries should parse all keys
 		},
 		{
 			name: "RangeAggregation with PartitionBy on ambiguous columns",
@@ -651,6 +652,7 @@ func TestParseKeysPushdown(t *testing.T) {
 			buildLogical: func() logical.Value {
 				// Create a logical plan that represents:
 				// {app="test"} | logfmt | level="error"
+				// This is a log query (no RangeAggregation) so should parse all keys
 				builder := logical.NewBuilder(&logical.MakeTable{
 					Selector: &logical.BinOp{
 						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
@@ -672,7 +674,7 @@ func TestParseKeysPushdown(t *testing.T) {
 				builder = builder.Select(filterExpr)
 				return builder.Value()
 			},
-			expectedKeys: []string{"level"},
+			expectedKeys: nil, // Log queries should parse all keys
 		},
 		{
 			name: "metric query with logfmt and groupby on ambiguous column",
@@ -758,6 +760,39 @@ func TestParseKeysPushdown(t *testing.T) {
 				return builder.Value()
 			},
 			expectedKeys: []string{"code", "duration", "status"}, // sorted alphabetically
+		},
+		{
+			name: "log query should request all keys even with filters",
+			buildLogical: func() logical.Value {
+				// Create a logical plan that represents a log query:
+				// {app="test"} | logfmt | level="error" | limit 100
+				// This is a log query (no range aggregation) so should parse all keys
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+
+				// Add parse without specifying RequestedKeys
+				builder = builder.Parse(logical.ParserLogfmt)
+
+				// Add filter on ambiguous column
+				filterExpr := &logical.BinOp{
+					Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
+					Right: logical.NewLiteral("error"),
+					Op:    types.BinaryOpEq,
+				}
+				builder = builder.Select(filterExpr)
+
+				// Add a limit (typical for log queries)
+				builder = builder.Limit(0, 100)
+
+				return builder.Value()
+			},
+			expectedKeys: nil, // Log queries should request all keys
 		},
 	}
 
