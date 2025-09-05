@@ -17,15 +17,11 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) state {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
-		err := input.Read(ctx)
+		batch, err := input.Read(ctx)
 		if err != nil {
 			return failureState(err)
 		}
 
-		batch, err := input.Value()
-		if err != nil {
-			return failureState(err)
-		}
 		// Batch needs to be released here since it won't be passed to the caller and won't be reused after
 		// this call to newGenericPipeline.
 		defer batch.Release()

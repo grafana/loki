@@ -111,7 +111,8 @@ func TestExecutor_Parse(t *testing.T) {
 			Kind:          physical.ParserLogfmt,
 			RequestedKeys: []string{"level", "status"},
 		}, nil)
-		err := pipeline.Read(ctx)
+		record, err := pipeline.Read(ctx)
+		defer record.Release()
 		require.ErrorContains(t, err, EOF.Error())
 	})
 
@@ -122,7 +123,8 @@ func TestExecutor_Parse(t *testing.T) {
 			Kind:          physical.ParserLogfmt,
 			RequestedKeys: []string{"level"},
 		}, []Pipeline{emptyPipeline(), emptyPipeline()})
-		err := pipeline.Read(ctx)
+		record, err := pipeline.Read(ctx)
+		defer record.Release()
 		require.ErrorContains(t, err, "parse expects exactly one input, got 2")
 	})
 }
@@ -265,10 +267,7 @@ func TestNewParsePipeline(t *testing.T) {
 
 			// Read first record
 			ctx := t.Context()
-			err := pipeline.Read(ctx)
-			require.NoError(t, err)
-
-			record, err := pipeline.Value()
+			record, err := pipeline.Read(ctx)
 			require.NoError(t, err)
 			defer record.Release()
 
