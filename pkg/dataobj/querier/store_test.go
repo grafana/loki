@@ -202,7 +202,7 @@ func TestStore_SelectLogs(t *testing.T) {
 	builder := newTestDataBuilder(t)
 	defer builder.close()
 
-	ctx, _ := context.WithTimeout(t.Context(), 300*time.Second) //nolint:govet
+	ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
 	ctx = user.InjectOrgID(ctx, testTenant)
 
 	// Setup test data
