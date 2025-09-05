@@ -118,7 +118,7 @@ func extractCAPath(ctx context.Context, k k8s.Client, namespace string, tennantN
 	if err := k.Get(ctx, key, &caConfigMap); err != nil {
 		if apierrors.IsNotFound(err) {
 			return "", &status.DegradedError{
-				Message: fmt.Sprintf("Missing configmap for tenant %s", tennantName),
+				Message: fmt.Sprintf("Missing ConfigMap with CA bundle for tenant %s", tennantName),
 				Reason:  lokiv1.ReasonMissingGatewayTenantConfigMap,
 				Requeue: true,
 			}
@@ -134,7 +134,7 @@ func extractCAPath(ctx context.Context, k k8s.Client, namespace string, tennantN
 	err := checkKeyIsPresent(&caConfigMap, cmKey)
 	if err != nil {
 		return "", &status.DegradedError{
-			Message: "Invalid gateway tenant configmap contents",
+			Message: fmt.Sprintf("Invalid contents of ConfigMap with tenant %s CA bundle did not find key %s", tennantName, cmKey),
 			Reason:  lokiv1.ReasonInvalidGatewayTenantConfigMap,
 			Requeue: true,
 		}
