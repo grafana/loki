@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [FEATURE] Add configurable `livenessProbe` to single binary StatefulSet. [#19072](https://github.com/grafana/loki/pull/19072)
+
 ## 6.39.0
 
 - [FEATURE] add more specificity to affinity and topology spread constraints [#19061](https://github.com/grafana/loki/pull/19061)
@@ -21,6 +23,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Ensure the GEL admin-api resources are not created when using SimpleScalable deployment mode [#13655](https://github.com/grafana/loki/pull/13655)
 - [BUGFIX] Stop scrapping zonal ingester metrics twice when using ServiceMonitor. [#19000](https://github.com/grafana/loki/pull/19000)
 - [BUGFIX] Add init container configuration for backend, bloom builder, distributor, query-frontend, query-scheduler, read, write. [#18709](https://github.com/grafana/loki/pull/18709)
+
 
 ## 6.38.0
 
