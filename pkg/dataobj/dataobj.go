@@ -97,7 +97,7 @@ type Object struct {
 // FromBucket returns an error if the metadata of the Object cannot be read or
 // if the provided ctx times out.
 func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string) (*Object, error) {
-	rr := &bucketRangeReader{bucket: bucket, path: path}
+	rr := &instrumentReader{&bucketRangeReader{bucket: bucket, path: path}}
 	size, err := rr.Size(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting size: %w", err)
@@ -115,7 +115,7 @@ func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string) 
 // specifies the size of the data object in bytes. FromReaderAt returns an
 // error if the metadata of the Object cannot be read.
 func FromReaderAt(r io.ReaderAt, size int64) (*Object, error) {
-	rr := &readerAtRangeReader{size: size, r: r}
+	rr := &instrumentReader{&readerAtRangeReader{size: size, r: r}}
 	dec := &decoder{rr: rr}
 	obj := &Object{rr: rr, dec: dec, size: size}
 	if err := obj.init(context.Background()); err != nil {

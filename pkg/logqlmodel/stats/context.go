@@ -234,6 +234,7 @@ func (s *Store) Merge(m Store) {
 	s.Dataobj.PageBatches += m.Dataobj.PageBatches
 	s.Dataobj.TotalPageDownloadTime += m.Dataobj.TotalPageDownloadTime
 	s.Dataobj.TotalRowsAvailable += m.Dataobj.TotalRowsAvailable
+	s.Dataobj.ObjectStoreCalls += m.Dataobj.ObjectStoreCalls
 	if m.QueryReferencedStructured {
 		s.QueryReferencedStructured = true
 	}
@@ -585,6 +586,10 @@ func (c *Context) AddTotalRowsAvailable(i int64) {
 	atomic.AddInt64(&c.store.Dataobj.TotalRowsAvailable, i)
 }
 
+func (c *Context) AddObjectStoreCalls(i int64) {
+	atomic.AddInt64(&c.store.Dataobj.ObjectStoreCalls, i)
+}
+
 func (c *Context) SetQueryReferencedStructuredMetadata() {
 	c.store.QueryReferencedStructured = true
 }
@@ -748,5 +753,6 @@ func (d Dataobj) kvList(prefix string) []any {
 		prefix + "Dataobj.PageBatches", d.PageBatches,
 		prefix + "Dataobj.TotalRowsAvailable", d.TotalRowsAvailable,
 		prefix + "Dataobj.TotalPageDownloadTime", time.Duration(d.TotalPageDownloadTime),
+		prefix + "Dataobj.ObjectStoreCalls", d.ObjectStoreCalls,
 	}
 }

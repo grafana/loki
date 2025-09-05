@@ -204,6 +204,8 @@ message Dataobj {
 
   // Time spent fetching page metadata or data from object storage in nanoseconds.
   int64 totalPageDownloadTime = 13 [(gogoproto.jsontag) = "totalPageDownloadTime"];
+
+  int64 objectStoreCalls = 14 [(gogoproto.jsontag) = "objectStoreCalls"];
 }
 
 message Chunk {
