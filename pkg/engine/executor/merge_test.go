@@ -75,14 +75,13 @@ func TestMerge(t *testing.T) {
 
 			// Read all records from the merge pipeline
 			for {
-				err := m.Read(ctx)
+				rec, err := m.Read(ctx)
 				if errors.Is(err, EOF) {
 					t.Log("stop reading from pipeline:", err)
 					break
 				}
 				require.NoError(t, err, "Unexpected error during read")
 
-				rec, _ := m.Value()
 				defer rec.Release()
 
 				rows, err := arrowtest.RecordRows(rec)
@@ -118,14 +117,13 @@ func TestMerge(t *testing.T) {
 					cancel()
 				}
 
-				err := m.Read(ctx)
+				rec, err := m.Read(ctx)
 				if errors.Is(err, EOF) || errors.Is(err, context.Canceled) {
 					t.Log("stop reading from pipeline:", err)
 					break
 				}
 				require.NoError(t, err, "Unexpected error during read")
 
-				rec, _ := m.Value()
 				gotRows += rec.NumRows()
 				rec.Release()
 			}

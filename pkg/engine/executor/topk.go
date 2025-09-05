@@ -108,30 +108,23 @@ func arrowTypeFromColumnRef(ref types.ColumnRef) (arrow.DataType, arrow.Metadata
 
 // Read computes the topk as the next record. Read blocks until all input
 // pipelines have been fully read and the top K rows have been computed.
-func (p *topkPipeline) Read(ctx context.Context) error {
+func (p *topkPipeline) Read(ctx context.Context) (arrow.Record, error) {
 	if !p.computed {
-		p.state.batch, p.state.err = p.compute(ctx)
+		rec, err := p.compute(ctx)
 		p.computed = true
-	} else if p.state.err == nil {
-		p.state.batch, p.state.err = nil, EOF
+		return rec, err
 	}
-
-	return p.state.err
+	return nil, EOF
 }
 
 func (p *topkPipeline) compute(ctx context.Context) (arrow.Record, error) {
 NextInput:
 	for _, in := range p.Inputs() {
 		for {
-			err := in.Read(ctx)
+			rec, err := in.Read(ctx)
 			if err != nil && errors.Is(err, EOF) {
 				continue NextInput
 			} else if err != nil {
-				return nil, err
-			}
-
-			rec, err := in.Value()
-			if err != nil {
 				return nil, err
 			}
 
