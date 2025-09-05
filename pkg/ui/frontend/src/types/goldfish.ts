@@ -72,8 +72,8 @@ export type OutcomeFilter = typeof OUTCOME_ALL | typeof OUTCOME_MATCH | typeof O
 export interface ComparisonOutcome {
   correlationId: string;
   comparisonStatus: string;
-  differenceDetails: any | null;
-  performanceMetrics: any | null;
+  differenceDetails: unknown | null;
+  performanceMetrics: unknown | null;
   comparedAt: string;
   createdAt: string;
 }

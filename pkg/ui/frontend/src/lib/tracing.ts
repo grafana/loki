@@ -4,22 +4,40 @@
  */
 
 /**
+ * Default random bytes generator that uses crypto.getRandomValues when available,
+ * falling back to Math.random for environments without crypto support
+ */
+export function getRandomBytes(bytes: Uint8Array): Uint8Array {
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    // Fallback for environments without crypto
+    for (let i = 0; i < bytes.length; i++) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  return bytes;
+}
+
+/**
  * Generates a random 64-bit hex trace ID
+ * @param getRandomBytes - Optional function to generate random bytes (defaults to crypto-based generator)
  */
 export function generateTraceId(): string {
   // Generate 16 random bytes (128 bits) for trace ID
   const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
+  getRandomBytes(bytes);
   return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
 /**
  * Generates a random 32-bit hex span ID
+ * @param getRandomBytes - Optional function to generate random bytes (defaults to crypto-based generator)
  */
 export function generateSpanId(): string {
   // Generate 8 random bytes (64 bits) for span ID
   const bytes = new Uint8Array(8);
-  crypto.getRandomValues(bytes);
+  getRandomBytes(bytes);
   return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
@@ -56,7 +74,7 @@ export function createTraceHeaders(
  */
 export function extractTraceId(
   response: Response | null,
-  error: any
+  error: unknown
 ): string | null {
   // Try to get from response headers first
   if (response) {
@@ -65,13 +83,16 @@ export function extractTraceId(
   }
   
   // Try to get from error object if it contains trace info
-  if (error?.traceId) {
-    return error.traceId;
+  if (error && typeof error === 'object' && 'traceId' in error) {
+    return (error as { traceId: string }).traceId;
   }
   
   // Try to parse from error response body
-  if (error?.response?.data?.traceId) {
-    return error.response.data.traceId;
+  if (error && typeof error === 'object' && 'response' in error) {
+    const errorWithResponse = error as { response?: { data?: { traceId?: string } } };
+    if (errorWithResponse.response?.data?.traceId) {
+      return errorWithResponse.response.data.traceId;
+    }
   }
   
   return null;

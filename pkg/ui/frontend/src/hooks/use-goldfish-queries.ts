@@ -1,15 +1,15 @@
-import { useMemo, useState } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchSampledQueries } from '@/lib/goldfish-api';
-import { OutcomeFilter } from '@/types/goldfish';
+import { OutcomeFilter, SampledQuery } from '@/types/goldfish';
 
 const QUERY_OPTIONS = {
-  staleTime: 5 * 60 * 1000, // 5 minutes
+  staleTime: 1000, // 1 second - very short to ensure fresh data on filter changes
   gcTime: 10 * 60 * 1000, // 10 minutes
+  refetchOnMount: 'always' as const, // Always refetch when component mounts or query key changes
 };
 
 export function useGoldfishQueries(
-  page: number, 
   pageSize: number, 
   selectedOutcome: OutcomeFilter,
   tenant?: string,
@@ -19,12 +19,37 @@ export function useGoldfishQueries(
   to?: Date | null
 ) {
   const [currentTraceId, setCurrentTraceId] = useState<string | null>(null);
+  const [allQueries, setAllQueries] = useState<SampledQuery[]>([]);
+  const [hasMore, setHasMore] = useState(true);
   
-  // Query fetches all data, filtering happens in frontend
+  // Track current page
+  const [currentPage, setCurrentPage] = useState(1);
+  
+  // Create a stable filter key for tracking changes
+  const filterKey = `${tenant ?? ''}-${user ?? ''}-${newEngine ?? ''}-${from?.getTime() ?? ''}-${to?.getTime() ?? ''}`;
+  const prevFilterKeyRef = useRef<string | undefined>(undefined);
+  
+  useEffect(() => {
+    if (prevFilterKeyRef.current !== undefined && prevFilterKeyRef.current !== filterKey) {
+      setCurrentPage(1);
+    }
+    prevFilterKeyRef.current = filterKey;
+  }, [filterKey]);
+  
+  // Single query - always sends ALL filters to backend
   const query = useQuery({
-    queryKey: ['goldfish-queries', page, pageSize, tenant, user, newEngine, from?.toISOString() ?? null, to?.toISOString() ?? null],
+    queryKey: ['goldfish-queries', currentPage, pageSize, tenant, user, newEngine, from, to],
     queryFn: async () => {
-      const result = await fetchSampledQueries(page, pageSize, tenant, user, newEngine, from ?? undefined, to ?? undefined);
+      const result = await fetchSampledQueries(
+        currentPage, 
+        pageSize, 
+        tenant, 
+        user, 
+        newEngine, 
+        from ?? undefined, 
+        to ?? undefined
+      );
+      
       setCurrentTraceId(result.traceId);
       
       if (result.error) {
@@ -36,28 +61,56 @@ export function useGoldfishQueries(
     ...QUERY_OPTIONS,
   });
 
-  // Filter queries based on selectedOutcome in the frontend
-  const filteredQueries = useMemo(() => {
-    if (!query.data?.queries) return [];
-    
-    if (selectedOutcome && selectedOutcome !== 'all') {
-      return query.data.queries.filter(q => q.comparisonStatus === selectedOutcome);
+  // Update state when data arrives - simple rule: page 1 replaces, page 2+ appends
+  useEffect(() => {
+    if (query.data) {
+      const newQueries = query.data.queries || [];
+      
+      if (currentPage === 1) {
+        // Page 1 means fresh start (either filter change or refresh)
+        setAllQueries(newQueries);
+      } else {
+        // Page 2+ means load more
+        setAllQueries(prev => [...prev, ...newQueries]);
+      }
+      
+      setHasMore(query.data?.hasMore || false);
     }
-    
-    return query.data.queries;
-  }, [query.data?.queries, selectedOutcome]);
+  }, [query.data, currentPage]);
 
-  const refresh = () => {
-    query.refetch();
-  };
+  // Apply outcome filter on frontend for immediate response and sort
+  const displayQueries = useMemo(() => {
+    return allQueries
+      .filter(q => {
+        if (selectedOutcome && selectedOutcome !== 'all') {
+          return q.comparisonStatus === selectedOutcome;
+        }
+        return true;
+      })
+      .sort((a, b) => 
+        new Date(b.sampledAt).getTime() - new Date(a.sampledAt).getTime()
+      );
+  }, [allQueries, selectedOutcome]);
+
+  // Load more function - increments page counter
+  const loadMore = useCallback(() => {
+    if (!query.isLoading && hasMore) {
+      setCurrentPage(prev => prev + 1);
+    }
+  }, [query.isLoading, hasMore]);
+
+  // Refresh function - just reset to page 1
+  const refresh = useCallback(() => {
+    setCurrentPage(1);
+  }, []);
 
   return {
-    queries: filteredQueries,
-    isLoading: query.isLoading,
+    queries: displayQueries,
+    isLoading: query.isLoading && allQueries.length === 0, // Only show loading on initial load
+    isLoadingMore: query.isLoading && currentPage > 1,
     error: query.error,
-    hasMore: query.data?.hasMore || false,
-    page: query.data?.page || page,
-    pageSize: query.data?.pageSize || pageSize,
+    hasMore,
+    loadMore,
     refresh,
     traceId: currentTraceId,
   };

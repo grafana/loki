@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useGoldfishQueriesLoadMore } from "@/hooks/use-goldfish-queries-loadmore";
+import { useGoldfishQueries } from "@/hooks/use-goldfish-queries";
 import { QueryDiffView } from "@/components/goldfish/query-diff-view";
 import { TimeRangeSelector } from "@/components/goldfish/time-range-selector";
 import { UserFilterCombobox } from "@/components/goldfish/user-filter-combobox";
@@ -41,7 +41,7 @@ export default function GoldfishPageLoadMore() {
     loadMore, 
     refresh, 
     traceId 
-  } = useGoldfishQueriesLoadMore(
+  } = useGoldfishQueries(
     pageSize, 
     selectedOutcome, 
     selectedTenant, 

@@ -28,8 +28,8 @@ global.fetch = mockFetch;
 
 // Mock window.location for testing
 const mockLocation = (pathname: string) => {
-  delete (window as any).location;
-  (window as any).location = { pathname };
+  delete (window as unknown as { location?: Location }).location;
+  (window as unknown as { location: { pathname: string } }).location = { pathname };
 };
 
 // Helper function to create standard expected headers
@@ -42,7 +42,7 @@ const expectedHeaders = {
 };
 
 // Helper function to create mock response
-const mockResponse = (data: any = { queries: [], hasMore: false, page: 1, pageSize: 20 }) => ({
+const mockResponse = (data: unknown = { queries: [], hasMore: false, page: 1, pageSize: 20 }) => ({
   ok: true,
   json: async () => data,
   headers: {
