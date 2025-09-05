@@ -148,6 +148,8 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 		return p.processRangeAggregation(inst, ctx)
 	case *logical.VectorAggregation:
 		return p.processVectorAggregation(inst, ctx)
+	case *logical.Parse:
+		return p.processParse(inst, ctx)
 	}
 	return nil, nil
 }
@@ -363,8 +365,29 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 	return []Node{node}, nil
 }
 
-// Optimize tries to optimize the plan by pushing down filter predicates and limits
-// to the scan nodes.
+// Convert [logical.Parse] into one [ParseNode] node.
+func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) {
+	node := &ParseNode{
+		Kind: convertParserKind(lp.Kind),
+	}
+	p.plan.addNode(node)
+
+	children, err := p.process(lp.Table, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range children {
+		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
+			return nil, err
+		}
+	}
+
+	return []Node{node}, nil
+}
+
+// Optimize runs optimization passes over the plan, modifying it
+// if any optimizations can be applied.
 func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 	for i, root := range plan.Roots() {
 		optimizations := []*optimization{
@@ -390,4 +413,15 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 		}
 	}
 	return plan, nil
+}
+
+func convertParserKind(kind logical.ParserKind) ParserKind {
+	switch kind {
+	case logical.ParserLogfmt:
+		return ParserLogfmt
+	case logical.ParserJSON:
+		return ParserJSON
+	default:
+		return ParserInvalid
+	}
 }
