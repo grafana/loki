@@ -75,7 +75,7 @@ describe('UserFilterCombobox', () => {
       
       await waitFor(() => {
         mockSuggestions.forEach(user => {
-          expect(screen.getByText(user)).toBeInTheDocument();
+          expect(screen.getByRole('option', { name: new RegExp(user, 'i') })).toBeInTheDocument();
         });
       });
     });
@@ -95,9 +95,9 @@ describe('UserFilterCombobox', () => {
       await user.type(input, 'alice');
       
       await waitFor(() => {
-        expect(screen.getByText('alice@example.com')).toBeInTheDocument();
-        expect(screen.queryByText('bob@example.com')).not.toBeInTheDocument();
-        expect(screen.queryByText('charlie@example.com')).not.toBeInTheDocument();
+        expect(screen.getByRole('option', { name: /alice@example.com/i })).toBeInTheDocument();
+        expect(screen.queryByRole('option', { name: /bob@example.com/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole('option', { name: /charlie@example.com/i })).not.toBeInTheDocument();
       });
     });
 
@@ -118,8 +118,8 @@ describe('UserFilterCombobox', () => {
       await user.type(input, 'bob');
       
       await waitFor(() => {
-        expect(screen.getByText('bob@example.com')).toBeInTheDocument();
-        expect(screen.queryByText('alice@example.com')).not.toBeInTheDocument();
+        expect(screen.getByRole('option', { name: /bob@example.com/i })).toBeInTheDocument();
+        expect(screen.queryByRole('option', { name: /alice@example.com/i })).not.toBeInTheDocument();
       });
       
       // Clear input
@@ -128,7 +128,7 @@ describe('UserFilterCombobox', () => {
       await waitFor(() => {
         // All suggestions should be visible again
         mockSuggestions.forEach(suggestion => {
-          expect(screen.getByText(suggestion)).toBeInTheDocument();
+          expect(screen.getByRole('option', { name: new RegExp(suggestion, 'i') })).toBeInTheDocument();
         });
       });
     });
@@ -146,14 +146,14 @@ describe('UserFilterCombobox', () => {
       fireEvent.focus(input);
       
       await waitFor(() => {
-        expect(screen.getByText('alice@example.com')).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: /alice@example.com/i })).toBeInTheDocument();
       });
       
       // Click outside
       fireEvent.click(document.body);
       
       await waitFor(() => {
-        expect(screen.queryByText('alice@example.com')).not.toBeInTheDocument();
+        expect(screen.queryByRole('option', { name: /alice@example.com/i })).not.toBeInTheDocument();
       });
     });
   });
@@ -172,7 +172,7 @@ describe('UserFilterCombobox', () => {
       fireEvent.focus(input);
       
       await waitFor(() => {
-        const suggestion = screen.getByText('bob@example.com');
+        const suggestion = screen.getByRole('option', { name: /bob@example.com/i });
         fireEvent.click(suggestion);
       });
       
@@ -230,7 +230,7 @@ describe('UserFilterCombobox', () => {
         />
       );
       
-      const clearButton = screen.getByRole('button', { name: /clear/i });
+      const clearButton = screen.getByRole('button', { name: /clear selection/i });
       expect(clearButton).toBeInTheDocument();
     });
 
@@ -243,7 +243,7 @@ describe('UserFilterCombobox', () => {
         />
       );
       
-      expect(screen.queryByRole('button', { name: /clear/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /clear selection/i })).not.toBeInTheDocument();
     });
 
     it('clears selection when clear button is clicked', () => {
@@ -255,7 +255,7 @@ describe('UserFilterCombobox', () => {
         />
       );
       
-      const clearButton = screen.getByRole('button', { name: /clear/i });
+      const clearButton = screen.getByRole('button', { name: /clear selection/i });
       fireEvent.click(clearButton);
       
       expect(mockOnChange).toHaveBeenCalledWith(undefined);
@@ -270,7 +270,7 @@ describe('UserFilterCombobox', () => {
         />
       );
       
-      const clearButton = screen.getByRole('button', { name: /clear/i });
+      const clearButton = screen.getByRole('button', { name: /clear selection/i });
       fireEvent.click(clearButton);
       
       const input = screen.getByRole('textbox');
@@ -296,7 +296,7 @@ describe('UserFilterCombobox', () => {
       await user.type(input, 'ALICE');
       
       await waitFor(() => {
-        expect(screen.getByText('alice@example.com')).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: /alice@example.com/i })).toBeInTheDocument();
       });
     });
 
@@ -315,10 +315,10 @@ describe('UserFilterCombobox', () => {
       await user.type(input, 'example.com');
       
       await waitFor(() => {
-        expect(screen.getByText('alice@example.com')).toBeInTheDocument();
-        expect(screen.getByText('bob@example.com')).toBeInTheDocument();
-        expect(screen.getByText('charlie@example.com')).toBeInTheDocument();
-        expect(screen.queryByText('david.smith@company.org')).not.toBeInTheDocument();
+        expect(screen.getByRole('option', { name: /alice@example.com/i })).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: /bob@example.com/i })).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: /charlie@example.com/i })).toBeInTheDocument();
+        expect(screen.queryByRole('option', { name: /david.smith@company.org/i })).not.toBeInTheDocument();
       });
     });
 
@@ -356,7 +356,7 @@ describe('UserFilterCombobox', () => {
       fireEvent.focus(input);
       
       await waitFor(() => {
-        expect(screen.getByText('alice@example.com')).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: /alice@example.com/i })).toBeInTheDocument();
       });
       
       // Arrow down to highlight first suggestion
@@ -381,13 +381,13 @@ describe('UserFilterCombobox', () => {
       fireEvent.focus(input);
       
       await waitFor(() => {
-        expect(screen.getByText('alice@example.com')).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: /alice@example.com/i })).toBeInTheDocument();
       });
       
       fireEvent.keyDown(input, { key: 'Escape' });
       
       await waitFor(() => {
-        expect(screen.queryByText('alice@example.com')).not.toBeInTheDocument();
+        expect(screen.queryByRole('option', { name: /alice@example.com/i })).not.toBeInTheDocument();
       });
     });
 
@@ -479,7 +479,7 @@ describe('UserFilterCombobox', () => {
       
       await waitFor(() => {
         specialUsers.forEach(user => {
-          expect(screen.getByText(user)).toBeInTheDocument();
+          expect(screen.getByRole('option', { name: new RegExp(user, 'i') })).toBeInTheDocument();
         });
       });
     });

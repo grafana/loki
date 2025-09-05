@@ -2,7 +2,8 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useGoldfishQueries } from './use-goldfish-queries';
 import { fetchSampledQueries } from '@/lib/goldfish-api';
-import { OUTCOME_ALL, OUTCOME_MATCH, OUTCOME_MISMATCH } from '@/types/goldfish';
+import { OUTCOME_ALL, OUTCOME_MATCH, OUTCOME_MISMATCH, type GoldfishAPIResponse } from '@/types/goldfish';
+import type { FetchResult } from '@/lib/goldfish-api';
 import React from 'react';
 
 /**
@@ -150,8 +151,8 @@ describe('useGoldfishQueries', () => {
         expect(result.current.isLoading).toBe(false);
       });
 
-      // Should have the queries
-      expect(result.current.queries).toEqual(mockQueries);
+      // Should have the queries sorted by sampledAt descending
+      expect(result.current.queries).toEqual([mockQueries[1], mockQueries[0]]);
       expect(result.current.hasMore).toBe(true);
       expect(result.current.traceId).toBe('test-trace');
     });
@@ -219,8 +220,8 @@ describe('useGoldfishQueries', () => {
         expect(result.current.isLoadingMore).toBe(false);
       });
 
-      // Should have both queries accumulated
-      expect(result.current.queries).toEqual(mockQueries);
+      // Should have both queries accumulated and sorted
+      expect(result.current.queries).toEqual([mockQueries[1], mockQueries[0]]);
       expect(result.current.hasMore).toBe(false);
       expect(result.current.traceId).toBe('trace-2');
     });
@@ -241,7 +242,7 @@ describe('useGoldfishQueries', () => {
       
       mockFetchSampledQueries
         .mockResolvedValueOnce({ data: page1Data, traceId: 'trace-1' })
-        .mockImplementationOnce(() => secondCallPromise as unknown as Promise<Response>);
+        .mockImplementationOnce(() => secondCallPromise as unknown as Promise<FetchResult<GoldfishAPIResponse>>);
 
       const { result } = renderHook(
         () => useGoldfishQueries(20, OUTCOME_ALL),
@@ -264,7 +265,7 @@ describe('useGoldfishQueries', () => {
       expect(mockFetchSampledQueries).toHaveBeenCalledTimes(2);
 
       // Resolve the second call
-      resolveSecondCall({ data: { queries: [], hasMore: false, page: 2, pageSize: 20 }, traceId: 'trace-2' });
+      resolveSecondCall!({ data: { queries: [], hasMore: false, page: 2, pageSize: 20 }, traceId: 'trace-2' });
 
       await waitFor(() => {
         expect(result.current.isLoadingMore).toBe(false);
@@ -320,8 +321,8 @@ describe('useGoldfishQueries', () => {
         expect(result.current.isLoadingMore).toBe(false);
       });
 
-      // Should have accumulated queries
-      expect(result.current.queries).toHaveLength(2);
+      // Should have accumulated queries (2 from page 1 + 1 from page 2 = 3, sorted)
+      expect(result.current.queries).toHaveLength(3);
 
       // Change filter
       rerender({ tenant: 'tenant-a' });
@@ -402,7 +403,7 @@ describe('useGoldfishQueries', () => {
         ({ outcome }) => useGoldfishQueries(20, outcome),
         { 
           wrapper: createWrapper(),
-          initialProps: { outcome: OUTCOME_MATCH }
+          initialProps: { outcome: OUTCOME_MATCH as typeof OUTCOME_MATCH | typeof OUTCOME_MISMATCH | typeof OUTCOME_ALL }
         }
       );
 
@@ -423,8 +424,8 @@ describe('useGoldfishQueries', () => {
       // Change to ALL
       rerender({ outcome: OUTCOME_ALL });
 
-      // Should show all queries
-      expect(result.current.queries).toEqual(mockQueries);
+      // Should show all queries sorted
+      expect(result.current.queries).toEqual([mockQueries[1], mockQueries[0]]);
       expect(mockFetchSampledQueries).toHaveBeenCalledTimes(1); // Still no additional API call
     });
 
@@ -528,7 +529,7 @@ describe('useGoldfishQueries', () => {
       );
 
       await waitFor(() => {
-        expect(result.current.queries).toEqual(mockQueries);
+        expect(result.current.queries).toEqual([mockQueries[1], mockQueries[0]]);
       });
     });
   });

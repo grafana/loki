@@ -14,19 +14,87 @@ import { RefreshCw, AlertCircle, CheckCircle2, XCircle, Rocket, ChevronDown } fr
 import { OutcomeFilter, OUTCOME_ALL, OUTCOME_MATCH, OUTCOME_MISMATCH, OUTCOME_ERROR } from "@/types/goldfish";
 import { PageContainer } from "@/layout/page-container";
 
+// Define preset ranges (matching TimeRangeSelector)
+const PRESET_RANGES = [
+  { label: 'Last 15 minutes', value: '15m', duration: 15 * 60 * 1000 },
+  { label: 'Last 30 minutes', value: '30m', duration: 30 * 60 * 1000 },
+  { label: 'Last 1 hour', value: '1h', duration: 60 * 60 * 1000 },
+  { label: 'Last 3 hours', value: '3h', duration: 3 * 60 * 60 * 1000 },
+  { label: 'Last 6 hours', value: '6h', duration: 6 * 60 * 60 * 1000 },
+  { label: 'Last 12 hours', value: '12h', duration: 12 * 60 * 60 * 1000 },
+  { label: 'Last 24 hours', value: '24h', duration: 24 * 60 * 60 * 1000 },
+  { label: 'Last 2 days', value: '2d', duration: 2 * 24 * 60 * 60 * 1000 },
+  { label: 'Last 7 days', value: '7d', duration: 7 * 24 * 60 * 60 * 1000 },
+];
 
-export default function GoldfishPageLoadMore() {
+
+export default function GoldfishPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   
-  const [selectedTenant, setSelectedTenant] = useState<string | undefined>(undefined);
-  const [selectedUser, setSelectedUser] = useState<string | undefined>(undefined);
-  const [selectedOutcome, setSelectedOutcome] = useState<OutcomeFilter>(OUTCOME_ALL);
+  const [selectedTenant, setSelectedTenant] = useState<string | undefined>(() => {
+    const tenant = searchParams.get("tenant");
+    return tenant ? decodeURIComponent(tenant) : undefined;
+  });
+  const [selectedUser, setSelectedUser] = useState<string | undefined>(() => {
+    const user = searchParams.get("user");
+    return user ? decodeURIComponent(user) : undefined;
+  });
+  const [selectedOutcome, setSelectedOutcome] = useState<OutcomeFilter>(() => {
+    const outcome = searchParams.get("outcome");
+    if (outcome === OUTCOME_MATCH || outcome === OUTCOME_MISMATCH || outcome === OUTCOME_ERROR) {
+      return outcome as OutcomeFilter;
+    }
+    return OUTCOME_ALL;
+  });
   const [showNewEngineOnly, setShowNewEngineOnly] = useState(() => {
     return searchParams.get("newEngine") === "true";
   });
   
-  // Initialize time range to null (use backend default)
+  // Initialize time range and error state
+  const [timeRangeError, setTimeRangeError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<{ from: Date | null; to: Date | null }>(() => {
+    const sinceParam = searchParams.get("since");
+    const fromParam = searchParams.get("from");
+    const toParam = searchParams.get("to");
+    
+    // Check for conflicting parameters
+    if (sinceParam && (fromParam || toParam)) {
+      setTimeRangeError("Conflicting time parameters: cannot use both 'since' and 'from/to' parameters.");
+      return { from: null, to: null };
+    }
+    
+    // Check for incomplete from/to range
+    if ((fromParam && !toParam) || (!fromParam && toParam)) {
+      setTimeRangeError("Incomplete time range: both 'from' and 'to' parameters are required.");
+      return { from: null, to: null };
+    }
+    
+    // Parse since parameter (relative time)
+    if (sinceParam) {
+      const match = sinceParam.match(/^(\d+)([mhd])$/);
+      if (match) {
+        const [, amount, unit] = match;
+        const now = new Date();
+        const msMultiplier = { m: 60 * 1000, h: 60 * 60 * 1000, d: 24 * 60 * 60 * 1000 }[unit] || 1;
+        const from = new Date(now.getTime() - parseInt(amount) * msMultiplier);
+        return { from, to: now };
+      }
+    }
+    
+    // Parse from/to parameters (absolute time)
+    if (fromParam && toParam) {
+      try {
+        const from = new Date(fromParam);
+        const to = new Date(toParam);
+        if (!isNaN(from.getTime()) && !isNaN(to.getTime())) {
+          return { from, to };
+        }
+      } catch {
+        // Invalid date format, fall through to default
+      }
+    }
+    
+    // Default: no time range specified
     return { from: null, to: null };
   });
   
@@ -109,13 +177,58 @@ export default function GoldfishPageLoadMore() {
   // Update URL params when filter changes
   useEffect(() => {
     const newSearchParams = new URLSearchParams(searchParams);
+    
+    // Handle outcome filter
+    if (selectedOutcome !== OUTCOME_ALL) {
+      newSearchParams.set("outcome", selectedOutcome);
+    } else {
+      newSearchParams.delete("outcome");
+    }
+    
+    // Handle tenant filter
+    if (selectedTenant) {
+      newSearchParams.set("tenant", selectedTenant);
+    } else {
+      newSearchParams.delete("tenant");
+    }
+    
+    // Handle user filter
+    if (selectedUser) {
+      newSearchParams.set("user", selectedUser);
+    } else {
+      newSearchParams.delete("user");
+    }
+    
+    // Handle time range filter
+    // Clear all time-related params first
+    newSearchParams.delete("since");
+    newSearchParams.delete("from");
+    newSearchParams.delete("to");
+    
+    if (timeRange.from && timeRange.to) {
+      // Check if this matches a preset (within 1 second tolerance)
+      const timeDiff = timeRange.to.getTime() - timeRange.from.getTime();
+      const preset = PRESET_RANGES.find(p => Math.abs(timeDiff - p.duration) < 1000);
+      
+      if (preset) {
+        // Use since parameter for presets
+        newSearchParams.set("since", preset.value);
+      } else {
+        // Use from/to parameters for custom ranges
+        newSearchParams.set("from", timeRange.from.toISOString());
+        newSearchParams.set("to", timeRange.to.toISOString());
+      }
+    }
+    
+    // Handle newEngine filter
     if (showNewEngineOnly) {
       newSearchParams.set("newEngine", "true");
     } else {
       newSearchParams.delete("newEngine");
     }
+    
     setSearchParams(newSearchParams, { replace: true });
-  }, [showNewEngineOnly, searchParams, setSearchParams]);
+  }, [selectedOutcome, selectedTenant, selectedUser, timeRange, showNewEngineOnly, searchParams, setSearchParams]);
   
   return (
     <PageContainer>
@@ -234,6 +347,15 @@ export default function GoldfishPageLoadMore() {
         
         <CardContent>
           <div className="space-y-4">
+            {timeRangeError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  {timeRangeError}
+                </AlertDescription>
+              </Alert>
+            )}
+            
             {error && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />

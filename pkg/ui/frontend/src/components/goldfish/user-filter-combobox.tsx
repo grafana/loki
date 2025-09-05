@@ -40,9 +40,17 @@ export function UserFilterCombobox({ value, onChange, suggestions }: UserFilterC
     const newValue = e.target.value;
     setInputValue(newValue);
     onChange(newValue || undefined);
-    // Keep dropdown open when typing
-    if (!open && filteredSuggestions.length > 0) {
+    
+    // Filter suggestions based on new value
+    const newFilteredSuggestions = suggestions.filter(user =>
+      user.toLowerCase().includes(newValue.toLowerCase())
+    );
+    
+    // Keep dropdown open when typing if there are suggestions
+    if (newFilteredSuggestions.length > 0) {
       setOpen(true);
+    } else {
+      setOpen(false);
     }
   };
 
@@ -54,6 +62,12 @@ export function UserFilterCombobox({ value, onChange, suggestions }: UserFilterC
     setOpen(false);
   };
 
+  const handleFocus = () => {
+    if (filteredSuggestions.length > 0) {
+      setOpen(true);
+    }
+  };
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <div className="relative flex items-center">
@@ -63,6 +77,7 @@ export function UserFilterCombobox({ value, onChange, suggestions }: UserFilterC
             placeholder="Filter by user..."
             value={inputValue}
             onChange={handleInputChange}
+            onFocus={handleFocus}
             onClick={() => {
               if (filteredSuggestions.length > 0) {
                 setOpen(!open);
@@ -78,6 +93,7 @@ export function UserFilterCombobox({ value, onChange, suggestions }: UserFilterC
             className="absolute right-0 h-8 w-8 p-0 z-10"
             onClick={handleClear}
             type="button"
+            aria-label="Clear selection"
           >
             <X className="h-4 w-4" />
           </Button>

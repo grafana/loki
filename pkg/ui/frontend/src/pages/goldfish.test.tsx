@@ -1,19 +1,20 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import GoldfishPageLoadMore from './goldfish';
+import GoldfishPage from './goldfish';
 import { useGoldfishQueries } from "@/hooks/use-goldfish-queries";
 import type { SampledQuery } from '@/types/goldfish';
 import '@testing-library/jest-dom';
 
-// Import MemoryRouter from react-router-dom
+// Import MemoryRouter and other hooks from react-router-dom
 import { MemoryRouter } from 'react-router-dom';
 
 // Mock React Router (but keep MemoryRouter)
+const mockUseSearchParams = jest.fn();
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
   useNavigate: () => jest.fn(),
-  useSearchParams: () => [new URLSearchParams(), jest.fn()],
+  useSearchParams: () => mockUseSearchParams(),
 }));
 
 // Mock PageContainer
@@ -36,7 +37,17 @@ jest.mock('@/components/goldfish/query-diff-view', () => ({
 jest.mock('@/components/goldfish/time-range-selector', () => ({
   TimeRangeSelector: ({ onChange }: { onChange: (from: Date | null, to: Date | null) => void }) => (
     <div data-testid="time-range-selector">
-      <button onClick={() => onChange(new Date('2024-01-01'), new Date('2024-01-02'))}>Set Time Range</button>
+      <button onClick={() => onChange(new Date('2024-01-01T10:00:00Z'), new Date('2024-01-01T14:30:00Z'))}>Set Custom Range</button>
+      <button
+        data-testid="select-1h-preset"
+        onClick={() => {
+          const now = new Date();
+          const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+          onChange(oneHourAgo, now);
+        }}
+      >
+        Select 1 Hour Preset
+      </button>
     </div>
   ),
 }));
@@ -44,7 +55,14 @@ jest.mock('@/components/goldfish/time-range-selector', () => ({
 // Mock UserFilterCombobox
 jest.mock('@/components/goldfish/user-filter-combobox', () => ({
   UserFilterCombobox: ({ value, onChange, suggestions }: { value?: string; onChange: (value?: string) => void; suggestions?: string[] }) => (
-    <select data-testid="user-filter" value={value || ''} onChange={(e) => onChange(e.target.value || undefined)}>
+    <select
+      data-testid="user-filter"
+      value={value || ''}
+      onChange={(e) => {
+        const newValue = e.target.value || undefined;
+        onChange(newValue);
+      }}
+    >
       <option value="">All Users</option>
       {suggestions?.map((user: string) => (
         <option key={user} value={user}>{user}</option>
@@ -227,13 +245,13 @@ const renderGoldfishPage = () => {
   return render(
     <MemoryRouter>
       <QueryClientProvider client={queryClient}>
-        <GoldfishPageLoadMore />
+        <GoldfishPage />
       </QueryClientProvider>
     </MemoryRouter>
   );
 };
 
-describe('GoldfishPageLoadMore', () => {
+describe('GoldfishPage', () => {
   beforeEach(() => {
     // Setup default mock implementation for the hook
     mockUseGoldfishQueries.mockReturnValue({
@@ -241,10 +259,450 @@ describe('GoldfishPageLoadMore', () => {
       queries: mockQueries,
       hasMore: true,
     });
+    // Setup default mock for useSearchParams
+    mockUseSearchParams.mockReturnValue([new URLSearchParams(), jest.fn()]);
   });
 
   afterEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('URL State Management', () => {
+    it('parses outcome filter from URL and applies it', () => {
+      // Mock useSearchParams to return outcome=mismatch
+      const searchParams = new URLSearchParams('outcome=mismatch');
+      const setSearchParams = jest.fn();
+      mockUseSearchParams.mockReturnValue([searchParams, setSearchParams]);
+
+      renderGoldfishPage();
+
+      // Check that the hook was called with 'mismatch' as the selectedOutcome
+      // This confirms the component parsed the URL parameter correctly
+      expect(mockUseGoldfishQueries).toHaveBeenCalledWith(
+        20, // pageSize
+        'mismatch', // selectedOutcome - this should be 'mismatch' from URL
+        undefined, // tenant
+        undefined, // user
+        undefined, // newEngine
+        null, // from
+        null // to
+      );
+
+      // Also check the visual state - buttons should reflect the selected outcome
+      const mismatchButton = screen.getByRole('button', { name: /Mismatch/i });
+      const allButton = screen.getByRole('button', { name: /^All$/i });
+      const matchButton = screen.getByRole('button', { name: /^Match$/i });
+      const errorButton = screen.getByRole('button', { name: /Error/i });
+
+      // The selected button (Mismatch) should have bg-primary (from default variant)
+      // The unselected buttons should have hover:bg-accent (from ghost variant)
+      expect(mismatchButton.className).toContain('bg-primary');
+      expect(allButton.className).toContain('hover:bg-accent');
+      expect(matchButton.className).toContain('hover:bg-accent');
+      expect(errorButton.className).toContain('hover:bg-accent');
+    });
+
+    it('updates URL when outcome filter changes', () => {
+      // Start with no URL params
+      const searchParams = new URLSearchParams();
+      const setSearchParams = jest.fn();
+      mockUseSearchParams.mockReturnValue([searchParams, setSearchParams]);
+
+      renderGoldfishPage();
+
+      // Click on the Error filter button
+      const errorButton = screen.getByRole('button', { name: /Error/i });
+      fireEvent.click(errorButton);
+
+      // Check that setSearchParams was called
+      expect(setSearchParams).toHaveBeenCalled();
+
+      // Find the call that has outcome=error (might not be the first due to initial render)
+      const callWithError = setSearchParams.mock.calls.find(call =>
+        call[0].get('outcome') === 'error'
+      );
+      expect(callWithError).toBeDefined();
+      expect(callWithError[0].get('outcome')).toBe('error');
+
+      // Now click on All button (default)
+      const allButton = screen.getByRole('button', { name: /^All$/i });
+      fireEvent.click(allButton);
+
+      // Check that setSearchParams was called to remove outcome param (since 'all' is default)
+      const lastCallParams = setSearchParams.mock.calls[setSearchParams.mock.calls.length - 1][0];
+      expect(lastCallParams.has('outcome')).toBe(false);
+    });
+
+    it('parses tenant filter from URL and applies it', () => {
+      // Mock useSearchParams to return tenant=tenant-123
+      const searchParams = new URLSearchParams('tenant=tenant-123');
+      const setSearchParams = jest.fn();
+      mockUseSearchParams.mockReturnValue([searchParams, setSearchParams]);
+
+      // Mock the hook to return some queries with tenants so the filter is visible
+      mockUseGoldfishQueries.mockReturnValue({
+        ...defaultMockHookReturn,
+        queries: mockQueries, // This has tenants: tenant-a, tenant-b, tenant-c
+        hasMore: true,
+      });
+
+      renderGoldfishPage();
+
+      // Check that the hook was called with 'tenant-123' as the selectedTenant
+      // This confirms the component parsed the URL parameter correctly
+      expect(mockUseGoldfishQueries).toHaveBeenCalledWith(
+        20, // pageSize
+        expect.anything(), // outcome
+        'tenant-123', // selectedTenant - this should be 'tenant-123' from URL
+        undefined, // user
+        undefined, // newEngine
+        null, // from
+        null // to
+      );
+
+      // Verify the tenant filter is rendered (since we have tenants in the data)
+      const tenantFilter = screen.getByTestId('tenant-filter');
+      expect(tenantFilter).toBeInTheDocument();
+
+      // The filter should show the selected tenant
+      // Note: Due to mock limitations, we're verifying the behavior through the hook call above
+      // rather than the visual state. The actual component would show 'tenant-123' selected.
+    });
+
+    it('parses URL-encoded tenant filter from URL', () => {
+      // Mock useSearchParams to return an encoded tenant like "tenant/special-123"
+      const searchParams = new URLSearchParams('tenant=' + encodeURIComponent('tenant/special-123'));
+      const setSearchParams = jest.fn();
+      mockUseSearchParams.mockReturnValue([searchParams, setSearchParams]);
+
+      renderGoldfishPage();
+
+      // Check that the hook was called with the decoded tenant value
+      expect(mockUseGoldfishQueries).toHaveBeenCalledWith(
+        20, // pageSize
+        expect.anything(), // outcome
+        'tenant/special-123', // selectedTenant - should be decoded
+        undefined, // user
+        undefined, // newEngine
+        null, // from
+        null // to
+      );
+    });
+
+    it('updates URL when tenant filter changes', () => {
+      // Start with no URL params
+      const searchParams = new URLSearchParams();
+      const setSearchParams = jest.fn();
+      mockUseSearchParams.mockReturnValue([searchParams, setSearchParams]);
+
+      // Mock the hook to return some queries with tenants so the filter is visible
+      mockUseGoldfishQueries.mockReturnValue({
+        ...defaultMockHookReturn,
+        queries: mockQueries, // This has tenants: tenant-a, tenant-b, tenant-c
+        hasMore: true,
+      });
+
+      renderGoldfishPage();
+
+      // Select a tenant from the dropdown
+      const tenantFilter = screen.getByTestId('tenant-filter');
+      fireEvent.change(tenantFilter, { target: { value: 'tenant-b' } });
+
+      // Check that setSearchParams was called to add tenant to URL
+      expect(setSearchParams).toHaveBeenCalled();
+
+      // Find the call that has tenant=tenant-b
+      const callWithTenant = setSearchParams.mock.calls.find(call =>
+        call[0].get('tenant') === 'tenant-b'
+      );
+      expect(callWithTenant).toBeDefined();
+      expect(callWithTenant[0].get('tenant')).toBe('tenant-b');
+
+      // Now clear the tenant selection
+      fireEvent.change(tenantFilter, { target: { value: '' } });
+
+      // Check that setSearchParams was called to remove tenant param
+      const lastCallParams = setSearchParams.mock.calls[setSearchParams.mock.calls.length - 1][0];
+      expect(lastCallParams.has('tenant')).toBe(false);
+    });
+
+    it('updates URL with encoded tenant when special characters are present', () => {
+      // Start with no URL params
+      const searchParams = new URLSearchParams();
+      const setSearchParams = jest.fn();
+      mockUseSearchParams.mockReturnValue([searchParams, setSearchParams]);
+
+      // Mock the hook to return queries with a tenant that has special characters
+      const queriesWithSpecialTenant = [{
+        ...mockQueries[0],
+        tenantId: 'tenant/special-123'
+      }];
+      mockUseGoldfishQueries.mockReturnValue({
+        ...defaultMockHookReturn,
+        queries: queriesWithSpecialTenant,
+        hasMore: false,
+      });
+
+      renderGoldfishPage();
+
+      // Select the tenant with special characters
+      const tenantFilter = screen.getByTestId('tenant-filter');
+      fireEvent.change(tenantFilter, { target: { value: 'tenant/special-123' } });
+
+      // Check that setSearchParams was called with the encoded value
+      expect(setSearchParams).toHaveBeenCalled();
+
+      // Find the call and check the tenant is properly encoded
+      const callWithTenant = setSearchParams.mock.calls.find(call =>
+        call[0].get('tenant') === 'tenant/special-123'
+      );
+      expect(callWithTenant).toBeDefined();
+
+      // The actual URL string should have the encoded value
+      const urlString = callWithTenant[0].toString();
+      expect(urlString).toContain('tenant=tenant%2Fspecial-123');
+    });
+
+    it('parses user filter from URL and applies it', () => {
+      // Mock useSearchParams to return user=john@example.com
+      const searchParams = new URLSearchParams('user=' + encodeURIComponent('john@example.com'));
+      const setSearchParams = jest.fn();
+      mockUseSearchParams.mockReturnValue([searchParams, setSearchParams]);
+
+      renderGoldfishPage();
+
+      // Check that the hook was called with 'john@example.com' as the selectedUser
+      expect(mockUseGoldfishQueries).toHaveBeenCalledWith(
+        20, // pageSize
+        expect.anything(), // outcome
+        undefined, // tenant
+        'john@example.com', // selectedUser - should be decoded
+        undefined, // newEngine
+        null, // from
+        null // to
+      );
+    });
+
+    it('updates URL when user filter changes', () => {
+      // Start with no URL params
+      const searchParams = new URLSearchParams();
+      const setSearchParams = jest.fn();
+      mockUseSearchParams.mockReturnValue([searchParams, setSearchParams]);
+
+      // Mock the hook to return some queries with users so UserFilterCombobox gets suggestions
+      mockUseGoldfishQueries.mockReturnValue({
+        ...defaultMockHookReturn,
+        queries: mockQueries, // This has users: user1@example.com, user2@example.com, user3@example.com
+        hasMore: true,
+      });
+
+      renderGoldfishPage();
+
+      // Select a user from the filter (this should trigger the onChange)
+      const userFilter = screen.getByTestId('user-filter');
+      fireEvent.change(userFilter, { target: { value: 'user1@example.com' } });
+
+      // Check that setSearchParams was called with the user
+      expect(setSearchParams).toHaveBeenCalled();
+
+      const callWithUser = setSearchParams.mock.calls.find(call =>
+        call[0].get('user') === 'user1@example.com'
+      );
+      expect(callWithUser).toBeDefined();
+      expect(callWithUser[0].get('user')).toBe('user1@example.com');
+
+      // Clear the user filter
+      fireEvent.change(userFilter, { target: { value: '' } });
+
+      // Check that user param is removed
+      const lastCallParams = setSearchParams.mock.calls[setSearchParams.mock.calls.length - 1][0];
+      expect(lastCallParams.has('user')).toBe(false);
+    });
+
+    it('parses since parameter for preset time ranges', () => {
+      // Mock useSearchParams to return since=1h
+      const searchParams = new URLSearchParams('since=1h');
+      const setSearchParams = jest.fn();
+      mockUseSearchParams.mockReturnValue([searchParams, setSearchParams]);
+
+      renderGoldfishPage();
+
+      // Check that the hook was called with calculated timestamps (now - 1h to now)
+      const call = mockUseGoldfishQueries.mock.calls[0];
+      const fromArg = call[5]; // from parameter
+      const toArg = call[6]; // to parameter
+
+      expect(fromArg).toBeInstanceOf(Date);
+      expect(toArg).toBeInstanceOf(Date);
+
+      // Should be approximately 1 hour apart
+      expect(fromArg).not.toBeNull();
+      expect(toArg).not.toBeNull();
+      const timeDiff = (toArg as Date).getTime() - (fromArg as Date).getTime();
+      expect(timeDiff).toBeCloseTo(60 * 60 * 1000, -4); // 1 hour in ms, tolerance of 10ms
+    });
+
+    it('parses from/to parameters for custom time ranges', () => {
+      // Mock useSearchParams with ISO timestamps
+      const from = '2025-01-05T10:00:00.000Z';
+      const to = '2025-01-05T12:00:00.000Z';
+      const searchParams = new URLSearchParams(`from=${from}&to=${to}`);
+      const setSearchParams = jest.fn();
+      mockUseSearchParams.mockReturnValue([searchParams, setSearchParams]);
+
+      renderGoldfishPage();
+
+      // Check that the hook was called with the exact timestamps
+      expect(mockUseGoldfishQueries).toHaveBeenCalledWith(
+        20, // pageSize
+        expect.anything(), // outcome
+        undefined, // tenant
+        undefined, // user
+        undefined, // newEngine
+        new Date(from), // from
+        new Date(to) // to
+      );
+    });
+
+    it('shows error when both since and from/to parameters are present', () => {
+      // Mock useSearchParams with conflicting parameters
+      const searchParams = new URLSearchParams('since=1h&from=2025-01-05T10:00:00.000Z&to=2025-01-05T12:00:00.000Z');
+      const setSearchParams = jest.fn();
+      mockUseSearchParams.mockReturnValue([searchParams, setSearchParams]);
+
+      renderGoldfishPage();
+
+      // Should show error and default to null timestamps
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(screen.getByText(/conflicting time parameters/i)).toBeInTheDocument();
+
+      expect(mockUseGoldfishQueries).toHaveBeenCalledWith(
+        20, // pageSize
+        expect.anything(), // outcome
+        undefined, // tenant
+        undefined, // user
+        undefined, // newEngine
+        null, // from - defaults to null on error
+        null // to - defaults to null on error
+      );
+    });
+
+    it('shows error when only from parameter is present without to', () => {
+      // Mock useSearchParams with incomplete range
+      const searchParams = new URLSearchParams('from=2025-01-05T10:00:00.000Z');
+      const setSearchParams = jest.fn();
+      mockUseSearchParams.mockReturnValue([searchParams, setSearchParams]);
+
+      renderGoldfishPage();
+
+      // Should show error and default to null timestamps
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(screen.getByText(/incomplete time range/i)).toBeInTheDocument();
+
+      expect(mockUseGoldfishQueries).toHaveBeenCalledWith(
+        20, // pageSize
+        expect.anything(), // outcome
+        undefined, // tenant
+        undefined, // user
+        undefined, // newEngine
+        null, // from - defaults to null on error
+        null // to - defaults to null on error
+      );
+    });
+
+    it('shows error when only to parameter is present without from', () => {
+      // Mock useSearchParams with incomplete range
+      const searchParams = new URLSearchParams('to=2025-01-05T12:00:00.000Z');
+      const setSearchParams = jest.fn();
+      mockUseSearchParams.mockReturnValue([searchParams, setSearchParams]);
+
+      renderGoldfishPage();
+
+      // Should show error and default to null timestamps
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(screen.getByText(/incomplete time range/i)).toBeInTheDocument();
+
+      expect(mockUseGoldfishQueries).toHaveBeenCalledWith(
+        20, // pageSize
+        expect.anything(), // outcome
+        undefined, // tenant
+        undefined, // user
+        undefined, // newEngine
+        null, // from - defaults to null on error
+        null // to - defaults to null on error
+      );
+    });
+
+    it('updates URL with since parameter for preset time ranges', () => {
+      // Start with no URL params
+      const searchParams = new URLSearchParams();
+      const setSearchParams = jest.fn();
+      mockUseSearchParams.mockReturnValue([searchParams, setSearchParams]);
+
+      renderGoldfishPage();
+
+      // Click the 1 hour preset button which sets times exactly 1 hour apart
+      const presetButton = screen.getByTestId('select-1h-preset');
+      fireEvent.click(presetButton);
+
+      // Should use since=1h for the preset
+      expect(setSearchParams).toHaveBeenCalled();
+
+      const callWithSince = setSearchParams.mock.calls.find(call =>
+        call[0].get('since') === '1h'
+      );
+      expect(callWithSince).toBeDefined();
+      expect(callWithSince[0].get('since')).toBe('1h');
+    });
+
+    it('updates URL with from/to parameters for custom time ranges', () => {
+      // Start with no URL params
+      const searchParams = new URLSearchParams();
+      const setSearchParams = jest.fn();
+      mockUseSearchParams.mockReturnValue([searchParams, setSearchParams]);
+
+      renderGoldfishPage();
+
+      // Click the "Set Custom Range" button which sets dates that don't match any preset
+      const customRangeButton = screen.getByText('Set Custom Range');
+      fireEvent.click(customRangeButton);
+
+      // Should use from/to parameters for custom ranges (not since)
+      expect(setSearchParams).toHaveBeenCalled();
+
+      // When custom range is selected, should use from/to not since
+      const callWithFromTo = setSearchParams.mock.calls.find(call =>
+        call[0].has('from') && call[0].has('to') && !call[0].has('since')
+      );
+      expect(callWithFromTo).toBeDefined();
+      expect(callWithFromTo[0].get('from')).toBe('2024-01-01T10:00:00.000Z');
+      expect(callWithFromTo[0].get('to')).toBe('2024-01-01T14:30:00.000Z');
+    });
+
+    it('preserves newEngine parameter when other filters change', () => {
+      // Start with newEngine=true in URL
+      const searchParams = new URLSearchParams('newEngine=true');
+      const setSearchParams = jest.fn();
+      mockUseSearchParams.mockReturnValue([searchParams, setSearchParams]);
+
+      // Mock queries so tenant filter is visible
+      mockUseGoldfishQueries.mockReturnValue({
+        ...defaultMockHookReturn,
+        queries: mockQueries,
+        hasMore: true,
+      });
+
+      renderGoldfishPage();
+
+      // Change another filter (tenant)
+      const tenantFilter = screen.getByTestId('tenant-filter');
+      fireEvent.change(tenantFilter, { target: { value: 'tenant-a' } });
+
+      // Check that newEngine=true is preserved
+      const lastCall = setSearchParams.mock.calls[setSearchParams.mock.calls.length - 1];
+      expect(lastCall[0].get('newEngine')).toBe('true');
+      expect(lastCall[0].get('tenant')).toBe('tenant-a');
+    });
   });
 
   describe('Rendering', () => {

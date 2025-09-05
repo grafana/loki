@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchSampledQueries } from '@/lib/goldfish-api';
 import { OutcomeFilter, SampledQuery } from '@/types/goldfish';
 
@@ -18,6 +18,7 @@ export function useGoldfishQueries(
   from?: Date | null,
   to?: Date | null
 ) {
+  const queryClient = useQueryClient();
   const [currentTraceId, setCurrentTraceId] = useState<string | null>(null);
   const [allQueries, setAllQueries] = useState<SampledQuery[]>([]);
   const [hasMore, setHasMore] = useState(true);
@@ -99,10 +100,11 @@ export function useGoldfishQueries(
     }
   }, [query.isLoading, hasMore]);
 
-  // Refresh function - just reset to page 1
+  // Refresh function - invalidate cache and reset to page 1
   const refresh = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['goldfish-queries'] });
     setCurrentPage(1);
-  }, []);
+  }, [queryClient]);
 
   return {
     queries: displayQueries,
