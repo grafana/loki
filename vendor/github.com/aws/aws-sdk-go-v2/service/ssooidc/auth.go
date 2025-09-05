@@ -12,6 +12,8 @@ import (
 	"github.com/aws/smithy-go/middleware"
 	"github.com/aws/smithy-go/tracing"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"slices"
+	"strings"
 )
 
 func bindAuthParamsRegion(_ interface{}, params *AuthResolverParameters, _ interface{}, options Options) {
@@ -187,7 +189,8 @@ func (m *resolveAuthSchemeMiddleware) HandleFinalize(ctx context.Context, in mid
 }
 
 func (m *resolveAuthSchemeMiddleware) selectScheme(options []*smithyauth.Option) (*resolvedAuthScheme, bool) {
-	for _, option := range options {
+	sorted := sortAuthOptions(options, m.options.AuthSchemePreference)
+	for _, option := range sorted {
 		if option.SchemeID == smithyauth.SchemeIDAnonymous {
 			return newResolvedAuthScheme(smithyhttp.NewAnonymousScheme(), option), true
 		}
@@ -204,6 +207,29 @@ func (m *resolveAuthSchemeMiddleware) selectScheme(options []*smithyauth.Option)
 	}
 
 	return nil, false
+}
+
+func sortAuthOptions(options []*smithyauth.Option, preferred []string) []*smithyauth.Option {
+	byPriority := make([]*smithyauth.Option, 0, len(options))
+	for _, prefName := range preferred {
+		for _, option := range options {
+			optName := option.SchemeID
+			if parts := strings.Split(option.SchemeID, "#"); len(parts) == 2 {
+				optName = parts[1]
+			}
+			if prefName == optName {
+				byPriority = append(byPriority, option)
+			}
+		}
+	}
+	for _, option := range options {
+		if !slices.ContainsFunc(byPriority, func(o *smithyauth.Option) bool {
+			return o.SchemeID == option.SchemeID
+		}) {
+			byPriority = append(byPriority, option)
+		}
+	}
+	return byPriority
 }
 
 type resolvedAuthSchemeKey struct{}

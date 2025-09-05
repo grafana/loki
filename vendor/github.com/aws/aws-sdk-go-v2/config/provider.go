@@ -753,3 +753,34 @@ func getRetryMode(ctx context.Context, configs configs) (v aws.RetryMode, found 
 	}
 	return v, found, err
 }
+
+func getAuthSchemePreference(ctx context.Context, configs configs) ([]string, bool) {
+	type provider interface {
+		getAuthSchemePreference() ([]string, bool)
+	}
+
+	for _, cfg := range configs {
+		if p, ok := cfg.(provider); ok {
+			if v, ok := p.getAuthSchemePreference(); ok {
+				return v, true
+			}
+		}
+	}
+	return nil, false
+}
+
+type serviceOptionsProvider interface {
+	getServiceOptions(ctx context.Context) ([]func(string, any), bool, error)
+}
+
+func getServiceOptions(ctx context.Context, configs configs) (v []func(string, any), found bool, err error) {
+	for _, c := range configs {
+		if p, ok := c.(serviceOptionsProvider); ok {
+			v, found, err = p.getServiceOptions(ctx)
+			if err != nil || found {
+				break
+			}
+		}
+	}
+	return v, found, err
+}

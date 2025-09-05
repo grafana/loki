@@ -1,11 +1,23 @@
 # Release History
 
+## 1.18.2 (2025-07-31)
+
+### Bugs Fixed
+
+* Fixed a case in which `BearerTokenPolicy` didn't ensure an authentication error is non-retriable
+
+## 1.18.1 (2025-07-10)
+
+### Bugs Fixed
+
+* Fixed incorrect request/response logging try info when logging a request that's being retried.
+* Fixed a data race in `ResourceID.String()`
+
 ## 1.18.0 (2025-04-03)
 
 ### Features Added
 
 * Added `AccessToken.RefreshOn` and updated `BearerTokenPolicy` to consider nonzero values of it when deciding whether to request a new token
-
 
 ## 1.17.1 (2025-03-20)
 

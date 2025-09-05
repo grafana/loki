@@ -100,7 +100,7 @@ $idName = $DeploymentOutputs['AZIDENTITY_USER_ASSIGNED_IDENTITY_NAME']
 $issuer = az aks show -g $rg -n $aksName --query "oidcIssuerProfile.issuerUrl" -otsv
 $podName = "azidentity-test"
 $serviceAccountName = "workload-identity-sa"
-az identity federated-credential create -g $rg --identity-name $idName --issuer $issuer --name $idName --subject system:serviceaccount:default:$serviceAccountName
+az identity federated-credential create -g $rg --identity-name $idName --issuer $issuer --name $idName --subject system:serviceaccount:default:$serviceAccountName --audiences api://AzureADTokenExchange
 Write-Host "Deploying to AKS"
 az aks get-credentials -g $rg -n $aksName
 az aks update --attach-acr $DeploymentOutputs['AZIDENTITY_ACR_NAME'] -g $rg -n $aksName
