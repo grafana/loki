@@ -81,7 +81,7 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	streamIDLookupByTenant := sync.Map{}
 
 	// Streams Section: process these first to ensure all streams have been added to the builder and are given new IDs.
-	for i, section := range reader.Sections().Filter(streams.CheckSection) {
+	for i, section := range reader.Sections().Filter(ctx, streams.CheckSection) {
 		g.Go(func() error {
 			streamIDLookup := make(map[int64]int64)
 			if err := c.processStreamsSection(streamsCtx, section, streamIDLookup); err != nil {
@@ -105,7 +105,7 @@ func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *d
 	g.SetLimit(runtime.GOMAXPROCS(0))
 	// Logs Section: these can be processed in parallel once we have the stream IDs for the tenant.
 	// TODO(benclive): Start processing logs sections as soon as the stream sections are done, tenant by tenant. That way we don't need to wait for the biggest stream sections before processing the logs.
-	for i, section := range reader.Sections().Filter(logs.CheckSection) {
+	for i, section := range reader.Sections().Filter(ctx, logs.CheckSection) {
 		g.Go(func() error {
 			sectionLogger := log.With(logger, "section", i)
 			streamIDLookup, ok := streamIDLookupByTenant.Load(section.Tenant)

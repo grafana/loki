@@ -5,18 +5,38 @@ import (
 	"io"
 	"iter"
 	"strconv"
+
+	"github.com/grafana/dskit/user"
 )
 
 // A Sections is a slice of [Section].
 type Sections []*Section
 
+type TenantFilter func(string) bool
+
+func ForSingleTenant(tenantID string) TenantFilter {
+	return func(sectionTenant string) bool {
+		return tenantID == sectionTenant
+	}
+}
+
+func AllTenants() TenantFilter {
+	return func(_ string) bool {
+		return true
+	}
+}
+
 // Filter returns an iterator over sections that pass some predicate. The index
 // field is the number of the section that passed the predicate.
-func (s Sections) Filter(predicate func(*Section) bool) iter.Seq2[int, *Section] {
+// If a context is provided, the results will be further filtered by the context's tenant ID, if available.
+func (s Sections) Filter(tenantFilter TenantFilter, predicate func(*Section) bool) iter.Seq2[int, *Section] {
 	return func(yield func(int, *Section) bool) {
 		var matches int
 
 		for _, sec := range s {
+			if !tenantFilter(sec.Tenant) {
+				continue
+			}
 			if !predicate(sec) {
 				continue
 			} else if !yield(matches, sec) {
@@ -28,12 +48,21 @@ func (s Sections) Filter(predicate func(*Section) bool) iter.Seq2[int, *Section]
 }
 
 // Count returns the number of sections that pass some predicate.
-func (s Sections) Count(predicate func(*Section) bool) int {
+func (s Sections) Count(tenantFilter TenantFilter, predicate func(*Section) bool) int {
 	var count int
-	for range s.Filter(predicate) {
+	for range s.Filter(tenantFilter, predicate) {
 		count++
 	}
 	return count
+}
+
+func (s Sections) extractTenant(ctx context.Context) (string, bool) {
+	found := true
+	targetTenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		found = false
+	}
+	return targetTenant, found
 }
 
 // A Section is a subset of an [Object] that holds a specific type of data. Use

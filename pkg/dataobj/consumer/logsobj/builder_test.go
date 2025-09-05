@@ -86,8 +86,8 @@ func TestBuilder(t *testing.T) {
 		require.NoError(t, err)
 		defer closer.Close()
 
-		require.Equal(t, 1, obj.Sections().Count(streams.CheckSection))
-		require.Equal(t, 1, obj.Sections().Count(logs.CheckSection))
+		require.Equal(t, 1, obj.Sections().Count(t.Context(), streams.CheckSection))
+		require.Equal(t, 1, obj.Sections().Count(t.Context(), logs.CheckSection))
 	})
 }
 
@@ -127,9 +127,9 @@ func TestBuilder_Append(t *testing.T) {
 	// to the section builder otherwise tenant will be absent from successive
 	// sections.
 	secs := obj.Sections()
-	require.Equal(t, 1, secs.Count(streams.CheckSection))
-	require.Greater(t, secs.Count(logs.CheckSection), 1)
-	for _, section := range secs.Filter(logs.CheckSection) {
+	require.Equal(t, 1, secs.Count(ctx, streams.CheckSection))
+	require.Greater(t, secs.Count(ctx, logs.CheckSection), 1)
+	for _, section := range secs.Filter(ctx, logs.CheckSection) {
 		require.Equal(t, tenant, section.Tenant)
 	}
 }
