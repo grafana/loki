@@ -17,7 +17,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/thanos-io/objstore"
@@ -506,7 +505,7 @@ func (m *ObjectMetastore) listStreamIDsFromLogObjects(ctx context.Context, objec
 				return fmt.Errorf("getting object from bucket: %w", err)
 			}
 
-			sections[idx] = object.Sections().Count(logs.CheckSection)
+			sections[idx] = object.Sections().Count(ctx, logs.CheckSection)
 			streamIDs[idx] = make([]int64, 0, 8)
 
 			return forEachStream(ctx, object, predicate, func(stream streams.Stream) {
@@ -706,19 +705,12 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 }
 
 func forEachIndexPointer(ctx context.Context, object *dataobj.Object, predicate indexpointers.RowPredicate, f func(indexpointers.IndexPointer)) error {
-	targetTenant, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return fmt.Errorf("extracting org ID: %w", err)
-	}
 	var reader indexpointers.RowReader
 	defer reader.Close()
 
 	buf := make([]indexpointers.IndexPointer, 1024)
 
-	for _, section := range object.Sections().Filter(indexpointers.CheckSection) {
-		if section.Tenant != targetTenant {
-			continue
-		}
+	for _, section := range object.Sections().Filter(ctx, indexpointers.CheckSection) {
 		sec, err := indexpointers.Open(ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening section: %w", err)
@@ -750,20 +742,12 @@ func forEachIndexPointer(ctx context.Context, object *dataobj.Object, predicate 
 }
 
 func forEachStream(ctx context.Context, object *dataobj.Object, predicate streams.RowPredicate, f func(streams.Stream)) error {
-	targetTenant, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return fmt.Errorf("extracting org ID: %w", err)
-	}
 	var reader streams.RowReader
 	defer reader.Close()
 
 	buf := make([]streams.Stream, 1024)
 
-	for _, section := range object.Sections().Filter(streams.CheckSection) {
-		if section.Tenant != targetTenant {
-			continue
-		}
-
+	for _, section := range object.Sections().Filter(ctx, streams.CheckSection) {
 		sec, err := streams.Open(ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening section: %w", err)
@@ -793,20 +777,12 @@ func forEachStream(ctx context.Context, object *dataobj.Object, predicate stream
 }
 
 func forEachObjPointer(ctx context.Context, object *dataobj.Object, predicate pointers.RowPredicate, matchIDs []int64, f func(pointers.SectionPointer)) error {
-	targetTenant, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return fmt.Errorf("extracting org ID: %w", err)
-	}
 	var reader pointers.RowReader
 	defer reader.Close()
 
 	buf := make([]pointers.SectionPointer, 1024)
 
-	for _, section := range object.Sections().Filter(pointers.CheckSection) {
-		if section.Tenant != targetTenant {
-			continue
-		}
-
+	for _, section := range object.Sections().Filter(ctx, pointers.CheckSection) {
 		sec, err := pointers.Open(ctx, section)
 		if err != nil {
 			return fmt.Errorf("opening section: %w", err)

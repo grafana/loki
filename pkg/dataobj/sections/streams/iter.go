@@ -21,7 +21,7 @@ import (
 // iterated over in order.
 func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[Stream] {
 	return result.Iter(func(yield func(Stream) bool) error {
-		for i, section := range obj.Sections().Filter(CheckSection) {
+		for i, section := range obj.Sections().Filter(ctx, CheckSection) {
 			streamsSection, err := Open(ctx, section)
 			if err != nil {
 				return fmt.Errorf("opening section %d: %w", i, err)
