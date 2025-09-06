@@ -24,11 +24,12 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
-// SegmentTopicConfig configures the SegmentTopicWriter
+// SegmentTopicConfig configures the SegmentTopicWriter for writing logs to Kafka
+// based on configurable segmentation keys derived from stream labels and metadata.
 type SegmentTopicConfig struct {
 	Enabled bool `yaml:"enabled"`
 
-	// TopicName is the name of the topic to write to
+	// TopicName is the Kafka topic name to write segmented logs to
 	TopicName string `yaml:"topic_name"`
 
 	// MaxBufferedBytes is the maximum number of bytes that can be buffered before producing to Kafka
@@ -37,22 +38,22 @@ type SegmentTopicConfig struct {
 	// MaxRecordSizeBytes is the maximum size of a single Kafka record
 	MaxRecordSizeBytes flagext.Bytes `yaml:"max_record_size_bytes"`
 
-	// PartitionStrategy determines how partitions are assigned
+	// PartitionStrategy determines how partitions are assigned (currently unused, reserved for future use)
 	PartitionStrategy string `yaml:"partition_strategy"`
 
-	// NumPartitions is the number of partitions for the topic
+	// NumPartitions is the total number of partitions available for the topic
 	NumPartitions int `yaml:"num_partitions"`
 
-	// VolumeAwarePartitioning enables volume-aware partitioning
+	// VolumeAwarePartitioning enables dynamic partition spreading for high-volume segments
 	VolumeAwarePartitioning bool `yaml:"volume_aware_partitioning"`
 
-	// VolumeThresholdBytes is the threshold above which streams get spread across multiple partitions
+	// VolumeThresholdBytes is the threshold above which segments get spread across multiple partitions
 	VolumeThresholdBytes flagext.Bytes `yaml:"volume_threshold_bytes"`
 
 	// MaxPartitionsPerSegment is the maximum number of partitions a single segment can use
 	MaxPartitionsPerSegment int `yaml:"max_partitions_per_segment"`
 
-	// VolumeCheckInterval is how often to check stream volumes
+	// VolumeCheckInterval is how often to check stream volumes for volume-aware partitioning
 	VolumeCheckInterval time.Duration `yaml:"volume_check_interval"`
 }
 
@@ -89,14 +90,16 @@ func (cfg *SegmentTopicConfig) Validate() error {
 	return nil
 }
 
-// SegmentTopicWriter implements the Tee interface to write streams to a segment topic
+// SegmentTopicWriter implements the Tee interface to write streams to a Kafka topic
+// based on configurable segmentation keys. It supports volume-aware partitioning
+// to distribute high-volume segments across multiple Kafka partitions.
 type SegmentTopicWriter struct {
 	cfg      SegmentTopicConfig
 	logger   log.Logger
 	limits   Limits
 	producer *client.Producer
 
-	// Volume-aware partitioning
+	// Volume-aware partitioning components
 	partitionRing ring.PartitionRingReader
 	ingestLimits  *ingestLimits
 
@@ -164,19 +167,21 @@ func (s *SegmentTopicWriter) Duplicate(tenant string, streams []KeyedStream) {
 	go s.write(tenant, streams)
 }
 
-// write handles the actual writing of streams to the segment topic
+// write handles the actual writing of streams to the segment topic.
+// It updates segment rates for volume tracking and converts streams to Kafka records
+// using volume-aware partitioning.
 func (s *SegmentTopicWriter) write(tenant string, streams []KeyedStream) {
-	// Update segment rates and get recommended shard sizes
+	// Update segment rates for volume tracking
 	s.updateSegmentRates(tenant, streams)
 
 	// Convert streams to Kafka records
 	records := make([]*kgo.Record, 0, len(streams))
 
 	for _, stream := range streams {
-		// Get partition(s) for this stream (could be multiple for volume-aware partitioning)
+		// Get partition(s) for this stream (multiple partitions for high-volume segments)
 		partitions := s.getPartition(stream, tenant)
 
-		// For each partition, create records
+		// Create records for each partition
 		for _, partition := range partitions {
 			streamRecords, err := kafka.EncodeWithTopic(s.cfg.TopicName, partition, tenant, stream.Stream, int(s.cfg.MaxRecordSizeBytes))
 			if err != nil {
@@ -198,26 +203,14 @@ func (s *SegmentTopicWriter) write(tenant string, streams []KeyedStream) {
 		return
 	}
 
-	// Send records to Kafka
-	// Note: This is a simplified implementation - in practice you'd want to handle
-	// batching, retries, and error handling more robustly
-	// For now, we'll just log that we're writing to the segment topic
-	s.logger.Log(
-		"msg", "writing streams to segment topic",
-		"tenant", tenant,
-		"streams", len(streams),
-		"records", len(records),
-		"topic", s.cfg.TopicName,
-	)
-
-	// TODO: Implement actual Kafka writing logic
-	// This would involve using the producer to send the records
-	// and handling the results appropriately
+	// Send records to Kafka using the producer
+	s.producer.ProduceSync(context.Background(), records)
 }
 
-// getPartition determines which partition(s) to use for a given stream
+// getPartition determines which partition(s) to use for a given stream.
+// It returns a single partition for low-volume segments or multiple partitions
+// for high-volume segments when volume-aware partitioning is enabled.
 func (s *SegmentTopicWriter) getPartition(stream KeyedStream, tenant string) []int32 {
-	// First, get the base segmentation key
 	segmentationKey := s.getSegmentationKey(stream, tenant)
 
 	// If volume-aware partitioning is disabled, use simple hash-based partitioning
@@ -237,7 +230,8 @@ func (s *SegmentTopicWriter) getPartition(stream KeyedStream, tenant string) []i
 	return s.getVolumeSpreadPartitions(segmentationKey, stream, tenant)
 }
 
-// getSegmentationKey creates a segmentation key from the stream
+// getSegmentationKey creates a segmentation key from the stream labels and metadata
+// based on the tenant's configured partitioning keys.
 func (s *SegmentTopicWriter) getSegmentationKey(stream KeyedStream, tenant string) string {
 	partitioningKeys := s.limits.SegmentTopicPartitionKeys(tenant)
 
