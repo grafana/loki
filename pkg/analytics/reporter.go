@@ -3,10 +3,13 @@ package analytics
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,7 +19,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/google/uuid"
 	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/dskit/crypto/tls"
+	dskittls "github.com/grafana/dskit/crypto/tls"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/services"
@@ -46,11 +49,11 @@ var (
 )
 
 type Config struct {
-	Enabled       bool             `yaml:"reporting_enabled"`
-	Leader        bool             `yaml:"-"`
-	UsageStatsURL string           `yaml:"usage_stats_url"`
-	ProxyURL      string           `yaml:"proxy_url"`
-	TLSConfig     tls.ClientConfig `yaml:"tls_config"`
+	Enabled       bool                  `yaml:"reporting_enabled"`
+	Leader        bool                  `yaml:"-"`
+	UsageStatsURL string                `yaml:"usage_stats_url"`
+	ProxyURL      string                `yaml:"proxy_url"`
+	TLSConfig     dskittls.ClientConfig `yaml:"tls_config"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -83,19 +86,22 @@ func NewReporter(config Config, kvConfig kv.Config, objectClient client.ObjectCl
 
 	originalDefaultTransport := http.DefaultTransport.(*http.Transport)
 	tr := originalDefaultTransport.Clone()
-	if config.TLSConfig.CertPath != "" || config.TLSConfig.KeyPath != "" {
-		var err error
-		tr.TLSClientConfig, err = config.TLSConfig.GetTLSConfig()
-		if err != nil {
-			return nil, err
-		}
-	}
+
 	if config.ProxyURL != "" {
 		proxyURL, err := url.ParseRequestURI(config.ProxyURL)
 		if err != nil {
 			return nil, err
 		}
-		tr.Proxy = http.ProxyURL(proxyURL)
+
+		if proxyURL.Scheme == "https" {
+			// For HTTPS proxies, create a custom transport that handles different TLS configs
+			tr, err = createCustomTransportForHTTPSProxy(tr, proxyURL, config.TLSConfig)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			tr.Proxy = http.ProxyURL(proxyURL)
+		}
 	}
 	r := &Reporter{
 		logger:       logger,
@@ -320,6 +326,7 @@ func (rep *Reporter) running(ctx context.Context) error {
 				continue
 			}
 			rep.lastReport = next
+			level.Debug(rep.logger).Log("msg", "reported cluster stats", "date", time.Now())
 			next = next.Add(reportInterval)
 		case <-ctx.Done():
 			if err := ctx.Err(); !errors.Is(err, context.Canceled) {
@@ -385,4 +392,50 @@ func (rep *Reporter) startCPUPercentCollection(ctx context.Context, cpuCollectio
 func nextReport(interval time.Duration, createdAt, now time.Time) time.Time {
 	// createdAt * (x * interval ) >= now
 	return createdAt.Add(time.Duration(math.Ceil(float64(now.Sub(createdAt))/float64(interval))) * interval)
+}
+
+// createCustomTransportForHTTPSProxy creates a transport that validates the HTTPS proxy certificate
+// while maintaining system CA trust for the final destination.
+func createCustomTransportForHTTPSProxy(tr *http.Transport, proxyURL *url.URL, tlsConfig dskittls.ClientConfig) (*http.Transport, error) {
+	// Create the proxy TLS config for connecting to the proxy
+	var proxyTLSConfig *tls.Config
+	if tlsConfig.CertPath != "" || tlsConfig.KeyPath != "" || tlsConfig.CAPath != "" ||
+		tlsConfig.ServerName != "" || tlsConfig.InsecureSkipVerify {
+		var err error
+		proxyTLSConfig, err = tlsConfig.GetTLSConfig()
+		if err != nil {
+			return nil, fmt.Errorf("error getting proxy TLS config: %w", err)
+		}
+	}
+
+	// function that handles proxy connections differently.
+	tr.DialTLSContext = func(_ context.Context, network, addr string) (net.Conn, error) {
+		// Parse the address to determine if this is a proxy connection
+		host, _, err := net.SplitHostPort(addr)
+		if err != nil {
+			host = addr
+		}
+
+		// If this is a connection to our proxy, use the proxy TLS config
+		if host == proxyURL.Hostname() {
+			conn, err := tls.Dial(network, addr, proxyTLSConfig)
+			if err != nil {
+				return nil, err
+			}
+			return conn, nil
+		}
+
+		// For all other connections (to final destinations), use system CAs
+		defaultConfig := &tls.Config{}
+		conn, err := tls.Dial(network, addr, defaultConfig)
+		if err != nil {
+			return nil, err
+		}
+		return conn, nil
+	}
+
+	// Set up the proxy
+	tr.Proxy = http.ProxyURL(proxyURL)
+
+	return tr, nil
 }
