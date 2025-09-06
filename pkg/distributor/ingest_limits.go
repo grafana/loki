@@ -100,11 +100,13 @@ func (c *ingestLimitsFrontendRingClient) UpdateRate(ctx context.Context, req *pr
 			return nil, ctx.Err()
 		default:
 		}
+
 		client, err := c.pool.GetClientFor(instance.Addr)
 		if err != nil {
 			lastErr = err
 			continue
 		}
+
 		limitsClient := client.(proto.IngestLimitsFrontendClient)
 		resp, err := limitsClient.UpdateRate(ctx, req)
 		if err != nil {
