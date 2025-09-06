@@ -371,8 +371,8 @@ func newStream(fp model.Fingerprint, ls labels.Labels, cfg Config, metrics *buil
 
 		chunkFormat:     chunkenc.ChunkFormatV4,
 		codec:           cfg.parsedEncoding,
-		blockSize:       cfg.BlockSize.Val(),
-		targetChunkSize: cfg.TargetChunkSize.Val(),
+		blockSize:       cfg.BlockSize,
+		targetChunkSize: cfg.TargetChunkSize,
 
 		metrics: metrics,
 	}
