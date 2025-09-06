@@ -537,6 +537,7 @@ func (t *Loki) bindConfigEndpoint(opts RunOpts) {
 	}
 	t.Server.HTTP.Path("/config").Methods("GET").HandlerFunc(configEndpointHandlerFn)
 	t.Server.HTTP.Path("/config/tenant/v1/limits").Methods("GET").HandlerFunc(t.tenantLimitsHandler())
+	t.Server.HTTP.Path("/loki/api/v1/config").Methods("GET").HandlerFunc(t.drilldownConfigHandler())
 }
 
 // ListTargets prints a list of available user visible targets and their
