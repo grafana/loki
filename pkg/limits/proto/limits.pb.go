@@ -6,16 +6,17 @@ package proto
 import (
 	context "context"
 	fmt "fmt"
-	proto "github.com/gogo/protobuf/proto"
-	github_com_gogo_protobuf_sortkeys "github.com/gogo/protobuf/sortkeys"
-	grpc "google.golang.org/grpc"
-	codes "google.golang.org/grpc/codes"
-	status "google.golang.org/grpc/status"
 	io "io"
 	math "math"
 	math_bits "math/bits"
 	reflect "reflect"
 	strings "strings"
+
+	proto "github.com/gogo/protobuf/proto"
+	github_com_gogo_protobuf_sortkeys "github.com/gogo/protobuf/sortkeys"
+	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -719,6 +720,7 @@ const _ = grpc.SupportPackageIsVersion4
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type IngestLimitsFrontendClient interface {
 	ExceedsLimits(ctx context.Context, in *ExceedsLimitsRequest, opts ...grpc.CallOption) (*ExceedsLimitsResponse, error)
+	UpdateRate(ctx context.Context, in *UpdateRateRequest, opts ...grpc.CallOption) (*UpdateRateResponse, error)
 }
 
 type ingestLimitsFrontendClient struct {
@@ -732,6 +734,15 @@ func NewIngestLimitsFrontendClient(cc *grpc.ClientConn) IngestLimitsFrontendClie
 func (c *ingestLimitsFrontendClient) ExceedsLimits(ctx context.Context, in *ExceedsLimitsRequest, opts ...grpc.CallOption) (*ExceedsLimitsResponse, error) {
 	out := new(ExceedsLimitsResponse)
 	err := c.cc.Invoke(ctx, "/proto.IngestLimitsFrontend/ExceedsLimits", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *ingestLimitsFrontendClient) UpdateRate(ctx context.Context, in *UpdateRateRequest, opts ...grpc.CallOption) (*UpdateRateResponse, error) {
+	out := new(UpdateRateResponse)
+	err := c.cc.Invoke(ctx, "/proto.IngestLimitsFrontend/UpdateRate", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2231,6 +2242,83 @@ func skipLimits(dAtA []byte) (n int, err error) {
 		}
 	}
 	panic("unreachable")
+}
+
+// UpdateRateRequest represents a request to update rates for multiple keys
+type UpdateRateRequest struct {
+	Tenant string          `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
+	Rates  []*RateMetadata `protobuf:"bytes,2,rep,name=rates,proto3" json:"rates,omitempty"`
+}
+
+func (m *UpdateRateRequest) Reset()      { *m = UpdateRateRequest{} }
+func (*UpdateRateRequest) ProtoMessage() {}
+func (m *UpdateRateRequest) GetTenant() string {
+	if m != nil {
+		return m.Tenant
+	}
+	return ""
+}
+func (m *UpdateRateRequest) GetRates() []*RateMetadata {
+	if m != nil {
+		return m.Rates
+	}
+	return nil
+}
+
+// UpdateRateResponse represents a response to update rates
+type UpdateRateResponse struct {
+	Results []*RateResult `protobuf:"bytes,1,rep,name=results,proto3" json:"results,omitempty"`
+}
+
+func (m *UpdateRateResponse) Reset()      { *m = UpdateRateResponse{} }
+func (*UpdateRateResponse) ProtoMessage() {}
+func (m *UpdateRateResponse) GetResults() []*RateResult {
+	if m != nil {
+		return m.Results
+	}
+	return nil
+}
+
+// RateMetadata represents metadata for a rate update
+type RateMetadata struct {
+	Key  string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Size int64  `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
+}
+
+func (m *RateMetadata) Reset()      { *m = RateMetadata{} }
+func (*RateMetadata) ProtoMessage() {}
+func (m *RateMetadata) GetKey() string {
+	if m != nil {
+		return m.Key
+	}
+	return ""
+}
+func (m *RateMetadata) GetSize() int64 {
+	if m != nil {
+		return m.Size
+	}
+	return 0
+}
+
+// RateResult represents the result of a rate update
+type RateResult struct {
+	Key         string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	CurrentRate int64  `protobuf:"varint,2,opt,name=currentRate,proto3" json:"currentRate,omitempty"`
+}
+
+func (m *RateResult) Reset()      { *m = RateResult{} }
+func (*RateResult) ProtoMessage() {}
+func (m *RateResult) GetKey() string {
+	if m != nil {
+		return m.Key
+	}
+	return ""
+}
+func (m *RateResult) GetCurrentRate() int64 {
+	if m != nil {
+		return m.CurrentRate
+	}
+	return 0
 }
 
 var (

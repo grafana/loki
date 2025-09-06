@@ -265,6 +265,9 @@ func New(
 		limitsFrontendClientPool,
 	)
 
+	// Initialize ingestLimits early so it can be used by SegmentTopicWriter
+	ingestLimits := newIngestLimits(limitsFrontendClient, registerer)
+
 	// Create the configured ingestion rate limit strategy (local or global).
 	var ingestionRateStrategy limiter.RateLimiterStrategy
 	var distributorsLifecycler *ring.BasicLifecycler
@@ -292,7 +295,8 @@ func New(
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
 
 		if cfg.SegmentTopic.Enabled {
-			segmentWriter, err := NewSegmentTopicWriter(cfg.SegmentTopic, kafkaClient, overrides, registerer, logger)
+			// Create SegmentTopicWriter with ingestLimits
+			segmentWriter, err := NewSegmentTopicWriter(cfg.SegmentTopic, kafkaClient, overrides, partitionRing, ingestLimits, registerer, logger)
 			if err != nil {
 				return nil, fmt.Errorf("failed to start segment topic writer: %w", err)
 			}
@@ -371,7 +375,7 @@ func New(
 		writeFailuresManager:  writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 		kafkaWriter:           kafkaWriter,
 		partitionRing:         partitionRing,
-		ingestLimits:          newIngestLimits(limitsFrontendClient, registerer),
+		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
 	}
 
