@@ -38,9 +38,6 @@ type SegmentTopicConfig struct {
 	// MaxRecordSizeBytes is the maximum size of a single Kafka record
 	MaxRecordSizeBytes flagext.Bytes `yaml:"max_record_size_bytes"`
 
-	// PartitionStrategy determines how partitions are assigned (currently unused, reserved for future use)
-	PartitionStrategy string `yaml:"partition_strategy"`
-
 	// NumPartitions is the total number of partitions available for the topic
 	NumPartitions int `yaml:"num_partitions"`
 
@@ -65,7 +62,6 @@ func (cfg *SegmentTopicConfig) RegisterFlags(fs *flag.FlagSet) {
 	fs.Var(&cfg.MaxBufferedBytes, "distributor.segment-topic.max-buffered-bytes", "Maximum number of bytes that can be buffered before producing to Kafka.")
 	cfg.MaxRecordSizeBytes = kafka.MaxProducerRecordDataBytesLimit
 	fs.Var(&cfg.MaxRecordSizeBytes, "distributor.segment-topic.max-record-size-bytes", "Maximum size of a single Kafka record.")
-	fs.StringVar(&cfg.PartitionStrategy, "distributor.segment-topic.partition-strategy", "hash", "Partition strategy for segment topic writer (hash, round-robin, etc.).")
 	fs.IntVar(&cfg.NumPartitions, "distributor.segment-topic.num-partitions", 10, "Number of partitions for the segment topic.")
 	fs.BoolVar(&cfg.VolumeAwarePartitioning, "distributor.segment-topic.volume-aware-partitioning", false, "Enable volume-aware partitioning for high-volume segments.")
 	cfg.VolumeThresholdBytes = 100 << 20 // 100MB default
