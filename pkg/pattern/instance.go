@@ -38,17 +38,18 @@ const indexShards = 32
 
 // instance is a tenant instance of the pattern ingester.
 type instance struct {
-	instanceID string
-	buf        []byte             // buffer used to compute fps.
-	mapper     *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
-	streams    *streamsMap
-	index      *index.BitPrefixInvertedIndex
-	logger     log.Logger
-	metrics    *ingesterMetrics
-	drainCfg   *drain.Config
-	limits     Limits
-	ringClient RingClient
-	ingesterID string
+	instanceID      string
+	buf             []byte             // buffer used to compute fps.
+	mapper          *ingester.FpMapper // using of mapper no longer needs mutex because reading from streams is lock-free
+	streams         *streamsMap
+	index           *index.BitPrefixInvertedIndex
+	logger          log.Logger
+	metrics         *ingesterMetrics
+	drainCfg        *drain.Config
+	limits          Limits
+	ringClient      RingClient
+	ingesterID      string
+	volumeThreshold float64
 
 	aggMetricsLock             sync.Mutex
 	aggMetricsByStreamAndLevel map[string]map[string]*aggregatedMetrics
@@ -74,6 +75,7 @@ func newInstance(
 	metricWriter aggregation.EntryWriter,
 	patternWriter aggregation.EntryWriter,
 	aggregationMetrics *aggregation.Metrics,
+	volumeThreshold float64,
 ) (*instance, error) {
 	index, err := index.NewBitPrefixWithShards(indexShards)
 	if err != nil {
@@ -90,6 +92,7 @@ func newInstance(
 		limits:                     drainLimits,
 		ringClient:                 ringClient,
 		ingesterID:                 ingesterID,
+		volumeThreshold:            volumeThreshold,
 		aggMetricsByStreamAndLevel: make(map[string]map[string]*aggregatedMetrics),
 		metricWriter:               metricWriter,
 		patternWriter:              patternWriter,
@@ -251,6 +254,7 @@ func (i *instance) createStream(_ context.Context, pushReqStream logproto.Stream
 		i.limits,
 		i.patternWriter,
 		i.aggregationMetrics,
+		i.volumeThreshold,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stream: %w", err)
