@@ -48,9 +48,6 @@ type SegmentTopicConfig struct {
 	// VolumeThresholdBytes is the threshold above which segments get spread across multiple partitions
 	VolumeThresholdBytes flagext.Bytes `yaml:"volume_threshold_bytes"`
 
-	// MaxPartitionsPerSegment is the maximum number of partitions a single segment can use
-	MaxPartitionsPerSegment int `yaml:"max_partitions_per_segment"`
-
 	// VolumeCheckInterval is how often to check stream volumes for volume-aware partitioning
 	VolumeCheckInterval time.Duration `yaml:"volume_check_interval"`
 }
@@ -67,7 +64,6 @@ func (cfg *SegmentTopicConfig) RegisterFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.VolumeAwarePartitioning, "distributor.segment-topic.volume-aware-partitioning", false, "Enable volume-aware partitioning for high-volume segments.")
 	cfg.VolumeThresholdBytes = 100 << 20 // 100MB default
 	fs.Var(&cfg.VolumeThresholdBytes, "distributor.segment-topic.volume-threshold-bytes", "Volume threshold above which streams get spread across multiple partitions.")
-	fs.IntVar(&cfg.MaxPartitionsPerSegment, "distributor.segment-topic.max-partitions-per-segment", 3, "Maximum number of partitions a single segment can use.")
 	fs.DurationVar(&cfg.VolumeCheckInterval, "distributor.segment-topic.volume-check-interval", 30*time.Second, "How often to check stream volumes for volume-aware partitioning.")
 }
 
@@ -121,6 +117,10 @@ func NewSegmentTopicWriter(
 ) (*SegmentTopicWriter, error) {
 	if !cfg.Enabled {
 		return nil, fmt.Errorf("segment topic writer is not enabled")
+	}
+
+	if partitionRing == nil {
+		return nil, fmt.Errorf("partition ring is required for segment topic writer")
 	}
 
 	t := &SegmentTopicWriter{
@@ -183,7 +183,17 @@ func (s *SegmentTopicWriter) write(tenant string, streams []KeyedStream) {
 		segmentationKey := s.getSegmentationKey(stream, tenant)
 
 		// Get available partitions for this stream (multiple partitions for high-volume segments)
-		availablePartitions := s.getPartition(stream, tenant, segmentationKey)
+		availablePartitions, err := s.getPartition(stream, tenant, segmentationKey)
+		if err != nil {
+			s.logger.Log(
+				"msg", "failed to get partitions for stream",
+				"tenant", tenant,
+				"segmentationKey", segmentationKey,
+				"err", err,
+			)
+			s.teeErrors.WithLabelValues("partition_error").Inc()
+			continue
+		}
 
 		// Select a single partition from the available ones to spread data across partitions
 		selectedPartition := s.selectPartition(availablePartitions, segmentationKey, tenant)
@@ -230,18 +240,18 @@ func (s *SegmentTopicWriter) selectPartition(availablePartitions []int32, segmen
 // getPartition determines which partition(s) to use for a given stream.
 // It returns a single partition for low-volume segments or multiple partitions
 // for high-volume segments when volume-aware partitioning is enabled.
-func (s *SegmentTopicWriter) getPartition(stream KeyedStream, tenant string, segmentationKey string) []int32 {
+func (s *SegmentTopicWriter) getPartition(stream KeyedStream, tenant string, segmentationKey string) ([]int32, error) {
 	// If volume-aware partitioning is disabled, use simple hash-based partitioning
 	if !s.cfg.VolumeAwarePartitioning {
 		basePartition := s.getBasePartition(segmentationKey)
-		return []int32{basePartition}
+		return []int32{basePartition}, nil
 	}
 
 	// Check if this segment needs volume-based spreading
 	needsSpreading := s.needsVolumeSpreading(stream, tenant, segmentationKey)
 	if !needsSpreading {
 		basePartition := s.getBasePartition(segmentationKey)
-		return []int32{basePartition}
+		return []int32{basePartition}, nil
 	}
 
 	// Use volume-aware partitioning with shuffle sharding
@@ -353,12 +363,7 @@ func (s *SegmentTopicWriter) needsVolumeSpreading(stream KeyedStream, tenant str
 }
 
 // getVolumeSpreadPartitions gets multiple partitions for high-volume segments using shuffle sharding
-func (s *SegmentTopicWriter) getVolumeSpreadPartitions(segmentationKey string, stream KeyedStream, tenant string) []int32 {
-	if s.partitionRing == nil {
-		// Fallback to simple hash-based spreading
-		return s.getSimpleVolumeSpreadPartitions(segmentationKey, stream)
-	}
-
+func (s *SegmentTopicWriter) getVolumeSpreadPartitions(segmentationKey string, stream KeyedStream, tenant string) ([]int32, error) {
 	// Use shuffle sharding to get a subset of partitions for this segment
 	// The shard size is determined by the volume (higher volume = more partitions)
 	shardSize := s.calculateShardSize(stream, tenant)
@@ -367,8 +372,7 @@ func (s *SegmentTopicWriter) getVolumeSpreadPartitions(segmentationKey string, s
 	subring, err := s.partitionRing.PartitionRing().ShuffleShard(segmentationKey, shardSize)
 	if err != nil {
 		s.logger.Log("msg", "failed to create shuffle shard", "segmentationKey", segmentationKey, "shardSize", shardSize, "err", err)
-		// Fallback to simple hash-based spreading
-		return s.getSimpleVolumeSpreadPartitions(segmentationKey, stream)
+		return nil, fmt.Errorf("failed to create shuffle shard for segmentation key %s: %w", segmentationKey, err)
 	}
 
 	// Get all active partitions from the subring
@@ -378,32 +382,7 @@ func (s *SegmentTopicWriter) getVolumeSpreadPartitions(segmentationKey string, s
 	partitions := make([]int32, len(activePartitions))
 	copy(partitions, activePartitions)
 
-	return partitions
-}
-
-// getSimpleVolumeSpreadPartitions provides a fallback when partition ring is not available
-func (s *SegmentTopicWriter) getSimpleVolumeSpreadPartitions(segmentationKey string, stream KeyedStream) []int32 {
-	// Calculate how many partitions this segment should use based on volume
-	shardSize := s.calculateShardSize(stream, "")
-
-	// Use consistent hashing to select partitions
-	partitions := make([]int32, 0, shardSize)
-	used := make(map[int32]bool)
-
-	// Generate multiple hashes for the same segmentation key to get different partitions
-	for i := 0; i < shardSize && len(partitions) < s.cfg.MaxPartitionsPerSegment; i++ {
-		hasher := fnv.New64a()
-		_, _ = hasher.Write([]byte(fmt.Sprintf("%s_%d", segmentationKey, i)))
-		hash := hasher.Sum64()
-
-		partition := int32(hash % uint64(s.cfg.NumPartitions))
-		if !used[partition] {
-			partitions = append(partitions, partition)
-			used[partition] = true
-		}
-	}
-
-	return partitions
+	return partitions, nil
 }
 
 // calculateShardSize determines how many partitions a segment should use based on its volume
@@ -440,11 +419,6 @@ func (s *SegmentTopicWriter) calculateShardSize(stream KeyedStream, tenant strin
 	threshold := float64(s.cfg.VolumeThresholdBytes)
 	ratio := float64(currentRate) / threshold
 	shardSize := int(ratio) + 1
-
-	// Cap at MaxPartitionsPerSegment
-	if shardSize > s.cfg.MaxPartitionsPerSegment {
-		shardSize = s.cfg.MaxPartitionsPerSegment
-	}
 
 	// Ensure at least 1 partition
 	if shardSize < 1 {
