@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math/rand"
 	"time"
 
 	"hash/fnv"
@@ -99,6 +100,9 @@ type SegmentTopicWriter struct {
 	partitionRing ring.PartitionRingReader
 	ingestLimits  *ingestLimits
 
+	// Random number generator for partition selection
+	rand *rand.Rand
+
 	// Metrics
 	teeBatchSize    prometheus.Histogram
 	teeQueueLatency prometheus.Histogram
@@ -125,6 +129,7 @@ func NewSegmentTopicWriter(
 		limits:        limits,
 		partitionRing: partitionRing,
 		ingestLimits:  ingestLimits,
+		rand:          rand.New(rand.NewSource(time.Now().UnixNano())),
 		producer: client.NewProducer(
 			"distributor_segment_topic_tee",
 			kafkaClient,
@@ -174,25 +179,29 @@ func (s *SegmentTopicWriter) write(tenant string, streams []KeyedStream) {
 	records := make([]*kgo.Record, 0, len(streams))
 
 	for _, stream := range streams {
-		// Get partition(s) for this stream (multiple partitions for high-volume segments)
-		partitions := s.getPartition(stream, tenant)
+		// Get segmentation key once
+		segmentationKey := s.getSegmentationKey(stream, tenant)
 
-		// Create records for each partition
-		for _, partition := range partitions {
-			streamRecords, err := kafka.EncodeWithTopic(s.cfg.TopicName, partition, tenant, stream.Stream, int(s.cfg.MaxRecordSizeBytes))
-			if err != nil {
-				s.logger.Log(
-					"msg", "failed to encode stream",
-					"tenant", tenant,
-					"partition", partition,
-					"err", err,
-				)
-				s.teeErrors.WithLabelValues("encode_error").Inc()
-				continue
-			}
+		// Get available partitions for this stream (multiple partitions for high-volume segments)
+		availablePartitions := s.getPartition(stream, tenant, segmentationKey)
 
-			records = append(records, streamRecords...)
+		// Select a single partition from the available ones to spread data across partitions
+		selectedPartition := s.selectPartition(availablePartitions, segmentationKey, tenant)
+
+		// Create records for the selected partition only
+		streamRecords, err := kafka.EncodeWithTopic(s.cfg.TopicName, selectedPartition, tenant, stream.Stream, int(s.cfg.MaxRecordSizeBytes))
+		if err != nil {
+			s.logger.Log(
+				"msg", "failed to encode stream",
+				"tenant", tenant,
+				"partition", selectedPartition,
+				"err", err,
+			)
+			s.teeErrors.WithLabelValues("encode_error").Inc()
+			continue
 		}
+
+		records = append(records, streamRecords...)
 	}
 
 	if len(records) == 0 {
@@ -203,12 +212,25 @@ func (s *SegmentTopicWriter) write(tenant string, streams []KeyedStream) {
 	s.producer.ProduceSync(context.Background(), records)
 }
 
+// selectPartition selects a single partition from the available partitions
+// using random selection to spread data across partitions.
+func (s *SegmentTopicWriter) selectPartition(availablePartitions []int32, segmentationKey string, tenant string) int32 {
+	if len(availablePartitions) == 0 {
+		// Fallback to partition 0 if no partitions available
+		return 0
+	}
+	if len(availablePartitions) == 1 {
+		return availablePartitions[0]
+	}
+
+	// Randomly select one partition from the available ones
+	return availablePartitions[s.rand.Intn(len(availablePartitions))]
+}
+
 // getPartition determines which partition(s) to use for a given stream.
 // It returns a single partition for low-volume segments or multiple partitions
 // for high-volume segments when volume-aware partitioning is enabled.
-func (s *SegmentTopicWriter) getPartition(stream KeyedStream, tenant string) []int32 {
-	segmentationKey := s.getSegmentationKey(stream, tenant)
-
+func (s *SegmentTopicWriter) getPartition(stream KeyedStream, tenant string, segmentationKey string) []int32 {
 	// If volume-aware partitioning is disabled, use simple hash-based partitioning
 	if !s.cfg.VolumeAwarePartitioning {
 		basePartition := s.getBasePartition(segmentationKey)
