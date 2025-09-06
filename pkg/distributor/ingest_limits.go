@@ -19,6 +19,7 @@ import (
 // ingestLimitsFrontendClient is used for tests.
 type ingestLimitsFrontendClient interface {
 	ExceedsLimits(context.Context, *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error)
+	UpdateRate(context.Context, *proto.UpdateRateRequest) (*proto.UpdateRateResponse, error)
 }
 
 // ingestLimitsFrontendRingClient uses the ring to query ingest-limits frontends.
@@ -76,10 +77,51 @@ func (c *ingestLimitsFrontendRingClient) ExceedsLimits(ctx context.Context, req 
 	return nil, lastErr
 }
 
+// Implements the ingestLimitsFrontendClient interface.
+func (c *ingestLimitsFrontendRingClient) UpdateRate(ctx context.Context, req *proto.UpdateRateRequest) (*proto.UpdateRateResponse, error) {
+	// Use FNV-1 of all rate keys in the request to load balance requests to limits-frontends instances.
+	h := fnv.New32()
+	for _, rate := range req.Rates {
+		_, _ = h.Write([]byte(rate.Key))
+	}
+
+	// Get the limits-frontend instances from the ring.
+	var descs [5]ring.InstanceDesc
+	rs, err := c.ring.Get(h.Sum32(), limits_frontend_client.LimitsRead, descs[0:], nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get limits-frontend instances from ring: %w", err)
+	}
+	var lastErr error
+	// Send the request to the limits-frontend to update rates.
+	// If the RPC fails, failover to the next instance in the ring.
+	for _, instance := range rs.Instances {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+		client, err := c.pool.GetClientFor(instance.Addr)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		limitsClient := client.(proto.IngestLimitsFrontendClient)
+		resp, err := limitsClient.UpdateRate(ctx, req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		return resp, nil
+	}
+	return nil, lastErr
+}
+
 type ingestLimits struct {
-	client         ingestLimitsFrontendClient
-	requests       prometheus.Counter
-	requestsFailed prometheus.Counter
+	client                ingestLimitsFrontendClient
+	requests              prometheus.Counter
+	requestsFailed        prometheus.Counter
+	segmentRequests       prometheus.Counter
+	segmentRequestsFailed prometheus.Counter
 }
 
 func newIngestLimits(client ingestLimitsFrontendClient, r prometheus.Registerer) *ingestLimits {
@@ -92,6 +134,14 @@ func newIngestLimits(client ingestLimitsFrontendClient, r prometheus.Registerer)
 		requestsFailed: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_ingest_limits_requests_failed_total",
 			Help: "The total number of requests that failed.",
+		}),
+		segmentRequests: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_distributor_ingest_limits_segment_requests_total",
+			Help: "The total number of segment rate update requests.",
+		}),
+		segmentRequestsFailed: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Name: "loki_distributor_ingest_limits_segment_requests_failed_total",
+			Help: "The total number of segment rate update requests that failed.",
 		}),
 	}
 }
@@ -157,6 +207,47 @@ func (l *ingestLimits) ExceedsLimits(
 		return nil, err
 	}
 	return resp.Results, nil
+}
+
+// UpdateRates updates rates for multiple keys and returns the current rates
+func (l *ingestLimits) UpdateRates(
+	ctx context.Context,
+	tenant string,
+	rates []RateUpdate,
+) (map[string]int64, error) {
+	l.segmentRequests.Inc()
+
+	rateMetadata := make([]*proto.RateMetadata, len(rates))
+	for i, rate := range rates {
+		rateMetadata[i] = &proto.RateMetadata{
+			Key:  rate.Key,
+			Size: rate.Size,
+		}
+	}
+
+	req := &proto.UpdateRateRequest{
+		Tenant: tenant,
+		Rates:  rateMetadata,
+	}
+	resp, err := l.client.UpdateRate(ctx, req)
+	if err != nil {
+		l.segmentRequestsFailed.Inc()
+		return nil, err
+	}
+
+	// Convert results to map
+	resultMap := make(map[string]int64)
+	for _, result := range resp.Results {
+		resultMap[result.Key] = result.CurrentRate
+	}
+
+	return resultMap, nil
+}
+
+// RateUpdate represents a single rate update
+type RateUpdate struct {
+	Key  string
+	Size int64
 }
 
 func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.ExceedsLimitsRequest, error) {
