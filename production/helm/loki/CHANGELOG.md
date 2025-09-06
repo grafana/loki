@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [FEATURE] Use named ports for memcached services targetports. [#18990](https://github.com/grafana/loki/pull/18990)
+
 ## 6.39.0
 
 - [FEATURE] add more specificity to affinity and topology spread constraints [#19061](https://github.com/grafana/loki/pull/19061)
