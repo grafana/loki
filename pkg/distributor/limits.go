@@ -49,5 +49,5 @@ type Limits interface {
 
 	SimulatedPushLatency(userID string) time.Duration
 
-	SegmentTopicPartitionKeys(userID string) []string
+	SegmentationRules(userID string) []string
 }

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"hash/fnv"
-	"sort"
 	"strings"
 
 	"github.com/go-kit/log"
@@ -261,66 +260,91 @@ func (s *SegmentTopicWriter) getPartition(stream KeyedStream, tenant string, seg
 }
 
 // getSegmentationKey creates a segmentation key from the stream labels and metadata
-// based on the tenant's configured partitioning keys.
+// based on the tenant's configured partitioning rules. It supports both simple keys
+// and key=value based rules with additional keys.
 func (s *SegmentTopicWriter) getSegmentationKey(stream KeyedStream, tenant string) string {
-	partitioningKeys := s.limits.SegmentTopicPartitionKeys(tenant)
-
-	if len(partitioningKeys) == 0 {
-		// Fallback to stream hash
-		return fmt.Sprintf("stream_%d", stream.HashKeyNoShard)
-	}
-
-	// Use a map to build a unique set of labels for partitioning
-	partitioningLabels := make(map[string]string)
-	keysToUse := make(map[string]struct{})
-	for _, key := range partitioningKeys {
-		keysToUse[key] = struct{}{}
-	}
-
-	// Extract from stream labels
-	parsedLabels, err := syntax.ParseLabels(stream.Stream.Labels)
-	if err != nil {
-		s.logger.Log("msg", "failed to parse stream labels for partitioning", "tenant", tenant, "labels", stream.Stream.Labels, "err", err)
-	} else {
-		parsedLabels.Range(func(lbl labels.Label) {
-			if _, ok := keysToUse[lbl.Name]; ok {
-				partitioningLabels[lbl.Name] = lbl.Value
-			}
-		})
-	}
-
-	// Extract from structured metadata of each entry
-	for _, entry := range stream.Stream.Entries {
-		for _, sm := range entry.StructuredMetadata {
-			if _, ok := keysToUse[sm.Name]; ok {
-				partitioningLabels[sm.Name] = sm.Value
-			}
+	// Get segmentation rules for this tenant
+	partitioningRules := s.limits.SegmentationRules(tenant)
+	if len(partitioningRules) > 0 {
+		segmentationKey := s.getSegmentationKeyFromRules(stream, tenant, partitioningRules)
+		if segmentationKey != "" {
+			return segmentationKey
 		}
 	}
 
-	if len(partitioningLabels) == 0 {
-		// None of the partitioning keys were found, fallback to stream hash
-		return fmt.Sprintf("stream_%d", stream.HashKeyNoShard)
+	// Fallback to stream hash if no rules match
+	return fmt.Sprintf("stream_%d", stream.HashKeyNoShard)
+}
+
+// getSegmentationKeyFromRules creates a segmentation key using the new flexible rules
+func (s *SegmentTopicWriter) getSegmentationKeyFromRules(stream KeyedStream, tenant string, ruleStrings []string) string {
+	// Parse the segmentation rules
+	config, err := ParseSegmentationConfig(ruleStrings)
+	if err != nil {
+		s.logger.Log("msg", "failed to parse segmentation rules", "tenant", tenant, "rules", ruleStrings, "err", err)
+		return ""
 	}
 
-	// Create a stable string representation of the partitioning labels
-	keys := make([]string, 0, len(partitioningLabels))
-	for k := range partitioningLabels {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+	// Extract labels and structured metadata
+	labels := s.extractLabels(stream)
+	structuredMetadata := s.extractStructuredMetadata(stream)
 
+	// Get segmentation keys based on the rules
+	segmentationKeys := config.GetSegmentationKeys(labels, structuredMetadata)
+
+	if len(segmentationKeys) == 0 {
+		return ""
+	}
+
+	// Create a stable string representation of the segmentation keys
 	var sb strings.Builder
-	for i, k := range keys {
+	for i, key := range segmentationKeys {
 		if i > 0 {
 			sb.WriteString(",")
 		}
-		sb.WriteString(k)
+		sb.WriteString(key)
 		sb.WriteString("=")
-		sb.WriteString(partitioningLabels[k])
+
+		// Get the value from labels or structured metadata
+		if val, exists := labels[key]; exists {
+			sb.WriteString(val)
+		} else if val, exists := structuredMetadata[key]; exists {
+			sb.WriteString(val)
+		} else {
+			// This shouldn't happen if GetSegmentationKeys is working correctly
+			s.logger.Log("msg", "segmentation key found but no value available", "key", key, "tenant", tenant)
+			return ""
+		}
 	}
 
 	return sb.String()
+}
+
+// extractLabels extracts labels from the stream
+func (s *SegmentTopicWriter) extractLabels(stream KeyedStream) map[string]string {
+	labelMap := make(map[string]string)
+	parsedLabels, err := syntax.ParseLabels(stream.Stream.Labels)
+	if err != nil {
+		s.logger.Log("msg", "failed to parse stream labels", "labels", stream.Stream.Labels, "err", err)
+		return labelMap
+	}
+
+	parsedLabels.Range(func(lbl labels.Label) {
+		labelMap[lbl.Name] = lbl.Value
+	})
+
+	return labelMap
+}
+
+// extractStructuredMetadata extracts structured metadata from the stream entries
+func (s *SegmentTopicWriter) extractStructuredMetadata(stream KeyedStream) map[string]string {
+	metadata := make(map[string]string)
+	for _, entry := range stream.Stream.Entries {
+		for _, sm := range entry.StructuredMetadata {
+			metadata[sm.Name] = sm.Value
+		}
+	}
+	return metadata
 }
 
 // getBasePartition gets the base partition for a segmentation key
