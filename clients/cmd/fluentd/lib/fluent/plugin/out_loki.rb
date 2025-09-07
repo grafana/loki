@@ -30,8 +30,9 @@ module Fluent
       Fluent::Plugin.register_output('loki', self)
 
       class LogPostError < StandardError; end
+      class UnrecoverableError < Fluent::UnrecoverableError; end
 
-      helpers :compat_parameters, :record_accessor
+      helpers :compat_parameters, :record_accessor, :event_emitter
 
       attr_accessor :record_accessors
 
@@ -166,6 +167,7 @@ module Fluent
         # streams by label
         payload = generic_to_loki(chunk)
         body = { 'streams' => payload }
+        tag = chunk.metadata.tag || 'loki.output'
 
         tenant = extract_placeholders(@tenant, chunk) if @tenant
 
@@ -181,8 +183,15 @@ module Fluent
         log.warn "failed to write post to #{@uri} (#{res_summary})"
         log.debug Yajl.dump(body)
 
-        # Only retry 429 and 500s
-        raise(LogPostError, res_summary) if res.is_a?(Net::HTTPTooManyRequests) || res.is_a?(Net::HTTPServerError)
+        if res.is_a?(Net::HTTPTooManyRequests) || res.is_a?(Net::HTTPServerError)
+          # Only retry 429 and 500s
+          raise(LogPostError, res_summary)
+        else
+          # Send other errors to the fluentd @error label
+          chunk.each do |time, record|
+            router.emit_error_event(tag, time, record, UnrecoverableError.new(res_summary))
+          end
+        end
       end
 
       def http_request_opts(uri)
@@ -336,6 +345,10 @@ module Fluent
       end
       # rubocop:enable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
 
+      def current_thread_label
+        Thread.current[:_fluentd_plugin_helper_thread_title].to_s
+      end
+
       # convert a line to loki line with labels
       # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
       def line_to_loki(record)
@@ -372,7 +385,7 @@ module Fluent
         # note that flush thread != fluentd worker. if you use multiple workers you still need to
         # add the worker id as a label
         if @include_thread_label && @buffer_config.flush_thread_count > 1
-          chunk_labels['fluentd_thread'] = Thread.current[:_fluentd_plugin_helper_thread_title].to_s
+          chunk_labels['fluentd_thread'] = current_thread_label
         end
 
         # return both the line content plus the labels found in the record
