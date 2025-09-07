@@ -259,7 +259,7 @@ func (sp *streamProcessor) processSingleReader(ctx context.Context, reader *stre
 			break
 		}
 		for _, stream := range streams[:n] {
-			h, buf = stream.Labels.HashWithoutLabels(buf, []string(nil)...)
+			h, buf = stream.Labels.HashWithoutLabels(buf)
 			// Try to claim this hash first
 			if _, seen := sp.seenSeries.LoadOrStore(h, nil); seen {
 				continue
