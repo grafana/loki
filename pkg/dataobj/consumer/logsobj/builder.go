@@ -37,6 +37,10 @@ type BuilderConfig struct {
 	// object. TargetPageSize accounts for encoding, but not for compression.
 	TargetPageSize flagext.Bytes `yaml:"target_page_size"`
 
+	// TargetPageRows configures a target row count for encoded pages within the data
+	// object.
+	TargetPageRows int `yaml:"target_page_rows"`
+
 	// TODO(rfratto): We need an additional parameter for TargetMetadataSize, as
 	// metadata payloads can't be split and must be downloaded in a single
 	// request.
@@ -72,6 +76,7 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 	_ = cfg.TargetSectionSize.Set("128MB")
 
 	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The target maximum amount of uncompressed data to hold in data pages (for columnar sections). Uncompressed size is used for consistent I/O and planning.")
+	f.IntVar(&cfg.TargetPageRows, prefix+"target-page-rows", 0, "The target row count for pages to use for the data object builder. Takes precedence over target-page-size if value is greater than 0.")
 	f.Var(&cfg.TargetObjectSize, prefix+"target-builder-memory-limit", "The target maximum size of the encoded object and all of its encoded sections (after compression), to limit memory usage of a builder.")
 	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "The target maximum amount of uncompressed data to hold in sections, for sections that support being limited by size. Uncompressed size is used for consistent I/O and planning.")
 	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of logs to buffer in memory before adding into columnar builders, used to reduce CPU load of sorting.")
@@ -167,7 +172,7 @@ func NewBuilder(cfg BuilderConfig, scratchStore scratch.Store) (*Builder, error)
 // initBuilder initializes the builders for the tenant.
 func (b *Builder) initBuilder(tenant string) {
 	if _, ok := b.streams[tenant]; !ok {
-		sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize))
+		sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.TargetPageRows)
 		sb.SetTenant(tenant)
 		b.streams[tenant] = sb
 	}

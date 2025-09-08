@@ -35,6 +35,10 @@ type BuilderConfig struct {
 	// object. TargetPageSize accounts for encoding, but not for compression.
 	TargetPageSize flagext.Bytes `yaml:"target_page_size"`
 
+	// TargetPageRows configures a target row count for encoded pages within the data
+	// object.
+	TargetPageRows int `yaml:"target_page_rows"`
+
 	// TODO(rfratto): We need an additional parameter for TargetMetadataSize, as
 	// metadata payloads can't be split and must be downloaded in a single
 	// request.
@@ -70,6 +74,7 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 	_ = cfg.TargetSectionSize.Set("16MB")
 
 	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the data object builder.")
+	f.IntVar(&cfg.TargetPageRows, prefix+"target-page-rows", 0, "The target row count for pages to use for the data object builder. Takes precedence over target-page-size if value is greater than 0.")
 	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the data object builder.")
 	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "Configures a maximum size for sections, for sections that support it.")
 	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of the buffer to use for sorting logs.")
@@ -184,7 +189,7 @@ func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.
 
 	tenantIndexPointers, ok := b.indexPointers[tenantID]
 	if !ok {
-		tenantIndexPointers = indexpointers.NewBuilder(b.metrics.indexPointers, int(b.cfg.TargetPageSize))
+		tenantIndexPointers = indexpointers.NewBuilder(b.metrics.indexPointers, int(b.cfg.TargetPageSize), b.cfg.TargetPageRows)
 		tenantIndexPointers.SetTenant(tenantID)
 		b.indexPointers[tenantID] = tenantIndexPointers
 	}
@@ -218,7 +223,7 @@ func (b *Builder) AppendStream(tenantID string, stream streams.Stream) (int64, e
 
 	tenantStreams, ok := b.streams[tenantID]
 	if !ok {
-		tenantStreams = streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize))
+		tenantStreams = streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.TargetPageRows)
 		tenantStreams.SetTenant(tenantID)
 		b.streams[tenantID] = tenantStreams
 	}
