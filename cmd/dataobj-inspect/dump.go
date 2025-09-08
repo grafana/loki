@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/indexpointers"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 )
@@ -49,6 +50,8 @@ func (cmd *dumpCommand) dumpFile(name string) {
 			cmd.dumpStreamsSection(context.TODO(), offset, sec)
 		case logs.CheckSection(sec):
 			cmd.dumpLogsSection(context.TODO(), offset, sec)
+		case indexpointers.CheckSection(sec):
+			cmd.dumpIndexPointersSection(context.TODO(), offset, sec)
 		default:
 			fmt.Printf("unknown section: %s\n", sec.Type)
 		}
@@ -116,6 +119,30 @@ func (cmd *dumpCommand) dumpLogsSection(ctx context.Context, offset int, sec *da
 				}
 				fmt.Println("")
 			}
+		}
+	}
+}
+
+func (cmd *dumpCommand) dumpIndexPointersSection(ctx context.Context, offset int, sec *dataobj.Section) {
+	indexPointersSec, err := indexpointers.Open(ctx, sec)
+	if err != nil {
+		exitWithErr(err)
+	}
+	bold := color.New(color.Bold)
+	bold.Println("Index pointers section:")
+	bold.Printf("\toffset: %d, tenant: %s\n", offset, sec.Tenant)
+	tmp := make([]indexpointers.IndexPointer, 512)
+	r := indexpointers.NewRowReader(indexPointersSec)
+	for {
+		n, err := r.Read(ctx, tmp)
+		if err != nil && !errors.Is(err, io.EOF) {
+			exitWithErr(err)
+		}
+		if n == 0 && errors.Is(err, io.EOF) {
+			return
+		}
+		for _, r := range tmp[0:n] {
+			bold.Printf("\t\tpath: %s, start_ts: %s, end_ts: %s\n", r.Path, r.StartTs, r.EndTs)
 		}
 	}
 }
