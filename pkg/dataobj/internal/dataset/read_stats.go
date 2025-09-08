@@ -22,6 +22,8 @@ type DownloadStats struct {
 	PagesScanned          uint64
 	PagesFoundInCache     uint64
 	BatchDownloadRequests uint64
+	OptimisedRanges       uint64
+	StoreCalls            uint64 // Number of calls made to the object store.
 
 	PageDownloadTime time.Duration // Total time taken for downloading paga data or metadata.
 
@@ -37,6 +39,8 @@ func (ds *DownloadStats) Reset() {
 	ds.PagesScanned = 0
 	ds.PagesFoundInCache = 0
 	ds.BatchDownloadRequests = 0
+	ds.OptimisedRanges = 0
+	ds.StoreCalls = 0
 
 	ds.PageDownloadTime = 0
 
@@ -192,6 +196,17 @@ func (s *ReaderStats) AddBatchDownloadRequests(count uint64) {
 	}
 }
 
+func (s *ReaderStats) AddOptimisedRange(count uint64) {
+	s.DownloadStats.OptimisedRanges += count
+}
+
+func (s *ReaderStats) AddStoreCalls(count uint64) {
+	s.DownloadStats.StoreCalls += count
+	if s.globalStats != nil {
+		s.globalStats.AddObjectStoreCalls(int64(count))
+	}
+}
+
 // AddPageDownloadTime adds the given duration into the total download time for
 // page metadata and data.
 func (s *ReaderStats) AddPageDownloadTime(duration time.Duration) {
@@ -282,6 +297,8 @@ func (s *ReaderStats) LogSummary(logger log.Logger, execDuration time.Duration) 
 		"total_pages_read", s.DownloadStats.PagesScanned,
 		"pages_found_in_cache", s.DownloadStats.PagesFoundInCache,
 		"batch_download_requests", s.DownloadStats.BatchDownloadRequests,
+		"optimised_ranges", s.DownloadStats.OptimisedRanges,
+		"store_calls", s.DownloadStats.StoreCalls,
 
 		"total_download_time", s.DownloadStats.PageDownloadTime,
 

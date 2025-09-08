@@ -149,7 +149,7 @@ var DefaultConfig = Config{
 // ReadRanges returns an error if any call to r.ReadRange returns an error.
 // ReadRanges only returns [io.EOF] if one of the ranges is beyond the end of
 // the input source.
-func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
+func ReadRanges(ctx context.Context, r Reader, ranges []Range) (int, error) {
 	// We store our own start time so we can calculate read throughput at the
 	// end.
 	startTime := time.Now()
@@ -203,7 +203,7 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 
 	if err := g.Wait(); err != nil {
 		span.SetStatus(codes.Error, err.Error())
-		return err
+		return 0, err
 	}
 
 	span.AddEvent("finished reading ranges")
@@ -232,7 +232,7 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 			if i == len(optimized) {
 				// This can't ever happen; our ranges are always inside the
 				// optimized slice.
-				return errors.New("requested offset missing from coalesced ranges")
+				return 0, errors.New("requested offset missing from coalesced ranges")
 			}
 
 			copied := copy(output, optimized[i].Data[offset-optimized[i].Offset:])
@@ -247,9 +247,9 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 	span.SetStatus(codes.Ok, "") // Even if we got [io.EOF], we treat the operation as successful here.
 
 	if gotEOF.Load() {
-		return io.EOF
+		return len(optimized), io.EOF
 	}
-	return nil
+	return len(optimized), nil
 }
 
 // optimizeRanges optimizes the set of ranges based on cfg. The returned slice

@@ -6,7 +6,7 @@ import (
 	"io"
 	"math"
 
-	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/thanos-io/objstore"
 )
 
@@ -29,16 +29,14 @@ type instrumentReader struct {
 }
 
 func (ir *instrumentReader) Read(ctx context.Context) (io.ReadCloser, error) {
-	s := stats.FromContext(ctx)
-	s.AddObjectStoreCalls(1)
-
+	s := dataset.StatsFromContext(ctx)
+	s.AddStoreCalls(1)
 	return ir.rangeReader.Read(ctx)
 }
 
 func (ir *instrumentReader) ReadRange(ctx context.Context, offset int64, length int64) (io.ReadCloser, error) {
-	s := stats.FromContext(ctx)
-	s.AddObjectStoreCalls(1)
-
+	s := dataset.StatsFromContext(ctx)
+	s.AddStoreCalls(1)
 	return ir.rangeReader.ReadRange(ctx, offset, length)
 }
 

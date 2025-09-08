@@ -88,10 +88,12 @@ func (dec *Decoder) Pages(ctx context.Context, columns []*datasetmd.ColumnDesc) 
 		}
 
 		reader := metadataRangeReader{Inner: dec.sr}
-		err := rangeio.ReadRanges(ctx, reader, ranges)
+		n, err := rangeio.ReadRanges(ctx, reader, ranges)
 		if err != nil {
 			return err
 		}
+
+		stats.AddOptimisedRange(uint64(n))
 
 		for _, r := range ranges {
 			var md datasetmd.ColumnMetadata
@@ -153,10 +155,12 @@ func (dec *Decoder) ReadPages(ctx context.Context, pages []*datasetmd.PageDesc) 
 		}
 
 		reader := dataRangeReader{Inner: dec.sr}
-		err := rangeio.ReadRanges(ctx, reader, ranges)
+		n, err := rangeio.ReadRanges(ctx, reader, ranges)
 		if err != nil {
 			return err
 		}
+
+		stats.AddOptimisedRange(uint64(n))
 
 		for _, r := range ranges {
 			if !yield(dataset.PageData(r.Data)) {
