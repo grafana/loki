@@ -264,12 +264,6 @@ func (s *SegmentTopicWriter) getPartition(stream KeyedStream, tenant string, sKe
 	// Create tenant subring once based on rate limits for shuffle sharding
 	tenantSubring := s.getTenantSubring(tenant)
 
-	// Check if this segment needs volume-based spreading
-	needsSpreading := s.needsVolumeSpreading(segmentRate)
-	if !needsSpreading {
-		return s.getShuffleShardedPartition(sKey, tenantSubring)
-	}
-
 	// Use volume-aware partitioning with shuffle sharding
 	return s.getVolumeSpreadPartitions(sKey, stream, tenant, tenantSubring, segmentRate)
 }
@@ -377,39 +371,22 @@ func (s *SegmentTopicWriter) getBasePartition(segmentationKey string) int32 {
 	return int32(hash % uint64(s.cfg.NumPartitions))
 }
 
-// getShuffleShardedPartition gets a partition using the provided tenant subring and segmentation key
-func (s *SegmentTopicWriter) getShuffleShardedPartition(sKey segmentationKey, tenantSubring *ring.PartitionRing) ([]int32, error) {
-	// Get all active partitions from the tenant subring
-	activePartitions := tenantSubring.ActivePartitionIDs()
-
-	// If no active partitions, fallback to simple hash
-	if len(activePartitions) == 0 {
-		// This should not happen in practice since we'll fallback to the full ring
-		// if a tenant-specific subring fails to be created.
-		return []int32{int32(sKey.hash % uint64(s.cfg.NumPartitions))}, nil
-	}
-
-	// Use the segmentation key to select a specific partition from the subring
-	selectedPartition := activePartitions[sKey.hash%uint64(len(activePartitions))]
-
-	return []int32{selectedPartition}, nil
-}
-
-// needsVolumeSpreading determines if a segment needs volume-based spreading
-func (s *SegmentTopicWriter) needsVolumeSpreading(segmentRate float64) bool {
-	// Check if the rate exceeds our threshold
-	threshold := float64(s.cfg.VolumeThresholdBytes)
-	return segmentRate > threshold
-}
-
-// getVolumeSpreadPartitions gets multiple partitions for high-volume segments using shuffle sharding
-// It uses the provided tenant subring and creates a further subring for the segment
+// getVolumeSpreadPartitions gets multiple partitions for high-volume segments using shuffle sharding.
+// It uses the provided tenant subring and creates a further subring for the segment.
+// For low-volume segments, it selects a single partition from the tenant's subring.
 func (s *SegmentTopicWriter) getVolumeSpreadPartitions(sKey segmentationKey, stream KeyedStream, tenant string, tenantSubring *ring.PartitionRing, segmentRate float64) ([]int32, error) {
 	// Calculate how many partitions this segment should use based on its volume
 	segmentShardSize := s.calculateShardSize(segmentRate)
 
-	// Ensure segment shard size doesn't exceed the tenant's available partitions
+	// Get active partitions from the tenant's subring
 	tenantPartitions := tenantSubring.ActivePartitionIDs()
+
+	// If no active partitions, fallback to simple hash against total partitions
+	if len(tenantPartitions) == 0 {
+		return []int32{int32(sKey.hash % uint64(s.cfg.NumPartitions))}, nil
+	}
+
+	// Ensure segment shard size doesn't exceed the tenant's available partitions
 	if segmentShardSize > len(tenantPartitions) {
 		segmentShardSize = len(tenantPartitions)
 	}
@@ -444,8 +421,12 @@ func (s *SegmentTopicWriter) getVolumeSpreadPartitions(sKey segmentationKey, str
 func (s *SegmentTopicWriter) calculateShardSize(segmentRate float64) int {
 	// Calculate shard size based on current rate vs threshold
 	threshold := float64(s.cfg.VolumeThresholdBytes)
+	if threshold == 0 {
+		return 1
+	}
+
 	ratio := segmentRate / threshold
-	shardSize := int(ratio) + 1
+	shardSize := int(math.Ceil(ratio))
 
 	// Ensure at least 1 partition
 	if shardSize < 1 {
