@@ -120,6 +120,10 @@ spec:
           livenessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- with .Values.loki.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: tmp
               mountPath: /tmp
