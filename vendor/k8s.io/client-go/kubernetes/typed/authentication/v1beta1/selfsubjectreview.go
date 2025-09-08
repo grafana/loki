@@ -19,12 +19,12 @@ limitations under the License.
 package v1beta1
 
 import (
-	"context"
+	context "context"
 
-	v1beta1 "k8s.io/api/authentication/v1beta1"
+	authenticationv1beta1 "k8s.io/api/authentication/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	gentype "k8s.io/client-go/gentype"
 	scheme "k8s.io/client-go/kubernetes/scheme"
-	rest "k8s.io/client-go/rest"
 )
 
 // SelfSubjectReviewsGetter has a method to return a SelfSubjectReviewInterface.
@@ -35,30 +35,25 @@ type SelfSubjectReviewsGetter interface {
 
 // SelfSubjectReviewInterface has methods to work with SelfSubjectReview resources.
 type SelfSubjectReviewInterface interface {
-	Create(ctx context.Context, selfSubjectReview *v1beta1.SelfSubjectReview, opts v1.CreateOptions) (*v1beta1.SelfSubjectReview, error)
+	Create(ctx context.Context, selfSubjectReview *authenticationv1beta1.SelfSubjectReview, opts v1.CreateOptions) (*authenticationv1beta1.SelfSubjectReview, error)
 	SelfSubjectReviewExpansion
 }
 
 // selfSubjectReviews implements SelfSubjectReviewInterface
 type selfSubjectReviews struct {
-	client rest.Interface
+	*gentype.Client[*authenticationv1beta1.SelfSubjectReview]
 }
 
 // newSelfSubjectReviews returns a SelfSubjectReviews
 func newSelfSubjectReviews(c *AuthenticationV1beta1Client) *selfSubjectReviews {
 	return &selfSubjectReviews{
-		client: c.RESTClient(),
+		gentype.NewClient[*authenticationv1beta1.SelfSubjectReview](
+			"selfsubjectreviews",
+			c.RESTClient(),
+			scheme.ParameterCodec,
+			"",
+			func() *authenticationv1beta1.SelfSubjectReview { return &authenticationv1beta1.SelfSubjectReview{} },
+			gentype.PrefersProtobuf[*authenticationv1beta1.SelfSubjectReview](),
+		),
 	}
-}
-
-// Create takes the representation of a selfSubjectReview and creates it.  Returns the server's representation of the selfSubjectReview, and an error, if there is any.
-func (c *selfSubjectReviews) Create(ctx context.Context, selfSubjectReview *v1beta1.SelfSubjectReview, opts v1.CreateOptions) (result *v1beta1.SelfSubjectReview, err error) {
-	result = &v1beta1.SelfSubjectReview{}
-	err = c.client.Post().
-		Resource("selfsubjectreviews").
-		VersionedParams(&opts, scheme.ParameterCodec).
-		Body(selfSubjectReview).
-		Do(ctx).
-		Into(result)
-	return
 }

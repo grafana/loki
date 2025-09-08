@@ -54,7 +54,7 @@ type endpointsResourceType struct {
 
 // Decode deserializes and validates an xDS resource serialized inside the
 // provided `Any` proto, as received from the xDS management server.
-func (endpointsResourceType) Decode(opts *DecodeOptions, resource *anypb.Any) (*DecodeResult, error) {
+func (endpointsResourceType) Decode(_ *DecodeOptions, resource *anypb.Any) (*DecodeResult, error) {
 	name, rc, err := unmarshalEndpointsResource(resource)
 	switch {
 	case name == "":
@@ -81,8 +81,8 @@ type EndpointsResourceData struct {
 	Resource EndpointsUpdate
 }
 
-// Equal returns true if other is equal to r.
-func (e *EndpointsResourceData) Equal(other ResourceData) bool {
+// RawEqual returns true if other is equal to r.
+func (e *EndpointsResourceData) RawEqual(other ResourceData) bool {
 	if e == nil && other == nil {
 		return true
 	}
@@ -107,7 +107,7 @@ func (e *EndpointsResourceData) Raw() *anypb.Any {
 // events corresponding to the endpoints resource being watched.
 type EndpointsWatcher interface {
 	// OnUpdate is invoked to report an update for the resource being watched.
-	OnUpdate(*EndpointsResourceData)
+	OnUpdate(*EndpointsResourceData, OnDoneFunc)
 
 	// OnError is invoked under different error conditions including but not
 	// limited to the following:
@@ -117,28 +117,28 @@ type EndpointsWatcher interface {
 	//	- resource validation error
 	//	- ADS stream failure
 	//	- connection failure
-	OnError(error)
+	OnError(error, OnDoneFunc)
 
 	// OnResourceDoesNotExist is invoked for a specific error condition where
 	// the requested resource is not found on the xDS management server.
-	OnResourceDoesNotExist()
+	OnResourceDoesNotExist(OnDoneFunc)
 }
 
 type delegatingEndpointsWatcher struct {
 	watcher EndpointsWatcher
 }
 
-func (d *delegatingEndpointsWatcher) OnUpdate(data ResourceData) {
+func (d *delegatingEndpointsWatcher) OnUpdate(data ResourceData, onDone OnDoneFunc) {
 	e := data.(*EndpointsResourceData)
-	d.watcher.OnUpdate(e)
+	d.watcher.OnUpdate(e, onDone)
 }
 
-func (d *delegatingEndpointsWatcher) OnError(err error) {
-	d.watcher.OnError(err)
+func (d *delegatingEndpointsWatcher) OnError(err error, onDone OnDoneFunc) {
+	d.watcher.OnError(err, onDone)
 }
 
-func (d *delegatingEndpointsWatcher) OnResourceDoesNotExist() {
-	d.watcher.OnResourceDoesNotExist()
+func (d *delegatingEndpointsWatcher) OnResourceDoesNotExist(onDone OnDoneFunc) {
+	d.watcher.OnResourceDoesNotExist(onDone)
 }
 
 // WatchEndpoints uses xDS to discover the configuration associated with the

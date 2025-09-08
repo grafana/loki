@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,19 +32,54 @@ var (
 	_ = (*url.URL)(nil)
 	_ = (*mail.Address)(nil)
 	_ = anypb.Any{}
+	_ = sort.Sort
 )
 
 // Validate checks the field values on IPMatcher with the rules defined in the
-// proto definition for this message. If any rules are violated, an error is returned.
+// proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
 func (m *IPMatcher) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on IPMatcher with the rules defined in
+// the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in IPMatcherMultiError, or nil
+// if none found.
+func (m *IPMatcher) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *IPMatcher) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	for idx, item := range m.GetRangeMatchers() {
 		_, _ = idx, item
 
-		if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, IPMatcherValidationError{
+						field:  fmt.Sprintf("RangeMatchers[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, IPMatcherValidationError{
+						field:  fmt.Sprintf("RangeMatchers[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return IPMatcherValidationError{
 					field:  fmt.Sprintf("RangeMatchers[%v]", idx),
@@ -55,8 +91,28 @@ func (m *IPMatcher) Validate() error {
 
 	}
 
+	if len(errors) > 0 {
+		return IPMatcherMultiError(errors)
+	}
+
 	return nil
 }
+
+// IPMatcherMultiError is an error wrapping multiple validation errors returned
+// by IPMatcher.ValidateAll() if the designated constraints aren't met.
+type IPMatcherMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m IPMatcherMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m IPMatcherMultiError) AllErrors() []error { return m }
 
 // IPMatcherValidationError is the validation error returned by
 // IPMatcher.Validate if the designated constraints aren't met.
@@ -114,23 +170,60 @@ var _ interface {
 
 // Validate checks the field values on IPMatcher_IPRangeMatcher with the rules
 // defined in the proto definition for this message. If any rules are
-// violated, an error is returned.
+// violated, the first error encountered is returned, or nil if there are no violations.
 func (m *IPMatcher_IPRangeMatcher) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on IPMatcher_IPRangeMatcher with the
+// rules defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// IPMatcher_IPRangeMatcherMultiError, or nil if none found.
+func (m *IPMatcher_IPRangeMatcher) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *IPMatcher_IPRangeMatcher) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	if len(m.GetRanges()) < 1 {
-		return IPMatcher_IPRangeMatcherValidationError{
+		err := IPMatcher_IPRangeMatcherValidationError{
 			field:  "Ranges",
 			reason: "value must contain at least 1 item(s)",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
 	}
 
 	for idx, item := range m.GetRanges() {
 		_, _ = idx, item
 
-		if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, IPMatcher_IPRangeMatcherValidationError{
+						field:  fmt.Sprintf("Ranges[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, IPMatcher_IPRangeMatcherValidationError{
+						field:  fmt.Sprintf("Ranges[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return IPMatcher_IPRangeMatcherValidationError{
 					field:  fmt.Sprintf("Ranges[%v]", idx),
@@ -142,7 +235,26 @@ func (m *IPMatcher_IPRangeMatcher) Validate() error {
 
 	}
 
-	if v, ok := interface{}(m.GetOnMatch()).(interface{ Validate() error }); ok {
+	if all {
+		switch v := interface{}(m.GetOnMatch()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, IPMatcher_IPRangeMatcherValidationError{
+					field:  "OnMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, IPMatcher_IPRangeMatcherValidationError{
+					field:  "OnMatch",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetOnMatch()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
 			return IPMatcher_IPRangeMatcherValidationError{
 				field:  "OnMatch",
@@ -154,8 +266,29 @@ func (m *IPMatcher_IPRangeMatcher) Validate() error {
 
 	// no validation rules for Exclusive
 
+	if len(errors) > 0 {
+		return IPMatcher_IPRangeMatcherMultiError(errors)
+	}
+
 	return nil
 }
+
+// IPMatcher_IPRangeMatcherMultiError is an error wrapping multiple validation
+// errors returned by IPMatcher_IPRangeMatcher.ValidateAll() if the designated
+// constraints aren't met.
+type IPMatcher_IPRangeMatcherMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m IPMatcher_IPRangeMatcherMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m IPMatcher_IPRangeMatcherMultiError) AllErrors() []error { return m }
 
 // IPMatcher_IPRangeMatcherValidationError is the validation error returned by
 // IPMatcher_IPRangeMatcher.Validate if the designated constraints aren't met.

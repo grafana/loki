@@ -19,17 +19,17 @@ limitations under the License.
 package v1
 
 import (
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EventSeriesApplyConfiguration represents an declarative configuration of the EventSeries type for use
+// EventSeriesApplyConfiguration represents a declarative configuration of the EventSeries type for use
 // with apply.
 type EventSeriesApplyConfiguration struct {
-	Count            *int32        `json:"count,omitempty"`
-	LastObservedTime *v1.MicroTime `json:"lastObservedTime,omitempty"`
+	Count            *int32            `json:"count,omitempty"`
+	LastObservedTime *metav1.MicroTime `json:"lastObservedTime,omitempty"`
 }
 
-// EventSeriesApplyConfiguration constructs an declarative configuration of the EventSeries type for use with
+// EventSeriesApplyConfiguration constructs a declarative configuration of the EventSeries type for use with
 // apply.
 func EventSeries() *EventSeriesApplyConfiguration {
 	return &EventSeriesApplyConfiguration{}
@@ -46,7 +46,7 @@ func (b *EventSeriesApplyConfiguration) WithCount(value int32) *EventSeriesApply
 // WithLastObservedTime sets the LastObservedTime field in the declarative configuration to the given value
 // and returns the receiver, so that objects can be built by chaining "With" function invocations.
 // If called multiple times, the LastObservedTime field is set to the value of the last call.
-func (b *EventSeriesApplyConfiguration) WithLastObservedTime(value v1.MicroTime) *EventSeriesApplyConfiguration {
+func (b *EventSeriesApplyConfiguration) WithLastObservedTime(value metav1.MicroTime) *EventSeriesApplyConfiguration {
 	b.LastObservedTime = &value
 	return b
 }
