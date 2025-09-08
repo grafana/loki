@@ -22,11 +22,11 @@ import (
 )
 
 type dataobjScanOptions struct {
-	StreamsSection *streams.Section
-	LogsSection    *logs.Section
-	StreamIDs      []int64                     // Stream IDs to match from logs sections.
-	Predicates     []logs.Predicate            // Predicate to apply to the logs.
-	Projections    []physical.ColumnExpression // Columns to include. An empty slice means all columns.
+	StreamsView *streamsView // Cached streams view for the data object
+	LogsSection *logs.Section
+	StreamIDs   []int64                     // Stream IDs to match from logs sections.
+	Predicates  []logs.Predicate            // Predicate to apply to the logs.
+	Projections []physical.ColumnExpression // Columns to include. An empty slice means all columns.
 
 	Allocator memory.Allocator // Allocator to use for reading sections and building records.
 
@@ -93,24 +93,14 @@ func (s *dataobjScan) init() error {
 }
 
 func (s *dataobjScan) initStreams() error {
-	if s.opts.StreamsSection == nil {
-		return fmt.Errorf("no streams section provided")
-	}
-
-	columnsToRead := projectedLabelColumns(s.opts.StreamsSection, s.opts.Projections)
-	if len(columnsToRead) == 0 {
+	if s.opts.StreamsView == nil {
 		s.streams = nil
 		s.streamsInjector = nil
 		return nil
 	}
 
-	s.streams = newStreamsView(s.opts.StreamsSection, &streamsViewOptions{
-		StreamIDs:    s.opts.StreamIDs,
-		LabelColumns: columnsToRead,
-		BatchSize:    int(s.opts.BatchSize),
-		CacheSize:    s.opts.CacheSize,
-	})
-
+	// Use the cached streamsView directly
+	s.streams = s.opts.StreamsView
 	s.streamsInjector = newStreamInjector(s.opts.Allocator, s.streams)
 	return nil
 }

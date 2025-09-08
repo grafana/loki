@@ -40,6 +40,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		logger:             logger,
 
 		dataobjScanPageCacheSize: cfg.DataobjScanPageCacheSize,
+		streamsViewCache:         make(map[physical.DataObjLocation]*streamsView),
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -48,7 +49,13 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
-	return c.execute(ctx, node)
+
+	// Wrap the pipeline to ensure cache cleanup happens when execution completes
+	pipeline := c.execute(ctx, node)
+	return &cacheCleanupPipeline{
+		Pipeline: pipeline,
+		context:  c,
+	}
 }
 
 // Context is the execution context
@@ -62,6 +69,82 @@ type Context struct {
 
 	dataobjScanPageCacheSize int64
 	mergePrefetchCount       int
+
+	// streamsViewCache caches streamsView instances per data object location
+	// to avoid redundant reads of the same streams section across multiple
+	// DataObjScan nodes for the same object.
+	streamsViewCache map[physical.DataObjLocation]*streamsView
+}
+
+// getOrCreateStreamsView returns a cached streamsView for the given location and tenant,
+// or creates a new one if it doesn't exist in the cache.
+func (c *Context) getOrCreateStreamsView(ctx context.Context, obj *dataobj.Object, location physical.DataObjLocation, tenant string, projections []physical.ColumnExpression) (*streamsView, error) {
+	// Check cache firsd
+	if cachedView, exists := c.streamsViewCache[location]; exists {
+		return cachedView, nil
+	}
+
+	// Find and open streams section
+	var streamsSection *streams.Section
+	for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+		if sec.Tenant != tenant {
+			continue
+		}
+
+		if streamsSection != nil {
+			return nil, fmt.Errorf("multiple streams sections found in data object %q", location)
+		}
+
+		var err error
+		streamsSection, err = streams.Open(ctx, sec)
+		if err != nil {
+			return nil, fmt.Errorf("opening streams section %q: %w", sec.Type, err)
+		}
+		break
+	}
+	if streamsSection == nil {
+		return nil, fmt.Errorf("streams section not found in data object %q", location)
+	}
+
+	// Create streamsView
+	columnsToRead := projectedLabelColumns(streamsSection, projections)
+	if len(columnsToRead) == 0 {
+		// No label columns needed, return nil streamsView
+		return nil, nil
+	}
+
+	view := newStreamsView(streamsSection, &streamsViewOptions{
+		LabelColumns: columnsToRead,
+		BatchSize:    int(c.batchSize),
+		CacheSize:    int(c.dataobjScanPageCacheSize),
+	})
+
+	// Cache the view
+	c.streamsViewCache[location] = view
+	return view, nil
+}
+
+// CloseStreamsViewCache closes all cached streamsView instances and clears the cache.
+// This should be called when the execution context is no longer needed.
+func (c *Context) CloseStreamsViewCache() {
+	for _, view := range c.streamsViewCache {
+		if view != nil {
+			view.Close()
+		}
+	}
+	clear(c.streamsViewCache)
+}
+
+// cacheCleanupPipeline wraps a pipeline to ensure streamsView cache cleanup
+// happens when the pipeline is closed.
+type cacheCleanupPipeline struct {
+	Pipeline
+	context *Context
+}
+
+func (p *cacheCleanupPipeline) Close() {
+	p.Pipeline.Close()
+	p.context.CloseStreamsViewCache()
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -118,42 +201,26 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		return errorPipeline(ctx, errors.New("no object store bucket configured"))
 	}
 
+	tenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return errorPipeline(ctx, fmt.Errorf("missing org ID: %w", err))
+	}
+
+	// Create data object to access logs section
 	obj, err := dataobj.FromBucket(ctx, c.bucket, string(node.Location))
 	if err != nil {
 		return errorPipeline(ctx, fmt.Errorf("creating data object: %w", err))
 	}
 	span.AddEvent("opened dataobj")
 
-	var (
-		streamsSection *streams.Section
-		logsSection    *logs.Section
-	)
-
-	tenant, err := user.ExtractOrgID(ctx)
+	// Get or create cached streamsView
+	cachedStreamsView, err := c.getOrCreateStreamsView(ctx, obj, node.Location, tenant, node.Projections)
 	if err != nil {
-		return errorPipeline(ctx, fmt.Errorf("missing org ID: %w", err))
+		return errorPipeline(ctx, fmt.Errorf("getting streams view: %w", err))
 	}
+	span.AddEvent("got streams view from cache")
 
-	for _, sec := range obj.Sections().Filter(streams.CheckSection) {
-		if sec.Tenant != tenant {
-			continue
-		}
-
-		if streamsSection != nil {
-			return errorPipeline(ctx, fmt.Errorf("multiple streams sections found in data object %q", node.Location))
-		}
-
-		var err error
-		streamsSection, err = streams.Open(ctx, sec)
-		if err != nil {
-			return errorPipeline(ctx, fmt.Errorf("opening streams section %q: %w", sec.Type, err))
-		}
-		span.AddEvent("opened streams section")
-		break
-	}
-	if streamsSection == nil {
-		return errorPipeline(ctx, fmt.Errorf("streams section not found in data object %q", node.Location))
-	}
+	var logsSection *logs.Section
 
 	for i, sec := range obj.Sections().Filter(logs.CheckSection) {
 		if i != node.Section {
@@ -184,14 +251,10 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	span.AddEvent("constructed predicate")
 
 	var pipeline Pipeline = newDataobjScanPipeline(dataobjScanOptions{
-		// TODO(rfratto): passing the streams section means that each DataObjScan
-		// will read the entire streams section (for IDs being loaded), which is
-		// going to be quite a bit of wasted effort.
-		//
-		// Longer term, there should be a dedicated plan node which handles joining
-		// streams and log records based on StreamID, which is shared between all
-		// sections in the same object.
-		StreamsSection: streamsSection,
+		// Use cached streamsView instead of creating a new one for each DataObjScan.
+		// This avoids redundant reads of the same streams section across multiple
+		// DataObjScan nodes for the same object.
+		StreamsView: cachedStreamsView,
 
 		LogsSection: logsSection,
 		StreamIDs:   node.StreamIDs,
