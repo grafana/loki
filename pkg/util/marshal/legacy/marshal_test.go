@@ -70,6 +70,7 @@ var queryTests = []struct {
 						"totalChunksDownloaded": 0,
 						"chunkRefsFetchTime": 0,
 						"queryReferencedStructuredMetadata": false,
+						"queryUsedV2Engine": false,
 				 		"pipelineWrapperFilteredLines": 0,
 						"chunk" :{
 							"compressedBytes": 0,
@@ -111,7 +112,8 @@ var queryTests = []struct {
 						"totalChunksDownloaded": 0,
 						"chunkRefsFetchTime": 0,
 						"queryReferencedStructuredMetadata": false,
-				                "pipelineWrapperFilteredLines": 0,
+						"queryUsedV2Engine": false,
+		                "pipelineWrapperFilteredLines": 0,
 						"chunk" :{
 							"compressedBytes": 0,
 							"decompressedBytes": 0,

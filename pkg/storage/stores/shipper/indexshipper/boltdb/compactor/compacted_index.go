@@ -158,6 +158,14 @@ func (c *CompactedIndex) IndexChunk(chunkRef logproto.ChunkRef, lbls labels.Labe
 	return c.chunkIndexer.IndexChunk(chunkRef, lbls, sizeInKB, logEntriesCount)
 }
 
+func (c *CompactedIndex) ChunkExists(userID []byte, lbls labels.Labels, chunkRef logproto.ChunkRef) (bool, error) {
+	if err := c.setupIndexProcessors(); err != nil {
+		return false, err
+	}
+
+	return c.seriesCleaner.ChunkExists(userID, lbls, chunkRef)
+}
+
 func (c *CompactedIndex) CleanupSeries(userID []byte, lbls labels.Labels) error {
 	if err := c.setupIndexProcessors(); err != nil {
 		return err
@@ -166,9 +174,9 @@ func (c *CompactedIndex) CleanupSeries(userID []byte, lbls labels.Labels) error 
 	return c.seriesCleaner.CleanupSeries(userID, lbls)
 }
 
-func (c *CompactedIndex) RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) error {
+func (c *CompactedIndex) RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) (bool, error) {
 	if err := c.setupIndexProcessors(); err != nil {
-		return err
+		return false, err
 	}
 
 	return c.seriesCleaner.RemoveChunk(from, through, userID, labels, chunkID)

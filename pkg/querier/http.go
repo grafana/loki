@@ -62,7 +62,7 @@ type QuerierAPI struct {
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
-func NewQuerierAPI(cfg Config, mCfg metastore.StorageConfig, querier Querier, limits querier_limits.Limits, store objstore.Bucket, reg prometheus.Registerer, logger log.Logger) *QuerierAPI {
+func NewQuerierAPI(cfg Config, mCfg metastore.Config, querier Querier, limits querier_limits.Limits, store objstore.Bucket, reg prometheus.Registerer, logger log.Logger) *QuerierAPI {
 	return &QuerierAPI{
 		cfg:      cfg,
 		limits:   limits,

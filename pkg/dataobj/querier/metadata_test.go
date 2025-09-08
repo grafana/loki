@@ -18,14 +18,16 @@ import (
 
 func TestStore_SelectSeries(t *testing.T) {
 	const testTenant = "test-tenant"
-	builder := newTestDataBuilder(t, testTenant)
+	builder := newTestDataBuilder(t)
 	defer builder.close()
 
+	ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
+	ctx = user.InjectOrgID(ctx, testTenant)
+
 	// Setup test data
-	now := setupTestData(t, builder)
-	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
+	now := setupTestData(ctx, t, builder, testTenant)
+	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
-	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
 		name     string
@@ -161,14 +163,16 @@ func TestStore_SelectSeries(t *testing.T) {
 
 func TestStore_LabelNamesForMetricName(t *testing.T) {
 	const testTenant = "test-tenant"
-	builder := newTestDataBuilder(t, testTenant)
+	builder := newTestDataBuilder(t)
 	defer builder.close()
 
+	ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
+	ctx = user.InjectOrgID(ctx, testTenant)
+
 	// Setup test data
-	now := setupTestData(t, builder)
-	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
+	now := setupTestData(ctx, t, builder, testTenant)
+	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
-	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
 		name     string
@@ -229,14 +233,16 @@ func TestStore_LabelNamesForMetricName(t *testing.T) {
 
 func TestStore_LabelValuesForMetricName(t *testing.T) {
 	const testTenant = "test-tenant"
-	builder := newTestDataBuilder(t, testTenant)
+	builder := newTestDataBuilder(t)
 	defer builder.close()
 
+	ctx, _ := context.WithTimeout(t.Context(), time.Second) //nolint:govet
+	ctx = user.InjectOrgID(ctx, testTenant)
+
 	// Setup test data
-	now := setupTestData(t, builder)
-	meta := metastore.NewObjectMetastore(metastore.StorageConfig{}, builder.bucket, log.NewNopLogger(), nil)
+	now := setupTestData(ctx, t, builder, testTenant)
+	meta := metastore.NewObjectMetastore(builder.bucket, log.NewNopLogger(), nil)
 	store := NewStore(builder.bucket, log.NewNopLogger(), meta)
-	ctx := user.InjectOrgID(context.Background(), testTenant)
 
 	tests := []struct {
 		name      string

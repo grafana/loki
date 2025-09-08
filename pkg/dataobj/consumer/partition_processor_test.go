@@ -30,72 +30,6 @@ var testBuilderConfig = logsobj.BuilderConfig{
 }
 
 func TestPartitionProcessor_Flush(t *testing.T) {
-	t.Run("has expected table of contents", func(t *testing.T) {
-		clock := quartz.NewMock(t)
-		p := newTestPartitionProcessor(t, clock)
-
-		// Wrap the TOC writer to record all of the entries.
-		tocWriter, ok := p.metastoreTocWriter.(*metastore.TableOfContentsWriter)
-		require.True(t, ok)
-		recordingTocWriter := &recordingTocWriter{TableOfContentsWriter: tocWriter}
-		p.metastoreTocWriter = recordingTocWriter
-
-		// Push two streams, one minute apart.
-		now1 := clock.Now()
-		s1 := logproto.Stream{
-			Labels: `{service="test"}`,
-			Entries: []push.Entry{{
-				Timestamp: now1,
-				Line:      "abc",
-			}},
-		}
-		b1, err := s1.Marshal()
-		require.NoError(t, err)
-		p.processRecord(&kgo.Record{
-			Key:       []byte("test-tenant"),
-			Value:     b1,
-			Timestamp: now1,
-		})
-
-		// Push the second stream, one minute later.
-		clock.Advance(time.Minute)
-		now2 := clock.Now()
-		s2 := s1
-		s2.Entries[0].Timestamp = now2
-		b2, err := s2.Marshal()
-		require.NoError(t, err)
-		p.processRecord(&kgo.Record{
-			Key:       []byte("test-tenant"),
-			Value:     b2,
-			Timestamp: now2,
-		})
-
-		// No flush should have occurred, we will flush ourselves instead.
-		require.True(t, p.lastFlushed.IsZero())
-
-		// Get the time range. We will use this to check that the metastore has
-		// the correct time range.
-		minTime, maxTime := p.builder.TimeRange()
-		require.Equal(t, now1, minTime)
-		require.Equal(t, now2, maxTime)
-
-		// Flush the data object.
-		require.NoError(t, p.flush())
-		require.Equal(t, now2, p.lastFlushed)
-
-		// Flush should produce two uploads, the data object and the metastore
-		// object.
-		bucket, ok := p.bucket.(*mockBucket)
-		require.True(t, ok)
-		require.Len(t, bucket.uploads, 2)
-
-		// Check that the expected entries were written to the metastore.
-		require.Len(t, recordingTocWriter.entries, 1)
-		actual := recordingTocWriter.entries[0]
-		require.Equal(t, minTime, actual.MinTimestamp)
-		require.Equal(t, maxTime, actual.MaxTimestamp)
-	})
-
 	t.Run("reset happens after flush", func(t *testing.T) {
 		clock := quartz.NewMock(t)
 		p := newTestPartitionProcessor(t, clock)
@@ -131,6 +65,47 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 		require.NoError(t, p.flush())
 		require.Equal(t, now, p.lastFlushed)
 		require.True(t, p.lastModified.IsZero())
+	})
+
+	t.Run("has emitted metastore event", func(t *testing.T) {
+		clock := quartz.NewMock(t)
+		p := newTestPartitionProcessor(t, clock)
+
+		client := &mockKafka{}
+		p.eventsProducerClient = client
+		p.partition = 23
+
+		// All timestamps should be zero.
+		require.True(t, p.lastFlushed.IsZero())
+		require.True(t, p.lastModified.IsZero())
+
+		// Push a stream.
+		now := clock.Now()
+		s := logproto.Stream{
+			Labels: `{service="test"}`,
+			Entries: []push.Entry{{
+				Timestamp: now,
+				Line:      "abc",
+			}},
+		}
+		b, err := s.Marshal()
+		require.NoError(t, err)
+		p.processRecord(&kgo.Record{
+			Key:       []byte("test-tenant"),
+			Value:     b,
+			Timestamp: now,
+		})
+
+		// No flush should have occurred, we will flush ourselves instead.
+		require.True(t, p.lastFlushed.IsZero())
+
+		// Flush the data object. The last modified time should also be reset.
+		require.NoError(t, p.flush())
+
+		// Check that the metastore event was emitted.
+		require.Len(t, client.produced, 1)
+		// Partition should be the processor's partition divided by the partition ratio, in integer division.
+		require.Equal(t, int32(2), client.produced[0].Partition)
 	})
 }
 
@@ -328,12 +303,12 @@ func newTestPartitionProcessor(_ *testing.T, clock quartz.Clock) *partitionProce
 		&kgo.Client{},
 		testBuilderConfig,
 		uploader.Config{},
-		metastore.Config{},
+		metastore.Config{
+			PartitionRatio: 10,
+		},
 		newMockBucket(),
 		nil,
-		"test-tenant",
-		0,
-		"test-topic",
+		"topic",
 		0,
 		log.NewNopLogger(),
 		prometheus.NewRegistry(),
@@ -341,5 +316,6 @@ func newTestPartitionProcessor(_ *testing.T, clock quartz.Clock) *partitionProce
 		nil,
 	)
 	p.clock = clock
+	p.eventsProducerClient = &mockKafka{}
 	return p
 }
