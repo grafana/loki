@@ -82,7 +82,9 @@ func (c *ingestLimitsFrontendRingClient) UpdateRate(ctx context.Context, req *pr
 	// Use FNV-1 of all rate keys in the request to load balance requests to limits-frontends instances.
 	h := fnv.New32()
 	for _, rate := range req.Rates {
-		_, _ = h.Write([]byte(rate.Key))
+		buf := make([]byte, binary.MaxVarintLen64)
+		binary.PutUvarint(buf, rate.StreamHash)
+		_, _ = h.Write(buf)
 	}
 
 	// Get the limits-frontend instances from the ring.
@@ -215,21 +217,13 @@ func (l *ingestLimits) ExceedsLimits(
 func (l *ingestLimits) UpdateRates(
 	ctx context.Context,
 	tenant string,
-	rates []RateUpdate,
-) (map[string]int64, error) {
+	rates []*proto.StreamMetadata,
+) (map[uint64]int64, error) {
 	l.segmentRequests.Inc()
-
-	rateMetadata := make([]*proto.RateMetadata, len(rates))
-	for i, rate := range rates {
-		rateMetadata[i] = &proto.RateMetadata{
-			Key:  rate.Key,
-			Size: rate.Size,
-		}
-	}
 
 	req := &proto.UpdateRateRequest{
 		Tenant: tenant,
-		Rates:  rateMetadata,
+		Rates:  rates,
 	}
 	resp, err := l.client.UpdateRate(ctx, req)
 	if err != nil {
@@ -238,18 +232,12 @@ func (l *ingestLimits) UpdateRates(
 	}
 
 	// Convert results to map
-	resultMap := make(map[string]int64)
+	resultMap := make(map[uint64]int64)
 	for _, result := range resp.Results {
-		resultMap[result.Key] = result.CurrentRate
+		resultMap[result.StreamHash] = result.CurrentRate
 	}
 
 	return resultMap, nil
-}
-
-// RateUpdate represents a single rate update
-type RateUpdate struct {
-	Key  string
-	Size int64
 }
 
 func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.ExceedsLimitsRequest, error) {

@@ -2,7 +2,6 @@ package limits
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 
 	"github.com/coder/quartz"
@@ -106,7 +105,7 @@ func (c *limitsChecker) ExceedsLimits(ctx context.Context, req *proto.ExceedsLim
 func (c *limitsChecker) UpdateRate(ctx context.Context, req *proto.UpdateRateRequest) (*proto.UpdateRateResponse, error) {
 	// Update rates in the store using the existing Update method
 	// and get current rates by calculating them from the rate buckets
-	currentRates := make(map[string]int64)
+	currentRates := make(map[uint64]int64)
 	now := c.clock.Now()
 
 	for _, metadata := range req.Rates {
@@ -133,15 +132,15 @@ func (c *limitsChecker) UpdateRate(ctx context.Context, req *proto.UpdateRateReq
 		if exists {
 			currentRate := c.store.calculateCurrentRate(stream.rateBuckets, now)
 			// Use the stream hash as the key for the rate result
-			currentRates[fmt.Sprintf("%d", streamHash)] = currentRate
+			currentRates[streamHash] = currentRate
 		}
 	}
 
 	// Convert current rates to proto response
 	results := make([]*proto.RateResult, 0, len(currentRates))
-	for key, rate := range currentRates {
+	for streamHash, rate := range currentRates {
 		results = append(results, &proto.RateResult{
-			Key:         key,
+			StreamHash:  streamHash,
 			CurrentRate: rate,
 		})
 	}

@@ -53,7 +53,7 @@ message UpdateRateResponse {
 }
 
 message RateResult {
-  string key = 1;
+  uint64 streamHash = 1;
   int64 currentRate = 2;
 }
 

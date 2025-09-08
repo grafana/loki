@@ -4,12 +4,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"hash/fnv"
 	"math"
 	"math/rand"
-	"time"
-
-	"hash/fnv"
 	"strings"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
@@ -20,10 +19,16 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v3/pkg/limits/proto"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util"
 )
+
+type segmentationKey struct {
+	str  string
+	hash uint64
+}
 
 // SegmentTopicConfig configures the SegmentTopicWriter for writing logs to Kafka
 // based on configurable segmentation keys derived from stream labels and metadata.
@@ -170,30 +175,40 @@ func (s *SegmentTopicWriter) Duplicate(tenant string, streams []KeyedStream) {
 	go s.write(tenant, streams)
 }
 
+type streamWithKey struct {
+	stream KeyedStream
+	sKey   segmentationKey
+}
+
 // write handles the actual writing of streams to the segment topic.
 // It updates segment rates for volume tracking and converts streams to Kafka records
 // using volume-aware partitioning.
 func (s *SegmentTopicWriter) write(tenant string, streams []KeyedStream) {
+	streamsWithKeys := make([]streamWithKey, 0, len(streams))
+	for _, stream := range streams {
+		streamsWithKeys = append(streamsWithKeys, streamWithKey{
+			stream: stream,
+			sKey:   s.getSegmentationKey(stream, tenant),
+		})
+	}
+
 	// Update segment rates for volume tracking and get the results
-	segmentRates := s.updateSegmentRates(tenant, streams)
+	segmentRates := s.updateSegmentRates(context.Background(), tenant, streamsWithKeys)
 
 	// Convert streams to Kafka records
 	records := make([]*kgo.Record, 0, len(streams))
 
-	for _, stream := range streams {
-		// Get segmentation key once
-		segmentationKey := s.getSegmentationKey(stream, tenant)
-
+	for _, swk := range streamsWithKeys {
 		// Get the rate for this segmentation key
-		segmentRate := float64(segmentRates[segmentationKey])
+		segmentRate := float64(segmentRates[swk.sKey.hash])
 
 		// Get available partitions for this stream (multiple partitions for high-volume segments)
-		availablePartitions, err := s.getPartition(stream, tenant, segmentationKey, segmentRate)
+		availablePartitions, err := s.getPartition(swk.stream, tenant, swk.sKey, segmentRate)
 		if err != nil {
 			s.logger.Log(
 				"msg", "failed to get partitions for stream",
 				"tenant", tenant,
-				"segmentationKey", segmentationKey,
+				"segmentationKey", swk.sKey.str,
 				"err", err,
 			)
 			s.teeErrors.WithLabelValues("partition_error").Inc()
@@ -201,10 +216,10 @@ func (s *SegmentTopicWriter) write(tenant string, streams []KeyedStream) {
 		}
 
 		// Select a single partition from the available ones to spread data across partitions
-		selectedPartition := s.selectPartition(availablePartitions, segmentationKey, tenant)
+		selectedPartition := s.selectPartition(availablePartitions)
 
 		// Create records for the selected partition only
-		streamRecords, err := kafka.EncodeWithTopic(s.cfg.TopicName, selectedPartition, tenant, stream.Stream, int(s.cfg.MaxRecordSizeBytes))
+		streamRecords, err := kafka.EncodeWithTopic(s.cfg.TopicName, selectedPartition, tenant, swk.stream.Stream, int(s.cfg.MaxRecordSizeBytes))
 		if err != nil {
 			s.logger.Log(
 				"msg", "failed to encode stream",
@@ -229,7 +244,7 @@ func (s *SegmentTopicWriter) write(tenant string, streams []KeyedStream) {
 
 // selectPartition selects a single partition from the available partitions
 // using random selection to spread data across partitions.
-func (s *SegmentTopicWriter) selectPartition(availablePartitions []int32, segmentationKey string, tenant string) int32 {
+func (s *SegmentTopicWriter) selectPartition(availablePartitions []int32) int32 {
 	if len(availablePartitions) == 0 {
 		// Fallback to partition 0 if no partitions available
 		return 0
@@ -245,44 +260,51 @@ func (s *SegmentTopicWriter) selectPartition(availablePartitions []int32, segmen
 // getPartition determines which partition(s) to use for a given stream.
 // It always uses volume-aware partitioning and shuffle sharding for tenants.
 // Low-volume segments get a single partition, high-volume segments get multiple partitions.
-func (s *SegmentTopicWriter) getPartition(stream KeyedStream, tenant string, segmentationKey string, segmentRate float64) ([]int32, error) {
+func (s *SegmentTopicWriter) getPartition(stream KeyedStream, tenant string, sKey segmentationKey, segmentRate float64) ([]int32, error) {
 	// Create tenant subring once based on rate limits for shuffle sharding
 	tenantSubring := s.getTenantSubring(tenant)
 
 	// Check if this segment needs volume-based spreading
 	needsSpreading := s.needsVolumeSpreading(segmentRate)
 	if !needsSpreading {
-		return s.getShuffleShardedPartition(segmentationKey, tenantSubring)
+		return s.getShuffleShardedPartition(sKey, tenantSubring)
 	}
 
 	// Use volume-aware partitioning with shuffle sharding
-	return s.getVolumeSpreadPartitions(segmentationKey, stream, tenant, tenantSubring, segmentRate)
+	return s.getVolumeSpreadPartitions(sKey, stream, tenant, tenantSubring, segmentRate)
 }
 
 // getSegmentationKey creates a segmentation key from the stream labels and metadata
 // based on the tenant's configured partitioning rules. It supports both simple keys
 // and key=value based rules with additional keys.
-func (s *SegmentTopicWriter) getSegmentationKey(stream KeyedStream, tenant string) string {
+func (s *SegmentTopicWriter) getSegmentationKey(stream KeyedStream, tenant string) segmentationKey {
 	// Get segmentation rules for this tenant
+	var keyStr string
 	partitioningRules := s.limits.SegmentationRules(tenant)
 	if len(partitioningRules) > 0 {
-		segmentationKey := s.getSegmentationKeyFromRules(stream, tenant, partitioningRules)
-		if segmentationKey != "" {
-			return segmentationKey
+		segmentationKey, ok := s.getSegmentationKeyFromRules(stream, tenant, partitioningRules)
+		if ok {
+			keyStr = segmentationKey
 		}
 	}
 
-	// Fallback to stream hash if no rules match
-	return fmt.Sprintf("stream_%d", stream.HashKeyNoShard)
+	if keyStr == "" {
+		// Fallback to stream hash if no rules match
+		keyStr = fmt.Sprintf("stream_%d", stream.HashKeyNoShard)
+	}
+
+	hasher := fnv.New64a()
+	_, _ = hasher.Write([]byte(keyStr))
+	return segmentationKey{str: keyStr, hash: hasher.Sum64()}
 }
 
 // getSegmentationKeyFromRules creates a segmentation key using the new flexible rules
-func (s *SegmentTopicWriter) getSegmentationKeyFromRules(stream KeyedStream, tenant string, ruleStrings []string) string {
+func (s *SegmentTopicWriter) getSegmentationKeyFromRules(stream KeyedStream, tenant string, ruleStrings []string) (string, bool) {
 	// Parse the segmentation rules
 	config, err := ParseSegmentationConfig(ruleStrings)
 	if err != nil {
 		s.logger.Log("msg", "failed to parse segmentation rules", "tenant", tenant, "rules", ruleStrings, "err", err)
-		return ""
+		return "", false
 	}
 
 	// Extract labels and structured metadata
@@ -293,7 +315,7 @@ func (s *SegmentTopicWriter) getSegmentationKeyFromRules(stream KeyedStream, ten
 	segmentationKeys := config.GetSegmentationKeys(labels, structuredMetadata)
 
 	if len(segmentationKeys) == 0 {
-		return ""
+		return "", false
 	}
 
 	// Create a stable string representation of the segmentation keys
@@ -313,11 +335,11 @@ func (s *SegmentTopicWriter) getSegmentationKeyFromRules(stream KeyedStream, ten
 		} else {
 			// This shouldn't happen if GetSegmentationKeys is working correctly
 			s.logger.Log("msg", "segmentation key found but no value available", "key", key, "tenant", tenant)
-			return ""
+			return "", false
 		}
 	}
 
-	return sb.String()
+	return sb.String(), true
 }
 
 // extractLabels extracts labels from the stream
@@ -356,21 +378,19 @@ func (s *SegmentTopicWriter) getBasePartition(segmentationKey string) int32 {
 }
 
 // getShuffleShardedPartition gets a partition using the provided tenant subring and segmentation key
-func (s *SegmentTopicWriter) getShuffleShardedPartition(segmentationKey string, tenantSubring *ring.PartitionRing) ([]int32, error) {
+func (s *SegmentTopicWriter) getShuffleShardedPartition(sKey segmentationKey, tenantSubring *ring.PartitionRing) ([]int32, error) {
 	// Get all active partitions from the tenant subring
 	activePartitions := tenantSubring.ActivePartitionIDs()
 
 	// If no active partitions, fallback to simple hash
 	if len(activePartitions) == 0 {
-		basePartition := s.getBasePartition(segmentationKey)
-		return []int32{basePartition}, nil
+		// This should not happen in practice since we'll fallback to the full ring
+		// if a tenant-specific subring fails to be created.
+		return []int32{int32(sKey.hash % uint64(s.cfg.NumPartitions))}, nil
 	}
 
 	// Use the segmentation key to select a specific partition from the subring
-	hasher := fnv.New64a()
-	_, _ = hasher.Write([]byte(segmentationKey))
-	hash := hasher.Sum64()
-	selectedPartition := activePartitions[hash%uint64(len(activePartitions))]
+	selectedPartition := activePartitions[sKey.hash%uint64(len(activePartitions))]
 
 	return []int32{selectedPartition}, nil
 }
@@ -384,7 +404,7 @@ func (s *SegmentTopicWriter) needsVolumeSpreading(segmentRate float64) bool {
 
 // getVolumeSpreadPartitions gets multiple partitions for high-volume segments using shuffle sharding
 // It uses the provided tenant subring and creates a further subring for the segment
-func (s *SegmentTopicWriter) getVolumeSpreadPartitions(segmentationKey string, stream KeyedStream, tenant string, tenantSubring *ring.PartitionRing, segmentRate float64) ([]int32, error) {
+func (s *SegmentTopicWriter) getVolumeSpreadPartitions(sKey segmentationKey, stream KeyedStream, tenant string, tenantSubring *ring.PartitionRing, segmentRate float64) ([]int32, error) {
 	// Calculate how many partitions this segment should use based on its volume
 	segmentShardSize := s.calculateShardSize(segmentRate)
 
@@ -396,17 +416,14 @@ func (s *SegmentTopicWriter) getVolumeSpreadPartitions(segmentationKey string, s
 
 	// If segment only needs 1 partition, use simple hash-based selection from tenant's subring
 	if segmentShardSize <= 1 {
-		hasher := fnv.New64a()
-		_, _ = hasher.Write([]byte(segmentationKey))
-		hash := hasher.Sum64()
-		selectedPartition := tenantPartitions[hash%uint64(len(tenantPartitions))]
+		selectedPartition := tenantPartitions[sKey.hash%uint64(len(tenantPartitions))]
 		return []int32{selectedPartition}, nil
 	}
 
 	// Create a subring from the tenant's subring for this specific segment
-	segmentSubring, err := tenantSubring.ShuffleShard(segmentationKey, segmentShardSize)
+	segmentSubring, err := tenantSubring.ShuffleShard(sKey.str, segmentShardSize)
 	if err != nil {
-		s.logger.Log("msg", "failed to create segment shuffle shard", "segmentationKey", segmentationKey, "shardSize", segmentShardSize, "err", err)
+		s.logger.Log("msg", "failed to create segment shuffle shard", "segmentationKey", sKey.str, "shardSize", segmentShardSize, "err", err)
 		// Fallback to using all tenant partitions
 		partitions := make([]int32, len(tenantPartitions))
 		copy(partitions, tenantPartitions)
@@ -439,35 +456,34 @@ func (s *SegmentTopicWriter) calculateShardSize(segmentRate float64) int {
 }
 
 // updateSegmentRates updates segment rates with the limits service and returns the rate results
-func (s *SegmentTopicWriter) updateSegmentRates(tenant string, streams []KeyedStream) map[string]int64 {
+func (s *SegmentTopicWriter) updateSegmentRates(ctx context.Context, tenant string, streamsWithKeys []streamWithKey) map[uint64]int64 {
 	if s.ingestLimits == nil {
-		return make(map[string]int64)
+		return make(map[uint64]int64)
 	}
 
 	// Group streams by segmentation key and aggregate their sizes
-	segmentSizes := make(map[string]int64)
+	segmentSizes := make(map[uint64]int64)
 
-	for _, stream := range streams {
-		segmentationKey := s.getSegmentationKey(stream, tenant)
-		entriesSize, structuredMetadataSize := s.calculateStreamSizes(stream.Stream)
+	for _, swk := range streamsWithKeys {
+		entriesSize, structuredMetadataSize := s.calculateStreamSizes(swk.stream.Stream)
 		totalSize := int64(entriesSize + structuredMetadataSize)
-		segmentSizes[segmentationKey] += totalSize
+		segmentSizes[swk.sKey.hash] += totalSize
 	}
 
 	// Prepare batch update
-	rateUpdates := make([]RateUpdate, 0, len(segmentSizes))
-	for segmentationKey, totalSize := range segmentSizes {
-		rateUpdates = append(rateUpdates, RateUpdate{
-			Key:  segmentationKey,
-			Size: totalSize,
+	rateUpdates := make([]*proto.StreamMetadata, 0, len(segmentSizes))
+	for segmentationHash, totalSize := range segmentSizes {
+		rateUpdates = append(rateUpdates, &proto.StreamMetadata{
+			StreamHash: segmentationHash,
+			TotalSize:  uint64(totalSize),
 		})
 	}
 
 	// Update segment rates in batch and return the results
-	results, err := s.ingestLimits.UpdateRates(context.Background(), tenant, rateUpdates)
+	results, err := s.ingestLimits.UpdateRates(ctx, tenant, rateUpdates)
 	if err != nil {
 		s.logger.Log("msg", "failed to update segment rates", "tenant", tenant, "err", err)
-		return make(map[string]int64)
+		return make(map[uint64]int64)
 	}
 
 	return results
