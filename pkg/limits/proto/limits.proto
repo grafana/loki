@@ -45,19 +45,15 @@ message StreamMetadataRecord {
 
 message UpdateRateRequest {
   string tenant = 1;
-  repeated RateMetadata rates = 2;
+  repeated StreamMetadata rates = 2;
 }
 
 message UpdateRateResponse {
   repeated RateResult results = 1;
 }
 
-message RateMetadata {
-  string key = 1;
-  int64 size = 2;
-}
-
 message RateResult {
   string key = 1;
   int64 currentRate = 2;
 }
+
