@@ -65,6 +65,10 @@ spec:
       initContainers:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.patternIngester.dnsConfig | default .Values.loki.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: pattern-ingester
           image: {{ include "loki.image" . }}
@@ -125,7 +129,7 @@ spec:
         {{- end }}
       {{- with .Values.patternIngester.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.patternIngester.nodeSelector }}
       nodeSelector:
@@ -133,7 +137,7 @@ spec:
       {{- end }}
       {{- with .Values.patternIngester.topologySpreadConstraints }}
       topologySpreadConstraints:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.patternIngester.tolerations }}
       tolerations:

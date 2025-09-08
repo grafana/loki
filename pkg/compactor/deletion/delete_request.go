@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
@@ -28,7 +29,7 @@ type deleteRequest struct {
 	timeInterval    *timeInterval          `json:"-"`
 
 	TotalLinesDeletedMetric *prometheus.CounterVec `json:"-"`
-	DeletedLines            int32                  `json:"-"`
+	DeletedLines            atomic.Int32           `json:"-"`
 }
 
 func newDeleteRequest(protoReq deletionproto.DeleteRequest, totalLinesDeletedMetric *prometheus.CounterVec) (*deleteRequest, error) {
@@ -39,6 +40,13 @@ func newDeleteRequest(protoReq deletionproto.DeleteRequest, totalLinesDeletedMet
 
 	if err := d.SetQuery(d.Query); err != nil {
 		return nil, err
+	}
+
+	// init d.timeInterval used to efficiently check log ts is within the bounds of delete request below in filter func
+	// without having to do conversion of timestamps for each log line we check.
+	d.timeInterval = &timeInterval{
+		start: d.StartTime.Time(),
+		end:   d.EndTime.Time(),
 	}
 
 	return &d, nil
@@ -57,15 +65,6 @@ func (d *deleteRequest) SetQuery(logQL string) error {
 
 // FilterFunction returns a filter function that returns true if the given line should be deleted based on the DeleteRequest
 func (d *deleteRequest) FilterFunction(lbls labels.Labels) (filter.Func, error) {
-	// init d.timeInterval used to efficiently check log ts is within the bounds of delete request below in filter func
-	// without having to do conversion of timestamps for each log line we check.
-	if d.timeInterval == nil {
-		d.timeInterval = &timeInterval{
-			start: d.StartTime.Time(),
-			end:   d.EndTime.Time(),
-		}
-	}
-
 	if !allMatch(d.matchers, lbls) {
 		return func(_ time.Time, _ string, _ labels.Labels) bool {
 			return false
@@ -97,7 +96,7 @@ func (d *deleteRequest) FilterFunction(lbls labels.Labels) (filter.Func, error) 
 		result, _, skip := f(0, s, structuredMetadata)
 		if len(result) != 0 || skip {
 			d.TotalLinesDeletedMetric.WithLabelValues(d.UserID).Inc()
-			d.DeletedLines++
+			d.DeletedLines.Add(1)
 			return true
 		}
 		return false

@@ -10,6 +10,7 @@ metadata:
     {{- with .Values.ingester.serviceLabels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
+    prometheus.io/service-monitor: "false"
   annotations:
     {{- with .Values.loki.serviceAnnotations }}
     {{- toYaml . | nindent 4}}
