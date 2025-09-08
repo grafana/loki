@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"math/bits"
+	"slices"
 
 	"github.com/klauspost/compress/huff0"
 )
@@ -361,14 +362,21 @@ func (b *blockEnc) encodeLits(lits []byte, raw bool) error {
 	if len(lits) >= 1024 {
 		// Use 4 Streams.
 		out, reUsed, err = huff0.Compress4X(lits, b.litEnc)
-	} else if len(lits) > 32 {
+	} else if len(lits) > 16 {
 		// Use 1 stream
 		single = true
 		out, reUsed, err = huff0.Compress1X(lits, b.litEnc)
 	} else {
 		err = huff0.ErrIncompressible
 	}
-
+	if err == nil && len(out)+5 > len(lits) {
+		// If we are close, we may still be worse or equal to raw.
+		var lh literalsHeader
+		lh.setSizes(len(out), len(lits), single)
+		if len(out)+lh.size() >= len(lits) {
+			err = huff0.ErrIncompressible
+		}
+	}
 	switch err {
 	case huff0.ErrIncompressible:
 		if debugEncoder {
@@ -420,6 +428,16 @@ func (b *blockEnc) encodeLits(lits []byte, raw bool) error {
 	return nil
 }
 
+// encodeRLE will encode an RLE block.
+func (b *blockEnc) encodeRLE(val byte, length uint32) {
+	var bh blockHeader
+	bh.setLast(b.last)
+	bh.setSize(length)
+	bh.setType(blockTypeRLE)
+	b.output = bh.appendTo(b.output)
+	b.output = append(b.output, val)
+}
+
 // fuzzFseEncoder can be used to fuzz the FSE encoder.
 func fuzzFseEncoder(data []byte) int {
 	if len(data) > maxSequences || len(data) < 2 {
@@ -440,16 +458,7 @@ func fuzzFseEncoder(data []byte) int {
 		// All 0
 		return 0
 	}
-	maxCount := func(a []uint32) int {
-		var max uint32
-		for _, v := range a {
-			if v > max {
-				max = v
-			}
-		}
-		return int(max)
-	}
-	cnt := maxCount(hist[:maxSym])
+	cnt := int(slices.Max(hist[:maxSym]))
 	if cnt == len(data) {
 		// RLE
 		return 0
@@ -472,6 +481,16 @@ func (b *blockEnc) encode(org []byte, raw, rawAllLits bool) error {
 	if len(b.sequences) == 0 {
 		return b.encodeLits(b.literals, rawAllLits)
 	}
+	if len(b.sequences) == 1 && len(org) > 0 && len(b.literals) <= 1 {
+		// Check common RLE cases.
+		seq := b.sequences[0]
+		if seq.litLen == uint32(len(b.literals)) && seq.offset-3 == 1 {
+			// Offset == 1 and 0 or 1 literals.
+			b.encodeRLE(org[0], b.sequences[0].matchLen+zstdMinMatch+seq.litLen)
+			return nil
+		}
+	}
+
 	// We want some difference to at least account for the headers.
 	saved := b.size - len(b.literals) - (b.size >> 6)
 	if saved < 16 {
@@ -503,7 +522,7 @@ func (b *blockEnc) encode(org []byte, raw, rawAllLits bool) error {
 	if len(b.literals) >= 1024 && !raw {
 		// Use 4 Streams.
 		out, reUsed, err = huff0.Compress4X(b.literals, b.litEnc)
-	} else if len(b.literals) > 32 && !raw {
+	} else if len(b.literals) > 16 && !raw {
 		// Use 1 stream
 		single = true
 		out, reUsed, err = huff0.Compress1X(b.literals, b.litEnc)
@@ -511,6 +530,17 @@ func (b *blockEnc) encode(org []byte, raw, rawAllLits bool) error {
 		err = huff0.ErrIncompressible
 	}
 
+	if err == nil && len(out)+5 > len(b.literals) {
+		// If we are close, we may still be worse or equal to raw.
+		var lh literalsHeader
+		lh.setSize(len(b.literals))
+		szRaw := lh.size()
+		lh.setSizes(len(out), len(b.literals), single)
+		szComp := lh.size()
+		if len(out)+szComp >= len(b.literals)+szRaw {
+			err = huff0.ErrIncompressible
+		}
+	}
 	switch err {
 	case huff0.ErrIncompressible:
 		lh.setType(literalsBlockRaw)
@@ -773,10 +803,7 @@ func (b *blockEnc) encode(org []byte, raw, rawAllLits bool) error {
 	ml.flush(mlEnc.actualTableLog)
 	of.flush(ofEnc.actualTableLog)
 	ll.flush(llEnc.actualTableLog)
-	err = wr.close()
-	if err != nil {
-		return err
-	}
+	wr.close()
 	b.output = wr.out
 
 	// Maybe even add a bigger margin.
@@ -849,15 +876,6 @@ func (b *blockEnc) genCodes() {
 			}
 		}
 	}
-	maxCount := func(a []uint32) int {
-		var max uint32
-		for _, v := range a {
-			if v > max {
-				max = v
-			}
-		}
-		return int(max)
-	}
 	if debugAsserts && mlMax > maxMatchLengthSymbol {
 		panic(fmt.Errorf("mlMax > maxMatchLengthSymbol (%d)", mlMax))
 	}
@@ -868,7 +886,7 @@ func (b *blockEnc) genCodes() {
 		panic(fmt.Errorf("llMax > maxLiteralLengthSymbol (%d)", llMax))
 	}
 
-	b.coders.mlEnc.HistogramFinished(mlMax, maxCount(mlH[:mlMax+1]))
-	b.coders.ofEnc.HistogramFinished(ofMax, maxCount(ofH[:ofMax+1]))
-	b.coders.llEnc.HistogramFinished(llMax, maxCount(llH[:llMax+1]))
+	b.coders.mlEnc.HistogramFinished(mlMax, int(slices.Max(mlH[:mlMax+1])))
+	b.coders.ofEnc.HistogramFinished(ofMax, int(slices.Max(ofH[:ofMax+1])))
+	b.coders.llEnc.HistogramFinished(llMax, int(slices.Max(llH[:llMax+1])))
 }

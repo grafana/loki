@@ -6,7 +6,7 @@ A high performance compression algorithm is implemented. For now focused on spee
 
 This package provides [compression](#Compressor) to and [decompression](#Decompressor) of Zstandard content. 
 
-This package is pure Go and without use of "unsafe". 
+This package is pure Go. Use `noasm` and `nounsafe` to disable relevant features.
 
 The `zstd` package is provided as open source software using a Go standard license.
 
@@ -259,7 +259,7 @@ nyc-taxi-data-10M.csv   gzkp    1   3325605752  922273214   13929   227.68
 
 ## Decompressor
 
-Staus: STABLE - there may still be subtle bugs, but a wide variety of content has been tested.
+Status: STABLE - there may still be subtle bugs, but a wide variety of content has been tested.
 
 This library is being continuously [fuzz-tested](https://github.com/klauspost/compress-fuzz),
 kindly supplied by [fuzzit.dev](https://fuzzit.dev/). 

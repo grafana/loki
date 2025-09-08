@@ -106,6 +106,7 @@ func (z *Reader) Reset(r io.Reader) error {
 	*z = Reader{
 		decompressor: z.decompressor,
 		multistream:  true,
+		br:           z.br,
 	}
 	if rr, ok := r.(flate.Reader); ok {
 		z.r = rr
@@ -235,6 +236,11 @@ func (z *Reader) readHeader() (hdr Header, err error) {
 		if digest != uint16(z.digest) {
 			return hdr, ErrHeader
 		}
+	}
+
+	// Reserved FLG bits must be zero.
+	if flg>>5 != 0 {
+		return hdr, ErrHeader
 	}
 
 	z.digest = 0
