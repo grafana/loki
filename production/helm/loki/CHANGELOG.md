@@ -17,7 +17,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [FEATURE] Add configurable `livenessProbe` and `startupProbe` to single binary StatefulSet. [#19072](https://github.com/grafana/loki/pull/19072)
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to the loki container in the backend pods. [#18548](https://github.com/grafana/loki/pull/18548)
-
+- [BUGFIX] Un-deprecate all features in `monitoring` block except grafana-agent-operator [#19012](https://github.com/grafana/loki/pull/19012)
+- [BUGFIX] Use UDP/53 for DNS egress instead of named port [#19073](https://github.com/grafana/loki/pull/19073)
 ## 6.39.0
 
 - [FEATURE] add more specificity to affinity and topology spread constraints [#19061](https://github.com/grafana/loki/pull/19061)
