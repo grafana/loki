@@ -13,8 +13,26 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
-- [FEATURE] Support separate loki ruler storage configuration [#18510](https://github.com/grafana/loki/pull/18510)
-- [ENHANCEMENT] add namespaceOverride [#18707](https://github.com/grafana/loki/pull/18707)
+- [FEATURE] Add configurable `livenessProbe` and `startupProbe` to single binary StatefulSet. [#19072](https://github.com/grafana/loki/pull/19072)
+- [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` to the loki container in the backend pods. [#18548](https://github.com/grafana/loki/pull/18548)
+
+## 6.39.0
+
+- [FEATURE] add more specificity to affinity and topology spread constraints [#19061](https://github.com/grafana/loki/pull/19061)
+- [ENHANCEMENT] Expand `extraObjects` to have more flexibility in templating [#13252](https://github.com/grafana/loki/pull/13252)
+- [ENHANCEMENT] add missing dnsConfig to `admin-api`, `bloom-builder`, `bloom-gateway`, `bloom-planner`, `compactor`, `distributor`, `index-gateway`, `ingester`, `memcached`, `overrides-exporter`, `pattern-ingester`, and `query-scheduler`. [#18903](https://github.com/grafana/loki/pull/18903)
+- [BUGFIX] Ensure the GEL admin-api resources are not created when using SimpleScalable deployment mode [#13655](https://github.com/grafana/loki/pull/13655)
+- [BUGFIX] Stop scrapping zonal ingester metrics twice when using ServiceMonitor. [#19000](https://github.com/grafana/loki/pull/19000)
+- [BUGFIX] Add init container configuration for backend, bloom builder, distributor, query-frontend, query-scheduler, read, write. [#18709](https://github.com/grafana/loki/pull/18709)
+
+## 6.38.0
+
+- un-deprecate all features in `monitoring` block except grafana-agent-operator [#19001](https://github.com/grafana/loki/pull/19001)
+- [FEATURE] Make access modes for persistence on all PVCs and StatefulSets editable [#13474](https://github.com/grafana/loki/pull/13474)
+- [FEATURE] Allow enabling user namespaces [#18661](https://github.com/grafana/loki/pull/18661)
+- [FEATURE] Allow configuring service types. [#18708](https://github.com/grafana/loki/pull/18708)
+- [ENHANCEMENT] Add namespaceOverride [#18707](https://github.com/grafana/loki/pull/18707)
+- [BUGFIX] Use gateway container port as nginx server port [#18774](https://github.com/grafana/loki/pull/18774)
 
 ## 6.37.0
 
@@ -72,7 +90,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Add configurable `startupProbe` to the loki-sc-rules sidecar container in the backend pods. [#18547](https://github.com/grafana/loki/pull/18547)
 - [BUGFIX] Add validation for loki.storage.bucketNames [#13781](https://github.com/grafana/loki/pull/13781)
 - [BUGFIX] Create missing RBAC for the rules sidecar when RBAC is namespaced [#16776](https://github.com/grafana/loki/pull/16776)
-- [BUGFIX] Ensure the scc is actually allowing to use hostPath volumes when the rbac.sccAllowHostDirVolumePlugin is set to true [#17680](https://github.com/grafana/loki/pull/17680) 
+- [BUGFIX] Ensure the scc is actually allowing to use hostPath volumes when the rbac.sccAllowHostDirVolumePlugin is set to true [#17680](https://github.com/grafana/loki/pull/17680)
 
 ## 6.33.0
 

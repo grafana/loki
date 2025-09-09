@@ -65,18 +65,12 @@ func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger) *dataobj
 	}
 }
 
-func (s *dataobjScan) Read(ctx context.Context) error {
+func (s *dataobjScan) Read(ctx context.Context) (arrow.Record, error) {
 	if err := s.init(); err != nil {
-		return err
+		return nil, err
 	}
 
-	rec, err := s.read(ctx)
-	s.state = newState(rec, err)
-
-	if err != nil {
-		return fmt.Errorf("reading data object: %w", err)
-	}
-	return nil
+	return s.read(ctx)
 }
 
 func (s *dataobjScan) init() error {
@@ -408,10 +402,6 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.Record, error) {
 
 	return s.streamsInjector.Inject(ctx, rec)
 }
-
-// Value returns the current [arrow.Record] retrieved by the previous call to
-// [dataobjScan.Read], or an error if the record cannot be read.
-func (s *dataobjScan) Value() (arrow.Record, error) { return s.state.batch, s.state.err }
 
 // Close closes s and releases all resources.
 func (s *dataobjScan) Close() {

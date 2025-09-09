@@ -46,6 +46,18 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 
 			compactedIndex := newCompactedIndex(tables[0].DB, tables[0].name, t.TempDir(), tt.config, util_log.Logger)
 
+			// trying to remove a chunk for inexistent stream should return false for chunk existence
+			chunkExisted, err := compactedIndex.RemoveChunk(c1.From, c1.Through, []byte(c1.UserID), c3.Metric, schemaCfg.ExternalKey(c1.ChunkRef))
+			require.NoError(t, err)
+			require.False(t, chunkExisted)
+
+			// trying to remove an inexistent chunk from an existing stream should return false for chunk existence
+			inexistentChunk := c1
+			inexistentChunk.From = inexistentChunk.From.Add(time.Second)
+			chunkExisted, err = compactedIndex.RemoveChunk(inexistentChunk.From, inexistentChunk.Through, []byte(inexistentChunk.UserID), inexistentChunk.Metric, schemaCfg.ExternalKey(inexistentChunk.ChunkRef))
+			require.NoError(t, err)
+			require.False(t, chunkExisted)
+
 			// remove c1, c2 chunk and index c4 with same labels as c2
 			c4 := createChunk(t, chunkfmt, headfmt, "2", labels.New(labels.Label{Name: "foo", Value: "bar"}, labels.Label{Name: "fizz", Value: "buzz"}), tt.from, tt.from.Add(30*time.Minute))
 			err = compactedIndex.ForEachSeries(context.Background(), func(series retention.Series) (err error) {
@@ -57,7 +69,9 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 				}
 				if series.Labels().Get("foo") == "bar" {
 					for _, chk := range series.Chunks() {
-						require.NoError(t, compactedIndex.RemoveChunk(chk.From, chk.Through, series.UserID(), series.Labels(), chk.ChunkID))
+						chunkExisted, err := compactedIndex.RemoveChunk(chk.From, chk.Through, series.UserID(), series.Labels(), chk.ChunkID)
+						require.NoError(t, err)
+						require.True(t, chunkExisted)
 					}
 				}
 				return nil
