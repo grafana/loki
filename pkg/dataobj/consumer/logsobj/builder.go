@@ -179,6 +179,7 @@ func (b *Builder) initBuilder(tenant string) {
 	if _, ok := b.logs[tenant]; !ok {
 		lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
 			PageSizeHint:     int(b.cfg.TargetPageSize),
+			PageMaxRowCount:  b.cfg.TargetPageRows,
 			BufferSize:       int(b.cfg.BufferSize),
 			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
 		})
