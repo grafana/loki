@@ -161,8 +161,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flagext.DeprecatedFlag(f, "ruler.group-timeout", "This flag is no longer functional.", util_log.Logger)
 	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
 	flagext.DeprecatedFlag(f, "ruler.num-workers", "This flag is no longer functional. For increased concurrency horizontal sharding is recommended", util_log.Logger)
-	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
-	flagext.DeprecatedFlag(f, "ruler.datasource-uid", "This flag has been renamed to ruler.grafana-datasource-uid", util_log.Logger)
 
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
 	f.Var(&cfg.ExternalURL, "ruler.external.url", "Base URL of the Grafana instance.")
