@@ -26,6 +26,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.38.0
 
+- un-deprecate all features in `monitoring` block except grafana-agent-operator [#19001](https://github.com/grafana/loki/pull/19001)
 - [FEATURE] Make access modes for persistence on all PVCs and StatefulSets editable [#13474](https://github.com/grafana/loki/pull/13474)
 - [FEATURE] Allow enabling user namespaces [#18661](https://github.com/grafana/loki/pull/18661)
 - [FEATURE] Allow configuring service types. [#18708](https://github.com/grafana/loki/pull/18708)
