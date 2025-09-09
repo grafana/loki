@@ -280,7 +280,7 @@ func (b *Builder) ObserveLogLine(tenantID string, path string, section int64, st
 
 	tenantPointers, ok := b.pointers[tenantID]
 	if !ok {
-		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize))
+		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize), b.cfg.TargetPageRows)
 		tenantPointers.SetTenant(tenantID)
 		b.pointers[tenantID] = tenantPointers
 	}
@@ -316,7 +316,7 @@ func (b *Builder) AppendColumnIndex(tenantID string, path string, section int64,
 
 	tenantPointers, ok := b.pointers[tenantID]
 	if !ok {
-		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize))
+		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize), b.cfg.TargetPageRows)
 		tenantPointers.SetTenant(tenantID)
 		b.pointers[tenantID] = tenantPointers
 	}
