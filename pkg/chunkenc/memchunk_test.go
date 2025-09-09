@@ -1624,13 +1624,13 @@ func TestMemChunk_Rebound(t *testing.T) {
 			{
 				name: "remove everything",
 				err:  chunk.ErrRewriteNoDataLeft,
-				filterFunc: func(ts time.Time, _ string, _ labels.Labels) bool {
+				filterFunc: func(_ time.Time, _ string, _ labels.Labels) bool {
 					return true
 				},
 			},
 			{
 				name: "remove nothing",
-				filterFunc: func(ts time.Time, _ string, _ labels.Labels) bool {
+				filterFunc: func(_ time.Time, _ string, _ labels.Labels) bool {
 					return false
 				},
 				shouldNotChangeChunk: true,
