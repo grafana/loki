@@ -18,7 +18,7 @@ import (
 // tables are open at a time.
 //
 // mergeTablesIncremental panics if maxMergeSize is less than 2.
-func mergeTablesIncremental(buf *tableBuffer, pageSize int, compressionOpts dataset.CompressionOptions, tables []*table, maxMergeSize int) (*table, error) {
+func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions, tables []*table, maxMergeSize int) (*table, error) {
 	if maxMergeSize < 2 {
 		panic("mergeTablesIncremental: merge size must be at least 2, got " + fmt.Sprint(maxMergeSize))
 	}
@@ -26,7 +26,7 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize int, compressionOpts data
 	// Even if there's only one table, we still pass to mergeTables to ensure
 	// it's compressed with compressionOpts.
 	if len(tables) == 1 {
-		return mergeTables(buf, pageSize, compressionOpts, tables)
+		return mergeTables(buf, pageSize, pageRowCount, compressionOpts, tables)
 	}
 
 	in := tables
@@ -36,7 +36,7 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize int, compressionOpts data
 
 		for i := 0; i < len(in); i += maxMergeSize {
 			set := in[i:min(i+maxMergeSize, len(in))]
-			merged, err := mergeTables(buf, pageSize, compressionOpts, set)
+			merged, err := mergeTables(buf, pageSize, pageRowCount, compressionOpts, set)
 			if err != nil {
 				return nil, err
 			}
@@ -51,13 +51,13 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize int, compressionOpts data
 
 // mergeTables merges the provided sorted tables into a new single sorted table
 // using k-way merge.
-func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.CompressionOptions, tables []*table) (*table, error) {
+func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions, tables []*table) (*table, error) {
 	buf.Reset()
 
 	var (
-		streamIDBuilder  = buf.StreamID(pageSize)
-		timestampBuilder = buf.Timestamp(pageSize)
-		messageBuilder   = buf.Message(pageSize, compressionOpts)
+		streamIDBuilder  = buf.StreamID(pageSize, pageRowCount)
+		timestampBuilder = buf.Timestamp(pageSize, pageRowCount)
+		messageBuilder   = buf.Message(pageSize, pageRowCount, compressionOpts)
 	)
 
 	var (
@@ -120,7 +120,7 @@ func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.Compres
 			case ColumnTypeTimestamp:
 				_ = timestampBuilder.Append(rows, value)
 			case ColumnTypeMetadata:
-				columnBuilder := buf.Metadata(column.Desc.Tag, pageSize, compressionOpts)
+				columnBuilder := buf.Metadata(column.Desc.Tag, pageSize, pageRowCount, compressionOpts)
 				_ = columnBuilder.Append(rows, value)
 			case ColumnTypeMessage:
 				_ = messageBuilder.Append(rows, value)

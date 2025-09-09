@@ -21,7 +21,7 @@ var pointerTestData = []SectionPointer{
 }
 
 func TestRowReader(t *testing.T) {
-	dec := buildPointersDecoder(t, 100) // Many pages
+	dec := buildPointersDecoder(t, 0, 2) // 3 pages
 	r := NewRowReader(dec)
 	actual, err := readAllPointers(context.Background(), r)
 	require.NoError(t, err)
@@ -30,10 +30,10 @@ func TestRowReader(t *testing.T) {
 
 func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }
 
-func buildPointersDecoder(t *testing.T, pageSize int) *Section {
+func buildPointersDecoder(t *testing.T, pageSize, pageRows int) *Section {
 	t.Helper()
 
-	s := NewBuilder(nil, pageSize)
+	s := NewBuilder(nil, pageSize, pageRows)
 	for _, d := range pointerTestData {
 		if d.PointerKind == PointerKindStreamIndex {
 			s.ObserveStream(d.Path, d.Section, d.StreamIDRef, d.StreamID, d.StartTs, d.UncompressedSize)
