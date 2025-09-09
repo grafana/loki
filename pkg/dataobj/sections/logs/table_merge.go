@@ -72,6 +72,9 @@ func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.Compres
 		r := dataset.NewReader(dataset.ReaderOptions{
 			Dataset: t,
 			Columns: dsetColumns,
+
+			// The table is in memory, so don't prefetch.
+			Prefetch: false,
 		})
 
 		tableSequences = append(tableSequences, &tableSequence{
