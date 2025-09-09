@@ -92,13 +92,14 @@ type Builder struct {
 
 // NewBuilder creates a new pointers section builder. The pageSize argument
 // specifies how large pages should be.
-func NewBuilder(metrics *Metrics, pageSize int) *Builder {
+func NewBuilder(metrics *Metrics, pageSize, pageRows int) *Builder {
 	if metrics == nil {
 		metrics = NewMetrics()
 	}
 	return &Builder{
-		metrics:  metrics,
-		pageSize: pageSize,
+		metrics:      metrics,
+		pageSize:     pageSize,
+		pageRowCount: pageRows,
 
 		streamLookup: make(map[streamKey]*SectionPointer),
 		pointers:     make([]*SectionPointer, 0, 1024),
