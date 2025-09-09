@@ -36,12 +36,11 @@ var (
 const testTenant = "test-tenant"
 
 const (
-	StoreDataObj         = "dataobj"
 	StoreDataObjV2Engine = "dataobj-engine"
 	StoreChunk           = "chunk"
 )
 
-var allStores = []string{StoreDataObj, StoreDataObjV2Engine, StoreChunk}
+var allStores = []string{StoreDataObjV2Engine, StoreChunk}
 
 //go:generate go run ./cmd/generate/main.go -size 2147483648 -dir ./data -tenant test-tenant
 
@@ -63,15 +62,6 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) logql.Engine {
 		}
 
 		return store.engine
-	case StoreDataObj:
-		store, err := NewDataObjStore(DefaultDataDir, testTenant)
-		if err != nil {
-			tb.Fatal(err)
-		}
-		querier, err = store.Querier()
-		if err != nil {
-			tb.Fatal(err)
-		}
 	case StoreChunk:
 		store, err := NewChunkStore(DefaultDataDir, testTenant)
 		if err != nil {

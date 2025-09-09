@@ -15,6 +15,11 @@ type BuilderOptions struct {
 	// slightly larger or smaller.
 	PageSizeHint int
 
+	// PageMaxRowCount is the limit for the number of rows of the page.
+	// When 0 or a negative number, then builders use the [BuilderOptions.PageSizeHint]
+	// option to determine when a page needs to be flushed.
+	PageMaxRowCount int
+
 	// Type is the type of data in the column. Type.Physical is used for
 	// encoding; Type.Logical is used as a hint to readers.
 	Type ColumnType

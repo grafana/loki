@@ -139,7 +139,7 @@ func Test_streamsView(t *testing.T) {
 }
 
 func buildStreamsSection(t *testing.T, streamLabels []labels.Labels) *streams.Section {
-	streamsBuilder := streams.NewBuilder(nil, 8192)
+	streamsBuilder := streams.NewBuilder(nil, 8192, 0)
 	for _, stream := range streamLabels {
 		_ = streamsBuilder.Record(stream, time.Now().UTC(), 0)
 	}
