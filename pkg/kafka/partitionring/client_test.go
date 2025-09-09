@@ -1,4 +1,4 @@
-package consumer
+package partitionring
 
 import (
 	"context"
@@ -48,7 +48,7 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 	var processingWg sync.WaitGroup
 
 	// Create two consumers using our Client wrapper
-	createConsumer := func(id string) *Client {
+	createConsumer := func(id string) *KafkaClient {
 		cfg := kafka.Config{
 			ReaderConfig: kafka.ClientConfig{
 				Address: addrs[0],
@@ -60,7 +60,7 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 		var assignedPartitions sync.Map
 		var partitionsLock sync.Mutex
 
-		client, err := NewGroupClient(cfg, mockReader, "test-group", log.NewNopLogger(),
+		client, err := NewKafkaClient(cfg, mockReader, "test-group", log.NewNopLogger(),
 			prometheus.NewRegistry(),
 			kgo.ClientID(id),
 			kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, assigned map[string][]int32) {
@@ -222,7 +222,7 @@ func TestPartitionContinuityDuringRebalance(t *testing.T) {
 	var lastOffset int64
 	var offsetMu sync.Mutex
 
-	createConsumer := func(id string) *Client {
+	createConsumer := func(id string) *KafkaClient {
 		cfg := kafka.Config{
 			ReaderConfig: kafka.ClientConfig{
 				Address: addrs[0],
@@ -230,7 +230,7 @@ func TestPartitionContinuityDuringRebalance(t *testing.T) {
 			Topic: "test-topic",
 		}
 
-		client, err := NewGroupClient(cfg, mockReader, "test-group", log.NewNopLogger(),
+		client, err := NewKafkaClient(cfg, mockReader, "test-group", log.NewNopLogger(),
 			prometheus.NewRegistry(),
 			kgo.ClientID(id),
 			kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, assigned map[string][]int32) {

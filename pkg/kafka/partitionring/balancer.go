@@ -1,4 +1,4 @@
-package consumer
+package partitionring
 
 import (
 	"sort"
@@ -8,42 +8,43 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
-type cooperativeActiveStickyBalancer struct {
-	kgo.GroupBalancer
-	partitionRing ring.PartitionRingReader
-}
-
-// NewCooperativeActiveStickyBalancer creates a balancer that combines Kafka's cooperative sticky balancing
-// with partition ring awareness. It works by:
+// A cooperativeActiveStickyBalancer combines Kafka's cooperative sticky
+// balancer with the partition ring.
 //
-// 1. Using the partition ring to determine which partitions are "active" (i.e. should be processed)
-// 2. Filtering out inactive partitions from member assignments during rebalancing, but still assigning them
-// 3. Applying cooperative sticky balancing only to the active partitions
+// It uses the partition ring to determine which partitions are "active"
+// (i.e. should be consumed) and which partitions are "inactive". All active
+// partitions are balanced between consumers using the cooperative sticky
+// balancer, while inactive partitions are assigned in a round-robin fashion.
 //
 // This ensures that:
-// - Active partitions are balanced evenly across consumers using sticky assignment for optimal processing
-// - Inactive partitions are still assigned and consumed in a round-robin fashion, but without sticky assignment
-// - All partitions are monitored even if inactive, allowing quick activation when needed
-// - Partition handoff happens cooperatively to avoid stop-the-world rebalances
 //
-// This balancer should be used with [NewGroupClient] which monitors the partition ring and triggers
-// rebalancing when the set of active partitions changes. This ensures optimal partition distribution
-// as the active partition set evolves.
-func NewCooperativeActiveStickyBalancer(partitionRing ring.PartitionRingReader) kgo.GroupBalancer {
+//  1. Active partitions are balanced evenly across consumers.
+//  2. Inactive partitions are drained.
+//  3. All partitions, both active and inactive, are watched continuously
+//     in case they transition between active and inactive and vice versa.
+type cooperativeActiveStickyBalancer struct {
+	kgo.GroupBalancer
+	ringReader ring.PartitionRingReader
+}
+
+// newCooperativeActiveStickyBalancer returns a new cooperativeActiveStickyBalancer.
+func newCooperativeActiveStickyBalancer(ringReader ring.PartitionRingReader) kgo.GroupBalancer {
 	return &cooperativeActiveStickyBalancer{
 		GroupBalancer: kgo.CooperativeStickyBalancer(),
-		partitionRing: partitionRing,
+		ringReader:    ringReader,
 	}
 }
 
+// ProtocolName implements the [kgo.GroupBalancer] interface.
 func (*cooperativeActiveStickyBalancer) ProtocolName() string {
 	return "cooperative-active-sticky"
 }
 
+// MemberBalance implements the [kgo.GroupBalancer] interface.
 func (b *cooperativeActiveStickyBalancer) MemberBalancer(members []kmsg.JoinGroupResponseMember) (kgo.GroupMemberBalancer, map[string]struct{}, error) {
 	// Get active partitions from ring
 	activePartitions := make(map[int32]struct{})
-	for _, id := range b.partitionRing.PartitionRing().PartitionIDs() {
+	for _, id := range b.ringReader.PartitionRing().PartitionIDs() {
 		activePartitions[id] = struct{}{}
 	}
 
@@ -85,16 +86,10 @@ func (b *cooperativeActiveStickyBalancer) MemberBalancer(members []kmsg.JoinGrou
 	return balancer, balancer.MemberTopics(), err
 }
 
-// syncAssignments implements kgo.IntoSyncAssignment
-type syncAssignments []kmsg.SyncGroupRequestGroupAssignment
-
-func (s syncAssignments) IntoSyncAssignment() []kmsg.SyncGroupRequestGroupAssignment {
-	return s
-}
-
+// Balance implements the [kgo.GroupMemberBalancer] interface.
 func (b *cooperativeActiveStickyBalancer) Balance(balancer *kgo.ConsumerBalancer, topics map[string]int32) kgo.IntoSyncAssignment {
 	// Get active partition count
-	actives := b.partitionRing.PartitionRing().PartitionsCount()
+	actives := b.ringReader.PartitionRing().PartitionsCount()
 
 	// First, let the sticky balancer handle active partitions
 	activeTopics := make(map[string]int32)
@@ -156,4 +151,11 @@ func (b *cooperativeActiveStickyBalancer) Balance(balancer *kgo.ConsumerBalancer
 	}
 
 	return syncAssignments(plan)
+}
+
+// syncAssignments implements kgo.IntoSyncAssignment
+type syncAssignments []kmsg.SyncGroupRequestGroupAssignment
+
+func (s syncAssignments) IntoSyncAssignment() []kmsg.SyncGroupRequestGroupAssignment {
+	return s
 }
