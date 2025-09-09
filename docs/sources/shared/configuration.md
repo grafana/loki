@@ -1090,7 +1090,7 @@ dataobj:
       # The maximum row count for pages to use for the data object builder. A
       # value of 0 means no limit.
       # CLI flag: -dataobj-consumer.max-page-rows
-      [target_page_rows: <int> | default = 0]
+      [max_page_rows: <int> | default = 0]
 
       # The target maximum size of the encoded object and all of its encoded
       # sections (after compression), to limit memory usage of a builder.

@@ -40,7 +40,7 @@ type BuilderConfig struct {
 	// MaxPageRows configures a maximum row count for encoded pages within the data
 	// object. If set to 0 or negative number, the page size will not be limited by a
 	// row count.
-	MaxPageRows int `yaml:"target_page_rows"`
+	MaxPageRows int `yaml:"max_page_rows"`
 
 	// TODO(rfratto): We need an additional parameter for TargetMetadataSize, as
 	// metadata payloads can't be split and must be downloaded in a single
