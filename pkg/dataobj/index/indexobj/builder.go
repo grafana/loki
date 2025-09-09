@@ -36,7 +36,8 @@ type BuilderConfig struct {
 	TargetPageSize flagext.Bytes `yaml:"target_page_size"`
 
 	// TargetPageRows configures a target row count for encoded pages within the data
-	// object.
+	// object. If set to 0 or negative number, the page size will not be limited by a
+	// row count.
 	TargetPageRows int `yaml:"target_page_rows"`
 
 	// TODO(rfratto): We need an additional parameter for TargetMetadataSize, as
@@ -74,7 +75,7 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 	_ = cfg.TargetSectionSize.Set("16MB")
 
 	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the data object builder.")
-	f.IntVar(&cfg.TargetPageRows, prefix+"target-page-rows", 0, "The target row count for pages to use for the data object builder. Takes precedence over target-page-size if value is greater than 0.")
+	f.IntVar(&cfg.TargetPageRows, prefix+"target-page-rows", 0, "The target row count for pages to use for the data object builder. A value of 0 means no limit.")
 	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the data object builder.")
 	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "Configures a maximum size for sections, for sections that support it.")
 	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of the buffer to use for sorting logs.")

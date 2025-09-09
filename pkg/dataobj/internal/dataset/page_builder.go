@@ -82,6 +82,18 @@ func newPageBuilder(opts BuilderOptions) (*pageBuilder, error) {
 	}, nil
 }
 
+// The function canAppend checks whether `n` values with a total value size of `valueSize` can be appended to the current page
+// based on the options [dataobj.BuilderOptions.PageMaxRowCount] and [dataobj.BuilderOptions.PageSizeHint].
+func (b *pageBuilder) canAppend(n, valueSize int) bool {
+	if b.opts.PageMaxRowCount > 0 && b.Rows()+n > b.opts.PageMaxRowCount {
+		return false
+	}
+	if sz := b.EstimatedSize(); b.opts.PageSizeHint > 0 && sz > 0 && sz+valueSize > b.opts.PageSizeHint {
+		return false
+	}
+	return true
+}
+
 // Append appends value into the pageBuilder. Append returns true if the data
 // was appended; false if the pageBuilder is full.
 func (b *pageBuilder) Append(value Value) bool {
@@ -89,21 +101,14 @@ func (b *pageBuilder) Append(value Value) bool {
 		return b.AppendNull()
 	}
 
-	// If [dataobj.BuilderOptions.PageMaxRowCount] is specified it takes presedence over the [dataobj.BuilderOptions.PageSizeHint].
-	if b.opts.PageMaxRowCount > 0 {
-		if b.Rows() >= b.opts.PageMaxRowCount {
-			return false
-		}
-	} else {
-		// We can't accurately know whether adding value would tip us over the page
-		// size: we don't know the current state of the encoders and we don't know
-		// for sure how much space value will fill.
-		//
-		// We use a rough estimate which will tend to overshoot the page size, making
-		// sure we rarely go over.
-		if sz := b.EstimatedSize(); sz > 0 && sz+valueSize(value) > b.opts.PageSizeHint {
-			return false
-		}
+	// We can't accurately know whether adding value would tip us over the page
+	// size: we don't know the current state of the encoders and we don't know
+	// for sure how much space value will fill.
+	//
+	// We use a rough estimate which will tend to overshoot the page size, making
+	// sure we rarely go over.
+	if !b.canAppend(1, valueSize(value)) {
+		return false
 	}
 
 	// Update statistics. We only do this for non-NULL values,
@@ -128,20 +133,13 @@ func (b *pageBuilder) Append(value Value) bool {
 // AppendNull appends a NULL value to the Builder. AppendNull returns true if
 // the NULL was appended, or false if the Builder is full.
 func (b *pageBuilder) AppendNull() bool {
-	// If [dataobj.BuilderOptions.PageMaxRowCount] is specified it takes presedence over the [dataobj.BuilderOptions.PageSizeHint].
-	if b.opts.PageMaxRowCount > 0 {
-		if b.Rows() >= b.opts.PageMaxRowCount {
-			return false
-		}
-	} else {
-		// See comment in Append for why we can only estimate the cost of appending a
-		// value.
-		//
-		// Here we assume appending a NULL costs one byte, but in reality most NULLs
-		// have no cost depending on the state of our bitmap encoder.
-		if sz := b.EstimatedSize(); sz > 0 && sz+1 > b.opts.PageSizeHint {
-			return false
-		}
+	// See comment in [pageBuilder.Append] for why we can only estimate the cost of appending a
+	// value.
+	//
+	// Here we assume appending a NULL costs one byte, but in reality most NULLs
+	// have no cost depending on the state of our bitmap encoder.
+	if !b.canAppend(1, 1) {
+		return false
 	}
 
 	// The following call won't fail; it only returns an error when the
@@ -157,11 +155,6 @@ func (b *pageBuilder) AppendNull() bool {
 // AppendNulls appends n NULL values to the Builder. AppendNulls returns true if
 // the NULLs were appended, or false if the Builder is full.
 func (b *pageBuilder) AppendNulls(n uint64) bool {
-	// If [dataobj.BuilderOptions.PageMaxRowCount] is specified it takes presedence over the [dataobj.BuilderOptions.PageSizeHint].
-	if b.opts.PageMaxRowCount > 0 && b.Rows() >= b.opts.PageMaxRowCount {
-		return false
-	}
-
 	// This is tricky to estimate without knowing the encoder state.
 	//
 	// For N nulls:
@@ -169,7 +162,7 @@ func (b *pageBuilder) AppendNulls(n uint64) bool {
 	// - Bitpacking: 3-9 bytes total (2-8 byte header + 1 byte per 8 nulls)
 	//
 	// Using 4 bytes as a conservative average estimate.
-	if sz := b.EstimatedSize(); sz > 0 && sz+4 > b.opts.PageSizeHint {
+	if !b.canAppend(int(n), 4) {
 		return false
 	}
 

@@ -1087,8 +1087,8 @@ dataobj:
       # CLI flag: -dataobj-consumer.target-page-size
       [target_page_size: <int> | default = 2MiB]
 
-      # The target row count for pages to use for the data object builder. Takes
-      # precedence over target-page-size if value is greater than 0.
+      # The target row count for pages to use for the data object builder. A
+      # value of 0 means no limit.
       # CLI flag: -dataobj-consumer.target-page-rows
       [target_page_rows: <int> | default = 0]
 
@@ -1129,8 +1129,8 @@ dataobj:
     # CLI flag: -dataobj-index-builder.target-page-size
     [target_page_size: <int> | default = 128KiB]
 
-    # The target row count for pages to use for the data object builder. Takes
-    # precedence over target-page-size if value is greater than 0.
+    # The target row count for pages to use for the data object builder. A value
+    # of 0 means no limit.
     # CLI flag: -dataobj-index-builder.target-page-rows
     [target_page_rows: <int> | default = 0]
 
