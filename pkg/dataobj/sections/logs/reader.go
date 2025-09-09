@@ -263,6 +263,7 @@ func (r *Reader) init(ctx context.Context) error {
 		Dataset:    dset,
 		Columns:    dset.Columns(),
 		Predicates: orderPredicates(preds),
+		Prefetch:   true,
 	}
 	if r.inner == nil {
 		r.inner = dataset.NewReader(innerOptions)

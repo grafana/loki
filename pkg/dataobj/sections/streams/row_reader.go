@@ -103,6 +103,7 @@ func (r *RowReader) initReader() error {
 		Dataset:    dset,
 		Columns:    columns,
 		Predicates: predicates,
+		Prefetch:   true,
 	}
 
 	if r.reader == nil {

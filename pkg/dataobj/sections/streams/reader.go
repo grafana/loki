@@ -260,6 +260,7 @@ func (r *Reader) init() error {
 		Dataset:    dset,
 		Columns:    dset.Columns(),
 		Predicates: preds,
+		Prefetch:   true,
 	}
 	if r.inner == nil {
 		r.inner = dataset.NewReader(innerOptions)

@@ -85,8 +85,8 @@ import (
 type readerDownloader struct {
 	inner Dataset
 
-	origColumns                    []Column
-	allColumns, primary, secondary []Column
+	origColumns, origPrimary, origSecondary []Column
+	allColumns, primary, secondary          []Column
 
 	dsetRanges rowRanges // Ranges of rows to _include_ in the download.
 
@@ -140,8 +140,10 @@ func (dl *readerDownloader) AddColumn(col Column, primary bool) {
 	dl.allColumns = append(dl.allColumns, wrappedCol)
 
 	if primary {
+		dl.origPrimary = append(dl.origPrimary, col)
 		dl.primary = append(dl.primary, wrappedCol)
 	} else {
+		dl.origSecondary = append(dl.origSecondary, col)
 		dl.secondary = append(dl.secondary, wrappedCol)
 	}
 }
@@ -168,6 +170,18 @@ func (dl *readerDownloader) SetReadRange(r rowRange) {
 func (dl *readerDownloader) Mask(r rowRange) {
 	dl.rangeMask.Add(r)
 }
+
+// OrigColumns returns the original columns of the readerDownloader in the order
+// they were added.
+func (dl *readerDownloader) OrigColumns() []Column { return dl.origColumns }
+
+// OrigPrimaryColumns returns the original primary columns of the
+// readerDownloader in the order they were added.
+func (dl *readerDownloader) OrigPrimaryColumns() []Column { return dl.origPrimary }
+
+// OrigSecondaryColumns returns the original secondary columns of the
+// readerDownloader in the order they were added.
+func (dl *readerDownloader) OrigSecondaryColumns() []Column { return dl.origSecondary }
 
 // AllColumns returns the wrapped columns of the readerDownloader in the order
 // they were added.
@@ -447,9 +461,13 @@ func (dl *readerDownloader) Reset(dset Dataset) {
 	dl.readRange = rowRange{}
 
 	dl.origColumns = sliceclear.Clear(dl.origColumns)
+	dl.origPrimary = sliceclear.Clear(dl.origPrimary)
+	dl.origSecondary = sliceclear.Clear(dl.origSecondary)
+
 	dl.allColumns = sliceclear.Clear(dl.allColumns)
 	dl.primary = sliceclear.Clear(dl.primary)
 	dl.secondary = sliceclear.Clear(dl.secondary)
+
 	dl.rangeMask = sliceclear.Clear(dl.rangeMask)
 
 	// dl.dsetRanges isn't owned by the downloader, so we don't use

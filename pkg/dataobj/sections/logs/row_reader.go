@@ -145,6 +145,7 @@ func (r *RowReader) initReader() error {
 		Dataset:    dset,
 		Columns:    columns,
 		Predicates: orderPredicates(predicates),
+		Prefetch:   true,
 	}
 
 	if r.reader == nil {
