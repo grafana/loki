@@ -88,10 +88,10 @@ func TestBuilder(t *testing.T) {
 		require.NoError(t, err)
 		defer closer.Close()
 
-		require.Equal(t, 1, obj.Sections().Count(streams.CheckSection))
-		require.Equal(t, 1, obj.Sections().Count(pointers.CheckSection))
-		require.Equal(t, 0, obj.Sections().Count(logs.CheckSection))
-		require.Equal(t, 0, obj.Sections().Count(indexpointers.CheckSection))
+		require.Equal(t, 1, obj.Sections().Count(t.Context(), streams.CheckSection))
+		require.Equal(t, 1, obj.Sections().Count(t.Context(), pointers.CheckSection))
+		require.Equal(t, 0, obj.Sections().Count(t.Context(), logs.CheckSection))
+		require.Equal(t, 0, obj.Sections().Count(t.Context(), indexpointers.CheckSection))
 	})
 
 	t.Run("BuildMultiTenant", func(t *testing.T) {
@@ -115,10 +115,10 @@ func TestBuilder(t *testing.T) {
 		require.NoError(t, err)
 		defer closer.Close()
 
-		require.Equal(t, len(tenants), obj.Sections().Count(streams.CheckSection))
-		require.Equal(t, len(tenants), obj.Sections().Count(pointers.CheckSection))
-		require.Equal(t, 0, obj.Sections().Count(logs.CheckSection))
-		require.Equal(t, 0, obj.Sections().Count(indexpointers.CheckSection))
+		require.Equal(t, len(tenants), obj.Sections().Count(t.Context(), streams.CheckSection))
+		require.Equal(t, len(tenants), obj.Sections().Count(t.Context(), pointers.CheckSection))
+		require.Equal(t, 0, obj.Sections().Count(t.Context(), logs.CheckSection))
+		require.Equal(t, 0, obj.Sections().Count(t.Context(), indexpointers.CheckSection))
 	})
 }
 

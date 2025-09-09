@@ -22,7 +22,7 @@ import (
 // Results objects returned to yield may be reused and must be copied for further use via DeepCopy().
 func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[Record] {
 	return result.Iter(func(yield func(Record) bool) error {
-		for i, section := range obj.Sections().Filter(CheckSection) {
+		for i, section := range obj.Sections().Filter(ctx, CheckSection) {
 			logsSection, err := Open(ctx, section)
 			if err != nil {
 				return fmt.Errorf("opening section %d: %w", i, err)

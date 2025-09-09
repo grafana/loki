@@ -463,7 +463,7 @@ func shardObjects(
 func findLogsSection(ctx context.Context, obj *dataobj.Object, index int) (*logs.Section, error) {
 	var count int
 
-	for _, section := range obj.Sections().Filter(logs.CheckSection) {
+	for _, section := range obj.Sections().Filter(ctx, logs.CheckSection) {
 		if count == index {
 			return logs.Open(ctx, section)
 		}
@@ -474,15 +474,7 @@ func findLogsSection(ctx context.Context, obj *dataobj.Object, index int) (*logs
 }
 
 func findStreamsSection(ctx context.Context, obj *dataobj.Object) (*streams.Section, error) {
-	targetTenant, err := user.ExtractOrgID(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("extracting org ID: %w", err)
-	}
-
-	for _, section := range obj.Sections().Filter(streams.CheckSection) {
-		if section.Tenant != targetTenant {
-			continue
-		}
+	for _, section := range obj.Sections().Filter(ctx, streams.CheckSection) {
 		return streams.Open(ctx, section)
 	}
 
