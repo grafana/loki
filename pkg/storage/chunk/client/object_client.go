@@ -163,6 +163,15 @@ func (o *client) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.C
 	return util.GetParallelChunks(ctx, getChunkMaxParallel, chunks, o.getChunk)
 }
 
+func (o *client) OpenChunk(ctx context.Context, c chunk.Chunk) (io.ReadCloser, error) {
+	key := o.schema.ExternalKey(c.ChunkRef)
+	if o.keyEncoder != nil {
+		key = o.keyEncoder(o.schema, c)
+	}
+	readCloser, _, err := o.store.GetObject(ctx, key)
+	return readCloser, err
+}
+
 func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContext, c chunk.Chunk) (chunk.Chunk, error) {
 	if ctx.Err() != nil {
 		return chunk.Chunk{}, ctx.Err()

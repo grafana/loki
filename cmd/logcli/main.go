@@ -201,6 +201,12 @@ LogQL documentation:
 https://grafana.com/docs/loki/latest/logql/`)
 	instantQuery = newQuery(true, instantQueryCmd)
 
+	copyChunksCmd   = app.Command("copy-chunks", `Fetch the chunks for a LogQL query.`)
+	copyChunksQuery = newQuery(false, copyChunksCmd)
+	destDir         = app.Flag("dest-dir", "Specify the location for writing chunks.").
+			Default("data").
+			String()
+
 	labelsCmd   = app.Command("labels", "Find values for a given label.")
 	labelsQuery = newLabelQuery(labelsCmd)
 
@@ -417,6 +423,12 @@ func main() {
 	}
 
 	switch cmd {
+	case copyChunksCmd.FullCommand():
+		orgID := queryClient.GetOrgID()
+		err := copyChunksQuery.DoLocalChunks(*destDir, false, orgID)
+		if err != nil {
+			log.Fatalf("Unable to load chunks: %s", err)
+		}
 	case queryCmd.FullCommand():
 		location, err := time.LoadLocation(*timezone)
 		if err != nil {

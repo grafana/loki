@@ -22,11 +22,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/loki"
+	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/storage"
+	storage_chunk "github.com/grafana/loki/v3/pkg/storage/chunk"
 	chunk "github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/cfg"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -543,6 +547,60 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 
 	resPrinter.PrintResult(value, out, nil)
 	return nil
+}
+
+func (q *Query) DoLocalChunks(destDir string, useRemoteSchema bool, orgID string) error {
+	_, store, err := q.newLocalQueryEngine(useRemoteSchema, orgID)
+	if err != nil {
+		return err
+	}
+
+	params, err := logql.NewLiteralParams(q.QueryString, q.Start, q.End, 0, 0, q.resultsDirection(), uint32(q.Limit), nil, nil)
+	if err != nil {
+		return err
+	}
+	ctx := user.InjectOrgID(context.Background(), orgID)
+
+	expr := params.GetExpression().(syntax.LogSelectorExpr)
+	plan := &plan.QueryPlan{AST: expr}
+	predicate := storage_chunk.NewPredicate(expr.Matchers(), plan)
+	from, through := util.RoundToMilliseconds(q.Start, q.End)
+
+	chks, fetchers, err := store.GetChunks(ctx, orgID, from, through, predicate, params.GetStoreChunks())
+	if err != nil {
+		return err
+	}
+
+	type opener interface {
+		OpenChunk(context.Context, storage_chunk.Chunk) (io.ReadCloser, error)
+	}
+
+	chunkNum := 0
+	for i := range chks {
+		op := fetchers[i].Client().(chunk.MetricsChunkClient).Client.(opener)
+		for j, c := range chks[i] {
+			fmt.Printf("%d/%d: %v ", i, j, c.ChunkRef)
+
+			chunkObject, err := op.OpenChunk(ctx, c)
+			if err != nil {
+				return err
+			}
+			fileName := fmt.Sprintf("data/chunk_%03d.gz", chunkNum)
+			dst, err := os.Create(fileName)
+			if err != nil {
+				return err
+			}
+			sizeWritten, err := io.Copy(dst, chunkObject)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("%d bytes\n", sizeWritten)
+			chunkObject.Close()
+			chunkNum++
+		}
+	}
+
+	return err
 }
 
 func GetObjectClient(store string, conf loki.Config, cm storage.ClientMetrics) (chunk.ObjectClient, error) {
