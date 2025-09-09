@@ -1087,9 +1087,9 @@ dataobj:
       # CLI flag: -dataobj-consumer.target-page-size
       [target_page_size: <int> | default = 2MiB]
 
-      # The target row count for pages to use for the data object builder. A
+      # The maximum row count for pages to use for the data object builder. A
       # value of 0 means no limit.
-      # CLI flag: -dataobj-consumer.target-page-rows
+      # CLI flag: -dataobj-consumer.max-page-rows
       [target_page_rows: <int> | default = 0]
 
       # The target maximum size of the encoded object and all of its encoded
