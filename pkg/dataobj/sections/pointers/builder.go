@@ -360,7 +360,7 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	// (which may fail due to a caller) since we guarantee correct usage of the
 	// encoding API.
 	{
-		var errs []error
+		errs := make([]error, 0, 12) // 12 possible errors for 12 columns. Better check if encodeColumn(enc, ...) returns not nil?
 		errs = append(errs, encodeColumn(enc, ColumnTypePath, pathBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypeSection, sectionBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypePointerKind, pointerKindBuilder))
