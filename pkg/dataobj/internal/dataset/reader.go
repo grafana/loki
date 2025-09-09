@@ -29,15 +29,6 @@ type ReaderOptions struct {
 	// Expressions in Predicate may only reference columns in Columns.
 	// Holds a list of predicates that can be sequentially applied to the dataset.
 	Predicates []Predicate
-
-	// TargetCacheSize configures the amount of memory to target for caching
-	// pages in memory. The cache may exceed this size if the combined size of
-	// all pages required for a single call to [Reader.Reead] exceeds this value.
-	//
-	// TargetCacheSize is used to download and cache additional pages in advance
-	// of when they're needed. If TargetCacheSize is 0, only immediately required
-	// pages are cached.
-	TargetCacheSize int
 }
 
 // A Reader reads [Row]s from a [Dataset].
@@ -505,9 +496,9 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 	//   3. Provide the overall dataset row ranges that will be valid to read.
 
 	if r.dl == nil {
-		r.dl = newReaderDownloader(r.opts.Dataset, r.opts.TargetCacheSize)
+		r.dl = newReaderDownloader(r.opts.Dataset)
 	} else {
-		r.dl.Reset(r.opts.Dataset, r.opts.TargetCacheSize)
+		r.dl.Reset(r.opts.Dataset)
 	}
 
 	mask := bitmask.New(len(r.opts.Columns))

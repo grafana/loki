@@ -100,8 +100,6 @@ func (r *RowReader) initReader() error {
 		Dataset:    dset,
 		Columns:    columns,
 		Predicates: predicates,
-
-		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
 	}
 
 	if r.reader == nil {

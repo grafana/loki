@@ -4880,13 +4880,6 @@ engine:
   # CLI flag: -querier.engine.merge-prefetch-count
   [merge_prefetch_count: <int> | default = 0]
 
-  # Experimental: Maximum total size of future pages for DataObjScan to download
-  # before they are needed, for roundtrip reduction to object storage. Setting
-  # to zero disables downloading future pages. Only used in the next generation
-  # query engine.
-  # CLI flag: -querier.engine.dataobjscan-page-cache-size
-  [dataobjscan_page_cache_size: <int> | default = 0B]
-
   # Configures how to read byte ranges from object storage when using the V2
   # engine.
   range_reads:
