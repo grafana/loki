@@ -29,7 +29,7 @@ var tocBuilderCfg = indexobj.BuilderConfig{
 	TargetSectionSize: 4 * 1024 * 1024,  // object size / 8
 
 	// TODO(chaudum): Should we set the page limit by the number of rows, rather than by bytes size?
-	// TargetPageRows: 20000,
+	// MaxPageRows: 20000,
 
 	SectionStripeMergeLimit: 2,
 }
