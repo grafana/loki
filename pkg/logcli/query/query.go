@@ -431,42 +431,41 @@ func getLatestConfig(client chunk.ObjectClient, orgID string) (*config.SchemaCon
 	return nil, errors.Wrap(err, "could not find a schema config file matching any of the known patterns. First verify --org-id is correct. Then check the root of the bucket for a file with `schemaconfig` in the name. If no such file exists it may need to be created or re-synced from the source.")
 }
 
-// DoLocalQuery executes the query against the local store using a Loki configuration file.
-func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string, useRemoteSchema bool) error {
+func (q *Query) newLocalQueryEngine(useRemoteSchema bool, orgID string) (*logql.QueryEngine, *storage.LokiStore, error) {
 	var conf loki.Config
 	conf.RegisterFlags(flag.CommandLine)
 	if q.LocalConfig == "" {
-		return errors.New("no supplied config file")
+		return nil, nil, errors.New("no supplied config file")
 	}
 	if err := cfg.YAML(q.LocalConfig, false, true)(&conf); err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	cm := storage.NewClientMetrics()
 	if useRemoteSchema {
 		if q.SchemaStore == "" {
-			return fmt.Errorf("failed to fetch remote schema. -schema-store is not set")
+			return nil, nil, fmt.Errorf("failed to fetch remote schema. -schema-store is not set")
 		}
 
 		client, err := GetObjectClient(q.SchemaStore, conf, cm)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 
 		loadedSchema, err := getLatestConfig(client, orgID)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 		conf.SchemaConfig = *loadedSchema
 	}
 
 	if err := conf.Validate(); err != nil {
-		return err
+		return nil, nil, err
 	}
 
 	limits, err := validation.NewOverrides(conf.LimitsConfig, nil)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	conf.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 	conf.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
@@ -475,10 +474,18 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 
 	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, cm, prometheus.DefaultRegisterer, util_log.Logger, constants.Loki)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
-	eng := logql.NewEngine(conf.Querier.Engine, querier, limits, util_log.Logger)
+	return logql.NewEngine(conf.Querier.Engine, querier, limits, util_log.Logger), querier, nil
+}
+
+// DoLocalQuery executes the query against the local store using a Loki configuration file.
+func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string, useRemoteSchema bool) error {
+	eng, _, err := q.newLocalQueryEngine(useRemoteSchema, orgID)
+	if err != nil {
+		return err
+	}
 	var query logql.Query
 
 	if q.isInstant() {
