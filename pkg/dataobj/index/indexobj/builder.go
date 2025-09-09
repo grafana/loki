@@ -35,10 +35,10 @@ type BuilderConfig struct {
 	// object. TargetPageSize accounts for encoding, but not for compression.
 	TargetPageSize flagext.Bytes `yaml:"target_page_size"`
 
-	// TargetPageRows configures a target row count for encoded pages within the data
+	// MaxPageRows configures a maximum row count for encoded pages within the data
 	// object. If set to 0 or negative number, the page size will not be limited by a
 	// row count.
-	TargetPageRows int `yaml:"target_page_rows"`
+	MaxPageRows int `yaml:"max_page_rows"`
 
 	// TODO(rfratto): We need an additional parameter for TargetMetadataSize, as
 	// metadata payloads can't be split and must be downloaded in a single
@@ -74,9 +74,9 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 	_ = cfg.BufferSize.Set("2MB")
 	_ = cfg.TargetSectionSize.Set("16MB")
 
-	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the data object builder.")
-	f.IntVar(&cfg.TargetPageRows, prefix+"target-page-rows", 0, "The target row count for pages to use for the data object builder. A value of 0 means no limit.")
-	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the data object builder.")
+	f.Var(&cfg.TargetPageSize, prefix+"target-page-size", "The size of the target page to use for the index object builder.")
+	f.IntVar(&cfg.MaxPageRows, prefix+"max-page-rows", 0, "The maximum row count for pages to use for the index builder. A value of 0 means no limit.")
+	f.Var(&cfg.TargetObjectSize, prefix+"target-object-size", "The size of the target object to use for the index object builder.")
 	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "Configures a maximum size for sections, for sections that support it.")
 	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of the buffer to use for sorting logs.")
 	f.IntVar(&cfg.SectionStripeMergeLimit, prefix+"section-stripe-merge-limit", 2, "The maximum number of stripes to merge into a section at once. Must be greater than 1.")
@@ -190,7 +190,7 @@ func (b *Builder) AppendIndexPointer(tenantID string, path string, startTs time.
 
 	tenantIndexPointers, ok := b.indexPointers[tenantID]
 	if !ok {
-		tenantIndexPointers = indexpointers.NewBuilder(b.metrics.indexPointers, int(b.cfg.TargetPageSize), b.cfg.TargetPageRows)
+		tenantIndexPointers = indexpointers.NewBuilder(b.metrics.indexPointers, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
 		tenantIndexPointers.SetTenant(tenantID)
 		b.indexPointers[tenantID] = tenantIndexPointers
 	}
@@ -224,7 +224,7 @@ func (b *Builder) AppendStream(tenantID string, stream streams.Stream) (int64, e
 
 	tenantStreams, ok := b.streams[tenantID]
 	if !ok {
-		tenantStreams = streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.TargetPageRows)
+		tenantStreams = streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
 		tenantStreams.SetTenant(tenantID)
 		b.streams[tenantID] = tenantStreams
 	}
@@ -281,7 +281,7 @@ func (b *Builder) ObserveLogLine(tenantID string, path string, section int64, st
 
 	tenantPointers, ok := b.pointers[tenantID]
 	if !ok {
-		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize), b.cfg.TargetPageRows)
+		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
 		tenantPointers.SetTenant(tenantID)
 		b.pointers[tenantID] = tenantPointers
 	}
@@ -317,7 +317,7 @@ func (b *Builder) AppendColumnIndex(tenantID string, path string, section int64,
 
 	tenantPointers, ok := b.pointers[tenantID]
 	if !ok {
-		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize), b.cfg.TargetPageRows)
+		tenantPointers = pointers.NewBuilder(b.metrics.pointers, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
 		tenantPointers.SetTenant(tenantID)
 		b.pointers[tenantID] = tenantPointers
 	}

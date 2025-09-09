@@ -1125,16 +1125,16 @@ dataobj:
     [idle_flush_timeout: <duration> | default = 1h]
 
   index:
-    # The size of the target page to use for the data object builder.
+    # The size of the target page to use for the index object builder.
     # CLI flag: -dataobj-index-builder.target-page-size
     [target_page_size: <int> | default = 128KiB]
 
-    # The target row count for pages to use for the data object builder. A value
-    # of 0 means no limit.
-    # CLI flag: -dataobj-index-builder.target-page-rows
-    [target_page_rows: <int> | default = 0]
+    # The maximum row count for pages to use for the index builder. A value of 0
+    # means no limit.
+    # CLI flag: -dataobj-index-builder.max-page-rows
+    [max_page_rows: <int> | default = 0]
 
-    # The size of the target object to use for the data object builder.
+    # The size of the target object to use for the index object builder.
     # CLI flag: -dataobj-index-builder.target-object-size
     [target_object_size: <int> | default = 64MiB]
 
