@@ -11,13 +11,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/bufpool"
 )
 
+const optimisticReadBytes = 16 * 1024
+
 type decoder struct {
 	rr   rangeReader
 	size int64
 }
 
 func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
-	readSize := min(d.size, 16*1024)
+	readSize := min(d.size, optimisticReadBytes)
 	buf := bufpool.Get(int(readSize))
 	defer bufpool.Put(buf)
 
