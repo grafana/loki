@@ -48,7 +48,7 @@ type Mode interface {
 	Mode() int
 }
 
-// SetMode (SM) returns a sequence to set a mode.
+// SetMode (SM) or (DECSET) returns a sequence to set a mode.
 // The mode arguments are a list of modes to set.
 //
 // If one of the modes is a [DECMode], the function will returns two escape
@@ -72,7 +72,12 @@ func SM(modes ...Mode) string {
 	return SetMode(modes...)
 }
 
-// ResetMode (RM) returns a sequence to reset a mode.
+// DECSET is an alias for [SetMode].
+func DECSET(modes ...Mode) string {
+	return SetMode(modes...)
+}
+
+// ResetMode (RM) or (DECRST) returns a sequence to reset a mode.
 // The mode arguments are a list of modes to reset.
 //
 // If one of the modes is a [DECMode], the function will returns two escape
@@ -96,9 +101,14 @@ func RM(modes ...Mode) string {
 	return ResetMode(modes...)
 }
 
+// DECRST is an alias for [ResetMode].
+func DECRST(modes ...Mode) string {
+	return ResetMode(modes...)
+}
+
 func setMode(reset bool, modes ...Mode) (s string) {
 	if len(modes) == 0 {
-		return
+		return //nolint:nakedret
 	}
 
 	cmd := "h"
@@ -132,7 +142,7 @@ func setMode(reset bool, modes ...Mode) (s string) {
 	if len(dec) > 0 {
 		s += seq + "?" + strings.Join(dec, ";") + cmd
 	}
-	return
+	return //nolint:nakedret
 }
 
 // RequestMode (DECRQM) returns a sequence to request a mode from the terminal.
@@ -243,6 +253,21 @@ const (
 	RequestInsertReplaceMode = "\x1b[4$p"
 )
 
+// BiDirectional Support Mode (BDSM) is a mode that determines whether the
+// terminal supports bidirectional text. When enabled, the terminal supports
+// bidirectional text and is set to implicit bidirectional mode. When disabled,
+// the terminal does not support bidirectional text.
+//
+// See ECMA-48 7.2.1.
+const (
+	BiDirectionalSupportMode = ANSIMode(8)
+	BDSM                     = BiDirectionalSupportMode
+
+	SetBiDirectionalSupportMode     = "\x1b[8h"
+	ResetBiDirectionalSupportMode   = "\x1b[8l"
+	RequestBiDirectionalSupportMode = "\x1b[8$p"
+)
+
 // Send Receive Mode (SRM) or Local Echo Mode is a mode that determines whether
 // the terminal echoes characters back to the host. When enabled, the terminal
 // sends characters to the host as they are typed.
@@ -297,7 +322,7 @@ const (
 
 // Deprecated: use [SetCursorKeysMode] and [ResetCursorKeysMode] instead.
 const (
-	EnableCursorKeys  = "\x1b[?1h"
+	EnableCursorKeys  = "\x1b[?1h" //nolint:revive // grouped constants
 	DisableCursorKeys = "\x1b[?1l"
 )
 
@@ -548,8 +573,9 @@ const (
 
 // Deprecated: use [SetFocusEventMode], [ResetFocusEventMode], and
 // [RequestFocusEventMode] instead.
+// Focus reporting mode constants.
 const (
-	ReportFocusMode = DECMode(1004)
+	ReportFocusMode = DECMode(1004) //nolint:revive // grouped constants
 
 	EnableReportFocus  = "\x1b[?1004h"
 	DisableReportFocus = "\x1b[?1004l"
@@ -577,7 +603,7 @@ const (
 // Deprecated: use [SgrExtMouseMode] [SetSgrExtMouseMode],
 // [ResetSgrExtMouseMode], and [RequestSgrExtMouseMode] instead.
 const (
-	MouseSgrExtMode    = DECMode(1006)
+	MouseSgrExtMode    = DECMode(1006) //nolint:revive // grouped constants
 	EnableMouseSgrExt  = "\x1b[?1006h"
 	DisableMouseSgrExt = "\x1b[?1006l"
 	RequestMouseSgrExt = "\x1b[?1006$p"
@@ -693,7 +719,7 @@ const (
 // Deprecated: use [SetBracketedPasteMode], [ResetBracketedPasteMode], and
 // [RequestBracketedPasteMode] instead.
 const (
-	EnableBracketedPaste  = "\x1b[?2004h"
+	EnableBracketedPaste  = "\x1b[?2004h" //nolint:revive // grouped constants
 	DisableBracketedPaste = "\x1b[?2004l"
 	RequestBracketedPaste = "\x1b[?2004$p"
 )
@@ -710,6 +736,8 @@ const (
 	RequestSynchronizedOutputMode = "\x1b[?2026$p"
 )
 
+// Synchronized Output Mode. See [SynchronizedOutputMode].
+//
 // Deprecated: use [SynchronizedOutputMode], [SetSynchronizedOutputMode], and
 // [ResetSynchronizedOutputMode], and [RequestSynchronizedOutputMode] instead.
 const (
@@ -720,12 +748,28 @@ const (
 	RequestSyncdOutput = "\x1b[?2026$p"
 )
 
+// Unicode Core Mode is a mode that determines whether the terminal should use
+// Unicode grapheme clustering to calculate the width of glyphs for each
+// terminal cell.
+//
+// See: https://github.com/contour-terminal/terminal-unicode-core
+const (
+	UnicodeCoreMode = DECMode(2027)
+
+	SetUnicodeCoreMode     = "\x1b[?2027h"
+	ResetUnicodeCoreMode   = "\x1b[?2027l"
+	RequestUnicodeCoreMode = "\x1b[?2027$p"
+)
+
 // Grapheme Clustering Mode is a mode that determines whether the terminal
 // should look for grapheme clusters instead of single runes in the rendered
 // text. This makes the terminal properly render combining characters such as
 // emojis.
 //
 // See: https://github.com/contour-terminal/terminal-unicode-core
+//
+// Deprecated: use [GraphemeClusteringMode], [SetUnicodeCoreMode],
+// [ResetUnicodeCoreMode], and [RequestUnicodeCoreMode] instead.
 const (
 	GraphemeClusteringMode = DECMode(2027)
 
@@ -734,12 +778,52 @@ const (
 	RequestGraphemeClusteringMode = "\x1b[?2027$p"
 )
 
-// Deprecated: use [SetGraphemeClusteringMode], [ResetGraphemeClusteringMode], and
-// [RequestGraphemeClusteringMode] instead.
+// Grapheme Clustering Mode. See [GraphemeClusteringMode].
+//
+// Deprecated: use [SetUnicodeCoreMode], [ResetUnicodeCoreMode], and
+// [RequestUnicodeCoreMode] instead.
 const (
 	EnableGraphemeClustering  = "\x1b[?2027h"
 	DisableGraphemeClustering = "\x1b[?2027l"
 	RequestGraphemeClustering = "\x1b[?2027$p"
+)
+
+// LightDarkMode is a mode that enables reporting the operating system's color
+// scheme (light or dark) preference. It reports the color scheme as a [DSR]
+// and [LightDarkReport] escape sequences encoded as follows:
+//
+//	CSI ? 997 ; 1 n   for dark mode
+//	CSI ? 997 ; 2 n   for light mode
+//
+// The color preference can also be requested via the following [DSR] and
+// [RequestLightDarkReport] escape sequences:
+//
+//	CSI ? 996 n
+//
+// See: https://contour-terminal.org/vt-extensions/color-palette-update-notifications/
+const (
+	LightDarkMode = DECMode(2031)
+
+	SetLightDarkMode     = "\x1b[?2031h"
+	ResetLightDarkMode   = "\x1b[?2031l"
+	RequestLightDarkMode = "\x1b[?2031$p"
+)
+
+// InBandResizeMode is a mode that reports terminal resize events as escape
+// sequences. This is useful for systems that do not support [SIGWINCH] like
+// Windows.
+//
+// The terminal then sends the following encoding:
+//
+//	CSI 48 ; cellsHeight ; cellsWidth ; pixelHeight ; pixelWidth t
+//
+// See: https://gist.github.com/rockorager/e695fb2924d36b2bcf1fff4a3704bd83
+const (
+	InBandResizeMode = DECMode(2048)
+
+	SetInBandResizeMode     = "\x1b[?2048h"
+	ResetInBandResizeMode   = "\x1b[?2048l"
+	RequestInBandResizeMode = "\x1b[?2048$p"
 )
 
 // Win32Input is a mode that determines whether input is processed by the
@@ -757,7 +841,7 @@ const (
 // Deprecated: use [SetWin32InputMode], [ResetWin32InputMode], and
 // [RequestWin32InputMode] instead.
 const (
-	EnableWin32Input  = "\x1b[?9001h"
+	EnableWin32Input  = "\x1b[?9001h" //nolint:revive // grouped constants
 	DisableWin32Input = "\x1b[?9001l"
 	RequestWin32Input = "\x1b[?9001$p"
 )
