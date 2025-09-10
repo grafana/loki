@@ -23,6 +23,7 @@ func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading object size: %w", err)
 	}
+
 	readSize := min(objectSize, optimisticReadBytes)
 	buf := bufpool.Get(int(readSize))
 	defer bufpool.Put(buf)
@@ -55,7 +56,12 @@ func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
 }
 
 func (d *decoder) readLastBytes(ctx context.Context, readSize int64, buf *bytes.Buffer) error {
-	rc, err := d.rr.ReadRange(ctx, d.size-readSize, readSize)
+	objectSize, err := d.objectSize(ctx)
+	if err != nil {
+		return fmt.Errorf("reading object size: %w", err)
+	}
+
+	rc, err := d.rr.ReadRange(ctx, objectSize-readSize, readSize)
 	if err != nil {
 		return fmt.Errorf("reading last %d bytes: %w", readSize, err)
 	}
@@ -85,6 +91,11 @@ type tailer struct {
 }
 
 func (d *decoder) tailer(ctx context.Context, tailData *bytes.Buffer) (tailer, error) {
+	objectSize, err := d.objectSize(ctx)
+	if err != nil {
+		return tailer{}, fmt.Errorf("reading object size: %w", err)
+	}
+
 	br := bufpool.GetReader(bytes.NewReader(tailData.Bytes()[tailData.Len()-8:]))
 	defer bufpool.PutReader(br)
 
@@ -95,7 +106,7 @@ func (d *decoder) tailer(ctx context.Context, tailData *bytes.Buffer) (tailer, e
 
 	return tailer{
 		MetadataSize: uint64(metadataSize),
-		FileSize:     uint64(d.size),
+		FileSize:     uint64(objectSize),
 	}, nil
 }
 
