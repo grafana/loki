@@ -86,7 +86,7 @@ func parseKeys(input *array.String, requestedKeys []string, columnBuilders map[s
 				columnOrder = append(columnOrder, key)
 
 				// Backfill NULLs for previous rows
-        builder.AppendNulls(i)
+				builder.AppendNulls(i)
 			}
 			builder.Append(value)
 		}
