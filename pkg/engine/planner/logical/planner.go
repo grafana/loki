@@ -170,8 +170,6 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 
 	e.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
-		case *syntax.LogfmtParserExpr:
-			return true
 		case *syntax.RangeAggregationExpr:
 			// only count operation is supported for range aggregation.
 			// offsets are not yet supported.
