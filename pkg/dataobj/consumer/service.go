@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
-	kafka_consumer "github.com/grafana/loki/v3/pkg/kafka/partitionring/consumer"
+	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
@@ -23,7 +23,7 @@ type Service struct {
 	services.Service
 	cfg                 Config
 	consumer            *consumer
-	consumerClient      *kafka_consumer.Client
+	consumerClient      *partitionring.KafkaClient
 	partitionLifecycler *partitionLifecycler
 	metastoreEvents     *kgo.Client
 	logger              log.Logger
@@ -74,7 +74,7 @@ func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objsto
 	partitionLifecycler := newPartitionLifecycler(processorLifecycler, logger)
 	// The client calls the lifecycler whenever partitions are assigned or
 	// revoked. This is how we register and unregister processors.
-	consumerClient, err := kafka_consumer.NewGroupClient(
+	consumerClient, err := partitionring.NewKafkaClient(
 		kafkaCfg,
 		partitionRing,
 		"dataobj-consumer",
