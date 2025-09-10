@@ -211,7 +211,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 		level.Info(logger).Log(
 			"msg", "finished physical planning",
 			"plan", physical.PrintAsTree(plan),
-			"duration", durPhysicalPlanning.Seconds(),
+			"duration", durPhysicalPlanning.String(),
 		)
 		span.SetStatus(codes.Ok, "")
 		return plan, nil
