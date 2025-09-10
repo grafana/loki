@@ -1,4 +1,4 @@
-package consumer
+package partitionring
 
 import (
 	"context"
@@ -147,7 +147,7 @@ func TestCooperativeActiveStickyBalancer(t *testing.T) {
 			// Setup mock ring
 			mockRing := &mockPartitionRing{partitionIDs: tc.activePartitions}
 			mockReader := &mockPartitionRingReader{ring: mockRing}
-			balancer := NewCooperativeActiveStickyBalancer(mockReader)
+			balancer := newCooperativeActiveStickyBalancer(mockReader)
 
 			// First rebalance: members announce what they want to give up
 			members := make([]kmsg.JoinGroupResponseMember, len(tc.members))
@@ -262,7 +262,7 @@ func (g *testConsumerGroup) createConsumer(id string) *kgo.Client {
 		kgo.SeedBrokers(g.clusterAddrs...),
 		kgo.ConsumerGroup(g.groupName),
 		kgo.ConsumeTopics("test-topic"),
-		kgo.Balancers(NewCooperativeActiveStickyBalancer(g.mockReader)),
+		kgo.Balancers(newCooperativeActiveStickyBalancer(g.mockReader)),
 		kgo.ClientID(id),
 		kgo.OnPartitionsAssigned(func(_ context.Context, _ *kgo.Client, m map[string][]int32) {
 			g.t.Logf("Assigned partitions 1: %v", m)
