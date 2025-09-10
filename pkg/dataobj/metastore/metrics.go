@@ -109,14 +109,13 @@ func (p *tocMetrics) observeMetastoreProcessing(recordTimestamp time.Time) {
 }
 
 type objectMetastoreMetrics struct {
+	indexObjectsTotal                   prometheus.Histogram
 	streamFilterTotalDuration           prometheus.Histogram
-	streamFilterPaths                   prometheus.Histogram
 	streamFilterSections                prometheus.Histogram
 	streamFilterStreamsReadDuration     prometheus.Histogram
 	streamFilterPointersReadDuration    prometheus.Histogram
 	estimateSectionsTotalDuration       prometheus.Histogram
 	estimateSectionsPointerReadDuration prometheus.Histogram
-	estimateSectionsPaths               prometheus.Histogram
 	estimateSectionsSections            prometheus.Histogram
 	resolvedSectionsTotalDuration       prometheus.Histogram
 	resolvedSectionsTotal               prometheus.Histogram
@@ -125,18 +124,18 @@ type objectMetastoreMetrics struct {
 
 func newObjectMetastoreMetrics() *objectMetastoreMetrics {
 	metrics := &objectMetastoreMetrics{
-		streamFilterTotalDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:                            "loki_metastore_stream_filter_total_duration_seconds",
-			Help:                            "Total time taken to lookup streams for a Metastore query in seconds",
-			Buckets:                         prometheus.DefBuckets,
+		indexObjectsTotal: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_index_objects_total",
+			Help:                            "Total number of objects to be searched for a Metastore query",
+			Buckets:                         []float64{0, 10, 20, 30, 50, 70, 100, 150, 200, 1000},
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
 		}),
-		streamFilterPaths: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:                            "loki_metastore_stream_filter_paths_total",
-			Help:                            "Total number of paths to be searched for a Metastore query",
-			Buckets:                         []float64{0, 10, 20, 30, 50, 70, 100, 150, 200, 1000},
+		streamFilterTotalDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:                            "loki_metastore_stream_filter_total_duration_seconds",
+			Help:                            "Total time taken to lookup streams for a Metastore query in seconds",
+			Buckets:                         prometheus.DefBuckets,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
@@ -169,14 +168,6 @@ func newObjectMetastoreMetrics() *objectMetastoreMetrics {
 			Name:                            "loki_metastore_estimate_sections_total_duration_seconds",
 			Help:                            "Total time taken to check section membership for a Metastore query when listing sections from AMQ filters in seconds",
 			Buckets:                         []float64{0, 10, 20, 30, 50, 70, 100, 150, 200},
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
-		}),
-		estimateSectionsPaths: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:                            "loki_metastore_estimate_sections_paths_total",
-			Help:                            "Total number of paths to be searched for a Metastore query when listing sections from AMQ filters",
-			Buckets:                         []float64{0, 10, 20, 30, 50, 70, 100, 150, 200, 1000},
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
@@ -227,14 +218,15 @@ func newObjectMetastoreMetrics() *objectMetastoreMetrics {
 }
 
 func (p *objectMetastoreMetrics) register(reg prometheus.Registerer) {
+	reg.MustRegister(p.indexObjectsTotal)
 	reg.MustRegister(p.streamFilterTotalDuration)
-	reg.MustRegister(p.streamFilterPaths)
 	reg.MustRegister(p.streamFilterSections)
 	reg.MustRegister(p.streamFilterStreamsReadDuration)
 	reg.MustRegister(p.streamFilterPointersReadDuration)
 	reg.MustRegister(p.estimateSectionsTotalDuration)
 	reg.MustRegister(p.estimateSectionsPointerReadDuration)
 	reg.MustRegister(p.estimateSectionsSections)
+	reg.MustRegister(p.resolvedSectionsTotalDuration)
 	reg.MustRegister(p.resolvedSectionsTotal)
 	reg.MustRegister(p.resolvedSectionsRatio)
 }
