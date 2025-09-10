@@ -107,6 +107,9 @@ func (r *limitPushdown) applyLimitPushdown(node Node, limit uint32) bool {
 		// In case the scan node is reachable from multiple different limit nodes, we need to take the largest limit.
 		node.Limit = max(node.Limit, limit)
 		return true
+	case *Filter:
+		// If there is a filter, child nodes may need to read up to all their lines to successfully apply the filter, so stop applying limit pushdown.
+		return true
 	}
 	for _, child := range r.plan.Children(node) {
 		if ok := r.applyLimitPushdown(child, limit); !ok {
