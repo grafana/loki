@@ -44,9 +44,7 @@ func NewKafkaClient(
 	defaultOpts := []kgo.Opt{
 		kgo.ConsumerGroup(group),
 		kgo.ConsumeTopics(cfg.Topic),
-		// TODO(grobinson): This should use newCooperativeActiveStickyBalancer
-		// instead.
-		kgo.Balancers(kgo.CooperativeStickyBalancer()),
+		kgo.Balancers(newCooperativeActiveStickyBalancer(ringReader)),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
 		kgo.DisableAutoCommit(),
 		kgo.RebalanceTimeout(5 * time.Minute),
