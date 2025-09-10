@@ -366,6 +366,7 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 }
 
 // Convert [logical.Parse] into one [ParseNode] node.
+// A ParseNode initially has an empty list of RequestedKeys which will be populated during optimization.
 func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) {
 	node := &ParseNode{
 		Kind: convertParserKind(lp.Kind),
@@ -398,10 +399,6 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
-			newOptimization("GroupByPushdown", plan).withRules(
-				&groupByPushdown{plan: plan},
-			),
-			// ProjectionPushdown is listed last as GroupByPushdown can change nodes that can trigger this optimization.
 			newOptimization("ProjectionPushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
 			),
