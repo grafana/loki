@@ -25,7 +25,7 @@ func newTableOfContentsMetrics() *tocMetrics {
 		tocReplayTime: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_toc_replay_seconds",
 			Help:                            "Time taken to replay existing Table of Contents data into the new builder in seconds",
-			Buckets:                         prometheus.DefBuckets,
+			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
@@ -33,7 +33,7 @@ func newTableOfContentsMetrics() *tocMetrics {
 		tocEncodingTime: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_toc_encoding_seconds",
 			Help:                            "Time taken to add the new entries & encode the a single Table of Contents metastore file in seconds",
-			Buckets:                         prometheus.DefBuckets,
+			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
@@ -41,7 +41,7 @@ func newTableOfContentsMetrics() *tocMetrics {
 		tocProcessingTime: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_toc_processing_seconds",
 			Help:                            "Total time taken to update all Table of Contents files for a metastore WriteEntry operation in seconds",
-			Buckets:                         prometheus.DefBuckets,
+			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
@@ -127,7 +127,7 @@ func newObjectMetastoreMetrics() *objectMetastoreMetrics {
 		indexObjectsTotal: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_index_objects_total",
 			Help:                            "Total number of objects to be searched for a Metastore query",
-			Buckets:                         []float64{0, 10, 20, 30, 50, 70, 100, 150, 200, 1000},
+			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
@@ -135,7 +135,7 @@ func newObjectMetastoreMetrics() *objectMetastoreMetrics {
 		streamFilterTotalDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_stream_filter_total_duration_seconds",
 			Help:                            "Total time taken to lookup streams for a Metastore query in seconds",
-			Buckets:                         prometheus.DefBuckets,
+			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
@@ -143,7 +143,7 @@ func newObjectMetastoreMetrics() *objectMetastoreMetrics {
 		streamFilterSections: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_stream_filter_sections_total",
 			Help:                            "Total number of sections resolved for a Metastore query when listing sections from stream matchers",
-			Buckets:                         []float64{0, 10, 20, 30, 50, 70, 100, 150, 200},
+			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
@@ -151,7 +151,7 @@ func newObjectMetastoreMetrics() *objectMetastoreMetrics {
 		streamFilterStreamsReadDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_stream_filter_streams_read_duration_seconds",
 			Help:                            "Total time taken to read one streams section during a Metastore query when listing sections from stream matchers in seconds",
-			Buckets:                         prometheus.DefBuckets,
+			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
@@ -159,7 +159,7 @@ func newObjectMetastoreMetrics() *objectMetastoreMetrics {
 		streamFilterPointersReadDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_stream_filter_pointers_read_duration_seconds",
 			Help:                            "Total time taken to read one pointers section during a Metastore query when listing sections from stream matchers in seconds",
-			Buckets:                         prometheus.DefBuckets,
+			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
@@ -167,7 +167,7 @@ func newObjectMetastoreMetrics() *objectMetastoreMetrics {
 		estimateSectionsTotalDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_estimate_sections_total_duration_seconds",
 			Help:                            "Total time taken to check section membership for a Metastore query when listing sections from AMQ filters in seconds",
-			Buckets:                         []float64{0, 10, 20, 30, 50, 70, 100, 150, 200},
+			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
@@ -175,7 +175,7 @@ func newObjectMetastoreMetrics() *objectMetastoreMetrics {
 		estimateSectionsPointerReadDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_estimate_sections_pointer_read_duration_seconds",
 			Help:                            "Total time taken to read one pointers section during a Metastore query when listing sections from AMQ filters in seconds",
-			Buckets:                         prometheus.DefBuckets,
+			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
@@ -183,7 +183,7 @@ func newObjectMetastoreMetrics() *objectMetastoreMetrics {
 		estimateSectionsSections: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_estimate_sections_sections_total",
 			Help:                            "Total number of sections resolved for a Metastore query when listing sections from AMQ filters",
-			Buckets:                         []float64{0, 10, 20, 30, 50, 70, 100, 150, 200},
+			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
@@ -191,7 +191,7 @@ func newObjectMetastoreMetrics() *objectMetastoreMetrics {
 		resolvedSectionsTotalDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_resolved_sections_total_duration_seconds",
 			Help:                            "Total time taken to resolve sections for a Metastore query",
-			Buckets:                         prometheus.DefBuckets,
+			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
@@ -199,7 +199,7 @@ func newObjectMetastoreMetrics() *objectMetastoreMetrics {
 		resolvedSectionsTotal: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_resolved_sections_total",
 			Help:                            "Total number of sections resolved for a Metastore query",
-			Buckets:                         []float64{0, 10, 20, 30, 50, 70, 100, 150, 200},
+			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
@@ -207,7 +207,7 @@ func newObjectMetastoreMetrics() *objectMetastoreMetrics {
 		resolvedSectionsRatio: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_metastore_resolved_sections_ratio",
 			Help:                            "Ratio of sections resolved for a Metastore query between stream filters and then intersecting with section estimates",
-			Buckets:                         []float64{0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0},
+			Buckets:                         nil,
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
