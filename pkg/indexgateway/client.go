@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -241,9 +243,55 @@ func (s *GatewayClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRe
 	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
 		resp, err = client.GetChunkRef(ctx, in)
 		return err
+	}, func(addrs []string) []string {
+		return addressesForQueryEndTime(addrs, in.Through.Time())
 	})
 	return resp, err
 }
+
+func addressesForQueryEndTime(addrs []string, t time.Time) []string {
+	// TODO(@chaudum): Should these be configurable?
+	buckets := []time.Duration{
+		-168 * time.Hour, // 7d
+		-336 * time.Hour, // 14d
+		-504 * time.Hour, // 21d
+	}
+	return addressesForQueryEndTimeWithBuckets(addrs, t, buckets, time.Now().UTC())
+}
+
+func addressesForQueryEndTimeWithBuckets(addrs []string, t time.Time, buckets []time.Duration, now time.Time) []string {
+	// The bucketing only really makes sense if there are equal or more than 2^len(buckets) index gateways.
+	// Example with 3 buckets and 8 instances:
+	// Bucket 0:  now       -> now - 7d   => addrs[0:4]
+	// Bucket 1:  now - 7d  -> now - 14d  => addrs[4:6]
+	// Bucket 2:  now - 14d -> now - 21d  => addrs[6:7]
+	// Remainder: now - 21d -> now - Inf  => addrs[7:8]
+	n := len(addrs)
+	m := len(buckets)
+	if n < (1 << m) {
+		return addrs
+	}
+
+	today := now.Truncate(24 * time.Hour)
+	start, end := 0, n>>1
+
+	for i := range m {
+		if t.After(today.Add(buckets[i])) {
+			break
+		}
+
+		start = end
+		end = end + (n >> (i + 2)) // n / 2^(i+2)
+
+		if i == m-1 {
+			end = n
+		}
+	}
+
+	return addrs[start:end]
+}
+
+func noFilter(addrs []string) []string { return addrs }
 
 func (s *GatewayClient) GetSeries(ctx context.Context, in *logproto.GetSeriesRequest) (*logproto.GetSeriesResponse, error) {
 	var (
@@ -253,6 +301,8 @@ func (s *GatewayClient) GetSeries(ctx context.Context, in *logproto.GetSeriesReq
 	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
 		resp, err = client.GetSeries(ctx, in)
 		return err
+	}, func(addrs []string) []string {
+		return addressesForQueryEndTime(addrs, in.Through.Time())
 	})
 	return resp, err
 }
@@ -265,6 +315,8 @@ func (s *GatewayClient) LabelNamesForMetricName(ctx context.Context, in *logprot
 	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
 		resp, err = client.LabelNamesForMetricName(ctx, in)
 		return err
+	}, func(addrs []string) []string {
+		return addressesForQueryEndTime(addrs, in.Through.Time())
 	})
 	return resp, err
 }
@@ -277,6 +329,8 @@ func (s *GatewayClient) LabelValuesForMetricName(ctx context.Context, in *logpro
 	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
 		resp, err = client.LabelValuesForMetricName(ctx, in)
 		return err
+	}, func(addrs []string) []string {
+		return addressesForQueryEndTime(addrs, in.Through.Time())
 	})
 	return resp, err
 }
@@ -289,6 +343,8 @@ func (s *GatewayClient) GetStats(ctx context.Context, in *logproto.IndexStatsReq
 	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
 		resp, err = client.GetStats(ctx, in)
 		return err
+	}, func(addrs []string) []string {
+		return addressesForQueryEndTime(addrs, in.Through.Time())
 	})
 	return resp, err
 }
@@ -301,6 +357,8 @@ func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeReques
 	err = s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
 		resp, err = client.GetVolume(ctx, in)
 		return err
+	}, func(addrs []string) []string {
+		return addressesForQueryEndTime(addrs, in.Through.Time())
 	})
 	return resp, err
 }
@@ -349,6 +407,9 @@ func (s *GatewayClient) GetShards(
 
 			return nil
 		},
+		func(addrs []string) []string {
+			return addressesForQueryEndTime(addrs, in.Through.Time())
+		},
 		func(_ error) bool {
 			errCt++
 			return errCt <= maxErrs
@@ -390,7 +451,7 @@ func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, ca
 
 	return s.poolDo(ctx, func(client logproto.IndexGatewayClient) error {
 		return s.clientDoQueries(ctx, gatewayQueries, queryKeyQueryMap, callback, client)
-	})
+	}, noFilter)
 
 }
 
@@ -428,13 +489,14 @@ func (s *GatewayClient) clientDoQueries(ctx context.Context, gatewayQueries []*l
 
 // poolDo executes the given function for each Index Gateway instance in the ring mapping to the correct tenant in the index.
 // In case of callback failure, we'll try another member of the ring for that tenant ID.
-func (s *GatewayClient) poolDo(ctx context.Context, callback func(client logproto.IndexGatewayClient) error) error {
-	return s.poolDoWithStrategy(ctx, callback, func(error) bool { return true })
+func (s *GatewayClient) poolDo(ctx context.Context, callback func(client logproto.IndexGatewayClient) error, filterServerList func([]string) []string) error {
+	return s.poolDoWithStrategy(ctx, callback, filterServerList, func(error) bool { return true })
 }
 
 func (s *GatewayClient) poolDoWithStrategy(
 	ctx context.Context,
 	callback func(client logproto.IndexGatewayClient) error,
+	filterServerList func([]string) []string,
 	shouldRetry func(error) bool,
 ) error {
 	userID, err := tenant.TenantID(ctx)
@@ -450,6 +512,18 @@ func (s *GatewayClient) poolDoWithStrategy(
 		level.Error(s.logger).Log("msg", fmt.Sprintf("no index gateway instances found for tenant %s", userID))
 		return fmt.Errorf("no index gateway instances found for tenant %s", userID)
 	}
+
+	if s.cfg.Mode == SimpleMode {
+		slices.Sort(addrs)
+		allAddr := strings.Join(addrs, ",")
+		addrs = filterServerList(addrs)
+		level.Debug(s.logger).Log("msg", "filtered list of index gateway instances", "all", allAddr, "filtered", strings.Join(addrs, ","))
+	}
+
+	// shuffle addresses to make sure we don't always access the same Index Gateway instances in sequence for same tenant.
+	rand.Shuffle(len(addrs), func(i, j int) {
+		addrs[i], addrs[j] = addrs[j], addrs[i]
+	})
 
 	var lastErr error
 	for _, addr := range addrs {
@@ -495,11 +569,6 @@ func (s *GatewayClient) getServerAddresses(tenantID string) ([]string, error) {
 	} else {
 		addrs = s.dnsProvider.Addresses()
 	}
-
-	// shuffle addresses to make sure we don't always access the same Index Gateway instances in sequence for same tenant.
-	rand.Shuffle(len(addrs), func(i, j int) {
-		addrs[i], addrs[j] = addrs[j], addrs[i]
-	})
 
 	return addrs, nil
 }
