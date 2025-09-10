@@ -12,11 +12,11 @@ import (
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
+	dskit_log "github.com/grafana/dskit/log"
+	dskit_server "github.com/grafana/dskit/server"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/version"
 
-	dskit_log "github.com/grafana/dskit/log"
-	dskit_server "github.com/grafana/dskit/server"
 	"github.com/grafana/loki/v3/pkg/logcli/client"
 	"github.com/grafana/loki/v3/pkg/logcli/delete"
 	"github.com/grafana/loki/v3/pkg/logcli/detected"
@@ -362,7 +362,7 @@ func main() {
 	cmd := kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	var dLevel dskit_log.Level
-	dLevel.Set(*logLevel)
+	_ = dLevel.Set(*logLevel)
 	util_log.InitLogger(&dskit_server.Config{LogLevel: dLevel}, nil, true)
 
 	if cpuProfile != nil && *cpuProfile != "" {
