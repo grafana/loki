@@ -39,7 +39,7 @@ func parseKeys(input *array.String, requestedKeys []string, columnBuilders map[s
 
 	for i := 0; i < input.Len(); i++ {
 		line := input.Value(i)
-		parsed, err := TokenizeLogfmt(line, requestedKeys)
+		parsed, err := tokenizeLogfmt(line, requestedKeys)
 
 		// Handle error columns
 		if err != nil {
@@ -86,9 +86,7 @@ func parseKeys(input *array.String, requestedKeys []string, columnBuilders map[s
 				columnOrder = append(columnOrder, key)
 
 				// Backfill NULLs for previous rows
-				for j := 0; j < i; j++ {
-					builder.AppendNull()
-				}
+        builder.AppendNulls(i)
 			}
 			builder.Append(value)
 		}
@@ -107,10 +105,10 @@ func parseKeys(input *array.String, requestedKeys []string, columnBuilders map[s
 	return columnOrder
 }
 
-// TokenizeLogfmt parses logfmt input using the standard decoder
+// tokenizeLogfmt parses logfmt input using the standard decoder
 // Returns a map of key-value pairs with last-wins semantics for duplicates
 // If requestedKeys is provided, the result will be filtered to only include those keys
-func TokenizeLogfmt(input string, requestedKeys []string) (map[string]string, error) {
+func tokenizeLogfmt(input string, requestedKeys []string) (map[string]string, error) {
 	result := make(map[string]string)
 
 	var requestedKeyLookup map[string]struct{}

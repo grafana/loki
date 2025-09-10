@@ -248,9 +248,12 @@ func TestNewParsePipeline(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+			defer alloc.AssertSize(t, 0) // Assert empty on test exit
+
 			// Create input data with message column containing logfmt
 			input := NewArrowtestPipeline(
-				memory.DefaultAllocator,
+				alloc,
 				tt.schema,
 				tt.input,
 			)
@@ -261,7 +264,7 @@ func TestNewParsePipeline(t *testing.T) {
 				RequestedKeys: tt.requestedKeys,
 			}
 
-			pipeline := NewParsePipeline(parseNode, input, memory.DefaultAllocator)
+			pipeline := NewParsePipeline(parseNode, input, alloc)
 
 			// Read first record
 			ctx := t.Context()
