@@ -19,7 +19,11 @@ type decoder struct {
 }
 
 func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
-	readSize := min(d.size, optimisticReadBytes)
+	objectSize, err := d.objectSize(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reading object size: %w", err)
+	}
+	readSize := min(objectSize, optimisticReadBytes)
 	buf := bufpool.Get(int(readSize))
 	defer bufpool.Put(buf)
 
@@ -64,28 +68,24 @@ func (d *decoder) readLastBytes(ctx context.Context, readSize int64, buf *bytes.
 	return nil
 }
 
+func (d *decoder) objectSize(ctx context.Context) (int64, error) {
+	if d.size == 0 {
+		size, err := d.rr.Size(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("reading size: %w", err)
+		}
+		d.size = size
+	}
+	return d.size, nil
+}
+
 type tailer struct {
 	MetadataSize uint64
 	FileSize     uint64
 }
 
 func (d *decoder) tailer(ctx context.Context, tailData *bytes.Buffer) (tailer, error) {
-	if d.size == 0 {
-		size, err := d.rr.Size(ctx)
-		if err != nil {
-			return tailer{}, fmt.Errorf("reading size: %w", err)
-		}
-		d.size = size
-	}
-
-	// Read the last 8 bytes of the object to get the metadata size and magic.
-	rc, err := d.rr.ReadRange(ctx, d.size-8, 8)
-	if err != nil {
-		return tailer{}, fmt.Errorf("getting file tailer: %w", err)
-	}
-	defer rc.Close()
-
-	br := bufpool.GetReader(rc)
+	br := bufpool.GetReader(bytes.NewReader(tailData.Bytes()[tailData.Len()-8:]))
 	defer bufpool.PutReader(br)
 
 	metadataSize, err := decodeTailer(br)
