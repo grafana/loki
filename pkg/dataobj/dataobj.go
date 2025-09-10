@@ -116,7 +116,7 @@ func FromBucket(ctx context.Context, bucket objstore.BucketReader, path string) 
 // error if the metadata of the Object cannot be read.
 func FromReaderAt(r io.ReaderAt, size int64) (*Object, error) {
 	rr := &readerAtRangeReader{size: size, r: r}
-	dec := &decoder{rr: rr}
+	dec := &decoder{rr: rr, size: size}
 	obj := &Object{rr: rr, dec: dec, size: size}
 	if err := obj.init(context.Background()); err != nil {
 		return nil, err

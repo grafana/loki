@@ -21,7 +21,7 @@ func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
 	buf := bufpool.Get(int(readSize))
 	defer bufpool.Put(buf)
 
-	if err := d.readLastBytes(ctx, buf); err != nil {
+	if err := d.readLastBytes(ctx, readSize, buf); err != nil {
 		return nil, fmt.Errorf("reading last bytes: %w", err)
 	}
 
@@ -48,9 +48,8 @@ func (d *decoder) Metadata(ctx context.Context) (*filemd.Metadata, error) {
 	return decodeFileMetadata(br)
 }
 
-func (d *decoder) readLastBytes(ctx context.Context, buf *bytes.Buffer) error {
-	readSize := buf.Cap()
-	rc, err := d.rr.ReadRange(ctx, d.size-int64(readSize), int64(readSize))
+func (d *decoder) readLastBytes(ctx context.Context, readSize int64, buf *bytes.Buffer) error {
+	rc, err := d.rr.ReadRange(ctx, d.size-readSize, readSize)
 	if err != nil {
 		return fmt.Errorf("reading last %d bytes: %w", readSize, err)
 	}
