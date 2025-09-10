@@ -73,9 +73,6 @@ func (s *Section) init() error {
 	return nil
 }
 
-// Tenant returns the tenant that owns the section.
-func (s *Section) Tenant() string { return s.inner.Tenant() }
-
 // Columns returns the set of Columns in the section. The slice of returned
 // sections must not be mutated.
 //
