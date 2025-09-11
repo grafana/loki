@@ -649,10 +649,6 @@ func (m *ObjectMetastore) estimateSectionsForPredicates(ctx context.Context, ind
 	return sectionDescriptors, nil
 }
 
-func fetchObject(ctx context.Context, bucket objstore.Bucket, path string) (*dataobj.Object, error) {
-	return dataobj.FromBucket(ctx, bucket, path)
-}
-
 func addLabels(mtx *sync.Mutex, streams map[uint64][]*labels.Labels, newLabels *labels.Labels) {
 	mtx.Lock()
 	defer mtx.Unlock()
