@@ -11,10 +11,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
+	"github.com/grafana/loki/v3/pkg/util/labelpool"
 )
 
 // Iter iterates over streams in the provided decoder. All streams sections are
@@ -40,19 +40,8 @@ func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[Stream] {
 
 func IterSection(ctx context.Context, section *Section) result.Seq[Stream] {
 	return result.Iter(func(yield func(Stream) bool) error {
-		dec := newDecoder(section.reader)
-
-		// We need to pull the columns twice: once from the dataset implementation
-		// and once for the metadata to retrieve column type.
-		//
-		// TODO(rfratto): find a way to expose this information from
-		// encoding.StreamsDataset to avoid the double call.
-		streamsColumns, err := dec.Columns(ctx)
-		if err != nil {
-			return err
-		}
-
-		dset, err := newColumnsDataset(section.Columns())
+		columnarSection := section.inner
+		dset, err := columnar.MakeDataset(columnarSection, columnarSection.Columns())
 		if err != nil {
 			return fmt.Errorf("creating columns dataset: %w", err)
 		}
@@ -63,8 +52,9 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Stream] {
 		}
 
 		r := dataset.NewReader(dataset.ReaderOptions{
-			Dataset: dset,
-			Columns: columns,
+			Dataset:  dset,
+			Columns:  columns,
+			Prefetch: true,
 		})
 		defer r.Close()
 
@@ -79,7 +69,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Stream] {
 
 			var stream Stream
 			for _, row := range rows[:n] {
-				if err := decodeRow(streamsColumns, row, &stream, nil); err != nil {
+				if err := decodeRow(section.Columns(), row, &stream, nil); err != nil {
 					return err
 				}
 
@@ -97,11 +87,9 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Stream] {
 //
 // The sym argument is used for reusing label values between calls to
 // decodeRow. If sym is nil, label value strings are always allocated.
-func decodeRow(columns []*streamsmd.ColumnDesc, row dataset.Row, stream *Stream, sym *symbolizer.Symbolizer) error {
-	labelColumns := labelColumns(columns)
-	stream.Labels = slicegrow.GrowToCap(stream.Labels, labelColumns)
-	stream.Labels = stream.Labels[:labelColumns]
-	nextLabelIdx := 0
+func decodeRow(columns []*Column, row dataset.Row, stream *Stream, sym *symbolizer.Symbolizer) error {
+	labelBuilder := labelpool.Get()
+	defer labelpool.Put(labelBuilder)
 
 	for columnIndex, columnValue := range row.Values {
 		if columnValue.IsNil() || columnValue.IsZero() {
@@ -110,50 +98,46 @@ func decodeRow(columns []*streamsmd.ColumnDesc, row dataset.Row, stream *Stream,
 
 		column := columns[columnIndex]
 		switch column.Type {
-		case streamsmd.COLUMN_TYPE_STREAM_ID:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+		case ColumnTypeStreamID:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			stream.ID = columnValue.Int64()
 
-		case streamsmd.COLUMN_TYPE_MIN_TIMESTAMP:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+		case ColumnTypeMinTimestamp:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			stream.MinTimestamp = time.Unix(0, columnValue.Int64())
 
-		case streamsmd.COLUMN_TYPE_MAX_TIMESTAMP:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+		case ColumnTypeMaxTimestamp:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			stream.MaxTimestamp = time.Unix(0, columnValue.Int64())
 
-		case streamsmd.COLUMN_TYPE_ROWS:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+		case ColumnTypeRows:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			stream.Rows = int(columnValue.Int64())
 
-		case streamsmd.COLUMN_TYPE_UNCOMPRESSED_SIZE:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+		case ColumnTypeUncompressedSize:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			stream.UncompressedSize = columnValue.Int64()
 
-		case streamsmd.COLUMN_TYPE_LABEL:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_BYTE_ARRAY {
+		case ColumnTypeLabel:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 
-			stream.Labels[nextLabelIdx].Name = column.Info.Name
-
 			if sym != nil {
-				stream.Labels[nextLabelIdx].Value = sym.Get(unsafeString(columnValue.ByteArray()))
+				labelBuilder.Add(column.Name, sym.Get(unsafeString(columnValue.Binary())))
 			} else {
-				stream.Labels[nextLabelIdx].Value = string(columnValue.ByteArray())
+				labelBuilder.Add(column.Name, string(columnValue.Binary()))
 			}
-
-			nextLabelIdx++
 
 		default:
 			// TODO(rfratto): We probably don't want to return an error on unexpected
@@ -162,19 +146,10 @@ func decodeRow(columns []*streamsmd.ColumnDesc, row dataset.Row, stream *Stream,
 		}
 	}
 
-	stream.Labels = stream.Labels[:nextLabelIdx]
-
+	// Commit the final set of labels to the stream.
+	labelBuilder.Sort()
+	stream.Labels = labelBuilder.Labels()
 	return nil
-}
-
-func labelColumns(columns []*streamsmd.ColumnDesc) int {
-	var count int
-	for _, column := range columns {
-		if column.Type == streamsmd.COLUMN_TYPE_LABEL {
-			count++
-		}
-	}
-	return count
 }
 
 func unsafeSlice(data string, capacity int) []byte {

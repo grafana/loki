@@ -82,21 +82,36 @@ func validateClusterValidationRoundTripperInputParameters(cluster string, invali
 
 // ClusterValidationMiddleware validates that requests have the correct cluster validation label.
 // If an empty cluster label or nil logger are provided, ClusterValidationMiddleware panics.
-// The check is ignored if the request's path belongs to the list of excluded paths.
+// The check is ignored if the request's path belongs to the list of excluded paths or if the User-Agent matches any of the excluded user agents.
 // If the softValidation parameter is true, errors related to the cluster label validation are logged, but not returned.
 // Otherwise, an error is returned.
 func ClusterValidationMiddleware(
-	cluster string, excludedPaths []string, softValidation bool, invalidClusterRequests *prometheus.CounterVec, logger log.Logger,
+	cluster string, cfg clusterutil.ClusterValidationProtocolConfigForHTTP, invalidClusterRequests *prometheus.CounterVec, logger log.Logger,
 ) Interface {
 	validateClusterValidationMiddlewareInputParameters(cluster, logger)
 	var reB strings.Builder
 	// Allow for a potential path prefix being configured.
 	reB.WriteString(".*/(metrics|debug/pprof.*|ready")
-	for _, path := range excludedPaths {
+	for _, path := range cfg.ExcludedPaths {
 		reB.WriteString("|" + regexp.QuoteMeta(path))
 	}
 	reB.WriteString(")")
 	reExcludedPath := regexp.MustCompile(reB.String())
+
+	// Build user agent regex similar to excluded paths
+	var reExcludedUserAgent *regexp.Regexp
+	if len(cfg.ExcludedUserAgents) > 0 {
+		var uaB strings.Builder
+		uaB.WriteString("(")
+		for i, userAgent := range cfg.ExcludedUserAgents {
+			if i > 0 {
+				uaB.WriteString("|")
+			}
+			uaB.WriteString(userAgent)
+		}
+		uaB.WriteString(")")
+		reExcludedUserAgent = regexp.MustCompile(uaB.String())
+	}
 
 	return Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -104,7 +119,7 @@ func ClusterValidationMiddleware(
 			if route == "" {
 				route = "<unknown-route>"
 			}
-			if err := checkClusterFromRequest(r, cluster, route, softValidation, reExcludedPath, invalidClusterRequests, logger); err != nil {
+			if err := checkClusterFromRequest(r, cluster, route, cfg.SoftValidation, reExcludedPath, reExcludedUserAgent, invalidClusterRequests, logger); err != nil {
 				clusterValidationErr := clusterValidationError{
 					ClusterValidationErrorMessage: err.Error(),
 					Route:                         route,
@@ -127,11 +142,19 @@ func validateClusterValidationMiddlewareInputParameters(cluster string, logger l
 }
 
 func checkClusterFromRequest(
-	r *http.Request, expectedCluster, route string, softValidationEnabled bool, reExcludedPath *regexp.Regexp,
+	r *http.Request, expectedCluster, route string, softValidationEnabled bool, reExcludedPath *regexp.Regexp, reExcludedUserAgent *regexp.Regexp,
 	invalidClusterRequests *prometheus.CounterVec, logger log.Logger,
 ) error {
 	if reExcludedPath != nil && reExcludedPath.MatchString(r.URL.Path) {
 		return nil
+	}
+
+	// Check if User-Agent matches excluded user agent pattern
+	if reExcludedUserAgent != nil {
+		userAgent := r.Header.Get("User-Agent")
+		if reExcludedUserAgent.MatchString(userAgent) {
+			return nil
+		}
 	}
 
 	reqCluster, err := clusterutil.GetClusterFromRequest(r)

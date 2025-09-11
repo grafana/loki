@@ -13,6 +13,10 @@ type FindCoordinatorRequest struct {
 	CoordinatorType CoordinatorType
 }
 
+func (f *FindCoordinatorRequest) setVersion(v int16) {
+	f.Version = v
+}
+
 func (f *FindCoordinatorRequest) encode(pe packetEncoder) error {
 	if err := pe.putString(f.CoordinatorKey); err != nil {
 		return err
@@ -44,7 +48,7 @@ func (f *FindCoordinatorRequest) decode(pd packetDecoder, version int16) (err er
 }
 
 func (f *FindCoordinatorRequest) key() int16 {
-	return 10
+	return apiKeyFindCoordinator
 }
 
 func (f *FindCoordinatorRequest) version() int16 {

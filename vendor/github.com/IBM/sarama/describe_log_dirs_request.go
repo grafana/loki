@@ -10,6 +10,10 @@ type DescribeLogDirsRequest struct {
 	DescribeTopics []DescribeLogDirsRequestTopic
 }
 
+func (r *DescribeLogDirsRequest) setVersion(v int16) {
+	r.Version = v
+}
+
 // DescribeLogDirsRequestTopic is a describe request about the log dir of one or more partitions within a Topic
 type DescribeLogDirsRequestTopic struct {
 	Topic        string
@@ -71,7 +75,7 @@ func (r *DescribeLogDirsRequest) decode(pd packetDecoder, version int16) error {
 }
 
 func (r *DescribeLogDirsRequest) key() int16 {
-	return 35
+	return apiKeyDescribeLogDirs
 }
 
 func (r *DescribeLogDirsRequest) version() int16 {

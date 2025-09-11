@@ -6,6 +6,10 @@ type DescribeConfigsRequest struct {
 	IncludeSynonyms bool
 }
 
+func (r *DescribeConfigsRequest) setVersion(v int16) {
+	r.Version = v
+}
+
 type ConfigResource struct {
 	Type        ConfigResourceType
 	Name        string
@@ -92,7 +96,7 @@ func (r *DescribeConfigsRequest) decode(pd packetDecoder, version int16) (err er
 }
 
 func (r *DescribeConfigsRequest) key() int16 {
-	return 32
+	return apiKeyDescribeConfigs
 }
 
 func (r *DescribeConfigsRequest) version() int16 {

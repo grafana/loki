@@ -1939,12 +1939,14 @@ var (
 					"prePredicateDecompressedRows": 0,
 					"prePredicateDecompressedBytes": 0,
 					"prePredicateDecompressedStructuredMetadataBytes": 0,
+					"totalPageDownloadTime": 0,
 					"totalRowsAvailable": 0
 				},
 				"totalChunksRef": 0,
 				"totalChunksDownloaded": 0,
 				"chunkRefsFetchTime": 0,
 				"queryReferencedStructuredMetadata": false,
+				"queryUsedV2Engine": false,
 				"pipelineWrapperFilteredLines": 2
 			},
 			"totalBatches": 6,
@@ -1979,12 +1981,14 @@ var (
 					"prePredicateDecompressedRows": 0,
 					"prePredicateDecompressedBytes": 0,
 					"prePredicateDecompressedStructuredMetadataBytes": 0,
+					"totalPageDownloadTime": 0,
 					"totalRowsAvailable": 0
 				},
 				"totalChunksRef": 17,
 				"totalChunksDownloaded": 18,
 				"chunkRefsFetchTime": 19,
 				"queryReferencedStructuredMetadata": true,
+				"queryUsedV2Engine": false,
 				"pipelineWrapperFilteredLines": 4
 			}
 		},

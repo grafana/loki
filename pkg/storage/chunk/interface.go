@@ -31,7 +31,7 @@ import (
 const ChunkLen = 1024
 
 var (
-	ErrSliceNoDataInRange = errors.New("chunk has no data for given range to slice")
+	ErrRewriteNoDataLeft  = errors.New("chunk has no data left after rewriting")
 	ErrSliceChunkOverflow = errors.New("slicing should not overflow a chunk")
 )
 
@@ -46,10 +46,9 @@ type Data interface {
 	Marshal(io.Writer) error
 	UnmarshalFromBuf([]byte) error
 	Encoding() Encoding
-	// Rebound returns a smaller chunk that includes all samples between start and end (inclusive).
-	// We do not want to change existing Slice implementations because
-	// it is built specifically for query optimization and is a noop for some of the encodings.
-	Rebound(start, end model.Time, filter filter.Func) (Data, error)
+	// Rewrite rewrites the chunk after filtering out lines based on response from filter.Func.
+	// Filter.Func would be called for each log entry, and the ones for which it returns true would be removed.
+	Rewrite(filter filter.Func) (Data, error)
 	// Size returns the approximate length of the chunk in bytes.
 	Size() int
 	// UncompressedSize returns the length of uncompressed bytes.

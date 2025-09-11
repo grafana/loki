@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/xds/internal"
+	"google.golang.org/grpc/xds/internal/clients"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
@@ -164,12 +165,12 @@ func parseEDSRespProto(m *v3endpointpb.ClusterLoadAssignment) (EndpointsUpdate, 
 			localitiesWithPriority = make(map[string]bool)
 			priorities[priority] = localitiesWithPriority
 		}
-		lid := internal.LocalityID{
+		lid := clients.Locality{
 			Region:  l.Region,
 			Zone:    l.Zone,
 			SubZone: l.SubZone,
 		}
-		lidStr := lid.ToString()
+		lidStr := internal.LocalityString(lid)
 
 		// "Since an xDS configuration can place a given locality under multiple
 		// priorities, it is possible to see locality weight attributes with

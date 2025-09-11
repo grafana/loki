@@ -1024,7 +1024,7 @@ func parseDetectedFields(limit uint32, streams logqlmodel.Streams) map[string]*p
 				}
 			}
 
-			streamLbls := logql_log.NewBaseLabelsBuilder().ForLabels(streamLbls, streamLbls.Hash())
+			streamLbls := logql_log.NewBaseLabelsBuilder().ForLabels(streamLbls, labels.StableHash(streamLbls))
 			parsedLabels, parsers := parseEntry(entry, streamLbls)
 			for k, vals := range parsedLabels {
 				df, ok := detectedFields[k]

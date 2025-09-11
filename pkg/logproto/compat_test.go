@@ -7,13 +7,10 @@ import (
 	"math"
 	"testing"
 	"time"
-	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
@@ -79,18 +76,6 @@ func testUnmarshalling(t *testing.T, unmarshalFn func(data []byte, v interface{}
 	require.NoError(t, err)
 	require.Equal(t, int64(0), sample.TimestampMs)
 	require.True(t, math.IsNaN(sample.Value))
-}
-
-func TestFromLabelAdaptersToLabels(t *testing.T) {
-	input := []LabelAdapter{{Name: "hello", Value: "world"}}
-	expected := labels.Labels{labels.Label{Name: "hello", Value: "world"}}
-	actual := FromLabelAdaptersToLabels(input)
-
-	assert.Equal(t, expected, actual)
-
-	// All strings must NOT be copied.
-	assert.Equal(t, uintptr(unsafe.Pointer(&input[0].Name)), uintptr(unsafe.Pointer(&actual[0].Name)))
-	assert.Equal(t, uintptr(unsafe.Pointer(&input[0].Value)), uintptr(unsafe.Pointer(&actual[0].Value)))
 }
 
 func TestLegacySampleCompatibilityMarshalling(t *testing.T) {

@@ -18,7 +18,7 @@
 package xdsresource
 
 import (
-	"google.golang.org/grpc/xds/internal"
+	"google.golang.org/grpc/xds/internal/clients"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
@@ -58,7 +58,7 @@ type Endpoint struct {
 // Locality contains information of a locality.
 type Locality struct {
 	Endpoints []Endpoint
-	ID        internal.LocalityID
+	ID        clients.Locality
 	Priority  uint32
 	Weight    uint32
 }

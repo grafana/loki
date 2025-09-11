@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
@@ -59,61 +58,64 @@ type (
 func ReadStats(ctx context.Context, section *Section) (Stats, error) {
 	var stats Stats
 
-	dec := newDecoder(section.reader)
-	cols, err := dec.Columns(ctx)
+	dec := section.inner.Decoder()
+	metadata, err := dec.SectionMetadata(ctx)
 	if err != nil {
-		return stats, fmt.Errorf("reading columns")
+		return stats, fmt.Errorf("reading metadata: %w", err)
 	}
 
-	pageSets, err := result.Collect(dec.Pages(ctx, cols))
+	// Collect all the page descriptions at once for quick stats calculation.
+	pageSets, err := result.Collect(dec.Pages(ctx, metadata.GetColumns()))
 	if err != nil {
 		return stats, fmt.Errorf("reading pages: %w", err)
 	}
 
-	for i, col := range cols {
-		stats.CompressedSize += col.Info.CompressedSize
-		stats.UncompressedSize += col.Info.UncompressedSize
+	for i, col := range section.Columns() {
+		md := col.inner.Metadata()
+
+		stats.CompressedSize += md.CompressedSize
+		stats.UncompressedSize += md.UncompressedSize
 
 		switch {
-		case col.Type == streamsmd.COLUMN_TYPE_MIN_TIMESTAMP && col.Info.Statistics != nil:
+		case col.Type == ColumnTypeMinTimestamp && md.Statistics != nil:
 			var ts dataset.Value
-			if err := ts.UnmarshalBinary(col.Info.Statistics.MinValue); err != nil {
+			if err := ts.UnmarshalBinary(md.Statistics.MinValue); err != nil {
 				return stats, fmt.Errorf("unmarshalling min timestamp: %w", err)
 			}
 			stats.MinTimestamp = time.Unix(0, ts.Int64())
 
-		case col.Type == streamsmd.COLUMN_TYPE_MAX_TIMESTAMP && col.Info.Statistics != nil:
+		case col.Type == ColumnTypeMaxTimestamp && md.Statistics != nil:
 			var ts dataset.Value
-			if err := ts.UnmarshalBinary(col.Info.Statistics.MaxValue); err != nil {
+			if err := ts.UnmarshalBinary(md.Statistics.MaxValue); err != nil {
 				return stats, fmt.Errorf("unmarshalling max timestamp: %w", err)
 			}
 			stats.MaxTimestamp = time.Unix(0, ts.Int64())
 		}
 
 		columnStats := ColumnStats{
-			Name:             col.Info.Name,
+			Name:             col.Name,
 			Type:             col.Type.String(),
-			ValueType:        col.Info.ValueType.String(),
-			RowsCount:        col.Info.RowsCount,
-			Compression:      col.Info.Compression.String(),
-			UncompressedSize: col.Info.UncompressedSize,
-			CompressedSize:   col.Info.CompressedSize,
-			MetadataOffset:   col.Info.MetadataOffset,
-			MetadataSize:     col.Info.MetadataSize,
-			ValuesCount:      col.Info.ValuesCount,
-			Cardinality:      col.Info.Statistics.GetCardinalityCount(),
+			ValueType:        col.inner.Type.Physical.String(),
+			RowsCount:        md.RowsCount,
+			Compression:      md.Compression.String(),
+			UncompressedSize: md.UncompressedSize,
+			CompressedSize:   md.CompressedSize,
+			MetadataOffset:   md.ColumnMetadataOffset,
+			MetadataSize:     md.ColumnMetadataLength,
+			ValuesCount:      md.ValuesCount,
+			Cardinality:      md.Statistics.GetCardinalityCount(),
 		}
 
 		for _, pages := range pageSets[i] {
 			columnStats.Pages = append(columnStats.Pages, PageStats{
-				UncompressedSize: pages.Info.UncompressedSize,
-				CompressedSize:   pages.Info.CompressedSize,
-				CRC32:            pages.Info.Crc32,
-				RowsCount:        pages.Info.RowsCount,
-				Encoding:         pages.Info.Encoding.String(),
-				DataOffset:       pages.Info.DataOffset,
-				DataSize:         pages.Info.DataSize,
-				ValuesCount:      pages.Info.ValuesCount,
+				UncompressedSize: pages.UncompressedSize,
+				CompressedSize:   pages.CompressedSize,
+				CRC32:            pages.Crc32,
+				RowsCount:        pages.RowsCount,
+				Encoding:         pages.Encoding.String(),
+				DataOffset:       pages.DataOffset,
+				DataSize:         pages.DataSize,
+				ValuesCount:      pages.ValuesCount,
 			})
 		}
 

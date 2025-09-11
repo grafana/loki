@@ -144,7 +144,7 @@ func (s *stripeSeries) gc(mint int64) map[chunks.HeadSeriesRef]struct{} {
 
 		for _, series := range s.series[i] {
 			series.Lock()
-			seriesHash := series.lset.Hash()
+			seriesHash := labels.StableHash(series.lset)
 
 			// If the series has received a write after mint, there's still
 			// data and it's not completely gone yet.
@@ -239,7 +239,7 @@ func (it *stripeSeriesIterator) Channel() <-chan *memSeries {
 			for _, series := range it.s.series[i] {
 				series.Lock()
 
-				j := int(series.lset.Hash()) & (it.s.size - 1)
+				j := int(labels.StableHash(series.lset)) & (it.s.size - 1)
 				if i != j {
 					it.s.locks[j].RLock()
 				}

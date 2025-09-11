@@ -220,7 +220,7 @@ func (s *Service) CheckReady(ctx context.Context) error {
 // partitions or the wait assign period has elapsed. It must not be called
 // without a lock on partitionReadinessMtx.
 func (s *Service) checkPartitionsAssigned(_ context.Context) error {
-	if s.partitionReadinessWaitAssignSince == (time.Time{}) {
+	if s.partitionReadinessWaitAssignSince.IsZero() {
 		s.partitionReadinessWaitAssignSince = s.clock.Now()
 	}
 	if s.clock.Since(s.partitionReadinessWaitAssignSince) < partitionReadinessWaitAssignPeriod {

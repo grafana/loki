@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 )
@@ -20,13 +21,13 @@ type catalog struct {
 	streamsByObject map[string]objectMeta
 }
 
-// ResolveDataObj implements Catalog.
-func (c *catalog) ResolveDataObj(e Expression, from, through time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
-	return c.ResolveDataObjWithShard(e, noShard, from, through)
+// ResolveShardDescriptors implements Catalog.
+func (c *catalog) ResolveShardDescriptors(e Expression, from, through time.Time) ([]FilteredShardDescriptor, error) {
+	return c.ResolveShardDescriptorsWithShard(e, nil, noShard, from, through)
 }
 
 // ResolveDataObjForShard implements Catalog.
-func (c *catalog) ResolveDataObjWithShard(_ Expression, shard ShardInfo, _, _ time.Time) ([]DataObjLocation, [][]int64, [][]int, error) {
+func (c *catalog) ResolveShardDescriptorsWithShard(_ Expression, _ []Expression, shard ShardInfo, from, through time.Time) ([]FilteredShardDescriptor, error) {
 	paths := make([]string, 0, len(c.streamsByObject))
 	streams := make([][]int64, 0, len(c.streamsByObject))
 	sections := make([]int, 0, len(c.streamsByObject))
@@ -48,7 +49,7 @@ func (c *catalog) ResolveDataObjWithShard(_ Expression, shard ShardInfo, _, _ ti
 		return paths[i] < paths[j]
 	})
 
-	return filterForShard(shard, paths, streams, sections)
+	return filterForShard(shard, paths, streams, sections, from, through)
 }
 
 var _ Catalog = (*catalog)(nil)
@@ -60,74 +61,73 @@ func TestMockCatalog(t *testing.T) {
 			"obj2": {streamIDs: []int64{3, 4}, sections: 2},
 		},
 	}
-
+	timeStart := time.Now()
+	timeEnd := timeStart.Add(time.Second * 10)
 	for _, tt := range []struct {
-		shard       ShardInfo
-		expPaths    []DataObjLocation
-		expStreams  [][]int64
-		expSections [][]int
+		shard          ShardInfo
+		expDescriptors []FilteredShardDescriptor
 	}{
 		{
-			shard:       ShardInfo{0, 1},
-			expPaths:    []DataObjLocation{"obj1", "obj2"},
-			expStreams:  [][]int64{{1, 2}, {3, 4}},
-			expSections: [][]int{{0, 1, 2}, {0, 1}},
+			shard: ShardInfo{0, 1},
+			expDescriptors: []FilteredShardDescriptor{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0, 1, 2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{0, 1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+			},
 		},
 		{
-			shard:       ShardInfo{0, 4},
-			expPaths:    []DataObjLocation{"obj1", "obj2"},
-			expStreams:  [][]int64{{1, 2}, {3, 4}},
-			expSections: [][]int{{0}, {1}},
+			shard: ShardInfo{0, 4},
+			expDescriptors: []FilteredShardDescriptor{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+			},
 		},
 		{
-			shard:       ShardInfo{1, 4},
-			expPaths:    []DataObjLocation{"obj1"},
-			expStreams:  [][]int64{{1, 2}},
-			expSections: [][]int{{1}},
+			shard:          ShardInfo{1, 4},
+			expDescriptors: []FilteredShardDescriptor{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
 		},
 		{
-			shard:       ShardInfo{2, 4},
-			expPaths:    []DataObjLocation{"obj1"},
-			expStreams:  [][]int64{{1, 2}},
-			expSections: [][]int{{2}},
+			shard:          ShardInfo{2, 4},
+			expDescriptors: []FilteredShardDescriptor{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
 		},
 		{
-			shard:       ShardInfo{3, 4},
-			expPaths:    []DataObjLocation{"obj2"},
-			expStreams:  [][]int64{{3, 4}},
-			expSections: [][]int{{0}},
+			shard:          ShardInfo{3, 4},
+			expDescriptors: []FilteredShardDescriptor{{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
 		},
 	} {
 		t.Run("shard "+tt.shard.String(), func(t *testing.T) {
-			paths, streams, sections, _ := catalog.ResolveDataObjWithShard(nil, tt.shard, time.Now(), time.Now())
-			require.Equal(t, tt.expPaths, paths)
-			require.Equal(t, tt.expStreams, streams)
-			require.Equal(t, tt.expSections, sections)
+			filteredShardDescriptors, err := catalog.ResolveShardDescriptorsWithShard(nil, nil, tt.shard, timeStart, timeEnd)
+			require.Nil(t, err)
+			require.ElementsMatch(t, tt.expDescriptors, filteredShardDescriptors)
 		})
 	}
-
 }
 
-func locations(t *testing.T, nodes []Node) []string {
+func locations(t *testing.T, plan *Plan, nodes []Node) []string {
 	res := make([]string, 0, len(nodes))
+
+	visitor := &nodeCollectVisitor{
+		onVisitDataObjScan: func(scan *DataObjScan) error {
+			res = append(res, string(scan.Location))
+			return nil
+		},
+	}
+
 	for _, n := range nodes {
-		obj, ok := n.(*DataObjScan)
-		if !ok {
-			t.Fatalf("failed to cast Node to DataObjScan, got %T", n)
-		}
-		res = append(res, string(obj.Location))
+		require.NoError(t, plan.DFSWalk(n, visitor, PreOrderWalk))
 	}
 	return res
 }
 
-func sections(t *testing.T, nodes []Node) [][]int {
+func sections(t *testing.T, plan *Plan, nodes []Node) [][]int {
 	res := make([][]int, 0, len(nodes))
+
+	visitor := &nodeCollectVisitor{
+		onVisitDataObjScan: func(scan *DataObjScan) error {
+			res = append(res, []int{scan.Section})
+			return nil
+		},
+	}
+
 	for _, n := range nodes {
-		obj, ok := n.(*DataObjScan)
-		if !ok {
-			t.Fatalf("failed to cast Node to DataObjScan, got %T", n)
-		}
-		res = append(res, []int{obj.Section})
+		require.NoError(t, plan.DFSWalk(n, visitor, PreOrderWalk))
 	}
 	return res
 }
@@ -201,11 +201,12 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 				Shard:    tt.shard,
 			}
 			planner.reset()
-			nodes, err := planner.processMakeTable(relation, NewContext(time.Now(), time.Now()))
+			timeStart := time.Now()
+			timeEnd := timeStart.Add(time.Second * 10)
+			nodes, err := planner.processMakeTable(relation, NewContext(timeStart, timeEnd))
 			require.NoError(t, err)
-
-			require.Equal(t, tt.expPaths, locations(t, nodes))
-			require.Equal(t, tt.expSections, sections(t, nodes))
+			require.ElementsMatch(t, tt.expPaths, locations(t, planner.plan, nodes))
+			require.ElementsMatch(t, tt.expSections, sections(t, planner.plan, nodes))
 		})
 	}
 }
@@ -235,7 +236,7 @@ func TestPlanner_Convert(t *testing.T) {
 	).Select(
 		&logical.BinOp{
 			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
-			Right: logical.NewLiteral(time.Unix(0, 1742826126000000000)),
+			Right: logical.NewLiteral(datatype.Timestamp(1742826126000000000)),
 			Op:    types.BinaryOpLt,
 		},
 	).Limit(0, 1000)
@@ -280,7 +281,7 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 	).Select(
 		&logical.BinOp{
 			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
-			Right: logical.NewLiteral(time.Unix(0, 1742826126000000000)),
+			Right: logical.NewLiteral(datatype.Timestamp(1742826126000000000)),
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(

@@ -57,7 +57,7 @@ func (c *Cluster) handleCreatePartitions(b *broker, kreq kmsg.Request) (kmsg.Res
 			continue
 		}
 		for i := int32(len(t)); i < rt.Count; i++ {
-			c.data.tps.mkp(rt.Topic, i, c.newPartData)
+			c.data.tps.mkp(rt.Topic, i, c.newPartData(i))
 		}
 		donet(rt.Topic, 0)
 	}

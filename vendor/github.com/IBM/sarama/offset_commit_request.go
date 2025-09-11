@@ -71,6 +71,10 @@ type OffsetCommitRequest struct {
 	blocks  map[string]map[int32]*offsetCommitRequestBlock
 }
 
+func (r *OffsetCommitRequest) setVersion(v int16) {
+	r.Version = v
+}
+
 func (r *OffsetCommitRequest) encode(pe packetEncoder) error {
 	if r.Version < 0 || r.Version > 7 {
 		return PacketEncodingError{"invalid or unsupported OffsetCommitRequest version field"}
@@ -190,7 +194,7 @@ func (r *OffsetCommitRequest) decode(pd packetDecoder, version int16) (err error
 }
 
 func (r *OffsetCommitRequest) key() int16 {
-	return 8
+	return apiKeyOffsetCommit
 }
 
 func (r *OffsetCommitRequest) version() int16 {

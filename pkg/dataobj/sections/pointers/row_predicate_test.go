@@ -14,22 +14,21 @@ type fakeColumn struct{ dataset.Column }
 var (
 	fakePodColumn = &fakeColumn{
 		Column: &dataset.MemColumn{
-			Info: dataset.ColumnInfo{
-				Name: "values_bloom_filter",
+			Desc: dataset.ColumnDesc{
+				Tag: "values_bloom_filter",
 			},
 		},
 	}
 	fakeNameColumn = &fakeColumn{
 		Column: &dataset.MemColumn{
-			Info: dataset.ColumnInfo{
-				Name: "column_name",
+			Desc: dataset.ColumnDesc{
+				Tag: "column_name",
 			},
 		},
 	}
 )
 
 func TestMatchBloomExistencePredicate(t *testing.T) {
-
 	bf := bloom.New(100, 100)
 	bf.AddString("testValuePresent")
 	bfBytes, err := bf.MarshalBinary()
@@ -48,7 +47,7 @@ func TestMatchBloomExistencePredicate(t *testing.T) {
 				ColumnName:        "pod",
 				ValuesBloomFilter: bfBytes,
 			},
-			pred: BloomExistencePredicate{
+			pred: BloomExistenceRowPredicate{
 				Name:  "pod",
 				Value: "testValuePresent",
 			},
@@ -61,7 +60,7 @@ func TestMatchBloomExistencePredicate(t *testing.T) {
 				ColumnName:        "pod",
 				ValuesBloomFilter: bfBytes,
 			},
-			pred: BloomExistencePredicate{
+			pred: BloomExistenceRowPredicate{
 				Name:  "pod",
 				Value: "testValueAbsent",
 			},
@@ -71,7 +70,7 @@ func TestMatchBloomExistencePredicate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			predicate := convertBloomExistencePredicate(tt.pred.(BloomExistencePredicate), fakeNameColumn, fakePodColumn)
+			predicate := convertBloomExistenceRowPredicate(tt.pred.(BloomExistenceRowPredicate), fakeNameColumn, fakePodColumn)
 			result := evaluateBloomExistencePredicate(predicate, tt.pointer)
 			require.Equal(t, tt.expected, result, "matchBloomExistencePredicate returned unexpected result")
 		})
@@ -83,9 +82,9 @@ func evaluateBloomExistencePredicate(p dataset.Predicate, s SectionPointer) bool
 	case dataset.AndPredicate:
 		return evaluateBloomExistencePredicate(p.Left, s) && evaluateBloomExistencePredicate(p.Right, s)
 	case dataset.EqualPredicate:
-		return s.ColumnName == unsafeString(p.Value.ByteArray())
+		return s.ColumnName == unsafeString(p.Value.Binary())
 	case dataset.FuncPredicate:
-		return p.Keep(p.Column, dataset.ByteArrayValue(s.ValuesBloomFilter))
+		return p.Keep(p.Column, dataset.BinaryValue(s.ValuesBloomFilter))
 
 	default:
 		panic("unexpected predicate")

@@ -27,19 +27,19 @@ var pageReaderTestStrings = []string{
 func Test_pageReader(t *testing.T) {
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
-		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
+		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
 		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
 
 	page := buildPage(t, opts, pageReaderTestStrings)
-	require.Equal(t, len(pageReaderTestStrings), page.Info.RowCount)
-	require.Equal(t, len(pageReaderTestStrings)-2, page.Info.ValuesCount) // -2 for the empty strings
+	require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
+	require.Equal(t, len(pageReaderTestStrings)-2, page.Desc.ValuesCount) // -2 for the empty strings
 
-	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
-	t.Log("Compressed size: ", page.Info.CompressedSize)
+	t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
+	t.Log("Compressed size: ", page.Desc.CompressedSize)
 
-	pr := newPageReader(page, opts.Value, opts.Compression)
+	pr := newPageReader(page, opts.Type.Physical, opts.Compression)
 	actualValues, err := readPage(pr, 4)
 	require.NoError(t, err)
 
@@ -50,19 +50,19 @@ func Test_pageReader(t *testing.T) {
 func Test_pageReader_SeekToStart(t *testing.T) {
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
-		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
+		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
 		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
 
 	page := buildPage(t, opts, pageReaderTestStrings)
-	require.Equal(t, len(pageReaderTestStrings), page.Info.RowCount)
-	require.Equal(t, len(pageReaderTestStrings)-2, page.Info.ValuesCount) // -2 for the empty strings
+	require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
+	require.Equal(t, len(pageReaderTestStrings)-2, page.Desc.ValuesCount) // -2 for the empty strings
 
-	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
-	t.Log("Compressed size: ", page.Info.CompressedSize)
+	t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
+	t.Log("Compressed size: ", page.Desc.CompressedSize)
 
-	pr := newPageReader(page, opts.Value, opts.Compression)
+	pr := newPageReader(page, opts.Type.Physical, opts.Compression)
 	_, err := readPage(pr, 4)
 	require.NoError(t, err)
 
@@ -80,24 +80,24 @@ func Test_pageReader_SeekToStart(t *testing.T) {
 func Test_pageReader_Reset(t *testing.T) {
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
-		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
+		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
 		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
 
 	page := buildPage(t, opts, pageReaderTestStrings)
-	require.Equal(t, len(pageReaderTestStrings), page.Info.RowCount)
-	require.Equal(t, len(pageReaderTestStrings)-2, page.Info.ValuesCount) // -2 for the empty strings
+	require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
+	require.Equal(t, len(pageReaderTestStrings)-2, page.Desc.ValuesCount) // -2 for the empty strings
 
-	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
-	t.Log("Compressed size: ", page.Info.CompressedSize)
+	t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
+	t.Log("Compressed size: ", page.Desc.CompressedSize)
 
-	pr := newPageReader(page, opts.Value, opts.Compression)
+	pr := newPageReader(page, opts.Type.Physical, opts.Compression)
 	_, err := readPage(pr, 4)
 	require.NoError(t, err)
 
 	// Reset and read all values again.
-	pr.Reset(page, opts.Value, opts.Compression)
+	pr.Reset(page, opts.Type.Physical, opts.Compression)
 
 	actualValues, err := readPage(pr, 4)
 	require.NoError(t, err)
@@ -109,19 +109,19 @@ func Test_pageReader_Reset(t *testing.T) {
 func Test_pageReader_SkipRows(t *testing.T) {
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
-		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
+		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
 		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
 
 	page := buildPage(t, opts, pageReaderTestStrings)
-	require.Equal(t, len(pageReaderTestStrings), page.Info.RowCount)
-	require.Equal(t, len(pageReaderTestStrings)-2, page.Info.ValuesCount) // -2 for the empty strings
+	require.Equal(t, len(pageReaderTestStrings), page.Desc.RowCount)
+	require.Equal(t, len(pageReaderTestStrings)-2, page.Desc.ValuesCount) // -2 for the empty strings
 
-	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
-	t.Log("Compressed size: ", page.Info.CompressedSize)
+	t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
+	t.Log("Compressed size: ", page.Desc.CompressedSize)
 
-	pr := newPageReader(page, opts.Value, opts.Compression)
+	pr := newPageReader(page, opts.Type.Physical, opts.Compression)
 
 	_, err := pr.Seek(4, io.SeekStart)
 	require.NoError(t, err)
@@ -140,7 +140,7 @@ func buildPage(t *testing.T, opts BuilderOptions, in []string) *MemPage {
 	require.NoError(t, err)
 
 	for _, s := range in {
-		require.True(t, b.Append(ByteArrayValue([]byte(s))))
+		require.True(t, b.Append(BinaryValue([]byte(s))))
 	}
 
 	page, err := b.Flush()
@@ -186,8 +186,8 @@ func convertToStrings(t *testing.T, values []Value) []string {
 		if v.IsNil() {
 			out = append(out, "")
 		} else {
-			require.Equal(t, datasetmd.VALUE_TYPE_BYTE_ARRAY, v.Type())
-			out = append(out, string(v.ByteArray()))
+			require.Equal(t, datasetmd.PHYSICAL_TYPE_BINARY, v.Type())
+			out = append(out, string(v.Binary()))
 		}
 	}
 

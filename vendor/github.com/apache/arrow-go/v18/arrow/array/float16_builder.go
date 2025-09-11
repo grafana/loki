@@ -121,7 +121,7 @@ func (b *Float16Builder) AppendValues(v []float16.Num, valid []bool) {
 	if len(v) > 0 {
 		arrow.Float16Traits.Copy(b.rawData[b.length:], v)
 	}
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(v))
+	b.unsafeAppendBoolsToBitmap(valid, len(v))
 }
 
 func (b *Float16Builder) init(capacity int) {
@@ -136,7 +136,7 @@ func (b *Float16Builder) init(capacity int) {
 // Reserve ensures there is enough space for appending n elements
 // by checking the capacity and calling Resize if necessary.
 func (b *Float16Builder) Reserve(n int) {
-	b.builder.reserve(n, b.Resize)
+	b.reserve(n, b.Resize)
 }
 
 // Resize adjusts the space allocated by b to n elements. If n is greater than b.Cap(),
@@ -150,7 +150,7 @@ func (b *Float16Builder) Resize(n int) {
 	if b.capacity == 0 {
 		b.init(n)
 	} else {
-		b.builder.resize(nBuilder, b.init)
+		b.resize(nBuilder, b.init)
 		b.data.Resize(arrow.Float16Traits.BytesRequired(n))
 		b.rawData = arrow.Float16Traits.CastFromBytes(b.data.Bytes())
 	}

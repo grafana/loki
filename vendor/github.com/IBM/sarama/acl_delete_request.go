@@ -6,6 +6,10 @@ type DeleteAclsRequest struct {
 	Filters []*AclFilter
 }
 
+func (d *DeleteAclsRequest) setVersion(v int16) {
+	d.Version = int(v)
+}
+
 func (d *DeleteAclsRequest) encode(pe packetEncoder) error {
 	if err := pe.putArrayLength(len(d.Filters)); err != nil {
 		return err
@@ -41,7 +45,7 @@ func (d *DeleteAclsRequest) decode(pd packetDecoder, version int16) (err error) 
 }
 
 func (d *DeleteAclsRequest) key() int16 {
-	return 31
+	return apiKeyDeleteAcls
 }
 
 func (d *DeleteAclsRequest) version() int16 {

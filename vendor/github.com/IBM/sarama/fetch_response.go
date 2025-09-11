@@ -48,8 +48,7 @@ type FetchResponseBlock struct {
 	// partition. This is the last offset such that the state of all
 	// transactional records prior to this offset have been decided (ABORTED or
 	// COMMITTED)
-	LastStableOffset       int64
-	LastRecordsBatchOffset *int64
+	LastStableOffset int64
 	// LogStartOffset contains the current log start offset.
 	LogStartOffset int64
 	// AbortedTransactions contains the aborted transactions.
@@ -62,6 +61,10 @@ type FetchResponseBlock struct {
 
 	Partial bool
 	Records *Records // deprecated: use FetchResponseBlock.RecordsSet
+
+	// recordsNextOffset contains the next consecutive offset following this response block.
+	// This field is computed locally and is not part of the server's binary response.
+	recordsNextOffset *int64
 }
 
 func (b *FetchResponseBlock) decode(pd packetDecoder, version int16) (err error) {
@@ -150,7 +153,7 @@ func (b *FetchResponseBlock) decode(pd packetDecoder, version int16) (err error)
 			return err
 		}
 
-		b.LastRecordsBatchOffset, err = records.recordsOffset()
+		b.recordsNextOffset, err = records.nextOffset()
 		if err != nil {
 			return err
 		}
@@ -278,6 +281,10 @@ type FetchResponse struct {
 	Timestamp     time.Time
 }
 
+func (r *FetchResponse) setVersion(v int16) {
+	r.Version = v
+}
+
 func (r *FetchResponse) decode(pd packetDecoder, version int16) (err error) {
 	r.Version = version
 
@@ -375,7 +382,7 @@ func (r *FetchResponse) encode(pe packetEncoder) (err error) {
 }
 
 func (r *FetchResponse) key() int16 {
-	return 1
+	return apiKeyFetch
 }
 
 func (r *FetchResponse) version() int16 {

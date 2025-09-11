@@ -250,8 +250,31 @@ func (c *BceClient) GetBceClientConfig() *BceClientConfiguration {
 	return c.Config
 }
 
+func NewBceClientWithTimeout(conf *BceClientConfiguration, sign auth.Signer) *BceClient {
+	clientConfig := &http.ClientConfig{
+		RedirectDisabled:      conf.RedirectDisabled,
+		DisableKeepAlives:     conf.DisableKeepAlives,
+		NoVerifySSL:           conf.NoVerifySSL,
+		DialTimeout:           conf.DialTimeout,
+		KeepAlive:             conf.KeepAlive,
+		ReadTimeout:           conf.ReadTimeout,
+		WriteTimeout:          conf.WriteTimeOut,
+		TLSHandshakeTimeout:   conf.TLSHandshakeTimeout,
+		IdleConnectionTimeout: conf.IdleConnectionTimeout,
+		ResponseHeaderTimeout: conf.ResponseHeaderTimeout,
+		HTTPClientTimeout:     conf.HTTPClientTimeout,
+		HTTPClient:            conf.HTTPClient,
+	}
+
+	http.InitClientWithTimeout(clientConfig)
+	return &BceClient{conf, sign}
+}
+
 func NewBceClient(conf *BceClientConfiguration, sign auth.Signer) *BceClient {
-	clientConfig := http.ClientConfig{RedirectDisabled: conf.RedirectDisabled}
+	clientConfig := http.ClientConfig{
+		RedirectDisabled:  conf.RedirectDisabled,
+		DisableKeepAlives: conf.DisableKeepAlives,
+	}
 	http.InitClient(clientConfig)
 	return &BceClient{conf, sign}
 }

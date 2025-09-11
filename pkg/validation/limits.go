@@ -240,6 +240,13 @@ type Limits struct {
 	PolicyEnforcedLabels      map[string][]string           `yaml:"policy_enforced_labels" json:"policy_enforced_labels" category:"experimental" doc:"description=Map of policies to enforced labels. The policy '*' is the global policy, which is applied to all streams and can be extended by other policies. Example:\n policy_enforced_labels: \n  policy1: \n    - label1 \n    - label2 \n  policy2: \n    - label3 \n    - label4\n  '*':\n    - label5"`
 	PolicyStreamMapping       PolicyStreamMapping           `yaml:"policy_stream_mapping" json:"policy_stream_mapping" category:"experimental" doc:"description=Map of policies to stream selectors with a priority. Experimental.  Example:\n policy_stream_mapping: \n  finance: \n    - selector: '{namespace=\"prod\", container=\"billing\"}' \n      priority: 2 \n  ops: \n    - selector: '{namespace=\"prod\", container=\"ops\"}' \n      priority: 1 \n  staging: \n    - selector: '{namespace=\"staging\"}' \n      priority: 1"`
 
+	// DefaultPolicyStreamMapping contains the default policy stream mappings that are merged with per-tenant mappings.
+	// This field is not exposed in YAML/JSON as it's set programmatically.
+	DefaultPolicyStreamMapping PolicyStreamMapping `yaml:"-" json:"-"`
+
+	// PolicyOverrideLimits contains per-policy overrides for stream count limits.
+	PolicyOverrideLimits map[string]PolicyOverridableLimits `yaml:"policy_override_limits" json:"policy_override_limits" doc:"hidden"`
+
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
 	ShardAggregations []string `yaml:"shard_aggregations,omitempty" json:"shard_aggregations,omitempty" doc:"description=List of LogQL vector and range aggregations that should be sharded."`
@@ -249,6 +256,8 @@ type Limits struct {
 	PatternIngesterTokenizableJSONFieldsDelete  dskit_flagext.StringSliceCSV `yaml:"pattern_ingester_tokenizable_json_fields_delete"  json:"pattern_ingester_tokenizable_json_fields_delete"  doc:"hidden"`
 	MetricAggregationEnabled                    bool                         `yaml:"metric_aggregation_enabled"                       json:"metric_aggregation_enabled"`
 	PatternPersistenceEnabled                   bool                         `yaml:"pattern_persistence_enabled"                      json:"pattern_persistence_enabled"`
+	PatternPersistenceGranularity               model.Duration               `yaml:"pattern_persistence_granularity"                  json:"pattern_persistence_granularity"`
+	PatternRateThreshold                        float64                      `yaml:"pattern_rate_threshold"                           json:"pattern_rate_threshold"`
 
 	// This config doesn't have a CLI flag registered here because they're registered in
 	// their own original config struct.
@@ -478,6 +487,13 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		false,
 		"Enable persistence of patterns detected at ingest. When enabled, patterns for pushed streams will be written back into Loki as a special __pattern__ stream.",
 	)
+	f.Var(&l.PatternPersistenceGranularity, "limits.pattern-persistence-granularity", "The time granularity for persisting patterns. Controls how many data points are written when patterns are flushed. Set to 0 to use the default from the pattern ingester configuration.")
+	f.Float64Var(
+		&l.PatternRateThreshold,
+		"limits.pattern-rate-threshold",
+		1.0,
+		"Minimum pattern rate (samples per second) required for a pattern to be persisted. Patterns with lower rates will be filtered out during persistence.",
+	)
 
 	f.DurationVar(&l.SimulatedPushLatency, "limits.simulated-push-latency", 0, "Simulated latency to add to push requests. This is used to test the performance of the write path under different latency conditions.")
 
@@ -493,6 +509,12 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 func (l *Limits) SetGlobalOTLPConfig(cfg push.GlobalOTLPConfig) {
 	l.GlobalOTLPConfig = cfg
 	l.OTLPConfig.ApplyGlobalOTLPConfig(cfg)
+}
+
+// SetDefaultPolicyStreamMapping sets DefaultPolicyStreamMapping which is used while unmarshaling per-tenant policy stream mappings to use the default mappings.
+func (l *Limits) SetDefaultPolicyStreamMapping(cfg PolicyStreamMapping) error {
+	l.DefaultPolicyStreamMapping = cfg
+	return l.PolicyStreamMapping.ApplyDefaultPolicyStreamMappings(cfg)
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -519,6 +541,10 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if defaultLimits != nil {
 		// apply relevant bits from global otlp config
 		l.OTLPConfig.ApplyGlobalOTLPConfig(defaultLimits.GlobalOTLPConfig)
+		// apply default policy stream mappings
+		if err := l.PolicyStreamMapping.ApplyDefaultPolicyStreamMappings(defaultLimits.DefaultPolicyStreamMapping); err != nil {
+			return errors.Wrap(err, "applying default policy stream mappings")
+		}
 	}
 	return nil
 }
@@ -686,10 +712,42 @@ func (o *Overrides) MaxLocalStreamsPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxLocalStreamsPerUser
 }
 
+// PolicyMaxLocalStreamsPerUser returns the maximum number of streams a user is allowed to store
+// in a single ingester for a specific policy. Returns 0 if no policy-specific override is set.
+func (o *Overrides) PolicyMaxLocalStreamsPerUser(userID, policy string) int {
+	if policy == "" {
+		return 0
+	}
+	limits := o.getOverridesForUser(userID)
+	if len(limits.PolicyOverrideLimits) == 0 {
+		return 0
+	}
+	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
+		return policyLimits.MaxLocalStreamsPerUser
+	}
+	return 0
+}
+
 // MaxGlobalStreamsPerUser returns the maximum number of streams a user is allowed to store
 // across the cluster.
 func (o *Overrides) MaxGlobalStreamsPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxGlobalStreamsPerUser
+}
+
+// PolicyMaxGlobalStreamsPerUser returns the maximum number of streams a user is allowed to store
+// across the cluster for a specific policy. Returns 0 if no policy-specific override is set.
+func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) int {
+	if policy == "" {
+		return 0
+	}
+	limits := o.getOverridesForUser(userID)
+	if len(limits.PolicyOverrideLimits) == 0 {
+		return 0
+	}
+	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
+		return policyLimits.MaxGlobalStreamsPerUser
+	}
+	return 0
 }
 
 // MaxChunksPerQuery returns the maximum number of chunks allowed per query.
@@ -1233,6 +1291,14 @@ func (o *Overrides) PatternPersistenceEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).PatternPersistenceEnabled
 }
 
+func (o *Overrides) PersistenceGranularity(userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).PatternPersistenceGranularity)
+}
+
+func (o *Overrides) PatternRateThreshold(userID string) float64 {
+	return o.getOverridesForUser(userID).PatternRateThreshold
+}
+
 func (o *Overrides) EnableMultiVariantQueries(userID string) bool {
 	return o.getOverridesForUser(userID).EnableMultiVariantQueries
 }
@@ -1266,6 +1332,12 @@ func (o *Overrides) getOverridesForUser(userID string) *Limits {
 // as opposed to merging.
 type OverwriteMarshalingStringMap struct {
 	m map[string]string
+}
+
+// PolicyOverridableLimits contains limits that can be overridden on a per-policy basis.
+type PolicyOverridableLimits struct {
+	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user" json:"max_streams_per_user"`
+	MaxGlobalStreamsPerUser int `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user"`
 }
 
 func NewOverwriteMarshalingStringMap(m map[string]string) OverwriteMarshalingStringMap {

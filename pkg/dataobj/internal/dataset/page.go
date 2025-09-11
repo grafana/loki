@@ -31,8 +31,8 @@ type (
 	// non-NULL values.
 	PageData []byte
 
-	// PageInfo describes a page.
-	PageInfo struct {
+	// PageDesc describes a page.
+	PageDesc struct {
 		UncompressedSize int    // UncompressedSize is the size of a page before compression.
 		CompressedSize   int    // CompressedSize is the size of a page after compression.
 		CRC32            uint32 // CRC32 checksum of the page after encoding and compression.
@@ -50,8 +50,8 @@ type (
 // A Page holds an encoded and optionally compressed sequence of [Value]s
 // within a [Column].
 type Page interface {
-	// PageInfo returns the metadata for the Page.
-	PageInfo() *PageInfo
+	// PageDesc returns the metadata for the Page.
+	PageDesc() *PageDesc
 
 	// ReadPage returns the [PageData] for the Page.
 	ReadPage(ctx context.Context) (PageData, error)
@@ -60,15 +60,15 @@ type Page interface {
 // MemPage holds an encoded (and optionally compressed) sequence of [Value]
 // entries of a common type. Use [ColumnBuilder] to construct sets of pages.
 type MemPage struct {
-	Info PageInfo // Information about the page.
+	Desc PageDesc // Description of the page.
 	Data PageData // Data for the page.
 }
 
 var _ Page = (*MemPage)(nil)
 
-// PageInfo implements [Page] and returns p.Info.
-func (p *MemPage) PageInfo() *PageInfo {
-	return &p.Info
+// PageDesc implements [Page] and returns p.Desc.
+func (p *MemPage) PageDesc() *PageDesc {
+	return &p.Desc
 }
 
 // ReadPage implements [Page] and returns p.Data.
@@ -81,8 +81,8 @@ var checksumTable = crc32.MakeTable(crc32.Castagnoli)
 // reader returns a reader for decompressed page data. Reader returns an error
 // if the CRC32 fails to validate.
 func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Reader, values io.ReadCloser, err error) {
-	if actual := crc32.Checksum(p.Data, checksumTable); p.Info.CRC32 != actual {
-		return nil, nil, fmt.Errorf("invalid CRC32 checksum %x, expected %x", actual, p.Info.CRC32)
+	if actual := crc32.Checksum(p.Data, checksumTable); p.Desc.CRC32 != actual {
+		return nil, nil, fmt.Errorf("invalid CRC32 checksum %x, expected %x", actual, p.Desc.CRC32)
 	}
 
 	bitmapSize, n := binary.Uvarint(p.Data)
@@ -126,7 +126,7 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 			zstdPool.Put(zr)
 		}()
 
-		decompressed := bufpool.Get(p.PageInfo().UncompressedSize)
+		decompressed := bufpool.Get(p.PageDesc().UncompressedSize)
 		defer func() {
 			// Return the buffer to the pool immediately if there was an error.
 			// Otherwise, the buffer will be returned to the pool when the reader is

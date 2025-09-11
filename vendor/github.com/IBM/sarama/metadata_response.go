@@ -283,6 +283,10 @@ type MetadataResponse struct {
 	ClusterAuthorizedOperations int32 // Only valid for Version >= 8
 }
 
+func (r *MetadataResponse) setVersion(v int16) {
+	r.Version = v
+}
+
 func (r *MetadataResponse) decode(pd packetDecoder, version int16) (err error) {
 	r.Version = version
 	if r.Version >= 3 {
@@ -428,7 +432,7 @@ func (r *MetadataResponse) encode(pe packetEncoder) (err error) {
 }
 
 func (r *MetadataResponse) key() int16 {
-	return 3
+	return apiKeyMetadata
 }
 
 func (r *MetadataResponse) version() int16 {

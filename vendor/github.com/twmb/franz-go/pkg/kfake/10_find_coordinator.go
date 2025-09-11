@@ -8,7 +8,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
-func init() { regKey(10, 0, 4) }
+func init() { regKey(10, 0, 6) }
 
 func (c *Cluster) handleFindCoordinator(kreq kmsg.Request) (kmsg.Response, error) {
 	req := kreq.(*kmsg.FindCoordinatorRequest)

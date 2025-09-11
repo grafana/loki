@@ -21,7 +21,6 @@ package hashing
 
 import (
 	"bytes"
-	"math"
 	"unsafe"
 )
 
@@ -47,6 +46,16 @@ type MemoTable interface {
 	// the table, including whether or not a null value has been
 	// inserted via GetOrInsertNull.
 	Size() int
+	// CopyValues populates out with the values currently in the table, out must
+	// be a slice of the appropriate type for the table type.
+	CopyValues(out any)
+	// CopyValuesSubset is like CopyValues but only copies a subset of values starting
+	// at the indicated index.
+	CopyValuesSubset(start int, out any)
+	// Get returns the index of the table the specified value is, and a boolean indicating
+	// whether or not the value was found in the table. Will panic if val is not the appropriate
+	// type for the underlying table.
+	Get(val interface{}) (int, bool)
 	// GetOrInsert returns the index of the table the specified value is,
 	// and a boolean indicating whether or not the value was found in
 	// the table (if false, the value was inserted). An error is returned
@@ -97,15 +106,6 @@ const (
 	loadFactor int64  = 2
 )
 
-func max(a, b uint64) uint64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-var isNan32Cmp = func(v float32) bool { return math.IsNaN(float64(v)) }
-
 // KeyNotFound is the constant returned by memo table functions when a key isn't found in the table
 const KeyNotFound = -1
 
@@ -129,7 +129,7 @@ type BinaryBuilderIFace interface {
 // while using a hash table to keep track of the indexes into the dictionary that
 // is created as we go.
 type BinaryMemoTable struct {
-	tbl     *Int32HashTable
+	tbl     *HashTable[int32]
 	builder BinaryBuilderIFace
 	nullIdx int
 }
@@ -146,7 +146,7 @@ func NewBinaryMemoTable(initial, valuesize int, bldr BinaryBuilderIFace) *Binary
 		datasize = initial * 4
 	}
 	bldr.ReserveData(datasize)
-	return &BinaryMemoTable{tbl: NewInt32HashTable(uint64(initial)), builder: bldr, nullIdx: KeyNotFound}
+	return &BinaryMemoTable{tbl: NewHashTable[int32](uint64(initial)), builder: bldr, nullIdx: KeyNotFound}
 }
 
 type unimplementedtraits struct{}
@@ -214,7 +214,7 @@ func (BinaryMemoTable) getHash(val interface{}) uint64 {
 	}
 }
 
-func (b *BinaryMemoTable) lookup(h uint64, val []byte) (*entryInt32, bool) {
+func (b *BinaryMemoTable) lookup(h uint64, val []byte) (*entry[int32], bool) {
 	return b.tbl.Lookup(h, func(i int32) bool {
 		return bytes.Equal(val, b.builder.Value(int(i)))
 	})

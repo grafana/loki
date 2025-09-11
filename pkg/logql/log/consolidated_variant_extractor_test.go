@@ -79,7 +79,7 @@ func (m *MockCommonPipeline) Reset() {
 }
 
 func (m *MockCommonPipeline) ForStream(lbls labels.Labels) StreamPipeline {
-	lblsResult := NewLabelsResult(lbls.String(), lbls.Hash(), lbls, labels.EmptyLabels(), labels.EmptyLabels())
+	lblsResult := NewLabelsResult(lbls.String(), labels.StableHash(lbls), lbls, labels.EmptyLabels(), labels.EmptyLabels())
 	return &MockCommonStreamPipeline{
 		counter:       m.counter,
 		shouldPass:    m.shouldPass,
@@ -121,7 +121,7 @@ type MockVariantSpecificExtractor struct {
 }
 
 func (m *MockVariantSpecificExtractor) ForStream(lbls labels.Labels) StreamSampleExtractor {
-	lblsResult := NewLabelsResult(lbls.String(), lbls.Hash(), lbls, labels.EmptyLabels(), labels.EmptyLabels())
+	lblsResult := NewLabelsResult(lbls.String(), labels.StableHash(lbls), lbls, labels.EmptyLabels(), labels.EmptyLabels())
 	return &mockVariantSpecificStreamExtractor{
 		valueToExtract: m.valueToExtract,
 		shouldExtract:  m.shouldExtract,

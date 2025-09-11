@@ -3,8 +3,10 @@ package physical
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 )
 
@@ -150,6 +152,67 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 	return nil, nil
 }
 
+func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, baseNode Node, ctx *Context) error {
+	scans := []Node{}
+	for _, descriptor := range currentGroup {
+		// output current group to nodes
+		for _, section := range descriptor.Sections {
+			scan := &DataObjScan{
+				Location:  descriptor.Location,
+				StreamIDs: descriptor.Streams,
+				Section:   section,
+				Direction: ctx.direction,
+			}
+			p.plan.addNode(scan)
+			scans = append(scans, scan)
+		}
+	}
+	if len(scans) > 1 && ctx.direction != UNSORTED {
+		sortMerge := &SortMerge{
+			Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+			Order:  ctx.direction, // apply direction from previously visited Sort node
+		}
+		p.plan.addNode(sortMerge)
+		for _, scan := range scans {
+			if err := p.plan.addEdge(Edge{Parent: sortMerge, Child: scan}); err != nil {
+				return err
+			}
+		}
+		if err := p.plan.addEdge(Edge{Parent: baseNode, Child: sortMerge}); err != nil {
+			return err
+		}
+	} else {
+		for _, scan := range scans {
+			if err := p.plan.addEdge(Edge{Parent: baseNode, Child: scan}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func overlappingShardDescriptors(filteredShardDescriptors []FilteredShardDescriptor) [][]FilteredShardDescriptor {
+	// Ensure that shard descriptors are sorted by end time
+	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
+		return filteredShardDescriptors[i].TimeRange.End.Before(filteredShardDescriptors[j].TimeRange.End)
+	})
+
+	groups := make([][]FilteredShardDescriptor, 0, len(filteredShardDescriptors))
+	var tr TimeRange
+	for i, shardDesc := range filteredShardDescriptors {
+		if i == 0 || !tr.Overlaps(shardDesc.TimeRange) {
+			// Create new group for first item or if item does not overlap with previous group
+			groups = append(groups, []FilteredShardDescriptor{shardDesc})
+			tr = shardDesc.TimeRange
+		} else {
+			// Append to existing group
+			groups[len(groups)-1] = append(groups[len(groups)-1], shardDesc)
+			tr = tr.Merge(shardDesc.TimeRange)
+		}
+	}
+	return groups
+}
+
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
 func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node, error) {
 	shard, ok := lp.Shard.(*logical.ShardInfo)
@@ -157,26 +220,31 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 		return nil, fmt.Errorf("invalid shard, got %T", lp.Shard)
 	}
 
+	predicates := make([]Expression, len(lp.Predicates))
+	for i, predicate := range lp.Predicates {
+		predicates[i] = p.convertPredicate(predicate)
+	}
+
 	from, through := ctx.GetResolveTimeRange()
-	objects, streams, sections, err := p.catalog.ResolveDataObjWithShard(p.convertPredicate(lp.Selector), ShardInfo(*shard), from, through)
+
+	filteredShardDescriptors, err := p.catalog.ResolveShardDescriptorsWithShard(p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
 	if err != nil {
 		return nil, err
 	}
+	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
+		return filteredShardDescriptors[i].TimeRange.End.Before(filteredShardDescriptors[j].TimeRange.End)
+	})
+	merge := &Merge{}
+	p.plan.addNode(merge)
+	groups := overlappingShardDescriptors(filteredShardDescriptors)
 
-	nodes := make([]Node, 0, len(objects))
-	for i := range objects {
-		for _, section := range sections[i] {
-			node := &DataObjScan{
-				Location:  objects[i],
-				StreamIDs: streams[i],
-				Section:   section,
-				Direction: ctx.direction, // apply direction from previously visited Sort node
-			}
-			p.plan.addNode(node)
-			nodes = append(nodes, node)
+	for _, gr := range groups {
+		if err := p.buildNodeGroup(gr, merge, ctx); err != nil {
+			return nil, err
 		}
 	}
-	return nodes, nil
+
+	return []Node{merge}, nil
 }
 
 // Convert [logical.Select] into one [Filter] node.
@@ -299,7 +367,6 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 // to the scan nodes.
 func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 	for i, root := range plan.Roots() {
-
 		optimizations := []*optimization{
 			newOptimization("PredicatePushdown", plan).withRules(
 				&predicatePushdown{plan: plan},

@@ -81,6 +81,7 @@ func (bytesCodecReadObject) Name() string {
 	return ""
 }
 
+// NewRangeReaderReadObject is the legacy (non-bidi) implementation of reads.
 func (c *grpcStorageClient) NewRangeReaderReadObject(ctx context.Context, params *newRangeReaderParams, opts ...storageOption) (r *Reader, err error) {
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.grpcStorageClient.NewRangeReaderReadObject")
 	defer func() { trace.EndSpan(ctx, err) }()

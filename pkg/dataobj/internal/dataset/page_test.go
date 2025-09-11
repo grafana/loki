@@ -86,7 +86,7 @@ func benchmarkPageDecodeParallel(b *testing.B, workers int) {
 
 		wg.Wait()
 
-		totalRead += page.Info.UncompressedSize
+		totalRead += page.Desc.UncompressedSize
 	}
 
 	b.ReportMetric(float64(totalRead)/1_000_000/b.Elapsed().Seconds(), "MBps/op")
@@ -109,7 +109,7 @@ func logsTestPage(t testing.TB) *MemPage {
 
 	opts := BuilderOptions{
 		PageSizeHint: sb.Len() * 2,
-		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
+		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
 		Compression:  datasetmd.COMPRESSION_TYPE_ZSTD,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
@@ -117,7 +117,7 @@ func logsTestPage(t testing.TB) *MemPage {
 	require.NoError(t, err)
 
 	for line := range strings.Lines(sb.String()) {
-		require.True(t, builder.Append(ByteArrayValue([]byte(line))))
+		require.True(t, builder.Append(BinaryValue([]byte(line))))
 	}
 
 	page, err := builder.Flush()
@@ -141,7 +141,7 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 
 	opts := BuilderOptions{
 		PageSizeHint: 1024,
-		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
+		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
 		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	}
@@ -149,20 +149,20 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, s := range in {
-		require.True(t, b.Append(ByteArrayValue([]byte(s))))
+		require.True(t, b.Append(BinaryValue([]byte(s))))
 	}
 
 	page, err := b.Flush()
 	require.NoError(t, err)
-	require.Equal(t, len(in), page.Info.RowCount)
-	require.Equal(t, len(in)-2, page.Info.ValuesCount) // -2 for the empty strings
+	require.Equal(t, len(in), page.Desc.RowCount)
+	require.Equal(t, len(in)-2, page.Desc.ValuesCount) // -2 for the empty strings
 
-	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
-	t.Log("Compressed size: ", page.Info.CompressedSize)
+	t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
+	t.Log("Compressed size: ", page.Desc.CompressedSize)
 
 	var actual []string
 
-	r := newPageReader(page, opts.Value, opts.Compression)
+	r := newPageReader(page, opts.Type.Physical, opts.Compression)
 	for {
 		var values [1]Value
 		n, err := r.Read(context.Background(), values[:])
@@ -178,8 +178,8 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 		if val.IsNil() || val.IsZero() {
 			actual = append(actual, "")
 		} else {
-			require.Equal(t, datasetmd.VALUE_TYPE_BYTE_ARRAY, val.Type())
-			actual = append(actual, string(val.ByteArray()))
+			require.Equal(t, datasetmd.PHYSICAL_TYPE_BINARY, val.Type())
+			actual = append(actual, string(val.Binary()))
 		}
 	}
 	require.Equal(t, in, actual)
@@ -188,7 +188,7 @@ func Test_pageBuilder_WriteRead(t *testing.T) {
 func Test_pageBuilder_Fill(t *testing.T) {
 	opts := BuilderOptions{
 		PageSizeHint: 1_500_000,
-		Value:        datasetmd.VALUE_TYPE_INT64,
+		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_INT64, Logical: "timestamp"},
 		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
 		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
 	}
@@ -202,9 +202,9 @@ func Test_pageBuilder_Fill(t *testing.T) {
 
 	page, err := buf.Flush()
 	require.NoError(t, err)
-	require.Equal(t, page.Info.UncompressedSize, page.Info.CompressedSize)
+	require.Equal(t, page.Desc.UncompressedSize, page.Desc.CompressedSize)
 
-	t.Log("Uncompressed size: ", page.Info.UncompressedSize)
-	t.Log("Compressed size: ", page.Info.CompressedSize)
-	t.Log("Row count: ", page.Info.RowCount)
+	t.Log("Uncompressed size: ", page.Desc.UncompressedSize)
+	t.Log("Compressed size: ", page.Desc.CompressedSize)
+	t.Log("Row count: ", page.Desc.RowCount)
 }

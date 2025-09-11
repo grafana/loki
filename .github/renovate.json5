@@ -98,6 +98,13 @@
       "matchUpdateTypes": ["major"],
       "automerge": false,
       "autoApprove": false
+    },
+    {
+      // Pin kprom to 1.2.x range, ignore 1.3.0+ updates due to a conflict with a metric introduced in this version.
+      // Can be upgraded once adapative metrics and Mimir have upgraded.
+      "matchPackageNames": ["github.com/twmb/franz-go/plugin/kprom"],
+      "allowedVersions": "~1.2.0",
+      "enabled": true
     }
   ],
   "digest": {

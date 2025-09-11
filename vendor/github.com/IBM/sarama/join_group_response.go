@@ -22,6 +22,10 @@ type JoinGroupResponse struct {
 	Members []GroupMember
 }
 
+func (r *JoinGroupResponse) setVersion(v int16) {
+	r.Version = v
+}
+
 type GroupMember struct {
 	// MemberId contains the group member ID.
 	MemberId string
@@ -149,7 +153,7 @@ func (r *JoinGroupResponse) decode(pd packetDecoder, version int16) (err error) 
 }
 
 func (r *JoinGroupResponse) key() int16 {
-	return 11
+	return apiKeyJoinGroup
 }
 
 func (r *JoinGroupResponse) version() int16 {

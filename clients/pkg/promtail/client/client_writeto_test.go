@@ -52,13 +52,8 @@ func TestClientWriter_LogEntriesAreReconstructedAndForwardedCorrectly(t *testing
 	testAppLabelsRef := chunks.HeadSeriesRef(1)
 	writeTo.StoreSeries([]record.RefSeries{
 		{
-			Ref: testAppLabelsRef,
-			Labels: []labels.Label{
-				{
-					Name:  "app",
-					Value: "test",
-				},
-			},
+			Ref:    testAppLabelsRef,
+			Labels: labels.FromStrings("app", "test"),
 		},
 	}, 1)
 
@@ -112,13 +107,8 @@ func TestClientWriter_LogEntriesWithoutMatchingSeriesAreIgnored(t *testing.T) {
 	testAppLabelsRef := chunks.HeadSeriesRef(1)
 	writeTo.StoreSeries([]record.RefSeries{
 		{
-			Ref: testAppLabelsRef,
-			Labels: []labels.Label{
-				{
-					Name:  "app",
-					Value: "test",
-				},
-			},
+			Ref:    testAppLabelsRef,
+			Labels: labels.FromStrings("app", "test"),
 		},
 	}, 1)
 
@@ -193,10 +183,8 @@ func bench(numWriters, totalLines int, b *testing.B) {
 			// run as writing from segment n+w, and after finishing reset series up to n. That way we are only causing blocking,
 			// and not deleting actually used series
 			startWriter(numWriters+n, n, writeTo, totalLines/numWriters, record.RefSeries{
-				Ref: chunks.HeadSeriesRef(n),
-				Labels: labels.Labels{
-					{Name: "n", Value: fmt.Sprint(n)},
-				},
+				Ref:    chunks.HeadSeriesRef(n),
+				Labels: labels.FromStrings("app", fmt.Sprint(n)),
 			}, time.Millisecond*500)
 		}(n)
 	}

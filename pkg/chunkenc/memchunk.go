@@ -8,6 +8,7 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
+	"math"
 	"time"
 	"unsafe"
 
@@ -916,11 +917,26 @@ func (c *MemChunk) reorder() error {
 
 	// Otherwise, we need to rebuild the blocks
 	from, to := c.Bounds()
-	newC, err := c.Rebound(from, to, nil)
+
+	// add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
+	itr, err := c.Iterator(context.Background(), from, to.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 	if err != nil {
 		return err
 	}
-	*c = *newC.(*MemChunk)
+
+	newChunk := NewMemChunk(c.format, c.Encoding(), c.headFmt, c.blockSize, c.targetSize)
+	for itr.Next() {
+		entry := itr.At()
+		if _, err := newChunk.Append(&entry); err != nil {
+			return err
+		}
+	}
+
+	if err := newChunk.Close(); err != nil {
+		return err
+	}
+
+	*c = *newChunk
 	return nil
 }
 
@@ -1138,6 +1154,62 @@ func (c *MemChunk) Blocks(mintT, maxtT time.Time) []Block {
 	return blocks
 }
 
+// Rewrite rewrites the chunk after filtering out lines based on response from filter.Func.
+// Filter.Func would be called for each log entry, and the ones for which it returns true would be removed.
+// The new chunk would have data in the same order as the original chunk.
+func (c *MemChunk) Rewrite(filter filter.Func) (Chunk, error) {
+	newChunk := NewMemChunk(c.format, c.Encoding(), c.headFmt, math.MaxInt, math.MaxInt)
+
+	// iterate through the entries block-by-block to avoid re-encoding unchanged blocks
+	for _, b := range c.blocks {
+		itr := newBufferedIterator(context.Background(), compression.GetReaderPool(c.encoding), b.b, c.format, c.symbolizer)
+
+		entriesRemoved := false
+		for itr.Next() {
+			timestamp := time.Unix(0, itr.currTs)
+			line := string(itr.currLine)
+			if filter != nil && filter(timestamp, line, itr.currStructuredMetadata) {
+				entriesRemoved = true
+				continue
+			}
+			entry := logproto.Entry{
+				Timestamp:          timestamp,
+				Line:               line,
+				StructuredMetadata: logproto.FromLabelsToLabelAdapters(itr.currStructuredMetadata),
+			}
+			if _, err := newChunk.Append(&entry); err != nil {
+				return nil, err
+			}
+		}
+
+		if err := itr.Err(); err != nil {
+			return nil, err
+		}
+
+		if !entriesRemoved {
+			// no entries were removed so copy the existing block as is to save on the work of re-encoding it
+			newChunk.blocks = append(newChunk.blocks, b)
+			newChunk.cutBlockSize += len(b.b)
+
+			newChunk.head.Reset()
+		} else {
+			if err := newChunk.cut(); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if newChunk.Size() == 0 {
+		return nil, chunk.ErrRewriteNoDataLeft
+	}
+
+	if err := newChunk.Close(); err != nil {
+		return nil, err
+	}
+
+	return newChunk, nil
+}
+
 // Rebound builds a smaller chunk with logs having timestamp from start and end(both inclusive)
 func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, error) {
 	// add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
@@ -1169,7 +1241,7 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 	}
 
 	if newChunk.Size() == 0 {
-		return nil, chunk.ErrSliceNoDataInRange
+		return nil, chunk.ErrRewriteNoDataLeft
 	}
 
 	if err := newChunk.Close(); err != nil {
@@ -1297,7 +1369,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 }
 
 func unsafeGetBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
 
 func (hb *headBlock) SampleIterator(
@@ -1401,13 +1473,12 @@ func newBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []b
 	stats := stats.FromContext(ctx)
 	stats.AddCompressedBytes(int64(len(b)))
 	return &bufferedIterator{
-		stats:                  stats,
-		origBytes:              b,
-		reader:                 nil, // will be initialized later
-		pool:                   pool,
-		format:                 format,
-		symbolizer:             symbolizer,
-		currStructuredMetadata: structuredMetadataPool.Get().(labels.Labels),
+		stats:      stats,
+		origBytes:  b,
+		reader:     nil, // will be initialized later
+		pool:       pool,
+		format:     format,
+		symbolizer: symbolizer,
 	}
 }
 
@@ -1622,8 +1693,12 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	si.stats.AddDecompressedStructuredMetadataBytes(decompressedStructuredMetadataBytes)
 	si.stats.AddDecompressedBytes(decompressedBytes + decompressedStructuredMetadataBytes)
 
-	labelsBuilder := log.NewBufferedLabelsBuilder(si.currStructuredMetadata)
-	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], labelsBuilder), true
+	lbls, err := si.symbolizer.Lookup(si.symbolsBuf[:nSymbols], nil)
+	if err != nil {
+		si.err = fmt.Errorf("symbolizer lookup: %w", err)
+		return 0, nil, labels.EmptyLabels(), false
+	}
+	return ts, si.buf[:lineSize], lbls, true
 }
 
 func (si *bufferedIterator) Err() error { return si.err }
@@ -1653,7 +1728,6 @@ func (si *bufferedIterator) close() {
 	}
 
 	if !si.currStructuredMetadata.IsEmpty() {
-		structuredMetadataPool.Put(si.currStructuredMetadata) // nolint:staticcheck
 		si.currStructuredMetadata = labels.EmptyLabels()
 	}
 

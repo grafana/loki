@@ -542,8 +542,8 @@ func (fcm *FilterChainManager) filterChainFromProto(fc *v3listenerpb.FilterChain
 		return nil, fmt.Errorf("transport_socket field has unexpected name: %s", name)
 	}
 	tc := ts.GetTypedConfig()
-	if tc == nil || tc.TypeUrl != version.V3DownstreamTLSContextURL {
-		return nil, fmt.Errorf("transport_socket field has unexpected typeURL: %s", tc.TypeUrl)
+	if typeURL := tc.GetTypeUrl(); typeURL != version.V3DownstreamTLSContextURL {
+		return nil, fmt.Errorf("transport_socket missing typed_config or wrong type_url: %q", typeURL)
 	}
 	downstreamCtx := &v3tlspb.DownstreamTlsContext{}
 	if err := proto.Unmarshal(tc.GetValue(), downstreamCtx); err != nil {

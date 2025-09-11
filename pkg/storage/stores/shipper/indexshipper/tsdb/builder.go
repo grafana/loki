@@ -91,6 +91,19 @@ func (b *Builder) DropChunk(streamID string, chk index.ChunkMeta) (bool, error) 
 	return chunkFound, nil
 }
 
+func (b *Builder) HasChunk(streamID string, chk index.ChunkMeta) (bool, error) {
+	if !b.chunksFinalized {
+		return false, fmt.Errorf("checking chunk existence is only allowed on finalized chunks")
+	}
+
+	s, ok := b.streams[streamID]
+	if !ok {
+		return false, nil
+	}
+
+	return s.chunks.HasChunk(chk), nil
+}
+
 func (b *Builder) Build(
 	ctx context.Context,
 	scratchDir string,
@@ -108,7 +121,7 @@ func (b *Builder) Build(
 	}
 
 	// First write tenant/index-bounds-random.staging
-	rng := rand.Int63() //#nosec G404 -- just generating a random filename in a slightly unidiomatic way. Collision resistance is not a concern.
+	rng := rand.Int63() //#nosec G404 -- just generating a random filename in a slightly unidiomatic way. Collision resistance is not a concern. -- nosemgrep: math-random-used
 	name := fmt.Sprintf("%s-%x.staging", index.IndexFilename, rng)
 	tmpPath := filepath.Join(scratchDir, name)
 
@@ -175,10 +188,10 @@ func (b *Builder) build(
 	// Build symbols
 	symbolsMap := make(map[string]struct{})
 	for _, s := range streams {
-		for _, l := range s.labels {
+		s.labels.Range(func(l labels.Label) {
 			symbolsMap[l.Name] = struct{}{}
 			symbolsMap[l.Value] = struct{}{}
-		}
+		})
 	}
 
 	// Sort symbols

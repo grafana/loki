@@ -39,3 +39,24 @@
 {{- if and (empty .Values.loki.schemaConfig) (empty .Values.loki.structuredConfig.schema_config) (not .Values.loki.useTestSchema) }}
 {{- fail "You must provide a schema_config for Loki, one is not provided as this will be individual for every Loki cluster. See https://grafana.com/docs/loki/latest/operations/storage/schema/ for schema information. For quick testing (with no persistence) add `--set loki.useTestSchema=true`"}}
 {{- end }}
+
+{{- if and (eq (include "loki.isUsingObjectStorage" . ) "true") (not .Values.minio.enabled) }}
+{{- $bucketNames := .Values.loki.storage.bucketNames -}}
+{{- if not (hasKey $bucketNames "chunks") }}
+{{- fail "Please define loki.storage.bucketNames.chunks" }}
+{{- end }}
+
+{{- if and .Values.ruler.enabled (ne (dig "storage" "type" "" .Values.loki.rulerConfig) "local") (not (hasKey $bucketNames "ruler")) }}
+{{- fail "Please define loki.storage.bucketNames.ruler" }}
+{{- end }}
+
+{{- if and .Values.enterprise.enabled .Values.enterprise.adminApi.enabled (not (hasKey $bucketNames "admin")) }}
+{{- fail "Please define loki.storage.bucketNames.admin" }}
+{{- end }}
+{{- end }}
+
+{{- if and .Values.enterprise.enabled .Values.enterprise.provisioner.enabled }}
+{{- if not .Values.enterprise.adminToken.secret }}
+{{- fail "enterprise.adminToken.secret must be set when enterprise.provisioner.enabled is true. Please create an admin token secret and specify its name." }}
+{{- end }}
+{{- end }}

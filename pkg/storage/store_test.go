@@ -1591,10 +1591,10 @@ func parseDate(in string) time.Time {
 	return t
 }
 
-func buildTestStreams(labels labels.Labels, tr timeRange) logproto.Stream {
+func buildTestStreams(ls labels.Labels, tr timeRange) logproto.Stream {
 	stream := logproto.Stream{
-		Labels:  labels.String(),
-		Hash:    labels.Hash(),
+		Labels:  ls.String(),
+		Hash:    labels.StableHash(ls),
 		Entries: []logproto.Entry{},
 	}
 

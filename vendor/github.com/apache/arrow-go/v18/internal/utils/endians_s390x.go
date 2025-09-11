@@ -19,6 +19,8 @@ package utils
 import (
 	"math"
 	"math/bits"
+
+	"golang.org/x/exp/constraints"
 )
 
 var (
@@ -31,3 +33,30 @@ var (
 	ToLEFloat32 = func(x float32) float32 { return math.Float32frombits(bits.ReverseBytes32(math.Float32bits(x))) }
 	ToLEFloat64 = func(x float64) float64 { return math.Float64frombits(bits.ReverseBytes64(math.Float64bits(x))) }
 )
+
+func ToLE[T constraints.Integer | constraints.Float](x T) T {
+	switch v := any(x).(type) {
+	case int8:
+		return T(v)
+	case uint8:
+		return T(v)
+	case int16:
+		return T(bits.ReverseBytes16(uint16(v)))
+	case uint16:
+		return T(bits.ReverseBytes16(v))
+	case int32:
+		return T(bits.ReverseBytes32(uint32(v)))
+	case uint32:
+		return T(bits.ReverseBytes32(v))
+	case int64:
+		return T(bits.ReverseBytes64(uint64(v)))
+	case uint64:
+		return T(bits.ReverseBytes64(v))
+	case float32:
+		return T(math.Float32frombits(bits.ReverseBytes32(math.Float32bits(v))))
+	case float64:
+		return T(math.Float64frombits(bits.ReverseBytes64(math.Float64bits(v))))
+	default:
+		panic("unsupported type for ToLE conversion")
+	}
+}

@@ -13,7 +13,7 @@ metadata:
 subjects:
   - kind: ServiceAccount
     name: {{ template "loki.serviceAccountName" . }}
-    namespace: {{ .Release.Namespace }}
+    namespace: {{ include "loki.namespace" . }}
 roleRef:
   kind: ClusterRole
 {{- if (not .Values.rbac.useExistingRole) }}

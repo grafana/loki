@@ -13,6 +13,7 @@ type nodeCollectVisitor struct {
 	onVisitFilter            func(*Filter) error
 	onVisitLimit             func(*Limit) error
 	onVisitSortMerge         func(*SortMerge) error
+	onVisitMerge             func(*Merge) error
 	onVisitProjection        func(*Projection) error
 	onVisitRangeAggregation  func(*RangeAggregation) error
 	onVisitVectorAggregation func(*VectorAggregation) error
@@ -54,6 +55,15 @@ func (v *nodeCollectVisitor) VisitSortMerge(n *SortMerge) error {
 	if v.onVisitSortMerge != nil {
 		return v.onVisitSortMerge(n)
 	}
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	return nil
+}
+
+func (v *nodeCollectVisitor) VisitMerge(n *Merge) error {
+	if v.onVisitMerge != nil {
+		return v.onVisitMerge(n)
+	}
+
 	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
 	return nil
 }

@@ -26,7 +26,7 @@ func TestPlan_String(t *testing.T) {
 	).Select(
 		&BinOp{
 			Left:  NewColumnRef("age", types.ColumnTypeMetadata),
-			Right: NewLiteral(21),
+			Right: NewLiteral(int64(21)),
 			Op:    types.BinaryOpGt,
 		},
 	).Sort(*NewColumnRef("age", types.ColumnTypeMetadata), true, false)
@@ -41,7 +41,7 @@ func TestPlan_String(t *testing.T) {
 	// Define expected output
 	exp := `
 %1 = EQ label.app "users"
-%2 = MAKETABLE [selector=%1, shard=0_of_1]
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
 %3 = GT metadata.age 21
 %4 = SELECT %2 [predicate=%3]
 %5 = SORT %4 [column=metadata.age, asc=true, nulls_first=false]

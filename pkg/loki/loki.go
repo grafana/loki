@@ -39,6 +39,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	dataobjconfig "github.com/grafana/loki/v3/pkg/dataobj/config"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer"
+	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -61,6 +62,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/scheduler"
+	"github.com/grafana/loki/v3/pkg/scratch"
 	internalserver "github.com/grafana/loki/v3/pkg/server"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -126,6 +128,10 @@ type Config struct {
 	Analytics         analytics.Config     `yaml:"analytics"`
 	Profiling         ProfilingConfig      `yaml:"profiling,omitempty"`
 
+	// TenantLimitsAllowPublish specifies which limit fields to return from the tenant limits endpoint.
+	// If empty, all fields are returned. This allows filtering of sensitive or unwanted configuration.
+	TenantLimitsAllowPublish []string `yaml:"tenant_limits_allow_publish" json:"tenant_limits_allowlist_fields"`
+
 	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden|deprecated"`
 
 	Common common.Config `yaml:"common,omitempty"`
@@ -167,6 +173,28 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&c.ShutdownDelay, "shutdown-delay", 0, "How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki will report 503 Service Unavailable status via /ready endpoint.")
 
 	f.StringVar(&c.MetricsNamespace, "metrics-namespace", constants.Loki, "Namespace of the metrics that in previous releases had cortex as namespace. This setting is deprecated and will be removed in the next minor release.")
+
+	c.TenantLimitsAllowPublish = []string{
+		"discover_log_levels",
+		"discover_service_name",
+		"log_level_fields",
+		"max_line_size_truncate",
+		"max_query_length",
+		"max_query_lookback",
+		"max_query_range",
+		"max_query_series",
+		"metric_aggregation_enabled",
+		"otlp_config",
+		"pattern_persistence_enabled",
+		"query_timeout",
+		"retention_period",
+		"retention_stream",
+	}
+	f.Var(
+		(*flagext.StringSlice)(&c.TenantLimitsAllowPublish),
+		"limits.tenant-limits-allow-publish",
+		"List of limit fields to publish from the tenant limits endpoint. If empty, all fields are returned. Use YAML field names (e.g., 'retention_period', 'max_query_series').",
+	)
 
 	c.registerServerFlagsWithChangedDefaultValues(f)
 	c.Common.RegisterFlags(f)
@@ -427,6 +455,8 @@ type Loki struct {
 	blockBuilder              *blockbuilder.BlockBuilder
 	blockScheduler            *blockscheduler.BlockScheduler
 	dataObjConsumer           *consumer.Service
+	dataObjIndexBuilder       *dataobjindex.Builder
+	scratchStore              scratch.Store
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -474,6 +504,7 @@ func (t *Loki) setupAuthMiddleware() {
 			"/blockbuilder.types.SchedulerService/GetJob",
 			"/blockbuilder.types.SchedulerService/CompleteJob",
 			"/blockbuilder.types.SchedulerService/SyncJob",
+			"/grpc.JobQueue/Loop",
 		})
 }
 
@@ -768,6 +799,8 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer)
 	mm.RegisterModule(UI, t.initUI)
 	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
+	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder)
+	mm.RegisterModule(ScratchStore, t.initScratchStore)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -813,7 +846,9 @@ func (t *Loki) setupModuleManager() error {
 		BlockBuilder:             {PartitionRing, Store, Server, UI},
 		BlockScheduler:           {Server, UI},
 		DataObjExplorer:          {Server, UI},
-		DataObjConsumer:          {PartitionRing, Server, UI},
+		DataObjConsumer:          {ScratchStore, PartitionRing, Server, UI},
+		DataObjIndexBuilder:      {ScratchStore, Server, UI},
+		ScratchStore:             {},
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor, PatternIngester},

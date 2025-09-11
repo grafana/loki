@@ -79,7 +79,7 @@ func (p *PrefixedBucket) GetRange(ctx context.Context, name string, off int64, l
 	return p.bkt.GetRange(ctx, conditionalPrefix(p.prefix, name), off, length)
 }
 
-func (b *PrefixedBucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+func (b *PrefixedBucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.ReadCloser, error)) error {
 	return b.bkt.GetAndReplace(ctx, conditionalPrefix(b.prefix, name), f)
 }
 

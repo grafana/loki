@@ -1,6 +1,7 @@
 package cache_test
 
 import (
+	"context"
 	"sync"
 
 	"github.com/grafana/gomemcache/memcache"
@@ -17,7 +18,7 @@ func newMockMemcache() *mockMemcache {
 	}
 }
 
-func (m *mockMemcache) GetMulti(keys []string, _ ...memcache.Option) (map[string]*memcache.Item, error) {
+func (m *mockMemcache) GetMulti(_ context.Context, keys []string, _ ...memcache.Option) (map[string]*memcache.Item, error) {
 	m.RLock()
 	defer m.RUnlock()
 	result := map[string]*memcache.Item{}

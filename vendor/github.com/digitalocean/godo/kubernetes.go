@@ -283,6 +283,7 @@ type KubernetesRoutingAgent struct {
 type KubernetesClusterAutoscalerConfiguration struct {
 	ScaleDownUtilizationThreshold *float64 `json:"scale_down_utilization_threshold"`
 	ScaleDownUnneededTime         *string  `json:"scale_down_unneeded_time"`
+	Expanders                     []string `json:"expanders"`
 }
 
 // KubernetesMaintenancePolicyDay represents the possible days of a maintenance

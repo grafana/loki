@@ -15,7 +15,7 @@ func Limit(limit int64) Context {
 }
 
 func New[K comparable, V any](ctx Context) *Parallel[K, V] {
-	return &Parallel[K, V]{ctx: ctx, elems: *xsync.NewMapOf[K, V]()}
+	return &Parallel[K, V]{ctx: ctx, elems: xsync.NewMapOf[K, V]()}
 }
 
 // lowercase alias for unexported embedding
@@ -32,7 +32,7 @@ type ctx = Context
 // Parallel enforces the [Context] size limit.
 type Parallel[K comparable, V any] struct {
 	ctx
-	elems xsync.MapOf[K, V]
+	elems *xsync.MapOf[K, V]
 }
 
 // Context holds size information about one or more maps.

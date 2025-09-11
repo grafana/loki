@@ -4,20 +4,22 @@ import (
 	"cmp"
 	"slices"
 
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 )
 
 // buildTable builds a table from the set of provided records. The records are
 // sorted with [sortRecords] prior to building the table.
-func buildTable(buf *tableBuffer, pageSize int, compressionOpts dataset.CompressionOptions, records []Record) *table {
+func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions, records []Record) *table {
 	sortRecords(records)
 
 	buf.Reset()
 
 	var (
-		streamIDBuilder  = buf.StreamID(pageSize)
-		timestampBuilder = buf.Timestamp(pageSize)
-		messageBuilder   = buf.Message(pageSize, compressionOpts)
+		streamIDBuilder  = buf.StreamID(pageSize, pageRowCount)
+		timestampBuilder = buf.Timestamp(pageSize, pageRowCount)
+		messageBuilder   = buf.Message(pageSize, pageRowCount, compressionOpts)
 	)
 
 	for i, record := range records {
@@ -27,14 +29,14 @@ func buildTable(buf *tableBuffer, pageSize int, compressionOpts dataset.Compress
 
 		_ = streamIDBuilder.Append(i, dataset.Int64Value(record.StreamID))
 		_ = timestampBuilder.Append(i, dataset.Int64Value(record.Timestamp.UnixNano()))
-		_ = messageBuilder.Append(i, dataset.ByteArrayValue(record.Line))
+		_ = messageBuilder.Append(i, dataset.BinaryValue(record.Line))
 
-		for _, md := range record.Metadata {
+		record.Metadata.Range(func(md labels.Label) {
 			// Passing around md.Value as an unsafe slice is safe here: appending
 			// values is always read-only and the byte slice will never be mutated.
-			metadataBuilder := buf.Metadata(md.Name, pageSize, compressionOpts)
-			_ = metadataBuilder.Append(i, dataset.ByteArrayValue(unsafeSlice(md.Value, 0)))
-		}
+			metadataBuilder := buf.Metadata(md.Name, pageSize, pageRowCount, compressionOpts)
+			_ = metadataBuilder.Append(i, dataset.BinaryValue(unsafeSlice(md.Value, 0)))
+		})
 	}
 
 	table, err := buf.Flush()
@@ -48,9 +50,9 @@ func buildTable(buf *tableBuffer, pageSize int, compressionOpts dataset.Compress
 // sortRecords sorts the set of records by stream ID and timestamp.
 func sortRecords(records []Record) {
 	slices.SortFunc(records, func(a, b Record) int {
-		if res := cmp.Compare(a.StreamID, b.StreamID); res != 0 {
+		if res := b.Timestamp.Compare(a.Timestamp); res != 0 {
 			return res
 		}
-		return a.Timestamp.Compare(b.Timestamp)
+		return cmp.Compare(a.StreamID, b.StreamID)
 	})
 }

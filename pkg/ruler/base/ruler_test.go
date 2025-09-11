@@ -2005,14 +2005,14 @@ func TestRuleGroupAlertsAndSeriesLimit(t *testing.T) {
 				fn: func(_ bool, _ *storage.SelectHints, _ ...*labels.Matcher) storage.SeriesSet {
 					return series.NewConcreteSeriesSet([]storage.Series{
 						series.NewConcreteSeries(
-							labels.FromStrings(labels.MetricName, "http_requests", labels.InstanceName, "server1"),
+							labels.FromStrings(labels.MetricName, "http_requests", "instance", "server1"),
 							[]model.SamplePair{
 								{Timestamp: model.Time(seriesStartTime.Add(sampleTimeDiff).UnixMilli()), Value: 100},
 								{Timestamp: model.Time(currentTime.UnixMilli()), Value: 100},
 							},
 						),
 						series.NewConcreteSeries(
-							labels.FromStrings(labels.MetricName, "http_requests", labels.InstanceName, "server2"),
+							labels.FromStrings(labels.MetricName, "http_requests", "instance", "server2"),
 							[]model.SamplePair{
 								{Timestamp: model.Time(seriesStartTime.Add(sampleTimeDiff).UnixMilli()), Value: 100},
 								{Timestamp: model.Time(currentTime.UnixMilli()), Value: 100},

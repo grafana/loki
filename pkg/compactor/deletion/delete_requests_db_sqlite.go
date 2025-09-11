@@ -30,8 +30,9 @@ const (
 )
 
 type sqlQuery struct {
-	query    string
-	execOpts *sqlitex.ExecOptions
+	query                  string
+	execOpts               *sqlitex.ExecOptions
+	postUpdateExecCallback func(numChanges int) error
 }
 
 type sqliteDB struct {
@@ -140,6 +141,11 @@ func (s *sqliteDB) Exec(ctx context.Context, updatesData bool, queries ...sqlQue
 	for _, query := range queries {
 		if err := sqlitex.Execute(conn, query.query, query.execOpts); err != nil {
 			return err
+		}
+		if updatesData && query.postUpdateExecCallback != nil {
+			if err := query.postUpdateExecCallback(conn.Changes()); err != nil {
+				return err
+			}
 		}
 	}
 

@@ -29,7 +29,7 @@ func (r *RangeAggregation) ID() string {
 }
 
 func (r *RangeAggregation) Type() NodeType {
-	return NodeTypeRangeAggreation
+	return NodeTypeRangeAggregation
 }
 
 func (r *RangeAggregation) Accept(v Visitor) error {

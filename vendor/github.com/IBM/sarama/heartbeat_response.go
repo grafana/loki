@@ -8,6 +8,10 @@ type HeartbeatResponse struct {
 	Err          KError
 }
 
+func (r *HeartbeatResponse) setVersion(v int16) {
+	r.Version = v
+}
+
 func (r *HeartbeatResponse) encode(pe packetEncoder) error {
 	if r.Version >= 1 {
 		pe.putInt32(r.ThrottleTime)
@@ -34,7 +38,7 @@ func (r *HeartbeatResponse) decode(pd packetDecoder, version int16) error {
 }
 
 func (r *HeartbeatResponse) key() int16 {
-	return 12
+	return apiKeyHeartbeat
 }
 
 func (r *HeartbeatResponse) version() int16 {

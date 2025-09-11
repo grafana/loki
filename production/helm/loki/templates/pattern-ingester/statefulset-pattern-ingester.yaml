@@ -5,7 +5,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.patternIngesterFullname" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.patternIngesterLabels" . | nindent 4 }}
   {{- with .Values.loki.annotations }}
@@ -54,12 +54,19 @@ spec:
       hostAliases:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.patternIngester.hostUsers) }}
+      hostUsers: {{ .Values.patternIngester.hostUsers }}
+      {{- end }}
       {{- include "loki.patternIngesterPriorityClassName" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.patternIngester.terminationGracePeriodSeconds }}
       {{- with .Values.patternIngester.initContainers }}
       initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.patternIngester.dnsConfig | default .Values.loki.dnsConfig }}
+      dnsConfig:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
@@ -122,7 +129,7 @@ spec:
         {{- end }}
       {{- with .Values.patternIngester.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.patternIngester.nodeSelector }}
       nodeSelector:
@@ -130,7 +137,7 @@ spec:
       {{- end }}
       {{- with .Values.patternIngester.topologySpreadConstraints }}
       topologySpreadConstraints:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.patternIngester.tolerations }}
       tolerations:
@@ -171,9 +178,13 @@ spec:
         annotations:
           {{- . | toYaml | nindent 10 }}
         {{- end }}
+        {{- with .labels }}
+        labels:
+          {{- . | toYaml | nindent 10 }}
+        {{- end }}
       spec:
         accessModes:
-          - ReadWriteOnce
+          {{- toYaml .accessModes | nindent 10 }}
         {{- with .storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
         {{- end }}

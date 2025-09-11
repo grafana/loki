@@ -29,6 +29,7 @@ use (
 	./batch
 	./beyondcorp
 	./bigquery
+	./bigquery/v2
 	./bigtable
 	./billing
 	./binaryauthorization
@@ -47,6 +48,7 @@ use (
 	./compute/metadata
 	./confidentialcomputing
 	./config
+	./configdelivery
 	./contactcenterinsights
 	./container
 	./containeranalysis
@@ -96,15 +98,18 @@ use (
 	./internal/gapicgen
 	./internal/generated/snippets
 	./internal/godocfx
+	./internal/librariangen
 	./internal/postprocessor
 	./internal/protoveneer
 	./iot
 	./kms
 	./language
+	./licensemanager
 	./lifesciences
 	./logging
 	./longrunning
 	./lustre
+	./maintenance
 	./managedidentities
 	./managedkafka
 	./maps
@@ -136,6 +141,7 @@ use (
 	./privilegedaccessmanager
 	./profiler
 	./pubsub
+	./pubsub/v2
 	./pubsublite
 	./rapidmigrationassessment
 	./recaptchaenterprise

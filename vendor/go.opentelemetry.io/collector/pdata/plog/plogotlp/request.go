@@ -4,16 +4,16 @@
 package plogotlp // import "go.opentelemetry.io/collector/pdata/plog/plogotlp"
 
 import (
-	"bytes"
-
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlpcollectorlog "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/logs/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/internal/otlp"
 	"go.opentelemetry.io/collector/pdata/plog"
 )
 
-var jsonUnmarshaler = &plog.JSONUnmarshaler{}
+var (
+	jsonMarshaler   = &plog.JSONMarshaler{}
+	jsonUnmarshaler = &plog.JSONUnmarshaler{}
+)
 
 // ExportRequest represents the request for gRPC/HTTP client/server.
 // It's a wrapper for plog.Logs data.
@@ -24,10 +24,9 @@ type ExportRequest struct {
 
 // NewExportRequest returns an empty ExportRequest.
 func NewExportRequest() ExportRequest {
-	state := internal.StateMutable
 	return ExportRequest{
 		orig:  &otlpcollectorlog.ExportLogsServiceRequest{},
-		state: &state,
+		state: internal.NewState(),
 	}
 }
 
@@ -43,12 +42,22 @@ func NewExportRequestFromLogs(ld plog.Logs) ExportRequest {
 
 // MarshalProto marshals ExportRequest into proto bytes.
 func (ms ExportRequest) MarshalProto() ([]byte, error) {
-	return ms.orig.Marshal()
+	if !internal.UseCustomProtoEncoding.IsEnabled() {
+		return ms.orig.Marshal()
+	}
+	size := internal.SizeProtoOrigExportLogsServiceRequest(ms.orig)
+	buf := make([]byte, size)
+	_ = internal.MarshalProtoOrigExportLogsServiceRequest(ms.orig, buf)
+	return buf, nil
 }
 
 // UnmarshalProto unmarshalls ExportRequest from proto bytes.
 func (ms ExportRequest) UnmarshalProto(data []byte) error {
-	if err := ms.orig.Unmarshal(data); err != nil {
+	if !internal.UseCustomProtoEncoding.IsEnabled() {
+		return ms.orig.Unmarshal(data)
+	}
+	err := internal.UnmarshalProtoOrigExportLogsServiceRequest(ms.orig, data)
+	if err != nil {
 		return err
 	}
 	otlp.MigrateLogs(ms.orig.ResourceLogs)
@@ -57,11 +66,7 @@ func (ms ExportRequest) UnmarshalProto(data []byte) error {
 
 // MarshalJSON marshals ExportRequest into JSON bytes.
 func (ms ExportRequest) MarshalJSON() ([]byte, error) {
-	var buf bytes.Buffer
-	if err := json.Marshal(&buf, ms.orig); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	return jsonMarshaler.MarshalLogs(plog.Logs(internal.NewLogs(ms.orig, nil)))
 }
 
 // UnmarshalJSON unmarshalls ExportRequest from JSON bytes.

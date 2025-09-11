@@ -181,6 +181,14 @@ func (c *configurableLimits) MetricAggregationEnabled(_ string) bool {
 	return c.metricAggregationEnabled
 }
 
+func (c *configurableLimits) PersistenceGranularity(_ string) time.Duration {
+	return time.Hour // Default value for tests
+}
+
+func (c *configurableLimits) PatternRateThreshold(_ string) float64 {
+	return 1.0 // Default value for tests
+}
+
 func testIngesterConfig(t testing.TB) Config {
 	kvClient, err := kv.NewClient(kv.Config{Store: "inmemory"}, ring.GetCodec(), nil, log.NewNopLogger())
 	require.NoError(t, err)

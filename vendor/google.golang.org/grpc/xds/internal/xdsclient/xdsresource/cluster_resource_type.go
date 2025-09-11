@@ -19,6 +19,8 @@ package xdsresource
 
 import (
 	"google.golang.org/grpc/internal/pretty"
+	"google.golang.org/grpc/internal/xds/bootstrap"
+	xdsclient "google.golang.org/grpc/xds/internal/clients/xdsclient"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -149,4 +151,10 @@ func (d *delegatingClusterWatcher) AmbientError(err error, onDone func()) {
 func WatchCluster(p Producer, name string, w ClusterWatcher) (cancel func()) {
 	delegator := &delegatingClusterWatcher{watcher: w}
 	return p.WatchResource(clusterType, name, delegator)
+}
+
+// NewGenericClusterResourceTypeDecoder returns a xdsclient.Decoder that
+// wraps the xdsresource.clusterType.
+func NewGenericClusterResourceTypeDecoder(bc *bootstrap.Config, gServerCfgMap map[xdsclient.ServerConfig]*bootstrap.ServerConfig) xdsclient.Decoder {
+	return &GenericResourceTypeDecoder{ResourceType: clusterType, BootstrapConfig: bc, ServerConfigMap: gServerCfgMap}
 }

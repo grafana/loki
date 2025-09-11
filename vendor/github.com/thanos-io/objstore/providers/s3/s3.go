@@ -608,36 +608,35 @@ func (b *Bucket) upload(ctx context.Context, name string, r io.Reader, etag stri
 }
 
 // Upload the contents of the reader as an object into the bucket.
-func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
-	var missing bool
-	originalContent, err := b.getRange(ctx, name, 0, -1)
-	if err != nil {
-		if !b.IsObjNotFoundErr(err) {
-			return err
-		}
-		missing = true
-	}
+func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.ReadCloser, error)) error {
+	// We use rc for our callback instead of passing originalContent directly,
+	// since passing a concrete type directly will always be detected as
+	// non-nil, due to the way Go converts concrete types to interfaces.
+	var rc io.ReadCloser
 
-	// redefine the callback reader so a nil originalContent (with concrete type but no value)
-	// doesn't pass nil-checks in the callback
-	var reader io.Reader
 	var etag string
-	if !missing {
-		reader = originalContent
+
+	originalContent, err := b.getRange(ctx, name, 0, -1)
+	if err != nil && !b.IsObjNotFoundErr(err) {
+		return err
+	} else if originalContent != nil {
 		stats, err := originalContent.Stat()
 		if err != nil {
 			return err
 		}
+		rc = originalContent
 		etag = stats.ETag
 	}
 
 	// Call work function to get a new version of the file
-	newContent, err := f(reader)
+	newContent, err := f(rc)
 	if err != nil {
 		return err
+	} else if newContent != nil {
+		defer newContent.Close()
 	}
 
-	return b.upload(ctx, name, newContent, etag, missing)
+	return b.upload(ctx, name, newContent, etag, originalContent == nil)
 }
 
 // Attributes returns information about the specified object.

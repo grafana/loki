@@ -37,6 +37,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	logutil "github.com/grafana/loki/v3/pkg/util/log"
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 	"github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/validation"
 )
@@ -166,6 +167,12 @@ type EngineOpts struct {
 
 	// Batch size of the v2 execution engine.
 	BatchSize int `yaml:"batch_size" category:"experimental"`
+
+	// MergePrefetchCount controls the number of inputs that are prefetched simultaneously by any Merge node.
+	MergePrefetchCount int `yaml:"merge_prefetch_count" category:"experimental"`
+
+	// RangeConfig determines how to optimize range reads in the V2 engine.
+	RangeConfig rangeio.Config `yaml:"range_reads" category:"experimental" doc:"description=Configures how to read byte ranges from object storage when using the V2 engine."`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
@@ -173,8 +180,12 @@ func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) 
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
 	f.BoolVar(&opts.EnableV2Engine, prefix+"enable-v2-engine", false, "Experimental: Enable next generation query engine for supported queries.")
 	f.IntVar(&opts.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
+	f.IntVar(&opts.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
+
 	// Log executing query by default
 	opts.LogExecutingQuery = true
+
+	opts.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
 }
 
 func (opts *EngineOpts) applyDefault() {
@@ -447,7 +458,7 @@ func vectorsToSeriesWithLimit(vec promql.Vector, sm map[uint64]promql.Series, ma
 	for _, p := range vec {
 		var (
 			series promql.Series
-			hash   = p.Metric.Hash()
+			hash   = labels.StableHash(p.Metric)
 			ok     bool
 		)
 
@@ -483,7 +494,7 @@ func multiVariantVectorsToSeries(ctx context.Context, maxSeries int, vec promql.
 	for _, p := range vec {
 		var (
 			series promql.Series
-			hash   = p.Metric.Hash()
+			hash   = labels.StableHash(p.Metric)
 			ok     bool
 		)
 

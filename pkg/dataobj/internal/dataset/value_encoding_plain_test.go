@@ -31,7 +31,7 @@ func Test_plainBytesEncoder(t *testing.T) {
 	)
 
 	for _, v := range testStrings {
-		require.NoError(t, enc.Encode(ByteArrayValue([]byte(v))))
+		require.NoError(t, enc.Encode(BinaryValue([]byte(v))))
 	}
 
 	var out []string
@@ -44,7 +44,7 @@ func Test_plainBytesEncoder(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, v := range decBuf[:n] {
-			out = append(out, string(v.ByteArray()))
+			out = append(out, string(v.Binary()))
 		}
 	}
 
@@ -61,7 +61,7 @@ func Test_plainBytesEncoder_partialRead(t *testing.T) {
 	)
 
 	for _, v := range testStrings {
-		require.NoError(t, enc.Encode(ByteArrayValue([]byte(v))))
+		require.NoError(t, enc.Encode(BinaryValue([]byte(v))))
 	}
 
 	var out []string
@@ -74,7 +74,7 @@ func Test_plainBytesEncoder_partialRead(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, v := range decBuf[:n] {
-			out = append(out, string(v.ByteArray()))
+			out = append(out, string(v.Binary()))
 		}
 	}
 
@@ -91,11 +91,11 @@ func Test_plainBytesEncoder_reusingValues(t *testing.T) {
 	)
 
 	for _, v := range testStrings {
-		require.NoError(t, enc.Encode(ByteArrayValue([]byte(v))))
+		require.NoError(t, enc.Encode(BinaryValue([]byte(v))))
 	}
 
 	for i := range decBuf {
-		decBuf[i] = ByteArrayValue(make([]byte, 64))
+		decBuf[i] = BinaryValue(make([]byte, 64))
 	}
 
 	var out []string
@@ -108,7 +108,7 @@ func Test_plainBytesEncoder_reusingValues(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, v := range decBuf[:n] {
-			out = append(out, string(v.ByteArray()))
+			out = append(out, string(v.Binary()))
 		}
 	}
 
@@ -120,7 +120,7 @@ func Benchmark_plainBytesEncoder_Append(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		for _, v := range testStrings {
-			_ = enc.Encode(ByteArrayValue([]byte(v)))
+			_ = enc.Encode(BinaryValue([]byte(v)))
 		}
 	}
 }
@@ -135,7 +135,7 @@ func Benchmark_plainBytesDecoder_Decode(b *testing.B) {
 	)
 
 	for _, v := range testStrings {
-		require.NoError(b, enc.Encode(ByteArrayValue([]byte(v))))
+		require.NoError(b, enc.Encode(BinaryValue([]byte(v))))
 	}
 
 	var err error

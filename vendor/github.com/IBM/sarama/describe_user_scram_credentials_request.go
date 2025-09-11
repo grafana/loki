@@ -9,6 +9,10 @@ type DescribeUserScramCredentialsRequest struct {
 	DescribeUsers []DescribeUserScramCredentialsRequestUser
 }
 
+func (r *DescribeUserScramCredentialsRequest) setVersion(v int16) {
+	r.Version = v
+}
+
 // DescribeUserScramCredentialsRequestUser is a describe request about specific user name
 type DescribeUserScramCredentialsRequestUser struct {
 	Name string
@@ -54,7 +58,7 @@ func (r *DescribeUserScramCredentialsRequest) decode(pd packetDecoder, version i
 }
 
 func (r *DescribeUserScramCredentialsRequest) key() int16 {
-	return 50
+	return apiKeyDescribeUserScramCredentials
 }
 
 func (r *DescribeUserScramCredentialsRequest) version() int16 {

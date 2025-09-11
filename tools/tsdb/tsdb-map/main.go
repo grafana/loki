@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"go.etcd.io/bbolt"
 	"gopkg.in/yaml.v2"
 
@@ -89,7 +90,7 @@ func main() {
 					Entries:  10000,                  // guess: 10k entries
 				})
 			}
-			builder.AddSeries(s.Labels(), model.Fingerprint(s.Labels().Hash()), chunkMetas)
+			builder.AddSeries(s.Labels(), model.Fingerprint(labels.StableHash(s.Labels())), chunkMetas)
 			return nil
 		})
 	}); err != nil {

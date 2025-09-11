@@ -332,7 +332,7 @@ func (pr *basicReader) Seek(offset int64, whence int) (int64, error) {
 func (pr *basicReader) maxRows() int {
 	var rows int
 	for _, c := range pr.columns {
-		rows = max(rows, c.ColumnInfo().RowsCount)
+		rows = max(rows, c.ColumnDesc().RowsCount)
 	}
 	return rows
 }

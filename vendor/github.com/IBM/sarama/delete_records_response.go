@@ -18,6 +18,10 @@ type DeleteRecordsResponse struct {
 	Topics       map[string]*DeleteRecordsResponseTopic
 }
 
+func (d *DeleteRecordsResponse) setVersion(v int16) {
+	d.Version = v
+}
+
 func (d *DeleteRecordsResponse) encode(pe packetEncoder) error {
 	pe.putInt32(int32(d.ThrottleTime / time.Millisecond))
 
@@ -73,7 +77,7 @@ func (d *DeleteRecordsResponse) decode(pd packetDecoder, version int16) error {
 }
 
 func (d *DeleteRecordsResponse) key() int16 {
-	return 21
+	return apiKeyDeleteRecords
 }
 
 func (d *DeleteRecordsResponse) version() int16 {

@@ -45,7 +45,7 @@ func Test_columnReader_SeekAcrossPages(t *testing.T) {
 	require.Greater(t, len(col.Pages), 1, "test requires multiple pages")
 
 	// Find a position near the end of the first page
-	endFirstPage := col.Pages[0].PageInfo().RowCount - 2
+	endFirstPage := col.Pages[0].PageDesc().RowCount - 2
 
 	cr := newColumnReader(col)
 	_, err := cr.Seek(int64(endFirstPage), io.SeekStart)
@@ -107,14 +107,14 @@ func buildMultiPageColumn(t *testing.T, values []string) *MemColumn {
 
 	builder, err := NewColumnBuilder("", BuilderOptions{
 		PageSizeHint: 128, // Small page size to force multiple pages
-		Value:        datasetmd.VALUE_TYPE_BYTE_ARRAY,
+		Type:         ColumnType{Physical: datasetmd.PHYSICAL_TYPE_BINARY, Logical: "data"},
 		Compression:  datasetmd.COMPRESSION_TYPE_SNAPPY,
 		Encoding:     datasetmd.ENCODING_TYPE_PLAIN,
 	})
 	require.NoError(t, err)
 
 	for i, v := range values {
-		require.NoError(t, builder.Append(i, ByteArrayValue([]byte(v))))
+		require.NoError(t, builder.Append(i, BinaryValue([]byte(v))))
 	}
 
 	col, err := builder.Flush()

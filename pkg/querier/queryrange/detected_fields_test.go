@@ -60,7 +60,7 @@ func Test_parseDetectedFields(t *testing.T) {
 		rulerStream := push.Stream{
 			Labels:  rulerLbls,
 			Entries: rulerLines,
-			Hash:    rulerMetric.Hash(),
+			Hash:    labels.StableHash(rulerMetric),
 		}
 
 		debugDetectedFieldMetadata := []push.LabelAdapter{
@@ -95,7 +95,7 @@ func Test_parseDetectedFields(t *testing.T) {
 		nginxStream := push.Stream{
 			Labels:  nginxLbls,
 			Entries: nginxJSONLines,
-			Hash:    nginxMetric.Hash(),
+			Hash:    labels.StableHash(nginxMetric),
 		}
 
 		t.Run("detects logfmt fields", func(t *testing.T) {
@@ -191,7 +191,7 @@ func Test_parseDetectedFields(t *testing.T) {
 			rulerStream := push.Stream{
 				Labels:  rulerLbls,
 				Entries: rulerLines,
-				Hash:    rulerMetric.Hash(),
+				Hash:    labels.StableHash(rulerMetric),
 			}
 
 			df := parseDetectedFields(uint32(15), logqlmodel.Streams([]push.Stream{rulerStream}))
@@ -220,7 +220,7 @@ func Test_parseDetectedFields(t *testing.T) {
 			rulerStream := push.Stream{
 				Labels:  rulerLbls,
 				Entries: rulerLines,
-				Hash:    rulerMetric.Hash(),
+				Hash:    labels.StableHash(rulerMetric),
 			}
 
 			nginxLbls := `{ cluster="eu-west-1", level="debug", namespace="gateway", pod="nginx-json-oghco", service_name="nginx-json", host="localhost"}`
@@ -230,7 +230,7 @@ func Test_parseDetectedFields(t *testing.T) {
 			nginxStream := push.Stream{
 				Labels:  nginxLbls,
 				Entries: nginxJSONLines,
-				Hash:    nginxMetric.Hash(),
+				Hash:    labels.StableHash(nginxMetric),
 			}
 
 			df := parseDetectedFields(
@@ -322,7 +322,7 @@ func Test_parseDetectedFields(t *testing.T) {
 		)
 
 		rulerStreams := []push.Stream{}
-		streamLbls := logql_log.NewBaseLabelsBuilder().ForLabels(rulerLbls, rulerLbls.Hash())
+		streamLbls := logql_log.NewBaseLabelsBuilder().ForLabels(rulerLbls, labels.StableHash(rulerLbls))
 
 		for _, rulerFields := range [][]push.LabelAdapter{
 			parsedRulerFields(
@@ -435,7 +435,7 @@ func Test_parseDetectedFields(t *testing.T) {
 		)
 
 		nginxStreams := []push.Stream{}
-		nginxStreamLbls := logql_log.NewBaseLabelsBuilder().ForLabels(nginxLbls, nginxLbls.Hash())
+		nginxStreamLbls := logql_log.NewBaseLabelsBuilder().ForLabels(nginxLbls, labels.StableHash(nginxLbls))
 
 		for _, nginxFields := range [][]push.LabelAdapter{
 			parsedNginxFields(
@@ -658,7 +658,7 @@ func Test_parseDetectedFields(t *testing.T) {
 						},
 					},
 				},
-				Hash: rulerMetric.Hash(),
+				Hash: labels.StableHash(rulerMetric),
 			}
 
 			df := parseDetectedFields(uint32(15), logqlmodel.Streams([]push.Stream{rulerStream}))
@@ -723,7 +723,7 @@ func Test_parseDetectedFields(t *testing.T) {
 						},
 					},
 				},
-				Hash: rulerMetric.Hash(),
+				Hash: labels.StableHash(rulerMetric),
 			}
 
 			nginxLbls := `{ cluster="eu-west-1", level="debug", namespace="gateway", pod="nginx-json-oghco", service_name="nginx-json", host="localhost"}`
@@ -777,7 +777,7 @@ func Test_parseDetectedFields(t *testing.T) {
 						},
 					},
 				},
-				Hash: nginxMetric.Hash(),
+				Hash: labels.StableHash(nginxMetric),
 			}
 
 			df := parseDetectedFields(
@@ -845,7 +845,7 @@ func Test_parseDetectedFields(t *testing.T) {
 					},
 				},
 			},
-			Hash: rulerMetric.Hash(),
+			Hash: labels.StableHash(rulerMetric),
 		}
 
 		df := parseDetectedFields(
@@ -871,7 +871,7 @@ func mockLogfmtStreamWithLabels(_ int, quantity int, lbls string) logproto.Strea
 		streamLabels = labels.EmptyLabels()
 	}
 
-	lblBuilder := logql_log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	lblBuilder := logql_log.NewBaseLabelsBuilder().ForLabels(streamLabels, labels.StableHash(streamLabels))
 	logFmtParser := logql_log.NewLogfmtParser(false, false)
 
 	// used for detected fields queries which are always BACKWARD
@@ -928,7 +928,7 @@ func mockLogfmtStreamWithLabelsAndStructuredMetadata(
 		streamLabels = labels.EmptyLabels()
 	}
 
-	lblBuilder := logql_log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	lblBuilder := logql_log.NewBaseLabelsBuilder().ForLabels(streamLabels, labels.StableHash(streamLabels))
 	logFmtParser := logql_log.NewLogfmtParser(false, false)
 
 	// used for detected fields queries which are always BACKWARD
@@ -1352,7 +1352,7 @@ func TestQuerier_DetectedFields(t *testing.T) {
 		stream := push.Stream{
 			Labels:  lbls,
 			Entries: lines,
-			Hash:    metric.Hash(),
+			Hash:    labels.StableHash(metric),
 		}
 
 		handler := NewDetectedFieldsHandler(
@@ -1504,7 +1504,7 @@ func TestNestedJSONFieldDetection(t *testing.T) {
 		nestedJSONStream := push.Stream{
 			Labels:  nestedJSONLbls,
 			Entries: nestedJSONLines,
-			Hash:    nestedJSONMetric.Hash(),
+			Hash:    labels.StableHash(nestedJSONMetric),
 		}
 
 		df := parseDetectedFields(uint32(20), logqlmodel.Streams([]push.Stream{nestedJSONStream}))
@@ -1602,7 +1602,7 @@ func TestNestedJSONFieldDetection(t *testing.T) {
 		nestedJSONStream := push.Stream{
 			Labels:  nestedJSONLbls,
 			Entries: nestedJSONLines,
-			Hash:    nestedJSONMetric.Hash(),
+			Hash:    labels.StableHash(nestedJSONMetric),
 		}
 
 		df := parseDetectedFields(uint32(20), logqlmodel.Streams([]push.Stream{nestedJSONStream}))

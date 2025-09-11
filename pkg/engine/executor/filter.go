@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -11,15 +12,10 @@ import (
 )
 
 func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expressionEvaluator) *GenericPipeline {
-	return newGenericPipeline(Local, func(inputs []Pipeline) state {
+	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) state {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
-		err := input.Read()
-		if err != nil {
-			return failureState(err)
-		}
-
-		batch, err := input.Value()
+		batch, err := input.Read(ctx)
 		if err != nil {
 			return failureState(err)
 		}

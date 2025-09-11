@@ -82,6 +82,10 @@ type OffsetFetchResponse struct {
 	Err            KError
 }
 
+func (r *OffsetFetchResponse) setVersion(v int16) {
+	r.Version = v
+}
+
 func (r *OffsetFetchResponse) encode(pe packetEncoder) (err error) {
 	isFlexible := r.Version >= 6
 
@@ -223,7 +227,7 @@ func (r *OffsetFetchResponse) decode(pd packetDecoder, version int16) (err error
 }
 
 func (r *OffsetFetchResponse) key() int16 {
-	return 9
+	return apiKeyOffsetFetch
 }
 
 func (r *OffsetFetchResponse) version() int16 {

@@ -237,15 +237,53 @@ func WithStringsReplacer(replacer *strings.Replacer) Option {
 	}
 }
 
-func validate(schema *arrow.Schema) {
+// WithCustomTypeConverter allows specifying a custom type converter for the CSV writer.
+//
+// returns a slice of strings that must match the number of columns in the output csv.
+// the second return value is a boolean that indicates if the conversion was handled.
+// if it is set to false, the library will attempt to use default conversion.
+//
+// There are multiple ways to convert arrow types to strings, and depending on the goal, you may want to use a different one.
+// One clear example is encoding binary types. The default behaviour is to encode them as base64 strings.
+// If you want to customize this behaviour, you can use this option and use any other encoding, such as hex.
+//
+//	csv.WithCustomTypeConverter(func(typ arrow.DataType, col arrow.Array) (result []string, handled bool) {
+//		// use hex encoding for binary types
+//		if typ.ID() == arrow.BINARY {
+//			result = make([]string, col.Len())
+//			arr := col.(*array.Binary)
+//			for i := 0; i < arr.Len(); i++ {
+//				if !arr.IsValid(i) {
+//					result[i] = "NULL"
+//					continue
+//				}
+//				result[i] = fmt.Sprintf("\\x%x", arr.Value(i))
+//			}
+//			return result, true
+//		}
+//		// keep the default behavior for other types
+//		return nil, false
+//	})
+func WithCustomTypeConverter(converter func(typ arrow.DataType, col arrow.Array) (result []string, handled bool)) Option {
+	return func(cfg config) {
+		switch cfg := cfg.(type) {
+		case *Writer:
+			cfg.customTypeConverter = converter
+		default:
+			panic(fmt.Errorf("%w: WithCustomTypeConverter only allowed on csv Writer", arrow.ErrInvalid))
+		}
+	}
+}
+
+func validateRead(schema *arrow.Schema) {
 	for i, f := range schema.Fields() {
-		if !typeSupported(f.Type) {
+		if !readTypeSupported(f.Type) {
 			panic(fmt.Errorf("arrow/csv: field %d (%s) has invalid data type %T", i, f.Name, f.Type))
 		}
 	}
 }
 
-func typeSupported(dt arrow.DataType) bool {
+func readTypeSupported(dt arrow.DataType) bool {
 	switch dt := dt.(type) {
 	case *arrow.BooleanType:
 	case *arrow.Int8Type, *arrow.Int16Type, *arrow.Int32Type, *arrow.Int64Type:
@@ -258,7 +296,7 @@ func typeSupported(dt arrow.DataType) bool {
 	case *arrow.MapType:
 		return false
 	case arrow.ListLikeType:
-		return typeSupported(dt.Elem())
+		return readTypeSupported(dt.Elem())
 	case *arrow.BinaryType, *arrow.LargeBinaryType, *arrow.FixedSizeBinaryType:
 	case arrow.ExtensionType:
 	case *arrow.NullType:

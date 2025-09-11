@@ -8,6 +8,10 @@ type ListGroupsResponse struct {
 	GroupsData   map[string]GroupData // version 4 or later
 }
 
+func (r *ListGroupsResponse) setVersion(v int16) {
+	r.Version = v
+}
+
 type GroupData struct {
 	GroupState string // version 4 or later
 }
@@ -137,7 +141,7 @@ func (r *ListGroupsResponse) decode(pd packetDecoder, version int16) error {
 }
 
 func (r *ListGroupsResponse) key() int16 {
-	return 16
+	return apiKeyListGroups
 }
 
 func (r *ListGroupsResponse) version() int16 {

@@ -232,9 +232,13 @@ func (s *Store) Merge(m Store) {
 	s.Dataobj.PagesDownloaded += m.Dataobj.PagesDownloaded
 	s.Dataobj.PagesDownloadedBytes += m.Dataobj.PagesDownloadedBytes
 	s.Dataobj.PageBatches += m.Dataobj.PageBatches
+	s.Dataobj.TotalPageDownloadTime += m.Dataobj.TotalPageDownloadTime
 	s.Dataobj.TotalRowsAvailable += m.Dataobj.TotalRowsAvailable
 	if m.QueryReferencedStructured {
 		s.QueryReferencedStructured = true
+	}
+	if m.QueryUsedV2Engine {
+		s.QueryUsedV2Engine = true
 	}
 }
 
@@ -358,6 +362,10 @@ func (r Result) TotalDecompressedLines() int64 {
 
 func (r Result) QueryReferencedStructuredMetadata() bool {
 	return r.Querier.Store.QueryReferencedStructured || r.Ingester.Store.QueryReferencedStructured
+}
+
+func (r Result) QueryUsedV2Engine() bool {
+	return r.Querier.Store.QueryUsedV2Engine
 }
 
 func (c *Context) AddIngesterBatch(size int64) {
@@ -569,12 +577,20 @@ func (c *Context) AddPageBatches(i int64) {
 	atomic.AddInt64(&c.store.Dataobj.PageBatches, i)
 }
 
+func (c *Context) AddPageDownloadTime(duration time.Duration) {
+	atomic.AddInt64(&c.store.Dataobj.TotalPageDownloadTime, int64(duration))
+}
+
 func (c *Context) AddTotalRowsAvailable(i int64) {
 	atomic.AddInt64(&c.store.Dataobj.TotalRowsAvailable, i)
 }
 
 func (c *Context) SetQueryReferencedStructuredMetadata() {
 	c.store.QueryReferencedStructured = true
+}
+
+func (c *Context) SetQueryUsedV2Engine() {
+	c.store.QueryUsedV2Engine = true
 }
 
 func (c *Context) getCacheStatsByType(t CacheType) *Cache {
@@ -636,6 +652,12 @@ func (r Result) KVList() []any {
 		"Querier.CompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.CompressedBytes)),
 		"Querier.TotalDuplicates", r.Querier.Store.Chunk.TotalDuplicates,
 		"Querier.QueryReferencedStructuredMetadata", r.Querier.Store.QueryReferencedStructured,
+		"Querier.QueryUsedV2Engine", r.Querier.Store.QueryUsedV2Engine,
+	}
+
+	if r.QueryUsedV2Engine() {
+		// Specifying prefix in case r.Ingester.Store ever uses the new engine.
+		result = append(result, r.Querier.Store.Dataobj.kvList("Querier.")...)
 	}
 
 	result = append(result, r.Caches.kvList()...)
@@ -708,5 +730,23 @@ func (c Caches) kvList() []any {
 		"Cache.InstantMetricResult.BytesSent", humanize.Bytes(uint64(c.InstantMetricResult.BytesSent)),
 		"Cache.InstantMetricResult.BytesReceived", humanize.Bytes(uint64(c.InstantMetricResult.BytesReceived)),
 		"Cache.InstantMetricResult.DownloadTime", c.InstantMetricResult.CacheDownloadTime(),
+	}
+}
+
+func (d Dataobj) kvList(prefix string) []any {
+	return []any{
+		prefix + "Dataobj.PrePredicateDecompressedRows", d.PrePredicateDecompressedRows,
+		prefix + "Dataobj.PrePredicateDecompressedBytes", humanize.Bytes(uint64(d.PrePredicateDecompressedBytes)),
+		prefix + "Dataobj.PrePredicateDecompressedStructuredMetadataBytes", humanize.Bytes(uint64(d.PrePredicateDecompressedStructuredMetadataBytes)),
+		prefix + "Dataobj.PostPredicateRows", d.PostPredicateRows,
+		prefix + "Dataobj.PostPredicateDecompressedBytes", humanize.Bytes(uint64(d.PostPredicateDecompressedBytes)),
+		prefix + "Dataobj.PostPredicateStructuredMetadataBytes", humanize.Bytes(uint64(d.PostPredicateStructuredMetadataBytes)),
+		prefix + "Dataobj.PostFilterRows", d.PostFilterRows,
+		prefix + "Dataobj.PagesScanned", d.PagesScanned,
+		prefix + "Dataobj.PagesDownloaded", d.PagesDownloaded,
+		prefix + "Dataobj.PagesDownloadedBytes", humanize.Bytes(uint64(d.PagesDownloadedBytes)),
+		prefix + "Dataobj.PageBatches", d.PageBatches,
+		prefix + "Dataobj.TotalRowsAvailable", d.TotalRowsAvailable,
+		prefix + "Dataobj.TotalPageDownloadTime", time.Duration(d.TotalPageDownloadTime),
 	}
 }

@@ -481,13 +481,7 @@ func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.t.Error("Failed to parse incoming labels", err)
 			return
 		}
-		file := ""
-		for _, label := range parsedLabels {
-			if label.Name == file2.FilenameLabel {
-				file = label.Value
-				continue
-			}
-		}
+		file := parsedLabels.Get(file2.FilenameLabel)
 		if file == "" {
 			h.t.Error("Expected to find a label with name `filename` but did not!")
 			return
@@ -522,7 +516,7 @@ func getPromMetrics(t *testing.T, httpListenAddr net.Addr) ([]byte, string) {
 func parsePromMetrics(t *testing.T, bytes []byte, contentType string, metricName string, label string) map[string]float64 {
 	rb := map[string]float64{}
 
-	pr, err := textparse.New(bytes, contentType, "", false, false, nil)
+	pr, err := textparse.New(bytes, contentType, "", false, false, false, nil)
 	require.NoError(t, err)
 	for {
 		et, err := pr.Next()

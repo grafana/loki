@@ -31,12 +31,9 @@
       <rule pattern="\{[$].*?\}|\{[-](NOD|EXT|OBJ).*?\}|\([*][$].*?[*]\)">
         <token type="CommentPreproc" />
       </rule>
-      <!-- Comment Single -->
-      <rule pattern="(//.*?)(\n)">
-        <bygroups>
-          <token type="CommentSingle" />
-          <token type="TextWhitespace" />
-        </bygroups>
+      <!-- Comment -->
+      <rule pattern="//.*">
+        <token type="CommentSingle" />
       </rule>
       <!-- Comment Multiline Block -->
       <rule pattern="\([*](.|\n)*?[*]\)">

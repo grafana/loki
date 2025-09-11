@@ -79,7 +79,7 @@ func TestSingleIdx(t *testing.T) {
 			fn: func() Index {
 				head := NewHead("fake", NewMetrics(nil), log.NewNopLogger())
 				for _, x := range cases {
-					_, _ = head.Append(x.Labels, x.Labels.Hash(), x.Chunks)
+					_, _ = head.Append(x.Labels, labels.StableHash(x.Labels), x.Chunks)
 				}
 				reader := head.Index()
 				return NewTSDBIndex(reader)
@@ -95,28 +95,28 @@ func TestSingleIdx(t *testing.T) {
 				expected := []ChunkRef{
 					{
 						User:        "fake",
-						Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+						Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar"}`))),
 						Start:       0,
 						End:         3,
 						Checksum:    0,
 					},
 					{
 						User:        "fake",
-						Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+						Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar"}`))),
 						Start:       1,
 						End:         4,
 						Checksum:    1,
 					},
 					{
 						User:        "fake",
-						Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+						Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar"}`))),
 						Start:       2,
 						End:         5,
 						Checksum:    2,
 					},
 					{
 						User:        "fake",
-						Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+						Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`))),
 						Start:       1,
 						End:         10,
 						Checksum:    3,
@@ -136,7 +136,7 @@ func TestSingleIdx(t *testing.T) {
 
 				require.Equal(t, []ChunkRef{{
 					User:        "fake",
-					Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+					Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`))),
 					Start:       1,
 					End:         10,
 					Checksum:    3,
@@ -150,7 +150,7 @@ func TestSingleIdx(t *testing.T) {
 				expected := []Series{
 					{
 						Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
-						Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+						Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`))),
 					},
 				}
 				require.Equal(t, expected, xs)
@@ -168,7 +168,7 @@ func TestSingleIdx(t *testing.T) {
 				expected := []Series{
 					{
 						Labels:      mustParseLabels(`{foo="bar"}`),
-						Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+						Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar"}`))),
 					},
 				}
 				require.Equal(t, expected, xs)

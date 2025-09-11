@@ -60,10 +60,10 @@ func GenerateBitsUnrolled(bitmap []byte, start, length int64, g func() bool) {
 
 	var (
 		curbyte        byte
-		cur                   = bitmap[start/8:]
-		startBitOffset uint64 = uint64(start % 8)
-		mask                  = bitutil.BitMask[startBitOffset]
-		remaining             = length
+		cur            = bitmap[start/8:]
+		startBitOffset = uint64(start % 8)
+		mask           = bitutil.BitMask[startBitOffset]
+		remaining      = length
 	)
 
 	if mask != 0x01 {

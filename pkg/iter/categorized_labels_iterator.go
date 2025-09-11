@@ -52,7 +52,7 @@ func (c *categorizeLabelsIterator) Next() bool {
 
 	newLabels := builder.Labels()
 	c.currStreamLabels = newLabels.String()
-	c.currHash = newLabels.Hash()
+	c.currHash = labels.StableHash(newLabels)
 
 	return true
 }

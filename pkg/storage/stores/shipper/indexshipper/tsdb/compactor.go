@@ -365,20 +365,49 @@ func (c *compactedIndex) CleanupSeries(_ []byte, lbls labels.Labels) error {
 	return nil
 }
 
-func (c *compactedIndex) RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) error {
+// RemoveChunk notes details of the chunk to remove. Returns true/false for existence of the chunk.
+func (c *compactedIndex) RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) (bool, error) {
 	chk, err := chunk.ParseExternalKey(string(userID), chunkID)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	seriesID := labels.String()
+	chunkMeta := tsdbindex.ChunkMeta{
+		Checksum: chk.Checksum,
+		MinTime:  int64(from),
+		MaxTime:  int64(through),
+	}
+	hasChunk, err := c.builder.HasChunk(seriesID, chunkMeta)
+	if err != nil {
+		return false, err
+	}
+	if !hasChunk {
+		return false, nil
+	}
+
 	c.deleteChunks[seriesID] = append(c.deleteChunks[seriesID], tsdbindex.ChunkMeta{
 		Checksum: chk.Checksum,
 		MinTime:  int64(from),
 		MaxTime:  int64(through),
 	})
 
-	return nil
+	return true, nil
+}
+
+func (c *compactedIndex) ChunkExists(_ []byte, lbls labels.Labels, chunkRef logproto.ChunkRef) (bool, error) {
+	seriesID := lbls.String()
+	chunkMeta := tsdbindex.ChunkMeta{
+		Checksum: chunkRef.Checksum,
+		MinTime:  int64(chunkRef.From),
+		MaxTime:  int64(chunkRef.Through),
+	}
+	hasChunk, err := c.builder.HasChunk(seriesID, chunkMeta)
+	if err != nil {
+		return false, err
+	}
+
+	return hasChunk, nil
 }
 
 func (c *compactedIndex) Cleanup() {}
@@ -433,5 +462,5 @@ func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
 }
 
 func getUnsafeBytes(s string) []byte {
-	return *((*[]byte)(unsafe.Pointer(&s))) // #nosec G103 -- we know the string is not mutated
+	return *((*[]byte)(unsafe.Pointer(&s))) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }

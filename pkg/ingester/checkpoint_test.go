@@ -566,7 +566,7 @@ func Benchmark_CheckpointWrite(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		require.NoError(b, writer.Write(&Series{
 			UserID:      "foo",
-			Fingerprint: lbs.Hash(),
+			Fingerprint: labels.StableHash(lbs),
 			Labels:      logproto.FromLabelsToLabelAdapters(lbs),
 			Chunks:      chunks,
 		}))

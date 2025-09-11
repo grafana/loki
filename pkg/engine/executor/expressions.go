@@ -66,7 +66,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 
 					// TODO(ashwanth): Support other data types in CoalesceVector.
 					// For now, ensure all vectors are strings to avoid type conflicts.
-					if datatype.String.String() != dt {
+					if datatype.Loki.String.String() != dt {
 						return nil, fmt.Errorf("column %s has datatype %s, but expression expects string", expr.Ref.Column, dt)
 					}
 
@@ -98,7 +98,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		// A non-existent column is represented as a string scalar with zero-value.
 		// This reflects current behaviour, where a label filter `| foo=""` would match all if `foo` is not defined.
 		return &Scalar{
-			value: datatype.NewStringLiteral(""),
+			value: datatype.NewLiteral(""),
 			rows:  input.NumRows(),
 			ct:    types.ColumnTypeGenerated,
 		}, nil
@@ -327,7 +327,7 @@ func (m *CoalesceVector) Value(i int) any {
 // Type implements ColumnVector.
 func (m *CoalesceVector) Type() datatype.DataType {
 	// TODO: Support other data types in CoalesceVector.
-	return datatype.String
+	return datatype.Loki.String
 }
 
 // ColumnType implements ColumnVector.

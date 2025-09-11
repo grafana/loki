@@ -2,8 +2,7 @@ syntax = "proto3";
 
 package grpc;
 
-import "google/protobuf/any.proto";
-import "google/protobuf/timestamp.proto";
+import "pkg/compactor/deletion/deletionproto/types.proto";
 
 service Compactor {
   rpc GetDeleteRequests(GetDeleteRequestsRequest) returns (GetDeleteRequestsResponse);
@@ -15,16 +14,7 @@ message GetDeleteRequestsRequest {
 }
 
 message GetDeleteRequestsResponse {
-  repeated DeleteRequest deleteRequests = 1;
-}
-
-message DeleteRequest {
-  string requestID = 1;
-  int64 startTime = 2;
-  int64 endTime = 3;
-  string query = 4;
-  string status = 5;
-  int64 createdAt = 6;
+  repeated deletionproto.DeleteRequest deleteRequests = 1;
 }
 
 message GetCacheGenNumbersRequest {}

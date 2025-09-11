@@ -41,26 +41,24 @@ type ChunkStore struct {
 }
 
 func NewChunkStore(dir, tenantID string) (*ChunkStore, error) {
-	// Create store-specific directory
-	storeDir := filepath.Join(dir, "chunks")
-	if err := os.MkdirAll(storeDir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create directory %s: %w", storeDir, err)
-	}
-	indexDir := filepath.Join(storeDir, "index")
-	if err := os.MkdirAll(indexDir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create index directory %s: %w", indexDir, err)
+	// NOTE(rfratto): ChunkStore should use dir as the base directory to imitate
+	// production setup: dataobjs are a subdirectory of the directory used for
+	// chunks.
+	indexshipperDir := filepath.Join(dir, "indexshipper")
+	if err := os.MkdirAll(indexshipperDir, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create index directory %s: %w", indexshipperDir, err)
 	}
 	storeConfig := storage.Config{
 		MaxChunkBatchSize: 50,
 		TSDBShipperConfig: indexshipper.Config{
-			ActiveIndexDirectory: indexDir,
+			ActiveIndexDirectory: indexshipperDir,
 			Mode:                 indexshipper.ModeReadWrite,
 			IngesterName:         "test",
-			CacheLocation:        filepath.Join(storeDir, "index_cache"),
+			CacheLocation:        filepath.Join(dir, "index_cache"),
 			ResyncInterval:       5 * time.Minute,
 			CacheTTL:             24 * time.Hour,
 		},
-		FSConfig: local.FSConfig{Directory: storeDir},
+		FSConfig: local.FSConfig{Directory: dir},
 	}
 	period := config.PeriodConfig{
 		From:       config.DayTime{Time: model.Earliest},
@@ -68,6 +66,7 @@ func NewChunkStore(dir, tenantID string) (*ChunkStore, error) {
 		ObjectType: "filesystem",
 		Schema:     "v13",
 		IndexTables: config.IndexPeriodicTableConfig{
+			PathPrefix: "index/",
 			PeriodicTableConfig: config.PeriodicTableConfig{
 				Prefix: "index_",
 				Period: time.Hour * 24,

@@ -1,14 +1,19 @@
 package executor
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/csv"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
+	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 // CSVToArrow converts a CSV string to an Arrow record based on the provided schema.
@@ -47,8 +52,8 @@ func CSVToArrowWithAllocator(allocator memory.Allocator, fields []arrow.Field, c
 func TestCSVPipeline(t *testing.T) {
 	// Define test schema
 	fields := []arrow.Field{
-		{Name: "name", Type: arrow.BinaryTypes.String},
-		{Name: "age", Type: arrow.PrimitiveTypes.Int32},
+		{Name: "name", Type: datatype.Arrow.String},
+		{Name: "age", Type: datatype.Arrow.Integer},
 	}
 	schema := arrow.NewSchema(fields, nil)
 
@@ -79,29 +84,144 @@ func TestCSVPipeline(t *testing.T) {
 	})
 
 	t.Run("should return records in order", func(t *testing.T) {
-		// First read should return the first record
-		err := pipeline.Read()
-		require.NoError(t, err)
+		ctx := t.Context()
 
-		batch, err := pipeline.Value()
+		// First read should return the first record
+		batch, err := pipeline.Read(ctx)
 		require.NoError(t, err)
 		require.Equal(t, record1.NumRows(), batch.NumRows())
 		require.Equal(t, schema, batch.Schema())
 
 		// Second read should return the second record
-		err = pipeline.Read()
+		batch, err = pipeline.Read(ctx)
 		require.NoError(t, err)
 
-		batch, err = pipeline.Value()
-		require.NoError(t, err)
 		require.Equal(t, record2.NumRows(), batch.NumRows())
 		require.Equal(t, schema, batch.Schema())
 
 		// Third read should return EOF
-		err = pipeline.Read()
+		_, err = pipeline.Read(ctx)
 		require.Equal(t, EOF, err)
+	})
+}
 
-		_, err = pipeline.Value()
-		require.Equal(t, EOF, err)
+func newInstrumentedPipeline(inner Pipeline) *instrumentedPipeline {
+	return &instrumentedPipeline{
+		inner:     inner,
+		callCount: make(map[string]int),
+	}
+}
+
+type instrumentedPipeline struct {
+	inner     Pipeline
+	callCount map[string]int
+}
+
+// Inputs implements Pipeline.
+func (i *instrumentedPipeline) Inputs() []Pipeline {
+	i.callCount["Inputs"]++
+	return i.inner.Inputs()
+}
+
+// Close implements Pipeline.
+func (i *instrumentedPipeline) Close() {
+	i.callCount["Close"]++
+	i.inner.Close()
+}
+
+// Read implements Pipeline.
+func (i *instrumentedPipeline) Read(ctx context.Context) (arrow.Record, error) {
+	i.callCount["Read"]++
+	return i.inner.Read(ctx)
+}
+
+// Transport implements Pipeline.
+func (i *instrumentedPipeline) Transport() Transport {
+	i.callCount["Transport"]++
+	return i.inner.Transport()
+}
+
+var _ Pipeline = (*instrumentedPipeline)(nil)
+
+func Test_prefetchWrapper_Read(t *testing.T) {
+	alloc := memory.NewCheckedAllocator(memory.NewGoAllocator())
+	defer alloc.AssertSize(t, 0)
+
+	batch1 := arrowtest.Rows{
+		{"message": "log line 1"},
+		{"message": "log line 2"},
+	}
+	batch2 := arrowtest.Rows{
+		{"message": "log line 3"},
+		{"message": "log line 4"},
+	}
+	batch3 := arrowtest.Rows{
+		{"message": "log line 5"},
+	}
+
+	records := []arrow.Record{
+		batch1.Record(alloc, batch1.Schema()),
+		batch2.Record(alloc, batch2.Schema()),
+		batch3.Record(alloc, batch3.Schema()),
+	}
+	for _, rec := range records {
+		defer rec.Release()
+	}
+
+	pipeline := NewBufferedPipeline(records...)
+	instrumentedPipeline := newInstrumentedPipeline(pipeline)
+	prefetchingPipeline := newPrefetchingPipeline(instrumentedPipeline)
+	defer prefetchingPipeline.Close()
+
+	require.Equal(t, 0, instrumentedPipeline.callCount["Read"])
+
+	ctx := t.Context()
+
+	// Read first batch
+	v, err := prefetchingPipeline.Read(ctx)
+	require.NoError(t, err)
+	v.Release()
+	require.Equal(t, int64(2), v.NumRows())
+
+	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched
+	require.Equal(t, 2, instrumentedPipeline.callCount["Read"]) // 1 record consumed + 1 record pre-fetched
+
+	// Read second batch
+	v, err = prefetchingPipeline.Read(ctx)
+	require.NoError(t, err)
+	v.Release()
+	require.Equal(t, int64(2), v.NumRows())
+
+	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched
+	require.Equal(t, 3, instrumentedPipeline.callCount["Read"]) // 2 records consumed + 1 record pre-fetched
+
+	// Read third/last batch
+	v, err = prefetchingPipeline.Read(ctx)
+	require.NoError(t, err)
+	v.Release()
+	require.Equal(t, int64(1), v.NumRows())
+
+	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched
+	require.Equal(t, 4, instrumentedPipeline.callCount["Read"]) // 3 records consumed + 1 EOF pre-fetched
+
+	// Read EOF
+	_, err = prefetchingPipeline.Read(ctx)
+	require.ErrorContains(t, err, EOF.Error())
+
+	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched
+	require.Equal(t, 4, instrumentedPipeline.callCount["Read"]) // 3 records + 1 EOF consumed
+}
+
+func Test_prefetchWrapper_Close(t *testing.T) {
+	t.Run("initialized prefetcher", func(t *testing.T) {
+		w := newPrefetchingPipeline(emptyPipeline())
+		_, err := w.Read(t.Context())
+		require.ErrorIs(t, EOF, err)
+		require.NotPanics(t, w.Close)
+	})
+
+	t.Run("uninitialized prefetcher", func(t *testing.T) {
+		w := newPrefetchingPipeline(emptyPipeline())
+		require.NotPanics(t, w.Close)
 	})
 }
