@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.5](https://github.com/grafana/loki/compare/v3.5.4...v3.5.5) (2025-09-11)
+
+
+### Bug Fixes
+
+* **release-3.5.x:** backport fix to correctly calculate entry metadata size ([#19163](https://github.com/grafana/loki/issues/19163)) ([5aa8bd2](https://github.com/grafana/loki/commit/5aa8bd27946a1ce5267790ebe9210f93cd7111b2))
+
 ## [3.5.4](https://github.com/grafana/loki/compare/v3.5.3...v3.5.4) (2025-09-04)
 
 
