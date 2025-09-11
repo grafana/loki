@@ -228,11 +228,16 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 
 	// init index files
 	indexObjects := make([]*dataobj.Object, len(indexPaths))
-	for i, path := range indexPaths {
-		indexObjects[i], err = dataobj.FromBucket(ctx, m.bucket, path)
-		if err != nil {
-			return nil, err
-		}
+	g, initCtx := errgroup.WithContext(ctx)
+	g.SetLimit(m.parallelism)
+	for idx, indexPath := range indexPaths {
+		g.Go(func() error {
+			indexObjects[idx], err = dataobj.FromBucket(initCtx, m.bucket, indexPath)
+			return err
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	// Search the stream sections of the matching objects to find matching streams
