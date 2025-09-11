@@ -46,7 +46,7 @@ lint-yaml:
 	yamllint -c $(CURDIR)/src/.yamllint.yaml $(CURDIR)/src
 
 helm-unittest:
-	docker run --rm -u $(id -u):$(id -g) -v ./:/apps helmunittest/helm-unittest:3.18.4-1.0.0 --strict --file 'unittests/**/*.yaml' /apps
+	docker run --rm -u $(id -u):$(id -g) -v ./:/apps helmunittest/helm-unittest:3.18.6-1.0.1 --strict --file 'unittests/**/*.yaml' /apps
 
 # Helm chart installation targets
 install-distributed:
