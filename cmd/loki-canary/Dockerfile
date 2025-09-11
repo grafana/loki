@@ -1,4 +1,4 @@
-FROM golang:1.23 as build
+FROM golang:1.23.12 as build
 
 COPY . /src/loki
 WORKDIR /src/loki
