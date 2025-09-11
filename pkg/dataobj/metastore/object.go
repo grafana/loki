@@ -223,7 +223,6 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 		return nil, err
 	}
 
-	indexPaths = indexPaths[20:22]
 	level.Debug(m.logger).Log("msg", "resolved index files", "count", len(indexPaths), "paths", strings.Join(indexPaths, ","))
 	m.metrics.indexObjectsTotal.Observe(float64(len(indexPaths)))
 
