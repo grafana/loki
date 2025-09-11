@@ -85,7 +85,7 @@ func TestColumnBuilder_Append(t *testing.T) {
 			rowIndex:        9,
 			value:           binaryValue(128),
 			wantErr:         nil,
-			expPages:        2,
+			expPages:        3,
 		},
 	}
 	for _, tt := range tests {
