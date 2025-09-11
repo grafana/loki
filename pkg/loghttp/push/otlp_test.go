@@ -1012,10 +1012,10 @@ func TestOTLPStructuredMetadataCalculation(t *testing.T) {
 		generateLogs(),
 		"test-user",
 		DefaultOTLPConfig(defaultGlobalOTLPConfig),
-		nil,        // tenantConfigs
 		[]string{}, // discoverServiceName
 		tracker,
 		stats,
+		false,
 		log.NewNopLogger(),
 		streamResolver,
 	)
