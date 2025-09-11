@@ -79,7 +79,8 @@ func TestRowReaderTimeRange(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			dec := buildPointersDecoder(t, 0, 2)
 			r := NewRowReader(dec)
-			r.SetPredicate(tt.predicate)
+			err := r.SetPredicate(tt.predicate)
+			require.NoError(t, err)
 			actual, err := readAllPointers(context.Background(), r)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, actual)
