@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -264,6 +265,8 @@ type Limits struct {
 	S3SSEType                 string `yaml:"s3_sse_type" json:"s3_sse_type" doc:"nocli|description=S3 server-side encryption type. Required to enable server-side encryption overrides for a specific tenant. If not set, the default S3 client settings are used."`
 	S3SSEKMSKeyID             string `yaml:"s3_sse_kms_key_id" json:"s3_sse_kms_key_id" doc:"nocli|description=S3 server-side encryption KMS Key ID. Ignored if the SSE type override is not set."`
 	S3SSEKMSEncryptionContext string `yaml:"s3_sse_kms_encryption_context" json:"s3_sse_kms_encryption_context" doc:"nocli|description=S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set."`
+
+	SegmentationRules []string `yaml:"segmentation_rules" json:"segmentation_rules" category:"experimental" doc:"description=List of segmentation rules for partitioning when writing to the segment topic. Supports both simple keys ('key') and key=value rules with additional keys ('key=value,additional_key1,additional_key2'). Experimental."`
 }
 
 type FieldDetectorConfig struct {
@@ -503,6 +506,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 		false,
 		"Enable experimental support for running multiple query variants over the same underlying data. For example, running both a rate() and count_over_time() query over the same range selector.",
 	)
+
+	f.Var((*dskit_flagext.StringSlice)(&l.SegmentationRules), "distributor.segmentation-rules", "Comma-separated list of segmentation rules for partitioning when writing to the segment topic. Supports both simple keys ('key') and key=value rules with additional keys ('key=value,additional_key1,additional_key2'). Experimental.")
 }
 
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
@@ -603,6 +608,11 @@ func (l *Limits) Validate() error {
 
 	if l.TSDBMaxBytesPerShard <= 0 {
 		return errors.New("querier.tsdb-max-bytes-per-shard must be greater than 0")
+	}
+
+	// Validate segmentation rules
+	if err := l.validateSegmentationRules(); err != nil {
+		return err
 	}
 
 	return nil
@@ -1384,4 +1394,70 @@ func (sm *OverwriteMarshalingStringMap) UnmarshalYAML(unmarshal func(interface{}
 
 func (o *Overrides) SimulatedPushLatency(userID string) time.Duration {
 	return o.getOverridesForUser(userID).SimulatedPushLatency
+}
+
+func (o *Overrides) SegmentationRules(userID string) []string {
+	return o.getOverridesForUser(userID).SegmentationRules
+}
+
+// validateSegmentationRules validates the segmentation rules configuration
+func (l *Limits) validateSegmentationRules() error {
+	for _, ruleStr := range l.SegmentationRules {
+		if err := validateSegmentationRule(ruleStr); err != nil {
+			return fmt.Errorf("invalid segmentation rule '%s': %w", ruleStr, err)
+		}
+	}
+	return nil
+}
+
+// validateSegmentationRule validates a single segmentation rule string
+func validateSegmentationRule(ruleStr string) error {
+	ruleStr = strings.TrimSpace(ruleStr)
+	if ruleStr == "" {
+		return fmt.Errorf("empty segmentation rule")
+	}
+
+	// Check if this is a key=value rule
+	if strings.Contains(ruleStr, "=") {
+		parts := strings.Split(ruleStr, ",")
+		if len(parts) < 2 {
+			return fmt.Errorf("invalid key=value rule format: %s", ruleStr)
+		}
+
+		// First part should be key=value
+		keyValue := strings.TrimSpace(parts[0])
+		if !strings.Contains(keyValue, "=") {
+			return fmt.Errorf("first part must be key=value: %s", keyValue)
+		}
+
+		keyValueParts := strings.SplitN(keyValue, "=", 2)
+		if len(keyValueParts) != 2 {
+			return fmt.Errorf("invalid key=value format: %s", keyValue)
+		}
+
+		key := strings.TrimSpace(keyValueParts[0])
+		value := strings.TrimSpace(keyValueParts[1])
+		if key == "" || value == "" {
+			return fmt.Errorf("key and value cannot be empty: %s", keyValue)
+		}
+
+		// Additional keys are the rest of the parts
+		additionalKeys := make([]string, 0, len(parts)-1)
+		for i := 1; i < len(parts); i++ {
+			additionalKey := strings.TrimSpace(parts[i])
+			if additionalKey == "" {
+				continue
+			}
+			additionalKeys = append(additionalKeys, additionalKey)
+		}
+
+		if len(additionalKeys) == 0 {
+			return fmt.Errorf("key=value rule must have at least one additional key: %s", ruleStr)
+		}
+
+		// Additional keys can be either simple keys or key=value pairs
+		// No additional validation needed as both formats are supported
+	}
+
+	return nil
 }
