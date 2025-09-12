@@ -5,10 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/coder/quartz"
 	"github.com/go-kit/log"
@@ -24,6 +22,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -39,7 +38,7 @@ type builder interface {
 
 // committer allows mocking of certain [kgo.Client] methods in tests.
 type committer interface {
-	CommitRecords(ctx context.Context, records ...*kgo.Record) error
+	Commit(ctx context.Context, offset int64) error
 }
 
 type producer interface {
@@ -52,10 +51,10 @@ type partitionProcessor struct {
 	topic     string
 	partition int32
 	// Processing pipeline
-	records chan *kgo.Record
+	records chan partition.Record
 	// lastRecord contains the last record appended to the builder. It is used
 	// to commit the correct offset after a flush.
-	lastRecord *kgo.Record
+	lastRecord *partition.Record
 	builder    builder
 	decoder    *kafka.Decoder
 	uploader   *uploader.Uploader
@@ -94,14 +93,12 @@ type partitionProcessor struct {
 
 func newPartitionProcessor(
 	ctx context.Context,
-	client *kgo.Client,
+	committer committer,
 	builderCfg logsobj.BuilderConfig,
 	uploaderCfg uploader.Config,
 	metastoreCfg metastore.Config,
 	bucket objstore.Bucket,
 	scratchStore scratch.Store,
-	topic string,
-	partition int32,
 	logger log.Logger,
 	reg prometheus.Registerer,
 	idleFlushTimeout time.Duration,
@@ -112,10 +109,10 @@ func newPartitionProcessor(
 	if err != nil {
 		panic(err)
 	}
-	reg = prometheus.WrapRegistererWith(prometheus.Labels{
-		"topic":     topic,
-		"partition": strconv.Itoa(int(partition)),
-	}, reg)
+	// reg = prometheus.WrapRegistererWith(prometheus.Labels{
+	// 	"topic":     topic,
+	// 	"partition": strconv.Itoa(int(partition)),
+	// }, reg)
 
 	metrics := newPartitionOffsetMetrics()
 	if err := metrics.register(reg); err != nil {
@@ -128,11 +125,9 @@ func newPartitionProcessor(
 	}
 
 	return &partitionProcessor{
-		committer:               client,
-		logger:                  log.With(logger, "partition", partition),
-		topic:                   topic,
-		partition:               partition,
-		records:                 make(chan *kgo.Record, 1000),
+		committer:               committer,
+		logger:                  logger,
+		records:                 make(chan partition.Record, 1000),
 		ctx:                     ctx,
 		cancel:                  cancel,
 		decoder:                 decoder,
@@ -188,7 +183,7 @@ func (p *partitionProcessor) stop() {
 
 // Drops records from the channel if the processor is stopped.
 // Returns false if the processor is stopped, true otherwise.
-func (p *partitionProcessor) Append(records []*kgo.Record) bool {
+func (p *partitionProcessor) Append(records []partition.Record) bool {
 	for _, record := range records {
 		select {
 		// must check per-record in order to not block on a full channel
@@ -241,7 +236,7 @@ func (p *partitionProcessor) emitObjectWrittenEvent(objectPath string) error {
 	return results.FirstErr()
 }
 
-func (p *partitionProcessor) processRecord(record *kgo.Record) {
+func (p *partitionProcessor) processRecord(record partition.Record) {
 	// Update offset metric at the end of processing
 	defer p.metrics.updateOffset(record.Offset)
 
@@ -254,14 +249,8 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 		return
 	}
 
-	tenant := string(record.Key)
-	if !utf8.ValidString(tenant) {
-		// This shouldn't happen, but we catch it here.
-		level.Error(p.logger).Log("msg", "record key is not valid UTF-8")
-		return
-	}
-
-	stream, err := p.decoder.DecodeWithoutLabels(record.Value)
+	tenant := record.TenantID
+	stream, err := p.decoder.DecodeWithoutLabels(record.Content)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to decode record", "err", err)
 		return
@@ -287,7 +276,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 		}
 	}
 
-	p.lastRecord = record
+	p.lastRecord = &record
 	p.lastModified = p.clock.Now()
 }
 
@@ -372,7 +361,7 @@ func (p *partitionProcessor) commit() error {
 	backoff.Reset()
 	for backoff.Ongoing() {
 		p.metrics.incCommitsTotal()
-		err := p.committer.CommitRecords(p.ctx, p.lastRecord)
+		err := p.committer.Commit(p.ctx, p.lastRecord.Offset)
 		if err == nil {
 			return nil
 		}
