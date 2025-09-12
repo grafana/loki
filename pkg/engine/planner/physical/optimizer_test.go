@@ -1,12 +1,15 @@
 package physical
 
 import (
+	"sort"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 )
 
 func TestCanApplyPredicate(t *testing.T) {
@@ -202,7 +205,7 @@ func TestOptimizer(t *testing.T) {
 		require.Equal(t, expected, actual)
 	})
 
-	t.Run("groupby pushdown", func(t *testing.T) {
+	t.Run("projection pushdown handles groupby", func(t *testing.T) {
 		groupBy := []ColumnExpression{
 			&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
 			&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
@@ -228,8 +231,8 @@ func TestOptimizer(t *testing.T) {
 
 		// apply optimisation
 		optimizations := []*optimization{
-			newOptimization("group by pushdown", plan).withRules(
-				&groupByPushdown{plan: plan},
+			newOptimization("projection pushdown", plan).withRules(
+				&projectionPushdown{plan: plan},
 			),
 		}
 		o := newOptimizer(plan, optimizations)
@@ -237,7 +240,15 @@ func TestOptimizer(t *testing.T) {
 
 		expectedPlan := &Plan{}
 		{
-			scan1 := expectedPlan.addNode(&DataObjScan{id: "scan1"})
+
+			// pushed down from group and parition by, with range aggregations adding timestamp
+			expectedProjections := []ColumnExpression{
+				&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
+				&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+				&ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}},
+			}
+
+			scan1 := expectedPlan.addNode(&DataObjScan{id: "scan1", Projections: expectedProjections})
 			rangeAgg := expectedPlan.addNode(&RangeAggregation{
 				id:          "count_over_time",
 				Operation:   types.RangeAggregationTypeCount,
@@ -258,10 +269,10 @@ func TestOptimizer(t *testing.T) {
 		require.Equal(t, expected, actual)
 	})
 
-	t.Run("projection pushdown", func(t *testing.T) {
+	t.Run("projection pushdown handles partition by", func(t *testing.T) {
 		partitionBy := []ColumnExpression{
-			&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
 			&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
+			&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
 		}
 
 		plan := &Plan{}
@@ -368,10 +379,10 @@ func TestOptimizer(t *testing.T) {
 		expectedPlan := &Plan{}
 		{
 			expectedProjections := []ColumnExpression{
-				&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
-				&ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}},
 				&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
 				&ColumnExpr{Ref: types.ColumnRef{Column: "message", Type: types.ColumnTypeBuiltin}},
+				&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+				&ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}},
 			}
 
 			scan1 := expectedPlan.addNode(&DataObjScan{
@@ -549,4 +560,356 @@ func TestOptimizer(t *testing.T) {
 		expected := PrintAsTree(expectedPlan)
 		require.Equal(t, expected, actual)
 	})
+}
+
+func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
+	tests := []struct {
+		name                           string
+		buildLogical                   func() logical.Value
+		expectedParseKeysRequested     []string
+		expectedDataObjScanProjections []string
+	}{
+		{
+			name: "ParseNode remains empty when no operations need parsed fields",
+			buildLogical: func() logical.Value {
+				// Create a simple log query with no filters that need parsed fields
+				// {app="test"} | logfmt
+				selectorPredicate := &logical.BinOp{
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+					Right: logical.NewLiteral("test"),
+					Op:    types.BinaryOpEq,
+				}
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector:   selectorPredicate,
+					Predicates: []logical.Value{selectorPredicate},
+					Shard:      logical.NewShard(0, 1),
+				})
+
+				// Add parse but no filters requiring parsed fields
+				builder = builder.Parse(logical.ParserLogfmt)
+				return builder.Value()
+			},
+		},
+		{
+			name: "ParseNode skips label and builtin columns, only collects ambiguous",
+			buildLogical: func() logical.Value {
+				// {app="test"} | logfmt | app="frontend" | level="error"
+				// This is a log query (no RangeAggregation) so should parse all keys
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+
+				builder = builder.Parse(logical.ParserLogfmt)
+
+				// Add filter on label column (should be skipped)
+				labelFilter := &logical.BinOp{
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+					Right: logical.NewLiteral("frontend"),
+					Op:    types.BinaryOpEq,
+				}
+				builder = builder.Select(labelFilter)
+
+				// Add filter on ambiguous column (should be collected)
+				ambiguousFilter := &logical.BinOp{
+					Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
+					Right: logical.NewLiteral("error"),
+					Op:    types.BinaryOpEq,
+				}
+				builder = builder.Select(ambiguousFilter)
+
+				return builder.Value()
+			},
+		},
+		{
+			name: "RangeAggregation with PartitionBy on ambiguous columns",
+			buildLogical: func() logical.Value {
+				// count_over_time({app="test"} | logfmt [5m]) by (duration, service)
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+
+				builder = builder.Parse(logical.ParserLogfmt)
+
+				// Range aggregation with PartitionBy
+				builder = builder.RangeAggregation(
+					[]logical.ColumnRef{
+						{Ref: types.ColumnRef{Column: "duration", Type: types.ColumnTypeAmbiguous}},
+						{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}}, // Label should be skipped
+					},
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute,
+					5*time.Minute,
+				)
+
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"duration"}, // Only ambiguous column from PartitionBy
+			expectedDataObjScanProjections: []string{"message", "service", "timestamp"},
+		},
+		{
+			name: "log query with logfmt and filter on ambiguous column",
+			buildLogical: func() logical.Value {
+				// Create a logical plan that represents:
+				// {app="test"} | logfmt | level="error"
+				// This is a log query (no RangeAggregation) so should parse all keys
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1), // noShard
+				})
+
+				// Don't set RequestedKeys here - optimization should determine them
+				builder = builder.Parse(logical.ParserLogfmt)
+
+				// Add filter with ambiguous column
+				filterExpr := &logical.BinOp{
+					Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
+					Right: logical.NewLiteral("error"),
+					Op:    types.BinaryOpEq,
+				}
+				builder = builder.Select(filterExpr)
+				return builder.Value()
+			},
+			expectedParseKeysRequested: nil, // Log queries should parse all keys
+		},
+		{
+			name: "metric query with logfmt and groupby on ambiguous column",
+			buildLogical: func() logical.Value {
+				// Create a logical plan that represents:
+				// sum by(status) (count_over_time({app="test"} | logfmt [5m]))
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1), // noShard
+				})
+
+				// Don't set RequestedKeys here - optimization should determine them
+				builder = builder.Parse(logical.ParserLogfmt)
+
+				// Range aggregation
+				builder = builder.RangeAggregation(
+					[]logical.ColumnRef{}, // no partition by
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute, // step
+					5*time.Minute, // range interval
+				)
+
+				// Vector aggregation with groupby on ambiguous column
+				builder = builder.VectorAggregation(
+					[]logical.ColumnRef{
+						{Ref: types.ColumnRef{Column: "status", Type: types.ColumnTypeAmbiguous}},
+					},
+					types.VectorAggregationTypeSum,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"status"},
+			expectedDataObjScanProjections: []string{"message", "timestamp"},
+		},
+		{
+			name: "metric query with multiple ambiguous columns",
+			buildLogical: func() logical.Value {
+				// Create a logical plan that represents:
+				// sum by(status,code) (count_over_time({app="test"} | logfmt | duration > 100 [5m]))
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1), // noShard
+				})
+
+				// Don't set RequestedKeys here - optimization should determine them
+				builder = builder.Parse(logical.ParserLogfmt)
+
+				// Add filter with ambiguous column
+				filterExpr := &logical.BinOp{
+					Left:  logical.NewColumnRef("duration", types.ColumnTypeAmbiguous),
+					Right: logical.NewLiteral(int64(100)),
+					Op:    types.BinaryOpGt,
+				}
+				builder = builder.Select(filterExpr)
+
+				// Range aggregation
+				builder = builder.RangeAggregation(
+					[]logical.ColumnRef{}, // no partition by
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute, // step
+					5*time.Minute, // range interval
+				)
+
+				// Vector aggregation with groupby on ambiguous columns
+				builder = builder.VectorAggregation(
+					[]logical.ColumnRef{
+						{Ref: types.ColumnRef{Column: "status", Type: types.ColumnTypeAmbiguous}},
+						{Ref: types.ColumnRef{Column: "code", Type: types.ColumnTypeAmbiguous}},
+					},
+					types.VectorAggregationTypeSum,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"code", "duration", "status"}, // sorted alphabetically
+			expectedDataObjScanProjections: []string{"message", "timestamp"},
+		},
+		{
+			name: "log query should request all keys even with filters",
+			buildLogical: func() logical.Value {
+				// Create a logical plan that represents a log query:
+				// {app="test"} | logfmt | level="error" | limit 100
+				// This is a log query (no range aggregation) so should parse all keys
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector: &logical.BinOp{
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+						Right: logical.NewLiteral("test"),
+						Op:    types.BinaryOpEq,
+					},
+					Shard: logical.NewShard(0, 1),
+				})
+
+				// Add parse without specifying RequestedKeys
+				builder = builder.Parse(logical.ParserLogfmt)
+
+				// Add filter on ambiguous column
+				filterExpr := &logical.BinOp{
+					Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
+					Right: logical.NewLiteral("error"),
+					Op:    types.BinaryOpEq,
+				}
+				builder = builder.Select(filterExpr)
+
+				// Add a limit (typical for log queries)
+				builder = builder.Limit(0, 100)
+
+				return builder.Value()
+			},
+		},
+		{
+			name: "ParseNodes consume ambiguous projections, they are not pushed down to DataObjScans",
+			buildLogical: func() logical.Value {
+				// Create a logical plan that represents:
+				// sum by(app) (count_over_time({app="test"} | logfmt | level="error" [5m]) by (status, app))
+				selectorPredicate := &logical.BinOp{
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+					Right: logical.NewLiteral("test"),
+					Op:    types.BinaryOpEq,
+				}
+				builder := logical.NewBuilder(&logical.MakeTable{
+					Selector:   selectorPredicate,
+					Predicates: []logical.Value{selectorPredicate},
+					Shard:      logical.NewShard(0, 1), // noShard
+				})
+
+				// Don't set RequestedKeys here - optimization should determine them
+				builder = builder.Parse(logical.ParserLogfmt)
+
+				// Add filter with ambiguous column (different from grouping field)
+				filterExpr := &logical.BinOp{
+					Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
+					Right: logical.NewLiteral("error"),
+					Op:    types.BinaryOpEq,
+				}
+				builder = builder.Select(filterExpr)
+
+				// Range aggregation
+				builder = builder.RangeAggregation(
+					[]logical.ColumnRef{
+						{Ref: types.ColumnRef{Column: "status", Type: types.ColumnTypeAmbiguous}},
+						{Ref: types.ColumnRef{Column: "app", Type: types.ColumnTypeLabel}},
+					}, // no partition by
+					types.RangeAggregationTypeCount,
+					time.Unix(0, 0),
+					time.Unix(3600, 0),
+					5*time.Minute, // step
+					5*time.Minute, // range interval
+				)
+
+				// Vector aggregation with single groupby on parsed field (different from filter field)
+				builder = builder.VectorAggregation(
+					[]logical.ColumnRef{
+						{Ref: types.ColumnRef{Column: "app", Type: types.ColumnTypeLabel}},
+					},
+					types.VectorAggregationTypeSum,
+				)
+				return builder.Value()
+			},
+			expectedParseKeysRequested:     []string{"level", "status"},
+			expectedDataObjScanProjections: []string{"app", "message", "timestamp"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Build logical plan
+			logicalValue := tt.buildLogical()
+			builder := logical.NewBuilder(logicalValue)
+			logicalPlan, err := builder.ToPlan()
+			require.NoError(t, err)
+
+			// Create physical planner with test catalog
+			catalog := &catalog{
+				streamsByObject: map[string]objectMeta{
+					"/test/object": {streamIDs: []int64{1, 2}, sections: 10},
+				},
+			}
+			ctx := NewContext(time.Unix(0, 0), time.Unix(3600, 0))
+			planner := NewPlanner(ctx, catalog)
+
+			// Build physical plan
+			physicalPlan, err := planner.Build(logicalPlan)
+			require.NoError(t, err)
+
+			// Optimize the plan - this should apply parseKeysPushdown
+			optimizedPlan, err := planner.Optimize(physicalPlan)
+			require.NoError(t, err)
+
+			// Check that ParseNode and DataObjScan get the correct projections
+			var parseNode *ParseNode
+			projections := map[string]struct{}{}
+			for node := range optimizedPlan.nodes {
+				if pn, ok := node.(*ParseNode); ok {
+					parseNode = pn
+					continue
+				}
+				if pn, ok := node.(*DataObjScan); ok {
+					for _, colExpr := range pn.Projections {
+						expr := colExpr.(*ColumnExpr)
+						projections[expr.Ref.Column] = struct{}{}
+					}
+				}
+			}
+
+			var projectionArr []string
+			for column := range projections {
+				projectionArr = append(projectionArr, column)
+			}
+			sort.Strings(projectionArr)
+
+			require.NotNil(t, parseNode, "ParseNode not found in plan")
+			require.Equal(t, tt.expectedParseKeysRequested, parseNode.RequestedKeys)
+			require.Equal(t, tt.expectedDataObjScanProjections, projectionArr)
+		})
+	}
 }
