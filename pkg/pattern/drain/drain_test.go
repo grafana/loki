@@ -18,6 +18,34 @@ const (
 	testTenant = "fake"
 )
 
+func TestLogClusterTracksVolume(t *testing.T) {
+	config := DefaultConfig()
+	config.SimTh = 0.3 // Lower threshold for testing
+	limits := &fakeLimits{}
+	d := New(testTenant, config, limits, FormatUnknown, nil)
+
+	// First log line - similar structure with number variation
+	line1 := "server request took 123 ms to complete"
+	d.Train(line1, 0)
+
+	// Second similar log line
+	line2 := "server request took 456 ms to complete"
+	d.Train(line2, 0)
+
+	// Third similar log line
+	line3 := "server request took 789 ms to complete"
+	d.Train(line3, 0)
+
+	// All three should match the same pattern
+	clusters := d.Clusters()
+	require.Len(t, clusters, 1, "Expected one cluster for similar messages")
+
+	cluster := clusters[0]
+	expectedVolume := int64(len(line1) + len(line2) + len(line3))
+	require.Equal(t, expectedVolume, cluster.Volume, "Cluster should track total byte volume")
+	require.Equal(t, int64(3), cluster.SampleCount, "Cluster should track sample count")
+}
+
 func TestDrain_TrainExtractsPatterns(t *testing.T) {
 	t.Parallel()
 
