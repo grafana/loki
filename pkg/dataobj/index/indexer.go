@@ -70,9 +70,6 @@ type indexer interface {
 
 	// submitBuild submits a build request and waits for completion
 	submitBuild(ctx context.Context, events []bufferedEvent, partition int32, trigger triggerType) (string, []*kgo.Record, error)
-
-	// GetMetrics returns current indexer metrics
-	GetMetrics() map[string]interface{}
 }
 
 // serialIndexer implements Indexer with a single worker goroutine using dskit Service
@@ -83,7 +80,8 @@ type serialIndexer struct {
 	calculator         calculator
 	objectBucket       objstore.Bucket
 	indexStorageBucket objstore.Bucket
-	metrics            *builderMetrics
+	builderMetrics     *builderMetrics
+	indexerMetrics     *indexerMetrics
 	logger             log.Logger
 
 	// Download pipeline
@@ -94,12 +92,6 @@ type serialIndexer struct {
 	buildRequestChan chan buildRequest
 	buildWorkerWg    sync.WaitGroup
 	downloadWorkerWg sync.WaitGroup
-
-	// Metrics
-	totalRequests  int64
-	totalBuilds    int64
-	totalBuildTime time.Duration
-	buildTimeMutex sync.RWMutex
 }
 
 // newSerialIndexer creates a new self-contained SerialIndexer
@@ -107,7 +99,8 @@ func newSerialIndexer(
 	calculator calculator,
 	objectBucket objstore.Bucket,
 	indexStorageBucket objstore.Bucket,
-	metrics *builderMetrics,
+	builderMetrics *builderMetrics,
+	indexerMetrics *indexerMetrics,
 	logger log.Logger,
 	cfg indexerConfig,
 ) *serialIndexer {
@@ -119,7 +112,8 @@ func newSerialIndexer(
 		calculator:         calculator,
 		objectBucket:       objectBucket,
 		indexStorageBucket: indexStorageBucket,
-		metrics:            metrics,
+		builderMetrics:     builderMetrics,
+		indexerMetrics:     indexerMetrics,
 		logger:             logger,
 		buildRequestChan:   make(chan buildRequest, cfg.QueueSize),
 		downloadQueue:      make(chan metastore.ObjectWrittenEvent, 32),
@@ -194,7 +188,7 @@ func (si *serialIndexer) submitBuild(ctx context.Context, events []bufferedEvent
 	// Submit request
 	select {
 	case si.buildRequestChan <- req:
-		si.totalRequests++
+		si.indexerMetrics.incRequests()
 		level.Debug(si.logger).Log("msg", "submitted build request",
 			"partition", partition, "events", len(events), "trigger", string(trigger))
 	case <-ctx.Done():
@@ -370,7 +364,7 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 		level.Error(si.logger).Log("msg", "failed to parse write time", "err", err)
 		return "", err
 	}
-	si.metrics.setProcessingDelay(writeTime)
+	si.builderMetrics.setProcessingDelay(writeTime)
 
 	// Trigger the downloads
 	for _, event := range events {
@@ -465,29 +459,8 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 
 // updateBuildMetrics updates internal build metrics
 func (si *serialIndexer) updateBuildMetrics(buildTime time.Duration, _ error) {
-	si.buildTimeMutex.Lock()
-	defer si.buildTimeMutex.Unlock()
-
-	si.totalBuilds++
-	si.totalBuildTime += buildTime
+	si.indexerMetrics.incBuilds()
+	si.indexerMetrics.setBuildTime(buildTime)
+	si.indexerMetrics.setQueueDepth(len(si.buildRequestChan))
 }
 
-// GetMetrics returns current indexer metrics
-func (si *serialIndexer) GetMetrics() map[string]interface{} {
-	si.buildTimeMutex.RLock()
-	defer si.buildTimeMutex.RUnlock()
-
-	avgBuildTime := time.Duration(0)
-	if si.totalBuilds > 0 {
-		avgBuildTime = si.totalBuildTime / time.Duration(si.totalBuilds)
-	}
-
-	return map[string]interface{}{
-		"total_requests":   si.totalRequests,
-		"total_builds":     si.totalBuilds,
-		"total_build_time": si.totalBuildTime,
-		"avg_build_time":   avgBuildTime,
-		"queue_depth":      len(si.buildRequestChan),
-		"service_state":    si.State().String(),
-	}
-}

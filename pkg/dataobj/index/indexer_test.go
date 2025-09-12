@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -50,14 +51,22 @@ func TestSerialIndexer_BuildIndex(t *testing.T) {
 	// Create indexer with mock calculator
 	mockCalc := &mockCalculator{}
 	indexStorageBucket := objstore.NewInMemBucket()
-	metrics := newBuilderMetrics()
-	require.NoError(t, metrics.register(prometheus.NewRegistry()))
+	
+	// Create dedicated registry for this test
+	reg := prometheus.NewRegistry()
+	
+	builderMetrics := newBuilderMetrics()
+	require.NoError(t, builderMetrics.register(reg))
+
+	indexerMetrics := newIndexerMetrics()
+	require.NoError(t, indexerMetrics.register(reg))
 
 	indexer := newSerialIndexer(
 		mockCalc,
 		bucket,
 		indexStorageBucket,
-		metrics,
+		builderMetrics,
+		indexerMetrics,
 		log.NewLogfmtLogger(os.Stderr),
 		indexerConfig{QueueSize: 10},
 	)
@@ -81,10 +90,11 @@ func TestSerialIndexer_BuildIndex(t *testing.T) {
 	require.Equal(t, 1, mockCalc.count)
 	require.NotNil(t, mockCalc.object)
 
-	// Verify metrics
-	metricsData := indexer.GetMetrics()
-	require.Equal(t, int64(1), metricsData["total_requests"])
-	require.Equal(t, int64(1), metricsData["total_builds"])
+	// Verify Prometheus metrics
+	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalRequests))
+	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalBuilds))
+	require.Greater(t, testutil.ToFloat64(indexerMetrics.buildTimeSeconds), float64(0))
+	require.Equal(t, float64(0), testutil.ToFloat64(indexerMetrics.queueDepth))
 }
 
 func TestSerialIndexer_MultipleBuilds(t *testing.T) {
@@ -120,14 +130,22 @@ func TestSerialIndexer_MultipleBuilds(t *testing.T) {
 	// Create indexer with mock calculator
 	mockCalc := &mockCalculator{}
 	indexStorageBucket := objstore.NewInMemBucket()
-	metrics := newBuilderMetrics()
-	require.NoError(t, metrics.register(prometheus.NewRegistry()))
+	
+	// Create dedicated registry for this test
+	reg := prometheus.NewRegistry()
+	
+	builderMetrics := newBuilderMetrics()
+	require.NoError(t, builderMetrics.register(reg))
+
+	indexerMetrics := newIndexerMetrics()
+	require.NoError(t, indexerMetrics.register(reg))
 
 	indexer := newSerialIndexer(
 		mockCalc,
 		bucket,
 		indexStorageBucket,
-		metrics,
+		builderMetrics,
+		indexerMetrics,
 		log.NewLogfmtLogger(os.Stderr),
 		indexerConfig{QueueSize: 10},
 	)
@@ -150,10 +168,11 @@ func TestSerialIndexer_MultipleBuilds(t *testing.T) {
 	require.Equal(t, 2, mockCalc.count)
 	require.NotNil(t, mockCalc.object)
 
-	// Verify metrics
-	metricsData := indexer.GetMetrics()
-	require.Equal(t, int64(1), metricsData["total_requests"])
-	require.Equal(t, int64(1), metricsData["total_builds"])
+	// Verify Prometheus metrics - multiple events in single request/build
+	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalRequests))
+	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalBuilds))
+	require.Greater(t, testutil.ToFloat64(indexerMetrics.buildTimeSeconds), float64(0))
+	require.Equal(t, float64(0), testutil.ToFloat64(indexerMetrics.queueDepth))
 }
 
 func TestSerialIndexer_FlushTrigger(t *testing.T) {
@@ -185,14 +204,18 @@ func TestSerialIndexer_FlushTrigger(t *testing.T) {
 	// Create indexer with mock calculator
 	mockCalc := &mockCalculator{}
 	indexStorageBucket := objstore.NewInMemBucket()
-	metrics := newBuilderMetrics()
-	require.NoError(t, metrics.register(prometheus.NewRegistry()))
+	builderMetrics := newBuilderMetrics()
+	require.NoError(t, builderMetrics.register(prometheus.NewRegistry()))
+
+	indexerMetrics := newIndexerMetrics()
+	require.NoError(t, indexerMetrics.register(prometheus.NewRegistry()))
 
 	indexer := newSerialIndexer(
 		mockCalc,
 		bucket,
 		indexStorageBucket,
-		metrics,
+		builderMetrics,
+		indexerMetrics,
 		log.NewLogfmtLogger(os.Stderr),
 		indexerConfig{QueueSize: 10},
 	)
@@ -225,14 +248,18 @@ func TestSerialIndexer_ServiceNotRunning(t *testing.T) {
 	mockCalc := &mockCalculator{}
 	bucket := objstore.NewInMemBucket()
 	indexStorageBucket := objstore.NewInMemBucket()
-	metrics := newBuilderMetrics()
-	require.NoError(t, metrics.register(prometheus.NewRegistry()))
+	builderMetrics := newBuilderMetrics()
+	require.NoError(t, builderMetrics.register(prometheus.NewRegistry()))
+
+	indexerMetrics := newIndexerMetrics()
+	require.NoError(t, indexerMetrics.register(prometheus.NewRegistry()))
 
 	indexer := newSerialIndexer(
 		mockCalc,
 		bucket,
 		indexStorageBucket,
-		metrics,
+		builderMetrics,
+		indexerMetrics,
 		log.NewNopLogger(),
 		indexerConfig{QueueSize: 10},
 	)
@@ -264,14 +291,22 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 	// Create indexer with mock calculator
 	mockCalc := &mockCalculator{}
 	indexStorageBucket := objstore.NewInMemBucket()
-	metrics := newBuilderMetrics()
-	require.NoError(t, metrics.register(prometheus.NewRegistry()))
+	
+	// Create dedicated registry for this test
+	reg := prometheus.NewRegistry()
+	
+	builderMetrics := newBuilderMetrics()
+	require.NoError(t, builderMetrics.register(reg))
+
+	indexerMetrics := newIndexerMetrics()
+	require.NoError(t, indexerMetrics.register(reg))
 
 	indexer := newSerialIndexer(
 		mockCalc,
 		bucket,
 		indexStorageBucket,
-		metrics,
+		builderMetrics,
+		indexerMetrics,
 		log.NewLogfmtLogger(os.Stderr),
 		indexerConfig{QueueSize: 10},
 	)
@@ -318,10 +353,11 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 	// Verify all events were processed (serialized)
 	require.Equal(t, numRequests, mockCalc.count)
 
-	// Verify metrics
-	metricsData := indexer.GetMetrics()
-	require.Equal(t, int64(numRequests), metricsData["total_requests"])
-	require.Equal(t, int64(numRequests), metricsData["total_builds"])
+	// Verify Prometheus metrics - multiple concurrent requests
+	require.Equal(t, float64(numRequests), testutil.ToFloat64(indexerMetrics.totalRequests))
+	require.Equal(t, float64(numRequests), testutil.ToFloat64(indexerMetrics.totalBuilds))
+	require.Greater(t, testutil.ToFloat64(indexerMetrics.buildTimeSeconds), float64(0))
+	require.Equal(t, float64(0), testutil.ToFloat64(indexerMetrics.queueDepth))
 }
 
 // mockCalculator is a calculator that does nothing for use in tests

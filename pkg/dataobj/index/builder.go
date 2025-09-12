@@ -115,9 +115,14 @@ func NewIndexBuilder(
 		"component": "index_builder",
 	}, reg)
 
-	metrics := newBuilderMetrics()
-	if err := metrics.register(builderReg); err != nil {
+	builderMetrics := newBuilderMetrics()
+	if err := builderMetrics.register(builderReg); err != nil {
 		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
+	}
+
+	indexerMetrics := newIndexerMetrics()
+	if err := indexerMetrics.register(builderReg); err != nil {
+		return nil, fmt.Errorf("failed to register indexer metrics: %w", err)
 	}
 
 	// Create index building dependencies
@@ -137,7 +142,7 @@ func NewIndexBuilder(
 		cfg:             cfg,
 		mCfg:            mCfg,
 		logger:          logger,
-		metrics:         metrics,
+		metrics:         builderMetrics,
 		partitionStates: make(map[int32]*partitionState),
 	}
 
@@ -146,7 +151,8 @@ func NewIndexBuilder(
 		calculator,
 		bucket,
 		indexStorageBucket,
-		metrics,
+		builderMetrics,
+		indexerMetrics,
 		logger,
 		indexerConfig{QueueSize: 64},
 	)
