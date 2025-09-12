@@ -51,10 +51,10 @@ func TestSerialIndexer_BuildIndex(t *testing.T) {
 	// Create indexer with mock calculator
 	mockCalc := &mockCalculator{}
 	indexStorageBucket := objstore.NewInMemBucket()
-	
+
 	// Create dedicated registry for this test
 	reg := prometheus.NewRegistry()
-	
+
 	builderMetrics := newBuilderMetrics()
 	require.NoError(t, builderMetrics.register(reg))
 
@@ -130,10 +130,10 @@ func TestSerialIndexer_MultipleBuilds(t *testing.T) {
 	// Create indexer with mock calculator
 	mockCalc := &mockCalculator{}
 	indexStorageBucket := objstore.NewInMemBucket()
-	
+
 	// Create dedicated registry for this test
 	reg := prometheus.NewRegistry()
-	
+
 	builderMetrics := newBuilderMetrics()
 	require.NoError(t, builderMetrics.register(reg))
 
@@ -291,10 +291,10 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 	// Create indexer with mock calculator
 	mockCalc := &mockCalculator{}
 	indexStorageBucket := objstore.NewInMemBucket()
-	
+
 	// Create dedicated registry for this test
 	reg := prometheus.NewRegistry()
-	
+
 	builderMetrics := newBuilderMetrics()
 	require.NoError(t, builderMetrics.register(reg))
 

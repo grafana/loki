@@ -463,4 +463,3 @@ func (si *serialIndexer) updateBuildMetrics(buildTime time.Duration, _ error) {
 	si.indexerMetrics.setBuildTime(buildTime)
 	si.indexerMetrics.setQueueDepth(len(si.buildRequestChan))
 }
-
