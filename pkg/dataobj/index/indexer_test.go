@@ -1,0 +1,353 @@
+package index
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
+	"github.com/twmb/franz-go/pkg/kgo"
+
+	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
+)
+
+func TestSerialIndexer_BuildIndex(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Set up test data
+	bucket := objstore.NewInMemBucket()
+	buildLogObject(t, "loki", "test-path-0", bucket)
+
+	event := metastore.ObjectWrittenEvent{
+		ObjectPath: "test-path-0",
+		WriteTime:  time.Now().Format(time.RFC3339),
+	}
+
+	record := &kgo.Record{
+		Value:     nil, // Will be set below
+		Partition: int32(0),
+	}
+	eventBytes, err := event.Marshal()
+	require.NoError(t, err)
+	record.Value = eventBytes
+
+	bufferedEvt := bufferedEvent{
+		event:  event,
+		record: record,
+	}
+
+	// Create indexer with mock calculator
+	mockCalc := &mockCalculator{}
+	indexStorageBucket := objstore.NewInMemBucket()
+	metrics := newBuilderMetrics()
+	require.NoError(t, metrics.register(prometheus.NewRegistry()))
+
+	indexer := newSerialIndexer(
+		mockCalc,
+		bucket,
+		indexStorageBucket,
+		metrics,
+		log.NewLogfmtLogger(os.Stderr),
+		indexerConfig{QueueSize: 10},
+	)
+
+	// Start indexer service
+	require.NoError(t, indexer.StartAsync(ctx))
+	require.NoError(t, indexer.AwaitRunning(ctx))
+	defer func() {
+		indexer.StopAsync()
+		require.NoError(t, indexer.AwaitTerminated(context.Background()))
+	}()
+
+	// Submit build request
+	indexPath, records, err := indexer.submitBuild(ctx, []bufferedEvent{bufferedEvt}, 0, triggerTypeNormal)
+	require.NoError(t, err)
+	require.NotEmpty(t, indexPath)
+	require.Len(t, records, 1)
+	require.Equal(t, record, records[0])
+
+	// Verify calculator was used
+	require.Equal(t, 1, mockCalc.count)
+	require.NotNil(t, mockCalc.object)
+
+	// Verify metrics
+	metricsData := indexer.GetMetrics()
+	require.Equal(t, int64(1), metricsData["total_requests"])
+	require.Equal(t, int64(1), metricsData["total_builds"])
+}
+
+func TestSerialIndexer_MultipleBuilds(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// Set up test data
+	bucket := objstore.NewInMemBucket()
+	buildLogObject(t, "loki", "test-path-0", bucket)
+	buildLogObject(t, "testing", "test-path-1", bucket)
+
+	events := []bufferedEvent{}
+	for i := 0; i < 2; i++ {
+		event := metastore.ObjectWrittenEvent{
+			ObjectPath: fmt.Sprintf("test-path-%d", i),
+			WriteTime:  time.Now().Format(time.RFC3339),
+		}
+
+		record := &kgo.Record{
+			Partition: int32(0),
+		}
+		eventBytes, err := event.Marshal()
+		require.NoError(t, err)
+		record.Value = eventBytes
+
+		events = append(events, bufferedEvent{
+			event:  event,
+			record: record,
+		})
+	}
+
+	// Create indexer with mock calculator
+	mockCalc := &mockCalculator{}
+	indexStorageBucket := objstore.NewInMemBucket()
+	metrics := newBuilderMetrics()
+	require.NoError(t, metrics.register(prometheus.NewRegistry()))
+
+	indexer := newSerialIndexer(
+		mockCalc,
+		bucket,
+		indexStorageBucket,
+		metrics,
+		log.NewLogfmtLogger(os.Stderr),
+		indexerConfig{QueueSize: 10},
+	)
+
+	// Start indexer service
+	require.NoError(t, indexer.StartAsync(ctx))
+	require.NoError(t, indexer.AwaitRunning(ctx))
+	defer func() {
+		indexer.StopAsync()
+		require.NoError(t, indexer.AwaitTerminated(context.Background()))
+	}()
+
+	// Submit build request with multiple events
+	indexPath, records, err := indexer.submitBuild(ctx, events, 0, triggerTypeNormal)
+	require.NoError(t, err)
+	require.NotEmpty(t, indexPath)
+	require.Len(t, records, 2)
+
+	// Verify calculator processed all events
+	require.Equal(t, 2, mockCalc.count)
+	require.NotNil(t, mockCalc.object)
+
+	// Verify metrics
+	metricsData := indexer.GetMetrics()
+	require.Equal(t, int64(1), metricsData["total_requests"])
+	require.Equal(t, int64(1), metricsData["total_builds"])
+}
+
+func TestSerialIndexer_FlushTrigger(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Set up test data
+	bucket := objstore.NewInMemBucket()
+	buildLogObject(t, "loki", "test-path-0", bucket)
+
+	event := metastore.ObjectWrittenEvent{
+		ObjectPath: "test-path-0",
+		WriteTime:  time.Now().Format(time.RFC3339),
+	}
+
+	record := &kgo.Record{
+		Partition: int32(0),
+	}
+	eventBytes, err := event.Marshal()
+	require.NoError(t, err)
+	record.Value = eventBytes
+
+	bufferedEvt := bufferedEvent{
+		event:  event,
+		record: record,
+	}
+
+	// Create indexer with mock calculator
+	mockCalc := &mockCalculator{}
+	indexStorageBucket := objstore.NewInMemBucket()
+	metrics := newBuilderMetrics()
+	require.NoError(t, metrics.register(prometheus.NewRegistry()))
+
+	indexer := newSerialIndexer(
+		mockCalc,
+		bucket,
+		indexStorageBucket,
+		metrics,
+		log.NewLogfmtLogger(os.Stderr),
+		indexerConfig{QueueSize: 10},
+	)
+
+	// Start indexer service
+	require.NoError(t, indexer.StartAsync(ctx))
+	require.NoError(t, indexer.AwaitRunning(ctx))
+	defer func() {
+		indexer.StopAsync()
+		require.NoError(t, indexer.AwaitTerminated(context.Background()))
+	}()
+
+	// Submit build request with flush trigger
+	indexPath, records, err := indexer.submitBuild(ctx, []bufferedEvent{bufferedEvt}, 0, triggerTypeFlush)
+	require.NoError(t, err)
+	require.NotEmpty(t, indexPath)
+	require.Len(t, records, 1)
+
+	// Verify calculator was used
+	require.Equal(t, 1, mockCalc.count)
+	require.NotNil(t, mockCalc.object)
+}
+
+func TestSerialIndexer_ServiceNotRunning(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Create indexer without starting it
+	mockCalc := &mockCalculator{}
+	bucket := objstore.NewInMemBucket()
+	indexStorageBucket := objstore.NewInMemBucket()
+	metrics := newBuilderMetrics()
+	require.NoError(t, metrics.register(prometheus.NewRegistry()))
+
+	indexer := newSerialIndexer(
+		mockCalc,
+		bucket,
+		indexStorageBucket,
+		metrics,
+		log.NewNopLogger(),
+		indexerConfig{QueueSize: 10},
+	)
+
+	// Try to submit build without starting service
+	event := metastore.ObjectWrittenEvent{
+		ObjectPath: "test-path-0",
+		WriteTime:  time.Now().Format(time.RFC3339),
+	}
+	record := &kgo.Record{Partition: int32(0)}
+	bufferedEvt := bufferedEvent{event: event, record: record}
+
+	_, _, err := indexer.submitBuild(ctx, []bufferedEvent{bufferedEvt}, 0, triggerTypeNormal)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "indexer service is not running")
+}
+
+func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// Set up test data
+	bucket := objstore.NewInMemBucket()
+	for i := 0; i < 5; i++ {
+		buildLogObject(t, fmt.Sprintf("app-%d", i), fmt.Sprintf("test-path-%d", i), bucket)
+	}
+
+	// Create indexer with mock calculator
+	mockCalc := &mockCalculator{}
+	indexStorageBucket := objstore.NewInMemBucket()
+	metrics := newBuilderMetrics()
+	require.NoError(t, metrics.register(prometheus.NewRegistry()))
+
+	indexer := newSerialIndexer(
+		mockCalc,
+		bucket,
+		indexStorageBucket,
+		metrics,
+		log.NewLogfmtLogger(os.Stderr),
+		indexerConfig{QueueSize: 10},
+	)
+
+	// Start indexer service
+	require.NoError(t, indexer.StartAsync(ctx))
+	require.NoError(t, indexer.AwaitRunning(ctx))
+	defer func() {
+		indexer.StopAsync()
+		require.NoError(t, indexer.AwaitTerminated(context.Background()))
+	}()
+
+	// Submit multiple concurrent build requests
+	numRequests := 5
+	results := make(chan error, numRequests)
+
+	for i := 0; i < numRequests; i++ {
+		go func(idx int) {
+			event := metastore.ObjectWrittenEvent{
+				ObjectPath: fmt.Sprintf("test-path-%d", idx),
+				WriteTime:  time.Now().Format(time.RFC3339),
+			}
+
+			record := &kgo.Record{Partition: int32(idx)}
+			eventBytes, err := event.Marshal()
+			if err != nil {
+				results <- err
+				return
+			}
+			record.Value = eventBytes
+
+			bufferedEvt := bufferedEvent{event: event, record: record}
+
+			_, _, err = indexer.submitBuild(ctx, []bufferedEvent{bufferedEvt}, int32(idx), triggerTypeNormal)
+			results <- err
+		}(i)
+	}
+
+	// Wait for all requests to complete
+	for i := 0; i < numRequests; i++ {
+		require.NoError(t, <-results)
+	}
+
+	// Verify all events were processed (serialized)
+	require.Equal(t, numRequests, mockCalc.count)
+
+	// Verify metrics
+	metricsData := indexer.GetMetrics()
+	require.Equal(t, int64(numRequests), metricsData["total_requests"])
+	require.Equal(t, int64(numRequests), metricsData["total_builds"])
+}
+
+// mockCalculator is a calculator that does nothing for use in tests
+type mockCalculator struct {
+	count  int
+	object *dataobj.Object
+}
+
+func (c *mockCalculator) Calculate(_ context.Context, _ log.Logger, object *dataobj.Object, _ string) error {
+	c.count++
+	c.object = object
+	return nil
+}
+
+func (c *mockCalculator) Flush() (*dataobj.Object, io.Closer, error) {
+	return c.object, io.NopCloser(bytes.NewReader([]byte{})), nil
+}
+
+func (c *mockCalculator) TimeRanges() []multitenancy.TimeRange {
+	return []multitenancy.TimeRange{
+		{
+			Tenant:  "test",
+			MinTime: time.Now(),
+			MaxTime: time.Now().Add(time.Hour),
+		},
+	}
+}
+
+func (c *mockCalculator) Reset() {}

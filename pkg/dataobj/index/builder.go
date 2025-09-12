@@ -1,12 +1,8 @@
 package index
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"sync"
@@ -15,7 +11,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
@@ -38,26 +33,6 @@ const (
 	triggerTypeNormal triggerType = "normal"
 	triggerTypeFlush  triggerType = "flush"
 )
-
-type Config struct {
-	indexobj.BuilderConfig `yaml:",inline"`
-	EventsPerIndex         int           `yaml:"events_per_index" experimental:"true"`
-	FlushInterval          time.Duration `yaml:"flush_interval" experimental:"true"`
-	MaxIdleTime            time.Duration `yaml:"max_idle_time" experimental:"true"`
-	MinFlushEvents         int           `yaml:"min_flush_events" experimental:"true"`
-}
-
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	cfg.RegisterFlagsWithPrefix("dataobj-index-builder.", f)
-}
-
-func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	cfg.BuilderConfig.RegisterFlagsWithPrefix(prefix, f)
-	f.IntVar(&cfg.EventsPerIndex, prefix+"events-per-index", 32, "Experimental: The number of events to batch before building an index")
-	f.DurationVar(&cfg.FlushInterval, prefix+"flush-interval", 10*time.Second, "Experimental: How often to check for stale partitions to flush")
-	f.DurationVar(&cfg.MaxIdleTime, prefix+"max-idle-time", 30*time.Second, "Experimental: Maximum time to wait before flushing buffered events")
-	f.IntVar(&cfg.MinFlushEvents, prefix+"min-flush-events", 1, "Experimental: Minimum number of events required to trigger a flush")
-}
 
 type bufferedEvent struct {
 	event  metastore.ObjectWrittenEvent
@@ -105,23 +80,15 @@ type Builder struct {
 	client kafkaClient
 	topic  string
 
-	// Processing pipeline
-	downloadQueue     chan metastore.ObjectWrittenEvent
-	downloadedObjects chan downloadedObject
-	calculator        calculator
-	tocWriter         *metastore.TableOfContentsWriter
+	// Indexer handles all index building
+	indexer indexer
 
+	// Partition management only
 	partitionStates map[int32]*partitionState
 	flushTicker     *time.Ticker
 
-	// Builder initialization
-	builderCfg         indexobj.BuilderConfig
-	objectBucket       objstore.Bucket
-	indexStorageBucket objstore.Bucket // The bucket to store the indexes might not be the same one as where we read the objects from
-	scratchStore       scratch.Store
-
-	// Metrics
-	metrics *indexBuilderMetrics
+	// Only kafka commit functionality
+	metrics *builderMetrics
 
 	// Control and coordination
 	ctx                        context.Context
@@ -148,11 +115,12 @@ func NewIndexBuilder(
 		"component": "index_builder",
 	}, reg)
 
-	metrics := newIndexBuilderMetrics()
+	metrics := newBuilderMetrics()
 	if err := metrics.register(builderReg); err != nil {
 		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
 	}
 
+	// Create index building dependencies
 	builder, err := indexobj.NewBuilder(cfg.BuilderConfig, scratchStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create index builder: %w", err)
@@ -160,30 +128,28 @@ func NewIndexBuilder(
 	calculator := NewCalculator(builder)
 
 	indexStorageBucket := objstore.NewPrefixedBucket(bucket, mCfg.IndexStoragePrefix)
-	tocWriter := metastore.NewTableOfContentsWriter(indexStorageBucket, logger)
 
 	if err := builder.RegisterMetrics(builderReg); err != nil {
 		return nil, fmt.Errorf("failed to register metrics for index builder: %w", err)
 	}
 
-	// Set up queues to download the next object (I/O bound) while processing the current one (CPU bound) in order to maximize throughput.
-	// Setting the channel buffer sizes caps the total memory usage by only keeping up to 3 objects in memory at a time: One being processed, one fully downloaded and one being downloaded from the queue.
-	downloadQueue := make(chan metastore.ObjectWrittenEvent, cfg.EventsPerIndex)
-	downloadedObjects := make(chan downloadedObject, 1)
-
 	s := &Builder{
-		cfg:                cfg,
-		mCfg:               mCfg,
-		logger:             logger,
-		objectBucket:       bucket,
-		indexStorageBucket: indexStorageBucket,
-		tocWriter:          tocWriter,
-		downloadedObjects:  downloadedObjects,
-		downloadQueue:      downloadQueue,
-		metrics:            metrics,
-		calculator:         calculator,
-		partitionStates:    make(map[int32]*partitionState),
+		cfg:             cfg,
+		mCfg:            mCfg,
+		logger:          logger,
+		metrics:         metrics,
+		partitionStates: make(map[int32]*partitionState),
 	}
+
+	// Create self-contained indexer
+	s.indexer = newSerialIndexer(
+		calculator,
+		bucket,
+		indexStorageBucket,
+		metrics,
+		logger,
+		indexerConfig{QueueSize: 64},
+	)
 
 	kafkaCfg.AutoCreateTopicEnabled = true
 	eventConsumerClient, err := client.NewReaderClient(
@@ -205,7 +171,7 @@ func NewIndexBuilder(
 	}
 	s.client = eventConsumerClient
 
-	s.Service = services.NewBasicService(nil, s.run, s.stopping)
+	s.Service = services.NewBasicService(nil, s.running, s.stopping)
 
 	return s, nil
 }
@@ -296,42 +262,16 @@ func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topi
 	}
 }
 
-func (p *Builder) run(ctx context.Context) error {
+func (p *Builder) running(ctx context.Context) error {
 	p.ctx, p.cancel = context.WithCancelCause(ctx)
 
-	p.wg.Add(1)
-	go func() {
-		// Download worker
-		defer p.wg.Done()
-		for event := range p.downloadQueue {
-			objLogger := log.With(p.logger, "object_path", event.ObjectPath)
-			downloadStart := time.Now()
-
-			objectReader, err := p.objectBucket.Get(p.ctx, event.ObjectPath)
-			if err != nil {
-				p.downloadedObjects <- downloadedObject{
-					event: event,
-					err:   fmt.Errorf("failed to fetch object from storage: %w", err),
-				}
-				continue
-			}
-
-			object, err := io.ReadAll(objectReader)
-			_ = objectReader.Close()
-			if err != nil {
-				p.downloadedObjects <- downloadedObject{
-					event: event,
-					err:   fmt.Errorf("failed to read object: %w", err),
-				}
-				continue
-			}
-			level.Info(objLogger).Log("msg", "downloaded object", "duration", time.Since(downloadStart), "size_mb", float64(len(object))/1024/1024, "avg_speed_mbps", float64(len(object))/time.Since(downloadStart).Seconds()/1024/1024)
-			p.downloadedObjects <- downloadedObject{
-				event:       event,
-				objectBytes: &object,
-			}
-		}
-	}()
+	// Start indexer service first
+	if err := p.indexer.StartAsync(ctx); err != nil {
+		return fmt.Errorf("failed to start indexer service: %w", err)
+	}
+	if err := p.indexer.AwaitRunning(ctx); err != nil {
+		return fmt.Errorf("indexer service failed to start: %w", err)
+	}
 
 	// Start flush worker if configured
 	if p.cfg.FlushInterval > 0 {
@@ -353,6 +293,8 @@ func (p *Builder) run(ctx context.Context) error {
 	}
 
 	level.Info(p.logger).Log("msg", "started index builder service")
+
+	// Main Kafka processing loop
 	for {
 		fetches := p.client.PollRecords(ctx, -1)
 		if err := fetches.Err0(); err != nil {
@@ -370,7 +312,6 @@ func (p *Builder) run(ctx context.Context) error {
 				level.Error(p.logger).Log("msg", "failed to fetch records for topic partition", "topic", fetch.Topic, "partition", fetch.Partition, "err", err.Error())
 				return
 			}
-			// TODO(benclive): Verify if we need to return re-poll ASAP or if sequential processing is good enough.
 			for _, record := range fetch.Records {
 				p.processRecord(record)
 			}
@@ -379,10 +320,18 @@ func (p *Builder) run(ctx context.Context) error {
 }
 
 func (p *Builder) stopping(failureCase error) error {
-	close(p.downloadQueue)
+	// Stop indexer service first
+	p.indexer.StopAsync()
+	if err := p.indexer.AwaitTerminated(context.Background()); err != nil {
+		level.Error(p.logger).Log("msg", "failed to stop indexer service", "err", err)
+	}
+
+	// Stop other components
+	if p.flushTicker != nil {
+		p.flushTicker.Stop()
+	}
 	p.cancel(failureCase)
 	p.wg.Wait()
-	close(p.downloadedObjects)
 	p.client.Close()
 	return nil
 }
@@ -396,13 +345,8 @@ func (p *Builder) processRecord(record *kgo.Record) {
 
 	defer p.cleanupPartition(record.Partition)
 
-	// Build the index.
-	events := make([]metastore.ObjectWrittenEvent, len(eventsToIndex))
-	for i, buffered := range eventsToIndex {
-		events[i] = buffered.event
-	}
-
-	err := p.buildIndex(calculationCtx, events)
+	// Submit to indexer service and wait for completion
+	_, records, err := p.indexer.submitBuild(calculationCtx, eventsToIndex, record.Partition, triggerTypeNormal)
 	if err != nil {
 		if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
 			level.Debug(p.logger).Log("msg", "partition revoked, aborting index build", "partition", record.Partition)
@@ -412,12 +356,7 @@ func (p *Builder) processRecord(record *kgo.Record) {
 		return
 	}
 
-	// Commit all records from this batch
-	records := make([]*kgo.Record, len(eventsToIndex))
-	for i, buffered := range eventsToIndex {
-		records[i] = buffered.record
-	}
-
+	// Commit the records
 	if err := p.commitRecords(calculationCtx, records); err != nil {
 		if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
 			level.Debug(p.logger).Log("msg", "partition revoked, aborting index commit", "partition", record.Partition)
@@ -460,103 +399,6 @@ func (p *Builder) cleanupPartition(partition int32) {
 	}
 }
 
-func (p *Builder) buildIndex(ctx context.Context, events []metastore.ObjectWrittenEvent) error {
-	level.Debug(p.logger).Log("msg", "building index", "events", len(events), "partition", p.activeCalculationPartition)
-	start := time.Now()
-
-	// Observe processing delay
-	writeTime, err := time.Parse(time.RFC3339, events[0].WriteTime)
-	if err != nil {
-		level.Error(p.logger).Log("msg", "failed to parse write time", "err", err)
-		return err
-	}
-	p.metrics.setProcessingDelay(writeTime)
-
-	// Trigger the downloads
-	for _, event := range events {
-		p.downloadQueue <- event
-	}
-
-	// Process the results as they are downloaded
-	processingErrors := multierror.New()
-	for i := 0; i < len(events); i++ {
-		obj := <-p.downloadedObjects
-		objLogger := log.With(p.logger, "object_path", obj.event.ObjectPath)
-		level.Debug(objLogger).Log("msg", "processing object")
-
-		if obj.err != nil {
-			processingErrors.Add(fmt.Errorf("failed to download object: %w", obj.err))
-			continue
-		}
-
-		reader, err := dataobj.FromReaderAt(bytes.NewReader(*obj.objectBytes), int64(len(*obj.objectBytes)))
-		if err != nil {
-			processingErrors.Add(fmt.Errorf("failed to read object: %w", err))
-			continue
-		}
-
-		if err := p.calculator.Calculate(ctx, objLogger, reader, obj.event.ObjectPath); err != nil {
-			processingErrors.Add(fmt.Errorf("failed to calculate index: %w", err))
-			continue
-		}
-	}
-
-	if processingErrors.Err() != nil {
-		return processingErrors.Err()
-	}
-
-	tenantTimeRanges := p.calculator.TimeRanges()
-	obj, closer, err := p.calculator.Flush()
-	if err != nil {
-		return fmt.Errorf("failed to flush builder: %w", err)
-	}
-	defer closer.Close()
-
-	key, err := ObjectKey(ctx, obj)
-	if err != nil {
-		return fmt.Errorf("failed to generate object key: %w", err)
-	}
-
-	reader, err := obj.Reader(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to read object: %w", err)
-	}
-	defer reader.Close()
-
-	if err := p.indexStorageBucket.Upload(ctx, key, reader); err != nil {
-		return fmt.Errorf("failed to upload index: %w", err)
-	}
-
-	metastoreTocWriter := metastore.NewTableOfContentsWriter(p.indexStorageBucket, p.logger)
-	if err := metastoreTocWriter.WriteEntry(p.ctx, key, tenantTimeRanges); err != nil {
-		return fmt.Errorf("failed to update metastore ToC file: %w", err)
-	}
-
-	level.Debug(p.logger).Log("msg", "finished building new index file", "partition", p.activeCalculationPartition, "events", len(events), "size", obj.Size(), "duration", time.Since(start), "tenants", len(tenantTimeRanges), "path", key)
-	return nil
-}
-
-// ObjectKey determines the key in object storage to upload the object to, based on our path scheme.
-func ObjectKey(ctx context.Context, object *dataobj.Object) (string, error) {
-	h := sha256.New224()
-
-	reader, err := object.Reader(ctx)
-	if err != nil {
-		return "", err
-	}
-	defer reader.Close()
-
-	if _, err := io.Copy(h, reader); err != nil {
-		return "", err
-	}
-
-	var sumBytes [sha256.Size224]byte
-	sum := h.Sum(sumBytes[:0])
-	sumStr := hex.EncodeToString(sum[:])
-
-	return fmt.Sprintf("indexes/%s/%s", sumStr[:2], sumStr[2:]), nil
-}
-
 func (p *Builder) checkAndFlushStalePartitions() {
 	p.partitionsMutex.Lock()
 	partitionsToFlush := make([]int32, 0)
@@ -589,13 +431,9 @@ func (p *Builder) flushPartition(partition int32) {
 		level.Info(p.logger).Log("msg", "flushing stale partition",
 			"partition", partition, "events", len(eventsToFlush))
 
-		// Build index
-		events := make([]metastore.ObjectWrittenEvent, len(eventsToFlush))
-		for i, buffered := range eventsToFlush {
-			events[i] = buffered.event
-		}
-
-		if err := p.buildIndex(ctx, events); err != nil {
+		// Submit to indexer service and wait for completion
+		_, records, err := p.indexer.submitBuild(ctx, eventsToFlush, partition, triggerTypeFlush)
+		if err != nil {
 			if errors.Is(context.Cause(ctx), ErrPartitionRevoked) {
 				level.Debug(p.logger).Log("msg", "partition revoked during flush", "partition", partition)
 				return
@@ -604,12 +442,7 @@ func (p *Builder) flushPartition(partition int32) {
 			return
 		}
 
-		// Commit all records from the flush
-		records := make([]*kgo.Record, len(eventsToFlush))
-		for i, buffered := range eventsToFlush {
-			records[i] = buffered.record
-		}
-
+		// Commit the records
 		if err := p.commitRecords(ctx, records); err != nil {
 			if errors.Is(context.Cause(ctx), ErrPartitionRevoked) {
 				level.Debug(p.logger).Log("msg", "partition revoked during flush commit", "partition", partition)
