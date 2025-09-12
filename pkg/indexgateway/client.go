@@ -606,14 +606,20 @@ func instrumentation(cfg ClientConfig, clientRequestDuration *prometheus.Histogr
 }
 
 func addressesForQueryEndTime(addrs []string, t time.Time, buckets []time.Duration, now time.Time) []string {
+	n := len(addrs)
+	m := len(buckets)
+
+	// If there are no buckets, return all addresses
+	if m < 1 {
+		return addrs
+	}
+
 	// The bucketing only really makes sense if there are equal or more than 2^len(buckets) index gateways.
 	// Example with 3 buckets and 8 instances:
 	// Bucket 0:  now       -> now - 7d   => addrs[0:4]
 	// Bucket 1:  now - 7d  -> now - 14d  => addrs[4:6]
 	// Bucket 2:  now - 14d -> now - 21d  => addrs[6:7]
 	// Remainder: now - 21d -> now - Inf  => addrs[7:8]
-	n := len(addrs)
-	m := len(buckets)
 	if n < (1 << m) {
 		return addrs
 	}

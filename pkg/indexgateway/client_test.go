@@ -442,6 +442,29 @@ func Test_addressesForQueryEndTime(t *testing.T) {
 	// Use the current time as reference and create relative times
 	now := time.Date(2025, time.September, 11, 0, 0, 0, 0, time.UTC)
 
+	t.Run("empty bucket list", func(t *testing.T) {
+		addrs := []string{"127.0.0.1", "127.0.0.2"}
+		buckets := []time.Duration{}
+
+		tests := []struct {
+			name string
+			t    time.Time
+			want []string
+		}{
+			{
+				name: "any timestamp",
+				t:    now.Add(-300 * time.Hour),
+				want: []string{"127.0.0.1", "127.0.0.2"},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := addressesForQueryEndTime(addrs, tt.t, buckets, now)
+				require.Equal(t, tt.want, got)
+			})
+		}
+	})
+
 	t.Run("empty address list", func(t *testing.T) {
 		addrs := []string{}
 		buckets := []time.Duration{-168 * time.Hour, -336 * time.Hour, -504 * time.Hour}
