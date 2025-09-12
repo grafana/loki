@@ -3,7 +3,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     cert-manager.io/inject-ca-from: loki-operator/loki-operator-serving-cert
-    controller-gen.kubebuilder.io/version: v0.17.2
+    controller-gen.kubebuilder.io/version: v0.19.0
   creationTimestamp: null
   labels:
     app.kubernetes.io/instance: loki-operator-v0.8.0

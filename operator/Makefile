@@ -189,8 +189,8 @@ lint-prometheus: $(PROMTOOL) ## Run promtool check against recording rules and a
 	@$(PROMTOOL) check rules ./internal/manifests/internal/alerts/prometheus-*.yaml
 
 .PHONY: fmt
-fmt: $(GOFUMPT) ## Run gofumpt on source code.
-	find . -type f -name '*.go' -not -path '**/fake_*.go' -exec $(GOFUMPT) -w {} \;
+fmt: $(GOLANGCI_LINT) ## Format the source code.
+	$(GOLANGCI_LINT) run --fix --timeout=5m ./...
 
 .PHONY: oci-build
 oci-build: ## Build the image

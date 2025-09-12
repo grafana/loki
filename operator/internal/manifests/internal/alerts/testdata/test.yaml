@@ -23,19 +23,19 @@ tests:
         values: '1+3x20'
 
       - series: 'loki_panic_total{namespace="my-ns", job="ingester"}'
-        values: '0 1 1 2+0x10'
+        values: '0+0.2x11'
 
       - series: 'loki_ingester_wal_replay_flushing{namespace="my-ns", job="ingester"}'
         values: '0 1+0x20'
 
       - series: 'loki_request_duration_seconds_bucket{namespace="my-ns", job="ingester", route="my-route", le="1"}'
-        values: '0+10x20'
+        values: '0+10x60'
       - series: 'loki_request_duration_seconds_bucket{namespace="my-ns", job="ingester", route="my-route", le="5"}'
-        values: '0+50x20'
+        values: '0+50x60'
       - series: 'loki_request_duration_seconds_bucket{namespace="my-ns", job="ingester", route="my-route", le="10"}'
-        values: '0+100x20'
+        values: '0+100x60'
       - series: 'loki_request_duration_seconds_bucket{namespace="my-ns", job="ingester", route="my-route", le="+Inf"}'
-        values: '0+100x20'
+        values: '0+100x60'
 
       - series: 'job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="ingester", operation="WRITE", le="1"}'
         values: '0+10x20'
