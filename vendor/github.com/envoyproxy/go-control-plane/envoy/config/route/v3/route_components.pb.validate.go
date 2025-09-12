@@ -5561,6 +5561,37 @@ func (m *RateLimit) validate(all bool) error {
 		}
 	}
 
+	if all {
+		switch v := interface{}(m.GetHitsAddend()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, RateLimitValidationError{
+					field:  "HitsAddend",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, RateLimitValidationError{
+					field:  "HitsAddend",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetHitsAddend()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return RateLimitValidationError{
+				field:  "HitsAddend",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	// no validation rules for ApplyOnStreamDone
+
 	if len(errors) > 0 {
 		return RateLimitMultiError(errors)
 	}
@@ -10089,6 +10120,48 @@ func (m *RateLimit_Action) validate(all bool) error {
 			}
 		}
 
+	case *RateLimit_Action_QueryParameters_:
+		if v == nil {
+			err := RateLimit_ActionValidationError{
+				field:  "ActionSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofActionSpecifierPresent = true
+
+		if all {
+			switch v := interface{}(m.GetQueryParameters()).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, RateLimit_ActionValidationError{
+						field:  "QueryParameters",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, RateLimit_ActionValidationError{
+						field:  "QueryParameters",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(m.GetQueryParameters()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return RateLimit_ActionValidationError{
+					field:  "QueryParameters",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
 	case *RateLimit_Action_RemoteAddress_:
 		if v == nil {
 			err := RateLimit_ActionValidationError{
@@ -10677,6 +10750,149 @@ var _ interface {
 	ErrorName() string
 } = RateLimit_OverrideValidationError{}
 
+// Validate checks the field values on RateLimit_HitsAddend with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the first error encountered is returned, or nil if there are no violations.
+func (m *RateLimit_HitsAddend) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on RateLimit_HitsAddend with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// RateLimit_HitsAddendMultiError, or nil if none found.
+func (m *RateLimit_HitsAddend) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *RateLimit_HitsAddend) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if wrapper := m.GetNumber(); wrapper != nil {
+
+		if wrapper.GetValue() > 1000000000 {
+			err := RateLimit_HitsAddendValidationError{
+				field:  "Number",
+				reason: "value must be less than or equal to 1000000000",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+
+	}
+
+	if m.GetFormat() != "" {
+
+		if !strings.HasPrefix(m.GetFormat(), "%") {
+			err := RateLimit_HitsAddendValidationError{
+				field:  "Format",
+				reason: "value does not have prefix \"%\"",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+
+		if !strings.HasSuffix(m.GetFormat(), "%") {
+			err := RateLimit_HitsAddendValidationError{
+				field:  "Format",
+				reason: "value does not have suffix \"%\"",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+
+	}
+
+	if len(errors) > 0 {
+		return RateLimit_HitsAddendMultiError(errors)
+	}
+
+	return nil
+}
+
+// RateLimit_HitsAddendMultiError is an error wrapping multiple validation
+// errors returned by RateLimit_HitsAddend.ValidateAll() if the designated
+// constraints aren't met.
+type RateLimit_HitsAddendMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m RateLimit_HitsAddendMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m RateLimit_HitsAddendMultiError) AllErrors() []error { return m }
+
+// RateLimit_HitsAddendValidationError is the validation error returned by
+// RateLimit_HitsAddend.Validate if the designated constraints aren't met.
+type RateLimit_HitsAddendValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e RateLimit_HitsAddendValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e RateLimit_HitsAddendValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e RateLimit_HitsAddendValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e RateLimit_HitsAddendValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e RateLimit_HitsAddendValidationError) ErrorName() string {
+	return "RateLimit_HitsAddendValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e RateLimit_HitsAddendValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sRateLimit_HitsAddend.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = RateLimit_HitsAddendValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = RateLimit_HitsAddendValidationError{}
+
 // Validate checks the field values on RateLimit_Action_SourceCluster with the
 // rules defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
@@ -11024,6 +11240,135 @@ var _ interface {
 } = RateLimit_Action_RequestHeadersValidationError{}
 
 var _RateLimit_Action_RequestHeaders_HeaderName_Pattern = regexp.MustCompile("^[^\x00\n\r]*$")
+
+// Validate checks the field values on RateLimit_Action_QueryParameters with
+// the rules defined in the proto definition for this message. If any rules
+// are violated, the first error encountered is returned, or nil if there are
+// no violations.
+func (m *RateLimit_Action_QueryParameters) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on RateLimit_Action_QueryParameters with
+// the rules defined in the proto definition for this message. If any rules
+// are violated, the result is a list of violation errors wrapped in
+// RateLimit_Action_QueryParametersMultiError, or nil if none found.
+func (m *RateLimit_Action_QueryParameters) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *RateLimit_Action_QueryParameters) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if utf8.RuneCountInString(m.GetQueryParameterName()) < 1 {
+		err := RateLimit_Action_QueryParametersValidationError{
+			field:  "QueryParameterName",
+			reason: "value length must be at least 1 runes",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if utf8.RuneCountInString(m.GetDescriptorKey()) < 1 {
+		err := RateLimit_Action_QueryParametersValidationError{
+			field:  "DescriptorKey",
+			reason: "value length must be at least 1 runes",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	// no validation rules for SkipIfAbsent
+
+	if len(errors) > 0 {
+		return RateLimit_Action_QueryParametersMultiError(errors)
+	}
+
+	return nil
+}
+
+// RateLimit_Action_QueryParametersMultiError is an error wrapping multiple
+// validation errors returned by
+// RateLimit_Action_QueryParameters.ValidateAll() if the designated
+// constraints aren't met.
+type RateLimit_Action_QueryParametersMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m RateLimit_Action_QueryParametersMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m RateLimit_Action_QueryParametersMultiError) AllErrors() []error { return m }
+
+// RateLimit_Action_QueryParametersValidationError is the validation error
+// returned by RateLimit_Action_QueryParameters.Validate if the designated
+// constraints aren't met.
+type RateLimit_Action_QueryParametersValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e RateLimit_Action_QueryParametersValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e RateLimit_Action_QueryParametersValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e RateLimit_Action_QueryParametersValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e RateLimit_Action_QueryParametersValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e RateLimit_Action_QueryParametersValidationError) ErrorName() string {
+	return "RateLimit_Action_QueryParametersValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e RateLimit_Action_QueryParametersValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sRateLimit_Action_QueryParameters.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = RateLimit_Action_QueryParametersValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = RateLimit_Action_QueryParametersValidationError{}
 
 // Validate checks the field values on RateLimit_Action_RemoteAddress with the
 // rules defined in the proto definition for this message. If any rules are
