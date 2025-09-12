@@ -1,6 +1,7 @@
 package indexgateway
 
 import (
+	"cmp"
 	"context"
 	"flag"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/middleware"
@@ -79,6 +81,8 @@ type ClientConfig struct {
 
 	GRPCUnaryClientInterceptors  []grpc.UnaryClientInterceptor  `yaml:"-"`
 	GRCPStreamClientInterceptors []grpc.StreamClientInterceptor `yaml:"-"`
+
+	TimeBasedShardingBuckets []string `yaml:"time_based_sharding_buckets" category:"Experimental"`
 }
 
 // RegisterFlagsWithPrefix register client-specific flags with the given prefix.
@@ -88,6 +92,13 @@ func (i *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	i.GRPCClientConfig.RegisterFlagsWithPrefix(prefix+".grpc", f)
 	f.StringVar(&i.Address, prefix+".server-address", "", "Hostname or IP of the Index Gateway gRPC server running in simple mode. Can also be prefixed with dns+, dnssrv+, or dnssrvnoa+ to resolve a DNS A record with multiple IP's, a DNS SRV record with a followup A record lookup, or a DNS SRV record without a followup A record lookup, respectively.")
 	f.BoolVar(&i.LogGatewayRequests, prefix+".log-gateway-requests", false, "Whether requests sent to the gateway should be logged or not.")
+
+	// Experimental: Time-based client side query sharding
+	f.Var(
+		(*flagext.StringSlice)(&i.TimeBasedShardingBuckets),
+		prefix+".time-based-sharding-buckets",
+		"Experimental: Defines buckets for time-based sharding. Time based sharding only takes affect when index gateways run in simple mode. To enable client side time-based sharding of queries across index gateway instances set at least one bucket in the format of a string representation of a time.Duration, e.g. ['168h', '336h', '504h']",
+	)
 }
 
 func (i *ClientConfig) RegisterFlags(f *flag.FlagSet) {
@@ -102,6 +113,7 @@ type GatewayClient struct {
 	pool                              *client.Pool
 	ring                              ring.ReadRing
 	limits                            Limits
+	buckets                           []time.Duration
 	done                              chan struct{}
 }
 
@@ -127,12 +139,25 @@ func NewGatewayClient(cfg ClientConfig, r prometheus.Registerer, limits Limits, 
 		}
 	}
 
+	buckets := make([]time.Duration, len(cfg.TimeBasedShardingBuckets))
+	for i := range len(buckets) {
+		b, err := time.ParseDuration(cfg.TimeBasedShardingBuckets[i])
+		if err != nil {
+			level.Warn(logger).Log("msg", "failed to parse time duration of bucket", "err", err.Error(), "value", cfg.TimeBasedShardingBuckets[i])
+			continue
+		}
+		buckets[i] = b.Abs() * -1 // Buckets reference times in the past, so we need negative durations
+	}
+	// Sort descending, since we have negative duration values
+	slices.SortFunc(buckets, func(a, b time.Duration) int { return cmp.Compare(b, a) })
+
 	sgClient := &GatewayClient{
 		logger:                            logger,
 		cfg:                               cfg,
 		storeGatewayClientRequestDuration: latency,
 		ring:                              cfg.Ring,
 		limits:                            limits,
+		buckets:                           buckets,
 		done:                              make(chan struct{}),
 	}
 
@@ -244,54 +269,10 @@ func (s *GatewayClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRe
 		resp, err = client.GetChunkRef(ctx, in)
 		return err
 	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, in.Through.Time())
+		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
 	})
 	return resp, err
 }
-
-func addressesForQueryEndTime(addrs []string, t time.Time) []string {
-	// TODO(@chaudum): Should these be configurable?
-	buckets := []time.Duration{
-		-168 * time.Hour, // 7d
-		-336 * time.Hour, // 14d
-		-504 * time.Hour, // 21d
-	}
-	return addressesForQueryEndTimeWithBuckets(addrs, t, buckets, time.Now().UTC())
-}
-
-func addressesForQueryEndTimeWithBuckets(addrs []string, t time.Time, buckets []time.Duration, now time.Time) []string {
-	// The bucketing only really makes sense if there are equal or more than 2^len(buckets) index gateways.
-	// Example with 3 buckets and 8 instances:
-	// Bucket 0:  now       -> now - 7d   => addrs[0:4]
-	// Bucket 1:  now - 7d  -> now - 14d  => addrs[4:6]
-	// Bucket 2:  now - 14d -> now - 21d  => addrs[6:7]
-	// Remainder: now - 21d -> now - Inf  => addrs[7:8]
-	n := len(addrs)
-	m := len(buckets)
-	if n < (1 << m) {
-		return addrs
-	}
-
-	today := now.Truncate(24 * time.Hour)
-	start, end := 0, n>>1
-
-	for i := range m {
-		if t.After(today.Add(buckets[i])) {
-			break
-		}
-
-		start = end
-		end = end + (n >> (i + 2)) // n / 2^(i+2)
-
-		if i == m-1 {
-			end = n
-		}
-	}
-
-	return addrs[start:end]
-}
-
-func noFilter(addrs []string) []string { return addrs }
 
 func (s *GatewayClient) GetSeries(ctx context.Context, in *logproto.GetSeriesRequest) (*logproto.GetSeriesResponse, error) {
 	var (
@@ -302,7 +283,7 @@ func (s *GatewayClient) GetSeries(ctx context.Context, in *logproto.GetSeriesReq
 		resp, err = client.GetSeries(ctx, in)
 		return err
 	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, in.Through.Time())
+		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
 	})
 	return resp, err
 }
@@ -316,7 +297,7 @@ func (s *GatewayClient) LabelNamesForMetricName(ctx context.Context, in *logprot
 		resp, err = client.LabelNamesForMetricName(ctx, in)
 		return err
 	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, in.Through.Time())
+		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
 	})
 	return resp, err
 }
@@ -330,7 +311,7 @@ func (s *GatewayClient) LabelValuesForMetricName(ctx context.Context, in *logpro
 		resp, err = client.LabelValuesForMetricName(ctx, in)
 		return err
 	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, in.Through.Time())
+		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
 	})
 	return resp, err
 }
@@ -344,7 +325,7 @@ func (s *GatewayClient) GetStats(ctx context.Context, in *logproto.IndexStatsReq
 		resp, err = client.GetStats(ctx, in)
 		return err
 	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, in.Through.Time())
+		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
 	})
 	return resp, err
 }
@@ -358,7 +339,7 @@ func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeReques
 		resp, err = client.GetVolume(ctx, in)
 		return err
 	}, func(addrs []string) []string {
-		return addressesForQueryEndTime(addrs, in.Through.Time())
+		return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
 	})
 	return resp, err
 }
@@ -408,7 +389,7 @@ func (s *GatewayClient) GetShards(
 			return nil
 		},
 		func(addrs []string) []string {
-			return addressesForQueryEndTime(addrs, in.Through.Time())
+			return addressesForQueryEndTime(addrs, in.Through.Time(), s.buckets, time.Now().UTC())
 		},
 		func(_ error) bool {
 			errCt++
@@ -623,3 +604,37 @@ func instrumentation(cfg ClientConfig, clientRequestDuration *prometheus.Histogr
 
 	return unaryInterceptors, streamInterceptors
 }
+
+func addressesForQueryEndTime(addrs []string, t time.Time, buckets []time.Duration, now time.Time) []string {
+	// The bucketing only really makes sense if there are equal or more than 2^len(buckets) index gateways.
+	// Example with 3 buckets and 8 instances:
+	// Bucket 0:  now       -> now - 7d   => addrs[0:4]
+	// Bucket 1:  now - 7d  -> now - 14d  => addrs[4:6]
+	// Bucket 2:  now - 14d -> now - 21d  => addrs[6:7]
+	// Remainder: now - 21d -> now - Inf  => addrs[7:8]
+	n := len(addrs)
+	m := len(buckets)
+	if n < (1 << m) {
+		return addrs
+	}
+
+	today := now.Truncate(24 * time.Hour)
+	start, end := 0, n>>1
+
+	for i := range m {
+		if t.After(today.Add(buckets[i])) {
+			break
+		}
+
+		start = end
+		end = end + (n >> (i + 2)) // n / 2^(i+2)
+
+		if i == m-1 {
+			end = n
+		}
+	}
+
+	return addrs[start:end]
+}
+
+func noFilter(addrs []string) []string { return addrs }
