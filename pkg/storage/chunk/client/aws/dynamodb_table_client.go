@@ -4,10 +4,10 @@ import (
 	"context"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/smithy-go"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/instrument"
@@ -86,7 +86,8 @@ func (d callManager) backoffAndRetry(ctx context.Context, fn func(context.Contex
 	backoff := backoff.New(ctx, d.backoffConfig)
 	for backoff.Ongoing() {
 		if err := fn(ctx); err != nil {
-			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "ThrottlingException" {
+			var apiErr smithy.APIError
+			if errors.As(err, &apiErr) && apiErr.ErrorCode() == "SlowDown" {
 				level.Warn(log.WithContext(ctx, log.Logger)).Log("msg", "got error, backing off and retrying", "err", err, "retry", backoff.NumRetries())
 				backoff.Wait()
 				continue
@@ -329,7 +330,8 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected co
 			})
 		}); err != nil {
 			recordDynamoError(expected.Name, err, "DynamoDB.UpdateTable", d.metrics)
-			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "LimitExceededException" {
+			var apiErr smithy.APIError
+			if errors.As(err, &apiErr) && apiErr.ErrorCode() == "SlowDown" {
 				level.Warn(log.Logger).Log("msg", "update limit exceeded", "err", err)
 			} else {
 				return err
@@ -347,7 +349,8 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected co
 			})
 		}); err != nil {
 			recordDynamoError(expected.Name, err, "DynamoDB.UpdateTable", d.metrics)
-			if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "LimitExceededException" {
+			var apiErr smithy.APIError
+			if errors.As(err, &apiErr) && apiErr.ErrorCode() == "SlowDown" {
 				level.Warn(log.Logger).Log("msg", "update limit exceeded", "err", err)
 			} else {
 				return err

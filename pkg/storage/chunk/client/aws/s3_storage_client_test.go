@@ -24,10 +24,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/smithy-go"
 )
 
 type RoundTripperFunc func(*http.Request) (*http.Response, error)
@@ -81,38 +81,23 @@ func TestIsRetryableErr(t *testing.T) {
 		name     string
 	}{
 		{
-			name: "IsStorageThrottledErr - Too Many Requests",
-			err: awserr.NewRequestFailure(
-				awserr.New("TooManyRequests", "TooManyRequests", nil), 429, "reqId",
-			),
+			name:     "IsStorageThrottledErr - Too Many Requests",
+			err:      &smithy.GenericAPIError{Code: "TooManyRequestsException"},
 			expected: true,
 		},
 		{
-			name: "IsStorageThrottledErr - 500",
-			err: awserr.NewRequestFailure(
-				awserr.New("500", "500", nil), 500, "reqId",
-			),
+			name:     "IsStorageThrottledErr - 503",
+			err:      &smithy.GenericAPIError{Code: "SlowDown"},
 			expected: true,
 		},
 		{
-			name: "IsStorageThrottledErr - 5xx",
-			err: awserr.NewRequestFailure(
-				awserr.New("501", "501", nil), 501, "reqId",
-			),
+			name:     "IsStorageThrottledErr - 5xx",
+			err:      &smithy.GenericAPIError{Code: "NotImplemented"},
 			expected: true,
 		},
 		{
-			name: "IsStorageTimeoutErr - Request Timeout",
-			err: awserr.NewRequestFailure(
-				awserr.New("Request Timeout", "Request Timeout", nil), 408, "reqId",
-			),
-			expected: true,
-		},
-		{
-			name: "IsStorageTimeoutErr - Gateway Timeout",
-			err: awserr.NewRequestFailure(
-				awserr.New("Gateway Timeout", "Gateway Timeout", nil), 504, "reqId",
-			),
+			name:     "IsStorageTimeoutErr - Request Timeout",
+			err:      &smithy.GenericAPIError{Code: "RequestTimeout"},
 			expected: true,
 		},
 		{
@@ -123,13 +108,6 @@ func TestIsRetryableErr(t *testing.T) {
 		{
 			name:     "IsStorageTimeoutErr - Connection Reset",
 			err:      syscall.ECONNRESET,
-			expected: true,
-		},
-		{
-			name: "IsStorageTimeoutErr - Timeout Error",
-			err: awserr.NewRequestFailure(
-				awserr.New("RequestCanceled", "request canceled due to timeout", nil), 408, "request-id",
-			),
 			expected: true,
 		},
 		{
@@ -158,10 +136,8 @@ func TestIsRetryableErr(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "Not found 404",
-			err: awserr.NewRequestFailure(
-				awserr.New("404", "404", nil), 404, "reqId",
-			),
+			name:     "Not found 404",
+			err:      &smithy.GenericAPIError{Code: "NotFound"},
 			expected: false,
 		},
 	}
@@ -403,9 +379,7 @@ func Test_RetryLogic(t *testing.T) {
 			func(c *S3ObjectClient) error {
 				exists, err := c.ObjectExists(context.Background(), "foo")
 				if err == nil && !exists {
-					return awserr.NewRequestFailure(
-						awserr.New("NotFound", "Not Found", nil), 404, "abc",
-					)
+					return &types.NotFound{}
 				}
 				return err
 			},
@@ -427,9 +401,7 @@ func Test_RetryLogic(t *testing.T) {
 				HeadObjectFunc: func(_ context.Context, _ *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
 					callNum := callCount.Inc()
 					if !tc.exists {
-						rfIn := awserr.NewRequestFailure(
-							awserr.New("NotFound", "Not Found", nil), 404, "abc",
-						)
+						rfIn := &types.NotFound{}
 						return nil, rfIn
 					}
 

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/aws/aws-sdk-go/aws"
 	gklog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -196,7 +196,7 @@ func (r *dynamodbIndexReader) queryChunkEntriesForSeries(ctx context.Context, pr
 		hashValue := item[hashKey].(*types.AttributeValueMemberS).Value
 		err := processor.ProcessIndexEntry(index.Entry{
 			TableName:  tableName,
-			HashValue:  aws.StringValue(&hashValue),
+			HashValue:  hashValue,
 			RangeValue: item[rangeKey].(*types.AttributeValueMemberB).Value,
 		})
 		if err != nil {

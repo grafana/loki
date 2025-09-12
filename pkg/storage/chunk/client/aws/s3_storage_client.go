@@ -14,14 +14,11 @@ import (
 	"strings"
 	"time"
 
-	// "github.com/aws/aws-sdk-go/aws"
-	// "github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
-	// "github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/aws/smithy-go"
 
 	"github.com/grafana/dskit/backoff"
@@ -427,7 +424,7 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 		})
 
 		var size int64
-		if resp.ContentLength != nil {
+		if resp != nil && resp.ContentLength != nil {
 			size = *resp.ContentLength
 		}
 		if lastErr == nil && resp.Body != nil {
@@ -553,9 +550,17 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
 func (a *S3ObjectClient) IsObjectNotFoundErr(err error) bool {
+	var awsErr *types.NotFound
+	if errors.As(err, &awsErr) {
+		return true
+	}
+	var noKeyErr *types.NoSuchKey
+	if errors.As(err, &noKeyErr) {
+		return true
+	}
 	var apiError smithy.APIError
 	if errors.As(err, &apiError) {
-		switch apiError.(type) {
+		switch (apiError).(type) {
 		case *types.NotFound:
 			return true
 		default:
@@ -601,9 +606,10 @@ func IsStorageTimeoutErr(err error) bool {
 	if errors.Is(err, io.EOF) || amnet.IsConnectionReset(err) {
 		return true
 	}
-	var apiError types.Error
+	// TODO types.Error does not actually implement error!
+	var apiError smithy.APIError
 	if errors.As(err, &apiError) {
-		switch *(apiError.Code) {
+		switch apiError.ErrorCode() {
 		case "RequestTimeout":
 			return true
 		default:
@@ -615,17 +621,21 @@ func IsStorageTimeoutErr(err error) bool {
 
 // IsStorageThrottledErr returns true if error means that object cannot be retrieved right now due to throttling.
 func IsStorageThrottledErr(err error) bool {
-	var apiError types.Error
+	var apiError smithy.APIError
 	if errors.As(err, &apiError) {
 		// all 5xx errors are retryable
-		switch apiError.Code {
-		case aws.String("InternalError"): // 500
+		switch apiError.ErrorCode() {
+		case "RequestTimeout": // 400
 			return true
-		case aws.String("NotImplemented"): // 501
+		case "TooManyRequestsException": // 429
 			return true
-		case aws.String("ServiceUnavailable"): // 503
+		case "InternalError": // 500
 			return true
-		case aws.String("SlowDown"): // 503
+		case "NotImplemented": // 501
+			return true
+		case "ServiceUnavailable": // 503
+			return true
+		case "SlowDown": // 503
 			return true
 		default:
 			return false

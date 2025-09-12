@@ -9,11 +9,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/go-kit/log/level"
 
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
@@ -64,7 +63,7 @@ func (m *mockDynamoDBClient) createTable(name string) {
 	}
 }
 
-func (m *mockDynamoDBClient) batchWriteItemRequest(_ context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest {
+func (m *mockDynamoDBClient) BatchWriteItem(_ context.Context, params *dynamodb.BatchWriteItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.BatchWriteItemOutput, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -76,19 +75,13 @@ func (m *mockDynamoDBClient) batchWriteItemRequest(_ context.Context, input *dyn
 		m.errAfter--
 	} else if m.provisionedErr > 0 {
 		m.provisionedErr--
-		return &dynamoDBMockRequest{
-			result: resp,
-			err:    &types.ProvisionedThroughputExceededException{},
-		}
+		return resp, &types.ProvisionedThroughputExceededException{}
 	}
 
-	for tableName, writeRequests := range input.RequestItems {
+	for tableName, writeRequests := range params.RequestItems {
 		table, ok := m.tables[tableName]
 		if !ok {
-			return &dynamoDBMockRequest{
-				result: &dynamodb.BatchWriteItemOutput{},
-				err:    fmt.Errorf("table not found: %s", tableName),
-			}
+			return &dynamodb.BatchWriteItemOutput{}, fmt.Errorf("table not found: %s", tableName)
 		}
 
 		for _, writeRequest := range writeRequests {
@@ -111,20 +104,17 @@ func (m *mockDynamoDBClient) batchWriteItemRequest(_ context.Context, input *dyn
 				items = append(items, nil)
 				copy(items[i+1:], items[i:])
 			} else {
-				return &dynamoDBMockRequest{
-					result: &dynamodb.BatchWriteItemOutput{},
-					err:    fmt.Errorf("Duplicate entry"),
-				}
+				return &dynamodb.BatchWriteItemOutput{}, fmt.Errorf("duplicate entry")
 			}
 			items[i] = writeRequest.PutRequest.Item
 
 			table.items[hashValue] = items
 		}
 	}
-	return &dynamoDBMockRequest{result: resp}
+	return resp, nil
 }
 
-func (m *mockDynamoDBClient) batchGetItemRequest(_ context.Context, input *dynamodb.BatchGetItemInput) dynamoDBRequest {
+func (m *mockDynamoDBClient) BatchGetItem(_ context.Context, params *dynamodb.BatchGetItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.BatchGetItemOutput, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -137,19 +127,13 @@ func (m *mockDynamoDBClient) batchGetItemRequest(_ context.Context, input *dynam
 		m.errAfter--
 	} else if m.provisionedErr > 0 {
 		m.provisionedErr--
-		return &dynamoDBMockRequest{
-			result: resp,
-			err:    &types.ProvisionedThroughputExceededException{},
-		}
+		return resp, &types.ProvisionedThroughputExceededException{}
 	}
 
-	for tableName, readRequests := range input.RequestItems {
+	for tableName, readRequests := range params.RequestItems {
 		table, ok := m.tables[tableName]
 		if !ok {
-			return &dynamoDBMockRequest{
-				result: &dynamodb.BatchGetItemOutput{},
-				err:    fmt.Errorf("table not found"),
-			}
+			return &dynamodb.BatchGetItemOutput{}, fmt.Errorf("table not found")
 		}
 
 		unprocessed := &types.KeysAndAttributes{
@@ -174,10 +158,7 @@ func (m *mockDynamoDBClient) batchGetItemRequest(_ context.Context, input *dynam
 				return bytes.Compare(items[i][rangeKey].(*types.AttributeValueMemberB).Value, rangeValue) >= 0
 			})
 			if i >= len(items) || !bytes.Equal(items[i][rangeKey].(*types.AttributeValueMemberB).Value, rangeValue) {
-				return &dynamoDBMockRequest{
-					result: &dynamodb.BatchGetItemOutput{},
-					err:    fmt.Errorf("Couldn't find item"),
-				}
+				return &dynamodb.BatchGetItemOutput{}, fmt.Errorf("couldn't find item")
 			}
 
 			// Only return AttributesToGet!
@@ -188,31 +169,29 @@ func (m *mockDynamoDBClient) batchGetItemRequest(_ context.Context, input *dynam
 			resp.Responses[tableName] = append(resp.Responses[tableName], item)
 		}
 	}
-	return &dynamoDBMockRequest{
-		result: resp,
-	}
+	return resp, nil
 }
 
-func (m *mockDynamoDBClient) QueryPagesWithContext(_ aws.Context, input *dynamodb.QueryInput, fn func(*dynamodb.QueryOutput, bool) bool, _ ...request.Option) error {
+func (m *mockDynamoDBClient) Query(_ context.Context, params *dynamodb.QueryInput, _ ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error) {
 	result := &dynamodb.QueryOutput{
 		Items: []map[string]types.AttributeValue{},
 	}
 
 	// Required filters
-	hashValue := input.KeyConditions[hashKey].AttributeValueList[0].(*types.AttributeValueMemberS).Value
+	hashValue := params.KeyConditions[hashKey].AttributeValueList[0].(*types.AttributeValueMemberS).Value
 
 	// Optional filters
 	var (
 		rangeValueFilter     []byte
 		rangeValueFilterType string
 	)
-	if c, ok := input.KeyConditions[rangeKey]; ok {
+	if c, ok := params.KeyConditions[rangeKey]; ok {
 		rangeValueFilter = c.AttributeValueList[0].(*types.AttributeValueMemberB).Value
 		rangeValueFilterType = string(c.ComparisonOperator)
 	}
 
 	// Filter by HashValue, RangeValue and Value if it exists
-	items := m.tables[*input.TableName].items[hashValue]
+	items := m.tables[*params.TableName].items[hashValue]
 	for _, item := range items {
 		rangeValue := (item[rangeKey]).(*types.AttributeValueMemberB).Value
 		if rangeValueFilterType == string(types.ComparisonOperatorGe) && bytes.Compare(rangeValue, rangeValueFilter) < 0 {
@@ -226,22 +205,21 @@ func (m *mockDynamoDBClient) QueryPagesWithContext(_ aws.Context, input *dynamod
 			value := (item[valueKey]).(*types.AttributeValueMemberB).Value
 
 			// Apply filterExpression if it exists (supporting only v = :v)
-			if input.FilterExpression != nil {
-				if *input.FilterExpression == fmt.Sprintf("%s = :v", valueKey) {
-					filterValue := input.ExpressionAttributeValues[":v"].(*types.AttributeValueMemberB).Value
+			if params.FilterExpression != nil {
+				if *params.FilterExpression == fmt.Sprintf("%s = :v", valueKey) {
+					filterValue := params.ExpressionAttributeValues[":v"].(*types.AttributeValueMemberB).Value
 					if !bytes.Equal(value, filterValue) {
 						continue
 					}
 				} else {
-					level.Warn(util_log.Logger).Log("msg", "unsupported FilterExpression", "expression", *input.FilterExpression)
+					level.Warn(util_log.Logger).Log("msg", "unsupported FilterExpression", "expression", *params.FilterExpression)
 				}
 			}
 		}
 
 		result.Items = append(result.Items, item)
 	}
-	fn(result, true)
-	return nil
+	return result, nil
 }
 
 type dynamoDBMockRequest struct {
@@ -265,7 +243,7 @@ func (m *dynamoDBMockRequest) Retryable() bool {
 	return false
 }
 
-func (m *mockDynamoDBClient) ListTablesPagesWithContext(_ aws.Context, _ *dynamodb.ListTablesInput, fn func(*dynamodb.ListTablesOutput, bool) bool, _ ...request.Option) error {
+func (m *mockDynamoDBClient) ListTables(_ context.Context, _ *dynamodb.ListTablesInput, optFns ...func(*dynamodb.Options)) (*dynamodb.ListTablesOutput, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -275,15 +253,12 @@ func (m *mockDynamoDBClient) ListTablesPagesWithContext(_ aws.Context, _ *dynamo
 			tableNames = append(tableNames, tableName)
 		}(tableName)
 	}
-	fn(&dynamodb.ListTablesOutput{
-		TableNames: tableNames,
-	}, true)
 
-	return nil
+	return &dynamodb.ListTablesOutput{TableNames: tableNames}, nil
 }
 
 // CreateTable implements StorageClient.
-func (m *mockDynamoDBClient) CreateTableWithContext(_ aws.Context, input *dynamodb.CreateTableInput, _ ...request.Option) (*dynamodb.CreateTableOutput, error) {
+func (m *mockDynamoDBClient) CreateTable(_ context.Context, input *dynamodb.CreateTableInput, optFns ...func(*dynamodb.Options)) (*dynamodb.CreateTableOutput, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -305,7 +280,7 @@ func (m *mockDynamoDBClient) CreateTableWithContext(_ aws.Context, input *dynamo
 }
 
 // DescribeTable implements StorageClient.
-func (m *mockDynamoDBClient) DescribeTableWithContext(_ aws.Context, input *dynamodb.DescribeTableInput, _ ...request.Option) (*dynamodb.DescribeTableOutput, error) {
+func (m *mockDynamoDBClient) DescribeTable(_ context.Context, input *dynamodb.DescribeTableInput, optFns ...func(*dynamodb.Options)) (*dynamodb.DescribeTableOutput, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -328,7 +303,7 @@ func (m *mockDynamoDBClient) DescribeTableWithContext(_ aws.Context, input *dyna
 }
 
 // UpdateTable implements StorageClient.
-func (m *mockDynamoDBClient) UpdateTableWithContext(_ aws.Context, input *dynamodb.UpdateTableInput, _ ...request.Option) (*dynamodb.UpdateTableOutput, error) {
+func (m *mockDynamoDBClient) UpdateTable(_ context.Context, input *dynamodb.UpdateTableInput, optFns ...func(*dynamodb.Options)) (*dynamodb.UpdateTableOutput, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -347,7 +322,7 @@ func (m *mockDynamoDBClient) UpdateTableWithContext(_ aws.Context, input *dynamo
 	}, nil
 }
 
-func (m *mockDynamoDBClient) TagResourceWithContext(_ aws.Context, input *dynamodb.TagResourceInput, _ ...request.Option) (*dynamodb.TagResourceOutput, error) {
+func (m *mockDynamoDBClient) TagResource(_ context.Context, input *dynamodb.TagResourceInput, optFns ...func(*dynamodb.Options)) (*dynamodb.TagResourceOutput, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -368,7 +343,7 @@ func (m *mockDynamoDBClient) TagResourceWithContext(_ aws.Context, input *dynamo
 	return &dynamodb.TagResourceOutput{}, nil
 }
 
-func (m *mockDynamoDBClient) ListTagsOfResourceWithContext(_ aws.Context, input *dynamodb.ListTagsOfResourceInput, _ ...request.Option) (*dynamodb.ListTagsOfResourceOutput, error) {
+func (m *mockDynamoDBClient) ListTagsOfResource(_ context.Context, input *dynamodb.ListTagsOfResourceInput, optFns ...func(*dynamodb.Options)) (*dynamodb.ListTagsOfResourceOutput, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -417,7 +392,7 @@ func (m *mockS3) GetObject(ctx context.Context, params *s3.GetObjectInput, optFn
 
 	buf, ok := m.objects[*params.Key]
 	if !ok {
-		return nil, fmt.Errorf("Not found")
+		return nil, fmt.Errorf("not found")
 	}
 
 	return &s3.GetObjectOutput{
