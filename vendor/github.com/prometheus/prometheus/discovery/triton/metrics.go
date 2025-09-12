@@ -24,9 +24,9 @@ type tritonMetrics struct {
 }
 
 // Register implements discovery.DiscovererMetrics.
-func (*tritonMetrics) Register() error {
+func (m *tritonMetrics) Register() error {
 	return nil
 }
 
 // Unregister implements discovery.DiscovererMetrics.
-func (*tritonMetrics) Unregister() {}
+func (m *tritonMetrics) Unregister() {}
