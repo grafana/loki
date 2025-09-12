@@ -102,12 +102,14 @@ func (cb *ColumnBuilder) Append(row int, value Value) error {
 		return fmt.Errorf("row %d is older than current row %d", row, cb.rows)
 	}
 
-	// We give two attempts to append the data to the buffer; if the buffer is
+	// We give three attempts to append the data to the buffer; if the buffer is
 	// full, we cut a page and then append to the newly reset buffer.
+	// In case we also need to backfill, there is case where the backfill fills
+	// the second page, that needs to be flushed again.
 	//
-	// The second iteration should never fail, as the buffer will always be empty
+	// The third iteration should never fail, as the buffer will always be empty
 	// then.
-	for range 2 {
+	for range 3 {
 		if cb.append(row, value) {
 			cb.rows = row + 1
 			cb.statsBuilder.Append(value)
