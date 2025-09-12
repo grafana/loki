@@ -25,12 +25,15 @@ type ResultBuilder interface {
 	Len() int
 }
 
-var _ ResultBuilder = &streamsResultBuilder{}
-var _ ResultBuilder = &vectorResultBuilder{}
-var _ ResultBuilder = &matrixResultBuilder{}
+var (
+	_ ResultBuilder = &streamsResultBuilder{}
+	_ ResultBuilder = &vectorResultBuilder{}
+	_ ResultBuilder = &matrixResultBuilder{}
+)
 
 func newStreamsResultBuilder() *streamsResultBuilder {
 	return &streamsResultBuilder{
+		data:    make(logqlmodel.Streams, 0),
 		streams: make(map[string]int),
 	}
 }
