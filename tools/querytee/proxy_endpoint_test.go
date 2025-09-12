@@ -521,7 +521,7 @@ func (m *mockGoldfishStorage) GetSampledQueries(_ context.Context, page, pageSiz
 	// This is only used for UI, not needed in proxy tests
 	return &goldfish.APIResponse{
 		Queries:  []goldfish.QuerySample{},
-		Total:    0,
+		HasMore:  false,
 		Page:     page,
 		PageSize: pageSize,
 	}, nil

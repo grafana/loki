@@ -31,7 +31,6 @@ type dataobjScanOptions struct {
 	Allocator memory.Allocator // Allocator to use for reading sections and building records.
 
 	BatchSize int64 // The buffer size for reading rows, derived from the engine batch size.
-	CacheSize int   // The size of the page cache to use for reading sections.
 }
 
 type dataobjScan struct {
@@ -108,7 +107,6 @@ func (s *dataobjScan) initStreams() error {
 		StreamIDs:    s.opts.StreamIDs,
 		LabelColumns: columnsToRead,
 		BatchSize:    int(s.opts.BatchSize),
-		CacheSize:    s.opts.CacheSize,
 	})
 
 	s.streamsInjector = newStreamInjector(s.opts.Allocator, s.streams)
@@ -213,9 +211,8 @@ func (s *dataobjScan) initLogs() error {
 		// handle that?
 		Columns: columnsToRead,
 
-		Predicates:    predicates,
-		Allocator:     s.opts.Allocator,
-		PageCacheSize: s.opts.CacheSize,
+		Predicates: predicates,
+		Allocator:  s.opts.Allocator,
 	})
 
 	// Create the engine-compatible expected schema for the logs section.

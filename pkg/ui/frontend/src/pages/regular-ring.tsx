@@ -110,7 +110,7 @@ export function RegularRing({ ringName }: RegularRingProps) {
           variant: "destructive",
         });
       }
-    } catch (err) {
+    } catch {
       toast({
         title: "Failed to forget instances",
         description: `${error}`,

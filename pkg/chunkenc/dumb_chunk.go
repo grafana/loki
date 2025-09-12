@@ -125,7 +125,7 @@ func (c *dumbChunk) Close() error {
 	return nil
 }
 
-func (c *dumbChunk) Rebound(_, _ time.Time, _ filter.Func) (Chunk, error) {
+func (c *dumbChunk) Rewrite(_ filter.Func) (Chunk, error) {
 	return nil, nil
 }
 

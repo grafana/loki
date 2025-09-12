@@ -97,7 +97,7 @@ func (cmd *statsCommand) printStreamsSectionStats(ctx context.Context, offset in
 	bold.Printf(
 		"\toffset: %d, tenant: %s, columns: %d, compressed size: %v, uncompressed size %v\n",
 		offset,
-		streamsSec.Tenant(),
+		sec.Tenant,
 		len(stats.Columns),
 		humanize.Bytes(stats.CompressedSize),
 		humanize.Bytes(stats.UncompressedSize),
@@ -128,7 +128,7 @@ func (cmd *statsCommand) printLogsSectionStats(ctx context.Context, offset int, 
 	bold.Printf(
 		"\toffset: %d, tenant: %s, columns: %d, compressed size: %v, uncompressed size %v\n",
 		offset,
-		logsSec.Tenant(),
+		sec.Tenant,
 		len(stats.Columns),
 		humanize.Bytes(stats.CompressedSize),
 		humanize.Bytes(stats.UncompressedSize),

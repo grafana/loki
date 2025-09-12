@@ -30,12 +30,6 @@ type ReaderOptions struct {
 	// Allocator to use for allocating Arrow records. If nil,
 	// [memory.DefaultAllocator] is used.
 	Allocator memory.Allocator
-
-	// PageCacheSize is the total size of additional pages to prefetch into the
-	// reader that the reader may read on future calls. Pages are prefetched any
-	// time a new page is required up to this size. Setting to 0 disables
-	// prefetching additional pages.
-	PageCacheSize int
 }
 
 // Validate returns an error if the opts is not valid. ReaderOptions are only
@@ -263,10 +257,10 @@ func (r *Reader) init() error {
 	}
 
 	innerOptions := dataset.ReaderOptions{
-		Dataset:         dset,
-		Columns:         dset.Columns(),
-		Predicates:      preds,
-		TargetCacheSize: r.opts.PageCacheSize,
+		Dataset:    dset,
+		Columns:    dset.Columns(),
+		Predicates: preds,
+		Prefetch:   true,
 	}
 	if r.inner == nil {
 		r.inner = dataset.NewReader(innerOptions)
