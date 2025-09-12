@@ -32,9 +32,19 @@ import (
 
 var ErrPartitionRevoked = errors.New("partition revoked")
 
+type triggerType string
+
+const (
+	triggerTypeNormal triggerType = "normal"
+	triggerTypeFlush  triggerType = "flush"
+)
+
 type Config struct {
 	indexobj.BuilderConfig `yaml:",inline"`
-	EventsPerIndex         int `yaml:"events_per_index" experimental:"true"`
+	EventsPerIndex         int           `yaml:"events_per_index" experimental:"true"`
+	FlushInterval          time.Duration `yaml:"flush_interval" experimental:"true"`
+	MaxIdleTime            time.Duration `yaml:"max_idle_time" experimental:"true"`
+	MinFlushEvents         int           `yaml:"min_flush_events" experimental:"true"`
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
@@ -44,6 +54,20 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.BuilderConfig.RegisterFlagsWithPrefix(prefix, f)
 	f.IntVar(&cfg.EventsPerIndex, prefix+"events-per-index", 32, "Experimental: The number of events to batch before building an index")
+	f.DurationVar(&cfg.FlushInterval, prefix+"flush-interval", 10*time.Second, "Experimental: How often to check for stale partitions to flush")
+	f.DurationVar(&cfg.MaxIdleTime, prefix+"max-idle-time", 30*time.Second, "Experimental: Maximum time to wait before flushing buffered events")
+	f.IntVar(&cfg.MinFlushEvents, prefix+"min-flush-events", 1, "Experimental: Minimum number of events required to trigger a flush")
+}
+
+type bufferedEvent struct {
+	event  metastore.ObjectWrittenEvent
+	record *kgo.Record
+}
+
+type partitionState struct {
+	events       []bufferedEvent
+	lastActivity time.Time
+	isProcessing bool
 }
 
 type downloadedObject struct {
@@ -87,7 +111,8 @@ type Builder struct {
 	calculator        calculator
 	tocWriter         *metastore.TableOfContentsWriter
 
-	bufferedEvents map[int32][]metastore.ObjectWrittenEvent
+	partitionStates map[int32]*partitionState
+	flushTicker     *time.Ticker
 
 	// Builder initialization
 	builderCfg         indexobj.BuilderConfig
@@ -157,7 +182,7 @@ func NewIndexBuilder(
 		downloadQueue:      downloadQueue,
 		metrics:            metrics,
 		calculator:         calculator,
-		bufferedEvents:     make(map[int32][]metastore.ObjectWrittenEvent),
+		partitionStates:    make(map[int32]*partitionState),
 	}
 
 	kafkaCfg.AutoCreateTopicEnabled = true
@@ -185,13 +210,73 @@ func NewIndexBuilder(
 	return s, nil
 }
 
+// bufferAndTryProcess is the unified method that handles both buffering and processing decisions
+func (p *Builder) bufferAndTryProcess(partition int32, newEvent *bufferedEvent, trigger triggerType) (context.Context, []bufferedEvent) {
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
+
+	state, exists := p.partitionStates[partition]
+	if !exists {
+		return nil, nil
+	}
+
+	// Add new event to buffer if provided (normal processing case)
+	if newEvent != nil {
+		state.events = append(state.events, *newEvent)
+		state.lastActivity = time.Now()
+		level.Debug(p.logger).Log("msg", "buffered new event for partition", "count", len(state.events), "partition", partition)
+	}
+
+	// Check if we can start processing
+	if state.isProcessing || len(state.events) == 0 {
+		return nil, nil
+	}
+
+	// Check trigger-specific requirements
+	switch trigger {
+	case triggerTypeNormal:
+		if len(state.events) < p.cfg.EventsPerIndex {
+			return nil, nil
+		}
+	case triggerTypeFlush:
+		if len(state.events) < p.cfg.MinFlushEvents {
+			return nil, nil
+		}
+		if time.Since(state.lastActivity) < p.cfg.MaxIdleTime {
+			return nil, nil
+		}
+	default:
+		level.Error(p.logger).Log("msg", "unknown trigger type", "trigger", string(trigger))
+		return nil, nil
+	}
+
+	// Atomically mark as processing and extract events
+	state.isProcessing = true
+	eventsToProcess := make([]bufferedEvent, len(state.events))
+	copy(eventsToProcess, state.events)
+
+	// Set up cancellation context
+	ctx, cancel := context.WithCancelCause(p.ctx)
+	p.activeCalculationPartition = partition
+	p.cancelActiveCalculation = cancel
+
+	level.Debug(p.logger).Log("msg", "started processing partition",
+		"partition", partition, "events", len(eventsToProcess), "trigger", string(trigger))
+
+	return ctx, eventsToProcess
+}
+
 func (p *Builder) handlePartitionsAssigned(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
 	p.partitionsMutex.Lock()
 	defer p.partitionsMutex.Unlock()
 
 	for _, partitions := range topics {
 		for _, partition := range partitions {
-			p.bufferedEvents[partition] = make([]metastore.ObjectWrittenEvent, 0)
+			p.partitionStates[partition] = &partitionState{
+				events:       make([]bufferedEvent, 0),
+				lastActivity: time.Now(),
+				isProcessing: false,
+			}
 		}
 	}
 }
@@ -203,7 +288,7 @@ func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topi
 
 	for _, partitions := range topics {
 		for _, partition := range partitions {
-			delete(p.bufferedEvents, partition)
+			delete(p.partitionStates, partition)
 			if p.activeCalculationPartition == partition && p.cancelActiveCalculation != nil {
 				p.cancelActiveCalculation(ErrPartitionRevoked)
 			}
@@ -248,6 +333,25 @@ func (p *Builder) run(ctx context.Context) error {
 		}
 	}()
 
+	// Start flush worker if configured
+	if p.cfg.FlushInterval > 0 {
+		p.flushTicker = time.NewTicker(p.cfg.FlushInterval)
+		p.wg.Add(1)
+		go func() {
+			defer p.wg.Done()
+			defer p.flushTicker.Stop()
+
+			for {
+				select {
+				case <-p.flushTicker.C:
+					p.checkAndFlushStalePartitions()
+				case <-p.ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
 	level.Info(p.logger).Log("msg", "started index builder service")
 	for {
 		fetches := p.client.PollRecords(ctx, -1)
@@ -286,78 +390,73 @@ func (p *Builder) stopping(failureCase error) error {
 // processRecord processes a single record. It is not safe for concurrent use.
 func (p *Builder) processRecord(record *kgo.Record) {
 	calculationCtx, eventsToIndex := p.appendRecord(record)
-	if len(eventsToIndex) < p.cfg.EventsPerIndex {
+	if len(eventsToIndex) == 0 {
 		return
 	}
 
 	defer p.cleanupPartition(record.Partition)
 
 	// Build the index.
-	err := p.buildIndex(calculationCtx, eventsToIndex)
+	events := make([]metastore.ObjectWrittenEvent, len(eventsToIndex))
+	for i, buffered := range eventsToIndex {
+		events[i] = buffered.event
+	}
+
+	err := p.buildIndex(calculationCtx, events)
 	if err != nil {
 		if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
-			level.Debug(p.logger).Log("msg", "partition revoked, aborting index build", "partition", p.activeCalculationPartition)
+			level.Debug(p.logger).Log("msg", "partition revoked, aborting index build", "partition", record.Partition)
 			return
 		}
-		level.Error(p.logger).Log("msg", "failed to build index", "err", err, "partition", p.activeCalculationPartition)
+		level.Error(p.logger).Log("msg", "failed to build index", "err", err, "partition", record.Partition)
 		return
 	}
 
-	// Commit back to the partition we just built. This is always the record we just received, otherwise we would not have triggered the build.
-	if err := p.commitRecords(calculationCtx, record); err != nil {
+	// Commit all records from this batch
+	records := make([]*kgo.Record, len(eventsToIndex))
+	for i, buffered := range eventsToIndex {
+		records[i] = buffered.record
+	}
+
+	if err := p.commitRecords(calculationCtx, records); err != nil {
 		if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
-			level.Debug(p.logger).Log("msg", "partition revoked, aborting index commit", "partition", p.activeCalculationPartition)
+			level.Debug(p.logger).Log("msg", "partition revoked, aborting index commit", "partition", record.Partition)
 			return
 		}
-		level.Error(p.logger).Log("msg", "failed to commit records", "err", err, "partition", p.activeCalculationPartition)
+		level.Error(p.logger).Log("msg", "failed to commit records", "err", err, "partition", record.Partition)
 		return
 	}
 }
 
-// Appends a record and returns a slice of records to index. The slice will be empty if no indexing is required.
-func (p *Builder) appendRecord(record *kgo.Record) (context.Context, []metastore.ObjectWrittenEvent) {
-	p.partitionsMutex.Lock()
-	defer p.partitionsMutex.Unlock()
-
+// Appends a record and returns a slice of buffered events to index. The slice will be empty if no indexing is required.
+func (p *Builder) appendRecord(record *kgo.Record) (context.Context, []bufferedEvent) {
 	event := &metastore.ObjectWrittenEvent{}
 	if err := event.Unmarshal(record.Value); err != nil {
 		level.Error(p.logger).Log("msg", "failed to unmarshal metastore event", "err", err)
 		return nil, nil
 	}
 
-	_, ok := p.bufferedEvents[record.Partition]
-	if !ok {
-		// We don't own this partition anymore as it was just revoked. Abort further processing.
-		return nil, nil
+	bufferedEvt := &bufferedEvent{
+		event:  *event,
+		record: record,
 	}
 
-	p.bufferedEvents[record.Partition] = append(p.bufferedEvents[record.Partition], *event)
-	level.Debug(p.logger).Log("msg", "buffered new event for partition", "count", len(p.bufferedEvents[record.Partition]), "partition", record.Partition)
-
-	if len(p.bufferedEvents[record.Partition]) < p.cfg.EventsPerIndex {
-		// No more work to do
-		return nil, nil
-	}
-
-	var calculationCtx context.Context
-	eventsToIndex := make([]metastore.ObjectWrittenEvent, len(p.bufferedEvents[record.Partition]))
-	copy(eventsToIndex, p.bufferedEvents[record.Partition])
-
-	p.activeCalculationPartition = record.Partition
-	calculationCtx, p.cancelActiveCalculation = context.WithCancelCause(p.ctx)
-
-	return calculationCtx, eventsToIndex
+	return p.bufferAndTryProcess(record.Partition, bufferedEvt, triggerTypeNormal)
 }
 
 func (p *Builder) cleanupPartition(partition int32) {
 	p.partitionsMutex.Lock()
 	defer p.partitionsMutex.Unlock()
 
-	p.cancelActiveCalculation(nil)
+	if p.cancelActiveCalculation != nil {
+		p.cancelActiveCalculation(nil)
+	}
 
-	if _, ok := p.bufferedEvents[partition]; ok {
-		// We still own this partition, so truncate the events for future processing.
-		p.bufferedEvents[partition] = p.bufferedEvents[partition][:0]
+	if state, ok := p.partitionStates[partition]; ok {
+		// Clear processed events and reset processing flag
+		state.events = state.events[:0]
+		state.isProcessing = false
+		state.lastActivity = time.Now()
 	}
 }
 
@@ -458,7 +557,74 @@ func ObjectKey(ctx context.Context, object *dataobj.Object) (string, error) {
 	return fmt.Sprintf("indexes/%s/%s", sumStr[:2], sumStr[2:]), nil
 }
 
-func (p *Builder) commitRecords(ctx context.Context, record *kgo.Record) error {
+func (p *Builder) checkAndFlushStalePartitions() {
+	p.partitionsMutex.Lock()
+	partitionsToFlush := make([]int32, 0)
+
+	for partition, state := range p.partitionStates {
+		if !state.isProcessing &&
+			len(state.events) >= p.cfg.MinFlushEvents &&
+			time.Since(state.lastActivity) >= p.cfg.MaxIdleTime {
+			partitionsToFlush = append(partitionsToFlush, partition)
+		}
+	}
+	p.partitionsMutex.Unlock()
+
+	for _, partition := range partitionsToFlush {
+		p.flushPartition(partition)
+	}
+}
+
+func (p *Builder) flushPartition(partition int32) {
+	ctx, eventsToFlush := p.bufferAndTryProcess(partition, nil, triggerTypeFlush)
+	if len(eventsToFlush) == 0 {
+		return
+	}
+
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		defer p.cleanupPartition(partition)
+
+		level.Info(p.logger).Log("msg", "flushing stale partition",
+			"partition", partition, "events", len(eventsToFlush))
+
+		// Build index
+		events := make([]metastore.ObjectWrittenEvent, len(eventsToFlush))
+		for i, buffered := range eventsToFlush {
+			events[i] = buffered.event
+		}
+
+		if err := p.buildIndex(ctx, events); err != nil {
+			if errors.Is(context.Cause(ctx), ErrPartitionRevoked) {
+				level.Debug(p.logger).Log("msg", "partition revoked during flush", "partition", partition)
+				return
+			}
+			level.Error(p.logger).Log("msg", "failed to flush partition", "partition", partition, "err", err)
+			return
+		}
+
+		// Commit all records from the flush
+		records := make([]*kgo.Record, len(eventsToFlush))
+		for i, buffered := range eventsToFlush {
+			records[i] = buffered.record
+		}
+
+		if err := p.commitRecords(ctx, records); err != nil {
+			if errors.Is(context.Cause(ctx), ErrPartitionRevoked) {
+				level.Debug(p.logger).Log("msg", "partition revoked during flush commit", "partition", partition)
+				return
+			}
+			level.Error(p.logger).Log("msg", "failed to commit flush records", "partition", partition, "err", err)
+		}
+	}()
+}
+
+func (p *Builder) commitRecords(ctx context.Context, records []*kgo.Record) error {
+	if len(records) == 0 {
+		return nil
+	}
+
 	backoff := backoff.New(ctx, backoff.Config{
 		MinBackoff: 100 * time.Millisecond,
 		MaxBackoff: 10 * time.Second,
@@ -469,11 +635,11 @@ func (p *Builder) commitRecords(ctx context.Context, record *kgo.Record) error {
 	backoff.Reset()
 	for backoff.Ongoing() {
 		p.metrics.incCommitsTotal()
-		err := p.client.CommitRecords(ctx, record)
+		err := p.client.CommitRecords(ctx, records...)
 		if err == nil {
 			return nil
 		}
-		level.Error(p.logger).Log("msg", "failed to commit records", "err", err)
+		level.Error(p.logger).Log("msg", "failed to commit records", "err", err, "count", len(records))
 		p.metrics.incCommitFailures()
 		lastErr = err
 		backoff.Wait()

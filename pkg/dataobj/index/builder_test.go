@@ -130,9 +130,9 @@ func TestIndexBuilder_PartitionRevocation(t *testing.T) {
 			Partition: int32(1),
 		})
 		if i < 2 {
-			// After revocation is triggered, we can't guarantee that the partition will be in the buffered events map.
-			require.NotNil(t, builder.bufferedEvents[1])
-			require.Len(t, builder.bufferedEvents[1], 0)
+			// After revocation is triggered, we can't guarantee that the partition will be in the partition states map.
+			require.NotNil(t, builder.partitionStates[1])
+			require.Len(t, builder.partitionStates[1].events, 0)
 		}
 	}
 	// Verify that the first records were processed successfully.
@@ -140,8 +140,8 @@ func TestIndexBuilder_PartitionRevocation(t *testing.T) {
 	require.NotNil(t, builder.calculator.(*mockCalculator).object)
 
 	// Verify that the partition was revoked.
-	require.Equal(t, 2, len(builder.bufferedEvents))
-	require.Nil(t, builder.bufferedEvents[1])
+	require.Equal(t, 2, len(builder.partitionStates))
+	require.Nil(t, builder.partitionStates[1])
 }
 
 func TestIndexBuilder(t *testing.T) {
