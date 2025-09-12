@@ -79,3 +79,85 @@ func (p *builderMetrics) setProcessingDelay(recordTimestamp time.Time) {
 		p.processingDelay.Set(time.Since(recordTimestamp).Seconds())
 	}
 }
+
+type indexerMetrics struct {
+	// Request counters
+	totalRequests prometheus.Counter
+	totalBuilds   prometheus.Counter
+
+	// Build time metrics
+	buildTimeSeconds prometheus.Gauge
+
+	// Queue metrics
+	queueDepth prometheus.Gauge
+}
+
+func newIndexerMetrics() *indexerMetrics {
+	m := &indexerMetrics{
+		totalRequests: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_index_builder_requests_total",
+			Help: "Total number of build requests submitted to the indexer",
+		}),
+		totalBuilds: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_index_builder_builds_total",
+			Help: "Total number of index builds completed",
+		}),
+		buildTimeSeconds: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "loki_index_builder_build_time_seconds",
+			Help: "Time spent on the last index build in seconds",
+		}),
+		queueDepth: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "loki_index_builder_queue_depth",
+			Help: "Current depth of the build request queue",
+		}),
+	}
+
+	return m
+}
+
+func (m *indexerMetrics) register(reg prometheus.Registerer) error {
+	collectors := []prometheus.Collector{
+		m.totalRequests,
+		m.totalBuilds,
+		m.buildTimeSeconds,
+		m.queueDepth,
+	}
+
+	for _, collector := range collectors {
+		if err := reg.Register(collector); err != nil {
+			if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (m *indexerMetrics) unregister(reg prometheus.Registerer) {
+	collectors := []prometheus.Collector{
+		m.totalRequests,
+		m.totalBuilds,
+		m.buildTimeSeconds,
+		m.queueDepth,
+	}
+
+	for _, collector := range collectors {
+		reg.Unregister(collector)
+	}
+}
+
+func (m *indexerMetrics) incRequests() {
+	m.totalRequests.Inc()
+}
+
+func (m *indexerMetrics) incBuilds() {
+	m.totalBuilds.Inc()
+}
+
+func (m *indexerMetrics) setBuildTime(duration time.Duration) {
+	m.buildTimeSeconds.Set(duration.Seconds())
+}
+
+func (m *indexerMetrics) setQueueDepth(depth int) {
+	m.queueDepth.Set(float64(depth))
+}
