@@ -3839,6 +3839,17 @@ spec:
                     - openshift-logging
                     - openshift-network
                     type: string
+                  networkPolicies:
+                    description: |-
+                      NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+                      When enabled, the operator creates NetworkPolicies to control ingress/egress between
+                      Loki components and related services.
+                      Values: "" (default behavior), "false", "true".
+                    enum:
+                    - ""
+                    - "false"
+                    - "true"
+                    type: string
                   openshift:
                     description: Openshift defines the configuration specific to Openshift
                       modes.

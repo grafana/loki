@@ -911,6 +911,17 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:dynamic
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-logging
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-network
+      - description: |-
+          NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+          When enabled, the operator creates NetworkPolicies to control ingress/egress between
+          Loki components and related services.
+          Values: "" (default behavior), "false", "true".
+        displayName: Network Policies
+        path: tenants.networkPolicies
+        x-descriptors:
+        - 'urn:alm:descriptor:com.tectonic.ui:select:'
+        - urn:alm:descriptor:com.tectonic.ui:select:false
+        - urn:alm:descriptor:com.tectonic.ui:select:true
       - description: Openshift defines the configuration specific to Openshift modes.
         displayName: Openshift
         path: tenants.openshift
