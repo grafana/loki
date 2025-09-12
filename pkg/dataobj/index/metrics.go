@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-type indexBuilderMetrics struct {
+type builderMetrics struct {
 	// Error counters
 	commitFailures prometheus.Counter
 
@@ -17,8 +17,8 @@ type indexBuilderMetrics struct {
 	processingDelay prometheus.Gauge // Latest delta between record timestamp and current time
 }
 
-func newIndexBuilderMetrics() *indexBuilderMetrics {
-	p := &indexBuilderMetrics{
+func newBuilderMetrics() *builderMetrics {
+	p := &builderMetrics{
 		commitFailures: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "loki_index_builder_commit_failures_total",
 			Help: "Total number of commit failures",
@@ -36,7 +36,7 @@ func newIndexBuilderMetrics() *indexBuilderMetrics {
 	return p
 }
 
-func (p *indexBuilderMetrics) register(reg prometheus.Registerer) error {
+func (p *builderMetrics) register(reg prometheus.Registerer) error {
 	collectors := []prometheus.Collector{
 		p.commitFailures,
 		p.commitsTotal,
@@ -53,7 +53,7 @@ func (p *indexBuilderMetrics) register(reg prometheus.Registerer) error {
 	return nil
 }
 
-func (p *indexBuilderMetrics) unregister(reg prometheus.Registerer) {
+func (p *builderMetrics) unregister(reg prometheus.Registerer) {
 	collectors := []prometheus.Collector{
 		p.commitFailures,
 		p.commitsTotal,
@@ -65,15 +65,15 @@ func (p *indexBuilderMetrics) unregister(reg prometheus.Registerer) {
 	}
 }
 
-func (p *indexBuilderMetrics) incCommitFailures() {
+func (p *builderMetrics) incCommitFailures() {
 	p.commitFailures.Inc()
 }
 
-func (p *indexBuilderMetrics) incCommitsTotal() {
+func (p *builderMetrics) incCommitsTotal() {
 	p.commitsTotal.Inc()
 }
 
-func (p *indexBuilderMetrics) setProcessingDelay(recordTimestamp time.Time) {
+func (p *builderMetrics) setProcessingDelay(recordTimestamp time.Time) {
 	// Convert milliseconds to seconds and calculate delay
 	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
 		p.processingDelay.Set(time.Since(recordTimestamp).Seconds())
