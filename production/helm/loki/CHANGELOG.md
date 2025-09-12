@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [ENHANCEMENT] Upgrade rollout-operator to [v0.33.0](https://github.com/grafana/helm-charts/releases/tag/rollout-operator-0.33.0). Note: [Action required](https://github.com/grafana/helm-charts/tree/main/charts/rollout-operator#upgrade-of-grafana-rollout-operator) when upgrading. [#19176](https://github.com/grafana/loki/pull/19176)
+
 ## 6.40.0
 
 - [FEATURE] Add configurable `livenessProbe` and `startupProbe` to single binary StatefulSet. [#19072](https://github.com/grafana/loki/pull/19072)
