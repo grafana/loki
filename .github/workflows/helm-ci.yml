@@ -8,7 +8,7 @@ on:
 
 env:
   CT_CONFIGFILE: production/helm/ct.yaml
-  INTEGRARION_TESTS_DIR: production/helm/loki/test/integration
+  INTEGRATION_TESTS_DIR: production/helm/loki/test/integration
 
 jobs:
 # Temporarily disabled linting because this step doesn't easily support passing GO tags yet.
@@ -36,9 +36,9 @@ jobs:
           persist-credentials: false
 
       - name: Set up Helm
-        uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112 # v4
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
         with:
-          version: v3.8.2
+          version: v3.18.6
 
       # Python is required because `ct lint` runs Yamale (https://github.com/23andMe/Yamale) and
       # yamllint (https://github.com/adrienverge/yamllint) which require Python
@@ -49,6 +49,7 @@ jobs:
 
       - name: Set up chart-testing
         uses: helm/chart-testing-action@0d28d3144d3a25ea2cc349d6e59901c4ff469b3b # v2.7.0
+
       - name: Run chart-testing (list-changed)
         id: list-changed
         run: |
@@ -57,8 +58,11 @@ jobs:
             echo "changed=true" >> $GITHUB_OUTPUT
           fi
 
+      - name: install helm unittest plugin
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --version 1.0.1
+
       - name: Run chart-testing (lint)
-        run: ct lint --config "${CT_CONFIGFILE}" --check-version-increment=false
+        run: ct lint --config "${CT_CONFIGFILE}"
         timeout-minutes: 10
 
       - name: Create kind cluster
@@ -103,7 +107,7 @@ jobs:
 
       - name: List tests
         id: list_tests
-        working-directory: "${{ env.INTEGRARION_TESTS_DIR }}"
+        working-directory: "${{ env.INTEGRATION_TESTS_DIR }}"
         env:
           LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
         run: |
@@ -153,5 +157,5 @@ jobs:
       - name: Run test
         run: helm-chart-toolbox/tools/helm-test/helm-test "${TEST_DIRECTORY}"
         env:
-          TEST_DIRECTORY: "source/${{ env.INTEGRARION_TESTS_DIR }}/${{ matrix.test }}"
+          TEST_DIRECTORY: "source/${{ env.INTEGRATION_TESTS_DIR }}/${{ matrix.test }}"
           DELETE_CLUSTER: true
