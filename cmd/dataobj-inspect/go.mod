@@ -12,6 +12,7 @@ require (
 	github.com/fatih/color v1.18.0
 	github.com/grafana/loki/v3 v3.5.2
 	github.com/prometheus/prometheus v0.305.1-0.20250806170547-208187eaa19b
+	github.com/prometheus/prometheus/v2 v2.35.0-retract
 )
 
 require (
