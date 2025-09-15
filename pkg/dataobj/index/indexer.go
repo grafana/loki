@@ -168,7 +168,7 @@ func (si *serialIndexer) submitBuild(ctx context.Context, events []bufferedEvent
 	case si.buildRequestChan <- req:
 		si.indexerMetrics.incRequests()
 		level.Debug(si.logger).Log("msg", "submitted build request",
-			"partition", partition, "events", len(events), "trigger", string(trigger))
+			"partition", partition, "events", len(events), "trigger", trigger)
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -293,7 +293,7 @@ func (si *serialIndexer) processBuildRequest(req buildRequest) buildResult {
 	start := time.Now()
 
 	level.Debug(si.logger).Log("msg", "processing build request",
-		"partition", req.partition, "events", len(req.events), "trigger", string(req.trigger))
+		"partition", req.partition, "events", len(req.events), "trigger", req.trigger)
 
 	// Extract events for building
 	events := make([]metastore.ObjectWrittenEvent, len(req.events))

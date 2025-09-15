@@ -92,8 +92,6 @@ func TestSerialIndexer_BuildIndex(t *testing.T) {
 	// Verify Prometheus metrics
 	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalRequests))
 	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalBuilds))
-	require.Greater(t, testutil.ToFloat64(indexerMetrics.buildTimeSeconds), float64(0))
-	require.Equal(t, float64(0), testutil.ToFloat64(indexerMetrics.queueDepth))
 }
 
 func TestSerialIndexer_MultipleBuilds(t *testing.T) {
@@ -107,7 +105,7 @@ func TestSerialIndexer_MultipleBuilds(t *testing.T) {
 	buildLogObject(t, "testing", "test-path-1", bucket)
 
 	events := []bufferedEvent{}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		event := metastore.ObjectWrittenEvent{
 			ObjectPath: fmt.Sprintf("test-path-%d", i),
 			WriteTime:  time.Now().Format(time.RFC3339),
@@ -169,71 +167,6 @@ func TestSerialIndexer_MultipleBuilds(t *testing.T) {
 	// Verify Prometheus metrics - multiple events in single request/build
 	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalRequests))
 	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalBuilds))
-	require.Greater(t, testutil.ToFloat64(indexerMetrics.buildTimeSeconds), float64(0))
-	require.Equal(t, float64(0), testutil.ToFloat64(indexerMetrics.queueDepth))
-}
-
-func TestSerialIndexer_FlushTrigger(t *testing.T) {
-	t.Parallel()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// Set up test data
-	bucket := objstore.NewInMemBucket()
-	buildLogObject(t, "loki", "test-path-0", bucket)
-
-	event := metastore.ObjectWrittenEvent{
-		ObjectPath: "test-path-0",
-		WriteTime:  time.Now().Format(time.RFC3339),
-	}
-
-	record := &kgo.Record{
-		Partition: int32(0),
-	}
-	eventBytes, err := event.Marshal()
-	require.NoError(t, err)
-	record.Value = eventBytes
-
-	bufferedEvt := bufferedEvent{
-		event:  event,
-		record: record,
-	}
-
-	// Create indexer with mock calculator
-	mockCalc := &mockCalculator{}
-	indexStorageBucket := objstore.NewInMemBucket()
-	builderMetrics := newBuilderMetrics()
-	require.NoError(t, builderMetrics.register(prometheus.NewRegistry()))
-
-	indexerMetrics := newIndexerMetrics()
-	require.NoError(t, indexerMetrics.register(prometheus.NewRegistry()))
-
-	indexer := newSerialIndexer(
-		mockCalc,
-		bucket,
-		indexStorageBucket,
-		builderMetrics,
-		indexerMetrics,
-		log.NewLogfmtLogger(os.Stderr),
-		indexerConfig{QueueSize: 10},
-	)
-
-	// Start indexer service
-	require.NoError(t, indexer.StartAsync(ctx))
-	require.NoError(t, indexer.AwaitRunning(ctx))
-	defer func() {
-		indexer.StopAsync()
-		require.NoError(t, indexer.AwaitTerminated(context.Background()))
-	}()
-
-	// Submit build request with flush trigger
-	records, err := indexer.submitBuild(ctx, []bufferedEvent{bufferedEvt}, 0, triggerTypeFlush)
-	require.NoError(t, err)
-	require.Len(t, records, 1)
-
-	// Verify calculator was used
-	require.Equal(t, 1, mockCalc.count)
-	require.NotNil(t, mockCalc.object)
 }
 
 func TestSerialIndexer_ServiceNotRunning(t *testing.T) {

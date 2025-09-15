@@ -34,6 +34,17 @@ const (
 	triggerTypeFlush  triggerType = "flush"
 )
 
+func (tt triggerType) String() string {
+	switch tt {
+	case triggerTypeAppend:
+		return "append"
+	case triggerTypeFlush:
+		return "flush"
+	default:
+		return "unknown"
+	}
+}
+
 type bufferedEvent struct {
 	event  metastore.ObjectWrittenEvent
 	record *kgo.Record
@@ -439,7 +450,7 @@ func (p *Builder) bufferAndTryProcess(partition int32, newEvent *bufferedEvent, 
 			return nil, nil
 		}
 	default:
-		level.Error(p.logger).Log("msg", "unknown trigger type", "trigger", string(trigger))
+		level.Error(p.logger).Log("msg", "unknown trigger type")
 		return nil, nil
 	}
 
@@ -454,7 +465,7 @@ func (p *Builder) bufferAndTryProcess(partition int32, newEvent *bufferedEvent, 
 	p.cancelActiveCalculation = cancel
 
 	level.Debug(p.logger).Log("msg", "started processing partition",
-		"partition", partition, "events", len(eventsToProcess), "trigger", string(trigger))
+		"partition", partition, "events", len(eventsToProcess), "trigger", trigger)
 
 	return ctx, eventsToProcess
 }
