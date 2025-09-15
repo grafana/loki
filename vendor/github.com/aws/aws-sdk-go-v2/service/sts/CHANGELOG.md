@@ -1,3 +1,12 @@
+# v1.35.0 (2025-07-28)
+
+* **Feature**: Add support for HTTP interceptors.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.34.1 (2025-07-19)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.34.0 (2025-06-17)
 
 * **Feature**: The AWS Security Token Service APIs AssumeRoleWithSAML and AssumeRoleWithWebIdentity can now be invoked without pre-configured AWS credentials in the SDK configuration.

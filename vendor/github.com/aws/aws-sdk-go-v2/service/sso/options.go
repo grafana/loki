@@ -119,6 +119,9 @@ type Options struct {
 	// implementation if nil.
 	HTTPClient HTTPClient
 
+	// Client registry of operation interceptors.
+	Interceptors smithyhttp.InterceptorRegistry
+
 	// The auth scheme resolver which determines how to authenticate for each
 	// operation.
 	AuthSchemeResolver AuthSchemeResolver
@@ -132,6 +135,7 @@ func (o Options) Copy() Options {
 	to := o
 	to.APIOptions = make([]func(*middleware.Stack) error, len(o.APIOptions))
 	copy(to.APIOptions, o.APIOptions)
+	to.Interceptors = o.Interceptors.Copy()
 
 	return to
 }

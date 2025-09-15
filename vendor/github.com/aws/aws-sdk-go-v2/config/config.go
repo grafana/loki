@@ -89,6 +89,8 @@ var defaultAWSConfigResolvers = []awsConfigResolver{
 
 	// Sets the ResponseChecksumValidation if present in env var or shared config profile
 	resolveResponseChecksumValidation,
+
+	resolveInterceptors,
 }
 
 // A Config represents a generic configuration value or set of values. This type

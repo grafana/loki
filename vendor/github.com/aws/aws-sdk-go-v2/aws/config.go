@@ -6,6 +6,7 @@ import (
 	smithybearer "github.com/aws/smithy-go/auth/bearer"
 	"github.com/aws/smithy-go/logging"
 	"github.com/aws/smithy-go/middleware"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // HTTPClient provides the interface to provide custom HTTPClients. Generally
@@ -192,6 +193,9 @@ type Config struct {
 	// This variable is sourced from environment variable AWS_RESPONSE_CHECKSUM_VALIDATION or
 	// the shared config profile attribute "response_checksum_validation".
 	ResponseChecksumValidation ResponseChecksumValidation
+
+	// Registry of HTTP interceptors.
+	Interceptors smithyhttp.InterceptorRegistry
 }
 
 // NewConfig returns a new Config pointer that can be chained with builder
