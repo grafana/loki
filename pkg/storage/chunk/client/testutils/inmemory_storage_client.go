@@ -239,7 +239,7 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch index.WriteBatch) er
 		// Check for duplicate writes by RangeKey in same batch
 		key := fmt.Sprintf("%s:%s:%x", req.tableName, req.hashValue, req.rangeValue)
 		if _, ok := seenWrites[key]; ok {
-			return fmt.Errorf("Dupe write in batch")
+			return fmt.Errorf("dupe write in batch")
 		}
 		seenWrites[key] = true
 

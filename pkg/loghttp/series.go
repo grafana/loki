@@ -32,7 +32,7 @@ func ParseSeriesQuery(r *http.Request) (*logproto.SeriesRequest, error) {
 	// empty label matcher, we treat the latter case here as if no `match` was supplied at all.
 	if len(deduped) == 1 {
 		matcher := deduped[0]
-		matcher = strings.Replace(matcher, " ", "", -1)
+		matcher = strings.ReplaceAll(matcher, " ", "")
 		if matcher == "{}" {
 			deduped = deduped[:0]
 		}
