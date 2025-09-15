@@ -125,6 +125,11 @@ func (c *OTLPConfig) Validate() error {
 		}
 	}
 
+	// Validate ConversionStrategy
+	if c.ConversionStrategy != "" && c.ConversionStrategy != DotsToUnderscores && c.ConversionStrategy != NoConversion {
+		return fmt.Errorf("invalid conversion_strategy: %s, must be one of: %s, %s", c.ConversionStrategy, DotsToUnderscores, NoConversion)
+	}
+
 	return nil
 }
 
