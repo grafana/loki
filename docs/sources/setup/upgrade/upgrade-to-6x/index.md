@@ -132,7 +132,7 @@ The previous configuration caused ingester scaling operations to fail because th
 
 #### BREAKING: Make access modes for persistence on all PVCs and StatefulSets editable (6.38.0+)
 
-Version 3.68.0 of the Helm charts introduced the ability to edit the access modes for persistence on all PVCs and StatefulSets. This is a breaking change because it requires users to manually orphan StatefulSets before upgrading.
+Version 6.38.0 of the Helm charts introduced the ability to edit the access modes for persistence on all PVCs and StatefulSets. This is a breaking change because it requires users to manually orphan StatefulSets before upgrading.
 
 **Required action before upgrading to 6.38.0**:
 

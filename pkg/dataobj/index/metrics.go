@@ -13,8 +13,8 @@ type indexBuilderMetrics struct {
 	// Request counters
 	commitsTotal prometheus.Counter
 
-	// Processing delay histogram
-	processingDelay prometheus.Histogram
+	// Processing delay metrics
+	processingDelay prometheus.Gauge // Latest delta between record timestamp and current time
 }
 
 func newIndexBuilderMetrics() *indexBuilderMetrics {
@@ -27,13 +27,9 @@ func newIndexBuilderMetrics() *indexBuilderMetrics {
 			Name: "loki_index_builder_commits_total",
 			Help: "Total number of commits",
 		}),
-		processingDelay: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:                            "loki_index_builder_processing_delay_seconds",
-			Help:                            "Time difference between record timestamp and processing time in seconds",
-			Buckets:                         prometheus.DefBuckets,
-			NativeHistogramBucketFactor:     1.1,
-			NativeHistogramMaxBucketNumber:  100,
-			NativeHistogramMinResetDuration: 0,
+		processingDelay: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "loki_index_builder_latest_processing_delay_seconds",
+			Help: "Latest time difference between record timestamp and processing time in seconds",
 		}),
 	}
 
@@ -77,9 +73,9 @@ func (p *indexBuilderMetrics) incCommitsTotal() {
 	p.commitsTotal.Inc()
 }
 
-func (p *indexBuilderMetrics) observeProcessingDelay(recordTimestamp time.Time) {
+func (p *indexBuilderMetrics) setProcessingDelay(recordTimestamp time.Time) {
 	// Convert milliseconds to seconds and calculate delay
 	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		p.processingDelay.Observe(time.Since(recordTimestamp).Seconds())
+		p.processingDelay.Set(time.Since(recordTimestamp).Seconds())
 	}
 }
