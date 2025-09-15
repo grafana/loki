@@ -169,6 +169,7 @@ type Lifecycler struct {
 	healthyInstancesInZoneCount int
 	instancesInZoneCount        int
 	zonesCount                  int
+	zones                       []string
 
 	tokenGenerator TokenGenerator
 	// The maximum time allowed to wait on the CanJoin() condition.
@@ -520,6 +521,15 @@ func (i *Lifecycler) ZonesCount() int {
 	defer i.countersLock.RUnlock()
 
 	return i.zonesCount
+}
+
+// Zones return the list of zones for which there's at least 1 instance registered
+// in the ring. They are guaranteed to be sorted alphabetically.
+func (i *Lifecycler) Zones() []string {
+	i.countersLock.RLock()
+	defer i.countersLock.RUnlock()
+
+	return i.zones
 }
 
 func (i *Lifecycler) loop(ctx context.Context) error {
@@ -1007,6 +1017,12 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 		}
 	}
 
+	zoneNames := make([]string, 0, len(zones))
+	for zone := range zones {
+		zoneNames = append(zoneNames, zone)
+	}
+	sort.Strings(zoneNames)
+
 	// Update counters
 	i.countersLock.Lock()
 	i.healthyInstancesCount = healthyInstancesCount
@@ -1015,6 +1031,7 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 	i.healthyInstancesInZoneCount = healthyInstancesInZone[i.cfg.Zone]
 	i.instancesInZoneCount = zones[i.cfg.Zone]
 	i.zonesCount = len(zones)
+	i.zones = zoneNames
 	i.countersLock.Unlock()
 }
 

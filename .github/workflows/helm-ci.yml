@@ -8,6 +8,7 @@ on:
 
 env:
   CT_CONFIGFILE: production/helm/ct.yaml
+  INTEGRARION_TESTS_DIR: production/helm/loki/test/integration
 
 jobs:
 # Temporarily disabled linting because this step doesn't easily support passing GO tags yet.
@@ -88,3 +89,69 @@ jobs:
             exit 0
           fi
           ct install --config "${CT_CONFIGFILE}"
+
+  list-integration-tests:
+    name: List integration tests
+    runs-on: ubuntu-latest
+    outputs:
+      tests: ${{ steps.list_tests.outputs.tests }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: 'false'
+
+      - name: List tests
+        id: list_tests
+        working-directory: "${{ env.INTEGRARION_TESTS_DIR }}"
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          tests=$(find . -name test-plan.yaml -exec dirname {} \; | sed -e "s/^\.\///g")
+          echo "Tests: ${tests}"
+          echo "tests=$(echo "${tests}" | jq --raw-input --slurp --compact-output 'split("\n") | map(select(. != ""))')" >> "${GITHUB_OUTPUT}"
+
+  run-integration-tests:
+    name: Integration Test
+    needs: list-integration-tests
+    runs-on: ubuntu-latest
+    if: needs.list-integration-tests.outputs.tests != '[]'
+    strategy:
+      matrix:
+        test: ${{ fromJson(needs.list-integration-tests.outputs.tests) }}
+      fail-fast: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          path: source
+          persist-credentials: 'false'
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          path: helm-chart-toolbox
+          repository: grafana/helm-chart-toolbox
+          persist-credentials: 'false'
+
+      - name: Set up Helm
+        uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112  # v4.3.0
+
+      - name: Install Flux CLI
+        uses: fluxcd/flux2/action@6bf37f6a560fd84982d67f853162e4b3c2235edb  # v2.6.4
+
+      - name: Install Kind CLI
+        uses: helm/kind-action@a1b0e391336a6ee6713a0583f8c6240d70863de3  # v1.12.0
+        with:
+          install_only: true
+
+      - name: Install Minikube CLI
+        uses: medyagh/setup-minikube@e3c7f79eb1e997eabccc536a6cf318a2b0fe19d9  # v0.0.20
+        with:
+          start: false
+
+      - name: Run test
+        run: helm-chart-toolbox/tools/helm-test/helm-test "${TEST_DIRECTORY}"
+        env:
+          TEST_DIRECTORY: "source/${{ env.INTEGRARION_TESTS_DIR }}/${{ matrix.test }}"
+          DELETE_CLUSTER: true

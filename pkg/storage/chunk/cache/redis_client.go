@@ -74,7 +74,7 @@ func NewRedisClient(cfg *RedisConfig) (*RedisClient, error) {
 		RouteRandomly:   cfg.RouteRandomly,
 	}
 	if cfg.EnableTLS {
-		opt.TLSConfig = &tls.Config{InsecureSkipVerify: cfg.InsecureSkipVerify} //#nosec G402 -- User has explicitly requested to disable TLS
+		opt.TLSConfig = &tls.Config{InsecureSkipVerify: cfg.InsecureSkipVerify} //#nosec G402 -- User has explicitly requested to disable TLS -- nosemgrep: tls-with-insecure-cipher
 	}
 	return &RedisClient{
 		expiration: cfg.Expiration,
@@ -208,7 +208,7 @@ func (c *RedisClient) Close() error {
 
 // StringToBytes converts string to byte slice. (copied from vendor/github.com/go-redis/redis/v8/internal/util/unsafe.go)
 func StringToBytes(s string) []byte {
-	return *(*[]byte)(unsafe.Pointer( // #nosec G103 -- we know the string is not mutated
+	return *(*[]byte)(unsafe.Pointer( // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 		&struct {
 			string
 			Cap int

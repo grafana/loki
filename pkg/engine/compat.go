@@ -25,11 +25,15 @@ type ResultBuilder interface {
 	Len() int
 }
 
-var _ ResultBuilder = &streamsResultBuilder{}
-var _ ResultBuilder = &vectorResultBuilder{}
+var (
+	_ ResultBuilder = &streamsResultBuilder{}
+	_ ResultBuilder = &vectorResultBuilder{}
+	_ ResultBuilder = &matrixResultBuilder{}
+)
 
 func newStreamsResultBuilder() *streamsResultBuilder {
 	return &streamsResultBuilder{
+		data:    make(logqlmodel.Streams, 0),
 		streams: make(map[string]int),
 	}
 }
@@ -157,8 +161,101 @@ func (b *vectorResultBuilder) CollectRecord(rec arrow.Record) {
 }
 
 func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample, bool) {
+	return collectSamplesFromRow(b.lblsBuilder, rec, i)
+}
+
+func (b *vectorResultBuilder) Build(s stats.Result, md *metadata.Context) logqlmodel.Result {
+	sort.Slice(b.data, func(i, j int) bool {
+		return labels.Compare(b.data[i].Metric, b.data[j].Metric) < 0
+	})
+	return logqlmodel.Result{
+		Data:       b.data,
+		Statistics: s,
+		Headers:    md.Headers(),
+		Warnings:   md.Warnings(),
+	}
+}
+
+func (b *vectorResultBuilder) Len() int {
+	return len(b.data)
+}
+
+type matrixResultBuilder struct {
+	seriesIndex map[uint64]promql.Series
+	lblsBuilder *labels.Builder
+}
+
+func newMatrixResultBuilder() *matrixResultBuilder {
+	return &matrixResultBuilder{
+		seriesIndex: make(map[uint64]promql.Series),
+		lblsBuilder: labels.NewBuilder(labels.EmptyLabels()),
+	}
+}
+
+func (b *matrixResultBuilder) CollectRecord(rec arrow.Record) {
+	for row := range int(rec.NumRows()) {
+		sample, ok := b.collectRow(rec, row)
+		if !ok {
+			continue
+		}
+
+		// TODO(ashwanth): apply query series limits.
+
+		// Group samples by series (labels hash)
+		hash := labels.StableHash(sample.Metric)
+		series, exists := b.seriesIndex[hash]
+
+		if !exists {
+			// Create new series
+			series = promql.Series{
+				Metric: sample.Metric,
+				Floats: make([]promql.FPoint, 0, 1),
+			}
+		}
+
+		series.Floats = append(series.Floats, promql.FPoint{
+			T: sample.T,
+			F: sample.F,
+		})
+
+		b.seriesIndex[hash] = series
+	}
+}
+
+func (b *matrixResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample, bool) {
+	return collectSamplesFromRow(b.lblsBuilder, rec, i)
+}
+
+func (b *matrixResultBuilder) Build(s stats.Result, md *metadata.Context) logqlmodel.Result {
+	series := make([]promql.Series, 0, len(b.seriesIndex))
+	for _, s := range b.seriesIndex {
+		series = append(series, s)
+	}
+
+	// Create matrix and sort it
+	result := promql.Matrix(series)
+	sort.Sort(result)
+
+	return logqlmodel.Result{
+		Data:       result,
+		Statistics: s,
+		Headers:    md.Headers(),
+		Warnings:   md.Warnings(),
+	}
+}
+
+func (b *matrixResultBuilder) Len() int {
+	total := 0
+	for _, series := range b.seriesIndex {
+		total += len(series.Floats) + len(series.Histograms)
+	}
+
+	return total
+}
+
+func collectSamplesFromRow(builder *labels.Builder, rec arrow.Record, i int) (promql.Sample, bool) {
 	var sample promql.Sample
-	b.lblsBuilder.Reset(labels.EmptyLabels())
+	builder.Reset(labels.EmptyLabels())
 
 	// TODO: we add a lot of overhead by reading row by row. Switch to vectorized conversion.
 	for colIdx := range int(rec.NumCols()) {
@@ -192,27 +289,11 @@ func (b *vectorResultBuilder) collectRow(rec arrow.Record, i int) (promql.Sample
 		default:
 			// allow any string columns
 			if colDataType == datatype.Loki.String.String() {
-				b.lblsBuilder.Set(colName, col.(*array.String).Value(i))
+				builder.Set(colName, col.(*array.String).Value(i))
 			}
 		}
 	}
 
-	sample.Metric = b.lblsBuilder.Labels()
+	sample.Metric = builder.Labels()
 	return sample, true
-}
-
-func (b *vectorResultBuilder) Build(s stats.Result, md *metadata.Context) logqlmodel.Result {
-	sort.Slice(b.data, func(i, j int) bool {
-		return labels.Compare(b.data[i].Metric, b.data[j].Metric) < 0
-	})
-	return logqlmodel.Result{
-		Data:       b.data,
-		Statistics: s,
-		Headers:    md.Headers(),
-		Warnings:   md.Warnings(),
-	}
-}
-
-func (b *vectorResultBuilder) Len() int {
-	return len(b.data)
 }

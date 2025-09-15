@@ -252,7 +252,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.C
 	}
 
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify, //#nosec G402 -- User has explicitly requested to disable TLS
+		InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify, //#nosec G402 -- User has explicitly requested to disable TLS -- nosemgrep: tls-with-insecure-cipher
 	}
 
 	if cfg.HTTPConfig.CAFile != "" {

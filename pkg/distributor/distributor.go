@@ -100,15 +100,15 @@ type Config struct {
 
 	OTLPConfig push.GlobalOTLPConfig `yaml:"otlp_config"`
 
+	// DefaultPolicyStreamMappings contains the default policy stream mappings that are merged with per-tenant mappings.
+	DefaultPolicyStreamMappings validation.PolicyStreamMapping `yaml:"default_policy_stream_mappings" doc:"description=Default policy stream mappings that are merged with per-tenant mappings."`
+
 	KafkaEnabled              bool `yaml:"kafka_writes_enabled"`
 	IngesterEnabled           bool `yaml:"ingester_writes_enabled"`
 	IngestLimitsEnabled       bool `yaml:"ingest_limits_enabled"`
 	IngestLimitsDryRunEnabled bool `yaml:"ingest_limits_dry_run_enabled"`
 
 	KafkaConfig kafka.Config `yaml:"-"`
-
-	// TODO: cleanup config
-	TenantTopic TenantTopicConfig `yaml:"tenant_topic" category:"experimental"`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -117,7 +117,6 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
-	cfg.TenantTopic.RegisterFlags(fs)
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
@@ -129,9 +128,6 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 func (cfg *Config) Validate() error {
 	if !cfg.KafkaEnabled && !cfg.IngesterEnabled {
 		return fmt.Errorf("at least one of kafka and ingestor writes must be enabled")
-	}
-	if err := cfg.TenantTopic.Validate(); err != nil {
-		return errors.Wrap(err, "validating tenant topic config")
 	}
 	return nil
 }
@@ -288,16 +284,6 @@ func New(
 		}
 		kafkaWriter = kafka_client.NewProducer("distributor", kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
-
-		// TODO: cleanup/make independent of whether we write kafka as primary?
-		if cfg.TenantTopic.Enabled {
-			w, err := NewTenantTopicWriter(cfg.TenantTopic, kafkaClient, overrides, registerer, logger)
-			if err != nil {
-				return nil, fmt.Errorf("failed to start tenant topic tee: %w", err)
-			}
-
-			tee = WrapTee(tee, w)
-		}
 	}
 
 	d := &Distributor{
@@ -578,7 +564,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 	var ingestionBlockedError error
 
-	func() {
+	err = func() error {
 		sp := trace.SpanFromContext(ctx)
 		sp.AddEvent("start to validate request")
 		defer sp.AddEvent("finished to validate request")
@@ -649,7 +635,10 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				normalizedBuilder := labels.NewBuilder(structuredMetadata)
 
 				for _, lbl := range entry.StructuredMetadata {
-					normalized = labelNamer.Build(lbl.Name)
+					normalized, err = labelNamer.Build(lbl.Name)
+					if err != nil {
+						return err
+					}
 					if normalized != lbl.Name {
 						// Swap the name with the normalized one.
 						normalizedBuilder.Del(lbl.Name)
@@ -715,7 +704,11 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 			maybeShardStreams(stream, lbs, pushSize)
 		}
+		return nil
 	}()
+	if err != nil {
+		return nil, err
+	}
 
 	var validationErr error
 	if validationErrors.Err() != nil {

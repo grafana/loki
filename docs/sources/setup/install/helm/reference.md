@@ -51,6 +51,7 @@ This is the generated reference for the Loki Helm Chart values.
     },
     "readOnlyRootFilesystem": true
   },
+  "dnsConfig": {},
   "env": [],
   "extraArgs": {},
   "extraContainers": [],
@@ -59,8 +60,10 @@ This is the generated reference for the Loki Helm Chart values.
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "initContainers": [],
   "labels": {},
+  "livenessProbe": {},
   "nodeSelector": {},
   "podSecurityContext": {
     "runAsGroup": 10001,
@@ -80,6 +83,7 @@ This is the generated reference for the Loki Helm Chart values.
     "annotations": {},
     "labels": {}
   },
+  "startupProbe": {},
   "strategy": {
     "type": "RollingUpdate"
   },
@@ -93,7 +97,7 @@ This is the generated reference for the Loki Helm Chart values.
 		<tr>
 			<td>adminApi.affinity</td>
 			<td>object</td>
-			<td>Affinity for admin-api Pods</td>
+			<td>Affinity for admin-api Pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -103,6 +107,15 @@ This is the generated reference for the Loki Helm Chart values.
 			<td>adminApi.annotations</td>
 			<td>object</td>
 			<td>Additional annotations for the `admin-api` Deployment</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for `admin-api` pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -129,7 +142,7 @@ This is the generated reference for the Loki Helm Chart values.
 		<tr>
 			<td>adminApi.extraContainers</td>
 			<td>list</td>
-			<td>Conifgure optional extraContainers</td>
+			<td>Configure optional extraContainers</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -181,6 +194,15 @@ This is the generated reference for the Loki Helm Chart values.
 </td>
 		</tr>
 		<tr>
+			<td>adminApi.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in admin-api pods</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>adminApi.initContainers</td>
 			<td>list</td>
 			<td>Configure optional initContainers</td>
@@ -193,6 +215,15 @@ This is the generated reference for the Loki Helm Chart values.
 			<td>adminApi.labels</td>
 			<td>object</td>
 			<td>Additional labels for the `admin-api` Deployment</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -266,6 +297,15 @@ This is the generated reference for the Loki Helm Chart values.
 </td>
 		</tr>
 		<tr>
+			<td>adminApi.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>adminApi.strategy</td>
 			<td>object</td>
 			<td>Update strategy</td>
@@ -297,7 +337,7 @@ This is the generated reference for the Loki Helm Chart values.
 		<tr>
 			<td>adminApi.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for admin-api pods</td>
+			<td>Topology Spread Constraints for admin-api pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -315,7 +355,9 @@ This is the generated reference for the Loki Helm Chart values.
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "backend"
+              "app.kubernetes.io/component": "backend",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -339,6 +381,7 @@ This is the generated reference for the Loki Helm Chart values.
   "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -347,11 +390,15 @@ This is the generated reference for the Loki Helm Chart values.
   "initContainers": [],
   "nodeSelector": {},
   "persistence": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
     "annotations": {},
     "dataVolumeParameters": {
       "emptyDir": {}
     },
     "enableStatefulSetAutoDeletePVC": true,
+    "labels": {},
     "selector": null,
     "size": "10Gi",
     "storageClass": null,
@@ -366,7 +413,8 @@ This is the generated reference for the Loki Helm Chart values.
   "selectorLabels": {},
   "service": {
     "annotations": {},
-    "labels": {}
+    "labels": {},
+    "type": "ClusterIP"
   },
   "targetModule": "backend",
   "terminationGracePeriodSeconds": 300,
@@ -379,7 +427,7 @@ This is the generated reference for the Loki Helm Chart values.
 		<tr>
 			<td>backend.affinity</td>
 			<td>object</td>
-			<td>Affinity for backend pods.</td>
+			<td>Affinity for backend pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -512,6 +560,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the backend pods.</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the backend image. Overrides `loki.image.registry`</td>
@@ -557,6 +614,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.persistence.annotations</td>
 			<td>object</td>
 			<td>Annotations for volume claim</td>
@@ -582,6 +650,15 @@ null
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
 			<td><pre lang="json">
 true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for volume claim</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -703,6 +780,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.service.type</td>
+			<td>string</td>
+			<td>Service type for backend Service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.targetModule</td>
 			<td>string</td>
 			<td>Comma-separated list of Loki modules to load for the backend</td>
@@ -732,7 +818,7 @@ null
 		<tr>
 			<td>backend.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for backend pods</td>
+			<td>Topology Spread Constraints for backend pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -750,7 +836,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "bloom-builder"
+              "app.kubernetes.io/component": "bloom-builder",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -775,6 +863,7 @@ null
     "targetMemoryUtilizationPercentage": null
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -782,11 +871,13 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
     "tag": null
   },
+  "initContainers": [],
   "maxUnavailable": null,
   "nodeSelector": {},
   "podAnnotations": {},
@@ -805,7 +896,7 @@ null
 		<tr>
 			<td>bloomBuilder.affinity</td>
 			<td>object</td>
-			<td>Affinity for bloom-builder pods.</td>
+			<td>Affinity for bloom-builder pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -922,6 +1013,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomBuilder.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for bloom-builder pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomBuilder.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the bloom-builder</td>
@@ -985,6 +1085,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomBuilder.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the boom-builder</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomBuilder.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the bloom-builder image. Overrides `loki.image.registry`</td>
@@ -1008,6 +1117,15 @@ null
 			<td>Docker image tag for the bloom-builder image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the bloom-builder pods</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -1122,7 +1240,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "bloom-gateway"
+              "app.kubernetes.io/component": "bloom-gateway",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -1134,6 +1254,7 @@ null
     "grpc": ""
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -1141,6 +1262,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -1153,6 +1275,9 @@ null
     "annotations": {},
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -1160,6 +1285,7 @@ null
     ],
     "enableStatefulSetAutoDeletePVC": false,
     "enabled": false,
+    "labels": {},
     "whenDeleted": "Retain",
     "whenScaled": "Retain"
   },
@@ -1178,6 +1304,7 @@ null
   },
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
 }
@@ -1187,7 +1314,7 @@ null
 		<tr>
 			<td>bloomGateway.affinity</td>
 			<td>object</td>
-			<td>Affinity for bloom-gateway pods.</td>
+			<td>Affinity for bloom-gateway pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -1210,6 +1337,15 @@ Hard node anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for bloom-gateway pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1273,6 +1409,15 @@ null
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the bloom-gateway</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -1349,6 +1494,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomGateway.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomGateway.persistence.claims[0].size</td>
 			<td>string</td>
 			<td>Size of persistent disk</td>
@@ -1372,6 +1528,15 @@ false
 			<td>Enable creating PVCs for the bloom-gateway</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for bloom gateway PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1484,6 +1649,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomGateway.startupProbe</td>
+			<td>object</td>
+			<td>startup probe settings for ingester pods. If empty, use `loki.startupProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomGateway.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the bloom-gateway to shutdown before it is killed</td>
@@ -1513,7 +1687,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "bloom-planner"
+              "app.kubernetes.io/component": "bloom-planner",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -1525,6 +1701,7 @@ null
     "grpc": ""
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -1532,6 +1709,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -1541,9 +1719,13 @@ null
   "livenessProbe": {},
   "nodeSelector": {},
   "persistence": {
-    "annotations": {},
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "annotations": {},
+        "labels": {},
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -1569,6 +1751,7 @@ null
   },
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "startupProbe": {},
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
 }
@@ -1578,7 +1761,7 @@ null
 		<tr>
 			<td>bloomPlanner.affinity</td>
 			<td>object</td>
-			<td>Affinity for bloom-planner pods.</td>
+			<td>Affinity for bloom-planner pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -1601,6 +1784,15 @@ Hard node anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for bloom-planner pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1668,6 +1860,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomPlanner.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the bloom-planner</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomPlanner.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the bloom-planner image. Overrides `loki.image.registry`</td>
@@ -1722,7 +1923,27 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>bloomPlanner.persistence.annotations</td>
+			<td>bloomPlanner.persistence.claims</td>
+			<td>list</td>
+			<td>List of the bloom-planner PVCs</td>
+			<td><pre lang="list">
+
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.claims[0].annotations</td>
 			<td>object</td>
 			<td>Annotations for bloom-planner PVCs</td>
 			<td><pre lang="json">
@@ -1731,11 +1952,11 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>bloomPlanner.persistence.claims</td>
-			<td>list</td>
-			<td>List of the bloom-planner PVCs</td>
-			<td><pre lang="list">
-
+			<td>bloomPlanner.persistence.claims[0].labels</td>
+			<td>object</td>
+			<td>Labels for bloom planner PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1875,6 +2096,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomPlanner.startupProbe</td>
+			<td>object</td>
+			<td>startup probe settings for ingester pods. If empty use `loki.startupProbe`</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomPlanner.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the bloom-planner to shutdown before it is killed</td>
@@ -1897,7 +2127,7 @@ null
 			<td>string</td>
 			<td>Comma separated addresses list in DNS Service Discovery format</td>
 			<td><pre lang="json">
-"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.suffix ) }}.{{ $.Release.Namespace }}.svc"
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc"
 </pre>
 </td>
 		</tr>
@@ -1956,6 +2186,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for chunks-cache</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.enabled</td>
 			<td>bool</td>
 			<td>Specifies whether memcached based chunks-cache should be enabled</td>
@@ -2010,6 +2249,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in chunks-cache pods</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.initContainers</td>
 			<td>list</td>
 			<td>Extra init containers for chunks-cache pods</td>
@@ -2024,19 +2272,21 @@ true
 			<td>l2 memcache configuration</td>
 			<td><pre lang="json">
 {
-  "addresses": "dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ $.Release.Namespace }}.svc",
+  "addresses": "dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc",
   "affinity": {},
   "allocatedMemory": 8192,
   "annotations": {},
   "batchSize": 4,
   "connectionLimit": 16384,
   "defaultValidity": "0s",
+  "dnsConfig": {},
   "enabled": false,
   "extraArgs": {},
   "extraContainers": [],
   "extraExtendedOptions": "",
   "extraVolumeMounts": [],
   "extraVolumes": [],
+  "hostUsers": "nil",
   "initContainers": [],
   "l2ChunkCacheHandoff": "345600s",
   "maxItemMemory": 5,
@@ -2081,7 +2331,7 @@ true
 			<td>string</td>
 			<td>Comma separated addresses list in DNS Service Discovery format</td>
 			<td><pre lang="json">
-"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ $.Release.Namespace }}.svc"
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc"
 </pre>
 </td>
 		</tr>
@@ -2140,6 +2390,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.l2.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for chunks-cache-l2</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.l2.enabled</td>
 			<td>bool</td>
 			<td>Specifies whether memcached based chunks-cache-l2 should be enabled</td>
@@ -2190,6 +2449,15 @@ false
 			<td>Additional volumes to be added to the chunks-cache-l2 pod (applies to both memcached and exporter containers). Example: extraVolumes: - name: extra-volume   secret:    secretName: extra-volume-secret</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in chunks-cache-l2 pods</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -2722,7 +2990,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "compactor"
+              "app.kubernetes.io/component": "compactor",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -2734,6 +3004,7 @@ null
     "grpc": ""
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -2741,6 +3012,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -2750,9 +3022,13 @@ null
   "livenessProbe": {},
   "nodeSelector": {},
   "persistence": {
-    "annotations": {},
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "annotations": {},
+        "labels": {},
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -2780,6 +3056,7 @@ null
   },
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": []
 }
@@ -2789,7 +3066,7 @@ null
 		<tr>
 			<td>compactor.affinity</td>
 			<td>object</td>
-			<td>Affinity for compactor pods.</td>
+			<td>Affinity for compactor pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -2812,6 +3089,15 @@ Hard node anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for compactor pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2879,6 +3165,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>compactor.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the compactor</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>compactor.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the compactor image. Overrides `loki.image.registry`</td>
@@ -2933,7 +3228,27 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>compactor.persistence.annotations</td>
+			<td>compactor.persistence.claims</td>
+			<td>list</td>
+			<td>List of the compactor PVCs</td>
+			<td><pre lang="list">
+
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.persistence.claims[0].annotations</td>
 			<td>object</td>
 			<td>Annotations for compactor PVCs</td>
 			<td><pre lang="json">
@@ -2942,11 +3257,11 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>compactor.persistence.claims</td>
-			<td>list</td>
-			<td>List of the compactor PVCs</td>
-			<td><pre lang="list">
-
+			<td>compactor.persistence.claims[0].labels</td>
+			<td>object</td>
+			<td>Labels for compactor PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3095,6 +3410,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>compactor.serviceType</td>
+			<td>string</td>
+			<td>Service type for compactor service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>compactor.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the compactor to shutdown before it is killed</td>
@@ -3133,7 +3457,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "distributor"
+              "app.kubernetes.io/component": "distributor",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -3158,6 +3484,7 @@ null
     "targetMemoryUtilizationPercentage": null
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -3165,11 +3492,13 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
     "tag": null
   },
+  "initContainers": [],
   "maxSurge": 0,
   "maxUnavailable": null,
   "nodeSelector": {},
@@ -3180,6 +3509,7 @@ null
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
   "topologySpreadConstraints": [],
@@ -3191,7 +3521,7 @@ null
 		<tr>
 			<td>distributor.affinity</td>
 			<td>object</td>
-			<td>Affinity for distributor pods.</td>
+			<td>Affinity for distributor pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -3308,6 +3638,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>distributor.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for distributor pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>distributor.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the distributor</td>
@@ -3371,6 +3710,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>distributor.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the distributor</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>distributor.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the distributor image. Overrides `loki.image.registry`</td>
@@ -3394,6 +3742,15 @@ null
 			<td>Docker image tag for the distributor image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the distributor pods</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -3488,6 +3845,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>distributor.serviceType</td>
+			<td>string</td>
+			<td>Service type for distributor service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>distributor.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the distributor to shutdown before it is killed</td>
@@ -3508,7 +3874,7 @@ null
 		<tr>
 			<td>distributor.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for distributor pods</td>
+			<td>Topology Spread Constraints for distributor pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -3533,7 +3899,6 @@ null
     "enabled": true
   },
   "adminToken": {
-    "additionalNamespaces": [],
     "secret": null
   },
   "canarySecret": null,
@@ -3548,7 +3913,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.5.2"
+    "tag": "3.5.3"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3563,6 +3928,7 @@ null
     "extraVolumeMounts": [],
     "extraVolumes": [],
     "hookType": "post-install",
+    "hostUsers": "nil",
     "image": {
       "digest": null,
       "pullPolicy": "IfNotPresent",
@@ -3580,28 +3946,6 @@ null
       "runAsNonRoot": true,
       "runAsUser": 10001
     },
-    "tolerations": []
-  },
-  "tokengen": {
-    "adminTokenSecret": null,
-    "affinity": {},
-    "annotations": {},
-    "enabled": true,
-    "env": [],
-    "extraArgs": [],
-    "extraEnvFrom": [],
-    "extraVolumeMounts": [],
-    "extraVolumes": [],
-    "labels": {},
-    "nodeSelector": {},
-    "priorityClassName": "",
-    "securityContext": {
-      "fsGroup": 10001,
-      "runAsGroup": 10001,
-      "runAsNonRoot": true,
-      "runAsUser": 10001
-    },
-    "targetModule": "tokengen",
     "tolerations": []
   },
   "useExternalLicense": false,
@@ -3622,18 +3966,9 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>enterprise.adminToken.additionalNamespaces</td>
-			<td>list</td>
-			<td>Additional namespace to also create the token in. Useful if your Grafana instance is in a different namespace</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>enterprise.adminToken.secret</td>
 			<td>string</td>
-			<td>Alternative name for admin token secret, needed by tokengen and provisioner jobs</td>
+			<td>Name of external secret containing the admin token for enterprise provisioner This secret must exist before deploying and must contain a key named 'token'</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -3725,7 +4060,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.5.2"
+"3.5.3"
 </pre>
 </td>
 		</tr>
@@ -3743,7 +4078,7 @@ null
 		<tr>
 			<td>enterprise.provisioner</td>
 			<td>object</td>
-			<td>Configuration for `provisioner` target Note: Uses tokengenJob.adminTokenSecret value to mount the admin token used to call the admin api.</td>
+			<td>Configuration for `provisioner` target Note: Uses enterprise.adminToken.secret value to mount the admin token used to call the admin api.</td>
 			<td><pre lang="json">
 {
   "additionalTenants": [],
@@ -3755,6 +4090,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hookType": "post-install",
+  "hostUsers": "nil",
   "image": {
     "digest": null,
     "pullPolicy": "IfNotPresent",
@@ -3789,7 +4125,7 @@ null
 		<tr>
 			<td>enterprise.provisioner.affinity</td>
 			<td>object</td>
-			<td>Affinity for tokengen Pods</td>
+			<td>Affinity for provisioner Pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3855,6 +4191,15 @@ true
 			<td>Hook type(s) to customize when the job runs.  defaults to post-install</td>
 			<td><pre lang="json">
 "post-install"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.provisioner.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in provisioner pods</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -3930,7 +4275,7 @@ null
 		<tr>
 			<td>enterprise.provisioner.nodeSelector</td>
 			<td>object</td>
-			<td>Node selector for tokengen Pods</td>
+			<td>Node selector for provisioner Pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3971,177 +4316,7 @@ null
 		<tr>
 			<td>enterprise.provisioner.tolerations</td>
 			<td>list</td>
-			<td>Tolerations for tokengen Pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen</td>
-			<td>object</td>
-			<td>Configuration for `tokengen` target</td>
-			<td><pre lang="json">
-{
-  "adminTokenSecret": null,
-  "affinity": {},
-  "annotations": {},
-  "enabled": true,
-  "env": [],
-  "extraArgs": [],
-  "extraEnvFrom": [],
-  "extraVolumeMounts": [],
-  "extraVolumes": [],
-  "labels": {},
-  "nodeSelector": {},
-  "priorityClassName": "",
-  "securityContext": {
-    "fsGroup": 10001,
-    "runAsGroup": 10001,
-    "runAsNonRoot": true,
-    "runAsUser": 10001
-  },
-  "targetModule": "tokengen",
-  "tolerations": []
-}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.adminTokenSecret</td>
-			<td>string</td>
-			<td>Name of the secret to store the admin token.</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.affinity</td>
-			<td>object</td>
-			<td>Affinity for tokengen Pods</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.annotations</td>
-			<td>object</td>
-			<td>Additional annotations for the `tokengen` Job</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.enabled</td>
-			<td>bool</td>
-			<td>Whether the job should be part of the deployment</td>
-			<td><pre lang="json">
-true
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.env</td>
-			<td>list</td>
-			<td>Additional Kubernetes environment</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.extraArgs</td>
-			<td>list</td>
-			<td>Additional CLI arguments for the `tokengen` target</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.extraEnvFrom</td>
-			<td>list</td>
-			<td>Environment variables from secrets or configmaps to add to the tokengen pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.extraVolumeMounts</td>
-			<td>list</td>
-			<td>Additional volume mounts for Pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.extraVolumes</td>
-			<td>list</td>
-			<td>Additional volumes for Pods</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.labels</td>
-			<td>object</td>
-			<td>Additional labels for the `tokengen` Job</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.nodeSelector</td>
-			<td>object</td>
-			<td>Node selector for tokengen Pods</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.priorityClassName</td>
-			<td>string</td>
-			<td>The name of the PriorityClass for tokengen Pods</td>
-			<td><pre lang="json">
-""
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.securityContext</td>
-			<td>object</td>
-			<td>Run containers as user `enterprise-logs(uid=10001)`</td>
-			<td><pre lang="json">
-{
-  "fsGroup": 10001,
-  "runAsGroup": 10001,
-  "runAsNonRoot": true,
-  "runAsUser": 10001
-}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.targetModule</td>
-			<td>string</td>
-			<td>Comma-separated list of Loki modules to load for tokengen</td>
-			<td><pre lang="json">
-"tokengen"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.tokengen.tolerations</td>
-			<td>list</td>
-			<td>Tolerations for tokengen Job</td>
+			<td>Tolerations for provisioner Pods</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4180,6 +4355,7 @@ false
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "initContainers": [],
   "labels": {},
   "nodeSelector": {},
@@ -4217,7 +4393,7 @@ false
 		<tr>
 			<td>enterpriseGateway.affinity</td>
 			<td>object</td>
-			<td>Affinity for gateway Pods</td>
+			<td>Affinity for gateway Pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -4292,6 +4468,15 @@ false
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterpriseGateway.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the `gateway` pod</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -4414,7 +4599,7 @@ false
 		<tr>
 			<td>enterpriseGateway.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for enterprise-gateway pods</td>
+			<td>Topology Spread Constraints for enterprise-gateway pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4431,10 +4616,10 @@ true
 		</tr>
 		<tr>
 			<td>extraObjects</td>
-			<td>list</td>
+			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-[]
+null
 </pre>
 </td>
 		</tr>
@@ -4450,7 +4635,7 @@ null
 		<tr>
 			<td>gateway.affinity</td>
 			<td>object</td>
-			<td>Affinity for gateway pods.</td>
+			<td>Affinity for gateway pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -4672,6 +4857,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>gateway.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the gateway</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.image.digest</td>
 			<td>string</td>
 			<td>Overrides the gateway image tag with an image digest</td>
@@ -4854,7 +5048,7 @@ See values.yaml
 			<td>string</td>
 			<td>Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
-"{{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}"
+""
 </pre>
 </td>
 		</tr>
@@ -4863,7 +5057,7 @@ See values.yaml
 			<td>string</td>
 			<td>Allows appending custom configuration inside every location block, useful for authentication or setting headers that are not inherited from the server block, passed through the `tpl` function to allow templating.</td>
 			<td><pre lang="json">
-""
+"{{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}"
 </pre>
 </td>
 		</tr>
@@ -5100,7 +5294,7 @@ null
 		<tr>
 			<td>gateway.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for gateway pods</td>
+			<td>Topology Spread Constraints for gateway pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -5226,7 +5420,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "index-gateway"
+              "app.kubernetes.io/component": "index-gateway",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -5237,6 +5433,7 @@ null
   "appProtocol": {
     "grpc": ""
   },
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -5244,6 +5441,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -5254,10 +5452,14 @@ null
   "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
     "annotations": {},
     "enableStatefulSetAutoDeletePVC": false,
     "enabled": false,
     "inMemory": false,
+    "labels": {},
     "size": "10Gi",
     "storageClass": null,
     "whenDeleted": "Retain",
@@ -5270,6 +5472,7 @@ null
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": [],
@@ -5283,7 +5486,7 @@ null
 		<tr>
 			<td>indexGateway.affinity</td>
 			<td>object</td>
-			<td>Affinity for index-gateway pods.</td>
+			<td>Affinity for index-gateway pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -5297,6 +5500,15 @@ Hard node anti-affinity
 {
   "grpc": ""
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for index-gateway pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -5364,6 +5576,15 @@ Hard node anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the index-gateway</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the index-gateway image. Overrides `loki.image.registry`</td>
@@ -5427,6 +5648,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.persistence.annotations</td>
 			<td>object</td>
 			<td>Annotations for index gateway PVCs</td>
@@ -5459,6 +5691,15 @@ false
 			<td>Use emptyDir with ramdisk for storage. **Please note that all data in indexGateway will be lost on pod restart**</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for index gateway PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -5544,6 +5785,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.serviceType</td>
+			<td>string</td>
+			<td>Service type for index-gateway service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the index-gateway to shutdown before it is killed.</td>
@@ -5564,7 +5814,7 @@ null
 		<tr>
 			<td>indexGateway.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for index-gateway pods</td>
+			<td>Topology Spread Constraints for index-gateway pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -5603,7 +5853,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "ingester"
+              "app.kubernetes.io/component": "ingester",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -5628,6 +5880,7 @@ null
     "targetMemoryUtilizationPercentage": null
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -5635,12 +5888,14 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
     "tag": null
   },
   "initContainers": [],
+  "labels": {},
   "lifecycle": {},
   "livenessProbe": {},
   "maxUnavailable": 1,
@@ -5648,6 +5903,9 @@ null
   "persistence": {
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -5668,13 +5926,16 @@ null
   "rolloutGroupPrefix": null,
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 300,
   "tolerations": [],
   "topologySpreadConstraints": [
     {
       "labelSelector": {
         "matchLabels": {
-          "app.kubernetes.io/component": "ingester"
+          "app.kubernetes.io/component": "ingester",
+          "app.kubernetes.io/instance": "{{ .Release.Name }}",
+          "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
         }
       },
       "maxSkew": 1,
@@ -5720,7 +5981,7 @@ null
 		<tr>
 			<td>ingester.affinity</td>
 			<td>object</td>
-			<td>Affinity for ingester pods. Ignored if zoneAwareReplication is enabled.</td>
+			<td>Affinity for ingester pods. Ignored if zoneAwareReplication is enabled. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -5837,6 +6098,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>ingester.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for ingester pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ingester.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the ingester</td>
@@ -5896,6 +6166,15 @@ null
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the ingester</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -5977,6 +6256,17 @@ null
 			<td>List of the ingester PVCs</td>
 			<td><pre lang="list">
 
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -6071,6 +6361,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>ingester.serviceType</td>
+			<td>string</td>
+			<td>Service type for ingestor service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ingester.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the ingester to shutdown before it is killed. Especially for the ingestor, this must be increased. It must be long enough so ingesters can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown.</td>
@@ -6091,7 +6390,7 @@ false
 		<tr>
 			<td>ingester.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>topologySpread for ingester pods.</td>
+			<td>topologySpread for ingester pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Defaults to allow skew no more than 1 node
 </pre>
@@ -6211,7 +6510,7 @@ true
 		<tr>
 			<td>ingester.zoneAwareReplication.zoneA.extraAffinity</td>
 			<td>object</td>
-			<td>optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host</td>
+			<td>optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host The value will be passed through tpl.</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6247,7 +6546,7 @@ null
 		<tr>
 			<td>ingester.zoneAwareReplication.zoneB.extraAffinity</td>
 			<td>object</td>
-			<td>optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host</td>
+			<td>optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host The value will be passed through tpl.</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6283,7 +6582,7 @@ null
 		<tr>
 			<td>ingester.zoneAwareReplication.zoneC.extraAffinity</td>
 			<td>object</td>
-			<td>optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host</td>
+			<td>optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host The value will be passed through tpl.</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6327,7 +6626,8 @@ null
     "distributor": [
       "/api/prom/push",
       "/loki/api/v1/push",
-      "/otlp/v1/logs"
+      "/otlp/v1/logs",
+      "/ui"
     ],
     "queryFrontend": [
       "/api/prom/query",
@@ -6393,7 +6693,8 @@ null
 [
   "/api/prom/push",
   "/loki/api/v1/push",
-  "/otlp/v1/logs"
+  "/otlp/v1/logs",
+  "/ui"
 ]
 </pre>
 </td>
@@ -6461,66 +6762,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>kubectlImage</td>
-			<td>object</td>
-			<td>kubetclImage is used in the enterprise provisioner and tokengen jobs</td>
-			<td><pre lang="json">
-{
-  "digest": null,
-  "pullPolicy": "IfNotPresent",
-  "registry": "docker.io",
-  "repository": "bitnami/kubectl",
-  "tag": null
-}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.digest</td>
-			<td>string</td>
-			<td>Overrides the image tag with an image digest</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.pullPolicy</td>
-			<td>string</td>
-			<td>Docker image pull policy</td>
-			<td><pre lang="json">
-"IfNotPresent"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.registry</td>
-			<td>string</td>
-			<td>The Docker registry</td>
-			<td><pre lang="json">
-"docker.io"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.repository</td>
-			<td>string</td>
-			<td>Docker image repository</td>
-			<td><pre lang="json">
-"bitnami/kubectl"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>kubectlImage.tag</td>
-			<td>string</td>
-			<td>Overrides the image tag whose default is the chart's appVersion</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>loki</td>
 			<td>object</td>
 			<td>Configuration for running Loki</td>
@@ -6562,7 +6803,7 @@ See values.yaml
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration</td>
 			<td><pre lang="json">
 {
-  "compactor_address": "{{ include \"loki.compactorAddress\" . }}",
+  "compactor_grpc_address": "{{ include \"loki.compactorAddress\" . }}",
   "path_prefix": "/var/loki",
   "replication_factor": 3
 }
@@ -6570,9 +6811,27 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.commonConfig.compactor_grpc_address</td>
+			<td>string</td>
+			<td>The gRPC address of the compactor. The use of compactor_grpc_address is prefered over compactor_address. If a customized compactor_address is set, compactor_grpc_address should be set to an empty string.</td>
+			<td><pre lang="json">
+"{{ include \"loki.compactorAddress\" . }}"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.compactor</td>
 			<td>object</td>
 			<td>Optional compactor configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.compactor_grpc_client</td>
+			<td>object</td>
+			<td>Optional compactor grpc client configuration</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6626,6 +6885,15 @@ See values.yaml
 			<td>loki.distributor</td>
 			<td>object</td>
 			<td>Optional distributor configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for Loki pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6699,7 +6967,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.5.2"
+"3.5.3"
 </pre>
 </td>
 		</tr>
@@ -6718,6 +6986,15 @@ null
 			<td>loki.ingester</td>
 			<td>object</td>
 			<td>Optional ingester configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.ingester_client</td>
+			<td>object</td>
+			<td>Optional ingester client configuration</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6917,7 +7194,6 @@ null
     "userAssignedId": null
   },
   "filesystem": {
-    "admin_api_directory": "/var/loki/admin",
     "chunks_directory": "/var/loki/chunks",
     "rules_directory": "/var/loki/rules"
   },
@@ -7154,6 +7430,15 @@ true
 			<td>Volumes to add to the canary pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in loki-canary pods</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -7402,6 +7687,23 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>memcached.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe for memcached pods</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 3,
+  "initialDelaySeconds": 30,
+  "periodSeconds": 10,
+  "tcpSocket": {
+    "port": "client"
+  },
+  "timeoutSeconds": 5
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcached.podSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext override for memcached pods</td>
@@ -7500,6 +7802,42 @@ true
 			<td></td>
 			<td><pre lang="json">
 "v0.15.3"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe for memcached exporter</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 3,
+  "httpGet": {
+    "path": "/metrics",
+    "port": "http-metrics"
+  },
+  "initialDelaySeconds": 30,
+  "periodSeconds": 10,
+  "timeoutSeconds": 5
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcachedExporter.readinessProbe</td>
+			<td>object</td>
+			<td>Readiness probe for memcached exporter</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 3,
+  "httpGet": {
+    "path": "/metrics",
+    "port": "http-metrics"
+  },
+  "initialDelaySeconds": 5,
+  "periodSeconds": 5,
+  "timeoutSeconds": 3
+}
 </pre>
 </td>
 		</tr>
@@ -7618,7 +7956,7 @@ false
 		<tr>
 			<td>monitoring</td>
 			<td>object</td>
-			<td>DEPRECATED Monitoring section determines which monitoring features to enable, this section is being replaced by https://github.com/grafana/meta-monitoring-chart</td>
+			<td>Monitoring section determines which monitoring features to enable</td>
 			<td><pre lang="json">
 {
   "dashboards": {
@@ -7665,7 +8003,7 @@ false
     "tenant": {
       "name": "self-monitoring",
       "password": null,
-      "secretNamespace": "{{ .Release.Namespace }}"
+      "secretNamespace": "{{ include \"loki.namespace\" . }}"
     }
   },
   "serviceMonitor": {
@@ -7731,7 +8069,7 @@ null
 		<tr>
 			<td>monitoring.rules</td>
 			<td>object</td>
-			<td>DEPRECATED Recording rules for monitoring Loki, required for some dashboards</td>
+			<td>Recording rules for monitoring Loki, required for some dashboards</td>
 			<td><pre lang="json">
 {
   "additionalGroups": [],
@@ -7821,7 +8159,7 @@ null
 		<tr>
 			<td>monitoring.selfMonitoring</td>
 			<td>object</td>
-			<td>DEPRECATED Self monitoring determines whether Loki should scrape its own logs. This feature currently relies on the Grafana Agent Operator being installed, which is installed by default using the grafana-agent-operator sub-chart. It will create custom resources for GrafanaAgent, LogsInstance, and PodLogs to configure scrape configs to scrape its own logs with the labels expected by the included dashboards.</td>
+			<td>DEPRECATED Self monitoring determines whether Loki should scrape its own logs. This feature relies on Grafana Agent Operator, which is deprecated. It will create custom resources for GrafanaAgent, LogsInstance, and PodLogs to configure scrape configs to scrape its own logs with the labels expected by the included dashboards.</td>
 			<td><pre lang="json">
 {
   "enabled": false,
@@ -7849,7 +8187,7 @@ null
   "tenant": {
     "name": "self-monitoring",
     "password": null,
-    "secretNamespace": "{{ .Release.Namespace }}"
+    "secretNamespace": "{{ include \"loki.namespace\" . }}"
   }
 }
 </pre>
@@ -8015,7 +8353,7 @@ null
 {
   "name": "self-monitoring",
   "password": null,
-  "secretNamespace": "{{ .Release.Namespace }}"
+  "secretNamespace": "{{ include \"loki.namespace\" . }}"
 }
 </pre>
 </td>
@@ -8042,8 +8380,34 @@ null
 			<td>monitoring.selfMonitoring.tenant.secretNamespace</td>
 			<td>string</td>
 			<td>Namespace to create additional tenant token secret in. Useful if your Grafana instance is in a separate namespace. Token will still be created in the canary namespace.</td>
+			<td><pre lang="">
+The same namespace as the loki chart is installed in.
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.serviceMonitor</td>
+			<td>object</td>
+			<td>ServiceMonitor configuration</td>
 			<td><pre lang="json">
-"{{ .Release.Namespace }}"
+{
+  "annotations": {},
+  "enabled": false,
+  "interval": "15s",
+  "labels": {},
+  "metricRelabelings": [],
+  "metricsInstance": {
+    "annotations": {},
+    "enabled": true,
+    "labels": {},
+    "remoteWrite": null
+  },
+  "namespaceSelector": {},
+  "relabelings": [],
+  "scheme": "http",
+  "scrapeTimeout": null,
+  "tlsConfig": null
+}
 </pre>
 </td>
 		</tr>
@@ -8095,7 +8459,7 @@ false
 		<tr>
 			<td>monitoring.serviceMonitor.metricsInstance</td>
 			<td>object</td>
-			<td>If defined, will create a MetricsInstance for the Grafana Agent Operator.</td>
+			<td>DEPRECATED If defined, will create a MetricsInstance for the Grafana Agent Operator.</td>
 			<td><pre lang="json">
 {
   "annotations": {},
@@ -8191,6 +8555,15 @@ null
 			<td>nameOverride</td>
 			<td>string</td>
 			<td>Overrides the chart's name</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>namespaceOverride</td>
+			<td>string</td>
+			<td>Overrides the chart's namespace</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -8361,7 +8734,9 @@ false
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "overrides-exporter"
+              "app.kubernetes.io/component": "overrides-exporter",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -8373,6 +8748,7 @@ false
     "grpc": ""
   },
   "command": null,
+  "dnsConfig": {},
   "enabled": false,
   "extraArgs": [],
   "extraContainers": [],
@@ -8381,6 +8757,7 @@ false
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -8406,7 +8783,7 @@ false
 		<tr>
 			<td>overridesExporter.affinity</td>
 			<td>object</td>
-			<td>Affinity for overrides-exporter pods.</td>
+			<td>Affinity for overrides-exporter pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -8429,6 +8806,15 @@ Hard node anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for overrides-exporter</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -8501,6 +8887,15 @@ false
 			<td>hostAliases to add</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the overrides-exporter</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -8642,7 +9037,7 @@ null
 		<tr>
 			<td>overridesExporter.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for overrides-exporter pods</td>
+			<td>Topology Spread Constraints for overrides-exporter pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -8660,7 +9055,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "pattern-ingester"
+              "app.kubernetes.io/component": "pattern-ingester",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -8672,6 +9069,7 @@ null
     "grpc": ""
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -8679,6 +9077,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -8689,9 +9088,13 @@ null
   "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
-    "annotations": {},
     "claims": [
       {
+        "accessModes": [
+          "ReadWriteOnce"
+        ],
+        "annotations": {},
+        "labels": {},
         "name": "data",
         "size": "10Gi",
         "storageClass": null
@@ -8729,7 +9132,7 @@ null
 		<tr>
 			<td>patternIngester.affinity</td>
 			<td>object</td>
-			<td>Affinity for pattern ingester pods.</td>
+			<td>Affinity for pattern ingester pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -8752,6 +9155,15 @@ Hard node anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for pattern ingester pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -8819,6 +9231,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>patternIngester.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the pattern ingester</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>patternIngester.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the pattern ingester image. Overrides `loki.image.registry`</td>
@@ -8882,7 +9303,27 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>patternIngester.persistence.annotations</td>
+			<td>patternIngester.persistence.claims</td>
+			<td>list</td>
+			<td>List of the pattern ingester PVCs</td>
+			<td><pre lang="list">
+
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.persistence.claims[0].accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.persistence.claims[0].annotations</td>
 			<td>object</td>
 			<td>Annotations for pattern ingester PVCs</td>
 			<td><pre lang="json">
@@ -8891,11 +9332,11 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>patternIngester.persistence.claims</td>
-			<td>list</td>
-			<td>List of the pattern ingester PVCs</td>
-			<td><pre lang="list">
-
+			<td>patternIngester.persistence.claims[0].labels</td>
+			<td>object</td>
+			<td>Labels for pattern ingester PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -9064,7 +9505,7 @@ null
 		<tr>
 			<td>patternIngester.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for pattern ingester pods</td>
+			<td>Topology Spread Constraints for pattern ingester pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -9082,7 +9523,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "querier"
+              "app.kubernetes.io/component": "querier",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -9115,6 +9558,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -9124,12 +9568,6 @@ null
   "maxSurge": 0,
   "maxUnavailable": null,
   "nodeSelector": {},
-  "persistence": {
-    "annotations": {},
-    "enabled": false,
-    "size": "10Gi",
-    "storageClass": null
-  },
   "podAnnotations": {},
   "podLabels": {},
   "priorityClassName": null,
@@ -9137,13 +9575,16 @@ null
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
   "topologySpreadConstraints": [
     {
       "labelSelector": {
         "matchLabels": {
-          "app.kubernetes.io/component": "querier"
+          "app.kubernetes.io/component": "querier",
+          "app.kubernetes.io/instance": "{{ .Release.Name }}",
+          "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
         }
       },
       "maxSkew": 1,
@@ -9158,7 +9599,7 @@ null
 		<tr>
 			<td>querier.affinity</td>
 			<td>object</td>
-			<td>Affinity for querier pods.</td>
+			<td>Affinity for querier pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -9347,6 +9788,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>querier.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the querier</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>querier.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the querier image. Overrides `loki.image.registry`</td>
@@ -9406,42 +9856,6 @@ null
 			<td>Node selector for querier pods</td>
 			<td><pre lang="json">
 {}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>querier.persistence.annotations</td>
-			<td>object</td>
-			<td>Annotations for querier PVCs</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>querier.persistence.enabled</td>
-			<td>bool</td>
-			<td>Enable creating PVCs for the querier cache</td>
-			<td><pre lang="json">
-false
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>querier.persistence.size</td>
-			<td>string</td>
-			<td>Size of persistent disk</td>
-			<td><pre lang="json">
-"10Gi"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>querier.persistence.storageClass</td>
-			<td>string</td>
-			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
-			<td><pre lang="json">
-null
 </pre>
 </td>
 		</tr>
@@ -9509,6 +9923,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>querier.serviceType</td>
+			<td>string</td>
+			<td>Service Type for querier service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>querier.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the querier to shutdown before it is killed</td>
@@ -9529,7 +9952,7 @@ null
 		<tr>
 			<td>querier.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>topologySpread for querier pods.</td>
+			<td>topologySpread for querier pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Defaults to allow skew no more then 1 node
 </pre>
@@ -9547,7 +9970,9 @@ Defaults to allow skew no more then 1 node
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "query-frontend"
+              "app.kubernetes.io/component": "query-frontend",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -9579,11 +10004,13 @@ Defaults to allow skew no more then 1 node
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
     "tag": null
   },
+  "initContainers": [],
   "maxUnavailable": null,
   "nodeSelector": {},
   "podAnnotations": {},
@@ -9593,6 +10020,7 @@ Defaults to allow skew no more then 1 node
   "resources": {},
   "serviceAnnotations": {},
   "serviceLabels": {},
+  "serviceType": "ClusterIP",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
   "topologySpreadConstraints": []
@@ -9603,7 +10031,7 @@ Defaults to allow skew no more then 1 node
 		<tr>
 			<td>queryFrontend.affinity</td>
 			<td>object</td>
-			<td>Affinity for query-frontend pods.</td>
+			<td>Affinity for query-frontend pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -9783,6 +10211,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryFrontend.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the query-frontend</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryFrontend.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the query-frontend image. Overrides `loki.image.registry`</td>
@@ -9806,6 +10243,15 @@ null
 			<td>Docker image tag for the query-frontend image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.initContainers</td>
+			<td>list</td>
+			<td>init containers to add to the query-frontend pods</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -9891,6 +10337,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryFrontend.serviceType</td>
+			<td>string</td>
+			<td>Service Type for query-frontend service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryFrontend.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the query-frontend to shutdown before it is killed</td>
@@ -9911,7 +10366,7 @@ null
 		<tr>
 			<td>queryFrontend.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for query-frontend pods</td>
+			<td>Topology Spread Constraints for query-frontend pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -9929,7 +10384,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "query-scheduler"
+              "app.kubernetes.io/component": "query-scheduler",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -9940,6 +10397,7 @@ null
   "appProtocol": {
     "grpc": ""
   },
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -9947,11 +10405,13 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
     "tag": null
   },
+  "initContainers": [],
   "maxUnavailable": 1,
   "nodeSelector": {},
   "podAnnotations": {},
@@ -9971,7 +10431,7 @@ null
 		<tr>
 			<td>queryScheduler.affinity</td>
 			<td>object</td>
-			<td>Affinity for query-scheduler pods.</td>
+			<td>Affinity for query-scheduler pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -9985,6 +10445,15 @@ Hard node anti-affinity
 {
   "grpc": ""
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for query-scheduler</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -10052,6 +10521,15 @@ Hard node anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>queryScheduler.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the query-scheduler</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryScheduler.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the query-scheduler image. Overrides `loki.image.registry`</td>
@@ -10075,6 +10553,15 @@ null
 			<td>Docker image tag for the query-scheduler image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.initContainers</td>
+			<td>list</td>
+			<td>init containers to add to the query-scheduler pods</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -10180,7 +10667,7 @@ null
 		<tr>
 			<td>queryScheduler.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for query-scheduler pods</td>
+			<td>Topology Spread Constraints for query-scheduler pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -10214,6 +10701,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>rbac.sccAllowHostDirVolumePlugin</td>
+			<td>bool</td>
+			<td>Toggle this to true to allow the use of hostPath volumes on OpenShift</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>rbac.sccEnabled</td>
 			<td>bool</td>
 			<td>For OpenShift set pspEnabled to 'false' and sccEnabled to 'true' to use the SecurityContextConstraints.</td>
@@ -10234,7 +10730,9 @@ false
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "read"
+              "app.kubernetes.io/component": "read",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -10258,18 +10756,24 @@ false
   "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
     "tag": null
   },
+  "initContainers": [],
   "legacyReadTarget": false,
   "lifecycle": {},
   "livenessProbe": {},
   "nodeSelector": {},
   "persistence": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
     "annotations": {},
     "enableStatefulSetAutoDeletePVC": true,
+    "labels": {},
     "selector": null,
     "size": "10Gi",
     "storageClass": null
@@ -10283,7 +10787,8 @@ false
   "selectorLabels": {},
   "service": {
     "annotations": {},
-    "labels": {}
+    "labels": {},
+    "type": "ClusterIP"
   },
   "targetModule": "read",
   "terminationGracePeriodSeconds": 30,
@@ -10296,7 +10801,7 @@ false
 		<tr>
 			<td>read.affinity</td>
 			<td>object</td>
-			<td>Affinity for read pods.</td>
+			<td>Affinity for read pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -10429,6 +10934,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the read pods.</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the read image. Overrides `loki.image.registry`</td>
@@ -10452,6 +10966,15 @@ null
 			<td>Docker image tag for the read image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.initContainers</td>
+			<td>list</td>
+			<td>init containers to add to the read pods</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -10497,12 +11020,27 @@ false
 			<td>read.persistence is used only if legacyReadTarget is set to true</td>
 			<td><pre lang="json">
 {
+  "accessModes": [
+    "ReadWriteOnce"
+  ],
   "annotations": {},
   "enableStatefulSetAutoDeletePVC": true,
+  "labels": {},
   "selector": null,
   "size": "10Gi",
   "storageClass": null
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
 </pre>
 </td>
 		</tr>
@@ -10521,6 +11059,15 @@ false
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
 			<td><pre lang="json">
 true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for volume claim</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -10633,6 +11180,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.service.type</td>
+			<td>string</td>
+			<td>Service Type for read Service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.targetModule</td>
 			<td>string</td>
 			<td>Comma-separated list of Loki modules to load for the read</td>
@@ -10662,7 +11218,7 @@ null
 		<tr>
 			<td>read.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for read pods</td>
+			<td>Topology Spread Constraints for read pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -10673,7 +11229,7 @@ null
 			<td>string</td>
 			<td>Comma separated addresses list in DNS Service Discovery format</td>
 			<td><pre lang="json">
-"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"results-cache\") }}.{{ $.Release.Namespace }}.svc"
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"results-cache\") }}.{{ include \"loki.namespace\" $ }}.svc"
 </pre>
 </td>
 		</tr>
@@ -10719,6 +11275,15 @@ null
 			<td>Specify how long cached results should be stored in the results-cache before being expired</td>
 			<td><pre lang="json">
 "12h"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for results-cache</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -10773,6 +11338,15 @@ true
 			<td>Additional volumes to be added to the results-cache pod (applies to both memcached and exporter containers). Example: extraVolumes: - name: extra-volume   secret:    secretName: extra-volume-secret</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in results-cache pods</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -11079,7 +11653,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "ruler"
+              "app.kubernetes.io/component": "ruler",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -11101,6 +11677,7 @@ null
   "extraVolumeMounts": [],
   "extraVolumes": [],
   "hostAliases": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -11110,8 +11687,12 @@ null
   "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
+    "accessModes": [
+      "ReadWriteOnce"
+    ],
     "annotations": {},
     "enabled": false,
+    "labels": {},
     "size": "10Gi",
     "storageClass": null
   },
@@ -11133,7 +11714,7 @@ null
 		<tr>
 			<td>ruler.affinity</td>
 			<td>object</td>
-			<td>Affinity for ruler pods.</td>
+			<td>Affinity for ruler pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -11162,7 +11743,7 @@ null
 		<tr>
 			<td>ruler.directories</td>
 			<td>object</td>
-			<td>Directories containing rules files</td>
+			<td>Directories containing rules files. If used, you must also configure `loki.rulerConfig.storage` to use local storage.</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -11250,6 +11831,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>ruler.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the ruler</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ruler.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the ruler image. Overrides `loki.image.registry`</td>
@@ -11304,6 +11894,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>ruler.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>ruler.persistence.annotations</td>
 			<td>object</td>
 			<td>Annotations for ruler PVCs</td>
@@ -11318,6 +11919,15 @@ null
 			<td>Enable creating PVCs which is required when using recording rules</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for ruler PVCs</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -11432,7 +12042,7 @@ false
 		<tr>
 			<td>ruler.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for ruler pods</td>
+			<td>Topology Spread Constraints for ruler pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -11699,9 +12309,18 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>sidecar.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe definition. Probe is disabled on the sidecar by default.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.affinity</td>
 			<td>object</td>
-			<td>Affinity for single binary pods.</td>
+			<td>Affinity for single binary pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -11825,6 +12444,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the single binary pods</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the single binary image. Overrides `loki.image.registry`</td>
@@ -11870,6 +12498,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.persistence.annotations</td>
 			<td>object</td>
 			<td>Annotations for volume claim</td>
@@ -11893,6 +12532,15 @@ true
 			<td>Enable persistent disk</td>
 			<td><pre lang="json">
 true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for volume claim</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -11996,6 +12644,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.service.type</td>
+			<td>string</td>
+			<td>Service Type for single binary Service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.targetModule</td>
 			<td>string</td>
 			<td>Comma-separated list of Loki modules to load for the single binary</td>
@@ -12034,7 +12691,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "table-manager"
+              "app.kubernetes.io/component": "table-manager",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -12052,6 +12711,7 @@ null
   "extraEnvFrom": [],
   "extraVolumeMounts": [],
   "extraVolumes": [],
+  "hostUsers": "nil",
   "image": {
     "registry": null,
     "repository": null,
@@ -12077,7 +12737,7 @@ null
 		<tr>
 			<td>tableManager.affinity</td>
 			<td>object</td>
-			<td>Affinity for table-manager pods.</td>
+			<td>Affinity for table-manager pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node and anti-affinity
 </pre>
@@ -12170,6 +12830,15 @@ false
 			<td>Volumes to add to the table-manager pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in table-manager pods</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -12308,6 +12977,7 @@ false
   "annotations": {},
   "canaryServiceAddress": "http://loki-canary:3500/metrics",
   "enabled": true,
+  "hostUsers": "nil",
   "image": {
     "digest": null,
     "pullPolicy": "IfNotPresent",
@@ -12337,6 +13007,15 @@ false
 			<td>Used to directly query the metrics endpoint of the canary for testing, this approach avoids needing prometheus for testing. This in a newer approach to using prometheusAddress such that tests do not have a dependency on prometheus</td>
 			<td><pre lang="json">
 "http://loki-canary:3500/metrics"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>test.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in test pods</td>
+			<td><pre lang="json">
+"nil"
 </pre>
 </td>
 		</tr>
@@ -12430,7 +13109,7 @@ null
 		<tr>
 			<td>write.affinity</td>
 			<td>object</td>
-			<td>Affinity for write pods.</td>
+			<td>Affinity for write pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -12609,6 +13288,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.hostUsers</td>
+			<td>string</td>
+			<td>Use the host's user namespace in the write pods.</td>
+			<td><pre lang="json">
+"nil"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.image.registry</td>
 			<td>string</td>
 			<td>The Docker registry for the write image. Overrides `loki.image.registry`</td>
@@ -12663,6 +13351,17 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.persistence.accessModes</td>
+			<td>list</td>
+			<td>Set access modes on the PersistentVolumeClaim</td>
+			<td><pre lang="json">
+[
+  "ReadWriteOnce"
+]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.persistence.annotations</td>
 			<td>object</td>
 			<td>Annotations for volume claim</td>
@@ -12688,6 +13387,15 @@ null
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
 			<td><pre lang="json">
 false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.labels</td>
+			<td>object</td>
+			<td>Labels for volume claim</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -12809,6 +13517,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.service.type</td>
+			<td>string</td>
+			<td>Service Type for write Service</td>
+			<td><pre lang="json">
+"ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.targetModule</td>
 			<td>string</td>
 			<td>Comma-separated list of Loki modules to load for the write</td>
@@ -12838,7 +13555,7 @@ null
 		<tr>
 			<td>write.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for write pods</td>
+			<td>Topology Spread Constraints for write pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>

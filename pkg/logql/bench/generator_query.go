@@ -103,8 +103,9 @@ func (c *GeneratorConfig) generateLabelCombinations() [][]labelMatcher {
 }
 
 var DefaultTestCaseGeneratorConfig = TestCaseGeneratorConfig{
-	RangeType:     "range",
-	RangeInterval: time.Hour,
+	RangeType: "range",
+	// default to 1m. Usual 24h query on grafana results in 1m step with 1440 data points.
+	RangeInterval: time.Minute,
 }
 
 type TestCaseGeneratorConfig struct {
@@ -132,8 +133,7 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 	start := g.logGenCfg.StartTime
 	end := g.logGenCfg.StartTime.Add(g.logGenCfg.TimeSpread)
 	rangeInterval := g.cfg.RangeInterval
-	// Calculate step size to get ~20 points over the time range
-	step := g.logGenCfg.TimeSpread / 19
+	step := rangeInterval // use $range to get aligned steps
 
 	if g.cfg.RangeType == "instant" {
 		// for instant queries, search the whole time spread from end
@@ -191,6 +191,9 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 			// Basic selector
 			addBidirectional(selector, g.logGenCfg.StartTime, end)
 
+			// With line filter
+			addBidirectional(selector+` |= "level"`, g.logGenCfg.StartTime, end)
+
 			// With structured metadata filters
 			addBidirectional(selector+` | detected_level="error"`, g.logGenCfg.StartTime, end)
 			addBidirectional(selector+` | detected_level="warn"`, g.logGenCfg.StartTime, end)
@@ -209,6 +212,7 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 		baseRangeAggregationQueries := []string{
 			fmt.Sprintf(`count_over_time(%s[%s])`, selector, rangeInterval),
 			fmt.Sprintf(`count_over_time(%s | detected_level=~"error|warn" [%s])`, selector, rangeInterval),
+			fmt.Sprintf(`count_over_time(%s |= "level" [%s])`, selector, rangeInterval),
 			fmt.Sprintf(`rate(%s | detected_level=~"error|warn" [%s])`, selector, rangeInterval),
 		}
 

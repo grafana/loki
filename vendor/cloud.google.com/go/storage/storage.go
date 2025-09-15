@@ -208,7 +208,9 @@ func NewClient(ctx context.Context, opts ...option.ClientOption) (*Client, error
 		return nil, fmt.Errorf("dialing: %w", err)
 	}
 	// RawService should be created with the chosen endpoint to take account of user override.
-	rawService, err := raw.NewService(ctx, option.WithEndpoint(ep), option.WithHTTPClient(hc))
+	// Preserve other user-supplied options as well.
+	opts = append(opts, option.WithEndpoint(ep), option.WithHTTPClient(hc))
+	rawService, err := raw.NewService(ctx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("storage client: %w", err)
 	}
@@ -1197,8 +1199,7 @@ func (o *ObjectHandle) Restore(ctx context.Context, opts *RestoreOptions) (*Obje
 }
 
 // Move changes the name of the object to the destination name.
-// It can only be used to rename an object within the same bucket. The
-// bucket must have [HierarchicalNamespace] enabled to use this method.
+// It can only be used to rename an object within the same bucket.
 //
 // Any preconditions set on the ObjectHandle will be applied for the source
 // object. Set preconditions on the destination object using

@@ -772,7 +772,7 @@ func save(nss map[string]rules.RuleNamespace, i bool) error {
 			filepath = filepath + ".result"
 		}
 
-		if err := os.WriteFile(filepath, payload, 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions
+		if err := os.WriteFile(filepath, payload, 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
 			return err
 		}
 	}

@@ -2,13 +2,13 @@ package deletion
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/gogo/protobuf/proto"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,6 +17,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
 	"github.com/grafana/loki/v3/pkg/compactor/client/grpc"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	storage_chunk "github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
@@ -36,37 +37,6 @@ type Chunk interface {
 	GetEntriesCount() uint32
 }
 
-type chunk struct {
-	From, Through model.Time
-	Fingerprint   uint64
-	Checksum      uint32
-	KB, Entries   uint32
-}
-
-func (c chunk) GetFrom() model.Time {
-	return c.From
-}
-
-func (c chunk) GetThrough() model.Time {
-	return c.Through
-}
-
-func (c chunk) GetFingerprint() uint64 {
-	return c.Fingerprint
-}
-
-func (c chunk) GetChecksum() uint32 {
-	return c.Checksum
-}
-
-func (c chunk) GetSize() uint32 {
-	return c.KB
-}
-
-func (c chunk) GetEntriesCount() uint32 {
-	return c.Entries
-}
-
 type JobRunner struct {
 	chunkProcessingConcurrency int
 	getChunkClientForTableFunc GetChunkClientForTableFunc
@@ -82,10 +52,12 @@ func NewJobRunner(chunkProcessingConcurrency int, getStorageClientForTableFunc G
 }
 
 func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
-	var deletionJob deletionJob
-	var updates storageUpdates
+	var deletionJob deletionproto.DeletionJob
+	var updates = deletionproto.StorageUpdates{
+		RebuiltChunks: map[string]*deletionproto.Chunk{},
+	}
 
-	if err := json.Unmarshal(job.Payload, &deletionJob); err != nil {
+	if err := proto.Unmarshal(job.Payload, &deletionJob); err != nil {
 		return nil, err
 	}
 
@@ -94,15 +66,16 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 		return nil, err
 	}
 
+	var deleteRequests []*deleteRequest
 	for i := range deletionJob.DeleteRequests {
-		req := &deletionJob.DeleteRequests[i]
-		if err := req.SetQuery(req.Query); err != nil {
+		req, err := newDeleteRequest(deletionJob.DeleteRequests[i], jr.metrics.deletedLinesTotal)
+		if err != nil {
 			return nil, err
 		}
 		if !req.logSelectorExpr.HasFilter() {
 			return nil, errors.New("deletion query does not contain filter")
 		}
-		req.TotalLinesDeletedMetric = jr.metrics.deletedLinesTotal
+		deleteRequests = append(deleteRequests, req)
 	}
 
 	tableInterval := retention.ExtractIntervalFromTableName(deletionJob.TableName)
@@ -117,6 +90,12 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 		// get the chunk from storage
 		chks, err := chunkClient.GetChunks(ctx, []storage_chunk.Chunk{chk})
 		if err != nil {
+			// Do not fail processing of the job when we could not find a chunk in storage.
+			// The chunk could have been removed by the main compactor due to retention or a delete request without a line filter.
+			if chunkClient.IsChunkNotFoundErr(err) {
+				level.Warn(util_log.Logger).Log("msg", "skipping processing missing chunk", "chunk_id", chunkID)
+				return nil
+			}
 			return err
 		}
 
@@ -126,7 +105,7 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 
 		// Build a chain of filters to apply on the chunk to remove data requested for deletion.
 		var filterFuncs []filter.Func
-		for _, req := range deletionJob.DeleteRequests {
+		for _, req := range deleteRequests {
 			filterFunc, err := req.FilterFunction(chks[0].Metric)
 			if err != nil {
 				return err
@@ -137,7 +116,7 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 
 		// rebuild the chunk and see if we excluded any of the lines from the existing chunk
 		var linesDeleted bool
-		newChunkData, err := chks[0].Data.Rebound(chk.From, chk.Through, func(ts time.Time, s string, structuredMetadata labels.Labels) bool {
+		newChunkData, err := chks[0].Data.Rewrite(func(ts time.Time, s string, structuredMetadata labels.Labels) bool {
 			for _, filterFunc := range filterFuncs {
 				if filterFunc(ts, s, structuredMetadata) {
 					linesDeleted = true
@@ -148,11 +127,11 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 			return false
 		})
 		if err != nil {
-			if errors.Is(err, storage_chunk.ErrSliceNoDataInRange) {
+			if errors.Is(err, storage_chunk.ErrRewriteNoDataLeft) {
 				level.Info(util_log.Logger).Log("msg", "Delete request filterFunc leaves an empty chunk", "chunk ref", chunkID)
 				updatesMtx.Lock()
 				defer updatesMtx.Unlock()
-				updates.ChunksToDelete = append(updates.ChunksToDelete, chunkID)
+				updates.RebuiltChunks[chunkID] = nil
 				return nil
 			}
 			return err
@@ -200,17 +179,14 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 		// add the new chunk details to the list of chunks to index
 		updatesMtx.Lock()
 		defer updatesMtx.Unlock()
-		updates.ChunksToIndex = append(updates.ChunksToIndex, chunk{
+		updates.RebuiltChunks[chunkID] = &deletionproto.Chunk{
 			From:        newChunk.From,
 			Through:     newChunk.Through,
 			Fingerprint: newChunk.Fingerprint,
 			Checksum:    newChunk.Checksum,
 			KB:          uint32(math.Round(float64(newChunk.Data.UncompressedSize()) / float64(1<<10))),
 			Entries:     uint32(newChunk.Data.Entries()),
-		})
-
-		// Add the ID of original chunk to the list of ChunksToDelete
-		updates.ChunksToDelete = append(updates.ChunksToDelete, chunkID)
+		}
 		return nil
 	})
 	if err != nil {
@@ -218,10 +194,10 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 	}
 
 	jr.metrics.chunksProcessedTotal.Add(float64(len(deletionJob.ChunkIDs)))
-	jobResultJSON, err := json.Marshal(updates)
+	jobResultProto, err := proto.Marshal(&updates)
 	if err != nil {
 		return nil, err
 	}
 
-	return jobResultJSON, nil
+	return jobResultProto, nil
 }

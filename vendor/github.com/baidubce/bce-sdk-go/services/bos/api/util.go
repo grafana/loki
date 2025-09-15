@@ -33,6 +33,7 @@ import (
 const (
 	METADATA_DIRECTIVE_COPY    = "copy"
 	METADATA_DIRECTIVE_REPLACE = "replace"
+	METADATA_DIRECTIVE_UPDATE  = "update"
 
 	STORAGE_CLASS_STANDARD        = "STANDARD"
 	STORAGE_CLASS_STANDARD_IA     = "STANDARD_IA"
@@ -69,6 +70,23 @@ const (
 	NAMESPACE_BUCKET   = "namespace"
 	BOS_CONFIG_PREFIX  = "bos://"
 	BOS_SHARE_ENDPOINT = "bos-share.baidubce.com"
+
+	INVENTORY_SCHEDULE_DAILY   = "ThreeDaily"
+	INVENTORY_SCHEDULE_WEEKLY  = "Weekly"
+	INVENTORY_SCHEDULE_MONTHLY = "Monthly"
+
+	INVENTORY_FILE_FORMAT_CSV = "CSV"
+
+	INVENTORY_OBJECT_VERSIONS_ALL     = "All"
+	INVENTORY_OBJECT_VERSIONS_CURRENT = "Current"
+
+	REQUEST_PAYMENT_REQUESTER    = "Requester"
+	REQUEST_PAYMENT_BUCKET_OWNER = "BucketOwner"
+
+	EVENT_FROM_CLIENT      = "Client"
+	EVENT_FROM_LIFECYCLE   = "Lifecycle"
+	EVENT_FROM_REPLICATION = "Replication"
+	EVENT_FROM_BATCH       = "Batch"
 
 	// BOS Client error message format
 	BOS_CRC32C_CHECK_ERROR_MSG = "End-to-end check of crc32c failed, client-crc32c:%s, server-crc32c:%s"
@@ -129,7 +147,9 @@ func getCnameUri(uri string) string {
 }
 
 func validMetadataDirective(val string) bool {
-	if val == METADATA_DIRECTIVE_COPY || val == METADATA_DIRECTIVE_REPLACE {
+	if val == METADATA_DIRECTIVE_COPY ||
+		val == METADATA_DIRECTIVE_REPLACE ||
+		val == METADATA_DIRECTIVE_UPDATE {
 		return true
 	}
 	return false
@@ -226,6 +246,7 @@ func toHttpHeaderKey(key string) string {
 			needToUpper = true
 		} else {
 			result.WriteByte(c)
+			needToUpper = false
 		}
 	}
 	return result.String()
@@ -304,7 +325,11 @@ func setUserMetadata(req *BosRequest, meta map[string]string) error {
 		if len(k)+len(v) > 32*1024 {
 			return bce.NewBceClientError("MetadataTooLarge")
 		}
-		req.SetHeader(http.BCE_USER_METADATA_PREFIX+k, v)
+		// to lower and deduplicate
+		userMetaHeader := http.BCE_USER_METADATA_PREFIX + strings.ToLower(k)
+		if _, ok := req.Headers()[userMetaHeader]; !ok {
+			req.SetHeader(userMetaHeader, v)
+		}
 	}
 	return nil
 }

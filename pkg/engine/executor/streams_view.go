@@ -45,6 +45,9 @@ type streamsViewOptions struct {
 
 	// Maximum number of stream records to read at once. Defaults to 128.
 	BatchSize int
+
+	// The size of the page cache to use for reading sections.
+	CacheSize int
 }
 
 // newStreamsView creates a new view of the given streams section. Only the

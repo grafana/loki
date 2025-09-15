@@ -1822,5 +1822,5 @@ func newOverlappingStreams(streamCount int, entryCount int) []*logproto.Stream {
 }
 
 func unsafeGetBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated
+	return unsafe.Slice(unsafe.StringData(s), len(s)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }

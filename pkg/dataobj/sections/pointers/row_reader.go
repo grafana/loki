@@ -12,9 +12,9 @@ import (
 	"github.com/bits-and-blooms/bloom/v3"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/pointersmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // RowReader reads the set of streams from an [Object].
@@ -28,9 +28,8 @@ type RowReader struct {
 
 	buf []dataset.Row
 
-	reader     *dataset.Reader
-	columns    []dataset.Column
-	columnDesc []*pointersmd.ColumnDesc
+	reader  *dataset.Reader
+	columns []dataset.Column
 
 	symbols *symbolizer.Symbolizer
 }
@@ -90,7 +89,7 @@ func (r *RowReader) Read(ctx context.Context, s []SectionPointer) (int, error) {
 	}
 
 	if !r.ready {
-		err := r.initReader(ctx)
+		err := r.initReader()
 		if err != nil {
 			return 0, err
 		}
@@ -106,7 +105,7 @@ func (r *RowReader) Read(ctx context.Context, s []SectionPointer) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		if err := decodeRow(r.columnDesc, r.buf[i], &s[i], r.symbols); err != nil {
+		if err := decodeRow(r.sec.Columns(), r.buf[i], &s[i], r.symbols); err != nil {
 			return i, fmt.Errorf("decoding stream: %w", err)
 		}
 	}
@@ -114,16 +113,8 @@ func (r *RowReader) Read(ctx context.Context, s []SectionPointer) (int, error) {
 	return n, nil
 }
 
-func (r *RowReader) initReader(ctx context.Context) error {
-	dec := newDecoder(r.sec.reader)
-
-	metadata, err := dec.Metadata(ctx)
-	if err != nil {
-		return fmt.Errorf("reading metadata: %w", err)
-	}
-	columnDescs := metadata.GetColumns()
-
-	dset, err := newColumnsDataset(r.sec.Columns())
+func (r *RowReader) initReader() error {
+	dset, err := columnar.MakeDataset(r.sec.inner, r.sec.inner.Columns())
 	if err != nil {
 		return fmt.Errorf("creating section dataset: %w", err)
 	}
@@ -131,10 +122,10 @@ func (r *RowReader) initReader(ctx context.Context) error {
 
 	var predicates []dataset.Predicate
 	if len(r.matchIDs) > 0 {
-		predicates = append(predicates, streamIDPredicate(maps.Keys(r.matchIDs), columns, columnDescs))
+		predicates = append(predicates, streamIDPredicate(maps.Keys(r.matchIDs), columns, r.sec.Columns()))
 	}
 
-	if p := translatePointersPredicate(r.predicate, columns, columnDescs); p != nil {
+	if p := translatePointersPredicate(r.predicate, columns, r.sec.Columns()); p != nil {
 		predicates = append(predicates, p)
 	}
 
@@ -142,8 +133,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		Dataset:    dset,
 		Columns:    columns,
 		Predicates: predicates,
-
-		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
+		Prefetch:   true,
 	}
 
 	if r.reader == nil {
@@ -158,7 +148,6 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		r.symbols.Reset()
 	}
 
-	r.columnDesc = columnDescs
 	r.columns = columns
 	r.ready = true
 	return nil
@@ -176,7 +165,6 @@ func (r *RowReader) Reset(sec *Section) {
 	r.predicate = nil
 	r.ready = false
 	r.columns = nil
-	r.columnDesc = nil
 
 	if r.symbols != nil {
 		r.symbols.Reset()
@@ -195,9 +183,9 @@ func (r *RowReader) Close() error {
 	return nil
 }
 
-func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc []*pointersmd.ColumnDesc) dataset.Predicate {
-	streamIDColumn := findColumnFromDesc(columns, columnDesc, func(desc *pointersmd.ColumnDesc) bool {
-		return desc.Type == pointersmd.COLUMN_TYPE_STREAM_ID
+func streamIDPredicate(ids iter.Seq[int64], dsetColumns []dataset.Column, actualColumns []*Column) dataset.Predicate {
+	streamIDColumn := findDatasetColumn(dsetColumns, actualColumns, func(desc *Column) bool {
+		return desc.Type == ColumnTypeStreamID
 	})
 	if streamIDColumn == nil {
 		return dataset.FalsePredicate{}
@@ -214,32 +202,32 @@ func streamIDPredicate(ids iter.Seq[int64], columns []dataset.Column, columnDesc
 	}
 }
 
-func translatePointersPredicate(p RowPredicate, columns []dataset.Column, columnDescs []*pointersmd.ColumnDesc) dataset.Predicate {
+func translatePointersPredicate(p RowPredicate, dsetColumns []dataset.Column, actualColumns []*Column) dataset.Predicate {
 	if p == nil {
 		return nil
 	}
 
-	nameColumn := findColumnFromDesc(columns, columnDescs, func(desc *pointersmd.ColumnDesc) bool {
-		return desc.Type == pointersmd.COLUMN_TYPE_COLUMN_NAME
+	nameColumn := findDatasetColumn(dsetColumns, actualColumns, func(desc *Column) bool {
+		return desc.Type == ColumnTypeColumnName
 	})
 
-	bloomColumn := findColumnFromDesc(columns, columnDescs, func(desc *pointersmd.ColumnDesc) bool {
-		return desc.Type == pointersmd.COLUMN_TYPE_VALUES_BLOOM_FILTER
+	bloomColumn := findDatasetColumn(dsetColumns, actualColumns, func(desc *Column) bool {
+		return desc.Type == ColumnTypeValuesBloomFilter
 	})
 
-	startColumn := findColumnFromDesc(columns, columnDescs, func(desc *pointersmd.ColumnDesc) bool {
-		return desc.Type == pointersmd.COLUMN_TYPE_MIN_TIMESTAMP
+	startColumn := findDatasetColumn(dsetColumns, actualColumns, func(desc *Column) bool {
+		return desc.Type == ColumnTypeMinTimestamp
 	})
 
-	endColumn := findColumnFromDesc(columns, columnDescs, func(desc *pointersmd.ColumnDesc) bool {
-		return desc.Type == pointersmd.COLUMN_TYPE_MAX_TIMESTAMP
+	endColumn := findDatasetColumn(dsetColumns, actualColumns, func(desc *Column) bool {
+		return desc.Type == ColumnTypeMaxTimestamp
 	})
 
 	switch p := p.(type) {
 	case AndRowPredicate:
 		return dataset.AndPredicate{
-			Left:  translatePointersPredicate(p.Left, columns, columnDescs),
-			Right: translatePointersPredicate(p.Right, columns, columnDescs),
+			Left:  translatePointersPredicate(p.Left, dsetColumns, actualColumns),
+			Right: translatePointersPredicate(p.Right, dsetColumns, actualColumns),
 		}
 	case BloomExistenceRowPredicate:
 		return convertBloomExistenceRowPredicate(p, nameColumn, bloomColumn)
@@ -261,12 +249,12 @@ func convertBloomExistenceRowPredicate(p BloomExistenceRowPredicate, nameColumn,
 	return dataset.AndPredicate{
 		Left: dataset.EqualPredicate{
 			Column: nameColumn,
-			Value:  dataset.ByteArrayValue([]byte(p.Name)),
+			Value:  dataset.BinaryValue([]byte(p.Name)),
 		},
 		Right: dataset.FuncPredicate{
 			Column: bloomColumn,
 			Keep: func(_ dataset.Column, value dataset.Value) bool {
-				bloomBytes := value.ByteArray()
+				bloomBytes := value.Binary()
 				bf := bloom.New(1, 1) // Dummy values
 				_, err := bf.ReadFrom(bytes.NewReader(bloomBytes))
 				if err != nil {
@@ -282,18 +270,18 @@ func convertBloomExistenceRowPredicate(p BloomExistenceRowPredicate, nameColumn,
 func convertTimeRangeRowPredicate(p TimeRangeRowPredicate, startColumn, endColumn dataset.Column) dataset.Predicate {
 	return dataset.AndPredicate{
 		Left: dataset.GreaterThanPredicate{
-			Column: startColumn,
+			Column: endColumn,
 			Value:  dataset.Int64Value(p.Start.UnixNano() - 1),
 		},
 		Right: dataset.LessThanPredicate{
-			Column: endColumn,
+			Column: startColumn,
 			Value:  dataset.Int64Value(p.End.UnixNano() + 1),
 		},
 	}
 }
 
-func findColumnFromDesc[Desc any](columns []dataset.Column, descs []Desc, check func(Desc) bool) dataset.Column {
-	for i, desc := range descs {
+func findDatasetColumn(columns []dataset.Column, actual []*Column, check func(*Column) bool) dataset.Column {
+	for i, desc := range actual {
 		if check(desc) {
 			return columns[i]
 		}

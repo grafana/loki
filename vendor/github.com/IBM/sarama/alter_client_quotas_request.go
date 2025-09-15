@@ -17,6 +17,10 @@ type AlterClientQuotasRequest struct {
 	ValidateOnly bool                     // Whether the alteration should be validated, but not performed.
 }
 
+func (a *AlterClientQuotasRequest) setVersion(v int16) {
+	a.Version = v
+}
+
 type AlterClientQuotasEntry struct {
 	Entity []QuotaEntityComponent // The quota entity to alter.
 	Ops    []ClientQuotasOp       // An individual quota configuration entry to alter.
@@ -179,7 +183,7 @@ func (c *ClientQuotasOp) decode(pd packetDecoder, version int16) error {
 }
 
 func (a *AlterClientQuotasRequest) key() int16 {
-	return 49
+	return apiKeyAlterClientQuotas
 }
 
 func (a *AlterClientQuotasRequest) version() int16 {

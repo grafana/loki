@@ -13,7 +13,7 @@ import (
 
 func createTLSConfig(cfg promconfig.TLSConfig) (*tls.Config, error) {
 	tc := &tls.Config{
-		InsecureSkipVerify: cfg.InsecureSkipVerify, //#nosec G402 -- User has explicitly requested to disable TLS
+		InsecureSkipVerify: cfg.InsecureSkipVerify, //#nosec G402 -- User has explicitly requested to disable TLS -- nosemgrep: tls-with-insecure-cipher
 		ServerName:         cfg.ServerName,
 	}
 	// load ca cert

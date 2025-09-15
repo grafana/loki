@@ -11,10 +11,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/pointersmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // Iter iterates over pointers in the provided decoder. All pointers sections are
@@ -40,21 +40,10 @@ func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[SectionPointer] {
 
 func IterSection(ctx context.Context, section *Section) result.Seq[SectionPointer] {
 	return result.Iter(func(yield func(SectionPointer) bool) error {
-		dec := newDecoder(section.reader)
-
-		// We need to pull the columns twice: once from the dataset implementation
-		// and once for the metadata to retrieve column type.
-		//
-		// TODO(rfratto): find a way to expose this information from
-		// encoding.StreamsDataset to avoid the double call.
-		metadata, err := dec.Metadata(ctx)
+		columnarSection := section.inner
+		dset, err := columnar.MakeDataset(columnarSection, columnarSection.Columns())
 		if err != nil {
-			return err
-		}
-
-		dset, err := newColumnsDataset(section.Columns())
-		if err != nil {
-			return fmt.Errorf("creating section dataset: %w", err)
+			return fmt.Errorf("creating columns dataset: %w", err)
 		}
 
 		columns, err := result.Collect(dset.ListColumns(ctx))
@@ -63,8 +52,9 @@ func IterSection(ctx context.Context, section *Section) result.Seq[SectionPointe
 		}
 
 		r := dataset.NewReader(dataset.ReaderOptions{
-			Dataset: dset,
-			Columns: columns,
+			Dataset:  dset,
+			Columns:  columns,
+			Prefetch: true,
 		})
 		defer r.Close()
 
@@ -81,7 +71,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[SectionPointe
 
 			var pointer SectionPointer
 			for _, row := range rows[:n] {
-				if err := decodeRow(metadata.GetColumns(), row, &pointer, sym); err != nil {
+				if err := decodeRow(section.Columns(), row, &pointer, sym); err != nil {
 					return err
 				}
 
@@ -99,7 +89,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[SectionPointe
 //
 // The sym argument is used for reusing label values between calls to
 // decodeRow. If sym is nil, label value strings are always allocated.
-func decodeRow(columns []*pointersmd.ColumnDesc, row dataset.Row, pointer *SectionPointer, sym *symbolizer.Symbolizer) error {
+func decodeRow(columns []*Column, row dataset.Row, pointer *SectionPointer, sym *symbolizer.Symbolizer) error {
 	pointer.Reset()
 
 	for columnIndex, columnValue := range row.Values {
@@ -109,20 +99,20 @@ func decodeRow(columns []*pointersmd.ColumnDesc, row dataset.Row, pointer *Secti
 
 		column := columns[columnIndex]
 		switch column.Type {
-		case pointersmd.COLUMN_TYPE_PATH:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_BYTE_ARRAY {
+		case ColumnTypePath:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			pointer.Path = sym.Get(unsafeString(columnValue.ByteArray()))
+			pointer.Path = sym.Get(unsafeString(columnValue.Binary()))
 
-		case pointersmd.COLUMN_TYPE_SECTION:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+		case ColumnTypeSection:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			pointer.Section = columnValue.Int64()
 
-		case pointersmd.COLUMN_TYPE_POINTER_KIND:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+		case ColumnTypePointerKind:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			switch columnValue.Int64() {
@@ -134,59 +124,59 @@ func decodeRow(columns []*pointersmd.ColumnDesc, row dataset.Row, pointer *Secti
 				return fmt.Errorf("invalid pointer kind %d", columnValue.Int64())
 			}
 
-		case pointersmd.COLUMN_TYPE_STREAM_ID:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+		case ColumnTypeStreamID:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			pointer.StreamID = columnValue.Int64()
 
-		case pointersmd.COLUMN_TYPE_STREAM_ID_REF:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+		case ColumnTypeStreamIDRef:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			pointer.StreamIDRef = columnValue.Int64()
 
-		case pointersmd.COLUMN_TYPE_MIN_TIMESTAMP:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+		case ColumnTypeMinTimestamp:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			pointer.StartTs = time.Unix(0, columnValue.Int64())
 
-		case pointersmd.COLUMN_TYPE_MAX_TIMESTAMP:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+		case ColumnTypeMaxTimestamp:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			pointer.EndTs = time.Unix(0, columnValue.Int64())
 
-		case pointersmd.COLUMN_TYPE_ROW_COUNT:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+		case ColumnTypeRowCount:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			pointer.LineCount = columnValue.Int64()
 
-		case pointersmd.COLUMN_TYPE_UNCOMPRESSED_SIZE:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+		case ColumnTypeUncompressedSize:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			pointer.UncompressedSize = columnValue.Int64()
 
-		case pointersmd.COLUMN_TYPE_COLUMN_NAME:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_BYTE_ARRAY {
+		case ColumnTypeColumnName:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			pointer.ColumnName = sym.Get(unsafeString(columnValue.ByteArray()))
+			pointer.ColumnName = sym.Get(unsafeString(columnValue.Binary()))
 
-		case pointersmd.COLUMN_TYPE_COLUMN_INDEX:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_INT64 {
+		case ColumnTypeColumnIndex:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_INT64 {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
 			pointer.ColumnIndex = columnValue.Int64()
 
-		case pointersmd.COLUMN_TYPE_VALUES_BLOOM_FILTER:
-			if ty := columnValue.Type(); ty != datasetmd.VALUE_TYPE_BYTE_ARRAY {
+		case ColumnTypeValuesBloomFilter:
+			if ty := columnValue.Type(); ty != datasetmd.PHYSICAL_TYPE_BINARY {
 				return fmt.Errorf("invalid type %s for %s", ty, column.Type)
 			}
-			filterBytes := columnValue.ByteArray()
+			filterBytes := columnValue.Binary()
 			pointer.ValuesBloomFilter = slicegrow.GrowToCap(pointer.ValuesBloomFilter, len(filterBytes))
 			pointer.ValuesBloomFilter = pointer.ValuesBloomFilter[:len(filterBytes)]
 			copy(pointer.ValuesBloomFilter, filterBytes)

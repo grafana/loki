@@ -26,7 +26,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	tracesdk "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.34.0"
 )
 
 var tracer = otel.Tracer("dskit/tracing")
@@ -35,6 +35,11 @@ var tracer = otel.Tracer("dskit/tracing")
 // Refer to official OTel SDK configuration docs to see the available options.
 // https://opentelemetry.io/docs/languages/sdk-configuration/general/
 func NewOTelFromEnv(serviceName string, logger log.Logger, opts ...OTelOption) (io.Closer, error) {
+	if os.Getenv("OTEL_TRACES_EXPORTER") == "" && os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "" && os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") == "" {
+		// No tracing is configured, so don't initialize the tracer as it would complain on every span about localhost:4718 not accepting traces.
+		return ioCloser(func() error { return nil }), nil
+	}
+
 	level.Info(logger).Log("msg", "initialising OpenTelemetry tracer")
 
 	exp, err := autoexport.NewSpanExporter(context.Background())
@@ -56,10 +61,14 @@ func NewOTelFromEnv(serviceName string, logger log.Logger, opts ...OTelOption) (
 		tracesdk.WithBatcher(exp),
 		tracesdk.WithResource(resource),
 	}
-	if jaegerRemoteSampler, ok, err := MaybeJaegerRemoteSamplerFromEnv(serviceName); err != nil {
+	if jaegerRemoteSampler, ok, err := maybeJaegerRemoteSamplerFromEnv(serviceName); err != nil {
 		return nil, fmt.Errorf("failed to create Jaeger remote sampler: %w", err)
 	} else if ok {
-		options = append(options, tracesdk.WithSampler(jaegerRemoteSampler))
+		options = append(options, tracesdk.WithSampler(&JaegerDebuggingSampler{jaegerRemoteSampler}))
+	} else {
+		// The default behaviour is to always sample (https://github.com/open-telemetry/opentelemetry-go/blob/2ce0ab20b0c054eb32a3143bc0746961cba88d19/sdk/trace/provider.go#L496),
+		// so we do the same, but wrap it with our sampler that adds support for the jaeger-debug-id HTTP header.
+		options = append(options, tracesdk.WithSampler(&JaegerDebuggingSampler{tracesdk.ParentBased(tracesdk.AlwaysSample())}))
 	}
 	options = append(options, cfg.tracerProviderOptions...)
 
@@ -160,7 +169,7 @@ func NewResource(serviceName string, customAttributes []attribute.KeyValue) (*re
 	)
 }
 
-// MaybeJaegerRemoteSamplerFromEnv checks the environment variables to see
+// maybeJaegerRemoteSamplerFromEnv checks the environment variables to see
 // if `jaeger_remote` or `parentbased_jaeger_remote` sampler is configured through OTEL_TRACES_SAMPLER.
 //
 // This extends go.opentelemetry.io/otel/sdk/trace/sampler_env.go `samplerFromEnv()` with support for Jaeger remote samplers as per docs in:
@@ -169,7 +178,9 @@ func NewResource(serviceName string, customAttributes []attribute.KeyValue) (*re
 //
 // If the environment variable is set to "jaeger_remote" or "parentbased_jaeger_remote",
 // but `OTEL_TRACES_SAMPLER_ARG` is not in the correct format (according to the docs mentioned above), then an error is returned.
-func MaybeJaegerRemoteSamplerFromEnv(serviceName string) (tracesdk.Sampler, bool, error) {
+//
+// When maybeJaegerRemoteSamplerFromEnv finds a supported Jaeger remote sampler OTEL_TRACES_SAMPLER value, it unsets that environment variable.
+func maybeJaegerRemoteSamplerFromEnv(serviceName string) (tracesdk.Sampler, bool, error) {
 	samplerName, ok := os.LookupEnv("OTEL_TRACES_SAMPLER")
 	if !ok {
 		return nil, false, nil
@@ -184,6 +195,10 @@ func MaybeJaegerRemoteSamplerFromEnv(serviceName string) (tracesdk.Sampler, bool
 		// If it's something known, trace provider already configured it through samplerFromEnv() function in the SDK.
 		return nil, false, nil
 	}
+
+	// Unset the OTEL_TRACES_SAMPLER environment variable to the SDK's samplerFromEnv()
+	// function complaining about unknown sampler and logging confusing messages.
+	_ = os.Unsetenv("OTEL_TRACES_SAMPLER")
 
 	args, ok := os.LookupEnv("OTEL_TRACES_SAMPLER_ARG")
 	if !ok || args == "" {
@@ -266,6 +281,7 @@ func OTelPropagatorsFromEnv() []propagation.TextMapPropagator {
 			propagation.TraceContext{},
 			propagation.Baggage{},
 			jaegerpropagator.Jaeger{},
+			JaegerDebuggingPropagator{},
 		}
 	}
 
@@ -279,7 +295,7 @@ func OTelPropagatorsFromEnv() []propagation.TextMapPropagator {
 		case "baggage":
 			result = append(result, propagation.Baggage{})
 		case "jaeger":
-			result = append(result, jaegerpropagator.Jaeger{})
+			result = append(result, jaegerpropagator.Jaeger{}, JaegerDebuggingPropagator{})
 		case "none":
 			return nil
 		default:

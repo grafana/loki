@@ -253,7 +253,7 @@
       "location": "northamerica-south1"
     }
   ],
-  "etag": "\"31353834363234393531343533373938353433\"",
+  "etag": "\"3136333632333439343533383832363638313632\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -4544,7 +4544,7 @@
       }
     }
   },
-  "revision": "20250629",
+  "revision": "20250814",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
@@ -4758,9 +4758,78 @@
         "encryption": {
           "description": "Encryption configuration for a bucket.",
           "properties": {
+            "customerManagedEncryptionEnforcementConfig": {
+              "description": "If set, the new objects created in this bucket must comply with this enforcement config. Changing this has no effect on existing objects; it applies to new objects only. If omitted, the new objects are allowed to be encrypted with Customer Managed Encryption type by default.",
+              "properties": {
+                "effectiveTime": {
+                  "description": "Server-determined value that indicates the time from which configuration was enforced and effective. This value is in RFC 3339 format.",
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "restrictionMode": {
+                  "description": "Restriction mode for Customer-Managed Encryption Keys. Defaults to NotRestricted.",
+                  "enum": [
+                    "NotRestricted",
+                    "FullyRestricted"
+                  ],
+                  "enumDescriptions": [
+                    "Creation of new objects with Customer-Managed Encryption is not restricted.",
+                    "Creation of new objects with Customer-Managed Encryption is fully restricted."
+                  ],
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "customerSuppliedEncryptionEnforcementConfig": {
+              "description": "If set, the new objects created in this bucket must comply with this enforcement config. Changing this has no effect on existing objects; it applies to new objects only. If omitted, the new objects are allowed to be encrypted with Customer Supplied Encryption type by default.",
+              "properties": {
+                "effectiveTime": {
+                  "description": "Server-determined value that indicates the time from which configuration was enforced and effective. This value is in RFC 3339 format.",
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "restrictionMode": {
+                  "description": "Restriction mode for Customer-Supplied Encryption Keys. Defaults to NotRestricted.",
+                  "enum": [
+                    "NotRestricted",
+                    "FullyRestricted"
+                  ],
+                  "enumDescriptions": [
+                    "Creation of new objects with Customer-Supplied Encryption is not restricted.",
+                    "Creation of new objects with Customer-Supplied Encryption is fully restricted."
+                  ],
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
             "defaultKmsKeyName": {
               "description": "A Cloud KMS key that will be used to encrypt objects inserted into this bucket, if no encryption method is specified.",
               "type": "string"
+            },
+            "googleManagedEncryptionEnforcementConfig": {
+              "description": "If set, the new objects created in this bucket must comply with this enforcement config. Changing this has no effect on existing objects; it applies to new objects only. If omitted, the new objects are allowed to be encrypted with Google Managed Encryption type by default.",
+              "properties": {
+                "effectiveTime": {
+                  "description": "Server-determined value that indicates the time from which configuration was enforced and effective. This value is in RFC 3339 format.",
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "restrictionMode": {
+                  "description": "Restriction mode for Google-Managed Encryption Keys. Defaults to NotRestricted.",
+                  "enum": [
+                    "NotRestricted",
+                    "FullyRestricted"
+                  ],
+                  "enumDescriptions": [
+                    "Creation of new objects with Google Managed Encryption is not restricted.",
+                    "Creation of new objects with Google Managed Encryption is fully restricted."
+                  ],
+                  "type": "string"
+                }
+              },
+              "type": "object"
             }
           },
           "type": "object"
@@ -5331,6 +5400,16 @@
         "copySourceAcl": {
           "description": "If true, copies the source object's ACL; otherwise, uses the bucket's default object ACL. The default is false.",
           "type": "boolean"
+        },
+        "createdAfterTime": {
+          "description": "Restores only the objects that were created after this time.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "createdBeforeTime": {
+          "description": "Restores only the objects that were created before this time.",
+          "format": "date-time",
+          "type": "string"
         },
         "matchGlobs": {
           "description": "Restores only the objects matching any of the specified glob(s). If this parameter is not specified, all objects will be restored within the specified time range.",

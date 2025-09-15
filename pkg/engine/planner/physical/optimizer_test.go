@@ -67,10 +67,7 @@ func TestCanApplyPredicate(t *testing.T) {
 	}
 }
 
-var (
-	time1000 = datatype.Timestamp(1000000000)
-	time2000 = datatype.Timestamp(2000000000)
-)
+var time1000 = datatype.Timestamp(1000000000)
 
 func dummyPlan() *Plan {
 	plan := &Plan{}
@@ -457,6 +454,95 @@ func TestOptimizer(t *testing.T) {
 			_ = expectedPlan.addEdge(Edge{Parent: limit, Child: filter})
 			_ = expectedPlan.addEdge(Edge{Parent: filter, Child: scan1})
 			_ = expectedPlan.addEdge(Edge{Parent: filter, Child: scan2})
+		}
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+		require.Equal(t, expected, actual)
+	})
+
+	t.Run("limit pushdown with filter should not propagate limit to child nodes", func(t *testing.T) {
+		// Limit should not be propagated to child nodes when there are filters
+		filterPredicates := []Expression{
+			&BinaryExpr{
+				Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
+				Right: NewLiteral("error"),
+				Op:    types.BinaryOpEq,
+			},
+		}
+
+		plan := &Plan{}
+		{
+			scan1 := plan.addNode(&DataObjScan{id: "scan1"})
+			scan2 := plan.addNode(&DataObjScan{id: "scan2"})
+			filter := plan.addNode(&Filter{
+				id:         "filter1",
+				Predicates: filterPredicates,
+			})
+			limit := plan.addNode(&Limit{id: "limit1", Fetch: 100})
+
+			_ = plan.addEdge(Edge{Parent: limit, Child: filter})
+			_ = plan.addEdge(Edge{Parent: filter, Child: scan1})
+			_ = plan.addEdge(Edge{Parent: filter, Child: scan2})
+		}
+
+		// apply optimisations
+		optimizations := []*optimization{
+			newOptimization("limit pushdown", plan).withRules(
+				&limitPushdown{plan: plan},
+			),
+		}
+		o := newOptimizer(plan, optimizations)
+		o.optimize(plan.Roots()[0])
+
+		expectedPlan := &Plan{}
+		{
+			scan1 := expectedPlan.addNode(&DataObjScan{id: "scan1"})
+			scan2 := expectedPlan.addNode(&DataObjScan{id: "scan2"})
+			filter := expectedPlan.addNode(&Filter{
+				id:         "filter1",
+				Predicates: filterPredicates,
+			})
+			limit := expectedPlan.addNode(&Limit{id: "limit1", Fetch: 100})
+
+			_ = expectedPlan.addEdge(Edge{Parent: limit, Child: filter})
+			_ = expectedPlan.addEdge(Edge{Parent: filter, Child: scan1})
+			_ = expectedPlan.addEdge(Edge{Parent: filter, Child: scan2})
+		}
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+		require.Equal(t, expected, actual)
+	})
+
+	t.Run("limit pushdown without filter should propagate limit to child nodes", func(t *testing.T) {
+		plan := &Plan{}
+		{
+			scan1 := plan.addNode(&DataObjScan{id: "scan1"})
+			scan2 := plan.addNode(&DataObjScan{id: "scan2"})
+			limit := plan.addNode(&Limit{id: "limit1", Fetch: 100})
+
+			_ = plan.addEdge(Edge{Parent: limit, Child: scan1})
+			_ = plan.addEdge(Edge{Parent: limit, Child: scan2})
+		}
+
+		// apply optimisations
+		optimizations := []*optimization{
+			newOptimization("limit pushdown", plan).withRules(
+				&limitPushdown{plan: plan},
+			),
+		}
+		o := newOptimizer(plan, optimizations)
+		o.optimize(plan.Roots()[0])
+
+		expectedPlan := &Plan{}
+		{
+			scan1 := expectedPlan.addNode(&DataObjScan{id: "scan1", Limit: 100})
+			scan2 := expectedPlan.addNode(&DataObjScan{id: "scan2", Limit: 100})
+			limit := expectedPlan.addNode(&Limit{id: "limit1", Fetch: 100})
+
+			_ = expectedPlan.addEdge(Edge{Parent: limit, Child: scan1})
+			_ = expectedPlan.addEdge(Edge{Parent: limit, Child: scan2})
 		}
 
 		actual := PrintAsTree(plan)
