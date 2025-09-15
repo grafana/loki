@@ -311,12 +311,15 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 		name       string
 		matchers   []*labels.Matcher
 		predicates []*labels.Matcher
+		start, end time.Time
 		wantCount  int
 	}{
 		{
 			name:       "no matchers returns no sections",
 			matchers:   nil,
 			predicates: nil,
+			start:      now.Add(-time.Hour),
+			end:        now.Add(time.Hour),
 			wantCount:  0,
 		},
 		{
@@ -325,6 +328,8 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
 			predicates: nil,
+			start:      now.Add(-time.Hour),
+			end:        now.Add(time.Hour),
 			wantCount:  1,
 		},
 		{
@@ -333,6 +338,8 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 				labels.MustNewMatcher(labels.MatchEqual, "app", "doesnotexist"),
 			},
 			predicates: nil,
+			start:      now.Add(-time.Hour),
+			end:        now.Add(time.Hour),
 			wantCount:  0,
 		},
 		{
@@ -343,13 +350,37 @@ func TestSectionsForStreamMatchers(t *testing.T) {
 			predicates: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchRegexp, "bar", "something"),
 			},
+			start:     now.Add(-time.Hour),
+			end:       now.Add(time.Hour),
 			wantCount: 1,
+		},
+		{
+			name: "stream matcher with not matching predicate returns no matching sections",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			predicates: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "bar", "something"),
+			},
+			start:     now.Add(-time.Hour),
+			end:       now.Add(time.Hour),
+			wantCount: 0,
+		},
+		{
+			name: "matcher returns no matching sections if time range is out of bounds",
+			matchers: []*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			predicates: nil,
+			start:      now.Add(-3 * time.Hour),
+			end:        now.Add(-2 * time.Hour),
+			wantCount:  0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sections, err := mstore.Sections(ctx, now.Add(-time.Hour), now.Add(time.Hour), tt.matchers, tt.predicates)
+			sections, err := mstore.Sections(ctx, tt.start, tt.end, tt.matchers, tt.predicates)
 			require.NoError(t, err)
 			require.Len(t, sections, tt.wantCount)
 			for _, section := range sections {
