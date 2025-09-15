@@ -262,9 +262,6 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 		}
 
 		streamSectionPointers = intersectSections(streamSectionPointers, sectionMembershipEstimates)
-		if len(streamSectionPointers) == 0 {
-			return nil, errors.New("no relevant sections returned")
-		}
 	}
 
 	duration := sectionsTimer.ObserveDuration()
