@@ -27,10 +27,11 @@ const (
 
 type Record struct {
 	// Context holds the tracing (and potentially other) info, that the record was enriched with on fetch from Kafka.
-	Ctx      context.Context
-	TenantID string
-	Content  []byte
-	Offset   int64
+	Ctx       context.Context
+	TenantID  string
+	Content   []byte
+	Offset    int64
+	Timestamp time.Time
 }
 
 type Reader interface {
@@ -177,10 +178,11 @@ func (r *KafkaReader) Poll(ctx context.Context, maxPollRecords int) ([]Record, e
 		records = append(records, Record{
 			// This context carries the tracing data for this individual record;
 			// kotel populates this data when it fetches the messages.
-			Ctx:      rec.Context,
-			TenantID: string(rec.Key),
-			Content:  rec.Value,
-			Offset:   rec.Offset,
+			Ctx:       rec.Context,
+			TenantID:  string(rec.Key),
+			Content:   rec.Value,
+			Offset:    rec.Offset,
+			Timestamp: rec.Timestamp,
 		})
 	})
 

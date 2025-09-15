@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
@@ -33,12 +34,13 @@ type Service struct {
 	metastoreEvents             *kgo.Client
 	lifecycler                  *ring.Lifecycler
 	partitionInstanceLifecycler *ring.PartitionInstanceLifecycler
+	partitionReader             *partition.ReaderService
 	watcher                     *services.FailureWatcher
 	logger                      log.Logger
 	reg                         prometheus.Registerer
 }
 
-func New(kafkaCfg kafka.Config, cfg Config, _ metastore.Config, _ objstore.Bucket, _ scratch.Store, _ string, _ ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) (*Service, error) {
+func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, instanceID string, partitionRing ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) (*Service, error) {
 	logger = log.With(logger, "component", "dataobj-consumer")
 
 	s := &Service{
@@ -106,6 +108,20 @@ func New(kafkaCfg kafka.Config, cfg Config, _ metastore.Config, _ objstore.Bucke
 		prometheus.WrapRegistererWithPrefix("loki_", reg))
 	s.partitionInstanceLifecycler = partitionInstanceLifecycler
 
+	processorFactory := newPartitionProcessorFactory(cfg, mCfg, metastoreEvents, bucket, scratchStore, logger, reg)
+	partitionReader, err := partition.NewReaderService(
+		kafkaCfg,
+		partitionID,
+		cfg.LifecyclerConfig.ID,
+		newConsumerFactory(processorFactory),
+		logger,
+		reg,
+	)
+	if err != nil {
+		return nil, err
+	}
+	s.partitionReader = partitionReader
+
 	watcher := services.NewFailureWatcher()
 	watcher.WatchService(lifecycler)
 	watcher.WatchService(partitionInstanceLifecycler)
@@ -124,7 +140,9 @@ func (s *Service) starting(ctx context.Context) error {
 	if err := services.StartAndAwaitRunning(ctx, s.partitionInstanceLifecycler); err != nil {
 		return fmt.Errorf("failed to start partition instance lifecycler: %w", err)
 	}
-
+	if err := services.StartAndAwaitRunning(ctx, s.partitionReader); err != nil {
+		return fmt.Errorf("failed to start partition reader: %w", err)
+	}
 	return nil
 }
 
@@ -138,6 +156,9 @@ func (s *Service) running(ctx context.Context) error {
 func (s *Service) stopping(failureCase error) error {
 	level.Info(s.logger).Log("msg", "stopping")
 	ctx := context.TODO()
+	if err := services.StopAndAwaitTerminated(ctx, s.partitionReader); err != nil {
+		level.Warn(s.logger).Log("msg", "failed to stop partition reader", "err", err)
+	}
 	if err := services.StopAndAwaitTerminated(ctx, s.partitionInstanceLifecycler); err != nil {
 		level.Warn(s.logger).Log("msg", "failed to stop partition instance lifecycler", "err", err)
 	}
