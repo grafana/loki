@@ -13,7 +13,7 @@ import (
 )
 
 type Config struct {
-	BuilderConfig       logsobj.BuilderConfig `yaml:"builder,omitempty"`
+	logsobj.BuilderConfig
 	LifecyclerConfig    ring.LifecyclerConfig `yaml:"lifecycler,omitempty"`
 	PartitionRingConfig partitionring.Config  `yaml:"partition_ring" category:"experimental"`
 	UploaderConfig      uploader.Config       `yaml:"uploader"`
