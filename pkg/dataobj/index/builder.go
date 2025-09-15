@@ -371,7 +371,7 @@ func (p *Builder) buildIndex(ctx context.Context, events []metastore.ObjectWritt
 		level.Error(p.logger).Log("msg", "failed to parse write time", "err", err)
 		return err
 	}
-	p.metrics.observeProcessingDelay(writeTime)
+	p.metrics.setProcessingDelay(writeTime)
 
 	// Trigger the downloads
 	for _, event := range events {

@@ -133,8 +133,7 @@ func (r *RowReader) initReader() error {
 		Dataset:    dset,
 		Columns:    columns,
 		Predicates: predicates,
-
-		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
+		Prefetch:   true,
 	}
 
 	if r.reader == nil {
@@ -271,11 +270,11 @@ func convertBloomExistenceRowPredicate(p BloomExistenceRowPredicate, nameColumn,
 func convertTimeRangeRowPredicate(p TimeRangeRowPredicate, startColumn, endColumn dataset.Column) dataset.Predicate {
 	return dataset.AndPredicate{
 		Left: dataset.GreaterThanPredicate{
-			Column: startColumn,
+			Column: endColumn,
 			Value:  dataset.Int64Value(p.Start.UnixNano() - 1),
 		},
 		Right: dataset.LessThanPredicate{
-			Column: endColumn,
+			Column: startColumn,
 			Value:  dataset.Int64Value(p.End.UnixNano() + 1),
 		},
 	}

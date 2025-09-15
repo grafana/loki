@@ -1,5 +1,7 @@
 name: LogQL correctness tests
 on:
+  schedule:
+    - cron: "30 2 * * 1-5" # Mon-Fri at 2.30am UTC
   workflow_dispatch:
     inputs:
       ref:
@@ -7,15 +9,10 @@ on:
         required: false
         default: 'main'
         type: 'string'
-      test_dataobj_old_engine:
-        description: 'Benchmark data object store with old engine'
-        required: false
-        default: true
-        type: 'boolean'
       test_dataobj_new_engine:
         description: 'Benchmark data object store with new engine'
         required: false
-        default: false # Disabled by default due to less complete implementation
+        default: true
         type: 'boolean'
       failfast:
         description: 'Fail fast on first test failure'
@@ -37,7 +34,7 @@ jobs:
         id: checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || 'main' }}
 
       - name: Setup Go
         uses: actions/setup-go@v4
@@ -71,8 +68,7 @@ jobs:
           STORES=()
 
           # Use explicit equality checks to avoid template injection.
-          ${{ inputs.test_dataobj_old_engine == true }} && STORES+=("dataobj")
-          ${{ inputs.test_dataobj_new_engine == true }} && STORES+=("dataobj-engine")
+          ${{ !contains(inputs.test_dataobj_new_engine, 'false') }} && STORES+=("dataobj-engine")
 
           MATRIX_JSON=$(jq -nc --arg stores "${STORES[*]}" '{"store": $stores | split(" ")}')
           echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT"
