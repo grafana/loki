@@ -474,7 +474,7 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	}
 
 	if reflect.DeepEqual(cfg.Frontend.FrontendV2.InfNames, defaults.Frontend.FrontendV2.InfNames) {
-		cfg.Frontend.FrontendV2.InfNames = append(cfg.Config.Frontend.FrontendV2.InfNames, loopbackIface)
+		cfg.Frontend.FrontendV2.InfNames = append(cfg.Frontend.FrontendV2.InfNames, loopbackIface)
 	}
 
 	if reflect.DeepEqual(cfg.Distributor.DistributorRing.InstanceInterfaceNames, defaults.Distributor.DistributorRing.InstanceInterfaceNames) {

@@ -21,7 +21,6 @@ import (
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	dskit_flagext "github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/consul"
@@ -47,7 +46,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	fe "github.com/grafana/loki/v3/pkg/util/flagext"
 	loki_flagext "github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	loki_net "github.com/grafana/loki/v3/pkg/util/net"
@@ -124,7 +122,7 @@ func TestDistributor(t *testing.T) {
 			flagext.DefaultValues(limits)
 			limits.IngestionRateMB = ingestionRateLimitMB
 			limits.IngestionBurstSizeMB = ingestionRateLimitMB
-			limits.MaxLineSize = fe.ByteSize(tc.maxLineSize)
+			limits.MaxLineSize = loki_flagext.ByteSize(tc.maxLineSize)
 
 			distributors, _ := prepare(t, 1, 5, limits, nil)
 
@@ -1807,9 +1805,9 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 
 			// Configure policy blocks
 			if tc.blockUntil != nil {
-				limits.BlockIngestionPolicyUntil = make(map[string]dskit_flagext.Time)
+				limits.BlockIngestionPolicyUntil = make(map[string]flagext.Time)
 				for policy, until := range tc.blockUntil {
-					limits.BlockIngestionPolicyUntil[policy] = dskit_flagext.Time(until)
+					limits.BlockIngestionPolicyUntil[policy] = flagext.Time(until)
 				}
 			}
 

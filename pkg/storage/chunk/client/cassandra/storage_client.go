@@ -192,11 +192,12 @@ func (cfg *Config) setClusterConfig(cluster *gocql.ClusterConfig) error {
 		}
 	}
 
-	if cfg.HostSelectionPolicy == HostPolicyRoundRobin {
+	switch cfg.HostSelectionPolicy {
+	case HostPolicyRoundRobin:
 		cluster.PoolConfig.HostSelectionPolicy = gocql.RoundRobinHostPolicy()
-	} else if cfg.HostSelectionPolicy == HostPolicyTokenAware {
+	case HostPolicyTokenAware:
 		cluster.PoolConfig.HostSelectionPolicy = gocql.TokenAwareHostPolicy(gocql.RoundRobinHostPolicy())
-	} else {
+	default:
 		return errors.New("Unknown host selection policy")
 	}
 

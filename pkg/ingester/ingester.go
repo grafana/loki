@@ -457,7 +457,7 @@ func (i *Ingester) setupAutoForget() {
 
 	go func() {
 		ctx := context.Background()
-		err := i.Service.AwaitRunning(ctx)
+		err := i.AwaitRunning(ctx)
 		if err != nil {
 			level.Error(i.logger).Log("msg", fmt.Sprintf("autoforget received error %s, autoforget is disabled", err.Error()))
 			return

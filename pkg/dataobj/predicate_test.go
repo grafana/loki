@@ -298,17 +298,19 @@ func evaluateStreamsPredicate(p dataset.Predicate, s streams.Stream) bool {
 	case dataset.NotPredicate:
 		return !evaluateStreamsPredicate(p.Inner, s)
 	case dataset.GreaterThanPredicate:
-		if p.Column == fakeMinColumn {
+		switch p.Column {
+		case fakeMinColumn:
 			return s.MinTimestamp.After(time.Unix(0, p.Value.Int64()).UTC())
-		} else if p.Column == fakeMaxColumn {
+		case fakeMaxColumn:
 			return s.MaxTimestamp.After(time.Unix(0, p.Value.Int64()).UTC())
 		}
 		panic("unexpected column")
 
 	case dataset.LessThanPredicate:
-		if p.Column == fakeMinColumn {
+		switch p.Column {
+		case fakeMinColumn:
 			return s.MinTimestamp.Before(time.Unix(0, p.Value.Int64()).UTC())
-		} else if p.Column == fakeMaxColumn {
+		case fakeMaxColumn:
 			return s.MaxTimestamp.Before(time.Unix(0, p.Value.Int64()).UTC())
 		}
 		panic("unexpected column")
