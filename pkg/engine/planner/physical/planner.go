@@ -372,6 +372,9 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 				&predicatePushdown{plan: plan},
 				&removeNoopFilter{plan: plan},
 			),
+			newOptimization("FilterNodePushdown", plan).withRules(
+				&filterNodePushdown{plan: plan},
+			),
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),

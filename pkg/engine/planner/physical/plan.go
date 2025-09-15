@@ -197,6 +197,40 @@ func (p *Plan) addEdge(e Edge) error {
 	return nil
 }
 
+// removeEdge removes a directed edge between two nodes in the plan.
+// It removes the parent-child relationship between the nodes where
+// e.Parent is no longer a parent of e.Child. Both nodes must exist
+// in the plan and the edge must exist. Returns an error if the edge
+// doesn't exist or if either node is nil.
+func (p *Plan) removeEdge(e Edge) error {
+	if e.Parent == nil || e.Child == nil {
+		return fmt.Errorf("parent and child nodes must not be nil")
+	}
+	if !p.nodes.contains(e.Parent) {
+		return fmt.Errorf("node %s does not exist in graph", e.Parent.ID())
+	}
+	if !p.nodes.contains(e.Child) {
+		return fmt.Errorf("node %s does not exist in graph", e.Child.ID())
+	}
+	if p.parents[e.Child] != e.Parent {
+		return fmt.Errorf("edge from %s to %s does not exist", e.Parent.ID(), e.Child.ID())
+	}
+
+	// Remove child from parent's children list
+	children := p.children[e.Parent]
+	for i, child := range children {
+		if child == e.Child {
+			p.children[e.Parent] = append(children[:i], children[i+1:]...)
+			break
+		}
+	}
+
+	// Remove entry from parents list
+	p.parents[e.Child] = nil
+
+	return nil
+}
+
 // eliminateNode removes a node from the plan and reconnects its parent to its children.
 // This maintains the graph's connectivity by creating direct edges from the parent
 // to each child of the removed node. The function also cleans up all references to
