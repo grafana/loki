@@ -98,6 +98,12 @@ type filterNodePushdown struct {
 
 // apply implements rule.
 func (r *filterNodePushdown) apply(node Node) bool {
+	if r.addedNodes == nil {
+		r.addedNodes = make(map[Node]struct{})
+	} else {
+		clear(r.addedNodes)
+	}
+
 	switch node := node.(type) {
 	case *Filter:
 		if len(node.Predicates) == 0 {
