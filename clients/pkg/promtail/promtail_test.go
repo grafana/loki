@@ -802,7 +802,7 @@ func Test_ReloadFail_NotPanic(t *testing.T) {
 		defer wg.Done()
 		err = promtailServer.Run()
 		if err != nil {
-			err = errors.Wrap(err, "Failed to start promtail")
+			err = errors.Wrap(err, "failed to start promtail")
 		}
 	}()
 	defer promtailServer.Shutdown() // In case the test fails before the call to Shutdown below.
@@ -813,7 +813,7 @@ func Test_ReloadFail_NotPanic(t *testing.T) {
 	require.NotEqual(t, expectedConfig.String(), svr.PromtailConfig())
 	result, err := reload(t, httpListenAddr)
 	require.Error(t, err)
-	expectedReloadResult := fmt.Sprintf("failed to reload config: Error new Config: %s\n", newConfigErr)
+	expectedReloadResult := fmt.Sprintf("failed to reload config: error new Config: %s\n", newConfigErr)
 	require.Equal(t, expectedReloadResult, result)
 
 	pb := &dto.Metric{}
