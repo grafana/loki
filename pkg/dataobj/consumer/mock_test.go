@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -133,13 +134,11 @@ func (m *mockBuilder) UnregisterMetrics(r prometheus.Registerer) {
 
 // A mockCommitter implements the committer interface for tests.
 type mockCommitter struct {
-	// We will need to change this when we add support for other methods like
-	// CommitOffsets and CommitOffsetsSync.
-	records []*kgo.Record
+	offsets []int64
 }
 
-func (m *mockCommitter) CommitRecords(_ context.Context, records ...*kgo.Record) error {
-	m.records = append(m.records, records...)
+func (m *mockCommitter) Commit(_ context.Context, offset int64) error {
+	m.offsets = append(m.offsets, offset)
 	return nil
 }
 
@@ -200,11 +199,11 @@ func (m *mockKafka) ProduceSync(_ context.Context, rs ...*kgo.Record) kgo.Produc
 
 // mockPartitionProcessor mocks a [partitionProcessor].
 type mockPartitionProcessor struct {
-	records          []*kgo.Record
+	records          []partition.Record
 	started, stopped bool
 }
 
-func (m *mockPartitionProcessor) Append(records []*kgo.Record) bool {
+func (m *mockPartitionProcessor) Append(records []partition.Record) bool {
 	m.records = append(m.records, records...)
 	return true
 }

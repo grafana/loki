@@ -29,7 +29,7 @@ func newConsumer(processor processor, logger log.Logger) *consumer {
 	}
 }
 
-func (c *consumer) Start(ctx context.Context, recordsChan <-chan []partition.Record) func() {
+func (c *consumer) Start(_ context.Context, recordsChan <-chan []partition.Record) func() {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {

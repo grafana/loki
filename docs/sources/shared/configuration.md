@@ -980,7 +980,7 @@ kafka_config:
 
 dataobj:
   consumer:
-    builder:
+    builderconfig:
       # The target maximum amount of uncompressed data to hold in data pages
       # (for columnar sections). Uncompressed size is used for consistent I/O
       # and planning.
