@@ -379,6 +379,7 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.DataObj.Consumer.LifecyclerConfig.ListenPort = rc.ListenPort
 		r.DataObj.Consumer.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
 		r.DataObj.Consumer.LifecyclerConfig.EnableInet6 = rc.EnableIPv6
+		r.DataObj.Consumer.PartitionRingConfig.KVStore = rc.KVStore
 	}
 }
 

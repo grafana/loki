@@ -1152,6 +1152,66 @@ dataobj:
       # CLI flag: -dataobj-consumer.lifecycler.ID
       [id: <string> | default = "<hostname>"]
 
+    partition_ring:
+      # The key-value store used to share the hash ring across multiple
+      # instances. This option needs be set on ingesters, distributors,
+      # queriers, and rulers when running in microservices mode.
+      kvstore:
+        # Backend storage to use for the ring. Supported values are: consul,
+        # etcd, inmemory, memberlist, multi.
+        # CLI flag: -dataobj-consumer.partition-ring.store
+        [store: <string> | default = "memberlist"]
+
+        # The prefix for the keys in the store. Should end with a /.
+        # CLI flag: -dataobj-consumer.partition-ring.prefix
+        [prefix: <string> | default = "collectors/"]
+
+        # Configuration for a Consul client. Only applies if the selected
+        # kvstore is consul.
+        # The CLI flags prefix for this block configuration is:
+        # dataobj-consumer.partition-ring
+        [consul: <consul>]
+
+        # Configuration for an ETCD v3 client. Only applies if the selected
+        # kvstore is etcd.
+        # The CLI flags prefix for this block configuration is:
+        # dataobj-consumer.partition-ring
+        [etcd: <etcd>]
+
+        multi:
+          # Primary backend storage used by multi-client.
+          # CLI flag: -dataobj-consumer.partition-ring.multi.primary
+          [primary: <string> | default = ""]
+
+          # Secondary backend storage used by multi-client.
+          # CLI flag: -dataobj-consumer.partition-ring.multi.secondary
+          [secondary: <string> | default = ""]
+
+          # Mirror writes to secondary store.
+          # CLI flag: -dataobj-consumer.partition-ring.multi.mirror-enabled
+          [mirror_enabled: <boolean> | default = false]
+
+          # Timeout for storing value to secondary store.
+          # CLI flag: -dataobj-consumer.partition-ring.multi.mirror-timeout
+          [mirror_timeout: <duration> | default = 2s]
+
+      # Minimum number of owners to wait before a PENDING partition gets
+      # switched to ACTIVE.
+      # CLI flag: -dataobj-consumer.partition-ring.min-partition-owners-count
+      [min_partition_owners_count: <int> | default = 1]
+
+      # How long the minimum number of owners are enforced before a PENDING
+      # partition gets switched to ACTIVE.
+      # CLI flag: -dataobj-consumer.partition-ring.min-partition-owners-duration
+      [min_partition_owners_duration: <duration> | default = 10s]
+
+      # How long to wait before an INACTIVE partition is eligible for deletion.
+      # The partition is deleted only if it has been in INACTIVE state for at
+      # least the configured duration and it has no owners registered. A value
+      # of 0 disables partitions deletion.
+      # CLI flag: -dataobj-consumer.partition-ring.delete-inactive-partition-after
+      [delete_inactive_partition_after: <duration> | default = 13h]
+
     uploader:
       # The size of the SHA prefix to use for generating object storage keys for
       # data objects.
@@ -2732,6 +2792,7 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 - `common.storage.ring`
 - `compactor.ring`
 - `dataobj-consumer`
+- `dataobj-consumer.partition-ring`
 - `distributor.ring`
 - `index-gateway.ring`
 - `ingest-limits`
@@ -2983,6 +3044,7 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 - `common.storage.ring`
 - `compactor.ring`
 - `dataobj-consumer`
+- `dataobj-consumer.partition-ring`
 - `distributor.ring`
 - `index-gateway.ring`
 - `ingest-limits`
@@ -7420,6 +7482,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `compactor.grpc-client`
 - `compactor.ring.etcd`
 - `dataobj-consumer.etcd`
+- `dataobj-consumer.partition-ring.etcd`
 - `distributor.ring.etcd`
 - `etcd`
 - `frontend.grpc-client-config`
