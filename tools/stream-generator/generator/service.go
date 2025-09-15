@@ -42,8 +42,8 @@ type Generator struct {
 	streams map[string][]distributor.KeyedStream
 
 	// active streams
-	activeStreams    int
-	activeStreamsMtx sync.RWMutex
+	activeStreams    []int
+	activeStreamsMtx []activeStreamsLock
 
 	// kafka
 	writer *client.Producer
@@ -65,11 +65,19 @@ type Generator struct {
 	cancel context.CancelFunc
 }
 
+type activeStreamsLock struct {
+	sync.RWMutex
+	// Padding to avoid multiple locks being on the same cache line.
+	_ [40]byte
+}
+
 func New(cfg Config, logger log.Logger, reg prometheus.Registerer) (*Generator, error) {
 	s := &Generator{
-		cfg:     cfg,
-		logger:  logger,
-		metrics: newMetrics(reg),
+		cfg:              cfg,
+		logger:           logger,
+		metrics:          newMetrics(reg),
+		activeStreams:    make([]int, cfg.NumTenants),
+		activeStreamsMtx: make([]activeStreamsLock, cfg.NumTenants),
 	}
 
 	var err error
@@ -167,20 +175,23 @@ func (s *Generator) running(ctx context.Context) error {
 	// Start goroutines for each tenant:
 	// - create: creates new streams in intervals
 	// - keepAlive: keeps existing streams alive by re-sending them to the backend
+	lockIdx := 0
 	for tenant, streams := range s.streams {
-		go s.create(ctx, tenant, streams, errCh)
-		go s.keepAlive(ctx, tenant, streams, errCh)
+		go s.create(ctx, tenant, lockIdx, streams, errCh)
+		go s.keepAlive(ctx, tenant, lockIdx, streams, errCh)
+		lockIdx++
 	}
 
 	// Wait for context cancellation, subservice failure, or tenant error
-	select {
-	case <-ctx.Done():
-		return nil
-	case err := <-s.subservicesWatcher.Chan():
-		return errors.Wrap(err, "stream-generator subservice failed")
-	case err := <-errCh:
-		level.Error(s.logger).Log("msg", "stream-generator error", "err", err)
-		return err
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-s.subservicesWatcher.Chan():
+			return errors.Wrap(err, "stream-generator subservice failed")
+		case err := <-errCh:
+			level.Error(s.logger).Log("msg", "stream-generator error", "err", err)
+		}
 	}
 }
 
@@ -207,7 +218,7 @@ func (s *Generator) GetFrontendRing() *ring.Ring {
 	return s.frontendRing
 }
 
-func (s *Generator) create(ctx context.Context, tenant string, streams []distributor.KeyedStream, errCh chan<- error) {
+func (s *Generator) create(ctx context.Context, tenant string, lockIdx int, streams []distributor.KeyedStream, errCh chan<- error) {
 	s.wg.Add(1)
 	defer s.wg.Done()
 
@@ -220,30 +231,32 @@ func (s *Generator) create(ctx context.Context, tenant string, streams []distrib
 			return
 		case <-createT.C:
 			func() {
-				s.activeStreamsMtx.Lock()
-				defer s.activeStreamsMtx.Unlock()
+				s.activeStreamsMtx[lockIdx].Lock()
+				defer s.activeStreamsMtx[lockIdx].Unlock()
 
-				if s.activeStreams >= total {
+				activeStreams := s.activeStreams[lockIdx]
+
+				if activeStreams >= total {
 					createT.Stop()
 					return
 				}
 
 				batchSize := s.cfg.CreateBatchSize
-				if s.activeStreams+batchSize > total {
-					batchSize = total - s.activeStreams
+				if activeStreams+batchSize > total {
+					batchSize = total - activeStreams
 				}
 
-				batch := streams[s.activeStreams : s.activeStreams+batchSize]
+				batch := streams[activeStreams : activeStreams+batchSize]
 				s.pushStreams(ctx, tenant, batch, errCh)
 
 				s.metrics.streamsCreatedTotal.WithLabelValues(tenant).Inc()
-				s.activeStreams += batchSize
+				s.activeStreams[lockIdx] += batchSize
 			}()
 		}
 	}
 }
 
-func (s *Generator) keepAlive(ctx context.Context, tenant string, streams []distributor.KeyedStream, errCh chan<- error) {
+func (s *Generator) keepAlive(ctx context.Context, tenant string, lockIdx int, streams []distributor.KeyedStream, errCh chan<- error) {
 	s.wg.Add(1)
 	defer s.wg.Done()
 
@@ -257,15 +270,15 @@ func (s *Generator) keepAlive(ctx context.Context, tenant string, streams []dist
 			return
 		case <-aliveT.C:
 			func() {
-				s.activeStreamsMtx.RLock()
-				defer s.activeStreamsMtx.RUnlock()
+				s.activeStreamsMtx[lockIdx].RLock()
+				defer s.activeStreamsMtx[lockIdx].RUnlock()
 
-				if s.activeStreams < s.cfg.CreateBatchSize {
+				if s.activeStreams[lockIdx] < s.cfg.CreateBatchSize {
 					// Skip until first batch is created
 					return
 				}
 
-				batch := streams[:s.activeStreams-1]
+				batch := streams[:s.activeStreams[lockIdx]-1]
 				s.pushStreams(ctx, tenant, batch, errCh)
 				s.metrics.streamsKeepAliveTotal.WithLabelValues(tenant).Inc()
 			}()
