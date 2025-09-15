@@ -18,14 +18,14 @@ func TestExecuteLimit(t *testing.T) {
 	t.Run("with no inputs", func(t *testing.T) {
 		ctx := t.Context()
 		pipeline := c.executeLimit(ctx, &physical.Limit{}, nil)
-		err := pipeline.Read(ctx)
+		_, err := pipeline.Read(ctx)
 		require.Equal(t, EOF, err)
 	})
 
 	t.Run("with multiple inputs", func(t *testing.T) {
 		ctx := t.Context()
 		pipeline := c.executeLimit(ctx, &physical.Limit{}, []Pipeline{emptyPipeline(), emptyPipeline()})
-		err := pipeline.Read(ctx)
+		_, err := pipeline.Read(ctx)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "limit expects exactly one input, got 2")
 	})
@@ -50,10 +50,7 @@ func TestExecuteLimit(t *testing.T) {
 		defer pipeline.Close()
 
 		// Read from the pipeline
-		err = pipeline.Read(ctx)
-		require.NoError(t, err)
-
-		batch, err := pipeline.Value()
+		batch, err := pipeline.Read(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, batch)
 
@@ -64,7 +61,7 @@ func TestExecuteLimit(t *testing.T) {
 		require.Equal(t, "Bob", batch.Column(0).ValueStr(0))
 
 		// Next read should return EOF
-		err = pipeline.Read(ctx)
+		_, err = pipeline.Read(ctx)
 		require.Equal(t, EOF, err)
 	})
 
@@ -142,10 +139,7 @@ func TestLimitPipeline_Skip_Fetch(t *testing.T) {
 	ctx := t.Context()
 
 	// Test first read
-	err = limit.Read(ctx)
-	require.NoError(t, err)
-
-	batch, err := limit.Value()
+	batch, err := limit.Read(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, batch)
 	require.Equal(t, int64(4), batch.NumRows())
@@ -158,7 +152,7 @@ func TestLimitPipeline_Skip_Fetch(t *testing.T) {
 	}
 
 	// Next read should be EOF
-	err = limit.Read(ctx)
+	_, err = limit.Read(ctx)
 	require.Equal(t, EOF, err)
 }
 

@@ -21,17 +21,17 @@ var indexPointerTestData = []IndexPointer{
 func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }
 
 func TestRowReader(t *testing.T) {
-	dec := buildIndexPointersDecoder(t, 100) // Many pages
+	dec := buildIndexPointersDecoder(t, 100, 0) // Many pages
 	r := NewRowReader(dec)
 	actual, err := readAllIndexPointers(context.Background(), r)
 	require.NoError(t, err)
 	require.Equal(t, indexPointerTestData, actual)
 }
 
-func buildIndexPointersDecoder(t *testing.T, pageSize int) *Section {
+func buildIndexPointersDecoder(t *testing.T, pageSize, pageRows int) *Section {
 	t.Helper()
 
-	s := NewBuilder(nil, pageSize)
+	s := NewBuilder(nil, pageSize, pageRows)
 	for _, d := range indexPointerTestData {
 		s.Append(d.Path, d.StartTs, d.EndTs)
 	}

@@ -160,7 +160,7 @@ export default function PartitionRing() {
 
       setSelectedPartitions(new Set());
       setSelectedNewState(undefined);
-    } catch (err) {
+    } catch {
       toast({
         title: "Error",
         description:
