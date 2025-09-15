@@ -155,7 +155,7 @@ func labelsContainAny(labels labels.Labels, names []string) (string, bool) {
 
 // normalizeLogLevel normalizes log level strings to lowercase standard values
 func normalizeLogLevel(level string) string {
-	levelBytes := []byte(level)
+	levelBytes := unsafe.Slice(unsafe.StringData(level), len(level)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 	switch {
 	case bytes.EqualFold(levelBytes, traceBytes), bytes.EqualFold(levelBytes, traceAbbrv):
 		return constants.LogLevelTrace
