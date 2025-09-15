@@ -178,7 +178,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"discover_log_levels",
 		"discover_service_name",
 		"log_level_fields",
+		"max_entries_limit_per_query",
 		"max_line_size_truncate",
+		"max_query_bytes_read",
 		"max_query_length",
 		"max_query_lookback",
 		"max_query_range",
@@ -189,6 +191,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"query_timeout",
 		"retention_period",
 		"retention_stream",
+		"volume_enabled",
+		"volume_max_series",
 	}
 	f.Var(
 		(*flagext.StringSlice)(&c.TenantLimitsAllowPublish),
