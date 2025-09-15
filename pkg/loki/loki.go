@@ -455,6 +455,7 @@ type Loki struct {
 	blockBuilder              *blockbuilder.BlockBuilder
 	blockScheduler            *blockscheduler.BlockScheduler
 	dataObjConsumer           *consumer.Service
+	dataObjConsumerRing       *ring.Ring
 	dataObjIndexBuilder       *dataobjindex.Builder
 	scratchStore              scratch.Store
 
@@ -798,6 +799,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(BlockScheduler, t.initBlockScheduler)
 	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer)
 	mm.RegisterModule(UI, t.initUI)
+	mm.RegisterModule(DataObjConsumerRing, t.initDataObjConsumerRing)
 	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
 	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder)
 	mm.RegisterModule(ScratchStore, t.initScratchStore)
@@ -815,7 +817,7 @@ func (t *Loki) setupModuleManager() error {
 		OverridesExporter:        {Overrides, Server, UI},
 		TenantConfigs:            {RuntimeConfig},
 		UI:                       {Server},
-		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing, IngestLimitsFrontendRing, UI},
+		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing, IngestLimitsFrontendRing, DataObjConsumerRing, UI},
 		IngestLimitsRing:         {RuntimeConfig, Server, MemberlistKV},
 		IngestLimits:             {MemberlistKV, Overrides, Server},
 		IngestLimitsFrontend:     {IngestLimitsRing, Overrides, Server, MemberlistKV},
@@ -846,7 +848,8 @@ func (t *Loki) setupModuleManager() error {
 		BlockBuilder:             {PartitionRing, Store, Server, UI},
 		BlockScheduler:           {Server, UI},
 		DataObjExplorer:          {Server, UI},
-		DataObjConsumer:          {ScratchStore, PartitionRing, Server, UI},
+		DataObjConsumerRing:      {RuntimeConfig, Server, MemberlistKV},
+		DataObjConsumer:          {MemberlistKV, ScratchStore, PartitionRing, Server, UI},
 		DataObjIndexBuilder:      {ScratchStore, Server, UI},
 		ScratchStore:             {},
 
