@@ -80,9 +80,8 @@ func TestSerialIndexer_BuildIndex(t *testing.T) {
 	}()
 
 	// Submit build request
-	indexPath, records, err := indexer.submitBuild(ctx, []bufferedEvent{bufferedEvt}, 0, triggerTypeNormal)
+	records, err := indexer.submitBuild(ctx, []bufferedEvent{bufferedEvt}, 0, triggerTypeAppend)
 	require.NoError(t, err)
-	require.NotEmpty(t, indexPath)
 	require.Len(t, records, 1)
 	require.Equal(t, record, records[0])
 
@@ -159,9 +158,8 @@ func TestSerialIndexer_MultipleBuilds(t *testing.T) {
 	}()
 
 	// Submit build request with multiple events
-	indexPath, records, err := indexer.submitBuild(ctx, events, 0, triggerTypeNormal)
+	records, err := indexer.submitBuild(ctx, events, 0, triggerTypeAppend)
 	require.NoError(t, err)
-	require.NotEmpty(t, indexPath)
 	require.Len(t, records, 2)
 
 	// Verify calculator processed all events
@@ -229,9 +227,8 @@ func TestSerialIndexer_FlushTrigger(t *testing.T) {
 	}()
 
 	// Submit build request with flush trigger
-	indexPath, records, err := indexer.submitBuild(ctx, []bufferedEvent{bufferedEvt}, 0, triggerTypeFlush)
+	records, err := indexer.submitBuild(ctx, []bufferedEvent{bufferedEvt}, 0, triggerTypeFlush)
 	require.NoError(t, err)
-	require.NotEmpty(t, indexPath)
 	require.Len(t, records, 1)
 
 	// Verify calculator was used
@@ -272,7 +269,7 @@ func TestSerialIndexer_ServiceNotRunning(t *testing.T) {
 	record := &kgo.Record{Partition: int32(0)}
 	bufferedEvt := bufferedEvent{event: event, record: record}
 
-	_, _, err := indexer.submitBuild(ctx, []bufferedEvent{bufferedEvt}, 0, triggerTypeNormal)
+	_, err := indexer.submitBuild(ctx, []bufferedEvent{bufferedEvt}, 0, triggerTypeAppend)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "indexer service is not running")
 }
@@ -340,7 +337,7 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 
 			bufferedEvt := bufferedEvent{event: event, record: record}
 
-			_, _, err = indexer.submitBuild(ctx, []bufferedEvent{bufferedEvt}, int32(idx), triggerTypeNormal)
+			_, err = indexer.submitBuild(ctx, []bufferedEvent{bufferedEvt}, int32(idx), triggerTypeAppend)
 			results <- err
 		}(i)
 	}

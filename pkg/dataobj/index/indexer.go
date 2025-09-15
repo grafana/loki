@@ -21,28 +21,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
-// ObjectKey generates the object key for storing an index object in object storage.
-// This is a public wrapper around the generateObjectKey functionality.
-func ObjectKey(ctx context.Context, object *dataobj.Object) (string, error) {
-	h := sha256.New224()
-
-	reader, err := object.Reader(ctx)
-	if err != nil {
-		return "", err
-	}
-	defer reader.Close()
-
-	if _, err := io.Copy(h, reader); err != nil {
-		return "", err
-	}
-
-	var sumBytes [sha256.Size224]byte
-	sum := h.Sum(sumBytes[:0])
-	sumStr := hex.EncodeToString(sum[:])
-
-	return fmt.Sprintf("indexes/%s/%s", sumStr[:2], sumStr[2:]), nil
-}
-
 // buildRequest represents a request to build an index
 type buildRequest struct {
 	events     []bufferedEvent
@@ -69,7 +47,7 @@ type indexer interface {
 	services.Service
 
 	// submitBuild submits a build request and waits for completion
-	submitBuild(ctx context.Context, events []bufferedEvent, partition int32, trigger triggerType) (string, []*kgo.Record, error)
+	submitBuild(ctx context.Context, events []bufferedEvent, partition int32, trigger triggerType) ([]*kgo.Record, error)
 }
 
 // serialIndexer implements Indexer with a single worker goroutine using dskit Service
@@ -169,10 +147,10 @@ func (si *serialIndexer) stopping(_ error) error {
 }
 
 // submitBuild submits a build request and waits for completion
-func (si *serialIndexer) submitBuild(ctx context.Context, events []bufferedEvent, partition int32, trigger triggerType) (string, []*kgo.Record, error) {
+func (si *serialIndexer) submitBuild(ctx context.Context, events []bufferedEvent, partition int32, trigger triggerType) ([]*kgo.Record, error) {
 	// Check if service is running
 	if si.State() != services.Running {
-		return "", nil, fmt.Errorf("indexer service is not running (state: %s)", si.State())
+		return nil, fmt.Errorf("indexer service is not running (state: %s)", si.State())
 	}
 
 	resultChan := make(chan buildResult, 1)
@@ -192,7 +170,7 @@ func (si *serialIndexer) submitBuild(ctx context.Context, events []bufferedEvent
 		level.Debug(si.logger).Log("msg", "submitted build request",
 			"partition", partition, "events", len(events), "trigger", string(trigger))
 	case <-ctx.Done():
-		return "", nil, ctx.Err()
+		return nil, ctx.Err()
 	}
 
 	// Wait for result
@@ -205,9 +183,9 @@ func (si *serialIndexer) submitBuild(ctx context.Context, events []bufferedEvent
 			level.Debug(si.logger).Log("msg", "build request completed",
 				"partition", partition, "index_path", result.indexPath)
 		}
-		return result.indexPath, result.records, result.err
+		return result.records, result.err
 	case <-ctx.Done():
-		return "", nil, ctx.Err()
+		return nil, ctx.Err()
 	}
 }
 
@@ -334,7 +312,7 @@ func (si *serialIndexer) processBuildRequest(req buildRequest) buildResult {
 
 	// Update metrics
 	buildTime := time.Since(start)
-	si.updateBuildMetrics(buildTime, err)
+	si.updateMetrics(buildTime)
 
 	if err != nil {
 		level.Error(si.logger).Log("msg", "failed to build index",
@@ -391,7 +369,7 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 
 	// Process the results as they are downloaded
 	processingErrors := multierror.New()
-	for i := 0; i < len(events); i++ {
+	for range len(events) {
 		var obj downloadedObject
 		select {
 		case obj = <-si.downloadedObjects:
@@ -457,9 +435,31 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 	return key, nil
 }
 
-// updateBuildMetrics updates internal build metrics
-func (si *serialIndexer) updateBuildMetrics(buildTime time.Duration, _ error) {
+// updateMetrics updates internal build metrics
+func (si *serialIndexer) updateMetrics(buildTime time.Duration) {
 	si.indexerMetrics.incBuilds()
 	si.indexerMetrics.setBuildTime(buildTime)
 	si.indexerMetrics.setQueueDepth(len(si.buildRequestChan))
+}
+
+// ObjectKey generates the object key for storing an index object in object storage.
+// This is a public wrapper around the generateObjectKey functionality.
+func ObjectKey(ctx context.Context, object *dataobj.Object) (string, error) {
+	h := sha256.New224()
+
+	reader, err := object.Reader(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer reader.Close()
+
+	if _, err := io.Copy(h, reader); err != nil {
+		return "", err
+	}
+
+	var sumBytes [sha256.Size224]byte
+	sum := h.Sum(sumBytes[:0])
+	sumStr := hex.EncodeToString(sum[:])
+
+	return fmt.Sprintf("indexes/%s/%s", sumStr[:2], sumStr[2:]), nil
 }

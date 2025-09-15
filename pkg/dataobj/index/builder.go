@@ -30,7 +30,7 @@ var ErrPartitionRevoked = errors.New("partition revoked")
 type triggerType string
 
 const (
-	triggerTypeNormal triggerType = "normal"
+	triggerTypeAppend triggerType = "append"
 	triggerTypeFlush  triggerType = "flush"
 )
 
@@ -182,62 +182,6 @@ func NewIndexBuilder(
 	return s, nil
 }
 
-// bufferAndTryProcess is the unified method that handles both buffering and processing decisions
-func (p *Builder) bufferAndTryProcess(partition int32, newEvent *bufferedEvent, trigger triggerType) (context.Context, []bufferedEvent) {
-	p.partitionsMutex.Lock()
-	defer p.partitionsMutex.Unlock()
-
-	state, exists := p.partitionStates[partition]
-	if !exists {
-		return nil, nil
-	}
-
-	// Add new event to buffer if provided (normal processing case)
-	if newEvent != nil {
-		state.events = append(state.events, *newEvent)
-		state.lastActivity = time.Now()
-		level.Debug(p.logger).Log("msg", "buffered new event for partition", "count", len(state.events), "partition", partition)
-	}
-
-	// Check if we can start processing
-	if state.isProcessing || len(state.events) == 0 {
-		return nil, nil
-	}
-
-	// Check trigger-specific requirements
-	switch trigger {
-	case triggerTypeNormal:
-		if len(state.events) < p.cfg.EventsPerIndex {
-			return nil, nil
-		}
-	case triggerTypeFlush:
-		if len(state.events) < p.cfg.MinFlushEvents {
-			return nil, nil
-		}
-		if time.Since(state.lastActivity) < p.cfg.MaxIdleTime {
-			return nil, nil
-		}
-	default:
-		level.Error(p.logger).Log("msg", "unknown trigger type", "trigger", string(trigger))
-		return nil, nil
-	}
-
-	// Atomically mark as processing and extract events
-	state.isProcessing = true
-	eventsToProcess := make([]bufferedEvent, len(state.events))
-	copy(eventsToProcess, state.events)
-
-	// Set up cancellation context
-	ctx, cancel := context.WithCancelCause(p.ctx)
-	p.activeCalculationPartition = partition
-	p.cancelActiveCalculation = cancel
-
-	level.Debug(p.logger).Log("msg", "started processing partition",
-		"partition", partition, "events", len(eventsToProcess), "trigger", string(trigger))
-
-	return ctx, eventsToProcess
-}
-
 func (p *Builder) handlePartitionsAssigned(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
 	p.partitionsMutex.Lock()
 	defer p.partitionsMutex.Unlock()
@@ -352,7 +296,7 @@ func (p *Builder) processRecord(record *kgo.Record) {
 	defer p.cleanupPartition(record.Partition)
 
 	// Submit to indexer service and wait for completion
-	_, records, err := p.indexer.submitBuild(calculationCtx, eventsToIndex, record.Partition, triggerTypeNormal)
+	records, err := p.indexer.submitBuild(calculationCtx, eventsToIndex, record.Partition, triggerTypeAppend)
 	if err != nil {
 		if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
 			level.Debug(p.logger).Log("msg", "partition revoked, aborting index build", "partition", record.Partition)
@@ -386,7 +330,7 @@ func (p *Builder) appendRecord(record *kgo.Record) (context.Context, []bufferedE
 		record: record,
 	}
 
-	return p.bufferAndTryProcess(record.Partition, bufferedEvt, triggerTypeNormal)
+	return p.bufferAndTryProcess(record.Partition, bufferedEvt, triggerTypeAppend)
 }
 
 func (p *Builder) cleanupPartition(partition int32) {
@@ -438,7 +382,7 @@ func (p *Builder) flushPartition(partition int32) {
 			"partition", partition, "events", len(eventsToFlush))
 
 		// Submit to indexer service and wait for completion
-		_, records, err := p.indexer.submitBuild(ctx, eventsToFlush, partition, triggerTypeFlush)
+		records, err := p.indexer.submitBuild(ctx, eventsToFlush, partition, triggerTypeFlush)
 		if err != nil {
 			if errors.Is(context.Cause(ctx), ErrPartitionRevoked) {
 				level.Debug(p.logger).Log("msg", "partition revoked during flush", "partition", partition)
@@ -457,6 +401,62 @@ func (p *Builder) flushPartition(partition int32) {
 			level.Error(p.logger).Log("msg", "failed to commit flush records", "partition", partition, "err", err)
 		}
 	}()
+}
+
+// bufferAndTryProcess is the unified method that handles both buffering and processing decisions
+func (p *Builder) bufferAndTryProcess(partition int32, newEvent *bufferedEvent, trigger triggerType) (context.Context, []bufferedEvent) {
+	p.partitionsMutex.Lock()
+	defer p.partitionsMutex.Unlock()
+
+	state, exists := p.partitionStates[partition]
+	if !exists {
+		return nil, nil
+	}
+
+	// Add new event to buffer if provided (normal processing case)
+	if newEvent != nil {
+		state.events = append(state.events, *newEvent)
+		state.lastActivity = time.Now()
+		level.Debug(p.logger).Log("msg", "buffered new event for partition", "count", len(state.events), "partition", partition)
+	}
+
+	// Check if we can start processing
+	if state.isProcessing || len(state.events) == 0 {
+		return nil, nil
+	}
+
+	// Check trigger-specific requirements
+	switch trigger {
+	case triggerTypeAppend:
+		if len(state.events) < p.cfg.EventsPerIndex {
+			return nil, nil
+		}
+	case triggerTypeFlush:
+		if len(state.events) < p.cfg.MinFlushEvents {
+			return nil, nil
+		}
+		if time.Since(state.lastActivity) < p.cfg.MaxIdleTime {
+			return nil, nil
+		}
+	default:
+		level.Error(p.logger).Log("msg", "unknown trigger type", "trigger", string(trigger))
+		return nil, nil
+	}
+
+	// Atomically mark as processing and extract events
+	state.isProcessing = true
+	eventsToProcess := make([]bufferedEvent, len(state.events))
+	copy(eventsToProcess, state.events)
+
+	// Set up cancellation context
+	ctx, cancel := context.WithCancelCause(p.ctx)
+	p.activeCalculationPartition = partition
+	p.cancelActiveCalculation = cancel
+
+	level.Debug(p.logger).Log("msg", "started processing partition",
+		"partition", partition, "events", len(eventsToProcess), "trigger", string(trigger))
+
+	return ctx, eventsToProcess
 }
 
 func (p *Builder) commitRecords(ctx context.Context, records []*kgo.Record) error {
