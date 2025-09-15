@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/go-kit/log"
+
 	"github.com/grafana/loki/v3/pkg/kafka/partition"
 )
 
