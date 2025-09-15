@@ -150,6 +150,7 @@ const (
 	PartitionRing            = "partition-ring"
 	DataObjExplorer          = "dataobj-explorer"
 	DataObjConsumer          = "dataobj-consumer"
+	DataObjConsumerRing      = "dataobj-consumer-ring"
 	DataObjIndexBuilder      = "dataobj-index-builder"
 	ScratchStore             = "scratch-store"
 	UI                       = "ui"
@@ -304,6 +305,7 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	// of projects based on Loki forgetting the wiring if they override module's init method (they also don't have access to private symbols).
 	t.Cfg.CompactorConfig.CompactorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Distributor.DistributorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.Cfg.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.IndexGateway.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
@@ -1580,6 +1582,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 
 	t.Cfg.CompactorConfig.CompactorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Distributor.DistributorRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.IndexGateway.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
@@ -2063,6 +2066,32 @@ func (t *Loki) initUI() (services.Service, error) {
 	return svc, nil
 }
 
+func (t *Loki) initDataObjConsumerRing() (_ services.Service, err error) {
+	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
+		return nil, nil
+	}
+
+	reg := prometheus.WrapRegistererWithPrefix(t.Cfg.MetricsNamespace+"_", prometheus.DefaultRegisterer)
+
+	t.dataObjConsumerRing, err = ring.New(
+		t.Cfg.DataObj.Consumer.LifecyclerConfig.RingConfig,
+		consumer.RingName,
+		consumer.RingKey,
+		util_log.Logger,
+		reg,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create %s ring: %w", consumer.RingName, err)
+	}
+
+	t.Server.HTTP.Path("/dataobj-consumer/ring").Methods("GET", "POST").Handler(t.dataObjConsumerRing)
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/dataobj-consumer/ring").Methods("GET", "POST").Handler(t.dataObjConsumerRing)
+	}
+
+	return t.dataObjConsumerRing, nil
+}
+
 func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
 		return nil, nil
@@ -2072,8 +2101,10 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 		return nil, err
 	}
 
+	t.Cfg.DataObj.Consumer.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+
 	level.Info(util_log.Logger).Log("msg", "initializing dataobj consumer", "instance", t.Cfg.Ingester.LifecyclerConfig.ID)
-	t.dataObjConsumer = consumer.New(
+	dataObjConsumer, err := consumer.New(
 		t.Cfg.KafkaConfig,
 		t.Cfg.DataObj.Consumer,
 		t.Cfg.DataObj.Metastore,
@@ -2084,6 +2115,10 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 		prometheus.DefaultRegisterer,
 		util_log.Logger,
 	)
+	if err != nil {
+		return nil, err
+	}
+	t.dataObjConsumer = dataObjConsumer
 
 	return t.dataObjConsumer, nil
 }
