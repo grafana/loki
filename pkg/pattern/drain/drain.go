@@ -220,10 +220,10 @@ func (d *Drain) Train(content string, ts int64) *LogCluster {
 		return nil
 	}
 
-	return d.train(d.tokens, d.state, ts)
+	return d.train(d.tokens, d.state, ts, int64(len(content)))
 }
 
-func (d *Drain) train(tokens []string, state any, ts int64) *LogCluster {
+func (d *Drain) train(tokens []string, state any, ts int64, contentSize int64) *LogCluster {
 	if len(tokens) < 4 {
 		if d.metrics != nil && d.metrics.LinesSkipped != nil {
 			d.metrics.LinesSkipped.WithLabelValues(TooFewTokens).Inc()
@@ -249,12 +249,14 @@ func (d *Drain) train(tokens []string, state any, ts int64) *LogCluster {
 		clusterID := d.clustersCounter
 		tokens, state = d.tokenizer.Clone(tokens, state)
 		matchCluster = &LogCluster{
-			Tokens:     tokens,
-			TokenState: state,
-			id:         clusterID,
-			Size:       1,
-			Stringer:   d.tokenizer.Join,
-			Chunks:     Chunks{},
+			Tokens:      tokens,
+			TokenState:  state,
+			id:          clusterID,
+			Size:        1,
+			Stringer:    d.tokenizer.Join,
+			Chunks:      Chunks{},
+			Volume:      contentSize,
+			SampleCount: 1,
 		}
 		modeTs := model.TimeFromUnixNano(ts)
 		matchCluster.append(modeTs, d.config.MaxChunkAge, d.config.SampleInterval)
@@ -266,6 +268,8 @@ func (d *Drain) train(tokens []string, state any, ts int64) *LogCluster {
 	} else {
 		matchCluster.Tokens = d.createTemplate(tokens, matchCluster.Tokens)
 		matchCluster.append(model.TimeFromUnixNano(ts), d.config.MaxChunkAge, d.config.SampleInterval)
+		matchCluster.Volume += contentSize
+		matchCluster.SampleCount++
 		// Touch cluster to update its state in the cache.
 		d.idToCluster.Get(matchCluster.id)
 	}
