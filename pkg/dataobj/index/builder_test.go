@@ -65,7 +65,6 @@ func TestIndexBuilder_PartitionRevocation(t *testing.T) {
 		prometheus.NewRegistry(),
 	)
 	require.NoError(t, err)
-	builder.ctx = ctx
 	builder.client.Close()
 	builder.client = &mockKafkaClient{}
 
@@ -91,7 +90,7 @@ func TestIndexBuilder_PartitionRevocation(t *testing.T) {
 		if i == 2 {
 			trigger <- struct{}{}
 		}
-		builder.processRecord(&kgo.Record{
+		builder.processRecord(ctx, &kgo.Record{
 			Value:     eventBytes,
 			Partition: int32(1),
 		})
@@ -156,7 +155,7 @@ func TestIndexBuilder(t *testing.T) {
 		eventBytes, err := event.Marshal()
 		require.NoError(t, err)
 
-		p.processRecord(&kgo.Record{
+		p.processRecord(context.Background(), &kgo.Record{
 			Value:     eventBytes,
 			Partition: int32(0),
 		})

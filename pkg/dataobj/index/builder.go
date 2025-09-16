@@ -102,13 +102,11 @@ type Builder struct {
 	metrics *builderMetrics
 
 	// Control and coordination
-	ctx                        context.Context
-	cancel                     context.CancelCauseFunc
-	wg                         sync.WaitGroup
-	logger                     log.Logger
-	activeCalculationPartition int32
-	cancelActiveCalculation    context.CancelCauseFunc
-	partitionsMutex            sync.Mutex
+	wg                 sync.WaitGroup
+	logger             log.Logger
+	partitionsMutex    sync.Mutex
+	activeCalculations map[int32]context.CancelCauseFunc
+	calculationsMutex  sync.Mutex
 }
 
 func NewIndexBuilder(
@@ -150,11 +148,12 @@ func NewIndexBuilder(
 	}
 
 	s := &Builder{
-		cfg:             cfg,
-		mCfg:            mCfg,
-		logger:          logger,
-		metrics:         builderMetrics,
-		partitionStates: make(map[int32]*partitionState),
+		cfg:                cfg,
+		mCfg:               mCfg,
+		logger:             logger,
+		metrics:            builderMetrics,
+		partitionStates:    make(map[int32]*partitionState),
+		activeCalculations: make(map[int32]context.CancelCauseFunc),
 	}
 
 	// Create self-contained indexer
@@ -216,16 +215,19 @@ func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topi
 	for _, partitions := range topics {
 		for _, partition := range partitions {
 			delete(p.partitionStates, partition)
-			if p.activeCalculationPartition == partition && p.cancelActiveCalculation != nil {
-				p.cancelActiveCalculation(ErrPartitionRevoked)
+
+			// Cancel any active calculations
+			p.calculationsMutex.Lock()
+			if cancel, exists := p.activeCalculations[partition]; exists {
+				cancel(ErrPartitionRevoked)
+				delete(p.activeCalculations, partition)
 			}
+			p.calculationsMutex.Unlock()
 		}
 	}
 }
 
 func (p *Builder) running(ctx context.Context) error {
-	p.ctx, p.cancel = context.WithCancelCause(ctx)
-
 	// Start indexer service first
 	if err := p.indexer.StartAsync(ctx); err != nil {
 		return fmt.Errorf("failed to start indexer service: %w", err)
@@ -245,8 +247,8 @@ func (p *Builder) running(ctx context.Context) error {
 			for {
 				select {
 				case <-p.flushTicker.C:
-					p.checkAndFlushStalePartitions()
-				case <-p.ctx.Done():
+					p.checkAndFlushStalePartitions(ctx)
+				case <-ctx.Done():
 					return
 				}
 			}
@@ -257,6 +259,12 @@ func (p *Builder) running(ctx context.Context) error {
 
 	// Main Kafka processing loop
 	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		fetches := p.client.PollRecords(ctx, -1)
 		if err := fetches.Err0(); err != nil {
 			if errors.Is(err, kgo.ErrClientClosed) || errors.Is(err, context.Canceled) {
@@ -274,13 +282,21 @@ func (p *Builder) running(ctx context.Context) error {
 				return
 			}
 			for _, record := range fetch.Records {
-				p.processRecord(record)
+				p.processRecord(ctx, record)
 			}
 		})
 	}
 }
 
 func (p *Builder) stopping(failureCase error) error {
+	// Cancel all active calculations
+	p.calculationsMutex.Lock()
+	for partition, cancel := range p.activeCalculations {
+		cancel(failureCase)
+		delete(p.activeCalculations, partition)
+	}
+	p.calculationsMutex.Unlock()
+
 	// Stop indexer service first
 	p.indexer.StopAsync()
 	if err := p.indexer.AwaitTerminated(context.Background()); err != nil {
@@ -291,15 +307,14 @@ func (p *Builder) stopping(failureCase error) error {
 	if p.flushTicker != nil {
 		p.flushTicker.Stop()
 	}
-	p.cancel(failureCase)
 	p.wg.Wait()
 	p.client.Close()
 	return nil
 }
 
 // processRecord processes a single record. It is not safe for concurrent use.
-func (p *Builder) processRecord(record *kgo.Record) {
-	calculationCtx, eventsToIndex := p.appendRecord(record)
+func (p *Builder) processRecord(ctx context.Context, record *kgo.Record) {
+	calculationCtx, eventsToIndex := p.appendRecord(ctx, record)
 	if len(eventsToIndex) == 0 {
 		return
 	}
@@ -329,7 +344,7 @@ func (p *Builder) processRecord(record *kgo.Record) {
 }
 
 // Appends a record and returns a slice of buffered events to index. The slice will be empty if no indexing is required.
-func (p *Builder) appendRecord(record *kgo.Record) (context.Context, []bufferedEvent) {
+func (p *Builder) appendRecord(ctx context.Context, record *kgo.Record) (context.Context, []bufferedEvent) {
 	event := &metastore.ObjectWrittenEvent{}
 	if err := event.Unmarshal(record.Value); err != nil {
 		level.Error(p.logger).Log("msg", "failed to unmarshal metastore event", "err", err)
@@ -341,16 +356,20 @@ func (p *Builder) appendRecord(record *kgo.Record) (context.Context, []bufferedE
 		record: record,
 	}
 
-	return p.bufferAndTryProcess(record.Partition, bufferedEvt, triggerTypeAppend)
+	return p.bufferAndTryProcess(ctx, record.Partition, bufferedEvt, triggerTypeAppend)
 }
 
 func (p *Builder) cleanupPartition(partition int32) {
 	p.partitionsMutex.Lock()
 	defer p.partitionsMutex.Unlock()
 
-	if p.cancelActiveCalculation != nil {
-		p.cancelActiveCalculation(nil)
+	// Cancel active calculation for this partition
+	p.calculationsMutex.Lock()
+	if cancel, exists := p.activeCalculations[partition]; exists {
+		cancel(nil)
+		delete(p.activeCalculations, partition)
 	}
+	p.calculationsMutex.Unlock()
 
 	if state, ok := p.partitionStates[partition]; ok {
 		// Clear processed events and reset processing flag
@@ -360,7 +379,7 @@ func (p *Builder) cleanupPartition(partition int32) {
 	}
 }
 
-func (p *Builder) checkAndFlushStalePartitions() {
+func (p *Builder) checkAndFlushStalePartitions(ctx context.Context) {
 	p.partitionsMutex.Lock()
 	partitionsToFlush := make([]int32, 0)
 
@@ -374,12 +393,12 @@ func (p *Builder) checkAndFlushStalePartitions() {
 	p.partitionsMutex.Unlock()
 
 	for _, partition := range partitionsToFlush {
-		p.flushPartition(partition)
+		p.flushPartition(ctx, partition)
 	}
 }
 
-func (p *Builder) flushPartition(partition int32) {
-	ctx, eventsToFlush := p.bufferAndTryProcess(partition, nil, triggerTypeFlush)
+func (p *Builder) flushPartition(ctx context.Context, partition int32) {
+	calculationCtx, eventsToFlush := p.bufferAndTryProcess(ctx, partition, nil, triggerTypeFlush)
 	if len(eventsToFlush) == 0 {
 		return
 	}
@@ -393,9 +412,9 @@ func (p *Builder) flushPartition(partition int32) {
 			"partition", partition, "events", len(eventsToFlush))
 
 		// Submit to indexer service and wait for completion
-		records, err := p.indexer.submitBuild(ctx, eventsToFlush, partition, triggerTypeFlush)
+		records, err := p.indexer.submitBuild(calculationCtx, eventsToFlush, partition, triggerTypeFlush)
 		if err != nil {
-			if errors.Is(context.Cause(ctx), ErrPartitionRevoked) {
+			if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
 				level.Debug(p.logger).Log("msg", "partition revoked during flush", "partition", partition)
 				return
 			}
@@ -404,8 +423,8 @@ func (p *Builder) flushPartition(partition int32) {
 		}
 
 		// Commit the records
-		if err := p.commitRecords(ctx, records); err != nil {
-			if errors.Is(context.Cause(ctx), ErrPartitionRevoked) {
+		if err := p.commitRecords(calculationCtx, records); err != nil {
+			if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
 				level.Debug(p.logger).Log("msg", "partition revoked during flush commit", "partition", partition)
 				return
 			}
@@ -415,7 +434,7 @@ func (p *Builder) flushPartition(partition int32) {
 }
 
 // bufferAndTryProcess is the unified method that handles both buffering and processing decisions
-func (p *Builder) bufferAndTryProcess(partition int32, newEvent *bufferedEvent, trigger triggerType) (context.Context, []bufferedEvent) {
+func (p *Builder) bufferAndTryProcess(ctx context.Context, partition int32, newEvent *bufferedEvent, trigger triggerType) (context.Context, []bufferedEvent) {
 	p.partitionsMutex.Lock()
 	defer p.partitionsMutex.Unlock()
 
@@ -459,15 +478,17 @@ func (p *Builder) bufferAndTryProcess(partition int32, newEvent *bufferedEvent, 
 	eventsToProcess := make([]bufferedEvent, len(state.events))
 	copy(eventsToProcess, state.events)
 
-	// Set up cancellation context
-	ctx, cancel := context.WithCancelCause(p.ctx)
-	p.activeCalculationPartition = partition
-	p.cancelActiveCalculation = cancel
+	// Set up cancellation context with proper coordination
+	calculationCtx, cancel := context.WithCancelCause(ctx)
+
+	p.calculationsMutex.Lock()
+	p.activeCalculations[partition] = cancel
+	p.calculationsMutex.Unlock()
 
 	level.Debug(p.logger).Log("msg", "started processing partition",
 		"partition", partition, "events", len(eventsToProcess), "trigger", trigger)
 
-	return ctx, eventsToProcess
+	return calculationCtx, eventsToProcess
 }
 
 func (p *Builder) commitRecords(ctx context.Context, records []*kgo.Record) error {
