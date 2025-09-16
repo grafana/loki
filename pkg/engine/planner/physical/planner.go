@@ -3,6 +3,7 @@ package physical
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -239,6 +240,10 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 	merge := &Merge{}
 	p.plan.addNode(merge)
 	groups := overlappingShardDescriptors(filteredShardDescriptors)
+
+	if ctx.direction == DESC {
+		slices.Reverse(groups)
+	}
 
 	for _, gr := range groups {
 		if err := p.buildNodeGroup(gr, merge, ctx); err != nil {
