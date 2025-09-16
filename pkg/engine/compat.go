@@ -110,6 +110,9 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 		if colType == types.ColumnTypeMetadata.String() {
 			switch arr := col.(type) {
 			case *array.String:
+				if parsed.Get(colName) != "" {
+					continue
+				}
 				metadata.Set(colName, arr.Value(i))
 				// include structured metadata in stream labels
 				lbs.Set(colName, arr.Value(i))
@@ -124,6 +127,9 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 				parsed.Set(colName, arr.Value(i))
 				// include parsed metadata in stream labels
 				lbs.Set(colName, arr.Value(i))
+				if metadata.Get(colName) != "" {
+					metadata.Del(colName)
+				}
 			}
 			continue
 		}
