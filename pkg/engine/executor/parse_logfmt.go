@@ -34,46 +34,13 @@ func BuildLogfmtColumns(input *array.String, requestedKeys []string, allocator m
 // parseKeys discovers columns dynamically as lines are parsed
 func parseKeys(input *array.String, requestedKeys []string, columnBuilders map[string]*array.StringBuilder, allocator memory.Allocator) []string {
 	columnOrder := []string{}
-	var errorBuilder, errorDetailsBuilder *array.StringBuilder
-	hasErrorColumns := false
 
 	for i := 0; i < input.Len(); i++ {
 		line := input.Value(i)
-		parsed, err := tokenizeLogfmt(line, requestedKeys)
-
-		// Handle error columns
-		if err != nil {
-			// Create error columns on first error
-			if !hasErrorColumns {
-				errorBuilder = array.NewStringBuilder(allocator)
-				errorDetailsBuilder = array.NewStringBuilder(allocator)
-				columnBuilders["__error__"] = errorBuilder
-				columnBuilders["__error_details__"] = errorDetailsBuilder
-				columnOrder = append(columnOrder, "__error__", "__error_details__")
-				hasErrorColumns = true
-
-				// Backfill NULLs for previous rows
-				for j := 0; j < i; j++ {
-					errorBuilder.AppendNull()
-					errorDetailsBuilder.AppendNull()
-				}
-			}
-			// Append error values
-			errorBuilder.Append("LogfmtParserErr")
-			errorDetailsBuilder.Append(err.Error())
-		} else if hasErrorColumns {
-			// No error on this row, but we have error columns
-			errorBuilder.AppendNull()
-			errorDetailsBuilder.AppendNull()
-		}
+		parsed, _ := tokenizeLogfmt(line, requestedKeys)
 
 		// Track which keys we've seen this row
 		seenKeys := make(map[string]bool)
-		if hasErrorColumns {
-			// Mark error columns as seen so we don't append nulls for them
-			seenKeys["__error__"] = true
-			seenKeys["__error_details__"] = true
-		}
 
 		// Add values for parsed keys
 		for key, value := range parsed {
