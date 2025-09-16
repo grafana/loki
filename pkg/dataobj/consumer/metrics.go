@@ -20,8 +20,11 @@ type partitionOffsetMetrics struct {
 	commitsTotal prometheus.Counter
 	appendsTotal prometheus.Counter
 
-	// Processing delay histogram
-	processingDelay prometheus.Histogram
+	latestDelay     prometheus.Gauge     // Latest delta between record timestamp and current time
+	processingDelay prometheus.Histogram // Processing delay histogram
+
+	// Data volume metrics
+	bytesProcessed prometheus.Counter
 }
 
 func newPartitionOffsetMetrics() *partitionOffsetMetrics {
@@ -34,13 +37,17 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 			Name: "loki_dataobj_consumer_append_failures_total",
 			Help: "Total number of append failures",
 		}),
+		commitsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_commits_total",
+			Help: "Total number of commits",
+		}),
 		appendsTotal: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "loki_dataobj_consumer_appends_total",
 			Help: "Total number of appends",
 		}),
-		commitsTotal: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "loki_dataobj_consumer_commits_total",
-			Help: "Total number of commits",
+		latestDelay: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "loki_dataobj_consumer_latest_processing_delay_seconds",
+			Help: "Latest time difference bweteen record timestamp and processing time in seconds",
 		}),
 		processingDelay: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:                            "loki_dataobj_consumer_processing_delay_seconds",
@@ -49,6 +56,10 @@ func newPartitionOffsetMetrics() *partitionOffsetMetrics {
 			NativeHistogramBucketFactor:     1.1,
 			NativeHistogramMaxBucketNumber:  100,
 			NativeHistogramMinResetDuration: 0,
+		}),
+		bytesProcessed: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "loki_dataobj_consumer_bytes_processed_total",
+			Help: "Total number of bytes processed from this partition",
 		}),
 	}
 
@@ -69,10 +80,18 @@ func (p *partitionOffsetMetrics) getCurrentOffset() float64 {
 
 func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 	collectors := []prometheus.Collector{
+		p.currentOffset,
+
 		p.commitFailures,
 		p.appendFailures,
-		p.currentOffset,
+
+		p.commitsTotal,
+		p.appendsTotal,
+
+		p.latestDelay,
 		p.processingDelay,
+
+		p.bytesProcessed,
 	}
 
 	for _, collector := range collectors {
@@ -91,6 +110,7 @@ func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 		p.appendFailures,
 		p.currentOffset,
 		p.processingDelay,
+		p.bytesProcessed,
 	}
 
 	for _, collector := range collectors {
@@ -121,6 +141,13 @@ func (p *partitionOffsetMetrics) incCommitsTotal() {
 func (p *partitionOffsetMetrics) observeProcessingDelay(recordTimestamp time.Time) {
 	// Convert milliseconds to seconds and calculate delay
 	if !recordTimestamp.IsZero() { // Only observe if timestamp is valid
-		p.processingDelay.Observe(time.Since(recordTimestamp).Seconds())
+		delay := time.Since(recordTimestamp).Seconds()
+
+		p.latestDelay.Set(delay)
+		p.processingDelay.Observe(delay)
 	}
+}
+
+func (p *partitionOffsetMetrics) addBytesProcessed(bytes int64) {
+	p.bytesProcessed.Add(float64(bytes))
 }

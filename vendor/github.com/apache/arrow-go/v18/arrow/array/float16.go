@@ -33,7 +33,7 @@ type Float16 struct {
 
 func NewFloat16Data(data arrow.ArrayData) *Float16 {
 	a := &Float16{}
-	a.refCount = 1
+	a.refCount.Add(1)
 	a.setData(data.(*Data))
 	return a
 }
@@ -71,8 +71,8 @@ func (a *Float16) setData(data *Data) {
 	vals := data.buffers[1]
 	if vals != nil {
 		a.values = arrow.Float16Traits.CastFromBytes(vals.Bytes())
-		beg := a.array.data.offset
-		end := beg + a.array.data.length
+		beg := a.data.offset
+		end := beg + a.data.length
 		a.values = a.values[beg:end]
 	}
 }
@@ -106,18 +106,7 @@ func (a *Float16) MarshalJSON() ([]byte, error) {
 	return json.Marshal(vals)
 }
 
-func arrayEqualFloat16(left, right *Float16) bool {
-	for i := 0; i < left.Len(); i++ {
-		if left.IsNull(i) {
-			continue
-		}
-		if left.Value(i) != right.Value(i) {
-			return false
-		}
-	}
-	return true
-}
-
 var (
-	_ arrow.Array = (*Float16)(nil)
+	_ arrow.Array                   = (*Float16)(nil)
+	_ arrow.TypedArray[float16.Num] = (*Float16)(nil)
 )

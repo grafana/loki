@@ -14,7 +14,8 @@ import (
 // as needed, and sends it to the next processing node if any or to the destination.
 type Logs interface {
 	internal.BaseConsumer
-	// ConsumeLogs receives plog.Logs for consumption.
+	// ConsumeLogs processes the logs. After the function returns, the logs are no longer accessible,
+	// and accessing them is considered undefined behavior.
 	ConsumeLogs(ctx context.Context, ld plog.Logs) error
 }
 

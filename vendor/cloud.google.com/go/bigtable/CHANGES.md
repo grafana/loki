@@ -1,5 +1,35 @@
 # Changes
 
+## [1.38.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.37.0...bigtable/v1.38.0) (2025-06-27)
+
+
+### Features
+
+* **bigtable/admin:** Add deletion_protection support for LVs ([a95a0bf](https://github.com/googleapis/google-cloud-go/commit/a95a0bf4172b8a227955a0353fd9c845f4502411))
+* **bigtable/admin:** Add SchemaBundles API ([116a33a](https://github.com/googleapis/google-cloud-go/commit/116a33ab13c9fac6f6830dded55c24d38504707b))
+* **bigtable:** Add application blocking latencies ([#11349](https://github.com/googleapis/google-cloud-go/issues/11349)) ([8f145ed](https://github.com/googleapis/google-cloud-go/commit/8f145ed17ceb76c66df328776af1bb7137661e74))
+* **bigtable:** Add DeletionProtection support for Logical Views ([#11895](https://github.com/googleapis/google-cloud-go/issues/11895)) ([ed488b9](https://github.com/googleapis/google-cloud-go/commit/ed488b94b46b50585f91e065dd877c06d85ce879))
+* **bigtable:** Connectivity_error_count client side metric ([#12438](https://github.com/googleapis/google-cloud-go/issues/12438)) ([dd45fd7](https://github.com/googleapis/google-cloud-go/commit/dd45fd7487e7f379f26d330483e5f2b83d52ee09))
+* **bigtable:** NewServerWithListener ([#12408](https://github.com/googleapis/google-cloud-go/issues/12408)) ([59ea0de](https://github.com/googleapis/google-cloud-go/commit/59ea0de1013a4320deba227102fecbf77e8211cb))
+* **bigtable:** Use delay from RetryInfo ([#11955](https://github.com/googleapis/google-cloud-go/issues/11955)) ([0510711](https://github.com/googleapis/google-cloud-go/commit/051071159420cd199858d556186aa7dfd86ac940))
+
+
+### Bug Fixes
+
+* **bigtable:** Correct the Bigtable monitoring client  options ([#12410](https://github.com/googleapis/google-cloud-go/issues/12410)) ([bd966bc](https://github.com/googleapis/google-cloud-go/commit/bd966bc089d6f9b4c34cdd1c954f242665dcd7d8))
+* **bigtable:** Fix: upgrade gRPC service registration func ([6a871e0](https://github.com/googleapis/google-cloud-go/commit/6a871e0f6924980da4fec78405bfe0736522afa8))
+* **bigtable:** Retry RST stream errors ([#11477](https://github.com/googleapis/google-cloud-go/issues/11477)) ([df43b4a](https://github.com/googleapis/google-cloud-go/commit/df43b4af7529ae91993361b485daff3f83234b2b))
+
+
+### Performance Improvements
+
+* **bigtable:** Refactor metric attributes for performance ([#12445](https://github.com/googleapis/google-cloud-go/issues/12445)) ([f734ec6](https://github.com/googleapis/google-cloud-go/commit/f734ec685a78f11a2d4acb9625aa7e457cb020cf))
+
+
+### Documentation
+
+* **bigtable/admin:** Improved comment formatting and product naming ([116a33a](https://github.com/googleapis/google-cloud-go/commit/116a33ab13c9fac6f6830dded55c24d38504707b))
+
 ## [1.37.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.36.0...bigtable/v1.37.0) (2025-04-15)
 
 

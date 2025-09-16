@@ -93,7 +93,7 @@ type LimitError struct {
 
 func NewSeriesLimitError(limit int) *LimitError {
 	return &LimitError{
-		error: fmt.Errorf("maximum of series (%d) reached for a single query", limit),
+		error: fmt.Errorf("maximum number of series (%d) reached for a single query; consider reducing query cardinality by adding more specific stream selectors, reducing the time range, or aggregating results with functions like sum(), count() or topk()", limit),
 	}
 }
 

@@ -24,10 +24,13 @@
 package clusterimpl
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/connectivity"
@@ -41,14 +44,16 @@ import (
 	"google.golang.org/grpc/serviceconfig"
 	xdsinternal "google.golang.org/grpc/xds/internal"
 	"google.golang.org/grpc/xds/internal/balancer/loadstore"
+	"google.golang.org/grpc/xds/internal/clients"
+	"google.golang.org/grpc/xds/internal/clients/lrsclient"
 	"google.golang.org/grpc/xds/internal/xdsclient"
-	"google.golang.org/grpc/xds/internal/xdsclient/load"
 )
 
 const (
 	// Name is the name of the cluster_impl balancer.
 	Name                   = "xds_cluster_impl_experimental"
 	defaultRequestCountMax = 1024
+	loadStoreStopTimeout   = 1 * time.Second
 )
 
 var (
@@ -90,13 +95,15 @@ type clusterImplBalancer struct {
 
 	// The following fields are set at creation time, and are read-only after
 	// that, and therefore need not be protected by a mutex.
-	logger      *grpclog.PrefixLogger
+	logger *grpclog.PrefixLogger
+	// TODO: #8366 -  Refactor usage of loadWrapper to easily plugin a test
+	// load reporter from tests.
 	loadWrapper *loadstore.Wrapper
 
 	// The following fields are only accessed from balancer API methods, which
 	// are guaranteed to be called serially by gRPC.
 	xdsClient        xdsclient.XDSClient     // Sent down in ResolverState attributes.
-	cancelLoadReport func()                  // To stop reporting load through the above xDS client.
+	cancelLoadReport func(context.Context)   // To stop reporting load through the above xDS client.
 	edsServiceName   string                  // EDS service name to report load for.
 	lrsServer        *bootstrap.ServerConfig // Load reporting server configuration.
 	dropCategories   []DropConfig            // The categories for drops.
@@ -122,7 +129,7 @@ type clusterImplBalancer struct {
 // indicating if a new picker needs to be generated.
 func (b *clusterImplBalancer) handleDropAndRequestCountLocked(newConfig *LBConfig) bool {
 	var updatePicker bool
-	if !equalDropCategories(b.dropCategories, newConfig.DropCategories) {
+	if !slices.Equal(b.dropCategories, newConfig.DropCategories) {
 		b.dropCategories = newConfig.DropCategories
 		b.drops = make([]*dropper, 0, len(newConfig.DropCategories))
 		for _, c := range newConfig.DropCategories {
@@ -218,7 +225,9 @@ func (b *clusterImplBalancer) updateLoadStore(newConfig *LBConfig) error {
 
 	if stopOldLoadReport {
 		if b.cancelLoadReport != nil {
-			b.cancelLoadReport()
+			stopCtx, stopCancel := context.WithTimeout(context.Background(), loadStoreStopTimeout)
+			defer stopCancel()
+			b.cancelLoadReport(stopCtx)
 			b.cancelLoadReport = nil
 			if !startNewLoadReport {
 				// If a new LRS stream will be started later, no need to update
@@ -228,7 +237,7 @@ func (b *clusterImplBalancer) updateLoadStore(newConfig *LBConfig) error {
 		}
 	}
 	if startNewLoadReport {
-		var loadStore *load.Store
+		var loadStore *lrsclient.LoadStore
 		if b.xdsClient != nil {
 			loadStore, b.cancelLoadReport = b.xdsClient.ReportLoad(b.lrsServer)
 		}
@@ -344,7 +353,9 @@ func (b *clusterImplBalancer) Close() {
 	b.childState = balancer.State{}
 
 	if b.cancelLoadReport != nil {
-		b.cancelLoadReport()
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), loadStoreStopTimeout)
+		defer stopCancel()
+		b.cancelLoadReport(stopCtx)
 		b.cancelLoadReport = nil
 	}
 	b.logger.Infof("Shutdown")
@@ -406,16 +417,19 @@ type scWrapper struct {
 	balancer.SubConn
 	// locality needs to be atomic because it can be updated while being read by
 	// the picker.
-	locality atomic.Value // type xdsinternal.LocalityID
+	locality atomic.Pointer[clients.Locality]
 }
 
-func (scw *scWrapper) updateLocalityID(lID xdsinternal.LocalityID) {
-	scw.locality.Store(lID)
+func (scw *scWrapper) updateLocalityID(lID clients.Locality) {
+	scw.locality.Store(&lID)
 }
 
-func (scw *scWrapper) localityID() xdsinternal.LocalityID {
-	lID, _ := scw.locality.Load().(xdsinternal.LocalityID)
-	return lID
+func (scw *scWrapper) localityID() clients.Locality {
+	lID := scw.locality.Load()
+	if lID == nil {
+		return clients.Locality{}
+	}
+	return *lID
 }
 
 func (b *clusterImplBalancer) NewSubConn(addrs []resolver.Address, opts balancer.NewSubConnOptions) (balancer.SubConn, error) {
@@ -436,7 +450,7 @@ func (b *clusterImplBalancer) NewSubConn(addrs []resolver.Address, opts balancer
 		// address's locality. https://github.com/grpc/grpc-go/issues/7339
 		addr := connectedAddress(state)
 		lID := xdsinternal.GetLocalityID(addr)
-		if lID.Empty() {
+		if (lID == clients.Locality{}) {
 			if b.logger.V(2) {
 				b.logger.Infof("Locality ID for %s unexpectedly empty", addr)
 			}
@@ -459,7 +473,7 @@ func (b *clusterImplBalancer) RemoveSubConn(sc balancer.SubConn) {
 func (b *clusterImplBalancer) UpdateAddresses(sc balancer.SubConn, addrs []resolver.Address) {
 	clusterName := b.getClusterName()
 	newAddrs := make([]resolver.Address, len(addrs))
-	var lID xdsinternal.LocalityID
+	var lID clients.Locality
 	for i, addr := range addrs {
 		newAddrs[i] = xds.SetXDSHandshakeClusterName(addr, clusterName)
 		lID = xdsinternal.GetLocalityID(newAddrs[i])

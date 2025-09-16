@@ -1,0 +1,31 @@
+name: Relyance Compliance Inspection
+on:
+  schedule:
+    - cron: '0 0 * * *' # Run daily at 00:00 UTC
+  workflow_dispatch: # Allow for manual trigger
+
+jobs:
+  relyance:
+    permissions:
+      contents: read
+      id-token: write
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          'persist-credentials': false
+
+      - name: retrieve secrets
+        id: get-secrets
+        uses: grafana/shared-workflows/actions/get-vault-secrets@7d18a46aafb8b875ed76a0bc98852d74b91e7f91 # v1.0.0
+        with:
+          repo_secrets: |
+            RELYANCE_API_KEY=relyance:API_KEY
+
+      - name: Run Relyance Compliance Inspector
+        run: |
+          docker pull gcr.io/relyance-ext/compliance_inspector:release && \
+          docker run --rm -v `pwd`:/repo --env "API_KEY=${{ env.RELYANCE_API_KEY }}" gcr.io/relyance-ext/compliance_inspector:release 

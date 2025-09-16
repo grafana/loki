@@ -52,6 +52,10 @@ Here is a non-exhaustive list of components that can be used to build a log pipe
 | Writer     | [loki.write](https://grafana.com/docs/alloy/latest/reference/components/loki.write/)                |
 | Writer     | [otelcol.exporter.loki](https://grafana.com/docs/alloy/latest/reference/components/otelcol.exporter.loki/) |
 
+## Learning journey
+
+{{< docs/learning-journeys title="Send logs to Grafana Cloud using Alloy" url="https://grafana.com/docs/learning-journeys/send-logs-alloy-loki/" >}}
+
 ## Interactive Tutorials
 
 To learn more about how to configure Alloy to send logs to Loki within different scenarios, follow these interactive tutorials:

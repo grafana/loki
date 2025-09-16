@@ -23,3 +23,6 @@ _models/
 _examples/
 *.min.*
 build/
+
+cmd/chromad/static/chroma.wasm
+cmd/chromad/static/wasm_exec.js

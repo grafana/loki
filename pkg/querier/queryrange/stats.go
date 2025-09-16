@@ -122,7 +122,7 @@ func statsHTTPMiddleware(recorder metricRecorder) middleware.Interface {
 func StatsCollectorMiddleware() queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-			logger := spanlogger.FromContext(ctx)
+			logger := spanlogger.FromContext(ctx, util_log.Logger)
 			start := time.Now()
 
 			// start a new statistics context to be used by middleware, which we will merge with the response's statistics

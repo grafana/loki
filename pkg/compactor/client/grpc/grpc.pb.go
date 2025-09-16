@@ -4,9 +4,11 @@
 package grpc
 
 import (
+	bytes "bytes"
 	context "context"
 	fmt "fmt"
 	proto "github.com/gogo/protobuf/proto"
+	deletionproto "github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -14,6 +16,7 @@ import (
 	math "math"
 	math_bits "math/bits"
 	reflect "reflect"
+	strconv "strconv"
 	strings "strings"
 )
 
@@ -27,6 +30,25 @@ var _ = math.Inf
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
+
+// JobType represents the type of job
+type JobType int32
+
+const (
+	JOB_TYPE_DELETION JobType = 0
+)
+
+var JobType_name = map[int32]string{
+	0: "JOB_TYPE_DELETION",
+}
+
+var JobType_value = map[string]int32{
+	"JOB_TYPE_DELETION": 0,
+}
+
+func (JobType) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_24a5f361c0f660df, []int{0}
+}
 
 type GetDeleteRequestsRequest struct {
 	ForQuerytimeFiltering bool `protobuf:"varint,1,opt,name=forQuerytimeFiltering,proto3" json:"forQuerytimeFiltering,omitempty"`
@@ -72,7 +94,7 @@ func (m *GetDeleteRequestsRequest) GetForQuerytimeFiltering() bool {
 }
 
 type GetDeleteRequestsResponse struct {
-	DeleteRequests []*DeleteRequest `protobuf:"bytes,1,rep,name=deleteRequests,proto3" json:"deleteRequests,omitempty"`
+	DeleteRequests []*deletionproto.DeleteRequest `protobuf:"bytes,1,rep,name=deleteRequests,proto3" json:"deleteRequests,omitempty"`
 }
 
 func (m *GetDeleteRequestsResponse) Reset()      { *m = GetDeleteRequestsResponse{} }
@@ -107,94 +129,11 @@ func (m *GetDeleteRequestsResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_GetDeleteRequestsResponse proto.InternalMessageInfo
 
-func (m *GetDeleteRequestsResponse) GetDeleteRequests() []*DeleteRequest {
+func (m *GetDeleteRequestsResponse) GetDeleteRequests() []*deletionproto.DeleteRequest {
 	if m != nil {
 		return m.DeleteRequests
 	}
 	return nil
-}
-
-type DeleteRequest struct {
-	RequestID string `protobuf:"bytes,1,opt,name=requestID,proto3" json:"requestID,omitempty"`
-	StartTime int64  `protobuf:"varint,2,opt,name=startTime,proto3" json:"startTime,omitempty"`
-	EndTime   int64  `protobuf:"varint,3,opt,name=endTime,proto3" json:"endTime,omitempty"`
-	Query     string `protobuf:"bytes,4,opt,name=query,proto3" json:"query,omitempty"`
-	Status    string `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
-	CreatedAt int64  `protobuf:"varint,6,opt,name=createdAt,proto3" json:"createdAt,omitempty"`
-}
-
-func (m *DeleteRequest) Reset()      { *m = DeleteRequest{} }
-func (*DeleteRequest) ProtoMessage() {}
-func (*DeleteRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_24a5f361c0f660df, []int{2}
-}
-func (m *DeleteRequest) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *DeleteRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_DeleteRequest.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *DeleteRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_DeleteRequest.Merge(m, src)
-}
-func (m *DeleteRequest) XXX_Size() int {
-	return m.Size()
-}
-func (m *DeleteRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_DeleteRequest.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_DeleteRequest proto.InternalMessageInfo
-
-func (m *DeleteRequest) GetRequestID() string {
-	if m != nil {
-		return m.RequestID
-	}
-	return ""
-}
-
-func (m *DeleteRequest) GetStartTime() int64 {
-	if m != nil {
-		return m.StartTime
-	}
-	return 0
-}
-
-func (m *DeleteRequest) GetEndTime() int64 {
-	if m != nil {
-		return m.EndTime
-	}
-	return 0
-}
-
-func (m *DeleteRequest) GetQuery() string {
-	if m != nil {
-		return m.Query
-	}
-	return ""
-}
-
-func (m *DeleteRequest) GetStatus() string {
-	if m != nil {
-		return m.Status
-	}
-	return ""
-}
-
-func (m *DeleteRequest) GetCreatedAt() int64 {
-	if m != nil {
-		return m.CreatedAt
-	}
-	return 0
 }
 
 type GetCacheGenNumbersRequest struct {
@@ -203,7 +142,7 @@ type GetCacheGenNumbersRequest struct {
 func (m *GetCacheGenNumbersRequest) Reset()      { *m = GetCacheGenNumbersRequest{} }
 func (*GetCacheGenNumbersRequest) ProtoMessage() {}
 func (*GetCacheGenNumbersRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_24a5f361c0f660df, []int{3}
+	return fileDescriptor_24a5f361c0f660df, []int{2}
 }
 func (m *GetCacheGenNumbersRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -239,7 +178,7 @@ type GetCacheGenNumbersResponse struct {
 func (m *GetCacheGenNumbersResponse) Reset()      { *m = GetCacheGenNumbersResponse{} }
 func (*GetCacheGenNumbersResponse) ProtoMessage() {}
 func (*GetCacheGenNumbersResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_24a5f361c0f660df, []int{4}
+	return fileDescriptor_24a5f361c0f660df, []int{3}
 }
 func (m *GetCacheGenNumbersResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -275,12 +214,179 @@ func (m *GetCacheGenNumbersResponse) GetResultsCacheGen() string {
 	return ""
 }
 
+// Job represents a single job in the queue
+type Job struct {
+	Id      string  `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Type    JobType `protobuf:"varint,2,opt,name=type,proto3,enum=grpc.JobType" json:"type,omitempty"`
+	Payload []byte  `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`
+}
+
+func (m *Job) Reset()      { *m = Job{} }
+func (*Job) ProtoMessage() {}
+func (*Job) Descriptor() ([]byte, []int) {
+	return fileDescriptor_24a5f361c0f660df, []int{4}
+}
+func (m *Job) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *Job) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_Job.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *Job) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Job.Merge(m, src)
+}
+func (m *Job) XXX_Size() int {
+	return m.Size()
+}
+func (m *Job) XXX_DiscardUnknown() {
+	xxx_messageInfo_Job.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_Job proto.InternalMessageInfo
+
+func (m *Job) GetId() string {
+	if m != nil {
+		return m.Id
+	}
+	return ""
+}
+
+func (m *Job) GetType() JobType {
+	if m != nil {
+		return m.Type
+	}
+	return JOB_TYPE_DELETION
+}
+
+func (m *Job) GetPayload() []byte {
+	if m != nil {
+		return m.Payload
+	}
+	return nil
+}
+
+// JobResult is used to report the result of executing a job
+type JobResult struct {
+	JobId   string  `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	JobType JobType `protobuf:"varint,2,opt,name=job_type,json=jobType,proto3,enum=grpc.JobType" json:"job_type,omitempty"`
+	Error   string  `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	Result  []byte  `protobuf:"bytes,4,opt,name=result,proto3" json:"result,omitempty"`
+}
+
+func (m *JobResult) Reset()      { *m = JobResult{} }
+func (*JobResult) ProtoMessage() {}
+func (*JobResult) Descriptor() ([]byte, []int) {
+	return fileDescriptor_24a5f361c0f660df, []int{5}
+}
+func (m *JobResult) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *JobResult) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_JobResult.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *JobResult) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_JobResult.Merge(m, src)
+}
+func (m *JobResult) XXX_Size() int {
+	return m.Size()
+}
+func (m *JobResult) XXX_DiscardUnknown() {
+	xxx_messageInfo_JobResult.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_JobResult proto.InternalMessageInfo
+
+func (m *JobResult) GetJobId() string {
+	if m != nil {
+		return m.JobId
+	}
+	return ""
+}
+
+func (m *JobResult) GetJobType() JobType {
+	if m != nil {
+		return m.JobType
+	}
+	return JOB_TYPE_DELETION
+}
+
+func (m *JobResult) GetError() string {
+	if m != nil {
+		return m.Error
+	}
+	return ""
+}
+
+func (m *JobResult) GetResult() []byte {
+	if m != nil {
+		return m.Result
+	}
+	return nil
+}
+
+// ReportJobResultResponse is the response to reporting a job result
+type ReportJobResultResponse struct {
+}
+
+func (m *ReportJobResultResponse) Reset()      { *m = ReportJobResultResponse{} }
+func (*ReportJobResultResponse) ProtoMessage() {}
+func (*ReportJobResultResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_24a5f361c0f660df, []int{6}
+}
+func (m *ReportJobResultResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ReportJobResultResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ReportJobResultResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ReportJobResultResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ReportJobResultResponse.Merge(m, src)
+}
+func (m *ReportJobResultResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *ReportJobResultResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_ReportJobResultResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ReportJobResultResponse proto.InternalMessageInfo
+
 func init() {
+	proto.RegisterEnum("grpc.JobType", JobType_name, JobType_value)
 	proto.RegisterType((*GetDeleteRequestsRequest)(nil), "grpc.GetDeleteRequestsRequest")
 	proto.RegisterType((*GetDeleteRequestsResponse)(nil), "grpc.GetDeleteRequestsResponse")
-	proto.RegisterType((*DeleteRequest)(nil), "grpc.DeleteRequest")
 	proto.RegisterType((*GetCacheGenNumbersRequest)(nil), "grpc.GetCacheGenNumbersRequest")
 	proto.RegisterType((*GetCacheGenNumbersResponse)(nil), "grpc.GetCacheGenNumbersResponse")
+	proto.RegisterType((*Job)(nil), "grpc.Job")
+	proto.RegisterType((*JobResult)(nil), "grpc.JobResult")
+	proto.RegisterType((*ReportJobResultResponse)(nil), "grpc.ReportJobResultResponse")
 }
 
 func init() {
@@ -288,35 +394,49 @@ func init() {
 }
 
 var fileDescriptor_24a5f361c0f660df = []byte{
-	// 402 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0x52, 0xbd, 0x6e, 0xdb, 0x30,
-	0x10, 0x16, 0xeb, 0x9f, 0xd6, 0x2c, 0xda, 0xa2, 0xec, 0x0f, 0x58, 0xb7, 0x60, 0x05, 0xa1, 0x83,
-	0x26, 0x1b, 0x70, 0xbd, 0x75, 0x6a, 0x6d, 0xd8, 0xe8, 0x12, 0x24, 0x82, 0x81, 0x64, 0x95, 0xe5,
-	0x8b, 0x23, 0x44, 0x7f, 0x26, 0xa9, 0x21, 0x5b, 0x1e, 0x21, 0x8f, 0x91, 0x35, 0x6b, 0x9e, 0x20,
-	0xa3, 0x47, 0x8f, 0xb1, 0xbc, 0x64, 0xf4, 0x23, 0x04, 0xa2, 0xa4, 0x18, 0xb6, 0xe5, 0x45, 0xe2,
-	0x7d, 0xdf, 0xf1, 0xee, 0xbb, 0xef, 0x88, 0x7f, 0x45, 0x97, 0xd3, 0xb6, 0x13, 0xfa, 0x91, 0xed,
-	0xc8, 0x90, 0xb7, 0x1d, 0xcf, 0x85, 0x40, 0xb6, 0xa7, 0x3c, 0x72, 0xd4, 0xa7, 0x15, 0xf1, 0x50,
-	0x86, 0xa4, 0x9a, 0x9e, 0x8d, 0x63, 0x4c, 0x87, 0x20, 0xfb, 0xe0, 0x81, 0x04, 0x0b, 0x66, 0x31,
-	0x08, 0x29, 0xf2, 0x3f, 0xe9, 0xe2, 0x2f, 0xe7, 0x21, 0x3f, 0x89, 0x81, 0x5f, 0x49, 0xd7, 0x87,
-	0x81, 0xeb, 0x49, 0xe0, 0x6e, 0x30, 0xa5, 0x48, 0x47, 0xe6, 0x1b, 0xab, 0x9c, 0x34, 0xce, 0xf0,
-	0xb7, 0x92, 0x8a, 0x22, 0x0a, 0x03, 0x01, 0xe4, 0x0f, 0x7e, 0x3f, 0xd9, 0x62, 0x28, 0xd2, 0x2b,
-	0xe6, 0xdb, 0xce, 0xa7, 0x96, 0x52, 0xb6, 0x75, 0xcb, 0xda, 0x49, 0x35, 0xee, 0x10, 0x7e, 0xb7,
-	0x95, 0x41, 0x7e, 0xe0, 0x06, 0xcf, 0x8e, 0xff, 0xfb, 0x4a, 0x55, 0xc3, 0xda, 0x00, 0x29, 0x2b,
-	0xa4, 0xcd, 0xe5, 0xc8, 0xf5, 0x81, 0xbe, 0xd2, 0x91, 0x59, 0xb1, 0x36, 0x00, 0xa1, 0xf8, 0x35,
-	0x04, 0x13, 0xc5, 0x55, 0x14, 0x57, 0x84, 0xe4, 0x33, 0xae, 0xcd, 0xd2, 0xb9, 0x68, 0x55, 0x55,
-	0xcc, 0x02, 0xf2, 0x15, 0xd7, 0x85, 0xb4, 0x65, 0x2c, 0x68, 0x4d, 0xc1, 0x79, 0x94, 0x76, 0x71,
-	0x38, 0xd8, 0x12, 0x26, 0x7f, 0x25, 0xad, 0x67, 0x5d, 0x5e, 0x00, 0xe3, 0xbb, 0x72, 0xa3, 0x67,
-	0x3b, 0x17, 0x30, 0x84, 0xe0, 0x28, 0xf6, 0xc7, 0xc0, 0x0b, 0x83, 0x8d, 0x01, 0x6e, 0x96, 0x91,
-	0xb9, 0x57, 0x26, 0xfe, 0xc0, 0x41, 0xc4, 0x9e, 0x14, 0x45, 0x46, 0x3e, 0xe2, 0x2e, 0xdc, 0xb9,
-	0x47, 0xb8, 0xd1, 0x2b, 0xf6, 0x4d, 0x46, 0xf8, 0xe3, 0xde, 0x02, 0x08, 0xcb, 0x0c, 0x3e, 0xb4,
-	0xeb, 0xe6, 0xcf, 0x83, 0x7c, 0xae, 0xe6, 0x14, 0x93, 0x7d, 0xad, 0x64, 0x73, 0xad, 0x7c, 0xc4,
-	0xa6, 0x7e, 0x38, 0x21, 0x2b, 0xfc, 0xaf, 0x3b, 0x5f, 0x32, 0x6d, 0xb1, 0x64, 0xda, 0x7a, 0xc9,
-	0xd0, 0x75, 0xc2, 0xd0, 0x6d, 0xc2, 0xd0, 0x43, 0xc2, 0xd0, 0x3c, 0x61, 0xe8, 0x31, 0x61, 0xe8,
-	0x29, 0x61, 0xda, 0x3a, 0x61, 0xe8, 0x66, 0xc5, 0xb4, 0xf9, 0x8a, 0x69, 0x8b, 0x15, 0xd3, 0xc6,
-	0x75, 0xf5, 0x88, 0x7f, 0x3f, 0x07, 0x00, 0x00, 0xff, 0xff, 0x0a, 0x0f, 0xef, 0xd7, 0xec, 0x02,
-	0x00, 0x00,
+	// 516 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0x52, 0xcd, 0x6e, 0xda, 0x40,
+	0x10, 0xf6, 0x02, 0xe1, 0x67, 0xda, 0x92, 0x66, 0x55, 0x5a, 0x87, 0x56, 0x5b, 0xd7, 0xea, 0xc1,
+	0xea, 0x01, 0x22, 0xca, 0x13, 0x24, 0x90, 0x28, 0x28, 0xca, 0x8f, 0x85, 0x54, 0xf5, 0x84, 0x30,
+	0x9e, 0x52, 0x53, 0x60, 0xdd, 0xf5, 0xfa, 0x40, 0x4f, 0x7d, 0x84, 0x3e, 0x46, 0x9f, 0xa1, 0x4f,
+	0xd0, 0x23, 0xc7, 0x1c, 0x8b, 0xb9, 0xf4, 0x98, 0x47, 0xa8, 0x58, 0x1b, 0x57, 0x24, 0x70, 0xb1,
+	0x67, 0xe6, 0x9b, 0x9f, 0x6f, 0xe7, 0x1b, 0x78, 0xeb, 0x7f, 0x19, 0xd6, 0x07, 0x7c, 0xe2, 0xf7,
+	0x07, 0x92, 0x8b, 0xfa, 0x60, 0xec, 0xe1, 0x54, 0xd6, 0x87, 0xc2, 0x1f, 0xa8, 0x4f, 0xcd, 0x17,
+	0x5c, 0x72, 0x9a, 0x5b, 0xd9, 0xd5, 0xa3, 0xcd, 0x5c, 0x17, 0xc7, 0x28, 0x3d, 0x3e, 0x4d, 0x0d,
+	0x95, 0x5b, 0x97, 0x33, 0x1f, 0x83, 0xb8, 0xce, 0xbc, 0x06, 0xfd, 0x0c, 0x65, 0x6b, 0x85, 0xa3,
+	0x8d, 0x5f, 0x43, 0x0c, 0x64, 0x90, 0xfc, 0x69, 0x13, 0x2a, 0x9f, 0xb8, 0xb8, 0x09, 0x51, 0xcc,
+	0xa4, 0x37, 0xc1, 0x53, 0x6f, 0x2c, 0x51, 0x78, 0xd3, 0xa1, 0x4e, 0x0c, 0x62, 0x15, 0xed, 0xed,
+	0xa0, 0xd9, 0x87, 0xc3, 0x2d, 0x1d, 0x03, 0x9f, 0x4f, 0x03, 0xa4, 0x2d, 0x28, 0xbb, 0x1b, 0x88,
+	0x4e, 0x8c, 0xac, 0xf5, 0xa8, 0xf1, 0xaa, 0xb6, 0x41, 0xb1, 0xb6, 0x51, 0x6e, 0xdf, 0xab, 0x31,
+	0x5f, 0xaa, 0x11, 0x27, 0xfd, 0xc1, 0x67, 0x3c, 0xc3, 0xe9, 0x65, 0x38, 0x71, 0x50, 0xac, 0x59,
+	0x9b, 0xa7, 0x50, 0xdd, 0x06, 0x26, 0x04, 0x2c, 0xd8, 0x17, 0x18, 0x84, 0x63, 0x19, 0xac, 0x33,
+	0xd4, 0x6b, 0x4a, 0xf6, 0xfd, 0xb0, 0x69, 0x43, 0xb6, 0xc3, 0x1d, 0x5a, 0x86, 0x8c, 0xe7, 0x26,
+	0x39, 0x19, 0xcf, 0xa5, 0x6f, 0x20, 0xb7, 0xda, 0x9f, 0x9e, 0x31, 0x88, 0x55, 0x6e, 0x3c, 0xa9,
+	0x29, 0x0d, 0x3a, 0xdc, 0xe9, 0xce, 0x7c, 0xb4, 0x15, 0x44, 0x75, 0x28, 0xf8, 0xfd, 0xd9, 0x98,
+	0xf7, 0x5d, 0x3d, 0x6b, 0x10, 0xeb, 0xb1, 0xbd, 0x76, 0xcd, 0x6f, 0x50, 0xea, 0x70, 0xc7, 0x56,
+	0x93, 0x68, 0x05, 0xf2, 0x23, 0xee, 0xf4, 0xd2, 0xee, 0x7b, 0x23, 0xee, 0x9c, 0xbb, 0xd4, 0x82,
+	0xe2, 0x2a, 0xbc, 0x7b, 0x48, 0x61, 0x14, 0x1b, 0xf4, 0x19, 0xec, 0xa1, 0x10, 0x5c, 0xa8, 0x29,
+	0x25, 0x3b, 0x76, 0xe8, 0x73, 0xc8, 0xc7, 0x4f, 0xd1, 0x73, 0x6a, 0x78, 0xe2, 0x99, 0x87, 0xf0,
+	0xc2, 0x46, 0x9f, 0x0b, 0x99, 0x32, 0x58, 0x2f, 0xe5, 0x9d, 0x01, 0x85, 0xa4, 0x39, 0xad, 0xc0,
+	0x41, 0xe7, 0xea, 0xb8, 0xd7, 0xfd, 0x78, 0xdd, 0xee, 0xb5, 0xda, 0x17, 0xed, 0xee, 0xf9, 0xd5,
+	0xe5, 0x53, 0xad, 0xf1, 0x8b, 0x40, 0xe9, 0x64, 0x7d, 0x57, 0xb4, 0x0b, 0x07, 0x0f, 0x24, 0xa6,
+	0x2c, 0x66, 0xb9, 0xeb, 0x9a, 0xaa, 0xaf, 0x77, 0xe2, 0x89, 0x34, 0x1f, 0x80, 0x3e, 0x14, 0x8e,
+	0xfe, 0x2f, 0xdb, 0xae, 0x77, 0xd5, 0xd8, 0x9d, 0x10, 0x37, 0x6e, 0x34, 0xa1, 0xd8, 0xe1, 0xce,
+	0x4d, 0x88, 0xe1, 0x4a, 0xff, 0xdc, 0x05, 0xe7, 0x3e, 0xdd, 0x4f, 0x77, 0x1a, 0xef, 0xa2, 0x5a,
+	0x4a, 0x03, 0xa6, 0x66, 0x91, 0x23, 0x72, 0xdc, 0x9c, 0x2f, 0x98, 0x76, 0xbb, 0x60, 0xda, 0xdd,
+	0x82, 0x91, 0xef, 0x11, 0x23, 0x3f, 0x23, 0x46, 0x7e, 0x47, 0x8c, 0xcc, 0x23, 0x46, 0xfe, 0x44,
+	0x8c, 0xfc, 0x8d, 0x98, 0x76, 0x17, 0x31, 0xf2, 0x63, 0xc9, 0xb4, 0xf9, 0x92, 0x69, 0xb7, 0x4b,
+	0xa6, 0x39, 0x79, 0x75, 0xbf, 0xef, 0xff, 0x05, 0x00, 0x00, 0xff, 0xff, 0xff, 0x24, 0x38, 0x62,
+	0xb6, 0x03, 0x00, 0x00,
 }
 
+func (x JobType) String() string {
+	s, ok := JobType_name[int32(x)]
+	if ok {
+		return s
+	}
+	return strconv.Itoa(int(x))
+}
 func (this *GetDeleteRequestsRequest) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -370,45 +490,6 @@ func (this *GetDeleteRequestsResponse) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *DeleteRequest) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*DeleteRequest)
-	if !ok {
-		that2, ok := that.(DeleteRequest)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if this.RequestID != that1.RequestID {
-		return false
-	}
-	if this.StartTime != that1.StartTime {
-		return false
-	}
-	if this.EndTime != that1.EndTime {
-		return false
-	}
-	if this.Query != that1.Query {
-		return false
-	}
-	if this.Status != that1.Status {
-		return false
-	}
-	if this.CreatedAt != that1.CreatedAt {
-		return false
-	}
-	return true
-}
 func (this *GetCacheGenNumbersRequest) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -454,6 +535,90 @@ func (this *GetCacheGenNumbersResponse) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *Job) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*Job)
+	if !ok {
+		that2, ok := that.(Job)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Id != that1.Id {
+		return false
+	}
+	if this.Type != that1.Type {
+		return false
+	}
+	if !bytes.Equal(this.Payload, that1.Payload) {
+		return false
+	}
+	return true
+}
+func (this *JobResult) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*JobResult)
+	if !ok {
+		that2, ok := that.(JobResult)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.JobId != that1.JobId {
+		return false
+	}
+	if this.JobType != that1.JobType {
+		return false
+	}
+	if this.Error != that1.Error {
+		return false
+	}
+	if !bytes.Equal(this.Result, that1.Result) {
+		return false
+	}
+	return true
+}
+func (this *ReportJobResultResponse) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*ReportJobResultResponse)
+	if !ok {
+		that2, ok := that.(ReportJobResultResponse)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	return true
+}
 func (this *GetDeleteRequestsRequest) GoString() string {
 	if this == nil {
 		return "nil"
@@ -476,21 +641,6 @@ func (this *GetDeleteRequestsResponse) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *DeleteRequest) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := make([]string, 0, 10)
-	s = append(s, "&grpc.DeleteRequest{")
-	s = append(s, "RequestID: "+fmt.Sprintf("%#v", this.RequestID)+",\n")
-	s = append(s, "StartTime: "+fmt.Sprintf("%#v", this.StartTime)+",\n")
-	s = append(s, "EndTime: "+fmt.Sprintf("%#v", this.EndTime)+",\n")
-	s = append(s, "Query: "+fmt.Sprintf("%#v", this.Query)+",\n")
-	s = append(s, "Status: "+fmt.Sprintf("%#v", this.Status)+",\n")
-	s = append(s, "CreatedAt: "+fmt.Sprintf("%#v", this.CreatedAt)+",\n")
-	s = append(s, "}")
-	return strings.Join(s, "")
-}
 func (this *GetCacheGenNumbersRequest) GoString() string {
 	if this == nil {
 		return "nil"
@@ -507,6 +657,40 @@ func (this *GetCacheGenNumbersResponse) GoString() string {
 	s := make([]string, 0, 5)
 	s = append(s, "&grpc.GetCacheGenNumbersResponse{")
 	s = append(s, "ResultsCacheGen: "+fmt.Sprintf("%#v", this.ResultsCacheGen)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *Job) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 7)
+	s = append(s, "&grpc.Job{")
+	s = append(s, "Id: "+fmt.Sprintf("%#v", this.Id)+",\n")
+	s = append(s, "Type: "+fmt.Sprintf("%#v", this.Type)+",\n")
+	s = append(s, "Payload: "+fmt.Sprintf("%#v", this.Payload)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *JobResult) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 8)
+	s = append(s, "&grpc.JobResult{")
+	s = append(s, "JobId: "+fmt.Sprintf("%#v", this.JobId)+",\n")
+	s = append(s, "JobType: "+fmt.Sprintf("%#v", this.JobType)+",\n")
+	s = append(s, "Error: "+fmt.Sprintf("%#v", this.Error)+",\n")
+	s = append(s, "Result: "+fmt.Sprintf("%#v", this.Result)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ReportJobResultResponse) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 4)
+	s = append(s, "&grpc.ReportJobResultResponse{")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -635,6 +819,118 @@ var _Compactor_serviceDesc = grpc.ServiceDesc{
 	Metadata: "pkg/compactor/client/grpc/grpc.proto",
 }
 
+// JobQueueClient is the client API for JobQueue service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
+type JobQueueClient interface {
+	// After calling this method, both Worker and JobQueue enter a loop, in which worker waits for
+	// "Job" messages containing job details and processes them. After processing the job,
+	// worker signals that it is ready to accept another one by sending JobResult message which contains execution result of previous job it finished.
+	// Since the Worker and JobQueue enter the loop when Worker makes the first call so the JobResult with the first call is expected to be empty.
+	Loop(ctx context.Context, opts ...grpc.CallOption) (JobQueue_LoopClient, error)
+}
+
+type jobQueueClient struct {
+	cc *grpc.ClientConn
+}
+
+func NewJobQueueClient(cc *grpc.ClientConn) JobQueueClient {
+	return &jobQueueClient{cc}
+}
+
+func (c *jobQueueClient) Loop(ctx context.Context, opts ...grpc.CallOption) (JobQueue_LoopClient, error) {
+	stream, err := c.cc.NewStream(ctx, &_JobQueue_serviceDesc.Streams[0], "/grpc.JobQueue/Loop", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &jobQueueLoopClient{stream}
+	return x, nil
+}
+
+type JobQueue_LoopClient interface {
+	Send(*JobResult) error
+	Recv() (*Job, error)
+	grpc.ClientStream
+}
+
+type jobQueueLoopClient struct {
+	grpc.ClientStream
+}
+
+func (x *jobQueueLoopClient) Send(m *JobResult) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *jobQueueLoopClient) Recv() (*Job, error) {
+	m := new(Job)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// JobQueueServer is the server API for JobQueue service.
+type JobQueueServer interface {
+	// After calling this method, both Worker and JobQueue enter a loop, in which worker waits for
+	// "Job" messages containing job details and processes them. After processing the job,
+	// worker signals that it is ready to accept another one by sending JobResult message which contains execution result of previous job it finished.
+	// Since the Worker and JobQueue enter the loop when Worker makes the first call so the JobResult with the first call is expected to be empty.
+	Loop(JobQueue_LoopServer) error
+}
+
+// UnimplementedJobQueueServer can be embedded to have forward compatible implementations.
+type UnimplementedJobQueueServer struct {
+}
+
+func (*UnimplementedJobQueueServer) Loop(srv JobQueue_LoopServer) error {
+	return status.Errorf(codes.Unimplemented, "method Loop not implemented")
+}
+
+func RegisterJobQueueServer(s *grpc.Server, srv JobQueueServer) {
+	s.RegisterService(&_JobQueue_serviceDesc, srv)
+}
+
+func _JobQueue_Loop_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(JobQueueServer).Loop(&jobQueueLoopServer{stream})
+}
+
+type JobQueue_LoopServer interface {
+	Send(*Job) error
+	Recv() (*JobResult, error)
+	grpc.ServerStream
+}
+
+type jobQueueLoopServer struct {
+	grpc.ServerStream
+}
+
+func (x *jobQueueLoopServer) Send(m *Job) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *jobQueueLoopServer) Recv() (*JobResult, error) {
+	m := new(JobResult)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+var _JobQueue_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "grpc.JobQueue",
+	HandlerType: (*JobQueueServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Loop",
+			Handler:       _JobQueue_Loop_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "pkg/compactor/client/grpc/grpc.proto",
+}
+
 func (m *GetDeleteRequestsRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -705,65 +1001,6 @@ func (m *GetDeleteRequestsResponse) MarshalToSizedBuffer(dAtA []byte) (int, erro
 	return len(dAtA) - i, nil
 }
 
-func (m *DeleteRequest) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *DeleteRequest) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *DeleteRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.CreatedAt != 0 {
-		i = encodeVarintGrpc(dAtA, i, uint64(m.CreatedAt))
-		i--
-		dAtA[i] = 0x30
-	}
-	if len(m.Status) > 0 {
-		i -= len(m.Status)
-		copy(dAtA[i:], m.Status)
-		i = encodeVarintGrpc(dAtA, i, uint64(len(m.Status)))
-		i--
-		dAtA[i] = 0x2a
-	}
-	if len(m.Query) > 0 {
-		i -= len(m.Query)
-		copy(dAtA[i:], m.Query)
-		i = encodeVarintGrpc(dAtA, i, uint64(len(m.Query)))
-		i--
-		dAtA[i] = 0x22
-	}
-	if m.EndTime != 0 {
-		i = encodeVarintGrpc(dAtA, i, uint64(m.EndTime))
-		i--
-		dAtA[i] = 0x18
-	}
-	if m.StartTime != 0 {
-		i = encodeVarintGrpc(dAtA, i, uint64(m.StartTime))
-		i--
-		dAtA[i] = 0x10
-	}
-	if len(m.RequestID) > 0 {
-		i -= len(m.RequestID)
-		copy(dAtA[i:], m.RequestID)
-		i = encodeVarintGrpc(dAtA, i, uint64(len(m.RequestID)))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
 func (m *GetCacheGenNumbersRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -817,6 +1054,120 @@ func (m *GetCacheGenNumbersResponse) MarshalToSizedBuffer(dAtA []byte) (int, err
 	return len(dAtA) - i, nil
 }
 
+func (m *Job) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Job) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Job) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Payload) > 0 {
+		i -= len(m.Payload)
+		copy(dAtA[i:], m.Payload)
+		i = encodeVarintGrpc(dAtA, i, uint64(len(m.Payload)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.Type != 0 {
+		i = encodeVarintGrpc(dAtA, i, uint64(m.Type))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.Id) > 0 {
+		i -= len(m.Id)
+		copy(dAtA[i:], m.Id)
+		i = encodeVarintGrpc(dAtA, i, uint64(len(m.Id)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *JobResult) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *JobResult) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *JobResult) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Result) > 0 {
+		i -= len(m.Result)
+		copy(dAtA[i:], m.Result)
+		i = encodeVarintGrpc(dAtA, i, uint64(len(m.Result)))
+		i--
+		dAtA[i] = 0x22
+	}
+	if len(m.Error) > 0 {
+		i -= len(m.Error)
+		copy(dAtA[i:], m.Error)
+		i = encodeVarintGrpc(dAtA, i, uint64(len(m.Error)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if m.JobType != 0 {
+		i = encodeVarintGrpc(dAtA, i, uint64(m.JobType))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.JobId) > 0 {
+		i -= len(m.JobId)
+		copy(dAtA[i:], m.JobId)
+		i = encodeVarintGrpc(dAtA, i, uint64(len(m.JobId)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ReportJobResultResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ReportJobResultResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ReportJobResultResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintGrpc(dAtA []byte, offset int, v uint64) int {
 	offset -= sovGrpc(v)
 	base := offset
@@ -855,36 +1206,6 @@ func (m *GetDeleteRequestsResponse) Size() (n int) {
 	return n
 }
 
-func (m *DeleteRequest) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	l = len(m.RequestID)
-	if l > 0 {
-		n += 1 + l + sovGrpc(uint64(l))
-	}
-	if m.StartTime != 0 {
-		n += 1 + sovGrpc(uint64(m.StartTime))
-	}
-	if m.EndTime != 0 {
-		n += 1 + sovGrpc(uint64(m.EndTime))
-	}
-	l = len(m.Query)
-	if l > 0 {
-		n += 1 + l + sovGrpc(uint64(l))
-	}
-	l = len(m.Status)
-	if l > 0 {
-		n += 1 + l + sovGrpc(uint64(l))
-	}
-	if m.CreatedAt != 0 {
-		n += 1 + sovGrpc(uint64(m.CreatedAt))
-	}
-	return n
-}
-
 func (m *GetCacheGenNumbersRequest) Size() (n int) {
 	if m == nil {
 		return 0
@@ -904,6 +1225,59 @@ func (m *GetCacheGenNumbersResponse) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovGrpc(uint64(l))
 	}
+	return n
+}
+
+func (m *Job) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Id)
+	if l > 0 {
+		n += 1 + l + sovGrpc(uint64(l))
+	}
+	if m.Type != 0 {
+		n += 1 + sovGrpc(uint64(m.Type))
+	}
+	l = len(m.Payload)
+	if l > 0 {
+		n += 1 + l + sovGrpc(uint64(l))
+	}
+	return n
+}
+
+func (m *JobResult) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.JobId)
+	if l > 0 {
+		n += 1 + l + sovGrpc(uint64(l))
+	}
+	if m.JobType != 0 {
+		n += 1 + sovGrpc(uint64(m.JobType))
+	}
+	l = len(m.Error)
+	if l > 0 {
+		n += 1 + l + sovGrpc(uint64(l))
+	}
+	l = len(m.Result)
+	if l > 0 {
+		n += 1 + l + sovGrpc(uint64(l))
+	}
+	return n
+}
+
+func (m *ReportJobResultResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
 	return n
 }
 
@@ -929,26 +1303,11 @@ func (this *GetDeleteRequestsResponse) String() string {
 	}
 	repeatedStringForDeleteRequests := "[]*DeleteRequest{"
 	for _, f := range this.DeleteRequests {
-		repeatedStringForDeleteRequests += strings.Replace(f.String(), "DeleteRequest", "DeleteRequest", 1) + ","
+		repeatedStringForDeleteRequests += strings.Replace(fmt.Sprintf("%v", f), "DeleteRequest", "deletionproto.DeleteRequest", 1) + ","
 	}
 	repeatedStringForDeleteRequests += "}"
 	s := strings.Join([]string{`&GetDeleteRequestsResponse{`,
 		`DeleteRequests:` + repeatedStringForDeleteRequests + `,`,
-		`}`,
-	}, "")
-	return s
-}
-func (this *DeleteRequest) String() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&DeleteRequest{`,
-		`RequestID:` + fmt.Sprintf("%v", this.RequestID) + `,`,
-		`StartTime:` + fmt.Sprintf("%v", this.StartTime) + `,`,
-		`EndTime:` + fmt.Sprintf("%v", this.EndTime) + `,`,
-		`Query:` + fmt.Sprintf("%v", this.Query) + `,`,
-		`Status:` + fmt.Sprintf("%v", this.Status) + `,`,
-		`CreatedAt:` + fmt.Sprintf("%v", this.CreatedAt) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -968,6 +1327,40 @@ func (this *GetCacheGenNumbersResponse) String() string {
 	}
 	s := strings.Join([]string{`&GetCacheGenNumbersResponse{`,
 		`ResultsCacheGen:` + fmt.Sprintf("%v", this.ResultsCacheGen) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *Job) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&Job{`,
+		`Id:` + fmt.Sprintf("%v", this.Id) + `,`,
+		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`Payload:` + fmt.Sprintf("%v", this.Payload) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *JobResult) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&JobResult{`,
+		`JobId:` + fmt.Sprintf("%v", this.JobId) + `,`,
+		`JobType:` + fmt.Sprintf("%v", this.JobType) + `,`,
+		`Error:` + fmt.Sprintf("%v", this.Error) + `,`,
+		`Result:` + fmt.Sprintf("%v", this.Result) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ReportJobResultResponse) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ReportJobResultResponse{`,
 		`}`,
 	}, "")
 	return s
@@ -1111,217 +1504,11 @@ func (m *GetDeleteRequestsResponse) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.DeleteRequests = append(m.DeleteRequests, &DeleteRequest{})
+			m.DeleteRequests = append(m.DeleteRequests, &deletionproto.DeleteRequest{})
 			if err := m.DeleteRequests[len(m.DeleteRequests)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipGrpc(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthGrpc
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthGrpc
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *DeleteRequest) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowGrpc
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: DeleteRequest: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: DeleteRequest: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RequestID", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowGrpc
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthGrpc
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthGrpc
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.RequestID = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field StartTime", wireType)
-			}
-			m.StartTime = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowGrpc
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.StartTime |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field EndTime", wireType)
-			}
-			m.EndTime = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowGrpc
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.EndTime |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Query", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowGrpc
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthGrpc
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthGrpc
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Query = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 5:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Status", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowGrpc
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthGrpc
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthGrpc
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Status = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 6:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CreatedAt", wireType)
-			}
-			m.CreatedAt = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowGrpc
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.CreatedAt |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipGrpc(dAtA[iNdEx:])
@@ -1460,6 +1647,367 @@ func (m *GetCacheGenNumbersResponse) Unmarshal(dAtA []byte) error {
 			}
 			m.ResultsCacheGen = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGrpc(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Job) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGrpc
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Job: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Job: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGrpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Id = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Type", wireType)
+			}
+			m.Type = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGrpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Type |= JobType(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Payload", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGrpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Payload = append(m.Payload[:0], dAtA[iNdEx:postIndex]...)
+			if m.Payload == nil {
+				m.Payload = []byte{}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGrpc(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *JobResult) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGrpc
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: JobResult: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: JobResult: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field JobId", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGrpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.JobId = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field JobType", wireType)
+			}
+			m.JobType = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGrpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.JobType |= JobType(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Error", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGrpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Error = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Result", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGrpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Result = append(m.Result[:0], dAtA[iNdEx:postIndex]...)
+			if m.Result == nil {
+				m.Result = []byte{}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGrpc(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthGrpc
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ReportJobResultResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGrpc
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ReportJobResultResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ReportJobResultResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
 		default:
 			iNdEx = preIndex
 			skippy, err := skipGrpc(dAtA[iNdEx:])

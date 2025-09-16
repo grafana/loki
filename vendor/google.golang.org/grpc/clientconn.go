@@ -208,7 +208,7 @@ func NewClient(target string, opts ...DialOption) (conn *ClientConn, err error) 
 	channelz.Infof(logger, cc.channelz, "Channel authority set to %q", cc.authority)
 
 	cc.csMgr = newConnectivityStateManager(cc.ctx, cc.channelz)
-	cc.pickerWrapper = newPickerWrapper(cc.dopts.copts.StatsHandlers)
+	cc.pickerWrapper = newPickerWrapper()
 
 	cc.metricsRecorderList = stats.NewMetricsRecorderList(cc.dopts.copts.StatsHandlers)
 
@@ -689,22 +689,31 @@ func (cc *ClientConn) Connect() {
 	cc.mu.Unlock()
 }
 
-// waitForResolvedAddrs blocks until the resolver has provided addresses or the
-// context expires.  Returns nil unless the context expires first; otherwise
-// returns a status error based on the context.
-func (cc *ClientConn) waitForResolvedAddrs(ctx context.Context) error {
+// waitForResolvedAddrs blocks until the resolver provides addresses or the
+// context expires, whichever happens first.
+//
+// Error is nil unless the context expires first; otherwise returns a status
+// error based on the context.
+//
+// The returned boolean indicates whether it did block or not. If the
+// resolution has already happened once before, it returns false without
+// blocking. Otherwise, it wait for the resolution and return true if
+// resolution has succeeded or return false along with error if resolution has
+// failed.
+func (cc *ClientConn) waitForResolvedAddrs(ctx context.Context) (bool, error) {
 	// This is on the RPC path, so we use a fast path to avoid the
 	// more-expensive "select" below after the resolver has returned once.
 	if cc.firstResolveEvent.HasFired() {
-		return nil
+		return false, nil
 	}
+	internal.NewStreamWaitingForResolver()
 	select {
 	case <-cc.firstResolveEvent.Done():
-		return nil
+		return true, nil
 	case <-ctx.Done():
-		return status.FromContextError(ctx.Err()).Err()
+		return false, status.FromContextError(ctx.Err()).Err()
 	case <-cc.ctx.Done():
-		return ErrClientConnClosing
+		return false, ErrClientConnClosing
 	}
 }
 
@@ -1067,13 +1076,6 @@ func (cc *ClientConn) healthCheckConfig() *healthCheckConfig {
 	return cc.sc.healthCheckConfig
 }
 
-func (cc *ClientConn) getTransport(ctx context.Context, failfast bool, method string) (transport.ClientTransport, balancer.PickResult, error) {
-	return cc.pickerWrapper.pick(ctx, failfast, balancer.PickInfo{
-		Ctx:            ctx,
-		FullMethodName: method,
-	})
-}
-
 func (cc *ClientConn) applyServiceConfigAndBalancer(sc *ServiceConfig, configSelector iresolver.ConfigSelector) {
 	if sc == nil {
 		// should never reach here.
@@ -1231,8 +1233,7 @@ func (ac *addrConn) updateConnectivityState(s connectivity.State, lastErr error)
 // adjustParams updates parameters used to create transports upon
 // receiving a GoAway.
 func (ac *addrConn) adjustParams(r transport.GoAwayReason) {
-	switch r {
-	case transport.GoAwayTooManyPings:
+	if r == transport.GoAwayTooManyPings {
 		v := 2 * ac.dopts.copts.KeepaliveParams.Time
 		ac.cc.mu.Lock()
 		if v > ac.cc.keepaliveParams.Time {
@@ -1823,7 +1824,7 @@ func (cc *ClientConn) initAuthority() error {
 	} else if auth, ok := cc.resolverBuilder.(resolver.AuthorityOverrider); ok {
 		cc.authority = auth.OverrideAuthority(cc.parsedTarget)
 	} else if strings.HasPrefix(endpoint, ":") {
-		cc.authority = "localhost" + endpoint
+		cc.authority = "localhost" + encodeAuthority(endpoint)
 	} else {
 		cc.authority = encodeAuthority(endpoint)
 	}

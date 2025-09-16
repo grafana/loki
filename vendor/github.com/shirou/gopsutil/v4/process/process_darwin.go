@@ -45,7 +45,8 @@ func pidsWithContext(_ context.Context) ([]int32, error) {
 		return ret, err
 	}
 
-	for _, proc := range kprocs {
+	for i := range kprocs {
+		proc := &kprocs[i]
 		ret = append(ret, int32(proc.Proc.P_pid))
 	}
 
@@ -74,7 +75,7 @@ func (p *Process) NameWithContext(ctx context.Context) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if len(cmdName) > 0 {
+		if cmdName != "" {
 			extendedName := filepath.Base(cmdName)
 			if strings.HasPrefix(extendedName, p.name) {
 				name = extendedName
@@ -137,7 +138,7 @@ func (p *Process) GidsWithContext(_ context.Context) ([]uint32, error) {
 	return gids, nil
 }
 
-func (p *Process) GroupsWithContext(_ context.Context) ([]uint32, error) {
+func (*Process) GroupsWithContext(_ context.Context) ([]uint32, error) {
 	return nil, common.ErrNotImplementedError
 	// k, err := p.getKProc()
 	// if err != nil {
@@ -152,7 +153,7 @@ func (p *Process) GroupsWithContext(_ context.Context) ([]uint32, error) {
 	// return groups, nil
 }
 
-func (p *Process) TerminalWithContext(_ context.Context) (string, error) {
+func (*Process) TerminalWithContext(_ context.Context) (string, error) {
 	return "", common.ErrNotImplementedError
 	/*
 		k, err := p.getKProc()
@@ -178,7 +179,7 @@ func (p *Process) NiceWithContext(_ context.Context) (int32, error) {
 	return int32(k.Proc.P_nice), nil
 }
 
-func (p *Process) IOCountersWithContext(_ context.Context) (*IOCountersStat, error) {
+func (*Process) IOCountersWithContext(_ context.Context) (*IOCountersStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
@@ -238,7 +239,7 @@ func (p *Process) getKProc() (*unix.KinfoProc, error) {
 // Return value deletes Header line(you must not input wrong arg).
 // And splited by Space. Caller have responsibility to manage.
 // If passed arg pid is 0, get information from all process.
-func callPsWithContext(ctx context.Context, arg string, pid int32, threadOption bool, nameOption bool) ([][]string, error) {
+func callPsWithContext(ctx context.Context, arg string, pid int32, threadOption, nameOption bool) ([][]string, error) {
 	var cmd []string
 	switch {
 	case pid == 0: // will get from all processes.
@@ -396,7 +397,7 @@ func (p *Process) cmdlineSlice() ([]string, error) {
 	// of the process.
 	for _, arg := range args[1:] {
 		argStr = string(arg)
-		if len(argStr) > 0 {
+		if argStr != "" {
 			if nargs > 0 {
 				argSlice = append(argSlice, argStr)
 				nargs--

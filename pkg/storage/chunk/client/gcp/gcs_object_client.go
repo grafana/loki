@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
@@ -24,6 +25,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 )
+
+var tracer = otel.Tracer("pkg/storage/chunk/client/gcp")
 
 type ClientFactory func(ctx context.Context, opts ...option.ClientOption) (*storage.Client, error)
 
@@ -363,7 +366,7 @@ func gcsTransport(ctx context.Context, scope string, insecure bool, http2 bool, 
 	}
 	transportOptions := []option.ClientOption{option.WithScopes(scope)}
 	if insecure {
-		customTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //#nosec G402 -- User has explicitly requested to disable TLS
+		customTransport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //#nosec G402 -- User has explicitly requested to disable TLS -- nosemgrep: tls-with-insecure-cipher
 		transportOptions = append(transportOptions, option.WithoutAuthentication())
 	}
 	if serviceAccount.String() != "" {

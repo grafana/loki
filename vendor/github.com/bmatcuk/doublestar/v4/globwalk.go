@@ -50,7 +50,6 @@ type GlobWalkFunc func(path string, d fs.DirEntry) error
 //
 // Note: users should _not_ count on the returned error,
 // doublestar.ErrBadPattern, being equal to path.ErrBadPattern.
-//
 func GlobWalk(fsys fs.FS, pattern string, fn GlobWalkFunc, opts ...GlobOption) error {
 	if !ValidatePattern(pattern) {
 		return ErrBadPattern
@@ -290,7 +289,7 @@ func (g *glob) globDirWalk(fsys fs.FS, dir, pattern string, canMatchFiles, befor
 	var matched bool
 	for _, info := range dirs {
 		name := info.Name()
-		matched, e = matchWithSeparator(pattern, name, '/', false)
+		matched, e = matchWithSeparator(pattern, name, '/', false, g.caseInsensitive)
 		if e != nil {
 			return
 		}

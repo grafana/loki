@@ -35,7 +35,8 @@ var (
 	_ Stage = &RegexpParser{}
 	_ Stage = &LogfmtParser{}
 
-	trueBytes = []byte("true")
+	trueBytes  = []byte("true")
+	falseBytes = []byte("false")
 
 	errUnexpectedJSONObject = fmt.Errorf("expecting json object(%d), but it is not", jsoniter.ObjectValue)
 	errMissingCapture       = errors.New("at least one named capture must be supplied")
@@ -59,6 +60,7 @@ type JSONParser struct {
 	keys                  internedStringSet
 	parserHints           ParserHint
 	sanitizedPrefixBuffer []byte
+	valueBuffer           []byte
 }
 
 // NewJSONParser creates a log stage that can parse a json log line and add properties as labels.
@@ -68,6 +70,7 @@ func NewJSONParser(captureJSONPath bool) *JSONParser {
 		keys:                  internedStringSet{},
 		captureJSONPath:       captureJSONPath,
 		sanitizedPrefixBuffer: make([]byte, 0, 64),
+		valueBuffer:           make([]byte, 0, 64),
 	}
 }
 
@@ -150,7 +153,10 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		if !ok || j.lbs.ParserLabelHints().Extracted(sanitizedKey) {
 			return nil
 		}
-		j.lbs.Set(ParsedLabel, sanitizedKey, readValue(value, dataType))
+
+		j.valueBuffer = readValue(value, dataType, j.valueBuffer)
+		j.lbs.Set(ParsedLabel, unsafeGetBytes(sanitizedKey), j.valueBuffer)
+
 		if j.captureJSONPath {
 			j.lbs.SetJSONPath(sanitizedKey, []string{string(key)})
 		}
@@ -170,7 +176,9 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	sanitized := j.buildSanitizedPrefixFromBuffer()
 	keyString, ok := j.keys.Get(sanitized, func() (string, bool) {
 		if j.lbs.BaseHas(string(sanitized)) {
-			j.prefixBuffer[prefixLen] = append(key, duplicateSuffix...)
+			j.prefixBuffer[prefixLen] = make([]byte, 0, len(key)+len(duplicateSuffix))
+			j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], key...)
+			j.prefixBuffer[prefixLen] = append(j.prefixBuffer[prefixLen], duplicateSuffix...)
 		}
 
 		keyPrefix := j.buildSanitizedPrefixFromBuffer()
@@ -182,8 +190,9 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	})
 
 	if j.captureJSONPath {
-		jsonPath := j.buildJSONPathFromPrefixBuffer()
-		j.lbs.SetJSONPath(keyString, jsonPath)
+		if jsonPath := j.buildJSONPathFromPrefixBuffer(); len(jsonPath) > 0 {
+			j.lbs.SetJSONPath(keyString, jsonPath)
+		}
 	}
 
 	// reset the prefix position
@@ -192,7 +201,8 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 		return nil
 	}
 
-	j.lbs.Set(ParsedLabel, keyString, readValue(value, dataType))
+	j.valueBuffer = readValue(value, dataType, j.valueBuffer)
+	j.lbs.Set(ParsedLabel, unsafeGetBytes(keyString), j.valueBuffer)
 
 	if !j.parserHints.ShouldContinueParsingLine(keyString, j.lbs) {
 		return errLabelDoesNotMatch
@@ -217,10 +227,20 @@ func (j *JSONParser) buildSanitizedPrefixFromBuffer() []byte {
 	return j.sanitizedPrefixBuffer
 }
 
+// buildJSONPathFromPrefixBuffer constructs the JSON path from the accumulated prefix buffer.
+// It returns a slice of strings representing each segment of the JSON path.
+// If the prefix buffer is empty, it returns nil.
+// The function also removes any "_extracted" suffix from "duplicate" fields.
 func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
+	if len(j.prefixBuffer) == 0 {
+		return nil
+	}
+
 	jsonPath := make([]string, 0, len(j.prefixBuffer))
 	for _, part := range j.prefixBuffer {
-		partStr := unsafe.String(unsafe.SliceData(part), len(part)) // #nosec G103 -- we know the string is not mutated
+		partStr := unsafe.String(unsafe.SliceData(part), len(part)) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
+		// Trim _extracted suffix if the extracted field was a duplicate field
+		partStr = strings.TrimSuffix(partStr, duplicateSuffix)
 		jsonPath = append(jsonPath, partStr)
 	}
 
@@ -229,37 +249,36 @@ func (j *JSONParser) buildJSONPathFromPrefixBuffer() []string {
 
 func (j *JSONParser) RequiredLabelNames() []string { return []string{} }
 
-func readValue(v []byte, dataType jsonparser.ValueType) string {
+func readValue(v []byte, dataType jsonparser.ValueType, buf []byte) []byte {
 	switch dataType {
 	case jsonparser.String:
-		return unescapeJSONString(v)
+		return unescapeJSONString(v, buf)
 	case jsonparser.Null:
-		return ""
+		return nil
 	case jsonparser.Number:
-		return string(v)
+		return v
 	case jsonparser.Boolean:
 		if bytes.Equal(v, trueBytes) {
-			return trueString
+			return trueBytes
 		}
-		return falseString
+		return falseBytes
 	default:
-		return ""
+		return nil
 	}
 }
 
-func unescapeJSONString(b []byte) string {
-	var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
-	bU, err := jsonparser.Unescape(b, stackbuf[:])
+func unescapeJSONString(b, buf []byte) []byte {
+	bU, err := jsonparser.Unescape(b, buf[:])
 	if err != nil {
-		return ""
+		return nil
 	}
-	res := string(bU)
 
+	res := unsafeGetString(bU)
 	if strings.ContainsRune(res, utf8.RuneError) {
-		res = strings.Map(removeInvalidUtf, res)
+		return []byte(strings.Map(removeInvalidUtf, res))
 	}
 
-	return res
+	return bU
 }
 
 type RegexpParser struct {
@@ -325,7 +344,7 @@ func (r *RegexpParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 				continue
 			}
 
-			lbs.Set(ParsedLabel, key, string(value))
+			lbs.Set(ParsedLabel, unsafeGetBytes(key), value)
 			if !parserHints.ShouldContinueParsingLine(key, lbs) {
 				return line, false
 			}
@@ -401,7 +420,7 @@ func (l *LogfmtParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte
 			continue
 		}
 
-		lbs.Set(ParsedLabel, key, string(val))
+		lbs.Set(ParsedLabel, unsafeGetBytes(key), val)
 		if !parserHints.ShouldContinueParsingLine(key, lbs) {
 			return line, false
 		}
@@ -463,7 +482,7 @@ func (l *PatternParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byt
 			continue
 		}
 
-		lbs.Set(ParsedLabel, name, string(m))
+		lbs.Set(ParsedLabel, unsafeGetBytes(name), m)
 		if !parserHints.ShouldContinueParsingLine(name, lbs) {
 			return line, false
 		}
@@ -522,7 +541,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 	for id, paths := range l.expressions {
 		keys[id] = fmt.Sprintf("%v", paths...)
 		if !lbs.BaseHas(id) {
-			lbs.Set(ParsedLabel, id, "")
+			lbs.Set(ParsedLabel, unsafeGetBytes(id), nil)
 		}
 	}
 
@@ -584,7 +603,7 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 				}
 			}
 
-			lbs.Set(ParsedLabel, key, string(val))
+			lbs.Set(ParsedLabel, unsafeGetBytes(key), val)
 
 			if lbs.ParserLabelHints().AllRequiredExtracted() {
 				break
@@ -603,9 +622,10 @@ func (l *LogfmtExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilde
 func (l *LogfmtExpressionParser) RequiredLabelNames() []string { return []string{} }
 
 type JSONExpressionParser struct {
-	ids   []string
-	paths [][]string
-	keys  internedStringSet
+	ids         []string
+	paths       [][]string
+	keys        internedStringSet
+	valueBuffer []byte
 }
 
 func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpressionParser, error) {
@@ -626,9 +646,10 @@ func NewJSONExpressionParser(expressions []LabelExtractionExpr) (*JSONExpression
 	}
 
 	return &JSONExpressionParser{
-		ids:   ids,
-		paths: paths,
-		keys:  internedStringSet{},
+		ids:         ids,
+		paths:       paths,
+		keys:        internedStringSet{},
+		valueBuffer: make([]byte, 0, 64),
 	}, nil
 }
 
@@ -675,11 +696,12 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 
 		switch typ {
 		case jsonparser.Null:
-			lbs.Set(ParsedLabel, key, "")
+			lbs.Set(ParsedLabel, unsafeGetBytes(key), nil)
 		case jsonparser.Object:
-			lbs.Set(ParsedLabel, key, string(data))
+			lbs.Set(ParsedLabel, unsafeGetBytes(key), data)
 		default:
-			lbs.Set(ParsedLabel, key, unescapeJSONString(data))
+			j.valueBuffer = unescapeJSONString(data, j.valueBuffer)
+			lbs.Set(ParsedLabel, unsafeGetBytes(key), j.valueBuffer)
 		}
 
 		matches++
@@ -689,7 +711,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 	if matches < len(j.ids) {
 		for _, id := range j.ids {
 			if _, ok := lbs.Get(id); !ok {
-				lbs.Set(ParsedLabel, id, "")
+				lbs.Set(ParsedLabel, unsafeGetBytes(id), nil)
 			}
 		}
 	}
@@ -709,9 +731,9 @@ func isValidJSONStart(data []byte) bool {
 func (j *JSONExpressionParser) RequiredLabelNames() []string { return []string{} }
 
 type UnpackParser struct {
-	lbsBuffer []string
-
-	keys internedStringSet
+	lbsBuffer   []string
+	valueBuffer []byte
+	keys        internedStringSet
 }
 
 // NewUnpackParser creates a new unpack stage.
@@ -720,8 +742,9 @@ type UnpackParser struct {
 // see https://grafana.com/docs/loki/latest/clients/promtail/stages/pack/
 func NewUnpackParser() *UnpackParser {
 	return &UnpackParser{
-		lbsBuffer: make([]string, 0, 16),
-		keys:      internedStringSet{},
+		lbsBuffer:   make([]string, 0, 16),
+		keys:        internedStringSet{},
+		valueBuffer: make([]byte, 0, 64),
 	}
 }
 
@@ -759,7 +782,7 @@ func addErrLabel(msg string, err error, lbs *LabelsBuilder) {
 	}
 
 	if lbs.ParserLabelHints().PreserveError() {
-		lbs.Set(ParsedLabel, logqlmodel.PreserveErrorLabel, "true")
+		lbs.Set(ParsedLabel, unsafeGetBytes(logqlmodel.PreserveErrorLabel), trueBytes)
 	}
 }
 
@@ -795,7 +818,8 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 			}
 
 			// append to the buffer of labels
-			u.lbsBuffer = append(u.lbsBuffer, sanitizeLabelKey(key, true), unescapeJSONString(value))
+			u.valueBuffer = unescapeJSONString(value, u.valueBuffer)
+			u.lbsBuffer = append(u.lbsBuffer, sanitizeLabelKey(key, true), string(u.valueBuffer))
 		default:
 			return nil
 		}
@@ -810,7 +834,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 	// flush the buffer if we found a packed entry.
 	if isPacked {
 		for i := 0; i < len(u.lbsBuffer); i = i + 2 {
-			lbs.Set(ParsedLabel, u.lbsBuffer[i], u.lbsBuffer[i+1])
+			lbs.Set(ParsedLabel, unsafeGetBytes(u.lbsBuffer[i]), unsafeGetBytes(u.lbsBuffer[i+1]))
 			if !lbs.ParserLabelHints().ShouldContinueParsingLine(u.lbsBuffer[i], lbs) {
 				return entry, errLabelDoesNotMatch
 			}

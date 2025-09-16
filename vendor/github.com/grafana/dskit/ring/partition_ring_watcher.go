@@ -18,15 +18,21 @@ import (
 type PartitionRingWatcher struct {
 	services.Service
 
-	key    string
-	kv     kv.Client
-	logger log.Logger
+	key      string
+	kv       kv.Client
+	delegate PartitionRingWatcherDelegate
+	logger   log.Logger
 
 	ringMx sync.Mutex
 	ring   *PartitionRing
 
 	// Metrics.
 	numPartitionsGaugeVec *prometheus.GaugeVec
+}
+
+type PartitionRingWatcherDelegate interface {
+	// OnPartitionRingChanged provides the old and new partition ring descriptions, which must not be modified.
+	OnPartitionRingChanged(oldRing, newRing *PartitionRingDesc)
 }
 
 func NewPartitionRingWatcher(name, key string, kv kv.Client, logger log.Logger, reg prometheus.Registerer) *PartitionRingWatcher {
@@ -44,6 +50,14 @@ func NewPartitionRingWatcher(name, key string, kv kv.Client, logger log.Logger, 
 
 	r.Service = services.NewBasicService(r.starting, r.loop, nil).WithName("partitions-ring-watcher")
 	return r
+}
+
+// WithDelegate adds the delegate to be called when the partition ring changes.
+//
+// Not concurrency safe.
+func (w *PartitionRingWatcher) WithDelegate(delegate PartitionRingWatcherDelegate) *PartitionRingWatcher {
+	w.delegate = delegate
+	return w
 }
 
 func (w *PartitionRingWatcher) starting(ctx context.Context) error {
@@ -79,10 +93,14 @@ func (w *PartitionRingWatcher) loop(ctx context.Context) error {
 
 func (w *PartitionRingWatcher) updatePartitionRing(desc *PartitionRingDesc) {
 	newRing := NewPartitionRing(*desc)
-
 	w.ringMx.Lock()
+	oldRing := w.ring
 	w.ring = newRing
 	w.ringMx.Unlock()
+
+	if w.delegate != nil {
+		w.delegate.OnPartitionRingChanged(&oldRing.desc, desc)
+	}
 
 	// Update metrics.
 	for state, count := range desc.countPartitionsByState() {

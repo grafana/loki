@@ -349,17 +349,16 @@ func (c *ringSharding) newRingShards(
 	return
 }
 
+// Warning: External exposure of `c.shards.list` may cause data races.
+// So keep internal or implement deep copy if exposed.
 func (c *ringSharding) List() []*ringShard {
-	var list []*ringShard
-
 	c.mu.RLock()
-	if !c.closed {
-		list = make([]*ringShard, len(c.shards.list))
-		copy(list, c.shards.list)
-	}
-	c.mu.RUnlock()
+	defer c.mu.RUnlock()
 
-	return list
+	if c.closed {
+		return nil
+	}
+	return c.shards.list
 }
 
 func (c *ringSharding) Hash(key string) string {
@@ -423,6 +422,7 @@ func (c *ringSharding) Heartbeat(ctx context.Context, frequency time.Duration) {
 		case <-ticker.C:
 			var rebalance bool
 
+			// note: `c.List()` return a shadow copy of `[]*ringShard`.
 			for _, shard := range c.List() {
 				err := shard.Client.Ping(ctx).Err()
 				isUp := err == nil || err == pool.ErrPoolTimeout
@@ -582,6 +582,7 @@ func (c *Ring) retryBackoff(attempt int) time.Duration {
 
 // PoolStats returns accumulated connection pool stats.
 func (c *Ring) PoolStats() *PoolStats {
+	// note: `c.List()` return a shadow copy of `[]*ringShard`.
 	shards := c.sharding.List()
 	var acc PoolStats
 	for _, shard := range shards {
@@ -651,6 +652,7 @@ func (c *Ring) ForEachShard(
 	ctx context.Context,
 	fn func(ctx context.Context, client *Client) error,
 ) error {
+	// note: `c.List()` return a shadow copy of `[]*ringShard`.
 	shards := c.sharding.List()
 	var wg sync.WaitGroup
 	errCh := make(chan error, 1)
@@ -682,6 +684,7 @@ func (c *Ring) ForEachShard(
 }
 
 func (c *Ring) cmdsInfo(ctx context.Context) (map[string]*CommandInfo, error) {
+	// note: `c.List()` return a shadow copy of `[]*ringShard`.
 	shards := c.sharding.List()
 	var firstErr error
 	for _, shard := range shards {
@@ -699,7 +702,7 @@ func (c *Ring) cmdsInfo(ctx context.Context) (map[string]*CommandInfo, error) {
 	return nil, firstErr
 }
 
-func (c *Ring) cmdShard(ctx context.Context, cmd Cmder) (*ringShard, error) {
+func (c *Ring) cmdShard(cmd Cmder) (*ringShard, error) {
 	pos := cmdFirstKeyPos(cmd)
 	if pos == 0 {
 		return c.sharding.Random()
@@ -717,7 +720,7 @@ func (c *Ring) process(ctx context.Context, cmd Cmder) error {
 			}
 		}
 
-		shard, err := c.cmdShard(ctx, cmd)
+		shard, err := c.cmdShard(cmd)
 		if err != nil {
 			return err
 		}
@@ -810,7 +813,7 @@ func (c *Ring) Watch(ctx context.Context, fn func(*Tx) error, keys ...string) er
 
 	for _, key := range keys {
 		if key != "" {
-			shard, err := c.sharding.GetByKey(hashtag.Key(key))
+			shard, err := c.sharding.GetByKey(key)
 			if err != nil {
 				return err
 			}
@@ -843,4 +846,27 @@ func (c *Ring) Close() error {
 	c.heartbeatCancelFn()
 
 	return c.sharding.Close()
+}
+
+// GetShardClients returns a list of all shard clients in the ring.
+// This can be used to create dedicated connections (e.g., PubSub) for each shard.
+func (c *Ring) GetShardClients() []*Client {
+	shards := c.sharding.List()
+	clients := make([]*Client, 0, len(shards))
+	for _, shard := range shards {
+		if shard.IsUp() {
+			clients = append(clients, shard.Client)
+		}
+	}
+	return clients
+}
+
+// GetShardClientForKey returns the shard client that would handle the given key.
+// This can be used to determine which shard a particular key/channel would be routed to.
+func (c *Ring) GetShardClientForKey(key string) (*Client, error) {
+	shard, err := c.sharding.GetByKey(key)
+	if err != nil {
+		return nil, err
+	}
+	return shard.Client, nil
 }

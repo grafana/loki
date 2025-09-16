@@ -106,25 +106,29 @@ func newMetricExporter(o *options) (*metricExporter, error) {
 		return nil, errBlankProjectID
 	}
 
-	clientOpts := append([]option.ClientOption{option.WithGRPCDialOption(grpc.WithUserAgent(userAgent))}, o.monitoringClientOptions...)
-	ctx := o.context
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	client, err := monitoring.NewMetricClient(ctx, clientOpts...)
-	if err != nil {
-		return nil, err
-	}
+	client := o.monitoringClient
+	if client == nil {
+		clientOpts := append([]option.ClientOption{option.WithGRPCDialOption(grpc.WithUserAgent(userAgent))}, o.monitoringClientOptions...)
+		ctx := o.context
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		var err error
+		client, err = monitoring.NewMetricClient(ctx, clientOpts...)
+		if err != nil {
+			return nil, err
+		}
 
-	if o.compression == "gzip" {
-		client.CallOptions.GetMetricDescriptor = append(client.CallOptions.GetMetricDescriptor,
-			gax.WithGRPCOptions(grpc.UseCompressor(gzip.Name)))
-		client.CallOptions.CreateMetricDescriptor = append(client.CallOptions.CreateMetricDescriptor,
-			gax.WithGRPCOptions(grpc.UseCompressor(gzip.Name)))
-		client.CallOptions.CreateTimeSeries = append(client.CallOptions.CreateTimeSeries,
-			gax.WithGRPCOptions(grpc.UseCompressor(gzip.Name)))
-		client.CallOptions.CreateServiceTimeSeries = append(client.CallOptions.CreateServiceTimeSeries,
-			gax.WithGRPCOptions(grpc.UseCompressor(gzip.Name)))
+		if o.compression == "gzip" {
+			client.CallOptions.GetMetricDescriptor = append(client.CallOptions.GetMetricDescriptor,
+				gax.WithGRPCOptions(grpc.UseCompressor(gzip.Name)))
+			client.CallOptions.CreateMetricDescriptor = append(client.CallOptions.CreateMetricDescriptor,
+				gax.WithGRPCOptions(grpc.UseCompressor(gzip.Name)))
+			client.CallOptions.CreateTimeSeries = append(client.CallOptions.CreateTimeSeries,
+				gax.WithGRPCOptions(grpc.UseCompressor(gzip.Name)))
+			client.CallOptions.CreateServiceTimeSeries = append(client.CallOptions.CreateServiceTimeSeries,
+				gax.WithGRPCOptions(grpc.UseCompressor(gzip.Name)))
+		}
 	}
 
 	cache := map[key]*googlemetricpb.MetricDescriptor{}

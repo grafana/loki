@@ -54,6 +54,11 @@
     },
     {
       "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.asia-northeast3.rep.googleapis.com/",
+      "location": "asia-northeast3"
+    },
+    {
+      "description": "Regional Endpoint",
       "endpointUrl": "https://storage.asia-south1.rep.googleapis.com/",
       "location": "asia-south1"
     },
@@ -206,9 +211,49 @@
       "description": "Regional Endpoint",
       "endpointUrl": "https://storage.us-west4.rep.googleapis.com/",
       "location": "us-west4"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.northamerica-northeast2.rep.googleapis.com/",
+      "location": "northamerica-northeast2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.southamerica-east1.rep.googleapis.com/",
+      "location": "southamerica-east1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.southamerica-west1.rep.googleapis.com/",
+      "location": "southamerica-west1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.me-central1.rep.googleapis.com/",
+      "location": "me-central1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.northamerica-northeast1.rep.googleapis.com/",
+      "location": "northamerica-northeast1"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.europe-north2.rep.googleapis.com/",
+      "location": "europe-north2"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.us-west8.rep.googleapis.com/",
+      "location": "us-west8"
+    },
+    {
+      "description": "Regional Endpoint",
+      "endpointUrl": "https://storage.northamerica-south1.rep.googleapis.com/",
+      "location": "northamerica-south1"
     }
   ],
-  "etag": "\"363938303832303939373531303639383731\"",
+  "etag": "\"3136333632333439343533383832363638313632\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -227,10 +272,12 @@
       "default": "json",
       "description": "Data format for the response.",
       "enum": [
-        "json"
+        "json",
+        "media"
       ],
       "enumDescriptions": [
-        "Responses with Content-Type of application/json"
+        "Responses with Content-Type of application/json",
+        "Responses containing object data"
       ],
       "location": "query",
       "type": "string"
@@ -3259,6 +3306,11 @@
               "location": "query",
               "type": "string"
             },
+            "filter": {
+              "description": "Filter the returned objects. Currently only supported for the contexts field. If delimiter is set, the returned prefixes are exempt from this filter.",
+              "location": "query",
+              "type": "string"
+            },
             "includeFoldersAsPrefixes": {
               "description": "Only applicable if delimiter is set to '/'. If true, will also include folders and managed folders (besides objects) in the returned prefixes.",
               "location": "query",
@@ -3406,6 +3458,19 @@
             "ifSourceMetagenerationNotMatch": {
               "description": "Makes the operation conditional on whether the source object's current metageneration does not match the given value. `ifSourceMetagenerationMatch` and `ifSourceMetagenerationNotMatch` conditions are mutually exclusive: it's an error for both of them to be set in the request.",
               "format": "int64",
+              "location": "query",
+              "type": "string"
+            },
+            "projection": {
+              "description": "Set of properties to return. Defaults to noAcl.",
+              "enum": [
+                "full",
+                "noAcl"
+              ],
+              "enumDescriptions": [
+                "Include all properties.",
+                "Omit the owner, acl property."
+              ],
               "location": "query",
               "type": "string"
             },
@@ -4479,7 +4544,7 @@
       }
     }
   },
-  "revision": "20250312",
+  "revision": "20250814",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
@@ -4693,9 +4758,78 @@
         "encryption": {
           "description": "Encryption configuration for a bucket.",
           "properties": {
+            "customerManagedEncryptionEnforcementConfig": {
+              "description": "If set, the new objects created in this bucket must comply with this enforcement config. Changing this has no effect on existing objects; it applies to new objects only. If omitted, the new objects are allowed to be encrypted with Customer Managed Encryption type by default.",
+              "properties": {
+                "effectiveTime": {
+                  "description": "Server-determined value that indicates the time from which configuration was enforced and effective. This value is in RFC 3339 format.",
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "restrictionMode": {
+                  "description": "Restriction mode for Customer-Managed Encryption Keys. Defaults to NotRestricted.",
+                  "enum": [
+                    "NotRestricted",
+                    "FullyRestricted"
+                  ],
+                  "enumDescriptions": [
+                    "Creation of new objects with Customer-Managed Encryption is not restricted.",
+                    "Creation of new objects with Customer-Managed Encryption is fully restricted."
+                  ],
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "customerSuppliedEncryptionEnforcementConfig": {
+              "description": "If set, the new objects created in this bucket must comply with this enforcement config. Changing this has no effect on existing objects; it applies to new objects only. If omitted, the new objects are allowed to be encrypted with Customer Supplied Encryption type by default.",
+              "properties": {
+                "effectiveTime": {
+                  "description": "Server-determined value that indicates the time from which configuration was enforced and effective. This value is in RFC 3339 format.",
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "restrictionMode": {
+                  "description": "Restriction mode for Customer-Supplied Encryption Keys. Defaults to NotRestricted.",
+                  "enum": [
+                    "NotRestricted",
+                    "FullyRestricted"
+                  ],
+                  "enumDescriptions": [
+                    "Creation of new objects with Customer-Supplied Encryption is not restricted.",
+                    "Creation of new objects with Customer-Supplied Encryption is fully restricted."
+                  ],
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
             "defaultKmsKeyName": {
               "description": "A Cloud KMS key that will be used to encrypt objects inserted into this bucket, if no encryption method is specified.",
               "type": "string"
+            },
+            "googleManagedEncryptionEnforcementConfig": {
+              "description": "If set, the new objects created in this bucket must comply with this enforcement config. Changing this has no effect on existing objects; it applies to new objects only. If omitted, the new objects are allowed to be encrypted with Google Managed Encryption type by default.",
+              "properties": {
+                "effectiveTime": {
+                  "description": "Server-determined value that indicates the time from which configuration was enforced and effective. This value is in RFC 3339 format.",
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "restrictionMode": {
+                  "description": "Restriction mode for Google-Managed Encryption Keys. Defaults to NotRestricted.",
+                  "enum": [
+                    "NotRestricted",
+                    "FullyRestricted"
+                  ],
+                  "enumDescriptions": [
+                    "Creation of new objects with Google Managed Encryption is not restricted.",
+                    "Creation of new objects with Google Managed Encryption is fully restricted."
+                  ],
+                  "type": "string"
+                }
+              },
+              "type": "object"
             }
           },
           "type": "object"
@@ -4771,6 +4905,14 @@
         "ipFilter": {
           "description": "The bucket's IP filter configuration. Specifies the network sources that are allowed to access the operations on the bucket, as well as its underlying objects. Only enforced when the mode is set to 'Enabled'.",
           "properties": {
+            "allowAllServiceAgentAccess": {
+              "description": "Whether to allow all service agents to access the bucket regardless of the IP filter configuration.",
+              "type": "boolean"
+            },
+            "allowCrossOrgVpcs": {
+              "description": "Whether to allow cross-org VPCs in the bucket's IP filter configuration.",
+              "type": "boolean"
+            },
             "mode": {
               "description": "The mode of the IP filter. Valid values are 'Enabled' and 'Disabled'.",
               "type": "string"
@@ -5258,6 +5400,16 @@
         "copySourceAcl": {
           "description": "If true, copies the source object's ACL; otherwise, uses the bucket's default object ACL. The default is false.",
           "type": "boolean"
+        },
+        "createdAfterTime": {
+          "description": "Restores only the objects that were created after this time.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "createdBeforeTime": {
+          "description": "Restores only the objects that were created before this time.",
+          "format": "date-time",
+          "type": "string"
         },
         "matchGlobs": {
           "description": "Restores only the objects matching any of the specified glob(s). If this parameter is not specified, all objects will be restored within the specified time range.",
@@ -5864,6 +6016,20 @@
           "description": "Content-Type of the object data. If an object is stored without a Content-Type, it is served as application/octet-stream.",
           "type": "string"
         },
+        "contexts": {
+          "description": "User-defined or system-defined object contexts. Each object context is a key-payload pair, where the key provides the identification and the payload holds the associated value and additional metadata.",
+          "properties": {
+            "custom": {
+              "additionalProperties": {
+                "$ref": "ObjectCustomContextPayload",
+                "description": "A single user-defined object context."
+              },
+              "description": "User-defined object contexts.",
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
         "crc32c": {
           "description": "CRC32c checksum, as described in RFC 4960, Appendix B; encoded using base64 in big-endian byte order. For more information about using the CRC32c checksum, see [Data Validation and Change Detection](https://cloud.google.com/storage/docs/data-validation).",
           "type": "string"
@@ -6128,6 +6294,27 @@
         "kind": {
           "default": "storage#objectAccessControls",
           "description": "The kind of item this is. For lists of object access control entries, this is always storage#objectAccessControls.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "ObjectCustomContextPayload": {
+      "description": "The payload of a single user-defined object context.",
+      "id": "ObjectCustomContextPayload",
+      "properties": {
+        "createTime": {
+          "description": "The time at which the object context was created in RFC 3339 format.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "updateTime": {
+          "description": "The time at which the object context was last updated in RFC 3339 format.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "value": {
+          "description": "The value of the object context.",
           "type": "string"
         }
       },

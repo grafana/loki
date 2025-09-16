@@ -73,6 +73,7 @@ type WriteNotified interface {
 }
 
 type WatcherMetrics struct {
+	reg                   prometheus.Registerer
 	recordsRead           *prometheus.CounterVec
 	recordDecodeFails     *prometheus.CounterVec
 	samplesSentPreTailing *prometheus.CounterVec
@@ -113,6 +114,7 @@ type Watcher struct {
 
 func NewWatcherMetrics(reg prometheus.Registerer) *WatcherMetrics {
 	m := &WatcherMetrics{
+		reg: reg,
 		recordsRead: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: "prometheus",
@@ -169,6 +171,19 @@ func NewWatcherMetrics(reg prometheus.Registerer) *WatcherMetrics {
 	}
 
 	return m
+}
+
+// Unregister unregisters metrics emitted by this instance.
+func (m *WatcherMetrics) Unregister() {
+	if m.reg == nil {
+		return
+	}
+
+	m.reg.Unregister(m.recordsRead)
+	m.reg.Unregister(m.recordDecodeFails)
+	m.reg.Unregister(m.samplesSentPreTailing)
+	m.reg.Unregister(m.currentSegment)
+	m.reg.Unregister(m.notificationsSkipped)
 }
 
 // NewWatcher creates a new WAL watcher for a given WriteTo.
@@ -491,12 +506,13 @@ func (w *Watcher) readSegment(r *LiveReader, segmentNum int, tail bool) error {
 		metadata              []record.RefMetadata
 	)
 	for r.Next() && !isClosed(w.quit) {
+		var err error
 		rec := r.Record()
 		w.recordsReadMetric.WithLabelValues(dec.Type(rec).String()).Inc()
 
 		switch dec.Type(rec) {
 		case record.Series:
-			series, err := dec.Series(rec, series[:0])
+			series, err = dec.Series(rec, series[:0])
 			if err != nil {
 				w.recordDecodeFailsMetric.Inc()
 				return err
@@ -509,7 +525,7 @@ func (w *Watcher) readSegment(r *LiveReader, segmentNum int, tail bool) error {
 			if !tail {
 				break
 			}
-			samples, err := dec.Samples(rec, samples[:0])
+			samples, err = dec.Samples(rec, samples[:0])
 			if err != nil {
 				w.recordDecodeFailsMetric.Inc()
 				return err
@@ -539,7 +555,7 @@ func (w *Watcher) readSegment(r *LiveReader, segmentNum int, tail bool) error {
 			if !tail {
 				break
 			}
-			exemplars, err := dec.Exemplars(rec, exemplars[:0])
+			exemplars, err = dec.Exemplars(rec, exemplars[:0])
 			if err != nil {
 				w.recordDecodeFailsMetric.Inc()
 				return err
@@ -554,7 +570,7 @@ func (w *Watcher) readSegment(r *LiveReader, segmentNum int, tail bool) error {
 			if !tail {
 				break
 			}
-			histograms, err := dec.HistogramSamples(rec, histograms[:0])
+			histograms, err = dec.HistogramSamples(rec, histograms[:0])
 			if err != nil {
 				w.recordDecodeFailsMetric.Inc()
 				return err
@@ -582,7 +598,7 @@ func (w *Watcher) readSegment(r *LiveReader, segmentNum int, tail bool) error {
 			if !tail {
 				break
 			}
-			floatHistograms, err := dec.FloatHistogramSamples(rec, floatHistograms[:0])
+			floatHistograms, err = dec.FloatHistogramSamples(rec, floatHistograms[:0])
 			if err != nil {
 				w.recordDecodeFailsMetric.Inc()
 				return err
@@ -606,12 +622,12 @@ func (w *Watcher) readSegment(r *LiveReader, segmentNum int, tail bool) error {
 			if !w.sendMetadata {
 				break
 			}
-			meta, err := dec.Metadata(rec, metadata[:0])
+			metadata, err = dec.Metadata(rec, metadata[:0])
 			if err != nil {
 				w.recordDecodeFailsMetric.Inc()
 				return err
 			}
-			w.writer.StoreMetadata(meta)
+			w.writer.StoreMetadata(metadata)
 
 		case record.Unknown:
 			// Could be corruption, or reading from a WAL from a newer Prometheus.

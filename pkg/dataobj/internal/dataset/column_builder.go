@@ -15,8 +15,14 @@ type BuilderOptions struct {
 	// slightly larger or smaller.
 	PageSizeHint int
 
-	// Value is the value type of data to write.
-	Value datasetmd.ValueType
+	// PageMaxRowCount is the limit for the number of rows of the page.
+	// When 0 or a negative number, then builders use the [BuilderOptions.PageSizeHint]
+	// option to determine when a page needs to be flushed.
+	PageMaxRowCount int
+
+	// Type is the type of data in the column. Type.Physical is used for
+	// encoding; Type.Logical is used as a hint to readers.
+	Type ColumnType
 
 	// Encoding is the encoding algorithm to use for values.
 	Encoding datasetmd.EncodingType
@@ -53,7 +59,7 @@ type CompressionOptions struct {
 // column. Values are accumulated into a buffer and then flushed into
 // [MemPage]s once the size of data exceeds a configurable limit.
 type ColumnBuilder struct {
-	name string
+	tag  string
 	opts BuilderOptions
 
 	rows int // Total number of rows in the column.
@@ -63,10 +69,10 @@ type ColumnBuilder struct {
 	pageBuilder  *pageBuilder
 }
 
-// NewColumnBuilder creates a new ColumnBuilder from the optional name and
+// NewColumnBuilder creates a new ColumnBuilder from the optional tag and
 // provided options. NewColumnBuilder returns an error if the options are
 // invalid.
-func NewColumnBuilder(name string, opts BuilderOptions) (*ColumnBuilder, error) {
+func NewColumnBuilder(tag string, opts BuilderOptions) (*ColumnBuilder, error) {
 	builder, err := newPageBuilder(opts)
 	if err != nil {
 		return nil, fmt.Errorf("creating page builder: %w", err)
@@ -78,7 +84,7 @@ func NewColumnBuilder(name string, opts BuilderOptions) (*ColumnBuilder, error) 
 	}
 
 	return &ColumnBuilder{
-		name: name,
+		tag:  tag,
 		opts: opts,
 
 		pageBuilder:  builder,
@@ -96,12 +102,14 @@ func (cb *ColumnBuilder) Append(row int, value Value) error {
 		return fmt.Errorf("row %d is older than current row %d", row, cb.rows)
 	}
 
-	// We give two attempts to append the data to the buffer; if the buffer is
+	// We give three attempts to append the data to the buffer; if the buffer is
 	// full, we cut a page and then append to the newly reset buffer.
+	// In case we also need to backfill, there is case where the backfill fills
+	// the second page, that needs to be flushed again.
 	//
-	// The second iteration should never fail, as the buffer will always be empty
+	// The third iteration should never fail, as the buffer will always be empty
 	// then.
-	for range 2 {
+	for range 3 {
 		if cb.append(row, value) {
 			cb.rows = row + 1
 			cb.statsBuilder.Append(value)
@@ -123,7 +131,7 @@ func (cb *ColumnBuilder) Append(row int, value Value) error {
 func (cb *ColumnBuilder) EstimatedSize() int {
 	var size int
 	for _, p := range cb.pages {
-		size += p.Info.CompressedSize
+		size += p.Desc.CompressedSize
 	}
 	size += cb.pageBuilder.EstimatedSize()
 	return size
@@ -172,23 +180,24 @@ func (cb *ColumnBuilder) append(row int, value Value) bool {
 func (cb *ColumnBuilder) Flush() (*MemColumn, error) {
 	cb.flushPage()
 
-	info := ColumnInfo{
-		Name: cb.name,
-		Type: cb.opts.Value,
+	info := ColumnDesc{
+		Type: cb.opts.Type,
+		Tag:  cb.tag,
 
+		PagesCount:  len(cb.pages),
 		Compression: cb.opts.Compression,
 		Statistics:  cb.statsBuilder.Flush(cb.pages),
 	}
 
 	for _, page := range cb.pages {
-		info.RowsCount += page.Info.RowCount
-		info.ValuesCount += page.Info.ValuesCount
-		info.CompressedSize += page.Info.CompressedSize
-		info.UncompressedSize += page.Info.UncompressedSize
+		info.RowsCount += page.Desc.RowCount
+		info.ValuesCount += page.Desc.ValuesCount
+		info.CompressedSize += page.Desc.CompressedSize
+		info.UncompressedSize += page.Desc.UncompressedSize
 	}
 
 	column := &MemColumn{
-		Info:  info,
+		Desc:  info,
 		Pages: cb.pages,
 	}
 

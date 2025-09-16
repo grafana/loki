@@ -16,7 +16,7 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 )
 
-func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
+func TestApplyDefaultSettings_OverrideDefaults(t *testing.T) {
 	allSizes := []lokiv1.LokiStackSizeType{
 		lokiv1.SizeOneXDemo,
 		lokiv1.SizeOneXExtraSmall,
@@ -59,7 +59,7 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 	}
 }
 
-func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
+func TestApplyDefaultSettings_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 	allSizes := []lokiv1.LokiStackSizeType{
 		lokiv1.SizeOneXDemo,
 		lokiv1.SizeOneXExtraSmall,
@@ -87,6 +87,40 @@ func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 
 		// Require compactor to be reverted to 1 replica
 		require.Equal(t, defs.Template.Compactor, opt.Stack.Template.Compactor)
+	}
+}
+
+func TestApplyDefaultSettings_UseRequestsAsLimits(t *testing.T) {
+	allSizes := []lokiv1.LokiStackSizeType{
+		lokiv1.SizeOneXDemo,
+		lokiv1.SizeOneXExtraSmall,
+		lokiv1.SizeOneXSmall,
+		lokiv1.SizeOneXMedium,
+	}
+	for _, size := range allSizes {
+		opt := Options{
+			Name:      "abcd",
+			Namespace: "efgh",
+			Stack: lokiv1.LokiStackSpec{
+				Size: size,
+				Template: &lokiv1.LokiTemplateSpec{
+					UseRequestsAsLimits: true,
+				},
+			},
+			Timeouts: defaultTimeoutConfig,
+		}
+		err := ApplyDefaultSettings(&opt)
+
+		require.NoError(t, err)
+		require.Equal(t, opt.ResourceRequirements.IndexGateway.Limits, opt.ResourceRequirements.IndexGateway.Requests)
+		require.Equal(t, opt.ResourceRequirements.Ingester.Limits, opt.ResourceRequirements.Ingester.Requests)
+		require.Equal(t, opt.ResourceRequirements.Compactor.Limits, opt.ResourceRequirements.Compactor.Requests)
+		require.Equal(t, opt.ResourceRequirements.Ruler.Limits, opt.ResourceRequirements.Ruler.Requests)
+		require.Equal(t, opt.ResourceRequirements.WALStorage.Limits, opt.ResourceRequirements.WALStorage.Requests)
+		require.Equal(t, opt.ResourceRequirements.Querier.Limits, opt.ResourceRequirements.Querier.Requests)
+		require.Equal(t, opt.ResourceRequirements.Distributor.Limits, opt.ResourceRequirements.Distributor.Requests)
+		require.Equal(t, opt.ResourceRequirements.QueryFrontend.Limits, opt.ResourceRequirements.QueryFrontend.Requests)
+		require.Equal(t, opt.ResourceRequirements.Gateway.Limits, opt.ResourceRequirements.Gateway.Requests)
 	}
 }
 

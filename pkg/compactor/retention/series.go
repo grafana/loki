@@ -72,3 +72,9 @@ func (u userSeriesMap) ForEach(callback func(info userSeriesInfo) error) error {
 	}
 	return nil
 }
+
+func (u userSeriesMap) HasSeries(seriesID, userID []byte) bool {
+	us := newUserSeries(seriesID, userID)
+	_, ok := u[us.Key()]
+	return ok
+}

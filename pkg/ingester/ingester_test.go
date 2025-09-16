@@ -1020,7 +1020,7 @@ func Test_DedupeIngester(t *testing.T) {
 	for i := int64(0); i < streamCount; i++ {
 		s := labels.FromStrings("foo", "bar", "bar", fmt.Sprintf("baz%d", i))
 		streams = append(streams, s)
-		streamHashes = append(streamHashes, s.Hash())
+		streamHashes = append(streamHashes, labels.StableHash(s))
 	}
 	sort.Slice(streamHashes, func(i, j int) bool { return streamHashes[i] < streamHashes[j] })
 
@@ -1766,6 +1766,10 @@ func (r *readRingMock) WritableInstancesWithTokensCount() int {
 // WritableInstancesWithTokensInZoneCount returns the number of writable instances in the ring that are registered in given zone and have tokens.
 func (r *readRingMock) WritableInstancesWithTokensInZoneCount(_ string) int {
 	return len(r.replicationSet.Instances)
+}
+
+func (r *readRingMock) GetSubringForOperationStates(_ ring.Operation) ring.ReadRing {
+	return r
 }
 
 func mockReadRingWithOneActiveIngester() *readRingMock {

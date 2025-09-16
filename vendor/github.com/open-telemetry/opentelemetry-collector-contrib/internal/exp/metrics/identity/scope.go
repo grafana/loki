@@ -4,6 +4,7 @@
 package identity // import "github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics/identity"
 
 import (
+	"fmt"
 	"hash"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
@@ -31,6 +32,10 @@ func (s Scope) Hash() hash.Hash64 {
 
 func (s Scope) Resource() Resource {
 	return s.resource
+}
+
+func (s Scope) String() string {
+	return fmt.Sprintf("scope/%x", s.Hash().Sum64())
 }
 
 func OfScope(res Resource, scope pcommon.InstrumentationScope) Scope {

@@ -452,8 +452,12 @@ func mapKeyValueOf(node Node) Node {
 	panic("node with logical type MAP is not composed of a repeated .key_value group (or .map group) with key and value fields")
 }
 
-func encodingOf(node Node) encoding.Encoding {
+func encodingOf(node Node, defaultEncodings map[Kind]encoding.Encoding) encoding.Encoding {
 	encoding := node.Encoding()
+	kind := node.Type().Kind()
+	if encoding == nil && defaultEncodings != nil {
+		encoding = defaultEncodings[kind]
+	}
 	// The parquet-format documentation states that the
 	// DELTA_LENGTH_BYTE_ARRAY is always preferred to PLAIN when
 	// encoding BYTE_ARRAY values. We apply it as a default if
@@ -461,7 +465,7 @@ func encodingOf(node Node) encoding.Encoding {
 	// the opportunity to override this behavior if needed.
 	//
 	// https://github.com/apache/parquet-format/blob/master/Encodings.md#delta-length-byte-array-delta_length_byte_array--6
-	if node.Type().Kind() == ByteArray && encoding == nil {
+	if kind == ByteArray && encoding == nil {
 		encoding = &DeltaLengthByteArray
 	}
 	if encoding == nil {

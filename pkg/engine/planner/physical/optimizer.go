@@ -66,7 +66,7 @@ func (r *predicatePushdown) applyPredicatePushdown(node Node, predicate Expressi
 	}
 	for _, child := range r.plan.Children(node) {
 		if ok := r.applyPredicatePushdown(child, predicate); !ok {
-			return ok
+			return false
 		}
 	}
 	return true
@@ -107,16 +107,164 @@ func (r *limitPushdown) applyLimitPushdown(node Node, limit uint32) bool {
 		// In case the scan node is reachable from multiple different limit nodes, we need to take the largest limit.
 		node.Limit = max(node.Limit, limit)
 		return true
+	case *Filter:
+		// If there is a filter, child nodes may need to read up to all their lines to successfully apply the filter, so stop applying limit pushdown.
+		return false
 	}
+
+	var changed bool
 	for _, child := range r.plan.Children(node) {
-		if ok := r.applyLimitPushdown(child, limit); !ok {
-			return ok
+		if ok := r.applyLimitPushdown(child, limit); ok {
+			changed = true
 		}
 	}
-	return true
+	return changed
 }
 
 var _ rule = (*limitPushdown)(nil)
+
+// groupByPushdown is a rule that pushes down grouping keys from vector aggregations to range aggregations.
+type groupByPushdown struct {
+	plan *Plan
+}
+
+// apply implements rule.
+func (r *groupByPushdown) apply(node Node) bool {
+	switch node := node.(type) {
+	case *VectorAggregation:
+		if node.Operation != types.VectorAggregationTypeSum {
+			return false
+		}
+
+		return r.applyGroupByPushdown(node, node.GroupBy)
+	}
+
+	return false
+}
+
+func (r *groupByPushdown) applyGroupByPushdown(node Node, groupBy []ColumnExpression) bool {
+	switch node := node.(type) {
+	case *RangeAggregation:
+		if node.Operation != types.RangeAggregationTypeCount {
+			return false
+		}
+
+		// Push down the grouping labels to the range aggregation
+		changed := false
+		for _, colExpr := range groupBy {
+			colExpr, ok := colExpr.(*ColumnExpr)
+			if !ok {
+				continue
+			}
+
+			found := false
+			for _, existingCol := range node.PartitionBy {
+				existingCol, ok := existingCol.(*ColumnExpr)
+				if ok && existingCol.Ref.Column == colExpr.Ref.Column {
+					found = true
+					break
+				}
+			}
+			if !found {
+				node.PartitionBy = append(node.PartitionBy, colExpr)
+				changed = true
+			}
+		}
+		return changed
+	}
+
+	anyChanged := false
+	for _, child := range r.plan.Children(node) {
+		if changed := r.applyGroupByPushdown(child, groupBy); changed {
+			anyChanged = true
+		}
+	}
+	return anyChanged
+}
+
+var _ rule = (*groupByPushdown)(nil)
+
+// projectionPushdown is a rule that pushes down column projections.
+// Currently it only projects partition labels from range aggregations to scan nodes.
+type projectionPushdown struct {
+	plan *Plan
+}
+
+// apply implements rule.
+func (r *projectionPushdown) apply(node Node) bool {
+	switch node := node.(type) {
+	case *RangeAggregation:
+		if len(node.PartitionBy) == 0 || node.Operation != types.RangeAggregationTypeCount {
+			return false
+		}
+
+		projections := make([]ColumnExpression, len(node.PartitionBy)+1)
+		copy(projections, node.PartitionBy)
+		// Always project timestamp column
+		projections[len(node.PartitionBy)] = &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}
+
+		return r.applyProjectionPushdown(node, projections, false)
+	case *Filter:
+		projections := extractColumnsFromPredicates(node.Predicates)
+		if len(projections) == 0 {
+			return false
+		}
+
+		// Filter nodes should only add their predicate columns to projections when
+		// there's already a projection list in the plan (indicating a metric query).
+		// For log queries that read all columns, filter columns should not be projected.
+		//
+		// Setting applyIfNotEmpty argument as true for this reason.
+		return r.applyProjectionPushdown(node, projections, true)
+	}
+	return false
+}
+
+// applyProjectionPushdown applies the projection pushdown rule to the given node.
+// if applyIfNotEmpty is true, it will apply the projection pushdown only if the node has existing projections.
+func (r *projectionPushdown) applyProjectionPushdown(node Node, projections []ColumnExpression, applyIfNotEmpty bool) bool {
+	switch node := node.(type) {
+	case *DataObjScan:
+		if len(node.Projections) == 0 && applyIfNotEmpty {
+			return false
+		}
+
+		// Add to scan projections if not already present
+		changed := false
+		for _, colExpr := range projections {
+			colExpr, ok := colExpr.(*ColumnExpr)
+			if !ok {
+				continue
+			}
+
+			// Check if this column is already in projections
+			found := false
+			for _, existingCol := range node.Projections {
+				existingCol, ok := existingCol.(*ColumnExpr)
+				if ok && existingCol.Ref.Column == colExpr.Ref.Column {
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				node.Projections = append(node.Projections, colExpr)
+				changed = true
+			}
+		}
+		return changed
+	}
+
+	anyChanged := false
+	for _, child := range r.plan.Children(node) {
+		if changed := r.applyProjectionPushdown(child, projections, applyIfNotEmpty); changed {
+			anyChanged = true
+		}
+	}
+	return anyChanged
+}
+
+var _ rule = (*projectionPushdown)(nil)
 
 // optimization represents a single optimization pass and can hold multiple rules.
 type optimization struct {
@@ -172,16 +320,56 @@ func (o *optimization) applyRules(node Node) bool {
 
 // The optimizer can optimize physical plans using the provided optimization passes.
 type optimizer struct {
-	plan   *Plan
-	passes []*optimization
+	plan          *Plan
+	optimisations []*optimization
 }
 
 func newOptimizer(plan *Plan, passes []*optimization) *optimizer {
-	return &optimizer{plan: plan, passes: passes}
+	return &optimizer{plan: plan, optimisations: passes}
 }
 
 func (o *optimizer) optimize(node Node) {
-	for _, pass := range o.passes {
-		pass.optimize(node)
+	for _, optimisation := range o.optimisations {
+		optimisation.optimize(node)
 	}
+}
+
+func extractColumnsFromPredicates(predicates []Expression) []ColumnExpression {
+	columns := make([]ColumnExpression, 0, len(predicates))
+	for _, p := range predicates {
+		extractColumnsFromExpression(p, &columns)
+	}
+
+	return deduplicateColumns(columns)
+}
+
+func extractColumnsFromExpression(expr Expression, columns *[]ColumnExpression) {
+	switch e := expr.(type) {
+	case *ColumnExpr:
+		*columns = append(*columns, e)
+	case *BinaryExpr:
+		extractColumnsFromExpression(e.Left, columns)
+		extractColumnsFromExpression(e.Right, columns)
+	case *UnaryExpr:
+		extractColumnsFromExpression(e.Left, columns)
+	default:
+		// Ignore other expression types
+	}
+}
+
+func deduplicateColumns(columns []ColumnExpression) []ColumnExpression {
+	seen := make(map[string]bool)
+	var result []ColumnExpression
+
+	for _, col := range columns {
+		if colExpr, ok := col.(*ColumnExpr); ok {
+			key := colExpr.Ref.Column
+			if !seen[key] {
+				seen[key] = true
+				result = append(result, col)
+			}
+		}
+	}
+
+	return result
 }

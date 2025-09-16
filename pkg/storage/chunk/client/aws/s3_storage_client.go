@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/dskit/instrument"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
 	amnet "k8s.io/apimachinery/pkg/util/net"
 
 	bucket_s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
@@ -36,6 +37,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	loki_instrument "github.com/grafana/loki/v3/pkg/util/instrument"
 )
+
+var tracer = otel.Tracer("pkg/storage/chunk/client/awsd")
 
 const (
 	SignatureVersionV4 = "v4"
@@ -229,7 +232,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	}
 
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify, //#nosec G402 -- User has explicitly requested to disable TLS
+		InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify, //#nosec G402 -- User has explicitly requested to disable TLS -- nosemgrep: tls-with-insecure-cipher
 	}
 
 	if cfg.HTTPConfig.CAFile != "" {
@@ -292,7 +295,7 @@ func buckets(cfg S3Config) ([]string, error) {
 	// bucketnames
 	var bucketNames []string
 	if cfg.S3.URL != nil {
-		bucketNames = []string{strings.TrimPrefix(cfg.S3.URL.Path, "/")}
+		bucketNames = []string{strings.TrimPrefix(cfg.S3.Path, "/")}
 	}
 
 	if cfg.BucketNames != "" {

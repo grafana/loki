@@ -13,9 +13,9 @@ import (
 
 func TestNewProjectPipeline(t *testing.T) {
 	fields := []arrow.Field{
-		{Name: "name", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.String)},
-		{Name: "age", Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Integer)},
-		{Name: "city", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.String)},
+		{Name: "name", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.String)},
+		{Name: "age", Type: datatype.Arrow.Integer, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Integer)},
+		{Name: "city", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.String)},
 	}
 
 	t.Run("project single column", func(t *testing.T) {
@@ -42,7 +42,7 @@ func TestNewProjectPipeline(t *testing.T) {
 		// Create expected output
 		expectedCSV := "Alice\nBob\nCharlie"
 		expectedFields := []arrow.Field{
-			{Name: "name", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.String)},
+			{Name: "name", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.String)},
 		}
 		expectedRecord, err := CSVToArrow(expectedFields, expectedCSV)
 		require.NoError(t, err)
@@ -81,8 +81,8 @@ func TestNewProjectPipeline(t *testing.T) {
 		// Create expected output
 		expectedCSV := "Alice,New York\nBob,Boston\nCharlie,Seattle"
 		expectedFields := []arrow.Field{
-			{Name: "name", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.String)},
-			{Name: "city", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.String)},
+			{Name: "name", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.String)},
+			{Name: "city", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.String)},
 		}
 		expectedRecord, err := CSVToArrow(expectedFields, expectedCSV)
 		require.NoError(t, err)
@@ -124,9 +124,9 @@ func TestNewProjectPipeline(t *testing.T) {
 		// Create expected output
 		expectedCSV := "New York,30,Alice\nBoston,25,Bob\nSeattle,35,Charlie"
 		expectedFields := []arrow.Field{
-			{Name: "city", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.String)},
-			{Name: "age", Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Integer)},
-			{Name: "name", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.String)},
+			{Name: "city", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.String)},
+			{Name: "age", Type: datatype.Arrow.Integer, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Integer)},
+			{Name: "name", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.String)},
 		}
 		expectedRecord, err := CSVToArrow(expectedFields, expectedCSV)
 		require.NoError(t, err)
@@ -170,8 +170,8 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create expected output also split across multiple records
 		expectedFields := []arrow.Field{
-			{Name: "name", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.String)},
-			{Name: "age", Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Integer)},
+			{Name: "name", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.String)},
+			{Name: "age", Type: datatype.Arrow.Integer, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Integer)},
 		}
 
 		expected := `

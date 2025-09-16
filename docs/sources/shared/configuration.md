@@ -146,6 +146,55 @@ ui:
   # CLI flag: -ui.debug
   [debug: <boolean> | default = false]
 
+  goldfish:
+    # Enable the Goldfish query comparison feature.
+    # CLI flag: -ui.goldfish.enable
+    [enable: <boolean> | default = false]
+
+    # CloudSQL username for Goldfish database.
+    # CLI flag: -ui.goldfish.cloudsql-user
+    [cloudsql_user: <string> | default = ""]
+
+    # CloudSQL host for Goldfish database.
+    # CLI flag: -ui.goldfish.cloudsql-host
+    [cloudsql_host: <string> | default = "127.0.0.1"]
+
+    # CloudSQL port for Goldfish database.
+    # CLI flag: -ui.goldfish.cloudsql-port
+    [cloudsql_port: <int> | default = 3306]
+
+    # CloudSQL database name for Goldfish.
+    # CLI flag: -ui.goldfish.cloudsql-database
+    [cloudsql_database: <string> | default = "goldfish"]
+
+    # Maximum number of database connections for Goldfish.
+    # CLI flag: -ui.goldfish.max-connections
+    [max_connections: <int> | default = 10]
+
+    # Maximum idle time for database connections in seconds.
+    # CLI flag: -ui.goldfish.max-idle-time
+    [max_idle_time: <int> | default = 300]
+
+    # Base URL of Grafana instance for explore links.
+    # CLI flag: -ui.goldfish.grafana-url
+    [grafana_url: <string> | default = ""]
+
+    # UID of the traces datasource in Grafana.
+    # CLI flag: -ui.goldfish.traces-datasource-uid
+    [traces_datasource_uid: <string> | default = ""]
+
+    # UID of the Loki datasource in Grafana.
+    # CLI flag: -ui.goldfish.logs-datasource-uid
+    [logs_datasource_uid: <string> | default = ""]
+
+    # Namespace for Cell A logs.
+    # CLI flag: -ui.goldfish.cell-a-namespace
+    [cell_a_namespace: <string> | default = ""]
+
+    # Namespace for Cell B logs.
+    # CLI flag: -ui.goldfish.cell-b-namespace
+    [cell_b_namespace: <string> | default = ""]
+
   discovery:
     # List of peers to join the cluster. Supports multiple values separated by
     # commas. Each value can be a hostname, an IP address, or a DNS name (A/AAAA
@@ -494,9 +543,9 @@ pattern_ingester:
   # Configures the metric aggregation and storage behavior of the pattern
   # ingester.
   metric_aggregation:
-    # How often to downsample metrics from raw push observations.
+    # How often to sample metrics and patterns from raw push observations.
     # CLI flag: -pattern-ingester.metric-aggregation.downsample-period
-    [downsample_period: <duration> | default = 10s]
+    [sample_period: <duration> | default = 10s]
 
     # The address of the Loki instance to push aggregated metrics to.
     # CLI flag: -pattern-ingester.metric-aggregation.loki-address
@@ -639,26 +688,194 @@ pattern_ingester:
     # The basic auth configuration for pushing metrics to Loki.
     basic_auth:
       # Basic auth username for sending aggregations back to Loki.
-      # CLI flag: -pattern-ingester.metric-aggregation.basic-auth.username
+      # CLI flag: -pattern-ingester.metric-aggregation..basic-auth.username
       [username: <string> | default = ""]
 
       # Basic auth password for sending aggregations back to Loki.
-      # CLI flag: -pattern-ingester.metric-aggregation.basic-auth.password
+      # CLI flag: -pattern-ingester.metric-aggregation..basic-auth.password
       [password: <string> | default = ""]
 
     # The backoff configuration for pushing metrics to Loki.
     backoff_config:
       # Minimum delay when backing off.
-      # CLI flag: -pattern-ingester.metric-aggregation.backoff-min-period
+      # CLI flag: -pattern-ingester.metric-aggregation...backoff-min-period
       [min_period: <duration> | default = 100ms]
 
       # Maximum delay when backing off.
-      # CLI flag: -pattern-ingester.metric-aggregation.backoff-max-period
+      # CLI flag: -pattern-ingester.metric-aggregation...backoff-max-period
       [max_period: <duration> | default = 10s]
 
       # Number of times to backoff and retry before failing.
-      # CLI flag: -pattern-ingester.metric-aggregation.backoff-retries
+      # CLI flag: -pattern-ingester.metric-aggregation...backoff-retries
       [max_retries: <int> | default = 10]
+
+  # Configures how detected patterns are pushed back to Loki for persistence.
+  pattern_persistence:
+    # The address of the Loki instance to push patterns to.
+    # CLI flag: -pattern-ingester.pattern-persistence.loki-address
+    [loki_address: <string> | default = ""]
+
+    # The timeout for writing patterns to Loki.
+    # CLI flag: -pattern-ingester.pattern-persistence.timeout
+    [timeout: <duration> | default = 10s]
+
+    # How long to wait between pattern pushes to Loki.
+    # CLI flag: -pattern-ingester.pattern-persistence.push-period
+    [push_period: <duration> | default = 1m]
+
+    # The HTTP client configuration for pushing patterns to Loki.
+    http_client_config:
+      basic_auth:
+        [username: <string> | default = ""]
+
+        [username_file: <string> | default = ""]
+
+        [username_ref: <string> | default = ""]
+
+        [password: <string> | default = ""]
+
+        [password_file: <string> | default = ""]
+
+        [password_ref: <string> | default = ""]
+
+      authorization:
+        [type: <string> | default = ""]
+
+        [credentials: <string> | default = ""]
+
+        [credentials_file: <string> | default = ""]
+
+        [credentials_ref: <string> | default = ""]
+
+      oauth2:
+        [client_id: <string> | default = ""]
+
+        [client_secret: <string> | default = ""]
+
+        [client_secret_file: <string> | default = ""]
+
+        [client_secret_ref: <string> | default = ""]
+
+        [scopes: <list of strings>]
+
+        [token_url: <string> | default = ""]
+
+        [endpoint_params: <map of string to string>]
+
+        tls_config:
+          [ca: <string> | default = ""]
+
+          [cert: <string> | default = ""]
+
+          [key: <string> | default = ""]
+
+          [ca_file: <string> | default = ""]
+
+          [cert_file: <string> | default = ""]
+
+          [key_file: <string> | default = ""]
+
+          [ca_ref: <string> | default = ""]
+
+          [cert_ref: <string> | default = ""]
+
+          [key_ref: <string> | default = ""]
+
+          [server_name: <string> | default = ""]
+
+          [insecure_skip_verify: <boolean>]
+
+          [min_version: <int>]
+
+          [max_version: <int>]
+
+        proxy_url:
+          [url: <url>]
+
+        [no_proxy: <string> | default = ""]
+
+        [proxy_from_environment: <boolean>]
+
+        [proxy_connect_header: <map of string to list of strings>]
+
+      [bearer_token: <string> | default = ""]
+
+      [bearer_token_file: <string> | default = ""]
+
+      tls_config:
+        [ca: <string> | default = ""]
+
+        [cert: <string> | default = ""]
+
+        [key: <string> | default = ""]
+
+        [ca_file: <string> | default = ""]
+
+        [cert_file: <string> | default = ""]
+
+        [key_file: <string> | default = ""]
+
+        [ca_ref: <string> | default = ""]
+
+        [cert_ref: <string> | default = ""]
+
+        [key_ref: <string> | default = ""]
+
+        [server_name: <string> | default = ""]
+
+        [insecure_skip_verify: <boolean>]
+
+        [min_version: <int>]
+
+        [max_version: <int>]
+
+      [follow_redirects: <boolean>]
+
+      [enable_http2: <boolean>]
+
+      proxy_url:
+        [url: <url>]
+
+      [no_proxy: <string> | default = ""]
+
+      [proxy_from_environment: <boolean>]
+
+      [proxy_connect_header: <map of string to list of strings>]
+
+      http_headers:
+        [: <map of string to Header>]
+
+    # Whether to use TLS for pushing patterns to Loki.
+    # CLI flag: -pattern-ingester.pattern-persistence.tls
+    [use_tls: <boolean> | default = false]
+
+    # The basic auth configuration for pushing patterns to Loki.
+    basic_auth:
+      # Basic auth username for sending patterns back to Loki.
+      # CLI flag: -pattern-ingester.pattern-persistence..basic-auth.username
+      [username: <string> | default = ""]
+
+      # Basic auth password for sending patterns back to Loki.
+      # CLI flag: -pattern-ingester.pattern-persistence..basic-auth.password
+      [password: <string> | default = ""]
+
+    # The backoff configuration for pushing patterns to Loki.
+    backoff_config:
+      # Minimum delay when backing off.
+      # CLI flag: -pattern-ingester.pattern-persistence...backoff-min-period
+      [min_period: <duration> | default = 100ms]
+
+      # Maximum delay when backing off.
+      # CLI flag: -pattern-ingester.pattern-persistence...backoff-max-period
+      [max_period: <duration> | default = 10s]
+
+      # Number of times to backoff and retry before failing.
+      # CLI flag: -pattern-ingester.pattern-persistence...backoff-retries
+      [max_retries: <int> | default = 10]
+
+    # The maximum number of patterns to accumulate before pushing.
+    # CLI flag: -pattern-ingester.pattern-persistence.batch-size
+    [batch_size: <int> | default = 1000]
 
   # Configures the pattern tee which forwards requests to the pattern ingester.
   tee_config:
@@ -690,6 +907,18 @@ pattern_ingester:
   # The maximum length of log lines that can be used for pattern detection.
   # CLI flag: -pattern-ingester.max-allowed-line-length
   [max_allowed_line_length: <int> | default = 3000]
+
+  # How long to retain patterns in the pattern ingester after they are pushed.
+  # CLI flag: -pattern-ingester.retain-for
+  [retain_for: <duration> | default = 3h]
+
+  # The maximum time span for a single pattern chunk.
+  # CLI flag: -pattern-ingester.max-chunk-age
+  [max_chunk_age: <duration> | default = 1h]
+
+  # The time resolution for pattern samples within chunks.
+  # CLI flag: -pattern-ingester.sample-interval
+  [pattern_sample_interval: <duration> | default = 10s]
 
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
@@ -748,17 +977,9 @@ compactor_grpc_client:
 [memberlist: <memberlist>]
 
 kafka_config:
-  # The Kafka backend address.
-  # CLI flag: -kafka.address
-  [address: <string> | default = "localhost:9092"]
-
   # The Kafka topic name.
   # CLI flag: -kafka.topic
   [topic: <string> | default = ""]
-
-  # The Kafka client ID.
-  # CLI flag: -kafka.client-id
-  [client_id: <string> | default = ""]
 
   # The maximum time allowed to open a connection to a Kafka broker.
   # CLI flag: -kafka.dial-timeout
@@ -768,6 +989,24 @@ kafka_config:
   # to the Kafka backend.
   # CLI flag: -kafka.write-timeout
   [write_timeout: <duration> | default = 10s]
+
+  reader_config:
+    # The Kafka backend address.
+    # CLI flag: -kafka.reader.address
+    [address: <string> | default = "localhost:9092"]
+
+    # The Kafka client ID.
+    # CLI flag: -kafka.reader.client-id
+    [client_id: <string> | default = ""]
+
+  writer_config:
+    # The Kafka backend address.
+    # CLI flag: -kafka.writer.address
+    [address: <string> | default = "localhost:9092"]
+
+    # The Kafka client ID.
+    # CLI flag: -kafka.writer.client-id
+    [client_id: <string> | default = ""]
 
   # The SASL username for authentication to Kafka using the PLAIN mechanism.
   # Both username and password must be set.
@@ -830,6 +1069,10 @@ kafka_config:
   # CLI flag: -kafka.max-consumer-lag-at-startup
   [max_consumer_lag_at_startup: <duration> | default = 15s]
 
+  # The maximum number of workers to use for processing records from Kafka.
+  # CLI flag: -kafka.max-consumer-workers
+  [max_consumer_workers: <int> | default = 1]
+
   # Enable collection of the following kafka latency histograms: read-wait,
   # read-timing, write-wait, write-timing
   # CLI flag: -kafka.enable-kafka-histograms
@@ -838,24 +1081,35 @@ kafka_config:
 dataobj:
   consumer:
     builderconfig:
-      # The size of the target page to use for the data object builder.
+      # The target maximum amount of uncompressed data to hold in data pages
+      # (for columnar sections). Uncompressed size is used for consistent I/O
+      # and planning.
       # CLI flag: -dataobj-consumer.target-page-size
       [target_page_size: <int> | default = 2MiB]
 
-      # The size of the target object to use for the data object builder.
-      # CLI flag: -dataobj-consumer.target-object-size
+      # The maximum row count for pages to use for the data object builder. A
+      # value of 0 means no limit.
+      # CLI flag: -dataobj-consumer.max-page-rows
+      [max_page_rows: <int> | default = 0]
+
+      # The target maximum size of the encoded object and all of its encoded
+      # sections (after compression), to limit memory usage of a builder.
+      # CLI flag: -dataobj-consumer.target-builder-memory-limit
       [target_object_size: <int> | default = 1GiB]
 
-      # Configures a maximum size for sections, for sections that support it.
+      # The target maximum amount of uncompressed data to hold in sections, for
+      # sections that support being limited by size. Uncompressed size is used
+      # for consistent I/O and planning.
       # CLI flag: -dataobj-consumer.target-section-size
       [target_section_size: <int> | default = 128MiB]
 
-      # The size of the buffer to use for sorting logs.
+      # The size of logs to buffer in memory before adding into columnar
+      # builders, used to reduce CPU load of sorting.
       # CLI flag: -dataobj-consumer.buffer-size
       [buffer_size: <int> | default = 16MiB]
 
-      # The maximum number of stripes to merge into a section at once. Must be
-      # greater than 1.
+      # The maximum number of log section stripes to merge into a section at
+      # once. Must be greater than 1.
       # CLI flag: -dataobj-consumer.section-stripe-merge-limit
       [section_stripe_merge_limit: <int> | default = 2]
 
@@ -870,19 +1124,48 @@ dataobj:
     # CLI flag: -dataobj-consumer.idle-flush-timeout
     [idle_flush_timeout: <duration> | default = 1h]
 
-  querier:
-    # Enable the dataobj querier.
-    # CLI flag: -dataobj-querier-enabled
-    [enabled: <boolean> | default = false]
+  index:
+    # The size of the target page to use for the index object builder.
+    # CLI flag: -dataobj-index-builder.target-page-size
+    [target_page_size: <int> | default = 128KiB]
 
-    # The date of the first day of when the dataobj querier should start
-    # querying from. In YYYY-MM-DD format, for example: 2018-04-15.
-    # CLI flag: -dataobj-querier-from
-    [from: <daytime> | default = 1970-01-01]
+    # The maximum row count for pages to use for the index builder. A value of 0
+    # means no limit.
+    # CLI flag: -dataobj-index-builder.max-page-rows
+    [max_page_rows: <int> | default = 0]
 
-    # The number of shards to use for the dataobj querier.
-    # CLI flag: -dataobj-querier-shard-factor
-    [shard_factor: <int> | default = 32]
+    # The size of the target object to use for the index object builder.
+    # CLI flag: -dataobj-index-builder.target-object-size
+    [target_object_size: <int> | default = 64MiB]
+
+    # Configures a maximum size for sections, for sections that support it.
+    # CLI flag: -dataobj-index-builder.target-section-size
+    [target_section_size: <int> | default = 16MiB]
+
+    # The size of the buffer to use for sorting logs.
+    # CLI flag: -dataobj-index-builder.buffer-size
+    [buffer_size: <int> | default = 2MiB]
+
+    # The maximum number of stripes to merge into a section at once. Must be
+    # greater than 1.
+    # CLI flag: -dataobj-index-builder.section-stripe-merge-limit
+    [section_stripe_merge_limit: <int> | default = 2]
+
+    # Experimental: The number of events to batch before building an index
+    # CLI flag: -dataobj-index-builder.events-per-index
+    [events_per_index: <int> | default = 32]
+
+  metastore:
+    # Experimental: A prefix to use for storing indexes in object storage. Used
+    # for testing only.
+    # CLI flag: -dataobj-metastore.index-storage-prefix
+    [index_storage_prefix: <string> | default = "index/v0"]
+
+    # Experimental: The ratio of log partitions to metastore partitions. For
+    # example, a value of 10 means there is 1 metastore partition for every 10
+    # log partitions.
+    # CLI flag: -dataobj-metastore.partition-ratio
+    [partition_ratio: <int> | default = 10]
 
   # The prefix to use for the storage bucket.
   # CLI flag: -dataobj-storage-bucket-prefix
@@ -893,19 +1176,30 @@ ingest_limits:
   # CLI flag: -ingest-limits.enabled
   [enabled: <boolean> | default = false]
 
-  # The time window for which stream metadata is considered active.
-  # CLI flag: -ingest-limits.window-size
-  [window_size: <duration> | default = 1h]
+  # The duration for which which streams are considered active. Streams that
+  # have not been updated within this window are considered inactive and not
+  # counted towards limits.
+  # CLI flag: -ingest-limits.active-window
+  [active_window: <duration> | default = 2h]
 
   # The time window for rate calculation. This should match the window used in
   # Prometheus rate() queries for consistency.
   # CLI flag: -ingest-limits.rate-window
   [rate_window: <duration> | default = 5m]
 
-  # The granularity of time buckets used for sliding window rate calculation.
-  # Smaller buckets provide more precise rate tracking but require more memory.
-  # CLI flag: -ingest-limits.bucket-duration
-  [bucket_duration: <duration> | default = 1m]
+  # The size of the buckets used to calculate stream rates. Smaller buckets
+  # provide more precise rates but require more memory.
+  # CLI flag: -ingest-limits.bucket-size
+  [bucket_size: <duration> | default = 1m]
+
+  # The interval at which old streams are evicted.
+  # CLI flag: -ingest-limits.eviction-interval
+  [eviction_interval: <duration> | default = 10m]
+
+  # The number of partitions for the Kafka topic used to read and write stream
+  # metadata. It is fixed, not a maximum.
+  # CLI flag: -ingest-limits.num-partitions
+  [num_partitions: <int> | default = 64]
 
   lifecycler:
     ring:
@@ -1044,10 +1338,14 @@ ingest_limits:
     # CLI flag: -ingest-limits.lifecycler.ID
     [id: <string> | default = "<hostname>"]
 
-  # The number of partitions for the Kafka topic used to read and write stream
-  # metadata. It is fixed, not a maximum.
-  # CLI flag: -ingest-limits.num-partitions
-  [num_partitions: <int> | default = 64]
+  # The consumer group for the Kafka topic used to read stream metadata records.
+  # CLI flag: -ingest-limits.consumer-group
+  [consumer_group: <string> | default = "ingest-limits"]
+
+  # The topic for the Kafka topic used to read and write stream metadata
+  # records.
+  # CLI flag: -ingest-limits.topic
+  [topic: <string> | default = ""]
 
 ingest_limits_frontend:
   client_config:
@@ -1210,10 +1508,6 @@ ingest_limits_frontend:
     # CLI flag: -ingest-limits-frontend.lifecycler.ID
     [id: <string> | default = "<hostname>"]
 
-  # The period to recheck per tenant ingestion rate limit configuration.
-  # CLI flag: -ingest-limits-frontend.recheck-period
-  [recheck_period: <duration> | default = 10s]
-
   # The number of partitions to use for the ring.
   # CLI flag: -ingest-limits-frontend.num-partitions
   [num_partitions: <int> | default = 64]
@@ -1261,6 +1555,12 @@ ingest_limits_frontend_client:
 
 # Configuration for profiling options.
 [profiling: <profiling>]
+
+# List of limit fields to publish from the tenant limits endpoint. If empty, all
+# fields are returned. Use YAML field names (e.g., 'retention_period',
+# 'max_query_series').
+# CLI flag: -limits.tenant-limits-allow-publish
+[tenant_limits_allow_publish: <list of strings> | default = [discover_log_levels discover_service_name log_level_fields max_line_size_truncate max_query_length max_query_lookback max_query_range max_query_series metric_aggregation_enabled otlp_config pattern_persistence_enabled query_timeout retention_period retention_stream]]
 
 # Common configuration to be shared between multiple modules. If a more specific
 # configuration is given in other sections, the related configuration within
@@ -2148,6 +2448,10 @@ ring:
 # the grpc address of the compactor in the form host:port
 # CLI flag: -common.compactor-grpc-address
 [compactor_grpc_address: <string> | default = ""]
+
+# Experimental: path to use for temporary data, where scratch data is supported.
+# CLI flag: -common.scratch-path
+[scratch_path: <string> | default = ""]
 ```
 
 ### compactor
@@ -2340,6 +2644,38 @@ compactor_ring:
 # -compactor.tables-to-compact, this is useful when clearing compactor backlogs.
 # CLI flag: -compactor.skip-latest-n-tables
 [skip_latest_n_tables: <int> | default = 0]
+
+# Experimental: Configuration to turn on and run horizontally scalable
+# compactor. Supported modes - [disabled]: Keeps the horizontal scaling mode
+# disabled. Locally runs all the functions of the compactor.[main]: Runs all
+# functions of the compactor. Distributes work to workers where
+# possible.[worker]: Runs the compactor in worker mode, only working on jobs
+# built by the main compactor.
+# CLI flag: -compactor.horizontal-scaling-mode
+[horizontal_scaling_mode: <string> | default = "disabled"]
+
+worker_config:
+  # Number of sub-workers to run for concurrent processing of jobs.
+  # CLI flag: -compactor.worker.num-sub-workers
+  [num_sub_workers: <int> | default = 4]
+
+jobs_config:
+  deletion:
+    # Object storage path prefix for storing deletion manifests.
+    # CLI flag: -compactor.jobs.deletion.deletion-manifest-store-prefix
+    [deletion_manifest_store_prefix: <string> | default = "__deletion_manifest__/"]
+
+    # Maximum number of chunks to process concurrently in each worker.
+    # CLI flag: -compactor.jobs.deletion.chunk-processing-concurrency
+    [chunk_processing_concurrency: <int> | default = 3]
+
+    # Maximum time to wait for a job before considering it failed and retrying.
+    # CLI flag: -compactor.jobs.deletion.timeout
+    [timeout: <duration> | default = 15m]
+
+    # Maximum number of times to retry a failed or timed out job.
+    # CLI flag: -compactor.jobs.deletion.max-retries
+    [max_retries: <int> | default = 3]
 ```
 
 ### consul
@@ -2571,6 +2907,9 @@ otlp_config:
   # CLI flag: -distributor.otlp.default_resource_attributes_as_index_labels
   [default_resource_attributes_as_index_labels: <list of strings> | default = [service.name service.namespace service.instance.id deployment.environment deployment.environment.name cloud.region cloud.availability_zone k8s.cluster.name k8s.namespace.name k8s.pod.name k8s.container.name container.name k8s.replicaset.name k8s.deployment.name k8s.statefulset.name k8s.daemonset.name k8s.cronjob.name k8s.job.name]]
 
+# Default policy stream mappings that are merged with per-tenant mappings.
+[default_policy_stream_mappings: <map of string to list of PriorityStreams>]
+
 # Enable writes to Kafka during Push requests.
 # CLI flag: -distributor.kafka-writes-enabled
 [kafka_writes_enabled: <boolean> | default = false]
@@ -2587,32 +2926,6 @@ otlp_config:
 # not enforced. Defaults to false.
 # CLI flag: -distributor.ingest-limits-dry-run-enabled
 [ingest_limits_dry_run_enabled: <boolean> | default = false]
-
-tenant_topic:
-  # Enable the tenant topic tee, which writes logs to Kafka topics based on
-  # tenant IDs instead of using multitenant topics/partitions.
-  # CLI flag: -distributor.tenant-topic-tee.enabled
-  [enabled: <boolean> | default = false]
-
-  # Prefix to prepend to tenant IDs to form the final Kafka topic name
-  # CLI flag: -distributor.tenant-topic-tee.topic-prefix
-  [topic_prefix: <string> | default = "loki.tenant"]
-
-  # Maximum number of bytes that can be buffered before producing to Kafka
-  # CLI flag: -distributor.tenant-topic-tee.max-buffered-bytes
-  [max_buffered_bytes: <int> | default = 100MiB]
-
-  # Maximum size of a single Kafka record in bytes
-  # CLI flag: -distributor.tenant-topic-tee.max-record-size-bytes
-  [max_record_size_bytes: <int> | default = 15MiB249KiB]
-
-  # Topic strategy to use. Valid values are 'simple' or 'automatic'
-  # CLI flag: -distributor.tenant-topic-tee.strategy
-  [strategy: <string> | default = "simple"]
-
-  # Target throughput per partition in bytes for the automatic strategy
-  # CLI flag: -distributor.tenant-topic-tee.target-throughput-per-partition
-  [target_throughput_per_partition: <int> | default = 10MiB]
 ```
 
 ### etcd
@@ -2733,6 +3046,10 @@ The `frontend` block configures the Loki query-frontend.
 # query-frontend.
 # CLI flag: -frontend.instance-interface-names
 [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+
+# Enable using a IPv6 instance address (default false).
+# CLI flag: -frontend.instance-enable-ipv6
+[instance_enable_ipv6: <boolean> | default = false]
 
 # Defines the encoding for requests to and responses from the scheduler and
 # querier. Can be 'json' or 'protobuf' (defaults to 'json').
@@ -3519,6 +3836,10 @@ The `limits_config` block configures global and per-tenant limits in Loki. The v
 # CLI flag: -distributor.max-line-size-truncate
 [max_line_size_truncate: <boolean> | default = false]
 
+# Identifier that is added at the end of a truncated log line.
+# CLI flag: -distributor.max-line-size-truncate-identifier
+[max_line_size_truncate_identifier: <string> | default = ""]
+
 # Alter the log line timestamp during ingestion when the timestamp is the same
 # as the previous entry for the same stream. When enabled, if a log line in a
 # push request has the same timestamp as the previous line for the same stream,
@@ -4142,11 +4463,26 @@ otlp_config:
 [shard_aggregations: <list of strings>]
 
 # Enable metric aggregation. When enabled, pushed streams will be sampled for
-# bytes and count, and these metric will be written back into Loki as a special
-# __aggregated_metric__ stream, which can be queried for faster histogram
-# queries.
-# CLI flag: -limits.metric-aggregation-enabled
+# bytes and line counts. These metrics will be written back into Loki as a
+# special __aggregated_metric__ stream.
+# CLI flag: -limits.aggregation-enabled
 [metric_aggregation_enabled: <boolean> | default = false]
+
+# Enable persistence of patterns detected at ingest. When enabled, patterns for
+# pushed streams will be written back into Loki as a special __pattern__ stream.
+# CLI flag: -limits.pattern-persistence-enabled
+[pattern_persistence_enabled: <boolean> | default = false]
+
+# The time granularity for persisting patterns. Controls how many data points
+# are written when patterns are flushed. Set to 0 to use the default from the
+# pattern ingester configuration.
+# CLI flag: -limits.pattern-persistence-granularity
+[pattern_persistence_granularity: <duration> | default = 0s]
+
+# Minimum pattern rate (samples per second) required for a pattern to be
+# persisted. Patterns with lower rates will be filtered out during persistence.
+# CLI flag: -limits.pattern-rate-threshold
+[pattern_rate_threshold: <float> | default = 1]
 
 # S3 server-side encryption type. Required to enable server-side encryption
 # overrides for a specific tenant. If not set, the default S3 client settings
@@ -4402,10 +4738,26 @@ These are values which allow you to control aspects of Loki's operation, most co
 # CLI flag: -operation-config.log-push-request
 [log_push_request: <boolean> | default = false]
 
+# Log a commutative hash of the labels for all streams in a push request. In
+# some cases this can potentially be used as an identifier of the agent sending
+# the stream. Calculating hashes is epensive so only enable as needed.
+# CLI flag: -operation-config.log-hash-of-labels
+[log_hash_of_labels: <boolean> | default = false]
+
 # Log every stream in a push request (very verbose, recommend to enable via
 # runtime config only).
 # CLI flag: -operation-config.log-push-request-streams
 [log_push_request_streams: <boolean> | default = false]
+
+# Only show streams that match a provided IP address, LogPushRequestStreams must
+# be enabled. Can be used multiple times to filter by multiple IPs.
+# CLI flag: -operation-config.filter-push-request-streams-ips
+[filter_push_request_streams_ips: <list of strings> | default = []]
+
+# Log service name discovery (very verbose, recommend to enable via runtime
+# config only).
+# CLI flag: -operation-config.log-service-name-discovery
+[log_service_name_discovery: <boolean> | default = false]
 
 # Log metrics for duplicate lines received.
 # CLI flag: -operation-config.log-duplicate-metrics
@@ -4530,6 +4882,33 @@ engine:
   # Experimental: Batch size of the next generation query engine.
   # CLI flag: -querier.engine.batch-size
   [batch_size: <int> | default = 100]
+
+  # Experimental: The number of inputs that are prefetched simultaneously by any
+  # Merge node. A value of 0 means that only the currently processed input is
+  # prefetched, 1 means that only the next input is prefetched, and so on. A
+  # negative value means that all inputs are be prefetched in parallel.
+  # CLI flag: -querier.engine.merge-prefetch-count
+  [merge_prefetch_count: <int> | default = 0]
+
+  # Configures how to read byte ranges from object storage when using the V2
+  # engine.
+  range_reads:
+    # Experimental: maximum number of parallel reads
+    # CLI flag: -querier.engine.range-reads.max-parallelism
+    [max_parallelism: <int> | default = 10]
+
+    # Experimental: maximum distance (in bytes) between ranges that causes them
+    # to be coalesced into a single range
+    # CLI flag: -querier.engine.range-reads.coalesce-size
+    [coalesce_size: <int> | default = 1048576]
+
+    # Experimental: maximum size of a byte range
+    # CLI flag: -querier.engine.range-reads.max-range-size
+    [max_range_size: <int> | default = 8388608]
+
+    # Experimental: minimum size of a byte range
+    # CLI flag: -querier.engine.range-reads.min-range-size
+    [min_range_size: <int> | default = 1048576]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
@@ -4830,7 +5209,7 @@ The `ruler` block configures the Loki ruler.
 [datasource_uid: <string> | default = ""]
 
 # Labels to add to all alerts.
-[external_labels: <list of Labels>]
+external_labels:
 
 # The grpc_client block configures the gRPC client used to communicate between a
 # client and server component in Loki.
@@ -5336,6 +5715,10 @@ Configures the `server` of the launched module(s).
 # CLI flag: -server.grpc-conn-limit
 [grpc_listen_conn_limit: <int> | default = 0]
 
+# If true, the max streams by connection gauge will be collected.
+# CLI flag: -server.grpc-collect-max-streams-by-conn
+[grpc_collect_max_streams_by_conn: <boolean> | default = true]
+
 # Enables PROXY protocol.
 # CLI flag: -server.proxy-protocol-enabled
 [proxy_protocol_enabled: <boolean> | default = false]
@@ -5549,6 +5932,16 @@ grpc_tls_config:
 # CLI flag: -server.log-request-headers-exclude-list
 [log_request_exclude_headers_list: <string> | default = ""]
 
+# Optionally add request headers to tracing spans.
+# CLI flag: -server.trace-request-headers
+[trace_request_headers: <boolean> | default = false]
+
+# Comma separated list of headers to exclude from tracing spans. Only used if
+# server.trace-request-headers is true. The following headers are always
+# excluded: Authorization, Cookie, X-Access-Token, X-Csrf-Token, X-Grafana-Id.
+# CLI flag: -server.trace-request-headers-exclude-list
+[trace_request_exclude_headers_list: <string> | default = ""]
+
 # Base path to serve all API routes from (e.g. /v1/)
 # CLI flag: -server.path-prefix
 [http_path_prefix: <string> | default = ""]
@@ -5586,6 +5979,11 @@ cluster_validation:
     # validation check.
     # CLI flag: -server.cluster-validation.http.excluded-paths
     [excluded_paths: <string> | default = ""]
+
+    # Comma-separated list of user agents that are excluded from the cluster
+    # validation check.
+    # CLI flag: -server.cluster-validation.http.excluded-user-agents
+    [excluded_user_agents: <string> | default = ""]
 ```
 
 ### storage_config
@@ -5960,6 +6358,14 @@ boltdb_shipper:
     # CLI flag: -boltdb.shipper.index-gateway-client.log-gateway-requests
     [log_gateway_requests: <boolean> | default = false]
 
+    # Experimental: Defines buckets for time-based sharding. Time based sharding
+    # only takes affect when index gateways run in simple mode. To enable client
+    # side time-based sharding of queries across index gateway instances set at
+    # least one bucket in the format of a string representation of a
+    # time.Duration, e.g. ['168h', '336h', '504h']
+    # CLI flag: -boltdb.shipper.index-gateway-client.time-based-sharding-buckets
+    [time_based_sharding_buckets: <list of strings> | default = []]
+
   [ingestername: <string> | default = ""]
 
   [mode: <string> | default = ""]
@@ -6014,6 +6420,14 @@ tsdb_shipper:
     # Whether requests sent to the gateway should be logged or not.
     # CLI flag: -tsdb.shipper.index-gateway-client.log-gateway-requests
     [log_gateway_requests: <boolean> | default = false]
+
+    # Experimental: Defines buckets for time-based sharding. Time based sharding
+    # only takes affect when index gateways run in simple mode. To enable client
+    # side time-based sharding of queries across index gateway instances set at
+    # least one bucket in the format of a string representation of a
+    # time.Duration, e.g. ['168h', '336h', '504h']
+    # CLI flag: -tsdb.shipper.index-gateway-client.time-based-sharding-buckets
+    [time_based_sharding_buckets: <list of strings> | default = []]
 
   [ingestername: <string> | default = ""]
 

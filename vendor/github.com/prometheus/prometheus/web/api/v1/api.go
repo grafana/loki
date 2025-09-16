@@ -186,6 +186,7 @@ type TSDBAdminStats interface {
 	Snapshot(dir string, withHead bool) error
 	Stats(statsByLabelName string, limit int) (*tsdb.Stats, error)
 	WALReplayStatus() (tsdb.WALReplayStatus, error)
+	BlockMetas() ([]tsdb.BlockMeta, error)
 }
 
 type QueryOpts interface {
@@ -262,8 +263,10 @@ func NewAPI(
 	statsRenderer StatsRenderer,
 	rwEnabled bool,
 	acceptRemoteWriteProtoMsgs []config.RemoteWriteProtoMsg,
-	otlpEnabled, otlpDeltaToCumulative bool,
+	otlpEnabled, otlpDeltaToCumulative, otlpNativeDeltaIngestion bool,
 	ctZeroIngestionEnabled bool,
+	lookbackDelta time.Duration,
+	enableTypeAndUnitLabels bool,
 ) *API {
 	a := &API{
 		QueryEngine:       qe,
@@ -310,7 +313,12 @@ func NewAPI(
 		a.remoteWriteHandler = remote.NewWriteHandler(logger, registerer, ap, acceptRemoteWriteProtoMsgs, ctZeroIngestionEnabled)
 	}
 	if otlpEnabled {
-		a.otlpWriteHandler = remote.NewOTLPWriteHandler(logger, registerer, ap, configFunc, remote.OTLPOptions{ConvertDelta: otlpDeltaToCumulative})
+		a.otlpWriteHandler = remote.NewOTLPWriteHandler(logger, registerer, ap, configFunc, remote.OTLPOptions{
+			ConvertDelta:            otlpDeltaToCumulative,
+			NativeDelta:             otlpNativeDeltaIngestion,
+			LookbackDelta:           lookbackDelta,
+			EnableTypeAndUnitLabels: enableTypeAndUnitLabels,
+		})
 	}
 
 	return a
@@ -404,6 +412,7 @@ func (api *API) Register(r *route.Router) {
 	r.Get("/status/buildinfo", wrap(api.serveBuildInfo))
 	r.Get("/status/flags", wrap(api.serveFlags))
 	r.Get("/status/tsdb", wrapAgent(api.serveTSDBStatus))
+	r.Get("/status/tsdb/blocks", wrapAgent(api.serveTSDBBlocks))
 	r.Get("/status/walreplay", api.serveWALReplayStatus)
 	r.Get("/notifications", api.notifications)
 	r.Get("/notifications/live", api.notificationsSSE)
@@ -436,7 +445,7 @@ func invalidParamError(err error, parameter string) apiFuncResult {
 	}, nil, nil}
 }
 
-func (api *API) options(*http.Request) apiFuncResult {
+func (*API) options(*http.Request) apiFuncResult {
 	return apiFuncResult{nil, nil, nil, nil}
 }
 
@@ -509,7 +518,7 @@ func (api *API) query(r *http.Request) (result apiFuncResult) {
 	}, nil, warnings, qry.Close}
 }
 
-func (api *API) formatQuery(r *http.Request) (result apiFuncResult) {
+func (*API) formatQuery(r *http.Request) (result apiFuncResult) {
 	expr, err := parser.ParseExpr(r.FormValue("query"))
 	if err != nil {
 		return invalidParamError(err, "query")
@@ -518,7 +527,7 @@ func (api *API) formatQuery(r *http.Request) (result apiFuncResult) {
 	return apiFuncResult{expr.Pretty(0), nil, nil, nil}
 }
 
-func (api *API) parseQuery(r *http.Request) apiFuncResult {
+func (*API) parseQuery(r *http.Request) apiFuncResult {
 	expr, err := parser.ParseExpr(r.FormValue("query"))
 	if err != nil {
 		return invalidParamError(err, "query")
@@ -989,7 +998,7 @@ func (api *API) series(r *http.Request) (result apiFuncResult) {
 	return apiFuncResult{metrics, nil, warnings, closer}
 }
 
-func (api *API) dropSeries(_ *http.Request) apiFuncResult {
+func (*API) dropSeries(*http.Request) apiFuncResult {
 	return apiFuncResult{nil, &apiError{errorInternal, errors.New("not implemented")}, nil, nil}
 }
 
@@ -1021,6 +1030,7 @@ type ScrapePoolsDiscovery struct {
 type DroppedTarget struct {
 	// Labels before any processing.
 	DiscoveredLabels labels.Labels `json:"discoveredLabels"`
+	ScrapePool       string        `json:"scrapePool"`
 }
 
 // TargetDiscovery has all the active targets.
@@ -1105,15 +1115,15 @@ func (api *API) scrapePools(r *http.Request) apiFuncResult {
 }
 
 func (api *API) targets(r *http.Request) apiFuncResult {
-	sortKeys := func(targets map[string][]*scrape.Target) ([]string, int) {
+	getSortedPools := func(targets map[string][]*scrape.Target) ([]string, int) {
 		var n int
-		keys := make([]string, 0, len(targets))
-		for k := range targets {
-			keys = append(keys, k)
-			n += len(targets[k])
+		pools := make([]string, 0, len(targets))
+		for p, t := range targets {
+			pools = append(pools, p)
+			n += len(t)
 		}
-		slices.Sort(keys)
-		return keys, n
+		slices.Sort(pools)
+		return pools, n
 	}
 
 	scrapePool := r.URL.Query().Get("scrapePool")
@@ -1125,14 +1135,14 @@ func (api *API) targets(r *http.Request) apiFuncResult {
 
 	if showActive {
 		targetsActive := api.targetRetriever(r.Context()).TargetsActive()
-		activeKeys, numTargets := sortKeys(targetsActive)
+		activePools, numTargets := getSortedPools(targetsActive)
 		res.ActiveTargets = make([]*Target, 0, numTargets)
 
-		for _, key := range activeKeys {
-			if scrapePool != "" && key != scrapePool {
+		for _, pool := range activePools {
+			if scrapePool != "" && pool != scrapePool {
 				continue
 			}
-			for _, target := range targetsActive[key] {
+			for _, target := range targetsActive[pool] {
 				lastErrStr := ""
 				lastErr := target.LastError()
 				if lastErr != nil {
@@ -1144,7 +1154,7 @@ func (api *API) targets(r *http.Request) apiFuncResult {
 				res.ActiveTargets = append(res.ActiveTargets, &Target{
 					DiscoveredLabels: target.DiscoveredLabels(builder),
 					Labels:           target.Labels(builder),
-					ScrapePool:       key,
+					ScrapePool:       pool,
 					ScrapeURL:        target.URL().String(),
 					GlobalURL:        globalURL.String(),
 					LastError: func() string {
@@ -1170,18 +1180,18 @@ func (api *API) targets(r *http.Request) apiFuncResult {
 	}
 	if showDropped {
 		res.DroppedTargetCounts = api.targetRetriever(r.Context()).TargetsDroppedCounts()
-	}
-	if showDropped {
+
 		targetsDropped := api.targetRetriever(r.Context()).TargetsDropped()
-		droppedKeys, numTargets := sortKeys(targetsDropped)
+		droppedPools, numTargets := getSortedPools(targetsDropped)
 		res.DroppedTargets = make([]*DroppedTarget, 0, numTargets)
-		for _, key := range droppedKeys {
-			if scrapePool != "" && key != scrapePool {
+		for _, pool := range droppedPools {
+			if scrapePool != "" && pool != scrapePool {
 				continue
 			}
-			for _, target := range targetsDropped[key] {
+			for _, target := range targetsDropped[pool] {
 				res.DroppedTargets = append(res.DroppedTargets, &DroppedTarget{
 					DiscoveredLabels: target.DiscoveredLabels(builder),
+					ScrapePool:       pool,
 				})
 			}
 		}
@@ -1682,7 +1692,7 @@ type prometheusConfig struct {
 	YAML string `json:"yaml"`
 }
 
-func (api *API) serveRuntimeInfo(_ *http.Request) apiFuncResult {
+func (api *API) serveRuntimeInfo(*http.Request) apiFuncResult {
 	status, err := api.runtimeInfo()
 	if err != nil {
 		return apiFuncResult{status, &apiError{errorInternal, err}, nil, nil}
@@ -1690,18 +1700,18 @@ func (api *API) serveRuntimeInfo(_ *http.Request) apiFuncResult {
 	return apiFuncResult{status, nil, nil, nil}
 }
 
-func (api *API) serveBuildInfo(_ *http.Request) apiFuncResult {
+func (api *API) serveBuildInfo(*http.Request) apiFuncResult {
 	return apiFuncResult{api.buildInfo, nil, nil, nil}
 }
 
-func (api *API) serveConfig(_ *http.Request) apiFuncResult {
+func (api *API) serveConfig(*http.Request) apiFuncResult {
 	cfg := &prometheusConfig{
 		YAML: api.config().String(),
 	}
 	return apiFuncResult{cfg, nil, nil, nil}
 }
 
-func (api *API) serveFlags(_ *http.Request) apiFuncResult {
+func (api *API) serveFlags(*http.Request) apiFuncResult {
 	return apiFuncResult{api.flagsMap, nil, nil, nil}
 }
 
@@ -1737,6 +1747,19 @@ func TSDBStatsFromIndexStats(stats []index.Stat) []TSDBStat {
 		result = append(result, item)
 	}
 	return result
+}
+
+func (api *API) serveTSDBBlocks(*http.Request) apiFuncResult {
+	blockMetas, err := api.db.BlockMetas()
+	if err != nil {
+		return apiFuncResult{nil, &apiError{errorInternal, fmt.Errorf("error getting block metadata: %w", err)}, nil, nil}
+	}
+
+	return apiFuncResult{
+		data: map[string][]tsdb.BlockMeta{
+			"blocks": blockMetas,
+		},
+	}
 }
 
 func (api *API) serveTSDBStatus(r *http.Request) apiFuncResult {

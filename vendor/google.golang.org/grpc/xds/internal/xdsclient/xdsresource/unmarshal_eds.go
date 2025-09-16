@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/pretty"
 	"google.golang.org/grpc/xds/internal"
+	"google.golang.org/grpc/xds/internal/clients"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
@@ -111,9 +112,29 @@ func parseEndpoints(lbEndpoints []*v3endpointpb.LbEndpoint, uniqueEndpointAddrs 
 			HealthStatus: EndpointHealthStatus(lbEndpoint.GetHealthStatus()),
 			Addresses:    addrs,
 			Weight:       weight,
+			HashKey:      hashKey(lbEndpoint),
 		})
 	}
 	return endpoints, nil
+}
+
+// hashKey extracts and returns the hash key from the given LbEndpoint. If no
+// hash key is found, it returns an empty string.
+func hashKey(lbEndpoint *v3endpointpb.LbEndpoint) string {
+	// "The xDS resolver, described in A74, will be changed to set the hash_key
+	// endpoint attribute to the value of LbEndpoint.Metadata envoy.lb hash_key
+	// field, as described in Envoy's documentation for the ring hash load
+	// balancer." - A76
+	if envconfig.XDSEndpointHashKeyBackwardCompat {
+		return ""
+	}
+	envoyLB := lbEndpoint.GetMetadata().GetFilterMetadata()["envoy.lb"]
+	if envoyLB != nil {
+		if h := envoyLB.GetFields()["hash_key"]; h != nil {
+			return h.GetStringValue()
+		}
+	}
+	return ""
 }
 
 func parseEDSRespProto(m *v3endpointpb.ClusterLoadAssignment) (EndpointsUpdate, error) {
@@ -144,12 +165,12 @@ func parseEDSRespProto(m *v3endpointpb.ClusterLoadAssignment) (EndpointsUpdate, 
 			localitiesWithPriority = make(map[string]bool)
 			priorities[priority] = localitiesWithPriority
 		}
-		lid := internal.LocalityID{
+		lid := clients.Locality{
 			Region:  l.Region,
 			Zone:    l.Zone,
 			SubZone: l.SubZone,
 		}
-		lidStr, _ := lid.ToString()
+		lidStr := internal.LocalityString(lid)
 
 		// "Since an xDS configuration can place a given locality under multiple
 		// priorities, it is possible to see locality weight attributes with

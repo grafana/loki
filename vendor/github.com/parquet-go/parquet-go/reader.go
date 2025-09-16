@@ -391,7 +391,7 @@ func (r *Reader) Reset() {
 // of the underlying parquet file or an error will be returned.
 //
 // The method returns io.EOF when no more rows can be read from r.
-func (r *Reader) Read(row interface{}) error {
+func (r *Reader) Read(row any) error {
 	if rowType := dereference(reflect.TypeOf(row)); rowType.Kind() == reflect.Struct {
 		if r.seen != rowType {
 			if err := r.updateReadSchema(rowType); err != nil {

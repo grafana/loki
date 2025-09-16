@@ -508,6 +508,9 @@ type CreateOpts struct {
 
 	// DiskConfig [optional] controls how the created server's disk is partitioned.
 	DiskConfig DiskConfig `json:"OS-DCF:diskConfig,omitempty"`
+
+	// HypervisorHostname is the name of the hypervisor to which the server is scheduled.
+	HypervisorHostname string `json:"hypervisor_hostname,omitempty"`
 }
 
 // ToServerCreateMap assembles a request body based on the contents of a

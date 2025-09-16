@@ -21,7 +21,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"reflect"
-	"sync/atomic"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/internal/debug"
@@ -39,10 +38,11 @@ type FixedSizeBinaryBuilder struct {
 
 func NewFixedSizeBinaryBuilder(mem memory.Allocator, dtype *arrow.FixedSizeBinaryType) *FixedSizeBinaryBuilder {
 	b := &FixedSizeBinaryBuilder{
-		builder: builder{refCount: 1, mem: mem},
+		builder: builder{mem: mem},
 		dtype:   dtype,
 		values:  newByteBufferBuilder(mem),
 	}
+	b.refCount.Add(1)
 	return b
 }
 
@@ -52,9 +52,9 @@ func (b *FixedSizeBinaryBuilder) Type() arrow.DataType { return b.dtype }
 // When the reference count goes to zero, the memory is freed.
 // Release may be called simultaneously from multiple goroutines.
 func (b *FixedSizeBinaryBuilder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -130,7 +130,7 @@ func (b *FixedSizeBinaryBuilder) AppendValues(v [][]byte, valid []bool) {
 		}
 	}
 
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(v))
+	b.unsafeAppendBoolsToBitmap(valid, len(v))
 }
 
 func (b *FixedSizeBinaryBuilder) init(capacity int) {
@@ -141,13 +141,13 @@ func (b *FixedSizeBinaryBuilder) init(capacity int) {
 // Reserve ensures there is enough space for appending n elements
 // by checking the capacity and calling Resize if necessary.
 func (b *FixedSizeBinaryBuilder) Reserve(n int) {
-	b.builder.reserve(n, b.Resize)
+	b.reserve(n, b.Resize)
 }
 
 // Resize adjusts the space allocated by b to n elements. If n is greater than b.Cap(),
 // additional memory will be allocated. If n is smaller, the allocated memory may reduced.
 func (b *FixedSizeBinaryBuilder) Resize(n int) {
-	b.builder.resize(n, b.init)
+	b.resize(n, b.init)
 }
 
 // NewArray creates a FixedSizeBinary array from the memory buffers used by the
@@ -173,7 +173,7 @@ func (b *FixedSizeBinaryBuilder) newData() (data *Data) {
 		values.Release()
 	}
 
-	b.builder.reset()
+	b.reset()
 
 	return
 }
@@ -223,7 +223,7 @@ func (b *FixedSizeBinaryBuilder) UnmarshalOne(dec *json.Decoder) error {
 
 	if len(val) != b.dtype.ByteWidth {
 		return &json.UnmarshalTypeError{
-			Value:  fmt.Sprint(val),
+			Value:  fmt.Sprint(string(val)),
 			Type:   reflect.TypeOf([]byte{}),
 			Offset: dec.InputOffset(),
 			Struct: fmt.Sprintf("FixedSizeBinary[%d]", b.dtype.ByteWidth),
@@ -256,6 +256,4 @@ func (b *FixedSizeBinaryBuilder) UnmarshalJSON(data []byte) error {
 	return b.Unmarshal(dec)
 }
 
-var (
-	_ Builder = (*FixedSizeBinaryBuilder)(nil)
-)
+var _ Builder = (*FixedSizeBinaryBuilder)(nil)

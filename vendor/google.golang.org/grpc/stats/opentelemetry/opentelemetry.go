@@ -25,6 +25,7 @@ package opentelemetry
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	otelattribute "go.opentelemetry.io/otel/attribute"
@@ -117,10 +118,23 @@ type MetricsOptions struct {
 // MeterProvider. If the passed in Meter Provider does not have the view
 // configured for an individual metric turned on, the API call in this component
 // will create a default view for that metric.
+//
+// For the traces supported by this instrumentation code, provide an
+// implementation of a TextMapPropagator and OpenTelemetry TracerProvider.
 func DialOption(o Options) grpc.DialOption {
-	csh := &clientStatsHandler{options: o}
-	csh.initializeMetrics()
-	return joinDialOptions(grpc.WithChainUnaryInterceptor(csh.unaryInterceptor), grpc.WithChainStreamInterceptor(csh.streamInterceptor), grpc.WithStatsHandler(csh))
+	var metricsOpts, tracingOpts []grpc.DialOption
+
+	if o.isMetricsEnabled() {
+		metricsHandler := &clientMetricsHandler{options: o}
+		metricsHandler.initializeMetrics()
+		metricsOpts = append(metricsOpts, grpc.WithChainUnaryInterceptor(metricsHandler.unaryInterceptor), grpc.WithChainStreamInterceptor(metricsHandler.streamInterceptor), grpc.WithStatsHandler(metricsHandler))
+	}
+	if o.isTracingEnabled() {
+		tracingHandler := &clientTracingHandler{options: o}
+		tracingHandler.initializeTraces()
+		tracingOpts = append(tracingOpts, grpc.WithChainUnaryInterceptor(tracingHandler.unaryInterceptor), grpc.WithChainStreamInterceptor(tracingHandler.streamInterceptor), grpc.WithStatsHandler(tracingHandler))
+	}
+	return joinDialOptions(append(metricsOpts, tracingOpts...)...)
 }
 
 var joinServerOptions = internal.JoinServerOptions.(func(...grpc.ServerOption) grpc.ServerOption)
@@ -137,10 +151,23 @@ var joinServerOptions = internal.JoinServerOptions.(func(...grpc.ServerOption) g
 // MeterProvider. If the passed in Meter Provider does not have the view
 // configured for an individual metric turned on, the API call in this component
 // will create a default view for that metric.
+//
+// For the traces supported by this instrumentation code, provide an
+// implementation of a TextMapPropagator and OpenTelemetry TracerProvider.
 func ServerOption(o Options) grpc.ServerOption {
-	ssh := &serverStatsHandler{options: o}
-	ssh.initializeMetrics()
-	return joinServerOptions(grpc.ChainUnaryInterceptor(ssh.unaryInterceptor), grpc.ChainStreamInterceptor(ssh.streamInterceptor), grpc.StatsHandler(ssh))
+	var metricsOpts, tracingOpts []grpc.ServerOption
+
+	if o.isMetricsEnabled() {
+		metricsHandler := &serverMetricsHandler{options: o}
+		metricsHandler.initializeMetrics()
+		metricsOpts = append(metricsOpts, grpc.ChainUnaryInterceptor(metricsHandler.unaryInterceptor), grpc.ChainStreamInterceptor(metricsHandler.streamInterceptor), grpc.StatsHandler(metricsHandler))
+	}
+	if o.isTracingEnabled() {
+		tracingHandler := &serverTracingHandler{options: o}
+		tracingHandler.initializeTraces()
+		tracingOpts = append(tracingOpts, grpc.StatsHandler(tracingHandler))
+	}
+	return joinServerOptions(append(metricsOpts, tracingOpts...)...)
 }
 
 // callInfo is information pertaining to the lifespan of the RPC client side.
@@ -148,6 +175,10 @@ type callInfo struct {
 	target string
 
 	method string
+
+	// nameResolutionEventAdded is set when the resolver delay trace event
+	// is added. Prevents duplicate events, since it is reported per-attempt.
+	nameResolutionEventAdded atomic.Bool
 }
 
 type callInfoKey struct{}

@@ -20,52 +20,33 @@
 package internal
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"google.golang.org/grpc/resolver"
+	"google.golang.org/grpc/xds/internal/clients"
 )
 
-// LocalityID is xds.Locality without XXX fields, so it can be used as map
-// keys.
-//
-// xds.Locality cannot be map keys because one of the XXX fields is a slice.
-type LocalityID struct {
-	Region  string `json:"region,omitempty"`
-	Zone    string `json:"zone,omitempty"`
-	SubZone string `json:"subZone,omitempty"`
+// LocalityString generates a string representation of clients.Locality in the
+// format specified in gRFC A76.
+func LocalityString(l clients.Locality) string {
+	return fmt.Sprintf("{region=%q, zone=%q, sub_zone=%q}", l.Region, l.Zone, l.SubZone)
 }
 
-// ToString generates a string representation of LocalityID by marshalling it into
-// json. Not calling it String() so printf won't call it.
-func (l LocalityID) ToString() (string, error) {
-	b, err := json.Marshal(l)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
-}
-
-// Equal allows the values to be compared by Attributes.Equal.
-func (l LocalityID) Equal(o any) bool {
-	ol, ok := o.(LocalityID)
+// IsLocalityEqual allows the values to be compared by Attributes.Equal.
+func IsLocalityEqual(l clients.Locality, o any) bool {
+	ol, ok := o.(clients.Locality)
 	if !ok {
 		return false
 	}
 	return l.Region == ol.Region && l.Zone == ol.Zone && l.SubZone == ol.SubZone
 }
 
-// Empty returns whether or not the locality ID is empty.
-func (l LocalityID) Empty() bool {
-	return l.Region == "" && l.Zone == "" && l.SubZone == ""
-}
-
-// LocalityIDFromString converts a json representation of locality, into a
-// LocalityID struct.
-func LocalityIDFromString(s string) (ret LocalityID, _ error) {
-	err := json.Unmarshal([]byte(s), &ret)
+// LocalityFromString converts a string representation of clients.locality as
+// specified in gRFC A76, into a LocalityID struct.
+func LocalityFromString(s string) (ret clients.Locality, _ error) {
+	_, err := fmt.Sscanf(s, "{region=%q, zone=%q, sub_zone=%q}", &ret.Region, &ret.Zone, &ret.SubZone)
 	if err != nil {
-		return LocalityID{}, fmt.Errorf("%s is not a well formatted locality ID, error: %v", s, err)
+		return clients.Locality{}, fmt.Errorf("%s is not a well formatted locality ID, error: %v", s, err)
 	}
 	return ret, nil
 }
@@ -75,19 +56,19 @@ type localityKeyType string
 const localityKey = localityKeyType("grpc.xds.internal.address.locality")
 
 // GetLocalityID returns the locality ID of addr.
-func GetLocalityID(addr resolver.Address) LocalityID {
-	path, _ := addr.BalancerAttributes.Value(localityKey).(LocalityID)
+func GetLocalityID(addr resolver.Address) clients.Locality {
+	path, _ := addr.BalancerAttributes.Value(localityKey).(clients.Locality)
 	return path
 }
 
 // SetLocalityID sets locality ID in addr to l.
-func SetLocalityID(addr resolver.Address, l LocalityID) resolver.Address {
+func SetLocalityID(addr resolver.Address, l clients.Locality) resolver.Address {
 	addr.BalancerAttributes = addr.BalancerAttributes.WithValue(localityKey, l)
 	return addr
 }
 
 // SetLocalityIDInEndpoint sets locality ID in endpoint to l.
-func SetLocalityIDInEndpoint(endpoint resolver.Endpoint, l LocalityID) resolver.Endpoint {
+func SetLocalityIDInEndpoint(endpoint resolver.Endpoint, l clients.Locality) resolver.Endpoint {
 	endpoint.Attributes = endpoint.Attributes.WithValue(localityKey, l)
 	return endpoint
 }

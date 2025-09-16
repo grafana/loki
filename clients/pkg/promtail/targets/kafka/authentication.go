@@ -13,7 +13,7 @@ import (
 
 func createTLSConfig(cfg promconfig.TLSConfig) (*tls.Config, error) {
 	tc := &tls.Config{
-		InsecureSkipVerify: cfg.InsecureSkipVerify, //#nosec G402 -- User has explicitly requested to disable TLS
+		InsecureSkipVerify: cfg.InsecureSkipVerify, //#nosec G402 -- User has explicitly requested to disable TLS -- nosemgrep: tls-with-insecure-cipher
 		ServerName:         cfg.ServerName,
 	}
 	// load ca cert
@@ -51,11 +51,11 @@ type XDGSCRAMClient struct {
 }
 
 func (x *XDGSCRAMClient) Begin(userName, password, authzID string) (err error) {
-	x.Client, err = x.HashGeneratorFcn.NewClient(userName, password, authzID)
+	x.Client, err = x.NewClient(userName, password, authzID)
 	if err != nil {
 		return err
 	}
-	x.ClientConversation = x.Client.NewConversation()
+	x.ClientConversation = x.NewConversation()
 	return nil
 }
 

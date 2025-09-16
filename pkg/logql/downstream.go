@@ -414,6 +414,9 @@ func (e CountMinSketchEvalExpr) String() string {
 
 		sb.WriteString(d.String())
 	}
+	if len(e.downstreams) == 0 {
+		sb.WriteString(e.SampleExpr.String())
+	}
 	return fmt.Sprintf("CountMinSketchEval<%s>", sb.String())
 }
 
@@ -540,8 +543,8 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		for cur != nil {
 			qry := DownstreamQuery{
 				Params: ParamsWithExpressionOverride{
-					Params:             ParamOverridesFromShard(params, cur.DownstreamSampleExpr.shard),
-					ExpressionOverride: cur.DownstreamSampleExpr.SampleExpr,
+					Params:             ParamOverridesFromShard(params, cur.shard),
+					ExpressionOverride: cur.SampleExpr,
 				},
 			}
 			queries = append(queries, qry)
@@ -745,8 +748,8 @@ func (ev *DownstreamEvaluator) NewIterator(
 		for cur != nil {
 			qry := DownstreamQuery{
 				Params: ParamsWithExpressionOverride{
-					Params:             ParamOverridesFromShard(params, cur.DownstreamLogSelectorExpr.shard),
-					ExpressionOverride: cur.DownstreamLogSelectorExpr.LogSelectorExpr,
+					Params:             ParamOverridesFromShard(params, cur.shard),
+					ExpressionOverride: cur.LogSelectorExpr,
 				},
 			}
 			queries = append(queries, qry)

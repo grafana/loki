@@ -43,6 +43,10 @@ storage_config:
 chunk_store_config:
   write_dedupe_cache_config: "Write dedupe cache is deprecated along with deprecated index types. Consider using TSDB index which does not require a write dedupe cache."
 
+kafka_config:
+  address: "Use reader_config.address or writer_config.address instead."
+  client_id: "Use reader_config.client_id or writer_config.client_id instead."
+
 ## NOTE: This will also be used to validate per-tenant overrides.
 limits_config:
   unordered_writes: "Will be eventually removed."

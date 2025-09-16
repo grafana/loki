@@ -64,9 +64,9 @@ func newPageBuilder(opts BuilderOptions) (*pageBuilder, error) {
 	)
 
 	presenceEnc := newBitmapEncoder(presenceBuffer)
-	valuesEnc, ok := newValueEncoder(opts.Value, opts.Encoding, valuesWriter)
+	valuesEnc, ok := newValueEncoder(opts.Type.Physical, opts.Encoding, valuesWriter)
 	if !ok {
-		return nil, fmt.Errorf("no encoder available for %s/%s", opts.Value, opts.Encoding)
+		return nil, fmt.Errorf("no encoder available for %s/%s", opts.Type.Physical, opts.Encoding)
 	}
 
 	return &pageBuilder{
@@ -82,6 +82,20 @@ func newPageBuilder(opts BuilderOptions) (*pageBuilder, error) {
 	}, nil
 }
 
+// The function canAppend checks whether `n` values with a total value size of `valueSize` can be appended to the current page
+// based on the options [dataobj.BuilderOptions.PageMaxRowCount] and [dataobj.BuilderOptions.PageSizeHint].
+func (b *pageBuilder) canAppend(n, valueSize int) bool {
+	// In case multiple NULL values are appended (when backfilling rows), exceeding the PageMaxRowCount must be possible,
+	// otherwise it would never allow appending even in the 2nd iteration when the previous page was already flushed.
+	if b.opts.PageMaxRowCount > 0 && n <= b.opts.PageMaxRowCount && b.Rows()+n > b.opts.PageMaxRowCount {
+		return false
+	}
+	if sz := b.EstimatedSize(); b.opts.PageSizeHint > 0 && sz > 0 && sz+valueSize > b.opts.PageSizeHint {
+		return false
+	}
+	return true
+}
+
 // Append appends value into the pageBuilder. Append returns true if the data
 // was appended; false if the pageBuilder is full.
 func (b *pageBuilder) Append(value Value) bool {
@@ -95,7 +109,7 @@ func (b *pageBuilder) Append(value Value) bool {
 	//
 	// We use a rough estimate which will tend to overshoot the page size, making
 	// sure we rarely go over.
-	if sz := b.EstimatedSize(); sz > 0 && sz+valueSize(value) > b.opts.PageSizeHint {
+	if !b.canAppend(1, valueSize(value)) {
 		return false
 	}
 
@@ -121,12 +135,12 @@ func (b *pageBuilder) Append(value Value) bool {
 // AppendNull appends a NULL value to the Builder. AppendNull returns true if
 // the NULL was appended, or false if the Builder is full.
 func (b *pageBuilder) AppendNull() bool {
-	// See comment in Append for why we can only estimate the cost of appending a
+	// See comment in [pageBuilder.Append] for why we can only estimate the cost of appending a
 	// value.
 	//
 	// Here we assume appending a NULL costs one byte, but in reality most NULLs
 	// have no cost depending on the state of our bitmap encoder.
-	if sz := b.EstimatedSize(); sz > 0 && sz+1 > b.opts.PageSizeHint {
+	if !b.canAppend(1, 1) {
 		return false
 	}
 
@@ -150,7 +164,7 @@ func (b *pageBuilder) AppendNulls(n uint64) bool {
 	// - Bitpacking: 3-9 bytes total (2-8 byte header + 1 byte per 8 nulls)
 	//
 	// Using 4 bytes as a conservative average estimate.
-	if sz := b.EstimatedSize(); sz > 0 && sz+4 > b.opts.PageSizeHint {
+	if !b.canAppend(int(n), 4) {
 		return false
 	}
 
@@ -175,26 +189,26 @@ func (b *pageBuilder) updateMinMax(value Value) {
 	// We'll init minValue/maxValue if this is our first non-NULL value (b.values == 0).
 	// This allows us to only avoid comparing against NULL values, which would lead to
 	// NULL always being the min.
-	if b.values == 0 || CompareValues(value, b.minValue) < 0 {
+	if b.values == 0 || CompareValues(&value, &b.minValue) < 0 {
 		b.minValue = value
 	}
-	if b.values == 0 || CompareValues(value, b.maxValue) > 0 {
+	if b.values == 0 || CompareValues(&value, &b.maxValue) > 0 {
 		b.maxValue = value
 	}
 }
 
 func valueSize(v Value) int {
 	switch v.Type() {
-	case datasetmd.VALUE_TYPE_INT64:
+	case datasetmd.PHYSICAL_TYPE_INT64:
 		// Assuming that int64s are written as varints.
 		return streamio.VarintSize(v.Int64())
 
-	case datasetmd.VALUE_TYPE_UINT64:
+	case datasetmd.PHYSICAL_TYPE_UINT64:
 		// Assuming that uint64s are written as uvarints.
 		return streamio.UvarintSize(v.Uint64())
 
-	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
-		arr := v.ByteArray()
+	case datasetmd.PHYSICAL_TYPE_BINARY:
+		arr := v.Binary()
 		return binary.Size(len(arr)) + len(arr)
 	}
 
@@ -263,7 +277,7 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 	checksum := crc32.Checksum(finalData.Bytes(), checksumTable)
 
 	page := MemPage{
-		Info: PageInfo{
+		Desc: PageDesc{
 			UncompressedSize: headerSize + presenceSize + b.valuesWriter.BytesWritten(),
 			CompressedSize:   finalData.Len(),
 			CRC32:            checksum,
@@ -291,7 +305,6 @@ func (b *pageBuilder) buildStats() *datasetmd.Statistics {
 }
 
 func (b *pageBuilder) buildRangeStats(dst *datasetmd.Statistics) {
-
 	minValueBytes, err := b.minValue.MarshalBinary()
 	if err != nil {
 		panic(fmt.Sprintf("pageBuilder.buildStats: failed to marshal min value: %s", err))

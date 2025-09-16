@@ -24,7 +24,7 @@ import (
 
 // Buffer is a wrapper type for a buffer of bytes.
 type Buffer struct {
-	refCount int64
+	refCount atomic.Int64
 	buf      []byte
 	length   int
 	mutable  bool
@@ -42,22 +42,28 @@ type Buffer struct {
 // through the c data interface and tracking the lifetime of the
 // imported buffers.
 func NewBufferWithAllocator(data []byte, mem Allocator) *Buffer {
-	return &Buffer{refCount: 1, buf: data, length: len(data), mem: mem}
+	b := &Buffer{buf: data, length: len(data), mem: mem}
+	b.refCount.Add(1)
+	return b
 }
 
 // NewBufferBytes creates a fixed-size buffer from the specified data.
 func NewBufferBytes(data []byte) *Buffer {
-	return &Buffer{refCount: 0, buf: data, length: len(data)}
+	return &Buffer{buf: data, length: len(data)}
 }
 
 // NewResizableBuffer creates a mutable, resizable buffer with an Allocator for managing memory.
 func NewResizableBuffer(mem Allocator) *Buffer {
-	return &Buffer{refCount: 1, mutable: true, mem: mem}
+	b := &Buffer{mutable: true, mem: mem}
+	b.refCount.Add(1)
+	return b
 }
 
 func SliceBuffer(buf *Buffer, offset, length int) *Buffer {
 	buf.Retain()
-	return &Buffer{refCount: 1, parent: buf, buf: buf.Bytes()[offset : offset+length], length: length}
+	b := &Buffer{parent: buf, buf: buf.Bytes()[offset : offset+length], length: length}
+	b.refCount.Add(1)
+	return b
 }
 
 // Parent returns either nil or a pointer to the parent buffer if this buffer
@@ -67,7 +73,7 @@ func (b *Buffer) Parent() *Buffer { return b.parent }
 // Retain increases the reference count by 1.
 func (b *Buffer) Retain() {
 	if b.mem != nil || b.parent != nil {
-		atomic.AddInt64(&b.refCount, 1)
+		b.refCount.Add(1)
 	}
 }
 
@@ -75,9 +81,9 @@ func (b *Buffer) Retain() {
 // When the reference count goes to zero, the memory is freed.
 func (b *Buffer) Release() {
 	if b.mem != nil || b.parent != nil {
-		debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+		debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-		if atomic.AddInt64(&b.refCount, -1) == 0 {
+		if b.refCount.Add(-1) == 0 {
 			if b.mem != nil {
 				b.mem.Free(b.buf)
 			} else {

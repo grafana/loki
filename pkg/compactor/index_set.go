@@ -11,9 +11,13 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/compression"
+	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/storage"
@@ -166,7 +170,7 @@ func (is *indexSet) runRetention(tableMarker retention.TableMarker) error {
 		return nil
 	}
 
-	empty, modified, err := tableMarker.MarkForDelete(is.ctx, is.tableName, is.userID, is.compactedIndex, is.logger)
+	empty, modified, err := tableMarker.FindAndMarkChunksForDeletion(is.ctx, is.tableName, is.userID, is.compactedIndex, is.logger)
 	if err != nil {
 		return err
 	}
@@ -180,6 +184,74 @@ func (is *indexSet) runRetention(tableMarker retention.TableMarker) error {
 	}
 
 	return nil
+}
+
+func (is *indexSet) chunkExists(lbls labels.Labels, chunkRef logproto.ChunkRef) (bool, error) {
+	if is.compactedIndex == nil {
+		return false, fmt.Errorf("compacted index should be initialized before checking for existence of chunks")
+	}
+
+	userIDBytes := unsafeGetBytes(is.userID)
+	return is.compactedIndex.ChunkExists(userIDBytes, lbls, chunkRef)
+}
+
+// applyUpdates applies the given updates to the compacted index. Returns list of chunks which were not indexed due to their missing source chunks.
+func (is *indexSet) applyUpdates(labels labels.Labels, rebuiltChunks map[string]deletion.Chunk, chunksToDeIndex []string) ([]deletion.Chunk, error) {
+	if is.compactedIndex == nil {
+		return nil, fmt.Errorf("compacted index should be initialized before applying updates")
+	}
+
+	userIDBytes := unsafeGetBytes(is.userID)
+
+	chunksNotIndexed := make([]deletion.Chunk, 0, len(rebuiltChunks))
+	for chunkID, newChunk := range rebuiltChunks {
+		chk, err := chunk.ParseExternalKey(is.userID, chunkID)
+		if err != nil {
+			return nil, err
+		}
+
+		sourceChunkExisted, err := is.compactedIndex.RemoveChunk(chk.From, chk.Through, userIDBytes, labels, chunkID)
+		if err != nil {
+			return nil, err
+		}
+		if newChunk == nil {
+			// if we ended up removing the whole source chunk without building a new chunk, there is nothing to do further.
+			continue
+		}
+		if !sourceChunkExisted {
+			// if the source chunk was already removed from the index, we need not index the new chunk.
+			chunksNotIndexed = append(chunksNotIndexed, newChunk)
+			continue
+		}
+		_, err = is.compactedIndex.IndexChunk(logproto.ChunkRef{
+			Fingerprint: newChunk.GetFingerprint(),
+			UserID:      is.userID,
+			From:        newChunk.GetFrom(),
+			Through:     newChunk.GetThrough(),
+			Checksum:    newChunk.GetChecksum(),
+		}, labels, newChunk.GetSize(), newChunk.GetEntriesCount())
+		if err != nil {
+			return nil, err
+		}
+
+	}
+
+	for _, chunkID := range chunksToDeIndex {
+		chk, err := chunk.ParseExternalKey(is.userID, chunkID)
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = is.compactedIndex.RemoveChunk(chk.From, chk.Through, userIDBytes, labels, chunkID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	is.uploadCompactedDB = true
+	is.removeSourceObjects = true
+
+	return chunksNotIndexed, nil
 }
 
 // upload uploads the compacted index in compressed format.
@@ -280,7 +352,6 @@ func (is *indexSet) removeFilesFromStorage() error {
 }
 
 // done takes care of file operations which includes:
-// - recreate the compacted db if required.
 // - upload the compacted db if required.
 // - remove the source objects from storage if required.
 func (is *indexSet) done() error {

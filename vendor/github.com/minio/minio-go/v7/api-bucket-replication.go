@@ -20,7 +20,6 @@ package minio
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"encoding/xml"
 	"io"
 	"net/http"
@@ -28,6 +27,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/minio/minio-go/v7/internal/json"
 	"github.com/minio/minio-go/v7/pkg/replication"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 )
@@ -288,6 +288,42 @@ func (c *Client) GetBucketReplicationResyncStatus(ctx context.Context, bucketNam
 		return rinfo, err
 	}
 	return rinfo, nil
+}
+
+// CancelBucketReplicationResync cancels in progress replication resync
+func (c *Client) CancelBucketReplicationResync(ctx context.Context, bucketName string, tgtArn string) (id string, err error) {
+	// Input validation.
+	if err = s3utils.CheckValidBucketName(bucketName); err != nil {
+		return
+	}
+	// Get resources properly escaped and lined up before
+	// using them in http request.
+	urlValues := make(url.Values)
+	urlValues.Set("replication-reset-cancel", "")
+	if tgtArn != "" {
+		urlValues.Set("arn", tgtArn)
+	}
+	// Execute GET on bucket to get replication config.
+	resp, err := c.executeMethod(ctx, http.MethodPut, requestMetadata{
+		bucketName:  bucketName,
+		queryValues: urlValues,
+	})
+
+	defer closeResponse(resp)
+	if err != nil {
+		return id, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return id, httpRespToErrorResponse(resp, bucketName, "")
+	}
+	strBuf, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	id = string(strBuf)
+	return id, nil
 }
 
 // GetBucketReplicationMetricsV2 fetches bucket replication status metrics

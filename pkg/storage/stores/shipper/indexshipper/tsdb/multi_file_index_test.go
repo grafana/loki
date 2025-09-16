@@ -73,28 +73,28 @@ func TestMultiIndex(t *testing.T) {
 		expected := []ChunkRef{
 			{
 				User:        "fake",
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+				Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar"}`))),
 				Start:       0,
 				End:         3,
 				Checksum:    0,
 			},
 			{
 				User:        "fake",
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+				Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar"}`))),
 				Start:       1,
 				End:         4,
 				Checksum:    1,
 			},
 			{
 				User:        "fake",
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+				Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar"}`))),
 				Start:       2,
 				End:         5,
 				Checksum:    2,
 			},
 			{
 				User:        "fake",
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+				Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`))),
 				Start:       1,
 				End:         10,
 				Checksum:    3,
@@ -109,11 +109,11 @@ func TestMultiIndex(t *testing.T) {
 		expected := []Series{
 			{
 				Labels:      mustParseLabels(`{foo="bar"}`),
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar"}`).Hash()),
+				Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar"}`))),
 			},
 			{
 				Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
-				Fingerprint: model.Fingerprint(mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash()),
+				Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`))),
 			},
 		}
 

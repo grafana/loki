@@ -1,4 +1,4 @@
-package client // import "github.com/docker/docker/client"
+package client
 
 import (
 	"context"
@@ -9,10 +9,10 @@ import (
 	"net/http"
 	"net/url"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/distribution/reference"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/registry"
-	"github.com/docker/docker/errdefs"
 )
 
 // ImagePush requests the docker host to push an image to a remote registry.
@@ -52,7 +52,7 @@ func (cli *Client) ImagePush(ctx context.Context, image string, options image.Pu
 	}
 
 	resp, err := cli.tryImagePush(ctx, ref.Name(), query, options.RegistryAuth)
-	if errdefs.IsUnauthorized(err) && options.PrivilegeFunc != nil {
+	if cerrdefs.IsUnauthorized(err) && options.PrivilegeFunc != nil {
 		newAuthHeader, privilegeErr := options.PrivilegeFunc(ctx)
 		if privilegeErr != nil {
 			return nil, privilegeErr
@@ -66,7 +66,16 @@ func (cli *Client) ImagePush(ctx context.Context, image string, options image.Pu
 }
 
 func (cli *Client) tryImagePush(ctx context.Context, imageID string, query url.Values, registryAuth string) (*http.Response, error) {
-	return cli.post(ctx, "/images/"+imageID+"/push", query, nil, http.Header{
+	// Always send a body (which may be an empty JSON document ("{}")) to prevent
+	// EOF errors on older daemons which had faulty fallback code for handling
+	// authentication in the body when no auth-header was set, resulting in;
+	//
+	//	Error response from daemon: bad parameters and missing X-Registry-Auth: invalid X-Registry-Auth header: EOF
+	//
+	// We use [http.NoBody], which gets marshaled to an empty JSON document.
+	//
+	// see: https://github.com/moby/moby/commit/ea29dffaa541289591aa44fa85d2a596ce860e16
+	return cli.post(ctx, "/images/"+imageID+"/push", query, http.NoBody, http.Header{
 		registry.AuthHeader: {registryAuth},
 	})
 }

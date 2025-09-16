@@ -50,8 +50,10 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 	// Create two consumers using our Client wrapper
 	createConsumer := func(id string) *Client {
 		cfg := kafka.Config{
-			Address: addrs[0],
-			Topic:   "test-topic",
+			ReaderConfig: kafka.ClientConfig{
+				Address: addrs[0],
+			},
+			Topic: "test-topic",
 		}
 
 		// Track partition assignments for this consumer
@@ -69,16 +71,16 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 					assignedPartitions.Store(p, struct{}{})
 				}
 			}),
-			kgo.OnPartitionsRevoked(func(_ context.Context, _ *kgo.Client, revoked map[string][]int32) {
+			kgo.OnPartitionsRevoked(func(ctx context.Context, client *kgo.Client, revoked map[string][]int32) {
 				partitionsLock.Lock()
 				defer partitionsLock.Unlock()
 				t.Logf("%s revoked partitions: %v", id, revoked["test-topic"])
 				for _, p := range revoked["test-topic"] {
 					assignedPartitions.Delete(p)
 				}
-				// Wait for in-flight processing before revoking
-				t.Logf("%s waiting for in-flight processing before revoke...", id)
-				processingWg.Wait()
+
+				// Complete committing offsets before finishing the revoke
+				_ = client.CommitUncommittedOffsets(ctx)
 				t.Logf("%s completed revoke", id)
 			}),
 		)
@@ -222,8 +224,10 @@ func TestPartitionContinuityDuringRebalance(t *testing.T) {
 
 	createConsumer := func(id string) *Client {
 		cfg := kafka.Config{
-			Address: addrs[0],
-			Topic:   "test-topic",
+			ReaderConfig: kafka.ClientConfig{
+				Address: addrs[0],
+			},
+			Topic: "test-topic",
 		}
 
 		client, err := NewGroupClient(cfg, mockReader, "test-group", log.NewNopLogger(),

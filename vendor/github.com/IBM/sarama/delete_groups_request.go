@@ -5,6 +5,10 @@ type DeleteGroupsRequest struct {
 	Groups  []string
 }
 
+func (r *DeleteGroupsRequest) setVersion(v int16) {
+	r.Version = v
+}
+
 func (r *DeleteGroupsRequest) encode(pe packetEncoder) error {
 	return pe.putStringArray(r.Groups)
 }
@@ -15,7 +19,7 @@ func (r *DeleteGroupsRequest) decode(pd packetDecoder, version int16) (err error
 }
 
 func (r *DeleteGroupsRequest) key() int16 {
-	return 42
+	return apiKeyDeleteGroups
 }
 
 func (r *DeleteGroupsRequest) version() int16 {

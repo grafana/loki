@@ -231,6 +231,7 @@ ruler_remote_write_headers:
 				EnforcedLabels:            []string{},
 				PolicyEnforcedLabels:      map[string][]string{},
 				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
@@ -254,6 +255,7 @@ ruler_remote_write_headers:
 				EnforcedLabels:            []string{},
 				PolicyEnforcedLabels:      map[string][]string{},
 				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
@@ -281,6 +283,7 @@ retention_stream:
 				EnforcedLabels:            []string{},
 				PolicyEnforcedLabels:      map[string][]string{},
 				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
@@ -307,6 +310,7 @@ reject_old_samples: true
 				EnforcedLabels:            []string{},
 				PolicyEnforcedLabels:      map[string][]string{},
 				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
@@ -334,6 +338,7 @@ query_timeout: 5m
 				EnforcedLabels:            []string{},
 				PolicyEnforcedLabels:      map[string][]string{},
 				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
@@ -477,4 +482,161 @@ metric_aggregation_enabled: false
 			require.Equal(t, tc.expected, actual)
 		})
 	}
+}
+
+func Test_PatternPersistenceEnabled(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		yaml     string
+		expected bool
+	}{
+		{
+			name: "when true",
+			yaml: `
+pattern_persistence_enabled: true
+`,
+			expected: true,
+		},
+		{
+			name: "when false",
+			yaml: `
+pattern_persistence_enabled: false
+`,
+			expected: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			overrides := Overrides{
+				defaultLimits: &Limits{},
+			}
+			require.NoError(t, yaml.Unmarshal([]byte(tc.yaml), overrides.defaultLimits))
+
+			actual := overrides.PatternPersistenceEnabled("fake")
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func Test_PersistenceGranularity(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		yaml     string
+		expected time.Duration
+	}{
+		{
+			name: "when set to 5 minutes",
+			yaml: `
+pattern_persistence_granularity: 5m
+`,
+			expected: 5 * time.Minute,
+		},
+		{
+			name: "when set to 1 hour",
+			yaml: `
+pattern_persistence_granularity: 1h
+`,
+			expected: 1 * time.Hour,
+		},
+		{
+			name: "when set to zero",
+			yaml: `
+pattern_persistence_granularity: 0s
+`,
+			expected: 0,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			overrides := Overrides{
+				defaultLimits: &Limits{},
+			}
+			require.NoError(t, yaml.Unmarshal([]byte(tc.yaml), overrides.defaultLimits))
+
+			actual := overrides.PersistenceGranularity("fake")
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func Test_PatternRateThreshold(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		yaml     string
+		expected float64
+	}{
+		{
+			name:     "when using default value",
+			yaml:     ``,
+			expected: 1.0,
+		},
+		{
+			name: "when set to 2.5 samples per second",
+			yaml: `
+pattern_rate_threshold: 2.5
+`,
+			expected: 2.5,
+		},
+		{
+			name: "when set to 0.5 samples per second",
+			yaml: `
+pattern_rate_threshold: 0.5
+`,
+			expected: 0.5,
+		},
+		{
+			name: "when set to zero",
+			yaml: `
+pattern_rate_threshold: 0.0
+`,
+			expected: 0.0,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			overrides := Overrides{
+				defaultLimits: &Limits{PatternRateThreshold: 1.0},
+			}
+			require.NoError(t, yaml.Unmarshal([]byte(tc.yaml), overrides.defaultLimits))
+
+			actual := overrides.PatternRateThreshold("fake")
+			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func TestLimits_PolicyOverrideLimits(t *testing.T) {
+	limits := &Limits{
+		PolicyOverrideLimits: map[string]PolicyOverridableLimits{
+			"finance": {
+				MaxLocalStreamsPerUser:  100,
+				MaxGlobalStreamsPerUser: 1000,
+			},
+			"ops": {
+				MaxLocalStreamsPerUser:  50,
+				MaxGlobalStreamsPerUser: 500,
+			},
+		},
+	}
+
+	overrides := &Overrides{
+		defaultLimits: limits,
+		tenantLimits:  nil,
+	}
+
+	// Test policy-specific limits
+	require.Equal(t, 100, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "finance"))
+	require.Equal(t, 1000, overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance"))
+	require.Equal(t, 50, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "ops"))
+	require.Equal(t, 500, overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "ops"))
+
+	// Test non-existent policy returns 0
+	require.Equal(t, 0, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "nonexistent"))
+	require.Equal(t, 0, overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "nonexistent"))
+
+	// Test empty policy returns 0
+	require.Equal(t, 0, overrides.PolicyMaxLocalStreamsPerUser("tenant1", ""))
+	require.Equal(t, 0, overrides.PolicyMaxGlobalStreamsPerUser("tenant1", ""))
+
+	// Test nil PolicyOverrideLimits returns 0
+	limits.PolicyOverrideLimits = nil
+	require.Equal(t, 0, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "finance"))
+	require.Equal(t, 0, overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance"))
 }

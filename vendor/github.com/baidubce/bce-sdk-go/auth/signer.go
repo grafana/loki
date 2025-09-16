@@ -66,9 +66,9 @@ type BceV1Signer struct{}
 // Sign - generate the authorization string from the BceCredentials and SignOptions
 //
 // PARAMS:
-//     - req: *http.Request for this sign
-//     - cred: *BceCredentials to access the serice
-//     - opt: *SignOptions for this sign algorithm
+//   - req: *http.Request for this sign
+//   - cred: *BceCredentials to access the serice
+//   - opt: *SignOptions for this sign algorithm
 func (b *BceV1Signer) Sign(req *http.Request, cred *BceCredentials, opt *SignOptions) {
 	if req == nil {
 		log.Fatal("request should not be null for sign")
