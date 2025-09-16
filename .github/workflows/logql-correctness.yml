@@ -84,7 +84,7 @@ jobs:
           go test \
             -v -slow-tests \
             -run=TestStorageEquality/query=.+/kind=.+/store=${{ matrix.store }}$ \
-            ${{ matrix.range_type == instant && '-range-type=instant' || '' }} \
+            ${{ matrix.range_type == 'instant' && '-range-type=instant' || '' }} \
             ${{ inputs.failfast == true && '-failfast' || '' }} \
           | tee results/results.txt
         working-directory: ./pkg/logql/bench
