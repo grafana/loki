@@ -22,7 +22,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.BuilderConfig.RegisterFlagsWithPrefix(prefix, f)
 	f.IntVar(&cfg.EventsPerIndex, prefix+"events-per-index", 32, "Experimental: The number of events to batch before building an index")
-	f.DurationVar(&cfg.FlushInterval, prefix+"flush-interval", 10*time.Second, "Experimental: How often to check for stale partitions to flush")
-	f.DurationVar(&cfg.MaxIdleTime, prefix+"max-idle-time", 30*time.Second, "Experimental: Maximum time to wait before flushing buffered events")
-	f.IntVar(&cfg.MinFlushEvents, prefix+"min-flush-events", 1, "Experimental: Minimum number of events required to trigger a flush")
+	f.DurationVar(&cfg.FlushInterval, prefix+"flush-interval", 1*time.Minute, "Experimental: How often to check for stale partitions to flush")
+	f.DurationVar(&cfg.MaxIdleTime, prefix+"max-idle-time", 30*time.Minute, "Experimental: Maximum time to wait before flushing buffered events")
+	f.IntVar(&cfg.MinFlushEvents, prefix+"min-flush-events", 8, "Experimental: Minimum number of events required to trigger a flush")
 }
