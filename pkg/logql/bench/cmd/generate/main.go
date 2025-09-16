@@ -15,6 +15,8 @@ func main() {
 		dir         = flag.String("dir", "data", "Output directory")
 		tenantID    = flag.String("tenant", "test-tenant", "Tenant ID")
 		clearFolder = flag.Bool("clear", true, "Clear output directory before generating data")
+		partitions  = flag.Int("partitions", 8, "Number of partitions to distribute data across")
+		strategy    = flag.String("partitioning_strategy", "stream_hash", "Partitioning strategy: stream_hash or service_name")
 	)
 	flag.Parse()
 
@@ -32,13 +34,13 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Failed to create chunk store: %v\n", err)
 		os.Exit(1)
 	}
-	dataObjStore, err := bench.NewDataObjStore(*dir, *tenantID)
+	dataObjStore, err := bench.NewDataObjStore(*dir, *tenantID, *partitions, bench.PartitionStrategy(*strategy))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create dataobj store: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Create builder with default options and the store
+	// Create builder with both stores
 	builder := bench.NewBuilder(*dir, bench.DefaultOpt(), chunkStore, dataObjStore)
 
 	// Generate the data

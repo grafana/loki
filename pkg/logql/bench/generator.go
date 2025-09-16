@@ -73,11 +73,23 @@ type GeneratorConfig struct {
 	TimeSpread time.Duration
 	// DenseIntervals defines periods of high log density
 	// Each interval will have 10x more logs than normal periods
-	DenseIntervals []DenseInterval
-	LabelConfig    LabelConfig
-	NumStreams     int   // Number of streams to generate per batch
-	Seed           int64 // Source of randomness
+	DenseIntervals    []DenseInterval
+	LabelConfig       LabelConfig
+	NumStreams        int               // Number of streams to generate per batch
+	NumPartitions     int               // Number of partitions to distribute streams across
+	PartitionStrategy PartitionStrategy // Strategy for partitioning streams
+	Seed              int64             // Source of randomness
 }
+
+// PartitionStrategy defines how streams are distributed across partitions
+type PartitionStrategy string
+
+const (
+	// PartitionByStreamLabels distributes streams by their labels and tenant (default)
+	PartitionByStreamLabels PartitionStrategy = "stream_labels"
+	// PartitionByServiceName distributes streams by service_name label and tenant
+	PartitionByServiceName PartitionStrategy = "service_name"
+)
 
 // DenseInterval represents a period of high log volume
 type DenseInterval struct {
@@ -87,11 +99,13 @@ type DenseInterval struct {
 
 // Default generator configuration with sensible values
 var defaultGeneratorConfig = GeneratorConfig{
-	StartTime:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-	TimeSpread:  24 * time.Hour,
-	LabelConfig: defaultLabelConfig,
-	NumStreams:  250, // Default to 250 streams per batch
-	Seed:        1,   // Default to seed 1 for reproducibility
+	StartTime:         time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+	TimeSpread:        24 * time.Hour,
+	LabelConfig:       defaultLabelConfig,
+	NumStreams:        250,                     // Default to 250 streams per batch
+	NumPartitions:     10,                      // Default to 10 partitions
+	PartitionStrategy: PartitionByStreamLabels, // Default to stream labels partitioning
+	Seed:              1,                       // Default to seed 1 for reproducibility
 	DenseIntervals: []DenseInterval{
 		{
 			Start:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
@@ -125,12 +139,14 @@ type Generator struct {
 
 // Opt represents configuration options for the generator
 type Opt struct {
-	startTime      time.Time
-	timeSpread     time.Duration
-	denseIntervals []DenseInterval
-	labelConfig    LabelConfig
-	numStreams     int   // Number of streams to generate per batch
-	seed           int64 // Source of randomness
+	startTime         time.Time
+	timeSpread        time.Duration
+	denseIntervals    []DenseInterval
+	labelConfig       LabelConfig
+	numStreams        int               // Number of streams to generate per batch
+	numPartitions     int               // Number of partitions to distribute streams across
+	partitionStrategy PartitionStrategy // Strategy for partitioning streams
+	seed              int64             // Source of randomness
 }
 
 // WithStartTime sets the start time for log generation
@@ -182,15 +198,29 @@ func (o Opt) WithSeed(seed int64) Opt {
 	return o
 }
 
+// WithNumPartitions sets the number of partitions to distribute streams across
+func (o Opt) WithNumPartitions(n int) Opt {
+	o.numPartitions = n
+	return o
+}
+
+// WithPartitionStrategy sets the strategy for partitioning streams
+func (o Opt) WithPartitionStrategy(strategy PartitionStrategy) Opt {
+	o.partitionStrategy = strategy
+	return o
+}
+
 // DefaultOpt returns the default options
 func DefaultOpt() Opt {
 	return Opt{
-		startTime:      defaultGeneratorConfig.StartTime,
-		timeSpread:     defaultGeneratorConfig.TimeSpread,
-		denseIntervals: defaultGeneratorConfig.DenseIntervals,
-		labelConfig:    defaultGeneratorConfig.LabelConfig,
-		numStreams:     defaultGeneratorConfig.NumStreams,
-		seed:           1, // Default to seed 1 for reproducibility
+		startTime:         defaultGeneratorConfig.StartTime,
+		timeSpread:        defaultGeneratorConfig.TimeSpread,
+		denseIntervals:    defaultGeneratorConfig.DenseIntervals,
+		labelConfig:       defaultGeneratorConfig.LabelConfig,
+		numStreams:        defaultGeneratorConfig.NumStreams,
+		numPartitions:     defaultGeneratorConfig.NumPartitions,
+		partitionStrategy: defaultGeneratorConfig.PartitionStrategy,
+		seed:              1, // Default to seed 1 for reproducibility
 	}
 }
 
@@ -198,12 +228,14 @@ func DefaultOpt() Opt {
 func NewGenerator(opt Opt) *Generator {
 	g := &Generator{
 		config: GeneratorConfig{
-			StartTime:      opt.startTime,
-			TimeSpread:     opt.timeSpread,
-			DenseIntervals: opt.denseIntervals,
-			LabelConfig:    opt.labelConfig,
-			NumStreams:     opt.numStreams,
-			Seed:           opt.seed,
+			StartTime:         opt.startTime,
+			TimeSpread:        opt.timeSpread,
+			DenseIntervals:    opt.denseIntervals,
+			LabelConfig:       opt.labelConfig,
+			NumStreams:        opt.numStreams,
+			NumPartitions:     opt.numPartitions,
+			PartitionStrategy: opt.partitionStrategy,
+			Seed:              opt.seed,
 		},
 		rnd:  rand.New(rand.NewSource(opt.seed)),
 		apps: make(map[string]Application),
