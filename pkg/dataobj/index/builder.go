@@ -30,16 +30,16 @@ var ErrPartitionRevoked = errors.New("partition revoked")
 type triggerType string
 
 const (
-	triggerTypeAppend triggerType = "append"
-	triggerTypeFlush  triggerType = "flush"
+	triggerTypeAppend  triggerType = "append"
+	triggerTypeMaxIdle triggerType = "max-idle"
 )
 
 func (tt triggerType) String() string {
 	switch tt {
 	case triggerTypeAppend:
 		return "append"
-	case triggerTypeFlush:
-		return "flush"
+	case triggerTypeMaxIdle:
+		return "max-idle"
 	default:
 		return "unknown"
 	}
@@ -384,7 +384,7 @@ func (p *Builder) checkAndFlushStalePartitions(ctx context.Context) {
 }
 
 func (p *Builder) flushPartition(ctx context.Context, partition int32) {
-	calculationCtx, eventsToFlush := p.bufferAndTryProcess(ctx, partition, nil, triggerTypeFlush)
+	calculationCtx, eventsToFlush := p.bufferAndTryProcess(ctx, partition, nil, triggerTypeMaxIdle)
 	if len(eventsToFlush) == 0 {
 		return
 	}
@@ -398,7 +398,7 @@ func (p *Builder) flushPartition(ctx context.Context, partition int32) {
 			"partition", partition, "events", len(eventsToFlush))
 
 		// Submit to indexer service and wait for completion
-		records, err := p.indexer.submitBuild(calculationCtx, eventsToFlush, partition, triggerTypeFlush)
+		records, err := p.indexer.submitBuild(calculationCtx, eventsToFlush, partition, triggerTypeMaxIdle)
 		if err != nil {
 			if errors.Is(context.Cause(calculationCtx), ErrPartitionRevoked) {
 				level.Debug(p.logger).Log("msg", "partition revoked during flush", "partition", partition)
@@ -447,7 +447,7 @@ func (p *Builder) bufferAndTryProcess(ctx context.Context, partition int32, newE
 		if len(state.events) < p.cfg.EventsPerIndex {
 			return nil, nil
 		}
-	case triggerTypeFlush:
+	case triggerTypeMaxIdle:
 		if time.Since(state.lastActivity) < p.cfg.MaxIdleTime {
 			return nil, nil
 		}
