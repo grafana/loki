@@ -555,20 +555,8 @@ func TestOptimizer(t *testing.T) {
 		// Merge -> Scan1
 		// Merge -> Scan2
 		plan := &Plan{}
-		scan1 := plan.addNode(&DataObjScan{id: "scan1", Predicates: []Expression{
-			&BinaryExpr{
-				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-				Right: NewLiteral(time1000),
-				Op:    types.BinaryOpGt,
-			},
-		}})
-		scan2 := plan.addNode(&DataObjScan{id: "scan2", Predicates: []Expression{
-			&BinaryExpr{
-				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-				Right: NewLiteral(time1000),
-				Op:    types.BinaryOpGt,
-			},
-		}})
+		scan1 := plan.addNode(&DataObjScan{id: "scan1"})
+		scan2 := plan.addNode(&DataObjScan{id: "scan2"})
 		merge := plan.addNode(&SortMerge{id: "merge"})
 		filter := plan.addNode(&Filter{id: "filter", Predicates: []Expression{
 			&BinaryExpr{
@@ -583,19 +571,14 @@ func TestOptimizer(t *testing.T) {
 		_ = plan.addEdge(Edge{Parent: merge, Child: scan2})
 
 		optimizations := []*optimization{
-			newOptimization("predicate pushdown", plan).withRules(
-				&predicatePushdown{plan},
-			),
 			newOptimization("filter node pushdown", plan).withRules(
-				&filterNodePushdown{plan: plan, addedNodes: make(map[Node]struct{})},
+				newFilterNodePushdown(plan),
 			),
 		}
 
 		o := newOptimizer(plan, optimizations)
 		o.optimize(plan.Roots()[0])
 		actual := PrintAsTree(plan)
-
-		t.Logf("Optimized Plan:\n%s", actual)
 
 		// Merge -> Filter1
 		// Merge -> Filter2
@@ -608,7 +591,6 @@ func TestOptimizer(t *testing.T) {
 
 		filter1 := *(filter.(*Filter))
 		filter2 := *(filter.(*Filter))
-
 		optimized.addNode(&filter1)
 		optimized.addNode(&filter2)
 
@@ -616,8 +598,6 @@ func TestOptimizer(t *testing.T) {
 		_ = optimized.addEdge(Edge{Parent: merge, Child: &filter2})
 		_ = optimized.addEdge(Edge{Parent: &filter1, Child: scan1})
 		_ = optimized.addEdge(Edge{Parent: &filter2, Child: scan2})
-
-		t.Logf("Expected Plan:\n%s", PrintAsTree(optimized))
 
 		expected := PrintAsTree(optimized)
 		require.Equal(t, expected, actual)
@@ -651,15 +631,13 @@ func TestOptimizer(t *testing.T) {
 
 		optimizations := []*optimization{
 			newOptimization("filter node pushdown", plan).withRules(
-				&filterNodePushdown{plan: plan, addedNodes: make(map[Node]struct{})},
+				newFilterNodePushdown(plan),
 			),
 		}
 
 		o := newOptimizer(plan, optimizations)
 		o.optimize(plan.Roots()[0])
 		actual := PrintAsTree(plan)
-
-		t.Logf("Optimized Plan:\n%s", actual)
 
 		// Merge -> Filter1 -> Scan1
 		// Merge -> SortMerge -> Filter2 -> Scan2
@@ -671,34 +649,22 @@ func TestOptimizer(t *testing.T) {
 		optimized.addNode(sortMerge)
 		optimized.addNode(merge)
 
-		filter1 := &Filter{
-			id:         "filter",
-			Predicates: filter.(*Filter).Predicates,
-		}
-		filter2 := &Filter{
-			id:         "filter",
-			Predicates: filter.(*Filter).Predicates,
-		}
-		filter3 := &Filter{
-			id:         "filter",
-			Predicates: filter.(*Filter).Predicates,
-		}
-
-		optimized.addNode(filter1)
-		optimized.addNode(filter2)
-		optimized.addNode(filter3)
+		filter1 := *(filter.(*Filter))
+		filter2 := *(filter.(*Filter))
+		filter3 := *(filter.(*Filter))
+		optimized.addNode(&filter1)
+		optimized.addNode(&filter2)
+		optimized.addNode(&filter3)
 
 		_ = optimized.addEdge(Edge{Parent: merge, Child: sortMerge})
-		_ = optimized.addEdge(Edge{Parent: merge, Child: filter1})
-		_ = optimized.addEdge(Edge{Parent: sortMerge, Child: filter2})
-		_ = optimized.addEdge(Edge{Parent: sortMerge, Child: filter3})
-		_ = optimized.addEdge(Edge{Parent: filter1, Child: scan1})
-		_ = optimized.addEdge(Edge{Parent: filter2, Child: scan2})
-		_ = optimized.addEdge(Edge{Parent: filter3, Child: scan3})
-
-		t.Logf("Expected Plan:\n%s", PrintAsTree(optimized))
-
+		_ = optimized.addEdge(Edge{Parent: merge, Child: &filter1})
+		_ = optimized.addEdge(Edge{Parent: sortMerge, Child: &filter2})
+		_ = optimized.addEdge(Edge{Parent: sortMerge, Child: &filter3})
+		_ = optimized.addEdge(Edge{Parent: &filter1, Child: scan1})
+		_ = optimized.addEdge(Edge{Parent: &filter2, Child: scan2})
+		_ = optimized.addEdge(Edge{Parent: &filter3, Child: scan3})
 		expected := PrintAsTree(optimized)
+
 		require.Equal(t, expected, actual)
 	})
 
