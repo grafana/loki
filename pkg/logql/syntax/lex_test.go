@@ -264,11 +264,10 @@ func TestLex_DotsInLabelNames(t *testing.T) {
 		errorMsg   string
 	}{
 		{
-			name:       "dots in unquoted label name should fail",
+			name:       "dots in unquoted label name should work",
 			input:      `{service.name="product"}`,
 			expected:   []int{OPEN_BRACE, IDENTIFIER, DOT, IDENTIFIER, EQ, STRING, CLOSE_BRACE}, // This shows the lexer splits service.name into service and .name
-			shouldFail: true,
-			errorMsg:   "syntax error: unexpected ., expecting = or =~ or !~ or !=",
+			shouldFail: false,
 		},
 		{
 			name:       "quoted label name with dots should work",
@@ -280,8 +279,7 @@ func TestLex_DotsInLabelNames(t *testing.T) {
 			name:       "multiple dots in label name",
 			input:      `{user.profile.id="123"}`,
 			expected:   []int{OPEN_BRACE, IDENTIFIER, DOT, IDENTIFIER, DOT, IDENTIFIER, EQ, STRING, CLOSE_BRACE},
-			shouldFail: true,
-			errorMsg:   "syntax error: unexpected ., expecting = or =~ or !~ or !=",
+			shouldFail: false,
 		},
 		{
 			name:       "quoted multiple dots in label name",

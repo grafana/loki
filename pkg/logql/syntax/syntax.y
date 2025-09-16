@@ -59,7 +59,7 @@ import (
 %type <filter> filter
 %type <matcher> matcher
 %type <matchers> matchers selector
-%type <str> vector
+%type <str> vector labelName
 %type <strs> labels parserFlags
 %type <binOpts> binOpModifier boolModifier onOrIgnoringModifier
 %type <namedMatcher> namedMatcher
@@ -200,11 +200,17 @@ matchers:
     | matchers COMMA matcher           { $$ = append($1, $3) }
     ;
 
+labelName:
+      IDENTIFIER                       { $$ = $1 }
+    | IDENTIFIER DOT IDENTIFIER        { $$ = $1 + "." + $3 }
+    | labelName DOT IDENTIFIER         { $$ = $1 + "." + $3 }
+    ;
+
 matcher:
-      IDENTIFIER EQ STRING             { $$ = mustNewMatcher(labels.MatchEqual, $1, $3) }
-    | IDENTIFIER NEQ STRING            { $$ = mustNewMatcher(labels.MatchNotEqual, $1, $3) }
-    | IDENTIFIER RE STRING             { $$ = mustNewMatcher(labels.MatchRegexp, $1, $3) }
-    | IDENTIFIER NRE STRING            { $$ = mustNewMatcher(labels.MatchNotRegexp, $1, $3) }
+      labelName EQ STRING              { $$ = mustNewMatcher(labels.MatchEqual, $1, $3) }
+    | labelName NEQ STRING             { $$ = mustNewMatcher(labels.MatchNotEqual, $1, $3) }
+    | labelName RE STRING              { $$ = mustNewMatcher(labels.MatchRegexp, $1, $3) }
+    | labelName NRE STRING             { $$ = mustNewMatcher(labels.MatchNotRegexp, $1, $3) }
     | STRING EQ STRING                 { $$ = mustNewMatcher(labels.MatchEqual, $1, $3) }
     | STRING NEQ STRING                { $$ = mustNewMatcher(labels.MatchNotEqual, $1, $3) }
     | STRING RE STRING                 { $$ = mustNewMatcher(labels.MatchRegexp, $1, $3) }
@@ -290,8 +296,8 @@ lineFormatExpr: LINE_FMT STRING { $$ = newLineFmtExpr($2) };
 decolorizeExpr: DECOLORIZE { $$ = newDecolorizeExpr() };
 
 labelFormat:
-     IDENTIFIER EQ IDENTIFIER { $$ = log.NewRenameLabelFmt($1, $3)}
-  |  IDENTIFIER EQ STRING     { $$ = log.NewTemplateLabelFmt($1, $3)}
+     labelName EQ labelName { $$ = log.NewRenameLabelFmt($1, $3)}
+  |  labelName EQ STRING    { $$ = log.NewTemplateLabelFmt($1, $3)}
   ;
 
 labelsFormat:
@@ -316,8 +322,8 @@ labelFilter:
     ;
 
 labelExtractionExpression:
-    IDENTIFIER EQ STRING { $$ = log.NewLabelExtractionExpr($1, $3) }
-  | IDENTIFIER           { $$ = log.NewLabelExtractionExpr($1, $1) }
+    labelName EQ STRING { $$ = log.NewLabelExtractionExpr($1, $3) }
+  | labelName           { $$ = log.NewLabelExtractionExpr($1, $1) }
 
 labelExtractionExpressionList:
     labelExtractionExpression                                     { $$ = []log.LabelExtractionExpr{$1} }
@@ -325,8 +331,8 @@ labelExtractionExpressionList:
   ;
 
 ipLabelFilter:
-    IDENTIFIER EQ IP OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS { $$ = log.NewIPLabelFilter($5, $1,log.LabelFilterEqual) }
-  | IDENTIFIER NEQ IP OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS { $$ = log.NewIPLabelFilter($5, $1, log.LabelFilterNotEqual) }
+    labelName EQ IP OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS { $$ = log.NewIPLabelFilter($5, $1,log.LabelFilterEqual) }
+  | labelName NEQ IP OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS { $$ = log.NewIPLabelFilter($5, $1, log.LabelFilterNotEqual) }
   ;
 
 unitFilter:
@@ -334,37 +340,37 @@ unitFilter:
     | bytesFilter    { $$ = $1 }
 
 durationFilter:
-      IDENTIFIER GT DURATION      { $$ = log.NewDurationLabelFilter(log.LabelFilterGreaterThan, $1, $3) }
-    | IDENTIFIER GTE DURATION     { $$ = log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, $3) }
-    | IDENTIFIER LT DURATION      { $$ = log.NewDurationLabelFilter(log.LabelFilterLesserThan, $1, $3) }
-    | IDENTIFIER LTE DURATION     { $$ = log.NewDurationLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3) }
-    | IDENTIFIER NEQ DURATION     { $$ = log.NewDurationLabelFilter(log.LabelFilterNotEqual, $1, $3) }
-    | IDENTIFIER EQ DURATION      { $$ = log.NewDurationLabelFilter(log.LabelFilterEqual, $1, $3) }
-    | IDENTIFIER CMP_EQ DURATION  { $$ = log.NewDurationLabelFilter(log.LabelFilterEqual, $1, $3) }
+      labelName GT DURATION      { $$ = log.NewDurationLabelFilter(log.LabelFilterGreaterThan, $1, $3) }
+    | labelName GTE DURATION     { $$ = log.NewDurationLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, $3) }
+    | labelName LT DURATION      { $$ = log.NewDurationLabelFilter(log.LabelFilterLesserThan, $1, $3) }
+    | labelName LTE DURATION     { $$ = log.NewDurationLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3) }
+    | labelName NEQ DURATION     { $$ = log.NewDurationLabelFilter(log.LabelFilterNotEqual, $1, $3) }
+    | labelName EQ DURATION      { $$ = log.NewDurationLabelFilter(log.LabelFilterEqual, $1, $3) }
+    | labelName CMP_EQ DURATION  { $$ = log.NewDurationLabelFilter(log.LabelFilterEqual, $1, $3) }
     ;
 
 bytesFilter:
-      IDENTIFIER GT BYTES     { $$ = log.NewBytesLabelFilter(log.LabelFilterGreaterThan, $1, $3) }
-    | IDENTIFIER GTE BYTES    { $$ = log.NewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, $3) }
-    | IDENTIFIER LT BYTES     { $$ = log.NewBytesLabelFilter(log.LabelFilterLesserThan, $1, $3) }
-    | IDENTIFIER LTE BYTES    { $$ = log.NewBytesLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3) }
-    | IDENTIFIER NEQ BYTES    { $$ = log.NewBytesLabelFilter(log.LabelFilterNotEqual, $1, $3) }
-    | IDENTIFIER EQ BYTES     { $$ = log.NewBytesLabelFilter(log.LabelFilterEqual, $1, $3) }
-    | IDENTIFIER CMP_EQ BYTES { $$ = log.NewBytesLabelFilter(log.LabelFilterEqual, $1, $3) }
+      labelName GT BYTES     { $$ = log.NewBytesLabelFilter(log.LabelFilterGreaterThan, $1, $3) }
+    | labelName GTE BYTES    { $$ = log.NewBytesLabelFilter(log.LabelFilterGreaterThanOrEqual, $1, $3) }
+    | labelName LT BYTES     { $$ = log.NewBytesLabelFilter(log.LabelFilterLesserThan, $1, $3) }
+    | labelName LTE BYTES    { $$ = log.NewBytesLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3) }
+    | labelName NEQ BYTES    { $$ = log.NewBytesLabelFilter(log.LabelFilterNotEqual, $1, $3) }
+    | labelName EQ BYTES     { $$ = log.NewBytesLabelFilter(log.LabelFilterEqual, $1, $3) }
+    | labelName CMP_EQ BYTES { $$ = log.NewBytesLabelFilter(log.LabelFilterEqual, $1, $3) }
     ;
 
 numberFilter:
-      IDENTIFIER GT literalExpr      { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThan, $1,  $3.Val)}
-    | IDENTIFIER GTE literalExpr     { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, $1,$3.Val)}
-    | IDENTIFIER LT literalExpr      { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThan, $1, $3.Val)}
-    | IDENTIFIER LTE literalExpr     { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3.Val)}
-    | IDENTIFIER NEQ literalExpr     { $$ = log.NewNumericLabelFilter(log.LabelFilterNotEqual, $1, $3.Val)}
-    | IDENTIFIER EQ literalExpr      { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, $3.Val)}
-    | IDENTIFIER CMP_EQ literalExpr  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, $3.Val)}
+      labelName GT literalExpr      { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThan, $1,  $3.Val)}
+    | labelName GTE literalExpr     { $$ = log.NewNumericLabelFilter(log.LabelFilterGreaterThanOrEqual, $1,$3.Val)}
+    | labelName LT literalExpr      { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThan, $1, $3.Val)}
+    | labelName LTE literalExpr     { $$ = log.NewNumericLabelFilter(log.LabelFilterLesserThanOrEqual, $1, $3.Val)}
+    | labelName NEQ literalExpr     { $$ = log.NewNumericLabelFilter(log.LabelFilterNotEqual, $1, $3.Val)}
+    | labelName EQ literalExpr      { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, $3.Val)}
+    | labelName CMP_EQ literalExpr  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, $3.Val)}
     ;
 
 namedMatcher:
-      IDENTIFIER { $$ = log.NewNamedLabelMatcher(nil, $1) }
+      labelName { $$ = log.NewNamedLabelMatcher(nil, $1) }
     | matcher { $$ = log.NewNamedLabelMatcher($1, "") }
 
 namedMatchers:
@@ -515,8 +521,8 @@ offsetExpr:
     OFFSET DURATION { $$ = newOffsetExpr( $2 ) }
 
 labels:
-      IDENTIFIER                 { $$ = []string{ $1 } }
-    | labels COMMA IDENTIFIER    { $$ = append($1, $3) }
+      labelName                 { $$ = []string{ $1 } }
+    | labels COMMA labelName    { $$ = append($1, $3) }
     ;
 
 grouping:
