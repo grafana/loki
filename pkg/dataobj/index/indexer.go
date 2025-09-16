@@ -301,12 +301,6 @@ func (si *serialIndexer) processBuildRequest(req buildRequest) buildResult {
 		events[i] = buffered.event
 	}
 
-	// Extract records for committing
-	records := make([]*kgo.Record, len(req.events))
-	for i, buffered := range req.events {
-		records[i] = buffered.record
-	}
-
 	// Build the index using internal method
 	indexPath, err := si.buildIndex(req.ctx, events, req.partition)
 
@@ -323,6 +317,12 @@ func (si *serialIndexer) processBuildRequest(req buildRequest) buildResult {
 	level.Debug(si.logger).Log("msg", "successfully built index",
 		"partition", req.partition, "index_path", indexPath, "duration", buildTime,
 		"events", len(events))
+
+	// Extract records for committing
+	records := make([]*kgo.Record, len(req.events))
+	for i, buffered := range req.events {
+		records[i] = buffered.record
+	}
 
 	return buildResult{
 		indexPath: indexPath,
@@ -351,19 +351,6 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 			// Successfully sent event for download
 		case <-ctx.Done():
 			return "", ctx.Err()
-		default:
-			// Channel might be closed or full, check context first
-			select {
-			case <-ctx.Done():
-				return "", ctx.Err()
-			default:
-				// Try to send with context check
-				select {
-				case si.downloadQueue <- event:
-				case <-ctx.Done():
-					return "", ctx.Err()
-				}
-			}
 		}
 	}
 

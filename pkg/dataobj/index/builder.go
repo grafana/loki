@@ -106,7 +106,6 @@ type Builder struct {
 	logger             log.Logger
 	partitionsMutex    sync.Mutex
 	activeCalculations map[int32]context.CancelCauseFunc
-	calculationsMutex  sync.Mutex
 }
 
 func NewIndexBuilder(
@@ -217,12 +216,10 @@ func (p *Builder) handlePartitionsRevoked(_ context.Context, _ *kgo.Client, topi
 			delete(p.partitionStates, partition)
 
 			// Cancel any active calculations
-			p.calculationsMutex.Lock()
 			if cancel, exists := p.activeCalculations[partition]; exists {
 				cancel(ErrPartitionRevoked)
 				delete(p.activeCalculations, partition)
 			}
-			p.calculationsMutex.Unlock()
 		}
 	}
 }
@@ -289,15 +286,7 @@ func (p *Builder) running(ctx context.Context) error {
 }
 
 func (p *Builder) stopping(failureCase error) error {
-	// Cancel all active calculations
-	p.calculationsMutex.Lock()
-	for partition, cancel := range p.activeCalculations {
-		cancel(failureCase)
-		delete(p.activeCalculations, partition)
-	}
-	p.calculationsMutex.Unlock()
-
-	// Stop indexer service first
+	// Stop indexer service first - this handles calculation cleanup via context cancellation
 	p.indexer.StopAsync()
 	if err := p.indexer.AwaitTerminated(context.Background()); err != nil {
 		level.Error(p.logger).Log("msg", "failed to stop indexer service", "err", err)
@@ -364,12 +353,10 @@ func (p *Builder) cleanupPartition(partition int32) {
 	defer p.partitionsMutex.Unlock()
 
 	// Cancel active calculation for this partition
-	p.calculationsMutex.Lock()
 	if cancel, exists := p.activeCalculations[partition]; exists {
 		cancel(nil)
 		delete(p.activeCalculations, partition)
 	}
-	p.calculationsMutex.Unlock()
 
 	if state, ok := p.partitionStates[partition]; ok {
 		// Clear processed events and reset processing flag
@@ -385,7 +372,6 @@ func (p *Builder) checkAndFlushStalePartitions(ctx context.Context) {
 
 	for partition, state := range p.partitionStates {
 		if !state.isProcessing &&
-			len(state.events) >= p.cfg.MinFlushEvents &&
 			time.Since(state.lastActivity) >= p.cfg.MaxIdleTime {
 			partitionsToFlush = append(partitionsToFlush, partition)
 		}
@@ -462,9 +448,6 @@ func (p *Builder) bufferAndTryProcess(ctx context.Context, partition int32, newE
 			return nil, nil
 		}
 	case triggerTypeFlush:
-		if len(state.events) < p.cfg.MinFlushEvents {
-			return nil, nil
-		}
 		if time.Since(state.lastActivity) < p.cfg.MaxIdleTime {
 			return nil, nil
 		}
@@ -480,10 +463,7 @@ func (p *Builder) bufferAndTryProcess(ctx context.Context, partition int32, newE
 
 	// Set up cancellation context with proper coordination
 	calculationCtx, cancel := context.WithCancelCause(ctx)
-
-	p.calculationsMutex.Lock()
 	p.activeCalculations[partition] = cancel
-	p.calculationsMutex.Unlock()
 
 	level.Debug(p.logger).Log("msg", "started processing partition",
 		"partition", partition, "events", len(eventsToProcess), "trigger", trigger)

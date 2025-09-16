@@ -1163,10 +1163,6 @@ dataobj:
     # CLI flag: -dataobj-index-builder.max-idle-time
     [max_idle_time: <duration> | default = 30m]
 
-    # Experimental: Minimum number of events required to trigger a flush
-    # CLI flag: -dataobj-index-builder.min-flush-events
-    [min_flush_events: <int> | default = 8]
-
   metastore:
     # Experimental: A prefix to use for storing indexes in object storage. Used
     # for testing only.
