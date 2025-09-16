@@ -200,12 +200,10 @@ func (s *ReaderService) processConsumerLagAtStartup(ctx context.Context, logger 
 		return fmt.Errorf("failed to create consumer: %w", err)
 	}
 
-	cancelCtx, cancel := context.WithCancel(ctx)
 	recordsCh := make(chan []Record)
-	wait := consumer.Start(cancelCtx, recordsCh)
+	wait := consumer.Start(ctx, recordsCh)
 	defer func() {
 		close(recordsCh)
-		cancel()
 		wait()
 	}()
 
