@@ -33,7 +33,7 @@ type filteringBatchIter struct {
 
 func (f *filteringBatchIter) Next() bool {
 	for f.ReadBatchIterator.Next() {
-		rangeValue, value := f.ReadBatchIterator.RangeValue(), f.ReadBatchIterator.Value()
+		rangeValue, value := f.RangeValue(), f.Value()
 
 		if len(f.query.RangeValuePrefix) != 0 && !bytes.HasPrefix(rangeValue, f.query.RangeValuePrefix) {
 			continue

@@ -30,6 +30,9 @@ type BuilderOptions struct {
 	// PageSizeHint is the size of pages to use when encoding the logs section.
 	PageSizeHint int
 
+	// PageMaxRowCount is the maximum amount of rows of pages to use when encoding the logs section.
+	PageMaxRowCount int
+
 	// BufferSize is the size of the buffer to use when accumulating log records.
 	BufferSize int
 
@@ -139,7 +142,7 @@ func (b *Builder) flushRecords() {
 		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedFastest)},
 	}
 
-	stripe := buildTable(&b.stripeBuffer, b.opts.PageSizeHint, compressionOpts, b.records)
+	stripe := buildTable(&b.stripeBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records)
 	b.stripes = append(b.stripes, stripe)
 	b.stripesUncompressedSize += stripe.UncompressedSize()
 	b.stripesCompressedSize += stripe.CompressedSize()
@@ -157,7 +160,7 @@ func (b *Builder) flushSection() *table {
 		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedDefault)},
 	}
 
-	section, err := mergeTablesIncremental(&b.sectionBuffer, b.opts.PageSizeHint, compressionOpts, b.stripes, b.opts.StripeMergeLimit)
+	section, err := mergeTablesIncremental(&b.sectionBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.stripes, b.opts.StripeMergeLimit)
 	if err != nil {
 		// We control the input to mergeTables, so this should never happen.
 		panic(fmt.Sprintf("merging tables: %v", err))
