@@ -23,6 +23,24 @@ import (
 	"github.com/pkg/errors"
 )
 
+// isValidContainerID checks that the container ID is a single component and matches Docker's expected format.
+func isValidContainerID(id string) bool {
+	// Disallow path separators and parent directory references
+	if strings.Contains(id, "/") || strings.Contains(id, "\\") || strings.Contains(id, "..") {
+		return false
+	}
+	// Docker container IDs are typically 64 hex characters, but allow shorter for flexibility
+	if len(id) < 12 || len(id) > 64 {
+		return false
+	}
+	for _, c := range id {
+		if !((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || (c >= '0' && c <= '9')) {
+			return false
+		}
+	}
+	return true
+}
+
 type driver struct {
 	mu     sync.Mutex
 	logs   map[string]*logPair
@@ -66,6 +84,10 @@ func newDriver(logger log.Logger) *driver {
 }
 
 func (d *driver) StartLogging(file string, logCtx logger.Info) error {
+	// Validate ContainerID to prevent path traversal
+	if !isValidContainerID(logCtx.ContainerID) {
+		return fmt.Errorf("invalid container id: %q", logCtx.ContainerID)
+	}
 	d.mu.Lock()
 	if _, exists := d.logs[file]; exists {
 		d.mu.Unlock()
