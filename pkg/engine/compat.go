@@ -70,6 +70,7 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 	var entry logproto.Entry
 	lbs := labels.NewBuilder(labels.EmptyLabels())
 	metadata := labels.NewBuilder(labels.EmptyLabels())
+	parsed := labels.NewBuilder(labels.EmptyLabels())
 
 	for colIdx := range int(rec.NumCols()) {
 		col := rec.Column(colIdx)
@@ -115,10 +116,21 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 			}
 			continue
 		}
+
+		// Extract metadata
+		if colType == types.ColumnTypeParsed.String() {
+			switch arr := col.(type) {
+			case *array.String:
+				parsed.Set(colName, arr.Value(i))
+				// include parsed metadata in stream labels
+				lbs.Set(colName, arr.Value(i))
+			}
+			continue
+		}
 	}
 	entry.StructuredMetadata = logproto.FromLabelsToLabelAdapters(metadata.Labels())
 	// set to a non-nil value to match with existing engine.
-	entry.Parsed = logproto.FromLabelsToLabelAdapters(labels.Labels{})
+	entry.Parsed = logproto.FromLabelsToLabelAdapters(parsed.Labels())
 
 	return lbs.Labels(), entry
 }
