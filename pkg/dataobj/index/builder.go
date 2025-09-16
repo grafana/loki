@@ -298,7 +298,7 @@ func (p *Builder) stopping(failureCase error) error {
 	}
 	p.wg.Wait()
 	p.client.Close()
-	return nil
+	return failureCase
 }
 
 // processRecord processes a single record. It is not safe for concurrent use.
