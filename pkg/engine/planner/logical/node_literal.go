@@ -24,7 +24,7 @@ func NewLiteral(value datatype.LiteralType) *Literal {
 
 // Kind returns the kind of value represented by the literal.
 func (l Literal) Kind() datatype.DataType {
-	return l.Literal.Type()
+	return l.Type()
 }
 
 // Name returns the string form of the literal.
@@ -40,7 +40,7 @@ func (l Literal) String() string {
 
 // Value returns lit's value as untyped interface{}.
 func (l Literal) Value() any {
-	return l.Literal.Any()
+	return l.Any()
 }
 
 func (l *Literal) Schema() *schema.Schema {
