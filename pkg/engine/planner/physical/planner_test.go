@@ -34,8 +34,11 @@ func TestMockCatalog(t *testing.T) {
 	timeEnd := timeStart.Add(time.Second * 10)
 	catalog := &catalog{
 		sectionDescriptors: []*metastore.DataobjSectionDescriptor{
-			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 3}, StreamIDs: []int64{1, 2}, Start: timeStart, End: timeEnd},
-			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 2}, StreamIDs: []int64{3, 4}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0}, StreamIDs: []int64{1, 2}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 1}, StreamIDs: []int64{1, 2}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 2}, StreamIDs: []int64{1, 2}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 0}, StreamIDs: []int64{3, 4}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 1}, StreamIDs: []int64{3, 4}, Start: timeStart, End: timeEnd},
 		},
 	}
 	for _, tt := range []struct {
@@ -45,20 +48,26 @@ func TestMockCatalog(t *testing.T) {
 		{
 			shard: ShardInfo{0, 1},
 			expDescriptors: []FilteredShardDescriptor{
-				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0, 1, 2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
-				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{0, 1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 			},
 		},
 		{
 			shard: ShardInfo{0, 4},
 			expDescriptors: []FilteredShardDescriptor{
 				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
-				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 			},
 		},
 		{
-			shard:          ShardInfo{1, 4},
-			expDescriptors: []FilteredShardDescriptor{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
+			shard: ShardInfo{1, 4},
+			expDescriptors: []FilteredShardDescriptor{
+				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+			},
 		},
 		{
 			shard:          ShardInfo{2, 4},
@@ -66,7 +75,7 @@ func TestMockCatalog(t *testing.T) {
 		},
 		{
 			shard:          ShardInfo{3, 4},
-			expDescriptors: []FilteredShardDescriptor{{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
+			expDescriptors: []FilteredShardDescriptor{},
 		},
 	} {
 		t.Run("shard "+tt.shard.String(), func(t *testing.T) {
@@ -115,10 +124,15 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 	catalog := &catalog{
 		sectionDescriptors: []*metastore.DataobjSectionDescriptor{
 			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0}, StreamIDs: []int64{1, 2}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 1}, StreamIDs: []int64{1, 2}, Start: timeStart, End: timeEnd},
 			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 0}, StreamIDs: []int64{3, 4}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 1}, StreamIDs: []int64{3, 4}, Start: timeStart, End: timeEnd},
 			{SectionKey: metastore.SectionKey{ObjectPath: "obj3", SectionIdx: 0}, StreamIDs: []int64{5, 1}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj3", SectionIdx: 1}, StreamIDs: []int64{5, 1}, Start: timeStart, End: timeEnd},
 			{SectionKey: metastore.SectionKey{ObjectPath: "obj4", SectionIdx: 0}, StreamIDs: []int64{2, 3}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj4", SectionIdx: 1}, StreamIDs: []int64{2, 3}, Start: timeStart, End: timeEnd},
 			{SectionKey: metastore.SectionKey{ObjectPath: "obj5", SectionIdx: 0}, StreamIDs: []int64{4, 5}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj5", SectionIdx: 1}, StreamIDs: []int64{4, 5}, Start: timeStart, End: timeEnd},
 		},
 	}
 	planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
@@ -155,23 +169,23 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 		},
 		{
 			shard:       logical.NewShard(0, 4), // shard 1 of 4
-			expPaths:    []string{"obj1", "obj3", "obj5"},
-			expSections: [][]int{{0}, {0}, {0}},
+			expPaths:    []string{"obj1", "obj2", "obj3", "obj4", "obj5"},
+			expSections: [][]int{{0}, {0}, {0}, {0}, {0}},
 		},
 		{
 			shard:       logical.NewShard(1, 4), // shard 2 of 4
-			expPaths:    []string{"obj1", "obj3", "obj5"},
-			expSections: [][]int{{1}, {1}, {1}},
+			expPaths:    []string{"obj1", "obj2", "obj3", "obj4", "obj5"},
+			expSections: [][]int{{1}, {1}, {1}, {1}, {1}},
 		},
 		{
 			shard:       logical.NewShard(2, 4), // shard 3 of 4
-			expPaths:    []string{"obj2", "obj4"},
-			expSections: [][]int{{0}, {0}},
+			expPaths:    []string{},
+			expSections: [][]int{},
 		},
 		{
 			shard:       logical.NewShard(3, 4), // shard 4 of 4
-			expPaths:    []string{"obj2", "obj4"},
-			expSections: [][]int{{1}, {1}},
+			expPaths:    []string{},
+			expSections: [][]int{},
 		},
 	} {
 		t.Run("shard "+tt.shard.String(), func(t *testing.T) {
