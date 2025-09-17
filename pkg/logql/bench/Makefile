@@ -24,9 +24,6 @@ run-debug:
 stream:
 	@go run ./cmd/stream/main.go | less
 
-correctness:
-	@go test -v -slow-tests -run=TestStorageEquality/query=.+/kind=.+/store=datobj-engine$ -failfast
-
 grafana:
 	@echo "Starting Grafana with Loki datasource..."
 	@docker run -d \
