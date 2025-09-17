@@ -1507,6 +1507,10 @@ singleBinary:
     whenDeleted: Delete
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: true
+    # -- Enable StatefulSetRecreation for changes to PVC size.
+    # This means that the StatefulSet will be deleted, recreated (with the same name) and rolled when a change to the
+    # PVC size is detected. That way the PVC can be resized without manual intervention.
+    enableStatefulSetRecreationForSizeChange: false
     # -- Enable persistent disk
     enabled: true
     # -- Set access modes on the PersistentVolumeClaim
