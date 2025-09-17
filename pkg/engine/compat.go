@@ -121,7 +121,7 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 		if colType == types.ColumnTypeParsed.String() {
 			switch arr := col.(type) {
 			case *array.String:
-        // TODO: keep errors if --strict is set
+				// TODO: keep errors if --strict is set
 				if colName == "__error__" || colName == "__error_details__" {
 					continue
 				}
