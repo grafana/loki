@@ -95,6 +95,12 @@ func tokenizeLogfmt(input string, requestedKeys []string) (map[string]string, er
 			}
 		}
 
+		val := decoder.Value()
+		if len(val) == 0 {
+			// TODO: retain empty values if --keep-empty is set.
+			continue
+		}
+
 		// Last-wins semantics for duplicates
 		result[key] = unsafeString(decoder.Value())
 	}
