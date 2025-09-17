@@ -117,13 +117,15 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 			continue
 		}
 
-		// Extract metadata
+		// Extract parsed labels
 		if colType == types.ColumnTypeParsed.String() {
 			switch arr := col.(type) {
 			case *array.String:
 				parsed.Set(colName, arr.Value(i))
-				// include parsed metadata in stream labels
+				// include parsed labels in stream labels
 				lbs.Set(colName, arr.Value(i))
+
+				// remove metadata label with matching name as parsed label takes precedence.
 				if metadata.Get(colName) != "" {
 					metadata.Del(colName)
 				}
