@@ -481,14 +481,14 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		scan3 := expectedPlan.addNode(&DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, Direction: ASC})
 		scan4 := expectedPlan.addNode(&DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, Direction: ASC})
 
-		expectedPlan.addEdge(Edge{Parent: merge, Child: sortMerge1})
-		expectedPlan.addEdge(Edge{Parent: merge, Child: sortMerge2})
+		_ = expectedPlan.addEdge(Edge{Parent: merge, Child: sortMerge1})
+		_ = expectedPlan.addEdge(Edge{Parent: merge, Child: sortMerge2})
 
 		// Sort merges should be added in the order of the scan timestamps
-		expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan4})
-		expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan3})
-		expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan1})
-		expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan2})
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan4})
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan3})
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan1})
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan2})
 
 		actual := PrintAsTree(plan)
 		expected := PrintAsTree(expectedPlan)
@@ -514,14 +514,14 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		scan3 := expectedPlan.addNode(&DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, Direction: DESC})
 		scan4 := expectedPlan.addNode(&DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, Direction: DESC})
 
-		expectedPlan.addEdge(Edge{Parent: merge, Child: sortMerge1})
-		expectedPlan.addEdge(Edge{Parent: merge, Child: sortMerge2})
+		_ = expectedPlan.addEdge(Edge{Parent: merge, Child: sortMerge1})
+		_ = expectedPlan.addEdge(Edge{Parent: merge, Child: sortMerge2})
 
 		// Sort merges should be added in the order of the scan timestamps
-		expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan1})
-		expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan2})
-		expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan4})
-		expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan3})
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan1})
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan2})
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan4})
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan3})
 
 		actual := PrintAsTree(plan)
 		expected := PrintAsTree(expectedPlan)
