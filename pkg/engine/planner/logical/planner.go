@@ -76,6 +76,16 @@ func buildPlanForLogQuery(
 			// which would lead to multiple predicates of the same expression.
 			return false // do not traverse children
 		case *syntax.LogfmtParserExpr:
+			// TODO: support --strict and --keep-empty
+			if e.Strict {
+				err = errUnimplemented
+				return false
+			}
+			if e.KeepEmpty {
+				err = errUnimplemented
+				return false
+			}
+
 			hasLogfmtParser = true
 			return true // continue traversing to find label filters
 		case *syntax.LabelFilterExpr:
