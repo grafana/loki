@@ -122,7 +122,9 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 			switch arr := col.(type) {
 			case *array.String:
 				// TODO: keep errors if --strict is set
-				if colName == "__error__" || colName == "__error_details__" {
+				// These are reserved column names used to track parsing errors. We are dropping them until
+				// we add support for --strict parsing.
+				if colName == types.ColumnNameParsedError || colName == types.ColumnNameParsedErrorDetails {
 					continue
 				}
 

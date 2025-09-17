@@ -8,6 +8,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 )
 
@@ -47,9 +48,9 @@ func parseKeys(input *array.String, requestedKeys []string, columnBuilders map[s
 			if !hasErrorColumns {
 				errorBuilder = array.NewStringBuilder(allocator)
 				errorDetailsBuilder = array.NewStringBuilder(allocator)
-				columnBuilders["__error__"] = errorBuilder
-				columnBuilders["__error_details__"] = errorDetailsBuilder
-				columnOrder = append(columnOrder, "__error__", "__error_details__")
+				columnBuilders[types.ColumnNameParsedError] = errorBuilder
+				columnBuilders[types.ColumnNameParsedErrorDetails] = errorDetailsBuilder
+				columnOrder = append(columnOrder, types.ColumnNameParsedError, types.ColumnNameParsedErrorDetails)
 				hasErrorColumns = true
 
 				// Backfill NULLs for previous rows
@@ -59,7 +60,7 @@ func parseKeys(input *array.String, requestedKeys []string, columnBuilders map[s
 				}
 			}
 			// Append error values
-			errorBuilder.Append("LogfmtParserErr")
+			errorBuilder.Append(types.LogfmtParserErrorType)
 			errorDetailsBuilder.Append(err.Error())
 		} else if hasErrorColumns {
 			// No error on this row, but we have error columns
@@ -71,8 +72,8 @@ func parseKeys(input *array.String, requestedKeys []string, columnBuilders map[s
 		seenKeys := make(map[string]bool)
 		if hasErrorColumns {
 			// Mark error columns as seen so we don't append nulls for them
-			seenKeys["__error__"] = true
-			seenKeys["__error_details__"] = true
+			seenKeys[types.ColumnNameParsedError] = true
+			seenKeys[types.ColumnNameParsedErrorDetails] = true
 		}
 
 		// Add values for parsed keys

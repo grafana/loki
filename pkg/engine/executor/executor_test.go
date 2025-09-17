@@ -203,9 +203,9 @@ func TestNewParsePipeline(t *testing.T) {
 			requestedKeys:  []string{"level", "status"},
 			expectedFields: 5, // 5 columns: message, level, status, __error__, __error_details__
 			expectedOutput: arrowtest.Rows{
-				{"message": "level=info status=200", "level": "info", "status": "200", "__error__": nil, "__error_details__": nil},
-				{"message": "status==value level=error", "level": nil, "status": nil, "__error__": "LogfmtParserErr", "__error_details__": "logfmt syntax error at pos 8 : unexpected '='"},
-				{"message": "level=\"unclosed status=500", "level": nil, "status": nil, "__error__": "LogfmtParserErr", "__error_details__": "logfmt syntax error at pos 27 : unterminated quoted value"},
+				{"message": "level=info status=200", "level": "info", "status": "200", types.ColumnNameParsedError: nil, types.ColumnNameParsedErrorDetails: nil},
+				{"message": "status==value level=error", "level": nil, "status": nil, types.ColumnNameParsedError: types.LogfmtParserErrorType, types.ColumnNameParsedErrorDetails: "logfmt syntax error at pos 8 : unexpected '='"},
+				{"message": "level=\"unclosed status=500", "level": nil, "status": nil, types.ColumnNameParsedError: types.LogfmtParserErrorType, types.ColumnNameParsedErrorDetails: "logfmt syntax error at pos 27 : unterminated quoted value"},
 			},
 		},
 		{
@@ -240,10 +240,10 @@ func TestNewParsePipeline(t *testing.T) {
 			requestedKeys:  nil, // nil means extract all keys
 			expectedFields: 6,   // 6 columns: message, level, method, status, __error__, __error_details__
 			expectedOutput: arrowtest.Rows{
-				{"message": "level=info status=200 method=GET", "level": "info", "method": "GET", "status": "200", "__error__": nil, "__error_details__": nil},
-				{"message": "level==error code=500", "level": nil, "method": nil, "status": nil, "__error__": "LogfmtParserErr", "__error_details__": "logfmt syntax error at pos 7 : unexpected '='"},
-				{"message": "msg=\"unclosed duration=100ms code=400", "level": nil, "method": nil, "status": nil, "__error__": "LogfmtParserErr", "__error_details__": "logfmt syntax error at pos 38 : unterminated quoted value"},
-				{"message": "level=debug method=POST", "level": "debug", "method": "POST", "status": nil, "__error__": nil, "__error_details__": nil},
+				{"message": "level=info status=200 method=GET", "level": "info", "method": "GET", "status": "200", types.ColumnNameParsedError: nil, types.ColumnNameParsedErrorDetails: nil},
+				{"message": "level==error code=500", "level": nil, "method": nil, "status": nil, types.ColumnNameParsedError: types.LogfmtParserErrorType, types.ColumnNameParsedErrorDetails: "logfmt syntax error at pos 7 : unexpected '='"},
+				{"message": "msg=\"unclosed duration=100ms code=400", "level": nil, "method": nil, "status": nil, types.ColumnNameParsedError: types.LogfmtParserErrorType, types.ColumnNameParsedErrorDetails: "logfmt syntax error at pos 38 : unterminated quoted value"},
+				{"message": "level=debug method=POST", "level": "debug", "method": "POST", "status": nil, types.ColumnNameParsedError: nil, types.ColumnNameParsedErrorDetails: nil},
 			},
 		},
 	} {
