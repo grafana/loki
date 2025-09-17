@@ -261,6 +261,139 @@ func TestPlanner_Convert(t *testing.T) {
 	t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
 }
 
+func TestPlanner_Convert_WithParse(t *testing.T) {
+	t.Run("Build a query plan for a log query with Parse", func(t *testing.T) {
+		// Build a query plan with Parse:
+		// { app="users" } | logfmt | level="error"
+		b := logical.NewBuilder(
+			&logical.MakeTable{
+				Selector: &logical.BinOp{
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+					Right: logical.NewLiteral("users"),
+					Op:    types.BinaryOpEq,
+				},
+				Shard: logical.NewShard(0, 1),
+			},
+		).Parse(
+			logical.ParserLogfmt,
+		).Select(
+			&logical.BinOp{
+				Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
+				Right: logical.NewLiteral("error"),
+				Op:    types.BinaryOpEq,
+			},
+		)
+
+		logicalPlan, err := b.ToPlan()
+		require.NoError(t, err)
+
+		catalog := &catalog{
+			streamsByObject: map[string]objectMeta{
+				"obj1": {streamIDs: []int64{1, 2}, sections: 1},
+			},
+		}
+		planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
+
+		physicalPlan, err := planner.Build(logicalPlan)
+		t.Logf("Physical plan\n%s\n", PrintAsTree(physicalPlan))
+		require.NoError(t, err)
+
+		// Verify ParseNode exists in correct position
+		root, err := physicalPlan.Root()
+		require.NoError(t, err)
+
+		// Physical plan is built bottom up, so it should be Filter -> ParseNode -> ...
+		filterNode, ok := root.(*Filter)
+		require.True(t, ok, "Root should be Filter")
+
+		children := physicalPlan.Children(filterNode)
+		require.Len(t, children, 1)
+
+		parseNode, ok := children[0].(*ParseNode)
+		require.True(t, ok, "Filter's child should be ParseNode")
+		require.Equal(t, ParserLogfmt, parseNode.Kind)
+		require.Empty(t, parseNode.RequestedKeys)
+
+		physicalPlan, err = planner.Optimize(physicalPlan)
+		t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+		require.NoError(t, err)
+
+		// For log queries, parse nodes should request all keys (nil)
+		require.Nil(t, parseNode.RequestedKeys)
+	})
+
+	t.Run("Build a query plan for a metric query with Parse", func(t *testing.T) {
+		// Build a metric query plan with Parse:
+		// count_over_time({ app="users" } | logfmt | level="error" [5m])
+		start := time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC)
+		end := time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC)
+
+		b := logical.NewBuilder(
+			&logical.MakeTable{
+				Selector: &logical.BinOp{
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+					Right: logical.NewLiteral("users"),
+					Op:    types.BinaryOpEq,
+				},
+				Shard: logical.NewShard(0, 1),
+			},
+		).Parse(
+			logical.ParserLogfmt,
+		).Select(
+			&logical.BinOp{
+				Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
+				Right: logical.NewLiteral("error"),
+				Op:    types.BinaryOpEq,
+			},
+		).RangeAggregation(
+			[]logical.ColumnRef{*logical.NewColumnRef("level", types.ColumnTypeAmbiguous)},
+			types.RangeAggregationTypeCount,
+			start,         // Start time
+			end,           // End time
+			time.Minute,   // Step
+			5*time.Minute, // Range interval
+		)
+
+		logicalPlan, err := b.ToPlan()
+		require.NoError(t, err)
+
+		catalog := &catalog{
+			streamsByObject: map[string]objectMeta{
+				"obj1": {streamIDs: []int64{1, 2}, sections: 1},
+			},
+		}
+		planner := NewPlanner(NewContext(start, end), catalog)
+
+		physicalPlan, err := planner.Build(logicalPlan)
+		t.Logf("Physical plan\n%s\n", PrintAsTree(physicalPlan))
+		require.NoError(t, err)
+
+		// Find ParseNode in the plan
+		var parseNode *ParseNode
+		visitor := &nodeCollectVisitor{
+			onVisitParse: func(node *ParseNode) error {
+				parseNode = node
+				return nil
+			},
+		}
+		root, err := physicalPlan.Root()
+		require.NoError(t, err)
+		err = physicalPlan.DFSWalk(root, visitor, PreOrderWalk)
+		require.NoError(t, err)
+		require.NotNil(t, parseNode, "ParseNode should exist in the plan")
+
+		require.Equal(t, ParserLogfmt, parseNode.Kind)
+		require.Empty(t, parseNode.RequestedKeys) // Before optimization
+
+		physicalPlan, err = planner.Optimize(physicalPlan)
+		t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+		require.NoError(t, err)
+
+		// For metric queries, parse nodes should request specific keys used in aggregations
+		require.Equal(t, []string{"level"}, parseNode.RequestedKeys)
+	})
+}
+
 func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 	// logical plan for count_over_time({ app="users" } | age > 21[5m])
 	b := logical.NewBuilder(
