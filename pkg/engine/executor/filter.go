@@ -88,11 +88,6 @@ func filterBatch(batch arrow.Record, include func(int) bool) arrow.Record {
 			builder := array.NewBooleanBuilder(mem)
 			builders[i] = builder
 			additions[i] = func(offset int) {
-				if batch.Column(i).IsNull(offset) {
-					builder.AppendNull()
-					return
-				}
-
 				src := batch.Column(i).(*array.Boolean)
 				builder.Append(src.Value(offset))
 			}
@@ -101,11 +96,6 @@ func filterBatch(batch arrow.Record, include func(int) bool) arrow.Record {
 			builder := array.NewStringBuilder(mem)
 			builders[i] = builder
 			additions[i] = func(offset int) {
-				if batch.Column(i).IsNull(offset) {
-					builder.AppendNull()
-					return
-				}
-
 				src := batch.Column(i).(*array.String)
 				builder.Append(src.Value(offset))
 			}
@@ -114,11 +104,6 @@ func filterBatch(batch arrow.Record, include func(int) bool) arrow.Record {
 			builder := array.NewUint64Builder(mem)
 			builders[i] = builder
 			additions[i] = func(offset int) {
-				if batch.Column(i).IsNull(offset) {
-					builder.AppendNull()
-					return
-				}
-
 				src := batch.Column(i).(*array.Uint64)
 				builder.Append(src.Value(offset))
 			}
@@ -127,11 +112,6 @@ func filterBatch(batch arrow.Record, include func(int) bool) arrow.Record {
 			builder := array.NewInt64Builder(mem)
 			builders[i] = builder
 			additions[i] = func(offset int) {
-				if batch.Column(i).IsNull(offset) {
-					builder.AppendNull()
-					return
-				}
-
 				src := batch.Column(i).(*array.Int64)
 				builder.Append(src.Value(offset))
 			}
@@ -140,11 +120,6 @@ func filterBatch(batch arrow.Record, include func(int) bool) arrow.Record {
 			builder := array.NewFloat64Builder(mem)
 			builders[i] = builder
 			additions[i] = func(offset int) {
-				if batch.Column(i).IsNull(offset) {
-					builder.AppendNull()
-					return
-				}
-
 				src := batch.Column(i).(*array.Float64)
 				builder.Append(src.Value(offset))
 			}
@@ -153,11 +128,6 @@ func filterBatch(batch arrow.Record, include func(int) bool) arrow.Record {
 			builder := array.NewTimestampBuilder(mem, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
 			builders[i] = builder
 			additions[i] = func(offset int) {
-				if batch.Column(i).IsNull(offset) {
-					builder.AppendNull()
-					return
-				}
-
 				src := batch.Column(i).(*array.Timestamp)
 				builder.Append(src.Value(offset))
 			}
