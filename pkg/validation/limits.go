@@ -599,8 +599,10 @@ func (l *Limits) Validate() error {
 		l.MaxQueryCapacity = 1
 	}
 
-	if err := l.OTLPConfig.Validate(); err != nil {
-		return err
+	if l.OTLPConfig != nil {
+		if err := l.OTLPConfig.Validate(); err != nil {
+			return err
+		}
 	}
 
 	if _, err := logql.ParseShardVersion(l.TSDBShardingStrategy); err != nil {
