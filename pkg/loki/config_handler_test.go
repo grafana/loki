@@ -7,10 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/util/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/util/flagext"
 
 	"github.com/grafana/loki/v3/pkg/pattern"
 	"github.com/grafana/loki/v3/pkg/validation"
