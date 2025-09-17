@@ -42,6 +42,9 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include "loki.configMapOrSecretContentHash" (dict "ctx" . "name" "/config.yaml") }}
+        {{- if .Values.singleBinary.persistence.enabled }}
+        storage/size: {{ .Values.singleBinary.persistence.size | quote }}
+        {{- end }}
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
