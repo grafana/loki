@@ -224,7 +224,7 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 
 	// The first two columns of each row are *always* stream ID and timestamp.
 	//
-	// TODO(ashwanth): Find a safer way to do this. Same as [compareRows]
+	// TODO(ashwanth): Find a safer way to do this. Same as [CompareRows]
 	logsEnc.SetSortInfo(&datasetmd_v2.SortInfo{
 		ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
 			{

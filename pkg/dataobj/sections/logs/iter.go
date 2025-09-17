@@ -41,10 +41,9 @@ func Iter(ctx context.Context, obj *dataobj.Object) result.Seq[Record] {
 
 func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 	return result.Iter(func(yield func(Record) bool) error {
-		columnarSection := section.inner
-		dset, err := columnar.MakeDataset(columnarSection, columnarSection.Columns())
+		dset, err := MakeColumnarDataset(section)
 		if err != nil {
-			return fmt.Errorf("creating columns dataset: %w", err)
+			return fmt.Errorf("creating columnar dataset: %w", err)
 		}
 
 		columns, err := result.Collect(dset.ListColumns(ctx))
@@ -70,7 +69,7 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 			}
 
 			for _, row := range rows[:n] {
-				err := decodeRow(section.Columns(), row, &record, nil)
+				err := DecodeRow(section.Columns(), row, &record, nil)
 				if err != nil || !yield(record) {
 					return err
 				}
@@ -79,13 +78,13 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 	})
 }
 
-// decodeRow decodes a record from a [dataset.Row], using the provided columns
+// DecodeRow decodes a record from a [dataset.Row], using the provided columns
 // to determine the column type. The list of columns must match the columns
 // used to create the row.
 //
 // The sym argument is used for reusing metadata strings between calls to
-// decodeRow. If sym is nil, metadata strings are always allocated.
-func decodeRow(columns []*Column, row dataset.Row, record *Record, sym *symbolizer.Symbolizer) error {
+// DecodeRow. If sym is nil, metadata strings are always allocated.
+func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symbolizer.Symbolizer) error {
 	labelBuilder := labelpool.Get()
 	defer labelpool.Put(labelBuilder)
 
@@ -132,4 +131,11 @@ func decodeRow(columns []*Column, row dataset.Row, record *Record, sym *symboliz
 	labelBuilder.Sort()
 	record.Metadata = labelBuilder.Labels()
 	return nil
+}
+
+type ColumnarDataset = columnar.Dataset
+
+func MakeColumnarDataset(section *Section) (*ColumnarDataset, error) {
+	columnarSection := section.inner
+	return columnar.MakeDataset(columnarSection, columnarSection.Columns())
 }

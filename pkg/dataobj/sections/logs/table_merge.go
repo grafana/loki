@@ -192,14 +192,14 @@ func rowResultLess(a, b result.Result[dataset.Row]) bool {
 		return false
 	}
 
-	return compareRows(aRow, bRow) < 0
+	return CompareRows(aRow, bRow) < 0
 }
 
-// compareRows compares two rows by their first two columns. compareRows panics
+// CompareRows compares two rows by their first two columns. CompareRows panics
 // if a or b doesn't have at least two columns, if the first column isn't a
 // int64-encoded stream ID, or if the second column isn't an int64-encoded
 // timestamp.
-func compareRows(a, b dataset.Row) int {
+func CompareRows(a, b dataset.Row) int {
 	// The first two columns of each row are *always* stream ID and timestamp.
 	//
 	// TODO(rfratto): Can we find a safer way of doing this?

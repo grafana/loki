@@ -79,6 +79,26 @@ type Builder struct {
 	ordered []*Stream
 }
 
+// AppendValue may only be used for copying streams from an existing section.
+func (b *Builder) AppendValue(val Stream) {
+	newStream := streamPool.Get().(*Stream)
+	newStream.Reset()
+
+	newStream.ID = val.ID
+	newStream.MinTimestamp, newStream.MaxTimestamp = val.MinTimestamp, val.MaxTimestamp
+	newStream.UncompressedSize = val.UncompressedSize
+	newStream.Labels = val.Labels
+	newStream.Rows = val.Rows
+
+	newStream.Labels.Range(func(l labels.Label) {
+		b.currentLabelsSize += len(l.Value)
+	})
+
+	hash := labels.StableHash(newStream.Labels)
+	b.lookup[hash] = append(b.lookup[hash], newStream)
+	b.ordered = append(b.ordered, newStream)
+}
+
 // NewBuilder creates a new sterams section builder. The pageSize argument
 // specifies how large pages should be.
 func NewBuilder(metrics *Metrics, pageSize, pageRowCount int) *Builder {
@@ -108,6 +128,10 @@ func (b *Builder) Type() dataobj.SectionType { return sectionType }
 func (b *Builder) TimeRange() (time.Time, time.Time) {
 	return b.globalMinTimestamp, b.globalMaxTimestamp
 }
+
+// func (b *Builder) SetTimeRange(minTs, maxTs time.Time) {
+// 	b.globalMinTimestamp, b.globalMaxTimestamp = minTs, maxTs
+// }
 
 // Record a stream record within the section. The provided timestamp is used to
 // track the minimum and maximum timestamp of a stream. The number of calls to
