@@ -372,6 +372,9 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 				&predicatePushdown{plan: plan},
 				&removeNoopFilter{plan: plan},
 			),
+			newOptimization("FilterNodePushdown", plan).withRules(
+				newFilterNodePushdown(plan),
+			),
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
@@ -389,5 +392,9 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			return nil, errors.New("physical plan must only have exactly one root node")
 		}
 	}
+	// TODO:
+	// - check the integrity of the plan after applying optimizations.
+	// - apply optimisations on a copy and restore orig plan if something goes wrong.
+
 	return plan, nil
 }

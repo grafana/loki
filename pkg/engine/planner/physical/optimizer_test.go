@@ -549,4 +549,123 @@ func TestOptimizer(t *testing.T) {
 		expected := PrintAsTree(expectedPlan)
 		require.Equal(t, expected, actual)
 	})
+
+	t.Run("filter pushdown simple", func(t *testing.T) {
+		// Filter -> Merge
+		// Merge -> Scan1
+		// Merge -> Scan2
+		plan := &Plan{}
+		scan1 := plan.addNode(&DataObjScan{id: "scan1"})
+		scan2 := plan.addNode(&DataObjScan{id: "scan2"})
+		merge := plan.addNode(&SortMerge{id: "merge"})
+		filter := plan.addNode(&Filter{id: "filter", Predicates: []Expression{
+			&BinaryExpr{
+				Left:  newColumnExpr("level", types.ColumnTypeAmbiguous),
+				Right: NewLiteral("debug|info"),
+				Op:    types.BinaryOpMatchRe,
+			},
+		}})
+
+		_ = plan.addEdge(Edge{Parent: filter, Child: merge})
+		_ = plan.addEdge(Edge{Parent: merge, Child: scan1})
+		_ = plan.addEdge(Edge{Parent: merge, Child: scan2})
+
+		optimizations := []*optimization{
+			newOptimization("filter node pushdown", plan).withRules(
+				newFilterNodePushdown(plan),
+			),
+		}
+
+		o := newOptimizer(plan, optimizations)
+		o.optimize(plan.Roots()[0])
+		actual := PrintAsTree(plan)
+
+		// Merge -> Filter1
+		// Merge -> Filter2
+		// Filter1 -> Scan1
+		// Filter2 -> Scan2
+		optimized := &Plan{}
+		optimized.addNode(scan1)
+		optimized.addNode(scan2)
+		optimized.addNode(merge)
+
+		filter1 := *(filter.(*Filter))
+		filter2 := *(filter.(*Filter))
+		optimized.addNode(&filter1)
+		optimized.addNode(&filter2)
+
+		_ = optimized.addEdge(Edge{Parent: merge, Child: &filter1})
+		_ = optimized.addEdge(Edge{Parent: merge, Child: &filter2})
+		_ = optimized.addEdge(Edge{Parent: &filter1, Child: scan1})
+		_ = optimized.addEdge(Edge{Parent: &filter2, Child: scan2})
+
+		expected := PrintAsTree(optimized)
+		require.Equal(t, expected, actual)
+	})
+
+	t.Run("filter pushdown with mix of SortMerge and Merge", func(t *testing.T) {
+		// Filter -> Merge
+		// Merge -> Scan1
+		// Merge -> SortMerge
+		// SortMerge -> Scan2
+		// SortMerge -> Scan3
+		plan := &Plan{}
+		scan1 := plan.addNode(&DataObjScan{id: "scan1"})
+		scan2 := plan.addNode(&DataObjScan{id: "scan2"})
+		scan3 := plan.addNode(&DataObjScan{id: "scan3"})
+		sortMerge := plan.addNode(&SortMerge{id: "sortMerge"})
+		merge := plan.addNode(&Merge{id: "merge"})
+		filter := plan.addNode(&Filter{id: "filter", Predicates: []Expression{
+			&BinaryExpr{
+				Left:  newColumnExpr("level", types.ColumnTypeAmbiguous),
+				Right: NewLiteral("debug|info"),
+				Op:    types.BinaryOpMatchRe,
+			},
+		}})
+
+		_ = plan.addEdge(Edge{Parent: filter, Child: merge})
+		_ = plan.addEdge(Edge{Parent: merge, Child: sortMerge})
+		_ = plan.addEdge(Edge{Parent: merge, Child: scan1})
+		_ = plan.addEdge(Edge{Parent: sortMerge, Child: scan2})
+		_ = plan.addEdge(Edge{Parent: sortMerge, Child: scan3})
+
+		optimizations := []*optimization{
+			newOptimization("filter node pushdown", plan).withRules(
+				newFilterNodePushdown(plan),
+			),
+		}
+
+		o := newOptimizer(plan, optimizations)
+		o.optimize(plan.Roots()[0])
+		actual := PrintAsTree(plan)
+
+		// Merge -> Filter1 -> Scan1
+		// Merge -> SortMerge -> Filter2 -> Scan2
+		// Merge -> SortMerge -> Filter3 -> Scan3
+		optimized := &Plan{}
+		optimized.addNode(scan1)
+		optimized.addNode(scan2)
+		optimized.addNode(scan3)
+		optimized.addNode(sortMerge)
+		optimized.addNode(merge)
+
+		filter1 := *(filter.(*Filter))
+		filter2 := *(filter.(*Filter))
+		filter3 := *(filter.(*Filter))
+		optimized.addNode(&filter1)
+		optimized.addNode(&filter2)
+		optimized.addNode(&filter3)
+
+		_ = optimized.addEdge(Edge{Parent: merge, Child: sortMerge})
+		_ = optimized.addEdge(Edge{Parent: merge, Child: &filter1})
+		_ = optimized.addEdge(Edge{Parent: sortMerge, Child: &filter2})
+		_ = optimized.addEdge(Edge{Parent: sortMerge, Child: &filter3})
+		_ = optimized.addEdge(Edge{Parent: &filter1, Child: scan1})
+		_ = optimized.addEdge(Edge{Parent: &filter2, Child: scan2})
+		_ = optimized.addEdge(Edge{Parent: &filter3, Child: scan3})
+		expected := PrintAsTree(optimized)
+
+		require.Equal(t, expected, actual)
+	})
+
 }

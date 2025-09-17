@@ -1,6 +1,8 @@
 package physical
 
 import (
+	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -86,6 +88,123 @@ func canApplyPredicate(predicate Expression) bool {
 }
 
 var _ rule = (*predicatePushdown)(nil)
+
+// filterNodePushdown is a rule that repositions Filter nodes right above DataObjScan.
+// This is helpful for cases where predicates cannot be fully pushed down.
+type filterNodePushdown struct {
+	plan       *Plan
+	addedNodes map[Node]struct{}
+}
+
+func newFilterNodePushdown(plan *Plan) *filterNodePushdown {
+	return &filterNodePushdown{
+		plan:       plan,
+		addedNodes: make(map[Node]struct{}),
+	}
+}
+
+// apply implements rule.
+func (r *filterNodePushdown) apply(node Node) bool {
+	switch node := node.(type) {
+	case *Filter:
+		if len(node.Predicates) == 0 {
+			// nodes with empty predicates will be removed by removeNoopFilter.
+			return false
+		}
+
+		return r.applyFilterNodePushdown(node)
+	}
+
+	return false
+}
+
+func (r *filterNodePushdown) applyFilterNodePushdown(node *Filter) bool {
+	changed, err := r.repositionFilterNodes(node, node)
+	if err != nil {
+		// errors are unlikely to occur if the provided plan is a valid one.
+		// this is best effort to undo any changes by removing the added nodes.
+		for n := range r.addedNodes {
+			r.plan.eliminateNode(n)
+		}
+
+		return false
+	}
+
+	// remove the original filter node if it has been repositioned.
+	if changed {
+		r.plan.eliminateNode(node)
+	}
+
+	return changed
+}
+
+// repositionFilterNodes traverses the plan and inserts a copy of the filter node right above each scan node.
+func (r *filterNodePushdown) repositionFilterNodes(n Node, origFilter *Filter) (changed bool, err error) {
+	if _, ok := n.(*DataObjScan); ok {
+		// place filter node right above a scan node.
+		parent := r.plan.Parent(n)
+		if parent == nil {
+			// Unlikely to occur in LogQL.
+			return false, errors.New("missing parent for DataObjScan")
+		}
+
+		// no-op, skip if the parent is the node being relocated.
+		if parent == n {
+			return false, nil
+		}
+
+		newNode := r.plan.addNode(&Filter{
+			id:         origFilter.id, // TODO: generate a new ID? keeping it the same for ease of unit-testing.
+			Predicates: origFilter.Predicates,
+		})
+		r.addedNodes[newNode] = struct{}{}
+
+		if err := r.insertNodeBetween(parent, n, newNode); err != nil {
+			return false, err
+		}
+
+		// continue working on child nodes
+		changed = true
+	}
+
+	// make a copy of the child node references as this slice might change during repositioning.
+	children := slices.Clone(r.plan.Children(n))
+	for _, child := range children {
+		c, err := r.repositionFilterNodes(child, origFilter)
+		if c {
+			// do not directly assign to changed as we do not want to unset an earlier assignment of true.
+			changed = true
+		}
+
+		if err != nil {
+			return changed, err
+		}
+	}
+
+	return changed, nil
+}
+
+// insertNodeBetween inserts a new node between a parent and child in the graph.
+func (r *filterNodePushdown) insertNodeBetween(parent, child, newNode Node) error {
+	// First, remove the edge between parent and child
+	if err := r.plan.removeEdge(Edge{Parent: parent, Child: child}); err != nil {
+		return fmt.Errorf("failed to remove edge: %w", err)
+	}
+
+	// add edge from parent to new node
+	if err := r.plan.addEdge(Edge{Parent: parent, Child: newNode}); err != nil {
+		return fmt.Errorf("failed to add edge to new node: %w", err)
+	}
+
+	// add edge from new node to child
+	if err := r.plan.addEdge(Edge{Parent: newNode, Child: child}); err != nil {
+		return fmt.Errorf("failed to add edge from new node: %w", err)
+	}
+
+	return nil
+}
+
+var _ rule = (*filterNodePushdown)(nil)
 
 // limitPushdown is a rule that moves down the limit to the scan nodes.
 type limitPushdown struct {
