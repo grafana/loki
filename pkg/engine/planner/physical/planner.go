@@ -234,14 +234,12 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
-		return filteredShardDescriptors[i].TimeRange.End.Before(filteredShardDescriptors[j].TimeRange.End)
-	})
+
 	merge := &Merge{}
 	p.plan.addNode(merge)
 	groups := overlappingShardDescriptors(filteredShardDescriptors)
 
-	if ctx.direction == DESC {
+	if ctx.direction == ASC {
 		slices.Reverse(groups)
 	}
 

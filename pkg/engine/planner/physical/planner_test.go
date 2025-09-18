@@ -443,12 +443,13 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 
 func TestPlanner_MakeTable_Ordering(t *testing.T) {
 	// Two separate groups with different timestamps in each group
+	now := time.Now()
 	catalog := &catalog{
 		sectionDescriptors: []*metastore.DataobjSectionDescriptor{
-			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 3}, StreamIDs: []int64{1, 2}, Start: time.Now(), End: time.Now().Add(time.Second * 10)},
-			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 1}, StreamIDs: []int64{3, 4}, Start: time.Now(), End: time.Now().Add(time.Second * 10)},
-			{SectionKey: metastore.SectionKey{ObjectPath: "obj3", SectionIdx: 2}, StreamIDs: []int64{5, 1}, Start: time.Now().Add(-time.Minute), End: time.Now().Add(-time.Minute).Add(time.Second * 10)},
-			{SectionKey: metastore.SectionKey{ObjectPath: "obj3", SectionIdx: 3}, StreamIDs: []int64{5, 1}, Start: time.Now().Add(-2 * time.Minute), End: time.Now().Add(-time.Minute).Add(time.Second * 7)},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 3}, StreamIDs: []int64{1, 2}, Start: now, End: now.Add(time.Second * 10)},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 1}, StreamIDs: []int64{3, 4}, Start: now, End: now.Add(time.Second * 10)},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj3", SectionIdx: 2}, StreamIDs: []int64{5, 1}, Start: now.Add(-time.Minute), End: now.Add(-30 * time.Second)},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj3", SectionIdx: 3}, StreamIDs: []int64{5, 1}, Start: now.Add(-2 * time.Minute), End: now.Add(-45 * time.Second)},
 		},
 	}
 
@@ -485,8 +486,9 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		_ = expectedPlan.addEdge(Edge{Parent: merge, Child: sortMerge2})
 
 		// Sort merges should be added in the order of the scan timestamps
-		_ = expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan4})
+		// ASC => oldest to newest
 		_ = expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan3})
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan4})
 		_ = expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan1})
 		_ = expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan2})
 
@@ -520,8 +522,8 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		// Sort merges should be added in the order of the scan timestamps
 		_ = expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan1})
 		_ = expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan2})
-		_ = expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan4})
 		_ = expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan3})
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan4})
 
 		actual := PrintAsTree(plan)
 		expected := PrintAsTree(expectedPlan)
