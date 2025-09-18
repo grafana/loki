@@ -197,7 +197,7 @@ func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, baseNod
 func overlappingShardDescriptors(filteredShardDescriptors []FilteredShardDescriptor) [][]FilteredShardDescriptor {
 	// Ensure that shard descriptors are sorted by end time
 	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
-		return filteredShardDescriptors[i].TimeRange.End.Before(filteredShardDescriptors[j].TimeRange.End)
+		return filteredShardDescriptors[i].TimeRange.End.After(filteredShardDescriptors[j].TimeRange.End)
 	})
 
 	groups := make([][]FilteredShardDescriptor, 0, len(filteredShardDescriptors))

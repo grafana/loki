@@ -533,3 +533,67 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		require.Equal(t, actual, expected)
 	})
 }
+
+func TestPlanner_OverlappingShardDescriptors(t *testing.T) {
+	tests := []struct {
+		name   string
+		ranges []TimeRange
+		groups int
+	}{
+		{
+			name: "Isolated groups",
+			ranges: []TimeRange{
+				{Start: time.UnixMilli(1), End: time.UnixMilli(2)},
+				{Start: time.UnixMilli(3), End: time.UnixMilli(4)},
+				{Start: time.UnixMilli(5), End: time.UnixMilli(6)},
+			},
+			groups: 3,
+		},
+		{
+			name: "Equal start and end are one group",
+			ranges: []TimeRange{
+				{Start: time.UnixMilli(1), End: time.UnixMilli(2)},
+				{Start: time.UnixMilli(2), End: time.UnixMilli(4)},
+			},
+			groups: 1,
+		},
+		{
+			name: "One range contains two isolated groups",
+			ranges: []TimeRange{
+				{Start: time.UnixMilli(1), End: time.UnixMilli(2)},
+				{Start: time.UnixMilli(3), End: time.UnixMilli(4)},
+				{Start: time.UnixMilli(0), End: time.UnixMilli(5)},
+			},
+			groups: 1,
+		},
+		{
+			name: "One range spans two isolated groups",
+			ranges: []TimeRange{
+				{Start: time.UnixMilli(0), End: time.UnixMilli(2)},
+				{Start: time.UnixMilli(4), End: time.UnixMilli(5)},
+				{Start: time.UnixMilli(2), End: time.UnixMilli(4)},
+			},
+			groups: 1,
+		},
+		{
+			name: "Real world example",
+			ranges: []TimeRange{
+				{Start: time.Date(2025, time.September, 16, 15, 0, 31, 361695211, time.UTC), End: time.Date(2025, time.September, 16, 15, 0, 46, 800186241, time.UTC)},
+				{Start: time.Date(2025, time.September, 16, 15, 0, 31, 350398040, time.UTC), End: time.Date(2025, time.September, 16, 15, 0, 31, 350398040, time.UTC)},
+				{Start: time.Date(2025, time.September, 16, 15, 0, 31, 330227014, time.UTC), End: time.Date(2025, time.September, 16, 15, 1, 3, 337407239, time.UTC)},
+			},
+			groups: 1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			descriptors := []FilteredShardDescriptor{}
+			for _, tr := range tt.ranges {
+				descriptors = append(descriptors, FilteredShardDescriptor{TimeRange: tr})
+			}
+
+			groups := overlappingShardDescriptors(descriptors)
+			require.Equal(t, tt.groups, len(groups))
+		})
+	}
+}
