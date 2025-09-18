@@ -14,7 +14,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
 
 const (
@@ -36,14 +35,12 @@ type serviceMetrics struct {
 func newServiceMetrics(r prometheus.Registerer) *serviceMetrics {
 	return &serviceMetrics{
 		partition: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: client.MetricsPrefix,
-			Name:      "partition_reader_partition",
-			Help:      "The partition ID assigned to this reader.",
+			Name: "partition_reader_partition",
+			Help: "The partition ID assigned to this reader.",
 		}, []string{"id"}),
 		phase: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
-			Namespace: client.MetricsPrefix,
-			Name:      "partition_reader_phase",
-			Help:      "The current phase of the consumer.",
+			Name: "partition_reader_phase",
+			Help: "The current phase of the consumer.",
 		}, []string{"phase"}),
 	}
 }
@@ -70,6 +67,9 @@ type ReaderConfig struct {
 
 // mimics `NewReader` constructor but builds a reader service using
 // a reader.
+//
+// The [prometheus.Registerer] should be wrapped with a unique prefix to
+// avoid metric name collisions with other committers.
 func NewReaderService(
 	kafkaCfg kafka.Config,
 	partitionID int32,

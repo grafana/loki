@@ -104,7 +104,7 @@ func NewWriterClient(component string, kafkaCfg kafka.Config, maxInflightProduce
 // NewClientMetrics returns a new instance of `kprom.Metrics` (used to monitor Kafka interactions), provided
 // the `MetricsPrefix` as the `Namespace` for the default set of Prometheus metrics
 func NewClientMetrics(component string, reg prometheus.Registerer, enableKafkaHistograms bool) *kprom.Metrics {
-	return kprom.NewMetrics(MetricsPrefix,
+	return kprom.NewMetrics("",
 		kprom.Registerer(WrapPrometheusRegisterer(component, reg)),
 		// Do not export the client ID, because we use it to specify options to the backend.
 		kprom.FetchAndProduceDetail(kprom.Batches, kprom.Records, kprom.CompressedBytes, kprom.UncompressedBytes),

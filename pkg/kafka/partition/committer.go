@@ -11,8 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.uber.org/atomic"
-
-	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
 
 // Committer defines an interface for committing offsets
@@ -37,6 +35,10 @@ type partitionCommitter struct {
 	cancel   context.CancelFunc
 }
 
+// newCommitter returns a new committer for the partition.
+//
+// The [prometheus.Registerer] should be wrapped with a unique prefix to
+// avoid metric name collisions with other committers.
 func newCommitter(offsetManager OffsetManager, partition int32, commitFreq time.Duration, logger log.Logger, reg prometheus.Registerer) *partitionCommitter {
 	c := &partitionCommitter{
 		logger:        logger,
@@ -44,19 +46,16 @@ func newCommitter(offsetManager OffsetManager, partition int32, commitFreq time.
 		partition:     partition,
 		commitFreq:    commitFreq,
 		commitRequestsTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   client.MetricsPrefix,
 			Name:        "partition_reader_offset_commit_requests_total",
 			Help:        "Total number of requests issued to commit the last consumed offset (includes both successful and failed requests).",
 			ConstLabels: prometheus.Labels{"partition": strconv.Itoa(int(partition))},
 		}),
 		commitFailuresTotal: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   client.MetricsPrefix,
 			Name:        "partition_reader_offset_commit_failures_total",
 			Help:        "Total number of failed requests to commit the last consumed offset.",
 			ConstLabels: prometheus.Labels{"partition": strconv.Itoa(int(partition))},
 		}),
 		commitRequestsLatency: promauto.With(reg).NewHistogram(prometheus.HistogramOpts{
-			Namespace:                       client.MetricsPrefix,
 			Name:                            "partition_reader_offset_commit_request_duration_seconds",
 			Help:                            "The duration of requests to commit the last consumed offset.",
 			ConstLabels:                     prometheus.Labels{"partition": strconv.Itoa(int(partition))},
@@ -66,7 +65,6 @@ func newCommitter(offsetManager OffsetManager, partition int32, commitFreq time.
 			Buckets:                         prometheus.DefBuckets,
 		}),
 		lastCommittedOffset: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Namespace:   client.MetricsPrefix,
 			Name:        "partition_reader_last_committed_offset",
 			Help:        "The last consumed offset successfully committed by the partition reader. Set to -1 if not offset has been committed yet.",
 			ConstLabels: prometheus.Labels{"partition": strconv.Itoa(int(partition))},

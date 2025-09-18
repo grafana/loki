@@ -390,7 +390,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 			cfg.LifecyclerConfig.ID,
 			NewKafkaConsumerFactory(i, registerer, cfg.KafkaIngestion.KafkaConfig.MaxConsumerWorkers),
 			logger,
-			registerer,
+			prometheus.WrapRegistererWithPrefix("loki_kafka_client_", registerer),
 		)
 		if err != nil {
 			return nil, err
