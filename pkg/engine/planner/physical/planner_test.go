@@ -1,24 +1,20 @@
 package physical
 
 import (
-	"sort"
+	"regexp"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
 )
 
-type objectMeta struct {
-	streamIDs []int64
-	sections  int
-}
-
 type catalog struct {
-	streamsByObject map[string]objectMeta
+	sectionDescriptors []*metastore.DataobjSectionDescriptor
 }
 
 // ResolveShardDescriptors implements Catalog.
@@ -27,61 +23,51 @@ func (c *catalog) ResolveShardDescriptors(e Expression, from, through time.Time)
 }
 
 // ResolveDataObjForShard implements Catalog.
-func (c *catalog) ResolveShardDescriptorsWithShard(_ Expression, _ []Expression, shard ShardInfo, from, through time.Time) ([]FilteredShardDescriptor, error) {
-	paths := make([]string, 0, len(c.streamsByObject))
-	streams := make([][]int64, 0, len(c.streamsByObject))
-	sections := make([]int, 0, len(c.streamsByObject))
-
-	for o, s := range c.streamsByObject {
-		paths = append(paths, o)
-		streams = append(streams, s.streamIDs)
-		sections = append(sections, s.sections)
-	}
-
-	// The function needs to return objects and their streamIDs and sections in predictable order
-	sort.Slice(streams, func(i, j int) bool {
-		return paths[i] < paths[j]
-	})
-	sort.Slice(sections, func(i, j int) bool {
-		return paths[i] < paths[j]
-	})
-	sort.Slice(paths, func(i, j int) bool {
-		return paths[i] < paths[j]
-	})
-
-	return filterForShard(shard, paths, streams, sections, from, through)
+func (c *catalog) ResolveShardDescriptorsWithShard(_ Expression, _ []Expression, shard ShardInfo, _, _ time.Time) ([]FilteredShardDescriptor, error) {
+	return filterDescriptorsForShard(shard, c.sectionDescriptors)
 }
 
 var _ Catalog = (*catalog)(nil)
 
 func TestMockCatalog(t *testing.T) {
-	catalog := &catalog{
-		streamsByObject: map[string]objectMeta{
-			"obj1": {streamIDs: []int64{1, 2}, sections: 3},
-			"obj2": {streamIDs: []int64{3, 4}, sections: 2},
-		},
-	}
 	timeStart := time.Now()
 	timeEnd := timeStart.Add(time.Second * 10)
+	catalog := &catalog{
+		sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0}, StreamIDs: []int64{1, 2}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 1}, StreamIDs: []int64{1, 2}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 2}, StreamIDs: []int64{1, 2}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 0}, StreamIDs: []int64{3, 4}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 1}, StreamIDs: []int64{3, 4}, Start: timeStart, End: timeEnd},
+		},
+	}
 	for _, tt := range []struct {
 		shard          ShardInfo
 		expDescriptors []FilteredShardDescriptor
 	}{
 		{
 			shard: ShardInfo{0, 1},
-			expDescriptors: []FilteredShardDescriptor{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0, 1, 2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
-				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{0, 1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
-			},
-		},
-		{
-			shard: ShardInfo{0, 4},
-			expDescriptors: []FilteredShardDescriptor{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+			expDescriptors: []FilteredShardDescriptor{
+				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{2}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
 			},
 		},
 		{
-			shard:          ShardInfo{1, 4},
-			expDescriptors: []FilteredShardDescriptor{{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
+			shard: ShardInfo{0, 4},
+			expDescriptors: []FilteredShardDescriptor{
+				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+			},
+		},
+		{
+			shard: ShardInfo{1, 4},
+			expDescriptors: []FilteredShardDescriptor{
+				{Location: "obj1", Streams: []int64{1, 2}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+				{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{1}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}},
+			},
 		},
 		{
 			shard:          ShardInfo{2, 4},
@@ -89,7 +75,7 @@ func TestMockCatalog(t *testing.T) {
 		},
 		{
 			shard:          ShardInfo{3, 4},
-			expDescriptors: []FilteredShardDescriptor{{Location: "obj2", Streams: []int64{3, 4}, Sections: []int{0}, TimeRange: TimeRange{Start: timeStart, End: timeEnd}}},
+			expDescriptors: []FilteredShardDescriptor{},
 		},
 	} {
 		t.Run("shard "+tt.shard.String(), func(t *testing.T) {
@@ -133,13 +119,20 @@ func sections(t *testing.T, plan *Plan, nodes []Node) [][]int {
 }
 
 func TestPlanner_ConvertMaketable(t *testing.T) {
+	timeStart := time.Now()
+	timeEnd := timeStart.Add(time.Second * 10)
 	catalog := &catalog{
-		streamsByObject: map[string]objectMeta{
-			"obj1": {streamIDs: []int64{1, 2}, sections: 2},
-			"obj2": {streamIDs: []int64{3, 4}, sections: 2},
-			"obj3": {streamIDs: []int64{5, 1}, sections: 2},
-			"obj4": {streamIDs: []int64{2, 3}, sections: 2},
-			"obj5": {streamIDs: []int64{4, 5}, sections: 2},
+		sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0}, StreamIDs: []int64{1, 2}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 1}, StreamIDs: []int64{1, 2}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 0}, StreamIDs: []int64{3, 4}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 1}, StreamIDs: []int64{3, 4}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj3", SectionIdx: 0}, StreamIDs: []int64{5, 1}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj3", SectionIdx: 1}, StreamIDs: []int64{5, 1}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj4", SectionIdx: 0}, StreamIDs: []int64{2, 3}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj4", SectionIdx: 1}, StreamIDs: []int64{2, 3}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj5", SectionIdx: 0}, StreamIDs: []int64{4, 5}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj5", SectionIdx: 1}, StreamIDs: []int64{4, 5}, Start: timeStart, End: timeEnd},
 		},
 	}
 	planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
@@ -176,23 +169,23 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 		},
 		{
 			shard:       logical.NewShard(0, 4), // shard 1 of 4
-			expPaths:    []string{"obj1", "obj3", "obj5"},
-			expSections: [][]int{{0}, {0}, {0}},
+			expPaths:    []string{"obj1", "obj2", "obj3", "obj4", "obj5"},
+			expSections: [][]int{{0}, {0}, {0}, {0}, {0}},
 		},
 		{
 			shard:       logical.NewShard(1, 4), // shard 2 of 4
-			expPaths:    []string{"obj1", "obj3", "obj5"},
-			expSections: [][]int{{1}, {1}, {1}},
+			expPaths:    []string{"obj1", "obj2", "obj3", "obj4", "obj5"},
+			expSections: [][]int{{1}, {1}, {1}, {1}, {1}},
 		},
 		{
 			shard:       logical.NewShard(2, 4), // shard 3 of 4
-			expPaths:    []string{"obj2", "obj4"},
-			expSections: [][]int{{0}, {0}},
+			expPaths:    []string{},
+			expSections: [][]int{},
 		},
 		{
 			shard:       logical.NewShard(3, 4), // shard 4 of 4
-			expPaths:    []string{"obj2", "obj4"},
-			expSections: [][]int{{1}, {1}},
+			expPaths:    []string{},
+			expSections: [][]int{},
 		},
 	} {
 		t.Run("shard "+tt.shard.String(), func(t *testing.T) {
@@ -201,8 +194,6 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 				Shard:    tt.shard,
 			}
 			planner.reset()
-			timeStart := time.Now()
-			timeEnd := timeStart.Add(time.Second * 10)
 			nodes, err := planner.processMakeTable(relation, NewContext(timeStart, timeEnd))
 			require.NoError(t, err)
 			require.ElementsMatch(t, tt.expPaths, locations(t, planner.plan, nodes))
@@ -244,10 +235,12 @@ func TestPlanner_Convert(t *testing.T) {
 	logicalPlan, err := b.ToPlan()
 	require.NoError(t, err)
 
+	timeStart := time.Now()
+	timeEnd := timeStart.Add(time.Second * 10)
 	catalog := &catalog{
-		streamsByObject: map[string]objectMeta{
-			"obj1": {streamIDs: []int64{1, 2}, sections: 3},
-			"obj2": {streamIDs: []int64{3, 4}, sections: 1},
+		sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0}, StreamIDs: []int64{1, 2}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 0}, StreamIDs: []int64{3, 4}, Start: timeStart, End: timeEnd},
 		},
 	}
 	planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
@@ -288,8 +281,8 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		require.NoError(t, err)
 
 		catalog := &catalog{
-			streamsByObject: map[string]objectMeta{
-				"obj1": {streamIDs: []int64{1, 2}, sections: 1},
+			sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+				{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0}, StreamIDs: []int64{1, 2}, Start: time.Now(), End: time.Now().Add(time.Second * 10)},
 			},
 		}
 		planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
@@ -358,8 +351,8 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		require.NoError(t, err)
 
 		catalog := &catalog{
-			streamsByObject: map[string]objectMeta{
-				"obj1": {streamIDs: []int64{1, 2}, sections: 1},
+			sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+				{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0}, StreamIDs: []int64{1, 2}, Start: start, End: end},
 			},
 		}
 		planner := NewPlanner(NewContext(start, end), catalog)
@@ -429,13 +422,15 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 	logicalPlan, err := b.ToPlan()
 	require.NoError(t, err)
 
+	timeStart := time.Now()
+	timeEnd := timeStart.Add(time.Second * 10)
 	catalog := &catalog{
-		streamsByObject: map[string]objectMeta{
-			"obj1": {streamIDs: []int64{1, 2}, sections: 3},
-			"obj2": {streamIDs: []int64{3, 4}, sections: 1},
+		sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 3}, StreamIDs: []int64{1, 2}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 1}, StreamIDs: []int64{3, 4}, Start: timeStart, End: timeEnd},
 		},
 	}
-	planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
+	planner := NewPlanner(NewContext(timeStart, timeEnd), catalog)
 
 	physicalPlan, err := planner.Build(logicalPlan)
 	require.NoError(t, err)
@@ -444,4 +439,97 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 	physicalPlan, err = planner.Optimize(physicalPlan)
 	require.NoError(t, err)
 	t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+}
+
+func TestPlanner_MakeTable_Ordering(t *testing.T) {
+	// Two separate groups with different timestamps in each group
+	catalog := &catalog{
+		sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 3}, StreamIDs: []int64{1, 2}, Start: time.Now(), End: time.Now().Add(time.Second * 10)},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 1}, StreamIDs: []int64{3, 4}, Start: time.Now(), End: time.Now().Add(time.Second * 10)},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj3", SectionIdx: 2}, StreamIDs: []int64{5, 1}, Start: time.Now().Add(-time.Minute), End: time.Now().Add(-time.Minute).Add(time.Second * 10)},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj3", SectionIdx: 3}, StreamIDs: []int64{5, 1}, Start: time.Now().Add(-2 * time.Minute), End: time.Now().Add(-time.Minute).Add(time.Second * 7)},
+		},
+	}
+
+	// simple logical plan for { app="users" }
+	b := logical.NewBuilder(
+		&logical.MakeTable{
+			Selector: &logical.BinOp{
+				Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+				Right: logical.NewLiteral("users"),
+				Op:    types.BinaryOpEq,
+			},
+			Shard: logical.NewShard(0, 1), // no sharding
+		},
+	)
+
+	logicalPlan, err := b.ToPlan()
+	require.NoError(t, err)
+
+	t.Run("ascending", func(t *testing.T) {
+		planner := NewPlanner(NewContext(time.Now(), time.Now()).WithDirection(ASC), catalog)
+		plan, err := planner.Build(logicalPlan)
+		require.NoError(t, err)
+
+		expectedPlan := &Plan{}
+		merge := expectedPlan.addNode(&Merge{id: "merge"})
+		sortMerge1 := expectedPlan.addNode(&SortMerge{id: "sortmerge1", Order: ASC, Column: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}})
+		sortMerge2 := expectedPlan.addNode(&SortMerge{id: "sortmerge2", Order: ASC, Column: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}})
+		scan1 := expectedPlan.addNode(&DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}, Direction: ASC})
+		scan2 := expectedPlan.addNode(&DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}, Direction: ASC})
+		scan3 := expectedPlan.addNode(&DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, Direction: ASC})
+		scan4 := expectedPlan.addNode(&DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, Direction: ASC})
+
+		_ = expectedPlan.addEdge(Edge{Parent: merge, Child: sortMerge1})
+		_ = expectedPlan.addEdge(Edge{Parent: merge, Child: sortMerge2})
+
+		// Sort merges should be added in the order of the scan timestamps
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan4})
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan3})
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan1})
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan2})
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+
+		pat := regexp.MustCompile("<.+?>")
+		actual = pat.ReplaceAllString(actual, "")
+		expected = pat.ReplaceAllString(expected, "")
+
+		require.Equal(t, actual, expected)
+	})
+
+	t.Run("descending", func(t *testing.T) {
+		planner := NewPlanner(NewContext(time.Now(), time.Now()).WithDirection(DESC), catalog)
+		plan, err := planner.Build(logicalPlan)
+		require.NoError(t, err)
+
+		expectedPlan := &Plan{}
+		merge := expectedPlan.addNode(&Merge{id: "merge"})
+		sortMerge1 := expectedPlan.addNode(&SortMerge{id: "sortmerge1", Order: DESC, Column: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}})
+		sortMerge2 := expectedPlan.addNode(&SortMerge{id: "sortmerge2", Order: DESC, Column: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}})
+		scan1 := expectedPlan.addNode(&DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}, Direction: DESC})
+		scan2 := expectedPlan.addNode(&DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}, Direction: DESC})
+		scan3 := expectedPlan.addNode(&DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, Direction: DESC})
+		scan4 := expectedPlan.addNode(&DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, Direction: DESC})
+
+		_ = expectedPlan.addEdge(Edge{Parent: merge, Child: sortMerge1})
+		_ = expectedPlan.addEdge(Edge{Parent: merge, Child: sortMerge2})
+
+		// Sort merges should be added in the order of the scan timestamps
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan1})
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan2})
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan4})
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan3})
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+
+		pat := regexp.MustCompile("<.+?>")
+		actual = pat.ReplaceAllString(actual, "")
+		expected = pat.ReplaceAllString(expected, "")
+
+		require.Equal(t, actual, expected)
+	})
 }
