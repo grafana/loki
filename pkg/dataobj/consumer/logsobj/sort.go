@@ -15,7 +15,7 @@ import (
 )
 
 func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, lessFunc compare[dataset.Row]) (result.Seq[logs.Record], error) {
-	sequences := make([]*tableSequence, 0, len(sections))
+	sequences := make([]*datasetSeq, 0, len(sections))
 	for _, s := range sections {
 		sec, err := logs.Open(ctx, s)
 		if err != nil {
@@ -38,11 +38,11 @@ func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, lessFun
 			Prefetch: true,
 		})
 
-		sequences = append(sequences, &tableSequence{
+		sequences = append(sequences, &datasetSeq{
 			section: sec,
 			columns: columns,
 			r:       r,
-			buf:     make([]dataset.Row, 8192),
+			buf:     make([]dataset.Row, 8<<10),
 		})
 	}
 
@@ -54,7 +54,7 @@ func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, lessFun
 		},
 	})
 
-	tree := loser.New(sequences, maxValue, tableSequenceValue, rowResultLess(lessFunc), tableSequenceStop)
+	tree := loser.New(sequences, maxValue, datasetSeqAt, rowResultLess(lessFunc), datasetSeqClose)
 
 	return result.Iter(
 		func(yield func(logs.Record) bool) error {
@@ -62,7 +62,7 @@ func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, lessFun
 			for tree.Next() {
 				seq := tree.Winner()
 
-				row, err := tableSequenceValue(seq).Value()
+				row, err := datasetSeqAt(seq).Value()
 				if err != nil {
 					return err
 				}
@@ -77,7 +77,7 @@ func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, lessFun
 		}), nil
 }
 
-type tableSequence struct {
+type datasetSeq struct {
 	curValue result.Result[dataset.Row]
 
 	section *logs.Section
@@ -90,9 +90,9 @@ type tableSequence struct {
 	size int // Number of valid values in buf
 }
 
-var _ loser.Sequence = (*tableSequence)(nil)
+var _ loser.Sequence = (*datasetSeq)(nil)
 
-func (seq *tableSequence) Next() bool {
+func (seq *datasetSeq) Next() bool {
 	if seq.off < seq.size {
 		seq.curValue = result.Value(seq.buf[seq.off])
 		seq.off++
@@ -118,9 +118,9 @@ ReadBatch:
 	return true
 }
 
-func tableSequenceValue(seq *tableSequence) result.Result[dataset.Row] { return seq.curValue }
+func datasetSeqAt(seq *datasetSeq) result.Result[dataset.Row] { return seq.curValue }
 
-func tableSequenceStop(seq *tableSequence) { _ = seq.r.Close() }
+func datasetSeqClose(seq *datasetSeq) { _ = seq.r.Close() }
 
 type compare[T any] func(T, T) int
 
