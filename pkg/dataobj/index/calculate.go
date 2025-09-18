@@ -45,6 +45,10 @@ func (c *Calculator) Flush() (*dataobj.Object, io.Closer, error) {
 	return c.indexobjBuilder.Flush()
 }
 
+func (c *Calculator) IsFull() bool {
+	return c.indexobjBuilder.IsFull()
+}
+
 // Calculate reads the log data from the input logs object and appends the resulting indexes to calculator's builder.
 // Calculate is not thread-safe.
 func (c *Calculator) Calculate(ctx context.Context, logger log.Logger, reader *dataobj.Object, objectPath string) error {

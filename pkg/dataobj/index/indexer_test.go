@@ -292,18 +292,27 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 
 // mockCalculator is a calculator that does nothing for use in tests
 type mockCalculator struct {
-	count  int
-	object *dataobj.Object
+	count           int
+	object          *dataobj.Object
+	flushCallCount  int
+	resetCallCount  int
+	errOnCallNumber int  // Which Calculate call should set full flag (0 = never)
+	full            bool // Track when builder becomes full
 }
 
 func (c *mockCalculator) Calculate(_ context.Context, _ log.Logger, object *dataobj.Object, _ string) error {
 	c.count++
 	c.object = object
+
+	if c.errOnCallNumber > 0 && c.count == c.errOnCallNumber {
+		c.full = true
+	}
 	return nil
 }
 
 func (c *mockCalculator) Flush() (*dataobj.Object, io.Closer, error) {
-	return c.object, io.NopCloser(bytes.NewReader([]byte{})), nil
+	c.flushCallCount++
+	return c.object, io.NopCloser(bytes.NewReader([]byte("test-data"))), nil
 }
 
 func (c *mockCalculator) TimeRanges() []multitenancy.TimeRange {
@@ -316,4 +325,89 @@ func (c *mockCalculator) TimeRanges() []multitenancy.TimeRange {
 	}
 }
 
-func (c *mockCalculator) Reset() {}
+func (c *mockCalculator) Reset() {
+	c.resetCallCount++
+	c.full = false
+}
+
+func (c *mockCalculator) IsFull() bool {
+	return c.full
+}
+
+func TestSerialIndexer_FlushOnBuilderFull(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// Set up test data - 3 events to process
+	bucket := objstore.NewInMemBucket()
+	for i := 0; i < 3; i++ {
+		buildLogObject(t, fmt.Sprintf("tenant-%d", i), fmt.Sprintf("test-path-%d", i), bucket)
+	}
+
+	events := []bufferedEvent{}
+	for i := 0; i < 3; i++ {
+		event := metastore.ObjectWrittenEvent{
+			ObjectPath: fmt.Sprintf("test-path-%d", i),
+			WriteTime:  time.Now().Format(time.RFC3339),
+		}
+
+		record := &kgo.Record{Partition: int32(0)}
+		eventBytes, err := event.Marshal()
+		require.NoError(t, err)
+		record.Value = eventBytes
+
+		events = append(events, bufferedEvent{
+			event:  event,
+			record: record,
+		})
+	}
+
+	// Create mock calculator that sets full flag on second call
+	mockCalc := &mockCalculator{
+		errOnCallNumber: 2, // Set full flag on the 2nd Calculate call
+	}
+	indexStorageBucket := objstore.NewInMemBucket()
+
+	// Create dedicated registry for this test
+	reg := prometheus.NewRegistry()
+
+	builderMetrics := newBuilderMetrics()
+	require.NoError(t, builderMetrics.register(reg))
+
+	indexerMetrics := newIndexerMetrics()
+	require.NoError(t, indexerMetrics.register(reg))
+
+	indexer := newSerialIndexer(
+		mockCalc,
+		bucket,
+		indexStorageBucket,
+		builderMetrics,
+		indexerMetrics,
+		log.NewLogfmtLogger(os.Stderr),
+		indexerConfig{QueueSize: 10},
+	)
+
+	// Start indexer service
+	require.NoError(t, indexer.StartAsync(ctx))
+	require.NoError(t, indexer.AwaitRunning(ctx))
+	defer func() {
+		indexer.StopAsync()
+		require.NoError(t, indexer.AwaitTerminated(context.Background()))
+	}()
+
+	// Submit build request with multiple events
+	records, err := indexer.submitBuild(ctx, events, 0, triggerTypeAppend)
+	require.NoError(t, err)
+	require.Len(t, records, 2) // All records should be returned
+
+	// Verify calculator behavior
+	require.Equal(t, 2, mockCalc.count)          // 2 calls (no retries)
+	require.Equal(t, 1, mockCalc.flushCallCount) // 1 flush after full only
+	require.Equal(t, 1, mockCalc.resetCallCount) // 1 reset after full
+	require.False(t, indexer.skipMode)
+
+	// Verify metrics - single request/build despite multiple flushes
+	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalRequests))
+	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalBuilds))
+}
