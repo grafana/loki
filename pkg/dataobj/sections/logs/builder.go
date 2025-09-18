@@ -25,6 +25,13 @@ type Record struct {
 	Line      []byte
 }
 
+type AppendStrategy int
+
+const (
+	AppendUnordered = iota
+	AppendOrdered
+)
+
 // BuilderOptions configures the behavior of the logs section.
 type BuilderOptions struct {
 	// PageSizeHint is the size of pages to use when encoding the logs section.
@@ -43,6 +50,11 @@ type BuilderOptions struct {
 	// increase time spent merging. Higher values of StripeMergeLimit increase
 	// memory overhead but reduce time spent merging.
 	StripeMergeLimit int
+
+	// AppendStrategy is allowed to control how the builder creates the section.
+	// When appending logs to the section in strict sort order, the [AppendOrdered] can be used to avoid
+	// creating and sorting of stripes.
+	AppendStrategy AppendStrategy
 }
 
 // Builder accumulate a set of [Record]s within a data object.
@@ -106,15 +118,21 @@ func (b *Builder) Type() dataobj.SectionType { return sectionType }
 // Append adds a new entry to b.
 func (b *Builder) Append(entry Record) {
 	b.metrics.appendsTotal.Inc()
+	b.metrics.recordCount.Inc()
 
 	b.records = append(b.records, entry)
 	b.recordsSize += recordSize(entry)
 
-	if b.recordsSize >= b.opts.BufferSize {
-		b.flushRecords()
+	// Shortcut for when logs are appending in strict sort order.
+	// We skip building temporarily compressed stripes in favour of a speed
+	// with a single pass compression of all records.
+	if b.opts.AppendStrategy == AppendOrdered {
+		return
 	}
 
-	b.metrics.recordCount.Inc()
+	if b.recordsSize >= b.opts.BufferSize {
+		b.flushRecords(zstd.SpeedFastest)
+	}
 }
 
 func recordSize(record Record) int {
@@ -130,16 +148,23 @@ func recordSize(record Record) int {
 	return size
 }
 
-func (b *Builder) flushRecords() {
+func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 	if len(b.records) == 0 {
 		return
+	}
+
+	// We can panic in case flushRecords is called multiple times before flushing a section
+	// when using the [AppendOrdered] strategy, because that should not happen and is
+	// considered a programming error.
+	if b.opts.AppendStrategy == AppendOrdered && len(b.stripes) > 0 {
+		panic("must not call flushRecords multiple times for a single section when using AppendOrdered strategy")
 	}
 
 	// Our stripes are intermediate tables that don't need to have the best
 	// compression. To maintain high throughput on appends, we use the fastest
 	// compression for a stripe. Better compression is then used for sections.
 	compressionOpts := dataset.CompressionOptions{
-		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedFastest)},
+		Zstd: []zstd.EOption{zstd.WithEncoderLevel(encLevel)},
 	}
 
 	stripe := buildTable(&b.stripeBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records)
@@ -166,6 +191,20 @@ func (b *Builder) flushSection() *table {
 		panic(fmt.Sprintf("merging tables: %v", err))
 	}
 
+	b.stripes = sliceclear.Clear(b.stripes)
+	b.stripesCompressedSize = 0
+	b.stripesUncompressedSize = 0
+	return section
+}
+
+func (b *Builder) flushSectionOrdered() *table {
+	b.flushRecords(zstd.SpeedDefault)
+
+	if len(b.stripes) == 0 {
+		return nil
+	}
+
+	section := b.stripes[0]
 	b.stripes = sliceclear.Clear(b.stripes)
 	b.stripesCompressedSize = 0
 	b.stripesUncompressedSize = 0
@@ -200,10 +239,16 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	timer := prometheus.NewTimer(b.metrics.encodeSeconds)
 	defer timer.ObserveDuration()
 
-	// Flush any remaining buffered data.
-	b.flushRecords()
+	var section *table
+	if b.opts.AppendStrategy == AppendOrdered {
+		// Flush buffered data all at once
+		section = b.flushSectionOrdered()
+	} else {
+		// Flush any remaining buffered data.
+		b.flushRecords(zstd.SpeedFastest)
+		section = b.flushSection()
+	}
 
-	section := b.flushSection()
 	if section == nil {
 		return 0, nil
 	}

@@ -391,6 +391,7 @@ func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, 
 		PageMaxRowCount:  b.cfg.MaxPageRows,
 		BufferSize:       int(b.cfg.BufferSize),
 		StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
+		AppendStrategy:   logs.AppendOrdered,
 	})
 
 	for _, tenant := range obj.Tenants() {
