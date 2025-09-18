@@ -2,9 +2,7 @@ package logsobj
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"math"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
@@ -15,7 +13,7 @@ import (
 )
 
 func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, lessFunc compare[dataset.Row]) (result.Seq[logs.Record], error) {
-	sequences := make([]*datasetSeq, 0, len(sections))
+	sequences := make([]*sectionSequence, 0, len(sections))
 	for _, s := range sections {
 		sec, err := logs.Open(ctx, s)
 		if err != nil {
@@ -38,11 +36,9 @@ func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, lessFun
 			Prefetch: true,
 		})
 
-		sequences = append(sequences, &datasetSeq{
-			section: sec,
-			columns: columns,
-			r:       r,
-			buf:     make([]dataset.Row, 8<<10),
+		sequences = append(sequences, &sectionSequence{
+			section:         sec,
+			DatasetSequence: logs.NewDatasetSequence(r, 8<<10),
 		})
 	}
 
@@ -54,7 +50,7 @@ func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, lessFun
 		},
 	})
 
-	tree := loser.New(sequences, maxValue, datasetSeqAt, rowResultLess(lessFunc), datasetSeqClose)
+	tree := loser.New(sequences, maxValue, sectionSequenceAt, rowResultLess(lessFunc), sectionSequenceClose)
 
 	return result.Iter(
 		func(yield func(logs.Record) bool) error {
@@ -62,7 +58,7 @@ func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, lessFun
 			for tree.Next() {
 				seq := tree.Winner()
 
-				row, err := datasetSeqAt(seq).Value()
+				row, err := sectionSequenceAt(seq).Value()
 				if err != nil {
 					return err
 				}
@@ -77,50 +73,15 @@ func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, lessFun
 		}), nil
 }
 
-type datasetSeq struct {
-	curValue result.Result[dataset.Row]
-
+type sectionSequence struct {
+	logs.DatasetSequence
 	section *logs.Section
-	columns []dataset.Column
-
-	r *dataset.Reader
-
-	buf  []dataset.Row
-	off  int // Offset into buf
-	size int // Number of valid values in buf
 }
 
-var _ loser.Sequence = (*datasetSeq)(nil)
+var _ loser.Sequence = (*sectionSequence)(nil)
 
-func (seq *datasetSeq) Next() bool {
-	if seq.off < seq.size {
-		seq.curValue = result.Value(seq.buf[seq.off])
-		seq.off++
-		return true
-	}
-
-ReadBatch:
-	n, err := seq.r.Read(context.Background(), seq.buf)
-	if err != nil && !errors.Is(err, io.EOF) {
-		seq.curValue = result.Error[dataset.Row](err)
-		return true
-	} else if n == 0 && errors.Is(err, io.EOF) {
-		return false
-	} else if n == 0 {
-		// Re-read if we got an empty batch without hitting EOF.
-		goto ReadBatch
-	}
-
-	seq.curValue = result.Value(seq.buf[0])
-
-	seq.off = 1
-	seq.size = n
-	return true
-}
-
-func datasetSeqAt(seq *datasetSeq) result.Result[dataset.Row] { return seq.curValue }
-
-func datasetSeqClose(seq *datasetSeq) { _ = seq.r.Close() }
+func sectionSequenceAt(seq *sectionSequence) result.Result[dataset.Row] { return seq.At() }
+func sectionSequenceClose(seq *sectionSequence)                         { seq.Close() }
 
 type compare[T any] func(T, T) int
 

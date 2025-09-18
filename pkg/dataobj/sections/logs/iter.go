@@ -78,6 +78,16 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 	})
 }
 
+// ColumnarDataset is the exported type alias of the internal [columnar.Dataset].
+type ColumnarDataset = columnar.Dataset
+
+// MakeColumnarDataset returns the dataset from a section and a set of columns.
+// It returns an error if not all columns are from the provided section.
+func MakeColumnarDataset(section *Section) (*ColumnarDataset, error) {
+	columnarSection := section.inner
+	return columnar.MakeDataset(columnarSection, columnarSection.Columns())
+}
+
 // DecodeRow decodes a record from a [dataset.Row], using the provided columns
 // to determine the column type. The list of columns must match the columns
 // used to create the row.
@@ -131,11 +141,4 @@ func DecodeRow(columns []*Column, row dataset.Row, record *Record, sym *symboliz
 	labelBuilder.Sort()
 	record.Metadata = labelBuilder.Labels()
 	return nil
-}
-
-type ColumnarDataset = columnar.Dataset
-
-func MakeColumnarDataset(section *Section) (*ColumnarDataset, error) {
-	columnarSection := section.inner
-	return columnar.MakeDataset(columnarSection, columnarSection.Columns())
 }
