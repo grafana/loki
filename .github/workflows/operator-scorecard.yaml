@@ -24,7 +24,7 @@ jobs:
       with:
         go-version-file: ./operator/go.mod
         cache-dependency-path: ./operator/go.sum
-    - uses: engineerd/setup-kind@71e45b960fc8dd50b4aeabf6eb6ef2ca0920b4c1 # v0.6.2
+    - uses: helm/kind-action@a1b0e391336a6ee6713a0583f8c6240d70863de3 # v1.12.0
       with:
         version: "v0.30.0"
     - name: Run scorecard
