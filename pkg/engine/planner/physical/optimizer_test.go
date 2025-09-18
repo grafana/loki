@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/logical"
@@ -869,10 +870,14 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 			require.NoError(t, err)
 
 			// Create physical planner with test catalog
-			catalog := &catalog{
-				streamsByObject: map[string]objectMeta{
-					"/test/object": {streamIDs: []int64{1, 2}, sections: 10},
-				},
+			catalog := &catalog{}
+			for i := 0; i < 10; i++ {
+				catalog.sectionDescriptors = append(catalog.sectionDescriptors, &metastore.DataobjSectionDescriptor{
+					SectionKey: metastore.SectionKey{ObjectPath: "/test/object", SectionIdx: int64(i)},
+					StreamIDs:  []int64{1, 2},
+					Start:      time.Unix(0, 0),
+					End:        time.Unix(3600, 0),
+				})
 			}
 			ctx := NewContext(time.Unix(0, 0), time.Unix(3600, 0))
 			planner := NewPlanner(ctx, catalog)

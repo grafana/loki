@@ -67,9 +67,9 @@ loki:
 .PHONY: server
 server: grafana loki
 
-# server-debug will start a local Grafana and Loki with an exposed delve debug port, useful for 
-# interacting with bench data. The loki proceess will block, but can be killed using the DAP api, 
-# so this task defines a teardown command to kill grafana once loki is stopped. 
+# server-debug will start a local Grafana and Loki with an exposed delve debug port, useful for
+# interacting with bench data. The loki proceess will block, but can be killed using the DAP api,
+# so this task defines a teardown command to kill grafana once loki is stopped.
 .PHONY: server-debug
 server-debug: grafana loki-debug
 	# loki will block, so this won't run until we kill the process

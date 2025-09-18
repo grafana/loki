@@ -281,8 +281,8 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		require.NoError(t, err)
 
 		catalog := &catalog{
-			streamsByObject: map[string]objectMeta{
-				"obj1": {streamIDs: []int64{1, 2}, sections: 1},
+			sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+				{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0}, StreamIDs: []int64{1, 2}, Start: time.Now(), End: time.Now().Add(time.Second * 10)},
 			},
 		}
 		planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
@@ -351,8 +351,8 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		require.NoError(t, err)
 
 		catalog := &catalog{
-			streamsByObject: map[string]objectMeta{
-				"obj1": {streamIDs: []int64{1, 2}, sections: 1},
+			sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+				{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0}, StreamIDs: []int64{1, 2}, Start: start, End: end},
 			},
 		}
 		planner := NewPlanner(NewContext(start, end), catalog)
