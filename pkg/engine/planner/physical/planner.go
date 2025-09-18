@@ -197,7 +197,7 @@ func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, baseNod
 func overlappingShardDescriptors(filteredShardDescriptors []FilteredShardDescriptor) [][]FilteredShardDescriptor {
 	// Ensure that shard descriptors are sorted by end time
 	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
-		return filteredShardDescriptors[i].TimeRange.End.Before(filteredShardDescriptors[j].TimeRange.End)
+		return filteredShardDescriptors[i].TimeRange.End.After(filteredShardDescriptors[j].TimeRange.End)
 	})
 
 	groups := make([][]FilteredShardDescriptor, 0, len(filteredShardDescriptors))
@@ -234,14 +234,12 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
-		return filteredShardDescriptors[i].TimeRange.End.Before(filteredShardDescriptors[j].TimeRange.End)
-	})
+
 	merge := &Merge{}
 	p.plan.addNode(merge)
 	groups := overlappingShardDescriptors(filteredShardDescriptors)
 
-	if ctx.direction == DESC {
+	if ctx.direction == ASC {
 		slices.Reverse(groups)
 	}
 
