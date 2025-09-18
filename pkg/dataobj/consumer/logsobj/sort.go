@@ -55,10 +55,10 @@ func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, lessFun
 	})
 
 	tree := loser.New(sequences, maxValue, tableSequenceValue, rowResultLess(lessFunc), tableSequenceStop)
-	defer tree.Close()
 
 	return result.Iter(
 		func(yield func(logs.Record) bool) error {
+			defer tree.Close()
 			for tree.Next() {
 				seq := tree.Winner()
 
