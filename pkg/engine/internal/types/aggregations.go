@@ -1,4 +1,4 @@
-package types
+package types //nolint:revive
 
 // RangeAggregationType represents the type of range aggregation operation
 type RangeAggregationType int
