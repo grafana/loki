@@ -37,7 +37,6 @@ func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, lessFun
 			Columns:  columns,
 			Prefetch: true,
 		})
-		defer r.Close()
 
 		sequences = append(sequences, &tableSequence{
 			section: sec,
