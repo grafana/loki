@@ -353,7 +353,6 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 	}
 	si.builderMetrics.setProcessingDelay(writeTime)
 
-	// UNCHANGED: Trigger all downloads first (lines 347-355 from original)
 	for _, event := range events {
 		select {
 		case si.downloadQueue <- event:
