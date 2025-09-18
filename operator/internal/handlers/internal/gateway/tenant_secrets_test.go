@@ -110,7 +110,7 @@ func TestGetTenantSecrets(t *testing.T) {
 						Namespace: "some-ns",
 					},
 				},
-				errorMsg: "cluster degraded: Invalid contents of ConfigMap with tenant test CA bundle did not find key special-ca.crt",
+				errorMsg: "cluster degraded: Invalid contents of ConfigMap for tenant \"test\". Can not find CA bundle with key: special-ca.crt",
 			},
 		} {
 			t.Run(strings.Join([]string{string(mode), tc.name}, "_"), func(t *testing.T) {

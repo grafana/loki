@@ -308,12 +308,12 @@ func tenantCAVolumeName(tenantName string) string {
 	return fmt.Sprintf("%s-ca-bundle", tenantName)
 }
 
-func tenantCADir(tennantName string) string {
-	return path.Join(tenantCAsDir, tennantName)
+func tenantCADir(tenantName string) string {
+	return path.Join(tenantCAsDir, tenantName)
 }
 
-func TenantCAPath(tennantName, key string) string {
-	return path.Join(tenantCAsDir, tennantName, key)
+func TenantCAPath(tenantName, key string) string {
+	return path.Join(tenantCAsDir, tenantName, key)
 }
 
 func gatewayClientSecretName(stackName string) string {
