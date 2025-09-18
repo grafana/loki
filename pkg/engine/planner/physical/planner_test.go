@@ -23,7 +23,7 @@ func (c *catalog) ResolveShardDescriptors(e Expression, from, through time.Time)
 }
 
 // ResolveDataObjForShard implements Catalog.
-func (c *catalog) ResolveShardDescriptorsWithShard(_ Expression, _ []Expression, shard ShardInfo, from, through time.Time) ([]FilteredShardDescriptor, error) {
+func (c *catalog) ResolveShardDescriptorsWithShard(_ Expression, _ []Expression, shard ShardInfo, _, _ time.Time) ([]FilteredShardDescriptor, error) {
 	return filterDescriptorsForShard(shard, c.sectionDescriptors)
 }
 
