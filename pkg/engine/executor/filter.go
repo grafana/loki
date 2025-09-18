@@ -139,12 +139,19 @@ func filterBatch(batch arrow.Record, include func(int) bool) arrow.Record {
 
 	var ct int64
 	for i := 0; i < int(batch.NumRows()); i++ {
-		if include(i) {
-			for _, add := range additions {
-				add(i)
-			}
-			ct++
+		if !include(i) {
+			continue
 		}
+
+		for col, add := range additions {
+			if batch.Column(col).IsNull(i) {
+				builders[col].AppendNull()
+				continue
+			}
+
+			add(i)
+		}
+		ct++
 	}
 
 	schema := arrow.NewSchema(fields, nil)

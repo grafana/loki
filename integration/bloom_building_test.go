@@ -265,7 +265,7 @@ func checkSeriesInBlooms(
 		querier := queriers[0]
 
 		require.NoError(t, querier.Seek(seriesFP))
-		require.Equal(t, seriesFP, querier.At().Series.Fingerprint)
+		require.Equal(t, seriesFP, querier.At().Fingerprint)
 	}
 }
 
