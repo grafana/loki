@@ -229,3 +229,38 @@ func TestConfigRedactsCredentials(t *testing.T) {
 	require.False(t, bytes.Contains(output, []byte("secret access id")))
 	require.False(t, bytes.Contains(output, []byte("session token")))
 }
+
+func TestNewS3ConfigFormatsEndpoint(t *testing.T) {
+	tests := []struct {
+		name             string
+		cfg              Config
+		expectedEndpoint string
+	}{
+		{
+			name: "integration test - endpoint formatting is applied correctly",
+			cfg: Config{
+				Endpoint:   "s3.example.com",
+				BucketName: "test-bucket",
+				Insecure:   false,
+			},
+			expectedEndpoint: "https://s3.example.com",
+		},
+		{
+			name: "integration test - insecure flag is respected",
+			cfg: Config{
+				Endpoint:   "s3.example.com:9000",
+				BucketName: "test-bucket",
+				Insecure:   true,
+			},
+			expectedEndpoint: "http://s3.example.com:9000",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s3Cfg, err := newS3Config(tt.cfg)
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedEndpoint, s3Cfg.Endpoint)
+		})
+	}
+}

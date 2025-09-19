@@ -8,6 +8,8 @@ import (
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/exthttp"
 	"github.com/thanos-io/objstore/providers/s3"
+
+	"github.com/grafana/loki/v3/pkg/storage/common/s3util"
 )
 
 const (
@@ -49,7 +51,7 @@ func newS3Config(cfg Config) (s3.Config, error) {
 
 	return s3.Config{
 		Bucket:             cfg.BucketName,
-		Endpoint:           cfg.Endpoint,
+		Endpoint:           s3util.FormatEndpoint(cfg.Endpoint, cfg.Insecure),
 		Region:             cfg.Region,
 		AccessKey:          cfg.AccessKeyID,
 		SecretKey:          cfg.SecretAccessKey.String(),

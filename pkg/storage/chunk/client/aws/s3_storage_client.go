@@ -33,6 +33,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 	clientutil "github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	storageawscommon "github.com/grafana/loki/v3/pkg/storage/common/aws"
+	"github.com/grafana/loki/v3/pkg/storage/common/s3util"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	loki_instrument "github.com/grafana/loki/v3/pkg/util/instrument"
@@ -210,7 +211,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	s3Config = s3Config.WithS3ForcePathStyle(cfg.S3ForcePathStyle) // support for Path Style S3 url if has the flag
 
 	if cfg.Endpoint != "" {
-		s3Config = s3Config.WithEndpoint(cfg.Endpoint)
+		s3Config = s3Config.WithEndpoint(s3util.FormatEndpoint(cfg.Endpoint, cfg.Insecure))
 	}
 
 	if cfg.Insecure {
