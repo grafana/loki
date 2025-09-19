@@ -290,7 +290,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 		// 	return
 		// }
 
-		// p.metrics.incAppendsTotal()
+		p.metrics.incAppendsTotal()
 		if err := p.builder.Append(tenant, stream); err != nil {
 			level.Error(p.logger).Log("msg", "failed to append stream after reset", "err", err)
 			p.metrics.incAppendFailures()
