@@ -679,6 +679,8 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 	if err != nil {
 		return nil, err
 	}
+	defer objectReader.Close()
+
 	n, err := buf.ReadFrom(objectReader)
 	if err != nil {
 		return nil, fmt.Errorf("reading metastore object: %w", err)
