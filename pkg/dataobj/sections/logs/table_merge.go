@@ -195,19 +195,7 @@ func (seq *DatasetSequence) Close() {
 }
 
 func rowResultLess(a, b result.Result[dataset.Row]) bool {
-	var (
-		aRow, aErr = a.Value()
-		bRow, bErr = b.Value()
-	)
-
-	// Put errors first so we return errors early.
-	if aErr != nil {
-		return true
-	} else if bErr != nil {
-		return false
-	}
-
-	return CompareRows(aRow, bRow) < 0
+	return result.Compare(a, b, CompareRows) < 0
 }
 
 // CompareRows compares two rows by their first two columns. CompareRows panics

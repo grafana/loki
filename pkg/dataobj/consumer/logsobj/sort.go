@@ -12,7 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
-func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, lessFunc compare[dataset.Row]) (result.Seq[logs.Record], error) {
+func sortMergeIterator(ctx context.Context, sections []*dataobj.Section) (result.Seq[logs.Record], error) {
 	sequences := make([]*sectionSequence, 0, len(sections))
 	for _, s := range sections {
 		sec, err := logs.Open(ctx, s)
@@ -50,7 +50,7 @@ func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, lessFun
 		},
 	})
 
-	tree := loser.New(sequences, maxValue, sectionSequenceAt, rowResultLess(lessFunc), sectionSequenceClose)
+	tree := loser.New(sequences, maxValue, sectionSequenceAt, rowResultLess, sectionSequenceClose)
 
 	return result.Iter(
 		func(yield func(logs.Record) bool) error {
@@ -83,22 +83,6 @@ var _ loser.Sequence = (*sectionSequence)(nil)
 func sectionSequenceAt(seq *sectionSequence) result.Result[dataset.Row] { return seq.At() }
 func sectionSequenceClose(seq *sectionSequence)                         { seq.Close() }
 
-type compare[T any] func(T, T) int
-
-func rowResultLess(cmp compare[dataset.Row]) func(a, b result.Result[dataset.Row]) bool {
-	return func(a, b result.Result[dataset.Row]) bool {
-		var (
-			aRow, aErr = a.Value()
-			bRow, bErr = b.Value()
-		)
-
-		// Put errors first so we return errors early.
-		if aErr != nil {
-			return true
-		} else if bErr != nil {
-			return false
-		}
-
-		return cmp(aRow, bRow) < 0
-	}
+func rowResultLess(a, b result.Result[dataset.Row]) bool {
+	return result.Compare(a, b, logs.CompareRows) < 0
 }

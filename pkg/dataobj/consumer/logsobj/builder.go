@@ -431,7 +431,7 @@ func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, 
 		lb.Reset()
 		lb.SetTenant(tenant)
 
-		iter, err := sortMergeIterator(ctx, sections, logs.CompareRows)
+		iter, err := sortMergeIterator(ctx, sections)
 		if err != nil {
 			return nil, nil, fmt.Errorf("creating sort iterator: %w", err)
 		}
