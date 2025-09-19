@@ -59,6 +59,7 @@ func buildPlanForLogQuery(
 		predicates          []Value
 		postParsePredicates []Value
 		hasLogfmtParser     bool
+		hasJSONParser       bool
 	)
 
 	// TODO(chaudum): Implement a Walk function that can return an error
@@ -88,18 +89,29 @@ func buildPlanForLogQuery(
 
 			hasLogfmtParser = true
 			return true // continue traversing to find label filters
+		case *syntax.LineParserExpr:
+			switch e.Op {
+			case syntax.OpParserTypeJSON:
+				hasJSONParser = true
+				return true
+			case syntax.OpParserTypeRegexp, syntax.OpParserTypeUnpack, syntax.OpParserTypePattern:
+				return false
+			default:
+				return false
+			}
 		case *syntax.LabelFilterExpr:
 			if val, innerErr := convertLabelFilter(e.LabelFilterer); innerErr != nil {
 				err = innerErr
 			} else {
-				if !hasLogfmtParser {
+				if !hasLogfmtParser && !hasJSONParser {
 					predicates = append(predicates, val)
 				} else {
 					postParsePredicates = append(postParsePredicates, val)
 				}
 			}
 			return true
-		case *syntax.LineParserExpr, *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
+			//TODO Support logfmt and json expression parset expressions
+		case *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
 			*syntax.LineFmtExpr, *syntax.LabelFmtExpr,
 			*syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
 			err = errUnimplemented
@@ -152,6 +164,9 @@ func buildPlanForLogQuery(
 	}
 	if hasLogfmtParser {
 		builder = builder.Parse(ParserLogfmt)
+	}
+	if hasJSONParser {
+		builder = builder.Parse(ParserJSON)
 	}
 	for _, value := range postParsePredicates {
 		builder = builder.Select(value)
