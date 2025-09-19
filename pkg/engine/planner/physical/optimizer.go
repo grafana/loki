@@ -35,6 +35,26 @@ func (r *removeNoopFilter) apply(node Node) bool {
 
 var _ rule = (*removeNoopFilter)(nil)
 
+// removeNoopMerge is a rule that removes merge/sortmerge nodes with only a single input
+type removeNoopMerge struct {
+	plan *Plan
+}
+
+// apply implements rule.
+func (r *removeNoopMerge) apply(node Node) bool {
+	changed := false
+	switch node := node.(type) {
+	case *Merge, *SortMerge:
+		if len(r.plan.Children(node)) <= 1 {
+			r.plan.eliminateNode(node)
+			changed = true
+		}
+	}
+	return changed
+}
+
+var _ rule = (*removeNoopMerge)(nil)
+
 // predicatePushdown is a rule that moves down filter predicates to the scan nodes.
 type predicatePushdown struct {
 	plan *Plan
