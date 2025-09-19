@@ -18,7 +18,10 @@ type nodeCollectVisitor struct {
 	onVisitRangeAggregation  func(*RangeAggregation) error
 	onVisitVectorAggregation func(*VectorAggregation) error
 	onVisitParse             func(*ParseNode) error
+	onVisitNoOp              func(*NoOp) error
 }
+
+var _ Visitor = (*nodeCollectVisitor)(nil)
 
 func (v *nodeCollectVisitor) VisitDataObjScan(n *DataObjScan) error {
 	if v.onVisitDataObjScan != nil {
@@ -89,6 +92,14 @@ func (v *nodeCollectVisitor) VisitVectorAggregation(n *VectorAggregation) error 
 func (v *nodeCollectVisitor) VisitParse(n *ParseNode) error {
 	if v.onVisitParse != nil {
 		return v.onVisitParse(n)
+	}
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	return nil
+}
+
+func (v *nodeCollectVisitor) VisitNoOp(n *NoOp) error {
+	if v.onVisitNoOp != nil {
+		return v.onVisitNoOp(n)
 	}
 	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
 	return nil
