@@ -14,12 +14,14 @@ import (
 )
 
 const (
-	jsonSpacer = '_'
+	jsonSpacer           = '_'
+	trueString           = "true"
+	falseString          = "false"
+	unescapeStackBufSize = 64
 )
 
 var (
-	trueBytes  = []byte("true")
-	falseBytes = []byte("false")
+	trueBytes = []byte("true")
 
 	// the rune error replacement is rejected by Prometheus hence replacing them with space.
 	removeInvalidUtf = func(r rune) rune {
@@ -45,7 +47,6 @@ func parseJSONLine(line string, requestedKeys []string) (map[string]string, erro
 type JSONParser struct {
 	prefixBuffer          [][]byte // buffer used to build json keys
 	sanitizedPrefixBuffer []byte
-	valueBuffer           []byte
 }
 
 // NewJSONParser creates a JSON parser that can handle nested objects with flattening.
@@ -53,7 +54,6 @@ func NewJSONParser() *JSONParser {
 	return &JSONParser{
 		prefixBuffer:          [][]byte{},
 		sanitizedPrefixBuffer: make([]byte, 0, 64),
-		valueBuffer:           make([]byte, 0, 64),
 	}
 }
 
@@ -141,9 +141,9 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	}
 
 	// Convert the value to string based on its type
-	j.valueBuffer = readValue(value, dataType, j.valueBuffer)
-	if j.valueBuffer != nil {
-		result[keyString] = string(j.valueBuffer) // make a copy as j.valueBuffer is reused
+	parsedValue := parseValue(value, dataType)
+	if parsedValue != "" {
+		result[keyString] = parsedValue
 	}
 
 	return nil
@@ -166,36 +166,37 @@ func (j *JSONParser) buildSanitizedPrefixFromBuffer() []byte {
 	return j.sanitizedPrefixBuffer
 }
 
-func readValue(v []byte, dataType jsonparser.ValueType, buf []byte) []byte {
+func parseValue(v []byte, dataType jsonparser.ValueType) string {
 	switch dataType {
 	case jsonparser.String:
-		return unescapeJSONString(v, buf)
+		return unescapeJSONString(v)
 	case jsonparser.Null:
-		return nil
+		return ""
 	case jsonparser.Number:
-		return v
+		return string(v)
 	case jsonparser.Boolean:
 		if bytes.Equal(v, trueBytes) {
-			return trueBytes
+			return trueString
 		}
-		return falseBytes
+		return falseString
 	default:
-		return nil
+		return ""
 	}
 }
 
-func unescapeJSONString(b, buf []byte) []byte {
-	bU, err := jsonparser.Unescape(b, buf[:])
+func unescapeJSONString(b []byte) string {
+	var stackbuf [unescapeStackBufSize]byte // stack-allocated array for allocation-free unescaping of small strings
+	bU, err := jsonparser.Unescape(b, stackbuf[:])
 	if err != nil {
-		return nil
+		return ""
 	}
+	res := string(bU)
 
-	res := unsafeString(bU)
 	if strings.ContainsRune(res, utf8.RuneError) {
-		return []byte(strings.Map(removeInvalidUtf, res))
+		res = strings.Map(removeInvalidUtf, res)
 	}
 
-	return bU
+	return res
 }
 
 // sanitizeLabelKey sanitizes a key to be a valid label name

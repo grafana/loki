@@ -95,9 +95,11 @@ func buildPlanForLogQuery(
 				hasJSONParser = true
 				return true
 			case syntax.OpParserTypeRegexp, syntax.OpParserTypeUnpack, syntax.OpParserTypePattern:
+				// keeping these as a distinct cases so we remember to implement them later
 				err = errUnimplemented
 				return false
 			default:
+				err = errUnimplemented
 				return false
 			}
 		case *syntax.LabelFilterExpr:
@@ -163,6 +165,10 @@ func buildPlanForLogQuery(
 	for _, value := range predicates {
 		builder = builder.Select(value)
 	}
+
+	// TODO: there's a subtle bug here, as it is actually possible to have both a logfmt parser and a json parser
+	// for example, the query `{app="foo"} | json | line_format "{{.nested_json}}" | json ` is valid, and will need
+	// multiple parse stages. We will handle thid in a future PR.
 	if hasLogfmtParser {
 		builder = builder.Parse(ParserLogfmt)
 	}

@@ -113,12 +113,12 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 	}, input)
 }
 
-// ParseFunc represents a function that parses a single line and returns key-value pairs
-type ParseFunc func(line string, requestedKeys []string) (map[string]string, error)
+// parseFunc represents a function that parses a single line and returns key-value pairs
+type parseFunc func(line string, requestedKeys []string) (map[string]string, error)
 
 // buildColumns builds Arrow columns from input lines using the provided parser
 // Returns the column headers, the Arrow columns, and any error
-func buildColumns(input *array.String, requestedKeys []string, allocator memory.Allocator, parseFunc ParseFunc, errorType string) ([]string, []arrow.Array) {
+func buildColumns(input *array.String, requestedKeys []string, allocator memory.Allocator, parseFunc parseFunc, errorType string) ([]string, []arrow.Array) {
 	columnBuilders := make(map[string]*array.StringBuilder)
 	columnOrder := parseLines(input, requestedKeys, columnBuilders, allocator, parseFunc, errorType)
 
@@ -137,7 +137,7 @@ func buildColumns(input *array.String, requestedKeys []string, allocator memory.
 }
 
 // parseLines discovers columns dynamically as lines are parsed
-func parseLines(input *array.String, requestedKeys []string, columnBuilders map[string]*array.StringBuilder, allocator memory.Allocator, parseFunc ParseFunc, errorType string) []string {
+func parseLines(input *array.String, requestedKeys []string, columnBuilders map[string]*array.StringBuilder, allocator memory.Allocator, parseFunc parseFunc, errorType string) []string {
 	columnOrder := []string{}
 	var errorBuilder, errorDetailsBuilder *array.StringBuilder
 	hasErrorColumns := false
