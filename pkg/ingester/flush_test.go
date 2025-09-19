@@ -500,6 +500,14 @@ func (s *testStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
 }
 
+func (s *testStore) HasChunkSizingInfo(_, _ model.Time) bool {
+	return false
+}
+
+func (s *testStore) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	return nil, nil
+}
+
 func (s *testStore) GetSchemaConfigs() []config.PeriodConfig {
 	return defaultPeriodConfigs
 }
