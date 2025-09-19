@@ -35,7 +35,7 @@ func (r *removeEmptyFilter) apply(node Node) bool {
 
 var _ rule = (*removeEmptyFilter)(nil)
 
-// removeEmptyFilter is a rule that removes noop filters
+// removeNoop is a rule that removes noop filters
 type removeNoop struct {
 	plan *Plan
 }
