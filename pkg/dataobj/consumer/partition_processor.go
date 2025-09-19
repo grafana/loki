@@ -242,8 +242,13 @@ func (p *partitionProcessor) emitObjectWrittenEvent(objectPath string) error {
 }
 
 func (p *partitionProcessor) processRecord(record *kgo.Record) {
+	start := p.clock.Now()
+
 	// Update offset metric at the end of processing
-	defer p.metrics.updateOffset(record.Offset)
+	defer func() {
+		p.metrics.recordProcessingTime.Observe(time.Since(start).Seconds())
+		p.metrics.updateOffset(record.Offset)
+	}()
 
 	// Observe processing delay
 	p.metrics.observeProcessingDelay(record.Timestamp)
