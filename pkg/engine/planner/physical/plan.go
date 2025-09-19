@@ -9,8 +9,7 @@ import (
 type NodeType uint32
 
 const (
-	NodeTypeNoOp NodeType = iota
-	NodeTypeDataObjScan
+	NodeTypeDataObjScan NodeType = iota
 	NodeTypeSortMerge
 	NodeTypeProjection
 	NodeTypeFilter
@@ -23,8 +22,6 @@ const (
 
 func (t NodeType) String() string {
 	switch t {
-	case NodeTypeNoOp:
-		return "Passthrough"
 	case NodeTypeDataObjScan:
 		return "DataObjScan"
 	case NodeTypeSortMerge:
@@ -68,7 +65,6 @@ type Node interface {
 	isNode()
 }
 
-var _ Node = (*NoOp)(nil)
 var _ Node = (*DataObjScan)(nil)
 var _ Node = (*Merge)(nil)
 var _ Node = (*SortMerge)(nil)
@@ -79,7 +75,6 @@ var _ Node = (*RangeAggregation)(nil)
 var _ Node = (*VectorAggregation)(nil)
 var _ Node = (*ParseNode)(nil)
 
-func (*NoOp) isNode()              {}
 func (*DataObjScan) isNode()       {}
 func (*Merge) isNode()             {}
 func (*SortMerge) isNode()         {}
