@@ -39,6 +39,16 @@ func (b *Builder) Limit(skip uint32, fetch uint32) *Builder {
 	}
 }
 
+// Parse applies a [Parse] operation to the Builder.
+func (b *Builder) Parse(kind ParserKind) *Builder {
+	return &Builder{
+		val: &Parse{
+			Table: b.val,
+			Kind:  kind,
+		},
+	}
+}
+
 // Sort applies a [Sort] operation to the Builder.
 func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 	return &Builder{

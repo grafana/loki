@@ -4895,8 +4895,7 @@ NetworkPoliciesType
 <em>(Optional)</em>
 <p>NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
 When enabled, the operator creates NetworkPolicies to control ingress/egress between
-Loki components and related services.
-Values: &ldquo;&rdquo; (default behavior), &ldquo;False&rdquo;, &ldquo;True&rdquo;.</p>
+Loki components and related services.</p>
 </td>
 </tr>
 <tr>

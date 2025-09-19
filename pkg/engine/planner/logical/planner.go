@@ -44,11 +44,21 @@ func BuildPlan(params logql.Params) (*Plan, error) {
 // buildPlanForLogQuery builds logical plan operations by traversing [syntax.LogSelectorExpr]
 // isMetricQuery should be set to true if this expr is encountered when processing a [syntax.SampleExpr].
 // rangeInterval should be set to a non-zero value if the query contains [$range].
-func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMetricQuery bool, rangeInterval time.Duration) (*Builder, error) {
+func buildPlanForLogQuery(
+	expr syntax.LogSelectorExpr,
+	params logql.Params,
+	isMetricQuery bool,
+	rangeInterval time.Duration,
+) (*Builder, error) {
 	var (
-		err        error
-		selector   Value
-		predicates []Value
+		err      error
+		selector Value
+
+		// parse statements in LogQL introduce additional ambiguouity, requiring post
+		// parse filters to be tracked separately, and not included in maketable predicates
+		predicates          []Value
+		postParsePredicates []Value
+		hasLogfmtParser     bool
 	)
 
 	// TODO(chaudum): Implement a Walk function that can return an error
@@ -65,14 +75,31 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 			// We do not want to traverse the AST further down, because line filter expressions can be nested,
 			// which would lead to multiple predicates of the same expression.
 			return false // do not traverse children
+		case *syntax.LogfmtParserExpr:
+			// TODO: support --strict and --keep-empty
+			if e.Strict {
+				err = errUnimplemented
+				return false
+			}
+			if e.KeepEmpty {
+				err = errUnimplemented
+				return false
+			}
+
+			hasLogfmtParser = true
+			return true // continue traversing to find label filters
 		case *syntax.LabelFilterExpr:
 			if val, innerErr := convertLabelFilter(e.LabelFilterer); innerErr != nil {
 				err = innerErr
 			} else {
-				predicates = append(predicates, val)
+				if !hasLogfmtParser {
+					predicates = append(predicates, val)
+				} else {
+					postParsePredicates = append(postParsePredicates, val)
+				}
 			}
 			return true
-		case *syntax.LineParserExpr, *syntax.LogfmtParserExpr, *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
+		case *syntax.LineParserExpr, *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
 			*syntax.LineFmtExpr, *syntax.LabelFmtExpr,
 			*syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
 			err = errUnimplemented
@@ -121,6 +148,12 @@ func buildPlanForLogQuery(expr syntax.LogSelectorExpr, params logql.Params, isMe
 	}
 
 	for _, value := range predicates {
+		builder = builder.Select(value)
+	}
+	if hasLogfmtParser {
+		builder = builder.Parse(ParserLogfmt)
+	}
+	for _, value := range postParsePredicates {
 		builder = builder.Select(value)
 	}
 
