@@ -102,13 +102,13 @@ func TestConvertAST_Success(t *testing.T) {
 %10 = NOT_MATCH_RE builtin.message "(a|b|c)"
 %11 = AND %9 %10
 %12 = MAKETABLE [selector=%3, predicates=[%6, %11], shard=0_of_1]
-%13 = SORT %12 [column=builtin.timestamp, asc=false, nulls_first=false]
-%14 = GTE builtin.timestamp 1970-01-01T01:00:00Z
-%15 = SELECT %13 [predicate=%14]
-%16 = LT builtin.timestamp 1970-01-01T02:00:00Z
-%17 = SELECT %15 [predicate=%16]
-%18 = SELECT %17 [predicate=%6]
-%19 = SELECT %18 [predicate=%11]
+%13 = GTE builtin.timestamp 1970-01-01T01:00:00Z
+%14 = SELECT %12 [predicate=%13]
+%15 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%16 = SELECT %14 [predicate=%15]
+%17 = SELECT %16 [predicate=%6]
+%18 = SELECT %17 [predicate=%11]
+%19 = SORT %18 [column=builtin.timestamp, asc=false, nulls_first=false]
 %20 = LIMIT %19 [skip=0, fetch=1000]
 RETURN %20
 `
@@ -309,14 +309,14 @@ RETURN %11
 		// Assert against the SSA representation for log query
 		expected := `%1 = EQ label.app "test"
 %2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
-%3 = SORT %2 [column=builtin.timestamp, asc=false, nulls_first=false]
-%4 = GTE builtin.timestamp 1970-01-01T01:00:00Z
-%5 = SELECT %3 [predicate=%4]
-%6 = LT builtin.timestamp 1970-01-01T02:00:00Z
-%7 = SELECT %5 [predicate=%6]
-%8 = PARSE %7 [kind=logfmt]
-%9 = EQ ambiguous.level "error"
-%10 = SELECT %8 [predicate=%9]
+%3 = GTE builtin.timestamp 1970-01-01T01:00:00Z
+%4 = SELECT %2 [predicate=%3]
+%5 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = PARSE %6 [kind=logfmt]
+%8 = EQ ambiguous.level "error"
+%9 = SELECT %7 [predicate=%8]
+%10 = SORT %9 [column=builtin.timestamp, asc=false, nulls_first=false]
 %11 = LIMIT %10 [skip=0, fetch=1000]
 RETURN %11
 `
@@ -345,16 +345,16 @@ RETURN %11
 %2 = MATCH_STR builtin.message "error"
 %3 = EQ ambiguous.label "value"
 %4 = MAKETABLE [selector=%1, predicates=[%2, %3], shard=0_of_1]
-%5 = SORT %4 [column=builtin.timestamp, asc=false, nulls_first=false]
-%6 = GTE builtin.timestamp 1970-01-01T01:00:00Z
-%7 = SELECT %5 [predicate=%6]
-%8 = LT builtin.timestamp 1970-01-01T02:00:00Z
-%9 = SELECT %7 [predicate=%8]
-%10 = SELECT %9 [predicate=%2]
-%11 = SELECT %10 [predicate=%3]
-%12 = PARSE %11 [kind=logfmt]
-%13 = EQ ambiguous.level "debug"
-%14 = SELECT %12 [predicate=%13]
+%5 = GTE builtin.timestamp 1970-01-01T01:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%8 = SELECT %6 [predicate=%7]
+%9 = SELECT %8 [predicate=%2]
+%10 = SELECT %9 [predicate=%3]
+%11 = PARSE %10 [kind=logfmt]
+%12 = EQ ambiguous.level "debug"
+%13 = SELECT %11 [predicate=%12]
+%14 = SORT %13 [column=builtin.timestamp, asc=false, nulls_first=false]
 %15 = LIMIT %14 [skip=0, fetch=1000]
 RETURN %15
 `
