@@ -62,14 +62,31 @@ func TestQueryFilter_BuildWhereClause(t *testing.T) {
 			expectedArgs:  nil,
 		},
 		{
+			name: "logs drilldown filter true",
+			filter: QueryFilter{
+				IsLogsDrilldown: boolPtr(true),
+			},
+			expectedWhere: "WHERE is_logs_drilldown = ?",
+			expectedArgs:  []any{true},
+		},
+		{
+			name: "logs drilldown filter false",
+			filter: QueryFilter{
+				IsLogsDrilldown: boolPtr(false),
+			},
+			expectedWhere: "WHERE is_logs_drilldown = ?",
+			expectedArgs:  []any{false},
+		},
+		{
 			name: "all filters combined",
 			filter: QueryFilter{
-				Tenant:        "tenant-b",
-				User:          "user123",
-				UsedNewEngine: boolPtr(true),
+				Tenant:          "tenant-b",
+				User:            "user123",
+				IsLogsDrilldown: boolPtr(true),
+				UsedNewEngine:   boolPtr(true),
 			},
-			expectedWhere: "WHERE tenant_id = ? AND user = ? AND (cell_a_used_new_engine = 1 OR cell_b_used_new_engine = 1)",
-			expectedArgs:  []any{"tenant-b", "user123"},
+			expectedWhere: "WHERE tenant_id = ? AND user = ? AND is_logs_drilldown = ? AND (cell_a_used_new_engine = 1 OR cell_b_used_new_engine = 1)",
+			expectedArgs:  []any{"tenant-b", "user123", true},
 		},
 		{
 			name: "with time range specified",
