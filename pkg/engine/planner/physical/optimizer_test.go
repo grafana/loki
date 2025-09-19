@@ -1,7 +1,6 @@
 package physical
 
 import (
-	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -171,7 +170,7 @@ func TestOptimizer(t *testing.T) {
 		plan := dummyPlan()
 		optimizations := []*optimization{
 			newOptimization("noop filter", plan).withRules(
-				&removeEmptyFilter{plan},
+				&removeNoopFilter{plan},
 			),
 		}
 
@@ -561,45 +560,6 @@ func TestOptimizer(t *testing.T) {
 		actual := PrintAsTree(plan)
 		expected := PrintAsTree(expectedPlan)
 		require.Equal(t, expected, actual)
-	})
-
-	t.Run("cleanup", func(t *testing.T) {
-		plan := func() *Plan {
-			plan := &Plan{}
-			limit := plan.addNode(&Limit{id: "limit"})
-			sort := plan.addNode(&NoOp{id: "sort"}) // NoOp node is created by planner to represent logical SORT
-			merge := plan.addNode(&Merge{id: "merge"})
-			scan := plan.addNode(&DataObjScan{id: "scan"})
-
-			_ = plan.addEdge(Edge{Parent: limit, Child: sort})
-			_ = plan.addEdge(Edge{Parent: sort, Child: merge})
-			_ = plan.addEdge(Edge{Parent: merge, Child: scan})
-			return plan
-		}()
-
-		optimizations := []*optimization{
-			newOptimization("cleanup", plan).withRules(
-				&removeNoop{plan},
-			),
-		}
-
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
-		actual := PrintAsTree(plan)
-
-		optimized := func() *Plan {
-			plan := &Plan{}
-			limit := plan.addNode(&Limit{id: "limit"})
-			merge := plan.addNode(&Merge{id: "merge"})
-			scan := plan.addNode(&DataObjScan{id: "scan"})
-
-			_ = plan.addEdge(Edge{Parent: limit, Child: merge})
-			_ = plan.addEdge(Edge{Parent: merge, Child: scan})
-			return plan
-		}()
-
-		expected := PrintAsTree(optimized)
-		require.Equal(t, expected, actual, fmt.Sprintf("expected:\n%s\n\nactual:\n:%s\n", expected, actual))
 	})
 }
 
