@@ -96,7 +96,7 @@ func (j *JSONParser) parseObject(key, value []byte, dataType jsonparser.ValueTyp
 		j.prefixBuffer = append(j.prefixBuffer, key)
 
 		// Recursively parse nested object
-		err := jsonparser.ObjectEach(value, func(nestedKey []byte, nestedValue []byte, nestedType jsonparser.ValueType, offset int) error {
+		err := jsonparser.ObjectEach(value, func(nestedKey []byte, nestedValue []byte, nestedType jsonparser.ValueType, _ int) error {
 			return j.parseObject(nestedKey, nestedValue, nestedType, result, requestedKeyLookup)
 		})
 
