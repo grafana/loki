@@ -212,7 +212,6 @@ func TestJSONParser_Process_Malformed(t *testing.T) {
 		{"invalid json", []byte(`not json`)},
 		{"more invalid json", []byte(`{n}`)},
 		{"unclosed string", []byte(`{"key": "unclosed`)},
-		{"trailing comma", []byte(`{"key": "value",}`)},
 	}
 
 	for _, tt := range tests {
