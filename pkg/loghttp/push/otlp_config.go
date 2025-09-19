@@ -17,7 +17,9 @@ const (
 	// StructuredMetadata stores an Attribute as Structured Metadata with each log entry.
 	StructuredMetadata Action = "structured_metadata"
 	// Drop drops Attributes for which the Attribute name does match the regex.
-	Drop Action = "drop"
+	Drop              Action = "drop"
+	NoConversion             = "no_conversion"
+	DotsToUnderscores        = "dots_to_underscores"
 )
 
 var (
@@ -36,6 +38,7 @@ func DefaultOTLPConfig(cfg GlobalOTLPConfig) OTLPConfig {
 				},
 			},
 		},
+		ConversionStrategy: DotsToUnderscores,
 	}
 }
 
@@ -44,6 +47,7 @@ type OTLPConfig struct {
 	ScopeAttributes     []AttributesConfig       `yaml:"scope_attributes,omitempty" doc:"description=Configuration for scope attributes to store them as Structured Metadata or drop them altogether"`
 	LogAttributes       []AttributesConfig       `yaml:"log_attributes,omitempty" doc:"description=Configuration for log attributes to store them as index labels or Structured Metadata or drop them altogether"`
 	SeverityTextAsLabel bool                     `yaml:"severity_text_as_label,omitempty" doc:"default=false|description=When true, the severity_text field from log records will be stored as an index label. It is recommended not to use this option unless absolutely necessary"`
+	ConversionStrategy  string                   `yaml:"conversion_strategy,omitempty" category:"experimental" doc:"default=dots_to_underscores|description=Experimental. Conversion strategy to use for OTLP logs. It can be one of [dots_to_underscores (default) or no_conversion]. dots_to_underscores will convert dots in attribute names to underscores, while no_conversion will keep the original attribute names with dots."`
 }
 
 type GlobalOTLPConfig struct {
@@ -119,6 +123,11 @@ func (c *OTLPConfig) Validate() error {
 		if ac.Action == IndexLabel {
 			return fmt.Errorf("%s action is only supported for resource_attributes", IndexLabel)
 		}
+	}
+
+	// Validate ConversionStrategy
+	if c.ConversionStrategy != "" && c.ConversionStrategy != DotsToUnderscores && c.ConversionStrategy != NoConversion {
+		return fmt.Errorf("invalid conversion_strategy: %s, must be one of: %s, %s", c.ConversionStrategy, DotsToUnderscores, NoConversion)
 	}
 
 	return nil

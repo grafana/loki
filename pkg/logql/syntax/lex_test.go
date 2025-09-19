@@ -254,3 +254,83 @@ func TestLex_Variants(t *testing.T) {
 		})
 	}
 }
+
+func TestLex_DotsInLabelNames(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		input      string
+		expected   []int
+		shouldFail bool
+		errorMsg   string
+	}{
+		{
+			name:       "dots in unquoted label name should fail",
+			input:      `{service.name="product"}`,
+			expected:   []int{OPEN_BRACE, IDENTIFIER, DOT, IDENTIFIER, EQ, STRING, CLOSE_BRACE}, // This shows the lexer splits service.name into service and .name
+			shouldFail: true,
+			errorMsg:   "syntax error: unexpected ., expecting = or =~ or !~ or !=",
+		},
+		{
+			name:       "quoted label name with dots should work",
+			input:      `{"service.name"="product"}`,
+			expected:   []int{OPEN_BRACE, STRING, EQ, STRING, CLOSE_BRACE}, // This shows the lexer treats "service.name" as a string
+			shouldFail: false,
+		},
+		{
+			name:       "multiple dots in label name",
+			input:      `{user.profile.id="123"}`,
+			expected:   []int{OPEN_BRACE, IDENTIFIER, DOT, IDENTIFIER, DOT, IDENTIFIER, EQ, STRING, CLOSE_BRACE},
+			shouldFail: true,
+			errorMsg:   "syntax error: unexpected ., expecting = or =~ or !~ or !=",
+		},
+		{
+			name:       "quoted multiple dots in label name",
+			input:      `{"user.profile.id"="123"}`,
+			expected:   []int{OPEN_BRACE, STRING, EQ, STRING, CLOSE_BRACE},
+			shouldFail: false,
+		},
+		{
+			name:       "dots in label value should work",
+			input:      `{service="product.name"}`,
+			expected:   []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE},
+			shouldFail: false,
+		},
+		{
+			name:       "normal label without dots should work",
+			input:      `{service="product"}`,
+			expected:   []int{OPEN_BRACE, IDENTIFIER, EQ, STRING, CLOSE_BRACE},
+			shouldFail: false,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := []int{}
+			l := lexer{
+				Scanner: Scanner{
+					Mode: scanner.SkipComments | scanner.ScanStrings,
+				},
+			}
+			l.Init(strings.NewReader(tc.input))
+			var lval syntaxSymType
+			for {
+				tok := l.Lex(&lval)
+				if tok == 0 {
+					break
+				}
+				actual = append(actual, tok)
+			}
+
+			// Verify the lexer produces the expected tokens
+			require.Equal(t, tc.expected, actual, "Lexer should produce expected tokens")
+
+			// Test that parsing fails with the expected error
+			if tc.shouldFail {
+				_, err := ParseMatchers(tc.input, true)
+				require.Error(t, err, "Should fail to parse labels with dots")
+				require.Contains(t, err.Error(), tc.errorMsg, "Error message should contain expected text")
+			} else {
+				_, err := ParseMatchers(tc.input, true)
+				require.NoError(t, err, "Should successfully parse labels without dots")
+			}
+		})
+	}
+}
