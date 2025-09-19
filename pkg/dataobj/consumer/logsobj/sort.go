@@ -12,6 +12,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
+// sortMergeIterator returns an iterator that performs a k-way merge of records from multiple logs sections.
+// It requires that the input sections are sorted sorted by the same order.
 func sortMergeIterator(ctx context.Context, sections []*dataobj.Section) (result.Seq[logs.Record], error) {
 	sequences := make([]*sectionSequence, 0, len(sections))
 	for _, s := range sections {

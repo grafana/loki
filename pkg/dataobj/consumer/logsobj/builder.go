@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/facette/natsort"
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -379,6 +380,8 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 }
 
 // CopyAndSort takes an existing [dataobj.Object] and rewrites the logs sections so the logs are sorted object-wide.
+// The order of the sections is deterministic. For each tenant, first come the streams sections in the order of the old object
+// and second come the new, rewritten logs sections. Tenants are sorted in natural order.
 func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
 	dur := prometheus.NewTimer(b.metrics.sortDurationSeconds)
 	defer dur.ObserveDuration()
@@ -394,7 +397,11 @@ func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, 
 		AppendStrategy:   logs.AppendOrdered,
 	})
 
-	for _, tenant := range obj.Tenants() {
+	// Sort the set of tenants so the new object has a deterministic order of sections.
+	tenants := obj.Tenants()
+	natsort.Sort(tenants)
+
+	for _, tenant := range tenants {
 		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool { return streams.CheckSection(s) && s.Tenant == tenant }) {
 			sb.Reset()
 			sb.SetTenant(sec.Tenant)
@@ -453,6 +460,8 @@ func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, 
 				lb.SetTenant(tenant)
 			}
 		}
+
+		// Append the final section with the remaining logs
 		if err := b.builder.Append(lb); err != nil {
 			return nil, nil, err
 		}
