@@ -369,14 +369,14 @@ RETURN %11
 		// Assert against the SSA representation for log query
 		expected := `%1 = EQ label.app "test"
 %2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
-%3 = SORT %2 [column=builtin.timestamp, asc=false, nulls_first=false]
-%4 = GTE builtin.timestamp 1970-01-01T01:00:00Z
-%5 = SELECT %3 [predicate=%4]
-%6 = LT builtin.timestamp 1970-01-01T02:00:00Z
-%7 = SELECT %5 [predicate=%6]
-%8 = PARSE %7 [kind=json]
-%9 = EQ ambiguous.level "error"
-%10 = SELECT %8 [predicate=%9]
+%3 = GTE builtin.timestamp 1970-01-01T01:00:00Z
+%4 = SELECT %2 [predicate=%3]
+%5 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = PARSE %6 [kind=json]
+%8 = EQ ambiguous.level "error"
+%9 = SELECT %7 [predicate=%8]
+%10 = SORT %9 [column=builtin.timestamp, asc=false, nulls_first=false]
 %11 = LIMIT %10 [skip=0, fetch=1000]
 RETURN %11
 `
