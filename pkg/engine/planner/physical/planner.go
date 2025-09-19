@@ -381,13 +381,16 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 		optimizations := []*optimization{
 			newOptimization("PredicatePushdown", plan).withRules(
 				&predicatePushdown{plan: plan},
-				&removeNoopFilter{plan: plan},
 			),
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
 			newOptimization("ProjectionPushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
+			),
+			newOptimization("Cleanup", plan).withRules(
+				&removeNoopFilter{plan: plan},
+				&removeNoopMerge{plan: plan},
 			),
 		}
 		optimizer := newOptimizer(plan, optimizations)
