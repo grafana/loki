@@ -48,6 +48,7 @@ jobs:
   tests:
     name: Run correctness tests for ${{ matrix.store }}
     runs-on: github-hosted-ubuntu-arm64-large
+    needs: generate-testdata
     strategy:
       matrix:
         store: [dataobj-engine]
