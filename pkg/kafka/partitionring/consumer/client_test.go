@@ -160,14 +160,14 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 
 	// Change the active partitions in the ring
 	t.Log("Changing active partitions from [0,1] to [0,1,2]")
-	mockRing.partitionIDs = []int32{0, 1, 2}
+	mockRing.UpdatePartitionIDs([]int32{0, 1, 2})
 
 	// Wait for rebalancing to occur and stabilize
 	time.Sleep(7 * time.Second)
 
 	// Change active partitions again
 	t.Log("Changing active partitions from [0,1,2] to [0,1,2,3]")
-	mockRing.partitionIDs = []int32{0, 1, 2, 3}
+	mockRing.UpdatePartitionIDs([]int32{0, 1, 2, 3})
 
 	// Wait for final rebalancing
 	time.Sleep(7 * time.Second)
@@ -312,7 +312,7 @@ func TestPartitionContinuityDuringRebalance(t *testing.T) {
 	t.Log("Adding consumer2 and changing active partitions from [0,1] to [0,1,2]")
 	consumer2 := createConsumer("consumer2")
 	defer consumer2.Close()
-	mockRing.partitionIDs = []int32{0, 1, 2}
+	mockRing.UpdatePartitionIDs([]int32{0, 1, 2})
 
 	// Let it run for a while
 	time.Sleep(5 * time.Second)
