@@ -388,7 +388,7 @@ func TestStoresGenerateData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dataObjStore, err := NewDataObjStore(dir, testTenant, DefaultOpt())
+	dataObjStore, err := NewDataObjStore(dir, testTenant, 1, PartitionByStreamLabels)
 	if err != nil {
 		t.Fatal(err)
 	}

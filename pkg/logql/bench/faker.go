@@ -482,17 +482,42 @@ func (f *Faker) GrafanaMessage() string {
 // LogGenerator is a function that generates a log line
 type LogGenerator func(level string, timestamp time.Time, faker *Faker) string
 
+// TrafficLevel represents the expected log volume for an application
+type TrafficLevel int
+
+const (
+	LowTraffic TrafficLevel = iota
+	MediumTraffic
+	HighTraffic
+)
+
+// String returns a string representation of the traffic level
+func (t TrafficLevel) String() string {
+	switch t {
+	case LowTraffic:
+		return "low"
+	case MediumTraffic:
+		return "medium"
+	case HighTraffic:
+		return "high"
+	default:
+		return "unknown"
+	}
+}
+
 // Application represents a type of application that generates logs
 type Application struct {
 	Name         string
 	LogGenerator LogGenerator
 	OTELResource map[string]string // OTEL resource attributes
+	TrafficLevel TrafficLevel      // Expected log volume level
 }
 
 // Register standard application types with known log patterns
 var defaultApplications = []Application{
 	{
-		Name: "web-server",
+		Name:         "web-server",
+		TrafficLevel: HighTraffic,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// JSON format with variations
 			baseJSON := fmt.Sprintf(
@@ -527,7 +552,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "database",
+		Name:         "database",
+		TrafficLevel: HighTraffic,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// JSON format with variations
 			baseJSON := fmt.Sprintf(
@@ -562,7 +588,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "cache",
+		Name:         "cache",
+		TrafficLevel: MediumTraffic,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// JSON format with variations
 			baseJSON := fmt.Sprintf(
@@ -596,7 +623,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "auth-service",
+		Name:         "auth-service",
+		TrafficLevel: MediumTraffic,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// JSON format with variations
 			baseJSON := fmt.Sprintf(
@@ -634,7 +662,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "kafka",
+		Name:         "kafka",
+		TrafficLevel: HighTraffic,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// JSON format with variations
 			baseJSON := fmt.Sprintf(
@@ -673,7 +702,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "nginx",
+		Name:         "nginx",
+		TrafficLevel: HighTraffic,
 		LogGenerator: func(_ string, ts time.Time, f *Faker) string {
 			return fmt.Sprintf(
 				`%s - %s [%s] "%s %s HTTP/1.1" %d %d "%s" "%s"`,
@@ -689,7 +719,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "syslog",
+		Name:         "syslog",
+		TrafficLevel: LowTraffic,
 		LogGenerator: func(_ string, _ time.Time, f *Faker) string {
 			return fmt.Sprintf(
 				`<%d>%s %s[%d]: %s`,
@@ -706,7 +737,8 @@ var defaultApplications = []Application{
 	},
 	// New applications with logfmt and other formats
 	{
-		Name: "mimir",
+		Name:         "mimir",
+		TrafficLevel: MediumTraffic,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// Logfmt format for Mimir
 			baseLogfmt := fmt.Sprintf(
@@ -744,7 +776,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "loki",
+		Name:         "loki",
+		TrafficLevel: MediumTraffic,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// Logfmt format for Loki
 			baseLogfmt := fmt.Sprintf(
@@ -787,7 +820,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "tempo",
+		Name:         "tempo",
+		TrafficLevel: MediumTraffic,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// Logfmt format for Tempo
 			baseLogfmt := fmt.Sprintf(
@@ -830,7 +864,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "kubernetes",
+		Name:         "kubernetes",
+		TrafficLevel: HighTraffic,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// Kubernetes log format (mix of structured and unstructured)
 			component := f.K8sComponent()
@@ -849,7 +884,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "prometheus",
+		Name:         "prometheus",
+		TrafficLevel: MediumTraffic,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// JSON format with variations
 			baseJSON := fmt.Sprintf(
@@ -884,7 +920,8 @@ var defaultApplications = []Application{
 		},
 	},
 	{
-		Name: "grafana",
+		Name:         "grafana",
+		TrafficLevel: LowTraffic,
 		LogGenerator: func(level string, ts time.Time, f *Faker) string {
 			// Logfmt format for Grafana
 			baseLogfmt := fmt.Sprintf(
