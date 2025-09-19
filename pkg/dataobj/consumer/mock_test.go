@@ -123,6 +123,10 @@ func (m *mockBuilder) Flush() (*dataobj.Object, io.Closer, error) {
 	return m.builder.Flush()
 }
 
+func (m *mockBuilder) Reset() {
+	m.builder.Reset()
+}
+
 func (m *mockBuilder) TimeRanges() []multitenancy.TimeRange {
 	return m.builder.TimeRanges()
 }

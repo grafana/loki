@@ -35,6 +35,7 @@ type builder interface {
 	Flush() (*dataobj.Object, io.Closer, error)
 	TimeRanges() []multitenancy.TimeRange
 	UnregisterMetrics(prometheus.Registerer)
+	Reset()
 }
 
 // committer allows mocking of certain [kgo.Client] methods in tests.
@@ -280,14 +281,18 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 			return
 		}
 
-		if err := p.flushAndCommit(); err != nil {
-			level.Error(p.logger).Log("msg", "failed to flush and commit", "err", err)
-			return
-		}
+		p.builder.Reset()
+		p.lastModified = time.Time{}
+		p.lastFlushed = p.clock.Now()
 
-		p.metrics.incAppendsTotal()
+		// if err := p.flushAndCommit(); err != nil {
+		// 	level.Error(p.logger).Log("msg", "failed to flush and commit", "err", err)
+		// 	return
+		// }
+
+		// p.metrics.incAppendsTotal()
 		if err := p.builder.Append(tenant, stream); err != nil {
-			level.Error(p.logger).Log("msg", "failed to append stream after flushing", "err", err)
+			level.Error(p.logger).Log("msg", "failed to append stream after reset", "err", err)
 			p.metrics.incAppendFailures()
 		}
 	}
