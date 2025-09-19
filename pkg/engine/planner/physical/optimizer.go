@@ -15,13 +15,13 @@ type rule interface {
 	apply(Node) bool
 }
 
-// removeNoopFilter is a rule that removes Filter nodes without predicates.
-type removeNoopFilter struct {
+// removeEmptyFilter is a rule that removes filters nodes without predicates.
+type removeEmptyFilter struct {
 	plan *Plan
 }
 
 // apply implements rule.
-func (r *removeNoopFilter) apply(node Node) bool {
+func (r *removeEmptyFilter) apply(node Node) bool {
 	changed := false
 	switch node := node.(type) {
 	case *Filter:
@@ -33,7 +33,25 @@ func (r *removeNoopFilter) apply(node Node) bool {
 	return changed
 }
 
-var _ rule = (*removeNoopFilter)(nil)
+var _ rule = (*removeEmptyFilter)(nil)
+
+// removeEmptyFilter is a rule that removes noop filters
+type removeNoop struct {
+	plan *Plan
+}
+
+// apply implements rule.
+func (r *removeNoop) apply(node Node) bool {
+	changed := false
+	switch node := node.(type) {
+	case *NoOp:
+		r.plan.eliminateNode(node)
+		changed = true
+	}
+	return changed
+}
+
+var _ rule = (*removeNoop)(nil)
 
 // predicatePushdown is a rule that moves down filter predicates to the scan nodes.
 type predicatePushdown struct {
