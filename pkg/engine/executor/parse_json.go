@@ -9,6 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/buger/jsonparser"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -73,7 +74,7 @@ func (j *JSONParser) Process(line []byte, requestedKeys []string) (map[string]st
 	j.prefixBuffer = j.prefixBuffer[:0]
 
 	// Parse the JSON recursively
-	err := jsonparser.ObjectEach(line, func(key []byte, value []byte, dataType jsonparser.ValueType, offset int) error {
+	err := jsonparser.ObjectEach(line, func(key []byte, value []byte, dataType jsonparser.ValueType, _ int) error {
 		return j.parseObject(key, value, dataType, result, requestedKeyLookup)
 	})
 
