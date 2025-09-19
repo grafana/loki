@@ -183,6 +183,7 @@ func TestCanExecuteQuery(t *testing.T) {
 		},
 		{
 			statement: `{env="prod"} | json`,
+			expected:  true,
 		},
 		{
 			statement: `{env="prod"} | json foo="bar"`,

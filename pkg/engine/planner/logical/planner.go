@@ -95,6 +95,7 @@ func buildPlanForLogQuery(
 				hasJSONParser = true
 				return true
 			case syntax.OpParserTypeRegexp, syntax.OpParserTypeUnpack, syntax.OpParserTypePattern:
+				err = errUnimplemented
 				return false
 			default:
 				return false
