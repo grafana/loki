@@ -3844,11 +3844,10 @@ spec:
                       NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
                       When enabled, the operator creates NetworkPolicies to control ingress/egress between
                       Loki components and related services.
-                      Values: "" (default behavior), "false", "true".
                     enum:
                     - ""
-                    - "false"
-                    - "true"
+                    - "False"
+                    - "True"
                     type: string
                   openshift:
                     description: Openshift defines the configuration specific to Openshift

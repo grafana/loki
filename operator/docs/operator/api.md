@@ -2537,10 +2537,10 @@ using an in-process OpenPolicyAgent Rego authorizer.</p>
 <tbody><tr><td><p>&#34;&#34;</p></td>
 <td><p>NetworkPoliciesDefault when no explicit value is set, inherits default behavior.</p>
 </td>
-</tr><tr><td><p>&#34;false&#34;</p></td>
+</tr><tr><td><p>&#34;False&#34;</p></td>
 <td><p>NetworkPoliciesDisabled when NetworkPolicies are explicitly disabled.</p>
 </td>
-</tr><tr><td><p>&#34;true&#34;</p></td>
+</tr><tr><td><p>&#34;True&#34;</p></td>
 <td><p>NetworkPoliciesEnabled when NetworkPolicies are explicitly enabled.</p>
 </td>
 </tr></tbody>
@@ -4896,7 +4896,7 @@ NetworkPoliciesType
 <p>NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
 When enabled, the operator creates NetworkPolicies to control ingress/egress between
 Loki components and related services.
-Values: &ldquo;&rdquo; (default behavior), &ldquo;false&rdquo;, &ldquo;true&rdquo;.</p>
+Values: &ldquo;&rdquo; (default behavior), &ldquo;False&rdquo;, &ldquo;True&rdquo;.</p>
 </td>
 </tr>
 <tr>

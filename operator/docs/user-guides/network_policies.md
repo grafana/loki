@@ -56,7 +56,7 @@ spec:
   storageClassName: gp2
   tenants:
     mode: openshift-logging
-    networkPolicies: "true"  # Enable network policies
+    networkPolicies: "True"  # Enable network policies
 ```
 
 #### Configuration Options
@@ -64,8 +64,8 @@ spec:
 | Value | Description | Default Behavior |
 |-------|-------------|------------------|
 | `""` (empty) | **Default** - inherits platform defaults | Enabled on OpenShift 4.20+, disabled elsewhere |
-| `"false"` | **Disabled** - no network policies created | Full network access allowed |
-| `"true"` | **Enabled** - network policies enforced | Restricted network access with explicit allow rules |
+| `"False"` | **Disabled** - no network policies created | Full network access allowed |
+| `"True"` | **Enabled** - network policies enforced | Restricted network access with explicit allow rules |
 
 ## Generated Network Policies
 
