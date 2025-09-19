@@ -94,6 +94,6 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always() # Upload results even if one of the test tests fails
         with:
-          name: logql-bench-results-${{ matrix.store }}-${{ steps.checkout.outputs.commit }}
+          name: logql-bench-results-${{ matrix.store }}-${{ matrix.range_type }}-${{ steps.checkout.outputs.commit }}
           path: ./pkg/logql/bench/results
           retention-days: 7
