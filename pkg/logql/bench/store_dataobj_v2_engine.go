@@ -26,8 +26,9 @@ type DataObjV2EngineStore struct {
 }
 
 // NewDataObjV2EngineStore creates a new store that uses the v2 dataobj engine.
-func NewDataObjV2EngineStore(dataDir string, tenantID string) (*DataObjV2EngineStore, error) {
-	return dataobjV2StoreWithOpts(dataDir, tenantID, logql.EngineOpts{
+func NewDataObjV2EngineStore(dir string, tenantID string) (*DataObjV2EngineStore, error) {
+	storageDir := filepath.Join(dir, storageDir)
+	return dataobjV2StoreWithOpts(storageDir, tenantID, logql.EngineOpts{
 		EnableV2Engine: true,
 		BatchSize:      512,
 		RangeConfig:    rangeio.DefaultConfig,

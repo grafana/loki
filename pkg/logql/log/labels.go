@@ -611,7 +611,7 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	b.scratchBuilder.Sort()
 
 	lbls := b.scratchBuilder.Labels()
-	hash := b.hasher.Hash(lbls)
+	hash := b.Hash(lbls)
 
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
@@ -681,7 +681,7 @@ func findLabelValue(labels []labels.Label, name string) (string, bool) {
 // TODO: use scratch builder instead
 func (b *BaseLabelsBuilder) toUncategorizedResult(buf []labels.Label) LabelsResult {
 	lbls := labels.New(buf...)
-	hash := b.hasher.Hash(lbls)
+	hash := b.Hash(lbls)
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}

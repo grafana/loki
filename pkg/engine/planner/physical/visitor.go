@@ -13,4 +13,5 @@ type Visitor interface {
 	VisitMerge(*Merge) error
 	VisitLimit(*Limit) error
 	VisitVectorAggregation(*VectorAggregation) error
+	VisitParse(*ParseNode) error
 }
