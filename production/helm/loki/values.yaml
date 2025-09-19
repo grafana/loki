@@ -4070,6 +4070,11 @@ monitoring:
     # -- Additional labels for the rules PrometheusRule resource
     labels: {}
     # -- Additional labels for PrometheusRule alerts
+    additionalRuleAnnotations: {}
+    # e.g.:
+    # additionalRuleAnnotations:
+    #   runbook_url: "https://runbooks.example.com/oncall/loki"
+    #   summary: "What this alert means and how to respond"
     additionalRuleLabels: {}
     # -- Additional groups to add to the rules file
     additionalGroups: []
