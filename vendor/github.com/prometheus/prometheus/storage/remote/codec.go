@@ -340,7 +340,7 @@ func (e errSeriesSet) Err() error {
 	return e.err
 }
 
-func (errSeriesSet) Warnings() annotations.Annotations { return nil }
+func (e errSeriesSet) Warnings() annotations.Annotations { return nil }
 
 // concreteSeriesSet implements storage.SeriesSet.
 type concreteSeriesSet struct {
@@ -357,11 +357,11 @@ func (c *concreteSeriesSet) At() storage.Series {
 	return c.series[c.cur-1]
 }
 
-func (*concreteSeriesSet) Err() error {
+func (c *concreteSeriesSet) Err() error {
 	return nil
 }
 
-func (*concreteSeriesSet) Warnings() annotations.Annotations { return nil }
+func (c *concreteSeriesSet) Warnings() annotations.Annotations { return nil }
 
 // concreteSeries implements storage.Series.
 type concreteSeries struct {
@@ -536,7 +536,7 @@ func (c *concreteSeriesIterator) Next() chunkenc.ValueType {
 }
 
 // Err implements chunkenc.Iterator.
-func (*concreteSeriesIterator) Err() error {
+func (c *concreteSeriesIterator) Err() error {
 	return nil
 }
 
@@ -607,7 +607,7 @@ func (s *chunkedSeriesSet) Err() error {
 	return s.err
 }
 
-func (*chunkedSeriesSet) Warnings() annotations.Annotations {
+func (s *chunkedSeriesSet) Warnings() annotations.Annotations {
 	return nil
 }
 

@@ -27,7 +27,7 @@ type MockContext struct {
 }
 
 // Deadline always will return not set.
-func (*MockContext) Deadline() (deadline time.Time, ok bool) {
+func (c *MockContext) Deadline() (deadline time.Time, ok bool) {
 	return time.Time{}, false
 }
 
@@ -42,7 +42,7 @@ func (c *MockContext) Err() error {
 }
 
 // Value ignores the Value and always returns nil.
-func (*MockContext) Value(interface{}) interface{} {
+func (c *MockContext) Value(interface{}) interface{} {
 	return nil
 }
 
