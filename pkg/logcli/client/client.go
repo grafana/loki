@@ -388,10 +388,8 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	}
 	backoff := backoff.New(context.Background(), bkcfg)
 
-	for {
-		if !backoff.Ongoing() {
-			break
-		}
+	for backoff.Ongoing() {
+
 		resp, err = client.Do(req)
 		if err != nil {
 			log.Println("error sending request", err)
@@ -400,7 +398,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		}
 		if resp.StatusCode/100 != 2 {
 			buf, _ := io.ReadAll(resp.Body) // nolint
-			log.Printf("Error response from server: %s (%v) attempts remaining: %d", string(buf), err, c.Retries-backoff.NumRetries())
+			log.Printf("error response from server: %s (%v) attempts remaining: %d", string(buf), err, c.Retries-backoff.NumRetries())
 			if err := resp.Body.Close(); err != nil {
 				log.Println("error closing body", err)
 			}
@@ -491,10 +489,8 @@ func (c *DefaultClient) doPostRequest(path, query string, quiet bool) error {
 	}
 	backoff := backoff.New(context.Background(), bkcfg)
 
-	for {
-		if !backoff.Ongoing() {
-			break
-		}
+	for backoff.Ongoing() {
+
 		resp, err = client.Do(req)
 		if err != nil {
 			log.Println("error sending request", err)
@@ -592,10 +588,8 @@ func (c *DefaultClient) doDeleteRequest(path, query string, quiet bool) error {
 	}
 	backoff := backoff.New(context.Background(), bkcfg)
 
-	for {
-		if !backoff.Ongoing() {
-			break
-		}
+	for backoff.Ongoing() {
+
 		resp, err = client.Do(req)
 		if err != nil {
 			log.Println("error sending request", err)
@@ -724,7 +718,7 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 			return nil, err
 		}
 		buf, _ := io.ReadAll(resp.Body) // nolint
-		return nil, fmt.Errorf("Error response from server: %s (%v)", string(buf), err)
+		return nil, fmt.Errorf("error response from server: %s (%v)", string(buf), err)
 	}
 
 	return conn, nil
