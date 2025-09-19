@@ -3,6 +3,7 @@ package limits
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/coder/quartz"
 	"github.com/go-kit/log"
@@ -208,4 +209,127 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	n = 0
 	u.Iter(func(_ string, _ int32, _ streamUsage) { n++ })
 	require.Equal(t, 2, n)
+}
+
+func TestConsumer_ProcessRecord_RateData(t *testing.T) {
+	clock := quartz.NewMock(t)
+	store, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, prometheus.NewRegistry())
+	require.NoError(t, err)
+	store.clock = clock
+
+	consumer := &consumer{
+		usage:            store,
+		zone:             "zone1",
+		recordsDiscarded: prometheus.NewCounter(prometheus.CounterOpts{Name: "test_discarded"}),
+		recordsInvalid:   prometheus.NewCounter(prometheus.CounterOpts{Name: "test_invalid"}),
+	}
+
+	t.Run("processes rate data correctly", func(t *testing.T) {
+		// Create a StreamMetadataRecord for rate data from a different zone
+		// (so it won't be discarded)
+		rateRecord := proto.StreamMetadataRecord{
+			Zone:   "zone2", // Different zone
+			Tenant: "tenant1",
+			Metadata: &proto.StreamMetadata{
+				StreamHash: 0x123,
+				TotalSize:  500,
+			},
+		}
+		b, err := rateRecord.Marshal()
+		require.NoError(t, err)
+
+		kafkaRecord := &kgo.Record{
+			Key:       []byte("tenant1"),
+			Value:     b,
+			Timestamp: clock.Now(),
+		}
+
+		// Process the record
+		err = consumer.processRecord(context.Background(), partitionReady, kafkaRecord)
+		require.NoError(t, err)
+
+		// Verify the data was stored and rate buckets were updated
+		// Calculate the partition for this stream hash
+		partition := int32(0x123 % 1) // 1 partition
+		stream, exists := store.getStreamUsage("tenant1", partition, 0x123)
+		require.True(t, exists)
+		require.Equal(t, uint64(0x123), stream.hash)
+		require.Equal(t, uint64(500), stream.totalSize)
+		require.NotNil(t, stream.rateBuckets)
+		require.Len(t, stream.rateBuckets, 5) // 5 minutes / 1 minute = 5 buckets
+	})
+
+	t.Run("discards own zone records when partition is ready", func(t *testing.T) {
+		// Create a record from the same zone
+		rateRecord := proto.StreamMetadataRecord{
+			Zone:   "zone1", // Same zone
+			Tenant: "tenant1",
+			Metadata: &proto.StreamMetadata{
+				StreamHash: 0x456,
+				TotalSize:  300,
+			},
+		}
+		b, err := rateRecord.Marshal()
+		require.NoError(t, err)
+
+		kafkaRecord := &kgo.Record{
+			Key:       []byte("tenant1"),
+			Value:     b,
+			Timestamp: clock.Now(),
+		}
+
+		// Process the record with partition ready (should be discarded)
+		err = consumer.processRecord(context.Background(), partitionReady, kafkaRecord)
+		require.NoError(t, err)
+
+		// Verify the data was NOT stored (discarded)
+		partition := int32(0x456 % 1) // 1 partition
+		_, exists := store.getStreamUsage("tenant1", partition, 0x456)
+		require.False(t, exists)
+	})
+
+	t.Run("processes other zone records when partition is ready", func(t *testing.T) {
+		// Create a record from a different zone
+		rateRecord := proto.StreamMetadataRecord{
+			Zone:   "zone2", // Different zone
+			Tenant: "tenant1",
+			Metadata: &proto.StreamMetadata{
+				StreamHash: 0x789,
+				TotalSize:  200,
+			},
+		}
+		b, err := rateRecord.Marshal()
+		require.NoError(t, err)
+
+		kafkaRecord := &kgo.Record{
+			Key:       []byte("tenant1"),
+			Value:     b,
+			Timestamp: clock.Now(),
+		}
+
+		// Process the record with partition ready (should be processed)
+		err = consumer.processRecord(context.Background(), partitionReady, kafkaRecord)
+		require.NoError(t, err)
+
+		// Verify the data was stored
+		partition := int32(0x789 % 1) // 1 partition
+		stream, exists := store.getStreamUsage("tenant1", partition, 0x789)
+		require.True(t, exists)
+		require.Equal(t, uint64(0x789), stream.hash)
+		require.Equal(t, uint64(200), stream.totalSize)
+	})
+
+	t.Run("handles invalid record data", func(t *testing.T) {
+		// Create an invalid record
+		kafkaRecord := &kgo.Record{
+			Key:       []byte("tenant1"),
+			Value:     []byte("invalid data"),
+			Timestamp: clock.Now(),
+		}
+
+		// Process the invalid record
+		err := consumer.processRecord(context.Background(), partitionReady, kafkaRecord)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "corrupted record")
+	})
 }

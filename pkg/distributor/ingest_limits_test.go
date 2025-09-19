@@ -37,6 +37,11 @@ func (c *mockIngestLimitsFrontendClient) ExceedsLimits(_ context.Context, r *pro
 	return c.response, nil
 }
 
+func (c *mockIngestLimitsFrontendClient) UpdateRate(_ context.Context, r *proto.UpdateRateRequest) (*proto.UpdateRateResponse, error) {
+	// Mock implementation - just return success for tests
+	return &proto.UpdateRateResponse{}, nil
+}
+
 func TestIngestLimits_EnforceLimits(t *testing.T) {
 	clock := quartz.NewMock(t)
 	clock.Set(time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
