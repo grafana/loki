@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
@@ -133,13 +134,11 @@ func (m *mockBuilder) UnregisterMetrics(r prometheus.Registerer) {
 
 // A mockCommitter implements the committer interface for tests.
 type mockCommitter struct {
-	// We will need to change this when we add support for other methods like
-	// CommitOffsets and CommitOffsetsSync.
-	records []*kgo.Record
+	offsets []int64
 }
 
-func (m *mockCommitter) CommitRecords(_ context.Context, records ...*kgo.Record) error {
-	m.records = append(m.records, records...)
+func (m *mockCommitter) Commit(_ context.Context, offset int64) error {
+	m.offsets = append(m.offsets, offset)
 	return nil
 }
 
@@ -200,11 +199,11 @@ func (m *mockKafka) ProduceSync(_ context.Context, rs ...*kgo.Record) kgo.Produc
 
 // mockPartitionProcessor mocks a [partitionProcessor].
 type mockPartitionProcessor struct {
-	records          []*kgo.Record
+	records          []partition.Record
 	started, stopped bool
 }
 
-func (m *mockPartitionProcessor) Append(records []*kgo.Record) bool {
+func (m *mockPartitionProcessor) Append(records []partition.Record) bool {
 	m.records = append(m.records, records...)
 	return true
 }
@@ -226,63 +225,6 @@ func (m *mockPartitionProcessorFactory) New(_ context.Context, _ *kgo.Client, _ 
 	m.calls++
 	return &mockPartitionProcessor{}
 }
-
-type mockPartitionProcessorListener struct {
-	processors map[string]map[int32]processor
-}
-
-func (m *mockPartitionProcessorListener) OnRegister(topic string, partition int32, p processor) {
-	if m.processors == nil {
-		m.processors = make(map[string]map[int32]processor)
-	}
-	processorsByTopic, ok := m.processors[topic]
-	if !ok {
-		processorsByTopic = make(map[int32]processor)
-		m.processors[topic] = processorsByTopic
-	}
-	processorsByTopic[partition] = p
-}
-func (m *mockPartitionProcessorListener) OnDeregister(topic string, partition int32) {
-	processorsByTopic, ok := m.processors[topic]
-	if !ok {
-		return
-	}
-	delete(processorsByTopic, partition)
-	if len(processorsByTopic) == 0 {
-		delete(m.processors, topic)
-	}
-}
-
-// mockPartitionProcessorLifecycler mocks a [partitionProcessorLifecycler].
-type mockPartitionProcessorLifecycler struct {
-	processors map[string]map[int32]struct{}
-}
-
-func (m *mockPartitionProcessorLifecycler) Register(_ context.Context, _ *kgo.Client, topic string, partition int32) {
-	if m.processors == nil {
-		m.processors = make(map[string]map[int32]struct{})
-	}
-	processorsByTopic, ok := m.processors[topic]
-	if !ok {
-		processorsByTopic = make(map[int32]struct{})
-		m.processors[topic] = processorsByTopic
-	}
-	processorsByTopic[partition] = struct{}{}
-}
-func (m *mockPartitionProcessorLifecycler) Deregister(_ context.Context, topic string, partition int32) {
-	if m.processors == nil {
-		return
-	}
-	processorsByTopic, ok := m.processors[topic]
-	if !ok {
-		return
-	}
-	delete(processorsByTopic, partition)
-	if len(processorsByTopic) == 0 {
-		delete(m.processors, topic)
-	}
-}
-func (m *mockPartitionProcessorLifecycler) Stop(_ context.Context) {}
 
 type recordedTocEntry struct {
 	DataObjectPath string
