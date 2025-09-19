@@ -270,9 +270,7 @@ func (p *Planner) processSelect(lp *logical.Select, ctx *Context) ([]Node, error
 	return []Node{node}, nil
 }
 
-// Convert [logical.Sort] into one [NoOp] node.
-// It is temporarily used to pass the direction of the logical plan node to its children
-// and can be removed in the optimisation phase.
+// Pass sort direction from [logical.Sort] to the children.
 func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]Node, error) {
 	order := DESC
 	if lp.Ascending {
