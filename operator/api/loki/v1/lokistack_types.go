@@ -1403,6 +1403,16 @@ const (
 	CredentialModeTokenCCO CredentialMode = "token-cco"
 )
 
+// NetworkPolicyStatus defines the deployment status of network policies.
+type NetworkPolicyStatus string
+
+const (
+	// NetworkPolicyStatusTrue when NetworkPolicies are deployed
+	NetworkPolicyStatusTrue NetworkPolicyStatus = "True"
+	// NetworkPolicyStatusFalse when NetworkPolicies are not deployed
+	NetworkPolicyStatusFalse NetworkPolicyStatus = "False"
+)
+
 // LokiStackStorageStatus defines the observed state of
 // the Loki storage configuration.
 type LokiStackStorageStatus struct {
@@ -1435,6 +1445,12 @@ type LokiStackStatus struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	Storage LokiStackStorageStatus `json:"storage,omitempty"`
+
+	// NetworkPolicies indicates whether NetworkPolicies are deployed for this LokiStack.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	NetworkPolicies NetworkPolicyStatus `json:"networkPolicies,omitempty"`
 
 	// Conditions of the Loki deployment health.
 	//

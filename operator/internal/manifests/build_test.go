@@ -6,14 +6,17 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
 func TestApplyDefaultSettings_OverrideDefaults(t *testing.T) {
@@ -305,7 +308,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 			err := ApplyDefaultSettings(&tst.BuildOptions)
 			require.NoError(t, err)
 
-			objects, buildErr := BuildAll(tst.BuildOptions)
+			objects, _, buildErr := BuildAll(tst.BuildOptions)
 
 			require.NoError(t, buildErr)
 			require.Equal(t, tst.MonitorCount, serviceMonitorCount(objects))
@@ -400,7 +403,7 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 	require.NoError(t, err)
 	err = ApplyTLSSettings(&opts, nil)
 	require.NoError(t, err)
-	objects, buildErr := BuildAll(opts)
+	objects, _, buildErr := BuildAll(opts)
 	require.NoError(t, buildErr)
 
 	for _, obj := range objects {
@@ -472,7 +475,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 
 	err := ApplyDefaultSettings(&opts)
 	require.NoError(t, err)
-	objects, buildErr := BuildAll(opts)
+	objects, _, buildErr := BuildAll(opts)
 	require.NoError(t, buildErr)
 	require.Equal(t, 8, serviceMonitorCount(objects))
 
@@ -642,7 +645,7 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 			err = ApplyTLSSettings(&tst.BuildOptions, nil)
 			require.NoError(t, err)
 
-			objs, err := BuildAll(tst.BuildOptions)
+			objs, _, err := BuildAll(tst.BuildOptions)
 			require.NoError(t, err)
 
 			for _, o := range objs {
@@ -794,7 +797,7 @@ func TestBuildAll_WithFeatureGates_RestrictedPodSecurityStandard(t *testing.T) {
 			err := ApplyDefaultSettings(&tst.BuildOptions)
 			require.NoError(t, err)
 
-			objs, err := BuildAll(tst.BuildOptions)
+			objs, _, err := BuildAll(tst.BuildOptions)
 			require.NoError(t, err)
 
 			for _, o := range objs {
@@ -908,7 +911,7 @@ func TestBuildAll_WithFeatureGates_LokiStackGateway(t *testing.T) {
 			t.Parallel()
 			err := ApplyDefaultSettings(&tst.BuildOptions)
 			require.NoError(t, err)
-			objects, buildErr := BuildAll(tst.BuildOptions)
+			objects, _, buildErr := BuildAll(tst.BuildOptions)
 			require.NoError(t, buildErr)
 			if tst.BuildOptions.Gates.LokiStackGateway {
 				require.True(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
@@ -961,7 +964,7 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 			t.Parallel()
 			err := ApplyDefaultSettings(&tst.BuildOptions)
 			require.NoError(t, err)
-			objects, buildErr := BuildAll(tst.BuildOptions)
+			objects, _, buildErr := BuildAll(tst.BuildOptions)
 			require.NoError(t, buildErr)
 			if tst.BuildOptions.Gates.LokiStackGateway {
 				require.True(t, checkGatewayDeployed(objects, tst.BuildOptions.Name))
@@ -990,4 +993,71 @@ func checkGatewayDeployed(objects []client.Object, stackName string) bool {
 		}
 	}
 	return false
+}
+
+func TestBuildAll_NetworkPolicyStatus(t *testing.T) {
+	tests := []struct {
+		name                    string
+		networkPolicies         lokiv1.NetworkPoliciesType
+		expectedNetworkStatus   lokiv1.NetworkPolicyStatus
+		shouldHaveNetworkPolicy bool
+	}{
+		{
+			name:                    "network policies default (empty string)",
+			networkPolicies:         lokiv1.NetworkPoliciesDefault,
+			expectedNetworkStatus:   lokiv1.NetworkPolicyStatusTrue, // Default enables on OpenShift
+			shouldHaveNetworkPolicy: true,
+		},
+		{
+			name:                    "network policies disabled (False)",
+			networkPolicies:         lokiv1.NetworkPoliciesDisabled,
+			expectedNetworkStatus:   lokiv1.NetworkPolicyStatusFalse,
+			shouldHaveNetworkPolicy: false,
+		},
+		{
+			name:                    "network policies enabled (True)",
+			networkPolicies:         lokiv1.NetworkPoliciesEnabled,
+			expectedNetworkStatus:   lokiv1.NetworkPolicyStatusTrue,
+			shouldHaveNetworkPolicy: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Create base options with OpenShift enabled (so default enables network policies)
+			opts := Options{
+				Name:      "test-stack",
+				Namespace: "test-ns",
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXExtraSmall,
+				},
+				Gates:       configv1.FeatureGates{},
+				FeatureGate: NewFeatureGate(true, &openshift.OpenShiftVersion{Major: 4, Minor: 20}), // OpenShift 4.20+ to enable default
+			}
+
+			opts.Stack.Tenants = &lokiv1.TenantsSpec{
+				NetworkPolicies: test.networkPolicies,
+			}
+
+			err := ApplyDefaultSettings(&opts)
+			require.NoError(t, err)
+
+			objects, networkPolicyStatus, err := BuildAll(opts)
+			require.NoError(t, err)
+
+			assert.Equal(t, test.expectedNetworkStatus, networkPolicyStatus,
+				"Network policy status should match expected value")
+
+			hasNetworkPolicy := false
+			for _, obj := range objects {
+				if _, ok := obj.(*networkingv1.NetworkPolicy); ok {
+					hasNetworkPolicy = true
+					break
+				}
+			}
+
+			assert.Equal(t, test.shouldHaveNetworkPolicy, hasNetworkPolicy,
+				"NetworkPolicy objects presence should match expected")
+		})
+	}
 }

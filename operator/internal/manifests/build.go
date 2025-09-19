@@ -12,45 +12,46 @@ import (
 )
 
 // BuildAll builds all manifests required to run a Loki Stack
-func BuildAll(opts Options) ([]client.Object, error) {
+func BuildAll(opts Options) ([]client.Object, lokiv1.NetworkPolicyStatus, error) {
 	res := make([]client.Object, 0)
+	networkPolicyStatus := lokiv1.NetworkPolicyStatusFalse
 
 	sa := BuildServiceAccount(opts)
 
 	cm, sha1C, mapErr := LokiConfigMap(opts)
 	if mapErr != nil {
-		return nil, mapErr
+		return nil, lokiv1.NetworkPolicyStatusFalse, mapErr
 	}
 	opts.ConfigSHA1 = sha1C
 
 	distributorObjs, err := BuildDistributor(opts)
 	if err != nil {
-		return nil, err
+		return nil, lokiv1.NetworkPolicyStatusFalse, err
 	}
 
 	ingesterObjs, err := BuildIngester(opts)
 	if err != nil {
-		return nil, err
+		return nil, lokiv1.NetworkPolicyStatusFalse, err
 	}
 
 	querierObjs, err := BuildQuerier(opts)
 	if err != nil {
-		return nil, err
+		return nil, lokiv1.NetworkPolicyStatusFalse, err
 	}
 
 	compactorObjs, err := BuildCompactor(opts)
 	if err != nil {
-		return nil, err
+		return nil, lokiv1.NetworkPolicyStatusFalse, err
 	}
 
 	queryFrontendObjs, err := BuildQueryFrontend(opts)
 	if err != nil {
-		return nil, err
+		return nil, lokiv1.NetworkPolicyStatusFalse, err
 	}
 
 	indexGatewayObjs, err := BuildIndexGateway(opts)
 	if err != nil {
-		return nil, err
+		return nil, lokiv1.NetworkPolicyStatusFalse, err
 	}
 
 	res = append(res, cm)
@@ -66,7 +67,7 @@ func BuildAll(opts Options) ([]client.Object, error) {
 	if opts.Stack.Rules != nil && opts.Stack.Rules.Enabled {
 		rulesCMShards, err := RulesConfigMapShards(&opts)
 		if err != nil {
-			return nil, err
+			return nil, lokiv1.NetworkPolicyStatusFalse, err
 		}
 
 		for _, shard := range rulesCMShards {
@@ -76,7 +77,7 @@ func BuildAll(opts Options) ([]client.Object, error) {
 
 		rulerObjs, err := BuildRuler(opts)
 		if err != nil {
-			return nil, err
+			return nil, lokiv1.NetworkPolicyStatusFalse, err
 		}
 
 		res = append(res, rulerObjs...)
@@ -85,7 +86,7 @@ func BuildAll(opts Options) ([]client.Object, error) {
 	if opts.Gates.LokiStackGateway {
 		gatewayObjects, err := BuildGateway(opts)
 		if err != nil {
-			return nil, err
+			return nil, lokiv1.NetworkPolicyStatusFalse, err
 		}
 
 		res = append(res, gatewayObjects...)
@@ -98,7 +99,7 @@ func BuildAll(opts Options) ([]client.Object, error) {
 	if opts.Gates.LokiStackAlerts {
 		prometheusRuleObjs, err := BuildPrometheusRule(opts)
 		if err != nil {
-			return nil, err
+			return nil, lokiv1.NetworkPolicyStatusFalse, err
 		}
 		res = append(res, prometheusRuleObjs...)
 	}
@@ -106,9 +107,10 @@ func BuildAll(opts Options) ([]client.Object, error) {
 	if opts.Stack.Tenants != nil && opts.FeatureGate.NetworkPoliciesEnabled(opts.Stack.Tenants.NetworkPolicies) {
 		networkPolicyObjs := BuildNetworkPolicies(opts)
 		res = append(res, networkPolicyObjs...)
+		networkPolicyStatus = lokiv1.NetworkPolicyStatusTrue
 	}
 
-	return res, nil
+	return res, networkPolicyStatus, nil
 }
 
 // DefaultLokiStackSpec returns the default configuration for a LokiStack of

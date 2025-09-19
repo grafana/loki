@@ -2173,6 +2173,20 @@ to the storage configuration.</p>
 </tr>
 <tr>
 <td>
+<code>networkPolicies</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-NetworkPolicyStatus">
+NetworkPolicyStatus
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>NetworkPolicies indicates whether NetworkPolicies are deployed for this LokiStack.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>conditions</code><br/>
 <em>
 <a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#condition-v1-meta">
@@ -2542,6 +2556,30 @@ using an in-process OpenPolicyAgent Rego authorizer.</p>
 </td>
 </tr><tr><td><p>&#34;True&#34;</p></td>
 <td><p>NetworkPoliciesEnabled when NetworkPolicies are explicitly enabled.</p>
+</td>
+</tr></tbody>
+</table>
+
+## NetworkPolicyStatus { #loki-grafana-com-v1-NetworkPolicyStatus }
+(<code>string</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStatus">LokiStackStatus</a>)
+</p>
+<div>
+<p>NetworkPolicyStatus defines the deployment status of network policies.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;False&#34;</p></td>
+<td><p>NetworkPolicyStatusFalse when NetworkPolicies are not deployed</p>
+</td>
+</tr><tr><td><p>&#34;True&#34;</p></td>
+<td><p>NetworkPolicyStatusTrue when NetworkPolicies are deployed</p>
 </td>
 </tr></tbody>
 </table>

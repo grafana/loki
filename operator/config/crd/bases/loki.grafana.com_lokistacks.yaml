@@ -4036,6 +4036,10 @@ spec:
                   - type
                   type: object
                 type: array
+              networkPolicies:
+                description: NetworkPolicies indicates whether NetworkPolicies are
+                  deployed for this LokiStack.
+                type: string
               storage:
                 description: |-
                   Storage provides summary of all changes that have occurred
