@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 6.41.0
+
 ## 6.40.0
 
 - [FEATURE] Add configurable `livenessProbe` and `startupProbe` to single binary StatefulSet. [#19072](https://github.com/grafana/loki/pull/19072)
