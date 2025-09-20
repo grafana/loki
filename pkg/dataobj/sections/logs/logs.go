@@ -81,6 +81,9 @@ func (s *Section) init() error {
 // sections) are skipped.
 func (s *Section) Columns() []*Column { return s.columns }
 
+// ColumnarSection returns the dataset of the section represented as [columnar.Section].
+func (s *Section) ColumnarSection() *columnar.Section { return s.inner }
+
 // PrimarySortOrder returns the primary sort order information of the section
 // as a tuple of [ColumnType] and [SortDirection].
 func (s *Section) PrimarySortOrder() (ColumnType, SortDirection, error) {
