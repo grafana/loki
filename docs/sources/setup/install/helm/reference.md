@@ -5384,7 +5384,16 @@ true
 		<tr>
 			<td>global.image.registry</td>
 			<td>string</td>
-			<td>Overrides the Docker registry globally for all images</td>
+			<td>Overrides the Docker registry globally for all images (deprecated, use global.imageRegistry)</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>global.imageRegistry</td>
+			<td>string</td>
+			<td>Overrides the Docker registry globally for all images (standard format)</td>
 			<td><pre lang="json">
 null
 </pre>
