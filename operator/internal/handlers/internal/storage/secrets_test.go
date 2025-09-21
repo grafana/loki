@@ -720,6 +720,39 @@ func TestS3Extract_ForcePathStyle(t *testing.T) {
 			},
 		},
 		{
+			desc: "aws s3 vpc endpoint with bucket name should fail",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://bucket.vpce-1234567-us-east-1c.s3.us-east-1.vpce.amazonaws.com"),
+					"region":            []byte("us-east-1"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantError: "endpoint for AWS S3 must include correct region: https://s3.us-east-1.amazonaws.com",
+		},
+		{
+			desc: "aws s3 vpc endpoint without bucket prefix",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://vpce-1234567-us-east-1c.s3.us-east-1.vpce.amazonaws.com"),
+					"region":            []byte("us-east-1"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+				},
+			},
+			wantOptions: &storage.S3StorageConfig{
+				Endpoint:       "https://vpce-1234567-us-east-1c.s3.us-east-1.vpce.amazonaws.com",
+				Region:         "us-east-1",
+				Buckets:        "this,that",
+				ForcePathStyle: false,
+			},
+		},
+		{
 			desc: "invalid forcepathstyle value",
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},

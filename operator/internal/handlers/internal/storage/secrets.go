@@ -506,10 +506,24 @@ func validateS3Endpoint(endpoint string, region string) error {
 			return fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
 		}
 
+		// Check if it's a standard AWS S3 endpoint
 		validEndpoint := fmt.Sprintf("https://s3.%s%s", region, awsEndpointSuffix)
-		if endpoint != validEndpoint {
-			return fmt.Errorf("%w: %s", errS3EndpointAWSInvalid, validEndpoint)
+		if endpoint == validEndpoint {
+			return nil
 		}
+
+		// Check if it's a VPC endpoint format: https://vpce-*-region.s3.region.vpce.amazonaws.com
+		// Reject bucket-specific VPC endpoints to avoid folder creation issues
+		if strings.Contains(endpoint, ".vpce.amazonaws.com") && strings.Contains(endpoint, region) {
+			// Ensure it's not a bucket-specific VPC endpoint (bucket.vpce-xxx format)
+			hostname := parsedURL.Hostname()
+			if strings.HasPrefix(hostname, "vpce-") {
+				return nil
+			}
+		}
+
+		// If neither standard nor VPC endpoint format, return error
+		return fmt.Errorf("%w: %s", errS3EndpointAWSInvalid, validEndpoint)
 	}
 	return nil
 }
