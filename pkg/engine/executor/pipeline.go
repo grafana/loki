@@ -36,7 +36,7 @@ type Pipeline interface {
 var (
 	errNotImplemented = errors.New("pipeline not implemented")
 
-	EOF       = errors.New("pipeline exhausted") // nolint:revive
+	EOF       = errors.New("pipeline exhausted") //nolint:revive,staticcheck
 	Exhausted = failureState(EOF)
 	Canceled  = failureState(context.Canceled)
 )
