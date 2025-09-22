@@ -83,11 +83,10 @@ import (
 // Cached pages before the read range are cleared when a new uncached page is
 // requested.
 type readerDownloader struct {
-	inner           Dataset
-	targetCacheSize int
+	inner Dataset
 
-	origColumns                    []Column
-	allColumns, primary, secondary []Column
+	origColumns, origPrimary, origSecondary []Column
+	allColumns, primary, secondary          []Column
 
 	dsetRanges rowRanges // Ranges of rows to _include_ in the download.
 
@@ -98,9 +97,9 @@ type readerDownloader struct {
 // newReaderDataset creates a new readerDataset wrapping around an inner
 // Dataset. The resulting Dataset only wraps around the provided columns.
 //
-// The amount of cached pages will target the provided cache size; the actual
-// cache may be larger if the amount of required pages for a call to
-// [Reader.Read] exceeds targetCacheSize.
+// All uncached pages that have not been pruned by
+// [readerDownloader.SetDatasetRanges] will be downloaded in bulk when an
+// uncached page is requested.
 //
 // # Initialization
 //
@@ -123,9 +122,9 @@ type readerDownloader struct {
 // If applicable, users should additionally call [readerDownloader.Mask] to
 // exclude any ranges of rows that should not be read; pages that are entirely
 // within the mask will not be downloaded.
-func newReaderDownloader(dset Dataset, targetCacheSize int) *readerDownloader {
+func newReaderDownloader(dset Dataset) *readerDownloader {
 	var rd readerDownloader
-	rd.Reset(dset, targetCacheSize)
+	rd.Reset(dset)
 	return &rd
 }
 
@@ -141,8 +140,10 @@ func (dl *readerDownloader) AddColumn(col Column, primary bool) {
 	dl.allColumns = append(dl.allColumns, wrappedCol)
 
 	if primary {
+		dl.origPrimary = append(dl.origPrimary, col)
 		dl.primary = append(dl.primary, wrappedCol)
 	} else {
+		dl.origSecondary = append(dl.origSecondary, col)
 		dl.secondary = append(dl.secondary, wrappedCol)
 	}
 }
@@ -169,6 +170,18 @@ func (dl *readerDownloader) SetReadRange(r rowRange) {
 func (dl *readerDownloader) Mask(r rowRange) {
 	dl.rangeMask.Add(r)
 }
+
+// OrigColumns returns the original columns of the readerDownloader in the order
+// they were added.
+func (dl *readerDownloader) OrigColumns() []Column { return dl.origColumns }
+
+// OrigPrimaryColumns returns the original primary columns of the
+// readerDownloader in the order they were added.
+func (dl *readerDownloader) OrigPrimaryColumns() []Column { return dl.origPrimary }
+
+// OrigSecondaryColumns returns the original secondary columns of the
+// readerDownloader in the order they were added.
+func (dl *readerDownloader) OrigSecondaryColumns() []Column { return dl.origSecondary }
 
 // AllColumns returns the wrapped columns of the readerDownloader in the order
 // they were added.
@@ -277,10 +290,6 @@ func (dl *readerDownloader) buildDownloadBatch(ctx context.Context, requestor *r
 		}
 
 		pageBatch = append(pageBatch, page)
-		batchSize += page.PageDesc().CompressedSize
-	}
-	if batchSize >= dl.targetCacheSize {
-		return pageBatch, nil
 	}
 
 	// Now we add P2 and P3 pages. We ignore pages that would have us exceed the
@@ -303,16 +312,8 @@ func (dl *readerDownloader) buildDownloadBatch(ctx context.Context, requestor *r
 		} else if page == requestor {
 			continue // Already added.
 		}
-		pageSize := page.PageDesc().CompressedSize
-
-		if batchSize+pageSize >= dl.targetCacheSize {
-			// We ignore pages rather than stopping immediately
-			targetReached = true
-			continue
-		}
 
 		pageBatch = append(pageBatch, page)
-		batchSize += pageSize
 	}
 	if targetReached {
 		return pageBatch, nil
@@ -327,14 +328,8 @@ func (dl *readerDownloader) buildDownloadBatch(ctx context.Context, requestor *r
 		} else if page == requestor {
 			continue // Already added.
 		}
-		pageSize := page.PageDesc().CompressedSize
-
-		if batchSize+pageSize >= dl.targetCacheSize {
-			continue
-		}
 
 		pageBatch = append(pageBatch, page)
-		batchSize += pageSize
 	}
 
 	return pageBatch, nil
@@ -460,16 +455,19 @@ func (dl *readerDownloader) iterP3Pages(ctx context.Context, primary bool) resul
 	})
 }
 
-func (dl *readerDownloader) Reset(dset Dataset, targetCacheSize int) {
+func (dl *readerDownloader) Reset(dset Dataset) {
 	dl.inner = dset
-	dl.targetCacheSize = targetCacheSize
 
 	dl.readRange = rowRange{}
 
 	dl.origColumns = sliceclear.Clear(dl.origColumns)
+	dl.origPrimary = sliceclear.Clear(dl.origPrimary)
+	dl.origSecondary = sliceclear.Clear(dl.origSecondary)
+
 	dl.allColumns = sliceclear.Clear(dl.allColumns)
 	dl.primary = sliceclear.Clear(dl.primary)
 	dl.secondary = sliceclear.Clear(dl.secondary)
+
 	dl.rangeMask = sliceclear.Clear(dl.rangeMask)
 
 	// dl.dsetRanges isn't owned by the downloader, so we don't use

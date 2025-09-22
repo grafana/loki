@@ -53,8 +53,9 @@ func IterSection(ctx context.Context, section *Section) result.Seq[Record] {
 		}
 
 		r := dataset.NewReader(dataset.ReaderOptions{
-			Dataset: dset,
-			Columns: columns,
+			Dataset:  dset,
+			Columns:  columns,
+			Prefetch: true,
 		})
 		defer r.Close()
 

@@ -116,7 +116,7 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 
 		// rebuild the chunk and see if we excluded any of the lines from the existing chunk
 		var linesDeleted bool
-		newChunkData, err := chks[0].Data.Rebound(chk.From, chk.Through, func(ts time.Time, s string, structuredMetadata labels.Labels) bool {
+		newChunkData, err := chks[0].Data.Rewrite(func(ts time.Time, s string, structuredMetadata labels.Labels) bool {
 			for _, filterFunc := range filterFuncs {
 				if filterFunc(ts, s, structuredMetadata) {
 					linesDeleted = true
@@ -127,7 +127,7 @@ func (jr *JobRunner) Run(ctx context.Context, job *grpc.Job) ([]byte, error) {
 			return false
 		})
 		if err != nil {
-			if errors.Is(err, storage_chunk.ErrSliceNoDataInRange) {
+			if errors.Is(err, storage_chunk.ErrRewriteNoDataLeft) {
 				level.Info(util_log.Logger).Log("msg", "Delete request filterFunc leaves an empty chunk", "chunk ref", chunkID)
 				updatesMtx.Lock()
 				defer updatesMtx.Unlock()

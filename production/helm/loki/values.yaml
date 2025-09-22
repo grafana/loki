@@ -665,7 +665,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.5.2
+    tag: 3.5.3
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -4037,16 +4037,8 @@ sidecar:
     watchClientTimeout: 60
     # -- Log level of the sidecar container.
     logLevel: INFO
-############################################## WARNING ###############################################################
-#
-# DEPRECATED VALUES
-#
-# The following values are deprecated and will be removed in a future version of the helm chart!
-#
-############################################## WARNING ##############################################################
 
-# -- DEPRECATED Monitoring section determines which monitoring features to enable, this section is being replaced
-# by https://github.com/grafana/meta-monitoring-chart
+# -- Monitoring section determines which monitoring features to enable
 monitoring:
   # Dashboards for monitoring Loki
   dashboards:
@@ -4059,7 +4051,7 @@ monitoring:
     # -- Labels for the dashboards ConfigMap
     labels:
       grafana_dashboard: "1"
-  # -- DEPRECATED Recording rules for monitoring Loki, required for some dashboards
+  # -- Recording rules for monitoring Loki, required for some dashboards
   rules:
     # -- If enabled, create PrometheusRule resource with Loki recording rules
     enabled: false
@@ -4089,7 +4081,7 @@ monitoring:
     #       expr: sum(rate(loki_request_duration_seconds_bucket[1m])) by (le, job, route)
     #     - record: node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate
     #       expr: sum(rate(container_cpu_usage_seconds_total[1m])) by (node, namespace, pod, container)
-  #  -- DEPRECATED ServiceMonitor configuration
+  # -- ServiceMonitor configuration
   serviceMonitor:
     # -- If enabled, ServiceMonitor resources for Prometheus Operator are created
     enabled: false
@@ -4115,7 +4107,7 @@ monitoring:
     scheme: http
     # -- ServiceMonitor will use these tlsConfig settings to make the health check requests
     tlsConfig: null
-    # -- If defined, will create a MetricsInstance for the Grafana Agent Operator.
+    # -- DEPRECATED If defined, will create a MetricsInstance for the Grafana Agent Operator.
     metricsInstance:
       # -- If enabled, MetricsInstance resources for Grafana Agent Operator are created
       enabled: true
@@ -4126,8 +4118,7 @@ monitoring:
       # -- If defined a MetricsInstance will be created to remote write metrics.
       remoteWrite: null
   # -- DEPRECATED Self monitoring determines whether Loki should scrape its own logs.
-  # This feature currently relies on the Grafana Agent Operator being installed,
-  # which is installed by default using the grafana-agent-operator sub-chart.
+  # This feature relies on Grafana Agent Operator, which is deprecated.
   # It will create custom resources for GrafanaAgent, LogsInstance, and PodLogs to configure
   # scrape configs to scrape its own logs with the labels expected by the included dashboards.
   selfMonitoring:
@@ -4187,6 +4178,7 @@ monitoring:
       labels: {}
       # -- Additional clients for remote write
       clients: null
+
 # -- DEPRECATED Configuration for the table-manager. The table-manager is only necessary when using a deprecated
 # index type such as Cassandra, Bigtable, or DynamoDB, it has not been necessary since loki introduced self-
 # contained index types like 'boltdb-shipper' and 'tsdb'. This will be removed in a future helm chart.

@@ -60,7 +60,7 @@ const (
 	EnvRelatedImageGateway = "RELATED_IMAGE_GATEWAY"
 
 	// DefaultContainerImage declares the default fallback for loki image.
-	DefaultContainerImage = "docker.io/grafana/loki:3.4.3"
+	DefaultContainerImage = "docker.io/grafana/loki:3.5.5"
 
 	// DefaultLokiStackGatewayImage declares the default image for lokiStack-gateway.
 	DefaultLokiStackGatewayImage = "quay.io/observatorium/api:latest"
@@ -308,12 +308,12 @@ func tenantCAVolumeName(tenantName string) string {
 	return fmt.Sprintf("%s-ca-bundle", tenantName)
 }
 
-func tenantCADir(tennantName string) string {
-	return path.Join(tenantCAsDir, tennantName)
+func tenantCADir(tenantName string) string {
+	return path.Join(tenantCAsDir, tenantName)
 }
 
-func TenantCAPath(tennantName, key string) string {
-	return path.Join(tenantCAsDir, tennantName, key)
+func TenantCAPath(tenantName, key string) string {
+	return path.Join(tenantCAsDir, tenantName, key)
 }
 
 func gatewayClientSecretName(stackName string) string {
