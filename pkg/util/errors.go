@@ -82,6 +82,11 @@ func (es MultiError) Is(target error) bool {
 	return true
 }
 
+// Unwrap returns the errors as a slice, enabling errors.As to work.
+func (es MultiError) Unwrap() []error {
+	return []error(es)
+}
+
 // IsDeadlineExceeded tells if all errors are either context.DeadlineExceeded or grpc codes.DeadlineExceeded.
 func (es MultiError) IsDeadlineExceeded() bool {
 	if len(es) == 0 {
