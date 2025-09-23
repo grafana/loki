@@ -22,11 +22,15 @@ type OffsetManager interface {
 	Topic() string
 	ConsumerGroup() string
 
-	FetchLastCommittedOffset(ctx context.Context, partition int32) (int64, error)
-	FetchPartitionOffset(ctx context.Context, partition int32, position SpecialOffset) (int64, error)
+	LastCommittedOffset(ctx context.Context, partition int32) (int64, error)
+	PartitionOffset(ctx context.Context, partition int32, position SpecialOffset) (int64, error)
 	NextOffset(ctx context.Context, partition int32, t time.Time) (int64, error)
 	Commit(ctx context.Context, partition int32, offset int64) error
 }
+
+// type ConsumerGroupOffsetManager interface {
+// 	LastCommittedOffset(ctx context.Context, partition int32) (int64, error)
+// }
 
 var _ OffsetManager = &KafkaOffsetManager{}
 
@@ -108,8 +112,8 @@ func (r *KafkaOffsetManager) NextOffset(ctx context.Context, partition int32, t 
 	return listed.Offset, nil
 }
 
-// FetchLastCommittedOffset retrieves the last committed offset for this partition
-func (r *KafkaOffsetManager) FetchLastCommittedOffset(ctx context.Context, partitionID int32) (int64, error) {
+// LastCommittedOffset retrieves the last committed offset for this partition
+func (r *KafkaOffsetManager) LastCommittedOffset(ctx context.Context, partitionID int32) (int64, error) {
 	req := kmsg.NewPtrOffsetFetchRequest()
 	req.Topics = []kmsg.OffsetFetchRequestTopic{{
 		Topic:      r.cfg.Topic,
@@ -154,7 +158,7 @@ func (r *KafkaOffsetManager) FetchLastCommittedOffset(ctx context.Context, parti
 }
 
 // FetchPartitionOffset retrieves the offset for a specific position
-func (r *KafkaOffsetManager) FetchPartitionOffset(ctx context.Context, partitionID int32, position SpecialOffset) (int64, error) {
+func (r *KafkaOffsetManager) PartitionOffset(ctx context.Context, partitionID int32, position SpecialOffset) (int64, error) {
 	partitionReq := kmsg.NewListOffsetsRequestTopicPartition()
 	partitionReq.Partition = partitionID
 	partitionReq.Timestamp = int64(position)
