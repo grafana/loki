@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -19,7 +18,6 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 )
 
@@ -365,8 +363,9 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 	// Process downloaded objects, handling ErrBuilderFull
 	var indexPaths []string
 	processingErrors := multierror.New()
+	flushedAfterLastEvent := false
 
-	for range len(events) {
+	for i := range len(events) {
 		var obj downloadedObject
 		select {
 		case obj = <-si.downloadedObjects:
@@ -384,29 +383,31 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 
 		// Process this object
 		if err := si.processObject(ctx, objLogger, obj); err != nil {
-			if errors.Is(err, indexobj.ErrBuilderFull) {
-				// Flush current index and start fresh
-				indexPath, flushErr := si.flushCurrentIndex(ctx, partition)
-				if flushErr != nil {
-					processingErrors.Add(fmt.Errorf("failed to flush index on ErrBuilderFull: %w", flushErr))
-					continue
-				}
+			processingErrors.Add(fmt.Errorf("failed to process object: %w", err))
+			continue
+		}
 
-				if indexPath != "" {
-					indexPaths = append(indexPaths, indexPath)
-					level.Debug(si.logger).Log("msg", "flushed index due to ErrBuilderFull",
-						"index_path", indexPath, "partition", partition)
-				}
-
-				// Reset calculator and retry this object
-				si.calculator.Reset()
-				if retryErr := si.processObject(ctx, objLogger, obj); retryErr != nil {
-					processingErrors.Add(fmt.Errorf("failed to process object after flush: %w", retryErr))
-					continue
-				}
-			} else {
-				processingErrors.Add(fmt.Errorf("failed to process object: %w", err))
+		// Check if builder became full during processing
+		if si.calculator.IsFull() {
+			// Flush current index and start fresh
+			indexPath, flushErr := si.flushIndex(ctx, partition)
+			if flushErr != nil {
+				processingErrors.Add(fmt.Errorf("failed to flush index after processing full object: %w", flushErr))
 				continue
+			}
+
+			if indexPath != "" {
+				indexPaths = append(indexPaths, indexPath)
+				level.Debug(si.logger).Log("msg", "flushed index after processing full object",
+					"index_path", indexPath, "partition", partition)
+			}
+
+			// Reset calculator for next object
+			si.calculator.Reset()
+			
+			// Mark that we flushed after the last event to avoid double flushing
+			if i == len(events)-1 {
+				flushedAfterLastEvent = true
 			}
 		}
 	}
@@ -415,14 +416,16 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 		return indexPaths, processingErrors.Err()
 	}
 
-	// Flush final index if we have data
-	finalPath, err := si.flushCurrentIndex(ctx, partition)
-	if err != nil {
-		return indexPaths, fmt.Errorf("failed to flush final index: %w", err)
-	}
+	// Flush final index if we have data and didn't already flush after the last event
+	if !flushedAfterLastEvent {
+		finalPath, err := si.flushIndex(ctx, partition)
+		if err != nil {
+			return indexPaths, fmt.Errorf("failed to flush final index: %w", err)
+		}
 
-	if finalPath != "" {
-		indexPaths = append(indexPaths, finalPath)
+		if finalPath != "" {
+			indexPaths = append(indexPaths, finalPath)
+		}
 	}
 
 	level.Debug(si.logger).Log("msg", "finished building index files", "partition", partition,
@@ -441,8 +444,8 @@ func (si *serialIndexer) processObject(ctx context.Context, objLogger log.Logger
 	return si.calculator.Calculate(ctx, objLogger, reader, obj.event.ObjectPath)
 }
 
-// flushCurrentIndex flushes the current calculator state to an index object
-func (si *serialIndexer) flushCurrentIndex(ctx context.Context, partition int32) (string, error) {
+// flushIndex flushes the current calculator state to an index object
+func (si *serialIndexer) flushIndex(ctx context.Context, partition int32) (string, error) {
 	tenantTimeRanges := si.calculator.TimeRanges()
 	if len(tenantTimeRanges) == 0 {
 		return "", nil // Nothing to flush

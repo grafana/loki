@@ -17,7 +17,6 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 )
@@ -293,11 +292,12 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 
 // mockCalculator is a calculator that does nothing for use in tests
 type mockCalculator struct {
-	count           int
-	object          *dataobj.Object
-	flushCallCount  int
-	resetCallCount  int
-	errOnCallNumber int // Which Calculate call should return ErrBuilderFull (0 = never)
+	count            int
+	object           *dataobj.Object
+	flushCallCount   int
+	resetCallCount   int
+	errOnCallNumber  int  // Which Calculate call should set full flag (0 = never)
+	full             bool // Track when builder becomes full
 }
 
 func (c *mockCalculator) Calculate(_ context.Context, _ log.Logger, object *dataobj.Object, _ string) error {
@@ -305,7 +305,7 @@ func (c *mockCalculator) Calculate(_ context.Context, _ log.Logger, object *data
 	c.object = object
 
 	if c.errOnCallNumber > 0 && c.count == c.errOnCallNumber {
-		return indexobj.ErrBuilderFull
+		c.full = true
 	}
 	return nil
 }
@@ -327,9 +327,14 @@ func (c *mockCalculator) TimeRanges() []multitenancy.TimeRange {
 
 func (c *mockCalculator) Reset() {
 	c.resetCallCount++
+	c.full = false
 }
 
-func TestSerialIndexer_FlushOnErrBuilderFull(t *testing.T) {
+func (c *mockCalculator) IsFull() bool {
+	return c.full
+}
+
+func TestSerialIndexer_FlushOnBuilderFull(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -358,9 +363,9 @@ func TestSerialIndexer_FlushOnErrBuilderFull(t *testing.T) {
 		})
 	}
 
-	// Create mock calculator that returns ErrBuilderFull on second call
+	// Create mock calculator that sets full flag on second call
 	mockCalc := &mockCalculator{
-		errOnCallNumber: 2, // Return ErrBuilderFull on the 2nd Calculate call
+		errOnCallNumber: 2, // Set full flag on the 2nd Calculate call
 	}
 	indexStorageBucket := objstore.NewInMemBucket()
 
@@ -397,9 +402,9 @@ func TestSerialIndexer_FlushOnErrBuilderFull(t *testing.T) {
 	require.Len(t, records, 3) // All records should be returned
 
 	// Verify calculator behavior
-	require.Equal(t, 4, mockCalc.count)          // 3 + 1 retry = 4 calls
-	require.Equal(t, 2, mockCalc.flushCallCount) // 2 flushes (ErrBuilderFull + final)
-	require.Equal(t, 1, mockCalc.resetCallCount) // 1 reset after ErrBuilderFull
+	require.Equal(t, 3, mockCalc.count)          // 3 calls (no retries)
+	require.Equal(t, 2, mockCalc.flushCallCount) // 2 flushes (after full + final)
+	require.Equal(t, 1, mockCalc.resetCallCount) // 1 reset after full
 
 	// Verify metrics - single request/build despite multiple flushes
 	require.Equal(t, float64(1), testutil.ToFloat64(indexerMetrics.totalRequests))
