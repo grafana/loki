@@ -156,6 +156,8 @@ Entries should include a reference to the pull request that introduced the chang
     chunksCache:
         addresses: 'my-chunksCache-memcached-address' # <- setting chunks cache address here
 
+- [BUGFIX] Remove redundant ingester podAntiAffinity expression
+
 ## 6.29.0
 
 
