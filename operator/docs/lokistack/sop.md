@@ -365,3 +365,48 @@ The schema configuration does not contain the most recent schema version and nee
 ### Steps
 
 - Add a new object storage schema V13 with a future EffectiveDate
+
+## Lokistack Components Not Ready
+
+### Impact
+
+One or more LokiStack components are not ready, which can disrupt ingestion or querying and lead to degraded service.
+
+### Summary
+
+The LokiStack reports that some components have not reached the `Ready` state. This might be related to Kubernetes resources (Pods/Deployments), configuration, or external dependencies.
+
+### Severity
+
+`Critical`
+
+### Access Required
+
+- Console access to the cluster
+- Edit or view access in the namespace where the LokiStack is deployed:
+  - OpenShift
+    - `openshift-logging` (LokiStack)
+
+### Steps
+
+- Inspect the LokiStack conditions and events
+  - Describe the LokiStack resource and review status conditions:
+    - `kubectl -n <namespace> describe lokistack <name>`
+  - Check for conditions that would lead to some pods not being in the `Ready` state
+- Check operator and reconciliation status
+  - Ensure the Loki Operator is running and not reporting errors:
+    - `kubectl -n <operator-namespace> logs deploy/loki-operator`
+  - Look for reconcile errors related to missing permissions, invalid fields, or failed rollouts.
+- Verify component Pods and Deployments
+  - Ensure all core components are running and Ready in the LokiStack namespace:
+    - `distributor`, `ingester`, `querier`, `query-frontend`, `index-gateway`, `compactor`, `gateway`
+  - Check Pod readiness and recent restarts:
+    - `kubectl -n <namespace> get pods`
+    - `kubectl -n <namespace> describe pod <pod>`
+- Examine Kubernetes events for failures
+  - `kubectl -n <namespace> get events --sort-by=.lastTimestamp`
+  - Common causes: image pull backoffs, failed mounts, readiness probe failures, or insufficient resources
+- Validate configuration and referenced resources
+  - Confirm referenced `Secrets`, `ConfigMaps`, exist and have correct keys
+- Look into the Pod logs of the component that still not `Ready`:
+    - `kubectl -n <namespace> logs <pod>`
