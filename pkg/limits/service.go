@@ -99,11 +99,15 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	kCfg.Topic = cfg.Topic
 	kCfg.AutoCreateTopicEnabled = true
 	kCfg.AutoCreateTopicDefaultPartitions = cfg.NumPartitions
-	offsetManager, err := partition.NewKafkaOffsetManager(
-		kCfg,
+	offsetManagerClient, err := client.NewReaderClient("partition-manager", kCfg, log.With(logger, "component", "kafka-client"), reg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create offset manager client: %w", err)
+	}
+	offsetManager := partition.NewKafkaOffsetManager(
+		offsetManagerClient,
+		cfg.Topic,
 		cfg.ConsumerGroup,
 		logger,
-		prometheus.NewRegistry(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create offset manager: %w", err)
