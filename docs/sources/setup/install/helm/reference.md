@@ -12983,7 +12983,7 @@ false
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/loki-helm-test",
-    "tag": null
+    "tag": "latest"
   },
   "labels": {},
   "prometheusAddress": "",
@@ -13029,7 +13029,7 @@ false
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/loki-helm-test",
-  "tag": null
+  "tag": "latest"
 }
 </pre>
 </td>
@@ -13075,7 +13075,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-null
+"latest"
 </pre>
 </td>
 		</tr>
