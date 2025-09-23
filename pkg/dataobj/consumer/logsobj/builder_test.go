@@ -3,6 +3,8 @@ package logsobj
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -181,28 +184,36 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 		"objects have different amount of logs sections",
 	)
 
-	// t.Log("obj1")
-	// for seq := range streams.Iter(t.Context(), obj1) {
-	// 	v := seq.MustValue()
-	// 	t.Log(v.ID, v.Labels)
-	// }
+	// Assert DESC timestamp ordering across sections of a tenant
+	for _, tenant := range []string{"tenant-a", "tenant-b", "tenant-c"} {
+		prevTs := time.Unix(0, math.MaxInt64)
+		for _, sec := range obj2.Sections().Filter(func(s *dataobj.Section) bool {
+			return logs.CheckSection(s) && s.Tenant == tenant
+		}) {
+			for res := range iterLogsSection(t, sec) {
+				val, _ := res.Value()
+				t.Log(tenant, val.Timestamp)
+				require.LessOrEqual(t, val.Timestamp, prevTs)
+				prevTs = val.Timestamp
+			}
+		}
+	}
+}
 
-	// t.Log("obj2")
-	// for seq := range streams.Iter(t.Context(), obj2) {
-	// 	v := seq.MustValue()
-	// 	t.Log(v.ID, v.Labels)
-	// }
+func iterLogsSection(t *testing.T, section *dataobj.Section) result.Seq[logs.Record] {
+	t.Helper()
+	ctx := t.Context()
 
-	// t.Log("obj1")
-	// for seq := range logs.Iter(t.Context(), obj1) {
-	// 	v := seq.MustValue()
-	// 	t.Log(v.StreamID, v.Timestamp)
-	// }
-
-	// t.Log("obj2")
-	// for seq := range logs.Iter(t.Context(), obj2) {
-	// 	v := seq.MustValue()
-	// 	t.Log(v.StreamID, v.Timestamp)
-	// }
-
+	return result.Iter(func(yield func(logs.Record) bool) error {
+		logsSection, err := logs.Open(ctx, section)
+		if err != nil {
+			return fmt.Errorf("opening section: %w", err)
+		}
+		for result := range logs.IterSection(ctx, logsSection) {
+			if result.Err() != nil || !yield(result.MustValue()) {
+				return result.Err()
+			}
+		}
+		return nil
+	})
 }
