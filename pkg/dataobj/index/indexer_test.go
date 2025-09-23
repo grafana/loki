@@ -292,12 +292,12 @@ func TestSerialIndexer_ConcurrentBuilds(t *testing.T) {
 
 // mockCalculator is a calculator that does nothing for use in tests
 type mockCalculator struct {
-	count            int
-	object           *dataobj.Object
-	flushCallCount   int
-	resetCallCount   int
-	errOnCallNumber  int  // Which Calculate call should set full flag (0 = never)
-	full             bool // Track when builder becomes full
+	count           int
+	object          *dataobj.Object
+	flushCallCount  int
+	resetCallCount  int
+	errOnCallNumber int  // Which Calculate call should set full flag (0 = never)
+	full            bool // Track when builder becomes full
 }
 
 func (c *mockCalculator) Calculate(_ context.Context, _ log.Logger, object *dataobj.Object, _ string) error {

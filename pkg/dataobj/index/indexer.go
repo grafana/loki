@@ -404,7 +404,7 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 
 			// Reset calculator for next object
 			si.calculator.Reset()
-			
+
 			// Mark that we flushed after the last event to avoid double flushing
 			if i == len(events)-1 {
 				flushedAfterLastEvent = true
