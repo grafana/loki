@@ -12125,7 +12125,7 @@ false
 			<td>string</td>
 			<td>The Docker registry and image for the k8s sidecar</td>
 			<td><pre lang="json">
-"kiwigrid/k8s-sidecar"
+"docker.io/kiwigrid/k8s-sidecar"
 </pre>
 </td>
 		</tr>
