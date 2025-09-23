@@ -74,6 +74,13 @@ func toTreeNode(n Node) *tree.Node {
 		}
 
 		treeNode.Properties = properties
+	case *ParseNode:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("kind", false, node.Kind.String()),
+		}
+		if len(node.RequestedKeys) > 0 {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("requested_keys", true, toAnySlice(node.RequestedKeys)...))
+		}
 	}
 	return treeNode
 }

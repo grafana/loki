@@ -25,12 +25,15 @@ type ResultBuilder interface {
 	Len() int
 }
 
-var _ ResultBuilder = &streamsResultBuilder{}
-var _ ResultBuilder = &vectorResultBuilder{}
-var _ ResultBuilder = &matrixResultBuilder{}
+var (
+	_ ResultBuilder = &streamsResultBuilder{}
+	_ ResultBuilder = &vectorResultBuilder{}
+	_ ResultBuilder = &matrixResultBuilder{}
+)
 
 func newStreamsResultBuilder() *streamsResultBuilder {
 	return &streamsResultBuilder{
+		data:    make(logqlmodel.Streams, 0),
 		streams: make(map[string]int),
 	}
 }
@@ -67,6 +70,7 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 	var entry logproto.Entry
 	lbs := labels.NewBuilder(labels.EmptyLabels())
 	metadata := labels.NewBuilder(labels.EmptyLabels())
+	parsed := labels.NewBuilder(labels.EmptyLabels())
 
 	for colIdx := range int(rec.NumCols()) {
 		col := rec.Column(colIdx)
@@ -112,10 +116,32 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 			}
 			continue
 		}
+
+		// Extract parsed
+		if colType == types.ColumnTypeParsed.String() {
+			switch arr := col.(type) {
+			case *array.String:
+				// TODO: keep errors if --strict is set
+				// These are reserved column names used to track parsing errors. We are dropping them until
+				// we add support for --strict parsing.
+				if colName == types.ColumnNameParsedError || colName == types.ColumnNameParsedErrorDetails {
+					continue
+				}
+
+				if parsed.Get(colName) != "" {
+					continue
+				}
+
+				parsed.Set(colName, arr.Value(i))
+				lbs.Set(colName, arr.Value(i))
+				if metadata.Get(colName) != "" {
+					metadata.Del(colName)
+				}
+			}
+		}
 	}
 	entry.StructuredMetadata = logproto.FromLabelsToLabelAdapters(metadata.Labels())
-	// set to a non-nil value to match with existing engine.
-	entry.Parsed = logproto.FromLabelsToLabelAdapters(labels.Labels{})
+	entry.Parsed = logproto.FromLabelsToLabelAdapters(parsed.Labels())
 
 	return lbs.Labels(), entry
 }
