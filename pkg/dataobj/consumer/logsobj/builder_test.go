@@ -192,7 +192,6 @@ func TestBuilder_CopyAndSort(t *testing.T) {
 		}) {
 			for res := range iterLogsSection(t, sec) {
 				val, _ := res.Value()
-				t.Log(tenant, val.Timestamp)
 				require.LessOrEqual(t, val.Timestamp, prevTs)
 				prevTs = val.Timestamp
 			}
