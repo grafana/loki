@@ -107,7 +107,8 @@ func (cfg *Config) RegisterFlags(prefix string, fs *flag.FlagSet) {
 }
 
 func (cfg *Config) IsZero() bool {
-	return cfg.MaxParallelism == 0 && cfg.CoalesceSize == 0 && cfg.MaxRangeSize == 0 && cfg.MinRangeSize == 0
+	var zero Config
+	return cfg == nil || *cfg == zero
 }
 
 // effectiveParallelism returns the effective parallelism limit.
