@@ -586,7 +586,7 @@ func (i *storageUpdatesIterator) ForEachSeries(callback func(labels string, rebu
 				newChunksCount++
 				rebuiltChunks[chunkID] = newChunk
 			} else {
-				// when newChunk(struct type) is nil, do not assign it to an interface because it ends up putting a typed nil which fails the simple nil check(i.e == nil).
+				// when newChunk(struct type) is nil, do not assign it directly to an interface because it ends up putting a typed nil which fails the simple nil check(i.e == nil).
 				rebuiltChunks[chunkID] = nil
 			}
 		}
