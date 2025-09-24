@@ -217,6 +217,15 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 		tablePaths = append(tablePaths, path)
 	}
 
+	// Return early if no toc files are found
+	if len(tablePaths) == 0 {
+		m.metrics.indexObjectsTotal.Observe(0)
+		m.metrics.resolvedSectionsTotal.Observe(0)
+		duration := sectionsTimer.ObserveDuration()
+		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "resolved sections", "duration", duration, "sections", 0)
+		return nil, nil
+	}
+
 	// List index objects from all tables concurrently
 	indexPaths, err := m.listObjectsFromTables(ctx, tablePaths, start, end)
 	if err != nil {
@@ -225,6 +234,14 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 
 	level.Debug(m.logger).Log("msg", "resolved index files", "count", len(indexPaths), "paths", strings.Join(indexPaths, ","))
 	m.metrics.indexObjectsTotal.Observe(float64(len(indexPaths)))
+
+	// Return early if no index files are found
+	if len(indexPaths) == 0 {
+		m.metrics.resolvedSectionsTotal.Observe(0)
+		duration := sectionsTimer.ObserveDuration()
+		level.Debug(utillog.WithContext(ctx, m.logger)).Log("msg", "resolved sections", "duration", duration, "sections", 0)
+		return nil, nil
+	}
 
 	// init index files
 	indexObjects := make([]*dataobj.Object, len(indexPaths))
@@ -262,9 +279,6 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 		}
 
 		streamSectionPointers = intersectSections(streamSectionPointers, sectionMembershipEstimates)
-		if len(streamSectionPointers) == 0 {
-			return nil, errors.New("no relevant sections returned")
-		}
 	}
 
 	duration := sectionsTimer.ObserveDuration()
@@ -679,6 +693,8 @@ func (m *ObjectMetastore) listObjects(ctx context.Context, path string, start, e
 	if err != nil {
 		return nil, err
 	}
+	defer objectReader.Close()
+
 	n, err := buf.ReadFrom(objectReader)
 	if err != nil {
 		return nil, fmt.Errorf("reading metastore object: %w", err)

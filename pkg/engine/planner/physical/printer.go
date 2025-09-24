@@ -26,7 +26,7 @@ func toTree(p *Plan, n Node) *tree.Node {
 }
 
 func toTreeNode(n Node) *tree.Node {
-	treeNode := tree.NewNode(n.Type().String(), n.ID())
+	treeNode := tree.NewNode(n.Type().String(), "")
 	switch node := n.(type) {
 	case *DataObjScan:
 		treeNode.Properties = []tree.Property{

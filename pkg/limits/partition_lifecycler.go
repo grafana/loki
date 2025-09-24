@@ -78,7 +78,7 @@ func (l *partitionLifecycler) determineStateFromOffsets(ctx context.Context, par
 	logger := log.With(l.logger, "partition", partition)
 	// Get the start offset for the partition. This can be greater than zero
 	// if a retention period has deleted old records.
-	startOffset, err := l.offsetManager.FetchPartitionOffset(
+	startOffset, err := l.offsetManager.PartitionOffset(
 		ctx, partition, kafka_partition.KafkaStartOffset)
 	if err != nil {
 		return fmt.Errorf("failed to get last produced offset: %w", err)
@@ -87,7 +87,7 @@ func (l *partitionLifecycler) determineStateFromOffsets(ctx context.Context, par
 	// record. For example, if a partition contains 1 record, then the last
 	// produced offset is 1. However, the offset of the last produced record
 	// is 0, as offsets start from 0.
-	lastProducedOffset, err := l.offsetManager.FetchPartitionOffset(
+	lastProducedOffset, err := l.offsetManager.PartitionOffset(
 		ctx, partition, kafka_partition.KafkaEndOffset)
 	if err != nil {
 		return fmt.Errorf("failed to get last produced offset: %w", err)

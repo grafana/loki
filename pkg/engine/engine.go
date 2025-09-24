@@ -48,6 +48,9 @@ func New(opts logql.EngineOpts, cfg metastore.Config, bucket objstore.Bucket, li
 	if opts.BatchSize <= 0 {
 		panic(fmt.Sprintf("invalid batch size for query engine. must be greater than 0, got %d", opts.BatchSize))
 	}
+	if opts.RangeConfig.IsZero() {
+		opts.RangeConfig = rangeio.DefaultConfig
+	}
 
 	return &QueryEngine{
 		logger:    logger,

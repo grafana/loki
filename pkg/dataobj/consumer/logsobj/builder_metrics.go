@@ -25,6 +25,8 @@ type builderMetrics struct {
 
 	sizeEstimate prometheus.Gauge
 	builtSize    prometheus.Histogram
+
+	sortDurationSeconds prometheus.Histogram
 }
 
 // newBuilderMetrics creates a new set of [builderMetrics] for instrumenting
@@ -102,6 +104,18 @@ func newBuilderMetrics() *builderMetrics {
 			Name:      "flush_failures_total",
 
 			Help: "Total number of flush failures.",
+		}),
+
+		sortDurationSeconds: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: "loki",
+			Subsystem: "dataobj",
+			Name:      "sort_duration_seconds",
+
+			Help: "Time taken sorting logs object-wide after flushing.",
+
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  100,
+			NativeHistogramMinResetDuration: 0,
 		}),
 	}
 }

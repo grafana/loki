@@ -143,7 +143,7 @@ func (s *ReaderService) starting(ctx context.Context) error {
 	logger := log.With(s.logger, "phase", phaseStarting)
 	s.reader.SetPhase(phaseStarting)
 	// Fetch the last committed offset to determine where to start reading
-	lastCommittedOffset, err := s.offsetManager.FetchLastCommittedOffset(ctx, s.partitionID)
+	lastCommittedOffset, err := s.offsetManager.LastCommittedOffset(ctx, s.partitionID)
 	if err != nil {
 		return fmt.Errorf("fetching last committed offset: %w", err)
 	}
@@ -235,14 +235,14 @@ func (s *ReaderService) fetchUntilLagSatisfied(
 
 	for b.Ongoing() {
 		// Send a direct request to the Kafka backend to fetch the partition start offset.
-		partitionStartOffset, err := s.offsetManager.FetchPartitionOffset(ctx, s.partitionID, KafkaStartOffset)
+		partitionStartOffset, err := s.offsetManager.PartitionOffset(ctx, s.partitionID, KafkaStartOffset)
 		if err != nil {
 			level.Warn(logger).Log("msg", "partition reader failed to fetch partition start offset", "err", err)
 			b.Wait()
 			continue
 		}
 
-		consumerGroupLastCommittedOffset, err := s.offsetManager.FetchLastCommittedOffset(ctx, s.partitionID)
+		consumerGroupLastCommittedOffset, err := s.offsetManager.LastCommittedOffset(ctx, s.partitionID)
 		if err != nil {
 			level.Warn(logger).Log("msg", "partition reader failed to fetch last committed offset", "err", err)
 			b.Wait()
@@ -253,7 +253,7 @@ func (s *ReaderService) fetchUntilLagSatisfied(
 		// We intentionally don't use WaitNextFetchLastProducedOffset() to not introduce further
 		// latency.
 		lastProducedOffsetRequestedAt := time.Now()
-		lastProducedOffset, err := s.offsetManager.FetchPartitionOffset(ctx, s.partitionID, KafkaEndOffset)
+		lastProducedOffset, err := s.offsetManager.PartitionOffset(ctx, s.partitionID, KafkaEndOffset)
 		if err != nil {
 			level.Warn(logger).Log("msg", "partition reader failed to fetch last produced offset", "err", err)
 			b.Wait()
