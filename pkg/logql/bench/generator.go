@@ -16,27 +16,20 @@ import (
 )
 
 const (
-	DefaultDataDir        = "./data"
-	configFileName        = "generator.json"
-	errorLevel            = "error"         // Constant for the error level string
-	MaxBatchSize          = 5 * 1024 * 1024 // 5MB max batch size
-	TargetStreamsPerBatch = 10
+	DefaultDataDir = "./data"
+	configFileName = "generator.json"
+	errorLevel     = "error" // Constant for the error level string
+
 	DefaultTargetSize     = 2 * 1024 * 1024 * 1024 // 2GB default target size
-	TimeWindowDuration    = 5 * time.Minute        // 5 minute time buckets
-	EstimatedEntrySize    = 500                    // ~500 bytes per entry (log line + metadata + labels)
+	maxBatchSize          = 5 * 1024 * 1024        // 5MB max batch size
+	targetStreamsPerBatch = 10
+	timeWindowDuration    = 5 * time.Minute // 5 minute time buckets
+	estimatedEntrySize    = 500             // ~500 bytes per entry (log line + metadata + labels)
 )
 
 // Batch represents a collection of log streams
 type Batch struct {
 	Streams []logproto.Stream
-}
-
-func (b Batch) Entries() int {
-	var total int
-	for _, stream := range b.Streams {
-		total += len(stream.Entries)
-	}
-	return total
 }
 
 // Size of batch in bytes including all entries, labels and structured metadata.
@@ -82,14 +75,12 @@ var defaultLabelConfig = LabelConfig{
 
 // GeneratorConfig contains all configuration for the log generator
 type GeneratorConfig struct {
-	StartTime         time.Time
-	TimeSpread        time.Duration
-	LabelConfig       LabelConfig
-	NumStreams        int               // Number of streams to generate per batch
-	NumPartitions     int               // Number of partitions to distribute streams across
-	PartitionStrategy PartitionStrategy // Strategy for partitioning streams
-	Seed              int64             // Source of randomness
-	TargetSize        int64             // Target total dataset size in bytes
+	StartTime   time.Time
+	TimeSpread  time.Duration
+	LabelConfig LabelConfig
+	NumStreams  int   // Number of streams to generate per batch
+	Seed        int64 // Source of randomness
+	TargetSize  int64 // Target total dataset size in bytes
 }
 
 // PartitionStrategy defines how streams are distributed across partitions
@@ -102,16 +93,26 @@ const (
 	PartitionByServiceName PartitionStrategy = "service_name"
 )
 
+func PartitionStrategyFromString(s string) (PartitionStrategy, error) {
+	switch s {
+	case string(PartitionByStreamLabels):
+		return PartitionByStreamLabels, nil
+	case string(PartitionByServiceName):
+		return PartitionByServiceName, nil
+	default:
+		return "", fmt.Errorf("unknown partition strategy: %s", s)
+	}
+}
+
 // Default generator configuration with sensible values
 var defaultGeneratorConfig = GeneratorConfig{
-	StartTime:         time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-	TimeSpread:        time.Hour, // Reduced from 24h to 2h for denser, more realistic data
-	LabelConfig:       defaultLabelConfig,
-	NumStreams:        1000,                    // Default to 250 streams per batch
-	NumPartitions:     8,                       // Default to 10 partitions
-	PartitionStrategy: PartitionByStreamLabels, // Default to stream labels partitioning
-	Seed:              1,                       // Default to seed 1 for reproducibility
-	TargetSize:        DefaultTargetSize,       // 2GB default target size
+	StartTime: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+	// Using a 1h time spread as units of work that a single querier handles is usually 1h or lower.
+	TimeSpread:  time.Hour,
+	LabelConfig: defaultLabelConfig,
+	NumStreams:  1000,              // Target NumStreams for the entire dataset
+	Seed:        1,                 // Default to seed 1 for reproducibility
+	TargetSize:  DefaultTargetSize, // 2GB default target size
 }
 
 // NewRand creates a new random source using the configured seed
@@ -138,7 +139,7 @@ type Opt struct {
 	startTime         time.Time
 	timeSpread        time.Duration
 	labelConfig       LabelConfig
-	numStreams        int               // Number of streams to generate per batch
+	numStreams        int               // Number of streams to generate for the entire dataset
 	numPartitions     int               // Number of partitions to distribute streams across
 	partitionStrategy PartitionStrategy // Strategy for partitioning streams
 	seed              int64             // Source of randomness
@@ -185,29 +186,15 @@ func (o Opt) WithSeed(seed int64) Opt {
 	return o
 }
 
-// WithNumPartitions sets the number of partitions to distribute streams across
-func (o Opt) WithNumPartitions(n int) Opt {
-	o.numPartitions = n
-	return o
-}
-
-// WithPartitionStrategy sets the strategy for partitioning streams
-func (o Opt) WithPartitionStrategy(strategy PartitionStrategy) Opt {
-	o.partitionStrategy = strategy
-	return o
-}
-
 // DefaultOpt returns the default options
 func DefaultOpt() Opt {
 	return Opt{
-		startTime:         defaultGeneratorConfig.StartTime,
-		timeSpread:        defaultGeneratorConfig.TimeSpread,
-		labelConfig:       defaultGeneratorConfig.LabelConfig,
-		numStreams:        defaultGeneratorConfig.NumStreams,
-		numPartitions:     defaultGeneratorConfig.NumPartitions,
-		partitionStrategy: defaultGeneratorConfig.PartitionStrategy,
-		seed:              1, // Default to seed 1 for reproducibility
-		targetSize:        defaultGeneratorConfig.TargetSize,
+		startTime:   defaultGeneratorConfig.StartTime,
+		timeSpread:  defaultGeneratorConfig.TimeSpread,
+		labelConfig: defaultGeneratorConfig.LabelConfig,
+		numStreams:  defaultGeneratorConfig.NumStreams,
+		seed:        1, // Default to seed 1 for reproducibility
+		targetSize:  defaultGeneratorConfig.TargetSize,
 	}
 }
 
@@ -215,14 +202,12 @@ func DefaultOpt() Opt {
 func NewGenerator(opt Opt) *Generator {
 	g := &Generator{
 		config: GeneratorConfig{
-			StartTime:         opt.startTime,
-			TimeSpread:        opt.timeSpread,
-			LabelConfig:       opt.labelConfig,
-			NumStreams:        opt.numStreams,
-			NumPartitions:     opt.numPartitions,
-			PartitionStrategy: opt.partitionStrategy,
-			Seed:              opt.seed,
-			TargetSize:        opt.targetSize,
+			StartTime:   opt.startTime,
+			TimeSpread:  opt.timeSpread,
+			LabelConfig: opt.labelConfig,
+			NumStreams:  opt.numStreams,
+			Seed:        opt.seed,
+			TargetSize:  opt.targetSize,
 		},
 		rnd:  rand.New(rand.NewSource(opt.seed)),
 		apps: make(map[string]Application),
@@ -255,23 +240,10 @@ func (g *Generator) generateStreamMetadata() {
 	sort.Strings(appNames)
 
 	// For each stream, generate consistent metadata
-	// High-traffic apps get more streams proportionally
 	for i := 0; i < numStreams; i++ {
-		// Pick application based on traffic level - high traffic apps get more streams
-		var appName string
-		if g.rnd.Float32() < 0.6 { // 60% chance for high traffic apps
-			// Select from high traffic apps
-			highTrafficApps := []string{"web-server", "database", "kafka", "nginx", "kubernetes"}
-			appName = highTrafficApps[g.rnd.Intn(len(highTrafficApps))]
-		} else if g.rnd.Float32() < 0.8 { // 20% chance for medium traffic apps
-			// Select from medium traffic apps
-			mediumTrafficApps := []string{"cache", "auth-service", "mimir", "loki", "tempo", "prometheus"}
-			appName = mediumTrafficApps[g.rnd.Intn(len(mediumTrafficApps))]
-		} else { // 20% chance for low traffic apps
-			// Select from low traffic apps
-			lowTrafficApps := []string{"syslog", "grafana"}
-			appName = lowTrafficApps[g.rnd.Intn(len(lowTrafficApps))]
-		}
+		// Pick a deterministic application based on stream index
+		appIndex := i % len(g.apps)
+		appName := appNames[appIndex]
 		app := g.apps[appName]
 
 		// Generate deterministic labels for this stream
@@ -302,16 +274,16 @@ func (g *Generator) generateStreamMetadata() {
 func (g *Generator) Batches() iter.Seq[*Batch] {
 	var (
 		// calculate numer of batches for the target size
-		totalBatches = int(g.config.TargetSize / MaxBatchSize)
+		totalBatches = int(g.config.TargetSize / maxBatchSize)
 		// calculate time windows to spread batches over.
-		numTimeWindows = int(g.config.TimeSpread / TimeWindowDuration)
+		numTimeWindows = int(g.config.TimeSpread / timeWindowDuration)
 
 		// calculate batches per time bucket
 		numBatchesPerWindow = max(1, totalBatches/numTimeWindows)
 		// calculate entries per stream based on batch size and target stream count
 		// Target: 5MB batch / 10 streams = 500KB per stream
 		// 500KB / 500 bytes per entry = ~1000 entries per stream
-		baseEntriesPerStream = MaxBatchSize / TargetStreamsPerBatch / EstimatedEntrySize
+		baseEntriesPerStream = maxBatchSize / targetStreamsPerBatch / estimatedEntrySize
 	)
 
 	// Pre-generate stream metadata once
@@ -319,16 +291,16 @@ func (g *Generator) Batches() iter.Seq[*Batch] {
 
 	return func(yield func(*Batch) bool) {
 		for window := range numTimeWindows {
-			startTime := g.config.StartTime.Add(time.Duration(window) * TimeWindowDuration)
+			startTime := g.config.StartTime.Add(time.Duration(window) * timeWindowDuration)
 
 			for range numBatchesPerWindow {
 				// Randomly select streams for this batch
-				streams := make([]logproto.Stream, 0, TargetStreamsPerBatch)
+				streams := make([]logproto.Stream, 0, targetStreamsPerBatch)
 				currentBatchSize := 0
 				selectedStreams := make(map[int]bool)
 
 				// Keep adding streams until we reach target count or batch size limit
-				for len(streams) < TargetStreamsPerBatch && currentBatchSize < MaxBatchSize {
+				for len(streams) < targetStreamsPerBatch && currentBatchSize < maxBatchSize {
 					// Pick a random stream we haven't used in this batch
 					streamIdx := g.rnd.Intn(len(g.streamsMeta))
 					if selectedStreams[streamIdx] {
@@ -352,7 +324,7 @@ func (g *Generator) Batches() iter.Seq[*Batch] {
 					}
 
 					// Generate entries for this time bucket
-					entries := g.generateEntriesForTimeBucket(meta, startTime, TimeWindowDuration, entriesPerStream)
+					entries := g.generateEntriesForStream(meta, startTime, timeWindowDuration, entriesPerStream)
 
 					// Estimate size of this stream
 					streamSize := len(meta.Labels)
@@ -380,20 +352,23 @@ func (g *Generator) Batches() iter.Seq[*Batch] {
 	}
 }
 
-// generateEntriesForTimeBucket creates log entries for a specific stream within a time bucket
-func (g *Generator) generateEntriesForTimeBucket(meta StreamMetadata, bucketStartTime time.Time, bucketDuration time.Duration, targetEntries int) []logproto.Entry {
+// generateEntriesForStream creates log entries for a specific stream
+// using the application and format from the stream metadata
+func (g *Generator) generateEntriesForStream(meta StreamMetadata, bucketStartTime time.Time, bucketDuration time.Duration, targetPoints int) []logproto.Entry {
 	app := meta.App
 	faker := NewFaker(g.rnd)
 
-	entries := make([]logproto.Entry, 0, targetEntries)
+	entries := make([]logproto.Entry, 0, targetPoints)
 
 	// Prepare OTEL attributes for this stream
 	otel := OTELAttributes{
 		Resource: make(map[string]string),
 	}
+
+	// Copy resource attributes from the application
 	maps.Copy(otel.Resource, app.OTELResource)
 
-	// Replace template variables
+	// Sort keys for deterministic iteration order
 	var templateKeys []string
 	for k, v := range otel.Resource {
 		if strings.HasPrefix(v, "${") && strings.HasSuffix(v, "}") {
@@ -402,6 +377,7 @@ func (g *Generator) generateEntriesForTimeBucket(meta StreamMetadata, bucketStar
 	}
 	sort.Strings(templateKeys)
 
+	// Replace template variables in deterministic order
 	for _, k := range templateKeys {
 		v := otel.Resource[k]
 		switch v {
@@ -413,9 +389,8 @@ func (g *Generator) generateEntriesForTimeBucket(meta StreamMetadata, bucketStar
 	}
 
 	// Generate points spread across the time bucket
-	spreadInterval := bucketDuration / time.Duration(targetEntries)
-
-	for i := range targetEntries {
+	spreadInterval := bucketDuration / time.Duration(targetPoints)
+	for i := range targetPoints {
 		ts := bucketStartTime.Add(time.Duration(i) * spreadInterval)
 
 		// Randomly determine if this is a burst point (up to 5x logs)
@@ -429,9 +404,9 @@ func (g *Generator) generateEntriesForTimeBucket(meta StreamMetadata, bucketStar
 		// Generate multiple entries for this point (1 for normal, 1-5 for bursts)
 		for j := 0; j < entriesPerPoint; j++ {
 			jitter := time.Duration(g.rnd.Int63n(int64(spreadInterval)))
-			finalTs := ts.Add(jitter)
+			entryTs := ts.Add(jitter)
 
-			// Randomly select log level
+			// Randomly select log level for this entry, biased towards the stream's default level
 			level := g.config.LabelConfig.LogLevels[g.rnd.Intn(len(g.config.LabelConfig.LogLevels))]
 
 			// Generate trace context for some entries
@@ -443,10 +418,10 @@ func (g *Generator) generateEntriesForTimeBucket(meta StreamMetadata, bucketStar
 				}
 			}
 
-			// Generate log line
-			line := app.LogGenerator(level, finalTs, faker)
+			// Generate log line using the application's generators for the selected format
+			line := app.LogGenerator(level, entryTs, faker)
 
-			// Create metadata
+			// Create metadata in a deterministic order
 			var metadata []logproto.LabelAdapter
 			metadata = append(metadata,
 				logproto.LabelAdapter{Name: "level", Value: level},
@@ -466,7 +441,7 @@ func (g *Generator) generateEntriesForTimeBucket(meta StreamMetadata, bucketStar
 				})
 			}
 
-			// Add trace context if present
+			// Finally add trace context if present
 			if traceCtx != nil {
 				metadata = append(metadata,
 					logproto.LabelAdapter{Name: "trace_id", Value: traceCtx.TraceID},
@@ -475,7 +450,7 @@ func (g *Generator) generateEntriesForTimeBucket(meta StreamMetadata, bucketStar
 			}
 
 			entries = append(entries, logproto.Entry{
-				Timestamp:          finalTs,
+				Timestamp:          entryTs,
 				Line:               line,
 				StructuredMetadata: metadata,
 			})

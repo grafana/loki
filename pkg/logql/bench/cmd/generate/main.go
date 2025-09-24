@@ -16,9 +16,15 @@ func main() {
 		tenantID    = flag.String("tenant", "test-tenant", "Tenant ID")
 		clearFolder = flag.Bool("clear", true, "Clear output directory before generating data")
 		partitions  = flag.Int("partitions", 8, "Number of partitions to distribute data across")
-		strategy    = flag.String("partitioning_strategy", "stream_hash", "Partitioning strategy: stream_hash or service_name")
+		strategy    = flag.String("partitioning_strategy", "stream_labels", "Strategy to use for partitioning data. Available options: stream_labels or service_name")
 	)
 	flag.Parse()
+
+	_, err := bench.PartitionStrategyFromString(*strategy) // Validate strategy
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid partitioning strategy: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Clean the output directory if requested
 	if *clearFolder {
