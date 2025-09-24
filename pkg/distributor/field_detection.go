@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log/jsonexpr"
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 var (
@@ -37,15 +36,32 @@ var (
 	critical   = []byte("critical")
 	fatal      = []byte("fatal")
 
+	defaultAllowedLevelFields = []string{
+		"level",
+		"LEVEL",
+		"Level",
+		"log.level",
+		"severity",
+		"SEVERITY",
+		"Severity",
+		"SeverityText",
+		"lvl",
+		"LVL",
+		"Lvl",
+		"severity_text",
+		"Severity_Text",
+		"SEVERITY_TEXT",
+	}
+
 	errKeyFound = errors.New("key found")
 )
 
 func allowedLabelsForLevel(allowedFields []string) []string {
 	if len(allowedFields) == 0 {
-		return validation.DefaultAllowedLevelFields
+		return defaultAllowedLevelFields
 	}
 
-	return validation.DefaultAllowedLevelFields
+	return allowedFields
 }
 
 type FieldDetector struct {
