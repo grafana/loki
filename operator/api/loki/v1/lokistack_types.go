@@ -237,7 +237,7 @@ type AuthenticationSpec struct {
 
 // ModeType is the authentication/authorization mode in which LokiStack Gateway will be configured.
 //
-// +kubebuilder:validation:Enum=static;dynamic;openshift-logging;openshift-network
+// +kubebuilder:validation:Enum=static;dynamic;openshift-logging;openshift-network;openshift
 type ModeType string
 
 const (
@@ -250,6 +250,8 @@ const (
 	OpenshiftLogging ModeType = "openshift-logging"
 	// OpenshiftNetwork mode provides fully automatic OpenShift in-cluster authentication and authorization support for network logs only.
 	OpenshiftNetwork ModeType = "openshift-network"
+	// Openshif mode provides fully automatic OpenShift in-cluster authentication and authorization support for application, infrastructure, audit and network logs.
+	Openshift ModeType = "openshift"
 )
 
 // TenantsSpec defines the mode, authentication and authorization
@@ -260,7 +262,7 @@ type TenantsSpec struct {
 	// +required
 	// +kubebuilder:validation:Required
 	// +kubebuilder:default:=openshift-logging
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:static","urn:alm:descriptor:com.tectonic.ui:select:dynamic","urn:alm:descriptor:com.tectonic.ui:select:openshift-logging","urn:alm:descriptor:com.tectonic.ui:select:openshift-network"},displayName="Mode"
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:static","urn:alm:descriptor:com.tectonic.ui:select:dynamic","urn:alm:descriptor:com.tectonic.ui:select:openshift-logging","urn:alm:descriptor:com.tectonic.ui:select:openshift-network","urn:alm:descriptor:com.tectonic.ui:select:openshift"},displayName="Mode"
 	Mode ModeType `json:"mode"`
 	// Authentication defines the lokistack-gateway component authentication configuration spec per tenant.
 	//

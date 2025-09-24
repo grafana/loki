@@ -527,6 +527,38 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 				},
 			},
 		},
+		{
+			desc: "openshift",
+			opts: Options{
+				Name:      "test",
+				Namespace: "test",
+				Image:     "test",
+				Stack: lokiv1.LokiStackSpec{
+					Size: lokiv1.SizeOneXExtraSmall,
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.Openshift,
+					},
+					Template: &lokiv1.LokiTemplateSpec{
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+					},
+				},
+			},
+			total: 2,
+			want: []monitoringv1.Endpoint{
+				{
+					Port:   gatewayInternalPortName,
+					Path:   "/metrics",
+					Scheme: "http",
+				},
+				{
+					Port:   "opa-metrics",
+					Path:   "/metrics",
+					Scheme: "http",
+				},
+			},
+		},
 	}
 
 	for _, tc := range tt {

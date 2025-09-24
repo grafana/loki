@@ -43,7 +43,7 @@ func validateModes(stack *lokiv1.LokiStack) error {
 		}
 	}
 
-	if stack.Spec.Tenants.Mode == lokiv1.OpenshiftLogging || stack.Spec.Tenants.Mode == lokiv1.OpenshiftNetwork {
+	if stack.Spec.Tenants.Mode == lokiv1.OpenshiftLogging || stack.Spec.Tenants.Mode == lokiv1.OpenshiftNetwork || stack.Spec.Tenants.Mode == lokiv1.Openshift {
 		if stack.Spec.Tenants.Authentication != nil {
 			return kverrors.New("incompatible configuration - custom tenants configuration not required")
 		}
