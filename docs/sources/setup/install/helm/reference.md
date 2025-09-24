@@ -4990,6 +4990,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe for the nginx container in the gateway pods.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.clientMaxBodySize</td>
 			<td>string</td>
 			<td>Allows customizing the `client_max_body_size` directive</td>
@@ -5270,6 +5279,15 @@ null
 			<td>Type of the gateway service</td>
 			<td><pre lang="json">
 "ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.startupProbe</td>
+			<td>object</td>
+			<td>startup probe for the nginx container in the gateway pods.</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -12992,7 +13010,7 @@ false
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/loki-helm-test",
-    "tag": "ewelch-distributed-helm-chart-17db5ee"
+    "tag": "latest"
   },
   "labels": {},
   "prometheusAddress": "",
@@ -13038,7 +13056,7 @@ false
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/loki-helm-test",
-  "tag": "ewelch-distributed-helm-chart-17db5ee"
+  "tag": "latest"
 }
 </pre>
 </td>
@@ -13084,7 +13102,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"ewelch-distributed-helm-chart-17db5ee"
+"latest"
 </pre>
 </td>
 		</tr>
