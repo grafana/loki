@@ -43,7 +43,11 @@ func (t *tableUpdatesRecorder) addStorageUpdates(tableName, userID, labels strin
 	updates := t.updates[tableName][userID][labels]
 
 	for chunkID, newChunk := range rebuiltChunks {
-		updates.RebuiltChunks[chunkID] = newChunk.(*deletionproto.Chunk)
+		if newChunk == nil {
+			updates.RebuiltChunks[chunkID] = nil
+		} else {
+			updates.RebuiltChunks[chunkID] = newChunk.(*deletionproto.Chunk)
+		}
 	}
 	updates.ChunksToDeIndex = append(updates.ChunksToDeIndex, chunksToDeIndex...)
 	t.updates[tableName][userID][labels] = updates
@@ -59,6 +63,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 		setupManifest        func(client client.ObjectClient) []deletionproto.DeleteRequest
 		expectedJobs         []grpc.Job
 		expectedTableUpdates map[string]map[string]map[string]deletionproto.StorageUpdates
+		wholeChunksDeleted   bool
 	}{
 		{
 			name: "no manifests in storage",
@@ -122,7 +127,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			expectedTableUpdates: map[string]map[string]map[string]deletionproto.StorageUpdates{
 				table1: {
 					user1: {
-						lblFooBar: buildStorageUpdates(0, 1),
+						lblFooBar: buildStorageUpdates(0, 1, false),
 					},
 				},
 			},
@@ -196,7 +201,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			expectedTableUpdates: map[string]map[string]map[string]deletionproto.StorageUpdates{
 				table1: {
 					user1: {
-						lblFooBar: buildStorageUpdates(0, 2),
+						lblFooBar: buildStorageUpdates(0, 2, false),
 					},
 				},
 			},
@@ -284,7 +289,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			expectedTableUpdates: map[string]map[string]map[string]deletionproto.StorageUpdates{
 				table1: {
 					user1: {
-						lblFizzBuzzAndFooBar: buildStorageUpdates(0, 2),
+						lblFizzBuzzAndFooBar: buildStorageUpdates(0, 2, false),
 					},
 				},
 			},
@@ -363,12 +368,97 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 			expectedTableUpdates: map[string]map[string]map[string]deletionproto.StorageUpdates{
 				table1: {
 					user1: {
-						lblFooBar: buildStorageUpdates(0, 1),
+						lblFooBar: buildStorageUpdates(0, 1, false),
 					},
 				},
 				table2: {
 					user1: {
-						lblFooBar: buildStorageUpdates(1, 1),
+						lblFooBar: buildStorageUpdates(1, 1, false),
+					},
+				},
+			},
+		},
+		{
+			name:               "whole chunks deleted",
+			wholeChunksDeleted: true,
+			setupManifest: func(client client.ObjectClient) []deletionproto.DeleteRequest {
+				deleteRequestBatch := newDeleteRequestBatch(newDeleteRequestsManagerMetrics(nil))
+				requestsToAdd := []deletionproto.DeleteRequest{
+					{
+						RequestID: req1,
+						UserID:    user1,
+						Query:     lblFooBar,
+						StartTime: 0,
+						EndTime:   now,
+					},
+				}
+				for i := range requestsToAdd {
+					req := requestsToAdd[i]
+					deleteRequestBatch.addDeleteRequest(&deleteRequest{DeleteRequest: req})
+				}
+				manifestBuilder, err := newDeletionManifestBuilder(client, deleteRequestBatch)
+				require.NoError(t, err)
+
+				require.NoError(t, manifestBuilder.AddSeries(context.Background(), table1, &mockSeries{
+					userID: user1,
+					labels: mustParseLabel(lblFooBar),
+					chunks: buildRetentionChunks(0, 100),
+				}))
+
+				require.NoError(t, manifestBuilder.AddSeries(context.Background(), table2, &mockSeries{
+					userID: user1,
+					labels: mustParseLabel(lblFooBar),
+					chunks: buildRetentionChunks(100, 100),
+				}))
+
+				require.NoError(t, manifestBuilder.Finish(context.Background()))
+				return requestsToAdd
+			},
+			expectedJobs: []grpc.Job{
+				{
+					Type: grpc.JOB_TYPE_DELETION,
+					Payload: mustMarshalPayload(&deletionproto.DeletionJob{
+						TableName: table1,
+						UserID:    user1,
+						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(0, 100)),
+						DeleteRequests: []deletionproto.DeleteRequest{
+							{
+								RequestID: req1,
+								UserID:    user1,
+								Query:     lblFooBar,
+								StartTime: 0,
+								EndTime:   now,
+							},
+						},
+					}),
+				},
+				{
+					Type: grpc.JOB_TYPE_DELETION,
+					Payload: mustMarshalPayload(&deletionproto.DeletionJob{
+						TableName: table2,
+						UserID:    user1,
+						ChunkIDs:  getChunkIDsFromRetentionChunks(buildRetentionChunks(100, 100)),
+						DeleteRequests: []deletionproto.DeleteRequest{
+							{
+								RequestID: req1,
+								UserID:    user1,
+								Query:     lblFooBar,
+								StartTime: 0,
+								EndTime:   now,
+							},
+						},
+					}),
+				},
+			},
+			expectedTableUpdates: map[string]map[string]map[string]deletionproto.StorageUpdates{
+				table1: {
+					user1: {
+						lblFooBar: buildStorageUpdates(0, 1, true),
+					},
+				},
+				table2: {
+					user1: {
+						lblFooBar: buildStorageUpdates(1, 1, true),
 					},
 				},
 			},
@@ -416,7 +506,7 @@ func TestJobBuilder_buildJobs(t *testing.T) {
 					// while comparing jobs built vs expected, do not compare the job IDs
 					job.Id = ""
 					jobsBuilt = append(jobsBuilt, *job)
-					storageUpdates := buildStorageUpdates(cnt, 1)
+					storageUpdates := buildStorageUpdates(cnt, 1, tc.wholeChunksDeleted)
 					err := builder.OnJobResponse(&grpc.JobResult{
 						JobId:   jobID,
 						JobType: job.Type,
@@ -537,19 +627,24 @@ func mustMarshalPayload(job *deletionproto.DeletionJob) []byte {
 	return payload
 }
 
-func buildStorageUpdates(jobNumStart, numJobs int) deletionproto.StorageUpdates {
+func buildStorageUpdates(jobNumStart, numJobs int, wholeChunksDeleted bool) deletionproto.StorageUpdates {
 	s := deletionproto.StorageUpdates{
 		RebuiltChunks: map[string]*deletionproto.Chunk{},
 	}
 	for i := 0; i < numJobs; i++ {
 		jobNum := jobNumStart + i
-		s.RebuiltChunks[fmt.Sprintf("%d-d", jobNum)] = &deletionproto.Chunk{
-			From:        model.Time(jobNum),
-			Through:     model.Time(jobNum),
-			Fingerprint: uint64(jobNum),
-			Checksum:    uint32(jobNum),
-			KB:          uint32(jobNum),
-			Entries:     uint32(jobNum),
+		chunkID := fmt.Sprintf("%d-d", jobNum)
+		if wholeChunksDeleted {
+			s.RebuiltChunks[chunkID] = nil
+		} else {
+			s.RebuiltChunks[chunkID] = &deletionproto.Chunk{
+				From:        model.Time(jobNum),
+				Through:     model.Time(jobNum),
+				Fingerprint: uint64(jobNum),
+				Checksum:    uint32(jobNum),
+				KB:          uint32(jobNum),
+				Entries:     uint32(jobNum),
+			}
 		}
 		s.ChunksToDeIndex = append(s.ChunksToDeIndex, fmt.Sprintf("%d-i", jobNum))
 	}

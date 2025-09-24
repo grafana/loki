@@ -3913,7 +3913,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.5.3"
+    "tag": "3.5.4"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -4060,7 +4060,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.5.3"
+"3.5.4"
 </pre>
 </td>
 		</tr>
@@ -6985,7 +6985,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.5.3"
+"3.5.5"
 </pre>
 </td>
 		</tr>
@@ -7709,7 +7709,7 @@ true
 			<td>string</td>
 			<td>Memcached Docker image tag</td>
 			<td><pre lang="json">
-"1.6.38-alpine"
+"1.6.39-alpine"
 </pre>
 </td>
 		</tr>
@@ -12152,7 +12152,7 @@ false
 			<td>string</td>
 			<td>The Docker registry and image for the k8s sidecar</td>
 			<td><pre lang="json">
-"kiwigrid/k8s-sidecar"
+"docker.io/kiwigrid/k8s-sidecar"
 </pre>
 </td>
 		</tr>
@@ -12170,7 +12170,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.7"
+"1.30.10"
 </pre>
 </td>
 		</tr>
