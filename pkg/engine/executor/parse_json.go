@@ -32,7 +32,7 @@ var (
 	}
 )
 
-func BuildJSONColumns(input *array.String, requestedKeys []string, allocator memory.Allocator) ([]string, []arrow.Array) {
+func buildJSONColumns(input *array.String, requestedKeys []string, allocator memory.Allocator) ([]string, []arrow.Array) {
 	return buildColumns(input, requestedKeys, allocator, parseJSONLine, types.JSONParserErrorType)
 }
 
@@ -40,25 +40,25 @@ func BuildJSONColumns(input *array.String, requestedKeys []string, allocator mem
 // implements ParseFunc
 func parseJSONLine(line string, requestedKeys []string) (map[string]string, error) {
 	// Use the refactored JSONParser for nested object handling and number conversion
-	parser := NewJSONParser()
-	return parser.Process(unsafeBytes(line), requestedKeys)
+	parser := newJSONParser()
+	return parser.process(unsafeBytes(line), requestedKeys)
 }
 
-type JSONParser struct {
+type jsonParser struct {
 	prefixBuffer          [][]byte // buffer used to build json keys
 	sanitizedPrefixBuffer []byte
 }
 
-// NewJSONParser creates a JSON parser that can handle nested objects with flattening.
-func NewJSONParser() *JSONParser {
-	return &JSONParser{
+// newJSONParser creates a JSON parser that can handle nested objects with flattening.
+func newJSONParser() *jsonParser {
+	return &jsonParser{
 		prefixBuffer:          [][]byte{},
 		sanitizedPrefixBuffer: make([]byte, 0, 64),
 	}
 }
 
-// Process parses a JSON line and returns key-value pairs with nested object flattening
-func (j *JSONParser) Process(line []byte, requestedKeys []string) (map[string]string, error) {
+// process parses a JSON line and returns key-value pairs with nested object flattening
+func (j *jsonParser) process(line []byte, requestedKeys []string) (map[string]string, error) {
 	result := make(map[string]string)
 
 	// Create a set for faster requestedKeys lookup
@@ -86,7 +86,7 @@ func (j *JSONParser) Process(line []byte, requestedKeys []string) (map[string]st
 	return result, nil
 }
 
-func (j *JSONParser) parseObject(key, value []byte, dataType jsonparser.ValueType, result map[string]string, requestedKeyLookup map[string]struct{}) error {
+func (j *jsonParser) parseObject(key, value []byte, dataType jsonparser.ValueType, result map[string]string, requestedKeyLookup map[string]struct{}) error {
 	switch dataType {
 	case jsonparser.String, jsonparser.Number, jsonparser.Boolean:
 		return j.parseLabelValue(key, value, dataType, result, requestedKeyLookup)
@@ -115,7 +115,7 @@ func (j *JSONParser) parseObject(key, value []byte, dataType jsonparser.ValueTyp
 	}
 }
 
-func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.ValueType, result map[string]string, requestedKeyLookup map[string]struct{}) error {
+func (j *jsonParser) parseLabelValue(key, value []byte, dataType jsonparser.ValueType, result map[string]string, requestedKeyLookup map[string]struct{}) error {
 	// Build the full key (with flattening for nested objects)
 	var keyString string
 	if len(j.prefixBuffer) == 0 {
@@ -149,7 +149,7 @@ func (j *JSONParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	return nil
 }
 
-func (j *JSONParser) buildSanitizedPrefixFromBuffer() []byte {
+func (j *jsonParser) buildSanitizedPrefixFromBuffer() []byte {
 	j.sanitizedPrefixBuffer = j.sanitizedPrefixBuffer[:0]
 
 	for i, part := range j.prefixBuffer {
@@ -232,9 +232,7 @@ func appendSanitized(to, key []byte) []byte {
 		to = append(to, '_')
 	}
 
-	// Process each byte, not rune, for proper ASCII handling
-	for _, b := range key {
-		r := rune(b)
+	for _, r := range bytes.Runes(key) {
 		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && r != '_' && (r < '0' || r > '9') {
 			to = append(to, jsonSpacer)
 			continue

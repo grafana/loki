@@ -98,6 +98,23 @@ func TestJSONParser_Process(t *testing.T) {
 			},
 		},
 		{
+			"correctly handles utf8 values",
+			[]byte(`{"name": "José", "mood": "😀"}`),
+			nil,
+			map[string]string{
+				"name": "José",
+				"mood": "😀",
+			},
+		},
+		{
+			"correctly handles utf8 keys",
+			[]byte(`{"José": "😀"}`),
+			nil,
+			map[string]string{
+				"Jos_": "😀",
+			},
+		},
+		{
 			"skip arrays",
 			[]byte(`{"counter":1, "price": {"net_":["10","20"]}}`),
 			nil,
@@ -195,8 +212,8 @@ func TestJSONParser_Process(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			j := NewJSONParser()
-			result, err := j.Process(tt.line, tt.requestedKeys)
+			j := newJSONParser()
+			result, err := j.process(tt.line, tt.requestedKeys)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, result)
 		})
@@ -216,8 +233,8 @@ func TestJSONParser_Process_Malformed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			j := NewJSONParser()
-			result, err := j.Process(tt.line, nil)
+			j := newJSONParser()
+			result, err := j.process(tt.line, nil)
 			require.Error(t, err)
 			// Should return empty result on error
 			require.Empty(t, result)
@@ -246,11 +263,11 @@ func BenchmarkJSONParser_Process(b *testing.B) {
 
 	for _, tc := range testCases {
 		b.Run(tc.name, func(b *testing.B) {
-			j := NewJSONParser()
+			j := newJSONParser()
 			b.ResetTimer()
 
 			for b.Loop() {
-				_, err := j.Process(tc.line, nil)
+				_, err := j.process(tc.line, nil)
 				if err != nil {
 					b.Fatal(err)
 				}

@@ -9,7 +9,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 )
 
-func BuildLogfmtColumns(input *array.String, requestedKeys []string, allocator memory.Allocator) ([]string, []arrow.Array) {
+func buildLogfmtColumns(input *array.String, requestedKeys []string, allocator memory.Allocator) ([]string, []arrow.Array) {
 	return buildColumns(input, requestedKeys, allocator, tokenizeLogfmt, types.LogfmtParserErrorType)
 }
 

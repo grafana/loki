@@ -51,9 +51,9 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		var parsedColumns []arrow.Array
 		switch parse.Kind {
 		case physical.ParserLogfmt:
-			headers, parsedColumns = BuildLogfmtColumns(stringCol, parse.RequestedKeys, allocator)
+			headers, parsedColumns = buildLogfmtColumns(stringCol, parse.RequestedKeys, allocator)
 		case physical.ParserJSON:
-			headers, parsedColumns = BuildJSONColumns(stringCol, parse.RequestedKeys, allocator)
+			headers, parsedColumns = buildJSONColumns(stringCol, parse.RequestedKeys, allocator)
 		default:
 			return failureState(fmt.Errorf("unsupported parser kind: %v", parse.Kind))
 		}
