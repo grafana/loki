@@ -24,14 +24,21 @@ import (
 
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
+	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
 )
 
 // resourceUpdate is a combined update from all the resources, in the order of
 // priority. For example, it can be {EDS, EDS, DNS}.
 type resourceUpdate struct {
+	// A discovery mechanism would return an empty update when it runs into
+	// errors, and this would result in the priority LB policy reporting
+	// TRANSIENT_FAILURE (if there was a single discovery mechanism), or would
+	// fallback to the next highest priority that is available.
 	priorities []priorityConfig
-	err        error
+	// To be invoked once the update is completely processed, or is dropped in
+	// favor of a newer update.
+	onDone xdsresource.OnDoneFunc
 }
 
 // topLevelResolver is used by concrete endpointsResolver implementations for
@@ -39,7 +46,11 @@ type resourceUpdate struct {
 // interface and takes appropriate actions upon receipt of updates and errors
 // from underlying concrete resolvers.
 type topLevelResolver interface {
-	onUpdate()
+	// onUpdate is called when a new update is received from the underlying
+	// endpointsResolver implementation. The onDone callback is to be invoked
+	// once the update is completely processed, or is dropped in favor of a
+	// newer update.
+	onUpdate(onDone xdsresource.OnDoneFunc)
 }
 
 // endpointsResolver wraps the functionality to resolve a given resource name to
@@ -67,7 +78,7 @@ type endpointsResolver interface {
 // discoveryMechanismKey is {type+resource_name}, it's used as the map key, so
 // that the same resource resolver can be reused (e.g. when there are two
 // mechanisms, both for the same EDS resource, but has different circuit
-// breaking config.
+// breaking config).
 type discoveryMechanismKey struct {
 	typ  DiscoveryMechanismType
 	name string
@@ -205,7 +216,7 @@ func (rr *resourceResolver) updateMechanisms(mechanisms []DiscoveryMechanism) {
 	}
 	// Regenerate even if there's no change in discovery mechanism, in case
 	// priority order changed.
-	rr.generateLocked()
+	rr.generateLocked(func() {})
 }
 
 // resolveNow is typically called to trigger re-resolve of DNS. The EDS
@@ -252,7 +263,10 @@ func (rr *resourceResolver) stop(closing bool) {
 	// after they are stopped. Therefore, we don't have to worry about another
 	// write to this channel happening at the same time as this one.
 	select {
-	case <-rr.updateChannel:
+	case ru := <-rr.updateChannel:
+		if ru.onDone != nil {
+			ru.onDone()
+		}
 	default:
 	}
 	rr.updateChannel <- &resourceUpdate{}
@@ -262,34 +276,47 @@ func (rr *resourceResolver) stop(closing bool) {
 // result on the update channel if all child resolvers have received at least
 // one update. Otherwise it returns early.
 //
-// caller must hold rr.mu.
-func (rr *resourceResolver) generateLocked() {
+// The onDone callback is invoked inline if not all child resolvers have
+// received at least one update. If all child resolvers have received at least
+// one update, onDone is invoked when the combined update is processed by the
+// clusterresolver LB policy.
+//
+// Caller must hold rr.mu.
+func (rr *resourceResolver) generateLocked(onDone xdsresource.OnDoneFunc) {
 	var ret []priorityConfig
 	for _, rDM := range rr.children {
 		u, ok := rDM.r.lastUpdate()
 		if !ok {
 			// Don't send updates to parent until all resolvers have update to
 			// send.
+			onDone()
 			return
 		}
 		switch uu := u.(type) {
 		case xdsresource.EndpointsUpdate:
 			ret = append(ret, priorityConfig{mechanism: rDM.dm, edsResp: uu, childNameGen: rDM.childNameGen})
-		case []string:
-			ret = append(ret, priorityConfig{mechanism: rDM.dm, addresses: uu, childNameGen: rDM.childNameGen})
+		case []resolver.Endpoint:
+			ret = append(ret, priorityConfig{mechanism: rDM.dm, endpoints: uu, childNameGen: rDM.childNameGen})
 		}
 	}
 	select {
-	case <-rr.updateChannel:
+	// A previously unprocessed update is dropped in favor of the new one, and
+	// the former's onDone callback is invoked to unblock the xDS client's
+	// receive path.
+	case ru := <-rr.updateChannel:
+		if ru.onDone != nil {
+			ru.onDone()
+		}
 	default:
 	}
-	rr.updateChannel <- &resourceUpdate{priorities: ret}
+	rr.updateChannel <- &resourceUpdate{priorities: ret, onDone: onDone}
 }
 
-func (rr *resourceResolver) onUpdate() {
-	rr.serializer.Schedule(func(context.Context) {
+func (rr *resourceResolver) onUpdate(onDone xdsresource.OnDoneFunc) {
+	handleUpdate := func(context.Context) {
 		rr.mu.Lock()
-		rr.generateLocked()
+		rr.generateLocked(onDone)
 		rr.mu.Unlock()
-	})
+	}
+	rr.serializer.ScheduleOr(handleUpdate, func() { onDone() })
 }
