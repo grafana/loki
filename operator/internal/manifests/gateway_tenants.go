@@ -46,7 +46,7 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 	switch opts.Stack.Tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		// Do nothing as per tenants provided by LokiStack CR
-	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork, lokiv1.Openshift:
 		tenantData := make(map[string]openshift.TenantData)
 		for name, tenant := range opts.Tenants.Configs {
 			tenantData[name] = openshift.TenantData{
@@ -71,7 +71,7 @@ func configureGatewayDeploymentForMode(d *appsv1.Deployment, tenants *lokiv1.Ten
 			return configureCAVolumes(d, tenants)
 		}
 		return nil
-	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork, lokiv1.Openshift:
 		tlsDir := gatewayServerHTTPTLSDir()
 		return openshift.ConfigureGatewayDeployment(d, tenants.Mode, tlsSecretVolume, tlsDir, minTLSVersion, ciphers, fg.HTTPEncryption, adminGroups)
 	}
@@ -83,7 +83,7 @@ func configureGatewayDeploymentRulesAPIForMode(d *appsv1.Deployment, mode lokiv1
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic, lokiv1.OpenshiftNetwork:
 		return nil // nothing to configure
-	case lokiv1.OpenshiftLogging:
+	case lokiv1.OpenshiftLogging, lokiv1.Openshift:
 		return openshift.ConfigureGatewayDeploymentRulesAPI(d, gatewayContainerName)
 	}
 
@@ -94,7 +94,7 @@ func configureGatewayServiceForMode(s *corev1.ServiceSpec, mode lokiv1.ModeType)
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure
-	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork, lokiv1.Openshift:
 		return openshift.ConfigureGatewayService(s)
 	}
 
@@ -138,7 +138,7 @@ func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Ob
 				}
 			}
 		}
-	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork, lokiv1.Openshift:
 		for _, o := range objs {
 			switch sa := o.(type) {
 			case *corev1.ServiceAccount:
@@ -162,7 +162,7 @@ func configureGatewayServiceMonitorForMode(sm *monitoringv1.ServiceMonitor, opts
 	switch opts.Stack.Tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure
-	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
+	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork, lokiv1.Openshift:
 		return openshift.ConfigureGatewayServiceMonitor(sm, opts.Gates.ServiceMonitorTLSEndpoints)
 	}
 
@@ -176,7 +176,7 @@ func ConfigureOptionsForMode(cfg *config.Options, opt Options) error {
 		return nil // nothing to configure
 	case lokiv1.OpenshiftNetwork:
 		return openshift.ConfigureOptions(cfg, opt.OpenShiftOptions.BuildOpts.AlertManagerEnabled, false, "", "", "")
-	case lokiv1.OpenshiftLogging:
+	case lokiv1.OpenshiftLogging, lokiv1.Openshift:
 		monitorServerName := fqdn(openshift.MonitoringSVCUserWorkload, openshift.MonitoringUserWorkloadNS)
 		return openshift.ConfigureOptions(
 			cfg,

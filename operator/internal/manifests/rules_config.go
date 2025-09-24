@@ -89,7 +89,7 @@ func configureAlertingRuleForMode(ar *lokiv1.AlertingRule, mode lokiv1.ModeType)
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		// Do nothing
-	case lokiv1.OpenshiftLogging:
+	case lokiv1.OpenshiftLogging, lokiv1.Openshift:
 		openshift.AlertingRuleTenantLabels(ar)
 	case lokiv1.OpenshiftNetwork:
 		// Do nothing
@@ -100,7 +100,7 @@ func configureRecordingRuleForMode(r *lokiv1.RecordingRule, mode lokiv1.ModeType
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		// Do nothing
-	case lokiv1.OpenshiftLogging:
+	case lokiv1.OpenshiftLogging, lokiv1.Openshift:
 		openshift.RecordingRuleTenantLabels(r)
 	case lokiv1.OpenshiftNetwork:
 		// Do nothing
