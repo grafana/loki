@@ -493,7 +493,6 @@ func validateS3Endpoint(endpoint string, region string) error {
 	}
 
 	if parsedURL.Scheme == "" {
-		// Assume "just a hostname" when scheme is empty and produce a clearer error message
 		return errS3EndpointNoURL
 	}
 
@@ -501,31 +500,30 @@ func validateS3Endpoint(endpoint string, region string) error {
 		return fmt.Errorf("%w: %s", errS3EndpointUnsupportedScheme, parsedURL.Scheme)
 	}
 
-	if strings.HasSuffix(endpoint, awsEndpointSuffix) {
-		if len(region) == 0 {
-			return fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
-		}
-
-		// Check if it's a standard AWS S3 endpoint
-		validEndpoint := fmt.Sprintf("https://s3.%s%s", region, awsEndpointSuffix)
-		if endpoint == validEndpoint {
-			return nil
-		}
-
-		// Check if it's a VPC endpoint format: https://vpce-*-region.s3.region.vpce.amazonaws.com
-		// Reject bucket-specific VPC endpoints to avoid folder creation issues
-		if strings.Contains(endpoint, ".vpce.amazonaws.com") && strings.Contains(endpoint, region) {
-			// Ensure it's not a bucket-specific VPC endpoint (bucket.vpce-xxx format)
-			hostname := parsedURL.Hostname()
-			if strings.HasPrefix(hostname, "vpce-") {
-				return nil
-			}
-		}
-
-		// If neither standard nor VPC endpoint format, return error
-		return fmt.Errorf("%w: %s", errS3EndpointAWSInvalid, validEndpoint)
+	if !strings.HasSuffix(endpoint, awsEndpointSuffix) {
+		return nil
 	}
-	return nil
+
+	if len(region) == 0 {
+		return fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
+	}
+
+	// Check if it's a VPC endpoint format
+	if strings.Contains(endpoint, ".vpce.amazonaws.com") && strings.Contains(endpoint, region) {
+		hostname := parsedURL.Hostname()
+		if !strings.HasPrefix(hostname, "vpce-") {
+			return fmt.Errorf("bucket name must not be included in VPC endpoint URL")
+		}
+		return nil
+	}
+
+	// Check if it's a standard AWS S3 endpoint
+	validEndpoint := fmt.Sprintf("https://s3.%s%s", region, awsEndpointSuffix)
+	if endpoint == validEndpoint {
+		return nil
+	}
+
+	return fmt.Errorf("%w: %s", errS3EndpointAWSInvalid, validEndpoint)
 }
 
 func extractS3SSEConfig(d map[string][]byte) (storage.S3SSEConfig, error) {

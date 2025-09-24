@@ -731,7 +731,7 @@ func TestS3Extract_ForcePathStyle(t *testing.T) {
 					"access_key_secret": []byte("secret"),
 				},
 			},
-			wantError: "endpoint for AWS S3 must include correct region: https://s3.us-east-1.amazonaws.com",
+			wantError: "bucket name must not be included in VPC endpoint URL",
 		},
 		{
 			desc: "aws s3 vpc endpoint without bucket prefix",
