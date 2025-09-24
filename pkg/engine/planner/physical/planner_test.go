@@ -443,12 +443,13 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 
 func TestPlanner_MakeTable_Ordering(t *testing.T) {
 	// Two separate groups with different timestamps in each group
+	now := time.Now()
 	catalog := &catalog{
 		sectionDescriptors: []*metastore.DataobjSectionDescriptor{
-			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 3}, StreamIDs: []int64{1, 2}, Start: time.Now(), End: time.Now().Add(time.Second * 10)},
-			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 1}, StreamIDs: []int64{3, 4}, Start: time.Now(), End: time.Now().Add(time.Second * 10)},
-			{SectionKey: metastore.SectionKey{ObjectPath: "obj3", SectionIdx: 2}, StreamIDs: []int64{5, 1}, Start: time.Now().Add(-time.Minute), End: time.Now().Add(-time.Minute).Add(time.Second * 10)},
-			{SectionKey: metastore.SectionKey{ObjectPath: "obj3", SectionIdx: 3}, StreamIDs: []int64{5, 1}, Start: time.Now().Add(-2 * time.Minute), End: time.Now().Add(-time.Minute).Add(time.Second * 7)},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 3}, StreamIDs: []int64{1, 2}, Start: now, End: now.Add(time.Second * 10)},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 1}, StreamIDs: []int64{3, 4}, Start: now, End: now.Add(time.Second * 10)},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj3", SectionIdx: 2}, StreamIDs: []int64{5, 1}, Start: now.Add(-time.Minute), End: now.Add(-30 * time.Second)},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj3", SectionIdx: 3}, StreamIDs: []int64{5, 1}, Start: now.Add(-2 * time.Minute), End: now.Add(-45 * time.Second)},
 		},
 	}
 
@@ -485,8 +486,9 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		_ = expectedPlan.addEdge(Edge{Parent: merge, Child: sortMerge2})
 
 		// Sort merges should be added in the order of the scan timestamps
-		_ = expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan4})
+		// ASC => oldest to newest
 		_ = expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan3})
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan4})
 		_ = expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan1})
 		_ = expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan2})
 
@@ -520,8 +522,8 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		// Sort merges should be added in the order of the scan timestamps
 		_ = expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan1})
 		_ = expectedPlan.addEdge(Edge{Parent: sortMerge1, Child: scan2})
-		_ = expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan4})
 		_ = expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan3})
+		_ = expectedPlan.addEdge(Edge{Parent: sortMerge2, Child: scan4})
 
 		actual := PrintAsTree(plan)
 		expected := PrintAsTree(expectedPlan)
@@ -532,4 +534,68 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 
 		require.Equal(t, actual, expected)
 	})
+}
+
+func TestPlanner_OverlappingShardDescriptors(t *testing.T) {
+	tests := []struct {
+		name   string
+		ranges []TimeRange
+		groups int
+	}{
+		{
+			name: "Isolated groups",
+			ranges: []TimeRange{
+				{Start: time.UnixMilli(1), End: time.UnixMilli(2)},
+				{Start: time.UnixMilli(3), End: time.UnixMilli(4)},
+				{Start: time.UnixMilli(5), End: time.UnixMilli(6)},
+			},
+			groups: 3,
+		},
+		{
+			name: "Equal start and end are one group",
+			ranges: []TimeRange{
+				{Start: time.UnixMilli(1), End: time.UnixMilli(2)},
+				{Start: time.UnixMilli(2), End: time.UnixMilli(4)},
+			},
+			groups: 1,
+		},
+		{
+			name: "One range contains two isolated groups",
+			ranges: []TimeRange{
+				{Start: time.UnixMilli(1), End: time.UnixMilli(2)},
+				{Start: time.UnixMilli(3), End: time.UnixMilli(4)},
+				{Start: time.UnixMilli(0), End: time.UnixMilli(5)},
+			},
+			groups: 1,
+		},
+		{
+			name: "One range spans two isolated groups",
+			ranges: []TimeRange{
+				{Start: time.UnixMilli(0), End: time.UnixMilli(2)},
+				{Start: time.UnixMilli(4), End: time.UnixMilli(5)},
+				{Start: time.UnixMilli(2), End: time.UnixMilli(4)},
+			},
+			groups: 1,
+		},
+		{
+			name: "Real world example",
+			ranges: []TimeRange{
+				{Start: time.Date(2025, time.September, 16, 15, 0, 31, 361695211, time.UTC), End: time.Date(2025, time.September, 16, 15, 0, 46, 800186241, time.UTC)},
+				{Start: time.Date(2025, time.September, 16, 15, 0, 31, 350398040, time.UTC), End: time.Date(2025, time.September, 16, 15, 0, 31, 350398040, time.UTC)},
+				{Start: time.Date(2025, time.September, 16, 15, 0, 31, 330227014, time.UTC), End: time.Date(2025, time.September, 16, 15, 1, 3, 337407239, time.UTC)},
+			},
+			groups: 1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			descriptors := []FilteredShardDescriptor{}
+			for _, tr := range tt.ranges {
+				descriptors = append(descriptors, FilteredShardDescriptor{TimeRange: tr})
+			}
+
+			groups := overlappingShardDescriptors(descriptors)
+			require.Equal(t, tt.groups, len(groups))
+		})
+	}
 }

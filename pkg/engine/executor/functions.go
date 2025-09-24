@@ -160,6 +160,7 @@ func (b *binaryFuncReg) GetForSignature(op types.BinaryOp, ltype arrow.DataType)
 type arrayType[T comparable] interface {
 	IsNull(int) bool
 	Value(int) T
+	Len() int
 }
 
 // genericFunction is a struct that implements the [BinaryFunction] interface methods
@@ -188,7 +189,7 @@ func (f *genericFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector) (Co
 	builder := array.NewBooleanBuilder(mem)
 	defer builder.Release()
 
-	for i := 0; i < lhs.ToArray().Len(); i++ {
+	for i := range lhsArr.Len() {
 		if lhsArr.IsNull(i) || rhsArr.IsNull(i) {
 			builder.Append(false)
 			continue

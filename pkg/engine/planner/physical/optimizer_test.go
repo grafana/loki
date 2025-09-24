@@ -1,6 +1,7 @@
 package physical
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -104,6 +105,7 @@ func dummyPlan() *Plan {
 }
 
 func TestOptimizer(t *testing.T) {
+
 	t.Run("noop", func(t *testing.T) {
 		plan := dummyPlan()
 		optimizations := []*optimization{
@@ -560,6 +562,43 @@ func TestOptimizer(t *testing.T) {
 		actual := PrintAsTree(plan)
 		expected := PrintAsTree(expectedPlan)
 		require.Equal(t, expected, actual)
+	})
+
+	t.Run("cleanup no-op merge nodes", func(t *testing.T) {
+		plan := func() *Plan {
+			plan := &Plan{}
+			limit := plan.addNode(&Limit{id: "limit"})
+			merge := plan.addNode(&Merge{id: "merge"})
+			sortmerge := plan.addNode(&Merge{id: "sortmerge"})
+			scan := plan.addNode(&DataObjScan{id: "scan"})
+
+			_ = plan.addEdge(Edge{Parent: limit, Child: merge})
+			_ = plan.addEdge(Edge{Parent: merge, Child: sortmerge})
+			_ = plan.addEdge(Edge{Parent: sortmerge, Child: scan})
+			return plan
+		}()
+
+		optimizations := []*optimization{
+			newOptimization("cleanup", plan).withRules(
+				&removeNoopMerge{plan},
+			),
+		}
+
+		o := newOptimizer(plan, optimizations)
+		o.optimize(plan.Roots()[0])
+		actual := PrintAsTree(plan)
+
+		optimized := func() *Plan {
+			plan := &Plan{}
+			limit := plan.addNode(&Limit{id: "limit"})
+			scan := plan.addNode(&DataObjScan{id: "scan"})
+
+			_ = plan.addEdge(Edge{Parent: limit, Child: scan})
+			return plan
+		}()
+
+		expected := PrintAsTree(optimized)
+		require.Equal(t, expected, actual, fmt.Sprintf("Expected:\n%s\nActual:\n%s\n", expected, actual))
 	})
 }
 
