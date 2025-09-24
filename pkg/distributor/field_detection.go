@@ -45,7 +45,7 @@ func allowedLabelsForLevel(allowedFields []string) []string {
 		return validation.DefaultAllowedLevelFields
 	}
 
-	return allowedFields
+	return validation.DefaultAllowedLevelFields
 }
 
 type FieldDetector struct {
