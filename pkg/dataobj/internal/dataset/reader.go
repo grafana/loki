@@ -41,8 +41,9 @@ type Reader struct {
 	opts  ReaderOptions
 	ready bool // ready is true if the Reader has been initialized.
 
-	origColumnLookup     map[Column]int // Find the index of a column in opts.Columns.
-	primaryColumnIndexes []int          // Indexes of primary columns in opts.Columns.
+	origColumnLookup     map[Column]int   // Find the index of a column in opts.Columns.
+	primaryColumnIndexes []int            // Indexes of primary columns in opts.Columns.
+	predicateEvaluators  []func(Row) bool // Evaluators for the predicates.
 
 	dl     *readerDownloader // Bulk page download manager.
 	row    int64             // The current row being read.
@@ -241,17 +242,18 @@ func (r *Reader) readAndFilterPrimaryColumns(ctx context.Context, readSize int, 
 		}
 
 		passCount = 0
-		for i := range count {
-			size := s[i].SizeOfColumns(idxs)
+		for j := range count {
+			size := s[j].SizeOfColumns(idxs)
 			primaryColumnBytes += size
 
-			if !checkPredicate(p, r.origColumnLookup, s[i]) {
+			evaluator := r.predicateEvaluators[i]
+			if !evaluator(s[j]) {
 				continue
 			}
 			// We move s[i] to s[passCount] by *swapping* the rows. Copying would
 			// result in the Row.Values slice existing in two places in the buffer,
 			// which causes memory corruption when filling in rows.
-			s[passCount], s[i] = s[i], s[passCount]
+			s[passCount], s[j] = s[j], s[passCount]
 			passCount++
 		}
 
@@ -287,72 +289,6 @@ func (r *Reader) alignRow() (uint64, error) {
 	return nextRow, nil
 }
 
-func checkPredicate(p Predicate, lookup map[Column]int, row Row) bool {
-	if p == nil {
-		return true
-	}
-
-	switch p := p.(type) {
-	case AndPredicate:
-		return checkPredicate(p.Left, lookup, row) && checkPredicate(p.Right, lookup, row)
-
-	case OrPredicate:
-		return checkPredicate(p.Left, lookup, row) || checkPredicate(p.Right, lookup, row)
-
-	case NotPredicate:
-		return !checkPredicate(p.Inner, lookup, row)
-
-	case TruePredicate:
-		return true
-
-	case FalsePredicate:
-		return false
-
-	case EqualPredicate:
-		columnIndex, ok := lookup[p.Column]
-		if !ok {
-			panic("checkPredicate: column not found")
-		}
-		return CompareValues(&row.Values[columnIndex], &p.Value) == 0
-
-	case InPredicate:
-		columnIndex, ok := lookup[p.Column]
-		if !ok {
-			panic("checkPredicate: column not found")
-		}
-
-		value := row.Values[columnIndex]
-		if value.IsNil() || value.Type() != p.Column.ColumnDesc().Type.Physical {
-			return false
-		}
-		return p.Values.Contains(value)
-
-	case GreaterThanPredicate:
-		columnIndex, ok := lookup[p.Column]
-		if !ok {
-			panic("checkPredicate: column not found")
-		}
-		return CompareValues(&row.Values[columnIndex], &p.Value) > 0
-
-	case LessThanPredicate:
-		columnIndex, ok := lookup[p.Column]
-		if !ok {
-			panic("checkPredicate: column not found")
-		}
-		return CompareValues(&row.Values[columnIndex], &p.Value) < 0
-
-	case FuncPredicate:
-		columnIndex, ok := lookup[p.Column]
-		if !ok {
-			panic("checkPredicate: column not found")
-		}
-		return p.Keep(p.Column, row.Values[columnIndex])
-
-	default:
-		panic(fmt.Sprintf("unsupported predicate type %T", p))
-	}
-}
-
 // buildMask returns an iterator that yields row ranges from full that are not
 // present in s.
 //
@@ -366,7 +302,7 @@ func buildMask(full rowRange, s []Row) iter.Seq[rowRange] {
 			return
 		}
 
-		var start = full.Start
+		start := full.Start
 
 		for _, row := range s {
 			if !full.Contains(uint64(row.Index)) {
@@ -436,6 +372,13 @@ func (r *Reader) init(ctx context.Context) error {
 		return err
 	}
 
+	predicateEvaluators := make([]func(Row) bool, 0, len(r.opts.Predicates))
+	for _, p := range r.opts.Predicates {
+		pred := getPredicateEvaluator(p, r.origColumnLookup)
+		predicateEvaluators = append(predicateEvaluators, pred)
+	}
+	r.predicateEvaluators = predicateEvaluators
+
 	if err := r.initDownloader(ctx); err != nil {
 		return err
 	}
@@ -447,6 +390,89 @@ func (r *Reader) init(ctx context.Context) error {
 	}
 
 	r.ready = true
+	return nil
+}
+
+func getPredicateEvaluator(predicates Predicate, columnLookup map[Column]int) func(Row) bool {
+	switch p := predicates.(type) {
+	case AndPredicate:
+		a := getPredicateEvaluator(p.Left, columnLookup)
+		b := getPredicateEvaluator(p.Right, columnLookup)
+		return func(row Row) bool {
+			return a(row) && b(row)
+		}
+	case OrPredicate:
+		a := getPredicateEvaluator(p.Left, columnLookup)
+		b := getPredicateEvaluator(p.Right, columnLookup)
+		return func(row Row) bool {
+			return a(row) || b(row)
+		}
+	case NotPredicate:
+		a := getPredicateEvaluator(p.Inner, columnLookup)
+		return func(row Row) bool {
+			return !a(row)
+		}
+	case TruePredicate:
+		return func(row Row) bool {
+			return true
+		}
+	case FalsePredicate:
+		return func(row Row) bool {
+			return false
+		}
+	case EqualPredicate:
+		columnIndex, ok := columnLookup[p.Column]
+		if !ok {
+			panic("checkPredicate: column not found")
+		}
+		return func(row Row) bool {
+			return CompareValues(&row.Values[columnIndex], &p.Value) == 0
+		}
+
+	case InPredicate:
+		columnIndex, ok := columnLookup[p.Column]
+		if !ok {
+			panic("checkPredicate: column not found")
+		}
+
+		return func(row Row) bool {
+			value := row.Values[columnIndex]
+			if value.IsNil() || value.Type() != p.Column.ColumnDesc().Type.Physical {
+				return false
+			}
+			return p.Values.Contains(value)
+		}
+
+	case GreaterThanPredicate:
+		columnIndex, ok := columnLookup[p.Column]
+		if !ok {
+			panic("checkPredicate: column not found")
+		}
+		return func(row Row) bool {
+			return CompareValues(&row.Values[columnIndex], &p.Value) > 0
+		}
+
+	case LessThanPredicate:
+		columnIndex, ok := columnLookup[p.Column]
+		if !ok {
+			panic("checkPredicate: column not found")
+		}
+		return func(row Row) bool {
+			return CompareValues(&row.Values[columnIndex], &p.Value) < 0
+		}
+
+	case FuncPredicate:
+		columnIndex, ok := columnLookup[p.Column]
+		if !ok {
+			panic("checkPredicate: column not found")
+		}
+		return func(row Row) bool {
+			return p.Keep(p.Column, row.Values[columnIndex])
+		}
+
+	default:
+		panic(fmt.Sprintf("unsupported predicate type %T", p))
+	}
 	return nil
 }
 
