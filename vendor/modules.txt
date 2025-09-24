@@ -1789,8 +1789,8 @@ github.com/twmb/franz-go/pkg/kmsg/internal/kbin
 # github.com/twmb/franz-go/plugin/kotel v1.5.0
 ## explicit; go 1.21
 github.com/twmb/franz-go/plugin/kotel
-# github.com/twmb/franz-go/plugin/kprom v1.1.0
-## explicit; go 1.18
+# github.com/twmb/franz-go/plugin/kprom v1.2.1
+## explicit; go 1.21
 github.com/twmb/franz-go/plugin/kprom
 # github.com/uber/jaeger-client-go v2.30.0+incompatible
 ## explicit
