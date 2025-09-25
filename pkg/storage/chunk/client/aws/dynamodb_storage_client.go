@@ -354,6 +354,7 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query index.Query, cal
 			a.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages", *cc.TableName).
 				Add(*cc.CapacityUnits)
 		}
+		callback(query, &dynamoDBReadResponse{items: output.Items})
 		return err
 	})
 	if err != nil {
