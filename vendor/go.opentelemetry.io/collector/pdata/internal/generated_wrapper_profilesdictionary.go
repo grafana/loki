@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"sync"
 
-	otlpcommon "go.opentelemetry.io/collector/pdata/internal/data/protogen/common/v1"
 	otlpprofiles "go.opentelemetry.io/collector/pdata/internal/data/protogen/profiles/v1development"
 	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
@@ -54,10 +53,10 @@ func DeleteOrigProfilesDictionary(orig *otlpprofiles.ProfilesDictionary, nullabl
 		DeleteOrigLink(orig.LinkTable[i], true)
 	}
 	for i := range orig.AttributeTable {
-		DeleteOrigKeyValue(&orig.AttributeTable[i], false)
+		DeleteOrigKeyValueAndUnit(orig.AttributeTable[i], true)
 	}
-	for i := range orig.AttributeUnits {
-		DeleteOrigAttributeUnit(orig.AttributeUnits[i], true)
+	for i := range orig.StackTable {
+		DeleteOrigStack(orig.StackTable[i], true)
 	}
 
 	orig.Reset()
@@ -76,8 +75,8 @@ func CopyOrigProfilesDictionary(dest, src *otlpprofiles.ProfilesDictionary) {
 	dest.FunctionTable = CopyOrigFunctionSlice(dest.FunctionTable, src.FunctionTable)
 	dest.LinkTable = CopyOrigLinkSlice(dest.LinkTable, src.LinkTable)
 	dest.StringTable = CopyOrigStringSlice(dest.StringTable, src.StringTable)
-	dest.AttributeTable = CopyOrigKeyValueSlice(dest.AttributeTable, src.AttributeTable)
-	dest.AttributeUnits = CopyOrigAttributeUnitSlice(dest.AttributeUnits, src.AttributeUnits)
+	dest.AttributeTable = CopyOrigKeyValueAndUnitSlice(dest.AttributeTable, src.AttributeTable)
+	dest.StackTable = CopyOrigStackSlice(dest.StackTable, src.StackTable)
 }
 
 func GenTestOrigProfilesDictionary() *otlpprofiles.ProfilesDictionary {
@@ -87,8 +86,8 @@ func GenTestOrigProfilesDictionary() *otlpprofiles.ProfilesDictionary {
 	orig.FunctionTable = GenerateOrigTestFunctionSlice()
 	orig.LinkTable = GenerateOrigTestLinkSlice()
 	orig.StringTable = GenerateOrigTestStringSlice()
-	orig.AttributeTable = GenerateOrigTestKeyValueSlice()
-	orig.AttributeUnits = GenerateOrigTestAttributeUnitSlice()
+	orig.AttributeTable = GenerateOrigTestKeyValueAndUnitSlice()
+	orig.StackTable = GenerateOrigTestStackSlice()
 	return orig
 }
 
@@ -148,20 +147,20 @@ func MarshalJSONOrigProfilesDictionary(orig *otlpprofiles.ProfilesDictionary, de
 	if len(orig.AttributeTable) > 0 {
 		dest.WriteObjectField("attributeTable")
 		dest.WriteArrayStart()
-		MarshalJSONOrigKeyValue(&orig.AttributeTable[0], dest)
+		MarshalJSONOrigKeyValueAndUnit(orig.AttributeTable[0], dest)
 		for i := 1; i < len(orig.AttributeTable); i++ {
 			dest.WriteMore()
-			MarshalJSONOrigKeyValue(&orig.AttributeTable[i], dest)
+			MarshalJSONOrigKeyValueAndUnit(orig.AttributeTable[i], dest)
 		}
 		dest.WriteArrayEnd()
 	}
-	if len(orig.AttributeUnits) > 0 {
-		dest.WriteObjectField("attributeUnits")
+	if len(orig.StackTable) > 0 {
+		dest.WriteObjectField("stackTable")
 		dest.WriteArrayStart()
-		MarshalJSONOrigAttributeUnit(orig.AttributeUnits[0], dest)
-		for i := 1; i < len(orig.AttributeUnits); i++ {
+		MarshalJSONOrigStack(orig.StackTable[0], dest)
+		for i := 1; i < len(orig.StackTable); i++ {
 			dest.WriteMore()
-			MarshalJSONOrigAttributeUnit(orig.AttributeUnits[i], dest)
+			MarshalJSONOrigStack(orig.StackTable[i], dest)
 		}
 		dest.WriteArrayEnd()
 	}
@@ -203,14 +202,14 @@ func UnmarshalJSONOrigProfilesDictionary(orig *otlpprofiles.ProfilesDictionary, 
 
 		case "attributeTable", "attribute_table":
 			for iter.ReadArray() {
-				orig.AttributeTable = append(orig.AttributeTable, otlpcommon.KeyValue{})
-				UnmarshalJSONOrigKeyValue(&orig.AttributeTable[len(orig.AttributeTable)-1], iter)
+				orig.AttributeTable = append(orig.AttributeTable, NewOrigKeyValueAndUnit())
+				UnmarshalJSONOrigKeyValueAndUnit(orig.AttributeTable[len(orig.AttributeTable)-1], iter)
 			}
 
-		case "attributeUnits", "attribute_units":
+		case "stackTable", "stack_table":
 			for iter.ReadArray() {
-				orig.AttributeUnits = append(orig.AttributeUnits, NewOrigAttributeUnit())
-				UnmarshalJSONOrigAttributeUnit(orig.AttributeUnits[len(orig.AttributeUnits)-1], iter)
+				orig.StackTable = append(orig.StackTable, NewOrigStack())
+				UnmarshalJSONOrigStack(orig.StackTable[len(orig.StackTable)-1], iter)
 			}
 
 		default:
@@ -244,11 +243,11 @@ func SizeProtoOrigProfilesDictionary(orig *otlpprofiles.ProfilesDictionary) int 
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
 	for i := range orig.AttributeTable {
-		l = SizeProtoOrigKeyValue(&orig.AttributeTable[i])
+		l = SizeProtoOrigKeyValueAndUnit(orig.AttributeTable[i])
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	for i := range orig.AttributeUnits {
-		l = SizeProtoOrigAttributeUnit(orig.AttributeUnits[i])
+	for i := range orig.StackTable {
+		l = SizeProtoOrigStack(orig.StackTable[i])
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
 	return n
@@ -295,14 +294,14 @@ func MarshalProtoOrigProfilesDictionary(orig *otlpprofiles.ProfilesDictionary, b
 		buf[pos] = 0x2a
 	}
 	for i := len(orig.AttributeTable) - 1; i >= 0; i-- {
-		l = MarshalProtoOrigKeyValue(&orig.AttributeTable[i], buf[:pos])
+		l = MarshalProtoOrigKeyValueAndUnit(orig.AttributeTable[i], buf[:pos])
 		pos -= l
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
 		pos--
 		buf[pos] = 0x32
 	}
-	for i := len(orig.AttributeUnits) - 1; i >= 0; i-- {
-		l = MarshalProtoOrigAttributeUnit(orig.AttributeUnits[i], buf[:pos])
+	for i := len(orig.StackTable) - 1; i >= 0; i-- {
+		l = MarshalProtoOrigStack(orig.StackTable[i], buf[:pos])
 		pos -= l
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
 		pos--
@@ -412,15 +411,15 @@ func UnmarshalProtoOrigProfilesDictionary(orig *otlpprofiles.ProfilesDictionary,
 				return err
 			}
 			startPos := pos - length
-			orig.AttributeTable = append(orig.AttributeTable, otlpcommon.KeyValue{})
-			err = UnmarshalProtoOrigKeyValue(&orig.AttributeTable[len(orig.AttributeTable)-1], buf[startPos:pos])
+			orig.AttributeTable = append(orig.AttributeTable, NewOrigKeyValueAndUnit())
+			err = UnmarshalProtoOrigKeyValueAndUnit(orig.AttributeTable[len(orig.AttributeTable)-1], buf[startPos:pos])
 			if err != nil {
 				return err
 			}
 
 		case 7:
 			if wireType != proto.WireTypeLen {
-				return fmt.Errorf("proto: wrong wireType = %d for field AttributeUnits", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field StackTable", wireType)
 			}
 			var length int
 			length, pos, err = proto.ConsumeLen(buf, pos)
@@ -428,8 +427,8 @@ func UnmarshalProtoOrigProfilesDictionary(orig *otlpprofiles.ProfilesDictionary,
 				return err
 			}
 			startPos := pos - length
-			orig.AttributeUnits = append(orig.AttributeUnits, NewOrigAttributeUnit())
-			err = UnmarshalProtoOrigAttributeUnit(orig.AttributeUnits[len(orig.AttributeUnits)-1], buf[startPos:pos])
+			orig.StackTable = append(orig.StackTable, NewOrigStack())
+			err = UnmarshalProtoOrigStack(orig.StackTable[len(orig.StackTable)-1], buf[startPos:pos])
 			if err != nil {
 				return err
 			}

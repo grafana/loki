@@ -10,42 +10,42 @@ import (
 	otlpprofiles "go.opentelemetry.io/collector/pdata/internal/data/protogen/profiles/v1development"
 )
 
-func CopyOrigAttributeUnitSlice(dest, src []*otlpprofiles.AttributeUnit) []*otlpprofiles.AttributeUnit {
-	var newDest []*otlpprofiles.AttributeUnit
+func CopyOrigKeyValueAndUnitSlice(dest, src []*otlpprofiles.KeyValueAndUnit) []*otlpprofiles.KeyValueAndUnit {
+	var newDest []*otlpprofiles.KeyValueAndUnit
 	if cap(dest) < len(src) {
-		newDest = make([]*otlpprofiles.AttributeUnit, len(src))
+		newDest = make([]*otlpprofiles.KeyValueAndUnit, len(src))
 		// Copy old pointers to re-use.
 		copy(newDest, dest)
 		// Add new pointers for missing elements from len(dest) to len(srt).
 		for i := len(dest); i < len(src); i++ {
-			newDest[i] = NewOrigAttributeUnit()
+			newDest[i] = NewOrigKeyValueAndUnit()
 		}
 	} else {
 		newDest = dest[:len(src)]
 		// Cleanup the rest of the elements so GC can free the memory.
 		// This can happen when len(src) < len(dest) < cap(dest).
 		for i := len(src); i < len(dest); i++ {
-			DeleteOrigAttributeUnit(dest[i], true)
+			DeleteOrigKeyValueAndUnit(dest[i], true)
 			dest[i] = nil
 		}
 		// Add new pointers for missing elements.
 		// This can happen when len(dest) < len(src) < cap(dest).
 		for i := len(dest); i < len(src); i++ {
-			newDest[i] = NewOrigAttributeUnit()
+			newDest[i] = NewOrigKeyValueAndUnit()
 		}
 	}
 	for i := range src {
-		CopyOrigAttributeUnit(newDest[i], src[i])
+		CopyOrigKeyValueAndUnit(newDest[i], src[i])
 	}
 	return newDest
 }
 
-func GenerateOrigTestAttributeUnitSlice() []*otlpprofiles.AttributeUnit {
-	orig := make([]*otlpprofiles.AttributeUnit, 5)
-	orig[0] = NewOrigAttributeUnit()
-	orig[1] = GenTestOrigAttributeUnit()
-	orig[2] = NewOrigAttributeUnit()
-	orig[3] = GenTestOrigAttributeUnit()
-	orig[4] = NewOrigAttributeUnit()
+func GenerateOrigTestKeyValueAndUnitSlice() []*otlpprofiles.KeyValueAndUnit {
+	orig := make([]*otlpprofiles.KeyValueAndUnit, 5)
+	orig[0] = NewOrigKeyValueAndUnit()
+	orig[1] = GenTestOrigKeyValueAndUnit()
+	orig[2] = NewOrigKeyValueAndUnit()
+	orig[3] = GenTestOrigKeyValueAndUnit()
+	orig[4] = NewOrigKeyValueAndUnit()
 	return orig
 }
