@@ -58,7 +58,7 @@ Examples:
     It returns the per-second rate of all non-timeout errors within the last minutes per host for the MySQL job and only includes errors whose duration is above ten seconds.
 
     ```logql
-    sum by (host) (rate({job="mysql"} |= "error" != "timeout" | json | duration > 10s [1m]))
+    sum by (host) (rate({job="mysql"} | "error" != "timeout" | json | duration > 10s [1m]))
     ```
 
 #### Offset modifier
