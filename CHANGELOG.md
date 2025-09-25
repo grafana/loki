@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.6](https://github.com/grafana/loki/compare/v3.5.5...v3.5.6) (2025-09-25)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/twmb/franz-go/plugin/kprom to v1.2.1 (release-3.5.x) ([#18793](https://github.com/grafana/loki/issues/18793)) ([bb7356c](https://github.com/grafana/loki/commit/bb7356c31d8b47c665cdd2188e47df6f406d3f7c))
+
 ## [3.5.5](https://github.com/grafana/loki/compare/v3.5.4...v3.5.5) (2025-09-11)
 
 
