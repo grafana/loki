@@ -149,10 +149,10 @@ var bytesBufferPool = &sync.Pool{
 }
 
 func getBytesBuffer(size int) []byte {
-	b := *bytesBufferPool.Get().(*[]byte)
-	b = slices.Grow(b, size)
-	b = b[:size]
-	return b
+	b := bytesBufferPool.Get().(*[]byte)
+	newB := slices.Grow(*b, size)
+	newB = newB[:size]
+	return newB
 }
 
 func putBytesBuffer(b *[]byte) {
