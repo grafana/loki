@@ -273,12 +273,12 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	logsEnc.SetSortInfo(&datasetmd_v2.SortInfo{
 		ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
 			{
-				ColumnIndex: 1, // timestamp
-				Direction:   datasetmd_v2.SORT_DIRECTION_DESCENDING,
-			},
-			{
 				ColumnIndex: 0, // stream ID
 				Direction:   datasetmd_v2.SORT_DIRECTION_ASCENDING,
+			},
+			{
+				ColumnIndex: 1, // timestamp
+				Direction:   datasetmd_v2.SORT_DIRECTION_DESCENDING,
 			},
 		},
 	})
