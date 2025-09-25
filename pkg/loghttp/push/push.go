@@ -44,7 +44,7 @@ var (
 		Namespace: constants.Loki,
 		Name:      "distributor_bytes_received_total",
 		Help:      "The total number of uncompressed bytes received per tenant. Includes structured metadata bytes.",
-	}, []string{"tenant", "retention_hours", "is_internal_stream", "policy", "format"})
+	}, []string{"tenant", "retention_hours", "is_internal_stream", "policy", "format"}) // TODO rename is_internal_stream to has_internal_streams
 
 	structuredMetadataBytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: constants.Loki,
@@ -136,24 +136,38 @@ func NewPushStats() *Stats {
 }
 
 type Stats struct {
-	Errs                              []error
-	PolicyNumLines                    map[string]int64
-	LogLinesBytes                     PolicyWithRetentionWithBytes
-	StructuredMetadataBytes           PolicyWithRetentionWithBytes
-	ResourceAndSourceMetadataLabels   map[string]map[time.Duration]push.LabelsAdapter
-	StreamLabelsSize                  int64
+	Errs           []error
+	PolicyNumLines map[string]int64
+
+	// LogLinesBytes holds the total size of all log lines, per policy per retention. Used in billing.
+	LogLinesBytes PolicyWithRetentionWithBytes
+
+	// StructuredMetadataBytes holds the size of the original structured metadata (but after it was enriched by OLTP
+	// parser) per policy per retention. Used in billing.
+	StructuredMetadataBytes PolicyWithRetentionWithBytes
+
+	// ResourceAndSourceMetadataLabels holds structured metadata that was added by OLTP parser (scope and resource attributes)
+	ResourceAndSourceMetadataLabels map[string]map[time.Duration]push.LabelsAdapter
+
+	// StreamLabelsSize holds the total size of stream labels after sanitization (empty labels removed and
+	// non-meaningful whitespaces removed). Not used in billing.
+	StreamLabelsSize int64
+
 	MostRecentEntryTimestamp          time.Time
 	MostRecentEntryTimestampPerStream map[string]time.Time
-	StreamSizeBytes                   map[string]int64
-	HashOfAllStreams                  uint64
-	ContentType                       string
-	ContentEncoding                   string
+
+	// StreamSizeBytes holds the total size of log lines and structured metadata. Is used only when logPushRequestStreams is true.
+	StreamSizeBytes map[string]int64
+
+	HashOfAllStreams uint64
+	ContentType      string
+	ContentEncoding  string
 
 	BodySize int64
-	// Extra is a place for a wrapped perser to record any interesting stats as key-value pairs to be logged
+	// Extra is a place for a wrapped parser to record any interesting stats as key-value pairs to be logged
 	Extra []any
 
-	IsInternalStream bool // True for aggregated metrics or pattern streams
+	HasInternalStreams bool // True if any of the streams has aggregated metrics or is a pattern stream
 }
 
 func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP, format string) (*logproto.PushRequest, *Stats, error) {
@@ -170,21 +184,21 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 		structuredMetadataSize int64
 	)
 
-	isInternalStream := fmt.Sprintf("%t", pushStats.IsInternalStream)
+	hasInternalStreams := fmt.Sprintf("%t", pushStats.HasInternalStreams)
 
 	for policyName, retentionToSizeMapping := range pushStats.LogLinesBytes {
 		for retentionPeriod, size := range retentionToSizeMapping {
 			retentionHours := RetentionPeriodToString(retentionPeriod)
 			// Add guard clause to prevent negative values from being passed to Prometheus counters
 			if size >= 0 {
-				bytesIngested.WithLabelValues(userID, retentionHours, isInternalStream, policyName, format).Add(float64(size))
+				bytesIngested.WithLabelValues(userID, retentionHours, hasInternalStreams, policyName, format).Add(float64(size))
 				bytesReceivedStats.Inc(size)
 			} else {
 				level.Error(logger).Log(
 					"msg", "negative log lines bytes received",
 					"userID", userID,
 					"retentionHours", retentionHours,
-					"isInternalStream", isInternalStream,
+					"hasInternalStreams", hasInternalStreams,
 					"policyName", policyName,
 					"size", size)
 			}
@@ -198,8 +212,8 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 
 			// Add guard clause to prevent negative values from being passed to Prometheus counters
 			if size >= 0 {
-				structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours, isInternalStream, policyName, format).Add(float64(size))
-				bytesIngested.WithLabelValues(userID, retentionHours, isInternalStream, policyName, format).Add(float64(size))
+				structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours, hasInternalStreams, policyName, format).Add(float64(size))
+				bytesIngested.WithLabelValues(userID, retentionHours, hasInternalStreams, policyName, format).Add(float64(size))
 				bytesReceivedStats.Inc(size)
 				structuredMetadataBytesReceivedStats.Inc(size)
 			} else {
@@ -207,7 +221,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 					"msg", "negative structured metadata bytes received",
 					"userID", userID,
 					"retentionHours", retentionHours,
-					"isInternalStream", isInternalStream,
+					"hasInternalStreams", hasInternalStreams,
 					"policyName", policyName,
 					"size", size)
 			}
@@ -221,7 +235,7 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 	// incrementing tenant metrics if we have a tenant.
 	for policy, numLines := range pushStats.PolicyNumLines {
 		if numLines != 0 && userID != "" {
-			linesIngested.WithLabelValues(userID, isInternalStream, policy, format).Add(float64(numLines))
+			linesIngested.WithLabelValues(userID, hasInternalStreams, policy, format).Add(float64(numLines))
 		}
 		totalNumLines += numLines
 	}
@@ -367,7 +381,6 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 
 	for i := range req.Streams {
 		s := req.Streams[i]
-		pushStats.StreamLabelsSize += int64(len(s.Labels))
 
 		lbs, err := syntax.ParseLabels(s.Labels)
 		if err != nil {
@@ -375,8 +388,10 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		}
 
 		// Check if this is an aggregated metric or pattern stream
+		isInternalStream := false
 		if lbs.Has(constants.AggregatedMetricLabel) || lbs.Has(constants.PatternLabel) {
-			pushStats.IsInternalStream = true
+			pushStats.HasInternalStreams = true
+			isInternalStream = true
 		}
 
 		var beforeServiceName string
@@ -385,7 +400,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		}
 
 		serviceName := ServiceUnknown
-		if !lbs.Has(LabelServiceName) && len(discoverServiceName) > 0 && !pushStats.IsInternalStream {
+		if !lbs.Has(LabelServiceName) && len(discoverServiceName) > 0 && !isInternalStream {
 			for _, labelName := range discoverServiceName {
 				if labelVal := lbs.Get(labelName); labelVal != "" {
 					serviceName = labelVal
@@ -395,8 +410,13 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 
 			lb := labels.NewBuilder(lbs)
 			lbs = lb.Set(LabelServiceName, serviceName).Labels()
-			s.Labels = lbs.String()
 		}
+
+		// Update labels. They were sanitized and potentially with the added service_name label.
+		s.Labels = lbs.String()
+
+		// Record the new size of labels
+		pushStats.StreamLabelsSize += int64(len(s.Labels))
 
 		if logServiceNameDiscovery {
 			level.Debug(logger).Log(
@@ -449,7 +469,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			pushStats.StreamSizeBytes[s.Labels] = streamSizeBytes
 		}
 
-		if tracker != nil && !pushStats.IsInternalStream {
+		if tracker != nil && !isInternalStream {
 			tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(totalBytesReceived), "loki")
 		}
 
