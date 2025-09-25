@@ -31,8 +31,8 @@ cloud.google.com/go/auth/internal/transport/cert
 # cloud.google.com/go/auth/oauth2adapt v0.2.8
 ## explicit; go 1.23.0
 cloud.google.com/go/auth/oauth2adapt
-# cloud.google.com/go/bigtable v1.38.0
-## explicit; go 1.23.0
+# cloud.google.com/go/bigtable v1.40.0
+## explicit; go 1.24.0
 cloud.google.com/go/bigtable
 cloud.google.com/go/bigtable/admin/apiv2/adminpb
 cloud.google.com/go/bigtable/apiv2/bigtablepb
