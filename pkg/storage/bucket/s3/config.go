@@ -29,11 +29,11 @@ const (
 
 var (
 	supportedSSETypes          = []string{SSEKMS, SSES3}
-	supportedStorageClasses    = s3_types.ObjectVersionStorageClass.Values(s3_types.ObjectVersionStorageClassStandard)
+	supportedStorageClasses    = s3_types.ObjectStorageClassStandard.Values()
 	supportedBucketLookupTypes = thanosS3BucketLookupTypesValues()
 )
 
-func supportedBucketLookupTypesToString(in []s3_types.ObjectVersionStorageClass) []string {
+func supportedBucketLookupTypesToString(in []s3_types.ObjectStorageClass) []string {
 	var out []string
 	for _, o := range in {
 		out = append(out, string(o))
