@@ -13,6 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 6.42.0
+
+- [CHANGE] Changed version of Grafana Loki to test
+
 ## 6.41.0
 
 - [BUGFIX] Explicitly set registry for k8s-sidecar image [#19233](https://github.com/grafana/loki/pull/19233]
