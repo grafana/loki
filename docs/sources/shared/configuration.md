@@ -6505,6 +6505,10 @@ http:
 The `table_manager` block configures the table manager for retention.
 
 ```yaml
+
+  # Must set "enabled" to re-enable table manager, otherwise it is disabled by default.
+  enabled: true
+
 # If true, disable all changes to DB capacity
 # CLI flag: -table-manager.throughput-updates-disabled
 [throughput_updates_disabled: <boolean> | default = false]

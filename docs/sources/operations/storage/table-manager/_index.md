@@ -123,6 +123,8 @@ it in the configuration and setting a `retention_period` greater than zero:
 
 ```yaml
 table_manager:
+  # Must set "enabled" to re-enable table manager, otherwise it is disabled by default.
+  enabled: true
   retention_deletes_enabled: true
   retention_period: 336h
 ```
@@ -182,6 +184,8 @@ defaults can be overwritten:
 
 ```yaml
 table_manager:
+  # Must set "enabled" to re-enable table manager, otherwise it is disabled by default.
+  enabled: true
   index_tables_provisioning:
     provisioned_write_throughput: 10
     provisioned_read_throughput: 10
