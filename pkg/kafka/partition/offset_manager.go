@@ -201,13 +201,11 @@ func (r *KafkaOffsetManager) PartitionOffset(ctx context.Context, partitionID in
 
 // Commit commits an offset to the consumer group
 func (r *KafkaOffsetManager) Commit(ctx context.Context, partitionID int32, offset int64) error {
-	admin := kadm.NewClient(r.client)
-
 	// Commit the last consumed offset.
 	toCommit := kadm.Offsets{}
 	toCommit.AddOffset(r.cfg.Topic, partitionID, offset, -1)
 
-	committed, err := admin.CommitOffsets(ctx, r.ConsumerGroup(), toCommit)
+	committed, err := r.adminClient.CommitOffsets(ctx, r.ConsumerGroup(), toCommit)
 	if err != nil {
 		return err
 	} else if !committed.Ok() {
