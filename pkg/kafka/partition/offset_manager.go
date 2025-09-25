@@ -31,16 +31,16 @@ type OffsetManager interface {
 var _ OffsetManager = &KafkaOffsetManager{}
 
 type KafkaOffsetManager struct {
-	client      *kgo.Client
-	adminClient *kadm.Client
-	cfg         kafka.Config
-	instanceID  string
-	logger      log.Logger
+	client        *kgo.Client
+	adminClient   *kadm.Client
+	cfg           kafka.Config
+	consumerGroup string
+	logger        log.Logger
 }
 
 func NewKafkaOffsetManager(
 	cfg kafka.Config,
-	instanceID string,
+	consumerGroup string,
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (*KafkaOffsetManager, error) {
@@ -53,7 +53,7 @@ func NewKafkaOffsetManager(
 	return newKafkaOffsetManager(
 		c,
 		cfg,
-		instanceID,
+		consumerGroup,
 		logger,
 	), nil
 }
@@ -62,15 +62,15 @@ func NewKafkaOffsetManager(
 func newKafkaOffsetManager(
 	client *kgo.Client,
 	cfg kafka.Config,
-	instanceID string,
+	consumerGroup string,
 	logger log.Logger,
 ) *KafkaOffsetManager {
 	return &KafkaOffsetManager{
-		client:      client,
-		adminClient: kadm.NewClient(client),
-		cfg:         cfg,
-		instanceID:  instanceID,
-		logger:      logger,
+		client:        client,
+		adminClient:   kadm.NewClient(client),
+		cfg:           cfg,
+		consumerGroup: consumerGroup,
+		logger:        logger,
 	}
 }
 
@@ -80,7 +80,7 @@ func (r *KafkaOffsetManager) Topic() string {
 }
 
 func (r *KafkaOffsetManager) ConsumerGroup() string {
-	return r.cfg.GetConsumerGroup(r.instanceID)
+	return r.consumerGroup
 }
 
 // NextOffset returns the first offset after the timestamp t. If the partition
