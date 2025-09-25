@@ -143,19 +143,20 @@ var DefaultConfig = Config{
 
 var bytesBufferPool = &sync.Pool{
 	New: func() any {
-		return make([]byte, 0)
+		b := make([]byte, 0)
+		return &b
 	},
 }
 
 func getBytesBuffer(size int) []byte {
-	b := bytesBufferPool.Get().([]byte)
+	b := *bytesBufferPool.Get().(*[]byte)
 	b = slices.Grow(b, size)
 	b = b[:size]
 	return b
 }
 
-func putBytesBuffer(b []byte) {
-	b = b[:0]
+func putBytesBuffer(b *[]byte) {
+	(*b) = (*b)[:0]
 	bytesBufferPool.Put(b)
 }
 
@@ -268,7 +269,7 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 	}
 
 	for _, r := range optimized {
-		putBytesBuffer(r.Data)
+		putBytesBuffer(&r.Data)
 	}
 
 	span.AddEvent("copied data to inputs")
