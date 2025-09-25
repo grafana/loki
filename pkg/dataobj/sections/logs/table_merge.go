@@ -78,10 +78,8 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts d
 		})
 
 		tableSequences = append(tableSequences, &tableSequence{
-			columns: dsetColumns,
-
-			r:   r,
-			buf: make([]dataset.Row, 128), // Read 128 values at a time.
+			columns:         dsetColumns,
+			DatasetSequence: NewDatasetSequence(r, 128),
 		})
 	}
 
@@ -95,13 +93,13 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts d
 
 	var rows int
 
-	tree := loser.New(tableSequences, maxValue, tableSequenceValue, rowResultLess, tableSequenceStop)
+	tree := loser.New(tableSequences, maxValue, tableSequenceAt, rowResultLess, tableSequenceClose)
 	defer tree.Close()
 
 	for tree.Next() {
 		seq := tree.Winner()
 
-		row, err := tableSequenceValue(seq).Value()
+		row, err := tableSequenceAt(seq).Value()
 		if err != nil {
 			return nil, err
 		}
@@ -136,9 +134,24 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts d
 }
 
 type tableSequence struct {
-	curValue result.Result[dataset.Row]
-
+	DatasetSequence
 	columns []dataset.Column
+}
+
+var _ loser.Sequence = (*tableSequence)(nil)
+
+func tableSequenceAt(seq *tableSequence) result.Result[dataset.Row] { return seq.At() }
+func tableSequenceClose(seq *tableSequence)                         { seq.Close() }
+
+func NewDatasetSequence(r *dataset.Reader, bufferSize int) DatasetSequence {
+	return DatasetSequence{
+		r:   r,
+		buf: make([]dataset.Row, bufferSize),
+	}
+}
+
+type DatasetSequence struct {
+	curValue result.Result[dataset.Row]
 
 	r *dataset.Reader
 
@@ -147,9 +160,7 @@ type tableSequence struct {
 	size int // Number of valid values in buf
 }
 
-var _ loser.Sequence = (*tableSequence)(nil)
-
-func (seq *tableSequence) Next() bool {
+func (seq *DatasetSequence) Next() bool {
 	if seq.off < seq.size {
 		seq.curValue = result.Value(seq.buf[seq.off])
 		seq.off++
@@ -175,31 +186,23 @@ ReadBatch:
 	return true
 }
 
-func tableSequenceValue(seq *tableSequence) result.Result[dataset.Row] { return seq.curValue }
-
-func tableSequenceStop(seq *tableSequence) { _ = seq.r.Close() }
-
-func rowResultLess(a, b result.Result[dataset.Row]) bool {
-	var (
-		aRow, aErr = a.Value()
-		bRow, bErr = b.Value()
-	)
-
-	// Put errors first so we return errors early.
-	if aErr != nil {
-		return true
-	} else if bErr != nil {
-		return false
-	}
-
-	return compareRows(aRow, bRow) < 0
+func (seq *DatasetSequence) At() result.Result[dataset.Row] {
+	return seq.curValue
 }
 
-// compareRows compares two rows by their first two columns. compareRows panics
+func (seq *DatasetSequence) Close() {
+	_ = seq.r.Close()
+}
+
+func rowResultLess(a, b result.Result[dataset.Row]) bool {
+	return result.Compare(a, b, CompareRows) < 0
+}
+
+// CompareRows compares two rows by their first two columns. CompareRows panics
 // if a or b doesn't have at least two columns, if the first column isn't a
 // int64-encoded stream ID, or if the second column isn't an int64-encoded
 // timestamp.
-func compareRows(a, b dataset.Row) int {
+func CompareRows(a, b dataset.Row) int {
 	// The first two columns of each row are *always* stream ID and timestamp.
 	//
 	// TODO(rfratto): Can we find a safer way of doing this?
