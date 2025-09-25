@@ -6505,10 +6505,6 @@ http:
 The `table_manager` block configures the table manager for retention.
 
 ```yaml
-
-  # Must set "enabled" to re-enable table manager, otherwise it is disabled by default.
-  enabled: true
-
 # If true, disable all changes to DB capacity
 # CLI flag: -table-manager.throughput-updates-disabled
 [throughput_updates_disabled: <boolean> | default = false]
@@ -6837,6 +6833,10 @@ chunk_tables_provisioning:
   # Number of last inactive tables to enable read autoscale.
   # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale-last-n
   [inactive_read_scale_lastn: <int> | default = 4]
+
+# Must be set to enable table manager, which is deprecated.
+# CLI flag: -table-manager.enabled
+[enabled: <boolean> | default = false]
 ```
 
 ### thanos_object_store_config
