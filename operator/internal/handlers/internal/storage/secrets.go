@@ -44,6 +44,7 @@ var (
 	errS3EndpointUnsupportedScheme = errors.New("scheme of S3 endpoint URL is unsupported")
 	errS3EndpointAWSInvalid        = errors.New("endpoint for AWS S3 must include correct region")
 	errS3ForcePathStyleInvalid     = errors.New(`forcepathstyle must be "true" or "false"`)
+	errS3VPCBucketName             = errors.New("bucket name must not be included in VPC endpoint URL")
 
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
 	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
@@ -487,15 +488,15 @@ func validateS3Endpoint(endpoint, region string) error {
 		return fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSEndpoint)
 	}
 
-	u, err := url.Parse(endpoint)
+	parsedURL, err := url.Parse(endpoint)
 	if err != nil {
 		return fmt.Errorf("%w: %w", errS3EndpointUnparseable, err)
 	}
-	if u.Scheme == "" {
+	if parsedURL.Scheme == "" {
 		return errS3EndpointNoURL
 	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("%w: %s", errS3EndpointUnsupportedScheme, u.Scheme)
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return fmt.Errorf("%w: %s", errS3EndpointUnsupportedScheme, parsedURL.Scheme)
 	}
 
 	// Non-AWS S3 compatible endpoints (e.g., MinIO) - no further validation needed
@@ -503,25 +504,27 @@ func validateS3Endpoint(endpoint, region string) error {
 		return nil
 	}
 
+	// AWS endpoint validation
 	if len(region) == 0 {
 		return fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
 	}
 
-	// VPC endpoints: reject bucket-specific prefixes
-	host := u.Hostname()
+	// Check standard AWS S3 endpoint
+	validEndpoint := fmt.Sprintf("https://s3.%s%s", region, awsEndpointSuffix)
+	if endpoint == validEndpoint {
+		return nil
+	}
+
+	// Check VPC endpoint format
+	host := parsedURL.Hostname()
 	if strings.Contains(host, ".vpce.amazonaws.com") && strings.Contains(host, region) {
 		if !strings.HasPrefix(host, "vpce-") {
-			return fmt.Errorf("bucket name must not be included in VPC endpoint URL")
+			return errS3VPCBucketName
 		}
 		return nil
 	}
 
-	// Standard AWS S3 endpoint
-	valid := fmt.Sprintf("https://s3.%s%s", region, awsEndpointSuffix)
-	if endpoint == valid {
-		return nil
-	}
-	return fmt.Errorf("%w: %s", errS3EndpointAWSInvalid, valid)
+	return fmt.Errorf("%w: %s", errS3EndpointAWSInvalid, validEndpoint)
 }
 
 func extractS3SSEConfig(d map[string][]byte) (storage.S3SSEConfig, error) {
