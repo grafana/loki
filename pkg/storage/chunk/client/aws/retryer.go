@@ -34,8 +34,8 @@ func (r *retryer) MaxAttempts() int {
 
 // RetryRules return the retry delay that should be used by the SDK before
 // making another request attempt for the failed request.
-func (r *retryer) RetryDelay(attempt int, opErr error) (time.Duration, error) {
-	duration := r.Backoff.NextDelay()
+func (r *retryer) RetryDelay(_ int, _ error) (time.Duration, error) {
+	duration := r.NextDelay()
 	trace.SpanFromContext(r.Context).SetAttributes(attribute.Int("retry", r.NumRetries()))
 	return duration, nil
 }

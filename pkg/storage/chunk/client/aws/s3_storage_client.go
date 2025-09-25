@@ -635,7 +635,7 @@ func IsStorageThrottledErr(err error) bool {
 			return true
 		case "ServiceUnavailable": // 503
 			return true
-		case "SlowDown": // 503
+		case errCodeSlowDown: // 503
 			return true
 		default:
 			return false

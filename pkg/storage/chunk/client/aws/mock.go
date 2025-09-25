@@ -243,7 +243,7 @@ func (m *dynamoDBMockRequest) Retryable() bool {
 	return false
 }
 
-func (m *mockDynamoDBClient) ListTables(_ context.Context, _ *dynamodb.ListTablesInput, optFns ...func(*dynamodb.Options)) (*dynamodb.ListTablesOutput, error) {
+func (m *mockDynamoDBClient) ListTables(_ context.Context, _ *dynamodb.ListTablesInput, _ ...func(*dynamodb.Options)) (*dynamodb.ListTablesOutput, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -258,7 +258,7 @@ func (m *mockDynamoDBClient) ListTables(_ context.Context, _ *dynamodb.ListTable
 }
 
 // CreateTable implements StorageClient.
-func (m *mockDynamoDBClient) CreateTable(_ context.Context, input *dynamodb.CreateTableInput, optFns ...func(*dynamodb.Options)) (*dynamodb.CreateTableOutput, error) {
+func (m *mockDynamoDBClient) CreateTable(_ context.Context, input *dynamodb.CreateTableInput, _ ...func(*dynamodb.Options)) (*dynamodb.CreateTableOutput, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -280,7 +280,7 @@ func (m *mockDynamoDBClient) CreateTable(_ context.Context, input *dynamodb.Crea
 }
 
 // DescribeTable implements StorageClient.
-func (m *mockDynamoDBClient) DescribeTable(_ context.Context, input *dynamodb.DescribeTableInput, optFns ...func(*dynamodb.Options)) (*dynamodb.DescribeTableOutput, error) {
+func (m *mockDynamoDBClient) DescribeTable(_ context.Context, input *dynamodb.DescribeTableInput, _ ...func(*dynamodb.Options)) (*dynamodb.DescribeTableOutput, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -303,7 +303,7 @@ func (m *mockDynamoDBClient) DescribeTable(_ context.Context, input *dynamodb.De
 }
 
 // UpdateTable implements StorageClient.
-func (m *mockDynamoDBClient) UpdateTable(_ context.Context, input *dynamodb.UpdateTableInput, optFns ...func(*dynamodb.Options)) (*dynamodb.UpdateTableOutput, error) {
+func (m *mockDynamoDBClient) UpdateTable(_ context.Context, input *dynamodb.UpdateTableInput, _ ...func(*dynamodb.Options)) (*dynamodb.UpdateTableOutput, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -322,7 +322,7 @@ func (m *mockDynamoDBClient) UpdateTable(_ context.Context, input *dynamodb.Upda
 	}, nil
 }
 
-func (m *mockDynamoDBClient) TagResource(_ context.Context, input *dynamodb.TagResourceInput, optFns ...func(*dynamodb.Options)) (*dynamodb.TagResourceOutput, error) {
+func (m *mockDynamoDBClient) TagResource(_ context.Context, input *dynamodb.TagResourceInput, _ ...func(*dynamodb.Options)) (*dynamodb.TagResourceOutput, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -343,7 +343,7 @@ func (m *mockDynamoDBClient) TagResource(_ context.Context, input *dynamodb.TagR
 	return &dynamodb.TagResourceOutput{}, nil
 }
 
-func (m *mockDynamoDBClient) ListTagsOfResource(_ context.Context, input *dynamodb.ListTagsOfResourceInput, optFns ...func(*dynamodb.Options)) (*dynamodb.ListTagsOfResourceOutput, error) {
+func (m *mockDynamoDBClient) ListTagsOfResource(_ context.Context, input *dynamodb.ListTagsOfResourceInput, _ ...func(*dynamodb.Options)) (*dynamodb.ListTagsOfResourceOutput, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -373,7 +373,7 @@ func newMockS3() mockS3 {
 	}
 }
 
-func (m *mockS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+func (m *mockS3) PutObject(_ context.Context, params *s3.PutObjectInput, _ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
 	m.Lock()
 	defer m.Unlock()
 
@@ -386,7 +386,7 @@ func (m *mockS3) PutObject(ctx context.Context, params *s3.PutObjectInput, optFn
 	return &s3.PutObjectOutput{}, nil
 }
 
-func (m *mockS3) GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+func (m *mockS3) GetObject(_ context.Context, params *s3.GetObjectInput, _ ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
 	m.RLock()
 	defer m.RUnlock()
 

@@ -304,7 +304,7 @@ type MockS3Client struct {
 	HeadObjectFunc func(context.Context, *s3.HeadObjectInput) (*s3.HeadObjectOutput, error)
 }
 
-func (m *MockS3Client) HeadObject(ctx context.Context, input *s3.HeadObjectInput, optFns ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
+func (m *MockS3Client) HeadObject(ctx context.Context, input *s3.HeadObjectInput, _ ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
 	return m.HeadObjectFunc(ctx, input)
 }
 

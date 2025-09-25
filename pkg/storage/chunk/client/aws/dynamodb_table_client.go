@@ -20,6 +20,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/log"
 )
 
+const (
+	errCodeSlowDown = "SlowDown"
+)
+
 // Pluggable auto-scaler implementation
 type autoscale interface {
 	PostCreateTable(ctx context.Context, desc config.TableDesc) error
@@ -87,7 +91,7 @@ func (d callManager) backoffAndRetry(ctx context.Context, fn func(context.Contex
 	for backoff.Ongoing() {
 		if err := fn(ctx); err != nil {
 			var apiErr smithy.APIError
-			if errors.As(err, &apiErr) && apiErr.ErrorCode() == "SlowDown" {
+			if errors.As(err, &apiErr) && apiErr.ErrorCode() == errCodeSlowDown {
 				level.Warn(log.WithContext(ctx, log.Logger)).Log("msg", "got error, backing off and retrying", "err", err, "retry", backoff.NumRetries())
 				backoff.Wait()
 				continue
@@ -331,7 +335,7 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected co
 		}); err != nil {
 			recordDynamoError(expected.Name, err, "DynamoDB.UpdateTable", d.metrics)
 			var apiErr smithy.APIError
-			if errors.As(err, &apiErr) && apiErr.ErrorCode() == "SlowDown" {
+			if errors.As(err, &apiErr) && apiErr.ErrorCode() == errCodeSlowDown {
 				level.Warn(log.Logger).Log("msg", "update limit exceeded", "err", err)
 			} else {
 				return err
@@ -350,7 +354,7 @@ func (d dynamoTableClient) UpdateTable(ctx context.Context, current, expected co
 		}); err != nil {
 			recordDynamoError(expected.Name, err, "DynamoDB.UpdateTable", d.metrics)
 			var apiErr smithy.APIError
-			if errors.As(err, &apiErr) && apiErr.ErrorCode() == "SlowDown" {
+			if errors.As(err, &apiErr) && apiErr.ErrorCode() == errCodeSlowDown {
 				level.Warn(log.Logger).Log("msg", "update limit exceeded", "err", err)
 			} else {
 				return err
