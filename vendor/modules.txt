@@ -72,8 +72,8 @@ cloud.google.com/go/pubsub/v2/apiv1/pubsubpb
 cloud.google.com/go/pubsub/v2/internal
 cloud.google.com/go/pubsub/v2/internal/distribution
 cloud.google.com/go/pubsub/v2/internal/scheduler
-# cloud.google.com/go/storage v1.56.1
-## explicit; go 1.23.0
+# cloud.google.com/go/storage v1.57.0
+## explicit; go 1.24.0
 cloud.google.com/go/storage
 cloud.google.com/go/storage/experimental
 cloud.google.com/go/storage/internal
