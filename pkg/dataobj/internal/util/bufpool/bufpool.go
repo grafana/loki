@@ -22,7 +22,7 @@ func Get(size int) *bytes.Buffer {
 
 	buf := b.pool.Get().(*bytes.Buffer)
 	buf.Reset()
-	buf.Grow(size)
+	buf.Grow(max(0, buf.Cap()-size))
 	return buf
 }
 

@@ -147,7 +147,7 @@ func (dec *Decoder) ReadPages(ctx context.Context, pages []*datasetmd.PageDesc) 
 		ranges := make([]rangeio.Range, 0, len(pages))
 		for _, page := range pages {
 			ranges = append(ranges, rangeio.Range{
-				Data:   make([]byte, page.DataSize),
+				Data:   make([]byte, page.CompressedSize),
 				Offset: int64(page.DataOffset),
 			})
 		}
