@@ -81,7 +81,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: test
+    tag: 3.5.5
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -665,7 +665,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: test
+    tag: 3.5.5
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
