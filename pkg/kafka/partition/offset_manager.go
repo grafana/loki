@@ -33,7 +33,7 @@ var _ OffsetManager = &KafkaOffsetManager{}
 type KafkaOffsetManager struct {
 	client        *kgo.Client
 	adminClient   *kadm.Client
-	cfg           kafka.Config
+	topic         string
 	consumerGroup string
 	logger        log.Logger
 }
@@ -52,7 +52,7 @@ func NewKafkaOffsetManager(
 
 	return newKafkaOffsetManager(
 		c,
-		cfg,
+		cfg.Topic,
 		consumerGroup,
 		logger,
 	), nil
@@ -61,22 +61,22 @@ func NewKafkaOffsetManager(
 // newKafkaReader creates a new KafkaReader instance
 func newKafkaOffsetManager(
 	client *kgo.Client,
-	cfg kafka.Config,
+	topic string,
 	consumerGroup string,
 	logger log.Logger,
 ) *KafkaOffsetManager {
 	return &KafkaOffsetManager{
 		client:        client,
 		adminClient:   kadm.NewClient(client),
-		cfg:           cfg,
+		topic:         topic,
 		consumerGroup: consumerGroup,
-		logger:        log.With(logger, "topic", cfg.Topic, "consumer_group", consumerGroup),
+		logger:        log.With(logger, "topic", topic, "consumer_group", consumerGroup),
 	}
 }
 
 // Topic returns the topic being read
 func (r *KafkaOffsetManager) Topic() string {
-	return r.cfg.Topic
+	return r.topic
 }
 
 func (r *KafkaOffsetManager) ConsumerGroup() string {
@@ -86,13 +86,13 @@ func (r *KafkaOffsetManager) ConsumerGroup() string {
 // NextOffset returns the first offset after the timestamp t. If the partition
 // does not have an offset after t, it returns the current end offset.
 func (r *KafkaOffsetManager) NextOffset(ctx context.Context, partition int32, t time.Time) (int64, error) {
-	resp, err := r.adminClient.ListOffsetsAfterMilli(ctx, t.UnixMilli(), r.cfg.Topic)
+	resp, err := r.adminClient.ListOffsetsAfterMilli(ctx, t.UnixMilli(), r.topic)
 	if err != nil {
 		return 0, err
 	}
 	// If a topic does not exist, a special -1 partition for each non-existing
 	// topic is added to the response.
-	partitions := resp[r.cfg.Topic]
+	partitions := resp[r.topic]
 	if special, ok := partitions[-1]; ok {
 		return 0, special.Err
 	}
@@ -112,7 +112,7 @@ func (r *KafkaOffsetManager) NextOffset(ctx context.Context, partition int32, t 
 func (r *KafkaOffsetManager) LastCommittedOffset(ctx context.Context, partitionID int32) (int64, error) {
 	req := kmsg.NewPtrOffsetFetchRequest()
 	req.Topics = []kmsg.OffsetFetchRequestTopic{{
-		Topic:      r.cfg.Topic,
+		Topic:      r.topic,
 		Partitions: []int32{partitionID},
 	}}
 	req.Group = r.ConsumerGroup()
@@ -160,7 +160,7 @@ func (r *KafkaOffsetManager) PartitionOffset(ctx context.Context, partitionID in
 	partitionReq.Timestamp = int64(position)
 
 	topicReq := kmsg.NewListOffsetsRequestTopic()
-	topicReq.Topic = r.cfg.Topic
+	topicReq.Topic = r.topic
 	topicReq.Partitions = []kmsg.ListOffsetsRequestTopicPartition{partitionReq}
 
 	req := kmsg.NewPtrListOffsetsRequest()
@@ -205,7 +205,7 @@ func (r *KafkaOffsetManager) Commit(ctx context.Context, partitionID int32, offs
 
 	// Commit the last consumed offset.
 	toCommit := kadm.Offsets{}
-	toCommit.AddOffset(r.cfg.Topic, partitionID, offset, -1)
+	toCommit.AddOffset(r.topic, partitionID, offset, -1)
 
 	committed, err := admin.CommitOffsets(ctx, r.ConsumerGroup(), toCommit)
 	if err != nil {
@@ -214,7 +214,7 @@ func (r *KafkaOffsetManager) Commit(ctx context.Context, partitionID int32, offs
 		return committed.Error()
 	}
 
-	committedOffset, _ := committed.Lookup(r.cfg.Topic, partitionID)
+	committedOffset, _ := committed.Lookup(r.topic, partitionID)
 	level.Debug(r.logger).Log("msg", "last commit offset successfully committed to Kafka", "offset", committedOffset.At)
 	return nil
 }
