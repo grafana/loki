@@ -1842,7 +1842,7 @@ github.com/sirupsen/logrus
 # github.com/sony/gobreaker/v2 v2.2.1
 ## explicit; go 1.22.0
 github.com/sony/gobreaker/v2
-# github.com/spf13/afero v1.14.0
+# github.com/spf13/afero v1.15.0
 ## explicit; go 1.23.0
 github.com/spf13/afero
 github.com/spf13/afero/internal/common
