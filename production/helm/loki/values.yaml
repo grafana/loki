@@ -826,7 +826,7 @@ lokiCanary:
     digest: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
-  # -- Update strategy for the `loki-canary` Daemonset pods
+  # -- Readiness probe
   readinessProbe:
     httpGet:
       path: /metrics
