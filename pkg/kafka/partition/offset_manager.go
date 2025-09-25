@@ -70,7 +70,7 @@ func newKafkaOffsetManager(
 		adminClient:   kadm.NewClient(client),
 		cfg:           cfg,
 		consumerGroup: consumerGroup,
-		logger:        logger,
+		logger:        log.With(logger, "topic", cfg.Topic, "consumer_group", consumerGroup),
 	}
 }
 
