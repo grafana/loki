@@ -827,6 +827,13 @@ lokiCanary:
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
   # -- Update strategy for the `loki-canary` Daemonset pods
+  readinessProbe:
+    httpGet:
+      path: /metrics
+      port: http-metrics
+    initialDelaySeconds: 15
+    timeoutSeconds: 1
+  # -- Update strategy for the `loki-canary` Daemonset pods
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:

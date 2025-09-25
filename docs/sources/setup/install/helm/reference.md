@@ -7452,6 +7452,42 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.readinessProbe.httpGet.path</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"/metrics"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.readinessProbe.httpGet.port</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"http-metrics"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.readinessProbe.initialDelaySeconds</td>
+			<td>int</td>
+			<td></td>
+			<td><pre lang="json">
+15
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.readinessProbe.timeoutSeconds</td>
+			<td>int</td>
+			<td></td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.hostUsers</td>
 			<td>string</td>
 			<td>Use the host's user namespace in loki-canary pods</td>
