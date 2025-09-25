@@ -157,7 +157,7 @@ require (
 	go.opentelemetry.io/contrib/instrumentation/net/http/httptrace/otelhttptrace v0.63.0
 	go.opentelemetry.io/otel/sdk v1.38.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
-	golang.org/x/oauth2 v0.30.0
+	golang.org/x/oauth2 v0.31.0
 	golang.org/x/text v0.29.0
 	google.golang.org/protobuf v1.36.9
 	gotest.tools v2.2.0+incompatible
