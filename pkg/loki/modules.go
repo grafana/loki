@@ -848,7 +848,6 @@ func (t *Loki) initPatternIngesterTee() (services.Service, error) {
 }
 
 func (t *Loki) initTableManager() (services.Service, error) {
-	level.Warn(util_log.Logger).Log("msg", "table manager is deprecated. Consider migrating to tsdb index which relies on a compactor instead.")
 
 	err := t.Cfg.SchemaConfig.Load()
 	if err != nil {
@@ -857,6 +856,10 @@ func (t *Loki) initTableManager() (services.Service, error) {
 
 	// Assume the newest config is the one to use
 	lastConfig := &t.Cfg.SchemaConfig.Configs[len(t.Cfg.SchemaConfig.Configs)-1]
+	if !t.Cfg.TableManager.Enabled {
+		return nil, nil
+	}
+	level.Warn(util_log.Logger).Log("msg", "table manager is deprecated. Consider migrating to tsdb index which relies on a compactor instead.")
 
 	if (t.Cfg.TableManager.ChunkTables.WriteScale.Enabled ||
 		t.Cfg.TableManager.IndexTables.WriteScale.Enabled ||
