@@ -35,13 +35,12 @@ func TestPartitionCommitter(t *testing.T) {
 	defer admClient.Close()
 
 	// Set up a committer for partition 1 and another for partition 2.
-	offsetManager, err := NewKafkaOffsetManager(
-		kafkaCfg,
+	offsetManager := NewKafkaOffsetManager(
+		client,
+		topic,
 		consumerGroup,
 		log.NewNopLogger(),
-		prometheus.NewRegistry(),
 	)
-	require.NoError(t, err)
 	partition1 := int32(1)
 	committer1 := newCommitter(
 		offsetManager,

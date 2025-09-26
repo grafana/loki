@@ -84,14 +84,21 @@ func NewReaderService(
 		return nil, fmt.Errorf("creating kafka reader: %w", err)
 	}
 
-	offsetManager, err := NewKafkaOffsetManager(
-		kafkaCfg,
-		instanceID,
+	// Create a new Kafka client for the partition manager.
+	offsetManagerClient, err := client.NewReaderClient("partition-manager", kafkaCfg, log.With(logger, "component", "kafka-client"), reg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kafka client for offset manager: %w", err)
+	}
+
+	consumerGroup := kafkaCfg.GetConsumerGroup(instanceID)
+	offsetManager := NewKafkaOffsetManager(
+		offsetManagerClient,
+		kafkaCfg.Topic,
+		consumerGroup,
 		logger,
-		reg,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating kafka offset manager: %w", err)
+		return nil, fmt.Errorf("failed to create kafka offset manager: %w", err)
 	}
 
 	return newReaderService(
@@ -103,7 +110,7 @@ func NewReaderService(
 		offsetManager,
 		partitionID,
 		consumerFactory,
-		logger,
+		log.With(logger, "consumer_group", consumerGroup),
 		reg,
 	), nil
 }
@@ -123,7 +130,7 @@ func newReaderService(
 		offsetManager:       offsetManager,
 		partitionID:         partitionID,
 		consumerFactory:     consumerFactory,
-		logger:              log.With(logger, "partition", partitionID, "consumer_group", offsetManager.ConsumerGroup()),
+		logger:              log.With(logger, "partition", partitionID),
 		metrics:             newServiceMetrics(reg),
 		lastProcessedOffset: int64(KafkaEndOffset),
 	}
