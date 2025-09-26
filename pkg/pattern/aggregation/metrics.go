@@ -30,13 +30,11 @@ type Metrics struct {
 
 	// Pattern writing metrics
 	PatternBytesWrittenTotal *prometheus.CounterVec
-	PatternPayloadBytes      *prometheus.HistogramVec
 	PatternWritesTotal       *prometheus.CounterVec
 	PatternsActive           *prometheus.GaugeVec
 
 	// Aggregated metrics writing metrics
 	AggregatedMetricBytesWrittenTotal *prometheus.CounterVec
-	AggregatedMetricsPayloadBytes     *prometheus.HistogramVec
 }
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
@@ -90,29 +88,21 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 				Subsystem: "pattern_ingester",
 				Name:      "pattern_bytes_written_total",
 				Help:      "Total bytes written for pattern payloads to Loki.",
-			}, []string{"tenant_id", "service_name"}),
-
-			PatternPayloadBytes: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-				Namespace: constants.Loki,
-				Subsystem: "pattern_ingester",
-				Name:      "pattern_payload_bytes",
-				Help:      "Size distribution of pattern payloads written to Loki.",
-				Buckets:   []float64{512, 2048, 8192, 32768, 131072, 524288},
-			}, []string{"tenant_id", "service_name"}),
+			}, []string{"tenant_id"}),
 
 			PatternWritesTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 				Namespace: constants.Loki,
 				Subsystem: "pattern_ingester",
 				Name:      "pattern_writes_total",
 				Help:      "Total number of pattern write operations to Loki.",
-			}, []string{"tenant_id", "service_name"}),
+			}, []string{"tenant_id"}),
 
 			PatternsActive: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
 				Namespace: constants.Loki,
 				Subsystem: "pattern_ingester",
 				Name:      "patterns_active",
 				Help:      "Number of active patterns currently tracked in memory.",
-			}, []string{"tenant_id", "service_name"}),
+			}, []string{"tenant_id"}),
 
 			// Aggregated metrics writing metrics
 			AggregatedMetricBytesWrittenTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
@@ -120,15 +110,7 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 				Subsystem: "pattern_ingester",
 				Name:      "aggregated_metric_bytes_written_total",
 				Help:      "Total bytes written for aggregated metric payloads to Loki.",
-			}, []string{"tenant_id", "service_name"}),
-
-			AggregatedMetricsPayloadBytes: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
-				Namespace: constants.Loki,
-				Subsystem: "pattern_ingester",
-				Name:      "aggregated_metrics_payload_bytes",
-				Help:      "Size distribution of aggregated metric payloads written to Loki.",
-				Buckets:   []float64{512, 2048, 8192, 32768, 131072, 524288},
-			}, []string{"tenant_id", "service_name"}),
+			}, []string{"tenant_id"}),
 		}
 	})
 
