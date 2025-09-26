@@ -9,6 +9,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
@@ -46,31 +47,16 @@ func newPartitionProcessorFactory(
 	}
 }
 
-// New creates a new processor for the per-tenant topic partition.
-//
-// New requires the caller to provide the [kgo.Client] as an argument. This
-// is due to a circular dependency that occurs when creating a [kgo.Client]
-// where the partition event handlers, such as [kgo.OnPartitionsAssigned] and
-// [kgo.OnPartitionsRevoked] must be registered when the client is created.
-// However, the lifecycler cannot be created without the factory, and the
-// factory cannot be created with a [kgo.Client]. This is why New requires a
-// [kgo.Client] as an argument.
-func (f *partitionProcessorFactory) New(
-	ctx context.Context,
-	client *kgo.Client,
-	topic string,
-	partition int32,
-) processor {
+// New returns a new processor for the partition.
+func (f *partitionProcessorFactory) New(committer partition.Committer, logger log.Logger) *partitionProcessor {
 	return newPartitionProcessor(
-		ctx,
-		client,
+		context.TODO(),
+		committer,
 		f.cfg.BuilderConfig,
 		f.cfg.UploaderConfig,
 		f.metastoreCfg,
 		f.bucket,
 		f.scratchStore,
-		topic,
-		partition,
 		f.logger,
 		f.reg,
 		f.cfg.IdleFlushTimeout,

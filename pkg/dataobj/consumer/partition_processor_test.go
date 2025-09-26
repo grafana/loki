@@ -10,11 +10,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
-	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/scratch"
 
@@ -50,9 +50,9 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 		}
 		b, err := s.Marshal()
 		require.NoError(t, err)
-		p.processRecord(&kgo.Record{
-			Key:       []byte("test-tenant"),
-			Value:     b,
+		p.processRecord(partition.Record{
+			TenantID:  "test-tenant",
+			Content:   b,
 			Timestamp: now,
 		})
 
@@ -91,9 +91,9 @@ func TestPartitionProcessor_Flush(t *testing.T) {
 		}
 		b, err := s.Marshal()
 		require.NoError(t, err)
-		p.processRecord(&kgo.Record{
-			Key:       []byte("test-tenant"),
-			Value:     b,
+		p.processRecord(partition.Record{
+			TenantID:  "test-tenant",
+			Content:   b,
 			Timestamp: now,
 		})
 
@@ -145,9 +145,9 @@ func TestPartitionProcessor_IdleFlush(t *testing.T) {
 	}
 	b, err := s.Marshal()
 	require.NoError(t, err)
-	p.processRecord(&kgo.Record{
-		Key:       []byte("test-tenant"),
-		Value:     b,
+	p.processRecord(partition.Record{
+		TenantID:  "test-tenant",
+		Content:   b,
 		Timestamp: clock.Now(),
 	})
 	// A modification should have happened.
@@ -190,16 +190,16 @@ func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
 		}
 		b, err := s.Marshal()
 		require.NoError(t, err)
-		p.processRecord(&kgo.Record{
-			Key:       []byte("test-tenant"),
-			Value:     b,
+		p.processRecord(partition.Record{
+			TenantID:  "test-tenant",
+			Content:   b,
 			Timestamp: now1,
 			Offset:    1,
 		})
 
 		// No flush should have occurred and no offsets should be committed.
 		require.True(t, p.lastFlushed.IsZero())
-		require.Nil(t, committer.records)
+		require.Nil(t, committer.offsets)
 
 		// Mark the builder as full.
 		wrappedBuilder.nextErr = logsobj.ErrBuilderFull
@@ -207,19 +207,19 @@ func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
 		// Append another record.
 		clock.Advance(time.Minute)
 		now2 := clock.Now()
-		p.processRecord(&kgo.Record{
-			Key:       []byte("test-tenant"),
-			Value:     b,
+		p.processRecord(partition.Record{
+			TenantID:  "test-tenant",
+			Content:   b,
 			Timestamp: now2,
 			Offset:    2,
 		})
 
 		// A flush should have occurred and offsets should be committed.
 		require.Equal(t, now2, p.lastFlushed)
-		require.Len(t, committer.records, 1)
+		require.Len(t, committer.offsets, 1)
 		// The offset committed should be the offset of the first record, as that
 		// was the record that was flushed.
-		require.Equal(t, int64(1), committer.records[0].Offset)
+		require.Equal(t, int64(1), committer.offsets[0])
 	})
 
 	t.Run("when idle timeout is exceeded", func(t *testing.T) {
@@ -241,16 +241,16 @@ func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
 		}
 		b, err := s.Marshal()
 		require.NoError(t, err)
-		p.processRecord(&kgo.Record{
-			Key:       []byte("test-tenant"),
-			Value:     b,
+		p.processRecord(partition.Record{
+			TenantID:  "test-tenant",
+			Content:   b,
 			Timestamp: now1,
 			Offset:    1,
 		})
 
 		// No flush should have occurred and no offsets should be committed.
 		require.True(t, p.lastFlushed.IsZero())
-		require.Nil(t, committer.records)
+		require.Nil(t, committer.offsets)
 
 		// Advance the clock past the idle timeout.
 		clock.Advance(61 * time.Minute)
@@ -261,11 +261,11 @@ func TestPartitionProcessor_OffsetsCommitted(t *testing.T) {
 
 		// A flush should have occurred and offsets should be committed.
 		require.Equal(t, now2, p.lastFlushed)
-		require.Len(t, committer.records, 1)
+		require.Len(t, committer.offsets, 1)
 
 		// The offset committed should be the offset of the first record, as that
 		// was the record that was flushed.
-		require.Equal(t, int64(1), committer.records[0].Offset)
+		require.Equal(t, int64(1), committer.offsets[0])
 	})
 }
 
@@ -287,9 +287,9 @@ func TestPartitionProcessor_ProcessRecord(t *testing.T) {
 	}
 	b, err := s.Marshal()
 	require.NoError(t, err)
-	p.processRecord(&kgo.Record{
-		Key:       []byte("test-tenant"),
-		Value:     b,
+	p.processRecord(partition.Record{
+		TenantID:  "test-tenant",
+		Content:   b,
 		Timestamp: clock.Now(),
 	})
 
@@ -302,7 +302,7 @@ func newTestPartitionProcessor(t *testing.T, clock quartz.Clock) *partitionProce
 	t.Helper()
 	p := newPartitionProcessor(
 		context.Background(),
-		&kgo.Client{},
+		&mockCommitter{},
 		testBuilderConfig,
 		uploader.Config{},
 		metastore.Config{
@@ -310,8 +310,6 @@ func newTestPartitionProcessor(t *testing.T, clock quartz.Clock) *partitionProce
 		},
 		newMockBucket(),
 		nil,
-		"topic",
-		0,
 		log.NewNopLogger(),
 		prometheus.NewRegistry(),
 		60*time.Minute,
