@@ -4,6 +4,7 @@ package proto;
 
 service IngestLimitsFrontend {
   rpc ExceedsLimits(ExceedsLimitsRequest) returns (ExceedsLimitsResponse) {}
+  rpc UpdateRate(UpdateRateRequest) returns (UpdateRateResponse) {}
 }
 
 service IngestLimits {
