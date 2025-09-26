@@ -119,9 +119,6 @@ func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, index.Finger
 	return matchers, nil, nil
 }
 
-// TODO(owen-d): synchronize logproto.ChunkRef and tsdb.ChunkRef so we don't have to convert.
-// They share almost the same fields, so we can add the missing `KB` field to the proto and then
-// use that within the tsdb package.
 func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRef, error) {
 	matchers, shard, err := cleanMatchers(predicate.Matchers...)
 	if err != nil {
@@ -136,16 +133,25 @@ func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, thr
 
 	refs := make([]logproto.ChunkRef, 0, len(chks))
 	for _, chk := range chks {
-		refs = append(refs, logproto.ChunkRef{
-			Fingerprint: uint64(chk.Fingerprint),
-			UserID:      chk.User,
-			From:        chk.Start,
-			Through:     chk.End,
-			Checksum:    chk.Checksum,
-		})
+		refs = append(refs, chk.ChunkRef)
 	}
 
 	return refs, err
+}
+
+func (c *IndexClient) GetChunkRefsWithSizingInfo(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	matchers, shard, err := cleanMatchers(predicate.Matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO(owen-d): use a pool to reduce allocs here
+	chks, err := c.idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	return chks, err
 }
 
 func (c *IndexClient) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
@@ -351,4 +357,8 @@ func withoutNameLabel(matchers []*labels.Matcher) []*labels.Matcher {
 
 func (c *IndexClient) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return c.idx, true
+}
+
+func (c *IndexClient) HasChunkSizingInfo(_, _ model.Time) bool {
+	return true
 }
