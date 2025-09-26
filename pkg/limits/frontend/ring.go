@@ -71,19 +71,23 @@ func newRingLimitsClient(
 	}
 }
 
-// ExceedsLimits implements the [exceedsLimitsGatherer] interface.
-func (r *ringLimitsClient) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
-	if len(req.Streams) == 0 {
-		return nil, nil
-	}
+// processStreamsAcrossZones is a generic method that handles the common logic
+// for processing streams across zones for both ExceedsLimits and UpdateRate operations.
+func (r *ringLimitsClient) processStreamsAcrossZones(
+	ctx context.Context,
+	tenant string,
+	streams []*proto.StreamMetadata,
+	rpcFunc func(context.Context, string, []*proto.StreamMetadata, map[int32]string, string) ([]uint64, error),
+	handleUnanswered func([]*proto.StreamMetadata),
+) error {
 	rs, err := r.ring.GetAllHealthy(LimitsRead)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	// Get the partition consumers for each zone.
 	zonesPartitions, err := r.getZoneAwarePartitionConsumers(ctx, rs.Instances)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	// In practice we want zones to be queried in random order to spread
 	// reads. However, in tests we want a deterministic order so test cases
@@ -96,8 +100,8 @@ func (r *ringLimitsClient) ExceedsLimits(ctx context.Context, req *proto.Exceeds
 	slices.SortFunc(zonesToQuery, r.zoneCmp)
 	// Make a copy of the streams from the request. We will prune this slice
 	// each time we receive the responses from a zone.
-	streams := make([]*proto.StreamMetadata, 0, len(req.Streams))
-	streams = append(streams, req.Streams...)
+	remainingStreams := make([]*proto.StreamMetadata, 0, len(streams))
+	remainingStreams = append(remainingStreams, streams...)
 	// Query each zone as ordered in zonesToQuery. If a zone answers all
 	// streams, the request is satisfied and there is no need to query
 	// subsequent zones. If a zone answers just a subset of streams
@@ -106,22 +110,20 @@ func (r *ringLimitsClient) ExceedsLimits(ctx context.Context, req *proto.Exceeds
 	// then query the next zone for the remaining streams. We repeat this
 	// process until all streams have been queried or we have exhausted all
 	// zones.
-	responses := make([]*proto.ExceedsLimitsResponse, 0)
 	for _, zone := range zonesToQuery {
 		// All streams been checked against per-tenant limits.
-		if len(streams) == 0 {
+		if len(remainingStreams) == 0 {
 			break
 		}
-		resps, answered, err := r.doExceedsLimitsRPCs(ctx, req.Tenant, streams, zonesPartitions[zone], zone)
+		answered, err := rpcFunc(ctx, tenant, remainingStreams, zonesPartitions[zone], zone)
 		if err != nil {
 			continue
 		}
-		responses = append(responses, resps...)
 		// Remove the answered streams from the slice. The slice of answered
 		// streams must be sorted so we can use sort.Search to subtract the
 		// two slices.
 		slices.Sort(answered)
-		streams = slices.DeleteFunc(streams, func(stream *proto.StreamMetadata) bool {
+		remainingStreams = slices.DeleteFunc(remainingStreams, func(stream *proto.StreamMetadata) bool {
 			// see https://pkg.go.dev/sort#Search
 			i := sort.Search(len(answered), func(i int) bool {
 				return answered[i] >= stream.StreamHash
@@ -129,21 +131,22 @@ func (r *ringLimitsClient) ExceedsLimits(ctx context.Context, req *proto.Exceeds
 			return i < len(answered) && answered[i] == stream.StreamHash
 		})
 	}
-	// Any unanswered streams after exhausting all zones must be failed.
-	if len(streams) > 0 {
-		failed := make([]*proto.ExceedsLimitsResult, 0, len(streams))
-		for _, stream := range streams {
-			failed = append(failed, &proto.ExceedsLimitsResult{
-				StreamHash: stream.StreamHash,
-				Reason:     uint32(limits.ReasonFailed),
-			})
-		}
-		responses = append(responses, &proto.ExceedsLimitsResponse{Results: failed})
+	// Handle any unanswered streams after exhausting all zones.
+	if len(remainingStreams) > 0 {
+		handleUnanswered(remainingStreams)
 	}
-	return responses, nil
+	return nil
 }
 
-func (r *ringLimitsClient) doExceedsLimitsRPCs(ctx context.Context, tenant string, streams []*proto.StreamMetadata, partitions map[int32]string, zone string) ([]*proto.ExceedsLimitsResponse, []uint64, error) {
+// doGenericRPCs handles the common RPC logic for both ExceedsLimits and UpdateRate operations.
+func (r *ringLimitsClient) doGenericRPCs(
+	ctx context.Context,
+	tenant string,
+	streams []*proto.StreamMetadata,
+	partitions map[int32]string,
+	zone string,
+	rpcCall func(context.Context, proto.IngestLimitsClient, string, []*proto.StreamMetadata) error,
+) ([]uint64, error) {
 	// For each stream, figure out which instance consume its partition.
 	instancesForStreams := make(map[string][]*proto.StreamMetadata)
 	for _, stream := range streams {
@@ -156,24 +159,18 @@ func (r *ringLimitsClient) doExceedsLimitsRPCs(ctx context.Context, tenant strin
 		instancesForStreams[addr] = append(instancesForStreams[addr], stream)
 	}
 	errg, ctx := errgroup.WithContext(ctx)
-	responseCh := make(chan *proto.ExceedsLimitsResponse, len(instancesForStreams))
 	answeredCh := make(chan uint64, len(streams))
 	for addr, streams := range instancesForStreams {
+		addr, streams := addr, streams
 		errg.Go(func() error {
 			client, err := r.pool.GetClientFor(addr)
 			if err != nil {
 				level.Error(r.logger).Log("msg", "failed to get client for instance", "instance", addr, "err", err.Error())
 				return nil
 			}
-			resp, err := client.(proto.IngestLimitsClient).ExceedsLimits(ctx, &proto.ExceedsLimitsRequest{
-				Tenant:  tenant,
-				Streams: streams,
-			})
-			if err != nil {
-				level.Error(r.logger).Log("failed check execeed limits for instance", "instance", addr, "err", err.Error())
+			if err := rpcCall(ctx, client.(proto.IngestLimitsClient), tenant, streams); err != nil {
 				return nil
 			}
-			responseCh <- resp
 			for _, stream := range streams {
 				answeredCh <- stream.StreamHash
 			}
@@ -181,17 +178,91 @@ func (r *ringLimitsClient) doExceedsLimitsRPCs(ctx context.Context, tenant strin
 		})
 	}
 	_ = errg.Wait()
-	close(responseCh)
 	close(answeredCh)
-	responses := make([]*proto.ExceedsLimitsResponse, 0, len(instancesForStreams))
-	for r := range responseCh {
-		responses = append(responses, r)
-	}
 	answered := make([]uint64, 0, len(streams))
 	for streamHash := range answeredCh {
 		answered = append(answered, streamHash)
 	}
-	return responses, answered, nil
+	return answered, nil
+}
+
+// ExceedsLimits implements the [exceedsLimitsGatherer] interface.
+func (r *ringLimitsClient) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) ([]*proto.ExceedsLimitsResponse, error) {
+	if len(req.Streams) == 0 {
+		return nil, nil
+	}
+
+	var responses []*proto.ExceedsLimitsResponse
+
+	rpcFunc := func(ctx context.Context, tenant string, streams []*proto.StreamMetadata, partitions map[int32]string, zone string) ([]uint64, error) {
+		rpcCall := func(ctx context.Context, client proto.IngestLimitsClient, tenant string, streams []*proto.StreamMetadata) error {
+			resp, err := client.ExceedsLimits(ctx, &proto.ExceedsLimitsRequest{
+				Tenant:  tenant,
+				Streams: streams,
+			})
+			if err != nil {
+				level.Error(r.logger).Log("failed check execeed limits for instance", "err", err.Error())
+				return err
+			}
+			responses = append(responses, resp)
+			return nil
+		}
+		return r.doGenericRPCs(ctx, tenant, streams, partitions, zone, rpcCall)
+	}
+
+	handleUnanswered := func(streams []*proto.StreamMetadata) {
+		failed := make([]*proto.ExceedsLimitsResult, 0, len(streams))
+		for _, stream := range streams {
+			failed = append(failed, &proto.ExceedsLimitsResult{
+				StreamHash: stream.StreamHash,
+				Reason:     uint32(limits.ReasonFailed),
+			})
+		}
+		responses = append(responses, &proto.ExceedsLimitsResponse{Results: failed})
+	}
+
+	err := r.processStreamsAcrossZones(ctx, req.Tenant, req.Streams, rpcFunc, handleUnanswered)
+	if err != nil {
+		return nil, err
+	}
+
+	return responses, nil
+}
+
+// UpdateRate implements the [limitsClient] interface.
+func (r *ringLimitsClient) UpdateRate(ctx context.Context, req *proto.UpdateRateRequest) ([]*proto.UpdateRateResponse, error) {
+	if len(req.Rates) == 0 {
+		return nil, nil
+	}
+
+	var responses []*proto.UpdateRateResponse
+
+	rpcFunc := func(ctx context.Context, tenant string, streams []*proto.StreamMetadata, partitions map[int32]string, zone string) ([]uint64, error) {
+		rpcCall := func(ctx context.Context, client proto.IngestLimitsClient, tenant string, streams []*proto.StreamMetadata) error {
+			resp, err := client.UpdateRate(ctx, &proto.UpdateRateRequest{
+				Tenant: tenant,
+				Rates:  streams,
+			})
+			if err != nil {
+				level.Error(r.logger).Log("failed update rate for instance", "err", err.Error())
+				return err
+			}
+			responses = append(responses, resp)
+			return nil
+		}
+		return r.doGenericRPCs(ctx, tenant, streams, partitions, zone, rpcCall)
+	}
+
+	handleUnanswered := func(streams []*proto.StreamMetadata) {
+		level.Warn(r.logger).Log("msg", "unanswered streams", "count", len(streams))
+	}
+
+	err := r.processStreamsAcrossZones(ctx, req.Tenant, req.Rates, rpcFunc, handleUnanswered)
+	if err != nil {
+		return nil, err
+	}
+
+	return responses, nil
 }
 
 type zonePartitionConsumersResult struct {

@@ -36,9 +36,11 @@ type Frontend struct {
 	lifecyclerWatcher       *services.FailureWatcher
 
 	// Metrics.
-	streams         prometheus.Counter
-	streamsFailed   prometheus.Counter
-	streamsRejected prometheus.Counter
+	streams             prometheus.Counter
+	streamsFailed       prometheus.Counter
+	streamsRejected     prometheus.Counter
+	streamsUpdated      prometheus.Counter
+	streamsUpdateFailed prometheus.Counter
 }
 
 // New returns a new Frontend.
@@ -62,6 +64,18 @@ func New(cfg Config, ringName string, limitsRing ring.ReadRing, logger log.Logge
 			prometheus.CounterOpts{
 				Name: "loki_ingest_limits_frontend_streams_rejected_total",
 				Help: "The total number of rejected streams.",
+			},
+		),
+		streamsUpdated: promauto.With(reg).NewCounter(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_frontend_streams_updated_total",
+				Help: "The total number of streams for which the rate was updated.",
+			},
+		),
+		streamsUpdateFailed: promauto.With(reg).NewCounter(
+			prometheus.CounterOpts{
+				Name: "loki_ingest_limits_frontend_streams_update_failed_total",
+				Help: "The total number of streams for which the rate could not be updated.",
 			},
 		),
 	}
@@ -135,6 +149,24 @@ func (f *Frontend) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRe
 		}
 	}
 	return &proto.ExceedsLimitsResponse{Results: results}, nil
+}
+
+// UpdateRate implements proto.IngestLimitsFrontendClient.
+func (f *Frontend) UpdateRate(ctx context.Context, req *proto.UpdateRateRequest) (*proto.UpdateRateResponse, error) {
+	f.streamsUpdated.Add(float64(len(req.Rates)))
+	results := make([]*proto.RateResult, 0, len(req.Rates))
+	resps, err := f.limitsClient.UpdateRate(ctx, req)
+	if err != nil {
+		f.streamsUpdateFailed.Add(float64(len(req.Rates)))
+		level.Error(f.logger).Log("msg", "failed to update rate for request", "err", err)
+		return nil, err
+	}
+
+	for _, resp := range resps {
+		results = append(results, resp.Results...)
+	}
+
+	return &proto.UpdateRateResponse{Results: results}, nil
 }
 
 func (f *Frontend) CheckReady(ctx context.Context) error {

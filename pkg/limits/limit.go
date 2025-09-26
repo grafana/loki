@@ -2,6 +2,7 @@ package limits
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 
 	"github.com/coder/quartz"
@@ -99,4 +100,50 @@ func (c *limitsChecker) ExceedsLimits(ctx context.Context, req *proto.ExceedsLim
 	}
 
 	return &proto.ExceedsLimitsResponse{Results: results}, nil
+}
+
+func (c *limitsChecker) UpdateRate(ctx context.Context, req *proto.UpdateRateRequest) (*proto.UpdateRateResponse, error) {
+	// Update rates in the store using the existing Update method
+	// and get current rates by calculating them from the rate buckets
+	currentRates := make(map[uint64]int64)
+	now := c.clock.Now()
+
+	for _, metadata := range req.Rates {
+		// Use the existing Update method which now handles rate buckets
+		if err := c.store.Update(req.Tenant, metadata, now); err != nil {
+			return nil, err
+		}
+
+		// Persist rate update to Kafka
+		if c.producer != nil {
+			if err := c.producer.Produce(ctx, req.Tenant, metadata); err != nil {
+				// Log error but don't fail the operation
+				// The producer will handle retries internally
+			}
+		}
+
+		// Calculate current rate from the stream usage
+		// We need to get the stream usage to calculate the current rate
+		streamHash := metadata.StreamHash
+		partition := c.store.getPartitionForHash(streamHash)
+
+		// Get the stream usage to calculate current rate
+		stream, exists := c.store.getStreamUsage(req.Tenant, partition, streamHash)
+		if exists {
+			currentRate := c.store.calculateCurrentRate(stream.rateBuckets, now)
+			// Use the stream hash as the key for the rate result
+			currentRates[streamHash] = currentRate
+		}
+	}
+
+	// Convert current rates to proto response
+	results := make([]*proto.RateResult, 0, len(currentRates))
+	for streamHash, rate := range currentRates {
+		results = append(results, &proto.RateResult{
+			StreamHash:  streamHash,
+			CurrentRate: rate,
+		})
+	}
+
+	return &proto.UpdateRateResponse{Results: results}, nil
 }
