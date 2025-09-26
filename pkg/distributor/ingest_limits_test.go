@@ -37,7 +37,7 @@ func (c *mockIngestLimitsFrontendClient) ExceedsLimits(_ context.Context, r *pro
 	return c.response, nil
 }
 
-func (c *mockIngestLimitsFrontendClient) UpdateRate(_ context.Context, r *proto.UpdateRateRequest) (*proto.UpdateRateResponse, error) {
+func (c *mockIngestLimitsFrontendClient) UpdateRate(_ context.Context, _ *proto.UpdateRateRequest) (*proto.UpdateRateResponse, error) {
 	// Mock implementation - just return success for tests
 	return &proto.UpdateRateResponse{}, nil
 }

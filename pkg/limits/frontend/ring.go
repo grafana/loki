@@ -161,7 +161,6 @@ func (r *ringLimitsClient) doGenericRPCs(
 	errg, ctx := errgroup.WithContext(ctx)
 	answeredCh := make(chan uint64, len(streams))
 	for addr, streams := range instancesForStreams {
-		addr, streams := addr, streams
 		errg.Go(func() error {
 			client, err := r.pool.GetClientFor(addr)
 			if err != nil {

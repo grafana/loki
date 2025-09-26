@@ -34,7 +34,7 @@ func (m *mockLimitsClient) ExceedsLimits(_ context.Context, req *proto.ExceedsLi
 	return m.exceedsLimitsResponses, m.err
 }
 
-func (m *mockLimitsClient) UpdateRate(ctx context.Context, request *proto.UpdateRateRequest) ([]*proto.UpdateRateResponse, error) {
+func (m *mockLimitsClient) UpdateRate(_ context.Context, _ *proto.UpdateRateRequest) ([]*proto.UpdateRateResponse, error) {
 	//TODO implement me
 	panic("implement me")
 }
