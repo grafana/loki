@@ -12,6 +12,15 @@ import (
 	"github.com/grafana/loki/operator/internal/external/k8s"
 )
 
+// LokiStackStatusInfo holds all status information calculated during LokiStack reconciliation
+type LokiStackStatusInfo struct {
+	// Storage contains the credential mode used for object storage access
+	Storage lokiv1.CredentialMode
+
+	// NetworkPolicy indicates whether network policies are deployed
+	NetworkPolicy lokiv1.NetworkPolicyStatus
+}
+
 const (
 	messageReady                           = "All components ready"
 	messageFailed                          = "One or more LokiStack components failed"

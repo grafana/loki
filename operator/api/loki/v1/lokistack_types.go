@@ -252,6 +252,20 @@ const (
 	OpenshiftNetwork ModeType = "openshift-network"
 )
 
+// NetworkPoliciesType defines the network policies configuration mode.
+//
+// +kubebuilder:validation:Enum="";"False";"True"
+type NetworkPoliciesType string
+
+const (
+	// NetworkPoliciesDefault when no explicit value is set, inherits default behavior.
+	NetworkPoliciesDefault NetworkPoliciesType = ""
+	// NetworkPoliciesDisabled when NetworkPolicies are explicitly disabled.
+	NetworkPoliciesDisabled NetworkPoliciesType = "False"
+	// NetworkPoliciesEnabled when NetworkPolicies are explicitly enabled.
+	NetworkPoliciesEnabled NetworkPoliciesType = "True"
+)
+
 // TenantsSpec defines the mode, authentication and authorization
 // configuration of the lokiStack gateway component.
 type TenantsSpec struct {
@@ -274,6 +288,15 @@ type TenantsSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Authorization"
 	Authorization *AuthorizationSpec `json:"authorization,omitempty"`
+
+	// NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+	// When enabled, the operator creates NetworkPolicies to control ingress/egress between
+	// Loki components and related services.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:","urn:alm:descriptor:com.tectonic.ui:select:False","urn:alm:descriptor:com.tectonic.ui:select:True"},displayName="Network Policies"
+	NetworkPolicies NetworkPoliciesType `json:"networkPolicies,omitempty"`
 
 	// Openshift defines the configuration specific to Openshift modes.
 	//
@@ -1380,6 +1403,16 @@ const (
 	CredentialModeTokenCCO CredentialMode = "token-cco"
 )
 
+// NetworkPolicyStatus defines the deployment status of network policies.
+type NetworkPolicyStatus string
+
+const (
+	// NetworkPolicyStatusTrue when NetworkPolicies are deployed
+	NetworkPolicyStatusTrue NetworkPolicyStatus = "True"
+	// NetworkPolicyStatusFalse when NetworkPolicies are not deployed
+	NetworkPolicyStatusFalse NetworkPolicyStatus = "False"
+)
+
 // LokiStackStorageStatus defines the observed state of
 // the Loki storage configuration.
 type LokiStackStorageStatus struct {
@@ -1412,6 +1445,12 @@ type LokiStackStatus struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	Storage LokiStackStorageStatus `json:"storage,omitempty"`
+
+	// NetworkPolicies indicates whether NetworkPolicies are deployed for this LokiStack.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	NetworkPolicies NetworkPolicyStatus `json:"networkPolicies,omitempty"`
 
 	// Conditions of the Loki deployment health.
 	//
