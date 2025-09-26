@@ -29,6 +29,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+
+	"github.com/grafana/loki/v3/pkg/storage/common/s3util"
 )
 
 type RoundTripperFunc func(*http.Request) (*http.Response, error)
@@ -545,4 +547,34 @@ func TestCommonPrefixes(t *testing.T) {
 	_, CommonPrefixes, err := s3.List(context.Background(), "", "/")
 	require.Equal(t, nil, err)
 	require.Equal(t, 1, len(CommonPrefixes))
+}
+
+func TestS3UtilIntegration(t *testing.T) {
+	// Simple integration test to ensure the s3util.FormatEndpoint function works correctly with S3 config
+	tests := []struct {
+		name             string
+		endpoint         string
+		insecure         bool
+		expectedEndpoint string
+	}{
+		{
+			name:             "endpoint without scheme and insecure=false should add https",
+			endpoint:         "s3.example.com",
+			insecure:         false,
+			expectedEndpoint: "https://s3.example.com",
+		},
+		{
+			name:             "endpoint without scheme and insecure=true should add http",
+			endpoint:         "s3.example.com:9000",
+			insecure:         true,
+			expectedEndpoint: "http://s3.example.com:9000",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := s3util.FormatEndpoint(tt.endpoint, tt.insecure)
+			require.Equal(t, tt.expectedEndpoint, result)
+		})
+	}
 }
