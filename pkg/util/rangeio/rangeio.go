@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"slices"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -140,6 +141,25 @@ var DefaultConfig = Config{
 	MinRangeSize: 1 << 20, // 1 MiB
 }
 
+var bytesBufferPool = &sync.Pool{
+	New: func() any {
+		b := make([]byte, 0)
+		return &b
+	},
+}
+
+func getBytesBuffer(size int) []byte {
+	b := bytesBufferPool.Get().(*[]byte)
+	newB := slices.Grow(*b, size)
+	newB = newB[:size]
+	return newB
+}
+
+func putBytesBuffer(b *[]byte) {
+	(*b) = (*b)[:0]
+	bytesBufferPool.Put(b)
+}
+
 // ReadRanges reads the set of ranges from the provided Reader, populating Data
 // for each element in ranges.
 //
@@ -246,6 +266,10 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 			offset += int64(copied)
 			output = output[copied:]
 		}
+	}
+
+	for _, r := range optimized {
+		putBytesBuffer(&r.Data)
 	}
 
 	span.AddEvent("copied data to inputs")
@@ -380,10 +404,8 @@ func optimizeRanges(cfg *Config, in []Range) []Range {
 	// Convert our chunks into target ranges.
 	out := make([]Range, len(coalescedChunks))
 	for i := range coalescedChunks {
-		// TODO(rfratto): Should the slices here be pooled? The allocated memory
-		// here becomes unreferenced after returning from [ReadRanges].
 		out[i] = Range{
-			Data:   make([]byte, coalescedChunks[i].Length),
+			Data:   getBytesBuffer(coalescedChunks[i].Length),
 			Offset: coalescedChunks[i].Offset,
 		}
 	}
