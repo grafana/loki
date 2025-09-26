@@ -301,7 +301,9 @@ func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.
 	return req, pushStats, err
 }
 
-func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+// parsePushRequestBody returns logproto.PushRequest from http.Request body, deserialized according to specified content type.
+// It also modifies pushStats.
+func parsePushRequestBody(r *http.Request, maxRecvMsgSize int, pushStats *Stats) (*logproto.PushRequest, error) {
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
@@ -318,7 +320,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 	case "gzip":
 		gzipReader, err := gzip.NewReader(bodySize)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		defer gzipReader.Close()
 		body = gzipReader
@@ -327,18 +329,15 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		defer flateReader.Close()
 		body = flateReader
 	default:
-		return nil, nil, fmt.Errorf("Content-Encoding %q not supported", contentEncoding)
+		return nil, fmt.Errorf("Content-Encoding %q not supported", contentEncoding)
 	}
 
 	contentType := r.Header.Get(contentType)
-	var (
-		req       logproto.PushRequest
-		pushStats = NewPushStats()
-	)
+	var req logproto.PushRequest
 
 	contentType, _ /* params */, err := mime.ParseMediaType(contentType)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	switch contentType {
@@ -355,14 +354,14 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		}
 
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 
 	default:
 		// When no content-type header is set or when it is set to
 		// `application/x-protobuf`: expect snappy compression.
 		if err := util.ParseProtoReader(r.Context(), body, int(r.ContentLength), maxRecvMsgSize, &req, util.RawSnappy); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 
@@ -370,13 +369,22 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 	pushStats.ContentType = contentType
 	pushStats.ContentEncoding = contentEncoding
 
+	return &req, nil
+}
+
+func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, maxRecvMsgSize int, tracker UsageTracker, streamResolver StreamResolver, logger log.Logger) (*logproto.PushRequest, *Stats, error) {
+	pushStats := NewPushStats()
+
+	req, err := parsePushRequestBody(r, maxRecvMsgSize, pushStats)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	discoverServiceName := limits.DiscoverServiceName(userID)
 
 	logServiceNameDiscovery := false
-	logPushRequestStreams := false
 	if tenantConfigs != nil {
 		logServiceNameDiscovery = tenantConfigs.LogServiceNameDiscovery(userID)
-		logPushRequestStreams = tenantConfigs.LogPushRequestStreams(userID)
 	}
 
 	for i := range req.Streams {
@@ -415,9 +423,6 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		// Update labels. They were sanitized and potentially with the added service_name label.
 		s.Labels = lbs.String()
 
-		// Record the new size of labels
-		pushStats.StreamLabelsSize += int64(len(s.Labels))
-
 		if logServiceNameDiscovery {
 			level.Debug(logger).Log(
 				"msg", "push request stream before service name discovery",
@@ -426,7 +431,42 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			)
 		}
 
-		var totalBytesReceived int64
+		if tracker != nil && !isInternalStream {
+			var retentionPeriod time.Duration
+			if streamResolver != nil {
+				retentionPeriod = streamResolver.RetentionPeriodFor(lbs)
+			}
+			var totalBytesReceived = int64(util.EntriesTotalSize(s.Entries))
+			tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(totalBytesReceived), "loki")
+		}
+
+		req.Streams[i] = s
+	}
+
+	err = CalculateStreamsStats(userID, req, streamResolver, tenantConfigs, pushStats)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return req, pushStats, nil
+}
+
+// CalculateStreamsStats modifies pushStats with statistics about all the streams from req.
+func CalculateStreamsStats(userID string, req *logproto.PushRequest, streamResolver StreamResolver, tenantConfigs *runtime.TenantConfigs, pushStats *Stats) error {
+	logPushRequestStreams := false
+	if tenantConfigs != nil {
+		logPushRequestStreams = tenantConfigs.LogPushRequestStreams(userID)
+	}
+
+	for _, s := range req.Streams {
+		// Record the new size of labels
+		pushStats.StreamLabelsSize += int64(len(s.Labels))
+
+		lbs, err := syntax.ParseLabels(s.Labels)
+		if err != nil {
+			return fmt.Errorf("couldn't parse labels: %w", err)
+		}
+
 		var retentionPeriod time.Duration
 		var policy string
 		if streamResolver != nil {
@@ -449,10 +489,8 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			pushStats.PolicyNumLines[policy]++
 			entryLabelsSize := int64(util.StructuredMetadataSize(e.StructuredMetadata))
 			pushStats.LogLinesBytes[policy][retentionPeriod] += int64(len(e.Line))
-			streamSizeBytes += int64(len(e.Line)) + entryLabelsSize
+			streamSizeBytes += int64(util.EntryTotalSize(&e))
 			pushStats.StructuredMetadataBytes[policy][retentionPeriod] += entryLabelsSize
-			totalBytesReceived += int64(len(e.Line))
-			totalBytesReceived += entryLabelsSize
 
 			if e.Timestamp.After(pushStats.MostRecentEntryTimestamp) {
 				pushStats.MostRecentEntryTimestamp = e.Timestamp
@@ -468,15 +506,9 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 			pushStats.MostRecentEntryTimestampPerStream[s.Labels] = mostRecentEntryTimestamp
 			pushStats.StreamSizeBytes[s.Labels] = streamSizeBytes
 		}
-
-		if tracker != nil && !isInternalStream {
-			tracker.ReceivedBytesAdd(r.Context(), userID, retentionPeriod, lbs, float64(totalBytesReceived), "loki")
-		}
-
-		req.Streams[i] = s
 	}
 
-	return &req, pushStats, nil
+	return nil
 }
 
 func RetentionPeriodToString(retentionPeriod time.Duration) string {
