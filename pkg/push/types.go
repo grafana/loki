@@ -128,10 +128,6 @@ func (m *LabelAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func yoloString(buf []byte) string {
-	return *((*string)(unsafe.Pointer(&buf)))
-}
-
 func (m *Stream) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -690,6 +686,10 @@ func (m *LabelAdapter) Unmarshal(dAtA []byte) error {
 		return io.ErrUnexpectedEOF
 	}
 	return nil
+}
+
+func yoloString(buf []byte) string {
+	return *((*string)(unsafe.Pointer(&buf)))
 }
 
 func (m *Stream) Size() (n int) {
