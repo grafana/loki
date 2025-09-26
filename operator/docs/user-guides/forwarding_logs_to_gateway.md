@@ -136,7 +136,7 @@ _Note: While this document will only give instructions for two methods of log fo
 
 ## Network Observability
 
-[Network Observability](https://github.com/netobserv/network-observability-operator) also require an external loki instance and is compatible with LokiStack Gateway. You must use a separate instance than `openshift-logging` one.
+[Network Observability](https://github.com/netobserv/network-observability-operator) also require an external loki instance and is compatible with LokiStack Gateway.
 
 The Network Observability Operator can automatically install and configure dependent operators. However, if you need to configure these manually, follow the step below.
 
@@ -148,7 +148,7 @@ The Network Observability Operator can automatically install and configure depen
 - click on Create LokiStack
 - set name to `lokistack-network`
 - set `Object Storage` -> `Secret` [check object storage documentation](../lokistack/object_storage.md)
-- set `Tenants Configuration` -> `Mode` to `openshift-network`
+- set `Tenants Configuration` -> `Mode` to `openshift-network`. or `openshift` to share the same instance for both logging and network.
 
 * Create the following `ClusterRole` and `ClusterRoleBinding` which allow `flowlogs-pipeline` and `network-observability-plugin` service accounts to read and write the network logs:
 

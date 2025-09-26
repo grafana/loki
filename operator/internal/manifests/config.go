@@ -406,7 +406,7 @@ func discoverLogLevels(ls *lokiv1.LokiStackSpec) bool {
 	}
 
 	if ls.Tenants.Mode == lokiv1.OpenshiftLogging ||
-		ls.Tenants.Mode == lokiv1.OpenshiftNetwork {
+		ls.Tenants.Mode == lokiv1.OpenshiftNetwork || ls.Tenants.Mode == lokiv1.Openshift {
 		return false
 	}
 
