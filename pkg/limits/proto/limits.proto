@@ -59,4 +59,3 @@ message RateResult {
   uint64 streamHash = 1;
   int64 currentRate = 2;
 }
-
