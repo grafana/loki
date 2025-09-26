@@ -4311,6 +4311,12 @@ otlp_config:
   # necessary
   [severity_text_as_label: <boolean> | default = false]
 
+  # Experimental. Conversion strategy to use for OTLP logs. It can be one of
+  # [dots_to_underscores (default) or no_conversion]. dots_to_underscores will
+  # convert dots in attribute names to underscores, while no_conversion will
+  # keep the original attribute names with dots.
+  [conversion_strategy: <string> | default = "dots_to_underscores"]
+
 # Block ingestion for policy until the configured date. The policy '*' is the
 # global policy, which is applied to all streams not matching a policy and can
 # be overridden by other policies. The time should be in RFC3339 format. The
