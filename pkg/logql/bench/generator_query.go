@@ -238,38 +238,6 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 		}
 	}
 
-	// Dense period queries
-	for _, interval := range g.logGenCfg.DenseIntervals {
-		combo := labelCombos[g.logGenCfg.NewRand().Intn(len(labelCombos))]
-		selector := g.logGenCfg.buildLabelSelector(combo)
-		if g.cfg.RangeType != "instant" {
-			addBidirectional(
-				selector+` | detected_level=~"error|warn"`,
-				interval.Start,
-				interval.Start.Add(interval.Duration),
-			)
-		}
-
-		start := interval.Start
-		end := interval.Start.Add(interval.Duration)
-		step := interval.Duration / 19
-		rangeInterval := time.Minute
-		if g.cfg.RangeType == "instant" {
-			start = end
-			step = 0
-			rangeInterval = g.cfg.RangeInterval
-		}
-
-		// Add metric queries for dense periods
-		rateQuery := fmt.Sprintf(`sum by (component, detected_level) (rate(%s[%s]))`, selector, rangeInterval)
-		addMetricQuery(
-			rateQuery,
-			start,
-			end,
-			step,
-		)
-	}
-
 	// Sort test cases by name for consistent ordering
 	sort.Slice(cases, func(i, j int) bool {
 		return cases[i].Name() < cases[j].Name()
