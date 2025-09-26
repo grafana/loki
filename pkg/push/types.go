@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unsafe"
 )
 
 // Stream contains a unique labels set as a string and a set of entries for it.
@@ -125,6 +126,10 @@ func (m *LabelAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
+}
+
+func yoloString(buf []byte) string {
+	return *((*string)(unsafe.Pointer(&buf)))
 }
 
 func (m *Stream) Marshal() (dAtA []byte, err error) {
