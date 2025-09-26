@@ -203,7 +203,7 @@ func (s *SegmentTopicWriter) write(tenant string, streams []KeyedStream) {
 		segmentRate := float64(segmentRates[swk.sKey.hash])
 
 		// Get available partitions for this stream (multiple partitions for high-volume segments)
-		availablePartitions, err := s.getPartition(swk.stream, tenant, swk.sKey, segmentRate)
+		availablePartitions, err := s.getPartition(tenant, swk.sKey, segmentRate)
 		if err != nil {
 			s.logger.Log(
 				"msg", "failed to get partitions for stream",
@@ -260,12 +260,12 @@ func (s *SegmentTopicWriter) selectPartition(availablePartitions []int32) int32 
 // getPartition determines which partition(s) to use for a given stream.
 // It always uses volume-aware partitioning and shuffle sharding for tenants.
 // Low-volume segments get a single partition, high-volume segments get multiple partitions.
-func (s *SegmentTopicWriter) getPartition(stream KeyedStream, tenant string, sKey segmentationKey, segmentRate float64) ([]int32, error) {
+func (s *SegmentTopicWriter) getPartition(tenant string, sKey segmentationKey, segmentRate float64) ([]int32, error) {
 	// Create tenant subring once based on rate limits for shuffle sharding
 	tenantSubring := s.getTenantSubring(tenant)
 
 	// Use volume-aware partitioning with shuffle sharding
-	return s.getVolumeSpreadPartitions(sKey, stream, tenant, tenantSubring, segmentRate)
+	return s.getVolumeSpreadPartitions(sKey, tenant, tenantSubring, segmentRate)
 }
 
 // getSegmentationKey creates a segmentation key from the stream labels and metadata
@@ -374,7 +374,7 @@ func (s *SegmentTopicWriter) getBasePartition(segmentationKey string) int32 {
 // getVolumeSpreadPartitions gets multiple partitions for high-volume segments using shuffle sharding.
 // It uses the provided tenant subring and creates a further subring for the segment.
 // For low-volume segments, it selects a single partition from the tenant's subring.
-func (s *SegmentTopicWriter) getVolumeSpreadPartitions(sKey segmentationKey, stream KeyedStream, tenant string, tenantSubring *ring.PartitionRing, segmentRate float64) ([]int32, error) {
+func (s *SegmentTopicWriter) getVolumeSpreadPartitions(sKey segmentationKey, tenant string, tenantSubring *ring.PartitionRing, segmentRate float64) ([]int32, error) {
 	// Calculate how many partitions this segment should use based on its volume
 	segmentShardSize := s.calculateShardSize(segmentRate)
 
@@ -400,7 +400,7 @@ func (s *SegmentTopicWriter) getVolumeSpreadPartitions(sKey segmentationKey, str
 	// Create a subring from the tenant's subring for this specific segment
 	segmentSubring, err := tenantSubring.ShuffleShard(sKey.str, segmentShardSize)
 	if err != nil {
-		s.logger.Log("msg", "failed to create segment shuffle shard", "segmentationKey", sKey.str, "shardSize", segmentShardSize, "err", err)
+		s.logger.Log("msg", "failed to create segment shuffle shard", "tenant", tenant, "segmentationKey", sKey.str, "shardSize", segmentShardSize, "err", err)
 		// Fallback to using all tenant partitions
 		partitions := make([]int32, len(tenantPartitions))
 		copy(partitions, tenantPartitions)
