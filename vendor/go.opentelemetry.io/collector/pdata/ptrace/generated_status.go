@@ -9,7 +9,6 @@ package ptrace
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlptrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/trace/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 // Status is an optional final status for this span. Semantically, when Status was not
@@ -34,8 +33,7 @@ func newStatus(orig *otlptrace.Status, state *internal.State) Status {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewStatus() Status {
-	state := internal.StateMutable
-	return newStatus(&otlptrace.Status{}, &state)
+	return newStatus(internal.NewOrigStatus(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -47,19 +45,8 @@ func (ms Status) MoveTo(dest Status) {
 	if ms.orig == dest.orig {
 		return
 	}
-	*dest.orig = *ms.orig
-	*ms.orig = otlptrace.Status{}
-}
-
-// Code returns the code associated with this Status.
-func (ms Status) Code() StatusCode {
-	return StatusCode(ms.orig.Code)
-}
-
-// SetCode replaces the code associated with this Status.
-func (ms Status) SetCode(v StatusCode) {
-	ms.state.AssertMutable()
-	ms.orig.Code = otlptrace.Status_StatusCode(v)
+	internal.DeleteOrigStatus(dest.orig, false)
+	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Message returns the message associated with this Status.
@@ -73,27 +60,19 @@ func (ms Status) SetMessage(v string) {
 	ms.orig.Message = v
 }
 
+// Code returns the code associated with this Status.
+func (ms Status) Code() StatusCode {
+	return StatusCode(ms.orig.Code)
+}
+
+// SetCode replaces the code associated with this Status.
+func (ms Status) SetCode(v StatusCode) {
+	ms.state.AssertMutable()
+	ms.orig.Code = otlptrace.Status_StatusCode(v)
+}
+
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Status) CopyTo(dest Status) {
 	dest.state.AssertMutable()
-	copyOrigStatus(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms Status) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	if ms.orig.Code != 0 {
-		dest.WriteObjectField("code")
-		ms.Code().marshalJSONStream(dest)
-	}
-	if ms.orig.Message != "" {
-		dest.WriteObjectField("message")
-		dest.WriteString(ms.orig.Message)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigStatus(dest, src *otlptrace.Status) {
-	dest.Code = src.Code
-	dest.Message = src.Message
+	internal.CopyOrigStatus(dest.orig, ms.orig)
 }

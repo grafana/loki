@@ -3,6 +3,8 @@ package physical
 import (
 	"errors"
 	"fmt"
+	"slices"
+	"sort"
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -147,8 +149,71 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 		return p.processRangeAggregation(inst, ctx)
 	case *logical.VectorAggregation:
 		return p.processVectorAggregation(inst, ctx)
+	case *logical.Parse:
+		return p.processParse(inst, ctx)
 	}
 	return nil, nil
+}
+
+func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, baseNode Node, ctx *Context) error {
+	scans := []Node{}
+	for _, descriptor := range currentGroup {
+		// output current group to nodes
+		for _, section := range descriptor.Sections {
+			scan := &DataObjScan{
+				Location:  descriptor.Location,
+				StreamIDs: descriptor.Streams,
+				Section:   section,
+				Direction: ctx.direction,
+			}
+			p.plan.addNode(scan)
+			scans = append(scans, scan)
+		}
+	}
+	if len(scans) > 1 && ctx.direction != UNSORTED {
+		sortMerge := &SortMerge{
+			Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+			Order:  ctx.direction, // apply direction from previously visited Sort node
+		}
+		p.plan.addNode(sortMerge)
+		for _, scan := range scans {
+			if err := p.plan.addEdge(Edge{Parent: sortMerge, Child: scan}); err != nil {
+				return err
+			}
+		}
+		if err := p.plan.addEdge(Edge{Parent: baseNode, Child: sortMerge}); err != nil {
+			return err
+		}
+	} else {
+		for _, scan := range scans {
+			if err := p.plan.addEdge(Edge{Parent: baseNode, Child: scan}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func overlappingShardDescriptors(filteredShardDescriptors []FilteredShardDescriptor) [][]FilteredShardDescriptor {
+	// Ensure that shard descriptors are sorted by end time
+	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
+		return filteredShardDescriptors[i].TimeRange.End.After(filteredShardDescriptors[j].TimeRange.End)
+	})
+
+	groups := make([][]FilteredShardDescriptor, 0, len(filteredShardDescriptors))
+	var tr TimeRange
+	for i, shardDesc := range filteredShardDescriptors {
+		if i == 0 || !tr.Overlaps(shardDesc.TimeRange) {
+			// Create new group for first item or if item does not overlap with previous group
+			groups = append(groups, []FilteredShardDescriptor{shardDesc})
+			tr = shardDesc.TimeRange
+		} else {
+			// Append to existing group
+			groups[len(groups)-1] = append(groups[len(groups)-1], shardDesc)
+			tr = tr.Merge(shardDesc.TimeRange)
+		}
+	}
+	return groups
 }
 
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
@@ -165,62 +230,26 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 
 	from, through := ctx.GetResolveTimeRange()
 
-	objects, streams, sections, err := p.catalog.ResolveDataObjWithShard(p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
+	filteredShardDescriptors, err := p.catalog.ResolveShardDescriptorsWithShard(p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
 	if err != nil {
 		return nil, err
 	}
 
-	nodes := make([]Node, 0, len(objects))
-	for i := range objects {
-		scans := make([]Node, 0, len(sections[i]))
+	merge := &Merge{}
+	p.plan.addNode(merge)
+	groups := overlappingShardDescriptors(filteredShardDescriptors)
 
-		for _, section := range sections[i] {
-			scan := &DataObjScan{
-				Location:  objects[i],
-				StreamIDs: streams[i],
-				Section:   section,
-				Direction: ctx.direction, // apply direction from previously visited Sort node
-			}
-			p.plan.addNode(scan)
+	if ctx.direction == ASC {
+		slices.Reverse(groups)
+	}
 
-			scans = append(scans, scan)
-		}
-
-		if ctx.direction != UNSORTED && len(scans) > 0 {
-			sortMerge := &SortMerge{
-				Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
-				Order:  ctx.direction, // apply direction from previously visited Sort node
-			}
-			p.plan.addNode(sortMerge)
-
-			for _, scan := range scans {
-				if err := p.plan.addEdge(Edge{Parent: sortMerge, Child: scan}); err != nil {
-					return nil, err
-				}
-			}
-
-			nodes = append(nodes, sortMerge)
-		} else {
-			nodes = append(nodes, scans...)
+	for _, gr := range groups {
+		if err := p.buildNodeGroup(gr, merge, ctx); err != nil {
+			return nil, err
 		}
 	}
 
-	if ctx.direction == UNSORTED && len(nodes) > 0 {
-		// Add a merge node to map N inputs to 1 output.
-		merge := &Merge{}
-		p.plan.addNode(merge)
-
-		for _, node := range nodes {
-			if err := p.plan.addEdge(Edge{Parent: merge, Child: node}); err != nil {
-				return nil, err
-			}
-		}
-
-		nodes = nodes[:0]
-		nodes = append(nodes, merge)
-	}
-
-	return nodes, nil
+	return []Node{merge}, nil
 }
 
 // Convert [logical.Select] into one [Filter] node.
@@ -241,30 +270,14 @@ func (p *Planner) processSelect(lp *logical.Select, ctx *Context) ([]Node, error
 	return []Node{node}, nil
 }
 
-// Convert [logical.Sort] into one [SortMerge] node.
+// Pass sort direction from [logical.Sort] to the children.
 func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]Node, error) {
 	order := DESC
 	if lp.Ascending {
 		order = ASC
 	}
-	node := &SortMerge{
-		Column: &ColumnExpr{Ref: lp.Column.Ref},
-		Order:  order,
-	}
 
-	p.plan.addNode(node)
-
-	children, err := p.process(lp.Table, ctx.WithDirection(order))
-	if err != nil {
-		return nil, err
-	}
-
-	for i := range children {
-		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
-	}
-	return []Node{node}, nil
+	return p.process(lp.Table, ctx.WithDirection(order))
 }
 
 // Convert [logical.Limit] into one [Limit] node.
@@ -339,24 +352,45 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 	return []Node{node}, nil
 }
 
-// Optimize tries to optimize the plan by pushing down filter predicates and limits
-// to the scan nodes.
+// Convert [logical.Parse] into one [ParseNode] node.
+// A ParseNode initially has an empty list of RequestedKeys which will be populated during optimization.
+func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) {
+	node := &ParseNode{
+		Kind: convertParserKind(lp.Kind),
+	}
+	p.plan.addNode(node)
+
+	children, err := p.process(lp.Table, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range children {
+		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
+			return nil, err
+		}
+	}
+
+	return []Node{node}, nil
+}
+
+// Optimize runs optimization passes over the plan, modifying it
+// if any optimizations can be applied.
 func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 	for i, root := range plan.Roots() {
 		optimizations := []*optimization{
 			newOptimization("PredicatePushdown", plan).withRules(
 				&predicatePushdown{plan: plan},
-				&removeNoopFilter{plan: plan},
 			),
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
-			newOptimization("GroupByPushdown", plan).withRules(
-				&groupByPushdown{plan: plan},
-			),
-			// ProjectionPushdown is listed last as GroupByPushdown can change nodes that can trigger this optimization.
 			newOptimization("ProjectionPushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
+			),
+			newOptimization("Cleanup", plan).withRules(
+				&removeNoopFilter{plan: plan},
+				&removeNoopMerge{plan: plan},
 			),
 		}
 		optimizer := newOptimizer(plan, optimizations)
@@ -366,4 +400,15 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 		}
 	}
 	return plan, nil
+}
+
+func convertParserKind(kind logical.ParserKind) ParserKind {
+	switch kind {
+	case logical.ParserLogfmt:
+		return ParserLogfmt
+	case logical.ParserJSON:
+		return ParserJSON
+	default:
+		return ParserInvalid
+	}
 }

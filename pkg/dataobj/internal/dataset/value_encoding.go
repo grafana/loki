@@ -11,8 +11,8 @@ import (
 // [streamio.Writer]. Implementations of encoding types must call
 // registerValueEncoding to register themselves.
 type valueEncoder interface {
-	// ValueType returns the type of values supported by the valueEncoder.
-	ValueType() datasetmd.ValueType
+	// PhysicalType returns the type of values supported by the valueEncoder.
+	PhysicalType() datasetmd.PhysicalType
 
 	// EncodingType returns the encoding type used by the valueEncoder.
 	EncodingType() datasetmd.EncodingType
@@ -34,8 +34,8 @@ type valueEncoder interface {
 // [streamio.Reader]. Implementations of encoding types must call
 // registerValueEncoding to register themselves.
 type valueDecoder interface {
-	// ValueType returns the type of values supported by the valueDecoder.
-	ValueType() datasetmd.ValueType
+	// PhysicalType returns the type of values supported by the valueDecoder.
+	PhysicalType() datasetmd.PhysicalType
 
 	// EncodingType returns the encoding type used by the valueDecoder.
 	EncodingType() datasetmd.EncodingType
@@ -57,7 +57,7 @@ var registry = map[registryKey]registryEntry{}
 
 type (
 	registryKey struct {
-		Value    datasetmd.ValueType
+		Physical datasetmd.PhysicalType
 		Encoding datasetmd.EncodingType
 	}
 
@@ -68,23 +68,23 @@ type (
 )
 
 // registerValueEncoding registers a [valueEncoder] and [valueDecoder] for a
-// specified valueType and encodingType tuple. If another encoding has been
+// specified physicalType and encodingType tuple. If another encoding has been
 // registered for the same tuple, registerValueEncoding panics.
 //
 // registerValueEncoding should be called in an init method of files
 // implementing encodings.
 func registerValueEncoding(
-	valueType datasetmd.ValueType,
+	physicalType datasetmd.PhysicalType,
 	encodingType datasetmd.EncodingType,
 	newEncoder func(streamio.Writer) valueEncoder,
 	newDecoder func(streamio.Reader) valueDecoder,
 ) {
 	key := registryKey{
-		Value:    valueType,
+		Physical: physicalType,
 		Encoding: encodingType,
 	}
 	if _, exist := registry[key]; exist {
-		panic(fmt.Sprintf("dataset: registerValueEncoding already called for %s/%s", valueType, encodingType))
+		panic(fmt.Sprintf("dataset: registerValueEncoding already called for %s/%s", physicalType, encodingType))
 	}
 
 	registry[key] = registryEntry{
@@ -93,12 +93,12 @@ func registerValueEncoding(
 	}
 }
 
-// newValueEncoder creates a new valueEncoder for the specified valueType and
+// newValueEncoder creates a new valueEncoder for the specified physicalType and
 // encodingType. If no encoding is registered for the specified combination of
-// valueType and encodingType, newValueEncoder returns nil and false.
-func newValueEncoder(valueType datasetmd.ValueType, encodingType datasetmd.EncodingType, w streamio.Writer) (valueEncoder, bool) {
+// physicalType and encodingType, newValueEncoder returns nil and false.
+func newValueEncoder(physicalType datasetmd.PhysicalType, encodingType datasetmd.EncodingType, w streamio.Writer) (valueEncoder, bool) {
 	key := registryKey{
-		Value:    valueType,
+		Physical: physicalType,
 		Encoding: encodingType,
 	}
 	entry, exist := registry[key]
@@ -108,12 +108,12 @@ func newValueEncoder(valueType datasetmd.ValueType, encodingType datasetmd.Encod
 	return entry.NewEncoder(w), true
 }
 
-// newValueDecoder creates a new valueDecoder for the specified valueType and
+// newValueDecoder creates a new valueDecoder for the specified physicalType and
 // encodingType. If no encoding is registered for the specified combination of
-// valueType and encodingType, vewValueDecoder returns nil and false.
-func newValueDecoder(valueType datasetmd.ValueType, encodingType datasetmd.EncodingType, r streamio.Reader) (valueDecoder, bool) {
+// physicalType and encodingType, newValueDecoder returns nil and false.
+func newValueDecoder(physicalType datasetmd.PhysicalType, encodingType datasetmd.EncodingType, r streamio.Reader) (valueDecoder, bool) {
 	key := registryKey{
-		Value:    valueType,
+		Physical: physicalType,
 		Encoding: encodingType,
 	}
 	entry, exist := registry[key]

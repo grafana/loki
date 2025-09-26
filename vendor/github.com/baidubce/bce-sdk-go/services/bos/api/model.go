@@ -19,6 +19,7 @@ package api
 import (
 	"context"
 	"io"
+	"time"
 )
 
 type OwnerType struct {
@@ -296,6 +297,27 @@ type PutObjectArgs struct {
 	// alternative Options please refer to service/bos/api/option.go
 }
 
+type OptionsObjectArgs struct {
+	Origin         string
+	RequestMethod  string
+	RequestHeaders []string
+}
+
+type OptionsObjectResult struct {
+	AllowCredentials bool
+	AllowHeaders     []string
+	AllowMethods     []string
+	AllowOrigin      string
+	ExposeHeaders    []string
+	MaxAge           int
+}
+
+type PostObjectArgs struct {
+	Expiration         time.Duration
+	ContentLengthLower int64
+	ContentLengthUpper int64
+}
+
 // CopyObjectArgs defines the optional args structure for the copy object api.
 type CopyObjectArgs struct {
 	ObjectMeta
@@ -341,11 +363,25 @@ type PutObjectResult struct {
 	ServerSideEncryption string         `json:"-"`
 }
 
+type PostObjectResult struct {
+	ETag         string
+	ContentMD5   string
+	ContentCrc32 string
+}
+
 // CopyObjectResult defines the result json structure for the copy object api.
 type CopyObjectResult struct {
 	LastModified string `json:"lastModified"`
 	ETag         string `json:"eTag"`
 	VersionId    string `json:"versionId"`
+	Code         string `json:"code,omitempty"`
+	Message      string `json:"message,omitempty"`
+	RequestId    string `json:"requestId,omitempty"`
+}
+
+type SetObjectMetaArgs struct {
+	ObjectMeta
+	ObjectExpires int
 }
 
 type ObjectMeta struct {
@@ -665,14 +701,19 @@ type PutBucketNotificationReq struct {
 	Notifications []PutBucketNotificationSt `json:"notifications"`
 }
 
+type EncryptionKey struct {
+	Key string `json:"key"`
+}
+
 type PutBucketNotificationSt struct {
-	Id        string                        `json:"id"`
-	Name      string                        `json:"name"`
-	AppId     string                        `json:"appId"`
-	Status    string                        `json:"status"`
-	Resources []string                      `json:"resources"`
-	Events    []string                      `json:"events"`
-	Apps      []PutBucketNotificationAppsSt `json:"apps"`
+	Id         string                        `json:"id"`
+	Name       string                        `json:"name"`
+	AppId      string                        `json:"appId"`
+	Status     string                        `json:"status"`
+	Encryption EncryptionKey                 `json:"encryption"`
+	Resources  []string                      `json:"resources"`
+	Events     []string                      `json:"events"`
+	Apps       []PutBucketNotificationAppsSt `json:"apps"`
 }
 
 type PutBucketNotificationAppsSt struct {
@@ -783,4 +824,71 @@ type PutBucketInventoryArgs struct {
 
 type ListBucketInventoryResult struct {
 	RuleList []BucketInventoryRule `json:"inventoryRuleList"`
+}
+
+type BucketQuotaArgs struct {
+	MaxObjectCount       int64 `json:"maxObjectCount"`
+	MaxCapacityMegaBytes int64 `json:"maxCapacityMegaBytes"`
+}
+
+type RequestPaymentArgs struct {
+	RequestPayment string `json:"requestPayment"`
+}
+
+type InitBucketObjectLockArgs struct {
+	RetentionDays int `json:"RetentionDays"`
+}
+
+type ExtendBucketObjectLockArgs struct {
+	ExtendRetentionDays int `json:"extendRetentionDays"`
+}
+
+type BucketObjectLockResult struct {
+	LockStatus     string `json:"lockStatus"`
+	CreateDate     int64  `json:"createDate"`
+	ExpirationDate int64  `json:"expirationDate"`
+	RetentionDays  int    `json:"retentionDays"`
+}
+
+type UserQuotaArgs struct {
+	MaxBucketCount       int64 `json:"maxBucketCount"`
+	MaxCapacityMegaBytes int64 `json:"maxCapacityMegaBytes"`
+}
+
+type Credentials struct {
+	AccessKeyId     string `json:"accessKeyId,omitempty"`
+	SecretAccessKey string `json:"secretAccessKey,omitempty"`
+	SessionToken    string `json:"sessionToken,omitempty"`
+	Expiration      string `json:"expiration,omitempty"`
+}
+
+type EventContent struct {
+	Domain                 string      `json:"domain,omitempty"`
+	Bucket                 string      `json:"bucket,omitempty"`
+	Object                 string      `json:"object,omitempty"`
+	ETag                   string      `json:"eTag,omitempty"`
+	ContentType            string      `json:"contentType,omitempty"`
+	CopySourceBucket       string      `json:"copySourceBucket,omitempty"`
+	CopySourceObject       string      `json:"copySourceObject,omitempty"`
+	CopySourceStorageClass string      `json:"copySourceStorageClass,omitempty"`
+	StorageClass           string      `json:"storageClass,omitempty"`
+	FileSize               int64       `json:"fileSize,omitempty"`
+	LastModified           string      `json:"lastModified,omitempty"`
+	Credentials            Credentials `json:"credentials,omitempty"`
+}
+
+type EventMessage struct {
+	Version         string       `json:"version,omitempty"`
+	EventFrom       string       `json:"eventFrom,omitempty"`
+	EventId         string       `json:"eventId,omitempty"`
+	EventOrigin     string       `json:"eventOrigin,omitempty"`
+	EventType       string       `json:"eventType,omitempty"`
+	EventTime       string       `json:"eventTime,omitempty"`
+	ConfigurationId string       `json:"configurationId,omitempty"`
+	Content         EventContent `json:"content,omitempty"`
+	XVars           string       `json:"xVars,omitempty"`
+}
+
+type PostEventArgs struct {
+	Events []EventMessage `json:"events,omitempty"`
 }

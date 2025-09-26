@@ -5,7 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## Unreleased
+
+## [v3.25.0] - 2025-08-24
+
+- Upgrade go deps (#976)
+- Remove references/tests for vertica and add deprecation warnings (#978)
+- Add Aurora DSQL as a new database dialect to goose `Provider` (#971)
+- Add DDL isolation support for Aurora DSQL compatibility (#970)
+- Update Apply to respect no versioning option (#950)
+- Expose dialect `Querier` (#939)
 
 ## [v3.24.3]
 
@@ -272,7 +281,8 @@ Here's a quick summary:
 - Add new `context.Context`-aware functions and methods, for both sql and go migrations.
 - Return error when no migration files found or dir is not a directory.
 
-[Unreleased]: https://github.com/pressly/goose/compare/v3.24.3...HEAD
+[Unreleased]: https://github.com/pressly/goose/compare/v3.25.0...HEAD
+[v3.25.0]: https://github.com/pressly/goose/compare/v3.24.3...v3.25.0
 [v3.24.3]: https://github.com/pressly/goose/compare/v3.24.2...v3.24.3
 [v3.24.2]: https://github.com/pressly/goose/compare/v3.24.1...v3.24.2
 [v3.24.1]: https://github.com/pressly/goose/compare/v3.24.0...v3.24.1

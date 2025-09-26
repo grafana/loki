@@ -7,9 +7,9 @@ import (
 	"io"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/indexpointersmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // RowReader is a reader for index pointers in a data object.
@@ -21,9 +21,8 @@ type RowReader struct {
 
 	buf []dataset.Row
 
-	reader     *dataset.Reader
-	columns    []dataset.Column
-	columnDesc []*indexpointersmd.ColumnDesc
+	reader  *dataset.Reader
+	columns []dataset.Column
 
 	symbols *symbolizer.Symbolizer
 }
@@ -61,7 +60,7 @@ func (r *RowReader) Read(ctx context.Context, s []IndexPointer) (int, error) {
 	}
 
 	if !r.ready {
-		err := r.initReader(ctx)
+		err := r.initReader()
 		if err != nil {
 			return 0, err
 		}
@@ -77,7 +76,7 @@ func (r *RowReader) Read(ctx context.Context, s []IndexPointer) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		if err := decodeRow(r.columnDesc, r.buf[i], &s[i], r.symbols); err != nil {
+		if err := decodeRow(r.sec.Columns(), r.buf[i], &s[i], r.symbols); err != nil {
 			return i, fmt.Errorf("decoding stream: %w", err)
 		}
 	}
@@ -85,15 +84,8 @@ func (r *RowReader) Read(ctx context.Context, s []IndexPointer) (int, error) {
 	return n, nil
 }
 
-func (r *RowReader) initReader(ctx context.Context) error {
-	dec := newDecoder(r.sec.reader)
-
-	metadata, err := dec.Metadata(ctx)
-	if err != nil {
-		return fmt.Errorf("reading metadata: %w", err)
-	}
-
-	dset, err := newColumnsDataset(r.sec.Columns())
+func (r *RowReader) initReader() error {
+	dset, err := columnar.MakeDataset(r.sec.inner, r.sec.inner.Columns())
 	if err != nil {
 		return fmt.Errorf("creating section dataset: %w", err)
 	}
@@ -108,8 +100,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		Dataset:    dset,
 		Columns:    columns,
 		Predicates: predicates,
-
-		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
+		Prefetch:   true,
 	}
 
 	if r.reader == nil {
@@ -124,7 +115,6 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		r.symbols.Reset()
 	}
 
-	r.columnDesc = metadata.GetColumns()
 	r.columns = columns
 	r.ready = true
 	return nil
@@ -142,7 +132,6 @@ func (r *RowReader) Reset(sec *Section) {
 	r.predicate = nil
 	r.ready = false
 	r.columns = nil
-	r.columnDesc = nil
 
 	if r.symbols != nil {
 		r.symbols.Reset()
@@ -166,10 +155,10 @@ func translateIndexPointersPredicate(p RowPredicate, columns []dataset.Column) d
 	var minTimestampColumn dataset.Column
 	var maxTimestampColumn dataset.Column
 	for _, desc := range columns {
-		if desc.ColumnInfo().Name == "min_timestamp" {
+		if desc.ColumnDesc().Tag == "min_timestamp" {
 			minTimestampColumn = desc
 		}
-		if desc.ColumnInfo().Name == "max_timestamp" {
+		if desc.ColumnDesc().Tag == "max_timestamp" {
 			maxTimestampColumn = desc
 		}
 	}

@@ -57,21 +57,21 @@ var (
 	xdsClientResourceUpdatesValidMetric = estats.RegisterInt64Count(estats.MetricDescriptor{
 		Name:        "grpc.xds_client.resource_updates_valid",
 		Description: "A counter of resources received that were considered valid. The counter will be incremented even for resources that have not changed.",
-		Unit:        "resource",
+		Unit:        "{resource}",
 		Labels:      []string{"grpc.target", "grpc.xds.server", "grpc.xds.resource_type"},
 		Default:     false,
 	})
 	xdsClientResourceUpdatesInvalidMetric = estats.RegisterInt64Count(estats.MetricDescriptor{
 		Name:        "grpc.xds_client.resource_updates_invalid",
 		Description: "A counter of resources received that were considered invalid.",
-		Unit:        "resource",
+		Unit:        "{resource}",
 		Labels:      []string{"grpc.target", "grpc.xds.server", "grpc.xds.resource_type"},
 		Default:     false,
 	})
 	xdsClientServerFailureMetric = estats.RegisterInt64Count(estats.MetricDescriptor{
 		Name:        "grpc.xds_client.server_failure",
 		Description: "A counter of xDS servers going from healthy to unhealthy. A server goes unhealthy when we have a connectivity failure or when the ADS stream fails without seeing a response message, as per gRFC A57.",
-		Unit:        "failure",
+		Unit:        "{failure}",
 		Labels:      []string{"grpc.target", "grpc.xds.server"},
 		Default:     false,
 	})
@@ -129,7 +129,21 @@ func newClientImpl(config *bootstrap.Config, metricsRecorder estats.MetricsRecor
 	if err != nil {
 		return nil, err
 	}
-	c := &clientImpl{XDSClient: client, xdsClientConfig: gConfig, bootstrapConfig: config, target: target, refCount: 1}
+	lrsC, err := lrsclient.New(lrsclient.Config{
+		Node:             gConfig.Node,
+		TransportBuilder: gConfig.TransportBuilder,
+	})
+	if err != nil {
+		return nil, err
+	}
+	c := &clientImpl{
+		XDSClient:       client,
+		xdsClientConfig: gConfig,
+		bootstrapConfig: config,
+		target:          target,
+		refCount:        1,
+		lrsClient:       lrsC,
+	}
 	c.logger = prefixLogger(c)
 	return c, nil
 }

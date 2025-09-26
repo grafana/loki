@@ -11,7 +11,7 @@ type Storage interface {
 	StoreComparisonResult(ctx context.Context, result *ComparisonResult) error
 
 	// Read operations (used by UI)
-	GetSampledQueries(ctx context.Context, page, pageSize int, outcome string) (*APIResponse, error)
+	GetSampledQueries(ctx context.Context, page, pageSize int, filter QueryFilter) (*APIResponse, error)
 
 	// Lifecycle
 	Close() error
@@ -20,7 +20,7 @@ type Storage interface {
 // APIResponse represents the paginated API response for UI
 type APIResponse struct {
 	Queries  []QuerySample `json:"queries"`
-	Total    int           `json:"total"`
+	HasMore  bool          `json:"hasMore"`
 	Page     int           `json:"page"`
 	PageSize int           `json:"pageSize"`
 }

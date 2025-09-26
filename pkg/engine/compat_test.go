@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -18,49 +17,25 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/push"
 )
 
-func createRecord(t *testing.T, schema *arrow.Schema, data [][]interface{}) arrow.Record {
-	mem := memory.NewGoAllocator()
-	builder := array.NewRecordBuilder(mem, schema)
-	defer builder.Release()
-
-	for _, row := range data {
-		for j, val := range row {
-			if val == nil {
-				builder.Field(j).AppendNull()
-				continue
-			}
-
-			switch builder.Field(j).(type) {
-			case *array.BooleanBuilder:
-				builder.Field(j).(*array.StringBuilder).Append(val.(string))
-			case *array.StringBuilder:
-				builder.Field(j).(*array.StringBuilder).Append(val.(string))
-			case *array.Uint64Builder:
-				builder.Field(j).(*array.Uint64Builder).Append(val.(uint64))
-			case *array.Int64Builder:
-				builder.Field(j).(*array.Int64Builder).Append(val.(int64))
-			case *array.Float64Builder:
-				builder.Field(j).(*array.Float64Builder).Append(val.(float64))
-			case *array.TimestampBuilder:
-				builder.Field(j).(*array.TimestampBuilder).Append(val.(arrow.Timestamp))
-			default:
-				t.Fatal("invalid field type")
-			}
-		}
-	}
-
-	return builder.NewRecord()
-}
-
 func TestStreamsResultBuilder(t *testing.T) {
+	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+	defer alloc.AssertSize(t, 0)
+
 	mdTypeLabel := datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)
 	mdTypeMetadata := datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.Loki.String)
+
+	t.Run("empty builder returns non-nil result", func(t *testing.T) {
+		builder := newStreamsResultBuilder()
+		md, _ := metadata.NewContext(t.Context())
+		require.NotNil(t, builder.Build(stats.Result{}, md).Data)
+	})
 
 	t.Run("rows without log line, timestamp, or labels are ignored", func(t *testing.T) {
 		schema := arrow.NewSchema(
@@ -71,14 +46,13 @@ func TestStreamsResultBuilder(t *testing.T) {
 			},
 			nil,
 		)
-
-		data := [][]interface{}{
-			{arrow.Timestamp(1620000000000000001), nil, "prod"},
-			{nil, "log line", "prod"},
-			{arrow.Timestamp(1620000000000000003), "log line", nil},
+		rows := arrowtest.Rows{
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000001).UTC(), types.ColumnNameBuiltinMessage: nil, "env": "prod"},
+			{types.ColumnNameBuiltinTimestamp: nil, types.ColumnNameBuiltinMessage: "log line", "env": "prod"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000003).UTC(), types.ColumnNameBuiltinMessage: "log line", "env": nil},
 		}
 
-		record := createRecord(t, schema, data)
+		record := rows.Record(alloc, schema)
 		defer record.Release()
 
 		pipeline := executor.NewBufferedPipeline(record)
@@ -101,13 +75,13 @@ func TestStreamsResultBuilder(t *testing.T) {
 			nil,
 		)
 
-		data := [][]interface{}{
-			{arrow.Timestamp(1620000000000000001), "log line 1", "prod"},
-			{arrow.Timestamp(1620000000000000002), "log line 2", "prod"},
-			{arrow.Timestamp(1620000000000000003), "log line 3", "prod"},
+		rows := arrowtest.Rows{
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000001).UTC(), types.ColumnNameBuiltinMessage: "log line 1", "env": "prod"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000002).UTC(), types.ColumnNameBuiltinMessage: "log line 2", "env": "prod"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000003).UTC(), types.ColumnNameBuiltinMessage: "log line 3", "env": "prod"},
 		}
 
-		record := createRecord(t, schema, data)
+		record := rows.Record(alloc, schema)
 		defer record.Release()
 
 		pipeline := executor.NewBufferedPipeline(record)
@@ -132,15 +106,15 @@ func TestStreamsResultBuilder(t *testing.T) {
 			nil,
 		)
 
-		data := [][]interface{}{
-			{arrow.Timestamp(1620000000000000001), "log line 1", "dev", "loki-dev-001", "860e403fcf754312"},
-			{arrow.Timestamp(1620000000000000002), "log line 2", "prod", "loki-prod-001", "46ce02549441e41c"},
-			{arrow.Timestamp(1620000000000000003), "log line 3", "dev", "loki-dev-002", "61330481e1e59b18"},
-			{arrow.Timestamp(1620000000000000004), "log line 4", "prod", "loki-prod-001", "40e50221e284b9d2"},
-			{arrow.Timestamp(1620000000000000005), "log line 5", "dev", "loki-dev-002", "0cf883f112ad239b"},
+		rows := arrowtest.Rows{
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000001).UTC(), types.ColumnNameBuiltinMessage: "log line 1", "env": "dev", "namespace": "loki-dev-001", "traceID": "860e403fcf754312"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000002).UTC(), types.ColumnNameBuiltinMessage: "log line 2", "env": "prod", "namespace": "loki-prod-001", "traceID": "46ce02549441e41c"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000003).UTC(), types.ColumnNameBuiltinMessage: "log line 3", "env": "dev", "namespace": "loki-dev-002", "traceID": "61330481e1e59b18"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000004).UTC(), types.ColumnNameBuiltinMessage: "log line 4", "env": "prod", "namespace": "loki-prod-001", "traceID": "40e50221e284b9d2"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000005).UTC(), types.ColumnNameBuiltinMessage: "log line 5", "env": "dev", "namespace": "loki-dev-002", "traceID": "0cf883f112ad239b"},
 		}
 
-		record := createRecord(t, schema, data)
+		record := rows.Record(alloc, schema)
 		defer record.Release()
 
 		pipeline := executor.NewBufferedPipeline(record)
@@ -194,6 +168,14 @@ func TestStreamsResultBuilder(t *testing.T) {
 
 func TestVectorResultBuilder(t *testing.T) {
 	mdTypeString := datatype.ColumnMetadata(types.ColumnTypeAmbiguous, datatype.Loki.String)
+	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+	defer alloc.AssertSize(t, 0)
+
+	t.Run("empty builder returns non-nil result", func(t *testing.T) {
+		builder := newVectorResultBuilder()
+		md, _ := metadata.NewContext(t.Context())
+		require.NotNil(t, builder.Build(stats.Result{}, md).Data)
+	})
 
 	t.Run("successful conversion of vector data", func(t *testing.T) {
 		schema := arrow.NewSchema(
@@ -206,13 +188,13 @@ func TestVectorResultBuilder(t *testing.T) {
 			nil,
 		)
 
-		data := [][]any{
-			{arrow.Timestamp(1620000000000000000), int64(42), "localhost:9090", "prometheus"},
-			{arrow.Timestamp(1620000000000000000), int64(23), "localhost:9100", "node-exporter"},
-			{arrow.Timestamp(1620000000000000000), int64(15), "localhost:9100", "prometheus"},
+		rows := arrowtest.Rows{
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000000).UTC(), types.ColumnNameGeneratedValue: int64(42), "instance": "localhost:9090", "job": "prometheus"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000000).UTC(), types.ColumnNameGeneratedValue: int64(23), "instance": "localhost:9100", "job": "node-exporter"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000000).UTC(), types.ColumnNameGeneratedValue: int64(15), "instance": "localhost:9100", "job": "prometheus"},
 		}
 
-		record := createRecord(t, schema, data)
+		record := rows.Record(alloc, schema)
 		defer record.Release()
 
 		pipeline := executor.NewBufferedPipeline(record)
@@ -229,20 +211,24 @@ func TestVectorResultBuilder(t *testing.T) {
 		vector := result.Data.(promql.Vector)
 		require.Equal(t, 3, len(vector))
 
-		// Check first sample
-		require.Equal(t, int64(1620000000000), vector[0].T)
-		require.Equal(t, 42.0, vector[0].F)
-		require.Equal(t, labels.FromStrings("instance", "localhost:9090", "job", "prometheus"), vector[0].Metric)
-
-		// Check second sample
-		require.Equal(t, int64(1620000000000), vector[1].T)
-		require.Equal(t, 23.0, vector[1].F)
-		require.Equal(t, labels.FromStrings("instance", "localhost:9100", "job", "node-exporter"), vector[1].Metric)
-
-		// Check third sample
-		require.Equal(t, int64(1620000000000), vector[2].T)
-		require.Equal(t, 15.0, vector[2].F)
-		require.Equal(t, labels.FromStrings("instance", "localhost:9100", "job", "prometheus"), vector[2].Metric)
+		expected := promql.Vector{
+			{
+				T:      int64(1620000000000),
+				F:      42.0,
+				Metric: labels.FromStrings("instance", "localhost:9090", "job", "prometheus"),
+			},
+			{
+				T:      int64(1620000000000),
+				F:      23.0,
+				Metric: labels.FromStrings("instance", "localhost:9100", "job", "node-exporter"),
+			},
+			{
+				T:      int64(1620000000000),
+				F:      15.0,
+				Metric: labels.FromStrings("instance", "localhost:9100", "job", "prometheus"),
+			},
+		}
+		require.Equal(t, expected, vector)
 	})
 
 	// TODO:(ashwanth) also enforce grouping labels are all present?
@@ -256,12 +242,12 @@ func TestVectorResultBuilder(t *testing.T) {
 			nil,
 		)
 
-		data := [][]interface{}{
-			{nil, int64(42), "localhost:9090"},
-			{arrow.Timestamp(1620000000000000000), nil, "localhost:9100"},
+		rows := arrowtest.Rows{
+			{types.ColumnNameBuiltinTimestamp: nil, types.ColumnNameGeneratedValue: int64(42), "instance": "localhost:9090"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000000).UTC(), types.ColumnNameGeneratedValue: nil, "instance": "localhost:9100"},
 		}
 
-		record := createRecord(t, schema, data)
+		record := rows.Record(alloc, schema)
 		defer record.Release()
 
 		pipeline := executor.NewBufferedPipeline(record)
@@ -272,5 +258,75 @@ func TestVectorResultBuilder(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Equal(t, 0, builder.Len(), "expected no samples to be collected")
+	})
+}
+
+func TestMatrixResultBuilder(t *testing.T) {
+	mdTypeString := datatype.ColumnMetadata(types.ColumnTypeAmbiguous, datatype.Loki.String)
+	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+	defer alloc.AssertSize(t, 0)
+
+	t.Run("empty builder returns non-nil result", func(t *testing.T) {
+		builder := newMatrixResultBuilder()
+		md, _ := metadata.NewContext(t.Context())
+		require.NotNil(t, builder.Build(stats.Result{}, md).Data)
+	})
+
+	t.Run("successful conversion of matrix data", func(t *testing.T) {
+		schema := arrow.NewSchema(
+			[]arrow.Field{
+				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
+				{Name: types.ColumnNameGeneratedValue, Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Integer)},
+				{Name: "instance", Type: arrow.BinaryTypes.String, Metadata: mdTypeString},
+				{Name: "job", Type: arrow.BinaryTypes.String, Metadata: mdTypeString},
+			},
+			nil,
+		)
+
+		rows := arrowtest.Rows{
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000000).UTC(), types.ColumnNameGeneratedValue: int64(42), "instance": "localhost:9090", "job": "prometheus"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000001000000000).UTC(), types.ColumnNameGeneratedValue: int64(43), "instance": "localhost:9090", "job": "prometheus"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000002000000000).UTC(), types.ColumnNameGeneratedValue: int64(44), "instance": "localhost:9090", "job": "prometheus"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000000).UTC(), types.ColumnNameGeneratedValue: int64(23), "instance": "localhost:9100", "job": "node-exporter"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000001000000000).UTC(), types.ColumnNameGeneratedValue: int64(24), "instance": "localhost:9100", "job": "node-exporter"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000002000000000).UTC(), types.ColumnNameGeneratedValue: int64(25), "instance": "localhost:9100", "job": "node-exporter"},
+		}
+
+		record := rows.Record(alloc, schema)
+		defer record.Release()
+
+		pipeline := executor.NewBufferedPipeline(record)
+		defer pipeline.Close()
+
+		builder := newMatrixResultBuilder()
+		err := collectResult(context.Background(), pipeline, builder)
+
+		require.NoError(t, err)
+		require.Equal(t, 6, builder.Len())
+
+		md, _ := metadata.NewContext(t.Context())
+		result := builder.Build(stats.Result{}, md)
+		matrix := result.Data.(promql.Matrix)
+		require.Equal(t, 2, len(matrix))
+
+		expected := promql.Matrix{
+			{
+				Metric: labels.FromStrings("instance", "localhost:9090", "job", "prometheus"),
+				Floats: []promql.FPoint{
+					{T: int64(1620000000000), F: 42.0},
+					{T: int64(1620000001000), F: 43.0},
+					{T: int64(1620000002000), F: 44.0},
+				},
+			},
+			{
+				Metric: labels.FromStrings("instance", "localhost:9100", "job", "node-exporter"),
+				Floats: []promql.FPoint{
+					{T: int64(1620000000000), F: 23.0},
+					{T: int64(1620000001000), F: 24.0},
+					{T: int64(1620000002000), F: 25.0},
+				},
+			},
+		}
+		require.Equal(t, expected, matrix)
 	})
 }

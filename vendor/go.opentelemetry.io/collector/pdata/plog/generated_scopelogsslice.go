@@ -12,7 +12,6 @@ import (
 
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlplogs "go.opentelemetry.io/collector/pdata/internal/data/protogen/logs/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 // ScopeLogsSlice logically represents a slice of ScopeLogs.
@@ -35,8 +34,7 @@ func newScopeLogsSlice(orig *[]*otlplogs.ScopeLogs, state *internal.State) Scope
 // Can use "EnsureCapacity" to initialize with a given capacity.
 func NewScopeLogsSlice() ScopeLogsSlice {
 	orig := []*otlplogs.ScopeLogs(nil)
-	state := internal.StateMutable
-	return newScopeLogsSlice(&orig, &state)
+	return newScopeLogsSlice(&orig, internal.NewState())
 }
 
 // Len returns the number of elements in the slice.
@@ -101,7 +99,7 @@ func (es ScopeLogsSlice) EnsureCapacity(newCap int) {
 // It returns the newly added ScopeLogs.
 func (es ScopeLogsSlice) AppendEmpty() ScopeLogs {
 	es.state.AssertMutable()
-	*es.orig = append(*es.orig, &otlplogs.ScopeLogs{})
+	*es.orig = append(*es.orig, internal.NewOrigScopeLogs())
 	return es.At(es.Len() - 1)
 }
 
@@ -130,6 +128,9 @@ func (es ScopeLogsSlice) RemoveIf(f func(ScopeLogs) bool) {
 	newLen := 0
 	for i := 0; i < len(*es.orig); i++ {
 		if f(es.At(i)) {
+			internal.DeleteOrigScopeLogs((*es.orig)[i], true)
+			(*es.orig)[i] = nil
+
 			continue
 		}
 		if newLen == i {
@@ -138,6 +139,8 @@ func (es ScopeLogsSlice) RemoveIf(f func(ScopeLogs) bool) {
 			continue
 		}
 		(*es.orig)[newLen] = (*es.orig)[i]
+		// Cannot delete here since we just move the data(or pointer to data) to a different position in the slice.
+		(*es.orig)[i] = nil
 		newLen++
 	}
 	*es.orig = (*es.orig)[:newLen]
@@ -146,7 +149,10 @@ func (es ScopeLogsSlice) RemoveIf(f func(ScopeLogs) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es ScopeLogsSlice) CopyTo(dest ScopeLogsSlice) {
 	dest.state.AssertMutable()
-	*dest.orig = copyOrigScopeLogsSlice(*dest.orig, *es.orig)
+	if es.orig == dest.orig {
+		return
+	}
+	*dest.orig = internal.CopyOrigScopeLogsSlice(*dest.orig, *es.orig)
 }
 
 // Sort sorts the ScopeLogs elements within ScopeLogsSlice given the
@@ -155,41 +161,4 @@ func (es ScopeLogsSlice) CopyTo(dest ScopeLogsSlice) {
 func (es ScopeLogsSlice) Sort(less func(a, b ScopeLogs) bool) {
 	es.state.AssertMutable()
 	sort.SliceStable(*es.orig, func(i, j int) bool { return less(es.At(i), es.At(j)) })
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms ScopeLogsSlice) marshalJSONStream(dest *json.Stream) {
-	dest.WriteArrayStart()
-	if len(*ms.orig) > 0 {
-		ms.At(0).marshalJSONStream(dest)
-	}
-	for i := 1; i < len(*ms.orig); i++ {
-		dest.WriteMore()
-		ms.At(i).marshalJSONStream(dest)
-	}
-	dest.WriteArrayEnd()
-}
-
-// unmarshalJSONIter unmarshals all properties from the current struct from the source iterator.
-func (ms ScopeLogsSlice) unmarshalJSONIter(iter *json.Iterator) {
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		*ms.orig = append(*ms.orig, &otlplogs.ScopeLogs{})
-		ms.At(ms.Len() - 1).unmarshalJSONIter(iter)
-		return true
-	})
-}
-
-func copyOrigScopeLogsSlice(dest, src []*otlplogs.ScopeLogs) []*otlplogs.ScopeLogs {
-	if cap(dest) < len(src) {
-		dest = make([]*otlplogs.ScopeLogs, len(src))
-		data := make([]otlplogs.ScopeLogs, len(src))
-		for i := range src {
-			dest[i] = &data[i]
-		}
-	}
-	dest = dest[:len(src)]
-	for i := range src {
-		copyOrigScopeLogs(dest[i], src[i])
-	}
-	return dest
 }

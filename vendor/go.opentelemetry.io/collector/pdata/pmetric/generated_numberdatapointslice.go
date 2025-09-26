@@ -12,7 +12,6 @@ import (
 
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 // NumberDataPointSlice logically represents a slice of NumberDataPoint.
@@ -35,8 +34,7 @@ func newNumberDataPointSlice(orig *[]*otlpmetrics.NumberDataPoint, state *intern
 // Can use "EnsureCapacity" to initialize with a given capacity.
 func NewNumberDataPointSlice() NumberDataPointSlice {
 	orig := []*otlpmetrics.NumberDataPoint(nil)
-	state := internal.StateMutable
-	return newNumberDataPointSlice(&orig, &state)
+	return newNumberDataPointSlice(&orig, internal.NewState())
 }
 
 // Len returns the number of elements in the slice.
@@ -101,7 +99,7 @@ func (es NumberDataPointSlice) EnsureCapacity(newCap int) {
 // It returns the newly added NumberDataPoint.
 func (es NumberDataPointSlice) AppendEmpty() NumberDataPoint {
 	es.state.AssertMutable()
-	*es.orig = append(*es.orig, &otlpmetrics.NumberDataPoint{})
+	*es.orig = append(*es.orig, internal.NewOrigNumberDataPoint())
 	return es.At(es.Len() - 1)
 }
 
@@ -130,6 +128,9 @@ func (es NumberDataPointSlice) RemoveIf(f func(NumberDataPoint) bool) {
 	newLen := 0
 	for i := 0; i < len(*es.orig); i++ {
 		if f(es.At(i)) {
+			internal.DeleteOrigNumberDataPoint((*es.orig)[i], true)
+			(*es.orig)[i] = nil
+
 			continue
 		}
 		if newLen == i {
@@ -138,6 +139,8 @@ func (es NumberDataPointSlice) RemoveIf(f func(NumberDataPoint) bool) {
 			continue
 		}
 		(*es.orig)[newLen] = (*es.orig)[i]
+		// Cannot delete here since we just move the data(or pointer to data) to a different position in the slice.
+		(*es.orig)[i] = nil
 		newLen++
 	}
 	*es.orig = (*es.orig)[:newLen]
@@ -146,7 +149,10 @@ func (es NumberDataPointSlice) RemoveIf(f func(NumberDataPoint) bool) {
 // CopyTo copies all elements from the current slice overriding the destination.
 func (es NumberDataPointSlice) CopyTo(dest NumberDataPointSlice) {
 	dest.state.AssertMutable()
-	*dest.orig = copyOrigNumberDataPointSlice(*dest.orig, *es.orig)
+	if es.orig == dest.orig {
+		return
+	}
+	*dest.orig = internal.CopyOrigNumberDataPointSlice(*dest.orig, *es.orig)
 }
 
 // Sort sorts the NumberDataPoint elements within NumberDataPointSlice given the
@@ -155,41 +161,4 @@ func (es NumberDataPointSlice) CopyTo(dest NumberDataPointSlice) {
 func (es NumberDataPointSlice) Sort(less func(a, b NumberDataPoint) bool) {
 	es.state.AssertMutable()
 	sort.SliceStable(*es.orig, func(i, j int) bool { return less(es.At(i), es.At(j)) })
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms NumberDataPointSlice) marshalJSONStream(dest *json.Stream) {
-	dest.WriteArrayStart()
-	if len(*ms.orig) > 0 {
-		ms.At(0).marshalJSONStream(dest)
-	}
-	for i := 1; i < len(*ms.orig); i++ {
-		dest.WriteMore()
-		ms.At(i).marshalJSONStream(dest)
-	}
-	dest.WriteArrayEnd()
-}
-
-// unmarshalJSONIter unmarshals all properties from the current struct from the source iterator.
-func (ms NumberDataPointSlice) unmarshalJSONIter(iter *json.Iterator) {
-	iter.ReadArrayCB(func(iter *json.Iterator) bool {
-		*ms.orig = append(*ms.orig, &otlpmetrics.NumberDataPoint{})
-		ms.At(ms.Len() - 1).unmarshalJSONIter(iter)
-		return true
-	})
-}
-
-func copyOrigNumberDataPointSlice(dest, src []*otlpmetrics.NumberDataPoint) []*otlpmetrics.NumberDataPoint {
-	if cap(dest) < len(src) {
-		dest = make([]*otlpmetrics.NumberDataPoint, len(src))
-		data := make([]otlpmetrics.NumberDataPoint, len(src))
-		for i := range src {
-			dest[i] = &data[i]
-		}
-	}
-	dest = dest[:len(src)]
-	for i := range src {
-		copyOrigNumberDataPoint(dest[i], src[i])
-	}
-	return dest
 }

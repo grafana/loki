@@ -1,3 +1,4 @@
+// Package parser provides ANSI escape sequence parsing functionality.
 package parser
 
 // Action is a DEC ANSI parser action.
@@ -19,7 +20,7 @@ const (
 	IgnoreAction = NoneAction
 )
 
-// nolint: unused
+// ActionNames provides string names for parser actions.
 var ActionNames = []string{
 	"NoneAction",
 	"ClearAction",
@@ -58,7 +59,7 @@ const (
 	Utf8State
 )
 
-// nolint: unused
+// StateNames provides string names for parser states.
 var StateNames = []string{
 	"GroundState",
 	"CsiEntryState",

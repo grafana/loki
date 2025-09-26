@@ -1,6 +1,7 @@
 export interface SampledQuery {
   correlationId: string;
   tenantId: string;
+  user: string;
   query: string;
   queryType: string;
   startTime: string;
@@ -39,6 +40,10 @@ export interface SampledQuery {
   cellATraceID: string | null;
   cellBTraceID: string | null;
   
+  // Span IDs
+  cellASpanID: string | null;
+  cellBSpanID: string | null;
+  
   // Trace ID explore links (only included when explore config is available)
   cellATraceLink?: string | null;
   cellBTraceLink?: string | null;
@@ -46,6 +51,10 @@ export interface SampledQuery {
   // Logs explore links (only included when logs config is available)
   cellALogsLink?: string | null;
   cellBLogsLink?: string | null;
+  
+  // Query engine version tracking
+  cellAUsedNewEngine: boolean;
+  cellBUsedNewEngine: boolean;
   
   sampledAt: string;
   createdAt: string;
@@ -63,15 +72,15 @@ export type OutcomeFilter = typeof OUTCOME_ALL | typeof OUTCOME_MATCH | typeof O
 export interface ComparisonOutcome {
   correlationId: string;
   comparisonStatus: string;
-  differenceDetails: any | null;
-  performanceMetrics: any | null;
+  differenceDetails: unknown | null;
+  performanceMetrics: unknown | null;
   comparedAt: string;
   createdAt: string;
 }
 
 export interface GoldfishAPIResponse {
   queries: SampledQuery[];
-  total: number;
+  hasMore: boolean;
   page: number;
   pageSize: number;
 }

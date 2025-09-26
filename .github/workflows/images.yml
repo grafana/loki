@@ -1,18 +1,18 @@
 "jobs":
   "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@39f70c4db167e7e61065455fdbc48b50fd7c12a2"
+    "uses": "grafana/loki-release/.github/workflows/check.yml@6c4953b6960ddbed8db8c9b05dd34fc04777615d"
     "with":
       "build_image": "grafana/loki-build-image:0.34.6"
-      "golang_ci_lint_version": "v1.64.5"
-      "release_lib_ref": "39f70c4db167e7e61065455fdbc48b50fd7c12a2"
+      "golang_ci_lint_version": "v2.3.0"
+      "release_lib_ref": "6c4953b6960ddbed8db8c9b05dd34fc04777615d"
       "skip_validation": false
       "use_github_app_token": true
   "loki-canary-boringcrypto-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.24.4"
+      "GO_VERSION": "1.24.6"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "39f70c4db167e7e61065455fdbc48b50fd7c12a2"
+      "RELEASE_LIB_REF": "6c4953b6960ddbed8db8c9b05dd34fc04777615d"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -133,9 +133,9 @@
   "loki-canary-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.24.4"
+      "GO_VERSION": "1.24.6"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "39f70c4db167e7e61065455fdbc48b50fd7c12a2"
+      "RELEASE_LIB_REF": "6c4953b6960ddbed8db8c9b05dd34fc04777615d"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -256,9 +256,9 @@
   "loki-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.24.4"
+      "GO_VERSION": "1.24.6"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "39f70c4db167e7e61065455fdbc48b50fd7c12a2"
+      "RELEASE_LIB_REF": "6c4953b6960ddbed8db8c9b05dd34fc04777615d"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -379,9 +379,9 @@
   "promtail-image":
     "env":
       "BUILD_TIMEOUT": 60
-      "GO_VERSION": "1.24.4"
+      "GO_VERSION": "1.24.6"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "39f70c4db167e7e61065455fdbc48b50fd7c12a2"
+      "RELEASE_LIB_REF": "6c4953b6960ddbed8db8c9b05dd34fc04777615d"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"

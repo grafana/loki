@@ -275,7 +275,7 @@ For information on how to configure Loki, refer to the [OTel Collector topic](ht
 
 <!-- vale Google.Will = NO -->
 {{< admonition type="note" >}}
-When configuring the OpenTelemetry Collector, you must use `endpoint: http://<loki-addr>:3100/otlp`, as the collector automatically completes the endpoint.  Entering the full endpoint will generate an error.
+When configuring the OpenTelemetry Collector, you must use `endpoint: http://<loki-addr>/otlp`, as the collector automatically completes the endpoint.  Entering the full endpoint will generate an error.
 {{< /admonition >}}
 <!-- vale Google.Will = YES -->
 

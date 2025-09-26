@@ -1,8 +1,8 @@
 package logs_test
 
 import (
-	"bytes"
 	"context"
+	"io"
 	"testing"
 	"time"
 
@@ -46,8 +46,9 @@ func Test(t *testing.T) {
 		tracker.Append(record)
 	}
 
-	buf, err := buildObject(tracker)
+	obj, closer, err := buildObject(tracker)
 	require.NoError(t, err)
+	defer closer.Close()
 
 	// The order of records should be sorted by timestamp DESC then stream ID, and all
 	// metadata should be sorted by key then value.
@@ -72,9 +73,6 @@ func Test(t *testing.T) {
 		},
 	}
 
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf), int64(len(buf)))
-	require.NoError(t, err)
-
 	i := 0
 	for result := range logs.Iter(context.Background(), obj) {
 		record, err := result.Value()
@@ -84,14 +82,10 @@ func Test(t *testing.T) {
 	}
 }
 
-func buildObject(lt *logs.Builder) ([]byte, error) {
-	var buf bytes.Buffer
-
-	builder := dataobj.NewBuilder()
+func buildObject(lt *logs.Builder) (*dataobj.Object, io.Closer, error) {
+	builder := dataobj.NewBuilder(nil)
 	if err := builder.Append(lt); err != nil {
-		return nil, err
-	} else if _, err := builder.Flush(&buf); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return buf.Bytes(), nil
+	return builder.Flush()
 }

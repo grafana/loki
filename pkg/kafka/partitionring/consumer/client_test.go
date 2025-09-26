@@ -79,7 +79,7 @@ func TestPartitionMonitorRebalancing(t *testing.T) {
 					assignedPartitions.Delete(p)
 				}
 
-				// Complete commiting offsets before finishing the revoke
+				// Complete committing offsets before finishing the revoke
 				_ = client.CommitUncommittedOffsets(ctx)
 				t.Logf("%s completed revoke", id)
 			}),

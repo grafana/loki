@@ -1,6 +1,7 @@
 package sarama
 
 import (
+	"slices"
 	"sort"
 	"time"
 )
@@ -16,6 +17,10 @@ type DeleteRecordsRequest struct {
 	Version int16
 	Topics  map[string]*DeleteRecordsRequestTopic
 	Timeout time.Duration
+}
+
+func (d *DeleteRecordsRequest) setVersion(v int16) {
+	d.Version = v
 }
 
 func (d *DeleteRecordsRequest) encode(pe packetEncoder) error {
@@ -71,7 +76,7 @@ func (d *DeleteRecordsRequest) decode(pd packetDecoder, version int16) error {
 }
 
 func (d *DeleteRecordsRequest) key() int16 {
-	return 21
+	return apiKeyDeleteRecords
 }
 
 func (d *DeleteRecordsRequest) version() int16 {
@@ -107,7 +112,7 @@ func (t *DeleteRecordsRequestTopic) encode(pe packetEncoder) error {
 	for partition := range t.PartitionOffsets {
 		keys = append(keys, partition)
 	}
-	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	slices.Sort(keys)
 	for _, partition := range keys {
 		pe.putInt32(partition)
 		pe.putInt64(t.PartitionOffsets[partition])

@@ -26,7 +26,6 @@ type streamsView struct {
 	idColumn      *streams.Column
 	searchColumns []*streams.Column // stream ID + labels
 	batchSize     int
-	pageCacheSize int
 
 	initialized  bool
 	streams      arrow.Table
@@ -153,9 +152,8 @@ func (v *streamsView) init(ctx context.Context) (err error) {
 	}
 
 	readerOptions := streams.ReaderOptions{
-		Columns:       v.searchColumns,
-		Allocator:     memory.DefaultAllocator,
-		PageCacheSize: v.pageCacheSize,
+		Columns:   v.searchColumns,
+		Allocator: memory.DefaultAllocator,
 	}
 
 	var scalarIDs []scalar.Scalar

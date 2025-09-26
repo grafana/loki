@@ -10,6 +10,10 @@ type AlterUserScramCredentialsRequest struct {
 	Upsertions []AlterUserScramCredentialsUpsert
 }
 
+func (r *AlterUserScramCredentialsRequest) setVersion(v int16) {
+	r.Version = v
+}
+
 type AlterUserScramCredentialsDelete struct {
 	Name      string
 	Mechanism ScramMechanismType
@@ -126,7 +130,7 @@ func (r *AlterUserScramCredentialsRequest) decode(pd packetDecoder, version int1
 }
 
 func (r *AlterUserScramCredentialsRequest) key() int16 {
-	return 51
+	return apiKeyAlterUserScramCredentials
 }
 
 func (r *AlterUserScramCredentialsRequest) version() int16 {

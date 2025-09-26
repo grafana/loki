@@ -9,7 +9,6 @@ package ptrace
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlptrace "go.opentelemetry.io/collector/pdata/internal/data/protogen/trace/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -34,8 +33,7 @@ func newResourceSpans(orig *otlptrace.ResourceSpans, state *internal.State) Reso
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewResourceSpans() ResourceSpans {
-	state := internal.StateMutable
-	return newResourceSpans(&otlptrace.ResourceSpans{}, &state)
+	return newResourceSpans(internal.NewOrigResourceSpans(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -47,13 +45,18 @@ func (ms ResourceSpans) MoveTo(dest ResourceSpans) {
 	if ms.orig == dest.orig {
 		return
 	}
-	*dest.orig = *ms.orig
-	*ms.orig = otlptrace.ResourceSpans{}
+	internal.DeleteOrigResourceSpans(dest.orig, false)
+	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Resource returns the resource associated with this ResourceSpans.
 func (ms ResourceSpans) Resource() pcommon.Resource {
 	return pcommon.Resource(internal.NewResource(&ms.orig.Resource, ms.state))
+}
+
+// ScopeSpans returns the ScopeSpans associated with this ResourceSpans.
+func (ms ResourceSpans) ScopeSpans() ScopeSpansSlice {
+	return newScopeSpansSlice(&ms.orig.ScopeSpans, ms.state)
 }
 
 // SchemaUrl returns the schemaurl associated with this ResourceSpans.
@@ -67,35 +70,8 @@ func (ms ResourceSpans) SetSchemaUrl(v string) {
 	ms.orig.SchemaUrl = v
 }
 
-// ScopeSpans returns the ScopeSpans associated with this ResourceSpans.
-func (ms ResourceSpans) ScopeSpans() ScopeSpansSlice {
-	return newScopeSpansSlice(&ms.orig.ScopeSpans, ms.state)
-}
-
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms ResourceSpans) CopyTo(dest ResourceSpans) {
 	dest.state.AssertMutable()
-	copyOrigResourceSpans(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms ResourceSpans) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	dest.WriteObjectField("resource")
-	internal.MarshalJSONStreamResource(internal.NewResource(&ms.orig.Resource, ms.state), dest)
-	if ms.orig.SchemaUrl != "" {
-		dest.WriteObjectField("schemaUrl")
-		dest.WriteString(ms.orig.SchemaUrl)
-	}
-	if len(ms.orig.ScopeSpans) > 0 {
-		dest.WriteObjectField("scopeSpans")
-		ms.ScopeSpans().marshalJSONStream(dest)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigResourceSpans(dest, src *otlptrace.ResourceSpans) {
-	internal.CopyOrigResource(&dest.Resource, &src.Resource)
-	dest.SchemaUrl = src.SchemaUrl
-	dest.ScopeSpans = copyOrigScopeSpansSlice(dest.ScopeSpans, src.ScopeSpans)
+	internal.CopyOrigResourceSpans(dest.orig, ms.orig)
 }

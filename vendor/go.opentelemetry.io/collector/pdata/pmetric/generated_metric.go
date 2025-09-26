@@ -9,7 +9,6 @@ package pmetric
 import (
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlpmetrics "go.opentelemetry.io/collector/pdata/internal/data/protogen/metrics/v1"
-	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -35,8 +34,7 @@ func newMetric(orig *otlpmetrics.Metric, state *internal.State) Metric {
 // This must be used only in testing code. Users should use "AppendEmpty" when part of a Slice,
 // OR directly access the member if this is embedded in another struct.
 func NewMetric() Metric {
-	state := internal.StateMutable
-	return newMetric(&otlpmetrics.Metric{}, &state)
+	return newMetric(internal.NewOrigMetric(), internal.NewState())
 }
 
 // MoveTo moves all properties from the current struct overriding the destination and
@@ -48,8 +46,8 @@ func (ms Metric) MoveTo(dest Metric) {
 	if ms.orig == dest.orig {
 		return
 	}
-	*dest.orig = *ms.orig
-	*ms.orig = otlpmetrics.Metric{}
+	internal.DeleteOrigMetric(dest.orig, false)
+	*dest.orig, *ms.orig = *ms.orig, *dest.orig
 }
 
 // Name returns the name associated with this Metric.
@@ -83,11 +81,6 @@ func (ms Metric) Unit() string {
 func (ms Metric) SetUnit(v string) {
 	ms.state.AssertMutable()
 	ms.orig.Unit = v
-}
-
-// Metadata returns the Metadata associated with this Metric.
-func (ms Metric) Metadata() pcommon.Map {
-	return pcommon.Map(internal.NewMap(&ms.orig.Metadata, ms.state))
 }
 
 // Type returns the type of the data for this Metric.
@@ -129,9 +122,15 @@ func (ms Metric) Gauge() Gauge {
 // Calling this function on zero-initialized Metric will cause a panic.
 func (ms Metric) SetEmptyGauge() Gauge {
 	ms.state.AssertMutable()
-	val := &otlpmetrics.Gauge{}
-	ms.orig.Data = &otlpmetrics.Metric_Gauge{Gauge: val}
-	return newGauge(val, ms.state)
+	var ov *otlpmetrics.Metric_Gauge
+	if !internal.UseProtoPooling.IsEnabled() {
+		ov = &otlpmetrics.Metric_Gauge{}
+	} else {
+		ov = internal.ProtoPoolMetric_Gauge.Get().(*otlpmetrics.Metric_Gauge)
+	}
+	ov.Gauge = internal.NewOrigGauge()
+	ms.orig.Data = ov
+	return newGauge(ov.Gauge, ms.state)
 }
 
 // Sum returns the sum associated with this Metric.
@@ -155,9 +154,15 @@ func (ms Metric) Sum() Sum {
 // Calling this function on zero-initialized Metric will cause a panic.
 func (ms Metric) SetEmptySum() Sum {
 	ms.state.AssertMutable()
-	val := &otlpmetrics.Sum{}
-	ms.orig.Data = &otlpmetrics.Metric_Sum{Sum: val}
-	return newSum(val, ms.state)
+	var ov *otlpmetrics.Metric_Sum
+	if !internal.UseProtoPooling.IsEnabled() {
+		ov = &otlpmetrics.Metric_Sum{}
+	} else {
+		ov = internal.ProtoPoolMetric_Sum.Get().(*otlpmetrics.Metric_Sum)
+	}
+	ov.Sum = internal.NewOrigSum()
+	ms.orig.Data = ov
+	return newSum(ov.Sum, ms.state)
 }
 
 // Histogram returns the histogram associated with this Metric.
@@ -181,9 +186,15 @@ func (ms Metric) Histogram() Histogram {
 // Calling this function on zero-initialized Metric will cause a panic.
 func (ms Metric) SetEmptyHistogram() Histogram {
 	ms.state.AssertMutable()
-	val := &otlpmetrics.Histogram{}
-	ms.orig.Data = &otlpmetrics.Metric_Histogram{Histogram: val}
-	return newHistogram(val, ms.state)
+	var ov *otlpmetrics.Metric_Histogram
+	if !internal.UseProtoPooling.IsEnabled() {
+		ov = &otlpmetrics.Metric_Histogram{}
+	} else {
+		ov = internal.ProtoPoolMetric_Histogram.Get().(*otlpmetrics.Metric_Histogram)
+	}
+	ov.Histogram = internal.NewOrigHistogram()
+	ms.orig.Data = ov
+	return newHistogram(ov.Histogram, ms.state)
 }
 
 // ExponentialHistogram returns the exponentialhistogram associated with this Metric.
@@ -207,9 +218,15 @@ func (ms Metric) ExponentialHistogram() ExponentialHistogram {
 // Calling this function on zero-initialized Metric will cause a panic.
 func (ms Metric) SetEmptyExponentialHistogram() ExponentialHistogram {
 	ms.state.AssertMutable()
-	val := &otlpmetrics.ExponentialHistogram{}
-	ms.orig.Data = &otlpmetrics.Metric_ExponentialHistogram{ExponentialHistogram: val}
-	return newExponentialHistogram(val, ms.state)
+	var ov *otlpmetrics.Metric_ExponentialHistogram
+	if !internal.UseProtoPooling.IsEnabled() {
+		ov = &otlpmetrics.Metric_ExponentialHistogram{}
+	} else {
+		ov = internal.ProtoPoolMetric_ExponentialHistogram.Get().(*otlpmetrics.Metric_ExponentialHistogram)
+	}
+	ov.ExponentialHistogram = internal.NewOrigExponentialHistogram()
+	ms.orig.Data = ov
+	return newExponentialHistogram(ov.ExponentialHistogram, ms.state)
 }
 
 // Summary returns the summary associated with this Metric.
@@ -233,91 +250,24 @@ func (ms Metric) Summary() Summary {
 // Calling this function on zero-initialized Metric will cause a panic.
 func (ms Metric) SetEmptySummary() Summary {
 	ms.state.AssertMutable()
-	val := &otlpmetrics.Summary{}
-	ms.orig.Data = &otlpmetrics.Metric_Summary{Summary: val}
-	return newSummary(val, ms.state)
+	var ov *otlpmetrics.Metric_Summary
+	if !internal.UseProtoPooling.IsEnabled() {
+		ov = &otlpmetrics.Metric_Summary{}
+	} else {
+		ov = internal.ProtoPoolMetric_Summary.Get().(*otlpmetrics.Metric_Summary)
+	}
+	ov.Summary = internal.NewOrigSummary()
+	ms.orig.Data = ov
+	return newSummary(ov.Summary, ms.state)
+}
+
+// Metadata returns the Metadata associated with this Metric.
+func (ms Metric) Metadata() pcommon.Map {
+	return pcommon.Map(internal.NewMap(&ms.orig.Metadata, ms.state))
 }
 
 // CopyTo copies all properties from the current struct overriding the destination.
 func (ms Metric) CopyTo(dest Metric) {
 	dest.state.AssertMutable()
-	copyOrigMetric(dest.orig, ms.orig)
-}
-
-// marshalJSONStream marshals all properties from the current struct to the destination stream.
-func (ms Metric) marshalJSONStream(dest *json.Stream) {
-	dest.WriteObjectStart()
-	if ms.orig.Name != "" {
-		dest.WriteObjectField("name")
-		dest.WriteString(ms.orig.Name)
-	}
-	if ms.orig.Description != "" {
-		dest.WriteObjectField("description")
-		dest.WriteString(ms.orig.Description)
-	}
-	if ms.orig.Unit != "" {
-		dest.WriteObjectField("unit")
-		dest.WriteString(ms.orig.Unit)
-	}
-	if len(ms.orig.Metadata) > 0 {
-		dest.WriteObjectField("metadata")
-		internal.MarshalJSONStreamMap(internal.NewMap(&ms.orig.Metadata, ms.state), dest)
-	}
-	switch ov := ms.orig.Data.(type) {
-	case *otlpmetrics.Metric_Gauge:
-		dest.WriteObjectField("gauge")
-		newGauge(ov.Gauge, ms.state).marshalJSONStream(dest)
-	case *otlpmetrics.Metric_Sum:
-		dest.WriteObjectField("sum")
-		newSum(ov.Sum, ms.state).marshalJSONStream(dest)
-	case *otlpmetrics.Metric_Histogram:
-		dest.WriteObjectField("histogram")
-		newHistogram(ov.Histogram, ms.state).marshalJSONStream(dest)
-	case *otlpmetrics.Metric_ExponentialHistogram:
-		dest.WriteObjectField("exponentialHistogram")
-		newExponentialHistogram(ov.ExponentialHistogram, ms.state).marshalJSONStream(dest)
-	case *otlpmetrics.Metric_Summary:
-		dest.WriteObjectField("summary")
-		newSummary(ov.Summary, ms.state).marshalJSONStream(dest)
-	}
-	dest.WriteObjectEnd()
-}
-
-func copyOrigMetric(dest, src *otlpmetrics.Metric) {
-	dest.Name = src.Name
-	dest.Description = src.Description
-	dest.Unit = src.Unit
-	dest.Metadata = internal.CopyOrigMap(dest.Metadata, src.Metadata)
-	switch t := src.Data.(type) {
-	case *otlpmetrics.Metric_Gauge:
-		gauge := &otlpmetrics.Gauge{}
-		copyOrigGauge(gauge, t.Gauge)
-		dest.Data = &otlpmetrics.Metric_Gauge{
-			Gauge: gauge,
-		}
-	case *otlpmetrics.Metric_Sum:
-		sum := &otlpmetrics.Sum{}
-		copyOrigSum(sum, t.Sum)
-		dest.Data = &otlpmetrics.Metric_Sum{
-			Sum: sum,
-		}
-	case *otlpmetrics.Metric_Histogram:
-		histogram := &otlpmetrics.Histogram{}
-		copyOrigHistogram(histogram, t.Histogram)
-		dest.Data = &otlpmetrics.Metric_Histogram{
-			Histogram: histogram,
-		}
-	case *otlpmetrics.Metric_ExponentialHistogram:
-		exponentialhistogram := &otlpmetrics.ExponentialHistogram{}
-		copyOrigExponentialHistogram(exponentialhistogram, t.ExponentialHistogram)
-		dest.Data = &otlpmetrics.Metric_ExponentialHistogram{
-			ExponentialHistogram: exponentialhistogram,
-		}
-	case *otlpmetrics.Metric_Summary:
-		summary := &otlpmetrics.Summary{}
-		copyOrigSummary(summary, t.Summary)
-		dest.Data = &otlpmetrics.Metric_Summary{
-			Summary: summary,
-		}
-	}
+	internal.CopyOrigMetric(dest.orig, ms.orig)
 }

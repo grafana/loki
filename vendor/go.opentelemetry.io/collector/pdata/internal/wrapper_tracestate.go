@@ -24,23 +24,21 @@ func NewTraceState(orig *string, state *State) TraceState {
 	return TraceState{orig: orig, state: state}
 }
 
+func GenerateTestTraceState() TraceState {
+	return NewTraceState(GenTestOrigTraceState(), NewState())
+}
+
+// UnmarshalJSONOrigTraceState marshals all properties from the current struct to the destination stream.
+func UnmarshalJSONOrigTraceState(orig *string, iter *json.Iterator) {
+	*orig = iter.ReadString()
+}
+
 func CopyOrigTraceState(dest, src *string) {
 	*dest = *src
 }
 
-func GenerateTestTraceState() TraceState {
-	var orig string
-	state := StateMutable
-	ms := NewTraceState(&orig, &state)
-	FillTestTraceState(ms)
-	return ms
-}
-
-func FillTestTraceState(dest TraceState) {
-	*dest.orig = "rojo=00f067aa0ba902b7"
-}
-
-// MarshalJSONStreamTraceState marshals all properties from the current struct to the destination stream.
-func MarshalJSONStreamTraceState(ms TraceState, dest *json.Stream) {
-	dest.WriteString(*ms.orig)
+func GenTestOrigTraceState() *string {
+	orig := new(string)
+	*orig = "rojo=00f067aa0ba902b7"
+	return orig
 }

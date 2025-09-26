@@ -3,12 +3,26 @@ package sarama
 type ListGroupsRequest struct {
 	Version      int16
 	StatesFilter []string // version 4 or later
+	TypesFilter  []string // version 5 or later
+}
+
+func (r *ListGroupsRequest) setVersion(v int16) {
+	r.Version = v
 }
 
 func (r *ListGroupsRequest) encode(pe packetEncoder) error {
 	if r.Version >= 4 {
 		pe.putCompactArrayLength(len(r.StatesFilter))
 		for _, filter := range r.StatesFilter {
+			err := pe.putCompactString(filter)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	if r.Version >= 5 {
+		pe.putCompactArrayLength(len(r.TypesFilter))
+		for _, filter := range r.TypesFilter {
 			err := pe.putCompactString(filter)
 			if err != nil {
 				return err
@@ -37,6 +51,20 @@ func (r *ListGroupsRequest) decode(pd packetDecoder, version int16) (err error) 
 			}
 		}
 	}
+	if r.Version >= 5 {
+		filterLen, err := pd.getCompactArrayLength()
+		if err != nil {
+			return err
+		}
+		if filterLen > 0 {
+			r.TypesFilter = make([]string, filterLen)
+			for i := 0; i < filterLen; i++ {
+				if r.TypesFilter[i], err = pd.getCompactString(); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	if r.Version >= 3 {
 		if _, err = pd.getEmptyTaggedFieldArray(); err != nil {
 			return err
@@ -46,7 +74,7 @@ func (r *ListGroupsRequest) decode(pd packetDecoder, version int16) (err error) 
 }
 
 func (r *ListGroupsRequest) key() int16 {
-	return 16
+	return apiKeyListGroups
 }
 
 func (r *ListGroupsRequest) version() int16 {
@@ -61,11 +89,13 @@ func (r *ListGroupsRequest) headerVersion() int16 {
 }
 
 func (r *ListGroupsRequest) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 4
+	return r.Version >= 0 && r.Version <= 5
 }
 
 func (r *ListGroupsRequest) requiredVersion() KafkaVersion {
 	switch r.Version {
+	case 5:
+		return V3_8_0_0
 	case 4:
 		return V2_6_0_0
 	case 3:

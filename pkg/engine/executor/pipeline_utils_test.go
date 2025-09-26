@@ -34,13 +34,10 @@ func AssertPipelinesEqual(t testing.TB, left, right Pipeline) {
 				leftBatch = nil
 			}
 
-			leftErr = left.Read(ctx)
+			leftBatch, leftErr = left.Read(ctx)
 			if leftErr == nil {
-				leftBatch, leftErr = left.Value()
-				if leftErr == nil {
-					leftRemain = leftBatch.NumRows()
-					leftPos = 0
-				}
+				leftRemain = leftBatch.NumRows()
+				leftPos = 0
 			}
 		}
 
@@ -50,13 +47,10 @@ func AssertPipelinesEqual(t testing.TB, left, right Pipeline) {
 				rightBatch = nil
 			}
 
-			rightErr = right.Read(ctx)
+			rightBatch, rightErr = right.Read(ctx)
 			if rightErr == nil {
-				rightBatch, rightErr = right.Value()
-				if rightErr == nil {
-					rightRemain = rightBatch.NumRows()
-					rightPos = 0
-				}
+				rightRemain = rightBatch.NumRows()
+				rightPos = 0
 			}
 		}
 

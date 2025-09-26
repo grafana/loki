@@ -12,8 +12,6 @@ import (
 	"github.com/grafana/dskit/ring"
 )
 
-var ingesterIDRegexp = regexp.MustCompile("-([0-9]+)$")
-
 type Config struct {
 	KVStore kv.Config `yaml:"kvstore" doc:"description=The key-value store used to share the hash ring across multiple instances. This option needs be set on ingesters, distributors, queriers, and rulers when running in microservices mode."`
 
@@ -52,22 +50,18 @@ func (cfg *Config) ToLifecyclerConfig(partitionID int32, instanceID string) ring
 	}
 }
 
-// ExtractIngesterPartitionID returns the partition ID owner the the given ingester.
-func ExtractIngesterPartitionID(ingesterID string) (int32, error) {
-	if strings.Contains(ingesterID, "local") || strings.HasSuffix(ingesterID, ".lan") {
+// ExtractPartitionID extracts the partition ID from the string.
+func ExtractPartitionID(s string) (int32, error) {
+	if strings.Contains(s, "local") || strings.HasSuffix(s, ".lan") {
 		return 0, nil
 	}
-
-	match := ingesterIDRegexp.FindStringSubmatch(ingesterID)
+	match := regexp.MustCompile("-([0-9]+)$").FindStringSubmatch(s)
 	if len(match) == 0 {
-		return 0, fmt.Errorf("ingester ID %s doesn't match regular expression %q", ingesterID, ingesterIDRegexp.String())
+		return 0, fmt.Errorf("%s does not contain a partition ID", s)
 	}
-
-	// Parse the ingester sequence number.
-	ingesterSeq, err := strconv.ParseInt(match[1], 10, 32)
+	partitionID, err := strconv.ParseInt(match[1], 10, 32)
 	if err != nil {
-		return 0, fmt.Errorf("no ingester sequence number in ingester ID %s", ingesterID)
+		return 0, fmt.Errorf("%s does not contain a partition ID", s)
 	}
-
-	return int32(ingesterSeq), nil
+	return int32(partitionID), nil
 }

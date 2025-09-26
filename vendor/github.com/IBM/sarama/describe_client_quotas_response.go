@@ -24,6 +24,10 @@ type DescribeClientQuotasResponse struct {
 	Entries      []DescribeClientQuotasEntry // A result entry.
 }
 
+func (d *DescribeClientQuotasResponse) setVersion(v int16) {
+	d.Version = v
+}
+
 type DescribeClientQuotasEntry struct {
 	Entity []QuotaEntityComponent // The quota entity description.
 	Values map[string]float64     // The quota values for the entity.
@@ -220,7 +224,7 @@ func (c *QuotaEntityComponent) decode(pd packetDecoder, version int16) error {
 }
 
 func (d *DescribeClientQuotasResponse) key() int16 {
-	return 48
+	return apiKeyDescribeClientQuotas
 }
 
 func (d *DescribeClientQuotasResponse) version() int16 {

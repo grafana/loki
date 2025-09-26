@@ -8,6 +8,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/user"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -26,17 +27,16 @@ type Config struct {
 	BatchSize int64
 	Bucket    objstore.Bucket
 
-	DataobjScanPageCacheSize int64
+	MergePrefetchCount int
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
 	c := &Context{
-		plan:      plan,
-		batchSize: cfg.BatchSize,
-		bucket:    cfg.Bucket,
-		logger:    logger,
-
-		dataobjScanPageCacheSize: cfg.DataobjScanPageCacheSize,
+		plan:               plan,
+		batchSize:          cfg.BatchSize,
+		mergePrefetchCount: cfg.MergePrefetchCount,
+		bucket:             cfg.Bucket,
+		logger:             logger,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -51,12 +51,13 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 // Context is the execution context
 type Context struct {
 	batchSize int64
+
 	logger    log.Logger
 	plan      *physical.Plan
 	evaluator expressionEvaluator
 	bucket    objstore.Bucket
 
-	dataobjScanPageCacheSize int64
+	mergePrefetchCount int
 }
 
 func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
@@ -92,6 +93,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return tracePipeline("physical.RangeAggregation", c.executeRangeAggregation(ctx, n, inputs))
 	case *physical.VectorAggregation:
 		return tracePipeline("physical.VectorAggregation", c.executeVectorAggregation(ctx, n, inputs))
+	case *physical.ParseNode:
+		return tracePipeline("physical.ParseNode", c.executeParse(ctx, n, inputs))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
@@ -124,7 +127,16 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		logsSection    *logs.Section
 	)
 
+	tenant, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return errorPipeline(ctx, fmt.Errorf("missing org ID: %w", err))
+	}
+
 	for _, sec := range obj.Sections().Filter(streams.CheckSection) {
+		if sec.Tenant != tenant {
+			continue
+		}
+
 		if streamsSection != nil {
 			return errorPipeline(ctx, fmt.Errorf("multiple streams sections found in data object %q", node.Location))
 		}
@@ -188,8 +200,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		Allocator: memory.DefaultAllocator,
 
 		BatchSize: c.batchSize,
-		CacheSize: int(c.dataobjScanPageCacheSize),
-	})
+	}, log.With(c.logger, "location", string(node.Location), "section", node.Section))
 
 	sortType, sortDirection, err := logsSection.PrimarySortOrder()
 	if err != nil {
@@ -314,7 +325,7 @@ func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []
 		return emptyPipeline()
 	}
 
-	pipeline, err := NewMergePipeline(inputs)
+	pipeline, err := newMergePipeline(inputs, c.mergePrefetchCount)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
@@ -364,7 +375,7 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 		return emptyPipeline()
 	}
 
-	pipeline, err := NewRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
+	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
 		partitionBy:   plan.PartitionBy,
 		startTs:       plan.Start,
 		endTs:         plan.End,
@@ -389,10 +400,25 @@ func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.V
 		return emptyPipeline()
 	}
 
-	pipeline, err := NewVectorAggregationPipeline(inputs, plan.GroupBy, c.evaluator)
+	pipeline, err := newVectorAggregationPipeline(inputs, plan.GroupBy, c.evaluator)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
 
 	return pipeline
+}
+
+func (c *Context) executeParse(ctx context.Context, parse *physical.ParseNode, inputs []Pipeline) Pipeline {
+	if len(inputs) == 0 {
+		return emptyPipeline()
+	}
+
+	if len(inputs) > 1 {
+		return errorPipeline(ctx, fmt.Errorf("parse expects exactly one input, got %d", len(inputs)))
+	}
+
+	// Use memory allocator from context or default
+	allocator := memory.DefaultAllocator
+
+	return NewParsePipeline(parse, inputs[0], allocator)
 }

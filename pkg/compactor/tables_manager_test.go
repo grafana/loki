@@ -506,6 +506,6 @@ func (d *dummyStorageUpdatesIterator) Err() error {
 	return d.err
 }
 
-func (d *dummyStorageUpdatesIterator) ForEachSeries(_ func(_ string, _ []string, _ []string, _ []deletion.Chunk) error) error {
+func (d *dummyStorageUpdatesIterator) ForEachSeries(_ func(_ string, _ map[string]deletion.Chunk, _ []string) error) error {
 	return nil
 }

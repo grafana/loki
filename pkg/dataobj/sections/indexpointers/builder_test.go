@@ -1,7 +1,6 @@
 package indexpointers
 
 import (
-	"bytes"
 	"context"
 	"testing"
 	"time"
@@ -23,18 +22,17 @@ func TestBuilder(t *testing.T) {
 		{path: "bar", start: unixTime(10), end: unixTime(20)},
 	}
 
-	ib := NewBuilder(nil, 1024)
+	ib := NewBuilder(nil, 1024, 0)
 	for _, p := range pp {
 		ib.Append(p.path, p.start, p.end)
 	}
 
-	var buf bytes.Buffer
-	b := dataobj.NewBuilder()
-	err := b.Append(ib)
-	require.NoError(t, err)
+	b := dataobj.NewBuilder(nil)
+	require.NoError(t, b.Append(ib))
 
-	_, err = b.Flush(&buf)
+	obj, closer, err := b.Flush()
 	require.NoError(t, err)
+	defer closer.Close()
 
 	expect := []IndexPointer{
 		{
@@ -48,10 +46,6 @@ func TestBuilder(t *testing.T) {
 			EndTs:   unixTime(20),
 		},
 	}
-
-	bufBytes := buf.Bytes()
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(bufBytes), int64(len(bufBytes)))
-	require.NoError(t, err)
 
 	var actual []IndexPointer
 	for result := range Iter(context.Background(), obj) {

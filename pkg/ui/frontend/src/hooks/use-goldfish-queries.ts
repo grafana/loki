@@ -1,97 +1,119 @@
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchSampledQueries } from '@/lib/goldfish-api';
-import { OutcomeFilter, OUTCOME_ALL, OUTCOME_MATCH, OUTCOME_MISMATCH, OUTCOME_ERROR } from '@/types/goldfish';
+import { OutcomeFilter, SampledQuery } from '@/types/goldfish';
 
 const QUERY_OPTIONS = {
-  staleTime: 5 * 60 * 1000, // 5 minutes
+  staleTime: 1000, // 1 second - very short to ensure fresh data on filter changes
   gcTime: 10 * 60 * 1000, // 10 minutes
+  refetchOnMount: 'always' as const, // Always refetch when component mounts or query key changes
 };
 
-export function useGoldfishQueries(page: number, pageSize: number, selectedOutcome: OutcomeFilter) {
-  // Main query always fetches all data
-  const mainQuery = useQuery({
-    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_ALL],
-    queryFn: () => fetchSampledQueries(page, pageSize, OUTCOME_ALL),
-    ...QUERY_OPTIONS,
-  });
-
-  // Background queries for specific filters
-  const matchQuery = useQuery({
-    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_MATCH],
-    queryFn: () => fetchSampledQueries(page, pageSize, OUTCOME_MATCH),
-    enabled: selectedOutcome === OUTCOME_MATCH,
-    ...QUERY_OPTIONS,
-  });
-
-  const mismatchQuery = useQuery({
-    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_MISMATCH],
-    queryFn: () => fetchSampledQueries(page, pageSize, OUTCOME_MISMATCH),
-    enabled: selectedOutcome === OUTCOME_MISMATCH,
-    ...QUERY_OPTIONS,
-  });
-
-  const errorQuery = useQuery({
-    queryKey: ['goldfish-queries', page, pageSize, OUTCOME_ERROR],
-    queryFn: () => fetchSampledQueries(page, pageSize, OUTCOME_ERROR),
-    enabled: selectedOutcome === OUTCOME_ERROR,
-    ...QUERY_OPTIONS,
-  });
-
-  // Calculate total pages
-  const totalPages = useMemo(() => {
-    return mainQuery.data ? Math.ceil(mainQuery.data.total / pageSize) : 0;
-  }, [mainQuery.data, pageSize]);
-
-  // Prefetch next page for main query
-  useQuery({
-    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_ALL],
-    queryFn: () => fetchSampledQueries(page + 1, pageSize, OUTCOME_ALL),
-    enabled: totalPages > 1 && page < totalPages,
-    ...QUERY_OPTIONS,
-  });
-
-  // Prefetch next page for specific filter outcomes
-  useQuery({
-    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_MATCH],
-    queryFn: () => fetchSampledQueries(page + 1, pageSize, OUTCOME_MATCH),
-    enabled: selectedOutcome === OUTCOME_MATCH && totalPages > 1 && page < totalPages,
-    ...QUERY_OPTIONS,
-  });
-
-  useQuery({
-    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_MISMATCH],
-    queryFn: () => fetchSampledQueries(page + 1, pageSize, OUTCOME_MISMATCH),
-    enabled: selectedOutcome === OUTCOME_MISMATCH && totalPages > 1 && page < totalPages,
-    ...QUERY_OPTIONS,
-  });
-
-  useQuery({
-    queryKey: ['goldfish-queries', page + 1, pageSize, OUTCOME_ERROR],
-    queryFn: () => fetchSampledQueries(page + 1, pageSize, OUTCOME_ERROR),
-    enabled: selectedOutcome === OUTCOME_ERROR && totalPages > 1 && page < totalPages,
-    ...QUERY_OPTIONS,
-  });
-
-  // Determine which data source to use
-  const currentData = useMemo(() => {
-    switch (selectedOutcome) {
-      case OUTCOME_MATCH:
-        return matchQuery.data || mainQuery.data;
-      case OUTCOME_MISMATCH:
-        return mismatchQuery.data || mainQuery.data;
-      case OUTCOME_ERROR:
-        return errorQuery.data || mainQuery.data;
-      default:
-        return mainQuery.data;
+export function useGoldfishQueries(
+  pageSize: number, 
+  selectedOutcome: OutcomeFilter,
+  tenant?: string,
+  user?: string,
+  newEngine?: boolean,
+  from?: Date | null,
+  to?: Date | null
+) {
+  const queryClient = useQueryClient();
+  const [currentTraceId, setCurrentTraceId] = useState<string | null>(null);
+  const [allQueries, setAllQueries] = useState<SampledQuery[]>([]);
+  const [hasMore, setHasMore] = useState(true);
+  
+  // Track current page
+  const [currentPage, setCurrentPage] = useState(1);
+  
+  // Create a stable filter key for tracking changes
+  const filterKey = `${tenant ?? ''}-${user ?? ''}-${newEngine ?? ''}-${from?.getTime() ?? ''}-${to?.getTime() ?? ''}`;
+  const prevFilterKeyRef = useRef<string | undefined>(undefined);
+  
+  useEffect(() => {
+    if (prevFilterKeyRef.current !== undefined && prevFilterKeyRef.current !== filterKey) {
+      setCurrentPage(1);
     }
-  }, [selectedOutcome, matchQuery.data, mismatchQuery.data, errorQuery.data, mainQuery.data]);
+    prevFilterKeyRef.current = filterKey;
+  }, [filterKey]);
+  
+  // Single query - always sends ALL filters to backend
+  const query = useQuery({
+    queryKey: ['goldfish-queries', currentPage, pageSize, tenant, user, newEngine, from, to],
+    queryFn: async () => {
+      const result = await fetchSampledQueries(
+        currentPage, 
+        pageSize, 
+        tenant, 
+        user, 
+        newEngine, 
+        from ?? undefined, 
+        to ?? undefined
+      );
+      
+      setCurrentTraceId(result.traceId);
+      
+      if (result.error) {
+        throw result.error;
+      }
+      
+      return result.data;
+    },
+    ...QUERY_OPTIONS,
+  });
+
+  // Update state when data arrives - simple rule: page 1 replaces, page 2+ appends
+  useEffect(() => {
+    if (query.data) {
+      const newQueries = query.data.queries || [];
+      
+      if (currentPage === 1) {
+        // Page 1 means fresh start (either filter change or refresh)
+        setAllQueries(newQueries);
+      } else {
+        // Page 2+ means load more
+        setAllQueries(prev => [...prev, ...newQueries]);
+      }
+      
+      setHasMore(query.data?.hasMore || false);
+    }
+  }, [query.data, currentPage]);
+
+  // Apply outcome filter on frontend for immediate response and sort
+  const displayQueries = useMemo(() => {
+    return allQueries
+      .filter(q => {
+        if (selectedOutcome && selectedOutcome !== 'all') {
+          return q.comparisonStatus === selectedOutcome;
+        }
+        return true;
+      })
+      .sort((a, b) => 
+        new Date(b.sampledAt).getTime() - new Date(a.sampledAt).getTime()
+      );
+  }, [allQueries, selectedOutcome]);
+
+  // Load more function - increments page counter
+  const loadMore = useCallback(() => {
+    if (!query.isLoading && hasMore) {
+      setCurrentPage(prev => prev + 1);
+    }
+  }, [query.isLoading, hasMore]);
+
+  // Refresh function - invalidate cache and reset to page 1
+  const refresh = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['goldfish-queries'] });
+    setCurrentPage(1);
+  }, [queryClient]);
 
   return {
-    data: currentData,
-    isLoading: mainQuery.isLoading,
-    error: mainQuery.error,
-    refetch: mainQuery.refetch,
-    totalPages,
+    queries: displayQueries,
+    isLoading: query.isLoading && allQueries.length === 0, // Only show loading on initial load
+    isLoadingMore: query.isLoading && currentPage > 1,
+    error: query.error,
+    hasMore,
+    loadMore,
+    refresh,
+    traceId: currentTraceId,
   };
 }

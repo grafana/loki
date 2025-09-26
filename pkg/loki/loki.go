@@ -30,8 +30,6 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
-	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
-	blockscheduler "github.com/grafana/loki/v3/pkg/blockbuilder/scheduler"
 	"github.com/grafana/loki/v3/pkg/bloombuild"
 	"github.com/grafana/loki/v3/pkg/bloomgateway"
 	"github.com/grafana/loki/v3/pkg/compactor"
@@ -62,6 +60,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/ruler/rulestore"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/scheduler"
+	"github.com/grafana/loki/v3/pkg/scratch"
 	internalserver "github.com/grafana/loki/v3/pkg/server"
 	"github.com/grafana/loki/v3/pkg/storage"
 	"github.com/grafana/loki/v3/pkg/storage/config"
@@ -98,8 +97,6 @@ type Config struct {
 	RulerStorage        rulestore.Config           `yaml:"ruler_storage,omitempty"`
 	IngesterClient      ingester_client.Config     `yaml:"ingester_client,omitempty"`
 	Ingester            ingester.Config            `yaml:"ingester,omitempty"`
-	BlockBuilder        blockbuilder.Config        `yaml:"block_builder,omitempty"`
-	BlockScheduler      blockscheduler.Config      `yaml:"block_scheduler,omitempty"`
 	Pattern             pattern.Config             `yaml:"pattern_ingester,omitempty"`
 	IndexGateway        indexgateway.Config        `yaml:"index_gateway"`
 	BloomBuild          bloombuild.Config          `yaml:"bloom_build,omitempty" category:"experimental"`
@@ -225,8 +222,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.OperationalConfig.RegisterFlags(f)
 	c.Profiling.RegisterFlags(f)
 	c.KafkaConfig.RegisterFlags(f)
-	c.BlockBuilder.RegisterFlags(f)
-	c.BlockScheduler.RegisterFlags(f)
 	c.IngestLimits.RegisterFlags(f)
 	c.IngestLimitsFrontend.RegisterFlags(f)
 	c.IngestLimitsFrontendClient.RegisterFlags(f)
@@ -306,12 +301,6 @@ func (c *Config) Validate() error {
 	}
 	if err := c.Ingester.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ingester config"))
-	}
-	if err := c.BlockBuilder.Validate(); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid block_builder config"))
-	}
-	if err := c.BlockScheduler.Validate(); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid block_scheduler config"))
 	}
 	if err := c.LimitsConfig.Validate(); err != nil {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid limits_config config"))
@@ -451,10 +440,9 @@ type Loki struct {
 	indexGatewayRingManager   *lokiring.RingManager
 	PartitionRingWatcher      *ring.PartitionRingWatcher
 	partitionRing             *ring.PartitionInstanceRing
-	blockBuilder              *blockbuilder.BlockBuilder
-	blockScheduler            *blockscheduler.BlockScheduler
 	dataObjConsumer           *consumer.Service
 	dataObjIndexBuilder       *dataobjindex.Builder
+	scratchStore              scratch.Store
 
 	ClientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -499,9 +487,6 @@ func (t *Loki) setupAuthMiddleware() {
 			"/schedulerpb.SchedulerForFrontend/FrontendLoop",
 			"/schedulerpb.SchedulerForQuerier/QuerierLoop",
 			"/schedulerpb.SchedulerForQuerier/NotifyQuerierShutdown",
-			"/blockbuilder.types.SchedulerService/GetJob",
-			"/blockbuilder.types.SchedulerService/CompleteJob",
-			"/blockbuilder.types.SchedulerService/SyncJob",
 			"/grpc.JobQueue/Loop",
 		})
 }
@@ -792,12 +777,11 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(PatternIngesterTee, t.initPatternIngesterTee, modules.UserInvisibleModule)
 	mm.RegisterModule(PatternIngester, t.initPatternIngester)
 	mm.RegisterModule(PartitionRing, t.initPartitionRing, modules.UserInvisibleModule)
-	mm.RegisterModule(BlockBuilder, t.initBlockBuilder)
-	mm.RegisterModule(BlockScheduler, t.initBlockScheduler)
 	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer)
 	mm.RegisterModule(UI, t.initUI)
 	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
 	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder)
+	mm.RegisterModule(ScratchStore, t.initScratchStore)
 
 	mm.RegisterModule(All, nil)
 	mm.RegisterModule(Read, nil)
@@ -840,11 +824,10 @@ func (t *Loki) setupModuleManager() error {
 		IndexGatewayRing:         {Overrides, MemberlistKV},
 		PartitionRing:            {MemberlistKV, Server, Ring},
 		MemberlistKV:             {Server},
-		BlockBuilder:             {PartitionRing, Store, Server, UI},
-		BlockScheduler:           {Server, UI},
 		DataObjExplorer:          {Server, UI},
-		DataObjConsumer:          {PartitionRing, Server, UI},
-		DataObjIndexBuilder:      {Server, UI},
+		DataObjConsumer:          {ScratchStore, PartitionRing, Server, UI},
+		DataObjIndexBuilder:      {ScratchStore, Server, UI},
+		ScratchStore:             {},
 
 		Read:    {QueryFrontend, Querier},
 		Write:   {Ingester, Distributor, PatternIngester},
