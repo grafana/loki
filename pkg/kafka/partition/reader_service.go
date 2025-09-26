@@ -84,9 +84,10 @@ func NewReaderService(
 		return nil, fmt.Errorf("creating kafka reader: %w", err)
 	}
 
+	consumerGroup := kafkaCfg.GetConsumerGroup(instanceID)
 	offsetManager, err := NewKafkaOffsetManager(
 		kafkaCfg,
-		instanceID,
+		consumerGroup,
 		logger,
 		reg,
 	)
