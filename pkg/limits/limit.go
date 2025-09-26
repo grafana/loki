@@ -118,6 +118,7 @@ func (c *limitsChecker) UpdateRate(ctx context.Context, req *proto.UpdateRateReq
 			if err := c.producer.Produce(ctx, req.Tenant, metadata); err != nil {
 				// Log error but don't fail the operation
 				// The producer will handle retries internally
+				level.Error(c.logger).Log("msg", "failed to produce rate update to Kafka", "tenant", req.Tenant, "streamHash", metadata.StreamHash, "error", err)
 			}
 		}
 

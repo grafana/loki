@@ -249,8 +249,8 @@ func TestConsumer_ProcessRecord_RateData(t *testing.T) {
 		require.NoError(t, err)
 
 		// Verify the data was stored and rate buckets were updated
-		// Calculate the partition for this stream hash
-		partition := int32(0x123 % 1) // 1 partition
+		// With 1 partition, all streams go to partition 0
+		partition := int32(0)
 		stream, exists := store.getStreamUsage("tenant1", partition, 0x123)
 		require.True(t, exists)
 		require.Equal(t, uint64(0x123), stream.hash)
