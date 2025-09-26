@@ -32,9 +32,9 @@ type buildRequest struct {
 
 // buildResult represents the result of an index build operation
 type buildResult struct {
-	indexPath string
-	records   []*kgo.Record // Records to commit after successful build
-	err       error
+	indexPaths []string      // Multiple index paths when ErrBuilderFull causes multiple flushes
+	records    []*kgo.Record // Records to commit after successful build
+	err        error
 }
 
 // indexerConfig contains configuration for the indexer
@@ -181,7 +181,7 @@ func (si *serialIndexer) submitBuild(ctx context.Context, events []bufferedEvent
 				"partition", partition, "err", result.err)
 		} else {
 			level.Debug(si.logger).Log("msg", "build request completed",
-				"partition", partition, "index_path", result.indexPath)
+				"partition", partition, "index_count", len(result.indexPaths))
 		}
 		return result.records, result.err
 	case <-ctx.Done():
@@ -302,7 +302,7 @@ func (si *serialIndexer) processBuildRequest(req buildRequest) buildResult {
 	}
 
 	// Build the index using internal method
-	indexPath, err := si.buildIndex(req.ctx, events, req.partition)
+	indexPaths, err := si.buildIndex(req.ctx, events, req.partition)
 
 	// Update metrics
 	buildTime := time.Since(start)
@@ -310,12 +310,19 @@ func (si *serialIndexer) processBuildRequest(req buildRequest) buildResult {
 
 	if err != nil {
 		level.Error(si.logger).Log("msg", "failed to build index",
-			"partition", req.partition, "err", err, "duration", buildTime)
-		return buildResult{err: err}
+			"partition", req.partition, "err", err, "duration", buildTime,
+			"partial_indexes", len(indexPaths))
+
+		// If we have partial results, it's a partial success
+		if len(indexPaths) > 0 {
+			level.Info(si.logger).Log("msg", "partial index build success",
+				"partition", req.partition, "indexes_created", len(indexPaths))
+		}
+		return buildResult{indexPaths: indexPaths, err: err} // Return partial success
 	}
 
-	level.Debug(si.logger).Log("msg", "successfully built index",
-		"partition", req.partition, "index_path", indexPath, "duration", buildTime,
+	level.Debug(si.logger).Log("msg", "successfully built indexes",
+		"partition", req.partition, "index_paths", len(indexPaths), "duration", buildTime,
 		"events", len(events))
 
 	// Extract records for committing
@@ -325,14 +332,14 @@ func (si *serialIndexer) processBuildRequest(req buildRequest) buildResult {
 	}
 
 	return buildResult{
-		indexPath: indexPath,
-		records:   records,
-		err:       nil,
+		indexPaths: indexPaths,
+		records:    records,
+		err:        nil,
 	}
 }
 
 // buildIndex is the core index building logic (moved from builder)
-func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.ObjectWrittenEvent, partition int32) (string, error) {
+func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.ObjectWrittenEvent, partition int32) ([]string, error) {
 	level.Debug(si.logger).Log("msg", "building index", "events", len(events), "partition", partition)
 	start := time.Now()
 
@@ -340,28 +347,30 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 	writeTime, err := time.Parse(time.RFC3339, events[0].WriteTime)
 	if err != nil {
 		level.Error(si.logger).Log("msg", "failed to parse write time", "err", err)
-		return "", err
+		return nil, err
 	}
 	si.builderMetrics.setProcessingDelay(writeTime)
 
-	// Trigger the downloads
 	for _, event := range events {
 		select {
 		case si.downloadQueue <- event:
 			// Successfully sent event for download
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return nil, ctx.Err()
 		}
 	}
 
-	// Process the results as they are downloaded
+	// Process downloaded objects, handling ErrBuilderFull
+	var indexPaths []string
 	processingErrors := multierror.New()
-	for range len(events) {
+	flushedAfterLastEvent := false
+
+	for i := range len(events) {
 		var obj downloadedObject
 		select {
 		case obj = <-si.downloadedObjects:
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return nil, ctx.Err()
 		}
 
 		objLogger := log.With(si.logger, "object_path", obj.event.ObjectPath)
@@ -372,26 +381,79 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 			continue
 		}
 
-		reader, err := dataobj.FromReaderAt(bytes.NewReader(*obj.objectBytes), int64(len(*obj.objectBytes)))
-		if err != nil {
-			processingErrors.Add(fmt.Errorf("failed to read object: %w", err))
+		// Process this object
+		if err := si.processObject(ctx, objLogger, obj); err != nil {
+			processingErrors.Add(fmt.Errorf("failed to process object: %w", err))
 			continue
 		}
 
-		if err := si.calculator.Calculate(ctx, objLogger, reader, obj.event.ObjectPath); err != nil {
-			processingErrors.Add(fmt.Errorf("failed to calculate index: %w", err))
-			continue
+		// Check if builder became full during processing
+		if si.calculator.IsFull() {
+			// Flush current index and start fresh
+			indexPath, flushErr := si.flushIndex(ctx, partition)
+			if flushErr != nil {
+				processingErrors.Add(fmt.Errorf("failed to flush index after processing full object: %w", flushErr))
+				continue
+			}
+
+			if indexPath != "" {
+				indexPaths = append(indexPaths, indexPath)
+				level.Debug(si.logger).Log("msg", "flushed index after processing full object",
+					"index_path", indexPath, "partition", partition)
+			}
+
+			// Reset calculator for next object
+			si.calculator.Reset()
+
+			// Mark that we flushed after the last event to avoid double flushing
+			if i == len(events)-1 {
+				flushedAfterLastEvent = true
+			}
 		}
 	}
 
 	if processingErrors.Err() != nil {
-		return "", processingErrors.Err()
+		return indexPaths, processingErrors.Err()
 	}
 
+	// Flush final index if we have data and didn't already flush after the last event
+	if !flushedAfterLastEvent {
+		finalPath, err := si.flushIndex(ctx, partition)
+		if err != nil {
+			return indexPaths, fmt.Errorf("failed to flush final index: %w", err)
+		}
+
+		if finalPath != "" {
+			indexPaths = append(indexPaths, finalPath)
+		}
+	}
+
+	level.Debug(si.logger).Log("msg", "finished building index files", "partition", partition,
+		"events", len(events), "index_count", len(indexPaths), "duration", time.Since(start))
+
+	return indexPaths, nil
+}
+
+// processObject handles processing a single downloaded object
+func (si *serialIndexer) processObject(ctx context.Context, objLogger log.Logger, obj downloadedObject) error {
+	reader, err := dataobj.FromReaderAt(bytes.NewReader(*obj.objectBytes), int64(len(*obj.objectBytes)))
+	if err != nil {
+		return fmt.Errorf("failed to read object: %w", err)
+	}
+
+	return si.calculator.Calculate(ctx, objLogger, reader, obj.event.ObjectPath)
+}
+
+// flushIndex flushes the current calculator state to an index object
+func (si *serialIndexer) flushIndex(ctx context.Context, partition int32) (string, error) {
 	tenantTimeRanges := si.calculator.TimeRanges()
+	if len(tenantTimeRanges) == 0 {
+		return "", nil // Nothing to flush
+	}
+
 	obj, closer, err := si.calculator.Flush()
 	if err != nil {
-		return "", fmt.Errorf("failed to flush builder: %w", err)
+		return "", fmt.Errorf("failed to flush calculator: %w", err)
 	}
 	defer closer.Close()
 
@@ -415,9 +477,8 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 		return "", fmt.Errorf("failed to update metastore ToC file: %w", err)
 	}
 
-	level.Debug(si.logger).Log("msg", "finished building new index file", "partition", partition,
-		"events", len(events), "size", obj.Size(), "duration", time.Since(start),
-		"tenants", len(tenantTimeRanges), "path", key)
+	level.Debug(si.logger).Log("msg", "flushed index object", "partition", partition,
+		"path", key, "size", obj.Size(), "tenants", len(tenantTimeRanges))
 
 	return key, nil
 }
