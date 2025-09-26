@@ -52,6 +52,9 @@
 //
 // Test `TestStandaloneSign` provides a complete example of using the signer
 // outside of the SDK and pre-escaping the URI path.
+//
+// Deprecated: aws-sdk-go is deprecated. Use aws-sdk-go-v2.
+// See https://aws.amazon.com/blogs/developer/announcing-end-of-support-for-aws-sdk-for-go-v1-on-july-31-2025/.
 package v4
 
 import (

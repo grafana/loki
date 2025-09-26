@@ -1,8 +1,11 @@
+// Deprecated: aws-sdk-go is deprecated. Use aws-sdk-go-v2.
+// See https://aws.amazon.com/blogs/developer/announcing-end-of-support-for-aws-sdk-for-go-v1-on-july-31-2025/.
 package bearer
 
 import (
-	"github.com/aws/aws-sdk-go/aws"
 	"time"
+
+	"github.com/aws/aws-sdk-go/aws"
 )
 
 // Token provides a type wrapping a bearer token and expiration metadata.

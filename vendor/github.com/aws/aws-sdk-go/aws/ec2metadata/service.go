@@ -9,6 +9,9 @@
 // The endpoint of the EC2 IMDS client can be configured via the environment
 // variable, AWS_EC2_METADATA_SERVICE_ENDPOINT when creating the client with a
 // Session. See aws/session#Options.EC2IMDSEndpoint for more details.
+//
+// Deprecated: aws-sdk-go is deprecated. Use aws-sdk-go-v2.
+// See https://aws.amazon.com/blogs/developer/announcing-end-of-support-for-aws-sdk-for-go-v1-on-july-31-2025/.
 package ec2metadata
 
 import (
