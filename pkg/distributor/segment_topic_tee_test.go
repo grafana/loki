@@ -17,22 +17,22 @@ func TestSegmentTopicWriter_SelectPartition(t *testing.T) {
 	}
 
 	// Test with empty partitions
-	selected := writer.selectPartition([]int32{}, "test-key", "test-tenant")
+	selected := writer.selectPartition([]int32{})
 	assert.Equal(t, int32(0), selected)
 
 	// Test with single partition
-	selected = writer.selectPartition([]int32{2}, "test-key", "test-tenant")
+	selected = writer.selectPartition([]int32{2})
 	assert.Equal(t, int32(2), selected)
 
 	// Test with multiple partitions (random)
 	availablePartitions := []int32{1, 2, 3}
-	selected = writer.selectPartition(availablePartitions, "test-key", "test-tenant")
+	selected = writer.selectPartition(availablePartitions)
 	assert.Contains(t, availablePartitions, selected)
 
 	// Test that random selection works (we can't predict the exact sequence)
 	// but we can verify that all selections are valid partitions
 	for i := 0; i < 10; i++ {
-		selected = writer.selectPartition(availablePartitions, "test-key", "test-tenant")
+		selected = writer.selectPartition(availablePartitions)
 		assert.Contains(t, availablePartitions, selected)
 	}
 }
