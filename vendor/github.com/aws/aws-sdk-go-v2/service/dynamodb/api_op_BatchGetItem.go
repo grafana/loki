@@ -62,6 +62,9 @@ import (
 // for nonexistent items consume the minimum read capacity units according to the
 // type of read. For more information, see [Working with Tables]in the Amazon DynamoDB Developer Guide.
 //
+// BatchGetItem will result in a ValidationException if the same key is specified
+// multiple times.
+//
 // [Batch Operations and Error Handling]: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/ErrorHandling.html#BatchOperations
 // [Working with Tables]: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/WorkingWithTables.html#CapacityUnitCalculations
 func (c *Client) BatchGetItem(ctx context.Context, params *BatchGetItemInput, optFns ...func(*Options)) (*BatchGetItemOutput, error) {
@@ -169,6 +172,18 @@ type BatchGetItemInput struct {
 	ReturnConsumedCapacity types.ReturnConsumedCapacity
 
 	noSmithyDocumentSerde
+}
+
+func (in *BatchGetItemInput) bindEndpointParams(p *EndpointParameters) {
+	func() {
+		v1 := in.RequestItems
+		var v2 []string
+		for k := range v1 {
+			v2 = append(v2, k)
+		}
+		p.ResourceArnList = v2
+	}()
+
 }
 
 // Represents the output of a BatchGetItem operation.
@@ -286,6 +301,9 @@ func (c *Client) addOperationBatchGetItemMiddlewares(stack *middleware.Stack, op
 	if err = addUserAgentAccountIDEndpointMode(stack, options); err != nil {
 		return err
 	}
+	if err = addCredentialSource(stack, options); err != nil {
+		return err
+	}
 	if err = addOpBatchGetItemValidationMiddleware(stack); err != nil {
 		return err
 	}
@@ -311,6 +329,36 @@ func (c *Client) addOperationBatchGetItemMiddlewares(stack *middleware.Stack, op
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptExecution(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeSerialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterSerialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeSigning(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterSigning(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptTransmit(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterDeserialization(stack, options); err != nil {
 		return err
 	}
 	if err = addSpanInitializeStart(stack); err != nil {

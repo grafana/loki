@@ -1,3 +1,132 @@
+# v1.50.5 (2025-09-26)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.50.4 (2025-09-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.50.3 (2025-09-10)
+
+* No change notes available for this release.
+
+# v1.50.2 (2025-09-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.50.1 (2025-08-29)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.50.0 (2025-08-28)
+
+* **Feature**: Remove incorrect endpoint tests
+
+# v1.49.2 (2025-08-27)
+
+* **Dependency Update**: Update to smithy-go v1.23.0.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.49.1 (2025-08-21)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.49.0 (2025-08-20)
+
+* **Feature**: Remove incorrect endpoint tests
+* **Bug Fix**: Remove unused deserialization code.
+
+# v1.48.0 (2025-08-14)
+
+* **Feature**: This release 1/ Adds support for throttled keys mode for CloudWatch Contributor Insights, 2/ Adds throttling reasons to exceptions across dataplane APIs. 3/ Explicitly models ThrottlingException as a class in statically typed languages. Refer to the launch day blog post for more details.
+
+# v1.47.0 (2025-08-11)
+
+* **Feature**: Add support for configuring per-service Options via callback on global config.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.46.0 (2025-08-04)
+
+* **Feature**: Support configurable auth scheme preferences in service clients via AWS_AUTH_SCHEME_PREFERENCE in the environment, auth_scheme_preference in the config file, and through in-code settings on LoadDefaultConfig and client constructor methods.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.45.1 (2025-07-30)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.45.0 (2025-07-28)
+
+* **Feature**: Add support for HTTP interceptors.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.44.1 (2025-07-19)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.44.0 (2025-06-30)
+
+* **Feature**: This change adds support for witnesses in global tables. It also adds a new table status, REPLICATION_NOT_AUTHORIZED. This status will indicate scenarios where global replicas table can't be utilized for data plane operations.
+
+# v1.43.4 (2025-06-17)
+
+* **Dependency Update**: Update to smithy-go v1.22.4.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.43.3 (2025-06-10)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.43.2 (2025-06-06)
+
+* No change notes available for this release.
+
+# v1.43.1 (2025-04-28)
+
+* **Documentation**: Doc only update for GSI descriptions.
+
+# v1.43.0 (2025-04-24)
+
+* **Feature**: Add support for ARN-sourced account endpoint generation for TransactWriteItems. This will generate account endpoints for DynamoDB TransactWriteItems requests using ARN-sourced account ID when available.
+
+# v1.42.4 (2025-04-11)
+
+* **Documentation**: Doc only update for API descriptions.
+
+# v1.42.3 (2025-04-10)
+
+* No change notes available for this release.
+
+# v1.42.2 (2025-04-09)
+
+* **Documentation**: Documentation update for secondary indexes and Create_Table.
+
+# v1.42.1 (2025-04-03)
+
+* No change notes available for this release.
+
+# v1.42.0 (2025-03-13)
+
+* **Feature**: Generate account endpoints for DynamoDB requests using ARN-sourced account ID when available
+
+# v1.41.1 (2025-03-04.2)
+
+* **Bug Fix**: Add assurance test for operation order.
+
+# v1.41.0 (2025-02-27)
+
+* **Feature**: Track credential providers via User-Agent Feature ids
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.40.2 (2025-02-18)
+
+* **Bug Fix**: Add missing AccountIDEndpointMode binding to endpoint resolution.
+* **Bug Fix**: Bump go version to 1.22
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.40.1 (2025-02-11)
+
+* No change notes available for this release.
+
 # v1.40.0 (2025-02-05)
 
 * **Feature**: Track AccountID endpoint mode in user-agent.

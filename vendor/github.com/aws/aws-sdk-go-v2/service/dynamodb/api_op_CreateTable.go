@@ -98,11 +98,12 @@ type CreateTableInput struct {
 	// Controls how you are charged for read and write throughput and how you manage
 	// capacity. This setting can be changed later.
 	//
-	//   - PROVISIONED - We recommend using PROVISIONED for predictable workloads.
-	//   PROVISIONED sets the billing mode to [Provisioned capacity mode].
-	//
-	//   - PAY_PER_REQUEST - We recommend using PAY_PER_REQUEST for unpredictable
+	//   - PAY_PER_REQUEST - We recommend using PAY_PER_REQUEST for most DynamoDB
 	//   workloads. PAY_PER_REQUEST sets the billing mode to [On-demand capacity mode].
+	//
+	//   - PROVISIONED - We recommend using PROVISIONED for steady workloads with
+	//   predictable growth where capacity requirements can be reliably forecasted.
+	//   PROVISIONED sets the billing mode to [Provisioned capacity mode].
 	//
 	// [Provisioned capacity mode]: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/provisioned-capacity-mode.html
 	// [On-demand capacity mode]: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/on-demand-capacity-mode.html
@@ -138,7 +139,10 @@ type CreateTableInput struct {
 	//   projected into the secondary index. The total count of attributes provided in
 	//   NonKeyAttributes , summed across all of the secondary indexes, must not exceed
 	//   100. If you project the same attribute into two different indexes, this counts
-	//   as two distinct attributes when determining the total.
+	//   as two distinct attributes when determining the total. This limit only applies
+	//   when you specify the ProjectionType of INCLUDE . You still can specify the
+	//   ProjectionType of ALL to project all attributes from the source table, even if
+	//   the table has more than 100 attributes.
 	//
 	//   - ProvisionedThroughput - The provisioned throughput settings for the global
 	//   secondary index, consisting of read and write capacity units.
@@ -175,7 +179,10 @@ type CreateTableInput struct {
 	//   projected into the secondary index. The total count of attributes provided in
 	//   NonKeyAttributes , summed across all of the secondary indexes, must not exceed
 	//   100. If you project the same attribute into two different indexes, this counts
-	//   as two distinct attributes when determining the total.
+	//   as two distinct attributes when determining the total. This limit only applies
+	//   when you specify the ProjectionType of INCLUDE . You still can specify the
+	//   ProjectionType of ALL to project all attributes from the source table, even if
+	//   the table has more than 100 attributes.
 	LocalSecondaryIndexes []types.LocalSecondaryIndex
 
 	// Sets the maximum number of read and write units for the specified table in
@@ -251,6 +258,12 @@ type CreateTableInput struct {
 	WarmThroughput *types.WarmThroughput
 
 	noSmithyDocumentSerde
+}
+
+func (in *CreateTableInput) bindEndpointParams(p *EndpointParameters) {
+
+	p.ResourceArn = in.TableName
+
 }
 
 // Represents the output of a CreateTable operation.
@@ -335,6 +348,9 @@ func (c *Client) addOperationCreateTableMiddlewares(stack *middleware.Stack, opt
 	if err = addUserAgentAccountIDEndpointMode(stack, options); err != nil {
 		return err
 	}
+	if err = addCredentialSource(stack, options); err != nil {
+		return err
+	}
 	if err = addOpCreateTableValidationMiddleware(stack); err != nil {
 		return err
 	}
@@ -360,6 +376,36 @@ func (c *Client) addOperationCreateTableMiddlewares(stack *middleware.Stack, opt
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptExecution(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeSerialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterSerialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeSigning(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterSigning(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptTransmit(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterDeserialization(stack, options); err != nil {
 		return err
 	}
 	if err = addSpanInitializeStart(stack); err != nil {

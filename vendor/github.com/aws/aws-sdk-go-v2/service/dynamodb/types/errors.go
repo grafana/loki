@@ -60,7 +60,7 @@ func (e *BackupNotFoundException) ErrorCode() string {
 }
 func (e *BackupNotFoundException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
-// A condition specified in the operation could not be evaluated.
+// A condition specified in the operation failed to be evaluated.
 type ConditionalCheckFailedException struct {
 	Message *string
 
@@ -594,17 +594,22 @@ func (e *PolicyNotFoundException) ErrorCode() string {
 }
 func (e *PolicyNotFoundException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
-// Your request rate is too high. The Amazon Web Services SDKs for DynamoDB
+// The request was denied due to request throttling. For detailed information
+// about why the request was throttled and the ARN of the impacted resource, find
+// the [ThrottlingReason]field in the returned exception. The Amazon Web Services SDKs for DynamoDB
 // automatically retry requests that receive this exception. Your request is
 // eventually successful, unless your retry queue is too large to finish. Reduce
 // the frequency of requests and use exponential backoff. For more information, go
 // to [Error Retries and Exponential Backoff]in the Amazon DynamoDB Developer Guide.
 //
+// [ThrottlingReason]: https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_ThrottlingReason.html
 // [Error Retries and Exponential Backoff]: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Programming.Errors.html#Programming.Errors.RetryAndBackoff
 type ProvisionedThroughputExceededException struct {
 	Message *string
 
 	ErrorCodeOverride *string
+
+	ThrottlingReasons []ThrottlingReason
 
 	noSmithyDocumentSerde
 }
@@ -707,14 +712,19 @@ func (e *ReplicatedWriteConflictException) ErrorCode() string {
 }
 func (e *ReplicatedWriteConflictException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
-// Throughput exceeds the current throughput quota for your account. Please
-// contact [Amazon Web Services Support]to request a quota increase.
+// Throughput exceeds the current throughput quota for your account. For detailed
+// information about why the request was throttled and the ARN of the impacted
+// resource, find the [ThrottlingReason]field in the returned exception. Contact [Amazon Web Services Support] to request a quota
+// increase.
 //
 // [Amazon Web Services Support]: https://aws.amazon.com/support
+// [ThrottlingReason]: https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_ThrottlingReason.html
 type RequestLimitExceeded struct {
 	Message *string
 
 	ErrorCodeOverride *string
+
+	ThrottlingReasons []ThrottlingReason
 
 	noSmithyDocumentSerde
 }
@@ -877,6 +887,38 @@ func (e *TableNotFoundException) ErrorCode() string {
 	return *e.ErrorCodeOverride
 }
 func (e *TableNotFoundException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
+
+// The request was denied due to request throttling. For detailed information
+// about why the request was throttled and the ARN of the impacted resource, find
+// the [ThrottlingReason]field in the returned exception.
+//
+// [ThrottlingReason]: https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_ThrottlingReason.html
+type ThrottlingException struct {
+	Message *string
+
+	ErrorCodeOverride *string
+
+	ThrottlingReasons []ThrottlingReason
+
+	noSmithyDocumentSerde
+}
+
+func (e *ThrottlingException) Error() string {
+	return fmt.Sprintf("%s: %s", e.ErrorCode(), e.ErrorMessage())
+}
+func (e *ThrottlingException) ErrorMessage() string {
+	if e.Message == nil {
+		return ""
+	}
+	return *e.Message
+}
+func (e *ThrottlingException) ErrorCode() string {
+	if e == nil || e.ErrorCodeOverride == nil {
+		return "ThrottlingException"
+	}
+	return *e.ErrorCodeOverride
+}
+func (e *ThrottlingException) ErrorFault() smithy.ErrorFault { return smithy.FaultClient }
 
 // The entire transaction request was canceled.
 //

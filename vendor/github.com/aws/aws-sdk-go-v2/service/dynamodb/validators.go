@@ -1388,6 +1388,21 @@ func validateCreateGlobalSecondaryIndexAction(v *types.CreateGlobalSecondaryInde
 	}
 }
 
+func validateCreateGlobalTableWitnessGroupMemberAction(v *types.CreateGlobalTableWitnessGroupMemberAction) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "CreateGlobalTableWitnessGroupMemberAction"}
+	if v.RegionName == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("RegionName"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
 func validateCreateReplicaAction(v *types.CreateReplicaAction) error {
 	if v == nil {
 		return nil
@@ -1448,6 +1463,21 @@ func validateDeleteGlobalSecondaryIndexAction(v *types.DeleteGlobalSecondaryInde
 	invalidParams := smithy.InvalidParamsError{Context: "DeleteGlobalSecondaryIndexAction"}
 	if v.IndexName == nil {
 		invalidParams.Add(smithy.NewErrParamRequired("IndexName"))
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateDeleteGlobalTableWitnessGroupMemberAction(v *types.DeleteGlobalTableWitnessGroupMemberAction) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "DeleteGlobalTableWitnessGroupMemberAction"}
+	if v.RegionName == nil {
+		invalidParams.Add(smithy.NewErrParamRequired("RegionName"))
 	}
 	if invalidParams.Len() > 0 {
 		return invalidParams
@@ -1689,6 +1719,45 @@ func validateGlobalTableGlobalSecondaryIndexSettingsUpdateList(v []types.GlobalT
 	invalidParams := smithy.InvalidParamsError{Context: "GlobalTableGlobalSecondaryIndexSettingsUpdateList"}
 	for i := range v {
 		if err := validateGlobalTableGlobalSecondaryIndexSettingsUpdate(&v[i]); err != nil {
+			invalidParams.AddNested(fmt.Sprintf("[%d]", i), err.(smithy.InvalidParamsError))
+		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateGlobalTableWitnessGroupUpdate(v *types.GlobalTableWitnessGroupUpdate) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "GlobalTableWitnessGroupUpdate"}
+	if v.Create != nil {
+		if err := validateCreateGlobalTableWitnessGroupMemberAction(v.Create); err != nil {
+			invalidParams.AddNested("Create", err.(smithy.InvalidParamsError))
+		}
+	}
+	if v.Delete != nil {
+		if err := validateDeleteGlobalTableWitnessGroupMemberAction(v.Delete); err != nil {
+			invalidParams.AddNested("Delete", err.(smithy.InvalidParamsError))
+		}
+	}
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	} else {
+		return nil
+	}
+}
+
+func validateGlobalTableWitnessGroupUpdateList(v []types.GlobalTableWitnessGroupUpdate) error {
+	if v == nil {
+		return nil
+	}
+	invalidParams := smithy.InvalidParamsError{Context: "GlobalTableWitnessGroupUpdateList"}
+	for i := range v {
+		if err := validateGlobalTableWitnessGroupUpdate(&v[i]); err != nil {
 			invalidParams.AddNested(fmt.Sprintf("[%d]", i), err.(smithy.InvalidParamsError))
 		}
 	}
@@ -3422,6 +3491,11 @@ func validateOpUpdateTableInput(v *UpdateTableInput) error {
 	if v.ReplicaUpdates != nil {
 		if err := validateReplicationGroupUpdateList(v.ReplicaUpdates); err != nil {
 			invalidParams.AddNested("ReplicaUpdates", err.(smithy.InvalidParamsError))
+		}
+	}
+	if v.GlobalTableWitnessUpdates != nil {
+		if err := validateGlobalTableWitnessGroupUpdateList(v.GlobalTableWitnessUpdates); err != nil {
+			invalidParams.AddNested("GlobalTableWitnessUpdates", err.(smithy.InvalidParamsError))
 		}
 	}
 	if invalidParams.Len() > 0 {
