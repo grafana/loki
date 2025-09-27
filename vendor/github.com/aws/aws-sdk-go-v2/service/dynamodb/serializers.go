@@ -3921,6 +3921,18 @@ func awsAwsjson10_serializeDocumentCreateGlobalSecondaryIndexAction(v *types.Cre
 	return nil
 }
 
+func awsAwsjson10_serializeDocumentCreateGlobalTableWitnessGroupMemberAction(v *types.CreateGlobalTableWitnessGroupMemberAction, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.RegionName != nil {
+		ok := object.Key("RegionName")
+		ok.String(*v.RegionName)
+	}
+
+	return nil
+}
+
 func awsAwsjson10_serializeDocumentCreateReplicaAction(v *types.CreateReplicaAction, value smithyjson.Value) error {
 	object := value.Object()
 	defer object.Close()
@@ -4056,6 +4068,18 @@ func awsAwsjson10_serializeDocumentDeleteGlobalSecondaryIndexAction(v *types.Del
 	if v.IndexName != nil {
 		ok := object.Key("IndexName")
 		ok.String(*v.IndexName)
+	}
+
+	return nil
+}
+
+func awsAwsjson10_serializeDocumentDeleteGlobalTableWitnessGroupMemberAction(v *types.DeleteGlobalTableWitnessGroupMemberAction, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.RegionName != nil {
+		ok := object.Key("RegionName")
+		ok.String(*v.RegionName)
 	}
 
 	return nil
@@ -4392,6 +4416,40 @@ func awsAwsjson10_serializeDocumentGlobalTableGlobalSecondaryIndexSettingsUpdate
 	for i := range v {
 		av := array.Value()
 		if err := awsAwsjson10_serializeDocumentGlobalTableGlobalSecondaryIndexSettingsUpdate(&v[i], av); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func awsAwsjson10_serializeDocumentGlobalTableWitnessGroupUpdate(v *types.GlobalTableWitnessGroupUpdate, value smithyjson.Value) error {
+	object := value.Object()
+	defer object.Close()
+
+	if v.Create != nil {
+		ok := object.Key("Create")
+		if err := awsAwsjson10_serializeDocumentCreateGlobalTableWitnessGroupMemberAction(v.Create, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.Delete != nil {
+		ok := object.Key("Delete")
+		if err := awsAwsjson10_serializeDocumentDeleteGlobalTableWitnessGroupMemberAction(v.Delete, ok); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func awsAwsjson10_serializeDocumentGlobalTableWitnessGroupUpdateList(v []types.GlobalTableWitnessGroupUpdate, value smithyjson.Value) error {
+	array := value.Array()
+	defer array.Close()
+
+	for i := range v {
+		av := array.Value()
+		if err := awsAwsjson10_serializeDocumentGlobalTableWitnessGroupUpdate(&v[i], av); err != nil {
 			return err
 		}
 	}
@@ -7066,6 +7124,11 @@ func awsAwsjson10_serializeOpDocumentUpdateContributorInsightsInput(v *UpdateCon
 		ok.String(string(v.ContributorInsightsAction))
 	}
 
+	if len(v.ContributorInsightsMode) > 0 {
+		ok := object.Key("ContributorInsightsMode")
+		ok.String(string(v.ContributorInsightsMode))
+	}
+
 	if v.IndexName != nil {
 		ok := object.Key("IndexName")
 		ok.String(*v.IndexName)
@@ -7271,6 +7334,13 @@ func awsAwsjson10_serializeOpDocumentUpdateTableInput(v *UpdateTableInput, value
 	if v.GlobalSecondaryIndexUpdates != nil {
 		ok := object.Key("GlobalSecondaryIndexUpdates")
 		if err := awsAwsjson10_serializeDocumentGlobalSecondaryIndexUpdateList(v.GlobalSecondaryIndexUpdates, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.GlobalTableWitnessUpdates != nil {
+		ok := object.Key("GlobalTableWitnessUpdates")
+		if err := awsAwsjson10_serializeDocumentGlobalTableWitnessGroupUpdateList(v.GlobalTableWitnessUpdates, ok); err != nil {
 			return err
 		}
 	}

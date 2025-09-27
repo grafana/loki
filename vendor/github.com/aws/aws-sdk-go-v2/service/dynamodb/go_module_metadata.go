@@ -3,4 +3,4 @@
 package dynamodb
 
 // goModuleVersion is the tagged release for this module
-const goModuleVersion = "1.40.0"
+const goModuleVersion = "1.50.5"

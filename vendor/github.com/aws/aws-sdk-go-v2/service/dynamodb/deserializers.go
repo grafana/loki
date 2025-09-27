@@ -21,16 +21,7 @@ import (
 	"io/ioutil"
 	"math"
 	"strings"
-	"time"
 )
-
-func deserializeS3Expires(v string) (*time.Time, error) {
-	t, err := smithytime.ParseHTTPDate(v)
-	if err != nil {
-		return nil, nil
-	}
-	return &t, nil
-}
 
 type awsAwsjson10_deserializeOpBatchExecuteStatement struct {
 }
@@ -135,6 +126,9 @@ func awsAwsjson10_deserializeOpErrorBatchExecuteStatement(response *smithyhttp.R
 
 	case strings.EqualFold("RequestLimitExceeded", errorCode):
 		return awsAwsjson10_deserializeErrorRequestLimitExceeded(response, errorBody)
+
+	case strings.EqualFold("ThrottlingException", errorCode):
+		return awsAwsjson10_deserializeErrorThrottlingException(response, errorBody)
 
 	default:
 		genericError := &smithy.GenericAPIError{
@@ -259,6 +253,9 @@ func awsAwsjson10_deserializeOpErrorBatchGetItem(response *smithyhttp.Response, 
 	case strings.EqualFold("ResourceNotFoundException", errorCode):
 		return awsAwsjson10_deserializeErrorResourceNotFoundException(response, errorBody)
 
+	case strings.EqualFold("ThrottlingException", errorCode):
+		return awsAwsjson10_deserializeErrorThrottlingException(response, errorBody)
+
 	default:
 		genericError := &smithy.GenericAPIError{
 			Code:    errorCode,
@@ -379,11 +376,17 @@ func awsAwsjson10_deserializeOpErrorBatchWriteItem(response *smithyhttp.Response
 	case strings.EqualFold("ProvisionedThroughputExceededException", errorCode):
 		return awsAwsjson10_deserializeErrorProvisionedThroughputExceededException(response, errorBody)
 
+	case strings.EqualFold("ReplicatedWriteConflictException", errorCode):
+		return awsAwsjson10_deserializeErrorReplicatedWriteConflictException(response, errorBody)
+
 	case strings.EqualFold("RequestLimitExceeded", errorCode):
 		return awsAwsjson10_deserializeErrorRequestLimitExceeded(response, errorBody)
 
 	case strings.EqualFold("ResourceNotFoundException", errorCode):
 		return awsAwsjson10_deserializeErrorResourceNotFoundException(response, errorBody)
+
+	case strings.EqualFold("ThrottlingException", errorCode):
+		return awsAwsjson10_deserializeErrorThrottlingException(response, errorBody)
 
 	default:
 		genericError := &smithy.GenericAPIError{
@@ -1011,6 +1014,9 @@ func awsAwsjson10_deserializeOpErrorDeleteItem(response *smithyhttp.Response, me
 
 	case strings.EqualFold("ResourceNotFoundException", errorCode):
 		return awsAwsjson10_deserializeErrorResourceNotFoundException(response, errorBody)
+
+	case strings.EqualFold("ThrottlingException", errorCode):
+		return awsAwsjson10_deserializeErrorThrottlingException(response, errorBody)
 
 	case strings.EqualFold("TransactionConflictException", errorCode):
 		return awsAwsjson10_deserializeErrorTransactionConflictException(response, errorBody)
@@ -3136,6 +3142,9 @@ func awsAwsjson10_deserializeOpErrorExecuteStatement(response *smithyhttp.Respon
 	case strings.EqualFold("ResourceNotFoundException", errorCode):
 		return awsAwsjson10_deserializeErrorResourceNotFoundException(response, errorBody)
 
+	case strings.EqualFold("ThrottlingException", errorCode):
+		return awsAwsjson10_deserializeErrorThrottlingException(response, errorBody)
+
 	case strings.EqualFold("TransactionConflictException", errorCode):
 		return awsAwsjson10_deserializeErrorTransactionConflictException(response, errorBody)
 
@@ -3261,6 +3270,9 @@ func awsAwsjson10_deserializeOpErrorExecuteTransaction(response *smithyhttp.Resp
 
 	case strings.EqualFold("ResourceNotFoundException", errorCode):
 		return awsAwsjson10_deserializeErrorResourceNotFoundException(response, errorBody)
+
+	case strings.EqualFold("ThrottlingException", errorCode):
+		return awsAwsjson10_deserializeErrorThrottlingException(response, errorBody)
 
 	case strings.EqualFold("TransactionCanceledException", errorCode):
 		return awsAwsjson10_deserializeErrorTransactionCanceledException(response, errorBody)
@@ -3516,6 +3528,9 @@ func awsAwsjson10_deserializeOpErrorGetItem(response *smithyhttp.Response, metad
 
 	case strings.EqualFold("ResourceNotFoundException", errorCode):
 		return awsAwsjson10_deserializeErrorResourceNotFoundException(response, errorBody)
+
+	case strings.EqualFold("ThrottlingException", errorCode):
+		return awsAwsjson10_deserializeErrorThrottlingException(response, errorBody)
 
 	default:
 		genericError := &smithy.GenericAPIError{
@@ -4684,6 +4699,9 @@ func awsAwsjson10_deserializeOpErrorPutItem(response *smithyhttp.Response, metad
 	case strings.EqualFold("ResourceNotFoundException", errorCode):
 		return awsAwsjson10_deserializeErrorResourceNotFoundException(response, errorBody)
 
+	case strings.EqualFold("ThrottlingException", errorCode):
+		return awsAwsjson10_deserializeErrorThrottlingException(response, errorBody)
+
 	case strings.EqualFold("TransactionConflictException", errorCode):
 		return awsAwsjson10_deserializeErrorTransactionConflictException(response, errorBody)
 
@@ -4935,6 +4953,9 @@ func awsAwsjson10_deserializeOpErrorQuery(response *smithyhttp.Response, metadat
 
 	case strings.EqualFold("ResourceNotFoundException", errorCode):
 		return awsAwsjson10_deserializeErrorResourceNotFoundException(response, errorBody)
+
+	case strings.EqualFold("ThrottlingException", errorCode):
+		return awsAwsjson10_deserializeErrorThrottlingException(response, errorBody)
 
 	default:
 		genericError := &smithy.GenericAPIError{
@@ -5320,6 +5341,9 @@ func awsAwsjson10_deserializeOpErrorScan(response *smithyhttp.Response, metadata
 	case strings.EqualFold("ResourceNotFoundException", errorCode):
 		return awsAwsjson10_deserializeErrorResourceNotFoundException(response, errorBody)
 
+	case strings.EqualFold("ThrottlingException", errorCode):
+		return awsAwsjson10_deserializeErrorThrottlingException(response, errorBody)
+
 	default:
 		genericError := &smithy.GenericAPIError{
 			Code:    errorCode,
@@ -5544,6 +5568,9 @@ func awsAwsjson10_deserializeOpErrorTransactGetItems(response *smithyhttp.Respon
 	case strings.EqualFold("ResourceNotFoundException", errorCode):
 		return awsAwsjson10_deserializeErrorResourceNotFoundException(response, errorBody)
 
+	case strings.EqualFold("ThrottlingException", errorCode):
+		return awsAwsjson10_deserializeErrorThrottlingException(response, errorBody)
+
 	case strings.EqualFold("TransactionCanceledException", errorCode):
 		return awsAwsjson10_deserializeErrorTransactionCanceledException(response, errorBody)
 
@@ -5672,6 +5699,9 @@ func awsAwsjson10_deserializeOpErrorTransactWriteItems(response *smithyhttp.Resp
 
 	case strings.EqualFold("ResourceNotFoundException", errorCode):
 		return awsAwsjson10_deserializeErrorResourceNotFoundException(response, errorBody)
+
+	case strings.EqualFold("ThrottlingException", errorCode):
+		return awsAwsjson10_deserializeErrorThrottlingException(response, errorBody)
 
 	case strings.EqualFold("TransactionCanceledException", errorCode):
 		return awsAwsjson10_deserializeErrorTransactionCanceledException(response, errorBody)
@@ -6400,6 +6430,9 @@ func awsAwsjson10_deserializeOpErrorUpdateItem(response *smithyhttp.Response, me
 
 	case strings.EqualFold("ResourceNotFoundException", errorCode):
 		return awsAwsjson10_deserializeErrorResourceNotFoundException(response, errorBody)
+
+	case strings.EqualFold("ThrottlingException", errorCode):
+		return awsAwsjson10_deserializeErrorThrottlingException(response, errorBody)
 
 	case strings.EqualFold("TransactionConflictException", errorCode):
 		return awsAwsjson10_deserializeErrorTransactionConflictException(response, errorBody)
@@ -7973,6 +8006,41 @@ func awsAwsjson10_deserializeErrorTableNotFoundException(response *smithyhttp.Re
 
 	output := &types.TableNotFoundException{}
 	err := awsAwsjson10_deserializeDocumentTableNotFoundException(&output, shape)
+
+	if err != nil {
+		var snapshot bytes.Buffer
+		io.Copy(&snapshot, ringBuffer)
+		err = &smithy.DeserializationError{
+			Err:      fmt.Errorf("failed to decode response body, %w", err),
+			Snapshot: snapshot.Bytes(),
+		}
+		return err
+	}
+
+	errorBody.Seek(0, io.SeekStart)
+	return output
+}
+
+func awsAwsjson10_deserializeErrorThrottlingException(response *smithyhttp.Response, errorBody *bytes.Reader) error {
+	var buff [1024]byte
+	ringBuffer := smithyio.NewRingBuffer(buff[:])
+
+	body := io.TeeReader(errorBody, ringBuffer)
+	decoder := json.NewDecoder(body)
+	decoder.UseNumber()
+	var shape interface{}
+	if err := decoder.Decode(&shape); err != nil && err != io.EOF {
+		var snapshot bytes.Buffer
+		io.Copy(&snapshot, ringBuffer)
+		err = &smithy.DeserializationError{
+			Err:      fmt.Errorf("failed to decode response body, %w", err),
+			Snapshot: snapshot.Bytes(),
+		}
+		return err
+	}
+
+	output := &types.ThrottlingException{}
+	err := awsAwsjson10_deserializeDocumentThrottlingException(&output, shape)
 
 	if err != nil {
 		var snapshot bytes.Buffer
@@ -10052,6 +10120,15 @@ func awsAwsjson10_deserializeDocumentContributorInsightsSummary(v **types.Contri
 
 	for key, value := range shape {
 		switch key {
+		case "ContributorInsightsMode":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected ContributorInsightsMode to be of type string, got %T instead", value)
+				}
+				sv.ContributorInsightsMode = types.ContributorInsightsMode(jtv)
+			}
+
 		case "ContributorInsightsStatus":
 			if value != nil {
 				jtv, ok := value.(string)
@@ -11520,6 +11597,89 @@ func awsAwsjson10_deserializeDocumentGlobalTableNotFoundException(v **types.Glob
 		}
 	}
 	*v = sv
+	return nil
+}
+
+func awsAwsjson10_deserializeDocumentGlobalTableWitnessDescription(v **types.GlobalTableWitnessDescription, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var sv *types.GlobalTableWitnessDescription
+	if *v == nil {
+		sv = &types.GlobalTableWitnessDescription{}
+	} else {
+		sv = *v
+	}
+
+	for key, value := range shape {
+		switch key {
+		case "RegionName":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected RegionName to be of type string, got %T instead", value)
+				}
+				sv.RegionName = ptr.String(jtv)
+			}
+
+		case "WitnessStatus":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected WitnessStatus to be of type string, got %T instead", value)
+				}
+				sv.WitnessStatus = types.WitnessStatus(jtv)
+			}
+
+		default:
+			_, _ = key, value
+
+		}
+	}
+	*v = sv
+	return nil
+}
+
+func awsAwsjson10_deserializeDocumentGlobalTableWitnessDescriptionList(v *[]types.GlobalTableWitnessDescription, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.([]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var cv []types.GlobalTableWitnessDescription
+	if *v == nil {
+		cv = []types.GlobalTableWitnessDescription{}
+	} else {
+		cv = *v
+	}
+
+	for _, value := range shape {
+		var col types.GlobalTableWitnessDescription
+		destAddr := &col
+		if err := awsAwsjson10_deserializeDocumentGlobalTableWitnessDescription(&destAddr, value); err != nil {
+			return err
+		}
+		col = *destAddr
+		cv = append(cv, col)
+
+	}
+	*v = cv
 	return nil
 }
 
@@ -13894,6 +14054,11 @@ func awsAwsjson10_deserializeDocumentProvisionedThroughputExceededException(v **
 				sv.Message = ptr.String(jtv)
 			}
 
+		case "ThrottlingReasons":
+			if err := awsAwsjson10_deserializeDocumentThrottlingReasonList(&sv.ThrottlingReasons, value); err != nil {
+				return err
+			}
+
 		default:
 			_, _ = key, value
 
@@ -14926,6 +15091,11 @@ func awsAwsjson10_deserializeDocumentRequestLimitExceeded(v **types.RequestLimit
 				sv.Message = ptr.String(jtv)
 			}
 
+		case "ThrottlingReasons":
+			if err := awsAwsjson10_deserializeDocumentThrottlingReasonList(&sv.ThrottlingReasons, value); err != nil {
+				return err
+			}
+
 		default:
 			_, _ = key, value
 
@@ -15884,6 +16054,11 @@ func awsAwsjson10_deserializeDocumentTableDescription(v **types.TableDescription
 				sv.GlobalTableVersion = ptr.String(jtv)
 			}
 
+		case "GlobalTableWitnesses":
+			if err := awsAwsjson10_deserializeDocumentGlobalTableWitnessDescriptionList(&sv.GlobalTableWitnesses, value); err != nil {
+				return err
+			}
+
 		case "ItemCount":
 			if value != nil {
 				jtv, ok := value.(json.Number)
@@ -16287,6 +16462,134 @@ func awsAwsjson10_deserializeDocumentTagList(v *[]types.Tag, value interface{}) 
 		var col types.Tag
 		destAddr := &col
 		if err := awsAwsjson10_deserializeDocumentTag(&destAddr, value); err != nil {
+			return err
+		}
+		col = *destAddr
+		cv = append(cv, col)
+
+	}
+	*v = cv
+	return nil
+}
+
+func awsAwsjson10_deserializeDocumentThrottlingException(v **types.ThrottlingException, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var sv *types.ThrottlingException
+	if *v == nil {
+		sv = &types.ThrottlingException{}
+	} else {
+		sv = *v
+	}
+
+	for key, value := range shape {
+		switch key {
+		case "message", "Message":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected AvailabilityErrorMessage to be of type string, got %T instead", value)
+				}
+				sv.Message = ptr.String(jtv)
+			}
+
+		case "throttlingReasons":
+			if err := awsAwsjson10_deserializeDocumentThrottlingReasonList(&sv.ThrottlingReasons, value); err != nil {
+				return err
+			}
+
+		default:
+			_, _ = key, value
+
+		}
+	}
+	*v = sv
+	return nil
+}
+
+func awsAwsjson10_deserializeDocumentThrottlingReason(v **types.ThrottlingReason, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var sv *types.ThrottlingReason
+	if *v == nil {
+		sv = &types.ThrottlingReason{}
+	} else {
+		sv = *v
+	}
+
+	for key, value := range shape {
+		switch key {
+		case "reason":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected Reason to be of type string, got %T instead", value)
+				}
+				sv.Reason = ptr.String(jtv)
+			}
+
+		case "resource":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected Resource to be of type string, got %T instead", value)
+				}
+				sv.Resource = ptr.String(jtv)
+			}
+
+		default:
+			_, _ = key, value
+
+		}
+	}
+	*v = sv
+	return nil
+}
+
+func awsAwsjson10_deserializeDocumentThrottlingReasonList(v *[]types.ThrottlingReason, value interface{}) error {
+	if v == nil {
+		return fmt.Errorf("unexpected nil of type %T", v)
+	}
+	if value == nil {
+		return nil
+	}
+
+	shape, ok := value.([]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected JSON type %v", value)
+	}
+
+	var cv []types.ThrottlingReason
+	if *v == nil {
+		cv = []types.ThrottlingReason{}
+	} else {
+		cv = *v
+	}
+
+	for _, value := range shape {
+		var col types.ThrottlingReason
+		destAddr := &col
+		if err := awsAwsjson10_deserializeDocumentThrottlingReason(&destAddr, value); err != nil {
 			return err
 		}
 		col = *destAddr
@@ -17185,6 +17488,15 @@ func awsAwsjson10_deserializeOpDocumentDescribeContributorInsightsOutput(v **Des
 
 	for key, value := range shape {
 		switch key {
+		case "ContributorInsightsMode":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected ContributorInsightsMode to be of type string, got %T instead", value)
+				}
+				sv.ContributorInsightsMode = types.ContributorInsightsMode(jtv)
+			}
+
 		case "ContributorInsightsRuleList":
 			if err := awsAwsjson10_deserializeDocumentContributorInsightsRuleList(&sv.ContributorInsightsRuleList, value); err != nil {
 				return err
@@ -18813,6 +19125,15 @@ func awsAwsjson10_deserializeOpDocumentUpdateContributorInsightsOutput(v **Updat
 
 	for key, value := range shape {
 		switch key {
+		case "ContributorInsightsMode":
+			if value != nil {
+				jtv, ok := value.(string)
+				if !ok {
+					return fmt.Errorf("expected ContributorInsightsMode to be of type string, got %T instead", value)
+				}
+				sv.ContributorInsightsMode = types.ContributorInsightsMode(jtv)
+			}
+
 		case "ContributorInsightsStatus":
 			if value != nil {
 				jtv, ok := value.(string)
