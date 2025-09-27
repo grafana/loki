@@ -1,3 +1,12 @@
+# Release (2025-08-27)
+
+## General Highlights
+* **Dependency Update**: Updated to the latest SDK module versions
+
+## Module Highlights
+* `github.com/aws/smithy-go`: v1.23.0
+  * **Feature**: Sort map keys in JSON Document types.
+
 # Release (2025-07-24)
 
 ## General Highlights
@@ -5,8 +14,7 @@
 
 ## Module Highlights
 * `github.com/aws/smithy-go`: v1.22.5
-  * **Bug Fix**: Fix HTTP metrics data race.
-  * **Bug Fix**: Replace usages of deprecated ioutil package.
+  * **Feature**: Add HTTP interceptors.
 
 # Release (2025-06-16)
 

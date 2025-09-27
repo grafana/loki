@@ -419,15 +419,16 @@ func setResolvedDefaultsMode(o *Options) {
 // NewFromConfig returns a new client from the provided config.
 func NewFromConfig(cfg aws.Config, optFns ...func(*Options)) *Client {
 	opts := Options{
-		Region:             cfg.Region,
-		DefaultsMode:       cfg.DefaultsMode,
-		RuntimeEnvironment: cfg.RuntimeEnvironment,
-		HTTPClient:         cfg.HTTPClient,
-		Credentials:        cfg.Credentials,
-		APIOptions:         cfg.APIOptions,
-		Logger:             cfg.Logger,
-		ClientLogMode:      cfg.ClientLogMode,
-		AppID:              cfg.AppID,
+		Region:               cfg.Region,
+		DefaultsMode:         cfg.DefaultsMode,
+		RuntimeEnvironment:   cfg.RuntimeEnvironment,
+		HTTPClient:           cfg.HTTPClient,
+		Credentials:          cfg.Credentials,
+		APIOptions:           cfg.APIOptions,
+		Logger:               cfg.Logger,
+		ClientLogMode:        cfg.ClientLogMode,
+		AppID:                cfg.AppID,
+		AuthSchemePreference: cfg.AuthSchemePreference,
 	}
 	resolveAWSRetryerProvider(cfg, &opts)
 	resolveAWSRetryMaxAttempts(cfg, &opts)
@@ -437,7 +438,14 @@ func NewFromConfig(cfg aws.Config, optFns ...func(*Options)) *Client {
 	resolveUseDualStackEndpoint(cfg, &opts)
 	resolveUseFIPSEndpoint(cfg, &opts)
 	resolveBaseEndpoint(cfg, &opts)
-	return New(opts, optFns...)
+	return New(opts, func(o *Options) {
+		for _, opt := range cfg.ServiceOptions {
+			opt(ServiceID, o)
+		}
+		for _, opt := range optFns {
+			opt(o)
+		}
+	})
 }
 
 func resolveHTTPClient(o *Options) {

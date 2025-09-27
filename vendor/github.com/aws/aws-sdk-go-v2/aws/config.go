@@ -196,6 +196,14 @@ type Config struct {
 
 	// Registry of HTTP interceptors.
 	Interceptors smithyhttp.InterceptorRegistry
+
+	// Priority list of preferred auth scheme IDs.
+	AuthSchemePreference []string
+
+	// ServiceOptions provides service specific configuration options that will be applied
+	// when constructing clients for specific services. Each callback function receives the service ID
+	// and the service's Options struct, allowing for dynamic configuration based on the service.
+	ServiceOptions []func(string, any)
 }
 
 // NewConfig returns a new Config pointer that can be chained with builder

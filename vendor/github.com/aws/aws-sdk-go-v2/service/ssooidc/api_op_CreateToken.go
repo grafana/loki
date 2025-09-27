@@ -85,10 +85,9 @@ type CreateTokenInput struct {
 	// [IAM Identity Center OIDC API Reference]: https://docs.aws.amazon.com/singlesignon/latest/OIDCAPIReference/Welcome.html
 	RefreshToken *string
 
-	// The list of scopes for which authorization is requested. The access token that
-	// is issued is limited to the scopes that are granted. If this value is not
-	// specified, IAM Identity Center authorizes all scopes that are configured for the
-	// client during the call to RegisterClient.
+	// The list of scopes for which authorization is requested. This parameter has no
+	// effect; the access token will always include all scopes configured during client
+	// registration.
 	Scope []string
 
 	noSmithyDocumentSerde
