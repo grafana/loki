@@ -94,17 +94,22 @@ const (
 	BucketLocationConstraintApSoutheast1 BucketLocationConstraint = "ap-southeast-1"
 	BucketLocationConstraintApSoutheast2 BucketLocationConstraint = "ap-southeast-2"
 	BucketLocationConstraintApSoutheast3 BucketLocationConstraint = "ap-southeast-3"
+	BucketLocationConstraintApSoutheast4 BucketLocationConstraint = "ap-southeast-4"
+	BucketLocationConstraintApSoutheast5 BucketLocationConstraint = "ap-southeast-5"
 	BucketLocationConstraintCaCentral1   BucketLocationConstraint = "ca-central-1"
 	BucketLocationConstraintCnNorth1     BucketLocationConstraint = "cn-north-1"
 	BucketLocationConstraintCnNorthwest1 BucketLocationConstraint = "cn-northwest-1"
 	BucketLocationConstraintEu           BucketLocationConstraint = "EU"
 	BucketLocationConstraintEuCentral1   BucketLocationConstraint = "eu-central-1"
+	BucketLocationConstraintEuCentral2   BucketLocationConstraint = "eu-central-2"
 	BucketLocationConstraintEuNorth1     BucketLocationConstraint = "eu-north-1"
 	BucketLocationConstraintEuSouth1     BucketLocationConstraint = "eu-south-1"
 	BucketLocationConstraintEuSouth2     BucketLocationConstraint = "eu-south-2"
 	BucketLocationConstraintEuWest1      BucketLocationConstraint = "eu-west-1"
 	BucketLocationConstraintEuWest2      BucketLocationConstraint = "eu-west-2"
 	BucketLocationConstraintEuWest3      BucketLocationConstraint = "eu-west-3"
+	BucketLocationConstraintIlCentral1   BucketLocationConstraint = "il-central-1"
+	BucketLocationConstraintMeCentral1   BucketLocationConstraint = "me-central-1"
 	BucketLocationConstraintMeSouth1     BucketLocationConstraint = "me-south-1"
 	BucketLocationConstraintSaEast1      BucketLocationConstraint = "sa-east-1"
 	BucketLocationConstraintUsEast2      BucketLocationConstraint = "us-east-2"
@@ -130,17 +135,22 @@ func (BucketLocationConstraint) Values() []BucketLocationConstraint {
 		"ap-southeast-1",
 		"ap-southeast-2",
 		"ap-southeast-3",
+		"ap-southeast-4",
+		"ap-southeast-5",
 		"ca-central-1",
 		"cn-north-1",
 		"cn-northwest-1",
 		"EU",
 		"eu-central-1",
+		"eu-central-2",
 		"eu-north-1",
 		"eu-south-1",
 		"eu-south-2",
 		"eu-west-1",
 		"eu-west-2",
 		"eu-west-3",
+		"il-central-1",
+		"me-central-1",
 		"me-south-1",
 		"sa-east-1",
 		"us-east-2",
@@ -212,10 +222,11 @@ type ChecksumAlgorithm string
 
 // Enum values for ChecksumAlgorithm
 const (
-	ChecksumAlgorithmCrc32  ChecksumAlgorithm = "CRC32"
-	ChecksumAlgorithmCrc32c ChecksumAlgorithm = "CRC32C"
-	ChecksumAlgorithmSha1   ChecksumAlgorithm = "SHA1"
-	ChecksumAlgorithmSha256 ChecksumAlgorithm = "SHA256"
+	ChecksumAlgorithmCrc32     ChecksumAlgorithm = "CRC32"
+	ChecksumAlgorithmCrc32c    ChecksumAlgorithm = "CRC32C"
+	ChecksumAlgorithmSha1      ChecksumAlgorithm = "SHA1"
+	ChecksumAlgorithmSha256    ChecksumAlgorithm = "SHA256"
+	ChecksumAlgorithmCrc64nvme ChecksumAlgorithm = "CRC64NVME"
 )
 
 // Values returns all known values for ChecksumAlgorithm. Note that this can be
@@ -228,6 +239,7 @@ func (ChecksumAlgorithm) Values() []ChecksumAlgorithm {
 		"CRC32C",
 		"SHA1",
 		"SHA256",
+		"CRC64NVME",
 	}
 }
 
@@ -245,6 +257,25 @@ const (
 func (ChecksumMode) Values() []ChecksumMode {
 	return []ChecksumMode{
 		"ENABLED",
+	}
+}
+
+type ChecksumType string
+
+// Enum values for ChecksumType
+const (
+	ChecksumTypeComposite  ChecksumType = "COMPOSITE"
+	ChecksumTypeFullObject ChecksumType = "FULL_OBJECT"
+)
+
+// Values returns all known values for ChecksumType. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (ChecksumType) Values() []ChecksumType {
+	return []ChecksumType{
+		"COMPOSITE",
+		"FULL_OBJECT",
 	}
 }
 
@@ -274,6 +305,7 @@ type DataRedundancy string
 // Enum values for DataRedundancy
 const (
 	DataRedundancySingleAvailabilityZone DataRedundancy = "SingleAvailabilityZone"
+	DataRedundancySingleLocalZone        DataRedundancy = "SingleLocalZone"
 )
 
 // Values returns all known values for DataRedundancy. Note that this can be
@@ -283,6 +315,7 @@ const (
 func (DataRedundancy) Values() []DataRedundancy {
 	return []DataRedundancy{
 		"SingleAvailabilityZone",
+		"SingleLocalZone",
 	}
 }
 
@@ -412,6 +445,25 @@ func (ExistingObjectReplicationStatus) Values() []ExistingObjectReplicationStatu
 	}
 }
 
+type ExpirationState string
+
+// Enum values for ExpirationState
+const (
+	ExpirationStateEnabled  ExpirationState = "ENABLED"
+	ExpirationStateDisabled ExpirationState = "DISABLED"
+)
+
+// Values returns all known values for ExpirationState. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (ExpirationState) Values() []ExpirationState {
+	return []ExpirationState{
+		"ENABLED",
+		"DISABLED",
+	}
+}
+
 type ExpirationStatus string
 
 // Enum values for ExpirationStatus
@@ -524,6 +576,25 @@ func (IntelligentTieringStatus) Values() []IntelligentTieringStatus {
 	return []IntelligentTieringStatus{
 		"Enabled",
 		"Disabled",
+	}
+}
+
+type InventoryConfigurationState string
+
+// Enum values for InventoryConfigurationState
+const (
+	InventoryConfigurationStateEnabled  InventoryConfigurationState = "ENABLED"
+	InventoryConfigurationStateDisabled InventoryConfigurationState = "DISABLED"
+)
+
+// Values returns all known values for InventoryConfigurationState. Note that this
+// can be expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (InventoryConfigurationState) Values() []InventoryConfigurationState {
+	return []InventoryConfigurationState{
+		"ENABLED",
+		"DISABLED",
 	}
 }
 
@@ -656,6 +727,7 @@ type LocationType string
 // Enum values for LocationType
 const (
 	LocationTypeAvailabilityZone LocationType = "AvailabilityZone"
+	LocationTypeLocalZone        LocationType = "LocalZone"
 )
 
 // Values returns all known values for LocationType. Note that this can be
@@ -665,6 +737,7 @@ const (
 func (LocationType) Values() []LocationType {
 	return []LocationType{
 		"AvailabilityZone",
+		"LocalZone",
 	}
 }
 
@@ -908,6 +981,7 @@ const (
 	ObjectStorageClassGlacierIr          ObjectStorageClass = "GLACIER_IR"
 	ObjectStorageClassSnow               ObjectStorageClass = "SNOW"
 	ObjectStorageClassExpressOnezone     ObjectStorageClass = "EXPRESS_ONEZONE"
+	ObjectStorageClassFsxOpenzfs         ObjectStorageClass = "FSX_OPENZFS"
 )
 
 // Values returns all known values for ObjectStorageClass. Note that this can be
@@ -927,6 +1001,7 @@ func (ObjectStorageClass) Values() []ObjectStorageClass {
 		"GLACIER_IR",
 		"SNOW",
 		"EXPRESS_ONEZONE",
+		"FSX_OPENZFS",
 	}
 }
 
@@ -1215,11 +1290,31 @@ func (RestoreRequestType) Values() []RestoreRequestType {
 	}
 }
 
+type S3TablesBucketType string
+
+// Enum values for S3TablesBucketType
+const (
+	S3TablesBucketTypeAws      S3TablesBucketType = "aws"
+	S3TablesBucketTypeCustomer S3TablesBucketType = "customer"
+)
+
+// Values returns all known values for S3TablesBucketType. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (S3TablesBucketType) Values() []S3TablesBucketType {
+	return []S3TablesBucketType{
+		"aws",
+		"customer",
+	}
+}
+
 type ServerSideEncryption string
 
 // Enum values for ServerSideEncryption
 const (
 	ServerSideEncryptionAes256     ServerSideEncryption = "AES256"
+	ServerSideEncryptionAwsFsx     ServerSideEncryption = "aws:fsx"
 	ServerSideEncryptionAwsKms     ServerSideEncryption = "aws:kms"
 	ServerSideEncryptionAwsKmsDsse ServerSideEncryption = "aws:kms:dsse"
 )
@@ -1231,6 +1326,7 @@ const (
 func (ServerSideEncryption) Values() []ServerSideEncryption {
 	return []ServerSideEncryption{
 		"AES256",
+		"aws:fsx",
 		"aws:kms",
 		"aws:kms:dsse",
 	}
@@ -1290,6 +1386,7 @@ const (
 	StorageClassGlacierIr          StorageClass = "GLACIER_IR"
 	StorageClassSnow               StorageClass = "SNOW"
 	StorageClassExpressOnezone     StorageClass = "EXPRESS_ONEZONE"
+	StorageClassFsxOpenzfs         StorageClass = "FSX_OPENZFS"
 )
 
 // Values returns all known values for StorageClass. Note that this can be
@@ -1309,6 +1406,7 @@ func (StorageClass) Values() []StorageClass {
 		"GLACIER_IR",
 		"SNOW",
 		"EXPRESS_ONEZONE",
+		"FSX_OPENZFS",
 	}
 }
 
@@ -1327,6 +1425,25 @@ const (
 func (StorageClassAnalysisSchemaVersion) Values() []StorageClassAnalysisSchemaVersion {
 	return []StorageClassAnalysisSchemaVersion{
 		"V_1",
+	}
+}
+
+type TableSseAlgorithm string
+
+// Enum values for TableSseAlgorithm
+const (
+	TableSseAlgorithmAwsKms TableSseAlgorithm = "aws:kms"
+	TableSseAlgorithmAes256 TableSseAlgorithm = "AES256"
+)
+
+// Values returns all known values for TableSseAlgorithm. Note that this can be
+// expanded in the future, and so it is only as up to date as the client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (TableSseAlgorithm) Values() []TableSseAlgorithm {
+	return []TableSseAlgorithm{
+		"aws:kms",
+		"AES256",
 	}
 }
 
@@ -1367,6 +1484,26 @@ func (Tier) Values() []Tier {
 		"Standard",
 		"Bulk",
 		"Expedited",
+	}
+}
+
+type TransitionDefaultMinimumObjectSize string
+
+// Enum values for TransitionDefaultMinimumObjectSize
+const (
+	TransitionDefaultMinimumObjectSizeVariesByStorageClass  TransitionDefaultMinimumObjectSize = "varies_by_storage_class"
+	TransitionDefaultMinimumObjectSizeAllStorageClasses128k TransitionDefaultMinimumObjectSize = "all_storage_classes_128K"
+)
+
+// Values returns all known values for TransitionDefaultMinimumObjectSize. Note
+// that this can be expanded in the future, and so it is only as up to date as the
+// client.
+//
+// The ordering of this slice is not guaranteed to be stable across updates.
+func (TransitionDefaultMinimumObjectSize) Values() []TransitionDefaultMinimumObjectSize {
+	return []TransitionDefaultMinimumObjectSize{
+		"varies_by_storage_class",
+		"all_storage_classes_128K",
 	}
 }
 
