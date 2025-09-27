@@ -4073,7 +4073,7 @@ monitoring:
     annotations: {}
     # -- Additional labels for the rules PrometheusRule resource
     labels: {}
-    # -- Additional labels for PrometheusRule alerts
+    # -- Additional annotations for PrometheusRule alerts
     additionalRuleAnnotations: {}
     # e.g.:
     # additionalRuleAnnotations:
