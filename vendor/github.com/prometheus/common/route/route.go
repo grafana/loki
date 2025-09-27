@@ -78,7 +78,7 @@ func (r *Router) handle(handlerName string, h http.HandlerFunc) httprouter.Handl
 		defer cancel()
 
 		for _, p := range params {
-			ctx = context.WithValue(ctx, param(p.Key), p.Value)
+			ctx = context.WithValue(ctx, param(p.Key), p.Value) //nolint:fatcontext
 		}
 		h(w, req.WithContext(ctx))
 	}
