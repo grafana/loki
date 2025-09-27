@@ -7,9 +7,9 @@ groups:
         annotations:
           message: |
             {{`{{`}} $labels.job {{`}}`}} {{`{{`}} $labels.route {{`}}`}} is experiencing {{`{{`}} printf "%.2f" $value {{`}}`}}% errors.
-{{- with .Values.monitoring.rules.additionalRuleAnnotations }}
-{{ toYaml . | indent 10 }}
-{{- end }}
+          {{- with .Values.monitoring.rules.additionalRuleAnnotations }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
         expr: |
           100 * sum(rate(loki_request_duration_seconds_count{status_code=~"5.."}[2m])) by (namespace, job, route)
             /
