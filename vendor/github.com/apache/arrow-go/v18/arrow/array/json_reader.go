@@ -75,7 +75,7 @@ type JSONReader struct {
 	bldr *RecordBuilder
 
 	refs atomic.Int64
-	cur  arrow.Record
+	cur  arrow.RecordBatch
 	err  error
 
 	chunk int
@@ -124,9 +124,15 @@ func (r *JSONReader) Err() error { return r.err }
 
 func (r *JSONReader) Schema() *arrow.Schema { return r.schema }
 
+// RecordBatch returns the last read in record batch. The returned record batch is only valid
+// until the next call to Next unless Retain is called on the record batch itself.
+func (r *JSONReader) RecordBatch() arrow.RecordBatch { return r.cur }
+
 // Record returns the last read in record. The returned record is only valid
 // until the next call to Next unless Retain is called on the record itself.
-func (r *JSONReader) Record() arrow.Record { return r.cur }
+//
+// Deprecated: Use [RecordBatch] instead.
+func (r *JSONReader) Record() arrow.Record { return r.RecordBatch() }
 
 func (r *JSONReader) Retain() {
 	r.refs.Add(1)
@@ -144,7 +150,7 @@ func (r *JSONReader) Release() {
 	}
 }
 
-// Next returns true if it read in a record, which will be available via Record
+// Next returns true if it read in a record, which will be available via RecordBatch
 // and false if there is either an error or the end of the reader.
 func (r *JSONReader) Next() bool {
 	if r.cur != nil {
