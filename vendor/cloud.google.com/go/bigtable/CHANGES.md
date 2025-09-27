@@ -1,5 +1,18 @@
 # Changes
 
+## [1.40.1](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.40.0...bigtable/v1.40.1) (2025-09-26)
+
+
+### Features
+
+* **bigtable:** Add an e2e flow for direct access with instructions ([#12939](https://github.com/googleapis/google-cloud-go/issues/12939)) ([fdcdde8](https://github.com/googleapis/google-cloud-go/commit/fdcdde809db710633e3102440d11b3365bdd1fd4))
+
+
+### Bug Fixes
+
+* **bigtable:** Release bigtable as 1.40.1 ([#12961](https://github.com/googleapis/google-cloud-go/issues/12961)) ([33e1474](https://github.com/googleapis/google-cloud-go/commit/33e1474de4d6ea19c4341b833f926b828b32abdd))
+* **bigtable:** Use stable stats.NewMetricSet ([#12941](https://github.com/googleapis/google-cloud-go/issues/12941)) ([2c713d7](https://github.com/googleapis/google-cloud-go/commit/2c713d7b9291627b1e55757024a542180188ce3f))
+
 ## [1.40.0](https://github.com/googleapis/google-cloud-go/compare/bigtable/v1.39.0...bigtable/v1.40.0) (2025-09-22)
 
 
