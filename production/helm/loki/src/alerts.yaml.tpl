@@ -28,9 +28,9 @@ groups:
         annotations:
           message: |
             {{`{{`}} $labels.job {{`}}`}} is experiencing {{`{{`}} printf "%.2f" $value {{`}}`}}% increase of panics.
-{{- with .Values.monitoring.rules.additionalRuleAnnotations }}
-{{ toYaml . | indent 10 }}
-{{- end }}
+          {{- with .Values.monitoring.rules.additionalRuleAnnotations }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
         expr: |
           sum(increase(loki_panic_total[10m])) by (namespace, job) > 0
         labels:
@@ -45,9 +45,9 @@ groups:
         annotations:
           message: |
             {{`{{`}} $labels.job {{`}}`}} {{`{{`}} $labels.route {{`}}`}} is experiencing {{`{{`}} printf "%.2f" $value {{`}}`}}s 99th percentile latency.
-{{- with .Values.monitoring.rules.additionalRuleAnnotations }}
-{{ toYaml . | indent 10 }}
-{{- end }}
+          {{- with .Values.monitoring.rules.additionalRuleAnnotations }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
         expr: |
           namespace_job_route:loki_request_duration_seconds:99quantile{route!~"(?i).*tail.*"} > 1
         for: "15m"
@@ -63,9 +63,9 @@ groups:
         annotations:
           message: |
             {{`{{`}} $labels.cluster {{`}}`}} {{`{{`}} $labels.namespace {{`}}`}} has had {{`{{`}} printf "%.0f" $value {{`}}`}} compactors running for more than 5m. Only one compactor should run at a time.
-{{- with .Values.monitoring.rules.additionalRuleAnnotations }}
-{{ toYaml . | indent 10 }}
-{{- end }}
+          {{- with .Values.monitoring.rules.additionalRuleAnnotations }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
         expr: |
           sum(loki_boltdb_shipper_compactor_running) by (cluster, namespace) > 1
         for: "5m"
@@ -83,9 +83,9 @@ groups:
         annotations:
           message: |
             {{`{{`}} $labels.job {{`}}`}} is experiencing {{`{{`}} printf "%.2f" $value {{`}}`}}s 99th percentile latency.
-{{- with .Values.monitoring.rules.additionalRuleAnnotations }}
-{{ toYaml . | indent 10 }}
-{{- end }}
+          {{- with .Values.monitoring.rules.additionalRuleAnnotations }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
         expr: |
           histogram_quantile(0.99, sum(rate(loki_canary_response_latency_seconds_bucket[5m])) by (le, namespace, job)) > 5
         for: "15m"
