@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"testing"
 
-	s3_service "github.com/aws/aws-sdk-go/service/s3"
+	s3_types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -78,7 +78,7 @@ func TestConfig_Validate(t *testing.T) {
 					Endpoint:     "s3.eu-central-1.amazonaws.com",
 					BucketName:   "mimir-block",
 					SSE:          *sseCfg,
-					StorageClass: s3_service.StorageClassStandard,
+					StorageClass: string(s3_types.ObjectStorageClassStandard),
 				}
 				return cfg
 			},
@@ -96,7 +96,7 @@ func TestConfig_Validate(t *testing.T) {
 				return &Config{
 					Endpoint:     "mimir-blocks.s3.eu-central-1.amazonaws.com",
 					BucketName:   "mimir-blocks",
-					StorageClass: s3_service.StorageClassStandard,
+					StorageClass: string(s3_types.ObjectStorageClassStandard),
 				}
 			},
 			expected: errInvalidEndpointPrefix,
@@ -115,7 +115,7 @@ func TestConfig_Validate(t *testing.T) {
 				cfg := &Config{
 					BucketName:   "mimir-block",
 					SSE:          *sseCfg,
-					StorageClass: s3_service.StorageClassStandard,
+					StorageClass: string(s3_types.ObjectStorageClassStandard),
 					STSEndpoint:  "https://sts.eu-central-1.amazonaws.com",
 				}
 				return cfg
@@ -128,7 +128,7 @@ func TestConfig_Validate(t *testing.T) {
 				cfg := &Config{
 					BucketName:   "mimir-block",
 					SSE:          *sseCfg,
-					StorageClass: s3_service.StorageClassStandard,
+					StorageClass: string(s3_types.ObjectStorageClassStandard),
 					STSEndpoint:  "sts.eu-central-1.amazonaws.com",
 				}
 				return cfg
