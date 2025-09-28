@@ -8116,6 +8116,15 @@ null
 		<tr>
 			<td>monitoring.rules.additionalRuleAnnotations</td>
 			<td>object</td>
+			<td>Additional annotations for PrometheusRule alerts</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.rules.additionalRuleLabels</td>
+			<td>object</td>
 			<td>Additional labels for PrometheusRule alerts</td>
 			<td><pre lang="json">
 {}
