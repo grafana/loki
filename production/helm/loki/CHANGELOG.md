@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [FEATURE] Make loki-canary readinessProbe configurable via values.yaml  [#19328](https://github.com/grafana/loki/pull/19328)
+
 ## 6.41.1
 
 - [CHANGE] Changed version of Grafana Loki to 3.5.5.
