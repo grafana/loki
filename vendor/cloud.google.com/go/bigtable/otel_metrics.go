@@ -30,7 +30,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	"google.golang.org/api/option"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/experimental/stats"
+	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/stats/opentelemetry"
 )
 
@@ -190,7 +190,7 @@ func newOtelMetricsContext(ctx context.Context, cfg metricsConfig) (*metricsCont
 	provider := metric.NewMeterProvider(meterOpts...)
 	mo := opentelemetry.MetricsOptions{
 		MeterProvider: provider,
-		Metrics: stats.NewMetrics(
+		Metrics: stats.NewMetricSet(
 			"grpc.client.attempt.duration",
 			"grpc.lb.rls.default_target_picks",
 			"grpc.lb.rls.target_picks",
