@@ -15,6 +15,8 @@ import (
 	"time"
 
 	kitlog "github.com/go-kit/log"
+	"github.com/gogo/protobuf/proto"
+	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
@@ -53,6 +55,20 @@ func deflateString(source string) string {
 		log.Fatal(err)
 	}
 	return buf.String()
+}
+
+// Compress source string with Snappy
+func snappyString(source []byte) string {
+	buf := snappy.Encode(nil, source)
+	return string(buf)
+}
+
+func marshalProto(m proto.Message) []byte {
+	data, err := proto.Marshal(m)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return data
 }
 
 func TestParseRequest(t *testing.T) {
@@ -292,6 +308,37 @@ func TestParseRequest(t *testing.T) {
 			expectedBytesUsageTracker: map[string]float64{"{environment=\"dev\", foo=\"bar2\"}": float64(len("fizzbuzz")), "{environment=\"prod\", foo=\"bar2\"}": float64(len("xx")), "{dass=\"zasss\", foo=\"bar2\"}": float64(len("graf"))},
 			expectedLabels:            []labels.Labels{labels.FromStrings("foo", "bar2", "environment", "dev"), labels.FromStrings("foo", "bar2", "environment", "prod"), labels.FromStrings("foo", "bar2", "dass", "zasss")},
 		},
+		{
+			path: `/loki/api/v1/push`,
+			body: snappyString(marshalProto(
+				&logproto.PushRequest{
+					Streams: []logproto.Stream{
+						{
+							Labels: `{ "foo"="bar2",      "environment"="prod"   }`, // extra spaces are important
+							Entries: []logproto.Entry{
+								{
+									Timestamp: time.Unix(0, 1570818238000000000),
+									Line:      "fizzbuzz",
+									StructuredMetadata: []logproto.LabelAdapter{
+										{
+											Name:  "name1",
+											Value: "value1",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			)),
+			contentType:                     `application/x-protobuf`,
+			valid:                           true,
+			expectedBytes:                   map[string]int{"prod": len("fizzbuzz") + len("name1") + len("value1")},
+			expectedLines:                   map[string]int{"prod": 1},
+			expectedBytesUsageTracker:       map[string]float64{"{environment=\"prod\", foo=\"bar2\"}": float64(len("fizzbuzz") + len("name1") + len("value1"))},
+			expectedLabels:                  []labels.Labels{labels.FromStrings("foo", "bar2", "environment", "prod")},
+			expectedStructuredMetadataBytes: map[string]int{"prod": len("name1") + len("value1")},
+		},
 	} {
 		t.Run(fmt.Sprintf("test %d", index), func(t *testing.T) {
 			streamResolver := newMockStreamResolver("fake", test.fakeLimits)
@@ -312,7 +359,7 @@ func TestParseRequest(t *testing.T) {
 			}
 
 			tracker := NewMockTracker()
-			data, _, err := ParseRequest(
+			data, stats, err := ParseRequest(
 				util_log.Logger,
 				"fake",
 				100<<20,
@@ -406,6 +453,12 @@ func TestParseRequest(t *testing.T) {
 					require.EqualValues(t, test.expectedLabels[i].String(), data.Streams[i].Labels)
 				}
 				require.InDeltaMapValuesf(t, test.expectedBytesUsageTracker, tracker.receivedBytes, 0.0, "%s != %s", test.expectedBytesUsageTracker, tracker.receivedBytes)
+
+				expectedStreamLabelsSize := 0
+				for _, lbs := range test.expectedLabels {
+					expectedStreamLabelsSize += len(lbs.String())
+				}
+				require.EqualValues(t, expectedStreamLabelsSize, stats.StreamLabelsSize)
 			} else {
 				assert.Errorf(t, err, "Should give error for %d", index)
 				assert.Nil(t, data, "Should not give data for %d", index)
@@ -451,7 +504,7 @@ func Test_ServiceDetection(t *testing.T) {
 		return request
 	}
 
-	t.Run("detects servce from loki push requests", func(t *testing.T) {
+	t.Run("detects service from loki push requests", func(t *testing.T) {
 		body := `{"streams": [{ "stream": { "foo": "bar" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`
 		request := createRequest("/loki/api/v1/push", strings.NewReader(body))
 
@@ -474,7 +527,7 @@ func Test_ServiceDetection(t *testing.T) {
 		require.Equal(t, labels.FromStrings("k8s_job_name", "bar", LabelServiceName, "bar").String(), data.Streams[0].Labels)
 	})
 
-	t.Run("detects servce from OTLP push requests using custom indexing", func(t *testing.T) {
+	t.Run("detects service from OTLP push requests using custom indexing", func(t *testing.T) {
 		body := createOtlpLogs("special", "sauce")
 		request := createRequest("/otlp/v1/push", bytes.NewReader(body))
 
