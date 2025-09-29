@@ -19,6 +19,7 @@ package xdsresource
 
 import (
 	"google.golang.org/grpc/internal/pretty"
+	xdsclient "google.golang.org/grpc/xds/internal/clients/xdsclient"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -104,41 +105,40 @@ func (e *EndpointsResourceData) Raw() *anypb.Any {
 }
 
 // EndpointsWatcher wraps the callbacks to be invoked for different
-// events corresponding to the endpoints resource being watched.
+// events corresponding to the endpoints resource being watched. gRFC A88
+// contains an exhaustive list of what method is invoked under what conditions.
 type EndpointsWatcher interface {
-	// OnUpdate is invoked to report an update for the resource being watched.
-	OnUpdate(*EndpointsResourceData, OnDoneFunc)
+	// ResourceChanged indicates a new version of the resource is available.
+	ResourceChanged(resource *EndpointsResourceData, done func())
 
-	// OnError is invoked under different error conditions including but not
-	// limited to the following:
-	//	- authority mentioned in the resource is not found
-	//	- resource name parsing error
-	//	- resource deserialization error
-	//	- resource validation error
-	//	- ADS stream failure
-	//	- connection failure
-	OnError(error, OnDoneFunc)
+	// ResourceError indicates an error occurred while trying to fetch or
+	// decode the associated resource. The previous version of the resource
+	// should be considered invalid.
+	ResourceError(err error, done func())
 
-	// OnResourceDoesNotExist is invoked for a specific error condition where
-	// the requested resource is not found on the xDS management server.
-	OnResourceDoesNotExist(OnDoneFunc)
+	// AmbientError indicates an error occurred after a resource has been
+	// received that should not modify the use of that resource but may provide
+	// useful information about the state of the XDSClient for debugging
+	// purposes. The previous version of the resource should still be
+	// considered valid.
+	AmbientError(err error, done func())
 }
 
 type delegatingEndpointsWatcher struct {
 	watcher EndpointsWatcher
 }
 
-func (d *delegatingEndpointsWatcher) OnUpdate(data ResourceData, onDone OnDoneFunc) {
+func (d *delegatingEndpointsWatcher) ResourceChanged(data ResourceData, onDone func()) {
 	e := data.(*EndpointsResourceData)
-	d.watcher.OnUpdate(e, onDone)
+	d.watcher.ResourceChanged(e, onDone)
 }
 
-func (d *delegatingEndpointsWatcher) OnError(err error, onDone OnDoneFunc) {
-	d.watcher.OnError(err, onDone)
+func (d *delegatingEndpointsWatcher) ResourceError(err error, onDone func()) {
+	d.watcher.ResourceError(err, onDone)
 }
 
-func (d *delegatingEndpointsWatcher) OnResourceDoesNotExist(onDone OnDoneFunc) {
-	d.watcher.OnResourceDoesNotExist(onDone)
+func (d *delegatingEndpointsWatcher) AmbientError(err error, onDone func()) {
+	d.watcher.AmbientError(err, onDone)
 }
 
 // WatchEndpoints uses xDS to discover the configuration associated with the
@@ -146,4 +146,10 @@ func (d *delegatingEndpointsWatcher) OnResourceDoesNotExist(onDone OnDoneFunc) {
 func WatchEndpoints(p Producer, name string, w EndpointsWatcher) (cancel func()) {
 	delegator := &delegatingEndpointsWatcher{watcher: w}
 	return p.WatchResource(endpointsType, name, delegator)
+}
+
+// NewGenericEndpointsResourceTypeDecoder returns a xdsclient.Decoder that
+// wraps the xdsresource.endpointsType.
+func NewGenericEndpointsResourceTypeDecoder() xdsclient.Decoder {
+	return &GenericResourceTypeDecoder{ResourceType: endpointsType}
 }

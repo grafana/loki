@@ -1,14 +1,23 @@
 package openshift
 
-import lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+import (
+	"maps"
+	"strings"
+
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+)
 
 func AlertingRuleTenantLabels(ar *lokiv1.AlertingRule) {
 	switch ar.Spec.TenantID {
 	case tenantApplication:
-		appendAlertingRuleLabels(ar, map[string]string{
-			opaDefaultLabelMatcher:    ar.Namespace,
+		labels := map[string]string{
 			ocpMonitoringGroupByLabel: ar.Namespace,
-		})
+		}
+		labelMatchers := strings.Split(opaDefaultLabelMatchers, ",")
+		for _, label := range labelMatchers {
+			labels[label] = ar.Namespace
+		}
+		appendAlertingRuleLabels(ar, labels)
 	case tenantInfrastructure, tenantAudit, tenantNetwork:
 		appendAlertingRuleLabels(ar, map[string]string{
 			ocpMonitoringGroupByLabel: ar.Namespace,
@@ -25,9 +34,7 @@ func appendAlertingRuleLabels(ar *lokiv1.AlertingRule, labels map[string]string)
 				rule.Labels = map[string]string{}
 			}
 
-			for name, value := range labels {
-				rule.Labels[name] = value
-			}
+			maps.Copy(rule.Labels, labels)
 
 			group.Rules[ruleIdx] = rule
 		}

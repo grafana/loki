@@ -182,35 +182,6 @@ var (
 	// other features, including the CSDS service.
 	NewXDSResolverWithClientForTesting any // func(xdsclient.XDSClient) (resolver.Builder, error)
 
-	// RegisterRLSClusterSpecifierPluginForTesting registers the RLS Cluster
-	// Specifier Plugin for testing purposes, regardless of the XDSRLS environment
-	// variable.
-	//
-	// TODO: Remove this function once the RLS env var is removed.
-	RegisterRLSClusterSpecifierPluginForTesting func()
-
-	// UnregisterRLSClusterSpecifierPluginForTesting unregisters the RLS Cluster
-	// Specifier Plugin for testing purposes. This is needed because there is no way
-	// to unregister the RLS Cluster Specifier Plugin after registering it solely
-	// for testing purposes using RegisterRLSClusterSpecifierPluginForTesting().
-	//
-	// TODO: Remove this function once the RLS env var is removed.
-	UnregisterRLSClusterSpecifierPluginForTesting func()
-
-	// RegisterRBACHTTPFilterForTesting registers the RBAC HTTP Filter for testing
-	// purposes, regardless of the RBAC environment variable.
-	//
-	// TODO: Remove this function once the RBAC env var is removed.
-	RegisterRBACHTTPFilterForTesting func()
-
-	// UnregisterRBACHTTPFilterForTesting unregisters the RBAC HTTP Filter for
-	// testing purposes. This is needed because there is no way to unregister the
-	// HTTP Filter after registering it solely for testing purposes using
-	// RegisterRBACHTTPFilterForTesting().
-	//
-	// TODO: Remove this function once the RBAC env var is removed.
-	UnregisterRBACHTTPFilterForTesting func()
-
 	// ORCAAllowAnyMinReportingInterval is for examples/orca use ONLY.
 	ORCAAllowAnyMinReportingInterval any // func(so *orca.ServiceOptions)
 
@@ -259,6 +230,20 @@ var (
 	// SetBufferPoolingThresholdForTesting updates the buffer pooling threshold, for
 	// testing purposes.
 	SetBufferPoolingThresholdForTesting any // func(int)
+
+	// TimeAfterFunc is used to create timers. During tests the function is
+	// replaced to track allocated timers and fail the test if a timer isn't
+	// cancelled.
+	TimeAfterFunc = func(d time.Duration, f func()) Timer {
+		return time.AfterFunc(d, f)
+	}
+
+	// NewStreamWaitingForResolver is a test hook that is triggered when a
+	// new stream blocks while waiting for name resolution. This can be
+	// used in tests to synchronize resolver updates and avoid race conditions.
+	// When set, the function will be called before the stream enters
+	// the blocking state.
+	NewStreamWaitingForResolver = func() {}
 )
 
 // HealthChecker defines the signature of the client-side LB channel health
@@ -299,4 +284,10 @@ type EnforceSubConnEmbedding interface {
 // embedding.
 type EnforceClientConnEmbedding interface {
 	enforceClientConnEmbedding()
+}
+
+// Timer is an interface to allow injecting different time.Timer implementations
+// during tests.
+type Timer interface {
+	Stop() bool
 }

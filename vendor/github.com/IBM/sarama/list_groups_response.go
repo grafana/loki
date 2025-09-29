@@ -8,8 +8,13 @@ type ListGroupsResponse struct {
 	GroupsData   map[string]GroupData // version 4 or later
 }
 
+func (r *ListGroupsResponse) setVersion(v int16) {
+	r.Version = v
+}
+
 type GroupData struct {
 	GroupState string // version 4 or later
+	GroupType  string // version 5 or later
 }
 
 func (r *ListGroupsResponse) encode(pe packetEncoder) error {
@@ -44,6 +49,13 @@ func (r *ListGroupsResponse) encode(pe packetEncoder) error {
 			if r.Version >= 4 {
 				groupData := r.GroupsData[groupId]
 				if err := pe.putCompactString(groupData.GroupState); err != nil {
+					return err
+				}
+			}
+
+			if r.Version >= 5 {
+				groupData := r.GroupsData[groupId]
+				if err := pe.putCompactString(groupData.GroupType); err != nil {
 					return err
 				}
 			}
@@ -111,13 +123,20 @@ func (r *ListGroupsResponse) decode(pd packetDecoder, version int16) error {
 		r.Groups[groupId] = protocolType
 
 		if r.Version >= 4 {
+			var groupData GroupData
 			groupState, err := pd.getCompactString()
 			if err != nil {
 				return err
 			}
-			r.GroupsData[groupId] = GroupData{
-				GroupState: groupState,
+			groupData.GroupState = groupState
+			if r.Version >= 5 {
+				groupType, err := pd.getCompactString()
+				if err != nil {
+					return err
+				}
+				groupData.GroupType = groupType
 			}
+			r.GroupsData[groupId] = groupData
 		}
 
 		if r.Version >= 3 {
@@ -137,7 +156,7 @@ func (r *ListGroupsResponse) decode(pd packetDecoder, version int16) error {
 }
 
 func (r *ListGroupsResponse) key() int16 {
-	return 16
+	return apiKeyListGroups
 }
 
 func (r *ListGroupsResponse) version() int16 {
@@ -152,11 +171,13 @@ func (r *ListGroupsResponse) headerVersion() int16 {
 }
 
 func (r *ListGroupsResponse) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 4
+	return r.Version >= 0 && r.Version <= 5
 }
 
 func (r *ListGroupsResponse) requiredVersion() KafkaVersion {
 	switch r.Version {
+	case 5:
+		return V3_8_0_0
 	case 4:
 		return V2_6_0_0
 	case 3:

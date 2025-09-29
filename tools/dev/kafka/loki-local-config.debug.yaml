@@ -20,9 +20,32 @@ common:
 
 kafka_config:
   topic: "loki"
+  reader_config:
+    address: localhost:9092
+  writer_config:
+    address: localhost:9092
 
 querier:
   query_partition_ingesters: true
+
+ingest_limits:
+  enabled: true
+  active_window: 1h
+  num_partitions: 1
+  topic: "loki.metadata"
+  lifecycler:
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+
+ingest_limits_frontend:
+  num_partitions: 1
+  lifecycler:
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
 
 ingester:
   kafka_ingestion:
@@ -31,6 +54,8 @@ ingester:
 distributor:
   kafka_writes_enabled: true
   ingester_writes_enabled: false
+  ingest_limits_enabled: true
+  ingest_limits_dry_run_enabled: true
 
 query_range:
   results_cache:
@@ -41,6 +66,7 @@ query_range:
 
 limits_config:
   metric_aggregation_enabled: true
+  max_global_streams_per_user: 1000
 
 schema_config:
   configs:

@@ -1,0 +1,99 @@
+name: LogQL correctness tests
+on:
+  schedule:
+    - cron: "30 2 * * 1-5" # Mon-Fri at 2.30am UTC
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to run correctness tests on'
+        required: false
+        default: 'main'
+        type: 'string'
+      failfast:
+        description: 'Fail fast on first test failure'
+        required: false
+        default: true
+        type: 'boolean'
+permissions: {}
+jobs:
+  generate-testdata:
+    name: Generate test data
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        id: checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24.3'
+
+      # The metastore generates invalid filenames for Windows (with colons),
+      # which get rejected by upload-artifact. We zip these files to avoid this
+      # issue.
+      - name: Generate test data
+        run: make generate && zip -r data.zip data/
+        working-directory: ./pkg/logql/bench
+
+      - name: Upload test data
+        uses: actions/upload-artifact@v4
+        with:
+          name: logql-bench-testdata-${{ steps.checkout.outputs.commit }}
+          path: ./pkg/logql/bench/data.zip
+          retention-days: 7
+
+  tests:
+    name: Run correctness tests for ${{ matrix.store }}
+    runs-on: github-hosted-ubuntu-arm64-large
+    needs: generate-testdata
+    strategy:
+      matrix:
+        store: [dataobj-engine]
+        range_type: [instant, range]
+      fail-fast: false # Continue testing other stores if one fails
+    steps:
+      - name: Checkout code
+        id: checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Download test data
+        uses: actions/download-artifact@v4
+        with:
+          name: logql-bench-testdata-${{ steps.checkout.outputs.commit }}
+          path: ./pkg/logql/bench
+
+      - name: Unzip test data
+        run: unzip data.zip
+        working-directory: ./pkg/logql/bench
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24.3'
+
+      - name: Create results directory
+        run: mkdir -p ./pkg/logql/bench/results
+
+      - name: Run tests
+        shell: bash # Use bash shell to propagate pipe failures
+        run: |
+          go test \
+            -v -slow-tests \
+            -run=TestStorageEquality/query=.+/kind=.+/store=${{ matrix.store }}$ \
+            ${{ matrix.range_type == 'instant' && '-range-type=instant' || '' }} \
+            ${{ inputs.failfast == true && '-failfast' || '' }} \
+          | tee results/results.txt
+        working-directory: ./pkg/logql/bench
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        if: always() # Upload results even if one of the test tests fails
+        with:
+          name: logql-bench-results-${{ matrix.store }}-${{ matrix.range_type }}-${{ steps.checkout.outputs.commit }}
+          path: ./pkg/logql/bench/results
+          retention-days: 7

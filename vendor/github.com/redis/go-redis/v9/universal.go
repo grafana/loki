@@ -80,6 +80,8 @@ type UniversalOptions struct {
 	IdentitySuffix string
 	UnstableResp3  bool
 
+	// IsClusterMode can be used when only one Addrs is provided (e.g. Elasticache supports setting up cluster mode with configuration endpoint).
+	IsClusterMode bool
 }
 
 // Cluster returns cluster options created from the universal options.
@@ -152,6 +154,9 @@ func (o *UniversalOptions) Failover() *FailoverOptions {
 		SentinelUsername: o.SentinelUsername,
 		SentinelPassword: o.SentinelPassword,
 
+		RouteByLatency: o.RouteByLatency,
+		RouteRandomly:  o.RouteRandomly,
+
 		MaxRetries:      o.MaxRetries,
 		MinRetryBackoff: o.MinRetryBackoff,
 		MaxRetryBackoff: o.MaxRetryBackoff,
@@ -171,6 +176,8 @@ func (o *UniversalOptions) Failover() *FailoverOptions {
 		ConnMaxLifetime: o.ConnMaxLifetime,
 
 		TLSConfig: o.TLSConfig,
+
+		ReplicaOnly: o.ReadOnly,
 
 		DisableIdentity:  o.DisableIdentity,
 		DisableIndentity: o.DisableIndentity,
@@ -252,14 +259,26 @@ var (
 // NewUniversalClient returns a new multi client. The type of the returned client depends
 // on the following conditions:
 //
-// 1. If the MasterName option is specified, a sentinel-backed FailoverClient is returned.
-// 2. if the number of Addrs is two or more, a ClusterClient is returned.
-// 3. Otherwise, a single-node Client is returned.
+//  1. If the MasterName option is specified with RouteByLatency, RouteRandomly or IsClusterMode,
+//     a FailoverClusterClient is returned.
+//  2. If the MasterName option is specified without RouteByLatency, RouteRandomly or IsClusterMode,
+//     a sentinel-backed FailoverClient is returned.
+//  3. If the number of Addrs is two or more, or IsClusterMode option is specified,
+//     a ClusterClient is returned.
+//  4. Otherwise, a single-node Client is returned.
 func NewUniversalClient(opts *UniversalOptions) UniversalClient {
-	if opts.MasterName != "" {
-		return NewFailoverClient(opts.Failover())
-	} else if len(opts.Addrs) > 1 {
-		return NewClusterClient(opts.Cluster())
+	if opts == nil {
+		panic("redis: NewUniversalClient nil options")
 	}
-	return NewClient(opts.Simple())
+
+	switch {
+	case opts.MasterName != "" && (opts.RouteByLatency || opts.RouteRandomly || opts.IsClusterMode):
+		return NewFailoverClusterClient(opts.Failover())
+	case opts.MasterName != "":
+		return NewFailoverClient(opts.Failover())
+	case len(opts.Addrs) > 1 || opts.IsClusterMode:
+		return NewClusterClient(opts.Cluster())
+	default:
+		return NewClient(opts.Simple())
+	}
 }

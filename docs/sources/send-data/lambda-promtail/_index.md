@@ -9,11 +9,11 @@ weight:  700
 
 # Lambda Promtail client
 
-Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch, Cloudtrail, VPC Flow Logs and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/loki/blob/main/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config](../promtail/configuration/#loki_push_api).
+Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch, Cloudtrail, VPC Flow Logs and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/lambda-promtail/blob/main/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config](../promtail/configuration/#loki_push_api).
 
 ## Deployment
 
-lambda-promtail can easily be deployed via provided [Terraform](https://github.com/grafana/loki/blob/main/tools/lambda-promtail/main.tf) and [CloudFormation](https://github.com/grafana/loki/blob/main/tools/lambda-promtail/template.yaml) files. The Terraform deployment also pulls variable values defined from [variables.tf](https://github.com/grafana/loki/blob/main/tools/lambda-promtail/variables.tf).
+lambda-promtail can easily be deployed via provided [Terraform](https://github.com/grafana/lambda-promtail/blob/main/tools/lambda-promtail/main.tf) and [CloudFormation](https://github.com/grafana/lambda-promtail/blob/main/tools/lambda-promtail/template.yaml) files. The Terraform deployment also pulls variable values defined from [variables.tf](https://github.com/grafana/lambda-promtail/blob/main/tools/lambda-promtail/variables.tf).
 
 For both deployment types there are a few values that must be defined:
 - the write address, a Loki Write API compatible endpoint (Loki or Promtail)
@@ -24,10 +24,10 @@ The Terraform deployment also takes in an array of log group and bucket names, a
 
 There's also a flag to keep the log stream label when propagating the logs from Cloudwatch, which defaults to false. This can be helpful when the cardinality is too large, such as the case of a log stream per lambda invocation.
 
-Additionally, an environment variable can be configured to add extra labels to the logs streamed by lambda-protmail.
+Additionally, an environment variable can be configured to add extra labels to the logs streamed by lambda-promtail.
 These extra labels will take the form `__extra_<name>=<value>`.
 
-An optional environment variable can be configured to add the tenant ID to the logs streamed by lambda-protmail.
+An optional environment variable can be configured to add the tenant ID to the logs streamed by lambda-promtail.
 
 In an effort to make deployment of lambda-promtail as simple as possible, we've created a [public ECR repo](https://gallery.ecr.aws/grafana/lambda-promtail) to publish our builds of lambda-promtail. Users may clone this repo, make their own modifications to the Go code, and upload their own image to their own ECR repo.
 
@@ -138,7 +138,7 @@ The diagram below shows how notifications logs will be written from the source s
 
 {{< figure src="https://grafana.com/media/docs/loki/lambda-promtail-with-eventbridge.png" alt="The diagram shows how notifications logs are written from the source service into an S3 bucket">}}
 
-The [template-eventbridge.yaml](https://github.com/grafana/loki/blob/main/tools/lambda-promtail/template-eventbridge.yaml) CloudFormation template configures Lambda-promtail with EventBridge to address this known issue. To deploy the template, use the snippet below, completing appropriately the `ParameterValue` arguments.
+The [template-eventbridge.yaml](https://github.com/grafana/lambda-promtail/blob/main/tools/lambda-promtail/template-eventbridge.yaml) CloudFormation template configures Lambda-promtail with EventBridge to address this known issue. To deploy the template, use the snippet below, completing appropriately the `ParameterValue` arguments.
 
 ```bash
 aws cloudformation create-stack \

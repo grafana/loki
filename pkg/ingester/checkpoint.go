@@ -18,6 +18,7 @@ import (
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/wlog"
+	"github.com/prometheus/prometheus/util/compression"
 	prompool "github.com/prometheus/prometheus/util/pool"
 
 	"github.com/grafana/loki/v3/pkg/chunkenc"
@@ -348,7 +349,7 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 		return false, fmt.Errorf("create checkpoint dir: %w", err)
 	}
 
-	checkpoint, err := wlog.NewSize(util_log.SlogFromGoKit(log.With(util_log.Logger, "component", "checkpoint_wal")), nil, checkpointDirTemp, walSegmentSize, wlog.CompressionNone)
+	checkpoint, err := wlog.NewSize(util_log.SlogFromGoKit(log.With(util_log.Logger, "component", "checkpoint_wal")), nil, checkpointDirTemp, walSegmentSize, compression.None)
 	if err != nil {
 		return false, fmt.Errorf("open checkpoint: %w", err)
 	}

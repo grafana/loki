@@ -1,3 +1,5 @@
+// Package viewport provides a component for rendering a viewport in a Bubble
+// Tea.
 package viewport
 
 import "github.com/charmbracelet/bubbles/key"
@@ -15,6 +17,8 @@ type KeyMap struct {
 	HalfPageDown key.Binding
 	Down         key.Binding
 	Up           key.Binding
+	Left         key.Binding
+	Right        key.Binding
 }
 
 // DefaultKeyMap returns a set of pager-like default keybindings.
@@ -43,6 +47,14 @@ func DefaultKeyMap() KeyMap {
 		Down: key.NewBinding(
 			key.WithKeys("down", "j"),
 			key.WithHelp("↓/j", "down"),
+		),
+		Left: key.NewBinding(
+			key.WithKeys("left", "h"),
+			key.WithHelp("←/h", "move left"),
+		),
+		Right: key.NewBinding(
+			key.WithKeys("right", "l"),
+			key.WithHelp("→/l", "move right"),
 		),
 	}
 }

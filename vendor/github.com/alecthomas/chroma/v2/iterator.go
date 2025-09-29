@@ -18,6 +18,17 @@ func (i Iterator) Tokens() []Token {
 	return out
 }
 
+// Stdlib converts a Chroma iterator to a Go 1.23-compatible iterator.
+func (i Iterator) Stdlib() func(yield func(Token) bool) {
+	return func(yield func(Token) bool) {
+		for t := i(); t != EOF; t = i() {
+			if !yield(t) {
+				return
+			}
+		}
+	}
+}
+
 // Concaterator concatenates tokens from a series of iterators.
 func Concaterator(iterators ...Iterator) Iterator {
 	return func() Token {

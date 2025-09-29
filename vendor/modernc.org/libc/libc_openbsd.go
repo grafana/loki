@@ -43,6 +43,8 @@ var (
 	in6_addr_any in.In6_addr
 )
 
+type Tsize_t = types.Size_t
+
 type syscallErrno = unix.Errno
 
 // // Keep these outside of the var block otherwise go generate will miss them.

@@ -1,6 +1,9 @@
 package logical
 
 import (
+	"time"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/schema"
 )
 
@@ -36,6 +39,16 @@ func (b *Builder) Limit(skip uint32, fetch uint32) *Builder {
 	}
 }
 
+// Parse applies a [Parse] operation to the Builder.
+func (b *Builder) Parse(kind ParserKind) *Builder {
+	return &Builder{
+		val: &Parse{
+			Table: b.val,
+			Kind:  kind,
+		},
+	}
+}
+
 // Sort applies a [Sort] operation to the Builder.
 func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 	return &Builder{
@@ -45,6 +58,42 @@ func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 			Column:     column,
 			Ascending:  ascending,
 			NullsFirst: nullsFirst,
+		},
+	}
+}
+
+// RangeAggregation applies a [RangeAggregation] operation to the Builder.
+func (b *Builder) RangeAggregation(
+	partitionBy []ColumnRef,
+	operation types.RangeAggregationType,
+	startTS, endTS time.Time,
+	step time.Duration,
+	rangeInterval time.Duration,
+) *Builder {
+	return &Builder{
+		val: &RangeAggregation{
+			Table: b.val,
+
+			Operation:     operation,
+			PartitionBy:   partitionBy,
+			Start:         startTS,
+			End:           endTS,
+			Step:          step,
+			RangeInterval: rangeInterval,
+		},
+	}
+}
+
+// VectorAggregation applies a [VectorAggregation] operation to the Builder.
+func (b *Builder) VectorAggregation(
+	groupBy []ColumnRef,
+	operation types.VectorAggregationType,
+) *Builder {
+	return &Builder{
+		val: &VectorAggregation{
+			Table:     b.val,
+			GroupBy:   groupBy,
+			Operation: operation,
 		},
 	}
 }

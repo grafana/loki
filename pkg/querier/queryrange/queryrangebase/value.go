@@ -68,10 +68,10 @@ func FromValue(value parser.Value) ([]SampleStream, error) {
 }
 
 func mapLabels(ls labels.Labels) []logproto.LabelAdapter {
-	result := make([]logproto.LabelAdapter, 0, len(ls))
-	for _, l := range ls {
+	result := make([]logproto.LabelAdapter, 0, ls.Len())
+	ls.Range(func(l labels.Label) {
 		result = append(result, logproto.LabelAdapter(l))
-	}
+	})
 
 	return result
 }
@@ -125,11 +125,11 @@ func NewSeriesSet(results []SampleStream) storage.SeriesSet {
 			})
 		}
 
-		ls := make([]labels.Label, 0, len(stream.Labels))
+		lsBuilder := labels.NewScratchBuilder(len(stream.Labels))
 		for _, l := range stream.Labels {
-			ls = append(ls, labels.Label(l))
+			lsBuilder.Add(l.Name, l.Value)
 		}
-		set = append(set, series.NewConcreteSeries(ls, samples))
+		set = append(set, series.NewConcreteSeries(lsBuilder.Labels(), samples))
 	}
 	return series.NewConcreteSeriesSet(set)
 }

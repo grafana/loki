@@ -54,9 +54,9 @@ For each node, the key-value store holds:
 
 ## Configuring rings
 
-Define [ring configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#common) within the `common.ring_config` block.
+Define [ring configuration](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#common) within the `common.ring` block.
 
-Use the default `memberlist` key-value store type unless there is
+Use the `memberlist` key-value store type unless there is
 a compelling reason to use a different key-value store type.
 `memberlist` uses a [gossip protocol](https://en.wikipedia.org/wiki/Gossip_protocol)
 to propagate information to all the nodes

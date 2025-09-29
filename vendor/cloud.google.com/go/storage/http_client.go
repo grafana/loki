@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -31,24 +30,24 @@ import (
 	"strings"
 	"time"
 
+	"cloud.google.com/go/auth"
 	"cloud.google.com/go/iam/apiv1/iampb"
 	"cloud.google.com/go/internal/optional"
 	"cloud.google.com/go/internal/trace"
+	"github.com/google/uuid"
 	"github.com/googleapis/gax-go/v2/callctx"
-	"golang.org/x/oauth2/google"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/api/option/internaloption"
 	raw "google.golang.org/api/storage/v1"
-	"google.golang.org/api/transport"
 	htransport "google.golang.org/api/transport/http"
 )
 
 // httpStorageClient is the HTTP-JSON API implementation of the transport-agnostic
 // storageClient interface.
 type httpStorageClient struct {
-	creds                      *google.Credentials
+	creds                      *auth.Credentials
 	hc                         *http.Client
 	xmlHost                    string
 	raw                        *raw.Service
@@ -65,7 +64,7 @@ func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (storageCl
 	o := s.clientOption
 	config := newStorageConfig(o...)
 
-	var creds *google.Credentials
+	var creds *auth.Credentials
 	// In general, it is recommended to use raw.NewService instead of htransport.NewClient
 	// since raw.NewService configures the correct default endpoints when initializing the
 	// internal http client. However, in our case, "NewRangeReader" in reader.go needs to
@@ -83,10 +82,10 @@ func newHTTPStorageClient(ctx context.Context, opts ...storageOption) (storageCl
 		)
 		// Don't error out here. The user may have passed in their own HTTP
 		// client which does not auth with ADC or other common conventions.
-		c, err := transport.Creds(ctx, o...)
+		c, err := internaloption.AuthCreds(ctx, o)
 		if err == nil {
 			creds = c
-			o = append(o, internaloption.WithCredentials(creds))
+			o = append(o, option.WithAuthCredentials(creds))
 		}
 	} else {
 		var hostURL *url.URL
@@ -344,6 +343,10 @@ func (c *httpStorageClient) ListObjects(ctx context.Context, bucket string, q *Q
 		it.query = *q
 	}
 	fetch := func(pageSize int, pageToken string) (string, error) {
+		var err error
+		// Add trace span around List API call within the fetch.
+		ctx, _ = startSpan(ctx, "httpStorageClient.ObjectsListCall")
+		defer func() { endSpan(ctx, err) }()
 		req := c.raw.Objects.List(bucket)
 		if it.query.SoftDeleted {
 			req.SoftDeleted(it.query.SoftDeleted)
@@ -372,7 +375,6 @@ func (c *httpStorageClient) ListObjects(ctx context.Context, bucket string, q *Q
 			req.MaxResults(int64(pageSize))
 		}
 		var resp *raw.Objects
-		var err error
 		err = run(it.ctx, func(ctx context.Context) error {
 			resp, err = req.Context(ctx).Do()
 			return err
@@ -857,6 +859,7 @@ func (c *httpStorageClient) NewRangeReader(ctx context.Context, params *newRange
 }
 
 func (c *httpStorageClient) newRangeReaderXML(ctx context.Context, params *newRangeReaderParams, s *settings) (r *Reader, err error) {
+	requestID := uuid.New()
 	u := &url.URL{
 		Scheme:  c.scheme,
 		Host:    c.xmlHost,
@@ -914,7 +917,7 @@ func (c *httpStorageClient) newRangeReaderXML(ctx context.Context, params *newRa
 			timer := time.After(stallTimeout)
 			select {
 			case <-timer:
-				log.Printf("stalled read-req (%p) cancelled after %fs", req, stallTimeout.Seconds())
+				log.Printf("[%s] stalled read-req cancelled after %fs", requestID, stallTimeout.Seconds())
 				cancel()
 				<-done
 				if res != nil && res.Body != nil {
@@ -960,7 +963,15 @@ func (c *httpStorageClient) newRangeReaderJSON(ctx context.Context, params *newR
 	return parseReadResponse(res, params, reopen)
 }
 
-func (c *httpStorageClient) OpenWriter(params *openWriterParams, opts ...storageOption) (*io.PipeWriter, error) {
+type httpInternalWriter struct {
+	*io.PipeWriter
+}
+
+func (hiw httpInternalWriter) Flush() (int64, error) {
+	return 0, errors.New("Writer.Flush is only supported for gRPC-based clients")
+}
+
+func (c *httpStorageClient) OpenWriter(params *openWriterParams, opts ...storageOption) (internalWriter, error) {
 	if params.append {
 		return nil, errors.New("storage: append not supported on HTTP Client; use gRPC")
 	}
@@ -970,9 +981,6 @@ func (c *httpStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 	setObj := params.setObj
 	progress := params.progress
 	attrs := params.attrs
-	params.setFlush(func() (int64, error) {
-		return 0, errors.New("Writer.Flush is only supported for gRPC-based clients")
-	})
 
 	mediaOpts := []googleapi.MediaOption{
 		googleapi.ChunkSize(params.chunkSize),
@@ -1056,7 +1064,7 @@ func (c *httpStorageClient) OpenWriter(params *openWriterParams, opts ...storage
 		setObj(newObject(resp))
 	}()
 
-	return pw, nil
+	return httpInternalWriter{pw}, nil
 }
 
 // IAM methods.
@@ -1426,7 +1434,7 @@ func readerReopen(ctx context.Context, header http.Header, params *newRangeReade
 			//      https://cloud.google.com/storage/docs/transcoding#range,
 			// thus we have to manually move the body forward by seen bytes.
 			if decompressiveTranscoding(res) && seen > 0 {
-				_, _ = io.CopyN(ioutil.Discard, res.Body, seen)
+				_, _ = io.CopyN(io.Discard, res.Body, seen)
 			}
 
 			// If a generation hasn't been specified, and this is the first response we get, let's record the

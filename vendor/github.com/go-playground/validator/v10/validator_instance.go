@@ -21,6 +21,7 @@ const (
 	tagKeySeparator       = "="
 	structOnlyTag         = "structonly"
 	noStructLevelTag      = "nostructlevel"
+	omitzero              = "omitzero"
 	omitempty             = "omitempty"
 	omitnil               = "omitnil"
 	isdefault             = "isdefault"

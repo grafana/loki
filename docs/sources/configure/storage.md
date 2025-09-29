@@ -226,7 +226,7 @@ For more information, see the [retention configuration](https://grafana.com/docs
 
 ## Examples
 
-### Single machine/local development (boltdb+filesystem)
+### Single machine/local development (tsdb+filesystem)
 
 [The repo contains a working example](https://github.com/grafana/loki/blob/main/cmd/loki/loki-local-config.yaml), you may want to checkout a tag of the repo to make sure you get a compatible example.
 
@@ -269,7 +269,7 @@ GCP recommends [Workload Identity Federation](https://cloud.google.com/iam/docs/
 
 ```yaml
 storage_config:
-   tsdb_shipper:
+  tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
     cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
@@ -281,7 +281,7 @@ schema_config:
   configs:
     - from: 2020-07-01
       store: tsdb
-      object_store: aws
+      object_store: s3
       schema: v13
       index:
         prefix: index_

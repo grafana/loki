@@ -7,8 +7,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/twmb/franz-go/pkg/kgo"
-	"github.com/twmb/franz-go/plugin/kprom"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/client"
@@ -34,12 +34,11 @@ type Client struct {
 // partitions changes (e.g. due to scaling or failures), it triggers a rebalance to ensure partitions are
 // properly redistributed across the consumer group members. This maintains optimal processing as the active
 // partition set evolves.
-func NewGroupClient(kafkaCfg kafka.Config, partitionRing ring.PartitionRingReader, groupName string, metrics *kprom.Metrics, logger log.Logger, opts ...kgo.Opt) (*Client, error) {
+func NewGroupClient(kafkaCfg kafka.Config, partitionRing ring.PartitionRingReader, groupName string, logger log.Logger, reg prometheus.Registerer, opts ...kgo.Opt) (*Client, error) {
 	defaultOpts := []kgo.Opt{
 		kgo.ConsumerGroup(groupName),
-		kgo.ConsumeRegex(),
 		kgo.ConsumeTopics(kafkaCfg.Topic),
-		kgo.Balancers(kgo.CooperativeStickyBalancer()),
+		kgo.Balancers(NewCooperativeActiveStickyBalancer(partitionRing)),
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
 		kgo.DisableAutoCommit(),
 		kgo.RebalanceTimeout(5 * time.Minute),
@@ -48,7 +47,7 @@ func NewGroupClient(kafkaCfg kafka.Config, partitionRing ring.PartitionRingReade
 	// Combine remaining options with our defaults
 	allOpts := append(defaultOpts, opts...)
 
-	client, err := client.NewReaderClient(kafkaCfg, metrics, logger, allOpts...)
+	client, err := client.NewReaderClient(groupName, kafkaCfg, logger, reg, allOpts...)
 	if err != nil {
 		return nil, err
 	}

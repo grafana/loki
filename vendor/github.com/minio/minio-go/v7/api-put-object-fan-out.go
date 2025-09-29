@@ -19,7 +19,6 @@ package minio
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"mime/multipart"
@@ -28,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/minio/minio-go/v7/internal/json"
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 )
 

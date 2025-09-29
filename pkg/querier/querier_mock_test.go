@@ -15,11 +15,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/stretchr/testify/mock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	grpc_metadata "google.golang.org/grpc/metadata"
 
-	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -519,6 +521,10 @@ func (r *readRingMock) GetWithOptions(_ uint32, _ ring.Operation, _ ...ring.Opti
 	return r.replicationSet, nil
 }
 
+func (r *readRingMock) GetSubringForOperationStates(_ ring.Operation) ring.ReadRing {
+	return r
+}
+
 func mockReadRingWithOneActiveIngester() *readRingMock {
 	return newReadRingMock([]ring.InstanceDesc{
 		{Addr: "test", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}},
@@ -601,7 +607,7 @@ func mockLogfmtStreamWithLabels(_ int, quantity int, lbls string) logproto.Strea
 		streamLabels = labels.EmptyLabels()
 	}
 
-	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, labels.StableHash(streamLabels))
 	logFmtParser := log.NewLogfmtParser(false, false)
 
 	// used for detected fields queries which are always BACKWARD
@@ -661,7 +667,7 @@ func mockLogfmtStreamWithLabelsAndStructuredMetadata(
 		streamLabels = labels.EmptyLabels()
 	}
 
-	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, labels.StableHash(streamLabels))
 	logFmtParser := log.NewLogfmtParser(false, false)
 
 	for i := quantity; i > 0; i-- {
@@ -764,7 +770,7 @@ func (q *querierMock) Patterns(ctx context.Context, req *logproto.QueryPatternsR
 }
 
 func (q *querierMock) DetectedLabels(ctx context.Context, req *logproto.DetectedLabelsRequest) (*logproto.DetectedLabelsResponse, error) {
-	args := q.MethodCalled("DetectedFields", ctx, req)
+	args := q.MethodCalled("DetectedLabels", ctx, req)
 
 	resp := args.Get(0)
 	err := args.Error(1)
@@ -792,10 +798,91 @@ func (e *engineMock) Query(p logql.Params) logql.Query {
 
 type queryMock struct {
 	result logqlmodel.Result
+	err    error
 }
 
 func (q queryMock) Exec(_ context.Context) (logqlmodel.Result, error) {
-	return q.result, nil
+	return q.result, q.err
+}
+
+// mockPatternQuerier implements pattern.PatterQuerier interface for testing
+type mockPatternQuerier struct {
+	mock.Mock
+}
+
+func newMockPatternQuerier() *mockPatternQuerier {
+	return &mockPatternQuerier{}
+}
+
+func (m *mockPatternQuerier) Patterns(ctx context.Context, req *logproto.QueryPatternsRequest) (*logproto.QueryPatternsResponse, error) {
+	args := m.Called(ctx, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*logproto.QueryPatternsResponse), args.Error(1)
+}
+
+// Helper types and functions for pattern tests
+type patternSample struct {
+	pattern   string
+	timestamp int64
+	value     int64
+}
+
+// newMockEngineWithPatterns creates a mock engine that returns patterns when queried
+func newMockEngineWithPatterns(patterns []string) logql.Engine {
+	engine := &engineMock{}
+
+	// Create a result with the patterns
+	matrix := promql.Matrix{}
+	for _, pattern := range patterns {
+		matrix = append(matrix, promql.Series{
+			Metric: labels.New(
+				labels.Label{Name: "service_name", Value: "test-service"},
+				labels.Label{Name: "decoded_pattern", Value: pattern},
+			),
+			Floats: []promql.FPoint{
+				{T: time.Now().UnixMilli(), F: 100},
+			},
+		})
+	}
+
+	result := logqlmodel.Result{
+		Data: matrix,
+	}
+
+	// Mock the Query method to return a query that returns our result
+	engine.On("Query", mock.Anything).Return(&queryMock{result: result, err: nil})
+
+	return engine
+}
+
+// newMockEngineWithPatternsAndTimestamps creates a mock engine that returns patterns with specific timestamps
+func newMockEngineWithPatternsAndTimestamps(patternSamples []patternSample) logql.Engine {
+	engine := &engineMock{}
+
+	// Create a result with the patterns
+	matrix := promql.Matrix{}
+	for _, ps := range patternSamples {
+		matrix = append(matrix, promql.Series{
+			Metric: labels.New(
+				labels.Label{Name: "service_name", Value: "test-service"},
+				labels.Label{Name: "decoded_pattern", Value: ps.pattern},
+			),
+			Floats: []promql.FPoint{
+				{T: ps.timestamp, F: float64(ps.value)},
+			},
+		})
+	}
+
+	result := logqlmodel.Result{
+		Data: matrix,
+	}
+
+	// Mock the Query method to return a query that returns our result
+	engine.On("Query", mock.Anything).Return(&queryMock{result: result, err: nil})
+
+	return engine
 }
 
 type mockTenantLimits map[string]*validation.Limits
@@ -815,10 +902,10 @@ func (tl mockTenantLimits) AllByUserID() map[string]*validation.Limits {
 
 type mockDeleteGettter struct {
 	user    string
-	results []deletion.DeleteRequest
+	results []deletionproto.DeleteRequest
 }
 
-func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]deletion.DeleteRequest, error) {
+func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]deletionproto.DeleteRequest, error) {
 	d.user = userID
 	return d.results, nil
 }

@@ -1,38 +1,48 @@
 # yaml-language-server: $schema=https://golangci-lint.run/jsonschema/golangci.jsonschema.json
-run:
-  timeout: 5m
-
-linters-settings:
-  govet:
-    enable-all: true
-    disable:
-      - fieldalignment
-      - shadow
-  gocyclo:
-    min-complexity: 99
-  dupl:
-    threshold: 100
-  goconst:
-    min-len: 2
-    min-occurrences: 3
-  misspell:
-    locale: US
-  goimports:
-    local-prefixes: github.com/IBM/sarama
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - performance
-      # - experimental
-      # - opinionated
-      # - style
-    enabled-checks:
+version: "2"
+linters:
+  default: none
+  enable:
+  - bodyclose
+  - copyloopvar
+  - depguard
+  - dogsled
+  - errcheck
+  - errorlint
+  - funlen
+  - gochecknoinits
+  - gocritic
+  - gocyclo
+  - gosec
+  - govet
+  - misspell
+  - nilerr
+  - unconvert
+  - unused
+  - whitespace
+  settings:
+    depguard:
+      rules:
+        main:
+          deny:
+          - pkg: io/ioutil
+            desc: Use the "io" and "os" packages instead.
+    dupl:
+      threshold: 100
+    funlen:
+      lines: 300
+      statements: 300
+    goconst:
+      min-len: 2
+      min-occurrences: 3
+    gocritic:
+      enabled-checks:
       - importShadow
       - nestingReduce
       - stringsCompare
       # - unnamedResult
       # - whyNoLint
-    disabled-checks:
+      disabled-checks:
       - assignOp
       - appendAssign
       - commentedOutCode
@@ -40,49 +50,55 @@ linters-settings:
       - ifElseChain
       - singleCaseSwitch
       - sloppyReassign
-  funlen:
-    lines: 300
-    statements: 300
-
-  depguard:
+      enabled-tags:
+      - diagnostic
+      - performance
+      # - experimental
+      # - opinionated
+      # - style
+    gocyclo:
+      min-complexity: 99
+    govet:
+      disable:
+      - fieldalignment
+      - shadow
+      enable-all: true
+    misspell:
+      locale: US
+  # exclude some linters from running on certains files.
+  exclusions:
+    generated: lax
+    presets:
+    - comments
+    - common-false-positives
+    - legacy
+    - std-error-handling
     rules:
-      main:
-        deny:
-          - pkg: "io/ioutil"
-            desc: Use the "io" and "os" packages instead.
-
-linters:
-  disable-all: true
-  enable:
-    - bodyclose
-    - depguard
-    # - copyloopvar
-    - dogsled
-    - errcheck
-    - errorlint
-    - funlen
-    - gochecknoinits
-    - gocritic
-    - gocyclo
-    - gofmt
-    - goimports
-    - gosec
-    - govet
-    - misspell
-    - nilerr
-    - typecheck
-    - unconvert
-    - unused
-    - whitespace
-
+    - linters:
+      - paralleltest
+      path: functional.*_test\.go
+    - path: (.+)\.go$
+      text: 'G115: integer overflow conversion'
+    - path: (.+)\.go$
+      text: 'G404: Use of weak random number generator'
+    paths:
+    - third_party$
+    - builtin$
+    - examples$
 issues:
-  exclude:
-    - "G115: integer overflow conversion"
-    - "G404: Use of weak random number generator"
-  exclude-rules:
-    # exclude some linters from running on certains files.
-    - path: functional.*_test\.go
-      linters:
-        - paralleltest
   # maximum count of issues with the same text. set to 0 for unlimited. default is 3.
   max-same-issues: 0
+formatters:
+  enable:
+  - gofmt
+  - goimports
+  settings:
+    goimports:
+      local-prefixes:
+      - github.com/IBM/sarama
+  exclusions:
+    generated: lax
+    paths:
+    - third_party$
+    - builtin$
+    - examples$

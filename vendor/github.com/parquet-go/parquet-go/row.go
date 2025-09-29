@@ -661,7 +661,7 @@ func reconstructFuncOfRepeated(columnIndex int16, node Node) (int16, reconstruct
 
 		value = setMakeSlice(value, n)
 
-		for i := 0; i < n; i++ {
+		for i := range n {
 			for j, column := range values {
 				column = column[:cap(column)]
 				if len(column) == 0 {
@@ -749,7 +749,7 @@ func reconstructFuncOfMap(columnIndex int16, node Node) (int16, reconstructFunc)
 		}
 
 		elem := reflect.New(keyValueElem).Elem()
-		for i := 0; i < n; i++ {
+		for range n {
 			for j, column := range values {
 				column = column[:cap(column)]
 				k := 1

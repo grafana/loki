@@ -7,9 +7,8 @@ import (
 	"io"
 	"math"
 	"path/filepath"
+	"strings"
 	"time"
-
-	"github.com/opentracing/opentracing-go"
 
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
@@ -268,10 +267,17 @@ func (i *TSDBIndex) LabelNames(_ context.Context, _ string, _, _ model.Time, mat
 }
 
 func (i *TSDBIndex) LabelValues(_ context.Context, _ string, _, _ model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
-	if len(matchers) == 0 {
-		return i.reader.LabelValues(name)
+	if len(matchers) != 0 {
+		return labelValuesWithMatchers(i.reader, name, matchers...)
 	}
-	return labelValuesWithMatchers(i.reader, name, matchers...)
+
+	labelValues, err := i.reader.LabelValues(name)
+	if err != nil {
+		return nil, err
+	}
+
+	// cloning the string
+	return cloneStringList(labelValues), nil
 }
 
 func (i *TSDBIndex) Checksum() uint32 {
@@ -359,13 +365,13 @@ func (i *TSDBIndex) Volume(
 	aggregateBy string,
 	matchers ...*labels.Matcher,
 ) error {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "Index.Volume")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "Index.Volume")
+	defer sp.End()
 
 	labelsToMatch, matchers, includeAll := util.PrepareLabelsAndMatchers(targetLabels, matchers, TenantLabel)
 
 	seriesNames := make(map[uint64]string)
-	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch)))
+	seriesLabelsBuilder := labels.NewScratchBuilder(len(labelsToMatch))
 
 	aggregateBySeries := seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == ""
 	var by map[string]struct{}
@@ -408,17 +414,17 @@ func (i *TSDBIndex) Volume(
 				var labelVolumes map[string]uint64
 
 				if aggregateBySeries {
-					seriesLabels = seriesLabels[:0]
-					for _, l := range ls {
+					seriesLabelsBuilder.Reset()
+					ls.Range(func(l labels.Label) {
 						if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
-							seriesLabels = append(seriesLabels, l)
+							seriesLabelsBuilder.Add(l.Name, l.Value)
 						}
-					}
+					})
 				} else {
 					// when aggregating by labels, capture sizes for target labels if provided,
 					// otherwise for all intersecting labels
-					labelVolumes = make(map[string]uint64, len(ls))
-					for _, l := range ls {
+					labelVolumes = make(map[string]uint64, ls.Len())
+					ls.Range(func(l labels.Label) {
 						if len(targetLabels) > 0 {
 							if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
 								labelVolumes[l.Name] += stats.KB << 10
@@ -428,12 +434,15 @@ func (i *TSDBIndex) Volume(
 								labelVolumes[l.Name] += stats.KB << 10
 							}
 						}
-					}
+					})
 				}
+
+				seriesLabelsBuilder.Sort()
+				seriesLabels := seriesLabelsBuilder.Labels()
 
 				// If the labels are < 1k, this does not alloc
 				// https://github.com/prometheus/prometheus/pull/8025
-				hash := seriesLabels.Hash()
+				hash := labels.StableHash(seriesLabels)
 				if _, ok := seriesNames[hash]; !ok {
 					seriesNames[hash] = seriesLabels.String()
 				}
@@ -453,4 +462,12 @@ func (i *TSDBIndex) Volume(
 		}
 		return p.Err()
 	})
+}
+
+func cloneStringList(strs []string) []string {
+	res := make([]string, 0, len(strs))
+	for _, str := range strs {
+		res = append(res, strings.Clone(str))
+	}
+	return res
 }

@@ -781,6 +781,9 @@ func (f *FilePages) ReadPage() (Page, error) {
 		return nil, io.EOF
 	}
 
+	// seekToRowStart indicates whether we are in the process of seeking to the start
+	// of requested row to read, as opposed to reading sequentially values and moving through pages
+	seekToRowStart := f.skip > 0
 	for {
 		// Instantiate a new format.PageHeader for each page.
 		//
@@ -798,6 +801,14 @@ func (f *FilePages) ReadPage() (Page, error) {
 		if err := f.decoder.Decode(header); err != nil {
 			return nil, err
 		}
+
+		// if this is a dictionary page and we've already read and decoded the dictionary we can skip past it.
+		// call f.rbuf.Discard to skip the page data and realign f.rbuf with the next page header
+		if header.Type == format.DictionaryPage && f.dictionary != nil {
+			f.rbuf.Discard(int(header.CompressedPageSize))
+			continue
+		}
+
 		data, err := f.readPage(header, f.rbuf)
 		if err != nil {
 			return nil, err
@@ -830,7 +841,30 @@ func (f *FilePages) ReadPage() (Page, error) {
 
 		f.index++
 		if f.skip == 0 {
-			return page, nil
+			// f.skip==0 can be true:
+			//  (1) while reading a row of a column which has multiple values (ie. X.list.element) and values continue
+			//  across pages. In that case we just want to keep reading without skipping any values.
+			//  (2) when seeking to a specific row and trying to reach the start offset of the first
+			//  row in a new page.
+			if !seekToRowStart || header.Type != format.DataPage {
+				// keep reading values from beginning of new page
+				return page, nil
+			}
+			// We need to seek to beginning of row.
+			// V1 data pages do not necessarily start at a row boundary.
+			if page.NumRows() == 0 {
+				// if current page does not have any rows, continue until a page with at least 1 row is reached
+				Release(page)
+				continue
+			}
+			repLvls := page.RepetitionLevels()
+			if len(repLvls) > 0 && repLvls[0] == 0 {
+				// avoid page slice if page starts at a row boundary
+				return page, nil
+			}
+			tail := page.Slice(0, page.NumRows())
+			Release(page)
+			return tail, nil
 		}
 
 		// TODO: what about pages that don't embed the number of rows?

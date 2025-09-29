@@ -40,7 +40,7 @@ Example:
 ```template
 `{{ if and (contains "he" "hello") (contains "llo" "hello") }} yes {{end}}`
 `{{ if or (contains "he" "hello") (contains("llo" "hello") }} yes {{end}}`
-`{{ if contains .err "ErrTimeout" }} timeout {{else if contains "he" "hello"}} yes {{else}} no {{end}}`
+`{{ if contains "ErrTimeout" .err }} timeout {{else if contains "he" "hello"}} yes {{else}} no {{end}}`
 ```
 
 ## Built-in variables for log line properties

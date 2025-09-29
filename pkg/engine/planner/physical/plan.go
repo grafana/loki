@@ -14,6 +14,10 @@ const (
 	NodeTypeProjection
 	NodeTypeFilter
 	NodeTypeLimit
+	NodeTypeRangeAggregation
+	NodeTypeVectorAggregation
+	NodeTypeMerge
+	NodeTypeParse
 )
 
 func (t NodeType) String() string {
@@ -22,12 +26,20 @@ func (t NodeType) String() string {
 		return "DataObjScan"
 	case NodeTypeSortMerge:
 		return "SortMerge"
+	case NodeTypeMerge:
+		return "Merge"
 	case NodeTypeProjection:
 		return "Projection"
 	case NodeTypeFilter:
 		return "Filter"
 	case NodeTypeLimit:
 		return "Limit"
+	case NodeTypeRangeAggregation:
+		return "RangeAggregation"
+	case NodeTypeVectorAggregation:
+		return "VectorAggregation"
+	case NodeTypeParse:
+		return "Parse"
 	default:
 		return "Undefined"
 	}
@@ -54,16 +66,23 @@ type Node interface {
 }
 
 var _ Node = (*DataObjScan)(nil)
+var _ Node = (*Merge)(nil)
 var _ Node = (*SortMerge)(nil)
 var _ Node = (*Projection)(nil)
 var _ Node = (*Limit)(nil)
 var _ Node = (*Filter)(nil)
+var _ Node = (*RangeAggregation)(nil)
+var _ Node = (*VectorAggregation)(nil)
+var _ Node = (*ParseNode)(nil)
 
-func (*DataObjScan) isNode() {}
-func (*SortMerge) isNode()   {}
-func (*Projection) isNode()  {}
-func (*Limit) isNode()       {}
-func (*Filter) isNode()      {}
+func (*DataObjScan) isNode()       {}
+func (*Merge) isNode()             {}
+func (*SortMerge) isNode()         {}
+func (*Projection) isNode()        {}
+func (*Limit) isNode()             {}
+func (*Filter) isNode()            {}
+func (*RangeAggregation) isNode()  {}
+func (*VectorAggregation) isNode() {}
 
 // Edge is a directed connection (parent-child relation) between a two nodes.
 type Edge struct {
@@ -104,23 +123,6 @@ func (s nodeSet) contains(node Node) bool {
 	return ok
 }
 
-func (s nodeSet) sorted() []Node {
-	nodes := make([]Node, 0, len(s))
-	for node := range s {
-		nodes = append(nodes, node)
-	}
-	slices.SortFunc(nodes, func(a, b Node) int {
-		if a.ID() > b.ID() {
-			return 1
-		}
-		if a.ID() < b.ID() {
-			return -1
-		}
-		return 0
-	})
-	return nodes
-}
-
 // Plan represents a physical execution plan as a directed acyclic graph (DAG).
 // It maintains the relationships between nodes, tracking parent-child connections
 // and providing methods for graph traversal and manipulation.
@@ -134,9 +136,9 @@ type Plan struct {
 	// nodes is a set containing all nodes in the plan
 	nodes nodeSet
 	// parents maps each node to a set of its parent nodes in the execution graph
-	parents map[Node]nodeSet
+	parents map[Node]Node
 	// children maps each node to a set of its child nodes in the execution graph
-	children map[Node]nodeSet
+	children map[Node][]Node
 }
 
 func (p *Plan) init() {
@@ -147,10 +149,10 @@ func (p *Plan) init() {
 		p.nodes = make(nodeSet)
 	}
 	if p.parents == nil {
-		p.parents = make(map[Node]nodeSet)
+		p.parents = make(map[Node]Node)
 	}
 	if p.children == nil {
-		p.children = make(map[Node]nodeSet)
+		p.children = make(map[Node][]Node)
 	}
 }
 
@@ -168,10 +170,10 @@ func (p *Plan) addNode(n Node) Node {
 	p.nodesByID[n.ID()] = n
 
 	if _, ok := p.parents[n]; !ok {
-		p.parents[n] = make(nodeSet)
+		p.parents[n] = nil
 	}
 	if _, ok := p.children[n]; !ok {
-		p.children[n] = make(nodeSet)
+		p.children[n] = []Node{}
 	}
 	return n
 }
@@ -180,8 +182,8 @@ func (p *Plan) addNode(n Node) Node {
 // It establishes a parent-child relationship between the nodes where
 // e.Parent becomes a parent of e.Child. Both nodes must already exist
 // in the plan. Returns an error if either node is nil or doesn't exist
-// in the plan.
-// The order of addition of edges is not preserved.
+// in the plan. Returns an error if the child node already has a parent.
+// The order of addition of edges is preserved.
 func (p *Plan) addEdge(e Edge) error {
 	if e.Parent == nil || e.Child == nil {
 		return fmt.Errorf("parent and child nodes must not be nil")
@@ -192,33 +194,36 @@ func (p *Plan) addEdge(e Edge) error {
 	if !p.nodes.contains(e.Child) {
 		return fmt.Errorf("node %s does not exist in graph", e.Child.ID())
 	}
-
-	p.children[e.Parent].add(e.Child)
-	p.parents[e.Child].add(e.Parent)
+	if p.parents[e.Child] != nil {
+		return fmt.Errorf("node %s already has parent %s", e.Child.ID(), p.parents[e.Child].ID())
+	}
+	p.children[e.Parent] = append(p.children[e.Parent], e.Child)
+	p.parents[e.Child] = e.Parent
 	return nil
 }
 
-// eliminateNode removes a node from the plan and reconnects its parents to its children.
-// This maintains the graph's connectivity by creating direct edges from each parent
+// eliminateNode removes a node from the plan and reconnects its parent to its children.
+// This maintains the graph's connectivity by creating direct edges from the parent
 // to each child of the removed node. The function also cleans up all references to
 // the node in the plan's internal data structures.
+// If the node passed in does not have a parent, all of its children will be promoted
+// to root nodes (which will cause errors down the line if there is more than one root node).
 func (p *Plan) eliminateNode(node Node) {
-	for _, parent := range p.Parents(node) {
-		for _, child := range p.Children(node) {
-			_ = p.addEdge(Edge{Parent: parent, Child: child})
-		}
-	}
+	parent := p.Parent(node)
+	if parent != nil {
+		idx := slices.Index(p.children[parent], node)
 
-	for _, parent := range p.Parents(node) {
-		p.children[parent].remove(node)
-		p.parents[node].remove(parent)
+		// Replace node's entry in the parent's children with the children of node.
+		oldChildren := p.children[parent]
+		p.children[parent] = slices.Replace(oldChildren, idx, idx+1, p.children[node]...)
 	}
 
 	for _, child := range p.Children(node) {
-		p.parents[child].remove(node)
-		p.children[node].remove(child)
+		p.parents[child] = p.Parent(node)
 	}
 
+	p.parents[node] = nil
+	p.children[node] = nil
 	p.nodes.remove(node)
 	delete(p.nodesByID, node.ID())
 }
@@ -233,12 +238,12 @@ func (p *Plan) NodeByID(id string) Node {
 	return p.nodesByID[id]
 }
 
-// Parents returns all parent nodes of the given node
-func (p *Plan) Parents(n Node) []Node {
+// Parent returns the parent node of the given node
+func (p *Plan) Parent(n Node) Node {
 	if _, ok := p.parents[n]; !ok {
 		return nil
 	}
-	return p.parents[n].sorted()
+	return p.parents[n]
 }
 
 // Children returns all child nodes of the given node
@@ -246,7 +251,7 @@ func (p *Plan) Children(n Node) []Node {
 	if _, ok := p.children[n]; !ok {
 		return nil
 	}
-	return p.children[n].sorted()
+	return p.children[n]
 }
 
 // Roots returns all nodes that have no parents
@@ -257,11 +262,22 @@ func (p *Plan) Roots() []Node {
 
 	var roots []Node
 	for node := range p.nodes {
-		if len(p.parents[node]) == 0 {
+		if p.parents[node] == nil {
 			roots = append(roots, node)
 		}
 	}
 	return roots
+}
+
+// Root returns the root node that have no parents. It returns an error if the plan has no or multiple root nodes.
+func (p *Plan) Root() (Node, error) {
+	roots := p.Roots()
+	if len(roots) == 0 {
+		return nil, errors.New("plan has no root node")
+	} else if len(roots) > 1 {
+		return nil, errors.New("plan has multiple root nodes")
+	}
+	return roots[0], nil
 }
 
 // Leaves returns all nodes that have no children

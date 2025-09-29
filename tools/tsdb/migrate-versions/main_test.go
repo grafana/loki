@@ -63,12 +63,12 @@ func TestMigrateTables(t *testing.T) {
 	// setup some tables
 	for i := currTableNum - 5; i <= currTableNum; i++ {
 		b := tsdb.NewBuilder(index.FormatV2)
-		b.AddSeries(labels.Labels{
-			{
+		b.AddSeries(labels.New(
+			labels.Label{
 				Name:  "table_name",
 				Value: currTableName,
 			},
-		}, 1, []index.ChunkMeta{
+		), 1, []index.ChunkMeta{
 			{
 				Checksum: 1,
 				MinTime:  0,

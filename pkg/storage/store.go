@@ -6,6 +6,8 @@ import (
 	"math"
 	"time"
 
+	"go.opentelemetry.io/otel"
+
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 
@@ -42,6 +44,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/deletion"
 )
+
+var tracer = otel.Tracer("pkg/storage")
 
 var (
 	indexTypeStats  = analytics.NewString("store_index_type")
@@ -205,7 +209,7 @@ func (s *LokiStore) init() error {
 
 		periodEndTime := config.DayTime{Time: math.MaxInt64}
 		if i < len(s.schemaCfg.Configs)-1 {
-			periodEndTime = config.DayTime{Time: s.schemaCfg.Configs[i+1].From.Time.Add(-time.Millisecond)}
+			periodEndTime = config.DayTime{Time: s.schemaCfg.Configs[i+1].From.Add(-time.Millisecond)}
 		}
 		w, idx, stop, err := s.storeForPeriod(p, p.GetIndexTableNumberRange(periodEndTime), chunkClient, f)
 		if err != nil {
@@ -471,7 +475,7 @@ func (s *LokiStore) SelectSeries(ctx context.Context, req logql.SelectLogParams)
 			return nil, err
 		}
 	}
-	series, err := s.Store.GetSeries(ctx, userID, from, through, matchers...)
+	series, err := s.GetSeries(ctx, userID, from, through, matchers...)
 	if err != nil {
 		return nil, err
 	}

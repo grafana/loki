@@ -75,9 +75,9 @@ func mapAllToLineResult(originLine string, analysisRecords []StageAnalysisRecord
 	return LineResult{originLine, stageRecords}
 }
 
-func mapAllToLabelsResponse(labels labels.Labels) []Label {
-	result := make([]Label, 0, len(labels))
-	for _, label := range labels {
+func mapAllToLabelsResponse(lbls []labels.Label) []Label {
+	result := make([]Label, 0, len(lbls))
+	for _, label := range lbls {
 		result = append(result, Label{Name: label.Name, Value: label.Value})
 	}
 	return result
@@ -117,8 +117,8 @@ func (p streamPipelineAnalyzer) AnalyzeLine(line string) []StageAnalysisRecord {
 			stageIndex: i,
 		})
 	}
-	stream := log.NewStreamPipeline(stageRecorders, p.origin.LabelsBuilder().ForLabels(p.streamLabels, p.streamLabels.Hash()))
-	_, _, _ = stream.ProcessString(time.Now().UnixMilli(), line)
+	stream := log.NewStreamPipeline(stageRecorders, p.origin.LabelsBuilder().ForLabels(p.streamLabels, labels.StableHash(p.streamLabels)))
+	_, _, _ = stream.ProcessString(time.Now().UnixMilli(), line, labels.EmptyLabels())
 	return records
 }
 
@@ -152,8 +152,8 @@ func (s StageAnalysisRecorder) RequiredLabelNames() []string {
 type StageAnalysisRecord struct {
 	Processed    bool
 	LineBefore   string
-	LabelsBefore labels.Labels
+	LabelsBefore []labels.Label
 	LineAfter    string
-	LabelsAfter  labels.Labels
+	LabelsAfter  []labels.Label
 	FilteredOut  bool
 }

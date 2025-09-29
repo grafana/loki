@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"reflect"
 
+	"github.com/grafana/dskit/tenant"
 	"gopkg.in/yaml.v2"
 )
 
@@ -110,6 +111,67 @@ func configHandler(actualCfg interface{}, defaultCfg interface{}) http.HandlerFu
 		}
 
 		writeYAMLResponse(w, output)
+	}
+}
+
+func filterLimitFields(limits any, allowlist []string) (any, error) {
+	if len(allowlist) == 0 {
+		return limits, nil
+	}
+
+	limitsMap, err := yamlMarshalUnmarshal(limits)
+	if err != nil {
+		return nil, err
+	}
+
+	allowSet := make(map[string]bool)
+	for _, field := range allowlist {
+		allowSet[field] = true
+	}
+
+	filtered := make(map[any]any)
+	for key, value := range limitsMap {
+		if keyStr, ok := key.(string); ok && allowSet[keyStr] {
+			filtered[key] = value
+		}
+	}
+
+	return filtered, nil
+}
+
+func (t *Loki) tenantLimitsHandler() func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if t.TenantLimits == nil {
+			http.Error(w, "Tenant configs not enabled", http.StatusNotFound)
+			return
+		}
+
+		user, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+
+		limit := t.TenantLimits.TenantLimits(user)
+		if limit == nil {
+			// There is no limit for this tenant, so we default to the default limits.
+			limit = t.Overrides.DefaultLimits()
+			if limit == nil {
+				// This should not happen, but we handle it gracefully.
+				http.Error(w, "No default limits configured", http.StatusNotFound)
+				return
+			}
+		}
+
+		// Apply allowlist filtering if configured
+		allowlist := t.Cfg.TenantLimitsAllowPublish
+		filteredLimits, err := filterLimitFields(limit, allowlist)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		writeYAMLResponse(w, filteredLimits)
 	}
 }
 

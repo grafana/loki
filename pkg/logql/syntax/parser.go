@@ -3,7 +3,6 @@ package syntax
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 
@@ -57,13 +56,13 @@ type parser struct {
 }
 
 func (p *parser) Parse() (Expr, error) {
-	p.lexer.errs = p.lexer.errs[:0]
-	p.lexer.Scanner.Error = func(_ *Scanner, msg string) {
-		p.lexer.Error(msg)
+	p.errs = p.errs[:0]
+	p.Scanner.Error = func(_ *Scanner, msg string) {
+		p.Error(msg)
 	}
 	e := p.p.Parse(p)
-	if e != 0 || len(p.lexer.errs) > 0 {
-		return nil, p.lexer.errs[0]
+	if e != 0 || len(p.errs) > 0 {
+		return nil, p.errs[0]
 	}
 	return p.expr, nil
 }
@@ -100,8 +99,8 @@ func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 	p := parserPool.Get().(*parser)
 	defer parserPool.Put(p)
 
-	p.Reader.Reset(input)
-	p.lexer.Init(p.Reader)
+	p.Reset(input)
+	p.Init(p.Reader)
 	return p.Parse()
 }
 
@@ -223,6 +222,11 @@ func validateSampleExpr(expr SampleExpr) error {
 			}
 		}
 		return validateSampleExpr(e.Left)
+	case *LabelReplaceExpr:
+		if e.err != nil {
+			return e.err
+		}
+		return validateSampleExpr(e.Left)
 	default:
 		selector, err := e.Selector()
 		if err != nil {
@@ -272,11 +276,8 @@ func ParseLogSelector(input string, validate bool) (LogSelectorExpr, error) {
 func ParseLabels(lbs string) (labels.Labels, error) {
 	ls, err := promql_parser.ParseMetric(lbs)
 	if err != nil {
-		return nil, err
+		return labels.EmptyLabels(), err
 	}
-	// Sort labels to ensure functionally equivalent
-	// inputs map to the same output
-	sort.Sort(ls)
 
 	// Use the label builder to trim empty label values.
 	// Empty label values are equivalent to absent labels

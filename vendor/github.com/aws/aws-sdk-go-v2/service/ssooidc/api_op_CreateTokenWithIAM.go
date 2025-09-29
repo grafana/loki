@@ -6,14 +6,24 @@ import (
 	"context"
 	"fmt"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
+	"github.com/aws/aws-sdk-go-v2/service/ssooidc/types"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Creates and returns access and refresh tokens for clients and applications that
-// are authenticated using IAM entities. The access token can be used to fetch
-// short-lived credentials for the assigned Amazon Web Services accounts or to
-// access application APIs using bearer authentication.
+// Creates and returns access and refresh tokens for authorized client
+// applications that are authenticated using any IAM entity, such as a service role
+// or user. These tokens might contain defined scopes that specify permissions such
+// as read:profile or write:data . Through downscoping, you can use the scopes
+// parameter to request tokens with reduced permissions compared to the original
+// client application's permissions or, if applicable, the refresh token's scopes.
+// The access token can be used to fetch short-lived credentials for the assigned
+// Amazon Web Services accounts or to access application APIs using bearer
+// authentication.
+//
+// This API is used with Signature Version 4. For more information, see [Amazon Web Services Signature Version 4 for API Requests].
+//
+// [Amazon Web Services Signature Version 4 for API Requests]: https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_sigv.html
 func (c *Client) CreateTokenWithIAM(ctx context.Context, params *CreateTokenWithIAMInput, optFns ...func(*Options)) (*CreateTokenWithIAMOutput, error) {
 	if params == nil {
 		params = &CreateTokenWithIAMInput{}
@@ -123,6 +133,10 @@ type CreateTokenWithIAMOutput struct {
 	// to a user.
 	AccessToken *string
 
+	// A structure containing information from IAM Identity Center managed user and
+	// group information.
+	AwsAdditionalDetails *types.AwsAdditionalDetails
+
 	// Indicates the time in seconds when an access token will expire.
 	ExpiresIn int32
 
@@ -226,6 +240,9 @@ func (c *Client) addOperationCreateTokenWithIAMMiddlewares(stack *middleware.Sta
 	if err = addUserAgentRetryMode(stack, options); err != nil {
 		return err
 	}
+	if err = addCredentialSource(stack, options); err != nil {
+		return err
+	}
 	if err = addOpCreateTokenWithIAMValidationMiddleware(stack); err != nil {
 		return err
 	}
@@ -245,6 +262,36 @@ func (c *Client) addOperationCreateTokenWithIAMMiddlewares(stack *middleware.Sta
 		return err
 	}
 	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptExecution(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeSerialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterSerialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeSigning(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterSigning(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptTransmit(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterDeserialization(stack, options); err != nil {
 		return err
 	}
 	if err = addSpanInitializeStart(stack); err != nil {

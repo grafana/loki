@@ -67,11 +67,12 @@ func getTerminalMap() (map[uint64]string, error) {
 
 	for _, name := range termfiles {
 		stat := unix.Stat_t{}
-		if err = unix.Stat(name, &stat); err != nil {
+		err = unix.Stat(name, &stat)
+		if err != nil {
 			return nil, err
 		}
 		rdev := uint64(stat.Rdev)
-		ret[rdev] = strings.Replace(name, "/dev", "", -1)
+		ret[rdev] = strings.ReplaceAll(name, "/dev", "")
 	}
 	return ret, nil
 }
@@ -140,7 +141,7 @@ func PidExistsWithContext(ctx context.Context, pid int32) (bool, error) {
 	return false, err
 }
 
-func (p *Process) SendSignalWithContext(ctx context.Context, sig syscall.Signal) error {
+func (p *Process) SendSignalWithContext(_ context.Context, sig syscall.Signal) error {
 	process, err := os.FindProcess(int(p.Pid))
 	if err != nil {
 		return err

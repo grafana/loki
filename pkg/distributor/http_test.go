@@ -10,8 +10,11 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 
+	"github.com/grafana/loki/v3/pkg/util/constants"
+
 	"github.com/grafana/loki/v3/pkg/loghttp/push"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/runtime"
 
 	"github.com/grafana/dskit/flagext"
 	"github.com/stretchr/testify/require"
@@ -80,7 +83,7 @@ func TestRequestParserWrapping(t *testing.T) {
 		require.NoError(t, err)
 
 		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, newFakeParser().parseRequest, push.HTTPError)
+		distributors[0].pushHandler(rec, req, newFakeParser().parseRequest, push.HTTPError, constants.Loki)
 
 		// unprocessable code because there are no streams in the request.
 		require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
@@ -107,10 +110,55 @@ func TestRequestParserWrapping(t *testing.T) {
 		parser.parseErr = push.ErrAllLogsFiltered
 
 		rec := httptest.NewRecorder()
-		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError)
+		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, constants.Loki)
 
 		require.True(t, called)
 		require.Equal(t, http.StatusNoContent, rec.Code)
+	})
+
+	t.Run("it handles request body too large error with positive content length", func(t *testing.T) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		limits.RejectOldSamples = false
+		distributors, _ := prepare(t, 1, 3, limits, nil)
+
+		ctx := user.InjectOrgID(context.Background(), "test-user")
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
+		require.NoError(t, err)
+
+		// Set a positive content length
+		req.ContentLength = 1000
+
+		parser := newFakeParser()
+		parser.parseErr = push.ErrRequestBodyTooLarge
+
+		rec := httptest.NewRecorder()
+		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, constants.Loki)
+
+		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+	})
+
+	t.Run("it handles request body too large error with negative content length", func(t *testing.T) {
+		limits := &validation.Limits{}
+		flagext.DefaultValues(limits)
+		limits.RejectOldSamples = false
+		distributors, _ := prepare(t, 1, 3, limits, nil)
+
+		ctx := user.InjectOrgID(context.Background(), "test-user")
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "fake-path", nil)
+		require.NoError(t, err)
+
+		// Set a negative content length to test our guard clause
+		req.ContentLength = -1
+
+		parser := newFakeParser()
+		parser.parseErr = push.ErrRequestBodyTooLarge
+
+		rec := httptest.NewRecorder()
+		distributors[0].pushHandler(rec, req, parser.parseRequest, push.HTTPError, constants.Loki)
+
+		require.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+		// The test should complete without panicking
 	})
 }
 
@@ -126,10 +174,10 @@ func (p *fakeParser) parseRequest(
 	_ string,
 	_ *http.Request,
 	_ push.Limits,
+	_ *runtime.TenantConfigs,
 	_ int,
 	_ push.UsageTracker,
 	_ push.StreamResolver,
-	_ bool,
 	_ log.Logger,
 ) (*logproto.PushRequest, *push.Stats, error) {
 	return &logproto.PushRequest{}, &push.Stats{}, p.parseErr

@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/grafana/loki/v3/pkg/kafka"
+	"github.com/grafana/loki/v3/pkg/kafka/client"
 )
 
 const (
@@ -35,12 +36,14 @@ type serviceMetrics struct {
 func newServiceMetrics(r prometheus.Registerer) *serviceMetrics {
 	return &serviceMetrics{
 		partition: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "loki_ingest_storage_reader_partition",
-			Help: "The partition ID assigned to this reader.",
+			Namespace: client.MetricsPrefix,
+			Name:      "partition_reader_partition",
+			Help:      "The partition ID assigned to this reader.",
 		}, []string{"id"}),
 		phase: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
-			Name: "loki_ingest_storage_reader_phase",
-			Help: "The current phase of the consumer.",
+			Namespace: client.MetricsPrefix,
+			Name:      "partition_reader_phase",
+			Help:      "The current phase of the consumer.",
 		}, []string{"phase"}),
 	}
 }
@@ -76,12 +79,7 @@ func NewReaderService(
 	reg prometheus.Registerer,
 ) (*ReaderService, error) {
 	readerMetrics := NewReaderMetrics(reg)
-	reader, err := NewKafkaReader(
-		kafkaCfg,
-		partitionID,
-		logger,
-		readerMetrics,
-	)
+	reader, err := NewKafkaReader(kafkaCfg, partitionID, logger, readerMetrics, reg)
 	if err != nil {
 		return nil, fmt.Errorf("creating kafka reader: %w", err)
 	}
@@ -145,7 +143,7 @@ func (s *ReaderService) starting(ctx context.Context) error {
 	logger := log.With(s.logger, "phase", phaseStarting)
 	s.reader.SetPhase(phaseStarting)
 	// Fetch the last committed offset to determine where to start reading
-	lastCommittedOffset, err := s.offsetManager.FetchLastCommittedOffset(ctx, s.partitionID)
+	lastCommittedOffset, err := s.offsetManager.LastCommittedOffset(ctx, s.partitionID)
 	if err != nil {
 		return fmt.Errorf("fetching last committed offset: %w", err)
 	}
@@ -202,12 +200,10 @@ func (s *ReaderService) processConsumerLagAtStartup(ctx context.Context, logger 
 		return fmt.Errorf("failed to create consumer: %w", err)
 	}
 
-	cancelCtx, cancel := context.WithCancel(ctx)
 	recordsCh := make(chan []Record)
-	wait := consumer.Start(cancelCtx, recordsCh)
+	wait := consumer.Start(ctx, recordsCh)
 	defer func() {
 		close(recordsCh)
-		cancel()
 		wait()
 	}()
 
@@ -239,14 +235,14 @@ func (s *ReaderService) fetchUntilLagSatisfied(
 
 	for b.Ongoing() {
 		// Send a direct request to the Kafka backend to fetch the partition start offset.
-		partitionStartOffset, err := s.offsetManager.FetchPartitionOffset(ctx, s.partitionID, KafkaStartOffset)
+		partitionStartOffset, err := s.offsetManager.PartitionOffset(ctx, s.partitionID, KafkaStartOffset)
 		if err != nil {
 			level.Warn(logger).Log("msg", "partition reader failed to fetch partition start offset", "err", err)
 			b.Wait()
 			continue
 		}
 
-		consumerGroupLastCommittedOffset, err := s.offsetManager.FetchLastCommittedOffset(ctx, s.partitionID)
+		consumerGroupLastCommittedOffset, err := s.offsetManager.LastCommittedOffset(ctx, s.partitionID)
 		if err != nil {
 			level.Warn(logger).Log("msg", "partition reader failed to fetch last committed offset", "err", err)
 			b.Wait()
@@ -257,7 +253,7 @@ func (s *ReaderService) fetchUntilLagSatisfied(
 		// We intentionally don't use WaitNextFetchLastProducedOffset() to not introduce further
 		// latency.
 		lastProducedOffsetRequestedAt := time.Now()
-		lastProducedOffset, err := s.offsetManager.FetchPartitionOffset(ctx, s.partitionID, KafkaEndOffset)
+		lastProducedOffset, err := s.offsetManager.PartitionOffset(ctx, s.partitionID, KafkaEndOffset)
 		if err != nil {
 			level.Warn(logger).Log("msg", "partition reader failed to fetch last produced offset", "err", err)
 			b.Wait()

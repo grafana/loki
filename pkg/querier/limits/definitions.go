@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/pattern"
 )
 
 type TimeRangeLimits interface {
@@ -14,6 +15,7 @@ type TimeRangeLimits interface {
 
 type Limits interface {
 	logql.Limits
+	pattern.Limits
 	TimeRangeLimits
 	QueryTimeout(context.Context, string) time.Duration
 	MaxStreamsMatchersPerQuery(context.Context, string) int

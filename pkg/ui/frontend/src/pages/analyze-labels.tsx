@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { DataTableColumnHeader } from "@/components/common/data-table-column-header";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -7,7 +8,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import {
+  ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Form,
   FormControl,
@@ -16,6 +27,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -23,10 +35,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
 import {
   Table,
   TableBody,
@@ -36,25 +44,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useCluster } from "@/contexts/use-cluster";
-import { findNodeName } from "@/lib/utils";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
-import {
-  ChartConfig,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart";
-import { DataTableColumnHeader } from "@/components/common/data-table-column-header";
-import { ChevronDown } from "lucide-react";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { cn, findNodeName } from "@/lib/utils";
 import { absolutePath } from "@/util";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery } from "@tanstack/react-query";
+import { ChevronDown } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+import * as z from "zod";
 
 const formSchema = z.object({
   tenant: z.string().min(1, "Tenant ID is required"),
@@ -133,7 +132,7 @@ export default function AnalyzeLabels() {
     useState<MetricType>("uniqueValues");
   const [openRows, setOpenRows] = useState<Set<string>>(new Set());
 
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm({
     resolver: zodResolver(formSchema),
     defaultValues: {
       matcher: "{}",
@@ -154,7 +153,7 @@ export default function AnalyzeLabels() {
         const response = await fetch(
           absolutePath(
             `/api/v1/proxy/${nodeName}/loki/api/v1/series?match[]=${encodeURIComponent(
-              values.matcher
+              values.matcher || ""
             )}&start=${start.getTime() * 1e6}&end=${end.getTime() * 1e6}`
           ),
           {

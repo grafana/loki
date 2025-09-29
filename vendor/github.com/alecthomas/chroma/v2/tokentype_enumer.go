@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-const _TokenTypeName = "IgnoreNoneOtherErrorCodeLineLineLinkLineTableTDLineTableLineHighlightLineNumbersTableLineNumbersLinePreWrapperBackgroundEOFTypeKeywordKeywordConstantKeywordDeclarationKeywordNamespaceKeywordPseudoKeywordReservedKeywordTypeNameNameAttributeNameBuiltinNameBuiltinPseudoNameClassNameConstantNameDecoratorNameEntityNameExceptionNameFunctionNameFunctionMagicNameKeywordNameLabelNameNamespaceNameOperatorNameOtherNamePseudoNamePropertyNameTagNameVariableNameVariableAnonymousNameVariableClassNameVariableGlobalNameVariableInstanceNameVariableMagicLiteralLiteralDateLiteralOtherLiteralStringLiteralStringAffixLiteralStringAtomLiteralStringBacktickLiteralStringBooleanLiteralStringCharLiteralStringDelimiterLiteralStringDocLiteralStringDoubleLiteralStringEscapeLiteralStringHeredocLiteralStringInterpolLiteralStringNameLiteralStringOtherLiteralStringRegexLiteralStringSingleLiteralStringSymbolLiteralNumberLiteralNumberBinLiteralNumberFloatLiteralNumberHexLiteralNumberIntegerLiteralNumberIntegerLongLiteralNumberOctLiteralNumberByteOperatorOperatorWordPunctuationCommentCommentHashbangCommentMultilineCommentSingleCommentSpecialCommentPreprocCommentPreprocFileGenericGenericDeletedGenericEmphGenericErrorGenericHeadingGenericInsertedGenericOutputGenericPromptGenericStrongGenericSubheadingGenericTracebackGenericUnderlineTextTextWhitespaceTextSymbolTextPunctuation"
-const _TokenTypeLowerName = "ignorenoneothererrorcodelinelinelinklinetabletdlinetablelinehighlightlinenumberstablelinenumberslineprewrapperbackgroundeoftypekeywordkeywordconstantkeyworddeclarationkeywordnamespacekeywordpseudokeywordreservedkeywordtypenamenameattributenamebuiltinnamebuiltinpseudonameclassnameconstantnamedecoratornameentitynameexceptionnamefunctionnamefunctionmagicnamekeywordnamelabelnamenamespacenameoperatornameothernamepseudonamepropertynametagnamevariablenamevariableanonymousnamevariableclassnamevariableglobalnamevariableinstancenamevariablemagicliteralliteraldateliteralotherliteralstringliteralstringaffixliteralstringatomliteralstringbacktickliteralstringbooleanliteralstringcharliteralstringdelimiterliteralstringdocliteralstringdoubleliteralstringescapeliteralstringheredocliteralstringinterpolliteralstringnameliteralstringotherliteralstringregexliteralstringsingleliteralstringsymbolliteralnumberliteralnumberbinliteralnumberfloatliteralnumberhexliteralnumberintegerliteralnumberintegerlongliteralnumberoctliteralnumberbyteoperatoroperatorwordpunctuationcommentcommenthashbangcommentmultilinecommentsinglecommentspecialcommentpreproccommentpreprocfilegenericgenericdeletedgenericemphgenericerrorgenericheadinggenericinsertedgenericoutputgenericpromptgenericstronggenericsubheadinggenerictracebackgenericunderlinetexttextwhitespacetextsymboltextpunctuation"
+const _TokenTypeName = "IgnoreNoneOtherErrorCodeLineLineLinkLineTableTDLineTableLineHighlightLineNumbersTableLineNumbersLinePreWrapperBackgroundEOFTypeKeywordKeywordConstantKeywordDeclarationKeywordNamespaceKeywordPseudoKeywordReservedKeywordTypeNameNameAttributeNameClassNameConstantNameDecoratorNameEntityNameExceptionNameKeywordNameLabelNameNamespaceNameOperatorNameOtherNamePseudoNamePropertyNameTagNameBuiltinNameBuiltinPseudoNameVariableNameVariableAnonymousNameVariableClassNameVariableGlobalNameVariableInstanceNameVariableMagicNameFunctionNameFunctionMagicLiteralLiteralDateLiteralOtherLiteralStringLiteralStringAffixLiteralStringAtomLiteralStringBacktickLiteralStringBooleanLiteralStringCharLiteralStringDelimiterLiteralStringDocLiteralStringDoubleLiteralStringEscapeLiteralStringHeredocLiteralStringInterpolLiteralStringNameLiteralStringOtherLiteralStringRegexLiteralStringSingleLiteralStringSymbolLiteralNumberLiteralNumberBinLiteralNumberFloatLiteralNumberHexLiteralNumberIntegerLiteralNumberIntegerLongLiteralNumberOctLiteralNumberByteOperatorOperatorWordPunctuationCommentCommentHashbangCommentMultilineCommentSingleCommentSpecialCommentPreprocCommentPreprocFileGenericGenericDeletedGenericEmphGenericErrorGenericHeadingGenericInsertedGenericOutputGenericPromptGenericStrongGenericSubheadingGenericTracebackGenericUnderlineTextTextWhitespaceTextSymbolTextPunctuation"
+const _TokenTypeLowerName = "ignorenoneothererrorcodelinelinelinklinetabletdlinetablelinehighlightlinenumberstablelinenumberslineprewrapperbackgroundeoftypekeywordkeywordconstantkeyworddeclarationkeywordnamespacekeywordpseudokeywordreservedkeywordtypenamenameattributenameclassnameconstantnamedecoratornameentitynameexceptionnamekeywordnamelabelnamenamespacenameoperatornameothernamepseudonamepropertynametagnamebuiltinnamebuiltinpseudonamevariablenamevariableanonymousnamevariableclassnamevariableglobalnamevariableinstancenamevariablemagicnamefunctionnamefunctionmagicliteralliteraldateliteralotherliteralstringliteralstringaffixliteralstringatomliteralstringbacktickliteralstringbooleanliteralstringcharliteralstringdelimiterliteralstringdocliteralstringdoubleliteralstringescapeliteralstringheredocliteralstringinterpolliteralstringnameliteralstringotherliteralstringregexliteralstringsingleliteralstringsymbolliteralnumberliteralnumberbinliteralnumberfloatliteralnumberhexliteralnumberintegerliteralnumberintegerlongliteralnumberoctliteralnumberbyteoperatoroperatorwordpunctuationcommentcommenthashbangcommentmultilinecommentsinglecommentspecialcommentpreproccommentpreprocfilegenericgenericdeletedgenericemphgenericerrorgenericheadinggenericinsertedgenericoutputgenericpromptgenericstronggenericsubheadinggenerictracebackgenericunderlinetexttextwhitespacetextsymboltextpunctuation"
 
 var _TokenTypeMap = map[TokenType]string{
 	-14:  _TokenTypeName[0:6],
@@ -35,29 +35,29 @@ var _TokenTypeMap = map[TokenType]string{
 	1006: _TokenTypeName[211:222],
 	2000: _TokenTypeName[222:226],
 	2001: _TokenTypeName[226:239],
-	2002: _TokenTypeName[239:250],
-	2003: _TokenTypeName[250:267],
-	2004: _TokenTypeName[267:276],
-	2005: _TokenTypeName[276:288],
-	2006: _TokenTypeName[288:301],
-	2007: _TokenTypeName[301:311],
-	2008: _TokenTypeName[311:324],
-	2009: _TokenTypeName[324:336],
-	2010: _TokenTypeName[336:353],
-	2011: _TokenTypeName[353:364],
-	2012: _TokenTypeName[364:373],
-	2013: _TokenTypeName[373:386],
-	2014: _TokenTypeName[386:398],
-	2015: _TokenTypeName[398:407],
-	2016: _TokenTypeName[407:417],
-	2017: _TokenTypeName[417:429],
-	2018: _TokenTypeName[429:436],
-	2019: _TokenTypeName[436:448],
-	2020: _TokenTypeName[448:469],
-	2021: _TokenTypeName[469:486],
-	2022: _TokenTypeName[486:504],
-	2023: _TokenTypeName[504:524],
-	2024: _TokenTypeName[524:541],
+	2002: _TokenTypeName[239:248],
+	2003: _TokenTypeName[248:260],
+	2004: _TokenTypeName[260:273],
+	2005: _TokenTypeName[273:283],
+	2006: _TokenTypeName[283:296],
+	2007: _TokenTypeName[296:307],
+	2008: _TokenTypeName[307:316],
+	2009: _TokenTypeName[316:329],
+	2010: _TokenTypeName[329:341],
+	2011: _TokenTypeName[341:350],
+	2012: _TokenTypeName[350:360],
+	2013: _TokenTypeName[360:372],
+	2014: _TokenTypeName[372:379],
+	2100: _TokenTypeName[379:390],
+	2101: _TokenTypeName[390:407],
+	2200: _TokenTypeName[407:419],
+	2201: _TokenTypeName[419:440],
+	2202: _TokenTypeName[440:457],
+	2203: _TokenTypeName[457:475],
+	2204: _TokenTypeName[475:495],
+	2205: _TokenTypeName[495:512],
+	2300: _TokenTypeName[512:524],
+	2301: _TokenTypeName[524:541],
 	3000: _TokenTypeName[541:548],
 	3001: _TokenTypeName[548:559],
 	3002: _TokenTypeName[559:571],
@@ -149,29 +149,29 @@ func _TokenTypeNoOp() {
 	_ = x[KeywordType-(1006)]
 	_ = x[Name-(2000)]
 	_ = x[NameAttribute-(2001)]
-	_ = x[NameBuiltin-(2002)]
-	_ = x[NameBuiltinPseudo-(2003)]
-	_ = x[NameClass-(2004)]
-	_ = x[NameConstant-(2005)]
-	_ = x[NameDecorator-(2006)]
-	_ = x[NameEntity-(2007)]
-	_ = x[NameException-(2008)]
-	_ = x[NameFunction-(2009)]
-	_ = x[NameFunctionMagic-(2010)]
-	_ = x[NameKeyword-(2011)]
-	_ = x[NameLabel-(2012)]
-	_ = x[NameNamespace-(2013)]
-	_ = x[NameOperator-(2014)]
-	_ = x[NameOther-(2015)]
-	_ = x[NamePseudo-(2016)]
-	_ = x[NameProperty-(2017)]
-	_ = x[NameTag-(2018)]
-	_ = x[NameVariable-(2019)]
-	_ = x[NameVariableAnonymous-(2020)]
-	_ = x[NameVariableClass-(2021)]
-	_ = x[NameVariableGlobal-(2022)]
-	_ = x[NameVariableInstance-(2023)]
-	_ = x[NameVariableMagic-(2024)]
+	_ = x[NameClass-(2002)]
+	_ = x[NameConstant-(2003)]
+	_ = x[NameDecorator-(2004)]
+	_ = x[NameEntity-(2005)]
+	_ = x[NameException-(2006)]
+	_ = x[NameKeyword-(2007)]
+	_ = x[NameLabel-(2008)]
+	_ = x[NameNamespace-(2009)]
+	_ = x[NameOperator-(2010)]
+	_ = x[NameOther-(2011)]
+	_ = x[NamePseudo-(2012)]
+	_ = x[NameProperty-(2013)]
+	_ = x[NameTag-(2014)]
+	_ = x[NameBuiltin-(2100)]
+	_ = x[NameBuiltinPseudo-(2101)]
+	_ = x[NameVariable-(2200)]
+	_ = x[NameVariableAnonymous-(2201)]
+	_ = x[NameVariableClass-(2202)]
+	_ = x[NameVariableGlobal-(2203)]
+	_ = x[NameVariableInstance-(2204)]
+	_ = x[NameVariableMagic-(2205)]
+	_ = x[NameFunction-(2300)]
+	_ = x[NameFunctionMagic-(2301)]
 	_ = x[Literal-(3000)]
 	_ = x[LiteralDate-(3001)]
 	_ = x[LiteralOther-(3002)]
@@ -228,7 +228,7 @@ func _TokenTypeNoOp() {
 	_ = x[TextPunctuation-(8003)]
 }
 
-var _TokenTypeValues = []TokenType{Ignore, None, Other, Error, CodeLine, LineLink, LineTableTD, LineTable, LineHighlight, LineNumbersTable, LineNumbers, Line, PreWrapper, Background, EOFType, Keyword, KeywordConstant, KeywordDeclaration, KeywordNamespace, KeywordPseudo, KeywordReserved, KeywordType, Name, NameAttribute, NameBuiltin, NameBuiltinPseudo, NameClass, NameConstant, NameDecorator, NameEntity, NameException, NameFunction, NameFunctionMagic, NameKeyword, NameLabel, NameNamespace, NameOperator, NameOther, NamePseudo, NameProperty, NameTag, NameVariable, NameVariableAnonymous, NameVariableClass, NameVariableGlobal, NameVariableInstance, NameVariableMagic, Literal, LiteralDate, LiteralOther, LiteralString, LiteralStringAffix, LiteralStringAtom, LiteralStringBacktick, LiteralStringBoolean, LiteralStringChar, LiteralStringDelimiter, LiteralStringDoc, LiteralStringDouble, LiteralStringEscape, LiteralStringHeredoc, LiteralStringInterpol, LiteralStringName, LiteralStringOther, LiteralStringRegex, LiteralStringSingle, LiteralStringSymbol, LiteralNumber, LiteralNumberBin, LiteralNumberFloat, LiteralNumberHex, LiteralNumberInteger, LiteralNumberIntegerLong, LiteralNumberOct, LiteralNumberByte, Operator, OperatorWord, Punctuation, Comment, CommentHashbang, CommentMultiline, CommentSingle, CommentSpecial, CommentPreproc, CommentPreprocFile, Generic, GenericDeleted, GenericEmph, GenericError, GenericHeading, GenericInserted, GenericOutput, GenericPrompt, GenericStrong, GenericSubheading, GenericTraceback, GenericUnderline, Text, TextWhitespace, TextSymbol, TextPunctuation}
+var _TokenTypeValues = []TokenType{Ignore, None, Other, Error, CodeLine, LineLink, LineTableTD, LineTable, LineHighlight, LineNumbersTable, LineNumbers, Line, PreWrapper, Background, EOFType, Keyword, KeywordConstant, KeywordDeclaration, KeywordNamespace, KeywordPseudo, KeywordReserved, KeywordType, Name, NameAttribute, NameClass, NameConstant, NameDecorator, NameEntity, NameException, NameKeyword, NameLabel, NameNamespace, NameOperator, NameOther, NamePseudo, NameProperty, NameTag, NameBuiltin, NameBuiltinPseudo, NameVariable, NameVariableAnonymous, NameVariableClass, NameVariableGlobal, NameVariableInstance, NameVariableMagic, NameFunction, NameFunctionMagic, Literal, LiteralDate, LiteralOther, LiteralString, LiteralStringAffix, LiteralStringAtom, LiteralStringBacktick, LiteralStringBoolean, LiteralStringChar, LiteralStringDelimiter, LiteralStringDoc, LiteralStringDouble, LiteralStringEscape, LiteralStringHeredoc, LiteralStringInterpol, LiteralStringName, LiteralStringOther, LiteralStringRegex, LiteralStringSingle, LiteralStringSymbol, LiteralNumber, LiteralNumberBin, LiteralNumberFloat, LiteralNumberHex, LiteralNumberInteger, LiteralNumberIntegerLong, LiteralNumberOct, LiteralNumberByte, Operator, OperatorWord, Punctuation, Comment, CommentHashbang, CommentMultiline, CommentSingle, CommentSpecial, CommentPreproc, CommentPreprocFile, Generic, GenericDeleted, GenericEmph, GenericError, GenericHeading, GenericInserted, GenericOutput, GenericPrompt, GenericStrong, GenericSubheading, GenericTraceback, GenericUnderline, Text, TextWhitespace, TextSymbol, TextPunctuation}
 
 var _TokenTypeNameToValueMap = map[string]TokenType{
 	_TokenTypeName[0:6]:            Ignore,
@@ -279,52 +279,52 @@ var _TokenTypeNameToValueMap = map[string]TokenType{
 	_TokenTypeLowerName[222:226]:   Name,
 	_TokenTypeName[226:239]:        NameAttribute,
 	_TokenTypeLowerName[226:239]:   NameAttribute,
-	_TokenTypeName[239:250]:        NameBuiltin,
-	_TokenTypeLowerName[239:250]:   NameBuiltin,
-	_TokenTypeName[250:267]:        NameBuiltinPseudo,
-	_TokenTypeLowerName[250:267]:   NameBuiltinPseudo,
-	_TokenTypeName[267:276]:        NameClass,
-	_TokenTypeLowerName[267:276]:   NameClass,
-	_TokenTypeName[276:288]:        NameConstant,
-	_TokenTypeLowerName[276:288]:   NameConstant,
-	_TokenTypeName[288:301]:        NameDecorator,
-	_TokenTypeLowerName[288:301]:   NameDecorator,
-	_TokenTypeName[301:311]:        NameEntity,
-	_TokenTypeLowerName[301:311]:   NameEntity,
-	_TokenTypeName[311:324]:        NameException,
-	_TokenTypeLowerName[311:324]:   NameException,
-	_TokenTypeName[324:336]:        NameFunction,
-	_TokenTypeLowerName[324:336]:   NameFunction,
-	_TokenTypeName[336:353]:        NameFunctionMagic,
-	_TokenTypeLowerName[336:353]:   NameFunctionMagic,
-	_TokenTypeName[353:364]:        NameKeyword,
-	_TokenTypeLowerName[353:364]:   NameKeyword,
-	_TokenTypeName[364:373]:        NameLabel,
-	_TokenTypeLowerName[364:373]:   NameLabel,
-	_TokenTypeName[373:386]:        NameNamespace,
-	_TokenTypeLowerName[373:386]:   NameNamespace,
-	_TokenTypeName[386:398]:        NameOperator,
-	_TokenTypeLowerName[386:398]:   NameOperator,
-	_TokenTypeName[398:407]:        NameOther,
-	_TokenTypeLowerName[398:407]:   NameOther,
-	_TokenTypeName[407:417]:        NamePseudo,
-	_TokenTypeLowerName[407:417]:   NamePseudo,
-	_TokenTypeName[417:429]:        NameProperty,
-	_TokenTypeLowerName[417:429]:   NameProperty,
-	_TokenTypeName[429:436]:        NameTag,
-	_TokenTypeLowerName[429:436]:   NameTag,
-	_TokenTypeName[436:448]:        NameVariable,
-	_TokenTypeLowerName[436:448]:   NameVariable,
-	_TokenTypeName[448:469]:        NameVariableAnonymous,
-	_TokenTypeLowerName[448:469]:   NameVariableAnonymous,
-	_TokenTypeName[469:486]:        NameVariableClass,
-	_TokenTypeLowerName[469:486]:   NameVariableClass,
-	_TokenTypeName[486:504]:        NameVariableGlobal,
-	_TokenTypeLowerName[486:504]:   NameVariableGlobal,
-	_TokenTypeName[504:524]:        NameVariableInstance,
-	_TokenTypeLowerName[504:524]:   NameVariableInstance,
-	_TokenTypeName[524:541]:        NameVariableMagic,
-	_TokenTypeLowerName[524:541]:   NameVariableMagic,
+	_TokenTypeName[239:248]:        NameClass,
+	_TokenTypeLowerName[239:248]:   NameClass,
+	_TokenTypeName[248:260]:        NameConstant,
+	_TokenTypeLowerName[248:260]:   NameConstant,
+	_TokenTypeName[260:273]:        NameDecorator,
+	_TokenTypeLowerName[260:273]:   NameDecorator,
+	_TokenTypeName[273:283]:        NameEntity,
+	_TokenTypeLowerName[273:283]:   NameEntity,
+	_TokenTypeName[283:296]:        NameException,
+	_TokenTypeLowerName[283:296]:   NameException,
+	_TokenTypeName[296:307]:        NameKeyword,
+	_TokenTypeLowerName[296:307]:   NameKeyword,
+	_TokenTypeName[307:316]:        NameLabel,
+	_TokenTypeLowerName[307:316]:   NameLabel,
+	_TokenTypeName[316:329]:        NameNamespace,
+	_TokenTypeLowerName[316:329]:   NameNamespace,
+	_TokenTypeName[329:341]:        NameOperator,
+	_TokenTypeLowerName[329:341]:   NameOperator,
+	_TokenTypeName[341:350]:        NameOther,
+	_TokenTypeLowerName[341:350]:   NameOther,
+	_TokenTypeName[350:360]:        NamePseudo,
+	_TokenTypeLowerName[350:360]:   NamePseudo,
+	_TokenTypeName[360:372]:        NameProperty,
+	_TokenTypeLowerName[360:372]:   NameProperty,
+	_TokenTypeName[372:379]:        NameTag,
+	_TokenTypeLowerName[372:379]:   NameTag,
+	_TokenTypeName[379:390]:        NameBuiltin,
+	_TokenTypeLowerName[379:390]:   NameBuiltin,
+	_TokenTypeName[390:407]:        NameBuiltinPseudo,
+	_TokenTypeLowerName[390:407]:   NameBuiltinPseudo,
+	_TokenTypeName[407:419]:        NameVariable,
+	_TokenTypeLowerName[407:419]:   NameVariable,
+	_TokenTypeName[419:440]:        NameVariableAnonymous,
+	_TokenTypeLowerName[419:440]:   NameVariableAnonymous,
+	_TokenTypeName[440:457]:        NameVariableClass,
+	_TokenTypeLowerName[440:457]:   NameVariableClass,
+	_TokenTypeName[457:475]:        NameVariableGlobal,
+	_TokenTypeLowerName[457:475]:   NameVariableGlobal,
+	_TokenTypeName[475:495]:        NameVariableInstance,
+	_TokenTypeLowerName[475:495]:   NameVariableInstance,
+	_TokenTypeName[495:512]:        NameVariableMagic,
+	_TokenTypeLowerName[495:512]:   NameVariableMagic,
+	_TokenTypeName[512:524]:        NameFunction,
+	_TokenTypeLowerName[512:524]:   NameFunction,
+	_TokenTypeName[524:541]:        NameFunctionMagic,
+	_TokenTypeLowerName[524:541]:   NameFunctionMagic,
 	_TokenTypeName[541:548]:        Literal,
 	_TokenTypeLowerName[541:548]:   Literal,
 	_TokenTypeName[548:559]:        LiteralDate,
@@ -460,28 +460,28 @@ var _TokenTypeNames = []string{
 	_TokenTypeName[211:222],
 	_TokenTypeName[222:226],
 	_TokenTypeName[226:239],
-	_TokenTypeName[239:250],
-	_TokenTypeName[250:267],
-	_TokenTypeName[267:276],
-	_TokenTypeName[276:288],
-	_TokenTypeName[288:301],
-	_TokenTypeName[301:311],
-	_TokenTypeName[311:324],
-	_TokenTypeName[324:336],
-	_TokenTypeName[336:353],
-	_TokenTypeName[353:364],
-	_TokenTypeName[364:373],
-	_TokenTypeName[373:386],
-	_TokenTypeName[386:398],
-	_TokenTypeName[398:407],
-	_TokenTypeName[407:417],
-	_TokenTypeName[417:429],
-	_TokenTypeName[429:436],
-	_TokenTypeName[436:448],
-	_TokenTypeName[448:469],
-	_TokenTypeName[469:486],
-	_TokenTypeName[486:504],
-	_TokenTypeName[504:524],
+	_TokenTypeName[239:248],
+	_TokenTypeName[248:260],
+	_TokenTypeName[260:273],
+	_TokenTypeName[273:283],
+	_TokenTypeName[283:296],
+	_TokenTypeName[296:307],
+	_TokenTypeName[307:316],
+	_TokenTypeName[316:329],
+	_TokenTypeName[329:341],
+	_TokenTypeName[341:350],
+	_TokenTypeName[350:360],
+	_TokenTypeName[360:372],
+	_TokenTypeName[372:379],
+	_TokenTypeName[379:390],
+	_TokenTypeName[390:407],
+	_TokenTypeName[407:419],
+	_TokenTypeName[419:440],
+	_TokenTypeName[440:457],
+	_TokenTypeName[457:475],
+	_TokenTypeName[475:495],
+	_TokenTypeName[495:512],
+	_TokenTypeName[512:524],
 	_TokenTypeName[524:541],
 	_TokenTypeName[541:548],
 	_TokenTypeName[548:559],

@@ -8,7 +8,7 @@ import (
 // A ColumnRef referenes a column within a table relation. ColumnRef only
 // implements [Value].
 type ColumnRef struct {
-	ref types.ColumnRef
+	Ref types.ColumnRef
 }
 
 var (
@@ -18,17 +18,12 @@ var (
 // Name returns the identifier of the ColumnRef, which combines the column type
 // and column name being referenced.
 func (c *ColumnRef) Name() string {
-	return c.ref.String()
+	return c.Ref.String()
 }
 
 // String returns [ColumnRef.Name].
 func (c *ColumnRef) String() string {
-	return c.ref.String()
-}
-
-// Ref returns the wrapped [types.ColumnRef].
-func (c *ColumnRef) Ref() types.ColumnRef {
-	return c.ref
+	return c.Ref.String()
 }
 
 // Schema returns the schema of the column being referenced.
@@ -42,7 +37,7 @@ func (c *ColumnRef) isValue() {}
 
 func NewColumnRef(name string, ty types.ColumnType) *ColumnRef {
 	return &ColumnRef{
-		ref: types.ColumnRef{
+		Ref: types.ColumnRef{
 			Column: name,
 			Type:   ty,
 		},

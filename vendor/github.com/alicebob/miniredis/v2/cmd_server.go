@@ -57,19 +57,19 @@ func (m *Miniredis) cmdMemory(c *server.Peer, cmd string, args []string) {
 				ok    bool
 			)
 			switch db.keys[args[0]] {
-			case "string":
+			case keyTypeString:
 				value, ok = db.stringKeys[args[0]]
-			case "set":
+			case keyTypeSet:
 				value, ok = db.setKeys[args[0]]
-			case "hash":
+			case keyTypeHash:
 				value, ok = db.hashKeys[args[0]]
-			case "list":
+			case keyTypeList:
 				value, ok = db.listKeys[args[0]]
-			case "hll":
+			case keyTypeHll:
 				value, ok = db.hllKeys[args[0]]
-			case "zset":
+			case keyTypeSortedSet:
 				value, ok = db.sortedsetKeys[args[0]]
-			case "stream":
+			case keyTypeStream:
 				value, ok = db.streamKeys[args[0]]
 			}
 			if !ok {

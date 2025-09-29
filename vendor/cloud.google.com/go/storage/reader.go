@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"strings"
 	"sync"
@@ -37,6 +36,7 @@ var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
 // Each field is read-only.
 type ReaderObjectAttrs struct {
 	// Size is the length of the object's content.
+	// Size may be out of date for unfinalized objects.
 	Size int64
 
 	// StartOffset is the byte offset within the object
@@ -161,7 +161,9 @@ func (o *ObjectHandle) NewRangeReader(ctx context.Context, offset, length int64)
 // Must be called on a gRPC client created using [NewGRPCClient].
 //
 // This uses the gRPC-specific bi-directional read API, which is in private
-// preview; please contact your account manager if interested.
+// preview; please contact your account manager if interested. The option
+// [experimental.WithGRPCBidiReads] or [experimental.WithZonalBucketAPIs]
+// must be selected in order to use this API.
 func (o *ObjectHandle) NewMultiRangeDownloader(ctx context.Context) (mrd *MultiRangeDownloader, err error) {
 	// This span covers the life of the reader. It is closed via the context
 	// in Reader.Close.
@@ -258,7 +260,7 @@ func setConditionsHeaders(headers http.Header, conds *Conditions) error {
 	return nil
 }
 
-var emptyBody = ioutil.NopCloser(strings.NewReader(""))
+var emptyBody = io.NopCloser(strings.NewReader(""))
 
 // Reader reads a Cloud Storage object.
 // It implements io.Reader.
@@ -273,10 +275,11 @@ type Reader struct {
 	seen, remain, size int64
 	checkCRC           bool // Did we check the CRC? This is now only used by tests.
 
-	reader io.ReadCloser
-	ctx    context.Context
-	mu     sync.Mutex
-	handle *ReadHandle
+	reader      io.ReadCloser
+	ctx         context.Context
+	mu          sync.Mutex
+	handle      *ReadHandle
+	unfinalized bool
 }
 
 // Close closes the Reader. It must be called when done reading.
@@ -309,6 +312,7 @@ func (r *Reader) WriteTo(w io.Writer) (int64, error) {
 // Size returns the size of the object in bytes.
 // The returned value is always the same and is not affected by
 // calls to Read or Close.
+// Size may be out of date for a Reader to an unfinalized object.
 //
 // Deprecated: use Reader.Attrs.Size.
 func (r *Reader) Size() int64 {
@@ -316,7 +320,11 @@ func (r *Reader) Size() int64 {
 }
 
 // Remain returns the number of bytes left to read, or -1 if unknown.
+// Unfinalized objects will return -1.
 func (r *Reader) Remain() int64 {
+	if r.unfinalized {
+		return -1
+	}
 	return r.remain
 }
 
@@ -393,6 +401,7 @@ type multiRangeDownloader interface {
 	wait()
 	close() error
 	getHandle() []byte
+	error() error
 }
 
 // Add adds a new range to MultiRangeDownloader.
@@ -442,4 +451,11 @@ func (mrd *MultiRangeDownloader) Wait() {
 // follow up read if the same object is read through a different stream.
 func (mrd *MultiRangeDownloader) GetHandle() []byte {
 	return mrd.reader.getHandle()
+}
+
+// Error returns an error if the MultiRangeDownloader is in a permanent failure
+// state. It returns a nil error if the MultiRangeDownloader is open and can be
+// used.
+func (mrd *MultiRangeDownloader) Error() error {
+	return mrd.reader.error()
 }

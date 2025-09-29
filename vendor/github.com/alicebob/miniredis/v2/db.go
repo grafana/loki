@@ -70,19 +70,19 @@ func (db *RedisDB) move(key string, to *RedisDB) bool {
 	}
 	to.keys[key] = db.keys[key]
 	switch t {
-	case "string":
+	case keyTypeString:
 		to.stringKeys[key] = db.stringKeys[key]
-	case "hash":
+	case keyTypeHash:
 		to.hashKeys[key] = db.hashKeys[key]
-	case "list":
+	case keyTypeList:
 		to.listKeys[key] = db.listKeys[key]
-	case "set":
+	case keyTypeSet:
 		to.setKeys[key] = db.setKeys[key]
-	case "zset":
+	case keyTypeSortedSet:
 		to.sortedsetKeys[key] = db.sortedsetKeys[key]
-	case "stream":
+	case keyTypeStream:
 		to.streamKeys[key] = db.streamKeys[key]
-	case "hll":
+	case keyTypeHll:
 		to.hllKeys[key] = db.hllKeys[key]
 	default:
 		panic("unhandled key type")
@@ -98,19 +98,19 @@ func (db *RedisDB) move(key string, to *RedisDB) bool {
 func (db *RedisDB) rename(from, to string) {
 	db.del(to, true)
 	switch db.t(from) {
-	case "string":
+	case keyTypeString:
 		db.stringKeys[to] = db.stringKeys[from]
-	case "hash":
+	case keyTypeHash:
 		db.hashKeys[to] = db.hashKeys[from]
-	case "list":
+	case keyTypeList:
 		db.listKeys[to] = db.listKeys[from]
-	case "set":
+	case keyTypeSet:
 		db.setKeys[to] = db.setKeys[from]
-	case "zset":
+	case keyTypeSortedSet:
 		db.sortedsetKeys[to] = db.sortedsetKeys[from]
-	case "stream":
+	case keyTypeStream:
 		db.streamKeys[to] = db.streamKeys[from]
-	case "hll":
+	case keyTypeHll:
 		db.hllKeys[to] = db.hllKeys[from]
 	default:
 		panic("missing case")
@@ -136,19 +136,19 @@ func (db *RedisDB) del(k string, delTTL bool) {
 		delete(db.ttl, k)
 	}
 	switch t {
-	case "string":
+	case keyTypeString:
 		delete(db.stringKeys, k)
-	case "hash":
+	case keyTypeHash:
 		delete(db.hashKeys, k)
-	case "list":
+	case keyTypeList:
 		delete(db.listKeys, k)
-	case "set":
+	case keyTypeSet:
 		delete(db.setKeys, k)
-	case "zset":
+	case keyTypeSortedSet:
 		delete(db.sortedsetKeys, k)
-	case "stream":
+	case keyTypeStream:
 		delete(db.streamKeys, k)
-	case "hll":
+	case keyTypeHll:
 		delete(db.hllKeys, k)
 	default:
 		panic("Unknown key type: " + t)
@@ -157,7 +157,7 @@ func (db *RedisDB) del(k string, delTTL bool) {
 
 // stringGet returns the string key or "" on error/nonexists.
 func (db *RedisDB) stringGet(k string) string {
-	if t, ok := db.keys[k]; !ok || t != "string" {
+	if t, ok := db.keys[k]; !ok || t != keyTypeString {
 		return ""
 	}
 	return db.stringKeys[k]
@@ -166,7 +166,7 @@ func (db *RedisDB) stringGet(k string) string {
 // stringSet force set()s a key. Does not touch expire.
 func (db *RedisDB) stringSet(k, v string) {
 	db.del(k, false)
-	db.keys[k] = "string"
+	db.keys[k] = keyTypeString
 	db.stringKeys[k] = v
 	db.incr(k)
 }
@@ -217,7 +217,7 @@ func (db *RedisDB) stringIncrfloat(k string, delta *big.Float) (*big.Float, erro
 func (db *RedisDB) listLpush(k, v string) int {
 	l, ok := db.listKeys[k]
 	if !ok {
-		db.keys[k] = "list"
+		db.keys[k] = keyTypeList
 	}
 	l = append([]string{v}, l...)
 	db.listKeys[k] = l
@@ -242,7 +242,7 @@ func (db *RedisDB) listLpop(k string) string {
 func (db *RedisDB) listPush(k string, v ...string) int {
 	l, ok := db.listKeys[k]
 	if !ok {
-		db.keys[k] = "list"
+		db.keys[k] = keyTypeList
 	}
 	l = append(l, v...)
 	db.listKeys[k] = l
@@ -265,7 +265,7 @@ func (db *RedisDB) listPop(k string) string {
 
 // setset replaces a whole set.
 func (db *RedisDB) setSet(k string, set setKey) {
-	db.keys[k] = "set"
+	db.keys[k] = keyTypeSet
 	db.setKeys[k] = set
 	db.incr(k)
 }
@@ -275,7 +275,7 @@ func (db *RedisDB) setAdd(k string, elems ...string) int {
 	s, ok := db.setKeys[k]
 	if !ok {
 		s = setKey{}
-		db.keys[k] = "set"
+		db.keys[k] = keyTypeSet
 	}
 	added := 0
 	for _, e := range elems {
@@ -361,10 +361,10 @@ func (db *RedisDB) hashGet(key, field string) string {
 
 // hashSet returns the number of new keys
 func (db *RedisDB) hashSet(k string, fv ...string) int {
-	if t, ok := db.keys[k]; ok && t != "hash" {
+	if t, ok := db.keys[k]; ok && t != keyTypeHash {
 		db.del(k, true)
 	}
-	db.keys[k] = "hash"
+	db.keys[k] = keyTypeHash
 	if _, ok := db.hashKeys[k]; !ok {
 		db.hashKeys[k] = map[string]string{}
 	}
@@ -424,7 +424,7 @@ func (db *RedisDB) sortedSet(key string) map[string]float64 {
 
 // ssetSet sets a complete sorted set.
 func (db *RedisDB) ssetSet(key string, sset sortedSet) {
-	db.keys[key] = "zset"
+	db.keys[key] = keyTypeSortedSet
 	db.incr(key)
 	db.sortedsetKeys[key] = sset
 }
@@ -434,7 +434,7 @@ func (db *RedisDB) ssetAdd(key string, score float64, member string) bool {
 	ss, ok := db.sortedsetKeys[key]
 	if !ok {
 		ss = newSortedSet()
-		db.keys[key] = "zset"
+		db.keys[key] = keyTypeSortedSet
 	}
 	_, ok = ss[member]
 	ss[member] = score
@@ -526,7 +526,7 @@ func (db *RedisDB) ssetIncrby(k, m string, delta float64) float64 {
 	ss, ok := db.sortedsetKeys[k]
 	if !ok {
 		ss = newSortedSet()
-		db.keys[k] = "zset"
+		db.keys[k] = keyTypeSortedSet
 		db.sortedsetKeys[k] = ss
 	}
 
@@ -541,7 +541,7 @@ func (db *RedisDB) ssetIncrby(k, m string, delta float64) float64 {
 func (db *RedisDB) setDiff(keys []string) (setKey, error) {
 	key := keys[0]
 	keys = keys[1:]
-	if db.exists(key) && db.t(key) != "set" {
+	if db.exists(key) && db.t(key) != keyTypeSet {
 		return nil, ErrWrongType
 	}
 	s := setKey{}
@@ -552,7 +552,7 @@ func (db *RedisDB) setDiff(keys []string) (setKey, error) {
 		if !db.exists(sk) {
 			continue
 		}
-		if db.t(sk) != "set" {
+		if db.t(sk) != keyTypeSet {
 			return nil, ErrWrongType
 		}
 		for e := range db.setKeys[sk] {
@@ -567,7 +567,7 @@ func (db *RedisDB) setDiff(keys []string) (setKey, error) {
 func (db *RedisDB) setInter(keys []string) (setKey, error) {
 	// all keys must either not exist, or be of type "set".
 	for _, key := range keys {
-		if db.exists(key) && db.t(key) != "set" {
+		if db.exists(key) && db.t(key) != keyTypeSet {
 			return nil, ErrWrongType
 		}
 	}
@@ -577,7 +577,7 @@ func (db *RedisDB) setInter(keys []string) (setKey, error) {
 	if !db.exists(key) {
 		return nil, nil
 	}
-	if db.t(key) != "set" {
+	if db.t(key) != keyTypeSet {
 		return nil, ErrWrongType
 	}
 	s := setKey{}
@@ -588,7 +588,7 @@ func (db *RedisDB) setInter(keys []string) (setKey, error) {
 		if !db.exists(sk) {
 			return setKey{}, nil
 		}
-		if db.t(sk) != "set" {
+		if db.t(sk) != keyTypeSet {
 			return nil, ErrWrongType
 		}
 		other := db.setKeys[sk]
@@ -682,7 +682,7 @@ func (db *RedisDB) newStream(key string) (*streamKey, error) {
 		return nil, fmt.Errorf("ErrAlreadyExists")
 	}
 
-	db.keys[key] = "stream"
+	db.keys[key] = keyTypeStream
 	s := newStreamKey()
 	db.streamKeys[key] = s
 	db.incr(key)
@@ -691,7 +691,7 @@ func (db *RedisDB) newStream(key string) (*streamKey, error) {
 
 // return existing stream, or nil.
 func (db *RedisDB) stream(key string) (*streamKey, error) {
-	if db.exists(key) && db.t(key) != "stream" {
+	if db.exists(key) && db.t(key) != keyTypeStream {
 		return nil, ErrWrongType
 	}
 
@@ -728,7 +728,7 @@ func (db *RedisDB) hllAdd(k string, elems ...string) int {
 	s, ok := db.hllKeys[k]
 	if !ok {
 		s = newHll()
-		db.keys[k] = "hll"
+		db.keys[k] = keyTypeHll
 	}
 	hllAltered := 0
 	for _, e := range elems {
@@ -745,7 +745,7 @@ func (db *RedisDB) hllAdd(k string, elems ...string) int {
 func (db *RedisDB) hllCount(keys []string) (int, error) {
 	countOverall := 0
 	for _, key := range keys {
-		if db.exists(key) && db.t(key) != "hll" {
+		if db.exists(key) && db.t(key) != keyTypeHll {
 			return 0, ErrNotValidHllValue
 		}
 		if !db.exists(key) {
@@ -760,7 +760,7 @@ func (db *RedisDB) hllCount(keys []string) (int, error) {
 // hllMerge merges all the hlls provided as keys to the first key. Creates a new hll in the first key if it contains nothing
 func (db *RedisDB) hllMerge(keys []string) error {
 	for _, key := range keys {
-		if db.exists(key) && db.t(key) != "hll" {
+		if db.exists(key) && db.t(key) != keyTypeHll {
 			return ErrNotValidHllValue
 		}
 	}
@@ -783,7 +783,7 @@ func (db *RedisDB) hllMerge(keys []string) error {
 	}
 
 	db.hllKeys[destKey] = destHll
-	db.keys[destKey] = "hll"
+	db.keys[destKey] = keyTypeHll
 	db.incr(destKey)
 
 	return nil

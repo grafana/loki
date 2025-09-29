@@ -92,3 +92,54 @@ func (p *PolicyStreamMapping) PolicyFor(lbs labels.Labels) []string {
 
 	return policies
 }
+
+// ApplyDefaultPolicyStreamMappings applies default policy stream mappings to the current mapping.
+// The defaults are merged with the existing mappings, with existing mappings taking precedence.
+func (p *PolicyStreamMapping) ApplyDefaultPolicyStreamMappings(defaults PolicyStreamMapping) error {
+	if defaults == nil {
+		return nil
+	}
+
+	// If the current mapping is nil, initialize it
+	if *p == nil {
+		*p = make(PolicyStreamMapping)
+	}
+
+	// Merge defaults with existing mappings
+	for policyName, defaultStreams := range defaults {
+		if existingStreams, exists := (*p)[policyName]; exists {
+			// If the policy already exists, merge the streams
+			// We need to check for duplicates based on selector to avoid adding the same stream twice
+			existingSelectors := make(map[string]bool)
+			for _, stream := range existingStreams {
+				existingSelectors[stream.Selector] = true
+			}
+
+			// Add default streams that don't already exist
+			for _, defaultStream := range defaultStreams {
+				if !existingSelectors[defaultStream.Selector] {
+					existingStreams = append(existingStreams, defaultStream)
+				}
+			}
+			(*p)[policyName] = existingStreams
+		} else {
+			// If the policy doesn't exist, copy all default streams
+			streamsCopy := make([]*PriorityStream, len(defaultStreams))
+			for i, stream := range defaultStreams {
+				streamsCopy[i] = &PriorityStream{
+					Priority: stream.Priority,
+					Selector: stream.Selector,
+					Matchers: stream.Matchers,
+				}
+			}
+			(*p)[policyName] = streamsCopy
+		}
+	}
+
+	// Re-validate after merging to ensure proper sorting. The defaults are already validated
+	// so this should not fail, but playing it safe here and returning the error.
+	if err := p.Validate(); err != nil {
+		return fmt.Errorf("validation failed after merging with the defaults: %w", err)
+	}
+	return nil
+}

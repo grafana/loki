@@ -163,8 +163,8 @@ func TestTenantsRetention_RetentionPeriodFor(t *testing.T) {
 		},
 	})
 
-	require.Equal(t, time.Duration(sevenDays), tr.RetentionPeriodFor("1", nil))
-	require.Equal(t, time.Duration(oneDay), tr.RetentionPeriodFor("1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}))
+	require.Equal(t, time.Duration(sevenDays), tr.RetentionPeriodFor("1", labels.EmptyLabels()))
+	require.Equal(t, time.Duration(oneDay), tr.RetentionPeriodFor("1", labels.FromStrings("foo", "bar")))
 }
 
 func Test_expirationChecker_Expired_zeroValue(t *testing.T) {

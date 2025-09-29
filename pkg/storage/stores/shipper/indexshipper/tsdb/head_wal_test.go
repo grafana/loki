@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
@@ -31,7 +32,7 @@ func Test_Encoding_Series(t *testing.T) {
 func Test_Encoding_SeriesWithFingerprint(t *testing.T) {
 	record := &WALRecord{
 		UserID:      "foo",
-		Fingerprint: mustParseLabels(`{foo="bar"}`).Hash(),
+		Fingerprint: labels.StableHash(mustParseLabels(`{foo="bar"}`)),
 		Series: record.RefSeries{
 			Ref:    chunks.HeadSeriesRef(1),
 			Labels: mustParseLabels(`{foo="bar"}`),

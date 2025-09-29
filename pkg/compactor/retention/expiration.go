@@ -31,6 +31,7 @@ type ExpirationChecker interface {
 	MarkPhaseFinished()
 	DropFromIndex(userID []byte, chk Chunk, labels labels.Labels, tableEndTime model.Time, now model.Time) bool
 	CanSkipSeries(userID []byte, lbls labels.Labels, seriesID []byte, seriesStart model.Time, tableName string, now model.Time) bool
+	MarkSeriesAsProcessed(userID, seriesID []byte, lbls labels.Labels, tableName string) error
 }
 
 type expirationChecker struct {
@@ -96,6 +97,10 @@ func (e *expirationChecker) CanSkipSeries(userID []byte, lbls labels.Labels, _ [
 	return now.Sub(seriesStart) < period
 }
 
+func (e *expirationChecker) MarkSeriesAsProcessed(_, _ []byte, _ labels.Labels, _ string) error {
+	return nil
+}
+
 func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
 	// when userID is empty, it means we are checking for common index table. In this case we use e.overallLatestRetentionStartTime.
 	latestRetentionStartTime := e.latestRetentionStartTime.overall
@@ -135,6 +140,9 @@ func (e *neverExpiringExpirationChecker) DropFromIndex(_ []byte, _ Chunk, _ labe
 }
 func (e *neverExpiringExpirationChecker) CanSkipSeries(_ []byte, _ labels.Labels, _ []byte, _ model.Time, _ string, _ model.Time) bool {
 	return true
+}
+func (e *neverExpiringExpirationChecker) MarkSeriesAsProcessed(_, _ []byte, _ labels.Labels, _ string) error {
+	return nil
 }
 
 type TenantsRetention struct {

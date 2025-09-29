@@ -108,7 +108,7 @@ func (c CompositeStore) PutOne(ctx context.Context, from, through model.Time, ch
 
 func (c CompositeStore) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
 	for _, store := range c.stores {
-		store.Store.SetChunkFilterer(chunkFilter)
+		store.SetChunkFilterer(chunkFilter)
 	}
 }
 
@@ -121,9 +121,10 @@ func (c CompositeStore) GetSeries(ctx context.Context, userID string, from, thro
 			return err
 		}
 		for _, s := range series {
-			if _, ok := found[s.Hash()]; !ok {
+			hash := labels.StableHash(s)
+			if _, ok := found[hash]; !ok {
 				results = append(results, s)
-				found[s.Hash()] = struct{}{}
+				found[hash] = struct{}{}
 			}
 		}
 		return nil

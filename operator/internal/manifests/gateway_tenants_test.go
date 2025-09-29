@@ -716,7 +716,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 								{
 									Name: gatewayContainerName,
 									Args: []string{
-										"--logs.auth.extract-selectors=kubernetes_namespace_name",
+										"--logs.auth.extract-selectors=kubernetes_namespace_name,k8s_namespace_name",
 									},
 								},
 								{
@@ -731,7 +731,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--opa.package=lokistack",
 										"--opa.ssar=true",
 										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
-										"--opa.matcher=kubernetes_namespace_name",
+										"--opa.matcher=kubernetes_namespace_name,k8s_namespace_name",
+										"--opa.viaq-to-otel-migration=true",
 										`--openshift.mappings=application=loki.grafana.com`,
 										`--openshift.mappings=infrastructure=loki.grafana.com`,
 										`--openshift.mappings=audit=loki.grafana.com`,
@@ -826,7 +827,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 								{
 									Name: gatewayContainerName,
 									Args: []string{
-										"--logs.auth.extract-selectors=kubernetes_namespace_name",
+										"--logs.auth.extract-selectors=kubernetes_namespace_name,k8s_namespace_name",
 									},
 								},
 								{
@@ -841,7 +842,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--opa.package=lokistack",
 										"--opa.ssar=true",
 										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
-										"--opa.matcher=kubernetes_namespace_name",
+										"--opa.matcher=kubernetes_namespace_name,k8s_namespace_name",
+										"--opa.viaq-to-otel-migration=true",
 										"--tls.internal.server.cert-file=/var/run/tls/http/server/tls.crt",
 										"--tls.internal.server.key-file=/var/run/tls/http/server/tls.key",
 										"--tls.min-version=min-version",
@@ -1166,7 +1168,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 								{
 									Name: gatewayContainerName,
 									Args: []string{
-										"--logs.auth.extract-selectors=kubernetes_namespace_name",
+										"--logs.auth.extract-selectors=kubernetes_namespace_name,k8s_namespace_name",
 									},
 								},
 								{
@@ -1181,7 +1183,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--opa.package=lokistack",
 										"--opa.ssar=true",
 										"--opa.admin-groups=custom-admins,other-admins",
-										"--opa.matcher=kubernetes_namespace_name",
+										"--opa.matcher=kubernetes_namespace_name,k8s_namespace_name",
+										"--opa.viaq-to-otel-migration=true",
 										`--openshift.mappings=application=loki.grafana.com`,
 										`--openshift.mappings=infrastructure=loki.grafana.com`,
 										`--openshift.mappings=audit=loki.grafana.com`,
@@ -1264,7 +1267,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 								{
 									Name: gatewayContainerName,
 									Args: []string{
-										"--logs.auth.extract-selectors=kubernetes_namespace_name",
+										"--logs.auth.extract-selectors=kubernetes_namespace_name,k8s_namespace_name",
 									},
 								},
 								{
@@ -1278,7 +1281,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 										"--opa.skip-tenants=audit,infrastructure",
 										"--opa.package=lokistack",
 										"--opa.ssar=true",
-										"--opa.matcher=kubernetes_namespace_name",
+										"--opa.matcher=kubernetes_namespace_name,k8s_namespace_name",
+										"--opa.viaq-to-otel-migration=true",
 										`--openshift.mappings=application=loki.grafana.com`,
 										`--openshift.mappings=infrastructure=loki.grafana.com`,
 										`--openshift.mappings=audit=loki.grafana.com`,

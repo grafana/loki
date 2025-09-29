@@ -20,6 +20,8 @@ If possible try to stay current and do sequential updates. If you want to skip v
 
 ## Checking for config changes
 
+<!-- vale Grafana.Spelling = NO -->
+
 Using docker you can check changes between 2 versions of Loki with a command like this:
 
 ```bash
@@ -40,6 +42,24 @@ The output is incredibly verbose as it shows the entire internal config struct u
 The next Loki release introduces a new configuration option (i.e. `-distibutor.max-recv-msg-size`) for the distributors to control the max receive size of uncompressed stream data. The new options's default value is set to `100MB`.
 
 Supported clients should check the configuration options for max send message size if applicable.
+
+## Helm Chart Upgrades
+
+### Helm Chart 6.34.0 - Zone-aware Ingester Breaking Change
+
+{{< admonition type="warning" >}}
+Helm chart version 6.34.0 introduces a **breaking change** that affects users with zone-aware ingester replication enabled.
+{{< /admonition >}}
+
+If you are using zone-aware ingesters (`ingester.zoneAwareReplication.enabled: true`), upgrading to Helm chart 6.34.0 requires manual StatefulSet deletion before the upgrade. This is due to a fix for the `serviceName` field in zone-aware ingester StatefulSets, which is an immutable field in Kubernetes.
+
+**For detailed upgrade instructions, see**: [Helm Chart 6.x Upgrade Guide - Zone-aware Ingester Breaking Change](https://grafana.com/docs/loki/latest/setup/upgrade/upgrade-to-6x/#breaking-zone-aware-ingester-statefulset-servicename-fix-6340)
+
+Key points:
+- Only affects deployments with `ingester.zoneAwareReplication.enabled: true`
+- Requires manual StatefulSet deletion with `--cascade=orphan` 
+- **No data loss** - PersistentVolumeClaims and data are preserved
+- New StatefulSets will be created with correct service references
 
 ## 3.4.0
 
@@ -1762,3 +1782,4 @@ If you attempt to add a v1.4.0 ingester to a ring created by Loki v1.2.0 or olde
 This will result in distributors failing to write and a general ingestion failure for the system.
 
 If this happens to you, you will want to rollback your deployment immediately. You need to remove the v1.4.0 ingester from the ring ASAP, this should allow the existing ingesters to re-insert their tokens.  You will also want to remove any v1.4.0 distributors as they will not understand the old ring either and will fail to send traffic.
+<!-- vale Grafana.Spelling = YES -->

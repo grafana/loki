@@ -2,19 +2,29 @@
 {{- if .enabled -}}
 ---
 apiVersion: apps/v1
-kind: DaemonSet
+kind: {{ .kind }}
 metadata:
   name: {{ include "loki-canary.fullname" $ }}
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" $ }}
   labels:
     {{- include "loki-canary.labels" $ | nindent 4 }}
 spec:
   selector:
     matchLabels:
       {{- include "loki-canary.selectorLabels" $ | nindent 6 }}
+
+  {{- if eq .kind "Deployment" }}
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  revisionHistoryLimit: {{ $.Values.loki.revisionHistoryLimit }}
+  {{- else }}
   {{- with .updateStrategy }}
   updateStrategy:
     {{- toYaml . | nindent 4 }}
+  {{- end }}
   {{- end }}
   template:
     metadata:
@@ -34,6 +44,9 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- include "loki-canary.priorityClassName" $ | nindent 6 }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" $)) (kindIs "bool" .hostUsers) }}
+      hostUsers: {{ .hostUsers }}
+      {{- end }}
       securityContext:
         {{- toYaml $.Values.loki.podSecurityContext | nindent 8 }}
       containers:
@@ -41,7 +54,7 @@ spec:
           image: {{ include "loki-canary.image" $ }}
           imagePullPolicy: {{ $.Values.loki.image.pullPolicy }}
           args:
-            - -addr={{- include "loki.host" $ }}
+            - -addr={{- default (include "loki.host" $) .lokiurl }}
             - -labelname={{ .labelname }}
             - -labelvalue=$(POD_NAME)
             {{- if $.Values.enterprise.enabled }}
@@ -103,7 +116,7 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-      {{- with .dnsConfig }}
+      {{- with .dnsConfig | default $.Values.loki.dnsConfig }}
       dnsConfig:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -113,6 +126,10 @@ spec:
       {{- end }}
       {{- with .tolerations }}
       tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .affinity }}
+      affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       volumes:

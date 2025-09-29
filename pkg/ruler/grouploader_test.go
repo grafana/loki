@@ -7,16 +7,10 @@ import (
 	"testing"
 
 	"github.com/pkg/errors"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
 )
-
-func init() {
-	model.NameValidationScheme = model.LegacyValidation
-}
 
 func Test_GroupLoader(t *testing.T) {
 	for _, tc := range []struct {
@@ -364,8 +358,8 @@ var (
 	ruleGroup1 = &rulefmt.RuleGroups{
 		Groups: []rulefmt.RuleGroup{
 			{
-				Rules: []rulefmt.RuleNode{
-					{Alert: yaml.Node{Value: "alert-1-name"}},
+				Rules: []rulefmt.Rule{
+					{Alert: "alert-1-name"},
 				},
 			},
 		},
@@ -373,8 +367,8 @@ var (
 	ruleGroup2 = &rulefmt.RuleGroups{
 		Groups: []rulefmt.RuleGroup{
 			{
-				Rules: []rulefmt.RuleNode{
-					{Alert: yaml.Node{Value: "alert-2-name"}},
+				Rules: []rulefmt.Rule{
+					{Alert: "alert-2-name"},
 				},
 			},
 		},

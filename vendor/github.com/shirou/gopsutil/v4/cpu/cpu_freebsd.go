@@ -52,7 +52,7 @@ func Times(percpu bool) ([]TimesStat, error) {
 	return TimesWithContext(context.Background(), percpu)
 }
 
-func TimesWithContext(ctx context.Context, percpu bool) ([]TimesStat, error) {
+func TimesWithContext(_ context.Context, percpu bool) ([]TimesStat, error) {
 	if percpu {
 		buf, err := unix.SysctlRaw("kern.cp_times")
 		if err != nil {
@@ -93,7 +93,7 @@ func Info() ([]InfoStat, error) {
 	return InfoWithContext(context.Background())
 }
 
-func InfoWithContext(ctx context.Context) ([]InfoStat, error) {
+func InfoWithContext(_ context.Context) ([]InfoStat, error) {
 	const dmesgBoot = "/var/run/dmesg.boot"
 
 	c, num, err := parseDmesgBoot(dmesgBoot)
@@ -126,7 +126,11 @@ func InfoWithContext(ctx context.Context) ([]InfoStat, error) {
 
 func parseDmesgBoot(fileName string) (InfoStat, int, error) {
 	c := InfoStat{}
-	lines, _ := common.ReadLines(fileName)
+	lines, err := common.ReadLines(fileName)
+	if err != nil {
+		return c, 0, fmt.Errorf("could not read %s: %w", fileName, err)
+	}
+
 	cpuNum := 1 // default cpu num is 1
 	for _, line := range lines {
 		if matches := cpuEnd.FindStringSubmatch(line); matches != nil {
@@ -165,6 +169,6 @@ func parseDmesgBoot(fileName string) (InfoStat, int, error) {
 	return c, cpuNum, nil
 }
 
-func CountsWithContext(ctx context.Context, logical bool) (int, error) {
+func CountsWithContext(_ context.Context, _ bool) (int, error) {
 	return runtime.NumCPU(), nil
 }

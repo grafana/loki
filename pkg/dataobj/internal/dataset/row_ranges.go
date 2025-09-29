@@ -4,6 +4,8 @@ import (
 	"cmp"
 	"slices"
 	"sort"
+
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 )
 
 // rowRanges tracks a set of row ranges that are "valid."
@@ -158,6 +160,14 @@ func (rr *rowRanges) Next(row uint64) (uint64, bool) {
 	return nextRow, true
 }
 
+// TotalRowCount returns the total number of rows in the set.
+func (rr *rowRanges) TotalRowCount() (count uint64) {
+	for _, r := range *rr {
+		count += r.End - r.Start + 1
+	}
+	return
+}
+
 // intersectRanges appends the intersection of two sets of ranges into dst,
 // returning the result.
 //
@@ -234,7 +244,8 @@ func unionRanges(dst rowRanges, a, b rowRanges) rowRanges {
 
 	// We do our union by adding everything from a and b together, sorting
 	// the merged range, and then fixing any overlapping ranges.
-	dst = slices.Grow(dst, len(a)+len(b))
+	dst = slicegrow.GrowToCap(dst, len(a)+len(b))
+	dst = dst[:0]
 	dst = append(dst, a...)
 	dst = append(dst, b...)
 

@@ -281,7 +281,11 @@ func (i *Instance) Run(ctx context.Context) error {
 type noopScrapeManager struct{}
 
 func (n noopScrapeManager) Get() (*scrape.Manager, error) {
-	return nil, errors.New("No-op Scrape manager not ready")
+	return nil, errors.New("no-op Scrape manager not ready")
+}
+
+func (n noopScrapeManager) Ready() bool {
+	return false
 }
 
 // initialize sets up the various Prometheus components with their initial
@@ -304,7 +308,7 @@ func (i *Instance) initialize(_ context.Context, reg prometheus.Registerer, cfg 
 
 	// Setup the remote storage
 	remoteLogger := log.With(i.logger, "component", "remote")
-	i.remoteStore = remote.NewStorage(util_log.SlogFromGoKit(remoteLogger), reg, i.wal.StartTime, i.wal.Directory(), cfg.RemoteFlushDeadline, noopScrapeManager{}, false)
+	i.remoteStore = remote.NewStorage(util_log.SlogFromGoKit(remoteLogger), reg, i.wal.StartTime, i.wal.Directory(), cfg.RemoteFlushDeadline, noopScrapeManager{})
 	err = i.remoteStore.ApplyConfig(&config.Config{
 		RemoteWriteConfigs: cfg.RemoteWrite,
 	})

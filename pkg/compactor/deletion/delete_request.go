@@ -6,9 +6,12 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/compactor/retention"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/util/filter"
@@ -19,25 +22,37 @@ type timeInterval struct {
 	start, end time.Time
 }
 
-type DeleteRequest struct {
-	RequestID string              `json:"request_id"`
-	StartTime model.Time          `json:"start_time"`
-	EndTime   model.Time          `json:"end_time"`
-	Query     string              `json:"query"`
-	Status    DeleteRequestStatus `json:"status"`
-	CreatedAt model.Time          `json:"created_at"`
-
-	UserID          string                 `json:"-"`
-	SequenceNum     int64                  `json:"-"`
+type deleteRequest struct {
+	deletionproto.DeleteRequest
 	matchers        []*labels.Matcher      `json:"-"`
 	logSelectorExpr syntax.LogSelectorExpr `json:"-"`
 	timeInterval    *timeInterval          `json:"-"`
 
-	Metrics      *deleteRequestsManagerMetrics `json:"-"`
-	DeletedLines int32                         `json:"-"`
+	TotalLinesDeletedMetric *prometheus.CounterVec `json:"-"`
+	DeletedLines            atomic.Int32           `json:"-"`
 }
 
-func (d *DeleteRequest) SetQuery(logQL string) error {
+func newDeleteRequest(protoReq deletionproto.DeleteRequest, totalLinesDeletedMetric *prometheus.CounterVec) (*deleteRequest, error) {
+	d := deleteRequest{
+		DeleteRequest:           protoReq,
+		TotalLinesDeletedMetric: totalLinesDeletedMetric,
+	}
+
+	if err := d.SetQuery(d.Query); err != nil {
+		return nil, err
+	}
+
+	// init d.timeInterval used to efficiently check log ts is within the bounds of delete request below in filter func
+	// without having to do conversion of timestamps for each log line we check.
+	d.timeInterval = &timeInterval{
+		start: d.StartTime.Time(),
+		end:   d.EndTime.Time(),
+	}
+
+	return &d, nil
+}
+
+func (d *deleteRequest) SetQuery(logQL string) error {
 	d.Query = logQL
 	logSelectorExpr, err := parseDeletionQuery(logQL)
 	if err != nil {
@@ -49,25 +64,16 @@ func (d *DeleteRequest) SetQuery(logQL string) error {
 }
 
 // FilterFunction returns a filter function that returns true if the given line should be deleted based on the DeleteRequest
-func (d *DeleteRequest) FilterFunction(lbls labels.Labels) (filter.Func, error) {
-	// init d.timeInterval used to efficiently check log ts is within the bounds of delete request below in filter func
-	// without having to do conversion of timestamps for each log line we check.
-	if d.timeInterval == nil {
-		d.timeInterval = &timeInterval{
-			start: d.StartTime.Time(),
-			end:   d.EndTime.Time(),
-		}
-	}
-
+func (d *deleteRequest) FilterFunction(lbls labels.Labels) (filter.Func, error) {
 	if !allMatch(d.matchers, lbls) {
-		return func(_ time.Time, _ string, _ ...labels.Label) bool {
+		return func(_ time.Time, _ string, _ labels.Labels) bool {
 			return false
 		}, nil
 	}
 
 	// if delete request doesn't have a line filter, just do time based filtering
 	if !d.logSelectorExpr.HasFilter() {
-		return func(ts time.Time, _ string, _ ...labels.Label) bool {
+		return func(ts time.Time, _ string, _ labels.Labels) bool {
 			if ts.Before(d.timeInterval.start) || ts.After(d.timeInterval.end) {
 				return false
 			}
@@ -82,15 +88,15 @@ func (d *DeleteRequest) FilterFunction(lbls labels.Labels) (filter.Func, error) 
 	}
 
 	f := p.ForStream(lbls).ProcessString
-	return func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
+	return func(ts time.Time, s string, structuredMetadata labels.Labels) bool {
 		if ts.Before(d.timeInterval.start) || ts.After(d.timeInterval.end) {
 			return false
 		}
 
-		result, _, skip := f(0, s, structuredMetadata...)
+		result, _, skip := f(0, s, structuredMetadata)
 		if len(result) != 0 || skip {
-			d.Metrics.deletedLinesTotal.WithLabelValues(d.UserID).Inc()
-			d.DeletedLines++
+			d.TotalLinesDeletedMetric.WithLabelValues(d.UserID).Inc()
+			d.DeletedLines.Add(1)
 			return true
 		}
 		return false
@@ -106,12 +112,10 @@ func allMatch(matchers []*labels.Matcher, labels labels.Labels) bool {
 	return true
 }
 
-// IsDeleted checks if the given ChunkEntry will be deleted by this DeleteRequest.
-// It returns a filter.Func if the chunk is supposed to be deleted partially or the delete request contains line filters.
-// If the filter.Func is nil, the whole chunk is supposed to be deleted.
-func (d *DeleteRequest) IsDeleted(userID []byte, lbls labels.Labels, chunk retention.Chunk) (bool, filter.Func) {
+// IsDeleted checks if the given chunk entry would have data requested for deletion.
+func (d *deleteRequest) IsDeleted(userID []byte, lbls labels.Labels, chunk retention.Chunk) bool {
 	if d.UserID != unsafeGetString(userID) {
-		return false, nil
+		return false
 	}
 
 	if !intervalsOverlap(model.Interval{
@@ -121,7 +125,7 @@ func (d *DeleteRequest) IsDeleted(userID []byte, lbls labels.Labels, chunk reten
 		Start: d.StartTime,
 		End:   d.EndTime,
 	}) {
-		return false, nil
+		return false
 	}
 
 	if d.logSelectorExpr == nil {
@@ -133,11 +137,21 @@ func (d *DeleteRequest) IsDeleted(userID []byte, lbls labels.Labels, chunk reten
 				"user", d.UserID,
 				"err", err,
 			)
-			return false, nil
+			return false
 		}
 	}
 
 	if !labels.Selector(d.matchers).Matches(lbls) {
+		return false
+	}
+
+	return true
+}
+
+// GetChunkFilter tells whether the chunk is covered by the DeleteRequest and
+// optionally returns a filter.Func if the chunk is supposed to be deleted partially or the delete request has line filters.
+func (d *deleteRequest) GetChunkFilter(userID []byte, lbls labels.Labels, chunk retention.Chunk) (bool, filter.Func) {
+	if !d.IsDeleted(userID, lbls, chunk) {
 		return false, nil
 	}
 
@@ -162,7 +176,7 @@ func (d *DeleteRequest) IsDeleted(userID []byte, lbls labels.Labels, chunk reten
 	return true, ff
 }
 
-func (d *DeleteRequest) IsDuplicate(o *DeleteRequest) (bool, error) {
+func (d *deleteRequest) IsDuplicate(o *deleteRequest) (bool, error) {
 	// we would never have duplicates from same request
 	if d.RequestID == o.RequestID {
 		return false, nil
@@ -198,7 +212,7 @@ func intervalsOverlap(interval1, interval2 model.Interval) bool {
 }
 
 // GetMatchers returns the string representation of the matchers
-func (d *DeleteRequest) GetMatchers() string {
+func (d *deleteRequest) GetMatchers() string {
 	if len(d.matchers) == 0 {
 		return ""
 	}

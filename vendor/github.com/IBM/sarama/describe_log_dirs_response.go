@@ -10,33 +10,67 @@ type DescribeLogDirsResponse struct {
 	Version int16
 
 	LogDirs []DescribeLogDirsResponseDirMetadata
+
+	ErrorCode KError
+}
+
+func (r *DescribeLogDirsResponse) setVersion(v int16) {
+	r.Version = v
 }
 
 func (r *DescribeLogDirsResponse) encode(pe packetEncoder) error {
+	isFlexible := r.Version >= 2
+
 	pe.putInt32(int32(r.ThrottleTime / time.Millisecond))
 
-	if err := pe.putArrayLength(len(r.LogDirs)); err != nil {
-		return err
+	if r.Version >= 3 {
+		pe.putInt16(int16(r.ErrorCode))
+	}
+
+	if isFlexible {
+		pe.putCompactArrayLength(len(r.LogDirs))
+	} else {
+		if err := pe.putArrayLength(len(r.LogDirs)); err != nil {
+			return err
+		}
 	}
 
 	for _, dir := range r.LogDirs {
-		if err := dir.encode(pe); err != nil {
+		if err := dir.encode(pe, r.Version); err != nil {
 			return err
 		}
+	}
+
+	if isFlexible {
+		pe.putEmptyTaggedFieldArray()
 	}
 
 	return nil
 }
 
 func (r *DescribeLogDirsResponse) decode(pd packetDecoder, version int16) error {
+	isFlexible := version >= 2
 	throttleTime, err := pd.getInt32()
 	if err != nil {
 		return err
 	}
 	r.ThrottleTime = time.Duration(throttleTime) * time.Millisecond
 
+	if version >= 3 {
+		errCode, err := pd.getInt16()
+		if err != nil {
+			return err
+		}
+		r.ErrorCode = KError(errCode)
+	}
+
 	// Decode array of DescribeLogDirsResponseDirMetadata
-	n, err := pd.getArrayLength()
+	var n int
+	if isFlexible {
+		n, err = pd.getCompactArrayLength()
+	} else {
+		n, err = pd.getArrayLength()
+	}
 	if err != nil {
 		return err
 	}
@@ -50,11 +84,17 @@ func (r *DescribeLogDirsResponse) decode(pd packetDecoder, version int16) error 
 		r.LogDirs[i] = dir
 	}
 
+	if isFlexible {
+		if _, err := pd.getEmptyTaggedFieldArray(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
 func (r *DescribeLogDirsResponse) key() int16 {
-	return 35
+	return apiKeyDescribeLogDirs
 }
 
 func (r *DescribeLogDirsResponse) version() int16 {
@@ -62,11 +102,14 @@ func (r *DescribeLogDirsResponse) version() int16 {
 }
 
 func (r *DescribeLogDirsResponse) headerVersion() int16 {
+	if r.Version >= 2 {
+		return 1
+	}
 	return 0
 }
 
 func (r *DescribeLogDirsResponse) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 1
+	return r.Version >= 0 && r.Version <= 4
 }
 
 func (r *DescribeLogDirsResponse) requiredVersion() KafkaVersion {
@@ -86,42 +129,77 @@ type DescribeLogDirsResponseDirMetadata struct {
 	// The absolute log directory path
 	Path   string
 	Topics []DescribeLogDirsResponseTopic
+
+	TotalBytes  int64
+	UsableBytes int64
 }
 
-func (r *DescribeLogDirsResponseDirMetadata) encode(pe packetEncoder) error {
+func (r *DescribeLogDirsResponseDirMetadata) encode(pe packetEncoder, version int16) error {
+	isFlexible := version >= 2
+
 	pe.putInt16(int16(r.ErrorCode))
 
-	if err := pe.putString(r.Path); err != nil {
+	var err error
+	if isFlexible {
+		err = pe.putCompactString(r.Path)
+	} else {
+		err = pe.putString(r.Path)
+	}
+	if err != nil {
 		return err
 	}
 
-	if err := pe.putArrayLength(len(r.Topics)); err != nil {
-		return err
-	}
-	for _, topic := range r.Topics {
-		if err := topic.encode(pe); err != nil {
+	if isFlexible {
+		pe.putCompactArrayLength(len(r.Topics))
+	} else {
+		if err := pe.putArrayLength(len(r.Topics)); err != nil {
 			return err
 		}
+	}
+	for _, topic := range r.Topics {
+		if err := topic.encode(pe, version); err != nil {
+			return err
+		}
+	}
+
+	if version >= 4 {
+		pe.putInt64(r.TotalBytes)
+		pe.putInt64(r.UsableBytes)
+	}
+
+	if isFlexible {
+		pe.putEmptyTaggedFieldArray()
 	}
 
 	return nil
 }
 
 func (r *DescribeLogDirsResponseDirMetadata) decode(pd packetDecoder, version int16) error {
+	isFlexible := version >= 2
 	errCode, err := pd.getInt16()
 	if err != nil {
 		return err
 	}
 	r.ErrorCode = KError(errCode)
 
-	path, err := pd.getString()
+	var path string
+	if isFlexible {
+		path, err = pd.getCompactString()
+	} else {
+		path, err = pd.getString()
+	}
 	if err != nil {
 		return err
 	}
 	r.Path = path
 
 	// Decode array of DescribeLogDirsResponseTopic
-	n, err := pd.getArrayLength()
+	var n int
+	if isFlexible {
+		n, err = pd.getCompactArrayLength()
+	} else {
+		n, err = pd.getArrayLength()
+	}
 	if err != nil {
 		return err
 	}
@@ -137,6 +215,25 @@ func (r *DescribeLogDirsResponseDirMetadata) decode(pd packetDecoder, version in
 		r.Topics[i] = t
 	}
 
+	if version >= 4 {
+		totalBytes, err := pd.getInt64()
+		if err != nil {
+			return err
+		}
+		r.TotalBytes = totalBytes
+		usableBytes, err := pd.getInt64()
+		if err != nil {
+			return err
+		}
+		r.UsableBytes = usableBytes
+	}
+
+	if isFlexible {
+		if _, err := pd.getEmptyTaggedFieldArray(); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -146,34 +243,62 @@ type DescribeLogDirsResponseTopic struct {
 	Partitions []DescribeLogDirsResponsePartition
 }
 
-func (r *DescribeLogDirsResponseTopic) encode(pe packetEncoder) error {
-	if err := pe.putString(r.Topic); err != nil {
+func (r *DescribeLogDirsResponseTopic) encode(pe packetEncoder, version int16) error {
+	isFlexible := version >= 2
+	var err error
+	if isFlexible {
+		err = pe.putCompactString(r.Topic)
+	} else {
+		err = pe.putString(r.Topic)
+	}
+	if err != nil {
 		return err
 	}
 
-	if err := pe.putArrayLength(len(r.Partitions)); err != nil {
-		return err
-	}
-	for _, partition := range r.Partitions {
-		if err := partition.encode(pe); err != nil {
+	if isFlexible {
+		pe.putCompactArrayLength(len(r.Partitions))
+	} else {
+		if err := pe.putArrayLength(len(r.Partitions)); err != nil {
 			return err
 		}
+	}
+	for _, partition := range r.Partitions {
+		if err := partition.encode(pe, version); err != nil {
+			return err
+		}
+	}
+
+	if isFlexible {
+		pe.putEmptyTaggedFieldArray()
 	}
 
 	return nil
 }
 
 func (r *DescribeLogDirsResponseTopic) decode(pd packetDecoder, version int16) error {
-	t, err := pd.getString()
+	isFlexible := version >= 2
+	var t string
+	var err error
+	if isFlexible {
+		t, err = pd.getCompactString()
+	} else {
+		t, err = pd.getString()
+	}
 	if err != nil {
 		return err
 	}
 	r.Topic = t
 
-	n, err := pd.getArrayLength()
+	var n int
+	if isFlexible {
+		n, err = pd.getCompactArrayLength()
+	} else {
+		n, err = pd.getArrayLength()
+	}
 	if err != nil {
 		return err
 	}
+
 	r.Partitions = make([]DescribeLogDirsResponsePartition, n)
 	for i := 0; i < n; i++ {
 		p := DescribeLogDirsResponsePartition{}
@@ -181,6 +306,12 @@ func (r *DescribeLogDirsResponseTopic) decode(pd packetDecoder, version int16) e
 			return err
 		}
 		r.Partitions[i] = p
+	}
+
+	if isFlexible {
+		if _, err := pd.getEmptyTaggedFieldArray(); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -202,16 +333,21 @@ type DescribeLogDirsResponsePartition struct {
 	IsTemporary bool
 }
 
-func (r *DescribeLogDirsResponsePartition) encode(pe packetEncoder) error {
+func (r *DescribeLogDirsResponsePartition) encode(pe packetEncoder, version int16) error {
+	isFlexible := version >= 2
 	pe.putInt32(r.PartitionID)
 	pe.putInt64(r.Size)
 	pe.putInt64(r.OffsetLag)
 	pe.putBool(r.IsTemporary)
+	if isFlexible {
+		pe.putEmptyTaggedFieldArray()
+	}
 
 	return nil
 }
 
 func (r *DescribeLogDirsResponsePartition) decode(pd packetDecoder, version int16) error {
+	isFlexible := version >= 2
 	pID, err := pd.getInt32()
 	if err != nil {
 		return err
@@ -235,6 +371,12 @@ func (r *DescribeLogDirsResponsePartition) decode(pd packetDecoder, version int1
 		return err
 	}
 	r.IsTemporary = isTemp
+
+	if isFlexible {
+		if _, err := pd.getEmptyTaggedFieldArray(); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }

@@ -10,9 +10,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/log"
-	"github.com/grafana/dskit/spanprofiler"
 	"github.com/grafana/dskit/tracing"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
 
@@ -46,6 +44,11 @@ func main() {
 
 	// Set the global OTLP config which is needed in per tenant otlp config
 	config.LimitsConfig.SetGlobalOTLPConfig(config.Distributor.OTLPConfig)
+	// Set the default policy stream mappings which are needed in per tenant policy stream mappings
+	if err := config.LimitsConfig.SetDefaultPolicyStreamMapping(config.Distributor.DefaultPolicyStreamMappings); err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to set default policy stream mappings", "err", err.Error())
+		exit(1)
+	}
 	// This global is set to the config passed into the last call to `NewOverrides`. If we don't
 	// call it atleast once, the defaults are set to an empty struct.
 	// We call it with the flag values so that the config file unmarshalling only overrides the values set in the config.
@@ -90,13 +93,11 @@ func main() {
 
 	if config.Tracing.Enabled {
 		// Setting the environment variable JAEGER_AGENT_HOST enables tracing
-		trace, err := tracing.NewFromEnv(fmt.Sprintf("loki-%s", config.Target))
+		trace, err := tracing.NewOTelOrJaegerFromEnv(fmt.Sprintf("loki-%s", config.Target), util_log.Logger)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
 		}
-		if config.Tracing.ProfilingEnabled {
-			opentracing.SetGlobalTracer(spanprofiler.NewTracer(opentracing.GlobalTracer()))
-		}
+
 		defer func() {
 			if trace != nil {
 				if err := trace.Close(); err != nil {

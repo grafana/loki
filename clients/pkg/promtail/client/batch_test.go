@@ -52,7 +52,7 @@ func TestBatch_add(t *testing.T) {
 			inputEntries: []api.Entry{
 				{Labels: model.LabelSet{}, Entry: logEntries[0].Entry},
 			},
-			expectedSizeBytes: len(logEntries[0].Entry.Line),
+			expectedSizeBytes: len(logEntries[0].Line),
 		},
 		"single stream with multiple log entries": {
 			inputEntries: []api.Entry{
@@ -68,7 +68,7 @@ func TestBatch_add(t *testing.T) {
 				{Labels: model.LabelSet{"type": "a"}, Entry: logEntries[1].Entry},
 				{Labels: model.LabelSet{"type": "b"}, Entry: logEntries[2].Entry},
 			},
-			expectedSizeBytes: len(logEntries[0].Entry.Line) + len(logEntries[1].Entry.Line) + len(logEntries[2].Entry.Line),
+			expectedSizeBytes: len(logEntries[0].Line) + len(logEntries[1].Line) + len(logEntries[2].Line),
 		},
 	}
 
