@@ -781,7 +781,7 @@ func TestS3Extract_ForcePathStyle(t *testing.T) {
 			secret: &corev1.Secret{
 				ObjectMeta: metav1.ObjectMeta{Name: "test"},
 				Data: map[string][]byte{
-					"endpoint":          []byte("https://vpce-1234567abc.s3.us-east-1.vpce.amazonaws.com"),
+					"endpoint":          []byte("https://bucket.vpce-1234567abc.s3.us-east-1.vpce.amazonaws.com"),
 					"region":            []byte("us-east-1"),
 					"bucketnames":       []byte("this,that"),
 					"access_key_id":     []byte("id"),
