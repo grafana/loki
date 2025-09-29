@@ -14,6 +14,7 @@ import (
 	smithybearer "github.com/aws/smithy-go/auth/bearer"
 	"github.com/aws/smithy-go/logging"
 	"github.com/aws/smithy-go/middleware"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // LoadOptionsFunc is a type alias for LoadOptions functional option
@@ -228,6 +229,9 @@ type LoadOptions struct {
 	// Service endpoint override. This value is not necessarily final and is
 	// passed to the service's EndpointResolverV2 for further delegation.
 	BaseEndpoint string
+
+	// Registry of operation interceptors.
+	Interceptors smithyhttp.InterceptorRegistry
 }
 
 func (o LoadOptions) getDefaultsMode(ctx context.Context) (aws.DefaultsMode, bool, error) {
@@ -1204,6 +1208,110 @@ func WithS3DisableExpressAuth(v bool) LoadOptionsFunc {
 func WithBaseEndpoint(v string) LoadOptionsFunc {
 	return func(o *LoadOptions) error {
 		o.BaseEndpoint = v
+		return nil
+	}
+}
+
+// WithBeforeExecution adds the BeforeExecutionInterceptor to config.
+func WithBeforeExecution(i smithyhttp.BeforeExecutionInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.BeforeExecution = append(o.Interceptors.BeforeExecution, i)
+		return nil
+	}
+}
+
+// WithBeforeSerialization adds the BeforeSerializationInterceptor to config.
+func WithBeforeSerialization(i smithyhttp.BeforeSerializationInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.BeforeSerialization = append(o.Interceptors.BeforeSerialization, i)
+		return nil
+	}
+}
+
+// WithAfterSerialization adds the AfterSerializationInterceptor to config.
+func WithAfterSerialization(i smithyhttp.AfterSerializationInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.AfterSerialization = append(o.Interceptors.AfterSerialization, i)
+		return nil
+	}
+}
+
+// WithBeforeRetryLoop adds the BeforeRetryLoopInterceptor to config.
+func WithBeforeRetryLoop(i smithyhttp.BeforeRetryLoopInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.BeforeRetryLoop = append(o.Interceptors.BeforeRetryLoop, i)
+		return nil
+	}
+}
+
+// WithBeforeAttempt adds the BeforeAttemptInterceptor to config.
+func WithBeforeAttempt(i smithyhttp.BeforeAttemptInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.BeforeAttempt = append(o.Interceptors.BeforeAttempt, i)
+		return nil
+	}
+}
+
+// WithBeforeSigning adds the BeforeSigningInterceptor to config.
+func WithBeforeSigning(i smithyhttp.BeforeSigningInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.BeforeSigning = append(o.Interceptors.BeforeSigning, i)
+		return nil
+	}
+}
+
+// WithAfterSigning adds the AfterSigningInterceptor to config.
+func WithAfterSigning(i smithyhttp.AfterSigningInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.AfterSigning = append(o.Interceptors.AfterSigning, i)
+		return nil
+	}
+}
+
+// WithBeforeTransmit adds the BeforeTransmitInterceptor to config.
+func WithBeforeTransmit(i smithyhttp.BeforeTransmitInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.BeforeTransmit = append(o.Interceptors.BeforeTransmit, i)
+		return nil
+	}
+}
+
+// WithAfterTransmit adds the AfterTransmitInterceptor to config.
+func WithAfterTransmit(i smithyhttp.AfterTransmitInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.AfterTransmit = append(o.Interceptors.AfterTransmit, i)
+		return nil
+	}
+}
+
+// WithBeforeDeserialization adds the BeforeDeserializationInterceptor to config.
+func WithBeforeDeserialization(i smithyhttp.BeforeDeserializationInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.BeforeDeserialization = append(o.Interceptors.BeforeDeserialization, i)
+		return nil
+	}
+}
+
+// WithAfterDeserialization adds the AfterDeserializationInterceptor to config.
+func WithAfterDeserialization(i smithyhttp.AfterDeserializationInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.AfterDeserialization = append(o.Interceptors.AfterDeserialization, i)
+		return nil
+	}
+}
+
+// WithAfterAttempt adds the AfterAttemptInterceptor to config.
+func WithAfterAttempt(i smithyhttp.AfterAttemptInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.AfterAttempt = append(o.Interceptors.AfterAttempt, i)
+		return nil
+	}
+}
+
+// WithAfterExecution adds the AfterExecutionInterceptor to config.
+func WithAfterExecution(i smithyhttp.AfterExecutionInterceptor) LoadOptionsFunc {
+	return func(o *LoadOptions) error {
+		o.Interceptors.AfterExecution = append(o.Interceptors.AfterExecution, i)
 		return nil
 	}
 }
