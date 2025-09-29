@@ -3,6 +3,7 @@ package physical
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 
@@ -148,6 +149,8 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 		return p.processRangeAggregation(inst, ctx)
 	case *logical.VectorAggregation:
 		return p.processVectorAggregation(inst, ctx)
+	case *logical.Parse:
+		return p.processParse(inst, ctx)
 	}
 	return nil, nil
 }
@@ -194,7 +197,7 @@ func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, baseNod
 func overlappingShardDescriptors(filteredShardDescriptors []FilteredShardDescriptor) [][]FilteredShardDescriptor {
 	// Ensure that shard descriptors are sorted by end time
 	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
-		return filteredShardDescriptors[i].TimeRange.End.Before(filteredShardDescriptors[j].TimeRange.End)
+		return filteredShardDescriptors[i].TimeRange.End.After(filteredShardDescriptors[j].TimeRange.End)
 	})
 
 	groups := make([][]FilteredShardDescriptor, 0, len(filteredShardDescriptors))
@@ -231,12 +234,14 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 	if err != nil {
 		return nil, err
 	}
-	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
-		return filteredShardDescriptors[i].TimeRange.End.Before(filteredShardDescriptors[j].TimeRange.End)
-	})
+
 	merge := &Merge{}
 	p.plan.addNode(merge)
 	groups := overlappingShardDescriptors(filteredShardDescriptors)
+
+	if ctx.direction == ASC {
+		slices.Reverse(groups)
+	}
 
 	for _, gr := range groups {
 		if err := p.buildNodeGroup(gr, merge, ctx); err != nil {
@@ -265,30 +270,14 @@ func (p *Planner) processSelect(lp *logical.Select, ctx *Context) ([]Node, error
 	return []Node{node}, nil
 }
 
-// Convert [logical.Sort] into one [SortMerge] node.
+// Pass sort direction from [logical.Sort] to the children.
 func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]Node, error) {
 	order := DESC
 	if lp.Ascending {
 		order = ASC
 	}
-	node := &SortMerge{
-		Column: &ColumnExpr{Ref: lp.Column.Ref},
-		Order:  order,
-	}
 
-	p.plan.addNode(node)
-
-	children, err := p.process(lp.Table, ctx.WithDirection(order))
-	if err != nil {
-		return nil, err
-	}
-
-	for i := range children {
-		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
-	}
-	return []Node{node}, nil
+	return p.process(lp.Table, ctx.WithDirection(order))
 }
 
 // Convert [logical.Limit] into one [Limit] node.
@@ -363,24 +352,45 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 	return []Node{node}, nil
 }
 
-// Optimize tries to optimize the plan by pushing down filter predicates and limits
-// to the scan nodes.
+// Convert [logical.Parse] into one [ParseNode] node.
+// A ParseNode initially has an empty list of RequestedKeys which will be populated during optimization.
+func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) {
+	node := &ParseNode{
+		Kind: convertParserKind(lp.Kind),
+	}
+	p.plan.addNode(node)
+
+	children, err := p.process(lp.Table, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range children {
+		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
+			return nil, err
+		}
+	}
+
+	return []Node{node}, nil
+}
+
+// Optimize runs optimization passes over the plan, modifying it
+// if any optimizations can be applied.
 func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 	for i, root := range plan.Roots() {
 		optimizations := []*optimization{
 			newOptimization("PredicatePushdown", plan).withRules(
 				&predicatePushdown{plan: plan},
-				&removeNoopFilter{plan: plan},
 			),
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
-			newOptimization("GroupByPushdown", plan).withRules(
-				&groupByPushdown{plan: plan},
-			),
-			// ProjectionPushdown is listed last as GroupByPushdown can change nodes that can trigger this optimization.
 			newOptimization("ProjectionPushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
+			),
+			newOptimization("Cleanup", plan).withRules(
+				&removeNoopFilter{plan: plan},
+				&removeNoopMerge{plan: plan},
 			),
 		}
 		optimizer := newOptimizer(plan, optimizations)
@@ -390,4 +400,15 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 		}
 	}
 	return plan, nil
+}
+
+func convertParserKind(kind logical.ParserKind) ParserKind {
+	switch kind {
+	case logical.ParserLogfmt:
+		return ParserLogfmt
+	case logical.ParserJSON:
+		return ParserJSON
+	default:
+		return ParserInvalid
+	}
 }

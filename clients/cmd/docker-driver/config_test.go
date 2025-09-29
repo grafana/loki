@@ -87,7 +87,7 @@ func Test_parsePipeline(t *testing.T) {
 	}
 	defer os.Remove(f.Name())
 
-	_, err = f.Write([]byte(fmt.Sprintf("pipeline_stages:\n%s", pipelineString)))
+	_, err = fmt.Fprintf(f, "pipeline_stages:\n%s", pipelineString)
 	if err != nil {
 		t.Fatal(err)
 	}

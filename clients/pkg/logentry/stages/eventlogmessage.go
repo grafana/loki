@@ -155,7 +155,7 @@ func SanitizeFullLabelName(input string) string {
 	}
 	var validSb strings.Builder
 	for i, b := range input {
-		if !((b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || b == '_' || (b >= '0' && b <= '9' && i > 0)) {
+		if (b < 'a' || b > 'z') && (b < 'A' || b > 'Z') && b != '_' && (b < '0' || b > '9' || i <= 0) {
 			validSb.WriteRune('_')
 		} else {
 			validSb.WriteRune(b)

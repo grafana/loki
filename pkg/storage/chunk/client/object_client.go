@@ -202,7 +202,7 @@ func (o *client) getChunk(ctx context.Context, decodeContext *chunk.DecodeContex
 			fmt.Errorf(
 				"failed to decode chunk '%s' for tenant `%s`: %w",
 				key,
-				c.ChunkRef.UserID,
+				c.UserID,
 				err,
 			),
 		)

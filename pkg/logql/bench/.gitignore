@@ -1,8 +1,8 @@
 # Ignore generated data directory
 data/
 *.prof
+*.log
 bench.test
 trace.out
 result.new.txt
 result.old.txt
-debug.log
