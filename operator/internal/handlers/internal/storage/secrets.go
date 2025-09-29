@@ -45,7 +45,7 @@ var (
 	errS3EndpointUnsupportedScheme = errors.New("scheme of S3 endpoint URL is unsupported")
 	errS3EndpointAWSNoRegion       = errors.New("endpoint for AWS S3 must include correct region")
 	errS3EndpointNoBucketName      = errors.New("bucket name must not be included in AWS S3 endpoint URL")
-	errS3EndpointAWSInvalid        = errors.New("endpoint for AWS S3 is invalid, must match either https://s3.region.amazonaws.com or https://vpce-id.s3.region.vpce.amazonaws.com")
+	errS3EndpointAWSInvalid        = errors.New("endpoint for AWS S3 is invalid, must match either https://s3.region.amazonaws.com or https://bucket.vpce-id.s3.region.vpce.amazonaws.com")
 	errS3ForcePathStyleInvalid     = errors.New(`forcepathstyle must be "true" or "false"`)
 
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
