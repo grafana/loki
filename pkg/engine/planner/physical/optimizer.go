@@ -8,7 +8,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-// A rule is a tranformation that can be applied on a Node.
+// A rule is a transformation that can be applied on a Node.
 type rule interface {
 	// apply tries to apply the transformation on the node.
 	// It returns a boolean indicating whether the transformation has been applied.
@@ -146,7 +146,7 @@ func (r *limitPushdown) applyLimitPushdown(node Node, limit uint32) bool {
 var _ rule = (*limitPushdown)(nil)
 
 // projectionPushdown is a rule that pushes down column projections.
-// Currently it only projects partition labels from range aggregations to scan nodes.
+// Currently, it only projects partition labels from range aggregations to scan nodes.
 type projectionPushdown struct {
 	plan *Plan
 }
@@ -155,13 +155,13 @@ type projectionPushdown struct {
 func (r *projectionPushdown) apply(node Node) bool {
 	switch node := node.(type) {
 	case *VectorAggregation:
-		if len(node.GroupBy) == 0 || node.Operation != types.VectorAggregationTypeSum {
+		if len(node.GroupBy) == 0 || !slices.Contains(types.SupportedVectorAggregationTypes, node.Operation) {
 			return false
 		}
 
 		return r.pushToChildren(node, node.GroupBy, false)
 	case *RangeAggregation:
-		if len(node.PartitionBy) == 0 || node.Operation != types.RangeAggregationTypeCount {
+		if len(node.PartitionBy) == 0 || !slices.Contains(types.SupportedRangeAggregationTypes, node.Operation) {
 			return false
 		}
 
@@ -290,7 +290,7 @@ func (r *projectionPushdown) handleParseNode(node *ParseNode, projections []Colu
 
 // handleRangeAggregation handles projection pushdown for RangeAggregation nodes
 func (r *projectionPushdown) handleRangeAggregation(node *RangeAggregation, projections []ColumnExpression) bool {
-	if node.Operation != types.RangeAggregationTypeCount {
+	if !slices.Contains(types.SupportedRangeAggregationTypes, node.Operation) {
 		return false
 	}
 

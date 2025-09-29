@@ -234,11 +234,36 @@ func TestCanExecuteQuery(t *testing.T) {
 			statement: `sum by (level) (rate({env="prod"}[1m]))`,
 		},
 		{
-			// max is not supported
 			statement: `max by (level) (count_over_time({env="prod"}[1m]))`,
+			expected:  true,
 		},
 		{
+			// offset is not supported
 			statement: `sum by (level) (count_over_time({env="prod"}[1m] offset 5m))`,
+		},
+		{
+			statement: `sum by (level) (sum_over_time({env="prod"} | unwrap size [1m]))`,
+			expected:  true,
+		},
+		{
+			// both vector and range aggregation are required
+			statement: `sum_over_time({env="prod"} | unwrap size [1m])`,
+		},
+		{
+			// group by labels are required
+			statement: `sum(sum_over_time({env="prod"} | unwrap size [1m]))`,
+		},
+		{
+			statement: `max by (level) (sum_over_time({env="prod"} | unwrap size [1m]))`,
+			expected:  true,
+		},
+		{
+			// offset is not supported
+			statement: `sum by (level) (sum_over_time({env="prod"} | unwrap size [1m] offset 5m))`,
+		},
+		{
+			// avg_over_time is not supported
+			statement: `avg_over_time({env="prod"} | unwrap size [1m])`,
 		},
 	} {
 		t.Run(tt.statement, func(t *testing.T) {
@@ -252,8 +277,8 @@ func TestCanExecuteQuery(t *testing.T) {
 
 			logicalPlan, err := BuildPlan(q)
 			if tt.expected {
-				t.Logf("\n%s\n", logicalPlan.String())
 				require.NoError(t, err)
+				t.Logf("\n%s\n", logicalPlan.String())
 			} else {
 				require.Nil(t, logicalPlan)
 				require.ErrorContains(t, err, "failed to convert AST into logical plan")

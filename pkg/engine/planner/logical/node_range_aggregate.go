@@ -80,7 +80,7 @@ func (r *RangeAggregation) Schema() *schema.Schema {
 		// Using int64 since only count_over_time is supported.
 		outputSchema.Columns = append(outputSchema.Columns, schema.ColumnSchema{
 			Name: types.ColumnNameGeneratedValue,
-			Type: schema.ValueTypeInt64,
+			Type: schema.ValueTypeFloat64,
 		})
 	}
 

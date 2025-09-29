@@ -19,7 +19,7 @@ func TestVectorAggregationPipeline(t *testing.T) {
 	// input schema with timestamp, value and group by columns
 	fields := []arrow.Field{
 		{Name: types.ColumnNameBuiltinTimestamp, Type: datatype.Arrow.Timestamp, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
-		{Name: types.ColumnNameGeneratedValue, Type: datatype.Arrow.Integer, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Integer)},
+		{Name: types.ColumnNameGeneratedValue, Type: datatype.Arrow.Integer, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Float)},
 		{Name: "env", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)},
 		{Name: "service", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)},
 	}
@@ -84,7 +84,7 @@ func TestVectorAggregationPipeline(t *testing.T) {
 		},
 	}
 
-	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, groupBy, expressionEvaluator{})
+	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, groupBy, expressionEvaluator{}, types.VectorAggregationTypeSum)
 	require.NoError(t, err)
 	defer pipeline.Close()
 
@@ -94,7 +94,7 @@ func TestVectorAggregationPipeline(t *testing.T) {
 	defer record.Release()
 
 	// Define expected results - sum of values for each group at each timestamp
-	expected := map[time.Time]map[string]int64{
+	expected := map[time.Time]map[string]float64{
 		t1: {
 			"prod,app1": 15, // 10 + 5
 			"prod,app2": 20, // 20
@@ -116,16 +116,16 @@ func TestVectorAggregationPipeline(t *testing.T) {
 	}
 
 	// Verify results
-	actual := make(map[time.Time]map[string]int64)
+	actual := make(map[time.Time]map[string]float64)
 	for i := range int(record.NumRows()) {
 		ts := record.Column(0).(*array.Timestamp).Value(i).ToTime(arrow.Nanosecond)
-		value := record.Column(1).(*array.Int64).Value(i)
+		value := record.Column(1).(*array.Float64).Value(i)
 		env := record.Column(2).(*array.String).Value(i)
 		service := record.Column(3).(*array.String).Value(i)
 		key := fmt.Sprintf("%s,%s", env, service)
 
 		if _, ok := actual[ts]; !ok {
-			actual[ts] = make(map[string]int64)
+			actual[ts] = make(map[string]float64)
 		}
 		actual[ts][key] = value
 	}

@@ -201,27 +201,50 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 	e.Walk(func(e syntax.Expr) bool {
 		switch e := e.(type) {
 		case *syntax.RangeAggregationExpr:
-			// only count operation is supported for range aggregation.
 			// offsets are not yet supported.
-			if e.Operation != syntax.OpRangeTypeCount || e.Left.Offset != 0 {
+			if e.Left.Offset != 0 {
 				err = errUnimplemented
 				return false
 			}
 
-			rangeAggType = types.RangeAggregationTypeCount
+			switch e.Operation {
+			case syntax.OpRangeTypeCount:
+				rangeAggType = types.RangeAggregationTypeCount
+			case syntax.OpRangeTypeSum:
+				rangeAggType = types.RangeAggregationTypeSum
+			case syntax.OpRangeTypeMax:
+				rangeAggType = types.RangeAggregationTypeMax
+			case syntax.OpRangeTypeMin:
+				rangeAggType = types.RangeAggregationTypeMin
+			default:
+				err = errUnimplemented
+				return false
+			}
+
 			rangeInterval = e.Left.Interval
 			return false // do not traverse log range query
 
 		case *syntax.VectorAggregationExpr:
-			// only sum operation is supported for vector aggregation
-			// grouping by atleast one label is required.
-			if e.Operation != syntax.OpTypeSum ||
-				e.Grouping == nil || len(e.Grouping.Groups) == 0 || e.Grouping.Without {
+			// grouping by at least one label is required.
+			if e.Grouping == nil || len(e.Grouping.Groups) == 0 || e.Grouping.Without {
 				err = errUnimplemented
 				return false
 			}
 
-			vecAggType = types.VectorAggregationTypeSum
+			switch e.Operation {
+			case syntax.OpTypeSum:
+				vecAggType = types.VectorAggregationTypeSum
+			case syntax.OpTypeMax:
+				vecAggType = types.VectorAggregationTypeMax
+			case syntax.OpTypeMin:
+				vecAggType = types.VectorAggregationTypeMin
+			case syntax.OpTypeCount:
+				vecAggType = types.VectorAggregationTypeCount
+			default:
+				err = errUnimplemented
+				return false
+			}
+
 			groupBy = make([]ColumnRef, 0, len(e.Grouping.Groups))
 			for _, group := range e.Grouping.Groups {
 				groupBy = append(groupBy, *NewColumnRef(group, types.ColumnTypeAmbiguous))
