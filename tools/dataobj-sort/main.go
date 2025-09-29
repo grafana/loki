@@ -46,6 +46,7 @@ func main() {
 		TargetSectionSize:       512 << 20,
 		BufferSize:              16 << 20,
 		SectionStripeMergeLimit: 8,
+		DataobjSortOrder:        "stream-asc",
 	}
 	scr, err := scratch.NewFilesystem(gokitlog.NewNopLogger(), os.TempDir())
 	if err != nil {

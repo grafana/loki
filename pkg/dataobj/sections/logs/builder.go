@@ -32,6 +32,25 @@ const (
 	AppendOrdered
 )
 
+type SortOrder int
+
+const (
+	_ SortOrder = iota
+	SortStreamASC
+	SortTimestampDESC
+)
+
+func (o SortOrder) String() string {
+	switch o {
+	case SortStreamASC:
+		return "stream-asc"
+	case SortTimestampDESC:
+		return "timestamp-desc"
+	default:
+		return "invalid"
+	}
+}
+
 // BuilderOptions configures the behavior of the logs section.
 type BuilderOptions struct {
 	// PageSizeHint is the size of pages to use when encoding the logs section.
@@ -55,6 +74,10 @@ type BuilderOptions struct {
 	// When appending logs to the section in strict sort order, the [AppendOrdered] can be used to avoid
 	// creating and sorting of stripes.
 	AppendStrategy AppendStrategy
+
+	// SortOrder defines the order in which the rows of the logs sections are sorted.
+	// They can either be sorted by [streamID ASC, timestamp DESC] ([SortStreamASC]) or [timestamp DESC, streamID ASC] ([SortTimestampDESC]).
+	SortOrder SortOrder
 }
 
 // Builder accumulate a set of [Record]s within a data object.
@@ -185,7 +208,7 @@ func (b *Builder) flushSection() *table {
 		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedDefault)},
 	}
 
-	section, err := mergeTablesIncremental(&b.sectionBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.stripes, b.opts.StripeMergeLimit)
+	section, err := mergeTablesIncremental(&b.sectionBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.stripes, b.opts.StripeMergeLimit, b.opts.SortOrder)
 	if err != nil {
 		// We control the input to mergeTables, so this should never happen.
 		panic(fmt.Sprintf("merging tables: %v", err))
