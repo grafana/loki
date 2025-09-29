@@ -1,4 +1,4 @@
-package util
+package util //nolint:revive
 
 // This file is separated from `http_test.go` to differentiate from the original `http_test.go` file forked from Cortex.
 

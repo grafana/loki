@@ -124,7 +124,7 @@ func TestPromtailWithWAL_SingleTenant(t *testing.T) {
 	go func() {
 		defer writerWG.Done()
 		for i := 0; i < entriesToWrite; i++ {
-			_, err = logsFile.WriteString(fmt.Sprintf("log line # %d\n", i))
+			_, err = fmt.Fprintf(logsFile, "log line # %d\n", i)
 			if err != nil {
 				logCh <- fmt.Sprintf("error writing to log file. Err: %s", err.Error())
 			}

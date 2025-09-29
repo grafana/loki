@@ -26,6 +26,7 @@
         "serializers.go",
         "snapshot_test.go",
         "sra_operation_order_test.go",
+        "types/enums.go",
         "types/errors.go",
         "types/types.go",
         "validators.go"

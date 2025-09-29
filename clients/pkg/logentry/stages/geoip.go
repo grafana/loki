@@ -111,7 +111,7 @@ func (g *geoIPStage) Run(in chan Entry) chan Entry {
 		defer close(out)
 		defer g.close()
 		for e := range in {
-			g.process(e.Labels, e.Extracted, &e.Timestamp, &e.Entry.Line)
+			g.process(e.Labels, e.Extracted, &e.Timestamp, &e.Line)
 			out <- e
 		}
 	}()

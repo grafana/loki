@@ -161,7 +161,7 @@ func (t *tailer) readLines() {
 	for {
 		line, ok := <-t.tail.Lines
 		if !ok {
-			level.Info(t.logger).Log("msg", "tail routine: tail channel closed, stopping tailer", "path", t.path, "reason", t.tail.Tomb.Err())
+			level.Info(t.logger).Log("msg", "tail routine: tail channel closed, stopping tailer", "path", t.path, "reason", t.tail.Err())
 			return
 		}
 

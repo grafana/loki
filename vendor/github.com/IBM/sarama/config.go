@@ -173,7 +173,7 @@ type Config struct {
 		// If this is set to true and the client needs to refresh the metadata from different goroutines,
 		// the requests will be batched together so that a single refresh is sent at a time.
 		// See https://github.com/IBM/sarama/issues/3224 for more details.
-		// SingleFlight defaults to false.
+		// SingleFlight defaults to true.
 		SingleFlight bool
 	}
 
@@ -655,7 +655,9 @@ func (c *Config) Validate() error {
 		if c.Net.SASL.Mechanism == "" {
 			c.Net.SASL.Mechanism = SASLTypePlaintext
 		}
-
+		if c.Net.SASL.Version == SASLHandshakeV0 && c.ApiVersionsRequest {
+			return ConfigurationError("ApiVersionsRequest must be disabled when SASL v0 is enabled")
+		}
 		switch c.Net.SASL.Mechanism {
 		case SASLTypePlaintext:
 			if c.Net.SASL.User == "" {

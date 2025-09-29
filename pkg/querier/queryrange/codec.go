@@ -1847,7 +1847,7 @@ func (p paramsRangeWrapper) QueryString() string {
 }
 
 func (p paramsRangeWrapper) GetExpression() syntax.Expr {
-	return p.LokiRequest.Plan.AST
+	return p.Plan.AST
 }
 
 func (p paramsRangeWrapper) Start() time.Time {
@@ -1887,15 +1887,15 @@ func (p paramsInstantWrapper) QueryString() string {
 }
 
 func (p paramsInstantWrapper) GetExpression() syntax.Expr {
-	return p.LokiInstantRequest.Plan.AST
+	return p.Plan.AST
 }
 
 func (p paramsInstantWrapper) Start() time.Time {
-	return p.LokiInstantRequest.GetTimeTs()
+	return p.GetTimeTs()
 }
 
 func (p paramsInstantWrapper) End() time.Time {
-	return p.LokiInstantRequest.GetTimeTs()
+	return p.GetTimeTs()
 }
 
 func (p paramsInstantWrapper) Step() time.Duration {
@@ -1927,11 +1927,11 @@ func (p paramsSeriesWrapper) GetExpression() syntax.Expr {
 }
 
 func (p paramsSeriesWrapper) Start() time.Time {
-	return p.LokiSeriesRequest.GetStartTs()
+	return p.GetStartTs()
 }
 
 func (p paramsSeriesWrapper) End() time.Time {
-	return p.LokiSeriesRequest.GetEndTs()
+	return p.GetEndTs()
 }
 
 func (p paramsSeriesWrapper) Step() time.Duration {
@@ -1967,11 +1967,11 @@ func (p paramsLabelWrapper) GetExpression() syntax.Expr {
 }
 
 func (p paramsLabelWrapper) Start() time.Time {
-	return p.LabelRequest.GetStartTs()
+	return p.GetStartTs()
 }
 
 func (p paramsLabelWrapper) End() time.Time {
-	return p.LabelRequest.GetEndTs()
+	return p.GetEndTs()
 }
 
 func (p paramsLabelWrapper) Step() time.Duration {
@@ -2071,7 +2071,7 @@ func (p paramsDetectedFieldsWrapper) Direction() logproto.Direction {
 	return logproto.BACKWARD
 }
 
-func (p paramsDetectedFieldsWrapper) Limit() uint32 { return p.DetectedFieldsRequest.LineLimit }
+func (p paramsDetectedFieldsWrapper) Limit() uint32 { return p.LineLimit }
 
 func (p paramsDetectedFieldsWrapper) Shards() []string {
 	return make([]string, 0)

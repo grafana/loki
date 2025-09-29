@@ -1,4 +1,4 @@
-package util
+package util //nolint:revive
 
 type GenerationalMap[K comparable, V any] struct {
 	oldgen map[K]V

@@ -255,7 +255,7 @@ Outer:
 		var dupe bool
 		if sample.Hash != 0 {
 			for _, t := range previous {
-				if t.Sample.Hash == sample.Hash {
+				if t.Hash == sample.Hash {
 					i.stats.AddDuplicates(1)
 					dupe = true
 					break
@@ -687,7 +687,7 @@ func NewTimeRangedSampleIterator(it SampleIterator, mint, maxt int64) SampleIter
 func (i *timeRangedSampleIterator) Next() bool {
 	ok := i.SampleIterator.Next()
 	if !ok {
-		i.SampleIterator.Close()
+		i.Close()
 		return ok
 	}
 	ts := i.SampleIterator.At().Timestamp
@@ -707,7 +707,7 @@ func (i *timeRangedSampleIterator) Next() bool {
 		}
 	}
 	if !ok {
-		i.SampleIterator.Close()
+		i.Close()
 	}
 	return ok
 }

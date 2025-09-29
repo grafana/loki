@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -16,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
 )
 
@@ -124,6 +126,7 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 		CorrelationID:      correlationID,
 		TenantID:           extractTenant(req),
 		User:               extractUserFromQueryTags(req, m.logger),
+		IsLogsDrilldown:    isLogsDrilldownRequest(req),
 		Query:              req.URL.Query().Get("query"),
 		QueryType:          getQueryType(req.URL.Path),
 		StartTime:          startTime,
@@ -409,4 +412,22 @@ func extractUserFromQueryTags(req *http.Request, logger log.Logger) string {
 
 	level.Debug(logger).Log("goldfish", "user-extraction", "result", unknownUser)
 	return unknownUser
+}
+
+// isLogsDrilldownRequest checks if the request comes from Logs Drilldown by examining the X-Query-Tags header
+func isLogsDrilldownRequest(req *http.Request) bool {
+	tags := httpreq.ExtractQueryTagsFromHTTP(req)
+	kvs := httpreq.TagsToKeyValues(tags)
+
+	// Iterate through key-value pairs (keys at even indices, values at odd)
+	for i := 0; i < len(kvs); i += 2 {
+		if i+1 < len(kvs) {
+			key, keyOK := kvs[i].(string)
+			value, valueOK := kvs[i+1].(string)
+			if keyOK && valueOK && key == "source" && strings.EqualFold(value, constants.LogsDrilldownAppName) {
+				return true
+			}
+		}
+	}
+	return false
 }

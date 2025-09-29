@@ -28,6 +28,66 @@ func TestRowReader(t *testing.T) {
 	require.Equal(t, pointerTestData, actual)
 }
 
+func TestRowReaderTimeRange(t *testing.T) {
+	var streamTestData []SectionPointer
+	for _, d := range pointerTestData {
+		if d.PointerKind == PointerKindStreamIndex {
+			streamTestData = append(streamTestData, d)
+		}
+	}
+
+	tests := []struct {
+		name      string
+		predicate TimeRangeRowPredicate
+		want      []SectionPointer
+	}{
+		{
+			name:      "no match",
+			predicate: TimeRangeRowPredicate{Start: unixTime(100), End: unixTime(200)},
+			want:      nil,
+		},
+		{
+			name:      "all match",
+			predicate: TimeRangeRowPredicate{Start: unixTime(0), End: unixTime(20)},
+			want:      streamTestData,
+		},
+		{
+			name:      "partial match",
+			predicate: TimeRangeRowPredicate{Start: unixTime(16), End: unixTime(18)},
+			want: []SectionPointer{
+				streamTestData[1],
+				streamTestData[2],
+			},
+		},
+		{
+			name:      "end predicate equal start of stream",
+			predicate: TimeRangeRowPredicate{Start: unixTime(0), End: unixTime(10)},
+			want: []SectionPointer{
+				streamTestData[0],
+			},
+		},
+		{
+			name:      "start predicate equal end of stream",
+			predicate: TimeRangeRowPredicate{Start: unixTime(18), End: unixTime(100)},
+			want: []SectionPointer{
+				streamTestData[1],
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dec := buildPointersDecoder(t, 0, 2)
+			r := NewRowReader(dec)
+			err := r.SetPredicate(tt.predicate)
+			require.NoError(t, err)
+			actual, err := readAllPointers(context.Background(), r)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, actual)
+		})
+	}
+}
+
 func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }
 
 func buildPointersDecoder(t *testing.T, pageSize, pageRows int) *Section {

@@ -145,6 +145,26 @@ func (b *Builder) observeRecord(ts time.Time) {
 	}
 }
 
+// AppendValue may only be used for copying streams from an existing section.
+func (b *Builder) AppendValue(val Stream) {
+	newStream := streamPool.Get().(*Stream)
+	newStream.Reset()
+
+	newStream.ID = val.ID
+	newStream.MinTimestamp, newStream.MaxTimestamp = val.MinTimestamp, val.MaxTimestamp
+	newStream.UncompressedSize = val.UncompressedSize
+	newStream.Labels = val.Labels
+	newStream.Rows = val.Rows
+
+	newStream.Labels.Range(func(l labels.Label) {
+		b.currentLabelsSize += len(l.Value)
+	})
+
+	hash := labels.StableHash(newStream.Labels)
+	b.lookup[hash] = append(b.lookup[hash], newStream)
+	b.ordered = append(b.ordered, newStream)
+}
+
 // EstimatedSize returns the estimated size of the Streams section in bytes.
 func (b *Builder) EstimatedSize() int {
 	// Since columns are only built when encoding, we can't use

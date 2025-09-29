@@ -75,7 +75,7 @@ func (shard ShardAnnotation) Validate() error {
 	}
 
 	if 1<<shard.RequiredBits() != shard.Of {
-		return fmt.Errorf("Shard factor must be a power of two, got %d", shard.Of)
+		return fmt.Errorf("shard factor must be a power of two, got %d", shard.Of)
 	}
 	return nil
 }

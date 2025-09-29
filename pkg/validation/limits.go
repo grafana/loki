@@ -230,7 +230,7 @@ type Limits struct {
 	AllowStructuredMetadata           bool                  `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
 	MaxStructuredMetadataSize         flagext.ByteSize      `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
 	MaxStructuredMetadataEntriesCount int                   `yaml:"max_structured_metadata_entries_count" json:"max_structured_metadata_entries_count" doc:"description=Maximum number of structured metadata entries per log line."`
-	OTLPConfig                        push.OTLPConfig       `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
+	OTLPConfig                        *push.OTLPConfig      `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-" json:"-"`
 
 	BlockIngestionPolicyUntil map[string]dskit_flagext.Time `yaml:"block_ingestion_policy_until" json:"block_ingestion_policy_until" category:"experimental" doc:"description=Block ingestion for policy until the configured date. The policy '*' is the global policy, which is applied to all streams not matching a policy and can be overridden by other policies. The time should be in RFC3339 format. The policy is based on the policy_stream_mapping configuration."`
@@ -508,6 +508,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
 func (l *Limits) SetGlobalOTLPConfig(cfg push.GlobalOTLPConfig) {
 	l.GlobalOTLPConfig = cfg
+	if l.OTLPConfig == nil {
+		l.OTLPConfig = &push.OTLPConfig{}
+	}
 	l.OTLPConfig.ApplyGlobalOTLPConfig(cfg)
 }
 
@@ -533,14 +536,21 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		if err := yaml.Unmarshal(b, (*plain)(l)); err != nil {
 			return errors.Wrap(err, "cloning limits (unmarshaling)")
 		}
+		// set the otlp config to nil, which would help to detect later if it was set in the tenant override
+		l.OTLPConfig = nil
 	}
 	if err := unmarshal((*plain)(l)); err != nil {
 		return err
 	}
 
 	if defaultLimits != nil {
-		// apply relevant bits from global otlp config
-		l.OTLPConfig.ApplyGlobalOTLPConfig(defaultLimits.GlobalOTLPConfig)
+		if l.OTLPConfig == nil {
+			// no change in per-tenant OTLP config, copy the existing default config
+			l.OTLPConfig = defaultLimits.OTLPConfig
+		} else {
+			// apply relevant bits from global otlp config
+			l.OTLPConfig.ApplyGlobalOTLPConfig(defaultLimits.GlobalOTLPConfig)
+		}
 		// apply default policy stream mappings
 		if err := l.PolicyStreamMapping.ApplyDefaultPolicyStreamMappings(defaultLimits.DefaultPolicyStreamMapping); err != nil {
 			return errors.Wrap(err, "applying default policy stream mappings")
@@ -589,8 +599,10 @@ func (l *Limits) Validate() error {
 		l.MaxQueryCapacity = 1
 	}
 
-	if err := l.OTLPConfig.Validate(); err != nil {
-		return err
+	if l.OTLPConfig != nil {
+		if err := l.OTLPConfig.Validate(); err != nil {
+			return err
+		}
 	}
 
 	if _, err := logql.ParseShardVersion(l.TSDBShardingStrategy); err != nil {
@@ -1198,7 +1210,13 @@ func (o *Overrides) MaxStructuredMetadataCount(userID string) int {
 }
 
 func (o *Overrides) OTLPConfig(userID string) push.OTLPConfig {
-	return o.getOverridesForUser(userID).OTLPConfig
+	otlpConfig := o.getOverridesForUser(userID).OTLPConfig
+	if otlpConfig == nil {
+		// this should never happen other than tests but putting it here just to avoid panic
+		otlpConfig = &push.OTLPConfig{}
+	}
+
+	return *otlpConfig
 }
 
 func (o *Overrides) BlockIngestionUntil(userID string) time.Time {

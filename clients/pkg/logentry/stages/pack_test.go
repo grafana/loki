@@ -83,7 +83,7 @@ func TestPackPipeline(t *testing.T) {
 
 	// Unmarshal the packed object and validate line1
 	w := &Packed{}
-	assert.NoError(t, json.Unmarshal([]byte(out1.Entry.Entry.Line), w))
+	assert.NoError(t, json.Unmarshal([]byte(out1.Line), w))
 	expectedPackedLabels := map[string]string{
 		"pod":       "foo-xsfs3",
 		"container": "foo",
@@ -93,7 +93,7 @@ func TestPackPipeline(t *testing.T) {
 
 	// Validate line 2
 	w = &Packed{}
-	assert.NoError(t, json.Unmarshal([]byte(out2.Entry.Entry.Line), w))
+	assert.NoError(t, json.Unmarshal([]byte(out2.Line), w))
 	expectedPackedLabels = map[string]string{
 		"pod":       "foo-vvsdded",
 		"container": "bar",

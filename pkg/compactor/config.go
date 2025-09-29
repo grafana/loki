@@ -14,7 +14,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/compactor/jobqueue"
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/util/log"
-	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
@@ -89,7 +88,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 // Validate verifies the config does not contain inappropriate values
 func (cfg *Config) Validate() error {
 	if cfg.HorizontalScalingMode != HorizontalScalingModeDisabled {
-		log.WarnExperimentalUse("Horizontally Scalable Compactor", util_log.Logger)
+		log.WarnExperimentalUse("Horizontally Scalable Compactor", log.Logger)
 	}
 	if cfg.MaxCompactionParallelism < 1 {
 		return errors.New("max compaction parallelism must be >= 1")

@@ -7,6 +7,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/logproto"
 )
 
+var (
+	storageDir = "storage"
+	workingDir = "workingdir"
+)
+
 // Store represents a storage backend for log data
 type Store interface {
 	// Write writes a batch of streams to the store

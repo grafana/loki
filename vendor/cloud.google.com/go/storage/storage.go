@@ -1288,12 +1288,14 @@ func (o *ObjectHandle) NewWriterFromAppendableObject(ctx context.Context, opts *
 	if o.gen < 0 {
 		return nil, 0, errors.New("storage: ObjectHandle.Generation must be set to use NewWriterFromAppendableObject")
 	}
+	toc := make(chan int64)
 	w := &Writer{
-		ctx:         ctx,
-		o:           o,
-		donec:       make(chan struct{}),
-		ObjectAttrs: ObjectAttrs{Name: o.object},
-		Append:      true,
+		ctx:               ctx,
+		o:                 o,
+		donec:             make(chan struct{}),
+		ObjectAttrs:       ObjectAttrs{Name: o.object},
+		Append:            true,
+		setTakeoverOffset: func(to int64) { toc <- to },
 	}
 	opts.apply(w)
 	if w.ChunkSize == 0 {
@@ -1303,7 +1305,16 @@ func (o *ObjectHandle) NewWriterFromAppendableObject(ctx context.Context, opts *
 	if err != nil {
 		return nil, 0, err
 	}
-	return w, w.takeoverOffset, nil
+	// Block until we discover the takeover offset, or the stream fails
+	select {
+	case to, ok := <-toc:
+		if !ok {
+			return nil, 0, errors.New("storage: unexpectedly did not discover takeover offset")
+		}
+		return w, to, nil
+	case <-w.donec:
+		return nil, 0, w.err
+	}
 }
 
 // AppendableWriterOpts provides options to set on a Writer initialized

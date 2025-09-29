@@ -116,37 +116,6 @@ func (c *MetastoreCatalog) ResolveShardDescriptorsWithShard(selector Expression,
 	return c.resolveShardDescriptorsWithIndex(selector, predicates, shard, from, through)
 }
 
-func filterForShard(shard ShardInfo, paths []string, streamIDs [][]int64, numSections []int, from, through time.Time) ([]FilteredShardDescriptor, error) {
-	filteredDescriptors := make([]FilteredShardDescriptor, 0, len(paths))
-
-	var count int
-	for i := range paths {
-		sec := make([]int, 0, numSections[i])
-
-		for j := range numSections[i] {
-			if count%int(shard.Of) == int(shard.Shard) {
-				sec = append(sec, j)
-			}
-			count++
-		}
-
-		if len(sec) > 0 {
-			filteredDescriptor := FilteredShardDescriptor{}
-			filteredDescriptor.Location = DataObjLocation(paths[i])
-			filteredDescriptor.Sections = sec
-			filteredDescriptor.Streams = streamIDs[i]
-			tr, err := newTimeRange(from, through)
-			if err != nil {
-				return nil, err
-			}
-			filteredDescriptor.TimeRange = tr
-			filteredDescriptors = append(filteredDescriptors, filteredDescriptor)
-		}
-	}
-
-	return filteredDescriptors, nil
-}
-
 // resolveShardDescriptorsWithIndex expects the metastore to initially point to index objects, not the log objects directly.
 func (c *MetastoreCatalog) resolveShardDescriptorsWithIndex(selector Expression, predicates []Expression, shard ShardInfo, from, through time.Time) ([]FilteredShardDescriptor, error) {
 	if c.metastore == nil {

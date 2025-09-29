@@ -1,4 +1,4 @@
-package util
+package util //nolint:revive
 
 import "github.com/prometheus/prometheus/model/labels"
 

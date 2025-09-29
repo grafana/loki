@@ -17,31 +17,28 @@ func (kl *KeepLabels) Process(_ int64, line []byte, lbls *LabelsBuilder) ([]byte
 		return line, true
 	}
 
-	del := make([]string, 0, 10)
-	lbls.Range(func(name, value []byte) {
-		if isSpecialLabel(unsafeGetString(name)) {
-			return
+	// TODO: Reuse buf?
+	for _, lb := range lbls.UnsortedLabels(nil) {
+		if isSpecialLabel(lb.Name) {
+			continue
 		}
 
 		var keep bool
 		for _, keepLabel := range kl.labels {
-			if keepLabel.Matcher != nil && keepLabel.Matcher.Name == unsafeGetString(name) && keepLabel.Matcher.Matches(unsafeGetString(value)) {
+			if keepLabel.Matcher != nil && keepLabel.Matcher.Name == lb.Name && keepLabel.Matcher.Matches(lb.Value) {
 				keep = true
 				break
 			}
 
-			if keepLabel.Name == unsafeGetString(name) {
+			if keepLabel.Name == lb.Name {
 				keep = true
 				break
 			}
 		}
 
 		if !keep {
-			del = append(del, unsafeGetString(name))
+			lbls.Del(lb.Name)
 		}
-	})
-	for _, name := range del {
-		lbls.Del(name)
 	}
 
 	return line, true

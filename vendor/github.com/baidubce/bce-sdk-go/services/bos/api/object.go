@@ -451,6 +451,9 @@ func CopyObject(cli bce.Client, bucket, object, source string, args *CopyObjectA
 	if err := resp.ParseJsonBody(jsonBody); err != nil {
 		return nil, err
 	}
+	if len(jsonBody.Code) > 0 {
+		return nil, bce.NewBceServiceError(jsonBody.Code, jsonBody.Message, jsonBody.RequestId, 500)
+	}
 	if resp.Header(http.BCE_VERSION_ID) != "" {
 		jsonBody.VersionId = resp.Header(http.BCE_VERSION_ID)
 	}

@@ -328,7 +328,9 @@ func (r *resolver) ResolveEndpoint(
 		return endpoint, fmt.Errorf("endpoint parameters are not valid, %w", err)
 	}
 	_UseDualStack := *params.UseDualStack
+	_ = _UseDualStack
 	_UseFIPS := *params.UseFIPS
+	_ = _UseFIPS
 
 	if exprVal := params.Endpoint; exprVal != nil {
 		_Endpoint := *exprVal
@@ -385,8 +387,8 @@ func (r *resolver) ResolveEndpoint(
 				}
 			}
 			if _UseFIPS == true {
-				if true == _PartitionResult.SupportsFIPS {
-					if "aws-us-gov" == _PartitionResult.Name {
+				if _PartitionResult.SupportsFIPS == true {
+					if _PartitionResult.Name == "aws-us-gov" {
 						uriString := func() string {
 							var out strings.Builder
 							out.WriteString("https://portal.sso.")

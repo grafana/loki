@@ -334,7 +334,7 @@ func (cfg *SchemaConfig) Validate() error {
 		}
 
 		if i+1 < len(cfg.Configs) {
-			if cfg.Configs[i].From.Time.Unix() >= cfg.Configs[i+1].From.Time.Unix() {
+			if cfg.Configs[i].From.Unix() >= cfg.Configs[i+1].From.Unix() {
 				return errSchemaIncreasingFromTime
 			}
 		}
@@ -793,7 +793,7 @@ func GetIndexStoreTableRanges(indexType string, periodicConfigs []PeriodConfig) 
 
 		periodEndTime := DayTime{Time: math.MaxInt64}
 		if i < len(periodicConfigs)-1 {
-			periodEndTime = DayTime{Time: periodicConfigs[i+1].From.Time.Add(-time.Millisecond)}
+			periodEndTime = DayTime{Time: periodicConfigs[i+1].From.Add(-time.Millisecond)}
 		}
 
 		ranges = append(ranges, periodicConfigs[i].GetIndexTableNumberRange(periodEndTime))

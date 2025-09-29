@@ -240,8 +240,7 @@ func (x *FullReadStatsView) GetRequestLatencyStats() *RequestLatencyStats {
 
 // RequestStats is the container for additional information pertaining to a
 // single request, helpful for evaluating the performance of the sent request.
-// Currently, there are the following supported methods:
-//   - google.bigtable.v2.ReadRows
+// Currently, the following method is supported: google.bigtable.v2.ReadRows
 type RequestStats struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache

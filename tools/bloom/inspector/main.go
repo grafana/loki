@@ -41,7 +41,7 @@ func main() {
 			"%s chunks=%d fields=%+v\n",
 			series.Fingerprint,
 			series.Chunks.Len(),
-			series.Meta.Fields.Items(),
+			series.Fields.Items(),
 		)
 		p := 0
 		for swb.Blooms.Next() {

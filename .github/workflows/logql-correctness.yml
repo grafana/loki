@@ -1,5 +1,7 @@
 name: LogQL correctness tests
 on:
+  schedule:
+    - cron: "30 2 * * 1-5" # Mon-Fri at 2.30am UTC
   workflow_dispatch:
     inputs:
       ref:
@@ -7,25 +9,10 @@ on:
         required: false
         default: 'main'
         type: 'string'
-      test_dataobj_old_engine:
-        description: 'Benchmark data object store with old engine'
-        required: false
-        default: true
-        type: 'boolean'
-      test_dataobj_new_engine:
-        description: 'Benchmark data object store with new engine'
-        required: false
-        default: false # Disabled by default due to less complete implementation
-        type: 'boolean'
       failfast:
         description: 'Fail fast on first test failure'
         required: false
         default: true
-        type: 'boolean'
-      instant_queries:
-        description: 'Run correctness tests for instant queries'
-        required: false
-        default: false
         type: 'boolean'
 permissions: {}
 jobs:
@@ -37,7 +24,7 @@ jobs:
         id: checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || 'main' }}
 
       - name: Setup Go
         uses: actions/setup-go@v4
@@ -58,31 +45,14 @@ jobs:
           path: ./pkg/logql/bench/data.zip
           retention-days: 7
 
-  setup-matrix:
-    name: Setup matrix
-    needs: generate-testdata
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.generate.outputs.matrix }}
-    steps:
-      - name: Generate matrix
-        id: generate
-        run: |
-          STORES=()
-
-          # Use explicit equality checks to avoid template injection.
-          ${{ inputs.test_dataobj_old_engine == true }} && STORES+=("dataobj")
-          ${{ inputs.test_dataobj_new_engine == true }} && STORES+=("dataobj-engine")
-
-          MATRIX_JSON=$(jq -nc --arg stores "${STORES[*]}" '{"store": $stores | split(" ")}')
-          echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT"
-
   tests:
     name: Run correctness tests for ${{ matrix.store }}
     runs-on: github-hosted-ubuntu-arm64-large
-    needs: setup-matrix
+    needs: generate-testdata
     strategy:
-      matrix: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
+      matrix:
+        store: [dataobj-engine]
+        range_type: [instant, range]
       fail-fast: false # Continue testing other stores if one fails
     steps:
       - name: Checkout code
@@ -115,7 +85,7 @@ jobs:
           go test \
             -v -slow-tests \
             -run=TestStorageEquality/query=.+/kind=.+/store=${{ matrix.store }}$ \
-            ${{ inputs.instant_queries == true && '-range-type=instant' || '' }} \
+            ${{ matrix.range_type == 'instant' && '-range-type=instant' || '' }} \
             ${{ inputs.failfast == true && '-failfast' || '' }} \
           | tee results/results.txt
         working-directory: ./pkg/logql/bench
@@ -124,6 +94,6 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always() # Upload results even if one of the test tests fails
         with:
-          name: logql-bench-results-${{ matrix.store }}-${{ steps.checkout.outputs.commit }}
+          name: logql-bench-results-${{ matrix.store }}-${{ matrix.range_type }}-${{ steps.checkout.outputs.commit }}
           path: ./pkg/logql/bench/results
           retention-days: 7

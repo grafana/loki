@@ -31,6 +31,12 @@ func TestStreamsResultBuilder(t *testing.T) {
 	mdTypeLabel := datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)
 	mdTypeMetadata := datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.Loki.String)
 
+	t.Run("empty builder returns non-nil result", func(t *testing.T) {
+		builder := newStreamsResultBuilder()
+		md, _ := metadata.NewContext(t.Context())
+		require.NotNil(t, builder.Build(stats.Result{}, md).Data)
+	})
+
 	t.Run("rows without log line, timestamp, or labels are ignored", func(t *testing.T) {
 		schema := arrow.NewSchema(
 			[]arrow.Field{
@@ -165,6 +171,12 @@ func TestVectorResultBuilder(t *testing.T) {
 	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer alloc.AssertSize(t, 0)
 
+	t.Run("empty builder returns non-nil result", func(t *testing.T) {
+		builder := newVectorResultBuilder()
+		md, _ := metadata.NewContext(t.Context())
+		require.NotNil(t, builder.Build(stats.Result{}, md).Data)
+	})
+
 	t.Run("successful conversion of vector data", func(t *testing.T) {
 		schema := arrow.NewSchema(
 			[]arrow.Field{
@@ -253,6 +265,12 @@ func TestMatrixResultBuilder(t *testing.T) {
 	mdTypeString := datatype.ColumnMetadata(types.ColumnTypeAmbiguous, datatype.Loki.String)
 	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer alloc.AssertSize(t, 0)
+
+	t.Run("empty builder returns non-nil result", func(t *testing.T) {
+		builder := newMatrixResultBuilder()
+		md, _ := metadata.NewContext(t.Context())
+		require.NotNil(t, builder.Build(stats.Result{}, md).Data)
+	})
 
 	t.Run("successful conversion of matrix data", func(t *testing.T) {
 		schema := arrow.NewSchema(

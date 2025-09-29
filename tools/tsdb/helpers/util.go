@@ -61,7 +61,7 @@ func GetPeriodConfigForTableNumber(table string, periodicConfigs []config.Period
 
 		periodEndTime := config.DayTime{Time: math.MaxInt64}
 		if i < len(periodicConfigs)-1 {
-			periodEndTime = config.DayTime{Time: periodicConfigs[i+1].From.Time.Add(-time.Millisecond)}
+			periodEndTime = config.DayTime{Time: periodicConfigs[i+1].From.Add(-time.Millisecond)}
 		}
 
 		tableName := fmt.Sprintf("%s%s", periodCfg.IndexTables.Prefix, strconv.Itoa(int(tableNo)))

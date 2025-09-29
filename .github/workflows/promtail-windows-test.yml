@@ -2,6 +2,9 @@ name: Promtail Windows Test
 on:
   pull_request:
     branches: ["main", "k*", "release-[0-9]+.[0-9]+.x"]
+    paths:
+      - clients/cmd/promtail/**
+      - clients/pkg/promtail/**
   push:
     tags: ['v[0-9].[0-9]+.[0-9]+']
     branches: ["main", "k*", "release-[0-9]+.[0-9]+.x"]

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/facette/natsort"
 	"github.com/grafana/dskit/flagext"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -376,6 +377,97 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 
 	b.Reset()
 	return obj, closer, err
+}
+
+// CopyAndSort takes an existing [dataobj.Object] and rewrites the logs sections so the logs are sorted object-wide.
+// The order of the sections is deterministic. For each tenant, first come the streams sections in the order of the old object
+// and second come the new, rewritten logs sections. Tenants are sorted in natural order.
+func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
+	dur := prometheus.NewTimer(b.metrics.sortDurationSeconds)
+	defer dur.ObserveDuration()
+
+	ctx := context.Background()
+
+	sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
+	lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
+		PageSizeHint:     int(b.cfg.TargetPageSize),
+		PageMaxRowCount:  b.cfg.MaxPageRows,
+		BufferSize:       int(b.cfg.BufferSize),
+		StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
+		AppendStrategy:   logs.AppendOrdered,
+	})
+
+	// Sort the set of tenants so the new object has a deterministic order of sections.
+	tenants := obj.Tenants()
+	natsort.Sort(tenants)
+
+	for _, tenant := range tenants {
+		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool { return streams.CheckSection(s) && s.Tenant == tenant }) {
+			sb.Reset()
+			sb.SetTenant(sec.Tenant)
+			// Copy section into new builder. This is *very* inefficient at the moment!
+			// TODO(chaudum): Create implementation of SectionBuilder interface that can copy entire ranges from a SectionReader.
+			section, err := streams.Open(ctx, sec)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to open streams section: %w", err)
+			}
+			iter := streams.IterSection(ctx, section)
+			for res := range iter {
+				val, err := res.Value()
+				if err != nil {
+					return nil, nil, err
+				}
+				sb.AppendValue(val)
+			}
+			if err := b.builder.Append(sb); err != nil {
+				return nil, nil, err
+			}
+		}
+
+		var sections []*dataobj.Section
+		for _, sec := range obj.Sections().Filter(func(s *dataobj.Section) bool { return logs.CheckSection(s) && s.Tenant == tenant }) {
+			sections = append(sections, sec)
+		}
+
+		if len(sections) == 0 {
+			return nil, nil, fmt.Errorf("no logs sections found for tenant: %v", tenant)
+		}
+
+		// TODO(chaudum): Handle special case len(sections) == 1
+
+		lb.Reset()
+		lb.SetTenant(tenant)
+
+		iter, err := sortMergeIterator(ctx, sections)
+		if err != nil {
+			return nil, nil, fmt.Errorf("creating sort iterator: %w", err)
+		}
+
+		for rec := range iter {
+			val, err := rec.Value()
+			if err != nil {
+				return nil, nil, err
+			}
+
+			lb.Append(val)
+
+			// If our logs section has gotten big enough, we want to flush it to the encoder and start a new section.
+			if lb.UncompressedSize() > int(b.cfg.TargetSectionSize) {
+				if err := b.builder.Append(lb); err != nil {
+					return nil, nil, err
+				}
+				lb.Reset()
+				lb.SetTenant(tenant)
+			}
+		}
+
+		// Append the final section with the remaining logs
+		if err := b.builder.Append(lb); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	return b.builder.Flush()
 }
 
 func (b *Builder) observeObject(ctx context.Context, obj *dataobj.Object) error {

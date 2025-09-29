@@ -26,7 +26,7 @@ type CloseableBlockQuerier struct {
 
 func (c *CloseableBlockQuerier) Close() error {
 	var err multierror.MultiError
-	err.Add(c.BlockQuerier.Reset())
+	err.Add(c.Reset())
 	if c.close != nil {
 		err.Add(c.close())
 	}
@@ -37,7 +37,7 @@ func (c *CloseableBlockQuerier) SeriesIter() (iter.PeekIterator[*v1.SeriesWithBl
 	if err := c.Reset(); err != nil {
 		return nil, err
 	}
-	return iter.NewPeekIter[*v1.SeriesWithBlooms](c.BlockQuerier.Iter()), nil
+	return iter.NewPeekIter[*v1.SeriesWithBlooms](c.Iter()), nil
 }
 
 func LoadBlocksDirIntoCache(paths []string, c Cache, logger log.Logger) error {

@@ -2,6 +2,7 @@ package bench
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -183,6 +184,9 @@ func TestStorageEquality(t *testing.T) {
 					uint64(actual.Statistics.Summary.ExecTime),
 					humanize.Bytes(uint64(actual.Statistics.Summary.BytesProcessedPerSecond)),
 				)
+
+				dataobjStats, _ := json.Marshal(&actual.Statistics.Querier.Store.Dataobj)
+				t.Log("Dataobj stats:", string(dataobjStats))
 
 				expected, err := baseStore.Engine.Query(params).Exec(ctx)
 				require.NoError(t, err)

@@ -85,7 +85,9 @@ func newPageBuilder(opts BuilderOptions) (*pageBuilder, error) {
 // The function canAppend checks whether `n` values with a total value size of `valueSize` can be appended to the current page
 // based on the options [dataobj.BuilderOptions.PageMaxRowCount] and [dataobj.BuilderOptions.PageSizeHint].
 func (b *pageBuilder) canAppend(n, valueSize int) bool {
-	if rows := b.Rows(); b.opts.PageMaxRowCount > 0 && rows > 0 && b.Rows()+n > b.opts.PageMaxRowCount {
+	// In case multiple NULL values are appended (when backfilling rows), exceeding the PageMaxRowCount must be possible,
+	// otherwise it would never allow appending even in the 2nd iteration when the previous page was already flushed.
+	if b.opts.PageMaxRowCount > 0 && n <= b.opts.PageMaxRowCount && b.Rows()+n > b.opts.PageMaxRowCount {
 		return false
 	}
 	if sz := b.EstimatedSize(); b.opts.PageSizeHint > 0 && sz > 0 && sz+valueSize > b.opts.PageSizeHint {

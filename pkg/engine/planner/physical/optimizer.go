@@ -1,7 +1,9 @@
 package physical
 
 import (
+	"maps"
 	"slices"
+	"sort"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -32,6 +34,26 @@ func (r *removeNoopFilter) apply(node Node) bool {
 }
 
 var _ rule = (*removeNoopFilter)(nil)
+
+// removeNoopMerge is a rule that removes merge/sortmerge nodes with only a single input
+type removeNoopMerge struct {
+	plan *Plan
+}
+
+// apply implements rule.
+func (r *removeNoopMerge) apply(node Node) bool {
+	changed := false
+	switch node := node.(type) {
+	case *Merge, *SortMerge:
+		if len(r.plan.Children(node)) <= 1 {
+			r.plan.eliminateNode(node)
+			changed = true
+		}
+	}
+	return changed
+}
+
+var _ rule = (*removeNoopMerge)(nil)
 
 // predicatePushdown is a rule that moves down filter predicates to the scan nodes.
 type predicatePushdown struct {
@@ -107,77 +129,21 @@ func (r *limitPushdown) applyLimitPushdown(node Node, limit uint32) bool {
 		// In case the scan node is reachable from multiple different limit nodes, we need to take the largest limit.
 		node.Limit = max(node.Limit, limit)
 		return true
+	case *Filter:
+		// If there is a filter, child nodes may need to read up to all their lines to successfully apply the filter, so stop applying limit pushdown.
+		return false
 	}
+
+	var changed bool
 	for _, child := range r.plan.Children(node) {
-		if ok := r.applyLimitPushdown(child, limit); !ok {
-			return ok
+		if ok := r.applyLimitPushdown(child, limit); ok {
+			changed = true
 		}
 	}
-	return true
+	return changed
 }
 
 var _ rule = (*limitPushdown)(nil)
-
-// groupByPushdown is a rule that pushes down grouping keys from vector aggregations to range aggregations.
-type groupByPushdown struct {
-	plan *Plan
-}
-
-// apply implements rule.
-func (r *groupByPushdown) apply(node Node) bool {
-	switch node := node.(type) {
-	case *VectorAggregation:
-		if node.Operation != types.VectorAggregationTypeSum {
-			return false
-		}
-
-		return r.applyGroupByPushdown(node, node.GroupBy)
-	}
-
-	return false
-}
-
-func (r *groupByPushdown) applyGroupByPushdown(node Node, groupBy []ColumnExpression) bool {
-	switch node := node.(type) {
-	case *RangeAggregation:
-		if node.Operation != types.RangeAggregationTypeCount {
-			return false
-		}
-
-		// Push down the grouping labels to the range aggregation
-		changed := false
-		for _, colExpr := range groupBy {
-			colExpr, ok := colExpr.(*ColumnExpr)
-			if !ok {
-				continue
-			}
-
-			found := false
-			for _, existingCol := range node.PartitionBy {
-				existingCol, ok := existingCol.(*ColumnExpr)
-				if ok && existingCol.Ref.Column == colExpr.Ref.Column {
-					found = true
-					break
-				}
-			}
-			if !found {
-				node.PartitionBy = append(node.PartitionBy, colExpr)
-				changed = true
-			}
-		}
-		return changed
-	}
-
-	anyChanged := false
-	for _, child := range r.plan.Children(node) {
-		if changed := r.applyGroupByPushdown(child, groupBy); changed {
-			anyChanged = true
-		}
-	}
-	return anyChanged
-}
-
-var _ rule = (*groupByPushdown)(nil)
 
 // projectionPushdown is a rule that pushes down column projections.
 // Currently it only projects partition labels from range aggregations to scan nodes.
@@ -188,6 +154,12 @@ type projectionPushdown struct {
 // apply implements rule.
 func (r *projectionPushdown) apply(node Node) bool {
 	switch node := node.(type) {
+	case *VectorAggregation:
+		if len(node.GroupBy) == 0 || node.Operation != types.VectorAggregationTypeSum {
+			return false
+		}
+
+		return r.pushToChildren(node, node.GroupBy, false)
 	case *RangeAggregation:
 		if len(node.PartitionBy) == 0 || node.Operation != types.RangeAggregationTypeCount {
 			return false
@@ -198,7 +170,7 @@ func (r *projectionPushdown) apply(node Node) bool {
 		// Always project timestamp column
 		projections[len(node.PartitionBy)] = &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}
 
-		return r.applyProjectionPushdown(node, projections, false)
+		return r.pushToChildren(node, projections, false)
 	case *Filter:
 		projections := extractColumnsFromPredicates(node.Predicates)
 		if len(projections) == 0 {
@@ -210,47 +182,137 @@ func (r *projectionPushdown) apply(node Node) bool {
 		// For log queries that read all columns, filter columns should not be projected.
 		//
 		// Setting applyIfNotEmpty argument as true for this reason.
-		return r.applyProjectionPushdown(node, projections, true)
+		return r.pushToChildren(node, projections, true)
 	}
+
 	return false
 }
 
 // applyProjectionPushdown applies the projection pushdown rule to the given node.
+// we can't push all projections down to the scan node, since some may be referencing parsed columns.
 // if applyIfNotEmpty is true, it will apply the projection pushdown only if the node has existing projections.
-func (r *projectionPushdown) applyProjectionPushdown(node Node, projections []ColumnExpression, applyIfNotEmpty bool) bool {
+func (r *projectionPushdown) applyProjectionPushdown(
+	node Node,
+	projections []ColumnExpression,
+	applyIfNotEmpty bool,
+) bool {
 	switch node := node.(type) {
 	case *DataObjScan:
-		if len(node.Projections) == 0 && applyIfNotEmpty {
-			return false
-		}
-
-		// Add to scan projections if not already present
-		changed := false
-		for _, colExpr := range projections {
-			colExpr, ok := colExpr.(*ColumnExpr)
-			if !ok {
-				continue
-			}
-
-			// Check if this column is already in projections
-			found := false
-			for _, existingCol := range node.Projections {
-				existingCol, ok := existingCol.(*ColumnExpr)
-				if ok && existingCol.Ref.Column == colExpr.Ref.Column {
-					found = true
-					break
-				}
-			}
-
-			if !found {
-				node.Projections = append(node.Projections, colExpr)
-				changed = true
-			}
-		}
-		return changed
+		return r.handleDataObjScan(node, projections, applyIfNotEmpty)
+	case *ParseNode:
+		return r.handleParseNode(node, projections, applyIfNotEmpty)
+	case *RangeAggregation:
+		return r.handleRangeAggregation(node, projections)
+	case *Filter, *Merge, *SortMerge:
+		// Push to next direct child that cares about projections
+		return r.pushToChildren(node, projections, applyIfNotEmpty)
 	}
 
-	anyChanged := false
+	return false
+}
+
+// handleDataObjScan handles projection pushdown for DataObjScan nodes
+func (r *projectionPushdown) handleDataObjScan(node *DataObjScan, projections []ColumnExpression, applyIfNotEmpty bool) bool {
+	shouldNotApply := len(projections) == 0 && applyIfNotEmpty
+	if !r.isMetricQuery() || shouldNotApply {
+		return false
+	}
+
+	// Add to scan projections if not already present
+	changed := false
+	for _, colExpr := range projections {
+		colExpr, ok := colExpr.(*ColumnExpr)
+		if !ok {
+			continue
+		}
+
+		var wasAdded bool
+		node.Projections, wasAdded = addUniqueProjection(node.Projections, colExpr)
+		if wasAdded {
+			changed = true
+		}
+	}
+
+	if changed {
+		// Sort projections by column name for deterministic order
+		slices.SortFunc(node.Projections, sortProjections)
+	}
+
+	return changed
+}
+
+// handleParseNode handles projection pushdown for ParseNode nodes
+func (r *projectionPushdown) handleParseNode(node *ParseNode, projections []ColumnExpression, applyIfNotEmpty bool) bool {
+	unambiguousProjections, ambiguousProjections := disambiguateColumns(projections)
+	shouldNotApply := len(ambiguousProjections) == 0 && applyIfNotEmpty
+
+	// Only apply the pushdown for Metric queries. Log queries should request all keys
+	if !r.isMetricQuery() || shouldNotApply {
+		return false
+	}
+
+	// Found a ParseNode - update its keys
+	requestedKeys := make(map[string]bool)
+	for _, k := range node.RequestedKeys {
+		requestedKeys[k] = true
+	}
+
+	for _, p := range ambiguousProjections {
+		colExpr, ok := p.(*ColumnExpr)
+		if !ok {
+			continue
+		}
+
+		// Only collect ambiguous columns to push to parse nodes
+		if !requestedKeys[colExpr.Ref.Column] {
+			requestedKeys[colExpr.Ref.Column] = true
+		}
+	}
+
+	changed := len(requestedKeys) > len(node.RequestedKeys)
+	if changed {
+		// Convert back to sorted slice
+		newKeys := slices.Collect(maps.Keys(requestedKeys))
+		sort.Strings(newKeys)
+		node.RequestedKeys = newKeys
+	}
+
+	projectionsToPushDown := make([]ColumnExpression, len(unambiguousProjections)+1)
+	copy(projectionsToPushDown, unambiguousProjections)
+	projectionsToPushDown[len(projectionsToPushDown)-1] = &ColumnExpr{
+		Ref: types.ColumnRef{Column: types.ColumnNameBuiltinMessage, Type: types.ColumnTypeBuiltin},
+	}
+
+	// Push non-ambiguous projections down to children that care about them
+	childrenChanged := r.pushToChildren(node, projectionsToPushDown, true)
+	return changed || childrenChanged
+}
+
+// handleRangeAggregation handles projection pushdown for RangeAggregation nodes
+func (r *projectionPushdown) handleRangeAggregation(node *RangeAggregation, projections []ColumnExpression) bool {
+	if node.Operation != types.RangeAggregationTypeCount {
+		return false
+	}
+
+	changed := false
+	for _, colExpr := range projections {
+		colExpr, ok := colExpr.(*ColumnExpr)
+		if !ok {
+			continue
+		}
+
+		var wasAdded bool
+		node.PartitionBy, wasAdded = addUniqueProjection(node.PartitionBy, colExpr)
+		if wasAdded {
+			changed = true
+		}
+	}
+	return changed
+}
+
+// pushToChildren is a helper method to push projections to all children of a node
+func (r *projectionPushdown) pushToChildren(node Node, projections []ColumnExpression, applyIfNotEmpty bool) bool {
+	var anyChanged bool
 	for _, child := range r.plan.Children(node) {
 		if changed := r.applyProjectionPushdown(child, projections, applyIfNotEmpty); changed {
 			anyChanged = true
@@ -259,7 +321,57 @@ func (r *projectionPushdown) applyProjectionPushdown(node Node, projections []Co
 	return anyChanged
 }
 
+func sortProjections(a, b ColumnExpression) int {
+	exprA, aOk := a.(*ColumnExpr)
+	exprB, bOk := b.(*ColumnExpr)
+	if !aOk || !bOk {
+		return 0
+	}
+
+	if exprA.Ref.Column < exprB.Ref.Column {
+		return -1
+	}
+
+	if exprA.Ref.Column > exprB.Ref.Column {
+		return 1
+	}
+
+	return 0
+}
+
+// isMetricQuery checks if the plan contains a RangeAggregation or VectorAggregation node, indicating a metric query
+func (r *projectionPushdown) isMetricQuery() bool {
+	for node := range r.plan.nodes {
+		if _, ok := node.(*RangeAggregation); ok {
+			return true
+		}
+		if _, ok := node.(*VectorAggregation); ok {
+			return true
+		}
+	}
+	return false
+}
+
 var _ rule = (*projectionPushdown)(nil)
+
+// disambiguateColumns splits columns into ambiguous and unambiguous columns
+func disambiguateColumns(columns []ColumnExpression) ([]ColumnExpression, []ColumnExpression) {
+	ambiguousColumns := make([]ColumnExpression, 0, len(columns))
+	unambiguousColumns := make([]ColumnExpression, 0, len(columns))
+	for _, col := range columns {
+		if colExpr, ok := col.(*ColumnExpr); ok {
+			// Only collect ambiguous columns (might need parsing)
+			// Skip labels (from stream selector) and builtins (like timestamp/message)
+			if colExpr.Ref.Type == types.ColumnTypeAmbiguous {
+				ambiguousColumns = append(ambiguousColumns, col)
+			} else {
+				unambiguousColumns = append(unambiguousColumns, col)
+			}
+		}
+	}
+
+	return unambiguousColumns, ambiguousColumns
+}
 
 // optimization represents a single optimization pass and can hold multiple rules.
 type optimization struct {
@@ -367,4 +479,16 @@ func deduplicateColumns(columns []ColumnExpression) []ColumnExpression {
 	}
 
 	return result
+}
+
+// addUniqueProjection adds a column to the projections list if it's not already present
+func addUniqueProjection(projections []ColumnExpression, colExpr *ColumnExpr) ([]ColumnExpression, bool) {
+	for _, existing := range projections {
+		if existingCol, ok := existing.(*ColumnExpr); ok {
+			if existingCol.Ref.Column == colExpr.Ref.Column {
+				return projections, false // already exists
+			}
+		}
+	}
+	return append(projections, colExpr), true
 }

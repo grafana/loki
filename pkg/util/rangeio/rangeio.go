@@ -106,6 +106,11 @@ func (cfg *Config) RegisterFlags(prefix string, fs *flag.FlagSet) {
 	fs.IntVar(&cfg.MinRangeSize, prefix+"min-range-size", DefaultConfig.MinRangeSize, "Experimental: minimum size of a byte range")
 }
 
+func (cfg *Config) IsZero() bool {
+	var zero Config
+	return cfg == nil || *cfg == zero
+}
+
 // effectiveParallelism returns the effective parallelism limit.
 func (cfg *Config) effectiveParallelism() int {
 	if cfg.MaxParallelism <= 0 {

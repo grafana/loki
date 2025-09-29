@@ -281,7 +281,7 @@ func (i *Instance) Run(ctx context.Context) error {
 type noopScrapeManager struct{}
 
 func (n noopScrapeManager) Get() (*scrape.Manager, error) {
-	return nil, errors.New("No-op Scrape manager not ready")
+	return nil, errors.New("no-op Scrape manager not ready")
 }
 
 func (n noopScrapeManager) Ready() bool {

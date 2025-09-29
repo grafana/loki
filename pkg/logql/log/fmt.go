@@ -249,7 +249,7 @@ func (lf *LineFormatter) Process(ts int64, line []byte, lbs *LabelsBuilder) ([]b
 			smp.Put(m)
 		}
 	}()
-	if err := lf.Template.Execute(lf.buf, m); err != nil {
+	if err := lf.Execute(lf.buf, m); err != nil {
 		lbs.SetErr(errTemplateFormat)
 		lbs.SetErrorDetails(err.Error())
 		return line, true
@@ -414,7 +414,7 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 		if f.Rename {
 			v, _, ok := lbs.GetWithCategory(f.Value)
 			if ok {
-				lbs.Set(ParsedLabel, unsafeGetBytes(f.Name), v)
+				lbs.Set(ParsedLabel, f.Name, v)
 				lbs.Del(f.Value)
 			}
 			continue
@@ -428,7 +428,7 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 			lbs.SetErrorDetails(err.Error())
 			continue
 		}
-		lbs.Set(ParsedLabel, unsafeGetBytes(f.Name), lf.buf.Bytes())
+		lbs.Set(ParsedLabel, f.Name, lf.buf.String())
 	}
 	return l, true
 }

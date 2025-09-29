@@ -4,13 +4,13 @@ import (
 	"testing"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
+	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 func TestNewFilterPipeline(t *testing.T) {
@@ -20,14 +20,18 @@ func TestNewFilterPipeline(t *testing.T) {
 	}
 
 	t.Run("filter with true literal predicate", func(t *testing.T) {
-		// Create input data
-		inputCSV := "Alice,true\nBob,false\nCharlie,true"
-		inputRecord, err := CSVToArrow(fields, inputCSV)
-		require.NoError(t, err)
-		defer inputRecord.Release()
+		alloc := memory.DefaultAllocator
+		schema := arrow.NewSchema(fields, nil)
 
-		// Create input pipeline
-		inputPipeline := NewBufferedPipeline(inputRecord)
+		// Create input data using arrowtest.Rows
+		inputRows := []arrowtest.Rows{
+			{
+				{"name": "Alice", "valid": true},
+				{"name": "Bob", "valid": false},
+				{"name": "Charlie", "valid": true},
+			},
+		}
+		input := NewArrowtestPipeline(alloc, schema, inputRows...)
 
 		// Create a filter predicate that's always true
 		truePredicate := physical.NewLiteral(true)
@@ -38,28 +42,35 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		filterPipeline := NewFilterPipeline(filter, inputPipeline, expressionEvaluator{})
+		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{})
+		defer pipeline.Close()
 
-		// Create expected output (should be same as input since predicate is always true)
-		expectedRecord, err := CSVToArrow(fields, inputCSV)
+		// Read the pipeline output
+		record, err := pipeline.Read(t.Context())
 		require.NoError(t, err)
-		defer expectedRecord.Release()
+		defer record.Release()
 
-		expectedPipeline := NewBufferedPipeline(expectedRecord)
-
-		// Assert that the pipelines produce equal results
-		AssertPipelinesEqual(t, filterPipeline, expectedPipeline)
+		rows, err := arrowtest.RecordRows(record)
+		require.NoError(t, err, "should be able to convert record back to rows")
+		require.Equal(t, len(inputRows[0]), len(rows), "number of rows should match")
+		require.ElementsMatch(t, inputRows[0], rows)
 	})
 
 	t.Run("filter with false literal predicate", func(t *testing.T) {
-		// Create input data
-		inputCSV := "Alice,true\nBob,false\nCharlie,true"
-		inputRecord, err := CSVToArrow(fields, inputCSV)
-		require.NoError(t, err)
-		defer inputRecord.Release()
+		alloc := memory.DefaultAllocator
+		schema := arrow.NewSchema(fields, nil)
+
+		// Create input data using arrowtest.Rows
+		inputRows := []arrowtest.Rows{
+			{
+				{"name": "Alice", "valid": true},
+				{"name": "Bob", "valid": false},
+				{"name": "Charlie", "valid": true},
+			},
+		}
 
 		// Create input pipeline
-		inputPipeline := NewBufferedPipeline(inputRecord)
+		input := NewArrowtestPipeline(alloc, schema, inputRows...)
 
 		// Create a filter predicate that's always false
 		falsePredicate := physical.NewLiteral(false)
@@ -70,41 +81,31 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		filterPipeline := NewFilterPipeline(filter, inputPipeline, expressionEvaluator{})
+		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{})
+		defer pipeline.Close()
 
-		// Create expected output (should be empty since predicate is always false)
-		schema := arrow.NewSchema(fields, nil)
-		mem := memory.NewGoAllocator()
+		// Read the pipeline output
+		record, err := pipeline.Read(t.Context())
+		require.NoError(t, err)
+		defer record.Release()
 
-		// Create empty arrays for each field
-		emptyArrays := make([]arrow.Array, len(fields))
-		emptyArrays[0] = array.NewStringBuilder(mem).NewArray()  // empty string array
-		emptyArrays[1] = array.NewBooleanBuilder(mem).NewArray() // empty boolean array
-
-		expectedRecord := array.NewRecord(schema, emptyArrays, 0)
-		defer expectedRecord.Release()
-		// Be sure to release the arrays too
-		defer func() {
-			for _, arr := range emptyArrays {
-				arr.Release()
-			}
-		}()
-
-		expectedPipeline := NewBufferedPipeline(expectedRecord)
-
-		// Assert that the pipelines produce equal results
-		AssertPipelinesEqual(t, filterPipeline, expectedPipeline)
+		require.Equal(t, int64(0), record.NumRows(), "should not return any rows")
 	})
 
 	t.Run("filter on boolean column with column expression", func(t *testing.T) {
-		// Create input data
-		inputCSV := "Alice,true\nBob,false\nCharlie,true"
-		inputRecord, err := CSVToArrow(fields, inputCSV)
-		require.NoError(t, err)
-		defer inputRecord.Release()
+		alloc := memory.DefaultAllocator
+		schema := arrow.NewSchema(fields, nil)
 
-		// Create input pipeline
-		inputPipeline := NewBufferedPipeline(inputRecord)
+		// Create input data using arrowtest.Rows
+		inputRows := []arrowtest.Rows{
+			{
+				{"name": "Alice", "valid": true},
+				{"name": "Bob", "valid": false},
+				{"name": "Charlie", "valid": true},
+			},
+		}
+		input := NewArrowtestPipeline(alloc, schema, inputRows...)
+		defer input.Close()
 
 		// Create a filter predicate that uses the 'valid' column directly
 		validColumnPredicate := &physical.ColumnExpr{
@@ -117,29 +118,41 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		filterPipeline := NewFilterPipeline(filter, inputPipeline, expressionEvaluator{})
+		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{})
+		defer pipeline.Close()
 
 		// Create expected output (only rows where valid=true)
-		expectedCSV := "Alice,true\nCharlie,true"
-		expectedRecord, err := CSVToArrow(fields, expectedCSV)
+		expectedRows := arrowtest.Rows{
+			{"name": "Alice", "valid": true},
+			{"name": "Charlie", "valid": true},
+		}
+
+		// Read the pipeline output
+		record, err := pipeline.Read(t.Context())
 		require.NoError(t, err)
-		defer expectedRecord.Release()
+		defer record.Release()
 
-		expectedPipeline := NewBufferedPipeline(expectedRecord)
-
-		// Assert that the pipelines produce equal results
-		AssertPipelinesEqual(t, filterPipeline, expectedPipeline)
+		rows, err := arrowtest.RecordRows(record)
+		require.NoError(t, err, "should be able to convert record back to rows")
+		require.Equal(t, len(expectedRows), len(rows), "number of rows should match")
+		require.ElementsMatch(t, expectedRows, rows)
 	})
 
 	t.Run("filter on multiple columns with binary expressions", func(t *testing.T) {
-		// Create input data
-		inputCSV := "Alice,true\nBob,false\nBob,true\nCharlie,false"
-		inputRecord, err := CSVToArrow(fields, inputCSV)
-		require.NoError(t, err)
-		defer inputRecord.Release()
+		alloc := memory.DefaultAllocator
+		schema := arrow.NewSchema(fields, nil)
 
-		// Create input pipeline
-		inputPipeline := NewBufferedPipeline(inputRecord)
+		// Create input data using arrowtest.Rows
+		inputRows := []arrowtest.Rows{
+			{
+				{"name": "Alice", "valid": true},
+				{"name": "Bob", "valid": false},
+				{"name": "Bob", "valid": true},
+				{"name": "Charlie", "valid": false},
+			},
+		}
+		input := NewArrowtestPipeline(alloc, schema, inputRows...)
+		defer input.Close()
 
 		// Create a Filter node
 		filter := &physical.Filter{
@@ -158,41 +171,36 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		filterPipeline := NewFilterPipeline(filter, inputPipeline, expressionEvaluator{})
+		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{})
+		defer pipeline.Close()
 
 		// Create expected output (only rows where name=="Bob" AND valid!=false)
-		expectedCSV := "Bob,true"
-		expectedRecord, err := CSVToArrow(fields, expectedCSV)
+		expectedRows := arrowtest.Rows{
+			{"name": "Bob", "valid": true},
+		}
+
+		// Read the pipeline output
+		record, err := pipeline.Read(t.Context())
 		require.NoError(t, err)
-		defer expectedRecord.Release()
+		defer record.Release()
 
-		expectedPipeline := NewBufferedPipeline(expectedRecord)
-
-		// Assert that the pipelines produce equal results
-		AssertPipelinesEqual(t, filterPipeline, expectedPipeline)
+		rows, err := arrowtest.RecordRows(record)
+		require.NoError(t, err, "should be able to convert record back to rows")
+		require.Equal(t, len(expectedRows), len(rows), "number of rows should match")
+		require.ElementsMatch(t, expectedRows, rows)
 	})
 
+	// TODO: instead of returning empty batch, filter should read the next non-empty batch.
 	t.Run("filter on empty batch", func(t *testing.T) {
-		// Create empty record with correct schema
+		alloc := memory.DefaultAllocator
 		schema := arrow.NewSchema(fields, nil)
-		mem := memory.NewGoAllocator()
 
-		// Create empty arrays for each field
-		emptyArrays := make([]arrow.Array, len(fields))
-		emptyArrays[0] = array.NewStringBuilder(mem).NewArray()  // empty string array
-		emptyArrays[1] = array.NewBooleanBuilder(mem).NewArray() // empty boolean array
-
-		emptyRecord := array.NewRecord(schema, emptyArrays, 0)
-		defer emptyRecord.Release()
-		// Be sure to release the arrays too
-		defer func() {
-			for _, arr := range emptyArrays {
-				arr.Release()
-			}
-		}()
-
-		// Create input pipeline
-		inputPipeline := NewBufferedPipeline(emptyRecord)
+		// Create empty input data using arrowtest.Rows
+		inputRows := []arrowtest.Rows{
+			{}, // empty rows
+		}
+		input := NewArrowtestPipeline(alloc, schema, inputRows...)
+		defer input.Close()
 
 		// Create a simple filter
 		truePredicate := physical.NewLiteral(true)
@@ -203,46 +211,35 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		filterPipeline := NewFilterPipeline(filter, inputPipeline, expressionEvaluator{})
+		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{})
+		defer pipeline.Close()
 
-		// Create expected output (also empty)
-		mem2 := memory.NewGoAllocator()
+		record, err := pipeline.Read(t.Context())
+		require.NoError(t, err)
+		defer record.Release()
 
-		// Create empty arrays for each field
-		expectedArrays := make([]arrow.Array, len(fields))
-		expectedArrays[0] = array.NewStringBuilder(mem2).NewArray()  // empty string array
-		expectedArrays[1] = array.NewBooleanBuilder(mem2).NewArray() // empty boolean array
-
-		expectedRecord := array.NewRecord(schema, expectedArrays, 0)
-		defer expectedRecord.Release()
-		// Be sure to release the arrays too
-		defer func() {
-			for _, arr := range expectedArrays {
-				arr.Release()
-			}
-		}()
-
-		expectedPipeline := NewBufferedPipeline(expectedRecord)
-
-		// Assert that the pipelines produce equal results
-		AssertPipelinesEqual(t, filterPipeline, expectedPipeline)
+		rows, err := arrowtest.RecordRows(record)
+		require.NoError(t, err, "should be able to convert record back to rows")
+		require.Equal(t, 0, len(rows), "should return empty batch")
 	})
 
 	t.Run("filter with multiple input batches", func(t *testing.T) {
-		// Create input data split across multiple records
-		inputCSV1 := "Alice,true\nBob,false"
-		inputCSV2 := "Charlie,true\nDave,false"
+		alloc := memory.DefaultAllocator
+		schema := arrow.NewSchema(fields, nil)
 
-		inputRecord1, err := CSVToArrow(fields, inputCSV1)
-		require.NoError(t, err)
-		defer inputRecord1.Release()
-
-		inputRecord2, err := CSVToArrow(fields, inputCSV2)
-		require.NoError(t, err)
-		defer inputRecord2.Release()
-
-		// Create input pipeline with multiple batches
-		inputPipeline := NewBufferedPipeline(inputRecord1, inputRecord2)
+		// Create input data split across multiple batches using arrowtest.Rows
+		inputRows := []arrowtest.Rows{
+			{
+				{"name": "Alice", "valid": true},
+				{"name": "Bob", "valid": false},
+			},
+			{
+				{"name": "Charlie", "valid": true},
+				{"name": "Dave", "valid": false},
+			},
+		}
+		input := NewArrowtestPipeline(alloc, schema, inputRows...)
+		defer input.Close()
 
 		// Create a filter predicate that uses the 'valid' column directly
 		validColumnPredicate := &physical.ColumnExpr{
@@ -255,20 +252,81 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		filterPipeline := NewFilterPipeline(filter, inputPipeline, expressionEvaluator{})
+		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{})
+		defer pipeline.Close()
 
 		// Create expected output (only rows where valid=true)
-		expectedCSV := `
-Alice,true
-Charlie,true
-		`
-		expectedRecord, err := CSVToArrow(fields, expectedCSV)
+		expectedRows := arrowtest.Rows{
+			{"name": "Alice", "valid": true},
+			{"name": "Charlie", "valid": true},
+		}
+
+		// Read the pipeline output
+		record1, err := pipeline.Read(t.Context())
 		require.NoError(t, err)
-		defer expectedRecord.Release()
+		defer record1.Release()
 
-		expectedPipeline := NewBufferedPipeline(expectedRecord)
+		rows, err := arrowtest.RecordRows(record1)
+		require.NoError(t, err, "should be able to convert record back to rows")
 
-		// Assert that the pipelines produce equal results
-		AssertPipelinesEqual(t, filterPipeline, expectedPipeline)
+		got := rows
+
+		// read second batch
+		record2, err := pipeline.Read(t.Context())
+		require.NoError(t, err)
+		defer record2.Release()
+
+		rows, err = arrowtest.RecordRows(record2)
+		require.NoError(t, err, "should be able to convert record back to rows")
+		got = append(got, rows...)
+
+		require.Equal(t, len(expectedRows), len(got), "number of rows should match")
+		require.ElementsMatch(t, expectedRows, got)
+	})
+
+	t.Run("filter with null values", func(t *testing.T) {
+		alloc := memory.DefaultAllocator
+		schema := arrow.NewSchema(fields, nil)
+
+		// Create input data with null values
+		inputRows := []arrowtest.Rows{
+			{
+				{"name": "Alice", "valid": true},
+				{"name": nil, "valid": true}, // null name
+				{"name": "Bob", "valid": false},
+			},
+		}
+		input := NewArrowtestPipeline(alloc, schema, inputRows...)
+		defer input.Close()
+
+		// Create a filter predicate that uses the 'valid' column directly
+		validColumnPredicate := &physical.ColumnExpr{
+			Ref: createColumnRef("valid"),
+		}
+
+		// Create a Filter node
+		filter := &physical.Filter{
+			Predicates: []physical.Expression{validColumnPredicate},
+		}
+
+		// Create filter pipeline
+		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{})
+		defer pipeline.Close()
+
+		// Create expected output (only rows where valid=true, including null name)
+		expectedRows := arrowtest.Rows{
+			{"name": "Alice", "valid": true},
+			{"name": nil, "valid": true}, // null name should be retained
+		}
+
+		// Read the pipeline output
+		record, err := pipeline.Read(t.Context())
+		require.NoError(t, err)
+		defer record.Release()
+
+		rows, err := arrowtest.RecordRows(record)
+		require.NoError(t, err, "should be able to convert record back to rows")
+		require.Equal(t, len(expectedRows), len(rows), "number of rows should match")
+		require.ElementsMatch(t, expectedRows, rows)
 	})
 }

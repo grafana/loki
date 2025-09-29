@@ -23,18 +23,18 @@ const (
 	MissingLabels = "missing_labels"
 
 	MissingLabelsErrorMsg = "error at least one label pair is required per stream"
-	InvalidLabelsErrorMsg = "Error parsing labels '%s' with error: %s"
+	InvalidLabelsErrorMsg = "error parsing labels '%s' with error: %s"
 	// RateLimited is one of the values for the reason to discard samples.
 	// Declared here to avoid duplication in ingester and distributor.
 	RateLimited         = "rate_limited"
-	RateLimitedErrorMsg = "Ingestion rate limit exceeded for user %s (limit: %d bytes/sec) while attempting to ingest '%d' lines totaling '%d' bytes, reduce log volume or contact your Loki administrator to see if the limit can be increased"
+	RateLimitedErrorMsg = "ingestion rate limit exceeded for user %s (limit: %d bytes/sec) while attempting to ingest '%d' lines totaling '%d' bytes, reduce log volume or contact your Loki administrator to see if the limit can be increased"
 	// LineTooLong is a reason for discarding too long log lines.
 	LineTooLong         = "line_too_long"
-	LineTooLongErrorMsg = "Max entry size '%d' bytes exceeded for stream '%s' while adding an entry with length '%d' bytes"
+	LineTooLongErrorMsg = "max entry size '%d' bytes exceeded for stream '%s' while adding an entry with length '%d' bytes"
 	// StreamLimit is a reason for discarding lines when we can't create a new stream
 	// because the limit of active streams has been reached.
 	StreamLimit         = "stream_limit"
-	StreamLimitErrorMsg = "Maximum active stream limit exceeded when trying to create stream %s, reduce the number of active streams (reduce labels or reduce label values), or contact your Loki administrator to see if the limit can be increased, user: '%s'"
+	StreamLimitErrorMsg = "maximum active stream limit exceeded when trying to create stream %s, reduce the number of active streams (reduce labels or reduce label values), or contact your Loki administrator to see if the limit can be increased, user: '%s'"
 	// StreamRateLimit is a reason for discarding lines when the streams own rate limit is hit
 	// rather than the overall ingestion rate limit.
 	StreamRateLimit = "per_stream_rate_limit"
@@ -68,11 +68,11 @@ const (
 	DuplicateLabelNames                  = "duplicate_label_names"
 	DuplicateLabelNamesErrorMsg          = "stream '%s' has duplicate label name: '%s'"
 	DisallowedStructuredMetadata         = "disallowed_structured_metadata"
-	DisallowedStructuredMetadataErrorMsg = "stream '%s' includes structured metadata, but this feature is disallowed. Please see `limits_config.allow_structured_metadata` or contact your Loki administrator to enable it."
+	DisallowedStructuredMetadataErrorMsg = "stream '%s' includes structured metadata, but this feature is disallowed. Please see `limits_config.allow_structured_metadata` or contact your Loki administrator to enable it"
 	StructuredMetadataTooLarge           = "structured_metadata_too_large"
-	StructuredMetadataTooLargeErrorMsg   = "stream '%s' has structured metadata too large: '%d' bytes, limit: '%d' bytes. Please see `limits_config.max_structured_metadata_size` or contact your Loki administrator to increase it."
+	StructuredMetadataTooLargeErrorMsg   = "stream '%s' has structured metadata too large: '%d' bytes, limit: '%d' bytes. Please see `limits_config.max_structured_metadata_size` or contact your Loki administrator to increase it"
 	StructuredMetadataTooMany            = "structured_metadata_too_many"
-	StructuredMetadataTooManyErrorMsg    = "stream '%s' has too many structured metadata labels: '%d', limit: '%d'. Please see `limits_config.max_structured_metadata_entries_count` or contact your Loki administrator to increase it."
+	StructuredMetadataTooManyErrorMsg    = "stream '%s' has too many structured metadata labels: '%d', limit: '%d'. Please see `limits_config.max_structured_metadata_entries_count` or contact your Loki administrator to increase it"
 	BlockedIngestion                     = "blocked_ingestion"
 	BlockedIngestionErrorMsg             = "ingestion blocked for user %s until '%s' with status code '%d'"
 	BlockedIngestionPolicy               = "blocked_ingestion_policy"

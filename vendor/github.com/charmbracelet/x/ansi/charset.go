@@ -39,17 +39,17 @@ func SCS(gset byte, charset byte) string {
 	return SelectCharacterSet(gset, charset)
 }
 
-// Locking Shift 1 Right (LS1R) shifts G1 into GR character set.
+// LS1R (Locking Shift 1 Right) shifts G1 into GR character set.
 const LS1R = "\x1b~"
 
-// Locking Shift 2 (LS2) shifts G2 into GL character set.
+// LS2 (Locking Shift 2) shifts G2 into GL character set.
 const LS2 = "\x1bn"
 
-// Locking Shift 2 Right (LS2R) shifts G2 into GR character set.
+// LS2R (Locking Shift 2 Right) shifts G2 into GR character set.
 const LS2R = "\x1b}"
 
-// Locking Shift 3 (LS3) shifts G3 into GL character set.
+// LS3 (Locking Shift 3) shifts G3 into GL character set.
 const LS3 = "\x1bo"
 
-// Locking Shift 3 Right (LS3R) shifts G3 into GR character set.
+// LS3R (Locking Shift 3 Right) shifts G3 into GR character set.
 const LS3R = "\x1b|"

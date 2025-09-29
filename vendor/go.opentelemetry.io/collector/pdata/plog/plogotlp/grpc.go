@@ -12,6 +12,7 @@ import (
 
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlpcollectorlog "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/logs/v1"
+	_ "go.opentelemetry.io/collector/pdata/internal/grpcencoding" // enforces custom gRPC encoding to be loaded.
 	"go.opentelemetry.io/collector/pdata/internal/otlp"
 )
 

@@ -26,7 +26,7 @@ func toTree(p *Plan, n Node) *tree.Node {
 }
 
 func toTreeNode(n Node) *tree.Node {
-	treeNode := tree.NewNode(n.Type().String(), n.ID())
+	treeNode := tree.NewNode(n.Type().String(), "")
 	switch node := n.(type) {
 	case *DataObjScan:
 		treeNode.Properties = []tree.Property{
@@ -74,6 +74,13 @@ func toTreeNode(n Node) *tree.Node {
 		}
 
 		treeNode.Properties = properties
+	case *ParseNode:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("kind", false, node.Kind.String()),
+		}
+		if len(node.RequestedKeys) > 0 {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("requested_keys", true, toAnySlice(node.RequestedKeys)...))
+		}
 	}
 	return treeNode
 }

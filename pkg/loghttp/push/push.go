@@ -32,7 +32,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util"
-	loki_util "github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/unmarshal"
 	unmarshal2 "github.com/grafana/loki/v3/pkg/util/unmarshal/legacy"
@@ -160,7 +159,7 @@ type Stats struct {
 func ParseRequest(logger log.Logger, userID string, maxRecvMsgSize int, r *http.Request, limits Limits, tenantConfigs *runtime.TenantConfigs, pushRequestParser RequestParser, tracker UsageTracker, streamResolver StreamResolver, presumedAgentIP, format string) (*logproto.PushRequest, *Stats, error) {
 	req, pushStats, err := pushRequestParser(userID, r, limits, tenantConfigs, maxRecvMsgSize, tracker, streamResolver, logger)
 	if err != nil && !errors.Is(err, ErrAllLogsFiltered) {
-		if errors.Is(err, loki_util.ErrMessageSizeTooLarge) {
+		if errors.Is(err, util.ErrMessageSizeTooLarge) {
 			return nil, nil, fmt.Errorf("%w: %s", ErrRequestBodyTooLarge, err.Error())
 		}
 		return nil, nil, err
@@ -292,7 +291,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 	// Body
 	var body io.Reader
 	// bodySize should always reflect the compressed size of the request body
-	bodySize := loki_util.NewSizeReader(r.Body)
+	bodySize := util.NewSizeReader(r.Body)
 	contentEncoding := r.Header.Get(contentEnc)
 	switch contentEncoding {
 	case "":

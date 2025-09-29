@@ -4,19 +4,21 @@
 
 [Smithy](https://smithy.io/) code generators for Go and the accompanying smithy-go runtime.
 
-The smithy-go runtime requires a minimum version of Go 1.20.
+The smithy-go runtime requires a minimum version of Go 1.22.
 
 **WARNING: All interfaces are subject to change.**
 
-## Can I use the code generators?
+## :no_entry_sign: DO NOT use the code generators in this repository
+
+**The code generators in this repository do not generate working clients at
+this time.**
 
 In order to generate a usable smithy client you must provide a [protocol definition](https://github.com/aws/smithy-go/blob/main/codegen/smithy-go-codegen/src/main/java/software/amazon/smithy/go/codegen/integration/ProtocolGenerator.java),
 such as [AWS restJson1](https://smithy.io/2.0/aws/protocols/aws-restjson1-protocol.html),
 in order to generate transport mechanisms and serialization/deserialization
 code ("serde") accordingly.
 
-The code generator does not currently support any protocols out of the box other than the new `smithy.protocols#rpcv2Cbor`,
-therefore the useability of this project on its own is currently limited.
+The code generator does not currently support any protocols out of the box.
 Support for all [AWS protocols](https://smithy.io/2.0/aws/protocols/index.html)
 exists in [aws-sdk-go-v2](https://github.com/aws/aws-sdk-go-v2). We are
 tracking the movement of those out of the SDK into smithy-go in
@@ -31,6 +33,7 @@ This repository implements the following Smithy build plugins:
 |----|------------|-------------|
 | `go-codegen`        | `software.amazon.smithy.go:smithy-go-codegen` | Implements Go client code generation for Smithy models. |
 | `go-server-codegen` | `software.amazon.smithy.go:smithy-go-codegen` | Implements Go server code generation for Smithy models. |
+| `go-shape-codegen` | `software.amazon.smithy.go:smithy-go-codegen` | Implements Go shape code generation (types only) for Smithy models. |
 
 **NOTE: Build plugins are not currently published to mavenCentral. You must publish to mavenLocal to make the build plugins visible to the Smithy CLI. The artifact version is currently fixed at 0.1.0.**
 
@@ -77,13 +80,17 @@ example created from `smithy init`:
       "service": "example.weather#Weather",
       "module": "github.com/example/weather",
       "generateGoMod": true,
-      "goDirective": "1.20"
+      "goDirective": "1.22"
     }
   }
 }
 ```
 
 ## `go-server-codegen`
+
+This plugin is a work-in-progress and is currently undocumented.
+
+## `go-shape-codegen`
 
 This plugin is a work-in-progress and is currently undocumented.
 

@@ -524,50 +524,68 @@ func UnmarshalProtoOrigHistogramDataPoint(orig *otlpmetrics.HistogramDataPoint, 
 			ov.Sum = math.Float64frombits(num)
 			orig.Sum_ = ov
 		case 6:
-			if wireType != proto.WireTypeLen {
+			switch wireType {
+			case proto.WireTypeLen:
+				var length int
+				length, pos, err = proto.ConsumeLen(buf, pos)
+				if err != nil {
+					return err
+				}
+				startPos := pos - length
+				size := length / 8
+				orig.BucketCounts = make([]uint64, size)
+				var num uint64
+				for i := 0; i < size; i++ {
+					num, startPos, err = proto.ConsumeI64(buf[:pos], startPos)
+					if err != nil {
+						return err
+					}
+					orig.BucketCounts[i] = uint64(num)
+				}
+				if startPos != pos {
+					return fmt.Errorf("proto: invalid field len = %d for field BucketCounts", pos-startPos)
+				}
+			case proto.WireTypeI64:
+				var num uint64
+				num, pos, err = proto.ConsumeI64(buf, pos)
+				if err != nil {
+					return err
+				}
+				orig.BucketCounts = append(orig.BucketCounts, uint64(num))
+			default:
 				return fmt.Errorf("proto: wrong wireType = %d for field BucketCounts", wireType)
 			}
-			var length int
-			length, pos, err = proto.ConsumeLen(buf, pos)
-			if err != nil {
-				return err
-			}
-			startPos := pos - length
-			size := length / 8
-			orig.BucketCounts = make([]uint64, size)
-			var num uint64
-			for i := 0; i < size; i++ {
-				num, startPos, err = proto.ConsumeI64(buf[:pos], startPos)
-				if err != nil {
-					return err
-				}
-				orig.BucketCounts[i] = uint64(num)
-			}
-			if startPos != pos {
-				return fmt.Errorf("proto: invalid field len = %d for field BucketCounts", pos-startPos)
-			}
 		case 7:
-			if wireType != proto.WireTypeLen {
-				return fmt.Errorf("proto: wrong wireType = %d for field ExplicitBounds", wireType)
-			}
-			var length int
-			length, pos, err = proto.ConsumeLen(buf, pos)
-			if err != nil {
-				return err
-			}
-			startPos := pos - length
-			size := length / 8
-			orig.ExplicitBounds = make([]float64, size)
-			var num uint64
-			for i := 0; i < size; i++ {
-				num, startPos, err = proto.ConsumeI64(buf[:pos], startPos)
+			switch wireType {
+			case proto.WireTypeLen:
+				var length int
+				length, pos, err = proto.ConsumeLen(buf, pos)
 				if err != nil {
 					return err
 				}
-				orig.ExplicitBounds[i] = math.Float64frombits(num)
-			}
-			if startPos != pos {
-				return fmt.Errorf("proto: invalid field len = %d for field ExplicitBounds", pos-startPos)
+				startPos := pos - length
+				size := length / 8
+				orig.ExplicitBounds = make([]float64, size)
+				var num uint64
+				for i := 0; i < size; i++ {
+					num, startPos, err = proto.ConsumeI64(buf[:pos], startPos)
+					if err != nil {
+						return err
+					}
+					orig.ExplicitBounds[i] = math.Float64frombits(num)
+				}
+				if startPos != pos {
+					return fmt.Errorf("proto: invalid field len = %d for field ExplicitBounds", pos-startPos)
+				}
+			case proto.WireTypeI64:
+				var num uint64
+				num, pos, err = proto.ConsumeI64(buf, pos)
+				if err != nil {
+					return err
+				}
+				orig.ExplicitBounds = append(orig.ExplicitBounds, math.Float64frombits(num))
+			default:
+				return fmt.Errorf("proto: wrong wireType = %d for field ExplicitBounds", wireType)
 			}
 
 		case 8:

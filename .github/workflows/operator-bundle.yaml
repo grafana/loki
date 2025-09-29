@@ -15,16 +15,15 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: "read"
-      id-token: "write"
-      pull-requests: "write"
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         persist-credentials: false
     - name: Set up Go 1.x
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version-file: ./operator/go.mod
+        cache-dependency-path: ./operator/go.sum
     - name: make bundle
       run: |
         make bundle-all && git diff --exit-code -I'^    createdAt: '

@@ -159,9 +159,9 @@ type Writer struct {
 	donec chan struct{} // closed after err and obj are set.
 	obj   *ObjectAttrs
 
-	mu             sync.Mutex
-	err            error
-	takeoverOffset int64 // offset from which the writer started appending to the object.
+	mu                sync.Mutex
+	err               error
+	setTakeoverOffset func(int64)
 }
 
 // Write appends to w. It implements the io.Writer interface.
@@ -297,7 +297,7 @@ func (w *Writer) openWriter() (err error) {
 				w.obj.Size = n
 			}
 		},
-		setTakeoverOffset:     func(n int64) { w.takeoverOffset = n },
+		setTakeoverOffset:     w.setTakeoverOffset,
 		forceEmptyContentType: w.ForceEmptyContentType,
 	}
 	if err := w.ctx.Err(); err != nil {

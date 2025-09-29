@@ -287,7 +287,7 @@ func (p *Promtail) reload() error {
 	cfg, err := p.newConfig()
 	if err != nil {
 		reloadFailTotal.Inc()
-		return fmt.Errorf("Error new Config: %w", err)
+		return fmt.Errorf("error new Config: %w", err)
 	}
 	err = p.reloadConfig(cfg)
 	if err != nil {

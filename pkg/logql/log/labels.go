@@ -113,7 +113,7 @@ func categoriesContain(categories []LabelCategory, category LabelCategory) bool 
 // Only one base builder is used and it contains cache for each LabelsBuilders.
 type BaseLabelsBuilder struct {
 	del []string
-	add [numValidCategories]*columnarLabels
+	add [numValidCategories][]labels.Label
 	// nolint:structcheck
 	// https://github.com/golangci/golangci-lint/issues/826
 	err string
@@ -134,16 +134,12 @@ type BaseLabelsBuilder struct {
 // LabelsBuilder is the same as labels.Builder but tailored for this package.
 type LabelsBuilder struct {
 	base          labels.Labels
-	buf           []labels.Label // TODO: try to avoid this
+	buf           []labels.Label
 	currentResult LabelsResult
 	groupedResult LabelsResult
 
-	scratchBuilder labels.ScratchBuilder
-
 	*BaseLabelsBuilder
 }
-
-const initialLabelsCapacity = 16
 
 // NewBaseLabelsBuilderWithGrouping creates a new base labels builder with grouping to compute results.
 func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint, without, noLabels bool) *BaseLabelsBuilder {
@@ -151,12 +147,13 @@ func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint
 		parserKeyHints = NoParserHints()
 	}
 
+	const labelsCapacity = 16
 	return &BaseLabelsBuilder{
 		del: make([]string, 0, 5),
-		add: [numValidCategories]*columnarLabels{
-			StreamLabel:             newColumnarLabels(initialLabelsCapacity),
-			StructuredMetadataLabel: newColumnarLabels(initialLabelsCapacity),
-			ParsedLabel:             newColumnarLabels(initialLabelsCapacity),
+		add: [numValidCategories][]labels.Label{
+			StreamLabel:             make([]labels.Label, 0, labelsCapacity),
+			StructuredMetadataLabel: make([]labels.Label, 0, labelsCapacity),
+			ParsedLabel:             make([]labels.Label, 0, labelsCapacity),
 		},
 		resultCache:    make(map[uint64]LabelsResult),
 		hasher:         newHasher(),
@@ -198,11 +195,7 @@ func (b *BaseLabelsBuilder) ForLabels(lbs labels.Labels, hash uint64) *LabelsBui
 func (b *BaseLabelsBuilder) Reset() {
 	b.del = b.del[:0]
 	for k := range b.add {
-		if b.add[k] != nil {
-			b.add[k].reset()
-		} else {
-			b.add[k] = newColumnarLabels(initialLabelsCapacity)
-		}
+		b.add[k] = b.add[k][:0]
 	}
 	b.err = ""
 	b.errDetails = ""
@@ -222,7 +215,7 @@ func (b *BaseLabelsBuilder) hasDel() bool {
 
 func (b *BaseLabelsBuilder) hasAdd() bool {
 	for _, lbls := range b.add {
-		if lbls.len() > 0 {
+		if len(lbls) > 0 {
 			return true
 		}
 	}
@@ -232,7 +225,7 @@ func (b *BaseLabelsBuilder) hasAdd() bool {
 func (b *BaseLabelsBuilder) sizeAdd() int {
 	var length int
 	for _, lbls := range b.add {
-		length += lbls.len()
+		length += len(lbls)
 	}
 	return length
 }
@@ -282,7 +275,7 @@ func (b *LabelsBuilder) BaseHas(key string) bool {
 }
 
 // GetWithCategory returns the value and the category of a labels key if it exists.
-func (b *LabelsBuilder) GetWithCategory(key string) ([]byte, LabelCategory, bool) {
+func (b *LabelsBuilder) GetWithCategory(key string) (string, LabelCategory, bool) {
 	v, category, ok := b.getWithCategory(key)
 	if category == StructuredMetadataLabel {
 		b.referencedStructuredMetadata = true
@@ -292,37 +285,39 @@ func (b *LabelsBuilder) GetWithCategory(key string) ([]byte, LabelCategory, bool
 }
 
 // GetWithCategory returns the value and the category of a labels key if it exists.
-func (b *LabelsBuilder) getWithCategory(key string) ([]byte, LabelCategory, bool) {
+func (b *LabelsBuilder) getWithCategory(key string) (string, LabelCategory, bool) {
 	for category, lbls := range b.add {
-		if v, ok := lbls.get(unsafeGetBytes(key)); ok {
-			return v, LabelCategory(category), true
+		for _, l := range lbls {
+			if l.Name == key {
+				return l.Value, LabelCategory(category), true
+			}
 		}
 	}
 	for _, d := range b.del {
 		if d == key {
-			return nil, InvalidCategory, false
+			return "", InvalidCategory, false
 		}
 	}
 
 	value := b.base.Get(key)
 
 	if value != "" {
-		return []byte(value), StreamLabel, true
+		return value, StreamLabel, true
 	}
 
-	return nil, InvalidCategory, false
+	return "", InvalidCategory, false
 }
 
 func (b *LabelsBuilder) Get(key string) (string, bool) {
 	v, _, ok := b.GetWithCategory(key)
-	return string(v), ok
+	return v, ok
 }
 
 // Del deletes the label of the given name.
 func (b *LabelsBuilder) Del(ns ...string) *LabelsBuilder {
 	for _, n := range ns {
 		for category := range b.add {
-			b.deleteWithCategory(LabelCategory(category), unsafeGetBytes(n))
+			b.deleteWithCategory(LabelCategory(category), n)
 		}
 		b.del = append(b.del, n)
 	}
@@ -330,14 +325,18 @@ func (b *LabelsBuilder) Del(ns ...string) *LabelsBuilder {
 }
 
 // deleteWithCategory removes the label from the specified category
-func (b *LabelsBuilder) deleteWithCategory(category LabelCategory, n []byte) {
-	b.add[category].del(n)
+func (b *LabelsBuilder) deleteWithCategory(category LabelCategory, n string) {
+	for i, l := range b.add[category] {
+		if l.Name == n {
+			b.add[category] = append(b.add[category][:i], b.add[category][i+1:]...)
+		}
+	}
 }
 
 // Set the name/value pair as a label.
 // The value `v` may not be set if a category with higher preference already contains `n`.
 // Category preference goes as Parsed > Structured Metadata > Stream.
-func (b *LabelsBuilder) Set(category LabelCategory, n, v []byte) *LabelsBuilder {
+func (b *LabelsBuilder) Set(category LabelCategory, n, v string) *LabelsBuilder {
 	// Parsed takes precedence over Structured Metadata and Stream labels.
 	// If category is Parsed, we delete `n` from the structured metadata and stream labels.
 	if category == ParsedLabel {
@@ -350,7 +349,7 @@ func (b *LabelsBuilder) Set(category LabelCategory, n, v []byte) *LabelsBuilder 
 	// If `n` exists in the parsed labels, we won't overwrite it's value and we just return what we have.
 	if category == StructuredMetadataLabel {
 		b.deleteWithCategory(StreamLabel, n)
-		if _, ok := b.add[ParsedLabel].get(n); ok {
+		if labelsContain(b.add[ParsedLabel], n) {
 			return b
 		}
 	}
@@ -363,11 +362,13 @@ func (b *LabelsBuilder) Set(category LabelCategory, n, v []byte) *LabelsBuilder 
 		}
 	}
 
-	if ok := b.add[category].override(n, v); ok {
-		return b
+	for i, a := range b.add[category] {
+		if a.Name == n {
+			b.add[category][i].Value = v
+			return b
+		}
 	}
-
-	b.add[category].add(n, v)
+	b.add[category] = append(b.add[category], labels.Label{Name: n, Value: v})
 
 	if category == ParsedLabel {
 		// We record parsed labels as extracted so that future parse stages can
@@ -376,8 +377,7 @@ func (b *LabelsBuilder) Set(category LabelCategory, n, v []byte) *LabelsBuilder 
 		// Note that because this is used for bypassing extracted fields, and
 		// because parsed labels always take precedence over structured metadata
 		// and stream labels, we must only call RecordExtracted for parsed labels.
-		//b.parserKeyHints.RecordExtracted(string(n))
-		b.parserKeyHints.RecordExtracted(unsafeGetString(n))
+		b.parserKeyHints.RecordExtracted(n)
 	}
 	return b
 }
@@ -401,7 +401,7 @@ func (b *LabelsBuilder) Add(category LabelCategory, lbs labels.Labels) *LabelsBu
 			return
 		}
 
-		b.Set(category, unsafeGetBytes(name), unsafeGetBytes(l.Value))
+		b.Set(category, name, l.Value)
 	})
 	return b
 }
@@ -437,27 +437,37 @@ func (b *LabelsBuilder) appendErrors(buf []labels.Label) []labels.Label {
 	}
 	return buf
 }
-func (b *LabelsBuilder) Range(f func(name, value []byte), categories ...LabelCategory) {
+
+func (b *LabelsBuilder) UnsortedLabels(buf []labels.Label, categories ...LabelCategory) []labels.Label {
 	if categories == nil {
 		categories = allCategories
 	}
 
 	if !b.hasDel() && !b.hasAdd() && categoriesContain(categories, StreamLabel) {
+		if buf == nil {
+			buf = make([]labels.Label, 0, b.base.Len()+1) // +1 for error label.
+		} else {
+			buf = buf[:0]
+		}
 
 		b.base.Range(func(l labels.Label) {
-			f(unsafeGetBytes(l.Name), unsafeGetBytes(l.Value))
+			buf = append(buf, l)
 		})
 
 		if categoriesContain(categories, ParsedLabel) {
-			if b.err != "" {
-				f(unsafeGetBytes(logqlmodel.ErrorLabel), unsafeGetBytes(b.err))
-			}
-			if b.errDetails != "" {
-				f(unsafeGetBytes(logqlmodel.ErrorDetailsLabel), unsafeGetBytes(b.errDetails))
-			}
+			buf = b.appendErrors(buf)
 		}
 
-		return
+		return buf
+	}
+
+	// In the general case, labels are removed, modified or moved
+	// rather than added.
+	if buf == nil {
+		size := b.base.Len() + b.sizeAdd() + 1
+		buf = make([]labels.Label, 0, size)
+	} else {
+		buf = buf[:0]
 	}
 
 	if categoriesContain(categories, StreamLabel) {
@@ -470,63 +480,40 @@ func (b *LabelsBuilder) Range(f func(name, value []byte), categories ...LabelCat
 			}
 
 			// Skip stream labels which value will be replaced by structured metadata
-			if labelsContain(b.add[StructuredMetadataLabel], unsafeGetBytes(l.Name)) {
+			if labelsContain(b.add[StructuredMetadataLabel], l.Name) {
 				return
 			}
 
 			// Skip stream labels which value will be replaced by parsed labels
-			if labelsContain(b.add[ParsedLabel], unsafeGetBytes(l.Name)) {
+			if labelsContain(b.add[ParsedLabel], l.Name) {
 				return
 			}
 
 			// Take value from stream label if present
-			if value, found := b.add[StreamLabel].get(unsafeGetBytes(l.Name)); found {
-				f(unsafeGetBytes(l.Name), value)
+			if value, found := findLabelValue(b.add[StreamLabel], l.Name); found {
+				buf = append(buf, labels.Label{Name: l.Name, Value: value})
 			} else {
-				f(unsafeGetBytes(l.Name), unsafeGetBytes(l.Value))
+				buf = append(buf, l)
 			}
 		})
 	}
 
 	if categoriesContain(categories, StructuredMetadataLabel) {
-		for i := 0; i < b.add[StructuredMetadataLabel].len(); i++ {
-			name, value := b.add[StructuredMetadataLabel].getAt(i)
-			if labelsContain(b.add[ParsedLabel], name) {
+		for _, l := range b.add[StructuredMetadataLabel] {
+			if labelsContain(b.add[ParsedLabel], l.Name) {
 				continue
 			}
 
-			f(name, value)
+			buf = append(buf, l)
 		}
 	}
 
 	if categoriesContain(categories, ParsedLabel) {
-		for i := 0; i < b.add[ParsedLabel].len(); i++ {
-			name, value := b.add[ParsedLabel].getAt(i)
-			f(name, value)
-		}
+		buf = append(buf, b.add[ParsedLabel]...)
 	}
-
 	if (b.HasErr() || b.HasErrorDetails()) && categoriesContain(categories, ParsedLabel) {
-		if b.err != "" {
-			f(unsafeGetBytes(logqlmodel.ErrorLabel), unsafeGetBytes(b.err))
-		}
-		if b.errDetails != "" {
-			f(unsafeGetBytes(logqlmodel.ErrorDetailsLabel), unsafeGetBytes(b.errDetails))
-		}
+		buf = b.appendErrors(buf)
 	}
-}
-
-// TODO: ideally we remove this
-func (b *LabelsBuilder) UnsortedLabels(buf []labels.Label, categories ...LabelCategory) []labels.Label {
-	if buf == nil {
-		buf = make([]labels.Label, 0, b.base.Len()+1) // +1 for error label.
-	} else {
-		buf = buf[:0]
-	}
-
-	b.Range(func(name, value []byte) {
-		buf = append(buf, labels.Label{Name: string(name), Value: string(value)})
-	}, categories...)
 
 	return buf
 }
@@ -569,12 +556,12 @@ func (b *LabelsBuilder) IntoMap(m map[string]string) {
 		}
 		return
 	}
-
+	b.buf = b.UnsortedLabels(b.buf)
 	// todo should we also cache maps since limited by the result ?
 	// Maps also don't create a copy of the labels.
-	b.Range(func(name, value []byte) {
-		m[string(name)] = string(value)
-	})
+	for _, l := range b.buf {
+		m[l.Name] = l.Value
+	}
 }
 
 func (b *LabelsBuilder) Map() (map[string]string, bool) {
@@ -584,19 +571,18 @@ func (b *LabelsBuilder) Map() (map[string]string, bool) {
 		}
 		return b.baseMap, false
 	}
-
+	b.buf = b.UnsortedLabels(b.buf)
 	// todo should we also cache maps since limited by the result ?
 	// Maps also don't create a copy of the labels.
 	res := smp.Get()
-	b.Range(func(name, value []byte) {
-		res[string(name)] = string(value)
-	})
+	for _, l := range b.buf {
+		res[l.Name] = l.Value
+	}
 	return res, true
 }
 
 // LabelsResult returns the LabelsResult from the builder.
 // No grouping is applied and the cache is used when possible.
-// TODO: benchmark for high cardinality labels
 func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	// unchanged path.
 	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
@@ -604,69 +590,47 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	}
 
 	// Get all labels at once and sort them
-	b.scratchBuilder.Reset()
-	b.Range(func(name, value []byte) {
-		b.scratchBuilder.UnsafeAddBytes(name, value)
-	})
-	b.scratchBuilder.Sort()
-
-	lbls := b.scratchBuilder.Labels()
-	hash := b.hasher.Hash(lbls)
+	b.buf = b.UnsortedLabels(b.buf)
+	lbls := labels.New(b.buf...)
+	hash := b.Hash(lbls)
 
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}
 
 	// Now segregate the sorted labels into their categories
-	var stream, meta, parsed labels.Labels
+	var stream, meta, parsed []labels.Label
 
-	// Parsed
-	b.scratchBuilder.Reset()
-	b.Range(func(name, value []byte) {
-		// Add error labels to parsed labels, ie skip them for stream and meta categories
-		if unsafeGetString(name) == logqlmodel.ErrorLabel || unsafeGetString(name) == logqlmodel.ErrorDetailsLabel {
-			b.scratchBuilder.UnsafeAddBytes(name, value)
-			return
+	for _, l := range b.buf {
+		// Skip error labels for stream and meta categories
+		if l.Name == logqlmodel.ErrorLabel || l.Name == logqlmodel.ErrorDetailsLabel {
+			parsed = append(parsed, l)
+			continue
 		}
 
 		// Check which category this label belongs to
-		if labelsContain(b.add[ParsedLabel], name) {
-			b.scratchBuilder.UnsafeAddBytes(name, value)
+		if labelsContain(b.add[ParsedLabel], l.Name) {
+			parsed = append(parsed, l)
+		} else if labelsContain(b.add[StructuredMetadataLabel], l.Name) {
+			meta = append(meta, l)
+		} else {
+			stream = append(stream, l)
 		}
-	})
-	b.scratchBuilder.Sort()
-	parsed = b.scratchBuilder.Labels()
+	}
 
-	// Structured Metadata
-	b.scratchBuilder.Reset()
-	b.Range(func(name, value []byte) {
-		if labelsContain(b.add[StructuredMetadataLabel], name) {
-			b.scratchBuilder.UnsafeAddBytes(name, value)
-		}
-	})
-	b.scratchBuilder.Sort()
-	meta = b.scratchBuilder.Labels()
-
-	// Stream
-	b.scratchBuilder.Reset()
-	b.Range(func(name, value []byte) {
-		if !labelsContain(b.add[ParsedLabel], name) && !labelsContain(b.add[StructuredMetadataLabel], name) &&
-			unsafeGetString(name) != logqlmodel.ErrorLabel && unsafeGetString(name) != logqlmodel.ErrorDetailsLabel {
-			b.scratchBuilder.UnsafeAddBytes(name, value)
-		}
-	})
-	b.scratchBuilder.Sort()
-	stream = b.scratchBuilder.Labels()
-
-	result := NewLabelsResult(lbls.String(), hash, stream, meta, parsed)
+	result := NewLabelsResult(lbls.String(), hash, labels.New(stream...), labels.New(meta...), labels.New(parsed...))
 	b.resultCache[hash] = result
 
 	return result
 }
 
-func labelsContain(labels *columnarLabels, name []byte) bool {
-	_, ok := labels.get(name)
-	return ok
+func labelsContain(labels []labels.Label, name string) bool {
+	for _, l := range labels {
+		if l.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func findLabelValue(labels []labels.Label, name string) (string, bool) {
@@ -678,10 +642,9 @@ func findLabelValue(labels []labels.Label, name string) (string, bool) {
 	return "", false
 }
 
-// TODO: use scratch builder instead
 func (b *BaseLabelsBuilder) toUncategorizedResult(buf []labels.Label) LabelsResult {
 	lbls := labels.New(buf...)
-	hash := b.hasher.Hash(lbls)
+	hash := b.Hash(lbls)
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}
@@ -716,7 +679,6 @@ func (b *LabelsBuilder) GroupedLabels() LabelsResult {
 	if b.without {
 		return b.withoutResult()
 	}
-	// TODO: use scratch builder instead
 	return b.withResult()
 }
 
@@ -734,12 +696,14 @@ Outer:
 			}
 		}
 		for category, la := range b.add {
-			if value, ok := la.get(unsafeGetBytes(g)); ok {
-				if LabelCategory(category) == StructuredMetadataLabel {
-					b.referencedStructuredMetadata = true
+			for _, l := range la {
+				if g == l.Name {
+					if LabelCategory(category) == StructuredMetadataLabel {
+						b.referencedStructuredMetadata = true
+					}
+					b.buf = append(b.buf, l)
+					continue Outer
 				}
-				b.buf = append(b.buf, labels.Label{Name: g, Value: string(value)})
-				continue Outer
 			}
 		}
 
@@ -769,8 +733,10 @@ func (b *LabelsBuilder) withoutResult() LabelsResult {
 			}
 		}
 		for _, lbls := range b.add {
-			if _, ok := lbls.get(unsafeGetBytes(l.Name)); ok {
-				return
+			for _, la := range lbls {
+				if l.Name == la.Name {
+					return
+				}
 			}
 		}
 		for _, lg := range b.groups {
@@ -783,17 +749,16 @@ func (b *LabelsBuilder) withoutResult() LabelsResult {
 
 	for category, lbls := range b.add {
 	OuterAdd:
-		for i := 0; i < lbls.len(); i++ {
-			name, value := lbls.getAt(i)
+		for _, la := range lbls {
 			for _, lg := range b.groups {
-				if unsafeGetString(name) == lg {
+				if la.Name == lg {
 					if LabelCategory(category) == StructuredMetadataLabel {
 						b.referencedStructuredMetadata = true
 					}
 					continue OuterAdd
 				}
 			}
-			b.buf = append(b.buf, labels.Label{Name: string(name), Value: string(value)})
+			b.buf = append(b.buf, la)
 		}
 	}
 

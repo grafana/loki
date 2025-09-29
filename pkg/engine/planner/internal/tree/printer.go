@@ -28,11 +28,11 @@ func NewPrinter(w io.StringWriter) *Printer {
 // the printer's [io.StringWriter].
 // Example output:
 //
-//	SortMerge #sort order=ASC column=timestamp
-//	├── Limit #limit1 limit=1000
-//	│   └── DataObjScan #scan1 location=dataobj_1
-//	└── Limit #limit2 limit=1000
-//	    └── DataObjScan #scan2 location=dataobj_2
+//	SortMerge <0x01852d53> order=ASC column=timestamp
+//	├── Limit <0x828d1d87> limit=1000
+//	│   └── DataObjScan <0x28ce484d> location=dataobj_1
+//	└── Limit <0x1f4fefad> limit=1000
+//	    └── DataObjScan <0x75cbff84> location=dataobj_2
 func (tp *Printer) Print(root *Node) {
 	tp.printNode(root)
 	tp.printChildren(root.Comments, root.Children, "")
