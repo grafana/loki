@@ -269,13 +269,13 @@ func CompareValues(a, b *Value) int {
 	// Handle nil values first to avoid the panic if the types don't match.
 	switch {
 	case aNil && !bNil:
-		if bType == datasetmd.PHYSICAL_TYPE_BINARY && b.cap == 0 {
+		if b.IsZero() {
 			// Nil value for a and empty string for b should still be treated as equal
 			return 0
 		}
 		return -1
 	case !aNil && bNil:
-		if aType == datasetmd.PHYSICAL_TYPE_BINARY && a.cap == 0 {
+		if a.IsZero() {
 			// Empty string for a and nil value for b should still be treated as equal
 			return 0
 		}
