@@ -193,6 +193,22 @@ Docker image name
 {{- if .Values.enterprise.enabled -}}{{- include "loki.enterpriseImage" . -}}{{- else -}}{{- include "loki.lokiImage" . -}}{{- end -}}
 {{- end -}}
 
+{{- define "loki.sidecarImage" -}}
+{{- /*
+Determines the final image path for the sidecar, respecting the global registry if defined, unless the local repository
+already contains a full registry (indicated by a dot '.') for backwards-compatibility.
+*/ -}}
+
+{{- $registry := .Values.global.registry | default .Values.sidecar.image.registry | default "" -}}
+{{- $repo := .Values.sidecar.image.repository -}}
+
+{{- $prefix := "" -}}
+{{- if and $registry (not (contains "." $repo)) -}}
+{{- $prefix = printf "%s/" $registry -}}
+{{- end -}}
+
+{{- printf "%s%s" $prefix $repo -}}
+{{- end -}}
 
 {{/*
 Generated storage config for loki common config

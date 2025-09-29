@@ -151,9 +151,9 @@ spec:
         {{- if .Values.sidecar.rules.enabled }}
         - name: loki-sc-rules
           {{- if .Values.sidecar.image.sha }}
-          image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
+          image: "{{ include "loki.sidecarImage" . }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
           {{- else }}
-          image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}"
+          image: "{{ include "loki.sidecarImage" . }}:{{ .Values.sidecar.image.tag }}"
           {{- end }}
           imagePullPolicy: {{ .Values.sidecar.image.pullPolicy }}
           env:
