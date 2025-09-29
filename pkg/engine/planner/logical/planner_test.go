@@ -222,6 +222,9 @@ func TestCanExecuteQuery(t *testing.T) {
 			expected:  true,
 		},
 		{
+			statement: `sum without (level) (count_over_time({env="prod"}[1m]))`,
+		},
+		{
 			// both vector and range aggregation are required
 			statement: `count_over_time({env="prod"}[1m])`,
 		},
@@ -252,8 +255,8 @@ func TestCanExecuteQuery(t *testing.T) {
 
 			logicalPlan, err := BuildPlan(q)
 			if tt.expected {
-				t.Logf("\n%s\n", logicalPlan.String())
 				require.NoError(t, err)
+				t.Logf("\n%s\n", logicalPlan.String())
 			} else {
 				require.Nil(t, logicalPlan)
 				require.ErrorContains(t, err, "failed to convert AST into logical plan")

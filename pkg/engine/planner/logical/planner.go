@@ -214,9 +214,9 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 
 		case *syntax.VectorAggregationExpr:
 			// only sum operation is supported for vector aggregation
-			// grouping by atleast one label is required.
+			// `without()` grouping is not supported.
 			if e.Operation != syntax.OpTypeSum ||
-				e.Grouping == nil || len(e.Grouping.Groups) == 0 || e.Grouping.Without {
+				(e.Grouping != nil && e.Grouping.Without) {
 				err = errUnimplemented
 				return false
 			}
