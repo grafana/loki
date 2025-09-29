@@ -789,7 +789,7 @@ func TestS3Extract_ForcePathStyle(t *testing.T) {
 				},
 			},
 			wantOptions: &storage.S3StorageConfig{
-				Endpoint:       "https://vpce-1234567abc.s3.us-east-1.vpce.amazonaws.com",
+				Endpoint:       "https://bucket.vpce-1234567abc.s3.us-east-1.vpce.amazonaws.com",
 				Region:         "us-east-1",
 				Buckets:        "this,that",
 				ForcePathStyle: false,
