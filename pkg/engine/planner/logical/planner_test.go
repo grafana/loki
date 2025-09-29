@@ -229,8 +229,8 @@ func TestCanExecuteQuery(t *testing.T) {
 			statement: `count_over_time({env="prod"}[1m])`,
 		},
 		{
-			// group by labels are required
 			statement: `sum(count_over_time({env="prod"}[1m]))`,
+			expected:  true,
 		},
 		{
 			// rate is not supported
