@@ -155,11 +155,39 @@ type projectionPushdown struct {
 func (r *projectionPushdown) apply(node Node) bool {
 	switch node := node.(type) {
 	case *VectorAggregation:
-		if len(node.GroupBy) == 0 || !slices.Contains(types.SupportedVectorAggregationTypes, node.Operation) {
+		if len(node.GroupBy) == 0 {
 			return false
 		}
 
-		return r.pushToChildren(node, node.GroupBy, false)
+		// Pushdown from vector aggregation to range aggregations is only valid for:
+		// SUM -> COUNT
+		// SUM -> SUM
+		// MAX -> MAX
+		// MIN -> MIN
+
+		applyToRangeAggregations := func(ops ...types.RangeAggregationType) bool {
+			changed := false
+			for _, child := range r.plan.Children(node) {
+				ra, ok := child.(*RangeAggregation)
+				if ok {
+					if slices.Contains(ops, ra.Operation) {
+						changed = r.handleRangeAggregation(ra, node.GroupBy) || changed
+					}
+				}
+			}
+			return changed
+		}
+
+		switch node.Operation {
+		case types.VectorAggregationTypeSum:
+			return applyToRangeAggregations(types.RangeAggregationTypeSum, types.RangeAggregationTypeCount)
+		case types.VectorAggregationTypeMax:
+			return applyToRangeAggregations(types.RangeAggregationTypeMax)
+		case types.VectorAggregationTypeMin:
+			return applyToRangeAggregations(types.RangeAggregationTypeMin)
+		default:
+			return false
+		}
 	case *RangeAggregation:
 		if len(node.PartitionBy) == 0 || !slices.Contains(types.SupportedRangeAggregationTypes, node.Operation) {
 			return false
@@ -290,10 +318,6 @@ func (r *projectionPushdown) handleParseNode(node *ParseNode, projections []Colu
 
 // handleRangeAggregation handles projection pushdown for RangeAggregation nodes
 func (r *projectionPushdown) handleRangeAggregation(node *RangeAggregation, projections []ColumnExpression) bool {
-	if !slices.Contains(types.SupportedRangeAggregationTypes, node.Operation) {
-		return false
-	}
-
 	changed := false
 	for _, colExpr := range projections {
 		colExpr, ok := colExpr.(*ColumnExpr)

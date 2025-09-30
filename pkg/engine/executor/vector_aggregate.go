@@ -109,7 +109,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 			if err != nil {
 				return nil, err
 			}
-			valueArr := valueVec.ToArray().(*array.Int64)
+			valueArr := valueVec.ToArray().(*array.Float64)
 
 			// extract all the columns that are used for grouping
 			arrays := make([]*array.String, 0, len(v.groupBy))
@@ -133,7 +133,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 					labelValues[col] = arr.Value(row)
 				}
 
-				v.aggregator.Add(tsCol.Value(row).ToTime(arrow.Nanosecond), float64(valueArr.Value(row)), labelValues)
+				v.aggregator.Add(tsCol.Value(row).ToTime(arrow.Nanosecond), valueArr.Value(row), labelValues)
 			}
 		}
 	}

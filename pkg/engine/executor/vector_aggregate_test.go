@@ -19,7 +19,7 @@ func TestVectorAggregationPipeline(t *testing.T) {
 	// input schema with timestamp, value and group by columns
 	fields := []arrow.Field{
 		{Name: types.ColumnNameBuiltinTimestamp, Type: datatype.Arrow.Timestamp, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
-		{Name: types.ColumnNameGeneratedValue, Type: datatype.Arrow.Integer, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Float)},
+		{Name: types.ColumnNameGeneratedValue, Type: datatype.Arrow.Float, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Float)},
 		{Name: "env", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)},
 		{Name: "service", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)},
 	}
