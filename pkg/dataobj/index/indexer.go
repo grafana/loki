@@ -363,9 +363,8 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 	// Process downloaded objects, handling ErrBuilderFull
 	var indexPaths []string
 	processingErrors := multierror.New()
-	flushedAfterLastEvent := false
 
-	for i := range len(events) {
+	for range len(events) {
 		var obj downloadedObject
 		select {
 		case obj = <-si.downloadedObjects:
@@ -404,28 +403,11 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 
 			// Reset calculator for next object
 			si.calculator.Reset()
-
-			// Mark that we flushed after the last event to avoid double flushing
-			if i == len(events)-1 {
-				flushedAfterLastEvent = true
-			}
 		}
 	}
 
 	if processingErrors.Err() != nil {
 		return indexPaths, processingErrors.Err()
-	}
-
-	// Flush final index if we have data and didn't already flush after the last event
-	if !flushedAfterLastEvent {
-		finalPath, err := si.flushIndex(ctx, partition)
-		if err != nil {
-			return indexPaths, fmt.Errorf("failed to flush final index: %w", err)
-		}
-
-		if finalPath != "" {
-			indexPaths = append(indexPaths, finalPath)
-		}
 	}
 
 	level.Debug(si.logger).Log("msg", "finished building index files", "partition", partition,

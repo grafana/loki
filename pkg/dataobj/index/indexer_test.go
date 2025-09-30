@@ -403,7 +403,7 @@ func TestSerialIndexer_FlushOnBuilderFull(t *testing.T) {
 
 	// Verify calculator behavior
 	require.Equal(t, 3, mockCalc.count)          // 3 calls (no retries)
-	require.Equal(t, 2, mockCalc.flushCallCount) // 2 flushes (after full + final)
+	require.Equal(t, 1, mockCalc.flushCallCount) // 1 flush after full only
 	require.Equal(t, 1, mockCalc.resetCallCount) // 1 reset after full
 
 	// Verify metrics - single request/build despite multiple flushes
