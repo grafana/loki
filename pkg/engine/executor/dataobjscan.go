@@ -389,6 +389,8 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.Record, error) {
 	}
 	defer rec.Release()
 
+	recordRows.WithLabelValues("dataobjscan").Observe(float64(rec.NumRows()))
+
 	if s.streamsInjector == nil {
 		// No streams injector needed, so we return the record as-is.
 		// We add an extra retain to counteract the Release() call above (for ease
