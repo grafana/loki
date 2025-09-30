@@ -216,7 +216,10 @@ groups:
       summary: "One or more LokiStack components are not ready."
       runbook_url: "[[ .RunbookURL ]]#Lokistack-Pending-Components"
     expr: |
-      sum  (lokistack_status_condition{reason="ReadyComponents", status="false"}) by (stack_name, stack_namespace, reason, status) == 1
+      sum (
+        lokistack_status_condition{reason="ReadyComponents", status="false"}
+      ) by (stack_name, stack_namespace)
+      > 0
     for: 10m
     labels:
       severity: critical

@@ -395,7 +395,7 @@ The LokiStack reports that some components have not reached the `Ready` state. T
   - Check for conditions that would lead to some pods not being in the `Ready` state
 - Check operator and reconciliation status
   - Ensure the Loki Operator is running and not reporting errors:
-    - `kubectl -n <operator-namespace> logs deploy/loki-operator`
+    - `kubectl -n <operator-namespace> logs deploy/loki-operator-controller-manager`
   - Look for reconcile errors related to missing permissions, invalid fields, or failed rollouts.
 - Verify component Pods and Deployments
   - Ensure all core components are running and Ready in the LokiStack namespace:
@@ -407,6 +407,6 @@ The LokiStack reports that some components have not reached the `Ready` state. T
   - `kubectl -n <namespace> get events --sort-by=.lastTimestamp`
   - Common causes: image pull backoffs, failed mounts, readiness probe failures, or insufficient resources
 - Validate configuration and referenced resources
-  - Confirm referenced `Secrets`, `ConfigMaps`, exist and have correct keys
+  - Confirm referenced `Secrets` and `ConfigMaps` exist and have correct keys
 - Look into the Pod logs of the component that still not `Ready`:
-    - `kubectl -n <namespace> logs <pod>`
+  - `kubectl -n <namespace> logs <pod>`
