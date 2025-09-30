@@ -2,23 +2,33 @@ package goldfish
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/loki/v3/pkg/goldfish"
 )
 
 // NewStorage creates a storage backend based on configuration
-func NewStorage(config StorageConfig, logger log.Logger) (Storage, error) {
+func NewStorage(config StorageConfig, logger log.Logger) (goldfish.Storage, error) {
+	// Convert to shared config format
+	sharedConfig := goldfish.StorageConfig{
+		Type:             config.Type,
+		CloudSQLHost:     config.CloudSQLHost,
+		CloudSQLPort:     config.CloudSQLPort,
+		CloudSQLDatabase: config.CloudSQLDatabase,
+		CloudSQLUser:     config.CloudSQLUser,
+		RDSEndpoint:      config.RDSEndpoint,
+		RDSDatabase:      config.RDSDatabase,
+		RDSUser:          config.RDSUser,
+		MaxConnections:   config.MaxConnections,
+		MaxIdleTime:      config.MaxIdleTime,
+	}
+
 	switch config.Type {
 	case "":
 		// No storage configured, use no-op storage
-		return NewNoOpStorage(logger), nil
-	case "cloudsql":
-		password := os.Getenv("GOLDFISH_DB_PASSWORD")
-		return NewCloudSQLStorage(config, password)
-	case "rds":
-		password := os.Getenv("GOLDFISH_DB_PASSWORD")
-		return NewRDSStorage(config, password)
+		return goldfish.NewNoopStorage(), nil
+	case "cloudsql", "rds":
+		return goldfish.NewMySQLStorage(sharedConfig, logger)
 	default:
 		return nil, fmt.Errorf("unsupported storage type: %s", config.Type)
 	}

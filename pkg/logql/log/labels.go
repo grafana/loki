@@ -592,7 +592,7 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	// Get all labels at once and sort them
 	b.buf = b.UnsortedLabels(b.buf)
 	lbls := labels.New(b.buf...)
-	hash := b.hasher.Hash(lbls)
+	hash := b.Hash(lbls)
 
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
@@ -644,7 +644,7 @@ func findLabelValue(labels []labels.Label, name string) (string, bool) {
 
 func (b *BaseLabelsBuilder) toUncategorizedResult(buf []labels.Label) LabelsResult {
 	lbls := labels.New(buf...)
-	hash := b.hasher.Hash(lbls)
+	hash := b.Hash(lbls)
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}

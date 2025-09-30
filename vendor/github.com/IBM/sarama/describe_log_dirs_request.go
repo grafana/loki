@@ -10,6 +10,10 @@ type DescribeLogDirsRequest struct {
 	DescribeTopics []DescribeLogDirsRequestTopic
 }
 
+func (r *DescribeLogDirsRequest) setVersion(v int16) {
+	r.Version = v
+}
+
 // DescribeLogDirsRequestTopic is a describe request about the log dir of one or more partitions within a Topic
 type DescribeLogDirsRequestTopic struct {
 	Topic        string
@@ -17,34 +21,62 @@ type DescribeLogDirsRequestTopic struct {
 }
 
 func (r *DescribeLogDirsRequest) encode(pe packetEncoder) error {
+	isFlexible := r.Version >= 2
+
 	length := len(r.DescribeTopics)
 	if length == 0 {
 		// In order to query all topics we must send null
 		length = -1
 	}
-
-	if err := pe.putArrayLength(length); err != nil {
-		return err
+	if isFlexible {
+		pe.putCompactArrayLength(length)
+	} else {
+		if err := pe.putArrayLength(length); err != nil {
+			return err
+		}
 	}
 
 	for _, d := range r.DescribeTopics {
-		if err := pe.putString(d.Topic); err != nil {
-			return err
-		}
+		if isFlexible {
+			if err := pe.putCompactString(d.Topic); err != nil {
+				return err
+			}
 
-		if err := pe.putInt32Array(d.PartitionIDs); err != nil {
-			return err
+			if err := pe.putCompactInt32Array(d.PartitionIDs); err != nil {
+				return err
+			}
+			pe.putEmptyTaggedFieldArray()
+		} else {
+			if err := pe.putString(d.Topic); err != nil {
+				return err
+			}
+
+			if err := pe.putInt32Array(d.PartitionIDs); err != nil {
+				return err
+			}
 		}
+	}
+	if isFlexible {
+		pe.putEmptyTaggedFieldArray()
 	}
 
 	return nil
 }
 
 func (r *DescribeLogDirsRequest) decode(pd packetDecoder, version int16) error {
-	n, err := pd.getArrayLength()
+	isFlexible := r.Version >= 2
+
+	var n int
+	var err error
+	if isFlexible {
+		n, err = pd.getCompactArrayLength()
+	} else {
+		n, err = pd.getArrayLength()
+	}
 	if err != nil {
 		return err
 	}
+
 	if n == -1 {
 		n = 0
 	}
@@ -53,25 +85,48 @@ func (r *DescribeLogDirsRequest) decode(pd packetDecoder, version int16) error {
 	for i := 0; i < n; i++ {
 		topics[i] = DescribeLogDirsRequestTopic{}
 
-		topic, err := pd.getString()
+		var topic string
+		if isFlexible {
+			topic, err = pd.getCompactString()
+		} else {
+			topic, err = pd.getString()
+		}
 		if err != nil {
 			return err
 		}
 		topics[i].Topic = topic
 
-		pIDs, err := pd.getInt32Array()
+		var pIDs []int32
+		if isFlexible {
+			pIDs, err = pd.getCompactInt32Array()
+		} else {
+			pIDs, err = pd.getInt32Array()
+		}
 		if err != nil {
 			return err
 		}
 		topics[i].PartitionIDs = pIDs
+		if isFlexible {
+			_, err = pd.getEmptyTaggedFieldArray()
+			if err != nil {
+				return err
+			}
+		}
 	}
 	r.DescribeTopics = topics
+
+	if isFlexible {
+		_, err = pd.getEmptyTaggedFieldArray()
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
 
 func (r *DescribeLogDirsRequest) key() int16 {
-	return 35
+	return apiKeyDescribeLogDirs
 }
 
 func (r *DescribeLogDirsRequest) version() int16 {
@@ -79,16 +134,27 @@ func (r *DescribeLogDirsRequest) version() int16 {
 }
 
 func (r *DescribeLogDirsRequest) headerVersion() int16 {
+	if r.Version >= 2 {
+		return 2
+	}
 	return 1
 }
 
 func (r *DescribeLogDirsRequest) isValidVersion() bool {
-	return r.Version >= 0 && r.Version <= 1
+	return r.Version >= 0 && r.Version <= 4
 }
 
 func (r *DescribeLogDirsRequest) requiredVersion() KafkaVersion {
-	if r.Version > 0 {
+	switch r.Version {
+	case 4:
+		return V3_3_0_0
+	case 3:
+		return V3_2_0_0
+	case 2:
+		return V2_6_0_0
+	case 1:
 		return V2_0_0_0
+	default:
+		return V1_0_0_0
 	}
-	return V1_0_0_0
 }

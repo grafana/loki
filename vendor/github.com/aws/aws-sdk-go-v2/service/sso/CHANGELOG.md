@@ -1,3 +1,67 @@
+# v1.29.6 (2025-09-29)
+
+* No change notes available for this release.
+
+# v1.29.5 (2025-09-26)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.4 (2025-09-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.3 (2025-09-10)
+
+* No change notes available for this release.
+
+# v1.29.2 (2025-09-08)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.1 (2025-08-29)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.29.0 (2025-08-28)
+
+* **Feature**: Remove incorrect endpoint tests
+
+# v1.28.3 (2025-08-27)
+
+* **Dependency Update**: Update to smithy-go v1.23.0.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.2 (2025-08-21)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.28.1 (2025-08-20)
+
+* **Bug Fix**: Remove unused deserialization code.
+
+# v1.28.0 (2025-08-11)
+
+* **Feature**: Add support for configuring per-service Options via callback on global config.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.27.0 (2025-08-04)
+
+* **Feature**: Support configurable auth scheme preferences in service clients via AWS_AUTH_SCHEME_PREFERENCE in the environment, auth_scheme_preference in the config file, and through in-code settings on LoadDefaultConfig and client constructor methods.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.26.1 (2025-07-30)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.26.0 (2025-07-28)
+
+* **Feature**: Add support for HTTP interceptors.
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.25.6 (2025-07-19)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.25.5 (2025-06-17)
 
 * **Dependency Update**: Update to smithy-go v1.22.4.

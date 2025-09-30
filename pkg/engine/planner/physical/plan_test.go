@@ -72,13 +72,13 @@ func TestPlan(t *testing.T) {
 		_ = p.addEdge(Edge{Parent: merge, Child: scan2})
 
 		n := p.NodeByID("merge")
-		require.Len(t, p.Parents(n), 0)  // no parents
-		require.Len(t, p.Children(n), 2) // both scan nodes
+		require.Equal(t, p.Parent(n), nil) // no parent
+		require.Len(t, p.Children(n), 2)   // both scan nodes
 	})
 
 	t.Run("graph can be walked in pre-order and post-order", func(t *testing.T) {
 		// Graph can be inspected as SVG under the following URL:
-		// https://dreampuf.github.io/GraphvizOnline/?engine=dot#digraph%20G%20%7B%0A%20%20%20%20limit1%20-%3Emerge1%3B%0A%20%20%20%20merge1%20-%3E%20filter1%3B%0A%20%20%20%20merge1%20-%3E%20merge2%3B%0A%20%20%20%20merge1%20-%3E%20proj3%3B%0A%20%20%20%20filter1%20-%3E%20proj1%3B%0A%20%20%20%20merge2%20-%3E%20proj1%3B%0A%20%20%20%20merge2%20-%3E%20proj2%3B%0A%20%20%20%20proj1%20-%3E%20scan1%3B%0A%20%20%20%20proj2%20-%3E%20scan1%3B%0A%20%20%20%20proj3%20-%3E%20scan1%3B%0A%7D
+		// https://dreampuf.github.io/GraphvizOnline/?engine=dot#digraph%20G%20%7B%0A%20%20%20%20limit1%20-%3Emerge1%3B%0A%20%20%20%20merge1%20-%3E%20filter1%3B%0A%20%20%20%20merge1%20-%3E%20merge2%3B%0A%20%20%20%20merge1%20-%3E%20proj3%3B%0A%20%20%20%20filter1%20-%3E%20proj1%3B%0A%20%20%20%20merge2%20-%3E%20proj1%3B%0A%20%20%20%20merge2%20-%3E%20proj2%3B%0A%20%20%20%20proj1%20-%3E%20filter3%3B%0A%20%20%20%20filter3%20-%3E%20parse1%3B%0A%20%20%20%20parse1%20-%3E%20filter2%3B%0A%20%20%20%20filter2%20-%3E%20scan1%3B%0A%20%20%20%20proj2%20-%3E%20scan1%3B%0A%20%20%20%20proj3%20-%3E%20scan1%3B%0A%7D
 		p := &Plan{}
 		limit1 := p.addNode(&Limit{id: "limit1"})
 		merge1 := p.addNode(&SortMerge{id: "merge1"})
@@ -87,6 +87,9 @@ func TestPlan(t *testing.T) {
 		proj1 := p.addNode(&Projection{id: "projection1"})
 		proj2 := p.addNode(&Projection{id: "projection2"})
 		proj3 := p.addNode(&Projection{id: "projection3"})
+		filter2 := p.addNode(&Filter{id: "pre-parse-filter"})
+		parse1 := p.addNode(&ParseNode{id: "parse1", Kind: ParserLogfmt})
+		filter3 := p.addNode(&Filter{id: "post-parse-filter"})
 		scan1 := p.addNode(&DataObjScan{id: "scan1"})
 
 		_ = p.addEdge(Edge{Parent: limit1, Child: merge1})
@@ -96,7 +99,10 @@ func TestPlan(t *testing.T) {
 		_ = p.addEdge(Edge{Parent: filter1, Child: proj1})
 		_ = p.addEdge(Edge{Parent: merge2, Child: proj1})
 		_ = p.addEdge(Edge{Parent: merge2, Child: proj2})
-		_ = p.addEdge(Edge{Parent: proj1, Child: scan1})
+		_ = p.addEdge(Edge{Parent: proj1, Child: filter3})  // post-parse filter depends on projection
+		_ = p.addEdge(Edge{Parent: filter3, Child: parse1}) // parse happens before post-parse filter
+		_ = p.addEdge(Edge{Parent: parse1, Child: filter2}) // pre-parse filter happens before parse
+		_ = p.addEdge(Edge{Parent: filter2, Child: scan1})
 		_ = p.addEdge(Edge{Parent: proj2, Child: scan1})
 		_ = p.addEdge(Edge{Parent: proj3, Child: scan1})
 
@@ -107,12 +113,15 @@ func TestPlan(t *testing.T) {
 			visitor := &nodeCollectVisitor{}
 			err := p.DFSWalk(roots[0], visitor, PreOrderWalk)
 			require.NoError(t, err)
-			require.Len(t, visitor.visited, 8)
+			require.Len(t, visitor.visited, 11)
 			require.Equal(t, []string{
 				"Limit.limit1",
 				"SortMerge.merge1",
 				"Filter.filter1",
 				"Projection.projection1",
+				"Filter.post-parse-filter",
+				"Parse.parse1",
+				"Filter.pre-parse-filter",
 				"DataObjScan.scan1",
 				"SortMerge.merge2",
 				"Projection.projection2",
@@ -124,9 +133,12 @@ func TestPlan(t *testing.T) {
 			visitor := &nodeCollectVisitor{}
 			err := p.DFSWalk(roots[0], visitor, PostOrderWalk)
 			require.NoError(t, err)
-			require.Len(t, visitor.visited, 8)
+			require.Len(t, visitor.visited, 11)
 			require.Equal(t, []string{
 				"DataObjScan.scan1",
+				"Filter.pre-parse-filter",
+				"Parse.parse1",
+				"Filter.post-parse-filter",
 				"Projection.projection1",
 				"Filter.filter1",
 				"Projection.projection2",
@@ -137,4 +149,28 @@ func TestPlan(t *testing.T) {
 			}, visitor.visited)
 		})
 	})
+	t.Run("adding edge to node with existing parent fails", func(t *testing.T) {
+		p := &Plan{}
+		parent1 := p.addNode(&SortMerge{id: "parent1"})
+		parent2 := p.addNode(&SortMerge{id: "parent2"})
+		child := p.addNode(&DataObjScan{id: "child"})
+
+		err := p.addEdge(Edge{Parent: parent1, Child: child})
+		require.Nil(t, err)
+		err = p.addEdge(Edge{Parent: parent2, Child: child})
+		require.ErrorContains(t, err, "already has parent")
+	})
+
+	t.Run("child ordering is preserved", func(t *testing.T) {
+		p := &Plan{}
+		parent := p.addNode(&SortMerge{id: "parent"})
+		child1 := p.addNode(&SortMerge{id: "child1"})
+		child2 := p.addNode(&DataObjScan{id: "child2"})
+		err := p.addEdge(Edge{Parent: parent, Child: child1})
+		require.Nil(t, err)
+		err = p.addEdge(Edge{Parent: parent, Child: child2})
+		require.Nil(t, err)
+		require.Equal(t, p.children[parent], []Node{child1, child2})
+	})
+
 }

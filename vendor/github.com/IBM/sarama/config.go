@@ -167,6 +167,14 @@ type Config struct {
 		// the broker may auto-create topics that we requested which do not already exist,
 		// if it is configured to do so (`auto.create.topics.enable` is true). Defaults to true.
 		AllowAutoTopicCreation bool
+
+		// SingleFlight controls whether to send a single metadata refresh request at a given time
+		// or whether to allow anyone to refresh the metadata concurrently.
+		// If this is set to true and the client needs to refresh the metadata from different goroutines,
+		// the requests will be batched together so that a single refresh is sent at a time.
+		// See https://github.com/IBM/sarama/issues/3224 for more details.
+		// SingleFlight defaults to true.
+		SingleFlight bool
 	}
 
 	// Producer is the namespace for configuration related to producing messages,
@@ -536,6 +544,7 @@ func NewConfig() *Config {
 	c.Metadata.RefreshFrequency = 10 * time.Minute
 	c.Metadata.Full = true
 	c.Metadata.AllowAutoTopicCreation = true
+	c.Metadata.SingleFlight = true
 
 	c.Producer.MaxMessageBytes = 1024 * 1024
 	c.Producer.RequiredAcks = WaitForLocal
@@ -646,7 +655,9 @@ func (c *Config) Validate() error {
 		if c.Net.SASL.Mechanism == "" {
 			c.Net.SASL.Mechanism = SASLTypePlaintext
 		}
-
+		if c.Net.SASL.Version == SASLHandshakeV0 && c.ApiVersionsRequest {
+			return ConfigurationError("ApiVersionsRequest must be disabled when SASL v0 is enabled")
+		}
 		switch c.Net.SASL.Mechanism {
 		case SASLTypePlaintext:
 			if c.Net.SASL.User == "" {

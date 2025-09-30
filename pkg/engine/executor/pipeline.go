@@ -21,12 +21,9 @@ const (
 // Pipeline represents a data processing pipeline that can read Arrow records.
 // It provides methods to read data, access the current record, and close resources.
 type Pipeline interface {
-	// Read reads the next value into its state.
+	// Read collects the next value ([arrow.Record]) from the pipeline and returns it to the caller.
 	// It returns an error if reading fails or when the pipeline is exhausted. In this case, the function returns EOF.
-	// The implementation must retain the returned error in its state and return it with subsequent Value() calls.
-	Read(context.Context) error
-	// Value returns the current value in state.
-	Value() (arrow.Record, error)
+	Read(context.Context) (arrow.Record, error)
 	// Close closes the resources of the pipeline.
 	// The implementation must close all the of the pipeline's inputs.
 	Close()
@@ -39,7 +36,7 @@ type Pipeline interface {
 var (
 	errNotImplemented = errors.New("pipeline not implemented")
 
-	EOF       = errors.New("pipeline exhausted") // nolint:revive
+	EOF       = errors.New("pipeline exhausted") //nolint:revive,staticcheck
 	Exhausted = failureState(EOF)
 	Canceled  = failureState(context.Canceled)
 )
@@ -87,18 +84,13 @@ func (p *GenericPipeline) Inputs() []Pipeline {
 	return p.inputs
 }
 
-// Value implements Pipeline.
-func (p *GenericPipeline) Value() (arrow.Record, error) {
-	return p.state.Value()
-}
-
 // Read implements Pipeline.
-func (p *GenericPipeline) Read(ctx context.Context) error {
+func (p *GenericPipeline) Read(ctx context.Context) (arrow.Record, error) {
 	if p.read == nil {
-		return EOF
+		return nil, EOF
 	}
-	p.state = p.read(ctx, p.inputs)
-	return p.state.err
+	s := p.read(ctx, p.inputs)
+	return s.batch, s.err
 }
 
 // Close implements Pipeline.
@@ -163,9 +155,10 @@ func newPrefetchingPipeline(p Pipeline) *prefetchWrapper {
 }
 
 // Read implements [Pipeline].
-func (p *prefetchWrapper) Read(ctx context.Context) error {
+func (p *prefetchWrapper) Read(ctx context.Context) (arrow.Record, error) {
 	p.init(ctx)
-	return p.read(ctx)
+	s := p.read(ctx)
+	return s.batch, s.err
 }
 
 func (p *prefetchWrapper) init(ctx context.Context) {
@@ -189,17 +182,17 @@ func (p prefetchWrapper) prefetch(ctx context.Context) error {
 			return ctx.Err()
 		default:
 			var s state
-			s.err = p.Pipeline.Read(ctx)
+			s.batch, s.err = p.Pipeline.Read(ctx)
 			if s.err != nil {
 				p.ch <- s
 				return s.err
 			}
-			s.batch, s.err = p.Pipeline.Value()
-			s.batch.Retain()
+
 			// Sending to channel will block until the batch is read by the parent pipeline.
 			// If the context is cancelled while waiting to send, we return.
 			select {
 			case <-ctx.Done():
+				// The record is dropped, release it immediately.
 				s.batch.Release()
 				return ctx.Err()
 			case p.ch <- s:
@@ -208,23 +201,15 @@ func (p prefetchWrapper) prefetch(ctx context.Context) error {
 	}
 }
 
-func (p *prefetchWrapper) read(_ context.Context) error {
-	// Release previously retained batch
-	if p.state.batch != nil {
-		p.state.batch.Release()
-	}
-	p.state = <-p.ch
+func (p *prefetchWrapper) read(_ context.Context) state {
+	state := <-p.ch
+
 	// Reading from a channel that is closed while waiting yields a zero-value.
 	// In that case, the pipeline should produce an error state.
-	if p.state.err == nil && p.state.batch == nil {
-		p.state = Canceled
+	if state.err == nil && state.batch == nil {
+		state = Canceled
 	}
-	return p.state.err
-}
-
-// Value implements [Pipeline].
-func (p *prefetchWrapper) Value() (arrow.Record, error) {
-	return p.state.batch, p.state.err
+	return state
 }
 
 // Close implements [Pipeline].
@@ -238,11 +223,9 @@ func (p *prefetchWrapper) Close() {
 		// This check can only be done if p.cancel is non-nil, otherwise we may
 		// deadlock if [prefetchWrapper.Close] is called before
 		// [prefetchWrapper.init].
-		<-p.ch
-	}
-	if p.state.batch != nil {
-		p.state.batch.Release()
-		p.state = state{}
+		if state, ok := <-p.ch; ok && state.batch != nil {
+			state.batch.Release()
+		}
 	}
 	p.Pipeline.Close()
 }
@@ -262,21 +245,19 @@ func tracePipeline(name string, pipeline Pipeline) *tracedPipeline {
 	}
 }
 
-func (p *tracedPipeline) Read(ctx context.Context) error {
+func (p *tracedPipeline) Read(ctx context.Context) (arrow.Record, error) {
 	ctx, span := tracer.Start(ctx, p.name+".Read")
 	defer span.End()
 
-	err := p.inner.Read(ctx)
+	res, err := p.inner.Read(ctx)
 	if err != nil && !errors.Is(err, EOF) {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	} else {
 		span.SetStatus(codes.Ok, "")
 	}
-	return err
+	return res, err
 }
-
-func (p *tracedPipeline) Value() (arrow.Record, error) { return p.inner.Value() }
 
 func (p *tracedPipeline) Close() { p.inner.Close() }
 
@@ -308,20 +289,11 @@ var _ Pipeline = (*lazyPipeline)(nil)
 
 // Read reads the next value from the inner pipeline. If this is the first call
 // to Read, the inner  pipeline will be constructed using the provided context.
-func (lp *lazyPipeline) Read(ctx context.Context) error {
+func (lp *lazyPipeline) Read(ctx context.Context) (arrow.Record, error) {
 	if lp.built == nil {
 		lp.built = lp.ctor(ctx, lp.inputs)
 	}
 	return lp.built.Read(ctx)
-}
-
-// Value returns the current value from the lazily constructed pipeline. If the
-// pipeline has not been constructed yet, it returns an error.
-func (lp *lazyPipeline) Value() (arrow.Record, error) {
-	if lp.built == nil {
-		return nil, fmt.Errorf("lazyPipeline not built yet")
-	}
-	return lp.built.Value()
 }
 
 // Close closes the lazily constructed pipeline if it has been built.

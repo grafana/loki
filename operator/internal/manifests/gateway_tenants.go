@@ -1,6 +1,7 @@
 package manifests
 
 import (
+	"maps"
 	"strings"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -146,9 +147,7 @@ func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Ob
 				}
 
 				a := openshift.ServiceAccountAnnotations(opts.OpenShiftOptions)
-				for key, value := range a {
-					sa.Annotations[key] = value
-				}
+				maps.Copy(sa.Annotations, a)
 			}
 		}
 
@@ -199,13 +198,13 @@ func configureCAVolumes(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec) error
 		return nil // nothing to do
 	}
 
-	mountCAConfigMap := func(container *corev1.Container, volumes *[]corev1.Volume, tennantName, configmapName string) {
+	mountCAConfigMap := func(container *corev1.Container, volumes *[]corev1.Volume, tenantName, configmapName string) {
 		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
-			Name:      tenantCAVolumeName(tennantName),
-			MountPath: tenantCADir(tennantName),
+			Name:      tenantCAVolumeName(tenantName),
+			MountPath: tenantCADir(tenantName),
 		})
 		*volumes = append(*volumes, corev1.Volume{
-			Name: tenantCAVolumeName(tennantName),
+			Name: tenantCAVolumeName(tenantName),
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{

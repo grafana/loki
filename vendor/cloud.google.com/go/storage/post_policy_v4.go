@@ -252,9 +252,6 @@ func GenerateSignedPostPolicyV4(bucket, object string, opts *PostPolicyV4Options
 	if bucket == "" {
 		return nil, errors.New("storage: bucket must be non-empty")
 	}
-	if object == "" {
-		return nil, errors.New("storage: object must be non-empty")
-	}
 	now := utcNow()
 	if err := validatePostPolicyV4Options(opts, now); err != nil {
 		return nil, err

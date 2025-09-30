@@ -1,4 +1,4 @@
-// package pointers defines types used for the data object pointers section. The
+// Package pointers defines types used for the data object pointers section. The
 // pointers section holds a list of pointers to sections present in the data object.
 package pointers
 
@@ -7,20 +7,21 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/pointersmd"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 var sectionType = dataobj.SectionType{
 	Namespace: "github.com/grafana/loki",
 	Kind:      "pointers",
+	Version:   columnar.FormatVersion,
 }
 
 // CheckSection returns true if section is a streams section.
-func CheckSection(section *dataobj.Section) bool { return section.Type == sectionType }
+func CheckSection(section *dataobj.Section) bool { return sectionType.Equals(section.Type) }
 
 // Section represents an opened streams section.
 type Section struct {
-	reader  dataobj.SectionReader
+	inner   *columnar.Section
 	columns []*Column
 }
 
@@ -30,36 +31,42 @@ type Section struct {
 func Open(ctx context.Context, section *dataobj.Section) (*Section, error) {
 	if !CheckSection(section) {
 		return nil, fmt.Errorf("section type mismatch: got=%s want=%s", section.Type, sectionType)
+	} else if section.Type.Version != columnar.FormatVersion {
+		return nil, fmt.Errorf("unsupported section version: got=%d want=%d", section.Type.Version, columnar.FormatVersion)
 	}
 
-	sec := &Section{reader: section.Reader}
-	if err := sec.init(ctx); err != nil {
+	dec, err := columnar.NewDecoder(section.Reader, section.Type.Version)
+	if err != nil {
+		return nil, fmt.Errorf("creating decoder: %w", err)
+	}
+
+	columnarSection, err := columnar.Open(ctx, section.Tenant, dec)
+	if err != nil {
+		return nil, fmt.Errorf("opening columnar section: %w", err)
+	}
+
+	sec := &Section{inner: columnarSection}
+	if err := sec.init(); err != nil {
 		return nil, fmt.Errorf("intializing section: %w", err)
 	}
 	return sec, nil
 }
 
-func (s *Section) init(ctx context.Context) error {
-	dec := newDecoder(s.reader)
-	metadata, err := dec.Metadata(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to decode metadata: %w", err)
-	}
-	columnDescs := metadata.GetColumns()
-
-	for _, col := range columnDescs {
-		colType, ok := convertColumnType(col.Type)
-		if !ok {
-			// Skip over unrecognized columns.
+func (s *Section) init() error {
+	for _, col := range s.inner.Columns() {
+		colType, err := ParseColumnType(col.Type.Logical)
+		if err != nil {
+			// Skip over unrecognized columns; probably come from a newer
+			// version of the code.
 			continue
 		}
 
 		s.columns = append(s.columns, &Column{
 			Section: s,
-			Name:    col.Info.Name,
+			Name:    col.Tag,
 			Type:    colType,
 
-			desc: col,
+			inner: col,
 		})
 	}
 
@@ -82,46 +89,11 @@ type Column struct {
 	Name    string     // Optional name of the column.
 	Type    ColumnType // Type of data in the column.
 
-	desc *pointersmd.ColumnDesc // Column description used for further decoding and reading.
+	inner *columnar.Column
 }
 
 // ColumnType represents the kind of information stored in a [Column].
 type ColumnType int
-
-func convertColumnType(protoType pointersmd.ColumnType) (ColumnType, bool) {
-	switch protoType {
-	case pointersmd.COLUMN_TYPE_UNSPECIFIED:
-		return ColumnTypeInvalid, true
-	case pointersmd.COLUMN_TYPE_PATH:
-		return ColumnTypePath, true
-	case pointersmd.COLUMN_TYPE_SECTION:
-		return ColumnTypeSection, true
-	case pointersmd.COLUMN_TYPE_POINTER_KIND:
-		return ColumnTypePointerKind, true
-
-	case pointersmd.COLUMN_TYPE_STREAM_ID:
-		return ColumnTypeStreamID, true
-	case pointersmd.COLUMN_TYPE_STREAM_ID_REF:
-		return ColumnTypeStreamIDRef, true
-	case pointersmd.COLUMN_TYPE_MIN_TIMESTAMP:
-		return ColumnTypeMinTimestamp, true
-	case pointersmd.COLUMN_TYPE_MAX_TIMESTAMP:
-		return ColumnTypeMaxTimestamp, true
-	case pointersmd.COLUMN_TYPE_ROW_COUNT:
-		return ColumnTypeRowCount, true
-	case pointersmd.COLUMN_TYPE_UNCOMPRESSED_SIZE:
-		return ColumnTypeUncompressedSize, true
-
-	case pointersmd.COLUMN_TYPE_COLUMN_NAME:
-		return ColumnTypeColumnName, true
-	case pointersmd.COLUMN_TYPE_COLUMN_INDEX:
-		return ColumnTypeColumnIndex, true
-	case pointersmd.COLUMN_TYPE_VALUES_BLOOM_FILTER:
-		return ColumnTypeValuesBloomFilter, true
-	}
-
-	return ColumnTypeInvalid, false
-}
 
 const (
 	ColumnTypeInvalid ColumnType = iota // ColumnTypeInvalid is an invalid column.
@@ -140,6 +112,43 @@ const (
 	ColumnTypeColumnIndex       // ColumnTypeColumnIndex is a column containing the index of the column in the referenced object.
 	ColumnTypeValuesBloomFilter // ColumnTypeValuesBloomFilter is a column containing a bloom filter of the values in the column in the referenced object.
 )
+
+// ParseColumnType parses a [ColumnType] from a string. The expected string
+// format is the same as what's returned by [ColumnType.String].
+func ParseColumnType(text string) (ColumnType, error) {
+	switch text {
+	case "invalid":
+		return ColumnTypeInvalid, nil
+	case "path":
+		return ColumnTypePath, nil
+	case "section":
+		return ColumnTypeSection, nil
+	case "pointer_kind":
+		return ColumnTypePointerKind, nil
+
+	case "stream_id":
+		return ColumnTypeStreamID, nil
+	case "stream_id_ref":
+		return ColumnTypeStreamIDRef, nil
+	case "min_timestamp":
+		return ColumnTypeMinTimestamp, nil
+	case "max_timestamp":
+		return ColumnTypeMaxTimestamp, nil
+	case "row_count":
+		return ColumnTypeRowCount, nil
+	case "uncompressed_size":
+		return ColumnTypeUncompressedSize, nil
+
+	case "column_name":
+		return ColumnTypeColumnName, nil
+	case "column_index":
+		return ColumnTypeColumnIndex, nil
+	case "values_bloom_filter":
+		return ColumnTypeValuesBloomFilter, nil
+	}
+
+	return ColumnTypeInvalid, fmt.Errorf("invalid column type %q", text)
+}
 
 var columnTypeNames = map[ColumnType]string{
 	ColumnTypeInvalid:     "invalid",

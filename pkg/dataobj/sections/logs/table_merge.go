@@ -9,7 +9,6 @@ import (
 	"math"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
@@ -19,7 +18,7 @@ import (
 // tables are open at a time.
 //
 // mergeTablesIncremental panics if maxMergeSize is less than 2.
-func mergeTablesIncremental(buf *tableBuffer, pageSize int, compressionOpts dataset.CompressionOptions, tables []*table, maxMergeSize int) (*table, error) {
+func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions, tables []*table, maxMergeSize int) (*table, error) {
 	if maxMergeSize < 2 {
 		panic("mergeTablesIncremental: merge size must be at least 2, got " + fmt.Sprint(maxMergeSize))
 	}
@@ -27,7 +26,7 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize int, compressionOpts data
 	// Even if there's only one table, we still pass to mergeTables to ensure
 	// it's compressed with compressionOpts.
 	if len(tables) == 1 {
-		return mergeTables(buf, pageSize, compressionOpts, tables)
+		return mergeTables(buf, pageSize, pageRowCount, compressionOpts, tables)
 	}
 
 	in := tables
@@ -37,7 +36,7 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize int, compressionOpts data
 
 		for i := 0; i < len(in); i += maxMergeSize {
 			set := in[i:min(i+maxMergeSize, len(in))]
-			merged, err := mergeTables(buf, pageSize, compressionOpts, set)
+			merged, err := mergeTables(buf, pageSize, pageRowCount, compressionOpts, set)
 			if err != nil {
 				return nil, err
 			}
@@ -52,13 +51,13 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize int, compressionOpts data
 
 // mergeTables merges the provided sorted tables into a new single sorted table
 // using k-way merge.
-func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.CompressionOptions, tables []*table) (*table, error) {
+func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions, tables []*table) (*table, error) {
 	buf.Reset()
 
 	var (
-		streamIDBuilder  = buf.StreamID(pageSize)
-		timestampBuilder = buf.Timestamp(pageSize)
-		messageBuilder   = buf.Message(pageSize, compressionOpts)
+		streamIDBuilder  = buf.StreamID(pageSize, pageRowCount)
+		timestampBuilder = buf.Timestamp(pageSize, pageRowCount)
+		messageBuilder   = buf.Message(pageSize, pageRowCount, compressionOpts)
 	)
 
 	var (
@@ -73,13 +72,14 @@ func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.Compres
 		r := dataset.NewReader(dataset.ReaderOptions{
 			Dataset: t,
 			Columns: dsetColumns,
+
+			// The table is in memory, so don't prefetch.
+			Prefetch: false,
 		})
 
 		tableSequences = append(tableSequences, &tableSequence{
-			columns: dsetColumns,
-
-			r:   r,
-			buf: make([]dataset.Row, 128), // Read 128 values at a time.
+			columns:         dsetColumns,
+			DatasetSequence: NewDatasetSequence(r, 128),
 		})
 	}
 
@@ -93,13 +93,13 @@ func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.Compres
 
 	var rows int
 
-	tree := loser.New(tableSequences, maxValue, tableSequenceValue, rowResultLess, tableSequenceStop)
+	tree := loser.New(tableSequences, maxValue, tableSequenceAt, rowResultLess, tableSequenceClose)
 	defer tree.Close()
 
 	for tree.Next() {
 		seq := tree.Winner()
 
-		row, err := tableSequenceValue(seq).Value()
+		row, err := tableSequenceAt(seq).Value()
 		if err != nil {
 			return nil, err
 		}
@@ -113,14 +113,14 @@ func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.Compres
 			value := row.Values[i]
 
 			switch column.Type {
-			case logsmd.COLUMN_TYPE_STREAM_ID:
+			case ColumnTypeStreamID:
 				_ = streamIDBuilder.Append(rows, value)
-			case logsmd.COLUMN_TYPE_TIMESTAMP:
+			case ColumnTypeTimestamp:
 				_ = timestampBuilder.Append(rows, value)
-			case logsmd.COLUMN_TYPE_METADATA:
-				columnBuilder := buf.Metadata(column.Info.Name, pageSize, compressionOpts)
+			case ColumnTypeMetadata:
+				columnBuilder := buf.Metadata(column.Desc.Tag, pageSize, pageRowCount, compressionOpts)
 				_ = columnBuilder.Append(rows, value)
-			case logsmd.COLUMN_TYPE_MESSAGE:
+			case ColumnTypeMessage:
 				_ = messageBuilder.Append(rows, value)
 			default:
 				return nil, fmt.Errorf("unknown column type %s", column.Type)
@@ -134,9 +134,24 @@ func mergeTables(buf *tableBuffer, pageSize int, compressionOpts dataset.Compres
 }
 
 type tableSequence struct {
-	curValue result.Result[dataset.Row]
-
+	DatasetSequence
 	columns []dataset.Column
+}
+
+var _ loser.Sequence = (*tableSequence)(nil)
+
+func tableSequenceAt(seq *tableSequence) result.Result[dataset.Row] { return seq.At() }
+func tableSequenceClose(seq *tableSequence)                         { seq.Close() }
+
+func NewDatasetSequence(r *dataset.Reader, bufferSize int) DatasetSequence {
+	return DatasetSequence{
+		r:   r,
+		buf: make([]dataset.Row, bufferSize),
+	}
+}
+
+type DatasetSequence struct {
+	curValue result.Result[dataset.Row]
 
 	r *dataset.Reader
 
@@ -145,9 +160,7 @@ type tableSequence struct {
 	size int // Number of valid values in buf
 }
 
-var _ loser.Sequence = (*tableSequence)(nil)
-
-func (seq *tableSequence) Next() bool {
+func (seq *DatasetSequence) Next() bool {
 	if seq.off < seq.size {
 		seq.curValue = result.Value(seq.buf[seq.off])
 		seq.off++
@@ -173,31 +186,23 @@ ReadBatch:
 	return true
 }
 
-func tableSequenceValue(seq *tableSequence) result.Result[dataset.Row] { return seq.curValue }
-
-func tableSequenceStop(seq *tableSequence) { _ = seq.r.Close() }
-
-func rowResultLess(a, b result.Result[dataset.Row]) bool {
-	var (
-		aRow, aErr = a.Value()
-		bRow, bErr = b.Value()
-	)
-
-	// Put errors first so we return errors early.
-	if aErr != nil {
-		return true
-	} else if bErr != nil {
-		return false
-	}
-
-	return compareRows(aRow, bRow) < 0
+func (seq *DatasetSequence) At() result.Result[dataset.Row] {
+	return seq.curValue
 }
 
-// compareRows compares two rows by their first two columns. compareRows panics
+func (seq *DatasetSequence) Close() {
+	_ = seq.r.Close()
+}
+
+func rowResultLess(a, b result.Result[dataset.Row]) bool {
+	return result.Compare(a, b, CompareRows) < 0
+}
+
+// CompareRows compares two rows by their first two columns. CompareRows panics
 // if a or b doesn't have at least two columns, if the first column isn't a
 // int64-encoded stream ID, or if the second column isn't an int64-encoded
 // timestamp.
-func compareRows(a, b dataset.Row) int {
+func CompareRows(a, b dataset.Row) int {
 	// The first two columns of each row are *always* stream ID and timestamp.
 	//
 	// TODO(rfratto): Can we find a safer way of doing this?

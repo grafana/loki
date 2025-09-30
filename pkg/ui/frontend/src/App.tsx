@@ -13,7 +13,7 @@ function AppRoutes() {
   // Filter routes based on feature flags
   const availableRoutes = routes.filter(route => {
     // Only filter out goldfish route if feature is disabled
-    if (route.path === '/goldfish' && !features.goldfish) {
+    if (route.path === '/goldfish' && !features.goldfish.enabled) {
       return false;
     }
     return true;

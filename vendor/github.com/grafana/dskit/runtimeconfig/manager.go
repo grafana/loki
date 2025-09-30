@@ -24,6 +24,9 @@ import (
 	"github.com/grafana/dskit/services"
 )
 
+// Preprocessor optionally processes and changes config prior to parsing.
+type Preprocessor func(b []byte) ([]byte, error)
+
 // Loader loads the configuration from files.
 type Loader func(r io.Reader) (interface{}, error)
 
@@ -33,8 +36,9 @@ type Config struct {
 	ReloadPeriod time.Duration `yaml:"period" category:"advanced"`
 	// LoadPath contains the path to the runtime config files.
 	// Requires a non-empty value
-	LoadPath flagext.StringSliceCSV `yaml:"file"`
-	Loader   Loader                 `yaml:"-"`
+	LoadPath     flagext.StringSliceCSV `yaml:"file"`
+	Preprocessor Preprocessor           `yaml:"-"`
+	Loader       Loader                 `yaml:"-"`
 }
 
 // RegisterFlags registers flags.
@@ -162,6 +166,14 @@ func (om *Manager) loadConfig() error {
 		if err != nil {
 			om.configLoadSuccess.Set(0)
 			return errors.Wrapf(err, "read file %q", f)
+		}
+
+		if om.cfg.Preprocessor != nil {
+			buf, err = om.cfg.Preprocessor(buf)
+			if err != nil {
+				om.configLoadSuccess.Set(0)
+				return errors.Wrapf(err, "preprocess file %q", f)
+			}
 		}
 
 		rawData[f] = buf

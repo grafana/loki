@@ -1,7 +1,6 @@
 package indexpointers
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -22,31 +21,27 @@ var indexPointerTestData = []IndexPointer{
 func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }
 
 func TestRowReader(t *testing.T) {
-	dec := buildIndexPointersDecoder(t, 100) // Many pages
+	dec := buildIndexPointersDecoder(t, 100, 0) // Many pages
 	r := NewRowReader(dec)
 	actual, err := readAllIndexPointers(context.Background(), r)
 	require.NoError(t, err)
 	require.Equal(t, indexPointerTestData, actual)
 }
 
-func buildIndexPointersDecoder(t *testing.T, pageSize int) *Section {
+func buildIndexPointersDecoder(t *testing.T, pageSize, pageRows int) *Section {
 	t.Helper()
 
-	s := NewBuilder(nil, pageSize)
+	s := NewBuilder(nil, pageSize, pageRows)
 	for _, d := range indexPointerTestData {
 		s.Append(d.Path, d.StartTs, d.EndTs)
 	}
 
-	var buf bytes.Buffer
-
-	builder := dataobj.NewBuilder()
+	builder := dataobj.NewBuilder(nil)
 	require.NoError(t, builder.Append(s))
 
-	_, err := builder.Flush(&buf)
+	obj, closer, err := builder.Flush()
 	require.NoError(t, err)
-
-	obj, err := dataobj.FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-	require.NoError(t, err)
+	t.Cleanup(func() { closer.Close() })
 
 	sec, err := Open(t.Context(), obj.Sections()[0])
 	require.NoError(t, err)

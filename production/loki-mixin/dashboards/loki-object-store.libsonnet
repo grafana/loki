@@ -2,14 +2,14 @@ local grafana = import 'grafonnet/grafana.libsonnet';
 local row = grafana.row;
 
 {
-  grafanaDashboards+:: {
+  grafanaDashboards+:: if !$._config.thanos.enabled then {} else {
     local cluster_namespace_matcher = 'cluster="$cluster", namespace=~"$namespace"',
     local dashboard = (
       (import 'dashboard-utils.libsonnet') + {
         _config+:: $._config,
       }
     ),
-    'loki_thanos_object_storage.json':
+    'loki-thanos-object-storage.json':
       dashboard.dashboard('Loki / Object Store Thanos', uid='object-store')
       .addCluster()
       .addNamespace()

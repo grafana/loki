@@ -359,7 +359,7 @@ func parseOscCmd(p *Parser) {
 	if p == nil || p.cmd != parser.MissingCommand {
 		return
 	}
-	for j := 0; j < p.dataLen; j++ {
+	for j := range p.dataLen {
 		d := p.data[j]
 		if d < '0' || d > '9' {
 			break
