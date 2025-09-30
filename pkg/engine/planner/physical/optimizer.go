@@ -168,12 +168,9 @@ func (r *projectionPushdown) apply(node Node) bool {
 		applyToRangeAggregations := func(ops ...types.RangeAggregationType) bool {
 			anyChanged := false
 			for _, child := range r.plan.Children(node) {
-				ra, ok := child.(*RangeAggregation)
-				if ok {
+				if ra, ok := child.(*RangeAggregation); ok {
 					if slices.Contains(ops, ra.Operation) {
-						if changed := r.handleRangeAggregation(ra, node.GroupBy); changed {
-							anyChanged = true
-						}
+						anyChanged = r.handleRangeAggregation(ra, node.GroupBy) || anyChanged
 					}
 				}
 			}
