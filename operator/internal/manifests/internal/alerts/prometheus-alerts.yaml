@@ -193,12 +193,12 @@ groups:
     for: 15m
     labels:
       severity: warning
-  - alert: LokiIngesterCriticalFlushFailureRate
+  - alert: LokiIngesterFlushFailureRateCritical
     annotations:
       summary: "Loki ingester has critical flush failure rate"
       description: |
         Loki ingester {{ $labels.pod }} in the namespace {{ $labels.namespace }} has a critical flush failure rate of
-        {{ $value | humanizePercentage }}over the last 5 minutes. This requires immediate attention as data is
+        {{ $value | humanizePercentage }} over the last 5 minutes. This requires immediate attention as data is
         not being flushed to the storage. Validate if the storage configuration is still valid and if the storage is
         still reachable. Current failure rate: {{ $value | humanizePercentage }} Threshold: 20%
     expr: |
