@@ -152,7 +152,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.8.0
-    createdAt: "2025-09-29T11:14:53Z"
+    createdAt: "2025-10-07T08:42:12Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -806,6 +806,21 @@ spec:
       - description: Gateway defines the lokistack gateway component spec.
         displayName: Gateway pods
         path: template.gateway
+      - description: |-
+          ExternalAccess defines the external access configuration for the gateway component.
+          Controls creation of Routes (OpenShift) and Ingress (Kubernetes) resources.
+        displayName: External Access
+        path: template.gateway.externalAccess
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: |-
+          Disabled controls whether external access resources should be created.
+          When true, no Route (OpenShift) or Ingress (Kubernetes) will be created.
+          Default is false (external access resources will be created).
+        displayName: Disable External Access
+        path: template.gateway.externalAccess.disabled
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: |-
           PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
           of a component.
