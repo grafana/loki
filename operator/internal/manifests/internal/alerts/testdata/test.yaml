@@ -67,7 +67,7 @@ tests:
         values: '0x5 0+120x25 3000'
 
       - series: 'lokistack_status_condition{stack_name="mystack", stack_namespace="my-ns", reason="ReadyComponents", status="false"}'
-        values: '0+0x15 1+0x10'
+        values: '1+0x25'
 
     alert_rule_test:
       - eval_time: 16m
@@ -197,14 +197,14 @@ tests:
                 Samples are discarded because of "line_too_long" at a rate of 2 samples per second.
               summary: Loki is discarding samples during ingestion because they fail validation.
               runbook_url: "[[ .RunbookURL]]#Loki-Discarded-Samples-Warning"
-      - eval_time: 26m
-        alertname: LokistackComponentsNotReady
+      - eval_time: 16m
+        alertname: LokistackComponentsNotReadyWarning
         exp_alerts:
           - exp_labels:
               stack_namespace: my-ns
               stack_name: mystack
-              severity: critical
+              severity: warning
             exp_annotations:
               description: 'The LokiStack "mystack" in namespace "my-ns" has components that are not ready.'
               summary: "One or more LokiStack components are not ready."
-              runbook_url: "[[ .RunbookURL ]]#Lokistack-Pending-Components"
+              runbook_url: "[[ .RunbookURL ]]#Lokistack-Components-Not-Ready-Warning"

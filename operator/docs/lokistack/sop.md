@@ -366,7 +366,7 @@ The schema configuration does not contain the most recent schema version and nee
 
 - Add a new object storage schema V13 with a future EffectiveDate
 
-## Lokistack Components Not Ready
+## Lokistack Components Not Ready Warning
 
 ### Impact
 
@@ -378,7 +378,7 @@ The LokiStack reports that some components have not reached the `Ready` state. T
 
 ### Severity
 
-`Critical`
+`Warning`
 
 ### Access Required
 
