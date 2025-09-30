@@ -179,9 +179,15 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			}
 
 			columnBuilder := builder.Field(columnIndex)
+			columnType := r.opts.Columns[columnIndex].Type
 
 			if val.IsNil() {
-				columnBuilder.AppendNull()
+				if columnType == ColumnTypeMessage {
+					// Message columns are required, so return an empty value instead of a NULL value.
+					columnBuilder.(*array.StringBuilder).BinaryBuilder.AppendEmptyValue()
+				} else {
+					columnBuilder.AppendNull()
+				}
 				continue
 			}
 
@@ -193,7 +199,6 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			// Passing our byte slices to [array.StringBuilder.BinaryBuilder.Append] are safe; it
 			// will copy the contents of the value and we can reuse the buffer on the
 			// next call to [dataset.Reader.Read].
-			columnType := r.opts.Columns[columnIndex].Type
 			switch columnType {
 			case ColumnTypeInvalid:
 				columnBuilder.AppendNull() // Unsupported column

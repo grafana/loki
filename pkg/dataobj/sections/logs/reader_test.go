@@ -31,6 +31,7 @@ func TestReader(t *testing.T) {
 		{StreamID: 2, Timestamp: unixTime(30), Metadata: labels.FromStrings("trace_id", "123456"), Line: []byte("foo bar")},
 		{StreamID: 1, Timestamp: unixTime(20), Metadata: labels.FromStrings("trace_id", "abcdef"), Line: []byte("goodbye, world!")},
 		{StreamID: 1, Timestamp: unixTime(10), Metadata: labels.EmptyLabels(), Line: []byte("hello, world!")},
+		{StreamID: 1, Timestamp: unixTime(5), Metadata: labels.FromStrings("trace_id", "abcdef"), Line: []byte("")},
 	})
 
 	var (
@@ -57,6 +58,7 @@ func TestReader(t *testing.T) {
 			expected: arrowtest.Rows{
 				{"stream_id.int64": int64(2), "trace_id.metadata.utf8": "123456", "message.utf8": "foo bar"},
 				{"stream_id.int64": int64(1), "trace_id.metadata.utf8": "abcdef", "message.utf8": "goodbye, world!"},
+				{"stream_id.int64": int64(1), "trace_id.metadata.utf8": "abcdef", "message.utf8": ""},
 			},
 		},
 		// tests that the reader evaluates predicates correctly even when predicate columns are not projected.
@@ -66,6 +68,7 @@ func TestReader(t *testing.T) {
 			expected: arrowtest.Rows{
 				{"stream_id.int64": int64(2), "message.utf8": "foo bar"},
 				{"stream_id.int64": int64(1), "message.utf8": "goodbye, world!"},
+				{"stream_id.int64": int64(1), "message.utf8": ""},
 			},
 		},
 	} {
@@ -105,7 +108,6 @@ func TestReader(t *testing.T) {
 			require.NoError(t, err, "failed to get rows from table")
 			require.Equal(t, tt.expected, actual)
 		})
-
 	}
 }
 
