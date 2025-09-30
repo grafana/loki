@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	_ "io" // Used for documenting io.EOF.
+	"io"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -162,6 +162,17 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 		}
 	}
 
+	// Use multi-pass reading to achieve better batch sizes when predicates are present
+	if len(r.opts.Predicates) > 0 {
+		return r.readWithAccumulation(ctx, batchSize)
+	}
+
+	// For cases without predicates, use the original single-pass approach
+	return r.readSinglePass(ctx, batchSize)
+}
+
+// readSinglePass implements the original single-pass reading logic
+func (r *Reader) readSinglePass(ctx context.Context, batchSize int) (arrow.Record, error) {
 	r.buf = slicegrow.GrowToCap(r.buf, batchSize)
 	r.buf = r.buf[:batchSize]
 
@@ -169,7 +180,104 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 	defer builder.Release()
 
 	n, readErr := r.inner.Read(dataset.WithStats(ctx, &r.stats), r.buf)
-	for rowIndex := range n {
+	r.appendRowsToBuilder(builder, n)
+
+	// We only return readErr after processing n so that we properly handle n>0
+	// while also getting an error such as io.EOF.
+	return builder.NewRecord(), readErr
+}
+
+// readWithAccumulation uses multi-pass reading to accumulate rows until we reach
+// the target batch size or exhaust the data source.
+func (r *Reader) readWithAccumulation(ctx context.Context, targetSize int) (arrow.Record, error) {
+	const (
+		minSize        = 100
+		maxSize        = 10000
+		prefetchFactor = 1.5
+	)
+
+	// Create builder once and reuse it
+	builder := array.NewRecordBuilder(r.opts.Allocator, r.schema)
+	defer builder.Release()
+
+	rowsAdded := 0
+	eof := false
+
+	for rowsAdded < targetSize {
+		// Calculate remaining and use adaptive prefetch
+		remaining := targetSize - rowsAdded
+
+		// Use prefetch factor to read more than needed
+		prefetchSize := int(float64(remaining) * prefetchFactor)
+		readSize := max(minSize, min(maxSize, prefetchSize))
+
+		// Ensure buffer is large enough
+		if len(r.buf) < readSize {
+			r.buf = slicegrow.GrowToCap(r.buf, readSize)
+		}
+		r.buf = r.buf[:readSize]
+
+		n, readErr := r.inner.Read(dataset.WithStats(ctx, &r.stats), r.buf)
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return nil, readErr
+		}
+
+		// Process the rows and add directly to builder
+		for i := 0; i < n; i++ {
+			row := r.buf[i]
+
+			for columnIndex, val := range row.Values {
+				if columnIndex >= len(r.opts.Columns) {
+					// Ignore columns that are not in projection list.
+					continue
+				}
+
+				columnBuilder := builder.Field(columnIndex)
+
+				if val.IsNil() {
+					columnBuilder.AppendNull()
+					continue
+				}
+
+				// Append non-null values
+				columnType := r.opts.Columns[columnIndex].Type
+				switch columnType {
+				case ColumnTypeInvalid:
+					columnBuilder.AppendNull() // Unsupported column
+				case ColumnTypeStreamID: // Appends IDs as int64
+					columnBuilder.(*array.Int64Builder).Append(val.Int64())
+				case ColumnTypeTimestamp: // Values are nanosecond timestamps as int64
+					columnBuilder.(*array.TimestampBuilder).Append(arrow.Timestamp(val.Int64()))
+				case ColumnTypeMetadata, ColumnTypeMessage: // Appends metadata and log lines as byte arrays
+					columnBuilder.(*array.StringBuilder).BinaryBuilder.Append(val.Binary())
+				default:
+					// We'll only hit this if we added a new column type but forgot to
+					// support it.
+					panic(fmt.Sprintf("unsupported column type %s for column %d", columnType, columnIndex))
+				}
+			}
+
+			rowsAdded++
+		}
+
+		// If we hit EOF, we're done regardless of how many rows we have
+		if errors.Is(readErr, io.EOF) {
+			eof = true
+			break
+		}
+	}
+
+	if rowsAdded == 0 && eof {
+		// No rows added, return nil with EOF
+		return nil, io.EOF
+	}
+
+	return builder.NewRecord(), nil
+}
+
+// appendRowsToBuilder appends the first n rows from r.buf to the builder
+func (r *Reader) appendRowsToBuilder(builder *array.RecordBuilder, n int) {
+	for rowIndex := 0; rowIndex < n; rowIndex++ {
 		row := r.buf[rowIndex]
 
 		for columnIndex, val := range row.Values {
@@ -205,15 +313,11 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 				columnBuilder.(*array.StringBuilder).BinaryBuilder.Append(val.Binary())
 			default:
 				// We'll only hit this if we added a new column type but forgot to
-				// support reading it.
-				return nil, fmt.Errorf("unsupported column type %s for column %d", columnType, columnIndex)
+				// support it.
+				panic(fmt.Sprintf("unsupported column type %s for column %d", columnType, columnIndex))
 			}
 		}
 	}
-
-	// We only return readErr after processing n so that we properly handle n>0
-	// while also getting an error such as io.EOF.
-	return builder.NewRecord(), readErr
 }
 
 func (r *Reader) init(ctx context.Context) error {
