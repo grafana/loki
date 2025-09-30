@@ -186,7 +186,10 @@ loop:
 		}
 
 		p.offsets[j] = end
-		return p.batches[j].NewSlice(start, end), nil
+		record := p.batches[j].NewSlice(start, end)
+
+		recordRows.WithLabelValues("sortmerge").Observe(float64(record.NumRows()))
+		return record, nil
 	}
 
 	sortIndexesByTimestamps(inputIndexes, timestamps, p.compare)
@@ -222,7 +225,10 @@ loop:
 	}
 
 	p.offsets[j] = end
-	return p.batches[j].NewSlice(start, end), nil
+	record := p.batches[j].NewSlice(start, end)
+
+	recordRows.WithLabelValues("sortmerge").Observe(float64(record.NumRows()))
+	return record, nil
 }
 
 func sortIndexesByTimestamps(indexes []int, timestamps []int64, lessFn compareFunc[int64]) {

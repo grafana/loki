@@ -9,6 +9,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -22,6 +24,20 @@ import (
 )
 
 var tracer = otel.Tracer("pkg/engine/executor")
+
+var (
+	// Package-level metric for tracking rows in records emitted by pipelines.
+	recordRows = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:                            "loki_engine_v2_pipeline_record_rows",
+			Help:                            "Number of rows in records emitted by pipelines",
+			NativeHistogramBucketFactor:     1.5, // 1.5x growth per bucket
+			NativeHistogramMaxBucketNumber:  30,  // 30 buckets gives us a range from 1 to ~1 million rows
+			NativeHistogramMinResetDuration: 0,
+		},
+		[]string{"pipeline"},
+	)
+)
 
 type Config struct {
 	BatchSize int64
