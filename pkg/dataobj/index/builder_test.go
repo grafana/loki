@@ -161,7 +161,8 @@ func TestIndexBuilder(t *testing.T) {
 		})
 	}
 
-	p.indexer.(*serialIndexer).flushIndex(ctx, 0)
+	_, err = p.indexer.(*serialIndexer).flushIndex(ctx, 0)
+	require.NoError(t, err)
 
 	indexes := readAllSectionPointers(t, bucket)
 	require.Equal(t, 30, len(indexes))
