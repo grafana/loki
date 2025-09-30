@@ -203,8 +203,6 @@ tests:
           - exp_labels:
               stack_namespace: my-ns
               stack_name: mystack
-              reason: ReadyComponents
-              status: "false"
               severity: critical
             exp_annotations:
               description: 'The LokiStack "mystack" in namespace "my-ns" has components that are not ready.'
