@@ -26,7 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
+	"unsafe"
 
 	"google.golang.org/grpc/attributes"
 	"google.golang.org/grpc/credentials/tls/certprovider"
@@ -66,59 +66,40 @@ func (hi *HandshakeInfo) Equal(other *HandshakeInfo) bool {
 }
 
 // SetHandshakeInfo returns a copy of addr in which the Attributes field is
-// updated with hInfo.
-func SetHandshakeInfo(addr resolver.Address, hInfo *HandshakeInfo) resolver.Address {
-	addr.Attributes = addr.Attributes.WithValue(handshakeAttrKey{}, hInfo)
+// updated with hiPtr.
+func SetHandshakeInfo(addr resolver.Address, hiPtr *unsafe.Pointer) resolver.Address {
+	addr.Attributes = addr.Attributes.WithValue(handshakeAttrKey{}, hiPtr)
 	return addr
 }
 
-// GetHandshakeInfo returns a pointer to the HandshakeInfo stored in attr.
-func GetHandshakeInfo(attr *attributes.Attributes) *HandshakeInfo {
+// GetHandshakeInfo returns a pointer to the *HandshakeInfo stored in attr.
+func GetHandshakeInfo(attr *attributes.Attributes) *unsafe.Pointer {
 	v := attr.Value(handshakeAttrKey{})
-	hi, _ := v.(*HandshakeInfo)
+	hi, _ := v.(*unsafe.Pointer)
 	return hi
 }
 
 // HandshakeInfo wraps all the security configuration required by client and
 // server handshake methods in xds credentials. The xDS implementation will be
 // responsible for populating these fields.
-//
-// Safe for concurrent access.
 type HandshakeInfo struct {
-	mu                sync.Mutex
+	// All fields written at init time and read only after that, so no
+	// synchronization needed.
 	rootProvider      certprovider.Provider
 	identityProvider  certprovider.Provider
 	sanMatchers       []matcher.StringMatcher // Only on the client side.
 	requireClientCert bool                    // Only on server side.
 }
 
-// SetRootCertProvider updates the root certificate provider.
-func (hi *HandshakeInfo) SetRootCertProvider(root certprovider.Provider) {
-	hi.mu.Lock()
-	hi.rootProvider = root
-	hi.mu.Unlock()
-}
-
-// SetIdentityCertProvider updates the identity certificate provider.
-func (hi *HandshakeInfo) SetIdentityCertProvider(identity certprovider.Provider) {
-	hi.mu.Lock()
-	hi.identityProvider = identity
-	hi.mu.Unlock()
-}
-
-// SetSANMatchers updates the list of SAN matchers.
-func (hi *HandshakeInfo) SetSANMatchers(sanMatchers []matcher.StringMatcher) {
-	hi.mu.Lock()
-	hi.sanMatchers = sanMatchers
-	hi.mu.Unlock()
-}
-
-// SetRequireClientCert updates whether a client cert is required during the
-// ServerHandshake(). A value of true indicates that we are performing mTLS.
-func (hi *HandshakeInfo) SetRequireClientCert(require bool) {
-	hi.mu.Lock()
-	hi.requireClientCert = require
-	hi.mu.Unlock()
+// NewHandshakeInfo returns a new handshake info configured with the provided
+// options.
+func NewHandshakeInfo(rootProvider certprovider.Provider, identityProvider certprovider.Provider, sanMatchers []matcher.StringMatcher, requireClientCert bool) *HandshakeInfo {
+	return &HandshakeInfo{
+		rootProvider:      rootProvider,
+		identityProvider:  identityProvider,
+		sanMatchers:       sanMatchers,
+		requireClientCert: requireClientCert,
+	}
 }
 
 // UseFallbackCreds returns true when fallback credentials are to be used based
@@ -127,24 +108,18 @@ func (hi *HandshakeInfo) UseFallbackCreds() bool {
 	if hi == nil {
 		return true
 	}
-
-	hi.mu.Lock()
-	defer hi.mu.Unlock()
 	return hi.identityProvider == nil && hi.rootProvider == nil
 }
 
 // GetSANMatchersForTesting returns the SAN matchers stored in HandshakeInfo.
 // To be used only for testing purposes.
 func (hi *HandshakeInfo) GetSANMatchersForTesting() []matcher.StringMatcher {
-	hi.mu.Lock()
-	defer hi.mu.Unlock()
 	return append([]matcher.StringMatcher{}, hi.sanMatchers...)
 }
 
 // ClientSideTLSConfig constructs a tls.Config to be used in a client-side
 // handshake based on the contents of the HandshakeInfo.
 func (hi *HandshakeInfo) ClientSideTLSConfig(ctx context.Context) (*tls.Config, error) {
-	hi.mu.Lock()
 	// On the client side, rootProvider is mandatory. IdentityProvider is
 	// optional based on whether the client is doing TLS or mTLS.
 	if hi.rootProvider == nil {
@@ -153,7 +128,6 @@ func (hi *HandshakeInfo) ClientSideTLSConfig(ctx context.Context) (*tls.Config, 
 	// Since the call to KeyMaterial() can block, we read the providers under
 	// the lock but call the actual function after releasing the lock.
 	rootProv, idProv := hi.rootProvider, hi.identityProvider
-	hi.mu.Unlock()
 
 	// InsecureSkipVerify needs to be set to true because we need to perform
 	// custom verification to check the SAN on the received certificate.
@@ -188,7 +162,6 @@ func (hi *HandshakeInfo) ServerSideTLSConfig(ctx context.Context) (*tls.Config, 
 		ClientAuth: tls.NoClientCert,
 		NextProtos: []string{"h2"},
 	}
-	hi.mu.Lock()
 	// On the server side, identityProvider is mandatory. RootProvider is
 	// optional based on whether the server is doing TLS or mTLS.
 	if hi.identityProvider == nil {
@@ -200,7 +173,6 @@ func (hi *HandshakeInfo) ServerSideTLSConfig(ctx context.Context) (*tls.Config, 
 	if hi.requireClientCert {
 		cfg.ClientAuth = tls.RequireAndVerifyClientCert
 	}
-	hi.mu.Unlock()
 
 	// identityProvider is mandatory on the server side.
 	km, err := idProv.KeyMaterial(ctx)
@@ -225,8 +197,6 @@ func (hi *HandshakeInfo) ServerSideTLSConfig(ctx context.Context) (*tls.Config, 
 // If the list of SAN matchers in the HandshakeInfo is empty, this function
 // returns true for all input certificates.
 func (hi *HandshakeInfo) MatchingSANExists(cert *x509.Certificate) bool {
-	hi.mu.Lock()
-	defer hi.mu.Unlock()
 	if len(hi.sanMatchers) == 0 {
 		return true
 	}
@@ -324,10 +294,4 @@ func dnsMatch(host, san string) bool {
 	// that the '*' does not match across domain components.
 	hostPrefix := strings.TrimSuffix(host, san[1:])
 	return !strings.Contains(hostPrefix, ".")
-}
-
-// NewHandshakeInfo returns a new instance of HandshakeInfo with the given root
-// and identity certificate providers.
-func NewHandshakeInfo(root, identity certprovider.Provider) *HandshakeInfo {
-	return &HandshakeInfo{rootProvider: root, identityProvider: identity}
 }

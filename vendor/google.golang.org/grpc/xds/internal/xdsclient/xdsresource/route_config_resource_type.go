@@ -54,7 +54,7 @@ type routeConfigResourceType struct {
 
 // Decode deserializes and validates an xDS resource serialized inside the
 // provided `Any` proto, as received from the xDS management server.
-func (routeConfigResourceType) Decode(opts *DecodeOptions, resource *anypb.Any) (*DecodeResult, error) {
+func (routeConfigResourceType) Decode(_ *DecodeOptions, resource *anypb.Any) (*DecodeResult, error) {
 	name, rc, err := unmarshalRouteConfigResource(resource)
 	switch {
 	case name == "":
@@ -81,8 +81,8 @@ type RouteConfigResourceData struct {
 	Resource RouteConfigUpdate
 }
 
-// Equal returns true if other is equal to r.
-func (r *RouteConfigResourceData) Equal(other ResourceData) bool {
+// RawEqual returns true if other is equal to r.
+func (r *RouteConfigResourceData) RawEqual(other ResourceData) bool {
 	if r == nil && other == nil {
 		return true
 	}
@@ -108,7 +108,7 @@ func (r *RouteConfigResourceData) Raw() *anypb.Any {
 // events corresponding to the route configuration resource being watched.
 type RouteConfigWatcher interface {
 	// OnUpdate is invoked to report an update for the resource being watched.
-	OnUpdate(*RouteConfigResourceData)
+	OnUpdate(*RouteConfigResourceData, OnDoneFunc)
 
 	// OnError is invoked under different error conditions including but not
 	// limited to the following:
@@ -118,28 +118,28 @@ type RouteConfigWatcher interface {
 	//	- resource validation error
 	//	- ADS stream failure
 	//	- connection failure
-	OnError(error)
+	OnError(error, OnDoneFunc)
 
 	// OnResourceDoesNotExist is invoked for a specific error condition where
 	// the requested resource is not found on the xDS management server.
-	OnResourceDoesNotExist()
+	OnResourceDoesNotExist(OnDoneFunc)
 }
 
 type delegatingRouteConfigWatcher struct {
 	watcher RouteConfigWatcher
 }
 
-func (d *delegatingRouteConfigWatcher) OnUpdate(data ResourceData) {
+func (d *delegatingRouteConfigWatcher) OnUpdate(data ResourceData, onDone OnDoneFunc) {
 	rc := data.(*RouteConfigResourceData)
-	d.watcher.OnUpdate(rc)
+	d.watcher.OnUpdate(rc, onDone)
 }
 
-func (d *delegatingRouteConfigWatcher) OnError(err error) {
-	d.watcher.OnError(err)
+func (d *delegatingRouteConfigWatcher) OnError(err error, onDone OnDoneFunc) {
+	d.watcher.OnError(err, onDone)
 }
 
-func (d *delegatingRouteConfigWatcher) OnResourceDoesNotExist() {
-	d.watcher.OnResourceDoesNotExist()
+func (d *delegatingRouteConfigWatcher) OnResourceDoesNotExist(onDone OnDoneFunc) {
+	d.watcher.OnResourceDoesNotExist(onDone)
 }
 
 // WatchRouteConfig uses xDS to discover the configuration associated with the
