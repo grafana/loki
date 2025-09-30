@@ -42,6 +42,7 @@ var (
 	errS3EndpointUnparseable       = errors.New("can not parse S3 endpoint as URL")
 	errS3EndpointNoURL             = errors.New("endpoint for S3 must be an HTTP or HTTPS URL")
 	errS3EndpointUnsupportedScheme = errors.New("scheme of S3 endpoint URL is unsupported")
+	errS3EndpointPathNotAllowed    = errors.New("endpoint for S3 must not include a path")
 	errS3EndpointAWSInvalid        = errors.New("endpoint for AWS S3 must include correct region")
 	errS3ForcePathStyleInvalid     = errors.New(`forcepathstyle must be "true" or "false"`)
 
@@ -499,6 +500,10 @@ func validateS3Endpoint(endpoint string, region string) error {
 
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		return fmt.Errorf("%w: %s", errS3EndpointUnsupportedScheme, parsedURL.Scheme)
+	}
+
+	if parsedURL.Path != "" {
+		return fmt.Errorf("%w: %s", errS3EndpointPathNotAllowed, parsedURL.Path)
 	}
 
 	if strings.HasSuffix(endpoint, awsEndpointSuffix) {
