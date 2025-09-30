@@ -166,16 +166,18 @@ func (r *projectionPushdown) apply(node Node) bool {
 		// MIN -> MIN
 
 		applyToRangeAggregations := func(ops ...types.RangeAggregationType) bool {
-			changed := false
+			anyChanged := false
 			for _, child := range r.plan.Children(node) {
 				ra, ok := child.(*RangeAggregation)
 				if ok {
 					if slices.Contains(ops, ra.Operation) {
-						changed = r.handleRangeAggregation(ra, node.GroupBy) || changed
+						if changed := r.handleRangeAggregation(ra, node.GroupBy); changed {
+							anyChanged = true
+						}
 					}
 				}
 			}
-			return changed
+			return anyChanged
 		}
 
 		switch node.Operation {
