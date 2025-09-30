@@ -182,12 +182,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 			columnType := r.opts.Columns[columnIndex].Type
 
 			if val.IsNil() {
-				if columnType == ColumnTypeMessage {
-					// Message columns are required, so return an empty value instead of a NULL value.
-					columnBuilder.(*array.StringBuilder).BinaryBuilder.AppendEmptyValue()
-				} else {
-					columnBuilder.AppendNull()
-				}
+				columnBuilder.AppendNull()
 				continue
 			}
 
