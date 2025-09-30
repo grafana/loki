@@ -37,6 +37,5 @@ unittests/
 
 # docs
 *.md
-*.tpl
-*.gotmpl
+/*.gotmpl
 docs/
