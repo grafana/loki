@@ -1027,10 +1027,12 @@ func (src *LokiStack) ConvertTo(dstRaw conversion.Hub) error {
 			}
 		}
 		if src.Spec.Template.Gateway != nil {
-			dst.Spec.Template.Gateway = &v1.LokiComponentSpec{
-				Replicas:     src.Spec.Template.Gateway.Replicas,
-				NodeSelector: src.Spec.Template.Gateway.NodeSelector,
-				Tolerations:  src.Spec.Template.Gateway.Tolerations,
+			dst.Spec.Template.Gateway = &v1.LokiGatewayComponentSpec{
+				LokiComponentSpec: v1.LokiComponentSpec{
+					Replicas:     src.Spec.Template.Gateway.Replicas,
+					NodeSelector: src.Spec.Template.Gateway.NodeSelector,
+					Tolerations:  src.Spec.Template.Gateway.Tolerations,
+				},
 			}
 		}
 		if src.Spec.Template.IndexGateway != nil {
