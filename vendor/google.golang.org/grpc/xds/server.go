@@ -27,9 +27,12 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
+	estats "google.golang.org/grpc/experimental/stats"
+	"google.golang.org/grpc/internal"
 	internalgrpclog "google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
 	iresolver "google.golang.org/grpc/internal/resolver"
+	istats "google.golang.org/grpc/internal/stats"
 	"google.golang.org/grpc/internal/transport"
 	"google.golang.org/grpc/internal/xds/bootstrap"
 	"google.golang.org/grpc/metadata"
@@ -42,10 +45,8 @@ import (
 const serverPrefix = "[xds-server %p] "
 
 var (
-	// These new functions will be overridden in unit tests.
-	newXDSClient = func(name string) (xdsclient.XDSClient, func(), error) {
-		return xdsclient.New(name)
-	}
+	// These will be overridden in unit tests.
+	xdsClientPool = xdsclient.DefaultPool
 	newGRPCServer = func(opts ...grpc.ServerOption) grpcServer {
 		return grpc.NewServer(opts...)
 	}
@@ -89,20 +90,20 @@ func NewGRPCServer(opts ...grpc.ServerOption) (*GRPCServer, error) {
 	}
 	s.handleServerOptions(opts)
 
+	var mrl estats.MetricsRecorder
+	mrl = istats.NewMetricsRecorderList(nil)
+	if srv, ok := s.gs.(*grpc.Server); ok { // Will hit in prod but not for testing.
+		mrl = internal.MetricsRecorderForServer.(func(*grpc.Server) estats.MetricsRecorder)(srv)
+	}
+
 	// Initializing the xDS client upfront (instead of at serving time)
 	// simplifies the code by eliminating the need for a mutex to protect the
 	// xdsC and xdsClientClose fields.
-	newXDSClient := newXDSClient
-	if s.opts.bootstrapContentsForTesting != nil {
-		// Bootstrap file contents may be specified as a server option for tests.
-		newXDSClient = func(name string) (xdsclient.XDSClient, func(), error) {
-			return xdsclient.NewForTesting(xdsclient.OptionsForTesting{
-				Name:     name,
-				Contents: s.opts.bootstrapContentsForTesting,
-			})
-		}
+	pool := xdsClientPool
+	if s.opts.clientPoolForTesting != nil {
+		pool = s.opts.clientPoolForTesting
 	}
-	xdsClient, xdsClientClose, err := newXDSClient(xdsclient.NameForServer)
+	xdsClient, xdsClientClose, err := pool.NewClient(xdsclient.NameForServer, mrl)
 	if err != nil {
 		return nil, fmt.Errorf("xDS client creation failed: %v", err)
 	}
@@ -255,7 +256,7 @@ func routeAndProcess(ctx context.Context) error {
 		if logger.V(2) {
 			logger.Infof("RPC on connection with xDS Configuration error: %v", rc.Err)
 		}
-		return status.Error(codes.Unavailable, "error from xDS configuration for matched route configuration")
+		return status.Error(codes.Unavailable, fmt.Sprintf("error from xDS configuration for matched route configuration: %v", rc.Err))
 	}
 
 	mn, ok := grpc.Method(ctx)
@@ -272,7 +273,7 @@ func routeAndProcess(ctx context.Context) error {
 	authority := md.Get(":authority")
 	vh := xdsresource.FindBestMatchingVirtualHostServer(authority[0], rc.VHS)
 	if vh == nil {
-		return status.Error(codes.Unavailable, "the incoming RPC did not match a configured Virtual Host")
+		return rc.StatusErrWithNodeID(codes.Unavailable, "the incoming RPC did not match a configured Virtual Host")
 	}
 
 	var rwi *xdsresource.RouteWithInterceptors
@@ -282,21 +283,22 @@ func routeAndProcess(ctx context.Context) error {
 	}
 	for _, r := range vh.Routes {
 		if r.M.Match(rpcInfo) {
-			// "NonForwardingAction is expected for all Routes used on server-side; a route with an inappropriate action causes
-			// RPCs matching that route to fail with UNAVAILABLE." - A36
+			// "NonForwardingAction is expected for all Routes used on
+			// server-side; a route with an inappropriate action causes RPCs
+			// matching that route to fail with UNAVAILABLE." - A36
 			if r.ActionType != xdsresource.RouteActionNonForwardingAction {
-				return status.Error(codes.Unavailable, "the incoming RPC matched to a route that was not of action type non forwarding")
+				return rc.StatusErrWithNodeID(codes.Unavailable, "the incoming RPC matched to a route that was not of action type non forwarding")
 			}
 			rwi = &r
 			break
 		}
 	}
 	if rwi == nil {
-		return status.Error(codes.Unavailable, "the incoming RPC did not match a configured Route")
+		return rc.StatusErrWithNodeID(codes.Unavailable, "the incoming RPC did not match a configured Route")
 	}
 	for _, interceptor := range rwi.Interceptors {
 		if err := interceptor.AllowRPC(ctx); err != nil {
-			return status.Errorf(codes.PermissionDenied, "Incoming RPC is not allowed: %v", err)
+			return rc.StatusErrWithNodeID(codes.PermissionDenied, "Incoming RPC is not allowed: %v", err)
 		}
 	}
 	return nil
