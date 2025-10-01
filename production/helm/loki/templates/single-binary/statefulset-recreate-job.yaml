@@ -1,0 +1,113 @@
+{{- if and .Values.singleBinary.persistence.enabled .Values.singleBinary.persistence.enableStatefulSetRecreationForSizeChange -}}
+  {{- $newStatefulSet := include (print $.Template.BasePath "/single-binary/statefulset.yaml") . | fromYaml -}}
+  {{- if $newStatefulSet -}}
+    {{- $currentStatefulset := lookup $newStatefulSet.apiVersion $newStatefulSet.kind $newStatefulSet.metadata.namespace $newStatefulSet.metadata.name -}}
+    {{- $needsRecreation := false -}}
+    {{- if $currentStatefulset -}}
+      {{- if ne (len $newStatefulSet.spec.volumeClaimTemplates) (len $currentStatefulset.spec.volumeClaimTemplates) -}}
+        {{- $needsRecreation = true -}}
+      {{- else -}}
+        {{- range $index, $newVolumeClaimTemplate := $newStatefulSet.spec.volumeClaimTemplates -}}
+          {{- $currentVolumeClaimTemplateSpec := dict -}}
+            {{- range $oldVolumeClaimTemplate := $currentStatefulset.spec.volumeClaimTemplates -}}
+              {{- if eq $oldVolumeClaimTemplate.metadata.name $newVolumeClaimTemplate.metadata.name -}}
+                {{- $currentVolumeClaimTemplateSpec = $oldVolumeClaimTemplate.spec -}}
+              {{- end -}}
+            {{- end -}}
+          {{- if or (not $currentVolumeClaimTemplateSpec) (ne $newVolumeClaimTemplate.spec.resources.requests.storage $currentVolumeClaimTemplateSpec.resources.requests.storage) -}}
+            {{- $needsRecreation = true -}}
+          {{- end -}}
+        {{- end -}}
+      {{- end -}}
+    {{- end -}}
+    {{- if $needsRecreation -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $newStatefulSet.metadata.name }}-recreate
+  namespace: {{ $newStatefulSet.metadata.namespace }}
+  labels:
+    {{- include "loki.singleBinaryLabels" . | nindent 4 }}
+    app.kubernetes.io/component: statefulset-recreate-job
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        {{- include "loki.singleBinarySelectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: statefulset-recreate-job
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ $newStatefulSet.metadata.name }}-recreate
+      containers:
+      - name: recreate-statefulset
+        image: {{ include "loki.baseImage" (dict "service" (dict "registry" "docker.io" "repository" "rancher/kubectl" "tag" (.Capabilities.KubeVersion.Version | default "v1.33.0")) "global" .Values.global.image) }}
+        command:
+        - delete
+        - statefulset
+        - --namespace={{ $newStatefulSet.metadata.namespace }}
+        - --cascade=orphan
+        - {{ $newStatefulSet.metadata.name }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $newStatefulSet.metadata.name }}-recreate
+  namespace: {{ $newStatefulSet.metadata.namespace }}
+  labels:
+    {{- include "loki.singleBinaryLabels" . | nindent 4 }}
+    app.kubernetes.io/component: statefulset-recreate-job
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $newStatefulSet.metadata.name }}-recreate
+  namespace: {{ $newStatefulSet.metadata.namespace }}
+  labels:
+    {{- include "loki.singleBinaryLabels" . | nindent 4 }}
+    app.kubernetes.io/component: statefulset-recreate-job
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+rules:
+  - apiGroups:
+      - apps
+    resources:
+      - statefulsets
+    resourceNames:
+      - {{ $newStatefulSet.metadata.name }}
+    verbs:
+      - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $newStatefulSet.metadata.name }}-recreate
+  namespace: {{ $newStatefulSet.metadata.namespace }}
+  labels:
+    {{- include "loki.singleBinaryLabels" . | nindent 4 }}
+    app.kubernetes.io/component: statefulset-recreate-job
+  annotations:
+    "helm.sh/hook": pre-upgrade
+    "helm.sh/hook-weight": "-10"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+subjects:
+  - kind: ServiceAccount
+    name: {{ $newStatefulSet.metadata.name }}-recreate
+    namespace: {{ $newStatefulSet.metadata.namespace }}
+roleRef:
+  kind: Role
+  name: {{ $newStatefulSet.metadata.name }}-recreate
+  apiGroup: rbac.authorization.k8s.io
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
