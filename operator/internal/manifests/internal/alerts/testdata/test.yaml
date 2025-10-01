@@ -66,6 +66,11 @@ tests:
       - series: 'loki_discarded_samples_total{namespace="my-ns", tenant="application", reason="line_too_long"}'
         values: '0x5 0+120x25 3000'
 
+      - series: 'loki_ingester_chunks_flush_failures_total{namespace="my-ns", pod="ingester-0"}'
+        values: '0+25x20'
+      - series: 'loki_ingester_chunks_flush_requests_total{namespace="my-ns", pod="ingester-0"}'
+        values: '0+100x20'
+
     alert_rule_test:
       - eval_time: 16m
         alertname: LokiRequestErrors
@@ -194,3 +199,17 @@ tests:
                 Samples are discarded because of "line_too_long" at a rate of 2 samples per second.
               summary: Loki is discarding samples during ingestion because they fail validation.
               runbook_url: "[[ .RunbookURL]]#Loki-Discarded-Samples-Warning"
+      - eval_time: 16m
+        alertname: LokiIngesterFlushFailureRateCritical
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              pod: ingester-0
+              severity: critical
+            exp_annotations:
+              summary: "Loki ingester has critical flush failure rate"
+              description: |
+                Loki ingester ingester-0 in the namespace my-ns has a critical flush failure rate of
+                25% over the last 5 minutes. This requires immediate attention as data is
+                not being flushed to the storage. Validate if the storage configuration is still valid and if the storage is
+                still reachable. Current failure rate: 25% Threshold: 20%

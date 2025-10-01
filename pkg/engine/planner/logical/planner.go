@@ -59,6 +59,7 @@ func buildPlanForLogQuery(
 		predicates          []Value
 		postParsePredicates []Value
 		hasLogfmtParser     bool
+		hasJSONParser       bool
 	)
 
 	// TODO(chaudum): Implement a Walk function that can return an error
@@ -88,18 +89,32 @@ func buildPlanForLogQuery(
 
 			hasLogfmtParser = true
 			return true // continue traversing to find label filters
+		case *syntax.LineParserExpr:
+			switch e.Op {
+			case syntax.OpParserTypeJSON:
+				hasJSONParser = true
+				return true
+			case syntax.OpParserTypeRegexp, syntax.OpParserTypeUnpack, syntax.OpParserTypePattern:
+				// keeping these as a distinct cases so we remember to implement them later
+				err = errUnimplemented
+				return false
+			default:
+				err = errUnimplemented
+				return false
+			}
 		case *syntax.LabelFilterExpr:
 			if val, innerErr := convertLabelFilter(e.LabelFilterer); innerErr != nil {
 				err = innerErr
 			} else {
-				if !hasLogfmtParser {
+				if !hasLogfmtParser && !hasJSONParser {
 					predicates = append(predicates, val)
 				} else {
 					postParsePredicates = append(postParsePredicates, val)
 				}
 			}
 			return true
-		case *syntax.LineParserExpr, *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
+			//TODO Support logfmt and json expression parset expressions
+		case *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
 			*syntax.LineFmtExpr, *syntax.LabelFmtExpr,
 			*syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
 			err = errUnimplemented
@@ -143,8 +158,15 @@ func buildPlanForLogQuery(
 	for _, value := range predicates {
 		builder = builder.Select(value)
 	}
+
+	// TODO: there's a subtle bug here, as it is actually possible to have both a logfmt parser and a json parser
+	// for example, the query `{app="foo"} | json | line_format "{{.nested_json}}" | json ` is valid, and will need
+	// multiple parse stages. We will handle thid in a future PR.
 	if hasLogfmtParser {
 		builder = builder.Parse(ParserLogfmt)
+	}
+	if hasJSONParser {
+		builder = builder.Parse(ParserJSON)
 	}
 	for _, value := range postParsePredicates {
 		builder = builder.Select(value)

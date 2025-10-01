@@ -7,10 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/client"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	gklog "github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -85,21 +84,16 @@ func (r *dynamodbIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 			input := &dynamodb.ScanInput{
 				TableName:              aws.String(tableName),
 				ProjectionExpression:   aws.String(projection),
-				Segment:                aws.Int64(int64(segment)),
-				TotalSegments:          aws.Int64(int64(len(processors))),
-				ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+				Segment:                aws.Int32(int32(segment)),
+				TotalSegments:          aws.Int32(int32(len(processors))),
+				ReturnConsumedCapacity: types.ReturnConsumedCapacityTotal,
 			}
-			withRetrys := func(req *request.Request) {
-				req.Retryer = client.DefaultRetryer{NumMaxRetries: r.maxRetries}
+			output, err := r.DynamoDB.Scan(ctx, input)
+			if cc := output.ConsumedCapacity; cc != nil {
+				r.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.ScanTable", *cc.TableName).
+					Add(*cc.CapacityUnits)
 			}
-			err := r.DynamoDB.ScanPagesWithContext(ctx, input, func(page *dynamodb.ScanOutput, _ bool) bool {
-				if cc := page.ConsumedCapacity; cc != nil {
-					r.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.ScanTable", *cc.TableName).
-						Add(*cc.CapacityUnits)
-				}
-				r.processPage(ctx, sm, processor, tableName, page)
-				return true
-			}, withRetrys)
+			r.processPage(ctx, sm, processor, tableName, output)
 			if err != nil {
 				return err
 			}
@@ -119,11 +113,11 @@ func (r *dynamodbIndexReader) ReadIndexEntries(ctx context.Context, tableName st
 func (r *dynamodbIndexReader) processPage(ctx context.Context, sm *seriesMap, processor index.EntryProcessor, tableName string, page *dynamodb.ScanOutput) {
 	for _, item := range page.Items {
 		r.rowsRead.Inc()
-		rangeValue := item[rangeKey].B
+		rangeValue := item[rangeKey].(*types.AttributeValueMemberB).Value
 		if !isSeriesIndexEntry(rangeValue) {
 			continue
 		}
-		hashValue := aws.StringValue(item[hashKey].S)
+		hashValue := item[hashKey].(*types.AttributeValueMemberS).Value
 		orgStr, day, seriesID, err := decodeHashValue(hashValue)
 		if err != nil {
 			level.Error(r.log).Log("msg", "Failed to decode hash value", "err", err)
@@ -181,41 +175,33 @@ func (r *dynamodbIndexReader) queryChunkEntriesForSeries(ctx context.Context, pr
 	// This is hard-coded for schema v9
 	input := &dynamodb.QueryInput{
 		TableName: aws.String(tableName),
-		KeyConditions: map[string]*dynamodb.Condition{
+		KeyConditions: map[string]types.Condition{
 			hashKey: {
-				AttributeValueList: []*dynamodb.AttributeValue{
-					{S: aws.String(queryHashKey)},
+				AttributeValueList: []types.AttributeValue{
+					&types.AttributeValueMemberS{Value: queryHashKey},
 				},
-				ComparisonOperator: aws.String(dynamodb.ComparisonOperatorEq),
+				ComparisonOperator: types.ComparisonOperatorEq,
 			},
 		},
-		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+		ReturnConsumedCapacity: types.ReturnConsumedCapacityTotal,
 	}
-	withRetrys := func(req *request.Request) {
-		req.Retryer = client.DefaultRetryer{NumMaxRetries: r.maxRetries}
-	}
-	var result error
-	err := r.DynamoDB.QueryPagesWithContext(ctx, input, func(output *dynamodb.QueryOutput, _ bool) bool {
-		if cc := output.ConsumedCapacity; cc != nil {
-			r.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages", *cc.TableName).
-				Add(*cc.CapacityUnits)
-		}
 
-		for _, item := range output.Items {
-			err := processor.ProcessIndexEntry(index.Entry{
-				TableName:  tableName,
-				HashValue:  aws.StringValue(item[hashKey].S),
-				RangeValue: item[rangeKey].B,
-			})
-			if err != nil {
-				result = errors.Wrap(err, "processor error")
-				return false
-			}
+	output, result := r.DynamoDB.Query(ctx, input)
+	if cc := output.ConsumedCapacity; cc != nil {
+		r.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages", *cc.TableName).
+			Add(*cc.CapacityUnits)
+	}
+
+	for _, item := range output.Items {
+		hashValue := item[hashKey].(*types.AttributeValueMemberS).Value
+		err := processor.ProcessIndexEntry(index.Entry{
+			TableName:  tableName,
+			HashValue:  hashValue,
+			RangeValue: item[rangeKey].(*types.AttributeValueMemberB).Value,
+		})
+		if err != nil {
+			result = errors.Wrap(err, "processor error")
 		}
-		return true
-	}, withRetrys)
-	if err != nil {
-		return errors.Wrap(err, "DynamoDB error")
 	}
 	return result
 }
