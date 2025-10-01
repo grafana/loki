@@ -29,7 +29,7 @@ type Broker struct {
 	conn          net.Conn
 	connErr       error
 	lock          sync.Mutex
-	opened        int32
+	opened        atomic.Bool
 	responses     chan *responsePromise
 	done          chan bool
 
@@ -162,7 +162,7 @@ func NewBroker(addr string) *Broker {
 // follow it by a call to Connected(). The only errors Open will return directly are ConfigurationError or
 // AlreadyConnected. If conf is nil, the result of NewConfig() is used.
 func (b *Broker) Open(conf *Config) error {
-	if !atomic.CompareAndSwapInt32(&b.opened, 0, 1) {
+	if !b.opened.CompareAndSwap(false, true) {
 		return ErrAlreadyConnected
 	}
 
@@ -189,7 +189,7 @@ func (b *Broker) Open(conf *Config) error {
 		if b.connErr != nil {
 			Logger.Printf("Failed to connect to broker %s: %s\n", b.addr, b.connErr)
 			b.conn = nil
-			atomic.StoreInt32(&b.opened, 0)
+			b.opened.Store(false)
 			return
 		}
 		if conf.Net.TLS.Enable {
@@ -242,7 +242,7 @@ func (b *Broker) Open(conf *Config) error {
 			conf.Net.SASL.Version = SASLHandshakeV1
 		}
 
-		useSaslV0 := conf.Net.SASL.Version == SASLHandshakeV0 || conf.Net.SASL.Mechanism == SASLTypeGSSAPI
+		useSaslV0 := conf.Net.SASL.Version == SASLHandshakeV0
 		if conf.Net.SASL.Enable && useSaslV0 {
 			b.connErr = b.authenticateViaSASLv0()
 
@@ -254,7 +254,7 @@ func (b *Broker) Open(conf *Config) error {
 					Logger.Printf("Error while closing connection to broker %s (due to SASL v0 auth error: %s): %s\n", b.addr, b.connErr, err)
 				}
 				b.conn = nil
-				atomic.StoreInt32(&b.opened, 0)
+				b.opened.Store(false)
 				return
 			}
 		}
@@ -275,7 +275,7 @@ func (b *Broker) Open(conf *Config) error {
 					Logger.Printf("Error while closing connection to broker %s (due to SASL v1 auth error: %s): %s\n", b.addr, b.connErr, err)
 				}
 				b.conn = nil
-				atomic.StoreInt32(&b.opened, 0)
+				b.opened.Store(false)
 				return
 			}
 		}
@@ -349,8 +349,7 @@ func (b *Broker) Close() error {
 	} else {
 		Logger.Printf("Error while closing connection to broker %s: %s\n", b.addr, err)
 	}
-
-	atomic.StoreInt32(&b.opened, 0)
+	b.opened.Store(false)
 
 	return err
 }
@@ -959,11 +958,20 @@ func (b *Broker) readFull(buf []byte) (n int, err error) {
 	return io.ReadFull(b.conn, buf)
 }
 
-// write  ensures the conn WriteDeadline has been setup before making a
+// write ensures the conn Deadline has been setup before making a
 // call to conn.Write
 func (b *Broker) write(buf []byte) (n int, err error) {
-	if err := b.conn.SetWriteDeadline(time.Now().Add(b.conf.Net.WriteTimeout)); err != nil {
+	now := time.Now()
+	if err := b.conn.SetWriteDeadline(now.Add(b.conf.Net.WriteTimeout)); err != nil {
 		return 0, err
+	}
+	// TLS connections require both read and write deadlines to be set
+	// to avoid handshake indefinite blocking
+	// see https://github.com/golang/go/blob/go1.23.0/src/crypto/tls/conn.go#L1192-L1195
+	if b.conf.Net.TLS.Enable {
+		if err := b.conn.SetReadDeadline(now.Add(b.conf.Net.ReadTimeout)); err != nil {
+			return 0, err
+		}
 	}
 
 	return b.conn.Write(buf)
@@ -1371,6 +1379,12 @@ func (b *Broker) authenticateViaSASLv1() error {
 	}
 
 	switch b.conf.Net.SASL.Mechanism {
+	case SASLTypeGSSAPI:
+		b.kerberosAuthenticator.Config = &b.conf.Net.SASL.GSSAPI
+		if b.kerberosAuthenticator.NewKerberosClientFunc == nil {
+			b.kerberosAuthenticator.NewKerberosClientFunc = NewKerberosClient
+		}
+		return b.kerberosAuthenticator.AuthorizeV2(b, authSendReceiver)
 	case SASLTypeOAuth:
 		provider := b.conf.Net.SASL.TokenProvider
 		return b.sendAndReceiveSASLOAuth(authSendReceiver, provider)
@@ -1656,7 +1670,7 @@ func buildClientFirstMessage(token *AccessToken) ([]byte, error) {
 		ext = "\x01" + mapToString(token.Extensions, "=", "\x01")
 	}
 
-	resp := []byte(fmt.Sprintf("n,,\x01auth=Bearer %s%s\x01\x01", token.Token, ext))
+	resp := fmt.Appendf(nil, "n,,\x01auth=Bearer %s%s\x01\x01", token.Token, ext)
 
 	return resp, nil
 }

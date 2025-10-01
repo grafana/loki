@@ -1,22 +1,23 @@
 package aws
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/client"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
+	"github.com/IBM/ibm-cos-sdk-go/aws"
+	"github.com/IBM/ibm-cos-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/aws/smithy-go"
+
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
@@ -100,18 +101,55 @@ func (cfg *StorageConfig) Validate() error {
 	return nil
 }
 
+type dynamoCreator interface {
+	CreateTable(ctx context.Context, params *dynamodb.CreateTableInput, optFns ...func(*dynamodb.Options)) (*dynamodb.CreateTableOutput, error)
+}
+
+type dynamoTagger interface {
+	TagResource(ctx context.Context, params *dynamodb.TagResourceInput, optFns ...func(*dynamodb.Options)) (*dynamodb.TagResourceOutput, error)
+}
+
+type dynamoDeleter interface {
+	DeleteTable(ctx context.Context, params *dynamodb.DeleteTableInput, optFns ...func(*dynamodb.Options)) (*dynamodb.DeleteTableOutput, error)
+}
+
+type dynamoTagLister interface {
+	ListTagsOfResource(ctx context.Context, params *dynamodb.ListTagsOfResourceInput, optFns ...func(*dynamodb.Options)) (*dynamodb.ListTagsOfResourceOutput, error)
+}
+
+type dynamoTableUpdater interface {
+	UpdateTable(ctx context.Context, params *dynamodb.UpdateTableInput, optFns ...func(*dynamodb.Options)) (*dynamodb.UpdateTableOutput, error)
+}
+
+type dynamoBatchItemGetter interface {
+	BatchGetItem(ctx context.Context, params *dynamodb.BatchGetItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.BatchGetItemOutput, error)
+}
+
+type dynamoBatchItemWriter interface {
+	BatchWriteItem(ctx context.Context, params *dynamodb.BatchWriteItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.BatchWriteItemOutput, error)
+}
+
+type dynamoClient interface {
+	dynamodb.ListTablesAPIClient
+	dynamoCreator
+	dynamoTagger
+	dynamoDeleter
+	dynamodb.DescribeTableAPIClient
+	dynamoTagLister
+	dynamoTableUpdater
+	dynamodb.ScanAPIClient
+	dynamodb.QueryAPIClient
+	dynamoBatchItemGetter
+	dynamoBatchItemWriter
+}
+
 type dynamoDBStorageClient struct {
 	cfg       DynamoDBConfig
 	schemaCfg config.SchemaConfig
 
-	DynamoDB dynamodbiface.DynamoDBAPI
+	DynamoDB dynamoClient
 	// These rate-limiters let us slow down when DynamoDB signals provision limits.
 	writeThrottle *rate.Limiter
-
-	// These functions exists for mocking, so we don't have to write a whole load
-	// of boilerplate.
-	batchGetItemRequestFn   func(ctx context.Context, input *dynamodb.BatchGetItemInput) dynamoDBRequest
-	batchWriteItemRequestFn func(ctx context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest
 
 	metrics *dynamoDBMetrics
 }
@@ -136,12 +174,10 @@ func newDynamoDBStorageClient(cfg DynamoDBConfig, schemaCfg config.SchemaConfig,
 	client := &dynamoDBStorageClient{
 		cfg:           cfg,
 		schemaCfg:     schemaCfg,
-		DynamoDB:      dynamoDB,
+		DynamoDB:      &dynamoDB,
 		writeThrottle: rate.NewLimiter(rate.Limit(cfg.ThrottleLimit), dynamoDBMaxWriteBatchSize),
 		metrics:       newMetrics(reg),
 	}
-	client.batchGetItemRequestFn = client.batchGetItemRequest
-	client.batchWriteItemRequestFn = client.batchWriteItemRequest
 	return client, nil
 }
 
@@ -151,7 +187,7 @@ func (a dynamoDBStorageClient) Stop() {
 
 // NewWriteBatch implements chunk.IndexClient.
 func (a dynamoDBStorageClient) NewWriteBatch() index.WriteBatch {
-	return dynamoDBWriteBatch(map[string][]*dynamodb.WriteRequest{})
+	return dynamoDBWriteBatch(map[string][]types.WriteRequest{})
 }
 
 func logWriteRetry(unprocessed dynamoDBWriteBatch, metrics *dynamoDBMetrics) {
@@ -161,12 +197,12 @@ func logWriteRetry(unprocessed dynamoDBWriteBatch, metrics *dynamoDBMetrics) {
 			item := req.PutRequest.Item
 			var hash, rnge string
 			if hashAttr, ok := item[hashKey]; ok {
-				if hashAttr.S != nil {
-					hash = *hashAttr.S
+				if hashAttr.(*types.AttributeValueMemberS).Value != "" {
+					hash = hashAttr.(*types.AttributeValueMemberS).Value
 				}
 			}
 			if rangeAttr, ok := item[rangeKey]; ok {
-				rnge = string(rangeAttr.B)
+				rnge = string(rangeAttr.(*types.AttributeValueMemberB).Value)
 			}
 			util.Event().Log("msg", "store retry", "table", table, "hashKey", hash, "rangeKey", rnge)
 		}
@@ -187,19 +223,22 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input index.Write
 		requests.TakeReqs(outstanding, dynamoDBMaxWriteBatchSize)
 		requests.TakeReqs(unprocessed, dynamoDBMaxWriteBatchSize)
 
-		request := a.batchWriteItemRequestFn(ctx, &dynamodb.BatchWriteItemInput{
+		request := dynamodb.BatchWriteItemInput{
 			RequestItems:           requests,
-			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
-		})
+			ReturnConsumedCapacity: types.ReturnConsumedCapacityTotal,
+		}
 
-		err := instrument.CollectedRequest(ctx, "DynamoDB.BatchWriteItem", a.metrics.dynamoRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
-			return request.Send()
+		var resp *dynamodb.BatchWriteItemOutput
+		err := instrument.CollectedRequest(ctx, "DynamoDB.BatchWriteItem", a.metrics.dynamoRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+			var requestErr error
+			resp, requestErr = a.DynamoDB.BatchWriteItem(ctx, &request)
+			return requestErr
 		})
-		resp := request.Data().(*dynamodb.BatchWriteItemOutput)
-
-		for _, cc := range resp.ConsumedCapacity {
-			a.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchWriteItem", *cc.TableName).
-				Add(*cc.CapacityUnits)
+		if resp != nil {
+			for _, cc := range resp.ConsumedCapacity {
+				a.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchWriteItem", *cc.TableName).
+					Add(*cc.CapacityUnits)
+			}
 		}
 
 		if err != nil {
@@ -209,15 +248,17 @@ func (a dynamoDBStorageClient) BatchWrite(ctx context.Context, input index.Write
 
 			// If we get provisionedThroughputExceededException, then no items were processed,
 			// so back off and retry all.
-			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || request.Retryable()) {
+			var err2 *types.ProvisionedThroughputExceededException
+			var err3 smithy.APIError
+			if errors.As(err, &err2) {
 				logWriteRetry(requests, a.metrics)
 				unprocessed.TakeReqs(requests, -1)
 				_ = a.writeThrottle.WaitN(ctx, len(requests))
 				backoff.Wait()
 				continue
-			} else if ok && awsErr.Code() == validationException {
+			} else if errors.As(err, &err3) && err3.ErrorCode() == "ValidationError" {
 				// this write will never work, so the only option is to drop the offending items and continue.
-				level.Warn(log.Logger).Log("msg", "Data lost while flushing to DynamoDB", "err", awsErr)
+				level.Warn(log.Logger).Log("msg", "Data lost while flushing to DynamoDB", "err", err3)
 				level.Debug(log.Logger).Log("msg", "Dropped request details", "requests", requests)
 				util.Event().Log("msg", "ValidationException", "requests", requests)
 				// recording the drop counter separately from recordDynamoError(), as the error code alone may not provide enough context
@@ -257,39 +298,39 @@ func (a dynamoDBStorageClient) QueryPages(ctx context.Context, queries []index.Q
 func (a dynamoDBStorageClient) query(ctx context.Context, query index.Query, callback index.QueryPagesCallback) error {
 	input := &dynamodb.QueryInput{
 		TableName: aws.String(query.TableName),
-		KeyConditions: map[string]*dynamodb.Condition{
+		KeyConditions: map[string]types.Condition{
 			hashKey: {
-				AttributeValueList: []*dynamodb.AttributeValue{
-					{S: aws.String(query.HashValue)},
+				AttributeValueList: []types.AttributeValue{
+					&types.AttributeValueMemberS{Value: query.HashValue},
 				},
-				ComparisonOperator: aws.String(dynamodb.ComparisonOperatorEq),
+				ComparisonOperator: types.ComparisonOperatorEq,
 			},
 		},
-		ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
+		ReturnConsumedCapacity: types.ReturnConsumedCapacityTotal,
 	}
 
 	if query.RangeValuePrefix != nil {
-		input.KeyConditions[rangeKey] = &dynamodb.Condition{
-			AttributeValueList: []*dynamodb.AttributeValue{
-				{B: query.RangeValuePrefix},
+		input.KeyConditions[rangeKey] = types.Condition{
+			AttributeValueList: []types.AttributeValue{
+				&types.AttributeValueMemberB{Value: query.RangeValuePrefix},
 			},
-			ComparisonOperator: aws.String(dynamodb.ComparisonOperatorBeginsWith),
+			ComparisonOperator: types.ComparisonOperatorBeginsWith,
 		}
 	} else if query.RangeValueStart != nil {
-		input.KeyConditions[rangeKey] = &dynamodb.Condition{
-			AttributeValueList: []*dynamodb.AttributeValue{
-				{B: query.RangeValueStart},
+		input.KeyConditions[rangeKey] = types.Condition{
+			AttributeValueList: []types.AttributeValue{
+				&types.AttributeValueMemberB{Value: query.RangeValueStart},
 			},
-			ComparisonOperator: aws.String(dynamodb.ComparisonOperatorGe),
+			ComparisonOperator: types.ComparisonOperatorGe,
 		}
 	}
 
 	// Filters
 	if query.ValueEqual != nil {
 		input.FilterExpression = aws.String(fmt.Sprintf("%s = :v", valueKey))
-		input.ExpressionAttributeValues = map[string]*dynamodb.AttributeValue{
-			":v": {
-				B: query.ValueEqual,
+		input.ExpressionAttributeValues = map[string]types.AttributeValue{
+			":v": &types.AttributeValueMemberB{
+				Value: query.ValueEqual,
 			},
 		}
 	}
@@ -306,18 +347,15 @@ func (a dynamoDBStorageClient) query(ctx context.Context, query index.Query, cal
 			attribute.String("tableName", query.TableName),
 			attribute.String("hashValue", query.HashValue),
 		)
-		return a.DynamoDB.QueryPagesWithContext(innerCtx, input, func(output *dynamodb.QueryOutput, _ bool) bool {
-			pageCount++
-
-			span.SetAttributes(attribute.Int("page", pageCount))
-
-			if cc := output.ConsumedCapacity; cc != nil {
-				a.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages", *cc.TableName).
-					Add(*cc.CapacityUnits)
-			}
-
-			return callback(query, &dynamoDBReadResponse{items: output.Items})
-		}, retryer.withRetries, withErrorHandler(query.TableName, "DynamoDB.QueryPages", a.metrics))
+		output, err := a.DynamoDB.Query(innerCtx, input, func(o *dynamodb.Options) { o.Retryer = retryer })
+		pageCount++
+		span.SetAttributes(attribute.Int("page", pageCount))
+		if cc := output.ConsumedCapacity; cc != nil {
+			a.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.QueryPages", *cc.TableName).
+				Add(*cc.CapacityUnits)
+		}
+		callback(query, &dynamoDBReadResponse{items: output.Items})
+		return err
 	})
 	if err != nil {
 		return errors.Wrapf(err, "QueryPages error: table=%v", query.TableName)
@@ -330,18 +368,6 @@ type dynamoDBRequest interface {
 	Data() interface{}
 	Error() error
 	Retryable() bool
-}
-
-func (a dynamoDBStorageClient) batchGetItemRequest(ctx context.Context, input *dynamodb.BatchGetItemInput) dynamoDBRequest {
-	req, _ := a.DynamoDB.BatchGetItemRequest(input)
-	req.SetContext(ctx)
-	return dynamoDBRequestAdapter{req}
-}
-
-func (a dynamoDBStorageClient) batchWriteItemRequest(ctx context.Context, input *dynamodb.BatchWriteItemInput) dynamoDBRequest {
-	req, _ := a.DynamoDB.BatchWriteItemRequest(input)
-	req.SetContext(ctx)
-	return dynamoDBRequestAdapter{req}
 }
 
 type dynamoDBRequestAdapter struct {
@@ -447,19 +473,21 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 		requests.TakeReqs(outstanding, dynamoDBMaxReadBatchSize)
 		requests.TakeReqs(unprocessed, dynamoDBMaxReadBatchSize)
 
-		request := a.batchGetItemRequestFn(ctx, &dynamodb.BatchGetItemInput{
+		request := dynamodb.BatchGetItemInput{
 			RequestItems:           requests,
-			ReturnConsumedCapacity: aws.String(dynamodb.ReturnConsumedCapacityTotal),
-		})
-
+			ReturnConsumedCapacity: types.ReturnConsumedCapacityTotal,
+		}
+		var resp *dynamodb.BatchGetItemOutput
 		err := instrument.CollectedRequest(ctx, "DynamoDB.BatchGetItemPages", a.metrics.dynamoRequestDuration, instrument.ErrorCode, func(_ context.Context) error {
-			return request.Send()
+			var getErr error
+			resp, getErr = a.DynamoDB.BatchGetItem(ctx, &request)
+			return getErr
 		})
-		response := request.Data().(*dynamodb.BatchGetItemOutput)
-
-		for _, cc := range response.ConsumedCapacity {
-			a.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchGetItemPages", *cc.TableName).
-				Add(*cc.CapacityUnits)
+		if resp != nil {
+			for _, cc := range resp.ConsumedCapacity {
+				a.metrics.dynamoConsumedCapacity.WithLabelValues("DynamoDB.BatchGetItemPages", *cc.TableName).
+					Add(*cc.CapacityUnits)
+			}
 		}
 
 		if err != nil {
@@ -469,13 +497,15 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 
 			// If we get provisionedThroughputExceededException, then no items were processed,
 			// so back off and retry all.
-			if awsErr, ok := err.(awserr.Error); ok && ((awsErr.Code() == dynamodb.ErrCodeProvisionedThroughputExceededException) || request.Retryable()) {
+			var err2 *types.ProvisionedThroughputExceededException
+			var err3 smithy.APIError
+			if errors.As(err, &err2) {
 				unprocessed.TakeReqs(requests, -1)
 				backoff.Wait()
 				continue
-			} else if ok && awsErr.Code() == validationException {
+			} else if errors.As(err, &err3) && err3.ErrorCode() == "ValidationError" {
 				// this read will never work, so the only option is to drop the offending request and continue.
-				level.Warn(log).Log("msg", "Error while fetching data from Dynamo", "err", awsErr)
+				level.Warn(log).Log("msg", "Error while fetching data from Dynamo", "err", err3)
 				level.Debug(log).Log("msg", "Dropped request details", "requests", requests)
 				// recording the drop counter separately from recordDynamoError(), as the error code alone may not provide enough context
 				// to determine if a request was dropped (or not)
@@ -489,14 +519,14 @@ func (a dynamoDBStorageClient) getDynamoDBChunks(ctx context.Context, chunks []c
 			return nil, err
 		}
 
-		processedChunks, err := processChunkResponse(response, chunksByKey)
+		processedChunks, err := processChunkResponse(resp, chunksByKey)
 		if err != nil {
 			return nil, log.Error(err)
 		}
 		result = append(result, processedChunks...)
 
 		// If there are unprocessed items, retry those items.
-		if unprocessedKeys := response.UnprocessedKeys; unprocessedKeys != nil && dynamoDBReadRequest(unprocessedKeys).Len() > 0 {
+		if unprocessedKeys := resp.UnprocessedKeys; unprocessedKeys != nil && dynamoDBReadRequest(unprocessedKeys).Len() > 0 {
 			unprocessed.TakeReqs(unprocessedKeys, -1)
 		}
 
@@ -516,21 +546,21 @@ func processChunkResponse(response *dynamodb.BatchGetItemOutput, chunksByKey map
 	for _, items := range response.Responses {
 		for _, item := range items {
 			key, ok := item[hashKey]
-			if !ok || key == nil || key.S == nil {
+			if !ok || key == nil || key.(*types.AttributeValueMemberS).Value == "" {
 				return nil, fmt.Errorf("got response from DynamoDB with no hash key: %+v", item)
 			}
 
-			chunk, ok := chunksByKey[*key.S]
+			chunk, ok := chunksByKey[key.(*types.AttributeValueMemberS).Value]
 			if !ok {
-				return nil, fmt.Errorf("got response from DynamoDB with chunk I didn't ask for: %s", *key.S)
+				return nil, fmt.Errorf("got response from DynamoDB with chunk I didn't ask for: %s", key.(*types.AttributeValueMemberS).Value)
 			}
 
 			buf, ok := item[valueKey]
-			if !ok || buf == nil || buf.B == nil {
+			if !ok || buf == nil || buf.(*types.AttributeValueMemberB).Value == nil {
 				return nil, fmt.Errorf("got response from DynamoDB with no value: %+v", item)
 			}
 
-			if err := chunk.Decode(decodeContext, buf.B); err != nil {
+			if err := chunk.Decode(decodeContext, buf.(*types.AttributeValueMemberB).Value); err != nil {
 				return nil, err
 			}
 
@@ -607,7 +637,7 @@ func (a dynamoDBStorageClient) writesForChunks(chunks []chunk.Chunk) (dynamoDBWr
 
 // Slice of values returned; map key is attribute name
 type dynamoDBReadResponse struct {
-	items []map[string]*dynamodb.AttributeValue
+	items []map[string]types.AttributeValue
 }
 
 func (b *dynamoDBReadResponse) Iterator() index.ReadBatchIterator {
@@ -628,7 +658,7 @@ func (b *dynamoDBReadResponseIterator) Next() bool {
 }
 
 func (b *dynamoDBReadResponseIterator) RangeValue() []byte {
-	return b.items[b.i][rangeKey].B
+	return b.items[b.i][rangeKey].(*types.AttributeValueMemberB).Value
 }
 
 func (b *dynamoDBReadResponseIterator) Value() []byte {
@@ -636,11 +666,11 @@ func (b *dynamoDBReadResponseIterator) Value() []byte {
 	if !ok {
 		return nil
 	}
-	return chunkValue.B
+	return (chunkValue).(*types.AttributeValueMemberB).Value
 }
 
 // map key is table name; value is a slice of things to 'put'
-type dynamoDBWriteBatch map[string][]*dynamodb.WriteRequest
+type dynamoDBWriteBatch map[string][]types.WriteRequest
 
 func (b dynamoDBWriteBatch) Len() int {
 	result := 0
@@ -650,6 +680,87 @@ func (b dynamoDBWriteBatch) Len() int {
 	return result
 }
 
+// Taken from AWS internal package
+func reqToString(req types.WriteRequest) string {
+	var buf bytes.Buffer
+	reqToBuffer(reflect.ValueOf(req), 0, &buf)
+	return buf.String()
+}
+
+// Taken from AWS internal package
+func reqToBuffer(v reflect.Value, indent int, buf *bytes.Buffer) {
+	for v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+
+	switch v.Kind() {
+	case reflect.Struct:
+		buf.WriteString("{\n")
+
+		for i := 0; i < v.Type().NumField(); i++ {
+			ft := v.Type().Field(i)
+			fv := v.Field(i)
+
+			if ft.Name[0:1] == strings.ToLower(ft.Name[0:1]) {
+				continue // ignore unexported fields
+			}
+			if (fv.Kind() == reflect.Ptr || fv.Kind() == reflect.Slice) && fv.IsNil() {
+				continue // ignore unset fields
+			}
+
+			buf.WriteString(strings.Repeat(" ", indent+2))
+			buf.WriteString(ft.Name + ": ")
+
+			if tag := ft.Tag.Get("sensitive"); tag == "true" {
+				buf.WriteString("<sensitive>")
+			} else {
+				reqToBuffer(fv, indent+2, buf)
+			}
+
+			buf.WriteString(",\n")
+		}
+
+		buf.WriteString("\n" + strings.Repeat(" ", indent) + "}")
+	case reflect.Slice:
+		nl, id, id2 := "", "", ""
+		if v.Len() > 3 {
+			nl, id, id2 = "\n", strings.Repeat(" ", indent), strings.Repeat(" ", indent+2)
+		}
+		buf.WriteString("[" + nl)
+		for i := 0; i < v.Len(); i++ {
+			buf.WriteString(id2)
+			reqToBuffer(v.Index(i), indent+2, buf)
+
+			if i < v.Len()-1 {
+				buf.WriteString("," + nl)
+			}
+		}
+
+		buf.WriteString(nl + id + "]")
+	case reflect.Map:
+		buf.WriteString("{\n")
+
+		for i, k := range v.MapKeys() {
+			buf.WriteString(strings.Repeat(" ", indent+2))
+			buf.WriteString(k.String() + ": ")
+			reqToBuffer(v.MapIndex(k), indent+2, buf)
+
+			if i < v.Len()-1 {
+				buf.WriteString(",\n")
+			}
+		}
+
+		buf.WriteString("\n" + strings.Repeat(" ", indent) + "}")
+	default:
+		format := "%v"
+		switch v.Interface().(type) {
+		case string:
+			format = "%q"
+		}
+		fmt.Fprintf(buf, format, v.Interface())
+	}
+}
+
 func (b dynamoDBWriteBatch) String() string {
 	var sb strings.Builder
 	sb.WriteByte('{')
@@ -657,7 +768,7 @@ func (b dynamoDBWriteBatch) String() string {
 		sb.WriteString(k)
 		sb.WriteString(": [")
 		for _, req := range reqs {
-			sb.WriteString(req.String())
+			sb.WriteString(reqToString(req))
 			sb.WriteByte(',')
 		}
 		sb.WriteString("], ")
@@ -667,28 +778,28 @@ func (b dynamoDBWriteBatch) String() string {
 }
 
 func (b dynamoDBWriteBatch) Add(tableName, hashValue string, rangeValue []byte, value []byte) {
-	item := map[string]*dynamodb.AttributeValue{
-		hashKey:  {S: aws.String(hashValue)},
-		rangeKey: {B: rangeValue},
+	item := map[string]types.AttributeValue{
+		hashKey:  &types.AttributeValueMemberS{Value: hashValue},
+		rangeKey: &types.AttributeValueMemberB{Value: rangeValue},
 	}
 
 	if value != nil {
-		item[valueKey] = &dynamodb.AttributeValue{B: value}
+		item[valueKey] = &types.AttributeValueMemberB{Value: value}
 	}
 
-	b[tableName] = append(b[tableName], &dynamodb.WriteRequest{
-		PutRequest: &dynamodb.PutRequest{
+	b[tableName] = append(b[tableName], types.WriteRequest{
+		PutRequest: &types.PutRequest{
 			Item: item,
 		},
 	})
 }
 
 func (b dynamoDBWriteBatch) Delete(tableName, hashValue string, rangeValue []byte) {
-	b[tableName] = append(b[tableName], &dynamodb.WriteRequest{
-		DeleteRequest: &dynamodb.DeleteRequest{
-			Key: map[string]*dynamodb.AttributeValue{
-				hashKey:  {S: aws.String(hashValue)},
-				rangeKey: {B: rangeValue},
+	b[tableName] = append(b[tableName], types.WriteRequest{
+		DeleteRequest: &types.DeleteRequest{
+			Key: map[string]types.AttributeValue{
+				hashKey:  &types.AttributeValueMemberS{Value: hashValue},
+				rangeKey: &types.AttributeValueMemberB{Value: rangeValue},
 			},
 		},
 	})
@@ -714,7 +825,7 @@ func (b dynamoDBWriteBatch) TakeReqs(from dynamoDBWriteBatch, maxVal int) {
 }
 
 // map key is table name
-type dynamoDBReadRequest map[string]*dynamodb.KeysAndAttributes
+type dynamoDBReadRequest map[string]types.KeysAndAttributes
 
 func (b dynamoDBReadRequest) Len() int {
 	result := 0
@@ -727,18 +838,19 @@ func (b dynamoDBReadRequest) Len() int {
 func (b dynamoDBReadRequest) Add(tableName, hashValue string, rangeValue []byte) {
 	requests, ok := b[tableName]
 	if !ok {
-		requests = &dynamodb.KeysAndAttributes{
-			AttributesToGet: []*string{
-				aws.String(hashKey),
-				aws.String(valueKey),
+		requests = types.KeysAndAttributes{
+			AttributesToGet: []string{
+				hashKey,
+				valueKey,
 			},
 		}
 		b[tableName] = requests
 	}
-	requests.Keys = append(requests.Keys, map[string]*dynamodb.AttributeValue{
-		hashKey:  {S: aws.String(hashValue)},
-		rangeKey: {B: rangeValue},
+	requests.Keys = append(requests.Keys, map[string]types.AttributeValue{
+		hashKey:  &types.AttributeValueMemberS{Value: hashValue},
+		rangeKey: &types.AttributeValueMemberB{Value: rangeValue},
 	})
+	b[tableName] = requests
 }
 
 // Fill 'b' with ReadRequests from 'from' until 'b' has at most maxVal requests. Remove those requests from 'from'.
@@ -753,16 +865,20 @@ func (b dynamoDBReadRequest) TakeReqs(from dynamoDBReadRequest, maxVal int) {
 			taken := min(len(fromReqs.Keys), toFill)
 			if taken > 0 {
 				if _, ok := b[tableName]; !ok {
-					b[tableName] = &dynamodb.KeysAndAttributes{
-						AttributesToGet: []*string{
-							aws.String(hashKey),
-							aws.String(valueKey),
+					b[tableName] = types.KeysAndAttributes{
+						AttributesToGet: []string{
+							hashKey,
+							valueKey,
 						},
 					}
 				}
 
-				b[tableName].Keys = append(b[tableName].Keys, fromReqs.Keys[:taken]...)
-				from[tableName].Keys = fromReqs.Keys[taken:]
+				tmp := b[tableName]
+				tmp.Keys = append(b[tableName].Keys, fromReqs.Keys[:taken]...)
+				b[tableName] = tmp
+				tmp = from[tableName]
+				tmp.Keys = fromReqs.Keys[taken:]
+				from[tableName] = tmp
 				toFill -= taken
 			}
 		}
@@ -780,38 +896,39 @@ func withErrorHandler(tableName, operation string, metrics *dynamoDBMetrics) fun
 }
 
 func recordDynamoError(tableName string, err error, operation string, metrics *dynamoDBMetrics) {
-	if awsErr, ok := err.(awserr.Error); ok {
-		metrics.dynamoFailures.WithLabelValues(tableName, awsErr.Code(), operation).Add(float64(1))
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		metrics.dynamoFailures.WithLabelValues(tableName, apiErr.ErrorCode(), operation).Add(float64(1))
 	} else {
 		metrics.dynamoFailures.WithLabelValues(tableName, otherError, operation).Add(float64(1))
 	}
 }
 
 // dynamoClientFromURL creates a new DynamoDB client from a URL.
-func dynamoClientFromURL(awsURL *url.URL) (dynamodbiface.DynamoDBAPI, error) {
-	dynamoDBSession, err := awsSessionFromURL(awsURL)
+func dynamoClientFromURL(awsURL *url.URL) (dynamodb.Client, error) {
+	dynamoDBSession, err := dynamoOptionsFromURL(awsURL)
 	if err != nil {
-		return nil, err
+		return dynamodb.Client{}, err
 	}
-	return dynamodb.New(dynamoDBSession), nil
+	return *dynamodb.New(dynamoDBSession), nil
 }
 
-// awsSessionFromURL creates a new aws session from a URL.
-func awsSessionFromURL(awsURL *url.URL) (client.ConfigProvider, error) {
+// dynamoOptionsFromURL creates a new dynamodb.Options object from a URL.
+func dynamoOptionsFromURL(awsURL *url.URL) (dynamodb.Options, error) {
 	if awsURL == nil {
-		return nil, fmt.Errorf("no URL specified for DynamoDB")
+		return dynamodb.Options{}, fmt.Errorf("no URL specified for DynamoDB")
 	}
 	path := strings.TrimPrefix(awsURL.Path, "/")
 	if len(path) > 0 {
 		level.Warn(log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
 	}
-	config, err := ConfigFromURL(awsURL)
+	config, err := DynamoConfigFromURL(awsURL)
 	if err != nil {
-		return nil, err
+		return dynamodb.Options{}, err
 	}
-	config = config.WithMaxRetries(0) // We do our own retries, so we can monitor them
-	config = config.WithHTTPClient(&http.Client{Transport: defaultTransport})
-	return session.NewSession(config)
+	config.RetryMaxAttempts = 0 // We do our own retries, so we can monitor them
+	config.HTTPClient = &http.Client{Transport: defaultTransport}
+	return *config, nil
 }
 
 // Copy-pasted http.DefaultTransport

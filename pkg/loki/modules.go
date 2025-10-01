@@ -38,10 +38,6 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
-	blockbuilder "github.com/grafana/loki/v3/pkg/blockbuilder/builder"
-	blockscheduler "github.com/grafana/loki/v3/pkg/blockbuilder/scheduler"
-	blocktypes "github.com/grafana/loki/v3/pkg/blockbuilder/types"
-	blockprotos "github.com/grafana/loki/v3/pkg/blockbuilder/types/proto"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
 	"github.com/grafana/loki/v3/pkg/bloombuild/planner"
 	bloomprotos "github.com/grafana/loki/v3/pkg/bloombuild/protos"
@@ -57,7 +53,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/distributor"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
-	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/limits"
 	limits_frontend "github.com/grafana/loki/v3/pkg/limits/frontend"
 	limitsproto "github.com/grafana/loki/v3/pkg/limits/proto"
@@ -153,8 +148,6 @@ const (
 	Analytics                = "analytics"
 	CacheGenerationLoader    = "cache-generation-loader"
 	PartitionRing            = "partition-ring"
-	BlockBuilder             = "block-builder"
-	BlockScheduler           = "block-scheduler"
 	DataObjExplorer          = "dataobj-explorer"
 	DataObjConsumer          = "dataobj-consumer"
 	DataObjIndexBuilder      = "dataobj-index-builder"
@@ -1035,12 +1028,6 @@ func (t *Loki) updateConfigForShipperStore() {
 		// We do not want query to do any updates to index
 		t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
-
-	case t.Cfg.isTarget(BlockBuilder):
-		// Blockbuilder handles index creation independently of the shipper.
-		// TODO: introduce Disabled mode for boltdb shipper and set it here.
-		t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
-		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeDisabled
 
 	default:
 		// All other targets use the shipper store in RW mode
@@ -2045,68 +2032,6 @@ func (t *Loki) initPartitionRing() (services.Service, error) {
 	t.Server.HTTP.Path("/partition-ring").Methods("GET", "POST").Handler(ring.NewPartitionRingPageHandler(t.PartitionRingWatcher, ring.NewPartitionRingEditor(ingester.PartitionRingKey, kvClient)))
 
 	return t.PartitionRingWatcher, nil
-}
-
-func (t *Loki) initBlockBuilder() (services.Service, error) {
-	logger := log.With(util_log.Logger, "component", "block_builder")
-
-	// TODO(owen-d): perhaps refactor to not use the ingester config?
-	id := t.Cfg.Ingester.LifecyclerConfig.ID
-
-	objectStore, err := blockbuilder.NewMultiStore(t.Cfg.SchemaConfig.Configs, t.Cfg.StorageConfig, t.ClientMetrics)
-	if err != nil {
-		return nil, err
-	}
-
-	bb, err := blockbuilder.NewBlockBuilder(
-		id,
-		t.Cfg.BlockBuilder,
-		t.Cfg.KafkaConfig,
-		t.Cfg.SchemaConfig.Configs,
-		t.Store,
-		objectStore,
-		logger,
-		prometheus.DefaultRegisterer,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	t.blockBuilder = bb
-	return t.blockBuilder, nil
-}
-
-func (t *Loki) initBlockScheduler() (services.Service, error) {
-	logger := log.With(util_log.Logger, "component", "block_scheduler")
-
-	offsetManager, err := partition.NewKafkaOffsetManager(
-		t.Cfg.KafkaConfig,
-		t.Cfg.Ingester.LifecyclerConfig.ID,
-		logger,
-		prometheus.DefaultRegisterer,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("creating kafka offset manager: %w", err)
-	}
-
-	s, err := blockscheduler.NewScheduler(
-		t.Cfg.BlockScheduler,
-		offsetManager,
-		logger,
-		prometheus.DefaultRegisterer,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	t.Server.HTTP.Path("/blockscheduler/status").Methods("GET").Handler(s)
-
-	blockprotos.RegisterSchedulerServiceServer(
-		t.Server.GRPC,
-		blocktypes.NewSchedulerServer(s),
-	)
-
-	return s, nil
 }
 
 func (t *Loki) initDataObjExplorer() (services.Service, error) {

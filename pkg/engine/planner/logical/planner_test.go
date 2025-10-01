@@ -183,6 +183,7 @@ func TestCanExecuteQuery(t *testing.T) {
 		},
 		{
 			statement: `{env="prod"} | json`,
+			expected:  true,
 		},
 		{
 			statement: `{env="prod"} | json foo="bar"`,
@@ -261,8 +262,8 @@ func TestCanExecuteQuery(t *testing.T) {
 	}
 }
 
-func TestPlannerCreatesParseFromLogfmt(t *testing.T) {
-	t.Run("Planner creates Parse instruction from LogfmtParserExpr in metric query", func(t *testing.T) {
+func TestPlannerCreatesParse(t *testing.T) {
+	t.Run("creates Parse instruction for metric query with logfmt", func(t *testing.T) {
 		// Query with logfmt parser followed by label filter in an instant metric query
 		q := &query{
 			statement: `sum by (level) (count_over_time({app="test"} | logfmt | level="error" [5m]))`,
@@ -293,7 +294,7 @@ RETURN %11
 		require.Equal(t, expected, plan.String())
 	})
 
-	t.Run("creates Parse instruction for log query", func(t *testing.T) {
+	t.Run("creates Parse instruction for log query with logfmt", func(t *testing.T) {
 		q := &query{
 			statement: `{app="test"} | logfmt | level="error"`,
 			start:     3600,
@@ -314,6 +315,65 @@ RETURN %11
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
 %7 = PARSE %6 [kind=logfmt]
+%8 = EQ ambiguous.level "error"
+%9 = SELECT %7 [predicate=%8]
+%10 = SORT %9 [column=builtin.timestamp, asc=false, nulls_first=false]
+%11 = LIMIT %10 [skip=0, fetch=1000]
+RETURN %11
+`
+		require.Equal(t, expected, plan.String())
+	})
+
+	t.Run("creates Parse instruction for metric query with json", func(t *testing.T) {
+		// Query with logfmt parser followed by label filter in an instant metric query
+		q := &query{
+			statement: `sum by (level) (count_over_time({app="test"} | json | level="error" [5m]))`,
+			start:     3600,
+			end:       7200,
+			interval:  5 * time.Minute,
+		}
+
+		plan, err := BuildPlan(q)
+		require.NoError(t, err)
+
+		// Assert against the correct SSA representation
+		// Since there are no filters before logfmt, parse comes right after MAKETABLE
+		expected := `%1 = EQ label.app "test"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = GTE builtin.timestamp 1970-01-01T00:55:00Z
+%4 = SELECT %2 [predicate=%3]
+%5 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = PARSE %6 [kind=json]
+%8 = EQ ambiguous.level "error"
+%9 = SELECT %7 [predicate=%8]
+%10 = RANGE_AGGREGATION %9 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
+RETURN %11
+`
+		require.Equal(t, expected, plan.String())
+	})
+
+	t.Run("creates Parse instruction for log query with json", func(t *testing.T) {
+		q := &query{
+			statement: `{app="test"} | json | level="error"`,
+			start:     3600,
+			end:       7200,
+			direction: logproto.BACKWARD,
+			limit:     1000,
+		}
+
+		plan, err := BuildPlan(q)
+		require.NoError(t, err)
+
+		// Assert against the SSA representation for log query
+		expected := `%1 = EQ label.app "test"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = GTE builtin.timestamp 1970-01-01T01:00:00Z
+%4 = SELECT %2 [predicate=%3]
+%5 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = PARSE %6 [kind=json]
 %8 = EQ ambiguous.level "error"
 %9 = SELECT %7 [predicate=%8]
 %10 = SORT %9 [column=builtin.timestamp, asc=false, nulls_first=false]

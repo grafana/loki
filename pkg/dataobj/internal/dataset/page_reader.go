@@ -124,7 +124,7 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 		if err != nil {
 			return n, err
 		} else if valuesCount != presentCount {
-			return n, fmt.Errorf("unexpected number of values: %d", valuesCount)
+			return n, fmt.Errorf("unexpected number of values: %d, expected: %d", valuesCount, presentCount)
 		}
 	}
 

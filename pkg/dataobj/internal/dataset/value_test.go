@@ -102,6 +102,30 @@ func BenchmarkCompareValues(b *testing.B) {
 	}
 }
 
+func TestEmptyNil_CompareValues(t *testing.T) {
+	t.Run("Empty vs empty", func(t *testing.T) {
+		a := dataset.BinaryValue([]byte{})
+		b := dataset.BinaryValue([]byte{})
+
+		require.Equal(t, dataset.CompareValues(&a, &b), 0)
+	})
+
+	t.Run("Nil vs empty", func(t *testing.T) {
+		var a dataset.Value
+		b := dataset.BinaryValue([]byte{})
+
+		require.Equal(t, dataset.CompareValues(&a, &b), 0)
+		require.Equal(t, dataset.CompareValues(&b, &a), 0)
+	})
+	t.Run("Nil vs nil", func(t *testing.T) {
+		var a dataset.Value
+		var b dataset.Value
+
+		require.Equal(t, dataset.CompareValues(&a, &b), 0)
+		require.Equal(t, dataset.CompareValues(&b, &a), 0)
+	})
+}
+
 func TestValue_MarshalBinary(t *testing.T) {
 	t.Run("Null", func(t *testing.T) {
 		var expect dataset.Value
