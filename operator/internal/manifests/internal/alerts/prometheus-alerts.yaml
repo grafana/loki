@@ -208,7 +208,7 @@ groups:
         rate(loki_ingester_chunks_flush_requests_total[5m])
       ) by (namespace, pod)
       > 0.20
-    for: 1m
+    for: 15m
     labels:
       severity: critical
   - alert: LokistackSchemaUpgradesRequired

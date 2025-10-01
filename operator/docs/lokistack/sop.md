@@ -341,6 +341,52 @@ This information can be used to pinpoint the application sending the offending l
 - View detailed log output from the Loki distributors to identify affected streams
 - Decide on further steps depending on log source and validation error
 
+## Loki Ingester Flush Failure Rate Critical
+
+### Impact
+
+Loki ingesters are unable to flush chunks to backend storage at a critical rate (>20% failure rate), resulting in potential data loss and Write Ahead Log (WAL) disk pressure.
+
+### Summary
+
+One or more Loki ingesters are failing to flush at least 20% of their chunks to backend storage over a 5-minute period. This indicates issues with storage connectivity, authentication, or storage capacity that require immediate intervention.
+
+### Severity
+
+`Critical`
+
+### Access Required
+
+- Console access to the cluster
+- Edit access to the deployed operator and Loki namespace:
+  - OpenShift
+    - `openshift-logging` (LokiStack)
+    - `openshift-operators-redhat` (Loki Operator)
+
+### Steps
+
+- **Immediate Actions**:
+  - Check ingester pod logs for flush failure error messages to better understand what is the error: 
+    - `kubectl logs -n <namespace> <ingester-pod>`
+  - Verify backend storage connectivity and credentials in the storage secret
+  - Verify Lokistack conditions to understand if there was an error processing the storage secret:
+    - `kubectl -n <namespace> describe Lokistack <lokistack-name>`
+  - Monitor WAL disk usage: 
+    - `sum(loki_ingester_wal_bytes_in_use) by (pod, namespace)`: current WAL disk usage
+    - `sum(rate(loki_ingester_wal_disk_full_failures_total[5m])) by (pod, namespace)`: number of failures due to fill wall disk
+
+- **Root Cause Analysis**:
+  - **Storage Authentication**: Verify that storage credentials (Secret) are valid and accessible by ingester pods
+  - **Storage Connectivity**: Ensure ingesters can reach the storage endpoint (check NetworkPolicies, firewall rules)
+  - **Storage Capacity**: Check if the storage backend has sufficient space and IOPS capacity
+  - **Storage Configuration**: Validate the LokiStack storage configuration matches the actual storage setup
+
+- **Resolution Steps**:
+  - **For Authentication Issues**: Update or recreate the storage Secret with correct credentials
+  - **For Connectivity Issues**: Adjust NetworkPolicies, security groups, or firewall rules
+  - **For Capacity Issues**: Increase storage size/IOPS or implement lifecycle policies
+  - **For Configuration Issues**: Correct the LokiStack storage configuration and wait for a restart of the ingesters
+
 ## Lokistack Storage Schema Warning
 
 ### Impact
