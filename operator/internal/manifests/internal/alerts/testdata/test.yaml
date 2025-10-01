@@ -201,7 +201,7 @@ tests:
         alertname: LokistackComponentsNotReadyWarning
         exp_alerts:
           - exp_labels:
-              stack_namespace: my-ns
+              namespace: my-ns
               stack_name: mystack
               severity: warning
             exp_annotations:
