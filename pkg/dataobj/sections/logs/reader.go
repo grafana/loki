@@ -191,9 +191,7 @@ func (r *Reader) readSinglePass(ctx context.Context, batchSize int) (arrow.Recor
 // the target batch size or exhaust the data source.
 func (r *Reader) readWithAccumulation(ctx context.Context, targetSize int) (arrow.Record, error) {
 	const (
-		minSize        = 100
-		maxSize        = 10000
-		prefetchFactor = 1.5
+		minSize = 100
 	)
 
 	// Create builder once and reuse it
@@ -205,11 +203,10 @@ func (r *Reader) readWithAccumulation(ctx context.Context, targetSize int) (arro
 
 	for rowsAdded < targetSize {
 		// Calculate remaining and use adaptive prefetch
-		remaining := targetSize - rowsAdded
-
-		// Use prefetch factor to read more than needed
-		prefetchSize := int(float64(remaining) * prefetchFactor)
-		readSize := max(minSize, min(maxSize, prefetchSize))
+		readSize := targetSize - rowsAdded
+		if readSize < targetSize/10 {
+			break
+		}
 
 		// Ensure buffer is large enough
 		if len(r.buf) < readSize {
@@ -223,7 +220,7 @@ func (r *Reader) readWithAccumulation(ctx context.Context, targetSize int) (arro
 		}
 
 		// Process the rows and add directly to builder
-		for i := 0; i < n; i++ {
+		for i := range n {
 			row := r.buf[i]
 
 			for columnIndex, val := range row.Values {
