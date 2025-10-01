@@ -12599,6 +12599,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.persistence.whenDeleted</td>
+			<td>string</td>
+			<td>What to do with the volumes when the StatefulSet is deleted.</td>
+			<td><pre lang="json">
+"Delete"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.whenScaled</td>
+			<td>string</td>
+			<td>What to do with the volume when the StatefulSet is scaled down.</td>
+			<td><pre lang="json">
+"Delete"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.podAnnotations</td>
 			<td>object</td>
 			<td>Annotations for single binary pods</td>
