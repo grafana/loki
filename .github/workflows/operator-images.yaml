@@ -53,12 +53,37 @@ jobs:
           push: true
           tags: ${{ env.IMAGE_PREFIX }}/loki-operator:latest
 
-  # Push latest to Quay.io (openshift-logging) on main, or PR number on PRs
-  publish-openshift-operator:
+  # Build and push all Quay.io images using matrix strategy
+  publish-quay-images:
     runs-on: ubuntu-latest
     permissions:
       contents: "read"
       id-token: "write"
+    strategy:
+      matrix:
+        include:
+          # Operator image - runs on both main and PRs
+          - name: "operator"
+            context: "./operator"
+            file: "operator/Dockerfile"
+            image_name: ${{ env.IMAGE_OPERATOR_NAME }}
+            tag: ${{ github.event_name == 'pull_request' && format('pr{0}', github.event.pull_request.number) || 'latest' }}
+            condition: "true"
+          # Bundle image - only on main
+          - name: "bundle"
+            context: "./operator/bundle/openshift"
+            file: "./operator/bundle/openshift/bundle.Dockerfile"
+            image_name: ${{ env.IMAGE_BUNDLE_NAME }}
+            tag: "latest"
+            condition: "github.ref == 'refs/heads/main'"
+          # Size calculator - only on main
+          - name: "size-calculator"
+            context: "./operator"
+            file: "./operator/calculator.Dockerfile"
+            image_name: ${{ env.IMAGE_CALCULATOR_NAME }}
+            tag: "latest"
+            condition: "github.ref == 'refs/heads/main'"
+    if: ${{ matrix.condition }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -85,102 +110,11 @@ jobs:
           username: ${{ env.OPENSHIFT_USER }}
           password: ${{ env.OPENSHIFT_PASS }}
 
-      - name: Get image tags
-        id: image_tags
-        run: |
-          PULLSPEC="$IMAGE_REGISTRY/$IMAGE_ORGANIZATION/$IMAGE_OPERATOR_NAME"
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "IMAGE_TAGS=$PULLSPEC:pr${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-          else
-            echo "IMAGE_TAGS=$PULLSPEC:latest" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build and publish image on quay.io
+      - name: Build and publish ${{ matrix.name }} on quay.io
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
-          context: ./operator
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           platforms: "linux/amd64,linux/arm64,linux/arm"
           push: true
-          tags: "${{ steps.image_tags.outputs.IMAGE_TAGS }}"
-
-  # Push latest bundle to Quay.io on main only
-  publish-openshift-bundle:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: "read"
-      id-token: "write"
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
-
-      - name: "fetch openshift credentials from vault"
-        uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-        with:
-          repo_secrets: |
-            OPENSHIFT_USER=openshift-credentials:username
-            OPENSHIFT_PASS=openshift-credentials:password
-
-      - name: Login to Quay.io
-        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
-        with:
-          registry: quay.io
-          logout: true
-          username: ${{ env.OPENSHIFT_USER }}
-          password: ${{ env.OPENSHIFT_PASS }}
-
-      - name: Build and publish bundle on quay.io
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
-        with:
-          context: ./operator/bundle/openshift
-          file: ./operator/bundle/openshift/bundle.Dockerfile
-          push: true
-          tags: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_ORGANIZATION }}/${{ env.IMAGE_BUNDLE_NAME }}:latest
-
-  # Push latest size-calculator to Quay.io on main only
-  publish-openshift-size-calculator:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: "read"
-      id-token: "write"
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
-
-      - name: "fetch openshift credentials from vault"
-        uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
-        with:
-          repo_secrets: |
-            OPENSHIFT_USER=openshift-credentials:username
-            OPENSHIFT_PASS=openshift-credentials:password
-
-      - name: Login to Quay.io
-        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
-        with:
-          registry: quay.io
-          logout: true
-          username: ${{ env.OPENSHIFT_USER }}
-          password: ${{ env.OPENSHIFT_PASS }}
-
-      - name: Build and publish size-calculator on quay.io
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
-        with:
-          context: ./operator
-          file: ./operator/calculator.Dockerfile
-          push: true
-          tags: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_ORGANIZATION }}/${{ env.IMAGE_CALCULATOR_NAME }}:latest
+          tags: ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_ORGANIZATION }}/${{ matrix.image_name }}:${{ matrix.tag }}
