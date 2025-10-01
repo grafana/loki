@@ -53,6 +53,7 @@ jobs:
       IMAGE_PREFIX: "grafana"
     needs:
       - "releasePlease"
+    if: ${{ needs.releasePlease.outputs.release_created }}
     runs-on: ubuntu-latest
     permissions:
       contents: "read"
