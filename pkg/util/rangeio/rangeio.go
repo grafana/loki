@@ -387,9 +387,9 @@ func optimizeRanges(cfg *Config, in []Range) ([]Range, func()) {
 		i += 2 // Skip over the range we just inserted.
 	}
 
-	usedBuffers := []*bytes.Buffer{}
 	// Convert our chunks into target ranges.
 	out := make([]Range, len(coalescedChunks))
+	usedBuffers := make([]*bytes.Buffer, 0, len(out))
 	for i := range coalescedChunks {
 		size := coalescedChunks[i].Length
 
