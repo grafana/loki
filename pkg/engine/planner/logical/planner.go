@@ -212,10 +212,10 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 				rangeAggType = types.RangeAggregationTypeCount
 			case syntax.OpRangeTypeSum:
 				rangeAggType = types.RangeAggregationTypeSum
-			case syntax.OpRangeTypeMax:
-				rangeAggType = types.RangeAggregationTypeMax
-			case syntax.OpRangeTypeMin:
-				rangeAggType = types.RangeAggregationTypeMin
+			//case syntax.OpRangeTypeMax:
+			//	rangeAggType = types.RangeAggregationTypeMax
+			//case syntax.OpRangeTypeMin:
+			//	rangeAggType = types.RangeAggregationTypeMin
 			default:
 				err = errUnimplemented
 				return false

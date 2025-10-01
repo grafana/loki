@@ -262,8 +262,8 @@ func TestCanExecuteQuery(t *testing.T) {
 			statement: `sum by (level) (sum_over_time({env="prod"} | unwrap size [1m] offset 5m))`,
 		},
 		{
-			// avg_over_time is not supported
-			statement: `avg_over_time({env="prod"} | unwrap size [1m])`,
+			// max_over_time is not supported
+			statement: `max_over_time({env="prod"} | unwrap size [1m])`,
 		},
 	} {
 		t.Run(tt.statement, func(t *testing.T) {
