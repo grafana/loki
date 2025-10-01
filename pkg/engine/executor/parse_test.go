@@ -89,9 +89,9 @@ func TestNewParsePipeline_logfmt(t *testing.T) {
 			requestedKeys:  []string{"level", "status"},
 			expectedFields: 5, // 5 columns: message, level, status, __error__, __error_details__
 			expectedOutput: arrowtest.Rows{
-				{"message": "level=info status=200", "level": "info", "status": "200", types.ColumnNameParsedError: nil, types.ColumnNameParsedErrorDetails: nil},
-				{"message": "status==value level=error", "level": nil, "status": nil, types.ColumnNameParsedError: types.LogfmtParserErrorType, types.ColumnNameParsedErrorDetails: "logfmt syntax error at pos 8 : unexpected '='"},
-				{"message": "level=\"unclosed status=500", "level": nil, "status": nil, types.ColumnNameParsedError: types.LogfmtParserErrorType, types.ColumnNameParsedErrorDetails: "logfmt syntax error at pos 27 : unterminated quoted value"},
+				{"message": "level=info status=200", "level": "info", "status": "200", types.ColumnNameError: nil, types.ColumnNameErrorDetails: nil},
+				{"message": "status==value level=error", "level": nil, "status": nil, types.ColumnNameError: types.LogfmtParserErrorType, types.ColumnNameErrorDetails: "logfmt syntax error at pos 8 : unexpected '='"},
+				{"message": "level=\"unclosed status=500", "level": nil, "status": nil, types.ColumnNameError: types.LogfmtParserErrorType, types.ColumnNameErrorDetails: "logfmt syntax error at pos 27 : unterminated quoted value"},
 			},
 		},
 		{
@@ -126,10 +126,10 @@ func TestNewParsePipeline_logfmt(t *testing.T) {
 			requestedKeys:  nil, // nil means extract all keys
 			expectedFields: 6,   // 6 columns: message, level, method, status, __error__, __error_details__
 			expectedOutput: arrowtest.Rows{
-				{"message": "level=info status=200 method=GET", "level": "info", "method": "GET", "status": "200", types.ColumnNameParsedError: nil, types.ColumnNameParsedErrorDetails: nil},
-				{"message": "level==error code=500", "level": nil, "method": nil, "status": nil, types.ColumnNameParsedError: types.LogfmtParserErrorType, types.ColumnNameParsedErrorDetails: "logfmt syntax error at pos 7 : unexpected '='"},
-				{"message": "msg=\"unclosed duration=100ms code=400", "level": nil, "method": nil, "status": nil, types.ColumnNameParsedError: types.LogfmtParserErrorType, types.ColumnNameParsedErrorDetails: "logfmt syntax error at pos 38 : unterminated quoted value"},
-				{"message": "level=debug method=POST", "level": "debug", "method": "POST", "status": nil, types.ColumnNameParsedError: nil, types.ColumnNameParsedErrorDetails: nil},
+				{"message": "level=info status=200 method=GET", "level": "info", "method": "GET", "status": "200", types.ColumnNameError: nil, types.ColumnNameErrorDetails: nil},
+				{"message": "level==error code=500", "level": nil, "method": nil, "status": nil, types.ColumnNameError: types.LogfmtParserErrorType, types.ColumnNameErrorDetails: "logfmt syntax error at pos 7 : unexpected '='"},
+				{"message": "msg=\"unclosed duration=100ms code=400", "level": nil, "method": nil, "status": nil, types.ColumnNameError: types.LogfmtParserErrorType, types.ColumnNameErrorDetails: "logfmt syntax error at pos 38 : unterminated quoted value"},
+				{"message": "level=debug method=POST", "level": "debug", "method": "POST", "status": nil, types.ColumnNameError: nil, types.ColumnNameErrorDetails: nil},
 			},
 		},
 	} {
@@ -246,9 +246,9 @@ func TestNewParsePipeline_JSON(t *testing.T) {
 			requestedKeys:  []string{"level", "status"},
 			expectedFields: 5, // 5 columns: message, level, status, __error__, __error_details__ (due to malformed JSON)
 			expectedOutput: arrowtest.Rows{
-				{"message": `{"level": "info", "status": "200"}`, "level": "info", "status": "200", types.ColumnNameParsedError: nil, types.ColumnNameParsedErrorDetails: nil},
-				{"message": `{"level": "error", "status":`, "level": nil, "status": nil, types.ColumnNameParsedError: "JSONParserErr", types.ColumnNameParsedErrorDetails: "Malformed JSON error"},
-				{"message": `{"level": "info", "status": 200}`, "level": "info", "status": "200", types.ColumnNameParsedError: nil, types.ColumnNameParsedErrorDetails: nil},
+				{"message": `{"level": "info", "status": "200"}`, "level": "info", "status": "200", types.ColumnNameError: nil, types.ColumnNameErrorDetails: nil},
+				{"message": `{"level": "error", "status":`, "level": nil, "status": nil, types.ColumnNameError: "JSONParserErr", types.ColumnNameErrorDetails: "Malformed JSON error"},
+				{"message": `{"level": "info", "status": 200}`, "level": "info", "status": "200", types.ColumnNameError: nil, types.ColumnNameErrorDetails: nil},
 			},
 		},
 		{
@@ -283,10 +283,10 @@ func TestNewParsePipeline_JSON(t *testing.T) {
 			requestedKeys:  nil, // nil means extract all keys
 			expectedFields: 7,   // 7 columns: message, level, method, status, code, __error__, __error_details__
 			expectedOutput: arrowtest.Rows{
-				{"message": `{"level": "info", "status": "200", "method": "GET"}`, "level": "info", "method": "GET", "status": "200", "code": nil, types.ColumnNameParsedError: nil, types.ColumnNameParsedErrorDetails: nil},
-				{"message": `{"level": "error", "code": 500}`, "level": "error", "method": nil, "status": nil, "code": "500", types.ColumnNameParsedError: nil, types.ColumnNameParsedErrorDetails: nil},
-				{"message": `{"msg": "unclosed}`, "level": nil, "method": nil, "status": nil, "code": nil, types.ColumnNameParsedError: "JSONParserErr", types.ColumnNameParsedErrorDetails: "Value is string, but can't find closing '\"' symbol"},
-				{"message": `{"level": "debug", "method": "POST"}`, "level": "debug", "method": "POST", "status": nil, "code": nil, types.ColumnNameParsedError: nil, types.ColumnNameParsedErrorDetails: nil},
+				{"message": `{"level": "info", "status": "200", "method": "GET"}`, "level": "info", "method": "GET", "status": "200", "code": nil, types.ColumnNameError: nil, types.ColumnNameErrorDetails: nil},
+				{"message": `{"level": "error", "code": 500}`, "level": "error", "method": nil, "status": nil, "code": "500", types.ColumnNameError: nil, types.ColumnNameErrorDetails: nil},
+				{"message": `{"msg": "unclosed}`, "level": nil, "method": nil, "status": nil, "code": nil, types.ColumnNameError: "JSONParserErr", types.ColumnNameErrorDetails: "Value is string, but can't find closing '\"' symbol"},
+				{"message": `{"level": "debug", "method": "POST"}`, "level": "debug", "method": "POST", "status": nil, "code": nil, types.ColumnNameError: nil, types.ColumnNameErrorDetails: nil},
 			},
 		},
 		{

@@ -152,9 +152,9 @@ func parseLines(input *array.String, requestedKeys []string, columnBuilders map[
 			if !hasErrorColumns {
 				errorBuilder = array.NewStringBuilder(allocator)
 				errorDetailsBuilder = array.NewStringBuilder(allocator)
-				columnBuilders[types.ColumnNameParsedError] = errorBuilder
-				columnBuilders[types.ColumnNameParsedErrorDetails] = errorDetailsBuilder
-				columnOrder = append(columnOrder, types.ColumnNameParsedError, types.ColumnNameParsedErrorDetails)
+				columnBuilders[types.ColumnNameError] = errorBuilder
+				columnBuilders[types.ColumnNameErrorDetails] = errorDetailsBuilder
+				columnOrder = append(columnOrder, types.ColumnNameError, types.ColumnNameErrorDetails)
 				hasErrorColumns = true
 
 				// Backfill NULLs for previous rows
@@ -179,8 +179,8 @@ func parseLines(input *array.String, requestedKeys []string, columnBuilders map[
 		seenKeys := make(map[string]bool)
 		if hasErrorColumns {
 			// Mark error columns as seen so we don't append nulls for them
-			seenKeys[types.ColumnNameParsedError] = true
-			seenKeys[types.ColumnNameParsedErrorDetails] = true
+			seenKeys[types.ColumnNameError] = true
+			seenKeys[types.ColumnNameErrorDetails] = true
 		}
 
 		// Add values for parsed keys (only if no error)
@@ -215,12 +215,12 @@ func parseLines(input *array.String, requestedKeys []string, columnBuilders map[
 		// Keep error columns at the end, sort the rest
 		nonErrorColumns := make([]string, 0, len(columnOrder)-2)
 		for _, key := range columnOrder {
-			if key != types.ColumnNameParsedError && key != types.ColumnNameParsedErrorDetails {
+			if key != types.ColumnNameError && key != types.ColumnNameErrorDetails {
 				nonErrorColumns = append(nonErrorColumns, key)
 			}
 		}
 		sort.Strings(nonErrorColumns)
-		columnOrder = append(nonErrorColumns, types.ColumnNameParsedError, types.ColumnNameParsedErrorDetails)
+		columnOrder = append(nonErrorColumns, types.ColumnNameError, types.ColumnNameErrorDetails)
 	} else {
 		sort.Strings(columnOrder)
 	}

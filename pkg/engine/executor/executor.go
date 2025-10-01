@@ -353,7 +353,8 @@ func (c *Context) executeProjection(ctx context.Context, proj *physical.Projecti
 		return errorPipeline(ctx, fmt.Errorf("projection expects at least one column, got 0"))
 	}
 
-	p, err := NewProjectPipeline(inputs[0], proj.Columns, &c.evaluator)
+	allocator := memory.DefaultAllocator
+	p, err := NewProjectPipeline(inputs[0], proj, &c.evaluator, allocator)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}

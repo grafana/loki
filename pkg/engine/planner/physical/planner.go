@@ -151,6 +151,8 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 		return p.processVectorAggregation(inst, ctx)
 	case *logical.Parse:
 		return p.processParse(inst, ctx)
+	case *logical.UnwrapValue:
+		return p.processUnwrapValue(inst, ctx)
 	}
 	return nil, nil
 }
@@ -361,6 +363,29 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) 
 	p.plan.addNode(node)
 
 	children, err := p.process(lp.Table, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range children {
+		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
+			return nil, err
+		}
+	}
+
+	return []Node{node}, nil
+}
+
+func (p *Planner) processUnwrapValue(inst *logical.UnwrapValue, ctx *Context) ([]Node, error) {
+	node := &Projection{
+		id: inst.Name(),
+		Functions: []ProjectionFunction{
+			NewUnwrapFunction(ParseUnwrapOperation(inst.UnwrapOperation), inst.Identifier),
+		},
+	}
+	p.plan.addNode(node)
+
+	children, err := p.process(inst.Table, ctx)
 	if err != nil {
 		return nil, err
 	}

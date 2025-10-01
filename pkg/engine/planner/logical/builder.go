@@ -49,6 +49,17 @@ func (b *Builder) Parse(kind ParserKind) *Builder {
 	}
 }
 
+// Unwrap applies an [UnwrapValue] operation to the Builder.
+func (b *Builder) Unwrap(identifier string, operation string) *Builder {
+	return &Builder{
+		val: &UnwrapValue{
+			Table:           b.val,
+			Identifier:      identifier,
+			UnwrapOperation: operation,
+		},
+	}
+}
+
 // Sort applies a [Sort] operation to the Builder.
 func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 	return &Builder{

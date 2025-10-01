@@ -146,7 +146,6 @@ func (r *limitPushdown) applyLimitPushdown(node Node, limit uint32) bool {
 var _ rule = (*limitPushdown)(nil)
 
 // projectionPushdown is a rule that pushes down column projections.
-// Currently it only projects partition labels from range aggregations to scan nodes.
 type projectionPushdown struct {
 	plan *Plan
 }

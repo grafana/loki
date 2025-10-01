@@ -196,6 +196,10 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 
 		vecAggType types.VectorAggregationType
 		groupBy    []ColumnRef
+
+		// unwrap-related variables
+		unwrapIdentifier string
+		unwrapOperation  string
 	)
 
 	e.Walk(func(e syntax.Expr) bool {
@@ -210,6 +214,13 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 
 			rangeAggType = types.RangeAggregationTypeCount
 			rangeInterval = e.Left.Interval
+
+			// Check for unwrap in the LogRangeExpr
+			if e.Left.Unwrap != nil {
+				unwrapIdentifier = e.Left.Unwrap.Identifier
+				unwrapOperation = e.Left.Unwrap.Operation
+			}
+
 			return false // do not traverse log range query
 
 		case *syntax.VectorAggregationExpr:
@@ -249,6 +260,11 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 	builder, err := buildPlanForLogQuery(logSelectorExpr, params, true, rangeInterval)
 	if err != nil {
 		return nil, err
+	}
+
+	// Add unwrap instruction if present
+	if unwrapIdentifier != "" {
+		builder = builder.Unwrap(unwrapIdentifier, unwrapOperation)
 	}
 
 	builder = builder.RangeAggregation(
