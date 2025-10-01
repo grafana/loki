@@ -3,6 +3,7 @@
 package rangeio
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
@@ -143,21 +144,8 @@ var DefaultConfig = Config{
 
 var bytesBufferPool = &sync.Pool{
 	New: func() any {
-		b := make([]byte, 0)
-		return &b
+		return &bytes.Buffer{}
 	},
-}
-
-func getBytesBuffer(size int) []byte {
-	b := bytesBufferPool.Get().(*[]byte)
-	newB := slices.Grow(*b, size)
-	newB = newB[:size]
-	return newB
-}
-
-func putBytesBuffer(b *[]byte) {
-	(*b) = (*b)[:0]
-	bytesBufferPool.Put(b)
 }
 
 // ReadRanges reads the set of ranges from the provided Reader, populating Data
@@ -186,7 +174,9 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 		cfg = &DefaultConfig
 		span.SetAttributes(attribute.Bool("config.default", true))
 	}
-	optimized := optimizeRanges(cfg, ranges)
+	optimized, releaseBuffers := optimizeRanges(cfg, ranges)
+	defer releaseBuffers()
+
 	span.AddEvent("optimized ranges")
 
 	// Once we optimized the ranges we can set up the rest of our attributes.
@@ -268,10 +258,6 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 		}
 	}
 
-	for _, r := range optimized {
-		putBytesBuffer(&r.Data)
-	}
-
 	span.AddEvent("copied data to inputs")
 	span.SetStatus(codes.Ok, "") // Even if we got [io.EOF], we treat the operation as successful here.
 
@@ -288,7 +274,7 @@ func ReadRanges(ctx context.Context, r Reader, ranges []Range) error {
 // reach at least cfg.MaxParallelism ranges.
 //
 // If cfg is nil, [DefaultConfig] is used.
-func optimizeRanges(cfg *Config, in []Range) []Range {
+func optimizeRanges(cfg *Config, in []Range) ([]Range, func()) {
 	if cfg == nil {
 		cfg = &DefaultConfig
 	}
@@ -401,15 +387,27 @@ func optimizeRanges(cfg *Config, in []Range) []Range {
 		i += 2 // Skip over the range we just inserted.
 	}
 
+	usedBuffers := []*bytes.Buffer{}
 	// Convert our chunks into target ranges.
 	out := make([]Range, len(coalescedChunks))
 	for i := range coalescedChunks {
+		size := coalescedChunks[i].Length
+
+		buf := bytesBufferPool.Get().(*bytes.Buffer)
+		buf.Reset()
+		buf.Grow(size)
+		usedBuffers = append(usedBuffers, buf)
+
 		out[i] = Range{
-			Data:   getBytesBuffer(coalescedChunks[i].Length),
+			Data:   buf.Bytes()[:size],
 			Offset: coalescedChunks[i].Offset,
 		}
 	}
-	return out
+	return out, func() {
+		for _, buf := range usedBuffers {
+			bytesBufferPool.Put(buf)
+		}
+	}
 }
 
 func rangesSize(ranges []Range) uint64 {
