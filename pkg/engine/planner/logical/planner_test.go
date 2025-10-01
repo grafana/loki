@@ -234,8 +234,8 @@ func TestCanExecuteQuery(t *testing.T) {
 			statement: `sum by (level) (rate({env="prod"}[1m]))`,
 		},
 		{
+			// max is not supported
 			statement: `max by (level) (count_over_time({env="prod"}[1m]))`,
-			expected:  true,
 		},
 		{
 			// offset is not supported
@@ -254,8 +254,8 @@ func TestCanExecuteQuery(t *testing.T) {
 			statement: `sum(sum_over_time({env="prod"} | unwrap size [1m]))`,
 		},
 		{
+			// max is not supported
 			statement: `max by (level) (sum_over_time({env="prod"} | unwrap size [1m]))`,
-			expected:  true,
 		},
 		{
 			// offset is not supported

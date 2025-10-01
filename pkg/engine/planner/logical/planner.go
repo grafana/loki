@@ -232,14 +232,14 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 			}
 
 			switch e.Operation {
+			//case syntax.OpTypeCount:
+			//	vecAggType = types.VectorAggregationTypeCount
 			case syntax.OpTypeSum:
 				vecAggType = types.VectorAggregationTypeSum
-			case syntax.OpTypeMax:
-				vecAggType = types.VectorAggregationTypeMax
-			case syntax.OpTypeMin:
-				vecAggType = types.VectorAggregationTypeMin
-			case syntax.OpTypeCount:
-				vecAggType = types.VectorAggregationTypeCount
+			//case syntax.OpTypeMax:
+			//	vecAggType = types.VectorAggregationTypeMax
+			//case syntax.OpTypeMin:
+			//	vecAggType = types.VectorAggregationTypeMin
 			default:
 				err = errUnimplemented
 				return false
