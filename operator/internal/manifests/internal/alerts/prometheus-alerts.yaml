@@ -227,3 +227,20 @@ groups:
     for: 1m
     labels:
       severity: warning
+  - alert: LokistackComponentsNotReadyWarning
+    annotations:
+      description: |-
+        The LokiStack "{{ $labels.stack_name }}" in namespace "{{ $labels.namespace }}" has components that are not ready.
+      summary: "One or more LokiStack components are not ready."
+      runbook_url: "[[ .RunbookURL ]]#Lokistack-Components-Not-Ready-Warning"
+    expr: |
+      sum (
+        label_replace(
+          lokistack_status_condition{reason="ReadyComponents", status="false"},
+          "namespace", "$1", "stack_namespace", "(.+)"
+        )
+      ) by (stack_name, namespace)
+      > 0
+    for: 15m
+    labels:
+      severity: warning
