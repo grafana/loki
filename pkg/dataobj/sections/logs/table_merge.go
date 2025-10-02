@@ -266,35 +266,16 @@ func CompareRows(a, b dataset.Row) int {
 	return cmp.Compare(bTimestamp, aTimestamp)
 }
 
-// compareRows compares two rows by their first two columns. compareRows panics
-// if a or b doesn't have at least two columns, if the first column isn't a
-// int64-encoded stream ID, or if the second column isn't an int64-encoded
-// timestamp.
+// equalRows compares two rows for equality, column by column.
+// a row is considered equal if all the columns are equal.
 func equalRows(a, b dataset.Row) bool {
 	if len(a.Values) != len(b.Values) {
 		return false
 	}
 
-	// The first two columns of each row are *always* stream ID and timestamp.
-	var (
-		aStreamID = a.Values[0].Int64()
-		bStreamID = b.Values[0].Int64()
-
-		aTimestamp = a.Values[1].Int64()
-		bTimestamp = b.Values[1].Int64()
-	)
-
-	// First, test the timestamp and stream ID to quickly discard unequal rows.
-	if bTimestamp != aTimestamp {
-		return false
-	}
-
-	if aStreamID != bStreamID {
-		return false
-	}
-
-	// Next, check each column for equality, exiting early if any column is unequal.
-	for i := 2; i < len(a.Values); i++ {
+	// The first two columns of each row are *always* stream ID and timestamp, so they will be checked first.
+	// This means equalRows will exit quickly for rows with different timestamps without reading the rest of the columns.
+	for i := 0; i < len(a.Values); i++ {
 		aType, bType := a.Values[i].Type(), b.Values[i].Type()
 		if aType != bType {
 			return false
@@ -313,6 +294,8 @@ func equalRows(a, b dataset.Row) bool {
 			if !bytes.Equal(a.Values[i].Binary(), b.Values[i].Binary()) {
 				return false
 			}
+		case datasetmd.PHYSICAL_TYPE_UNSPECIFIED:
+			continue
 		default:
 			return false
 		}
