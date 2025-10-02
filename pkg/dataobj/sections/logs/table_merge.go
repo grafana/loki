@@ -18,7 +18,7 @@ import (
 // tables are open at a time.
 //
 // mergeTablesIncremental panics if maxMergeSize is less than 2.
-func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions, tables []*table, maxMergeSize int) (*table, error) {
+func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions, tables []*table, maxMergeSize int, sort SortOrder) (*table, error) {
 	if maxMergeSize < 2 {
 		panic("mergeTablesIncremental: merge size must be at least 2, got " + fmt.Sprint(maxMergeSize))
 	}
@@ -26,7 +26,7 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compre
 	// Even if there's only one table, we still pass to mergeTables to ensure
 	// it's compressed with compressionOpts.
 	if len(tables) == 1 {
-		return mergeTables(buf, pageSize, pageRowCount, compressionOpts, tables)
+		return mergeTables(buf, pageSize, pageRowCount, compressionOpts, tables, sort)
 	}
 
 	in := tables
@@ -36,7 +36,7 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compre
 
 		for i := 0; i < len(in); i += maxMergeSize {
 			set := in[i:min(i+maxMergeSize, len(in))]
-			merged, err := mergeTables(buf, pageSize, pageRowCount, compressionOpts, set)
+			merged, err := mergeTables(buf, pageSize, pageRowCount, compressionOpts, set, sort)
 			if err != nil {
 				return nil, err
 			}
@@ -51,7 +51,7 @@ func mergeTablesIncremental(buf *tableBuffer, pageSize, pageRowCount int, compre
 
 // mergeTables merges the provided sorted tables into a new single sorted table
 // using k-way merge.
-func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions, tables []*table) (*table, error) {
+func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions, tables []*table, sort SortOrder) (*table, error) {
 	buf.Reset()
 
 	var (
@@ -93,7 +93,7 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts d
 
 	var rows int
 
-	tree := loser.New(tableSequences, maxValue, tableSequenceAt, rowResultLess, tableSequenceClose)
+	tree := loser.New(tableSequences, maxValue, tableSequenceAt, CompareForSortOrder(sort), tableSequenceClose)
 	defer tree.Close()
 
 	for tree.Next() {
@@ -194,8 +194,47 @@ func (seq *DatasetSequence) Close() {
 	_ = seq.r.Close()
 }
 
-func rowResultLess(a, b result.Result[dataset.Row]) bool {
-	return result.Compare(a, b, CompareRows) < 0
+// CompareForSortOrder returns a comparison function for result rows for the given sort order.
+func CompareForSortOrder(sort SortOrder) func(result.Result[dataset.Row], result.Result[dataset.Row]) bool {
+	switch sort {
+	case SortStreamASC:
+		return func(a, b result.Result[dataset.Row]) bool {
+			return result.Compare(a, b, compareRowsStreamID) < 0
+		}
+	case SortTimestampDESC:
+		return func(a, b result.Result[dataset.Row]) bool {
+			return result.Compare(a, b, compareRowsTimestamp) < 0
+		}
+	default:
+		panic("invalid sort order")
+	}
+}
+
+// compareRowsStreamID compares two dataset rows based on sort order [streamID ASC, timestamp DESC].
+func compareRowsStreamID(a, b dataset.Row) int {
+	aStreamID, bStreamID, aTimestamp, bTimestamp := valuesForRows(a, b)
+	if res := cmp.Compare(aStreamID, bStreamID); res != 0 {
+		return res
+	}
+	return cmp.Compare(bTimestamp, aTimestamp)
+}
+
+// compareRowsStreamID compares two dataset rows based on sort order [timestamp DESC, streamID ASC].
+func compareRowsTimestamp(a, b dataset.Row) int {
+	aStreamID, bStreamID, aTimestamp, bTimestamp := valuesForRows(a, b)
+	if res := cmp.Compare(bTimestamp, aTimestamp); res != 0 {
+		return res
+	}
+	return cmp.Compare(aStreamID, bStreamID)
+}
+
+// valuesForRows returns the streamID and timestamp values from rows a and b.
+func valuesForRows(a, b dataset.Row) (aStreamID int64, bStreamID int64, aTimestamp int64, bTimestamp int64) {
+	aStreamID = a.Values[0].Int64()
+	bStreamID = b.Values[0].Int64()
+	aTimestamp = a.Values[1].Int64()
+	bTimestamp = b.Values[1].Int64()
+	return
 }
 
 // CompareRows compares two rows by their first two columns. CompareRows panics
@@ -214,8 +253,8 @@ func CompareRows(a, b dataset.Row) int {
 		bTimestamp = b.Values[1].Int64()
 	)
 
-	if res := cmp.Compare(bTimestamp, aTimestamp); res != 0 {
+	if res := cmp.Compare(aStreamID, bStreamID); res != 0 {
 		return res
 	}
-	return cmp.Compare(aStreamID, bStreamID)
+	return cmp.Compare(bTimestamp, aTimestamp)
 }
