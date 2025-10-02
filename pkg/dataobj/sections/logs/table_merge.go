@@ -1,6 +1,7 @@
 package logs
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"math"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
+	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
@@ -60,9 +62,7 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts d
 		messageBuilder   = buf.Message(pageSize, pageRowCount, compressionOpts)
 	)
 
-	var (
-		tableSequences = make([]*tableSequence, 0, len(tables))
-	)
+	tableSequences := make([]*tableSequence, 0, len(tables))
 	for _, t := range tables {
 		dsetColumns, err := result.Collect(t.ListColumns(context.Background()))
 		if err != nil {
@@ -96,6 +96,7 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts d
 	tree := loser.New(tableSequences, maxValue, tableSequenceAt, CompareForSortOrder(sort), tableSequenceClose)
 	defer tree.Close()
 
+	var prev dataset.Row
 	for tree.Next() {
 		seq := tree.Winner()
 
@@ -103,6 +104,12 @@ func mergeTables(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts d
 		if err != nil {
 			return nil, err
 		}
+
+		if equalRows(prev, row) {
+			// Skip equal rows
+			continue
+		}
+		prev = row
 
 		for i, column := range seq.columns {
 			// column is guaranteed to be a *tableColumn since we got it from *table.
@@ -257,4 +264,42 @@ func CompareRows(a, b dataset.Row) int {
 		return res
 	}
 	return cmp.Compare(bTimestamp, aTimestamp)
+}
+
+// equalRows compares two rows for equality, column by column.
+// a row is considered equal if all the columns are equal.
+func equalRows(a, b dataset.Row) bool {
+	if len(a.Values) != len(b.Values) {
+		return false
+	}
+
+	// The first two columns of each row are *always* stream ID and timestamp, so they will be checked first.
+	// This means equalRows will exit quickly for rows with different timestamps without reading the rest of the columns.
+	for i := 0; i < len(a.Values); i++ {
+		aType, bType := a.Values[i].Type(), b.Values[i].Type()
+		if aType != bType {
+			return false
+		}
+
+		switch aType {
+		case datasetmd.PHYSICAL_TYPE_INT64:
+			if a.Values[i].Int64() != b.Values[i].Int64() {
+				return false
+			}
+		case datasetmd.PHYSICAL_TYPE_UINT64:
+			if a.Values[i].Uint64() != b.Values[i].Uint64() {
+				return false
+			}
+		case datasetmd.PHYSICAL_TYPE_BINARY:
+			if !bytes.Equal(a.Values[i].Binary(), b.Values[i].Binary()) {
+				return false
+			}
+		case datasetmd.PHYSICAL_TYPE_UNSPECIFIED:
+			continue
+		default:
+			return false
+		}
+	}
+
+	return true
 }
