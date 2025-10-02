@@ -66,8 +66,8 @@ func Test_mergeTables(t *testing.T) {
 
 		tableC = buildTable(&buf, pageSize, pageRows, dataset.CompressionOptions{}, []Record{
 			{StreamID: 3, Timestamp: time.Unix(2, 0), Line: []byte("are")},
+			{StreamID: 3, Timestamp: time.Unix(2, 0), Line: []byte("are")}, // Duplicate within tableC
 			{StreamID: 2, Timestamp: time.Unix(1, 0), Line: []byte("doing?")},
-			{StreamID: 2, Timestamp: time.Unix(1, 0), Line: []byte("doing?")}, // Duplicate within tableC
 		})
 	)
 
