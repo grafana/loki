@@ -1,6 +1,7 @@
 package logs
 
 import (
+	"bytes"
 	"cmp"
 	"slices"
 
@@ -22,7 +23,14 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts da
 		messageBuilder   = buf.Message(pageSize, pageRowCount, compressionOpts)
 	)
 
+	var prev Record
 	for i, record := range records {
+		if equalRecords(prev, record) {
+			// Skip equal records
+			continue
+		}
+		prev = record
+
 		// Append only fails if given out-of-order data, where the provided row
 		// number is less than the previous row number. That can't happen here, so
 		// to keep the code readable we ignore the error values.
@@ -55,4 +63,17 @@ func sortRecords(records []Record) {
 		}
 		return cmp.Compare(a.StreamID, b.StreamID)
 	})
+}
+
+func equalRecords(a, b Record) bool {
+	if a.StreamID != b.StreamID {
+		return false
+	}
+	if a.Timestamp != b.Timestamp {
+		return false
+	}
+	if !labels.Equal(a.Metadata, b.Metadata) {
+		return false
+	}
+	return bytes.Equal(a.Line, b.Line)
 }
