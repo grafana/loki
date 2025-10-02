@@ -273,7 +273,7 @@ func (dl *readerDownloader) buildDownloadBatch(ctx context.Context, requestor *r
 	}
 
 	// Always add the requestor page to the batch if it's uncached.
-	if len(requestor.data) == 0 {
+	if requestor.data != nil && len(requestor.data.Bytes()) == 0 {
 		pageBatch = append(pageBatch, requestor)
 	}
 
@@ -555,7 +555,7 @@ func (col *readerColumn) Size() int {
 	var size int
 	for _, page := range col.pages {
 		if page.data != nil {
-			size += len(page.data)
+			size += len(page.data.Bytes())
 		}
 	}
 	return size

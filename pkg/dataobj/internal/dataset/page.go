@@ -29,7 +29,19 @@ type (
 	//
 	// values-data is then the encoded and optionally compressed sequence of
 	// non-NULL values.
-	PageData []byte
+	PageData interface {
+		// Bytes returns the underlying data for the page. Callers must not
+		// retain references to this slice after calling Close.
+		Bytes() []byte
+
+		// Close the PageData. Implementations of PageData may use Close
+		// to return shared memory. After closing PageData, future calls to
+		// Bytes return nil.
+		//
+		// If the implementation of PageData does not support closing,
+		// Close does nothing.
+		Close() error
+	}
 
 	// PageDesc describes a page.
 	PageDesc struct {
@@ -57,11 +69,52 @@ type Page interface {
 	ReadPage(ctx context.Context) (PageData, error)
 }
 
+type byteBuffer struct {
+	data []byte
+}
+
+// Resize changes the len of buf to n. If n is greater than the
+// capacity of buf, Resize allocates a new slice.
+func (buf *byteBuffer) Resize(n int) {
+	if n > len(buf.data) {
+		tmp := make([]byte, n)
+		copy(buf.data, tmp)
+		buf.data = tmp
+	} else {
+		buf.data = buf.data[:n]
+	}
+}
+
+// Bytes returns the underlying data of buf.
+func (buf *byteBuffer) Bytes() []byte {
+	return buf.data
+}
+
+var bufferPool = sync.Pool{
+	New: func() any {
+		return new(byteBuffer)
+	},
+}
+
+type releasableData struct {
+	buf *byteBuffer
+}
+
+func (rd *releasableData) Bytes() []byte { return rd.buf.Bytes() }
+
+func (rd *releasableData) Close() error {
+	if rd.buf != nil {
+		bufferPool.Put(rd.buf)
+		rd.buf = nil
+	}
+	return nil
+}
+
 // MemPage holds an encoded (and optionally compressed) sequence of [Value]
 // entries of a common type. Use [ColumnBuilder] to construct sets of pages.
 type MemPage struct {
-	Desc PageDesc // Description of the page.
-	Data PageData // Data for the page.
+	Desc PageDesc        // Description of the page.
+	data *releasableData // Data for the page.
 }
 
 var _ Page = (*MemPage)(nil)
@@ -73,7 +126,26 @@ func (p *MemPage) PageDesc() *PageDesc {
 
 // ReadPage implements [Page] and returns p.Data.
 func (p *MemPage) ReadPage(_ context.Context) (PageData, error) {
-	return p.Data, nil
+	return p, nil
+}
+
+func (p MemPage) Bytes() []byte {
+	return p.data.Bytes()
+}
+
+func (p MemPage) Close() error {
+	if p.data != nil {
+		return p.data.Close()
+	}
+	return nil
+}
+
+func InitMemPage(desc PageDesc, data []byte) MemPage {
+	buf := bufferPool.Get().(*byteBuffer)
+	buf.Resize(len(data))
+	copy(buf.data, data)
+	rd := &releasableData{buf: buf}
+	return MemPage{desc, rd}
 }
 
 var checksumTable = crc32.MakeTable(crc32.Castagnoli)
@@ -81,19 +153,18 @@ var checksumTable = crc32.MakeTable(crc32.Castagnoli)
 // reader returns a reader for decompressed page data. Reader returns an error
 // if the CRC32 fails to validate.
 func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Reader, values io.ReadCloser, err error) {
-	if actual := crc32.Checksum(p.Data, checksumTable); p.Desc.CRC32 != actual {
+	if actual := crc32.Checksum(p.Bytes(), checksumTable); p.Desc.CRC32 != actual {
 		return nil, nil, fmt.Errorf("invalid CRC32 checksum %x, expected %x", actual, p.Desc.CRC32)
 	}
 
-	bitmapSize, n := binary.Uvarint(p.Data)
+	bitmapSize, n := binary.Uvarint(p.Bytes())
 	if n <= 0 {
 		return nil, nil, fmt.Errorf("reading presence bitmap size: %w", err)
 	}
 
 	var (
-		bitmapData           = p.Data[n : n+int(bitmapSize)]
-		compressedValuesData = p.Data[n+int(bitmapSize):]
-
+		bitmapData             = p.Bytes()[n : n+int(bitmapSize)]
+		compressedValuesData   = p.Bytes()[n+int(bitmapSize):]
 		bitmapReader           = bytes.NewReader(bitmapData)
 		compressedValuesReader = bytes.NewReader(compressedValuesData)
 	)
