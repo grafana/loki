@@ -17,6 +17,26 @@ type Attr = int
 // Style represents an ANSI SGR (Select Graphic Rendition) style.
 type Style []string
 
+// NewStyle returns a new style with the given attributes.
+func NewStyle(attrs ...Attr) Style {
+	if len(attrs) == 0 {
+		return Style{}
+	}
+	s := make(Style, 0, len(attrs))
+	for _, a := range attrs {
+		attr, ok := attrStrings[a]
+		if ok {
+			s = append(s, attr)
+		} else {
+			if a < 0 {
+				a = 0
+			}
+			s = append(s, strconv.Itoa(a))
+		}
+	}
+	return s
+}
+
 // String returns the ANSI SGR (Select Graphic Rendition) style sequence for
 // the given style.
 func (s Style) String() string {
@@ -127,11 +147,6 @@ func (s Style) Strikethrough() Style {
 	return append(s, strikethroughAttr)
 }
 
-// NoBold appends the no bold style attribute to the style.
-func (s Style) NoBold() Style {
-	return append(s, noBoldAttr)
-}
-
 // NormalIntensity appends the normal intensity style attribute to the style.
 func (s Style) NormalIntensity() Style {
 	return append(s, normalIntensityAttr)
@@ -236,7 +251,6 @@ const (
 	ReverseAttr                      Attr = 7
 	ConcealAttr                      Attr = 8
 	StrikethroughAttr                Attr = 9
-	NoBoldAttr                       Attr = 21 // Some terminals treat this as double underline.
 	NormalIntensityAttr              Attr = 22
 	NoItalicAttr                     Attr = 23
 	NoUnderlineAttr                  Attr = 24
@@ -298,7 +312,6 @@ const (
 	reverseAttr                      = "7"
 	concealAttr                      = "8"
 	strikethroughAttr                = "9"
-	noBoldAttr                       = "21"
 	normalIntensityAttr              = "22"
 	noItalicAttr                     = "23"
 	noUnderlineAttr                  = "24"
@@ -581,7 +594,7 @@ func ReadStyleColor(params Params, co *color.Color) (n int) {
 			B: uint8(b), //nolint:gosec
 			A: 0xff,
 		}
-		return
+		return //nolint:nakedret
 
 	case 3: // CMY direct color
 		if len(params) < 5 {
@@ -599,7 +612,7 @@ func ReadStyleColor(params Params, co *color.Color) (n int) {
 			Y: uint8(y), //nolint:gosec
 			K: 0,
 		}
-		return
+		return //nolint:nakedret
 
 	case 4: // CMYK direct color
 		if len(params) < 6 {
@@ -617,7 +630,7 @@ func ReadStyleColor(params Params, co *color.Color) (n int) {
 			Y: uint8(y), //nolint:gosec
 			K: uint8(k), //nolint:gosec
 		}
-		return
+		return //nolint:nakedret
 
 	case 5: // indexed color
 		if len(params) < 3 {
@@ -652,7 +665,7 @@ func ReadStyleColor(params Params, co *color.Color) (n int) {
 			B: uint8(b), //nolint:gosec
 			A: uint8(a), //nolint:gosec
 		}
-		return
+		return //nolint:nakedret
 
 	default:
 		return 0

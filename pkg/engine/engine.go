@@ -48,6 +48,9 @@ func New(opts logql.EngineOpts, cfg metastore.Config, bucket objstore.Bucket, li
 	if opts.BatchSize <= 0 {
 		panic(fmt.Sprintf("invalid batch size for query engine. must be greater than 0, got %d", opts.BatchSize))
 	}
+	if opts.RangeConfig.IsZero() {
+		opts.RangeConfig = rangeio.DefaultConfig
+	}
 
 	return &QueryEngine{
 		logger:    logger,
@@ -193,10 +196,9 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 		timer := prometheus.NewTimer(e.metrics.execution)
 
 		cfg := executor.Config{
-			BatchSize:                int64(e.opts.BatchSize),
-			MergePrefetchCount:       e.opts.MergePrefetchCount,
-			Bucket:                   e.bucket,
-			DataobjScanPageCacheSize: int64(e.opts.DataobjScanPageCacheSize),
+			BatchSize:          int64(e.opts.BatchSize),
+			MergePrefetchCount: e.opts.MergePrefetchCount,
+			Bucket:             e.bucket,
 		}
 		pipeline := executor.Run(ctx, cfg, physicalPlan, logger)
 		defer pipeline.Close()
