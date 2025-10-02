@@ -28,7 +28,6 @@ var testBuilderConfig = logsobj.BuilderConfig{
 	TargetSectionSize:       1 << 22, // 4 MiB
 	BufferSize:              2048 * 8,
 	SectionStripeMergeLimit: 2,
-	DataobjSortOrder:        "stream-asc",
 }
 
 func TestPartitionProcessor_Flush(t *testing.T) {

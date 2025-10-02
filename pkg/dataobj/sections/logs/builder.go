@@ -35,21 +35,9 @@ const (
 type SortOrder int
 
 const (
-	_ SortOrder = iota
-	SortStreamASC
+	SortStreamASC SortOrder = iota
 	SortTimestampDESC
 )
-
-func (o SortOrder) String() string {
-	switch o {
-	case SortStreamASC:
-		return "stream-asc"
-	case SortTimestampDESC:
-		return "timestamp-desc"
-	default:
-		return "invalid"
-	}
-}
 
 // BuilderOptions configures the behavior of the logs section.
 type BuilderOptions struct {

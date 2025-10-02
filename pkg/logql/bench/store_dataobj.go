@@ -81,7 +81,6 @@ func NewDataObjStore(dir, tenant string) (*DataObjStore, error) {
 		BufferSize:        16 * 1024 * 1024,  // 16MB
 
 		SectionStripeMergeLimit: 2,
-		DataobjSortOrder:        "stream-asc",
 	}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create builder: %w", err)

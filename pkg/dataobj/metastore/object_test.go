@@ -420,7 +420,6 @@ func newTestDataBuilder(t *testing.T) *testDataBuilder {
 		TargetSectionSize:       1024 * 1024,      // 1MB
 		BufferSize:              1024 * 1024,      // 1MB
 		SectionStripeMergeLimit: 2,
-		DataobjSortOrder:        "stream-asc",
 	}, nil)
 	require.NoError(t, err)
 

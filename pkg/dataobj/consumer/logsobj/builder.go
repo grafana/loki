@@ -32,6 +32,12 @@ var (
 	ErrBuilderEmpty = errors.New("builder empty")
 )
 
+const (
+	// Constants for the sort order configuration
+	sortStreamASC     = "stream-asc"
+	sortTimestampDESC = "timestamp-desc"
+)
+
 // BuilderConfig configures a [Builder].
 type BuilderConfig struct {
 	// TargetPageSize configures a target size for encoded pages within the data
@@ -87,7 +93,7 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "The target maximum amount of uncompressed data to hold in sections, for sections that support being limited by size. Uncompressed size is used for consistent I/O and planning.")
 	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of logs to buffer in memory before adding into columnar builders, used to reduce CPU load of sorting.")
 	f.IntVar(&cfg.SectionStripeMergeLimit, prefix+"section-stripe-merge-limit", 2, "The maximum number of log section stripes to merge into a section at once. Must be greater than 1.")
-	f.StringVar(&cfg.DataobjSortOrder, prefix+"dataobj-sort-oder", logs.SortStreamASC.String(), "The desired sort order of the logs section. Can either be `stream-asc` (order by streamID ascending and timestamp descending) or `timestamp-desc` (order by timestamp descending and streamID ascending).")
+	f.StringVar(&cfg.DataobjSortOrder, prefix+"dataobj-sort-order", sortStreamASC, "The desired sort order of the logs section. Can either be `stream-asc` (order by streamID ascending and timestamp descending) or `timestamp-desc` (order by timestamp descending and streamID ascending).")
 }
 
 // Validate validates the BuilderConfig.
@@ -116,7 +122,10 @@ func (cfg *BuilderConfig) Validate() error {
 		errs = append(errs, errors.New("LogsMergeStripesMax must be greater than 1"))
 	}
 
-	if !(cfg.DataobjSortOrder == logs.SortStreamASC.String() || cfg.DataobjSortOrder == logs.SortTimestampDESC.String()) {
+	if cfg.DataobjSortOrder == "" {
+		cfg.DataobjSortOrder = sortStreamASC // default to [streamID ASC, timestamp DESC] sorting
+	}
+	if !(cfg.DataobjSortOrder == sortStreamASC || cfg.DataobjSortOrder == sortTimestampDESC) {
 		errs = append(errs, fmt.Errorf("invalid dataobj sort order. must be one of `stream-asc` or `timestamp-desc`, got: %s", cfg.DataobjSortOrder))
 	}
 
@@ -124,15 +133,12 @@ func (cfg *BuilderConfig) Validate() error {
 }
 
 var sortOrderMapping = map[string]logs.SortOrder{
-	logs.SortStreamASC.String():     logs.SortStreamASC,
-	logs.SortTimestampDESC.String(): logs.SortTimestampDESC,
+	sortStreamASC:     logs.SortStreamASC,
+	sortTimestampDESC: logs.SortTimestampDESC,
 }
 
 func parseSortOrder(s string) logs.SortOrder {
-	val, ok := sortOrderMapping[s]
-	if !ok {
-		return 0
-	}
+	val, _ := sortOrderMapping[s]
 	return val
 }
 

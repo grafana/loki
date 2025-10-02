@@ -44,7 +44,6 @@ func createTestLogObject(t *testing.T, tenants int) *dataobj.Object {
 		TargetSectionSize:       1 << 21,
 		BufferSize:              2048 * 8,
 		SectionStripeMergeLimit: 2,
-		DataobjSortOrder:        "stream-asc",
 	}, nil)
 	require.NoError(t, err)
 
