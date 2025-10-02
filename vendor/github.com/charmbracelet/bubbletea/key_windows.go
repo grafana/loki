@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/erikgeiser/coninput"
 	localereader "github.com/mattn/go-localereader"
@@ -25,14 +26,10 @@ func readConInputs(ctx context.Context, msgsch chan<- Msg, con *conInputReader) 
 	var ps coninput.ButtonState                 // keep track of previous mouse state
 	var ws coninput.WindowBufferSizeEventRecord // keep track of the last window size event
 	for {
-		events, err := coninput.ReadNConsoleInputs(con.conin, 16)
+		events, err := peekAndReadConsInput(con)
 		if err != nil {
-			if con.isCanceled() {
-				return cancelreader.ErrCanceled
-			}
-			return fmt.Errorf("read coninput events: %w", err)
+			return err
 		}
-
 		for _, event := range events {
 			var msgs []Msg
 			switch e := event.Unwrap().(type) {
@@ -94,6 +91,50 @@ func readConInputs(ctx context.Context, msgsch chan<- Msg, con *conInputReader) 
 	}
 }
 
+// Peek for new input in a tight loop and then read the input.
+// windows.CancelIo* does not work reliably so peek first and only use the data if
+// the console input is not cancelled.
+func peekAndReadConsInput(con *conInputReader) ([]coninput.InputRecord, error) {
+	events, err := peekConsInput(con)
+	if err != nil {
+		return events, err
+	}
+	events, err = coninput.ReadNConsoleInputs(con.conin, intToUint32OrDie(len(events)))
+	if con.isCanceled() {
+		return events, cancelreader.ErrCanceled
+	}
+	if err != nil {
+		return events, fmt.Errorf("read coninput events: %w", err)
+	}
+	return events, nil
+}
+
+// Convert i to unit32 or panic if it cannot be converted. Check satisfies lint G115.
+func intToUint32OrDie(i int) uint32 {
+	if i < 0 {
+		panic("cannot convert numEvents " + fmt.Sprint(i) + " to uint32")
+	}
+	return uint32(i) //nolint:gosec
+}
+
+// Keeps peeking until there is data or the input is cancelled.
+func peekConsInput(con *conInputReader) ([]coninput.InputRecord, error) {
+	for {
+		events, err := coninput.PeekNConsoleInputs(con.conin, 16)
+		if con.isCanceled() {
+			return events, cancelreader.ErrCanceled
+		}
+		if err != nil {
+			return events, fmt.Errorf("peek coninput events: %w", err)
+		}
+		if len(events) > 0 {
+			return events, nil
+		}
+		// Sleep for a bit to avoid busy waiting.
+		time.Sleep(16 * time.Millisecond)
+	}
+}
+
 func mouseEventButton(p, s coninput.ButtonState) (button MouseButton, action MouseAction) {
 	btn := p ^ s
 	action = MouseActionPress
@@ -117,16 +158,16 @@ func mouseEventButton(p, s coninput.ButtonState) (button MouseButton, action Mou
 		return button, action
 	}
 
-	switch {
-	case btn == coninput.FROM_LEFT_1ST_BUTTON_PRESSED: // left button
+	switch btn {
+	case coninput.FROM_LEFT_1ST_BUTTON_PRESSED: // left button
 		button = MouseButtonLeft
-	case btn == coninput.RIGHTMOST_BUTTON_PRESSED: // right button
+	case coninput.RIGHTMOST_BUTTON_PRESSED: // right button
 		button = MouseButtonRight
-	case btn == coninput.FROM_LEFT_2ND_BUTTON_PRESSED: // middle button
+	case coninput.FROM_LEFT_2ND_BUTTON_PRESSED: // middle button
 		button = MouseButtonMiddle
-	case btn == coninput.FROM_LEFT_3RD_BUTTON_PRESSED: // unknown (possibly mouse backward)
+	case coninput.FROM_LEFT_3RD_BUTTON_PRESSED: // unknown (possibly mouse backward)
 		button = MouseButtonBackward
-	case btn == coninput.FROM_LEFT_4TH_BUTTON_PRESSED: // unknown (possibly mouse forward)
+	case coninput.FROM_LEFT_4TH_BUTTON_PRESSED: // unknown (possibly mouse forward)
 		button = MouseButtonForward
 	}
 
