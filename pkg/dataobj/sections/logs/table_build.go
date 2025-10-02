@@ -24,7 +24,8 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts da
 	)
 
 	var prev Record
-	for i, record := range records {
+	row := 0
+	for _, record := range records {
 		if equalRecords(prev, record) {
 			// Skip equal records
 			continue
@@ -35,16 +36,17 @@ func buildTable(buf *tableBuffer, pageSize, pageRowCount int, compressionOpts da
 		// number is less than the previous row number. That can't happen here, so
 		// to keep the code readable we ignore the error values.
 
-		_ = streamIDBuilder.Append(i, dataset.Int64Value(record.StreamID))
-		_ = timestampBuilder.Append(i, dataset.Int64Value(record.Timestamp.UnixNano()))
-		_ = messageBuilder.Append(i, dataset.BinaryValue(record.Line))
+		_ = streamIDBuilder.Append(row, dataset.Int64Value(record.StreamID))
+		_ = timestampBuilder.Append(row, dataset.Int64Value(record.Timestamp.UnixNano()))
+		_ = messageBuilder.Append(row, dataset.BinaryValue(record.Line))
 
 		record.Metadata.Range(func(md labels.Label) {
 			// Passing around md.Value as an unsafe slice is safe here: appending
 			// values is always read-only and the byte slice will never be mutated.
 			metadataBuilder := buf.Metadata(md.Name, pageSize, pageRowCount, compressionOpts)
-			_ = metadataBuilder.Append(i, dataset.BinaryValue(unsafeSlice(md.Value, 0)))
+			_ = metadataBuilder.Append(row, dataset.BinaryValue(unsafeSlice(md.Value, 0)))
 		})
+		row++
 	}
 
 	table, err := buf.Flush()
