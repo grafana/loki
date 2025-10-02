@@ -15,6 +15,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 6.42.0
 
+**NOTE:** While the Loki chart does not currently use these CRDs, we wanted to note this requirement for the [rollout-operator](https://github.com/grafana/helm-charts/tree/main/charts/rollout-operator#upgrade-of-grafana-rollout-operator).
+Starting with v0.33.0 of the rollout-operator chart, the rollout-operator webhooks are enabled. See https://github.com/grafana/rollout-operator/#webhooks.
+Before upgrading to this version, make sure that the CustomResourceDefinitions (CRDs) in the crds directory are applied to your cluster. Manually applying these CRDs is only required if upgrading from a chart <= v0.32.0.  
+
 - [BUGFIX] Use strings instead of integers for ports in CiliumNetworkPolicies [#19252](https://github.com/grafana/loki/pull/19252)
 - [FEATURE] Add replicas to loki-canary deployment [#190095](https://github.com/grafana/loki/pull/19095)
 - [FEATURE] Allow changing the retentionPolicy for the singleBinary StatefulSet [#19097](https://github.com/grafana/loki/pull/19097)
