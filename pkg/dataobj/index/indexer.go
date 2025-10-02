@@ -32,9 +32,9 @@ type buildRequest struct {
 
 // buildResult represents the result of an index build operation
 type buildResult struct {
-	indexPaths []string      // Multiple index paths when ErrBuilderFull causes multiple flushes
-	records    []*kgo.Record // Records to commit after successful build
-	err        error
+	indexPath string        // Index path when ErrBuilderFull causes multiple flushes
+	records   []*kgo.Record // Records to commit after successful build
+	err       error
 }
 
 // indexerConfig contains configuration for the indexer
@@ -65,6 +65,7 @@ type serialIndexer struct {
 	// Download pipeline
 	downloadQueue     chan metastore.ObjectWrittenEvent
 	downloadedObjects chan downloadedObject
+	skipDownloads     chan struct{} // Signal to skip downloading new objects
 
 	// Worker management
 	buildRequestChan chan buildRequest
@@ -96,6 +97,7 @@ func newSerialIndexer(
 		buildRequestChan:   make(chan buildRequest, cfg.QueueSize),
 		downloadQueue:      make(chan metastore.ObjectWrittenEvent, 32),
 		downloadedObjects:  make(chan downloadedObject, 1),
+		skipDownloads:      make(chan struct{}),
 	}
 
 	// Initialize dskit Service
@@ -134,6 +136,9 @@ func (si *serialIndexer) stopping(_ error) error {
 	// Close channels to signal workers to stop
 	close(si.downloadQueue)
 	close(si.buildRequestChan)
+
+	// Close the skip downloads channel to signal any waiting download workers
+	close(si.skipDownloads)
 
 	// Wait for workers to finish
 	si.downloadWorkerWg.Wait()
@@ -181,7 +186,7 @@ func (si *serialIndexer) submitBuild(ctx context.Context, events []bufferedEvent
 				"partition", partition, "err", result.err)
 		} else {
 			level.Debug(si.logger).Log("msg", "build request completed",
-				"partition", partition, "index_count", len(result.indexPaths))
+				"partition", partition, "index_path", result.indexPath)
 		}
 		return result.records, result.err
 	case <-ctx.Done():
@@ -196,12 +201,20 @@ func (si *serialIndexer) downloadWorker(ctx context.Context) {
 	level.Debug(si.logger).Log("msg", "download worker started")
 	defer level.Debug(si.logger).Log("msg", "download worker stopped")
 
+	skipMode := false // Track whether we're in skip mode
+
 	for {
 		select {
 		case event, ok := <-si.downloadQueue:
 			if !ok {
 				// Channel closed, worker should exit
 				return
+			}
+
+			if skipMode {
+				// Skip downloading, just drain the queue
+				level.Debug(si.logger).Log("msg", "skipping download due to skip signal", "object_path", event.ObjectPath)
+				continue
 			}
 
 			objLogger := log.With(si.logger, "object_path", event.ObjectPath)
@@ -246,6 +259,11 @@ func (si *serialIndexer) downloadWorker(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			}
+
+		case <-si.skipDownloads:
+			level.Debug(si.logger).Log("msg", "download worker received skip signal, entering skip mode")
+			skipMode = true
+			// Continue in the loop to drain the downloadQueue
 
 		case <-ctx.Done():
 			return
@@ -302,7 +320,7 @@ func (si *serialIndexer) processBuildRequest(req buildRequest) buildResult {
 	}
 
 	// Build the index using internal method
-	indexPaths, err := si.buildIndex(req.ctx, events, req.partition)
+	indexPath, processed, err := si.buildIndex(req.ctx, events, req.partition, req.trigger)
 
 	// Update metrics
 	buildTime := time.Since(start)
@@ -310,36 +328,32 @@ func (si *serialIndexer) processBuildRequest(req buildRequest) buildResult {
 
 	if err != nil {
 		level.Error(si.logger).Log("msg", "failed to build index",
-			"partition", req.partition, "err", err, "duration", buildTime,
-			"partial_indexes", len(indexPaths))
-
-		// If we have partial results, it's a partial success
-		if len(indexPaths) > 0 {
-			level.Info(si.logger).Log("msg", "partial index build success",
-				"partition", req.partition, "indexes_created", len(indexPaths))
-		}
-		return buildResult{indexPaths: indexPaths, err: err} // Return partial success
+			"partition", req.partition, "err", err, "duration", buildTime, "processed", processed)
+		return buildResult{err: err}
 	}
 
-	level.Debug(si.logger).Log("msg", "successfully built indexes",
-		"partition", req.partition, "index_paths", len(indexPaths), "duration", buildTime,
-		"events", len(events))
+	level.Debug(si.logger).Log("msg", "successfully built index",
+		"partition", req.partition, "index_path", indexPath, "duration", buildTime,
+		"events", len(events), "processed", processed)
 
-	// Extract records for committing
-	records := make([]*kgo.Record, len(req.events))
-	for i, buffered := range req.events {
-		records[i] = buffered.record
+	// Extract records for committing - only for processed events
+	records := make([]*kgo.Record, processed)
+	for i := range processed {
+		records[i] = req.events[i].record
 	}
 
 	return buildResult{
-		indexPaths: indexPaths,
-		records:    records,
-		err:        nil,
+		indexPath: indexPath,
+		records:   records,
+		err:       nil,
 	}
 }
 
-// buildIndex is the core index building logic (moved from builder)
-func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.ObjectWrittenEvent, partition int32) ([]string, error) {
+// buildIndex is writing all metastore events to a single index object. It
+// returns the index path and the number of events processed or an error if the index object is not created.
+// The number of events processed can be less than the number of events if the builder becomes full
+// when the trigger is triggerTypeAppend.
+func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.ObjectWrittenEvent, partition int32, trigger triggerType) (string, int, error) {
 	level.Debug(si.logger).Log("msg", "building index", "events", len(events), "partition", partition)
 	start := time.Now()
 
@@ -347,7 +361,7 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 	writeTime, err := time.Parse(time.RFC3339, events[0].WriteTime)
 	if err != nil {
 		level.Error(si.logger).Log("msg", "failed to parse write time", "err", err)
-		return nil, err
+		return "", 0, err
 	}
 	si.builderMetrics.setProcessingDelay(writeTime)
 
@@ -356,22 +370,23 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 		case si.downloadQueue <- event:
 			// Successfully sent event for download
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return "", 0, ctx.Err()
 		}
 	}
 
 	// Process downloaded objects, handling ErrBuilderFull
-	var indexPaths []string
 	processingErrors := multierror.New()
 
-	for range len(events) {
+	processed := 0
+	for processed < len(events) {
 		var obj downloadedObject
 		select {
 		case obj = <-si.downloadedObjects:
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return "", processed, ctx.Err()
 		}
 
+		processed++
 		objLogger := log.With(si.logger, "object_path", obj.event.ObjectPath)
 		level.Debug(objLogger).Log("msg", "processing object")
 
@@ -387,33 +402,49 @@ func (si *serialIndexer) buildIndex(ctx context.Context, events []metastore.Obje
 		}
 
 		// Check if builder became full during processing
-		if si.calculator.IsFull() {
-			// Flush current index and start fresh
-			indexPath, flushErr := si.flushIndex(ctx, partition)
-			if flushErr != nil {
-				processingErrors.Add(fmt.Errorf("failed to flush index after processing full object: %w", flushErr))
-				continue
+		if si.calculator.IsFull() && trigger == triggerTypeAppend {
+			// Signal download worker to skip downloading new objects
+			select {
+			case si.skipDownloads <- struct{}{}:
+				level.Debug(si.logger).Log("msg", "sent skip signal to download worker")
+			default:
+				// Channel might be full or already closed, continue anyway
+				level.Debug(si.logger).Log("msg", "failed to send skip signal to download worker, channel full or closed")
 			}
 
-			if indexPath != "" {
-				indexPaths = append(indexPaths, indexPath)
-				level.Debug(si.logger).Log("msg", "flushed index after processing full object",
-					"index_path", indexPath, "partition", partition)
+			// Drain any remaining downloaded objects to prevent goroutine leaks
+		drainLoop:
+			for {
+				select {
+				case <-si.downloadedObjects:
+					// Drain the channel, continue draining
+				case <-ctx.Done():
+					break drainLoop
+				default:
+					break drainLoop // No more objects to drain
+				}
 			}
-
-			// Reset calculator for next object
-			si.calculator.Reset()
+			break
 		}
 	}
 
 	if processingErrors.Err() != nil {
-		return indexPaths, processingErrors.Err()
+		return "", processed, processingErrors.Err()
+	}
+
+	// Flush current index and start fresh for each trigger type means:
+	// - append: Either the calculator became full and the remaining events will be processed by the next trigger
+	//           or all events have been processed, so we flush the current index and start fresh
+	// - max-idle: All events have been processed, so we flush the current index and start fresh
+	indexPath, flushErr := si.flushIndex(ctx, partition)
+	if flushErr != nil {
+		return "", processed, fmt.Errorf("failed to flush index after processing full object: %w", flushErr)
 	}
 
 	level.Debug(si.logger).Log("msg", "finished building index files", "partition", partition,
-		"events", len(events), "index_count", len(indexPaths), "duration", time.Since(start))
+		"events", len(events), "processed", processed, "index_path", indexPath, "duration", time.Since(start))
 
-	return indexPaths, nil
+	return indexPath, processed, nil
 }
 
 // processObject handles processing a single downloaded object
@@ -458,6 +489,8 @@ func (si *serialIndexer) flushIndex(ctx context.Context, partition int32) (strin
 	if err := metastoreTocWriter.WriteEntry(ctx, key, tenantTimeRanges); err != nil {
 		return "", fmt.Errorf("failed to update metastore ToC file: %w", err)
 	}
+
+	si.calculator.Reset()
 
 	level.Debug(si.logger).Log("msg", "flushed index object", "partition", partition,
 		"path", key, "size", obj.Size(), "tenants", len(tenantTimeRanges))
