@@ -214,7 +214,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           )
                         )
                         .addRowIf(
-                          !$._config.ssd.enabled,
+                          !$._config.ssd.enabled && !$._config.tsdb,
                           $.row('BoltDB Index')
                           .addPanel(
                             $.newQueryPanel('QPS') +
@@ -228,6 +228,24 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             $.p99LatencyByPod(
                               'loki_boltdb_shipper_request_duration_seconds',
                               '{%s operation="WRITE"}' % dashboards['loki-writes.json'].ingesterSelector,
+                            )
+                          )
+                        )
+                        .addRowIf(
+                          !$._config.ssd.enabled && $._config.tsdb,
+                          $.row('TSDB Index')
+                          .addPanel(
+                            $.newQueryPanel('QPS') +
+                            $.newQpsPanel('loki_tsdb_shipper_request_duration_seconds_count{%s operation="IndexChunk"}' % dashboards['loki-writes.json'].ingesterSelector)
+                          )
+                          .addPanel(
+                            $.newQueryPanel('Latency', 'ms') +
+                            $.latencyPanel('loki_tsdb_shipper_request_duration_seconds', '{%s operation="IndexChunk"}' % dashboards['loki-writes.json'].ingesterSelector)
+                          )
+                          .addPanel(
+                            $.p99LatencyByPod(
+                              'loki_tsdb_shipper_request_duration_seconds',
+                              '{%s operation="IndexChunk"}' % dashboards['loki-writes.json'].ingesterSelector,
                             )
                           )
                         ),
