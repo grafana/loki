@@ -291,20 +291,8 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	}
 
 	// The first two columns of each row are *always* stream ID and timestamp.
-	//
 	// TODO(ashwanth): Find a safer way to do this. Same as [CompareRows]
-	logsEnc.SetSortInfo(&datasetmd_v2.SortInfo{
-		ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
-			{
-				ColumnIndex: 0, // stream ID
-				Direction:   datasetmd_v2.SORT_DIRECTION_ASCENDING,
-			},
-			{
-				ColumnIndex: 1, // timestamp
-				Direction:   datasetmd_v2.SORT_DIRECTION_DESCENDING,
-			},
-		},
-	})
+	logsEnc.SetSortInfo(sortInfo(b.opts.SortOrder))
 	logsEnc.SetTenant(b.tenant)
 
 	n, err = logsEnc.Flush(w)
@@ -329,6 +317,27 @@ func (b *Builder) encodeSection(enc *columnar.Encoder, section *table) error {
 	}
 
 	return nil
+}
+
+func sortInfo(sort SortOrder) *datasetmd_v2.SortInfo {
+	switch sort {
+	case SortStreamASC:
+		return &datasetmd_v2.SortInfo{
+			ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
+				{ColumnIndex: 0, Direction: datasetmd_v2.SORT_DIRECTION_ASCENDING},  // StreamID ASC
+				{ColumnIndex: 1, Direction: datasetmd_v2.SORT_DIRECTION_DESCENDING}, // Timestamp DESC
+			},
+		}
+	case SortTimestampDESC:
+		return &datasetmd_v2.SortInfo{
+			ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
+				{ColumnIndex: 1, Direction: datasetmd_v2.SORT_DIRECTION_DESCENDING}, // Timestamp DESC
+				{ColumnIndex: 0, Direction: datasetmd_v2.SORT_DIRECTION_ASCENDING},  // StreamID ASC
+			},
+		}
+	default:
+		panic("invalid sort order")
+	}
 }
 
 func encodeColumn(enc *columnar.Encoder, columnType ColumnType, column *tableColumn) error {
