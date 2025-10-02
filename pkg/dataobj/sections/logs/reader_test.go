@@ -121,6 +121,7 @@ func buildSection(t *testing.T, recs []logs.Record) *logs.Section {
 		PageSizeHint:     8192,
 		BufferSize:       4192,
 		StripeMergeLimit: 2,
+		SortOrder:        logs.SortStreamASC,
 	})
 
 	for _, rec := range recs {

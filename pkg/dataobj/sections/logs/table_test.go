@@ -68,7 +68,7 @@ func Test_mergeTables(t *testing.T) {
 		})
 	)
 
-	mergedTable, err := mergeTables(&buf, pageSize, pageRows, dataset.CompressionOptions{}, []*table{tableA, tableB, tableC})
+	mergedTable, err := mergeTables(&buf, pageSize, pageRows, dataset.CompressionOptions{}, []*table{tableA, tableB, tableC}, SortTimestampDESC)
 	require.NoError(t, err)
 
 	mergedColumns, err := result.Collect(mergedTable.ListColumns(context.Background()))
