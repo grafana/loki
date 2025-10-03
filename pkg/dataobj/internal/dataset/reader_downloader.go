@@ -470,7 +470,6 @@ func (dl *readerDownloader) Reset(dset Dataset) {
 		col := col.(*readerColumn)
 		if col != nil {
 			col.Close()
-			col = nil
 		}
 	}
 	dl.allColumns = sliceclear.Clear(dl.allColumns)
