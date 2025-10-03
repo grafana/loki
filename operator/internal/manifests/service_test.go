@@ -43,8 +43,10 @@ func TestServicesMatchPorts(t *testing.T) {
 				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Gateway: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
+				Gateway: &lokiv1.LokiGatewayComponentSpec{
+					LokiComponentSpec: lokiv1.LokiComponentSpec{
+						Replicas: 1,
+					},
 				},
 				IndexGateway: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
@@ -171,8 +173,10 @@ func TestServicesMatchLabels(t *testing.T) {
 				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Gateway: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
+				Gateway: &lokiv1.LokiGatewayComponentSpec{
+					LokiComponentSpec: lokiv1.LokiComponentSpec{
+						Replicas: 1,
+					},
 				},
 				IndexGateway: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
@@ -291,8 +295,10 @@ func TestServices_WithEncryption(t *testing.T) {
 				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Gateway: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
+				Gateway: &lokiv1.LokiGatewayComponentSpec{
+					LokiComponentSpec: lokiv1.LokiComponentSpec{
+						Replicas: 1,
+					},
 				},
 				IndexGateway: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
