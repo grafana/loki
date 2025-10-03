@@ -70,7 +70,7 @@ func (v *VectorAggregation) Schema() *schema.Schema {
 		},
 		schema.ColumnSchema{
 			Name: types.ColumnNameGeneratedValue,
-			Type: schema.ValueTypeInt64,
+			Type: schema.ValueTypeFloat64,
 		},
 	)
 

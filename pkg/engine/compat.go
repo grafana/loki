@@ -304,11 +304,11 @@ func collectSamplesFromRow(builder *labels.Builder, rec arrow.Record, i int) (pr
 				return promql.Sample{}, false
 			}
 
-			col, ok := col.(*array.Int64)
+			col, ok := col.(*array.Float64)
 			if !ok {
 				return promql.Sample{}, false
 			}
-			sample.F = float64(col.Value(i))
+			sample.F = col.Value(i)
 		default:
 			// allow any string columns
 			if colDataType == datatype.Loki.String.String() {

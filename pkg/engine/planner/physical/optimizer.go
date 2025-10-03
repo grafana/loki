@@ -8,7 +8,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-// A rule is a tranformation that can be applied on a Node.
+// A rule is a transformation that can be applied on a Node.
 type rule interface {
 	// apply tries to apply the transformation on the node.
 	// It returns a boolean indicating whether the transformation has been applied.
@@ -146,7 +146,7 @@ func (r *limitPushdown) applyLimitPushdown(node Node, limit uint32) bool {
 var _ rule = (*limitPushdown)(nil)
 
 // projectionPushdown is a rule that pushes down column projections.
-// Currently it only projects partition labels from range aggregations to scan nodes.
+// Currently, it only projects partition labels from range aggregations to scan nodes.
 type projectionPushdown struct {
 	plan *Plan
 }
@@ -155,13 +155,40 @@ type projectionPushdown struct {
 func (r *projectionPushdown) apply(node Node) bool {
 	switch node := node.(type) {
 	case *VectorAggregation:
-		if len(node.GroupBy) == 0 || node.Operation != types.VectorAggregationTypeSum {
+		if len(node.GroupBy) == 0 {
 			return false
 		}
 
-		return r.pushToChildren(node, node.GroupBy, false)
+		// Pushdown from vector aggregation to range aggregations is only valid for:
+		// SUM -> COUNT
+		// SUM -> SUM
+		// MAX -> MAX
+		// MIN -> MIN
+
+		applyToRangeAggregations := func(ops ...types.RangeAggregationType) bool {
+			anyChanged := false
+			for _, child := range r.plan.Children(node) {
+				if ra, ok := child.(*RangeAggregation); ok {
+					if slices.Contains(ops, ra.Operation) {
+						anyChanged = r.handleRangeAggregation(ra, node.GroupBy) || anyChanged
+					}
+				}
+			}
+			return anyChanged
+		}
+
+		switch node.Operation {
+		case types.VectorAggregationTypeSum:
+			return applyToRangeAggregations(types.RangeAggregationTypeSum, types.RangeAggregationTypeCount)
+		case types.VectorAggregationTypeMax:
+			return applyToRangeAggregations(types.RangeAggregationTypeMax)
+		case types.VectorAggregationTypeMin:
+			return applyToRangeAggregations(types.RangeAggregationTypeMin)
+		default:
+			return false
+		}
 	case *RangeAggregation:
-		if len(node.PartitionBy) == 0 || node.Operation != types.RangeAggregationTypeCount {
+		if len(node.PartitionBy) == 0 || !slices.Contains(types.SupportedRangeAggregationTypes, node.Operation) {
 			return false
 		}
 
@@ -290,10 +317,6 @@ func (r *projectionPushdown) handleParseNode(node *ParseNode, projections []Colu
 
 // handleRangeAggregation handles projection pushdown for RangeAggregation nodes
 func (r *projectionPushdown) handleRangeAggregation(node *RangeAggregation, projections []ColumnExpression) bool {
-	if node.Operation != types.RangeAggregationTypeCount {
-		return false
-	}
-
 	changed := false
 	for _, colExpr := range projections {
 		colExpr, ok := colExpr.(*ColumnExpr)

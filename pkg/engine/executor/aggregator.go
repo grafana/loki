@@ -18,23 +18,33 @@ import (
 )
 
 type groupState struct {
-	value       int64    // aggregated value
+	value       float64  // aggregated value
 	labelValues []string // grouping label values
 }
 
+type aggregationOperation int
+
+const (
+	aggregationOperationSum aggregationOperation = iota
+	aggregationOperationMax
+	aggregationOperationMin
+	aggregationOperationCount
+)
+
 // aggregator is used to aggregate sample values by a set of grouping keys for each point in time.
-// Currently it only supports SUM operation, but can be extended to support other operations like COUNT, AVG, etc.
 type aggregator struct {
-	groupBy []physical.ColumnExpression          // columns to group by
-	points  map[time.Time]map[uint64]*groupState // holds the groupState for each point in time series
-	digest  *xxhash.Digest                       // used to compute key for each group
+	groupBy   []physical.ColumnExpression          // columns to group by
+	points    map[time.Time]map[uint64]*groupState // holds the groupState for each point in time series
+	digest    *xxhash.Digest                       // used to compute key for each group
+	operation aggregationOperation                 // aggregation type
 }
 
 // newAggregator creates a new aggregator with the specified groupBy columns.
-func newAggregator(groupBy []physical.ColumnExpression, pointsSizeHint int) *aggregator {
+func newAggregator(groupBy []physical.ColumnExpression, pointsSizeHint int, operation aggregationOperation) *aggregator {
 	a := aggregator{
-		groupBy: groupBy,
-		digest:  xxhash.New(),
+		groupBy:   groupBy,
+		digest:    xxhash.New(),
+		operation: operation,
 	}
 
 	if pointsSizeHint > 0 {
@@ -48,7 +58,7 @@ func newAggregator(groupBy []physical.ColumnExpression, pointsSizeHint int) *agg
 
 // Add adds a new sample value to the aggregation for the given timestamp and grouping label values.
 // It expects labelValues to be in the same order as the groupBy columns.
-func (a *aggregator) Add(ts time.Time, value int64, labelValues []string) {
+func (a *aggregator) Add(ts time.Time, value float64, labelValues []string) {
 	point, ok := a.points[ts]
 	if !ok {
 		point = make(map[uint64]*groupState)
@@ -67,7 +77,22 @@ func (a *aggregator) Add(ts time.Time, value int64, labelValues []string) {
 
 	if state, ok := point[key]; ok {
 		// TODO: handle hash collisions
-		state.value += value
+
+		// accumulate value based on aggregation type
+		switch a.operation {
+		case aggregationOperationSum:
+			state.value += value
+		case aggregationOperationMax:
+			if value > state.value {
+				state.value = value
+			}
+		case aggregationOperationMin:
+			if value < state.value {
+				state.value = value
+			}
+		case aggregationOperationCount:
+			state.value = state.value + 1
+		}
 	} else {
 		// create a new slice since labelValues is reused by the calling code
 		labelValuesCopy := make([]string, len(labelValues))
@@ -78,11 +103,20 @@ func (a *aggregator) Add(ts time.Time, value int64, labelValues []string) {
 			labelValuesCopy[i] = strings.Clone(v)
 		}
 
-		// TODO: add limits on number of groups
-		point[key] = &groupState{
+		state = &groupState{
 			labelValues: labelValuesCopy,
-			value:       value,
 		}
+
+		// set initial values based on aggregation type
+		switch a.operation {
+		case aggregationOperationSum, aggregationOperationMax, aggregationOperationMin:
+			state.value = value
+		case aggregationOperationCount:
+			state.value = 1
+		}
+
+		// TODO: add limits on number of groups
+		point[key] = state
 	}
 }
 
@@ -97,9 +131,9 @@ func (a *aggregator) BuildRecord() (arrow.Record, error) {
 		},
 		arrow.Field{
 			Name:     types.ColumnNameGeneratedValue,
-			Type:     datatype.Arrow.Integer,
+			Type:     datatype.Arrow.Float,
 			Nullable: false,
-			Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Integer),
+			Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Float),
 		},
 	)
 
@@ -127,7 +161,7 @@ func (a *aggregator) BuildRecord() (arrow.Record, error) {
 
 		for _, entry := range a.points[ts] {
 			rb.Field(0).(*array.TimestampBuilder).Append(tsValue)
-			rb.Field(1).(*array.Int64Builder).Append(entry.value)
+			rb.Field(1).(*array.Float64Builder).Append(entry.value)
 
 			for col, val := range entry.labelValues {
 				builder := rb.Field(col + 2) // offset by 2 as the first 2 fields are timestamp and value

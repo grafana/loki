@@ -11,6 +11,7 @@ const (
 	ValueTypeUint64 // Do we need a separate value type for uint64 if we already have int64?
 	ValueTypeTimestamp
 	ValueTypeString
+	ValueTypeFloat64
 )
 
 func (t ValueType) String() string {
@@ -25,6 +26,8 @@ func (t ValueType) String() string {
 		return "VALUE_TYPE_TIMESTAMP"
 	case ValueTypeString:
 		return "VALUE_TYPE_STRING"
+	case ValueTypeFloat64:
+		return "VALUE_TYPE_FLOAT64"
 	default:
 		return "VALUE_TYPE_UNKNOWN"
 	}
