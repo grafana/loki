@@ -11,7 +11,7 @@ require (
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/grafana/loki/operator/api/loki v0.0.0-00010101000000-000000000000
-	github.com/grafana/loki/v3 v3.5.4
+	github.com/grafana/loki/v3 v3.5.5
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.12.0
 	github.com/openshift/api v0.0.0-20250909020331-93b8cc2cf247 // release-4.19
 	github.com/openshift/cloud-credential-operator v0.0.0-20250908054323-0a5409aaef92 // release-4.19
