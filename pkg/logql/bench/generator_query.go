@@ -216,6 +216,12 @@ func (g *TestCaseGenerator) Generate() []TestCase {
 			fmt.Sprintf(`rate(%s | detected_level=~"error|warn" [%s])`, selector, rangeInterval),
 		}
 
+		// no grouping
+		for _, baseMetricQuery := range baseRangeAggregationQueries {
+			query := fmt.Sprintf(`sum(%s)`, baseMetricQuery)
+			addMetricQuery(query, start, end, step)
+		}
+
 		// Single dimension aggregations
 		dimensions := []string{"pod", "namespace", "env", "detected_level"}
 		for _, dim := range dimensions {

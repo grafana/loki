@@ -161,13 +161,14 @@ func (r *projectionPushdown) apply(node Node) bool {
 
 		return r.pushToChildren(node, node.GroupBy, false)
 	case *RangeAggregation:
-		if len(node.PartitionBy) == 0 || node.Operation != types.RangeAggregationTypeCount {
+		if node.Operation != types.RangeAggregationTypeCount {
 			return false
 		}
 
 		projections := make([]ColumnExpression, len(node.PartitionBy)+1)
 		copy(projections, node.PartitionBy)
-		// Always project timestamp column
+		// Always project timestamp column even if partitionBy is empty.
+		// Timestamp values are required to perform range aggregation.
 		projections[len(node.PartitionBy)] = &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}
 
 		return r.pushToChildren(node, projections, false)
