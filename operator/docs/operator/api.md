@@ -1146,6 +1146,39 @@ a secret. This mode is only supported for certain object storage types in certai
 </tr></tbody>
 </table>
 
+## ExternalAccessSpec { #loki-grafana-com-v1-ExternalAccessSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiGatewayComponentSpec">LokiGatewayComponentSpec</a>)
+</p>
+<div>
+<p>ExternalAccessSpec defines the external access configuration for a component.
+Controls creation of Routes (OpenShift) and Ingress (Kubernetes) resources.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>disabled</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Disabled controls whether external access resources should be created.
+When true, no Route (OpenShift) or Ingress (Kubernetes) will be created.
+Default is false (external access resources will be created).</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## HashRingSpec { #loki-grafana-com-v1-HashRingSpec }
 <p>
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
@@ -1506,7 +1539,7 @@ RetentionLimitSpec
 
 ## LokiComponentSpec { #loki-grafana-com-v1-LokiComponentSpec }
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiTemplateSpec">LokiTemplateSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiGatewayComponentSpec">LokiGatewayComponentSpec</a>, <a href="#loki-grafana-com-v1-LokiTemplateSpec">LokiTemplateSpec</a>)
 </p>
 <div>
 <p>LokiComponentSpec defines the requirements to configure scheduling
@@ -1573,6 +1606,95 @@ Kubernetes core/v1.PodAntiAffinity
 <em>(Optional)</em>
 <p>PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
 of a component.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## LokiGatewayComponentSpec { #loki-grafana-com-v1-LokiGatewayComponentSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiTemplateSpec">LokiTemplateSpec</a>)
+</p>
+<div>
+<p>LokiGatewayComponentSpec defines the requirements to configure scheduling
+of the lokistack-gateway component.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>replicas</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Replicas defines the number of replica pods of the component.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>nodeSelector</code><br/>
+<em>
+map[string]string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>NodeSelector defines the labels required by a node to schedule
+the component onto it.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>tolerations</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#toleration-v1-core">
+[]Kubernetes core/v1.Toleration
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Tolerations defines the tolerations required by a node to schedule
+the component onto it.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>podAntiAffinity</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#podantiaffinity-v1-core">
+Kubernetes core/v1.PodAntiAffinity
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
+of a component.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>externalAccess</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-ExternalAccessSpec">
+ExternalAccessSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>ExternalAccess defines the external access configuration for the gateway component.
+Controls creation of Routes (OpenShift) and Ingress (Kubernetes) resources.</p>
 </td>
 </tr>
 </tbody>
@@ -2341,8 +2463,8 @@ LokiComponentSpec
 <td>
 <code>gateway</code><br/>
 <em>
-<a href="#loki-grafana-com-v1-LokiComponentSpec">
-LokiComponentSpec
+<a href="#loki-grafana-com-v1-LokiGatewayComponentSpec">
+LokiGatewayComponentSpec
 </a>
 </em>
 </td>
