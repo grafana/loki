@@ -81,9 +81,6 @@ func NewService(cfg Config, router *mux.Router, ring *ring.Ring, localAddr strin
 	}
 
 	svc.Service = services.NewBasicService(nil, svc.run, svc.stop)
-	if err := svc.initUIFs(); err != nil {
-		return nil, err
-	}
 	if err := svc.initGoldfishDB(); err != nil {
 		return nil, err
 	}
@@ -108,7 +105,7 @@ func (s *Service) stop(_ error) error {
 
 // findNodeAddressByName returns the HTTP address of the UI instance with the given ID.
 // It queries the UI ring to find the instance address.
-func (s *Service) findNodeAddressByName(ctx context.Context, instanceID string) (string, error) {
+func (s *Service) findNodeAddressByName(instanceID string) (string, error) {
 	// Query all rings to find the instance
 	replicationSet, err := s.ring.GetAllHealthy(ring.Read)
 	if err != nil {

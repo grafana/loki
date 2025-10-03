@@ -3,10 +3,8 @@ package ui
 
 import (
 	"context"
-	"embed"
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"net/http"
 	"net/http/httputil"
 	"strconv"
@@ -42,9 +40,6 @@ const (
 	parentSpanIDKey contextKey = "parent-span-id"
 )
 
-//go:embed frontend/dist
-var uiFS embed.FS
-
 // RegisterHandler registers all UI API routes with the provided router.
 func (s *Service) RegisterHandler() {
 	s.router.Path(analyticsPath).Handler(analytics.Handler())
@@ -56,34 +51,9 @@ func (s *Service) RegisterHandler() {
 	s.router.PathPrefix(proxyPath).Handler(s.clusterProxyHandler())
 	s.router.PathPrefix(notFoundPath).Handler(s.notFoundHandler())
 
-	fsHandler := http.FileServer(http.FS(s.uiFS))
-	s.router.PathPrefix(prefixPath + "/").Handler(http.StripPrefix(prefixPath+"/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/")
-		// Don't redirect for root UI path
-		if path == "" || path == "/" || path == "404" {
-			r.URL.Path = "/"
-			fsHandler.ServeHTTP(w, r)
-			return
-		}
-		if _, err := s.uiFS.Open(path); err != nil {
-			r.URL.Path = "/"
-			fsHandler.ServeHTTP(w, r)
-			return
-		}
-		fsHandler.ServeHTTP(w, r)
-	})))
 	s.router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ui/404?path="+r.URL.Path, http.StatusTemporaryRedirect)
 	})
-}
-
-func (s *Service) initUIFs() error {
-	var err error
-	s.uiFS, err = fs.Sub(uiFS, "frontend/dist")
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // clusterProxyHandler returns a handler that proxies requests to the target node.
@@ -101,7 +71,7 @@ func (s *Service) clusterProxyHandler() http.Handler {
 			}
 
 			// Find node address by name
-			nodeAddr, err := s.findNodeAddressByName(r.Context(), nodeName)
+			nodeAddr, err := s.findNodeAddressByName(nodeName)
 			if err != nil {
 				level.Warn(s.logger).Log("msg", "node not found in cluster", "node", nodeName, "err", err)
 				s.redirectToNotFound(r, nodeName)
