@@ -273,7 +273,7 @@ func (dl *readerDownloader) buildDownloadBatch(ctx context.Context, requestor *r
 	}
 
 	// Always add the requestor page to the batch if it's uncached.
-	if requestor.data != nil && len(requestor.data.Bytes()) == 0 {
+	if requestor.data == nil || len(requestor.data.Bytes()) == 0 {
 		pageBatch = append(pageBatch, requestor)
 	}
 
