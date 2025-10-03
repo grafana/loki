@@ -13,18 +13,8 @@ import (
 func TestGenerateDatasetDeterminism(t *testing.T) {
 	// Create a test configuration with fixed timestamps
 	cfg := GeneratorConfig{
-		StartTime:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-		TimeSpread: 24 * time.Hour,
-		DenseIntervals: []DenseInterval{
-			{
-				Start:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
-				Duration: time.Hour,
-			},
-			{
-				Start:    time.Date(2024, 1, 1, 15, 0, 0, 0, time.UTC),
-				Duration: 30 * time.Minute,
-			},
-		},
+		StartTime:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		TimeSpread:  24 * time.Hour,
 		LabelConfig: defaultLabelConfig,
 	}
 
@@ -32,21 +22,19 @@ func TestGenerateDatasetDeterminism(t *testing.T) {
 	numStreams := 100
 
 	g1 := NewGenerator(Opt{
-		startTime:      cfg.StartTime,
-		timeSpread:     cfg.TimeSpread,
-		denseIntervals: cfg.DenseIntervals,
-		labelConfig:    cfg.LabelConfig,
-		numStreams:     numStreams,
-		seed:           1,
+		startTime:   cfg.StartTime,
+		timeSpread:  cfg.TimeSpread,
+		labelConfig: cfg.LabelConfig,
+		numStreams:  numStreams,
+		seed:        1,
 	})
 
 	g2 := NewGenerator(Opt{
-		startTime:      cfg.StartTime,
-		timeSpread:     cfg.TimeSpread,
-		denseIntervals: cfg.DenseIntervals,
-		labelConfig:    cfg.LabelConfig,
-		numStreams:     numStreams,
-		seed:           1,
+		startTime:   cfg.StartTime,
+		timeSpread:  cfg.TimeSpread,
+		labelConfig: cfg.LabelConfig,
+		numStreams:  numStreams,
+		seed:        1,
 	})
 
 	// Compare only the first 10 batches
@@ -125,14 +113,8 @@ func TestGenerateDatasetDeterminism(t *testing.T) {
 func TestQueryDeterminism(t *testing.T) {
 	// Create a test configuration with fixed timestamps
 	cfg := GeneratorConfig{
-		StartTime:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-		TimeSpread: 24 * time.Hour,
-		DenseIntervals: []DenseInterval{
-			{
-				Start:    time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
-				Duration: time.Hour,
-			},
-		},
+		StartTime:   time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		TimeSpread:  24 * time.Hour,
 		LabelConfig: defaultLabelConfig,
 	}
 
