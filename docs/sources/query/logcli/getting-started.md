@@ -205,6 +205,7 @@ Flags:
       --[no-]envproxy         Use ProxyFromEnvironment to use net/http
                               ProxyFromEnvironment configuration, eg HTTP_PROXY
                               ($LOKI_ENV_PROXY)
+      --log.level             Only log messages with the given severity or above. Valid levels: [debug, info, warn, error]
 
 Commands:
 help [<command>...]

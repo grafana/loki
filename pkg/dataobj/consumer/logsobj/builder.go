@@ -32,6 +32,12 @@ var (
 	ErrBuilderEmpty = errors.New("builder empty")
 )
 
+const (
+	// Constants for the sort order configuration
+	sortStreamASC     = "stream-asc"
+	sortTimestampDESC = "timestamp-desc"
+)
+
 // BuilderConfig configures a [Builder].
 type BuilderConfig struct {
 	// TargetPageSize configures a target size for encoded pages within the data
@@ -68,6 +74,10 @@ type BuilderConfig struct {
 	// values of MergeSize trade off lower memory overhead for higher time spent
 	// merging.
 	SectionStripeMergeLimit int `yaml:"section_stripe_merge_limit"`
+
+	// DataobjSortOrder defines the order in which the rows of the logs sections are sorted.
+	// They can either be sorted by [streamID ASC, timestamp DESC] or [timestamp DESC, streamID ASC].
+	DataobjSortOrder string `yaml:"dataobj_sort_order" doc:"hidden"`
 }
 
 // RegisterFlagsWithPrefix registers flags with the given prefix.
@@ -83,6 +93,7 @@ func (cfg *BuilderConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet
 	f.Var(&cfg.TargetSectionSize, prefix+"target-section-size", "The target maximum amount of uncompressed data to hold in sections, for sections that support being limited by size. Uncompressed size is used for consistent I/O and planning.")
 	f.Var(&cfg.BufferSize, prefix+"buffer-size", "The size of logs to buffer in memory before adding into columnar builders, used to reduce CPU load of sorting.")
 	f.IntVar(&cfg.SectionStripeMergeLimit, prefix+"section-stripe-merge-limit", 2, "The maximum number of log section stripes to merge into a section at once. Must be greater than 1.")
+	f.StringVar(&cfg.DataobjSortOrder, prefix+"dataobj-sort-order", sortStreamASC, "The desired sort order of the logs section. Can either be `stream-asc` (order by streamID ascending and timestamp descending) or `timestamp-desc` (order by timestamp descending and streamID ascending).")
 }
 
 // Validate validates the BuilderConfig.
@@ -111,7 +122,24 @@ func (cfg *BuilderConfig) Validate() error {
 		errs = append(errs, errors.New("LogsMergeStripesMax must be greater than 1"))
 	}
 
+	if cfg.DataobjSortOrder == "" {
+		cfg.DataobjSortOrder = sortStreamASC // default to [streamID ASC, timestamp DESC] sorting
+	}
+	if !(cfg.DataobjSortOrder == sortStreamASC || cfg.DataobjSortOrder == sortTimestampDESC) {
+		errs = append(errs, fmt.Errorf("invalid dataobj sort order. must be one of `stream-asc` or `timestamp-desc`, got: %s", cfg.DataobjSortOrder))
+	}
+
 	return errors.Join(errs...)
+}
+
+var sortOrderMapping = map[string]logs.SortOrder{
+	sortStreamASC:     logs.SortStreamASC,
+	sortTimestampDESC: logs.SortTimestampDESC,
+}
+
+func parseSortOrder(s string) logs.SortOrder {
+	val, _ := sortOrderMapping[s]
+	return val
 }
 
 // A Builder constructs a logs-oriented data object from a set of incoming
@@ -184,6 +212,7 @@ func (b *Builder) initBuilder(tenant string) {
 			PageMaxRowCount:  b.cfg.MaxPageRows,
 			BufferSize:       int(b.cfg.BufferSize),
 			StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
+			SortOrder:        parseSortOrder(b.cfg.DataobjSortOrder),
 		})
 		lb.SetTenant(tenant)
 		b.logs[tenant] = lb
@@ -387,6 +416,7 @@ func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, 
 	defer dur.ObserveDuration()
 
 	ctx := context.Background()
+	sort := parseSortOrder(b.cfg.DataobjSortOrder)
 
 	sb := streams.NewBuilder(b.metrics.streams, int(b.cfg.TargetPageSize), b.cfg.MaxPageRows)
 	lb := logs.NewBuilder(b.metrics.logs, logs.BuilderOptions{
@@ -395,6 +425,7 @@ func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, 
 		BufferSize:       int(b.cfg.BufferSize),
 		StripeMergeLimit: b.cfg.SectionStripeMergeLimit,
 		AppendStrategy:   logs.AppendOrdered,
+		SortOrder:        sort,
 	})
 
 	// Sort the set of tenants so the new object has a deterministic order of sections.
@@ -438,7 +469,7 @@ func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, 
 		lb.Reset()
 		lb.SetTenant(tenant)
 
-		iter, err := sortMergeIterator(ctx, sections)
+		iter, err := sortMergeIterator(ctx, sections, sort)
 		if err != nil {
 			return nil, nil, fmt.Errorf("creating sort iterator: %w", err)
 		}
