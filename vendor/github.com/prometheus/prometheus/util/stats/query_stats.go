@@ -323,7 +323,7 @@ func NewQuerySamples(enablePerStepStats bool) *QuerySamples {
 	return &qs
 }
 
-func (*QuerySamples) NewChild() *QuerySamples {
+func (qs *QuerySamples) NewChild() *QuerySamples {
 	return NewQuerySamples(false)
 }
 
