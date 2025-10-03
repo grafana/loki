@@ -14,6 +14,29 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
+// End of support notice: Beginning October 1, 2025, Amazon S3 will discontinue
+// support for creating new Email Grantee Access Control Lists (ACL). Email Grantee
+// ACLs created prior to this date will continue to work and remain accessible
+// through the Amazon Web Services Management Console, Command Line Interface
+// (CLI), SDKs, and REST API. However, you will no longer be able to create new
+// Email Grantee ACLs.
+//
+// This change affects the following Amazon Web Services Regions: US East (N.
+// Virginia) Region, US West (N. California) Region, US West (Oregon) Region, Asia
+// Pacific (Singapore) Region, Asia Pacific (Sydney) Region, Asia Pacific (Tokyo)
+// Region, Europe (Ireland) Region, and South America (São Paulo) Region.
+//
+// End of support notice: Beginning October 1, 2025, Amazon S3 will stop returning
+// DisplayName . Update your applications to use canonical IDs (unique identifier
+// for Amazon Web Services accounts), Amazon Web Services account ID (12 digit
+// identifier) or IAM ARNs (full resource naming) as a direct replacement of
+// DisplayName .
+//
+// This change affects the following Amazon Web Services Regions: US East (N.
+// Virginia) Region, US West (N. California) Region, US West (Oregon) Region, Asia
+// Pacific (Singapore) Region, Asia Pacific (Sydney) Region, Asia Pacific (Tokyo)
+// Region, Europe (Ireland) Region, and South America (São Paulo) Region.
+//
 // This action creates an Amazon S3 bucket. To create an Amazon S3 on Outposts
 // bucket, see [CreateBucket]CreateBucket .
 //
@@ -36,9 +59,10 @@ import (
 //   - Directory buckets - For directory buckets, you must make requests for this
 //     API operation to the Regional endpoint. These endpoints support path-style
 //     requests in the format
-//     https://s3express-control.region_code.amazonaws.com/bucket-name .
-//     Virtual-hosted-style requests aren't supported. For more information, see [Regional and Zonal endpoints]in
-//     the Amazon S3 User Guide.
+//     https://s3express-control.region-code.amazonaws.com/bucket-name .
+//     Virtual-hosted-style requests aren't supported. For more information about
+//     endpoints in Availability Zones, see [Regional and Zonal endpoints for directory buckets in Availability Zones]in the Amazon S3 User Guide. For more
+//     information about endpoints in Local Zones, see [Concepts for directory buckets in Local Zones]in the Amazon S3 User Guide.
 //
 // Permissions
 //
@@ -104,7 +128,7 @@ import (
 //	supported S3 features for directory buckets, see [Features of S3 Express One Zone]in the Amazon S3 User Guide.
 //
 // HTTP Host header syntax  Directory buckets - The HTTP Host header syntax is
-// s3express-control.region.amazonaws.com .
+// s3express-control.region-code.amazonaws.com .
 //
 // The following operations are related to CreateBucket :
 //
@@ -113,18 +137,19 @@ import (
 // [DeleteBucket]
 //
 // [Creating, configuring, and working with Amazon S3 buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/creating-buckets-s3.html
-// [Regional and Zonal endpoints]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-Regions-and-Zones.html
-// [DeleteBucket]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucket.html
+// [Concepts for directory buckets in Local Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-lzs-for-directory-buckets.html
 // [PutObject]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html
+// [DeleteBucket]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucket.html
 // [CreateBucket]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_control_CreateBucket.html
 // [Virtual hosting of buckets]: https://docs.aws.amazon.com/AmazonS3/latest/dev/VirtualHosting.html
+// [Regional and Zonal endpoints for directory buckets in Availability Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/endpoint-directory-buckets-AZ.html
 //
 // [DeletePublicAccessBlock]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeletePublicAccessBlock.html
 // [Directory buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-buckets-overview.html
 // [Features of S3 Express One Zone]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-one-zone.html#s3-express-features
+// [Amazon Web Services Identity and Access Management (IAM) for S3 Express One Zone]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-security-iam.html
 // [Controlling ownership of objects and disabling ACLs for your bucket]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/about-object-ownership.html
 // [Blocking public access to your Amazon S3 storage]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-control-block-public-access.html
-// [Amazon Web Services Identity and Access Management (IAM) for S3 Express One Zone]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-security-iam.html
 func (c *Client) CreateBucket(ctx context.Context, params *CreateBucketInput, optFns ...func(*Options)) (*CreateBucketOutput, error) {
 	if params == nil {
 		params = &CreateBucketInput{}
@@ -149,12 +174,12 @@ type CreateBucketInput struct {
 	//
 	// Directory buckets - When you use this operation with a directory bucket, you
 	// must use path-style requests in the format
-	// https://s3express-control.region_code.amazonaws.com/bucket-name .
+	// https://s3express-control.region-code.amazonaws.com/bucket-name .
 	// Virtual-hosted-style requests aren't supported. Directory bucket names must be
-	// unique in the chosen Availability Zone. Bucket names must also follow the format
-	// bucket_base_name--az_id--x-s3 (for example,  DOC-EXAMPLE-BUCKET--usw2-az1--x-s3
-	// ). For information about bucket naming restrictions, see [Directory bucket naming rules]in the Amazon S3 User
-	// Guide
+	// unique in the chosen Zone (Availability Zone or Local Zone). Bucket names must
+	// also follow the format bucket-base-name--zone-id--x-s3 (for example,
+	// DOC-EXAMPLE-BUCKET--usw2-az1--x-s3 ). For information about bucket naming
+	// restrictions, see [Directory bucket naming rules]in the Amazon S3 User Guide
 	//
 	// [Directory bucket naming rules]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html
 	// [Bucket naming rules]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html
@@ -243,6 +268,15 @@ func (in *CreateBucketInput) bindEndpointParams(p *EndpointParameters) {
 
 type CreateBucketOutput struct {
 
+	// The Amazon Resource Name (ARN) of the S3 bucket. ARNs uniquely identify Amazon
+	// Web Services resources across all of Amazon Web Services.
+	//
+	// This parameter is only supported for S3 directory buckets. For more
+	// information, see [Using tags with directory buckets].
+	//
+	// [Using tags with directory buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-buckets-tagging.html
+	BucketArn *string
+
 	// A forward slash followed by the name of the bucket.
 	Location *string
 
@@ -295,6 +329,9 @@ func (c *Client) addOperationCreateBucketMiddlewares(stack *middleware.Stack, op
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -317,6 +354,9 @@ func (c *Client) addOperationCreateBucketMiddlewares(stack *middleware.Stack, op
 		return err
 	}
 	if err = addIsExpressUserAgent(stack); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpCreateBucketValidationMiddleware(stack); err != nil {
@@ -350,6 +390,48 @@ func (c *Client) addOperationCreateBucketMiddlewares(stack *middleware.Stack, op
 		return err
 	}
 	if err = addSerializeImmutableHostnameBucketMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptExecution(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeSerialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterSerialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeSigning(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterSigning(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptTransmit(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterDeserialization(stack, options); err != nil {
+		return err
+	}
+	if err = addSpanInitializeStart(stack); err != nil {
+		return err
+	}
+	if err = addSpanInitializeEnd(stack); err != nil {
+		return err
+	}
+	if err = addSpanBuildRequestStart(stack); err != nil {
+		return err
+	}
+	if err = addSpanBuildRequestEnd(stack); err != nil {
 		return err
 	}
 	return nil
