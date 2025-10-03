@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -460,7 +461,7 @@ func TestS3Extract(t *testing.T) {
 					"sse_type":          []byte("unsupported"),
 				},
 			},
-			wantError: "unsupported SSE type (supported: SSE-KMS, SSE-S3): unsupported",
+			wantError: "unsupported SSE type (supported: SSE-KMS, SSE-S3, SSE-C): unsupported",
 		},
 		{
 			name: "missing SSE-KMS kms_key_id",
@@ -521,6 +522,37 @@ func TestS3Extract(t *testing.T) {
 					"access_key_id":     []byte("id"),
 					"access_key_secret": []byte("secret"),
 					"sse_type":          []byte("SSE-S3"),
+				},
+			},
+			wantCredentialMode: lokiv1.CredentialModeStatic,
+		},
+		{
+			name: "missing SSE-C sse_c_encryption_key",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":          []byte("https://s3.test-region.amazonaws.com"),
+					"region":            []byte("test-region"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+					"sse_type":          []byte("SSE-C"),
+				},
+			},
+			wantError: "missing secret field: sse_c_encryption_key",
+		},
+		{
+			name: "all set with SSE-C",
+			secret: &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{Name: "test"},
+				Data: map[string][]byte{
+					"endpoint":             []byte("https://s3.test-region.amazonaws.com"),
+					"region":               []byte("test-region"),
+					"bucketnames":          []byte("this,that"),
+					"access_key_id":        []byte("id"),
+					"access_key_secret":    []byte("secret"),
+					"sse_type":             []byte("SSE-C"),
+					"sse_c_encryption_key": bytes.Repeat([]byte("a"), 32), // 32 bytes key
 				},
 			},
 			wantCredentialMode: lokiv1.CredentialModeStatic,

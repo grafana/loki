@@ -7,8 +7,10 @@ package s3
 
 import (
 	"bytes"
+	"crypto/md5"
 	"encoding/base64"
 	"net/http"
+	"strings"
 	"testing"
 
 	s3_types "github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -53,6 +55,23 @@ func TestSSEConfig_Validate(t *testing.T) {
 				return &SSEConfig{
 					Type:                 SSEKMS,
 					KMSEncryptionContext: `{"department": "10103.0"}`,
+				}
+			},
+		},
+		"should fail on invalid SSE C encryption key": {
+			setup: func() *SSEConfig {
+				return &SSEConfig{
+					Type:                  SSEC,
+					CustomerEncryptionKey: "short-key", // not 32 bytes
+				}
+			},
+			expected: errInvalidSSECKey,
+		},
+		"should pass on valid SSE C encryption key": {
+			setup: func() *SSEConfig {
+				return &SSEConfig{
+					Type:                  SSEC,
+					CustomerEncryptionKey: strings.Repeat("a", 32), // 32 bytes
 				}
 			},
 		},
@@ -145,20 +164,33 @@ func TestConfig_Validate(t *testing.T) {
 }
 
 func TestSSEConfig_BuildMinioConfig(t *testing.T) {
+	// 32 bytes encryption key for SSE C
+	key := bytes.Repeat([]byte("a"), 32) // 256 bits
+	// create md5 sum of the key
+	h := md5.New()
+	h.Write(key)
+	keyMd5Sum := h.Sum(nil)
+
 	tests := map[string]struct {
-		cfg             *SSEConfig
-		expectedType    string
-		expectedKeyID   string
-		expectedContext string
+		cfg                       *SSEConfig
+		expectedType              string
+		expectedKeyID             string
+		expectedContext           string
+		expectedCustomerAlgorithm string
+		expectedCustomerKey       string
+		expectedCustomerKeyMD5    string
 	}{
 		"SSE KMS without encryption context": {
 			cfg: &SSEConfig{
 				Type:     SSEKMS,
 				KMSKeyID: "test-key",
 			},
-			expectedType:    "aws:kms",
-			expectedKeyID:   "test-key",
-			expectedContext: "",
+			expectedType:              "aws:kms",
+			expectedKeyID:             "test-key",
+			expectedContext:           "",
+			expectedCustomerAlgorithm: "",
+			expectedCustomerKey:       "",
+			expectedCustomerKeyMD5:    "",
 		},
 		"SSE KMS with encryption context": {
 			cfg: &SSEConfig{
@@ -166,9 +198,24 @@ func TestSSEConfig_BuildMinioConfig(t *testing.T) {
 				KMSKeyID:             "test-key",
 				KMSEncryptionContext: "{\"department\":\"10103.0\"}",
 			},
-			expectedType:    "aws:kms",
-			expectedKeyID:   "test-key",
-			expectedContext: "{\"department\":\"10103.0\"}",
+			expectedType:              "aws:kms",
+			expectedKeyID:             "test-key",
+			expectedContext:           "{\"department\":\"10103.0\"}",
+			expectedCustomerAlgorithm: "",
+			expectedCustomerKey:       "",
+			expectedCustomerKeyMD5:    "",
+		},
+		"SSE C with encryption key": {
+			cfg: &SSEConfig{
+				Type:                  SSEC,
+				CustomerEncryptionKey: string(key[:]),
+			},
+			expectedType:              "",
+			expectedKeyID:             "",
+			expectedContext:           "",
+			expectedCustomerAlgorithm: "AES256",
+			expectedCustomerKey:       base64.StdEncoding.EncodeToString(key),
+			expectedCustomerKeyMD5:    base64.StdEncoding.EncodeToString(keyMd5Sum),
 		},
 	}
 
@@ -183,6 +230,9 @@ func TestSSEConfig_BuildMinioConfig(t *testing.T) {
 			assert.Equal(t, testData.expectedType, headers.Get("x-amz-server-side-encryption"))
 			assert.Equal(t, testData.expectedKeyID, headers.Get("x-amz-server-side-encryption-aws-kms-key-id"))
 			assert.Equal(t, base64.StdEncoding.EncodeToString([]byte(testData.expectedContext)), headers.Get("x-amz-server-side-encryption-context"))
+			assert.Equal(t, testData.expectedCustomerAlgorithm, headers.Get("x-amz-server-side-encryption-customer-algorithm"))
+			assert.Equal(t, testData.expectedCustomerKey, headers.Get("x-amz-server-side-encryption-customer-key"))
+			assert.Equal(t, testData.expectedCustomerKeyMD5, headers.Get("x-amz-server-side-encryption-customer-key-MD5"))
 		})
 	}
 }
