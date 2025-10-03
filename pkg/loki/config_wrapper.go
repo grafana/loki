@@ -429,7 +429,7 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 	}
 	cfg.Pattern.LifecyclerConfig.TokensFilePath = f
 
-	// UI 
+	// UI
 	f, err = tokensFile(cfg, "ui.tokens")
 	if err != nil {
 		return err
