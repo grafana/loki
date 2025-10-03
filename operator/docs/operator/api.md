@@ -2173,6 +2173,20 @@ to the storage configuration.</p>
 </tr>
 <tr>
 <td>
+<code>networkPolicies</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-NetworkPolicyStatus">
+NetworkPolicyStatus
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>NetworkPolicies indicates whether NetworkPolicies are deployed for this LokiStack.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>conditions</code><br/>
 <em>
 <a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#condition-v1-meta">
@@ -2515,6 +2529,57 @@ for the memberlist.</p>
 </tr><tr><td><p>&#34;static&#34;</p></td>
 <td><p>Static mode asserts the Authorization Spec&rsquo;s Roles and RoleBindings
 using an in-process OpenPolicyAgent Rego authorizer.</p>
+</td>
+</tr></tbody>
+</table>
+
+## NetworkPoliciesType { #loki-grafana-com-v1-NetworkPoliciesType }
+(<code>string</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-TenantsSpec">TenantsSpec</a>)
+</p>
+<div>
+<p>NetworkPoliciesType defines the network policies configuration mode.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;&#34;</p></td>
+<td><p>NetworkPoliciesDefault when no explicit value is set, inherits default behavior.</p>
+</td>
+</tr><tr><td><p>&#34;False&#34;</p></td>
+<td><p>NetworkPoliciesDisabled when NetworkPolicies are explicitly disabled.</p>
+</td>
+</tr><tr><td><p>&#34;True&#34;</p></td>
+<td><p>NetworkPoliciesEnabled when NetworkPolicies are explicitly enabled.</p>
+</td>
+</tr></tbody>
+</table>
+
+## NetworkPolicyStatus { #loki-grafana-com-v1-NetworkPolicyStatus }
+(<code>string</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStatus">LokiStackStatus</a>)
+</p>
+<div>
+<p>NetworkPolicyStatus defines the deployment status of network policies.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;False&#34;</p></td>
+<td><p>NetworkPolicyStatusFalse when NetworkPolicies are not deployed</p>
+</td>
+</tr><tr><td><p>&#34;True&#34;</p></td>
+<td><p>NetworkPolicyStatusTrue when NetworkPolicies are deployed</p>
 </td>
 </tr></tbody>
 </table>
@@ -4853,6 +4918,22 @@ AuthorizationSpec
 <td>
 <em>(Optional)</em>
 <p>Authorization defines the lokistack-gateway component authorization configuration spec per tenant.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>networkPolicies</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-NetworkPoliciesType">
+NetworkPoliciesType
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+When enabled, the operator creates NetworkPolicies to control ingress/egress between
+Loki components and related services.</p>
 </td>
 </tr>
 <tr>
