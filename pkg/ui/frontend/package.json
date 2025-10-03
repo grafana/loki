@@ -74,7 +74,7 @@
     "autoprefixer": "^10.4.20",
     "depcheck": "^1.4.7",
     "eslint": "^9.0.0",
-    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-hooks": "^6.0.0",
     "eslint-plugin-react-refresh": "^0.4.5",
     "identity-obj-proxy": "^3.0.0",
     "jest": "^29.7.0",
