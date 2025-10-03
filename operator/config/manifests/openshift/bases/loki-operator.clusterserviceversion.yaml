@@ -739,6 +739,21 @@ spec:
         displayName: Gateway pods
         path: template.gateway
       - description: |-
+          ExternalAccess defines the external access configuration for the gateway component.
+          Controls creation of Routes (OpenShift) and Ingress (Kubernetes) resources.
+        displayName: External Access
+        path: template.gateway.externalAccess
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: |-
+          Disabled controls whether external access resources should be created.
+          When true, no Route (OpenShift) or Ingress (Kubernetes) will be created.
+          Default is false (external access resources will be created).
+        displayName: Disable External Access
+        path: template.gateway.externalAccess.disabled
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: |-
           PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
           of a component.
         displayName: PodAntiAffinity
