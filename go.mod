@@ -52,7 +52,6 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
-	github.com/grafana/ckit v0.0.0-20250825110114-3ee952343746
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
 	github.com/grafana/dskit v0.0.0-20250828173137-de14cf923eeb
 	github.com/grafana/go-gelf/v2 v2.0.1

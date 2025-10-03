@@ -25,7 +25,7 @@ const (
 	prefixPath      = "/ui"
 	proxyPath       = prefixPath + "/api/v1/proxy/{nodename}/"
 	clusterPath     = prefixPath + "/api/v1/cluster/nodes"
-	clusterSelfPath = prefixPath + "/api/v1/cluster/nodes/self/details"
+	detailsPath     = prefixPath + "/api/v1/cluster/nodes/{nodename}/details"
 	analyticsPath   = prefixPath + "/api/v1/analytics"
 	featuresPath    = prefixPath + "/api/v1/features"
 	goldfishPath    = prefixPath + "/api/v1/goldfish/queries"
@@ -47,13 +47,9 @@ var uiFS embed.FS
 
 // RegisterHandler registers all UI API routes with the provided router.
 func (s *Service) RegisterHandler() {
-	// Register the node handler
-	route, handler := s.node.Handler()
-	s.router.PathPrefix(route).Handler(handler)
-
 	s.router.Path(analyticsPath).Handler(analytics.Handler())
 	s.router.Path(clusterPath).Handler(s.clusterMembersHandler())
-	s.router.Path(clusterSelfPath).Handler(s.clusterSelfHandler())
+	s.router.Path(detailsPath).Handler(s.detailsHandler())
 	s.router.Path(featuresPath).Handler(s.featuresHandler())
 	s.router.Path(goldfishPath).Handler(s.goldfishQueriesHandler())
 
@@ -104,9 +100,10 @@ func (s *Service) clusterProxyHandler() http.Handler {
 				return
 			}
 
-			peer, err := s.findPeerByName(nodeName)
+			// Find node address by name
+			nodeAddr, err := s.findNodeAddressByName(r.Context(), nodeName)
 			if err != nil {
-				level.Warn(s.logger).Log("msg", "node not found in cluster state", "node", nodeName, "err", err)
+				level.Warn(s.logger).Log("msg", "node not found in cluster", "node", nodeName, "err", err)
 				s.redirectToNotFound(r, nodeName)
 				return
 			}
@@ -119,7 +116,7 @@ func (s *Service) clusterProxyHandler() http.Handler {
 			}
 
 			// Rewrite the URL to forward to the target node
-			r.URL.Host = peer.Addr
+			r.URL.Host = nodeAddr
 			r.URL.Path = newPath
 			r.RequestURI = "" // Must be cleared according to Go docs
 
@@ -155,9 +152,11 @@ func (s *Service) clusterMembersHandler() http.Handler {
 	})
 }
 
-func (s *Service) clusterSelfHandler() http.Handler {
+func (s *Service) detailsHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		state, err := s.fetchSelfDetails(r.Context())
+		vars := mux.Vars(r)
+		nodeName := vars["nodename"]
+		state, err := s.fetchDetails(r.Context(), nodeName)
 		if err != nil {
 			level.Error(s.logger).Log("msg", "failed to fetch node details", "err", err)
 			s.writeJSONError(w, http.StatusInternalServerError, "failed to fetch node details")
