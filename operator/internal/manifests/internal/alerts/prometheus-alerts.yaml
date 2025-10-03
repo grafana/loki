@@ -84,7 +84,7 @@ groups:
       histogram_quantile(0.99,
         sum(
           irate(
-            loki_request_duration_seconds_bucket{route!~"(?i).*tail.*"}[1m]
+            loki_request_duration_seconds_bucket{route!~"(?i).*tail.*"}[2m]
           )
         ) by (job, le, namespace, route)
       )
