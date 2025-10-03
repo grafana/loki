@@ -6833,6 +6833,10 @@ chunk_tables_provisioning:
   # Number of last inactive tables to enable read autoscale.
   # CLI flag: -table-manager.chunk-table.inactive-read-throughput.scale-last-n
   [inactive_read_scale_lastn: <int> | default = 4]
+
+# Must be set to enable table manager, which is deprecated.
+# CLI flag: -table-manager.enabled
+[enabled: <boolean> | default = false]
 ```
 
 ### thanos_object_store_config
