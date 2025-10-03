@@ -152,6 +152,7 @@ const (
 	DataObjConsumer          = "dataobj-consumer"
 	DataObjIndexBuilder      = "dataobj-index-builder"
 	ScratchStore             = "scratch-store"
+	UIRing                   = "ui-ring"
 	UI                       = "ui"
 	All                      = "all"
 	Read                     = "read"
@@ -1588,6 +1589,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ingester.KafkaIngestion.PartitionRingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.IngestLimits.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.UI.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
@@ -2034,6 +2036,42 @@ func (t *Loki) initPartitionRing() (services.Service, error) {
 	return t.PartitionRingWatcher, nil
 }
 
+func (t *Loki) initUIRing() (services.Service, error) {
+	if !t.Cfg.UI.Enabled {
+		return nil, nil
+	}
+
+	// Set the listen port for the ring instance address
+	if t.Cfg.UI.Ring.ListenPort == 0 {
+		t.Cfg.UI.Ring.ListenPort = t.Cfg.Server.HTTPListenPort
+	}
+
+	// Create UI ring manager
+	rm, err := lokiring.NewRingManager(
+		"ui",
+		lokiring.ServerMode,
+		t.Cfg.UI.Ring,
+		1, // replication factor - UI doesn't need replication
+		1, // num tokens - UI instances only need 1 token
+		util_log.Logger,
+		prometheus.DefaultRegisterer,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create UI ring manager: %w", err)
+	}
+
+	t.uiRingManager = rm
+
+	// Register HTTP handlers for the UI ring status page
+	t.Server.HTTP.Path("/ui/ring").Methods("GET", "POST").Handler(rm)
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/ui/ring").Methods("GET", "POST").Handler(rm)
+	}
+
+	t.Server.HTTP.Path("/analytics").Methods("GET", "POST").Handler(analytics.Handler())
+	return rm, nil
+}
+
 func (t *Loki) initDataObjExplorer() (services.Service, error) {
 	store, err := t.createDataObjBucket("dataobj-explorer")
 	if err != nil {
@@ -2054,8 +2092,23 @@ func (t *Loki) initUI() (services.Service, error) {
 		// UI is disabled, return nil to skip initialization
 		return nil, nil
 	}
-	t.Cfg.UI = t.Cfg.UI.WithAdvertisePort(t.Cfg.Server.HTTPListenPort)
-	svc, err := ui.NewService(t.Cfg.UI, t.Server.HTTP, log.With(util_log.Logger, "component", "ui"), prometheus.DefaultRegisterer)
+
+	// Ensure UI ring manager is initialized first
+	if t.uiRingManager == nil {
+		return nil, fmt.Errorf("UI ring must be initialized before UI service")
+	}
+
+	// Get the HTTP listen address for the UI service
+	httpListenAddr := t.Server.HTTPListenAddr().String()
+
+	svc, err := ui.NewService(
+		t.Cfg.UI,
+		t.Server.HTTP,
+		t.uiRingManager.Ring,
+		httpListenAddr,
+		log.With(util_log.Logger, "component", "ui"),
+		prometheus.DefaultRegisterer,
+	)
 	if err != nil {
 		return nil, err
 	}

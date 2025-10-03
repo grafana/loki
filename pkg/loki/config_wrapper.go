@@ -363,6 +363,20 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.IndexGateway.Ring.KVStore = rc.KVStore
 		r.IndexGateway.Ring.EnableIPv6 = rc.EnableIPv6
 	}
+
+	// UI
+	if mergeWithExisting || reflect.DeepEqual(r.UI.Ring, defaults.UI.Ring) {
+		r.UI.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.UI.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.UI.Ring.InstancePort = rc.InstancePort
+		r.UI.Ring.InstanceAddr = rc.InstanceAddr
+		r.UI.Ring.InstanceID = rc.InstanceID
+		r.UI.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.UI.Ring.InstanceZone = rc.InstanceZone
+		r.UI.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.UI.Ring.KVStore = rc.KVStore
+		r.UI.Ring.EnableIPv6 = rc.EnableIPv6
+	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -414,6 +428,13 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 		return err
 	}
 	cfg.Pattern.LifecyclerConfig.TokensFilePath = f
+
+	// UI
+	f, err = tokensFile(cfg, "ui.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.UI.Ring.TokensFilePath = f
 
 	return nil
 }
@@ -525,6 +546,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
+	r.UI.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
