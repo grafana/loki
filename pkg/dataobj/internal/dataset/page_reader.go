@@ -30,6 +30,7 @@ type pageReader struct {
 	pageRow int64
 	nextRow int64
 
+	memPage        *MemPage
 	presenceReader *bufio.Reader
 	valuesReader   *bufio.Reader
 }
@@ -182,7 +183,12 @@ func (pr *pageReader) init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if pr.memPage != nil {
+		pr.memPage.Close()
+		pr.memPage = nil
+	}
 	memPage := InitMemPage(*pr.page.PageDesc(), data.Bytes())
+	pr.memPage = &memPage
 
 	presenceReader, valuesReader, err := memPage.reader(pr.compression)
 	if err != nil {
@@ -287,6 +293,11 @@ func (pr *pageReader) Reset(page Page, physicalType datasetmd.PhysicalType, comp
 // Close closes the pageReader. Closed pageReaders can be reused by calling
 // [pageReader.Reset].
 func (pr *pageReader) Close() error {
+	if pr.memPage != nil {
+		pr.memPage.Close()
+		pr.memPage = nil
+	}
+
 	if pr.closer != nil {
 		err := pr.closer.Close()
 		pr.closer = nil

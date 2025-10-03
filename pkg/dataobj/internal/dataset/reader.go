@@ -396,6 +396,7 @@ func buildMask(full rowRange, s []Row) iter.Seq[rowRange] {
 // Close closes the Reader. Closed Readers can be reused by calling
 // [Reader.Reset].
 func (r *Reader) Close() error {
+	r.dl.Reset(memDataset{})
 	if r.inner != nil {
 		return r.inner.Close()
 	}
