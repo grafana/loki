@@ -5,13 +5,13 @@ go 1.24.0
 toolchain go1.24.4
 
 require (
+	dario.cat/mergo v1.0.2
 	github.com/ViaQ/logerr/v2 v2.1.0
 	github.com/go-logr/logr v1.4.2
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/grafana/loki/operator/api/loki v0.0.0-00010101000000-000000000000
 	github.com/grafana/loki/v3 v3.4.3
-	github.com/imdario/mergo v0.3.16
 	github.com/maxbrunsfeld/counterfeiter/v6 v6.11.2
 	github.com/openshift/api v0.0.0-20250305013520-e7f23be12279 // release-4.18
 	github.com/openshift/cloud-credential-operator v0.0.0-20250103203211-020f8b841abf // release-4.18
@@ -33,7 +33,6 @@ require (
 )
 
 require (
-	dario.cat/mergo v1.0.1 // indirect
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.3.1 // indirect
