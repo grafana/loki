@@ -47,12 +47,16 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 	svc := NewGatewayHTTPService(opts)
 	pdb := NewGatewayPodDisruptionBudget(opts)
 
-	ing, err := NewGatewayIngress(opts)
-	if err != nil {
-		return nil, err
-	}
+	var objs []client.Object
+	objs = append(objs, cm, tenantSecret, dpl, sa, saToken, svc, pdb)
 
-	objs := []client.Object{cm, tenantSecret, dpl, sa, saToken, svc, ing, pdb}
+	if externalAccessEnabled(opts) {
+		ing, err := NewGatewayIngress(opts)
+		if err != nil {
+			return nil, err
+		}
+		objs = append(objs, ing)
+	}
 
 	minTLSVersion := opts.TLSProfile.MinTLSVersion
 	ciphersList := opts.TLSProfile.Ciphers
@@ -117,7 +121,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 	a := gatewayAnnotations(sha1C, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: GatewayName(opts.Name),
-		Affinity:           configureAffinity(LabelGatewayComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Gateway),
+		Affinity:           configureAffinity(LabelGatewayComponent, opts.Name, opts.Gates.DefaultNodeAffinity, &opts.Stack.Template.Gateway.LokiComponentSpec),
 		Volumes: []corev1.Volume{
 			{
 				Name: "rbac",
@@ -632,4 +636,15 @@ func configureGatewayRulesAPI(podSpec *corev1.PodSpec, stackName, stackNs string
 	}
 
 	return nil
+}
+
+// externalAccessEnabled checks if external access resources should be created.
+// It returns false if external access is explicitly disabled in the LokiStack specification.
+func externalAccessEnabled(opts Options) bool {
+	if opts.Stack.Template != nil &&
+		opts.Stack.Template.Gateway != nil &&
+		opts.Stack.Template.Gateway.ExternalAccess != nil {
+		return !opts.Stack.Template.Gateway.ExternalAccess.Disabled
+	}
+	return true
 }
