@@ -3980,8 +3980,9 @@ extraObjects: null
 
 sidecar:
   image:
+    registry: docker.io
     # -- The Docker registry and image for the k8s sidecar
-    repository: docker.io/kiwigrid/k8s-sidecar
+    repository: kiwigrid/k8s-sidecar
     # -- Docker image tag
     tag: 1.30.10
     # -- Docker image sha. If empty, no sha will be used
