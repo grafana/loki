@@ -190,6 +190,14 @@ func ComponentLabels(component, stackName string) labels.Set {
 	})
 }
 
+// ClusterScopeLabels is a list of labels that should be assigned to all cluster scoped compoents
+func ClusterScopeLabels() map[string]string {
+	return map[string]string{
+		"app.kubernetes.io/managed-by": "lokistack-controller",
+		"app.kubernetes.io/created-by": "lokistack-controller",
+	}
+}
+
 // GossipLabels is the list of labels that should be assigned to components using the gossip ring
 func GossipLabels() map[string]string {
 	return map[string]string{

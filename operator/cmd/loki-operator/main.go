@@ -110,7 +110,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if ctrlCfg.Gates.ServiceMonitors && ctrlCfg.Gates.OpenShift.Enabled && ctrlCfg.Gates.OpenShift.Dashboards {
+	if ctrlCfg.Gates.OpenShift.Enabled {
 		var ns string
 		ns, err = operator.GetNamespace()
 		if err != nil {
@@ -118,13 +118,14 @@ func main() {
 			os.Exit(1)
 		}
 
-		if err = (&lokictrl.DashboardsReconciler{
+		if err = (&lokictrl.ClusterScopeReconciler{
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
-			Log:        logger.WithName("controllers").WithName(lokictrl.ControllerNameLokiDashboards),
+			Log:        logger.WithName("controllers").WithName(lokictrl.ControllerNameLokiClusterScope),
 			OperatorNs: ns,
+			Dashboards: ctrlCfg.Gates.ServiceMonitors && ctrlCfg.Gates.OpenShift.Dashboards,
 		}).SetupWithManager(mgr); err != nil {
-			logger.Error(err, "unable to create controller", "controller", lokictrl.ControllerNameLokiDashboards)
+			logger.Error(err, "unable to create controller", "controller", lokictrl.ControllerNameLokiClusterScope)
 			os.Exit(1)
 		}
 	}

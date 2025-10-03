@@ -3,90 +3,66 @@ package openshift
 import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// BuildGatewayClusterRole returns a k8s ClusterRole object for the
-// lokistack gateway serviceaccount to allow creating:
-//   - TokenReviews to authenticate the user by bearer token.
-//   - SubjectAccessReview to authorize the user by bearer token.
-//     if having access to read/create logs.
-func BuildGatewayClusterRole(opts Options) *rbacv1.ClusterRole {
-	return &rbacv1.ClusterRole{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ClusterRole",
-			APIVersion: rbacv1.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   authorizerRbacName(opts.BuildOpts.GatewayName),
-			Labels: opts.BuildOpts.Labels,
-		},
-		Rules: []rbacv1.PolicyRule{
-			{
-				APIGroups: []string{
-					"authentication.k8s.io",
-				},
-				Resources: []string{
-					"tokenreviews",
-				},
-				Verbs: []string{
-					"create",
-				},
-			},
-			{
-				APIGroups: []string{
-					"authorization.k8s.io",
-				},
-				Resources: []string{
-					"subjectaccessreviews",
-				},
-				Verbs: []string{
-					"create",
-				},
-			},
-		},
-	}
+const (
+	gatewayName = "lokistack-gateway"
+	rulerName   = "lokistack-ruler"
+)
+
+func BuildRBAC(opts *ClusterScopeOptions) []client.Object {
+	objs := make([]client.Object, 0, 2)
+	objs = append(objs, buildRulerClusterRole(opts.Labels))
+	objs = append(objs, buildRulerClusterRoleBinding(opts.Labels, opts.RulerSubjects))
+	return objs
 }
 
-// BuildGatewayClusterRoleBinding returns a k8s ClusterRoleBinding object for
-// the lokistack gateway serviceaccount to grant access to:
-// - rbac.authentication.k8s.io/TokenReviews
-// - rbac.authorization.k8s.io/SubjectAccessReviews
-func BuildGatewayClusterRoleBinding(opts Options) *rbacv1.ClusterRoleBinding {
-	return &rbacv1.ClusterRoleBinding{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ClusterRoleBinding",
-			APIVersion: rbacv1.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   authorizerRbacName(opts.BuildOpts.GatewayName),
-			Labels: opts.BuildOpts.Labels,
-		},
-		RoleRef: rbacv1.RoleRef{
-			APIGroup: "rbac.authorization.k8s.io",
-			Kind:     "ClusterRole",
-			Name:     authorizerRbacName(opts.BuildOpts.GatewayName),
-		},
-		Subjects: []rbacv1.Subject{
-			{
-				Kind:      rbacv1.ServiceAccountKind,
-				Name:      gatewayServiceAccountName(opts),
-				Namespace: opts.BuildOpts.LokiStackNamespace,
+func LegacyRBAC(gatewayName, rulerName string) []client.Object {
+	objs := make([]client.Object, 0, 4)
+
+	clusterrole := func(name string) *rbacv1.ClusterRole {
+		return &rbacv1.ClusterRole{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ClusterRole",
+				APIVersion: rbacv1.SchemeGroupVersion.String(),
 			},
-		},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: name,
+			},
+		}
 	}
+	clusterrolebinding := func(name string) *rbacv1.ClusterRoleBinding {
+		return &rbacv1.ClusterRoleBinding{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ClusterRoleBinding",
+				APIVersion: rbacv1.SchemeGroupVersion.String(),
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: name,
+			},
+		}
+	}
+
+	objs = append(objs, clusterrole(authorizerRbacName(gatewayName)))
+	objs = append(objs, clusterrolebinding(authorizerRbacName(gatewayName)))
+	objs = append(objs, clusterrole(authorizerRbacName(rulerName)))
+	objs = append(objs, clusterrolebinding(authorizerRbacName(rulerName)))
+
+	return objs
 }
 
-// BuildRulerClusterRole returns a k8s ClusterRole object for the
+// buildRulerClusterRole returns a k8s ClusterRole object for the
 // lokistack ruler serviceaccount to allow patching sending alerts to alertmanagers.
-func BuildRulerClusterRole(opts Options) *rbacv1.ClusterRole {
+func buildRulerClusterRole(labels map[string]string) *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ClusterRole",
 			APIVersion: rbacv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   authorizerRbacName(opts.BuildOpts.RulerName),
-			Labels: opts.BuildOpts.Labels,
+			Name:   authorizerRbacName(rulerName),
+			Labels: labels,
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
@@ -123,29 +99,23 @@ func BuildRulerClusterRole(opts Options) *rbacv1.ClusterRole {
 	}
 }
 
-// BuildRulerClusterRoleBinding returns a k8s ClusterRoleBinding object for
+// buildRulerClusterRoleBinding returns a k8s ClusterRoleBinding object for
 // the lokistack ruler serviceaccount to grant access to alertmanagers.
-func BuildRulerClusterRoleBinding(opts Options) *rbacv1.ClusterRoleBinding {
+func buildRulerClusterRoleBinding(labels map[string]string, subjects []rbacv1.Subject) *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ClusterRoleBinding",
 			APIVersion: rbacv1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   authorizerRbacName(opts.BuildOpts.RulerName),
-			Labels: opts.BuildOpts.Labels,
+			Name:   authorizerRbacName(rulerName),
+			Labels: labels,
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
 			Kind:     "ClusterRole",
-			Name:     authorizerRbacName(opts.BuildOpts.RulerName),
+			Name:     authorizerRbacName(rulerName),
 		},
-		Subjects: []rbacv1.Subject{
-			{
-				Kind:      rbacv1.ServiceAccountKind,
-				Name:      rulerServiceAccountName(opts),
-				Namespace: opts.BuildOpts.LokiStackNamespace,
-			},
-		},
+		Subjects: subjects,
 	}
 }

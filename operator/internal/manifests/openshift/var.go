@@ -66,10 +66,6 @@ func routeName(opts Options) string {
 	return opts.BuildOpts.LokiStackName
 }
 
-func gatewayServiceAccountName(opts Options) string {
-	return opts.BuildOpts.GatewayName
-}
-
 func rulerServiceAccountName(opts Options) string {
 	return opts.BuildOpts.RulerName
 }
