@@ -2,6 +2,8 @@ package bucket
 
 import (
 	"context"
+	"crypto/md5"
+	"crypto/rand"
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
@@ -101,6 +103,27 @@ func TestSSEBucketClient_Upload_ShouldInjectCustomSSEConfig(t *testing.T) {
 			assert.Equal(t, "aws:kms", req.Header.Get("x-amz-server-side-encryption"))
 			assert.Equal(t, kmsKeyID, req.Header.Get("x-amz-server-side-encryption-aws-kms-key-id"))
 			assert.Equal(t, base64.StdEncoding.EncodeToString([]byte(kmsEncryptionContext)), req.Header.Get("x-amz-server-side-encryption-context"))
+
+			// Configure the config provider with SEE-C.
+			encryptionKey := make([]byte, 32) // 256 bits
+			_, err = rand.Read(encryptionKey)
+			require.NoError(t, err, "could not create random sse-c key")
+
+			cfgProvider.s3SseType = s3.SSEC
+			cfgProvider.s3SseCEncryptionKey = string(encryptionKey[:])
+
+			err = sseBkt.Upload(context.Background(), "test", strings.NewReader("test"))
+			require.NoError(t, err)
+
+			// Ensure the SSE-C header has been injected.
+			assert.Equal(t, "AES256", req.Header.Get("x-amz-server-side-encryption-customer-algorithm"))
+			// The encryption key must be base64-encoded
+			b64EncryptionKey := base64.StdEncoding.EncodeToString(encryptionKey)
+			assert.Equal(t, b64EncryptionKey, req.Header.Get("x-amz-server-side-encryption-customer-key"))
+			// The key md5 is the base64-encoded 128-bit MD5 digest of the encryption key according to RFC 1321
+			h := md5.New()
+			h.Write(encryptionKey)
+			assert.Equal(t, base64.StdEncoding.EncodeToString(h.Sum(nil)), req.Header.Get("x-amz-server-side-encryption-customer-key-MD5"))
 		})
 	}
 }
@@ -109,6 +132,7 @@ type mockTenantConfigProvider struct {
 	s3SseType              string
 	s3KmsKeyID             string
 	s3KmsEncryptionContext string
+	s3SseCEncryptionKey    string
 }
 
 func (m *mockTenantConfigProvider) S3SSEType(_ string) string {
@@ -121,4 +145,8 @@ func (m *mockTenantConfigProvider) S3SSEKMSKeyID(_ string) string {
 
 func (m *mockTenantConfigProvider) S3SSEKMSEncryptionContext(_ string) string {
 	return m.s3KmsEncryptionContext
+}
+
+func (m *mockTenantConfigProvider) S3SSECEncryptionKey(_ string) string {
+	return m.s3SseCEncryptionKey
 }
