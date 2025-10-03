@@ -472,3 +472,129 @@ tenants:
 	require.Empty(t, rbacConfig)
 	require.Empty(t, regoCfg)
 }
+
+func TestBuild_OpenshiftMode(t *testing.T) {
+	expTntCfg := `
+tenants:
+- name: application
+  id: 32e45e3e-b760-43a2-a7e1-02c5631e56e9
+  openshift:
+    serviceAccount: lokistack-gateway
+    redirectURL: https://localhost:8443/openshift/application/callback
+    cookieSecret: abcd
+  opa:
+    url: http://127.0.0.1:8080/v1/data/lokistack/allow
+    withAccessToken: true
+- name: infrastructure
+  id: 40de0532-10a2-430c-9a00-62c46455c118
+  openshift:
+    serviceAccount: lokistack-gateway
+    redirectURL: https://localhost:8443/openshift/infrastructure/callback
+    cookieSecret: efgh
+  opa:
+    url: http://127.0.0.1:8080/v1/data/lokistack/allow
+    withAccessToken: true
+- name: audit
+  id: 26d7c49d-182e-4d93-bade-510c6cc3243d
+  openshift:
+    serviceAccount: lokistack-gateway
+    redirectURL: https://localhost:8443/openshift/audit/callback
+    cookieSecret: deadbeef
+  opa:
+    url: http://127.0.0.1:8080/v1/data/lokistack/allow
+    withAccessToken: true
+- name: network
+  id: 3e922593-e352-47df-8c5c-c39dbdd5b83c
+  openshift:
+    serviceAccount: lokistack-gateway
+    redirectURL: https://localhost:8443/openshift/network/callback
+    cookieSecret: whynot
+  opa:
+    url: http://127.0.0.1:8080/v1/data/lokistack/allow
+    withAccessToken: true
+`
+	opts := Options{
+		Stack: lokiv1.LokiStackSpec{
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
+			},
+		},
+		OpenShiftOptions: openshift.Options{
+			Authentication: []openshift.AuthenticationSpec{
+				{
+					TenantName:     "application",
+					TenantID:       "32e45e3e-b760-43a2-a7e1-02c5631e56e9",
+					ServiceAccount: "lokistack-gateway",
+					RedirectURL:    "https://localhost:8443/openshift/application/callback",
+					CookieSecret:   "abcd",
+				},
+				{
+					TenantName:     "infrastructure",
+					TenantID:       "40de0532-10a2-430c-9a00-62c46455c118",
+					ServiceAccount: "lokistack-gateway",
+					RedirectURL:    "https://localhost:8443/openshift/infrastructure/callback",
+					CookieSecret:   "efgh",
+				},
+				{
+					TenantName:     "audit",
+					TenantID:       "26d7c49d-182e-4d93-bade-510c6cc3243d",
+					ServiceAccount: "lokistack-gateway",
+					RedirectURL:    "https://localhost:8443/openshift/audit/callback",
+					CookieSecret:   "deadbeef",
+				},
+				{
+					TenantName:     "network",
+					TenantID:       "3e922593-e352-47df-8c5c-c39dbdd5b83c",
+					ServiceAccount: "lokistack-gateway",
+					RedirectURL:    "https://localhost:8443/openshift/network/callback",
+					CookieSecret:   "whynot",
+				},
+			},
+			Authorization: openshift.AuthorizationSpec{
+				OPAUrl: "http://127.0.0.1:8080/v1/data/lokistack/allow",
+			},
+		},
+		Namespace: "test-ns",
+		Name:      "test",
+		TenantSecrets: []*Secret{
+			{
+				TenantName: "application",
+				OIDC: &OIDC{
+					ClientID:     "test",
+					ClientSecret: "ZXhhbXBsZS1hcHAtc2VjcmV0",
+					IssuerCAPath: "./tmp/certs/ca.pem",
+				},
+			},
+			{
+				TenantName: "infrastructure",
+				OIDC: &OIDC{
+					ClientID:     "test",
+					ClientSecret: "ZXhhbXBsZS1hcHAtc2VjcmV0",
+					IssuerCAPath: "./tmp/certs/ca.pem",
+				},
+			},
+			{
+				TenantName: "audit",
+				OIDC: &OIDC{
+					ClientID:     "test",
+					ClientSecret: "ZXhhbXBsZS1hcHAtc2VjcmV0",
+					IssuerCAPath: "./tmp/certs/ca.pem",
+				},
+			},
+			{
+				TenantName: "network",
+				OIDC: &OIDC{
+					ClientID:     "test",
+					ClientSecret: "ZXhhbXBsZS1hcHAtc2VjcmV0",
+					IssuerCAPath: "./tmp/certs/ca.pem",
+				},
+			},
+		},
+	}
+
+	rbacConfig, tenantsConfig, regoCfg, err := Build(opts)
+	require.NoError(t, err)
+	require.YAMLEq(t, expTntCfg, string(tenantsConfig))
+	require.Empty(t, rbacConfig)
+	require.Empty(t, regoCfg)
+}
