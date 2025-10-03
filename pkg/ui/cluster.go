@@ -180,7 +180,7 @@ type NodeDetails struct {
 }
 
 func (s *Service) fetchDetails(ctx context.Context, nodeName string) (NodeDetails, error) {
-	addr, err := s.findNodeAddressByName(ctx, nodeName)
+	addr, err := s.findNodeAddressByName(nodeName)
 	if err != nil {
 		return NodeDetails{}, fmt.Errorf("fetching node address: %w", err)
 	}
