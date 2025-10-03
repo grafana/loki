@@ -18,6 +18,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 )
 
@@ -50,7 +51,7 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 	var objs []client.Object
 	objs = append(objs, cm, tenantSecret, dpl, sa, saToken, svc, pdb)
 
-	if externalAccessEnabled(opts) {
+	if ExternalAccessEnabled(opts.Stack) {
 		ing, err := NewGatewayIngress(opts)
 		if err != nil {
 			return nil, err
@@ -638,13 +639,13 @@ func configureGatewayRulesAPI(podSpec *corev1.PodSpec, stackName, stackNs string
 	return nil
 }
 
-// externalAccessEnabled checks if external access resources should be created.
+// ExternalAccessEnabled checks if external access resources should be created.
 // It returns false if external access is explicitly disabled in the LokiStack specification.
-func externalAccessEnabled(opts Options) bool {
-	if opts.Stack.Template != nil &&
-		opts.Stack.Template.Gateway != nil &&
-		opts.Stack.Template.Gateway.ExternalAccess != nil {
-		return !opts.Stack.Template.Gateway.ExternalAccess.Disabled
+func ExternalAccessEnabled(spec lokiv1.LokiStackSpec) bool {
+	if spec.Template != nil &&
+		spec.Template.Gateway != nil &&
+		spec.Template.Gateway.ExternalAccess != nil {
+		return !spec.Template.Gateway.ExternalAccess.Disabled
 	}
 	return true
 }

@@ -69,8 +69,8 @@ spec:
 ```
 
 **Result:**
-- **OpenShift**: No Route object created
-- **Kubernetes**: No Ingress object created
+- **OpenShift**: No Route object created (existing Routes are automatically removed)
+- **Kubernetes**: No Ingress object created (existing Ingress resources are automatically removed)
 - Gateway remains accessible via internal Service
 
 ### Explicitly Enable External Access
@@ -89,6 +89,15 @@ spec:
       externalAccess:
         disabled: false  # Explicitly enable external access
 ```
+
+## Resource Cleanup Behavior
+
+When you change the external access configuration from enabled to disabled:
+
+1. **Automatic Cleanup**: The operator automatically removes existing external access resources
+2. **Immediate Effect**: Changes take effect during the next reconciliation cycle
+3. **No Manual Cleanup**: You don't need to manually delete Routes or Ingress resources
+4. **Safe Deletion**: Only resources owned by the LokiStack are deleted (prevents accidental deletion of user-created resources)
 
 ## Related Documentation
 
