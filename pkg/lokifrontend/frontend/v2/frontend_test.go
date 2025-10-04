@@ -321,8 +321,7 @@ func TestFrontendStoppingWaitsForEmptyInflightRequests(t *testing.T) {
 	})
 
 	inflightRequests := 10
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	for i := 0; i < inflightRequests; i++ {
 		go func() {
@@ -358,8 +357,7 @@ func TestFrontendShuttingDownLetsSubRequestsPass(t *testing.T) {
 		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	require.Equal(t, services.Running, f.State())
 
