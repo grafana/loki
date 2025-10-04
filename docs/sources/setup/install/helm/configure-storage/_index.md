@@ -64,3 +64,52 @@ This guide assumes Loki will be installed in one of the modes above and that a `
    ```
 
    Note that `endpoint`, `secretAccessKey` and `accessKeyId` have been omitted.
+
+**SSE (Server-Side Encryption)**
+
+You can configure Server-Side Encryption (SSE) for your S3 storage. There are three main SSE types available:
+
+- SSE-S3: Encryption keys are fully managed by the S3 service.
+- SSE-KMS: Uses Key Management Service (KMS) keys, providing more control over key management.
+- SSE-C: You provide and manage your own encryption key manually.
+
+> **Important:** Use caution when opting for SSE-C. Unlike SSE-S3 and SSE-KMS, where key rotation is handled automatically by AWS for example, SSE-C requires manual key rotation which can be complex and error-prone in production environments.
+
+SSE-S3 can be set as following:
+```
+loki:
+  storage:
+    type: "s3"
+    s3:
+      region: eu-central-1
+      sse:
+        type: SSE-S3
+```
+
+SSE-KMS requires to set `kms_key_id` and `kms_encryption_context`.
+```
+loki:
+  storage:
+    type: "s3"
+    s3:
+      region: eu-central-1
+      sse:
+        type: SSE-KMS
+        kms_key_id: <your-kms-key-id>
+        kms_encryption_context: <your-kms-encryption-context>
+```
+
+To use SSE-C, you must provide a 32-byte (256-bit) encryption key. The encryption algorithm is set to `AES256` by default. 
+
+> **Important:** Treat the `encryption_key` as a sensitive value since it directly protects your data. Proper key management and security practices are essential, as losing this key means losing access to the encrypted objects.
+
+```
+loki:
+  storage:
+    type: "s3"
+    s3:
+      region: eu-central-1
+      sse:
+        type: SSE-C
+        encryption_key: <your-customer-provided-encryption-key>
+```

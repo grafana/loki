@@ -18,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/go-kit/log/level"
 
 	"github.com/aws/smithy-go"
 
@@ -37,6 +38,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
 	loki_instrument "github.com/grafana/loki/v3/pkg/util/instrument"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var tracer = otel.Tracer("pkg/storage/chunk/client/awsd")
@@ -236,6 +238,9 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.C
 
 	if cfg.Insecure {
 		s3Options.EndpointOptions.DisableHTTPS = true
+		if cfg.SSEConfig.Type == bucket_s3.SSEC {
+			level.Warn(util_log.Logger).Log("msg", "S3-SSE", "forced to use an S3 HTTP endpoint but SSE-C is usually not supported with insecure connections")
+		}
 	}
 
 	if cfg.Region != "" {
@@ -353,6 +358,14 @@ func (a *S3ObjectClient) objectAttributes(ctx context.Context, objectKey, method
 				Bucket: aws.String(a.bucketFromKey(objectKey)),
 				Key:    aws.String(a.convertObjectKey(objectKey, true)),
 			}
+
+			// if sse-c used, we need to add the customer key and its md5 hash to the request
+			if a.sseConfig != nil && a.sseConfig.SSEType == string(bucket_s3.SSEC) {
+				headObjectInput.SSECustomerAlgorithm = aws.String(a.sseConfig.ServerSideEncryption)
+				headObjectInput.SSECustomerKey = a.sseConfig.CustomerEncryptionKeyB64
+				headObjectInput.SSECustomerKeyMD5 = a.sseConfig.CustomerEncryptionKeyMD5B64
+			}
+
 			headOutput, requestErr := a.S3.HeadObject(ctx, headObjectInput)
 			if requestErr != nil {
 				return requestErr
@@ -416,10 +429,19 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 
 		lastErr = loki_instrument.TimeRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			var requestErr error
-			resp, requestErr = a.hedgedS3.GetObject(ctx, &s3.GetObjectInput{
+			objInput := &s3.GetObjectInput{
 				Bucket: aws.String(a.bucketFromKey(objectKey)),
 				Key:    aws.String(a.convertObjectKey(objectKey, true)),
-			})
+			}
+
+			// if sse-c used, we need to add the customer key and its md5 hash to the request
+			if a.sseConfig != nil && a.sseConfig.SSEType == string(bucket_s3.SSEC) {
+				objInput.SSECustomerAlgorithm = aws.String(a.sseConfig.ServerSideEncryption)
+				objInput.SSECustomerKey = a.sseConfig.CustomerEncryptionKeyB64
+				objInput.SSECustomerKeyMD5 = a.sseConfig.CustomerEncryptionKeyMD5B64
+			}
+
+			resp, requestErr = a.hedgedS3.GetObject(ctx, objInput)
 			return requestErr
 		})
 
@@ -451,11 +473,21 @@ func (a *S3ObjectClient) GetObjectRange(ctx context.Context, objectKey string, o
 
 		lastErr = loki_instrument.TimeRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			var requestErr error
-			resp, requestErr = a.hedgedS3.GetObject(ctx, &s3.GetObjectInput{
+
+			objInput := &s3.GetObjectInput{
 				Bucket: aws.String(a.bucketFromKey(objectKey)),
 				Key:    aws.String(a.convertObjectKey(objectKey, true)),
 				Range:  aws.String(fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)),
-			})
+			}
+
+			// if sse-c used, we need to add the customer key and its md5 hash to the request
+			if a.sseConfig != nil && a.sseConfig.SSEType == string(bucket_s3.SSEC) {
+				objInput.SSECustomerAlgorithm = aws.String(a.sseConfig.ServerSideEncryption)
+				objInput.SSECustomerKey = a.sseConfig.CustomerEncryptionKeyB64
+				objInput.SSECustomerKeyMD5 = a.sseConfig.CustomerEncryptionKeyMD5B64
+			}
+
+			resp, requestErr = a.hedgedS3.GetObject(ctx, objInput)
 			return requestErr
 		})
 
@@ -482,7 +514,13 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 			StorageClass: types.StorageClass(a.cfg.StorageClass),
 		}
 
-		if a.sseConfig != nil {
+		if a.sseConfig != nil && a.sseConfig.SSEType == string(bucket_s3.SSEC) {
+			// if sse-c used, we need to add the customer key and its md5 hash to the request
+			putObjectInput.SSECustomerAlgorithm = aws.String(a.sseConfig.ServerSideEncryption)
+			putObjectInput.SSECustomerKey = a.sseConfig.CustomerEncryptionKeyB64
+			putObjectInput.SSECustomerKeyMD5 = a.sseConfig.CustomerEncryptionKeyMD5B64
+		} else if a.sseConfig != nil {
+			// if sse-kms or sse-s3 used, we need to at least add the server side encryption type to the request
 			putObjectInput.ServerSideEncryption = types.ServerSideEncryption(a.sseConfig.ServerSideEncryption)
 			putObjectInput.SSEKMSKeyId = a.sseConfig.KMSKeyID
 			putObjectInput.SSEKMSEncryptionContext = a.sseConfig.KMSEncryptionContext

@@ -446,3 +446,17 @@ storage_config:
 
 ```
 
+## 18-S3-With-SSE-C-Snippet.yaml
+
+```yaml
+
+# This partial configuration uses S3 for chunk storage and an SSE-C customer key for encryption.
+
+storage_config:
+  aws:
+    s3: s3://access_key:secret_access_key@region/bucket_name
+    sse:
+      type: SSE-C
+      sse_c_encryption_key: 1234abcd-12ab-34cd-56ef-12345678 # 32 byte key required
+
+```
