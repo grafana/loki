@@ -51,6 +51,7 @@ var (
 		"severity_text",
 		"Severity_Text",
 		"SEVERITY_TEXT",
+		"severity.text",
 	}
 
 	errKeyFound = errors.New("key found")
