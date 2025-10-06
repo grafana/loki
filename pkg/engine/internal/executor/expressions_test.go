@@ -68,7 +68,7 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 		{
 			name:      "timestamp",
 			value:     datatype.Timestamp(3600000000),
-			arrowType: arrow.INT64,
+			arrowType: arrow.TIMESTAMP,
 		},
 		{
 			name:      "duration",
@@ -164,7 +164,7 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 		}
 
 		_, err := e.eval(expr, rec)
-		require.ErrorContains(t, err, "failed to lookup binary function for signature EQ(utf8,int64): types do not match")
+		require.ErrorContains(t, err, "failed to lookup binary function for signature EQ(utf8,timestamp_ns): types do not match")
 	})
 
 	t.Run("error if function for signature is not registered", func(t *testing.T) {

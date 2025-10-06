@@ -51,11 +51,11 @@ func TestFormatSimpleQuery(t *testing.T) {
 SELECT <%4> table=%2 predicate=%3
 │   └── BinOp <%3> op=GT left=metadata.age right=21
 │       ├── ColumnRef column=age type=metadata
-│       └── Literal value=21 kind=integer
+│       └── Literal value=21 kind=int64
 └── MAKETABLE <%2> selector=EQ label.app "users"
         └── BinOp <%1> op=EQ left=label.app right="users"
             ├── ColumnRef column=app type=label
-            └── Literal value="users" kind=string
+            └── Literal value="users" kind=utf8
 `
 
 	require.Equal(t, expected, actual)
@@ -96,11 +96,11 @@ SORT <%5> table=%4 column=metadata.age direction=asc nulls=last
 └── SELECT <%4> table=%2 predicate=%3
     │   └── BinOp <%3> op=GT left=metadata.age right=21
     │       ├── ColumnRef column=age type=metadata
-    │       └── Literal value=21 kind=integer
+    │       └── Literal value=21 kind=int64
     └── MAKETABLE <%2> selector=EQ label.app "users"
             └── BinOp <%1> op=EQ left=label.app right="users"
                 ├── ColumnRef column=app type=label
-                └── Literal value="users" kind=string
+                └── Literal value="users" kind=utf8
 `
 	require.Equal(t, expected, actual)
 }
@@ -149,11 +149,11 @@ RangeAggregation <%5> table=%4 operation=count start_ts=1970-01-01T00:00:00Z end
 └── SELECT <%4> table=%2 predicate=%3
     │   └── BinOp <%3> op=GT left=metadata.age right=21
     │       ├── ColumnRef column=age type=metadata
-    │       └── Literal value=21 kind=integer
+    │       └── Literal value=21 kind=int64
     └── MAKETABLE <%2> selector=EQ label.app "users"
             └── BinOp <%1> op=EQ left=label.app right="users"
                 ├── ColumnRef column=app type=label
-                └── Literal value="users" kind=string
+                └── Literal value="users" kind=utf8
 `
 
 	require.Equal(t, expected, actual)
@@ -196,7 +196,7 @@ VectorAggregation <%3> table=%2 operation=sum group_by=(label.app, label.env)
 └── MAKETABLE <%2> selector=EQ label.app "users"
         └── BinOp <%1> op=EQ left=label.app right="users"
             ├── ColumnRef column=app type=label
-            └── Literal value="users" kind=string
+            └── Literal value="users" kind=utf8
 `
 
 	require.Equal(t, expected, actual)

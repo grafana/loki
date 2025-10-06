@@ -44,7 +44,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 
 					return &Array{
 						array: input.Column(idx),
-						dt:    datatype.FromString(dt),
+						dt:    datatype.MustFromString(dt),
 						ct:    types.ColumnTypeFromString(ct),
 						rows:  input.NumRows(),
 					}, nil
@@ -72,7 +72,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 
 					vecs = append(vecs, &Array{
 						array: input.Column(idx),
-						dt:    datatype.FromString(dt),
+						dt:    datatype.MustFromString(dt),
 						ct:    types.ColumnTypeFromString(ct),
 						rows:  input.NumRows(),
 					})
@@ -126,13 +126,15 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		}
 
 		// At the moment we only support functions that accept the same input types.
+		// TODO(chaudum): Compare Loki type, not Arrow type
 		if lhs.Type().ArrowType().ID() != rhs.Type().ArrowType().ID() {
-			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): types do not match", expr.Op, lhs.Type().ArrowType(), rhs.Type().ArrowType())
+			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): types do not match", expr.Op, lhs.Type(), rhs.Type())
 		}
 
+		// TODO(chaudum): Resolve function by Loki type
 		fn, err := binaryFunctions.GetForSignature(expr.Op, lhs.Type().ArrowType())
 		if err != nil {
-			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): %w", expr.Op, lhs.Type().ArrowType(), rhs.Type().ArrowType(), err)
+			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): %w", expr.Op, lhs.Type(), rhs.Type(), err)
 		}
 		return fn.Evaluate(lhs, rhs)
 	}
