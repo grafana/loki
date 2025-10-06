@@ -226,7 +226,7 @@ func TestAggregator(t *testing.T) {
 		// Empty groupBy represents sum by () or sum(...) - all values aggregated into single group
 		groupBy := []physical.ColumnExpression{}
 
-		agg := newAggregator(groupBy, 10)
+		agg := newAggregator(groupBy, 10, aggregationOperationSum)
 
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
 		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
@@ -251,9 +251,9 @@ func TestAggregator(t *testing.T) {
 
 		expect := arrowtest.Rows{
 			// ts1: all series aggregated into single value = 65
-			{"timestamp": ts1, "value": int64(65)},
+			{"timestamp": ts1, "value": float64(65)},
 			// ts2: all series aggregated into single value = 85
-			{"timestamp": ts2, "value": int64(85)},
+			{"timestamp": ts2, "value": float64(85)},
 		}
 
 		rows, err := arrowtest.RecordRows(record)
