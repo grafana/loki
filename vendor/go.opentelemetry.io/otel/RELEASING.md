@@ -5,17 +5,14 @@
 New versions of the [OpenTelemetry Semantic Conventions] mean new versions of the `semconv` package need to be generated.
 The `semconv-generate` make target is used for this.
 
-1. Checkout a local copy of the [OpenTelemetry Semantic Conventions] to the desired release tag.
-2. Pull the latest `otel/semconvgen` image: `docker pull otel/semconvgen:latest`
-3. Run the `make semconv-generate ...` target from this repository.
+1. Set the `TAG` environment variable to the semantic convention tag you want to generate.
+2. Run the `make semconv-generate ...` target from this repository.
 
 For example,
 
 ```sh
-export TAG="v1.21.0" # Change to the release version you are generating.
-export OTEL_SEMCONV_REPO="/absolute/path/to/opentelemetry/semantic-conventions"
-docker pull otel/semconvgen:latest
-make semconv-generate # Uses the exported TAG and OTEL_SEMCONV_REPO.
+export TAG="v1.30.0" # Change to the release version you are generating.
+make semconv-generate # Uses the exported TAG.
 ```
 
 This should create a new sub-package of [`semconv`](./semconv).
@@ -26,6 +23,12 @@ Ensure things look correct before submitting a pull request to include the addit
 You can run `make gorelease` that runs [gorelease](https://pkg.go.dev/golang.org/x/exp/cmd/gorelease) to ensure that there are no unwanted changes done in the public API.
 
 You can check/report problems with `gorelease` [here](https://golang.org/issues/26420).
+
+## Verify changes for contrib repository
+
+If the changes in the main repository are going to affect the contrib repository, it is important to verify that the changes are compatible with the contrib repository.
+
+Follow [the steps](https://github.com/open-telemetry/opentelemetry-go-contrib/blob/main/RELEASING.md#verify-otel-changes) in the contrib repository to verify OTel changes.
 
 ## Pre-Release
 
@@ -63,6 +66,7 @@ Update go.mod for submodules to depend on the new release which will happen in t
        ```
 
    - Move all the `Unreleased` changes into a new section following the title scheme (`[<new tag>] - <date of release>`).
+   - Make sure the new section is under the comment for released section, like `<!-- Released section -->`, so it is protected from being overwritten in the future.
    - Update all the appropriate links at the bottom.
 
 4. Push the changes to upstream and create a Pull Request on GitHub.
@@ -104,17 +108,6 @@ It is critical you make sure the version you push upstream is correct.
 Finally create a Release for the new `<new tag>` on GitHub.
 The release body should include all the release notes from the Changelog for this release.
 
-## Verify Examples
-
-After releasing verify that examples build outside of the repository.
-
-```
-./verify_examples.sh
-```
-
-The script copies examples into a different directory removes any `replace` declarations in `go.mod` and builds them.
-This ensures they build with the published release, not the local copy.
-
 ## Post-Release
 
 ### Contrib Repository
@@ -123,17 +116,17 @@ Once verified be sure to [make a release for the `contrib` repository](https://g
 
 ### Website Documentation
 
-Update the [Go instrumentation documentation] in the OpenTelemetry website under [content/en/docs/instrumentation/go].
+Update the [Go instrumentation documentation] in the OpenTelemetry website under [content/en/docs/languages/go].
 Importantly, bump any package versions referenced to be the latest one you just released and ensure all code examples still compile and are accurate.
 
 [OpenTelemetry Semantic Conventions]: https://github.com/open-telemetry/semantic-conventions
-[Go instrumentation documentation]: https://opentelemetry.io/docs/instrumentation/go/
-[content/en/docs/instrumentation/go]: https://github.com/open-telemetry/opentelemetry.io/tree/main/content/en/docs/instrumentation/go
+[Go instrumentation documentation]: https://opentelemetry.io/docs/languages/go/
+[content/en/docs/languages/go]: https://github.com/open-telemetry/opentelemetry.io/tree/main/content/en/docs/languages/go
 
 ### Demo Repository
 
 Bump the dependencies in the following Go services:
 
-- [`accountingservice`](https://github.com/open-telemetry/opentelemetry-demo/tree/main/src/accountingservice)
-- [`checkoutservice`](https://github.com/open-telemetry/opentelemetry-demo/tree/main/src/checkoutservice)
-- [`productcatalogservice`](https://github.com/open-telemetry/opentelemetry-demo/tree/main/src/productcatalogservice)
+- [`accounting`](https://github.com/open-telemetry/opentelemetry-demo/tree/main/src/accounting)
+- [`checkoutservice`](https://github.com/open-telemetry/opentelemetry-demo/tree/main/src/checkout)
+- [`productcatalogservice`](https://github.com/open-telemetry/opentelemetry-demo/tree/main/src/product-catalog)

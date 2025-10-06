@@ -26,7 +26,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/connectivity"
@@ -36,8 +35,9 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/resolver"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
-	timestamppb "github.com/golang/protobuf/ptypes/timestamp"
 	lbpb "google.golang.org/grpc/balancer/grpclb/grpc_lb_v1"
 )
 
@@ -246,7 +246,7 @@ func (lb *lbBalancer) newRemoteBalancerCCWrapper() error {
 	// Explicitly set pickfirst as the balancer.
 	dopts = append(dopts, grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"pick_first"}`))
 	dopts = append(dopts, grpc.WithResolvers(lb.manualResolver))
-	dopts = append(dopts, grpc.WithChannelzParentID(lb.opt.ChannelzParentID))
+	dopts = append(dopts, grpc.WithChannelzParentID(lb.opt.ChannelzParent))
 
 	// Enable Keepalive for grpclb client.
 	dopts = append(dopts, grpc.WithKeepaliveParams(keepalive.ClientParameters{
@@ -260,10 +260,11 @@ func (lb *lbBalancer) newRemoteBalancerCCWrapper() error {
 	// The grpclb server addresses will set field ServerName, and creds will
 	// receive ServerName as authority.
 	target := lb.manualResolver.Scheme() + ":///grpclb.subClientConn"
-	cc, err := grpc.Dial(target, dopts...)
+	cc, err := grpc.NewClient(target, dopts...)
 	if err != nil {
-		return fmt.Errorf("grpc.Dial(%s): %v", target, err)
+		return fmt.Errorf("grpc.NewClient(%s): %v", target, err)
 	}
+	cc.Connect()
 	ccw := &remoteBalancerCCWrapper{
 		cc:      cc,
 		lb:      lb,
