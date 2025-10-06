@@ -222,6 +222,11 @@ func (cb *ColumnBuilder) flushPage() {
 // Reset clears all data in cb and resets it to a fresh state.
 func (cb *ColumnBuilder) Reset() {
 	cb.rows = 0
+	for _, page := range cb.pages {
+		if page != nil {
+			page.Close()
+		}
+	}
 	cb.pages = nil
 	cb.pageBuilder.Reset()
 }

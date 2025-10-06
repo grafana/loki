@@ -563,6 +563,7 @@ func (col *readerColumn) Close() {
 	for _, page := range col.pages {
 		if page.data != nil {
 			page.data.Close()
+			page.data = nil
 		}
 	}
 }
