@@ -253,8 +253,8 @@ func TestCanExecuteQuery(t *testing.T) {
 			statement: `sum_over_time({env="prod"} | unwrap size [1m])`,
 		},
 		{
-			// group by labels are required
 			statement: `sum(sum_over_time({env="prod"} | unwrap size [1m]))`,
+			expected:  true,
 		},
 		{
 			// max is not supported
