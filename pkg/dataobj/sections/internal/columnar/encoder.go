@@ -319,7 +319,6 @@ func (enc *ColumnEncoder) Commit() error {
 
 	for _, p := range enc.memPages {
 		_, _ = columnData.Write(p.Bytes()) // [bytes.Buffer.Write] never fails.
-		p.Close()
 	}
 
 	metadata := enc.buildMetadata()
