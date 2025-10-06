@@ -62,6 +62,16 @@ func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 	}
 }
 
+func (b *Builder) BinOp(op types.BinaryOp, right Value) *Builder {
+	return &Builder{
+		val: &BinOp{
+			Left:  b.val,
+			Right: right,
+			Op:    op,
+		},
+	}
+}
+
 // RangeAggregation applies a [RangeAggregation] operation to the Builder.
 func (b *Builder) RangeAggregation(
 	partitionBy []ColumnRef,

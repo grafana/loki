@@ -151,6 +151,8 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 		return p.processVectorAggregation(inst, ctx)
 	case *logical.Parse:
 		return p.processParse(inst, ctx)
+	case *logical.BinOp:
+		return p.processBinOp(inst, ctx)
 	}
 	return nil, nil
 }
@@ -349,6 +351,35 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 			return nil, err
 		}
 	}
+	return []Node{node}, nil
+}
+
+func (p *Planner) processBinOp(lp *logical.BinOp, ctx *Context) ([]Node, error) {
+	left, err := p.process(lp.Left, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	//if l, ok := lp.Right.(*logical.Literal); ok {
+	//	l.
+	//}
+	//right, err := p.process(lp.Right, ctx)
+	//if err != nil {
+	//	return nil, err
+	//}
+
+	node := &MathExpression{
+		Op: lp.Op,
+	}
+	p.plan.addNode(node)
+
+	if err := p.plan.addEdge(Edge{Parent: node, Child: left[0]}); err != nil {
+		return nil, err
+	}
+	//if err := p.plan.addEdge(Edge{Parent: node, Child: right[0]}); err != nil {
+	//	return nil, err
+	//}
+
 	return []Node{node}, nil
 }
 

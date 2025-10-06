@@ -21,15 +21,15 @@ var errUnimplemented = errors.New("query contains unimplemented features")
 // It may return an error as second argument in case the traversal of the AST of the query fails.
 func BuildPlan(params logql.Params) (*Plan, error) {
 	var (
-		builder *Builder
-		err     error
+		value Value
+		err   error
 	)
 
 	switch e := params.GetExpression().(type) {
 	case syntax.LogSelectorExpr:
-		builder, err = buildPlanForLogQuery(e, params, false, 0)
+		value, err = buildPlanForLogQuery(e, params, false, 0)
 	case syntax.SampleExpr:
-		builder, err = buildPlanForSampleQuery(e, params)
+		value, err = buildPlanForSampleQuery(e, params)
 	default:
 		err = fmt.Errorf("unexpected expression type (%T)", e)
 	}
@@ -38,7 +38,7 @@ func BuildPlan(params logql.Params) (*Plan, error) {
 		return nil, fmt.Errorf("failed to convert AST into logical plan: %w", err)
 	}
 
-	return builder.ToPlan()
+	return convertToPlan(value)
 }
 
 // buildPlanForLogQuery builds logical plan operations by traversing [syntax.LogSelectorExpr]
@@ -49,7 +49,7 @@ func buildPlanForLogQuery(
 	params logql.Params,
 	isMetricQuery bool,
 	rangeInterval time.Duration,
-) (*Builder, error) {
+) (Value, error) {
 	var (
 		err      error
 		selector Value
@@ -184,83 +184,12 @@ func buildPlanForLogQuery(
 		builder = builder.Limit(0, limit)
 	}
 
-	return builder, nil
+	return builder.Value(), nil
 }
 
-func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder, error) {
-	var (
-		err error
-
-		rangeAggType  types.RangeAggregationType
-		rangeInterval time.Duration
-
-		vecAggType types.VectorAggregationType
-		groupBy    []ColumnRef
-	)
-
-	e.Walk(func(e syntax.Expr) bool {
-		switch e := e.(type) {
-		case *syntax.RangeAggregationExpr:
-			// offsets are not yet supported.
-			if e.Left.Offset != 0 {
-				err = errUnimplemented
-				return false
-			}
-
-			switch e.Operation {
-			case syntax.OpRangeTypeCount:
-				rangeAggType = types.RangeAggregationTypeCount
-			case syntax.OpRangeTypeSum:
-				rangeAggType = types.RangeAggregationTypeSum
-			//case syntax.OpRangeTypeMax:
-			//	rangeAggType = types.RangeAggregationTypeMax
-			//case syntax.OpRangeTypeMin:
-			//	rangeAggType = types.RangeAggregationTypeMin
-			default:
-				err = errUnimplemented
-				return false
-			}
-
-			rangeInterval = e.Left.Interval
-			return false // do not traverse log range query
-
-		case *syntax.VectorAggregationExpr:
-			// grouping by at least one label is required.
-			if e.Grouping == nil || len(e.Grouping.Groups) == 0 || e.Grouping.Without {
-				err = errUnimplemented
-				return false
-			}
-
-			switch e.Operation {
-			//case syntax.OpTypeCount:
-			//	vecAggType = types.VectorAggregationTypeCount
-			case syntax.OpTypeSum:
-				vecAggType = types.VectorAggregationTypeSum
-			//case syntax.OpTypeMax:
-			//	vecAggType = types.VectorAggregationTypeMax
-			//case syntax.OpTypeMin:
-			//	vecAggType = types.VectorAggregationTypeMin
-			default:
-				err = errUnimplemented
-				return false
-			}
-
-			groupBy = make([]ColumnRef, 0, len(e.Grouping.Groups))
-			for _, group := range e.Grouping.Groups {
-				groupBy = append(groupBy, *NewColumnRef(group, types.ColumnTypeAmbiguous))
-			}
-
-			return true
-		default:
-			err = errUnimplemented
-			return false // do not traverse children
-		}
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if rangeAggType == types.RangeAggregationTypeInvalid || vecAggType == types.VectorAggregationTypeInvalid {
+func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (Value, error) {
+	// offsets are not yet supported.
+	if e.Left.Offset != 0 {
 		return nil, errUnimplemented
 	}
 
@@ -269,16 +198,156 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 		return nil, err
 	}
 
-	builder, err := buildPlanForLogQuery(logSelectorExpr, params, true, rangeInterval)
+	rangeInterval := e.Left.Interval
+
+	logQuery, err := buildPlanForLogQuery(logSelectorExpr, params, true, rangeInterval)
 	if err != nil {
 		return nil, err
 	}
 
-	builder = builder.RangeAggregation(
-		nil, rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,
-	).VectorAggregation(groupBy, vecAggType)
+	var rangeAggType types.RangeAggregationType
+	switch e.Operation {
+	case syntax.OpRangeTypeCount:
+		rangeAggType = types.RangeAggregationTypeCount
+	case syntax.OpRangeTypeRate:
+		rangeAggType = types.RangeAggregationTypeCount
+	//case syntax.OpRangeTypeSum:
+	//	rangeAggType = types.RangeAggregationTypeSum
+	//case syntax.OpRangeTypeMax:
+	//	rangeAggType = types.RangeAggregationTypeMax
+	//case syntax.OpRangeTypeMin:
+	//	rangeAggType = types.RangeAggregationTypeMin
+	default:
+		return nil, errUnimplemented
+	}
 
-	return builder, nil
+	rangeAggregation := &RangeAggregation{
+		Table: logQuery,
+
+		Operation:     rangeAggType,
+		PartitionBy:   nil,
+		Start:         params.Start(),
+		End:           params.End(),
+		Step:          params.Step(),
+		RangeInterval: rangeInterval,
+	}
+
+	switch e.Operation {
+	case syntax.OpRangeTypeCount, syntax.OpRangeTypeSum, syntax.OpRangeTypeMax, syntax.OpRangeTypeMin:
+		return rangeAggregation, nil
+	case syntax.OpRangeTypeRate:
+		return &BinOp{
+			Left: rangeAggregation,
+			Right: &Literal{
+				Literal: NewLiteral(params.Interval().Seconds()),
+			},
+			Op: types.BinaryOpDiv,
+		}, nil
+
+	default:
+		return nil, errUnimplemented
+	}
+}
+
+func walkVectorAggregation(e *syntax.VectorAggregationExpr, params logql.Params) (Value, error) {
+	// grouping by at least one label is required.
+	if e.Grouping == nil || len(e.Grouping.Groups) == 0 || e.Grouping.Without {
+		return nil, errUnimplemented
+	}
+
+	left, err := walk(e.Left, params)
+	if err != nil {
+		return nil, err
+	}
+
+	vecAggType := types.VectorAggregationTypeSum
+
+	groupBy := make([]ColumnRef, 0, len(e.Grouping.Groups))
+	for _, group := range e.Grouping.Groups {
+		groupBy = append(groupBy, *NewColumnRef(group, types.ColumnTypeAmbiguous))
+	}
+
+	return &VectorAggregation{
+		Table:     left,
+		GroupBy:   groupBy,
+		Operation: vecAggType,
+	}, nil
+}
+
+func walkBinOp(e *syntax.BinOpExpr, params logql.Params) (Value, error) {
+	left, err := walk(e.SampleExpr, params)
+	if err != nil {
+		return nil, err
+	}
+	right, err := walk(e.RHS, params)
+	if err != nil {
+		return nil, err
+	}
+
+	var op types.BinaryOp
+	switch e.Op {
+	case syntax.OpTypeAdd:
+		op = types.BinaryOpAdd
+	case syntax.OpTypeSub:
+		op = types.BinaryOpSub
+	case syntax.OpTypeMul:
+		op = types.BinaryOpMul
+	case syntax.OpTypeDiv:
+		op = types.BinaryOpDiv
+	default:
+		return nil, errUnimplemented
+	}
+
+	return &BinOp{
+		Left:  left,
+		Right: right,
+		Op:    op,
+	}, nil
+}
+
+func walkLiteral(e *syntax.LiteralExpr, params logql.Params) (Value, error) {
+	return &Literal{
+		NewLiteral(e.Val),
+	}, nil
+}
+
+func walk(e syntax.Expr, params logql.Params) (Value, error) {
+	switch e := e.(type) {
+	case *syntax.RangeAggregationExpr:
+		return walkRangeAggregation(e, params)
+	case *syntax.VectorAggregationExpr:
+		return walkVectorAggregation(e, params)
+	case *syntax.BinOpExpr:
+		return walkBinOp(e, params)
+	case *syntax.LiteralExpr:
+		return walkLiteral(e, params)
+	}
+
+	return nil, errUnimplemented
+}
+
+func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (Value, error) {
+	val, err := walk(e, params)
+
+	// this is to check that there are both range and vector aggregations, otherwise it is not implemented yet.
+	// TODO remove when all permutations of vector aggregations and range aggregations are implemented.
+	hasRangeAgg := false
+	hasVecAgg := false
+	e.Walk(func(e syntax.Expr) bool {
+		switch e.(type) {
+		case *syntax.RangeAggregationExpr:
+			hasRangeAgg = true
+			return false
+		case *syntax.VectorAggregationExpr:
+			hasVecAgg = true
+		}
+		return true
+	})
+	if !hasRangeAgg || !hasVecAgg {
+		return nil, errUnimplemented
+	}
+
+	return val, err
 }
 
 func convertLabelMatchers(matchers []*labels.Matcher) Value {
