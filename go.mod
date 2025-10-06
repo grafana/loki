@@ -119,7 +119,7 @@ require (
 	github.com/IBM/go-sdk-core/v5 v5.21.0
 	github.com/IBM/ibm-cos-sdk-go v1.12.3
 	github.com/apache/arrow-go/v18 v18.4.0
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.50.5
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.51.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.58.3
 	github.com/axiomhq/hyperloglog v0.2.5
 	github.com/bits-and-blooms/bloom/v3 v3.7.0
