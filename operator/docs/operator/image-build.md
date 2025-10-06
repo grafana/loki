@@ -35,16 +35,19 @@ This document describes the Loki Operator image build and push strategy.
 ## Workflow Files
 
 ### `.github/workflows/operator-images.yaml`
+
 - **Triggers**: Push to main, pull requests, manual dispatch
 - **Purpose**: Continuous integration builds
 - **Images**: All operator images for development and testing
 
 ### `.github/workflows/operator-release-please.yml`
+
 - **Triggers**: When release-please creates a new release
 - **Purpose**: Production release builds
 - **Images**: Versioned release images
 
 ### `.github/workflows/operator-reusable-image-build.yml`
+
 - **Purpose**: Centralized build workflow used by all other workflows
 - **Features**: Multi-platform builds (amd64, arm64, arm), registry-based authentication
 
