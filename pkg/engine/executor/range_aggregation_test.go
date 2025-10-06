@@ -69,6 +69,7 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 		startTs:       time.Unix(20, 0).UTC(),
 		endTs:         time.Unix(20, 0).UTC(),
 		rangeInterval: 10 * time.Second,
+		operation:     types.RangeAggregationTypeCount,
 	}
 
 	inputA := NewArrowtestPipeline(alloc, schema, rowsPipelineA...)
@@ -83,10 +84,10 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 	defer record.Release()
 
 	expect := arrowtest.Rows{
-		{"timestamp": time.Unix(20, 0).UTC(), "value": int64(2), "env": "prod", "service": "app1"},
-		{"timestamp": time.Unix(20, 0).UTC(), "value": int64(3), "env": "prod", "service": "app2"},
-		{"timestamp": time.Unix(20, 0).UTC(), "value": int64(2), "env": "prod", "service": "app3"},
-		{"timestamp": time.Unix(20, 0).UTC(), "value": int64(1), "env": "dev", "service": nil},
+		{"timestamp": time.Unix(20, 0).UTC(), "value": float64(2), "env": "prod", "service": "app1"},
+		{"timestamp": time.Unix(20, 0).UTC(), "value": float64(3), "env": "prod", "service": "app2"},
+		{"timestamp": time.Unix(20, 0).UTC(), "value": float64(2), "env": "prod", "service": "app3"},
+		{"timestamp": time.Unix(20, 0).UTC(), "value": float64(1), "env": "dev", "service": nil},
 	}
 
 	rows, err := arrowtest.RecordRows(record)
@@ -159,6 +160,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 			endTs:         time.Unix(40, 0),
 			rangeInterval: 10 * time.Second,
 			step:          10 * time.Second,
+			operation:     types.RangeAggregationTypeCount,
 		}
 
 		inputA := NewArrowtestPipeline(alloc, schema, rowsPipelineA...)
@@ -173,18 +175,18 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		expect := arrowtest.Rows{
 			// time.Unix(10, 0)
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app1", "value": int64(3)},
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app2", "value": int64(2)},
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "dev", "service": "app1", "value": int64(1)},
+			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app1", "value": float64(3)},
+			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app2", "value": float64(2)},
+			{"timestamp": time.Unix(10, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
 
 			// time.Unix(20, 0)
-			{"timestamp": time.Unix(20, 0).UTC(), "env": "prod", "service": "app1", "value": int64(1)},
-			{"timestamp": time.Unix(20, 0).UTC(), "env": "prod", "service": "app2", "value": int64(1)},
-			{"timestamp": time.Unix(20, 0).UTC(), "env": "dev", "service": "app1", "value": int64(1)},
+			{"timestamp": time.Unix(20, 0).UTC(), "env": "prod", "service": "app1", "value": float64(1)},
+			{"timestamp": time.Unix(20, 0).UTC(), "env": "prod", "service": "app2", "value": float64(1)},
+			{"timestamp": time.Unix(20, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
 
 			// time.Unix(30, 0)
-			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app2", "value": int64(2)},
-			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app1", "value": int64(1)},
+			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app2", "value": float64(2)},
+			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
 		}
 
 		rows, err := arrowtest.RecordRows(record)
@@ -206,6 +208,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 			endTs:         time.Unix(40, 0),
 			rangeInterval: 10 * time.Second,
 			step:          5 * time.Second,
+			operation:     types.RangeAggregationTypeCount,
 		}
 
 		inputA := NewArrowtestPipeline(alloc, schema, rowsPipelineA...)
@@ -220,31 +223,31 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		expect := arrowtest.Rows{
 			// time.Unix(10, 0)
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app1", "value": int64(3)},
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app2", "value": int64(2)},
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "dev", "service": "app1", "value": int64(1)},
+			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app1", "value": float64(3)},
+			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app2", "value": float64(2)},
+			{"timestamp": time.Unix(10, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
 
 			// time.Unix(15, 0)
-			{"timestamp": time.Unix(15, 0).UTC(), "env": "prod", "service": "app2", "value": int64(2)},
-			{"timestamp": time.Unix(15, 0).UTC(), "env": "prod", "service": "app1", "value": int64(2)},
-			{"timestamp": time.Unix(15, 0).UTC(), "env": "dev", "service": "app1", "value": int64(1)},
+			{"timestamp": time.Unix(15, 0).UTC(), "env": "prod", "service": "app2", "value": float64(2)},
+			{"timestamp": time.Unix(15, 0).UTC(), "env": "prod", "service": "app1", "value": float64(2)},
+			{"timestamp": time.Unix(15, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
 
 			// time.Unix(20, 0)
-			{"timestamp": time.Unix(20, 0).UTC(), "env": "prod", "service": "app1", "value": int64(1)},
-			{"timestamp": time.Unix(20, 0).UTC(), "env": "prod", "service": "app2", "value": int64(1)},
-			{"timestamp": time.Unix(20, 0).UTC(), "env": "dev", "service": "app1", "value": int64(1)},
+			{"timestamp": time.Unix(20, 0).UTC(), "env": "prod", "service": "app1", "value": float64(1)},
+			{"timestamp": time.Unix(20, 0).UTC(), "env": "prod", "service": "app2", "value": float64(1)},
+			{"timestamp": time.Unix(20, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
 
 			// time.Unix(25, 0)
-			{"timestamp": time.Unix(25, 0).UTC(), "env": "dev", "service": "app1", "value": int64(1)},
-			{"timestamp": time.Unix(25, 0).UTC(), "env": "dev", "service": "app2", "value": int64(1)},
+			{"timestamp": time.Unix(25, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
+			{"timestamp": time.Unix(25, 0).UTC(), "env": "dev", "service": "app2", "value": float64(1)},
 
 			// time.Unix(30, 0)
-			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app2", "value": int64(2)},
-			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app1", "value": int64(1)},
+			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app2", "value": float64(2)},
+			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
 
 			// time.Unix(35, 0)
-			{"timestamp": time.Unix(35, 0).UTC(), "env": "dev", "service": "app2", "value": int64(1)},
-			{"timestamp": time.Unix(35, 0).UTC(), "env": "dev", "service": "app1", "value": int64(1)},
+			{"timestamp": time.Unix(35, 0).UTC(), "env": "dev", "service": "app2", "value": float64(1)},
+			{"timestamp": time.Unix(35, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
 		}
 
 		rows, err := arrowtest.RecordRows(record)
@@ -266,6 +269,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 			endTs:         time.Unix(40, 0),
 			rangeInterval: 5 * time.Second,
 			step:          10 * time.Second,
+			operation:     types.RangeAggregationTypeCount,
 		}
 
 		inputA := NewArrowtestPipeline(alloc, schema, rowsPipelineA...)
@@ -280,16 +284,16 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		expect := arrowtest.Rows{
 			// time.Unix(10, 0)
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app1", "value": int64(1)},
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app2", "value": int64(1)},
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "dev", "service": "app1", "value": int64(1)},
+			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app1", "value": float64(1)},
+			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app2", "value": float64(1)},
+			{"timestamp": time.Unix(10, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
 
 			// time.Unix(20, 0)
-			{"timestamp": time.Unix(20, 0).UTC(), "env": "dev", "service": "app1", "value": int64(1)},
+			{"timestamp": time.Unix(20, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
 
 			// time.Unix(30, 0)
-			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app2", "value": int64(1)},
-			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app1", "value": int64(1)},
+			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app2", "value": float64(1)},
+			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
 		}
 
 		rows, err := arrowtest.RecordRows(record)
@@ -312,6 +316,7 @@ func TestMatcher(t *testing.T) {
 			endTs:         time.Unix(1000, 0),
 			rangeInterval: 1000 * time.Second, // covers time range from 0 - 1000
 			step:          0,                  // instant query
+			operation:     types.RangeAggregationTypeCount,
 		}
 
 		// Create a single window for instant query
@@ -400,6 +405,7 @@ func TestMatcher(t *testing.T) {
 			endTs:         time.Unix(300, 0),
 			rangeInterval: 100 * time.Second,
 			step:          100 * time.Second, // step == rangeInterval
+			operation:     types.RangeAggregationTypeCount,
 		}
 
 		// Create windows that align with lower/upper bounds and step
@@ -468,6 +474,7 @@ func TestMatcher(t *testing.T) {
 			endTs:         time.Unix(300, 0),
 			rangeInterval: 80 * time.Second,
 			step:          100 * time.Second, // step > rangeInterval
+			operation:     types.RangeAggregationTypeCount,
 		}
 
 		// Create windows that align with lower/upper bounds and step
@@ -551,6 +558,7 @@ func TestMatcher(t *testing.T) {
 			endTs:         time.Unix(300, 0),
 			rangeInterval: 120 * time.Second,
 			step:          100 * time.Second, // step < rangeInterval
+			operation:     types.RangeAggregationTypeCount,
 		}
 
 		// Create windows that align with lower/upper bounds and step

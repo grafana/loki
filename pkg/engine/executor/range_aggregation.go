@@ -24,7 +24,18 @@ type rangeAggregationOptions struct {
 	endTs         time.Time     // end timestamp of the query
 	rangeInterval time.Duration // range interval
 	step          time.Duration // step used for range queries
+	operation     types.RangeAggregationType
 }
+
+var (
+	// rangeAggregationOperations holds the mapping of range aggregation types to operations for an aggregator.
+	rangeAggregationOperations = map[types.RangeAggregationType]aggregationOperation{
+		types.RangeAggregationTypeSum:   aggregationOperationSum,
+		types.RangeAggregationTypeCount: aggregationOperationCount,
+		types.RangeAggregationTypeMax:   aggregationOperationMax,
+		types.RangeAggregationTypeMin:   aggregationOperationMin,
+	}
+)
 
 // window is a time interval where start is exclusive and end is inclusive
 // Refer to [logql.batchRangeVectorIterator].
@@ -85,7 +96,13 @@ func (r *rangeAggregationPipeline) init() {
 
 	f := newMatcherFactoryFromOpts(r.opts)
 	r.windowsForTimestamp = f.createMatcher(windows)
-	r.aggregator = newAggregator(r.opts.partitionBy, len(windows))
+
+	op, ok := rangeAggregationOperations[r.opts.operation]
+	if !ok {
+		panic(fmt.Sprintf("unknown range aggregation operation: %v", r.opts.operation))
+	}
+
+	r.aggregator = newAggregator(r.opts.partitionBy, len(windows), op)
 }
 
 // Read reads the next value into its state.
@@ -102,7 +119,7 @@ func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.Record, erro
 // TODOs:
 // - Support implicit partitioning by all labels when partitionBy is empty
 // - Use columnar access pattern. Current approach is row-based which does not benefit from the storage format.
-// - Add toggle to return partial results on Read() call instead of returning only after exhausing all inputs.
+// - Add toggle to return partial results on Read() call instead of returning only after exhausting all inputs.
 func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, error) {
 	var (
 		tsColumnExpr = &physical.ColumnExpr{
@@ -111,6 +128,13 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				Type:   types.ColumnTypeBuiltin,
 			},
 		} // timestamp column expression
+
+		valColumnExpr = &physical.ColumnExpr{
+			Ref: types.ColumnRef{
+				Column: types.ColumnNameGeneratedValue,
+				Type:   types.ColumnTypeGenerated,
+			},
+		} // value column expression
 
 		// reused on each row read
 		labelValues = make([]string, len(r.opts.partitionBy))
@@ -149,11 +173,20 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 			}
 
 			// extract timestamp column to check if the entry is in range
-			vec, err := r.evaluator.eval(tsColumnExpr, record)
+			tsVec, err := r.evaluator.eval(tsColumnExpr, record)
 			if err != nil {
 				return nil, err
 			}
-			tsCol := vec.ToArray().(*array.Timestamp)
+			tsCol := tsVec.ToArray().(*array.Timestamp)
+
+			// no need to extract value column for COUNT aggregation
+			var valVec ColumnVector
+			if r.opts.operation != types.RangeAggregationTypeCount {
+				valVec, err = r.evaluator.eval(valColumnExpr, record)
+				if err != nil {
+					return nil, err
+				}
+			}
 
 			for row := range int(record.NumRows()) {
 				windows := r.windowsForTimestamp(tsCol.Value(row).ToTime(arrow.Nanosecond))
@@ -167,8 +200,18 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 					labelValues[col] = arr.Value(row)
 				}
 
+				var value float64
+				if r.opts.operation != types.RangeAggregationTypeCount {
+					switch v := valVec.Value(row).(type) {
+					case float64:
+						value = v
+					case int64:
+						value = float64(v)
+					}
+				}
+
 				for _, w := range windows {
-					r.aggregator.Add(w.end, 1, labelValues)
+					r.aggregator.Add(w.end, value, labelValues)
 				}
 			}
 		}
