@@ -381,6 +381,7 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 		endTs:         plan.End,
 		rangeInterval: plan.Range,
 		step:          plan.Step,
+		operation:     plan.Operation,
 	})
 	if err != nil {
 		return errorPipeline(ctx, err)
@@ -400,7 +401,7 @@ func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.V
 		return emptyPipeline()
 	}
 
-	pipeline, err := newVectorAggregationPipeline(inputs, plan.GroupBy, c.evaluator)
+	pipeline, err := newVectorAggregationPipeline(inputs, plan.GroupBy, c.evaluator, plan.Operation)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}

@@ -241,7 +241,32 @@ func TestCanExecuteQuery(t *testing.T) {
 			statement: `max by (level) (count_over_time({env="prod"}[1m]))`,
 		},
 		{
+			// offset is not supported
 			statement: `sum by (level) (count_over_time({env="prod"}[1m] offset 5m))`,
+		},
+		{
+			statement: `sum by (level) (sum_over_time({env="prod"} | unwrap size [1m]))`,
+			expected:  true,
+		},
+		{
+			// both vector and range aggregation are required
+			statement: `sum_over_time({env="prod"} | unwrap size [1m])`,
+		},
+		{
+			// group by labels are required
+			statement: `sum(sum_over_time({env="prod"} | unwrap size [1m]))`,
+		},
+		{
+			// max is not supported
+			statement: `max by (level) (sum_over_time({env="prod"} | unwrap size [1m]))`,
+		},
+		{
+			// offset is not supported
+			statement: `sum by (level) (sum_over_time({env="prod"} | unwrap size [1m] offset 5m))`,
+		},
+		{
+			// max_over_time is not supported
+			statement: `max_over_time({env="prod"} | unwrap size [1m])`,
 		},
 	} {
 		t.Run(tt.statement, func(t *testing.T) {

@@ -208,7 +208,7 @@ func TestOptimizer(t *testing.T) {
 		require.Equal(t, expected, actual)
 	})
 
-	t.Run("projection pushdown handles groupby", func(t *testing.T) {
+	t.Run("projection pushdown handles groupby for SUM->COUNT", func(t *testing.T) {
 		groupBy := []ColumnExpression{
 			&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
 			&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
@@ -243,8 +243,7 @@ func TestOptimizer(t *testing.T) {
 
 		expectedPlan := &Plan{}
 		{
-
-			// pushed down from group and parition by, with range aggregations adding timestamp
+			// pushed down from group and partition by, with range aggregations adding timestamp
 			expectedProjections := []ColumnExpression{
 				&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
 				&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
@@ -260,6 +259,72 @@ func TestOptimizer(t *testing.T) {
 			vectorAgg := expectedPlan.addNode(&VectorAggregation{
 				id:        "sum_of",
 				Operation: types.VectorAggregationTypeSum,
+				GroupBy:   groupBy,
+			})
+
+			_ = expectedPlan.addEdge(Edge{Parent: vectorAgg, Child: rangeAgg})
+			_ = expectedPlan.addEdge(Edge{Parent: rangeAgg, Child: scan1})
+		}
+
+		actual := PrintAsTree(plan)
+		expected := PrintAsTree(expectedPlan)
+		require.Equal(t, expected, actual)
+	})
+
+	t.Run("projection pushdown does not handle groupby for MAX->SUM", func(t *testing.T) {
+		groupBy := []ColumnExpression{
+			&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+		}
+
+		partitionBy := []ColumnExpression{
+			&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
+		}
+
+		// generate plan for max by(service) (sum_over_time{...}[])
+		plan := &Plan{}
+		{
+			scan1 := plan.addNode(&DataObjScan{id: "scan1"})
+			rangeAgg := plan.addNode(&RangeAggregation{
+				id:          "sum_over_time",
+				Operation:   types.RangeAggregationTypeSum,
+				PartitionBy: partitionBy,
+			})
+			vectorAgg := plan.addNode(&VectorAggregation{
+				id:        "max_of",
+				Operation: types.VectorAggregationTypeMax,
+				GroupBy:   groupBy,
+			})
+
+			_ = plan.addEdge(Edge{Parent: vectorAgg, Child: rangeAgg})
+			_ = plan.addEdge(Edge{Parent: rangeAgg, Child: scan1})
+		}
+
+		// apply optimisation
+		optimizations := []*optimization{
+			newOptimization("projection pushdown", plan).withRules(
+				&projectionPushdown{plan: plan},
+			),
+		}
+		o := newOptimizer(plan, optimizations)
+		o.optimize(plan.Roots()[0])
+
+		expectedPlan := &Plan{}
+		{
+			// groupby was not pushed down
+			expectedProjections := []ColumnExpression{
+				&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
+				&ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}},
+			}
+
+			scan1 := expectedPlan.addNode(&DataObjScan{id: "scan1", Projections: expectedProjections})
+			rangeAgg := expectedPlan.addNode(&RangeAggregation{
+				id:          "sum_over_time",
+				Operation:   types.RangeAggregationTypeSum,
+				PartitionBy: partitionBy,
+			})
+			vectorAgg := expectedPlan.addNode(&VectorAggregation{
+				id:        "max_of",
+				Operation: types.VectorAggregationTypeMax,
 				GroupBy:   groupBy,
 			})
 

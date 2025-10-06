@@ -32,8 +32,8 @@ spec:
     operation easier, and will rely on re-fetching data when needed.
   */}}
   persistentVolumeClaimRetentionPolicy:
-    whenDeleted: Delete
-    whenScaled: Delete
+    whenDeleted: {{ .Values.singleBinary.persistence.whenDeleted }}
+    whenScaled: {{ .Values.singleBinary.persistence.whenScaled }}
   {{- end }}
   selector:
     matchLabels:
