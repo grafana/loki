@@ -7,7 +7,7 @@ env:
   DOCKER_USERNAME: "grafana"
   DRY_RUN: false
   IMAGE_PREFIX: "grafana"
-  RELEASE_LIB_REF: "49df16ec1479c49409acab2fe9f18b278807fbfd"
+  RELEASE_LIB_REF: "31318b27fa75f2763be924f414137b4585b391f4"
   RELEASE_REPO: "grafana/loki"
   SKIP_VALIDATION: false
   USE_GITHUB_APP_TOKEN: true
@@ -18,11 +18,11 @@ jobs:
       contents: "write"
       id-token: "write"
       pull-requests: "write"
-    uses: "grafana/loki-release/.github/workflows/check.yml@49df16ec1479c49409acab2fe9f18b278807fbfd"
+    uses: "grafana/loki-release/.github/workflows/check.yml@31318b27fa75f2763be924f414137b4585b391f4"
     with:
       build_image: "grafana/loki-build-image:0.34.3-loki-2.9.x"
       golang_ci_lint_version: "v1.60.3"
-      release_lib_ref: "49df16ec1479c49409acab2fe9f18b278807fbfd"
+      release_lib_ref: "31318b27fa75f2763be924f414137b4585b391f4"
       skip_validation: false
       use_github_app_token: true
   create-release-pr:
@@ -60,6 +60,7 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+        package-manager-cache: false
     - id: "extract_branch"
       name: "extract branch name"
       run: |
@@ -215,6 +216,7 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+        package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -288,6 +290,7 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+        package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -361,6 +364,7 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+        package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -436,6 +440,7 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+        package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -509,6 +514,7 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+        package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -584,6 +590,7 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+        package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -659,6 +666,7 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+        package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -734,6 +742,7 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+        package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -809,6 +818,7 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+        package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -885,6 +895,7 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+        package-manager-cache: false
     - id: "extract_branch"
       name: "extract branch name"
       run: |
