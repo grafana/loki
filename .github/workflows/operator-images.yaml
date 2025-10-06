@@ -11,17 +11,12 @@ on:
       - 'operator/**'
   workflow_dispatch:
 
-env:
-  IMAGE_REGISTRY: quay.io
-  IMAGE_ORGANIZATION: openshift-logging
-
 jobs:
   # Push latest to DockerHub (grafana) on main
   publish-grafana-operator:
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/operator-reusable-image-build.yml
     with:
-      context: "operator"
       dockerfile: "operator/Dockerfile"
       registry: "docker.io"
       organization: "grafana"
@@ -32,7 +27,6 @@ jobs:
   publish-openshift-operator:
     uses: ./.github/workflows/operator-reusable-image-build.yml
     with:
-      context: "operator"
       dockerfile: "operator/Dockerfile"
       registry: "quay.io"
       organization: "openshift-logging"
@@ -44,7 +38,6 @@ jobs:
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/operator-reusable-image-build.yml
     with:
-      context: "operator/bundle/openshift"
       dockerfile: "operator/bundle/openshift/bundle.Dockerfile"
       registry: "quay.io"
       organization: "openshift-logging"
@@ -56,7 +49,6 @@ jobs:
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/operator-reusable-image-build.yml
     with:
-      context: "operator"
       dockerfile: "operator/calculator.Dockerfile"
       registry: "quay.io"
       organization: "openshift-logging"
