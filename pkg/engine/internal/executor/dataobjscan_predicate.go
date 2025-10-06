@@ -10,7 +10,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
@@ -38,8 +37,8 @@ func buildLogsPredicate(expr physical.Expression, columns []*logs.Column) (logs.
 		return buildLogsBinaryPredicate(expr, columns)
 
 	case *physical.LiteralExpr:
-		if expr.Literal.Type() == datatype.Loki.Bool {
-			val := expr.Literal.(datatype.TypedLiteral[bool]).Value()
+		if expr.Literal.Type() == types.Loki.Bool {
+			val := expr.Literal.(types.TypedLiteral[bool]).Value()
 			if val {
 				return logs.TruePredicate{}, nil
 			}
@@ -265,12 +264,12 @@ func findColumn(ref types.ColumnRef, columns []*logs.Column) (*logs.Column, erro
 }
 
 // buildDataobjScalar builds a dataobj-compatible [scalar.Scalar] from a
-// [datatype.Literal].
-func buildDataobjScalar(lit datatype.Literal) (scalar.Scalar, error) {
+// [types.Literal].
+func buildDataobjScalar(lit types.Literal) (scalar.Scalar, error) {
 	// [logs.ReaderOptions.Validate] specifies that all scalars must be one of
 	// the given types:
 	//
-	// * [scalar.Null] (of any datatype)
+	// * [scalar.Null] (of any types)
 	// * [scalar.Int64]
 	// * [scalar.Uint64]
 	// * [scalar.Timestamp] (nanosecond precision)
@@ -279,18 +278,18 @@ func buildDataobjScalar(lit datatype.Literal) (scalar.Scalar, error) {
 	// All of our mappings below evaluate to one of the above types.
 
 	switch lit := lit.(type) {
-	case datatype.NullLiteral:
+	case types.NullLiteral:
 		return scalar.ScalarNull, nil
-	case datatype.IntegerLiteral:
+	case types.IntegerLiteral:
 		return scalar.NewInt64Scalar(lit.Value()), nil
-	case datatype.BytesLiteral:
-		// [datatype.BytesLiteral] refers to byte sizes, not binary data.
+	case types.BytesLiteral:
+		// [types.BytesLiteral] refers to byte sizes, not binary data.
 		return scalar.NewInt64Scalar(int64(lit.Value())), nil
-	case datatype.TimestampLiteral:
+	case types.TimestampLiteral:
 		ts := arrow.Timestamp(lit.Value())
 		tsType := arrow.FixedWidthTypes.Timestamp_ns
 		return scalar.NewTimestampScalar(ts, tsType), nil
-	case datatype.StringLiteral:
+	case types.StringLiteral:
 		buf := memory.NewBufferBytes([]byte(lit.Value()))
 		return scalar.NewBinaryScalar(buf, arrow.BinaryTypes.Binary), nil
 	}

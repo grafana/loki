@@ -8,7 +8,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
@@ -44,7 +43,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 
 					return &Array{
 						array: input.Column(idx),
-						dt:    datatype.MustFromString(dt),
+						dt:    types.MustFromString(dt),
 						ct:    types.ColumnTypeFromString(ct),
 						rows:  input.NumRows(),
 					}, nil
@@ -66,13 +65,13 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 
 					// TODO(ashwanth): Support other data types in CoalesceVector.
 					// For now, ensure all vectors are strings to avoid type conflicts.
-					if datatype.Loki.String.String() != dt {
+					if types.Loki.String.String() != dt {
 						return nil, fmt.Errorf("column %s has datatype %s, but expression expects string", expr.Ref.Column, dt)
 					}
 
 					vecs = append(vecs, &Array{
 						array: input.Column(idx),
-						dt:    datatype.MustFromString(dt),
+						dt:    types.MustFromString(dt),
 						ct:    types.ColumnTypeFromString(ct),
 						rows:  input.NumRows(),
 					})
@@ -98,7 +97,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		// A non-existent column is represented as a string scalar with zero-value.
 		// This reflects current behaviour, where a label filter `| foo=""` would match all if `foo` is not defined.
 		return &Scalar{
-			value: datatype.NewLiteral(""),
+			value: types.NewLiteral(""),
 			rows:  input.NumRows(),
 			ct:    types.ColumnTypeGenerated,
 		}, nil
@@ -158,7 +157,7 @@ type ColumnVector interface {
 	// Value returns the value at the specified index position in the column vector.
 	Value(i int) any
 	// Type returns the Loki data type of the column vector.
-	Type() datatype.DataType
+	Type() types.DataType
 	// ColumnType returns the type of column the vector originates from.
 	ColumnType() types.ColumnType
 	// Len returns the length of the vector
@@ -167,7 +166,7 @@ type ColumnVector interface {
 
 // Scalar represents a single value repeated any number of times.
 type Scalar struct {
-	value datatype.Literal
+	value types.Literal
 	rows  int64
 	ct    types.ColumnType
 }
@@ -215,7 +214,7 @@ func (v *Scalar) Value(_ int) any {
 }
 
 // Type implements ColumnVector.
-func (v *Scalar) Type() datatype.DataType {
+func (v *Scalar) Type() types.DataType {
 	return v.value.Type()
 }
 
@@ -232,7 +231,7 @@ func (v *Scalar) Len() int64 {
 // Array represents a column of data, stored as an [arrow.Array].
 type Array struct {
 	array arrow.Array
-	dt    datatype.DataType
+	dt    types.DataType
 	ct    types.ColumnType
 	rows  int64
 }
@@ -267,7 +266,7 @@ func (a *Array) Value(i int) any {
 }
 
 // Type implements ColumnVector.
-func (a *Array) Type() datatype.DataType {
+func (a *Array) Type() types.DataType {
 	return a.dt
 }
 
@@ -302,7 +301,7 @@ func (m *CoalesceVector) ToArray() arrow.Array {
 		if val == nil {
 			builder.AppendNull()
 		} else {
-			// [CoalesceVector] only supports [datatype.String] for now
+			// [CoalesceVector] only supports [types.String] for now
 			if strVal, ok := val.(string); ok {
 				builder.(*array.StringBuilder).Append(strVal)
 			} else {
@@ -327,9 +326,9 @@ func (m *CoalesceVector) Value(i int) any {
 }
 
 // Type implements ColumnVector.
-func (m *CoalesceVector) Type() datatype.DataType {
+func (m *CoalesceVector) Type() types.DataType {
 	// TODO: Support other data types in CoalesceVector.
-	return datatype.Loki.String
+	return types.Loki.String
 }
 
 // ColumnType implements ColumnVector.

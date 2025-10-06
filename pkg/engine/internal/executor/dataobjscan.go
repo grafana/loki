@@ -16,7 +16,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
@@ -258,25 +257,25 @@ func logsColumnToEngineField(col *logs.Column) (arrow.Field, error) {
 	case logs.ColumnTypeTimestamp:
 		return arrow.Field{
 			Name:     types.ColumnNameBuiltinTimestamp,
-			Type:     datatype.Arrow.Timestamp,
+			Type:     types.Arrow.Timestamp,
 			Nullable: true,
-			Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Timestamp),
+			Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Timestamp),
 		}, nil
 
 	case logs.ColumnTypeMessage:
 		return arrow.Field{
 			Name:     types.ColumnNameBuiltinMessage,
-			Type:     datatype.Arrow.String,
+			Type:     types.Arrow.String,
 			Nullable: true,
-			Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.String),
+			Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.String),
 		}, nil
 
 	case logs.ColumnTypeMetadata:
 		return arrow.Field{
 			Name:     col.Name,
-			Type:     datatype.Arrow.String,
+			Type:     types.Arrow.String,
 			Nullable: true,
-			Metadata: datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.Loki.String),
+			Metadata: types.ColumnMetadata(types.ColumnTypeMetadata, types.Loki.String),
 		}, nil
 	}
 

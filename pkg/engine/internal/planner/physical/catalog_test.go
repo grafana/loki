@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -31,11 +30,11 @@ func TestCatalog_ConvertLiteral(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			expr:    NewLiteral(datatype.Timestamp(time.Now().UnixNano())),
+			expr:    NewLiteral(types.Timestamp(time.Now().UnixNano())),
 			wantErr: true,
 		},
 		{
-			expr:    NewLiteral(datatype.Duration(time.Hour.Nanoseconds())),
+			expr:    NewLiteral(types.Duration(time.Hour.Nanoseconds())),
 			wantErr: true,
 		},
 		{

@@ -11,7 +11,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
@@ -165,7 +164,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 					return nil, err
 				}
 
-				if vec.Type() != datatype.Loki.String {
+				if vec.Type() != types.Loki.String {
 					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.Type())
 				}
 

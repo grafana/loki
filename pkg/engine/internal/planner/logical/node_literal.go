@@ -1,8 +1,8 @@
 package logical
 
 import (
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 // A Literal represents a literal value known at plan time. Literal only
@@ -10,20 +10,20 @@ import (
 //
 // The zero value of a Literal is a NULL value.
 type Literal struct {
-	datatype.Literal
+	types.Literal
 }
 
 var _ Value = (*Literal)(nil)
 
-func NewLiteral(value datatype.LiteralType) *Literal {
+func NewLiteral(value types.LiteralType) *Literal {
 	if value == nil {
-		return &Literal{Literal: datatype.NewNullLiteral()}
+		return &Literal{Literal: types.NewNullLiteral()}
 	}
-	return &Literal{Literal: datatype.NewLiteral(value)}
+	return &Literal{Literal: types.NewLiteral(value)}
 }
 
 // Kind returns the kind of value represented by the literal.
-func (l Literal) Kind() datatype.DataType {
+func (l Literal) Kind() types.DataType {
 	return l.Type()
 }
 

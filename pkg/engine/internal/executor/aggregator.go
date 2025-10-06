@@ -12,7 +12,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/cespare/xxhash/v2"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
@@ -125,15 +124,15 @@ func (a *aggregator) BuildRecord() (arrow.Record, error) {
 	fields = append(fields,
 		arrow.Field{
 			Name:     types.ColumnNameBuiltinTimestamp,
-			Type:     datatype.Arrow.Timestamp,
+			Type:     types.Arrow.Timestamp,
 			Nullable: false,
-			Metadata: datatype.ColumnMetadataBuiltinTimestamp,
+			Metadata: types.ColumnMetadataBuiltinTimestamp,
 		},
 		arrow.Field{
 			Name:     types.ColumnNameGeneratedValue,
-			Type:     datatype.Arrow.Float,
+			Type:     types.Arrow.Float,
 			Nullable: false,
-			Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Float),
+			Metadata: types.ColumnMetadata(types.ColumnTypeGenerated, types.Loki.Float),
 		},
 	)
 
@@ -145,9 +144,9 @@ func (a *aggregator) BuildRecord() (arrow.Record, error) {
 
 		fields = append(fields, arrow.Field{
 			Name:     colExpr.Ref.Column,
-			Type:     datatype.Arrow.String,
+			Type:     types.Arrow.String,
 			Nullable: true,
-			Metadata: datatype.ColumnMetadata(colExpr.Ref.Type, datatype.Loki.String),
+			Metadata: types.ColumnMetadata(colExpr.Ref.Type, types.Loki.String),
 		})
 	}
 

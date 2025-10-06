@@ -1,4 +1,4 @@
-package datatype
+package types //nolint:revive
 
 import "github.com/apache/arrow-go/v18/arrow"
 

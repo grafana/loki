@@ -9,17 +9,16 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
 
 var (
 	fields = []arrow.Field{
-		{Name: "name", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.String)},
-		{Name: "timestamp", Type: datatype.Arrow.Timestamp, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Timestamp)},
-		{Name: "value", Type: datatype.Arrow.Float, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Float)},
-		{Name: "valid", Type: datatype.Arrow.Bool, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Bool)},
+		{Name: "name", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.String)},
+		{Name: "timestamp", Type: types.Arrow.Timestamp, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Timestamp)},
+		{Name: "value", Type: types.Arrow.Float, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Float)},
+		{Name: "valid", Type: types.Arrow.Bool, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Bool)},
 	}
 	sampledata = `Alice,1745487598764058205,0.2586284611568047,false
 Bob,1745487598764058305,0.7823145698741236,true
@@ -67,17 +66,17 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 		},
 		{
 			name:      "timestamp",
-			value:     datatype.Timestamp(3600000000),
+			value:     types.Timestamp(3600000000),
 			arrowType: arrow.TIMESTAMP,
 		},
 		{
 			name:      "duration",
-			value:     datatype.Duration(3600000000),
+			value:     types.Duration(3600000000),
 			arrowType: arrow.INT64,
 		},
 		{
 			name:      "bytes",
-			value:     datatype.Bytes(1024),
+			value:     types.Bytes(1024),
 			arrowType: arrow.INT64,
 		},
 	} {
@@ -231,8 +230,8 @@ func batch(n int, now time.Time) arrow.Record {
 	// 2. Define the schema
 	schema := arrow.NewSchema(
 		[]arrow.Field{
-			{Name: "message", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadataBuiltinMessage},
-			{Name: "timestamp", Type: datatype.Arrow.Timestamp, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
+			{Name: "message", Type: types.Arrow.String, Metadata: types.ColumnMetadataBuiltinMessage},
+			{Name: "timestamp", Type: types.Arrow.Timestamp, Metadata: types.ColumnMetadataBuiltinTimestamp},
 		},
 		nil, // No metadata
 	)
@@ -273,9 +272,9 @@ func batch(n int, now time.Time) arrow.Record {
 func TestEvaluateAmbiguousColumnExpression(t *testing.T) {
 	// Test precedence between generated, metadata, and label columns
 	fields := []arrow.Field{
-		{Name: "test", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)},
-		{Name: "test", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.Loki.String)},
-		{Name: "test", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.String)},
+		{Name: "test", Type: arrow.BinaryTypes.String, Metadata: types.ColumnMetadata(types.ColumnTypeLabel, types.Loki.String)},
+		{Name: "test", Type: arrow.BinaryTypes.String, Metadata: types.ColumnMetadata(types.ColumnTypeMetadata, types.Loki.String)},
+		{Name: "test", Type: arrow.BinaryTypes.String, Metadata: types.ColumnMetadata(types.ColumnTypeGenerated, types.Loki.String)},
 	}
 
 	// CSV data where:
@@ -341,7 +340,7 @@ null,null,null`
 	t.Run("look-up matching single column should return Array", func(t *testing.T) {
 		// Create a record with only one column type
 		fields := []arrow.Field{
-			{Name: "single", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)},
+			{Name: "single", Type: arrow.BinaryTypes.String, Metadata: types.ColumnMetadata(types.ColumnTypeLabel, types.Loki.String)},
 		}
 		data := `label_0
 label_1

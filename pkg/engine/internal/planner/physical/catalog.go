@@ -9,7 +9,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -223,7 +222,7 @@ func convertLiteralToString(expr Expression) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("expected literal expression, got %T", expr)
 	}
-	if l.ValueType() != datatype.Loki.String {
+	if l.ValueType() != types.Loki.String {
 		return "", fmt.Errorf("literal type is not a string, got %v", l.ValueType())
 	}
 	return l.Any().(string), nil

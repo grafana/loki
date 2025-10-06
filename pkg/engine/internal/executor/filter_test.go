@@ -7,7 +7,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
@@ -15,8 +14,8 @@ import (
 
 func TestNewFilterPipeline(t *testing.T) {
 	fields := []arrow.Field{
-		{Name: "name", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.String)},
-		{Name: "valid", Type: arrow.FixedWidthTypes.Boolean, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Bool)},
+		{Name: "name", Type: arrow.BinaryTypes.String, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.String)},
+		{Name: "valid", Type: arrow.FixedWidthTypes.Boolean, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Bool)},
 	}
 
 	t.Run("filter with true literal predicate", func(t *testing.T) {

@@ -10,7 +10,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -75,7 +74,7 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 				Name:     name,
 				Type:     arrow.BinaryTypes.String,
 				Nullable: true,
-				Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String),
+				Metadata: types.ColumnMetadata(types.ColumnTypeLabel, types.Loki.String),
 			},
 			Builder: array.NewStringBuilder(si.alloc),
 		}
