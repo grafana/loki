@@ -46,7 +46,7 @@ This document describes the Loki Operator image build and push strategy.
 - **Purpose**: Production release builds
 - **Images**: Versioned release images
 
-### `.github/workflows/operator-reusable-image-build.yml`
+### `.github/reusable-workflows/operator-reusable-image-build.yml`
 
 - **Purpose**: Centralized build workflow used by all other workflows
 - **Features**: Multi-platform builds (amd64, arm64, arm), registry-based authentication
