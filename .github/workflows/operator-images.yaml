@@ -6,13 +6,9 @@ on:
       - 'operator/**'
     branches:
       - main
-  pull_request:
-    paths:
-      - 'operator/**'
   workflow_dispatch:
 
 jobs:
-  # Push latest to DockerHub (grafana) on main
   publish-grafana-operator:
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/operator-reusable-image-build.yml
@@ -23,7 +19,6 @@ jobs:
       image_name: "loki-operator"
       tag: "latest"
 
-  # Build and push operator to Quay.io (runs on both main and PRs)
   publish-openshift-operator:
     uses: ./.github/workflows/operator-reusable-image-build.yml
     with:
@@ -31,9 +26,8 @@ jobs:
       registry: "quay.io"
       organization: "openshift-logging"
       image_name: "loki-operator"
-      tag: ${{ github.event_name == 'pull_request' && format('pr{0}', github.event.pull_request.number) || 'latest' }}
+      tag: "latest"
 
-  # Build and push bundle to Quay.io (main only)
   publish-openshift-bundle:
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/operator-reusable-image-build.yml
@@ -44,7 +38,6 @@ jobs:
       image_name: "loki-operator-bundle"
       tag: "latest"
 
-  # Build and push size-calculator to Quay.io (main only)
   publish-openshift-size-calculator:
     if: github.ref == 'refs/heads/main'
     uses: ./.github/workflows/operator-reusable-image-build.yml

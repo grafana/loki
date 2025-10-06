@@ -29,7 +29,6 @@ This document describes the Loki Operator image build and push strategy.
 | Image | Trigger | Organization | Tag | Workflow File |
 |-------|---------|-------------|-----|---------------|
 | `loki-operator` | Push to main | `openshift-logging` | `latest` | `operator-images.yaml` |
-| `loki-operator` | Pull request | `openshift-logging` | `pr{number}` | `operator-images.yaml` |
 | `loki-operator-bundle` | Push to main | `openshift-logging` | `latest` | `operator-images.yaml` |
 | `storage-size-calculator` | Push to main | `openshift-logging` | `latest` | `operator-images.yaml` |
 
