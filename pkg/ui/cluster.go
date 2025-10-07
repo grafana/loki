@@ -14,6 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/grafana/dskit/ring"
+
 	"github.com/grafana/loki/v3/pkg/analytics"
 )
 
@@ -70,14 +71,14 @@ func (s *Service) fetchClusterMembers(ctx context.Context) (Cluster, error) {
 	var mu sync.Mutex
 
 	for id, addr := range instances {
-		id, addr := id, addr // Create new variables to avoid closure issues
+		instanceID, instanceAddr := id, addr // Create new variables to avoid closure issues
 		g.Go(func() error {
-			member, err := s.fetchMemberState(ctx, id, addr)
+			member, err := s.fetchMemberState(ctx, instanceAddr)
 			if err != nil {
 				member.Error = err
 			}
 			mu.Lock()
-			cluster.Members[id] = member
+			cluster.Members[instanceID] = member
 			mu.Unlock()
 			return nil
 		})
@@ -111,7 +112,7 @@ func (s *Service) discoverInstances() map[string]string {
 
 // fetchMemberState retrieves the complete state of a single cluster member by instance ID and address.
 // The addr parameter should be the full HTTP address (host:port) from the ring.
-func (s *Service) fetchMemberState(ctx context.Context, instanceID, addr string) (Member, error) {
+func (s *Service) fetchMemberState(ctx context.Context, addr string) (Member, error) {
 	member := Member{
 		Addr: addr,
 	}
@@ -190,7 +191,7 @@ func (s *Service) fetchDetails(ctx context.Context, nodeName string) (NodeDetail
 		return NodeDetails{}, fmt.Errorf("fetching analytics: %w", err)
 	}
 
-	member, err := s.fetchMemberState(ctx, nodeName, addr)
+	member, err := s.fetchMemberState(ctx, addr)
 	if err != nil {
 		return NodeDetails{}, fmt.Errorf("fetching member state: %w", err)
 	}
