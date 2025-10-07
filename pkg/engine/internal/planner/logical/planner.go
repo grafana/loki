@@ -210,7 +210,7 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 	case syntax.OpRangeTypeCount:
 		rangeAggType = types.RangeAggregationTypeCount
 	case syntax.OpRangeTypeRate:
-		rangeAggType = types.RangeAggregationTypeCount
+		rangeAggType = types.RangeAggregationTypeCount // rate is implemented as count/$interval
 	case syntax.OpRangeTypeSum:
 		rangeAggType = types.RangeAggregationTypeSum
 	//case syntax.OpRangeTypeMax:
@@ -260,7 +260,19 @@ func walkVectorAggregation(e *syntax.VectorAggregationExpr, params logql.Params)
 		return nil, err
 	}
 
-	vecAggType := types.VectorAggregationTypeSum
+	var vecAggType types.VectorAggregationType
+	switch e.Operation {
+	//case syntax.OpTypeCount:
+	//	vecAggType = types.VectorAggregationTypeCount
+	case syntax.OpTypeSum:
+		vecAggType = types.VectorAggregationTypeSum
+	//case syntax.OpTypeMax:
+	//	vecAggType = types.VectorAggregationTypeMax
+	//case syntax.OpTypeMin:
+	//	vecAggType = types.VectorAggregationTypeMin
+	default:
+		return nil, errUnimplemented
+	}
 
 	groupBy := make([]ColumnRef, 0, len(e.Grouping.Groups))
 	for _, group := range e.Grouping.Groups {

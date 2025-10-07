@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
-	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
 func TestNewMathExpressionPipeline(t *testing.T) {

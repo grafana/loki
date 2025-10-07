@@ -367,6 +367,7 @@ func TestCanExecuteQuery(t *testing.T) {
 		{
 			// unwrap is not supported
 			statement: `sum by (level) (sum_over_time({env="prod"} | unwrap size [1m]))`,
+			expected:  true,
 		},
 		{
 			// both vector and range aggregation are required
