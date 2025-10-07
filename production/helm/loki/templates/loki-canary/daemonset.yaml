@@ -12,9 +12,8 @@ spec:
   selector:
     matchLabels:
       {{- include "loki-canary.selectorLabels" $ | nindent 6 }}
-
   {{- if eq .kind "Deployment" }}
-  replicas: 1
+  replicas: {{ .replicas }}
   strategy:
     type: RollingUpdate
     rollingUpdate:

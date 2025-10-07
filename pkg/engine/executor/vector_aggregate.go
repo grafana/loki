@@ -29,16 +29,30 @@ type vectorAggregationPipeline struct {
 	valueEval evalFunc // used to evaluate the value column
 }
 
-func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnExpression, evaluator expressionEvaluator) (*vectorAggregationPipeline, error) {
+var (
+	vectorAggregationOperations = map[types.VectorAggregationType]aggregationOperation{
+		types.VectorAggregationTypeSum:   aggregationOperationSum,
+		types.VectorAggregationTypeCount: aggregationOperationCount,
+		types.VectorAggregationTypeMax:   aggregationOperationMax,
+		types.VectorAggregationTypeMin:   aggregationOperationMin,
+	}
+)
+
+func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnExpression, evaluator expressionEvaluator, operation types.VectorAggregationType) (*vectorAggregationPipeline, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("vector aggregation expects at least one input")
+	}
+
+	op, ok := vectorAggregationOperations[operation]
+	if !ok {
+		panic(fmt.Sprintf("unknown vector aggregation operation: %v", operation))
 	}
 
 	return &vectorAggregationPipeline{
 		inputs:     inputs,
 		evaluator:  evaluator,
 		groupBy:    groupBy,
-		aggregator: newAggregator(groupBy, 0),
+		aggregator: newAggregator(groupBy, 0, op),
 		tsEval: evaluator.newFunc(&physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: types.ColumnNameBuiltinTimestamp,
@@ -95,7 +109,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 			if err != nil {
 				return nil, err
 			}
-			valueArr := valueVec.ToArray().(*array.Int64)
+			valueArr := valueVec.ToArray().(*array.Float64)
 
 			// extract all the columns that are used for grouping
 			arrays := make([]*array.String, 0, len(v.groupBy))

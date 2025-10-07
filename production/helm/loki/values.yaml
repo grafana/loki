@@ -831,6 +831,8 @@ lokiCanary:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 1
+  # -- Replicas for `loki-canary` when using a Deployment
+  replicas: 1
 ######################################################################################################################
 #
 # Service Accounts and Kubernetes RBAC
@@ -1502,6 +1504,10 @@ singleBinary:
   # -- Tolerations for single binary pods
   tolerations: []
   persistence:
+    # -- What to do with the volume when the StatefulSet is scaled down.
+    whenScaled: Delete
+    # -- What to do with the volumes when the StatefulSet is deleted.
+    whenDeleted: Delete
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: true
     # -- Enable persistent disk
