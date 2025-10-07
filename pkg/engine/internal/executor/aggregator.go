@@ -13,8 +13,8 @@ import (
 	"github.com/cespare/xxhash/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 type groupState struct {

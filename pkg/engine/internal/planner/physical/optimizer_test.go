@@ -10,8 +10,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 func TestCanApplyPredicate(t *testing.T) {

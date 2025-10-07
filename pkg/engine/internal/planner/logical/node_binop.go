@@ -3,8 +3,8 @@ package logical
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 // The BinOp instruction yields the result of binary operation Left Op Right.

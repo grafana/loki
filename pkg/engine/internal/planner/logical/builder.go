@@ -3,8 +3,8 @@ package logical
 import (
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 // Builder provides an ergonomic interface for constructing a [Plan].

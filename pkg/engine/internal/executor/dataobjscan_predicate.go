@@ -11,8 +11,8 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 // buildLogsPredicate builds a [logs.Predicate] from an expr. The columns slice

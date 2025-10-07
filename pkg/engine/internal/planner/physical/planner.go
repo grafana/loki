@@ -7,8 +7,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 // Context carries planning state that needs to be propagated down the plan tree.
