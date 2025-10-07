@@ -51,6 +51,11 @@ func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline,
 		}
 		inputCol := inputData.(*array.Float64)
 		cols = append(cols, inputCol)
+		defer func() {
+			for _, c := range cols {
+				c.Release()
+			}
+		}()
 
 		inputSchema := arrow.NewSchema(fields, nil)
 		evalInput := array.NewRecord(inputSchema, cols, batch.NumRows())
@@ -65,6 +70,7 @@ func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline,
 			return failureState(fmt.Errorf("expression returned non-float64 type %s", data.DataType()))
 		}
 		valCol := data.(*array.Float64)
+		defer valCol.Release()
 
 		tsColumnExpr := &physical.ColumnExpr{
 			Ref: types.ColumnRef{
@@ -77,6 +83,7 @@ func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline,
 			return failureState(err)
 		}
 		tsCol := tsVec.ToArray().(*array.Timestamp)
+		defer tsCol.Release()
 
 		outputSchema := arrow.NewSchema([]arrow.Field{
 			{

@@ -42,8 +42,10 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 						continue
 					}
 
+					col := input.Column(idx)
+					col.Retain()
 					return &Array{
-						array: input.Column(idx),
+						array: col,
 						dt:    datatype.FromString(dt),
 						ct:    types.ColumnTypeFromString(ct),
 						rows:  input.NumRows(),
@@ -70,8 +72,10 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 						return nil, fmt.Errorf("column %s has datatype %s, but expression expects string", expr.Ref.Column, dt)
 					}
 
+					col := input.Column(idx)
+					col.Retain()
 					vecs = append(vecs, &Array{
-						array: input.Column(idx),
+						array: col,
 						dt:    datatype.FromString(dt),
 						ct:    types.ColumnTypeFromString(ct),
 						rows:  input.NumRows(),
@@ -108,6 +112,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		if err != nil {
 			return nil, err
 		}
+		defer lhr.Release()
 
 		fn, err := unaryFunctions.GetForSignature(expr.Op, lhr.Type().ArrowType())
 		if err != nil {
@@ -120,10 +125,12 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		if err != nil {
 			return nil, err
 		}
+		defer lhs.Release()
 		rhs, err := e.eval(expr.Right, input)
 		if err != nil {
 			return nil, err
 		}
+		defer rhs.Release()
 
 		// At the moment we only support functions that accept the same input types.
 		if lhs.Type().ArrowType().ID() != rhs.Type().ArrowType().ID() {
@@ -161,6 +168,8 @@ type ColumnVector interface {
 	ColumnType() types.ColumnType
 	// Len returns the length of the vector
 	Len() int64
+	// Release decreases the reference count by 1 on underlying Arrow array
+	Release()
 }
 
 // Scalar represents a single value repeated any number of times.
@@ -222,6 +231,10 @@ func (v *Scalar) ColumnType() types.ColumnType {
 	return v.ct
 }
 
+// Release implements ColumnVector.
+func (v *Scalar) Release() {
+}
+
 // Len implements ColumnVector.
 func (v *Scalar) Len() int64 {
 	return v.rows
@@ -277,6 +290,11 @@ func (a *Array) ColumnType() types.ColumnType {
 // Len implements ColumnVector.
 func (a *Array) Len() int64 {
 	return int64(a.array.Len())
+}
+
+// Release implements ColumnVector.
+func (a *Array) Release() {
+	a.array.Release()
 }
 
 // CoalesceVector represents multiple columns with the same name but different [types.ColumnType]
@@ -338,4 +356,8 @@ func (m *CoalesceVector) ColumnType() types.ColumnType {
 // Len implements ColumnVector.
 func (m *CoalesceVector) Len() int64 {
 	return m.rows
+}
+
+// Release implements ColumnVector.
+func (m *CoalesceVector) Release() {
 }

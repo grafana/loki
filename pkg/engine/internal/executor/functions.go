@@ -252,7 +252,7 @@ func (f *genericFloat64Function[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVect
 
 	for i := range lhsArr.Len() {
 		if lhsArr.IsNull(i) || rhsArr.IsNull(i) {
-			builder.Append(0) // TODO AppendNull?
+			builder.AppendNull()
 			continue
 		}
 		res, err := f.eval(lhsArr.Value(i), rhsArr.Value(i))
