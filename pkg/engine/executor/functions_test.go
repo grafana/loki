@@ -182,9 +182,33 @@ func TestBinaryFunctionRegistry_GetForSignature(t *testing.T) {
 			expectError: false,
 		},
 		{
+			name:        "valid div operation",
+			op:          types.BinaryOpDiv,
+			dataType:    arrow.PrimitiveTypes.Float64,
+			expectError: false,
+		},
+		{
+			name:        "valid add operation",
+			op:          types.BinaryOpAdd,
+			dataType:    arrow.PrimitiveTypes.Float64,
+			expectError: false,
+		},
+		{
+			name:        "valid Mul operation",
+			op:          types.BinaryOpMul,
+			dataType:    arrow.PrimitiveTypes.Float64,
+			expectError: false,
+		},
+		{
+			name:        "valid sub operation",
+			op:          types.BinaryOpSub,
+			dataType:    arrow.PrimitiveTypes.Float64,
+			expectError: false,
+		},
+		{
 			name:        "invalid operation",
-			op:          types.BinaryOpAdd, // Not registered
-			dataType:    arrow.PrimitiveTypes.Int64,
+			op:          types.BinaryOpAnd, // Not registered
+			dataType:    arrow.FixedWidthTypes.Boolean,
 			expectError: true,
 		},
 		{

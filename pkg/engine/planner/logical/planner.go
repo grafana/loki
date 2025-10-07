@@ -274,6 +274,22 @@ func walkVectorAggregation(e *syntax.VectorAggregationExpr, params logql.Params)
 	}, nil
 }
 
+func hasNonMathExpressionChild(n Value) bool {
+	if _, ok := n.(*VectorAggregation); ok {
+		return true
+	}
+
+	if _, ok := n.(*RangeAggregation); ok {
+		return true
+	}
+
+	if b, ok := n.(*BinOp); ok {
+		return hasNonMathExpressionChild(b.Left) || hasNonMathExpressionChild(b.Right)
+	}
+
+	return false
+}
+
 func walkBinOp(e *syntax.BinOpExpr, params logql.Params) (Value, error) {
 	left, err := walk(e.SampleExpr, params)
 	if err != nil {
@@ -284,17 +300,14 @@ func walkBinOp(e *syntax.BinOpExpr, params logql.Params) (Value, error) {
 		return nil, err
 	}
 
-	var op types.BinaryOp
-	switch e.Op {
-	case syntax.OpTypeAdd:
-		op = types.BinaryOpAdd
-	case syntax.OpTypeSub:
-		op = types.BinaryOpSub
-	case syntax.OpTypeMul:
-		op = types.BinaryOpMul
-	case syntax.OpTypeDiv:
-		op = types.BinaryOpDiv
-	default:
+	op := convertBinaryArithmeticOp(e.Op)
+	if op == types.BinaryOpInvalid {
+		return nil, errUnimplemented
+	}
+
+	// this is to check that there is only one non-literal input on either side, otherwise it is not implemented yet.
+	// TODO remove when all MathExpression pipeline can read multiple inputs
+	if hasNonMathExpressionChild(left) && hasNonMathExpressionChild(right) {
 		return nil, errUnimplemented
 	}
 
@@ -407,6 +420,25 @@ func convertLineFilter(filter syntax.LineFilter) Value {
 		Left:  lineColumnRef(),
 		Right: NewLiteral(filter.Match),
 		Op:    convertLineMatchType(filter.Ty),
+	}
+}
+
+func convertBinaryArithmeticOp(op string) types.BinaryOp {
+	switch op {
+	case syntax.OpTypeAdd:
+		return types.BinaryOpAdd
+	case syntax.OpTypeSub:
+		return types.BinaryOpSub
+	case syntax.OpTypeMul:
+		return types.BinaryOpMul
+	case syntax.OpTypeDiv:
+		return types.BinaryOpDiv
+	case syntax.OpTypeMod:
+		return types.BinaryOpMod
+	case syntax.OpTypePow:
+		return types.BinaryOpPow
+	default:
+		return types.BinaryOpInvalid
 	}
 }
 

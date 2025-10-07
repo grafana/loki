@@ -19,6 +19,7 @@ func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expres
 		if err != nil {
 			return failureState(err)
 		}
+		defer batch.Release()
 
 		cols := make([]*array.Boolean, 0, len(filter.Predicates))
 		defer func() {

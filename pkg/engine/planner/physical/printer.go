@@ -83,7 +83,7 @@ func toTreeNode(n Node) *tree.Node {
 		}
 	case *MathExpression:
 		treeNode.Properties = []tree.Property{
-			tree.NewProperty("op", false, node.Op.String()),
+			tree.NewProperty("expression", false, node.Expression.String()),
 		}
 	}
 	return treeNode

@@ -2,16 +2,13 @@ package physical
 
 import (
 	"fmt"
-
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-// MathExpression represents a binary arithmetic operation
+// MathExpression represents an arithmetic operation
 type MathExpression struct {
 	id string
 
-	Left, Right Expression
-	Op          types.BinaryOp
+	Expression Expression
 }
 
 // ID implements the [Node] interface.

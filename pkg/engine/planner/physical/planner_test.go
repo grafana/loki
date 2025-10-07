@@ -411,7 +411,7 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{*logical.NewColumnRef("label1", types.ColumnTypeAmbiguous), *logical.NewColumnRef("label2", types.ColumnTypeMetadata)},
+		[]logical.ColumnRef{},
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
@@ -465,15 +465,158 @@ func TestPlanner_Convert_Rate(t *testing.T) {
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{*logical.NewColumnRef("label1", types.ColumnTypeAmbiguous), *logical.NewColumnRef("label2", types.ColumnTypeMetadata)},
+		[]logical.ColumnRef{},
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
 		0,             // Step
 		time.Minute*5, // Range
-	).BinOp(types.BinaryOpDiv, logical.NewLiteral(int64(300)))
+	).BinOpRight(
+		types.BinaryOpDiv, logical.NewLiteral(int64(300)),
+	)
 
 	logicalPlan, err := b.ToPlan()
+	require.NoError(t, err)
+
+	timeStart := time.Now()
+	timeEnd := timeStart.Add(time.Second * 10)
+	catalog := &catalog{
+		sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 3}, StreamIDs: []int64{1, 2}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 1}, StreamIDs: []int64{3, 4}, Start: timeStart, End: timeEnd},
+		},
+	}
+	planner := NewPlanner(NewContext(timeStart, timeEnd), catalog)
+
+	physicalPlan, err := planner.Build(logicalPlan)
+	require.NoError(t, err)
+	t.Logf("Physical plan\n%s\n", PrintAsTree(physicalPlan))
+
+	physicalPlan, err = planner.Optimize(physicalPlan)
+	require.NoError(t, err)
+	t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+}
+
+func TestPlanner_BuildMathExpressions(t *testing.T) {
+	// logical plan for (rate({ app="users" }[5m]) * 40) ^ 2
+	b := logical.NewBuilder(
+		&logical.MakeTable{
+			Selector: &logical.BinOp{
+				Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+				Right: logical.NewLiteral("users"),
+				Op:    types.BinaryOpEq,
+			},
+			Shard: logical.NewShard(0, 1), // no sharding
+		},
+	).Select(
+		&logical.BinOp{
+			Left:  logical.NewColumnRef("age", types.ColumnTypeMetadata),
+			Right: logical.NewLiteral(int64(21)),
+			Op:    types.BinaryOpGt,
+		},
+	).Select(
+		&logical.BinOp{
+			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
+			Right: logical.NewLiteral(datatype.Timestamp(1742826126000000000)),
+			Op:    types.BinaryOpLt,
+		},
+	).RangeAggregation(
+		[]logical.ColumnRef{},
+		types.RangeAggregationTypeCount,
+		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
+		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
+		0,             // Step
+		time.Minute*5, // Range
+	).BinOpRight(
+		types.BinaryOpDiv, logical.NewLiteral(int64(300)),
+	).BinOpRight(
+		types.BinaryOpMul, logical.NewLiteral(int64(40)),
+	).BinOpRight(
+		types.BinaryOpPow, logical.NewLiteral(int64(2)),
+	)
+
+	logicalPlan, err := b.ToPlan()
+	require.NoError(t, err)
+
+	timeStart := time.Now()
+	timeEnd := timeStart.Add(time.Second * 10)
+	catalog := &catalog{
+		sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 3}, StreamIDs: []int64{1, 2}, Start: timeStart, End: timeEnd},
+			{SectionKey: metastore.SectionKey{ObjectPath: "obj2", SectionIdx: 1}, StreamIDs: []int64{3, 4}, Start: timeStart, End: timeEnd},
+		},
+	}
+	planner := NewPlanner(NewContext(timeStart, timeEnd), catalog)
+
+	physicalPlan, err := planner.Build(logicalPlan)
+	require.NoError(t, err)
+	t.Logf("Physical plan\n%s\n", PrintAsTree(physicalPlan))
+
+	physicalPlan, err = planner.Optimize(physicalPlan)
+	require.NoError(t, err)
+	t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+}
+
+func TestPlanner_BuildMathExpressionsWithTwoInputs(t *testing.T) {
+	// logical plan for rate({ env="prod", app="users" }[5m])) / rate({ env="prod" }[5m]))
+	b1 := logical.NewBuilder(
+		&logical.MakeTable{
+			Selector: &logical.BinOp{
+				Left:  logical.NewColumnRef("env", types.ColumnTypeLabel),
+				Right: logical.NewLiteral("prod"),
+				Op:    types.BinaryOpEq,
+			},
+			Shard: logical.NewShard(0, 1), // no sharding
+		},
+	).Select(
+		&logical.BinOp{
+			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
+			Right: logical.NewLiteral(datatype.Timestamp(1742826126000000000)),
+			Op:    types.BinaryOpLt,
+		},
+	).RangeAggregation(
+		[]logical.ColumnRef{},
+		types.RangeAggregationTypeCount,
+		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
+		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
+		0,             // Step
+		time.Minute*5, // Range
+	)
+	b2 := logical.NewBuilder(
+		&logical.MakeTable{
+			Selector: &logical.BinOp{
+				Op: types.BinaryOpAnd,
+				Left: &logical.BinOp{
+					Left:  logical.NewColumnRef("env", types.ColumnTypeLabel),
+					Right: logical.NewLiteral("prod"),
+					Op:    types.BinaryOpEq,
+				},
+				Right: &logical.BinOp{
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+					Right: logical.NewLiteral("users"),
+					Op:    types.BinaryOpEq,
+				},
+			},
+			Shard: logical.NewShard(0, 1), // no sharding
+		},
+	).Select(
+		&logical.BinOp{
+			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
+			Right: logical.NewLiteral(datatype.Timestamp(1742826126000000000)),
+			Op:    types.BinaryOpLt,
+		},
+	).RangeAggregation(
+		[]logical.ColumnRef{},
+		types.RangeAggregationTypeCount,
+		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
+		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
+		0,             // Step
+		time.Minute*5, // Range
+	).BinOpRight(
+		types.BinaryOpDiv, b1.Value(),
+	)
+
+	logicalPlan, err := b2.ToPlan()
 	require.NoError(t, err)
 
 	timeStart := time.Now()
