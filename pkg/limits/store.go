@@ -53,7 +53,9 @@ type usageStore struct {
 }
 
 // tenantUsage contains the per-partition stream usage for a tenant.
-type tenantUsage map[int32]map[uint64]streamUsage
+// The structure is: partition -> policy -> streamHash -> streamUsage
+// Policy "" represents streams that don't match any specific policy.
+type tenantUsage map[int32]map[string]map[uint64]streamUsage
 
 // streamUsage represents the metadata for a stream loaded from the kafka topic.
 // It contains the minimal information to count per tenant active streams and
@@ -68,6 +70,7 @@ type streamUsage struct {
 	// implementing rate limits to a later date in the future.
 	totalSize   uint64
 	rateBuckets []rateBucket
+	policy      string // The ingestion policy for this stream if any
 }
 
 // RateBucket represents the bytes received during a specific time interval
@@ -116,14 +119,16 @@ func (s *usageStore) Iter(f iterateFunc) {
 	)
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
-			for partition, streams := range partitions {
-				for _, stream := range streams {
-					if withinActiveWindow(stream.lastSeenAt) {
-						stream.rateBuckets = getActiveRateBuckets(
-							stream.rateBuckets,
-							withinRateWindow,
-						)
-						f(tenant, partition, stream)
+			for partition, policies := range partitions {
+				for _, streams := range policies {
+					for _, stream := range streams {
+						if withinActiveWindow(stream.lastSeenAt) {
+							stream.rateBuckets = getActiveRateBuckets(
+								stream.rateBuckets,
+								withinRateWindow,
+							)
+							f(tenant, partition, stream)
+						}
 					}
 				}
 			}
@@ -143,14 +148,16 @@ func (s *usageStore) IterTenant(tenant string, f iterateFunc) {
 		withinRateWindow   = s.newRateWindowFunc(now)
 	)
 	s.withRLock(tenant, func(i int) {
-		for partition, streams := range s.stripes[i][tenant] {
-			for _, stream := range streams {
-				if withinActiveWindow(stream.lastSeenAt) {
-					stream.rateBuckets = getActiveRateBuckets(
-						stream.rateBuckets,
-						withinRateWindow,
-					)
-					f(tenant, partition, stream)
+		for partition, policies := range s.stripes[i][tenant] {
+			for _, streams := range policies {
+				for _, stream := range streams {
+					if withinActiveWindow(stream.lastSeenAt) {
+						stream.rateBuckets = getActiveRateBuckets(
+							stream.rateBuckets,
+							withinRateWindow,
+						)
+						f(tenant, partition, stream)
+					}
 				}
 			}
 		}
@@ -208,9 +215,19 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 	s.withLock(tenant, func(i int) {
 		for _, m := range metadata {
 			partition := s.getPartitionForHash(m.StreamHash)
-			s.checkInitMap(i, tenant, partition)
-			streams := s.stripes[i][tenant][partition]
+			policy := m.IngestionPolicy
+			s.checkInitMap(i, tenant, partition, policy)
+			streams := s.stripes[i][tenant][partition][policy]
 			stream, ok := streams[m.StreamHash]
+
+			// Use default maxStreams, override only if a ingestion policy exists and there is a limits override for it.
+			maxStreamsForStream := maxStreams
+			if policy != "" {
+				if policyMaxStreams := limits.PolicyMaxGlobalStreamsPerUser(tenant, policy); policyMaxStreams > 0 {
+					maxStreamsForStream = uint64(policyMaxStreams / s.numPartitions)
+				}
+			}
+
 			// If the stream does not exist, or exists but has expired,
 			// we need to check if accepting it would exceed the maximum
 			// stream limit.
@@ -226,8 +243,8 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 				// in the partition which is O(N) instead of O(1). Instead,
 				// we accept that expired streams will be counted towards the
 				// limit until evicted.
-				numStreams := uint64(len(s.stripes[i][tenant][partition]))
-				if numStreams >= maxStreams {
+				numStreams := uint64(len(s.stripes[i][tenant][partition][policy]))
+				if numStreams >= maxStreamsForStream {
 					rejected = append(rejected, m)
 					continue
 				}
@@ -236,7 +253,7 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 			// Hard-coded produce cutoff of 1 minute.
 			produceCutoff := now.Add(-time.Minute).UnixNano()
 			if stream.lastProducedAt < produceCutoff {
-				s.setLastProducedAt(i, tenant, partition, m.StreamHash, now)
+				s.setLastProducedAt(i, tenant, partition, m.StreamHash, policy, now)
 				toProduce = append(toProduce, m)
 			}
 			accepted = append(accepted, m)
@@ -251,11 +268,13 @@ func (s *usageStore) Evict() map[string]int {
 	evicted := make(map[string]int)
 	s.forEachLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
-			for partition, streams := range partitions {
-				for streamHash, stream := range streams {
-					if stream.lastSeenAt < cutoff {
-						delete(s.stripes[i][tenant][partition], streamHash)
-						evicted[tenant]++
+			for partition, policies := range partitions {
+				for policy, streams := range policies {
+					for streamHash, stream := range streams {
+						if stream.lastSeenAt < cutoff {
+							delete(s.stripes[i][tenant][partition][policy], streamHash)
+							evicted[tenant]++
+						}
 					}
 				}
 			}
@@ -295,11 +314,13 @@ func (s *usageStore) Collect(metrics chan<- prometheus.Metric) {
 	// streams for each tenants.
 	s.forEachRLock(func(i int) {
 		for tenant, partitions := range s.stripes[i] {
-			for _, streams := range partitions {
-				for _, stream := range streams {
-					total[tenant]++
-					if stream.lastSeenAt >= cutoff {
-						active[tenant]++
+			for _, policies := range partitions {
+				for _, streams := range policies {
+					for _, stream := range streams {
+						total[tenant]++
+						if stream.lastSeenAt >= cutoff {
+							active[tenant]++
+						}
 					}
 				}
 			}
@@ -328,24 +349,32 @@ func (s *usageStore) get(i int, tenant string, partition int32, streamHash uint6
 	if !ok {
 		return
 	}
-	streams, ok := partitions[partition]
+	policies, ok := partitions[partition]
 	if !ok {
 		return
 	}
-	stream, ok = streams[streamHash]
-	return
+	// Search across all policies for this stream
+	// Note that in most cases, there will only be one item on this list (empty policy, "").
+	// and at most just a few items. One idea to speed this up would be to keep a cache of tenant-partition-streamHash -> policy for those streams that have a matching policy.
+	for _, streams := range policies {
+		if stream, ok = streams[streamHash]; ok {
+			return
+		}
+	}
+	return streamUsage{}, false
 }
 
 func (s *usageStore) update(i int, tenant string, partition int32, metadata *proto.StreamMetadata, seenAt time.Time) {
-	s.checkInitMap(i, tenant, partition)
-	streamHash, _ := metadata.StreamHash, metadata.TotalSize
+	s.checkInitMap(i, tenant, partition, metadata.IngestionPolicy)
+	streamHash, policy := metadata.StreamHash, metadata.IngestionPolicy
 	// Get the stats for the stream.
-	stream, ok := s.stripes[i][tenant][partition][streamHash]
+	stream, ok := s.stripes[i][tenant][partition][policy][streamHash]
 	cutoff := seenAt.Add(-s.activeWindow).UnixNano()
 	// If the stream does not exist, or it has expired, reset it.
 	if !ok || stream.lastSeenAt < cutoff {
 		stream.hash = streamHash
 		stream.totalSize = 0
+		stream.policy = policy
 		// stream.rateBuckets = make([]rateBucket, s.numBuckets)
 	}
 	seenAtUnixNano := seenAt.UnixNano()
@@ -370,13 +399,13 @@ func (s *usageStore) update(i int, tenant string, partition int32, metadata *pro
 	// }
 	// bucket.size += totalSize
 	// stream.rateBuckets[bucketIdx] = bucket
-	s.stripes[i][tenant][partition][streamHash] = stream
+	s.stripes[i][tenant][partition][policy][streamHash] = stream
 }
 
-func (s *usageStore) setLastProducedAt(i int, tenant string, partition int32, streamHash uint64, now time.Time) {
-	stream := s.stripes[i][tenant][partition][streamHash]
+func (s *usageStore) setLastProducedAt(i int, tenant string, partition int32, streamHash uint64, policy string, now time.Time) {
+	stream := s.stripes[i][tenant][partition][policy][streamHash]
 	stream.lastProducedAt = now.UnixNano()
-	s.stripes[i][tenant][partition][streamHash] = stream
+	s.stripes[i][tenant][partition][policy][streamHash] = stream
 }
 
 // forEachRLock executes fn with a shared lock for each stripe.
@@ -456,12 +485,15 @@ func (s *usageStore) newRateWindowFunc(now time.Time) func(t int64) bool {
 // checkInitMap checks if the maps for the tenant and partition are
 // initialized, and if not, initializes them. It must not be called without
 // the stripe lock for i.
-func (s *usageStore) checkInitMap(i int, tenant string, partition int32) {
+func (s *usageStore) checkInitMap(i int, tenant string, partition int32, policy string) {
 	if _, ok := s.stripes[i][tenant]; !ok {
 		s.stripes[i][tenant] = make(tenantUsage)
 	}
 	if _, ok := s.stripes[i][tenant][partition]; !ok {
-		s.stripes[i][tenant][partition] = make(map[uint64]streamUsage)
+		s.stripes[i][tenant][partition] = make(map[string]map[uint64]streamUsage)
+	}
+	if _, ok := s.stripes[i][tenant][partition][policy]; !ok {
+		s.stripes[i][tenant][partition][policy] = make(map[uint64]streamUsage)
 	}
 }
 
@@ -476,8 +508,8 @@ func (s *usageStore) getForTests(tenant string, streamHash uint64) (streamUsage,
 func (s *usageStore) setForTests(tenant string, stream streamUsage) {
 	partition := s.getPartitionForHash(stream.hash)
 	s.withLock(tenant, func(i int) {
-		s.checkInitMap(i, tenant, partition)
-		s.stripes[i][tenant][partition][stream.hash] = stream
+		s.checkInitMap(i, tenant, partition, stream.policy)
+		s.stripes[i][tenant][partition][stream.policy][stream.hash] = stream
 	})
 }
 

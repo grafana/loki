@@ -18,6 +18,7 @@ type Limits interface {
 	IngestionRateBytes(userID string) float64
 	IngestionBurstSizeBytes(userID string) int
 	MaxGlobalStreamsPerUser(userID string) int
+	PolicyMaxGlobalStreamsPerUser(userID, policy string) int
 }
 
 type limitsChecker struct {
