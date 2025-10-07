@@ -330,7 +330,7 @@ func walkBinOp(e *syntax.BinOpExpr, params logql.Params) (Value, error) {
 	}, nil
 }
 
-func walkLiteral(e *syntax.LiteralExpr, params logql.Params) (Value, error) {
+func walkLiteral(e *syntax.LiteralExpr, _ logql.Params) (Value, error) {
 	return &Literal{
 		NewLiteral(e.Val),
 	}, nil
