@@ -36,8 +36,8 @@ read target
 */}}
 {{- define "loki.readTarget" -}}
 {{ if .Values.loki.ui.enable }}
-{{.Values.read.targetModule}},ui
+{{ print "%s,ui" .Values.read.targetModule }}
 {{ else }}
-{{.Values.read.targetModule}}
+{{ .Values.read.targetModule }}
 {{ end }}
 {{- end }}

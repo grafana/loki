@@ -38,8 +38,8 @@ singleBinary target
 */}}
 {{- define "loki.singleBinaryTarget" -}}
 {{ if .Values.loki.ui.enable }}
-{{.Values.singleBinary.targetModule}},ui
+{{ print "%s,ui" .Values.singleBinary.targetModule }}
 {{ else }}
-{{.Values.singleBinary.targetModule}}
+{{ .Values.singleBinary.targetModule }}
 {{ end }}
 {{- end }}
