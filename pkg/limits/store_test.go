@@ -14,7 +14,7 @@ import (
 
 func TestUsageStore_Iter(t *testing.T) {
 	t.Run("iterates all streams", func(t *testing.T) {
-		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 10, prometheus.NewRegistry())
+		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 10, &mockLimits{}, prometheus.NewRegistry())
 		require.NoError(t, err)
 		clock := quartz.NewMock(t)
 		s.clock = clock
@@ -39,7 +39,7 @@ func TestUsageStore_Iter(t *testing.T) {
 	})
 
 	t.Run("does not iterate expired streams", func(t *testing.T) {
-		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, prometheus.NewRegistry())
+		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
 		require.NoError(t, err)
 		clock := quartz.NewMock(t)
 		s.clock = clock
@@ -61,7 +61,7 @@ func TestUsageStore_Iter(t *testing.T) {
 
 func TestUsageStore_IterTenant(t *testing.T) {
 	t.Run("iterates all streams for tenant", func(t *testing.T) {
-		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 10, prometheus.NewRegistry())
+		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 10, &mockLimits{}, prometheus.NewRegistry())
 		require.NoError(t, err)
 		clock := quartz.NewMock(t)
 		s.clock = clock
@@ -96,7 +96,7 @@ func TestUsageStore_IterTenant(t *testing.T) {
 	})
 
 	t.Run("does not iterate expired streams", func(t *testing.T) {
-		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, prometheus.NewRegistry())
+		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
 		require.NoError(t, err)
 		clock := quartz.NewMock(t)
 		s.clock = clock
@@ -117,7 +117,7 @@ func TestUsageStore_IterTenant(t *testing.T) {
 }
 
 func TestUsageStore_Update(t *testing.T) {
-	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, prometheus.NewRegistry())
+	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
 	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	s.clock = clock
@@ -137,7 +137,7 @@ func TestUsageStore_Update(t *testing.T) {
 // buckets are implemented as a circular list, when we reach the end of
 // list the next bucket is the start of the list.
 // func TestUsageStore_UpdateRateBuckets(t *testing.T) {
-// 	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, prometheus.NewRegistry())
+// 	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
 // 	require.NoError(t, err)
 // 	clock := quartz.NewMock(t)
 // 	s.clock = clock
@@ -197,7 +197,7 @@ func TestUsageStore_Update(t *testing.T) {
 // This test asserts that rate buckets are not updated while the TODOs are
 // in place.
 func TestUsageStore_RateBucketsAreNotUsed(t *testing.T) {
-	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, prometheus.NewRegistry())
+	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
 	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	s.clock = clock
@@ -337,15 +337,14 @@ func TestUsageStore_UpdateCond(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, test.numPartitions, prometheus.NewRegistry())
+			s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, test.numPartitions, &mockLimits{MaxGlobalStreams: test.maxGlobalStreams}, prometheus.NewRegistry())
 			require.NoError(t, err)
 			clock := quartz.NewMock(t)
 			s.clock = clock
 			for _, stream := range test.seed {
 				require.NoError(t, s.Update("tenant", stream, clock.Now()))
 			}
-			limits := mockLimits{MaxGlobalStreams: test.maxGlobalStreams}
-			toProduce, accepted, rejected, err := s.UpdateCond("tenant", test.streams, clock.Now(), &limits)
+			toProduce, accepted, rejected, err := s.UpdateCond("tenant", test.streams, clock.Now())
 			require.NoError(t, err)
 			require.ElementsMatch(t, test.expectedToProduce, toProduce)
 			require.ElementsMatch(t, test.expectedAccepted, accepted)
@@ -355,16 +354,15 @@ func TestUsageStore_UpdateCond(t *testing.T) {
 }
 
 func TestUsageStore_UpdateCond_ToProduce(t *testing.T) {
-	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, prometheus.NewRegistry())
+	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
 	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	s.clock = clock
-	limits := mockLimits{MaxGlobalStreams: 10}
 	metadata1 := []*proto.StreamMetadata{{
 		StreamHash: 0x1,
 		TotalSize:  100,
 	}}
-	toProduce, accepted, rejected, err := s.UpdateCond("tenant", metadata1, clock.Now(), &limits)
+	toProduce, accepted, rejected, err := s.UpdateCond("tenant", metadata1, clock.Now())
 	require.NoError(t, err)
 	require.Empty(t, rejected)
 	require.Len(t, accepted, 1)
@@ -372,7 +370,7 @@ func TestUsageStore_UpdateCond_ToProduce(t *testing.T) {
 	// Another update for the same stream in the same minute should not produce
 	// a new record.
 	clock.Advance(time.Second)
-	toProduce, accepted, rejected, err = s.UpdateCond("tenant", metadata1, clock.Now(), &limits)
+	toProduce, accepted, rejected, err = s.UpdateCond("tenant", metadata1, clock.Now())
 	require.NoError(t, err)
 	require.Empty(t, rejected)
 	require.Empty(t, toProduce)
@@ -382,14 +380,14 @@ func TestUsageStore_UpdateCond_ToProduce(t *testing.T) {
 		StreamHash: 0x2,
 		TotalSize:  100,
 	}}
-	toProduce, accepted, rejected, err = s.UpdateCond("tenant", metadata2, clock.Now(), &limits)
+	toProduce, accepted, rejected, err = s.UpdateCond("tenant", metadata2, clock.Now())
 	require.NoError(t, err)
 	require.Empty(t, rejected)
 	require.Len(t, accepted, 1)
 	require.Equal(t, metadata2, toProduce)
 	// Move the clock forward and metadata1 should be produced again.
 	clock.Advance(time.Minute)
-	toProduce, accepted, rejected, err = s.UpdateCond("tenant", metadata1, clock.Now(), &limits)
+	toProduce, accepted, rejected, err = s.UpdateCond("tenant", metadata1, clock.Now())
 	require.NoError(t, err)
 	require.Empty(t, rejected)
 	require.Len(t, accepted, 1)
@@ -397,7 +395,7 @@ func TestUsageStore_UpdateCond_ToProduce(t *testing.T) {
 }
 
 func TestUsageStore_Evict(t *testing.T) {
-	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, prometheus.NewRegistry())
+	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
 	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	s.clock = clock
@@ -430,7 +428,7 @@ func TestUsageStore_Evict(t *testing.T) {
 
 func TestUsageStore_EvictPartitions(t *testing.T) {
 	// Create a store with 10 partitions.
-	s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 10, prometheus.NewRegistry())
+	s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 10, &mockLimits{}, prometheus.NewRegistry())
 	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	s.clock = clock
