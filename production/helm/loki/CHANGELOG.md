@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 6.43.0
+
 ## 6.42.0
 
 **NOTE:** While the Loki chart does not currently use these CRDs, we wanted to note this requirement for the [rollout-operator](https://github.com/grafana/helm-charts/tree/main/charts/rollout-operator#upgrade-of-grafana-rollout-operator).
