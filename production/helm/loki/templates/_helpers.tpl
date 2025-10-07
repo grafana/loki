@@ -199,15 +199,17 @@ Determines the final image path for the sidecar, respecting the global registry 
 already contains a full registry (indicated by a dot '.') for backwards-compatibility.
 */ -}}
 
-{{- $registry := .Values.global.registry | default .Values.sidecar.image.registry | default "" -}}
-{{- $repo := .Values.sidecar.image.repository -}}
+{{- $image := .Values.sidecar.image }}
+{{- $registry := .Values.global.registry | default $image.registry | default "" -}}
+{{- $repo := $image.repository -}}
+{{- $ref := ternary (printf ":%s" $image.tag) (printf ":%s@sha256:%s" $image.tag $image.sha) (empty $image.sha) -}}
 
 {{- $prefix := "" -}}
 {{- if and $registry (not (contains "." $repo)) -}}
 {{- $prefix = printf "%s/" $registry -}}
 {{- end -}}
 
-{{- printf "%s%s" $prefix $repo -}}
+{{- printf "%s%s%s" $prefix $repo $ref -}}
 {{- end -}}
 
 {{/*

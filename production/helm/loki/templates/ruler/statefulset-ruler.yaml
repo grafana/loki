@@ -125,11 +125,7 @@ spec:
             {{- toYaml .Values.ruler.resources | nindent 12 }}
         {{- if and .Values.sidecar.rules.enabled .Values.ruler.sidecar }}
         - name: loki-sc-rules
-          {{- if .Values.sidecar.image.sha }}
-          image: "{{ include "loki.sidecarImage" . }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
-          {{- else }}
-          image: "{{ include "loki.sidecarImage" . }}:{{ .Values.sidecar.image.tag }}"
-          {{- end }}
+          image: "{{ include "loki.sidecarImage" . }}"
           imagePullPolicy: {{ .Values.sidecar.image.pullPolicy }}
           env:
             - name: METHOD
