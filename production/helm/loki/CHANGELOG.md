@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [BREAKING]  The Loki UI has been moved to a Grafana Plugin. Enabling the UI in the helm chart will now only enable the APIs needed by the plugin, and will host them on the querier. The gateway will now forward all UI requests to the queriers.
+
 ## 6.42.0
 
 **NOTE:** While the Loki chart does not currently use these CRDs, we wanted to note this requirement for the [rollout-operator](https://github.com/grafana/helm-charts/tree/main/charts/rollout-operator#upgrade-of-grafana-rollout-operator).

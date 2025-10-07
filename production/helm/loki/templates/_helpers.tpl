@@ -862,7 +862,7 @@ http {
       {{- with .Values.gateway.nginxConfig.locationSnippet }}
       {{- tpl . $ | nindent 6 }}
       {{- end }}
-      proxy_pass       {{ $distributorUrl }}$request_uri;
+      proxy_pass       {{ $querierUrl }}$request_uri;
     }
     {{- end }}
 
