@@ -38,7 +38,7 @@ func TestSortMerge(t *testing.T) {
 			ascendingTimestampPipeline(now.Add(3*time.Nanosecond)).Pipeline(batchSize, 10),
 		}
 
-		pipeline, err := NewSortMergePipeline(inputs, merge.Order, merge.Column, expressionEvaluator{})
+		pipeline, err := NewSortMergePipeline(inputs, merge.Order, merge.Column, newExpressionEvaluator(nil))
 		require.NoError(t, err)
 
 		ctx := t.Context()
@@ -63,7 +63,7 @@ func TestSortMerge(t *testing.T) {
 			ascendingTimestampPipeline(now.Add(3*time.Second)).Pipeline(batchSize, 10),
 		}
 
-		pipeline, err := NewSortMergePipeline(inputs, merge.Order, merge.Column, expressionEvaluator{})
+		pipeline, err := NewSortMergePipeline(inputs, merge.Order, merge.Column, newExpressionEvaluator(nil))
 		require.NoError(t, err)
 
 		ctx := t.Context()
@@ -110,7 +110,7 @@ func TestSortMerge(t *testing.T) {
 			descendingTimestampPipeline(now.Add(3*time.Second)).Pipeline(batchSize, 10),
 		}
 
-		pipeline, err := NewSortMergePipeline(inputs, merge.Order, merge.Column, expressionEvaluator{})
+		pipeline, err := NewSortMergePipeline(inputs, merge.Order, merge.Column, newExpressionEvaluator(nil))
 		require.NoError(t, err)
 
 		ctx := t.Context()

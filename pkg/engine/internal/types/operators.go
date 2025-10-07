@@ -26,6 +26,19 @@ func (t UnaryOp) String() string {
 	}
 }
 
+func GetUnwrapOp(op string) UnwrapOp {
+	switch op {
+	case "unwrap":
+		return Unwrap
+	case "unwrap bytes":
+		return UnwrapBytes
+	case "unwrap duration":
+		return UnwrapDuration
+	default:
+		panic(fmt.Sprintf("unknown unwrap operation %s", op))
+	}
+}
+
 // BinaryOp denotes the kind of [BinaryOp] operation to perform.
 type BinaryOp uint32
 
@@ -107,5 +120,31 @@ func (t BinaryOp) String() string {
 		return "NOT_MATCH_PAT" // convenience for NOT(MATCH_PAT(...))
 	default:
 		panic(fmt.Sprintf("unknown binary operator %d", t))
+	}
+}
+
+// UnwrapOp denotes the kind of [UnwrapOp] operation to perform.
+type UnwrapOp uint32
+
+// Recognized values of [UnwrapOp].
+const (
+	// UnwrapOpInvalid indicates an invalid unwrap operation.
+	UnwrapOpInvalid UnwrapOp = iota
+	Unwrap
+	UnwrapBytes
+	UnwrapDuration
+	UnwrapDurationSeconds
+)
+
+func (t UnwrapOp) String() string {
+	switch t {
+	case Unwrap:
+		return "unwrap"
+	case UnwrapBytes:
+		return "unwrap bytes"
+	case UnwrapDuration:
+		return "unwrap duration"
+	default:
+		panic(fmt.Sprintf("unknown unwrap operation %d", t))
 	}
 }

@@ -16,6 +16,7 @@ const (
 	ExprTypeBinary
 	ExprTypeLiteral
 	ExprTypeColumn
+	ExprTypeUnwrap
 )
 
 // String returns the string representation of the [ExpressionType].
@@ -29,6 +30,8 @@ func (t ExpressionType) String() string {
 		return "LiteralExpression"
 	case ExprTypeColumn:
 		return "ColumnExpression"
+	case ExprTypeUnwrap:
+		return "UnwrapExpression"
 	default:
 		panic(fmt.Sprintf("unknown expression type %d", t))
 	}
@@ -165,3 +168,27 @@ func (e *ColumnExpr) String() string {
 func (e *ColumnExpr) Type() ExpressionType {
 	return ExprTypeColumn
 }
+
+type UnwrapExpr struct {
+	Ref types.ColumnRef
+	Op  types.UnwrapOp
+}
+
+func NewUnwrapExpr(column string, op types.UnwrapOp) *UnwrapExpr {
+	return &UnwrapExpr{
+		Ref: types.ColumnRef{Column: column, Type: types.ColumnTypeAmbiguous},
+		Op:  op,
+	}
+}
+
+func (u *UnwrapExpr) String() string {
+	return fmt.Sprintf("%s(%s)", u.Op, u.Ref)
+}
+
+func (u *UnwrapExpr) Type() ExpressionType {
+	return ExprTypeUnwrap
+}
+
+func (u *UnwrapExpr) isExpr() {}
+
+func (u *UnwrapExpr) isColumnExpr() {}
