@@ -22,7 +22,7 @@ The LokiStack Gateway is a reverse-proxy component that provides secure access t
 - **OpenShift**: Creates Route objects
 - **Kubernetes**: Creates Ingress objects
 
-You can disable external access creation to implement custom networking solutions.
+You can disable external access creation.
 
 ## External Access Configuration
 
@@ -48,6 +48,7 @@ spec:
 ```
 
 **Result:**
+
 - **OpenShift**: Route object created for external access
 - **Kubernetes**: Ingress object created for external access
 
@@ -69,6 +70,7 @@ spec:
 ```
 
 **Result:**
+
 - **OpenShift**: No Route object created (existing Routes are automatically removed)
 - **Kubernetes**: No Ingress object created (existing Ingress resources are automatically removed)
 - Gateway remains accessible via internal Service
@@ -95,13 +97,11 @@ spec:
 When you change the external access configuration from enabled to disabled:
 
 1. **Automatic Cleanup**: The operator automatically removes existing external access resources
-2. **Immediate Effect**: Changes take effect during the next reconciliation cycle
-3. **No Manual Cleanup**: You don't need to manually delete Routes or Ingress resources
-4. **Safe Deletion**: Only resources owned by the LokiStack are deleted (prevents accidental deletion of user-created resources)
+2. **Safe Deletion**: Only resources owned by the LokiStack are deleted (prevents accidental deletion of user-created resources)
 
 ## Related Documentation
 
+- [API Reference](../operator/api.md) - Complete API documentation
+- [How to Connect Grafana](howto_connect_grafana.md) - Connect Grafana to LokiStack
 - [Forwarding Logs to LokiStack](forwarding_logs_to_gateway.md) - How to send logs to the gateway
 - [Forwarding Logs without the Gateway](forwarding_logs_without_gateway.md) - Bypass gateway authentication
-- [How to Connect Grafana](howto_connect_grafana.md) - Connect Grafana to LokiStack
-- [API Reference](../operator/api.md) - Complete API documentation

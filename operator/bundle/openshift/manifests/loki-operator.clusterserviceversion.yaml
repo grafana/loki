@@ -152,7 +152,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
-    createdAt: "2025-10-07T08:42:16Z"
+    createdAt: "2025-10-07T16:44:27Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -835,7 +835,7 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:advanced
       - description: |-
           Disabled controls whether external access resources should be created.
-          When true, no Route (OpenShift) or Ingress (Kubernetes) will be created.
+          When true, the Route (OpenShift) or Ingress (Kubernetes) will not be created.
           Default is false (external access resources will be created).
         displayName: Disable External Access
         path: template.gateway.externalAccess.disabled

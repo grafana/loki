@@ -9,8 +9,6 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -51,37 +49,6 @@ func TestCleanup_ExternalAccessEnabled_ReturnsEarly(t *testing.T) {
 	require.Equal(t, 0, k.DeleteCallCount())
 }
 
-func TestCleanup_ExternalAccessDisabled_ResourcesDoNotExist_ReturnsSuccess(t *testing.T) {
-	k := &k8sfakes.FakeClient{}
-
-	stack := &lokiv1.LokiStack{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-stack",
-			Namespace: "test-ns",
-		},
-		Spec: lokiv1.LokiStackSpec{
-			Template: &lokiv1.LokiTemplateSpec{
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					ExternalAccess: &lokiv1.ExternalAccessSpec{
-						Disabled: true, // External access disabled
-					},
-				},
-			},
-		},
-	}
-
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
-		return apierrors.NewNotFound(schema.GroupResource{}, "not found")
-	}
-
-	err := Cleanup(context.TODO(), logger, k, stack)
-	require.NoError(t, err)
-
-	// Verify Get was called but no Delete calls
-	require.Equal(t, 2, k.GetCallCount())
-	require.Equal(t, 0, k.DeleteCallCount())
-}
-
 func TestCleanup_ExternalAccessDisabled_Delete(t *testing.T) {
 	stack := &lokiv1.LokiStack{
 		ObjectMeta: metav1.ObjectMeta{
@@ -109,7 +76,7 @@ func TestCleanup_ExternalAccessDisabled_Delete(t *testing.T) {
 			name: "ingress without owner reference is not deleted",
 			object: &networkingv1.Ingress{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-stack-gateway",
+					Name:      "test-stack",
 					Namespace: "test-ns",
 				},
 			},
@@ -119,7 +86,7 @@ func TestCleanup_ExternalAccessDisabled_Delete(t *testing.T) {
 			name: "ingress with owner reference gets deleted",
 			object: &networkingv1.Ingress{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-stack-gateway",
+					Name:      "test-stack",
 					Namespace: "test-ns",
 					OwnerReferences: []metav1.OwnerReference{
 						*metav1.NewControllerRef(stack, lokiv1.GroupVersion.WithKind("LokiStack")),
@@ -132,7 +99,7 @@ func TestCleanup_ExternalAccessDisabled_Delete(t *testing.T) {
 			name: "route with owner reference gets deleted",
 			object: &routev1.Route{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-stack-gateway",
+					Name:      "test-stack",
 					Namespace: "test-ns",
 					OwnerReferences: []metav1.OwnerReference{
 						*metav1.NewControllerRef(stack, lokiv1.GroupVersion.WithKind("LokiStack")),

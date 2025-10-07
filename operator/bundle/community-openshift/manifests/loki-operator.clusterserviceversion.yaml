@@ -152,7 +152,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.8.0
-    createdAt: "2025-10-07T08:42:14Z"
+    createdAt: "2025-10-07T16:44:25Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     features.operators.openshift.io/disconnected: "true"
@@ -822,7 +822,7 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:advanced
       - description: |-
           Disabled controls whether external access resources should be created.
-          When true, no Route (OpenShift) or Ingress (Kubernetes) will be created.
+          When true, the Route (OpenShift) or Ingress (Kubernetes) will not be created.
           Default is false (external access resources will be created).
         displayName: Disable External Access
         path: template.gateway.externalAccess.disabled

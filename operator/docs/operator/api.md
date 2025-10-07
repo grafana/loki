@@ -1151,7 +1151,7 @@ a secret. This mode is only supported for certain object storage types in certai
 (<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiGatewayComponentSpec">LokiGatewayComponentSpec</a>)
 </p>
 <div>
-<p>ExternalAccessSpec defines the external access configuration for a component.
+<p>ExternalAccessSpec defines the external access configuration for the gateway component.
 Controls creation of Routes (OpenShift) and Ingress (Kubernetes) resources.</p>
 </div>
 <table>
@@ -1172,7 +1172,7 @@ bool
 <td>
 <em>(Optional)</em>
 <p>Disabled controls whether external access resources should be created.
-When true, no Route (OpenShift) or Ingress (Kubernetes) will be created.
+When true, the Route (OpenShift) or Ingress (Kubernetes) will not be created.
 Default is false (external access resources will be created).</p>
 </td>
 </tr>

@@ -339,11 +339,11 @@ type OpenshiftOTLPConfig struct {
 	DisableRecommendedAttributes bool `json:"disableRecommendedAttributes,omitempty"`
 }
 
-// ExternalAccessSpec defines the external access configuration for a component.
+// ExternalAccessSpec defines the external access configuration for the gateway component.
 // Controls creation of Routes (OpenShift) and Ingress (Kubernetes) resources.
 type ExternalAccessSpec struct {
 	// Disabled controls whether external access resources should be created.
-	// When true, no Route (OpenShift) or Ingress (Kubernetes) will be created.
+	// When true, the Route (OpenShift) or Ingress (Kubernetes) will not be created.
 	// Default is false (external access resources will be created).
 	//
 	// +optional

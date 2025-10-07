@@ -735,7 +735,7 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:advanced
       - description: |-
           Disabled controls whether external access resources should be created.
-          When true, no Route (OpenShift) or Ingress (Kubernetes) will be created.
+          When true, the Route (OpenShift) or Ingress (Kubernetes) will not be created.
           Default is false (external access resources will be created).
         displayName: Disable External Access
         path: template.gateway.externalAccess.disabled

@@ -1577,7 +1577,7 @@ spec:
                             default: false
                             description: |-
                               Disabled controls whether external access resources should be created.
-                              When true, no Route (OpenShift) or Ingress (Kubernetes) will be created.
+                              When true, the Route (OpenShift) or Ingress (Kubernetes) will not be created.
                               Default is false (external access resources will be created).
                             type: boolean
                         type: object

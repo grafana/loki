@@ -5,12 +5,11 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
+	routev1 "github.com/openshift/api/route/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-
-	routev1 "github.com/openshift/api/route/v1"
-	networkingv1 "k8s.io/api/networking/v1"
 
 	v1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
@@ -25,11 +24,11 @@ func Cleanup(ctx context.Context, log logr.Logger, k k8s.Client, stack *v1.LokiS
 
 	key := client.ObjectKeyFromObject(stack)
 
-	if err := removeRoute(ctx, k, stack, key, manifests.GatewayName(key.Name)); err != nil {
+	if err := removeRoute(ctx, k, stack, key, key.Name); err != nil {
 		return kverrors.Wrap(err, "failed to remove Route")
 	}
 
-	if err := removeIngress(ctx, k, stack, key, manifests.GatewayName(key.Name)); err != nil {
+	if err := removeIngress(ctx, k, stack, key, key.Name); err != nil {
 		return kverrors.Wrap(err, "failed to remove Ingress")
 	}
 
