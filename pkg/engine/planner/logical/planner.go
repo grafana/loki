@@ -211,8 +211,8 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 		rangeAggType = types.RangeAggregationTypeCount
 	case syntax.OpRangeTypeRate:
 		rangeAggType = types.RangeAggregationTypeCount
-	//case syntax.OpRangeTypeSum:
-	//	rangeAggType = types.RangeAggregationTypeSum
+	case syntax.OpRangeTypeSum:
+		rangeAggType = types.RangeAggregationTypeSum
 	//case syntax.OpRangeTypeMax:
 	//	rangeAggType = types.RangeAggregationTypeMax
 	//case syntax.OpRangeTypeMin:

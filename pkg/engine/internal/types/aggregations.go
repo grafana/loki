@@ -51,7 +51,7 @@ const (
 )
 
 var SupportedVectorAggregationTypes = []VectorAggregationType{
-	VectorAggregationTypeSum, VectorAggregationTypeMax, VectorAggregationTypeMin, VectorAggregationTypeCount,
+	VectorAggregationTypeSum,
 }
 
 func (op VectorAggregationType) String() string {

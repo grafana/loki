@@ -359,7 +359,6 @@ func TestCanExecuteQuery(t *testing.T) {
 		{
 			// max is not supported
 			statement: `max by (level) (count_over_time({env="prod"}[1m]))`,
-			expected:  true,
 		},
 		{
 			// offset is not supported
