@@ -25,29 +25,47 @@ func Cleanup(ctx context.Context, log logr.Logger, k k8s.Client, stack *v1.LokiS
 
 	key := client.ObjectKeyFromObject(stack)
 
-	if err := removeResource[*routev1.Route](ctx, k, stack, key, manifests.GatewayName(key.Name)); err != nil {
+	if err := removeRoute(ctx, k, stack, key, manifests.GatewayName(key.Name)); err != nil {
 		return kverrors.Wrap(err, "failed to remove Route")
 	}
 
-	if err := removeResource[*networkingv1.Ingress](ctx, k, stack, key, manifests.GatewayName(key.Name)); err != nil {
+	if err := removeIngress(ctx, k, stack, key, manifests.GatewayName(key.Name)); err != nil {
 		return kverrors.Wrap(err, "failed to remove Ingress")
 	}
 
 	return nil
 }
 
-func removeResource[T client.Object](ctx context.Context, c client.Client, stack *v1.LokiStack, key client.ObjectKey, resourceName string) error {
+func removeRoute(ctx context.Context, c client.Client, stack *v1.LokiStack, key client.ObjectKey, resourceName string) error {
 	resourceKey := client.ObjectKey{Name: resourceName, Namespace: key.Namespace}
 
-	obj := new(T)
-	if err := c.Get(ctx, resourceKey, *obj); err != nil {
+	var route routev1.Route
+	if err := c.Get(ctx, resourceKey, &route); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
 		}
 		return kverrors.Wrap(err, "failed to lookup resource", "name", resourceKey)
 	}
 
-	hasOwnerRef, err := controllerutil.HasOwnerReference((*obj).GetOwnerReferences(), stack, c.Scheme())
+	return checkOwnerAndDelete(ctx, c, stack, &route)
+}
+
+func removeIngress(ctx context.Context, c client.Client, stack *v1.LokiStack, key client.ObjectKey, resourceName string) error {
+	resourceKey := client.ObjectKey{Name: resourceName, Namespace: key.Namespace}
+
+	var ingress networkingv1.Ingress
+	if err := c.Get(ctx, resourceKey, &ingress); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return kverrors.Wrap(err, "failed to lookup resource", "name", resourceKey)
+	}
+
+	return checkOwnerAndDelete(ctx, c, stack, &ingress)
+}
+
+func checkOwnerAndDelete(ctx context.Context, c client.Client, stack *v1.LokiStack, obj client.Object) error {
+	hasOwnerRef, err := controllerutil.HasOwnerReference(obj.GetOwnerReferences(), stack, c.Scheme())
 	if err != nil {
 		return kverrors.Wrap(err, "failed to check owner reference for resource")
 	}
@@ -55,10 +73,10 @@ func removeResource[T client.Object](ctx context.Context, c client.Client, stack
 		return nil
 	}
 
-	if err := c.Delete(ctx, *obj, &client.DeleteOptions{}); err != nil {
+	if err := c.Delete(ctx, obj, &client.DeleteOptions{}); err != nil {
 		return kverrors.Wrap(err, "failed to delete resource",
-			"name", (*obj).GetName(),
-			"namespace", (*obj).GetNamespace(),
+			"name", obj.GetName(),
+			"namespace", obj.GetNamespace(),
 		)
 	}
 

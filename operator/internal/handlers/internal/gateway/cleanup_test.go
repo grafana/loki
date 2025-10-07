@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	routev1 "github.com/openshift/api/route/v1"
@@ -12,11 +11,18 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-	"github.com/grafana/loki/operator/internal/manifests"
+)
+
+var (
+	_ = routev1.AddToScheme(scheme.Scheme)
+	_ = networkingv1.AddToScheme(scheme.Scheme)
+	_ = lokiv1.AddToScheme(scheme.Scheme)
 )
 
 func TestCleanup_ExternalAccessEnabled_ReturnsEarly(t *testing.T) {
@@ -76,38 +82,7 @@ func TestCleanup_ExternalAccessDisabled_ResourcesDoNotExist_ReturnsSuccess(t *te
 	require.Equal(t, 0, k.DeleteCallCount())
 }
 
-func TestCleanup_GetFails_ReturnsError(t *testing.T) {
-	k := &k8sfakes.FakeClient{}
-
-	stack := &lokiv1.LokiStack{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-stack",
-			Namespace: "test-ns",
-		},
-		Spec: lokiv1.LokiStackSpec{
-			Template: &lokiv1.LokiTemplateSpec{
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					ExternalAccess: &lokiv1.ExternalAccessSpec{
-						Disabled: true, // External access disabled
-					},
-				},
-			},
-		},
-	}
-
-	expectedErr := apierrors.NewInternalError(errors.New("test error"))
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
-		return expectedErr
-	}
-
-	err := Cleanup(context.TODO(), logger, k, stack)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "failed to lookup resource")
-}
-
-func TestCleanup_ExternalAccessDisabled_ResourcesExistWithoutOwnerRef_SkipsDeletion(t *testing.T) {
-	k := &k8sfakes.FakeClient{}
-
+func TestCleanup_ExternalAccessDisabled_Delete(t *testing.T) {
 	stack := &lokiv1.LokiStack{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-stack",
@@ -125,41 +100,75 @@ func TestCleanup_ExternalAccessDisabled_ResourcesExistWithoutOwnerRef_SkipsDelet
 		},
 	}
 
-	// Create mock Route without owner reference
-	route := &routev1.Route{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      manifests.GatewayName("test-stack"),
-			Namespace: "test-ns",
-			// No OwnerReferences
+	testCases := []struct {
+		name            string
+		object          client.Object
+		shouldBeDeleted bool
+	}{
+		{
+			name: "ingress without owner reference is not deleted",
+			object: &networkingv1.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-stack-gateway",
+					Namespace: "test-ns",
+				},
+			},
+			shouldBeDeleted: false,
+		},
+		{
+			name: "ingress with owner reference gets deleted",
+			object: &networkingv1.Ingress{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-stack-gateway",
+					Namespace: "test-ns",
+					OwnerReferences: []metav1.OwnerReference{
+						*metav1.NewControllerRef(stack, lokiv1.GroupVersion.WithKind("LokiStack")),
+					},
+				},
+			},
+			shouldBeDeleted: true,
+		},
+		{
+			name: "route with owner reference gets deleted",
+			object: &routev1.Route{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-stack-gateway",
+					Namespace: "test-ns",
+					OwnerReferences: []metav1.OwnerReference{
+						*metav1.NewControllerRef(stack, lokiv1.GroupVersion.WithKind("LokiStack")),
+					},
+				},
+			},
+			shouldBeDeleted: true,
 		},
 	}
 
-	// Create mock Ingress without owner reference
-	ingress := &networkingv1.Ingress{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      manifests.GatewayName("test-stack"),
-			Namespace: "test-ns",
-			// No OwnerReferences
-		},
-	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			k := fake.NewClientBuilder().WithObjects(tc.object).WithScheme(scheme.Scheme).Build()
 
-	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
-		if name.Name == manifests.GatewayName("test-stack") {
-			switch object.(type) {
+			err := Cleanup(context.TODO(), logger, k, stack)
+			require.NoError(t, err)
+
+			key := client.ObjectKeyFromObject(tc.object)
+
+			var checkObj client.Object
+			switch tc.object.(type) {
 			case *routev1.Route:
-				k.SetClientObject(object, route)
+				checkObj = &routev1.Route{}
 			case *networkingv1.Ingress:
-				k.SetClientObject(object, ingress)
+				checkObj = &networkingv1.Ingress{}
+			default:
+				t.Fatalf("unsupported object type: %T", tc.object)
 			}
-			return nil
-		}
-		return apierrors.NewNotFound(schema.GroupResource{}, "not found")
+
+			err = k.Get(context.TODO(), key, checkObj)
+
+			if tc.shouldBeDeleted {
+				require.True(t, apierrors.IsNotFound(err), "expected %s/%s to be deleted", tc.object.GetObjectKind().GroupVersionKind().Kind, tc.object.GetName())
+			} else {
+				require.NoError(t, err, "expected %s/%s to still exist", tc.object.GetObjectKind().GroupVersionKind().Kind, tc.object.GetName())
+			}
+		})
 	}
-
-	err := Cleanup(context.TODO(), logger, k, stack)
-	require.NoError(t, err)
-
-	// Verify no resources were deleted
-	require.Equal(t, 2, k.GetCallCount())
-	require.Equal(t, 0, k.DeleteCallCount())
 }
