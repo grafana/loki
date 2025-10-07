@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/internal/tree"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/tree"
 )
 
 func WriteMermaidFormat(w io.Writer, p *Plan) {

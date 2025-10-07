@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/internal/tree"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/tree"
 )
 
 // BuildTree converts a physical plan node and its children into a tree structure

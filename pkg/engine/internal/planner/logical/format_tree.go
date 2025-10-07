@@ -5,7 +5,7 @@ import (
 	"io"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/util"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/internal/tree"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/tree"
 )
 
 // PrintTree prints the given value and its dependencies as a tree structure to
