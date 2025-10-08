@@ -9,9 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 func Test_buildLogsPredicate(t *testing.T) {
@@ -156,7 +155,7 @@ func Test_buildLogsPredicate(t *testing.T) {
 			expr: &physical.BinaryExpr{
 				Op:    types.BinaryOpEq,
 				Left:  columnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
-				Right: physical.NewLiteral(datatype.Bytes(1024)),
+				Right: physical.NewLiteral(types.Bytes(1024)),
 			},
 			expect: logs.EqualPredicate{
 				Column: timestampColumn,
@@ -168,7 +167,7 @@ func Test_buildLogsPredicate(t *testing.T) {
 			expr: &physical.BinaryExpr{
 				Op:    types.BinaryOpEq,
 				Left:  columnRef(types.ColumnTypeBuiltin, types.ColumnNameBuiltinTimestamp),
-				Right: physical.NewLiteral(datatype.Timestamp(1609459200000000000)), // 2021-01-01 00:00:00 UTC in nanoseconds
+				Right: physical.NewLiteral(types.Timestamp(1609459200000000000)), // 2021-01-01 00:00:00 UTC in nanoseconds
 			},
 			expect: logs.EqualPredicate{
 				Column: timestampColumn,

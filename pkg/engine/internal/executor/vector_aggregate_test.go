@@ -10,18 +10,17 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 func TestVectorAggregationPipeline(t *testing.T) {
 	// input schema with timestamp, value and group by columns
 	fields := []arrow.Field{
-		{Name: types.ColumnNameBuiltinTimestamp, Type: datatype.Arrow.Timestamp, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
-		{Name: types.ColumnNameGeneratedValue, Type: datatype.Arrow.Float, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Float)},
-		{Name: "env", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)},
-		{Name: "service", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)},
+		{Name: types.ColumnNameBuiltinTimestamp, Type: types.Arrow.Timestamp, Metadata: types.ColumnMetadataBuiltinTimestamp},
+		{Name: types.ColumnNameGeneratedValue, Type: types.Arrow.Float, Metadata: types.ColumnMetadata(types.ColumnTypeGenerated, types.Loki.Float)},
+		{Name: "env", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeLabel, types.Loki.String)},
+		{Name: "service", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeLabel, types.Loki.String)},
 	}
 
 	now := time.Now().UTC()

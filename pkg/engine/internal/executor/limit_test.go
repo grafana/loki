@@ -7,8 +7,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 func TestExecuteLimit(t *testing.T) {
@@ -34,7 +34,7 @@ func TestExecuteLimit(t *testing.T) {
 		ctx := t.Context()
 		// Create test data
 		fields := []arrow.Field{
-			{Name: "name", Type: datatype.Arrow.String},
+			{Name: "name", Type: types.Arrow.String},
 		}
 		csvData := "Alice\nBob\nCharlie"
 		record, err := CSVToArrow(fields, csvData)
@@ -70,7 +70,7 @@ func TestExecuteLimit(t *testing.T) {
 		ctx := t.Context()
 		// Create schema with a single string column
 		fields := []arrow.Field{
-			{Name: "letter", Type: datatype.Arrow.String},
+			{Name: "letter", Type: types.Arrow.String},
 		}
 
 		// Create first batch with letters A-C
@@ -98,7 +98,7 @@ func TestExecuteLimit(t *testing.T) {
 
 		// First read should give us C from batch1
 		expectedFields := []arrow.Field{
-			{Name: "letter", Type: datatype.Arrow.String},
+			{Name: "letter", Type: types.Arrow.String},
 		}
 
 		expectedData := "C\nD\nE"
@@ -116,7 +116,7 @@ func TestExecuteLimit(t *testing.T) {
 func TestLimitPipeline_Skip_Fetch(t *testing.T) {
 	// Create test pipeline with known data
 	fields := []arrow.Field{
-		{Name: "id", Type: datatype.Arrow.Integer},
+		{Name: "id", Type: types.Arrow.Integer},
 	}
 
 	// Create a pipeline with numbers 1-10
@@ -159,7 +159,7 @@ func TestLimitPipeline_Skip_Fetch(t *testing.T) {
 func TestLimitPipeline_MultipleBatches(t *testing.T) {
 	// Create test pipeline with multiple batches
 	fields := []arrow.Field{
-		{Name: "id", Type: datatype.Arrow.Integer},
+		{Name: "id", Type: types.Arrow.Integer},
 	}
 
 	// First batch: 1-5
@@ -183,7 +183,7 @@ func TestLimitPipeline_MultipleBatches(t *testing.T) {
 	defer limit.Close()
 
 	expectedFields := []arrow.Field{
-		{Name: "id", Type: datatype.Arrow.Integer},
+		{Name: "id", Type: types.Arrow.Integer},
 	}
 
 	expectedData := "4\n5\n6\n7\n8\n"

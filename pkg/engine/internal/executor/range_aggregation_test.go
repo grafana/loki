@@ -9,9 +9,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
@@ -23,10 +22,10 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 
 	// input schema with timestamp, partition-by columns and non-partition columns
 	fields := []arrow.Field{
-		{Name: types.ColumnNameBuiltinTimestamp, Type: datatype.Arrow.Timestamp, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
-		{Name: "env", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)},
-		{Name: "service", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)},
-		{Name: "severity", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.Loki.String)}, // extra column not included in partition_by
+		{Name: types.ColumnNameBuiltinTimestamp, Type: types.Arrow.Timestamp, Metadata: types.ColumnMetadataBuiltinTimestamp},
+		{Name: "env", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeLabel, types.Loki.String)},
+		{Name: "service", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeLabel, types.Loki.String)},
+		{Name: "severity", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeMetadata, types.Loki.String)}, // extra column not included in partition_by
 	}
 	schema := arrow.NewSchema(fields, nil)
 
@@ -106,10 +105,10 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 	var (
 		fields = []arrow.Field{
-			{Name: types.ColumnNameBuiltinTimestamp, Type: datatype.Arrow.Timestamp, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
-			{Name: "env", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.Loki.String)},
-			{Name: "service", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.Loki.String)},
-			{Name: "severity", Type: datatype.Arrow.String, Metadata: datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.Loki.String)},
+			{Name: types.ColumnNameBuiltinTimestamp, Type: types.Arrow.Timestamp, Metadata: types.ColumnMetadataBuiltinTimestamp},
+			{Name: "env", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeMetadata, types.Loki.String)},
+			{Name: "service", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeMetadata, types.Loki.String)},
+			{Name: "severity", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeMetadata, types.Loki.String)},
 		}
 
 		schema = arrow.NewSchema(fields, nil)

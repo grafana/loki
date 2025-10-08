@@ -7,7 +7,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 // AssertPipelinesEqual iterates through two pipelines and ensures they contain
@@ -130,8 +130,8 @@ func AssertPipelinesEqual(t testing.TB, left, right Pipeline) {
 func TestAssertPipelinesEqual(t *testing.T) {
 	// Define test schema
 	fields := []arrow.Field{
-		{Name: "name", Type: datatype.Arrow.String},
-		{Name: "age", Type: datatype.Arrow.Integer},
+		{Name: "name", Type: types.Arrow.String},
+		{Name: "age", Type: types.Arrow.Integer},
 	}
 
 	// Create test data

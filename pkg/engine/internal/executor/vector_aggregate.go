@@ -8,9 +8,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 // vectorAggregationPipeline is a pipeline that performs vector aggregations.
@@ -119,7 +118,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 					return nil, err
 				}
 
-				if vec.Type() != datatype.Loki.String {
+				if vec.Type() != types.Loki.String {
 					return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.Type())
 				}
 

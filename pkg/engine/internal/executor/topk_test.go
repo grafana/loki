@@ -8,9 +8,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
@@ -24,18 +23,18 @@ func Test_topk(t *testing.T) {
 				Name:     types.ColumnNameBuiltinTimestamp,
 				Type:     arrow.FixedWidthTypes.Timestamp_ns,
 				Nullable: true,
-				Metadata: datatype.ColumnMetadata(
+				Metadata: types.ColumnMetadata(
 					types.ColumnTypeBuiltin,
-					datatype.Loki.Timestamp,
+					types.Loki.Timestamp,
 				),
 			},
 			{
 				Name:     types.ColumnNameBuiltinMessage,
 				Type:     arrow.BinaryTypes.String,
 				Nullable: true,
-				Metadata: datatype.ColumnMetadata(
+				Metadata: types.ColumnMetadata(
 					types.ColumnTypeBuiltin,
-					datatype.Loki.String,
+					types.Loki.String,
 				),
 			},
 		}

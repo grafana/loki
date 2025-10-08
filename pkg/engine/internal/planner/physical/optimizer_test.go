@@ -9,9 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 func TestCanApplyPredicate(t *testing.T) {
@@ -34,7 +33,7 @@ func TestCanApplyPredicate(t *testing.T) {
 		{
 			predicate: &BinaryExpr{
 				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-				Right: NewLiteral(datatype.Timestamp(3600000)),
+				Right: NewLiteral(types.Timestamp(3600000)),
 				Op:    types.BinaryOpGt,
 			},
 			want: true,
@@ -72,7 +71,7 @@ func TestCanApplyPredicate(t *testing.T) {
 	}
 }
 
-var time1000 = datatype.Timestamp(1000000000)
+var time1000 = types.Timestamp(1000000000)
 
 func dummyPlan() *Plan {
 	plan := &Plan{}

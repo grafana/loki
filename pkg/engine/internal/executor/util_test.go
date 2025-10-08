@@ -11,7 +11,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
@@ -19,7 +18,7 @@ import (
 var (
 	incrementingIntPipeline = newRecordGenerator(
 		arrow.NewSchema([]arrow.Field{
-			{Name: "id", Type: datatype.Arrow.Integer, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Integer)},
+			{Name: "id", Type: types.Arrow.Integer, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Integer)},
 		}, nil),
 
 		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record {
@@ -56,8 +55,8 @@ const (
 func timestampPipeline(start time.Time, order time.Duration) *recordGenerator {
 	return newRecordGenerator(
 		arrow.NewSchema([]arrow.Field{
-			{Name: "id", Type: datatype.Arrow.Integer, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Integer)},
-			{Name: "timestamp", Type: datatype.Arrow.Timestamp, Metadata: datatype.ColumnMetadata(types.ColumnTypeBuiltin, datatype.Loki.Timestamp)},
+			{Name: "id", Type: types.Arrow.Integer, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Integer)},
+			{Name: "timestamp", Type: types.Arrow.Timestamp, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Timestamp)},
 		}, nil),
 
 		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record {

@@ -13,17 +13,16 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/grafana/loki/pkg/push"
 )
 
 var (
-	labelMD    = datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)
-	metadataMD = datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.Loki.String)
+	labelMD    = types.ColumnMetadata(types.ColumnTypeLabel, types.Loki.String)
+	metadataMD = types.ColumnMetadata(types.ColumnTypeMetadata, types.Loki.String)
 )
 
 func Test_dataobjScan(t *testing.T) {
@@ -94,8 +93,8 @@ func Test_dataobjScan(t *testing.T) {
 			{Name: "service", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
 			{Name: "guid", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
 			{Name: "pod", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
-			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp, Nullable: true},
-			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinMessage, Nullable: true},
+			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: types.ColumnMetadataBuiltinTimestamp, Nullable: true},
+			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: types.ColumnMetadataBuiltinMessage, Nullable: true},
 		}
 
 		expectCSV := `prod,loki,eeee-ffff-aaaa-bbbb,NULL,1970-01-01 00:00:10,goodbye world
@@ -125,7 +124,7 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 
 		expectFields := []arrow.Field{
 			{Name: "env", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
-			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp, Nullable: true},
+			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: types.ColumnMetadataBuiltinTimestamp, Nullable: true},
 		}
 
 		expectCSV := `prod,1970-01-01 00:00:10
@@ -155,8 +154,8 @@ prod,1970-01-01 00:00:02`
 			{Name: "service", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
 			{Name: "guid", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
 			{Name: "pod", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
-			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp, Nullable: true},
-			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinMessage, Nullable: true},
+			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: types.ColumnMetadataBuiltinTimestamp, Nullable: true},
+			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: types.ColumnMetadataBuiltinMessage, Nullable: true},
 		}
 
 		expectCSV := `prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:03,goodbye world
@@ -271,8 +270,8 @@ func Test_dataobjScan_DuplicateColumns(t *testing.T) {
 			{Name: "namespace", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
 			{Name: "pod", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
 
-			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp, Nullable: true},
-			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinMessage, Nullable: true},
+			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: types.ColumnMetadataBuiltinTimestamp, Nullable: true},
+			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: types.ColumnMetadataBuiltinMessage, Nullable: true},
 		}
 
 		expectCSV := `prod,namespace-2,NULL,loki,NULL,NULL,1970-01-01 00:00:03,message 3

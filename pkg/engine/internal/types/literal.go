@@ -1,4 +1,4 @@
-package datatype
+package types //nolint:revive
 
 import (
 	"fmt"

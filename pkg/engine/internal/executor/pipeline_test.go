@@ -12,7 +12,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
@@ -52,8 +52,8 @@ func CSVToArrowWithAllocator(allocator memory.Allocator, fields []arrow.Field, c
 func TestCSVPipeline(t *testing.T) {
 	// Define test schema
 	fields := []arrow.Field{
-		{Name: "name", Type: datatype.Arrow.String},
-		{Name: "age", Type: datatype.Arrow.Integer},
+		{Name: "name", Type: types.Arrow.String},
+		{Name: "age", Type: types.Arrow.Integer},
 	}
 	schema := arrow.NewSchema(fields, nil)
 

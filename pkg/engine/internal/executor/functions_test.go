@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -28,7 +27,7 @@ func createBoolArray(mem memory.Allocator, values []bool, nulls []bool) *Array {
 
 	return &Array{
 		array: builder.NewArray(),
-		dt:    datatype.Loki.Bool,
+		dt:    types.Loki.Bool,
 		ct:    types.ColumnTypeBuiltin,
 		rows:  int64(len(values)),
 	}
@@ -49,7 +48,7 @@ func createStringArray(mem memory.Allocator, values []string, nulls []bool) *Arr
 
 	return &Array{
 		array: builder.NewArray(),
-		dt:    datatype.Loki.String,
+		dt:    types.Loki.String,
 		ct:    types.ColumnTypeBuiltin,
 		rows:  int64(len(values)),
 	}
@@ -70,7 +69,7 @@ func createInt64Array(mem memory.Allocator, values []int64, nulls []bool) *Array
 
 	return &Array{
 		array: builder.NewArray(),
-		dt:    datatype.Loki.Integer,
+		dt:    types.Loki.Integer,
 		ct:    types.ColumnTypeBuiltin,
 		rows:  int64(len(values)),
 	}
@@ -91,7 +90,7 @@ func createTimestampArray(mem memory.Allocator, values []arrow.Timestamp, nulls 
 
 	return &Array{
 		array: builder.NewArray(),
-		dt:    datatype.Loki.Timestamp,
+		dt:    types.Loki.Timestamp,
 		ct:    types.ColumnTypeBuiltin,
 		rows:  int64(len(values)),
 	}
@@ -112,7 +111,7 @@ func createFloat64Array(mem memory.Allocator, values []float64, nulls []bool) *A
 
 	return &Array{
 		array: builder.NewArray(),
-		dt:    datatype.Loki.Float,
+		dt:    types.Loki.Float,
 		ct:    types.ColumnTypeBuiltin,
 		rows:  int64(len(values)),
 	}
