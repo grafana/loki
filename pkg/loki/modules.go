@@ -577,7 +577,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	}
 
 	var store objstore.Bucket
-	if t.Cfg.Querier.Engine.EnableV2Engine {
+	if t.Cfg.Querier.EngineV2.Enable {
 		store, err = t.createDataObjBucket("dataobj-querier")
 		if err != nil {
 			return nil, err

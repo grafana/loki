@@ -126,7 +126,7 @@ func MustParseFQN(fqn string) *Identifier {
 type scopeOrigin string
 type scopeType string
 
-// Scope decribes the origin and type of an identifier.
+// Scope describes the origin and type of an identifier.
 type Scope struct {
 	Origin scopeOrigin
 	Type   scopeType

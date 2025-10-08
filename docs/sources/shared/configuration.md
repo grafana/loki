@@ -4839,39 +4839,40 @@ engine:
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
 
+engine_v2:
   # Experimental: Enable next generation query engine for supported queries.
-  # CLI flag: -querier.engine.enable-v2-engine
-  [enable_v2_engine: <boolean> | default = false]
+  # CLI flag: -querier.engine-v2.enable
+  [enable: <boolean> | default = false]
 
   # Experimental: Batch size of the next generation query engine.
-  # CLI flag: -querier.engine.batch-size
+  # CLI flag: -querier.engine-v2.batch-size
   [batch_size: <int> | default = 100]
 
   # Experimental: The number of inputs that are prefetched simultaneously by any
   # Merge node. A value of 0 means that only the currently processed input is
   # prefetched, 1 means that only the next input is prefetched, and so on. A
   # negative value means that all inputs are be prefetched in parallel.
-  # CLI flag: -querier.engine.merge-prefetch-count
+  # CLI flag: -querier.engine-v2.merge-prefetch-count
   [merge_prefetch_count: <int> | default = 0]
 
   # Configures how to read byte ranges from object storage when using the V2
   # engine.
   range_reads:
     # Experimental: maximum number of parallel reads
-    # CLI flag: -querier.engine.range-reads.max-parallelism
+    # CLI flag: -querier.engine-v2.range-reads.max-parallelism
     [max_parallelism: <int> | default = 10]
 
     # Experimental: maximum distance (in bytes) between ranges that causes them
     # to be coalesced into a single range
-    # CLI flag: -querier.engine.range-reads.coalesce-size
+    # CLI flag: -querier.engine-v2.range-reads.coalesce-size
     [coalesce_size: <int> | default = 1048576]
 
     # Experimental: maximum size of a byte range
-    # CLI flag: -querier.engine.range-reads.max-range-size
+    # CLI flag: -querier.engine-v2.range-reads.max-range-size
     [max_range_size: <int> | default = 8388608]
 
     # Experimental: minimum size of a byte range
-    # CLI flag: -querier.engine.range-reads.min-range-size
+    # CLI flag: -querier.engine-v2.range-reads.min-range-size
     [min_range_size: <int> | default = 1048576]
 
 # The maximum number of queries that can be simultaneously processed by the
