@@ -11,14 +11,14 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 var (
 	incrementingIntPipeline = newRecordGenerator(
 		arrow.NewSchema([]arrow.Field{
-			{Name: "id", Type: types.Arrow.Integer, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Integer)},
+			semconv.FieldFromFQN("int64.builtin.id", false),
 		}, nil),
 
 		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record {
@@ -55,8 +55,8 @@ const (
 func timestampPipeline(start time.Time, order time.Duration) *recordGenerator {
 	return newRecordGenerator(
 		arrow.NewSchema([]arrow.Field{
-			{Name: "id", Type: types.Arrow.Integer, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Integer)},
-			{Name: "timestamp", Type: types.Arrow.Timestamp, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Timestamp)},
+			semconv.FieldFromFQN("int64.builtin.id", false),
+			semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", false),
 		}, nil),
 
 		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record {

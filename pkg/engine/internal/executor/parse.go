@@ -11,6 +11,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -28,19 +29,16 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		defer batch.Release()
 
 		// Find the message column
-		messageColIdx := -1
 		schema := batch.Schema()
-		for i := 0; i < schema.NumFields(); i++ {
-			if schema.Field(i).Name == types.ColumnNameBuiltinMessage {
-				messageColIdx = i
-				break
-			}
-		}
-		if messageColIdx == -1 {
+		indices := schema.FieldIndices(semconv.ColumnIdentMessage.FQN())
+		if len(indices) == 0 {
 			return failureState(fmt.Errorf("message column not found"))
 		}
+		if len(indices) > 1 {
+			return failureState(fmt.Errorf("multiple message columns found"))
+		}
 
-		messageCol := batch.Column(messageColIdx)
+		messageCol := batch.Column(indices[0])
 		stringCol, ok := messageCol.(*array.String)
 		if !ok {
 			return failureState(fmt.Errorf("message column is not a string column"))
@@ -63,18 +61,12 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 			newFields = append(newFields, schema.Field(i))
 		}
 		for _, header := range headers {
-			// Add metadata to mark these as parsed columns
-			metadata := types.ColumnMetadata(
-				types.ColumnTypeParsed,
-				types.Loki.String,
-			)
-
-			newFields = append(newFields, arrow.Field{
-				Name:     header,
-				Type:     arrow.BinaryTypes.String,
-				Metadata: metadata,
-				Nullable: true,
-			})
+			ct := types.ColumnTypeParsed
+			if header == semconv.ColumnIdentError.Name() || header == semconv.ColumnIdentErrorDetails.Name() {
+				ct = types.ColumnTypeGenerated
+			}
+			ident := semconv.NewIdentifier(header, ct, types.Loki.String)
+			newFields = append(newFields, semconv.FieldFromIdent(ident, true))
 		}
 		newSchema := arrow.NewSchema(newFields, nil)
 
@@ -151,9 +143,13 @@ func parseLines(input *array.String, requestedKeys []string, columnBuilders map[
 			if !hasErrorColumns {
 				errorBuilder = array.NewStringBuilder(allocator)
 				errorDetailsBuilder = array.NewStringBuilder(allocator)
-				columnBuilders[types.ColumnNameParsedError] = errorBuilder
-				columnBuilders[types.ColumnNameParsedErrorDetails] = errorDetailsBuilder
-				columnOrder = append(columnOrder, types.ColumnNameParsedError, types.ColumnNameParsedErrorDetails)
+				columnBuilders[semconv.ColumnIdentError.Name()] = errorBuilder
+				columnBuilders[semconv.ColumnIdentErrorDetails.Name()] = errorDetailsBuilder
+				columnOrder = append(
+					columnOrder,
+					semconv.ColumnIdentError.Name(),
+					semconv.ColumnIdentErrorDetails.Name(),
+				)
 				hasErrorColumns = true
 
 				// Backfill NULLs for previous rows
@@ -178,8 +174,8 @@ func parseLines(input *array.String, requestedKeys []string, columnBuilders map[
 		seenKeys := make(map[string]bool)
 		if hasErrorColumns {
 			// Mark error columns as seen so we don't append nulls for them
-			seenKeys[types.ColumnNameParsedError] = true
-			seenKeys[types.ColumnNameParsedErrorDetails] = true
+			seenKeys[semconv.ColumnIdentError.Name()] = true
+			seenKeys[semconv.ColumnIdentErrorDetails.Name()] = true
 		}
 
 		// Add values for parsed keys (only if no error)
@@ -214,12 +210,12 @@ func parseLines(input *array.String, requestedKeys []string, columnBuilders map[
 		// Keep error columns at the end, sort the rest
 		nonErrorColumns := make([]string, 0, len(columnOrder)-2)
 		for _, key := range columnOrder {
-			if key != types.ColumnNameParsedError && key != types.ColumnNameParsedErrorDetails {
+			if key != semconv.ColumnIdentError.Name() && key != semconv.ColumnIdentErrorDetails.Name() {
 				nonErrorColumns = append(nonErrorColumns, key)
 			}
 		}
 		sort.Strings(nonErrorColumns)
-		columnOrder = append(nonErrorColumns, types.ColumnNameParsedError, types.ColumnNameParsedErrorDetails)
+		columnOrder = append(nonErrorColumns, semconv.ColumnIdentError.Name(), semconv.ColumnIdentErrorDetails.Name())
 	} else {
 		sort.Strings(columnOrder)
 	}

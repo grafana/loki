@@ -58,9 +58,9 @@ func validateSchemaCompatibility(a, b *arrow.Schema) error {
 		aField, bField := a.Field(i), b.Field(i)
 
 		if !arrow.TypeEqual(aField.Type, bField.Type) {
-			return fmt.Errorf("field %d has different types: %s vs %s", i, aField.Type, bField.Type)
+			return fmt.Errorf("field %d has different types: %s (%s) vs %s (%s)", i, aField.Type, aField.Name, bField.Type, bField.Name)
 		} else if aField.Nullable != bField.Nullable {
-			return fmt.Errorf("field %d has different nullability: %t vs %t", i, aField.Nullable, bField.Nullable)
+			return fmt.Errorf("field %d has different nullability: %t (%s) vs %t (%s)", i, aField.Nullable, aField.Name, bField.Nullable, bField.Name)
 		}
 	}
 

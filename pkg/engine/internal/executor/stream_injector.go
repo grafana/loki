@@ -10,6 +10,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -65,22 +66,19 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 	}()
 
 	getColumn := func(name string) *labelColumn {
-		if col, ok := labelLookup[name]; ok {
+		ident := semconv.NewIdentifier(name, types.ColumnTypeLabel, types.Loki.String)
+
+		if col, ok := labelLookup[ident.FQN()]; ok {
 			return col
 		}
 
 		col := &labelColumn{
-			Field: arrow.Field{
-				Name:     name,
-				Type:     arrow.BinaryTypes.String,
-				Nullable: true,
-				Metadata: types.ColumnMetadata(types.ColumnTypeLabel, types.Loki.String),
-			},
+			Field:   semconv.FieldFromIdent(ident, true), // labels are nullable
 			Builder: array.NewStringBuilder(si.alloc),
 		}
 
 		labels = append(labels, col)
-		labelLookup[name] = col
+		labelLookup[ident.FQN()] = col
 		return col
 	}
 

@@ -8,7 +8,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 )
 
 func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, evaluator *expressionEvaluator) (*GenericPipeline, error) {
@@ -40,7 +40,8 @@ func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, eva
 			if err != nil {
 				return failureState(err)
 			}
-			fields = append(fields, arrow.Field{Name: columnNames[i], Type: vec.Type().ArrowType(), Metadata: types.ColumnMetadata(vec.ColumnType(), vec.Type())})
+			ident := semconv.NewIdentifier(columnNames[i], vec.ColumnType(), vec.Type())
+			fields = append(fields, semconv.FieldFromIdent(ident, true))
 			arr := vec.ToArray()
 			defer arr.Release()
 			projected = append(projected, arr)
