@@ -21,3 +21,12 @@ type SessionLocker interface {
 	SessionLock(ctx context.Context, conn *sql.Conn) error
 	SessionUnlock(ctx context.Context, conn *sql.Conn) error
 }
+
+// Locker is the interface to lock and unlock the database.
+//
+// Unlike [SessionLocker], the Lock and Unlock methods are called on a [*sql.DB] and do not require
+// the same connection to be used for both methods.
+type Locker interface {
+	Lock(ctx context.Context, db *sql.DB) error
+	Unlock(ctx context.Context, db *sql.DB) error
+}

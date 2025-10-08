@@ -9,8 +9,8 @@ const (
 	// DefaultLockID is the id used to lock the database for migrations. It is a crc64 hash of the
 	// string "goose". This is used to ensure that the lock is unique to goose.
 	//
-	// crc64.Checksum([]byte("goose"), crc64.MakeTable(crc64.ECMA))
-	DefaultLockID int64 = 5887940537704921958
+	// crc32.Checksum([]byte("goose"), crc32.MakeTable(crc32.IEEE))
+	DefaultLockID int64 = 4097083626
 )
 
 // SessionLockerOption is used to configure a SessionLocker.
