@@ -1650,7 +1650,7 @@ github.com/pmezard/go-difflib/difflib
 # github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55
 ## explicit; go 1.14
 github.com/power-devops/perfstat
-# github.com/pressly/goose/v3 v3.25.0
+# github.com/pressly/goose/v3 v3.26.0
 ## explicit; go 1.23.0
 github.com/pressly/goose/v3
 github.com/pressly/goose/v3/database
@@ -1661,6 +1661,8 @@ github.com/pressly/goose/v3/internal/gooseutil
 github.com/pressly/goose/v3/internal/legacystore
 github.com/pressly/goose/v3/internal/sqlparser
 github.com/pressly/goose/v3/lock
+github.com/pressly/goose/v3/lock/internal/store
+github.com/pressly/goose/v3/lock/internal/table
 # github.com/prometheus/alertmanager v0.28.1
 ## explicit; go 1.22.0
 github.com/prometheus/alertmanager/api/v2/models
