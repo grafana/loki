@@ -208,12 +208,6 @@ func (t *Loki) tenantLimitsHandler(forDrilldown bool) func(http.ResponseWriter, 
 	}
 }
 
-// drilldownConfigHandler returns a handler for the drilldown config endpoint
-func (t *Loki) drilldownConfigHandler() func(http.ResponseWriter, *http.Request) {
-	tenantLimitsHandler := t.tenantLimitsHandler(true)
-	return tenantLimitsHandler
-}
-
 // writeYAMLResponse writes some YAML as a HTTP response.
 func writeYAMLResponse(w http.ResponseWriter, v any) {
 	// There is not standardised content-type for YAML, text/plain ensures the

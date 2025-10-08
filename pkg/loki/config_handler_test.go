@@ -180,7 +180,7 @@ func TestDrilldownConfigOverridesFallback(t *testing.T) {
 		},
 	}
 
-	handler := loki.drilldownConfigHandler()
+	handler := loki.tenantLimitsHandler(true)
 
 	req := httptest.NewRequest("GET", "/loki/api/v1/config", nil)
 	req.Header.Set("X-Scope-OrgID", "unknown-tenant")
@@ -277,7 +277,7 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 				},
 			}
 
-			handler := loki.drilldownConfigHandler()
+			handler := loki.tenantLimitsHandler(true)
 
 			req := httptest.NewRequest("GET", "/loki/api/v1/config", nil)
 			req.Header.Set("X-Scope-OrgID", tc.tenantID)
@@ -460,7 +460,7 @@ func TestDrilldownConfig(t *testing.T) {
 				},
 			}
 
-			handler := loki.drilldownConfigHandler()
+			handler := loki.tenantLimitsHandler(true)
 
 			req := httptest.NewRequest("GET", "/loki/api/v1/config", nil)
 			req.Header.Set("X-Scope-OrgID", "test-tenant")
