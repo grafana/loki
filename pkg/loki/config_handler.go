@@ -153,46 +153,8 @@ func filterLimitFields(limits any, allowlist []string) (map[string]any, error) {
 	return filtered, nil
 }
 
-func (t *Loki) tenantLimitsHandler() func(http.ResponseWriter, *http.Request) {
+func (t *Loki) tenantLimitsHandler(forDrilldown bool) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if t.TenantLimits == nil {
-			http.Error(w, "Tenant configs not enabled", http.StatusNotFound)
-			return
-		}
-
-		user, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
-			return
-		}
-
-		limit := t.TenantLimits.TenantLimits(user)
-		if limit == nil {
-			// There is no limit for this tenant, so we default to the default limits.
-			limit = t.Overrides.DefaultLimits()
-			if limit == nil {
-				// This should not happen, but we handle it gracefully.
-				http.Error(w, "No default limits configured", http.StatusNotFound)
-				return
-			}
-		}
-
-		// Apply allowlist filtering if configured
-		allowlist := t.Cfg.TenantLimitsAllowPublish
-		filteredLimits, err := filterLimitFields(limit, allowlist)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		writeYAMLResponse(w, filteredLimits)
-	}
-}
-
-// drilldownConfigHandler returns a handler for the drilldown config endpoint
-func (t *Loki) drilldownConfigHandler() func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Extract tenant ID from request
 		user, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusUnauthorized)
@@ -216,30 +178,40 @@ func (t *Loki) drilldownConfigHandler() func(http.ResponseWriter, *http.Request)
 
 		// Apply allowlist filtering if configured
 		allowlist := t.Cfg.TenantLimitsAllowPublish
-		limitsMap, err := filterLimitFields(limit, allowlist)
+		filteredLimits, err := filterLimitFields(limit, allowlist)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		// Build response
-		version := build.GetVersion().Version
-		if version == "" {
-			version = "unknown"
-		}
-		response := DrilldownConfigResponse{
-			Limits:                 limitsMap,
-			PatternIngesterEnabled: t.Cfg.Pattern.Enabled,
-			Version:                version,
-		}
+		if forDrilldown {
+			// Build response
+			version := build.GetVersion().Version
+			if version == "" {
+				version = "unknown"
+			}
+			response := DrilldownConfigResponse{
+				Limits:                 filteredLimits,
+				PatternIngesterEnabled: t.Cfg.Pattern.Enabled,
+				Version:                version,
+			}
 
-		// Return JSON response
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			// Return JSON response
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(response); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		} else {
+			writeYAMLResponse(w, filteredLimits)
 		}
 	}
+}
+
+// drilldownConfigHandler returns a handler for the drilldown config endpoint
+func (t *Loki) drilldownConfigHandler() func(http.ResponseWriter, *http.Request) {
+	tenantLimitsHandler := t.tenantLimitsHandler(true)
+	return tenantLimitsHandler
 }
 
 // writeYAMLResponse writes some YAML as a HTTP response.
