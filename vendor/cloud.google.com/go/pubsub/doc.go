@@ -168,5 +168,7 @@ and use a client as usual:
 		// TODO: Handle error.
 	}
 	defer client.Close()
+
+Deprecated: Please use cloud.google.com/go/pubsub/v2.
 */
 package pubsub // import "cloud.google.com/go/pubsub"
