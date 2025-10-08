@@ -1855,7 +1855,7 @@ github.com/shurcooL/vfsgen
 # github.com/sirupsen/logrus v1.9.3
 ## explicit; go 1.13
 github.com/sirupsen/logrus
-# github.com/sony/gobreaker/v2 v2.2.1
+# github.com/sony/gobreaker/v2 v2.3.0
 ## explicit; go 1.22.0
 github.com/sony/gobreaker/v2
 # github.com/spf13/afero v1.15.0
