@@ -2065,14 +2065,14 @@ go.opentelemetry.io/collector/confmap/xconfmap
 ## explicit; go 1.23.0
 go.opentelemetry.io/collector/consumer
 go.opentelemetry.io/collector/consumer/internal
-# go.opentelemetry.io/collector/featuregate v1.42.0
+# go.opentelemetry.io/collector/featuregate v1.43.0
 ## explicit; go 1.24.0
 go.opentelemetry.io/collector/featuregate
 # go.opentelemetry.io/collector/internal/telemetry v0.129.0
 ## explicit; go 1.23.0
 go.opentelemetry.io/collector/internal/telemetry
 go.opentelemetry.io/collector/internal/telemetry/componentattribute
-# go.opentelemetry.io/collector/pdata v1.42.0
+# go.opentelemetry.io/collector/pdata v1.43.0
 ## explicit; go 1.24.0
 go.opentelemetry.io/collector/pdata/internal
 go.opentelemetry.io/collector/pdata/internal/data
