@@ -358,6 +358,8 @@ func (m *ClusterLoadAssignment_Policy) validate(all bool) error {
 		}
 	}
 
+	// no validation rules for WeightedPriorityHealth
+
 	if len(errors) > 0 {
 		return ClusterLoadAssignment_PolicyMultiError(errors)
 	}
