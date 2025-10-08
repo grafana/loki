@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -18,9 +19,12 @@ func TestNewProjectPipeline(t *testing.T) {
 	}
 
 	t.Run("project single column", func(t *testing.T) {
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer alloc.AssertSize(t, 0)
+
 		// Create input data
 		inputCSV := "Alice,30,New York\nBob,25,Boston\nCharlie,35,Seattle"
-		inputRecord, err := CSVToArrow(fields, inputCSV)
+		inputRecord, err := CSVToArrowWithAllocator(alloc, fields, inputCSV)
 		require.NoError(t, err)
 		defer inputRecord.Release()
 
@@ -43,7 +47,7 @@ func TestNewProjectPipeline(t *testing.T) {
 		expectedFields := []arrow.Field{
 			{Name: "name", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.String)},
 		}
-		expectedRecord, err := CSVToArrow(expectedFields, expectedCSV)
+		expectedRecord, err := CSVToArrowWithAllocator(alloc, expectedFields, expectedCSV)
 		require.NoError(t, err)
 		defer expectedRecord.Release()
 

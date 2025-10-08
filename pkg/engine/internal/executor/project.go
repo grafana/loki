@@ -30,8 +30,14 @@ func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, eva
 		if err != nil {
 			return failureState(err)
 		}
+		defer batch.Release()
 
 		projected := make([]arrow.Array, 0, len(columns))
+		defer func() {
+			for _, proj := range projected {
+				proj.Release()
+			}
+		}()
 		fields := make([]arrow.Field, 0, len(columns))
 
 		for i := range columns {
@@ -47,7 +53,6 @@ func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, eva
 		// Create a new record with only the projected columns
 		// retain the projected columns in a new batch then release the original record.
 		projectedRecord := array.NewRecord(schema, projected, batch.NumRows())
-		batch.Release()
 		return successState(projectedRecord)
 	}, input), nil
 }

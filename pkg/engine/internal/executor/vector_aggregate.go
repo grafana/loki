@@ -93,6 +93,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 				}
 				return nil, err
 			}
+			defer record.Release()
 
 			inputsExhausted = false
 
@@ -102,6 +103,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 				return nil, err
 			}
 			tsCol := tsVec.ToArray().(*array.Timestamp)
+			defer tsCol.Release()
 
 			// extract value column
 			valueVec, err := v.valueEval(record)
@@ -109,9 +111,16 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 				return nil, err
 			}
 			valueArr := valueVec.ToArray().(*array.Float64)
+			defer valueArr.Release()
 
 			// extract all the columns that are used for grouping
 			arrays := make([]*array.String, 0, len(v.groupBy))
+			defer func() {
+				for _, array := range arrays {
+					array.Release()
+				}
+			}()
+
 			for _, columnExpr := range v.groupBy {
 				vec, err := v.evaluator.eval(columnExpr, record)
 				if err != nil {
