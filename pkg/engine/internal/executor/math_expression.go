@@ -7,7 +7,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -28,9 +27,9 @@ func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline,
 		for i := range inputs {
 			fields = append(fields, arrow.Field{
 				Name:     fmt.Sprintf("input_%d", i),
-				Type:     datatype.Arrow.Float,
+				Type:     types.Arrow.Float,
 				Nullable: false,
-				Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Float),
+				Metadata: types.ColumnMetadata(types.ColumnTypeGenerated, types.Loki.Float),
 			})
 		}
 
@@ -88,15 +87,15 @@ func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline,
 		outputSchema := arrow.NewSchema([]arrow.Field{
 			{
 				Name:     types.ColumnNameBuiltinTimestamp,
-				Type:     datatype.Arrow.Timestamp,
+				Type:     types.Arrow.Timestamp,
 				Nullable: false,
-				Metadata: datatype.ColumnMetadataBuiltinTimestamp,
+				Metadata: types.ColumnMetadataBuiltinTimestamp,
 			},
 			{
 				Name:     types.ColumnNameGeneratedValue,
-				Type:     datatype.Arrow.Float,
+				Type:     types.Arrow.Float,
 				Nullable: false,
-				Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Float),
+				Metadata: types.ColumnMetadata(types.ColumnTypeGenerated, types.Loki.Float),
 			},
 		}, nil)
 		evaluatedRecord := array.NewRecord(outputSchema, []arrow.Array{tsCol, valCol}, batch.NumRows())

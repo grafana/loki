@@ -10,7 +10,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -21,8 +20,8 @@ func TestNewMathExpressionPipeline(t *testing.T) {
 		defer alloc.AssertSize(t, 0)
 
 		schema := arrow.NewSchema([]arrow.Field{
-			{Name: types.ColumnNameBuiltinTimestamp, Type: datatype.Arrow.Timestamp, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
-			{Name: types.ColumnNameGeneratedValue, Type: datatype.Arrow.Float, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Float)},
+			{Name: types.ColumnNameBuiltinTimestamp, Type: types.Arrow.Timestamp, Metadata: types.ColumnMetadataBuiltinTimestamp},
+			{Name: types.ColumnNameGeneratedValue, Type: types.Arrow.Float, Metadata: types.ColumnMetadata(types.ColumnTypeGenerated, types.Loki.Float)},
 		}, nil)
 
 		rowsPipeline1 := []arrowtest.Rows{
