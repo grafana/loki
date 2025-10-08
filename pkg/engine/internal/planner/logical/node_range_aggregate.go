@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 )
 
 // RangeAggregation represents a logical plan node that performs aggregations over a time window.

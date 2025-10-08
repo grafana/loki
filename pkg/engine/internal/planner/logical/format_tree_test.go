@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 type testDataSource struct {

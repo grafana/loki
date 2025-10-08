@@ -1,8 +1,8 @@
 package logical
 
 import (
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 // A ColumnRef referenes a column within a table relation. ColumnRef only
