@@ -387,7 +387,7 @@ func (p *Planner) processUnwrapValue(inst *logical.UnwrapValue, ctx *Context) ([
 			),
 		},
 	}
-	p.plan.addNode(node)
+	p.plan.graph.Add(node)
 
 	children, err := p.process(inst.Table, ctx)
 	if err != nil {
@@ -395,7 +395,8 @@ func (p *Planner) processUnwrapValue(inst *logical.UnwrapValue, ctx *Context) ([
 	}
 
 	for i := range children {
-		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
+		edge := dag.Edge[Node]{Parent: node, Child: children[i]}
+		if err := p.plan.graph.AddEdge(edge); err != nil {
 			return nil, err
 		}
 	}
