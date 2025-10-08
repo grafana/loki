@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"strings"
 	"time"
@@ -35,7 +36,7 @@ var tracer = otel.Tracer("pkg/engine")
 var ErrNotSupported = errors.New("feature not supported in new query engine")
 
 // New creates a new instance of the query engine that implements the [logql.Engine] interface.
-func New(opts logql.EngineOpts, cfg metastore.Config, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
+func New(opts Config, cfg metastore.Config, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
 	var ms metastore.Metastore
 	if bucket != nil {
 		indexBucket := bucket
@@ -58,8 +59,30 @@ func New(opts logql.EngineOpts, cfg metastore.Config, bucket objstore.Bucket, li
 		limits:    limits,
 		metastore: ms,
 		bucket:    bucket,
-		opts:      opts,
+		cfg:       opts,
 	}
+}
+
+// Config holds the configuration options to use with the next generation Loki Query Engine.
+type Config struct {
+	// Enable the next generation Loki Query Engine for supported queries.
+	Enable bool `yaml:"enable" category:"experimental"`
+
+	// Batch size of the v2 execution engine.
+	BatchSize int `yaml:"batch_size" category:"experimental"`
+
+	// MergePrefetchCount controls the number of inputs that are prefetched simultaneously by any Merge node.
+	MergePrefetchCount int `yaml:"merge_prefetch_count" category:"experimental"`
+
+	// RangeConfig determines how to optimize range reads in the V2 engine.
+	RangeConfig rangeio.Config `yaml:"range_reads" category:"experimental" doc:"description=Configures how to read byte ranges from object storage when using the V2 engine."`
+}
+
+func (opts *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.BoolVar(&opts.Enable, prefix+"enable", false, "Experimental: Enable next generation query engine for supported queries.")
+	f.IntVar(&opts.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
+	f.IntVar(&opts.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
+	opts.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
 }
 
 // QueryEngine combines logical planning, physical planning, and execution to evaluate LogQL queries.
@@ -69,7 +92,7 @@ type QueryEngine struct {
 	limits    logql.Limits
 	metastore metastore.Metastore
 	bucket    objstore.Bucket
-	opts      logql.EngineOpts
+	cfg       Config
 }
 
 // Query implements [logql.Engine].
@@ -115,7 +138,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 	// Inject the range config into the context for any calls to
 	// [rangeio.ReadRanges] to make use of.
-	ctx = rangeio.WithConfig(ctx, &e.opts.RangeConfig)
+	ctx = rangeio.WithConfig(ctx, &e.cfg.RangeConfig)
 
 	logicalPlan, err := func() (*logical.Plan, error) {
 		_, span := tracer.Start(ctx, "QueryEngine.Execute.logicalPlan")
@@ -196,8 +219,8 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 		timer := prometheus.NewTimer(e.metrics.execution)
 
 		cfg := executor.Config{
-			BatchSize:          int64(e.opts.BatchSize),
-			MergePrefetchCount: e.opts.MergePrefetchCount,
+			BatchSize:          int64(e.cfg.BatchSize),
+			MergePrefetchCount: e.cfg.MergePrefetchCount,
 			Bucket:             e.bucket,
 		}
 		pipeline := executor.Run(ctx, cfg, physicalPlan, logger)

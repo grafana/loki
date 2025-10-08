@@ -68,7 +68,7 @@ func NewQuerierAPI(cfg Config, mCfg metastore.Config, querier Querier, limits qu
 		limits:   limits,
 		querier:  querier,
 		engineV1: logql.NewEngine(cfg.Engine, querier, limits, logger),
-		engineV2: engine.New(cfg.Engine, mCfg, store, limits, reg, logger),
+		engineV2: engine.New(cfg.EngineV2, mCfg, store, limits, reg, logger),
 		logger:   logger,
 	}
 }
@@ -87,7 +87,7 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 		return result, err
 	}
 
-	if q.cfg.Engine.EnableV2Engine && hasDataObjectsAvailable(params.Start(), params.End()) {
+	if q.cfg.EngineV2.Enable && hasDataObjectsAvailable(params.Start(), params.End()) {
 		query := q.engineV2.Query(params)
 		result, err = query.Exec(ctx)
 		if err == nil {
@@ -126,7 +126,7 @@ func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.Lo
 		return logqlmodel.Result{}, err
 	}
 
-	if q.cfg.Engine.EnableV2Engine && hasDataObjectsAvailable(params.Start(), params.End()) {
+	if q.cfg.EngineV2.Enable && hasDataObjectsAvailable(params.Start(), params.End()) {
 		query := q.engineV2.Query(params)
 		result, err := query.Exec(ctx)
 		if err == nil {
