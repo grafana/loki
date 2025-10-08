@@ -67,7 +67,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/klauspost/compress v1.18.0
 	github.com/klauspost/pgzip v1.2.6
-	github.com/leodido/go-syslog/v4 v4.2.0
+	github.com/leodido/go-syslog/v4 v4.3.0
 	github.com/mattn/go-ieproxy v0.0.12
 	github.com/minio/minio-go/v7 v7.0.95
 	github.com/mitchellh/go-wordwrap v1.0.1
@@ -500,6 +500,6 @@ replace github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-2024051813
 replace github.com/grafana/loki/pkg/push => ./pkg/push
 
 // leodido fork his project to continue support
-replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.2.0
+replace github.com/influxdata/go-syslog/v3 => github.com/leodido/go-syslog/v4 v4.3.0
 
 replace github.com/thanos-io/objstore => github.com/grafana/objstore v0.0.0-20250728171719-b5d3b766d1b0
