@@ -19,7 +19,7 @@ func TestNewFilterPipeline(t *testing.T) {
 	}
 
 	t.Run("filter with true literal predicate", func(t *testing.T) {
-		alloc := memory.NewCheckedAllocator(memory.NewGoAllocator())
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 		defer alloc.AssertSize(t, 0)
 
 		schema := arrow.NewSchema(fields, nil)
@@ -58,7 +58,7 @@ func TestNewFilterPipeline(t *testing.T) {
 	})
 
 	t.Run("filter with false literal predicate", func(t *testing.T) {
-		alloc := memory.NewCheckedAllocator(memory.NewGoAllocator())
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 		defer alloc.AssertSize(t, 0)
 
 		schema := arrow.NewSchema(fields, nil)
@@ -96,7 +96,7 @@ func TestNewFilterPipeline(t *testing.T) {
 	})
 
 	t.Run("filter on boolean column with column expression", func(t *testing.T) {
-		alloc := memory.NewCheckedAllocator(memory.NewGoAllocator())
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 		defer alloc.AssertSize(t, 0)
 
 		schema := arrow.NewSchema(fields, nil)
@@ -144,7 +144,7 @@ func TestNewFilterPipeline(t *testing.T) {
 	})
 
 	t.Run("filter on multiple columns with binary expressions", func(t *testing.T) {
-		alloc := memory.NewCheckedAllocator(memory.NewGoAllocator())
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 		defer alloc.AssertSize(t, 0)
 
 		schema := arrow.NewSchema(fields, nil)
@@ -199,7 +199,7 @@ func TestNewFilterPipeline(t *testing.T) {
 
 	// TODO: instead of returning empty batch, filter should read the next non-empty batch.
 	t.Run("filter on empty batch", func(t *testing.T) {
-		alloc := memory.NewCheckedAllocator(memory.NewGoAllocator())
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 		defer alloc.AssertSize(t, 0)
 
 		schema := arrow.NewSchema(fields, nil)
@@ -233,7 +233,7 @@ func TestNewFilterPipeline(t *testing.T) {
 	})
 
 	t.Run("filter with multiple input batches", func(t *testing.T) {
-		alloc := memory.NewCheckedAllocator(memory.NewGoAllocator())
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 		defer alloc.AssertSize(t, 0)
 
 		schema := arrow.NewSchema(fields, nil)
@@ -296,7 +296,7 @@ func TestNewFilterPipeline(t *testing.T) {
 	})
 
 	t.Run("filter with null values", func(t *testing.T) {
-		alloc := memory.NewCheckedAllocator(memory.NewGoAllocator())
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 		defer alloc.AssertSize(t, 0)
 
 		schema := arrow.NewSchema(fields, nil)
