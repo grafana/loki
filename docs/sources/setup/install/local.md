@@ -46,7 +46,7 @@ Grafana Loki does not come with any included authentication layer. You must run 
 
    Don't download LogCLI or Loki Canary at this time.
    LogCLI allows you to run Loki queries in a command line interface.
-   [Loki Canary](https://grafana.com/docs/loki/<LOKI_VERSION/operations/loki-canary/) is a tool to audit Loki performance.
+   [Loki Canary](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/loki-canary/) is a tool to audit Loki performance.
 
 1. Extract the package contents into the same directory. This is where the two programs will run.
 1. In the command line, change directory (`cd` on most systems) to the directory with Loki and Promtail.
