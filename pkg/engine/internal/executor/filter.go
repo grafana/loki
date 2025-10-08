@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
 
-func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expressionEvaluator, allocator memory.Allocator) *GenericPipeline {
+func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expressionEvaluator) *GenericPipeline {
 	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) state {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
@@ -19,7 +19,6 @@ func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expres
 		if err != nil {
 			return failureState(err)
 		}
-		defer batch.Release()
 
 		cols := make([]*array.Boolean, 0, len(filter.Predicates))
 		defer func() {
@@ -44,7 +43,7 @@ func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expres
 			cols = append(cols, casted)
 		}
 
-		filtered := filterBatch(batch, allocator, func(i int) bool {
+		filtered := filterBatch(batch, func(i int) bool {
 			for _, p := range cols {
 				if !p.IsValid(i) || !p.Value(i) {
 					return false
@@ -54,6 +53,7 @@ func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expres
 		})
 
 		return successState(filtered)
+
 	}, input)
 }
 
@@ -66,7 +66,8 @@ func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expres
 // pushdown optimizations.
 //
 // We should re-think this approach.
-func filterBatch(batch arrow.Record, allocator memory.Allocator, include func(int) bool) arrow.Record {
+func filterBatch(batch arrow.Record, include func(int) bool) arrow.Record {
+	mem := memory.NewGoAllocator()
 	fields := batch.Schema().Fields()
 
 	builders := make([]array.Builder, len(fields))
@@ -84,7 +85,7 @@ func filterBatch(batch arrow.Record, allocator memory.Allocator, include func(in
 
 		switch field.Type.ID() {
 		case arrow.BOOL:
-			builder := array.NewBooleanBuilder(allocator)
+			builder := array.NewBooleanBuilder(mem)
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.Boolean)
@@ -92,7 +93,7 @@ func filterBatch(batch arrow.Record, allocator memory.Allocator, include func(in
 			}
 
 		case arrow.STRING:
-			builder := array.NewStringBuilder(allocator)
+			builder := array.NewStringBuilder(mem)
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.String)
@@ -100,7 +101,7 @@ func filterBatch(batch arrow.Record, allocator memory.Allocator, include func(in
 			}
 
 		case arrow.UINT64:
-			builder := array.NewUint64Builder(allocator)
+			builder := array.NewUint64Builder(mem)
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.Uint64)
@@ -108,7 +109,7 @@ func filterBatch(batch arrow.Record, allocator memory.Allocator, include func(in
 			}
 
 		case arrow.INT64:
-			builder := array.NewInt64Builder(allocator)
+			builder := array.NewInt64Builder(mem)
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.Int64)
@@ -116,7 +117,7 @@ func filterBatch(batch arrow.Record, allocator memory.Allocator, include func(in
 			}
 
 		case arrow.FLOAT64:
-			builder := array.NewFloat64Builder(allocator)
+			builder := array.NewFloat64Builder(mem)
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.Float64)
@@ -124,7 +125,7 @@ func filterBatch(batch arrow.Record, allocator memory.Allocator, include func(in
 			}
 
 		case arrow.TIMESTAMP:
-			builder := array.NewTimestampBuilder(allocator, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
+			builder := array.NewTimestampBuilder(mem, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
 			builders[i] = builder
 			additions[i] = func(offset int) {
 				src := batch.Column(i).(*array.Timestamp)
@@ -158,12 +159,6 @@ func filterBatch(batch arrow.Record, allocator memory.Allocator, include func(in
 	for i, builder := range builders {
 		arrays[i] = builder.NewArray()
 	}
-
-	defer func() {
-		for _, a := range arrays {
-			a.Release()
-		}
-	}()
 
 	return array.NewRecord(schema, arrays, ct)
 }
