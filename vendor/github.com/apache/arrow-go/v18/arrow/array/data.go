@@ -147,7 +147,9 @@ func (d *Data) Release() {
 		}
 
 		for _, b := range d.childData {
-			b.Release()
+			if b != nil {
+				b.Release()
+			}
 		}
 
 		if d.dictionary != nil {
