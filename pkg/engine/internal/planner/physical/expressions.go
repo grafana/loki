@@ -3,7 +3,6 @@ package physical
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -60,7 +59,7 @@ type BinaryExpression interface {
 // physical plan.
 type LiteralExpression interface {
 	Expression
-	ValueType() datatype.DataType
+	ValueType() types.DataType
 	isLiteralExpr()
 }
 
@@ -111,7 +110,7 @@ func (*BinaryExpr) Type() ExpressionType {
 
 // LiteralExpr is an expression that implements the [LiteralExpression] interface.
 type LiteralExpr struct {
-	datatype.Literal
+	types.Literal
 }
 
 func (*LiteralExpr) isExpr()        {}
@@ -128,15 +127,15 @@ func (*LiteralExpr) Type() ExpressionType {
 }
 
 // ValueType returns the kind of value represented by the literal.
-func (e *LiteralExpr) ValueType() datatype.DataType {
+func (e *LiteralExpr) ValueType() types.DataType {
 	return e.Literal.Type()
 }
 
-func NewLiteral(value datatype.LiteralType) *LiteralExpr {
+func NewLiteral(value types.LiteralType) *LiteralExpr {
 	if value == nil {
-		return &LiteralExpr{Literal: datatype.NewNullLiteral()}
+		return &LiteralExpr{Literal: types.NewNullLiteral()}
 	}
-	return &LiteralExpr{Literal: datatype.NewLiteral(value)}
+	return &LiteralExpr{Literal: types.NewLiteral(value)}
 }
 
 // ColumnExpr is an expression that implements the [ColumnExpr] interface.

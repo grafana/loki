@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -227,7 +226,7 @@ func TestPlanner_Convert(t *testing.T) {
 	).Select(
 		&logical.BinOp{
 			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
-			Right: logical.NewLiteral(datatype.Timestamp(1742826126000000000)),
+			Right: logical.NewLiteral(types.Timestamp(1742826126000000000)),
 			Op:    types.BinaryOpLt,
 		},
 	).Limit(0, 1000)
@@ -407,7 +406,7 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 	).Select(
 		&logical.BinOp{
 			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
-			Right: logical.NewLiteral(datatype.Timestamp(1742826126000000000)),
+			Right: logical.NewLiteral(types.Timestamp(1742826126000000000)),
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
@@ -461,7 +460,7 @@ func TestPlanner_Convert_Rate(t *testing.T) {
 	).Select(
 		&logical.BinOp{
 			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
-			Right: logical.NewLiteral(datatype.Timestamp(1742826126000000000)),
+			Right: logical.NewLiteral(types.Timestamp(1742826126000000000)),
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
@@ -517,7 +516,7 @@ func TestPlanner_BuildMathExpressions(t *testing.T) {
 	).Select(
 		&logical.BinOp{
 			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
-			Right: logical.NewLiteral(datatype.Timestamp(1742826126000000000)),
+			Right: logical.NewLiteral(types.Timestamp(1742826126000000000)),
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
@@ -571,7 +570,7 @@ func TestPlanner_BuildMathExpressionsWithTwoInputs(t *testing.T) {
 	).Select(
 		&logical.BinOp{
 			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
-			Right: logical.NewLiteral(datatype.Timestamp(1742826126000000000)),
+			Right: logical.NewLiteral(types.Timestamp(1742826126000000000)),
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
@@ -602,7 +601,7 @@ func TestPlanner_BuildMathExpressionsWithTwoInputs(t *testing.T) {
 	).Select(
 		&logical.BinOp{
 			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
-			Right: logical.NewLiteral(datatype.Timestamp(1742826126000000000)),
+			Right: logical.NewLiteral(types.Timestamp(1742826126000000000)),
 			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(

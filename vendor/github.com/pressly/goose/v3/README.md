@@ -122,7 +122,7 @@ Options:
   -ssl-key string
         file path to SSL key in pem format (only support on mysql)
   -table string
-        migrations table name (default "goose_db_version")
+        migrations table name (default "goose_db_version"). If you use a schema that is not `public`, you should set `schemaname.goose_db_version` when running commands.
   -timeout duration
         maximum allowed duration for queries to run; e.g., 1h13m
   -v    enable verbose mode
@@ -299,6 +299,9 @@ Both Up and Down migrations within this file will be run without transactions.
 
 By default, SQL statements are delimited by semicolons - in fact, query statements must end with a
 semicolon to be properly recognized by goose.
+
+By default, all migrations are run on the public schema. If you want to use a different schema,
+specify the schema name using the table option like `-table='schemaname.goose_db_version`.
 
 More complex statements (PL/pgSQL) that have semicolons within them must be annotated with `--
 +goose StatementBegin` and `-- +goose StatementEnd` to be properly recognized. For example:

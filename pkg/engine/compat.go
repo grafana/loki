@@ -9,7 +9,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -311,7 +310,7 @@ func collectSamplesFromRow(builder *labels.Builder, rec arrow.Record, i int) (pr
 			sample.F = col.Value(i)
 		default:
 			// allow any string columns
-			if colDataType == datatype.Loki.String.String() {
+			if colDataType == types.Loki.String.String() {
 				builder.Set(colName, col.(*array.String).Value(i))
 			}
 		}

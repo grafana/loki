@@ -114,34 +114,6 @@ ui:
   # CLI flag: -ui.enabled
   [enabled: <boolean> | default = false]
 
-  # Name to use for this node in the cluster.
-  # CLI flag: -ui.node-name
-  [node_name: <string> | default = "<hostname>"]
-
-  # IP address to advertise in the cluster.
-  # CLI flag: -ui.advertise-addr
-  [advertise_addr: <string> | default = ""]
-
-  # Name of network interface to read address from.
-  # CLI flag: -ui.interface
-  [interface_names: <list of strings> | default = [<private network interfaces>]]
-
-  # How frequently to rejoin the cluster to address split brain issues.
-  # CLI flag: -ui.rejoin-interval
-  [rejoin_interval: <duration> | default = 3m]
-
-  # Number of initial peers to join from the discovered set.
-  # CLI flag: -ui.cluster-max-join-peers
-  [cluster_max_join_peers: <int> | default = 3]
-
-  # Name to prevent nodes without this identifier from joining the cluster.
-  # CLI flag: -ui.cluster-name
-  [cluster_name: <string> | default = ""]
-
-  # Enable using a IPv6 instance address.
-  # CLI flag: -ui.enable-ipv6
-  [enable_ipv6: <boolean> | default = false]
-
   # Enable debug logging for the UI.
   # CLI flag: -ui.debug
   [debug: <boolean> | default = false]
@@ -195,12 +167,95 @@ ui:
     # CLI flag: -ui.goldfish.cell-b-namespace
     [cell_b_namespace: <string> | default = ""]
 
-  discovery:
-    # List of peers to join the cluster. Supports multiple values separated by
-    # commas. Each value can be a hostname, an IP address, or a DNS name (A/AAAA
-    # and SRV records).
-    # CLI flag: -ui.discovery.join-peers
-    [join_peers: <list of strings> | default = []]
+  ring:
+    kvstore:
+      # Backend storage to use for the ring. Supported values are: consul, etcd,
+      # inmemory, memberlist, multi.
+      # CLI flag: -ui.ring.store
+      [store: <string> | default = "consul"]
+
+      # The prefix for the keys in the store. Should end with a /.
+      # CLI flag: -ui.ring.prefix
+      [prefix: <string> | default = "collectors/"]
+
+      # Configuration for a Consul client. Only applies if the selected kvstore
+      # is consul.
+      # The CLI flags prefix for this block configuration is: ui.ring
+      [consul: <consul>]
+
+      # Configuration for an ETCD v3 client. Only applies if the selected
+      # kvstore is etcd.
+      # The CLI flags prefix for this block configuration is: ui.ring
+      [etcd: <etcd>]
+
+      multi:
+        # Primary backend storage used by multi-client.
+        # CLI flag: -ui.ring.multi.primary
+        [primary: <string> | default = ""]
+
+        # Secondary backend storage used by multi-client.
+        # CLI flag: -ui.ring.multi.secondary
+        [secondary: <string> | default = ""]
+
+        # Mirror writes to secondary store.
+        # CLI flag: -ui.ring.multi.mirror-enabled
+        [mirror_enabled: <boolean> | default = false]
+
+        # Timeout for storing value to secondary store.
+        # CLI flag: -ui.ring.multi.mirror-timeout
+        [mirror_timeout: <duration> | default = 2s]
+
+    # Period at which to heartbeat to the ring. 0 = disabled.
+    # CLI flag: -ui.ring.heartbeat-period
+    [heartbeat_period: <duration> | default = 15s]
+
+    # The heartbeat timeout after which compactors are considered unhealthy
+    # within the ring. 0 = never (timeout disabled).
+    # CLI flag: -ui.ring.heartbeat-timeout
+    [heartbeat_timeout: <duration> | default = 1m]
+
+    # File path where tokens are stored. If empty, tokens are not stored at
+    # shutdown and restored at startup.
+    # CLI flag: -ui.ring.tokens-file-path
+    [tokens_file_path: <string> | default = ""]
+
+    # True to enable zone-awareness and replicate blocks across different
+    # availability zones.
+    # CLI flag: -ui.ring.zone-awareness-enabled
+    [zone_awareness_enabled: <boolean> | default = false]
+
+    # Number of tokens to own in the ring.
+    # CLI flag: -ui.ring.num-tokens
+    [num_tokens: <int> | default = 128]
+
+    # Factor for data replication.
+    # CLI flag: -ui.ring.replication-factor
+    [replication_factor: <int> | default = 3]
+
+    # Instance ID to register in the ring.
+    # CLI flag: -ui.ring.instance-id
+    [instance_id: <string> | default = "<hostname>"]
+
+    # Name of network interface to read address from.
+    # CLI flag: -ui.ring.instance-interface-names
+    [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+
+    # Port to advertise in the ring (defaults to server.grpc-listen-port).
+    # CLI flag: -ui.ring.instance-port
+    [instance_port: <int> | default = 0]
+
+    # IP address to advertise in the ring.
+    # CLI flag: -ui.ring.instance-addr
+    [instance_addr: <string> | default = ""]
+
+    # The availability zone where this instance is running. Required if
+    # zone-awareness is enabled.
+    # CLI flag: -ui.ring.instance-availability-zone
+    [instance_availability_zone: <string> | default = ""]
+
+    # Enable using a IPv6 instance address.
+    # CLI flag: -ui.ring.instance-enable-ipv6
+    [instance_enable_ipv6: <boolean> | default = false]
 
 # Configures the distributor.
 [distributor: <distributor>]
@@ -2600,6 +2655,7 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 - `pattern-ingester`
 - `query-scheduler.ring`
 - `ruler.ring`
+- `ui.ring`
 
 &nbsp;
 
@@ -2850,6 +2906,7 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 - `pattern-ingester`
 - `query-scheduler.ring`
 - `ruler.ring`
+- `ui.ring`
 
 &nbsp;
 
@@ -2871,7 +2928,7 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 [tls_enabled: <boolean> | default = false]
 
 # The TLS configuration.
-# The CLI flags prefix for this block configuration is: ruler.ring.etcd
+# The CLI flags prefix for this block configuration is: ui.ring.etcd
 [<tls_config>]
 
 # Etcd username.
@@ -4782,39 +4839,40 @@ engine:
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
 
+engine_v2:
   # Experimental: Enable next generation query engine for supported queries.
-  # CLI flag: -querier.engine.enable-v2-engine
-  [enable_v2_engine: <boolean> | default = false]
+  # CLI flag: -querier.engine-v2.enable
+  [enable: <boolean> | default = false]
 
   # Experimental: Batch size of the next generation query engine.
-  # CLI flag: -querier.engine.batch-size
+  # CLI flag: -querier.engine-v2.batch-size
   [batch_size: <int> | default = 100]
 
   # Experimental: The number of inputs that are prefetched simultaneously by any
   # Merge node. A value of 0 means that only the currently processed input is
   # prefetched, 1 means that only the next input is prefetched, and so on. A
   # negative value means that all inputs are be prefetched in parallel.
-  # CLI flag: -querier.engine.merge-prefetch-count
+  # CLI flag: -querier.engine-v2.merge-prefetch-count
   [merge_prefetch_count: <int> | default = 0]
 
   # Configures how to read byte ranges from object storage when using the V2
   # engine.
   range_reads:
     # Experimental: maximum number of parallel reads
-    # CLI flag: -querier.engine.range-reads.max-parallelism
+    # CLI flag: -querier.engine-v2.range-reads.max-parallelism
     [max_parallelism: <int> | default = 10]
 
     # Experimental: maximum distance (in bytes) between ranges that causes them
     # to be coalesced into a single range
-    # CLI flag: -querier.engine.range-reads.coalesce-size
+    # CLI flag: -querier.engine-v2.range-reads.coalesce-size
     [coalesce_size: <int> | default = 1048576]
 
     # Experimental: maximum size of a byte range
-    # CLI flag: -querier.engine.range-reads.max-range-size
+    # CLI flag: -querier.engine-v2.range-reads.max-range-size
     [max_range_size: <int> | default = 8388608]
 
     # Experimental: minimum size of a byte range
-    # CLI flag: -querier.engine.range-reads.min-range-size
+    # CLI flag: -querier.engine-v2.range-reads.min-range-size
     [min_range_size: <int> | default = 1048576]
 
 # The maximum number of queries that can be simultaneously processed by the
@@ -7313,6 +7371,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `store.index-cache-read.memcached`
 - `store.index-cache-write.memcached`
 - `tsdb.shipper.index-gateway-client.grpc`
+- `ui.ring.etcd`
 
 &nbsp;
 
