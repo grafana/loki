@@ -85,7 +85,7 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 			continue
 		}
 
-		shortName := ident.Name()
+		shortName := ident.ShortName()
 
 		// Extract line
 		if ident.Equal(semconv.ColumnIdentMessage) {
@@ -296,7 +296,7 @@ func collectSamplesFromRow(builder *labels.Builder, rec arrow.Record, i int) (pr
 			return promql.Sample{}, false
 		}
 
-		shortName := ident.Name()
+		shortName := ident.ShortName()
 
 		// Extract timestamp
 		if ident.Equal(semconv.ColumnIdentTimestamp) {

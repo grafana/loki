@@ -35,7 +35,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 				if err != nil {
 					return nil, fmt.Errorf("failed to parse column %s: %w", field.Name, err)
 				}
-				if ident.Name() == colIdent.Name() && ident.ColumnType() == colIdent.ColumnType() {
+				if ident.ShortName() == colIdent.ShortName() && ident.ColumnType() == colIdent.ColumnType() {
 					arr := input.Column(idx)
 					arr.Retain()
 					return &Array{
@@ -58,7 +58,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 				if err != nil {
 					return nil, fmt.Errorf("failed to parse column %s: %w", field.Name, err)
 				}
-				if ident.Name() == colIdent.Name() {
+				if ident.ShortName() == colIdent.ShortName() {
 					fieldIndices = append(fieldIndices, idx)
 					fieldIdents = append(fieldIdents, ident)
 				}
@@ -73,7 +73,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 				// TODO(ashwanth): Support other data types in CoalesceVector.
 				// For now, ensure all vectors are strings to avoid type conflicts.
 				if ident.DataType() != types.Loki.String {
-					return nil, fmt.Errorf("column %s has datatype %s, but expression expects %s", ident.Name(), ident.DataType(), types.Loki.String)
+					return nil, fmt.Errorf("column %s has datatype %s, but expression expects %s", ident.ShortName(), ident.DataType(), types.Loki.String)
 				}
 
 				arr := input.Column(idx)

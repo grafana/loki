@@ -62,7 +62,7 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		}
 		for _, header := range headers {
 			ct := types.ColumnTypeParsed
-			if header == semconv.ColumnIdentError.Name() || header == semconv.ColumnIdentErrorDetails.Name() {
+			if header == semconv.ColumnIdentError.ShortName() || header == semconv.ColumnIdentErrorDetails.ShortName() {
 				ct = types.ColumnTypeGenerated
 			}
 			ident := semconv.NewIdentifier(header, ct, types.Loki.String)
@@ -143,12 +143,12 @@ func parseLines(input *array.String, requestedKeys []string, columnBuilders map[
 			if !hasErrorColumns {
 				errorBuilder = array.NewStringBuilder(allocator)
 				errorDetailsBuilder = array.NewStringBuilder(allocator)
-				columnBuilders[semconv.ColumnIdentError.Name()] = errorBuilder
-				columnBuilders[semconv.ColumnIdentErrorDetails.Name()] = errorDetailsBuilder
+				columnBuilders[semconv.ColumnIdentError.ShortName()] = errorBuilder
+				columnBuilders[semconv.ColumnIdentErrorDetails.ShortName()] = errorDetailsBuilder
 				columnOrder = append(
 					columnOrder,
-					semconv.ColumnIdentError.Name(),
-					semconv.ColumnIdentErrorDetails.Name(),
+					semconv.ColumnIdentError.ShortName(),
+					semconv.ColumnIdentErrorDetails.ShortName(),
 				)
 				hasErrorColumns = true
 
@@ -174,8 +174,8 @@ func parseLines(input *array.String, requestedKeys []string, columnBuilders map[
 		seenKeys := make(map[string]bool)
 		if hasErrorColumns {
 			// Mark error columns as seen so we don't append nulls for them
-			seenKeys[semconv.ColumnIdentError.Name()] = true
-			seenKeys[semconv.ColumnIdentErrorDetails.Name()] = true
+			seenKeys[semconv.ColumnIdentError.ShortName()] = true
+			seenKeys[semconv.ColumnIdentErrorDetails.ShortName()] = true
 		}
 
 		// Add values for parsed keys (only if no error)
@@ -210,12 +210,12 @@ func parseLines(input *array.String, requestedKeys []string, columnBuilders map[
 		// Keep error columns at the end, sort the rest
 		nonErrorColumns := make([]string, 0, len(columnOrder)-2)
 		for _, key := range columnOrder {
-			if key != semconv.ColumnIdentError.Name() && key != semconv.ColumnIdentErrorDetails.Name() {
+			if key != semconv.ColumnIdentError.ShortName() && key != semconv.ColumnIdentErrorDetails.ShortName() {
 				nonErrorColumns = append(nonErrorColumns, key)
 			}
 		}
 		sort.Strings(nonErrorColumns)
-		columnOrder = append(nonErrorColumns, semconv.ColumnIdentError.Name(), semconv.ColumnIdentErrorDetails.Name())
+		columnOrder = append(nonErrorColumns, semconv.ColumnIdentError.ShortName(), semconv.ColumnIdentErrorDetails.ShortName())
 	} else {
 		sort.Strings(columnOrder)
 	}
