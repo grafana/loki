@@ -42,7 +42,10 @@ type StatsReader interface {
 	// If the underlying index supports it, this will return the ForSeries interface
 	// which is used in bloom-filter accelerated sharding calculation optimization.
 	HasForSeries(from, through model.Time) (sharding.ForSeries, bool)
+
+	// HasChunkSizingInfo tells whether the index type for the given period supports listing chunks with their sizing info
 	HasChunkSizingInfo(from, through model.Time) bool
+	// GetChunkRefsWithSizingInfo should only be called after if HasChunkSizingInfo acknowledges that underlying index supports listing chunks with sizing info
 	GetChunkRefsWithSizingInfo(ctx context.Context, userID string, from, through model.Time, predicate chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error)
 }
 

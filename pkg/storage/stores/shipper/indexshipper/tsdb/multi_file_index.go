@@ -161,7 +161,7 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 			ChunkRefsPool.Put(g)
 		}
 
-		sort.Slice(res, func(i, j int) bool { return res[i].Less(res[j]) })
+		sort.Slice(res, func(i, j int) bool { return res[i].Less(res[j].ChunkRef) })
 
 		return res, nil
 	})

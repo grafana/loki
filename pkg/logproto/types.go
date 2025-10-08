@@ -16,18 +16,18 @@ type ChunkRefWithSizingInfo struct {
 
 // Less Compares chunks by (Fp, From, Through, checksum)
 // Assumes User is equivalent
-func (r ChunkRefWithSizingInfo) Less(x ChunkRefWithSizingInfo) bool {
-	if r.Fingerprint != x.Fingerprint {
-		return r.Fingerprint < x.Fingerprint
+func (c *ChunkRef) Less(x ChunkRef) bool {
+	if c.Fingerprint != x.Fingerprint {
+		return c.Fingerprint < x.Fingerprint
 	}
 
-	if r.From != x.From {
-		return r.From < x.From
+	if c.From != x.From {
+		return c.From < x.From
 	}
 
-	if r.Through != x.Through {
-		return r.Through < x.Through
+	if c.Through != x.Through {
+		return c.Through < x.Through
 	}
 
-	return r.Checksum < x.Checksum
+	return c.Checksum < x.Checksum
 }

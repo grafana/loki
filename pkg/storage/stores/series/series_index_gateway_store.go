@@ -66,7 +66,7 @@ func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, _ string, fr
 }
 
 func (c *IndexGatewayClientStore) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
-	return nil, fmt.Errorf("store does not support getting chunk refs with sizing info")
+	panic("store does not support getting chunk refs with sizing info")
 }
 
 func (c *IndexGatewayClientStore) GetSeries(ctx context.Context, _ string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {

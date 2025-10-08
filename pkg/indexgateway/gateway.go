@@ -585,8 +585,6 @@ func ExtractShardRequestMatchersAndAST(query string) (chunk.Predicate, error) {
 	}), nil
 }
 
-// TODO(owen-d): consider extending index impl to support returning chunkrefs _with_ sizing info
-// TODO(owen-d): perf, this is expensive :(
 func accumulateChunksToShards(
 	req *logproto.ShardsRequest,
 	filtered []logproto.ChunkRefWithSizingInfo,

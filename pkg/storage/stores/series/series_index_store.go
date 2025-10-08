@@ -199,7 +199,7 @@ func (c *IndexReaderWriter) GetChunkRefs(ctx context.Context, userID string, fro
 }
 
 func (c *IndexReaderWriter) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
-	return nil, fmt.Errorf("store does not support getting chunk refs with sizing info")
+	panic("store does not support getting chunk refs with sizing info")
 }
 
 func (c *IndexReaderWriter) SetChunkFilterer(f chunk.RequestChunkFilterer) {
