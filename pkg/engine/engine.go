@@ -36,21 +36,21 @@ var tracer = otel.Tracer("pkg/engine")
 var ErrNotSupported = errors.New("feature not supported in new query engine")
 
 // New creates a new instance of the query engine that implements the [logql.Engine] interface.
-func New(opts Config, cfg metastore.Config, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
+func New(cfg Config, metastoreCfg metastore.Config, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
 	var ms metastore.Metastore
 	if bucket != nil {
 		indexBucket := bucket
-		if cfg.IndexStoragePrefix != "" {
-			indexBucket = objstore.NewPrefixedBucket(bucket, cfg.IndexStoragePrefix)
+		if metastoreCfg.IndexStoragePrefix != "" {
+			indexBucket = objstore.NewPrefixedBucket(bucket, metastoreCfg.IndexStoragePrefix)
 		}
 		ms = metastore.NewObjectMetastore(indexBucket, logger, reg)
 	}
 
-	if opts.BatchSize <= 0 {
-		panic(fmt.Sprintf("invalid batch size for query engine. must be greater than 0, got %d", opts.BatchSize))
+	if cfg.BatchSize <= 0 {
+		panic(fmt.Sprintf("invalid batch size for query engine. must be greater than 0, got %d", cfg.BatchSize))
 	}
-	if opts.RangeConfig.IsZero() {
-		opts.RangeConfig = rangeio.DefaultConfig
+	if cfg.RangeConfig.IsZero() {
+		cfg.RangeConfig = rangeio.DefaultConfig
 	}
 
 	return &QueryEngine{
@@ -59,7 +59,7 @@ func New(opts Config, cfg metastore.Config, bucket objstore.Bucket, limits logql
 		limits:    limits,
 		metastore: ms,
 		bucket:    bucket,
-		cfg:       opts,
+		cfg:       cfg,
 	}
 }
 
