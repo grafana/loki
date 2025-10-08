@@ -26,17 +26,14 @@ import (
 // code. A message body is not included, so you cannot determine the exception
 // beyond these HTTP response codes.
 //
-// Directory buckets - You must make requests for this API operation to the Zonal
-// endpoint. These endpoints support virtual-hosted-style requests in the format
-// https://bucket_name.s3express-az_id.region.amazonaws.com . Path-style requests
-// are not supported. For more information, see [Regional and Zonal endpoints]in the Amazon S3 User Guide.
+// Authentication and authorization  General purpose buckets - Request to public
+// buckets that grant the s3:ListBucket permission publicly do not need to be
+// signed. All other HeadBucket requests must be authenticated and signed by using
+// IAM credentials (access key ID and secret access key for the IAM identities).
+// All headers with the x-amz- prefix, including x-amz-copy-source , must be
+// signed. For more information, see [REST Authentication].
 //
-// Authentication and authorization All HeadBucket requests must be authenticated
-// and signed by using IAM credentials (access key ID and secret access key for the
-// IAM identities). All headers with the x-amz- prefix, including x-amz-copy-source
-// , must be signed. For more information, see [REST Authentication].
-//
-// Directory bucket - You must use IAM credentials to authenticate and authorize
+// Directory buckets - You must use IAM credentials to authenticate and authorize
 // your access to the HeadBucket API operation, instead of using the temporary
 // security credentials through the CreateSession API operation.
 //
@@ -60,13 +57,21 @@ import (
 //	User Guide.
 //
 // HTTP Host header syntax  Directory buckets - The HTTP Host header syntax is
-// Bucket_name.s3express-az_id.region.amazonaws.com .
+// Bucket-name.s3express-zone-id.region-code.amazonaws.com .
+//
+// You must make requests for this API operation to the Zonal endpoint. These
+// endpoints support virtual-hosted-style requests in the format
+// https://bucket-name.s3express-zone-id.region-code.amazonaws.com . Path-style
+// requests are not supported. For more information about endpoints in Availability
+// Zones, see [Regional and Zonal endpoints for directory buckets in Availability Zones]in the Amazon S3 User Guide. For more information about endpoints in
+// Local Zones, see [Concepts for directory buckets in Local Zones]in the Amazon S3 User Guide.
 //
 // [Amazon Web Services Identity and Access Management (IAM) identity-based policies for S3 Express One Zone]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-security-iam-identity-policies.html
+// [Concepts for directory buckets in Local Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-lzs-for-directory-buckets.html
 // [REST Authentication]: https://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html
 // [Example bucket policies for S3 Express One Zone]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-security-iam-example-bucket-policies.html
-// [Regional and Zonal endpoints]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-Regions-and-Zones.html
 // [Managing access permissions to your Amazon S3 resources]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-access-control.html
+// [Regional and Zonal endpoints for directory buckets in Availability Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/endpoint-directory-buckets-AZ.html
 func (c *Client) HeadBucket(ctx context.Context, params *HeadBucketInput, optFns ...func(*Options)) (*HeadBucketOutput, error) {
 	if params == nil {
 		params = &HeadBucketInput{}
@@ -88,16 +93,19 @@ type HeadBucketInput struct {
 	//
 	// Directory buckets - When you use this operation with a directory bucket, you
 	// must use virtual-hosted-style requests in the format
-	// Bucket_name.s3express-az_id.region.amazonaws.com . Path-style requests are not
-	// supported. Directory bucket names must be unique in the chosen Availability
-	// Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3 (for
-	// example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3 ). For information about bucket
-	// naming restrictions, see [Directory bucket naming rules]in the Amazon S3 User Guide.
+	// Bucket-name.s3express-zone-id.region-code.amazonaws.com . Path-style requests
+	// are not supported. Directory bucket names must be unique in the chosen Zone
+	// (Availability Zone or Local Zone). Bucket names must follow the format
+	// bucket-base-name--zone-id--x-s3 (for example,
+	// amzn-s3-demo-bucket--usw2-az1--x-s3 ). For information about bucket naming
+	// restrictions, see [Directory bucket naming rules]in the Amazon S3 User Guide.
 	//
-	// Access points - When you use this action with an access point, you must provide
-	// the alias of the access point in place of the bucket name or specify the access
-	// point ARN. When using the access point ARN, you must direct requests to the
-	// access point hostname. The access point hostname takes the form
+	// Access points - When you use this action with an access point for general
+	// purpose buckets, you must provide the alias of the access point in place of the
+	// bucket name or specify the access point ARN. When you use this action with an
+	// access point for directory buckets, you must provide the access point name in
+	// place of the bucket name. When using the access point ARN, you must direct
+	// requests to the access point hostname. The access point hostname takes the form
 	// AccessPointName-AccountId.s3-accesspoint.Region.amazonaws.com. When using this
 	// action with an access point through the Amazon Web Services SDKs, you provide
 	// the access point ARN in place of the bucket name. For more information about
@@ -109,16 +117,14 @@ type HeadBucketInput struct {
 	// is not valid, the error code InvalidAccessPointAliasError is returned. For more
 	// information about InvalidAccessPointAliasError , see [List of Error Codes].
 	//
-	// Access points and Object Lambda access points are not supported by directory
-	// buckets.
+	// Object Lambda access points are not supported by directory buckets.
 	//
-	// S3 on Outposts - When you use this action with Amazon S3 on Outposts, you must
-	// direct requests to the S3 on Outposts hostname. The S3 on Outposts hostname
-	// takes the form
-	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com . When you
-	// use this action with S3 on Outposts through the Amazon Web Services SDKs, you
-	// provide the Outposts access point ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see [What is S3 on Outposts?]in the Amazon S3 User Guide.
+	// S3 on Outposts - When you use this action with S3 on Outposts, you must direct
+	// requests to the S3 on Outposts hostname. The S3 on Outposts hostname takes the
+	// form AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com . When
+	// you use this action with S3 on Outposts, the destination bucket must be the
+	// Outposts access point ARN or the access point alias. For more information about
+	// S3 on Outposts, see [What is S3 on Outposts?]in the Amazon S3 User Guide.
 	//
 	// [Directory bucket naming rules]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html
 	// [What is S3 on Outposts?]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html
@@ -146,13 +152,23 @@ type HeadBucketOutput struct {
 
 	// Indicates whether the bucket name used in the request is an access point alias.
 	//
-	// This functionality is not supported for directory buckets.
+	// For directory buckets, the value of this field is false .
 	AccessPointAlias *bool
+
+	// The Amazon Resource Name (ARN) of the S3 bucket. ARNs uniquely identify Amazon
+	// Web Services resources across all of Amazon Web Services.
+	//
+	// This parameter is only supported for S3 directory buckets. For more
+	// information, see [Using tags with directory buckets].
+	//
+	// [Using tags with directory buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-buckets-tagging.html
+	BucketArn *string
 
 	// The name of the location where the bucket will be created.
 	//
-	// For directory buckets, the AZ ID of the Availability Zone where the bucket is
-	// created. An example AZ ID value is usw2-az1 .
+	// For directory buckets, the Zone ID of the Availability Zone or the Local Zone
+	// where the bucket is created. An example Zone ID value for an Availability Zone
+	// is usw2-az1 .
 	//
 	// This functionality is only supported by directory buckets.
 	BucketLocationName *string
@@ -163,8 +179,6 @@ type HeadBucketOutput struct {
 	BucketLocationType types.LocationType
 
 	// The Region that the bucket is located.
-	//
-	// This functionality is not supported for directory buckets.
 	BucketRegion *string
 
 	// Metadata pertaining to the operation's result.
@@ -216,6 +230,9 @@ func (c *Client) addOperationHeadBucketMiddlewares(stack *middleware.Stack, opti
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -238,6 +255,9 @@ func (c *Client) addOperationHeadBucketMiddlewares(stack *middleware.Stack, opti
 		return err
 	}
 	if err = addIsExpressUserAgent(stack); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpHeadBucketValidationMiddleware(stack); err != nil {
@@ -271,6 +291,48 @@ func (c *Client) addOperationHeadBucketMiddlewares(stack *middleware.Stack, opti
 		return err
 	}
 	if err = addSerializeImmutableHostnameBucketMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptExecution(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeSerialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterSerialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeSigning(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterSigning(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptTransmit(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterDeserialization(stack, options); err != nil {
+		return err
+	}
+	if err = addSpanInitializeStart(stack); err != nil {
+		return err
+	}
+	if err = addSpanInitializeEnd(stack); err != nil {
+		return err
+	}
+	if err = addSpanBuildRequestStart(stack); err != nil {
+		return err
+	}
+	if err = addSpanBuildRequestEnd(stack); err != nil {
 		return err
 	}
 	return nil
@@ -445,6 +507,9 @@ func bucketExistsStateRetryable(ctx context.Context, input *HeadBucketInput, out
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -614,6 +679,9 @@ func bucketNotExistsStateRetryable(ctx context.Context, input *HeadBucketInput, 
 		}
 	}
 
+	if err != nil {
+		return false, err
+	}
 	return true, nil
 }
 

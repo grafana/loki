@@ -14,6 +14,18 @@ import (
 	"time"
 )
 
+// End of support notice: Beginning October 1, 2025, Amazon S3 will discontinue
+// support for creating new Email Grantee Access Control Lists (ACL). Email Grantee
+// ACLs created prior to this date will continue to work and remain accessible
+// through the Amazon Web Services Management Console, Command Line Interface
+// (CLI), SDKs, and REST API. However, you will no longer be able to create new
+// Email Grantee ACLs.
+//
+// This change affects the following Amazon Web Services Regions: US East (N.
+// Virginia) Region, US West (N. California) Region, US West (Oregon) Region, Asia
+// Pacific (Singapore) Region, Asia Pacific (Sydney) Region, Asia Pacific (Tokyo)
+// Region, Europe (Ireland) Region, and South America (São Paulo) Region.
+//
 // This action initiates a multipart upload and returns an upload ID. This upload
 // ID is used to associate all of the parts in the specific multipart upload. You
 // specify this upload ID in each of your subsequent upload part requests (see [UploadPart]).
@@ -38,9 +50,10 @@ import (
 //   - Directory buckets - For directory buckets, you must make requests for this
 //     API operation to the Zonal endpoint. These endpoints support
 //     virtual-hosted-style requests in the format
-//     https://bucket_name.s3express-az_id.region.amazonaws.com/key-name .
-//     Path-style requests are not supported. For more information, see [Regional and Zonal endpoints]in the
-//     Amazon S3 User Guide.
+//     https://amzn-s3-demo-bucket.s3express-zone-id.region-code.amazonaws.com/key-name
+//     . Path-style requests are not supported. For more information about endpoints
+//     in Availability Zones, see [Regional and Zonal endpoints for directory buckets in Availability Zones]in the Amazon S3 User Guide. For more information
+//     about endpoints in Local Zones, see [Concepts for directory buckets in Local Zones]in the Amazon S3 User Guide.
 //
 // Request signing For request signing, multipart upload is just a series of
 // regular requests. You initiate a multipart upload, send one or more requests to
@@ -49,28 +62,28 @@ import (
 // requests. For more information about signing, see [Authenticating Requests (Amazon Web Services Signature Version 4)]in the Amazon S3 User Guide.
 //
 // Permissions
-//   - General purpose bucket permissions - For information about the permissions
-//     required to use the multipart upload API, see [Multipart upload and permissions]in the Amazon S3 User Guide.
 //
-// To perform a multipart upload with encryption by using an Amazon Web Services
+//   - General purpose bucket permissions - To perform a multipart upload with
+//     encryption using an Key Management Service (KMS) KMS key, the requester must
+//     have permission to the kms:Decrypt and kms:GenerateDataKey actions on the key.
+//     The requester must also have permissions for the kms:GenerateDataKey action
+//     for the CreateMultipartUpload API. Then, the requester needs permissions for
+//     the kms:Decrypt action on the UploadPart and UploadPartCopy APIs. These
+//     permissions are required because Amazon S3 must decrypt and read data from the
+//     encrypted file parts before it completes the multipart upload. For more
+//     information, see [Multipart upload API and permissions]and [Protecting data using server-side encryption with Amazon Web Services KMS]in the Amazon S3 User Guide.
 //
-//	KMS key, the requester must have permission to the kms:Decrypt and
-//	kms:GenerateDataKey* actions on the key. These permissions are required
-//	because Amazon S3 must decrypt and read data from the encrypted file parts
-//	before it completes the multipart upload. For more information, see [Multipart upload API and permissions]and [Protecting data using server-side encryption with Amazon Web Services KMS]in
-//	the Amazon S3 User Guide.
-//
-//	- Directory bucket permissions - To grant access to this API operation on a
-//	directory bucket, we recommend that you use the [CreateSession]CreateSession API operation
-//	for session-based authorization. Specifically, you grant the
-//	s3express:CreateSession permission to the directory bucket in a bucket policy
-//	or an IAM identity-based policy. Then, you make the CreateSession API call on
-//	the bucket to obtain a session token. With the session token in your request
-//	header, you can make API requests to this operation. After the session token
-//	expires, you make another CreateSession API call to generate a new session
-//	token for use. Amazon Web Services CLI or SDKs create session and refresh the
-//	session token automatically to avoid service interruptions when a session
-//	expires. For more information about authorization, see [CreateSession]CreateSession .
+//   - Directory bucket permissions - To grant access to this API operation on a
+//     directory bucket, we recommend that you use the [CreateSession]CreateSession API operation
+//     for session-based authorization. Specifically, you grant the
+//     s3express:CreateSession permission to the directory bucket in a bucket policy
+//     or an IAM identity-based policy. Then, you make the CreateSession API call on
+//     the bucket to obtain a session token. With the session token in your request
+//     header, you can make API requests to this operation. After the session token
+//     expires, you make another CreateSession API call to generate a new session
+//     token for use. Amazon Web Services CLI or SDKs create session and refresh the
+//     session token automatically to avoid service interruptions when a session
+//     expires. For more information about authorization, see [CreateSession]CreateSession .
 //
 // Encryption
 //
@@ -147,11 +160,47 @@ import (
 //
 //	encryption keys (SSE-C), see [Protecting data using server-side encryption with customer-provided encryption keys (SSE-C)]in the Amazon S3 User Guide.
 //
-//	- Directory buckets -For directory buckets, only server-side encryption with
-//	Amazon S3 managed keys (SSE-S3) ( AES256 ) is supported.
+//	- Directory buckets - For directory buckets, there are only two supported
+//	options for server-side encryption: server-side encryption with Amazon S3
+//	managed keys (SSE-S3) ( AES256 ) and server-side encryption with KMS keys
+//	(SSE-KMS) ( aws:kms ). We recommend that the bucket's default encryption uses
+//	the desired encryption configuration and you don't override the bucket default
+//	encryption in your CreateSession requests or PUT object requests. Then, new
+//	objects are automatically encrypted with the desired encryption settings. For
+//	more information, see [Protecting data with server-side encryption]in the Amazon S3 User Guide. For more information about
+//	the encryption overriding behaviors in directory buckets, see [Specifying server-side encryption with KMS for new object uploads].
+//
+// In the Zonal endpoint API calls (except [CopyObject]and [UploadPartCopy]) using the REST API, the
+//
+//	encryption request headers must match the encryption settings that are specified
+//	in the CreateSession request. You can't override the values of the encryption
+//	settings ( x-amz-server-side-encryption ,
+//	x-amz-server-side-encryption-aws-kms-key-id ,
+//	x-amz-server-side-encryption-context , and
+//	x-amz-server-side-encryption-bucket-key-enabled ) that are specified in the
+//	CreateSession request. You don't need to explicitly specify these encryption
+//	settings values in Zonal endpoint API calls, and Amazon S3 will use the
+//	encryption settings values from the CreateSession request to protect new
+//	objects in the directory bucket.
+//
+// When you use the CLI or the Amazon Web Services SDKs, for CreateSession , the
+//
+//	session token refreshes automatically to avoid service interruptions when a
+//	session expires. The CLI or the Amazon Web Services SDKs use the bucket's
+//	default encryption configuration for the CreateSession request. It's not
+//	supported to override the encryption settings values in the CreateSession
+//	request. So in the Zonal endpoint API calls (except [CopyObject]and [UploadPartCopy]), the encryption
+//	request headers must match the default encryption configuration of the directory
+//	bucket.
+//
+// For directory buckets, when you perform a CreateMultipartUpload operation and an
+//
+//	UploadPartCopy operation, the request headers you provide in the
+//	CreateMultipartUpload request must match the default encryption configuration
+//	of the destination bucket.
 //
 // HTTP Host header syntax  Directory buckets - The HTTP Host header syntax is
-// Bucket_name.s3express-az_id.region.amazonaws.com .
+// Bucket-name.s3express-zone-id.region-code.amazonaws.com .
 //
 // The following operations are related to CreateMultipartUpload :
 //
@@ -165,13 +214,14 @@ import (
 //
 // [ListMultipartUploads]
 //
+// [Concepts for directory buckets in Local Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-lzs-for-directory-buckets.html
 // [ListParts]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListParts.html
 // [UploadPart]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPart.html
 // [Protecting Data Using Server-Side Encryption with KMS keys]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingKMSEncryption.html
-// [Regional and Zonal endpoints]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-Regions-and-Zones.html
 // [Specifying the Signature Version in Request Authentication]: https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingAWSSDK.html#specify-signature-version
 // [Aborting Incomplete Multipart Uploads Using a Bucket Lifecycle Configuration]: https://docs.aws.amazon.com/AmazonS3/latest/dev/mpuoverview.html#mpu-abort-incomplete-mpu-lifecycle-config
-// [Multipart upload and permissions]: https://docs.aws.amazon.com/AmazonS3/latest/dev/mpuAndPermissions.html
+// [CopyObject]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html
+// [CreateSession]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateSession.html
 // [Multipart upload API and permissions]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/mpuoverview.html#mpuAndPermissions
 // [UploadPartCopy]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPartCopy.html
 // [CompleteMultipartUpload]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CompleteMultipartUpload.html
@@ -180,9 +230,11 @@ import (
 // [Multipart Upload Overview]: https://docs.aws.amazon.com/AmazonS3/latest/dev/mpuoverview.html
 // [Protecting data using server-side encryption with Amazon Web Services KMS]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingKMSEncryption.html
 // [ListMultipartUploads]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListMultipartUploads.html
+// [Regional and Zonal endpoints for directory buckets in Availability Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/endpoint-directory-buckets-AZ.html
 //
-// [CreateSession]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateSession.html
+// [Specifying server-side encryption with KMS for new object uploads]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-specifying-kms-encryption.html
 // [Protecting data using server-side encryption with customer-provided encryption keys (SSE-C)]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/ServerSideEncryptionCustomerKeys.html
+// [Protecting data with server-side encryption]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-serv-side-encryption.html
 func (c *Client) CreateMultipartUpload(ctx context.Context, params *CreateMultipartUploadInput, optFns ...func(*Options)) (*CreateMultipartUploadOutput, error) {
 	if params == nil {
 		params = &CreateMultipartUploadInput{}
@@ -205,31 +257,32 @@ type CreateMultipartUploadInput struct {
 	//
 	// Directory buckets - When you use this operation with a directory bucket, you
 	// must use virtual-hosted-style requests in the format
-	// Bucket_name.s3express-az_id.region.amazonaws.com . Path-style requests are not
-	// supported. Directory bucket names must be unique in the chosen Availability
-	// Zone. Bucket names must follow the format bucket_base_name--az-id--x-s3 (for
-	// example, DOC-EXAMPLE-BUCKET--usw2-az1--x-s3 ). For information about bucket
-	// naming restrictions, see [Directory bucket naming rules]in the Amazon S3 User Guide.
+	// Bucket-name.s3express-zone-id.region-code.amazonaws.com . Path-style requests
+	// are not supported. Directory bucket names must be unique in the chosen Zone
+	// (Availability Zone or Local Zone). Bucket names must follow the format
+	// bucket-base-name--zone-id--x-s3 (for example,
+	// amzn-s3-demo-bucket--usw2-az1--x-s3 ). For information about bucket naming
+	// restrictions, see [Directory bucket naming rules]in the Amazon S3 User Guide.
 	//
-	// Access points - When you use this action with an access point, you must provide
-	// the alias of the access point in place of the bucket name or specify the access
-	// point ARN. When using the access point ARN, you must direct requests to the
-	// access point hostname. The access point hostname takes the form
+	// Access points - When you use this action with an access point for general
+	// purpose buckets, you must provide the alias of the access point in place of the
+	// bucket name or specify the access point ARN. When you use this action with an
+	// access point for directory buckets, you must provide the access point name in
+	// place of the bucket name. When using the access point ARN, you must direct
+	// requests to the access point hostname. The access point hostname takes the form
 	// AccessPointName-AccountId.s3-accesspoint.Region.amazonaws.com. When using this
 	// action with an access point through the Amazon Web Services SDKs, you provide
 	// the access point ARN in place of the bucket name. For more information about
 	// access point ARNs, see [Using access points]in the Amazon S3 User Guide.
 	//
-	// Access points and Object Lambda access points are not supported by directory
-	// buckets.
+	// Object Lambda access points are not supported by directory buckets.
 	//
-	// S3 on Outposts - When you use this action with Amazon S3 on Outposts, you must
-	// direct requests to the S3 on Outposts hostname. The S3 on Outposts hostname
-	// takes the form
-	// AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com . When you
-	// use this action with S3 on Outposts through the Amazon Web Services SDKs, you
-	// provide the Outposts access point ARN in place of the bucket name. For more
-	// information about S3 on Outposts ARNs, see [What is S3 on Outposts?]in the Amazon S3 User Guide.
+	// S3 on Outposts - When you use this action with S3 on Outposts, you must direct
+	// requests to the S3 on Outposts hostname. The S3 on Outposts hostname takes the
+	// form AccessPointName-AccountId.outpostID.s3-outposts.Region.amazonaws.com . When
+	// you use this action with S3 on Outposts, the destination bucket must be the
+	// Outposts access point ARN or the access point alias. For more information about
+	// S3 on Outposts, see [What is S3 on Outposts?]in the Amazon S3 User Guide.
 	//
 	// [Directory bucket naming rules]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html
 	// [What is S3 on Outposts?]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html
@@ -264,13 +317,22 @@ type CreateMultipartUploadInput struct {
 
 	// Specifies whether Amazon S3 should use an S3 Bucket Key for object encryption
 	// with server-side encryption using Key Management Service (KMS) keys (SSE-KMS).
-	// Setting this header to true causes Amazon S3 to use an S3 Bucket Key for object
-	// encryption with SSE-KMS.
 	//
-	// Specifying this header with an object action doesn’t affect bucket-level
-	// settings for S3 Bucket Key.
+	// General purpose buckets - Setting this header to true causes Amazon S3 to use
+	// an S3 Bucket Key for object encryption with SSE-KMS. Also, specifying this
+	// header with a PUT action doesn't affect bucket-level settings for S3 Bucket Key.
 	//
-	// This functionality is not supported for directory buckets.
+	// Directory buckets - S3 Bucket Keys are always enabled for GET and PUT
+	// operations in a directory bucket and can’t be disabled. S3 Bucket Keys aren't
+	// supported, when you copy SSE-KMS encrypted objects from general purpose buckets
+	// to directory buckets, from directory buckets to general purpose buckets, or
+	// between directory buckets, through [CopyObject], [UploadPartCopy], [the Copy operation in Batch Operations], or [the import jobs]. In this case, Amazon S3 makes a
+	// call to KMS every time a copy request is made for a KMS-encrypted object.
+	//
+	// [CopyObject]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html
+	// [the import jobs]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/create-import-job
+	// [UploadPartCopy]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPartCopy.html
+	// [the Copy operation in Batch Operations]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-buckets-objects-Batch-Ops
 	BucketKeyEnabled *bool
 
 	// Specifies caching behavior along the request/reply chain.
@@ -281,6 +343,12 @@ type CreateMultipartUploadInput struct {
 	//
 	// [Checking object integrity]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
 	ChecksumAlgorithm types.ChecksumAlgorithm
+
+	// Indicates the checksum type that you want Amazon S3 to use to calculate the
+	// object’s checksum value. For more information, see [Checking object integrity in the Amazon S3 User Guide].
+	//
+	// [Checking object integrity in the Amazon S3 User Guide]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
+	ChecksumType types.ChecksumType
 
 	// Specifies presentational information for the object.
 	ContentDisposition *string
@@ -582,23 +650,86 @@ type CreateMultipartUploadInput struct {
 	SSECustomerKeyMD5 *string
 
 	// Specifies the Amazon Web Services KMS Encryption Context to use for object
-	// encryption. The value of this header is a base64-encoded UTF-8 string holding
-	// JSON with the encryption context key-value pairs.
+	// encryption. The value of this header is a Base64 encoded string of a UTF-8
+	// encoded JSON, which contains the encryption context as key-value pairs.
 	//
-	// This functionality is not supported for directory buckets.
+	// Directory buckets - You can optionally provide an explicit encryption context
+	// value. The value must match the default encryption context - the bucket Amazon
+	// Resource Name (ARN). An additional encryption context value is not supported.
 	SSEKMSEncryptionContext *string
 
-	// Specifies the ID (Key ID, Key ARN, or Key Alias) of the symmetric encryption
-	// customer managed key to use for object encryption.
+	// Specifies the KMS key ID (Key ID, Key ARN, or Key Alias) to use for object
+	// encryption. If the KMS key doesn't exist in the same account that's issuing the
+	// command, you must use the full Key ARN not the Key ID.
 	//
-	// This functionality is not supported for directory buckets.
+	// General purpose buckets - If you specify x-amz-server-side-encryption with
+	// aws:kms or aws:kms:dsse , this header specifies the ID (Key ID, Key ARN, or Key
+	// Alias) of the KMS key to use. If you specify
+	// x-amz-server-side-encryption:aws:kms or
+	// x-amz-server-side-encryption:aws:kms:dsse , but do not provide
+	// x-amz-server-side-encryption-aws-kms-key-id , Amazon S3 uses the Amazon Web
+	// Services managed key ( aws/s3 ) to protect the data.
+	//
+	// Directory buckets - To encrypt data using SSE-KMS, it's recommended to specify
+	// the x-amz-server-side-encryption header to aws:kms . Then, the
+	// x-amz-server-side-encryption-aws-kms-key-id header implicitly uses the bucket's
+	// default KMS customer managed key ID. If you want to explicitly set the
+	// x-amz-server-side-encryption-aws-kms-key-id header, it must match the bucket's
+	// default customer managed key (using key ID or ARN, not alias). Your SSE-KMS
+	// configuration can only support 1 [customer managed key]per directory bucket's lifetime. The [Amazon Web Services managed key] ( aws/s3
+	// ) isn't supported.
+	//
+	// Incorrect key specification results in an HTTP 400 Bad Request error.
+	//
+	// [customer managed key]: https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#customer-cmk
+	// [Amazon Web Services managed key]: https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#aws-managed-cmk
 	SSEKMSKeyId *string
 
 	// The server-side encryption algorithm used when you store this object in Amazon
-	// S3 (for example, AES256 , aws:kms ).
+	// S3 or Amazon FSx.
 	//
-	// For directory buckets, only server-side encryption with Amazon S3 managed keys
-	// (SSE-S3) ( AES256 ) is supported.
+	//   - Directory buckets - For directory buckets, there are only two supported
+	//   options for server-side encryption: server-side encryption with Amazon S3
+	//   managed keys (SSE-S3) ( AES256 ) and server-side encryption with KMS keys
+	//   (SSE-KMS) ( aws:kms ). We recommend that the bucket's default encryption uses
+	//   the desired encryption configuration and you don't override the bucket default
+	//   encryption in your CreateSession requests or PUT object requests. Then, new
+	//   objects are automatically encrypted with the desired encryption settings. For
+	//   more information, see [Protecting data with server-side encryption]in the Amazon S3 User Guide. For more information about
+	//   the encryption overriding behaviors in directory buckets, see [Specifying server-side encryption with KMS for new object uploads].
+	//
+	// In the Zonal endpoint API calls (except [CopyObject]and [UploadPartCopy]) using the REST API, the
+	//   encryption request headers must match the encryption settings that are specified
+	//   in the CreateSession request. You can't override the values of the encryption
+	//   settings ( x-amz-server-side-encryption ,
+	//   x-amz-server-side-encryption-aws-kms-key-id ,
+	//   x-amz-server-side-encryption-context , and
+	//   x-amz-server-side-encryption-bucket-key-enabled ) that are specified in the
+	//   CreateSession request. You don't need to explicitly specify these encryption
+	//   settings values in Zonal endpoint API calls, and Amazon S3 will use the
+	//   encryption settings values from the CreateSession request to protect new
+	//   objects in the directory bucket.
+	//
+	// When you use the CLI or the Amazon Web Services SDKs, for CreateSession , the
+	//   session token refreshes automatically to avoid service interruptions when a
+	//   session expires. The CLI or the Amazon Web Services SDKs use the bucket's
+	//   default encryption configuration for the CreateSession request. It's not
+	//   supported to override the encryption settings values in the CreateSession
+	//   request. So in the Zonal endpoint API calls (except [CopyObject]and [UploadPartCopy]), the encryption
+	//   request headers must match the default encryption configuration of the directory
+	//   bucket.
+	//
+	//   - S3 access points for Amazon FSx - When accessing data stored in Amazon FSx
+	//   file systems using S3 access points, the only valid server side encryption
+	//   option is aws:fsx . All Amazon FSx file systems have encryption configured by
+	//   default and are encrypted at rest. Data is automatically encrypted before being
+	//   written to the file system, and automatically decrypted as it is read. These
+	//   processes are handled transparently by Amazon FSx.
+	//
+	// [Specifying server-side encryption with KMS for new object uploads]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-specifying-kms-encryption.html
+	// [Protecting data with server-side encryption]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-serv-side-encryption.html
+	// [CopyObject]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html
+	// [UploadPartCopy]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_UploadPartCopy.html
 	ServerSideEncryption types.ServerSideEncryption
 
 	// By default, Amazon S3 uses the STANDARD Storage Class to store newly created
@@ -606,8 +737,9 @@ type CreateMultipartUploadInput struct {
 	// availability. Depending on performance needs, you can specify a different
 	// Storage Class. For more information, see [Storage Classes]in the Amazon S3 User Guide.
 	//
-	//   - For directory buckets, only the S3 Express One Zone storage class is
-	//   supported to store newly created objects.
+	//   - Directory buckets only support EXPRESS_ONEZONE (the S3 Express One Zone
+	//   storage class) in Availability Zones and ONEZONE_IA (the S3 One
+	//   Zone-Infrequent Access storage class) in Dedicated Local Zones.
 	//
 	//   - Amazon S3 on Outposts only uses the OUTPOSTS Storage Class.
 	//
@@ -667,20 +799,27 @@ type CreateMultipartUploadOutput struct {
 
 	// Indicates whether the multipart upload uses an S3 Bucket Key for server-side
 	// encryption with Key Management Service (KMS) keys (SSE-KMS).
-	//
-	// This functionality is not supported for directory buckets.
 	BucketKeyEnabled *bool
 
 	// The algorithm that was used to create a checksum of the object.
 	ChecksumAlgorithm types.ChecksumAlgorithm
 
+	//  Indicates the checksum type that you want Amazon S3 to use to calculate the
+	// object’s checksum value. For more information, see [Checking object integrity in the Amazon S3 User Guide].
+	//
+	// [Checking object integrity in the Amazon S3 User Guide]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
+	ChecksumType types.ChecksumType
+
 	// Object key for which the multipart upload was initiated.
 	Key *string
 
 	// If present, indicates that the requester was successfully charged for the
-	// request.
+	// request. For more information, see [Using Requester Pays buckets for storage transfers and usage]in the Amazon Simple Storage Service user
+	// guide.
 	//
 	// This functionality is not supported for directory buckets.
+	//
+	// [Using Requester Pays buckets for storage transfers and usage]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/RequesterPaysBuckets.html
 	RequestCharged types.RequestCharged
 
 	// If server-side encryption with a customer-provided encryption key was
@@ -698,23 +837,18 @@ type CreateMultipartUploadOutput struct {
 	SSECustomerKeyMD5 *string
 
 	// If present, indicates the Amazon Web Services KMS Encryption Context to use for
-	// object encryption. The value of this header is a base64-encoded UTF-8 string
-	// holding JSON with the encryption context key-value pairs.
-	//
-	// This functionality is not supported for directory buckets.
+	// object encryption. The value of this header is a Base64 encoded string of a
+	// UTF-8 encoded JSON, which contains the encryption context as key-value pairs.
 	SSEKMSEncryptionContext *string
 
-	// If present, indicates the ID of the Key Management Service (KMS) symmetric
-	// encryption customer managed key that was used for the object.
-	//
-	// This functionality is not supported for directory buckets.
+	// If present, indicates the ID of the KMS key that was used for object encryption.
 	SSEKMSKeyId *string
 
 	// The server-side encryption algorithm used when you store this object in Amazon
-	// S3 (for example, AES256 , aws:kms ).
+	// S3 or Amazon FSx.
 	//
-	// For directory buckets, only server-side encryption with Amazon S3 managed keys
-	// (SSE-S3) ( AES256 ) is supported.
+	// When accessing data stored in Amazon FSx file systems using S3 access points,
+	// the only valid server side encryption option is aws:fsx .
 	ServerSideEncryption types.ServerSideEncryption
 
 	// ID for the initiated multipart upload.
@@ -769,6 +903,9 @@ func (c *Client) addOperationCreateMultipartUploadMiddlewares(stack *middleware.
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -791,6 +928,9 @@ func (c *Client) addOperationCreateMultipartUploadMiddlewares(stack *middleware.
 		return err
 	}
 	if err = addIsExpressUserAgent(stack); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addOpCreateMultipartUploadValidationMiddleware(stack); err != nil {
@@ -827,6 +967,48 @@ func (c *Client) addOperationCreateMultipartUploadMiddlewares(stack *middleware.
 		return err
 	}
 	if err = addSetCreateMPUChecksumAlgorithm(stack); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptExecution(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeSerialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterSerialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeSigning(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterSigning(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptTransmit(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterDeserialization(stack, options); err != nil {
+		return err
+	}
+	if err = addSpanInitializeStart(stack); err != nil {
+		return err
+	}
+	if err = addSpanInitializeEnd(stack); err != nil {
+		return err
+	}
+	if err = addSpanBuildRequestStart(stack); err != nil {
+		return err
+	}
+	if err = addSpanBuildRequestEnd(stack); err != nil {
 		return err
 	}
 	return nil
