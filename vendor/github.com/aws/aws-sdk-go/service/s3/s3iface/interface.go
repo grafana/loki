@@ -80,6 +80,10 @@ type S3API interface {
 	CreateMultipartUploadWithContext(aws.Context, *s3.CreateMultipartUploadInput, ...request.Option) (*s3.CreateMultipartUploadOutput, error)
 	CreateMultipartUploadRequest(*s3.CreateMultipartUploadInput) (*request.Request, *s3.CreateMultipartUploadOutput)
 
+	CreateSession(*s3.CreateSessionInput) (*s3.CreateSessionOutput, error)
+	CreateSessionWithContext(aws.Context, *s3.CreateSessionInput, ...request.Option) (*s3.CreateSessionOutput, error)
+	CreateSessionRequest(*s3.CreateSessionInput) (*request.Request, *s3.CreateSessionOutput)
+
 	DeleteBucket(*s3.DeleteBucketInput) (*s3.DeleteBucketOutput, error)
 	DeleteBucketWithContext(aws.Context, *s3.DeleteBucketInput, ...request.Option) (*s3.DeleteBucketOutput, error)
 	DeleteBucketRequest(*s3.DeleteBucketInput) (*request.Request, *s3.DeleteBucketOutput)
@@ -299,6 +303,13 @@ type S3API interface {
 	ListBuckets(*s3.ListBucketsInput) (*s3.ListBucketsOutput, error)
 	ListBucketsWithContext(aws.Context, *s3.ListBucketsInput, ...request.Option) (*s3.ListBucketsOutput, error)
 	ListBucketsRequest(*s3.ListBucketsInput) (*request.Request, *s3.ListBucketsOutput)
+
+	ListDirectoryBuckets(*s3.ListDirectoryBucketsInput) (*s3.ListDirectoryBucketsOutput, error)
+	ListDirectoryBucketsWithContext(aws.Context, *s3.ListDirectoryBucketsInput, ...request.Option) (*s3.ListDirectoryBucketsOutput, error)
+	ListDirectoryBucketsRequest(*s3.ListDirectoryBucketsInput) (*request.Request, *s3.ListDirectoryBucketsOutput)
+
+	ListDirectoryBucketsPages(*s3.ListDirectoryBucketsInput, func(*s3.ListDirectoryBucketsOutput, bool) bool) error
+	ListDirectoryBucketsPagesWithContext(aws.Context, *s3.ListDirectoryBucketsInput, func(*s3.ListDirectoryBucketsOutput, bool) bool, ...request.Option) error
 
 	ListMultipartUploads(*s3.ListMultipartUploadsInput) (*s3.ListMultipartUploadsOutput, error)
 	ListMultipartUploadsWithContext(aws.Context, *s3.ListMultipartUploadsInput, ...request.Option) (*s3.ListMultipartUploadsOutput, error)
