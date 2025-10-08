@@ -3913,7 +3913,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.5.3"
+    "tag": "3.5.5"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -4060,7 +4060,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.5.3"
+"3.5.5"
 </pre>
 </td>
 		</tr>
@@ -4990,6 +4990,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe for the nginx container in the gateway pods.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.clientMaxBodySize</td>
 			<td>string</td>
 			<td>Allows customizing the `client_max_body_size` directive</td>
@@ -5270,6 +5279,15 @@ null
 			<td>Type of the gateway service</td>
 			<td><pre lang="json">
 "ClusterIP"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.startupProbe</td>
+			<td>object</td>
+			<td>startup probe for the nginx container in the gateway pods.</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -6967,7 +6985,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.5.3"
+"3.5.5"
 </pre>
 </td>
 		</tr>
@@ -7566,6 +7584,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.replicas</td>
+			<td>int</td>
+			<td>Replicas for `loki-canary` when using a Deployment</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.resources</td>
 			<td>object</td>
 			<td>Resource requests and limits for the canary</td>
@@ -7682,7 +7709,7 @@ true
 			<td>string</td>
 			<td>Memcached Docker image tag</td>
 			<td><pre lang="json">
-"1.6.38-alpine"
+"1.6.39-alpine"
 </pre>
 </td>
 		</tr>
@@ -12125,7 +12152,7 @@ false
 			<td>string</td>
 			<td>The Docker registry and image for the k8s sidecar</td>
 			<td><pre lang="json">
-"kiwigrid/k8s-sidecar"
+"docker.io/kiwigrid/k8s-sidecar"
 </pre>
 </td>
 		</tr>
@@ -12143,7 +12170,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.7"
+"1.30.10"
 </pre>
 </td>
 		</tr>
@@ -12572,6 +12599,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.persistence.whenDeleted</td>
+			<td>string</td>
+			<td>What to do with the volumes when the StatefulSet is deleted.</td>
+			<td><pre lang="json">
+"Delete"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.whenScaled</td>
+			<td>string</td>
+			<td>What to do with the volume when the StatefulSet is scaled down.</td>
+			<td><pre lang="json">
+"Delete"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.podAnnotations</td>
 			<td>object</td>
 			<td>Annotations for single binary pods</td>
@@ -12983,7 +13028,7 @@ false
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/loki-helm-test",
-    "tag": "ewelch-distributed-helm-chart-17db5ee"
+    "tag": "latest"
   },
   "labels": {},
   "prometheusAddress": "",
@@ -13029,7 +13074,7 @@ false
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/loki-helm-test",
-  "tag": "ewelch-distributed-helm-chart-17db5ee"
+  "tag": "latest"
 }
 </pre>
 </td>
@@ -13075,7 +13120,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"ewelch-distributed-helm-chart-17db5ee"
+"latest"
 </pre>
 </td>
 		</tr>

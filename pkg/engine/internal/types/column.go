@@ -1,4 +1,4 @@
-package types
+package types //nolint:revive
 
 import (
 	"fmt"
@@ -50,6 +50,7 @@ const (
 // Parser error types.
 const (
 	LogfmtParserErrorType = "LogfmtParserErr"
+	JSONParserErrorType   = "JSONParserErr"
 )
 
 var ctNames = [7]string{"invalid", "builtin", "label", "metadata", "parsed", "ambiguous", "generated"}
