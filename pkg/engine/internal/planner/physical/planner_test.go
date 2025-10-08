@@ -474,16 +474,18 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		require.NoError(t, err)
 
 		expectedPlan := &Plan{}
-		merge := expectedPlan.graph.Add(&Merge{id: "merge"})
-		sortMerge1 := expectedPlan.graph.Add(&SortMerge{id: "sortmerge1", Order: ASC, Column: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}})
-		sortMerge2 := expectedPlan.graph.Add(&SortMerge{id: "sortmerge2", Order: ASC, Column: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}})
-		scan1 := expectedPlan.graph.Add(&DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}, Direction: ASC})
-		scan2 := expectedPlan.graph.Add(&DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}, Direction: ASC})
-		scan3 := expectedPlan.graph.Add(&DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, Direction: ASC})
-		scan4 := expectedPlan.graph.Add(&DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, Direction: ASC})
+		compat := expectedPlan.addNode(&ColumnCompat{id: "compat", SourceTy: types.ColumnTypeMetadata, DestinationTy: types.ColumnTypeMetadata, CollisionTy: types.ColumnTypeLabel})
+		merge := expectedPlan.addNode(&Merge{id: "merge"})
+		sortMerge1 := expectedPlan.addNode(&SortMerge{id: "sortmerge1", Order: ASC, Column: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}})
+		sortMerge2 := expectedPlan.addNode(&SortMerge{id: "sortmerge2", Order: ASC, Column: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}})
+		scan1 := expectedPlan.addNode(&DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}, Direction: ASC})
+		scan2 := expectedPlan.addNode(&DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}, Direction: ASC})
+		scan3 := expectedPlan.addNode(&DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, Direction: ASC})
+		scan4 := expectedPlan.addNode(&DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, Direction: ASC})
 
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: sortMerge1})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: sortMerge2})
+		_ = expectedPlan.addEdge(Edge{Parent: compat, Child: merge})
+		_ = expectedPlan.addEdge(Edge{Parent: merge, Child: sortMerge1})
+		_ = expectedPlan.addEdge(Edge{Parent: merge, Child: sortMerge2})
 
 		// Sort merges should be added in the order of the scan timestamps
 		// ASC => oldest to newest
@@ -499,7 +501,7 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		actual = pat.ReplaceAllString(actual, "")
 		expected = pat.ReplaceAllString(expected, "")
 
-		require.Equal(t, actual, expected)
+		require.Equal(t, expected, actual)
 	})
 
 	t.Run("descending", func(t *testing.T) {
@@ -508,16 +510,18 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		require.NoError(t, err)
 
 		expectedPlan := &Plan{}
-		merge := expectedPlan.graph.Add(&Merge{id: "merge"})
-		sortMerge1 := expectedPlan.graph.Add(&SortMerge{id: "sortmerge1", Order: DESC, Column: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}})
-		sortMerge2 := expectedPlan.graph.Add(&SortMerge{id: "sortmerge2", Order: DESC, Column: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}})
-		scan1 := expectedPlan.graph.Add(&DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}, Direction: DESC})
-		scan2 := expectedPlan.graph.Add(&DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}, Direction: DESC})
-		scan3 := expectedPlan.graph.Add(&DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, Direction: DESC})
-		scan4 := expectedPlan.graph.Add(&DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, Direction: DESC})
+		compat := expectedPlan.addNode(&ColumnCompat{id: "compat", SourceTy: types.ColumnTypeMetadata, DestinationTy: types.ColumnTypeMetadata, CollisionTy: types.ColumnTypeLabel})
+		merge := expectedPlan.addNode(&Merge{id: "merge"})
+		sortMerge1 := expectedPlan.addNode(&SortMerge{id: "sortmerge1", Order: DESC, Column: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}})
+		sortMerge2 := expectedPlan.addNode(&SortMerge{id: "sortmerge2", Order: DESC, Column: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}})
+		scan1 := expectedPlan.addNode(&DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}, Direction: DESC})
+		scan2 := expectedPlan.addNode(&DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}, Direction: DESC})
+		scan3 := expectedPlan.addNode(&DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, Direction: DESC})
+		scan4 := expectedPlan.addNode(&DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, Direction: DESC})
 
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: sortMerge1})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: sortMerge2})
+		_ = expectedPlan.addEdge(Edge{Parent: compat, Child: merge})
+		_ = expectedPlan.addEdge(Edge{Parent: merge, Child: sortMerge1})
+		_ = expectedPlan.addEdge(Edge{Parent: merge, Child: sortMerge2})
 
 		// Sort merges should be added in the order of the scan timestamps
 		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: sortMerge1, Child: scan1})
@@ -532,7 +536,7 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		actual = pat.ReplaceAllString(actual, "")
 		expected = pat.ReplaceAllString(expected, "")
 
-		require.Equal(t, actual, expected)
+		require.Equal(t, expected, actual)
 	})
 }
 

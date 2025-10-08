@@ -236,13 +236,23 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 		return nil, err
 	}
 
-	merge := &Merge{}
-	p.plan.graph.Add(merge)
 	groups := overlappingShardDescriptors(filteredShardDescriptors)
-
 	if ctx.direction == ASC {
 		slices.Reverse(groups)
 	}
+
+	// TODO(chaudum): Make it configurable to keep/remove this compatibility node
+	compat := &ColumnCompat{
+		id:            "MetadataOverLabel",
+		SourceTy:      types.ColumnTypeMetadata,
+		DestinationTy: types.ColumnTypeMetadata,
+		CollisionTy:   types.ColumnTypeLabel,
+	}
+	p.plan.addNode(compat)
+
+	merge := &Merge{}
+	p.plan.addNode(merge)
+	p.plan.addEdge(Edge{compat, merge})
 
 	for _, gr := range groups {
 		if err := p.buildNodeGroup(gr, merge, ctx); err != nil {
@@ -250,7 +260,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 		}
 	}
 
-	return []Node{merge}, nil
+	return []Node{compat}, nil
 }
 
 // Convert [logical.Select] into one [Filter] node.
