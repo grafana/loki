@@ -119,7 +119,7 @@ func TestDecode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			record := Record{}
-			err := decodeRow(tt.columns, tt.row, &record, nil)
+			err := DecodeRow(tt.columns, tt.row, &record, nil)
 			if tt.wantErr {
 				require.Error(t, err)
 				return

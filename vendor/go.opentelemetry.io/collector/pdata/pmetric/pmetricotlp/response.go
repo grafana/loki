@@ -12,9 +12,6 @@ import (
 
 // MarshalProto marshals ExportResponse into proto bytes.
 func (ms ExportResponse) MarshalProto() ([]byte, error) {
-	if !internal.UseCustomProtoEncoding.IsEnabled() {
-		return ms.orig.Marshal()
-	}
 	size := internal.SizeProtoOrigExportMetricsServiceResponse(ms.orig)
 	buf := make([]byte, size)
 	_ = internal.MarshalProtoOrigExportMetricsServiceResponse(ms.orig, buf)
@@ -23,9 +20,6 @@ func (ms ExportResponse) MarshalProto() ([]byte, error) {
 
 // UnmarshalProto unmarshalls ExportResponse from proto bytes.
 func (ms ExportResponse) UnmarshalProto(data []byte) error {
-	if !internal.UseCustomProtoEncoding.IsEnabled() {
-		return ms.orig.Unmarshal(data)
-	}
 	return internal.UnmarshalProtoOrigExportMetricsServiceResponse(ms.orig, data)
 }
 

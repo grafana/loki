@@ -39,6 +39,7 @@ func Test(t *testing.T) {
 		PageSizeHint:     1024,
 		BufferSize:       256,
 		StripeMergeLimit: 2,
+		SortOrder:        logs.SortStreamASC,
 	}
 
 	tracker := logs.NewBuilder(nil, opts)

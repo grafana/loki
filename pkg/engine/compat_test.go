@@ -10,8 +10,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/executor"
-	"github.com/grafana/loki/v3/pkg/engine/internal/datatype"
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -28,8 +27,8 @@ func TestStreamsResultBuilder(t *testing.T) {
 	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer alloc.AssertSize(t, 0)
 
-	mdTypeLabel := datatype.ColumnMetadata(types.ColumnTypeLabel, datatype.Loki.String)
-	mdTypeMetadata := datatype.ColumnMetadata(types.ColumnTypeMetadata, datatype.Loki.String)
+	mdTypeLabel := types.ColumnMetadata(types.ColumnTypeLabel, types.Loki.String)
+	mdTypeMetadata := types.ColumnMetadata(types.ColumnTypeMetadata, types.Loki.String)
 
 	t.Run("empty builder returns non-nil result", func(t *testing.T) {
 		builder := newStreamsResultBuilder()
@@ -40,8 +39,8 @@ func TestStreamsResultBuilder(t *testing.T) {
 	t.Run("rows without log line, timestamp, or labels are ignored", func(t *testing.T) {
 		schema := arrow.NewSchema(
 			[]arrow.Field{
-				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
-				{Name: types.ColumnNameBuiltinMessage, Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinMessage},
+				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: types.ColumnMetadataBuiltinTimestamp},
+				{Name: types.ColumnNameBuiltinMessage, Type: arrow.BinaryTypes.String, Metadata: types.ColumnMetadataBuiltinMessage},
 				{Name: "env", Type: arrow.BinaryTypes.String, Metadata: mdTypeLabel},
 			},
 			nil,
@@ -97,8 +96,8 @@ func TestStreamsResultBuilder(t *testing.T) {
 	t.Run("successful conversion of labels, log line, timestamp, and structured metadata ", func(t *testing.T) {
 		schema := arrow.NewSchema(
 			[]arrow.Field{
-				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
-				{Name: types.ColumnNameBuiltinMessage, Type: arrow.BinaryTypes.String, Metadata: datatype.ColumnMetadataBuiltinMessage},
+				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: types.ColumnMetadataBuiltinTimestamp},
+				{Name: types.ColumnNameBuiltinMessage, Type: arrow.BinaryTypes.String, Metadata: types.ColumnMetadataBuiltinMessage},
 				{Name: "env", Type: arrow.BinaryTypes.String, Metadata: mdTypeLabel},
 				{Name: "namespace", Type: arrow.BinaryTypes.String, Metadata: mdTypeLabel},
 				{Name: "traceID", Type: arrow.BinaryTypes.String, Metadata: mdTypeMetadata},
@@ -167,7 +166,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 }
 
 func TestVectorResultBuilder(t *testing.T) {
-	mdTypeString := datatype.ColumnMetadata(types.ColumnTypeAmbiguous, datatype.Loki.String)
+	mdTypeString := types.ColumnMetadata(types.ColumnTypeAmbiguous, types.Loki.String)
 	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer alloc.AssertSize(t, 0)
 
@@ -180,8 +179,8 @@ func TestVectorResultBuilder(t *testing.T) {
 	t.Run("successful conversion of vector data", func(t *testing.T) {
 		schema := arrow.NewSchema(
 			[]arrow.Field{
-				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
-				{Name: types.ColumnNameGeneratedValue, Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Integer)},
+				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: types.ColumnMetadataBuiltinTimestamp},
+				{Name: types.ColumnNameGeneratedValue, Type: arrow.PrimitiveTypes.Float64, Metadata: types.ColumnMetadata(types.ColumnTypeGenerated, types.Loki.Float)},
 				{Name: "instance", Type: arrow.BinaryTypes.String, Metadata: mdTypeString},
 				{Name: "job", Type: arrow.BinaryTypes.String, Metadata: mdTypeString},
 			},
@@ -189,9 +188,9 @@ func TestVectorResultBuilder(t *testing.T) {
 		)
 
 		rows := arrowtest.Rows{
-			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000000).UTC(), types.ColumnNameGeneratedValue: int64(42), "instance": "localhost:9090", "job": "prometheus"},
-			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000000).UTC(), types.ColumnNameGeneratedValue: int64(23), "instance": "localhost:9100", "job": "node-exporter"},
-			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000000).UTC(), types.ColumnNameGeneratedValue: int64(15), "instance": "localhost:9100", "job": "prometheus"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000000).UTC(), types.ColumnNameGeneratedValue: float64(42), "instance": "localhost:9090", "job": "prometheus"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000000).UTC(), types.ColumnNameGeneratedValue: float64(23), "instance": "localhost:9100", "job": "node-exporter"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000000).UTC(), types.ColumnNameGeneratedValue: float64(15), "instance": "localhost:9100", "job": "prometheus"},
 		}
 
 		record := rows.Record(alloc, schema)
@@ -235,15 +234,15 @@ func TestVectorResultBuilder(t *testing.T) {
 	t.Run("rows without timestamp or value are ignored", func(t *testing.T) {
 		schema := arrow.NewSchema(
 			[]arrow.Field{
-				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
-				{Name: types.ColumnNameGeneratedValue, Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Integer)},
+				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: types.ColumnMetadataBuiltinTimestamp},
+				{Name: types.ColumnNameGeneratedValue, Type: arrow.PrimitiveTypes.Float64, Metadata: types.ColumnMetadata(types.ColumnTypeGenerated, types.Loki.Float)},
 				{Name: "instance", Type: arrow.BinaryTypes.String, Metadata: mdTypeString},
 			},
 			nil,
 		)
 
 		rows := arrowtest.Rows{
-			{types.ColumnNameBuiltinTimestamp: nil, types.ColumnNameGeneratedValue: int64(42), "instance": "localhost:9090"},
+			{types.ColumnNameBuiltinTimestamp: nil, types.ColumnNameGeneratedValue: float64(42), "instance": "localhost:9090"},
 			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000000).UTC(), types.ColumnNameGeneratedValue: nil, "instance": "localhost:9100"},
 		}
 
@@ -262,7 +261,7 @@ func TestVectorResultBuilder(t *testing.T) {
 }
 
 func TestMatrixResultBuilder(t *testing.T) {
-	mdTypeString := datatype.ColumnMetadata(types.ColumnTypeAmbiguous, datatype.Loki.String)
+	mdTypeString := types.ColumnMetadata(types.ColumnTypeAmbiguous, types.Loki.String)
 	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer alloc.AssertSize(t, 0)
 
@@ -275,8 +274,8 @@ func TestMatrixResultBuilder(t *testing.T) {
 	t.Run("successful conversion of matrix data", func(t *testing.T) {
 		schema := arrow.NewSchema(
 			[]arrow.Field{
-				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: datatype.ColumnMetadataBuiltinTimestamp},
-				{Name: types.ColumnNameGeneratedValue, Type: arrow.PrimitiveTypes.Int64, Metadata: datatype.ColumnMetadata(types.ColumnTypeGenerated, datatype.Loki.Integer)},
+				{Name: types.ColumnNameBuiltinTimestamp, Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: types.ColumnMetadataBuiltinTimestamp},
+				{Name: types.ColumnNameGeneratedValue, Type: arrow.PrimitiveTypes.Float64, Metadata: types.ColumnMetadata(types.ColumnTypeGenerated, types.Loki.Float)},
 				{Name: "instance", Type: arrow.BinaryTypes.String, Metadata: mdTypeString},
 				{Name: "job", Type: arrow.BinaryTypes.String, Metadata: mdTypeString},
 			},
@@ -284,12 +283,12 @@ func TestMatrixResultBuilder(t *testing.T) {
 		)
 
 		rows := arrowtest.Rows{
-			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000000).UTC(), types.ColumnNameGeneratedValue: int64(42), "instance": "localhost:9090", "job": "prometheus"},
-			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000001000000000).UTC(), types.ColumnNameGeneratedValue: int64(43), "instance": "localhost:9090", "job": "prometheus"},
-			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000002000000000).UTC(), types.ColumnNameGeneratedValue: int64(44), "instance": "localhost:9090", "job": "prometheus"},
-			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000000).UTC(), types.ColumnNameGeneratedValue: int64(23), "instance": "localhost:9100", "job": "node-exporter"},
-			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000001000000000).UTC(), types.ColumnNameGeneratedValue: int64(24), "instance": "localhost:9100", "job": "node-exporter"},
-			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000002000000000).UTC(), types.ColumnNameGeneratedValue: int64(25), "instance": "localhost:9100", "job": "node-exporter"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000000).UTC(), types.ColumnNameGeneratedValue: float64(42), "instance": "localhost:9090", "job": "prometheus"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000001000000000).UTC(), types.ColumnNameGeneratedValue: float64(43), "instance": "localhost:9090", "job": "prometheus"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000002000000000).UTC(), types.ColumnNameGeneratedValue: float64(44), "instance": "localhost:9090", "job": "prometheus"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000000000000000).UTC(), types.ColumnNameGeneratedValue: float64(23), "instance": "localhost:9100", "job": "node-exporter"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000001000000000).UTC(), types.ColumnNameGeneratedValue: float64(24), "instance": "localhost:9100", "job": "node-exporter"},
+			{types.ColumnNameBuiltinTimestamp: time.Unix(0, 1620000002000000000).UTC(), types.ColumnNameGeneratedValue: float64(25), "instance": "localhost:9100", "job": "node-exporter"},
 		}
 
 		record := rows.Record(alloc, schema)

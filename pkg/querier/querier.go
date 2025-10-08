@@ -25,6 +25,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/iter"
 	"github.com/grafana/loki/v3/pkg/loghttp"
@@ -55,6 +56,7 @@ type Config struct {
 	ExtraQueryDelay           time.Duration    `yaml:"extra_query_delay,omitempty"`
 	QueryIngestersWithin      time.Duration    `yaml:"query_ingesters_within,omitempty"`
 	Engine                    logql.EngineOpts `yaml:"engine,omitempty"`
+	EngineV2                  engine.Config    `yaml:"engine_v2,omitempty" category:"experimental"`
 	MaxConcurrent             int              `yaml:"max_concurrent"`
 	QueryStoreOnly            bool             `yaml:"query_store_only"`
 	QueryIngesterOnly         bool             `yaml:"query_ingester_only"`
@@ -76,6 +78,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.ExtraQueryDelay, prefix+"extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.DurationVar(&cfg.QueryIngestersWithin, prefix+"query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
 	cfg.Engine.RegisterFlagsWithPrefix(prefix+"engine.", f)
+	cfg.EngineV2.RegisterFlagsWithPrefix(prefix+"engine-v2.", f)
 	f.IntVar(&cfg.MaxConcurrent, prefix+"max-concurrent", 4, "The maximum number of queries that can be simultaneously processed by the querier.")
 	f.BoolVar(&cfg.QueryStoreOnly, prefix+"query-store-only", false, "Only query the store, and not attempt any ingesters. This is useful for running a standalone querier pool operating only against stored data.")
 	f.BoolVar(&cfg.QueryIngesterOnly, prefix+"query-ingester-only", false, "When true, queriers only query the ingesters, and not stored data. This is useful when the object store is unavailable.")

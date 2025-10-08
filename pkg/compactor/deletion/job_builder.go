@@ -584,8 +584,11 @@ func (i *storageUpdatesIterator) ForEachSeries(callback func(labels string, rebu
 		for chunkID, newChunk := range updates.RebuiltChunks {
 			if newChunk != nil {
 				newChunksCount++
+				rebuiltChunks[chunkID] = newChunk
+			} else {
+				// when newChunk(struct type) is nil, do not assign it directly to an interface because it ends up putting a typed nil which fails the simple nil check(i.e == nil).
+				rebuiltChunks[chunkID] = nil
 			}
-			rebuiltChunks[chunkID] = newChunk
 		}
 		if err := callback(labels, rebuiltChunks, updates.ChunksToDeIndex); err != nil {
 			return err

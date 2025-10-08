@@ -134,7 +134,7 @@ func EncodeMouseButton(b MouseButton, motion, shift, alt, ctrl bool) (m byte) {
 		m |= bitMotion
 	}
 
-	return
+	return //nolint:nakedret
 }
 
 // x10Offset is the offset for X10 mouse events.

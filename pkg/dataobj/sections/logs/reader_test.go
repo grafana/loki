@@ -31,18 +31,22 @@ func TestReader(t *testing.T) {
 		{StreamID: 2, Timestamp: unixTime(30), Metadata: labels.FromStrings("trace_id", "123456"), Line: []byte("foo bar")},
 		{StreamID: 1, Timestamp: unixTime(20), Metadata: labels.FromStrings("trace_id", "abcdef"), Line: []byte("goodbye, world!")},
 		{StreamID: 1, Timestamp: unixTime(10), Metadata: labels.EmptyLabels(), Line: []byte("hello, world!")},
+		{StreamID: 1, Timestamp: unixTime(5), Metadata: labels.FromStrings("trace_id", "abcdef", "foo", ""), Line: []byte("")},
 	})
 
 	var (
 		streamID = sec.Columns()[0]
-		traceID  = sec.Columns()[2]
-		message  = sec.Columns()[3]
+		foo      = sec.Columns()[2]
+		traceID  = sec.Columns()[3]
+		message  = sec.Columns()[4]
 	)
 
 	require.Equal(t, "", streamID.Name)
 	require.Equal(t, logs.ColumnTypeStreamID, streamID.Type)
 	require.Equal(t, "trace_id", traceID.Name)
 	require.Equal(t, logs.ColumnTypeMetadata, traceID.Type)
+	require.Equal(t, "foo", foo.Name)
+	require.Equal(t, logs.ColumnTypeMetadata, foo.Type)
 	require.Equal(t, "", message.Name)
 	require.Equal(t, logs.ColumnTypeMessage, message.Type)
 
@@ -53,10 +57,11 @@ func TestReader(t *testing.T) {
 	}{
 		{
 			name:    "basic reads with predicate",
-			columns: []*logs.Column{streamID, traceID, message},
+			columns: []*logs.Column{streamID, traceID, foo, message},
 			expected: arrowtest.Rows{
-				{"stream_id.int64": int64(2), "trace_id.metadata.utf8": "123456", "message.utf8": "foo bar"},
-				{"stream_id.int64": int64(1), "trace_id.metadata.utf8": "abcdef", "message.utf8": "goodbye, world!"},
+				{"stream_id.int64": int64(2), "foo.metadata.utf8": nil, "trace_id.metadata.utf8": "123456", "message.utf8": "foo bar"},
+				{"stream_id.int64": int64(1), "foo.metadata.utf8": nil, "trace_id.metadata.utf8": "abcdef", "message.utf8": "goodbye, world!"},
+				{"stream_id.int64": int64(1), "foo.metadata.utf8": "", "trace_id.metadata.utf8": "abcdef", "message.utf8": ""},
 			},
 		},
 		// tests that the reader evaluates predicates correctly even when predicate columns are not projected.
@@ -66,6 +71,7 @@ func TestReader(t *testing.T) {
 			expected: arrowtest.Rows{
 				{"stream_id.int64": int64(2), "message.utf8": "foo bar"},
 				{"stream_id.int64": int64(1), "message.utf8": "goodbye, world!"},
+				{"stream_id.int64": int64(1), "message.utf8": ""},
 			},
 		},
 	} {
@@ -105,7 +111,6 @@ func TestReader(t *testing.T) {
 			require.NoError(t, err, "failed to get rows from table")
 			require.Equal(t, tt.expected, actual)
 		})
-
 	}
 }
 
@@ -116,6 +121,7 @@ func buildSection(t *testing.T, recs []logs.Record) *logs.Section {
 		PageSizeHint:     8192,
 		BufferSize:       4192,
 		StripeMergeLimit: 2,
+		SortOrder:        logs.SortStreamASC,
 	})
 
 	for _, rec := range recs {

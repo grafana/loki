@@ -32,8 +32,8 @@ spec:
     operation easier, and will rely on re-fetching data when needed.
   */}}
   persistentVolumeClaimRetentionPolicy:
-    whenDeleted: Delete
-    whenScaled: Delete
+    whenDeleted: {{ .Values.singleBinary.persistence.whenDeleted }}
+    whenScaled: {{ .Values.singleBinary.persistence.whenScaled }}
   {{- end }}
   selector:
     matchLabels:
@@ -88,7 +88,7 @@ spec:
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target={{ .Values.singleBinary.targetModule }}
+            - -target={{- include "loki.singleBinaryTarget" . -}}
             {{- with .Values.singleBinary.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
