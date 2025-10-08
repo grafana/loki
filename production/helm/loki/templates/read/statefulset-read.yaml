@@ -85,7 +85,7 @@ spec:
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target={{ .Values.read.targetModule }}
+            - -target={{- include "loki.readTarget" . -}}
             {{- with (concat .Values.global.extraArgs .Values.read.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

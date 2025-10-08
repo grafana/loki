@@ -829,7 +829,7 @@ http {
     {{- $rulerHost := include "loki.rulerFullname" .}}
     {{- $compactorHost := include "loki.compactorFullname" .}}
     {{- $schedulerHost := include "loki.querySchedulerFullname" .}}
-
+    {{- $querierHost := include "loki.querierFullname" .}}
 
     {{- $distributorUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $distributorHost $namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) -}}
     {{- $ingesterUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $ingesterHost $namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
@@ -838,6 +838,7 @@ http {
     {{- $rulerUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $rulerHost $namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
     {{- $compactorUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $compactorHost $namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
     {{- $schedulerUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $schedulerHost $namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- $querierUrl := printf "http://%s.%s.svc.%s:3100" $httpSchema $querierHost $namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
 
     {{- if eq (include "loki.deployment.isSingleBinary" .) "true"}}
     {{- $distributorUrl = $singleBinaryUrl }}
@@ -847,10 +848,12 @@ http {
     {{- $rulerUrl = $singleBinaryUrl }}
     {{- $compactorUrl = $singleBinaryUrl }}
     {{- $schedulerUrl = $singleBinaryUrl }}
+    {{- $querierUrl = $singleBinaryUrl }}
     {{- else if eq (include "loki.deployment.isScalable" .) "true"}}
     {{- $distributorUrl = $writeUrl }}
     {{- $ingesterUrl = $writeUrl }}
     {{- $queryFrontendUrl = $readUrl }}
+    {{- $querierUrl = $readUrl }}
     {{- $indexGatewayUrl = $backendUrl }}
     {{- $rulerUrl = $backendUrl }}
     {{- $compactorUrl = $backendUrl }}
@@ -862,7 +865,7 @@ http {
       {{- with .Values.gateway.nginxConfig.locationSnippet }}
       {{- tpl . $ | nindent 6 }}
       {{- end }}
-      proxy_pass       {{ $distributorUrl }}$request_uri;
+      proxy_pass       {{ $querierUrl }}$request_uri;
     }
     {{- end }}
 
