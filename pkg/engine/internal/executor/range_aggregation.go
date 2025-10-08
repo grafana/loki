@@ -152,9 +152,9 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				}
 				return nil, err
 			}
+			defer record.Release()
 
 			inputsExhausted = false
-			defer record.Release()
 
 			// extract all the columns that are used for partitioning
 			arrays := make([]*array.String, 0, len(r.opts.partitionBy))
@@ -170,6 +170,11 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 
 				arrays = append(arrays, vec.ToArray().(*array.String))
 			}
+			defer func() {
+				for _, a := range arrays {
+					a.Release()
+				}
+			}()
 
 			// extract timestamp column to check if the entry is in range
 			tsVec, err := r.evaluator.eval(tsColumnExpr, record)
@@ -177,6 +182,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				return nil, err
 			}
 			tsCol := tsVec.ToArray().(*array.Timestamp)
+			defer tsCol.Release()
 
 			// no need to extract value column for COUNT aggregation
 			var valVec ColumnVector
@@ -185,6 +191,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				if err != nil {
 					return nil, err
 				}
+				defer valVec.Release()
 			}
 
 			for row := range int(record.NumRows()) {
