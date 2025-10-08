@@ -1926,7 +1926,7 @@ func OverlappingBlocks(bm []BlockMeta) Overlaps {
 	return overlapGroups
 }
 
-func (*DB) String() string {
+func (db *DB) String() string {
 	return "HEAD"
 }
 

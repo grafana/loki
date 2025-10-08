@@ -125,15 +125,15 @@ type MockQuerier struct {
 	SelectMockFunction func(sortSeries bool, hints *SelectHints, matchers ...*labels.Matcher) SeriesSet
 }
 
-func (*MockQuerier) LabelValues(context.Context, string, *LabelHints, ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (q *MockQuerier) LabelValues(context.Context, string, *LabelHints, ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 
-func (*MockQuerier) LabelNames(context.Context, *LabelHints, ...*labels.Matcher) ([]string, annotations.Annotations, error) {
+func (q *MockQuerier) LabelNames(context.Context, *LabelHints, ...*labels.Matcher) ([]string, annotations.Annotations, error) {
 	return nil, nil, nil
 }
 
-func (*MockQuerier) Close() error {
+func (q *MockQuerier) Close() error {
 	return nil
 }
 
@@ -408,10 +408,10 @@ type testSeriesSet struct {
 	series Series
 }
 
-func (testSeriesSet) Next() bool                        { return true }
-func (s testSeriesSet) At() Series                      { return s.series }
-func (testSeriesSet) Err() error                        { return nil }
-func (testSeriesSet) Warnings() annotations.Annotations { return nil }
+func (s testSeriesSet) Next() bool                        { return true }
+func (s testSeriesSet) At() Series                        { return s.series }
+func (s testSeriesSet) Err() error                        { return nil }
+func (s testSeriesSet) Warnings() annotations.Annotations { return nil }
 
 // TestSeriesSet returns a mock series set.
 func TestSeriesSet(series Series) SeriesSet {
@@ -422,10 +422,10 @@ type errSeriesSet struct {
 	err error
 }
 
-func (errSeriesSet) Next() bool                        { return false }
-func (errSeriesSet) At() Series                        { return nil }
-func (s errSeriesSet) Err() error                      { return s.err }
-func (errSeriesSet) Warnings() annotations.Annotations { return nil }
+func (s errSeriesSet) Next() bool                        { return false }
+func (s errSeriesSet) At() Series                        { return nil }
+func (s errSeriesSet) Err() error                        { return s.err }
+func (s errSeriesSet) Warnings() annotations.Annotations { return nil }
 
 // ErrSeriesSet returns a series set that wraps an error.
 func ErrSeriesSet(err error) SeriesSet {
@@ -443,10 +443,10 @@ type errChunkSeriesSet struct {
 	err error
 }
 
-func (errChunkSeriesSet) Next() bool                        { return false }
-func (errChunkSeriesSet) At() ChunkSeries                   { return nil }
-func (s errChunkSeriesSet) Err() error                      { return s.err }
-func (errChunkSeriesSet) Warnings() annotations.Annotations { return nil }
+func (s errChunkSeriesSet) Next() bool                        { return false }
+func (s errChunkSeriesSet) At() ChunkSeries                   { return nil }
+func (s errChunkSeriesSet) Err() error                        { return s.err }
+func (s errChunkSeriesSet) Warnings() annotations.Annotations { return nil }
 
 // ErrChunkSeriesSet returns a chunk series set that wraps an error.
 func ErrChunkSeriesSet(err error) ChunkSeriesSet {

@@ -24,9 +24,9 @@ type dockerswarmMetrics struct {
 }
 
 // Register implements discovery.DiscovererMetrics.
-func (*dockerswarmMetrics) Register() error {
+func (m *dockerswarmMetrics) Register() error {
 	return nil
 }
 
 // Unregister implements discovery.DiscovererMetrics.
-func (*dockerswarmMetrics) Unregister() {}
+func (m *dockerswarmMetrics) Unregister() {}
