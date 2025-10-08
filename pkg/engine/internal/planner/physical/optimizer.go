@@ -26,7 +26,7 @@ func (r *removeNoopFilter) apply(node Node) bool {
 	switch node := node.(type) {
 	case *Filter:
 		if len(node.Predicates) == 0 {
-			r.plan.eliminateNode(node)
+			r.plan.graph.Eliminate(node)
 			changed = true
 		}
 	}
@@ -46,7 +46,7 @@ func (r *removeNoopMerge) apply(node Node) bool {
 	switch node := node.(type) {
 	case *Merge, *SortMerge:
 		if len(r.plan.Children(node)) <= 1 {
-			r.plan.eliminateNode(node)
+			r.plan.graph.Eliminate(node)
 			changed = true
 		}
 	}
@@ -364,7 +364,7 @@ func sortProjections(a, b ColumnExpression) int {
 
 // isMetricQuery checks if the plan contains a RangeAggregation or VectorAggregation node, indicating a metric query
 func (r *projectionPushdown) isMetricQuery() bool {
-	for node := range r.plan.nodes {
+	for node := range r.plan.graph.Nodes() {
 		if _, ok := node.(*RangeAggregation); ok {
 			return true
 		}
