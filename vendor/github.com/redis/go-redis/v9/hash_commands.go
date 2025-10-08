@@ -3,6 +3,8 @@ package redis
 import (
 	"context"
 	"time"
+
+	"github.com/redis/go-redis/v9/internal/hashtag"
 )
 
 type HashCmdable interface {
@@ -192,6 +194,9 @@ func (c cmdable) HScan(ctx context.Context, key string, cursor uint64, match str
 		args = append(args, "count", count)
 	}
 	cmd := NewScanCmd(ctx, c, args...)
+	if hashtag.Present(match) {
+		cmd.SetFirstKeyPos(4)
+	}
 	_ = c(ctx, cmd)
 	return cmd
 }
@@ -211,6 +216,9 @@ func (c cmdable) HScanNoValues(ctx context.Context, key string, cursor uint64, m
 	}
 	args = append(args, "novalues")
 	cmd := NewScanCmd(ctx, c, args...)
+	if hashtag.Present(match) {
+		cmd.SetFirstKeyPos(4)
+	}
 	_ = c(ctx, cmd)
 	return cmd
 }
