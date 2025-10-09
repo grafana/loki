@@ -57,6 +57,7 @@ Before upgrading to this version, make sure that the CustomResourceDefinitions (
 - [FEATURE] Add replicas to loki-canary deployment [#190095](https://github.com/grafana/loki/pull/19095)
 - [FEATURE] Allow changing the retentionPolicy for the singleBinary StatefulSet [#19097](https://github.com/grafana/loki/pull/19097)
 - [FEATURE]: Allow auto-resizing the volume by recreating the StatefulSet. [#19217](https://github.com/grafana/loki/pull/19217)
+- [ENHANCEMENT] Allow scaling querier with keda. [#16873](https://github.com/grafana/loki/pull/16873)
 
 ## 6.41.1
 
@@ -82,7 +83,6 @@ Before upgrading to this version, make sure that the CustomResourceDefinitions (
 - [BUGFIX] Ensure the GEL admin-api resources are not created when using SimpleScalable deployment mode [#13655](https://github.com/grafana/loki/pull/13655)
 - [BUGFIX] Stop scrapping zonal ingester metrics twice when using ServiceMonitor. [#19000](https://github.com/grafana/loki/pull/19000)
 - [BUGFIX] Add init container configuration for backend, bloom builder, distributor, query-frontend, query-scheduler, read, write. [#18709](https://github.com/grafana/loki/pull/18709)
-- [ENHANCEMENT] Allow scaling querier with keda. [#16873](https://github.com/grafana/loki/pull/16873)
 
 ## 6.38.0
 
