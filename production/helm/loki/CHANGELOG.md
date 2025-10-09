@@ -53,6 +53,9 @@ Before upgrading to this version, make sure that the CustomResourceDefinitions (
 
 ## 6.38.0
 
+**NOTE:** While the Loki chart does not currently use these CRDs, we wanted to note this requirement for the [rollout-operator](https://github.com/grafana/helm-charts/tree/main/charts/rollout-operator#upgrade-of-grafana-rollout-operator).
+Before upgrading to v0.32.0, make sure that the CustomResourceDefinitions (CRDs) in the `crds` directory are applied to your cluster. Manually applying these CRDs is only required if upgrading from a chart <= v0.32.0.  
+
 - un-deprecate all features in `monitoring` block except grafana-agent-operator [#19001](https://github.com/grafana/loki/pull/19001)
 - [FEATURE] Make access modes for persistence on all PVCs and StatefulSets editable [#13474](https://github.com/grafana/loki/pull/13474)
 - [FEATURE] Allow enabling user namespaces [#18661](https://github.com/grafana/loki/pull/18661)
