@@ -16,7 +16,7 @@ WORKDIR /src/loki
 RUN make clean && \
     GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make BUILD_IN_CONTAINER=false loki-debug
 
-FROM       gcr.io/distroless/base-nossl
+FROM       gcr.io/distroless/base-nossl:debug
 COPY       --from=build /src/loki/cmd/loki/loki-debug /usr/bin/loki-debug
 COPY       --from=goenv /go/bin/dlv /usr/bin/dlv
 COPY       cmd/loki/loki-docker-config.yaml /etc/loki/local-config.yaml
@@ -25,6 +25,8 @@ EXPOSE     3100
 # Expose 40000 for delve
 EXPOSE 40000
 
+SHELL [ "/busybox/sh", "-c" ]
+RUN ln -s /busybox/sh /bin/sh
 
 # Run delve, ending with -- because we pass params via kubernetes, per the docs:
 #   Pass flags to the program you are debugging using --, for example:`
