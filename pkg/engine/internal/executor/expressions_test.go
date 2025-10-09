@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 var (
@@ -82,7 +83,9 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			literal := physical.NewLiteral(tt.value)
-			e := expressionEvaluator{}
+			alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+			defer alloc.AssertSize(t, 0) // Assert empty on test exit
+			e := newExpressionEvaluator(alloc)
 
 			n := len(words)
 			rec := batch(n, time.Now())
@@ -103,7 +106,9 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 }
 
 func TestEvaluateColumnExpression(t *testing.T) {
-	e := expressionEvaluator{}
+	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+	defer alloc.AssertSize(t, 0) // Assert empty on test exit
+	e := newExpressionEvaluator(alloc)
 
 	t.Run("unknown column", func(t *testing.T) {
 		colExpr := &physical.ColumnExpr{
@@ -149,7 +154,9 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 	require.NoError(t, err)
 	defer rec.Release()
 
-	e := expressionEvaluator{}
+	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+	defer alloc.AssertSize(t, 0) // Assert empty on test exit
+	e := newExpressionEvaluator(alloc)
 
 	t.Run("error if types do not match", func(t *testing.T) {
 		expr := &physical.BinaryExpr{
@@ -291,7 +298,9 @@ null,null,null`
 	require.NoError(t, err)
 	defer record.Release()
 
-	e := expressionEvaluator{}
+	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+	defer alloc.AssertSize(t, 0) // Assert empty on test exit
+	e := newExpressionEvaluator(alloc)
 
 	t.Run("ambiguous column should use per-row precedence order", func(t *testing.T) {
 		colExpr := &physical.ColumnExpr{
@@ -381,5 +390,168 @@ label_2
 		colVec, err := e.eval(colExpr, record)
 		require.NoError(t, err)
 		require.IsType(t, &Scalar{}, colVec)
+	})
+}
+
+func TestEvaluateUnwrapExpression(t *testing.T) {
+	t.Run("unknown column", func(t *testing.T) {
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer alloc.AssertSize(t, 0) // Assert empty on test exit
+		e := newExpressionEvaluator(alloc)
+		colExpr := physical.NewUnwrapExpr("does_not_exist", types.Unwrap)
+
+		n := len(words)
+		rec := batch(n, time.Now())
+		colVec, err := e.eval(colExpr, rec)
+		require.Error(t, err)
+		require.Nil(t, colVec)
+	})
+
+	t.Run("unwrap column generates a value", func(t *testing.T) {
+		colExpr := physical.NewUnwrapExpr("status_code", types.Unwrap)
+
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer alloc.AssertSize(t, 0) // Assert empty on test exit
+		e := newExpressionEvaluator(alloc)
+
+		schema := arrow.NewSchema([]arrow.Field{
+			{Name: "message", Type: arrow.BinaryTypes.String},
+			{Name: "status_code", Type: arrow.BinaryTypes.String},
+			{Name: "timeout", Type: arrow.BinaryTypes.String},
+		}, nil)
+		rows := arrowtest.Rows{
+			{"message": "timeout set", "status_code": "200", "timeout": "2m"},
+			{"message": "short timeout", "status_code": "204", "timeout": "10s"},
+			{"message": "long timeout", "status_code": "404", "timeout": "1h"},
+		}
+
+		record := rows.Record(alloc, schema)
+		defer record.Release()
+
+		colVec, err := e.eval(colExpr, record)
+		require.NoError(t, err)
+		id := colVec.Type().ArrowType().ID()
+		require.Equal(t, arrow.STRUCT, id)
+
+		arr, ok := colVec.ToArray().(*array.Struct)
+		require.True(t, ok)
+		defer arr.Release()
+
+		// Verify struct has the expected fields (4 based on test output: message, status_code, timeout columns + value)
+		require.Equal(t, 4, arr.NumField())
+
+		// Find the value field by iterating through fields (looking for Float64 type)
+		var valueField *array.Float64
+		for i := 0; i < arr.NumField(); i++ {
+			if f, ok := arr.Field(i).(*array.Float64); ok {
+				valueField = f
+				break
+			}
+		}
+		require.NotNil(t, valueField, "expected to find a Float64 field in struct")
+
+		require.Equal(t, 200.0, valueField.Value(0))
+		require.Equal(t, 204.0, valueField.Value(1))
+		require.Equal(t, 404.0, valueField.Value(2))
+	})
+
+	t.Run("unwrap tracks errors", func(t *testing.T) {
+		colExpr := physical.NewUnwrapExpr("mixed_values", types.Unwrap)
+
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer alloc.AssertSize(t, 0) // Assert empty on test exit
+		e := newExpressionEvaluator(alloc)
+
+		schema := arrow.NewSchema([]arrow.Field{
+			{Name: types.ColumnNameBuiltinMessage, Type: arrow.BinaryTypes.String},
+			{Name: "mixed_values", Type: arrow.BinaryTypes.String},
+		}, nil)
+		rows := arrowtest.Rows{
+			{"message": "valid numeric", "mixed_values": "42.5"},
+			{"message": "invalid numeric", "mixed_values": "not_a_number"},
+			{"message": "valid bytes", "mixed_values": "1KB"},
+			{"message": "invalid bytes", "mixed_values": "invalid_bytes"},
+			{"message": "empty string", "mixed_values": ""},
+		}
+
+		record := rows.Record(alloc, schema)
+		defer record.Release()
+
+		colVec, err := e.eval(colExpr, record)
+		require.NoError(t, err)
+		id := colVec.Type().ArrowType().ID()
+		require.Equal(t, arrow.STRUCT, id)
+
+		arr, ok := colVec.ToArray().(*array.Struct)
+		require.True(t, ok)
+		defer arr.Release()
+
+		// Verify struct has the expected fields: message, mixed_values, value, error, errorDetails (5 total since there are errors)
+		require.Equal(t, 5, arr.NumField())
+
+		// Get the struct schema to access field names
+		structSchema, ok := arr.DataType().(*arrow.StructType)
+		require.True(t, ok)
+
+		// Find the value, error, and errorDetails fields using schema
+		var valueField *array.Float64
+		var errorField, errorDetailsField *array.String
+
+		for i := 0; i < arr.NumField(); i++ {
+			field := arr.Field(i)
+			fieldMeta := structSchema.Field(i)
+
+			switch fieldMeta.Name {
+			case types.ColumnNameGeneratedValue:
+				if f, ok := field.(*array.Float64); ok {
+					valueField = f
+				}
+			case types.ColumnNameError:
+				if f, ok := field.(*array.String); ok {
+					errorField = f
+				}
+			case types.ColumnNameErrorDetails:
+				if f, ok := field.(*array.String); ok {
+					errorDetailsField = f
+				}
+			}
+		}
+
+		require.NotNil(t, valueField, "expected to find a Float64 value field in struct")
+		require.NotNil(t, errorField, "expected to find error field in struct")
+		require.NotNil(t, errorDetailsField, "expected to find errorDetails field in struct")
+
+		// Verify values: first row is valid (42.5), rest are invalid (0.0 with errors)
+		require.Equal(t, 42.5, valueField.Value(0))
+		require.False(t, valueField.IsNull(0))
+		require.True(t, errorField.IsNull(0))
+
+		// Row 1: invalid - "not_a_number"
+		require.Equal(t, 0.0, valueField.Value(1))
+		require.False(t, valueField.IsNull(1)) // Verify value is non-null 0.0
+		require.False(t, errorField.IsNull(1))
+		require.Equal(t, types.SampleExtractionErrorType, errorField.Value(1))
+		require.Contains(t, errorDetailsField.Value(1), `strconv.ParseFloat: parsing "not_a_number": invalid syntax`)
+
+		// Row 2: invalid - "1KB"
+		require.Equal(t, 0.0, valueField.Value(2))
+		require.False(t, valueField.IsNull(2)) // Verify value is non-null 0.0
+		require.False(t, errorField.IsNull(2))
+		require.Equal(t, types.SampleExtractionErrorType, errorField.Value(2))
+		require.Contains(t, errorDetailsField.Value(2), `strconv.ParseFloat: parsing "1KB": invalid syntax`)
+
+		// Row 3: invalid - "invalid_bytes"
+		require.Equal(t, 0.0, valueField.Value(3))
+		require.False(t, valueField.IsNull(3)) // Verify value is non-null 0.0
+		require.False(t, errorField.IsNull(3))
+		require.Equal(t, types.SampleExtractionErrorType, errorField.Value(3))
+		require.Contains(t, errorDetailsField.Value(3), `strconv.ParseFloat: parsing "invalid_bytes": invalid syntax`)
+
+		// Row 4: invalid - empty string
+		require.Equal(t, 0.0, valueField.Value(4))
+		require.False(t, valueField.IsNull(4)) // Verify value is non-null 0.0
+		require.False(t, errorField.IsNull(4))
+		require.Equal(t, types.SampleExtractionErrorType, errorField.Value(4))
+		require.Contains(t, errorDetailsField.Value(4), `strconv.ParseFloat: parsing "": invalid syntax`)
 	})
 }

@@ -41,6 +41,14 @@ func TestExpressionTypes(t *testing.T) {
 			expr:     &ColumnExpr{Ref: types.ColumnRef{Column: "col", Type: types.ColumnTypeBuiltin}},
 			expected: ExprTypeColumn,
 		},
+		{
+			name: "UnwrapExpression",
+			expr: &UnwrapExpr{
+				Op:  types.UnwrapBytes,
+				Ref: types.ColumnRef{Column: "bytes", Type: types.ColumnTypeAmbiguous},
+			},
+			expected: ExprTypeUnwrap,
+		},
 	}
 
 	for _, tt := range tests {
@@ -52,7 +60,6 @@ func TestExpressionTypes(t *testing.T) {
 }
 
 func TestLiteralExpr(t *testing.T) {
-
 	t.Run("boolean", func(t *testing.T) {
 		var expr Expression = NewLiteral(true)
 		require.Equal(t, ExprTypeLiteral, expr.Type())

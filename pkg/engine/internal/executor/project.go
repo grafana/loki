@@ -12,17 +12,6 @@ import (
 )
 
 func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, evaluator *expressionEvaluator) (*GenericPipeline, error) {
-	// Get the column names from the projection expressions
-	columnNames := make([]string, len(columns))
-
-	for i, col := range columns {
-		if colExpr, ok := col.(*physical.ColumnExpr); ok {
-			columnNames[i] = colExpr.Ref.Column
-		} else {
-			return nil, fmt.Errorf("projection column %d is not a column expression", i)
-		}
-	}
-
 	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) state {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
@@ -30,24 +19,69 @@ func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, eva
 		if err != nil {
 			return failureState(err)
 		}
+		defer batch.Release()
 
-		projected := make([]arrow.Array, 0, len(columns))
-		fields := make([]arrow.Field, 0, len(columns))
+		// short circuit if there are no columns to project, treat as a select *
+		if len(columns) == 0 {
+			projectedRecord := array.NewRecord(batch.Schema(), batch.Columns(), batch.NumRows())
+			return successState(projectedRecord)
+		}
 
-		for i := range columns {
-			vec, err := evaluator.eval(columns[i], batch)
+		columnOrder := []string{}
+		projected := map[string]arrow.Array{}
+		fields := map[string]arrow.Field{}
+
+		for _, col := range columns {
+			vec, err := evaluator.eval(col, batch)
 			if err != nil {
 				return failureState(err)
 			}
-			fields = append(fields, arrow.Field{Name: columnNames[i], Type: vec.Type().ArrowType(), Metadata: types.ColumnMetadata(vec.ColumnType(), vec.Type())})
-			projected = append(projected, vec.ToArray())
+
+			switch col := col.(type) {
+			case *physical.ColumnExpr:
+				columnName := col.Ref.Column
+				columnOrder = append(columnOrder, columnName)
+				fields[columnName] = arrow.Field{
+					Name:     columnName,
+					Type:     vec.Type().ArrowType(),
+					Metadata: types.ColumnMetadata(vec.ColumnType(), vec.Type()),
+				}
+				projected[columnName] = vec.ToArray()
+			case *physical.UnwrapExpr:
+				if arrStruct, ok := vec.ToArray().(*array.Struct); ok {
+					defer arrStruct.Release()
+					for i := range arrStruct.NumField() {
+						currentField := arrStruct.Field(i)
+
+						structSchema, ok := arrStruct.DataType().(*arrow.StructType)
+						if !ok {
+							return failureState(fmt.Errorf("unexpected type for struct field %d, got %T", i, arrStruct.DataType()))
+						}
+						field := structSchema.Field(i)
+
+						if _, ok := fields[field.Fingerprint()]; ok {
+							continue
+						}
+
+						columnOrder = append(columnOrder, field.Fingerprint())
+						fields[field.Fingerprint()] = field
+						projected[field.Fingerprint()] = currentField
+					}
+				}
+			default:
+				return failureState(fmt.Errorf("unknown expression: %v", col))
+			}
 		}
 
-		schema := arrow.NewSchema(fields, nil)
-		// Create a new record with only the projected columns
-		// retain the projected columns in a new batch then release the original record.
-		projectedRecord := array.NewRecord(schema, projected, batch.NumRows())
-		batch.Release()
+		fieldsArr := make([]arrow.Field, 0, len(fields))
+		projectedArr := make([]arrow.Array, 0, len(projected))
+		for _, column := range columnOrder {
+			fieldsArr = append(fieldsArr, fields[column])
+			projectedArr = append(projectedArr, projected[column])
+		}
+
+		schema := arrow.NewSchema(fieldsArr, nil)
+		projectedRecord := array.NewRecord(schema, projectedArr, batch.NumRows())
 		return successState(projectedRecord)
 	}, input), nil
 }
