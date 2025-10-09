@@ -411,3 +411,14 @@ func resolveRetryMode(ctx context.Context, cfg *aws.Config, configs configs) err
 
 	return nil
 }
+
+func resolveInterceptors(ctx context.Context, cfg *aws.Config, configs configs) error {
+	// LoadOptions is the only thing that you can really configure interceptors
+	// on so just check that directly.
+	for _, c := range configs {
+		if loadopts, ok := c.(LoadOptions); ok {
+			cfg.Interceptors = loadopts.Interceptors.Copy()
+		}
+	}
+	return nil
+}

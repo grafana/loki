@@ -17,7 +17,7 @@ import (
 	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
-	semconvNew "go.opentelemetry.io/otel/semconv/v1.34.0"
+	semconvNew "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 type RequestTraceAttrsOpts struct {
@@ -194,7 +194,7 @@ func (n CurrentHTTPServer) method(method string) (attribute.KeyValue, attribute.
 	return semconvNew.HTTPRequestMethodGet, orig
 }
 
-func (n CurrentHTTPServer) scheme(https bool) attribute.KeyValue { // nolint:revive
+func (n CurrentHTTPServer) scheme(https bool) attribute.KeyValue { //nolint:revive // ignore linter
 	if https {
 		return semconvNew.URLScheme("https")
 	}

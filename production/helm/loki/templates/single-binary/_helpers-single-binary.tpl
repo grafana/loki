@@ -32,3 +32,14 @@ priorityClassName: {{ $pcn }}
 {{- end }}
 {{- printf "%d" $replicas }}
 {{- end }}
+
+{{/*
+singleBinary target
+*/}}
+{{- define "loki.singleBinaryTarget" -}}
+{{- if .Values.loki.ui.enable -}}
+{{- print "%s,ui" .Values.singleBinary.targetModule -}}
+{{- else -}}
+{{- print "%s" .Values.singleBinary.targetModule -}}
+{{- end -}}
+{{- end -}}

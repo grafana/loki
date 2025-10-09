@@ -73,7 +73,7 @@ spec:
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target=querier
+            - -target={{- include "loki.querierTarget" . -}}
             {{- if .Values.ingester.zoneAwareReplication.enabled }}
             {{- if and (.Values.ingester.zoneAwareReplication.migration.enabled) (not .Values.ingester.zoneAwareReplication.migration.readPath) }}
             - -distributor.zone-awareness-enabled=false

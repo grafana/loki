@@ -3913,7 +3913,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.5.4"
+    "tag": "3.5.5"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -4060,7 +4060,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.5.4"
+"3.5.5"
 </pre>
 </td>
 		</tr>
@@ -7580,6 +7580,15 @@ null
 			<td></td>
 			<td><pre lang="json">
 true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.replicas</td>
+			<td>int</td>
+			<td>Replicas for `loki-canary` when using a Deployment</td>
+			<td><pre lang="json">
+1
 </pre>
 </td>
 		</tr>
@@ -12586,6 +12595,24 @@ null
 			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.whenDeleted</td>
+			<td>string</td>
+			<td>What to do with the volumes when the StatefulSet is deleted.</td>
+			<td><pre lang="json">
+"Delete"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.whenScaled</td>
+			<td>string</td>
+			<td>What to do with the volume when the StatefulSet is scaled down.</td>
+			<td><pre lang="json">
+"Delete"
 </pre>
 </td>
 		</tr>
