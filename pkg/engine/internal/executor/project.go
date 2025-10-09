@@ -30,6 +30,7 @@ func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, eva
 		if err != nil {
 			return failureState(err)
 		}
+		defer batch.Release()
 
 		projected := make([]arrow.Array, 0, len(columns))
 		fields := make([]arrow.Field, 0, len(columns))
@@ -40,14 +41,15 @@ func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, eva
 				return failureState(err)
 			}
 			fields = append(fields, arrow.Field{Name: columnNames[i], Type: vec.Type().ArrowType(), Metadata: types.ColumnMetadata(vec.ColumnType(), vec.Type())})
-			projected = append(projected, vec.ToArray())
+			arr := vec.ToArray()
+			defer arr.Release()
+			projected = append(projected, arr)
 		}
 
 		schema := arrow.NewSchema(fields, nil)
 		// Create a new record with only the projected columns
 		// retain the projected columns in a new batch then release the original record.
 		projectedRecord := array.NewRecord(schema, projected, batch.NumRows())
-		batch.Release()
 		return successState(projectedRecord)
 	}, input), nil
 }
