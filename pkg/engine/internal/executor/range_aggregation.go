@@ -170,7 +170,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 
 				arr := vec.ToArray().(*array.String)
 				defer arr.Release()
-				
+
 				arrays = append(arrays, arr)
 			}
 

@@ -128,7 +128,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 
 				arr := vec.ToArray().(*array.String)
 				defer arr.Release()
-				
+
 				arrays = append(arrays, arr)
 			}
 
