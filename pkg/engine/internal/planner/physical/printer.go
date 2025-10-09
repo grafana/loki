@@ -83,9 +83,9 @@ func toTreeNode(n Node) *tree.Node {
 		}
 	case *ColumnCompat:
 		treeNode.Properties = []tree.Property{
-			tree.NewProperty("src", false, node.SourceTy),
-			tree.NewProperty("dst", false, node.DestinationTy),
-			tree.NewProperty("collision", false, node.CollisionTy),
+			tree.NewProperty("src", false, node.Source),
+			tree.NewProperty("dst", false, node.Destination),
+			tree.NewProperty("collision", false, node.Collision),
 		}
 	}
 	return treeNode

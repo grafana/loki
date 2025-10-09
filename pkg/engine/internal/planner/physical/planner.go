@@ -243,16 +243,16 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 
 	// TODO(chaudum): Make it configurable to keep/remove this compatibility node
 	compat := &ColumnCompat{
-		id:            "MetadataOverLabel",
-		SourceTy:      types.ColumnTypeMetadata,
-		DestinationTy: types.ColumnTypeMetadata,
-		CollisionTy:   types.ColumnTypeLabel,
+		id:          "MetadataOverLabel",
+		Source:      types.ColumnTypeMetadata,
+		Destination: types.ColumnTypeMetadata,
+		Collision:   types.ColumnTypeLabel,
 	}
-	p.plan.addNode(compat)
+	p.plan.graph.Add(compat)
 
 	merge := &Merge{}
-	p.plan.addNode(merge)
-	p.plan.addEdge(Edge{compat, merge})
+	p.plan.graph.Add(merge)
+	p.plan.graph.AddEdge(dag.Edge[Node]{Parent: compat, Child: merge})
 
 	for _, gr := range groups {
 		if err := p.buildNodeGroup(gr, merge, ctx); err != nil {

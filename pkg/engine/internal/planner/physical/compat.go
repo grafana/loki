@@ -11,9 +11,10 @@ import (
 type ColumnCompat struct {
 	id string
 
-	SourceTy      types.ColumnType
-	DestinationTy types.ColumnType
-	CollisionTy   types.ColumnType
+	// TODO(chaudum): These fields are poorly named. Come up with more descriptive names.
+	Source      types.ColumnType // column type of the column that may colide with columns of the same name but with collision type
+	Destination types.ColumnType // column type of the generated _extracted column (should be same as source)
+	Collision   types.ColumnType // column type of the column that a source type column may collide with
 }
 
 // ID implements the [Node] interface.
