@@ -7887,6 +7887,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>memcachedExporter.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe for memcached exporter</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>migrate</td>
 			<td>object</td>
 			<td>Options that may be necessary when performing a migration from another helm chart</td>
