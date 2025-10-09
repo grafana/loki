@@ -168,7 +168,10 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.Type())
 				}
 
-				arrays = append(arrays, vec.ToArray().(*array.String))
+				arr := vec.ToArray().(*array.String)
+				defer arr.Release()
+
+				arrays = append(arrays, arr)
 			}
 			defer func() {
 				for _, a := range arrays {

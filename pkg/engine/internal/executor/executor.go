@@ -314,7 +314,10 @@ func (c *Context) executeFilter(ctx context.Context, filter *physical.Filter, in
 		return errorPipeline(ctx, fmt.Errorf("filter expects exactly one input, got %d", len(inputs)))
 	}
 
-	return NewFilterPipeline(filter, inputs[0], c.evaluator)
+	// Use memory allocator from context or default
+	allocator := memory.DefaultAllocator
+
+	return NewFilterPipeline(filter, inputs[0], c.evaluator, allocator)
 }
 
 func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []Pipeline) Pipeline {

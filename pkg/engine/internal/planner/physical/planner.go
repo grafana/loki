@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
 // Context carries planning state that needs to be propagated down the plan tree.
@@ -170,7 +171,7 @@ func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, baseNod
 				Section:   section,
 				Direction: ctx.direction,
 			}
-			p.plan.addNode(scan)
+			p.plan.graph.Add(scan)
 			scans = append(scans, scan)
 		}
 	}
@@ -179,18 +180,18 @@ func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, baseNod
 			Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
 			Order:  ctx.direction, // apply direction from previously visited Sort node
 		}
-		p.plan.addNode(sortMerge)
+		p.plan.graph.Add(sortMerge)
 		for _, scan := range scans {
-			if err := p.plan.addEdge(Edge{Parent: sortMerge, Child: scan}); err != nil {
+			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: sortMerge, Child: scan}); err != nil {
 				return err
 			}
 		}
-		if err := p.plan.addEdge(Edge{Parent: baseNode, Child: sortMerge}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: baseNode, Child: sortMerge}); err != nil {
 			return err
 		}
 	} else {
 		for _, scan := range scans {
-			if err := p.plan.addEdge(Edge{Parent: baseNode, Child: scan}); err != nil {
+			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: baseNode, Child: scan}); err != nil {
 				return err
 			}
 		}
@@ -240,7 +241,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 	}
 
 	merge := &Merge{}
-	p.plan.addNode(merge)
+	p.plan.graph.Add(merge)
 	groups := overlappingShardDescriptors(filteredShardDescriptors)
 
 	if ctx.direction == ASC {
@@ -261,13 +262,13 @@ func (p *Planner) processSelect(lp *logical.Select, ctx *Context) ([]Node, error
 	node := &Filter{
 		Predicates: []Expression{p.convertPredicate(lp.Predicate)},
 	}
-	p.plan.addNode(node)
+	p.plan.graph.Add(node)
 	children, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
 	for i := range children {
-		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
 		}
 	}
@@ -290,13 +291,13 @@ func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) ([]Node, error) 
 		Skip:  lp.Skip,
 		Fetch: lp.Fetch,
 	}
-	p.plan.addNode(node)
+	p.plan.graph.Add(node)
 	children, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
 	for i := range children {
-		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
 		}
 	}
@@ -317,7 +318,7 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Cont
 		Range:       r.RangeInterval,
 		Step:        r.Step,
 	}
-	p.plan.addNode(node)
+	p.plan.graph.Add(node)
 
 	children, err := p.process(r.Table, ctx.WithRangeInterval(r.RangeInterval))
 	if err != nil {
@@ -325,7 +326,7 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Cont
 	}
 
 	for i := range children {
-		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
 		}
 	}
@@ -343,13 +344,13 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 		GroupBy:   groupBy,
 		Operation: lp.Operation,
 	}
-	p.plan.addNode(node)
+	p.plan.graph.Add(node)
 	children, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
 	for i := range children {
-		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
 		}
 	}
@@ -449,7 +450,7 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) 
 	node := &ParseNode{
 		Kind: convertParserKind(lp.Kind),
 	}
-	p.plan.addNode(node)
+	p.plan.graph.Add(node)
 
 	children, err := p.process(lp.Table, ctx)
 	if err != nil {
@@ -457,7 +458,7 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) 
 	}
 
 	for i := range children {
-		if err := p.plan.addEdge(Edge{Parent: node, Child: children[i]}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
 		}
 	}
