@@ -30,3 +30,14 @@ read priority class name
 priorityClassName: {{ $pcn }}
 {{- end }}
 {{- end }}
+
+{{/*
+read target
+*/}}
+{{- define "loki.readTarget" -}}
+{{- if .Values.loki.ui.enable -}}
+{{- print "%s,ui" .Values.read.targetModule -}}
+{{- else -}}
+{{- print "%s" .Values.read.targetModule -}}
+{{- end -}}
+{{- end -}}
