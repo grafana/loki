@@ -57,7 +57,7 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 
 	var (
 		labels      = make([]*labelColumn, 0, si.view.NumLabels())
-		labelLookup = make(map[string]*labelColumn, si.view.NumLabels())
+		labelLookup = make(map[semconv.Identifier]*labelColumn, si.view.NumLabels())
 	)
 	defer func() {
 		for _, col := range labels {
@@ -68,7 +68,7 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 	getColumn := func(name string) *labelColumn {
 		ident := semconv.NewIdentifier(name, types.ColumnTypeLabel, types.Loki.String)
 
-		if col, ok := labelLookup[ident.FQN()]; ok {
+		if col, ok := labelLookup[*ident]; ok {
 			return col
 		}
 
@@ -78,7 +78,7 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 		}
 
 		labels = append(labels, col)
-		labelLookup[ident.FQN()] = col
+		labelLookup[*ident] = col
 		return col
 	}
 
