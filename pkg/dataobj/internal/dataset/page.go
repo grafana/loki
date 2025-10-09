@@ -96,13 +96,13 @@ var bufferPool = sync.Pool{
 	},
 }
 
-type releasableData struct {
+type ReleasableData struct {
 	buf *byteBuffer
 }
 
-func (rd *releasableData) Bytes() []byte { return rd.buf.Bytes() }
+func (rd *ReleasableData) Bytes() []byte { return rd.buf.Bytes() }
 
-func (rd *releasableData) Close() error {
+func (rd *ReleasableData) Close() error {
 	if rd.buf != nil {
 		bufferPool.Put(rd.buf)
 		rd.buf = nil
@@ -110,11 +110,32 @@ func (rd *releasableData) Close() error {
 	return nil
 }
 
+func NewReleasableData(data []byte) *ReleasableData {
+	buf := bufferPool.Get().(*byteBuffer)
+	buf.Resize(len(data))
+	copy(buf.data, data)
+	return &ReleasableData{buf: buf}
+}
+
+type NonReleasableData struct {
+	data []byte
+}
+
+func (rd *NonReleasableData) Bytes() []byte { return rd.data }
+
+func (rd *NonReleasableData) Close() error {
+	return nil
+}
+
+func NewNonReleasableData(data []byte) *NonReleasableData {
+	return &NonReleasableData{data: data}
+}
+
 // MemPage holds an encoded (and optionally compressed) sequence of [Value]
 // entries of a common type. Use [ColumnBuilder] to construct sets of pages.
 type MemPage struct {
-	Desc PageDesc        // Description of the page.
-	data *releasableData // Data for the page.
+	Desc PageDesc // Description of the page.
+	Data PageData // Data for the page.
 }
 
 var _ Page = (*MemPage)(nil)
@@ -130,22 +151,14 @@ func (p *MemPage) ReadPage(_ context.Context) (PageData, error) {
 }
 
 func (p MemPage) Bytes() []byte {
-	return p.data.Bytes()
+	return p.Data.Bytes()
 }
 
 func (p MemPage) Close() error {
-	if p.data != nil {
-		return p.data.Close()
+	if p.Data != nil {
+		return p.Data.Close()
 	}
 	return nil
-}
-
-func InitMemPage(desc PageDesc, data []byte) MemPage {
-	buf := bufferPool.Get().(*byteBuffer)
-	buf.Resize(len(data))
-	copy(buf.data, data)
-	rd := &releasableData{buf: buf}
-	return MemPage{desc, rd}
 }
 
 var checksumTable = crc32.MakeTable(crc32.Castagnoli)

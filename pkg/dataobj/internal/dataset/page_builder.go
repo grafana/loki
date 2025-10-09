@@ -276,7 +276,7 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 
 	checksum := crc32.Checksum(finalData.Bytes(), checksumTable)
 
-	page := InitMemPage(PageDesc{
+	page := MemPage{PageDesc{
 		UncompressedSize: headerSize + presenceSize + b.valuesWriter.BytesWritten(),
 		CompressedSize:   finalData.Len(),
 		CRC32:            checksum,
@@ -286,7 +286,7 @@ func (b *pageBuilder) Flush() (*MemPage, error) {
 		Encoding: b.opts.Encoding,
 		Stats:    b.buildStats(),
 	},
-		finalData.Bytes())
+		&NonReleasableData{finalData.Bytes()}}
 
 	b.Reset() // Reset state before returning.
 	return &page, nil

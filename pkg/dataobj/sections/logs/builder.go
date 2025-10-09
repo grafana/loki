@@ -355,7 +355,7 @@ func encodeColumn(enc *columnar.Encoder, columnType ColumnType, column *tableCol
 		if err != nil {
 			return fmt.Errorf("reading %s page: %w", columnType, err)
 		}
-		memPage := dataset.InitMemPage(*page.PageDesc(), data.Bytes())
+		memPage := dataset.MemPage{*page.PageDesc(), dataset.NewNonReleasableData(data.Bytes())}
 		if err := columnEnc.AppendPage(&memPage); err != nil {
 			return fmt.Errorf("appending %s page: %w", columnType, err)
 		}
