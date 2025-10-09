@@ -88,6 +88,7 @@ local lambdaPromtailJob =
     step.new('setup node', 'actions/setup-node@v4')
     + step.with({
       'node-version': '20',
+      'package-manager-cache': false,
     }),
     step.new('Set up Docker buildx', 'docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2'),  // v3
     step.new('get-secrets', 'grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760')  // get-vault-secrets-v1.1.0
