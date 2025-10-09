@@ -1,10 +1,10 @@
 "jobs":
   "check":
-    "uses": "grafana/loki-release/.github/workflows/check.yml@d0273efcf240f2abec5818b4fed0c0dbcaccecf8"
+    "uses": "grafana/loki-release/.github/workflows/check.yml@83e166f5c8795fa94dec9f4cbdb82205fbb8bf2b"
     "with":
       "build_image": "grafana/loki-build-image:0.34.5"
       "golang_ci_lint_version": "v1.60.3"
-      "release_lib_ref": "d0273efcf240f2abec5818b4fed0c0dbcaccecf8"
+      "release_lib_ref": "83e166f5c8795fa94dec9f4cbdb82205fbb8bf2b"
       "skip_validation": false
       "use_github_app_token": true
   "lambda-promtail-image":
@@ -12,7 +12,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.23.12"
       "IMAGE_PREFIX": "public.ecr.aws/grafana"
-      "RELEASE_LIB_REF": "d0273efcf240f2abec5818b4fed0c0dbcaccecf8"
+      "RELEASE_LIB_REF": "83e166f5c8795fa94dec9f4cbdb82205fbb8bf2b"
       "RELEASE_REPO": "grafana/loki"
       "REPO": "loki"
     "needs":
@@ -109,7 +109,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.23.12"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "d0273efcf240f2abec5818b4fed0c0dbcaccecf8"
+      "RELEASE_LIB_REF": "83e166f5c8795fa94dec9f4cbdb82205fbb8bf2b"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -141,6 +141,7 @@
       "uses": "actions/setup-node@v4"
       "with":
         "node-version": 20
+        "package-manager-cache": false
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - "name": "Login to DockerHub (from Vault)"
@@ -232,7 +233,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.23.12"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "d0273efcf240f2abec5818b4fed0c0dbcaccecf8"
+      "RELEASE_LIB_REF": "83e166f5c8795fa94dec9f4cbdb82205fbb8bf2b"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -264,6 +265,7 @@
       "uses": "actions/setup-node@v4"
       "with":
         "node-version": 20
+        "package-manager-cache": false
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - "name": "Login to DockerHub (from Vault)"
@@ -355,7 +357,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.23.12"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "d0273efcf240f2abec5818b4fed0c0dbcaccecf8"
+      "RELEASE_LIB_REF": "83e166f5c8795fa94dec9f4cbdb82205fbb8bf2b"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -387,6 +389,7 @@
       "uses": "actions/setup-node@v4"
       "with":
         "node-version": 20
+        "package-manager-cache": false
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - "name": "Login to DockerHub (from Vault)"
@@ -478,7 +481,7 @@
       "BUILD_TIMEOUT": 60
       "GO_VERSION": "1.23.12"
       "IMAGE_PREFIX": "grafana"
-      "RELEASE_LIB_REF": "d0273efcf240f2abec5818b4fed0c0dbcaccecf8"
+      "RELEASE_LIB_REF": "83e166f5c8795fa94dec9f4cbdb82205fbb8bf2b"
       "RELEASE_REPO": "grafana/loki"
     "needs":
     - "check"
@@ -510,6 +513,7 @@
       "uses": "actions/setup-node@v4"
       "with":
         "node-version": 20
+        "package-manager-cache": false
     - "name": "Set up Docker buildx"
       "uses": "docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2"
     - "name": "Login to DockerHub (from Vault)"
