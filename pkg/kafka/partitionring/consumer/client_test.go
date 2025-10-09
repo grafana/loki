@@ -305,8 +305,10 @@ func TestPartitionContinuityDuringRebalance(t *testing.T) {
 
 	// Let initial setup stabilize and verify consumer1 is reading
 	time.Sleep(2 * time.Second)
+	offsetMu.Lock()
 	require.Greater(t, lastOffset, int64(0), "consumer1 should have read some records from partition 0")
 	initialOffset := lastOffset
+	offsetMu.Unlock()
 
 	// Add second consumer and change active partitions
 	t.Log("Adding consumer2 and changing active partitions from [0,1] to [0,1,2]")
