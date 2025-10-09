@@ -875,6 +875,11 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.sample-interval
   [pattern_sample_interval: <duration> | default = 10s]
 
+  # The threshold for filtering patterns by volume. Only patterns representing
+  # the top X% of log volume will be persisted (0-1).
+  # CLI flag: -pattern-ingester.volume-threshold
+  [volume_threshold: <float> | default = 0.99]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.

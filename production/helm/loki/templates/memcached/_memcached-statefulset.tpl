@@ -180,6 +180,10 @@ spec:
           livenessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- with $.ctx.Values.memcachedExporter.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- if .extraVolumeMounts }}
           volumeMounts:
             {{- toYaml .extraVolumeMounts | nindent 12 }}
