@@ -7,6 +7,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -26,10 +28,8 @@ func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline,
 		fields := make([]arrow.Field, 0, len(inputs))
 		for i := range inputs {
 			fields = append(fields, arrow.Field{
-				Name:     fmt.Sprintf("input_%d", i),
-				Type:     types.Arrow.Float,
-				Nullable: false,
-				Metadata: types.ColumnMetadata(types.ColumnTypeGenerated, types.Loki.Float),
+				Name: fmt.Sprintf("float64.generated.input_%d", i),
+				Type: types.Arrow.Float,
 			})
 		}
 
@@ -49,12 +49,9 @@ func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline,
 			return failureState(fmt.Errorf("expression returned non-float64 type %s", inputData.DataType()))
 		}
 		inputCol := inputData.(*array.Float64)
+		defer inputCol.Release()
+
 		cols = append(cols, inputCol)
-		defer func() {
-			for _, c := range cols {
-				c.Release()
-			}
-		}()
 
 		inputSchema := arrow.NewSchema(fields, nil)
 		evalInput := array.NewRecord(inputSchema, cols, batch.NumRows())
@@ -85,18 +82,8 @@ func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline,
 		defer tsCol.Release()
 
 		outputSchema := arrow.NewSchema([]arrow.Field{
-			{
-				Name:     types.ColumnNameBuiltinTimestamp,
-				Type:     types.Arrow.Timestamp,
-				Nullable: false,
-				Metadata: types.ColumnMetadataBuiltinTimestamp,
-			},
-			{
-				Name:     types.ColumnNameGeneratedValue,
-				Type:     types.Arrow.Float,
-				Nullable: false,
-				Metadata: types.ColumnMetadata(types.ColumnTypeGenerated, types.Loki.Float),
-			},
+			semconv.FieldFromIdent(semconv.NewIdentifier(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin, types.Loki.Timestamp), true),
+			semconv.FieldFromIdent(semconv.NewIdentifier(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated, types.Loki.Float), true),
 		}, nil)
 		evaluatedRecord := array.NewRecord(outputSchema, []arrow.Array{tsCol, valCol}, batch.NumRows())
 
