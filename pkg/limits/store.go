@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"math"
 	"sync"
 	"time"
 
@@ -42,11 +43,12 @@ type iterateFunc func(tenant string, partition int32, stream streamUsage)
 // for a given tenant and policy. Returns the policy bucket name and the max streams limit.
 // The policy bucket will be the input policy name only if the max streams limit is overriden for the policy.
 func (s *usageStore) getPolicyBucketAndLimit(tenant, policy string) (policyBucket string, maxStreams uint64) {
-	defaultMaxStreams := uint64(s.limits.MaxGlobalStreamsPerUser(tenant) / s.numPartitions)
+	defaultMaxStreams := uint64(math.Max(float64(s.limits.MaxGlobalStreamsPerUser(tenant)/s.numPartitions), 1))
 
 	if policy != "" {
 		if policyMaxStreams := s.limits.PolicyMaxGlobalStreamsPerUser(tenant, policy); policyMaxStreams > 0 {
-			return policy, uint64(policyMaxStreams / s.numPartitions) // Use policy-specific bucket
+			fmt.Printf("### DEBUG getPolicyBucketAndLimit ### policy: %s, policyMaxStreams: %d, numPartitions: %d\n", policy, policyMaxStreams, s.numPartitions)
+			return policy, uint64(math.Max(float64(policyMaxStreams/s.numPartitions), 1)) // Use policy-specific bucket
 		}
 	}
 	return "", defaultMaxStreams // Use default bucket
@@ -210,8 +212,9 @@ func (s *usageStore) Update(tenant string, metadata *proto.StreamMetadata, seenA
 		return errOutsideActiveWindow
 	}
 	partition := s.getPartitionForHash(metadata.StreamHash)
+	policyBucket, _ := s.getPolicyBucketAndLimit(tenant, metadata.IngestionPolicy)
 	s.withLock(tenant, func(i int) {
-		s.update(i, tenant, partition, metadata, seenAt)
+		s.update(i, tenant, partition, policyBucket, metadata, seenAt)
 	})
 	return nil
 }
@@ -230,14 +233,23 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 	s.withLock(tenant, func(i int) {
 		for _, m := range metadata {
 			partition := s.getPartitionForHash(m.StreamHash)
-			policy := m.IngestionPolicy
 
 			// Determine which policy bucket to use and the max streams limit
-			policyBucket, maxStreamsForStream := s.getPolicyBucketAndLimit(tenant, policy)
+			policyBucket, maxStreamsForStream := s.getPolicyBucketAndLimit(tenant, m.IngestionPolicy)
+
+			if tenant == "153995" {
+				fmt.Printf("### DEBUG ### New stream from tenant: %s\n", tenant)
+
+				if policyBucket != "" {
+					fmt.Printf("### DEBUG ### policy: %s, policyBucket: %s, maxStreamsForStream: %d\n", m.IngestionPolicy, policyBucket, maxStreamsForStream)
+				}
+			}
 
 			s.checkInitMap(i, tenant, partition, policyBucket)
 			streams := s.stripes[i][tenant][partition][policyBucket]
 			stream, ok := streams[m.StreamHash]
+
+			fmt.Printf("### DEBUG ### stream %d exists: %t. len(streams): %d, lastSeenAt: %d, cutoff: %d\n", m.StreamHash, ok, len(streams), stream.lastSeenAt, cutoff)
 
 			// If the stream does not exist, or exists but has expired,
 			// we need to check if accepting it would exceed the maximum
@@ -255,12 +267,20 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 				// we accept that expired streams will be counted towards the
 				// limit until evicted.
 				numStreams := uint64(len(s.stripes[i][tenant][partition][policyBucket]))
+
+				if tenant == "153995" {
+					fmt.Printf("### DEBUG checkingMaxStreams ### tenant: %s, partition: %d, policyBucket: %s\n", tenant, partition, policyBucket)
+					if policyBucket != "" {
+						fmt.Printf("### DEBUG checkingMaxStreams ### numStreams: %d, maxStreamsForStream: %d, policyBucket: %s\n", numStreams, maxStreamsForStream, policyBucket)
+					}
+				}
+
 				if numStreams >= maxStreamsForStream {
 					rejected = append(rejected, m)
 					continue
 				}
 			}
-			s.update(i, tenant, partition, m, seenAt)
+			s.update(i, tenant, partition, policyBucket, m, seenAt)
 			// Hard-coded produce cutoff of 1 minute.
 			produceCutoff := now.Add(-time.Minute).UnixNano()
 			if stream.lastProducedAt < produceCutoff {
@@ -375,12 +395,7 @@ func (s *usageStore) get(i int, tenant string, partition int32, streamHash uint6
 	return streamUsage{}, false
 }
 
-func (s *usageStore) update(i int, tenant string, partition int32, metadata *proto.StreamMetadata, seenAt time.Time) {
-	policy := metadata.IngestionPolicy
-
-	// Determine which policy bucket to use
-	policyBucket, _ := s.getPolicyBucketAndLimit(tenant, policy)
-
+func (s *usageStore) update(i int, tenant string, partition int32, policyBucket string, metadata *proto.StreamMetadata, seenAt time.Time) {
 	s.checkInitMap(i, tenant, partition, policyBucket)
 	streamHash := metadata.StreamHash
 	// Get the stats for the stream.
@@ -390,7 +405,7 @@ func (s *usageStore) update(i int, tenant string, partition int32, metadata *pro
 	if !ok || stream.lastSeenAt < cutoff {
 		stream.hash = streamHash
 		stream.totalSize = 0
-		stream.policy = policy
+		stream.policy = metadata.IngestionPolicy
 		// stream.rateBuckets = make([]rateBucket, s.numBuckets)
 	}
 	seenAtUnixNano := seenAt.UnixNano()
