@@ -3545,6 +3545,8 @@ memcachedExporter:
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
+  # -- Startup probe for memcached exporter
+  startupProbe: {}
 
 resultsCache:
   # -- Specifies whether memcached based results-cache should be enabled
