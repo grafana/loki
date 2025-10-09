@@ -184,26 +184,27 @@ func (t *Loki) tenantLimitsHandler(forDrilldown bool) func(http.ResponseWriter, 
 			return
 		}
 
-		if forDrilldown {
-			// Build response
-			version := build.GetVersion().Version
-			if version == "" {
-				version = "unknown"
-			}
-			response := DrilldownConfigResponse{
-				Limits:                 filteredLimits,
-				PatternIngesterEnabled: t.Cfg.Pattern.Enabled,
-				Version:                version,
-			}
-
-			// Return JSON response
-			w.Header().Set("Content-Type", "application/json")
-			if err := json.NewEncoder(w).Encode(response); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		} else {
+		if !forDrilldown {
 			writeYAMLResponse(w, filteredLimits)
+			return
+		}
+
+		// Build response
+		version := build.GetVersion().Version
+		if version == "" {
+			version = "unknown"
+		}
+		response := DrilldownConfigResponse{
+			Limits:                 filteredLimits,
+			PatternIngesterEnabled: t.Cfg.Pattern.Enabled,
+			Version:                version,
+		}
+
+		// Return JSON response
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
 	}
 }
