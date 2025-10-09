@@ -22,14 +22,6 @@ func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expres
 		defer batch.Release()
 
 		cols := make([]*array.Boolean, 0, len(filter.Predicates))
-		defer func() {
-			for _, col := range cols {
-				// boolean filters are only used for filtering; they're not returned
-				// and must be released
-				// TODO: verify this once the evaluator implementation is fleshed out
-				col.Release()
-			}
-		}()
 
 		for i, pred := range filter.Predicates {
 			res, err := evaluator.eval(pred, batch)
@@ -37,6 +29,11 @@ func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expres
 				return failureState(err)
 			}
 			data := res.ToArray()
+
+			// boolean filters are only used for filtering; they're not returned
+			// and must be released
+			defer data.Release()
+
 			if data.DataType().ID() != arrow.BOOL {
 				return failureState(fmt.Errorf("predicate %d returned non-boolean type %s", i, data.DataType()))
 			}
@@ -70,18 +67,9 @@ func filterBatch(batch arrow.Record, allocator memory.Allocator, include func(in
 	fields := batch.Schema().Fields()
 
 	builders := make([]array.Builder, len(fields))
-	defer func() {
-		for _, b := range builders {
-			if b != nil {
-				b.Release()
-			}
-		}
-	}()
-
 	additions := make([]func(int), len(fields))
 
 	for i, field := range fields {
-
 		switch field.Type.ID() {
 		case arrow.BOOL:
 			builder := array.NewBooleanBuilder(allocator)
@@ -90,7 +78,6 @@ func filterBatch(batch arrow.Record, allocator memory.Allocator, include func(in
 				src := batch.Column(i).(*array.Boolean)
 				builder.Append(src.Value(offset))
 			}
-
 		case arrow.STRING:
 			builder := array.NewStringBuilder(allocator)
 			builders[i] = builder
@@ -98,7 +85,6 @@ func filterBatch(batch arrow.Record, allocator memory.Allocator, include func(in
 				src := batch.Column(i).(*array.String)
 				builder.Append(src.Value(offset))
 			}
-
 		case arrow.UINT64:
 			builder := array.NewUint64Builder(allocator)
 			builders[i] = builder
@@ -106,7 +92,6 @@ func filterBatch(batch arrow.Record, allocator memory.Allocator, include func(in
 				src := batch.Column(i).(*array.Uint64)
 				builder.Append(src.Value(offset))
 			}
-
 		case arrow.INT64:
 			builder := array.NewInt64Builder(allocator)
 			builders[i] = builder
@@ -114,7 +99,6 @@ func filterBatch(batch arrow.Record, allocator memory.Allocator, include func(in
 				src := batch.Column(i).(*array.Int64)
 				builder.Append(src.Value(offset))
 			}
-
 		case arrow.FLOAT64:
 			builder := array.NewFloat64Builder(allocator)
 			builders[i] = builder
@@ -122,7 +106,6 @@ func filterBatch(batch arrow.Record, allocator memory.Allocator, include func(in
 				src := batch.Column(i).(*array.Float64)
 				builder.Append(src.Value(offset))
 			}
-
 		case arrow.TIMESTAMP:
 			builder := array.NewTimestampBuilder(allocator, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
 			builders[i] = builder
@@ -130,10 +113,11 @@ func filterBatch(batch arrow.Record, allocator memory.Allocator, include func(in
 				src := batch.Column(i).(*array.Timestamp)
 				builder.Append(src.Value(offset))
 			}
-
 		default:
 			panic(fmt.Sprintf("unimplemented type in filterBatch: %s", field.Type.Name()))
 		}
+
+		defer builders[i].Release()
 	}
 
 	var ct int64
@@ -157,13 +141,8 @@ func filterBatch(batch arrow.Record, allocator memory.Allocator, include func(in
 	arrays := make([]arrow.Array, len(fields))
 	for i, builder := range builders {
 		arrays[i] = builder.NewArray()
+		defer arrays[i].Release()
 	}
-
-	defer func() {
-		for _, a := range arrays {
-			a.Release()
-		}
-	}()
 
 	return array.NewRecord(schema, arrays, ct)
 }

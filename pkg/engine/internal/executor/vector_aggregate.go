@@ -115,11 +115,6 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 
 			// extract all the columns that are used for grouping
 			arrays := make([]*array.String, 0, len(v.groupBy))
-			defer func() {
-				for _, array := range arrays {
-					array.Release()
-				}
-			}()
 
 			for _, columnExpr := range v.groupBy {
 				vec, err := v.evaluator.eval(columnExpr, record)
@@ -131,7 +126,10 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 					return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.Type())
 				}
 
-				arrays = append(arrays, vec.ToArray().(*array.String))
+				arr := vec.ToArray().(*array.String)
+				defer arr.Release()
+				
+				arrays = append(arrays, arr)
 			}
 
 			for row := range int(record.NumRows()) {

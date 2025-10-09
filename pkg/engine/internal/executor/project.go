@@ -33,11 +33,6 @@ func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, eva
 		defer batch.Release()
 
 		projected := make([]arrow.Array, 0, len(columns))
-		defer func() {
-			for _, proj := range projected {
-				proj.Release()
-			}
-		}()
 		fields := make([]arrow.Field, 0, len(columns))
 
 		for i := range columns {
@@ -46,7 +41,9 @@ func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, eva
 				return failureState(err)
 			}
 			fields = append(fields, arrow.Field{Name: columnNames[i], Type: vec.Type().ArrowType(), Metadata: types.ColumnMetadata(vec.ColumnType(), vec.Type())})
-			projected = append(projected, vec.ToArray())
+			arr := vec.ToArray()
+			defer arr.Release()
+			projected = append(projected, arr)
 		}
 
 		schema := arrow.NewSchema(fields, nil)
