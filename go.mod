@@ -2,7 +2,7 @@ module github.com/grafana/loki/v3
 
 go 1.24.0
 
-toolchain go1.24.1
+toolchain go1.24.8
 
 require (
 	cloud.google.com/go/bigtable v1.40.1
@@ -208,7 +208,7 @@ require (
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.1 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
-	github.com/go-viper/mapstructure/v2 v2.3.0 // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
