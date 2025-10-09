@@ -264,8 +264,6 @@ local lambdaPromtailJob =
         })
       for name in std.objectFields(weeklyImageJobs)
     } + {
-      'lambda-promtail-image': lambdaPromtailJob,
-    } + {
       ['%s-manifest' % name]:
         job.new() +
         job.withPermissions({
