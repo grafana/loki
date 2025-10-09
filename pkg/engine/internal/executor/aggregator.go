@@ -13,6 +13,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -122,18 +123,8 @@ func (a *aggregator) Add(ts time.Time, value float64, labelValues []string) {
 func (a *aggregator) BuildRecord() (arrow.Record, error) {
 	fields := make([]arrow.Field, 0, len(a.groupBy)+2)
 	fields = append(fields,
-		arrow.Field{
-			Name:     types.ColumnNameBuiltinTimestamp,
-			Type:     types.Arrow.Timestamp,
-			Nullable: false,
-			Metadata: types.ColumnMetadataBuiltinTimestamp,
-		},
-		arrow.Field{
-			Name:     types.ColumnNameGeneratedValue,
-			Type:     types.Arrow.Float,
-			Nullable: false,
-			Metadata: types.ColumnMetadata(types.ColumnTypeGenerated, types.Loki.Float),
-		},
+		semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
+		semconv.FieldFromIdent(semconv.ColumnIdentValue, false),
 	)
 
 	for _, column := range a.groupBy {
@@ -141,13 +132,8 @@ func (a *aggregator) BuildRecord() (arrow.Record, error) {
 		if !ok {
 			panic(fmt.Sprintf("invalid column expression type %T", column))
 		}
-
-		fields = append(fields, arrow.Field{
-			Name:     colExpr.Ref.Column,
-			Type:     types.Arrow.String,
-			Nullable: true,
-			Metadata: types.ColumnMetadata(colExpr.Ref.Type, types.Loki.String),
-		})
+		ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
+		fields = append(fields, semconv.FieldFromIdent(ident, true))
 	}
 
 	schema := arrow.NewSchema(fields, nil)

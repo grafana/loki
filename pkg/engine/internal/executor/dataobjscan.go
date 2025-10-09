@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -255,28 +256,13 @@ func makeScalars[S ~[]E, E any](s S) []scalar.Scalar {
 func logsColumnToEngineField(col *logs.Column) (arrow.Field, error) {
 	switch col.Type {
 	case logs.ColumnTypeTimestamp:
-		return arrow.Field{
-			Name:     types.ColumnNameBuiltinTimestamp,
-			Type:     types.Arrow.Timestamp,
-			Nullable: true,
-			Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Timestamp),
-		}, nil
+		return semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, true), nil
 
 	case logs.ColumnTypeMessage:
-		return arrow.Field{
-			Name:     types.ColumnNameBuiltinMessage,
-			Type:     types.Arrow.String,
-			Nullable: true,
-			Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.String),
-		}, nil
+		return semconv.FieldFromIdent(semconv.ColumnIdentMessage, true), nil
 
 	case logs.ColumnTypeMetadata:
-		return arrow.Field{
-			Name:     col.Name,
-			Type:     types.Arrow.String,
-			Nullable: true,
-			Metadata: types.ColumnMetadata(types.ColumnTypeMetadata, types.Loki.String),
-		}, nil
+		return semconv.FieldFromIdent(semconv.NewIdentifier(col.Name, types.ColumnTypeMetadata, types.Loki.String), true), nil
 	}
 
 	return arrow.Field{}, fmt.Errorf("unsupported logs column type %s", col.Type)

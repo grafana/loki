@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
@@ -30,6 +31,12 @@ var (
 )
 
 func TestAggregator(t *testing.T) {
+
+	colTs := semconv.ColumnIdentTimestamp.FQN()
+	colVal := semconv.ColumnIdentValue.FQN()
+	colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String).FQN()
+	colSvc := semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String).FQN()
+
 	t.Run("basic SUM aggregation with record building", func(t *testing.T) {
 		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 		defer alloc.AssertSize(t, 0)
@@ -59,13 +66,13 @@ func TestAggregator(t *testing.T) {
 		defer record.Release()
 
 		expect := arrowtest.Rows{
-			{"timestamp": ts1, "value": float64(15), "env": "prod", "service": "app1"},
-			{"timestamp": ts1, "value": float64(20), "env": "prod", "service": "app2"},
-			{"timestamp": ts1, "value": float64(30), "env": "dev", "service": "app1"},
+			{colTs: ts1, colVal: float64(15), colEnv: "prod", colSvc: "app1"},
+			{colTs: ts1, colVal: float64(20), colEnv: "prod", colSvc: "app2"},
+			{colTs: ts1, colVal: float64(30), colEnv: "dev", colSvc: "app1"},
 
-			{"timestamp": ts2, "value": float64(25), "env": "prod", "service": "app1"},
-			{"timestamp": ts2, "value": float64(25), "env": "prod", "service": "app2"},
-			{"timestamp": ts2, "value": float64(35), "env": "dev", "service": "app2"},
+			{colTs: ts2, colVal: float64(25), colEnv: "prod", colSvc: "app1"},
+			{colTs: ts2, colVal: float64(25), colEnv: "prod", colSvc: "app2"},
+			{colTs: ts2, colVal: float64(35), colEnv: "dev", colSvc: "app2"},
 		}
 
 		rows, err := arrowtest.RecordRows(record)
@@ -110,17 +117,17 @@ func TestAggregator(t *testing.T) {
 		defer record.Release()
 
 		expect := arrowtest.Rows{
-			{"timestamp": ts1, "value": float64(3), "env": "prod", "service": "app1"},
-			{"timestamp": ts1, "value": float64(1), "env": "prod", "service": "app2"},
-			{"timestamp": ts1, "value": float64(1), "env": "dev", "service": "app1"},
+			{colTs: ts1, colVal: float64(3), colEnv: "prod", colSvc: "app1"},
+			{colTs: ts1, colVal: float64(1), colEnv: "prod", colSvc: "app2"},
+			{colTs: ts1, colVal: float64(1), colEnv: "dev", colSvc: "app1"},
 
-			{"timestamp": ts2, "value": float64(1), "env": "prod", "service": "app1"},
-			{"timestamp": ts2, "value": float64(2), "env": "prod", "service": "app2"},
-			{"timestamp": ts2, "value": float64(1), "env": "dev", "service": "app2"},
+			{colTs: ts2, colVal: float64(1), colEnv: "prod", colSvc: "app1"},
+			{colTs: ts2, colVal: float64(2), colEnv: "prod", colSvc: "app2"},
+			{colTs: ts2, colVal: float64(1), colEnv: "dev", colSvc: "app2"},
 
-			{"timestamp": ts3, "value": float64(1), "env": "prod", "service": "app1"},
-			{"timestamp": ts3, "value": float64(1), "env": "prod", "service": "app2"},
-			{"timestamp": ts3, "value": float64(1), "env": "dev", "service": "app2"},
+			{colTs: ts3, colVal: float64(1), colEnv: "prod", colSvc: "app1"},
+			{colTs: ts3, colVal: float64(1), colEnv: "prod", colSvc: "app2"},
+			{colTs: ts3, colVal: float64(1), colEnv: "dev", colSvc: "app2"},
 		}
 
 		rows, err := arrowtest.RecordRows(record)
@@ -159,13 +166,13 @@ func TestAggregator(t *testing.T) {
 		defer record.Release()
 
 		expect := arrowtest.Rows{
-			{"timestamp": ts1, "value": float64(15), "env": "prod", "service": "app1"},
-			{"timestamp": ts1, "value": float64(20), "env": "prod", "service": "app2"},
-			{"timestamp": ts1, "value": float64(30), "env": "dev", "service": "app1"},
+			{colTs: ts1, colVal: float64(15), colEnv: "prod", colSvc: "app1"},
+			{colTs: ts1, colVal: float64(20), colEnv: "prod", colSvc: "app2"},
+			{colTs: ts1, colVal: float64(30), colEnv: "dev", colSvc: "app1"},
 
-			{"timestamp": ts2, "value": float64(15), "env": "prod", "service": "app1"},
-			{"timestamp": ts2, "value": float64(50), "env": "prod", "service": "app2"},
-			{"timestamp": ts2, "value": float64(35), "env": "dev", "service": "app2"},
+			{colTs: ts2, colVal: float64(15), colEnv: "prod", colSvc: "app1"},
+			{colTs: ts2, colVal: float64(50), colEnv: "prod", colSvc: "app2"},
+			{colTs: ts2, colVal: float64(35), colEnv: "dev", colSvc: "app2"},
 		}
 
 		rows, err := arrowtest.RecordRows(record)
@@ -204,13 +211,13 @@ func TestAggregator(t *testing.T) {
 		defer record.Release()
 
 		expect := arrowtest.Rows{
-			{"timestamp": ts1, "value": float64(5), "env": "prod", "service": "app1"},
-			{"timestamp": ts1, "value": float64(20), "env": "prod", "service": "app2"},
-			{"timestamp": ts1, "value": float64(30), "env": "dev", "service": "app1"},
+			{colTs: ts1, colVal: float64(5), colEnv: "prod", colSvc: "app1"},
+			{colTs: ts1, colVal: float64(20), colEnv: "prod", colSvc: "app2"},
+			{colTs: ts1, colVal: float64(30), colEnv: "dev", colSvc: "app1"},
 
-			{"timestamp": ts2, "value": float64(15), "env": "prod", "service": "app1"},
-			{"timestamp": ts2, "value": float64(25), "env": "prod", "service": "app2"},
-			{"timestamp": ts2, "value": float64(35), "env": "dev", "service": "app2"},
+			{colTs: ts2, colVal: float64(15), colEnv: "prod", colSvc: "app1"},
+			{colTs: ts2, colVal: float64(25), colEnv: "prod", colSvc: "app2"},
+			{colTs: ts2, colVal: float64(35), colEnv: "dev", colSvc: "app2"},
 		}
 
 		rows, err := arrowtest.RecordRows(record)
