@@ -11,6 +11,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -28,22 +29,14 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		defer batch.Release()
 
 		// Find the message column
-		messageColIdx := -1
-		schema := batch.Schema()
-		for i := 0; i < schema.NumFields(); i++ {
-			if schema.Field(i).Name == types.ColumnNameBuiltinMessage {
-				messageColIdx = i
-				break
-			}
-		}
-		if messageColIdx == -1 {
-			return failureState(fmt.Errorf("message column not found"))
+		msgCol, msgIdx, err := columnForIdent(semconv.ColumnIdentMessage, batch)
+		if err != nil {
+			return failureState(err)
 		}
 
-		messageCol := batch.Column(messageColIdx)
-		stringCol, ok := messageCol.(*array.String)
+		stringCol, ok := msgCol.(*array.String)
 		if !ok {
-			return failureState(fmt.Errorf("message column is not a string column"))
+			return failureState(fmt.Errorf("column %s must be of type utf8, got %s", semconv.ColumnIdentMessage.FQN(), batch.Schema().Field(msgIdx)))
 		}
 
 		var headers []string
@@ -58,23 +51,18 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		}
 
 		// Build new schema with original fields plus parsed fields
+		schema := batch.Schema()
 		newFields := make([]arrow.Field, 0, schema.NumFields()+len(headers))
 		for i := 0; i < schema.NumFields(); i++ {
 			newFields = append(newFields, schema.Field(i))
 		}
 		for _, header := range headers {
-			// Add metadata to mark these as parsed columns
-			metadata := types.ColumnMetadata(
-				types.ColumnTypeParsed,
-				types.Loki.String,
-			)
-
-			newFields = append(newFields, arrow.Field{
-				Name:     header,
-				Type:     arrow.BinaryTypes.String,
-				Metadata: metadata,
-				Nullable: true,
-			})
+			ct := types.ColumnTypeParsed
+			if header == semconv.ColumnIdentError.ShortName() || header == semconv.ColumnIdentErrorDetails.ShortName() {
+				ct = types.ColumnTypeGenerated
+			}
+			ident := semconv.NewIdentifier(header, ct, types.Loki.String)
+			newFields = append(newFields, semconv.FieldFromIdent(ident, true))
 		}
 		newSchema := arrow.NewSchema(newFields, nil)
 
@@ -151,9 +139,13 @@ func parseLines(input *array.String, requestedKeys []string, columnBuilders map[
 			if !hasErrorColumns {
 				errorBuilder = array.NewStringBuilder(allocator)
 				errorDetailsBuilder = array.NewStringBuilder(allocator)
-				columnBuilders[types.ColumnNameParsedError] = errorBuilder
-				columnBuilders[types.ColumnNameParsedErrorDetails] = errorDetailsBuilder
-				columnOrder = append(columnOrder, types.ColumnNameParsedError, types.ColumnNameParsedErrorDetails)
+				columnBuilders[semconv.ColumnIdentError.ShortName()] = errorBuilder
+				columnBuilders[semconv.ColumnIdentErrorDetails.ShortName()] = errorDetailsBuilder
+				columnOrder = append(
+					columnOrder,
+					semconv.ColumnIdentError.ShortName(),
+					semconv.ColumnIdentErrorDetails.ShortName(),
+				)
 				hasErrorColumns = true
 
 				// Backfill NULLs for previous rows
@@ -175,17 +167,17 @@ func parseLines(input *array.String, requestedKeys []string, columnBuilders map[
 		}
 
 		// Track which keys we've seen this row
-		seenKeys := make(map[string]bool)
+		seenKeys := make(map[string]struct{})
 		if hasErrorColumns {
 			// Mark error columns as seen so we don't append nulls for them
-			seenKeys[types.ColumnNameParsedError] = true
-			seenKeys[types.ColumnNameParsedErrorDetails] = true
+			seenKeys[semconv.ColumnIdentError.ShortName()] = struct{}{}
+			seenKeys[semconv.ColumnIdentErrorDetails.ShortName()] = struct{}{}
 		}
 
 		// Add values for parsed keys (only if no error)
 		if err == nil {
 			for key, value := range parsed {
-				seenKeys[key] = true
+				seenKeys[key] = struct{}{}
 				builder, exists := columnBuilders[key]
 				if !exists {
 					// New column discovered - create and backfill
@@ -203,7 +195,7 @@ func parseLines(input *array.String, requestedKeys []string, columnBuilders map[
 
 		// Append NULLs for columns not in this row
 		for _, key := range columnOrder {
-			if !seenKeys[key] {
+			if _, found := seenKeys[key]; !found {
 				columnBuilders[key].AppendNull()
 			}
 		}
@@ -214,12 +206,12 @@ func parseLines(input *array.String, requestedKeys []string, columnBuilders map[
 		// Keep error columns at the end, sort the rest
 		nonErrorColumns := make([]string, 0, len(columnOrder)-2)
 		for _, key := range columnOrder {
-			if key != types.ColumnNameParsedError && key != types.ColumnNameParsedErrorDetails {
+			if key != semconv.ColumnIdentError.ShortName() && key != semconv.ColumnIdentErrorDetails.ShortName() {
 				nonErrorColumns = append(nonErrorColumns, key)
 			}
 		}
 		sort.Strings(nonErrorColumns)
-		columnOrder = append(nonErrorColumns, types.ColumnNameParsedError, types.ColumnNameParsedErrorDetails)
+		columnOrder = append(nonErrorColumns, semconv.ColumnIdentError.ShortName(), semconv.ColumnIdentErrorDetails.ShortName())
 	} else {
 		sort.Strings(columnOrder)
 	}

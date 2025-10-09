@@ -42,7 +42,7 @@ The configuration files associated with these installation instructions run Loki
     ```
 
     {{< admonition type="note" >}}
-    The image is configured to run by default as user `loki` with  UID `10001` and GID `10001`. You can use a different user, specially if you are using bind mounts, by specifying the UID with a `docker run` command and using `--user=UID` with a numeric UID suited to your needs.
+    The image is configured to run by default as user `loki` with UID `10001` and GID `10001`. You can use a different user, specially if you are using bind mounts, by specifying the UID with a `docker run` command and using `--user=UID` with a numeric UID suited to your needs.
     {{< /admonition >}}
 
 1. Verify that your containers are running:
