@@ -167,17 +167,17 @@ func parseLines(input *array.String, requestedKeys []string, columnBuilders map[
 		}
 
 		// Track which keys we've seen this row
-		seenKeys := make(map[string]bool)
+		seenKeys := make(map[string]struct{})
 		if hasErrorColumns {
 			// Mark error columns as seen so we don't append nulls for them
-			seenKeys[semconv.ColumnIdentError.ShortName()] = true
-			seenKeys[semconv.ColumnIdentErrorDetails.ShortName()] = true
+			seenKeys[semconv.ColumnIdentError.ShortName()] = struct{}{}
+			seenKeys[semconv.ColumnIdentErrorDetails.ShortName()] = struct{}{}
 		}
 
 		// Add values for parsed keys (only if no error)
 		if err == nil {
 			for key, value := range parsed {
-				seenKeys[key] = true
+				seenKeys[key] = struct{}{}
 				builder, exists := columnBuilders[key]
 				if !exists {
 					// New column discovered - create and backfill
@@ -195,7 +195,7 @@ func parseLines(input *array.String, requestedKeys []string, columnBuilders map[
 
 		// Append NULLs for columns not in this row
 		for _, key := range columnOrder {
-			if !seenKeys[key] {
+			if _, found := seenKeys[key]; !found {
 				columnBuilders[key].AppendNull()
 			}
 		}
