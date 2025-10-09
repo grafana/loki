@@ -13,6 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [FEATURE] Use named ports for memcached services targetports. [#18990](https://github.com/grafana/loki/pull/18990)
 - [BREAKING]  The Loki UI has been moved to a Grafana Plugin. Enabling the UI in the helm chart will now only enable the APIs needed by the plugin, and will host them on the querier. The gateway will now forward all UI requests to the queriers.
 
 ## 6.42.0
