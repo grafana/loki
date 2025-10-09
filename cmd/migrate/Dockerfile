@@ -4,7 +4,7 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false migrate
 
-FROM gcr.io/distroless/static
+FROM gcr.io/distroless/static:nonroot
 
 COPY --from=build /src/loki/cmd/migrate/migrate /usr/bin/migrate
 ENTRYPOINT [ "/usr/bin/migrate" ]

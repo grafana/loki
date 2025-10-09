@@ -19,7 +19,7 @@ RUN mkdir -p /tmp/etc/loki /tmp/loki && \
     adduser --uid 10001 --gid 10001 --disabled-password --gecos "" loki && \
     chown -R loki:loki /tmp/etc/loki /tmp/loki
 
-FROM gcr.io/distroless/static
+FROM gcr.io/distroless/static:nonroot
 
 COPY --from=goenv /src/loki/cmd/loki/loki /usr/bin/loki
 COPY --from=filesystem /tmp/etc/loki /etc/loki

@@ -13,6 +13,6 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make BUILD_IN_CONTAINER=false loki-canary
 
-FROM gcr.io/distroless/static
+FROM gcr.io/distroless/static:nonroot
 COPY --from=build /src/loki/cmd/loki-canary/loki-canary /usr/bin/loki-canary
 ENTRYPOINT [ "/usr/bin/loki-canary" ]

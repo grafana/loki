@@ -17,7 +17,7 @@ RUN mkdir -p /tmp/etc/loki /tmp/loki/rules /tmp/loki/rules-temp && \
     chown -R loki:loki /tmp/etc/loki /tmp/loki
 
 # Final stage
-FROM gcr.io/distroless/static
+FROM gcr.io/distroless/static:nonroot
 
 COPY --from=build /src/loki/cmd/loki/loki /usr/bin/loki
 COPY --from=filesystem /tmp/etc/loki /etc/loki

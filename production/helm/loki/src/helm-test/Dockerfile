@@ -8,6 +8,6 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false helm-test
 
-FROM gcr.io/distroless/static:debug
+FROM gcr.io/distroless/static:nonroot:debug
 COPY --from=build /src/loki/production/helm/loki/src/helm-test/helm-test /usr/bin/helm-test
 ENTRYPOINT [ "/usr/bin/helm-test" ]
