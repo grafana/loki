@@ -2,10 +2,14 @@ package queryrange
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/engine"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 	"github.com/pkg/errors"
 )
@@ -18,7 +22,8 @@ type engineReqResp struct {
 
 // engineRouter handles splitting queries between V1 and V2 engines
 type engineRouter struct {
-	v2EngineCfg engine.Config
+	v2EngineCfg    engine.Config
+	forMetricQuery bool
 
 	next    queryrangebase.Handler
 	merger  queryrangebase.Merger
@@ -33,23 +38,21 @@ func NewEngineRouterMiddleware(
 	v2EngineCfg engine.Config,
 	v1Chain []queryrangebase.Middleware,
 	merger queryrangebase.Merger,
+	metricQuery bool,
 	logger log.Logger,
 ) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &engineRouter{
-			v2EngineCfg: v2EngineCfg,
-			v1Chain:     v1Chain,
-			merger:      merger,
-			next:        next,
-			logger:      logger,
+			v2EngineCfg:    v2EngineCfg,
+			v1Chain:        v1Chain,
+			merger:         merger,
+			next:           next,
+			forMetricQuery: metricQuery,
+			logger:         logger,
 		}
 	})
 }
 
-// TODO:
-// - apply limits for log queries, consider query direction.
-// - handle very small splits
-// - splits smaller than step?
 func (e *engineRouter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	v2Start, v2End := e.v2EngineCfg.ValidQueryRange()
 
@@ -70,7 +73,30 @@ func (e *engineRouter) Do(ctx context.Context, r queryrangebase.Request) (queryr
 	}
 
 	inputs := e.splitOverlapping(r, v2Start, v2End)
-	responses, err := e.process(ctx, inputs)
+
+	// for log queries, order the splits to return early on hitting limits.
+	var limit uint32
+	if !e.forMetricQuery && len(inputs) > 1 {
+		r, ok := r.(*LokiRequest)
+		if !ok {
+			level.Error(e.logger).Log("msg", "engine router received unexpected request type", "type", fmt.Sprintf("%T", r))
+			return nil, errors.New("engine router: unexpected request type")
+		}
+
+		limit = r.Limit
+
+		if r.Direction == logproto.BACKWARD {
+			slices.SortFunc(inputs, func(a, b *engineReqResp) int {
+				return b.req.GetStart().Compare(a.req.GetStart())
+			})
+		} else {
+			slices.SortFunc(inputs, func(a, b *engineReqResp) int {
+				return a.req.GetStart().Compare(b.req.GetStart())
+			})
+		}
+	}
+
+	responses, err := e.process(ctx, inputs, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -85,21 +111,27 @@ func (e *engineRouter) Do(ctx context.Context, r queryrangebase.Request) (queryr
 // - one for the range overlapping V2 engine range
 // - one for the range after V2 engine
 func (e *engineRouter) splitOverlapping(r queryrangebase.Request, v2Start, v2End time.Time) []*engineReqResp {
-	stepNs := r.GetStep() * int64(time.Millisecond)
+	var (
+		reqs []*engineReqResp
+
+		stepNs = r.GetStep() * int64(time.Millisecond)
+		gap    = time.Duration(stepNs)
+	)
+
+	// metric query splits are separated by a gap of 1 step. This is to ensure a step is included only in a single split.
+	if !e.forMetricQuery {
+		gap = 0
+	}
 
 	// align the ranges by step before splitting.
 	start, end := alignStartEnd(stepNs, r.GetStart(), r.GetEnd())
 	v2Start, v2End = alignStartEnd(stepNs, v2Start, v2End)
 
-	// End time is exclusive for metric and log queries.
-	// So the splits are allowed to overlap on the boundary.
-	var reqs []*engineReqResp
-
 	// chunk req before V2 engine range
 	if start.Before(v2Start) {
 		reqs = append(reqs, &engineReqResp{
 			lokiResult: lokiResult{
-				req: r.WithStartEnd(start, v2Start.Add(-time.Duration(stepNs))),
+				req: r.WithStartEnd(start, v2Start.Add(-gap)), // add gap between splits
 				ch:  make(chan *packedResp),
 			},
 			isV2Engine: false,
@@ -117,7 +149,7 @@ func (e *engineRouter) splitOverlapping(r queryrangebase.Request, v2Start, v2End
 			isV2Engine: false,
 		})
 
-		// add split gap between v2 query and the v1 query after it.
+		// add gap after v2 query only if there is a chunk query after it.
 		addSplitGap = true
 	}
 
@@ -127,10 +159,9 @@ func (e *engineRouter) splitOverlapping(r queryrangebase.Request, v2Start, v2End
 	if end.Before(v2End) {
 		v2End = end
 	} else if addSplitGap {
-		v2End = v2End.Add(-time.Duration(stepNs))
+		v2End = v2End.Add(-gap)
 	}
 
-	// TODO: req order is important for log queries with a limit.
 	return append(reqs, &engineReqResp{
 		lokiResult: lokiResult{
 			req: r.WithStartEnd(v2Start, v2End),
@@ -156,7 +187,7 @@ func (e *engineRouter) handleReq(ctx context.Context, r *engineReqResp) {
 }
 
 // process executes the inputs in parallel and collects the responses.
-func (e *engineRouter) process(ctx context.Context, inputs []*engineReqResp) ([]queryrangebase.Response, error) {
+func (e *engineRouter) process(ctx context.Context, inputs []*engineReqResp, limit uint32) ([]queryrangebase.Response, error) {
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(errors.New("engine router process cancelled"))
 
@@ -166,6 +197,7 @@ func (e *engineRouter) process(ctx context.Context, inputs []*engineReqResp) ([]
 	}
 
 	var responses []queryrangebase.Response
+	var count int64
 	for _, x := range inputs {
 		select {
 		case <-ctx.Done():
@@ -174,7 +206,18 @@ func (e *engineRouter) process(ctx context.Context, inputs []*engineReqResp) ([]
 			if data.err != nil {
 				return nil, data.err
 			}
+
 			responses = append(responses, data.resp)
+			if limit > 0 {
+				// exit early if limit has been reached
+				if r, ok := data.resp.(*LokiResponse); ok {
+					count += r.Count()
+					if count >= int64(limit) {
+						return responses, nil
+					}
+				}
+			}
+
 		}
 	}
 
