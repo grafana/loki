@@ -386,7 +386,7 @@ func (p *Planner) processBinOp(lp *logical.BinOp, ctx *Context) ([]Node, error) 
 			Op:    lp.Op,
 		},
 	}
-	p.plan.addNode(node)
+	p.plan.graph.Add(node)
 
 	// if lhs is not a literal, then process children nodes
 	if _, ok := lp.Left.(*logical.Literal); !ok {
@@ -394,7 +394,7 @@ func (p *Planner) processBinOp(lp *logical.BinOp, ctx *Context) ([]Node, error) 
 		if err != nil {
 			return nil, err
 		}
-		if err := p.plan.addEdge(Edge{Parent: node, Child: leftChildren[0]}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: leftChildren[0]}); err != nil {
 			return nil, err
 		}
 	}
@@ -405,7 +405,7 @@ func (p *Planner) processBinOp(lp *logical.BinOp, ctx *Context) ([]Node, error) 
 		if err != nil {
 			return nil, err
 		}
-		if err := p.plan.addEdge(Edge{Parent: node, Child: rightChildren[0]}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: rightChildren[0]}); err != nil {
 			return nil, err
 		}
 	}
@@ -428,7 +428,7 @@ func (p *Planner) processUnaryOp(lp *logical.UnaryOp, ctx *Context) ([]Node, err
 			Op:   lp.Op,
 		},
 	}
-	p.plan.addNode(node)
+	p.plan.graph.Add(node)
 
 	// if lhs is not a literal, then process children nodes
 	if _, ok := lp.Value.(*logical.Literal); !ok {
@@ -436,7 +436,7 @@ func (p *Planner) processUnaryOp(lp *logical.UnaryOp, ctx *Context) ([]Node, err
 		if err != nil {
 			return nil, err
 		}
-		if err := p.plan.addEdge(Edge{Parent: node, Child: leftChildren[0]}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: leftChildren[0]}); err != nil {
 			return nil, err
 		}
 	}

@@ -417,7 +417,7 @@ func (r *mathExpressionsMerge) apply(node Node) bool {
 				if columnExpr, ok := binaryExpr.Left.(*ColumnExpr); ok {
 					if columnExpr.Ref.Column == inputName {
 						binaryExpr.Left = c.Expression
-						r.plan.eliminateNode(child)
+						r.plan.graph.Eliminate(child)
 						changed = true
 						break
 					}
@@ -425,7 +425,7 @@ func (r *mathExpressionsMerge) apply(node Node) bool {
 				if columnExpr, ok := binaryExpr.Right.(*ColumnExpr); ok {
 					if columnExpr.Ref.Column == inputName {
 						binaryExpr.Right = c.Expression
-						r.plan.eliminateNode(child)
+						r.plan.graph.Eliminate(child)
 						changed = true
 						break
 					}

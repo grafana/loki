@@ -678,13 +678,13 @@ func TestOptimizer(t *testing.T) {
 		// generate plan for max by(service) ((count_over_time{...}[] / 60 - 100) ^ 2)
 		plan := &Plan{}
 		{
-			scan1 := plan.addNode(&DataObjScan{id: "scan1"})
-			rangeAgg := plan.addNode(&RangeAggregation{
+			scan1 := plan.graph.Add(&DataObjScan{id: "scan1"})
+			rangeAgg := plan.graph.Add(&RangeAggregation{
 				id:          "sum_over_time",
 				Operation:   types.RangeAggregationTypeSum,
 				PartitionBy: partitionBy,
 			})
-			math1 := plan.addNode(&MathExpression{
+			math1 := plan.graph.Add(&MathExpression{
 				id: "math_1",
 				Expression: &BinaryExpr{
 					Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "input_0", Type: types.ColumnTypeGenerated}},
@@ -692,7 +692,7 @@ func TestOptimizer(t *testing.T) {
 					Op:    types.BinaryOpDiv,
 				},
 			})
-			math2 := plan.addNode(&MathExpression{
+			math2 := plan.graph.Add(&MathExpression{
 				id: "math_2",
 				Expression: &BinaryExpr{
 					Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "input_0", Type: types.ColumnTypeGenerated}},
@@ -700,7 +700,7 @@ func TestOptimizer(t *testing.T) {
 					Op:    types.BinaryOpSub,
 				},
 			})
-			math3 := plan.addNode(&MathExpression{
+			math3 := plan.graph.Add(&MathExpression{
 				id: "math_3",
 				Expression: &BinaryExpr{
 					Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "input_0", Type: types.ColumnTypeGenerated}},
@@ -708,17 +708,17 @@ func TestOptimizer(t *testing.T) {
 					Op:    types.BinaryOpPow,
 				},
 			})
-			vectorAgg := plan.addNode(&VectorAggregation{
+			vectorAgg := plan.graph.Add(&VectorAggregation{
 				id:        "max_of",
 				Operation: types.VectorAggregationTypeMax,
 				GroupBy:   groupBy,
 			})
 
-			_ = plan.addEdge(Edge{Parent: vectorAgg, Child: math3})
-			_ = plan.addEdge(Edge{Parent: math3, Child: math2})
-			_ = plan.addEdge(Edge{Parent: math2, Child: math1})
-			_ = plan.addEdge(Edge{Parent: math1, Child: rangeAgg})
-			_ = plan.addEdge(Edge{Parent: rangeAgg, Child: scan1})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: math3})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: math3, Child: math2})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: math2, Child: math1})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: math1, Child: rangeAgg})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan1})
 		}
 
 		optimizations := []*optimization{
@@ -733,13 +733,13 @@ func TestOptimizer(t *testing.T) {
 
 		optimized := func() *Plan {
 			plan := &Plan{}
-			scan1 := plan.addNode(&DataObjScan{id: "scan1"})
-			rangeAgg := plan.addNode(&RangeAggregation{
+			scan1 := plan.graph.Add(&DataObjScan{id: "scan1"})
+			rangeAgg := plan.graph.Add(&RangeAggregation{
 				id:          "sum_over_time",
 				Operation:   types.RangeAggregationTypeSum,
 				PartitionBy: partitionBy,
 			})
-			math1 := plan.addNode(&MathExpression{
+			math1 := plan.graph.Add(&MathExpression{
 				id: "math_3",
 				Expression: &BinaryExpr{
 					Left: &BinaryExpr{
@@ -755,15 +755,15 @@ func TestOptimizer(t *testing.T) {
 					Op:    types.BinaryOpPow,
 				},
 			})
-			vectorAgg := plan.addNode(&VectorAggregation{
+			vectorAgg := plan.graph.Add(&VectorAggregation{
 				id:        "max_of",
 				Operation: types.VectorAggregationTypeMax,
 				GroupBy:   groupBy,
 			})
 
-			_ = plan.addEdge(Edge{Parent: vectorAgg, Child: math1})
-			_ = plan.addEdge(Edge{Parent: math1, Child: rangeAgg})
-			_ = plan.addEdge(Edge{Parent: rangeAgg, Child: scan1})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: math1})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: math1, Child: rangeAgg})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan1})
 			return plan
 		}()
 
