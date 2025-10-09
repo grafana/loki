@@ -40,14 +40,14 @@ func newStreamInjector(alloc memory.Allocator, view *streamsView) *streamInjecto
 //
 // The returned record must be Release()d by the caller when no longer needed.
 func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Record, error) {
-	streamIDIndex, err := si.findStreamIDColumn(in)
+	streamIDCol, streamIDIndex, err := columnForFQN(streamInjectorColumnName, in)
 	if err != nil {
-		return nil, fmt.Errorf("finding stream ID column: %w", err)
+		return nil, err
 	}
 
-	streamIDValues, ok := in.Column(streamIDIndex).(*array.Int64)
+	streamIDValues, ok := streamIDCol.(*array.Int64)
 	if !ok {
-		return nil, fmt.Errorf("stream ID column %q must be of type int64, got %s", streamInjectorColumnName, in.Schema().Field(streamIDIndex).Type)
+		return nil, fmt.Errorf("column %s must be of type int64, got %s", streamInjectorColumnName, in.Schema().Field(streamIDIndex))
 	}
 
 	type labelColumn struct {
@@ -145,14 +145,4 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 
 	schema := arrow.NewSchemaWithEndian(fields, &md, in.Schema().Endianness())
 	return array.NewRecord(schema, arrs, in.NumRows()), nil
-}
-
-func (si *streamInjector) findStreamIDColumn(in arrow.Record) (int, error) {
-	indices := in.Schema().FieldIndices(streamInjectorColumnName)
-	if len(indices) == 0 {
-		return -1, fmt.Errorf("stream ID column %q not found in input record", streamInjectorColumnName)
-	} else if len(indices) > 1 {
-		return -1, fmt.Errorf("multiple stream ID columns found in input record: %v", indices)
-	}
-	return indices[0], nil
 }

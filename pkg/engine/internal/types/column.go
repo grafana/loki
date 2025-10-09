@@ -107,26 +107,3 @@ type ColumnRef struct {
 func (c *ColumnRef) String() string {
 	return fmt.Sprintf("%s.%s", c.Type, c.Column)
 }
-
-// func GuessLokiType(ref ColumnRef) (DataType, error) {
-// 	switch ref.Type {
-// 	case ColumnTypeBuiltin:
-// 		switch ref.Column {
-// 		case ColumnNameBuiltinTimestamp:
-// 			return Loki.Timestamp, nil
-// 		case ColumnNameBuiltinMessage:
-// 			return Loki.String, nil
-// 		default:
-// 			panic(fmt.Sprintf("unsupported builtin column type %s", ref))
-// 		}
-// 	case ColumnTypeGenerated:
-// 		return Loki.Float, nil
-// 	case ColumnTypeAmbiguous:
-// 		// TODO(rfratto): It's not clear how topk should sort when there's an
-// 		// ambiguous column reference, since ambiguous column references can
-// 		// refer to multiple columns.
-// 		return nil, fmt.Errorf("topkPipeline does not support ambiguous column types")
-// 	default:
-// 		return Loki.String, nil
-// 	}
-// }

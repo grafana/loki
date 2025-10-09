@@ -29,19 +29,14 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		defer batch.Release()
 
 		// Find the message column
-		schema := batch.Schema()
-		indices := schema.FieldIndices(semconv.ColumnIdentMessage.FQN())
-		if len(indices) == 0 {
-			return failureState(fmt.Errorf("message column not found"))
-		}
-		if len(indices) > 1 {
-			return failureState(fmt.Errorf("multiple message columns found"))
+		msgCol, msgIdx, err := columnForIdent(semconv.ColumnIdentMessage, batch)
+		if err != nil {
+			return failureState(err)
 		}
 
-		messageCol := batch.Column(indices[0])
-		stringCol, ok := messageCol.(*array.String)
+		stringCol, ok := msgCol.(*array.String)
 		if !ok {
-			return failureState(fmt.Errorf("message column is not a string column"))
+			return failureState(fmt.Errorf("column %s must be of type utf8, got %s", semconv.ColumnIdentMessage.FQN(), batch.Schema().Field(msgIdx)))
 		}
 
 		var headers []string
@@ -56,6 +51,7 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		}
 
 		// Build new schema with original fields plus parsed fields
+		schema := batch.Schema()
 		newFields := make([]arrow.Field, 0, schema.NumFields()+len(headers))
 		for i := 0; i < schema.NumFields(); i++ {
 			newFields = append(newFields, schema.Field(i))

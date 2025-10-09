@@ -23,10 +23,10 @@ func Test_streamInjector(t *testing.T) {
 	sec := buildStreamsSection(t, inputStreams)
 
 	input := arrowtest.Rows{
-		{"stream_id.int64": 2, "ts": int64(1), "line": "log line 1"},
-		{"stream_id.int64": 1, "ts": int64(2), "line": "log line 2"},
-		{"stream_id.int64": 3, "ts": int64(3), "line": "log line 3"},
-		{"stream_id.int64": 2, "ts": int64(4), "line": "log line 4"},
+		{streamInjectorColumnName: 2, "ts": int64(1), "line": "log line 1"},
+		{streamInjectorColumnName: 1, "ts": int64(2), "line": "log line 2"},
+		{streamInjectorColumnName: 3, "ts": int64(3), "line": "log line 3"},
+		{streamInjectorColumnName: 2, "ts": int64(4), "line": "log line 4"},
 	}
 
 	record := input.Record(alloc, input.Schema())
