@@ -2,7 +2,7 @@ package index
 
 import (
 	"context"
-	fmt "fmt"
+	"fmt"
 	"sync"
 	"time"
 	"unsafe"

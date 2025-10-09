@@ -50,10 +50,6 @@ const (
 	VectorAggregationTypeSortDesc // Represents sort_desc vector aggregation
 )
 
-var SupportedVectorAggregationTypes = []VectorAggregationType{
-	VectorAggregationTypeSum, VectorAggregationTypeMax, VectorAggregationTypeMin, VectorAggregationTypeCount,
-}
-
 func (op VectorAggregationType) String() string {
 	switch op {
 	case VectorAggregationTypeSum:

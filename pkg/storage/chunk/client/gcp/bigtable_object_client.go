@@ -8,7 +8,7 @@ import (
 	"github.com/grafana/dskit/middleware"
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk"

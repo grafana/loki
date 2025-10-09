@@ -2,7 +2,7 @@ package metastore
 
 import (
 	"flag"
-	fmt "fmt"
+	"fmt"
 )
 
 // Config is the configuration block for the metastore settings.
