@@ -4,15 +4,13 @@
 package plogotlp // import "go.opentelemetry.io/collector/pdata/plog/plogotlp"
 
 import (
+	"slices"
+
 	"go.opentelemetry.io/collector/pdata/internal"
 	otlpcollectorlog "go.opentelemetry.io/collector/pdata/internal/data/protogen/collector/logs/v1"
+	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/internal/otlp"
 	"go.opentelemetry.io/collector/pdata/plog"
-)
-
-var (
-	jsonMarshaler   = &plog.JSONMarshaler{}
-	jsonUnmarshaler = &plog.JSONUnmarshaler{}
 )
 
 // ExportRequest represents the request for gRPC/HTTP client/server.
@@ -42,9 +40,6 @@ func NewExportRequestFromLogs(ld plog.Logs) ExportRequest {
 
 // MarshalProto marshals ExportRequest into proto bytes.
 func (ms ExportRequest) MarshalProto() ([]byte, error) {
-	if !internal.UseCustomProtoEncoding.IsEnabled() {
-		return ms.orig.Marshal()
-	}
 	size := internal.SizeProtoOrigExportLogsServiceRequest(ms.orig)
 	buf := make([]byte, size)
 	_ = internal.MarshalProtoOrigExportLogsServiceRequest(ms.orig, buf)
@@ -53,9 +48,6 @@ func (ms ExportRequest) MarshalProto() ([]byte, error) {
 
 // UnmarshalProto unmarshalls ExportRequest from proto bytes.
 func (ms ExportRequest) UnmarshalProto(data []byte) error {
-	if !internal.UseCustomProtoEncoding.IsEnabled() {
-		return ms.orig.Unmarshal(data)
-	}
 	err := internal.UnmarshalProtoOrigExportLogsServiceRequest(ms.orig, data)
 	if err != nil {
 		return err
@@ -66,17 +58,21 @@ func (ms ExportRequest) UnmarshalProto(data []byte) error {
 
 // MarshalJSON marshals ExportRequest into JSON bytes.
 func (ms ExportRequest) MarshalJSON() ([]byte, error) {
-	return jsonMarshaler.MarshalLogs(plog.Logs(internal.NewLogs(ms.orig, nil)))
+	dest := json.BorrowStream(nil)
+	defer json.ReturnStream(dest)
+	internal.MarshalJSONOrigExportLogsServiceRequest(ms.orig, dest)
+	if dest.Error() != nil {
+		return nil, dest.Error()
+	}
+	return slices.Clone(dest.Buffer()), nil
 }
 
 // UnmarshalJSON unmarshalls ExportRequest from JSON bytes.
 func (ms ExportRequest) UnmarshalJSON(data []byte) error {
-	ld, err := jsonUnmarshaler.UnmarshalLogs(data)
-	if err != nil {
-		return err
-	}
-	*ms.orig = *internal.GetOrigLogs(internal.Logs(ld))
-	return nil
+	iter := json.BorrowIterator(data)
+	defer json.ReturnIterator(iter)
+	internal.UnmarshalJSONOrigExportLogsServiceRequest(ms.orig, iter)
+	return iter.Error()
 }
 
 func (ms ExportRequest) Logs() plog.Logs {

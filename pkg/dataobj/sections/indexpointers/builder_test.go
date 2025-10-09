@@ -22,7 +22,7 @@ func TestBuilder(t *testing.T) {
 		{path: "bar", start: unixTime(10), end: unixTime(20)},
 	}
 
-	ib := NewBuilder(nil, 1024)
+	ib := NewBuilder(nil, 1024, 0)
 	for _, p := range pp {
 		ib.Append(p.path, p.start, p.end)
 	}

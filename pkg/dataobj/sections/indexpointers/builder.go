@@ -27,20 +27,22 @@ type IndexPointer struct {
 }
 
 type Builder struct {
-	metrics  *Metrics
-	pageSize int
-	tenant   string
+	metrics      *Metrics
+	pageSize     int
+	pageRowCount int
+	tenant       string
 
 	indexPointers []*IndexPointer
 }
 
-func NewBuilder(metrics *Metrics, pageSize int) *Builder {
+func NewBuilder(metrics *Metrics, pageSize, pageRowCount int) *Builder {
 	if metrics == nil {
 		metrics = NewMetrics()
 	}
 	return &Builder{
 		metrics:       metrics,
 		pageSize:      pageSize,
+		pageRowCount:  pageRowCount,
 		indexPointers: make([]*IndexPointer, 0, 1024),
 	}
 }
@@ -143,7 +145,8 @@ func (b *Builder) Reset() {
 
 func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	pathBuilder, err := dataset.NewColumnBuilder("path", dataset.BuilderOptions{
-		PageSizeHint: b.pageSize,
+		PageSizeHint:    b.pageSize,
+		PageMaxRowCount: b.pageRowCount,
 		Type: dataset.ColumnType{
 			Physical: datasetmd_v2.PHYSICAL_TYPE_BINARY,
 			Logical:  ColumnTypePath.String(),
@@ -159,7 +162,8 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	}
 
 	minTimestampBuilder, err := dataset.NewColumnBuilder("min_timestamp", dataset.BuilderOptions{
-		PageSizeHint: b.pageSize,
+		PageSizeHint:    b.pageSize,
+		PageMaxRowCount: b.pageRowCount,
 		Type: dataset.ColumnType{
 			Physical: datasetmd_v2.PHYSICAL_TYPE_INT64,
 			Logical:  ColumnTypeMinTimestamp.String(),
@@ -175,7 +179,8 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	}
 
 	maxTimestampBuilder, err := dataset.NewColumnBuilder("max_timestamp", dataset.BuilderOptions{
-		PageSizeHint: b.pageSize,
+		PageSizeHint:    b.pageSize,
+		PageMaxRowCount: b.pageRowCount,
 		Type: dataset.ColumnType{
 			Physical: datasetmd_v2.PHYSICAL_TYPE_INT64,
 			Logical:  ColumnTypeMaxTimestamp.String(),

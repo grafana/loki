@@ -30,14 +30,10 @@ type ReaderOptions struct {
 	// Holds a list of predicates that can be sequentially applied to the dataset.
 	Predicates []Predicate
 
-	// TargetCacheSize configures the amount of memory to target for caching
-	// pages in memory. The cache may exceed this size if the combined size of
-	// all pages required for a single call to [Reader.Reead] exceeds this value.
-	//
-	// TargetCacheSize is used to download and cache additional pages in advance
-	// of when they're needed. If TargetCacheSize is 0, only immediately required
-	// pages are cached.
-	TargetCacheSize int
+	// Prefetch enables bulk retrieving pages from the dataset when reading
+	// starts. To reduce read latency, this option should only be disabled when
+	// the entire Dataset is already held in memory.
+	Prefetch bool
 }
 
 // A Reader reads [Row]s from a [Dataset].
@@ -136,7 +132,7 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 
 	// If there are no predicates, read all columns in the dataset
 	if len(r.opts.Predicates) == 0 {
-		count, err := r.inner.ReadColumns(ctx, r.dl.PrimaryColumns(), s[:readSize])
+		count, err := r.inner.ReadColumns(ctx, r.primaryColumns(), s[:readSize])
 		if err != nil && !errors.Is(err, io.EOF) {
 			return n, err
 		} else if count == 0 && errors.Is(err, io.EOF) {
@@ -159,7 +155,7 @@ func (r *Reader) Read(ctx context.Context, s []Row) (n int, err error) {
 		}
 	}
 
-	if secondary := r.dl.SecondaryColumns(); len(secondary) > 0 && passCount > 0 {
+	if secondary := r.secondaryColumns(); len(secondary) > 0 && passCount > 0 {
 		// Mask out any ranges that aren't in s[:passCount], so that filling in
 		// secondary columns doesn't consider downloading pages not used for the
 		// Fill.
@@ -445,13 +441,43 @@ func (r *Reader) init(ctx context.Context) error {
 	}
 
 	if r.inner == nil {
-		r.inner = newBasicReader(r.dl.AllColumns())
+		r.inner = newBasicReader(r.allColumns())
 	} else {
-		r.inner.Reset(r.dl.AllColumns())
+		r.inner.Reset(r.allColumns())
 	}
 
 	r.ready = true
 	return nil
+}
+
+// allColumns returns the full set of column to read. If r was configured with
+// prefetching, wrapped columns from [readerDownloader] are returned. Otherwise,
+// the columns of the original dataset are returned.
+func (r *Reader) allColumns() []Column {
+	if r.opts.Prefetch {
+		return r.dl.AllColumns()
+	}
+	return r.dl.OrigColumns()
+}
+
+// primaryColumns returns the primary columns to read. If r was configured with
+// prefetching, wrapped columns from [readerDownloader] are returned. Otherwise,
+// the primary columns of the original dataset are returned.
+func (r *Reader) primaryColumns() []Column {
+	if r.opts.Prefetch {
+		return r.dl.PrimaryColumns()
+	}
+	return r.dl.OrigPrimaryColumns()
+}
+
+// secondaryColumns returns the secondary columns to read. If r was configured with
+// prefetching, wrapped columns from [readerDownloader] are returned. Otherwise,
+// the secondary columns of the original dataset are returned.
+func (r *Reader) secondaryColumns() []Column {
+	if r.opts.Prefetch {
+		return r.dl.SecondaryColumns()
+	}
+	return r.dl.OrigSecondaryColumns()
 }
 
 // validatePredicate ensures that all columns used in a predicate have been
@@ -497,6 +523,8 @@ func (r *Reader) validatePredicate() error {
 	return err
 }
 
+// initDownloader initializes the reader's [readerDownloader]. initDownloader is
+// always used to reduce the number of conditions.
 func (r *Reader) initDownloader(ctx context.Context) error {
 	// The downloader is initialized in three steps:
 	//
@@ -505,9 +533,9 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 	//   3. Provide the overall dataset row ranges that will be valid to read.
 
 	if r.dl == nil {
-		r.dl = newReaderDownloader(r.opts.Dataset, r.opts.TargetCacheSize)
+		r.dl = newReaderDownloader(r.opts.Dataset)
 	} else {
-		r.dl.Reset(r.opts.Dataset, r.opts.TargetCacheSize)
+		r.dl.Reset(r.opts.Dataset)
 	}
 
 	mask := bitmask.New(len(r.opts.Columns))
@@ -554,7 +582,7 @@ func (r *Reader) initDownloader(ctx context.Context) error {
 	r.ranges = ranges
 
 	var rowsCount uint64
-	for _, column := range r.dl.AllColumns() {
+	for _, column := range r.allColumns() {
 		rowsCount = max(rowsCount, uint64(column.ColumnDesc().RowsCount))
 	}
 
@@ -648,7 +676,7 @@ func (r *Reader) buildPredicateRanges(ctx context.Context, p Predicate) (rowRang
 		if err != nil {
 			// Predicate can't be simplfied, so we permit the full range.
 			var rowsCount uint64
-			for _, column := range r.dl.AllColumns() {
+			for _, column := range r.allColumns() {
 				rowsCount = max(rowsCount, uint64(column.ColumnDesc().RowsCount))
 			}
 			return rowRanges{{Start: 0, End: rowsCount - 1}}, nil
@@ -677,7 +705,7 @@ func (r *Reader) buildPredicateRanges(ctx context.Context, p Predicate) (rowRang
 		// We use r.dl.AllColumns instead of r.opts.Columns because the downloader
 		// will cache metadata.
 		var rowsCount uint64
-		for _, column := range r.dl.AllColumns() {
+		for _, column := range r.allColumns() {
 			rowsCount = max(rowsCount, uint64(column.ColumnDesc().RowsCount))
 		}
 		return rowRanges{{Start: 0, End: rowsCount - 1}}, nil
@@ -758,7 +786,7 @@ func simplifyNotPredicate(p NotPredicate) (Predicate, error) {
 func (r *Reader) buildColumnPredicateRanges(ctx context.Context, c Column, p Predicate) (rowRanges, error) {
 	// Get the wrapped column so that the result of c.ListPages can be cached.
 	if idx, ok := r.origColumnLookup[c]; ok {
-		c = r.dl.AllColumns()[idx]
+		c = r.allColumns()[idx]
 	} else {
 		return nil, fmt.Errorf("column %v not found in Reader columns", c)
 	}
@@ -874,7 +902,7 @@ func (r *Reader) predicateColumns(p Predicate, keep func(c Column) bool) ([]Colu
 			panic(fmt.Errorf("predicateColumns: column %v not found in Reader columns", c))
 		}
 
-		c := r.dl.AllColumns()[idx]
+		c := r.allColumns()[idx]
 		if !keep(c) {
 			continue
 		}

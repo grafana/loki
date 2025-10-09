@@ -4,12 +4,6 @@ package ansi
 // all modes are [ModeNotRecognized].
 type Modes map[Mode]ModeSetting
 
-// NewModes creates a new Modes map. By default, all modes are
-// [ModeNotRecognized].
-func NewModes() Modes {
-	return make(Modes)
-}
-
 // Get returns the setting of a terminal mode. If the mode is not set, it
 // returns [ModeNotRecognized].
 func (m Modes) Get(mode Mode) ModeSetting {

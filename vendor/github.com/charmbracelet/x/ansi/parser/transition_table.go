@@ -30,7 +30,7 @@ func NewTransitionTable(size int) TransitionTable {
 
 // SetDefault sets default transition.
 func (t TransitionTable) SetDefault(action Action, state State) {
-	for i := 0; i < len(t); i++ {
+	for i := range t {
 		t[i] = action<<TransitionActionShift | state
 	}
 }
@@ -63,7 +63,7 @@ func (t TransitionTable) Transition(state State, code byte) (State, Action) {
 	return value & TransitionStateMask, value >> TransitionActionShift
 }
 
-// byte range macro
+// byte range macro.
 func r(start, end byte) []byte {
 	var a []byte
 	for i := int(start); i <= int(end); i++ {
