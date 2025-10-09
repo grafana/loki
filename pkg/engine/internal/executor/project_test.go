@@ -8,14 +8,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 func TestNewProjectPipeline(t *testing.T) {
 	fields := []arrow.Field{
-		{Name: "name", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.String)},
-		{Name: "age", Type: types.Arrow.Integer, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Integer)},
-		{Name: "city", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.String)},
+		semconv.FieldFromFQN("utf8.builtin.name", false),
+		semconv.FieldFromFQN("int64.builtin.age", false),
+		semconv.FieldFromFQN("utf8.builtin.city", false),
 	}
 
 	t.Run("project single column", func(t *testing.T) {
@@ -45,7 +46,7 @@ func TestNewProjectPipeline(t *testing.T) {
 		// Create expected output
 		expectedCSV := "Alice\nBob\nCharlie"
 		expectedFields := []arrow.Field{
-			{Name: "name", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.String)},
+			semconv.FieldFromFQN("utf8.builtin.name", true),
 		}
 		expectedRecord, err := CSVToArrowWithAllocator(alloc, expectedFields, expectedCSV)
 		require.NoError(t, err)
@@ -84,8 +85,8 @@ func TestNewProjectPipeline(t *testing.T) {
 		// Create expected output
 		expectedCSV := "Alice,New York\nBob,Boston\nCharlie,Seattle"
 		expectedFields := []arrow.Field{
-			{Name: "name", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.String)},
-			{Name: "city", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.String)},
+			semconv.FieldFromFQN("utf8.builtin.name", true),
+			semconv.FieldFromFQN("utf8.builtin.city", true),
 		}
 		expectedRecord, err := CSVToArrow(expectedFields, expectedCSV)
 		require.NoError(t, err)
@@ -127,9 +128,9 @@ func TestNewProjectPipeline(t *testing.T) {
 		// Create expected output
 		expectedCSV := "New York,30,Alice\nBoston,25,Bob\nSeattle,35,Charlie"
 		expectedFields := []arrow.Field{
-			{Name: "city", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.String)},
-			{Name: "age", Type: types.Arrow.Integer, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Integer)},
-			{Name: "name", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.String)},
+			semconv.FieldFromFQN("utf8.builtin.city", true),
+			semconv.FieldFromFQN("int64.builtin.age", true),
+			semconv.FieldFromFQN("utf8.builtin.name", true),
 		}
 		expectedRecord, err := CSVToArrow(expectedFields, expectedCSV)
 		require.NoError(t, err)
@@ -173,8 +174,8 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create expected output also split across multiple records
 		expectedFields := []arrow.Field{
-			{Name: "name", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.String)},
-			{Name: "age", Type: types.Arrow.Integer, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Integer)},
+			semconv.FieldFromFQN("utf8.builtin.name", true),
+			semconv.FieldFromFQN("int64.builtin.age", true),
 		}
 
 		expected := `
