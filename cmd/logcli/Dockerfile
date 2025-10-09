@@ -7,7 +7,7 @@ WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false IMAGE_TAG=${IMAGE_TAG} logcli
 
 
-FROM gcr.io/distroless/static:nonroot:nonroot
+FROM gcr.io/distroless/static
 
 COPY --from=build /src/loki/cmd/logcli/logcli /usr/bin/logcli
 
