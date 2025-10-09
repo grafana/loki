@@ -172,12 +172,7 @@ require (
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-redsync/redsync/v4 v4.13.0 // indirect
-	github.com/goccy/go-json v0.10.4 // indirect
-	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
-	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
-	github.com/google/flatbuffers v25.2.10+incompatible // indirect
-	github.com/gophercloud/gophercloud/v2 v2.7.0 // indirect
 	github.com/gorilla/handlers v1.5.2 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
