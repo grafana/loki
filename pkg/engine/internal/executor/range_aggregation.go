@@ -173,11 +173,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 
 				arrays = append(arrays, arr)
 			}
-			defer func() {
-				for _, a := range arrays {
-					a.Release()
-				}
-			}()
 
 			// extract timestamp column to check if the entry is in range
 			tsVec, err := r.evaluator.eval(tsColumnExpr, record)
