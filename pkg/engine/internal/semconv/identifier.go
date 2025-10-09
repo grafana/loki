@@ -37,6 +37,9 @@ type Identifier struct {
 	columnName string
 	columnType types.ColumnType
 	dataType   types.DataType
+
+	// fqn is the cached fully qualified name to avoid allocations when calling FQN() multiple times
+	fqn string
 }
 
 // DataType returns the Loki data type of the identifier.
@@ -81,9 +84,11 @@ func (i *Identifier) String() string {
 }
 
 // FQN returns the fully qualified name of the identifier.
-// This must be
 func (i *Identifier) FQN() string {
-	return fmt.Sprintf("%s.%s.%s", i.dataType, i.columnType, i.columnName)
+	if i.fqn == "" {
+		i.fqn = fmt.Sprintf("%s.%s.%s", i.dataType, i.columnType, i.columnName)
+	}
+	return i.fqn
 }
 
 // Equal checks equality of of the identifier against a second identifier.
@@ -134,6 +139,7 @@ func ParseFQN(fqn string) (*Identifier, error) {
 		columnName: columnName,
 		columnType: columnType,
 		dataType:   dataType,
+		fqn:        fqn,
 	}, nil
 }
 
