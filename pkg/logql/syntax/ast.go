@@ -425,7 +425,7 @@ func (e *PipelineExpr) HasFilter() bool {
 			return true
 		case *LineFilterExpr:
 			// ignore empty matchers as they match everything
-			if !((v.Ty == log.LineMatchEqual || v.Ty == log.LineMatchRegexp) && v.Match == "") {
+			if (v.Ty != log.LineMatchEqual && v.Ty != log.LineMatchRegexp) || v.Match != "" {
 				return true
 			}
 		default:
@@ -496,7 +496,7 @@ func newOrLineFilterExpr(left, right *LineFilterExpr) *LineFilterExpr {
 func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
 	// NOTE: When parsing "or" chains in linefilter, particularly variations of NOT filters (!= or !~), we need to transform
 	// say (!= "foo" or "bar "baz") => (!="foo" != "bar" != "baz")
-	if right.Or != nil && !(right.Ty == log.LineMatchEqual || right.Ty == log.LineMatchRegexp || right.Ty == log.LineMatchPattern) {
+	if right.Or != nil && (right.Ty != log.LineMatchEqual && right.Ty != log.LineMatchRegexp && right.Ty != log.LineMatchPattern) {
 		right.Or.IsOrChild = false
 		tmp := right.Or
 		right.Or = nil
@@ -1765,9 +1765,10 @@ func (e *BinOpExpr) String() string {
 		}
 		if e.Opts.VectorMatching != nil {
 			group := ""
-			if e.Opts.VectorMatching.Card == CardManyToOne {
+			switch e.Opts.VectorMatching.Card {
+			case CardManyToOne:
 				group = OpGroupLeft
-			} else if e.Opts.VectorMatching.Card == CardOneToMany {
+			case CardOneToMany:
 				group = OpGroupRight
 			}
 			if e.Opts.VectorMatching.Include != nil {

@@ -82,7 +82,7 @@ func (c *dumbChunk) Iterator(_ context.Context, from, through time.Time, directi
 		return !through.After(c.entries[j].Timestamp)
 	})
 
-	if from == through {
+	if from.Equal(through) {
 		return nil, nil
 	}
 

@@ -7,7 +7,7 @@ local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@%s' % re
 local buildImageVersion = std.extVar('BUILD_IMAGE_VERSION');
 local goVersion = std.extVar('GO_VERSION');
 local buildImage = 'grafana/loki-build-image:%s' % buildImageVersion;
-local golangCiLintVersion = 'v1.64.5';
+local golangCiLintVersion = 'v2.3.0';
 local imageBuildTimeoutMin = 60;
 local imagePrefix = 'grafana';
 local dockerPluginDir = 'clients/cmd/docker-driver';
@@ -263,8 +263,6 @@ local lambdaPromtailJob =
           GO_VERSION: goVersion,
         })
       for name in std.objectFields(weeklyImageJobs)
-    } + {
-      'lambda-promtail-image': lambdaPromtailJob,
     } + {
       ['%s-manifest' % name]:
         job.new() +
