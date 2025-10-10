@@ -99,7 +99,7 @@ func (cfg *Config) Validate() error {
 	if cfg.DataobjStorageStart != "" {
 		_, err := time.Parse("2006-01-02", cfg.DataobjStorageStart)
 		if err != nil {
-			return errors.Wrap(err, "data_obj_storage_start must be a valid date.")
+			return errors.Wrap(err, "data_obj_storage_start must be a valid date")
 		}
 	}
 	return nil

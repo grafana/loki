@@ -116,9 +116,9 @@ func hasDataObjectsAvailable(config Config, start, end time.Time) bool {
 	if config.DataobjStorageStart != "" {
 		startTime, _ := time.Parse("2006-01-02", config.DataobjStorageStart) // already validated
 		return end.Before(time.Now().Add(-1*config.DataobjStorageLag.Abs())) && start.After(startTime)
-	} else { // no start time; assume we always have data objects no matter how far back
-		return end.Before(time.Now().Add(-1 * config.DataobjStorageLag.Abs()))
 	}
+	// no start time; assume we always have data objects no matter how far back
+	return end.Before(time.Now().Add(-1 * config.DataobjStorageLag.Abs()))
 }
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
