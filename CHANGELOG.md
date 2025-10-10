@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.7](https://github.com/grafana/loki/compare/v3.5.6...v3.5.7) (2025-10-10)
+
+
+### Bug Fixes
+
+* **build:** update loki build image ([#19473](https://github.com/grafana/loki/issues/19473)) ([#19474](https://github.com/grafana/loki/issues/19474)) ([c70476a](https://github.com/grafana/loki/commit/c70476ab0fec3bef906f86ac72c2256bb94f9624))
+
 ## [3.5.6](https://github.com/grafana/loki/compare/v3.5.5...v3.5.6) (2025-10-10)
 
 
