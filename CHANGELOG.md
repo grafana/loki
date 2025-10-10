@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.5.6](https://github.com/grafana/loki/compare/v3.5.5...v3.5.6) (2025-10-10)
+
+
+### Bug Fixes
+
+* **deps:** remove CVE GHSA-2464-8j7c-4cjm ([#19469](https://github.com/grafana/loki/issues/19469)) ([f2a304a](https://github.com/grafana/loki/commit/f2a304a34d0eb35be6c09e3f525ec6986a003275))
+* **deps:** update module github.com/twmb/franz-go/plugin/kprom to v1.2.1 (release-3.5.x) ([#18793](https://github.com/grafana/loki/issues/18793)) ([bb7356c](https://github.com/grafana/loki/commit/bb7356c31d8b47c665cdd2188e47df6f406d3f7c))
+* **release-3.5.x:** bump Go version to 1.24.8 ([#19454](https://github.com/grafana/loki/issues/19454)) ([#19462](https://github.com/grafana/loki/issues/19462)) ([1b8b5dd](https://github.com/grafana/loki/commit/1b8b5ddfa8b0cc68a15a6e877c9ec13947b7276a))
+
 ## [3.5.5](https://github.com/grafana/loki/compare/v3.5.4...v3.5.5) (2025-09-11)
 
 
