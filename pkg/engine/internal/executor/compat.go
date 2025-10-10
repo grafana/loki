@@ -22,9 +22,11 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		if err != nil {
 			return failureState(err)
 		}
+		defer batch.Release()
 
 		// Return early if the batch has zero rows, even if column names would collide.
 		if batch.NumRows() == 0 {
+			batch.Retain() // retain to account for deferred release after reading the batch from the input
 			return successState(batch)
 		}
 
@@ -57,11 +59,9 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 
 		// Return early if there are no colliding column names.
 		if len(duplicates) == 0 {
+			batch.Retain() // retain to account for deferred release after reading the batch from the input
 			return successState(batch)
 		}
-
-		// Release batch, since it is not passed to the caller.
-		defer batch.Release()
 
 		// Next, update the schema with the new columns that have the _extracted suffix.
 		newSchema := batch.Schema()
