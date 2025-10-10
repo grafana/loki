@@ -52,7 +52,7 @@ RUN curl -L "https://github.com/drone/drone-cli/releases/download/v1.7.0/drone_l
 #   (not golang.org/x/tools@v0.0.0-20190918214920-58d531046acd from golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69)
 FROM ${GOLANG_BASE_IMAGE} AS faillint
 RUN GO111MODULE=on go install github.com/fatih/faillint@v1.15.0
-RUN GO111MODULE=on go install golang.org/x/tools/cmd/goimports@v0.30.0
+RUN GO111MODULE=on go install golang.org/x/tools/cmd/goimports@v0.38.0
 
 FROM ${GOLANG_BASE_IMAGE} AS delve
 RUN GO111MODULE=on go install github.com/go-delve/delve/cmd/dlv@latest
