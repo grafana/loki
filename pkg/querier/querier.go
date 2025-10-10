@@ -67,6 +67,7 @@ type Config struct {
 	IngesterQueryStoreMaxLookback time.Duration `yaml:"-"`
 	QueryPatternIngestersWithin   time.Duration `yaml:"-"`
 	DataObjStorageLag             time.Duration `yaml:"data_obj_storage_lag" category:"experimental"`
+	DataObjStorageStart           string        `yaml:"data_obj_storage_start" category:"experimental"`
 }
 
 // RegisterFlags register flags.
@@ -87,12 +88,19 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.MultiTenantQueriesEnabled, prefix+"multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
 	f.BoolVar(&cfg.PerRequestLimitsEnabled, prefix+"per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
 	f.BoolVar(&cfg.QueryPartitionIngesters, prefix+"query-partition-ingesters", false, "When true, querier directs ingester queries to the partition-ingesters instead of the normal ingesters.")
+	f.StringVar(&cfg.DataObjStorageStart, prefix+"data-obj-storage-start", "", "Initial date when data objects became available. Format YYYY-MM-DD. If not set, assume data objects are always available no matter how far back.")
 }
 
 // Validate validates the config.
 func (cfg *Config) Validate() error {
 	if cfg.QueryStoreOnly && cfg.QueryIngesterOnly {
 		return errors.New("querier.query_store_only and querier.query_ingester_only cannot both be true")
+	}
+	if cfg.DataObjStorageStart != "" {
+		_, err := time.Parse("2006-01-02", cfg.DataObjStorageStart)
+		if err != nil {
+			return errors.Wrap(err, "data_obj_storage_start must be a valid date.")
+		}
 	}
 	return nil
 }

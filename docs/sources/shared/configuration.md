@@ -4911,6 +4911,11 @@ engine_v2:
 # Amount of time until data objects are available.
 # CLI flag: -querier.data-obj-storage-lag
 [data_obj_storage_lag: <duration> | default = 1h]
+
+# Initial date when data objects became available. Format YYYY-MM-DD. If not
+# set, assume data objects are always available no matter how far back.
+# CLI flag: -querier.data-obj-storage-start
+[data_obj_storage_start: <string> | default = ""]
 ```
 
 ### query_range

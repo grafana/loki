@@ -109,11 +109,16 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 	return query.Exec(ctx)
 }
 
-func hasDataObjectsAvailable(config Config, _, end time.Time) bool {
+func hasDataObjectsAvailable(config Config, start, end time.Time) bool {
 	// Data objects in object storage lag behind 20-30 minutes.
 	// We are generous and only enable v2 engine queries that end earlier than 1DataObjStorageLag ago (default 1h),
 	// to ensure data objects are available.
-	return end.Before(time.Now().Add(-1 * config.DataObjStorageLag.Abs()))
+	if config.DataObjStorageStart != "" {
+		startTime, _ := time.Parse("2006-01-02", config.DataObjStorageStart) // already validated
+		return end.Before(time.Now().Add(-1*config.DataObjStorageLag.Abs())) && start.After(startTime)
+	} else { // no start time; assume we always have data objects no matter how far back
+		return end.Before(time.Now().Add(-1 * config.DataObjStorageLag.Abs()))
+	}
 }
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
