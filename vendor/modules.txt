@@ -883,13 +883,8 @@ github.com/go-playground/validator/v10
 github.com/go-redsync/redsync/v4
 github.com/go-redsync/redsync/v4/redis
 github.com/go-redsync/redsync/v4/redis/goredis/v9
-# github.com/go-sql-driver/mysql v1.9.3
-## explicit; go 1.21.0
-github.com/go-sql-driver/mysql
 # github.com/go-viper/mapstructure/v2 v2.4.0
 ## explicit; go 1.18
-github.com/go-viper/mapstructure/v2
-github.com/go-viper/mapstructure/v2/internal/errors
 # github.com/go-zookeeper/zk v1.0.4
 ## explicit; go 1.13
 github.com/go-zookeeper/zk
