@@ -5,6 +5,7 @@ import (
 	"context"
 	"slices"
 
+	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
@@ -91,60 +92,23 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		}
 
 		// Create a new builder with the updated schema.
+		// The per-field builders are only used for columns where row values are modified,
+		// otherwise the full column from the input record is copied into the new record.
 		builder := array.NewRecordBuilder(memory.DefaultAllocator, newSchema)
 		builder.Reserve(int(batch.NumRows()))
 		defer builder.Release()
 
+		newSchemaColumns := make([]arrow.Array, newSchema.NumFields())
+
 		// Now, go through all fields of the old schema and append the rows to the new builder.
 		for idx := range schema.NumFields() {
 			col := batch.Column(idx)
-			fieldBuilder := builder.Field(idx)
 
 			duplicateIdx := slices.IndexFunc(duplicateCols, func(d duplicateColumn) bool { return d.sourceIdx == idx })
 
 			// If not a colliding column, just copy over the column data of the original record.
-			// I could not find a "batch copy" function, which I guess would be much more efficient.
-			//
-			// TODO(chaudum): Simplify
 			if duplicateIdx < 0 {
-				switch b := fieldBuilder.(type) {
-				case *array.StringBuilder:
-					for i := range int(batch.NumRows()) {
-						if col.IsNull(i) || !col.IsValid(i) {
-							b.AppendNull()
-						} else {
-							v := col.(*array.String).Value(i)
-							b.Append(v)
-						}
-					}
-				case *array.TimestampBuilder:
-					for i := range int(batch.NumRows()) {
-						if col.IsNull(i) || !col.IsValid(i) {
-							b.AppendNull()
-						} else {
-							v := col.(*array.Timestamp).Value(i)
-							b.Append(v)
-						}
-					}
-				case *array.Float64Builder:
-					for i := range int(batch.NumRows()) {
-						if col.IsNull(i) || !col.IsValid(i) {
-							b.AppendNull()
-						} else {
-							v := col.(*array.Float64).Value(i)
-							b.Append(v)
-						}
-					}
-				case *array.Int64Builder:
-					for i := range int(batch.NumRows()) {
-						if col.IsNull(i) || !col.IsValid(i) {
-							b.AppendNull()
-						} else {
-							v := col.(*array.Int64).Value(i)
-							b.Append(v)
-						}
-					}
-				}
+				newSchemaColumns[idx] = col
 				continue
 			}
 
@@ -154,25 +118,34 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			duplicate := duplicateCols[duplicateIdx]
 			collisionCol := batch.Column(duplicate.collisionIdx)
 
-			switch b := fieldBuilder.(type) {
+			switch sourceFieldBuilder := builder.Field(idx).(type) {
 			case *array.StringBuilder:
-				newFieldBuilder := builder.Field(duplicate.destinationIdx).(*array.StringBuilder)
+				destinationFieldBuilder := builder.Field(duplicate.destinationIdx).(*array.StringBuilder)
 				for i := range int(batch.NumRows()) {
 					if (col.IsNull(i) || !col.IsValid(i)) || (collisionCol.IsNull(i) || !collisionCol.IsValid(i)) {
-						b.AppendNull()               // append NULL to original column
-						newFieldBuilder.AppendNull() // append NULL to _extraced column
+						sourceFieldBuilder.AppendNull()      // append NULL to original column
+						destinationFieldBuilder.AppendNull() // append NULL to _extraced column
 					} else {
-						b.AppendNull() // append NULL to original column
+						sourceFieldBuilder.AppendNull() // append NULL to original column
 						v := col.(*array.String).Value(i)
-						newFieldBuilder.Append(v) // append value to _extracted column
+						destinationFieldBuilder.Append(v) // append value to _extracted column
 					}
 				}
+
+				sourceCol := sourceFieldBuilder.NewArray()
+				defer sourceCol.Release()
+				newSchemaColumns[duplicate.sourceIdx] = sourceCol
+
+				destinationCol := destinationFieldBuilder.NewArray()
+				defer destinationCol.Release()
+				newSchemaColumns[duplicate.destinationIdx] = destinationCol
 			default:
-				panic("invalid column type: only string columns can be checked for collisions")
+				panic("invalid source column type: only string columns can be checked for collisions")
 			}
 		}
 
-		return successState(builder.NewRecord())
+		rec := array.NewRecord(newSchema, newSchemaColumns, batch.NumRows())
+		return successState(rec)
 	}, input)
 }
 
