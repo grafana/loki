@@ -14,7 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
-var errUnimplemented = errors.New("query contains unimplemented features")
+var ErrUnimplemented = errors.New("query contains unimplemented features")
 
 // BuildPlan converts a LogQL query represented as [logql.Params] into a logical [Plan].
 // It may return an error as second argument in case the traversal of the AST of the query fails.
@@ -78,11 +78,11 @@ func buildPlanForLogQuery(
 		case *syntax.LogfmtParserExpr:
 			// TODO: support --strict and --keep-empty
 			if e.Strict {
-				err = errUnimplemented
+				err = ErrUnimplemented
 				return false
 			}
 			if e.KeepEmpty {
-				err = errUnimplemented
+				err = ErrUnimplemented
 				return false
 			}
 
@@ -95,10 +95,10 @@ func buildPlanForLogQuery(
 				return true
 			case syntax.OpParserTypeRegexp, syntax.OpParserTypeUnpack, syntax.OpParserTypePattern:
 				// keeping these as a distinct cases so we remember to implement them later
-				err = errUnimplemented
+				err = ErrUnimplemented
 				return false
 			default:
-				err = errUnimplemented
+				err = ErrUnimplemented
 				return false
 			}
 		case *syntax.LabelFilterExpr:
@@ -116,10 +116,10 @@ func buildPlanForLogQuery(
 		case *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
 			*syntax.LineFmtExpr, *syntax.LabelFmtExpr,
 			*syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
-			err = errUnimplemented
+			err = ErrUnimplemented
 			return false // do not traverse children
 		default:
-			err = errUnimplemented
+			err = ErrUnimplemented
 			return false // do not traverse children
 		}
 	})
@@ -143,7 +143,7 @@ func buildPlanForLogQuery(
 
 	direction := params.Direction()
 	if !isMetricQuery && direction == logproto.FORWARD {
-		return nil, fmt.Errorf("forward search log queries are not supported: %w", errUnimplemented)
+		return nil, fmt.Errorf("forward search log queries are not supported: %w", ErrUnimplemented)
 	}
 
 	// SELECT -> Filter
@@ -202,7 +202,7 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 		case *syntax.RangeAggregationExpr:
 			// offsets are not yet supported.
 			if e.Left.Offset != 0 {
-				err = errUnimplemented
+				err = ErrUnimplemented
 				return false
 			}
 
@@ -216,7 +216,7 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 			//case syntax.OpRangeTypeMin:
 			//	rangeAggType = types.RangeAggregationTypeMin
 			default:
-				err = errUnimplemented
+				err = ErrUnimplemented
 				return false
 			}
 
@@ -226,7 +226,7 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 		case *syntax.VectorAggregationExpr:
 			// grouping by at least one label is required.
 			if e.Grouping == nil || len(e.Grouping.Groups) == 0 || e.Grouping.Without {
-				err = errUnimplemented
+				err = ErrUnimplemented
 				return false
 			}
 
@@ -240,7 +240,7 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 			//case syntax.OpTypeMin:
 			//	vecAggType = types.VectorAggregationTypeMin
 			default:
-				err = errUnimplemented
+				err = ErrUnimplemented
 				return false
 			}
 
@@ -251,7 +251,7 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 
 			return true
 		default:
-			err = errUnimplemented
+			err = ErrUnimplemented
 			return false // do not traverse children
 		}
 	})
@@ -260,7 +260,7 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 	}
 
 	if rangeAggType == types.RangeAggregationTypeInvalid || vecAggType == types.VectorAggregationTypeInvalid {
-		return nil, errUnimplemented
+		return nil, ErrUnimplemented
 	}
 
 	logSelectorExpr, err := e.Selector()
