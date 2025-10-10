@@ -252,7 +252,9 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 
 	merge := &Merge{}
 	p.plan.graph.Add(merge)
-	p.plan.graph.AddEdge(dag.Edge[Node]{Parent: compat, Child: merge})
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: compat, Child: merge}); err != nil {
+		return nil, err
+	}
 
 	for _, gr := range groups {
 		if err := p.buildNodeGroup(gr, merge, ctx); err != nil {

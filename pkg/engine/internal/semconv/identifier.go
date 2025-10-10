@@ -159,7 +159,7 @@ type semOrigin string
 // do not export this type, because we don't want to allow creating new instances outside of this package
 type semType string
 
-// SemanticType decribes the origin and type of an identifier.
+// SemanticType describes the origin and type of an identifier.
 type SemanticType struct {
 	Origin semOrigin
 	Type   semType
