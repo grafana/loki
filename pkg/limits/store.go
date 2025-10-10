@@ -47,7 +47,6 @@ func (s *usageStore) getPolicyBucketAndLimit(tenant, policy string) (policyBucke
 
 	if policy != "" {
 		if policyMaxStreams := s.limits.PolicyMaxGlobalStreamsPerUser(tenant, policy); policyMaxStreams > 0 {
-			fmt.Printf("### DEBUG getPolicyBucketAndLimit ### policy: %s, policyMaxStreams: %d, numPartitions: %d\n", policy, policyMaxStreams, s.numPartitions)
 			return policy, uint64(math.Max(float64(policyMaxStreams/s.numPartitions), 1)) // Use policy-specific bucket
 		}
 	}
@@ -237,19 +236,9 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 			// Determine which policy bucket to use and the max streams limit
 			policyBucket, maxStreamsForStream := s.getPolicyBucketAndLimit(tenant, m.IngestionPolicy)
 
-			if tenant == "153995" {
-				fmt.Printf("### DEBUG ### New stream from tenant: %s\n", tenant)
-
-				if policyBucket != "" {
-					fmt.Printf("### DEBUG ### policy: %s, policyBucket: %s, maxStreamsForStream: %d\n", m.IngestionPolicy, policyBucket, maxStreamsForStream)
-				}
-			}
-
 			s.checkInitMap(i, tenant, partition, policyBucket)
 			streams := s.stripes[i][tenant][partition][policyBucket]
 			stream, ok := streams[m.StreamHash]
-
-			fmt.Printf("### DEBUG ### stream %d exists: %t. len(streams): %d, lastSeenAt: %d, cutoff: %d\n", m.StreamHash, ok, len(streams), stream.lastSeenAt, cutoff)
 
 			// If the stream does not exist, or exists but has expired,
 			// we need to check if accepting it would exceed the maximum
@@ -267,13 +256,6 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 				// we accept that expired streams will be counted towards the
 				// limit until evicted.
 				numStreams := uint64(len(s.stripes[i][tenant][partition][policyBucket]))
-
-				if tenant == "153995" {
-					fmt.Printf("### DEBUG checkingMaxStreams ### tenant: %s, partition: %d, policyBucket: %s\n", tenant, partition, policyBucket)
-					if policyBucket != "" {
-						fmt.Printf("### DEBUG checkingMaxStreams ### numStreams: %d, maxStreamsForStream: %d, policyBucket: %s\n", numStreams, maxStreamsForStream, policyBucket)
-					}
-				}
 
 				if numStreams >= maxStreamsForStream {
 					rejected = append(rejected, m)
