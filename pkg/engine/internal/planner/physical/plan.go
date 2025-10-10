@@ -126,6 +126,15 @@ type Plan struct {
 	graph dag.Graph[Node]
 }
 
+// FromGraph constructs a Plan from a given DAG.
+func FromGraph(graph dag.Graph[Node]) *Plan {
+	return &Plan{graph: graph}
+}
+
+// Graph returns the underlying graph of the plan. Modifications to the returned
+// graph will affect the Plan.
+func (p *Plan) Graph() *dag.Graph[Node] { return &p.graph }
+
 // Len returns the number of nodes in the graph.
 func (p *Plan) Len() int { return p.graph.Len() }
 
