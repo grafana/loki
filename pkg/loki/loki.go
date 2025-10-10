@@ -174,7 +174,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"discover_log_levels",
 		"discover_service_name",
 		"log_level_fields",
+		"max_entries_limit_per_query",
 		"max_line_size_truncate",
+		"max_query_bytes_read",
 		"max_query_length",
 		"max_query_lookback",
 		"max_query_range",
@@ -185,6 +187,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"query_timeout",
 		"retention_period",
 		"retention_stream",
+		"volume_enabled",
+		"volume_max_series",
 	}
 	f.Var(
 		(*flagext.StringSlice)(&c.TenantLimitsAllowPublish),
@@ -355,10 +359,6 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid distributor config"))
 	}
 
-	if err := c.UI.Validate(); err != nil {
-		errs = append(errs, errors.Wrap(err, "CONFIG ERROR: invalid ui config"))
-	}
-
 	errs = append(errs, validateSchemaValues(c)...)
 	errs = append(errs, ValidateConfigCompatibility(*c)...)
 	errs = append(errs, validateBackendAndLegacyReadMode(c)...)
@@ -404,6 +404,7 @@ type Loki struct {
 	Server                    *server.Server
 	InternalServer            *server.Server
 	UI                        *ui.Service
+	uiRingManager             *lokiring.RingManager
 	ring                      *ring.Ring
 	Overrides                 limiter.CombinedLimits
 	tenantConfigs             *runtime.TenantConfigs
@@ -519,7 +520,8 @@ func (t *Loki) bindConfigEndpoint(opts RunOpts) {
 		configEndpointHandlerFn = opts.CustomConfigEndpointHandlerFn
 	}
 	t.Server.HTTP.Path("/config").Methods("GET").HandlerFunc(configEndpointHandlerFn)
-	t.Server.HTTP.Path("/config/tenant/v1/limits").Methods("GET").HandlerFunc(t.tenantLimitsHandler())
+	t.Server.HTTP.Path("/config/tenant/v1/limits").Methods("GET").HandlerFunc(t.tenantLimitsHandler(false))
+	t.Server.HTTP.Path("/loki/api/v1/drilldown-limits").Methods("GET").HandlerFunc(t.tenantLimitsHandler(true))
 }
 
 // ListTargets prints a list of available user visible targets and their
@@ -778,6 +780,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(PatternIngester, t.initPatternIngester)
 	mm.RegisterModule(PartitionRing, t.initPartitionRing, modules.UserInvisibleModule)
 	mm.RegisterModule(DataObjExplorer, t.initDataObjExplorer)
+	mm.RegisterModule(UIRing, t.initUIRing, modules.UserInvisibleModule)
 	mm.RegisterModule(UI, t.initUI)
 	mm.RegisterModule(DataObjConsumer, t.initDataObjConsumer)
 	mm.RegisterModule(DataObjIndexBuilder, t.initDataObjIndexBuilder)
@@ -793,40 +796,41 @@ func (t *Loki) setupModuleManager() error {
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
 		Analytics:                {},
 		Overrides:                {RuntimeConfig},
-		OverridesExporter:        {Overrides, Server, UI},
+		OverridesExporter:        {Overrides, Server, UIRing},
 		TenantConfigs:            {RuntimeConfig},
-		UI:                       {Server},
-		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing, IngestLimitsFrontendRing, UI},
+		UI:                       {Server, MemberlistKV, UIRing},
+		UIRing:                   {Server, MemberlistKV},
+		Distributor:              {Ring, Server, Overrides, TenantConfigs, PatternRingClient, PatternIngesterTee, Analytics, PartitionRing, IngestLimitsFrontendRing, UIRing},
 		IngestLimitsRing:         {RuntimeConfig, Server, MemberlistKV},
 		IngestLimits:             {MemberlistKV, Overrides, Server},
 		IngestLimitsFrontend:     {IngestLimitsRing, Overrides, Server, MemberlistKV},
 		IngestLimitsFrontendRing: {RuntimeConfig, Server, MemberlistKV},
 		Store:                    {Overrides, IndexGatewayRing},
-		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing, UI},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing, UI},
+		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing, UIRing},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing, UIRing},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
-		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing, UI},
-		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing, UI},
-		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics, UI},
+		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing, UIRing},
+		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing, UIRing},
+		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics, UIRing},
 		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
-		TableManager:             {Server, Analytics, UI},
-		Compactor:                {Server, Overrides, MemberlistKV, Analytics, UI},
-		IndexGateway:             {Server, Store, BloomStore, IndexGatewayRing, IndexGatewayInterceptors, Analytics, UI},
-		BloomGateway:             {Server, BloomStore, Analytics, UI},
-		BloomPlanner:             {Server, BloomStore, Analytics, Store, UI},
-		BloomBuilder:             {Server, BloomStore, Analytics, Store, UI},
+		TableManager:             {Server, Analytics, UIRing},
+		Compactor:                {Server, Overrides, MemberlistKV, Analytics, UIRing},
+		IndexGateway:             {Server, Store, BloomStore, IndexGatewayRing, IndexGatewayInterceptors, Analytics, UIRing},
+		BloomGateway:             {Server, BloomStore, Analytics, UIRing},
+		BloomPlanner:             {Server, BloomStore, Analytics, Store, UIRing},
+		BloomBuilder:             {Server, BloomStore, Analytics, Store, UIRing},
 		BloomStore:               {IndexGatewayRing, BloomGatewayClient},
 		PatternRingClient:        {Server, MemberlistKV, Analytics},
 		PatternIngesterTee:       {Server, Overrides, MemberlistKV, Analytics, PatternRingClient},
-		PatternIngester:          {Server, MemberlistKV, Analytics, PatternRingClient, PatternIngesterTee, Overrides, UI},
+		PatternIngester:          {Server, MemberlistKV, Analytics, PatternRingClient, PatternIngesterTee, Overrides, UIRing},
 		IngesterQuerier:          {Ring, PartitionRing, Overrides},
 		QuerySchedulerRing:       {Overrides, MemberlistKV},
 		IndexGatewayRing:         {Overrides, MemberlistKV},
 		PartitionRing:            {MemberlistKV, Server, Ring},
 		MemberlistKV:             {Server},
-		DataObjExplorer:          {Server, UI},
-		DataObjConsumer:          {ScratchStore, PartitionRing, Server, UI},
-		DataObjIndexBuilder:      {ScratchStore, Server, UI},
+		DataObjExplorer:          {Server, UIRing},
+		DataObjConsumer:          {ScratchStore, PartitionRing, Server, UIRing},
+		DataObjIndexBuilder:      {ScratchStore, Server, UIRing},
 		ScratchStore:             {},
 
 		Read:    {QueryFrontend, Querier},

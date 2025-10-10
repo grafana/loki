@@ -63,14 +63,19 @@ type QuerierAPI struct {
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
 func NewQuerierAPI(cfg Config, mCfg metastore.Config, querier Querier, limits querier_limits.Limits, store objstore.Bucket, reg prometheus.Registerer, logger log.Logger) *QuerierAPI {
-	return &QuerierAPI{
+	q := &QuerierAPI{
 		cfg:      cfg,
 		limits:   limits,
 		querier:  querier,
 		engineV1: logql.NewEngine(cfg.Engine, querier, limits, logger),
-		engineV2: engine.New(cfg.Engine, mCfg, store, limits, reg, logger),
 		logger:   logger,
 	}
+
+	if cfg.EngineV2.Enable {
+		q.engineV2 = engine.New(cfg.EngineV2, mCfg, store, limits, reg, logger)
+	}
+
+	return q
 }
 
 // RangeQueryHandler is a http.HandlerFunc for range queries and legacy log queries
@@ -87,7 +92,7 @@ func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.Loki
 		return result, err
 	}
 
-	if q.cfg.Engine.EnableV2Engine && hasDataObjectsAvailable(params.Start(), params.End()) {
+	if q.cfg.EngineV2.Enable && hasDataObjectsAvailable(params.Start(), params.End()) {
 		query := q.engineV2.Query(params)
 		result, err = query.Exec(ctx)
 		if err == nil {
@@ -126,7 +131,7 @@ func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.Lo
 		return logqlmodel.Result{}, err
 	}
 
-	if q.cfg.Engine.EnableV2Engine && hasDataObjectsAvailable(params.Start(), params.End()) {
+	if q.cfg.EngineV2.Enable && hasDataObjectsAvailable(params.Start(), params.End()) {
 		query := q.engineV2.Query(params)
 		result, err := query.Exec(ctx)
 		if err == nil {
