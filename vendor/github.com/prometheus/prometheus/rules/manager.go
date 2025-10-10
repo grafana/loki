@@ -465,7 +465,7 @@ type RuleDependencyController interface {
 type ruleDependencyController struct{}
 
 // AnalyseRules implements RuleDependencyController.
-func (ruleDependencyController) AnalyseRules(rules []Rule) {
+func (c ruleDependencyController) AnalyseRules(rules []Rule) {
 	depMap := buildDependencyMap(rules)
 
 	if depMap == nil {
@@ -509,11 +509,11 @@ func newRuleConcurrencyController(maxConcurrency int64) RuleConcurrencyControlle
 	}
 }
 
-func (c *concurrentRuleEvalController) Allow(context.Context, *Group, Rule) bool {
+func (c *concurrentRuleEvalController) Allow(_ context.Context, _ *Group, _ Rule) bool {
 	return c.sema.TryAcquire(1)
 }
 
-func (*concurrentRuleEvalController) SplitGroupIntoBatches(_ context.Context, g *Group) []ConcurrentRules {
+func (c *concurrentRuleEvalController) SplitGroupIntoBatches(_ context.Context, g *Group) []ConcurrentRules {
 	// Using the rule dependency controller information (rules being identified as having no dependencies or no dependants),
 	// we can safely run the following concurrent groups:
 	// 1. Concurrently, all rules that have no dependencies
@@ -549,7 +549,7 @@ func (*concurrentRuleEvalController) SplitGroupIntoBatches(_ context.Context, g 
 	return order
 }
 
-func (c *concurrentRuleEvalController) Done(context.Context) {
+func (c *concurrentRuleEvalController) Done(_ context.Context) {
 	c.sema.Release(1)
 }
 
@@ -558,15 +558,15 @@ var _ RuleConcurrencyController = &sequentialRuleEvalController{}
 // sequentialRuleEvalController is a RuleConcurrencyController that runs every rule sequentially.
 type sequentialRuleEvalController struct{}
 
-func (sequentialRuleEvalController) Allow(context.Context, *Group, Rule) bool {
+func (c sequentialRuleEvalController) Allow(_ context.Context, _ *Group, _ Rule) bool {
 	return false
 }
 
-func (sequentialRuleEvalController) SplitGroupIntoBatches(context.Context, *Group) []ConcurrentRules {
+func (c sequentialRuleEvalController) SplitGroupIntoBatches(_ context.Context, _ *Group) []ConcurrentRules {
 	return nil
 }
 
-func (sequentialRuleEvalController) Done(context.Context) {}
+func (c sequentialRuleEvalController) Done(_ context.Context) {}
 
 // FromMaps returns new sorted Labels from the given maps, overriding each other in order.
 func FromMaps(maps ...map[string]string) labels.Labels {
