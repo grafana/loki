@@ -66,7 +66,7 @@ type Config struct {
 
 	IngesterQueryStoreMaxLookback time.Duration `yaml:"-"`
 	QueryPatternIngestersWithin   time.Duration `yaml:"-"`
-	DataObjStorageLag             time.Duration `yaml:"data_obj_storage_lag"`
+	DataObjStorageLag             time.Duration `yaml:"data_obj_storage_lag" category:"experimental"`
 }
 
 // RegisterFlags register flags.

@@ -4908,10 +4908,9 @@ engine_v2:
 # CLI flag: -querier.query-partition-ingesters
 [query_partition_ingesters: <boolean> | default = false]
 
-# Experimental: Configure the time range when data
-# objects are available.
+# Amount of time until data objects are available.
 # CLI flag: -querier.data-obj-storage-lag
-[data_obj_storage_lag]: <duration> | default = 1h]
+[data_obj_storage_lag: <duration> | default = 1h]
 ```
 
 ### query_range
