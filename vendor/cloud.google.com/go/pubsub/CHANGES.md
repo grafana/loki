@@ -1,5 +1,34 @@
 # Changes
 
+## [1.50.1](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.50.0...pubsub/v1.50.1) (2025-09-04)
+
+
+### Bug Fixes
+
+* **pubsub/v2:** Update flowcontrol metrics even when disabled ([#12590](https://github.com/googleapis/google-cloud-go/issues/12590)) ([c153495](https://github.com/googleapis/google-cloud-go/commit/c1534952c4a6c3a52dd9e3aab295d27d4107016c))
+
+
+### Documentation
+
+* **pubsub:** Update migration docs with seek ([#12642](https://github.com/googleapis/google-cloud-go/issues/12642)) ([40538c3](https://github.com/googleapis/google-cloud-go/commit/40538c3a8cbbd9a54deb6cdb204809d487aef21b))
+
+## [1.50.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.49.0...pubsub/v1.50.0) (2025-07-28)
+
+
+### Features
+
+* **pubsub/v2:** Add new v2 library ([#12218](https://github.com/googleapis/google-cloud-go/issues/12218)) ([c798f62](https://github.com/googleapis/google-cloud-go/commit/c798f62f908140686b8e2a365cccf9608fb5ab95))
+
+
+### Bug Fixes
+
+* **pubsub:** Update google.golang.org/api to 0.229.0 ([3319672](https://github.com/googleapis/google-cloud-go/commit/3319672f3dba84a7150772ccb5433e02dab7e201))
+
+
+### Documentation
+
+* **pubsub:** Add docs comment to MaxOutstandingBytes ([#12601](https://github.com/googleapis/google-cloud-go/issues/12601)) ([76ddb34](https://github.com/googleapis/google-cloud-go/commit/76ddb3498f2c986b156abaeaf7efeab1c9490725))
+
 ## [1.49.0](https://github.com/googleapis/google-cloud-go/compare/pubsub/v1.48.1...pubsub/v1.49.0) (2025-04-07)
 
 
