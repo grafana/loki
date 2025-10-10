@@ -363,18 +363,30 @@ publish: packages
 ########
 # Lint #
 ########
-
-# To run this efficiently on your workstation, run this from the root dir:
-# docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.24.1 lint
-lint: ## run linters
-ifeq ($(BUILD_IN_CONTAINER),true)
-	$(run_in_container)
+ifeq ($(UNAME_S),Linux)
+LINT_FLAGS="--timeout=15m --build-tags=linux,promtail_journal_enabled"
+GOFLAGS="-tags=linux,promtail_journal_enabled"
 else
+LINT_FLAGS="--timeout=15m"
+GOFLAGS=""
+endif
+lint: ## run linters
 	go version
 	golangci-lint version
-	GO111MODULE=on golangci-lint run -v --timeout 15m --build-tags linux,promtail_journal_enabled
-	faillint -paths "sync/atomic=go.uber.org/atomic" ./...
-endif
+	golangci-lint run -v $(LINT_FLAGS)
+	GOFLAGS=$(GOFLAGS) faillint -paths \
+		"sync/atomic=go.uber.org/atomic" \
+		./...
+
+	# Use our spanlogger implementation instead of the one in dskit to make sure we use the correct tracing lib.
+	faillint -paths \
+		"github.com/grafana/dskit/spanlogger=github.com/grafana/loki/pkg/util/spanlogger" \
+		./...
+
+	# We don't use opentracing anymore.
+	faillint -paths \
+		"github.com/opentracing/opentracing-go,github.com/opentracing/opentracing-go/log,github.com/uber/jaeger-client-go,github.com/opentracing-contrib/go-stdlib/nethttp" \
+		./...
 
 ########
 # Test #
