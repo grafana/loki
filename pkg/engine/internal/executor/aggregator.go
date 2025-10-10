@@ -83,6 +83,7 @@ func (a *aggregator) Add(ts time.Time, value float64, labelValues []string) {
 
 	if state, ok := point[key]; ok {
 		// TODO: handle hash collisions
+
 		// accumulate value based on aggregation type
 		switch a.operation {
 		case aggregationOperationSum:
@@ -100,17 +101,16 @@ func (a *aggregator) Add(ts time.Time, value float64, labelValues []string) {
 
 		}
 	} else {
-		// set initial values based on aggregation type
-		value := value
+		v := value
 		if a.operation == aggregationOperationCount {
-			value = 1
+			v = 1
 		}
 
 		if len(a.groupBy) == 0 {
 			// special case: All values aggregated into a single group.
 			// This applies to queries like `sum(...)`, `sum by () (...)`, `count_over_time by () (...)`.
 			point[key] = &groupState{
-				value: value,
+				value: v,
 			}
 			return
 		}
@@ -127,7 +127,7 @@ func (a *aggregator) Add(ts time.Time, value float64, labelValues []string) {
 		// TODO: add limits on number of groups
 		point[key] = &groupState{
 			labelValues: labelValuesCopy,
-			value:       value,
+			value:       v,
 		}
 	}
 }

@@ -31,7 +31,6 @@ var (
 )
 
 func TestAggregator(t *testing.T) {
-
 	colTs := semconv.ColumnIdentTimestamp.FQN()
 	colVal := semconv.ColumnIdentValue.FQN()
 	colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String).FQN()
@@ -226,14 +225,14 @@ func TestAggregator(t *testing.T) {
 		require.ElementsMatch(t, expect, rows)
 	})
 
-	t.Run("aggregation with empty groupBy (sum by () case)", func(t *testing.T) {
+	t.Run("SUM aggregation with empty groupBy", func(t *testing.T) {
 		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 		defer alloc.AssertSize(t, 0)
 
 		// Empty groupBy represents sum by () or sum(...) - all values aggregated into single group
 		groupBy := []physical.ColumnExpression{}
 
-		agg := newAggregator(groupBy, 10, aggregationOperationSum)
+		agg := newAggregator(groupBy, 1, aggregationOperationSum)
 
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
 		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
@@ -258,9 +257,9 @@ func TestAggregator(t *testing.T) {
 
 		expect := arrowtest.Rows{
 			// ts1: all series aggregated into single value = 65
-			{"timestamp": ts1, "value": float64(65)},
+			{colTs: ts1, colVal: float64(65)},
 			// ts2: all series aggregated into single value = 85
-			{"timestamp": ts2, "value": float64(85)},
+			{colTs: ts2, colVal: float64(85)},
 		}
 
 		rows, err := arrowtest.RecordRows(record)
