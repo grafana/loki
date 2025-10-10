@@ -212,6 +212,7 @@ func TestVectorResultBuilder(t *testing.T) {
 		rows := arrowtest.Rows{
 			{colTs.FQN(): time.Unix(0, 1620000000000000000).UTC(), colVal.FQN(): float64(42), colInst.FQN(): "localhost:9090", colJob.FQN(): "prometheus"},
 			{colTs.FQN(): time.Unix(0, 1620000000000000000).UTC(), colVal.FQN(): float64(23), colInst.FQN(): "localhost:9100", colJob.FQN(): "node-exporter"},
+			{colTs.FQN(): time.Unix(0, 1620000000000000000).UTC(), colVal.FQN(): float64(32), colInst.FQN(): nil, colJob.FQN(): "node-exporter"},
 			{colTs.FQN(): time.Unix(0, 1620000000000000000).UTC(), colVal.FQN(): float64(15), colInst.FQN(): "localhost:9100", colJob.FQN(): "prometheus"},
 		}
 
@@ -225,12 +226,12 @@ func TestVectorResultBuilder(t *testing.T) {
 		err := collectResult(context.Background(), pipeline, builder)
 
 		require.NoError(t, err)
-		require.Equal(t, 3, builder.Len())
+		require.Equal(t, 4, builder.Len())
 
 		md, _ := metadata.NewContext(t.Context())
 		result := builder.Build(stats.Result{}, md)
 		vector := result.Data.(promql.Vector)
-		require.Equal(t, 3, len(vector))
+		require.Equal(t, 4, len(vector))
 
 		expected := promql.Vector{
 			{
@@ -247,6 +248,11 @@ func TestVectorResultBuilder(t *testing.T) {
 				T:      int64(1620000000000),
 				F:      15.0,
 				Metric: labels.FromStrings("instance", "localhost:9100", "job", "prometheus"),
+			},
+			{
+				T:      int64(1620000000000),
+				F:      32.0,
+				Metric: labels.FromStrings("job", "node-exporter"),
 			},
 		}
 		require.Equal(t, expected, vector)

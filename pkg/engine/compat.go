@@ -285,11 +285,6 @@ func collectSamplesFromRow(builder *labels.Builder, rec arrow.Record, i int) (pr
 	// TODO: we add a lot of overhead by reading row by row. Switch to vectorized conversion.
 	for colIdx := range int(rec.NumCols()) {
 		col := rec.Column(colIdx)
-		// Ignore column values that are NULL or invalid
-		if col.IsNull(i) || !col.IsValid(i) {
-			return promql.Sample{}, false
-		}
-
 		field := rec.Schema().Field(colIdx)
 		ident, err := semconv.ParseFQN(field.Name)
 		if err != nil {
@@ -300,12 +295,20 @@ func collectSamplesFromRow(builder *labels.Builder, rec arrow.Record, i int) (pr
 
 		// Extract timestamp
 		if ident.Equal(semconv.ColumnIdentTimestamp) {
+			// Ignore column values that are NULL or invalid
+			if col.IsNull(i) || !col.IsValid(i) {
+				return promql.Sample{}, false
+			}
 			// [promql.Sample] expects milliseconds as timestamp unit
 			sample.T = int64(col.(*array.Timestamp).Value(i) / 1e6)
 			continue
 		}
 
 		if ident.Equal(semconv.ColumnIdentValue) {
+			// Ignore column values that are NULL or invalid
+			if col.IsNull(i) || !col.IsValid(i) {
+				return promql.Sample{}, false
+			}
 			col, ok := col.(*array.Float64)
 			if !ok {
 				return promql.Sample{}, false
