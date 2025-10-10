@@ -723,9 +723,10 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, v2EngineCf
 			)
 		}
 
+		// route query range supported by v2 engine to the new engine handler.
 		if v2EngineCfg.Enable {
-			// route query range supported by v2 engine to the new engine handler.
-			engineRouterMiddleware := NewEngineRouterMiddleware(v2EngineCfg, chunksEngineMWs, merger, true, log)
+			v2Start, v2End := v2EngineCfg.ValidQueryRange()
+			engineRouterMiddleware := newEngineRouterMiddleware(v2Start, v2End, chunksEngineMWs, merger, true, log)
 			queryRangeMiddleware = append(
 				queryRangeMiddleware,
 				base.InstrumentMiddleware("v2_engine_router", metrics.InstrumentMiddlewareMetrics),
@@ -788,9 +789,10 @@ func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, v2EngineCfg 
 			)
 		}
 
+		// route query range supported by v2 engine to the new engine handler.
 		if v2EngineCfg.Enable {
-			// route query range supported by v2 engine to the new engine handler.
-			engineRouterMiddleware := NewEngineRouterMiddleware(v2EngineCfg, chunksEngineMWs, merger, false, log)
+			v2Start, v2End := v2EngineCfg.ValidQueryRange()
+			engineRouterMiddleware := newEngineRouterMiddleware(v2Start, v2End, chunksEngineMWs, merger, false, log)
 			queryRangeMiddleware = append(
 				queryRangeMiddleware,
 				base.InstrumentMiddleware("v2_engine_router", metrics.InstrumentMiddlewareMetrics),
@@ -1075,9 +1077,10 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, v2EngineCfg e
 			)
 		}
 
+		// route query range supported by v2 engine to the new engine handler.
 		if v2EngineCfg.Enable && !disableEngineSplitter {
-			// route query range supported by v2 engine to the new engine handler.
-			engineRouterMiddleware := NewEngineRouterMiddleware(v2EngineCfg, chunksEngineMWs, merger, true, log)
+			v2Start, v2End := v2EngineCfg.ValidQueryRange()
+			engineRouterMiddleware := newEngineRouterMiddleware(v2Start, v2End, chunksEngineMWs, merger, true, log)
 			queryRangeMiddleware = append(
 				queryRangeMiddleware,
 				base.InstrumentMiddleware("v2_engine_router", metrics.InstrumentMiddlewareMetrics),

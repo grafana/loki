@@ -1,13 +1,18 @@
 package queryrange
 
 import (
+	"context"
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
@@ -248,4 +253,110 @@ func TestEngineRouter_stepAlignment(t *testing.T) {
 			require.EqualValues(t, tt.expectedV1Reqs, gotV1)
 		})
 	}
+}
+
+func Test_engineRouter_Do(t *testing.T) {
+	buildReponse := func(r queryrangebase.Request, engine string) queryrangebase.Response {
+		return &LokiResponse{
+			Status:    loghttp.QueryStatusSuccess,
+			Direction: r.(*LokiRequest).Direction,
+			Limit:     r.(*LokiRequest).Limit,
+			Version:   uint32(loghttp.VersionV1),
+			Data: LokiData{
+				ResultType: loghttp.ResultTypeStream,
+				Result: []logproto.Stream{
+					{
+						Labels: `{foo="bar", level="debug"}`,
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(0, r.(*LokiRequest).StartTs.UnixNano()), Line: fmt.Sprintf("%d: line from %s engine", r.(*LokiRequest).StartTs.UnixNano(), engine)},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		return buildReponse(r, "old"), nil
+	})
+	v2EngineHandler = queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		return buildReponse(r, "new"), nil
+	})
+
+	now := time.Now().Truncate(time.Second)
+	router := newEngineRouterMiddleware(
+		now.Add(-24*time.Hour), now.Add(-time.Hour),
+		[]queryrangebase.Middleware{newEntrySuffixTestMiddleware(" [v1-chain-processed]")}, DefaultCodec, false, log.NewNopLogger(),
+	).Wrap(next)
+
+	tests := []struct {
+		name string
+		req  *LokiRequest
+		want *LokiResponse
+	}{
+		{
+			"merge responses",
+			&LokiRequest{
+				StartTs:   now.Add(-30 * time.Hour),
+				EndTs:     now,
+				Query:     `{foo="bar"}`,
+				Limit:     1000,
+				Step:      1000,
+				Direction: logproto.BACKWARD,
+				Path:      "/api/prom/query_range",
+				Plan: &plan.QueryPlan{
+					AST: syntax.MustParseExpr(`{foo="bar"}`),
+				},
+			},
+			&LokiResponse{
+				Status:     loghttp.QueryStatusSuccess,
+				Direction:  logproto.BACKWARD,
+				Limit:      1000,
+				Version:    1,
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 3}},
+				Data: LokiData{
+					ResultType: loghttp.ResultTypeStream,
+					Result: []logproto.Stream{
+						{
+							Labels: `{foo="bar", level="debug"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: now.Add(-time.Hour), Line: fmt.Sprintf("%d: line from old engine [v1-chain-processed]", now.Add(-time.Hour).UnixNano())},
+								{Timestamp: now.Add(-24 * time.Hour), Line: fmt.Sprintf("%d: line from new engine", now.Add(-24*time.Hour).UnixNano())},
+								{Timestamp: now.Add(-30 * time.Hour), Line: fmt.Sprintf("%d: line from old engine [v1-chain-processed]", now.Add(-30*time.Hour).UnixNano())},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res, err := router.Do(context.Background(), tt.req)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, res)
+		})
+	}
+}
+
+func newEntrySuffixTestMiddleware(suffix string) queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			resp, err := next.Do(ctx, req)
+			if err != nil {
+				return resp, err
+			}
+
+			// Modify the response to append a suffix.
+			if lokiResp, ok := resp.(*LokiResponse); ok {
+				for i := range lokiResp.Data.Result {
+					for j := range lokiResp.Data.Result[i].Entries {
+						lokiResp.Data.Result[i].Entries[j].Line += suffix
+					}
+				}
+			}
+			return resp, nil
+		})
+	})
 }
