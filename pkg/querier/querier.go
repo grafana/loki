@@ -66,6 +66,7 @@ type Config struct {
 
 	IngesterQueryStoreMaxLookback time.Duration `yaml:"-"`
 	QueryPatternIngestersWithin   time.Duration `yaml:"-"`
+	DataObjStorageLag             time.Duration `yaml:"data_obj_storage_lag"`
 }
 
 // RegisterFlags register flags.
@@ -77,6 +78,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.TailMaxDuration, prefix+"tail-max-duration", 1*time.Hour, "Maximum duration for which the live tailing requests are served.")
 	f.DurationVar(&cfg.ExtraQueryDelay, prefix+"extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.DurationVar(&cfg.QueryIngestersWithin, prefix+"query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
+	f.DurationVar(&cfg.DataObjStorageLag, prefix+"data-obj-storage-lag", 1*time.Hour, "Amount of time until data objects are available.")
 	cfg.Engine.RegisterFlagsWithPrefix(prefix+"engine.", f)
 	cfg.EngineV2.RegisterFlagsWithPrefix(prefix+"engine-v2.", f)
 	f.IntVar(&cfg.MaxConcurrent, prefix+"max-concurrent", 4, "The maximum number of queries that can be simultaneously processed by the querier.")
