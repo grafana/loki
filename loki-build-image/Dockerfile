@@ -5,7 +5,7 @@
 # See ../docs/sources/community/maintaining/release-loki-build-image.md for instructions
 # on how to publish a new build image.
 ARG GO_VERSION=1.24
-ARG GOLANG_BASE_IMAGE=golang:${GO_VERSION}-bullseye
+ARG GOLANG_BASE_IMAGE=golang:${GO_VERSION}-trixie
 
 # Install helm (https://helm.sh/) and helm-docs (https://github.com/norwoodj/helm-docs) for generating Helm Chart reference.
 FROM ${GOLANG_BASE_IMAGE} AS helm
@@ -29,7 +29,7 @@ RUN apk add --no-cache curl && \
 FROM alpine:3.22.1 AS golangci
 RUN apk add --no-cache curl && \
     cd / && \
-    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.64.5
+    curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v2.3.0
 
 FROM alpine:3.22.1 AS buf
 ARG TARGETOS
