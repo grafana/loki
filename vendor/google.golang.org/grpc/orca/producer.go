@@ -25,7 +25,6 @@ import (
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/internal/backoff"
-	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/orca/internal"
 	"google.golang.org/grpc/status"
 
@@ -85,7 +84,7 @@ func RegisterOOBListener(sc balancer.SubConn, l OOBListener, opts OOBListenerOpt
 
 	// If stop is called multiple times, prevent it from having any effect on
 	// subsequent calls.
-	return grpcsync.OnceFunc(func() {
+	return sync.OnceFunc(func() {
 		p.unregisterListener(l, opts.ReportInterval)
 		closeFn()
 	})
