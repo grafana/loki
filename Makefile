@@ -389,10 +389,10 @@ publish: packages
 # Lint #
 ########
 ifeq ($(UNAME_S),Linux)
-LINT_FLAGS="--timeout=15m --build-tags=linux,promtail_journal_enabled"
-GOFLAGS="-tags=linux,promtail_journal_enabled"
+LINT_FLAGS=--timeout=15m --build-tags=linux,promtail_journal_enabled
+GOFLAGS=-tags=linux,promtail_journal_enabled
 else
-LINT_FLAGS="--timeout=15m"
+LINT_FLAGS=--timeout=15m
 GOFLAGS=""
 endif
 lint: ## run linters
