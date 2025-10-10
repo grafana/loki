@@ -40,6 +40,9 @@ type aggregator struct {
 }
 
 // newAggregator creates a new aggregator with the specified groupBy columns.
+// empty groupBy indicates no grouping. All values are aggregated into a single group.
+// TODO: add without argument to support `without(...)` grouping.
+// A special case of `without()` that has empty groupBy is used for Noop grouping which retains the input labels as is.
 func newAggregator(groupBy []physical.ColumnExpression, pointsSizeHint int, operation aggregationOperation) *aggregator {
 	a := aggregator{
 		groupBy:   groupBy,
@@ -65,15 +68,18 @@ func (a *aggregator) Add(ts time.Time, value float64, labelValues []string) {
 		a.points[ts] = point
 	}
 
-	a.digest.Reset()
-	for i, val := range labelValues {
-		if i > 0 {
-			_, _ = a.digest.Write([]byte{0}) // separator
-		}
+	var key uint64
+	if len(a.groupBy) != 0 {
+		a.digest.Reset()
+		for i, val := range labelValues {
+			if i > 0 {
+				_, _ = a.digest.Write([]byte{0}) // separator
+			}
 
-		_, _ = a.digest.WriteString(val)
+			_, _ = a.digest.WriteString(val)
+		}
+		key = a.digest.Sum64()
 	}
-	key := a.digest.Sum64()
 
 	if state, ok := point[key]; ok {
 		// TODO: handle hash collisions
@@ -92,8 +98,23 @@ func (a *aggregator) Add(ts time.Time, value float64, labelValues []string) {
 			}
 		case aggregationOperationCount:
 			state.value = state.value + 1
+
 		}
 	} else {
+		v := value
+		if a.operation == aggregationOperationCount {
+			v = 1
+		}
+
+		if len(a.groupBy) == 0 {
+			// special case: All values aggregated into a single group.
+			// This applies to queries like `sum(...)`, `sum by () (...)`, `count_over_time by () (...)`.
+			point[key] = &groupState{
+				value: v,
+			}
+			return
+		}
+
 		// create a new slice since labelValues is reused by the calling code
 		labelValuesCopy := make([]string, len(labelValues))
 		for i, v := range labelValues {
@@ -103,20 +124,11 @@ func (a *aggregator) Add(ts time.Time, value float64, labelValues []string) {
 			labelValuesCopy[i] = strings.Clone(v)
 		}
 
-		state = &groupState{
-			labelValues: labelValuesCopy,
-		}
-
-		// set initial values based on aggregation type
-		switch a.operation {
-		case aggregationOperationSum, aggregationOperationMax, aggregationOperationMin:
-			state.value = value
-		case aggregationOperationCount:
-			state.value = 1
-		}
-
 		// TODO: add limits on number of groups
-		point[key] = state
+		point[key] = &groupState{
+			labelValues: labelValuesCopy,
+			value:       v,
+		}
 	}
 }
 

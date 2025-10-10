@@ -114,7 +114,7 @@ func TestTenantLimitsHandlerWithAllowlist(t *testing.T) {
 				},
 			}
 
-			handler := loki.tenantLimitsHandler()
+			handler := loki.tenantLimitsHandler(false)
 
 			w := httptest.NewRecorder()
 			handler(w, req)

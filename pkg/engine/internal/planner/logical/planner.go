@@ -249,8 +249,8 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 }
 
 func walkVectorAggregation(e *syntax.VectorAggregationExpr, params logql.Params) (Value, error) {
-	// grouping by at least one label is required.
-	if e.Grouping == nil || len(e.Grouping.Groups) == 0 || e.Grouping.Without {
+	// `without()` grouping is not supported.
+	if e.Grouping != nil && e.Grouping.Without {
 		return nil, errUnimplemented
 	}
 

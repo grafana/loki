@@ -31,7 +31,6 @@ var (
 )
 
 func TestAggregator(t *testing.T) {
-
 	colTs := semconv.ColumnIdentTimestamp.FQN()
 	colVal := semconv.ColumnIdentValue.FQN()
 	colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String).FQN()
@@ -218,6 +217,49 @@ func TestAggregator(t *testing.T) {
 			{colTs: ts2, colVal: float64(15), colEnv: "prod", colSvc: "app1"},
 			{colTs: ts2, colVal: float64(25), colEnv: "prod", colSvc: "app2"},
 			{colTs: ts2, colVal: float64(35), colEnv: "dev", colSvc: "app2"},
+		}
+
+		rows, err := arrowtest.RecordRows(record)
+		require.NoError(t, err, "should be able to convert record back to rows")
+		require.Equal(t, len(expect), len(rows), "number of rows should match")
+		require.ElementsMatch(t, expect, rows)
+	})
+
+	t.Run("SUM aggregation with empty groupBy", func(t *testing.T) {
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer alloc.AssertSize(t, 0)
+
+		// Empty groupBy represents sum by () or sum(...) - all values aggregated into single group
+		groupBy := []physical.ColumnExpression{}
+
+		agg := newAggregator(groupBy, 1, aggregationOperationSum)
+
+		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+		ts2 := time.Date(2024, 1, 1, 10, 1, 0, 0, time.UTC)
+
+		// Add test data
+		// ts1: prod/app1 = 10, prod/app2 = 20, dev/app1 = 30
+		agg.Add(ts1, 10, []string{"prod", "app1"})
+		agg.Add(ts1, 20, []string{"prod", "app2"})
+		agg.Add(ts1, 30, []string{"dev", "app1"})
+
+		// ts2: prod/app1 = 15, prod/app2 = 25, dev/app2 = 35
+		agg.Add(ts2, 15, []string{"prod", "app1"})
+		agg.Add(ts2, 25, []string{"prod", "app2"})
+		agg.Add(ts2, 35, []string{"dev", "app2"})
+
+		agg.Add(ts1, 5, []string{"prod", "app1"})
+		agg.Add(ts2, 10, []string{"prod", "app1"})
+
+		record, err := agg.BuildRecord()
+		require.NoError(t, err)
+		defer record.Release()
+
+		expect := arrowtest.Rows{
+			// ts1: all series aggregated into single value = 65
+			{colTs: ts1, colVal: float64(65)},
+			// ts2: all series aggregated into single value = 85
+			{colTs: ts2, colVal: float64(85)},
 		}
 
 		rows, err := arrowtest.RecordRows(record)
