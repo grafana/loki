@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	strings "strings"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"

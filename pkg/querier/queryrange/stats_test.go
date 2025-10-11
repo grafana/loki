@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	strings "strings"
+	"strings"
 	"testing"
 	"time"
 

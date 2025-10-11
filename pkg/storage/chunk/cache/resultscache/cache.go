@@ -14,7 +14,7 @@ import (
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/common/model"
 	"go.opentelemetry.io/otel"
-	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/dskit/tenant"

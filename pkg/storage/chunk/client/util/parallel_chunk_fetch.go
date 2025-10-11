@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"go.opentelemetry.io/otel"
-	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"

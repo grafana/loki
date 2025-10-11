@@ -3,7 +3,7 @@ package metastore
 import (
 	"bytes"
 	"context"
-	io "io"
+	"io"
 	"sync"
 	"testing"
 	"time"

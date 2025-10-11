@@ -14,7 +14,7 @@ import (
 )
 
 type topkOptions struct {
-	// Input pipeliens to compute top K from.
+	// Input pipelines to compute top K from.
 	Inputs []Pipeline
 
 	// SortBy is the list of columns to sort by, in order of precedence.

@@ -46,7 +46,7 @@ var (
 		recordQueryMetrics(data)
 	})
 
-	StatsHTTPMiddleware middleware.Interface = statsHTTPMiddleware(defaultMetricRecorder)
+	StatsHTTPMiddleware = statsHTTPMiddleware(defaultMetricRecorder)
 )
 
 // recordQueryMetrics will be called from Query Frontend middleware chain for any type of query.

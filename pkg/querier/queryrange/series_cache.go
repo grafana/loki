@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"sort"
-	strings "strings"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
