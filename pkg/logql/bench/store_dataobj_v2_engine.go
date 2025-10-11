@@ -1,7 +1,6 @@
 package bench
 
 import (
-	"errors"
 	"fmt"
 	"path/filepath"
 
@@ -13,8 +12,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
-
-var errStoreUnimplemented = errors.New("store does not implement this operation")
 
 // DataObjV2EngineStore uses the new pkg/engine/engine.New for querying.
 // It assumes the engine can read the "new dataobj format" (e.g. Parquet)
