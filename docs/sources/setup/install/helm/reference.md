@@ -8014,6 +8014,7 @@ false
   },
   "rules": {
     "additionalGroups": [],
+    "additionalRuleAnnotations": {},
     "additionalRuleLabels": {},
     "alerting": true,
     "annotations": {},
@@ -8118,6 +8119,7 @@ null
 			<td><pre lang="json">
 {
   "additionalGroups": [],
+  "additionalRuleAnnotations": {},
   "additionalRuleLabels": {},
   "alerting": true,
   "annotations": {},
@@ -8135,6 +8137,15 @@ null
 			<td>Additional groups to add to the rules file</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.rules.additionalRuleAnnotations</td>
+			<td>object</td>
+			<td>Additional annotations for PrometheusRule alerts</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
