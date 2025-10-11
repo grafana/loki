@@ -27,6 +27,7 @@ Before upgrading to this version, make sure that the CustomResourceDefinitions (
 - [BUGFIX] Use strings instead of integers for ports in CiliumNetworkPolicies [#19252](https://github.com/grafana/loki/pull/19252)
 - [FEATURE] Add replicas to loki-canary deployment [#190095](https://github.com/grafana/loki/pull/19095)
 - [FEATURE] Allow changing the retentionPolicy for the singleBinary StatefulSet [#19097](https://github.com/grafana/loki/pull/19097)
+- [BUGFIX] Respect global registry in sidecar image [#19347](https://github.com/grafana/loki/pull/19347).
 
 ## 6.41.1
 
