@@ -138,7 +138,7 @@ var sortOrderMapping = map[string]logs.SortOrder{
 }
 
 func parseSortOrder(s string) logs.SortOrder {
-	val, _ := sortOrderMapping[s]
+	val := sortOrderMapping[s]
 	return val
 }
 
