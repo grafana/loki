@@ -370,8 +370,10 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 			QueryFrontend: &lokiv1.LokiComponentSpec{
 				Replicas: 1,
 			},
-			Gateway: &lokiv1.LokiComponentSpec{
-				Replicas: 2,
+			Gateway: &lokiv1.LokiGatewayComponentSpec{
+				LokiComponentSpec: lokiv1.LokiComponentSpec{
+					Replicas: 2,
+				},
 			},
 			IndexGateway: &lokiv1.LokiComponentSpec{
 				Replicas: 1,
@@ -429,8 +431,10 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 			QueryFrontend: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
-			Gateway: &lokiv1.LokiComponentSpec{
-				Replicas: 2,
+			Gateway: &lokiv1.LokiGatewayComponentSpec{
+				LokiComponentSpec: lokiv1.LokiComponentSpec{
+					Replicas: 2,
+				},
 			},
 			IndexGateway: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
@@ -488,8 +492,10 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 			QueryFrontend: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
-			Gateway: &lokiv1.LokiComponentSpec{
-				Replicas: 2,
+			Gateway: &lokiv1.LokiGatewayComponentSpec{
+				LokiComponentSpec: lokiv1.LokiComponentSpec{
+					Replicas: 2,
+				},
 			},
 			IndexGateway: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
@@ -548,8 +554,10 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 			QueryFrontend: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
-			Gateway: &lokiv1.LokiComponentSpec{
-				Replicas: 2,
+			Gateway: &lokiv1.LokiGatewayComponentSpec{
+				LokiComponentSpec: lokiv1.LokiComponentSpec{
+					Replicas: 2,
+				},
 			},
 			IndexGateway: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
@@ -608,8 +616,10 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 			QueryFrontend: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
-			Gateway: &lokiv1.LokiComponentSpec{
-				Replicas: 2,
+			Gateway: &lokiv1.LokiGatewayComponentSpec{
+				LokiComponentSpec: lokiv1.LokiComponentSpec{
+					Replicas: 2,
+				},
 			},
 			IndexGateway: &lokiv1.LokiComponentSpec{
 				Replicas: 2,

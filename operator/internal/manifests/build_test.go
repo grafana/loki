@@ -558,8 +558,10 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 						QueryFrontend: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Gateway: &lokiv1.LokiComponentSpec{
-							Replicas: 1,
+						Gateway: &lokiv1.LokiGatewayComponentSpec{
+							LokiComponentSpec: lokiv1.LokiComponentSpec{
+								Replicas: 1,
+							},
 						},
 						IndexGateway: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
@@ -601,8 +603,10 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 						QueryFrontend: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Gateway: &lokiv1.LokiComponentSpec{
-							Replicas: 1,
+						Gateway: &lokiv1.LokiGatewayComponentSpec{
+							LokiComponentSpec: lokiv1.LokiComponentSpec{
+								Replicas: 1,
+							},
 						},
 						IndexGateway: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
@@ -725,8 +729,10 @@ func TestBuildAll_WithFeatureGates_RestrictedPodSecurityStandard(t *testing.T) {
 						QueryFrontend: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Gateway: &lokiv1.LokiComponentSpec{
-							Replicas: 1,
+						Gateway: &lokiv1.LokiGatewayComponentSpec{
+							LokiComponentSpec: lokiv1.LokiComponentSpec{
+								Replicas: 1,
+							},
 						},
 						IndexGateway: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
@@ -768,8 +774,10 @@ func TestBuildAll_WithFeatureGates_RestrictedPodSecurityStandard(t *testing.T) {
 						QueryFrontend: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
 						},
-						Gateway: &lokiv1.LokiComponentSpec{
-							Replicas: 1,
+						Gateway: &lokiv1.LokiGatewayComponentSpec{
+							LokiComponentSpec: lokiv1.LokiComponentSpec{
+								Replicas: 1,
+							},
 						},
 						IndexGateway: &lokiv1.LokiComponentSpec{
 							Replicas: 1,
