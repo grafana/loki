@@ -7,6 +7,7 @@
 package internal
 
 import (
+	"encoding/binary"
 	"fmt"
 	"sync"
 
@@ -41,9 +42,7 @@ func DeleteOrigProfile(orig *otlpprofiles.Profile, nullable bool) {
 		return
 	}
 
-	for i := range orig.SampleType {
-		DeleteOrigValueType(orig.SampleType[i], true)
-	}
+	DeleteOrigValueType(&orig.SampleType, false)
 	for i := range orig.Sample {
 		DeleteOrigSample(orig.Sample[i], true)
 	}
@@ -61,15 +60,13 @@ func CopyOrigProfile(dest, src *otlpprofiles.Profile) {
 	if src == dest {
 		return
 	}
-	dest.SampleType = CopyOrigValueTypeSlice(dest.SampleType, src.SampleType)
+	CopyOrigValueType(&dest.SampleType, &src.SampleType)
 	dest.Sample = CopyOrigSampleSlice(dest.Sample, src.Sample)
-	dest.LocationIndices = CopyOrigInt32Slice(dest.LocationIndices, src.LocationIndices)
-	dest.TimeNanos = src.TimeNanos
-	dest.DurationNanos = src.DurationNanos
+	dest.TimeUnixNano = src.TimeUnixNano
+	dest.DurationNano = src.DurationNano
 	CopyOrigValueType(&dest.PeriodType, &src.PeriodType)
 	dest.Period = src.Period
 	dest.CommentStrindices = CopyOrigInt32Slice(dest.CommentStrindices, src.CommentStrindices)
-	dest.DefaultSampleTypeIndex = src.DefaultSampleTypeIndex
 	dest.ProfileId = src.ProfileId
 	dest.DroppedAttributesCount = src.DroppedAttributesCount
 	dest.OriginalPayloadFormat = src.OriginalPayloadFormat
@@ -79,15 +76,13 @@ func CopyOrigProfile(dest, src *otlpprofiles.Profile) {
 
 func GenTestOrigProfile() *otlpprofiles.Profile {
 	orig := NewOrigProfile()
-	orig.SampleType = GenerateOrigTestValueTypeSlice()
+	orig.SampleType = *GenTestOrigValueType()
 	orig.Sample = GenerateOrigTestSampleSlice()
-	orig.LocationIndices = GenerateOrigTestInt32Slice()
-	orig.TimeNanos = 1234567890
-	orig.DurationNanos = 1234567890
+	orig.TimeUnixNano = 1234567890
+	orig.DurationNano = 1234567890
 	orig.PeriodType = *GenTestOrigValueType()
 	orig.Period = int64(13)
 	orig.CommentStrindices = GenerateOrigTestInt32Slice()
-	orig.DefaultSampleTypeIndex = int32(13)
 	orig.ProfileId = data.ProfileID([16]byte{1, 2, 3, 4, 5, 6, 7, 8, 8, 7, 6, 5, 4, 3, 2, 1})
 	orig.DroppedAttributesCount = uint32(13)
 	orig.OriginalPayloadFormat = "test_originalpayloadformat"
@@ -99,16 +94,8 @@ func GenTestOrigProfile() *otlpprofiles.Profile {
 // MarshalJSONOrig marshals all properties from the current struct to the destination stream.
 func MarshalJSONOrigProfile(orig *otlpprofiles.Profile, dest *json.Stream) {
 	dest.WriteObjectStart()
-	if len(orig.SampleType) > 0 {
-		dest.WriteObjectField("sampleType")
-		dest.WriteArrayStart()
-		MarshalJSONOrigValueType(orig.SampleType[0], dest)
-		for i := 1; i < len(orig.SampleType); i++ {
-			dest.WriteMore()
-			MarshalJSONOrigValueType(orig.SampleType[i], dest)
-		}
-		dest.WriteArrayEnd()
-	}
+	dest.WriteObjectField("sampleType")
+	MarshalJSONOrigValueType(&orig.SampleType, dest)
 	if len(orig.Sample) > 0 {
 		dest.WriteObjectField("sample")
 		dest.WriteArrayStart()
@@ -119,23 +106,13 @@ func MarshalJSONOrigProfile(orig *otlpprofiles.Profile, dest *json.Stream) {
 		}
 		dest.WriteArrayEnd()
 	}
-	if len(orig.LocationIndices) > 0 {
-		dest.WriteObjectField("locationIndices")
-		dest.WriteArrayStart()
-		dest.WriteInt32(orig.LocationIndices[0])
-		for i := 1; i < len(orig.LocationIndices); i++ {
-			dest.WriteMore()
-			dest.WriteInt32(orig.LocationIndices[i])
-		}
-		dest.WriteArrayEnd()
+	if orig.TimeUnixNano != uint64(0) {
+		dest.WriteObjectField("timeUnixNano")
+		dest.WriteUint64(orig.TimeUnixNano)
 	}
-	if orig.TimeNanos != int64(0) {
-		dest.WriteObjectField("timeNanos")
-		dest.WriteInt64(orig.TimeNanos)
-	}
-	if orig.DurationNanos != int64(0) {
-		dest.WriteObjectField("durationNanos")
-		dest.WriteInt64(orig.DurationNanos)
+	if orig.DurationNano != uint64(0) {
+		dest.WriteObjectField("durationNano")
+		dest.WriteUint64(orig.DurationNano)
 	}
 	dest.WriteObjectField("periodType")
 	MarshalJSONOrigValueType(&orig.PeriodType, dest)
@@ -152,10 +129,6 @@ func MarshalJSONOrigProfile(orig *otlpprofiles.Profile, dest *json.Stream) {
 			dest.WriteInt32(orig.CommentStrindices[i])
 		}
 		dest.WriteArrayEnd()
-	}
-	if orig.DefaultSampleTypeIndex != int32(0) {
-		dest.WriteObjectField("defaultSampleTypeIndex")
-		dest.WriteInt32(orig.DefaultSampleTypeIndex)
 	}
 	if orig.ProfileId != data.ProfileID([16]byte{}) {
 		dest.WriteObjectField("profileId")
@@ -192,26 +165,17 @@ func UnmarshalJSONOrigProfile(orig *otlpprofiles.Profile, iter *json.Iterator) {
 	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
 		case "sampleType", "sample_type":
-			for iter.ReadArray() {
-				orig.SampleType = append(orig.SampleType, NewOrigValueType())
-				UnmarshalJSONOrigValueType(orig.SampleType[len(orig.SampleType)-1], iter)
-			}
-
+			UnmarshalJSONOrigValueType(&orig.SampleType, iter)
 		case "sample":
 			for iter.ReadArray() {
 				orig.Sample = append(orig.Sample, NewOrigSample())
 				UnmarshalJSONOrigSample(orig.Sample[len(orig.Sample)-1], iter)
 			}
 
-		case "locationIndices", "location_indices":
-			for iter.ReadArray() {
-				orig.LocationIndices = append(orig.LocationIndices, iter.ReadInt32())
-			}
-
-		case "timeNanos", "time_nanos":
-			orig.TimeNanos = iter.ReadInt64()
-		case "durationNanos", "duration_nanos":
-			orig.DurationNanos = iter.ReadInt64()
+		case "timeUnixNano", "time_unix_nano":
+			orig.TimeUnixNano = iter.ReadUint64()
+		case "durationNano", "duration_nano":
+			orig.DurationNano = iter.ReadUint64()
 		case "periodType", "period_type":
 			UnmarshalJSONOrigValueType(&orig.PeriodType, iter)
 		case "period":
@@ -221,8 +185,6 @@ func UnmarshalJSONOrigProfile(orig *otlpprofiles.Profile, iter *json.Iterator) {
 				orig.CommentStrindices = append(orig.CommentStrindices, iter.ReadInt32())
 			}
 
-		case "defaultSampleTypeIndex", "default_sample_type_index":
-			orig.DefaultSampleTypeIndex = iter.ReadInt32()
 		case "profileId", "profile_id":
 			UnmarshalJSONOrigProfileID(&orig.ProfileId, iter)
 		case "droppedAttributesCount", "dropped_attributes_count":
@@ -246,26 +208,17 @@ func SizeProtoOrigProfile(orig *otlpprofiles.Profile) int {
 	var n int
 	var l int
 	_ = l
-	for i := range orig.SampleType {
-		l = SizeProtoOrigValueType(orig.SampleType[i])
-		n += 1 + proto.Sov(uint64(l)) + l
-	}
+	l = SizeProtoOrigValueType(&orig.SampleType)
+	n += 1 + proto.Sov(uint64(l)) + l
 	for i := range orig.Sample {
 		l = SizeProtoOrigSample(orig.Sample[i])
 		n += 1 + proto.Sov(uint64(l)) + l
 	}
-	if len(orig.LocationIndices) > 0 {
-		l = 0
-		for _, e := range orig.LocationIndices {
-			l += proto.Sov(uint64(e))
-		}
-		n += 1 + proto.Sov(uint64(l)) + l
+	if orig.TimeUnixNano != 0 {
+		n += 9
 	}
-	if orig.TimeNanos != 0 {
-		n += 1 + proto.Sov(uint64(orig.TimeNanos))
-	}
-	if orig.DurationNanos != 0 {
-		n += 1 + proto.Sov(uint64(orig.DurationNanos))
+	if orig.DurationNano != 0 {
+		n += 1 + proto.Sov(uint64(orig.DurationNano))
 	}
 	l = SizeProtoOrigValueType(&orig.PeriodType)
 	n += 1 + proto.Sov(uint64(l)) + l
@@ -278,9 +231,6 @@ func SizeProtoOrigProfile(orig *otlpprofiles.Profile) int {
 			l += proto.Sov(uint64(e))
 		}
 		n += 1 + proto.Sov(uint64(l)) + l
-	}
-	if orig.DefaultSampleTypeIndex != 0 {
-		n += 1 + proto.Sov(uint64(orig.DefaultSampleTypeIndex))
 	}
 	l = SizeProtoOrigProfileID(&orig.ProfileId)
 	n += 1 + proto.Sov(uint64(l)) + l
@@ -309,13 +259,13 @@ func MarshalProtoOrigProfile(orig *otlpprofiles.Profile, buf []byte) int {
 	pos := len(buf)
 	var l int
 	_ = l
-	for i := len(orig.SampleType) - 1; i >= 0; i-- {
-		l = MarshalProtoOrigValueType(orig.SampleType[i], buf[:pos])
-		pos -= l
-		pos = proto.EncodeVarint(buf, pos, uint64(l))
-		pos--
-		buf[pos] = 0xa
-	}
+
+	l = MarshalProtoOrigValueType(&orig.SampleType, buf[:pos])
+	pos -= l
+	pos = proto.EncodeVarint(buf, pos, uint64(l))
+	pos--
+	buf[pos] = 0xa
+
 	for i := len(orig.Sample) - 1; i >= 0; i-- {
 		l = MarshalProtoOrigSample(orig.Sample[i], buf[:pos])
 		pos -= l
@@ -323,37 +273,28 @@ func MarshalProtoOrigProfile(orig *otlpprofiles.Profile, buf []byte) int {
 		pos--
 		buf[pos] = 0x12
 	}
-	l = len(orig.LocationIndices)
-	if l > 0 {
-		endPos := pos
-		for i := l - 1; i >= 0; i-- {
-			pos = proto.EncodeVarint(buf, pos, uint64(orig.LocationIndices[i]))
-		}
-		pos = proto.EncodeVarint(buf, pos, uint64(endPos-pos))
+	if orig.TimeUnixNano != 0 {
+		pos -= 8
+		binary.LittleEndian.PutUint64(buf[pos:], uint64(orig.TimeUnixNano))
 		pos--
-		buf[pos] = 0x1a
+		buf[pos] = 0x19
 	}
-	if orig.TimeNanos != 0 {
-		pos = proto.EncodeVarint(buf, pos, uint64(orig.TimeNanos))
+	if orig.DurationNano != 0 {
+		pos = proto.EncodeVarint(buf, pos, uint64(orig.DurationNano))
 		pos--
 		buf[pos] = 0x20
-	}
-	if orig.DurationNanos != 0 {
-		pos = proto.EncodeVarint(buf, pos, uint64(orig.DurationNanos))
-		pos--
-		buf[pos] = 0x28
 	}
 
 	l = MarshalProtoOrigValueType(&orig.PeriodType, buf[:pos])
 	pos -= l
 	pos = proto.EncodeVarint(buf, pos, uint64(l))
 	pos--
-	buf[pos] = 0x32
+	buf[pos] = 0x2a
 
 	if orig.Period != 0 {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.Period))
 		pos--
-		buf[pos] = 0x38
+		buf[pos] = 0x30
 	}
 	l = len(orig.CommentStrindices)
 	if l > 0 {
@@ -363,24 +304,19 @@ func MarshalProtoOrigProfile(orig *otlpprofiles.Profile, buf []byte) int {
 		}
 		pos = proto.EncodeVarint(buf, pos, uint64(endPos-pos))
 		pos--
-		buf[pos] = 0x42
-	}
-	if orig.DefaultSampleTypeIndex != 0 {
-		pos = proto.EncodeVarint(buf, pos, uint64(orig.DefaultSampleTypeIndex))
-		pos--
-		buf[pos] = 0x48
+		buf[pos] = 0x3a
 	}
 
 	l = MarshalProtoOrigProfileID(&orig.ProfileId, buf[:pos])
 	pos -= l
 	pos = proto.EncodeVarint(buf, pos, uint64(l))
 	pos--
-	buf[pos] = 0x52
+	buf[pos] = 0x42
 
 	if orig.DroppedAttributesCount != 0 {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.DroppedAttributesCount))
 		pos--
-		buf[pos] = 0x58
+		buf[pos] = 0x48
 	}
 	l = len(orig.OriginalPayloadFormat)
 	if l > 0 {
@@ -388,7 +324,7 @@ func MarshalProtoOrigProfile(orig *otlpprofiles.Profile, buf []byte) int {
 		copy(buf[pos:], orig.OriginalPayloadFormat)
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
 		pos--
-		buf[pos] = 0x62
+		buf[pos] = 0x52
 	}
 	l = len(orig.OriginalPayload)
 	if l > 0 {
@@ -396,7 +332,7 @@ func MarshalProtoOrigProfile(orig *otlpprofiles.Profile, buf []byte) int {
 		copy(buf[pos:], orig.OriginalPayload)
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
 		pos--
-		buf[pos] = 0x6a
+		buf[pos] = 0x5a
 	}
 	l = len(orig.AttributeIndices)
 	if l > 0 {
@@ -406,7 +342,7 @@ func MarshalProtoOrigProfile(orig *otlpprofiles.Profile, buf []byte) int {
 		}
 		pos = proto.EncodeVarint(buf, pos, uint64(endPos-pos))
 		pos--
-		buf[pos] = 0x72
+		buf[pos] = 0x62
 	}
 	return len(buf) - pos
 }
@@ -436,8 +372,8 @@ func UnmarshalProtoOrigProfile(orig *otlpprofiles.Profile, buf []byte) error {
 				return err
 			}
 			startPos := pos - length
-			orig.SampleType = append(orig.SampleType, NewOrigValueType())
-			err = UnmarshalProtoOrigValueType(orig.SampleType[len(orig.SampleType)-1], buf[startPos:pos])
+
+			err = UnmarshalProtoOrigValueType(&orig.SampleType, buf[startPos:pos])
 			if err != nil {
 				return err
 			}
@@ -457,31 +393,22 @@ func UnmarshalProtoOrigProfile(orig *otlpprofiles.Profile, buf []byte) error {
 			if err != nil {
 				return err
 			}
+
 		case 3:
-			if wireType != proto.WireTypeLen {
-				return fmt.Errorf("proto: wrong wireType = %d for field LocationIndices", wireType)
+			if wireType != proto.WireTypeI64 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TimeUnixNano", wireType)
 			}
-			var length int
-			length, pos, err = proto.ConsumeLen(buf, pos)
+			var num uint64
+			num, pos, err = proto.ConsumeI64(buf, pos)
 			if err != nil {
 				return err
 			}
-			startPos := pos - length
-			var num uint64
-			for startPos < pos {
-				num, startPos, err = proto.ConsumeVarint(buf[:pos], startPos)
-				if err != nil {
-					return err
-				}
-				orig.LocationIndices = append(orig.LocationIndices, int32(num))
-			}
-			if startPos != pos {
-				return fmt.Errorf("proto: invalid field len = %d for field LocationIndices", pos-startPos)
-			}
+
+			orig.TimeUnixNano = uint64(num)
 
 		case 4:
 			if wireType != proto.WireTypeVarint {
-				return fmt.Errorf("proto: wrong wireType = %d for field TimeNanos", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field DurationNano", wireType)
 			}
 			var num uint64
 			num, pos, err = proto.ConsumeVarint(buf, pos)
@@ -489,21 +416,9 @@ func UnmarshalProtoOrigProfile(orig *otlpprofiles.Profile, buf []byte) error {
 				return err
 			}
 
-			orig.TimeNanos = int64(num)
+			orig.DurationNano = uint64(num)
 
 		case 5:
-			if wireType != proto.WireTypeVarint {
-				return fmt.Errorf("proto: wrong wireType = %d for field DurationNanos", wireType)
-			}
-			var num uint64
-			num, pos, err = proto.ConsumeVarint(buf, pos)
-			if err != nil {
-				return err
-			}
-
-			orig.DurationNanos = int64(num)
-
-		case 6:
 			if wireType != proto.WireTypeLen {
 				return fmt.Errorf("proto: wrong wireType = %d for field PeriodType", wireType)
 			}
@@ -519,7 +434,7 @@ func UnmarshalProtoOrigProfile(orig *otlpprofiles.Profile, buf []byte) error {
 				return err
 			}
 
-		case 7:
+		case 6:
 			if wireType != proto.WireTypeVarint {
 				return fmt.Errorf("proto: wrong wireType = %d for field Period", wireType)
 			}
@@ -530,41 +445,38 @@ func UnmarshalProtoOrigProfile(orig *otlpprofiles.Profile, buf []byte) error {
 			}
 
 			orig.Period = int64(num)
-		case 8:
-			if wireType != proto.WireTypeLen {
-				return fmt.Errorf("proto: wrong wireType = %d for field CommentStrindices", wireType)
-			}
-			var length int
-			length, pos, err = proto.ConsumeLen(buf, pos)
-			if err != nil {
-				return err
-			}
-			startPos := pos - length
-			var num uint64
-			for startPos < pos {
-				num, startPos, err = proto.ConsumeVarint(buf[:pos], startPos)
+		case 7:
+			switch wireType {
+			case proto.WireTypeLen:
+				var length int
+				length, pos, err = proto.ConsumeLen(buf, pos)
+				if err != nil {
+					return err
+				}
+				startPos := pos - length
+				var num uint64
+				for startPos < pos {
+					num, startPos, err = proto.ConsumeVarint(buf[:pos], startPos)
+					if err != nil {
+						return err
+					}
+					orig.CommentStrindices = append(orig.CommentStrindices, int32(num))
+				}
+				if startPos != pos {
+					return fmt.Errorf("proto: invalid field len = %d for field CommentStrindices", pos-startPos)
+				}
+			case proto.WireTypeVarint:
+				var num uint64
+				num, pos, err = proto.ConsumeVarint(buf, pos)
 				if err != nil {
 					return err
 				}
 				orig.CommentStrindices = append(orig.CommentStrindices, int32(num))
-			}
-			if startPos != pos {
-				return fmt.Errorf("proto: invalid field len = %d for field CommentStrindices", pos-startPos)
-			}
-
-		case 9:
-			if wireType != proto.WireTypeVarint {
-				return fmt.Errorf("proto: wrong wireType = %d for field DefaultSampleTypeIndex", wireType)
-			}
-			var num uint64
-			num, pos, err = proto.ConsumeVarint(buf, pos)
-			if err != nil {
-				return err
+			default:
+				return fmt.Errorf("proto: wrong wireType = %d for field CommentStrindices", wireType)
 			}
 
-			orig.DefaultSampleTypeIndex = int32(num)
-
-		case 10:
+		case 8:
 			if wireType != proto.WireTypeLen {
 				return fmt.Errorf("proto: wrong wireType = %d for field ProfileId", wireType)
 			}
@@ -580,7 +492,7 @@ func UnmarshalProtoOrigProfile(orig *otlpprofiles.Profile, buf []byte) error {
 				return err
 			}
 
-		case 11:
+		case 9:
 			if wireType != proto.WireTypeVarint {
 				return fmt.Errorf("proto: wrong wireType = %d for field DroppedAttributesCount", wireType)
 			}
@@ -592,7 +504,7 @@ func UnmarshalProtoOrigProfile(orig *otlpprofiles.Profile, buf []byte) error {
 
 			orig.DroppedAttributesCount = uint32(num)
 
-		case 12:
+		case 10:
 			if wireType != proto.WireTypeLen {
 				return fmt.Errorf("proto: wrong wireType = %d for field OriginalPayloadFormat", wireType)
 			}
@@ -604,7 +516,7 @@ func UnmarshalProtoOrigProfile(orig *otlpprofiles.Profile, buf []byte) error {
 			startPos := pos - length
 			orig.OriginalPayloadFormat = string(buf[startPos:pos])
 
-		case 13:
+		case 11:
 			if wireType != proto.WireTypeLen {
 				return fmt.Errorf("proto: wrong wireType = %d for field OriginalPayload", wireType)
 			}
@@ -618,26 +530,35 @@ func UnmarshalProtoOrigProfile(orig *otlpprofiles.Profile, buf []byte) error {
 				orig.OriginalPayload = make([]byte, length)
 				copy(orig.OriginalPayload, buf[startPos:pos])
 			}
-		case 14:
-			if wireType != proto.WireTypeLen {
-				return fmt.Errorf("proto: wrong wireType = %d for field AttributeIndices", wireType)
-			}
-			var length int
-			length, pos, err = proto.ConsumeLen(buf, pos)
-			if err != nil {
-				return err
-			}
-			startPos := pos - length
-			var num uint64
-			for startPos < pos {
-				num, startPos, err = proto.ConsumeVarint(buf[:pos], startPos)
+		case 12:
+			switch wireType {
+			case proto.WireTypeLen:
+				var length int
+				length, pos, err = proto.ConsumeLen(buf, pos)
+				if err != nil {
+					return err
+				}
+				startPos := pos - length
+				var num uint64
+				for startPos < pos {
+					num, startPos, err = proto.ConsumeVarint(buf[:pos], startPos)
+					if err != nil {
+						return err
+					}
+					orig.AttributeIndices = append(orig.AttributeIndices, int32(num))
+				}
+				if startPos != pos {
+					return fmt.Errorf("proto: invalid field len = %d for field AttributeIndices", pos-startPos)
+				}
+			case proto.WireTypeVarint:
+				var num uint64
+				num, pos, err = proto.ConsumeVarint(buf, pos)
 				if err != nil {
 					return err
 				}
 				orig.AttributeIndices = append(orig.AttributeIndices, int32(num))
-			}
-			if startPos != pos {
-				return fmt.Errorf("proto: invalid field len = %d for field AttributeIndices", pos-startPos)
+			default:
+				return fmt.Errorf("proto: wrong wireType = %d for field AttributeIndices", wireType)
 			}
 		default:
 			pos, err = proto.ConsumeUnknown(buf, pos, wireType)

@@ -7,8 +7,55 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/pressly/goose/v3/lock/internal/store"
+	"github.com/pressly/goose/v3/lock/internal/table"
 	"github.com/sethvargo/go-retry"
 )
+
+// NewPostgresTableLocker returns a Locker that uses PostgreSQL table-based locking. It manages a
+// single lock row and keeps the lock alive automatically.
+//
+// Default behavior:
+//
+//   - Lease (30s): How long the lock is valid if heartbeat stops
+//   - Heartbeat (5s): How often the lock gets refreshed to keep it alive
+//   - If the process dies, others can take the lock after lease expires
+//
+// Defaults:
+//
+//	Table: "goose_lock"
+//	Lock ID: 4097083626 (crc64 of "goose")
+//	Lock retry: 5s intervals, 5min timeout
+//	Unlock retry: 2s intervals, 1min timeout
+//
+// Lock and Unlock both retry on failure. Lock stays alive automatically until released. All
+// defaults can be overridden with options.
+func NewPostgresTableLocker(options ...TableLockerOption) (Locker, error) {
+	config := table.Config{
+		TableName:         DefaultLockTableName,
+		LockID:            DefaultLockID,
+		LeaseDuration:     30 * time.Second,
+		HeartbeatInterval: 5 * time.Second,
+		LockTimeout: table.ProbeConfig{
+			IntervalDuration: 5 * time.Second,
+			FailureThreshold: 60, // 5 minutes total
+		},
+		UnlockTimeout: table.ProbeConfig{
+			IntervalDuration: 2 * time.Second,
+			FailureThreshold: 30, // 1 minute total
+		},
+	}
+	for _, opt := range options {
+		if err := opt.apply(&config); err != nil {
+			return nil, err
+		}
+	}
+	lockStore, err := store.NewPostgres(config.TableName)
+	if err != nil {
+		return nil, fmt.Errorf("create lock store: %w", err)
+	}
+	return table.New(lockStore, config), nil
+}
 
 // NewPostgresSessionLocker returns a SessionLocker that utilizes PostgreSQL's exclusive
 // session-level advisory lock mechanism.
@@ -98,12 +145,12 @@ func (l *postgresSessionLocker) SessionUnlock(ctx context.Context, conn *sql.Con
 
 			Here is output from a session that has a lock held:
 
-			SELECT pid,granted,((classid::bigint<<32)|objid::bigint)AS goose_lock_id FROM pg_locks
-			WHERE locktype='advisory';
+			SELECT pid, granted, ((classid::bigint << 32) | objid::bigint) AS goose_lock_id FROM
+			pg_locks WHERE locktype = 'advisory';
 
 			| pid | granted | goose_lock_id       |
 			|-----|---------|---------------------|
-			| 191 | t       | 5887940537704921958 |
+			| 191 | t       | 4097083626          |
 
 			A forceful way to unlock the session is to terminate the backend with SIGTERM:
 
