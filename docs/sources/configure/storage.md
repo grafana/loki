@@ -159,6 +159,8 @@ One of the subcomponents in Loki is the `table-manager`. It is responsible for p
 
 ```yaml
 table_manager:
+  # Must set "enabled" to re-enable table manager, otherwise it is disabled by default.
+  enabled: true
   # The retention period must be a multiple of the index / chunks
   # table "period" (see period_config).
   retention_deletes_enabled: true

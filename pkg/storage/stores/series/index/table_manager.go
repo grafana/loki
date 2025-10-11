@@ -102,6 +102,7 @@ type TableManagerConfig struct {
 
 	IndexTables config.ProvisionConfig `yaml:"index_tables_provisioning"`
 	ChunkTables config.ProvisionConfig `yaml:"chunk_tables_provisioning"`
+	Enabled     bool                   `yaml:"enabled"`
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface. To support RetentionPeriod.
@@ -145,6 +146,7 @@ func (cfg *TableManagerConfig) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.RetentionPeriodModel, "table-manager.retention-period", "Tables older than this retention period are deleted. Must be either 0 (disabled) or a multiple of 24h. When enabled, be aware this setting is destructive to data!")
 	f.DurationVar(&cfg.PollInterval, "table-manager.poll-interval", 2*time.Minute, "How frequently to poll backend to learn our capacity.")
 	f.DurationVar(&cfg.CreationGracePeriod, "table-manager.periodic-table.grace-period", 10*time.Minute, "Periodic tables grace period (duration which table will be created/deleted before/after it's needed).")
+	f.BoolVar(&cfg.Enabled, "table-manager.enabled", false, "Must be set to enable table manager, which is deprecated.")
 
 	cfg.IndexTables.RegisterFlags("table-manager.index-table", f)
 	cfg.ChunkTables.RegisterFlags("table-manager.chunk-table", f)
