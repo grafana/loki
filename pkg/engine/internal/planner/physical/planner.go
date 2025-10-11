@@ -152,6 +152,10 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 		return p.processVectorAggregation(inst, ctx)
 	case *logical.Parse:
 		return p.processParse(inst, ctx)
+	case *logical.BinOp:
+		return p.processBinOp(inst, ctx)
+	case *logical.UnaryOp:
+		return p.processUnaryOp(inst, ctx)
 	}
 	return nil, nil
 }
@@ -353,6 +357,93 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 	return []Node{node}, nil
 }
 
+func (p *Planner) processBinOp(lp *logical.BinOp, ctx *Context) ([]Node, error) {
+	var left, right Expression
+
+	var leftIsLiteral bool
+	if l, ok := lp.Left.(*logical.Literal); ok {
+		left = &LiteralExpr{Literal: l.Literal}
+		leftIsLiteral = true
+	} else {
+		left = newColumnExpr("input_0", types.ColumnTypeGenerated)
+	}
+	if l, ok := lp.Right.(*logical.Literal); ok {
+		right = &LiteralExpr{l.Literal}
+	} else {
+		var name string
+		if leftIsLiteral {
+			name = "input_0"
+		} else {
+			name = "input_1"
+		}
+		right = newColumnExpr(name, types.ColumnTypeGenerated)
+	}
+
+	node := &MathExpression{
+		Expression: &BinaryExpr{
+			Left:  left,
+			Right: right,
+			Op:    lp.Op,
+		},
+	}
+	p.plan.graph.Add(node)
+
+	// if lhs is not a literal, then process children nodes
+	if _, ok := lp.Left.(*logical.Literal); !ok {
+		leftChildren, err := p.process(lp.Left, ctx)
+		if err != nil {
+			return nil, err
+		}
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: leftChildren[0]}); err != nil {
+			return nil, err
+		}
+	}
+
+	// if rhs is not a literal, then process children nodes
+	if _, ok := lp.Right.(*logical.Literal); !ok {
+		rightChildren, err := p.process(lp.Right, ctx)
+		if err != nil {
+			return nil, err
+		}
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: rightChildren[0]}); err != nil {
+			return nil, err
+		}
+	}
+
+	return []Node{node}, nil
+}
+
+func (p *Planner) processUnaryOp(lp *logical.UnaryOp, ctx *Context) ([]Node, error) {
+	var left Expression
+
+	if l, ok := lp.Value.(*logical.Literal); ok {
+		left = &LiteralExpr{Literal: l.Literal}
+	} else {
+		left = newColumnExpr("input_1", types.ColumnTypeGenerated)
+	}
+
+	node := &MathExpression{
+		Expression: &UnaryExpr{
+			Left: left,
+			Op:   lp.Op,
+		},
+	}
+	p.plan.graph.Add(node)
+
+	// if lhs is not a literal, then process children nodes
+	if _, ok := lp.Value.(*logical.Literal); !ok {
+		leftChildren, err := p.process(lp.Value, ctx)
+		if err != nil {
+			return nil, err
+		}
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: leftChildren[0]}); err != nil {
+			return nil, err
+		}
+	}
+
+	return []Node{node}, nil
+}
+
 // Convert [logical.Parse] into one [ParseNode] node.
 // A ParseNode initially has an empty list of RequestedKeys which will be populated during optimization.
 func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) {
@@ -380,6 +471,9 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) 
 func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 	for i, root := range plan.Roots() {
 		optimizations := []*optimization{
+			newOptimization("MathExpressionsMerge", plan).withRules(
+				&mathExpressionsMerge{plan: plan},
+			),
 			newOptimization("PredicatePushdown", plan).withRules(
 				&predicatePushdown{plan: plan},
 			),
