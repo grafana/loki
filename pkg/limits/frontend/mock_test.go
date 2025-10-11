@@ -34,6 +34,11 @@ func (m *mockLimitsClient) ExceedsLimits(_ context.Context, req *proto.ExceedsLi
 	return m.exceedsLimitsResponses, m.err
 }
 
+func (m *mockLimitsClient) UpdateRate(_ context.Context, _ *proto.UpdateRateRequest) ([]*proto.UpdateRateResponse, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
 // mockLimitsProtoClient mocks proto.IngestLimitsClient.
 type mockLimitsProtoClient struct {
 	proto.IngestLimitsClient
