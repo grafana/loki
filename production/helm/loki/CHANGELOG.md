@@ -17,6 +17,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [BREAKING]  The Loki UI has been moved to a Grafana Plugin. Enabling the UI in the helm chart will now only enable the APIs needed by the plugin, and will host them on the querier. The gateway will now forward all UI requests to the queriers.
 - [FEATURE] Use named ports for memcached services targetports. [#18990](https://github.com/grafana/loki/pull/18990)
 - [ENHANCEMENT] Add configurable `startupProbe` to the exporter container in the memcached pods [#19165](https://github.com/grafana/loki/pull/19165)
+- [ENHANCEMENT] Allow scaling querier with keda. [#16873](https://github.com/grafana/loki/pull/16873)
 
 ## 6.42.0
 
@@ -27,7 +28,6 @@ Before upgrading to this version, make sure that the CustomResourceDefinitions (
 - [BUGFIX] Use strings instead of integers for ports in CiliumNetworkPolicies [#19252](https://github.com/grafana/loki/pull/19252)
 - [FEATURE] Add replicas to loki-canary deployment [#190095](https://github.com/grafana/loki/pull/19095)
 - [FEATURE] Allow changing the retentionPolicy for the singleBinary StatefulSet [#19097](https://github.com/grafana/loki/pull/19097)
-- [ENHANCEMENT] Allow scaling querier with keda. [#16873](https://github.com/grafana/loki/pull/16873)
 
 ## 6.41.1
 
