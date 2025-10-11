@@ -3,6 +3,7 @@ package goldfish
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,13 +28,14 @@ const (
 )
 
 // Manager coordinates Goldfish sampling and comparison operations.
-// It handles query sampling decisions, response comparison, and storage of results.
+// It handles query sampling decisions, response comparison, persistence, and storage of results.
 type Manager struct {
-	config  Config
-	sampler *Sampler
-	storage goldfish.Storage
-	logger  log.Logger
-	metrics *metrics
+	config      Config
+	sampler     *Sampler
+	storage     goldfish.Storage
+	resultStore ResultStore
+	logger      log.Logger
+	metrics     *metrics
 }
 
 type metrics struct {
@@ -46,16 +48,17 @@ type metrics struct {
 
 // NewManager creates a new Goldfish manager with the provided configuration.
 // Returns an error if the configuration is invalid.
-func NewManager(config Config, storage goldfish.Storage, logger log.Logger, registerer prometheus.Registerer) (*Manager, error) {
+func NewManager(config Config, storage goldfish.Storage, resultStore ResultStore, logger log.Logger, registerer prometheus.Registerer) (*Manager, error) {
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
 	m := &Manager{
-		config:  config,
-		sampler: NewSampler(config.SamplingConfig),
-		storage: storage,
-		logger:  logger,
+		config:      config,
+		sampler:     NewSampler(config.SamplingConfig),
+		storage:     storage,
+		resultStore: resultStore,
+		logger:      logger,
 		metrics: &metrics{
 			sampledQueries: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
 				Name: "goldfish_sampled_queries_total",
@@ -98,19 +101,21 @@ func (m *Manager) ShouldSample(tenantID string) bool {
 }
 
 // ProcessQueryPair processes a sampled query pair from both cells.
-// It extracts performance statistics, compares responses, and stores the results asynchronously.
+// It extracts performance statistics, compares responses, persists raw payloads when configured, and stores metadata/results.
 func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellAResp, cellBResp *ResponseData) {
 	if !m.config.Enabled {
 		return
 	}
 
 	correlationID := uuid.New().String()
+	tenantID := extractTenant(req)
+	queryType := getQueryType(req.URL.Path)
+
 	level.Info(m.logger).Log("msg", "Processing query pair in Goldfish",
 		"correlation_id", correlationID,
-		"tenant", extractTenant(req),
-		"query_type", getQueryType(req.URL.Path))
+		"tenant", tenantID,
+		"query_type", queryType)
 
-	// Create query sample with performance statistics
 	startTime := parseTime(req.URL.Query().Get("start"))
 	endTime := parseTime(req.URL.Query().Get("end"))
 
@@ -122,13 +127,15 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 		endTime = time.Now()
 	}
 
+	sampledAt := time.Now()
+
 	sample := &goldfish.QuerySample{
 		CorrelationID:      correlationID,
-		TenantID:           extractTenant(req),
+		TenantID:           tenantID,
 		User:               extractUserFromQueryTags(req, m.logger),
 		IsLogsDrilldown:    isLogsDrilldownRequest(req),
 		Query:              req.URL.Query().Get("query"),
-		QueryType:          getQueryType(req.URL.Path),
+		QueryType:          queryType,
 		StartTime:          startTime,
 		EndTime:            endTime,
 		Step:               parseDuration(req.URL.Query().Get("step")),
@@ -146,15 +153,35 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 		CellBSpanID:        cellBResp.SpanID,
 		CellAUsedNewEngine: cellAResp.UsedNewEngine,
 		CellBUsedNewEngine: cellBResp.UsedNewEngine,
-		SampledAt:          time.Now(),
+		SampledAt:          sampledAt,
 	}
 
 	m.metrics.sampledQueries.Inc()
 
+	comparisonStart := time.Now()
+	result := CompareResponses(sample, m.config.PerformanceTolerance)
+	m.metrics.comparisonDuration.Observe(time.Since(comparisonStart).Seconds())
+	m.metrics.comparisonResults.WithLabelValues(string(result.ComparisonStatus)).Inc()
+
+	// Persist raw payloads when configured
+	var persistedA, persistedB *StoredResult
+	if m.resultStore != nil {
+		persistedA, persistedB = m.persistResultPayloads(ctx, sample, cellAResp, cellBResp, result)
+		if persistedA != nil {
+			sample.CellAResultURI = persistedA.URI
+			sample.CellAResultSize = persistedA.Size
+			sample.CellAResultCompression = persistedA.Compression
+		}
+		if persistedB != nil {
+			sample.CellBResultURI = persistedB.URI
+			sample.CellBResultSize = persistedB.Size
+			sample.CellBResultCompression = persistedB.Compression
+		}
+	}
+
 	// Track whether the sample was stored successfully
 	sampleStored := false
 
-	// Store the sample if storage is available
 	if m.storage != nil {
 		if err := m.storage.StoreQuerySample(ctx, sample); err != nil {
 			level.Error(m.logger).Log("msg", "failed to store query sample", "correlation_id", correlationID, "err", err)
@@ -164,14 +191,6 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 			sampleStored = true
 		}
 	}
-
-	// Compare responses using simplified comparator
-	start := time.Now()
-	result := CompareResponses(sample, m.config.PerformanceTolerance)
-
-	m.metrics.comparisonDuration.Observe(time.Since(start).Seconds())
-
-	m.metrics.comparisonResults.WithLabelValues(string(result.ComparisonStatus)).Inc()
 
 	// Log user extraction debug info
 	user := sample.User
@@ -185,7 +204,6 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 		logLevel = level.Warn
 	}
 
-	// Build log fields
 	logFields := []interface{}{
 		"msg", "query comparison completed",
 		"correlation_id", correlationID,
@@ -200,6 +218,13 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 		"cell_b_entries_returned", sample.CellBStats.TotalEntriesReturned,
 	}
 
+	if persistedA != nil {
+		logFields = append(logFields, "cell_a_result_uri", persistedA.URI, "cell_a_result_size", persistedA.Size)
+	}
+	if persistedB != nil {
+		logFields = append(logFields, "cell_b_result_uri", persistedB.URI, "cell_b_result_size", persistedB.Size)
+	}
+
 	// Add performance ratios if available
 	if result.PerformanceMetrics.QueryTimeRatio > 0 {
 		logFields = append(logFields, "query_time_ratio", result.PerformanceMetrics.QueryTimeRatio)
@@ -207,7 +232,6 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 
 	// Add difference summary if there are any
 	if len(result.DifferenceDetails) > 0 {
-		// Count types of differences
 		perfDiffs := 0
 		contentDiffs := 0
 		for key := range result.DifferenceDetails {
@@ -254,13 +278,87 @@ func (m *Manager) ProcessQueryPair(ctx context.Context, req *http.Request, cellA
 	}
 }
 
-// Close closes the manager and its storage connections.
+func (m *Manager) persistResultPayloads(ctx context.Context, sample *goldfish.QuerySample, cellAResp, cellBResp *ResponseData, comparison goldfish.ComparisonResult) (*StoredResult, *StoredResult) {
+	if !m.shouldPersistResults(comparison) {
+		return nil, nil
+	}
+
+	persistSingle := func(cellLabel string, resp *ResponseData, hash string, statusCode int) *StoredResult {
+		if resp == nil {
+			return nil
+		}
+
+		stored, err := m.resultStore.Store(ctx, resp.Body, StoreOptions{
+			CorrelationID: sample.CorrelationID,
+			CellLabel:     cellLabel,
+			BackendName:   resp.BackendName,
+			TenantID:      sample.TenantID,
+			QueryType:     sample.QueryType,
+			Hash:          hash,
+			StatusCode:    statusCode,
+			Timestamp:     sample.SampledAt,
+			ContentType:   "application/json",
+		})
+		if err != nil {
+			level.Error(m.logger).Log("msg", "failed to persist query payload", "correlation_id", sample.CorrelationID, "cell", cellLabel, "err", err)
+			m.metrics.storageOperations.WithLabelValues("store_payload", "error").Inc()
+			return nil
+		}
+
+		m.metrics.storageOperations.WithLabelValues("store_payload", "success").Inc()
+		level.Info(m.logger).Log("msg", "persisted query payload", "correlation_id", sample.CorrelationID, "cell", cellLabel, "uri", stored.URI, "compressed_size", stored.Size)
+		return stored
+	}
+
+	var storedA, storedB *StoredResult
+	if m.resultStore != nil {
+		storedA = persistSingle("cell-a", cellAResp, sample.CellAResponseHash, sample.CellAStatusCode)
+		storedB = persistSingle("cell-b", cellBResp, sample.CellBResponseHash, sample.CellBStatusCode)
+	}
+
+	return storedA, storedB
+}
+
+func (m *Manager) shouldPersistResults(result goldfish.ComparisonResult) bool {
+	if m.resultStore == nil {
+		return false
+	}
+
+	switch m.config.ResultsStorage.Mode {
+	case ResultsPersistenceModeAll:
+		return true
+	case ResultsPersistenceModeMismatchOnly:
+		return result.ComparisonStatus != goldfish.ComparisonStatusMatch
+	default:
+		return false
+	}
+}
+
+// Close closes the manager and its dependent storage connections.
 // Should be called when the manager is no longer needed to properly clean up resources.
 func (m *Manager) Close() error {
-	if m.storage != nil {
-		return m.storage.Close()
+	var errs []error
+
+	if m.resultStore != nil {
+		if err := m.resultStore.Close(context.Background()); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	return nil
+
+	if m.storage != nil {
+		if err := m.storage.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	switch len(errs) {
+	case 0:
+		return nil
+	case 1:
+		return errs[0]
+	default:
+		return errors.Join(errs...)
+	}
 }
 
 // ResponseData contains response data from a backend cell including performance statistics.
@@ -275,6 +373,7 @@ type ResponseData struct {
 	UsedNewEngine bool
 	TraceID       string
 	SpanID        string
+	BackendName   string
 }
 
 // CaptureResponse captures response data for comparison including trace ID and span ID
@@ -300,6 +399,8 @@ func CaptureResponse(resp *http.Response, duration time.Duration, traceID, spanI
 			// Log error but don't fail the capture
 			level.Warn(log.NewNopLogger()).Log("msg", "failed to extract response statistics", "err", err)
 		}
+	} else {
+		size = int64(len(body))
 	}
 
 	return &ResponseData{
