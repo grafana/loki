@@ -79,8 +79,8 @@ storage_config:
       dir: ${PWD}/pkg/logql/bench/data/storage
 
 querier:
-  engine:
-    enable_v2_engine: true
+  engine_v2:
+    enable: true
     batch_size: 8192
 
 dataobj:

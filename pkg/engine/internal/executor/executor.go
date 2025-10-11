@@ -95,6 +95,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return tracePipeline("physical.VectorAggregation", c.executeVectorAggregation(ctx, n, inputs))
 	case *physical.ParseNode:
 		return tracePipeline("physical.ParseNode", c.executeParse(ctx, n, inputs))
+	case *physical.ColumnCompat:
+		return tracePipeline("physical.ColumnCompat", c.executeColumnCompat(ctx, n, inputs))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
@@ -425,4 +427,16 @@ func (c *Context) executeParse(ctx context.Context, parse *physical.ParseNode, i
 	allocator := memory.DefaultAllocator
 
 	return NewParsePipeline(parse, inputs[0], allocator)
+}
+
+func (c *Context) executeColumnCompat(ctx context.Context, compat *physical.ColumnCompat, inputs []Pipeline) Pipeline {
+	if len(inputs) == 0 {
+		return emptyPipeline()
+	}
+
+	if len(inputs) > 1 {
+		return errorPipeline(ctx, fmt.Errorf("columncompat expects exactly one input, got %d", len(inputs)))
+	}
+
+	return newColumnCompatibilityPipeline(compat, inputs[0])
 }

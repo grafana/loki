@@ -231,7 +231,7 @@ func (r *projectionPushdown) applyProjectionPushdown(
 		return r.handleParseNode(node, projections, applyIfNotEmpty)
 	case *RangeAggregation:
 		return r.handleRangeAggregation(node, projections)
-	case *Filter, *Merge, *SortMerge:
+	case *Filter, *Merge, *SortMerge, *ColumnCompat:
 		// Push to next direct child that cares about projections
 		return r.pushToChildren(node, projections, applyIfNotEmpty)
 	}
