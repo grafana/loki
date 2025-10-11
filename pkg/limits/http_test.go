@@ -17,7 +17,7 @@ import (
 
 func TestIngestLimits_ServeHTTP(t *testing.T) {
 	clock := quartz.NewMock(t)
-	store, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, prometheus.NewRegistry())
+	store, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, prometheus.NewRegistry())
 	require.NoError(t, err)
 	store.clock = clock
 	store.setForTests("tenant1", streamUsage{

@@ -861,7 +861,7 @@ func TestStreamShard(t *testing.T) {
 				shardTracker:     NewShardTracker(),
 			}
 
-			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake")
+			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake", "")
 			require.Len(t, derivedStreams, tc.wantDerivedStreamSize)
 
 			for _, s := range derivedStreams {
@@ -906,7 +906,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			shardTracker:     NewShardTracker(),
 		}
 
-		derivedStreams := d.shardStream(baseStream, streamRate, "fake")
+		derivedStreams := d.shardStream(baseStream, streamRate, "fake", "")
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
@@ -917,7 +917,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i))
 		}
 
-		derivedStreams = d.shardStream(baseStream, streamRate, "fake")
+		derivedStreams = d.shardStream(baseStream, streamRate, "fake", "")
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
@@ -1245,7 +1245,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
 		}
 	})
 
@@ -1255,7 +1255,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
 		}
 	})
 
@@ -1265,7 +1265,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
 		}
 	})
 
@@ -1275,7 +1275,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
 		}
 	})
 }

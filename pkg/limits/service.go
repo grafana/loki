@@ -82,7 +82,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	if err != nil {
 		return nil, fmt.Errorf("failed to create partition manager: %w", err)
 	}
-	s.usage, err = newUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, reg)
+	s.usage, err = newUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, limits, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create usage store: %w", err)
 	}
@@ -143,6 +143,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 		s.kafkaReader,
 		s.partitionManager,
 		s.usage,
+		limits,
 		newOffsetReadinessCheck(s.partitionManager),
 		cfg.LifecyclerConfig.Zone,
 		logger,
