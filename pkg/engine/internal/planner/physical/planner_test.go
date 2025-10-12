@@ -474,6 +474,7 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		require.NoError(t, err)
 
 		expectedPlan := &Plan{}
+		compat := expectedPlan.graph.Add(&ColumnCompat{id: "compat", Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
 		merge := expectedPlan.graph.Add(&Merge{id: "merge"})
 		sortMerge1 := expectedPlan.graph.Add(&SortMerge{id: "sortmerge1", Order: ASC, Column: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}})
 		sortMerge2 := expectedPlan.graph.Add(&SortMerge{id: "sortmerge2", Order: ASC, Column: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}})
@@ -482,6 +483,7 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		scan3 := expectedPlan.graph.Add(&DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, Direction: ASC})
 		scan4 := expectedPlan.graph.Add(&DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, Direction: ASC})
 
+		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: compat, Child: merge})
 		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: sortMerge1})
 		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: sortMerge2})
 
@@ -499,7 +501,7 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		actual = pat.ReplaceAllString(actual, "")
 		expected = pat.ReplaceAllString(expected, "")
 
-		require.Equal(t, actual, expected)
+		require.Equal(t, expected, actual)
 	})
 
 	t.Run("descending", func(t *testing.T) {
@@ -508,6 +510,7 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		require.NoError(t, err)
 
 		expectedPlan := &Plan{}
+		compat := expectedPlan.graph.Add(&ColumnCompat{id: "compat", Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
 		merge := expectedPlan.graph.Add(&Merge{id: "merge"})
 		sortMerge1 := expectedPlan.graph.Add(&SortMerge{id: "sortmerge1", Order: DESC, Column: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}})
 		sortMerge2 := expectedPlan.graph.Add(&SortMerge{id: "sortmerge2", Order: DESC, Column: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}})
@@ -516,6 +519,7 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		scan3 := expectedPlan.graph.Add(&DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, Direction: DESC})
 		scan4 := expectedPlan.graph.Add(&DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, Direction: DESC})
 
+		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: compat, Child: merge})
 		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: sortMerge1})
 		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: sortMerge2})
 
@@ -532,7 +536,7 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		actual = pat.ReplaceAllString(actual, "")
 		expected = pat.ReplaceAllString(expected, "")
 
-		require.Equal(t, actual, expected)
+		require.Equal(t, expected, actual)
 	})
 }
 

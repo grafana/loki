@@ -49,6 +49,3 @@ func (n *ParseNode) Type() NodeType {
 func (n *ParseNode) Accept(v Visitor) error {
 	return v.VisitParse(n)
 }
-
-// isNode marks ParseNode as a Node
-func (n *ParseNode) isNode() {}
