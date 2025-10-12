@@ -875,6 +875,11 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.sample-interval
   [pattern_sample_interval: <duration> | default = 10s]
 
+  # The threshold for filtering patterns by volume. Only patterns representing
+  # the top X% of log volume will be persisted (0-1).
+  # CLI flag: -pattern-ingester.volume-threshold
+  [volume_threshold: <float> | default = 0.99]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
@@ -1523,7 +1528,7 @@ ingest_limits_frontend_client:
 # fields are returned. Use YAML field names (e.g., 'retention_period',
 # 'max_query_series').
 # CLI flag: -limits.tenant-limits-allow-publish
-[tenant_limits_allow_publish: <list of strings> | default = [discover_log_levels discover_service_name log_level_fields max_line_size_truncate max_query_length max_query_lookback max_query_range max_query_series metric_aggregation_enabled otlp_config pattern_persistence_enabled query_timeout retention_period retention_stream]]
+[tenant_limits_allow_publish: <list of strings> | default = [discover_log_levels discover_service_name log_level_fields max_entries_limit_per_query max_line_size_truncate max_query_bytes_read max_query_length max_query_lookback max_query_range max_query_series metric_aggregation_enabled otlp_config pattern_persistence_enabled query_timeout retention_period retention_stream volume_enabled volume_max_series]]
 
 # Common configuration to be shared between multiple modules. If a more specific
 # configuration is given in other sections, the related configuration within
@@ -4839,39 +4844,40 @@ engine:
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
 
+engine_v2:
   # Experimental: Enable next generation query engine for supported queries.
-  # CLI flag: -querier.engine.enable-v2-engine
-  [enable_v2_engine: <boolean> | default = false]
+  # CLI flag: -querier.engine-v2.enable
+  [enable: <boolean> | default = false]
 
   # Experimental: Batch size of the next generation query engine.
-  # CLI flag: -querier.engine.batch-size
+  # CLI flag: -querier.engine-v2.batch-size
   [batch_size: <int> | default = 100]
 
   # Experimental: The number of inputs that are prefetched simultaneously by any
   # Merge node. A value of 0 means that only the currently processed input is
   # prefetched, 1 means that only the next input is prefetched, and so on. A
   # negative value means that all inputs are be prefetched in parallel.
-  # CLI flag: -querier.engine.merge-prefetch-count
+  # CLI flag: -querier.engine-v2.merge-prefetch-count
   [merge_prefetch_count: <int> | default = 0]
 
   # Configures how to read byte ranges from object storage when using the V2
   # engine.
   range_reads:
     # Experimental: maximum number of parallel reads
-    # CLI flag: -querier.engine.range-reads.max-parallelism
+    # CLI flag: -querier.engine-v2.range-reads.max-parallelism
     [max_parallelism: <int> | default = 10]
 
     # Experimental: maximum distance (in bytes) between ranges that causes them
     # to be coalesced into a single range
-    # CLI flag: -querier.engine.range-reads.coalesce-size
+    # CLI flag: -querier.engine-v2.range-reads.coalesce-size
     [coalesce_size: <int> | default = 1048576]
 
     # Experimental: maximum size of a byte range
-    # CLI flag: -querier.engine.range-reads.max-range-size
+    # CLI flag: -querier.engine-v2.range-reads.max-range-size
     [max_range_size: <int> | default = 8388608]
 
     # Experimental: minimum size of a byte range
-    # CLI flag: -querier.engine.range-reads.min-range-size
+    # CLI flag: -querier.engine-v2.range-reads.min-range-size
     [min_range_size: <int> | default = 1048576]
 
 # The maximum number of queries that can be simultaneously processed by the
@@ -4901,6 +4907,15 @@ engine:
 # of the normal ingesters.
 # CLI flag: -querier.query-partition-ingesters
 [query_partition_ingesters: <boolean> | default = false]
+
+# Amount of time until data objects are available.
+# CLI flag: -querier.dataobj-storage-lag
+[dataobj_storage_lag: <duration> | default = 1h]
+
+# Initial date when data objects became available. Format YYYY-MM-DD. If not
+# set, assume data objects are always available no matter how far back.
+# CLI flag: -querier.dataobj-storage-start
+[dataobj_storage_start: <string> | default = ""]
 ```
 
 ### query_range

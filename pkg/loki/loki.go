@@ -174,7 +174,9 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"discover_log_levels",
 		"discover_service_name",
 		"log_level_fields",
+		"max_entries_limit_per_query",
 		"max_line_size_truncate",
+		"max_query_bytes_read",
 		"max_query_length",
 		"max_query_lookback",
 		"max_query_range",
@@ -185,6 +187,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 		"query_timeout",
 		"retention_period",
 		"retention_stream",
+		"volume_enabled",
+		"volume_max_series",
 	}
 	f.Var(
 		(*flagext.StringSlice)(&c.TenantLimitsAllowPublish),
@@ -516,7 +520,8 @@ func (t *Loki) bindConfigEndpoint(opts RunOpts) {
 		configEndpointHandlerFn = opts.CustomConfigEndpointHandlerFn
 	}
 	t.Server.HTTP.Path("/config").Methods("GET").HandlerFunc(configEndpointHandlerFn)
-	t.Server.HTTP.Path("/config/tenant/v1/limits").Methods("GET").HandlerFunc(t.tenantLimitsHandler())
+	t.Server.HTTP.Path("/config/tenant/v1/limits").Methods("GET").HandlerFunc(t.tenantLimitsHandler(false))
+	t.Server.HTTP.Path("/loki/api/v1/drilldown-limits").Methods("GET").HandlerFunc(t.tenantLimitsHandler(true))
 }
 
 // ListTargets prints a list of available user visible targets and their

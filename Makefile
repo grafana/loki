@@ -26,9 +26,9 @@ DOCKER_INTERACTIVE_FLAGS := --tty --interactive
 endif
 
 # Ensure you run `make release-workflows` after changing this
-GO_VERSION         := 1.24.6
+GO_VERSION         := 1.24.8
 # Ensure you run `make IMAGE_TAG=<updated-tag> build-image-push` after changing this
-BUILD_IMAGE_TAG    := 0.34.6
+BUILD_IMAGE_TAG    := 0.34.7
 
 IMAGE_TAG          ?= $(shell ./tools/image-tag)
 GIT_REVISION       := $(shell git rev-parse --short HEAD)
@@ -389,10 +389,10 @@ publish: packages
 # Lint #
 ########
 ifeq ($(UNAME_S),Linux)
-LINT_FLAGS="--timeout=15m --build-tags=linux,promtail_journal_enabled"
-GOFLAGS="-tags=linux,promtail_journal_enabled"
+LINT_FLAGS=--timeout=15m --build-tags=linux,promtail_journal_enabled
+GOFLAGS=-tags=linux,promtail_journal_enabled
 else
-LINT_FLAGS="--timeout=15m"
+LINT_FLAGS=--timeout=15m
 GOFLAGS=""
 endif
 lint: ## run linters
