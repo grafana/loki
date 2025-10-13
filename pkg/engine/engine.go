@@ -93,7 +93,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 func (cfg *Config) ValidQueryRange() (time.Time, time.Time) {
-	return time.Time(cfg.DataobjAvailableFrom), time.Now().Add(-cfg.DataobjGenerationLagDuration)
+	return time.Time(cfg.DataobjAvailableFrom).UTC(), time.Now().UTC().Add(-cfg.DataobjGenerationLagDuration)
 }
 
 // QueryEngine combines logical planning, physical planning, and execution to evaluate LogQL queries.
