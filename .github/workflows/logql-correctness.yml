@@ -81,6 +81,8 @@ jobs:
 
       - name: Run tests
         shell: bash # Use bash shell to propagate pipe failures
+        env:
+           GOMEMLIMIT: 28GiB # 4GiB left as headroom on 32GiB runner
         run: |
           go test \
             -v -slow-tests \
