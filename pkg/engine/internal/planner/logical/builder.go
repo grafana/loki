@@ -98,6 +98,18 @@ func (b *Builder) VectorAggregation(
 	}
 }
 
+// Limit applies a [Limit] operation to the Builder.
+func (b *Builder) Compat(logqlCompatibility bool) *Builder {
+	if logqlCompatibility {
+		return &Builder{
+			val: &LogQLCompat{
+				Value: b.val,
+			},
+		}
+	}
+	return b
+}
+
 // Schema returns the schema of the data that will be produced by this Builder.
 func (b *Builder) Schema() *schema.Schema {
 	return b.val.Schema()

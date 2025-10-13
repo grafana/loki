@@ -37,6 +37,9 @@ func BuildPlan(params logql.Params) (*Plan, error) {
 		return nil, fmt.Errorf("failed to convert AST into logical plan: %w", err)
 	}
 
+	// TODO(chaudum): Make compatibility mode configurable
+	builder = builder.Compat(true)
+
 	return builder.ToPlan()
 }
 
