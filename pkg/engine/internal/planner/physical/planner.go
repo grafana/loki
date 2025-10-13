@@ -371,10 +371,21 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 // Convert [logical.Parse] into one [ParseNode] node.
 // A ParseNode initially has an empty list of RequestedKeys which will be populated during optimization.
 func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) {
-	node := &ParseNode{
+	compat := &ColumnCompat{
+		id:          "ParsedOverLabel",
+		Source:      types.ColumnTypeParsed,
+		Destination: types.ColumnTypeParsed,
+		Collision:   types.ColumnTypeLabel,
+	}
+	p.plan.graph.Add(compat)
+
+	parse := &ParseNode{
 		Kind: convertParserKind(lp.Kind),
 	}
-	p.plan.graph.Add(node)
+	p.plan.graph.Add(parse)
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: compat, Child: parse}); err != nil {
+		return nil, err
+	}
 
 	children, err := p.process(lp.Table, ctx)
 	if err != nil {
@@ -382,12 +393,12 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) 
 	}
 
 	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: parse, Child: children[i]}); err != nil {
 			return nil, err
 		}
 	}
 
-	return []Node{node}, nil
+	return []Node{compat}, nil
 }
 
 func (p *Planner) wrapWithCompatibility(node Node, compat *ColumnCompat) (Node, error) {
