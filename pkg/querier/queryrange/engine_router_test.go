@@ -279,13 +279,13 @@ func Test_engineRouter_Do(t *testing.T) {
 	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		return buildReponse(r, "old"), nil
 	})
-	v2EngineHandler = queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	v2EngineHandler := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		return buildReponse(r, "new"), nil
 	})
 
 	now := time.Now().Truncate(time.Second)
 	router := newEngineRouterMiddleware(
-		now.Add(-24*time.Hour), now.Add(-time.Hour),
+		now.Add(-24*time.Hour), now.Add(-time.Hour), v2EngineHandler,
 		[]queryrangebase.Middleware{newEntrySuffixTestMiddleware(" [v1-chain-processed]")}, DefaultCodec, false, log.NewNopLogger(),
 	).Wrap(next)
 

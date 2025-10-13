@@ -15,9 +15,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
 
-// temporarily added for testing
-var v2EngineHandler queryrangebase.Handler
-
 // engineReqResp represents a request with its result channel
 type engineReqResp struct {
 	lokiResult
@@ -29,9 +26,10 @@ type engineRouter struct {
 	v2Start, v2End time.Time // v2 engine time range
 	forMetricQuery bool
 
-	next    queryrangebase.Handler
-	merger  queryrangebase.Merger
-	v1Chain []queryrangebase.Middleware
+	v1Next queryrangebase.Handler
+	v2Next queryrangebase.Handler
+
+	merger queryrangebase.Merger
 
 	logger log.Logger
 }
@@ -40,17 +38,22 @@ type engineRouter struct {
 // to v2 engine if the query is supported by it.
 func newEngineRouterMiddleware(
 	v2Start, v2End time.Time,
+	v2EngineHandler queryrangebase.Handler,
 	v1Chain []queryrangebase.Middleware,
 	merger queryrangebase.Merger,
 	metricQuery bool,
 	logger log.Logger,
 ) queryrangebase.Middleware {
+	if v2EngineHandler == nil {
+		panic("v2EngineHandler cannot be nil")
+	}
+
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &engineRouter{
 			v2Start:        v2Start,
 			v2End:          v2End,
-			v1Chain:        v1Chain,
-			next:           next,
+			v1Next:         queryrangebase.MergeMiddlewares(v1Chain...).Wrap(next),
+			v2Next:         v2EngineHandler,
 			merger:         merger,
 			logger:         logger,
 			forMetricQuery: metricQuery,
@@ -62,7 +65,7 @@ func (e *engineRouter) Do(ctx context.Context, r queryrangebase.Request) (queryr
 	// if query is entirely before or after v2 engine range, process using next handler.
 	// ignore any boundary overlap, splitting requests that fall on bounary would result in tiny requests.
 	if !r.GetEnd().After(e.v2Start) || !r.GetStart().Before(e.v2End) {
-		return queryrangebase.MergeMiddlewares(e.v1Chain...).Wrap(e.next).Do(ctx, r)
+		return e.v1Next.Do(ctx, r)
 	}
 
 	params, err := ParamsFromRequest(r)
@@ -72,7 +75,7 @@ func (e *engineRouter) Do(ctx context.Context, r queryrangebase.Request) (queryr
 
 	// Unsupported queries should be entirely executed by chunks.
 	if !engine.IsQuerySupported(params) {
-		return queryrangebase.MergeMiddlewares(e.v1Chain...).Wrap(e.next).Do(ctx, r)
+		return e.v1Next.Do(ctx, r)
 	}
 
 	inputs := e.splitOverlapping(r, e.v2Start, e.v2End)
@@ -177,14 +180,9 @@ func (e *engineRouter) splitOverlapping(r queryrangebase.Request, v2Start, v2End
 func (e *engineRouter) handleReq(ctx context.Context, r *engineReqResp) {
 	var resp packedResp
 	if r.isV2Engine {
-		if v2EngineHandler == nil {
-			// TODO: Add handler for v2 engine.
-			panic("V2 engine handler not implemented")
-		}
-
-		resp.resp, resp.err = v2EngineHandler.Do(ctx, r.req)
+		resp.resp, resp.err = e.v2Next.Do(ctx, r.req)
 	} else {
-		resp.resp, resp.err = queryrangebase.MergeMiddlewares(e.v1Chain...).Wrap(e.next).Do(ctx, r.req)
+		resp.resp, resp.err = e.v1Next.Do(ctx, r.req)
 	}
 
 	select {
