@@ -128,7 +128,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 					} else if collisionCol.IsNull(i) || !collisionCol.IsValid(i) {
 						v := col.(*array.String).Value(i)
 						sourceFieldBuilder.Append(v)         // append value to original column
-						destinationFieldBuilder.AppendNull() // append NULL to _extraced column
+						destinationFieldBuilder.AppendNull() // append NULL to _extracted column
 					} else {
 						sourceFieldBuilder.AppendNull() // append NULL to original column
 						v := col.(*array.String).Value(i)
