@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.5.7](https://github.com/grafana/loki/compare/v3.5.6...v3.5.7) (2025-10-13)
+
+
+### Bug Fixes
+
+* **build:** rpm signature config ([#19476](https://github.com/grafana/loki/issues/19476)) ([#19483](https://github.com/grafana/loki/issues/19483)) ([d5b382b](https://github.com/grafana/loki/commit/d5b382b90738505d8bf7217ff3a1a8c90fc09b7e))
+* **build:** update loki build image ([#19473](https://github.com/grafana/loki/issues/19473)) ([#19474](https://github.com/grafana/loki/issues/19474)) ([c70476a](https://github.com/grafana/loki/commit/c70476ab0fec3bef906f86ac72c2256bb94f9624))
+
 ## [3.5.6](https://github.com/grafana/loki/compare/v3.5.5...v3.5.6) (2025-10-10)
 
 
