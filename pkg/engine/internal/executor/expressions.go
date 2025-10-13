@@ -9,6 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -25,71 +26,79 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		}, nil
 
 	case *physical.ColumnExpr:
-		fieldIndices := input.Schema().FieldIndices(expr.Ref.Column)
-		if len(fieldIndices) > 0 {
-			// For non-ambiguous look-ups, look for an exact match
-			if expr.Ref.Type != types.ColumnTypeAmbiguous {
-				for _, idx := range fieldIndices {
-					field := input.Schema().Field(idx)
-					dt, ok := field.Metadata.GetValue(types.MetadataKeyColumnDataType)
-					if !ok {
-						continue
-					}
+		colIdent := semconv.NewIdentifier(expr.Ref.Column, expr.Ref.Type, types.Loki.String)
 
-					ct, ok := field.Metadata.GetValue(types.MetadataKeyColumnType)
-					if !ok || ct != expr.Ref.Type.String() {
-						continue
-					}
-
+		// For non-ambiguous columns, we can look up the column in the schema by its fully qualified name.
+		if expr.Ref.Type != types.ColumnTypeAmbiguous {
+			for idx, field := range input.Schema().Fields() {
+				ident, err := semconv.ParseFQN(field.Name)
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse column %s: %w", field.Name, err)
+				}
+				if ident.ShortName() == colIdent.ShortName() && ident.ColumnType() == colIdent.ColumnType() {
+					arr := input.Column(idx)
+					arr.Retain()
 					return &Array{
-						array: input.Column(idx),
-						dt:    types.MustFromString(dt),
-						ct:    types.ColumnTypeFromString(ct),
+						array: arr,
+						dt:    ident.DataType(),
+						ct:    ident.ColumnType(),
 						rows:  input.NumRows(),
 					}, nil
 				}
-			} else {
-				// For ambiguous columns, collect all matching columns and order by precedence
-				var vecs []ColumnVector
-				for _, idx := range fieldIndices {
-					field := input.Schema().Field(idx)
-					dt, ok := field.Metadata.GetValue(types.MetadataKeyColumnDataType)
-					if !ok {
-						continue
-					}
+			}
+		}
 
-					ct, ok := field.Metadata.GetValue(types.MetadataKeyColumnType)
-					if !ok {
-						continue
-					}
+		// For ambiguous columns, we need to filter on the name and type and combine matching columns into a CoalesceVector.
+		if expr.Ref.Type == types.ColumnTypeAmbiguous {
+			var fieldIndices []int
+			var fieldIdents []*semconv.Identifier
 
-					// TODO(ashwanth): Support other data types in CoalesceVector.
-					// For now, ensure all vectors are strings to avoid type conflicts.
-					if types.Loki.String.String() != dt {
-						return nil, fmt.Errorf("column %s has datatype %s, but expression expects string", expr.Ref.Column, dt)
-					}
+			for idx, field := range input.Schema().Fields() {
+				ident, err := semconv.ParseFQN(field.Name)
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse column %s: %w", field.Name, err)
+				}
+				if ident.ShortName() == colIdent.ShortName() {
+					fieldIndices = append(fieldIndices, idx)
+					fieldIdents = append(fieldIdents, ident)
+				}
+			}
 
-					vecs = append(vecs, &Array{
-						array: input.Column(idx),
-						dt:    types.MustFromString(dt),
-						ct:    types.ColumnTypeFromString(ct),
-						rows:  input.NumRows(),
-					})
+			// Collect all matching columns and order by precedence
+			var vecs []ColumnVector
+			for i := range fieldIndices {
+				idx := fieldIndices[i]
+				ident := fieldIdents[i]
+
+				// TODO(ashwanth): Support other data types in CoalesceVector.
+				// For now, ensure all vectors are strings to avoid type conflicts.
+				if ident.DataType() != types.Loki.String {
+					return nil, fmt.Errorf("column %s has datatype %s, but expression expects %s", ident.ShortName(), ident.DataType(), types.Loki.String)
 				}
 
-				if len(vecs) > 1 {
-					// Multiple matches - sort by precedence and create CoalesceVector
-					slices.SortFunc(vecs, func(a, b ColumnVector) int {
-						return types.ColumnTypePrecedence(a.ColumnType()) - types.ColumnTypePrecedence(b.ColumnType())
-					})
+				arr := input.Column(idx)
+				arr.Retain()
+				vecs = append(vecs, &Array{
+					array: arr,
+					dt:    ident.DataType(),
+					ct:    ident.ColumnType(),
+					rows:  input.NumRows(),
+				})
+			}
 
-					return &CoalesceVector{
-						vectors: vecs,
-						rows:    input.NumRows(),
-					}, nil
-				} else if len(vecs) == 1 {
-					return vecs[0], nil
-				}
+			if len(vecs) == 1 {
+				return vecs[0], nil
+			}
+
+			if len(vecs) > 1 {
+				// Multiple matches - sort by precedence and create CoalesceVector
+				slices.SortFunc(vecs, func(a, b ColumnVector) int {
+					return types.ColumnTypePrecedence(a.ColumnType()) - types.ColumnTypePrecedence(b.ColumnType())
+				})
+				return &CoalesceVector{
+					vectors: vecs,
+					rows:    input.NumRows(),
+				}, nil
 			}
 
 		}
@@ -107,6 +116,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		if err != nil {
 			return nil, err
 		}
+		defer lhr.Release()
 
 		fn, err := unaryFunctions.GetForSignature(expr.Op, lhr.Type().ArrowType())
 		if err != nil {
@@ -119,10 +129,13 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		if err != nil {
 			return nil, err
 		}
+		defer lhs.Release()
+
 		rhs, err := e.eval(expr.Right, input)
 		if err != nil {
 			return nil, err
 		}
+		defer rhs.Release()
 
 		// At the moment we only support functions that accept the same input types.
 		// TODO(chaudum): Compare Loki type, not Arrow type
@@ -162,6 +175,8 @@ type ColumnVector interface {
 	ColumnType() types.ColumnType
 	// Len returns the length of the vector
 	Len() int64
+	// Release decreases the reference count by 1 on underlying Arrow array
+	Release()
 }
 
 // Scalar represents a single value repeated any number of times.
@@ -223,6 +238,10 @@ func (v *Scalar) ColumnType() types.ColumnType {
 	return v.ct
 }
 
+// Release implements ColumnVector.
+func (v *Scalar) Release() {
+}
+
 // Len implements ColumnVector.
 func (v *Scalar) Len() int64 {
 	return v.rows
@@ -278,6 +297,11 @@ func (a *Array) ColumnType() types.ColumnType {
 // Len implements ColumnVector.
 func (a *Array) Len() int64 {
 	return int64(a.array.Len())
+}
+
+// Release implements ColumnVector.
+func (a *Array) Release() {
+	a.array.Release()
 }
 
 // CoalesceVector represents multiple columns with the same name but different [types.ColumnType]
@@ -339,4 +363,8 @@ func (m *CoalesceVector) ColumnType() types.ColumnType {
 // Len implements ColumnVector.
 func (m *CoalesceVector) Len() int64 {
 	return m.rows
+}
+
+// Release implements ColumnVector.
+func (m *CoalesceVector) Release() {
 }

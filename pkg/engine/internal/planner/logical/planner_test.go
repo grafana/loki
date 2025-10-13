@@ -222,12 +222,15 @@ func TestCanExecuteQuery(t *testing.T) {
 			expected:  true,
 		},
 		{
+			statement: `sum without (level) (count_over_time({env="prod"}[1m]))`,
+		},
+		{
 			// both vector and range aggregation are required
 			statement: `count_over_time({env="prod"}[1m])`,
 		},
 		{
-			// group by labels are required
 			statement: `sum(count_over_time({env="prod"}[1m]))`,
+			expected:  true,
 		},
 		{
 			// rate is not supported
@@ -250,8 +253,8 @@ func TestCanExecuteQuery(t *testing.T) {
 			statement: `sum_over_time({env="prod"} | unwrap size [1m])`,
 		},
 		{
-			// group by labels are required
 			statement: `sum(sum_over_time({env="prod"} | unwrap size [1m]))`,
+			expected:  true,
 		},
 		{
 			// max is not supported

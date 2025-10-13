@@ -15,12 +15,13 @@ const (
 var (
 	ColumnIdentMessage      = NewIdentifier("message", types.ColumnTypeBuiltin, types.Loki.String)
 	ColumnIdentTimestamp    = NewIdentifier("timestamp", types.ColumnTypeBuiltin, types.Loki.Timestamp)
-	ColumnIdentValue        = NewIdentifier("value", types.ColumnTypeGenerated, types.Loki.Integer)
+	ColumnIdentValue        = NewIdentifier("value", types.ColumnTypeGenerated, types.Loki.Float)
 	ColumnIdentError        = NewIdentifier("__error__", types.ColumnTypeGenerated, types.Loki.String)
 	ColumnIdentErrorDetails = NewIdentifier("__error_details__", types.ColumnTypeGenerated, types.Loki.String)
 )
 
 // NewIdentifier creates a new column identifier from given name, column type, and data type.
+// The semantic type of an identifier is derived from its column type.
 func NewIdentifier(name string, ct types.ColumnType, dt types.DataType) *Identifier {
 	return &Identifier{
 		columnName: name,
@@ -36,33 +37,61 @@ type Identifier struct {
 	columnName string
 	columnType types.ColumnType
 	dataType   types.DataType
+
+	// fqn is the cached fully qualified name to avoid allocations when calling FQN() multiple times
+	fqn string
 }
 
+// DataType returns the Loki data type of the identifier.
 func (i *Identifier) DataType() types.DataType {
 	return i.dataType
 }
 
+// ColumnType returns the column type of the identifier.
 func (i *Identifier) ColumnType() types.ColumnType {
 	return i.columnType
 }
 
-func (i *Identifier) Name() string {
+// SemType returns the semantic type of the identifier.
+func (i *Identifier) SemType() SemanticType {
+	return SemTypeForColumnType(i.columnType)
+}
+
+// SemName returns the semantic name of the column identifier, defined as
+// [ORIGIN].[NAME] in case of attributes
+// [ORIGIN]:[NAME] in case of builtins
+func (i *Identifier) SemName() string {
+	semTy := SemTypeForColumnType(i.columnType)
+	switch semTy.Type {
+	case Attribute:
+		return fmt.Sprintf("%s.%s", semTy.Origin, i.columnName)
+	case Builtin:
+		return fmt.Sprintf("%s:%s", semTy.Origin, i.columnName)
+	default:
+		return invalid
+	}
+}
+
+// ShortName returns the non-unique name part of the column identifier.
+func (i *Identifier) ShortName() string {
 	return i.columnName
 }
 
-func (i *Identifier) Scope() Scope {
-	return ScopeForColumnType(i.columnType)
-}
-
+// String returns the string representation of the column.
+// This must not be used as name for [arrow.Field].
 func (i *Identifier) String() string {
-	return fmt.Sprintf("%s.%s.%s", i.dataType, i.columnType, i.columnName)
+	return fmt.Sprintf("%s[%s]", i.SemName(), i.columnType)
 }
 
 // FQN returns the fully qualified name of the identifier.
 func (i *Identifier) FQN() string {
-	return i.String()
+	if i.fqn == "" {
+		i.fqn = fmt.Sprintf("%s.%s.%s", i.dataType, i.columnType, i.columnName)
+	}
+	return i.fqn
 }
 
+// Equal checks equality of of the identifier against a second identifier.
 func (i *Identifier) Equal(other *Identifier) bool {
 	if i == nil || other == nil {
 		return false
@@ -110,6 +139,7 @@ func ParseFQN(fqn string) (*Identifier, error) {
 		columnName: columnName,
 		columnType: columnType,
 		dataType:   dataType,
+		fqn:        fqn,
 	}, nil
 }
 
@@ -123,16 +153,19 @@ func MustParseFQN(fqn string) *Identifier {
 	return ident
 }
 
-type scopeOrigin string
-type scopeType string
+// do not export this type, because we don't want to allow creating new instances outside of this package
+type semOrigin string
 
-// Scope describes the origin and type of an identifier.
-type Scope struct {
-	Origin scopeOrigin
-	Type   scopeType
+// do not export this type, because we don't want to allow creating new instances outside of this package
+type semType string
+
+// SemanticType describes the origin and type of an identifier.
+type SemanticType struct {
+	Origin semOrigin
+	Type   semType
 }
 
-func (s Scope) String() string {
+func (s SemanticType) String() string {
 	if s.Origin == InvalidOrigin || s.Type == InvalidType {
 		return invalid
 	}
@@ -140,34 +173,34 @@ func (s Scope) String() string {
 }
 
 const (
-	Resource  = scopeOrigin("resource")
-	Record    = scopeOrigin("record")
-	Generated = scopeOrigin("generated")
-	Unscoped  = scopeOrigin("unscoped")
+	Resource  = semOrigin("resource")
+	Record    = semOrigin("record")
+	Generated = semOrigin("generated")
+	Unscoped  = semOrigin("unscoped")
 
-	Attribute = scopeType("attr")
-	Builtin   = scopeType("builtin")
+	Attribute = semType("attr")
+	Builtin   = semType("builtin")
 
-	InvalidOrigin = scopeOrigin("")
-	InvalidType   = scopeType("")
+	InvalidOrigin = semOrigin("")
+	InvalidType   = semType("")
 )
 
-// ScopeForColumnType converts a given [types.ColumnType] into a [Scope].
-func ScopeForColumnType(value types.ColumnType) Scope {
+// SemTypeForColumnType converts a given [types.ColumnType] into a [SemanticType].
+func SemTypeForColumnType(value types.ColumnType) SemanticType {
 	switch value {
 	case types.ColumnTypeLabel:
-		return Scope{Resource, Attribute}
+		return SemanticType{Resource, Attribute}
 	case types.ColumnTypeBuiltin:
-		return Scope{Record, Builtin}
+		return SemanticType{Record, Builtin}
 	case types.ColumnTypeMetadata:
-		return Scope{Record, Attribute}
+		return SemanticType{Record, Attribute}
 	case types.ColumnTypeParsed:
-		return Scope{Generated, Attribute}
+		return SemanticType{Generated, Attribute}
 	case types.ColumnTypeGenerated:
-		return Scope{Generated, Builtin}
+		return SemanticType{Generated, Builtin}
 	case types.ColumnTypeAmbiguous:
-		return Scope{Unscoped, Attribute}
+		return SemanticType{Unscoped, Attribute}
 	default:
-		return Scope{}
+		return SemanticType{}
 	}
 }

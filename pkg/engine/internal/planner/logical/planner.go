@@ -224,8 +224,8 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 			return false // do not traverse log range query
 
 		case *syntax.VectorAggregationExpr:
-			// grouping by at least one label is required.
-			if e.Grouping == nil || len(e.Grouping.Groups) == 0 || e.Grouping.Without {
+			// `without()` grouping is not supported.
+			if e.Grouping != nil && e.Grouping.Without {
 				err = errUnimplemented
 				return false
 			}
