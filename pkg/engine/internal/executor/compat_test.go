@@ -326,7 +326,7 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 			}, nil),
 			expectedRows: []arrowtest.Rows{
 				{
-					{"utf8.label.status": nil, "utf8.metadata.status": nil, "utf8.metadata.status_extracted": nil},        // null collision -> null extraction
+					{"utf8.label.status": nil, "utf8.metadata.status": "200", "utf8.metadata.status_extracted": nil},      // null collision -> null extraction
 					{"utf8.label.status": "active", "utf8.metadata.status": nil, "utf8.metadata.status_extracted": nil},   // null source -> null extraction
 					{"utf8.label.status": nil, "utf8.metadata.status": nil, "utf8.metadata.status_extracted": nil},        // both null -> null extraction
 					{"utf8.label.status": "active", "utf8.metadata.status": nil, "utf8.metadata.status_extracted": "200"}, // both non-null -> extract
