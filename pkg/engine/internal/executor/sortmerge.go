@@ -27,10 +27,6 @@ func NewSortMergePipeline(inputs []Pipeline, order physical.SortOrder, column ph
 		return nil, fmt.Errorf("invalid sort order %v", order)
 	}
 
-	for i := range inputs {
-		inputs[i] = newPrefetchingPipeline(inputs[i])
-	}
-
 	return &KWayMerge{
 		inputs:     inputs,
 		columnEval: evaluator.newFunc(column),
