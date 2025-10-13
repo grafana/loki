@@ -124,7 +124,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 				for i := range int(batch.NumRows()) {
 					if col.IsNull(i) || !col.IsValid(i) {
 						sourceFieldBuilder.AppendNull()      // append NULL to original column
-						destinationFieldBuilder.AppendNull() // append NULL to _extraced column
+						destinationFieldBuilder.AppendNull() // append NULL to _extracted column
 					} else if collisionCol.IsNull(i) || !collisionCol.IsValid(i) {
 						v := col.(*array.String).Value(i)
 						sourceFieldBuilder.Append(v)         // append value to original column
