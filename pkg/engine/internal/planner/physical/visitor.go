@@ -15,4 +15,5 @@ type Visitor interface {
 	VisitVectorAggregation(*VectorAggregation) error
 	VisitParse(*ParseNode) error
 	VisitMathExpression(expression *MathExpression) error
+	VisitCompat(*ColumnCompat) error
 }

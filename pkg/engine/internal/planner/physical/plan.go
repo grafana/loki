@@ -17,6 +17,7 @@ const (
 	NodeTypeMerge
 	NodeTypeParse
 	NodeTypeMathExpression
+	NodeTypeCompat
 )
 
 func (t NodeType) String() string {
@@ -41,6 +42,8 @@ func (t NodeType) String() string {
 		return "Parse"
 	case NodeTypeMathExpression:
 		return "MathExpression"
+	case NodeTypeCompat:
+		return "Compat"
 	default:
 		return "Undefined"
 	}
@@ -76,6 +79,7 @@ var _ Node = (*RangeAggregation)(nil)
 var _ Node = (*VectorAggregation)(nil)
 var _ Node = (*ParseNode)(nil)
 var _ Node = (*MathExpression)(nil)
+var _ Node = (*ColumnCompat)(nil)
 
 func (*DataObjScan) isNode()       {}
 func (*Merge) isNode()             {}
@@ -86,6 +90,8 @@ func (*Filter) isNode()            {}
 func (*RangeAggregation) isNode()  {}
 func (*VectorAggregation) isNode() {}
 func (*MathExpression) isNode()    {}
+func (*ParseNode) isNode()         {}
+func (*ColumnCompat) isNode()      {}
 
 // WalkOrder defines the order for how a node and its children are visited.
 type WalkOrder uint8

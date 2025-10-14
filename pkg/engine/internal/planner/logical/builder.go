@@ -120,6 +120,18 @@ func (b *Builder) VectorAggregation(
 	}
 }
 
+// Compat applies a [LogQLCompat] operation to the Builder, which is a marker to ensure v1 engine compatible results.
+func (b *Builder) Compat(logqlCompatibility bool) *Builder {
+	if logqlCompatibility {
+		return &Builder{
+			val: &LogQLCompat{
+				Value: b.val,
+			},
+		}
+	}
+	return b
+}
+
 // Schema returns the schema of the data that will be produced by this Builder.
 func (b *Builder) Schema() *schema.Schema {
 	return b.val.Schema()

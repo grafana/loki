@@ -4907,6 +4907,15 @@ engine_v2:
 # of the normal ingesters.
 # CLI flag: -querier.query-partition-ingesters
 [query_partition_ingesters: <boolean> | default = false]
+
+# Amount of time until data objects are available.
+# CLI flag: -querier.dataobj-storage-lag
+[dataobj_storage_lag: <duration> | default = 1h]
+
+# Initial date when data objects became available. Format YYYY-MM-DD. If not
+# set, assume data objects are always available no matter how far back.
+# CLI flag: -querier.dataobj-storage-start
+[dataobj_storage_start: <string> | default = ""]
 ```
 
 ### query_range

@@ -14,12 +14,12 @@ import (
 )
 
 func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline, evaluator expressionEvaluator) *GenericPipeline {
-	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) state {
+	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		// Works only with a single input for now.
 		input := inputs[0]
 		batch, err := input.Read(ctx)
 		if err != nil {
-			return failureState(err)
+			return nil, err
 		}
 		defer batch.Release()
 
@@ -42,11 +42,11 @@ func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline,
 		cols := make([]arrow.Array, 0, len(inputs))
 		inputVec, err := evaluator.eval(valColumnExpr, batch) // TODO read input[i] instead of batch
 		if err != nil {
-			return failureState(err)
+			return nil, err
 		}
 		inputData := inputVec.ToArray()
 		if inputData.DataType().ID() != arrow.FLOAT64 {
-			return failureState(fmt.Errorf("expression returned non-float64 type %s", inputData.DataType()))
+			return nil, fmt.Errorf("expression returned non-float64 type %s", inputData.DataType())
 		}
 		inputCol := inputData.(*array.Float64)
 		defer inputCol.Release()
@@ -59,11 +59,11 @@ func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline,
 
 		res, err := evaluator.eval(expr.Expression, evalInput)
 		if err != nil {
-			return failureState(err)
+			return nil, err
 		}
 		data := res.ToArray()
 		if data.DataType().ID() != arrow.FLOAT64 {
-			return failureState(fmt.Errorf("expression returned non-float64 type %s", data.DataType()))
+			return nil, fmt.Errorf("expression returned non-float64 type %s", data.DataType())
 		}
 		valCol := data.(*array.Float64)
 		defer valCol.Release()
@@ -76,7 +76,7 @@ func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline,
 		}
 		tsVec, err := evaluator.eval(tsColumnExpr, batch)
 		if err != nil {
-			return failureState(err)
+			return nil, err
 		}
 		tsCol := tsVec.ToArray().(*array.Timestamp)
 		defer tsCol.Release()
@@ -87,6 +87,6 @@ func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline,
 		}, nil)
 		evaluatedRecord := array.NewRecord(outputSchema, []arrow.Array{tsCol, valCol}, batch.NumRows())
 
-		return successState(evaluatedRecord)
+		return evaluatedRecord, nil
 	}, inputs...)
 }

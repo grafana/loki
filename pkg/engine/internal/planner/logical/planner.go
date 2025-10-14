@@ -37,7 +37,12 @@ func BuildPlan(params logql.Params) (*Plan, error) {
 		return nil, fmt.Errorf("failed to convert AST into logical plan: %w", err)
 	}
 
-	return convertToPlan(value)
+	builder := NewBuilder(value)
+
+	// TODO(chaudum): Make compatibility mode configurable
+	builder = builder.Compat(true)
+
+	return builder.ToPlan()
 }
 
 // buildPlanForLogQuery builds logical plan operations by traversing [syntax.LogSelectorExpr]

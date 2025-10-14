@@ -4,6 +4,8 @@ import (
 	"fmt"
 )
 
+var _ Visitor = (*nodeCollectVisitor)(nil)
+
 // A visitor implementation that collects nodes during traversal and optionally
 // executes custom functions for each node type. Used primarily for testing
 // traversal behavior.
@@ -100,5 +102,9 @@ func (v *nodeCollectVisitor) VisitMathExpression(n *MathExpression) error {
 		return v.onVisitMathExpression(n)
 	}
 	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	return nil
+}
+
+func (v *nodeCollectVisitor) VisitCompat(*ColumnCompat) error {
 	return nil
 }

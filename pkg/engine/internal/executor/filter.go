@@ -12,12 +12,12 @@ import (
 )
 
 func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expressionEvaluator, allocator memory.Allocator) *GenericPipeline {
-	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) state {
+	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
 		batch, err := input.Read(ctx)
 		if err != nil {
-			return failureState(err)
+			return nil, err
 		}
 		defer batch.Release()
 
@@ -26,7 +26,7 @@ func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expres
 		for i, pred := range filter.Predicates {
 			res, err := evaluator.eval(pred, batch)
 			if err != nil {
-				return failureState(err)
+				return nil, err
 			}
 			data := res.ToArray()
 
@@ -35,22 +35,20 @@ func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expres
 			defer data.Release()
 
 			if data.DataType().ID() != arrow.BOOL {
-				return failureState(fmt.Errorf("predicate %d returned non-boolean type %s", i, data.DataType()))
+				return nil, fmt.Errorf("predicate %d returned non-boolean type %s", i, data.DataType())
 			}
 			casted := data.(*array.Boolean)
 			cols = append(cols, casted)
 		}
 
-		filtered := filterBatch(batch, allocator, func(i int) bool {
+		return filterBatch(batch, allocator, func(i int) bool {
 			for _, p := range cols {
 				if !p.IsValid(i) || !p.Value(i) {
 					return false
 				}
 			}
 			return true
-		})
-
-		return successState(filtered)
+		}), nil
 	}, input)
 }
 
