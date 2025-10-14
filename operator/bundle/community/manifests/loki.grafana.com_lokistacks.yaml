@@ -3865,8 +3865,8 @@ spec:
                       Loki components and related services.
                     enum:
                     - ""
-                    - "False"
-                    - "True"
+                    - Disabled
+                    - Enabled
                     type: string
                   openshift:
                     description: Openshift defines the configuration specific to Openshift
@@ -4057,7 +4057,11 @@ spec:
                 type: array
               networkPolicies:
                 description: NetworkPolicies indicates whether NetworkPolicies are
-                  deployed for this LokiStack.
+                  enabled or disabled for this LokiStack.
+                enum:
+                - ""
+                - Disabled
+                - Enabled
                 type: string
               storage:
                 description: |-

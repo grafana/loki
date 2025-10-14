@@ -12,46 +12,46 @@ import (
 )
 
 // BuildAll builds all manifests required to run a Loki Stack
-func BuildAll(opts Options) ([]client.Object, lokiv1.NetworkPolicyStatus, error) {
+func BuildAll(opts Options) ([]client.Object, lokiv1.NetworkPoliciesType, error) {
 	res := make([]client.Object, 0)
-	networkPolicyStatus := lokiv1.NetworkPolicyStatusFalse
+	networkPolicyStatus := lokiv1.NetworkPoliciesDisabled
 
 	sa := BuildServiceAccount(opts)
 
 	cm, sha1C, mapErr := LokiConfigMap(opts)
 	if mapErr != nil {
-		return nil, lokiv1.NetworkPolicyStatusFalse, mapErr
+		return nil, lokiv1.NetworkPoliciesDisabled, mapErr
 	}
 	opts.ConfigSHA1 = sha1C
 
 	distributorObjs, err := BuildDistributor(opts)
 	if err != nil {
-		return nil, lokiv1.NetworkPolicyStatusFalse, err
+		return nil, lokiv1.NetworkPoliciesDisabled, err
 	}
 
 	ingesterObjs, err := BuildIngester(opts)
 	if err != nil {
-		return nil, lokiv1.NetworkPolicyStatusFalse, err
+		return nil, lokiv1.NetworkPoliciesDisabled, err
 	}
 
 	querierObjs, err := BuildQuerier(opts)
 	if err != nil {
-		return nil, lokiv1.NetworkPolicyStatusFalse, err
+		return nil, lokiv1.NetworkPoliciesDisabled, err
 	}
 
 	compactorObjs, err := BuildCompactor(opts)
 	if err != nil {
-		return nil, lokiv1.NetworkPolicyStatusFalse, err
+		return nil, lokiv1.NetworkPoliciesDisabled, err
 	}
 
 	queryFrontendObjs, err := BuildQueryFrontend(opts)
 	if err != nil {
-		return nil, lokiv1.NetworkPolicyStatusFalse, err
+		return nil, lokiv1.NetworkPoliciesDisabled, err
 	}
 
 	indexGatewayObjs, err := BuildIndexGateway(opts)
 	if err != nil {
-		return nil, lokiv1.NetworkPolicyStatusFalse, err
+		return nil, lokiv1.NetworkPoliciesDisabled, err
 	}
 
 	res = append(res, cm)
@@ -67,7 +67,7 @@ func BuildAll(opts Options) ([]client.Object, lokiv1.NetworkPolicyStatus, error)
 	if opts.Stack.Rules != nil && opts.Stack.Rules.Enabled {
 		rulesCMShards, err := RulesConfigMapShards(&opts)
 		if err != nil {
-			return nil, lokiv1.NetworkPolicyStatusFalse, err
+			return nil, lokiv1.NetworkPoliciesDisabled, err
 		}
 
 		for _, shard := range rulesCMShards {
@@ -77,7 +77,7 @@ func BuildAll(opts Options) ([]client.Object, lokiv1.NetworkPolicyStatus, error)
 
 		rulerObjs, err := BuildRuler(opts)
 		if err != nil {
-			return nil, lokiv1.NetworkPolicyStatusFalse, err
+			return nil, lokiv1.NetworkPoliciesDisabled, err
 		}
 
 		res = append(res, rulerObjs...)
@@ -86,7 +86,7 @@ func BuildAll(opts Options) ([]client.Object, lokiv1.NetworkPolicyStatus, error)
 	if opts.Gates.LokiStackGateway {
 		gatewayObjects, err := BuildGateway(opts)
 		if err != nil {
-			return nil, lokiv1.NetworkPolicyStatusFalse, err
+			return nil, lokiv1.NetworkPoliciesDisabled, err
 		}
 
 		res = append(res, gatewayObjects...)
@@ -99,7 +99,7 @@ func BuildAll(opts Options) ([]client.Object, lokiv1.NetworkPolicyStatus, error)
 	if opts.Gates.LokiStackAlerts {
 		prometheusRuleObjs, err := BuildPrometheusRule(opts)
 		if err != nil {
-			return nil, lokiv1.NetworkPolicyStatusFalse, err
+			return nil, lokiv1.NetworkPoliciesDisabled, err
 		}
 		res = append(res, prometheusRuleObjs...)
 	}
@@ -107,7 +107,7 @@ func BuildAll(opts Options) ([]client.Object, lokiv1.NetworkPolicyStatus, error)
 	if opts.Stack.Tenants != nil && opts.FeatureGate.NetworkPoliciesEnabled(opts.Stack.Tenants.NetworkPolicies) {
 		networkPolicyObjs := BuildNetworkPolicies(opts)
 		res = append(res, networkPolicyObjs...)
-		networkPolicyStatus = lokiv1.NetworkPolicyStatusTrue
+		networkPolicyStatus = lokiv1.NetworkPoliciesEnabled
 	}
 
 	return res, networkPolicyStatus, nil

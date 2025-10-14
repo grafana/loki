@@ -2175,14 +2175,14 @@ to the storage configuration.</p>
 <td>
 <code>networkPolicies</code><br/>
 <em>
-<a href="#loki-grafana-com-v1-NetworkPolicyStatus">
-NetworkPolicyStatus
+<a href="#loki-grafana-com-v1-NetworkPoliciesType">
+NetworkPoliciesType
 </a>
 </em>
 </td>
 <td>
 <em>(Optional)</em>
-<p>NetworkPolicies indicates whether NetworkPolicies are deployed for this LokiStack.</p>
+<p>NetworkPolicies indicates whether NetworkPolicies are enabled or disabled for this LokiStack.</p>
 </td>
 </tr>
 <tr>
@@ -2536,7 +2536,7 @@ using an in-process OpenPolicyAgent Rego authorizer.</p>
 ## NetworkPoliciesType { #loki-grafana-com-v1-NetworkPoliciesType }
 (<code>string</code> alias)
 <p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-TenantsSpec">TenantsSpec</a>)
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStatus">LokiStackStatus</a>, <a href="#loki-grafana-com-v1-TenantsSpec">TenantsSpec</a>)
 </p>
 <div>
 <p>NetworkPoliciesType defines the network policies configuration mode.</p>
@@ -2551,35 +2551,11 @@ using an in-process OpenPolicyAgent Rego authorizer.</p>
 <tbody><tr><td><p>&#34;&#34;</p></td>
 <td><p>NetworkPoliciesDefault when no explicit value is set, inherits default behavior.</p>
 </td>
-</tr><tr><td><p>&#34;False&#34;</p></td>
+</tr><tr><td><p>&#34;Disabled&#34;</p></td>
 <td><p>NetworkPoliciesDisabled when NetworkPolicies are explicitly disabled.</p>
 </td>
-</tr><tr><td><p>&#34;True&#34;</p></td>
+</tr><tr><td><p>&#34;Enabled&#34;</p></td>
 <td><p>NetworkPoliciesEnabled when NetworkPolicies are explicitly enabled.</p>
-</td>
-</tr></tbody>
-</table>
-
-## NetworkPolicyStatus { #loki-grafana-com-v1-NetworkPolicyStatus }
-(<code>string</code> alias)
-<p>
-(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStatus">LokiStackStatus</a>)
-</p>
-<div>
-<p>NetworkPolicyStatus defines the deployment status of network policies.</p>
-</div>
-<table>
-<thead>
-<tr>
-<th>Value</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody><tr><td><p>&#34;False&#34;</p></td>
-<td><p>NetworkPolicyStatusFalse when NetworkPolicies are not deployed</p>
-</td>
-</tr><tr><td><p>&#34;True&#34;</p></td>
-<td><p>NetworkPolicyStatusTrue when NetworkPolicies are deployed</p>
 </td>
 </tr></tbody>
 </table>

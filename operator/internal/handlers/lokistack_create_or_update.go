@@ -221,8 +221,8 @@ func CreateOrUpdateLokiStack(
 	}
 
 	return &status.LokiStackStatusInfo{
-		Storage:       objStore.CredentialMode,
-		NetworkPolicy: networkPolicyStatus,
+		Storage:         objStore.CredentialMode,
+		NetworkPolicies: networkPolicyStatus,
 	}, nil
 }
 

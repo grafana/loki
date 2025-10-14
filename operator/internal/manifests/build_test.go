@@ -999,25 +999,25 @@ func TestBuildAll_NetworkPolicyStatus(t *testing.T) {
 	tests := []struct {
 		name                    string
 		networkPolicies         lokiv1.NetworkPoliciesType
-		expectedNetworkStatus   lokiv1.NetworkPolicyStatus
+		expectedNetworkStatus   lokiv1.NetworkPoliciesType
 		shouldHaveNetworkPolicy bool
 	}{
 		{
 			name:                    "network policies default (empty string)",
 			networkPolicies:         lokiv1.NetworkPoliciesDefault,
-			expectedNetworkStatus:   lokiv1.NetworkPolicyStatusTrue, // Default enables on OpenShift
+			expectedNetworkStatus:   lokiv1.NetworkPoliciesEnabled, // Default enables on OpenShift
 			shouldHaveNetworkPolicy: true,
 		},
 		{
-			name:                    "network policies disabled (False)",
+			name:                    "network policies disabled",
 			networkPolicies:         lokiv1.NetworkPoliciesDisabled,
-			expectedNetworkStatus:   lokiv1.NetworkPolicyStatusFalse,
+			expectedNetworkStatus:   lokiv1.NetworkPoliciesDisabled,
 			shouldHaveNetworkPolicy: false,
 		},
 		{
-			name:                    "network policies enabled (True)",
+			name:                    "network policies enabled",
 			networkPolicies:         lokiv1.NetworkPoliciesEnabled,
-			expectedNetworkStatus:   lokiv1.NetworkPolicyStatusTrue,
+			expectedNetworkStatus:   lokiv1.NetworkPoliciesEnabled,
 			shouldHaveNetworkPolicy: true,
 		},
 	}
