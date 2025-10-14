@@ -16,6 +16,8 @@ import (
 func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipeline) Pipeline {
 	const extracted = "_extracted"
 
+	cache := make(map[string]cacheEntry)
+
 	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) state {
 		input := inputs[0]
 		batch, err := input.Read(ctx)
@@ -30,66 +32,81 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			return successState(batch)
 		}
 
-		// First, find all fields in the schema that have colliding names,
-		// based on the collision column type and the source column type.
-		var (
-			collisionFieldIndices []int
-			collisionFieldNames   []string
-			sourceFieldIndices    []int
-			sourceFieldNames      []string
-		)
-
 		schema := batch.Schema()
-		for idx := range schema.NumFields() {
-			ident, err := semconv.ParseFQN(schema.Field(idx).Name)
-			if err != nil {
-				return failureState(err)
+		key := schema.Fingerprint()
+		entry, found := cache[key]
+		if !found {
+			// First, find all fields in the schema that have colliding names,
+			// based on the collision column type and the source column type.
+			var (
+				collisionFieldIndices []int
+				collisionFieldNames   []string
+				sourceFieldIndices    []int
+				sourceFieldNames      []string
+			)
+
+			schema := batch.Schema()
+			for idx := range schema.NumFields() {
+				ident, err := semconv.ParseFQN(schema.Field(idx).Name)
+				if err != nil {
+					return failureState(err)
+				}
+				switch ident.ColumnType() {
+				case compat.Collision:
+					collisionFieldIndices = append(collisionFieldIndices, idx)
+					collisionFieldNames = append(collisionFieldNames, ident.ShortName())
+				case compat.Source:
+					sourceFieldIndices = append(sourceFieldIndices, idx)
+					sourceFieldNames = append(sourceFieldNames, ident.ShortName())
+				}
 			}
-			switch ident.ColumnType() {
-			case compat.Collision:
-				collisionFieldIndices = append(collisionFieldIndices, idx)
-				collisionFieldNames = append(collisionFieldNames, ident.ShortName())
-			case compat.Source:
-				sourceFieldIndices = append(sourceFieldIndices, idx)
-				sourceFieldNames = append(sourceFieldNames, ident.ShortName())
+
+			duplicates := findDuplicates(collisionFieldNames, sourceFieldNames)
+
+			// Return early if there are no colliding column names.
+			if len(duplicates) == 0 {
+				batch.Retain() // retain to account for deferred release after reading the batch from the input
+				return successState(batch)
 			}
+
+			// Next, update the schema with the new columns that have the _extracted suffix.
+			newSchema := batch.Schema()
+			duplicateCols := make([]duplicateColumn, 0, len(duplicates))
+			r := int(batch.NumCols())
+			for i, duplicate := range duplicates {
+				collisionFieldIdx := collisionFieldIndices[duplicate.s1Idx]
+				sourceFieldIdx := sourceFieldIndices[duplicate.s2Idx]
+
+				sourceField := newSchema.Field(sourceFieldIdx)
+				sourceIdent, err := semconv.ParseFQN(sourceField.Name)
+				if err != nil {
+					return failureState(err)
+				}
+
+				destinationIdent := semconv.NewIdentifier(sourceIdent.ShortName()+extracted, compat.Destination, sourceIdent.DataType())
+				newSchema, err = newSchema.AddField(len(newSchema.Fields()), semconv.FieldFromIdent(destinationIdent, true))
+				if err != nil {
+					return failureState(err)
+				}
+
+				duplicateCols = append(duplicateCols, duplicateColumn{
+					name:           duplicate.value,
+					collisionIdx:   collisionFieldIdx,
+					sourceIdx:      sourceFieldIdx,
+					destinationIdx: r + i,
+				})
+			}
+
+			entry = cacheEntry{
+				columns: duplicateCols,
+				schema:  newSchema,
+			}
+
+			cache[key] = entry
 		}
+		duplicateCols, newSchema := entry.columns, entry.schema
 
-		duplicates := findDuplicates(collisionFieldNames, sourceFieldNames)
-
-		// Return early if there are no colliding column names.
-		if len(duplicates) == 0 {
-			batch.Retain() // retain to account for deferred release after reading the batch from the input
-			return successState(batch)
-		}
-
-		// Next, update the schema with the new columns that have the _extracted suffix.
-		newSchema := batch.Schema()
-		duplicateCols := make([]duplicateColumn, 0, len(duplicates))
-		r := int(batch.NumCols())
-		for i, duplicate := range duplicates {
-			collisionFieldIdx := collisionFieldIndices[duplicate.s1Idx]
-			sourceFieldIdx := sourceFieldIndices[duplicate.s2Idx]
-
-			sourceField := newSchema.Field(sourceFieldIdx)
-			sourceIdent, err := semconv.ParseFQN(sourceField.Name)
-			if err != nil {
-				return failureState(err)
-			}
-
-			destinationIdent := semconv.NewIdentifier(sourceIdent.ShortName()+extracted, compat.Destination, sourceIdent.DataType())
-			newSchema, err = newSchema.AddField(len(newSchema.Fields()), semconv.FieldFromIdent(destinationIdent, true))
-			if err != nil {
-				return failureState(err)
-			}
-
-			duplicateCols = append(duplicateCols, duplicateColumn{
-				name:           duplicate.value,
-				collisionIdx:   collisionFieldIdx,
-				sourceIdx:      sourceFieldIdx,
-				destinationIdx: r + i,
-			})
-		}
+		newSchemaColumns := make([]arrow.Array, newSchema.NumFields())
 
 		sourceFieldBuilder := array.NewStringBuilder(memory.DefaultAllocator)
 		sourceFieldBuilder.Reserve(int(batch.NumRows()))
@@ -97,8 +114,6 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		destinationFieldBuilder := array.NewStringBuilder(memory.DefaultAllocator)
 		destinationFieldBuilder.Reserve(int(batch.NumRows()))
 		defer destinationFieldBuilder.Release()
-
-		newSchemaColumns := make([]arrow.Array, newSchema.NumFields())
 
 		// Now, go through all fields of the old schema and append the rows to the new builder.
 		for idx := range schema.NumFields() {
@@ -197,4 +212,9 @@ type duplicateColumn struct {
 	sourceIdx int
 	// destinationIdx is the index of the destination column
 	destinationIdx int
+}
+
+type cacheEntry struct {
+	columns []duplicateColumn
+	schema  *arrow.Schema
 }
