@@ -70,8 +70,8 @@ type Config struct {
 	// Enable the next generation Loki Query Engine for supported queries.
 	Enable bool `yaml:"enable" category:"experimental"`
 
-	DataobjAvailableFrom         dskit_flagext.Time `yaml:"dataobj_available_from" category:"experimental"`
-	DataobjGenerationLagDuration time.Duration      `yaml:"dataobj_generation_lag_duration" category:"experimental"`
+	DataobjStorageLag   time.Duration      `yaml:"dataobj_storage_lag" category:"experimental"`
+	DataobjStorageStart dskit_flagext.Time `yaml:"dataobj_storage_start" category:"experimental"`
 
 	// Batch size of the v2 execution engine.
 	BatchSize int `yaml:"batch_size" category:"experimental"`
@@ -87,13 +87,14 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enable, prefix+"enable", false, "Experimental: Enable next generation query engine for supported queries.")
 	f.IntVar(&cfg.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
 	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
-	f.DurationVar(&cfg.DataobjGenerationLagDuration, prefix+"dataobj-generation-lag-duration", 1*time.Hour, "Experimental: Recent duration during which dataobjs might not be available for querying. V2 engine will not be used for query ranges that fall in this duration.")
-	f.Var(&cfg.DataobjAvailableFrom, prefix+"dataobj-available-from", "Experimental: The oldest timestamp from when dataobjs are available.")
 	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
+
+	f.DurationVar(&cfg.DataobjStorageLag, prefix+"dataobj-storage-lag", 1*time.Hour, "Amount of time until data objects are available.")
+	f.Var(&cfg.DataobjStorageStart, prefix+"dataobj-storage-start", "Initial date when data objects became available. Format YYYY-MM-DD. If not set, assume data objects are always available no matter how far back.")
 }
 
 func (cfg *Config) ValidQueryRange() (time.Time, time.Time) {
-	return time.Time(cfg.DataobjAvailableFrom).UTC(), time.Now().UTC().Add(-cfg.DataobjGenerationLagDuration)
+	return time.Time(cfg.DataobjStorageStart).UTC(), time.Now().UTC().Add(-cfg.DataobjStorageLag)
 }
 
 // QueryEngine combines logical planning, physical planning, and execution to evaluate LogQL queries.
