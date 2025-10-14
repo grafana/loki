@@ -35,21 +35,12 @@ type Pipeline interface {
 
 var (
 	errNotImplemented = errors.New("pipeline not implemented")
-
-	EOF = errors.New("pipeline exhausted") //nolint:revive,staticcheck
+	EOF               = errors.New("pipeline exhausted") //nolint:revive,staticcheck
 )
 
 type state struct {
 	batch arrow.Record
 	err   error
-}
-
-func (s state) Value() (arrow.Record, error) {
-	return s.batch, s.err
-}
-
-func newState(batch arrow.Record, err error) state {
-	return state{batch: batch, err: err}
 }
 
 type readFunc func(context.Context, []Pipeline) (arrow.Record, error)
@@ -116,12 +107,9 @@ func emptyPipeline() Pipeline {
 type prefetchWrapper struct {
 	Pipeline // the pipeline that is wrapped
 
-	initialized bool // internal state to indicate whether the pre-fetching goroutine is running
-
-	ch    chan state // the results channel for pre-fetched items
-	state state      // internal state representing the last pre-fetched item
-
-	cancel context.CancelCauseFunc // cancellation function for the context
+	initialized bool                    // internal state to indicate whether the pre-fetching goroutine is running
+	ch          chan state              // the results channel for pre-fetched items
+	cancel      context.CancelCauseFunc // cancellation function for the context
 }
 
 var _ Pipeline = (*prefetchWrapper)(nil)
