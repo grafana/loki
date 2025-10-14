@@ -27,10 +27,9 @@ func NewSortMergePipeline(inputs []Pipeline, order physical.SortOrder, column ph
 		return nil, fmt.Errorf("invalid sort order %v", order)
 	}
 
-	// Disabling prefetching to avoid increased memory footprint from loading topK for all inputs at once.
-	// for i := range inputs {
-	// inputs[i] = newPrefetchingPipeline(inputs[i])
-	//}
+	for i := range inputs {
+		inputs[i] = newPrefetchingPipeline(inputs[i])
+	}
 
 	return &KWayMerge{
 		inputs:     inputs,
