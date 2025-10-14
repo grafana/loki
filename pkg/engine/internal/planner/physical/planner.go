@@ -395,14 +395,16 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			newOptimization("PredicatePushdown", plan).withRules(
 				&predicatePushdown{plan: plan},
 			),
+			newOptimization("CleanupFilters", plan).withRules(
+				&removeNoopFilter{plan: plan},
+			),
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
 			newOptimization("ProjectionPushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
 			),
-			newOptimization("Cleanup", plan).withRules(
-				&removeNoopFilter{plan: plan},
+			newOptimization("CleanupMerge", plan).withRules(
 				&removeNoopMerge{plan: plan},
 			),
 		}
