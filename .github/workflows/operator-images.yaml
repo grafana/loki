@@ -10,7 +10,6 @@ on:
 
 jobs:
   publish-grafana-operator:
-    if: github.ref == 'refs/heads/main'
     uses: ./.github/reusable-workflows/operator-reusable-image-build.yml
     with:
       dockerfile: "operator/Dockerfile"
@@ -29,7 +28,6 @@ jobs:
       tag: "latest"
 
   publish-openshift-bundle:
-    if: github.ref == 'refs/heads/main'
     uses: ./.github/reusable-workflows/operator-reusable-image-build.yml
     with:
       dockerfile: "operator/bundle/openshift/bundle.Dockerfile"
@@ -39,7 +37,6 @@ jobs:
       tag: "latest"
 
   publish-openshift-size-calculator:
-    if: github.ref == 'refs/heads/main'
     uses: ./.github/reusable-workflows/operator-reusable-image-build.yml
     with:
       dockerfile: "operator/calculator.Dockerfile"

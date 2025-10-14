@@ -1,4 +1,4 @@
-name: Build Operator Image
+name: Build operator image
 on:
   workflow_call:
     inputs:
