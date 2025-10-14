@@ -39,10 +39,8 @@ func TestContainerEnvVars_ReadVarsFromCustomResource(t *testing.T) {
 				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					LokiComponentSpec: lokiv1.LokiComponentSpec{
-						Replicas: 1,
-					},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
 				},
 				IndexGateway: &lokiv1.LokiComponentSpec{
 					Replicas: 1,

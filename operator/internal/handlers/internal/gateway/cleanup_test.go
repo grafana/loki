@@ -32,12 +32,9 @@ func TestCleanup_ExternalAccessEnabled_ReturnsEarly(t *testing.T) {
 			Namespace: "test-ns",
 		},
 		Spec: lokiv1.LokiStackSpec{
-			Template: &lokiv1.LokiTemplateSpec{
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					ExternalAccess: &lokiv1.ExternalAccessSpec{
-						Disabled: false, // External access enabled
-					},
-				},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode:           lokiv1.Static,
+				DisableIngress: false, // External access enabled
 			},
 		},
 	}
@@ -57,12 +54,9 @@ func TestCleanup_ExternalAccessDisabled_Delete(t *testing.T) {
 			UID:       "test-uid",
 		},
 		Spec: lokiv1.LokiStackSpec{
-			Template: &lokiv1.LokiTemplateSpec{
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					ExternalAccess: &lokiv1.ExternalAccessSpec{
-						Disabled: true, // External access disabled
-					},
-				},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode:           lokiv1.Static,
+				DisableIngress: true, // External access disabled
 			},
 		},
 	}

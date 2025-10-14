@@ -1,6 +1,6 @@
 ---
 title: "Gateway Configuration"
-description: "Configure LokiStack Gateway external access and networking"
+description: "Configure LokiStack Gateway"
 lead: ""
 date: 2024-01-15T00:00:00+00:00
 lastmod: 2024-01-15T00:00:00+00:00
@@ -13,7 +13,7 @@ weight: 120
 toc: true
 ---
 
-This document describes how to configure the LokiStack Gateway component, including external access control.
+This document describes how to configure the LokiStack Gateway component.
 
 ## Overview
 
@@ -26,32 +26,6 @@ You can disable external access creation.
 
 ## External Access Configuration
 
-### Default Behavior (External Access Enabled)
-
-By default, external access resources are created automatically:
-
-```yaml
-apiVersion: loki.grafana.com/v1
-kind: LokiStack
-metadata:
-  name: lokistack-dev
-spec:
-  size: 1x.small
-  storage:
-    schemas:
-    - version: v13
-      effectiveDate: "2022-06-01"
-    secret:
-      name: test
-    type: s3
-  storageClassName: gp3-csi
-```
-
-**Result:**
-
-- **OpenShift**: Route object created for external access
-- **Kubernetes**: Ingress object created for external access
-
 ### Disable External Access
 
 To disable automatic creation of external access resources:
@@ -63,10 +37,9 @@ metadata:
   name: lokistack-dev
 spec:
   ...
-  template:
-    gateway:
-      externalAccess:
-        disabled: true  # Disable external access resource creation
+  tenants:
+    mode: static  # or openshift-logging, openshift-network, dynamic
+    disableIngress: true  # Disable external access resource creation
 ```
 
 **Result:**
@@ -86,10 +59,9 @@ metadata:
   name: lokistack-dev
 spec:
   ...
-  template:
-    gateway:
-      externalAccess:
-        disabled: false  # Explicitly enable external access
+  tenants:
+    mode: static  # or openshift-logging, openshift-network, dynamic
+    disableIngress: false  # Explicitly enable external access (default)
 ```
 
 ## Resource Cleanup Behavior

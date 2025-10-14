@@ -122,7 +122,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 	a := gatewayAnnotations(sha1C, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
 		ServiceAccountName: GatewayName(opts.Name),
-		Affinity:           configureAffinity(LabelGatewayComponent, opts.Name, opts.Gates.DefaultNodeAffinity, &opts.Stack.Template.Gateway.LokiComponentSpec),
+		Affinity:           configureAffinity(LabelGatewayComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Gateway),
 		Volumes: []corev1.Volume{
 			{
 				Name: "rbac",
@@ -642,10 +642,8 @@ func configureGatewayRulesAPI(podSpec *corev1.PodSpec, stackName, stackNs string
 // ExternalAccessEnabled checks if external access resources should be created.
 // It returns false if external access is explicitly disabled in the LokiStack specification.
 func ExternalAccessEnabled(spec lokiv1.LokiStackSpec) bool {
-	if spec.Template != nil &&
-		spec.Template.Gateway != nil &&
-		spec.Template.Gateway.ExternalAccess != nil {
-		return !spec.Template.Gateway.ExternalAccess.Disabled
+	if spec.Tenants != nil {
+		return !spec.Tenants.DisableIngress
 	}
 	return true
 }

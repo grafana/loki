@@ -152,7 +152,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
-    createdAt: "2025-10-07T16:44:27Z"
+    createdAt: "2025-10-14T10:52:59Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -827,21 +827,6 @@ spec:
         displayName: Gateway pods
         path: template.gateway
       - description: |-
-          ExternalAccess defines the external access configuration for the gateway component.
-          Controls creation of Routes (OpenShift) and Ingress (Kubernetes) resources.
-        displayName: External Access
-        path: template.gateway.externalAccess
-        x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:advanced
-      - description: |-
-          Disabled controls whether external access resources should be created.
-          When true, the Route (OpenShift) or Ingress (Kubernetes) will not be created.
-          Default is false (external access resources will be created).
-        displayName: Disable External Access
-        path: template.gateway.externalAccess.disabled
-        x-descriptors:
-        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
-      - description: |-
           PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
           of a component.
         displayName: PodAntiAffinity
@@ -1024,6 +1009,13 @@ spec:
       - description: Roles defines a set of permissions to interact with a tenant.
         displayName: Static Roles
         path: tenants.authorization.roles
+      - description: |-
+          DisableIngress disables automatic creation of external access resources (Routes and Ingress).
+          When true, no Route or Ingress will be created for the gateway.
+        displayName: Disable Ingress
+        path: tenants.disableIngress
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: Mode defines the mode in which lokistack-gateway component will
           be configured.
         displayName: Mode

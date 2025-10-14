@@ -281,6 +281,14 @@ type TenantsSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Openshift"
 	Openshift *OpenshiftTenantSpec `json:"openshift,omitempty"`
+
+	// DisableIngress disables automatic creation of external access resources (Routes and Ingress).
+	// When true, no Route or Ingress will be created for the gateway.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Disable Ingress"
+	DisableIngress bool `json:"disableIngress,omitempty"`
 }
 
 // OpenshiftTenantSpec defines the configuration specific to Openshift modes.
@@ -339,19 +347,6 @@ type OpenshiftOTLPConfig struct {
 	DisableRecommendedAttributes bool `json:"disableRecommendedAttributes,omitempty"`
 }
 
-// ExternalAccessSpec defines the external access configuration for the gateway component.
-// Controls creation of Routes (OpenShift) and Ingress (Kubernetes) resources.
-type ExternalAccessSpec struct {
-	// Disabled controls whether external access resources should be created.
-	// When true, the Route (OpenShift) or Ingress (Kubernetes) will not be created.
-	// Default is false (external access resources will be created).
-	//
-	// +optional
-	// +kubebuilder:default:=false
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Disable External Access"
-	Disabled bool `json:"disabled,omitempty"`
-}
-
 // LokiComponentSpec defines the requirements to configure scheduling
 // of each loki component individually.
 type LokiComponentSpec struct {
@@ -383,20 +378,6 @@ type LokiComponentSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:podAntiAffinity",displayName="PodAntiAffinity"
 	PodAntiAffinity *corev1.PodAntiAffinity `json:"podAntiAffinity,omitempty"`
-}
-
-// LokiGatewayComponentSpec defines the requirements to configure scheduling
-// of the lokistack-gateway component.
-type LokiGatewayComponentSpec struct {
-	LokiComponentSpec `json:",inline"`
-
-	// ExternalAccess defines the external access configuration for the gateway component.
-	// Controls creation of Routes (OpenShift) and Ingress (Kubernetes) resources.
-	//
-	// +optional
-	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="External Access"
-	ExternalAccess *ExternalAccessSpec `json:"externalAccess,omitempty"`
 }
 
 // LokiTemplateSpec defines the template of all requirements to configure
@@ -453,7 +434,7 @@ type LokiTemplateSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Gateway pods"
-	Gateway *LokiGatewayComponentSpec `json:"gateway,omitempty"`
+	Gateway *LokiComponentSpec `json:"gateway,omitempty"`
 
 	// IndexGateway defines the index gateway component spec.
 	//

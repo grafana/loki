@@ -51,10 +51,8 @@ func TestServiceMonitorMatchLabels(t *testing.T) {
 				QueryFrontend: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					LokiComponentSpec: lokiv1.LokiComponentSpec{
-						Replicas: 1,
-					},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
 				},
 				IndexGateway: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
@@ -231,10 +229,8 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 						Mode: lokiv1.Static,
 					},
 					Template: &lokiv1.LokiTemplateSpec{
-						Gateway: &lokiv1.LokiGatewayComponentSpec{
-							LokiComponentSpec: lokiv1.LokiComponentSpec{
-								Replicas: 1,
-							},
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
 						},
 					},
 				},
@@ -266,10 +262,8 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 						Mode: lokiv1.Static,
 					},
 					Template: &lokiv1.LokiTemplateSpec{
-						Gateway: &lokiv1.LokiGatewayComponentSpec{
-							LokiComponentSpec: lokiv1.LokiComponentSpec{
-								Replicas: 1,
-							},
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
 						},
 					},
 				},
@@ -317,10 +311,8 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 						Mode: lokiv1.OpenshiftLogging,
 					},
 					Template: &lokiv1.LokiTemplateSpec{
-						Gateway: &lokiv1.LokiGatewayComponentSpec{
-							LokiComponentSpec: lokiv1.LokiComponentSpec{
-								Replicas: 1,
-							},
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
 						},
 					},
 				},
@@ -357,10 +349,8 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 						Mode: lokiv1.OpenshiftLogging,
 					},
 					Template: &lokiv1.LokiTemplateSpec{
-						Gateway: &lokiv1.LokiGatewayComponentSpec{
-							LokiComponentSpec: lokiv1.LokiComponentSpec{
-								Replicas: 1,
-							},
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
 						},
 					},
 				},
@@ -435,10 +425,8 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 						Mode: lokiv1.OpenshiftNetwork,
 					},
 					Template: &lokiv1.LokiTemplateSpec{
-						Gateway: &lokiv1.LokiGatewayComponentSpec{
-							LokiComponentSpec: lokiv1.LokiComponentSpec{
-								Replicas: 1,
-							},
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
 						},
 					},
 				},
@@ -475,10 +463,8 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 						Mode: lokiv1.OpenshiftNetwork,
 					},
 					Template: &lokiv1.LokiTemplateSpec{
-						Gateway: &lokiv1.LokiGatewayComponentSpec{
-							LokiComponentSpec: lokiv1.LokiComponentSpec{
-								Replicas: 1,
-							},
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
 						},
 					},
 				},

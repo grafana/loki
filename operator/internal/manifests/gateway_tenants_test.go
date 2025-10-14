@@ -403,14 +403,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				},
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
-						Mode: lokiv1.OpenshiftLogging,
-					},
-					Template: &lokiv1.LokiTemplateSpec{
-						Gateway: &lokiv1.LokiGatewayComponentSpec{
-							ExternalAccess: &lokiv1.ExternalAccessSpec{
-								Disabled: true,
-							},
-						},
+						Mode:           lokiv1.OpenshiftLogging,
+						DisableIngress: true,
 					},
 				},
 				Timeouts: TimeoutConfig{
@@ -430,14 +424,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				},
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
-						Mode: lokiv1.OpenshiftLogging,
-					},
-					Template: &lokiv1.LokiTemplateSpec{
-						Gateway: &lokiv1.LokiGatewayComponentSpec{
-							ExternalAccess: &lokiv1.ExternalAccessSpec{
-								Disabled: true,
-							},
-						},
+						Mode:           lokiv1.OpenshiftLogging,
+						DisableIngress: true,
 					},
 				},
 				Timeouts: TimeoutConfig{

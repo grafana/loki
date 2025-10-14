@@ -1568,19 +1568,6 @@ spec:
                   gateway:
                     description: Gateway defines the lokistack gateway component spec.
                     properties:
-                      externalAccess:
-                        description: |-
-                          ExternalAccess defines the external access configuration for the gateway component.
-                          Controls creation of Routes (OpenShift) and Ingress (Kubernetes) resources.
-                        properties:
-                          disabled:
-                            default: false
-                            description: |-
-                              Disabled controls whether external access resources should be created.
-                              When true, the Route (OpenShift) or Ingress (Kubernetes) will not be created.
-                              Default is false (external access resources will be created).
-                            type: boolean
-                        type: object
                       nodeSelector:
                         additionalProperties:
                           type: string
@@ -3842,6 +3829,11 @@ spec:
                           type: object
                         type: array
                     type: object
+                  disableIngress:
+                    description: |-
+                      DisableIngress disables automatic creation of external access resources (Routes and Ingress).
+                      When true, no Route or Ingress will be created for the gateway.
+                    type: boolean
                   mode:
                     default: openshift-logging
                     description: Mode defines the mode in which lokistack-gateway

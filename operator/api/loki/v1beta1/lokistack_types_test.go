@@ -479,15 +479,13 @@ func TestConvertToV1_LokiStack(t *testing.T) {
 								},
 							},
 						},
-						Gateway: &v1.LokiGatewayComponentSpec{
-							LokiComponentSpec: v1.LokiComponentSpec{
-								Replicas:     1,
-								NodeSelector: map[string]string{"node": "a"},
-								Tolerations: []corev1.Toleration{
-									{
-										Key:   "tolerate",
-										Value: "this",
-									},
+						Gateway: &v1.LokiComponentSpec{
+							Replicas:     1,
+							NodeSelector: map[string]string{"node": "a"},
+							Tolerations: []corev1.Toleration{
+								{
+									Key:   "tolerate",
+									Value: "this",
 								},
 							},
 						},
@@ -811,15 +809,13 @@ func TestConvertFromV1_LokiStack(t *testing.T) {
 								},
 							},
 						},
-						Gateway: &v1.LokiGatewayComponentSpec{
-							LokiComponentSpec: v1.LokiComponentSpec{
-								Replicas:     1,
-								NodeSelector: map[string]string{"node": "a"},
-								Tolerations: []corev1.Toleration{
-									{
-										Key:   "tolerate",
-										Value: "this",
-									},
+						Gateway: &v1.LokiComponentSpec{
+							Replicas:     1,
+							NodeSelector: map[string]string{"node": "a"},
+							Tolerations: []corev1.Toleration{
+								{
+									Key:   "tolerate",
+									Value: "this",
 								},
 							},
 						},

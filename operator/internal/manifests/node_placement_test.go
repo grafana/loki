@@ -423,10 +423,8 @@ func TestDefaultPodAntiAffinity(t *testing.T) {
 				Distributor: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					LokiComponentSpec: lokiv1.LokiComponentSpec{
-						Replicas: 1,
-					},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
 				},
 				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
@@ -489,11 +487,9 @@ func TestCustomPodAntiAffinity(t *testing.T) {
 					Replicas:        1,
 					PodAntiAffinity: wantAffinity,
 				},
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					LokiComponentSpec: lokiv1.LokiComponentSpec{
-						Replicas:        1,
-						PodAntiAffinity: wantAffinity,
-					},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas:        1,
+					PodAntiAffinity: wantAffinity,
 				},
 				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas:        1,

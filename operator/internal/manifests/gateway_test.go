@@ -36,10 +36,8 @@ func TestNewGatewayDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
 				Distributor: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					LokiComponentSpec: lokiv1.LokiComponentSpec{
-						Replicas: rand.Int31(),
-					},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
 				},
 				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
@@ -76,10 +74,8 @@ func TestNewGatewayDeployment_HasNotTemplateObjectStoreHashAnnotation(t *testing
 				Distributor: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					LokiComponentSpec: lokiv1.LokiComponentSpec{
-						Replicas: rand.Int31(),
-					},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
 				},
 				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
@@ -122,12 +118,10 @@ func TestNewGatewayDeployment_HasNodeSelector(t *testing.T) {
 				Distributor: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					LokiComponentSpec: lokiv1.LokiComponentSpec{
-						Replicas:     rand.Int31(),
-						NodeSelector: selector,
-						Tolerations:  toleration,
-					},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas:     rand.Int31(),
+					NodeSelector: selector,
+					Tolerations:  toleration,
 				},
 				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
@@ -161,10 +155,8 @@ func TestNewGatewayDeployment_HasTemplateCertRotationRequiredAtAnnotation(t *tes
 				Distributor: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					LokiComponentSpec: lokiv1.LokiComponentSpec{
-						Replicas: rand.Int31(),
-					},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
 				},
 				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
@@ -198,10 +190,8 @@ func TestGatewayConfigMap_ReturnsSHA1OfBinaryContents(t *testing.T) {
 				Distributor: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
 				},
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					LokiComponentSpec: lokiv1.LokiComponentSpec{
-						Replicas: rand.Int31(),
-					},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
 				},
 				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
@@ -266,10 +256,8 @@ func TestBuildGateway_HasConfigForTenantMode(t *testing.T) {
 		},
 		Stack: lokiv1.LokiStackSpec{
 			Template: &lokiv1.LokiTemplateSpec{
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					LokiComponentSpec: lokiv1.LokiComponentSpec{
-						Replicas: rand.Int31(),
-					},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
 				},
 			},
 			Tenants: &lokiv1.TenantsSpec{
@@ -306,10 +294,8 @@ func TestBuildGateway_HasExtraObjectsForTenantMode(t *testing.T) {
 		},
 		Stack: lokiv1.LokiStackSpec{
 			Template: &lokiv1.LokiTemplateSpec{
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					LokiComponentSpec: lokiv1.LokiComponentSpec{
-						Replicas: rand.Int31(),
-					},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
 				},
 			},
 			Tenants: &lokiv1.TenantsSpec{
@@ -345,10 +331,8 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_RouteSvcMatches(t *testing.T
 		},
 		Stack: lokiv1.LokiStackSpec{
 			Template: &lokiv1.LokiTemplateSpec{
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					LokiComponentSpec: lokiv1.LokiComponentSpec{
-						Replicas: rand.Int31(),
-					},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
 				},
 			},
 			Tenants: &lokiv1.TenantsSpec{
@@ -385,10 +369,8 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ServiceAccountNameMatches(t 
 		},
 		Stack: lokiv1.LokiStackSpec{
 			Template: &lokiv1.LokiTemplateSpec{
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					LokiComponentSpec: lokiv1.LokiComponentSpec{
-						Replicas: rand.Int31(),
-					},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
 				},
 			},
 			Tenants: &lokiv1.TenantsSpec{
@@ -427,10 +409,8 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ReplacesIngressWithRoute(t *
 		},
 		Stack: lokiv1.LokiStackSpec{
 			Template: &lokiv1.LokiTemplateSpec{
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					LokiComponentSpec: lokiv1.LokiComponentSpec{
-						Replicas: rand.Int31(),
-					},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
 				},
 			},
 			Tenants: &lokiv1.TenantsSpec{
@@ -473,10 +453,8 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 				},
 				Stack: lokiv1.LokiStackSpec{
 					Template: &lokiv1.LokiTemplateSpec{
-						Gateway: &lokiv1.LokiGatewayComponentSpec{
-							LokiComponentSpec: lokiv1.LokiComponentSpec{
-								Replicas: rand.Int31(),
-							},
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: rand.Int31(),
 						},
 					},
 					Tenants: &lokiv1.TenantsSpec{
@@ -528,10 +506,8 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 				},
 				Stack: lokiv1.LokiStackSpec{
 					Template: &lokiv1.LokiTemplateSpec{
-						Gateway: &lokiv1.LokiGatewayComponentSpec{
-							LokiComponentSpec: lokiv1.LokiComponentSpec{
-								Replicas: rand.Int31(),
-							},
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: rand.Int31(),
 						},
 					},
 					Tenants: &lokiv1.TenantsSpec{
@@ -561,10 +537,8 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 				},
 				Stack: lokiv1.LokiStackSpec{
 					Template: &lokiv1.LokiTemplateSpec{
-						Gateway: &lokiv1.LokiGatewayComponentSpec{
-							LokiComponentSpec: lokiv1.LokiComponentSpec{
-								Replicas: rand.Int31(),
-							},
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: rand.Int31(),
 						},
 					},
 					Tenants: &lokiv1.TenantsSpec{
@@ -612,10 +586,8 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 				},
 				Stack: lokiv1.LokiStackSpec{
 					Template: &lokiv1.LokiTemplateSpec{
-						Gateway: &lokiv1.LokiGatewayComponentSpec{
-							LokiComponentSpec: lokiv1.LokiComponentSpec{
-								Replicas: rand.Int31(),
-							},
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: rand.Int31(),
 						},
 					},
 					Tenants: &lokiv1.TenantsSpec{
@@ -661,10 +633,8 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 				},
 				Stack: lokiv1.LokiStackSpec{
 					Template: &lokiv1.LokiTemplateSpec{
-						Gateway: &lokiv1.LokiGatewayComponentSpec{
-							LokiComponentSpec: lokiv1.LokiComponentSpec{
-								Replicas: rand.Int31(),
-							},
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: rand.Int31(),
 						},
 					},
 					Rules: &lokiv1.RulesSpec{
@@ -713,10 +683,8 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 				},
 				Stack: lokiv1.LokiStackSpec{
 					Template: &lokiv1.LokiTemplateSpec{
-						Gateway: &lokiv1.LokiGatewayComponentSpec{
-							LokiComponentSpec: lokiv1.LokiComponentSpec{
-								Replicas: rand.Int31(),
-							},
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: rand.Int31(),
 						},
 					},
 					Rules: &lokiv1.RulesSpec{
@@ -747,10 +715,8 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 				},
 				Stack: lokiv1.LokiStackSpec{
 					Template: &lokiv1.LokiTemplateSpec{
-						Gateway: &lokiv1.LokiGatewayComponentSpec{
-							LokiComponentSpec: lokiv1.LokiComponentSpec{
-								Replicas: rand.Int31(),
-							},
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: rand.Int31(),
 						},
 					},
 					Rules: &lokiv1.RulesSpec{
@@ -782,10 +748,8 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 				},
 				Stack: lokiv1.LokiStackSpec{
 					Template: &lokiv1.LokiTemplateSpec{
-						Gateway: &lokiv1.LokiGatewayComponentSpec{
-							LokiComponentSpec: lokiv1.LokiComponentSpec{
-								Replicas: rand.Int31(),
-							},
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: rand.Int31(),
 						},
 					},
 					Rules: &lokiv1.RulesSpec{
@@ -832,10 +796,8 @@ func TestBuildGateway_WithHTTPEncryption(t *testing.T) {
 		},
 		Stack: lokiv1.LokiStackSpec{
 			Template: &lokiv1.LokiTemplateSpec{
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					LokiComponentSpec: lokiv1.LokiComponentSpec{
-						Replicas: rand.Int31(),
-					},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
 				},
 				Ruler: &lokiv1.LokiComponentSpec{
 					Replicas: rand.Int31(),
@@ -1018,10 +980,8 @@ func TestBuildGateway_PodDisruptionBudget(t *testing.T) {
 		},
 		Stack: lokiv1.LokiStackSpec{
 			Template: &lokiv1.LokiTemplateSpec{
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					LokiComponentSpec: lokiv1.LokiComponentSpec{
-						Replicas: rand.Int31(),
-					},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
 				},
 			},
 			Tenants: &lokiv1.TenantsSpec{
@@ -1065,10 +1025,8 @@ func TestBuildGateway_TopologySpreadConstraint(t *testing.T) {
 				Factor: 1,
 			},
 			Template: &lokiv1.LokiTemplateSpec{
-				Gateway: &lokiv1.LokiGatewayComponentSpec{
-					LokiComponentSpec: lokiv1.LokiComponentSpec{
-						Replicas: rand.Int31(),
-					},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
 				},
 			},
 			Tenants: &lokiv1.TenantsSpec{
@@ -1132,16 +1090,34 @@ func TestBuildGateway_ExternalAccessControl(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			gatewaySpec := &lokiv1.LokiGatewayComponentSpec{
-				LokiComponentSpec: lokiv1.LokiComponentSpec{
-					Replicas: 1,
+			tenantsSpec := &lokiv1.TenantsSpec{
+				Mode: lokiv1.Static,
+				Authorization: &lokiv1.AuthorizationSpec{
+					RoleBindings: []lokiv1.RoleBindingsSpec{
+						{
+							Name: "test-binding",
+							Subjects: []lokiv1.Subject{
+								{
+									Name: "test@example.com",
+									Kind: "user",
+								},
+							},
+							Roles: []string{"read-write"},
+						},
+					},
+					Roles: []lokiv1.RoleSpec{
+						{
+							Name:        "read-write",
+							Resources:   []string{"logs"},
+							Tenants:     []string{"test"},
+							Permissions: []lokiv1.PermissionType{"read", "write"},
+						},
+					},
 				},
 			}
 
 			if tc.externalAccessDisabled != nil {
-				gatewaySpec.ExternalAccess = &lokiv1.ExternalAccessSpec{
-					Disabled: *tc.externalAccessDisabled,
-				}
+				tenantsSpec.DisableIngress = *tc.externalAccessDisabled
 			}
 
 			opts := Options{
@@ -1151,33 +1127,11 @@ func TestBuildGateway_ExternalAccessControl(t *testing.T) {
 				Stack: lokiv1.LokiStackSpec{
 					Size: lokiv1.SizeOneXExtraSmall,
 					Template: &lokiv1.LokiTemplateSpec{
-						Gateway: gatewaySpec,
-					},
-					Tenants: &lokiv1.TenantsSpec{
-						Mode: lokiv1.Static,
-						Authorization: &lokiv1.AuthorizationSpec{
-							RoleBindings: []lokiv1.RoleBindingsSpec{
-								{
-									Name: "test-binding",
-									Subjects: []lokiv1.Subject{
-										{
-											Name: "test@example.com",
-											Kind: "user",
-										},
-									},
-									Roles: []string{"read-write"},
-								},
-							},
-							Roles: []lokiv1.RoleSpec{
-								{
-									Name:        "read-write",
-									Resources:   []string{"logs"},
-									Tenants:     []string{"test"},
-									Permissions: []lokiv1.PermissionType{"read", "write"},
-								},
-							},
+						Gateway: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
 						},
 					},
+					Tenants: tenantsSpec,
 				},
 				Timeouts: defaultTimeoutConfig,
 			}
