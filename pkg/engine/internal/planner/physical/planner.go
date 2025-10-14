@@ -402,12 +402,12 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) 
 	return []Node{node}, nil
 }
 
-func (p *Planner) wrapNodeWith(node Node, wapper Node) (Node, error) {
-	p.plan.graph.Add(wapper)
-	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: wapper, Child: node}); err != nil {
+func (p *Planner) wrapNodeWith(node Node, wrapper Node) (Node, error) {
+	p.plan.graph.Add(wrapper)
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: wrapper, Child: node}); err != nil {
 		return nil, err
 	}
-	return wapper, nil
+	return wrapper, nil
 }
 
 // Optimize runs optimization passes over the plan, modifying it
