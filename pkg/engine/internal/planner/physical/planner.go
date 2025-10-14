@@ -259,7 +259,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 			Destination: types.ColumnTypeMetadata,
 			Collision:   types.ColumnTypeLabel,
 		}
-		node, err = p.wrapWithCompatibility(node, compat)
+		node, err = p.wrapNodeWith(node, compat)
 		if err != nil {
 			return nil, err
 		}
@@ -371,7 +371,7 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 // Convert [logical.Parse] into one [ParseNode] node.
 // A ParseNode initially has an empty list of RequestedKeys which will be populated during optimization.
 func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) {
-	node := &ParseNode{
+	var node Node = &ParseNode{
 		Kind: convertParserKind(lp.Kind),
 	}
 	p.plan.graph.Add(node)
@@ -387,15 +387,27 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) 
 		}
 	}
 
+	if p.context.v1Compatible {
+		compat := &ColumnCompat{
+			Source:      types.ColumnTypeParsed,
+			Destination: types.ColumnTypeParsed,
+			Collision:   types.ColumnTypeLabel,
+		}
+		node, err = p.wrapNodeWith(node, compat)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return []Node{node}, nil
 }
 
-func (p *Planner) wrapWithCompatibility(node Node, compat *ColumnCompat) (Node, error) {
-	p.plan.graph.Add(compat)
-	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: compat, Child: node}); err != nil {
+func (p *Planner) wrapNodeWith(node Node, wrapper Node) (Node, error) {
+	p.plan.graph.Add(wrapper)
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: wrapper, Child: node}); err != nil {
 		return nil, err
 	}
-	return compat, nil
+	return wrapper, nil
 }
 
 // Optimize runs optimization passes over the plan, modifying it

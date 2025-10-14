@@ -302,8 +302,15 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		children := physicalPlan.Children(filterNode)
 		require.Len(t, children, 1)
 
+		compatNode, ok := children[0].(*ColumnCompat)
+		require.True(t, ok, "Filter's child should be ColumnCompat")
+		require.Equal(t, types.ColumnTypeParsed, compatNode.Source)
+
+		children = physicalPlan.Children(compatNode)
+		require.Len(t, children, 1)
+
 		parseNode, ok := children[0].(*ParseNode)
-		require.True(t, ok, "Filter's child should be ParseNode")
+		require.True(t, ok, "ColumnCompat's child should be ParseNode")
 		require.Equal(t, ParserLogfmt, parseNode.Kind)
 		require.Empty(t, parseNode.RequestedKeys)
 
