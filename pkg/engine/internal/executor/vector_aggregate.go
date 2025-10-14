@@ -102,6 +102,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 			if err != nil {
 				return nil, err
 			}
+			defer tsVec.Release()
 			tsCol := tsVec.ToArray().(*array.Timestamp)
 			defer tsCol.Release()
 
@@ -110,6 +111,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 			if err != nil {
 				return nil, err
 			}
+			defer valueVec.Release()
 			valueArr := valueVec.ToArray().(*array.Float64)
 			defer valueArr.Release()
 
@@ -121,6 +123,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 				if err != nil {
 					return nil, err
 				}
+				defer vec.Release()
 
 				if vec.Type() != types.Loki.String {
 					return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.Type())
