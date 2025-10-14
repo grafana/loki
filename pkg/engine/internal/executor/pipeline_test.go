@@ -144,7 +144,7 @@ func (i *instrumentedPipeline) Transport() Transport {
 var _ Pipeline = (*instrumentedPipeline)(nil)
 
 func Test_prefetchWrapper_Read(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.NewGoAllocator())
+	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer alloc.AssertSize(t, 0)
 
 	batch1 := arrowtest.Rows{

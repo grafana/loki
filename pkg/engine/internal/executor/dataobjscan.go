@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -220,16 +221,9 @@ func (s *dataobjScan) initLogs() error {
 		return fmt.Errorf("logs.Reader returned schema with %d fields, expected %d", got, want)
 	}
 
+	// Convert the logs columns to engine-compatible fields.
 	var desiredFields []arrow.Field
-	for i, col := range columnsToRead {
-		if col.Type == logs.ColumnTypeStreamID {
-			// The stream ID field should be left as-is for use with the streams
-			// injector.
-			desiredFields = append(desiredFields, origSchema.Field(i))
-			continue
-		}
-
-		// Convert the logs column to an engine-compatible field.
+	for _, col := range columnsToRead {
 		field, err := logsColumnToEngineField(col)
 		if err != nil {
 			return err
@@ -254,29 +248,17 @@ func makeScalars[S ~[]E, E any](s S) []scalar.Scalar {
 // engine.
 func logsColumnToEngineField(col *logs.Column) (arrow.Field, error) {
 	switch col.Type {
+	case logs.ColumnTypeStreamID:
+		return semconv.FieldFromIdent(streamInjectorColumnIdent, true), nil
+
 	case logs.ColumnTypeTimestamp:
-		return arrow.Field{
-			Name:     types.ColumnNameBuiltinTimestamp,
-			Type:     types.Arrow.Timestamp,
-			Nullable: true,
-			Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Timestamp),
-		}, nil
+		return semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, true), nil
 
 	case logs.ColumnTypeMessage:
-		return arrow.Field{
-			Name:     types.ColumnNameBuiltinMessage,
-			Type:     types.Arrow.String,
-			Nullable: true,
-			Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.String),
-		}, nil
+		return semconv.FieldFromIdent(semconv.ColumnIdentMessage, true), nil
 
 	case logs.ColumnTypeMetadata:
-		return arrow.Field{
-			Name:     col.Name,
-			Type:     types.Arrow.String,
-			Nullable: true,
-			Metadata: types.ColumnMetadata(types.ColumnTypeMetadata, types.Loki.String),
-		}, nil
+		return semconv.FieldFromIdent(semconv.NewIdentifier(col.Name, types.ColumnTypeMetadata, types.Loki.String), true), nil
 	}
 
 	return arrow.Field{}, fmt.Errorf("unsupported logs column type %s", col.Type)
