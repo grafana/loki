@@ -51,6 +51,9 @@ jobs:
     needs:
       - "releasePlease"
     if: ${{ needs.releasePlease.outputs.release_created }}
+    permissions:
+      contents: "read"
+      id-token: "write"
     uses: ./.github/workflows/operator-reusable-image-build.yml
     with:
       dockerfile: "operator/Dockerfile"
