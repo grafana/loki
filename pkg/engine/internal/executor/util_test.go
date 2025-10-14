@@ -102,13 +102,13 @@ func (p *recordGenerator) Pipeline(batchSize int64, rows int64) Pipeline {
 	var pos int64
 	return newGenericPipeline(
 		Local,
-		func(_ context.Context, _ []Pipeline) state {
+		func(_ context.Context, _ []Pipeline) (arrow.Record, error) {
 			if pos >= rows {
-				return Exhausted
+				return nil, EOF
 			}
 			batch := p.batch(pos, rows, batchSize, p.schema)
 			pos += batch.NumRows()
-			return successState(batch)
+			return batch, nil
 		},
 		nil,
 	)
