@@ -275,7 +275,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Right: logical.NewLiteral("error"),
 				Op:    types.BinaryOpEq,
 			},
-		)
+		).Compat(true)
 
 		logicalPlan, err := b.ToPlan()
 		require.NoError(t, err)
@@ -345,7 +345,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 			end,           // End time
 			time.Minute,   // Step
 			5*time.Minute, // Range interval
-		)
+		).Compat(true)
 
 		logicalPlan, err := b.ToPlan()
 		require.NoError(t, err)
@@ -417,7 +417,7 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
 		0,             // Step
 		time.Minute*5, // Range
-	)
+	).Compat(true)
 
 	logicalPlan, err := b.ToPlan()
 	require.NoError(t, err)
@@ -463,7 +463,7 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 			},
 			Shard: logical.NewShard(0, 1), // no sharding
 		},
-	)
+	).Compat(true)
 
 	logicalPlan, err := b.ToPlan()
 	require.NoError(t, err)

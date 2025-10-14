@@ -57,9 +57,25 @@ func (b *ssaBuilder) process(value Value) (Value, error) {
 	case *Literal:
 		return b.processLiteral(value)
 
+	case *LogQLCompat:
+		return b.processCompat(value)
+
 	default:
 		return nil, fmt.Errorf("unsupported value type %T", value)
 	}
+}
+
+func (b *ssaBuilder) processCompat(plan *LogQLCompat) (Value, error) {
+	if _, err := b.process(plan.Value); err != nil {
+		return nil, err
+	}
+
+	// Only append the first time we see this.
+	if plan.id == "" {
+		plan.id = fmt.Sprintf("%%%d", b.getID())
+		b.instructions = append(b.instructions, plan)
+	}
+	return plan, nil
 }
 
 func (b *ssaBuilder) processMakeTablePlan(plan *MakeTable) (Value, error) {
