@@ -43,8 +43,6 @@ type dataobjScan struct {
 	streamsInjector *streamInjector
 	reader          *logs.Reader
 	desiredSchema   *arrow.Schema
-
-	state state
 }
 
 var _ Pipeline = (*dataobjScan)(nil)
@@ -399,8 +397,6 @@ func (s *dataobjScan) Close() {
 	s.streams = nil
 	s.streamsInjector = nil
 	s.reader = nil
-
-	s.state = state{}
 }
 
 // Inputs implements [Pipeline] and returns nil, since dataobjScan accepts no
