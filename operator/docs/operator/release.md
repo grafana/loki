@@ -66,7 +66,7 @@ Since step 1. is currently not automated and disconnected from release-please we
 
 To publish a community release of Loki Operator to the community hubs we leverage the workflow in `.github/workflows/operator-publish-operator-hub.yml` this workflow is set to trigger on release publication that matches `operator/`.
 
-This workflow will then use a workflow `.github/reusable-workflows/operator-reusable-hub-release.yml` that's responsible for:
+This workflow will then use a workflow `.github/workflows/operator-reusable-hub-release.yml` that's responsible for:
 
 - Creating on the folder `operators/loki-operator/` a new folder with the manifests for the new version;
 - Adding the ocp supported version annotation to the `metadata.yaml` file only in the OpenShift community repo;
