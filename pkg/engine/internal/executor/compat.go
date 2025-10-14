@@ -91,12 +91,12 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			})
 		}
 
-		// Create a new builder with the updated schema.
-		// The per-field builders are only used for columns where row values are modified,
-		// otherwise the full column from the input record is copied into the new record.
-		builder := array.NewRecordBuilder(memory.DefaultAllocator, newSchema)
-		builder.Reserve(int(batch.NumRows()))
-		defer builder.Release()
+		sourceFieldBuilder := array.NewStringBuilder(memory.DefaultAllocator)
+		sourceFieldBuilder.Reserve(int(batch.NumRows()))
+		defer sourceFieldBuilder.Release()
+		destinationFieldBuilder := array.NewStringBuilder(memory.DefaultAllocator)
+		destinationFieldBuilder.Reserve(int(batch.NumRows()))
+		defer destinationFieldBuilder.Release()
 
 		newSchemaColumns := make([]arrow.Array, newSchema.NumFields())
 
@@ -118,30 +118,28 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			duplicate := duplicateCols[duplicateIdx]
 			collisionCol := batch.Column(duplicate.collisionIdx)
 
-			switch sourceFieldBuilder := builder.Field(idx).(type) {
-			case *array.StringBuilder:
-				destinationFieldBuilder := builder.Field(duplicate.destinationIdx).(*array.StringBuilder)
-				for i := range int(batch.NumRows()) {
-					if (col.IsNull(i) || !col.IsValid(i)) || (collisionCol.IsNull(i) || !collisionCol.IsValid(i)) {
-						sourceFieldBuilder.AppendNull()      // append NULL to original column
-						destinationFieldBuilder.AppendNull() // append NULL to _extraced column
-					} else {
-						sourceFieldBuilder.AppendNull() // append NULL to original column
-						v := col.(*array.String).Value(i)
-						destinationFieldBuilder.Append(v) // append value to _extracted column
-					}
+			for i := range int(batch.NumRows()) {
+				if col.IsNull(i) || !col.IsValid(i) {
+					sourceFieldBuilder.AppendNull()      // append NULL to original column
+					destinationFieldBuilder.AppendNull() // append NULL to _extraced column
+				} else if collisionCol.IsNull(i) || !collisionCol.IsValid(i) {
+					v := col.(*array.String).Value(i)
+					sourceFieldBuilder.Append(v)         // append value to source column
+					destinationFieldBuilder.AppendNull() // append NULL to _extracted column
+				} else {
+					sourceFieldBuilder.AppendNull() // append NULL to original column
+					v := col.(*array.String).Value(i)
+					destinationFieldBuilder.Append(v) // append value to _extracted column
 				}
-
-				sourceCol := sourceFieldBuilder.NewArray()
-				defer sourceCol.Release()
-				newSchemaColumns[duplicate.sourceIdx] = sourceCol
-
-				destinationCol := destinationFieldBuilder.NewArray()
-				defer destinationCol.Release()
-				newSchemaColumns[duplicate.destinationIdx] = destinationCol
-			default:
-				panic("invalid source column type: only string columns can be checked for collisions")
 			}
+
+			sourceCol := sourceFieldBuilder.NewArray()
+			defer sourceCol.Release()
+			newSchemaColumns[duplicate.sourceIdx] = sourceCol
+
+			destinationCol := destinationFieldBuilder.NewArray()
+			defer destinationCol.Release()
+			newSchemaColumns[duplicate.destinationIdx] = destinationCol
 		}
 
 		rec := array.NewRecord(newSchema, newSchemaColumns, batch.NumRows())
