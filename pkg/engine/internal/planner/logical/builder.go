@@ -98,7 +98,7 @@ func (b *Builder) VectorAggregation(
 	}
 }
 
-// Limit applies a [Limit] operation to the Builder.
+// Compat applies a [LogQLCompat] operation to the Builder, which is a marker to ensure v1 engine compatible results.
 func (b *Builder) Compat(logqlCompatibility bool) *Builder {
 	if logqlCompatibility {
 		return &Builder{
