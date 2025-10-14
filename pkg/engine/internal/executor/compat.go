@@ -18,20 +18,19 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 
 	cache := make(map[string]cacheEntry)
 
-	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) state {
+	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		input := inputs[0]
 		batch, err := input.Read(ctx)
 		if err != nil {
-			return failureState(err)
+			return nil, err
 		}
 
-		return successState(batch)
 		defer batch.Release()
 
 		// Return early if the batch has zero rows, even if column names would collide.
 		if batch.NumRows() == 0 {
 			batch.Retain() // retain to account for deferred release after reading the batch from the input
-			return successState(batch)
+			return batch, nil
 		}
 
 		schema := batch.Schema()
@@ -51,7 +50,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			for idx := range schema.NumFields() {
 				ident, err := semconv.ParseFQN(schema.Field(idx).Name)
 				if err != nil {
-					return failureState(err)
+					return nil, err
 				}
 				switch ident.ColumnType() {
 				case compat.Collision:
@@ -68,7 +67,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			// Return early if there are no colliding column names.
 			if len(duplicates) == 0 {
 				batch.Retain() // retain to account for deferred release after reading the batch from the input
-				return successState(batch)
+				return batch, nil
 			}
 
 			// Next, update the schema with the new columns that have the _extracted suffix.
@@ -82,13 +81,13 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 				sourceField := newSchema.Field(sourceFieldIdx)
 				sourceIdent, err := semconv.ParseFQN(sourceField.Name)
 				if err != nil {
-					return failureState(err)
+					return nil, err
 				}
 
 				destinationIdent := semconv.NewIdentifier(sourceIdent.ShortName()+extracted, compat.Destination, sourceIdent.DataType())
 				newSchema, err = newSchema.AddField(len(newSchema.Fields()), semconv.FieldFromIdent(destinationIdent, true))
 				if err != nil {
-					return failureState(err)
+					return nil, err
 				}
 
 				duplicateCols = append(duplicateCols, duplicateColumn{
@@ -159,8 +158,7 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 			newSchemaColumns[duplicate.destinationIdx] = destinationCol
 		}
 
-		rec := array.NewRecord(newSchema, newSchemaColumns, batch.NumRows())
-		return successState(rec)
+		return array.NewRecord(newSchema, newSchemaColumns, batch.NumRows()), nil
 	}, input)
 }
 
