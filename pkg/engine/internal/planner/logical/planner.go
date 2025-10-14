@@ -213,8 +213,6 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 	switch e.Operation {
 	case syntax.OpRangeTypeCount:
 		rangeAggType = types.RangeAggregationTypeCount
-	case syntax.OpRangeTypeRate:
-		rangeAggType = types.RangeAggregationTypeCount // rate is implemented as count/$interval
 	case syntax.OpRangeTypeSum:
 		rangeAggType = types.RangeAggregationTypeSum
 	//case syntax.OpRangeTypeMax:
@@ -236,21 +234,7 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 		RangeInterval: rangeInterval,
 	}
 
-	switch e.Operation {
-	case syntax.OpRangeTypeCount, syntax.OpRangeTypeSum, syntax.OpRangeTypeMax, syntax.OpRangeTypeMin:
-		return rangeAggregation, nil
-	case syntax.OpRangeTypeRate:
-		return &BinOp{
-			Left: rangeAggregation,
-			Right: &Literal{
-				Literal: NewLiteral(params.Interval().Seconds()),
-			},
-			Op: types.BinaryOpDiv,
-		}, nil
-
-	default:
-		return nil, errUnimplemented
-	}
+	return rangeAggregation, nil
 }
 
 func walkVectorAggregation(e *syntax.VectorAggregationExpr, params logql.Params) (Value, error) {
