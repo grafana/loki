@@ -28,16 +28,16 @@ type DataObjV2EngineStore struct {
 // NewDataObjV2EngineStore creates a new store that uses the v2 dataobj engine.
 func NewDataObjV2EngineStore(dir string, tenantID string) (*DataObjV2EngineStore, error) {
 	storageDir := filepath.Join(dir, storageDir)
-	return dataobjV2StoreWithOpts(storageDir, tenantID, logql.EngineOpts{
-		EnableV2Engine: true,
-		BatchSize:      512,
-		RangeConfig:    rangeio.DefaultConfig,
+	return dataobjV2StoreWithOpts(storageDir, tenantID, engine.Config{
+		Enable:      true,
+		BatchSize:   512,
+		RangeConfig: rangeio.DefaultConfig,
 	}, metastore.Config{
 		IndexStoragePrefix: "index/v0",
 	})
 }
 
-func dataobjV2StoreWithOpts(dataDir string, tenantID string, engineOpts logql.EngineOpts, cfg metastore.Config) (*DataObjV2EngineStore, error) {
+func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Config, metastoreCfg metastore.Config) (*DataObjV2EngineStore, error) {
 	logger := log.NewNopLogger()
 
 	// Setup filesystem client as objstore.Bucket
@@ -57,7 +57,7 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, engineOpts logql.En
 	// or derived from the bucket structure if it's multi-tenant aware.
 	// This might require adjustment based on how pkg/engine/engine actually handles multi-tenancy
 	// with a generic objstore.Bucket.
-	queryEngine := engine.New(engineOpts, cfg, bucketClient, logql.NoLimits, nil, logger)
+	queryEngine := engine.New(cfg, metastoreCfg, bucketClient, logql.NoLimits, nil, logger)
 
 	return &DataObjV2EngineStore{
 		engine:   queryEngine,

@@ -341,6 +341,52 @@ This information can be used to pinpoint the application sending the offending l
 - View detailed log output from the Loki distributors to identify affected streams
 - Decide on further steps depending on log source and validation error
 
+## Loki Ingester Flush Failure Rate Critical
+
+### Impact
+
+Loki ingesters are unable to flush chunks to backend storage at a critical rate (>20% failure rate), resulting in potential data loss and Write Ahead Log (WAL) disk pressure.
+
+### Summary
+
+One or more Loki ingesters are failing to flush at least 20% of their chunks to backend storage over a 5-minute period. This indicates issues with storage connectivity, authentication, or storage capacity that require immediate intervention.
+
+### Severity
+
+`Critical`
+
+### Access Required
+
+- Console access to the cluster
+- Edit access to the deployed operator and Loki namespace:
+  - OpenShift
+    - `openshift-logging` (LokiStack)
+    - `openshift-operators-redhat` (Loki Operator)
+
+### Steps
+
+- **Immediate Actions**:
+  - Check ingester pod logs for flush failure error messages to better understand what is the error: 
+    - `kubectl logs -n <namespace> <ingester-pod>`
+  - Verify backend storage connectivity and credentials in the storage secret
+  - Verify Lokistack conditions to understand if there was an error processing the storage secret:
+    - `kubectl -n <namespace> describe Lokistack <lokistack-name>`
+  - Monitor WAL disk usage: 
+    - `sum(loki_ingester_wal_bytes_in_use) by (pod, namespace)`: current WAL disk usage
+    - `sum(rate(loki_ingester_wal_disk_full_failures_total[5m])) by (pod, namespace)`: number of failures due to fill wall disk
+
+- **Root Cause Analysis**:
+  - **Storage Authentication**: Verify that storage credentials (Secret) are valid and accessible by ingester pods
+  - **Storage Connectivity**: Ensure ingesters can reach the storage endpoint (check NetworkPolicies, firewall rules)
+  - **Storage Capacity**: Check if the storage backend has sufficient space and IOPS capacity
+  - **Storage Configuration**: Validate the LokiStack storage configuration matches the actual storage setup
+
+- **Resolution Steps**:
+  - **For Authentication Issues**: Update or recreate the storage Secret with correct credentials
+  - **For Connectivity Issues**: Adjust NetworkPolicies, security groups, or firewall rules
+  - **For Capacity Issues**: Increase storage size/IOPS or implement lifecycle policies
+  - **For Configuration Issues**: Correct the LokiStack storage configuration and wait for a restart of the ingesters
+
 ## Lokistack Storage Schema Warning
 
 ### Impact
@@ -365,3 +411,48 @@ The schema configuration does not contain the most recent schema version and nee
 ### Steps
 
 - Add a new object storage schema V13 with a future EffectiveDate
+
+## Lokistack Components Not Ready Warning
+
+### Impact
+
+One or more LokiStack components are not ready, which can disrupt ingestion or querying and lead to degraded service.
+
+### Summary
+
+The LokiStack reports that some components have not reached the `Ready` state. This might be related to Kubernetes resources (Pods/Deployments), configuration, or external dependencies.
+
+### Severity
+
+`Warning`
+
+### Access Required
+
+- Console access to the cluster
+- Edit or view access in the namespace where the LokiStack is deployed:
+  - OpenShift
+    - `openshift-logging` (LokiStack)
+
+### Steps
+
+- Inspect the LokiStack conditions and events
+  - Describe the LokiStack resource and review status conditions:
+    - `kubectl -n <namespace> describe lokistack <name>`
+  - Check for conditions that would lead to some pods not being in the `Ready` state
+- Check operator and reconciliation status
+  - Ensure the Loki Operator is running and not reporting errors:
+    - `kubectl -n <operator-namespace> logs deploy/loki-operator-controller-manager`
+  - Look for reconcile errors related to missing permissions, invalid fields, or failed rollouts.
+- Verify component Pods and Deployments
+  - Ensure all core components are running and Ready in the LokiStack namespace:
+    - `distributor`, `ingester`, `querier`, `query-frontend`, `index-gateway`, `compactor`, `gateway`
+  - Check Pod readiness and recent restarts:
+    - `kubectl -n <namespace> get pods`
+    - `kubectl -n <namespace> describe pod <pod>`
+- Examine Kubernetes events for failures
+  - `kubectl -n <namespace> get events --sort-by=.lastTimestamp`
+  - Common causes: image pull backoffs, failed mounts, readiness probe failures, or insufficient resources
+- Validate configuration and referenced resources
+  - Confirm referenced `Secrets` and `ConfigMaps` exist and have correct keys
+- Look into the Pod logs of the component that still not `Ready`:
+  - `kubectl -n <namespace> logs <pod>`

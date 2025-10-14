@@ -14,12 +14,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+
+	"github.com/aws/smithy-go"
+
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
@@ -141,12 +142,32 @@ func (cfg *S3Config) Validate() error {
 	return storageawscommon.ValidateStorageClass(cfg.StorageClass)
 }
 
+type s3Deleter interface {
+	DeleteObject(ctx context.Context, params *s3.DeleteObjectInput, optFns ...func(*s3.Options)) (*s3.DeleteObjectOutput, error)
+}
+
+type s3Getter interface {
+	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+}
+
+type s3Putter interface {
+	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+}
+
+type s3Interface interface {
+	s3.HeadObjectAPIClient
+	s3Deleter
+	s3Getter
+	s3Putter
+	s3.ListObjectsV2APIClient
+}
+
 type S3ObjectClient struct {
 	cfg S3Config
 
 	bucketNames []string
-	S3          s3iface.S3API
-	hedgedS3    s3iface.S3API
+	S3          s3Interface
+	hedgedS3    s3Interface
 	sseConfig   *SSEParsedConfig
 }
 
@@ -188,37 +209,37 @@ func buildSSEParsedConfig(cfg S3Config) (*SSEParsedConfig, error) {
 	return nil, nil
 }
 
-func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S3, error) {
-	var s3Config *aws.Config
+func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.Client, error) {
+	s3Options := s3.Options{}
 	var err error
 
 	// if an s3 url is passed use it to initialize the s3Config and then override with any additional params
 	if cfg.S3.URL != nil {
-		s3Config, err = ConfigFromURL(cfg.S3.URL)
+		key, secret, session, err := CredentialsFromURL(cfg.S3.URL)
 		if err != nil {
 			return nil, err
 		}
+		s3Options.Credentials = credentials.NewStaticCredentialsProvider(key, secret, session)
 	} else {
-		s3Config = &aws.Config{}
-		s3Config = s3Config.WithRegion("dummy")
+		s3Options.Region = "dummy"
 	}
 
 	if cfg.DisableDualstack {
-		s3Config = s3Config.WithUseDualStack(false)
+		s3Options.EndpointOptions.UseDualStackEndpoint = aws.DualStackEndpointStateDisabled
 	}
-	s3Config = s3Config.WithMaxRetries(0)                          // We do our own retries, so we can monitor them
-	s3Config = s3Config.WithS3ForcePathStyle(cfg.S3ForcePathStyle) // support for Path Style S3 url if has the flag
+	s3Options.RetryMaxAttempts = 0                // We do our own retries, so we can monitor them
+	s3Options.UsePathStyle = cfg.S3ForcePathStyle // support for Path Style S3 url if has the flag
 
 	if cfg.Endpoint != "" {
-		s3Config = s3Config.WithEndpoint(cfg.Endpoint)
+		s3Options.BaseEndpoint = &cfg.Endpoint
 	}
 
 	if cfg.Insecure {
-		s3Config = s3Config.WithDisableSSL(true)
+		s3Options.EndpointOptions.DisableHTTPS = true
 	}
 
 	if cfg.Region != "" {
-		s3Config = s3Config.WithRegion(cfg.Region)
+		s3Options.Region = cfg.Region
 	}
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() == "" ||
@@ -227,8 +248,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	}
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" {
-		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.String(), cfg.SessionToken.String())
-		s3Config = s3Config.WithCredentials(creds)
+		s3Options.Credentials = credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey.String(), cfg.SessionToken.String())
 	}
 
 	tlsConfig := &tls.Config{
@@ -279,14 +299,8 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 		}
 	}
 
-	s3Config = s3Config.WithHTTPClient(httpClient)
-
-	sess, err := session.NewSession(s3Config)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create new s3 session")
-	}
-
-	s3Client := s3.New(sess)
+	s3Options.HTTPClient = httpClient
+	s3Client := s3.New(s3Options)
 
 	return s3Client, nil
 }
@@ -339,7 +353,7 @@ func (a *S3ObjectClient) objectAttributes(ctx context.Context, objectKey, method
 				Bucket: aws.String(a.bucketFromKey(objectKey)),
 				Key:    aws.String(a.convertObjectKey(objectKey, true)),
 			}
-			headOutput, requestErr := a.S3.HeadObject(headObjectInput)
+			headOutput, requestErr := a.S3.HeadObject(ctx, headObjectInput)
 			if requestErr != nil {
 				return requestErr
 			}
@@ -370,7 +384,7 @@ func (a *S3ObjectClient) DeleteObject(ctx context.Context, objectKey string) err
 			Key:    aws.String(a.convertObjectKey(objectKey, true)),
 		}
 
-		_, err := a.S3.DeleteObjectWithContext(ctx, deleteObjectInput)
+		_, err := a.S3.DeleteObject(ctx, deleteObjectInput)
 		return err
 	})
 }
@@ -392,9 +406,6 @@ func (a *S3ObjectClient) bucketFromKey(key string) string {
 func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var resp *s3.GetObjectOutput
 
-	// Map the key into a bucket
-	bucket := a.bucketFromKey(objectKey)
-
 	lastErr := ctx.Err()
 
 	retries := backoff.New(ctx, a.cfg.BackoffConfig)
@@ -405,15 +416,15 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 
 		lastErr = loki_instrument.TimeRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			var requestErr error
-			resp, requestErr = a.hedgedS3.GetObjectWithContext(ctx, &s3.GetObjectInput{
-				Bucket: aws.String(bucket),
+			resp, requestErr = a.hedgedS3.GetObject(ctx, &s3.GetObjectInput{
+				Bucket: aws.String(a.bucketFromKey(objectKey)),
 				Key:    aws.String(a.convertObjectKey(objectKey, true)),
 			})
 			return requestErr
 		})
 
 		var size int64
-		if resp.ContentLength != nil {
+		if resp != nil && resp.ContentLength != nil {
 			size = *resp.ContentLength
 		}
 		if lastErr == nil && resp.Body != nil {
@@ -430,8 +441,6 @@ func (a *S3ObjectClient) GetObjectRange(ctx context.Context, objectKey string, o
 	var resp *s3.GetObjectOutput
 
 	// Map the key into a bucket
-	bucket := a.bucketFromKey(objectKey)
-
 	var lastErr error
 
 	retries := backoff.New(ctx, a.cfg.BackoffConfig)
@@ -442,8 +451,8 @@ func (a *S3ObjectClient) GetObjectRange(ctx context.Context, objectKey string, o
 
 		lastErr = loki_instrument.TimeRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			var requestErr error
-			resp, requestErr = a.hedgedS3.GetObjectWithContext(ctx, &s3.GetObjectInput{
-				Bucket: aws.String(bucket),
+			resp, requestErr = a.hedgedS3.GetObject(ctx, &s3.GetObjectInput{
+				Bucket: aws.String(a.bucketFromKey(objectKey)),
 				Key:    aws.String(a.convertObjectKey(objectKey, true)),
 				Range:  aws.String(fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)),
 			})
@@ -470,16 +479,16 @@ func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object
 			Body:         readSeeker,
 			Bucket:       aws.String(a.bucketFromKey(objectKey)),
 			Key:          aws.String(a.convertObjectKey(objectKey, true)),
-			StorageClass: aws.String(a.cfg.StorageClass),
+			StorageClass: types.StorageClass(a.cfg.StorageClass),
 		}
 
 		if a.sseConfig != nil {
-			putObjectInput.ServerSideEncryption = aws.String(a.sseConfig.ServerSideEncryption)
+			putObjectInput.ServerSideEncryption = types.ServerSideEncryption(a.sseConfig.ServerSideEncryption)
 			putObjectInput.SSEKMSKeyId = a.sseConfig.KMSKeyID
 			putObjectInput.SSEKMSEncryptionContext = a.sseConfig.KMSEncryptionContext
 		}
 
-		_, err = a.S3.PutObjectWithContext(ctx, putObjectInput)
+		_, err = a.S3.PutObject(ctx, putObjectInput)
 		return err
 	})
 }
@@ -499,7 +508,7 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 			}
 
 			for {
-				output, err := a.S3.ListObjectsV2WithContext(ctx, &input)
+				output, err := a.S3.ListObjectsV2(ctx, &input)
 				if err != nil {
 					return err
 				}
@@ -512,9 +521,9 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 				}
 
 				for _, commonPrefix := range output.CommonPrefixes {
-					if !commonPrefixesSet[aws.StringValue(commonPrefix.Prefix)] {
-						commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(aws.StringValue(commonPrefix.Prefix)))
-						commonPrefixesSet[aws.StringValue(commonPrefix.Prefix)] = true
+					if !commonPrefixesSet[*commonPrefix.Prefix] {
+						commonPrefixes = append(commonPrefixes, client.StorageCommonPrefix(*commonPrefix.Prefix))
+						commonPrefixesSet[*commonPrefix.Prefix] = true
 					}
 				}
 
@@ -526,7 +535,7 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 					// No way to continue
 					break
 				}
-				input.SetContinuationToken(*output.NextContinuationToken)
+				input.ContinuationToken = output.NextContinuationToken
 			}
 
 			return nil
@@ -541,16 +550,23 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
 func (a *S3ObjectClient) IsObjectNotFoundErr(err error) bool {
-	aerr, ok := errors.Cause(err).(awserr.Error)
-	if !ok {
-		return false
-	}
-
-	code := aerr.Code()
-	if code == s3.ErrCodeNoSuchKey || code == "NotFound" {
+	var awsErr *types.NotFound
+	if errors.As(err, &awsErr) {
 		return true
 	}
-
+	var noKeyErr *types.NoSuchKey
+	if errors.As(err, &noKeyErr) {
+		return true
+	}
+	var apiError smithy.APIError
+	if errors.As(err, &apiError) {
+		switch (apiError).(type) {
+		case *types.NotFound:
+			return true
+		default:
+			return false
+		}
+	}
 	return false
 }
 
@@ -590,25 +606,41 @@ func IsStorageTimeoutErr(err error) bool {
 	if errors.Is(err, io.EOF) || amnet.IsConnectionReset(err) {
 		return true
 	}
-
-	if rerr, ok := err.(awserr.RequestFailure); ok {
-		// https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html
-		return rerr.StatusCode() == http.StatusRequestTimeout ||
-			rerr.StatusCode() == http.StatusGatewayTimeout
+	// TODO types.Error does not actually implement error!
+	var apiError smithy.APIError
+	if errors.As(err, &apiError) {
+		switch apiError.ErrorCode() {
+		case "RequestTimeout":
+			return true
+		default:
+			return false
+		}
 	}
-
 	return false
 }
 
 // IsStorageThrottledErr returns true if error means that object cannot be retrieved right now due to throttling.
 func IsStorageThrottledErr(err error) bool {
-	if rerr, ok := err.(awserr.RequestFailure); ok {
-
-		// https://docs.aws.amazon.com/sdkref/latest/guide/feature-retry-behavior.html
-		return rerr.StatusCode() == http.StatusTooManyRequests ||
-			(rerr.StatusCode()/100 == 5) // all 5xx errors are retryable
+	var apiError smithy.APIError
+	if errors.As(err, &apiError) {
+		// all 5xx errors are retryable
+		switch apiError.ErrorCode() {
+		case "RequestTimeout": // 400
+			return true
+		case "TooManyRequestsException": // 429
+			return true
+		case "InternalError": // 500
+			return true
+		case "NotImplemented": // 501
+			return true
+		case "ServiceUnavailable": // 503
+			return true
+		case errCodeSlowDown: // 503
+			return true
+		default:
+			return false
+		}
 	}
-
 	return false
 }
 

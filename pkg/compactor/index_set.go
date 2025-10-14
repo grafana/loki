@@ -369,7 +369,7 @@ func (is *indexSet) done() error {
 }
 
 func (is *indexSet) cleanup() {
-	if is.compactedIndex == nil {
+	if is == nil || is.compactedIndex == nil {
 		return
 	}
 	is.compactedIndex.Cleanup()

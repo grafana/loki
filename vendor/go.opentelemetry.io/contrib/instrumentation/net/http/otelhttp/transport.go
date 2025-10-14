@@ -11,14 +11,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/request"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/semconv"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
-
 	"go.opentelemetry.io/otel/trace"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/request"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp/internal/semconv"
 )
 
 // Transport implements the http.RoundTripper interface and wraps
@@ -148,11 +148,7 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 
 		if err == nil {
-			// For handling response bytes we leverage a callback when the client reads the http response
-			readRecordFunc := func(n int64) {
-				t.semconv.RecordResponseSize(ctx, n, metricOpts)
-			}
-
+			readRecordFunc := func(int64) {}
 			res.Body = newWrappedBody(span, readRecordFunc, res.Body)
 		}
 
