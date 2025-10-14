@@ -24,6 +24,7 @@ type Context struct {
 	through       time.Time
 	rangeInterval time.Duration
 	direction     SortOrder
+	v1Compatible  bool
 }
 
 func NewContext(from, through time.Time) *Context {
@@ -152,6 +153,9 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 		return p.processVectorAggregation(inst, ctx)
 	case *logical.Parse:
 		return p.processParse(inst, ctx)
+	case *logical.LogQLCompat:
+		p.context.v1Compatible = true
+		return p.process(inst.Value, ctx)
 	}
 	return nil, nil
 }
@@ -241,28 +245,27 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 		slices.Reverse(groups)
 	}
 
-	// TODO(chaudum): Make it configurable to keep/remove this compatibility node
-	compat := &ColumnCompat{
-		id:          "MetadataOverLabel",
-		Source:      types.ColumnTypeMetadata,
-		Destination: types.ColumnTypeMetadata,
-		Collision:   types.ColumnTypeLabel,
-	}
-	p.plan.graph.Add(compat)
-
-	merge := &Merge{}
-	p.plan.graph.Add(merge)
-	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: compat, Child: merge}); err != nil {
-		return nil, err
-	}
-
+	var node Node = &Merge{}
+	p.plan.graph.Add(node)
 	for _, gr := range groups {
-		if err := p.buildNodeGroup(gr, merge, ctx); err != nil {
+		if err := p.buildNodeGroup(gr, node, ctx); err != nil {
 			return nil, err
 		}
 	}
 
-	return []Node{compat}, nil
+	if p.context.v1Compatible {
+		compat := &ColumnCompat{
+			Source:      types.ColumnTypeMetadata,
+			Destination: types.ColumnTypeMetadata,
+			Collision:   types.ColumnTypeLabel,
+		}
+		node, err = p.wrapNodeWith(node, compat)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return []Node{node}, nil
 }
 
 // Convert [logical.Select] into one [Filter] node.
@@ -368,7 +371,7 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 // Convert [logical.Parse] into one [ParseNode] node.
 // A ParseNode initially has an empty list of RequestedKeys which will be populated during optimization.
 func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) {
-	node := &ParseNode{
+	var node Node = &ParseNode{
 		Kind: convertParserKind(lp.Kind),
 	}
 	p.plan.graph.Add(node)
@@ -384,7 +387,27 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) 
 		}
 	}
 
+	if p.context.v1Compatible {
+		compat := &ColumnCompat{
+			Source:      types.ColumnTypeParsed,
+			Destination: types.ColumnTypeParsed,
+			Collision:   types.ColumnTypeLabel,
+		}
+		node, err = p.wrapNodeWith(node, compat)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return []Node{node}, nil
+}
+
+func (p *Planner) wrapNodeWith(node Node, wrapper Node) (Node, error) {
+	p.plan.graph.Add(wrapper)
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: wrapper, Child: node}); err != nil {
+		return nil, err
+	}
+	return wrapper, nil
 }
 
 // Optimize runs optimization passes over the plan, modifying it
@@ -395,14 +418,16 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			newOptimization("PredicatePushdown", plan).withRules(
 				&predicatePushdown{plan: plan},
 			),
+			newOptimization("CleanupFilters", plan).withRules(
+				&removeNoopFilter{plan: plan},
+			),
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
 			newOptimization("ProjectionPushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
 			),
-			newOptimization("Cleanup", plan).withRules(
-				&removeNoopFilter{plan: plan},
+			newOptimization("CleanupMerge", plan).withRules(
 				&removeNoopMerge{plan: plan},
 			),
 		}

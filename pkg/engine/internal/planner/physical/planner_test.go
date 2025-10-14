@@ -275,7 +275,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Right: logical.NewLiteral("error"),
 				Op:    types.BinaryOpEq,
 			},
-		)
+		).Compat(true)
 
 		logicalPlan, err := b.ToPlan()
 		require.NoError(t, err)
@@ -302,8 +302,15 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		children := physicalPlan.Children(filterNode)
 		require.Len(t, children, 1)
 
+		compatNode, ok := children[0].(*ColumnCompat)
+		require.True(t, ok, "Filter's child should be ColumnCompat")
+		require.Equal(t, types.ColumnTypeParsed, compatNode.Source)
+
+		children = physicalPlan.Children(compatNode)
+		require.Len(t, children, 1)
+
 		parseNode, ok := children[0].(*ParseNode)
-		require.True(t, ok, "Filter's child should be ParseNode")
+		require.True(t, ok, "ColumnCompat's child should be ParseNode")
 		require.Equal(t, ParserLogfmt, parseNode.Kind)
 		require.Empty(t, parseNode.RequestedKeys)
 
@@ -345,7 +352,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 			end,           // End time
 			time.Minute,   // Step
 			5*time.Minute, // Range interval
-		)
+		).Compat(true)
 
 		logicalPlan, err := b.ToPlan()
 		require.NoError(t, err)
@@ -417,7 +424,7 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
 		0,             // Step
 		time.Minute*5, // Range
-	)
+	).Compat(true)
 
 	logicalPlan, err := b.ToPlan()
 	require.NoError(t, err)
@@ -463,7 +470,7 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 			},
 			Shard: logical.NewShard(0, 1), // no sharding
 		},
-	)
+	).Compat(true)
 
 	logicalPlan, err := b.ToPlan()
 	require.NoError(t, err)

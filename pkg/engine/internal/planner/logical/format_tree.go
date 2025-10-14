@@ -43,6 +43,9 @@ func (t *treeFormatter) convert(value Value) *tree.Node {
 	case *Literal:
 		return t.convertLiteral(value)
 
+	case *LogQLCompat:
+		return tree.NewNode("LOGQL_COMPAT", value.Name())
+
 	default:
 		panic(fmt.Sprintf("unknown value type %T", value))
 	}

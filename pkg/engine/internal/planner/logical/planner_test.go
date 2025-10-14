@@ -110,7 +110,8 @@ func TestConvertAST_Success(t *testing.T) {
 %18 = SELECT %17 [predicate=%11]
 %19 = SORT %18 [column=builtin.timestamp, asc=false, nulls_first=false]
 %20 = LIMIT %19 [skip=0, fetch=1000]
-RETURN %20
+%21 = LOGQL_COMPAT %20
+RETURN %21
 `
 
 	require.Equal(t, expected, logicalPlan.String())
@@ -145,7 +146,8 @@ func TestConvertAST_MetricQuery_Success(t *testing.T) {
 %10 = SELECT %9 [predicate=%4]
 %11 = RANGE_AGGREGATION %10 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
 %12 = VECTOR_AGGREGATION %11 [operation=sum, group_by=(ambiguous.level)]
-RETURN %12
+%13 = LOGQL_COMPAT %12
+RETURN %13
 `
 
 	require.Equal(t, expected, logicalPlan.String())
@@ -317,7 +319,8 @@ func TestPlannerCreatesParse(t *testing.T) {
 %9 = SELECT %7 [predicate=%8]
 %10 = RANGE_AGGREGATION %9 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
 %11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
-RETURN %11
+%12 = LOGQL_COMPAT %11
+RETURN %12
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -347,7 +350,8 @@ RETURN %11
 %9 = SELECT %7 [predicate=%8]
 %10 = SORT %9 [column=builtin.timestamp, asc=false, nulls_first=false]
 %11 = LIMIT %10 [skip=0, fetch=1000]
-RETURN %11
+%12 = LOGQL_COMPAT %11
+RETURN %12
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -377,7 +381,8 @@ RETURN %11
 %9 = SELECT %7 [predicate=%8]
 %10 = RANGE_AGGREGATION %9 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
 %11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
-RETURN %11
+%12 = LOGQL_COMPAT %11
+RETURN %12
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -406,7 +411,8 @@ RETURN %11
 %9 = SELECT %7 [predicate=%8]
 %10 = SORT %9 [column=builtin.timestamp, asc=false, nulls_first=false]
 %11 = LIMIT %10 [skip=0, fetch=1000]
-RETURN %11
+%12 = LOGQL_COMPAT %11
+RETURN %12
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -444,7 +450,8 @@ RETURN %11
 %13 = SELECT %11 [predicate=%12]
 %14 = SORT %13 [column=builtin.timestamp, asc=false, nulls_first=false]
 %15 = LIMIT %14 [skip=0, fetch=1000]
-RETURN %15
+%16 = LOGQL_COMPAT %15
+RETURN %16
 `
 
 		require.Equal(t, expected, plan.String(), "Operations should be in the correct order: LineFilter before Parse, LabelFilter after Parse")
@@ -480,7 +487,8 @@ RETURN %15
 %13 = SELECT %11 [predicate=%12]
 %14 = RANGE_AGGREGATION %13 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
 %15 = VECTOR_AGGREGATION %14 [operation=sum, group_by=(ambiguous.level)]
-RETURN %15
+%16 = LOGQL_COMPAT %15
+RETURN %16
 `
 
 		require.Equal(t, expected, plan.String(), "Metric query should preserve operation order: filters before parse, then parse, then filters after parse")
