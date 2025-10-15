@@ -395,6 +395,14 @@ func (g *Generator) generateEntriesForStream(meta StreamMetadata) []logproto.Ent
 				})
 			}
 
+			// Generate colliding structured metadata keys
+			if g.rnd.Float32() < 0.1 && len(otel.Resource) > 0 {
+				g.rnd.Shuffle(len(resourceKeys), func(i, j int) { resourceKeys[i], resourceKeys[j] = resourceKeys[j], resourceKeys[i] })
+				metadata = append(metadata,
+					logproto.LabelAdapter{Name: resourceKeys[0], Value: app.OTELResource[resourceKeys[0]]},
+				)
+			}
+
 			// Finally add trace context if present
 			if traceCtx != nil {
 				metadata = append(metadata,

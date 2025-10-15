@@ -35,10 +35,7 @@ type Pipeline interface {
 
 var (
 	errNotImplemented = errors.New("pipeline not implemented")
-
-	EOF       = errors.New("pipeline exhausted") //nolint:revive,staticcheck
-	Exhausted = failureState(EOF)
-	Canceled  = failureState(context.Canceled)
+	EOF               = errors.New("pipeline exhausted") //nolint:revive,staticcheck
 )
 
 type state struct {
@@ -46,30 +43,15 @@ type state struct {
 	err   error
 }
 
-func (s state) Value() (arrow.Record, error) {
-	return s.batch, s.err
-}
-
-func failureState(err error) state {
-	return state{err: err}
-}
-
-func successState(batch arrow.Record) state {
-	return state{batch: batch}
-}
-
-func newState(batch arrow.Record, err error) state {
-	return state{batch: batch, err: err}
-}
+type readFunc func(context.Context, []Pipeline) (arrow.Record, error)
 
 type GenericPipeline struct {
 	t      Transport
 	inputs []Pipeline
-	state  state
-	read   func(context.Context, []Pipeline) state
+	read   readFunc
 }
 
-func newGenericPipeline(t Transport, read func(context.Context, []Pipeline) state, inputs ...Pipeline) *GenericPipeline {
+func newGenericPipeline(t Transport, read readFunc, inputs ...Pipeline) *GenericPipeline {
 	return &GenericPipeline{
 		t:      t,
 		read:   read,
@@ -89,8 +71,7 @@ func (p *GenericPipeline) Read(ctx context.Context) (arrow.Record, error) {
 	if p.read == nil {
 		return nil, EOF
 	}
-	s := p.read(ctx, p.inputs)
-	return s.batch, s.err
+	return p.read(ctx, p.inputs)
 }
 
 // Close implements Pipeline.
@@ -110,14 +91,14 @@ func errorPipeline(ctx context.Context, err error) Pipeline {
 	span.RecordError(err)
 	span.SetStatus(codes.Error, err.Error())
 
-	return newGenericPipeline(Local, func(_ context.Context, _ []Pipeline) state {
-		return state{err: fmt.Errorf("failed to execute pipeline: %w", err)}
+	return newGenericPipeline(Local, func(_ context.Context, _ []Pipeline) (arrow.Record, error) {
+		return nil, fmt.Errorf("failed to execute pipeline: %w", err)
 	})
 }
 
 func emptyPipeline() Pipeline {
-	return newGenericPipeline(Local, func(_ context.Context, _ []Pipeline) state {
-		return Exhausted
+	return newGenericPipeline(Local, func(_ context.Context, _ []Pipeline) (arrow.Record, error) {
+		return nil, EOF
 	})
 }
 
@@ -126,12 +107,9 @@ func emptyPipeline() Pipeline {
 type prefetchWrapper struct {
 	Pipeline // the pipeline that is wrapped
 
-	initialized bool // internal state to indicate whether the pre-fetching goroutine is running
-
-	ch    chan state // the results channel for pre-fetched items
-	state state      // internal state representing the last pre-fetched item
-
-	cancel context.CancelCauseFunc // cancellation function for the context
+	initialized bool                    // internal state to indicate whether the pre-fetching goroutine is running
+	ch          chan state              // the results channel for pre-fetched items
+	cancel      context.CancelCauseFunc // cancellation function for the context
 }
 
 var _ Pipeline = (*prefetchWrapper)(nil)
@@ -157,8 +135,7 @@ func newPrefetchingPipeline(p Pipeline) *prefetchWrapper {
 // Read implements [Pipeline].
 func (p *prefetchWrapper) Read(ctx context.Context) (arrow.Record, error) {
 	p.init(ctx)
-	s := p.read(ctx)
-	return s.batch, s.err
+	return p.read(ctx)
 }
 
 func (p *prefetchWrapper) init(ctx context.Context) {
@@ -201,15 +178,15 @@ func (p prefetchWrapper) prefetch(ctx context.Context) error {
 	}
 }
 
-func (p *prefetchWrapper) read(_ context.Context) state {
+func (p *prefetchWrapper) read(_ context.Context) (arrow.Record, error) {
 	state := <-p.ch
 
 	// Reading from a channel that is closed while waiting yields a zero-value.
 	// In that case, the pipeline should produce an error state.
 	if state.err == nil && state.batch == nil {
-		state = Canceled
+		return nil, context.Canceled
 	}
-	return state
+	return state.batch, state.err
 }
 
 // Close implements [Pipeline].

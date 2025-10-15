@@ -7786,6 +7786,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>memcached.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe for memcached pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcachedExporter.containerSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext for memcached exporter containers</td>

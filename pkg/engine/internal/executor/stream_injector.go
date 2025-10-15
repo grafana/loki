@@ -14,7 +14,10 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-var streamInjectorColumnName = "stream_id.int64"
+var (
+	streamInjectorColumnName  = "int64.generated.stream_id"
+	streamInjectorColumnIdent = semconv.MustParseFQN(streamInjectorColumnName)
+)
 
 // streamInjector injects stream labels into a logs Arrow record, replacing the
 // streams ID column with columns for the labels composing those streams.
@@ -40,14 +43,14 @@ func newStreamInjector(alloc memory.Allocator, view *streamsView) *streamInjecto
 //
 // The returned record must be Release()d by the caller when no longer needed.
 func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Record, error) {
-	streamIDCol, streamIDIndex, err := columnForFQN(streamInjectorColumnName, in)
+	streamIDCol, streamIDIndex, err := columnForIdent(streamInjectorColumnIdent, in)
 	if err != nil {
 		return nil, err
 	}
 
 	streamIDValues, ok := streamIDCol.(*array.Int64)
 	if !ok {
-		return nil, fmt.Errorf("column %s must be of type int64, got %s", streamInjectorColumnName, in.Schema().Field(streamIDIndex))
+		return nil, fmt.Errorf("column %s must be of type int64, got %s", streamInjectorColumnIdent.FQN(), in.Schema().Field(streamIDIndex))
 	}
 
 	type labelColumn struct {
@@ -57,7 +60,7 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 
 	var (
 		labels      = make([]*labelColumn, 0, si.view.NumLabels())
-		labelLookup = make(map[semconv.Identifier]*labelColumn, si.view.NumLabels())
+		labelLookup = make(map[string]*labelColumn, si.view.NumLabels())
 	)
 	defer func() {
 		for _, col := range labels {
@@ -68,7 +71,7 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 	getColumn := func(name string) *labelColumn {
 		ident := semconv.NewIdentifier(name, types.ColumnTypeLabel, types.Loki.String)
 
-		if col, ok := labelLookup[*ident]; ok {
+		if col, ok := labelLookup[ident.FQN()]; ok {
 			return col
 		}
 
@@ -78,7 +81,7 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 		}
 
 		labels = append(labels, col)
-		labelLookup[*ident] = col
+		labelLookup[ident.FQN()] = col
 		return col
 	}
 

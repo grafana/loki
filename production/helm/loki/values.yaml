@@ -3507,6 +3507,8 @@ memcached:
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
+  # -- Startup probe for memcached pods
+  startupProbe: {}
 
 memcachedExporter:
   # -- Whether memcached metrics should be exported

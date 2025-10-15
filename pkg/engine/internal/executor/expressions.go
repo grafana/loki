@@ -259,6 +259,7 @@ var _ ColumnVector = (*Array)(nil)
 
 // ToArray implements ColumnVector.
 func (a *Array) ToArray() arrow.Array {
+	a.array.Retain()
 	return a.array
 }
 

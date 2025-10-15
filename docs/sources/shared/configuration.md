@@ -1528,7 +1528,7 @@ ingest_limits_frontend_client:
 # fields are returned. Use YAML field names (e.g., 'retention_period',
 # 'max_query_series').
 # CLI flag: -limits.tenant-limits-allow-publish
-[tenant_limits_allow_publish: <list of strings> | default = [discover_log_levels discover_service_name log_level_fields max_line_size_truncate max_query_length max_query_lookback max_query_range max_query_series metric_aggregation_enabled otlp_config pattern_persistence_enabled query_timeout retention_period retention_stream]]
+[tenant_limits_allow_publish: <list of strings> | default = [discover_log_levels discover_service_name log_level_fields max_entries_limit_per_query max_line_size_truncate max_query_bytes_read max_query_length max_query_lookback max_query_range max_query_series metric_aggregation_enabled otlp_config pattern_persistence_enabled query_timeout retention_period retention_stream volume_enabled volume_max_series]]
 
 # Common configuration to be shared between multiple modules. If a more specific
 # configuration is given in other sections, the related configuration within
@@ -4907,6 +4907,15 @@ engine_v2:
 # of the normal ingesters.
 # CLI flag: -querier.query-partition-ingesters
 [query_partition_ingesters: <boolean> | default = false]
+
+# Amount of time until data objects are available.
+# CLI flag: -querier.dataobj-storage-lag
+[dataobj_storage_lag: <duration> | default = 1h]
+
+# Initial date when data objects became available. Format YYYY-MM-DD. If not
+# set, assume data objects are always available no matter how far back.
+# CLI flag: -querier.dataobj-storage-start
+[dataobj_storage_start: <string> | default = ""]
 ```
 
 ### query_range
