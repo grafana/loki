@@ -1,0 +1,1024 @@
+# Loki Helm Chart - Architecture & Components
+
+## Overview
+
+The Loki Helm chart supports three deployment architectures, each suited for different scales and operational requirements. This document details all components, their responsibilities, and when they're active.
+
+## Deployment Modes
+
+### 1. SingleBinary Mode
+
+**Use Case**: Small installations, testing, development  
+**Scale**: Up to ~100GB/day  
+**Storage**: Filesystem or object storage  
+**HA**: Limited (single point of failure if 1 replica, basic HA with object storage + multiple replicas)
+
+**Architecture**:
+```
+┌──────────────────┐
+│  Single Binary   │  ← All Loki components in one process
+│  (all targets)   │     Handles: distributor, ingester, querier,
+│                  │              query-frontend, compactor, ruler
+└──────────────────┘
+        ↓
+┌──────────────────┐
+│ Storage (FS/S3)  │
+└──────────────────┘
+```
+
+**Templates Active**:
+- `templates/single-binary/statefulset.yaml`
+- `templates/single-binary/service.yaml`
+- `templates/single-binary/service-headless.yaml`
+- `templates/single-binary/hpa.yaml` (if autoscaling + object storage)
+- `templates/single-binary/pdb.yaml` (if configured)
+
+**Values Configuration**:
+```yaml
+deploymentMode: SingleBinary
+singleBinary:
+  replicas: 1  # Can be >1 only with object storage
+  targetModule: "all"
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+# All distributed components set to 0
+```
+
+### 2. SimpleScalable Mode
+
+**Use Case**: Medium installations  
+**Scale**: Up to ~1TB/day  
+**Storage**: **Requires object storage (S3, GCS, Azure, etc.)**  
+**HA**: Yes, with 3 independent components
+
+**Architecture**:
+```
+Write Path:              Read Path:              Backend:
+┌────────────┐          ┌────────────┐          ┌────────────┐
+│   Write    │          │    Read    │          │  Backend   │
+│ (ingester, │          │ (querier,  │          │(compactor, │
+│ distributor)│         │query-      │          │   ruler,   │
+│            │          │ frontend,  │          │query-      │
+│            │          │query-      │          │scheduler,  │
+│            │          │scheduler)  │          │index-      │
+│            │          │            │          │ gateway)   │
+└────────────┘          └────────────┘          └────────────┘
+      ↓                       ↓                       ↓
+      └───────────────────────┴───────────────────────┘
+                             ↓
+                   ┌──────────────────┐
+                   │ Object Storage   │
+                   └──────────────────┘
+```
+
+**Templates Active**:
+- `templates/write/statefulset-write.yaml` - Write path (ingester, distributor targets)
+- `templates/read/deployment-read.yaml` - Read path (querier, query-frontend) **if legacyReadTarget=false**
+- `templates/read/statefulset-read.yaml` - Legacy 2-target mode **if legacyReadTarget=true**
+- `templates/backend/statefulset-backend.yaml` - Backend (compactor, ruler, scheduler, index-gateway)
+- Plus HPA, PDB, and service files for each
+
+**Values Configuration**:
+```yaml
+deploymentMode: SimpleScalable
+write:
+  replicas: 3
+  targetModule: "write"
+read:
+  replicas: 3
+  targetModule: "read"
+  legacyReadTarget: false  # false = 3 target mode (recommended)
+backend:
+  replicas: 3
+  targetModule: "backend"
+singleBinary:
+  replicas: 0
+# All distributed components set to 0
+```
+
+**Legacy 2-Target Mode** (`read.legacyReadTarget: true`):
+- Backend components run in read pods
+- Backend templates not rendered
+- Deprecated, use 3-target mode
+
+### 3. Distributed Mode (Microservices)
+
+**Use Case**: Large installations, production at scale  
+**Scale**: 1TB+/day  
+**Storage**: **Requires object storage**  
+**HA**: Full high availability with independent scaling
+
+**Architecture**:
+```
+Write Path:                                     Read Path:
+┌──────────────┐                              ┌──────────────────┐
+│ Distributor  │ ← Receives logs              │ Query Frontend   │
+└──────────────┘                              └──────────────────┘
+       ↓                                                ↓
+┌──────────────┐                              ┌──────────────────┐
+│  Ingester    │ ← Batches & writes           │ Query Scheduler  │
+│ (zone-aware) │                              └──────────────────┘
+└──────────────┘                                       ↓
+       ↓                                        ┌──────────────────┐
+┌──────────────┐                              │     Querier      │
+│    Storage   │ ──────────────────────────── │                  │
+└──────────────┘                              └──────────────────┘
+       ↑                                                ↓
+┌──────────────┐                              ┌──────────────────┐
+│  Compactor   │ ← Compaction                 │  Index Gateway   │
+└──────────────┘                              └──────────────────┘
+
+Additional:
+┌──────────────┐  ┌──────────────┐  ┌──────────────┐
+│    Ruler     │  │Pattern       │  │  Bloom (*)   │
+│              │  │Ingester      │  │  Components  │
+└──────────────┘  └──────────────┘  └──────────────┘
+
+(*) Experimental: bloom-planner, bloom-builder, bloom-gateway
+```
+
+**Templates Active**:
+- `templates/distributor/deployment-distributor.yaml`
+- `templates/ingester/statefulset-ingester.yaml` (or zone-aware variants)
+- `templates/querier/deployment-querier.yaml`
+- `templates/query-frontend/deployment-query-frontend.yaml`
+- `templates/query-scheduler/deployment-query-scheduler.yaml`
+- `templates/compactor/statefulset-compactor.yaml`
+- `templates/index-gateway/statefulset-index-gateway.yaml`
+- `templates/ruler/statefulset-ruler.yaml` (if enabled)
+- Plus HPA, PDB, service files for each
+
+**Values Configuration**:
+```yaml
+deploymentMode: Distributed
+distributor:
+  replicas: 3
+ingester:
+  replicas: 3
+querier:
+  replicas: 3
+queryFrontend:
+  replicas: 2
+queryScheduler:
+  replicas: 2
+compactor:
+  replicas: 1
+indexGateway:
+  replicas: 2
+ruler:
+  enabled: true
+  replicas: 1
+# SimpleScalable components set to 0
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+singleBinary:
+  replicas: 0
+```
+
+### Transitional Modes
+
+**SingleBinary<->SimpleScalable**:
+- Set `deploymentMode: "SingleBinary<->SimpleScalable"`
+- Allows both singleBinary and write/read/backend with non-zero replicas
+- Use during migration between modes
+
+**SimpleScalable<->Distributed**:
+- Set `deploymentMode: "SimpleScalable<->Distributed"`
+- Allows both scalable targets and distributed components
+- Use with `migrate.fromDistributed.enabled: true` and memberlist service
+
+## Component Detailed Reference
+
+### Write Path Components
+
+#### 1. Distributor (Distributed Only)
+
+**Purpose**: Entry point for log ingestion, validates logs, enforces rate limits, forwards to ingesters  
+**Template**: `templates/distributor/deployment-distributor.yaml`  
+**Type**: Deployment (stateless)  
+**Scaling**: Horizontal via HPA  
+**Key Functions**:
+- Receives logs via HTTP/GRPC
+- Validates timestamps and labels
+- Applies rate limiting per tenant
+- Distributes to ingesters via consistent hashing
+
+**Configuration Values**:
+```yaml
+distributor:
+  replicas: 3
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 10
+  extraArgs:
+    - -distributor.zone-awareness-enabled=true  # Added by template if ingester zones enabled
+```
+
+**Related Templates**:
+- `templates/distributor/_helpers-distributor.tpl` - Helper functions
+- `templates/distributor/service-distributor.yaml` - Main service
+- `templates/distributor/service-distributor-headless.yaml` - Headless for service discovery
+- `templates/distributor/hpa.yaml` - Auto-scaling
+- `templates/distributor/poddisruptionbudget-distributor.yaml` - PDB
+
+#### 2. Ingester (Distributed Only)
+
+**Purpose**: Batches logs in memory, creates chunks, writes to object storage  
+**Template**: `templates/ingester/statefulset-ingester.yaml` (+ zone variants)  
+**Type**: StatefulSet (stateful)  
+**Scaling**: Vertical + careful horizontal (data redistribution)  
+**Key Functions**:
+- Receives logs from distributors
+- Creates time-ordered chunks
+- Maintains WAL for durability
+- Flushes chunks to object storage
+
+**Zone-Aware Replication** (Recommended):
+- Enabled via `ingester.zoneAwareReplication.enabled: true`
+- Creates 3 StatefulSets: zone-a, zone-b, zone-c
+- Templates:
+  - `templates/ingester/statefulset-ingester-zone-a.yaml`
+  - `templates/ingester/statefulset-ingester-zone-b.yaml`
+  - `templates/ingester/statefulset-ingester-zone-c.yaml`
+  - `templates/ingester/service-ingester-zone-*-headless.yaml` (3 files)
+- Requires Rollout Operator for controlled rollouts
+- Each zone gets replicas/3 pods
+- Pod anti-affinity prevents same-zone pods on same host
+
+**Configuration Values**:
+```yaml
+ingester:
+  replicas: 3  # Total across all zones if zone-aware
+  zoneAwareReplication:
+    enabled: true
+    maxUnavailablePct: 33  # Max % to restart in each zone
+    zoneA:
+      nodeSelector: {topology.kubernetes.io/zone: zone-a}
+    zoneB:
+      nodeSelector: {topology.kubernetes.io/zone: zone-b}
+    zoneC:
+      nodeSelector: {topology.kubernetes.io/zone: zone-c}
+  persistence:
+    enabled: true
+    claims:
+      - name: data
+        size: 10Gi
+```
+
+**Related Templates**:
+- `templates/ingester/_helpers-ingester.tpl` - Replica calculations, zone helpers
+- `templates/ingester/service-ingester.yaml` - Main service
+- `templates/ingester/hpa.yaml` - Regular ingester HPA
+- `templates/ingester/hpa-zone-*.yaml` - Zone-specific HPAs (3 files)
+- `templates/ingester/poddisruptionbudget-ingester.yaml` - Regular PDB
+- `templates/ingester/poddisruptionbudget-ingester-rollout.yaml` - Zone-aware PDB
+
+#### 3. Write Component (SimpleScalable Only)
+
+**Purpose**: Combined distributor + ingester for SimpleScalable mode  
+**Template**: `templates/write/statefulset-write.yaml`  
+**Type**: StatefulSet  
+**Scaling**: Vertical primarily (horizontal requires WAL considerations)
+
+**Configuration Values**:
+```yaml
+write:
+  replicas: 3
+  targetModule: "write"  # Runs distributor + ingester targets
+  persistence:
+    volumeClaimsEnabled: true
+    size: 10Gi
+  lifecycle:  # Auto-added if autoscaling enabled
+    preStop:
+      httpGet:
+        path: "/ingester/shutdown?terminate=false&flush=true"
+```
+
+### Read Path Components
+
+#### 4. Querier (Distributed Only)
+
+**Purpose**: Executes LogQL queries, fetches chunks from ingesters and object storage  
+**Template**: `templates/querier/deployment-querier.yaml`  
+**Type**: Deployment  
+**Scaling**: Horizontal via HPA
+
+**Configuration Values**:
+```yaml
+querier:
+  replicas: 3
+  maxUnavailable: 2
+  extraArgs:
+    - -distributor.zone-awareness-enabled=true  # Added if zones enabled
+```
+
+**Related Templates**:
+- `templates/querier/_helpers-querier.tpl`
+- `templates/querier/service-querier.yaml`
+- `templates/querier/hpa.yaml`
+- `templates/querier/poddisruptionbudget-querier.yaml`
+
+#### 5. Query Frontend (Distributed Only)
+
+**Purpose**: Query parallelization, caching, queue management  
+**Template**: `templates/query-frontend/deployment-query-frontend.yaml`  
+**Type**: Deployment  
+**Scaling**: Horizontal via HPA
+
+**Related Templates**:
+- `templates/query-frontend/service-query-frontend.yaml`
+- `templates/query-frontend/service-query-frontend-headless.yaml`
+- `templates/query-frontend/hpa.yaml`
+- `templates/query-frontend/poddisruptionbudget-query-frontend.yaml`
+
+#### 6. Query Scheduler (Distributed Only)
+
+**Purpose**: Distributes queries to queriers, prevents head-of-line blocking  
+**Template**: `templates/query-scheduler/deployment-query-scheduler.yaml`  
+**Type**: Deployment  
+**Scaling**: Fixed replicas (should divide querier max-concurrent)
+
+**Service**: ClusterIP with `clusterIP: None` and `publishNotReadyAddresses: true` for service discovery
+
+#### 7. Read Component (SimpleScalable Only)
+
+**Purpose**: Combined querier + query-frontend for SimpleScalable  
+**Template**:
+- `templates/read/deployment-read.yaml` (3-target mode, legacyReadTarget=false)
+- `templates/read/statefulset-read.yaml` (2-target legacy mode, legacyReadTarget=true)
+
+**Configuration**:
+```yaml
+read:
+  replicas: 3
+  targetModule: "read"
+  legacyReadTarget: false  # Use 3-target mode
+```
+
+### Backend Components
+
+#### 8. Compactor
+
+**Purpose**: Compacts index files, retention enforcement, deletion  
+**Template**: `templates/compactor/statefulset-compactor.yaml`  
+**Type**: StatefulSet  
+**Scaling**: Single replica (only 1 should run at a time)  
+**Active In**: Distributed, (SimpleScalable via backend)
+
+**Configuration**:
+```yaml
+compactor:
+  replicas: 1  # Only 1 compactor should run
+  persistence:
+    enabled: false  # Typically uses ephemeral storage
+```
+
+#### 9. Index Gateway
+
+**Purpose**: Serves TSDB index queries, offloads index from queriers  
+**Template**: `templates/index-gateway/statefulset-index-gateway.yaml`  
+**Type**: StatefulSet  
+**Active In**: Distributed, (SimpleScalable via backend)
+
+**Configuration**:
+```yaml
+indexGateway:
+  replicas: 2
+  joinMemberlist: true
+  persistence:
+    enabled: false
+    inMemory: false  # Can use ramdisk for performance
+```
+
+**Related Templates**:
+- `templates/index-gateway/service-index-gateway.yaml`
+- `templates/index-gateway/service-index-gateway-headless.yaml`
+- `templates/index-gateway/poddisruptionbudget-index-gateway.yaml`
+
+#### 10. Ruler
+
+**Purpose**: Evaluates LogQL recording and alerting rules  
+**Template**: `templates/ruler/statefulset-ruler.yaml`  
+**Type**: StatefulSet  
+**Active In**: Distributed (optional), SimpleScalable via backend (optional)
+
+**Configuration**:
+```yaml
+ruler:
+  enabled: true
+  replicas: 1
+  directories:  # Static rules from ConfigMaps
+    fake:
+      rules.yaml: |
+        groups:
+          - name: example
+            rules: []
+  persistence:
+    enabled: true  # Required for WAL
+```
+
+**Related Templates**:
+- `templates/ruler/configmap-ruler.yaml` - Static rules from values
+- `templates/ruler/service-ruler.yaml`
+- Sidecar support for dynamic rules from ConfigMaps/Secrets
+
+#### 11. Backend Component (SimpleScalable Only)
+
+**Purpose**: Combined compactor + ruler + query-scheduler + index-gateway  
+**Template**: `templates/backend/statefulset-backend.yaml`  
+**Type**: StatefulSet  
+**Active In**: SimpleScalable (3-target mode only)
+
+**Configuration**:
+```yaml
+backend:
+  replicas: 3
+  targetModule: "backend"
+```
+
+**Related Templates**:
+- `templates/backend/service-backend.yaml`
+- `templates/backend/service-backend-headless.yaml`
+- `templates/backend/query-scheduler-discovery.yaml` - Scheduler discovery service
+- `templates/backend/hpa.yaml`
+- `templates/backend/poddisruptionbudget-backend.yaml`
+- `templates/backend/clusterrole.yaml` - RBAC for sidecar rules
+- `templates/backend/clusterrolebinding.yaml`
+
+### Experimental Components (Bloom Filters)
+
+#### 12. Bloom Planner
+
+**Purpose**: Plans bloom filter generation  
+**Template**: `templates/bloom-planner/statefulset-bloom-planner.yaml`  
+**Type**: StatefulSet  
+**Active In**: Distributed only, must set replicas > 0
+
+**Configuration**:
+```yaml
+bloomPlanner:
+  replicas: 0  # Set to >0 to enable
+  persistence:
+    enabled: false
+```
+
+#### 13. Bloom Builder
+
+**Purpose**: Builds bloom filters  
+**Template**: `templates/bloom-builder/deployment-bloom-builder.yaml`  
+**Type**: Deployment  
+**Active In**: Distributed only, requires bloomPlanner > 0
+
+#### 14. Bloom Gateway
+
+**Purpose**: Serves bloom filter queries  
+**Template**: `templates/bloom-gateway/statefulset-bloom-gateway.yaml`  
+**Type**: StatefulSet  
+**Active In**: Distributed only
+
+**Note**: Bloom components are experimental. Templates only render if replicas > 0.
+
+### Enterprise Components
+
+#### 15. Admin API (Enterprise Only)
+
+**Purpose**: GEL tenant management, token provisioning  
+**Template**: `templates/admin-api/deployment-admin-api.yaml`  
+**Type**: Deployment  
+**Active In**: Distributed + enterprise.enabled + enterprise.adminApi.enabled
+
+**Configuration**:
+```yaml
+enterprise:
+  enabled: true
+  adminApi:
+    enabled: true
+adminApi:
+  replicas: 1
+```
+
+#### 16. Provisioner (Enterprise Only)
+
+**Purpose**: Automated tenant and token provisioning on install  
+**Template**: `templates/provisioner/job-provisioner.yaml`  
+**Type**: Job (Helm hook: post-install)  
+**Active In**: enterprise.enabled + enterprise.provisioner.enabled
+
+**Configuration**:
+```yaml
+enterprise:
+  adminToken:
+    secret: loki-admin-token  # Must exist before install
+  provisioner:
+    enabled: true
+    additionalTenants:
+      - name: tenant-1
+        secretNamespace: default
+```
+
+**Related Templates**:
+- `templates/provisioner/serviceaccount-provisioner.yaml`
+- `templates/provisioner/role-provisioner.yaml`
+- `templates/provisioner/rolebinding-provisioner.yaml`
+
+**Important**: As of chart 6.36.0, tokengen job removed. Admin tokens must be created manually.
+
+#### 17. Overrides Exporter (Distributed Only)
+
+**Purpose**: Exports tenant limits as Prometheus metrics  
+**Template**: `templates/overrides-exporter/deployment-overrides-exporter.yaml`  
+**Type**: Deployment  
+**Active In**: Distributed + overridesExporter.enabled
+
+### Pattern Recognition Components
+
+#### 18. Pattern Ingester
+
+**Purpose**: Detects and indexes log patterns  
+**Template**: `templates/pattern-ingester/statefulset-pattern-ingester.yaml`  
+**Type**: StatefulSet  
+**Active In**: Distributed only, replicas > 0
+
+**Configuration**:
+```yaml
+loki:
+  pattern_ingester:
+    enabled: true
+patternIngester:
+  replicas: 1
+  persistence:
+    enabled: true
+```
+
+### Gateway & Routing
+
+#### 19. Gateway (All Modes)
+
+**Purpose**: Nginx reverse proxy or GEL gateway for routing, authentication  
+**Templates**:
+- `templates/gateway/deployment-gateway-nginx.yaml` - OSS nginx gateway
+- `templates/gateway/deployment-gateway-enterprise.yaml` - GEL gateway
+**Type**: Deployment  
+**Active In**: All modes (optional but recommended)
+
+**Nginx Gateway** (enterprise.gelGateway=false):
+- Routes to appropriate backends based on URL paths
+- Basic auth support via htpasswd
+- ConfigMap: `templates/gateway/configmap-gateway.yaml`
+- Config generation: `loki.nginxFile` helper in `templates/_helpers.tpl`
+
+**GEL Gateway** (enterprise.gelGateway=true):
+- Native GEL gateway with enterprise features
+- Automatic proxy URL configuration if useDefaultProxyURLs=true
+
+**Configuration**:
+```yaml
+gateway:
+  enabled: true
+  replicas: 1
+  basicAuth:
+    enabled: true
+    username: admin
+    password: secret
+  nginxConfig:
+    schema: http
+    customReadUrl: null  # Override backend URLs
+    customWriteUrl: null
+    customBackendUrl: null
+    locationSnippet: |  # Custom nginx config per location
+      proxy_set_header X-Custom-Header value;
+```
+
+**Related Templates**:
+- `templates/gateway/service-gateway.yaml`
+- `templates/gateway/ingress-gateway.yaml`
+- `templates/gateway/secret-gateway.yaml` - htpasswd secret
+- `templates/gateway/hpa.yaml`
+- `templates/gateway/poddisruptionbudget-gateway.yaml`
+
+### Caching Components
+
+#### 20. Chunks Cache (Memcached)
+
+**Purpose**: Caches chunks to reduce object storage reads  
+**Template**: `templates/chunks-cache/statefulset-chunks-cache.yaml`  
+**Type**: StatefulSet (uses shared memcached template)  
+**Active In**: All modes (optional)
+
+**L2 Cache Support**:
+- Two-tier caching (L1 + L2)
+- L1 for recent chunks, L2 for older chunks
+- Separate StatefulSet if `chunksCache.l2.enabled: true`
+
+**Configuration**:
+```yaml
+chunksCache:
+  enabled: true
+  replicas: 1
+  allocatedMemory: 8192  # MB
+  suffix: ""  # Optional suffix for L1
+  persistence:
+    enabled: false  # Ephemeral by default
+  l2:
+    enabled: false
+    suffix: "l2"
+    allocatedMemory: 8192
+```
+
+**Template Pattern**: Uses `loki.memcached.statefulSet` template from `templates/memcached/_memcached-statefulset.tpl`
+
+#### 21. Results Cache (Memcached)
+
+**Purpose**: Caches query results to reduce query execution  
+**Template**: `templates/results-cache/statefulset-results-cache.yaml`  
+**Type**: StatefulSet  
+**Active In**: All modes (optional)
+
+**Configuration**:
+```yaml
+resultsCache:
+  enabled: true
+  replicas: 1
+  allocatedMemory: 1024
+  defaultValidity: 12h
+```
+
+### Monitoring Components
+
+#### 22. Loki Canary
+
+**Purpose**: Tests Loki by pushing and querying logs continuously  
+**Template**: `templates/loki-canary/daemonset.yaml`  
+**Type**: DaemonSet or Deployment (configurable)  
+**Active In**: All modes (optional)
+
+**Configuration**:
+```yaml
+lokiCanary:
+  enabled: true
+  kind: DaemonSet  # or Deployment
+  push: true
+  labelname: pod
+```
+
+**Related Templates**:
+- `templates/loki-canary/service.yaml`
+- `templates/loki-canary/serviceaccount.yaml`
+
+#### 23. Monitoring Resources
+
+**Templates**:
+- `templates/monitoring/servicemonitor.yaml` - Prometheus ServiceMonitor CRD
+- `templates/monitoring/loki-alerts.yaml` - PrometheusRule for alerts
+- `templates/monitoring/loki-rules.yaml` - PrometheusRule for recording rules
+- `templates/monitoring/grafana-agent.yaml` - Grafana Agent Operator resources
+- `templates/monitoring/pod-logs.yaml` - PodLogs CRD for log collection
+- `templates/monitoring/logs-instance.yaml` - LogsInstance CRD
+- `templates/monitoring/metrics-instance.yaml` - MetricsInstance CRD
+- `templates/monitoring/dashboards/configmap-1.yaml` - Dashboards (chunks, deletion, logs, operational, recording-rules)
+- `templates/monitoring/dashboards/configmap-2.yaml` - Dashboards (reads, reads-resources, retention, writes, writes-resources)
+
+**Configuration**:
+```yaml
+monitoring:
+  dashboards:
+    enabled: false
+    namespace: null  # Can deploy to different namespace
+  rules:
+    enabled: false
+    alerting: true
+  serviceMonitor:
+    enabled: false
+    labels:
+      release: prometheus  # Match your Prometheus operator
+  selfMonitoring:
+    enabled: false
+    grafanaAgent:
+      installOperator: false
+```
+
+### Legacy Components
+
+#### 24. Table Manager (Deprecated)
+
+**Purpose**: Manages DynamoDB/Cassandra/Bigtable tables (legacy index types)  
+**Template**: `templates/table-manager/deployment-table-manager.yaml`  
+**Type**: Deployment  
+**Active In**: Only if `tableManager.enabled: true` (deprecated)
+
+**Note**: Not needed for modern index types (boltdb-shipper, tsdb). Will be removed in future chart version.
+
+### Shared Infrastructure
+
+#### 25. Memberlist Service
+
+**Purpose**: Gossip-based service discovery between components  
+**Template**: `templates/service-memberlist.yaml`  
+**Type**: Service (headless, ClusterIP: None)  
+**Active In**: All multi-component modes
+
+**Configuration in Loki Config**:
+```yaml
+loki:
+  memberlistConfig: {}  # Override default
+  extraMemberlistConfig: {}  # Additional config
+```
+
+**Generated Config** (in templates/config.yaml):
+```yaml
+memberlist:
+  join_members:
+    - loki-memberlist  # Service name
+```
+
+#### 26. Service Account & RBAC
+
+**Templates**:
+- `templates/serviceaccount.yaml` - Main service account
+- `templates/role.yaml` - Role for PSP/SCC or namespaced sidecar
+- `templates/rolebinding.yaml` - RoleBinding
+- `templates/backend/clusterrole.yaml` - ClusterRole for sidecar rules
+- `templates/backend/clusterrolebinding.yaml` - ClusterRoleBinding
+
+**Per-Component Service Accounts**:
+- Compactor, bloom-planner, bloom-gateway, pattern-ingester can have separate service accounts
+- Configured via `[component].serviceAccount.create: true`
+
+#### 27. Network Security
+
+**Templates**:
+- `templates/networkpolicy.yaml` - Kubernetes NetworkPolicy (flavor: kubernetes)
+- `templates/ciliumnetworkpolicy.yaml` - Cilium NetworkPolicy (flavor: cilium)
+- `templates/podsecuritypolicy.yaml` - PSP for K8s <1.25
+- `templates/securitycontextconstraints.yaml` - OpenShift SCC
+
+**Configuration**:
+```yaml
+networkPolicy:
+  enabled: false
+  flavor: kubernetes  # or cilium
+  ingress:
+    namespaceSelector: {}
+  metrics:
+    namespaceSelector: {}
+  alertmanager:
+    port: 9093
+  egressWorld:
+    enabled: false  # Allow egress to internet
+  egressKubeApiserver:
+    enabled: false  # Allow egress to K8s API
+```
+
+### Testing Components
+
+#### 28. Helm Test
+
+**Template**: `templates/tests/test-canary.yaml`  
+**Type**: Pod (Helm hook: test)  
+**Purpose**: Validates canary is working by querying metrics or Prometheus
+
+**Configuration**:
+```yaml
+test:
+  enabled: true
+  canaryServiceAddress: "http://loki-canary:3500/metrics"
+  prometheusAddress: ""  # Legacy, overrides canary address
+  timeout: 1m
+```
+
+## Component Communication Patterns
+
+### Service Discovery
+
+Components use DNS-based service discovery:
+
+**Querier → Index Gateway** (Distributed):
+```
+dns+loki-index-gateway-headless.namespace.svc.cluster.local:9095
+```
+
+**Query Frontend → Query Scheduler** (Distributed):
+```
+loki-query-scheduler.namespace.svc.cluster.local:9095
+```
+
+**Read → Backend Compactor** (SimpleScalable):
+```
+loki-backend.namespace.svc.cluster.local:9095
+```
+
+**Address Helpers** (in `templates/_helpers.tpl`):
+- `loki.compactorAddress` - Returns compactor GRPC address based on mode
+- `loki.querySchedulerAddress` - Returns scheduler address (empty if not Distributed)
+- `loki.querierAddress` - Returns querier HTTP address
+- `loki.indexGatewayAddress` - Returns index gateway address with dns+ prefix
+- `loki.bloomPlannerAddress` - Returns bloom planner address
+- `loki.bloomGatewayAddresses` - Returns bloom gateway SRV address
+
+### Memberlist (Gossip)
+
+All components with `app.kubernetes.io/part-of: memberlist` label join the memberlist ring:
+- Enables ring-based consistent hashing
+- Service discovery for ingester/distributor ring
+- Used by: distributor, ingester, querier, query-frontend, ruler, compactor, backend, read, write, single-binary, etc.
+
+Join via service: `loki-memberlist.namespace.svc.cluster.local:7946`
+
+## Scaling Considerations
+
+### Horizontal Scaling Safe Components
+
+- **Distributor**: Stateless, scale freely
+- **Query Frontend**: Stateless, scale freely  
+- **Querier**: Stateless (with index-gateway), scale freely
+- **Query Scheduler**: Fixed replicas, should divide querier.max_concurrent
+- **Read** (SimpleScalable, non-legacy): Stateless, scale freely
+
+### Careful Horizontal Scaling
+
+- **Ingester**: Stateful, requires WAL drain/transfer, use autoscaling.behavior
+- **Write** (SimpleScalable): Stateful, requires WAL considerations
+- **Index Gateway**: Requires cache warming
+- **Backend** (SimpleScalable): Combines multiple targets
+
+### Single Replica Only
+
+- **Compactor**: Only 1 should run at a time (chart validation)
+- **SingleBinary** (filesystem storage): Cannot have replicas > 1
+
+## Pod Anti-Affinity Patterns
+
+All components use `podAntiAffinity` with `requiredDuringSchedulingIgnoredDuringExecution` to prevent multiple pods on same host:
+
+```yaml
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app.kubernetes.io/component: [component-name]
+            app.kubernetes.io/name: '{{ include "loki.name" . }}'
+            app.kubernetes.io/instance: '{{ .Release.Name }}'
+        topologyKey: kubernetes.io/hostname
+```
+
+**Zone-Aware Ingester Exception**: Uses custom affinity to keep zones separated but allow multiple pods per zone on same host.
+
+## Topology Spread Constraints
+
+Components can use `topologySpreadConstraints` for more flexible distribution:
+
+```yaml
+[component]:
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+```
+
+Applied via `tpl` function, allowing template expressions.
+
+## Resource Types by Component
+
+| Component | Resource Type | Reason |
+|-----------|---------------|--------|
+| single-binary | StatefulSet | Needs stable identity for WAL/chunks |
+| write | StatefulSet | Ingester needs stable storage |
+| backend | StatefulSet | Ruler WAL, compactor state |
+| read (legacy) | StatefulSet | Historical reasons |
+| read (new) | Deployment | Stateless with backend separation |
+| ingester | StatefulSet | WAL and chunk storage |
+| compactor | StatefulSet | State tracking |
+| index-gateway | StatefulSet | Index cache |
+| ruler | StatefulSet | WAL for recording rules |
+| pattern-ingester | StatefulSet | Pattern state |
+| bloom-gateway | StatefulSet | Bloom filter cache |
+| bloom-planner | StatefulSet | State tracking |
+| distributor | Deployment | Stateless |
+| querier | Deployment | Stateless (with index-gateway) |
+| query-frontend | Deployment | Stateless |
+| query-scheduler | Deployment | Stateless |
+| bloom-builder | Deployment | Stateless |
+| admin-api | Deployment | Ephemeral state |
+| overrides-exporter | Deployment | Stateless |
+| gateway | Deployment | Stateless |
+| memcached | StatefulSet | Persistent cache (optional) |
+| loki-canary | DaemonSet/Deployment | Configurable |
+
+## Persistence Patterns
+
+### Auto-Delete PVC Feature
+
+Available in Kubernetes 1.23+:
+
+```yaml
+[component]:
+  persistence:
+    enableStatefulSetAutoDeletePVC: true
+    whenDeleted: Delete  # or Retain
+    whenScaled: Delete   # or Retain
+```
+
+**Components with auto-delete enabled by default**:
+- backend, single-binary, read (legacy)
+
+**Components with auto-delete disabled by default**:
+- ingester, compactor, index-gateway, ruler, pattern-ingester, bloom-planner, bloom-gateway
+
+### Volume Claim Templates
+
+Multi-volume support for components:
+
+```yaml
+[component]:
+  persistence:
+    claims:
+      - name: data
+        size: 10Gi
+        accessModes: [ReadWriteOnce]
+      - name: wal
+        size: 150Gi
+        accessModes: [ReadWriteOnce]
+```
+
+Used by: ingester, compactor, pattern-ingester, bloom-planner, bloom-gateway
+
+## Component Dependencies
+
+```
+Distributor → Ingester (write path)
+Querier → Index Gateway (if enabled)
+Querier → Ingester (recent data)
+Querier → Object Storage (historical data)
+Query Frontend → Query Scheduler → Querier
+Bloom Builder → Bloom Planner
+Querier → Bloom Gateway (if enabled)
+All → Memberlist Service (gossip)
+All → Object Storage (chunks, index)
+Ruler → Alertmanager (external)
+```
+
+## Template Rendering Conditions
+
+### Mode Detection Helpers
+
+```go
+// templates/_helpers.tpl
+{{- define "loki.deployment.isSingleBinary" -}}
+  {{- or (eq .Values.deploymentMode "SingleBinary") (eq .Values.deploymentMode "SingleBinary<->SimpleScalable") }}
+{{- end -}}
+
+{{- define "loki.deployment.isScalable" -}}
+  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") (or (eq .Values.deploymentMode "SingleBinary<->SimpleScalable") (eq .Values.deploymentMode "SimpleScalable") (eq .Values.deploymentMode "SimpleScalable<->Distributed")) }}
+{{- end -}}
+
+{{- define "loki.deployment.isDistributed" -}}
+  {{- and (eq (include "loki.isUsingObjectStorage" . ) "true") (or (eq .Values.deploymentMode "Distributed") (eq .Values.deploymentMode "SimpleScalable<->Distributed")) }}
+{{- end -}}
+```
+
+### Common Conditional Patterns
+
+**Single replica check**:
+```yaml
+{{- if gt (int .Values.[component].replicas) 0 }}
+# Render component resources
+{{- end }}
+```
+
+**Autoscaling vs fixed replicas**:
+```yaml
+{{- if not .Values.[component].autoscaling.enabled }}
+  replicas: {{ .Values.[component].replicas }}
+{{- end }}
+```
+
+**Enterprise features**:
+```yaml
+{{- if .Values.enterprise.enabled }}
+# Render enterprise resources
+{{- end }}
+```
+
+**Deployment mode specific**:
+```yaml
+{{- $isDistributed := eq (include "loki.deployment.isDistributed" .) "true" -}}
+{{- if $isDistributed }}
+# Render distributed-only resources
+{{- end }}
+```
+
+## Next Steps
+
+For detailed template-by-template documentation, see **[Template Files Reference](./loki-helm-templates.mdc)**.
+
+For configuration patterns and values.yaml structure, see **[Values Configuration Guide](./loki-helm-values.mdc)**.

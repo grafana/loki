@@ -1,0 +1,1131 @@
+# Loki Helm Chart - Changelog Insights & Upgrade Patterns
+
+## Overview
+
+This document extracts key patterns, breaking changes, and evolution insights from the Loki Helm chart's changelog (CHANGELOG.md), helping understand upgrade requirements and feature progression.
+
+## Current Version: 6.38.0 (Unreleased/Latest)
+
+**Loki Version**: 3.5.3  
+**Enterprise Logs Version**: 3.5.2
+
+---
+
+## Critical Breaking Changes by Version
+
+### 6.38.0 - PVC Access Modes Breaking Change
+
+**Status**: ⚠️ BREAKING - Manual intervention required
+
+**Change**:
+- Access modes for PVCs are now editable on all StatefulSets
+- Requires manual StatefulSet orphaning before upgrade
+
+**Pull Request**: #13474
+
+**Impact**: All users with existing StatefulSets
+
+**Upgrade Procedure**:
+
+**Option 1: Use Automated Script**
+```bash
+cd production/helm/loki/scripts
+./upgrade-to-6.38.0.sh -r <release-name> -n <namespace>
+```
+
+**Option 2: Manual Steps**
+```bash
+# 1. Orphan StatefulSets (preserves PVCs and data)
+kubectl delete statefulset <release>-write --cascade=orphan -n <namespace>
+kubectl delete statefulset <release>-backend --cascade=orphan -n <namespace>
+kubectl delete statefulset <release>-read --cascade=orphan -n <namespace>
+kubectl delete statefulset <release> --cascade=orphan -n <namespace>  # SingleBinary
+# For distributed mode:
+kubectl delete statefulset <release>-ingester --cascade=orphan -n <namespace>
+kubectl delete statefulset <release>-ingester-zone-a --cascade=orphan -n <namespace>
+kubectl delete statefulset <release>-ingester-zone-b --cascade=orphan -n <namespace>
+kubectl delete statefulset <release>-ingester-zone-c --cascade=orphan -n <namespace>
+kubectl delete statefulset <release>-compactor --cascade=orphan -n <namespace>
+kubectl delete statefulset <release>-index-gateway --cascade=orphan -n <namespace>
+kubectl delete statefulset <release>-ruler --cascade=orphan -n <namespace>
+kubectl delete statefulset <release>-pattern-ingester --cascade=orphan -n <namespace>
+kubectl delete statefulset <release>-bloom-planner --cascade=orphan -n <namespace>
+kubectl delete statefulset <release>-bloom-gateway --cascade=orphan -n <namespace>
+
+# 2. Upgrade helm chart
+helm upgrade <release> grafana/loki --version 6.38.0 --reuse-values -n <namespace>
+
+# 3. Verify StatefulSets recreated
+kubectl get sts -n <namespace>
+```
+
+**Documentation**: See `scripts/upgrade-to-6.38.0.sh` for automation details
+
+**Root Cause**: Kubernetes doesn't allow updating accessModes on existing PVCs, StatefulSet recreation required
+
+**Mitigation**: PVCs and pods are preserved with `--cascade=orphan`
+
+---
+
+### 6.36.0 - Tokengen Job Removed
+
+**Status**: ⚠️ BREAKING - Manual token creation required
+
+**Changes**:
+- Removed `enterprise.tokengen` job and kubectl dependency
+- Removed `kubectlImage` configuration
+- Removed `enterprise.adminToken.additionalNamespaces`
+- Provisioner no longer auto-creates tenant secrets
+- Admin token must be created manually before provisioning
+
+**Pull Request**: #18803
+
+**Migration Path**:
+
+**Old Behavior** (≤6.35.1):
+- Tokengen job auto-created admin token
+- Provisioner auto-created tenant secrets in specified namespaces
+
+**New Behavior** (6.36.0+):
+1. **Manually create admin token** before install:
+```bash
+# Generate token
+ADMIN_TOKEN=$(openssl rand -base64 32)
+
+# Create secret
+kubectl create secret generic loki-admin-token \
+  --from-literal=token=$ADMIN_TOKEN \
+  -n loki
+```
+
+2. **Configure chart**:
+```yaml
+enterprise:
+  adminToken:
+    secret: loki-admin-token  # Required
+  provisioner:
+    enabled: true
+```
+
+3. **Retrieve tenant tokens from logs** after provisioner job:
+```bash
+kubectl logs -l job-name=loki-provisioner -n loki
+```
+
+4. **Manually create tenant secrets**:
+```bash
+kubectl create secret generic <tenant-name> \
+  --from-literal=token-write=<write-token-from-logs> \
+  --from-literal=token-read=<read-token-from-logs> \
+  -n <tenant-namespace>
+```
+
+**Rationale**: Removes kubectl dependency, improves security (tokens not stored in secrets automatically)
+
+**Last Version with Tokengen**: 6.35.1
+
+---
+
+### 6.34.0 - Zone-Aware Ingester Service Name Fix
+
+**Status**: ⚠️ BREAKING - StatefulSet deletion required
+
+**Change**: Fixed serviceName in zone-aware ingester StatefulSets to reference correct headless services
+
+**Pull Request**: #18558
+
+**Impact**: Users with `ingester.zoneAwareReplication.enabled: true`
+
+**Upgrade Procedure**:
+```bash
+kubectl delete statefulset <release>-ingester-zone-a --cascade=orphan
+kubectl delete statefulset <release>-ingester-zone-b --cascade=orphan
+kubectl delete statefulset <release>-ingester-zone-c --cascade=orphan
+
+helm upgrade <release> grafana/loki --version 6.34.0
+```
+
+**Root Cause**: StatefulSet serviceName is immutable, requires recreation
+
+---
+
+### 4.0 - Major Restructure (Simple Scalable 3-Target Mode)
+
+**Status**: ⚠️ BREAKING - Architecture change
+
+**Changes**:
+1. Default changed from 2-target (read, write) to 3-target (read, write, backend)
+2. Read target runs as Deployment (was StatefulSet)
+3. Backend target introduced for compactor, ruler, scheduler, index-gateway
+4. Tenant configuration structure changed
+5. Monitoring configuration reorganized
+
+**Migration**:
+
+**Revert to 2-target** (not recommended):
+```yaml
+read:
+  legacyReadTarget: true
+```
+
+**Adopt 3-target** (recommended):
+```yaml
+read:
+  legacyReadTarget: false  # Default
+backend:
+  replicas: 3
+```
+
+**Benefits**:
+- Read target can autoscale (Deployment)
+- Backend components independent
+- Better resource isolation
+
+---
+
+### 3.0 - Chart Consolidation
+
+**Changes**:
+- Merged loki-stack and loki-simple-scalable into single chart
+- Added deployment mode selection
+- Introduced SingleBinary, SimpleScalable modes
+
+**Migration**:
+- From `loki-simple-scalable`: Set `deploymentMode: SimpleScalable`
+- From `loki` (single binary): Set `deploymentMode: SingleBinary`
+
+---
+
+## Feature Evolution Timeline
+
+### Zone-Aware Replication
+
+**Introduced**: ~6.31.0  
+**Matured**: 6.34.0 (service name fix)
+
+**Evolution**:
+1. Initial implementation with zone StatefulSets
+2. Service name fix (6.34.0) - breaking change
+3. PDB improvements for rollout control
+4. Integration with Rollout Operator
+5. Migration support for enabling/disabling zones
+
+**Current State**: Production-ready with rollout operator
+
+### Bloom Filters
+
+**Introduced**: 6.12.0 (Bloom Compactor)  
+**Updated**: 6.13.0 (Bloom Planner + Builder replace Compactor)  
+**Status**: Experimental
+
+**Component Evolution**:
+- 6.12.0: bloom-compactor (deprecated)
+- 6.13.0: bloom-planner, bloom-builder, bloom-gateway (current)
+- Automatic address configuration added
+
+**Current State**: Experimental, disabled by default
+
+### Pattern Ingester
+
+**Introduced**: 6.2.2  
+**Enhanced**: 6.31.0+ (PDB, improved config)
+
+**Evolution**:
+- 6.2.2: Basic support via `loki.pattern_ingester.enabled`
+- Later: StatefulSet deployment
+- 6.31.0+: Production readiness improvements
+
+**Current State**: Stable for pattern detection workloads
+
+### Overrides Exporter
+
+**Introduced**: 6.25.0
+
+**Purpose**: Export tenant limits as Prometheus metrics
+
+**Current State**: Stable, Distributed mode only
+
+### L2 Chunk Cache
+
+**Introduced**: 6.31.0, 6.33.0
+
+**Pull Request**: #17556
+
+**Purpose**: Two-tier caching (hot L1 + warm L2)
+
+**Current State**: Stable, optional feature
+
+---
+
+## Upgrade Pattern by Version Range
+
+### Upgrading to 6.38.0+
+
+**Requirements**:
+1. Kubernetes 1.19+ (for PVCs)
+2. Helm 3.x
+3. Manual StatefulSet orphaning
+
+**Steps**:
+1. Backup PVCs (optional but recommended)
+2. Run upgrade script or manual orphaning
+3. Helm upgrade
+4. Verify pods restart with existing PVCs
+5. Monitor for issues
+
+**Rollback**: 
+- Helm rollback works (StatefulSets recreated)
+- PVCs remain (if orphaned correctly)
+
+### Upgrading to 6.36.0+
+
+**Requirements**:
+1. Manual admin token creation (if using provisioner)
+2. Accept that tenant secrets no longer auto-created
+
+**Steps**:
+1. Create admin token secret
+2. Helm upgrade
+3. Retrieve provisioner logs
+4. Manually create tenant secrets
+
+**Breaking**: Cannot use provisioner without pre-created admin token
+
+### Upgrading from <6.0 to 6.x
+
+**Major Change**: Chart consolidation
+
+**Steps**:
+1. Determine source chart (loki-simple-scalable, loki-stack, etc.)
+2. Set appropriate deploymentMode
+3. Review configuration changes (tenants, monitoring structure)
+4. Test in non-production first
+5. Plan for potential StatefulSet recreation
+
+---
+
+## Compatibility Matrix
+
+### Kubernetes Versions
+
+| Feature | Min K8s Version | Helm Code |
+|---------|----------------|-----------|
+| Basic deployment | 1.19 | Base requirement |
+| IngressClassName | 1.18 | `loki.ingress.supportsIngressClassName` |
+| NetworkPolicy | 1.19 | Standard feature |
+| PVC accessModes editing | 1.19 | 6.38.0 breaking change |
+| PVC retention policy | 1.23 | `enableStatefulSetAutoDeletePVC` |
+| hostUsers | 1.33 | `kindIs "bool" .Values.*.hostUsers` |
+| HPA v2 | 1.19 | `autoscaling/v2` |
+| PDB policy/v1 | 1.21 | `loki.pdb.apiVersion` |
+| TopologySpreadConstraints | 1.19 | Standard feature |
+
+### Chart Version to Loki Version
+
+| Chart Version | Loki OSS | Loki GEL | Notes |
+|---------------|----------|----------|-------|
+| 6.38.0 | 3.5.3 | 3.5.2 | PVC access modes breaking change |
+| 6.36.0 | - | - | Tokengen removal |
+| 6.35.0 | 3.5.2 | 3.5.2 | Expose all storage properties |
+| 6.34.0 | 3.5.3 | - | Zone-aware service name fix |
+| 6.32.0 | 3.5.2 | 3.5.2 | - |
+| 6.27.0 | 3.4.2 | 3.4.0 | Global extraArgs/Env/Volumes |
+| 6.10.0 | 3.1.1 | 3.1.1 | - |
+| 6.7.0 | 3.1.0 | 3.1.0 | - |
+| 6.3.0 | - | 3.0.0 | - |
+| 6.0.0 | - | - | Distributed mode, major refactor |
+| 5.47.0 | 2.9.6 | - | - |
+| 4.0 | - | - | 3-target simple scalable |
+| 3.0 | 2.8.2 | 1.7.2 | Chart consolidation |
+
+---
+
+## Common Bug Fixes & Template Impact
+
+### #19061 - Affinity & Topology Spread Specificity
+
+**Version**: Unreleased  
+**Change**: More specific affinity and topology spread constraints  
+**Impact**: Better pod distribution control  
+**Templates Affected**: All component Deployments/StatefulSets
+
+### #18903 - DNS Config Coverage
+
+**Version**: Unreleased  
+**Change**: Added dnsConfig to admin-api, bloom-*, compactor, distributor, index-gateway, ingester, memcached, overrides-exporter, pattern-ingester, query-scheduler  
+**Impact**: DNS config now works on all components  
+**Templates Affected**: 12 component directories
+
+### #18800 - Gateway WebSocket Proxy Headers
+
+**Version**: 6.36.0  
+**Change**: Moved proxy_set_header from httpSnippet to locationSnippet  
+**Impact**: High CPU usage fix  
+**⚠️ Action Required**: Users with custom proxy headers in `httpSnippet` must move to `locationSnippet`
+
+**Before**:
+```yaml
+gateway:
+  nginxConfig:
+    httpSnippet: |
+      proxy_set_header X-Custom-Auth $http_authorization;
+```
+
+**After**:
+```yaml
+gateway:
+  nginxConfig:
+    locationSnippet: |
+      proxy_set_header X-Custom-Auth $http_authorization;
+```
+
+**Rationale**: WebSocket headers need to be in location blocks for proper connection handling
+
+### #18774 - Gateway Container Port as Nginx Server Port
+
+**Version**: 6.38.0  
+**Change**: Fixed nginx server port to use gateway.containerPort  
+**Impact**: Consistency fix, port configuration now respected  
+**Templates Affected**: `templates/gateway/deployment-gateway-nginx.yaml`, nginx config generation
+
+### #18709 - Init Container Configuration
+
+**Version**: Unreleased  
+**Change**: Added init container configuration for backend, bloom-builder, distributor, query-frontend, query-scheduler, read, write  
+**Impact**: Init containers can now be configured  
+**Templates Affected**: 7 component templates
+
+### #18558 - Zone-Aware Ingester Service Name Fix
+
+**Version**: 6.34.0  
+**Change**: Fixed serviceName to reference correct headless services  
+**Impact**: StatefulSet recreation required  
+**Templates Affected**:
+- `templates/ingester/statefulset-ingester-zone-{a,b,c}.yaml`
+- Service names changed from generic to zone-specific
+
+**Before**: `serviceName: loki-ingester-headless`  
+**After**: `serviceName: loki-ingester-zone-a-headless`
+
+### #18414 - X-Scope-OrgID Header Fix
+
+**Version**: 6.32.0  
+**Change**: Fixed setting X-Scope-OrgID header in gateway  
+**Impact**: Multi-tenancy header correctly propagated  
+**Templates Affected**: `templates/_helpers.tpl` (nginx config)
+
+### #17454 - Compactor GRPC vs HTTP
+
+**Version**: 6.35.0  
+**Change**: Use GRPC for compactor communication instead of HTTP  
+**Impact**: compactor_address → compactor_grpc_address  
+**Templates Affected**: `templates/_helpers.tpl`, `templates/config.yaml`
+
+**Migration**:
+```yaml
+# Old
+loki:
+  commonConfig:
+    compactor_address: http://...
+
+# New (default)
+loki:
+  commonConfig:
+    compactor_grpc_address: '{{ include "loki.compactorAddress" . }}'
+```
+
+**⚠️ Warning**: If custom compactor_address set, must set compactor_grpc_address to empty string
+
+---
+
+## Feature Additions Timeline
+
+### 6.37.0 - Separate Ruler Storage
+
+**Pull Request**: #18510  
+**Feature**: Support separate storage configuration for ruler  
+**Use Case**: Different retention or performance characteristics for ruler data
+
+```yaml
+loki:
+  rulerConfig:
+    storage:
+      type: s3
+      s3:
+        bucketnames: loki-ruler-separate
+        region: us-west-1
+```
+
+### 6.35.0 - Expose All Storage Properties
+
+**Pull Request**: #18509  
+**Feature**: All storage backend configuration properties now exposed  
+**Impact**: Fine-grained storage control (HTTP config, backoff config, SSE for S3)
+
+**Example**:
+```yaml
+loki:
+  storage:
+    s3:
+      http_config:
+        idle_conn_timeout: 90s
+        response_header_timeout: 120s
+        tls_config:
+          insecure_skip_verify: false
+      backoff_config:
+        min_period: 100ms
+        max_period: 10s
+        max_retries: 10
+      sse:
+        type: SSE-KMS
+        kms_key_id: alias/my-key
+```
+
+### 6.33.0 - Location Snippet in Nginx
+
+**Pull Request**: #18105  
+**Feature**: Ability to configure nginx location snippet  
+**Use Case**: Custom headers, authentication logic per location
+
+```yaml
+gateway:
+  nginxConfig:
+    locationSnippet: |
+      proxy_set_header X-Custom-Header value;
+      auth_request /auth;
+```
+
+### 6.31.0 - Expanded Features
+
+**Pull Requests**: #17742, #17432, #17451, #17597
+
+**Features**:
+1. **trafficDistribution** for multi-AZ distributor service
+2. **External memcached** setup support
+3. **block_builder** config support
+4. **Bypass s3/gcs/azure config in object_store** (Thanos mode)
+
+```yaml
+# Traffic distribution
+distributor:
+  trafficDistribution: PreferClose  # K8s 1.30+
+
+# External memcached
+memcached:
+  enabled: false
+chunksCache:
+  addresses: external-memcached:11211
+
+# Thanos object store
+loki:
+  storage:
+    use_thanos_objstore: true
+    object_store:
+      type: s3
+      # Bypasses loki.storage.s3 config
+```
+
+### 6.27.0 - Global Extra Options
+
+**Pull Request**: #16062  
+**Feature**: Global extraArgs, extraEnv, extraEnvFrom, extraVolumes, extraVolumeMounts  
+**Impact**: Apply configurations to all components from one place
+
+```yaml
+global:
+  extraEnv:
+    - name: JAEGER_AGENT_HOST
+      value: jaeger-agent
+  extraVolumes:
+    - name: custom-ca
+      configMap:
+        name: custom-ca-certs
+  extraVolumeMounts:
+    - name: custom-ca
+      mountPath: /etc/ssl/certs/custom-ca.crt
+      subPath: ca.crt
+```
+
+**Scope**: admin-api, backend, bloom-*, compactor, distributor, index-gateway, ingester, overrides-exporter, pattern-ingester, querier, query-frontend, query-scheduler, read, ruler, write
+
+### 6.2.2 - Pattern Ingester Support
+
+**Pull Request**: #12245 (approx)  
+**Feature**: Enable pattern ingester via config
+
+```yaml
+loki:
+  pattern_ingester:
+    enabled: true
+
+patternIngester:
+  replicas: 1
+```
+
+### 5.26.0 - EmptyDir Data Volumes
+
+**Pull Request**: #10602 (approx)  
+**Feature**: Allow emptyDir for backend and write instead of PVCs  
+**Use Case**: Ephemeral storage, cost optimization
+
+```yaml
+backend:
+  persistence:
+    volumeClaimsEnabled: false
+    dataVolumeParameters:
+      emptyDir: {}
+
+write:
+  persistence:
+    volumeClaimsEnabled: false
+    dataVolumeParameters:
+      emptyDir:
+        sizeLimit: 50Gi
+```
+
+---
+
+## Template Evolution Patterns
+
+### Pattern 1: Probe Configuration Flexibility
+
+**6.35.0**: Refactored health probes so livenessProbe and startupProbe can be unset with `{}`
+
+**Before**:
+```yaml
+loki:
+  livenessProbe:
+    httpGet:
+      path: /ready
+    # Could not disable
+```
+
+**After**:
+```yaml
+loki:
+  livenessProbe: {}  # Disables probe
+```
+
+**Templates Affected**: Component probe helpers now check `with` before rendering
+
+### Pattern 2: Service Type Configurability
+
+**6.38.0**: Allow configuring service types
+
+**Pull Request**: #18708
+
+**Change**:
+```yaml
+[component]:
+  service:
+    type: ClusterIP  # or LoadBalancer, NodePort
+  serviceType: ClusterIP  # Some components use this
+```
+
+**Templates**: Service templates now use configurable type instead of hardcoded ClusterIP
+
+### Pattern 3: Namespace Override
+
+**6.38.0**: Added namespaceOverride
+
+**Pull Request**: #18707
+
+**Usage**:
+```yaml
+namespaceOverride: custom-loki-namespace
+```
+
+**Helper**:
+```go
+{{- define "loki.namespace" -}}
+  {{- if .Values.namespaceOverride -}}
+    {{- .Values.namespaceOverride -}}
+  {{- else -}}
+    {{- .Release.Namespace -}}
+  {{- end -}}
+{{- end -}}
+```
+
+**Impact**: All templates use `{{ include "loki.namespace" . }}` instead of `{{ .Release.Namespace }}`
+
+### Pattern 4: Revision History Limit
+
+**6.35.0**: Missing revisionHistoryLimit added
+
+**Pull Request**: #18638
+
+**Before**: Used K8s default (10)  
+**After**: Configurable via `loki.revisionHistoryLimit`
+
+**Templates Affected**: All Deployments and StatefulSets
+
+---
+
+## Configuration Migration Patterns
+
+### Migrating Storage Configuration
+
+**From Simple to Complete** (6.35.0+):
+
+**Before** (minimal config):
+```yaml
+loki:
+  storage:
+    type: s3
+    bucketNames:
+      chunks: my-bucket
+    s3:
+      region: us-east-1
+```
+
+**After** (with HTTP/backoff config):
+```yaml
+loki:
+  storage:
+    type: s3
+    bucketNames:
+      chunks: my-bucket
+    s3:
+      region: us-east-1
+      http_config:
+        idle_conn_timeout: 90s
+        response_header_timeout: 2m
+      backoff_config:
+        min_period: 100ms
+        max_period: 10s
+        max_retries: 10
+```
+
+### Migrating from 2-Target to 3-Target
+
+**4.0+ to 4.x**:
+
+**Before** (2-target):
+```yaml
+read:
+  replicas: 3
+  legacyReadTarget: true  # Or not set (defaulted to true)
+write:
+  replicas: 3
+# Backend runs in read pods
+```
+
+**After** (3-target):
+```yaml
+read:
+  replicas: 3
+  legacyReadTarget: false  # Explicit
+write:
+  replicas: 3
+backend:
+  replicas: 3  # Now separate
+```
+
+**Benefits**:
+- Read can autoscale (Deployment)
+- Backend components independent
+- Better resource control
+
+**Migration**: Can coexist during transition
+
+### Migrating Monitoring Configuration
+
+**6.29.0**: lokiCanary moved from monitoring.selfMonitoring.lokiCanary to root level
+
+**Before**:
+```yaml
+monitoring:
+  selfMonitoring:
+    lokiCanary:
+      enabled: true
+```
+
+**After**:
+```yaml
+lokiCanary:
+  enabled: true
+```
+
+---
+
+## Deprecation Warnings
+
+### Deprecated Features
+
+1. **Table Manager** (All versions)
+   - Status: Deprecated, will be removed
+   - Reason: Not needed for boltdb-shipper or tsdb
+   - Alternative: Use tsdb or boltdb-shipper with built-in retention
+
+2. **Legacy Read Target** (4.0+)
+   - Status: Deprecated, use 3-target mode
+   - Flag: `read.legacyReadTarget: true`
+   - Alternative: Set to `false`, configure backend component
+
+3. **Tokengen Job** (6.36.0+)
+   - Status: Removed
+   - Alternative: Manual admin token creation
+
+4. **Pod Security Policy** (K8s 1.25+)
+   - Status: Deprecated in K8s
+   - Alternative: Pod Security Standards (not yet in chart)
+
+5. **Monitoring Section** (Ongoing)
+   - Status: Being replaced by meta-monitoring-chart
+   - Current: Still supported
+   - Future: May be removed, use external monitoring chart
+
+### Deprecation Timeline Guidance
+
+**Check before upgrade**:
+```bash
+# Check if using deprecated features
+helm get values <release> -n <namespace> | grep -E "legacyReadTarget|tableManager|pspEnabled"
+```
+
+**Plan migrations**:
+- tableManager → Remove, use tsdb
+- legacyReadTarget → Set to false, add backend replicas
+- pspEnabled → Plan for Pod Security Standards
+
+---
+
+## Common Upgrade Issues & Solutions
+
+### Issue 1: StatefulSet Immutable Fields
+
+**Symptom**: Error updating StatefulSet (serviceName, volumeClaimTemplates, podManagementPolicy)
+
+**Solution**: Orphan and recreate
+```bash
+kubectl delete sts <name> --cascade=orphan
+helm upgrade ...
+```
+
+### Issue 2: CRD Upgrades (Grafana Agent Operator)
+
+**Symptom**: CRDs out of date, resources fail to apply
+
+**Solution**: Manually update CRDs
+```bash
+kubectl apply -f https://raw.githubusercontent.com/grafana/agent/v0.5.1/production/operator/crds/monitoring.grafana.com_grafanaagents.yaml
+kubectl apply -f https://raw.githubusercontent.com/grafana/agent/v0.5.1/production/operator/crds/monitoring.grafana.com_podlogs.yaml
+kubectl apply -f https://raw.githubusercontent.com/grafana/agent/v0.5.1/production/operator/crds/monitoring.grafana.com_logsinstances.yaml
+kubectl apply -f https://raw.githubusercontent.com/grafana/agent/v0.5.1/production/operator/crds/monitoring.grafana.com_metricsinstances.yaml
+```
+
+### Issue 3: Config Changes Not Picked Up
+
+**Symptom**: Pods don't restart after config change
+
+**Solution**: Check configmap/secret checksum annotation
+```yaml
+# templates/[component]/{deployment|statefulset}.yaml
+annotations:
+  checksum/config: {{ include "loki.configMapOrSecretContentHash" (dict "ctx" . "name" "/config.yaml") }}
+```
+
+**Verify**:
+```bash
+kubectl get configmap loki -o yaml | sha256sum
+kubectl get pod loki-write-0 -o yaml | grep checksum/config
+```
+
+### Issue 4: Helm Diff Shows Unexpected Changes
+
+**Symptom**: Large diff on upgrade with few value changes
+
+**Common Causes**:
+1. Image tag change (chart appVersion updated)
+2. Checksum annotation change
+3. Template default changes
+4. Label/annotation additions
+
+**Solution**: Review chart CHANGELOG.md for template changes
+
+### Issue 5: PVC Access Mode Errors (6.38.0+)
+
+**Symptom**: Error applying StatefulSet, access modes conflict
+
+**Solution**: Orphan StatefulSet as documented in 6.38.0 breaking change
+
+---
+
+## Version-Specific Upgrade Guides
+
+### To 6.38.0
+
+**Pre-Upgrade Checklist**:
+- [ ] Review scripts/upgrade-to-6.38.0.sh
+- [ ] Backup PVCs (recommended)
+- [ ] Test in non-production
+- [ ] Plan maintenance window
+
+**Upgrade Steps**:
+1. Run upgrade script or manual orphaning
+2. Helm upgrade
+3. Verify pods restart with existing PVCs
+4. Check PVC access modes:
+```bash
+kubectl get pvc -n loki -o yaml | grep accessModes
+```
+
+**Rollback Plan**:
+```bash
+helm rollback <release> -n <namespace>
+# StatefulSets recreated with old spec
+# PVCs remain unchanged
+```
+
+### To 6.36.0
+
+**Pre-Upgrade Checklist**:
+- [ ] Create admin token secret (if using provisioner)
+- [ ] Plan for manual tenant secret creation
+- [ ] Review provisioner logs retrieval process
+
+**Upgrade Steps**:
+1. Create admin token secret:
+```bash
+kubectl create secret generic loki-admin-token \
+  --from-literal=token=$(openssl rand -base64 32) \
+  -n loki
+```
+
+2. Update values:
+```yaml
+enterprise:
+  adminToken:
+    secret: loki-admin-token
+```
+
+3. Helm upgrade
+
+4. Retrieve tenant tokens:
+```bash
+kubectl logs -l job-name=loki-provisioner -n loki
+```
+
+5. Create tenant secrets manually
+
+**No Longer Available**:
+- enterprise.tokengen.*
+- kubectlImage
+- enterprise.adminToken.additionalNamespaces
+- Automatic tenant secret creation
+
+### To 6.34.0 (Zone-Aware Ingesters)
+
+**Pre-Upgrade Checklist**:
+- [ ] Verify using zone-aware replication
+- [ ] Plan for StatefulSet orphaning
+- [ ] Ensure rollout operator installed (recommended)
+
+**Upgrade Steps**:
+```bash
+# 1. Orphan zone StatefulSets
+kubectl delete statefulset <release>-ingester-zone-a --cascade=orphan
+kubectl delete statefulset <release>-ingester-zone-b --cascade=orphan
+kubectl delete statefulset <release>-ingester-zone-c --cascade=orphan
+
+# 2. Upgrade
+helm upgrade <release> grafana/loki --version 6.34.0
+
+# 3. Verify new serviceName
+kubectl get sts <release>-ingester-zone-a -o yaml | grep serviceName
+```
+
+### To 6.0 (Distributed Mode Introduction)
+
+**Pre-Upgrade Checklist**:
+- [ ] Determine target deployment mode
+- [ ] Review component configurations
+- [ ] Plan for potential data migration
+
+**Migration Paths**:
+
+**From loki-simple-scalable**:
+```yaml
+deploymentMode: SimpleScalable
+read:
+  legacyReadTarget: true  # Initially
+# Eventually migrate to 3-target
+```
+
+**From loki (single binary)**:
+```yaml
+deploymentMode: SingleBinary
+singleBinary:
+  replicas: 1
+```
+
+**To Distributed**:
+```yaml
+deploymentMode: Distributed
+# Configure all distributed components
+```
+
+---
+
+## Chart Maintenance Patterns
+
+### Automatic Weekly Releases
+
+**Since**: 6.18.0  
+**Cadence**: Weekly automated releases  
+**Naming**: Includes `-weekly.XXX` suffix sometimes  
+**Purpose**: Rapid iteration, continuous integration
+
+**Manual Releases For**:
+- Loki version updates
+- Critical bugs
+- Security fixes (CVE remediation)
+
+### Contribution Requirements
+
+**From CONTRIBUTING.md**:
+
+1. **Update documentation**: Run `make helm-docs` if modified Chart.yaml, values.yaml, templates
+2. **Update changelog**: Add entry in `Unreleased` section
+3. **Test changes**: `helm template` for each deployment mode
+4. **Commit format**: Conventional commits (e.g., `feat(helm): description`)
+
+### Changelog Entry Format
+
+```markdown
+- [CHANGE|FEATURE|BUGFIX|ENHANCEMENT] Description [#PR](https://github.com/grafana/loki/pull/PR)
+```
+
+**Categories**:
+- **[CHANGE]**: Breaking or significant behavior changes
+- **[FEATURE]**: New capabilities
+- **[ENHANCEMENT]**: Improvements to existing features
+- **[BUGFIX]**: Bug fixes
+
+---
+
+## Known Issues & Workarounds
+
+### Issue: Helm Diff Shows Changes on Every Run
+
+**Cause**: Checksum annotations, template functions  
+**Workaround**: Use `--suppress-secrets` and compare meaningful changes
+
+### Issue: ArgoCD Diff Issues
+
+**Fixed**: 6.23.0  
+**Solution**: StatefulSet templates use proper default values for gitops compatibility
+
+### Issue: PVC Retention After Uninstall
+
+**Behavior**: PVCs not deleted by default  
+**Configuration**:
+```yaml
+[component]:
+  persistence:
+    enableStatefulSetAutoDeletePVC: true
+```
+
+**Manual Cleanup**:
+```bash
+kubectl delete pvc -l app.kubernetes.io/instance=<release> -n <namespace>
+```
+
+---
+
+## Notable Enhancements by Category
+
+### Performance & Reliability
+
+- **6.35.0**: Health probe template improvements (#18347)
+- **6.33.0**: Folder annotation logic for sidecar (#13289)
+- **6.32.0**: Deployment type option for canary (#17364)
+- **6.30.1**: Liveness probe to read pod (issue #15191)
+- **6.16.0**: DNS config support (#10613)
+- **5.43.2**: Support for Server-Side Apply (#10465)
+
+### Storage & Caching
+
+- **6.31.0**: chunk-cache-l2 support (#17556)
+- **6.11.0**: Memcached persistence (#10258 approx)
+- **6.7.4**: SSE section for AWS S3 (#11234 approx)
+
+### Security
+
+- **6.10.2**: Nginx CVE remediation (upgraded to 1.27-alpine)
+- **6.10.1**: k8s-sidecar CVE remediation (upgraded to 1.27.5)
+- **5.27.0**: CVE-2023-4863 remediation
+
+### Multi-Tenancy
+
+- **6.31.0**: Tenant password hash support (#17049, #12032)
+- Avoids idempotency issues with gateway secret
+
+### Networking
+
+- **6.38.0**: More specificity to affinity and topology spread (#19061)
+- **6.35.0**: Improved health probe helpers (#18347)
+- **6.33.0**: Location snippet configuration (#18105)
+- **5.43.x**: Cilium network policies (#various)
+
+---
+
+## Upgrade Testing Strategy
+
+### Pre-Upgrade Testing
+
+1. **Helm Template**: Ensure templates render
+```bash
+helm template <release> grafana/loki \
+  --version 6.38.0 \
+  -f values.yaml \
+  --namespace loki
+```
+
+2. **Helm Diff**: Compare changes
+```bash
+helm diff upgrade <release> grafana/loki \
+  --version 6.38.0 \
+  -f values.yaml \
+  --namespace loki
+```
+
+3. **Dry Run**: Validate against cluster
+```bash
+helm upgrade <release> grafana/loki \
+  --version 6.38.0 \
+  -f values.yaml \
+  --namespace loki \
+  --dry-run
+```
+
+### Rollback Procedures
+
+**Helm Rollback**:
+```bash
+# List revisions
+helm history <release> -n <namespace>
+
+# Rollback to previous
+helm rollback <release> -n <namespace>
+
+# Rollback to specific revision
+helm rollback <release> <revision> -n <namespace>
+```
+
+**StatefulSet Rollback** (if orphaned):
+```bash
+# StatefulSets recreated by helm with previous spec
+# PVCs untouched
+kubectl get sts -n <namespace>
+```
+
+**⚠️ Limitation**: Cannot rollback data format changes in PVCs
+
+---
+
+## Next Steps
+
+- For production-ready examples, see **[Examples & Best Practices](./loki-helm-examples.mdc)**
+- For modification workflows, see **[Modification Guide](./loki-helm-modification-guide.mdc)**
+- For architecture understanding, see **[Architecture & Components](./loki-helm-architecture.mdc)**

@@ -1,0 +1,222 @@
+# Loki Helm Chart - Expert Documentation Overview
+
+## Purpose
+
+This documentation provides comprehensive understanding of the Grafana Loki Helm chart (version 6.38.0+), enabling expert-level modifications and troubleshooting. The chart supports three deployment modes: SingleBinary, SimpleScalable, and Distributed (microservices).
+
+## Quick Navigation
+
+- **[Architecture & Components](./loki-helm-architecture.mdc)** - Deployment modes, components, and their responsibilities
+- **[Template Files Reference](./loki-helm-templates.mdc)** - Complete documentation of all 161 template files
+- **[Values Configuration Guide](./loki-helm-values.mdc)** - Configuration layers, patterns, and values.yaml structure
+- **[Third-Party Integrations](./loki-helm-third-party.mdc)** - MinIO, Memcached, Grafana Agent, Rollout Operator
+- **[Changelog Insights](./loki-helm-changelog.mdc)** - Breaking changes, upgrades, and evolution patterns
+- **[Examples & Best Practices](./loki-helm-examples.mdc)** - Production-ready configurations and anti-patterns
+- **[Modification Guide](./loki-helm-modification-guide.mdc)** - Common modification patterns and workflows
+
+## Key File Locations
+
+```
+production/helm/loki/
+├── Chart.yaml                        # Chart metadata (version 6.38.0, appVersion 3.5.3)
+├── values.yaml                       # Main configuration file (4258 lines)
+├── templates/                        # 161 template files across 27 component directories
+│   ├── _helpers.tpl                  # Global helper functions
+│   ├── config.yaml                   # Main Loki config generation
+│   ├── validate.yaml                 # Deployment mode validations
+│   └── [component]/                  # Component-specific templates
+├── single-binary-values.yaml        # SingleBinary example
+├── simple-scalable-values.yaml      # SimpleScalable example
+├── distributed-values.yaml          # Distributed example
+├── ci/                              # CI test configurations
+├── scenarios/                       # Integration test scenarios
+├── docs/examples/                   # OSS and Enterprise examples
+├── scripts/upgrade-to-6.38.0.sh    # Upgrade helper script
+└── CHANGELOG.md                     # Version history and breaking changes
+```
+
+## Decision Tree: Which Templates to Modify
+
+### Adding a New Feature to Existing Component
+
+1. **Component configuration**: Update `values.yaml` in component section
+2. **Helper templates**: Add/modify `templates/[component]/_helpers-[component].tpl`
+3. **Main resource**: Update deployment/statefulset in `templates/[component]/`
+4. **Supporting resources**: Add HPA, PDB, or services as needed
+
+### Changing Deployment Behavior
+
+1. **Deployment mode logic**: Check `templates/validate.yaml` for constraints
+2. **Conditional rendering**: Update deployment mode checks in templates
+3. **Helper functions**: Modify `templates/_helpers.tpl` deployment detection functions
+4. **Configuration**: Update `templates/config.yaml` for mode-specific config
+
+### Storage Configuration
+
+1. **Storage helpers**: `templates/_helpers.tpl` (lines 196-382)
+2. **Config generation**: `templates/config.yaml` (storage_config section)
+3. **Values**: `values.yaml` loki.storage.* sections
+4. **Bucket names**: Validate in `templates/validate.yaml`
+
+### Network/Routing Changes
+
+1. **Gateway nginx**: `values.yaml` gateway.nginxConfig.file → uses `loki.nginxFile` helper
+2. **Ingress**: `templates/ingress.yaml` or `templates/gateway/ingress-gateway.yaml`
+3. **Service discovery**: Helper functions in `templates/_helpers.tpl` (*.Address helpers)
+4. **Network policies**: `templates/networkpolicy.yaml` or `templates/ciliumnetworkpolicy.yaml`
+
+### Monitoring/Observability
+
+1. **ServiceMonitor**: `templates/monitoring/servicemonitor.yaml`
+2. **Dashboards**: `templates/monitoring/dashboards/configmap-*.yaml`
+3. **Alerts**: `templates/monitoring/loki-alerts.yaml`
+4. **Recording rules**: `templates/monitoring/loki-rules.yaml`
+5. **Canary**: `templates/loki-canary/` directory
+
+### Enterprise Features
+
+1. **License**: `templates/secret-license.yaml`
+2. **Admin API**: `templates/admin-api/` directory
+3. **Provisioner**: `templates/provisioner/` directory
+4. **GEL Gateway**: `templates/gateway/deployment-gateway-enterprise.yaml`
+
+## Component Active by Deployment Mode
+
+| Component | SingleBinary | SimpleScalable | Distributed |
+|-----------|--------------|----------------|-------------|
+| singleBinary | ✓ | ✗ | ✗ |
+| read | ✗ | ✓ | ✗ |
+| write | ✗ | ✓ | ✗ |
+| backend | ✗ | ✓ (non-legacy) | ✗ |
+| distributor | ✗ | ✗ | ✓ |
+| ingester | ✗ | ✗ | ✓ |
+| querier | ✗ | ✗ | ✓ |
+| query-frontend | ✗ | ✗ | ✓ |
+| query-scheduler | ✗ | ✗ | ✓ |
+| index-gateway | ✗ | ✗ | ✓ |
+| compactor | ✗ | ✗ | ✓ |
+| ruler | ✗ | ✗ | ✓ (optional) |
+| gateway | All (optional) | All (optional) | All (optional) |
+| memcached | All (optional) | All (optional) | All (optional) |
+| loki-canary | All (optional) | All (optional) | All (optional) |
+
+## Common Modification Patterns
+
+### Pattern 1: Add Environment Variable to Component
+
+```yaml
+# values.yaml
+[component]:
+  extraEnv:
+    - name: MY_VAR
+      value: "my-value"
+```
+
+No template changes needed - uses `concat .Values.global.extraEnv .Values.[component].extraEnv` pattern.
+
+### Pattern 2: Add Volume to Component
+
+```yaml
+# values.yaml
+[component]:
+  extraVolumes:
+    - name: my-volume
+      configMap:
+        name: my-configmap
+  extraVolumeMounts:
+    - name: my-volume
+      mountPath: /path/to/mount
+```
+
+No template changes needed - templates use `concat .Values.global.extraVolumes .Values.[component].extraVolumes` pattern.
+
+### Pattern 3: Add New Component
+
+1. Create directory: `templates/new-component/`
+2. Add `_helpers-new-component.tpl` with fullname, labels, selector labels
+3. Add deployment/statefulset YAML
+4. Add service YAML (regular + headless if StatefulSet)
+5. Add HPA/PDB YAMLs if needed
+6. Update `values.yaml` with component configuration section
+7. Update `templates/validate.yaml` if deployment mode specific
+8. Update `templates/_helpers.tpl` if address helper needed
+
+### Pattern 4: Modify Loki Configuration
+
+**Option 1: Use templated sections** (preferred)
+```yaml
+loki:
+  limits_config:
+    max_query_length: 30d
+```
+
+**Option 2: Use structured config** (override entire section)
+```yaml
+loki:
+  structuredConfig:
+    auth_enabled: true
+    server:
+      http_listen_port: 3100
+    # ... entire config
+```
+
+**Option 3: External config** (for complex scenarios)
+```yaml
+loki:
+  generatedConfigObjectName: ""
+  configObjectName: my-external-config
+```
+
+## Critical Helper Functions
+
+Located in `templates/_helpers.tpl`:
+
+- `loki.deployment.isSingleBinary` - Detect SingleBinary mode
+- `loki.deployment.isScalable` - Detect SimpleScalable mode  
+- `loki.deployment.isDistributed` - Detect Distributed mode
+- `loki.compactorAddress` - Calculate compactor GRPC address
+- `loki.indexGatewayAddress` - Calculate index gateway address
+- `loki.commonStorageConfig` - Generate storage configuration
+- `loki.nginxFile` - Generate nginx gateway config
+- `loki.isUsingObjectStorage` - Check if object storage configured
+
+## Template Rendering Flow
+
+1. **Validate** (`templates/validate.yaml`) - Check deployment mode consistency
+2. **Config** (`templates/config.yaml`) - Generate Loki configuration
+3. **Runtime Config** (`templates/runtime-configmap.yaml`) - Generate runtime overrides
+4. **Components** - Render components based on deployment mode and replica counts
+5. **Services** - Create services for enabled components
+6. **Network** - Apply network policies if enabled
+7. **Monitoring** - Deploy monitoring resources if enabled
+8. **RBAC** - Create service accounts and roles
+
+## Version Information
+
+- **Chart Version**: 6.38.0
+- **App Version**: 3.5.3 (Loki), 3.5.2 (Enterprise Logs)
+- **Kubernetes**: Requires 1.19+
+- **Helm**: Version 3.x
+
+## Breaking Changes Alert
+
+**Version 6.38.0** introduced breaking changes requiring StatefulSet orphaning before upgrade:
+- Access modes for PVCs are now editable
+- Manual StatefulSet deletion with `--cascade=orphan` required
+- See `scripts/upgrade-to-6.38.0.sh` for automation
+
+**Version 6.36.0** removed tokengen job - admin tokens must be created manually.
+
+## Configuration Precedence
+
+1. `loki.structuredConfig` (highest - overrides everything)
+2. `loki.config` (templated config string)
+3. Individual sections (`loki.schemaConfig`, `loki.limits_config`, etc.)
+4. Chart defaults (lowest)
+
+## Next Steps
+
+- Read **[Architecture](./loki-helm-architecture.mdc)** to understand deployment modes
+- Review **[Templates](./loki-helm-templates.mdc)** for file-by-file documentation
+- Check **[Examples](./loki-helm-examples.mdc)** for production configurations
+- Use **[Modification Guide](./loki-helm-modification-guide.mdc)** for common tasks
