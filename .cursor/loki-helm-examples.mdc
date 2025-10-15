@@ -1,20 +1,5 @@
-# Loki Helm Chart - Examples & Best Practices
-
-## Overview
-
-This document provides production-ready configuration examples based on the official example files in `ci/`, `scenarios/`, `docs/examples/`, and the main values files.
-
 ---
-
-## Deployment Mode Examples
-
-### Example 1: SingleBinary for Development/Testing
-
-**File**: `single-binary-values.yaml`  
-**Use Case**: Local development, CI/CD testing, small deployments (<100GB/day)  
-**Storage**: MinIO (S3-compatible)
-
-```yaml
+alwaysApply: false
 ---
 deploymentMode: SingleBinary
 

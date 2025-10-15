@@ -1,33 +1,6 @@
-# Loki Helm Chart - Template Modification Guide
-
-## Overview
-
-This guide provides practical patterns for modifying the Loki Helm chart templates and configurations. Each pattern includes the files to modify, the changes needed, and potential impacts.
-
 ---
-
-## Quick Reference: What to Modify
-
-### User Request → Template Mapping
-
-| Request | Templates to Modify | Values to Add |
-|---------|---------------------|---------------|
-| Add environment variable to component | None (use extraEnv) | `[component].extraEnv` |
-| Add volume to component | None (use extraVolumes) | `[component].extraVolumes` |
-| Change component scaling | `templates/[component]/hpa.yaml` | `[component].autoscaling.*` |
-| Add new Loki config section | `templates/config.yaml` | `loki.[section]` |
-| Change nginx routing | `templates/_helpers.tpl` (loki.nginxFile) | `gateway.nginxConfig.*` |
-| Add new storage backend | `templates/_helpers.tpl` (storage helpers) | `loki.storage.[type]` |
-| Change service type | `templates/[component]/service-*.yaml` | `[component].service.type` |
-| Add init container | None (use initContainers) | `[component].initContainers` |
-| Add sidecar container | None (use extraContainers) | `[component].extraContainers` |
-| Change network policy | `templates/networkpolicy.yaml` or `ciliumnetworkpolicy.yaml` | `networkPolicy.*` |
-| Add RBAC permissions | `templates/role.yaml` or `backend/clusterrole.yaml` | `rbac.*` |
-| Change ingress paths | `templates/_helpers.tpl` (ingress helpers) | `ingress.paths.*` |
-| Add new component | Create `templates/[component]/` directory | Add `[component]:` section |
-
+alwaysApply: false
 ---
-
 ## Pattern 1: Add Environment Variable to Component
 
 ### Goal
