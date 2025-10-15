@@ -12598,6 +12598,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.persistence.enableStatefulSetRecreationForSizeChange</td>
+			<td>bool</td>
+			<td>Enable StatefulSetRecreation for changes to PVC size. This means that the StatefulSet will be deleted, recreated (with the same name) and rolled when a change to the PVC size is detected. That way the PVC can be resized without manual intervention.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.persistence.enabled</td>
 			<td>bool</td>
 			<td>Enable persistent disk</td>
