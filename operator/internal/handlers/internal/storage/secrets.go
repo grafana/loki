@@ -70,7 +70,7 @@ var (
 	awsS3EndpointRegex = regexp.MustCompile(`^https://s3\.([a-z0-9-]+)\.amazonaws\.com$`)
 
 	// VPC endpoint: https://vpce-{id}.s3.{region}.vpce.amazonaws.com
-	awsVPCEndpointRegex = regexp.MustCompile(`^https://bucket.vpce-[a-z0-9-]+\.s3\.([a-z0-9-]+)\.vpce\.amazonaws\.com$`)
+	awsVPCEndpointRegex = regexp.MustCompile(`^https://vpce-[a-z0-9-]+\.s3\.([a-z0-9-]+)\.vpce\.amazonaws\.com$`)
 
 	// Invalid patterns with bucket names (to detect and reject)
 	// Regular S3 with bucket: https://bucket-name.s3.region.amazonaws.com
