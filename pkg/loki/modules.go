@@ -18,6 +18,15 @@ import (
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	gerrors "github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/collectors/version"
+	"github.com/prometheus/common/model"
+	"github.com/thanos-io/objstore"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
+
 	"github.com/grafana/dskit/dns"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/codec"
@@ -28,14 +37,6 @@ import (
 	"github.com/grafana/dskit/server"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
-	gerrors "github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/collectors"
-	"github.com/prometheus/client_golang/prometheus/collectors/version"
-	"github.com/prometheus/common/model"
-	"github.com/thanos-io/objstore"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 
 	"github.com/grafana/loki/v3/pkg/analytics"
 	"github.com/grafana/loki/v3/pkg/bloombuild/builder"
@@ -208,6 +209,11 @@ func (t *Loki) initServer() (services.Service, error) {
 			}
 
 			_, ctx, _ := user.ExtractOrgIDFromHTTPRequest(r)
+
+			// Also propagate the rate limit bypass header.
+			r = r.WithContext(ctx)
+			ctx = distributor.InjectRateLimitBypassFromRequest(r)
+
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}(t.Server.HTTPServer.Handler)
