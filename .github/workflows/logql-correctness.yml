@@ -29,7 +29,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.24.3'
+          go-version: "1.24.8"
 
       # The metastore generates invalid filenames for Windows (with colons),
       # which get rejected by upload-artifact. We zip these files to avoid this
@@ -74,7 +74,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.24.3'
+          go-version: "1.24.8"
 
       - name: Create results directory
         run: mkdir -p ./pkg/logql/bench/results
@@ -83,7 +83,7 @@ jobs:
         shell: bash # Use bash shell to propagate pipe failures
         run: |
           go test \
-            -v -slow-tests \
+            -v -slow-tests -timeout=60m \
             -run=TestStorageEquality/query=.+/kind=.+/store=${{ matrix.store }}$ \
             ${{ matrix.range_type == 'instant' && '-range-type=instant' || '' }} \
             ${{ inputs.failfast == true && '-failfast' || '' }} \
