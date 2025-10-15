@@ -13,9 +13,22 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [CHANGE] Remove unused `storageClass` field from compactor persistence configuration. Storage class should be configured per-claim in the `claims` array instead.[#19443](https://github.com/grafana/loki/pull/19443)
+- [FEATURE] Make loki-canary readinessProbe configurable via values.yaml  [#19328](https://github.com/grafana/loki/pull/19328)
+- [FEATURE]: Allow auto-resizing the volume by recreating the StatefulSet. [#19217](https://github.com/grafana/loki/pull/19217)
+- [BUGFIX] Add single-binary component to ingress NetworkPolicy [#19229](https://github.com/grafana/loki/pull/19229)
+- [BUGFIX] Use strings in stead of integers for ports in CiliumNetworkPolicies [#19252](https://github.com/grafana/loki/pull/19252)
+
+
+## 6.43.0
+
+- [BREAKING]  **Loki UI has been completely removed from the Helm chart.**  The experimental Loki UI has been moved to a [Grafana Plugin] (https://github.com/grafana/loki-operational-ui). Enabling the UI in the Helm chart will now only enable the APIs needed by the plugin, and will host them on the querier. The gateway will now forward all UI requests to the queriers. Users who previously had `loki.ui.enabled: true` should remove this configuration and migrate to the Grafana Loki plugin for UI functionality. [#19390](https://github.com/grafana/loki/pull/19390)
 - [FEATURE] Use named ports for memcached services targetports. [#18990](https://github.com/grafana/loki/pull/18990)
-- [BREAKING]  The Loki UI has been moved to a Grafana Plugin. Enabling the UI in the helm chart will now only enable the APIs needed by the plugin, and will host them on the querier. The gateway will now forward all UI requests to the queriers.
-- [CHANGE] Remove unused `storageClass` field from compactor persistence configuration. Storage class should be configured per-claim in the `claims` array instead.(https://github.com/grafana/loki/pull/19443)
+- [FEATURE] Add support for adding custom annotations to alerting rules, similar to how additionalRuleLabels already works. [#19193](https://github.com/grafana/loki/pull/19193)
+- [ENHANCEMENT] Add configurable `startupProbe` to the exporter container in the memcached pods [#19165](https://github.com/grafana/loki/pull/19165)
+- [ENHANCEMENT] Add configurable `startupProbe` to `startupProbethe memcached container in the memcached pods [#19166](https://github.com/grafana/loki/pull/19166)
+- [BUGFIX] Update loki-helm-test image tag to latest commit [#19227](https://github.com/grafana/loki/pull/19227)
+- [BUGFIX] Update querier, read, and single binary target definitions for UI enablement. [#19461](https://github.com/grafana/loki/pull/19461)
 
 ## 6.42.0
 
@@ -26,6 +39,7 @@ Before upgrading to this version, make sure that the CustomResourceDefinitions (
 - [BUGFIX] Use strings instead of integers for ports in CiliumNetworkPolicies [#19252](https://github.com/grafana/loki/pull/19252)
 - [FEATURE] Add replicas to loki-canary deployment [#190095](https://github.com/grafana/loki/pull/19095)
 - [FEATURE] Allow changing the retentionPolicy for the singleBinary StatefulSet [#19097](https://github.com/grafana/loki/pull/19097)
+- [FEATURE]: Allow auto-resizing the volume by recreating the StatefulSet. [#19217](https://github.com/grafana/loki/pull/19217)
 
 ## 6.41.1
 

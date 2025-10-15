@@ -42,6 +42,9 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include "loki.configMapOrSecretContentHash" (dict "ctx" . "name" "/config.yaml") }}
+        {{- if .Values.singleBinary.persistence.enabled }}
+        storage/size: {{ .Values.singleBinary.persistence.size | quote }}
+        {{- end }}
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -88,7 +91,7 @@ spec:
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target={{- include "loki.singleBinaryTarget" . -}}
+            - -target={{ include "loki.singleBinaryTarget" . }}
             {{- with .Values.singleBinary.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

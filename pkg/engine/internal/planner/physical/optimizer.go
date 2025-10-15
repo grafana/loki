@@ -188,13 +188,14 @@ func (r *projectionPushdown) apply(node Node) bool {
 			return false
 		}
 	case *RangeAggregation:
-		if len(node.PartitionBy) == 0 || !slices.Contains(types.SupportedRangeAggregationTypes, node.Operation) {
+		if !slices.Contains(types.SupportedRangeAggregationTypes, node.Operation) {
 			return false
 		}
 
 		projections := make([]ColumnExpression, len(node.PartitionBy)+1)
 		copy(projections, node.PartitionBy)
-		// Always project timestamp column
+		// Always project timestamp column even if partitionBy is empty.
+		// Timestamp values are required to perform range aggregation.
 		projections[len(node.PartitionBy)] = &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}
 
 		return r.pushToChildren(node, projections, false)
@@ -230,7 +231,7 @@ func (r *projectionPushdown) applyProjectionPushdown(
 		return r.handleParseNode(node, projections, applyIfNotEmpty)
 	case *RangeAggregation:
 		return r.handleRangeAggregation(node, projections)
-	case *Filter, *Merge, *SortMerge:
+	case *Filter, *Merge, *SortMerge, *ColumnCompat:
 		// Push to next direct child that cares about projections
 		return r.pushToChildren(node, projections, applyIfNotEmpty)
 	}

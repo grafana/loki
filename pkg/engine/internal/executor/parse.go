@@ -16,12 +16,12 @@ import (
 )
 
 func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memory.Allocator) *GenericPipeline {
-	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) state {
+	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
 		batch, err := input.Read(ctx)
 		if err != nil {
-			return failureState(err)
+			return nil, err
 		}
 
 		// Batch needs to be released here since it won't be passed to the caller and won't be reused after
@@ -31,12 +31,12 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		// Find the message column
 		msgCol, msgIdx, err := columnForIdent(semconv.ColumnIdentMessage, batch)
 		if err != nil {
-			return failureState(err)
+			return nil, err
 		}
 
 		stringCol, ok := msgCol.(*array.String)
 		if !ok {
-			return failureState(fmt.Errorf("column %s must be of type utf8, got %s", semconv.ColumnIdentMessage.FQN(), batch.Schema().Field(msgIdx)))
+			return nil, fmt.Errorf("column %s must be of type utf8, got %s", semconv.ColumnIdentMessage.FQN(), batch.Schema().Field(msgIdx))
 		}
 
 		var headers []string
@@ -47,7 +47,7 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		case physical.ParserJSON:
 			headers, parsedColumns = buildJSONColumns(stringCol, parse.RequestedKeys, allocator)
 		default:
-			return failureState(fmt.Errorf("unsupported parser kind: %v", parse.Kind))
+			return nil, fmt.Errorf("unsupported parser kind: %v", parse.Kind)
 		}
 
 		// Build new schema with original fields plus parsed fields
@@ -82,8 +82,8 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		for i, col := range parsedColumns {
 			// Defenisve check added for clarity and safety, but BuildLogfmtColumns should already guarantee this
 			if col.Len() != stringCol.Len() {
-				return failureState(fmt.Errorf("parsed column %d (%s) has %d rows but expected %d",
-					i, headers[i], col.Len(), stringCol.Len()))
+				return nil, fmt.Errorf("parsed column %d (%s) has %d rows but expected %d",
+					i, headers[i], col.Len(), stringCol.Len())
 			}
 			allColumns[numOriginalCols+i] = col
 		}
@@ -96,7 +96,7 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 			col.Release()
 		}
 
-		return successState(newRecord)
+		return newRecord, nil
 	}, input)
 }
 
