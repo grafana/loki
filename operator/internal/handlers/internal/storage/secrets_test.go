@@ -615,7 +615,7 @@ func TestS3Extract(t *testing.T) {
 					"access_key_secret": []byte("secret"),
 				},
 			},
-			wantCredentialMode: lokiv1.CredentialModeStatic,
+			wantError: "endpoint for S3 must not include a path: /bucket",
 		},
 		{
 			name: "aws endpoint with path",
@@ -629,7 +629,7 @@ func TestS3Extract(t *testing.T) {
 					"access_key_secret": []byte("secret"),
 				},
 			},
-			wantError: "endpoint for AWS S3 must not include a path: /bucket",
+			wantError: "endpoint for S3 must not include a path: /bucket",
 		},
 		{
 			name: "s3 region used in endpoint URL is incorrect",
