@@ -105,6 +105,7 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	)
 
 	dm.metrics.deleteRequestsReceivedTotal.WithLabelValues(userID).Inc()
+	w.Header().Set("X-Delete-Request-ID", requestID)
 	w.WriteHeader(http.StatusNoContent)
 }
 

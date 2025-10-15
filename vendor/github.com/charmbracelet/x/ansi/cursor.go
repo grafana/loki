@@ -1,6 +1,8 @@
 package ansi
 
-import "strconv"
+import (
+	"strconv"
+)
 
 // SaveCursor (DECSC) is an escape sequence that saves the current cursor
 // position.
@@ -260,7 +262,7 @@ func CHA(col int) string {
 // See: https://vt100.net/docs/vt510-rm/CUP.html
 func CursorPosition(col, row int) string {
 	if row <= 0 && col <= 0 {
-		return HomeCursorPosition
+		return CursorHomePosition
 	}
 
 	var r, c string
@@ -356,8 +358,8 @@ func CHT(n int) string {
 	return CursorHorizontalForwardTab(n)
 }
 
-// EraseCharacter (ECH) returns a sequence for erasing n characters and moving
-// the cursor to the right. This doesn't affect other cell attributes.
+// EraseCharacter (ECH) returns a sequence for erasing n characters from the
+// screen. This doesn't affect other cell attributes.
 //
 // Default is 1.
 //
@@ -589,7 +591,7 @@ const ReverseIndex = "\x1bM"
 //
 // Default is 1.
 //
-//	CSI n `
+//	CSI n \`
 //
 // See: https://vt100.net/docs/vt510-rm/HPA.html
 func HorizontalPositionAbsolute(col int) string {

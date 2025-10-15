@@ -280,6 +280,14 @@ func (m *mockChunkStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool
 	return nil, false
 }
 
+func (m *mockChunkStore) HasChunkSizingInfo(_, _ model.Time) bool {
+	return false
+}
+
+func (m *mockChunkStore) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	return nil, nil
+}
+
 func (m *mockChunkStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return nil, nil
 }

@@ -3,10 +3,8 @@ package ui
 
 import (
 	"context"
-	"embed"
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"net/http"
 	"net/http/httputil"
 	"strconv"
@@ -25,7 +23,7 @@ const (
 	prefixPath      = "/ui"
 	proxyPath       = prefixPath + "/api/v1/proxy/{nodename}/"
 	clusterPath     = prefixPath + "/api/v1/cluster/nodes"
-	clusterSelfPath = prefixPath + "/api/v1/cluster/nodes/self/details"
+	detailsPath     = prefixPath + "/api/v1/cluster/nodes/{nodename}/details"
 	analyticsPath   = prefixPath + "/api/v1/analytics"
 	featuresPath    = prefixPath + "/api/v1/features"
 	goldfishPath    = prefixPath + "/api/v1/goldfish/queries"
@@ -42,52 +40,20 @@ const (
 	parentSpanIDKey contextKey = "parent-span-id"
 )
 
-//go:embed frontend/dist
-var uiFS embed.FS
-
 // RegisterHandler registers all UI API routes with the provided router.
 func (s *Service) RegisterHandler() {
-	// Register the node handler
-	route, handler := s.node.Handler()
-	s.router.PathPrefix(route).Handler(handler)
-
 	s.router.Path(analyticsPath).Handler(analytics.Handler())
 	s.router.Path(clusterPath).Handler(s.clusterMembersHandler())
-	s.router.Path(clusterSelfPath).Handler(s.clusterSelfHandler())
+	s.router.Path(detailsPath).Handler(s.detailsHandler())
 	s.router.Path(featuresPath).Handler(s.featuresHandler())
 	s.router.Path(goldfishPath).Handler(s.goldfishQueriesHandler())
 
 	s.router.PathPrefix(proxyPath).Handler(s.clusterProxyHandler())
 	s.router.PathPrefix(notFoundPath).Handler(s.notFoundHandler())
 
-	fsHandler := http.FileServer(http.FS(s.uiFS))
-	s.router.PathPrefix(prefixPath + "/").Handler(http.StripPrefix(prefixPath+"/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/")
-		// Don't redirect for root UI path
-		if path == "" || path == "/" || path == "404" {
-			r.URL.Path = "/"
-			fsHandler.ServeHTTP(w, r)
-			return
-		}
-		if _, err := s.uiFS.Open(path); err != nil {
-			r.URL.Path = "/"
-			fsHandler.ServeHTTP(w, r)
-			return
-		}
-		fsHandler.ServeHTTP(w, r)
-	})))
 	s.router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/ui/404?path="+r.URL.Path, http.StatusTemporaryRedirect)
 	})
-}
-
-func (s *Service) initUIFs() error {
-	var err error
-	s.uiFS, err = fs.Sub(uiFS, "frontend/dist")
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // clusterProxyHandler returns a handler that proxies requests to the target node.
@@ -104,9 +70,10 @@ func (s *Service) clusterProxyHandler() http.Handler {
 				return
 			}
 
-			peer, err := s.findPeerByName(nodeName)
+			// Find node address by name
+			nodeAddr, err := s.findNodeAddressByName(nodeName)
 			if err != nil {
-				level.Warn(s.logger).Log("msg", "node not found in cluster state", "node", nodeName, "err", err)
+				level.Warn(s.logger).Log("msg", "node not found in cluster", "node", nodeName, "err", err)
 				s.redirectToNotFound(r, nodeName)
 				return
 			}
@@ -119,7 +86,7 @@ func (s *Service) clusterProxyHandler() http.Handler {
 			}
 
 			// Rewrite the URL to forward to the target node
-			r.URL.Host = peer.Addr
+			r.URL.Host = nodeAddr
 			r.URL.Path = newPath
 			r.RequestURI = "" // Must be cleared according to Go docs
 
@@ -155,9 +122,11 @@ func (s *Service) clusterMembersHandler() http.Handler {
 	})
 }
 
-func (s *Service) clusterSelfHandler() http.Handler {
+func (s *Service) detailsHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		state, err := s.fetchSelfDetails(r.Context())
+		vars := mux.Vars(r)
+		nodeName := vars["nodename"]
+		state, err := s.fetchDetails(r.Context(), nodeName)
 		if err != nil {
 			level.Error(s.logger).Log("msg", "failed to fetch node details", "err", err)
 			s.writeJSONError(w, http.StatusInternalServerError, "failed to fetch node details")
