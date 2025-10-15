@@ -63,6 +63,9 @@ spec:
         {{- else }}
           - read
           - write
+          {{- if eq (include "loki.deployment.isSingleBinary" .) "true" }}
+          - single-binary
+          {{- end }}
         {{- end }}
     matchLabels:
       {{- include "loki.selectorLabels" . | nindent 6 }}

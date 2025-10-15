@@ -17,6 +17,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [BREAKING]  The Loki UI has been moved to a Grafana Plugin. Enabling the UI in the helm chart will now only enable the APIs needed by the plugin, and will host them on the querier. The gateway will now forward all UI requests to the queriers.
 - [FEATURE] Use named ports for memcached services targetports. [#18990](https://github.com/grafana/loki/pull/18990)
 - [ENHANCEMENT] Add configurable `startupProbe` to the exporter container in the memcached pods [#19165](https://github.com/grafana/loki/pull/19165)
+- [BUGFIX] Add single-binary to networkpolicy [#19200](https://github.com/grafana/loki/pull/19200)
 
 ## 6.42.0
 
