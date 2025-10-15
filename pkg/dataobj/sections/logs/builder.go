@@ -25,6 +25,20 @@ type Record struct {
 	Line      []byte
 }
 
+type AppendStrategy int
+
+const (
+	AppendUnordered = iota
+	AppendOrdered
+)
+
+type SortOrder int
+
+const (
+	SortStreamASC SortOrder = iota
+	SortTimestampDESC
+)
+
 // BuilderOptions configures the behavior of the logs section.
 type BuilderOptions struct {
 	// PageSizeHint is the size of pages to use when encoding the logs section.
@@ -43,6 +57,15 @@ type BuilderOptions struct {
 	// increase time spent merging. Higher values of StripeMergeLimit increase
 	// memory overhead but reduce time spent merging.
 	StripeMergeLimit int
+
+	// AppendStrategy is allowed to control how the builder creates the section.
+	// When appending logs to the section in strict sort order, the [AppendOrdered] can be used to avoid
+	// creating and sorting of stripes.
+	AppendStrategy AppendStrategy
+
+	// SortOrder defines the order in which the rows of the logs sections are sorted.
+	// They can either be sorted by [streamID ASC, timestamp DESC] ([SortStreamASC]) or [timestamp DESC, streamID ASC] ([SortTimestampDESC]).
+	SortOrder SortOrder
 }
 
 // Builder accumulate a set of [Record]s within a data object.
@@ -106,15 +129,21 @@ func (b *Builder) Type() dataobj.SectionType { return sectionType }
 // Append adds a new entry to b.
 func (b *Builder) Append(entry Record) {
 	b.metrics.appendsTotal.Inc()
+	b.metrics.recordCount.Inc()
 
 	b.records = append(b.records, entry)
 	b.recordsSize += recordSize(entry)
 
-	if b.recordsSize >= b.opts.BufferSize {
-		b.flushRecords()
+	// Shortcut for when logs are appending in strict sort order.
+	// We skip building temporarily compressed stripes in favour of a speed
+	// with a single pass compression of all records.
+	if b.opts.AppendStrategy == AppendOrdered {
+		return
 	}
 
-	b.metrics.recordCount.Inc()
+	if b.recordsSize >= b.opts.BufferSize {
+		b.flushRecords(zstd.SpeedFastest)
+	}
 }
 
 func recordSize(record Record) int {
@@ -130,16 +159,23 @@ func recordSize(record Record) int {
 	return size
 }
 
-func (b *Builder) flushRecords() {
+func (b *Builder) flushRecords(encLevel zstd.EncoderLevel) {
 	if len(b.records) == 0 {
 		return
+	}
+
+	// We can panic in case flushRecords is called multiple times before flushing a section
+	// when using the [AppendOrdered] strategy, because that should not happen and is
+	// considered a programming error.
+	if b.opts.AppendStrategy == AppendOrdered && len(b.stripes) > 0 {
+		panic("must not call flushRecords multiple times for a single section when using AppendOrdered strategy")
 	}
 
 	// Our stripes are intermediate tables that don't need to have the best
 	// compression. To maintain high throughput on appends, we use the fastest
 	// compression for a stripe. Better compression is then used for sections.
 	compressionOpts := dataset.CompressionOptions{
-		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedFastest)},
+		Zstd: []zstd.EOption{zstd.WithEncoderLevel(encLevel)},
 	}
 
 	stripe := buildTable(&b.stripeBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.records)
@@ -160,12 +196,26 @@ func (b *Builder) flushSection() *table {
 		Zstd: []zstd.EOption{zstd.WithEncoderLevel(zstd.SpeedDefault)},
 	}
 
-	section, err := mergeTablesIncremental(&b.sectionBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.stripes, b.opts.StripeMergeLimit)
+	section, err := mergeTablesIncremental(&b.sectionBuffer, b.opts.PageSizeHint, b.opts.PageMaxRowCount, compressionOpts, b.stripes, b.opts.StripeMergeLimit, b.opts.SortOrder)
 	if err != nil {
 		// We control the input to mergeTables, so this should never happen.
 		panic(fmt.Sprintf("merging tables: %v", err))
 	}
 
+	b.stripes = sliceclear.Clear(b.stripes)
+	b.stripesCompressedSize = 0
+	b.stripesUncompressedSize = 0
+	return section
+}
+
+func (b *Builder) flushSectionOrdered() *table {
+	b.flushRecords(zstd.SpeedDefault)
+
+	if len(b.stripes) == 0 {
+		return nil
+	}
+
+	section := b.stripes[0]
 	b.stripes = sliceclear.Clear(b.stripes)
 	b.stripesCompressedSize = 0
 	b.stripesUncompressedSize = 0
@@ -200,10 +250,16 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	timer := prometheus.NewTimer(b.metrics.encodeSeconds)
 	defer timer.ObserveDuration()
 
-	// Flush any remaining buffered data.
-	b.flushRecords()
+	var section *table
+	if b.opts.AppendStrategy == AppendOrdered {
+		// Flush buffered data all at once
+		section = b.flushSectionOrdered()
+	} else {
+		// Flush any remaining buffered data.
+		b.flushRecords(zstd.SpeedFastest)
+		section = b.flushSection()
+	}
 
-	section := b.flushSection()
 	if section == nil {
 		return 0, nil
 	}
@@ -223,20 +279,8 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 	}
 
 	// The first two columns of each row are *always* stream ID and timestamp.
-	//
-	// TODO(ashwanth): Find a safer way to do this. Same as [compareRows]
-	logsEnc.SetSortInfo(&datasetmd_v2.SortInfo{
-		ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
-			{
-				ColumnIndex: 1, // timestamp
-				Direction:   datasetmd_v2.SORT_DIRECTION_DESCENDING,
-			},
-			{
-				ColumnIndex: 0, // stream ID
-				Direction:   datasetmd_v2.SORT_DIRECTION_ASCENDING,
-			},
-		},
-	})
+	// TODO(ashwanth): Find a safer way to do this. Same as [CompareRows]
+	logsEnc.SetSortInfo(sortInfo(b.opts.SortOrder))
 	logsEnc.SetTenant(b.tenant)
 
 	n, err = logsEnc.Flush(w)
@@ -261,6 +305,27 @@ func (b *Builder) encodeSection(enc *columnar.Encoder, section *table) error {
 	}
 
 	return nil
+}
+
+func sortInfo(sort SortOrder) *datasetmd_v2.SortInfo {
+	switch sort {
+	case SortStreamASC:
+		return &datasetmd_v2.SortInfo{
+			ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
+				{ColumnIndex: 0, Direction: datasetmd_v2.SORT_DIRECTION_ASCENDING},  // StreamID ASC
+				{ColumnIndex: 1, Direction: datasetmd_v2.SORT_DIRECTION_DESCENDING}, // Timestamp DESC
+			},
+		}
+	case SortTimestampDESC:
+		return &datasetmd_v2.SortInfo{
+			ColumnSorts: []*datasetmd_v2.SortInfo_ColumnSort{
+				{ColumnIndex: 1, Direction: datasetmd_v2.SORT_DIRECTION_DESCENDING}, // Timestamp DESC
+				{ColumnIndex: 0, Direction: datasetmd_v2.SORT_DIRECTION_ASCENDING},  // StreamID ASC
+			},
+		}
+	default:
+		panic("invalid sort order")
+	}
 }
 
 func encodeColumn(enc *columnar.Encoder, columnType ColumnType, column *tableColumn) error {

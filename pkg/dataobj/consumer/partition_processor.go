@@ -315,6 +315,12 @@ func (p *partitionProcessor) flush() error {
 		level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
 		return err
 	}
+
+	obj, closer, err = p.sort(obj, closer)
+	if err != nil {
+		level.Error(p.logger).Log("msg", "failed to sort dataobj", "err", err)
+		return err
+	}
 	defer closer.Close()
 
 	objectPath, err := p.uploader.Upload(p.ctx, obj)
@@ -332,6 +338,23 @@ func (p *partitionProcessor) flush() error {
 	p.lastFlushed = p.clock.Now()
 
 	return nil
+}
+
+func (p *partitionProcessor) sort(obj *dataobj.Object, closer io.Closer) (*dataobj.Object, io.Closer, error) {
+	defer closer.Close()
+
+	start := time.Now()
+	defer func() {
+		level.Debug(p.logger).Log("msg", "partition processor sorted logs object-wide", "duration", time.Since(start))
+	}()
+
+	// Create a new object builder but do not register metrics!
+	builder, err := logsobj.NewBuilder(p.builderCfg, p.scratchStore)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return builder.CopyAndSort(obj)
 }
 
 // commits the offset of the last record processed. It should be called after

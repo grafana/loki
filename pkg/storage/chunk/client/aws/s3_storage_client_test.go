@@ -24,11 +24,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 )
 
 type RoundTripperFunc func(*http.Request) (*http.Response, error)
@@ -45,12 +44,12 @@ func TestIsObjectNotFoundErr(t *testing.T) {
 	}{
 		{
 			name:     "no such key error is recognized as object not found",
-			err:      awserr.New(s3.ErrCodeNoSuchKey, "NoSuchKey", nil),
+			err:      &types.NoSuchKey{},
 			expected: true,
 		},
 		{
 			name:     "NotFound code is recognized as object not found",
-			err:      awserr.New("NotFound", "NotFound", nil),
+			err:      &types.NotFound{},
 			expected: true,
 		},
 		{
@@ -60,7 +59,7 @@ func TestIsObjectNotFoundErr(t *testing.T) {
 		},
 		{
 			name:     "Other error isnt recognized as object not found",
-			err:      awserr.New(s3.ErrCodeNoSuchBucket, "NoSuchBucket", nil),
+			err:      &types.NoSuchBucket{},
 			expected: false,
 		},
 	}
@@ -82,38 +81,23 @@ func TestIsRetryableErr(t *testing.T) {
 		name     string
 	}{
 		{
-			name: "IsStorageThrottledErr - Too Many Requests",
-			err: awserr.NewRequestFailure(
-				awserr.New("TooManyRequests", "TooManyRequests", nil), 429, "reqId",
-			),
+			name:     "IsStorageThrottledErr - Too Many Requests",
+			err:      &smithy.GenericAPIError{Code: "TooManyRequestsException"},
 			expected: true,
 		},
 		{
-			name: "IsStorageThrottledErr - 500",
-			err: awserr.NewRequestFailure(
-				awserr.New("500", "500", nil), 500, "reqId",
-			),
+			name:     "IsStorageThrottledErr - 503",
+			err:      &smithy.GenericAPIError{Code: "SlowDown"},
 			expected: true,
 		},
 		{
-			name: "IsStorageThrottledErr - 5xx",
-			err: awserr.NewRequestFailure(
-				awserr.New("501", "501", nil), 501, "reqId",
-			),
+			name:     "IsStorageThrottledErr - 5xx",
+			err:      &smithy.GenericAPIError{Code: "NotImplemented"},
 			expected: true,
 		},
 		{
-			name: "IsStorageTimeoutErr - Request Timeout",
-			err: awserr.NewRequestFailure(
-				awserr.New("Request Timeout", "Request Timeout", nil), 408, "reqId",
-			),
-			expected: true,
-		},
-		{
-			name: "IsStorageTimeoutErr - Gateway Timeout",
-			err: awserr.NewRequestFailure(
-				awserr.New("Gateway Timeout", "Gateway Timeout", nil), 504, "reqId",
-			),
+			name:     "IsStorageTimeoutErr - Request Timeout",
+			err:      &smithy.GenericAPIError{Code: "RequestTimeout"},
 			expected: true,
 		},
 		{
@@ -124,13 +108,6 @@ func TestIsRetryableErr(t *testing.T) {
 		{
 			name:     "IsStorageTimeoutErr - Connection Reset",
 			err:      syscall.ECONNRESET,
-			expected: true,
-		},
-		{
-			name: "IsStorageTimeoutErr - Timeout Error",
-			err: awserr.NewRequestFailure(
-				awserr.New("RequestCanceled", "request canceled due to timeout", nil), 408, "request-id",
-			),
 			expected: true,
 		},
 		{
@@ -159,10 +136,8 @@ func TestIsRetryableErr(t *testing.T) {
 			expected: false,
 		},
 		{
-			name: "Not found 404",
-			err: awserr.NewRequestFailure(
-				awserr.New("404", "404", nil), 404, "reqId",
-			),
+			name:     "Not found 404",
+			err:      &smithy.GenericAPIError{Code: "NotFound"},
 			expected: false,
 		},
 	}
@@ -269,7 +244,7 @@ func Test_Hedging(t *testing.T) {
 	}{
 		{
 			"delete/put/list are not hedged",
-			3,
+			9,
 			20 * time.Nanosecond,
 			10,
 			func(c *S3ObjectClient) {
@@ -280,7 +255,7 @@ func Test_Hedging(t *testing.T) {
 		},
 		{
 			"gets are hedged",
-			3,
+			9,
 			20 * time.Nanosecond,
 			3,
 			func(c *S3ObjectClient) {
@@ -289,7 +264,7 @@ func Test_Hedging(t *testing.T) {
 		},
 		{
 			"gets are not hedged when not configured",
-			1,
+			3,
 			0,
 			0,
 			func(c *S3ObjectClient) {
@@ -325,17 +300,17 @@ func Test_Hedging(t *testing.T) {
 }
 
 type MockS3Client struct {
-	s3.S3
-	HeadObjectFunc func(*s3.HeadObjectInput) (*s3.HeadObjectOutput, error)
+	s3.Client
+	HeadObjectFunc func(context.Context, *s3.HeadObjectInput) (*s3.HeadObjectOutput, error)
 }
 
-func (m *MockS3Client) HeadObject(input *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
-	return m.HeadObjectFunc(input)
+func (m *MockS3Client) HeadObject(ctx context.Context, input *s3.HeadObjectInput, _ ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
+	return m.HeadObjectFunc(ctx, input)
 }
 
 func Test_GetAttributes(t *testing.T) {
 	mockS3 := &MockS3Client{
-		HeadObjectFunc: func(_ *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
+		HeadObjectFunc: func(_ context.Context, _ *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
 			var size int64 = 128
 			return &s3.HeadObjectOutput{ContentLength: &size}, nil
 		},
@@ -404,9 +379,7 @@ func Test_RetryLogic(t *testing.T) {
 			func(c *S3ObjectClient) error {
 				exists, err := c.ObjectExists(context.Background(), "foo")
 				if err == nil && !exists {
-					return awserr.NewRequestFailure(
-						awserr.New("NotFound", "Not Found", nil), 404, "abc",
-					)
+					return &types.NotFound{}
 				}
 				return err
 			},
@@ -425,12 +398,10 @@ func Test_RetryLogic(t *testing.T) {
 			callCount := atomic.NewInt32(0)
 
 			mockS3 := &MockS3Client{
-				HeadObjectFunc: func(_ *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
+				HeadObjectFunc: func(_ context.Context, _ *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
 					callNum := callCount.Inc()
 					if !tc.exists {
-						rfIn := awserr.NewRequestFailure(
-							awserr.New("NotFound", "Not Found", nil), 404, "abc",
-						)
+						rfIn := &types.NotFound{}
 						return nil, rfIn
 					}
 
@@ -528,20 +499,20 @@ session_token: session token
 }
 
 type testCommonPrefixesS3Client struct {
-	s3iface.S3API
+	*s3.Client
 }
 
-func (m *testCommonPrefixesS3Client) ListObjectsV2WithContext(aws.Context, *s3.ListObjectsV2Input, ...request.Option) (*s3.ListObjectsV2Output, error) {
-	var commonPrefixes []*s3.CommonPrefix
+func (m testCommonPrefixesS3Client) ListObjectsV2(context.Context, *s3.ListObjectsV2Input, ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+	var commonPrefixes []types.CommonPrefix
 	commonPrefix := "common-prefix-repeated/"
 	for i := 0; i < 2; i++ {
-		commonPrefixes = append(commonPrefixes, &s3.CommonPrefix{Prefix: aws.String(commonPrefix)})
+		commonPrefixes = append(commonPrefixes, types.CommonPrefix{Prefix: aws.String(commonPrefix)})
 	}
 	return &s3.ListObjectsV2Output{CommonPrefixes: commonPrefixes, IsTruncated: aws.Bool(false)}, nil
 }
 
 func TestCommonPrefixes(t *testing.T) {
-	s3 := S3ObjectClient{S3: &testCommonPrefixesS3Client{}, bucketNames: []string{"bucket"}}
+	s3 := S3ObjectClient{S3: testCommonPrefixesS3Client{}, bucketNames: []string{"bucket"}}
 	_, CommonPrefixes, err := s3.List(context.Background(), "", "/")
 	require.Equal(t, nil, err)
 	require.Equal(t, 1, len(CommonPrefixes))

@@ -2,6 +2,10 @@
 
 ## Versions
 
+### 0.34.7
+
+- Update to Go 1.24.8
+
 ### 0.34.6
 
 - Update to Go 1.24.1

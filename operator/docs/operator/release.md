@@ -64,7 +64,7 @@ Since step 1. is currently not automated and disconnected from release-please we
 
 ### Publish release to operatorhubs
 
-To publish a community release of Loki Operator to the community hubs we leverage the workflow in `.github/workflows/operator-publish-operator-hub.yml` this workflow is set to trigger on tag creation that matches `operator/`.
+To publish a community release of Loki Operator to the community hubs we leverage the workflow in `.github/workflows/operator-publish-operator-hub.yml` this workflow is set to trigger on release publication that matches `operator/`.
 
 This workflow will then use a workflow `.github/workflows/operator-reusable-hub-release.yml` that's responsible for:
 
@@ -77,5 +77,5 @@ This workflow will then use a workflow `.github/workflows/operator-reusable-hub-
 1. Create a PR to bump the version (i.e [v0.6.1 preparation PR](https://github.com/grafana/loki/pull/13105)), be careful with the commit message;
 2. Re-trigger the action `operator-publish-operator-hub` on the release-please PR;
 3. Merge the release-please PR (i.e [v0.6.1 release PR](https://github.com/grafana/loki/pull/12593) );
-4. Grafana bot will build and push the release images to `grafana/loki-operator` ([docker repo](https://hub.docker.com/r/grafana/loki-operator/tags));
-5. Grafana bot will automatically open a PRs to [k8s-operatorhub/community-operators](https://github.com/k8s-operatorhub/community-operators) and [redhat-openshift-ecosystem/community-operators-prod](https://github.com/redhat-openshift-ecosystem/community-operators-prod);
+4. The `publishImages` job will build and push the release images to `grafana/loki-operator` ([docker repo](https://hub.docker.com/r/grafana/loki-operator/tags));
+5. The `operator-publish-operator-hub` workflow will automatically open PRs to [k8s-operatorhub/community-operators](https://github.com/k8s-operatorhub/community-operators) and [redhat-openshift-ecosystem/community-operators-prod](https://github.com/redhat-openshift-ecosystem/community-operators-prod);
