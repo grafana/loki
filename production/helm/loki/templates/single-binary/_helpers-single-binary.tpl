@@ -37,5 +37,5 @@ priorityClassName: {{ $pcn }}
 singleBinary target
 */}}
 {{- define "loki.singleBinaryTarget" -}}
-{{- .Values.singleBinary.targetModule -}}{{- if .Values.loki.ui.enabled -}},ui{{- end -}}
+{{- .Values.singleBinary.targetModule -}}
 {{- end -}}

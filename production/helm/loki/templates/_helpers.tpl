@@ -860,15 +860,6 @@ http {
     {{- $schedulerUrl = $backendUrl }}
     {{- end -}}
 
-    {{- if .Values.loki.ui.gateway.enabled }}
-    location ^~ /ui {
-      {{- with .Values.gateway.nginxConfig.locationSnippet }}
-      {{- tpl . $ | nindent 6 }}
-      {{- end }}
-      proxy_pass       {{ $querierUrl }}$request_uri;
-    }
-    {{- end }}
-
     # Distributor
     location = /api/prom/push {
       {{- with .Values.gateway.nginxConfig.locationSnippet }}

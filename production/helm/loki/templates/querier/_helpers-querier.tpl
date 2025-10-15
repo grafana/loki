@@ -35,5 +35,5 @@ priorityClassName: {{ $pcn }}
 querier target
 */}}
 {{- define "loki.querierTarget" -}}
-querier{{- if .Values.loki.ui.enabled -}},ui{{- end -}}
+querier
 {{- end -}}

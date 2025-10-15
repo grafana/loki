@@ -13,8 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [BREAKING] **Loki UI has been completely removed from the Helm chart.** The Loki UI has been deprecated and replaced by a Grafana plugin. All UI-related configuration options have been removed: `loki.ui.enabled`, `loki.ui.gateway.enabled`, and the `/ui` gateway location. The UI target module has been removed from querier, read, and single-binary deployments. Users who previously had `loki.ui.enabled: true` should remove this configuration and migrate to the Grafana Loki plugin for UI functionality.
 - [ENHANCEMENT] Add configurable `startupProbe` to `startupProbethe memcached container in the memcached pods [#19166](https://github.com/grafana/loki/pull/19166)
-- [BREAKING]  The Loki UI has been moved to a Grafana Plugin. Enabling the UI in the helm chart will now only enable the APIs needed by the plugin, and will host them on the querier. The gateway will now forward all UI requests to the queriers.
 - [FEATURE] Use named ports for memcached services targetports. [#18990](https://github.com/grafana/loki/pull/18990)
 - [ENHANCEMENT] Add configurable `startupProbe` to the exporter container in the memcached pods [#19165](https://github.com/grafana/loki/pull/19165)
 

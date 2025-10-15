@@ -329,10 +329,6 @@ loki:
       {{- tpl (. | toYaml) $ | nindent 4 }}
     {{- end }}
 
-    {{- if .Values.loki.ui.enabled }}
-    ui:
-      enabled: true
-    {{- end }}
     {{- with .Values.loki.querier }}
     querier:
       {{- tpl (. | toYaml) $ | nindent 4 }}
@@ -569,13 +565,6 @@ loki:
     enabled: false
   # --  Optional analytics configuration
   analytics: {}
-  # --  Optional Loki UI: Provides access to a operators UI for Loki distributed. When enabled UI will be available at /ui/ of loki-gateway
-  ui:
-    # Disabled by default for backwards compatibility. Enable to use the Loki UI.
-    enabled: false
-    gateway:
-      # enable gateway proxying to UI under /ui
-      enabled: true
   # --  Optional querier configuration
   query_range: {}
   # --  Optional querier configuration
@@ -1345,7 +1334,6 @@ ingress:
       - /api/prom/push
       - /loki/api/v1/push
       - /otlp/v1/logs
-      - /ui
     # -- Paths that are exposed by Loki Query Frontend.
     # If deployment mode is Distributed, the requests are forwarded to the service: `{{"loki.queryFrontendFullname"}}`.
     # If deployment mode is SimpleScalable, the requests are forwarded to write k8s service: `{{"loki.readFullname"}}`.
