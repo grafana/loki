@@ -70,14 +70,18 @@ func (m *zeroValueLimits) DefaultLimits() *validation.Limits {
 	}
 }
 
-func chunkMetasToChunkRefs(user string, fp uint64, xs index.ChunkMetas) (res []ChunkRef) {
+func chunkMetasToChunkRefs(user string, fp uint64, xs index.ChunkMetas) (res []logproto.ChunkRefWithSizingInfo) {
 	for _, x := range xs {
-		res = append(res, ChunkRef{
-			User:        user,
-			Fingerprint: model.Fingerprint(fp),
-			Start:       x.From(),
-			End:         x.Through(),
-			Checksum:    x.Checksum,
+		res = append(res, logproto.ChunkRefWithSizingInfo{
+			ChunkRef: logproto.ChunkRef{
+				UserID:      user,
+				Fingerprint: fp,
+				From:        x.From(),
+				Through:     x.Through(),
+				Checksum:    x.Checksum,
+			},
+			KB:      x.KB,
+			Entries: x.Entries,
 		})
 	}
 	return
@@ -761,7 +765,7 @@ func BenchmarkTenantHeads(b *testing.B) {
 					wg.Add(1)
 					go func(r int) {
 						defer wg.Done()
-						var res []ChunkRef
+						var res []logproto.ChunkRefWithSizingInfo
 						tenant := r % nTenants
 
 						// nolint:ineffassign,staticcheck

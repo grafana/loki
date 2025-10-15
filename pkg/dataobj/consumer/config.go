@@ -15,10 +15,13 @@ type Config struct {
 }
 
 func (cfg *Config) Validate() error {
+	if err := cfg.BuilderConfig.Validate(); err != nil {
+		return err
+	}
 	if err := cfg.UploaderConfig.Validate(); err != nil {
 		return err
 	}
-	return cfg.BuilderConfig.Validate()
+	return nil
 }
 
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {

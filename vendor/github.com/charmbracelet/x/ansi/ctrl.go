@@ -38,6 +38,25 @@ const RequestXTVersion = RequestNameVersion
 // If no attributes are given, or if the attribute is 0, this function returns
 // the request sequence. Otherwise, it returns the response sequence.
 //
+// Common attributes include:
+//   - 1	132 columns
+//   - 2	Printer port
+//   - 4	Sixel
+//   - 6	Selective erase
+//   - 7	Soft character set (DRCS)
+//   - 8	User-defined keys (UDKs)
+//   - 9	National replacement character sets (NRCS) (International terminal only)
+//   - 12	Yugoslavian (SCS)
+//   - 15	Technical character set
+//   - 18	Windowing capability
+//   - 21	Horizontal scrolling
+//   - 23	Greek
+//   - 24	Turkish
+//   - 42	ISO Latin-2 character set
+//   - 44	PCTerm
+//   - 45	Soft key map
+//   - 46	ASCII emulation
+//
 // See https://vt100.net/docs/vt510-rm/DA1.html
 func PrimaryDeviceAttributes(attrs ...int) string {
 	if len(attrs) == 0 {

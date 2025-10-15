@@ -78,7 +78,7 @@ func NewMySQLStorage(config StorageConfig, logger log.Logger) (*MySQLStorage, er
 func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample) error {
 	query := `
 		INSERT INTO sampled_queries (
-			correlation_id, tenant_id, user, query, query_type,
+			correlation_id, tenant_id, user, is_logs_drilldown, query, query_type,
 			start_time, end_time, step_duration,
 			cell_a_exec_time_ms, cell_b_exec_time_ms,
 			cell_a_queue_time_ms, cell_b_queue_time_ms,
@@ -96,7 +96,7 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 			cell_a_span_id, cell_b_span_id,
 			cell_a_used_new_engine, cell_b_used_new_engine,
 			sampled_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	// Convert empty span IDs to NULL for database storage
@@ -112,6 +112,7 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 		sample.CorrelationID,
 		sample.TenantID,
 		sample.User,
+		sample.IsLogsDrilldown,
 		sample.Query,
 		sample.QueryType,
 		sample.StartTime,
@@ -327,6 +328,12 @@ func buildWhereClause(filter QueryFilter) (string, []any) {
 	if filter.User != "" {
 		conditions = append(conditions, "user = ?")
 		args = append(args, filter.User)
+	}
+
+	// Add logs drilldown filter
+	if filter.IsLogsDrilldown != nil {
+		conditions = append(conditions, "is_logs_drilldown = ?")
+		args = append(args, *filter.IsLogsDrilldown)
 	}
 
 	// Add new engine filter

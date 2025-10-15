@@ -49,7 +49,8 @@ func initBuffer(buf *tableBuffer) {
 func Test_mergeTables(t *testing.T) {
 	var buf tableBuffer
 
-	// tables need to be sorted by Timestamp DESC and StreamID ASC
+	// tables need to be sorted by Timestamp DESC and StreamID ASC.
+	// duplicates are added to ensure the resulting objects are deduplicated if all attributes match.
 	var (
 		tableA = buildTable(&buf, pageSize, pageRows, dataset.CompressionOptions{}, []Record{
 			{StreamID: 3, Timestamp: time.Unix(3, 0), Line: []byte("hello")},
@@ -58,17 +59,22 @@ func Test_mergeTables(t *testing.T) {
 		})
 
 		tableB = buildTable(&buf, pageSize, pageRows, dataset.CompressionOptions{}, []Record{
+			{StreamID: 3, Timestamp: time.Unix(3, 0), Line: []byte("hello")}, // Duplicate in tableA
 			{StreamID: 1, Timestamp: time.Unix(2, 0), Line: []byte("world")},
 			{StreamID: 3, Timestamp: time.Unix(1, 0), Line: []byte("goodbye")},
 		})
 
 		tableC = buildTable(&buf, pageSize, pageRows, dataset.CompressionOptions{}, []Record{
 			{StreamID: 3, Timestamp: time.Unix(2, 0), Line: []byte("are")},
+			{StreamID: 3, Timestamp: time.Unix(2, 0), Line: []byte("are")}, // Duplicate within tableC
 			{StreamID: 2, Timestamp: time.Unix(1, 0), Line: []byte("doing?")},
 		})
 	)
 
-	mergedTable, err := mergeTables(&buf, pageSize, pageRows, dataset.CompressionOptions{}, []*table{tableA, tableB, tableC})
+	// TableC should have been initially deduped by buildTable
+	require.Equal(t, tableC.Timestamp.Desc.RowsCount, 2)
+
+	mergedTable, err := mergeTables(&buf, pageSize, pageRows, dataset.CompressionOptions{}, []*table{tableA, tableB, tableC}, SortTimestampDESC)
 	require.NoError(t, err)
 
 	mergedColumns, err := result.Collect(mergedTable.ListColumns(context.Background()))

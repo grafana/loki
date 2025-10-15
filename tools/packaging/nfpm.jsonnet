@@ -74,17 +74,4 @@ local arch = std.extVar('arch');
     src: './dist/tmp/packages/%s-linux-%s' % [name, arch],
     dst: '/usr/bin/%s' % name,
   }],
-
-  deb: {
-    signature: {
-      // Also set ${NFPM_PASSPHRASE}
-      key_file: '${NFPM_SIGNING_KEY_FILE}',
-    },
-  },
-  rpm: {
-    signature: {
-      // Also set ${NFPM_PASSPHRASE}
-      key_file: '${NFPM_SIGNING_KEY_FILE}',
-    },
-  },
 } + overrides[name]
