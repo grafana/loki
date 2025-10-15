@@ -205,7 +205,7 @@ loop:
 	if !ok {
 		return nil, errors.New("column is not a timestamp column")
 	}
-	
+
 	// Calculate start/end of the sub-slice of the record
 	start := p.offsets[j]
 	end := start + 1
