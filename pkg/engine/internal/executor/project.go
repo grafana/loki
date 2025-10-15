@@ -23,12 +23,12 @@ func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, eva
 		}
 	}
 
-	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) state {
+	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
 		batch, err := input.Read(ctx)
 		if err != nil {
-			return failureState(err)
+			return nil, err
 		}
 		defer batch.Release()
 
@@ -38,8 +38,9 @@ func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, eva
 		for i := range columns {
 			vec, err := evaluator.eval(columns[i], batch)
 			if err != nil {
-				return failureState(err)
+				return nil, err
 			}
+			defer vec.Release()
 			ident := semconv.NewIdentifier(columnNames[i], vec.ColumnType(), vec.Type())
 			fields = append(fields, semconv.FieldFromIdent(ident, true))
 			arr := vec.ToArray()
@@ -50,7 +51,6 @@ func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, eva
 		schema := arrow.NewSchema(fields, nil)
 		// Create a new record with only the projected columns
 		// retain the projected columns in a new batch then release the original record.
-		projectedRecord := array.NewRecord(schema, projected, batch.NumRows())
-		return successState(projectedRecord)
+		return array.NewRecord(schema, projected, batch.NumRows()), nil
 	}, input), nil
 }

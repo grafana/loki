@@ -665,6 +665,62 @@ func TestOptimizer(t *testing.T) {
 		expected := PrintAsTree(optimized)
 		require.Equal(t, expected, actual, fmt.Sprintf("Expected:\n%s\nActual:\n%s\n", expected, actual))
 	})
+
+	// both predicate pushdown and limits pushdown should work together
+	t.Run("predicate and limits pushdown", func(t *testing.T) {
+		plan := &Plan{}
+		scan1 := plan.graph.Add(&DataObjScan{id: "scan1"})
+		scan2 := plan.graph.Add(&DataObjScan{id: "scan2"})
+		sortMerge := plan.graph.Add(&SortMerge{id: "sortMerge"})
+		filter := plan.graph.Add(&Filter{id: "filter", Predicates: []Expression{
+			&BinaryExpr{
+				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
+				Right: NewLiteral(time1000),
+				Op:    types.BinaryOpGt,
+			},
+		}})
+		limit := plan.graph.Add(&Limit{id: "limit", Fetch: 100})
+
+		_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: filter})
+		_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: sortMerge})
+		_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: sortMerge, Child: scan1})
+		_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: sortMerge, Child: scan2})
+
+		planner := NewPlanner(NewContext(time.Unix(0, 0), time.Unix(3600, 0)), &catalog{})
+		actual, err := planner.Optimize(plan)
+		require.NoError(t, err)
+
+		optimized := &Plan{}
+		{
+			scan1 := optimized.graph.Add(&DataObjScan{id: "scan1",
+				Limit: 100,
+				Predicates: []Expression{
+					&BinaryExpr{
+						Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
+						Right: NewLiteral(time1000),
+						Op:    types.BinaryOpGt,
+					},
+				}})
+			scan2 := optimized.graph.Add(&DataObjScan{id: "scan2",
+				Limit: 100,
+				Predicates: []Expression{
+					&BinaryExpr{
+						Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
+						Right: NewLiteral(time1000),
+						Op:    types.BinaryOpGt,
+					},
+				}})
+			merge := optimized.graph.Add(&SortMerge{id: "merge"})
+			limit := optimized.graph.Add(&Limit{id: "limit1", Fetch: 100})
+
+			_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: merge})
+			_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: scan1})
+			_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: scan2})
+		}
+
+		expected := PrintAsTree(optimized)
+		require.Equal(t, expected, PrintAsTree(actual))
+	})
 }
 
 func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {

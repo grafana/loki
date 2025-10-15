@@ -39,7 +39,6 @@ type topkPipeline struct {
 	batch  *topkBatch
 
 	computed bool
-	state    state
 }
 
 var _ Pipeline = (*topkPipeline)(nil)
@@ -140,10 +139,6 @@ NextInput:
 	}
 	return compacted, nil
 }
-
-// Value returns the topk record computed by the pipeline after
-// [topkPipeline.Read] has been called.
-func (p *topkPipeline) Value() (arrow.Record, error) { return p.state.Value() }
 
 // Close closes the resources of the pipeline.
 func (p *topkPipeline) Close() {
