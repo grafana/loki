@@ -56,19 +56,19 @@ func Test_mergeTables(t *testing.T) {
 			{StreamID: 3, Timestamp: time.Unix(3, 0), Line: []byte("hello")},
 			{StreamID: 2, Timestamp: time.Unix(2, 0), Line: []byte("how")},
 			{StreamID: 1, Timestamp: time.Unix(1, 0), Line: []byte("you")},
-		})
+		}, SortTimestampDESC)
 
 		tableB = buildTable(&buf, pageSize, pageRows, dataset.CompressionOptions{}, []Record{
 			{StreamID: 3, Timestamp: time.Unix(3, 0), Line: []byte("hello")}, // Duplicate in tableA
 			{StreamID: 1, Timestamp: time.Unix(2, 0), Line: []byte("world")},
 			{StreamID: 3, Timestamp: time.Unix(1, 0), Line: []byte("goodbye")},
-		})
+		}, SortTimestampDESC)
 
 		tableC = buildTable(&buf, pageSize, pageRows, dataset.CompressionOptions{}, []Record{
 			{StreamID: 3, Timestamp: time.Unix(2, 0), Line: []byte("are")},
 			{StreamID: 3, Timestamp: time.Unix(2, 0), Line: []byte("are")}, // Duplicate within tableC
 			{StreamID: 2, Timestamp: time.Unix(1, 0), Line: []byte("doing?")},
-		})
+		}, SortTimestampDESC)
 	)
 
 	// TableC should have been initially deduped by buildTable
