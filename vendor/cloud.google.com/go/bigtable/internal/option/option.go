@@ -21,6 +21,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
+	"time"
 
 	"cloud.google.com/go/bigtable/internal"
 	"cloud.google.com/go/internal/version"
@@ -46,6 +48,11 @@ func mergeOutgoingMetadata(ctx context.Context, mds ...metadata.MD) context.Cont
 	return metadata.NewOutgoingContext(ctx, metadata.Join(mds...))
 }
 
+// withClientAttemptEpochUsec sets the client epoch in usec.
+func withClientAttemptEpochUsec() metadata.MD {
+	return metadata.Pairs("bigtable-client-attempt-epoch-usec", strconv.FormatInt(time.Now().UnixMicro(), 10))
+}
+
 // withGoogleClientInfo sets the name and version of the application in
 // the `x-goog-api-client` header passed on each request. Intended for
 // use by Google-written clients.
@@ -67,7 +74,7 @@ func withGoogleClientInfo() metadata.MD {
 // client to inject Google client information into the context metadata for
 // streaming RPCs.
 func streamInterceptor(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
-	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo())
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), withClientAttemptEpochUsec())
 	return streamer(ctx, desc, cc, method, opts...)
 }
 
@@ -75,7 +82,7 @@ func streamInterceptor(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.Clie
 // client to inject Google client information into the context metadata for
 // unary RPCs.
 func unaryInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo())
+	ctx = mergeOutgoingMetadata(ctx, withGoogleClientInfo(), withClientAttemptEpochUsec())
 	return invoker(ctx, method, req, reply, cc, opts...)
 }
 
@@ -95,6 +102,7 @@ func DefaultClientOptions(endpoint, mtlsEndpoint, scope, userAgent string) ([]op
 		o = []option.ClientOption{
 			internaloption.WithDefaultEndpointTemplate(endpoint),
 			internaloption.WithDefaultMTLSEndpoint(mtlsEndpoint),
+			internaloption.WithDefaultUniverseDomain("googleapis.com"),
 			option.WithScopes(scope),
 			option.WithUserAgent(userAgent),
 		}

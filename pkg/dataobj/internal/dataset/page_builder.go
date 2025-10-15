@@ -99,7 +99,7 @@ func (b *pageBuilder) canAppend(n, valueSize int) bool {
 // Append appends value into the pageBuilder. Append returns true if the data
 // was appended; false if the pageBuilder is full.
 func (b *pageBuilder) Append(value Value) bool {
-	if value.IsNil() || value.IsZero() {
+	if value.IsNil() {
 		return b.AppendNull()
 	}
 
