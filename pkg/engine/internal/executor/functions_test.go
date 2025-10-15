@@ -120,6 +120,8 @@ func createFloat64Array(mem memory.Allocator, values []float64, nulls []bool) *A
 // Helper function to extract boolean values from result
 func extractBoolValues(result ColumnVector) []bool {
 	arr := result.ToArray().(*array.Boolean)
+	defer arr.Release()
+
 	values := make([]bool, arr.Len())
 	for i := 0; i < arr.Len(); i++ {
 		if arr.IsNull(i) {

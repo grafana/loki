@@ -181,6 +181,7 @@ type arrayType[T comparable] interface {
 	IsNull(int) bool
 	Value(int) T
 	Len() int
+	Release()
 }
 
 // genericBoolFunction is a struct that implements the [BinaryFunction] interface methods
@@ -199,11 +200,13 @@ func (f *genericBoolFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector)
 	if !ok {
 		return nil, arrow.ErrType
 	}
+	defer lhsArr.Release()
 
 	rhsArr, ok := rhs.ToArray().(E)
 	if !ok {
 		return nil, arrow.ErrType
 	}
+	defer rhsArr.Release()
 
 	mem := memory.NewGoAllocator()
 	builder := array.NewBooleanBuilder(mem)
