@@ -40,7 +40,6 @@ func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, eva
 			if err != nil {
 				return nil, err
 			}
-			defer vec.Release()
 			ident := semconv.NewIdentifier(columnNames[i], vec.ColumnType(), vec.Type())
 			fields = append(fields, semconv.FieldFromIdent(ident, true))
 			arr := vec.ToArray()

@@ -128,10 +128,8 @@ func TestSortMerge(t *testing.T) {
 			}
 
 			tsCol, err := c.evaluator.eval(merge.Column, batch)
-			defer tsCol.Release()
 			require.NoError(t, err)
 			arr := tsCol.ToArray().(*array.Timestamp)
-			defer arr.Release()
 
 			timestamps = append(timestamps, arr.Values()...)
 			batches++

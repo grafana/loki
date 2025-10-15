@@ -123,7 +123,7 @@ RETURN %21
 }
 
 func TestConvertAST_MetricQuery_Success(t *testing.T) {
-	t.Run(`sum by (level) (count_over_time({cluster="prod", namespace=~"loki-.*"} |= "metric.go"[5m]))`, func(t *testing.T) {
+	t.Run("simple metric query", func(t *testing.T) {
 		q := &query{
 			statement: `sum by (level) (count_over_time({cluster="prod", namespace=~"loki-.*"} |= "metric.go"[5m]))`,
 			start:     3600,
@@ -159,7 +159,7 @@ RETURN %13
 		t.Logf("\n%s\n", sb.String())
 	})
 
-	t.Run(`sum by (level) (count_over_time({cluster="prod", namespace=~"loki-.*"}[5m]) / 300)`, func(t *testing.T) {
+	t.Run(`metric query with one binary math operation`, func(t *testing.T) {
 		q := &query{
 			statement: `sum by (level) (count_over_time({cluster="prod", namespace=~"loki-.*"}[5m]) / 300)`,
 			start:     3600,

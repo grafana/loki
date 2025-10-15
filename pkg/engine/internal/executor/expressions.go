@@ -259,7 +259,7 @@ var _ ColumnVector = (*Array)(nil)
 
 // ToArray implements ColumnVector.
 func (a *Array) ToArray() arrow.Array {
-	a.array.Retain()
+	// this should already has 1 ref counter
 	return a.array
 }
 

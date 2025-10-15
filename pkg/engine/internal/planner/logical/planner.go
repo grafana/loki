@@ -209,17 +209,8 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 		return nil, err
 	}
 
-	var rangeAggType types.RangeAggregationType
-	switch e.Operation {
-	case syntax.OpRangeTypeCount:
-		rangeAggType = types.RangeAggregationTypeCount
-	case syntax.OpRangeTypeSum:
-		rangeAggType = types.RangeAggregationTypeSum
-	//case syntax.OpRangeTypeMax:
-	//	rangeAggType = types.RangeAggregationTypeMax
-	//case syntax.OpRangeTypeMin:
-	//	rangeAggType = types.RangeAggregationTypeMin
-	default:
+	rangeAggType := convertRangeAggregationType(e.Operation)
+	if rangeAggType == types.RangeAggregationTypeInvalid {
 		return nil, errUnimplemented
 	}
 
@@ -248,17 +239,8 @@ func walkVectorAggregation(e *syntax.VectorAggregationExpr, params logql.Params)
 		return nil, err
 	}
 
-	var vecAggType types.VectorAggregationType
-	switch e.Operation {
-	//case syntax.OpTypeCount:
-	//	vecAggType = types.VectorAggregationTypeCount
-	case syntax.OpTypeSum:
-		vecAggType = types.VectorAggregationTypeSum
-	//case syntax.OpTypeMax:
-	//	vecAggType = types.VectorAggregationTypeMax
-	//case syntax.OpTypeMin:
-	//	vecAggType = types.VectorAggregationTypeMin
-	default:
+	vecAggType := convertVectorAggregationType(e.Operation)
+	if vecAggType == types.VectorAggregationTypeInvalid {
 		return nil, errUnimplemented
 	}
 
@@ -384,6 +366,36 @@ func convertLabelMatchers(matchers []*labels.Matcher) Value {
 	}
 
 	return value
+}
+
+func convertVectorAggregationType(op string) types.VectorAggregationType {
+	switch op {
+	case syntax.OpTypeSum:
+		return types.VectorAggregationTypeSum
+	//case syntax.OpTypeCount:
+	//	return types.VectorAggregationTypeCount
+	//case syntax.OpTypeMax:
+	//	return types.VectorAggregationTypeMax
+	//case syntax.OpTypeMin:
+	//	return types.VectorAggregationTypeMin
+	default:
+		return types.VectorAggregationTypeInvalid
+	}
+}
+
+func convertRangeAggregationType(op string) types.RangeAggregationType {
+	switch op {
+	case syntax.OpRangeTypeCount:
+		return types.RangeAggregationTypeCount
+	case syntax.OpRangeTypeSum:
+		return types.RangeAggregationTypeSum
+	//case syntax.OpRangeTypeMax:
+	//	return types.RangeAggregationTypeMax
+	//case syntax.OpRangeTypeMin:
+	//	return types.RangeAggregationTypeMin
+	default:
+		return types.RangeAggregationTypeInvalid
+	}
 }
 
 func convertMatcherType(t labels.MatchType) types.BinaryOp {

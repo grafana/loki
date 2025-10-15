@@ -191,10 +191,6 @@ func (r *projectionPushdown) apply(node Node) bool {
 			return false
 		}
 	case *RangeAggregation:
-		if !slices.Contains(types.SupportedRangeAggregationTypes, node.Operation) {
-			return false
-		}
-
 		projections := make([]ColumnExpression, len(node.PartitionBy)+1)
 		copy(projections, node.PartitionBy)
 		// Always project timestamp column even if partitionBy is empty.

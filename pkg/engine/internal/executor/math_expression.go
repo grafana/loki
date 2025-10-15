@@ -6,11 +6,11 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline, evaluator expressionEvaluator) *GenericPipeline {
@@ -27,10 +27,7 @@ func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline,
 
 		fields := make([]arrow.Field, 0, len(inputs))
 		for i := range inputs {
-			fields = append(fields, arrow.Field{
-				Name: fmt.Sprintf("float64.generated.input_%d", i),
-				Type: types.Arrow.Float,
-			})
+			fields = append(fields, semconv.FieldFromFQN(fmt.Sprintf("float64.generated.input_%d", i), false))
 		}
 
 		valColumnExpr := &physical.ColumnExpr{
@@ -68,24 +65,22 @@ func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline,
 		valCol := data.(*array.Float64)
 		defer valCol.Release()
 
-		tsColumnExpr := &physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: types.ColumnNameBuiltinTimestamp,
-				Type:   types.ColumnTypeBuiltin,
-			},
+		schema := batch.Schema()
+		valueCol := semconv.NewIdentifier(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated, types.Loki.Float)
+		outputFields := make([]arrow.Field, 0, schema.NumFields())
+		outputCols := make([]arrow.Array, 0, schema.NumFields())
+		for i := 0; i < schema.NumFields(); i++ {
+			field := schema.Field(i)
+			if field.Name != valueCol.FQN() {
+				outputFields = append(outputFields, field)
+				outputCols = append(outputCols, batch.Column(i))
+			}
 		}
-		tsVec, err := evaluator.eval(tsColumnExpr, batch)
-		if err != nil {
-			return nil, err
-		}
-		tsCol := tsVec.ToArray().(*array.Timestamp)
-		defer tsCol.Release()
+		outputFields = append(outputFields, semconv.FieldFromIdent(valueCol, false))
+		outputCols = append(outputCols, valCol)
+		outputSchema := arrow.NewSchema(outputFields, nil)
 
-		outputSchema := arrow.NewSchema([]arrow.Field{
-			semconv.FieldFromIdent(semconv.NewIdentifier(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin, types.Loki.Timestamp), true),
-			semconv.FieldFromIdent(semconv.NewIdentifier(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated, types.Loki.Float), true),
-		}, nil)
-		evaluatedRecord := array.NewRecord(outputSchema, []arrow.Array{tsCol, valCol}, batch.NumRows())
+		evaluatedRecord := array.NewRecord(outputSchema, outputCols, batch.NumRows())
 
 		return evaluatedRecord, nil
 	}, inputs...)
