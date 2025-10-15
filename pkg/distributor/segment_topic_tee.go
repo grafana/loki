@@ -8,9 +8,11 @@ import (
 	"math"
 	"math/rand"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
@@ -202,10 +204,13 @@ func (s *SegmentTopicWriter) write(tenant string, streams []KeyedStream) {
 		// Get the rate for this segmentation key
 		segmentRate := float64(segmentRates[swk.sKey.hash])
 
-		// Get available partitions for this stream (multiple partitions for high-volume segments)
+		// TODO(EWELCH): if someone sends a huge push payload this will not be split into multiple
+		// partitions, so either we need a limit on the size of the payload or we have some risk
+		// here of overwhelming a partition. It may also be possible to split up the push request
+		// although that has challenges as well.
 		availablePartitions, err := s.getPartition(tenant, swk.sKey, segmentRate)
 		if err != nil {
-			s.logger.Log(
+			level.Error(s.logger).Log(
 				"msg", "failed to get partitions for stream",
 				"tenant", tenant,
 				"segmentationKey", swk.sKey.str,
@@ -218,10 +223,21 @@ func (s *SegmentTopicWriter) write(tenant string, streams []KeyedStream) {
 		// Select a single partition from the available ones to spread data across partitions
 		selectedPartition := s.selectPartition(availablePartitions)
 
+		level.Info(s.logger).Log(
+			"msg", "writing to partition",
+			"tenant", tenant,
+			"stream", swk.stream.Stream.Labels,
+			"seg_key_string", swk.sKey.str,
+			"seg_key_hash", swk.sKey.hash,
+			"available_partitions", fmt.Sprintf("%v", availablePartitions),
+			"selected_partition", selectedPartition,
+			"seg_rate", segmentRate,
+		)
+
 		// Create records for the selected partition only
 		streamRecords, err := kafka.EncodeWithTopic(s.cfg.Topic, selectedPartition, tenant, swk.stream.Stream, int(s.cfg.MaxRecordSizeBytes))
 		if err != nil {
-			s.logger.Log(
+			level.Error(s.logger).Log(
 				"msg", "failed to encode stream",
 				"tenant", tenant,
 				"partition", selectedPartition,
@@ -297,7 +313,7 @@ func (s *SegmentTopicWriter) getSegmentationKeyFromRules(stream KeyedStream, ten
 	// Parse the segmentation rules
 	config, err := ParseSegmentationConfig(ruleStrings)
 	if err != nil {
-		s.logger.Log("msg", "failed to parse segmentation rules", "tenant", tenant, "rules", ruleStrings, "err", err)
+		level.Error(s.logger).Log("msg", "failed to parse segmentation rules", "tenant", tenant, "rules", ruleStrings, "err", err)
 		return "", false
 	}
 
@@ -328,7 +344,7 @@ func (s *SegmentTopicWriter) getSegmentationKeyFromRules(stream KeyedStream, ten
 			sb.WriteString(val)
 		} else {
 			// This shouldn't happen if GetSegmentationKeys is working correctly
-			s.logger.Log("msg", "segmentation key found but no value available", "key", key, "tenant", tenant)
+			level.Error(s.logger).Log("msg", "segmentation key found but no value available", "key", key, "tenant", tenant)
 			return "", false
 		}
 	}
@@ -341,7 +357,7 @@ func (s *SegmentTopicWriter) extractLabels(stream KeyedStream) map[string]string
 	labelMap := make(map[string]string)
 	parsedLabels, err := syntax.ParseLabels(stream.Stream.Labels)
 	if err != nil {
-		s.logger.Log("msg", "failed to parse stream labels", "labels", stream.Stream.Labels, "err", err)
+		level.Error(s.logger).Log("msg", "failed to parse stream labels", "labels", stream.Stream.Labels, "err", err)
 		return labelMap
 	}
 
@@ -400,7 +416,7 @@ func (s *SegmentTopicWriter) getVolumeSpreadPartitions(sKey segmentationKey, ten
 	// Create a subring from the tenant's subring for this specific segment
 	segmentSubring, err := tenantSubring.ShuffleShard(sKey.str, segmentShardSize)
 	if err != nil {
-		s.logger.Log("msg", "failed to create segment shuffle shard", "tenant", tenant, "segmentationKey", sKey.str, "shardSize", segmentShardSize, "err", err)
+		level.Error(s.logger).Log("msg", "failed to create segment shuffle shard", "tenant", tenant, "segmentationKey", sKey.str, "shardSize", segmentShardSize, "err", err)
 		// Fallback to using all tenant partitions
 		partitions := make([]int32, len(tenantPartitions))
 		copy(partitions, tenantPartitions)
@@ -463,7 +479,7 @@ func (s *SegmentTopicWriter) updateSegmentRates(ctx context.Context, tenant stri
 	// Update segment rates in batch and return the results
 	results, err := s.ingestLimits.UpdateRates(ctx, tenant, rateUpdates)
 	if err != nil {
-		s.logger.Log("msg", "failed to update segment rates", "tenant", tenant, "err", err)
+		level.Error(s.logger).Log("msg", "failed to update segment rates", "tenant", tenant, "err", err)
 		return make(map[uint64]int64)
 	}
 
@@ -512,7 +528,7 @@ func (s *SegmentTopicWriter) getTenantSubring(tenant string) *ring.PartitionRing
 	// Create a subring using shuffle sharding with the calculated tenant shard size
 	subring, err := s.partitionRing.PartitionRing().ShuffleShard(tenant, tenantShardSize)
 	if err != nil {
-		s.logger.Log("msg", "failed to create shuffle shard for tenant", "tenant", tenant, "shardSize", tenantShardSize, "err", err)
+		level.Error(s.logger).Log("msg", "failed to create shuffle shard for tenant", "tenant", tenant, "shardSize", tenantShardSize, "err", err)
 		// Fallback to using the full ring
 		return s.partitionRing.PartitionRing()
 	}
