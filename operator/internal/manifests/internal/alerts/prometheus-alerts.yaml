@@ -236,11 +236,18 @@ groups:
     expr: |
       sum (
         label_replace(
-          lokistack_status_condition{reason="ReadyComponents", status="false"},
+          (
+            sum (
+             lokistack_info
+            ) by (stack_namespace, stack_name)
+            unless
+            sum (
+              lokistack_status_condition{condition="Ready",reason="ReadyComponents",status="true"}
+            ) by (stack_namespace, stack_name) > 0
+          ),
           "namespace", "$1", "stack_namespace", "(.+)"
         )
       ) by (stack_name, namespace)
-      > 0
     for: 15m
     labels:
       severity: warning
