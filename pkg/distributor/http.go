@@ -10,6 +10,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log/level"
+
 	"github.com/grafana/dskit/httpgrpc"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -148,7 +149,16 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 		}
 	}
 
-	_, err = d.PushWithResolver(r.Context(), req, streamResolver, format)
+	// FIXME
+	if r.Header.Get("User-Agent") == "al-archive-replayer" {
+		for k, vals := range r.Header {
+			fmt.Printf("ASDF: %s: %s\n", k, strings.Join(vals, ", "))
+		}
+	}
+
+	ctx := injectRateLimitBypassFromRequest(r)
+
+	_, err = d.PushWithResolver(ctx, req, streamResolver, format)
 	if err == nil {
 		if d.tenantConfigs.LogPushRequest(tenantID) {
 			level.Debug(logger).Log(
