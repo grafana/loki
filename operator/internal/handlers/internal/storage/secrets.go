@@ -503,7 +503,7 @@ func validateS3Endpoint(endpoint string, region string) error {
 	}
 
 	if strings.HasSuffix(parsedURL.Host, awsEndpointSuffix) {
-		if parsedURL.Path != "" {
+		if parsedURL.Path != "" && parsedURL.Path != "/" {
 			return fmt.Errorf("%w: %s", errS3EndpointAWSPathNotAllowed, parsedURL.Path)
 		}
 
