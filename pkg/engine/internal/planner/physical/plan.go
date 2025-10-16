@@ -19,6 +19,7 @@ const (
 	NodeTypeCompat
 	NodeTypeTopK
 	NodeTypeParallelize
+	NodeTypeScanSet
 )
 
 func (t NodeType) String() string {
@@ -47,6 +48,8 @@ func (t NodeType) String() string {
 		return "TopK"
 	case NodeTypeParallelize:
 		return "Parallelize"
+	case NodeTypeScanSet:
+		return "ScanSet"
 	default:
 		return "Undefined"
 	}
@@ -73,8 +76,6 @@ type Node interface {
 }
 
 var _ Node = (*DataObjScan)(nil)
-var _ Node = (*Merge)(nil)
-var _ Node = (*SortMerge)(nil)
 var _ Node = (*Projection)(nil)
 var _ Node = (*Limit)(nil)
 var _ Node = (*Filter)(nil)
@@ -84,10 +85,9 @@ var _ Node = (*ParseNode)(nil)
 var _ Node = (*ColumnCompat)(nil)
 var _ Node = (*TopK)(nil)
 var _ Node = (*Parallelize)(nil)
+var _ Node = (*ScanSet)(nil)
 
 func (*DataObjScan) isNode()       {}
-func (*Merge) isNode()             {}
-func (*SortMerge) isNode()         {}
 func (*Projection) isNode()        {}
 func (*Limit) isNode()             {}
 func (*Filter) isNode()            {}
@@ -97,6 +97,7 @@ func (*ParseNode) isNode()         {}
 func (*ColumnCompat) isNode()      {}
 func (*TopK) isNode()              {}
 func (*Parallelize) isNode()       {}
+func (*ScanSet) isNode()           {}
 
 // WalkOrder defines the order for how a node and its children are visited.
 type WalkOrder uint8
