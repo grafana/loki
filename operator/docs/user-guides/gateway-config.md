@@ -47,6 +47,7 @@ spec:
 - **OpenShift**: No Route object created (existing Routes are automatically removed)
 - **Kubernetes**: No Ingress object created (existing Ingress resources are automatically removed)
 - Gateway remains accessible via internal Service
+- Gateway can still be exposed to external access by creating a custom resource.
 
 ### Explicitly Enable External Access
 

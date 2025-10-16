@@ -4878,7 +4878,7 @@ bool
 </td>
 <td>
 <em>(Optional)</em>
-<p>DisableIngress disables automatic creation of external access resources (Routes and Ingress).
+<p>DisableIngress disables automatic creation of external access resources (Route / Ingress).
 When true, no Route or Ingress will be created for the gateway.</p>
 </td>
 </tr>

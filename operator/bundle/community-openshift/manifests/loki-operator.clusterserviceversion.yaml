@@ -152,7 +152,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.8.0
-    createdAt: "2025-10-14T10:52:57Z"
+    createdAt: "2025-10-16T09:51:21Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     features.operators.openshift.io/disconnected: "true"
@@ -997,7 +997,7 @@ spec:
         displayName: Static Roles
         path: tenants.authorization.roles
       - description: |-
-          DisableIngress disables automatic creation of external access resources (Routes and Ingress).
+          DisableIngress disables automatic creation of external access resources (Route / Ingress).
           When true, no Route or Ingress will be created for the gateway.
         displayName: Disable Ingress
         path: tenants.disableIngress
