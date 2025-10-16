@@ -91,40 +91,28 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 
 		// Log line
 		case ident.Equal(semconv.ColumnIdentMessage):
-			lineCol, ok := col.(*array.String)
-			if !ok {
-				continue
-			}
+			lineCol := col.(*array.String)
 			forEachNotNullRowColValue(numRows, lineCol, func(rowIdx int) {
 				lines[rowIdx] = lineCol.Value(rowIdx)
 			})
 
 		// Timestamp
 		case ident.Equal(semconv.ColumnIdentTimestamp):
-			tsCol, ok := col.(*array.Timestamp)
-			if !ok {
-				continue
-			}
+			tsCol := col.(*array.Timestamp)
 			forEachNotNullRowColValue(numRows, tsCol, func(rowIdx int) {
 				timestamps[rowIdx] = time.Unix(0, int64(tsCol.Value(rowIdx)))
 			})
 
 		// One of the label columns
 		case ident.ColumnType() == types.ColumnTypeLabel:
-			labelCol, ok := col.(*array.String)
-			if !ok {
-				continue
-			}
+			labelCol := col.(*array.String)
 			forEachNotNullRowColValue(numRows, labelCol, func(rowIdx int) {
 				lbsBuilders[rowIdx].Set(shortName, labelCol.Value(rowIdx))
 			})
 
 		// One of the metadata columns
 		case ident.ColumnType() == types.ColumnTypeMetadata:
-			metadataCol, ok := col.(*array.String)
-			if !ok {
-				continue
-			}
+			metadataCol := col.(*array.String)
 			forEachNotNullRowColValue(numRows, metadataCol, func(rowIdx int) {
 				val := metadataCol.Value(rowIdx)
 				metadataBuilders[rowIdx].Set(shortName, val)
@@ -134,10 +122,7 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 
 		// One of the parsed columns
 		case ident.ColumnType() == types.ColumnTypeParsed:
-			parsedCol, ok := col.(*array.String)
-			if !ok {
-				continue
-			}
+			parsedCol := col.(*array.String)
 
 			// TODO: keep errors if --strict is set
 			// These are reserved column names used to track parsing errors. We are dropping them until
@@ -160,7 +145,7 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 		}
 	}
 
-	// Convert columnar representation to row-based one
+	// Convert columnar representation to a row-based one
 	for rowIdx := 0; rowIdx < numRows; rowIdx++ {
 		lbs := lbsBuilders[rowIdx].Labels()
 		ts := timestamps[rowIdx]
