@@ -19,6 +19,8 @@ import (
 func TestNewMathExpressionPipeline(t *testing.T) {
 	colTs := "timestamp_ns.builtin.timestamp"
 	colVal := "float64.generated.value"
+	colEnv := "utf8.label.env"
+	colSvc := "utf8.label.service"
 
 	t.Run("calculates input_1 / 10", func(t *testing.T) {
 		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
@@ -27,14 +29,16 @@ func TestNewMathExpressionPipeline(t *testing.T) {
 		schema := arrow.NewSchema([]arrow.Field{
 			semconv.FieldFromFQN(colTs, false),
 			semconv.FieldFromFQN(colVal, false),
+			semconv.FieldFromFQN(colEnv, false),
+			semconv.FieldFromFQN(colSvc, false),
 		}, nil)
 
 		rowsPipeline1 := []arrowtest.Rows{
 			{
-				{colTs: time.Unix(20, 0).UTC(), colVal: float64(230)},
-				{colTs: time.Unix(15, 0).UTC(), colVal: float64(120)},
-				{colTs: time.Unix(10, 0).UTC(), colVal: float64(260)},
-				{colTs: time.Unix(12, 0).UTC(), colVal: float64(250)},
+				{colTs: time.Unix(20, 0).UTC(), colVal: float64(230), colEnv: "prod", colSvc: "distributor"},
+				{colTs: time.Unix(15, 0).UTC(), colVal: float64(120), colEnv: "prod", colSvc: "distributor"},
+				{colTs: time.Unix(10, 0).UTC(), colVal: float64(260), colEnv: "prod", colSvc: "distributor"},
+				{colTs: time.Unix(12, 0).UTC(), colVal: float64(250), colEnv: "dev", colSvc: "distributor"},
 			},
 		}
 		input1 := NewArrowtestPipeline(alloc, schema, rowsPipeline1...)
@@ -61,10 +65,10 @@ func TestNewMathExpressionPipeline(t *testing.T) {
 		defer record.Release()
 
 		expect := arrowtest.Rows{
-			{colTs: time.Unix(20, 0).UTC(), colVal: float64(23)},
-			{colTs: time.Unix(15, 0).UTC(), colVal: float64(12)},
-			{colTs: time.Unix(10, 0).UTC(), colVal: float64(26)},
-			{colTs: time.Unix(12, 0).UTC(), colVal: float64(25)},
+			{colTs: time.Unix(20, 0).UTC(), colVal: float64(23), colEnv: "prod", colSvc: "distributor"},
+			{colTs: time.Unix(15, 0).UTC(), colVal: float64(12), colEnv: "prod", colSvc: "distributor"},
+			{colTs: time.Unix(10, 0).UTC(), colVal: float64(26), colEnv: "prod", colSvc: "distributor"},
+			{colTs: time.Unix(12, 0).UTC(), colVal: float64(25), colEnv: "dev", colSvc: "distributor"},
 		}
 
 		rows, err := arrowtest.RecordRows(record)

@@ -15,7 +15,7 @@ import (
 )
 
 func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline, evaluator expressionEvaluator) *GenericPipeline {
-	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		// Works only with a single input for now.
 		input := inputs[0]
 		batch, err := input.Read(ctx)
@@ -24,12 +24,10 @@ func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline,
 		}
 		defer batch.Release()
 
-		// TODO make sure all inputs matches on timestamps
-
 		fields := make([]arrow.Field, 0, len(inputs))
-		for i := range inputs {
-			fields = append(fields, semconv.FieldFromFQN(fmt.Sprintf("float64.generated.input_%d", i), false))
-		}
+		fields = append(fields, semconv.FieldFromIdent(
+			semconv.NewIdentifier(fmt.Sprintf("input_%d", 0), types.ColumnTypeGenerated, types.Loki.Float),
+			false))
 
 		valColumnExpr := &physical.ColumnExpr{
 			Ref: types.ColumnRef{
@@ -67,17 +65,16 @@ func NewMathExpressionPipeline(expr *physical.MathExpression, inputs []Pipeline,
 		defer valCol.Release()
 
 		schema := batch.Schema()
-		valueCol := semconv.NewIdentifier(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated, types.Loki.Float)
 		outputFields := make([]arrow.Field, 0, schema.NumFields())
 		outputCols := make([]arrow.Array, 0, schema.NumFields())
 		for i := 0; i < schema.NumFields(); i++ {
 			field := schema.Field(i)
-			if field.Name != valueCol.FQN() {
+			if field.Name != semconv.ColumnIdentValue.FQN() {
 				outputFields = append(outputFields, field)
 				outputCols = append(outputCols, batch.Column(i))
 			}
 		}
-		outputFields = append(outputFields, semconv.FieldFromIdent(valueCol, false))
+		outputFields = append(outputFields, semconv.FieldFromIdent(semconv.ColumnIdentValue, false))
 		outputCols = append(outputCols, valCol)
 		outputSchema := arrow.NewSchema(outputFields, nil)
 
