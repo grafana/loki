@@ -162,7 +162,6 @@ func TestBuildIngester_PodDisruptionBudgetWithReplicationFactor(t *testing.T) {
 	ingesterReplicas := 3
 	for _, tc := range []struct {
 		Name                    string
-		Size                    lokiv1.LokiStackSizeType
 		customReplicationFactor int32
 		PDBMinAvailable         int
 		ExpectedMinAvailable    int
@@ -186,7 +185,6 @@ func TestBuildIngester_PodDisruptionBudgetWithReplicationFactor(t *testing.T) {
 				Namespace: "efgh",
 				Gates:     v1.FeatureGates{},
 				Stack: lokiv1.LokiStackSpec{
-					Size: tc.Size,
 					Template: &lokiv1.LokiTemplateSpec{
 						Ingester: &lokiv1.LokiComponentSpec{
 							Replicas: int32(ingesterReplicas),
