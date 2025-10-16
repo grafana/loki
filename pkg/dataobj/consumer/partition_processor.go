@@ -1,7 +1,6 @@
 package consumer
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -9,6 +8,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/coder/quartz"
 	"github.com/go-kit/log"
@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/uploader"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -29,10 +30,10 @@ import (
 
 // builder allows mocking of [logsobj.Builder] in tests.
 type builder interface {
-	Append(stream logproto.Stream) error
+	Append(tenant string, stream logproto.Stream) error
 	GetEstimatedSize() int
 	Flush() (*dataobj.Object, io.Closer, error)
-	TimeRange() (time.Time, time.Time)
+	TimeRanges() []multitenancy.TimeRange
 	UnregisterMetrics(prometheus.Registerer)
 }
 
@@ -50,7 +51,6 @@ type partitionProcessor struct {
 	committer committer
 	topic     string
 	partition int32
-	tenantID  []byte
 	// Processing pipeline
 	records chan *kgo.Record
 	// lastRecord contains the last record appended to the builder. It is used
@@ -100,8 +100,6 @@ func newPartitionProcessor(
 	metastoreCfg metastore.Config,
 	bucket objstore.Bucket,
 	scratchStore scratch.Store,
-	tenantID string,
-	virtualShard int32,
 	topic string,
 	partition int32,
 	logger log.Logger,
@@ -115,10 +113,8 @@ func newPartitionProcessor(
 		panic(err)
 	}
 	reg = prometheus.WrapRegistererWith(prometheus.Labels{
-		"shard":     strconv.Itoa(int(virtualShard)),
-		"partition": strconv.Itoa(int(partition)),
-		"tenant":    tenantID,
 		"topic":     topic,
+		"partition": strconv.Itoa(int(partition)),
 	}, reg)
 
 	metrics := newPartitionOffsetMetrics()
@@ -126,14 +122,14 @@ func newPartitionProcessor(
 		level.Error(logger).Log("msg", "failed to register partition metrics", "err", err)
 	}
 
-	uploader := uploader.New(uploaderCfg, bucket, tenantID, logger)
+	uploader := uploader.New(uploaderCfg, bucket, logger)
 	if err := uploader.RegisterMetrics(reg); err != nil {
 		level.Error(logger).Log("msg", "failed to register uploader metrics", "err", err)
 	}
 
 	return &partitionProcessor{
 		committer:               client,
-		logger:                  log.With(logger, "topic", topic, "partition", partition, "tenant", tenantID),
+		logger:                  log.With(logger, "partition", partition),
 		topic:                   topic,
 		partition:               partition,
 		records:                 make(chan *kgo.Record, 1000),
@@ -144,7 +140,6 @@ func newPartitionProcessor(
 		builderCfg:              builderCfg,
 		bucket:                  bucket,
 		scratchStore:            scratchStore,
-		tenantID:                []byte(tenantID),
 		metrics:                 metrics,
 		uploader:                uploader,
 		idleFlushTimeout:        idleFlushTimeout,
@@ -259,11 +254,13 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 		return
 	}
 
-	// todo: handle multi-tenant
-	if !bytes.Equal(record.Key, p.tenantID) {
-		level.Error(p.logger).Log("msg", "record key does not match tenant ID", "key", record.Key, "tenant_id", p.tenantID)
+	tenant := string(record.Key)
+	if !utf8.ValidString(tenant) {
+		// This shouldn't happen, but we catch it here.
+		level.Error(p.logger).Log("msg", "record key is not valid UTF-8")
 		return
 	}
+
 	stream, err := p.decoder.DecodeWithoutLabels(record.Value)
 	if err != nil {
 		level.Error(p.logger).Log("msg", "failed to decode record", "err", err)
@@ -271,7 +268,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 	}
 
 	p.metrics.incAppendsTotal()
-	if err := p.builder.Append(stream); err != nil {
+	if err := p.builder.Append(tenant, stream); err != nil {
 		if !errors.Is(err, logsobj.ErrBuilderFull) {
 			level.Error(p.logger).Log("msg", "failed to append stream", "err", err)
 			p.metrics.incAppendFailures()
@@ -284,7 +281,7 @@ func (p *partitionProcessor) processRecord(record *kgo.Record) {
 		}
 
 		p.metrics.incAppendsTotal()
-		if err := p.builder.Append(stream); err != nil {
+		if err := p.builder.Append(tenant, stream); err != nil {
 			level.Error(p.logger).Log("msg", "failed to append stream after flushing", "err", err)
 			p.metrics.incAppendFailures()
 		}
@@ -318,6 +315,12 @@ func (p *partitionProcessor) flush() error {
 		level.Error(p.logger).Log("msg", "failed to flush builder", "err", err)
 		return err
 	}
+
+	obj, closer, err = p.sort(obj, closer)
+	if err != nil {
+		level.Error(p.logger).Log("msg", "failed to sort dataobj", "err", err)
+		return err
+	}
 	defer closer.Close()
 
 	objectPath, err := p.uploader.Upload(p.ctx, obj)
@@ -335,6 +338,23 @@ func (p *partitionProcessor) flush() error {
 	p.lastFlushed = p.clock.Now()
 
 	return nil
+}
+
+func (p *partitionProcessor) sort(obj *dataobj.Object, closer io.Closer) (*dataobj.Object, io.Closer, error) {
+	defer closer.Close()
+
+	start := time.Now()
+	defer func() {
+		level.Debug(p.logger).Log("msg", "partition processor sorted logs object-wide", "duration", time.Since(start))
+	}()
+
+	// Create a new object builder but do not register metrics!
+	builder, err := logsobj.NewBuilder(p.builderCfg, p.scratchStore)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return builder.CopyAndSort(obj)
 }
 
 // commits the offset of the last record processed. It should be called after

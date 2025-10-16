@@ -75,13 +75,17 @@ spec:
       {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.read.hostUsers) }}
       hostUsers: {{ .Values.read.hostUsers }}
       {{- end }}
+      {{- with .Values.read.initContainers }}
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: loki
           image: {{ include "loki.image" . }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target={{ .Values.read.targetModule }}
+            - -target={{ include "loki.readTarget" . }}
             {{- with (concat .Values.global.extraArgs .Values.read.extraArgs) | uniq }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -140,9 +144,9 @@ spec:
         {{- end }}
       {{- with .Values.read.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
-      {{- with .Values.read.dnsConfig }}
+      {{- with .Values.read.dnsConfig | default .Values.loki.dnsConfig }}
       dnsConfig:
         {{- tpl . $ | nindent 8 }}
       {{- end }}
@@ -152,7 +156,7 @@ spec:
       {{- end }}
       {{- with .Values.read.topologySpreadConstraints }}
       topologySpreadConstraints:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.read.tolerations }}
       tolerations:

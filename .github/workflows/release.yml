@@ -5,7 +5,7 @@ env:
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "1dd22f1dbfa671ac40e4a92f1a56bd9821871d44"
+  RELEASE_LIB_REF: "83e166f5c8795fa94dec9f4cbdb82205fbb8bf2b"
   RELEASE_REPO: "grafana/loki"
   USE_GITHUB_APP_TOKEN: true
 jobs:
@@ -44,6 +44,7 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+        package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
@@ -102,7 +103,7 @@ jobs:
         else
           echo "exists=true" >> $GITHUB_OUTPUT
         fi
-
+        
         if [[ "$isDraft" == "true" ]]; then
           echo "draft=true" >> $GITHUB_OUTPUT
         fi
@@ -200,27 +201,27 @@ jobs:
       run: |
         # Debug and clean the version variable
         echo "Original VERSION: $VERSION"
-
+        
         # Remove all quotes (both single and double)
         VERSION=$(echo $VERSION | tr -d '"' | tr -d "'")
         echo "After removing quotes: $VERSION"
-
+        
         # Extract version without the 'v' prefix if it exists
         VERSION="${VERSION#v}"
         echo "After removing v prefix: $VERSION"
-
+        
         # Extract major and minor versions
         MAJOR=$(echo $VERSION | cut -d. -f1)
         MINOR=$(echo $VERSION | cut -d. -f2)
         echo "MAJOR: $MAJOR, MINOR: $MINOR"
-
+        
         # Create branch name from template
         BRANCH_TEMPLATE="release-\${major}.\${minor}.x"
         BRANCH_NAME=${BRANCH_TEMPLATE//\$\{major\}/$MAJOR}
         BRANCH_NAME=${BRANCH_NAME//\$\{minor\}/$MINOR}
-
+        
         echo "Checking if branch already exists: $BRANCH_NAME"
-
+        
         # Check if branch exists
         if git ls-remote --heads origin $BRANCH_NAME | grep -q $BRANCH_NAME; then
           echo "Branch $BRANCH_NAME already exists, skipping creation"
@@ -228,16 +229,16 @@ jobs:
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         else
           echo "Creating branch: $BRANCH_NAME from tag: $(echo $OUTPUTS_NAME | tr -d '"')"
-
+          
           # Create branch from the tag
           git fetch --tags
           git checkout "$(echo $OUTPUTS_BRANCH | tr -d '"')"
           git checkout -b $BRANCH_NAME
-
+        
           # explicity set the github app token to override the release branch protection
           git remote set-url origin "https://x-access-token:$(echo ${OUTPUTS_TOKEN} | tr -d '"')@github.com/${{ env.RELEASE_REPO }}"
           git push -u origin $BRANCH_NAME
-
+          
           echo "branch_exists=false" >> $GITHUB_OUTPUT
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
         fi

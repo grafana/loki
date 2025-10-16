@@ -82,10 +82,24 @@ func newPageBuilder(opts BuilderOptions) (*pageBuilder, error) {
 	}, nil
 }
 
+// The function canAppend checks whether `n` values with a total value size of `valueSize` can be appended to the current page
+// based on the options [dataobj.BuilderOptions.PageMaxRowCount] and [dataobj.BuilderOptions.PageSizeHint].
+func (b *pageBuilder) canAppend(n, valueSize int) bool {
+	// In case multiple NULL values are appended (when backfilling rows), exceeding the PageMaxRowCount must be possible,
+	// otherwise it would never allow appending even in the 2nd iteration when the previous page was already flushed.
+	if b.opts.PageMaxRowCount > 0 && n <= b.opts.PageMaxRowCount && b.Rows()+n > b.opts.PageMaxRowCount {
+		return false
+	}
+	if sz := b.EstimatedSize(); b.opts.PageSizeHint > 0 && sz > 0 && sz+valueSize > b.opts.PageSizeHint {
+		return false
+	}
+	return true
+}
+
 // Append appends value into the pageBuilder. Append returns true if the data
 // was appended; false if the pageBuilder is full.
 func (b *pageBuilder) Append(value Value) bool {
-	if value.IsNil() || value.IsZero() {
+	if value.IsNil() {
 		return b.AppendNull()
 	}
 
@@ -95,7 +109,7 @@ func (b *pageBuilder) Append(value Value) bool {
 	//
 	// We use a rough estimate which will tend to overshoot the page size, making
 	// sure we rarely go over.
-	if sz := b.EstimatedSize(); sz > 0 && sz+valueSize(value) > b.opts.PageSizeHint {
+	if !b.canAppend(1, valueSize(value)) {
 		return false
 	}
 
@@ -121,12 +135,12 @@ func (b *pageBuilder) Append(value Value) bool {
 // AppendNull appends a NULL value to the Builder. AppendNull returns true if
 // the NULL was appended, or false if the Builder is full.
 func (b *pageBuilder) AppendNull() bool {
-	// See comment in Append for why we can only estimate the cost of appending a
+	// See comment in [pageBuilder.Append] for why we can only estimate the cost of appending a
 	// value.
 	//
 	// Here we assume appending a NULL costs one byte, but in reality most NULLs
 	// have no cost depending on the state of our bitmap encoder.
-	if sz := b.EstimatedSize(); sz > 0 && sz+1 > b.opts.PageSizeHint {
+	if !b.canAppend(1, 1) {
 		return false
 	}
 
@@ -150,7 +164,7 @@ func (b *pageBuilder) AppendNulls(n uint64) bool {
 	// - Bitpacking: 3-9 bytes total (2-8 byte header + 1 byte per 8 nulls)
 	//
 	// Using 4 bytes as a conservative average estimate.
-	if sz := b.EstimatedSize(); sz > 0 && sz+4 > b.opts.PageSizeHint {
+	if !b.canAppend(int(n), 4) {
 		return false
 	}
 

@@ -109,9 +109,6 @@ type Config struct {
 	IngestLimitsDryRunEnabled bool `yaml:"ingest_limits_dry_run_enabled"`
 
 	KafkaConfig kafka.Config `yaml:"-"`
-
-	// TODO: cleanup config
-	TenantTopic TenantTopicConfig `yaml:"tenant_topic" category:"experimental"`
 }
 
 // RegisterFlags registers distributor-related flags.
@@ -120,7 +117,6 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
-	cfg.TenantTopic.RegisterFlags(fs)
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
 	fs.IntVar(&cfg.PushWorkerCount, "distributor.push-worker-count", 256, "Number of workers to push batches to ingesters.")
 	fs.BoolVar(&cfg.KafkaEnabled, "distributor.kafka-writes-enabled", false, "Enable writes to Kafka during Push requests.")
@@ -132,9 +128,6 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 func (cfg *Config) Validate() error {
 	if !cfg.KafkaEnabled && !cfg.IngesterEnabled {
 		return fmt.Errorf("at least one of kafka and ingestor writes must be enabled")
-	}
-	if err := cfg.TenantTopic.Validate(); err != nil {
-		return errors.Wrap(err, "validating tenant topic config")
 	}
 	return nil
 }
@@ -291,16 +284,6 @@ func New(
 		}
 		kafkaWriter = kafka_client.NewProducer("distributor", kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
-
-		// TODO: cleanup/make independent of whether we write kafka as primary?
-		if cfg.TenantTopic.Enabled {
-			w, err := NewTenantTopicWriter(cfg.TenantTopic, kafkaClient, overrides, registerer, logger)
-			if err != nil {
-				return nil, fmt.Errorf("failed to start tenant topic tee: %w", err)
-			}
-
-			tee = WrapTee(tee, w)
-		}
 	}
 
 	d := &Distributor{
@@ -495,7 +478,7 @@ func (p *pushTracker) doneWithResult(err error) {
 }
 
 func (d *Distributor) waitSimulatedLatency(ctx context.Context, tenantID string, start time.Time) {
-	latency := d.validator.Limits.SimulatedPushLatency(tenantID)
+	latency := d.validator.SimulatedPushLatency(tenantID)
 	if latency > 0 {
 		// All requests must wait at least the simulated latency. However,
 		// we want to avoid adding additional latency on top of slow requests
@@ -548,7 +531,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	shouldDiscoverLevels := fieldDetector.shouldDiscoverLogLevels()
 	shouldDiscoverGenericFields := fieldDetector.shouldDiscoverGenericFields()
 
-	shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
+	shardStreamsCfg := d.validator.ShardStreams(tenantID)
 	maybeShardByRate := func(stream logproto.Stream, pushSize int) {
 		if shardStreamsCfg.Enabled {
 			streams = append(streams, d.shardStream(stream, pushSize, tenantID)...)
@@ -702,7 +685,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 					// Traditional logic for Loki is that 2 lines with the same timestamp and
 					// exact same content will be de-duplicated, (i.e. only one will be stored, others dropped)
 					// To maintain this behavior, only increment the timestamp if the log content is different
-					if stream.Entries[n-1].Line != entry.Line && (entry.Timestamp == prevTs || entry.Timestamp == stream.Entries[n-1].Timestamp) {
+					if stream.Entries[n-1].Line != entry.Line && (entry.Timestamp.Equal(prevTs) || entry.Timestamp.Equal(stream.Entries[n-1].Timestamp)) {
 						stream.Entries[n].Timestamp = stream.Entries[n-1].Timestamp.Add(1 * time.Nanosecond)
 					} else {
 						prevTs = entry.Timestamp
@@ -864,8 +847,8 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 //
 // It also returns the first label that is missing if any (for the case of multiple labels missing).
 func (d *Distributor) missingEnforcedLabels(lbs labels.Labels, tenantID string, policy string) (bool, []string) {
-	perPolicyEnforcedLabels := d.validator.Limits.PolicyEnforcedLabels(tenantID, policy)
-	tenantEnforcedLabels := d.validator.Limits.EnforcedLabels(tenantID)
+	perPolicyEnforcedLabels := d.validator.PolicyEnforcedLabels(tenantID, policy)
+	tenantEnforcedLabels := d.validator.EnforcedLabels(tenantID)
 
 	requiredLbs := append(tenantEnforcedLabels, perPolicyEnforcedLabels...)
 	if len(requiredLbs) == 0 {
@@ -1015,7 +998,7 @@ func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen 
 //
 // The number of shards is limited by the number of entries.
 func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string) []KeyedStream {
-	shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
+	shardStreamsCfg := d.validator.ShardStreams(tenantID)
 	logger := log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)
 	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
 

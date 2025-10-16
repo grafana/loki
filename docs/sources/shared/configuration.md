@@ -114,34 +114,6 @@ ui:
   # CLI flag: -ui.enabled
   [enabled: <boolean> | default = false]
 
-  # Name to use for this node in the cluster.
-  # CLI flag: -ui.node-name
-  [node_name: <string> | default = "<hostname>"]
-
-  # IP address to advertise in the cluster.
-  # CLI flag: -ui.advertise-addr
-  [advertise_addr: <string> | default = ""]
-
-  # Name of network interface to read address from.
-  # CLI flag: -ui.interface
-  [interface_names: <list of strings> | default = [<private network interfaces>]]
-
-  # How frequently to rejoin the cluster to address split brain issues.
-  # CLI flag: -ui.rejoin-interval
-  [rejoin_interval: <duration> | default = 3m]
-
-  # Number of initial peers to join from the discovered set.
-  # CLI flag: -ui.cluster-max-join-peers
-  [cluster_max_join_peers: <int> | default = 3]
-
-  # Name to prevent nodes without this identifier from joining the cluster.
-  # CLI flag: -ui.cluster-name
-  [cluster_name: <string> | default = ""]
-
-  # Enable using a IPv6 instance address.
-  # CLI flag: -ui.enable-ipv6
-  [enable_ipv6: <boolean> | default = false]
-
   # Enable debug logging for the UI.
   # CLI flag: -ui.debug
   [debug: <boolean> | default = false]
@@ -195,12 +167,95 @@ ui:
     # CLI flag: -ui.goldfish.cell-b-namespace
     [cell_b_namespace: <string> | default = ""]
 
-  discovery:
-    # List of peers to join the cluster. Supports multiple values separated by
-    # commas. Each value can be a hostname, an IP address, or a DNS name (A/AAAA
-    # and SRV records).
-    # CLI flag: -ui.discovery.join-peers
-    [join_peers: <list of strings> | default = []]
+  ring:
+    kvstore:
+      # Backend storage to use for the ring. Supported values are: consul, etcd,
+      # inmemory, memberlist, multi.
+      # CLI flag: -ui.ring.store
+      [store: <string> | default = "consul"]
+
+      # The prefix for the keys in the store. Should end with a /.
+      # CLI flag: -ui.ring.prefix
+      [prefix: <string> | default = "collectors/"]
+
+      # Configuration for a Consul client. Only applies if the selected kvstore
+      # is consul.
+      # The CLI flags prefix for this block configuration is: ui.ring
+      [consul: <consul>]
+
+      # Configuration for an ETCD v3 client. Only applies if the selected
+      # kvstore is etcd.
+      # The CLI flags prefix for this block configuration is: ui.ring
+      [etcd: <etcd>]
+
+      multi:
+        # Primary backend storage used by multi-client.
+        # CLI flag: -ui.ring.multi.primary
+        [primary: <string> | default = ""]
+
+        # Secondary backend storage used by multi-client.
+        # CLI flag: -ui.ring.multi.secondary
+        [secondary: <string> | default = ""]
+
+        # Mirror writes to secondary store.
+        # CLI flag: -ui.ring.multi.mirror-enabled
+        [mirror_enabled: <boolean> | default = false]
+
+        # Timeout for storing value to secondary store.
+        # CLI flag: -ui.ring.multi.mirror-timeout
+        [mirror_timeout: <duration> | default = 2s]
+
+    # Period at which to heartbeat to the ring. 0 = disabled.
+    # CLI flag: -ui.ring.heartbeat-period
+    [heartbeat_period: <duration> | default = 15s]
+
+    # The heartbeat timeout after which compactors are considered unhealthy
+    # within the ring. 0 = never (timeout disabled).
+    # CLI flag: -ui.ring.heartbeat-timeout
+    [heartbeat_timeout: <duration> | default = 1m]
+
+    # File path where tokens are stored. If empty, tokens are not stored at
+    # shutdown and restored at startup.
+    # CLI flag: -ui.ring.tokens-file-path
+    [tokens_file_path: <string> | default = ""]
+
+    # True to enable zone-awareness and replicate blocks across different
+    # availability zones.
+    # CLI flag: -ui.ring.zone-awareness-enabled
+    [zone_awareness_enabled: <boolean> | default = false]
+
+    # Number of tokens to own in the ring.
+    # CLI flag: -ui.ring.num-tokens
+    [num_tokens: <int> | default = 128]
+
+    # Factor for data replication.
+    # CLI flag: -ui.ring.replication-factor
+    [replication_factor: <int> | default = 3]
+
+    # Instance ID to register in the ring.
+    # CLI flag: -ui.ring.instance-id
+    [instance_id: <string> | default = "<hostname>"]
+
+    # Name of network interface to read address from.
+    # CLI flag: -ui.ring.instance-interface-names
+    [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+
+    # Port to advertise in the ring (defaults to server.grpc-listen-port).
+    # CLI flag: -ui.ring.instance-port
+    [instance_port: <int> | default = 0]
+
+    # IP address to advertise in the ring.
+    # CLI flag: -ui.ring.instance-addr
+    [instance_addr: <string> | default = ""]
+
+    # The availability zone where this instance is running. Required if
+    # zone-awareness is enabled.
+    # CLI flag: -ui.ring.instance-availability-zone
+    [instance_availability_zone: <string> | default = ""]
+
+    # Enable using a IPv6 instance address.
+    # CLI flag: -ui.ring.instance-enable-ipv6
+    [instance_enable_ipv6: <boolean> | default = false]
 
 # Configures the distributor.
 [distributor: <distributor>]
@@ -250,106 +305,6 @@ ruler_storage:
 # The ingester block configures the ingester and how the ingester will register
 # itself to a key value store.
 [ingester: <ingester>]
-
-block_builder:
-  # How many flushes can happen concurrently
-  # CLI flag: -blockbuilder.concurrent-flushes
-  [concurrent_flushes: <int> | default = 1]
-
-  # How many workers to process writes, defaults to number of available cpus
-  # CLI flag: -blockbuilder.concurrent-writers
-  [concurrent_writers: <int> | default = 1]
-
-  # The targeted _uncompressed_ size in bytes of a chunk block When this
-  # threshold is exceeded the head block will be cut and compressed inside the
-  # chunk.
-  # CLI flag: -blockbuilder.chunks-block-size
-  [chunk_block_size: <int> | default = 256KB]
-
-  # A target _compressed_ size in bytes for chunks. This is a desired size not
-  # an exact size, chunks may be slightly bigger or significantly smaller if
-  # they get flushed for other reasons (e.g. chunk_idle_period). A value of 0
-  # creates chunks with a fixed 10 blocks, a non zero value will create chunks
-  # with a variable number of blocks to meet the target size.
-  # CLI flag: -blockbuilder.chunk-target-size
-  [chunk_target_size: <int> | default = 1536KB]
-
-  # The algorithm to use for compressing chunk. (none, gzip, lz4-64k, snappy,
-  # lz4-256k, lz4-1M, lz4, flate, zstd)
-  # CLI flag: -blockbuilder.chunk-encoding
-  [chunk_encoding: <string> | default = "snappy"]
-
-  # The maximum duration of a timeseries chunk in memory. If a timeseries runs
-  # for longer than this, the current chunk will be flushed to the store and a
-  # new chunk created.
-  # CLI flag: -blockbuilder.max-chunk-age
-  [max_chunk_age: <duration> | default = 2h]
-
-  backoff_config:
-    # Minimum delay when backing off.
-    # CLI flag: -blockbuilder.backoff..backoff-min-period
-    [min_period: <duration> | default = 100ms]
-
-    # Maximum delay when backing off.
-    # CLI flag: -blockbuilder.backoff..backoff-max-period
-    [max_period: <duration> | default = 10s]
-
-    # Number of times to backoff and retry before failing.
-    # CLI flag: -blockbuilder.backoff..backoff-retries
-    [max_retries: <int> | default = 10]
-
-  # The number of workers to run in parallel to process jobs.
-  # CLI flag: -blockbuilder.worker-parallelism
-  [worker_parallelism: <int> | default = 1]
-
-  # The interval at which to sync job status with the scheduler.
-  # CLI flag: -blockbuilder.sync-interval
-  [sync_interval: <duration> | default = 30s]
-
-  # The interval at which to poll for new jobs.
-  # CLI flag: -blockbuilder.poll-interval
-  [poll_interval: <duration> | default = 30s]
-
-  # Address of the scheduler in the format described here:
-  # https://github.com/grpc/grpc/blob/master/doc/naming.md
-  # CLI flag: -blockbuilder.scheduler-address
-  [scheduler_address: <string> | default = ""]
-
-  # The grpc_client block configures the gRPC client used to communicate between
-  # a client and server component in Loki.
-  # The CLI flags prefix for this block configuration is:
-  # blockbuilder.scheduler-grpc-client.
-  [scheduler_grpc_client_config: <grpc_client>]
-
-block_scheduler:
-  # How often the scheduler should plan jobs.
-  # CLI flag: -block-scheduler.interval
-  [interval: <duration> | default = 15m]
-
-  # Lookback period used by the scheduler to plan jobs when the consumer group
-  # has no commits. 0 consumes from the start of the partition.
-  # CLI flag: -block-scheduler.lookback-period
-  [lookback_period: <duration> | default = 0s]
-
-  # Strategy used by the planner to plan jobs. One of record-count
-  # CLI flag: -block-scheduler.strategy
-  [strategy: <string> | default = "record-count"]
-
-  # Target record count used by the planner to plan jobs. Only used when
-  # strategy is record-count
-  # CLI flag: -block-scheduler.target-record-count
-  [target_record_count: <int> | default = 1000]
-
-  job_queue:
-    # Interval to check for expired job leases
-    # CLI flag: -jobqueue.lease-expiry-check-interval
-    [lease_expiry_check_interval: <duration> | default = 1m]
-
-    # Duration after which a job lease is considered expired if the scheduler
-    # receives no updates from builders about the job. Expired jobs are
-    # re-enqueued
-    # CLI flag: -jobqueue.lease-duration
-    [lease_duration: <duration> | default = 10m]
 
 pattern_ingester:
   # Whether the pattern ingester is enabled.
@@ -920,6 +875,11 @@ pattern_ingester:
   # CLI flag: -pattern-ingester.sample-interval
   [pattern_sample_interval: <duration> | default = 10s]
 
+  # The threshold for filtering patterns by volume. Only patterns representing
+  # the top X% of log volume will be persisted (0-1).
+  # CLI flag: -pattern-ingester.volume-threshold
+  [volume_threshold: <float> | default = 0.99]
+
 # The index_gateway block configures the Loki index gateway server, responsible
 # for serving index queries without the need to constantly interact with the
 # object store.
@@ -1087,6 +1047,11 @@ dataobj:
       # CLI flag: -dataobj-consumer.target-page-size
       [target_page_size: <int> | default = 2MiB]
 
+      # The maximum row count for pages to use for the data object builder. A
+      # value of 0 means no limit.
+      # CLI flag: -dataobj-consumer.max-page-rows
+      [max_page_rows: <int> | default = 0]
+
       # The target maximum size of the encoded object and all of its encoded
       # sections (after compression), to limit memory usage of a builder.
       # CLI flag: -dataobj-consumer.target-builder-memory-limit
@@ -1120,11 +1085,16 @@ dataobj:
     [idle_flush_timeout: <duration> | default = 1h]
 
   index:
-    # The size of the target page to use for the data object builder.
+    # The size of the target page to use for the index object builder.
     # CLI flag: -dataobj-index-builder.target-page-size
     [target_page_size: <int> | default = 128KiB]
 
-    # The size of the target object to use for the data object builder.
+    # The maximum row count for pages to use for the index builder. A value of 0
+    # means no limit.
+    # CLI flag: -dataobj-index-builder.max-page-rows
+    [max_page_rows: <int> | default = 0]
+
+    # The size of the target object to use for the index object builder.
     # CLI flag: -dataobj-index-builder.target-object-size
     [target_object_size: <int> | default = 64MiB]
 
@@ -1145,6 +1115,14 @@ dataobj:
     # CLI flag: -dataobj-index-builder.events-per-index
     [events_per_index: <int> | default = 32]
 
+    # Experimental: How often to check for stale partitions to flush
+    # CLI flag: -dataobj-index-builder.flush-interval
+    [flush_interval: <duration> | default = 1m]
+
+    # Experimental: Maximum time to wait before flushing buffered events
+    # CLI flag: -dataobj-index-builder.max-idle-time
+    [max_idle_time: <duration> | default = 30m]
+
   metastore:
     # Experimental: A prefix to use for storing indexes in object storage. Used
     # for testing only.
@@ -1156,20 +1134,6 @@ dataobj:
     # log partitions.
     # CLI flag: -dataobj-metastore.partition-ratio
     [partition_ratio: <int> | default = 10]
-
-  querier:
-    # Enable the dataobj querier.
-    # CLI flag: -dataobj-querier-enabled
-    [enabled: <boolean> | default = false]
-
-    # The date of the first day of when the dataobj querier should start
-    # querying from. In YYYY-MM-DD format, for example: 2018-04-15.
-    # CLI flag: -dataobj-querier-from
-    [from: <daytime> | default = 1970-01-01]
-
-    # The number of shards to use for the dataobj querier.
-    # CLI flag: -dataobj-querier-shard-factor
-    [shard_factor: <int> | default = 32]
 
   # The prefix to use for the storage bucket.
   # CLI flag: -dataobj-storage-bucket-prefix
@@ -1564,7 +1528,7 @@ ingest_limits_frontend_client:
 # fields are returned. Use YAML field names (e.g., 'retention_period',
 # 'max_query_series').
 # CLI flag: -limits.tenant-limits-allow-publish
-[tenant_limits_allow_publish: <list of strings> | default = [discover_log_levels discover_service_name log_level_fields max_line_size_truncate max_query_length max_query_lookback max_query_range max_query_series metric_aggregation_enabled otlp_config pattern_persistence_enabled query_timeout retention_period retention_stream]]
+[tenant_limits_allow_publish: <list of strings> | default = [discover_log_levels discover_service_name log_level_fields max_entries_limit_per_query max_line_size_truncate max_query_bytes_read max_query_length max_query_lookback max_query_range max_query_series metric_aggregation_enabled otlp_config pattern_persistence_enabled query_timeout retention_period retention_stream volume_enabled volume_max_series]]
 
 # Common configuration to be shared between multiple modules. If a more specific
 # configuration is given in other sections, the related configuration within
@@ -2696,6 +2660,7 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 - `pattern-ingester`
 - `query-scheduler.ring`
 - `ruler.ring`
+- `ui.ring`
 
 &nbsp;
 
@@ -2930,32 +2895,6 @@ otlp_config:
 # not enforced. Defaults to false.
 # CLI flag: -distributor.ingest-limits-dry-run-enabled
 [ingest_limits_dry_run_enabled: <boolean> | default = false]
-
-tenant_topic:
-  # Enable the tenant topic tee, which writes logs to Kafka topics based on
-  # tenant IDs instead of using multitenant topics/partitions.
-  # CLI flag: -distributor.tenant-topic-tee.enabled
-  [enabled: <boolean> | default = false]
-
-  # Prefix to prepend to tenant IDs to form the final Kafka topic name
-  # CLI flag: -distributor.tenant-topic-tee.topic-prefix
-  [topic_prefix: <string> | default = "loki.tenant"]
-
-  # Maximum number of bytes that can be buffered before producing to Kafka
-  # CLI flag: -distributor.tenant-topic-tee.max-buffered-bytes
-  [max_buffered_bytes: <int> | default = 100MiB]
-
-  # Maximum size of a single Kafka record in bytes
-  # CLI flag: -distributor.tenant-topic-tee.max-record-size-bytes
-  [max_record_size_bytes: <int> | default = 15MiB249KiB]
-
-  # Topic strategy to use. Valid values are 'simple' or 'automatic'
-  # CLI flag: -distributor.tenant-topic-tee.strategy
-  [strategy: <string> | default = "simple"]
-
-  # Target throughput per partition in bytes for the automatic strategy
-  # CLI flag: -distributor.tenant-topic-tee.target-throughput-per-partition
-  [target_throughput_per_partition: <int> | default = 10MiB]
 ```
 
 ### etcd
@@ -2972,6 +2911,7 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 - `pattern-ingester`
 - `query-scheduler.ring`
 - `ruler.ring`
+- `ui.ring`
 
 &nbsp;
 
@@ -2993,7 +2933,7 @@ Configuration for an ETCD v3 client. Only applies if the selected kvstore is `et
 [tls_enabled: <boolean> | default = false]
 
 # The TLS configuration.
-# The CLI flags prefix for this block configuration is: ruler.ring.etcd
+# The CLI flags prefix for this block configuration is: ui.ring.etcd
 [<tls_config>]
 
 # Etcd username.
@@ -3208,7 +3148,6 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 The `grpc_client` block configures the gRPC client used to communicate between a client and server component in Loki. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bigtable`
-- `blockbuilder.scheduler-grpc-client.`
 - `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
@@ -4905,39 +4844,49 @@ engine:
   # CLI flag: -querier.engine.max-count-min-sketch-heap-size
   [max_count_min_sketch_heap_size: <int> | default = 10000]
 
+engine_v2:
   # Experimental: Enable next generation query engine for supported queries.
-  # CLI flag: -querier.engine.enable-v2-engine
-  [enable_v2_engine: <boolean> | default = false]
+  # CLI flag: -querier.engine-v2.enable
+  [enable: <boolean> | default = false]
+
+  # Amount of time until data objects are available.
+  # CLI flag: -querier.engine-v2.dataobj-storage-lag
+  [dataobj_storage_lag: <duration> | default = 1h]
+
+  # Initial date when data objects became available. Format YYYY-MM-DD. If not
+  # set, assume data objects are always available no matter how far back.
+  # CLI flag: -querier.engine-v2.dataobj-storage-start
+  [dataobj_storage_start: <time> | default = 0]
 
   # Experimental: Batch size of the next generation query engine.
-  # CLI flag: -querier.engine.batch-size
+  # CLI flag: -querier.engine-v2.batch-size
   [batch_size: <int> | default = 100]
 
-  # Experimental: Maximum total size of future pages for DataObjScan to download
-  # before they are needed, for roundtrip reduction to object storage. Setting
-  # to zero disables downloading future pages. Only used in the next generation
-  # query engine.
-  # CLI flag: -querier.engine.dataobjscan-page-cache-size
-  [dataobjscan_page_cache_size: <int> | default = 0B]
+  # Experimental: The number of inputs that are prefetched simultaneously by any
+  # Merge node. A value of 0 means that only the currently processed input is
+  # prefetched, 1 means that only the next input is prefetched, and so on. A
+  # negative value means that all inputs are be prefetched in parallel.
+  # CLI flag: -querier.engine-v2.merge-prefetch-count
+  [merge_prefetch_count: <int> | default = 0]
 
   # Configures how to read byte ranges from object storage when using the V2
   # engine.
   range_reads:
     # Experimental: maximum number of parallel reads
-    # CLI flag: -querier.engine.range-reads.max-parallelism
+    # CLI flag: -querier.engine-v2.range-reads.max-parallelism
     [max_parallelism: <int> | default = 10]
 
     # Experimental: maximum distance (in bytes) between ranges that causes them
     # to be coalesced into a single range
-    # CLI flag: -querier.engine.range-reads.coalesce-size
+    # CLI flag: -querier.engine-v2.range-reads.coalesce-size
     [coalesce_size: <int> | default = 1048576]
 
     # Experimental: maximum size of a byte range
-    # CLI flag: -querier.engine.range-reads.max-range-size
+    # CLI flag: -querier.engine-v2.range-reads.max-range-size
     [max_range_size: <int> | default = 8388608]
 
     # Experimental: minimum size of a byte range
-    # CLI flag: -querier.engine.range-reads.min-range-size
+    # CLI flag: -querier.engine-v2.range-reads.min-range-size
     [min_range_size: <int> | default = 1048576]
 
 # The maximum number of queries that can be simultaneously processed by the
@@ -4967,6 +4916,15 @@ engine:
 # of the normal ingesters.
 # CLI flag: -querier.query-partition-ingesters
 [query_partition_ingesters: <boolean> | default = false]
+
+# Amount of time until data objects are available.
+# CLI flag: -querier.dataobj-storage-lag
+[dataobj_storage_lag: <duration> | default = 1h]
+
+# Initial date when data objects became available. Format YYYY-MM-DD. If not
+# set, assume data objects are always available no matter how far back.
+# CLI flag: -querier.dataobj-storage-start
+[dataobj_storage_start: <string> | default = ""]
 ```
 
 ### query_range
@@ -6388,6 +6346,14 @@ boltdb_shipper:
     # CLI flag: -boltdb.shipper.index-gateway-client.log-gateway-requests
     [log_gateway_requests: <boolean> | default = false]
 
+    # Experimental: Defines buckets for time-based sharding. Time based sharding
+    # only takes affect when index gateways run in simple mode. To enable client
+    # side time-based sharding of queries across index gateway instances set at
+    # least one bucket in the format of a string representation of a
+    # time.Duration, e.g. ['168h', '336h', '504h']
+    # CLI flag: -boltdb.shipper.index-gateway-client.time-based-sharding-buckets
+    [time_based_sharding_buckets: <list of strings> | default = []]
+
   [ingestername: <string> | default = ""]
 
   [mode: <string> | default = ""]
@@ -6442,6 +6408,14 @@ tsdb_shipper:
     # Whether requests sent to the gateway should be logged or not.
     # CLI flag: -tsdb.shipper.index-gateway-client.log-gateway-requests
     [log_gateway_requests: <boolean> | default = false]
+
+    # Experimental: Defines buckets for time-based sharding. Time based sharding
+    # only takes affect when index gateways run in simple mode. To enable client
+    # side time-based sharding of queries across index gateway instances set at
+    # least one bucket in the format of a string representation of a
+    # time.Duration, e.g. ['168h', '336h', '504h']
+    # CLI flag: -tsdb.shipper.index-gateway-client.time-based-sharding-buckets
+    [time_based_sharding_buckets: <list of strings> | default = []]
 
   [ingestername: <string> | default = ""]
 
@@ -7378,7 +7352,6 @@ bos:
 The TLS configuration. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bigtable`
-- `blockbuilder.scheduler-grpc-client`
 - `bloom-build.builder.grpc`
 - `bloom-gateway-client.grpc`
 - `bloom.metas-cache.memcached`
@@ -7421,6 +7394,7 @@ The TLS configuration. The supported CLI flags `<prefix>` used to reference this
 - `store.index-cache-read.memcached`
 - `store.index-cache-write.memcached`
 - `tsdb.shipper.index-gateway-client.grpc`
+- `ui.ring.etcd`
 
 &nbsp;
 

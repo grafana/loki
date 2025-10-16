@@ -72,7 +72,7 @@ spec:
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target={{ .Values.read.targetModule }}
+            - -target={{ include "loki.readTarget" . }}
             - -legacy-read-mode=false
             - -common.compactor-grpc-address={{ include "loki.backendFullname" . }}.{{ include "loki.namespace" . }}.svc.{{ .Values.global.clusterDomain }}:{{ .Values.loki.server.grpc_listen_port }}
             {{- with (concat .Values.global.extraArgs .Values.read.extraArgs) | uniq }}
@@ -129,9 +129,9 @@ spec:
         {{- end }}
       {{- with .Values.read.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
-      {{- with .Values.read.dnsConfig }}
+      {{- with .Values.read.dnsConfig | default .Values.loki.dnsConfig }}
       dnsConfig:
         {{- tpl . $ | nindent 8 }}
       {{- end }}
@@ -141,7 +141,7 @@ spec:
       {{- end }}
       {{- with .Values.read.topologySpreadConstraints }}
       topologySpreadConstraints:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.read.tolerations }}
       tolerations:

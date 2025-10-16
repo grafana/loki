@@ -23,6 +23,7 @@ import (
 
 var testBuilderConfig = logsobj.BuilderConfig{
 	TargetPageSize:          2048,
+	MaxPageRows:             10,
 	TargetObjectSize:        1 << 22, // 4 MiB
 	TargetSectionSize:       1 << 22, // 4 MiB
 	BufferSize:              2048 * 8,
@@ -297,7 +298,8 @@ func TestPartitionProcessor_ProcessRecord(t *testing.T) {
 	require.Equal(t, clock.Now(), p.lastModified)
 }
 
-func newTestPartitionProcessor(_ *testing.T, clock quartz.Clock) *partitionProcessor {
+func newTestPartitionProcessor(t *testing.T, clock quartz.Clock) *partitionProcessor {
+	t.Helper()
 	p := newPartitionProcessor(
 		context.Background(),
 		&kgo.Client{},
@@ -308,9 +310,7 @@ func newTestPartitionProcessor(_ *testing.T, clock quartz.Clock) *partitionProce
 		},
 		newMockBucket(),
 		nil,
-		"test-tenant",
-		0,
-		"test-topic",
+		"topic",
 		0,
 		log.NewNopLogger(),
 		prometheus.NewRegistry(),

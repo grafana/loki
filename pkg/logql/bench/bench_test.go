@@ -2,6 +2,7 @@ package bench
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -36,12 +37,11 @@ var (
 const testTenant = "test-tenant"
 
 const (
-	StoreDataObj         = "dataobj"
 	StoreDataObjV2Engine = "dataobj-engine"
 	StoreChunk           = "chunk"
 )
 
-var allStores = []string{StoreDataObj, StoreDataObjV2Engine, StoreChunk}
+var allStores = []string{StoreDataObjV2Engine, StoreChunk}
 
 //go:generate go run ./cmd/generate/main.go -size 2147483648 -dir ./data -tenant test-tenant
 
@@ -63,15 +63,6 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) logql.Engine {
 		}
 
 		return store.engine
-	case StoreDataObj:
-		store, err := NewDataObjStore(DefaultDataDir, testTenant)
-		if err != nil {
-			tb.Fatal(err)
-		}
-		querier, err = store.Querier()
-		if err != nil {
-			tb.Fatal(err)
-		}
 	case StoreChunk:
 		store, err := NewChunkStore(DefaultDataDir, testTenant)
 		if err != nil {
@@ -193,6 +184,9 @@ func TestStorageEquality(t *testing.T) {
 					uint64(actual.Statistics.Summary.ExecTime),
 					humanize.Bytes(uint64(actual.Statistics.Summary.BytesProcessedPerSecond)),
 				)
+
+				dataobjStats, _ := json.Marshal(&actual.Statistics.Querier.Store.Dataobj)
+				t.Log("Dataobj stats:", string(dataobjStats))
 
 				expected, err := baseStore.Engine.Query(params).Exec(ctx)
 				require.NoError(t, err)
@@ -385,4 +379,21 @@ func TestPrintBenchmarkQueries(t *testing.T) {
 	t.Logf("- Log queries: %d (will run in both directions)", logQueries)
 	t.Logf("- Metric queries: %d (forward only)", metricQueries)
 	t.Logf("- Total benchmark cases: %d", len(cases))
+}
+
+func TestStoresGenerateData(t *testing.T) {
+	dir := t.TempDir()
+
+	chunkStore, err := NewChunkStore(dir, testTenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataObjStore, err := NewDataObjStore(dir, testTenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	builder := NewBuilder(dir, DefaultOpt(), chunkStore, dataObjStore)
+	err = builder.Generate(context.Background(), 1024)
+	require.NoError(t, err)
 }

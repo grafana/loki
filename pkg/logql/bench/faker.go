@@ -777,6 +777,11 @@ var defaultApplications = []Application{
 				baseLogfmt += fmt.Sprintf(` error="failed to process request: %s"`, f.ErrorMessage())
 			}
 
+			// Add colliding field for some logs
+			if f.rnd.Float32() < 0.25 {
+				baseLogfmt += fmt.Sprintf(` service_name=loki-ingester-%d`, f.rnd.Intn(10))
+			}
+
 			return baseLogfmt
 		},
 		OTELResource: map[string]string{
@@ -818,6 +823,11 @@ var defaultApplications = []Application{
 			// Add error for error level logs
 			if level == errorLevel {
 				baseLogfmt += fmt.Sprintf(` error="failed to process trace: %s"`, f.ErrorMessage())
+			}
+
+			// Add colliding field for some logs
+			if f.rnd.Float32() < 0.25 {
+				baseLogfmt += fmt.Sprintf(` service_name=tempo-distributor-%d`, f.rnd.Intn(10))
 			}
 
 			return baseLogfmt

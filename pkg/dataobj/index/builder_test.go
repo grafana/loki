@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/index/indexobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/dataobj/metastore/multitenancy"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/pointers"
 	"github.com/grafana/loki/v3/pkg/kafka"
 	"github.com/grafana/loki/v3/pkg/kafka/testkafka"
@@ -34,38 +33,6 @@ var testBuilderConfig = indexobj.BuilderConfig{
 	BufferSize: 4 * 1024 * 1024,
 
 	SectionStripeMergeLimit: 2,
-}
-
-func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucket) {
-	candidate, err := logsobj.NewBuilder(logsobj.BuilderConfig{
-		TargetPageSize:    128 * 1024,
-		TargetObjectSize:  4 * 1024 * 1024,
-		TargetSectionSize: 2 * 1024 * 1024,
-
-		BufferSize:              4 * 1024 * 1024,
-		SectionStripeMergeLimit: 2,
-	}, nil)
-	require.NoError(t, err)
-
-	for i := 0; i < 10; i++ {
-		stream := logproto.Stream{
-			Labels:  fmt.Sprintf("{app=\"%s\",stream=\"%d\"}", app, i),
-			Entries: []logproto.Entry{{Timestamp: time.Now(), Line: fmt.Sprintf("line %d", i)}},
-		}
-		err = candidate.Append(stream)
-		require.NoError(t, err)
-	}
-
-	obj, closer, err := candidate.Flush()
-	require.NoError(t, err)
-	defer closer.Close()
-
-	reader, err := obj.Reader(t.Context())
-	require.NoError(t, err)
-	defer reader.Close()
-
-	err = bucket.Upload(t.Context(), path, reader)
-	require.NoError(t, err)
 }
 
 func TestIndexBuilder_PartitionRevocation(t *testing.T) {
@@ -98,8 +65,6 @@ func TestIndexBuilder_PartitionRevocation(t *testing.T) {
 		prometheus.NewRegistry(),
 	)
 	require.NoError(t, err)
-	builder.calculator = &mockCalculator{}
-	builder.ctx = ctx
 	builder.client.Close()
 	builder.client = &mockKafkaClient{}
 
@@ -125,23 +90,20 @@ func TestIndexBuilder_PartitionRevocation(t *testing.T) {
 		if i == 2 {
 			trigger <- struct{}{}
 		}
-		builder.processRecord(&kgo.Record{
+		builder.processRecord(ctx, &kgo.Record{
 			Value:     eventBytes,
 			Partition: int32(1),
 		})
 		if i < 2 {
-			// After revocation is triggered, we can't guarantee that the partition will be in the buffered events map.
-			require.NotNil(t, builder.bufferedEvents[1])
-			require.Len(t, builder.bufferedEvents[1], 0)
+			// After revocation is triggered, we can't guarantee that the partition will be in the partition states map.
+			require.NotNil(t, builder.partitionStates[1])
+			require.Len(t, builder.partitionStates[1].events, 0)
 		}
 	}
-	// Verify that the first records were processed successfully.
-	require.GreaterOrEqual(t, builder.calculator.(*mockCalculator).count, 2)
-	require.NotNil(t, builder.calculator.(*mockCalculator).object)
 
 	// Verify that the partition was revoked.
-	require.Equal(t, 2, len(builder.bufferedEvents))
-	require.Nil(t, builder.bufferedEvents[1])
+	require.Equal(t, 2, len(builder.partitionStates))
+	require.Nil(t, builder.partitionStates[1])
 }
 
 func TestIndexBuilder(t *testing.T) {
@@ -193,7 +155,7 @@ func TestIndexBuilder(t *testing.T) {
 		eventBytes, err := event.Marshal()
 		require.NoError(t, err)
 
-		p.processRecord(&kgo.Record{
+		p.processRecord(context.Background(), &kgo.Record{
 			Value:     eventBytes,
 			Partition: int32(0),
 		})
@@ -251,34 +213,6 @@ func readAllSectionPointers(t *testing.T, bucket objstore.Bucket) []pointers.Sec
 	return out
 }
 
-// mockCalculator is a calculator that does nothing for use in tests
-type mockCalculator struct {
-	count  int
-	object *dataobj.Object
-}
-
-func (c *mockCalculator) Calculate(_ context.Context, _ log.Logger, object *dataobj.Object, _ string) error {
-	c.count++
-	c.object = object
-	return nil
-}
-
-func (c *mockCalculator) Flush() (*dataobj.Object, io.Closer, error) {
-	return c.object, io.NopCloser(bytes.NewReader([]byte{})), nil
-}
-
-func (c *mockCalculator) TimeRanges() []multitenancy.TimeRange {
-	return []multitenancy.TimeRange{
-		{
-			Tenant:  "test",
-			MinTime: time.Now(),
-			MaxTime: time.Now().Add(time.Hour),
-		},
-	}
-}
-
-func (c *mockCalculator) Reset() {}
-
 // A mockKafkaClient implements the kafkaClient interface for tests.
 type mockKafkaClient struct{}
 
@@ -291,3 +225,37 @@ func (m *mockKafkaClient) PollRecords(_ context.Context, _ int) kgo.Fetches {
 }
 
 func (m *mockKafkaClient) Close() {}
+
+func buildLogObject(t *testing.T, app string, path string, bucket objstore.Bucket) {
+	candidate, err := logsobj.NewBuilder(logsobj.BuilderConfig{
+		TargetPageSize:    128 * 1024,
+		TargetObjectSize:  4 * 1024 * 1024,
+		TargetSectionSize: 2 * 1024 * 1024,
+
+		BufferSize:              4 * 1024 * 1024,
+		SectionStripeMergeLimit: 2,
+
+		DataobjSortOrder: "stream-asc",
+	}, nil)
+	require.NoError(t, err)
+
+	for i := 0; i < 10; i++ {
+		stream := logproto.Stream{
+			Labels:  fmt.Sprintf("{app=\"%s\",stream=\"%d\"}", app, i),
+			Entries: []logproto.Entry{{Timestamp: time.Now(), Line: fmt.Sprintf("line %d", i)}},
+		}
+		err = candidate.Append("tenant", stream)
+		require.NoError(t, err)
+	}
+
+	obj, closer, err := candidate.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	reader, err := obj.Reader(t.Context())
+	require.NoError(t, err)
+	defer reader.Close()
+
+	err = bucket.Upload(t.Context(), path, reader)
+	require.NoError(t, err)
+}

@@ -51,6 +51,7 @@ This is the generated reference for the Loki Helm Chart values.
     },
     "readOnlyRootFilesystem": true
   },
+  "dnsConfig": {},
   "env": [],
   "extraArgs": {},
   "extraContainers": [],
@@ -96,7 +97,7 @@ This is the generated reference for the Loki Helm Chart values.
 		<tr>
 			<td>adminApi.affinity</td>
 			<td>object</td>
-			<td>Affinity for admin-api Pods</td>
+			<td>Affinity for admin-api Pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -106,6 +107,15 @@ This is the generated reference for the Loki Helm Chart values.
 			<td>adminApi.annotations</td>
 			<td>object</td>
 			<td>Additional annotations for the `admin-api` Deployment</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>adminApi.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for `admin-api` pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -327,7 +337,7 @@ This is the generated reference for the Loki Helm Chart values.
 		<tr>
 			<td>adminApi.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for admin-api pods</td>
+			<td>Topology Spread Constraints for admin-api pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -345,7 +355,9 @@ This is the generated reference for the Loki Helm Chart values.
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "backend"
+              "app.kubernetes.io/component": "backend",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -415,7 +427,7 @@ This is the generated reference for the Loki Helm Chart values.
 		<tr>
 			<td>backend.affinity</td>
 			<td>object</td>
-			<td>Affinity for backend pods.</td>
+			<td>Affinity for backend pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -806,7 +818,7 @@ null
 		<tr>
 			<td>backend.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for backend pods</td>
+			<td>Topology Spread Constraints for backend pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -824,7 +836,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "bloom-builder"
+              "app.kubernetes.io/component": "bloom-builder",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -849,6 +863,7 @@ null
     "targetMemoryUtilizationPercentage": null
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -862,6 +877,7 @@ null
     "repository": null,
     "tag": null
   },
+  "initContainers": [],
   "maxUnavailable": null,
   "nodeSelector": {},
   "podAnnotations": {},
@@ -880,7 +896,7 @@ null
 		<tr>
 			<td>bloomBuilder.affinity</td>
 			<td>object</td>
-			<td>Affinity for bloom-builder pods.</td>
+			<td>Affinity for bloom-builder pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -997,6 +1013,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomBuilder.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for bloom-builder pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomBuilder.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the bloom-builder</td>
@@ -1092,6 +1117,15 @@ null
 			<td>Docker image tag for the bloom-builder image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomBuilder.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the bloom-builder pods</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -1206,7 +1240,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "bloom-gateway"
+              "app.kubernetes.io/component": "bloom-gateway",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -1218,6 +1254,7 @@ null
     "grpc": ""
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -1277,7 +1314,7 @@ null
 		<tr>
 			<td>bloomGateway.affinity</td>
 			<td>object</td>
-			<td>Affinity for bloom-gateway pods.</td>
+			<td>Affinity for bloom-gateway pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -1300,6 +1337,15 @@ Hard node anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomGateway.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for bloom-gateway pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1641,7 +1687,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "bloom-planner"
+              "app.kubernetes.io/component": "bloom-planner",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -1653,6 +1701,7 @@ null
     "grpc": ""
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -1712,7 +1761,7 @@ null
 		<tr>
 			<td>bloomPlanner.affinity</td>
 			<td>object</td>
-			<td>Affinity for bloom-planner pods.</td>
+			<td>Affinity for bloom-planner pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -1735,6 +1784,15 @@ Hard node anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for bloom-planner pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2128,6 +2186,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>chunksCache.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for chunks-cache</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>chunksCache.enabled</td>
 			<td>bool</td>
 			<td>Specifies whether memcached based chunks-cache should be enabled</td>
@@ -2212,6 +2279,7 @@ true
   "batchSize": 4,
   "connectionLimit": 16384,
   "defaultValidity": "0s",
+  "dnsConfig": {},
   "enabled": false,
   "extraArgs": {},
   "extraContainers": [],
@@ -2318,6 +2386,15 @@ true
 			<td>Specify how long cached chunks should be stored in the chunks-cache-l2 before being expired</td>
 			<td><pre lang="json">
 "0s"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for chunks-cache-l2</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2913,7 +2990,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "compactor"
+              "app.kubernetes.io/component": "compactor",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -2925,6 +3004,7 @@ null
     "grpc": ""
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -2986,7 +3066,7 @@ null
 		<tr>
 			<td>compactor.affinity</td>
 			<td>object</td>
-			<td>Affinity for compactor pods.</td>
+			<td>Affinity for compactor pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -3009,6 +3089,15 @@ Hard node anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for compactor pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3368,7 +3457,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "distributor"
+              "app.kubernetes.io/component": "distributor",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -3393,6 +3484,7 @@ null
     "targetMemoryUtilizationPercentage": null
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -3406,6 +3498,7 @@ null
     "repository": null,
     "tag": null
   },
+  "initContainers": [],
   "maxSurge": 0,
   "maxUnavailable": null,
   "nodeSelector": {},
@@ -3428,7 +3521,7 @@ null
 		<tr>
 			<td>distributor.affinity</td>
 			<td>object</td>
-			<td>Affinity for distributor pods.</td>
+			<td>Affinity for distributor pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -3545,6 +3638,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>distributor.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for distributor pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>distributor.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the distributor</td>
@@ -3640,6 +3742,15 @@ null
 			<td>Docker image tag for the distributor image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>distributor.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the distributor pods</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -3763,7 +3874,7 @@ null
 		<tr>
 			<td>distributor.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for distributor pods</td>
+			<td>Topology Spread Constraints for distributor pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -3802,7 +3913,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.5.2"
+    "tag": "3.5.5"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3949,7 +4060,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.5.2"
+"3.5.5"
 </pre>
 </td>
 		</tr>
@@ -4014,7 +4125,7 @@ null
 		<tr>
 			<td>enterprise.provisioner.affinity</td>
 			<td>object</td>
-			<td>Affinity for provisioner Pods</td>
+			<td>Affinity for provisioner Pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -4282,7 +4393,7 @@ false
 		<tr>
 			<td>enterpriseGateway.affinity</td>
 			<td>object</td>
-			<td>Affinity for gateway Pods</td>
+			<td>Affinity for gateway Pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -4488,7 +4599,7 @@ false
 		<tr>
 			<td>enterpriseGateway.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for enterprise-gateway pods</td>
+			<td>Topology Spread Constraints for enterprise-gateway pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -4505,10 +4616,10 @@ true
 		</tr>
 		<tr>
 			<td>extraObjects</td>
-			<td>list</td>
+			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-[]
+null
 </pre>
 </td>
 		</tr>
@@ -4524,7 +4635,7 @@ null
 		<tr>
 			<td>gateway.affinity</td>
 			<td>object</td>
-			<td>Affinity for gateway pods.</td>
+			<td>Affinity for gateway pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -4879,6 +4990,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.livenessProbe</td>
+			<td>object</td>
+			<td>liveness probe for the nginx container in the gateway pods.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.clientMaxBodySize</td>
 			<td>string</td>
 			<td>Allows customizing the `client_max_body_size` directive</td>
@@ -5163,6 +5283,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>gateway.startupProbe</td>
+			<td>object</td>
+			<td>startup probe for the nginx container in the gateway pods.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.terminationGracePeriodSeconds</td>
 			<td>int</td>
 			<td>Grace period to allow the gateway to shutdown before it is killed</td>
@@ -5183,7 +5312,7 @@ null
 		<tr>
 			<td>gateway.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for gateway pods</td>
+			<td>Topology Spread Constraints for gateway pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -5309,7 +5438,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "index-gateway"
+              "app.kubernetes.io/component": "index-gateway",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -5320,6 +5451,7 @@ null
   "appProtocol": {
     "grpc": ""
   },
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -5372,7 +5504,7 @@ null
 		<tr>
 			<td>indexGateway.affinity</td>
 			<td>object</td>
-			<td>Affinity for index-gateway pods.</td>
+			<td>Affinity for index-gateway pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -5386,6 +5518,15 @@ Hard node anti-affinity
 {
   "grpc": ""
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for index-gateway pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -5691,7 +5832,7 @@ null
 		<tr>
 			<td>indexGateway.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for index-gateway pods</td>
+			<td>Topology Spread Constraints for index-gateway pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -5730,7 +5871,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "ingester"
+              "app.kubernetes.io/component": "ingester",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -5755,6 +5898,7 @@ null
     "targetMemoryUtilizationPercentage": null
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -5807,7 +5951,9 @@ null
     {
       "labelSelector": {
         "matchLabels": {
-          "app.kubernetes.io/component": "ingester"
+          "app.kubernetes.io/component": "ingester",
+          "app.kubernetes.io/instance": "{{ .Release.Name }}",
+          "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
         }
       },
       "maxSkew": 1,
@@ -5853,7 +5999,7 @@ null
 		<tr>
 			<td>ingester.affinity</td>
 			<td>object</td>
-			<td>Affinity for ingester pods. Ignored if zoneAwareReplication is enabled.</td>
+			<td>Affinity for ingester pods. Ignored if zoneAwareReplication is enabled. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -5966,6 +6112,15 @@ null
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for ingester pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -6253,7 +6408,7 @@ false
 		<tr>
 			<td>ingester.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>topologySpread for ingester pods.</td>
+			<td>topologySpread for ingester pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Defaults to allow skew no more than 1 node
 </pre>
@@ -6373,7 +6528,7 @@ true
 		<tr>
 			<td>ingester.zoneAwareReplication.zoneA.extraAffinity</td>
 			<td>object</td>
-			<td>optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host</td>
+			<td>optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host The value will be passed through tpl.</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6409,7 +6564,7 @@ null
 		<tr>
 			<td>ingester.zoneAwareReplication.zoneB.extraAffinity</td>
 			<td>object</td>
-			<td>optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host</td>
+			<td>optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host The value will be passed through tpl.</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6445,7 +6600,7 @@ null
 		<tr>
 			<td>ingester.zoneAwareReplication.zoneC.extraAffinity</td>
 			<td>object</td>
-			<td>optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host</td>
+			<td>optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host The value will be passed through tpl.</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -6754,6 +6909,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for Loki pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.enableServiceLinks</td>
 			<td>bool</td>
 			<td>Should enableServiceLinks be enabled. Default to enable</td>
@@ -6821,7 +6985,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.5.3"
+"3.5.5"
 </pre>
 </td>
 		</tr>
@@ -7420,6 +7584,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.replicas</td>
+			<td>int</td>
+			<td>Replicas for `loki-canary` when using a Deployment</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.resources</td>
 			<td>object</td>
 			<td>Resource requests and limits for the canary</td>
@@ -7536,7 +7709,7 @@ true
 			<td>string</td>
 			<td>Memcached Docker image tag</td>
 			<td><pre lang="json">
-"1.6.38-alpine"
+"1.6.39-alpine"
 </pre>
 </td>
 		</tr>
@@ -7594,6 +7767,15 @@ null
   },
   "timeoutSeconds": 3
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memcached.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe for memcached pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -7714,6 +7896,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>memcachedExporter.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe for memcached exporter</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>migrate</td>
 			<td>object</td>
 			<td>Options that may be necessary when performing a migration from another helm chart</td>
@@ -7810,7 +8001,7 @@ false
 		<tr>
 			<td>monitoring</td>
 			<td>object</td>
-			<td>DEPRECATED Monitoring section determines which monitoring features to enable, this section is being replaced by https://github.com/grafana/meta-monitoring-chart</td>
+			<td>Monitoring section determines which monitoring features to enable</td>
 			<td><pre lang="json">
 {
   "dashboards": {
@@ -7823,6 +8014,7 @@ false
   },
   "rules": {
     "additionalGroups": [],
+    "additionalRuleAnnotations": {},
     "additionalRuleLabels": {},
     "alerting": true,
     "annotations": {},
@@ -7923,10 +8115,11 @@ null
 		<tr>
 			<td>monitoring.rules</td>
 			<td>object</td>
-			<td>DEPRECATED Recording rules for monitoring Loki, required for some dashboards</td>
+			<td>Recording rules for monitoring Loki, required for some dashboards</td>
 			<td><pre lang="json">
 {
   "additionalGroups": [],
+  "additionalRuleAnnotations": {},
   "additionalRuleLabels": {},
   "alerting": true,
   "annotations": {},
@@ -7944,6 +8137,15 @@ null
 			<td>Additional groups to add to the rules file</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.rules.additionalRuleAnnotations</td>
+			<td>object</td>
+			<td>Additional annotations for PrometheusRule alerts</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -8013,7 +8215,7 @@ null
 		<tr>
 			<td>monitoring.selfMonitoring</td>
 			<td>object</td>
-			<td>DEPRECATED Self monitoring determines whether Loki should scrape its own logs. This feature currently relies on the Grafana Agent Operator being installed, which is installed by default using the grafana-agent-operator sub-chart. It will create custom resources for GrafanaAgent, LogsInstance, and PodLogs to configure scrape configs to scrape its own logs with the labels expected by the included dashboards.</td>
+			<td>DEPRECATED Self monitoring determines whether Loki should scrape its own logs. This feature relies on Grafana Agent Operator, which is deprecated. It will create custom resources for GrafanaAgent, LogsInstance, and PodLogs to configure scrape configs to scrape its own logs with the labels expected by the included dashboards.</td>
 			<td><pre lang="json">
 {
   "enabled": false,
@@ -8240,6 +8442,32 @@ The same namespace as the loki chart is installed in.
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.serviceMonitor</td>
+			<td>object</td>
+			<td>ServiceMonitor configuration</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "enabled": false,
+  "interval": "15s",
+  "labels": {},
+  "metricRelabelings": [],
+  "metricsInstance": {
+    "annotations": {},
+    "enabled": true,
+    "labels": {},
+    "remoteWrite": null
+  },
+  "namespaceSelector": {},
+  "relabelings": [],
+  "scheme": "http",
+  "scrapeTimeout": null,
+  "tlsConfig": null
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.serviceMonitor.annotations</td>
 			<td>object</td>
 			<td>ServiceMonitor annotations</td>
@@ -8287,7 +8515,7 @@ false
 		<tr>
 			<td>monitoring.serviceMonitor.metricsInstance</td>
 			<td>object</td>
-			<td>If defined, will create a MetricsInstance for the Grafana Agent Operator.</td>
+			<td>DEPRECATED If defined, will create a MetricsInstance for the Grafana Agent Operator.</td>
 			<td><pre lang="json">
 {
   "annotations": {},
@@ -8562,7 +8790,9 @@ false
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "overrides-exporter"
+              "app.kubernetes.io/component": "overrides-exporter",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -8574,6 +8804,7 @@ false
     "grpc": ""
   },
   "command": null,
+  "dnsConfig": {},
   "enabled": false,
   "extraArgs": [],
   "extraContainers": [],
@@ -8608,7 +8839,7 @@ false
 		<tr>
 			<td>overridesExporter.affinity</td>
 			<td>object</td>
-			<td>Affinity for overrides-exporter pods.</td>
+			<td>Affinity for overrides-exporter pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -8631,6 +8862,15 @@ Hard node anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>overridesExporter.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for overrides-exporter</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -8853,7 +9093,7 @@ null
 		<tr>
 			<td>overridesExporter.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for overrides-exporter pods</td>
+			<td>Topology Spread Constraints for overrides-exporter pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -8871,7 +9111,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "pattern-ingester"
+              "app.kubernetes.io/component": "pattern-ingester",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -8883,6 +9125,7 @@ null
     "grpc": ""
   },
   "command": null,
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -8945,7 +9188,7 @@ null
 		<tr>
 			<td>patternIngester.affinity</td>
 			<td>object</td>
-			<td>Affinity for pattern ingester pods.</td>
+			<td>Affinity for pattern ingester pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -8968,6 +9211,15 @@ Hard node anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for pattern ingester pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -9309,7 +9561,7 @@ null
 		<tr>
 			<td>patternIngester.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for pattern ingester pods</td>
+			<td>Topology Spread Constraints for pattern ingester pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -9327,7 +9579,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "querier"
+              "app.kubernetes.io/component": "querier",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -9384,7 +9638,9 @@ null
     {
       "labelSelector": {
         "matchLabels": {
-          "app.kubernetes.io/component": "querier"
+          "app.kubernetes.io/component": "querier",
+          "app.kubernetes.io/instance": "{{ .Release.Name }}",
+          "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
         }
       },
       "maxSkew": 1,
@@ -9399,7 +9655,7 @@ null
 		<tr>
 			<td>querier.affinity</td>
 			<td>object</td>
-			<td>Affinity for querier pods.</td>
+			<td>Affinity for querier pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -9752,7 +10008,7 @@ null
 		<tr>
 			<td>querier.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>topologySpread for querier pods.</td>
+			<td>topologySpread for querier pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Defaults to allow skew no more then 1 node
 </pre>
@@ -9770,7 +10026,9 @@ Defaults to allow skew no more then 1 node
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "query-frontend"
+              "app.kubernetes.io/component": "query-frontend",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -9808,6 +10066,7 @@ Defaults to allow skew no more then 1 node
     "repository": null,
     "tag": null
   },
+  "initContainers": [],
   "maxUnavailable": null,
   "nodeSelector": {},
   "podAnnotations": {},
@@ -9828,7 +10087,7 @@ Defaults to allow skew no more then 1 node
 		<tr>
 			<td>queryFrontend.affinity</td>
 			<td>object</td>
-			<td>Affinity for query-frontend pods.</td>
+			<td>Affinity for query-frontend pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -10044,6 +10303,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>queryFrontend.initContainers</td>
+			<td>list</td>
+			<td>init containers to add to the query-frontend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>queryFrontend.maxUnavailable</td>
 			<td>string</td>
 			<td>Pod Disruption Budget maxUnavailable</td>
@@ -10154,7 +10422,7 @@ null
 		<tr>
 			<td>queryFrontend.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for query-frontend pods</td>
+			<td>Topology Spread Constraints for query-frontend pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -10172,7 +10440,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "query-scheduler"
+              "app.kubernetes.io/component": "query-scheduler",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -10183,6 +10453,7 @@ null
   "appProtocol": {
     "grpc": ""
   },
+  "dnsConfig": {},
   "extraArgs": [],
   "extraContainers": [],
   "extraEnv": [],
@@ -10196,6 +10467,7 @@ null
     "repository": null,
     "tag": null
   },
+  "initContainers": [],
   "maxUnavailable": 1,
   "nodeSelector": {},
   "podAnnotations": {},
@@ -10215,7 +10487,7 @@ null
 		<tr>
 			<td>queryScheduler.affinity</td>
 			<td>object</td>
-			<td>Affinity for query-scheduler pods.</td>
+			<td>Affinity for query-scheduler pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -10229,6 +10501,15 @@ Hard node anti-affinity
 {
   "grpc": ""
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for query-scheduler</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -10328,6 +10609,15 @@ null
 			<td>Docker image tag for the query-scheduler image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryScheduler.initContainers</td>
+			<td>list</td>
+			<td>init containers to add to the query-scheduler pods</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -10433,7 +10723,7 @@ null
 		<tr>
 			<td>queryScheduler.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for query-scheduler pods</td>
+			<td>Topology Spread Constraints for query-scheduler pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -10496,7 +10786,9 @@ false
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "read"
+              "app.kubernetes.io/component": "read",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -10526,6 +10818,7 @@ false
     "repository": null,
     "tag": null
   },
+  "initContainers": [],
   "legacyReadTarget": false,
   "lifecycle": {},
   "livenessProbe": {},
@@ -10564,7 +10857,7 @@ false
 		<tr>
 			<td>read.affinity</td>
 			<td>object</td>
-			<td>Affinity for read pods.</td>
+			<td>Affinity for read pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -10729,6 +11022,15 @@ null
 			<td>Docker image tag for the read image. Overrides `loki.image.tag`</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.initContainers</td>
+			<td>list</td>
+			<td>init containers to add to the read pods</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -10972,7 +11274,7 @@ null
 		<tr>
 			<td>read.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for read pods</td>
+			<td>Topology Spread Constraints for read pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -11029,6 +11331,15 @@ null
 			<td>Specify how long cached results should be stored in the results-cache before being expired</td>
 			<td><pre lang="json">
 "12h"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.dnsConfig</td>
+			<td>object</td>
+			<td>DNSConfig for results-cache</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -11398,7 +11709,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "ruler"
+              "app.kubernetes.io/component": "ruler",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -11457,7 +11770,7 @@ null
 		<tr>
 			<td>ruler.affinity</td>
 			<td>object</td>
-			<td>Affinity for ruler pods.</td>
+			<td>Affinity for ruler pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -11785,7 +12098,7 @@ false
 		<tr>
 			<td>ruler.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for ruler pods</td>
+			<td>Topology Spread Constraints for ruler pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -11868,7 +12181,7 @@ false
 			<td>string</td>
 			<td>The Docker registry and image for the k8s sidecar</td>
 			<td><pre lang="json">
-"kiwigrid/k8s-sidecar"
+"docker.io/kiwigrid/k8s-sidecar"
 </pre>
 </td>
 		</tr>
@@ -11886,7 +12199,7 @@ false
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.30.7"
+"1.30.10"
 </pre>
 </td>
 		</tr>
@@ -12063,7 +12376,7 @@ false
 		<tr>
 			<td>singleBinary.affinity</td>
 			<td>object</td>
-			<td>Affinity for single binary pods.</td>
+			<td>Affinity for single binary pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -12270,6 +12583,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.persistence.enableStatefulSetRecreationForSizeChange</td>
+			<td>bool</td>
+			<td>Enable StatefulSetRecreation for changes to PVC size. This means that the StatefulSet will be deleted, recreated (with the same name) and rolled when a change to the PVC size is detected. That way the PVC can be resized without manual intervention.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.persistence.enabled</td>
 			<td>bool</td>
 			<td>Enable persistent disk</td>
@@ -12311,6 +12633,24 @@ null
 			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.whenDeleted</td>
+			<td>string</td>
+			<td>What to do with the volumes when the StatefulSet is deleted.</td>
+			<td><pre lang="json">
+"Delete"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.whenScaled</td>
+			<td>string</td>
+			<td>What to do with the volume when the StatefulSet is scaled down.</td>
+			<td><pre lang="json">
+"Delete"
 </pre>
 </td>
 		</tr>
@@ -12434,7 +12774,9 @@ null
         {
           "labelSelector": {
             "matchLabels": {
-              "app.kubernetes.io/component": "table-manager"
+              "app.kubernetes.io/component": "table-manager",
+              "app.kubernetes.io/instance": "{{ .Release.Name }}",
+              "app.kubernetes.io/name": "{{ include \"loki.name\" . }}"
             }
           },
           "topologyKey": "kubernetes.io/hostname"
@@ -12478,7 +12820,7 @@ null
 		<tr>
 			<td>tableManager.affinity</td>
 			<td>object</td>
-			<td>Affinity for table-manager pods.</td>
+			<td>Affinity for table-manager pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node and anti-affinity
 </pre>
@@ -12724,7 +13066,7 @@ false
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/loki-helm-test",
-    "tag": "ewelch-distributed-helm-chart-17db5ee"
+    "tag": "latest"
   },
   "labels": {},
   "prometheusAddress": "",
@@ -12770,7 +13112,7 @@ false
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/loki-helm-test",
-  "tag": "ewelch-distributed-helm-chart-17db5ee"
+  "tag": "latest"
 }
 </pre>
 </td>
@@ -12816,7 +13158,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"ewelch-distributed-helm-chart-17db5ee"
+"latest"
 </pre>
 </td>
 		</tr>
@@ -12850,7 +13192,7 @@ null
 		<tr>
 			<td>write.affinity</td>
 			<td>object</td>
-			<td>Affinity for write pods.</td>
+			<td>Affinity for write pods. The value will be passed through tpl.</td>
 			<td><pre lang="">
 Hard node anti-affinity
 </pre>
@@ -13296,7 +13638,7 @@ null
 		<tr>
 			<td>write.topologySpreadConstraints</td>
 			<td>list</td>
-			<td>Topology Spread Constraints for write pods</td>
+			<td>Topology Spread Constraints for write pods The value will be passed through tpl.</td>
 			<td><pre lang="json">
 []
 </pre>

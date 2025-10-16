@@ -96,7 +96,7 @@ type SeriesIterator interface {
 }
 
 type IndexCleaner interface {
-	RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) error
+	RemoveChunk(from, through model.Time, userID []byte, labels labels.Labels, chunkID string) (bool, error)
 	// CleanupSeries is for cleaning up the series that do have any chunks left in the index.
 	// It would only be called for the series that have all their chunks deleted without adding new ones.
 	CleanupSeries(userID []byte, lbls labels.Labels) error
@@ -115,6 +115,7 @@ type IndexProcessor interface {
 	SeriesIterator
 	chunkIndexer
 	IndexCleaner
+	ChunkExists(userID []byte, lbls labels.Labels, chunkRef logproto.ChunkRef) (bool, error)
 }
 
 var errNoChunksFound = errors.New("no chunks found in table, please check if there are really no chunks and manually drop the table or " +
@@ -303,8 +304,12 @@ func markForDelete(
 							return err
 						}
 					}
-					if err := indexFile.RemoveChunk(c.From, c.Through, s.UserID(), s.Labels(), c.ChunkID); err != nil {
+					chunkExisted, err := indexFile.RemoveChunk(c.From, c.Through, s.UserID(), s.Labels(), c.ChunkID)
+					if err != nil {
 						return fmt.Errorf("failed to remove chunk %s from index with error %s", c.ChunkID, err)
+					}
+					if !chunkExisted {
+						return fmt.Errorf("could not find entry of chunk %s to remove it", c.ChunkID)
 					}
 					continue
 				}
@@ -317,8 +322,12 @@ func markForDelete(
 			if c.Through.After(tableInterval.End) {
 				if expiration.DropFromIndex(s.UserID(), c, labels.EmptyLabels(), tableInterval.End, now) {
 					modified = true
-					if err := indexFile.RemoveChunk(c.From, c.Through, s.UserID(), s.Labels(), c.ChunkID); err != nil {
+					chunkExisted, err := indexFile.RemoveChunk(c.From, c.Through, s.UserID(), s.Labels(), c.ChunkID)
+					if err != nil {
 						return fmt.Errorf("failed to remove chunk %s from index with error %s", c.ChunkID, err)
+					}
+					if !chunkExisted {
+						return fmt.Errorf("could not find entry of chunk %s to remove it", c.ChunkID)
 					}
 					continue
 				}
@@ -493,7 +502,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 		return false, false, fmt.Errorf("expected 1 entry for chunk %s but found %d in storage", ce.ChunkID, len(chks))
 	}
 
-	newChunkData, err := chks[0].Data.Rebound(ce.From, ce.Through, func(ts time.Time, s string, structuredMetadata labels.Labels) bool {
+	newChunkData, err := chks[0].Data.Rewrite(func(ts time.Time, s string, structuredMetadata labels.Labels) bool {
 		if filterFunc(ts, s, structuredMetadata) {
 			linesDeleted = true
 			return true
@@ -502,7 +511,7 @@ func (c *chunkRewriter) rewriteChunk(ctx context.Context, userID []byte, ce Chun
 		return false
 	})
 	if err != nil {
-		if errors.Is(err, chunk.ErrSliceNoDataInRange) {
+		if errors.Is(err, chunk.ErrRewriteNoDataLeft) {
 			level.Info(util_log.Logger).Log("msg", "Delete request filterFunc leaves an empty chunk", "chunk ref", ce.ChunkID)
 			return false, true, nil
 		}

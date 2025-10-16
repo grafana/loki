@@ -38,18 +38,16 @@ func (cfg *Config) Validate() error {
 type Uploader struct {
 	SHAPrefixSize int
 	bucket        objstore.Bucket
-	tenantID      string
 	metrics       *metrics
 	logger        log.Logger
 }
 
-func New(cfg Config, bucket objstore.Bucket, tenantID string, logger log.Logger) *Uploader {
+func New(cfg Config, bucket objstore.Bucket, logger log.Logger) *Uploader {
 	metrics := newMetrics(cfg.SHAPrefixSize)
 
 	return &Uploader{
 		SHAPrefixSize: cfg.SHAPrefixSize,
 		bucket:        bucket,
-		tenantID:      tenantID,
 		metrics:       metrics,
 		logger:        logger,
 	}
@@ -81,7 +79,7 @@ func (d *Uploader) getKey(ctx context.Context, object *dataobj.Object) (string, 
 	sum := hash.Sum(sumBytes[:0])
 	sumStr := hex.EncodeToString(sum)
 
-	return fmt.Sprintf("tenant-%s/objects/%s/%s", d.tenantID, sumStr[:d.SHAPrefixSize], sumStr[d.SHAPrefixSize:]), nil
+	return fmt.Sprintf("objects/%s/%s", sumStr[:d.SHAPrefixSize], sumStr[d.SHAPrefixSize:]), nil
 }
 
 // Upload uploads an object to the configured bucket and returns the key.

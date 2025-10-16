@@ -61,6 +61,10 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml $.ctx.Values.memcached.podSecurityContext | nindent 8 }}
+      {{- with .dnsConfig | default $.ctx.Values.loki.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       initContainers:
         {{- toYaml .initContainers | nindent 8 }}
       nodeSelector:
@@ -144,6 +148,10 @@ spec:
           livenessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- with $.ctx.Values.memcached.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
 
       {{- if $.ctx.Values.memcachedExporter.enabled }}
         - name: exporter
@@ -170,6 +178,10 @@ spec:
           {{- end }}
           {{- with $.ctx.Values.memcachedExporter.livenessProbe }}
           livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $.ctx.Values.memcachedExporter.startupProbe }}
+          startupProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           {{- if .extraVolumeMounts }}

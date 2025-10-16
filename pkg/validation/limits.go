@@ -230,7 +230,7 @@ type Limits struct {
 	AllowStructuredMetadata           bool                  `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
 	MaxStructuredMetadataSize         flagext.ByteSize      `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
 	MaxStructuredMetadataEntriesCount int                   `yaml:"max_structured_metadata_entries_count" json:"max_structured_metadata_entries_count" doc:"description=Maximum number of structured metadata entries per log line."`
-	OTLPConfig                        push.OTLPConfig       `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
+	OTLPConfig                        *push.OTLPConfig      `yaml:"otlp_config" json:"otlp_config" doc:"description=OTLP log ingestion configurations"`
 	GlobalOTLPConfig                  push.GlobalOTLPConfig `yaml:"-" json:"-"`
 
 	BlockIngestionPolicyUntil map[string]dskit_flagext.Time `yaml:"block_ingestion_policy_until" json:"block_ingestion_policy_until" category:"experimental" doc:"description=Block ingestion for policy until the configured date. The policy '*' is the global policy, which is applied to all streams not matching a policy and can be overridden by other policies. The time should be in RFC3339 format. The policy is based on the policy_stream_mapping configuration."`
@@ -243,6 +243,9 @@ type Limits struct {
 	// DefaultPolicyStreamMapping contains the default policy stream mappings that are merged with per-tenant mappings.
 	// This field is not exposed in YAML/JSON as it's set programmatically.
 	DefaultPolicyStreamMapping PolicyStreamMapping `yaml:"-" json:"-"`
+
+	// PolicyOverrideLimits contains per-policy overrides for stream count limits.
+	PolicyOverrideLimits map[string]PolicyOverridableLimits `yaml:"policy_override_limits" json:"policy_override_limits" doc:"hidden"`
 
 	IngestionPartitionsTenantShardSize int `yaml:"ingestion_partitions_tenant_shard_size" json:"ingestion_partitions_tenant_shard_size" category:"experimental"`
 
@@ -505,6 +508,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 // SetGlobalOTLPConfig set GlobalOTLPConfig which is used while unmarshaling per-tenant otlp config to use the default list of resource attributes picked as index labels.
 func (l *Limits) SetGlobalOTLPConfig(cfg push.GlobalOTLPConfig) {
 	l.GlobalOTLPConfig = cfg
+	if l.OTLPConfig == nil {
+		l.OTLPConfig = &push.OTLPConfig{}
+	}
 	l.OTLPConfig.ApplyGlobalOTLPConfig(cfg)
 }
 
@@ -530,14 +536,21 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		if err := yaml.Unmarshal(b, (*plain)(l)); err != nil {
 			return errors.Wrap(err, "cloning limits (unmarshaling)")
 		}
+		// set the otlp config to nil, which would help to detect later if it was set in the tenant override
+		l.OTLPConfig = nil
 	}
 	if err := unmarshal((*plain)(l)); err != nil {
 		return err
 	}
 
 	if defaultLimits != nil {
-		// apply relevant bits from global otlp config
-		l.OTLPConfig.ApplyGlobalOTLPConfig(defaultLimits.GlobalOTLPConfig)
+		if l.OTLPConfig == nil {
+			// no change in per-tenant OTLP config, copy the existing default config
+			l.OTLPConfig = defaultLimits.OTLPConfig
+		} else {
+			// apply relevant bits from global otlp config
+			l.OTLPConfig.ApplyGlobalOTLPConfig(defaultLimits.GlobalOTLPConfig)
+		}
 		// apply default policy stream mappings
 		if err := l.PolicyStreamMapping.ApplyDefaultPolicyStreamMappings(defaultLimits.DefaultPolicyStreamMapping); err != nil {
 			return errors.Wrap(err, "applying default policy stream mappings")
@@ -586,8 +599,10 @@ func (l *Limits) Validate() error {
 		l.MaxQueryCapacity = 1
 	}
 
-	if err := l.OTLPConfig.Validate(); err != nil {
-		return err
+	if l.OTLPConfig != nil {
+		if err := l.OTLPConfig.Validate(); err != nil {
+			return err
+		}
 	}
 
 	if _, err := logql.ParseShardVersion(l.TSDBShardingStrategy); err != nil {
@@ -709,10 +724,42 @@ func (o *Overrides) MaxLocalStreamsPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxLocalStreamsPerUser
 }
 
+// PolicyMaxLocalStreamsPerUser returns the maximum number of streams a user is allowed to store
+// in a single ingester for a specific policy. Returns 0 if no policy-specific override is set.
+func (o *Overrides) PolicyMaxLocalStreamsPerUser(userID, policy string) int {
+	if policy == "" {
+		return 0
+	}
+	limits := o.getOverridesForUser(userID)
+	if len(limits.PolicyOverrideLimits) == 0 {
+		return 0
+	}
+	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
+		return policyLimits.MaxLocalStreamsPerUser
+	}
+	return 0
+}
+
 // MaxGlobalStreamsPerUser returns the maximum number of streams a user is allowed to store
 // across the cluster.
 func (o *Overrides) MaxGlobalStreamsPerUser(userID string) int {
 	return o.getOverridesForUser(userID).MaxGlobalStreamsPerUser
+}
+
+// PolicyMaxGlobalStreamsPerUser returns the maximum number of streams a user is allowed to store
+// across the cluster for a specific policy. Returns 0 if no policy-specific override is set.
+func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) int {
+	if policy == "" {
+		return 0
+	}
+	limits := o.getOverridesForUser(userID)
+	if len(limits.PolicyOverrideLimits) == 0 {
+		return 0
+	}
+	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
+		return policyLimits.MaxGlobalStreamsPerUser
+	}
+	return 0
 }
 
 // MaxChunksPerQuery returns the maximum number of chunks allowed per query.
@@ -1163,7 +1210,13 @@ func (o *Overrides) MaxStructuredMetadataCount(userID string) int {
 }
 
 func (o *Overrides) OTLPConfig(userID string) push.OTLPConfig {
-	return o.getOverridesForUser(userID).OTLPConfig
+	otlpConfig := o.getOverridesForUser(userID).OTLPConfig
+	if otlpConfig == nil {
+		// this should never happen other than tests but putting it here just to avoid panic
+		otlpConfig = &push.OTLPConfig{}
+	}
+
+	return *otlpConfig
 }
 
 func (o *Overrides) BlockIngestionUntil(userID string) time.Time {
@@ -1297,6 +1350,12 @@ func (o *Overrides) getOverridesForUser(userID string) *Limits {
 // as opposed to merging.
 type OverwriteMarshalingStringMap struct {
 	m map[string]string
+}
+
+// PolicyOverridableLimits contains limits that can be overridden on a per-policy basis.
+type PolicyOverridableLimits struct {
+	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user" json:"max_streams_per_user"`
+	MaxGlobalStreamsPerUser int `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user"`
 }
 
 func NewOverwriteMarshalingStringMap(m map[string]string) OverwriteMarshalingStringMap {
