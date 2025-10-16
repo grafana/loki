@@ -411,9 +411,6 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			newOptimization("ProjectionPushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
 			),
-			newOptimization("CleanupMerge", plan).withRules(
-				&removeNoopMerge{plan: plan},
-			),
 		}
 		optimizer := newOptimizer(plan, optimizations)
 		optimizer.optimize(root)

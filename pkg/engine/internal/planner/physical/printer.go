@@ -38,11 +38,6 @@ func toTreeNode(n Node) *tree.Node {
 		for i := range node.Predicates {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
-	case *SortMerge:
-		treeNode.Properties = []tree.Property{
-			tree.NewProperty("column", false, node.Column),
-			tree.NewProperty("order", false, node.Order),
-		}
 	case *Projection:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("columns", true, toAnySlice(node.Columns)...),
@@ -51,8 +46,6 @@ func toTreeNode(n Node) *tree.Node {
 		for i := range node.Predicates {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
-	case *Merge:
-		// nothing to add
 	case *Limit:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("offset", false, node.Skip),

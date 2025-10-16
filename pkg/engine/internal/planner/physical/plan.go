@@ -76,8 +76,6 @@ type Node interface {
 }
 
 var _ Node = (*DataObjScan)(nil)
-var _ Node = (*Merge)(nil)
-var _ Node = (*SortMerge)(nil)
 var _ Node = (*Projection)(nil)
 var _ Node = (*Limit)(nil)
 var _ Node = (*Filter)(nil)
@@ -90,8 +88,6 @@ var _ Node = (*Parallelize)(nil)
 var _ Node = (*ScanSet)(nil)
 
 func (*DataObjScan) isNode()       {}
-func (*Merge) isNode()             {}
-func (*SortMerge) isNode()         {}
 func (*Projection) isNode()        {}
 func (*Limit) isNode()             {}
 func (*Filter) isNode()            {}
