@@ -99,6 +99,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return tracePipeline("physical.MathExpression", c.executeMathExpression(ctx, n, inputs))
 	case *physical.ColumnCompat:
 		return tracePipeline("physical.ColumnCompat", c.executeColumnCompat(ctx, n, inputs))
+	case *physical.Parallelize:
+		return tracePipeline("physical.Parallelize", c.executeParallelize(ctx, n, inputs))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
@@ -449,4 +451,17 @@ func (c *Context) executeColumnCompat(ctx context.Context, compat *physical.Colu
 	}
 
 	return newColumnCompatibilityPipeline(compat, inputs[0])
+}
+
+func (c *Context) executeParallelize(ctx context.Context, _ *physical.Parallelize, inputs []Pipeline) Pipeline {
+	if len(inputs) == 0 {
+		return emptyPipeline()
+	} else if len(inputs) > 1 {
+		return errorPipeline(ctx, fmt.Errorf("parallelize expects exactly one input, got %d", len(inputs)))
+	}
+
+	// Parallelize is a hint node to the scheduler for parallel execution. If we
+	// see an Parallelize node in the plan, we ignore it and immediately
+	// propagate up the input.
+	return inputs[0]
 }

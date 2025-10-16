@@ -233,16 +233,6 @@ func (r *rangeAggregationPipeline) Close() {
 	}
 }
 
-// Inputs returns the inputs of the pipeline.
-func (r *rangeAggregationPipeline) Inputs() []Pipeline {
-	return r.inputs
-}
-
-// Transport returns the type of transport of the implementation.
-func (r *rangeAggregationPipeline) Transport() Transport {
-	return Local
-}
-
 func newMatcherFactoryFromOpts(opts rangeAggregationOptions) *matcherFactory {
 	return &matcherFactory{
 		start:    opts.startTs,

@@ -59,9 +59,9 @@ func TestReader(t *testing.T) {
 			name:    "basic reads with predicate",
 			columns: []*logs.Column{streamID, traceID, foo, message},
 			expected: arrowtest.Rows{
-				{"stream_id.int64": int64(2), "foo.metadata.utf8": nil, "trace_id.metadata.utf8": "123456", "message.utf8": "foo bar"},
 				{"stream_id.int64": int64(1), "foo.metadata.utf8": nil, "trace_id.metadata.utf8": "abcdef", "message.utf8": "goodbye, world!"},
 				{"stream_id.int64": int64(1), "foo.metadata.utf8": "", "trace_id.metadata.utf8": "abcdef", "message.utf8": ""},
+				{"stream_id.int64": int64(2), "foo.metadata.utf8": nil, "trace_id.metadata.utf8": "123456", "message.utf8": "foo bar"},
 			},
 		},
 		// tests that the reader evaluates predicates correctly even when predicate columns are not projected.
@@ -69,9 +69,9 @@ func TestReader(t *testing.T) {
 			name:    "reads with predicate columns that are not projected",
 			columns: []*logs.Column{streamID, message},
 			expected: arrowtest.Rows{
-				{"stream_id.int64": int64(2), "message.utf8": "foo bar"},
 				{"stream_id.int64": int64(1), "message.utf8": "goodbye, world!"},
 				{"stream_id.int64": int64(1), "message.utf8": ""},
+				{"stream_id.int64": int64(2), "message.utf8": "foo bar"},
 			},
 		},
 	} {

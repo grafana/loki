@@ -155,13 +155,3 @@ func (v *vectorAggregationPipeline) Close() {
 		input.Close()
 	}
 }
-
-// Inputs returns the inputs of the pipeline.
-func (v *vectorAggregationPipeline) Inputs() []Pipeline {
-	return v.inputs
-}
-
-// Transport returns the transport type of the pipeline.
-func (v *vectorAggregationPipeline) Transport() Transport {
-	return Local
-}
