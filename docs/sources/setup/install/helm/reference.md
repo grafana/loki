@@ -7771,6 +7771,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>memcached.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe for memcached pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcachedExporter.containerSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext for memcached exporter containers</td>
@@ -7887,6 +7896,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>memcachedExporter.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe for memcached exporter</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>migrate</td>
 			<td>object</td>
 			<td>Options that may be necessary when performing a migration from another helm chart</td>
@@ -7996,6 +8014,7 @@ false
   },
   "rules": {
     "additionalGroups": [],
+    "additionalRuleAnnotations": {},
     "additionalRuleLabels": {},
     "alerting": true,
     "annotations": {},
@@ -8100,6 +8119,7 @@ null
 			<td><pre lang="json">
 {
   "additionalGroups": [],
+  "additionalRuleAnnotations": {},
   "additionalRuleLabels": {},
   "alerting": true,
   "annotations": {},
@@ -8117,6 +8137,15 @@ null
 			<td>Additional groups to add to the rules file</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.rules.additionalRuleAnnotations</td>
+			<td>object</td>
+			<td>Additional annotations for PrometheusRule alerts</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -12550,6 +12579,15 @@ null
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
 			<td><pre lang="json">
 true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.enableStatefulSetRecreationForSizeChange</td>
+			<td>bool</td>
+			<td>Enable StatefulSetRecreation for changes to PVC size. This means that the StatefulSet will be deleted, recreated (with the same name) and rolled when a change to the PVC size is detected. That way the PVC can be resized without manual intervention.</td>
+			<td><pre lang="json">
+false
 </pre>
 </td>
 		</tr>

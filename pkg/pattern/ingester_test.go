@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"strings"
 	"testing"
 	"time"
 
@@ -64,6 +65,7 @@ func TestInstancePushQuery(t *testing.T) {
 		mockWriter,
 		mockWriter,
 		aggregation.NewMetrics(nil),
+		0.99,
 	)
 	require.NoError(t, err)
 
@@ -197,6 +199,7 @@ func TestInstancePushAggregateMetrics(t *testing.T) {
 			mockWriter,
 			mockWriter,
 			aggregation.NewMetrics(nil),
+			0.99,
 		)
 		require.NoError(t, err)
 
@@ -459,6 +462,7 @@ func TestIngesterShutdownFlush(t *testing.T) {
 		mockWriter,
 		mockWriter,
 		aggregation.NewMetrics(nil),
+		0.99,
 	)
 	require.NoError(t, err)
 
@@ -541,6 +545,7 @@ func TestIngesterShutdownFlushMaintainsChunkBoundaries(t *testing.T) {
 		mockWriter,
 		mockWriter,
 		aggregation.NewMetrics(nil),
+		0.99,
 	)
 	require.NoError(t, err)
 
@@ -734,6 +739,136 @@ func TestPerTenantPersistenceGranularity(t *testing.T) {
 		tenantID := "test-tenant"
 		granularity := ingester.getEffectivePersistenceGranularity(tenantID)
 		require.Equal(t, 45*time.Minute, granularity, "should use chunk duration when override is greater than chunk duration")
+	})
+}
+
+func TestVolumeFilteringEndToEnd(t *testing.T) {
+	t.Run("should filter patterns by volume threshold through full pipeline", func(t *testing.T) {
+		cfg := Config{}
+		flagext.DefaultValues(&cfg)
+		cfg.VolumeThreshold = 0.7 // Only keep top 70% of patterns by volume
+		// cfg.LifecyclerConfig.RingConfig.ReplicationFactor = 1
+
+		limits := &fakeLimits{
+			patternPersistenceEnabled: true,
+			patternRateThreshold:      0, // Disable rate threshold for this test
+		}
+
+		ingesterID := "test-ingester"
+		replicationSet := ring.ReplicationSet{
+			Instances: []ring.InstanceDesc{
+				{Id: ingesterID, Addr: "ingester0"},
+			},
+		}
+
+		fakeRing := &fakeRing{}
+		fakeRing.On("Get", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(replicationSet, nil)
+
+		ringClient := &fakeRingClient{ring: fakeRing}
+
+		// Track what patterns are written
+		writtenPatterns := make(map[string]int)
+		mockWriter := &mockEntryWriter{}
+		mockWriter.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) {
+				entry := args.Get(1).(string)
+				// Extract pattern from the entry
+				if strings.Contains(entry, "detected_pattern=") {
+					parts := strings.Split(entry, "detected_pattern=")
+					if len(parts) > 1 {
+						patternPart := strings.Split(parts[1], " ")[0]
+						writtenPatterns[patternPart]++
+					}
+				}
+			})
+		mockWriter.On("Stop")
+
+		ingester, err := New(
+			cfg,
+			limits,
+			ringClient,
+			"test",
+			prometheus.NewRegistry(),
+			log.NewNopLogger(),
+		)
+		require.NoError(t, err)
+
+		// Override ingester ID for testing
+		ingester.lifecycler.ID = ingesterID
+
+		// Create instance
+		inst, err := ingester.GetOrCreateInstance("test-tenant")
+		require.NoError(t, err)
+		inst.patternWriter = mockWriter
+
+		lbs := labels.FromStrings("test", "test", "service_name", "test_service")
+		now := time.Now()
+
+		// Push many logs to create patterns with different volumes
+		// Pattern 1: High volume (60% of total)
+		for i := range 60 {
+			err = inst.Push(context.Background(), &push.PushRequest{
+				Streams: []push.Stream{
+					{
+						Labels: lbs.String(),
+						Entries: []push.Entry{
+							{
+								Timestamp: now.Add(-2*time.Hour + time.Duration(i)*time.Second),
+								Line:      fmt.Sprintf("high volume pattern log %d", i),
+							},
+						},
+					},
+				},
+			})
+			require.NoError(t, err)
+		}
+
+		// Pattern 2: Medium volume (30% of total)
+		for i := range 30 {
+			err = inst.Push(context.Background(), &push.PushRequest{
+				Streams: []push.Stream{
+					{
+						Labels: lbs.String(),
+						Entries: []push.Entry{
+							{
+								Timestamp: now.Add(-2*time.Hour + time.Duration(60+i)*time.Second),
+								Line:      fmt.Sprintf("medium volume pattern entry %d", i),
+							},
+						},
+					},
+				},
+			})
+			require.NoError(t, err)
+		}
+
+		// Pattern 3: Low volume (10% of total)
+		for i := range 10 {
+			err = inst.Push(context.Background(), &push.PushRequest{
+				Streams: []push.Stream{
+					{
+						Labels: lbs.String(),
+						Entries: []push.Entry{
+							{
+								Timestamp: now.Add(-2*time.Hour + time.Duration(90+i)*time.Second),
+								Line:      fmt.Sprintf("low volume pattern item %d", i),
+							},
+						},
+					},
+				},
+			})
+			require.NoError(t, err)
+		}
+
+		// Flush patterns
+		inst.flushPatterns()
+
+		// With 70% threshold, high (60%) and medium (30%) patterns should be written
+		// Low volume pattern (10%) should be filtered out
+		require.Equal(t, len(writtenPatterns), 2, "2 patterns, high and medium volume, should have been written")
+
+		// Verify WriteEntry was called
+		mockWriter.AssertCalled(t, "WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 }
 

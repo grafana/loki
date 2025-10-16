@@ -303,7 +303,7 @@ func (c *Compactor) init(
 	if c.cfg.HorizontalScalingMode == HorizontalScalingModeMain {
 		c.JobQueue = jobqueue.NewQueue(r)
 		if c.cfg.RetentionEnabled {
-			if err := c.JobQueue.RegisterBuilder(grpc.JOB_TYPE_DELETION, c.deleteRequestsManager.JobBuilder(), c.cfg.JobsConfig.Deletion.Timeout, c.cfg.JobsConfig.Deletion.MaxRetries); err != nil {
+			if err := c.JobQueue.RegisterBuilder(grpc.JOB_TYPE_DELETION, c.deleteRequestsManager.JobBuilder(), c.cfg.JobsConfig.Deletion.Timeout, c.cfg.JobsConfig.Deletion.MaxRetries, r); err != nil {
 				return err
 			}
 		}
