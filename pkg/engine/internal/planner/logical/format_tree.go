@@ -33,8 +33,6 @@ func (t *treeFormatter) convert(value Value) *tree.Node {
 		return t.convertRangeAggregation(value)
 	case *VectorAggregation:
 		return t.convertVectorAggregation(value)
-	case *TopK:
-		return t.convertTopK(value)
 
 	case *UnaryOp:
 		return t.convertUnaryOp(value)

@@ -61,39 +61,6 @@ SELECT <%4> table=%2 predicate=%3
 	require.Equal(t, expected, actual)
 }
 
-func TestFormatTopKQuery(t *testing.T) {
-	// Build a logical plan with TopK:
-	b := NewBuilder(
-		&MakeTable{
-			Selector: &BinOp{
-				Left:  NewColumnRef("app", types.ColumnTypeLabel),
-				Right: NewLiteral("users"),
-				Op:    types.BinaryOpEq,
-			},
-		},
-	).TopK(*NewColumnRef("timestamp", types.ColumnTypeBuiltin), false, false, 10)
-
-	plan, err := b.ToPlan()
-	require.NoError(t, err)
-
-	var sb strings.Builder
-	PrintTree(&sb, plan.Value())
-
-	actual := "\n" + sb.String()
-	t.Logf("Actual output:\n%s", actual)
-
-	expected := `
-TOPK <%3> table=%2 column=builtin.timestamp direction=desc nulls=last k=10
-│   └── ColumnRef column=timestamp type=builtin
-└── MAKETABLE <%2> selector=EQ label.app "users"
-        └── BinOp <%1> op=EQ left=label.app right="users"
-            ├── ColumnRef column=app type=label
-            └── Literal value="users" kind=utf8
-`
-
-	require.Equal(t, expected, actual)
-}
-
 func TestFormatSortQuery(t *testing.T) {
 	// Build a query plan for this query sorted by `age` in ascending order:
 	//
