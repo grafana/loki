@@ -264,10 +264,15 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 		slices.Reverse(groups)
 	}
 
-	var node Node = &Merge{}
-	p.plan.graph.Add(node)
+	// Scan work can be parallelized across multiple workers, so we wrap
+	// everything into a single Parallelize node.
+	var parallelize Node = &Parallelize{}
+	p.plan.graph.Add(parallelize)
+
+	var merge Node = &Merge{}
+	p.plan.graph.Add(merge)
 	for _, gr := range groups {
-		if err := p.buildNodeGroup(gr, node, ctx); err != nil {
+		if err := p.buildNodeGroup(gr, merge, ctx); err != nil {
 			return nil, err
 		}
 	}
@@ -278,13 +283,18 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 			Destination: types.ColumnTypeMetadata,
 			Collision:   types.ColumnTypeLabel,
 		}
-		node, err = p.wrapNodeWith(node, compat)
+		merge, err = p.wrapNodeWith(merge, compat)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return []Node{node}, nil
+	// Add an edge between the parallelize and the final merge node (which may
+	// have been changed after processing compatibility).
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: merge}); err != nil {
+		return nil, err
+	}
+	return []Node{parallelize}, nil
 }
 
 // Convert [logical.Select] into one [Filter] node.

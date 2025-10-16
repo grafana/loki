@@ -117,7 +117,7 @@ func (p *topkPipeline) Read(ctx context.Context) (arrow.Record, error) {
 
 func (p *topkPipeline) compute(ctx context.Context) (arrow.Record, error) {
 NextInput:
-	for _, in := range p.Inputs() {
+	for _, in := range p.inputs {
 		for {
 			rec, err := in.Read(ctx)
 			if err != nil && errors.Is(err, EOF) {
@@ -147,7 +147,3 @@ func (p *topkPipeline) Close() {
 		in.Close()
 	}
 }
-
-func (p *topkPipeline) Inputs() []Pipeline { return p.inputs }
-
-func (p *topkPipeline) Transport() Transport { return Local }

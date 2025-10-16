@@ -16,4 +16,5 @@ type Visitor interface {
 	VisitParse(*ParseNode) error
 	VisitCompat(*ColumnCompat) error
 	VisitTopK(*TopK) error
+	VisitParallelize(*Parallelize) error
 }
