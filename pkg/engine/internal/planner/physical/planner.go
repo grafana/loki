@@ -173,29 +173,46 @@ func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, baseNod
 				Location:  descriptor.Location,
 				StreamIDs: descriptor.Streams,
 				Section:   section,
-				Direction: ctx.direction,
 			}
 			p.plan.graph.Add(scan)
 			scans = append(scans, scan)
 		}
 	}
 	if len(scans) > 1 && ctx.direction != UNSORTED {
-		sortMerge := &SortMerge{
-			Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
-			Order:  ctx.direction, // apply direction from previously visited Sort node
+		// a single topK for overlapping scan nodes.
+		topK := &TopK{
+			SortBy:     newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+			Ascending:  ctx.direction == ASC, // apply direction from previously visited Sort node
+			NullsFirst: false,                // temporarily hardcoded.
 		}
-		p.plan.graph.Add(sortMerge)
+		p.plan.graph.Add(topK)
 		for _, scan := range scans {
-			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: sortMerge, Child: scan}); err != nil {
+			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: topK, Child: scan}); err != nil {
 				return err
 			}
 		}
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: baseNode, Child: sortMerge}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: baseNode, Child: topK}); err != nil {
 			return err
 		}
 	} else {
 		for _, scan := range scans {
-			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: baseNode, Child: scan}); err != nil {
+			child := scan
+			if ctx.direction != UNSORTED {
+				topK := &TopK{
+					SortBy:     newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+					Ascending:  ctx.direction == ASC, // apply direction from previously visited Sort node
+					NullsFirst: false,                // temporarily hardcoded.
+				}
+				p.plan.graph.Add(topK)
+
+				if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: topK, Child: scan}); err != nil {
+					return err
+				}
+
+				child = topK
+			}
+
+			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: baseNode, Child: child}); err != nil {
 				return err
 			}
 		}

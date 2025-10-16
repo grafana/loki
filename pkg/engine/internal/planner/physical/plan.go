@@ -18,6 +18,7 @@ const (
 	NodeTypeParse
 	NodeTypeMathExpression
 	NodeTypeCompat
+	NodeTypeTopK
 	NodeTypeParallelize
 )
 
@@ -45,6 +46,8 @@ func (t NodeType) String() string {
 		return "MathExpression"
 	case NodeTypeCompat:
 		return "Compat"
+	case NodeTypeTopK:
+		return "TopK"
 	case NodeTypeParallelize:
 		return "Parallelize"
 	default:
@@ -83,6 +86,7 @@ var _ Node = (*VectorAggregation)(nil)
 var _ Node = (*ParseNode)(nil)
 var _ Node = (*MathExpression)(nil)
 var _ Node = (*ColumnCompat)(nil)
+var _ Node = (*TopK)(nil)
 var _ Node = (*Parallelize)(nil)
 
 func (*DataObjScan) isNode()       {}
@@ -96,6 +100,7 @@ func (*VectorAggregation) isNode() {}
 func (*MathExpression) isNode()    {}
 func (*ParseNode) isNode()         {}
 func (*ColumnCompat) isNode()      {}
+func (*TopK) isNode()              {}
 func (*Parallelize) isNode()       {}
 
 // WalkOrder defines the order for how a node and its children are visited.
