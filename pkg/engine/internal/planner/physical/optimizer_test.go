@@ -1053,7 +1053,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 					parseNode = pn
 					continue
 				}
-				if pn, ok := node.(*DataObjScan); ok {
+				if pn, ok := node.(*ScanSet); ok {
 					for _, colExpr := range pn.Projections {
 						expr := colExpr.(*ColumnExpr)
 						projections[expr.Ref.Column] = struct{}{}

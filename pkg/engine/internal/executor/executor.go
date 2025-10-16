@@ -99,6 +99,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return tracePipeline("physical.ColumnCompat", c.executeColumnCompat(ctx, n, inputs))
 	case *physical.Parallelize:
 		return tracePipeline("physical.Parallelize", c.executeParallelize(ctx, n, inputs))
+	case *physical.ScanSet:
+		return tracePipeline("physical.ScanSet", c.executeScanSet(ctx, n))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
@@ -440,4 +442,42 @@ func (c *Context) executeParallelize(ctx context.Context, _ *physical.Paralleliz
 	// see an Parallelize node in the plan, we ignore it and immediately
 	// propagate up the input.
 	return inputs[0]
+}
+
+func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pipeline {
+	// ScanSet typically gets partitioned by the scheduler into multiple scan
+	// nodes.
+	//
+	// However, for locally testing unpartitioned pipelines, we still supprt
+	// running a ScanSet. In this case, we treat internally execute it as a
+	// Merge on top of multiple sequential scans.
+
+	var targets []Pipeline
+
+	for _, target := range set.Targets {
+		switch target.Type {
+		case physical.ScanTypeDataObject:
+			// Make sure projections and predicates get passed down to the
+			// individual scan.
+			partition := target.DataObject
+			partition.Predicates = set.Predicates
+			partition.Projections = set.Projections
+
+			targets = append(targets, newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
+				return tracePipeline("physical.DataObjScan", c.executeDataObjScan(ctx, partition))
+			}, nil))
+		default:
+			return errorPipeline(ctx, fmt.Errorf("unrecognized ScanSet target %s", target.Type))
+		}
+	}
+	if len(targets) == 0 {
+		return emptyPipeline()
+	}
+
+	pipeline, err := newMergePipeline(targets, c.mergePrefetchCount)
+	if err != nil {
+		return errorPipeline(ctx, err)
+	}
+
+	return pipeline
 }

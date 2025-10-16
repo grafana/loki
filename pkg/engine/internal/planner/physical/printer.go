@@ -92,6 +92,34 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("nulls_first", false, node.NullsFirst),
 			tree.NewProperty("k", false, node.K),
 		}
+	case *Parallelize:
+		// Nothing to add
+	case *ScanSet:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("num_targets", false, len(node.Targets)),
+		}
+
+		if len(node.Projections) > 0 {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("projections", true, toAnySlice(node.Projections)...))
+		}
+		for i := range node.Predicates {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
+		}
+
+		for _, target := range node.Targets {
+			properties := []tree.Property{
+				tree.NewProperty("type", false, target.Type.String()),
+			}
+
+			switch target.Type {
+			case ScanTypeDataObject:
+				// Create a child node to extract the properties of the target.
+				childNode := toTreeNode(target.DataObject)
+				properties = append(properties, childNode.Properties...)
+			}
+
+			treeNode.AddComment("@target", "", properties)
+		}
 	}
 	return treeNode
 }

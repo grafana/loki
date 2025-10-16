@@ -17,4 +17,5 @@ type Visitor interface {
 	VisitCompat(*ColumnCompat) error
 	VisitTopK(*TopK) error
 	VisitParallelize(*Parallelize) error
+	VisitScanSet(*ScanSet) error
 }

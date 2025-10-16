@@ -21,6 +21,7 @@ type nodeCollectVisitor struct {
 	onVisitVectorAggregation func(*VectorAggregation) error
 	onVisitParse             func(*ParseNode) error
 	onVisitParallelize       func(*Parallelize) error
+	onVisitScanSet           func(*ScanSet) error
 }
 
 func (v *nodeCollectVisitor) VisitDataObjScan(n *DataObjScan) error {
@@ -111,6 +112,14 @@ func (v *nodeCollectVisitor) VisitParallelize(n *Parallelize) error {
 		return v.onVisitParallelize(n)
 	}
 
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	return nil
+}
+
+func (v *nodeCollectVisitor) VisitScanSet(n *ScanSet) error {
+	if v.onVisitScanSet != nil {
+		return v.onVisitScanSet(n)
+	}
 	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
 	return nil
 }

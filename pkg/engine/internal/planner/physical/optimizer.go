@@ -79,6 +79,12 @@ func (r *predicatePushdown) apply(node Node) bool {
 
 func (r *predicatePushdown) applyPredicatePushdown(node Node, predicate Expression) bool {
 	switch node := node.(type) {
+	case *ScanSet:
+		if canApplyPredicate(predicate) {
+			node.Predicates = append(node.Predicates, predicate)
+			return true
+		}
+		return false
 	case *DataObjScan:
 		if canApplyPredicate(predicate) {
 			node.Predicates = append(node.Predicates, predicate)
@@ -224,6 +230,8 @@ func (r *projectionPushdown) applyProjectionPushdown(
 	applyIfNotEmpty bool,
 ) bool {
 	switch node := node.(type) {
+	case *ScanSet:
+		return r.handleScanSet(node, projections, applyIfNotEmpty)
 	case *DataObjScan:
 		return r.handleDataObjScan(node, projections, applyIfNotEmpty)
 	case *ParseNode:
@@ -236,6 +244,36 @@ func (r *projectionPushdown) applyProjectionPushdown(
 	}
 
 	return false
+}
+
+// handleScanSet handles projection pushdown for ScanSet nodes
+func (r *projectionPushdown) handleScanSet(node *ScanSet, projections []ColumnExpression, applyIfNotEmpty bool) bool {
+	shouldNotApply := len(projections) == 0 && applyIfNotEmpty
+	if !r.isMetricQuery() || shouldNotApply {
+		return false
+	}
+
+	// Add to scan projections if not already present
+	changed := false
+	for _, colExpr := range projections {
+		colExpr, ok := colExpr.(*ColumnExpr)
+		if !ok {
+			continue
+		}
+
+		var wasAdded bool
+		node.Projections, wasAdded = addUniqueProjection(node.Projections, colExpr)
+		if wasAdded {
+			changed = true
+		}
+	}
+
+	if changed {
+		// Sort projections by column name for deterministic order
+		slices.SortFunc(node.Projections, sortProjections)
+	}
+
+	return changed
 }
 
 // handleDataObjScan handles projection pushdown for DataObjScan nodes
