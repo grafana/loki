@@ -6,22 +6,19 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 )
 
-// TopK represents a logical plan node that performs top K operations.
+// TopK represents a logical plan node that performs topK operation.
 // It sorts rows based on sort expressions and limits the result to the top K rows.
 // This is equivalent to a SORT followed by a LIMIT operation.
 type TopK struct {
 	id string
 
-	Table Value // The table relation to sort and limit.
+	Table Value // The table relation to apply topK on.
 
-	// The column to sort by.
-	Column ColumnRef
-	// Whether to sort in ascending order.
-	Ascending bool
-	// Controls whether NULLs appear first (true) or last (false).
-	NullsFirst bool
-	// Number of top rows to return.
-	K int
+	// SortBy is the column to sort by.
+	SortBy     ColumnRef
+	Ascending  bool // Sort lines in ascending order if true.
+	NullsFirst bool // When true, considers NULLs < non-NULLs when sorting.
+	K          int  // Number of top rows to return.
 }
 
 var (
@@ -42,7 +39,7 @@ func (t *TopK) String() string {
 	return fmt.Sprintf(
 		"TOPK %s [column=%s, asc=%t, nulls_first=%t, k=%d]",
 		t.Table.Name(),
-		t.Column.String(),
+		t.SortBy.String(),
 		t.Ascending,
 		t.NullsFirst,
 		t.K,

@@ -89,11 +89,10 @@ func toTreeNode(n Node) *tree.Node {
 		}
 	case *TopK:
 		treeNode.Properties = []tree.Property{
-			tree.NewProperty("column", false, node.Column.String()),
+			tree.NewProperty("sort_by", false, node.SortBy.String()),
 			tree.NewProperty("ascending", false, node.Ascending),
 			tree.NewProperty("nulls_first", false, node.NullsFirst),
 			tree.NewProperty("k", false, node.K),
-			tree.NewProperty("max_unused", false, node.MaxUnused),
 		}
 	}
 	return treeNode

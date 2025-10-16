@@ -407,11 +407,10 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) 
 // Convert [logical.TopK] into one [TopK] node.
 func (p *Planner) processTopK(lp *logical.TopK, ctx *Context) ([]Node, error) {
 	node := &TopK{
-		Column:     &ColumnExpr{Ref: lp.Column.Ref},
+		SortBy:     &ColumnExpr{Ref: lp.SortBy.Ref},
 		Ascending:  lp.Ascending,
 		NullsFirst: lp.NullsFirst,
 		K:          lp.K,
-		MaxUnused:  1000, // Default value, can be made configurable
 	}
 	p.plan.graph.Add(node)
 	children, err := p.process(lp.Table, ctx)

@@ -99,3 +99,8 @@ func (v *nodeCollectVisitor) VisitParse(n *ParseNode) error {
 func (v *nodeCollectVisitor) VisitCompat(*ColumnCompat) error {
 	return nil
 }
+
+func (v *nodeCollectVisitor) VisitTopK(n *TopK) error {
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	return nil
+}

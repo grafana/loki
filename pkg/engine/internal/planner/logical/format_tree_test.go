@@ -62,9 +62,7 @@ SELECT <%4> table=%2 predicate=%3
 }
 
 func TestFormatTopKQuery(t *testing.T) {
-	// Build a query plan for this query with TopK:
-	//
-	// { app="users" } | topk(10, timestamp desc)
+	// Build a logical plan with TopK:
 	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
@@ -75,7 +73,6 @@ func TestFormatTopKQuery(t *testing.T) {
 		},
 	).TopK(*NewColumnRef("timestamp", types.ColumnTypeBuiltin), false, false, 10)
 
-	// Convert to plan so that node IDs get populated
 	plan, err := b.ToPlan()
 	require.NoError(t, err)
 
@@ -138,42 +135,6 @@ SORT <%5> table=%4 column=metadata.age direction=asc nulls=last
                 ├── ColumnRef column=app type=label
                 └── Literal value="users" kind=utf8
 `
-	require.Equal(t, expected, actual)
-}
-
-func TestFormatTopKQuery(t *testing.T) {
-	// Build a query plan for this query with TopK:
-	//
-	// { app="users" } | topk(10, timestamp desc)
-	b := NewBuilder(
-		&MakeTable{
-			Selector: &BinOp{
-				Left:  NewColumnRef("app", types.ColumnTypeLabel),
-				Right: NewLiteral("users"),
-				Op:    types.BinaryOpEq,
-			},
-		},
-	).TopK(*NewColumnRef("timestamp", types.ColumnTypeBuiltin), false, false, 10)
-
-	// Convert to plan so that node IDs get populated
-	plan, err := b.ToPlan()
-	require.NoError(t, err)
-
-	var sb strings.Builder
-	PrintTree(&sb, plan.Value())
-
-	actual := "\n" + sb.String()
-	t.Logf("Actual output:\n%s", actual)
-
-	expected := `
-TOPK <%3> table=%2 column=builtin.timestamp direction=desc nulls=last k=10
-│   └── ColumnRef column=timestamp type=builtin
-└── MAKETABLE <%2> selector=EQ label.app "users"
-        └── BinOp <%1> op=EQ left=label.app right="users"
-            ├── ColumnRef column=app type=label
-            └── Literal value="users" kind=utf8
-`
-
 	require.Equal(t, expected, actual)
 }
 
@@ -265,42 +226,6 @@ func TestFormatVectorAggregationQuery(t *testing.T) {
 VectorAggregation <%3> table=%2 operation=sum group_by=(label.app, label.env)
 │   ├── ColumnRef column=app type=label
 │   └── ColumnRef column=env type=label
-└── MAKETABLE <%2> selector=EQ label.app "users"
-        └── BinOp <%1> op=EQ left=label.app right="users"
-            ├── ColumnRef column=app type=label
-            └── Literal value="users" kind=utf8
-`
-
-	require.Equal(t, expected, actual)
-}
-
-func TestFormatTopKQuery(t *testing.T) {
-	// Build a query plan for this query with TopK:
-	//
-	// { app="users" } | topk(10, timestamp desc)
-	b := NewBuilder(
-		&MakeTable{
-			Selector: &BinOp{
-				Left:  NewColumnRef("app", types.ColumnTypeLabel),
-				Right: NewLiteral("users"),
-				Op:    types.BinaryOpEq,
-			},
-		},
-	).TopK(*NewColumnRef("timestamp", types.ColumnTypeBuiltin), false, false, 10)
-
-	// Convert to plan so that node IDs get populated
-	plan, err := b.ToPlan()
-	require.NoError(t, err)
-
-	var sb strings.Builder
-	PrintTree(&sb, plan.Value())
-
-	actual := "\n" + sb.String()
-	t.Logf("Actual output:\n%s", actual)
-
-	expected := `
-TOPK <%3> table=%2 column=builtin.timestamp direction=desc nulls=last k=10
-│   └── ColumnRef column=timestamp type=builtin
 └── MAKETABLE <%2> selector=EQ label.app "users"
         └── BinOp <%1> op=EQ left=label.app right="users"
             ├── ColumnRef column=app type=label

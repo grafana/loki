@@ -99,11 +99,11 @@ func (b *Builder) VectorAggregation(
 }
 
 // TopK applies a [TopK] operation to the Builder.
-func (b *Builder) TopK(column ColumnRef, ascending, nullsFirst bool, k int) *Builder {
+func (b *Builder) TopK(sortBy ColumnRef, ascending, nullsFirst bool, k int) *Builder {
 	return &Builder{
 		val: &TopK{
 			Table:      b.val,
-			Column:     column,
+			SortBy:     sortBy,
 			Ascending:  ascending,
 			NullsFirst: nullsFirst,
 			K:          k,
