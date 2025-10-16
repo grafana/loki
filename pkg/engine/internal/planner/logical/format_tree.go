@@ -103,29 +103,6 @@ func (t *treeFormatter) convertSort(ast *Sort) *tree.Node {
 	return node
 }
 
-func (t *treeFormatter) convertTopK(ast *TopK) *tree.Node {
-	direction := "asc"
-	if !ast.Ascending {
-		direction = "desc"
-	}
-
-	nullsPosition := "last"
-	if ast.NullsFirst {
-		nullsPosition = "first"
-	}
-
-	node := tree.NewNode("TOPK", ast.Name(),
-		tree.NewProperty("table", false, ast.Table.Name()),
-		tree.NewProperty("column", false, ast.SortBy.Name()),
-		tree.NewProperty("direction", false, direction),
-		tree.NewProperty("nulls", false, nullsPosition),
-		tree.NewProperty("k", false, ast.K),
-	)
-	node.Comments = append(node.Comments, t.convert(&ast.SortBy))
-	node.Children = append(node.Children, t.convert(ast.Table))
-	return node
-}
-
 func (t *treeFormatter) convertUnaryOp(expr *UnaryOp) *tree.Node {
 	node := tree.NewNode("UnaryOp", expr.Name(),
 		tree.NewProperty("op", false, expr.Op.String()),
