@@ -29,7 +29,7 @@ local imageJobs = {
   'loki-canary': build.image('loki-canary', 'cmd/loki-canary', platform=platforms.all),
   'loki-canary-boringcrypto': build.image('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto', platform=platforms.all),
   promtail: build.image('promtail', 'clients/cmd/promtail', platform=platforms.all),
-  querytee: build.image('loki-query-tee', 'cmd/querytee', platform=platforms.all),
+  querytee: build.image('loki-query-tee', 'cmd/querytee', platform=[r.forPlatform('linux/amd64'), r.forPlatform('linux/arm64')]),
   'loki-docker-driver': build.dockerPlugin('loki-docker-driver', dockerPluginDir, buildImage=buildImage, platform=[r.forPlatform('linux/amd64'), r.forPlatform('linux/arm64')]),
 };
 
@@ -38,7 +38,6 @@ local weeklyImageJobs = {
   'loki-canary': build.weeklyImage('loki-canary', 'cmd/loki-canary', platform=platforms.all),
   'loki-canary-boringcrypto': build.weeklyImage('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto', platform=platforms.all),
   promtail: build.weeklyImage('promtail', 'clients/cmd/promtail', platform=platforms.all),
-  'loki-query-tee': build.weeklyImage('loki-query-tee', 'cmd/querytee', dockerfile='Dockerfile.cross', platform=platforms.all),
 };
 
 {

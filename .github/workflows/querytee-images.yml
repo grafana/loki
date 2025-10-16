@@ -34,12 +34,8 @@ jobs:
           - arch: linux/arm64
             runs_on:
               - github-hosted-ubuntu-arm64-small
-          - arch: linux/arm
-            runs_on:
-              - github-hosted-ubuntu-arm64-small
     outputs:
       image_digest_linux_amd64: ${{ steps.digest.outputs.digest_linux_amd64 }}
-      image_digest_linux_arm: ${{ steps.digest.outputs.digest_linux_arm }}
       image_digest_linux_arm64: ${{ steps.digest.outputs.digest_linux_arm64 }}
       image_name: ${{ steps.pr-version.outputs.image_name }}
       image_tag: ${{ steps.pr-version.outputs.image_version }}
@@ -101,7 +97,6 @@ jobs:
       id-token: write
     env:
       IMAGE_DIGEST_AMD64: ${{ needs.loki-query-tee-image.outputs.image_digest_linux_amd64 }}
-      IMAGE_DIGEST_ARM: ${{ needs.loki-query-tee-image.outputs.image_digest_linux_arm }}
       IMAGE_DIGEST_ARM64: ${{ needs.loki-query-tee-image.outputs.image_digest_linux_arm64 }}
       OUTPUTS_IMAGE_NAME: ${{ needs.loki-query-tee-image.outputs.image_name }}
       OUTPUTS_IMAGE_TAG: ${{ needs.loki-query-tee-image.outputs.image_tag }}
@@ -117,13 +112,11 @@ jobs:
           # Unfortunately there is no better way atm than having a separate named output for each digest
           echo "linux/arm64 $IMAGE_DIGEST_ARM64"
           echo "linux/amd64 $IMAGE_DIGEST_AMD64"
-          echo "linux/arm   $IMAGE_DIGEST_ARM"
           IMAGE="${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
           echo "Create multi-arch manifest for $IMAGE"
           docker buildx imagetools create -t $IMAGE \
             ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
-            ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_AMD64} \
-            ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM}
+            ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_AMD64}
           docker buildx imagetools inspect $IMAGE
 
       - name: Print image info
