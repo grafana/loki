@@ -4849,6 +4849,15 @@ engine_v2:
   # CLI flag: -querier.engine-v2.enable
   [enable: <boolean> | default = false]
 
+  # Amount of time until data objects are available.
+  # CLI flag: -querier.engine-v2.dataobj-storage-lag
+  [dataobj_storage_lag: <duration> | default = 1h]
+
+  # Initial date when data objects became available. Format YYYY-MM-DD. If not
+  # set, assume data objects are always available no matter how far back.
+  # CLI flag: -querier.engine-v2.dataobj-storage-start
+  [dataobj_storage_start: <time> | default = 0]
+
   # Experimental: Batch size of the next generation query engine.
   # CLI flag: -querier.engine-v2.batch-size
   [batch_size: <int> | default = 100]

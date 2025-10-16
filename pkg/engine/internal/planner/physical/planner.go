@@ -169,29 +169,46 @@ func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, baseNod
 				Location:  descriptor.Location,
 				StreamIDs: descriptor.Streams,
 				Section:   section,
-				Direction: ctx.direction,
 			}
 			p.plan.graph.Add(scan)
 			scans = append(scans, scan)
 		}
 	}
 	if len(scans) > 1 && ctx.direction != UNSORTED {
-		sortMerge := &SortMerge{
-			Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
-			Order:  ctx.direction, // apply direction from previously visited Sort node
+		// a single topK for overlapping scan nodes.
+		topK := &TopK{
+			SortBy:     newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+			Ascending:  ctx.direction == ASC, // apply direction from previously visited Sort node
+			NullsFirst: false,                // temporarily hardcoded.
 		}
-		p.plan.graph.Add(sortMerge)
+		p.plan.graph.Add(topK)
 		for _, scan := range scans {
-			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: sortMerge, Child: scan}); err != nil {
+			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: topK, Child: scan}); err != nil {
 				return err
 			}
 		}
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: baseNode, Child: sortMerge}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: baseNode, Child: topK}); err != nil {
 			return err
 		}
 	} else {
 		for _, scan := range scans {
-			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: baseNode, Child: scan}); err != nil {
+			child := scan
+			if ctx.direction != UNSORTED {
+				topK := &TopK{
+					SortBy:     newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+					Ascending:  ctx.direction == ASC, // apply direction from previously visited Sort node
+					NullsFirst: false,                // temporarily hardcoded.
+				}
+				p.plan.graph.Add(topK)
+
+				if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: topK, Child: scan}); err != nil {
+					return err
+				}
+
+				child = topK
+			}
+
+			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: baseNode, Child: child}); err != nil {
 				return err
 			}
 		}
@@ -245,10 +262,15 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 		slices.Reverse(groups)
 	}
 
-	var node Node = &Merge{}
-	p.plan.graph.Add(node)
+	// Scan work can be parallelized across multiple workers, so we wrap
+	// everything into a single Parallelize node.
+	var parallelize Node = &Parallelize{}
+	p.plan.graph.Add(parallelize)
+
+	var merge Node = &Merge{}
+	p.plan.graph.Add(merge)
 	for _, gr := range groups {
-		if err := p.buildNodeGroup(gr, node, ctx); err != nil {
+		if err := p.buildNodeGroup(gr, merge, ctx); err != nil {
 			return nil, err
 		}
 	}
@@ -259,13 +281,18 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 			Destination: types.ColumnTypeMetadata,
 			Collision:   types.ColumnTypeLabel,
 		}
-		node, err = p.wrapNodeWith(node, compat)
+		merge, err = p.wrapNodeWith(merge, compat)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return []Node{node}, nil
+	// Add an edge between the parallelize and the final merge node (which may
+	// have been changed after processing compatibility).
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: merge}); err != nil {
+		return nil, err
+	}
+	return []Node{parallelize}, nil
 }
 
 // Convert [logical.Select] into one [Filter] node.
