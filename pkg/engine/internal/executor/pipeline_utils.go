@@ -50,15 +50,3 @@ func (p *BufferedPipeline) Close() {
 	}
 	p.records = nil
 }
-
-// Inputs implements Pipeline.
-// CSV pipeline is a source, so it has no inputs.
-func (p *BufferedPipeline) Inputs() []Pipeline {
-	return nil
-}
-
-// Transport implements Pipeline.
-// CSVPipeline is always considered a Local transport.
-func (p *BufferedPipeline) Transport() Transport {
-	return Local
-}

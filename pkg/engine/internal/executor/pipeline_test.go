@@ -74,15 +74,6 @@ func TestCSVPipeline(t *testing.T) {
 	pipeline := NewBufferedPipeline(record1, record2)
 	defer pipeline.Close()
 
-	// Test pipeline behavior
-	t.Run("should have correct transport type", func(t *testing.T) {
-		require.Equal(t, Local, pipeline.Transport())
-	})
-
-	t.Run("should have no inputs", func(t *testing.T) {
-		require.Empty(t, pipeline.Inputs())
-	})
-
 	t.Run("should return records in order", func(t *testing.T) {
 		ctx := t.Context()
 
@@ -117,12 +108,6 @@ type instrumentedPipeline struct {
 	callCount map[string]int
 }
 
-// Inputs implements Pipeline.
-func (i *instrumentedPipeline) Inputs() []Pipeline {
-	i.callCount["Inputs"]++
-	return i.inner.Inputs()
-}
-
 // Close implements Pipeline.
 func (i *instrumentedPipeline) Close() {
 	i.callCount["Close"]++
@@ -133,12 +118,6 @@ func (i *instrumentedPipeline) Close() {
 func (i *instrumentedPipeline) Read(ctx context.Context) (arrow.Record, error) {
 	i.callCount["Read"]++
 	return i.inner.Read(ctx)
-}
-
-// Transport implements Pipeline.
-func (i *instrumentedPipeline) Transport() Transport {
-	i.callCount["Transport"]++
-	return i.inner.Transport()
 }
 
 var _ Pipeline = (*instrumentedPipeline)(nil)

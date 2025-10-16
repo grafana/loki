@@ -118,13 +118,3 @@ func (m *Merge) Close() {
 		input.Close()
 	}
 }
-
-// Inputs returns the inputs of the pipeline.
-func (m *Merge) Inputs() []Pipeline {
-	return m.inputs
-}
-
-// Transport returns the type of transport of the implementation.
-func (m *Merge) Transport() Transport {
-	return Local
-}
