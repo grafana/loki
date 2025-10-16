@@ -318,11 +318,11 @@ func GetPDBMinAvailable(opts Options) intstr.IntOrString {
 	if opts.Stack.Replication != nil && opts.Stack.Replication.Factor != 0 {
 		rf := opts.Stack.Replication.Factor
 		if opts.Stack.Template.Ingester.Replicas <= rf {
-			// scale up replicas temporarily to create a spare pod for rolling updates
+			// scale up replicas to create a enough pods for rolling updates
 			opts.Stack.Template.Ingester.Replicas = rf + 1
-			returnedMinAvailablePods := opts.Stack.Template.Ingester.Replicas
-			opts.Stack.Template.Ingester.Replicas -= 1
-			return intstr.FromInt32(returnedMinAvailablePods)
+			//returnedMinAvailablePods := opts.Stack.Template.Ingester.Replicas
+			//opts.Stack.Template.Ingester.Replicas -= 1
+			return intstr.FromInt32(opts.Stack.Template.Ingester.Replicas)
 		}
 		return intstr.FromInt32(rf)
 	}
