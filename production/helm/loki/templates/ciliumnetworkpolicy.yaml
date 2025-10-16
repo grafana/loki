@@ -36,10 +36,9 @@ spec:
       toPorts:
         - ports:
             - port: "53"
+              protocol: TCP
+            - port: "53"
               protocol: UDP
-          rules:
-            dns:
-              - matchPattern: "*"
 
 ---
 apiVersion: cilium.io/v2
