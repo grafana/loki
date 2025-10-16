@@ -610,3 +610,65 @@ func TestPlanner_OverlappingShardDescriptors(t *testing.T) {
 		})
 	}
 }
+
+func TestPlanner_Convert_WithTopK(t *testing.T) {
+	t.Run("Build a query plan for a log query with TopK", func(t *testing.T) {
+		// Build a query plan with TopK:
+		// { app="users" } | topk(10, timestamp desc)
+		b := logical.NewBuilder(
+			&logical.MakeTable{
+				Selector: &logical.BinOp{
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+					Right: logical.NewLiteral("users"),
+					Op:    types.BinaryOpEq,
+				},
+				Shard: logical.NewShard(0, 1),
+			},
+		).TopK(
+			*logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
+			false, // descending
+			false, // nulls last
+			10,    // k=10
+		).Compat(true)
+
+		logicalPlan, err := b.ToPlan()
+		require.NoError(t, err)
+
+		catalog := &catalog{
+			sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+				{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0}, StreamIDs: []int64{1, 2}, Start: time.Now(), End: time.Now().Add(time.Second * 10)},
+			},
+		}
+		planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
+
+		physicalPlan, err := planner.Build(logicalPlan)
+		t.Logf("Physical plan\n%s\n", PrintAsTree(physicalPlan))
+		require.NoError(t, err)
+
+		// Verify TopK node exists in correct position
+		root, err := physicalPlan.Root()
+		require.NoError(t, err)
+
+		// Physical plan is built bottom up, so it should be TopK -> ...
+		topkNode, ok := root.(*TopK)
+		require.True(t, ok, "Root should be TopK")
+		require.Equal(t, 10, topkNode.K)
+		require.False(t, topkNode.Ascending)
+		require.False(t, topkNode.NullsFirst)
+		require.Equal(t, 1000, topkNode.MaxUnused) // default value
+
+		// Verify the column expression
+		columnExpr, ok := topkNode.Column.(*ColumnExpr)
+		require.True(t, ok, "Column should be ColumnExpr")
+		require.Equal(t, "timestamp", columnExpr.Ref.Column)
+		require.Equal(t, types.ColumnTypeBuiltin, columnExpr.Ref.Type)
+
+		// Verify children
+		children := physicalPlan.Children(topkNode)
+		require.Len(t, children, 1)
+
+		compatNode, ok := children[0].(*ColumnCompat)
+		require.True(t, ok, "TopK's child should be ColumnCompat")
+		require.Equal(t, types.ColumnTypeMetadata, compatNode.Source)
+	})
+}

@@ -60,3 +60,46 @@ RETURN %5
 		require.Equal(t, strings.TrimSpace(line), strings.TrimSpace(ssaLines[i]), fmt.Sprintf("Mismatch at line %d", i+1))
 	}
 }
+
+func TestPlan_String_WithTopK(t *testing.T) {
+	// Build a query plan for this query with TopK:
+	//
+	// { app="users" } | topk(10, timestamp desc)
+	b := NewBuilder(
+		&MakeTable{
+			Selector: &BinOp{
+				Left:  NewColumnRef("app", types.ColumnTypeLabel),
+				Right: NewLiteral("users"),
+				Op:    types.BinaryOpEq,
+			},
+			Shard: noShard,
+		},
+	).TopK(*NewColumnRef("timestamp", types.ColumnTypeBuiltin), false, false, 10)
+
+	// Convert to SSA
+	ssaForm, err := b.ToPlan()
+	require.NoError(t, err)
+	require.NotNil(t, ssaForm)
+
+	t.Logf("SSA Form:\n%s", ssaForm.String())
+
+	// Define expected output
+	exp := `
+%1 = EQ label.app "users"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = TOPK %2 [column=builtin.timestamp, asc=false, nulls_first=false, k=10]
+RETURN %3
+`
+	exp = strings.TrimSpace(exp)
+
+	// Get the actual output without the RETURN statement
+	ssaOutput := ssaForm.String()
+	ssaLines := strings.Split(strings.TrimSpace(ssaOutput), "\n")
+
+	expLines := strings.Split(exp, "\n")
+	require.Equal(t, len(expLines), len(ssaLines), "Expected and actual SSA output line counts do not match")
+
+	for i, line := range expLines {
+		require.Equal(t, strings.TrimSpace(line), strings.TrimSpace(ssaLines[i]), fmt.Sprintf("Mismatch at line %d", i+1))
+	}
+}

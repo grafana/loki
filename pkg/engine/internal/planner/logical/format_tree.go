@@ -33,6 +33,8 @@ func (t *treeFormatter) convert(value Value) *tree.Node {
 		return t.convertRangeAggregation(value)
 	case *VectorAggregation:
 		return t.convertVectorAggregation(value)
+	case *TopK:
+		return t.convertTopK(value)
 
 	case *UnaryOp:
 		return t.convertUnaryOp(value)
@@ -95,6 +97,29 @@ func (t *treeFormatter) convertSort(ast *Sort) *tree.Node {
 		tree.NewProperty("column", false, ast.Column.Name()),
 		tree.NewProperty("direction", false, direction),
 		tree.NewProperty("nulls", false, nullsPosition),
+	)
+	node.Comments = append(node.Comments, t.convert(&ast.Column))
+	node.Children = append(node.Children, t.convert(ast.Table))
+	return node
+}
+
+func (t *treeFormatter) convertTopK(ast *TopK) *tree.Node {
+	direction := "asc"
+	if !ast.Ascending {
+		direction = "desc"
+	}
+
+	nullsPosition := "last"
+	if ast.NullsFirst {
+		nullsPosition = "first"
+	}
+
+	node := tree.NewNode("TOPK", ast.Name(),
+		tree.NewProperty("table", false, ast.Table.Name()),
+		tree.NewProperty("column", false, ast.Column.Name()),
+		tree.NewProperty("direction", false, direction),
+		tree.NewProperty("nulls", false, nullsPosition),
+		tree.NewProperty("k", false, ast.K),
 	)
 	node.Comments = append(node.Comments, t.convert(&ast.Column))
 	node.Children = append(node.Children, t.convert(ast.Table))

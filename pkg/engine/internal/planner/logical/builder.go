@@ -98,6 +98,19 @@ func (b *Builder) VectorAggregation(
 	}
 }
 
+// TopK applies a [TopK] operation to the Builder.
+func (b *Builder) TopK(column ColumnRef, ascending, nullsFirst bool, k int) *Builder {
+	return &Builder{
+		val: &TopK{
+			Table:      b.val,
+			Column:     column,
+			Ascending:  ascending,
+			NullsFirst: nullsFirst,
+			K:          k,
+		},
+	}
+}
+
 // Compat applies a [LogQLCompat] operation to the Builder, which is a marker to ensure v1 engine compatible results.
 func (b *Builder) Compat(logqlCompatibility bool) *Builder {
 	if logqlCompatibility {

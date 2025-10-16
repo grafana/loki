@@ -156,6 +156,8 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 	case *logical.LogQLCompat:
 		p.context.v1Compatible = true
 		return p.process(inst.Value, ctx)
+	case *logical.TopK:
+		return p.processTopK(inst, ctx)
 	}
 	return nil, nil
 }
@@ -399,6 +401,28 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) 
 		}
 	}
 
+	return []Node{node}, nil
+}
+
+// Convert [logical.TopK] into one [TopK] node.
+func (p *Planner) processTopK(lp *logical.TopK, ctx *Context) ([]Node, error) {
+	node := &TopK{
+		Column:     &ColumnExpr{Ref: lp.Column.Ref},
+		Ascending:  lp.Ascending,
+		NullsFirst: lp.NullsFirst,
+		K:          lp.K,
+		MaxUnused:  1000, // Default value, can be made configurable
+	}
+	p.plan.graph.Add(node)
+	children, err := p.process(lp.Table, ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range children {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
+			return nil, err
+		}
+	}
 	return []Node{node}, nil
 }
 
