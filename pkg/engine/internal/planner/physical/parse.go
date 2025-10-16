@@ -2,6 +2,7 @@ package physical
 
 import (
 	"fmt"
+	"slices"
 )
 
 // ParseNode represents a parsing operation in the physical plan.
@@ -38,6 +39,15 @@ func (n *ParseNode) ID() string {
 		return n.id
 	}
 	return fmt.Sprintf("%p", n)
+}
+
+// Clone creates a copy of n.
+func (n *ParseNode) Clone() Node {
+	return &ParseNode{
+		id:            n.id,
+		Kind:          n.Kind,
+		RequestedKeys: slices.Clone(n.RequestedKeys),
+	}
 }
 
 // Type returns the node type

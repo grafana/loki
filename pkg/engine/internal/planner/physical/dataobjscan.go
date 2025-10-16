@@ -1,6 +1,9 @@
 package physical
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 // DataObjLocation is a string that uniquely indentifies a data object location in
 // object storage.
@@ -37,6 +40,17 @@ func (s *DataObjScan) ID() string {
 		return fmt.Sprintf("%p", s)
 	}
 	return s.id
+}
+
+// Clone returns a deep copy of the node (minus its ID).
+func (s *DataObjScan) Clone() Node {
+	return &DataObjScan{
+		Location:    s.Location,
+		Section:     s.Section,
+		StreamIDs:   slices.Clone(s.StreamIDs),
+		Projections: cloneExpressions(s.Projections),
+		Predicates:  cloneExpressions(s.Predicates),
+	}
 }
 
 // Type implements the [Node] interface.

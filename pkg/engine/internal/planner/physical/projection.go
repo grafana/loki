@@ -23,6 +23,13 @@ func (p *Projection) ID() string {
 	return p.id
 }
 
+// Clone returns a deep copy of the node (minus its ID).
+func (p *Projection) Clone() Node {
+	return &Projection{
+		Columns: cloneExpressions(p.Columns),
+	}
+}
+
 // Type implements the [Node] interface.
 // Returns the type of the node.
 func (*Projection) Type() NodeType {
