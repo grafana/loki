@@ -106,8 +106,6 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	ctx, span := tracer.Start(ctx, "Context.executeDataObjScan", trace.WithAttributes(
 		attribute.String("location", string(node.Location)),
 		attribute.Int("section", node.Section),
-		attribute.Stringer("direction", node.Direction),
-		attribute.Int("limit", int(node.Limit)),
 		attribute.Int("num_stream_ids", len(node.StreamIDs)),
 		attribute.Int("num_predicates", len(node.Predicates)),
 		attribute.Int("num_projections", len(node.Projections)),

@@ -171,7 +171,6 @@ func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, baseNod
 				Location:  descriptor.Location,
 				StreamIDs: descriptor.Streams,
 				Section:   section,
-				Direction: ctx.direction,
 			}
 			p.plan.graph.Add(scan)
 			scans = append(scans, scan)
@@ -461,6 +460,9 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			),
 			newOptimization("CleanupFilters", plan).withRules(
 				&removeNoopFilter{plan: plan},
+			),
+			newOptimization("FilterNodePushdown", plan).withRules(
+				newFilterNodePushdown(plan),
 			),
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},

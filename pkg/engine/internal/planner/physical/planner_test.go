@@ -485,10 +485,10 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		merge := expectedPlan.graph.Add(&Merge{id: "merge"})
 		topK1 := expectedPlan.graph.Add(&TopK{id: "topk1", SortBy: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}, Ascending: true})
 		topK2 := expectedPlan.graph.Add(&TopK{id: "topk2", SortBy: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}, Ascending: true})
-		scan1 := expectedPlan.graph.Add(&DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}, Direction: ASC})
-		scan2 := expectedPlan.graph.Add(&DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}, Direction: ASC})
-		scan3 := expectedPlan.graph.Add(&DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, Direction: ASC})
-		scan4 := expectedPlan.graph.Add(&DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, Direction: ASC})
+		scan1 := expectedPlan.graph.Add(&DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}})
+		scan2 := expectedPlan.graph.Add(&DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}})
+		scan3 := expectedPlan.graph.Add(&DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}})
+		scan4 := expectedPlan.graph.Add(&DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}})
 
 		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: compat, Child: merge})
 		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: topK1})
@@ -521,10 +521,10 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		merge := expectedPlan.graph.Add(&Merge{id: "merge"})
 		topK1 := expectedPlan.graph.Add(&TopK{id: "topk1", SortBy: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}, Ascending: false})
 		topK2 := expectedPlan.graph.Add(&TopK{id: "topk2", SortBy: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}, Ascending: false})
-		scan1 := expectedPlan.graph.Add(&DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}, Direction: DESC})
-		scan2 := expectedPlan.graph.Add(&DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}, Direction: DESC})
-		scan3 := expectedPlan.graph.Add(&DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, Direction: DESC})
-		scan4 := expectedPlan.graph.Add(&DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, Direction: DESC})
+		scan1 := expectedPlan.graph.Add(&DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}})
+		scan2 := expectedPlan.graph.Add(&DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}})
+		scan3 := expectedPlan.graph.Add(&DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}})
+		scan4 := expectedPlan.graph.Add(&DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}})
 
 		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: compat, Child: merge})
 		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: topK1})
@@ -609,47 +609,4 @@ func TestPlanner_OverlappingShardDescriptors(t *testing.T) {
 			require.Equal(t, tt.groups, len(groups))
 		})
 	}
-}
-
-func TestPlanner_Build_topK(t *testing.T) {
-	b := logical.NewBuilder(
-		&logical.MakeTable{
-			Selector: &logical.BinOp{
-				Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
-				Right: logical.NewLiteral("users"),
-				Op:    types.BinaryOpEq,
-			},
-			Shard: logical.NewShard(0, 1),
-		},
-	).TopK(
-		*logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
-		false, // descending
-		false, // nulls last
-		10,    // k=10
-	)
-	logicalPlan, err := b.ToPlan()
-	require.NoError(t, err)
-
-	catalog := &catalog{
-		sectionDescriptors: []*metastore.DataobjSectionDescriptor{
-			{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0}, StreamIDs: []int64{1, 2}, Start: time.Now(), End: time.Now().Add(time.Second * 10)},
-		},
-	}
-	planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
-
-	physicalPlan, err := planner.Build(logicalPlan)
-	require.NoError(t, err)
-
-	expected := &Plan{}
-	scan := expected.graph.Add(&DataObjScan{Location: "obj1", Section: 0, StreamIDs: []int64{1, 2}})
-	topK := expected.graph.Add(&TopK{
-		SortBy:     newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-		K:          10,
-		Ascending:  false,
-		NullsFirst: false,
-	})
-	expected.graph.AddEdge(dag.Edge[Node]{Parent: topK, Child: scan})
-
-	actual := PrintAsTree(physicalPlan)
-	require.Equal(t, PrintAsTree(expected), actual)
 }

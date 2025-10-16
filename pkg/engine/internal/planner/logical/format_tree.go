@@ -114,7 +114,7 @@ func (t *treeFormatter) convertTopK(ast *TopK) *tree.Node {
 		nullsPosition = "first"
 	}
 
-	node := tree.NewNode("TopK", ast.Name(),
+	node := tree.NewNode("TOPK", ast.Name(),
 		tree.NewProperty("table", false, ast.Table.Name()),
 		tree.NewProperty("column", false, ast.SortBy.Name()),
 		tree.NewProperty("direction", false, direction),

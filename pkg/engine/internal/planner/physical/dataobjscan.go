@@ -29,10 +29,6 @@ type DataObjScan struct {
 	// returned. Predicates would almost always contain a time range filter to
 	// only read the logs for the requested time range.
 	Predicates []Expression
-	// Direction defines in what order columns are read.
-	Direction SortOrder
-	// Limit is used to stop scanning the data object once it is reached.
-	Limit uint32
 }
 
 // ID implements the [Node] interface.

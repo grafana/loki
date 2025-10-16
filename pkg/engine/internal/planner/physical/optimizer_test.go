@@ -554,6 +554,8 @@ func TestOptimizer(t *testing.T) {
 		{
 			scan1 := plan.graph.Add(&DataObjScan{id: "scan1"})
 			scan2 := plan.graph.Add(&DataObjScan{id: "scan2"})
+			topK1 := plan.graph.Add(&TopK{id: "topK1", SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
+			topK2 := plan.graph.Add(&TopK{id: "topK2", SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
 			filter := plan.graph.Add(&Filter{
 				id:         "filter1",
 				Predicates: filterPredicates,
@@ -561,8 +563,39 @@ func TestOptimizer(t *testing.T) {
 			limit := plan.graph.Add(&Limit{id: "limit1", Fetch: 100})
 
 			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: filter})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scan1})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scan2})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: topK1})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: topK2})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: topK1, Child: scan1})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: topK2, Child: scan2})
+		}
+		orig := PrintAsTree(plan)
+
+		// apply optimisations
+		optimizations := []*optimization{
+			newOptimization("limit pushdown", plan).withRules(
+				&limitPushdown{plan: plan},
+			),
+		}
+		o := newOptimizer(plan, optimizations)
+		o.optimize(plan.Roots()[0])
+
+		actual := PrintAsTree(plan)
+		require.Equal(t, orig, actual)
+	})
+
+	t.Run("limit pushdown without filter should propagate limit to child nodes", func(t *testing.T) {
+		plan := &Plan{}
+		{
+			scan1 := plan.graph.Add(&DataObjScan{id: "scan1"})
+			scan2 := plan.graph.Add(&DataObjScan{id: "scan2"})
+			topK1 := plan.graph.Add(&TopK{id: "topK1", SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
+			topK2 := plan.graph.Add(&TopK{id: "topK2", SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
+			limit := plan.graph.Add(&Limit{id: "limit1", Fetch: 100})
+
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: topK1, Child: scan1})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: topK2, Child: scan2})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: topK1})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: topK2})
 		}
 
 		// apply optimisations
@@ -578,50 +611,14 @@ func TestOptimizer(t *testing.T) {
 		{
 			scan1 := expectedPlan.graph.Add(&DataObjScan{id: "scan1"})
 			scan2 := expectedPlan.graph.Add(&DataObjScan{id: "scan2"})
-			filter := expectedPlan.graph.Add(&Filter{
-				id:         "filter1",
-				Predicates: filterPredicates,
-			})
+			topK1 := expectedPlan.graph.Add(&TopK{id: "topK1", SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin), K: 100})
+			topK2 := expectedPlan.graph.Add(&TopK{id: "topK2", SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin), K: 100})
 			limit := expectedPlan.graph.Add(&Limit{id: "limit1", Fetch: 100})
 
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: filter})
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scan1})
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scan2})
-		}
-
-		actual := PrintAsTree(plan)
-		expected := PrintAsTree(expectedPlan)
-		require.Equal(t, expected, actual)
-	})
-
-	t.Run("limit pushdown without filter should propagate limit to child nodes", func(t *testing.T) {
-		plan := &Plan{}
-		{
-			scan1 := plan.graph.Add(&DataObjScan{id: "scan1"})
-			scan2 := plan.graph.Add(&DataObjScan{id: "scan2"})
-			limit := plan.graph.Add(&Limit{id: "limit1", Fetch: 100})
-
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: scan1})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: scan2})
-		}
-
-		// apply optimisations
-		optimizations := []*optimization{
-			newOptimization("limit pushdown", plan).withRules(
-				&limitPushdown{plan: plan},
-			),
-		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
-
-		expectedPlan := &Plan{}
-		{
-			scan1 := expectedPlan.graph.Add(&DataObjScan{id: "scan1", Limit: 100})
-			scan2 := expectedPlan.graph.Add(&DataObjScan{id: "scan2", Limit: 100})
-			limit := expectedPlan.graph.Add(&Limit{id: "limit1", Fetch: 100})
-
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: scan1})
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: scan2})
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: topK1})
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: topK2})
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: topK1, Child: scan1})
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: topK2, Child: scan2})
 		}
 
 		actual := PrintAsTree(plan)
@@ -693,7 +690,6 @@ func TestOptimizer(t *testing.T) {
 		optimized := &Plan{}
 		{
 			scan1 := optimized.graph.Add(&DataObjScan{id: "scan1",
-				Limit: 100,
 				Predicates: []Expression{
 					&BinaryExpr{
 						Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
@@ -702,7 +698,6 @@ func TestOptimizer(t *testing.T) {
 					},
 				}})
 			scan2 := optimized.graph.Add(&DataObjScan{id: "scan2",
-				Limit: 100,
 				Predicates: []Expression{
 					&BinaryExpr{
 						Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
@@ -720,6 +715,75 @@ func TestOptimizer(t *testing.T) {
 
 		expected := PrintAsTree(optimized)
 		require.Equal(t, expected, PrintAsTree(actual))
+	})
+
+	t.Run("filter node pushdown", func(t *testing.T) {
+		// Filter -> Merge
+		// Merge -> TopK1 -> Scan1
+		// Merge -> TopK2
+		// TopK2 -> Scan2
+		// TopK2 -> Scan3
+		plan := &Plan{}
+		scan1 := plan.graph.Add(&DataObjScan{id: "scan1"})
+		scan2 := plan.graph.Add(&DataObjScan{id: "scan2"})
+		scan3 := plan.graph.Add(&DataObjScan{id: "scan3"})
+		topk1 := plan.graph.Add(&SortMerge{id: "topK1"})
+		topk2 := plan.graph.Add(&SortMerge{id: "topK2"})
+		merge := plan.graph.Add(&Merge{id: "merge"})
+		filter := plan.graph.Add(&Filter{id: "filter", Predicates: []Expression{
+			&BinaryExpr{
+				Left:  newColumnExpr("level", types.ColumnTypeAmbiguous),
+				Right: NewLiteral("debug|info"),
+				Op:    types.BinaryOpMatchRe,
+			},
+		}})
+
+		_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: merge})
+		_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: topk1})
+		_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: topk2})
+		_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: topk1, Child: scan1})
+		_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: topk2, Child: scan2})
+		_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: topk2, Child: scan3})
+
+		optimizations := []*optimization{
+			newOptimization("filter node pushdown", plan).withRules(
+				newFilterNodePushdown(plan),
+			),
+		}
+
+		o := newOptimizer(plan, optimizations)
+		o.optimize(plan.Roots()[0])
+		actual := PrintAsTree(plan)
+
+		// Merge -> TopK1 -> Filter1 -> Scan1
+		// Merge -> TopK2 -> Filter2 -> Scan2
+		// Merge -> TopK2 -> Filter3 -> Scan3
+		optimized := &Plan{}
+		optimized.graph.Add(scan1)
+		optimized.graph.Add(scan2)
+		optimized.graph.Add(scan3)
+		optimized.graph.Add(topk1)
+		optimized.graph.Add(topk2)
+		optimized.graph.Add(merge)
+
+		filter1 := *(filter.(*Filter))
+		filter2 := *(filter.(*Filter))
+		filter3 := *(filter.(*Filter))
+		optimized.graph.Add(&filter1)
+		optimized.graph.Add(&filter2)
+		optimized.graph.Add(&filter3)
+
+		_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: topk1})
+		_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: topk2})
+		_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: topk1, Child: &filter1})
+		_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: topk2, Child: &filter2})
+		_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: topk2, Child: &filter3})
+		_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: &filter1, Child: scan1})
+		_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: &filter2, Child: scan2})
+		_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: &filter3, Child: scan3})
+		expected := PrintAsTree(optimized)
+
+		require.Equal(t, expected, actual)
 	})
 }
 
