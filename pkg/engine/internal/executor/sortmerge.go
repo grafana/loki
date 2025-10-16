@@ -66,20 +66,10 @@ func (p *KWayMerge) Close() {
 	}
 }
 
-// Inputs implements Pipeline.
-func (p *KWayMerge) Inputs() []Pipeline {
-	return p.inputs
-}
-
 // Read implements Pipeline.
 func (p *KWayMerge) Read(ctx context.Context) (arrow.Record, error) {
 	p.init(ctx)
 	return p.read(ctx)
-}
-
-// Transport implements Pipeline.
-func (p *KWayMerge) Transport() Transport {
-	return Local
 }
 
 func (p *KWayMerge) init(ctx context.Context) {

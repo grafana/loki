@@ -23,7 +23,7 @@ func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, eva
 		}
 	}
 
-	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
 		batch, err := input.Read(ctx)
