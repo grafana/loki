@@ -7,7 +7,6 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
@@ -18,7 +17,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 var tracer = otel.Tracer("pkg/engine/internal/executor")
@@ -81,6 +79,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 
 	case *physical.SortMerge:
 		return tracePipeline("physical.SortMerge", c.executeSortMerge(ctx, n, inputs))
+	case *physical.TopK:
+		return tracePipeline("physical.TopK", c.executeTopK(ctx, n, inputs))
 	case *physical.Limit:
 		return tracePipeline("physical.Limit", c.executeLimit(ctx, n, inputs))
 	case *physical.Filter:
@@ -204,48 +204,6 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		BatchSize: c.batchSize,
 	}, log.With(c.logger, "location", string(node.Location), "section", node.Section))
 
-	sortType, sortDirection, err := logsSection.PrimarySortOrder()
-	if err != nil {
-		level.Warn(c.logger).Log("msg", "could not determine primary sort order for logs section, forcing topk sort", "err", err)
-
-		sortType = logs.ColumnTypeInvalid
-		sortDirection = logs.SortDirectionUnspecified
-	}
-
-	// Wrap our pipeline to enforce expected sorting. We always emit logs in
-	// timestamp-sorted order, so we need to sort if either the section doesn't
-	// match the expected sort order or the requested sort type is not timestamp.
-	//
-	// If it's already sorted, we wrap by LimitPipeline to enforce the limit
-	// given to the node (if defined).
-	if node.Direction != physical.UNSORTED && (node.Direction != logsSortOrder(sortDirection) || sortType != logs.ColumnTypeTimestamp) {
-		level.Debug(c.logger).Log("msg", "sorting logs section", "source_sort", sortType, "source_direction", sortDirection, "requested_sort", logs.ColumnTypeTimestamp, "requested_dir", node.Direction)
-
-		pipeline, err = newTopkPipeline(topkOptions{
-			Inputs: []Pipeline{pipeline},
-
-			SortBy: []physical.ColumnExpression{
-				&physical.ColumnExpr{
-					Ref: types.ColumnRef{
-						Column: types.ColumnNameBuiltinTimestamp,
-						Type:   types.ColumnTypeBuiltin,
-					},
-				},
-			},
-			Ascending: node.Direction == physical.ASC,
-			K:         int(node.Limit),
-
-			MaxUnused: int(c.batchSize) * 2,
-		})
-		if err != nil {
-			return errorPipeline(ctx, err)
-		}
-		span.AddEvent("injected topk")
-	} else if node.Limit > 0 {
-		pipeline = NewLimitPipeline(pipeline, 0, node.Limit)
-		span.AddEvent("injected limit")
-	}
-
 	return pipeline
 }
 
@@ -258,6 +216,36 @@ func logsSortOrder(dir logs.SortDirection) physical.SortOrder {
 	}
 
 	return physical.UNSORTED
+}
+
+func (c *Context) executeTopK(ctx context.Context, topK *physical.TopK, inputs []Pipeline) Pipeline {
+	ctx, span := tracer.Start(ctx, "Context.executeTopK", trace.WithAttributes(
+		attribute.Int("k", topK.K),
+		attribute.Bool("ascending", topK.Ascending),
+	))
+	defer span.End()
+
+	if topK.SortBy != nil {
+		span.SetAttributes(attribute.Stringer("sort_by", topK.SortBy))
+	}
+
+	if len(inputs) == 0 {
+		return emptyPipeline()
+	}
+
+	pipeline, err := newTopkPipeline(topkOptions{
+		Inputs:     inputs,
+		SortBy:     []physical.ColumnExpression{topK.SortBy},
+		Ascending:  topK.Ascending,
+		NullsFirst: topK.NullsFirst,
+		K:          topK.K,
+		MaxUnused:  int(c.batchSize) * 2,
+	})
+	if err != nil {
+		return errorPipeline(ctx, err)
+	}
+
+	return pipeline
 }
 
 func (c *Context) executeSortMerge(ctx context.Context, sortmerge *physical.SortMerge, inputs []Pipeline) Pipeline {
