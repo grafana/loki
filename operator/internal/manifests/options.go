@@ -42,7 +42,7 @@ type Options struct {
 
 	TLSProfile TLSProfileSpec
 
-	FeatureGate FeatureGate
+	NetworkPoliciesEnabled bool
 }
 
 // GatewayTimeoutConfig contains the http server configuration options for all Loki components.

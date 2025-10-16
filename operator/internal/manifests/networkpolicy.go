@@ -19,17 +19,17 @@ import (
 func BuildNetworkPolicies(opts Options) []client.Object {
 	rulerEnabled := opts.Stack.Rules != nil && opts.Stack.Rules.Enabled
 
-	var policies []client.Object
-
-	policies = append(policies, buildDefaultDeny(opts))
-
-	policies = append(policies, buildLokiAllow(opts))
-
-	policies = append(policies, buildLokiAllowBucketEgress(opts))
+	policies := []client.Object{
+		buildDefaultDeny(opts),
+		buildLokiAllow(opts),
+		buildLokiAllowBucketEgress(opts),
+	}
 
 	if opts.Gates.LokiStackGateway {
-		policies = append(policies, buildLokiAllowGatewayIngress(opts))
-		policies = append(policies, buildGatewayAllow(opts))
+		policies = append(policies,
+			buildLokiAllowGatewayIngress(opts),
+			buildGatewayAllow(opts),
+		)
 	}
 
 	if rulerEnabled {

@@ -1,13 +1,13 @@
 package openshift
 
-// OpenShiftVersion represents OpenShift version information.
-type OpenShiftVersion struct {
+// OpenShiftRelease represents OpenShift release information.
+type OpenShiftRelease struct {
 	Major int `json:"major"`
 	Minor int `json:"minor"`
 }
 
-// IsAtLeast returns true if this version is at least the specified version.
-func (v *OpenShiftVersion) IsAtLeast(major, minor int) bool {
+// IsAtLeast returns true if this release is at least the specified release.
+func (v *OpenShiftRelease) IsAtLeast(major, minor int) bool {
 	if v.Major > major {
 		return true
 	}

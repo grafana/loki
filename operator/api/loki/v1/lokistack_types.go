@@ -252,20 +252,6 @@ const (
 	OpenshiftNetwork ModeType = "openshift-network"
 )
 
-// NetworkPoliciesType defines the network policies configuration mode.
-//
-// +kubebuilder:validation:Enum="";"Disabled";"Enabled"
-type NetworkPoliciesType string
-
-const (
-	// NetworkPoliciesDefault when no explicit value is set, inherits default behavior.
-	NetworkPoliciesDefault NetworkPoliciesType = ""
-	// NetworkPoliciesDisabled when NetworkPolicies are explicitly disabled.
-	NetworkPoliciesDisabled NetworkPoliciesType = "Disabled"
-	// NetworkPoliciesEnabled when NetworkPolicies are explicitly enabled.
-	NetworkPoliciesEnabled NetworkPoliciesType = "Enabled"
-)
-
 // TenantsSpec defines the mode, authentication and authorization
 // configuration of the lokiStack gateway component.
 type TenantsSpec struct {
@@ -288,15 +274,6 @@ type TenantsSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Authorization"
 	Authorization *AuthorizationSpec `json:"authorization,omitempty"`
-
-	// NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
-	// When enabled, the operator creates NetworkPolicies to control ingress/egress between
-	// Loki components and related services.
-	//
-	// +optional
-	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:","urn:alm:descriptor:com.tectonic.ui:select:False","urn:alm:descriptor:com.tectonic.ui:select:True"},displayName="Network Policies"
-	NetworkPolicies NetworkPoliciesType `json:"networkPolicies,omitempty"`
 
 	// Openshift defines the configuration specific to Openshift modes.
 	//
@@ -1063,6 +1040,18 @@ type LimitsSpec struct {
 	Tenants map[string]PerTenantLimitsTemplateSpec `json:"tenants,omitempty"`
 }
 
+// NetworkPoliciesSpec defines the configuration for NetworkPolicies.
+type NetworkPoliciesSpec struct {
+	// Disabled allows explicitly disabling NetworkPolicies.
+	// When false, NetworkPolicies are enabled.
+	// When true, NetworkPolicies are disabled.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Disabled"
+	Disabled bool `json:"disabled,omitempty"`
+}
+
 // RulesSpec defines the spec for the ruler component.
 type RulesSpec struct {
 	// Enabled defines a flag to enable/disable the ruler component
@@ -1178,6 +1167,15 @@ type LokiStackSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Tenants Configuration"
 	Tenants *TenantsSpec `json:"tenants,omitempty"`
+
+	// NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+	// When enabled, the operator creates NetworkPolicies to control ingress/egress between
+	// Loki components and related services.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Network Policies"
+	NetworkPolicies *NetworkPoliciesSpec `json:"networkPolicies,omitempty"`
 }
 
 type ReplicationSpec struct {
@@ -1403,6 +1401,18 @@ const (
 	CredentialModeTokenCCO CredentialMode = "token-cco"
 )
 
+// NetworkPoliciesStatus defines the observed state of NetworkPolicies deployment.
+//
+// +kubebuilder:validation:Enum=Enabled;Disabled
+type NetworkPoliciesStatus string
+
+const (
+	// NetworkPoliciesStatusDisabled when NetworkPolicies are not deployed.
+	NetworkPoliciesStatusDisabled NetworkPoliciesStatus = "Disabled"
+	// NetworkPoliciesStatusEnabled when NetworkPolicies are deployed.
+	NetworkPoliciesStatusEnabled NetworkPoliciesStatus = "Enabled"
+)
+
 // LokiStackStorageStatus defines the observed state of
 // the Loki storage configuration.
 type LokiStackStorageStatus struct {
@@ -1440,7 +1450,7 @@ type LokiStackStatus struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	NetworkPolicies NetworkPoliciesType `json:"networkPolicies,omitempty"`
+	NetworkPolicies NetworkPoliciesStatus `json:"networkPolicies,omitempty"`
 
 	// Conditions of the Loki deployment health.
 	//

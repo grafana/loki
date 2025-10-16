@@ -157,7 +157,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	objects, _, err := manifests.BuildAll(opts)
+	objects, err := manifests.BuildAll(opts)
 	if err != nil {
 		logger.Error(err, "failed to build manifests")
 		os.Exit(1)

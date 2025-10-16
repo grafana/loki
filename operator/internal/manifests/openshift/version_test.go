@@ -9,32 +9,32 @@ import (
 func TestOpenShiftVersion_IsAtLeast(t *testing.T) {
 	tests := []struct {
 		name     string
-		version  *OpenShiftVersion
+		version  *OpenShiftRelease
 		expected bool
 	}{
 		{
 			name:     "version is higher major",
-			version:  &OpenShiftVersion{Major: 5, Minor: 0},
+			version:  &OpenShiftRelease{Major: 5, Minor: 0},
 			expected: true,
 		},
 		{
 			name:     "version is same major, higher minor",
-			version:  &OpenShiftVersion{Major: 4, Minor: 21},
+			version:  &OpenShiftRelease{Major: 4, Minor: 21},
 			expected: true,
 		},
 		{
 			name:     "version is same major and minor",
-			version:  &OpenShiftVersion{Major: 4, Minor: 20},
+			version:  &OpenShiftRelease{Major: 4, Minor: 20},
 			expected: true,
 		},
 		{
 			name:     "version is lower major",
-			version:  &OpenShiftVersion{Major: 3, Minor: 20},
+			version:  &OpenShiftRelease{Major: 3, Minor: 20},
 			expected: false,
 		},
 		{
 			name:     "version is same major, lower minor",
-			version:  &OpenShiftVersion{Major: 4, Minor: 19},
+			version:  &OpenShiftRelease{Major: 4, Minor: 19},
 			expected: false,
 		},
 	}

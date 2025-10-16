@@ -630,6 +630,19 @@ spec:
                 - Managed
                 - Unmanaged
                 type: string
+              networkPolicies:
+                description: |-
+                  NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+                  When enabled, the operator creates NetworkPolicies to control ingress/egress between
+                  Loki components and related services.
+                properties:
+                  disabled:
+                    description: |-
+                      Disabled allows explicitly disabling NetworkPolicies.
+                      When false, NetworkPolicies are enabled.
+                      When true, NetworkPolicies are disabled.
+                    type: boolean
+                type: object
               proxy:
                 description: Proxy defines the spec for the object proxy to configure
                   cluster proxy information.
@@ -3857,16 +3870,6 @@ spec:
                     - openshift-logging
                     - openshift-network
                     type: string
-                  networkPolicies:
-                    description: |-
-                      NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
-                      When enabled, the operator creates NetworkPolicies to control ingress/egress between
-                      Loki components and related services.
-                    enum:
-                    - ""
-                    - Disabled
-                    - Enabled
-                    type: string
                   openshift:
                     description: Openshift defines the configuration specific to Openshift
                       modes.
@@ -4058,9 +4061,8 @@ spec:
                 description: NetworkPolicies indicates whether NetworkPolicies are
                   enabled or disabled for this LokiStack.
                 enum:
-                - ""
-                - Disabled
                 - Enabled
+                - Disabled
                 type: string
               storage:
                 description: |-

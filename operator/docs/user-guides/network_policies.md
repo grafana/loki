@@ -39,7 +39,7 @@ Network policies on OpenShift include additional integrations:
 
 ### Configuration
 
-Network policies are configured through the `tenants.networkPolicies` field in your LokiStack specification:
+Network policies are configured through the `networkPolicies` field in your LokiStack specification:
 
 ```yaml
 apiVersion: loki.grafana.com/v1
@@ -56,16 +56,17 @@ spec:
   storageClassName: gp2
   tenants:
     mode: openshift-logging
-    networkPolicies: "Enabled"  # Enable network policies
+  networkPolicies:
+    disabled: false  # Enable network policies
 ```
 
 #### Configuration Options
 
-| Value | Description | Default Behavior |
-|-------|-------------|------------------|
-| `""` (empty) | **Default** - inherits platform defaults | Enabled on OpenShift 4.20+, disabled elsewhere |
-| `"Disabled"` | **Disabled** - no network policies created | Full network access allowed |
-| `"Enabled"` | **Enabled** - network policies enforced | Restricted network access with explicit allow rules |
+| Configuration | Description | Default Behavior |
+|---------------|-------------|------------------|
+| `networkPolicies: null` (omitted) | **Default** - inherits platform defaults | Enabled on OpenShift 4.20+, disabled elsewhere |
+| `networkPolicies.disabled: true`  | **Disabled** - no network policies created | Full network access allowed |
+| `networkPolicies.disabled: false` | **Enabled** - network policies enforced | Restricted network access with explicit allow rules |
 
 ## Generated Network Policies
 

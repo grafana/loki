@@ -60,11 +60,10 @@ func CreateOrUpdateLokiStack(
 		gwImg = manifests.DefaultLokiStackGatewayImage
 	}
 
-	openShiftVersion, isOpenShift, err := openshift.FetchVersion(ctx, k)
+	openShiftVersion, err := openshift.FetchVersion(ctx, k)
 	if err != nil {
 		return nil, err
 	}
-	featureGate := manifests.NewFeatureGate(isOpenShift, openShiftVersion)
 
 	objStore, err := storage.BuildOptions(ctx, k, &stack, fg)
 	if err != nil {
@@ -100,6 +99,16 @@ func CreateOrUpdateLokiStack(
 		}
 	}
 
+	networkPoliciesEnabled := false
+	if stack.Spec.NetworkPolicies != nil {
+		networkPoliciesEnabled = !stack.Spec.NetworkPolicies.Disabled
+	}
+
+	// On 4.20+ NetworkPolicies are enabled by default
+	if openShiftVersion != nil && !networkPoliciesEnabled {
+		networkPoliciesEnabled = openShiftVersion.IsAtLeast(4, 20)
+	}
+
 	// Here we will translate the lokiv1.LokiStack options into manifest options
 	opts := manifests.Options{
 		Name:                   req.Name,
@@ -117,7 +126,7 @@ func CreateOrUpdateLokiStack(
 		Timeouts:               timeoutConfig,
 		Tenants:                tenants,
 		OpenShiftOptions:       ocpOptions,
-		FeatureGate:            featureGate,
+		NetworkPoliciesEnabled: networkPoliciesEnabled,
 	}
 
 	ll.Info("begin building manifests")
@@ -151,7 +160,7 @@ func CreateOrUpdateLokiStack(
 		return nil, optErr
 	}
 
-	objects, networkPolicyStatus, err := manifests.BuildAll(opts)
+	objects, err := manifests.BuildAll(opts)
 	if err != nil {
 		ll.Error(err, "failed to build manifests")
 		return nil, err
@@ -167,6 +176,11 @@ func CreateOrUpdateLokiStack(
 	if err := status.SetStorageSchemaStatus(ctx, k, req, objStore.Schemas); err != nil {
 		ll.Error(err, "failed to set storage schema status")
 		return nil, err
+	}
+
+	networkPolicyStatus := lokiv1.NetworkPoliciesStatusDisabled
+	if networkPoliciesEnabled {
+		networkPolicyStatus = lokiv1.NetworkPoliciesStatusEnabled
 	}
 
 	var errCount int32
@@ -216,7 +230,7 @@ func CreateOrUpdateLokiStack(
 		return nil, kverrors.New("failed to configure lokistack resources", "name", req.NamespacedName)
 	}
 
-	if err := networkpolicy.Cleanup(ctx, ll, k, req, &stack, featureGate); err != nil {
+	if err := networkpolicy.Cleanup(ctx, ll, k, req, &stack, networkPoliciesEnabled); err != nil {
 		return nil, err
 	}
 

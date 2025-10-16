@@ -13,13 +13,12 @@ import (
 
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
-	"github.com/grafana/loki/operator/internal/manifests"
 )
 
 // Cleanup deletes operator-managed NetworkPolicies for a LokiStack
-func Cleanup(ctx context.Context, log logr.Logger, c k8s.Client, req ctrl.Request, stack *lokiv1.LokiStack, featureGate manifests.FeatureGate) error {
+func Cleanup(ctx context.Context, log logr.Logger, c k8s.Client, req ctrl.Request, stack *lokiv1.LokiStack, networkPoliciesEnabled bool) error {
 	ll := log.WithValues("lokistack", req.NamespacedName, "event", "cleanupNetworkPolicies")
-	if stack.Spec.Tenants != nil && featureGate.NetworkPoliciesEnabled(stack.Spec.Tenants.NetworkPolicies) {
+	if networkPoliciesEnabled {
 		// Nothing to do - NetworkPolicies are enabled
 		return nil
 	}
