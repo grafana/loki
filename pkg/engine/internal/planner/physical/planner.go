@@ -402,14 +402,19 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			newOptimization("PredicatePushdown", plan).withRules(
 				&predicatePushdown{plan: plan},
 			),
-			newOptimization("CleanupFilters", plan).withRules(
-				&removeNoopFilter{plan: plan},
-			),
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
 			newOptimization("ProjectionPushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
+			),
+			newOptimization("ParallelPushdown", plan).withRules(
+				&parallelPushdown{plan: plan},
+			),
+
+			// Perform cleanups at the very end.
+			newOptimization("Cleanup", plan).withRules(
+				&removeNoopFilter{plan: plan},
 			),
 		}
 		optimizer := newOptimizer(plan, optimizations)
