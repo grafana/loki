@@ -14,6 +14,7 @@ type Visitor interface {
 	VisitLimit(*Limit) error
 	VisitVectorAggregation(*VectorAggregation) error
 	VisitParse(*ParseNode) error
+	VisitMathExpression(expression *MathExpression) error
 	VisitCompat(*ColumnCompat) error
 	VisitTopK(*TopK) error
 	VisitParallelize(*Parallelize) error

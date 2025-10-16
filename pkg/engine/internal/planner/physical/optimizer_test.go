@@ -663,6 +663,111 @@ func TestOptimizer(t *testing.T) {
 		require.Equal(t, expected, actual, fmt.Sprintf("Expected:\n%s\nActual:\n%s\n", expected, actual))
 	})
 
+	t.Run("merges math expression nodes", func(t *testing.T) {
+		groupBy := []ColumnExpression{
+			&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+		}
+
+		partitionBy := []ColumnExpression{
+			&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
+		}
+
+		// generate plan for max by(service) ((count_over_time{...}[] / 60 - 100) ^ 2)
+		plan := &Plan{}
+		{
+			scan1 := plan.graph.Add(&DataObjScan{id: "scan1"})
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				id:          "sum_over_time",
+				Operation:   types.RangeAggregationTypeSum,
+				PartitionBy: partitionBy,
+			})
+			math1 := plan.graph.Add(&MathExpression{
+				id: "math_1",
+				Expression: &BinaryExpr{
+					Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "input_0", Type: types.ColumnTypeGenerated}},
+					Right: NewLiteral(int64(60)),
+					Op:    types.BinaryOpDiv,
+				},
+			})
+			math2 := plan.graph.Add(&MathExpression{
+				id: "math_2",
+				Expression: &BinaryExpr{
+					Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "input_0", Type: types.ColumnTypeGenerated}},
+					Right: NewLiteral(int64(100)),
+					Op:    types.BinaryOpSub,
+				},
+			})
+			math3 := plan.graph.Add(&MathExpression{
+				id: "math_3",
+				Expression: &BinaryExpr{
+					Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "input_0", Type: types.ColumnTypeGenerated}},
+					Right: NewLiteral(int64(2)),
+					Op:    types.BinaryOpPow,
+				},
+			})
+			vectorAgg := plan.graph.Add(&VectorAggregation{
+				id:        "max_of",
+				Operation: types.VectorAggregationTypeMax,
+				GroupBy:   groupBy,
+			})
+
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: math3})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: math3, Child: math2})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: math2, Child: math1})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: math1, Child: rangeAgg})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan1})
+		}
+
+		optimizations := []*optimization{
+			newOptimization("MathExpressionsMerge", plan).withRules(
+				&mathExpressionsMerge{plan},
+			),
+		}
+
+		o := newOptimizer(plan, optimizations)
+		o.optimize(plan.Roots()[0])
+		actual := PrintAsTree(plan)
+
+		optimized := func() *Plan {
+			plan := &Plan{}
+			scan1 := plan.graph.Add(&DataObjScan{id: "scan1"})
+			rangeAgg := plan.graph.Add(&RangeAggregation{
+				id:          "sum_over_time",
+				Operation:   types.RangeAggregationTypeSum,
+				PartitionBy: partitionBy,
+			})
+			math1 := plan.graph.Add(&MathExpression{
+				id: "math_3",
+				Expression: &BinaryExpr{
+					Left: &BinaryExpr{
+						Left: &BinaryExpr{
+							Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "input_0", Type: types.ColumnTypeGenerated}},
+							Right: NewLiteral(int64(60)),
+							Op:    types.BinaryOpDiv,
+						},
+						Right: NewLiteral(int64(100)),
+						Op:    types.BinaryOpSub,
+					},
+					Right: NewLiteral(int64(2)),
+					Op:    types.BinaryOpPow,
+				},
+			})
+			vectorAgg := plan.graph.Add(&VectorAggregation{
+				id:        "max_of",
+				Operation: types.VectorAggregationTypeMax,
+				GroupBy:   groupBy,
+			})
+
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: math1})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: math1, Child: rangeAgg})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan1})
+			return plan
+		}()
+
+		expected := PrintAsTree(optimized)
+		require.Equal(t, expected, actual, fmt.Sprintf("Expected:\n%s\nActual:\n%s\n", expected, actual))
+	})
+
 	// both predicate pushdown and limits pushdown should work together
 	t.Run("predicate and limits pushdown", func(t *testing.T) {
 		plan := &Plan{}

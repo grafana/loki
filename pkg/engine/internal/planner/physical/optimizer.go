@@ -1,6 +1,7 @@
 package physical
 
 import (
+	"fmt"
 	"maps"
 	"slices"
 	"sort"
@@ -150,6 +151,20 @@ type projectionPushdown struct {
 	plan *Plan
 }
 
+func (r *projectionPushdown) applyToRangeAggregations(node Node, groupBy []ColumnExpression, ops ...types.RangeAggregationType) bool {
+	anyChanged := false
+	for _, child := range r.plan.Children(node) {
+		if ra, ok := child.(*RangeAggregation); ok {
+			if slices.Contains(ops, ra.Operation) {
+				anyChanged = r.handleRangeAggregation(ra, groupBy) || anyChanged
+			}
+		} else {
+			anyChanged = r.applyToRangeAggregations(child, groupBy, ops...) || anyChanged
+		}
+	}
+	return anyChanged
+}
+
 // apply implements rule.
 func (r *projectionPushdown) apply(node Node) bool {
 	switch node := node.(type) {
@@ -164,33 +179,17 @@ func (r *projectionPushdown) apply(node Node) bool {
 		// MAX -> MAX
 		// MIN -> MIN
 
-		applyToRangeAggregations := func(ops ...types.RangeAggregationType) bool {
-			anyChanged := false
-			for _, child := range r.plan.Children(node) {
-				if ra, ok := child.(*RangeAggregation); ok {
-					if slices.Contains(ops, ra.Operation) {
-						anyChanged = r.handleRangeAggregation(ra, node.GroupBy) || anyChanged
-					}
-				}
-			}
-			return anyChanged
-		}
-
 		switch node.Operation {
 		case types.VectorAggregationTypeSum:
-			return applyToRangeAggregations(types.RangeAggregationTypeSum, types.RangeAggregationTypeCount)
+			return r.applyToRangeAggregations(node, node.GroupBy, types.RangeAggregationTypeSum, types.RangeAggregationTypeCount)
 		case types.VectorAggregationTypeMax:
-			return applyToRangeAggregations(types.RangeAggregationTypeMax)
+			return r.applyToRangeAggregations(node, node.GroupBy, types.RangeAggregationTypeMax)
 		case types.VectorAggregationTypeMin:
-			return applyToRangeAggregations(types.RangeAggregationTypeMin)
+			return r.applyToRangeAggregations(node, node.GroupBy, types.RangeAggregationTypeMin)
 		default:
 			return false
 		}
 	case *RangeAggregation:
-		if !slices.Contains(types.SupportedRangeAggregationTypes, node.Operation) {
-			return false
-		}
-
 		projections := make([]ColumnExpression, len(node.PartitionBy)+1)
 		copy(projections, node.PartitionBy)
 		// Always project timestamp column even if partitionBy is empty.
@@ -230,7 +229,7 @@ func (r *projectionPushdown) applyProjectionPushdown(
 		return r.handleParseNode(node, projections, applyIfNotEmpty)
 	case *RangeAggregation:
 		return r.handleRangeAggregation(node, projections)
-	case *Parallelize, *Filter, *Merge, *SortMerge, *ColumnCompat:
+	case *Parallelize, *Filter, *Merge, *SortMerge, *ColumnCompat, *MathExpression:
 		// Push to next direct child that cares about projections
 		return r.pushToChildren(node, projections, applyIfNotEmpty)
 	}
@@ -394,6 +393,43 @@ func disambiguateColumns(columns []ColumnExpression) ([]ColumnExpression, []Colu
 	}
 
 	return unambiguousColumns, ambiguousColumns
+}
+
+// mathExpressionsMerge is a rule that merges adjacent math expressions nodes into one node with complex expression
+type mathExpressionsMerge struct {
+	plan *Plan
+}
+
+// apply implements rule.
+func (r *mathExpressionsMerge) apply(node Node) bool {
+	changed := false
+	switch node := node.(type) {
+	case *MathExpression:
+		binaryExpr := node.Expression.(*BinaryExpr)
+		children := r.plan.Children(node)
+		for i, child := range children {
+			inputName := fmt.Sprintf("input_%d", i)
+			if c, ok := child.(*MathExpression); ok {
+				if columnExpr, ok := binaryExpr.Left.(*ColumnExpr); ok {
+					if columnExpr.Ref.Column == inputName {
+						binaryExpr.Left = c.Expression
+						r.plan.graph.Eliminate(child)
+						changed = true
+						break
+					}
+				}
+				if columnExpr, ok := binaryExpr.Right.(*ColumnExpr); ok {
+					if columnExpr.Ref.Column == inputName {
+						binaryExpr.Right = c.Expression
+						r.plan.graph.Eliminate(child)
+						changed = true
+						break
+					}
+				}
+			}
+		}
+	}
+	return changed
 }
 
 // optimization represents a single optimization pass and can hold multiple rules.

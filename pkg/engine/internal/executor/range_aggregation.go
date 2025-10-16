@@ -163,7 +163,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				if err != nil {
 					return nil, err
 				}
-				defer vec.Release()
 
 				if vec.Type() != types.Loki.String {
 					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.Type())
@@ -180,7 +179,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 			if err != nil {
 				return nil, err
 			}
-			defer tsVec.Release()
 			tsCol := tsVec.ToArray().(*array.Timestamp)
 			defer tsCol.Release()
 

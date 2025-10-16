@@ -20,6 +20,7 @@ type nodeCollectVisitor struct {
 	onVisitRangeAggregation  func(*RangeAggregation) error
 	onVisitVectorAggregation func(*VectorAggregation) error
 	onVisitParse             func(*ParseNode) error
+	onVisitMathExpression    func(expression *MathExpression) error
 	onVisitParallelize       func(*Parallelize) error
 }
 
@@ -92,6 +93,14 @@ func (v *nodeCollectVisitor) VisitVectorAggregation(n *VectorAggregation) error 
 func (v *nodeCollectVisitor) VisitParse(n *ParseNode) error {
 	if v.onVisitParse != nil {
 		return v.onVisitParse(n)
+	}
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	return nil
+}
+
+func (v *nodeCollectVisitor) VisitMathExpression(n *MathExpression) error {
+	if v.onVisitMathExpression != nil {
+		return v.onVisitMathExpression(n)
 	}
 	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
 	return nil

@@ -95,6 +95,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return tracePipeline("physical.VectorAggregation", c.executeVectorAggregation(ctx, n, inputs))
 	case *physical.ParseNode:
 		return tracePipeline("physical.ParseNode", c.executeParse(ctx, n, inputs))
+	case *physical.MathExpression:
+		return tracePipeline("physical.MathExpression", c.executeMathExpression(ctx, n, inputs))
 	case *physical.ColumnCompat:
 		return tracePipeline("physical.ColumnCompat", c.executeColumnCompat(ctx, n, inputs))
 	case *physical.Parallelize:
@@ -415,6 +417,14 @@ func (c *Context) executeParse(ctx context.Context, parse *physical.ParseNode, i
 	allocator := memory.DefaultAllocator
 
 	return NewParsePipeline(parse, inputs[0], allocator)
+}
+
+func (c *Context) executeMathExpression(ctx context.Context, expr *physical.MathExpression, inputs []Pipeline) Pipeline {
+	if len(inputs) > 1 {
+		return errorPipeline(ctx, fmt.Errorf("only one input is currently supported in mathExpression, got %d", len(inputs)))
+	}
+
+	return NewMathExpressionPipeline(expr, inputs, c.evaluator)
 }
 
 func (c *Context) executeColumnCompat(ctx context.Context, compat *physical.ColumnCompat, inputs []Pipeline) Pipeline {
