@@ -42,6 +42,56 @@ type streamsResultBuilder struct {
 	streams map[string]int
 	data    logqlmodel.Streams
 	count   int
+
+	// buffer of rows to be reused between calls to CollectRecord to reduce reallocations of slices and builders
+	rowsBuffer rowsBuffer
+}
+
+type rowsBuffer struct {
+	len              int
+	timestamps       []time.Time
+	lines            []string
+	lbsBuilders      []*labels.Builder
+	metadataBuilders []*labels.Builder
+	parsedBuilders   []*labels.Builder
+}
+
+func (p *rowsBuffer) prepareFor(newLen int) {
+	if newLen <= p.len {
+		p.timestamps = p.timestamps[:newLen]
+		clear(p.timestamps)
+
+		p.lines = p.lines[:newLen]
+		clear(p.lines)
+
+		p.lbsBuilders = p.lbsBuilders[:newLen]
+		p.metadataBuilders = p.metadataBuilders[:newLen]
+		p.parsedBuilders = p.parsedBuilders[:newLen]
+
+		for i := range newLen {
+			p.lbsBuilders[i].Reset(labels.EmptyLabels())
+			p.metadataBuilders[i].Reset(labels.EmptyLabels())
+			p.parsedBuilders[i].Reset(labels.EmptyLabels())
+		}
+
+		p.len = newLen
+
+		return
+	}
+
+	p.timestamps = make([]time.Time, newLen)
+	p.lines = make([]string, newLen)
+	p.lbsBuilders = make([]*labels.Builder, newLen)
+	p.metadataBuilders = make([]*labels.Builder, newLen)
+	p.parsedBuilders = make([]*labels.Builder, newLen)
+
+	for i := range newLen {
+		p.lbsBuilders[i] = labels.NewBuilder(labels.EmptyLabels())
+		p.metadataBuilders[i] = labels.NewBuilder(labels.EmptyLabels())
+		p.parsedBuilders[i] = labels.NewBuilder(labels.EmptyLabels())
+	}
+
+	p.len = newLen
 }
 
 func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
@@ -50,7 +100,7 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 		return
 	}
 
-	// let's say we have following log entries in rec:
+	// let's say we have the following log entries in rec:
 	// - {labelenv="prod-1", metadatatrace="123-1", parsed="v1"} ts1 line 1
 	// - {labelenv="prod-2", metadatatrace="123-2", parsed="v2"} ts2 line 2
 	// - {labelenv="prod-3", metadatatrace="123-3", parsed="v3"} ts3 line 3
@@ -64,17 +114,7 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 	// first all the timestamps, then all the log lines, etc.
 	// After all the values are collected and converted we transform the columnar representation to a row-based one.
 
-	timestamps := make([]time.Time, numRows)
-	lines := make([]string, numRows)
-	lbsBuilders := make([]*labels.Builder, numRows)
-	metadataBuilders := make([]*labels.Builder, numRows)
-	parsedBuilders := make([]*labels.Builder, numRows)
-
-	for rowIdx := range numRows {
-		lbsBuilders[rowIdx] = labels.NewBuilder(labels.EmptyLabels())
-		metadataBuilders[rowIdx] = labels.NewBuilder(labels.EmptyLabels())
-		parsedBuilders[rowIdx] = labels.NewBuilder(labels.EmptyLabels())
-	}
+	b.rowsBuffer.prepareFor(numRows)
 
 	// Convert arrow values to our format column by column
 	for colIdx := range int(rec.NumCols()) {
@@ -93,21 +133,21 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 		case ident.Equal(semconv.ColumnIdentMessage):
 			lineCol := col.(*array.String)
 			forEachNotNullRowColValue(numRows, lineCol, func(rowIdx int) {
-				lines[rowIdx] = lineCol.Value(rowIdx)
+				b.rowsBuffer.lines[rowIdx] = lineCol.Value(rowIdx)
 			})
 
 		// Timestamp
 		case ident.Equal(semconv.ColumnIdentTimestamp):
 			tsCol := col.(*array.Timestamp)
 			forEachNotNullRowColValue(numRows, tsCol, func(rowIdx int) {
-				timestamps[rowIdx] = time.Unix(0, int64(tsCol.Value(rowIdx)))
+				b.rowsBuffer.timestamps[rowIdx] = time.Unix(0, int64(tsCol.Value(rowIdx)))
 			})
 
 		// One of the label columns
 		case ident.ColumnType() == types.ColumnTypeLabel:
 			labelCol := col.(*array.String)
 			forEachNotNullRowColValue(numRows, labelCol, func(rowIdx int) {
-				lbsBuilders[rowIdx].Set(shortName, labelCol.Value(rowIdx))
+				b.rowsBuffer.lbsBuilders[rowIdx].Set(shortName, labelCol.Value(rowIdx))
 			})
 
 		// One of the metadata columns
@@ -115,9 +155,9 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 			metadataCol := col.(*array.String)
 			forEachNotNullRowColValue(numRows, metadataCol, func(rowIdx int) {
 				val := metadataCol.Value(rowIdx)
-				metadataBuilders[rowIdx].Set(shortName, val)
+				b.rowsBuffer.metadataBuilders[rowIdx].Set(shortName, val)
 				// include structured metadata in stream labels
-				lbsBuilders[rowIdx].Set(shortName, val)
+				b.rowsBuffer.lbsBuilders[rowIdx].Set(shortName, val)
 			})
 
 		// One of the parsed columns
@@ -133,13 +173,13 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 
 			forEachNotNullRowColValue(numRows, parsedCol, func(rowIdx int) {
 				parsedVal := parsedCol.Value(rowIdx)
-				if parsedBuilders[rowIdx].Get(shortName) != "" {
+				if b.rowsBuffer.parsedBuilders[rowIdx].Get(shortName) != "" {
 					return
 				}
-				parsedBuilders[rowIdx].Set(shortName, parsedVal)
-				lbsBuilders[rowIdx].Set(shortName, parsedVal)
-				if metadataBuilders[rowIdx].Get(shortName) != "" {
-					metadataBuilders[rowIdx].Del(shortName)
+				b.rowsBuffer.parsedBuilders[rowIdx].Set(shortName, parsedVal)
+				b.rowsBuffer.lbsBuilders[rowIdx].Set(shortName, parsedVal)
+				if b.rowsBuffer.metadataBuilders[rowIdx].Get(shortName) != "" {
+					b.rowsBuffer.metadataBuilders[rowIdx].Del(shortName)
 				}
 			})
 		}
@@ -147,9 +187,9 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 
 	// Convert columnar representation to a row-based one
 	for rowIdx := 0; rowIdx < numRows; rowIdx++ {
-		lbs := lbsBuilders[rowIdx].Labels()
-		ts := timestamps[rowIdx]
-		line := lines[rowIdx]
+		lbs := b.rowsBuffer.lbsBuilders[rowIdx].Labels()
+		ts := b.rowsBuffer.timestamps[rowIdx]
+		line := b.rowsBuffer.lines[rowIdx]
 		// Ignore rows that don't have stream labels, log line, or timestamp
 		if line == "" || ts.IsZero() || lbs.IsEmpty() {
 			continue
@@ -158,8 +198,8 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 		entry := logproto.Entry{
 			Timestamp:          ts,
 			Line:               line,
-			StructuredMetadata: logproto.FromLabelsToLabelAdapters(metadataBuilders[rowIdx].Labels()),
-			Parsed:             logproto.FromLabelsToLabelAdapters(parsedBuilders[rowIdx].Labels()),
+			StructuredMetadata: logproto.FromLabelsToLabelAdapters(b.rowsBuffer.metadataBuilders[rowIdx].Labels()),
+			Parsed:             logproto.FromLabelsToLabelAdapters(b.rowsBuffer.parsedBuilders[rowIdx].Labels()),
 		}
 
 		// Add entry to appropriate stream
