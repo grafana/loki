@@ -216,6 +216,7 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 func collectBooleanColumnVector(vec ColumnVector) []bool {
 	res := make([]bool, 0, vec.Len())
 	arr := vec.ToArray().(*array.Boolean)
+	defer arr.Release()
 	for i := range int(vec.Len()) {
 		res = append(res, arr.Value(i))
 	}
@@ -326,8 +327,10 @@ null,null,null`
 		colVec, err := e.eval(colExpr, record)
 		require.NoError(t, err)
 		require.IsType(t, &CoalesceVector{}, colVec)
+		defer colVec.Release()
 
 		arr := colVec.ToArray()
+		defer arr.Release()
 		require.IsType(t, &array.String{}, arr)
 		stringArr := arr.(*array.String)
 

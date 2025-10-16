@@ -48,6 +48,17 @@ func newQueueMetrics(r prometheus.Registerer) *queueMetrics {
 	return &m
 }
 
+func registerJobsLeftTrackerMetric(jobType string, jobsLeftFunc func() float64, r prometheus.Registerer) {
+	promauto.With(r).NewGaugeFunc(prometheus.GaugeOpts{
+		Namespace: constants.Loki,
+		Name:      "compactor_jobs_left",
+		Help:      "Number of jobs left to be processed for concluding ongoing unit of work",
+		ConstLabels: prometheus.Labels{
+			"job_type": jobType,
+		},
+	}, jobsLeftFunc)
+}
+
 type workerMetrics struct {
 	jobsProcessed              *prometheus.CounterVec
 	workerConnectedToCompactor prometheus.GaugeFunc
