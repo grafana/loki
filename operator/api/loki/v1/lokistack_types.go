@@ -282,7 +282,7 @@ type TenantsSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Openshift"
 	Openshift *OpenshiftTenantSpec `json:"openshift,omitempty"`
 
-	// DisableIngress disables automatic creation of external access resources (Routes and Ingress).
+	// DisableIngress disables automatic creation of external access resources (Route / Ingress).
 	// When true, no Route or Ingress will be created for the gateway.
 	//
 	// +optional
