@@ -33,8 +33,9 @@ var (
 
 func newStreamsResultBuilder() *streamsResultBuilder {
 	return &streamsResultBuilder{
-		data:    make(logqlmodel.Streams, 0),
-		streams: make(map[string]int),
+		data:       make(logqlmodel.Streams, 0),
+		streams:    make(map[string]int),
+		rowsBuffer: &rowsBuffer{},
 	}
 }
 
@@ -44,7 +45,7 @@ type streamsResultBuilder struct {
 	count   int
 
 	// buffer of rows to be reused between calls to CollectRecord to reduce reallocations of slices and builders
-	rowsBuffer rowsBuffer
+	rowsBuffer *rowsBuffer
 }
 
 type rowsBuffer struct {
@@ -56,42 +57,52 @@ type rowsBuffer struct {
 	parsedBuilders   []*labels.Builder
 }
 
-func (p *rowsBuffer) prepareFor(newLen int) {
-	if newLen <= p.len {
-		p.timestamps = p.timestamps[:newLen]
-		clear(p.timestamps)
+func (buf *rowsBuffer) prepareFor(newLen int) {
+	if newLen == buf.len {
+		return
+	}
 
-		p.lines = p.lines[:newLen]
-		clear(p.lines)
+	if newLen < buf.len {
+		// free not used items at the end of the slices so they can be GC-ed
+		clear(buf.timestamps[newLen:buf.len])
+		clear(buf.lines[newLen:buf.len])
+		clear(buf.lbsBuilders[newLen:buf.len])
+		clear(buf.metadataBuilders[newLen:buf.len])
+		clear(buf.parsedBuilders[newLen:buf.len])
 
-		p.lbsBuilders = p.lbsBuilders[:newLen]
-		p.metadataBuilders = p.metadataBuilders[:newLen]
-		p.parsedBuilders = p.parsedBuilders[:newLen]
+		// shrink to the new length, no need to zero the items as it was done before via resetRow(i)
+		buf.timestamps = buf.timestamps[:newLen]
+		buf.lines = buf.lines[:newLen]
+		buf.lbsBuilders = buf.lbsBuilders[:newLen]
+		buf.metadataBuilders = buf.metadataBuilders[:newLen]
+		buf.parsedBuilders = buf.parsedBuilders[:newLen]
 
-		for i := range newLen {
-			p.lbsBuilders[i].Reset(labels.EmptyLabels())
-			p.metadataBuilders[i].Reset(labels.EmptyLabels())
-			p.parsedBuilders[i].Reset(labels.EmptyLabels())
-		}
-
-		p.len = newLen
+		buf.len = newLen
 
 		return
 	}
 
-	p.timestamps = make([]time.Time, newLen)
-	p.lines = make([]string, newLen)
-	p.lbsBuilders = make([]*labels.Builder, newLen)
-	p.metadataBuilders = make([]*labels.Builder, newLen)
-	p.parsedBuilders = make([]*labels.Builder, newLen)
-
-	for i := range newLen {
-		p.lbsBuilders[i] = labels.NewBuilder(labels.EmptyLabels())
-		p.metadataBuilders[i] = labels.NewBuilder(labels.EmptyLabels())
-		p.parsedBuilders[i] = labels.NewBuilder(labels.EmptyLabels())
+	// newLen > buf.len
+	numRowsToAdd := newLen - buf.len
+	buf.timestamps = append(buf.timestamps, make([]time.Time, numRowsToAdd)...)
+	buf.lines = append(buf.lines, make([]string, numRowsToAdd)...)
+	buf.lbsBuilders = append(buf.lbsBuilders, make([]*labels.Builder, numRowsToAdd)...)
+	buf.metadataBuilders = append(buf.metadataBuilders, make([]*labels.Builder, numRowsToAdd)...)
+	buf.parsedBuilders = append(buf.parsedBuilders, make([]*labels.Builder, numRowsToAdd)...)
+	for i := buf.len; i < newLen; i++ {
+		buf.lbsBuilders[i] = labels.NewBuilder(labels.EmptyLabels())
+		buf.metadataBuilders[i] = labels.NewBuilder(labels.EmptyLabels())
+		buf.parsedBuilders[i] = labels.NewBuilder(labels.EmptyLabels())
 	}
+	buf.len = newLen
+}
 
-	p.len = newLen
+func (buf *rowsBuffer) resetRow(i int) {
+	buf.timestamps[i] = time.Time{}
+	buf.lines[i] = ""
+	buf.lbsBuilders[i].Reset(labels.EmptyLabels())
+	buf.metadataBuilders[i].Reset(labels.EmptyLabels())
+	buf.parsedBuilders[i].Reset(labels.EmptyLabels())
 }
 
 func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
@@ -192,6 +203,7 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 		line := b.rowsBuffer.lines[rowIdx]
 		// Ignore rows that don't have stream labels, log line, or timestamp
 		if line == "" || ts.IsZero() || lbs.IsEmpty() {
+			b.rowsBuffer.resetRow(rowIdx)
 			continue
 		}
 
@@ -201,6 +213,7 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 			StructuredMetadata: logproto.FromLabelsToLabelAdapters(b.rowsBuffer.metadataBuilders[rowIdx].Labels()),
 			Parsed:             logproto.FromLabelsToLabelAdapters(b.rowsBuffer.parsedBuilders[rowIdx].Labels()),
 		}
+		b.rowsBuffer.resetRow(rowIdx)
 
 		// Add entry to appropriate stream
 		key := lbs.String()
