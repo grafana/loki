@@ -1,0 +1,222 @@
+// physicalpb.proto holds types for a query engine's physical plan.
+syntax = "proto3";
+
+package physical.engine.loki.v1;
+
+option go_package = "github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb";
+
+import "gogoproto/gogo.proto";
+
+import "pkg/engine/internal/util/ulid/ulid.proto";
+
+import public "pkg/engine/internal/planner/physical/physicalpb/expression.proto";
+
+// Plan represents the physical plan of a query.
+message Plan {
+    repeated PlanNode nodes = 1;
+    repeated PlanEdge edges = 2;
+}
+
+// PlanEdge represents a relationship between two nodes in the physical plan.
+message PlanEdge {
+    PlanNodeID parent = 1 [(gogoproto.nullable) = false];
+    PlanNodeID child = 2 [(gogoproto.nullable) = false];
+}
+
+message PlanNodeID {
+    ulid.loki.v1.ProtoULID value = 1 [(gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/util/ulid.ULID", (gogoproto.nullable) = false];
+}
+
+// PlanNode represents a node in the physical plan.
+message PlanNode {
+    oneof kind {
+        AggregateRange aggregate_range = 1;
+        AggregateVector aggregate_vector = 2;
+        DataObjScan scan = 3;
+        Filter filter = 4;
+        Limit limit = 5;
+        Merge merge = 6;
+        Parse parse = 7;
+        Projection projection = 8;
+        SortMerge sort_merge = 9;
+        ColumnCompat column_compat = 10;
+    }
+}
+
+// AggregateRange aggregates samples into windowed ranges.
+message AggregateRange {
+    // ID for the node.
+    PlanNodeID id = 1 [(gogoproto.nullable) = false];
+
+    // Columns to partition the data by.
+    repeated ColumnExpression partition_by = 2;
+
+    AggregateRangeOp operation = 3;
+
+    int64 start_unix_nanos = 4;
+    int64 end_unix_nanos = 5;
+    int64 step_ns = 6;
+    int64 range_ns = 7;
+}
+
+// AggregateRangeOp represents the operation to perform on the aggregated
+// data.
+enum AggregateRangeOp {
+    AGGREGATE_RANGE_OP_INVALID = 0; // Invalid range aggregation operation.
+
+    AGGREGATE_RANGE_OP_COUNT = 1; // Represents LogQL's count_over_time aggregation.
+    AGGREGATE_RANGE_OP_SUM = 2; // Represents LogQL's sum_over_time aggregation.
+    AGGREGATE_RANGE_OP_MAX = 3; // Represents LogQL's max_over_time aggregation.
+    AGGREGATE_RANGE_OP_MIN = 4; // Represents LogQL's min_over_time aggregation.
+}
+
+// AggregateVector represents an operation to aggregate a range vector into an
+// instant vector, with optional grouping on specified dimensions.
+message AggregateVector {
+    // ID for the node.
+    PlanNodeID id = 1 [(gogoproto.nullable) = false];
+
+    // Columns to group the data by. If empty, all rows are aggregated into a single result.
+    repeated ColumnExpression group_by = 2;
+
+    // Aggregation operation to perform over the underlying range vector.
+    AggregateVectorOp operation = 3;
+}
+
+// AggregateVectorOp represents the different aggregation operations that can
+// be performed on a range vector.
+enum AggregateVectorOp {
+    AGGREGATE_VECTOR_OP_INVALID = 0; // Invalid vector aggregation operation.
+
+    AGGREGATE_VECTOR_OP_SUM = 1;        // Represents LogQL's sum vector aggregation.
+    AGGREGATE_VECTOR_OP_MAX = 2;        // Represents LogQL's max vector aggregation.
+    AGGREGATE_VECTOR_OP_MIN = 3;        // Represents LogQL's min vector aggregation.
+    AGGREGATE_VECTOR_OP_COUNT = 4;      // Represents LogQL's count vector aggregation.
+    AGGREGATE_VECTOR_OP_AVG = 5;        // Represents LogQL's avg vector aggregation.
+    AGGREGATE_VECTOR_OP_STDDEV = 6;     // Represents LogQL's stddev vector aggregation.
+    AGGREGATE_VECTOR_OP_STDVAR = 7;     // Represents LogQL's stdvar vector aggregation.
+    AGGREGATE_VECTOR_OP_BOTTOMK = 8;    // Represents LogQL's bottomk vector aggregation.
+    AGGREGATE_VECTOR_OP_TOPK = 9;       // Represents LogQL's topk vector aggregation.
+    AGGREGATE_VECTOR_OP_SORT = 10;      // Represents LogQL's sort vector aggregation.
+    AGGREGATE_VECTOR_OP_SORT_DESC = 11; // Represents LogQL's sort_desc vector aggregation.
+}
+
+// DataObjScan represents an operation to read the contents of a data object
+// section.
+message DataObjScan {
+    // ID for the node.
+    PlanNodeID id = 1 [(gogoproto.nullable) = false];
+
+    // Stored location of the data object to read.
+    string location = 2;
+
+    // Section within the data object to read.
+    int64 section = 3;
+
+    // StreamIDs within the section to read.
+    repeated int64 stream_ids = 4;
+
+    // Projections are used to limit the columns that are read.
+    repeated ColumnExpression projections = 5;
+
+    // Predicates are used to filter rows to reduce the amount of rows that are
+    // returned.
+    repeated Expression predicates = 6;
+
+    // Sort order for the scan.
+    SortOrder sort_order = 7;
+
+    // Limit of rows to return.
+    uint32 limit = 8;
+}
+
+// Filter represents an operation to filter rows based on a condition.
+message Filter {
+    // ID for the node.
+    PlanNodeID id = 1 [(gogoproto.nullable) = false];
+
+    // Predicates to apply to filter rows.
+    repeated Expression predicates = 2;
+}
+
+// Limit represents a limiting operation in the physical plan that applies
+// offset and limit to the result set.
+message Limit {
+    // ID for the node.
+    PlanNodeID id = 1 [(gogoproto.nullable) = false];
+
+    // Skip specifies how many initial rows should be skipped.
+    uint32 skip = 2;
+
+    // Fetch specifies how many rows should be returned in total.
+    uint32 fetch = 3;
+}
+
+// Merge represents an operation in the physical plan that merges a sequence of
+// inputs into a single output, retaining the order of the inputs.
+message Merge {
+    // ID for the node.
+    PlanNodeID id = 1 [(gogoproto.nullable) = false];
+}
+
+// Parse represents an operation to parse a log message into multiple key-value
+// pairs.
+message Parse {
+    // ID for the node.
+    PlanNodeID id = 1 [(gogoproto.nullable) = false];
+
+    ParseOp operation = 2;
+    repeated string requested_keys = 3;
+}
+
+// ParseOp represents the type of parse operation to be performed.
+enum ParseOp {
+    PARSE_OP_INVALID = 0; // Invalid parse operation.
+
+    PARSE_OP_LOGFMT = 1; // Logfmt parse operation.
+    PARSE_OP_JSON = 2; // JSON parse operation.
+}
+
+// Projection represents an operation to return a subset of columns from the
+// input.
+message Projection {
+    // ID for the node.
+    PlanNodeID id = 1 [(gogoproto.nullable) = false];
+
+    // Columns that should be kept in the output.
+    repeated ColumnExpression columns = 2;
+}
+
+// SortMerge represents an operation in the physical plan. It merges a sequence
+// of sorted inputs into a single sorted output.
+message SortMerge {
+    // ID for the node.
+    PlanNodeID id = 1 [(gogoproto.nullable) = false];
+
+    // Column defines the column by which the rows should be sorted. This is almost always
+    // the timestamp column, as it is the column by which DataObjScan results
+    // are sorted.
+    ColumnExpression column = 2;
+
+    // Order defines how rows for the column are sorted. Must match the sort
+    // order of the inputs.
+    SortOrder order = 3;
+}
+
+// SortOrder represents the order in which results should be sorted.
+enum SortOrder {
+    SORT_ORDER_INVALID = 0; // Invalid sort order.
+    SORT_ORDER_ASCENDING = 1; // Ascending sort order.
+    SORT_ORDER_DESCENDING = 2; // Descending sort order.
+}
+
+// ColumnCompat represents a compactibilty operation in the physical plan that
+// moves a values from a conflicting metadata column with a label column into a new column suffixed with `_extracted`.
+message ColumnCompat {
+	string id = 1;
+
+	// TODO(chaudum): These fields are poorly named. Come up with more descriptive names.
+	ColumnType Source = 2; // column type of the column that may colide with columns of the same name but with collision type
+	ColumnType Destination = 3; // column type of the generated _extracted column (should be same as source)
+	ColumnType Collision = 4;    // column type of the column that a source type column may collide with}
+}
