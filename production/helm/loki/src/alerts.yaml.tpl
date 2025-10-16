@@ -3,13 +3,15 @@ groups:
   - name: "loki_alerts"
     rules:
 {{- with .Values.monitoring.rules }}
+{{- $additionalAnnotations := .additionalRuleAnnotations }}
+{{- $additionalLabels := .additionalRuleLabels }}
 {{- if not (.disabled.LokiRequestErrors | default (not .configs.LokiRequestErrors.enabled)) }}
       {{- with .configs.LokiRequestErrors }}
       - alert: "LokiRequestErrors"
         annotations:
           message: |
             {{`{{`}} $labels.job {{`}}`}} {{`{{`}} $labels.route {{`}}`}} is experiencing {{`{{`}} printf "%.2f" $value {{`}}`}}% errors.
-          {{- with .Values.monitoring.rules.additionalRuleAnnotations }}
+          {{- with $additionalAnnotations }}
           {{- toYaml . | nindent 10 }}
           {{- end }}
         expr: |
@@ -20,10 +22,10 @@ groups:
         for: {{ .for }}
         labels:
           severity: {{ .severity }}
+          {{- with $additionalLabels }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
       {{- end }}
-{{- if .additionalRuleLabels }}
-{{ toYaml .additionalRuleLabels | indent 10 }}
-{{- end }}
 {{- end }}
 
 {{- if not (.disabled.LokiRequestPanics | default (not .configs.LokiRequestPanics.enabled)) }}
@@ -32,17 +34,17 @@ groups:
         annotations:
           message: |
             {{`{{`}} $labels.job {{`}}`}} is experiencing {{`{{`}} printf "%.2f" $value {{`}}`}}% increase of panics.
-          {{- with .Values.monitoring.rules.additionalRuleAnnotations }}
+          {{- with $additionalAnnotations }}
           {{- toYaml . | nindent 10 }}
           {{- end }}
         expr: |
           sum(increase(loki_panic_total[{{ .lookbackPeriod }}])) by (namespace, job) > {{ .threshold }}
         labels:
           severity: {{ .severity }}
+          {{- with $additionalLabels }}
+          {{ toYaml . | nindent 10 }}
+          {{- end }}
       {{- end }}
-{{- if .additionalRuleLabels }}
-{{ toYaml .additionalRuleLabels | indent 10 }}
-{{- end }}
 {{- end }}
 
 {{- if not (.disabled.LokiRequestLatency | default (not .configs.LokiRequestLatency.enabled)) }}
@@ -51,7 +53,7 @@ groups:
         annotations:
           message: |
             {{`{{`}} $labels.job {{`}}`}} {{`{{`}} $labels.route {{`}}`}} is experiencing {{`{{`}} printf "%.2f" $value {{`}}`}}s 99th percentile latency.
-          {{- with .Values.monitoring.rules.additionalRuleAnnotations }}
+          {{- with $additionalAnnotations }}
           {{- toYaml . | nindent 10 }}
           {{- end }}
         expr: |
@@ -59,10 +61,10 @@ groups:
         for: {{ .for }}
         labels:
           severity: {{ .severity }}
+          {{- with $additionalLabels }}
+          {{ toYaml . | nindent 10 }}
+          {{- end }}
       {{- end }}
-{{- if .additionalRuleLabels }}
-{{ toYaml .additionalRuleLabels | indent 10 }}
-{{- end }}
 {{- end }}
 
 {{- if not (.disabled.LokiTooManyCompactorsRunning | default (not .configs.LokiTooManyCompactorsRunning.enabled)) }}
@@ -71,7 +73,7 @@ groups:
         annotations:
           message: |
             {{`{{`}} $labels.cluster {{`}}`}} {{`{{`}} $labels.namespace {{`}}`}} has had {{`{{`}} printf "%.0f" $value {{`}}`}} compactors running for more than 5m. Only one compactor should run at a time.
-          {{- with .Values.monitoring.rules.additionalRuleAnnotations }}
+          {{- with $additionalAnnotations }}
           {{- toYaml . | nindent 10 }}
           {{- end }}
         expr: |
@@ -79,20 +81,21 @@ groups:
         for: {{ .for }}
         labels:
           severity: {{ .severity }}
+          {{- with $additionalLabels }}
+          {{ toYaml . | nindent 10 }}
+          {{- end }}
       {{- end }}
-{{- if .additionalRuleLabels }}
-{{ toYaml .additionalRuleLabels | indent 10 }}
-{{- end }}
 {{- end }}
 
-{{- if not (.Values.monitoring.rules.disabled.LokiCanaryLatency | default false) }}
+{{- if not (.disabled.LokiCanaryLatency | default false) }}
+  {{- with .configs.LokiCanaryLatency }}
   - name: "loki_canaries_alerts"
     rules:
       - alert: "LokiCanaryLatency"
         annotations:
           message: |
             {{`{{`}} $labels.job {{`}}`}} is experiencing {{`{{`}} printf "%.2f" $value {{`}}`}}s 99th percentile latency.
-          {{- with .Values.monitoring.rules.additionalRuleAnnotations }}
+          {{- with $additionalAnnotations }}
           {{- toYaml . | nindent 10 }}
           {{- end }}
         expr: |
@@ -100,9 +103,9 @@ groups:
         for: {{ .for }}
         labels:
           severity: {{ .severity }}
+          {{- with $additionalLabels }}
+          {{ toYaml . | nindent 10 }}
+          {{- end }}
   {{- end }}
-{{- if .additionalRuleLabels }}
-{{ toYaml .additionalRuleLabels | indent 10 }}
-{{- end }}
 {{- end }}
 {{- end }}
