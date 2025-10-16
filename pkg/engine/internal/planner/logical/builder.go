@@ -109,6 +109,30 @@ func (b *Builder) Compat(logqlCompatibility bool) *Builder {
 	return b
 }
 
+func (b *Builder) Project(all, expand, drop bool, expr ...Value) *Builder {
+	return &Builder{
+		val: &Projection{
+			Relation:    b.val,
+			All:         all,
+			Expand:      expand,
+			Drop:        drop,
+			Expressions: expr,
+		},
+	}
+}
+
+func (b *Builder) ProjectAll(expand, drop bool, expr ...Value) *Builder {
+	return b.Project(true, expand, drop, expr...)
+}
+
+func (b *Builder) ProjectDrop(expr ...Value) *Builder {
+	return b.ProjectAll(false, true, expr...)
+}
+
+func (b *Builder) ProjectExpand(expr ...Value) *Builder {
+	return b.ProjectAll(true, false, expr...)
+}
+
 // Value returns the underlying [Value]. This is useful when you need to access
 // the value directly, such as when passing it to a function that operates on
 // values rather than a Builder.

@@ -15,6 +15,7 @@ import (
 )
 
 var errUnimplemented = errors.New("query contains unimplemented features")
+var unimplementedFeature = func(s string) error { return fmt.Errorf("%w: %s", errUnimplemented, s) }
 
 // BuildPlan converts a LogQL query represented as [logql.Params] into a logical [Plan].
 // It may return an error as second argument in case the traversal of the AST of the query fails.
@@ -55,6 +56,8 @@ func buildPlanForLogQuery(
 	var (
 		err      error
 		selector Value
+
+		dropCols []Value
 
 		// parse statements in LogQL introduce additional ambiguouity, requiring post
 		// parse filters to be tracked separately, and not included in maketable predicates
@@ -115,12 +118,29 @@ func buildPlanForLogQuery(
 				}
 			}
 			return true
-			//TODO Support logfmt and json expression parset expressions
-		case *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
-			*syntax.LineFmtExpr, *syntax.LabelFmtExpr,
-			*syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
+		case *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr:
 			err = errUnimplemented
 			return false // do not traverse children
+		case *syntax.LineFmtExpr:
+			err = unimplementedFeature("line_format")
+			return false // do not traverse children
+		case *syntax.LabelFmtExpr:
+			err = unimplementedFeature("label_format")
+			return false // do not traverse children
+		case *syntax.KeepLabelsExpr:
+			err = unimplementedFeature("keep")
+			return false // do not traverse children
+		case *syntax.DropLabelsExpr:
+			if e.HasNamedMatchers() {
+				// Example: `| drop __error__=~"Unknown Error: .*"`
+				err = unimplementedFeature("drop with named matchers")
+				return false // do not traverse children
+			}
+			for _, name := range e.Names() {
+				value := NewColumnRef(name, types.ColumnTypeAmbiguous)
+				dropCols = append(dropCols, value)
+			}
+			return true
 		default:
 			err = errUnimplemented
 			return false // do not traverse children
@@ -143,6 +163,9 @@ func buildPlanForLogQuery(
 			Shard:      shard,
 		},
 	)
+
+	// Do we need a projection of all comlumns right after maketable?
+	// builder = builder.ProjectAll(false, false)
 
 	direction := params.Direction()
 	if !isMetricQuery && direction == logproto.FORWARD {
@@ -172,6 +195,11 @@ func buildPlanForLogQuery(
 	}
 	for _, value := range postParsePredicates {
 		builder = builder.Select(value)
+	}
+
+	// TODO(chaudum): Drop stages can happen throughout the pipeline
+	if len(dropCols) > 0 {
+		builder = builder.ProjectDrop(dropCols...)
 	}
 
 	// Metric queries do not apply a limit.
