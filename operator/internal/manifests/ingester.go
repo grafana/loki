@@ -293,7 +293,7 @@ func newIngesterPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget 
 	// Default to 1 if not defined in ResourceRequirementsTable for a given size
 	mu := intstr.FromInt(1)
 	if opts.ResourceRequirements.Ingester.PDBMinAvailable > 0 {
-		mu = intstr.FromInt(opts.ResourceRequirements.Ingester.PDBMinAvailable)
+		mu = GetPDBMinAvailable(opts)
 	}
 	return &policyv1.PodDisruptionBudget{
 		TypeMeta: metav1.TypeMeta{
@@ -312,4 +312,20 @@ func newIngesterPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget 
 			MinAvailable: &mu,
 		},
 	}
+}
+
+func GetPDBMinAvailable(opts Options) intstr.IntOrString {
+	if opts.Stack.Replication != nil && opts.Stack.Replication.Factor != 0 {
+		rf := opts.Stack.Replication.Factor
+		if opts.Stack.Template.Ingester.Replicas <= rf {
+			// scale up replicas temporarily to create a spare pod for rolling updates
+			opts.Stack.Template.Ingester.Replicas = rf + 1
+			returnedMinAvailablePods := opts.Stack.Template.Ingester.Replicas
+			opts.Stack.Template.Ingester.Replicas -= 1
+			return intstr.FromInt32(returnedMinAvailablePods)
+		}
+		return intstr.FromInt32(rf)
+	}
+	return intstr.FromInt(opts.ResourceRequirements.Ingester.PDBMinAvailable)
+
 }
