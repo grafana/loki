@@ -9,19 +9,19 @@ RUN make clean && make BUILD_IN_CONTAINER=false IMAGE_TAG=${IMAGE_TAG} loki
 
 # Prepare filesystem stage
 FROM golang:${GO_VERSION} AS filesystem
-COPY cmd/loki/loki-docker-config.yaml /tmp/local-config.yaml
-RUN mkdir -p /tmp/etc/loki /tmp/loki/rules /tmp/loki/rules-temp && \
-    cp /tmp/local-config.yaml /tmp/etc/loki/local-config.yaml && \
+COPY cmd/loki/loki-docker-config.yaml /local-config.yaml
+RUN mkdir -p /etc/loki /loki/rules /loki/rules-temp && \
+    cp /local-config.yaml /etc/loki/local-config.yaml && \
     addgroup --gid 10001 loki && \
     adduser --uid 10001 --gid 10001 --disabled-password --gecos "" loki && \
-    chown -R loki:loki /tmp/etc/loki /tmp/loki
+    chown -R loki:loki /etc/loki /loki
 
 # Final stage
 FROM gcr.io/distroless/static:nonroot
 
 COPY --from=build /src/loki/cmd/loki/loki /usr/bin/loki
-COPY --from=filesystem /tmp/etc/loki /etc/loki
-COPY --from=filesystem /tmp/loki /loki
+COPY --from=filesystem /etc/loki /etc/loki
+COPY --from=filesystem /loki /loki
 COPY --from=filesystem /etc/passwd /etc/passwd
 COPY --from=filesystem /etc/group /etc/group
 
