@@ -169,14 +169,12 @@ func TestBuildIngester_PodDisruptionBudgetWithReplicationFactor(t *testing.T) {
 	}{
 		{
 			Name:                    "ingester replicas <= replication factor",
-			Size:                    lokiv1.SizeOneXPico,
 			customReplicationFactor: 4,
 			PDBMinAvailable:         2,
 			ExpectedMinAvailable:    5,
 		},
 		{
 			Name:                    "ingester replicas > replication factor",
-			Size:                    lokiv1.SizeOneXSmall,
 			customReplicationFactor: 2,
 			PDBMinAvailable:         1,
 			ExpectedMinAvailable:    2,
