@@ -101,33 +101,6 @@ func (g *Graph[NodeType]) AddEdge(e Edge[NodeType]) error {
 	return nil
 }
 
-// RemoveEdge removes a directed edge between two nodes in the graph.
-//
-// RemoveEdge returns an error if:
-//
-// * Either node is the zero value, or
-// * either node doesn't exist in the graph.
-func (g *Graph[NodeType]) RemoveEdge(e Edge[NodeType]) error {
-	if isZero(e.Parent) || isZero(e.Child) {
-		return fmt.Errorf("parent and child nodes must not be zero values")
-	}
-	if !g.nodes.Contains(e.Parent) {
-		return fmt.Errorf("node %s does not exist in graph", e.Parent.ID())
-	}
-	if !g.nodes.Contains(e.Child) {
-		return fmt.Errorf("node %s does not exist in graph", e.Child.ID())
-	}
-
-	if slices.Contains(g.children[e.Parent], e.Child) {
-		g.children[e.Parent] = slices.DeleteFunc(g.children[e.Parent], func(check NodeType) bool { return check == e.Child })
-	}
-	if slices.Contains(g.parents[e.Child], e.Parent) {
-		g.parents[e.Child] = slices.DeleteFunc(g.parents[e.Child], func(check NodeType) bool { return check == e.Parent })
-	}
-
-	return nil
-}
-
 // Eliminate removes the node n from the graph and reconnects n's parents to
 // n's children, maintaining connectivity across the graph.
 //

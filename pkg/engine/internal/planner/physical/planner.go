@@ -448,9 +448,6 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			newOptimization("CleanupFilters", plan).withRules(
 				&removeNoopFilter{plan: plan},
 			),
-			newOptimization("FilterNodePushdown", plan).withRules(
-				newFilterNodePushdown(plan),
-			),
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),

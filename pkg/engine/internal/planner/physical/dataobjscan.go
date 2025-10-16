@@ -8,8 +8,7 @@ type DataObjLocation string
 
 // DataObjScan represents a physical plan operation for reading data objects.
 // It contains information about the object location, stream IDs, projections,
-// predicates, scan direction, and result limit for reading data from a data
-// object.
+// predicates for reading data from a data object.
 type DataObjScan struct {
 	id string
 
