@@ -160,84 +160,6 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 	return nil, nil
 }
 
-func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, baseNode Node, ctx *Context) error {
-	scans := []Node{}
-	for _, descriptor := range currentGroup {
-		// output current group to nodes
-		for _, section := range descriptor.Sections {
-			scan := &DataObjScan{
-				Location:  descriptor.Location,
-				StreamIDs: descriptor.Streams,
-				Section:   section,
-			}
-			p.plan.graph.Add(scan)
-			scans = append(scans, scan)
-		}
-	}
-	if len(scans) > 1 && ctx.direction != UNSORTED {
-		// a single topK for overlapping scan nodes.
-		topK := &TopK{
-			SortBy:     newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
-			Ascending:  ctx.direction == ASC, // apply direction from previously visited Sort node
-			NullsFirst: false,                // temporarily hardcoded.
-		}
-		p.plan.graph.Add(topK)
-		for _, scan := range scans {
-			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: topK, Child: scan}); err != nil {
-				return err
-			}
-		}
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: baseNode, Child: topK}); err != nil {
-			return err
-		}
-	} else {
-		for _, scan := range scans {
-			child := scan
-			if ctx.direction != UNSORTED {
-				topK := &TopK{
-					SortBy:     newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
-					Ascending:  ctx.direction == ASC, // apply direction from previously visited Sort node
-					NullsFirst: false,                // temporarily hardcoded.
-				}
-				p.plan.graph.Add(topK)
-
-				if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: topK, Child: scan}); err != nil {
-					return err
-				}
-
-				child = topK
-			}
-
-			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: baseNode, Child: child}); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func overlappingShardDescriptors(filteredShardDescriptors []FilteredShardDescriptor) [][]FilteredShardDescriptor {
-	// Ensure that shard descriptors are sorted by end time
-	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
-		return filteredShardDescriptors[i].TimeRange.End.After(filteredShardDescriptors[j].TimeRange.End)
-	})
-
-	groups := make([][]FilteredShardDescriptor, 0, len(filteredShardDescriptors))
-	var tr TimeRange
-	for i, shardDesc := range filteredShardDescriptors {
-		if i == 0 || !tr.Overlaps(shardDesc.TimeRange) {
-			// Create new group for first item or if item does not overlap with previous group
-			groups = append(groups, []FilteredShardDescriptor{shardDesc})
-			tr = shardDesc.TimeRange
-		} else {
-			// Append to existing group
-			groups[len(groups)-1] = append(groups[len(groups)-1], shardDesc)
-			tr = tr.Merge(shardDesc.TimeRange)
-		}
-	}
-	return groups
-}
-
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
 func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node, error) {
 	shard, ok := lp.Shard.(*logical.ShardInfo)
@@ -256,10 +178,11 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 	if err != nil {
 		return nil, err
 	}
-
-	groups := overlappingShardDescriptors(filteredShardDescriptors)
+	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
+		return filteredShardDescriptors[i].TimeRange.End.After(filteredShardDescriptors[j].TimeRange.End)
+	})
 	if ctx.direction == ASC {
-		slices.Reverse(groups)
+		slices.Reverse(filteredShardDescriptors)
 	}
 
 	// Scan work can be parallelized across multiple workers, so we wrap
@@ -267,13 +190,24 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 	var parallelize Node = &Parallelize{}
 	p.plan.graph.Add(parallelize)
 
-	var merge Node = &Merge{}
-	p.plan.graph.Add(merge)
-	for _, gr := range groups {
-		if err := p.buildNodeGroup(gr, merge, ctx); err != nil {
-			return nil, err
+	scanSet := &ScanSet{}
+	p.plan.graph.Add(scanSet)
+
+	for _, desc := range filteredShardDescriptors {
+		for _, section := range desc.Sections {
+			scanSet.Targets = append(scanSet.Targets, &ScanTarget{
+				Type: ScanTypeDataObject,
+
+				DataObject: &DataObjScan{
+					Location:  desc.Location,
+					StreamIDs: desc.Streams,
+					Section:   section,
+				},
+			})
 		}
 	}
+
+	var base Node = scanSet
 
 	if p.context.v1Compatible {
 		compat := &ColumnCompat{
@@ -281,15 +215,15 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 			Destination: types.ColumnTypeMetadata,
 			Collision:   types.ColumnTypeLabel,
 		}
-		merge, err = p.wrapNodeWith(merge, compat)
+		base, err = p.wrapNodeWith(base, compat)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	// Add an edge between the parallelize and the final merge node (which may
+	// Add an edge between the parallelize and the final base node (which may
 	// have been changed after processing compatibility).
-	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: merge}); err != nil {
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: base}); err != nil {
 		return nil, err
 	}
 	return []Node{parallelize}, nil
@@ -313,14 +247,37 @@ func (p *Planner) processSelect(lp *logical.Select, ctx *Context) ([]Node, error
 	return []Node{node}, nil
 }
 
-// Pass sort direction from [logical.Sort] to the children.
+// processSort processes a [logical.Sort] node.
 func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]Node, error) {
 	order := DESC
 	if lp.Ascending {
 		order = ASC
 	}
 
-	return p.process(lp.Table, ctx.WithDirection(order))
+	node := &TopK{
+		SortBy:     &ColumnExpr{Ref: lp.Column.Ref},
+		Ascending:  order == ASC,
+		NullsFirst: false,
+
+		// K initially starts at 0, indicating to sort everything. The
+		// [limitPushdown] optimization pass can update this value based on how
+		// many rows are needed.
+		K: 0,
+	}
+
+	p.plan.graph.Add(node)
+
+	children, err := p.process(lp.Table, ctx.WithDirection(order))
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range children {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
+			return nil, err
+		}
+	}
+	return []Node{node}, nil
 }
 
 // Convert [logical.Limit] into one [Limit] node.
@@ -445,17 +402,19 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			newOptimization("PredicatePushdown", plan).withRules(
 				&predicatePushdown{plan: plan},
 			),
-			newOptimization("CleanupFilters", plan).withRules(
-				&removeNoopFilter{plan: plan},
-			),
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
 			newOptimization("ProjectionPushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
 			),
-			newOptimization("CleanupMerge", plan).withRules(
-				&removeNoopMerge{plan: plan},
+			newOptimization("ParallelPushdown", plan).withRules(
+				&parallelPushdown{plan: plan},
+			),
+
+			// Perform cleanups at the very end.
+			newOptimization("Cleanup", plan).withRules(
+				&removeNoopFilter{plan: plan},
 			),
 		}
 		optimizer := newOptimizer(plan, optimizations)

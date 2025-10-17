@@ -90,8 +90,13 @@ func locations(t *testing.T, plan *Plan, nodes []Node) []string {
 	res := make([]string, 0, len(nodes))
 
 	visitor := &nodeCollectVisitor{
-		onVisitDataObjScan: func(scan *DataObjScan) error {
-			res = append(res, string(scan.Location))
+		onVisitScanSet: func(set *ScanSet) error {
+			for _, target := range set.Targets {
+				switch target.Type {
+				case ScanTypeDataObject:
+					res = append(res, string(target.DataObject.Location))
+				}
+			}
 			return nil
 		},
 	}
@@ -106,8 +111,13 @@ func sections(t *testing.T, plan *Plan, nodes []Node) [][]int {
 	res := make([][]int, 0, len(nodes))
 
 	visitor := &nodeCollectVisitor{
-		onVisitDataObjScan: func(scan *DataObjScan) error {
-			res = append(res, []int{scan.Section})
+		onVisitScanSet: func(set *ScanSet) error {
+			for _, target := range set.Targets {
+				switch target.Type {
+				case ScanTypeDataObject:
+					res = append(res, []int{target.DataObject.Section})
+				}
+			}
 			return nil
 		},
 	}
@@ -483,25 +493,21 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		expectedPlan := &Plan{}
 		parallelize := expectedPlan.graph.Add(&Parallelize{id: "parallelize"})
 		compat := expectedPlan.graph.Add(&ColumnCompat{id: "compat", Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
-		merge := expectedPlan.graph.Add(&Merge{id: "merge"})
-		topK1 := expectedPlan.graph.Add(&TopK{id: "topk1", SortBy: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}, Ascending: true})
-		topK2 := expectedPlan.graph.Add(&TopK{id: "topk2", SortBy: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}, Ascending: true})
-		scan1 := expectedPlan.graph.Add(&DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}})
-		scan2 := expectedPlan.graph.Add(&DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}})
-		scan3 := expectedPlan.graph.Add(&DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}})
-		scan4 := expectedPlan.graph.Add(&DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}})
+		scanSet := expectedPlan.graph.Add(&ScanSet{
+			id: "scanset",
+
+			// Targets should be added in the order of the scan timestamps
+			// ASC => oldest to newest
+			Targets: []*ScanTarget{
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
+			},
+		})
 
 		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: compat})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: compat, Child: merge})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: topK1})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: topK2})
-
-		// Sort merges should be added in the order of the scan timestamps
-		// ASC => oldest to newest
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: topK1, Child: scan3})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: topK1, Child: scan4})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: topK2, Child: scan1})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: topK2, Child: scan2})
+		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: compat, Child: scanSet})
 
 		actual := PrintAsTree(plan)
 		expected := PrintAsTree(expectedPlan)
@@ -521,24 +527,20 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		expectedPlan := &Plan{}
 		parallelize := expectedPlan.graph.Add(&Parallelize{id: "parallelize"})
 		compat := expectedPlan.graph.Add(&ColumnCompat{id: "compat", Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
-		merge := expectedPlan.graph.Add(&Merge{id: "merge"})
-		topK1 := expectedPlan.graph.Add(&TopK{id: "topk1", SortBy: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}, Ascending: false})
-		topK2 := expectedPlan.graph.Add(&TopK{id: "topk2", SortBy: &ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}}, Ascending: false})
-		scan1 := expectedPlan.graph.Add(&DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}})
-		scan2 := expectedPlan.graph.Add(&DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}})
-		scan3 := expectedPlan.graph.Add(&DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}})
-		scan4 := expectedPlan.graph.Add(&DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}})
+		scanSet := expectedPlan.graph.Add(&ScanSet{
+			id: "scanset",
+
+			// Targets should be added in the order of the scan timestamps
+			Targets: []*ScanTarget{
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
+			},
+		})
 
 		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: compat})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: compat, Child: merge})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: topK1})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: topK2})
-
-		// Sort merges should be added in the order of the scan timestamps
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: topK1, Child: scan1})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: topK1, Child: scan2})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: topK2, Child: scan3})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: topK2, Child: scan4})
+		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: compat, Child: scanSet})
 
 		actual := PrintAsTree(plan)
 		expected := PrintAsTree(expectedPlan)
@@ -549,68 +551,4 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 
 		require.Equal(t, expected, actual)
 	})
-}
-
-func TestPlanner_OverlappingShardDescriptors(t *testing.T) {
-	tests := []struct {
-		name   string
-		ranges []TimeRange
-		groups int
-	}{
-		{
-			name: "Isolated groups",
-			ranges: []TimeRange{
-				{Start: time.UnixMilli(1), End: time.UnixMilli(2)},
-				{Start: time.UnixMilli(3), End: time.UnixMilli(4)},
-				{Start: time.UnixMilli(5), End: time.UnixMilli(6)},
-			},
-			groups: 3,
-		},
-		{
-			name: "Equal start and end are one group",
-			ranges: []TimeRange{
-				{Start: time.UnixMilli(1), End: time.UnixMilli(2)},
-				{Start: time.UnixMilli(2), End: time.UnixMilli(4)},
-			},
-			groups: 1,
-		},
-		{
-			name: "One range contains two isolated groups",
-			ranges: []TimeRange{
-				{Start: time.UnixMilli(1), End: time.UnixMilli(2)},
-				{Start: time.UnixMilli(3), End: time.UnixMilli(4)},
-				{Start: time.UnixMilli(0), End: time.UnixMilli(5)},
-			},
-			groups: 1,
-		},
-		{
-			name: "One range spans two isolated groups",
-			ranges: []TimeRange{
-				{Start: time.UnixMilli(0), End: time.UnixMilli(2)},
-				{Start: time.UnixMilli(4), End: time.UnixMilli(5)},
-				{Start: time.UnixMilli(2), End: time.UnixMilli(4)},
-			},
-			groups: 1,
-		},
-		{
-			name: "Real world example",
-			ranges: []TimeRange{
-				{Start: time.Date(2025, time.September, 16, 15, 0, 31, 361695211, time.UTC), End: time.Date(2025, time.September, 16, 15, 0, 46, 800186241, time.UTC)},
-				{Start: time.Date(2025, time.September, 16, 15, 0, 31, 350398040, time.UTC), End: time.Date(2025, time.September, 16, 15, 0, 31, 350398040, time.UTC)},
-				{Start: time.Date(2025, time.September, 16, 15, 0, 31, 330227014, time.UTC), End: time.Date(2025, time.September, 16, 15, 1, 3, 337407239, time.UTC)},
-			},
-			groups: 1,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			descriptors := []FilteredShardDescriptor{}
-			for _, tr := range tt.ranges {
-				descriptors = append(descriptors, FilteredShardDescriptor{TimeRange: tr})
-			}
-
-			groups := overlappingShardDescriptors(descriptors)
-			require.Equal(t, tt.groups, len(groups))
-		})
-	}
 }

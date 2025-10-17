@@ -10,18 +10,22 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make BUILD_IN_CONTAINER=false loki
 
-FROM gcr.io/distroless/static:debug
+# Prepare filesystem stage
+FROM golang:${GO_VERSION} AS filesystem
+COPY cmd/loki/loki-local-config.yaml /local-config.yaml
+RUN mkdir -p /etc/loki /loki && \
+    cp /local-config.yaml /etc/loki/local-config.yaml && \
+    addgroup --gid 10001 loki && \
+    adduser --uid 10001 --gid 10001 --disabled-password --gecos "" loki && \
+    chown -R loki:loki /etc/loki /loki
+
+FROM gcr.io/distroless/static:nonroot
 
 COPY --from=goenv /src/loki/cmd/loki/loki /usr/bin/loki
-COPY cmd/loki/loki-local-config.yaml /etc/loki/local-config.yaml
-
-SHELL [ "/busybox/sh", "-c" ]
-
-RUN addgroup -g 10001 -S loki && \
-    adduser -u 10001 -S loki -G loki
-RUN mkdir -p /loki && \
-    chown -R loki:loki /etc/loki /loki && \
-    ln -s /busybox/sh /bin/sh
+COPY --from=filesystem /etc/loki /etc/loki
+COPY --from=filesystem /loki /loki
+COPY --from=filesystem /etc/passwd /etc/passwd
+COPY --from=filesystem /etc/group /etc/group
 
 USER 10001
 EXPOSE 3100

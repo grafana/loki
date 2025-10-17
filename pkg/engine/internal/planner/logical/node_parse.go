@@ -2,8 +2,6 @@ package logical
 
 import (
 	"fmt"
-
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 )
 
 // ParserKind represents the type of parser to use
@@ -47,11 +45,6 @@ func (p *Parse) Name() string {
 // String returns the string representation of the Parse instruction
 func (p *Parse) String() string {
 	return fmt.Sprintf("PARSE %s [kind=%v]", p.Table.Name(), p.Kind)
-}
-
-// Schema returns the schema of the Parse operation.
-func (p *Parse) Schema() *schema.Schema {
-	return p.Table.Schema()
 }
 
 // isInstruction marks Parse as an Instruction

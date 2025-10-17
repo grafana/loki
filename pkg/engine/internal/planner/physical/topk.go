@@ -26,6 +26,16 @@ func (t *TopK) ID() string {
 	return t.id
 }
 
+// Clone returns a deep copy of the node (minus its ID).
+func (t *TopK) Clone() Node {
+	return &TopK{
+		SortBy:     t.SortBy.Clone().(ColumnExpression),
+		Ascending:  t.Ascending,
+		NullsFirst: t.NullsFirst,
+		K:          t.K,
+	}
+}
+
 // Type implements the [Node] interface.
 // Returns the type of the node.
 func (*TopK) Type() NodeType {

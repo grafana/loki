@@ -25,16 +25,6 @@ func TestExecutor(t *testing.T) {
 	})
 }
 
-func TestExecutor_SortMerge(t *testing.T) {
-	t.Run("no inputs result in empty pipeline", func(t *testing.T) {
-		ctx := t.Context()
-		c := &Context{}
-		pipeline := c.executeSortMerge(ctx, &physical.SortMerge{}, nil)
-		_, err := pipeline.Read(ctx)
-		require.ErrorContains(t, err, EOF.Error())
-	})
-}
-
 func TestExecutor_Limit(t *testing.T) {
 	t.Run("no inputs result in empty pipeline", func(t *testing.T) {
 		ctx := t.Context()
