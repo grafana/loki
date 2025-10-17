@@ -3,6 +3,8 @@ package aws
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -22,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 
+	bucket_s3 "github.com/grafana/loki/v3/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/hedging"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -302,10 +305,20 @@ func Test_Hedging(t *testing.T) {
 type MockS3Client struct {
 	s3.Client
 	HeadObjectFunc func(context.Context, *s3.HeadObjectInput) (*s3.HeadObjectOutput, error)
+	GetObjectFunc  func(context.Context, *s3.GetObjectInput, ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+	PutObjectFunc  func(context.Context, *s3.PutObjectInput, ...func(*s3.Options)) (*s3.PutObjectOutput, error)
 }
 
 func (m *MockS3Client) HeadObject(ctx context.Context, input *s3.HeadObjectInput, _ ...func(*s3.Options)) (*s3.HeadObjectOutput, error) {
 	return m.HeadObjectFunc(ctx, input)
+}
+
+func (m *MockS3Client) GetObject(ctx context.Context, input *s3.GetObjectInput, _ ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+	return m.GetObjectFunc(ctx, input)
+}
+
+func (m *MockS3Client) PutObject(ctx context.Context, input *s3.PutObjectInput, _ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+	return m.PutObjectFunc(ctx, input)
 }
 
 func Test_GetAttributes(t *testing.T) {
@@ -516,4 +529,283 @@ func TestCommonPrefixes(t *testing.T) {
 	_, CommonPrefixes, err := s3.List(context.Background(), "", "/")
 	require.Equal(t, nil, err)
 	require.Equal(t, 1, len(CommonPrefixes))
+}
+
+func TestS3SSEConfig_GetObject(t *testing.T) {
+	// GetObject injects only headers for SSE of type SSE-C
+
+	tests := []struct {
+		name            string
+		wantSSECHeaders bool
+		sseConfig       bucket_s3.SSEConfig
+	}{
+		{
+			name:            "SSE-C configured",
+			wantSSECHeaders: true,
+			sseConfig: bucket_s3.SSEConfig{
+				Type:                  bucket_s3.SSEC,
+				CustomerEncryptionKey: strings.Repeat("a", 32),
+			},
+		},
+		{
+			name:            "SSE-S3 configured",
+			wantSSECHeaders: false,
+			sseConfig: bucket_s3.SSEConfig{
+				Type: bucket_s3.SSES3,
+			},
+		},
+		{
+			name:            "SSE-KMS configured",
+			wantSSECHeaders: false,
+			sseConfig: bucket_s3.SSEConfig{
+				Type:                 bucket_s3.SSEKMS,
+				KMSKeyID:             "test",
+				KMSEncryptionContext: `{"a": "bc", "b": "cd"}`,
+			},
+		},
+		{
+			name:            "No SSE configured",
+			wantSSECHeaders: false,
+			sseConfig:       bucket_s3.SSEConfig{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockS3 := &MockS3Client{
+				GetObjectFunc: func(_ context.Context, params *s3.GetObjectInput, _ ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
+					keyHash := md5.Sum([]byte(tt.sseConfig.CustomerEncryptionKey)[:])
+					b64CustomerKey := base64.StdEncoding.EncodeToString([]byte(tt.sseConfig.CustomerEncryptionKey))
+					b64CustomerKeyMD5 := base64.StdEncoding.EncodeToString(keyHash[:])
+
+					// check that SSE-C headers are only set when expected
+					// SSE-S3/SSE-KMS related headers (like x-amz-server-side-encryption-aws-kms-key-id) are required only when uploading/creating objects, not for retrieving.
+					if tt.wantSSECHeaders {
+						assert.Equal(t, string(types.ServerSideEncryptionAes256), *params.SSECustomerAlgorithm)
+						assert.Equal(t, b64CustomerKey, *params.SSECustomerKey)
+						assert.Equal(t, b64CustomerKeyMD5, *params.SSECustomerKeyMD5)
+					} else {
+						// no headers should be set when not expected
+						assert.Empty(t, params.SSECustomerAlgorithm)
+						assert.Empty(t, params.SSECustomerKey)
+						assert.Empty(t, params.SSECustomerKeyMD5)
+					}
+
+					return &s3.GetObjectOutput{
+						Body:          io.NopCloser(bytes.NewReader([]byte("object content"))),
+						ContentLength: aws.Int64(128),
+					}, nil
+				},
+			}
+
+			cfg := S3Config{
+				AccessKeyID:     "foo",
+				SecretAccessKey: flagext.SecretWithValue("bar"),
+				BackoffConfig:   backoff.Config{MaxRetries: 1},
+				BucketNames:     "foo",
+				SSEConfig:       tt.sseConfig,
+			}
+
+			c, err := NewS3ObjectClient(cfg, hedging.Config{})
+			require.NoError(t, err)
+			c.S3 = mockS3
+			c.hedgedS3 = c.S3
+
+			_, _, err = c.GetObject(context.Background(), "foo")
+			assert.NoError(t, err, "GetObject should succeed")
+
+			_, err = c.GetObjectRange(context.Background(), "foo", 0, 10)
+			assert.NoError(t, err, "GetObjectRange should succeed")
+		})
+	}
+}
+
+func TestS3SSEConfig_PutObject(t *testing.T) {
+	tests := []struct {
+		name      string
+		sseConfig bucket_s3.SSEConfig
+	}{
+		{
+			name: "SSE-C configured",
+			sseConfig: bucket_s3.SSEConfig{
+				Type:                  bucket_s3.SSEC,
+				CustomerEncryptionKey: strings.Repeat("a", 32),
+			},
+		},
+		{
+			name: "SSE-S3 configured",
+			sseConfig: bucket_s3.SSEConfig{
+				Type: bucket_s3.SSES3,
+			},
+		},
+		{
+			name: "SSE-KMS configured",
+			sseConfig: bucket_s3.SSEConfig{
+				Type:                 bucket_s3.SSEKMS,
+				KMSKeyID:             "test",
+				KMSEncryptionContext: `{"a": "bc", "b": "cd"}`,
+			},
+		},
+		{
+			name:      "No SSE configured",
+			sseConfig: bucket_s3.SSEConfig{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockS3 := &MockS3Client{
+				PutObjectFunc: func(_ context.Context, params *s3.PutObjectInput, _ ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
+					if tt.sseConfig != (bucket_s3.SSEConfig{}) {
+						switch tt.sseConfig.Type {
+						case bucket_s3.SSEC:
+							keyHash := md5.Sum([]byte(tt.sseConfig.CustomerEncryptionKey)[:])
+							b64CustomerKey := base64.StdEncoding.EncodeToString([]byte(tt.sseConfig.CustomerEncryptionKey))
+							b64CustomerKeyMD5 := base64.StdEncoding.EncodeToString(keyHash[:])
+
+							// sse-c algo is always a pointer to a string which value is AES256
+							assert.Equal(t, string(types.ServerSideEncryptionAes256), *params.SSECustomerAlgorithm)
+							assert.Equal(t, b64CustomerKey, *params.SSECustomerKey)
+							assert.Equal(t, b64CustomerKeyMD5, *params.SSECustomerKeyMD5)
+
+							assert.Empty(t, params.ServerSideEncryption)
+							assert.Empty(t, params.SSEKMSKeyId)
+							assert.Empty(t, params.SSEKMSEncryptionContext)
+						case bucket_s3.SSES3:
+							assert.Equal(t, types.ServerSideEncryptionAes256, params.ServerSideEncryption)
+
+							assert.Empty(t, params.SSECustomerAlgorithm)
+							assert.Empty(t, params.SSECustomerKey)
+							assert.Empty(t, params.SSECustomerKeyMD5)
+							assert.Empty(t, params.SSEKMSKeyId)
+							assert.Empty(t, params.SSEKMSEncryptionContext)
+						case bucket_s3.SSEKMS:
+							encContext, err := parseKMSEncryptionContext(tt.sseConfig.KMSEncryptionContext)
+							assert.NoError(t, err)
+							assert.Equal(t, types.ServerSideEncryptionAwsKms, params.ServerSideEncryption)
+							assert.Equal(t, tt.sseConfig.KMSKeyID, *params.SSEKMSKeyId)
+							assert.Equal(t, *encContext, *params.SSEKMSEncryptionContext)
+
+							assert.Empty(t, params.SSECustomerAlgorithm)
+							assert.Empty(t, params.SSECustomerKey)
+							assert.Empty(t, params.SSECustomerKeyMD5)
+						}
+					} else {
+						// no SSE configured, so no SSE headers should be set
+						assert.Empty(t, params.SSECustomerAlgorithm)
+						assert.Empty(t, params.SSECustomerKey)
+						assert.Empty(t, params.SSECustomerKeyMD5)
+						assert.Empty(t, params.ServerSideEncryption)
+						assert.Empty(t, params.SSEKMSKeyId)
+						assert.Empty(t, params.SSEKMSEncryptionContext)
+					}
+
+					return &s3.PutObjectOutput{}, nil
+				},
+			}
+
+			cfg := S3Config{
+				AccessKeyID:     "foo",
+				SecretAccessKey: flagext.SecretWithValue("bar"),
+				BackoffConfig:   backoff.Config{MaxRetries: 1},
+				BucketNames:     "foo",
+				SSEConfig:       tt.sseConfig,
+			}
+
+			c, err := NewS3ObjectClient(cfg, hedging.Config{})
+			require.NoError(t, err)
+			c.S3 = mockS3
+			c.hedgedS3 = c.S3
+
+			err = c.PutObject(context.Background(), "foo", bytes.NewReader([]byte("bar")))
+			assert.NoError(t, err, "PutObject should succeed")
+		})
+	}
+}
+
+func TestS3SSEConfig_GetAttributes(t *testing.T) {
+	// GetObject injects only headers for SSE of type SSE-C
+
+	tests := []struct {
+		name            string
+		wantSSECHeaders bool
+		sseConfig       bucket_s3.SSEConfig
+	}{
+		{
+			name:            "SSE-C configured",
+			wantSSECHeaders: true,
+			sseConfig: bucket_s3.SSEConfig{
+				Type:                  bucket_s3.SSEC,
+				CustomerEncryptionKey: strings.Repeat("a", 32),
+			},
+		},
+		{
+			name:            "SSE-S3 configured",
+			wantSSECHeaders: false,
+			sseConfig: bucket_s3.SSEConfig{
+				Type: bucket_s3.SSES3,
+			},
+		},
+		{
+			name:            "SSE-KMS configured",
+			wantSSECHeaders: false,
+			sseConfig: bucket_s3.SSEConfig{
+				Type:                 bucket_s3.SSEKMS,
+				KMSKeyID:             "test",
+				KMSEncryptionContext: `{"a": "bc", "b": "cd"}`,
+			},
+		},
+		{
+			name:            "No SSE configured",
+			wantSSECHeaders: false,
+			sseConfig:       bucket_s3.SSEConfig{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockS3 := &MockS3Client{
+				HeadObjectFunc: func(_ context.Context, params *s3.HeadObjectInput) (*s3.HeadObjectOutput, error) {
+					keyHash := md5.Sum([]byte(tt.sseConfig.CustomerEncryptionKey)[:])
+					b64CustomerKey := base64.StdEncoding.EncodeToString([]byte(tt.sseConfig.CustomerEncryptionKey))
+					b64CustomerKeyMD5 := base64.StdEncoding.EncodeToString(keyHash[:])
+
+					// check that SSE-C headers are only set when expected
+					// SSE-S3/SSE-KMS related headers (like x-amz-server-side-encryption-aws-kms-key-id) are required only when uploading/creating objects, not for retrieving.
+					if tt.wantSSECHeaders {
+						assert.Equal(t, string(types.ServerSideEncryptionAes256), *params.SSECustomerAlgorithm)
+						assert.Equal(t, b64CustomerKey, *params.SSECustomerKey)
+						assert.Equal(t, b64CustomerKeyMD5, *params.SSECustomerKeyMD5)
+					} else {
+						// no headers should be set when SSE-C is not expected
+						assert.Empty(t, params.SSECustomerAlgorithm)
+						assert.Empty(t, params.SSECustomerKey)
+						assert.Empty(t, params.SSECustomerKeyMD5)
+					}
+
+					return &s3.HeadObjectOutput{
+						Metadata: map[string]string{
+							"Content-Length": "128",
+						},
+					}, nil
+				},
+			}
+
+			cfg := S3Config{
+				AccessKeyID:     "foo",
+				SecretAccessKey: flagext.SecretWithValue("bar"),
+				BackoffConfig:   backoff.Config{MaxRetries: 1},
+				BucketNames:     "foo",
+				SSEConfig:       tt.sseConfig,
+			}
+
+			c, err := NewS3ObjectClient(cfg, hedging.Config{})
+			require.NoError(t, err)
+			c.S3 = mockS3
+			c.hedgedS3 = c.S3
+
+			_, err = c.GetAttributes(context.Background(), "foo")
+			assert.NoError(t, err, "GetAttributes should succeed")
+		})
+	}
 }

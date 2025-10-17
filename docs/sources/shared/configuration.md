@@ -4466,6 +4466,10 @@ otlp_config:
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
+
+# S3 server-side encryption customer-provided encryption key. Ignored if the SSE
+# type override is not set.
+[s3_sse_c_encryption_key: <string> | default = ""]
 ```
 
 ### local_storage_config
@@ -5631,7 +5635,7 @@ http_config:
 [storage_class: <string> | default = "STANDARD"]
 
 sse:
-  # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
+  # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3, SSE-C.
   # CLI flag: -<prefix>.s3.sse.type
   [type: <string> | default = ""]
 
@@ -5643,6 +5647,10 @@ sse:
   # string.
   # CLI flag: -<prefix>.s3.sse.kms-encryption-context
   [kms_encryption_context: <string> | default = ""]
+
+  # SSE-C Encryption Key used for object encryption.
+  # CLI flag: -<prefix>.s3.sse.encryption-key
+  [encryption_key: <string> | default = ""]
 
 # Configures back off when S3 get Object.
 backoff_config:
@@ -7016,7 +7024,8 @@ s3:
   [max_retries: <int> | default = 10]
 
   sse:
-    # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
+    # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3,
+    # SSE-C.
     # CLI flag: -<prefix>.s3.sse.type
     [type: <string> | default = ""]
 
@@ -7028,6 +7037,10 @@ s3:
     # formatted string.
     # CLI flag: -<prefix>.s3.sse.kms-encryption-context
     [kms_encryption_context: <string> | default = ""]
+
+    # SSE-C Encryption Key used for object encryption.
+    # CLI flag: -<prefix>.s3.sse.encryption-key
+    [encryption_key: <string> | default = ""]
 
   http:
     # The time an idle connection will remain idle before closing.
