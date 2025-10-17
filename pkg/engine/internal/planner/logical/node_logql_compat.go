@@ -2,8 +2,6 @@ package logical
 
 import (
 	"fmt"
-
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 )
 
 // The LOGQL_COMPAT instruction is a marker to indicate v1 engine compatibility.
@@ -24,10 +22,6 @@ func (c *LogQLCompat) Name() string {
 		return "LogQL Compatibility"
 	}
 	return c.id
-}
-
-func (c *LogQLCompat) Schema() *schema.Schema {
-	return c.Value.Schema()
 }
 
 func (c *LogQLCompat) isInstruction() {}
