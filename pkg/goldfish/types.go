@@ -32,6 +32,14 @@ type QuerySample struct {
 	CellASpanID       string `json:"cellASpanID"`
 	CellBSpanID       string `json:"cellBSpanID"`
 
+	// Result storage metadata
+	CellAResultURI         string `json:"cellAResultURI"`
+	CellBResultURI         string `json:"cellBResultURI"`
+	CellAResultSize        int64  `json:"cellAResultSize"`
+	CellBResultSize        int64  `json:"cellBResultSize"`
+	CellAResultCompression string `json:"cellAResultCompression"`
+	CellBResultCompression string `json:"cellBResultCompression"`
+
 	// Query engine version tracking
 	CellAUsedNewEngine bool `json:"cellAUsedNewEngine"`
 	CellBUsedNewEngine bool `json:"cellBUsedNewEngine"`
