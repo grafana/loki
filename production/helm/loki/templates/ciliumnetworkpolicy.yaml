@@ -29,14 +29,19 @@ spec:
     matchLabels:
       {{- include "loki.selectorLabels" . | nindent 6 }}
   egress:
-  - toPorts:
-    - ports:
-      - port: "53"
-        protocol: UDP
-      - port: "53"
-        protocol: TCP
-    toEndpoints:
-    - namespaceSelector: {}
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          {{- if .Values.networkPolicy.l7Proxy }}
+          rules:
+            dns:
+              - matchPattern: "*"
+          {{- end }}
 
 ---
 apiVersion: cilium.io/v2
@@ -158,10 +163,17 @@ spec:
     - {{ $cidr }}
     {{- end }}
   {{- end }}
+  {{- if .Values.networkPolicy.l7Proxy }}
+  {{- with .Values.networkPolicy.externalStorage.toFQDNs }}
+    toFQDNs:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
 {{- end }}
 
 {{- if .Values.networkPolicy.egressWorld.enabled }}
 {{- $global := . }}
+{{- $fqdnList := .Values.networkPolicy.egressWorld.toFQDNs | default (list) }}
 {{- $componentsList := list "read" "write" "backend" }}
 {{- if .Values.tableManager.enabled }}
 {{- $componentsList = append $componentsList "table-manager" }}
@@ -187,8 +199,13 @@ spec:
       {{- include "loki.backendSelectorLabels" . | nindent 6 }}
       {{- end }}
   egress:
+  {{- if and .Values.networkPolicy.l7Proxy (gt (len $fqdnList) 0) }}
+  - toFQDNs:
+      {{- toYaml $fqdnList | nindent 6 }}
+  {{- else }}
   - toEntities:
     - world
+  {{- end }}
 {{- end }}
 {{- end }}
 {{- end }}
