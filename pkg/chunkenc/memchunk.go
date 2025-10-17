@@ -918,8 +918,13 @@ func (c *MemChunk) reorder() error {
 	// Otherwise, we need to rebuild the blocks
 	from, to := c.Bounds()
 
-	// add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
-	itr, err := c.Iterator(context.Background(), from, to.Add(time.Millisecond), logproto.FORWARD, NoProcessingStreamPipeline{baseLabels: log.EmptyLabelsResult})
+	// The iterator we use is the same used for queries, when reordering we do not need to
+	// appy any kind of query pipeline processing, even though we use a NoopPipeline here,
+	// there is still a lot of label parsing and associated allocations that take place in the
+	// noop pipeline. So we bypass processing by using a context with the processing disabled hint.
+	// We add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
+	ctx := processingDisabledContext(context.Background())
+	itr, err := c.Iterator(ctx, from, to.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 	if err != nil {
 		return err
 	}
@@ -1469,6 +1474,21 @@ type bufferedIterator struct {
 	closed bool
 }
 
+// processingDisabledKey is used to mark contexts where log line processing should be bypassed.
+type processingDisabledKey struct{}
+
+// processingDisabledContext returns a child context with processing disabled hint.
+func processingDisabledContext(parent context.Context) context.Context {
+	return context.WithValue(parent, processingDisabledKey{}, true)
+}
+
+// isProcessingDisabled returns true if the context carries the disable-processing hint.
+func isProcessingDisabled(ctx context.Context) bool {
+	v := ctx.Value(processingDisabledKey{})
+	disabled, _ := v.(bool)
+	return disabled
+}
+
 func newBufferedIterator(ctx context.Context, pool compression.ReaderPool, b []byte, format byte, symbolizer *symbolizer) *bufferedIterator {
 	stats := stats.FromContext(ctx)
 	stats.AddCompressedBytes(int64(len(b)))
@@ -1735,12 +1755,11 @@ func (si *bufferedIterator) close() {
 }
 
 func newEntryIterator(ctx context.Context, pool compression.ReaderPool, b []byte, pipeline log.StreamPipeline, format byte, symbolizer *symbolizer) iter.EntryIterator {
-	_, isNoProcessing := pipeline.(NoProcessingStreamPipeline)
 	return &entryBufferedIterator{
-		bufferedIterator:       newBufferedIterator(ctx, pool, b, format, symbolizer),
-		pipeline:               pipeline,
-		stats:                  stats.FromContext(ctx),
-		isNoProcessingPipeline: isNoProcessing,
+		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
+		pipeline:         pipeline,
+		stats:            stats.FromContext(ctx),
+		skipProcessing:   isProcessingDisabled(ctx),
 	}
 }
 
@@ -1752,7 +1771,7 @@ type entryBufferedIterator struct {
 	cur        logproto.Entry
 	currLabels log.LabelsResult
 
-	isNoProcessingPipeline bool
+	skipProcessing bool
 }
 
 func (e *entryBufferedIterator) At() logproto.Entry {
@@ -1765,8 +1784,9 @@ func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabe
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		// If this is a NoProcessingStreamPipeline, bypass processing
-		if e.isNoProcessingPipeline {
+		// If processing is disabled via context, bypass processing
+		// this is used to skip processing when reordering chunks when they are flushed
+		if e.skipProcessing {
 			e.currLabels = e.pipeline.BaseLabels()
 			e.cur.Timestamp = time.Unix(0, e.currTs)
 			// E.Welch it's likely possible to avoid the copy here however
@@ -1915,26 +1935,4 @@ func validateBlock(chunkBytes []byte, offset, length int) error {
 	}
 
 	return nil
-}
-
-// NoProcessingStreamPipeline is a StreamPipeline that does not process log lines.
-// It is used to quickly iterate log lines without any processing when reordering chunks when they are flushed.
-type NoProcessingStreamPipeline struct {
-	baseLabels log.LabelsResult
-}
-
-func (s NoProcessingStreamPipeline) Process(_ int64, _ []byte, _ labels.Labels) (resultLine []byte, resultLabels log.LabelsResult, matches bool) {
-	panic("this pipeline should never be used for processing log lines")
-}
-
-func (s NoProcessingStreamPipeline) ProcessString(_ int64, _ string, _ labels.Labels) (resultLine string, resultLabels log.LabelsResult, matches bool) {
-	panic("this pipeline should never be used for processing log lines")
-}
-
-func (s NoProcessingStreamPipeline) ReferencedStructuredMetadata() bool {
-	return false
-}
-
-func (s NoProcessingStreamPipeline) BaseLabels() log.LabelsResult {
-	return s.baseLabels
 }
