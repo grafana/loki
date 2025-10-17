@@ -109,12 +109,15 @@ type Config struct {
 	IngestLimitsDryRunEnabled bool `yaml:"ingest_limits_dry_run_enabled"`
 
 	KafkaConfig kafka.Config `yaml:"-"`
+
+	DataObjTeeConfig DataObjTeeConfig `yaml:"dataobj_tee"`
 }
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.OTLPConfig.RegisterFlags(fs)
 	cfg.DistributorRing.RegisterFlags(fs)
+	cfg.DataObjTeeConfig.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
@@ -128,6 +131,9 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 func (cfg *Config) Validate() error {
 	if !cfg.KafkaEnabled && !cfg.IngesterEnabled {
 		return fmt.Errorf("at least one of kafka and ingestor writes must be enabled")
+	}
+	if err := cfg.DataObjTeeConfig.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -226,6 +232,7 @@ func New(
 	limitsFrontendCfg limits_frontend_client.Config,
 	limitsFrontendRing ring.ReadRing,
 	numMetadataPartitions int,
+	dataObjConsumerPartitionRing ring.PartitionRingReader,
 	logger log.Logger,
 ) (*Distributor, error) {
 	ingesterClientFactory := cfg.factory
@@ -284,6 +291,20 @@ func New(
 		}
 		kafkaWriter = kafka_client.NewProducer("distributor", kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
+
+		if cfg.DataObjTeeConfig.Enabled {
+			dataObjTee, err := NewDataObjTee(
+				&cfg.DataObjTeeConfig,
+				kafkaClient,
+				dataObjConsumerPartitionRing,
+				logger,
+				registerer,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create data object tee: %w", err)
+			}
+			tee = WrapTee(tee, dataObjTee)
+		}
 	}
 
 	d := &Distributor{

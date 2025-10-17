@@ -1,14 +1,13 @@
 package consumer
 
 import (
-	"context"
-
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
 	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
@@ -23,6 +22,8 @@ type partitionProcessorFactory struct {
 	scratchStore    scratch.Store
 	logger          log.Logger
 	reg             prometheus.Registerer
+	topic           string
+	partition       int32
 }
 
 // newPartitionProcessorFactory returns a new partitionProcessorFactory.
@@ -34,6 +35,8 @@ func newPartitionProcessorFactory(
 	scratchStore scratch.Store,
 	logger log.Logger,
 	reg prometheus.Registerer,
+	topic string,
+	partition int32,
 ) *partitionProcessorFactory {
 	return &partitionProcessorFactory{
 		cfg:             cfg,
@@ -43,37 +46,25 @@ func newPartitionProcessorFactory(
 		scratchStore:    scratchStore,
 		logger:          logger,
 		reg:             reg,
+		topic:           topic,
+		partition:       partition,
 	}
 }
 
-// New creates a new processor for the per-tenant topic partition.
-//
-// New requires the caller to provide the [kgo.Client] as an argument. This
-// is due to a circular dependency that occurs when creating a [kgo.Client]
-// where the partition event handlers, such as [kgo.OnPartitionsAssigned] and
-// [kgo.OnPartitionsRevoked] must be registered when the client is created.
-// However, the lifecycler cannot be created without the factory, and the
-// factory cannot be created with a [kgo.Client]. This is why New requires a
-// [kgo.Client] as an argument.
-func (f *partitionProcessorFactory) New(
-	ctx context.Context,
-	client *kgo.Client,
-	topic string,
-	partition int32,
-) processor {
+// New returns a new processor for the partition.
+func (f *partitionProcessorFactory) New(committer partition.Committer, logger log.Logger) (partition.Consumer, error) {
 	return newPartitionProcessor(
-		ctx,
-		client,
+		committer,
 		f.cfg.BuilderConfig,
 		f.cfg.UploaderConfig,
 		f.metastoreCfg,
 		f.bucket,
 		f.scratchStore,
-		topic,
-		partition,
 		f.logger,
 		f.reg,
 		f.cfg.IdleFlushTimeout,
 		f.metastoreEvents,
-	)
+		f.topic,
+		f.partition,
+	), nil
 }
