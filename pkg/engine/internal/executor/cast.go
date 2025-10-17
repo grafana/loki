@@ -99,8 +99,9 @@ func buildOutputFields(
 ) []arrow.Field {
 	fields := make([]arrow.Field, 0, 3)
 
-	// Add value field
-	fields = append(fields, semconv.FieldFromIdent(semconv.ColumnIdentValue, false))
+	// Add value field. Not nullable in practice since we use 0.0 when conversion fails, but as of
+	// writing all coumns are marked as nullable, even Timestamp and Message, so staying consistent
+	fields = append(fields, semconv.FieldFromIdent(semconv.ColumnIdentValue, true))
 
 	// Add error fields if needed
 	if hasErrors {
@@ -202,24 +203,4 @@ func (et *errorTracker) releaseBuilders() {
 		et.errorBuilder.Release()
 		et.detailsBuilder.Release()
 	}
-}
-
-func ConvertFloat(v string) (float64, error) {
-	return strconv.ParseFloat(v, 64)
-}
-
-func ConvertDuration(v string) (float64, error) {
-	d, err := time.ParseDuration(v)
-	if err != nil {
-		return 0, err
-	}
-	return d.Seconds(), nil
-}
-
-func ConvertBytes(v string) (float64, error) {
-	b, err := humanize.ParseBytes(v)
-	if err != nil {
-		return 0, err
-	}
-	return float64(b), nil
 }

@@ -299,7 +299,7 @@ func TestCanExecuteQuery(t *testing.T) {
 	}
 }
 
-func TestPlannerCreatesUnwrap(t *testing.T) {
+func TestPlannerCreatesCastOperationForUnwrap(t *testing.T) {
 	t.Run("creates projection with unary cast operation instruction for metric query with unwrap duration", func(t *testing.T) {
 		// Query with duration unwrap in a sum_over_time metric query
 		q := &query{
@@ -321,7 +321,7 @@ func TestPlannerCreatesUnwrap(t *testing.T) {
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = PROJECT %6 [mode=E, expr=CAST_DURATION(ambiguous.response_time)]
+%7 = PROJECT %6 [mode=*E, expr=CAST_DURATION(ambiguous.response_time)]
 %8 = RANGE_AGGREGATION %7 [operation=sum, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
 %9 = VECTOR_AGGREGATION %8 [operation=sum, group_by=(ambiguous.status)]
 %10 = LOGQL_COMPAT %9
