@@ -213,6 +213,7 @@ type Store interface {
 	stores.ChunkFetcher
 	storage.SelectStore
 	storage.SchemaConfigProvider
+	indexstore.BaseReader
 	indexstore.StatsReader
 }
 
@@ -1088,7 +1089,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		return err
 	}
 
-	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+	if start, end, ok := i.getStoreQueryTimeRange(false, req.Start, req.End, time.Now()); ok {
 		storeReq := logql.SelectLogParams{QueryRequest: &logproto.QueryRequest{
 			Selector:  req.Selector,
 			Direction: req.Direction,
@@ -1161,7 +1162,7 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		attribute.String("end", req.End.String()),
 	))
 
-	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+	if start, end, ok := i.getStoreQueryTimeRange(false, req.Start, req.End, time.Now()); ok {
 		storeReq := logql.SelectSampleParams{SampleQueryRequest: &logproto.SampleQueryRequest{
 			Start:    start,
 			End:      end,
@@ -1291,44 +1292,27 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 		return nil, err
 	}
 
-	if req.Start == nil {
+	// If no start/end time are specified, then only look at in-memory labels.
+	if req.Start == nil || req.End == nil {
 		return resp, nil
 	}
 
-	// Only continue if the active index type is one of async index store types or QueryStore flag is true.
-	asyncStoreMaxLookBack := i.asyncStoreMaxLookBack()
-	if asyncStoreMaxLookBack == 0 && !i.cfg.QueryStore {
-		return resp, nil
-	}
-
-	var cs storage.Store
-	var ok bool
-	if cs, ok = i.store.(storage.Store); !ok {
-		return resp, nil
-	}
-
-	maxLookBackPeriod := i.cfg.QueryStoreMaxLookBackPeriod
-	if asyncStoreMaxLookBack != 0 {
-		maxLookBackPeriod = asyncStoreMaxLookBack
-	}
-	// Adjust the start time based on QueryStoreMaxLookBackPeriod.
-	start := adjustQueryStartTime(maxLookBackPeriod, *req.Start, time.Now())
-	if start.After(*req.End) {
+	// Adjust the start and end time based on QueryStoreMaxLookBackPeriod.
+	start, end, adjusted := i.getStoreQueryTimeRange(true, *req.Start, *req.End, time.Now())
+	if !adjusted {
 		// The request is older than we are allowed to query the store, just return what we have.
 		return resp, nil
 	}
-	from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
+
+	from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(end.UnixNano())
 	var storeValues []string
 	if req.Values {
-		storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
-		if err != nil {
-			return nil, err
-		}
+		storeValues, err = i.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
 	} else {
-		storeValues, err = cs.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
-		if err != nil {
-			return nil, err
-		}
+		storeValues, err = i.store.LabelNamesForMetricName(ctx, userID, from, through, "logs", matchers...)
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	return &logproto.LabelResponse{
@@ -1364,41 +1348,29 @@ func (i *Ingester) series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 		return nil, err
 	}
 
-	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
-		var storeSeries []logproto.SeriesIdentifier
-		var parsed syntax.Expr
+	// Adjust the start and end time based on QueryStoreMaxLookBackPeriod.
+	start, end, adjusted := i.getStoreQueryTimeRange(true, req.Start, req.End, time.Now())
+	if !adjusted {
+		// The request is older than we are allowed to query the store, just return what we have.
+		return resp, nil
+	}
 
-		groups := []string{""}
-		if len(req.Groups) != 0 {
-			groups = req.Groups
+	groups, err := logql.MatchForSeriesRequest(req.GetGroups())
+	if err != nil {
+		return nil, err
+	}
+	from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(end.UnixNano())
+	for _, g := range groups {
+		res, err := i.store.GetSeries(ctx, instanceID, from, through, g...)
+
+		if err != nil {
+			return nil, err
 		}
-
-		for _, group := range groups {
-			if group != "" {
-				parsed, err = syntax.ParseExpr(group)
-				if err != nil {
-					return nil, err
-				}
-			}
-			storeSeries, err = i.store.SelectSeries(ctx, logql.SelectLogParams{
-				QueryRequest: &logproto.QueryRequest{
-					Selector:  group,
-					Limit:     1,
-					Start:     start,
-					End:       end,
-					Direction: logproto.FORWARD,
-					Shards:    req.Shards,
-					Plan: &plan.QueryPlan{
-						AST: parsed,
-					},
-				},
-			})
-			if err != nil {
-				return nil, err
-			}
-			resp.Series = append(resp.Series, storeSeries...)
+		for _, lbs := range res {
+			resp.Series = append(resp.Series, logproto.SeriesIdentifierFromLabels(lbs))
 		}
 	}
+
 	return resp, nil
 }
 
@@ -1623,18 +1595,28 @@ func (i *Ingester) tailersCount(ctx context.Context) (*logproto.TailersCountResp
 	return &resp, nil
 }
 
-// buildStoreRequest returns a store request from an ingester request, returns nil if QueryStore is set to false in configuration.
+// getStoreQueryTimeRange returns a store request from an ingester request, returns nil if QueryStore is set to false in configuration.
 // The request may be truncated due to QueryStoreMaxLookBackPeriod which limits the range of request to make sure
 // we only query enough to not miss any data and not add too many duplicates by covering the whole time range in query.
-func buildStoreRequest(cfg Config, start, end, now time.Time) (time.Time, time.Time, bool) {
-	if !cfg.QueryStore {
-		return time.Time{}, time.Time{}, false
+func (i *Ingester) getStoreQueryTimeRange(useAsyncStore bool, start, end, now time.Time) (time.Time, time.Time, bool) {
+	if !i.cfg.QueryStore {
+		return start, end, false
 	}
-	start = adjustQueryStartTime(cfg.QueryStoreMaxLookBackPeriod, start, now)
+
+	maxLookBackPeriod := i.cfg.QueryStoreMaxLookBackPeriod
+	if useAsyncStore {
+		// Only continue if the active index type is one of async index store types or QueryStore flag is true.
+		asyncStoreMaxLookBack := i.asyncStoreMaxLookBack()
+		if asyncStoreMaxLookBack != 0 {
+			maxLookBackPeriod = asyncStoreMaxLookBack
+		}
+	}
+	start = adjustQueryStartTime(maxLookBackPeriod, start, now)
 
 	if start.After(end) {
-		return time.Time{}, time.Time{}, false
+		return start, end, false
 	}
+
 	return start, end, true
 }
 
