@@ -17,6 +17,11 @@ func (p *Parallelize) ID() string {
 	return p.id
 }
 
+// Clone returns a deep copy of the node (minus its ID).
+func (p *Parallelize) Clone() Node {
+	return &Parallelize{ /* nothing to clone */ }
+}
+
 // Type returns [NodeTypeParallelize].
 func (p *Parallelize) Type() NodeType { return NodeTypeParallelize }
 

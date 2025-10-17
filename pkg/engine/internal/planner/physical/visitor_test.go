@@ -14,14 +14,13 @@ type nodeCollectVisitor struct {
 	onVisitDataObjScan       func(*DataObjScan) error
 	onVisitFilter            func(*Filter) error
 	onVisitLimit             func(*Limit) error
-	onVisitSortMerge         func(*SortMerge) error
-	onVisitMerge             func(*Merge) error
 	onVisitProjection        func(*Projection) error
 	onVisitRangeAggregation  func(*RangeAggregation) error
 	onVisitVectorAggregation func(*VectorAggregation) error
 	onVisitParse             func(*ParseNode) error
 	onVisitMathExpression    func(expression *MathExpression) error
 	onVisitParallelize       func(*Parallelize) error
+	onVisitScanSet           func(*ScanSet) error
 }
 
 func (v *nodeCollectVisitor) VisitDataObjScan(n *DataObjScan) error {
@@ -52,23 +51,6 @@ func (v *nodeCollectVisitor) VisitProjection(n *Projection) error {
 	if v.onVisitProjection != nil {
 		return v.onVisitProjection(n)
 	}
-	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
-	return nil
-}
-
-func (v *nodeCollectVisitor) VisitSortMerge(n *SortMerge) error {
-	if v.onVisitSortMerge != nil {
-		return v.onVisitSortMerge(n)
-	}
-	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
-	return nil
-}
-
-func (v *nodeCollectVisitor) VisitMerge(n *Merge) error {
-	if v.onVisitMerge != nil {
-		return v.onVisitMerge(n)
-	}
-
 	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
 	return nil
 }
@@ -120,6 +102,14 @@ func (v *nodeCollectVisitor) VisitParallelize(n *Parallelize) error {
 		return v.onVisitParallelize(n)
 	}
 
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	return nil
+}
+
+func (v *nodeCollectVisitor) VisitScanSet(n *ScanSet) error {
+	if v.onVisitScanSet != nil {
+		return v.onVisitScanSet(n)
+	}
 	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
 	return nil
 }

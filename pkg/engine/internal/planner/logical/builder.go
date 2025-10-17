@@ -3,7 +3,6 @@ package logical
 import (
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -130,11 +129,6 @@ func (b *Builder) Compat(logqlCompatibility bool) *Builder {
 		}
 	}
 	return b
-}
-
-// Schema returns the schema of the data that will be produced by this Builder.
-func (b *Builder) Schema() *schema.Schema {
-	return b.val.Schema()
 }
 
 // Value returns the underlying [Value]. This is useful when you need to access

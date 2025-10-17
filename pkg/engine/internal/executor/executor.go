@@ -77,16 +77,12 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 			return tracePipeline("physical.DataObjScan", c.executeDataObjScan(ctx, n))
 		}, inputs)
 
-	case *physical.SortMerge:
-		return tracePipeline("physical.SortMerge", c.executeSortMerge(ctx, n, inputs))
 	case *physical.TopK:
 		return tracePipeline("physical.TopK", c.executeTopK(ctx, n, inputs))
 	case *physical.Limit:
 		return tracePipeline("physical.Limit", c.executeLimit(ctx, n, inputs))
 	case *physical.Filter:
 		return tracePipeline("physical.Filter", c.executeFilter(ctx, n, inputs))
-	case *physical.Merge:
-		return tracePipeline("physical.Merge", c.executeMerge(ctx, n, inputs))
 	case *physical.Projection:
 		return tracePipeline("physical.Projection", c.executeProjection(ctx, n, inputs))
 	case *physical.RangeAggregation:
@@ -101,6 +97,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return tracePipeline("physical.ColumnCompat", c.executeColumnCompat(ctx, n, inputs))
 	case *physical.Parallelize:
 		return tracePipeline("physical.Parallelize", c.executeParallelize(ctx, n, inputs))
+	case *physical.ScanSet:
+		return tracePipeline("physical.ScanSet", c.executeScanSet(ctx, n))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
@@ -250,27 +248,6 @@ func (c *Context) executeTopK(ctx context.Context, topK *physical.TopK, inputs [
 	return pipeline
 }
 
-func (c *Context) executeSortMerge(ctx context.Context, sortmerge *physical.SortMerge, inputs []Pipeline) Pipeline {
-	ctx, span := tracer.Start(ctx, "Context.executeSortMerge", trace.WithAttributes(
-		attribute.Stringer("order", sortmerge.Order),
-		attribute.Int("num_inputs", len(inputs)),
-	))
-	if sortmerge.Column != nil {
-		span.SetAttributes(attribute.Stringer("column", sortmerge.Column))
-	}
-	defer span.End()
-
-	if len(inputs) == 0 {
-		return emptyPipeline()
-	}
-
-	pipeline, err := NewSortMergePipeline(inputs, sortmerge.Order, sortmerge.Column, c.evaluator)
-	if err != nil {
-		return errorPipeline(ctx, err)
-	}
-	return pipeline
-}
-
 func (c *Context) executeLimit(ctx context.Context, limit *physical.Limit, inputs []Pipeline) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeLimit", trace.WithAttributes(
 		attribute.Int("skip", int(limit.Skip)),
@@ -308,24 +285,6 @@ func (c *Context) executeFilter(ctx context.Context, filter *physical.Filter, in
 	allocator := memory.DefaultAllocator
 
 	return NewFilterPipeline(filter, inputs[0], c.evaluator, allocator)
-}
-
-func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []Pipeline) Pipeline {
-	ctx, span := tracer.Start(ctx, "Context.executeMerge", trace.WithAttributes(
-		attribute.Int("num_inputs", len(inputs)),
-	))
-	defer span.End()
-
-	if len(inputs) == 0 {
-		return emptyPipeline()
-	}
-
-	pipeline, err := newMergePipeline(inputs, c.mergePrefetchCount)
-	if err != nil {
-		return errorPipeline(ctx, err)
-	}
-
-	return pipeline
 }
 
 func (c *Context) executeProjection(ctx context.Context, proj *physical.Projection, inputs []Pipeline) Pipeline {
@@ -450,4 +409,42 @@ func (c *Context) executeParallelize(ctx context.Context, _ *physical.Paralleliz
 	// see an Parallelize node in the plan, we ignore it and immediately
 	// propagate up the input.
 	return inputs[0]
+}
+
+func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pipeline {
+	// ScanSet typically gets partitioned by the scheduler into multiple scan
+	// nodes.
+	//
+	// However, for locally testing unpartitioned pipelines, we still supprt
+	// running a ScanSet. In this case, we treat internally execute it as a
+	// Merge on top of multiple sequential scans.
+
+	var targets []Pipeline
+
+	for _, target := range set.Targets {
+		switch target.Type {
+		case physical.ScanTypeDataObject:
+			// Make sure projections and predicates get passed down to the
+			// individual scan.
+			partition := target.DataObject
+			partition.Predicates = set.Predicates
+			partition.Projections = set.Projections
+
+			targets = append(targets, newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
+				return tracePipeline("physical.DataObjScan", c.executeDataObjScan(ctx, partition))
+			}, nil))
+		default:
+			return errorPipeline(ctx, fmt.Errorf("unrecognized ScanSet target %s", target.Type))
+		}
+	}
+	if len(targets) == 0 {
+		return emptyPipeline()
+	}
+
+	pipeline, err := newMergePipeline(targets, c.mergePrefetchCount)
+	if err != nil {
+		return errorPipeline(ctx, err)
+	}
+
+	return pipeline
 }

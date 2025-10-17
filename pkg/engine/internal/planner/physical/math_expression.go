@@ -34,3 +34,10 @@ func (*MathExpression) Type() NodeType {
 func (m *MathExpression) Accept(v Visitor) error {
 	return v.VisitMathExpression(m)
 }
+
+// Clone returns a deep copy of the node (minus its ID).
+func (m *MathExpression) Clone() Node {
+	return &MathExpression{
+		Expression: m.Expression.Clone(),
+	}
+}
