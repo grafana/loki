@@ -106,10 +106,10 @@ func TestIngesterPushWithDiskThrottle(t *testing.T) {
 func TestWALWrapperDiskThrottle(t *testing.T) {
 	walDir := t.TempDir()
 	cfg := WALConfig{
-		Enabled:           true,
-		Dir:               walDir,
+		Enabled:            true,
+		Dir:                walDir,
 		CheckpointDuration: 5 * time.Minute,
-		DiskFullThreshold: 0.90,
+		DiskFullThreshold:  0.90,
 	}
 
 	metrics := newIngesterMetrics(prometheus.NewRegistry(), "test")
