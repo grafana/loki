@@ -9,6 +9,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -132,4 +133,30 @@ func TestCleanup_ExternalAccessDisabled_Delete(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestCleanup_RouteNotRegistered_NoError(t *testing.T) {
+	stack := &lokiv1.LokiStack{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-stack",
+			Namespace: "test-ns",
+			UID:       "test-uid",
+		},
+		Spec: lokiv1.LokiStackSpec{
+			Tenants: &lokiv1.TenantsSpec{
+				Mode:           lokiv1.Static,
+				DisableIngress: true, // External access disabled
+			},
+		},
+	}
+
+	newScheme := runtime.NewScheme()
+	// Only add Ingress and LokiStack, not Route
+	require.NoError(t, networkingv1.AddToScheme(newScheme))
+	require.NoError(t, lokiv1.AddToScheme(newScheme))
+
+	k := fake.NewClientBuilder().WithScheme(newScheme).Build()
+
+	err := Cleanup(context.TODO(), logger, k, stack)
+	require.NoError(t, err, "cleanup should handle route not registered gracefully")
 }

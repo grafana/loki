@@ -8,6 +8,7 @@ import (
 	routev1 "github.com/openshift/api/route/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -40,7 +41,7 @@ func removeRoute(ctx context.Context, c client.Client, stack *v1.LokiStack, key 
 
 	var route routev1.Route
 	if err := c.Get(ctx, resourceKey, &route); err != nil {
-		if apierrors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) || runtime.IsNotRegisteredError(err) {
 			return nil
 		}
 		return kverrors.Wrap(err, "failed to lookup resource", "name", resourceKey)
