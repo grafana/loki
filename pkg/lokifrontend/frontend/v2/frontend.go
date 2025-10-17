@@ -47,6 +47,7 @@ type Config struct {
 	SchedulerAddress        string            `yaml:"scheduler_address"`
 	DNSLookupPeriod         time.Duration     `yaml:"scheduler_dns_lookup_period"`
 	WorkerConcurrency       int               `yaml:"scheduler_worker_concurrency"`
+	WorkerInitTimeout       time.Duration     `yaml:"scheduler_worker_init_timeout"`
 	GRPCClientConfig        grpcclient.Config `yaml:"grpc_client_config"`
 	GracefulShutdownTimeout time.Duration     `yaml:"graceful_shutdown_timeout"`
 
