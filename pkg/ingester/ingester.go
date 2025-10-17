@@ -1115,7 +1115,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		batchLimit = -1
 	}
 
-	return sendBatches(ctx, it, queryServer, batchLimit)
+	return sendBatches(ctx, it, queryServer, batchLimit, req.Direction)
 }
 
 // QuerySample the ingesters for series from logs matching a set of matchers.

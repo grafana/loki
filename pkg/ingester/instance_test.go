@@ -643,7 +643,8 @@ func Test_Iterator(t *testing.T) {
 					return nil
 				},
 			),
-			int32(2)),
+			int32(2),
+			logproto.FORWARD),
 	)
 	require.Equal(t, 2, len(res.Streams))
 	// each entry translated into a unique stream

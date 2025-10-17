@@ -1035,6 +1035,18 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		headIterator = c.head.Iterator(ctx, direction, mint, maxt, pipeline)
 	}
 
+	// Debug logging Point A: After determining ordered value for FORWARD direction
+	if direction == logproto.FORWARD {
+		level.Debug(util_log.Logger).Log(
+			"msg", "MemChunk.Iterator ordered check",
+			"experiment", "forward-missing-logs-chunk",
+			"direction", "FORWARD",
+			"ordered", ordered,
+			"num_blocks", len(c.blocks),
+			"has_head", !c.head.IsEmpty(),
+		)
+	}
+
 	if direction == logproto.FORWARD {
 		// add the headblock iterator at the end.
 		if headIterator != nil {

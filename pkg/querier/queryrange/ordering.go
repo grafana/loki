@@ -1,9 +1,13 @@
 package queryrange
 
 import (
+	"slices"
 	"sort"
+	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 /*
@@ -45,11 +49,100 @@ func (a byDir) EntriesCount() (n int) {
 func (a byDir) merge() []logproto.Entry {
 	result := make([]logproto.Entry, 0, a.EntriesCount())
 
+	// Debug logging before merge
+	a.debugLogPreMerge()
+
 	sort.Sort(a)
 	for _, m := range a.markers {
 		result = append(result, m...)
 	}
+
+	// Debug logging after merge
+	a.debugLogPostMerge(result)
+
 	return result
+}
+
+// debugLogPreMerge logs information about markers before merging for FORWARD direction.
+// This is used for debugging ordering issues in query responses.
+func (a byDir) debugLogPreMerge() {
+	if a.direction != logproto.FORWARD {
+		return
+	}
+
+	level.Debug(util_log.Logger).Log(
+		"msg", "byDir.merge start",
+		"experiment", "forward-missing-logs",
+		"direction", "FORWARD",
+		"num_markers", len(a.markers),
+		"total_entries", a.EntriesCount(),
+		"labels", a.labels,
+	)
+
+	// Log details about each marker before sorting
+	for idx, m := range a.markers {
+		if len(m) == 0 {
+			continue
+		}
+		firstTs := m[0].Timestamp.UnixNano()
+		lastTs := m[len(m)-1].Timestamp.UnixNano()
+
+		// Check if entries within this marker are sorted in ascending order
+		markerSorted := slices.IsSortedFunc(m, func(a, b logproto.Entry) int {
+			if a.Timestamp.UnixNano() < b.Timestamp.UnixNano() {
+				return -1
+			}
+			if a.Timestamp.UnixNano() > b.Timestamp.UnixNano() {
+				return 1
+			}
+			return 0
+		})
+
+		level.Debug(util_log.Logger).Log(
+			"msg", "byDir.merge marker",
+			"experiment", "forward-missing-logs",
+			"idx", idx,
+			"entries", len(m),
+			"first_ts", firstTs,
+			"first_ts_human", time.Unix(0, firstTs).Format(time.RFC3339Nano),
+			"last_ts", lastTs,
+			"last_ts_human", time.Unix(0, lastTs).Format(time.RFC3339Nano),
+			"sorted", markerSorted,
+		)
+	}
+}
+
+// debugLogPostMerge logs information about the merged result for FORWARD direction.
+// This is used for debugging ordering issues in query responses.
+func (a byDir) debugLogPostMerge(result []logproto.Entry) {
+	if a.direction != logproto.FORWARD || len(result) == 0 {
+		return
+	}
+
+	firstTs := result[0].Timestamp.UnixNano()
+	lastTs := result[len(result)-1].Timestamp.UnixNano()
+
+	// Check if final result is sorted in ascending order
+	resultSorted := slices.IsSortedFunc(result, func(a, b logproto.Entry) int {
+		if a.Timestamp.UnixNano() < b.Timestamp.UnixNano() {
+			return -1
+		}
+		if a.Timestamp.UnixNano() > b.Timestamp.UnixNano() {
+			return 1
+		}
+		return 0
+	})
+
+	level.Debug(util_log.Logger).Log(
+		"msg", "byDir.merge complete",
+		"experiment", "forward-missing-logs",
+		"sorted", resultSorted,
+		"total_entries", len(result),
+		"first_ts", firstTs,
+		"first_ts_human", time.Unix(0, firstTs).Format(time.RFC3339Nano),
+		"last_ts", lastTs,
+		"last_ts_human", time.Unix(0, lastTs).Format(time.RFC3339Nano),
+	)
 }
 
 // priorityqueue is used for extracting a limited # of entries from a set of sorted streams

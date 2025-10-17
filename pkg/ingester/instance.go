@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -521,10 +522,22 @@ func (i *instance) query(ctx context.Context, req logql.SelectLogParams) (iter.E
 		expr.Matchers(),
 		shard,
 		func(stream *stream) error {
+			// For FORWARD direction, create iterator twice: once for debug sampling, once for actual use
+			if req.Direction == logproto.FORWARD {
+				// First call with nil stats to avoid double-counting
+				debugIter, err := stream.Iterator(ctx, nil, req.Start, req.End, req.Direction, pipeline.ForStream(stream.labels))
+				if err != nil {
+					return err
+				}
+				debugLogStreamIterator(stream, debugIter, req.Direction)
+			}
+
+			// Create the actual iterator to use (with stats)
 			iter, err := stream.Iterator(ctx, stats, req.Start, req.End, req.Direction, pipeline.ForStream(stream.labels))
 			if err != nil {
 				return err
 			}
+
 			iters = append(iters, iter)
 			return nil
 		},
@@ -1100,7 +1113,7 @@ type QuerierQueryServer interface {
 	Send(res *logproto.QueryResponse) error
 }
 
-func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit int32) error {
+func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQueryServer, limit int32, direction logproto.Direction) error {
 	stats := stats.FromContext(ctx)
 	metadata := metadata.FromContext(ctx)
 
@@ -1122,6 +1135,9 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		stats.AddIngesterBatch(int64(batchSize))
 		batch.Stats = stats.Ingester()
 		batch.Warnings = metadata.Warnings()
+
+		// Debug logging for FORWARD direction only
+		debugLogBatchStreams(batch, direction)
 
 		if isDone(ctx) {
 			break
@@ -1246,4 +1262,118 @@ func (i *instance) updateOwnedStreams(isOwnedStream func(*stream) (bool, error))
 		})
 	})
 	return err
+}
+
+// debugLogBatchStreams logs information about stream ordering in batches for FORWARD direction.
+// This is used for debugging ordering issues in query responses.
+func debugLogBatchStreams(batch *logproto.QueryResponse, direction logproto.Direction) {
+	if direction != logproto.FORWARD || len(batch.Streams) == 0 {
+		return
+	}
+
+	for _, stream := range batch.Streams {
+		if len(stream.Entries) == 0 {
+			continue
+		}
+
+		firstTs := stream.Entries[0].Timestamp.UnixNano()
+		lastTs := stream.Entries[len(stream.Entries)-1].Timestamp.UnixNano()
+
+		// Check if entries are sorted in ascending order
+		streamSorted := slices.IsSortedFunc(stream.Entries, func(a, b logproto.Entry) int {
+			if a.Timestamp.UnixNano() < b.Timestamp.UnixNano() {
+				return -1
+			}
+			if a.Timestamp.UnixNano() > b.Timestamp.UnixNano() {
+				return 1
+			}
+			return 0
+		})
+
+		level.Debug(util_log.Logger).Log(
+			"msg", "sendBatches stream",
+			"experiment", "forward-missing-logs-querier",
+			"direction", "FORWARD",
+			"labels", stream.Labels,
+			"entries", len(stream.Entries),
+			"first_ts", firstTs,
+			"first_ts_human", time.Unix(0, firstTs).Format(time.RFC3339Nano),
+			"last_ts", lastTs,
+			"last_ts_human", time.Unix(0, lastTs).Format(time.RFC3339Nano),
+			"sorted", streamSorted,
+		)
+	}
+}
+
+// debugLogStreamIterator samples entries from the iterator and logs ordering information for FORWARD direction.
+// This consumes the iterator, so the caller must create a new one for actual use.
+func debugLogStreamIterator(s *stream, it iter.EntryIterator, direction logproto.Direction) {
+	if direction != logproto.FORWARD {
+		return
+	}
+
+	// Sample up to 100 entries to check ordering
+	const maxSampleEntries = 100
+	sampleEntries := make([]logproto.Entry, 0, maxSampleEntries)
+
+	for len(sampleEntries) < maxSampleEntries && it.Next() {
+		sampleEntries = append(sampleEntries, it.At())
+	}
+	it.Close()
+
+	// Get chunk ordering info
+	s.chunkMtx.RLock()
+	var lastMax time.Time
+	ordered := true
+	chunkCount := 0
+	for _, c := range s.chunks {
+		mint, maxt := c.chunk.Bounds()
+		if mint.Before(lastMax) {
+			ordered = false
+		}
+		lastMax = maxt
+		chunkCount++
+	}
+	s.chunkMtx.RUnlock()
+
+	if len(sampleEntries) == 0 {
+		level.Debug(util_log.Logger).Log(
+			"msg", "stream.Iterator no entries",
+			"experiment", "forward-missing-logs-chunk",
+			"direction", "FORWARD",
+			"ordered", ordered,
+			"num_chunks", chunkCount,
+			"labels", s.labels,
+		)
+		return
+	}
+
+	firstTs := sampleEntries[0].Timestamp.UnixNano()
+	lastTs := sampleEntries[len(sampleEntries)-1].Timestamp.UnixNano()
+
+	// Check if sampled entries are sorted in ascending order
+	sampleSorted := slices.IsSortedFunc(sampleEntries, func(a, b logproto.Entry) int {
+		if a.Timestamp.UnixNano() < b.Timestamp.UnixNano() {
+			return -1
+		}
+		if a.Timestamp.UnixNano() > b.Timestamp.UnixNano() {
+			return 1
+		}
+		return 0
+	})
+
+	level.Debug(util_log.Logger).Log(
+		"msg", "stream.Iterator sampled entries",
+		"experiment", "forward-missing-logs-chunk",
+		"direction", "FORWARD",
+		"ordered", ordered,
+		"num_chunks", chunkCount,
+		"sample_size", len(sampleEntries),
+		"first_ts", firstTs,
+		"first_ts_human", time.Unix(0, firstTs).Format(time.RFC3339Nano),
+		"last_ts", lastTs,
+		"last_ts_human", time.Unix(0, lastTs).Format(time.RFC3339Nano),
+		"sorted", sampleSorted,
+		"labels", s.labels,
+	)
 }
