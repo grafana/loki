@@ -250,6 +250,10 @@ func (s *Scheduler) FrontendLoop(frontend schedulerpb.SchedulerForFrontend_Front
 		if err := frontend.Send(&schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}); err != nil {
 			return err
 		}
+	} else if s.State() == services.Running && !s.shouldRun.Load() {
+		// Scheduler is "RUNNING" should not run (yet)
+		level.Info(s.log).Log("msg", "scheduler is not in ReplicationSet, sending ERROR so frontend can try another scheduler", "frontend", frontendAddress)
+		return frontend.Send(&schedulerpb.SchedulerToFrontend{Status: schedulerpb.ERROR})
 	}
 
 	// We stop accepting new queries in Stopping state. By returning quickly, we disconnect frontends, which in turns
