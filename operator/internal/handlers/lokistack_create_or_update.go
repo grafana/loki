@@ -128,9 +128,9 @@ func CreateOrUpdateLokiStack(
 	}
 
 	if fg.OpenShift.Enabled {
-		openShiftVersion, err := openshift.FetchVersion(ctx, k) //nolint:govet
-		if err != nil {
-			return nil, err
+		openShiftVersion, optErr := openshift.FetchVersion(ctx, k)
+		if optErr != nil {
+			return nil, optErr
 		}
 
 		// Default to enabled NetworkPolicies when on OCP 4.20 and no configuration is present
