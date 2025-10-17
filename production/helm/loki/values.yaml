@@ -1494,6 +1494,9 @@ singleBinary:
               app.kubernetes.io/name: '{{ include "loki.name" . }}'
               app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
+  # -- Topology Spread Constraints for single binary pods
+  # The value will be passed through tpl.
+  topologySpreadConstraints: []
   # -- DNS config for single binary pods
   dnsConfig: {}
   # -- Node selector for single binary pods
