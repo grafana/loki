@@ -1755,12 +1755,19 @@ func (si *bufferedIterator) close() {
 }
 
 func newEntryIterator(ctx context.Context, pool compression.ReaderPool, b []byte, pipeline log.StreamPipeline, format byte, symbolizer *symbolizer) iter.EntryIterator {
-	return &entryBufferedIterator{
+	skipProcessing := isProcessingDisabled(ctx)
+	e := &entryBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		pipeline:         pipeline,
 		stats:            stats.FromContext(ctx),
-		skipProcessing:   isProcessingDisabled(ctx),
+		skipProcessing:   skipProcessing,
 	}
+	// if processing is disabled the labels will not change.
+	if skipProcessing {
+		e.currLabels = pipeline.BaseLabels()
+	}
+	return e
+
 }
 
 type entryBufferedIterator struct {
@@ -1787,7 +1794,6 @@ func (e *entryBufferedIterator) Next() bool {
 		// If processing is disabled via context, bypass processing
 		// this is used to skip processing when reordering chunks when they are flushed
 		if e.skipProcessing {
-			e.currLabels = e.pipeline.BaseLabels()
 			e.cur.Timestamp = time.Unix(0, e.currTs)
 			// E.Welch it's likely possible to avoid the copy here however
 			// there is always risk with unsafe copies and this bypass already goes
