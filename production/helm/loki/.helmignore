@@ -9,6 +9,7 @@
 .bzrignore
 .hg/
 .hgignore
+.helmignore
 .svn/
 
 # Common backup files
@@ -24,9 +25,17 @@
 *.tmproj
 .vscode/
 
-# Other
-doc.yaml
-README.tpl
-README.md.gotmpl
-ci
-CHANGELOG.md
+# CI / testing
+distributed-values.yaml
+simple-scalable-values.yaml
+single-binary-values.yaml
+Makefile
+ci/
+scenarios/
+test/
+unittests/
+
+# docs
+*.md
+/*.gotmpl
+docs/
