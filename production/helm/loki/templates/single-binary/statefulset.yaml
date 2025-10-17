@@ -65,6 +65,10 @@ spec:
         {{- end }}
         app.kubernetes.io/part-of: memberlist
     spec:
+      {{- with .Values.singleBinary.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
+      {{- end }}
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
       {{ include "loki.enableServiceLinks" . }}

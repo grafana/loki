@@ -12763,6 +12763,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.topologySpreadConstraints</td>
+			<td>list</td>
+			<td>Topology Spread Constraints for single binary pods The value will be passed through tpl.</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>tableManager</td>
 			<td>object</td>
 			<td>DEPRECATED Configuration for the table-manager. The table-manager is only necessary when using a deprecated index type such as Cassandra, Bigtable, or DynamoDB, it has not been necessary since loki introduced self- contained index types like 'boltdb-shipper' and 'tsdb'. This will be removed in a future helm chart.</td>
