@@ -48,6 +48,28 @@ func (b *Builder) Parse(kind ParserKind) *Builder {
 	}
 }
 
+// Cast applies an [Projection] operation, with an [UnaryOp] cast operation, to the Builder.
+func (b *Builder) Cast(identifier string, operation types.UnaryOp) *Builder {
+	return &Builder{
+		val: &Projection{
+			Relation: b.val,
+			Expressions: []Value{
+				&UnaryOp{
+					Op: operation,
+					Value: &ColumnRef{
+						Ref: types.ColumnRef{
+							Column: identifier,
+							Type:   types.ColumnTypeAmbiguous,
+						},
+					},
+				},
+			},
+			All:    true,
+			Expand: true,
+		},
+	}
+}
+
 // Sort applies a [Sort] operation to the Builder.
 func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 	return &Builder{

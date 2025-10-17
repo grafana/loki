@@ -49,7 +49,6 @@ func (b *ssaBuilder) process(value Value) (Value, error) {
 		return b.processVectorAggregation(value)
 	case *Parse:
 		return b.processParsePlan(value)
-
 	case *UnaryOp:
 		return b.processUnaryOp(value)
 	case *BinOp:
@@ -58,7 +57,6 @@ func (b *ssaBuilder) process(value Value) (Value, error) {
 		return b.processColumnRef(value)
 	case *Literal:
 		return b.processLiteral(value)
-
 	case *LogQLCompat:
 		return b.processCompat(value)
 

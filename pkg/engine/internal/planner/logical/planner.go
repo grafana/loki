@@ -226,6 +226,10 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 
 		vecAggType types.VectorAggregationType
 		groupBy    []ColumnRef
+
+		// unwrap-related variables
+		unwrapIdentifier string
+		unwrapOperation  types.UnaryOp
 	)
 
 	e.Walk(func(e syntax.Expr) bool {
@@ -252,8 +256,30 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 			}
 
 			rangeInterval = e.Left.Interval
-			return false // do not traverse log range query
 
+			// Check for unwrap in the LogRangeExpr
+			if e.Left.Unwrap != nil {
+				// TODO: do we need to support multiple unwraps?
+				if unwrapIdentifier != "" {
+					err = errUnimplemented
+					return false
+				}
+				unwrapIdentifier = e.Left.Unwrap.Identifier
+
+				switch e.Left.Unwrap.Operation {
+				case "":
+					unwrapOperation = types.UnaryOpCastFloat
+				case syntax.OpConvBytes:
+					unwrapOperation = types.UnaryOpCastBytes
+				case syntax.OpConvDuration, syntax.OpConvDurationSeconds:
+					unwrapOperation = types.UnaryOpCastDuration
+				default:
+					err = errUnimplemented
+					return false
+				}
+			}
+
+			return false // do not traverse log range query
 		case *syntax.VectorAggregationExpr:
 			// `without()` grouping is not supported.
 			if e.Grouping != nil && e.Grouping.Without {
@@ -302,6 +328,11 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 	builder, err := buildPlanForLogQuery(logSelectorExpr, params, true, rangeInterval)
 	if err != nil {
 		return nil, err
+	}
+
+	// Add unwrap instruction if present
+	if unwrapIdentifier != "" {
+		builder = builder.Cast(unwrapIdentifier, unwrapOperation)
 	}
 
 	builder = builder.RangeAggregation(
