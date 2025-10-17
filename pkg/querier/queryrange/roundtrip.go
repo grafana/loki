@@ -59,6 +59,7 @@ type Config struct {
 	SeriesCacheConfig            SeriesCacheConfig        `yaml:"series_results_cache" doc:"description=If series_results_cache is not configured and cache_series_results is true, the config for the results cache is used."`
 	CacheLabelResults            bool                     `yaml:"cache_label_results"`
 	LabelsCacheConfig            LabelsCacheConfig        `yaml:"label_results_cache" doc:"description=If label_results_cache is not configured and cache_label_results is true, the config for the results cache is used."`
+	EnableV2EngineRouter         bool                     `yaml:"enable_v2_engine_router" category:"experimental" doc:"description=Enable routing of queries to the v2 engine when they fall within the configured time range."`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -75,6 +76,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.SeriesCacheConfig.RegisterFlags(f)
 	f.BoolVar(&cfg.CacheLabelResults, "querier.cache-label-results", true, "Cache label query results.")
 	cfg.LabelsCacheConfig.RegisterFlags(f)
+	f.BoolVar(&cfg.EnableV2EngineRouter, "querier.enable-v2-engine-router", false, "Enable routing of queries to the v2 engine when they fall within the configured time range.")
 }
 
 // Validate validates the config.
@@ -724,7 +726,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, v2EngineCf
 		}
 
 		// route query range supported by v2 engine to the new engine handler.
-		if v2EngineCfg.Enable {
+		if cfg.EnableV2EngineRouter {
 			v2Start, v2End := v2EngineCfg.ValidQueryRange()
 			// TODO: add v2 engine handler.
 			engineRouterMiddleware := newEngineRouterMiddleware(v2Start, v2End, nil, chunksEngineMWs, merger, true, log)
@@ -791,7 +793,7 @@ func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, v2EngineCfg 
 		}
 
 		// route query range supported by v2 engine to the new engine handler.
-		if v2EngineCfg.Enable {
+		if cfg.EnableV2EngineRouter {
 			v2Start, v2End := v2EngineCfg.ValidQueryRange()
 			// TODO: add v2 engine handler.
 			engineRouterMiddleware := newEngineRouterMiddleware(v2Start, v2End, nil, chunksEngineMWs, merger, false, log)
@@ -970,7 +972,7 @@ func NewLabelsTripperware(
 }
 
 // NewMetricTripperware creates a new frontend tripperware responsible for handling metric queries
-func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, v2EngineCfg engine.Config, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, cacheGenNumLoader base.CacheGenNumberLoader, retentionEnabled bool, extractor base.Extractor, metrics *Metrics, indexStatsTripperware base.Middleware, metricsNamespace string, disableEngineSplitter bool) (base.Middleware, error) {
+func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, v2EngineCfg engine.Config, log log.Logger, limits Limits, schema config.SchemaConfig, merger base.Merger, iqo util.IngesterQueryOptions, c cache.Cache, cacheGenNumLoader base.CacheGenNumberLoader, retentionEnabled bool, extractor base.Extractor, metrics *Metrics, indexStatsTripperware base.Middleware, metricsNamespace string, disableEngineRouter bool) (base.Middleware, error) {
 	cacheKey := cacheKeyLimits{limits, cfg.Transformer, iqo}
 	var queryCacheMiddleware base.Middleware
 	if cfg.CacheResults {
@@ -1080,7 +1082,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, v2EngineCfg e
 		}
 
 		// route query range supported by v2 engine to the new engine handler.
-		if v2EngineCfg.Enable && !disableEngineSplitter {
+		if cfg.EnableV2EngineRouter && !disableEngineRouter {
 			v2Start, v2End := v2EngineCfg.ValidQueryRange()
 			// TODO: add v2 engine handler.
 			engineRouterMiddleware := newEngineRouterMiddleware(v2Start, v2End, nil, chunksEngineMWs, merger, true, log)
