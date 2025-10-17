@@ -3,28 +3,74 @@ package executor
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, evaluator *expressionEvaluator) (*GenericPipeline, error) {
-	// Get the column names from the projection expressions
-	columnNames := make([]string, len(columns))
+func NewProjectPipeline(input Pipeline, proj *physical.Projection, _ *expressionEvaluator) (Pipeline, error) {
+	// Shortcut for ALL=true DROP=false EXPAND=false
+	if proj.All && !proj.Drop && !proj.Expand {
+		return input, nil
+	}
 
-	for i, col := range columns {
+	// Get the column names from the projection expressions
+	colRefs := make([]types.ColumnRef, len(proj.Expressions))
+
+	for i, col := range proj.Expressions {
 		if colExpr, ok := col.(*physical.ColumnExpr); ok {
-			columnNames[i] = colExpr.Ref.Column
+			colRefs[i] = colExpr.Ref
 		} else {
 			return nil, fmt.Errorf("projection column %d is not a column expression", i)
 		}
 	}
 
+	// Create KEEP projection pipeline:
+	// Drop all columns except the ones referenced in proj.Expressions.
+	if !proj.All && !proj.Drop && !proj.Expand {
+		return newKeepPipeline(colRefs, func(refs []types.ColumnRef, ident *semconv.Identifier) bool {
+			return slices.ContainsFunc(refs, func(ref types.ColumnRef) bool {
+				// Keep all of the ambiguous columns
+				if ref.Type == types.ColumnTypeAmbiguous {
+					return ref.Column == ident.ShortName()
+				}
+				// Keep only if type matches
+				return ref.Column == ident.ShortName() && ref.Type == ident.ColumnType()
+			})
+		}, input)
+	}
+
+	// Create DROP projection pipeline:
+	// Keep all columns except the ones referenced in proj.Expressions.
+	if proj.All && proj.Drop {
+		return newKeepPipeline(colRefs, func(refs []types.ColumnRef, ident *semconv.Identifier) bool {
+			return !slices.ContainsFunc(refs, func(ref types.ColumnRef) bool {
+				// Drop all of the ambiguous columns
+				if ref.Type == types.ColumnTypeAmbiguous {
+					return ref.Column == ident.ShortName()
+				}
+				// Drop only if type matches
+				return ref.Column == ident.ShortName() && ref.Type == ident.ColumnType()
+			})
+		}, input)
+	}
+
+	// Create EXPAND projection pipeline:
+	// Keep all columns and expand the ones referenced in proj.Expressions.
+	if proj.All && proj.Expand {
+		return nil, errNotImplemented
+	}
+
+	return nil, errNotImplemented
+}
+
+func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef, *semconv.Identifier) bool, input Pipeline) (*GenericPipeline, error) {
 	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
-		// Pull the next item from the input pipeline
 		input := inputs[0]
 		batch, err := input.Read(ctx)
 		if err != nil {
@@ -32,25 +78,21 @@ func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, eva
 		}
 		defer batch.Release()
 
-		projected := make([]arrow.Array, 0, len(columns))
-		fields := make([]arrow.Field, 0, len(columns))
+		columns := make([]arrow.Array, 0, batch.NumCols())
+		fields := make([]arrow.Field, 0, batch.NumCols())
 
-		for i := range columns {
-			vec, err := evaluator.eval(columns[i], batch)
+		for i, field := range batch.Schema().Fields() {
+			ident, err := semconv.ParseFQN(field.Name)
 			if err != nil {
 				return nil, err
 			}
-			defer vec.Release()
-			ident := semconv.NewIdentifier(columnNames[i], vec.ColumnType(), vec.Type())
-			fields = append(fields, semconv.FieldFromIdent(ident, true))
-			arr := vec.ToArray()
-			defer arr.Release()
-			projected = append(projected, arr)
+			if keepFunc(colRefs, ident) {
+				columns = append(columns, batch.Column(i))
+				fields = append(fields, field)
+			}
 		}
 
 		schema := arrow.NewSchema(fields, nil)
-		// Create a new record with only the projected columns
-		// retain the projected columns in a new batch then release the original record.
-		return array.NewRecord(schema, projected, batch.NumRows()), nil
+		return array.NewRecord(schema, columns, batch.NumRows()), nil
 	}, input), nil
 }
