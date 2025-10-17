@@ -155,10 +155,11 @@ func TestFullQueryPlanning(t *testing.T) {
 Limit offset=0 limit=1000
 └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
     └── Parallelize
-        └── Compat src=metadata dst=metadata collision=label
-            └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
-                    ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                    └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+        └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+            └── Compat src=metadata dst=metadata collision=label
+                └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
+                        ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
+                        └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
 				`,
 		},
 		{
@@ -167,13 +168,14 @@ Limit offset=0 limit=1000
 			expected: `
 Limit offset=0 limit=1000
 └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
-    └── Filter predicate[0]=EQ(ambiguous.label_foo, "bar")
-        └── Parallelize
-            └── Compat src=metadata dst=metadata collision=label
-                └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z) predicate[2]=MATCH_STR(builtin.message, "baz")
-                        ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                        └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
-						`,
+    └── Parallelize
+        └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+            └── Filter predicate[0]=EQ(ambiguous.label_foo, "bar")
+                └── Compat src=metadata dst=metadata collision=label
+                    └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z) predicate[2]=MATCH_STR(builtin.message, "baz")
+                            ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
+                            └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+	`,
 		},
 		{
 			comment: "drop columns",
@@ -181,12 +183,13 @@ Limit offset=0 limit=1000
 			expected: `
 Limit offset=0 limit=1000
 └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
-    └── Projection all=true drop=(ambiguous.service_name, ambiguous.__error__)
-        └── Parallelize
-            └── Compat src=metadata dst=metadata collision=label
-                └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
-                        ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                        └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+    └── Parallelize
+        └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+            └── Projection all=true drop=(ambiguous.service_name, ambiguous.__error__)
+                └── Compat src=metadata dst=metadata collision=label
+                    └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
+                            ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
+                            └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
 						`,
 		},
 	}

@@ -433,7 +433,7 @@ func (p *parallelPushdown) apply(node Node) bool {
 	// There can be additional special cases, such as parallelizing an `avg` by
 	// pushing down a `sum` and `count` into the Parallelize.
 	switch node.(type) {
-	case *Filter, *ParseNode: // Catchall for shifting nodes
+	case *Projection, *Filter, *ParseNode: // Catchall for shifting nodes
 		for _, parallelize := range p.plan.Children(node) {
 			p.plan.graph.Inject(parallelize, node.Clone())
 		}

@@ -31,7 +31,10 @@ func (p *Projection) ID() string {
 // Clone returns a deep copy of the node (minus its ID).
 func (p *Projection) Clone() Node {
 	return &Projection{
-		Columns: cloneExpressions(p.Columns),
+		Expressions: cloneExpressions(p.Expressions),
+		All:         p.All,
+		Expand:      p.Expand,
+		Drop:        p.Drop,
 	}
 }
 
