@@ -63,7 +63,7 @@ func (b *Builder) Unwrap(identifier string, operation string) *Builder {
 
 	return &Builder{
 		val: &Projection{
-			Table: b.val,
+			Relation: b.val,
 			Expressions: []Value{
 				&UnaryOp{
 					Op: op,
@@ -75,6 +75,7 @@ func (b *Builder) Unwrap(identifier string, operation string) *Builder {
 					},
 				},
 			},
+			All:    true,
 			Expand: true,
 		},
 	}
