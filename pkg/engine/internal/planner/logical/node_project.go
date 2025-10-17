@@ -3,8 +3,6 @@ package logical
 import (
 	"fmt"
 	"strings"
-
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 )
 
 // The Projection instruction projects (keeps/drops) columns from a relation.
