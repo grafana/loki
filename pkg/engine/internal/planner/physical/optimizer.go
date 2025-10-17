@@ -461,7 +461,8 @@ func (p *parallelPushdown) canPushdown(node Node) bool {
 		return false
 	}
 
-	// foundNonParallelize is false if all children are of type [NodeTypeParallelize].
+	// foundNonParallelize is true if there is at least one child that is not of
+	// type [NodeTypeParallelize].
 	foundNonParallelize := slices.ContainsFunc(children, func(n Node) bool {
 		return n.Type() != NodeTypeParallelize
 	})

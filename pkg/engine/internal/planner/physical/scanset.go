@@ -68,7 +68,7 @@ func (s *ScanSet) ID() string {
 	return s.id
 }
 
-// Clone returns a copy of the node, minus its ID.
+// Clone returns a deep copy of the node (minus its ID).
 func (s *ScanSet) Clone() Node {
 	newTargets := make([]*ScanTarget, 0, len(s.Targets))
 	for _, target := range s.Targets {
