@@ -5,7 +5,7 @@ groups:
 {{- with .Values.monitoring.rules }}
 {{- $additionalAnnotations := .additionalRuleAnnotations }}
 {{- $additionalLabels := .additionalRuleLabels }}
-{{- if not (.disabled.LokiRequestErrors | default (not .configs.LokiRequestErrors.enabled)) }}
+{{- if and (not .disabled.LokiRequestErrors) .configs.LokiRequestErrors.enabled }}
       {{- with .configs.LokiRequestErrors }}
       - alert: "LokiRequestErrors"
         annotations:
@@ -28,7 +28,7 @@ groups:
       {{- end }}
 {{- end }}
 
-{{- if not (.disabled.LokiRequestPanics | default (not .configs.LokiRequestPanics.enabled)) }}
+{{- if and (not .disabled.LokiRequestPanics) .configs.LokiRequestPanics.enabled }}
       {{- with .configs.LokiRequestPanics }}
       - alert: "LokiRequestPanics"
         annotations:
@@ -47,7 +47,7 @@ groups:
       {{- end }}
 {{- end }}
 
-{{- if not (.disabled.LokiRequestLatency | default (not .configs.LokiRequestLatency.enabled)) }}
+{{- if and (not .disabled.LokiRequestLatency) .configs.LokiRequestLatency.enabled }}
       {{- with .configs.LokiRequestLatency }}
       - alert: "LokiRequestLatency"
         annotations:
@@ -67,7 +67,7 @@ groups:
       {{- end }}
 {{- end }}
 
-{{- if not (.disabled.LokiTooManyCompactorsRunning | default (not .configs.LokiTooManyCompactorsRunning.enabled)) }}
+{{- if and (not .disabled.LokiTooManyCompactorsRunning) .configs.LokiTooManyCompactorsRunning.enabled }}
       {{- with .configs.LokiTooManyCompactorsRunning }}
       - alert: "LokiTooManyCompactorsRunning"
         annotations:
@@ -77,7 +77,7 @@ groups:
           {{- toYaml . | nindent 10 }}
           {{- end }}
         expr: |
-          sum(loki_boltdb_shipper_compactor_running) by (namespace, cluster) > 1
+          sum(loki_boltdb_shipper_compactor_running) by (cluster, namespace) > 1
         for: {{ .for }}
         labels:
           severity: {{ .severity }}
@@ -87,7 +87,7 @@ groups:
       {{- end }}
 {{- end }}
 
-{{- if not (.disabled.LokiCanaryLatency | default false) }}
+{{- if and (not .disabled.LokiCanaryLatency) .configs.LokiCanaryLatency.enabled }}
   {{- with .configs.LokiCanaryLatency }}
   - name: "loki_canaries_alerts"
     rules:
