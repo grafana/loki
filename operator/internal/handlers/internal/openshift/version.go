@@ -9,6 +9,7 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	configv1 "github.com/openshift/api/config/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -24,7 +25,7 @@ func FetchVersion(ctx context.Context, client client.Client) (*manifests.OpenShi
 	var clusterVersion configv1.ClusterVersion
 	err := client.Get(ctx, types.NamespacedName{Name: "version"}, &clusterVersion)
 	if err != nil {
-		if apierrors.IsNotFound(err) || runtime.IsNotRegisteredError(err) {
+		if meta.IsNoMatchError(err) || runtime.IsNotRegisteredError(err) || apierrors.IsNotFound(err) {
 			return nil, nil // Not an OpenShift cluster
 		}
 		return nil, kverrors.Wrap(err, "failed to get ClusterVersion")
