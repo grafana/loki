@@ -16,7 +16,7 @@ import (
 
 func castFn(operation types.UnaryOp) UnaryFunction {
 	return UnaryFunc(func(input ColumnVector) (ColumnVector, error) {
-		arr := input.ToArray()
+		arr := input.Array()
 
 		sourceCol, ok := arr.(*array.String)
 		if !ok {
@@ -36,11 +36,7 @@ func castFn(operation types.UnaryOp) UnaryFunction {
 		if err != nil {
 			return nil, err
 		}
-		return &ArrayStruct{
-			array: result,
-			ct:    types.ColumnTypeGenerated,
-			rows:  input.Len(),
-		}, nil
+		return NewColumn(input.Ident(), result), nil
 	})
 }
 

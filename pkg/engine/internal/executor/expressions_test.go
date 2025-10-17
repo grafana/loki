@@ -69,16 +69,19 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 		{
 			name:      "timestamp",
 			value:     types.Timestamp(3600000000),
+			want:      arrow.Timestamp(3600000000),
 			arrowType: arrow.TIMESTAMP,
 		},
 		{
 			name:      "duration",
 			value:     types.Duration(3600000000),
+			want:      int64(3600000000),
 			arrowType: arrow.INT64,
 		},
 		{
 			name:      "bytes",
 			value:     types.Bytes(1024),
+			want:      int64(1024),
 			arrowType: arrow.INT64,
 		},
 	} {
@@ -90,10 +93,13 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 			rec := batch(n, time.Now())
 			colVec, err := e.eval(literal, rec)
 			require.NoError(t, err)
-			require.Equalf(t, tt.arrowType, colVec.Type().ArrowType().ID(), "expected: %v got: %v", tt.arrowType.String(), colVec.Type().ArrowType().ID().String())
+
+			arr := colVec.Array()
+			defer arr.Release()
+			require.Equalf(t, tt.arrowType, arr.DataType().ID(), "expected: %v got: %v", tt.arrowType.String(), arr.DataType().ID().String())
 
 			for i := range n {
-				val := colVec.Value(i)
+				val := colVec.(*Column).Value(i)
 				if tt.want != nil {
 					require.Equal(t, tt.want, val)
 				} else {
@@ -119,10 +125,10 @@ func TestEvaluateColumnExpression(t *testing.T) {
 		rec := batch(n, time.Now())
 		colVec, err := e.eval(colExpr, rec)
 		require.NoError(t, err)
+		defer colVec.Array().Release()
 
-		_, ok := colVec.(*Scalar)
-		require.True(t, ok, "expected column vector to be a *Scalar, got %T", colVec)
-		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
+		require.Equal(t, "utf8.generated.__scalar__", colVec.Ident().FQN())
+		require.Equal(t, arrow.STRING, colVec.Array().DataType().ID())
 	})
 
 	t.Run("string(message)", func(t *testing.T) {
@@ -137,10 +143,11 @@ func TestEvaluateColumnExpression(t *testing.T) {
 		rec := batch(n, time.Now())
 		colVec, err := e.eval(colExpr, rec)
 		require.NoError(t, err)
-		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
+		defer colVec.Array().Release()
+		require.Equal(t, arrow.STRING, colVec.Array().DataType().ID())
 
 		for i := range n {
-			val := colVec.Value(i)
+			val := colVec.(*Column).Value(i)
 			require.Equal(t, words[i%len(words)], val)
 		}
 	})
@@ -214,9 +221,9 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 }
 
 func collectBooleanColumnVector(vec ColumnVector) []bool {
-	res := make([]bool, 0, vec.Len())
-	arr := vec.ToArray().(*array.Boolean)
-	for i := range int(vec.Len()) {
+	arr := vec.Array().(*array.Boolean)
+	res := make([]bool, 0, arr.Len())
+	for i := range arr.Len() {
 		res = append(res, arr.Value(i))
 	}
 	return res
@@ -299,18 +306,22 @@ null,null,null`
 
 		colVec, err := e.eval(colExpr, record)
 		require.NoError(t, err)
-		require.IsType(t, &CoalesceVector{}, colVec)
-		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
-		require.Equal(t, types.ColumnTypeAmbiguous, colVec.ColumnType())
+
+		arr := colVec.Array()
+		defer arr.Release()
+
+		require.Equal(t, arrow.STRING, arr.DataType().ID())
+		require.Equal(t, types.ColumnTypeAmbiguous, colVec.Ident().ColumnType())
 
 		// Test per-row precedence resolution
-		require.Equal(t, "generated_0", colVec.Value(0)) // Generated has highest precedence
-		require.Equal(t, "metadata_1", colVec.Value(1))  // Generated is null, metadata has next precedence
-		require.Equal(t, "label_2", colVec.Value(2))     // Generated and metadata are null, label has next precedence
-		require.Equal(t, nil, colVec.Value(3))           // All are null
+		col := arr.(*array.String)
+		require.Equal(t, "generated_0", col.Value(0)) // Generated has highest precedence
+		require.Equal(t, "metadata_1", col.Value(1))  // Generated is null, metadata has next precedence
+		require.Equal(t, "label_2", col.Value(2))     // Generated and metadata are null, label has next precedence
+		require.True(t, col.IsNull(3))                // All are null
 	})
 
-	t.Run("ToArray method should return correct Arrow array", func(t *testing.T) {
+	t.Run("Array method should return correct Arrow array", func(t *testing.T) {
 		colExpr := &physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: "test",
@@ -320,17 +331,14 @@ null,null,null`
 
 		colVec, err := e.eval(colExpr, record)
 		require.NoError(t, err)
-		require.IsType(t, &CoalesceVector{}, colVec)
+		arr := colVec.Array()
 
-		arr := colVec.ToArray()
-		require.IsType(t, &array.String{}, arr)
-		stringArr := arr.(*array.String)
-
-		require.Equal(t, 4, stringArr.Len())
-		require.Equal(t, "generated_0", stringArr.Value(0))
-		require.Equal(t, "metadata_1", stringArr.Value(1))
-		require.Equal(t, "label_2", stringArr.Value(2))
-		require.True(t, stringArr.IsNull(3)) // Row 3 should be null
+		col := arr.(*array.String)
+		require.Equal(t, 4, col.Len())
+		require.Equal(t, "generated_0", col.Value(0))
+		require.Equal(t, "metadata_1", col.Value(1))
+		require.Equal(t, "label_2", col.Value(2))
+		require.True(t, col.IsNull(3)) // Row 3 should be null
 	})
 
 	t.Run("look-up matching single column should return Array", func(t *testing.T) {
@@ -355,14 +363,18 @@ label_2
 
 		colVec, err := e.eval(colExpr, singleRecord)
 		require.NoError(t, err)
-		require.IsType(t, &Array{}, colVec)
-		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
-		require.Equal(t, types.ColumnTypeLabel, colVec.ColumnType())
+
+		arr := colVec.Array()
+		defer arr.Release()
+
+		require.Equal(t, arrow.STRING, arr.DataType().ID())
+		require.Equal(t, types.ColumnTypeLabel, colVec.Ident().ColumnType())
 
 		// Test single column behavior
-		require.Equal(t, "label_0", colVec.Value(0))
-		require.Equal(t, "label_1", colVec.Value(1))
-		require.Equal(t, "label_2", colVec.Value(2))
+		col := arr.(*array.String)
+		require.Equal(t, "label_0", col.Value(0))
+		require.Equal(t, "label_1", col.Value(1))
+		require.Equal(t, "label_2", col.Value(2))
 	})
 
 	t.Run("ambiguous column with no matching columns should return default scalar", func(t *testing.T) {
@@ -375,7 +387,12 @@ label_2
 
 		colVec, err := e.eval(colExpr, record)
 		require.NoError(t, err)
-		require.IsType(t, &Scalar{}, colVec)
+
+		arr := colVec.Array()
+		defer arr.Release()
+
+		require.Equal(t, arrow.STRING, arr.DataType().ID())
+		require.Equal(t, "utf8.generated.__scalar__", colVec.Ident().FQN())
 	})
 }
 
@@ -402,10 +419,10 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 		colVec, err := e.eval(expr, rec)
 		require.NoError(t, err)
 
-		id := colVec.Type().ArrowType().ID()
+		id := colVec.Array().DataType().ID()
 		require.Equal(t, arrow.STRUCT, id)
 
-		arr, ok := colVec.ToArray().(*array.Struct)
+		arr, ok := colVec.Array().(*array.Struct)
 		require.True(t, ok)
 
 		require.Equal(t, 3, arr.NumField()) // value, error, error_details
@@ -457,10 +474,10 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 
 		colVec, err := e.eval(expr, record)
 		require.NoError(t, err)
-		id := colVec.Type().ArrowType().ID()
+		id := colVec.Array().DataType().ID()
 		require.Equal(t, arrow.STRUCT, id)
 
-		arr, ok := colVec.ToArray().(*array.Struct)
+		arr, ok := colVec.Array().(*array.Struct)
 		require.True(t, ok)
 
 		require.Equal(t, 1, arr.NumField())
@@ -504,10 +521,10 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 
 		colVec, err := e.eval(expr, record)
 		require.NoError(t, err)
-		id := colVec.Type().ArrowType().ID()
+		id := colVec.Array().DataType().ID()
 		require.Equal(t, arrow.STRUCT, id)
 
-		arr, ok := colVec.ToArray().(*array.Struct)
+		arr, ok := colVec.Array().(*array.Struct)
 		require.True(t, ok)
 
 		require.Equal(t, 1, arr.NumField())
@@ -551,10 +568,10 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 
 		colVec, err := e.eval(colExpr, record)
 		require.NoError(t, err)
-		id := colVec.Type().ArrowType().ID()
+		id := colVec.Array().DataType().ID()
 		require.Equal(t, arrow.STRUCT, id)
 
-		arr, ok := colVec.ToArray().(*array.Struct)
+		arr, ok := colVec.Array().(*array.Struct)
 		require.True(t, ok)
 
 		require.Equal(t, 3, arr.NumField()) //value, error, errorDetails

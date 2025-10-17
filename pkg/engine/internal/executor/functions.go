@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/errors"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -136,11 +138,6 @@ type BinaryFunctionRegistry interface {
 	GetForSignature(types.BinaryOp, arrow.DataType) (BinaryFunction, error)
 }
 
-// TODO(chaudum): Make BinaryFunction typed:
-//
-//	type BinaryFunction[L, R arrow.DataType] interface {
-//		Evaluate(lhs ColumnVector[L], rhs ColumnVector[R]) (ColumnVector[arrow.BOOL], error)
-//	}
 type BinaryFunction interface {
 	Evaluate(lhs, rhs ColumnVector) (ColumnVector, error)
 }
@@ -192,16 +189,16 @@ type genericFunction[E arrayType[T], T comparable] struct {
 
 // Evaluate implements BinaryFunction.
 func (f *genericFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector) (ColumnVector, error) {
-	if lhs.Len() != rhs.Len() {
+	if lhs.Array().Len() != rhs.Array().Len() {
 		return nil, arrow.ErrIndex
 	}
 
-	lhsArr, ok := lhs.ToArray().(E)
+	lhsArr, ok := lhs.Array().(E)
 	if !ok {
 		return nil, arrow.ErrType
 	}
 
-	rhsArr, ok := rhs.ToArray().(E)
+	rhsArr, ok := rhs.Array().(E)
 	if !ok {
 		return nil, arrow.ErrType
 	}
@@ -220,7 +217,9 @@ func (f *genericFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector) (Co
 		builder.Append(res)
 	}
 
-	return &Array{array: builder.NewArray()}, nil
+	name := fmt.Sprintf("%s_%s", lhs.Ident().ShortName(), rhs.Ident().ShortName())
+	ident := semconv.NewIdentifier(name, types.ColumnTypeGenerated, types.Loki.Bool)
+	return NewColumn(ident, builder.NewArray()), nil
 }
 
 // Compiler optimized version of converting boolean b into an integer of value 0 or 1
