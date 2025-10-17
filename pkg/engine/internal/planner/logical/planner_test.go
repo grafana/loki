@@ -319,6 +319,13 @@ func TestCanExecuteQuery(t *testing.T) {
 			// max_over_time is not supported
 			statement: `max_over_time({env="prod"} | unwrap size [1m])`,
 		},
+		{
+			statement: `sum(count_over_time({env="prod"} | logfmt | drop __error__ [1m]))`,
+			expected:  true,
+		},
+		{
+			statement: `sum(count_over_time({env="prod"} | logfmt | drop __error__=~"Unknown Error: .*" [1m]))`,
+		},
 	} {
 		t.Run(tt.statement, func(t *testing.T) {
 			q := &query{
@@ -541,5 +548,38 @@ RETURN %16
 `
 
 		require.Equal(t, expected, plan.String(), "Metric query should preserve operation order: filters before parse, then parse, then filters after parse")
+	})
+}
+
+func TestPlannerCreatesProjection(t *testing.T) {
+	t.Run("", func(t *testing.T) {
+		// Query with duration unwrap in a sum_over_time metric query
+		q := &query{
+			statement: `{service_name="loki"} | drop level,detected_level`,
+			start:     0,
+			end:       3600,
+			interval:  5 * time.Minute,
+			direction: logproto.BACKWARD,
+		}
+
+		plan, err := BuildPlan(q)
+		require.NoError(t, err)
+		t.Logf("\n%s\n", plan.String())
+
+		// Assert against the correct SSA representation
+		// The UNWRAP should appear after SELECT operations but before RANGE_AGGREGATION
+		expected := `%1 = EQ label.service_name "loki"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = GTE builtin.timestamp 1970-01-01T00:00:00Z
+%4 = SELECT %2 [predicate=%3]
+%5 = LT builtin.timestamp 1970-01-01T01:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = PROJECT %6 [mode=*D, expr=ambiguous.level, expr=ambiguous.detected_level]
+%8 = SORT %7 [column=builtin.timestamp, asc=false, nulls_first=false]
+%9 = LIMIT %8 [skip=0, fetch=0]
+%10 = LOGQL_COMPAT %9
+RETURN %10
+`
+		require.Equal(t, expected, plan.String())
 	})
 }

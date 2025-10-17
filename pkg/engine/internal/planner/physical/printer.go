@@ -40,7 +40,12 @@ func toTreeNode(n Node) *tree.Node {
 		}
 	case *Projection:
 		treeNode.Properties = []tree.Property{
-			tree.NewProperty("columns", true, toAnySlice(node.Columns)...),
+			tree.NewProperty("all", false, node.All),
+		}
+		if node.Expand {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("expand", true, toAnySlice(node.Expressions)...))
+		} else if node.Drop {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("drop", true, toAnySlice(node.Expressions)...))
 		}
 	case *Filter:
 		for i := range node.Predicates {

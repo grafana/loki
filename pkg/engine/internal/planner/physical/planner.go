@@ -143,6 +143,8 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 		return p.processMakeTable(inst, ctx)
 	case *logical.Select:
 		return p.processSelect(inst, ctx)
+	case *logical.Projection:
+		return p.processProjection(inst, ctx)
 	case *logical.Sort:
 		return p.processSort(inst, ctx)
 	case *logical.Limit:
@@ -281,6 +283,34 @@ func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]Node, error) {
 			return nil, err
 		}
 	}
+	return []Node{node}, nil
+}
+
+// Converts a [logical.Projection] into a physical [Projection] node.
+func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) ([]Node, error) {
+	expressions := make([]Expression, len(lp.Expressions))
+	for i := range lp.Expressions {
+		expressions[i] = p.convertPredicate(lp.Expressions[i])
+	}
+
+	node := &Projection{
+		Expressions: expressions,
+		All:         lp.All,
+		Expand:      lp.Expand,
+		Drop:        lp.Drop,
+	}
+	p.plan.graph.Add(node)
+
+	children, err := p.process(lp.Relation, ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range children {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
+			return nil, err
+		}
+	}
+
 	return []Node{node}, nil
 }
 

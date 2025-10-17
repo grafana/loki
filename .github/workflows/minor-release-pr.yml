@@ -985,6 +985,9 @@ jobs:
         - arch: "linux/amd64"
           runs_on:
           - "github-hosted-ubuntu-x64-small"
+        - arch: "linux/arm64"
+          runs_on:
+          - "github-hosted-ubuntu-arm64-small"
   version:
     needs:
     - "check"
