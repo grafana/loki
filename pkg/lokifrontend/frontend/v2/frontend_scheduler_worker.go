@@ -35,6 +35,8 @@ type frontendSchedulerWorkers struct {
 	mu sync.Mutex
 	// Set to nil when stop is called... no more workers are created afterwards.
 	workers map[string]*frontendSchedulerWorker
+
+	workerInitTimeout time.Duration
 }
 
 func newFrontendSchedulerWorkers(cfg Config, frontendAddress string, ring ring.ReadRing, requestsCh <-chan *frontendRequest, logger log.Logger) (*frontendSchedulerWorkers, error) {
@@ -44,6 +46,8 @@ func newFrontendSchedulerWorkers(cfg Config, frontendAddress string, ring ring.R
 		frontendAddress: frontendAddress,
 		requestsCh:      requestsCh,
 		workers:         map[string]*frontendSchedulerWorker{},
+
+		workerInitTimeout: cfg.WorkerInitTimeout,
 	}
 
 	switch {
@@ -111,7 +115,7 @@ func (f *frontendSchedulerWorkers) AddressAdded(address string) {
 	}
 
 	// No worker for this address yet, start a new one.
-	w = newFrontendSchedulerWorker(conn, address, f.frontendAddress, f.requestsCh, f.cfg.WorkerConcurrency, f.logger)
+	w = newFrontendSchedulerWorker(conn, address, f.frontendAddress, f.requestsCh, f.cfg.WorkerConcurrency, f.logger, f.workerInitTimeout)
 
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -187,9 +191,11 @@ type frontendSchedulerWorker struct {
 	// Cancellation requests for this scheduler are received via this channel. It is passed to frontend after
 	// query has been enqueued to scheduler.
 	cancelCh chan uint64
+
+	workerInitTimeout time.Duration
 }
 
-func newFrontendSchedulerWorker(conn *grpc.ClientConn, schedulerAddr string, frontendAddr string, requestCh <-chan *frontendRequest, concurrency int, log log.Logger) *frontendSchedulerWorker {
+func newFrontendSchedulerWorker(conn *grpc.ClientConn, schedulerAddr string, frontendAddr string, requestCh <-chan *frontendRequest, concurrency int, log log.Logger, workerInitTimeout time.Duration) *frontendSchedulerWorker {
 	w := &frontendSchedulerWorker{
 		log:           log,
 		conn:          conn,
@@ -199,6 +205,8 @@ func newFrontendSchedulerWorker(conn *grpc.ClientConn, schedulerAddr string, fro
 		requestCh:     requestCh,
 		// Allow to enqueue enough cancellation requests. ~ 8MB memory size.
 		cancelCh: make(chan uint64, 1000000),
+
+		workerInitTimeout: workerInitTimeout,
 	}
 	w.ctx, w.cancel = context.WithCancel(context.Background())
 
@@ -262,7 +270,10 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 		return err
 	}
 
-	if resp, err := loop.Recv(); err != nil || resp.Status != schedulerpb.OK {
+	if resp, err := w.receiveInitResponse(loop); err != nil || resp.Status != schedulerpb.OK {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return errors.New("timeout waiting for INIT response from scheduler")
+		}
 		if err != nil {
 			return err
 		}
@@ -353,5 +364,39 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 				return errors.Errorf("unexpected status received for cancellation: %v", resp.Status)
 			}
 		}
+	}
+}
+
+func (w *frontendSchedulerWorker) receiveInitResponse(loop schedulerpb.SchedulerForFrontend_FrontendLoopClient) (*schedulerpb.SchedulerToFrontend, error) {
+	if w.workerInitTimeout > 0 {
+		initRespCtx, cancel := context.WithTimeout(loop.Context(), w.workerInitTimeout)
+		defer cancel()
+		return w.receiveWithContext(initRespCtx, loop)
+	}
+	return loop.Recv()
+}
+
+// calls loop.Recv() with timeout
+// only used to add timeout to receive when waiting for INIT response
+func (w *frontendSchedulerWorker) receiveWithContext(ctx context.Context, loop schedulerpb.SchedulerForFrontend_FrontendLoopClient) (*schedulerpb.SchedulerToFrontend, error) {
+
+	receiveCh := make(chan struct {
+		resp *schedulerpb.SchedulerToFrontend
+		err  error
+	}, 1)
+
+	go func() {
+		resp, err := loop.Recv()
+		receiveCh <- struct {
+			resp *schedulerpb.SchedulerToFrontend
+			err  error
+		}{resp, err}
+	}()
+
+	select {
+	case initResultOrErr := <-receiveCh:
+		return initResultOrErr.resp, initResultOrErr.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 }
