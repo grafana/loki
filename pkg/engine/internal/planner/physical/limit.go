@@ -24,6 +24,14 @@ func (l *Limit) ID() string {
 	return l.id
 }
 
+// Clone returns a deep copy of the node (minus its ID).
+func (l *Limit) Clone() Node {
+	return &Limit{
+		Skip:  l.Skip,
+		Fetch: l.Fetch,
+	}
+}
+
 // Type implements the [Node] interface.
 // Returns the type of the node.
 func (*Limit) Type() NodeType {

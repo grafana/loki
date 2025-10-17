@@ -395,6 +395,79 @@ func (r *projectionPushdown) isMetricQuery() bool {
 
 var _ rule = (*projectionPushdown)(nil)
 
+// parallelPushdown is a rule that moves or splits supported operations as a
+// child of [Parallelize] to parallelize as much work as possible.
+type parallelPushdown struct {
+	plan   *Plan
+	pushed map[Node]struct{}
+}
+
+var _ rule = (*parallelPushdown)(nil)
+
+func (p *parallelPushdown) apply(node Node) bool {
+	// canPushdown only returns true if all children of node are [Parallelize].
+	if !p.canPushdown(node) {
+		return false
+	}
+
+	if p.pushed == nil {
+		p.pushed = make(map[Node]struct{})
+	} else if _, ok := p.pushed[node]; ok {
+		// Don't apply the rule to a node more than once.
+		return false
+	}
+
+	// There are two catchall cases here:
+	//
+	// 1. Nodes which get *shifted* down into a parallel pushdown, where the
+	//    positions of the node and the Parallelize swap.
+	//
+	//    For example, filtering gets moved down to be parallelized.
+	//
+	// 2. Nodes which get *sharded* into a parallel pushdown, where a copy of
+	//    the node is injected into each child of the Parallelize.
+	//
+	//    For example, a TopK gets copied for local TopK, which is then merged back
+	//    up to the parent TopK.
+	//
+	// There can be additional special cases, such as parallelizing an `avg` by
+	// pushing down a `sum` and `count` into the Parallelize.
+	switch node.(type) {
+	case *Filter, *ParseNode: // Catchall for shifting nodes
+		for _, parallelize := range p.plan.Children(node) {
+			p.plan.graph.Inject(parallelize, node.Clone())
+		}
+		p.plan.graph.Eliminate(node)
+		p.pushed[node] = struct{}{}
+		return true
+
+	case *TopK: // Catchall for sharding nodes
+		for _, parallelize := range p.plan.Children(node) {
+			p.plan.graph.Inject(parallelize, node.Clone())
+		}
+		p.pushed[node] = struct{}{}
+		return true
+	}
+
+	return false
+}
+
+// canPushdown returns true if the given node has children that are all of type
+// [NodeTypeParallelize]. Nodes with no children are not supported.
+func (p *parallelPushdown) canPushdown(node Node) bool {
+	children := p.plan.Children(node)
+	if len(children) == 0 {
+		// Must have at least one child.
+		return false
+	}
+
+	// foundNonParallelize is false if all children are of type [NodeTypeParallelize].
+	foundNonParallelize := slices.ContainsFunc(children, func(n Node) bool {
+		return n.Type() != NodeTypeParallelize
+	})
+	return !foundNonParallelize
+}
+
 // disambiguateColumns splits columns into ambiguous and unambiguous columns
 func disambiguateColumns(columns []ColumnExpression) ([]ColumnExpression, []ColumnExpression) {
 	ambiguousColumns := make([]ColumnExpression, 0, len(columns))

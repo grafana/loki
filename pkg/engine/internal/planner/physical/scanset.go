@@ -13,6 +13,15 @@ type ScanTarget struct {
 	DataObject *DataObjScan
 }
 
+// Clone returns a copy of the scan target.
+func (t *ScanTarget) Clone() *ScanTarget {
+	res := &ScanTarget{Type: t.Type}
+	if t.DataObject != nil {
+		res.DataObject = t.DataObject.Clone().(*DataObjScan)
+	}
+	return res
+}
+
 // ScanType represents the data being scanned in a target of a [ScanSet].
 type ScanType int
 
@@ -57,6 +66,16 @@ func (s *ScanSet) ID() string {
 		return fmt.Sprintf("%p", s)
 	}
 	return s.id
+}
+
+// Clone returns a copy of the node, minus its ID.
+func (s *ScanSet) Clone() Node {
+	newTargets := make([]*ScanTarget, 0, len(s.Targets))
+	for _, target := range s.Targets {
+		newTargets = append(newTargets, target.Clone())
+	}
+
+	return &ScanSet{Targets: newTargets}
 }
 
 // Type returns [NodeTypeScanSet].
