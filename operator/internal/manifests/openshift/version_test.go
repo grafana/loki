@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOpenShiftVersion_IsAtLeast(t *testing.T) {
+func TestOpenShiftRelease_IsAtLeast(t *testing.T) {
 	tests := []struct {
 		name     string
 		version  *OpenShiftRelease

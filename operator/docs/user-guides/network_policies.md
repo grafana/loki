@@ -72,7 +72,7 @@ spec:
 
 When network policies are enabled, the Loki Operator creates several NetworkPolicy resources to secure different aspects of your LokiStack deployment:
 
-| Policy Name | Purpose | Components Affected |
+| Policy Name | Purpose | Affected Components |
 |-------------|---------|-------------------|
 | `{name}-default-deny` | Baseline deny-all policy | All LokiStack pods |
 | `{name}-loki-allow` | Inter-component communication | All Loki components |
@@ -126,7 +126,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: lokistack
       app.kubernetes.io/instance: lokistack-dev
-      app.kubernetes.io/component: ruller
+      app.kubernetes.io/component: ruler
   policyTypes:
   - Egress
   egress:
@@ -136,7 +136,7 @@ spec:
           name: monitoring
     - podSelector:
         matchLabels:
-          app: custom-altermanager
+          app: custom-alertmanager
     ports:
     - protocol: TCP
       port: 3100
