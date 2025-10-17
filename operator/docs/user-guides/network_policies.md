@@ -53,7 +53,7 @@ spec:
     secret:
       name: lokistack-object-storage
       type: s3
-  storageClassName: gp2
+  storageClassName: gp3-csi
   tenants:
     mode: openshift-logging
   networkPolicies:
