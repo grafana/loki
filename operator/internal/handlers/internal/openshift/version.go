@@ -37,7 +37,7 @@ func FetchVersion(ctx context.Context, client client.Client) (*manifests.OpenShi
 		return nil, kverrors.New("no version history found in ClusterVersion")
 	}
 
-	var currentVersion string
+	currentVersion := clusterVersion.Status.Desired.Version // default to desired version if no history is found
 	for _, history := range clusterVersion.Status.History {
 		if history.State == configv1.CompletedUpdate {
 			currentVersion = history.Version
@@ -45,7 +45,7 @@ func FetchVersion(ctx context.Context, client client.Client) (*manifests.OpenShi
 		}
 	}
 	if currentVersion == "" {
-		return nil, kverrors.New("current version is empty in ClusterVersion")
+		return nil, kverrors.New("was not able to determine OpenShift version")
 	}
 
 	version, err := parseVersion(currentVersion)

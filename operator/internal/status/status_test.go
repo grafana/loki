@@ -75,7 +75,7 @@ func TestRefreshSuccess(t *testing.T) {
 		Storage:         lokiv1.CredentialModeStatic,
 		NetworkPolicies: lokiv1.NetworkPoliciesStatusDisabled,
 	}
-	err := Refresh(context.Background(), k, req, now, statusInfo, nil)
+	err := Refresh(context.Background(), k, req, now, statusInfo)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, k.GetCallCount())
@@ -141,7 +141,7 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 		Storage:         lokiv1.CredentialModeStatic,
 		NetworkPolicies: lokiv1.NetworkPoliciesStatusDisabled,
 	}
-	err := Refresh(context.Background(), k, req, now, statusInfo, nil)
+	err := Refresh(context.Background(), k, req, now, statusInfo)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, k.GetCallCount())

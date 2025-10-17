@@ -14,6 +14,9 @@ import (
 
 // LokiStackStatusInfo holds all status information calculated during LokiStack reconciliation
 type LokiStackStatusInfo struct {
+	// DegradedError contains information about why the managed LokiStack has an invalid configuration.
+	DegradedError *DegradedError
+
 	// Storage contains the credential mode used for object storage access
 	Storage lokiv1.CredentialMode
 

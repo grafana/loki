@@ -17,7 +17,7 @@ import (
 // Refresh executes an aggregate update of the LokiStack Status struct, i.e.
 // - It recreates the Status.Components pod status map per component.
 // - It sets the appropriate Status.Condition to true that matches the pod status maps.
-func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, now time.Time, statusInfo *LokiStackStatusInfo, degradedErr *DegradedError) error {
+func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, now time.Time, statusInfo *LokiStackStatusInfo) error {
 	var stack lokiv1.LokiStack
 	if err := k.Get(ctx, req.NamespacedName, &stack); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -31,7 +31,7 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, now time.Time,
 		return err
 	}
 
-	activeConditions, err := generateConditions(ctx, cs, k, &stack, degradedErr)
+	activeConditions, err := generateConditions(ctx, cs, k, &stack, statusInfo.DegradedError)
 	if err != nil {
 		return err
 	}

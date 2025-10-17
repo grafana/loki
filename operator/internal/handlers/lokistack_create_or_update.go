@@ -60,11 +60,6 @@ func CreateOrUpdateLokiStack(
 		gwImg = manifests.DefaultLokiStackGatewayImage
 	}
 
-	openShiftVersion, err := openshift.FetchVersion(ctx, k)
-	if err != nil {
-		return nil, err
-	}
-
 	objStore, err := storage.BuildOptions(ctx, k, &stack, fg)
 	if err != nil {
 		return nil, err
@@ -99,16 +94,6 @@ func CreateOrUpdateLokiStack(
 		}
 	}
 
-	networkPoliciesEnabled := false
-	if stack.Spec.NetworkPolicies != nil {
-		networkPoliciesEnabled = !stack.Spec.NetworkPolicies.Disabled
-	}
-
-	// On 4.20+ NetworkPolicies are enabled by default
-	if openShiftVersion != nil && !networkPoliciesEnabled {
-		networkPoliciesEnabled = openShiftVersion.IsAtLeast(4, 20)
-	}
-
 	// Here we will translate the lokiv1.LokiStack options into manifest options
 	opts := manifests.Options{
 		Name:                   req.Name,
@@ -126,7 +111,6 @@ func CreateOrUpdateLokiStack(
 		Timeouts:               timeoutConfig,
 		Tenants:                tenants,
 		OpenShiftOptions:       ocpOptions,
-		NetworkPoliciesEnabled: networkPoliciesEnabled,
 	}
 
 	ll.Info("begin building manifests")
@@ -141,6 +125,25 @@ func CreateOrUpdateLokiStack(
 			ll.Error(optErr, "failed to apply defaults options to gateway settings")
 			return nil, optErr
 		}
+	}
+
+	if fg.OpenShift.Enabled {
+		openShiftVersion, err := openshift.FetchVersion(ctx, k) //nolint:govet
+		if err != nil {
+			return nil, err
+		}
+
+		// Default to enabled NetworkPolicies when on OCP 4.20 and no configuration is present
+		if openShiftVersion != nil && openShiftVersion.IsAtLeast(4, 20) && stack.Spec.NetworkPolicies == nil {
+			stack.Spec.NetworkPolicies = &lokiv1.NetworkPoliciesSpec{
+				Disabled: false,
+			}
+		}
+	}
+
+	networkPolicyStatus := lokiv1.NetworkPoliciesStatusDisabled
+	if stack.Spec.NetworkPolicies != nil && !stack.Spec.NetworkPolicies.Disabled {
+		networkPolicyStatus = lokiv1.NetworkPoliciesStatusEnabled
 	}
 
 	tlsProfileType := configv1.TLSProfileType(fg.TLSProfile)
@@ -176,11 +179,6 @@ func CreateOrUpdateLokiStack(
 	if err := status.SetStorageSchemaStatus(ctx, k, req, objStore.Schemas); err != nil {
 		ll.Error(err, "failed to set storage schema status")
 		return nil, err
-	}
-
-	networkPolicyStatus := lokiv1.NetworkPoliciesStatusDisabled
-	if networkPoliciesEnabled {
-		networkPolicyStatus = lokiv1.NetworkPoliciesStatusEnabled
 	}
 
 	var errCount int32
@@ -230,7 +228,7 @@ func CreateOrUpdateLokiStack(
 		return nil, kverrors.New("failed to configure lokistack resources", "name", req.NamespacedName)
 	}
 
-	if err := networkpolicy.Cleanup(ctx, ll, k, req, &stack, networkPoliciesEnabled); err != nil {
+	if err := networkpolicy.Cleanup(ctx, ll, k, req, &stack); err != nil {
 		return nil, err
 	}
 
