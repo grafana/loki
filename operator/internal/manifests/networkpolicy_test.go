@@ -9,6 +9,7 @@ import (
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 func TestBuildNetworkPolicies(t *testing.T) {
@@ -304,35 +305,124 @@ func TestBuildLokiAllowGatewayIngress(t *testing.T) {
 }
 
 func TestBuildLokiAllowBucketEgress(t *testing.T) {
-	opts := Options{
-		Name:      "test",
-		Namespace: "test-ns",
+	tests := []struct {
+		name         string
+		opts         Options
+		expectedPort int32
+	}{
+		{
+			name: "AWS S3 endpoint without port (defaults to 443)",
+			opts: Options{
+				Name:      "test",
+				Namespace: "test-ns",
+				ObjectStorage: storage.Options{
+					SharedStore: lokiv1.ObjectStorageSecretS3,
+					S3: &storage.S3StorageConfig{
+						Endpoint: "https://s3.amazonaws.com",
+					},
+				},
+			},
+			expectedPort: 443,
+		},
+		{
+			name: "MinIO k8s service endpoint with custom port",
+			opts: Options{
+				Name:      "test",
+				Namespace: "test-ns",
+				ObjectStorage: storage.Options{
+					SharedStore: lokiv1.ObjectStorageSecretS3,
+					S3: &storage.S3StorageConfig{
+						Endpoint: "http://minio.test.svc.cluster.local:9000",
+					},
+				},
+			},
+			expectedPort: 9000,
+		},
+		{
+			name: "MinIO simple hostname with port",
+			opts: Options{
+				Name:      "test",
+				Namespace: "test-ns",
+				ObjectStorage: storage.Options{
+					SharedStore: lokiv1.ObjectStorageSecretS3,
+					S3: &storage.S3StorageConfig{
+						Endpoint: "minio.test.svc.cluster.local:8080",
+					},
+				},
+			},
+			expectedPort: 8080,
+		},
+		{
+			name: "Swift endpoint with custom port",
+			opts: Options{
+				Name:      "test",
+				Namespace: "test-ns",
+				ObjectStorage: storage.Options{
+					SharedStore: lokiv1.ObjectStorageSecretSwift,
+					Swift: &storage.SwiftStorageConfig{
+						AuthURL: "http://keystone.openstack.svc.cluster.local:5000/v3",
+					},
+				},
+			},
+			expectedPort: 5000,
+		},
+		{
+			name: "AlibabaCloud endpoint with custom port",
+			opts: Options{
+				Name:      "test",
+				Namespace: "test-ns",
+				ObjectStorage: storage.Options{
+					SharedStore: lokiv1.ObjectStorageSecretAlibabaCloud,
+					AlibabaCloud: &storage.AlibabaCloudStorageConfig{
+						Endpoint: "http://oss-emulator.default.svc.cluster.local:8080",
+					},
+				},
+			},
+			expectedPort: 8080,
+		},
+		{
+			name: "AlibabaCloud endpoint without port (defaults to 443)",
+			opts: Options{
+				Name:      "test",
+				Namespace: "test-ns",
+				ObjectStorage: storage.Options{
+					SharedStore: lokiv1.ObjectStorageSecretAlibabaCloud,
+					AlibabaCloud: &storage.AlibabaCloudStorageConfig{
+						Endpoint: "https://oss-cn-hangzhou.aliyuncs.com",
+					},
+				},
+			},
+			expectedPort: 443,
+		},
 	}
 
-	policy := buildLokiAllowBucketEgress(opts)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			policy := buildLokiAllowBucketEgress(tc.opts)
 
-	require.NotNil(t, policy)
-	require.Equal(t, "test-loki-allow-bucket-egress", policy.Name)
-	require.Equal(t, "test-ns", policy.Namespace)
+			require.NotNil(t, policy)
+			require.Equal(t, "test-loki-allow-bucket-egress", policy.Name)
+			require.Equal(t, "test-ns", policy.Namespace)
 
-	require.Len(t, policy.Spec.PodSelector.MatchExpressions, 2)
-	componentExpr := policy.Spec.PodSelector.MatchExpressions[1]
-	require.Equal(t, "app.kubernetes.io/component", componentExpr.Key)
-	require.ElementsMatch(t, []string{"ingester", "querier", "index-gateway", "compactor", "ruler"}, componentExpr.Values)
+			// Verify pod selector
+			require.Len(t, policy.Spec.PodSelector.MatchExpressions, 2)
+			componentExpr := policy.Spec.PodSelector.MatchExpressions[1]
+			require.Equal(t, "app.kubernetes.io/component", componentExpr.Key)
+			require.ElementsMatch(t, []string{"ingester", "querier", "index-gateway", "compactor", "ruler"}, componentExpr.Values)
 
-	require.Len(t, policy.Spec.Egress, 1) // Egress to object storage
-	require.Empty(t, policy.Spec.Ingress)
+			// Verify egress rules
+			require.Len(t, policy.Spec.Egress, 1, "Should have exactly one egress rule")
+			require.Empty(t, policy.Spec.Ingress, "Should have no ingress rules")
 
-	egressRule := policy.Spec.Egress[0]
-	require.Empty(t, egressRule.To)
+			egressRule := policy.Spec.Egress[0]
+			require.Empty(t, egressRule.To, "Egress should allow to any destination")
 
-	require.Len(t, egressRule.Ports, 3)
-	expectedPorts := []int32{443, 9000, 8080}
-	actualPorts := make([]int32, len(egressRule.Ports))
-	for i, port := range egressRule.Ports {
-		actualPorts[i] = port.Port.IntVal
+			// Verify the port
+			require.Len(t, egressRule.Ports, 1, "Should have exactly one port")
+			actualPort := egressRule.Ports[0].Port.IntVal
+			require.Equal(t, tc.expectedPort, actualPort, "Port should match expected value")
+		})
 	}
-	require.ElementsMatch(t, expectedPorts, actualPorts)
 }
 
 func TestBuildGatewayAllow(t *testing.T) {

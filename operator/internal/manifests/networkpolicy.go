@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -13,6 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 // BuildNetworkPolicies builds all NetworkPolicies required for a LokiStack deployment
@@ -298,6 +300,11 @@ func buildLokiAllowGatewayIngress(opts Options) *networkingv1.NetworkPolicy {
 // buildLokiAllowBucketEgress NetworkPolicy to allow egress traffic from
 // components that need to access object storage to object storage
 func buildLokiAllowBucketEgress(opts Options) *networkingv1.NetworkPolicy {
+	objstorePort := int32(443) // Default HTTPS port
+	if port := getEndpointPort(opts.ObjectStorage); port != 0 {
+		objstorePort = port
+	}
+
 	return &networkingv1.NetworkPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-loki-allow-bucket-egress", opts.Name),
@@ -327,20 +334,9 @@ func buildLokiAllowBucketEgress(opts Options) *networkingv1.NetworkPolicy {
 				{
 					To: []networkingv1.NetworkPolicyPeer{},
 					Ports: []networkingv1.NetworkPolicyPort{
-						// Most S3 endpoints AWS S3, GCS, Azure, ODF
 						{
 							Protocol: ptr.To(corev1.ProtocolTCP),
-							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 443},
-						},
-						// MinIO
-						{
-							Protocol: ptr.To(corev1.ProtocolTCP),
-							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 9000},
-						},
-						// Alternative popular port for S3 endpoints
-						{
-							Protocol: ptr.To(corev1.ProtocolTCP),
-							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 8080},
+							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: objstorePort},
 						},
 					},
 				},
@@ -593,4 +589,48 @@ func buildLokiAllowQueryFrontend(opts Options) *networkingv1.NetworkPolicy {
 			},
 		},
 	}
+}
+
+func getEndpointPort(storageOpts storage.Options) int32 {
+	extractPort := func(endpoint string) int32 {
+		if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
+			if u, err := url.Parse(endpoint); err == nil && u.Port() != "" {
+				if port, err := strconv.Atoi(u.Port()); err == nil {
+					return int32(port)
+				}
+			}
+			return 0
+		}
+
+		if strings.Contains(endpoint, ":") {
+			if epParts := strings.Split(endpoint, ":"); len(epParts) >= 2 {
+				portStr := epParts[len(epParts)-1] // last position should be the port
+				if idx := strings.Index(portStr, "/"); idx != -1 {
+					portStr = portStr[:idx] // remove the path if present
+				}
+				if port, err := strconv.Atoi(portStr); err == nil {
+					return int32(port)
+				}
+			}
+		}
+
+		return 0
+	}
+	// Many self-hosted object storage solutions use S3 API endpoints
+	// so we have to check for a port
+	if storageOpts.S3 != nil && storageOpts.S3.Endpoint != "" {
+		return extractPort(storageOpts.S3.Endpoint)
+	}
+
+	// AlibabaCloud Endpoint might includes ports
+	if storageOpts.AlibabaCloud != nil && storageOpts.AlibabaCloud.Endpoint != "" {
+		return extractPort(storageOpts.AlibabaCloud.Endpoint)
+	}
+
+	// Swift AuthURL might includes ports
+	if storageOpts.Swift != nil && storageOpts.Swift.AuthURL != "" {
+		return extractPort(storageOpts.Swift.AuthURL)
+	}
+
+	return 0
 }
