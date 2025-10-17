@@ -16,7 +16,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
-	"github.com/pkg/errors"
 )
 
 // DynamoConfigFromURL returns AWS config from given URL. It expects escaped
@@ -83,5 +82,7 @@ func CredentialsFromURL(awsURL *url.URL) (key, secret, session string, err error
 			return username, password, "", nil
 		}
 	}
-	return "", "", "", errors.New("Unable to build AWS credentials from URL")
+	// Return empty credentials instead of error to allow AWS SDK to use default credential chain
+	// (environment variables, IAM roles, etc.)
+	return "", "", "", nil
 }

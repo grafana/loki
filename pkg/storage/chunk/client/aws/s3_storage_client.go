@@ -219,7 +219,11 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.C
 		if err != nil {
 			return nil, err
 		}
-		s3Options.Credentials = credentials.NewStaticCredentialsProvider(key, secret, session)
+		// Only set credentials if they were provided in the URL
+		// Otherwise, let AWS SDK use the default credential chain
+		if key != "" || secret != "" {
+			s3Options.Credentials = credentials.NewStaticCredentialsProvider(key, secret, session)
+		}
 	} else {
 		s3Options.Region = "dummy"
 	}
