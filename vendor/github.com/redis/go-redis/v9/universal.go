@@ -5,6 +5,8 @@ import (
 	"crypto/tls"
 	"net"
 	"time"
+
+	"github.com/redis/go-redis/v9/auth"
 )
 
 // UniversalOptions information is required by UniversalClient to establish
@@ -26,9 +28,27 @@ type UniversalOptions struct {
 	Dialer    func(ctx context.Context, network, addr string) (net.Conn, error)
 	OnConnect func(ctx context.Context, cn *Conn) error
 
-	Protocol         int
-	Username         string
-	Password         string
+	Protocol int
+	Username string
+	Password string
+	// CredentialsProvider allows the username and password to be updated
+	// before reconnecting. It should return the current username and password.
+	CredentialsProvider func() (username string, password string)
+
+	// CredentialsProviderContext is an enhanced parameter of CredentialsProvider,
+	// done to maintain API compatibility. In the future,
+	// there might be a merge between CredentialsProviderContext and CredentialsProvider.
+	// There will be a conflict between them; if CredentialsProviderContext exists, we will ignore CredentialsProvider.
+	CredentialsProviderContext func(ctx context.Context) (username string, password string, err error)
+
+	// StreamingCredentialsProvider is used to retrieve the credentials
+	// for the connection from an external source. Those credentials may change
+	// during the connection lifetime. This is useful for managed identity
+	// scenarios where the credentials are retrieved from an external source.
+	//
+	// Currently, this is a placeholder for the future implementation.
+	StreamingCredentialsProvider auth.StreamingCredentialsProvider
+
 	SentinelUsername string
 	SentinelPassword string
 
@@ -40,6 +60,20 @@ type UniversalOptions struct {
 	ReadTimeout           time.Duration
 	WriteTimeout          time.Duration
 	ContextTimeoutEnabled bool
+
+	// ReadBufferSize is the size of the bufio.Reader buffer for each connection.
+	// Larger buffers can improve performance for commands that return large responses.
+	// Smaller buffers can improve memory usage for larger pools.
+	//
+	// default: 32KiB (32768 bytes)
+	ReadBufferSize int
+
+	// WriteBufferSize is the size of the bufio.Writer buffer for each connection.
+	// Larger buffers can improve performance for large pipelines and commands with many arguments.
+	// Smaller buffers can improve memory usage for larger pools.
+	//
+	// default: 32KiB (32768 bytes)
+	WriteBufferSize int
 
 	// PoolFIFO uses FIFO mode for each node connection pool GET/PUT (default LIFO).
 	PoolFIFO bool
@@ -78,7 +112,13 @@ type UniversalOptions struct {
 	DisableIdentity bool
 
 	IdentitySuffix string
-	UnstableResp3  bool
+
+	// FailingTimeoutSeconds is the timeout in seconds for marking a cluster node as failing.
+	// When a node is marked as failing, it will be avoided for this duration.
+	// Only applies to cluster clients. Default is 15 seconds.
+	FailingTimeoutSeconds int
+
+	UnstableResp3 bool
 
 	// IsClusterMode can be used when only one Addrs is provided (e.g. Elasticache supports setting up cluster mode with configuration endpoint).
 	IsClusterMode bool
@@ -96,9 +136,12 @@ func (o *UniversalOptions) Cluster() *ClusterOptions {
 		Dialer:     o.Dialer,
 		OnConnect:  o.OnConnect,
 
-		Protocol: o.Protocol,
-		Username: o.Username,
-		Password: o.Password,
+		Protocol:                     o.Protocol,
+		Username:                     o.Username,
+		Password:                     o.Password,
+		CredentialsProvider:          o.CredentialsProvider,
+		CredentialsProviderContext:   o.CredentialsProviderContext,
+		StreamingCredentialsProvider: o.StreamingCredentialsProvider,
 
 		MaxRedirects:   o.MaxRedirects,
 		ReadOnly:       o.ReadOnly,
@@ -114,6 +157,9 @@ func (o *UniversalOptions) Cluster() *ClusterOptions {
 		WriteTimeout:          o.WriteTimeout,
 		ContextTimeoutEnabled: o.ContextTimeoutEnabled,
 
+		ReadBufferSize:  o.ReadBufferSize,
+		WriteBufferSize: o.WriteBufferSize,
+
 		PoolFIFO: o.PoolFIFO,
 
 		PoolSize:        o.PoolSize,
@@ -126,10 +172,11 @@ func (o *UniversalOptions) Cluster() *ClusterOptions {
 
 		TLSConfig: o.TLSConfig,
 
-		DisableIdentity:  o.DisableIdentity,
-		DisableIndentity: o.DisableIndentity,
-		IdentitySuffix:   o.IdentitySuffix,
-		UnstableResp3:    o.UnstableResp3,
+		DisableIdentity:       o.DisableIdentity,
+		DisableIndentity:      o.DisableIndentity,
+		IdentitySuffix:        o.IdentitySuffix,
+		FailingTimeoutSeconds: o.FailingTimeoutSeconds,
+		UnstableResp3:         o.UnstableResp3,
 	}
 }
 
@@ -147,10 +194,14 @@ func (o *UniversalOptions) Failover() *FailoverOptions {
 		Dialer:    o.Dialer,
 		OnConnect: o.OnConnect,
 
-		DB:               o.DB,
-		Protocol:         o.Protocol,
-		Username:         o.Username,
-		Password:         o.Password,
+		DB:                           o.DB,
+		Protocol:                     o.Protocol,
+		Username:                     o.Username,
+		Password:                     o.Password,
+		CredentialsProvider:          o.CredentialsProvider,
+		CredentialsProviderContext:   o.CredentialsProviderContext,
+		StreamingCredentialsProvider: o.StreamingCredentialsProvider,
+
 		SentinelUsername: o.SentinelUsername,
 		SentinelPassword: o.SentinelPassword,
 
@@ -165,6 +216,9 @@ func (o *UniversalOptions) Failover() *FailoverOptions {
 		ReadTimeout:           o.ReadTimeout,
 		WriteTimeout:          o.WriteTimeout,
 		ContextTimeoutEnabled: o.ContextTimeoutEnabled,
+
+		ReadBufferSize:  o.ReadBufferSize,
+		WriteBufferSize: o.WriteBufferSize,
 
 		PoolFIFO:        o.PoolFIFO,
 		PoolSize:        o.PoolSize,
@@ -199,10 +253,13 @@ func (o *UniversalOptions) Simple() *Options {
 		Dialer:     o.Dialer,
 		OnConnect:  o.OnConnect,
 
-		DB:       o.DB,
-		Protocol: o.Protocol,
-		Username: o.Username,
-		Password: o.Password,
+		DB:                           o.DB,
+		Protocol:                     o.Protocol,
+		Username:                     o.Username,
+		Password:                     o.Password,
+		CredentialsProvider:          o.CredentialsProvider,
+		CredentialsProviderContext:   o.CredentialsProviderContext,
+		StreamingCredentialsProvider: o.StreamingCredentialsProvider,
 
 		MaxRetries:      o.MaxRetries,
 		MinRetryBackoff: o.MinRetryBackoff,
@@ -212,6 +269,9 @@ func (o *UniversalOptions) Simple() *Options {
 		ReadTimeout:           o.ReadTimeout,
 		WriteTimeout:          o.WriteTimeout,
 		ContextTimeoutEnabled: o.ContextTimeoutEnabled,
+
+		ReadBufferSize:  o.ReadBufferSize,
+		WriteBufferSize: o.WriteBufferSize,
 
 		PoolFIFO:        o.PoolFIFO,
 		PoolSize:        o.PoolSize,
