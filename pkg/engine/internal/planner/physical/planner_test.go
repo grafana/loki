@@ -11,7 +11,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
-	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 type catalog struct {
@@ -418,8 +417,8 @@ func TestPlanner_Convert_WithCastProjection(t *testing.T) {
 				},
 				Shard: logical.NewShard(0, 1),
 			},
-		).Unwrap(
-			"request_duration", syntax.OpConvDuration,
+		).Cast(
+			"request_duration", types.UnaryOpCastDuration,
 		).Compat(true)
 
 		logicalPlan, err := b.ToPlan()

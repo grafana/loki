@@ -91,6 +91,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		// Create filter pipeline
 		e := newExpressionEvaluator(alloc)
 		pipeline := NewFilterPipeline(filter, input, e, alloc)
+    defer pipeline.Close()
 
 		// Read the pipeline output
 		record, err := pipeline.Read(t.Context())

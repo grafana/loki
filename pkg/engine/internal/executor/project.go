@@ -66,6 +66,7 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 
 	// Create EXPAND projection pipeline:
 	// Keep all columns and expand the ones referenced in proj.Expressions.
+	// TODO: as implmented, epanding and keeping/dropping cannot happen in the same projection. Is this desired?
 	if proj.All && proj.Expand {
 		return newExpandPipeline(unaryExprs, evaluator, input)
 	}
@@ -75,6 +76,9 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 
 func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef, *semconv.Identifier) bool, input Pipeline) (*GenericPipeline, error) {
 	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
+		if len(inputs) != 1 {
+			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
+		}
 		input := inputs[0]
 		batch, err := input.Read(ctx)
 		if err != nil {
@@ -96,13 +100,17 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 			}
 		}
 
-		schema := arrow.NewSchema(fields, nil)
+		metadata := batch.Schema().Metadata()
+		schema := arrow.NewSchema(fields, &metadata)
 		return array.NewRecord(schema, columns, batch.NumRows()), nil
 	}, input), nil
 }
 
 func newExpandPipeline(expressions []physical.UnaryExpression, evaluator *expressionEvaluator, input Pipeline) (*GenericPipeline, error) {
 	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
+		if len(inputs) != 1 {
+			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
+		}
 		input := inputs[0]
 		batch, err := input.Read(ctx)
 		if err != nil {
@@ -114,9 +122,6 @@ func newExpandPipeline(expressions []physical.UnaryExpression, evaluator *expres
 		fields := []arrow.Field{}
 
 		for i, field := range batch.Schema().Fields() {
-			if err != nil {
-				return nil, err
-			}
 			columns = append(columns, batch.Column(i))
 			fields = append(fields, field)
 		}
@@ -141,7 +146,8 @@ func newExpandPipeline(expressions []physical.UnaryExpression, evaluator *expres
 			}
 		}
 
-		schema := arrow.NewSchema(fields, nil)
+		metadata := batch.Schema().Metadata()
+		schema := arrow.NewSchema(fields, &metadata)
 		return array.NewRecord(schema, columns, batch.NumRows()), nil
 	}, input), nil
 }

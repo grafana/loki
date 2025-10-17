@@ -38,8 +38,8 @@ func castFn(operation types.UnaryOp) UnaryFunction {
 		}
 
 		// Build output schema and record
-		fields := buildOutputFields(errTracker.hasErrors)
-		result, err := buildResult(castCol, errorCol, errorDetailsCol, fields)
+		fields := buildValueAndErrorFields(errTracker.hasErrors)
+		result, err := buildValueAndErrorStruct(castCol, errorCol, errorDetailsCol, fields)
 		if err != nil {
 			return nil, err
 		}
@@ -94,7 +94,7 @@ func castValues(
 	return castBuilder.NewArray(), tracker
 }
 
-func buildOutputFields(
+func buildValueAndErrorFields(
 	hasErrors bool,
 ) []arrow.Field {
 	fields := make([]arrow.Field, 0, 3)
@@ -114,8 +114,8 @@ func buildOutputFields(
 	return fields
 }
 
-func buildResult(
-	castCol, errorCol, errorDetailsCol arrow.Array,
+func buildValueAndErrorStruct(
+	valVol, errorCol, errorDetailsCol arrow.Array,
 	fields []arrow.Field,
 ) (*array.Struct, error) {
 	hasErrors := errorCol != nil
@@ -128,7 +128,7 @@ func buildResult(
 	columns := make([]arrow.Array, totalCols)
 
 	// Add new columns - these are newly created so don't need extra retain
-	columns[0] = castCol
+	columns[0] = valVol
 	if hasErrors {
 		columns[1] = errorCol
 		columns[2] = errorDetailsCol
