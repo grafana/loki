@@ -43,6 +43,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/stats"
 	listutil "github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/httpreq"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 
 	"github.com/grafana/loki/pkg/push"
@@ -190,6 +191,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 
 	sp := trace.SpanFromContext(ctx)
 	iters := []iter.EntryIterator{}
+	numIngesterIters := 0
 	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
 		// Make a copy of the request before modifying
 		// because the initial request is used below to query stores
@@ -207,6 +209,7 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 			return nil, err
 		}
 
+		numIngesterIters = len(ingesterIters)
 		iters = append(iters, ingesterIters...)
 	}
 
@@ -226,7 +229,15 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 	if len(iters) == 1 {
 		return iters[0], nil
 	}
-	return iter.NewMergeEntryIterator(ctx, iters, params.Direction), nil
+
+	mergedIter := iter.NewMergeEntryIterator(ctx, iters, params.Direction)
+
+	// Debug logging: wrap the merged iterator to sample and verify ordering for FORWARD direction
+	if params.Direction == logproto.FORWARD {
+		mergedIter = newDebugMergedIterator(mergedIter, numIngesterIters, len(iters)-numIngesterIters)
+	}
+
+	return mergedIter, nil
 }
 
 func (q *SingleTenantQuerier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
@@ -1237,4 +1248,84 @@ func streamsForFieldDetection(i iter.EntryIterator, size uint32) (logqlmodel.Str
 	}
 	sort.Sort(result)
 	return result, i.Err()
+}
+
+// debugMergedIterator wraps a merged iterator to sample and verify ordering
+type debugMergedIterator struct {
+	iter.MergeEntryIterator
+	numIngesterIters int
+	numStoreIters    int
+	sampleEntries    []logproto.Entry
+	sampleSize       int
+	logged           bool
+}
+
+// newDebugMergedIterator creates a debug wrapper for the merged iterator
+func newDebugMergedIterator(it iter.MergeEntryIterator, numIngesterIters, numStoreIters int) iter.MergeEntryIterator {
+	return &debugMergedIterator{
+		MergeEntryIterator: it,
+		numIngesterIters:   numIngesterIters,
+		numStoreIters:      numStoreIters,
+		sampleEntries:      make([]logproto.Entry, 0, 50),
+		sampleSize:         50,
+		logged:             false,
+	}
+}
+
+func (d *debugMergedIterator) Next() bool {
+	hasNext := d.MergeEntryIterator.Next()
+
+	// Sample entries until we have enough
+	if hasNext && len(d.sampleEntries) < d.sampleSize {
+		d.sampleEntries = append(d.sampleEntries, d.MergeEntryIterator.At())
+	}
+
+	// Once we've collected enough samples or reached the end, log them
+	if !d.logged && (len(d.sampleEntries) >= d.sampleSize || !hasNext) {
+		d.logSamples()
+		d.logged = true
+	}
+
+	return hasNext
+}
+
+func (d *debugMergedIterator) logSamples() {
+	if len(d.sampleEntries) == 0 {
+		level.Debug(util_log.Logger).Log(
+			"msg", "merged iterator no entries",
+			"experiment", "forward-missing-logs-querier-merge",
+			"direction", "FORWARD",
+			"ingester_iterators", d.numIngesterIters,
+			"store_iterators", d.numStoreIters,
+		)
+		return
+	}
+
+	firstTs := d.sampleEntries[0].Timestamp.UnixNano()
+	lastTs := d.sampleEntries[len(d.sampleEntries)-1].Timestamp.UnixNano()
+
+	// Check if sampled entries are sorted in ascending order
+	sampleSorted := slices.IsSortedFunc(d.sampleEntries, func(a, b logproto.Entry) int {
+		if a.Timestamp.UnixNano() < b.Timestamp.UnixNano() {
+			return -1
+		}
+		if a.Timestamp.UnixNano() > b.Timestamp.UnixNano() {
+			return 1
+		}
+		return 0
+	})
+
+	level.Debug(util_log.Logger).Log(
+		"msg", "merged iterator sampled",
+		"experiment", "forward-missing-logs-querier-merge",
+		"direction", "FORWARD",
+		"ingester_iterators", d.numIngesterIters,
+		"store_iterators", d.numStoreIters,
+		"sample_size", len(d.sampleEntries),
+		"first_ts", firstTs,
+		"first_ts_human", time.Unix(0, firstTs).Format(time.RFC3339Nano),
+		"last_ts", lastTs,
+		"last_ts_human", time.Unix(0, lastTs).Format(time.RFC3339Nano),
+		"sorted", sampleSorted,
+	)
 }

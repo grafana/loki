@@ -242,7 +242,14 @@ func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLog
 
 	iterators := make([]iter.EntryIterator, len(resps))
 	for i := range resps {
-		iterators[i] = iter.NewQueryClientIterator(resps[i].response.(logproto.Querier_QueryClient), params.Direction)
+		queryClient := resps[i].response.(logproto.Querier_QueryClient)
+
+		// For FORWARD direction, wrap the gRPC client to log QueryResponse batches
+		if params.Direction == logproto.FORWARD {
+			queryClient = newDebugQueryClient(queryClient, resps[i].addr)
+		}
+
+		iterators[i] = iter.NewQueryClientIterator(queryClient, params.Direction)
 	}
 	return iterators, nil
 }
@@ -560,4 +567,99 @@ func isUnimplementedCallError(err error) bool {
 		return false
 	}
 	return (s.Code() == codes.Unimplemented)
+}
+
+// debugQueryClient wraps a Querier_QueryClient to log QueryResponse batches as they're received
+type debugQueryClient struct {
+	logproto.Querier_QueryClient
+	ingesterAddr string
+	batchCount   int
+}
+
+// newDebugQueryClient creates a debug query client wrapper
+func newDebugQueryClient(client logproto.Querier_QueryClient, ingesterAddr string) logproto.Querier_QueryClient {
+	return &debugQueryClient{
+		Querier_QueryClient: client,
+		ingesterAddr:        ingesterAddr,
+		batchCount:          0,
+	}
+}
+
+func (d *debugQueryClient) Recv() (*logproto.QueryResponse, error) {
+	resp, err := d.Querier_QueryClient.Recv()
+	if err != nil {
+		return resp, err
+	}
+
+	// Log the QueryResponse batch
+	d.batchCount++
+	debugLogQueryResponse(resp, d.ingesterAddr, d.batchCount)
+
+	return resp, nil
+}
+
+// debugLogQueryResponse logs information about a QueryResponse batch from an ingester
+func debugLogQueryResponse(resp *logproto.QueryResponse, ingesterAddr string, batchNum int) {
+	if resp == nil || len(resp.Streams) == 0 {
+		level.Debug(util_log.Logger).Log(
+			"msg", "ingester response batch empty",
+			"experiment", "forward-missing-logs-querier-response",
+			"direction", "FORWARD",
+			"ingester", ingesterAddr,
+			"batch_num", batchNum,
+		)
+		return
+	}
+
+	totalEntries := 0
+	for _, stream := range resp.Streams {
+		totalEntries += len(stream.Entries)
+	}
+
+	level.Debug(util_log.Logger).Log(
+		"msg", "ingester response batch received",
+		"experiment", "forward-missing-logs-querier-response",
+		"direction", "FORWARD",
+		"ingester", ingesterAddr,
+		"batch_num", batchNum,
+		"num_streams", len(resp.Streams),
+		"total_entries", totalEntries,
+	)
+
+	// Log details about each stream in the batch
+	for streamIdx, stream := range resp.Streams {
+		if len(stream.Entries) == 0 {
+			continue
+		}
+
+		firstTs := stream.Entries[0].Timestamp.UnixNano()
+		lastTs := stream.Entries[len(stream.Entries)-1].Timestamp.UnixNano()
+
+		// Check if entries within this stream are sorted in ascending order
+		streamSorted := slices.IsSortedFunc(stream.Entries, func(a, b logproto.Entry) int {
+			if a.Timestamp.UnixNano() < b.Timestamp.UnixNano() {
+				return -1
+			}
+			if a.Timestamp.UnixNano() > b.Timestamp.UnixNano() {
+				return 1
+			}
+			return 0
+		})
+
+		level.Debug(util_log.Logger).Log(
+			"msg", "ingester response stream",
+			"experiment", "forward-missing-logs-querier-response",
+			"direction", "FORWARD",
+			"ingester", ingesterAddr,
+			"batch_num", batchNum,
+			"stream_idx", streamIdx,
+			"labels", stream.Labels,
+			"entries", len(stream.Entries),
+			"first_ts", firstTs,
+			"first_ts_human", time.Unix(0, firstTs).Format(time.RFC3339Nano),
+			"last_ts", lastTs,
+			"last_ts_human", time.Unix(0, lastTs).Format(time.RFC3339Nano),
+			"sorted", streamSorted,
+		)
+	}
 }
