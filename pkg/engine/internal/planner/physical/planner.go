@@ -356,60 +356,95 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 	return []Node{node}, nil
 }
 
+func (p *Planner) hasNonMathExpressionChild(n Node) bool {
+	if n == nil {
+		return false
+	}
+
+	if _, ok := n.(*MathExpression); ok {
+		for _, c := range p.plan.Children(n) {
+			if p.hasNonMathExpressionChild(c) {
+				return true
+			}
+		}
+		return false
+	} else {
+		return true
+	}
+}
+
 func (p *Planner) processBinOp(lp *logical.BinOp, ctx *Context) ([]Node, error) {
 	var left, right Expression
+	var leftChild, rightChild Node
 
-	var leftIsLiteral bool
 	if l, ok := lp.Left.(*logical.Literal); ok {
 		left = &LiteralExpr{Literal: l.Literal}
-		leftIsLiteral = true
 	} else {
-		left = newColumnExpr("input_0", types.ColumnTypeGenerated)
+		left = newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
+
+		leftChildren, err := p.process(lp.Left, ctx)
+		if err != nil {
+			return nil, err
+		}
+		leftChild = leftChildren[0]
 	}
+
 	if l, ok := lp.Right.(*logical.Literal); ok {
 		right = &LiteralExpr{l.Literal}
 	} else {
-		var name string
-		if leftIsLiteral {
-			name = "input_0"
-		} else {
-			name = "input_1"
+		right = newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
+
+		rightChildren, err := p.process(lp.Right, ctx)
+		if err != nil {
+			return nil, err
 		}
-		right = newColumnExpr(name, types.ColumnTypeGenerated)
+		rightChild = rightChildren[0]
 	}
 
-	node := &MathExpression{
+	mathExprNode := &MathExpression{
 		Expression: &BinaryExpr{
 			Left:  left,
 			Right: right,
 			Op:    lp.Op,
 		},
 	}
-	p.plan.graph.Add(node)
+	p.plan.graph.Add(mathExprNode)
 
-	// if lhs is not a literal, then process children nodes
-	if _, ok := lp.Left.(*logical.Literal); !ok {
-		leftChildren, err := p.process(lp.Left, ctx)
-		if err != nil {
+	// If both left and right children have some data scans
+	if p.hasNonMathExpressionChild(leftChild) && p.hasNonMathExpressionChild(rightChild) {
+		// Rename column references to match 2 joined `value` columns
+		mathExprNode.Expression = &BinaryExpr{
+			Left:  newColumnExpr("value_left", types.ColumnTypeGenerated),
+			Right: newColumnExpr("value_right", types.ColumnTypeGenerated),
+			Op:    lp.Op,
+		}
+
+		// Insert InnerJoin node between this math expression and its two inputs.
+		joinNode := &Join{}
+		p.plan.graph.Add(joinNode)
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: joinNode, Child: leftChild}); err != nil {
 			return nil, err
 		}
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: leftChildren[0]}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: joinNode, Child: rightChild}); err != nil {
 			return nil, err
+		}
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: mathExprNode, Child: joinNode}); err != nil {
+			return nil, err
+		}
+	} else {
+		if leftChild != nil {
+			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: mathExprNode, Child: leftChild}); err != nil {
+				return nil, err
+			}
+		}
+		if rightChild != nil {
+			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: mathExprNode, Child: rightChild}); err != nil {
+				return nil, err
+			}
 		}
 	}
 
-	// if rhs is not a literal, then process children nodes
-	if _, ok := lp.Right.(*logical.Literal); !ok {
-		rightChildren, err := p.process(lp.Right, ctx)
-		if err != nil {
-			return nil, err
-		}
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: rightChildren[0]}); err != nil {
-			return nil, err
-		}
-	}
-
-	return []Node{node}, nil
+	return []Node{mathExprNode}, nil
 }
 
 func (p *Planner) processUnaryOp(lp *logical.UnaryOp, ctx *Context) ([]Node, error) {
@@ -418,7 +453,7 @@ func (p *Planner) processUnaryOp(lp *logical.UnaryOp, ctx *Context) ([]Node, err
 	if l, ok := lp.Value.(*logical.Literal); ok {
 		left = &LiteralExpr{Literal: l.Literal}
 	} else {
-		left = newColumnExpr("input_1", types.ColumnTypeGenerated)
+		left = newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
 	}
 
 	node := &MathExpression{

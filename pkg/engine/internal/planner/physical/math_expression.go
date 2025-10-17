@@ -8,9 +8,7 @@ import (
 type MathExpression struct {
 	id string
 
-	// Expression is a math expression (a tree of BinOps or UnaryOps) with literals and column references as inputs.
-	// Column references are names `input_0`, `input_1`, and so forth, and match physical plan children of that node in
-	// the same order.
+	// Expression is a math expression (a tree of BinOps or UnaryOps) with literals and a column reference as input.
 	Expression Expression
 }
 

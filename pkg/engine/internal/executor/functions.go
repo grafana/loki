@@ -221,7 +221,7 @@ func (f *genericBoolFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector)
 		builder.Append(res)
 	}
 
-	return &Array{array: builder.NewArray()}, nil
+	return &Array{array: builder.NewArray(), dt: types.Loki.Bool, ct: types.ColumnTypeGenerated}, nil
 }
 
 // genericFloat64Function is a struct that implements the [BinaryFunction] interface methods
@@ -262,7 +262,7 @@ func (f *genericFloat64Function[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVect
 		builder.Append(res)
 	}
 
-	return &Array{array: builder.NewArray()}, nil
+	return &Array{array: builder.NewArray(), dt: types.Loki.Float, ct: types.ColumnTypeGenerated}, nil
 }
 
 // Compiler optimized version of converting boolean b into an integer of value 0 or 1

@@ -632,7 +632,7 @@ func TestOptimizer(t *testing.T) {
 		expected := PrintAsTree(expectedPlan)
 		require.Equal(t, expected, actual)
 	})
-	
+
 	// both predicate pushdown and limits pushdown should work together
 	t.Run("predicate and limits pushdown", func(t *testing.T) {
 		plan := &Plan{}

@@ -288,7 +288,7 @@ func walkBinOp(e *syntax.BinOpExpr, params logql.Params) (Value, error) {
 	}
 
 	// this is to check that there is only one non-literal input on either side, otherwise it is not implemented yet.
-	// TODO remove when all MathExpression pipeline can read multiple inputs
+	// TODO remove when inner joins on timestamp are implemented
 	if hasNonMathExpressionChild(left) && hasNonMathExpressionChild(right) {
 		return nil, errUnimplemented
 	}

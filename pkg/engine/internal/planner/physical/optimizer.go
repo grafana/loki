@@ -1,7 +1,6 @@
 package physical
 
 import (
-	"fmt"
 	"maps"
 	"slices"
 	"sort"
@@ -487,7 +486,7 @@ func disambiguateColumns(columns []ColumnExpression) ([]ColumnExpression, []Colu
 	return unambiguousColumns, ambiguousColumns
 }
 
-// mathExpressionsMerge is a rule that merges adjacent math expressions nodes into one node with complex expression
+// mathExpressionsMerge is a rule that merges adjacent math expressions nodes into one node with a complex expression
 type mathExpressionsMerge struct {
 	plan *Plan
 }
@@ -495,28 +494,35 @@ type mathExpressionsMerge struct {
 // apply implements rule.
 func (r *mathExpressionsMerge) apply(node Node) bool {
 	changed := false
+	children := r.plan.Children(node)
 	switch node := node.(type) {
 	case *MathExpression:
-		binaryExpr := node.Expression.(*BinaryExpr)
-		children := r.plan.Children(node)
-		for i, child := range children {
-			inputName := fmt.Sprintf("input_%d", i)
-			if c, ok := child.(*MathExpression); ok {
-				if columnExpr, ok := binaryExpr.Left.(*ColumnExpr); ok {
-					if columnExpr.Ref.Column == inputName {
-						binaryExpr.Left = c.Expression
-						r.plan.graph.Eliminate(child)
-						changed = true
-						break
-					}
+		switch e := node.Expression.(type) {
+		case *BinaryExpr:
+			// If LHS is a column reference
+			if _, ok := e.Left.(*ColumnExpr); ok {
+				if c, ok := children[0].(*MathExpression); ok {
+					e.Left = c.Expression
+					r.plan.graph.Eliminate(c)
+					changed = true
 				}
-				if columnExpr, ok := binaryExpr.Right.(*ColumnExpr); ok {
-					if columnExpr.Ref.Column == inputName {
-						binaryExpr.Right = c.Expression
-						r.plan.graph.Eliminate(child)
-						changed = true
-						break
-					}
+			}
+			// If RHS is a column reference
+			if _, ok := e.Right.(*ColumnExpr); ok {
+				if c, ok := children[len(children)-1].(*MathExpression); ok {
+					e.Right = c.Expression
+					r.plan.graph.Eliminate(c)
+					changed = true
+				}
+			}
+
+		case *UnaryExpr:
+			// If LHS is a column reference
+			if _, ok := e.Left.(*ColumnExpr); ok {
+				if c, ok := children[0].(*MathExpression); ok {
+					e.Left = c.Expression
+					r.plan.graph.Eliminate(c)
+					changed = true
 				}
 			}
 		}

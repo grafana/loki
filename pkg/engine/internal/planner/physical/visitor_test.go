@@ -21,6 +21,7 @@ type nodeCollectVisitor struct {
 	onVisitMathExpression    func(expression *MathExpression) error
 	onVisitParallelize       func(*Parallelize) error
 	onVisitScanSet           func(*ScanSet) error
+	onVisitJoin              func(*Join) error
 }
 
 func (v *nodeCollectVisitor) VisitDataObjScan(n *DataObjScan) error {
@@ -109,6 +110,14 @@ func (v *nodeCollectVisitor) VisitParallelize(n *Parallelize) error {
 func (v *nodeCollectVisitor) VisitScanSet(n *ScanSet) error {
 	if v.onVisitScanSet != nil {
 		return v.onVisitScanSet(n)
+	}
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	return nil
+}
+
+func (v *nodeCollectVisitor) VisitJoin(n *Join) error {
+	if v.onVisitJoin != nil {
+		return v.onVisitJoin(n)
 	}
 	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
 	return nil

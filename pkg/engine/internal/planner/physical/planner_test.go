@@ -598,6 +598,8 @@ func TestPlanner_BuildMathExpressionsWithTwoInputs(t *testing.T) {
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
 		0,             // Step
 		time.Minute*5, // Range
+	).BinOpRight(
+		types.BinaryOpDiv, logical.NewLiteral(float64(300)),
 	)
 	b2 := logical.NewBuilder(
 		&logical.MakeTable{
@@ -629,6 +631,8 @@ func TestPlanner_BuildMathExpressionsWithTwoInputs(t *testing.T) {
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
 		0,             // Step
 		time.Minute*5, // Range
+	).BinOpRight(
+		types.BinaryOpDiv, logical.NewLiteral(float64(300)),
 	).BinOpRight(
 		types.BinaryOpDiv, b1.Value(),
 	)
