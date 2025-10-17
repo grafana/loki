@@ -263,6 +263,8 @@ func (it *messageIterator) receive(maxToPull int32) ([]*Message, error) {
 
 	var rmsgs []*pb.ReceivedMessage
 	var err error
+	// This is a blocking call, because reading from the stream blocks.
+	// We want to make sure this is canceled.
 	rmsgs, err = it.recvMessages()
 	// If stopping the iterator results in the grpc stream getting shut down and
 	// returning an error here, treat the same as above and return EOF.
@@ -359,9 +361,9 @@ func (it *messageIterator) receive(maxToPull int32) ([]*Message, error) {
 
 		// If exactly once is enabled, we should wait until modack responses are successes
 		// before attempting to process messages.
-		it.sendModAck(ackIDs, deadline, false, true)
+		ctx := context.Background()
+		it.sendModAck(ctx, ackIDs, deadline, false, true)
 		for ackID, ar := range ackIDs {
-			ctx := context.Background()
 			_, err := ar.Get(ctx)
 			if err != nil {
 				delete(pendingMessages, ackID)
@@ -508,16 +510,16 @@ func (it *messageIterator) sender() {
 		}
 		if sendNacks {
 			// Nack indicated by modifying the deadline to zero.
-			it.sendModAck(nacks, 0, false, false)
+			it.sendModAck(context.Background(), nacks, 0, false, false)
 		}
 		if sendModAcks {
-			it.sendModAck(modAcks, dl, true, false)
+			it.sendModAck(context.Background(), modAcks, dl, true, false)
 		}
 		if sendPing {
 			it.pingStream()
 		}
 		if sendReceipt {
-			it.sendModAck(receipts, dl, true, true)
+			it.sendModAck(context.Background(), receipts, dl, true, true)
 		}
 	}
 }
@@ -559,7 +561,7 @@ type ackFunc = func(ctx context.Context, subName string, ackIds []string) error
 type ackRecordStat = func(ctx context.Context, toSend []string)
 type retryAckFunc = func(toRetry map[string]*ipubsub.AckResult)
 
-func (it *messageIterator) sendAckWithFunc(m map[string]*AckResult, ackFunc ackFunc, retryAckFunc retryAckFunc, ackRecordStat ackRecordStat) {
+func (it *messageIterator) sendAckWithFunc(ctx context.Context, m map[string]*AckResult, ackFunc ackFunc, retryAckFunc retryAckFunc, ackRecordStat ackRecordStat) {
 	ackIDs := make([]string, 0, len(m))
 	for ackID := range m {
 		ackIDs = append(ackIDs, ackID)
@@ -575,9 +577,7 @@ func (it *messageIterator) sendAckWithFunc(m map[string]*AckResult, ackFunc ackF
 		go func(toSend []string) {
 			defer wg.Done()
 			ackRecordStat(it.ctx, toSend)
-			// Use context.Background() as the call's context, not it.ctx. We don't
-			// want to cancel this RPC when the iterator is stopped.
-			cctx, cancel2 := context.WithTimeout(context.Background(), 60*time.Second)
+			cctx, cancel2 := context.WithTimeout(ctx, 60*time.Second)
 			defer cancel2()
 			err := ackFunc(cctx, it.subName, toSend)
 			if exactlyOnceDelivery {
@@ -602,7 +602,8 @@ func (it *messageIterator) sendAckWithFunc(m map[string]*AckResult, ackFunc ackF
 // sendAck is used to confirm acknowledgement of a message. If exactly once delivery is
 // enabled, we'll retry these messages for a short duration in a goroutine.
 func (it *messageIterator) sendAck(m map[string]*AckResult) {
-	it.sendAckWithFunc(m, func(ctx context.Context, subName string, ackIDs []string) error {
+	ctx := context.Background()
+	it.sendAckWithFunc(ctx, m, func(ctx context.Context, subName string, ackIDs []string) error {
 		// For each ackID (message), setup links to the main subscribe span.
 		// If this is a nack, also remove it from active spans.
 		// If the ackID is not found, don't create any more spans.
@@ -667,7 +668,7 @@ func (it *messageIterator) sendAck(m map[string]*AckResult) {
 // percentile in order to capture the highest amount of time necessary without
 // considering 1% outliers. If the ModAck RPC fails and exactly once delivery is
 // enabled, we retry it in a separate goroutine for a short duration.
-func (it *messageIterator) sendModAck(m map[string]*AckResult, deadline time.Duration, logOnInvalid, isReceipt bool) {
+func (it *messageIterator) sendModAck(ctx context.Context, m map[string]*AckResult, deadline time.Duration, logOnInvalid, isReceipt bool) {
 	deadlineSec := int32(deadline / time.Second)
 	isNack := deadline == 0
 	var spanName, eventStart, eventEnd string
@@ -680,7 +681,7 @@ func (it *messageIterator) sendModAck(m map[string]*AckResult, deadline time.Dur
 		eventStart = eventModackStart
 		eventEnd = eventModackEnd
 	}
-	it.sendAckWithFunc(m, func(ctx context.Context, subName string, ackIDs []string) error {
+	it.sendAckWithFunc(ctx, m, func(ctx context.Context, subName string, ackIDs []string) error {
 		if it.enableTracing {
 			// For each ackID (message), link back to the main subscribe span.
 			// If this is a nack, also remove it from active spans.
@@ -1015,4 +1016,20 @@ func processResults(errorStatus *status.Status, ackResMap map[string]*AckResult,
 		}
 	}
 	return completedResults, retryResults
+}
+
+// nackInventory nacks all the current messages being held by the iterator.
+// This does not stop the existing callbacks, and does not try to remove
+// messages from the scheduler. This is used specifically for when the
+// user configured ShutdownOptions is set to NackImmediately
+func (it *messageIterator) nackInventory(ctx context.Context) {
+	it.mu.Lock()
+	defer it.mu.Unlock()
+
+	toNack := make(map[string]*ipubsub.AckResult)
+	for ackID := range it.keepAliveDeadlines {
+		// Use a dummy AckResult since we don't propagate nacks back to the user.
+		toNack[ackID] = newSuccessAckResult()
+	}
+	it.sendModAck(ctx, toNack, 0, false, false)
 }
