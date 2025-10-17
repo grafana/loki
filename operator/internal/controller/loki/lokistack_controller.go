@@ -154,6 +154,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	statusInfo, err := r.updateResources(ctx, req)
 	switch {
 	case errors.As(err, &degraded):
+		// degraded errors are handled by status.Refresh below
 		if statusInfo == nil {
 			statusInfo = &status.LokiStackStatusInfo{}
 		}
