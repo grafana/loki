@@ -261,8 +261,10 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 	}); err != nil {
 		return err
 	}
+	// TODO: make timeout configurable
+	initTimeout := 5 * time.Second
+	if resp, err := receiveWithTimeout(loop, initTimeout); err != nil || resp.Status != schedulerpb.OK {
 
-	if resp, err := loop.Recv(); err != nil || resp.Status != schedulerpb.OK {
 		if err != nil {
 			return err
 		}
@@ -353,5 +355,30 @@ func (w *frontendSchedulerWorker) schedulerLoop(loop schedulerpb.SchedulerForFro
 				return errors.Errorf("unexpected status received for cancellation: %v", resp.Status)
 			}
 		}
+	}
+}
+
+// calls loop.Recv() with timeout
+// only used to add timeout to receive when waiting for INIT response
+func receiveWithTimeout(loop schedulerpb.SchedulerForFrontend_FrontendLoopClient, timeout time.Duration) (*schedulerpb.SchedulerToFrontend, error) {
+
+	receiveCh := make(chan struct {
+		resp *schedulerpb.SchedulerToFrontend
+		err  error
+	}, 1)
+
+	go func() {
+		resp, err := loop.Recv()
+		receiveCh <- struct {
+			resp *schedulerpb.SchedulerToFrontend
+			err  error
+		}{resp, err}
+	}()
+
+	select {
+	case initResultOrErr := <-receiveCh:
+		return initResultOrErr.resp, initResultOrErr.err
+	case <-time.After(timeout):
+		return nil, context.DeadlineExceeded
 	}
 }
