@@ -212,6 +212,10 @@ func TestBuildIngester_PodDisruptionBudgetWithReplicationFactor(t *testing.T) {
 			require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
 			require.Equal(t, int32(tc.ExpectedMinAvailable), pdb.Spec.MinAvailable.IntVal)
 
+			sts := objs[0].(*appsv1.StatefulSet)
+			require.NotNil(t, sts)
+			require.NotZero(t, sts.Spec.Replicas)
+			require.Equal(t, tc.customReplicationFactor+1, *sts.Spec.Replicas)
 		})
 	}
 }
