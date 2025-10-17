@@ -96,6 +96,13 @@ func TestStreamsResultBuilder(t *testing.T) {
 		)
 		rows := arrowtest.Rows{
 			{
+				colTs.FQN():  nil,
+				colMsg.FQN(): "log line 0 (must be skipped)",
+				colEnv.FQN(): "dev",
+				colNs.FQN():  "loki-dev-001",
+				colTid.FQN(): "860e403fcf754312",
+			},
+			{
 				colTs.FQN():  time.Unix(0, 1620000000000000001).UTC(),
 				colMsg.FQN(): "log line 1",
 				colEnv.FQN(): "dev",
@@ -130,6 +137,13 @@ func TestStreamsResultBuilder(t *testing.T) {
 				colNs.FQN():  "loki-dev-002",
 				colTid.FQN(): "0cf883f112ad239b",
 			},
+			{
+				colTs.FQN():  time.Unix(0, 1620000000000000006).UTC(),
+				colMsg.FQN(): "log line 6",
+				colEnv.FQN(): "dev",
+				colNs.FQN():  nil,
+				colTid.FQN(): "9de325g124ad230b",
+			},
 		}
 
 		record := rows.Record(alloc, schema)
@@ -142,11 +156,11 @@ func TestStreamsResultBuilder(t *testing.T) {
 		err := collectResult(context.Background(), pipeline, builder)
 
 		require.NoError(t, err)
-		require.Equal(t, 5, builder.Len())
+		require.Equal(t, 6, builder.Len())
 
 		md, _ := metadata.NewContext(t.Context())
 		result := builder.Build(stats.Result{}, md)
-		require.Equal(t, 5, result.Data.(logqlmodel.Streams).Len())
+		require.Equal(t, 6, result.Data.(logqlmodel.Streams).Len())
 
 		expected := logqlmodel.Streams{
 			push.Stream{
@@ -165,6 +179,12 @@ func TestStreamsResultBuilder(t *testing.T) {
 				Labels: labels.FromStrings("env", "dev", "namespace", "loki-dev-002", "traceID", "61330481e1e59b18").String(),
 				Entries: []logproto.Entry{
 					{Line: "log line 3", Timestamp: time.Unix(0, 1620000000000000003), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "61330481e1e59b18")), Parsed: logproto.FromLabelsToLabelAdapters(labels.Labels{})},
+				},
+			},
+			push.Stream{
+				Labels: labels.FromStrings("env", "dev", "traceID", "9de325g124ad230b").String(),
+				Entries: []logproto.Entry{
+					{Line: "log line 6", Timestamp: time.Unix(0, 1620000000000000006), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "9de325g124ad230b")), Parsed: logproto.FromLabelsToLabelAdapters(labels.Labels{})},
 				},
 			},
 			push.Stream{
