@@ -250,6 +250,9 @@ func (s *Scheduler) FrontendLoop(frontend schedulerpb.SchedulerForFrontend_Front
 		if err := frontend.Send(&schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}); err != nil {
 			return err
 		}
+	} else if !s.shouldRun.Load() {
+		// Scheduler is "RUNNING" but not chosen to run queries (yet)
+		return frontend.Send(&schedulerpb.SchedulerToFrontend{Status: schedulerpb.ERROR})
 	}
 
 	// We stop accepting new queries in Stopping state. By returning quickly, we disconnect frontends, which in turns
