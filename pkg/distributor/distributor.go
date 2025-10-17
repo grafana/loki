@@ -454,29 +454,6 @@ type streamTracker struct {
 	failed      atomic.Int32
 }
 
-// TODO taken from Cortex, see if we can refactor out an usable interface.
-type pushTracker struct {
-	streamsPending atomic.Int32
-	streamsFailed  atomic.Int32
-	done           chan struct{}
-	err            chan error
-}
-
-// doneWithResult records the result of a stream push.
-// If err is nil, the stream push is considered successful.
-// If err is not nil, the stream push is considered failed.
-func (p *pushTracker) doneWithResult(err error) {
-	if err == nil {
-		if p.streamsPending.Dec() == 0 {
-			p.done <- struct{}{}
-		}
-	} else {
-		if p.streamsFailed.Inc() == 1 {
-			p.err <- err
-		}
-	}
-}
-
 func (d *Distributor) waitSimulatedLatency(ctx context.Context, tenantID string, start time.Time) {
 	latency := d.validator.SimulatedPushLatency(tenantID)
 	if latency > 0 {
@@ -754,10 +731,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
 	var descs [maxExpectedReplicationSet]ring.InstanceDesc
 
-	tracker := pushTracker{
-		done: make(chan struct{}, 1), // buffer avoids blocking if caller terminates - sendSamples() only sends once on each
-		err:  make(chan error, 1),
-	}
+	tracker := newBasicPushTracker()
 	streamsToWrite := 0
 	if d.cfg.IngesterEnabled {
 		streamsToWrite += len(streams)
@@ -766,7 +740,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		streamsToWrite += len(streams)
 	}
 	// We must correctly set streamsPending before beginning any writes to ensure we don't have a race between finishing all of one path before starting the other.
-	tracker.streamsPending.Store(int32(streamsToWrite))
+	tracker.Add(int32(streamsToWrite))
 
 	if d.cfg.KafkaEnabled {
 		subring, err := d.partitionRing.PartitionRing().ShuffleShard(tenantID, d.validator.IngestionPartitionsTenantShardSize(tenantID))
@@ -774,7 +748,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 			return nil, err
 		}
 		// We don't need to create a new context like the ingester writes, because we don't return unless all writes have succeeded.
-		d.sendStreamsToKafka(ctx, streams, tenantID, &tracker, subring)
+		d.sendStreamsToKafka(ctx, streams, tenantID, tracker, subring)
 	}
 
 	if d.cfg.IngesterEnabled {
@@ -823,7 +797,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				case d.ingesterTasks <- pushIngesterTask{
 					ingester:      ingester,
 					streamTracker: samples,
-					pushTracker:   &tracker,
+					pushTracker:   tracker,
 					ctx:           localCtx,
 					cancel:        cancel,
 				}:
@@ -833,14 +807,11 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 		}
 	}
 
-	select {
-	case err := <-tracker.err:
+	if err := tracker.Wait(ctx); err != nil {
 		return nil, err
-	case <-tracker.done:
-		return &logproto.PushResponse{}, validationErr
-	case <-ctx.Done():
-		return nil, ctx.Err()
 	}
+
+	return &logproto.PushResponse{}, validationErr
 }
 
 // missingEnforcedLabels returns true if the stream is missing any of the required labels.
@@ -1135,7 +1106,7 @@ func (d *Distributor) truncateLines(vContext validationContext, stream *logproto
 
 type pushIngesterTask struct {
 	streamTracker []*streamTracker
-	pushTracker   *pushTracker
+	pushTracker   PushTracker
 	ingester      ring.InstanceDesc
 	ctx           context.Context
 	cancel        context.CancelFunc
@@ -1172,12 +1143,12 @@ func (d *Distributor) sendStreams(task pushIngesterTask) {
 			if task.streamTracker[i].failed.Inc() <= int32(task.streamTracker[i].maxFailures) {
 				continue
 			}
-			task.pushTracker.doneWithResult(err)
+			task.pushTracker.Done(err)
 		} else {
 			if task.streamTracker[i].succeeded.Inc() != int32(task.streamTracker[i].minSuccess) {
 				continue
 			}
-			task.pushTracker.doneWithResult(nil)
+			task.pushTracker.Done(nil)
 		}
 	}
 }
@@ -1209,14 +1180,14 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 	return err
 }
 
-func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStream, tenant string, tracker *pushTracker, subring *ring.PartitionRing) {
+func (d *Distributor) sendStreamsToKafka(ctx context.Context, streams []KeyedStream, tenant string, tracker PushTracker, subring *ring.PartitionRing) {
 	for _, s := range streams {
 		go func(s KeyedStream) {
 			err := d.sendStreamToKafka(ctx, s, tenant, subring)
 			if err != nil {
 				err = fmt.Errorf("failed to write stream to kafka: %w", err)
 			}
-			tracker.doneWithResult(err)
+			tracker.Done(err)
 		}(s)
 	}
 }
