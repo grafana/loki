@@ -13,6 +13,11 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [FEATURE] Make loki-canary readinessProbe configurable via values.yaml  [#19328](https://github.com/grafana/loki/pull/19328)
+- [FEATURE]: Allow auto-resizing the volume by recreating the StatefulSet. [#19217](https://github.com/grafana/loki/pull/19217)
+- [BUGFIX] Add single-binary component to ingress NetworkPolicy [#19229](https://github.com/grafana/loki/pull/19229)
+- [BUGFIX] Use strings in stead of integers for ports in CiliumNetworkPolicies [#19252](https://github.com/grafana/loki/pull/19252)
+
 ## 6.43.0
 
 - [BREAKING]  **Loki UI has been completely removed from the Helm chart.**  The experimental Loki UI has been moved to a [Grafana Plugin] (https://github.com/grafana/loki-operational-ui). Enabling the UI in the Helm chart will now only enable the APIs needed by the plugin, and will host them on the querier. The gateway will now forward all UI requests to the queriers. Users who previously had `loki.ui.enabled: true` should remove this configuration and migrate to the Grafana Loki plugin for UI functionality. [#19390](https://github.com/grafana/loki/pull/19390)
