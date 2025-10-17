@@ -205,6 +205,7 @@ class LogStash::Outputs::Loki < LogStash::Outputs::Base
   public
   def receive(event)
     @entries << Entry.new(event, @message_field, @include_fields, @metadata_fields)
+    @tenant_id = event.sprintf(@tenant_id)
   end
 
   def close
