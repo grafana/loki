@@ -4,9 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
