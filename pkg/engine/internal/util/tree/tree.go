@@ -43,6 +43,8 @@ type Node struct {
 	// for comments are tree-style properties of a node, such as expressions of a
 	// physical plan node.
 	Comments []*Node
+	// Context is an optional value to associate with the node.
+	Context any
 }
 
 // NewNode creates a new node with the given name, unique identifier and
