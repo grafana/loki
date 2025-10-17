@@ -155,8 +155,6 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 		return p.processVectorAggregation(inst, ctx)
 	case *logical.Parse:
 		return p.processParse(inst, ctx)
-	case *logical.Projection:
-		return p.processProjection(inst, ctx)
 	case *logical.LogQLCompat:
 		p.context.v1Compatible = true
 		return p.process(inst.Value, ctx)

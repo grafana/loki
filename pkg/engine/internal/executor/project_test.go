@@ -505,7 +505,11 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 			e := newExpressionEvaluator(alloc)
 			pipeline, err := NewProjectPipeline(
 				input,
-				&physical.Projection{Expressions: tt.columnExprs, Expand: true},
+				&physical.Projection{
+					Expressions: tt.columnExprs,
+					Expand:      true,
+					All:         true,
+				},
 				&e)
 			require.NoError(t, err)
 			defer pipeline.Close()

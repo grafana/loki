@@ -20,8 +20,8 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 	}
 
 	// Get the column names from the projection expressions
-	colRefs := make([]types.ColumnRef, len(proj.Expressions))
-	unaryExprs := make([]physical.UnaryExpression, len(proj.Expressions))
+	colRefs := make([]types.ColumnRef, 0, len(proj.Expressions))
+	unaryExprs := make([]physical.UnaryExpression, 0, len(proj.Expressions))
 
 	for i, expr := range proj.Expressions {
 		switch expr := expr.(type) {
