@@ -41,10 +41,9 @@ func (n *ParseNode) ID() string {
 	return fmt.Sprintf("%p", n)
 }
 
-// Clone creates a copy of n.
+// Clone returns a deep copy of the node (minus its ID).
 func (n *ParseNode) Clone() Node {
 	return &ParseNode{
-		id:            n.id,
 		Kind:          n.Kind,
 		RequestedKeys: slices.Clone(n.RequestedKeys),
 	}
