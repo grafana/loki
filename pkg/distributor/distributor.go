@@ -443,6 +443,7 @@ type KeyedStream struct {
 	HashKey        uint32
 	HashKeyNoShard uint64
 	Stream         logproto.Stream
+	Policy         string
 }
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
@@ -532,33 +533,34 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	shouldDiscoverGenericFields := fieldDetector.shouldDiscoverGenericFields()
 
 	shardStreamsCfg := d.validator.ShardStreams(tenantID)
-	maybeShardByRate := func(stream logproto.Stream, pushSize int) {
+	maybeShardByRate := func(stream logproto.Stream, pushSize int, policy string) {
 		if shardStreamsCfg.Enabled {
-			streams = append(streams, d.shardStream(stream, pushSize, tenantID)...)
+			streams = append(streams, d.shardStream(stream, pushSize, tenantID, policy)...)
 			return
 		}
 		streams = append(streams, KeyedStream{
 			HashKey:        lokiring.TokenFor(tenantID, stream.Labels),
 			HashKeyNoShard: stream.Hash,
 			Stream:         stream,
+			Policy:         policy,
 		})
 	}
 
-	maybeShardStreams := func(stream logproto.Stream, labels labels.Labels, pushSize int) {
+	maybeShardStreams := func(stream logproto.Stream, labels labels.Labels, pushSize int, policy string) {
 		if !shardStreamsCfg.TimeShardingEnabled {
-			maybeShardByRate(stream, pushSize)
+			maybeShardByRate(stream, pushSize, policy)
 			return
 		}
 
 		ignoreRecentFrom := now.Add(-shardStreamsCfg.TimeShardingIgnoreRecent)
 		streamsByTime, ok := shardStreamByTime(stream, labels, d.ingesterCfg.MaxChunkAge/2, ignoreRecentFrom)
 		if !ok {
-			maybeShardByRate(stream, pushSize)
+			maybeShardByRate(stream, pushSize, policy)
 			return
 		}
 
 		for _, ts := range streamsByTime {
-			maybeShardByRate(ts.Stream, ts.linesTotalLen)
+			maybeShardByRate(ts.Stream, ts.linesTotalLen, policy)
 		}
 	}
 
@@ -702,7 +704,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 				continue
 			}
 
-			maybeShardStreams(stream, lbs, pushSize)
+			maybeShardStreams(stream, lbs, pushSize, policy)
 		}
 		return nil
 	}()
@@ -997,13 +999,13 @@ func shardStreamByTime(stream logproto.Stream, lbls labels.Labels, timeShardLen 
 // streams and their associated keys for hashing to ingesters.
 //
 // The number of shards is limited by the number of entries.
-func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string) []KeyedStream {
+func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string, policy string) []KeyedStream {
 	shardStreamsCfg := d.validator.ShardStreams(tenantID)
 	logger := log.With(util_log.WithUserID(tenantID, d.logger), "stream", stream.Labels)
 	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
 
 	if shardCount <= 1 {
-		return []KeyedStream{{HashKey: lokiring.TokenFor(tenantID, stream.Labels), HashKeyNoShard: stream.Hash, Stream: stream}}
+		return []KeyedStream{{HashKey: lokiring.TokenFor(tenantID, stream.Labels), HashKeyNoShard: stream.Hash, Stream: stream, Policy: policy}}
 	}
 
 	d.streamShardCount.Inc()
@@ -1011,11 +1013,11 @@ func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID
 		level.Info(logger).Log("msg", "sharding request", "shard_count", shardCount)
 	}
 
-	return d.divideEntriesBetweenShards(tenantID, shardCount, shardStreamsCfg, stream)
+	return d.divideEntriesBetweenShards(tenantID, shardCount, shardStreamsCfg, stream, policy)
 }
 
-func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards int, shardStreamsCfg shardstreams.Config, stream logproto.Stream) []KeyedStream {
-	derivedStreams := d.createShards(stream, totalShards, tenantID, shardStreamsCfg)
+func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards int, shardStreamsCfg shardstreams.Config, stream logproto.Stream, policy string) []KeyedStream {
+	derivedStreams := d.createShards(stream, totalShards, tenantID, shardStreamsCfg, policy)
 
 	for i := 0; i < len(stream.Entries); i++ {
 		streamIndex := i % len(derivedStreams)
@@ -1026,7 +1028,7 @@ func (d *Distributor) divideEntriesBetweenShards(tenantID string, totalShards in
 	return derivedStreams
 }
 
-func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg shardstreams.Config) []KeyedStream {
+func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tenantID string, shardStreamsCfg shardstreams.Config, policy string) []KeyedStream {
 	var (
 		streamLabels   = labelTemplate(stream.Labels, d.logger)
 		streamPattern  = streamLabels.String()
@@ -1050,6 +1052,7 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 			HashKey:        lokiring.TokenFor(tenantID, shard.Labels),
 			HashKeyNoShard: stream.Hash,
 			Stream:         shard,
+			Policy:         policy,
 		})
 
 		if shardStreamsCfg.LoggingEnabled {
