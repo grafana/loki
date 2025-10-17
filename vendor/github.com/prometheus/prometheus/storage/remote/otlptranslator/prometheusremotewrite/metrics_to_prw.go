@@ -43,6 +43,7 @@ type Settings struct {
 	Namespace                         string
 	ExternalLabels                    map[string]string
 	DisableTargetInfo                 bool
+	ExportCreatedMetric               bool
 	AddMetricSuffixes                 bool
 	AllowUTF8                         bool
 	PromoteResourceAttributes         *PromoteResourceAttributes
@@ -170,14 +171,9 @@ func (c *PrometheusConverter) FromMetrics(ctx context.Context, md pmetric.Metric
 					continue
 				}
 
-				promName, err := namer.Build(TranslatorMetricFromOtelMetric(metric))
-				if err != nil {
-					errs = multierr.Append(errs, err)
-					continue
-				}
 				metadata := prompb.MetricMetadata{
 					Type:             otelMetricTypeToPromMetricType(metric),
-					MetricFamilyName: promName,
+					MetricFamilyName: namer.Build(TranslatorMetricFromOtelMetric(metric)),
 					Help:             metric.Description(),
 					Unit:             metric.Unit(),
 				}
@@ -204,7 +200,7 @@ func (c *PrometheusConverter) FromMetrics(ctx context.Context, md pmetric.Metric
 						errs = multierr.Append(errs, fmt.Errorf("empty data points. %s is dropped", metric.Name()))
 						break
 					}
-					if err := c.addSumNumberDataPoints(ctx, dataPoints, resource, settings, metadata, scope); err != nil {
+					if err := c.addSumNumberDataPoints(ctx, dataPoints, resource, metric, settings, metadata, scope); err != nil {
 						errs = multierr.Append(errs, err)
 						if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 							return
@@ -277,10 +273,7 @@ func (c *PrometheusConverter) FromMetrics(ctx context.Context, md pmetric.Metric
 		if earliestTimestamp < pcommon.Timestamp(math.MaxUint64) {
 			// We have at least one metric sample for this resource.
 			// Generate a corresponding target_info series.
-			err := addResourceTargetInfo(resource, settings, earliestTimestamp.AsTime(), latestTimestamp.AsTime(), c)
-			if err != nil {
-				errs = multierr.Append(errs, err)
-			}
+			addResourceTargetInfo(resource, settings, earliestTimestamp.AsTime(), latestTimestamp.AsTime(), c)
 		}
 	}
 
