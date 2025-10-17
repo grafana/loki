@@ -62,11 +62,17 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	upscaledReplicas, pdbMinAvailable := GetPDBMinAvailable(opts)
+
+	if upscaledReplicas != 0 {
+		statefulSet.Spec.Replicas = &upscaledReplicas
+	}
+
 	return []client.Object{
 		statefulSet,
 		NewIngesterGRPCService(opts),
 		NewIngesterHTTPService(opts),
-		newIngesterPodDisruptionBudget(opts),
+		newIngesterPodDisruptionBudget(opts, pdbMinAvailable),
 	}, nil
 }
 
@@ -288,12 +294,12 @@ func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) erro
 
 // newIngesterPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack
 // Ingester pods.
-func newIngesterPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
+func newIngesterPodDisruptionBudget(opts Options, pdbMinAvailable intstr.IntOrString) *policyv1.PodDisruptionBudget {
 	l := ComponentLabels(LabelIngesterComponent, opts.Name)
 	// Default to 1 if not defined in ResourceRequirementsTable for a given size
 	mu := intstr.FromInt(1)
 	if opts.ResourceRequirements.Ingester.PDBMinAvailable > 0 {
-		mu = intstr.FromInt(opts.ResourceRequirements.Ingester.PDBMinAvailable)
+		mu = pdbMinAvailable
 	}
 	return &policyv1.PodDisruptionBudget{
 		TypeMeta: metav1.TypeMeta{
@@ -312,4 +318,17 @@ func newIngesterPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget 
 			MinAvailable: &mu,
 		},
 	}
+}
+
+func GetPDBMinAvailable(opts Options) (int32, intstr.IntOrString) {
+	if opts.Stack.Replication != nil && opts.Stack.Replication.Factor != 0 {
+		rf := opts.Stack.Replication.Factor
+		if opts.Stack.Template.Ingester.Replicas <= rf {
+			// scale up replicas to create a enough pods for rolling updates
+			return rf + 1, intstr.FromInt32(rf + 1)
+		}
+		return 0, intstr.FromInt32(rf)
+	}
+	return 0, intstr.FromInt(opts.ResourceRequirements.Ingester.PDBMinAvailable)
+
 }

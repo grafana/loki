@@ -158,6 +158,68 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 	}
 }
 
+func TestBuildIngester_PodDisruptionBudgetWithReplicationFactor(t *testing.T) {
+	ingesterReplicas := 3
+	for _, tc := range []struct {
+		Name                    string
+		customReplicationFactor int32
+		PDBMinAvailable         int
+		ExpectedMinAvailable    int
+	}{
+		{
+			Name:                    "ingester replicas <= replication factor",
+			customReplicationFactor: 4,
+			PDBMinAvailable:         2,
+			ExpectedMinAvailable:    5,
+		},
+		{
+			Name:                    "ingester replicas > replication factor",
+			customReplicationFactor: 2,
+			PDBMinAvailable:         1,
+			ExpectedMinAvailable:    2,
+		},
+	} {
+		t.Run(tc.Name, func(t *testing.T) {
+			opts := Options{
+				Name:      "abcd",
+				Namespace: "efgh",
+				Gates:     v1.FeatureGates{},
+				Stack: lokiv1.LokiStackSpec{
+					Template: &lokiv1.LokiTemplateSpec{
+						Ingester: &lokiv1.LokiComponentSpec{
+							Replicas: int32(ingesterReplicas),
+						},
+					},
+					Tenants: &lokiv1.TenantsSpec{
+						Mode: lokiv1.OpenshiftLogging,
+					},
+					Replication: &lokiv1.ReplicationSpec{
+						Factor: tc.customReplicationFactor,
+					},
+				},
+				ResourceRequirements: internal.ComponentResources{
+					Ingester: internal.ResourceRequirements{
+						PDBMinAvailable: tc.PDBMinAvailable,
+					},
+				},
+			}
+			objs, err := BuildIngester(opts)
+			require.NoError(t, err)
+			require.Len(t, objs, 4)
+
+			pdb := objs[3].(*policyv1.PodDisruptionBudget)
+			require.NotNil(t, pdb)
+			require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
+			require.Equal(t, int32(tc.ExpectedMinAvailable), pdb.Spec.MinAvailable.IntVal)
+
+			sts := objs[0].(*appsv1.StatefulSet)
+			require.NotNil(t, sts)
+			require.NotZero(t, sts.Spec.Replicas)
+			require.Equal(t, tc.customReplicationFactor+1, *sts.Spec.Replicas)
+		})
+	}
+}
+
 func TestNewIngesterStatefulSet_TopologySpreadConstraints(t *testing.T) {
 	obj, _ := BuildIngester(Options{
 		Name:      "abcd",
