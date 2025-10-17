@@ -4,7 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 
 	configv1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
@@ -134,15 +137,21 @@ func TestBuildNetworkPolicies(t *testing.T) {
 				},
 				Gates: configv1.FeatureGates{
 					LokiStackGateway: true,
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+					ServiceMonitors: true,
 				},
 			},
-			expectedPolicyCount: 7,
+			expectedPolicyCount: 9,
 			expectedPolicyNames: []string{
 				"test-default-deny",
 				"test-loki-allow",
 				"test-loki-allow-bucket-egress",
 				"test-loki-allow-gateway-ingress",
 				"test-gateway-allow",
+				"test-loki-allow-metrics",
+				"test-gateway-allow-metrics",
 				"test-ruler-allow-alert-egress",
 				"test-loki-allow-query-frontend",
 			},
@@ -195,12 +204,11 @@ func TestBuildDefaultDeny(t *testing.T) {
 
 func TestBuildLokiAllow(t *testing.T) {
 	tests := []struct {
-		name                           string
-		opts                           Options
-		expectOpenShiftPromRestriction bool
+		name string
+		opts Options
 	}{
 		{
-			name: "static mode - no prometheus restrictions",
+			name: "k8s mode - k8s dns",
 			opts: Options{
 				Name:      "test",
 				Namespace: "test-ns",
@@ -210,33 +218,23 @@ func TestBuildLokiAllow(t *testing.T) {
 					},
 				},
 			},
-			expectOpenShiftPromRestriction: false,
 		},
 		{
-			name: "openshift logging mode - prometheus restrictions",
+			name: "openshift mode - openshift dns",
 			opts: Options{
 				Name:      "test",
 				Namespace: "test-ns",
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
-						Mode: lokiv1.OpenshiftLogging,
+						Mode: lokiv1.Static,
+					},
+				},
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
 					},
 				},
 			},
-			expectOpenShiftPromRestriction: true,
-		},
-		{
-			name: "openshift network mode - prometheus restrictions",
-			opts: Options{
-				Name:      "test",
-				Namespace: "test-ns",
-				Stack: lokiv1.LokiStackSpec{
-					Tenants: &lokiv1.TenantsSpec{
-						Mode: lokiv1.OpenshiftNetwork,
-					},
-				},
-			},
-			expectOpenShiftPromRestriction: true,
 		},
 	}
 
@@ -250,29 +248,40 @@ func TestBuildLokiAllow(t *testing.T) {
 			require.Equal(t, "test-loki-allow", policy.Name)
 			require.Equal(t, "test-ns", policy.Namespace)
 
-			require.Len(t, policy.Spec.Egress, 3)  // DNS K8s, DNS OpenShift, Loki components
-			require.Len(t, policy.Spec.Ingress, 2) // Loki components, Prometheus
+			require.Len(t, policy.Spec.Egress, 2)  // DNS K8s, DNS OpenShift, Loki components
+			require.Len(t, policy.Spec.Ingress, 1) // Loki components
 
-			firstRule := policy.Spec.Ingress[0]
-			require.Len(t, firstRule.From, 1)
-			require.NotNil(t, firstRule.From[0].PodSelector)
-
-			secondRule := policy.Spec.Ingress[1]
-			require.Len(t, secondRule.From, 1)
-
-			if tt.expectOpenShiftPromRestriction {
-				promPeer := secondRule.From[0]
-				require.NotNil(t, promPeer.NamespaceSelector)
-				require.NotNil(t, promPeer.PodSelector)
-				require.Equal(t, "openshift-monitoring", promPeer.NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"])
-				require.Equal(t, "prometheus", promPeer.PodSelector.MatchLabels["app.kubernetes.io/name"])
+			ingressRule := policy.Spec.Ingress[0]
+			require.Len(t, ingressRule.From, 1)
+			require.NotNil(t, ingressRule.From[0].PodSelector)
+			if tt.opts.Gates.OpenShift.Enabled {
+				require.Equal(t, policy.Spec.Egress[0], egressToDNSOpenshift)
 			} else {
-				promPeer := secondRule.From[0]
-				require.Nil(t, promPeer.NamespaceSelector)
-				require.Nil(t, promPeer.PodSelector)
+				require.Equal(t, policy.Spec.Egress[0], egressToDNSK8s)
 			}
 		})
 	}
+}
+
+func TestBuildLokiAllowMetrics(t *testing.T) {
+	opts := Options{
+		Name:      "test",
+		Namespace: "test-ns",
+	}
+
+	policy := buildLokiAllowMetrics(opts)
+
+	require.NotNil(t, policy)
+	require.Equal(t, "test-loki-allow-metrics", policy.Name)
+	require.Equal(t, "test-ns", policy.Namespace)
+
+	require.Len(t, policy.Spec.Egress, 0)
+	require.Len(t, policy.Spec.Ingress, 1)
+
+	ingressRule := policy.Spec.Ingress[0]
+	require.Equal(t, networkPolicyPeerPrometheusPods, ingressRule.From[0])
+	require.Len(t, ingressRule.Ports, 1)
+	require.Equal(t, httpPolicyPort, ingressRule.Ports[0])
 }
 
 func TestBuildLokiAllowGatewayIngress(t *testing.T) {
@@ -427,12 +436,11 @@ func TestBuildLokiAllowBucketEgress(t *testing.T) {
 
 func TestBuildGatewayAllow(t *testing.T) {
 	tests := []struct {
-		name                           string
-		opts                           Options
-		expectOpenShiftPromRestriction bool
+		name string
+		opts Options
 	}{
 		{
-			name: "static mode - no prometheus restrictions",
+			name: "k8s mode - k8s dns",
 			opts: Options{
 				Name:      "test",
 				Namespace: "test-ns",
@@ -442,20 +450,23 @@ func TestBuildGatewayAllow(t *testing.T) {
 					},
 				},
 			},
-			expectOpenShiftPromRestriction: false,
 		},
 		{
-			name: "openshift logging mode - prometheus restrictions",
+			name: "openshift mode - openshift dns",
 			opts: Options{
 				Name:      "test",
 				Namespace: "test-ns",
 				Stack: lokiv1.LokiStackSpec{
 					Tenants: &lokiv1.TenantsSpec{
-						Mode: lokiv1.OpenshiftLogging,
+						Mode: lokiv1.Static,
+					},
+				},
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
 					},
 				},
 			},
-			expectOpenShiftPromRestriction: true,
 		},
 	}
 
@@ -472,28 +483,56 @@ func TestBuildGatewayAllow(t *testing.T) {
 			require.Equal(t, "lokistack", policy.Spec.PodSelector.MatchLabels["app.kubernetes.io/name"])
 			require.Equal(t, "lokistack-gateway", policy.Spec.PodSelector.MatchLabels["app.kubernetes.io/component"])
 
-			require.Len(t, policy.Spec.Egress, 4)  // DNS K8s, DNS OpenShift, Loki components, API server
-			require.Len(t, policy.Spec.Ingress, 2) // Prometheus metrics, external gateway access
+			require.Len(t, policy.Spec.Egress, 3)  // DNS K8s, DNS OpenShift, Loki components, API server
+			require.Len(t, policy.Spec.Ingress, 1) // external gateway access
 
-			promRule := policy.Spec.Ingress[0]
-			require.Len(t, promRule.From, 1)
-
-			if tt.expectOpenShiftPromRestriction {
-				promPeer := promRule.From[0]
-				require.NotNil(t, promPeer.NamespaceSelector)
-				require.NotNil(t, promPeer.PodSelector)
-				require.Equal(t, "openshift-monitoring", promPeer.NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"])
-				require.Equal(t, "prometheus", promPeer.PodSelector.MatchLabels["app.kubernetes.io/name"])
+			if tt.opts.Gates.OpenShift.Enabled {
+				require.Equal(t, policy.Spec.Egress[0], egressToDNSOpenshift)
 			} else {
-				promPeer := promRule.From[0]
-				require.Nil(t, promPeer.NamespaceSelector)
-				require.Nil(t, promPeer.PodSelector)
+				require.Equal(t, policy.Spec.Egress[0], egressToDNSK8s)
 			}
 
-			externalRule := policy.Spec.Ingress[1]
+			externalRule := policy.Spec.Ingress[0]
 			require.Empty(t, externalRule.From)
 		})
 	}
+}
+
+func TestBuildGatewayAllowMetrics(t *testing.T) {
+	opts := Options{
+		Name:      "test",
+		Namespace: "test-ns",
+	}
+
+	policy := buildGatewayAllowMetrics(opts)
+
+	require.NotNil(t, policy)
+	require.Equal(t, "test-gateway-allow-metrics", policy.Name)
+	require.Equal(t, "test-ns", policy.Namespace)
+
+	require.NotNil(t, policy.Spec.PodSelector)
+	require.Equal(t, "lokistack", policy.Spec.PodSelector.MatchLabels["app.kubernetes.io/name"])
+	require.Equal(t, "lokistack-gateway", policy.Spec.PodSelector.MatchLabels["app.kubernetes.io/component"])
+
+	require.Contains(t, policy.Spec.PolicyTypes, networkingv1.PolicyTypeIngress)
+	require.NotContains(t, policy.Spec.PolicyTypes, networkingv1.PolicyTypeEgress)
+
+	require.Len(t, policy.Spec.Egress, 0)
+	require.Len(t, policy.Spec.Ingress, 1)
+
+	ingressRule := policy.Spec.Ingress[0]
+	require.Equal(t, networkPolicyPeerPrometheusPods, ingressRule.From[0])
+	require.Len(t, ingressRule.Ports, 2)
+	require.Equal(t, ingressRule.Ports, []networkingv1.NetworkPolicyPort{
+		{
+			Protocol: ptr.To(corev1.ProtocolTCP),
+			Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: gatewayInternalPort},
+		},
+		{
+			Protocol: ptr.To(corev1.ProtocolTCP),
+			Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: gatewayInternalOPAPort},
+		},
+	})
 }
 
 func TestBuildRulerAllowEgressToAM(t *testing.T) {

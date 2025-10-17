@@ -34,6 +34,13 @@ func BuildNetworkPolicies(opts Options) []client.Object {
 		)
 	}
 
+	if opts.Gates.OpenShift.Enabled && opts.Gates.ServiceMonitors {
+		policies = append(policies, buildLokiAllowMetrics(opts))
+		if opts.Gates.LokiStackGateway {
+			policies = append(policies, buildGatewayAllowMetrics(opts))
+		}
+	}
+
 	if rulerEnabled {
 		policies = append(policies, buildRulerAllowEgressToAM(opts))
 	}
@@ -192,10 +199,9 @@ func buildDefaultDeny(opts Options) *networkingv1.NetworkPolicy {
 // buildLokiAllow NetworkPolicy to allow egress and ingress between the
 // LokiStack components.
 func buildLokiAllow(opts Options) *networkingv1.NetworkPolicy {
-	promNetworkPolicyPeer := networkingv1.NetworkPolicyPeer{}
-	if opts.Stack.Tenants.Mode == lokiv1.OpenshiftLogging || opts.Stack.Tenants.Mode == lokiv1.OpenshiftNetwork {
-		// Running in OpenShift so we can restrict to only the Prometheus pods in the openshift-monitoring
-		promNetworkPolicyPeer = networkPolicyPeerPrometheusPods
+	egressToDNS := egressToDNSK8s
+	if opts.Gates.OpenShift.Enabled {
+		egressToDNS = egressToDNSOpenshift
 	}
 
 	return &networkingv1.NetworkPolicy{
@@ -220,20 +226,9 @@ func buildLokiAllow(opts Options) *networkingv1.NetworkPolicy {
 						gossipPolicyPort,
 					},
 				},
-				// Allow ingress for metrics, from Prometheus
-				{
-					From: []networkingv1.NetworkPolicyPeer{
-						promNetworkPolicyPeer,
-					},
-					Ports: []networkingv1.NetworkPolicyPort{
-						httpPolicyPort,
-					},
-				},
 			},
 			Egress: []networkingv1.NetworkPolicyEgressRule{
-				// Egress DNS service
-				egressToDNSK8s,
-				egressToDNSOpenshift,
+				egressToDNS,
 				// Egress to common Loki ports for gRPC load balancing & gossip ring
 				{
 					To: []networkingv1.NetworkPolicyPeer{lokiComponents(opts.Namespace)},
@@ -242,6 +237,35 @@ func buildLokiAllow(opts Options) *networkingv1.NetworkPolicy {
 						internalHTTPPolicyPort,
 						grpclbPolicyPort,
 						gossipPolicyPort,
+					},
+				},
+			},
+		},
+	}
+}
+
+// buildLokiAllowMetrics NetworkPolicy to allow ingress from Prometheus to the
+// LokiStack components.
+func buildLokiAllowMetrics(opts Options) *networkingv1.NetworkPolicy {
+	return &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-loki-allow-metrics", opts.Name),
+			Namespace: opts.Namespace,
+			Labels:    commonLabels(opts.Name),
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: *selectorAllLokiComponents,
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeEgress,
+				networkingv1.PolicyTypeIngress,
+			},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{
+				{
+					From: []networkingv1.NetworkPolicyPeer{
+						networkPolicyPeerPrometheusPods,
+					},
+					Ports: []networkingv1.NetworkPolicyPort{
+						httpPolicyPort,
 					},
 				},
 			},
@@ -348,11 +372,9 @@ func buildLokiAllowBucketEgress(opts Options) *networkingv1.NetworkPolicy {
 // buildGatewayAllow NetworkPolicy to allow ingress and egress traffic from
 // gateway pods
 func buildGatewayAllow(opts Options) *networkingv1.NetworkPolicy {
-	promNetworkPolicyPeer := networkingv1.NetworkPolicyPeer{}
-	if opts.Stack.Tenants.Mode == lokiv1.OpenshiftLogging || opts.Stack.Tenants.Mode == lokiv1.OpenshiftNetwork {
-		// Running in OpenShift so we can restrict to only the Prometheus pods in
-		// the openshift-monitoring
-		promNetworkPolicyPeer = networkPolicyPeerPrometheusPods
+	egressToDNS := egressToDNSK8s
+	if opts.Gates.OpenShift.Enabled {
+		egressToDNS = egressToDNSOpenshift
 	}
 
 	return &networkingv1.NetworkPolicy{
@@ -368,8 +390,7 @@ func buildGatewayAllow(opts Options) *networkingv1.NetworkPolicy {
 				networkingv1.PolicyTypeIngress,
 			},
 			Egress: []networkingv1.NetworkPolicyEgressRule{
-				egressToDNSK8s,
-				egressToDNSOpenshift,
+				egressToDNS,
 				// Allow egress to query-frontend for queries
 				// Allow egress to distributor for pushing logs
 				// Allow egress to ruler for getting rules
@@ -413,10 +434,37 @@ func buildGatewayAllow(opts Options) *networkingv1.NetworkPolicy {
 				},
 			},
 			Ingress: []networkingv1.NetworkPolicyIngressRule{
-				// Allow ingress to metrics ports obs-api & opa-openshift
+				// Allow ingress to gateway from both in-cluster & route
+				{
+					From: []networkingv1.NetworkPolicyPeer{},
+					Ports: []networkingv1.NetworkPolicyPort{
+						{
+							Protocol: ptr.To(corev1.ProtocolTCP),
+							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: gatewayHTTPPort},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func buildGatewayAllowMetrics(opts Options) *networkingv1.NetworkPolicy {
+	return &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-gateway-allow-metrics", opts.Name),
+			Namespace: opts.Namespace,
+			Labels:    commonLabels(opts.Name),
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: *selectorLokiGatewayPods,
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeIngress,
+			},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{
 				{
 					From: []networkingv1.NetworkPolicyPeer{
-						promNetworkPolicyPeer,
+						networkPolicyPeerPrometheusPods,
 					},
 					Ports: []networkingv1.NetworkPolicyPort{
 						{
@@ -426,16 +474,6 @@ func buildGatewayAllow(opts Options) *networkingv1.NetworkPolicy {
 						{
 							Protocol: ptr.To(corev1.ProtocolTCP),
 							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: gatewayInternalOPAPort},
-						},
-					},
-				},
-				// Allow ingress to gateway from both in-cluster & route
-				{
-					From: []networkingv1.NetworkPolicyPeer{},
-					Ports: []networkingv1.NetworkPolicyPort{
-						{
-							Protocol: ptr.To(corev1.ProtocolTCP),
-							Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: gatewayHTTPPort},
 						},
 					},
 				},
