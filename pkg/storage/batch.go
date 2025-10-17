@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"time"
 
@@ -395,6 +396,23 @@ func (it *logBatchIterator) Next() bool {
 			it.err = next.err
 			return false
 		}
+
+		// Debug logging for FORWARD queries when processing a new batch
+		// Create a separate iterator for debugging so we don't consume the real one
+		if it.direction == logproto.FORWARD {
+			debugIter, debugErr := it.newChunksIterator(next)
+			if debugErr != nil {
+				level.Error(util_log.Logger).Log(
+					"msg", "failed to create debug iterator for batch",
+					"experiment", "forward-missing-logs",
+					"err", debugErr,
+				)
+			} else {
+				debugLogProcessBatch(next, debugIter)
+				_ = debugIter.Close() // Close the debug iterator
+			}
+		}
+
 		var err error
 		it.curr, err = it.newChunksIterator(next)
 		if err != nil {
@@ -851,4 +869,83 @@ outer:
 	}
 
 	return css
+}
+
+// debugLogProcessBatch logs information about a chunk batch being processed for debugging ordering issues.
+// It samples entries from the iterator to check if they are sorted.
+func debugLogProcessBatch(batch *chunkBatch, iterator iter.EntryIterator) {
+	if batch == nil || iterator == nil {
+		return
+	}
+
+	// Count total chunks and series
+	totalChunks := 0
+	totalSeries := len(batch.chunksBySeries)
+	for _, series := range batch.chunksBySeries {
+		for _, chunkGroup := range series {
+			totalChunks += len(chunkGroup)
+		}
+	}
+
+	// Get labels from first chunk if available
+	var labels string
+	for _, series := range batch.chunksBySeries {
+		if len(series) > 0 && len(series[0]) > 0 && series[0][0] != nil {
+			labels = series[0][0].Chunk.Metric.String()
+			break
+		}
+	}
+
+	var nextChunkInfo string
+	if batch.nextChunk != nil {
+		nextChunkInfo = batch.nextChunk.Chunk.From.Time().Format(time.RFC3339Nano)
+	} else {
+		nextChunkInfo = "none"
+	}
+
+	// Sample entries to check ordering
+	const maxSample = 50
+	entries := make([]logproto.Entry, 0, maxSample)
+	for len(entries) < maxSample && iterator.Next() {
+		entries = append(entries, iterator.At())
+	}
+
+	// Check if entries are sorted
+	isSorted := slices.IsSortedFunc(entries, func(a, b logproto.Entry) int {
+		if a.Timestamp.UnixNano() < b.Timestamp.UnixNano() {
+			return -1
+		}
+		if a.Timestamp.UnixNano() > b.Timestamp.UnixNano() {
+			return 1
+		}
+		return 0
+	})
+
+	var firstTS, lastTS string
+	var firstTSUnix, lastTSUnix int64
+	if len(entries) > 0 {
+		firstTS = entries[0].Timestamp.Format(time.RFC3339Nano)
+		firstTSUnix = entries[0].Timestamp.UnixNano()
+		lastTS = entries[len(entries)-1].Timestamp.Format(time.RFC3339Nano)
+		lastTSUnix = entries[len(entries)-1].Timestamp.UnixNano()
+	}
+
+	level.Debug(util_log.Logger).Log(
+		"msg", "store processing chunk batch",
+		"experiment", "forward-missing-logs",
+		"total_chunks", totalChunks,
+		"total_series", totalSeries,
+		"batch_from_human", batch.from.Format(time.RFC3339Nano),
+		"batch_through_human", batch.through.Format(time.RFC3339Nano),
+		"batch_from_unix_ns", batch.from.UnixNano(),
+		"batch_through_unix_ns", batch.through.UnixNano(),
+		"next_chunk_from", nextChunkInfo,
+		"sample_size", len(entries),
+		"entries_sorted", isSorted,
+		"first_ts_human", firstTS,
+		"first_ts_unix_ns", firstTSUnix,
+		"last_ts_human", lastTS,
+		"last_ts_unix_ns", lastTSUnix,
+		"labels", labels,
+	)
 }

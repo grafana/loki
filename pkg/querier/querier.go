@@ -224,6 +224,11 @@ func (q *SingleTenantQuerier) SelectLogs(ctx context.Context, params logql.Selec
 			return nil, err
 		}
 
+		// Debug logging: wrap store iterator to sample and verify ordering for FORWARD direction
+		if params.Direction == logproto.FORWARD {
+			storeIter = newDebugStoreIterator(storeIter)
+		}
+
 		iters = append(iters, storeIter)
 	}
 	if len(iters) == 1 {
@@ -1321,6 +1326,78 @@ func (d *debugMergedIterator) logSamples() {
 		"direction", "FORWARD",
 		"ingester_iterators", d.numIngesterIters,
 		"store_iterators", d.numStoreIters,
+		"sample_size", len(d.sampleEntries),
+		"first_ts", firstTs,
+		"first_ts_human", time.Unix(0, firstTs).Format(time.RFC3339Nano),
+		"last_ts", lastTs,
+		"last_ts_human", time.Unix(0, lastTs).Format(time.RFC3339Nano),
+		"sorted", sampleSorted,
+	)
+}
+
+// debugStoreIterator wraps a store iterator to sample and verify ordering
+type debugStoreIterator struct {
+	iter.EntryIterator
+	sampleEntries []logproto.Entry
+	sampleSize    int
+	logged        bool
+}
+
+// newDebugStoreIterator creates a debug wrapper for the store iterator
+func newDebugStoreIterator(it iter.EntryIterator) iter.EntryIterator {
+	return &debugStoreIterator{
+		EntryIterator: it,
+		sampleEntries: make([]logproto.Entry, 0, 50),
+		sampleSize:    50,
+		logged:        false,
+	}
+}
+
+func (d *debugStoreIterator) Next() bool {
+	hasNext := d.EntryIterator.Next()
+
+	// Sample entries until we have enough
+	if hasNext && len(d.sampleEntries) < d.sampleSize {
+		d.sampleEntries = append(d.sampleEntries, d.EntryIterator.At())
+	}
+
+	// Once we've collected enough samples or reached the end, log them
+	if !d.logged && (len(d.sampleEntries) >= d.sampleSize || !hasNext) {
+		d.logSamples()
+		d.logged = true
+	}
+
+	return hasNext
+}
+
+func (d *debugStoreIterator) logSamples() {
+	if len(d.sampleEntries) == 0 {
+		level.Debug(util_log.Logger).Log(
+			"msg", "store iterator no entries",
+			"experiment", "forward-missing-logs-store",
+			"direction", "FORWARD",
+		)
+		return
+	}
+
+	firstTs := d.sampleEntries[0].Timestamp.UnixNano()
+	lastTs := d.sampleEntries[len(d.sampleEntries)-1].Timestamp.UnixNano()
+
+	// Check if sampled entries are sorted in ascending order
+	sampleSorted := slices.IsSortedFunc(d.sampleEntries, func(a, b logproto.Entry) int {
+		if a.Timestamp.UnixNano() < b.Timestamp.UnixNano() {
+			return -1
+		}
+		if a.Timestamp.UnixNano() > b.Timestamp.UnixNano() {
+			return 1
+		}
+		return 0
+	})
+
+	level.Debug(util_log.Logger).Log(
+		"msg", "store iterator sampled",
+		"experiment", "forward-missing-logs-store",
+		"direction", "FORWARD",
 		"sample_size", len(d.sampleEntries),
 		"first_ts", firstTs,
 		"first_ts_human", time.Unix(0, firstTs).Format(time.RFC3339Nano),
