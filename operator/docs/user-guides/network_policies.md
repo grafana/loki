@@ -62,8 +62,8 @@ spec:
 
 #### Configuration Options
 
-| Configuration | Description | Default Behavior |
-|---------------|-------------|------------------|
+| Configuration | Description | Behavior |
+|---------------|-------------|----------|
 | `networkPolicies: null` (omitted) | **Default** - inherits platform defaults | Enabled on OpenShift 4.20+, disabled elsewhere |
 | `networkPolicies.disabled: true`  | **Disabled** - no network policies created | Full network access allowed |
 | `networkPolicies.disabled: false` | **Enabled** - network policies enforced | Restricted network access with explicit allow rules |
