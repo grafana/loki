@@ -155,6 +155,8 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 		return p.processVectorAggregation(inst, ctx)
 	case *logical.Parse:
 		return p.processParse(inst, ctx)
+	case *logical.Projection:
+		return p.processProjection(inst, ctx)
 	case *logical.LogQLCompat:
 		p.context.v1Compatible = true
 		return p.process(inst.Value, ctx)
@@ -454,6 +456,33 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 		}
 	}
 	return plan, nil
+}
+
+func (p *Planner) processProjection(inst *logical.Projection, ctx *Context) ([]Node, error) {
+	exprs := make([]Expression, len(inst.Expressions))
+	for i, expr := range inst.Expressions {
+		exprs[i] = p.convertPredicate(expr)
+	}
+
+	node := &Projection{
+		Expressions: exprs,
+		Expand:      false,
+	}
+
+	p.plan.graph.Add(node)
+
+	children, err := p.process(inst.Table, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range children {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
+			return nil, err
+		}
+	}
+
+	return []Node{node}, nil
 }
 
 func convertParserKind(kind logical.ParserKind) ParserKind {

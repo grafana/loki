@@ -302,7 +302,7 @@ func (c *Context) executeProjection(ctx context.Context, proj *physical.Projecti
 	}
 
 	if len(proj.Expressions) == 0 {
-		return errorPipeline(ctx, fmt.Errorf("projection expects at least one column, got 0"))
+		return errorPipeline(ctx, fmt.Errorf("projection expects at least one expression, got 0"))
 	}
 
 	p, err := NewProjectPipeline(inputs[0], proj, &c.evaluator)

@@ -52,6 +52,9 @@ func (p *Projection) mode() string {
 	if p.Drop {
 		mode += "D"
 	}
+	if p.Keep {
+		mode += "K"
+	}
 	return mode
 }
 

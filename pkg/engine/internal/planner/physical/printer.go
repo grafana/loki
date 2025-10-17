@@ -46,6 +46,8 @@ func toTreeNode(n Node) *tree.Node {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("expand", true, toAnySlice(node.Expressions)...))
 		} else if node.Drop {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("drop", true, toAnySlice(node.Expressions)...))
+		} else if node.Keep {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("keep", true, toAnySlice(node.Expressions)...))
 		}
 	case *Filter:
 		for i := range node.Predicates {

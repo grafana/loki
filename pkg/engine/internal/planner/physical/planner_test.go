@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
 
 type catalog struct {
@@ -401,6 +402,52 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 
 		// For metric queries, parse nodes should request specific keys used in aggregations
 		require.Equal(t, []string{"level"}, parseNode.RequestedKeys)
+	})
+}
+
+func TestPlanner_Convert_WithCastProjection(t *testing.T) {
+	t.Run("Build a query plan for a log query with unwrap", func(t *testing.T) {
+		// Build a query plan with unwrap:
+		// { app="users" } | unwrap duration(request_duration)
+		b := logical.NewBuilder(
+			&logical.MakeTable{
+				Selector: &logical.BinOp{
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
+					Right: logical.NewLiteral("users"),
+					Op:    types.BinaryOpEq,
+				},
+				Shard: logical.NewShard(0, 1),
+			},
+		).Unwrap(
+			"request_duration", syntax.OpConvDuration,
+		).Compat(true)
+
+		logicalPlan, err := b.ToPlan()
+		require.NoError(t, err)
+
+		catalog := &catalog{
+			sectionDescriptors: []*metastore.DataobjSectionDescriptor{
+				{SectionKey: metastore.SectionKey{ObjectPath: "obj1", SectionIdx: 0}, StreamIDs: []int64{1, 2}, Start: time.Now(), End: time.Now().Add(time.Second * 10)},
+			},
+		}
+		planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
+
+		physicalPlan, err := planner.Build(logicalPlan)
+		t.Logf("Physical plan\n%s\n", PrintAsTree(physicalPlan))
+		require.NoError(t, err)
+
+		// Verify Projection node exists at root (unwrap is now implemented as projection)
+		root, err := physicalPlan.Root()
+		require.NoError(t, err)
+
+		// Root should be a Projection node with the unwrap cast operation
+		projectionNode, ok := root.(*Projection)
+		require.True(t, ok, "Root should be Projection")
+		require.NotEmpty(t, projectionNode.Expressions, "Projection should have expressions")
+
+		physicalPlan, err = planner.Optimize(physicalPlan)
+		t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+		require.NoError(t, err)
 	})
 }
 

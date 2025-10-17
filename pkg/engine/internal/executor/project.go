@@ -13,7 +13,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-func NewProjectPipeline(input Pipeline, proj *physical.Projection, _ *expressionEvaluator) (Pipeline, error) {
+func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *expressionEvaluator) (Pipeline, error) {
 	// Shortcut for ALL=true DROP=false EXPAND=false
 	if proj.All && !proj.Drop && !proj.Expand {
 		return input, nil
@@ -21,12 +21,16 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, _ *expression
 
 	// Get the column names from the projection expressions
 	colRefs := make([]types.ColumnRef, len(proj.Expressions))
+	unaryExprs := make([]physical.UnaryExpression, len(proj.Expressions))
 
-	for i, col := range proj.Expressions {
-		if colExpr, ok := col.(*physical.ColumnExpr); ok {
-			colRefs[i] = colExpr.Ref
-		} else {
-			return nil, fmt.Errorf("projection column %d is not a column expression", i)
+	for i, expr := range proj.Expressions {
+		switch expr := expr.(type) {
+		case *physical.ColumnExpr:
+			colRefs = append(colRefs, expr.Ref)
+		case *physical.UnaryExpr:
+			unaryExprs = append(unaryExprs, expr)
+		default:
+			return nil, fmt.Errorf("projection expression %d is unsupported", i)
 		}
 	}
 
@@ -63,7 +67,7 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, _ *expression
 	// Create EXPAND projection pipeline:
 	// Keep all columns and expand the ones referenced in proj.Expressions.
 	if proj.All && proj.Expand {
-		return nil, errNotImplemented
+		return newExpandPipeline(unaryExprs, evaluator, input)
 	}
 
 	return nil, errNotImplemented
@@ -89,6 +93,51 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 			if keepFunc(colRefs, ident) {
 				columns = append(columns, batch.Column(i))
 				fields = append(fields, field)
+			}
+		}
+
+		schema := arrow.NewSchema(fields, nil)
+		return array.NewRecord(schema, columns, batch.NumRows()), nil
+	}, input), nil
+}
+
+func newExpandPipeline(expressions []physical.UnaryExpression, evaluator *expressionEvaluator, input Pipeline) (*GenericPipeline, error) {
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
+		input := inputs[0]
+		batch, err := input.Read(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer batch.Release()
+
+		columns := []arrow.Array{}
+		fields := []arrow.Field{}
+
+		for i, field := range batch.Schema().Fields() {
+			if err != nil {
+				return nil, err
+			}
+			columns = append(columns, batch.Column(i))
+			fields = append(fields, field)
+		}
+
+		for _, expr := range expressions {
+			vec, err := evaluator.eval(expr, batch)
+			if err != nil {
+				return nil, err
+			}
+			defer vec.Release()
+			if arrStruct, ok := vec.ToArray().(*array.Struct); ok {
+				defer arrStruct.Release()
+				structSchema, ok := arrStruct.DataType().(*arrow.StructType)
+				if !ok {
+					return nil, fmt.Errorf("unexpected type returned from evaluation, expected *arrow.StructType, got %T", arrStruct.DataType())
+				}
+
+				for i := range arrStruct.NumField() {
+					columns = append(columns, arrStruct.Field(i))
+					fields = append(fields, structSchema.Field(i))
+				}
 			}
 		}
 
