@@ -3036,8 +3036,6 @@ null
     ],
     "enableStatefulSetAutoDeletePVC": false,
     "enabled": false,
-    "size": "10Gi",
-    "storageClass": null,
     "whenDeleted": "Retain",
     "whenScaled": "Retain"
   },
@@ -3280,24 +3278,6 @@ false
 			<td>Enable creating PVCs for the compactor</td>
 			<td><pre lang="json">
 false
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>compactor.persistence.size</td>
-			<td>string</td>
-			<td>Size of persistent disk</td>
-			<td><pre lang="json">
-"10Gi"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>compactor.persistence.storageClass</td>
-			<td>string</td>
-			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
-			<td><pre lang="json">
-null
 </pre>
 </td>
 		</tr>
