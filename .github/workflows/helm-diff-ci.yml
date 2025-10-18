@@ -37,6 +37,10 @@ jobs:
           - name: Legacy Monitoring Values Scenario
             values_file: legacy-monitoring-values.yaml
             use_k3d: true
+          - name: Keda Scaling Values Scenario
+            values_file: keda-scaling-values.yaml
+            use_k3d: true
+            install_keda: true
           - name: Simple Scalable AWS Kube IRSA Values Scenario
             values_file: simple-scalable-aws-kube-irsa-values.yaml
             use_k3d: false
@@ -72,6 +76,13 @@ jobs:
       - name: Build helm dependencies
         run: |
           helm dependency build production/helm/loki
+         
+      - name: Install KEDA (if required)
+        if: ${{ matrix.scenario.install_keda }} && ${{ matrix.scenario.use_k3d }}
+        run: |
+          helm repo add kedacore https://kedacore.github.io/charts  
+          helm repo update
+          helm install keda kedacore/keda --namespace keda --create-namespace
 
       # Conditional steps based on whether K3D is used
       - name: Run diff with K3D
