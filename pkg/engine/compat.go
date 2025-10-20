@@ -9,14 +9,14 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
+	"github.com/grafana/loki/pkg/push"
+	"github.com/grafana/loki/v3/pkg/logproto"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
-
-	"github.com/grafana/loki/pkg/push"
 )
 
 type ResultBuilder interface {
@@ -33,9 +33,9 @@ var (
 
 func newStreamsResultBuilder() *streamsResultBuilder {
 	return &streamsResultBuilder{
-		data:       make(logqlmodel.Streams, 0),
-		streams:    make(map[string]int),
-		rowsBuffer: &rowsBuffer{},
+		data:        make(logqlmodel.Streams, 0),
+		streams:     make(map[string]int),
+		rowBuilders: nil,
 	}
 }
 
@@ -44,65 +44,16 @@ type streamsResultBuilder struct {
 	data    logqlmodel.Streams
 	count   int
 
-	// buffer of rows to be reused between calls to CollectRecord to reduce reallocations of slices and builders
-	rowsBuffer *rowsBuffer
+	// buffer for rows
+	rowBuilders []rowBuilder
 }
 
-type rowsBuffer struct {
-	len              int
-	timestamps       []time.Time
-	lines            []string
-	lbsBuilders      []*labels.Builder
-	metadataBuilders []*labels.Builder
-	parsedBuilders   []*labels.Builder
-}
-
-func (buf *rowsBuffer) prepareFor(newLen int) {
-	if newLen == buf.len {
-		return
-	}
-
-	if newLen < buf.len {
-		// free not used items at the end of the slices so they can be GC-ed
-		clear(buf.timestamps[newLen:buf.len])
-		clear(buf.lines[newLen:buf.len])
-		clear(buf.lbsBuilders[newLen:buf.len])
-		clear(buf.metadataBuilders[newLen:buf.len])
-		clear(buf.parsedBuilders[newLen:buf.len])
-
-		// shrink to the new length, no need to zero the items as it was done before via resetRow(i)
-		buf.timestamps = buf.timestamps[:newLen]
-		buf.lines = buf.lines[:newLen]
-		buf.lbsBuilders = buf.lbsBuilders[:newLen]
-		buf.metadataBuilders = buf.metadataBuilders[:newLen]
-		buf.parsedBuilders = buf.parsedBuilders[:newLen]
-
-		buf.len = newLen
-
-		return
-	}
-
-	// newLen > buf.len
-	numRowsToAdd := newLen - buf.len
-	buf.timestamps = append(buf.timestamps, make([]time.Time, numRowsToAdd)...)
-	buf.lines = append(buf.lines, make([]string, numRowsToAdd)...)
-	buf.lbsBuilders = append(buf.lbsBuilders, make([]*labels.Builder, numRowsToAdd)...)
-	buf.metadataBuilders = append(buf.metadataBuilders, make([]*labels.Builder, numRowsToAdd)...)
-	buf.parsedBuilders = append(buf.parsedBuilders, make([]*labels.Builder, numRowsToAdd)...)
-	for i := buf.len; i < newLen; i++ {
-		buf.lbsBuilders[i] = labels.NewBuilder(labels.EmptyLabels())
-		buf.metadataBuilders[i] = labels.NewBuilder(labels.EmptyLabels())
-		buf.parsedBuilders[i] = labels.NewBuilder(labels.EmptyLabels())
-	}
-	buf.len = newLen
-}
-
-func (buf *rowsBuffer) resetRow(i int) {
-	buf.timestamps[i] = time.Time{}
-	buf.lines[i] = ""
-	buf.lbsBuilders[i].Reset(labels.EmptyLabels())
-	buf.metadataBuilders[i].Reset(labels.EmptyLabels())
-	buf.parsedBuilders[i].Reset(labels.EmptyLabels())
+type rowBuilder struct {
+	timestamp       time.Time
+	line            string
+	lbsBuilder      *labels.Builder
+	metadataBuilder *labels.Builder
+	parsedBuilder   *labels.Builder
 }
 
 func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
@@ -125,7 +76,7 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 	// first all the timestamps, then all the log lines, etc.
 	// After all the values are collected and converted we transform the columnar representation to a row-based one.
 
-	b.rowsBuffer.prepareFor(numRows)
+	b.ensureRowBuilders(numRows)
 
 	// Convert arrow values to our format column by column
 	for colIdx := range int(rec.NumCols()) {
@@ -144,21 +95,21 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 		case ident.Equal(semconv.ColumnIdentMessage):
 			lineCol := col.(*array.String)
 			forEachNotNullRowColValue(numRows, lineCol, func(rowIdx int) {
-				b.rowsBuffer.lines[rowIdx] = lineCol.Value(rowIdx)
+				b.rowBuilders[rowIdx].line = lineCol.Value(rowIdx)
 			})
 
 		// Timestamp
 		case ident.Equal(semconv.ColumnIdentTimestamp):
 			tsCol := col.(*array.Timestamp)
 			forEachNotNullRowColValue(numRows, tsCol, func(rowIdx int) {
-				b.rowsBuffer.timestamps[rowIdx] = time.Unix(0, int64(tsCol.Value(rowIdx)))
+				b.rowBuilders[rowIdx].timestamp = time.Unix(0, int64(tsCol.Value(rowIdx)))
 			})
 
 		// One of the label columns
 		case ident.ColumnType() == types.ColumnTypeLabel:
 			labelCol := col.(*array.String)
 			forEachNotNullRowColValue(numRows, labelCol, func(rowIdx int) {
-				b.rowsBuffer.lbsBuilders[rowIdx].Set(shortName, labelCol.Value(rowIdx))
+				b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, labelCol.Value(rowIdx))
 			})
 
 		// One of the metadata columns
@@ -166,9 +117,8 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 			metadataCol := col.(*array.String)
 			forEachNotNullRowColValue(numRows, metadataCol, func(rowIdx int) {
 				val := metadataCol.Value(rowIdx)
-				b.rowsBuffer.metadataBuilders[rowIdx].Set(shortName, val)
-				// include structured metadata in stream labels
-				b.rowsBuffer.lbsBuilders[rowIdx].Set(shortName, val)
+				b.rowBuilders[rowIdx].metadataBuilder.Set(shortName, val)
+				b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, val)
 			})
 
 		// One of the parsed columns
@@ -184,13 +134,13 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 
 			forEachNotNullRowColValue(numRows, parsedCol, func(rowIdx int) {
 				parsedVal := parsedCol.Value(rowIdx)
-				if b.rowsBuffer.parsedBuilders[rowIdx].Get(shortName) != "" {
+				if b.rowBuilders[rowIdx].parsedBuilder.Get(shortName) != "" {
 					return
 				}
-				b.rowsBuffer.parsedBuilders[rowIdx].Set(shortName, parsedVal)
-				b.rowsBuffer.lbsBuilders[rowIdx].Set(shortName, parsedVal)
-				if b.rowsBuffer.metadataBuilders[rowIdx].Get(shortName) != "" {
-					b.rowsBuffer.metadataBuilders[rowIdx].Del(shortName)
+				b.rowBuilders[rowIdx].parsedBuilder.Set(shortName, parsedVal)
+				b.rowBuilders[rowIdx].lbsBuilder.Set(shortName, parsedVal)
+				if b.rowBuilders[rowIdx].metadataBuilder.Get(shortName) != "" {
+					b.rowBuilders[rowIdx].metadataBuilder.Del(shortName)
 				}
 			})
 		}
@@ -198,22 +148,22 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 
 	// Convert columnar representation to a row-based one
 	for rowIdx := 0; rowIdx < numRows; rowIdx++ {
-		lbs := b.rowsBuffer.lbsBuilders[rowIdx].Labels()
-		ts := b.rowsBuffer.timestamps[rowIdx]
-		line := b.rowsBuffer.lines[rowIdx]
+		lbs := b.rowBuilders[rowIdx].lbsBuilder.Labels()
+		ts := b.rowBuilders[rowIdx].timestamp
+		line := b.rowBuilders[rowIdx].line
 		// Ignore rows that don't have stream labels, log line, or timestamp
 		if line == "" || ts.IsZero() || lbs.IsEmpty() {
-			b.rowsBuffer.resetRow(rowIdx)
+			b.resetRowBuilder(rowIdx)
 			continue
 		}
 
 		entry := logproto.Entry{
 			Timestamp:          ts,
 			Line:               line,
-			StructuredMetadata: logproto.FromLabelsToLabelAdapters(b.rowsBuffer.metadataBuilders[rowIdx].Labels()),
-			Parsed:             logproto.FromLabelsToLabelAdapters(b.rowsBuffer.parsedBuilders[rowIdx].Labels()),
+			StructuredMetadata: logproto.FromLabelsToLabelAdapters(b.rowBuilders[rowIdx].metadataBuilder.Labels()),
+			Parsed:             logproto.FromLabelsToLabelAdapters(b.rowBuilders[rowIdx].parsedBuilder.Labels()),
 		}
-		b.rowsBuffer.resetRow(rowIdx)
+		b.resetRowBuilder(rowIdx)
 
 		// Add entry to appropriate stream
 		key := lbs.String()
@@ -226,6 +176,40 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 		b.data[idx].Entries = append(b.data[idx].Entries, entry)
 		b.count++
 	}
+}
+
+func (b *streamsResultBuilder) ensureRowBuilders(newLen int) {
+	if newLen == len(b.rowBuilders) {
+		return
+	}
+
+	if newLen < len(b.rowBuilders) {
+		// free not used items at the end of the slices so they can be GC-ed
+		clear(b.rowBuilders[newLen:len(b.rowBuilders)])
+		b.rowBuilders = b.rowBuilders[:newLen]
+
+		return
+	}
+
+	// newLen > buf.len
+	numRowsToAdd := newLen - len(b.rowBuilders)
+	oldLen := len(b.rowBuilders)
+	b.rowBuilders = append(b.rowBuilders, make([]rowBuilder, numRowsToAdd)...)
+	for i := oldLen; i < newLen; i++ {
+		b.rowBuilders[i] = rowBuilder{
+			lbsBuilder:      labels.NewBuilder(labels.EmptyLabels()),
+			metadataBuilder: labels.NewBuilder(labels.EmptyLabels()),
+			parsedBuilder:   labels.NewBuilder(labels.EmptyLabels()),
+		}
+	}
+}
+
+func (b *streamsResultBuilder) resetRowBuilder(i int) {
+	b.rowBuilders[i].timestamp = time.Time{}
+	b.rowBuilders[i].line = ""
+	b.rowBuilders[i].lbsBuilder.Reset(labels.EmptyLabels())
+	b.rowBuilders[i].metadataBuilder.Reset(labels.EmptyLabels())
+	b.rowBuilders[i].parsedBuilder.Reset(labels.EmptyLabels())
 }
 
 func forEachNotNullRowColValue(numRows int, col arrow.Array, f func(rowIdx int)) {

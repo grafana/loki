@@ -197,6 +197,229 @@ func TestStreamsResultBuilder(t *testing.T) {
 		}
 		require.Equal(t, expected, result.Data.(logqlmodel.Streams))
 	})
+
+	t.Run("multiple records with different streams are accumulated correctly", func(t *testing.T) {
+		colTs := semconv.ColumnIdentTimestamp
+		colMsg := semconv.ColumnIdentMessage
+		colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String)
+
+		schema := arrow.NewSchema(
+			[]arrow.Field{
+				semconv.FieldFromIdent(colTs, false),
+				semconv.FieldFromIdent(colMsg, false),
+				semconv.FieldFromIdent(colEnv, false),
+			},
+			nil,
+		)
+
+		// First record: prod and dev streams
+		rows1 := arrowtest.Rows{
+			{
+				colTs.FQN():  time.Unix(0, 1620000000000000001).UTC(),
+				colMsg.FQN(): "log line 1",
+				colEnv.FQN(): "prod",
+			},
+			{
+				colTs.FQN():  time.Unix(0, 1620000000000000002).UTC(),
+				colMsg.FQN(): "log line 2",
+				colEnv.FQN(): "dev",
+			},
+		}
+		record1 := rows1.Record(alloc, schema)
+		defer record1.Release()
+
+		// Second record: prod and staging streams
+		rows2 := arrowtest.Rows{
+			{
+				colTs.FQN():  time.Unix(0, 1620000000000000003).UTC(),
+				colMsg.FQN(): "log line 3",
+				colEnv.FQN(): "prod",
+			},
+			{
+				colTs.FQN():  time.Unix(0, 1620000000000000004).UTC(),
+				colMsg.FQN(): "log line 4",
+				colEnv.FQN(): "staging",
+			},
+		}
+		record2 := rows2.Record(alloc, schema)
+		defer record2.Release()
+
+		builder := newStreamsResultBuilder()
+
+		// Collect first record
+		builder.CollectRecord(record1)
+		require.Equal(t, 2, builder.Len(), "should have 2 entries after first record")
+
+		// Collect second record
+		builder.CollectRecord(record2)
+		require.Equal(t, 4, builder.Len(), "should have 4 entries total after second record")
+
+		md, _ := metadata.NewContext(t.Context())
+		result := builder.Build(stats.Result{}, md)
+		streams := result.Data.(logqlmodel.Streams)
+		// Note: 3 unique streams (dev, prod, staging), but 4 total entries
+		// The prod stream has 2 entries (one from each record)
+		require.Equal(t, 3, len(streams), "should have 3 unique streams")
+
+		// Verify stream grouping - prod stream should have entries from both records
+		expected := logqlmodel.Streams{
+			push.Stream{
+				Labels: labels.FromStrings("env", "dev").String(),
+				Entries: []logproto.Entry{
+					{Line: "log line 2", Timestamp: time.Unix(0, 1620000000000000002), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.Labels{}), Parsed: logproto.FromLabelsToLabelAdapters(labels.Labels{})},
+				},
+			},
+			push.Stream{
+				Labels: labels.FromStrings("env", "prod").String(),
+				Entries: []logproto.Entry{
+					{Line: "log line 1", Timestamp: time.Unix(0, 1620000000000000001), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.Labels{}), Parsed: logproto.FromLabelsToLabelAdapters(labels.Labels{})},
+					{Line: "log line 3", Timestamp: time.Unix(0, 1620000000000000003), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.Labels{}), Parsed: logproto.FromLabelsToLabelAdapters(labels.Labels{})},
+				},
+			},
+			push.Stream{
+				Labels: labels.FromStrings("env", "staging").String(),
+				Entries: []logproto.Entry{
+					{Line: "log line 4", Timestamp: time.Unix(0, 1620000000000000004), StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.Labels{}), Parsed: logproto.FromLabelsToLabelAdapters(labels.Labels{})},
+				},
+			},
+		}
+		require.Equal(t, expected, streams)
+	})
+
+	t.Run("buffer reuse with varying record sizes", func(t *testing.T) {
+		colTs := semconv.ColumnIdentTimestamp
+		colMsg := semconv.ColumnIdentMessage
+		colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String)
+
+		schema := arrow.NewSchema(
+			[]arrow.Field{
+				semconv.FieldFromIdent(colTs, false),
+				semconv.FieldFromIdent(colMsg, false),
+				semconv.FieldFromIdent(colEnv, false),
+			},
+			nil,
+		)
+
+		builder := newStreamsResultBuilder()
+
+		// First record: 5 rows (buffer grows to 5)
+		rows1 := make(arrowtest.Rows, 5)
+		for i := 0; i < 5; i++ {
+			rows1[i] = arrowtest.Row{
+				colTs.FQN():  time.Unix(0, int64(1620000000000000001+i)).UTC(),
+				colMsg.FQN(): "log line",
+				colEnv.FQN(): "prod",
+			}
+		}
+		record1 := rows1.Record(alloc, schema)
+		builder.CollectRecord(record1)
+		record1.Release()
+		require.Equal(t, 5, builder.Len())
+		require.Equal(t, 5, len(builder.rowBuilders), "buffer should have 5 rowBuilders")
+
+		// Second record: 2 rows (buffer shrinks to 2)
+		rows2 := make(arrowtest.Rows, 2)
+		for i := 0; i < 2; i++ {
+			rows2[i] = arrowtest.Row{
+				colTs.FQN():  time.Unix(0, int64(1620000000000000010+i)).UTC(),
+				colMsg.FQN(): "log line",
+				colEnv.FQN(): "dev",
+			}
+		}
+		record2 := rows2.Record(alloc, schema)
+		builder.CollectRecord(record2)
+		record2.Release()
+		require.Equal(t, 7, builder.Len())
+		require.Equal(t, 2, len(builder.rowBuilders), "buffer should shrink to 2 rowBuilders")
+
+		// Third record: 10 rows (buffer grows to 10)
+		rows3 := make(arrowtest.Rows, 10)
+		for i := 0; i < 10; i++ {
+			rows3[i] = arrowtest.Row{
+				colTs.FQN():  time.Unix(0, int64(1620000000000000020+i)).UTC(),
+				colMsg.FQN(): "log line",
+				colEnv.FQN(): "staging",
+			}
+		}
+		record3 := rows3.Record(alloc, schema)
+		builder.CollectRecord(record3)
+		record3.Release()
+		require.Equal(t, 17, builder.Len())
+		require.Equal(t, 10, len(builder.rowBuilders), "buffer should grow to 10 rowBuilders")
+
+		// Verify all rowBuilders are properly initialized
+		for i := 0; i < len(builder.rowBuilders); i++ {
+			require.NotNil(t, builder.rowBuilders[i].lbsBuilder, "lbsBuilder should be initialized")
+			require.NotNil(t, builder.rowBuilders[i].metadataBuilder, "metadataBuilder should be initialized")
+			require.NotNil(t, builder.rowBuilders[i].parsedBuilder, "parsedBuilder should be initialized")
+		}
+	})
+
+	t.Run("empty records mixed with valid records", func(t *testing.T) {
+		colTs := semconv.ColumnIdentTimestamp
+		colMsg := semconv.ColumnIdentMessage
+		colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String)
+
+		schema := arrow.NewSchema(
+			[]arrow.Field{
+				semconv.FieldFromIdent(colTs, false),
+				semconv.FieldFromIdent(colMsg, false),
+				semconv.FieldFromIdent(colEnv, false),
+			},
+			nil,
+		)
+
+		builder := newStreamsResultBuilder()
+
+		// First record: 3 valid rows
+		rows1 := make(arrowtest.Rows, 3)
+		for i := 0; i < 3; i++ {
+			rows1[i] = arrowtest.Row{
+				colTs.FQN():  time.Unix(0, int64(1620000000000000001+i)).UTC(),
+				colMsg.FQN(): "log line",
+				colEnv.FQN(): "prod",
+			}
+		}
+		record1 := rows1.Record(alloc, schema)
+		builder.CollectRecord(record1)
+		record1.Release()
+		require.Equal(t, 3, builder.Len())
+
+		// Second record: empty (0 rows)
+		rows2 := arrowtest.Rows{}
+		record2 := rows2.Record(alloc, schema)
+		builder.CollectRecord(record2)
+		record2.Release()
+		require.Equal(t, 3, builder.Len(), "empty record should not change count")
+
+		// Third record: 2 valid rows
+		rows3 := make(arrowtest.Rows, 2)
+		for i := 0; i < 2; i++ {
+			rows3[i] = arrowtest.Row{
+				colTs.FQN():  time.Unix(0, int64(1620000000000000010+i)).UTC(),
+				colMsg.FQN(): "log line",
+				colEnv.FQN(): "dev",
+			}
+		}
+		record3 := rows3.Record(alloc, schema)
+		builder.CollectRecord(record3)
+		record3.Release()
+		require.Equal(t, 5, builder.Len(), "should have 5 total entries")
+
+		// Verify final result
+		md, _ := metadata.NewContext(t.Context())
+		result := builder.Build(stats.Result{}, md)
+		streams := result.Data.(logqlmodel.Streams)
+		// Note: 2 unique streams (prod with 3 entries, dev with 2 entries) = 5 total entries
+		require.Equal(t, 2, len(streams), "should have 2 unique streams")
+
+		// Verify the streams have the correct number of entries
+		var totalEntries int
+		for _, stream := range streams {
+			totalEntries += len(stream.Entries)
+		}
+		require.Equal(t, 5, totalEntries, "should have 5 total entries across both streams")
+	})
 }
 
 func TestVectorResultBuilder(t *testing.T) {
