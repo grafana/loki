@@ -580,7 +580,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 			var lbs labels.Labels
 			var retentionHours, policy string
-			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(validationContext, stream.Labels, stream, streamResolver, format)
+			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
@@ -894,7 +894,7 @@ func (d *Distributor) trackDiscardedData(
 
 	if d.usageTracker != nil {
 		for _, stream := range req.Streams {
-			lbs, _, _, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream, streamResolver, format)
+			lbs, _, _, _, _, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
 			if err != nil {
 				continue
 			}
@@ -1288,10 +1288,10 @@ type labelData struct {
 }
 
 // parseStreamLabels parses stream labels using a request-scoped policy resolver
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream, streamResolver push.StreamResolver, format string) (labels.Labels, string, uint64, string, string, error) {
+func (d *Distributor) parseStreamLabels(ctx context.Context, vContext validationContext, key string, stream logproto.Stream, streamResolver push.StreamResolver, format string) (labels.Labels, string, uint64, string, string, error) {
 	if val, ok := d.labelCache.Get(key); ok {
 		retentionHours := streamResolver.RetentionHoursFor(val.ls)
-		policy := streamResolver.PolicyFor(val.ls)
+		policy := streamResolver.PolicyFor(ctx, val.ls)
 		return val.ls, val.ls.String(), val.hash, retentionHours, policy, nil
 	}
 
@@ -1302,7 +1302,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 		return labels.EmptyLabels(), "", 0, retentionHours, "", fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
-	policy := streamResolver.PolicyFor(ls)
+	policy := streamResolver.PolicyFor(ctx, ls)
 	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
 
 	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours, policy, format); err != nil {
@@ -1433,8 +1433,8 @@ func (r requestScopedStreamResolver) RetentionHoursFor(lbs labels.Labels) string
 	return r.retention.RetentionHoursFor(lbs)
 }
 
-func (r requestScopedStreamResolver) PolicyFor(lbs labels.Labels) string {
-	policies := r.policyStreamMappings.PolicyFor(lbs)
+func (r requestScopedStreamResolver) PolicyFor(ctx context.Context, lbs labels.Labels) string {
+	policies := r.policyStreamMappings.PolicyFor(ctx, lbs)
 
 	var policy string
 	if len(policies) > 0 {

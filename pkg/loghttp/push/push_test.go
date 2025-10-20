@@ -787,7 +787,7 @@ type mockStreamResolver struct {
 	tenant string
 	limits *fakeLimits
 
-	policyForOverride func(lbs labels.Labels) string
+	policyForOverride func(ctx context.Context, lbs labels.Labels) string
 }
 
 func newMockStreamResolver(tenant string, limits *fakeLimits) *mockStreamResolver {
@@ -805,9 +805,9 @@ func (m mockStreamResolver) RetentionHoursFor(lbs labels.Labels) string {
 	return m.limits.RetentionHoursFor(m.tenant, lbs)
 }
 
-func (m mockStreamResolver) PolicyFor(lbs labels.Labels) string {
+func (m mockStreamResolver) PolicyFor(ctx context.Context, lbs labels.Labels) string {
 	if m.policyForOverride != nil {
-		return m.policyForOverride(lbs)
+		return m.policyForOverride(ctx, lbs)
 	}
 
 	return m.limits.PolicyFor(m.tenant, lbs)

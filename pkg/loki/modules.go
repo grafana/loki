@@ -387,6 +387,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	httpPushHandlerMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
+		validation.NewIngestionPolicyMiddleware(util_log.Logger),
 	)
 
 	lokiPushHandler := httpPushHandlerMiddleware.Wrap(http.HandlerFunc(t.distributor.PushHandler))

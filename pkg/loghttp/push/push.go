@@ -3,6 +3,7 @@ package push
 import (
 	"compress/flate"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"mime"
@@ -113,7 +114,7 @@ func (EmptyLimits) PolicyFor(_ string, _ labels.Labels) string {
 type StreamResolver interface {
 	RetentionPeriodFor(lbs labels.Labels) time.Duration
 	RetentionHoursFor(lbs labels.Labels) string
-	PolicyFor(lbs labels.Labels) string
+	PolicyFor(ctx context.Context, lbs labels.Labels) string
 }
 
 type (
@@ -443,7 +444,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 		req.Streams[i] = s
 	}
 
-	err = CalculateStreamsStats(userID, req, streamResolver, tenantConfigs, pushStats)
+	err = CalculateStreamsStats(r.Context(), userID, req, streamResolver, tenantConfigs, pushStats)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -452,7 +453,7 @@ func ParseLokiRequest(userID string, r *http.Request, limits Limits, tenantConfi
 }
 
 // CalculateStreamsStats modifies pushStats with statistics about all the streams from req.
-func CalculateStreamsStats(userID string, req *logproto.PushRequest, streamResolver StreamResolver, tenantConfigs *runtime.TenantConfigs, pushStats *Stats) error {
+func CalculateStreamsStats(ctx context.Context, userID string, req *logproto.PushRequest, streamResolver StreamResolver, tenantConfigs *runtime.TenantConfigs, pushStats *Stats) error {
 	logPushRequestStreams := false
 	if tenantConfigs != nil {
 		logPushRequestStreams = tenantConfigs.LogPushRequestStreams(userID)
@@ -471,7 +472,7 @@ func CalculateStreamsStats(userID string, req *logproto.PushRequest, streamResol
 		var policy string
 		if streamResolver != nil {
 			retentionPeriod = streamResolver.RetentionPeriodFor(lbs)
-			policy = streamResolver.PolicyFor(lbs)
+			policy = streamResolver.PolicyFor(ctx, lbs)
 		}
 
 		if _, ok := pushStats.LogLinesBytes[policy]; !ok {

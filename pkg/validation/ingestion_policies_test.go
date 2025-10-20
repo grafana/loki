@@ -1,6 +1,9 @@
 package validation
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -102,19 +105,20 @@ func Test_PolicyStreamMapping_PolicyFor(t *testing.T) {
 
 	require.NoError(t, mapping.Validate())
 
-	require.Equal(t, []string{"policy1"}, mapping.PolicyFor(labels.FromStrings("foo", "bar")))
+	ctx := context.Background()
+	require.Equal(t, []string{"policy1"}, mapping.PolicyFor(ctx, labels.FromStrings("foo", "bar")))
 	// matches both policy2 and policy1 but policy1 has higher priority.
-	require.Equal(t, []string{"policy1"}, mapping.PolicyFor(labels.FromStrings("foo", "bar", "daz", "baz")))
+	require.Equal(t, []string{"policy1"}, mapping.PolicyFor(ctx, labels.FromStrings("foo", "bar", "daz", "baz")))
 	// matches policy3 and policy4 but policy3 has higher priority..
-	require.Equal(t, []string{"policy3"}, mapping.PolicyFor(labels.FromStrings("qyx", "qzx", "qox", "qox")))
+	require.Equal(t, []string{"policy3"}, mapping.PolicyFor(ctx, labels.FromStrings("qyx", "qzx", "qox", "qox")))
 	// matches no policy.
-	require.Empty(t, mapping.PolicyFor(labels.FromStrings("foo", "fooz", "daz", "qux", "quux", "corge")))
+	require.Empty(t, mapping.PolicyFor(ctx, labels.FromStrings("foo", "fooz", "daz", "qux", "quux", "corge")))
 	// matches policy5 through regex.
-	require.Equal(t, []string{"policy5"}, mapping.PolicyFor(labels.FromStrings("qab", "qzxqox")))
+	require.Equal(t, []string{"policy5"}, mapping.PolicyFor(ctx, labels.FromStrings("qab", "qzxqox")))
 
-	require.Equal(t, []string{"policy6"}, mapping.PolicyFor(labels.FromStrings("env", "prod", "team", "finance")))
+	require.Equal(t, []string{"policy6"}, mapping.PolicyFor(ctx, labels.FromStrings("env", "prod", "team", "finance")))
 	// Matches policy7 and policy8 which have the same priority.
-	require.Equal(t, []string{"policy7", "policy8"}, mapping.PolicyFor(labels.FromStrings("env", "prod")))
+	require.Equal(t, []string{"policy7", "policy8"}, mapping.PolicyFor(ctx, labels.FromStrings("env", "prod")))
 }
 
 func TestPolicyStreamMapping_ApplyDefaultPolicyStreamMappings(t *testing.T) {
@@ -283,4 +287,204 @@ func TestPolicyStreamMapping_ApplyDefaultPolicyStreamMappings_Validation(t *test
 
 	// Verify the result is valid
 	require.NoError(t, existing.Validate())
+}
+
+func Test_PolicyStreamMapping_PolicyFor_WithHeaderOverride(t *testing.T) {
+	mapping := PolicyStreamMapping{
+		"policy1": []*PriorityStream{
+			{
+				Selector: `{foo="bar"}`,
+				Priority: 2,
+				Matchers: []*labels.Matcher{
+					labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+				},
+			},
+		},
+		"policy2": []*PriorityStream{
+			{
+				Selector: `{env="prod"}`,
+				Priority: 1,
+				Matchers: []*labels.Matcher{
+					labels.MustNewMatcher(labels.MatchEqual, "env", "prod"),
+				},
+			},
+		},
+	}
+
+	require.NoError(t, mapping.Validate())
+
+	t.Run("without header context, uses normal mapping", func(t *testing.T) {
+		ctx := context.Background()
+		// Should match policy1 based on labels
+		require.Equal(t, []string{"policy1"}, mapping.PolicyFor(ctx, labels.FromStrings("foo", "bar")))
+		// Should match policy2 based on labels
+		require.Equal(t, []string{"policy2"}, mapping.PolicyFor(ctx, labels.FromStrings("env", "prod")))
+		// Should match no policy
+		require.Empty(t, mapping.PolicyFor(ctx, labels.FromStrings("unknown", "label")))
+	})
+
+	t.Run("with header context, overrides all mappings", func(t *testing.T) {
+		ctx := InjectIngestionPolicyContext(context.Background(), "override-policy")
+
+		// Even though labels match policy1, header policy overrides
+		require.Equal(t, []string{"override-policy"}, mapping.PolicyFor(ctx, labels.FromStrings("foo", "bar")))
+
+		// Even though labels match policy2, header policy overrides
+		require.Equal(t, []string{"override-policy"}, mapping.PolicyFor(ctx, labels.FromStrings("env", "prod")))
+
+		// Even though labels don't match anything, header policy is used
+		require.Equal(t, []string{"override-policy"}, mapping.PolicyFor(ctx, labels.FromStrings("unknown", "label")))
+	})
+
+	t.Run("empty header context is ignored", func(t *testing.T) {
+		// Inject empty string - should be treated as not set
+		ctx := InjectIngestionPolicyContext(context.Background(), "")
+
+		// Should fall back to normal mapping behavior
+		require.Equal(t, []string{"policy1"}, mapping.PolicyFor(ctx, labels.FromStrings("foo", "bar")))
+	})
+}
+
+func TestExtractInjectIngestionPolicyContext(t *testing.T) {
+	t.Run("inject and extract policy", func(t *testing.T) {
+		ctx := context.Background()
+		policy := "test-policy"
+
+		ctx = InjectIngestionPolicyContext(ctx, policy)
+		extracted, ok := ExtractIngestionPolicyContext(ctx)
+
+		require.True(t, ok)
+		require.Equal(t, policy, extracted)
+	})
+
+	t.Run("extract from empty context", func(t *testing.T) {
+		ctx := context.Background()
+		extracted, ok := ExtractIngestionPolicyContext(ctx)
+
+		require.False(t, ok)
+		require.Empty(t, extracted)
+	})
+
+	t.Run("inject empty string", func(t *testing.T) {
+		ctx := context.Background()
+		ctx = InjectIngestionPolicyContext(ctx, "")
+
+		extracted, ok := ExtractIngestionPolicyContext(ctx)
+		require.True(t, ok)
+		require.Empty(t, extracted)
+	})
+}
+
+func TestExtractIngestionPolicyHTTP(t *testing.T) {
+	t.Run("extract policy from header", func(t *testing.T) {
+		req, err := http.NewRequest("POST", "/loki/api/v1/push", nil)
+		require.NoError(t, err)
+
+		req.Header.Set(HTTPHeaderIngestionPolicyKey, "my-policy")
+
+		policy, ok := ExtractIngestionPolicyHTTP(req)
+		require.True(t, ok)
+		require.Equal(t, "my-policy", policy)
+	})
+
+	t.Run("no header present", func(t *testing.T) {
+		req, err := http.NewRequest("POST", "/loki/api/v1/push", nil)
+		require.NoError(t, err)
+
+		policy, ok := ExtractIngestionPolicyHTTP(req)
+		require.False(t, ok)
+		require.Empty(t, policy)
+	})
+
+	t.Run("empty header value", func(t *testing.T) {
+		req, err := http.NewRequest("POST", "/loki/api/v1/push", nil)
+		require.NoError(t, err)
+
+		req.Header.Set(HTTPHeaderIngestionPolicyKey, "")
+
+		policy, ok := ExtractIngestionPolicyHTTP(req)
+		require.False(t, ok)
+		require.Empty(t, policy)
+	})
+
+	t.Run("header with whitespace", func(t *testing.T) {
+		req, err := http.NewRequest("POST", "/loki/api/v1/push", nil)
+		require.NoError(t, err)
+
+		req.Header.Set(HTTPHeaderIngestionPolicyKey, "  policy-with-spaces  ")
+
+		policy, ok := ExtractIngestionPolicyHTTP(req)
+		require.True(t, ok)
+		require.Equal(t, "  policy-with-spaces  ", policy)
+	})
+}
+
+func TestIngestionPolicyMiddleware(t *testing.T) {
+	t.Run("middleware injects policy into context", func(t *testing.T) {
+		var capturedCtx context.Context
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			capturedCtx = r.Context()
+			w.WriteHeader(http.StatusOK)
+		})
+
+		middleware := NewIngestionPolicyMiddleware(nil)
+		wrappedHandler := middleware.Wrap(handler)
+
+		req, err := http.NewRequest("POST", "/loki/api/v1/push", nil)
+		require.NoError(t, err)
+		req.Header.Set(HTTPHeaderIngestionPolicyKey, "test-policy")
+
+		rr := httptest.NewRecorder()
+		wrappedHandler.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		policy, ok := ExtractIngestionPolicyContext(capturedCtx)
+		require.True(t, ok)
+		require.Equal(t, "test-policy", policy)
+	})
+
+	t.Run("middleware does not modify context when no header", func(t *testing.T) {
+		var capturedCtx context.Context
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			capturedCtx = r.Context()
+			w.WriteHeader(http.StatusOK)
+		})
+
+		middleware := NewIngestionPolicyMiddleware(nil)
+		wrappedHandler := middleware.Wrap(handler)
+
+		req, err := http.NewRequest("POST", "/loki/api/v1/push", nil)
+		require.NoError(t, err)
+
+		rr := httptest.NewRecorder()
+		wrappedHandler.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		policy, ok := ExtractIngestionPolicyContext(capturedCtx)
+		require.False(t, ok)
+		require.Empty(t, policy)
+	})
+
+	t.Run("middleware does not inject empty header value", func(t *testing.T) {
+		var capturedCtx context.Context
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			capturedCtx = r.Context()
+			w.WriteHeader(http.StatusOK)
+		})
+
+		middleware := NewIngestionPolicyMiddleware(nil)
+		wrappedHandler := middleware.Wrap(handler)
+
+		req, err := http.NewRequest("POST", "/loki/api/v1/push", nil)
+		require.NoError(t, err)
+		req.Header.Set(HTTPHeaderIngestionPolicyKey, "")
+
+		rr := httptest.NewRecorder()
+		wrappedHandler.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code)
+		policy, ok := ExtractIngestionPolicyContext(capturedCtx)
+		require.False(t, ok)
+		require.Empty(t, policy)
+	})
 }

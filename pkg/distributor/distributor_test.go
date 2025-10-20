@@ -1291,7 +1291,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream, streamResolver, constants.Loki)
+		_, _, _, _, _, err := d.parseStreamLabels(context.Background(), vCtx, stream.Labels, stream, streamResolver, constants.Loki)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -1331,7 +1331,7 @@ func TestParseStreamLabels(t *testing.T) {
 		vCtx := d.validator.getValidationContextForTime(testTime, "123")
 		streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
 		t.Run(tc.name, func(t *testing.T) {
-			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(vCtx, tc.origLabels, logproto.Stream{
+			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(context.Background(), vCtx, tc.origLabels, logproto.Stream{
 				Labels: tc.origLabels,
 			}, streamResolver, constants.Loki)
 			if tc.expectedErr != nil {
@@ -2336,10 +2336,10 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 	retentionPeriod = resolver.RetentionPeriodFor(labels.FromStrings("env", "dev"))
 	require.Equal(t, 24*time.Hour, retentionPeriod)
 
-	policy := resolver.PolicyFor(labels.FromStrings("env", "prod"))
+	policy := resolver.PolicyFor(context.Background(), labels.FromStrings("env", "prod"))
 	require.Equal(t, "policy0", policy)
 
-	policy = resolver.PolicyFor(labels.FromStrings("env", "dev"))
+	policy = resolver.PolicyFor(context.Background(), labels.FromStrings("env", "dev"))
 	require.Empty(t, policy)
 
 	// We now modify the underlying limits to test that the resolver is not affected by changes to the limits
@@ -2378,10 +2378,10 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 	retentionPeriod = resolver.RetentionPeriodFor(labels.FromStrings("env", "dev"))
 	require.Equal(t, 24*time.Hour, retentionPeriod)
 
-	policy = resolver.PolicyFor(labels.FromStrings("env", "prod"))
+	policy = resolver.PolicyFor(context.Background(), labels.FromStrings("env", "prod"))
 	require.Equal(t, "policy0", policy)
 
-	policy = resolver.PolicyFor(labels.FromStrings("env", "dev"))
+	policy = resolver.PolicyFor(context.Background(), labels.FromStrings("env", "dev"))
 	require.Empty(t, policy)
 
 	// But a new resolver should return the new values
@@ -2397,10 +2397,10 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 	retentionPeriod = newResolver.RetentionPeriodFor(labels.FromStrings("env", "dev"))
 	require.Equal(t, 72*time.Hour, retentionPeriod)
 
-	policy = newResolver.PolicyFor(labels.FromStrings("env", "prod"))
+	policy = newResolver.PolicyFor(context.Background(), labels.FromStrings("env", "prod"))
 	require.Empty(t, policy)
 
-	policy = newResolver.PolicyFor(labels.FromStrings("env", "dev"))
+	policy = newResolver.PolicyFor(context.Background(), labels.FromStrings("env", "dev"))
 	require.Equal(t, "policy1", policy)
 }
 
