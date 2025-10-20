@@ -36,7 +36,7 @@ func (p *Projection) String() string {
 	params := make([]string, 0, len(p.Expressions)+1)
 	params = append(params, fmt.Sprintf("mode=%s", p.mode()))
 	for _, expr := range p.Expressions {
-		params = append(params, fmt.Sprintf("expr=%s", expr.Name()))
+		params = append(params, fmt.Sprintf("expr=%s", expr.String()))
 	}
 	return fmt.Sprintf("PROJECT %s [%s]", p.Relation.Name(), strings.Join(params, ", "))
 }

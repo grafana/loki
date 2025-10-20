@@ -237,23 +237,38 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 		return nil, err
 	}
 
+	builder := NewBuilder(logQuery)
+
+	// Check for unwrap in the LogRangeExpr
+	if e.Left.Unwrap != nil {
+		// TODO: do we need to support multiple unwraps?
+		unwrapIdentifier := e.Left.Unwrap.Identifier
+
+		var unwrapOperation types.UnaryOp
+		switch e.Left.Unwrap.Operation {
+		case "":
+			unwrapOperation = types.UnaryOpCastFloat
+		case syntax.OpConvBytes:
+			unwrapOperation = types.UnaryOpCastBytes
+		case syntax.OpConvDuration, syntax.OpConvDurationSeconds:
+			unwrapOperation = types.UnaryOpCastDuration
+		default:
+			return nil, errUnimplemented
+		}
+
+		builder = builder.Cast(unwrapIdentifier, unwrapOperation)
+	}
+
 	rangeAggType := convertRangeAggregationType(e.Operation)
 	if rangeAggType == types.RangeAggregationTypeInvalid {
 		return nil, errUnimplemented
 	}
 
-	rangeAggregation := &RangeAggregation{
-		Table: logQuery,
+	builder = builder.RangeAggregation(
+		nil, rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,
+	)
 
-		Operation:     rangeAggType,
-		PartitionBy:   nil,
-		Start:         params.Start(),
-		End:           params.End(),
-		Step:          params.Step(),
-		RangeInterval: rangeInterval,
-	}
-
-	return rangeAggregation, nil
+	return builder.Value(), nil
 }
 
 func walkVectorAggregation(e *syntax.VectorAggregationExpr, params logql.Params) (Value, error) {

@@ -1040,6 +1040,18 @@ type LimitsSpec struct {
 	Tenants map[string]PerTenantLimitsTemplateSpec `json:"tenants,omitempty"`
 }
 
+// NetworkPoliciesSpec defines the configuration for NetworkPolicies.
+type NetworkPoliciesSpec struct {
+	// Disabled allows explicitly disabling NetworkPolicies.
+	// When false, NetworkPolicies are enabled.
+	// When true, NetworkPolicies are disabled.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Disabled"
+	Disabled bool `json:"disabled,omitempty"`
+}
+
 // RulesSpec defines the spec for the ruler component.
 type RulesSpec struct {
 	// Enabled defines a flag to enable/disable the ruler component
@@ -1155,6 +1167,15 @@ type LokiStackSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Tenants Configuration"
 	Tenants *TenantsSpec `json:"tenants,omitempty"`
+
+	// NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+	// When enabled, the operator creates NetworkPolicies to control ingress/egress between
+	// Loki components and related services.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Network Policies"
+	NetworkPolicies *NetworkPoliciesSpec `json:"networkPolicies,omitempty"`
 }
 
 type ReplicationSpec struct {
@@ -1380,6 +1401,18 @@ const (
 	CredentialModeTokenCCO CredentialMode = "token-cco"
 )
 
+// NetworkPoliciesStatus defines the observed state of NetworkPolicies deployment.
+//
+// +kubebuilder:validation:Enum=Enabled;Disabled
+type NetworkPoliciesStatus string
+
+const (
+	// NetworkPoliciesStatusDisabled when NetworkPolicies are not deployed.
+	NetworkPoliciesStatusDisabled NetworkPoliciesStatus = "Disabled"
+	// NetworkPoliciesStatusEnabled when NetworkPolicies are deployed.
+	NetworkPoliciesStatusEnabled NetworkPoliciesStatus = "Enabled"
+)
+
 // LokiStackStorageStatus defines the observed state of
 // the Loki storage configuration.
 type LokiStackStorageStatus struct {
@@ -1412,6 +1445,12 @@ type LokiStackStatus struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	Storage LokiStackStorageStatus `json:"storage,omitempty"`
+
+	// NetworkPolicies indicates whether NetworkPolicies are enabled or disabled for this LokiStack.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	NetworkPolicies NetworkPoliciesStatus `json:"networkPolicies,omitempty"`
 
 	// Conditions of the Loki deployment health.
 	//

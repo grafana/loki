@@ -8,6 +8,7 @@ on:
       - "cmd/querytee/**"
       - "tools/querytee/**"
       - ".github/workflows/querytee-images.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
