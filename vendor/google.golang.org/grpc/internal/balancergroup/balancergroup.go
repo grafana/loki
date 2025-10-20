@@ -106,15 +106,14 @@ func (sbc *subBalancerWrapper) startBalancer() {
 	}
 }
 
-// exitIdle invokes the sub-balancer's ExitIdle method. Returns a boolean
-// indicating whether or not the operation was completed.
-func (sbc *subBalancerWrapper) exitIdle() (complete bool) {
+// exitIdle invokes the ExitIdle method on the sub-balancer, a gracefulswitch
+// balancer.
+func (sbc *subBalancerWrapper) exitIdle() {
 	b := sbc.balancer
 	if b == nil {
-		return true
+		return
 	}
 	b.ExitIdle()
-	return true
 }
 
 func (sbc *subBalancerWrapper) updateClientConnState(s balancer.ClientConnState) error {
@@ -411,20 +410,6 @@ func (bg *BalancerGroup) cleanupSubConns(config *subBalancerWrapper) {
 	}
 }
 
-// connect attempts to connect to all subConns belonging to sb.
-func (bg *BalancerGroup) connect(sb *subBalancerWrapper) {
-	bg.incomingMu.Lock()
-	defer bg.incomingMu.Unlock()
-	if bg.incomingClosed {
-		return
-	}
-	for sc, b := range bg.scToSubBalancer {
-		if b == sb {
-			sc.Connect()
-		}
-	}
-}
-
 // Following are actions from the parent grpc.ClientConn, forward to sub-balancers.
 
 // updateSubConnState forwards the update to cb and updates scToSubBalancer if
@@ -575,9 +560,7 @@ func (bg *BalancerGroup) ExitIdle() {
 		return
 	}
 	for _, config := range bg.idToBalancerConfig {
-		if !config.exitIdle() {
-			bg.connect(config)
-		}
+		config.exitIdle()
 	}
 }
 
@@ -590,9 +573,7 @@ func (bg *BalancerGroup) ExitIdleOne(id string) {
 		return
 	}
 	if config := bg.idToBalancerConfig[id]; config != nil {
-		if !config.exitIdle() {
-			bg.connect(config)
-		}
+		config.exitIdle()
 	}
 }
 

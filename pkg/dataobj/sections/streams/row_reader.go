@@ -9,9 +9,9 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/streamsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/slicegrow"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/util/symbolizer"
+	"github.com/grafana/loki/v3/pkg/dataobj/sections/internal/columnar"
 )
 
 // RowReader reads the set of streams from an [Object].
@@ -23,9 +23,8 @@ type RowReader struct {
 
 	buf []dataset.Row
 
-	reader     *dataset.Reader
-	columns    []dataset.Column
-	columnDesc []*streamsmd.ColumnDesc
+	reader  *dataset.Reader
+	columns []dataset.Column
 
 	symbols *symbolizer.Symbolizer
 }
@@ -64,7 +63,7 @@ func (r *RowReader) Read(ctx context.Context, s []Stream) (int, error) {
 	}
 
 	if !r.ready {
-		err := r.initReader(ctx)
+		err := r.initReader()
 		if err != nil {
 			return 0, err
 		}
@@ -80,7 +79,7 @@ func (r *RowReader) Read(ctx context.Context, s []Stream) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		if err := decodeRow(r.columnDesc, r.buf[i], &s[i], r.symbols); err != nil {
+		if err := decodeRow(r.sec.Columns(), r.buf[i], &s[i], r.symbols); err != nil {
 			return i, fmt.Errorf("decoding stream: %w", err)
 		}
 	}
@@ -88,22 +87,15 @@ func (r *RowReader) Read(ctx context.Context, s []Stream) (int, error) {
 	return n, nil
 }
 
-func (r *RowReader) initReader(ctx context.Context) error {
-	dec := newDecoder(r.sec.reader)
-
-	columnDescs, err := dec.Columns(ctx)
-	if err != nil {
-		return fmt.Errorf("reading columns: %w", err)
-	}
-
-	dset, err := newColumnsDataset(r.sec.Columns())
+func (r *RowReader) initReader() error {
+	dset, err := columnar.MakeDataset(r.sec.inner, r.sec.inner.Columns())
 	if err != nil {
 		return fmt.Errorf("creating section dataset: %w", err)
 	}
 	columns := dset.Columns()
 
 	var predicates []dataset.Predicate
-	if p := translateStreamsPredicate(r.predicate, columns, columnDescs); p != nil {
+	if p := translateStreamsPredicate(r.predicate, columns, r.sec.Columns()); p != nil {
 		predicates = append(predicates, p)
 	}
 
@@ -111,8 +103,7 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		Dataset:    dset,
 		Columns:    columns,
 		Predicates: predicates,
-
-		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
+		Prefetch:   true,
 	}
 
 	if r.reader == nil {
@@ -127,7 +118,6 @@ func (r *RowReader) initReader(ctx context.Context) error {
 		r.symbols.Reset()
 	}
 
-	r.columnDesc = columnDescs
 	r.columns = columns
 	r.ready = true
 	return nil
@@ -145,7 +135,6 @@ func (r *RowReader) Reset(sec *Section) {
 	r.predicate = nil
 	r.ready = false
 	r.columns = nil
-	r.columnDesc = nil
 
 	if r.symbols != nil {
 		r.symbols.Reset()
@@ -164,7 +153,7 @@ func (r *RowReader) Close() error {
 	return nil
 }
 
-func translateStreamsPredicate(p RowPredicate, columns []dataset.Column, columnDesc []*streamsmd.ColumnDesc) dataset.Predicate {
+func translateStreamsPredicate(p RowPredicate, dsetColumns []dataset.Column, actualColumns []*Column) dataset.Predicate {
 	if p == nil {
 		return nil
 	}
@@ -172,27 +161,27 @@ func translateStreamsPredicate(p RowPredicate, columns []dataset.Column, columnD
 	switch p := p.(type) {
 	case AndRowPredicate:
 		return dataset.AndPredicate{
-			Left:  translateStreamsPredicate(p.Left, columns, columnDesc),
-			Right: translateStreamsPredicate(p.Right, columns, columnDesc),
+			Left:  translateStreamsPredicate(p.Left, dsetColumns, actualColumns),
+			Right: translateStreamsPredicate(p.Right, dsetColumns, actualColumns),
 		}
 
 	case OrRowPredicate:
 		return dataset.OrPredicate{
-			Left:  translateStreamsPredicate(p.Left, columns, columnDesc),
-			Right: translateStreamsPredicate(p.Right, columns, columnDesc),
+			Left:  translateStreamsPredicate(p.Left, dsetColumns, actualColumns),
+			Right: translateStreamsPredicate(p.Right, dsetColumns, actualColumns),
 		}
 
 	case NotRowPredicate:
 		return dataset.NotPredicate{
-			Inner: translateStreamsPredicate(p.Inner, columns, columnDesc),
+			Inner: translateStreamsPredicate(p.Inner, dsetColumns, actualColumns),
 		}
 
 	case TimeRangeRowPredicate:
-		minTimestamp := findColumnFromDesc(columns, columnDesc, func(desc *streamsmd.ColumnDesc) bool {
-			return desc.Type == streamsmd.COLUMN_TYPE_MIN_TIMESTAMP
+		minTimestamp := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+			return col.Type == ColumnTypeMinTimestamp
 		})
-		maxTimestamp := findColumnFromDesc(columns, columnDesc, func(desc *streamsmd.ColumnDesc) bool {
-			return desc.Type == streamsmd.COLUMN_TYPE_MAX_TIMESTAMP
+		maxTimestamp := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+			return col.Type == ColumnTypeMaxTimestamp
 		})
 		if minTimestamp == nil || maxTimestamp == nil {
 			return dataset.FalsePredicate{}
@@ -200,20 +189,20 @@ func translateStreamsPredicate(p RowPredicate, columns []dataset.Column, columnD
 		return convertStreamsTimePredicate(p, minTimestamp, maxTimestamp)
 
 	case LabelMatcherRowPredicate:
-		metadataColumn := findColumnFromDesc(columns, columnDesc, func(desc *streamsmd.ColumnDesc) bool {
-			return desc.Type == streamsmd.COLUMN_TYPE_LABEL && desc.Info.Name == p.Name
+		metadataColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+			return col.Type == ColumnTypeLabel && col.Name == p.Name
 		})
 		if metadataColumn == nil {
 			return dataset.FalsePredicate{}
 		}
 		return dataset.EqualPredicate{
 			Column: metadataColumn,
-			Value:  dataset.ByteArrayValue(unsafeSlice(p.Value, 0)),
+			Value:  dataset.BinaryValue(unsafeSlice(p.Value, 0)),
 		}
 
 	case LabelFilterRowPredicate:
-		metadataColumn := findColumnFromDesc(columns, columnDesc, func(desc *streamsmd.ColumnDesc) bool {
-			return desc.Type == streamsmd.COLUMN_TYPE_LABEL && desc.Info.Name == p.Name
+		metadataColumn := findDatasetColumn(dsetColumns, actualColumns, func(col *Column) bool {
+			return col.Type == ColumnTypeLabel && col.Name == p.Name
 		})
 		if metadataColumn == nil {
 			return dataset.FalsePredicate{}
@@ -293,8 +282,8 @@ func convertStreamsTimePredicate(p TimeRangeRowPredicate, minColumn, maxColumn d
 	}
 }
 
-func findColumnFromDesc[Desc any](columns []dataset.Column, descs []Desc, check func(Desc) bool) dataset.Column {
-	for i, desc := range descs {
+func findDatasetColumn(columns []dataset.Column, actual []*Column, check func(*Column) bool) dataset.Column {
+	for i, desc := range actual {
 		if check(desc) {
 			return columns[i]
 		}
@@ -304,14 +293,14 @@ func findColumnFromDesc[Desc any](columns []dataset.Column, descs []Desc, check 
 
 func valueToString(value dataset.Value) string {
 	switch value.Type() {
-	case datasetmd.VALUE_TYPE_UNSPECIFIED:
+	case datasetmd.PHYSICAL_TYPE_UNSPECIFIED:
 		return ""
-	case datasetmd.VALUE_TYPE_INT64:
+	case datasetmd.PHYSICAL_TYPE_INT64:
 		return strconv.FormatInt(value.Int64(), 10)
-	case datasetmd.VALUE_TYPE_UINT64:
+	case datasetmd.PHYSICAL_TYPE_UINT64:
 		return strconv.FormatUint(value.Uint64(), 10)
-	case datasetmd.VALUE_TYPE_BYTE_ARRAY:
-		return unsafeString(value.ByteArray())
+	case datasetmd.PHYSICAL_TYPE_BINARY:
+		return unsafeString(value.Binary())
 	default:
 		panic(fmt.Sprintf("unsupported value type %s", value.Type()))
 	}

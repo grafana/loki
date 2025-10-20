@@ -133,7 +133,7 @@ func loadBenchmarks() []string {
 		os.Exit(1)
 	}
 
-	cases := config.GenerateTestCases()
+	cases := bench.NewTestCaseGenerator(bench.DefaultTestCaseGeneratorConfig, config).Generate()
 	var names []string
 	for _, c := range cases {
 		names = append(names, c.Name())
@@ -186,7 +186,7 @@ func listBenchmarks() {
 	}
 
 	// Generate test cases
-	cases := config.GenerateTestCases()
+	cases := bench.NewTestCaseGenerator(bench.DefaultTestCaseGeneratorConfig, config).Generate()
 
 	// Print each benchmark name
 	for _, c := range cases {

@@ -8,7 +8,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/dataset"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
-	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/logsmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/result"
 )
 
@@ -23,7 +22,7 @@ type table struct {
 type tableColumn struct {
 	*dataset.MemColumn
 
-	Type logsmd.ColumnType
+	Type ColumnType
 }
 
 var _ dataset.Dataset = (*table)(nil)
@@ -82,16 +81,30 @@ func (t *table) ReadPages(ctx context.Context, pages []dataset.Page) result.Seq[
 	})
 }
 
-// Size returns the total size of the table in bytes.
-func (t *table) Size() int {
+// UncompressedSize returns the total uncompressed size of the table in bytes.
+func (t *table) UncompressedSize() int {
 	var size int
 
-	size += t.StreamID.ColumnInfo().CompressedSize
-	size += t.Timestamp.ColumnInfo().CompressedSize
+	size += t.StreamID.ColumnDesc().UncompressedSize
+	size += t.Timestamp.ColumnDesc().UncompressedSize
 	for _, metadata := range t.Metadatas {
-		size += metadata.ColumnInfo().CompressedSize
+		size += metadata.ColumnDesc().UncompressedSize
 	}
-	size += t.Message.ColumnInfo().CompressedSize
+	size += t.Message.ColumnDesc().UncompressedSize
+
+	return size
+}
+
+// CompressedSize returns the total compressed size of the table in bytes.
+func (t *table) CompressedSize() int {
+	var size int
+
+	size += t.StreamID.ColumnDesc().CompressedSize
+	size += t.Timestamp.ColumnDesc().CompressedSize
+	for _, metadata := range t.Metadatas {
+		size += metadata.ColumnDesc().CompressedSize
+	}
+	size += t.Message.ColumnDesc().CompressedSize
 
 	return size
 }
@@ -110,16 +123,20 @@ type tableBuffer struct {
 }
 
 // StreamID gets or creates a stream ID column for the buffer.
-func (b *tableBuffer) StreamID(pageSize int) *dataset.ColumnBuilder {
+func (b *tableBuffer) StreamID(pageSize, pageRowCount int) *dataset.ColumnBuilder {
 	if b.streamID != nil {
 		return b.streamID
 	}
 
 	col, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint: pageSize,
-		Value:        datasetmd.VALUE_TYPE_INT64,
-		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		PageSizeHint:    pageSize,
+		PageMaxRowCount: pageRowCount,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_INT64,
+			Logical:  ColumnTypeStreamID.String(),
+		},
+		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
+		Compression: datasetmd.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats:       true,
 			StoreCardinalityStats: true,
@@ -137,16 +154,20 @@ func (b *tableBuffer) StreamID(pageSize int) *dataset.ColumnBuilder {
 }
 
 // Timestamp gets or creates a timestamp column for the buffer.
-func (b *tableBuffer) Timestamp(pageSize int) *dataset.ColumnBuilder {
+func (b *tableBuffer) Timestamp(pageSize, pageRowCount int) *dataset.ColumnBuilder {
 	if b.timestamp != nil {
 		return b.timestamp
 	}
 
 	col, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint: pageSize,
-		Value:        datasetmd.VALUE_TYPE_INT64,
-		Encoding:     datasetmd.ENCODING_TYPE_DELTA,
-		Compression:  datasetmd.COMPRESSION_TYPE_NONE,
+		PageSizeHint:    pageSize,
+		PageMaxRowCount: pageRowCount,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_INT64,
+			Logical:  ColumnTypeTimestamp.String(),
+		},
+		Encoding:    datasetmd.ENCODING_TYPE_DELTA,
+		Compression: datasetmd.COMPRESSION_TYPE_NONE,
 		Statistics: dataset.StatisticsOptions{
 			StoreRangeStats: true,
 		},
@@ -164,7 +185,7 @@ func (b *tableBuffer) Timestamp(pageSize int) *dataset.ColumnBuilder {
 
 // Metadata gets or creates a metadata column for the buffer. To remove created
 // metadata columns, call [tableBuffer.CleanupMetadatas].
-func (b *tableBuffer) Metadata(key string, pageSize int, compressionOpts dataset.CompressionOptions) *dataset.ColumnBuilder {
+func (b *tableBuffer) Metadata(key string, pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions) *dataset.ColumnBuilder {
 	if b.usedMetadatas == nil {
 		b.usedMetadatas = make(map[*dataset.ColumnBuilder]string)
 	}
@@ -177,8 +198,12 @@ func (b *tableBuffer) Metadata(key string, pageSize int, compressionOpts dataset
 	}
 
 	col, err := dataset.NewColumnBuilder(key, dataset.BuilderOptions{
-		PageSizeHint:       pageSize,
-		Value:              datasetmd.VALUE_TYPE_BYTE_ARRAY,
+		PageSizeHint:    pageSize,
+		PageMaxRowCount: pageRowCount,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Logical:  ColumnTypeMetadata.String(),
+		},
 		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
 		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
 		CompressionOptions: compressionOpts,
@@ -205,14 +230,18 @@ func (b *tableBuffer) Metadata(key string, pageSize int, compressionOpts dataset
 }
 
 // Message gets or creates a message column for the buffer.
-func (b *tableBuffer) Message(pageSize int, compressionOpts dataset.CompressionOptions) *dataset.ColumnBuilder {
+func (b *tableBuffer) Message(pageSize, pageRowCount int, compressionOpts dataset.CompressionOptions) *dataset.ColumnBuilder {
 	if b.message != nil {
 		return b.message
 	}
 
 	col, err := dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint:       pageSize,
-		Value:              datasetmd.VALUE_TYPE_BYTE_ARRAY,
+		PageSizeHint:    pageSize,
+		PageMaxRowCount: pageRowCount,
+		Type: dataset.ColumnType{
+			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
+			Logical:  ColumnTypeMessage.String(),
+		},
 		Encoding:           datasetmd.ENCODING_TYPE_PLAIN,
 		Compression:        datasetmd.COMPRESSION_TYPE_ZSTD,
 		CompressionOptions: compressionOpts,
@@ -313,18 +342,18 @@ func (b *tableBuffer) Flush() (*table, error) {
 		// other columns. Since adding NULLs isn't free, we don't call Backfill
 		// here.
 		metadata, _ := metadataBuilder.Flush()
-		metadatas = append(metadatas, &tableColumn{metadata, logsmd.COLUMN_TYPE_METADATA})
+		metadatas = append(metadatas, &tableColumn{metadata, ColumnTypeMetadata})
 	}
 
 	// Sort metadata columns by name for consistency.
 	slices.SortFunc(metadatas, func(a, b *tableColumn) int {
-		return cmp.Compare(a.ColumnInfo().Name, b.ColumnInfo().Name)
+		return cmp.Compare(a.ColumnDesc().Tag, b.ColumnDesc().Tag)
 	})
 
 	return &table{
-		StreamID:  &tableColumn{streamID, logsmd.COLUMN_TYPE_STREAM_ID},
-		Timestamp: &tableColumn{timestamp, logsmd.COLUMN_TYPE_TIMESTAMP},
+		StreamID:  &tableColumn{streamID, ColumnTypeStreamID},
+		Timestamp: &tableColumn{timestamp, ColumnTypeTimestamp},
 		Metadatas: metadatas,
-		Message:   &tableColumn{messages, logsmd.COLUMN_TYPE_MESSAGE},
+		Message:   &tableColumn{messages, ColumnTypeMessage},
 	}, nil
 }

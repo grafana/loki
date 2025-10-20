@@ -84,7 +84,7 @@ func appendVariantLabel(lbls LabelsResult, variantIndex int) LabelsResult {
 	newLblsBuilder.Sort()
 	newLbls := newLblsBuilder.Labels()
 
-	builder := NewBaseLabelsBuilder().ForLabels(newLbls, newLbls.Hash())
+	builder := NewBaseLabelsBuilder().ForLabels(newLbls, labels.StableHash(newLbls))
 	builder.Add(StructuredMetadataLabel, lbls.StructuredMetadata())
 	builder.Add(ParsedLabel, lbls.Parsed())
 	return builder.LabelsResult()

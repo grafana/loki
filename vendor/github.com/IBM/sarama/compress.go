@@ -13,7 +13,11 @@ import (
 var (
 	lz4WriterPool = sync.Pool{
 		New: func() interface{} {
-			return lz4.NewWriter(nil)
+			lz := lz4.NewWriter(nil)
+			if err := lz.Apply(lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
+				panic(err)
+			}
+			return lz
 		},
 	}
 
@@ -110,85 +114,78 @@ func compress(cc CompressionCodec, level int, data []byte) ([]byte, error) {
 	case CompressionNone:
 		return data, nil
 	case CompressionGZIP:
-		var (
-			err    error
-			buf    bytes.Buffer
-			writer *gzip.Writer
-		)
-
-		switch level {
-		case CompressionLevelDefault:
-			writer = gzipWriterPool.Get().(*gzip.Writer)
-			defer gzipWriterPool.Put(writer)
-			writer.Reset(&buf)
-		case 1:
-			writer = gzipWriterPoolForCompressionLevel1.Get().(*gzip.Writer)
-			defer gzipWriterPoolForCompressionLevel1.Put(writer)
-			writer.Reset(&buf)
-		case 2:
-			writer = gzipWriterPoolForCompressionLevel2.Get().(*gzip.Writer)
-			defer gzipWriterPoolForCompressionLevel2.Put(writer)
-			writer.Reset(&buf)
-		case 3:
-			writer = gzipWriterPoolForCompressionLevel3.Get().(*gzip.Writer)
-			defer gzipWriterPoolForCompressionLevel3.Put(writer)
-			writer.Reset(&buf)
-		case 4:
-			writer = gzipWriterPoolForCompressionLevel4.Get().(*gzip.Writer)
-			defer gzipWriterPoolForCompressionLevel4.Put(writer)
-			writer.Reset(&buf)
-		case 5:
-			writer = gzipWriterPoolForCompressionLevel5.Get().(*gzip.Writer)
-			defer gzipWriterPoolForCompressionLevel5.Put(writer)
-			writer.Reset(&buf)
-		case 6:
-			writer = gzipWriterPoolForCompressionLevel6.Get().(*gzip.Writer)
-			defer gzipWriterPoolForCompressionLevel6.Put(writer)
-			writer.Reset(&buf)
-		case 7:
-			writer = gzipWriterPoolForCompressionLevel7.Get().(*gzip.Writer)
-			defer gzipWriterPoolForCompressionLevel7.Put(writer)
-			writer.Reset(&buf)
-		case 8:
-			writer = gzipWriterPoolForCompressionLevel8.Get().(*gzip.Writer)
-			defer gzipWriterPoolForCompressionLevel8.Put(writer)
-			writer.Reset(&buf)
-		case 9:
-			writer = gzipWriterPoolForCompressionLevel9.Get().(*gzip.Writer)
-			defer gzipWriterPoolForCompressionLevel9.Put(writer)
-			writer.Reset(&buf)
-		default:
-			writer, err = gzip.NewWriterLevel(&buf, level)
-			if err != nil {
-				return nil, err
-			}
-		}
-		if _, err := writer.Write(data); err != nil {
-			return nil, err
-		}
-		if err := writer.Close(); err != nil {
-			return nil, err
-		}
-		return buf.Bytes(), nil
+		return gzipCompress(level, data)
 	case CompressionSnappy:
 		return snappy.Encode(data), nil
 	case CompressionLZ4:
-		writer := lz4WriterPool.Get().(*lz4.Writer)
-		defer lz4WriterPool.Put(writer)
-
-		var buf bytes.Buffer
-		writer.Reset(&buf)
-
-		if _, err := writer.Write(data); err != nil {
-			return nil, err
-		}
-		if err := writer.Close(); err != nil {
-			return nil, err
-		}
-		return buf.Bytes(), nil
+		return lz4Compress(data)
 	case CompressionZSTD:
 		return zstdCompress(ZstdEncoderParams{level}, nil, data)
 	default:
 		return nil, PacketEncodingError{fmt.Sprintf("unsupported compression codec (%d)", cc)}
 	}
+}
+
+func gzipCompress(level int, data []byte) ([]byte, error) {
+	var (
+		buf    bytes.Buffer
+		writer *gzip.Writer
+		pool   *sync.Pool
+	)
+
+	switch level {
+	case CompressionLevelDefault:
+		pool = &gzipWriterPool
+	case 1:
+		pool = &gzipWriterPoolForCompressionLevel1
+	case 2:
+		pool = &gzipWriterPoolForCompressionLevel2
+	case 3:
+		pool = &gzipWriterPoolForCompressionLevel3
+	case 4:
+		pool = &gzipWriterPoolForCompressionLevel4
+	case 5:
+		pool = &gzipWriterPoolForCompressionLevel5
+	case 6:
+		pool = &gzipWriterPoolForCompressionLevel6
+	case 7:
+		pool = &gzipWriterPoolForCompressionLevel7
+	case 8:
+		pool = &gzipWriterPoolForCompressionLevel8
+	case 9:
+		pool = &gzipWriterPoolForCompressionLevel9
+	default:
+		var err error
+		writer, err = gzip.NewWriterLevel(&buf, level)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if pool != nil {
+		writer = pool.Get().(*gzip.Writer)
+		writer.Reset(&buf)
+		defer pool.Put(writer)
+	}
+	if _, err := writer.Write(data); err != nil {
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func lz4Compress(data []byte) ([]byte, error) {
+	writer := lz4WriterPool.Get().(*lz4.Writer)
+	defer lz4WriterPool.Put(writer)
+
+	var buf bytes.Buffer
+	writer.Reset(&buf)
+	if _, err := writer.Write(data); err != nil {
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }

@@ -11,6 +11,7 @@ import (
 
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -40,6 +41,7 @@ const emptyStats = `{
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
+			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
 			"chunk" :{
 				"compressedBytes": 0,
@@ -64,6 +66,7 @@ const emptyStats = `{
 				"prePredicateDecompressedRows": 0,
 				"prePredicateDecompressedBytes": 0,
 				"prePredicateDecompressedStructuredMetadataBytes": 0,
+				"totalPageDownloadTime": 0,
 				"totalRowsAvailable": 0
 			}
 		},
@@ -80,6 +83,7 @@ const emptyStats = `{
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
+			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
 			"chunk" :{
 				"compressedBytes": 0,
@@ -104,6 +108,7 @@ const emptyStats = `{
 				"prePredicateDecompressedRows": 0,
 				"prePredicateDecompressedBytes": 0,
 				"prePredicateDecompressedStructuredMetadataBytes": 0,
+				"totalPageDownloadTime": 0,
 				"totalRowsAvailable": 0
 			}
 		}
@@ -689,7 +694,6 @@ func Test_QueryResponseMarshalLoop(t *testing.T) {
 
 		err = json.Unmarshal(bytes, &expected)
 		require.NoError(t, err)
-
 		require.Equalf(t, q, expected, "Query Marshal Loop %d failed", i)
 	}
 }
@@ -932,17 +936,14 @@ func (w wrappedValue) Generate(rand *rand.Rand, _ int) reflect.Value {
 
 	switch t {
 	case loghttp.ResultTypeMatrix:
-		s, _ := quick.Value(reflect.TypeOf(promql.Series{}), rand)
-		series, _ := s.Interface().(promql.Series)
-
-		l, _ := quick.Value(reflect.TypeOf(labels.Labels{}), rand)
-		series.Metric = l.Interface().(labels.Labels)
-
+		series := randSeries(rand)
 		matrix := promql.Matrix{series}
 		return reflect.ValueOf(wrappedValue{matrix})
+
 	case loghttp.ResultTypeScalar:
 		q, _ := quick.Value(reflect.TypeOf(promql.Scalar{}), rand)
 		return reflect.ValueOf(wrappedValue{q.Interface().(parser.Value)})
+
 	case loghttp.ResultTypeStream:
 		var streams logqlmodel.Streams
 		for i := 0; i < rand.Intn(100); i++ {
@@ -955,14 +956,11 @@ func (w wrappedValue) Generate(rand *rand.Rand, _ int) reflect.Value {
 			streams = append(streams, stream)
 		}
 		return reflect.ValueOf(wrappedValue{streams})
+
 	case loghttp.ResultTypeVector:
 		var vector promql.Vector
 		for i := 0; i < rand.Intn(100); i++ {
-			v, _ := quick.Value(reflect.TypeOf(promql.Sample{}), rand)
-			sample, _ := v.Interface().(promql.Sample)
-
-			l, _ := quick.Value(reflect.TypeOf(labels.Labels{}), rand)
-			sample.Metric = l.Interface().(labels.Labels)
+			sample := randSample(rand)
 			vector = append(vector, sample)
 		}
 		return reflect.ValueOf(wrappedValue{vector})
@@ -991,6 +989,22 @@ func randLabel(rand *rand.Rand) labels.Label {
 	return label
 }
 
+func randSeries(rand *rand.Rand) promql.Series {
+	var (
+		seriesMetric      = randLabels(rand)
+		seriesFPoints, _  = quick.Value(reflect.TypeOf([]promql.FPoint{}), rand)
+		seriesHPoints, _  = quick.Value(reflect.TypeOf([]promql.HPoint{}), rand)
+		seriesDropName, _ = quick.Value(reflect.TypeOf(bool(false)), rand)
+	)
+
+	return promql.Series{
+		Metric:     seriesMetric,
+		Floats:     seriesFPoints.Interface().([]promql.FPoint),
+		Histograms: seriesHPoints.Interface().([]promql.HPoint),
+		DropName:   seriesDropName.Interface().(bool),
+	}
+}
+
 func randLabels(rand *rand.Rand) labels.Labels {
 	nLabels := rand.Intn(100)
 	b := labels.NewScratchBuilder(nLabels)
@@ -1011,6 +1025,25 @@ func randEntries(rand *rand.Rand) []logproto.Entry {
 	}
 
 	return entries
+}
+
+func randSample(rand *rand.Rand) promql.Sample {
+	var (
+		sampleT, _        = quick.Value(reflect.TypeOf(int64(0)), rand)
+		sampleF, _        = quick.Value(reflect.TypeOf(float64(0)), rand)
+		sampleH, _        = quick.Value(reflect.TypeOf((*histogram.FloatHistogram)(nil)), rand)
+		sampleMetric      = randLabels(rand)
+		sampleDropName, _ = quick.Value(reflect.TypeOf(bool(false)), rand)
+	)
+
+	return promql.Sample{
+		T: sampleT.Interface().(int64),
+		F: sampleF.Interface().(float64),
+		H: sampleH.Interface().(*histogram.FloatHistogram),
+
+		Metric:   sampleMetric,
+		DropName: sampleDropName.Interface().(bool),
+	}
 }
 
 func Test_EncodeResult_And_ResultValue_Parity(t *testing.T) {

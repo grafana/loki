@@ -22,18 +22,39 @@ type Heap[T any] struct {
 
 // Push adds v into the heap. If the heap is full, v is added only if it is
 // larger than the smallest value in the heap.
-func (h *Heap[T]) Push(v T) {
+//
+// Push returns the result of the operation:
+//
+// - [PushResultNone] if h is full and v is too small to be added,
+// - [PushResultPushed] if h wasn't full and v was added, or
+// - [PushResultReplaced] if h was full and v replaced the smallest value.
+//
+// If Push returns [PushResultReplaced], the previous smallest value is
+// returned in prev. Otherwise, prev is the zero value for T.
+func (h *Heap[T]) Push(v T) (res PushResult, prev T) {
 	if h.Limit == 0 || len(h.values) < h.Limit {
 		heap.Push(h.impl(), v)
-		return
+		return PushResultPushed, prev
 	}
 
 	// h.values[0] is always the smallest value in the heap.
 	if h.Less(h.values[0], v) {
-		_ = heap.Pop(h.impl())
+		prev = heap.Pop(h.impl()).(T)
 		heap.Push(h.impl(), v)
+		return PushResultReplaced, prev
 	}
+
+	return PushResultNone, prev
 }
+
+// PushResult describes the result of a [Heap.Push] operation.
+type PushResult int
+
+const (
+	PushResultNone     PushResult = iota // PushResultNone indicates that the heap was unchanged.
+	PushResultPushed                     // PushResultPushed indicates that a value was added without removing existing values.
+	PushResultReplaced                   // PushResultReplaced indicates that the smallest value was replaced with a new value.
+)
 
 // Pop removes and returns the minimum element from the heap. Pop returns the
 // zero value for T and false if the heap is empty.

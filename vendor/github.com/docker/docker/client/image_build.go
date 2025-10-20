@@ -1,4 +1,4 @@
-package client // import "github.com/docker/docker/client"
+package client
 
 import (
 	"context"
@@ -40,7 +40,7 @@ func (cli *Client) ImageBuild(ctx context.Context, buildContext io.Reader, optio
 
 	return build.ImageBuildResponse{
 		Body:   resp.Body,
-		OSType: getDockerOS(resp.Header.Get("Server")),
+		OSType: resp.Header.Get("Ostype"),
 	}, nil
 }
 

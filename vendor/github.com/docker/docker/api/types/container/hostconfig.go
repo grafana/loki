@@ -1,4 +1,4 @@
-package container // import "github.com/docker/docker/api/types/container"
+package container
 
 import (
 	"errors"
@@ -394,7 +394,12 @@ type Resources struct {
 
 	// KernelMemory specifies the kernel memory limit (in bytes) for the container.
 	// Deprecated: kernel 5.4 deprecated kmem.limit_in_bytes.
-	KernelMemory      int64     `json:",omitempty"`
+	KernelMemory int64 `json:",omitempty"`
+	// Hard limit for kernel TCP buffer memory (in bytes).
+	//
+	// Deprecated: This field is deprecated and will be removed in the next release.
+	// Starting with 6.12, the kernel has deprecated kernel memory tcp accounting
+	// for cgroups v1.
 	KernelMemoryTCP   int64     `json:",omitempty"` // Hard limit for kernel TCP buffer memory (in bytes)
 	MemoryReservation int64     // Memory soft limit (in bytes)
 	MemorySwap        int64     // Total memory usage (memory + swap); set `-1` to enable unlimited swap

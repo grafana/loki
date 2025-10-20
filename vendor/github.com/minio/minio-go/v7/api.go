@@ -43,12 +43,11 @@ import (
 	md5simd "github.com/minio/md5-simd"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/minio/minio-go/v7/pkg/kvcache"
+	"github.com/minio/minio-go/v7/pkg/peeker"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 	"github.com/minio/minio-go/v7/pkg/signer"
 	"github.com/minio/minio-go/v7/pkg/singleflight"
 	"golang.org/x/net/publicsuffix"
-
-	internalutils "github.com/minio/minio-go/v7/pkg/utils"
 )
 
 // Client implements Amazon S3 compatible methods.
@@ -163,7 +162,7 @@ type Options struct {
 // Global constants.
 const (
 	libraryName    = "minio-go"
-	libraryVersion = "v7.0.94"
+	libraryVersion = "v7.0.95"
 )
 
 // User Agent should always following the below style.
@@ -625,7 +624,7 @@ func (c *Client) do(req *http.Request) (resp *http.Response, err error) {
 //   - Return the error XML bytes if an error is found
 //   - Make sure to always restablish the whole http response stream before returning
 func tryParseErrRespFromBody(resp *http.Response) ([]byte, error) {
-	peeker := internalutils.NewPeekReadCloser(resp.Body, 5*humanize.MiByte)
+	peeker := peeker.NewPeekReadCloser(resp.Body, 5*humanize.MiByte)
 	defer func() {
 		peeker.ReplayFromStart()
 		resp.Body = peeker

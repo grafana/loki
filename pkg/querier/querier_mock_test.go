@@ -21,7 +21,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	grpc_metadata "google.golang.org/grpc/metadata"
 
-	"github.com/grafana/loki/v3/pkg/compactor/deletion"
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 	"github.com/grafana/loki/v3/pkg/distributor/clientpool"
 	"github.com/grafana/loki/v3/pkg/ingester/client"
 	"github.com/grafana/loki/v3/pkg/iter"
@@ -354,6 +354,14 @@ func (s *storeMock) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
 }
 
+func (s *storeMock) HasChunkSizingInfo(_, _ model.Time) bool {
+	return false
+}
+
+func (s *storeMock) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	return nil, nil
+}
+
 func (s *storeMock) Volume(ctx context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, _ string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	args := s.Called(ctx, userID, from, through, targetLabels, matchers)
 	return args.Get(0).(*logproto.VolumeResponse), args.Error(1)
@@ -607,7 +615,7 @@ func mockLogfmtStreamWithLabels(_ int, quantity int, lbls string) logproto.Strea
 		streamLabels = labels.EmptyLabels()
 	}
 
-	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, labels.StableHash(streamLabels))
 	logFmtParser := log.NewLogfmtParser(false, false)
 
 	// used for detected fields queries which are always BACKWARD
@@ -667,7 +675,7 @@ func mockLogfmtStreamWithLabelsAndStructuredMetadata(
 		streamLabels = labels.EmptyLabels()
 	}
 
-	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, streamLabels.Hash())
+	lblBuilder := log.NewBaseLabelsBuilder().ForLabels(streamLabels, labels.StableHash(streamLabels))
 	logFmtParser := log.NewLogfmtParser(false, false)
 
 	for i := quantity; i > 0; i-- {
@@ -727,6 +735,10 @@ func (q *querierMock) GetShards(_ context.Context, _ string, _, _ model.Time, _ 
 
 func (q *querierMock) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
+}
+
+func (q *querierMock) HasChunkSizingInfo(_, _ model.Time) bool {
+	return false
 }
 
 func (q *querierMock) IndexShards(_ context.Context, _ *loghttp.RangeQuery, _ uint64) (*logproto.ShardsResponse, error) {
@@ -837,10 +849,10 @@ func newMockEngineWithPatterns(patterns []string) logql.Engine {
 	matrix := promql.Matrix{}
 	for _, pattern := range patterns {
 		matrix = append(matrix, promql.Series{
-			Metric: labels.Labels{
-				{Name: "service_name", Value: "test-service"},
-				{Name: "decoded_pattern", Value: pattern},
-			},
+			Metric: labels.New(
+				labels.Label{Name: "service_name", Value: "test-service"},
+				labels.Label{Name: "decoded_pattern", Value: pattern},
+			),
 			Floats: []promql.FPoint{
 				{T: time.Now().UnixMilli(), F: 100},
 			},
@@ -865,10 +877,10 @@ func newMockEngineWithPatternsAndTimestamps(patternSamples []patternSample) logq
 	matrix := promql.Matrix{}
 	for _, ps := range patternSamples {
 		matrix = append(matrix, promql.Series{
-			Metric: labels.Labels{
-				{Name: "service_name", Value: "test-service"},
-				{Name: "decoded_pattern", Value: ps.pattern},
-			},
+			Metric: labels.New(
+				labels.Label{Name: "service_name", Value: "test-service"},
+				labels.Label{Name: "decoded_pattern", Value: ps.pattern},
+			),
 			Floats: []promql.FPoint{
 				{T: ps.timestamp, F: float64(ps.value)},
 			},
@@ -902,10 +914,10 @@ func (tl mockTenantLimits) AllByUserID() map[string]*validation.Limits {
 
 type mockDeleteGettter struct {
 	user    string
-	results []deletion.DeleteRequest
+	results []deletionproto.DeleteRequest
 }
 
-func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]deletion.DeleteRequest, error) {
+func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]deletionproto.DeleteRequest, error) {
 	d.user = userID
 	return d.results, nil
 }

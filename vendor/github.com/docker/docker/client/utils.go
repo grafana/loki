@@ -1,4 +1,4 @@
-package client // import "github.com/docker/docker/client"
+package client
 
 import (
 	"encoding/json"
@@ -8,11 +8,8 @@ import (
 
 	cerrdefs "github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/internal/lazyregexp"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
-
-var headerRegexp = lazyregexp.New(`\ADocker/.+\s\((.+)\)\z`)
 
 type emptyIDError string
 
@@ -25,20 +22,10 @@ func (e emptyIDError) Error() string {
 // trimID trims the given object-ID / name, returning an error if it's empty.
 func trimID(objType, id string) (string, error) {
 	id = strings.TrimSpace(id)
-	if len(id) == 0 {
+	if id == "" {
 		return "", emptyIDError(objType)
 	}
 	return id, nil
-}
-
-// getDockerOS returns the operating system based on the server header from the daemon.
-func getDockerOS(serverHeader string) string {
-	var osType string
-	matches := headerRegexp.FindStringSubmatch(serverHeader)
-	if len(matches) > 0 {
-		osType = matches[1]
-	}
-	return osType
 }
 
 // getFiltersQuery returns a url query with "filters" query term, based on the

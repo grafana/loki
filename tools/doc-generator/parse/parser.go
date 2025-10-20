@@ -370,27 +370,27 @@ func getFieldName(field reflect.StructField) string {
 func getFieldCustomType(t reflect.Type) (string, bool) {
 	// Handle custom data types used in the config
 	switch t.String() {
-	case reflect.TypeOf(&url.URL{}).String():
+	case reflect.TypeFor[*url.URL]().String():
 		return "url", true
-	case reflect.TypeOf(time.Duration(0)).String():
+	case reflect.TypeFor[time.Duration]().String():
 		return "duration", true
-	case reflect.TypeOf(storage_config.DayTime{}).String():
+	case reflect.TypeFor[storage_config.DayTime]().String():
 		return "daytime", true
-	case reflect.TypeOf(flagext.StringSliceCSV{}).String():
+	case reflect.TypeFor[flagext.StringSliceCSV]().String():
 		return fieldString, true
-	case reflect.TypeOf(flagext.CIDRSliceCSV{}).String():
+	case reflect.TypeFor[flagext.CIDRSliceCSV]().String():
 		return fieldString, true
-	case reflect.TypeOf([]*util.RelabelConfig{}).String():
+	case reflect.TypeFor[[]*util.RelabelConfig]().String():
 		return fieldRelabelConfig, true
-	case reflect.TypeOf([]*relabel.Config{}).String():
+	case reflect.TypeFor[[]*relabel.Config]().String():
 		return fieldRelabelConfig, true
-	case reflect.TypeOf([]*util_validation.BlockedQuery{}).String():
+	case reflect.TypeFor[[]*util_validation.BlockedQuery]().String():
 		return "blocked_query...", true
-	case reflect.TypeOf([]*prometheus_config.RemoteWriteConfig{}).String():
+	case reflect.TypeFor[[]*prometheus_config.RemoteWriteConfig]().String():
 		return "remote_write_config...", true
-	case reflect.TypeOf(storage_config.PeriodConfig{}).String():
+	case reflect.TypeFor[storage_config.PeriodConfig]().String():
 		return "period_config", true
-	case reflect.TypeOf(validation.OverwriteMarshalingStringMap{}).String():
+	case reflect.TypeFor[validation.OverwriteMarshalingStringMap]().String():
 		return "headers", true
 	default:
 		return "", false
@@ -463,25 +463,25 @@ func getFieldType(t reflect.Type, rootBlocks []RootBlock) (string, error) {
 func getCustomFieldType(t reflect.Type) (string, bool) {
 	// Handle custom data types used in the config
 	switch t.String() {
-	case reflect.TypeOf(&url.URL{}).String():
+	case reflect.TypeFor[*url.URL]().String():
 		return "url", true
-	case reflect.TypeOf(time.Duration(0)).String():
+	case reflect.TypeFor[time.Duration]().String():
 		return "duration", true
-	case reflect.TypeOf(storage_config.DayTime{}).String():
+	case reflect.TypeFor[storage_config.DayTime]().String():
 		return "daytime", true
-	case reflect.TypeOf(flagext.StringSliceCSV{}).String():
+	case reflect.TypeFor[flagext.StringSliceCSV]().String():
 		return fieldString, true
-	case reflect.TypeOf(flagext.CIDRSliceCSV{}).String():
+	case reflect.TypeFor[flagext.CIDRSliceCSV]().String():
 		return fieldString, true
-	case reflect.TypeOf([]*relabel.Config{}).String():
+	case reflect.TypeFor[[]*relabel.Config]().String():
 		return fieldRelabelConfig, true
-	case reflect.TypeOf([]*util.RelabelConfig{}).String():
+	case reflect.TypeFor[[]*util.RelabelConfig]().String():
 		return fieldRelabelConfig, true
-	case reflect.TypeOf(&prometheus_config.RemoteWriteConfig{}).String():
+	case reflect.TypeFor[*prometheus_config.RemoteWriteConfig]().String():
 		return "remote_write_config...", true
-	case reflect.TypeOf(validation.OverwriteMarshalingStringMap{}).String():
+	case reflect.TypeFor[validation.OverwriteMarshalingStringMap]().String():
 		return "headers", true
-	case reflect.TypeOf(relabel.Regexp{}).String():
+	case reflect.TypeFor[relabel.Regexp]().String():
 		return fieldString, true
 	default:
 		return "", false
@@ -514,7 +514,7 @@ func getFieldExample(fieldKey string, fieldType reflect.Type) *FieldExample {
 }
 
 func getCustomFieldEntry(cfg interface{}, field reflect.StructField, fieldValue reflect.Value, flags map[uintptr]*flag.Flag) (*ConfigEntry, error) {
-	if field.Type == reflect.TypeOf(log.Level{}) {
+	if field.Type == reflect.TypeFor[log.Level]() {
 		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
 		if err != nil || fieldFlag == nil {
 			return nil, err
@@ -530,7 +530,7 @@ func getCustomFieldEntry(cfg interface{}, field reflect.StructField, fieldValue 
 			FieldDefault: getFieldDefault(field, fieldFlag.DefValue),
 		}, nil
 	}
-	if field.Type == reflect.TypeOf(flagext.URLValue{}) {
+	if field.Type == reflect.TypeFor[flagext.URLValue]() {
 		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
 		if err != nil || fieldFlag == nil {
 			return nil, err
@@ -546,7 +546,7 @@ func getCustomFieldEntry(cfg interface{}, field reflect.StructField, fieldValue 
 			FieldDefault: getFieldDefault(field, fieldFlag.DefValue),
 		}, nil
 	}
-	if field.Type == reflect.TypeOf(flagext.Secret{}) {
+	if field.Type == reflect.TypeFor[flagext.Secret]() {
 		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
 		if err != nil || fieldFlag == nil {
 			return nil, err
@@ -562,7 +562,7 @@ func getCustomFieldEntry(cfg interface{}, field reflect.StructField, fieldValue 
 			FieldDefault: getFieldDefault(field, fieldFlag.DefValue),
 		}, nil
 	}
-	if field.Type == reflect.TypeOf(model.Duration(0)) {
+	if field.Type == reflect.TypeFor[model.Duration]() {
 		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
 		if err != nil || fieldFlag == nil {
 			return nil, err
@@ -578,7 +578,7 @@ func getCustomFieldEntry(cfg interface{}, field reflect.StructField, fieldValue 
 			FieldDefault: getFieldDefault(field, fieldFlag.DefValue),
 		}, nil
 	}
-	if field.Type == reflect.TypeOf(flagext.Time{}) {
+	if field.Type == reflect.TypeFor[flagext.Time]() {
 		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
 		if err != nil || fieldFlag == nil {
 			return nil, err

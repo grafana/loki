@@ -94,10 +94,10 @@ func (s SelectLogParams) String() string {
 // LogSelector returns the LogSelectorExpr from the SelectParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectLogParams) LogSelector() (syntax.LogSelectorExpr, error) {
-	if s.QueryRequest.Plan == nil {
+	if s.Plan == nil {
 		return nil, errors.New("query plan is empty")
 	}
-	expr, ok := s.QueryRequest.Plan.AST.(syntax.LogSelectorExpr)
+	expr, ok := s.Plan.AST.(syntax.LogSelectorExpr)
 	if !ok {
 		return nil, errors.New("only log selector is supported")
 	}
@@ -117,10 +117,10 @@ func (s SelectSampleParams) WithStoreChunks(chunkRefGroup *logproto.ChunkRefGrou
 // Expr returns the SampleExpr from the SelectSampleParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectSampleParams) Expr() (syntax.SampleExpr, error) {
-	if s.SampleQueryRequest.Plan == nil {
+	if s.Plan == nil {
 		return nil, errors.New("query plan is empty")
 	}
-	expr, ok := s.SampleQueryRequest.Plan.AST.(syntax.SampleExpr)
+	expr, ok := s.Plan.AST.(syntax.SampleExpr)
 	if !ok {
 		return nil, errors.New("only sample expression supported")
 	}
@@ -160,19 +160,12 @@ type EngineOpts struct {
 	// MaxCountMinSketchHeapSize is the maximum number of labels the heap for a topk query using a count min sketch
 	// can track. This impacts the memory usage and accuracy of a sharded probabilistic topk query.
 	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
-
-	// Enable the next generation Loki Query Engine for supported queries.
-	EnableV2Engine bool `yaml:"enable_v2_engine" category:"experimental"`
-
-	// Batch size of the v2 execution engine.
-	BatchSize int `yaml:"batch_size" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
-	f.BoolVar(&opts.EnableV2Engine, prefix+"enable-v2-engine", false, "Experimental: Enable next generation query engine for supported queries.")
-	f.IntVar(&opts.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
+
 	// Log executing query by default
 	opts.LogExecutingQuery = true
 }
@@ -424,7 +417,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 			if rae, ok := expr.(*syntax.RangeAggregationExpr); ok && (rae.Operation == syntax.OpRangeTypeFirstWithTimestamp || rae.Operation == syntax.OpRangeTypeLastWithTimestamp) {
 				mfl = true
 			}
-			return q.JoinSampleVector(next, vec, stepEvaluator, maxSeries, mfl)
+			return q.JoinSampleVector(ctx, next, vec, stepEvaluator, maxSeries, mfl)
 		case ProbabilisticQuantileVector:
 			return JoinQuantileSketchVector(next, vec, stepEvaluator, q.params)
 		case CountMinSketchVector:
@@ -439,15 +432,28 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 }
 
 func vectorsToSeries(vec promql.Vector, sm map[uint64]promql.Series) {
+	vectorsToSeriesWithLimit(vec, sm, 0) // 0 means no limit
+}
+
+func vectorsToSeriesWithLimit(vec promql.Vector, sm map[uint64]promql.Series, maxSeries int) bool {
+	limitExceeded := false
 	for _, p := range vec {
 		var (
 			series promql.Series
-			hash   = p.Metric.Hash()
+			hash   = labels.StableHash(p.Metric)
 			ok     bool
 		)
 
 		series, ok = sm[hash]
-		if !ok {
+
+		// create a new series if under the limit
+		if !ok && !limitExceeded {
+			// Check if adding a new series would exceed the limit
+			if maxSeries > 0 && len(sm) >= maxSeries {
+				// We've reached the series limit, skip adding new series
+				limitExceeded = true
+				continue
+			}
 			series = promql.Series{
 				Metric: p.Metric,
 				Floats: make([]promql.FPoint, 0, 1),
@@ -460,6 +466,7 @@ func vectorsToSeries(vec promql.Vector, sm map[uint64]promql.Series) {
 		})
 		sm[hash] = series
 	}
+	return limitExceeded
 }
 
 func multiVariantVectorsToSeries(ctx context.Context, maxSeries int, vec promql.Vector, sm map[string]map[uint64]promql.Series, skippedVariants map[string]struct{}) int {
@@ -469,7 +476,7 @@ func multiVariantVectorsToSeries(ctx context.Context, maxSeries int, vec promql.
 	for _, p := range vec {
 		var (
 			series promql.Series
-			hash   = p.Metric.Hash()
+			hash   = labels.StableHash(p.Metric)
 			ok     bool
 		)
 
@@ -518,17 +525,26 @@ func multiVariantVectorsToSeries(ctx context.Context, maxSeries int, vec promql.
 	return count
 }
 
-func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int, mergeFirstLast bool) (promql_parser.Value, error) {
+func (q *query) JoinSampleVector(ctx context.Context, next bool, r StepResult, stepEvaluator StepEvaluator, maxSeries int, mergeFirstLast bool) (promql_parser.Value, error) {
 	vec := promql.Vector{}
 	if next {
 		vec = r.SampleVector()
 	}
+	seriesIndex := map[uint64]promql.Series{}
 
 	// fail fast for the first step or instant query
 	if len(vec) > maxSeries {
-		return nil, logqlmodel.NewSeriesLimitError(maxSeries)
+		if httpreq.IsLogsDrilldownRequest(ctx) {
+			// For Logs Drilldown requests, return partial results with warning
+			vec = vec[:maxSeries]
+			metadata.FromContext(ctx).AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", maxSeries))
+			// Since we've already reached the series limit, skip processing additional steps and add the initial vector to seriesIndex
+			next = false
+			vectorsToSeries(vec, seriesIndex)
+		} else {
+			return nil, logqlmodel.NewSeriesLimitError(maxSeries)
+		}
 	}
-	seriesIndex := map[uint64]promql.Series{}
 
 	if GetRangeType(q.params) == InstantType {
 		// an instant query sharded first/last_over_time can return a single vector
@@ -555,11 +571,23 @@ func (q *query) JoinSampleVector(next bool, r StepResult, stepEvaluator StepEval
 
 	for next {
 		vec = r.SampleVector()
-		vectorsToSeries(vec, seriesIndex)
-		// as we slowly build the full query for each steps, make sure we don't go over the limit of unique series.
-		if len(seriesIndex) > maxSeries {
-			return nil, logqlmodel.NewSeriesLimitError(maxSeries)
+
+		if httpreq.IsLogsDrilldownRequest(ctx) {
+			// For Logs Drilldown requests, use limited vectorsToSeries to prevent exceeding maxSeries
+			limitExceeded := vectorsToSeriesWithLimit(vec, seriesIndex, maxSeries)
+			// If the limit was exceeded (series were skipped), add warning and break
+			if limitExceeded {
+				metadata.FromContext(ctx).AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", maxSeries))
+				break // Break out of the loop to return partial results
+			}
+		} else {
+			// For non-drilldown requests, use unlimited vectorsToSeries and check for hard limit
+			vectorsToSeries(vec, seriesIndex)
+			if len(seriesIndex) > maxSeries {
+				return nil, logqlmodel.NewSeriesLimitError(maxSeries)
+			}
 		}
+
 		next, _, r = stepEvaluator.Next()
 		if stepEvaluator.Error() != nil {
 			return nil, stepEvaluator.Error()

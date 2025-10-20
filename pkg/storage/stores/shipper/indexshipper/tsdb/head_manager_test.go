@@ -70,14 +70,18 @@ func (m *zeroValueLimits) DefaultLimits() *validation.Limits {
 	}
 }
 
-func chunkMetasToChunkRefs(user string, fp uint64, xs index.ChunkMetas) (res []ChunkRef) {
+func chunkMetasToChunkRefs(user string, fp uint64, xs index.ChunkMetas) (res []logproto.ChunkRefWithSizingInfo) {
 	for _, x := range xs {
-		res = append(res, ChunkRef{
-			User:        user,
-			Fingerprint: model.Fingerprint(fp),
-			Start:       x.From(),
-			End:         x.Through(),
-			Checksum:    x.Checksum,
+		res = append(res, logproto.ChunkRefWithSizingInfo{
+			ChunkRef: logproto.ChunkRef{
+				UserID:      user,
+				Fingerprint: fp,
+				From:        x.From(),
+				Through:     x.Through(),
+				Checksum:    x.Checksum,
+			},
+			KB:      x.KB,
+			Entries: x.Entries,
 		})
 	}
 	return
@@ -109,7 +113,7 @@ func Test_TenantHeads_Append(t *testing.T) {
 			Entries:  30,
 		},
 	}
-	_ = h.Append("fake", ls, ls.Hash(), chks)
+	_ = h.Append("fake", ls, labels.StableHash(ls), chks)
 
 	found, err := h.GetChunkRefs(
 		context.Background(),
@@ -120,7 +124,7 @@ func Test_TenantHeads_Append(t *testing.T) {
 		labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
 	)
 	require.Nil(t, err)
-	require.Equal(t, chunkMetasToChunkRefs("fake", ls.Hash(), chks), found)
+	require.Equal(t, chunkMetasToChunkRefs("fake", labels.StableHash(ls), chks), found)
 
 }
 
@@ -144,23 +148,17 @@ func Test_TenantHeads_MultiRead(t *testing.T) {
 	}{
 		{
 			user: "tenant1",
-			ls: append(ls.Copy(), labels.Label{
-				Name:  "tenant",
-				Value: "tenant1",
-			}),
+			ls:   labels.NewBuilder(ls).Set("tenant", "tenant1").Labels(),
 		},
 		{
 			user: "tenant2",
-			ls: append(ls.Copy(), labels.Label{
-				Name:  "tenant",
-				Value: "tenant2",
-			}),
+			ls:   labels.NewBuilder(ls).Set("tenant", "tenant2").Labels(),
 		},
 	}
 
 	// add data for both tenants
 	for _, tenant := range tenants {
-		_ = h.Append(tenant.user, tenant.ls, tenant.ls.Hash(), chks)
+		_ = h.Append(tenant.user, tenant.ls, labels.StableHash(tenant.ls), chks)
 
 	}
 
@@ -175,7 +173,7 @@ func Test_TenantHeads_MultiRead(t *testing.T) {
 			labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
 		)
 		require.Nil(t, err)
-		require.Equal(t, chunkMetasToChunkRefs(tenant.user, tenant.ls.Hash(), chks), found)
+		require.Equal(t, chunkMetasToChunkRefs(tenant.user, labels.StableHash(tenant.ls), chks), found)
 	}
 
 }
@@ -193,7 +191,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 		{
 			User:        "tenant1",
 			Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
-			Fingerprint: mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash(),
+			Fingerprint: labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`)),
 			Chunks: []index.ChunkMeta{
 				{
 					MinTime:  1,
@@ -282,7 +280,7 @@ func Test_HeadManager_RecoverHead_CorruptedWAL(t *testing.T) {
 				for i := 0; i < 1000; i++ {
 					require.Nil(t, w.Log(&WALRecord{
 						UserID:      "tenant1",
-						Fingerprint: mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash(),
+						Fingerprint: labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`)),
 						Series: record.RefSeries{
 							Ref:    chunks.HeadSeriesRef(i),
 							Labels: mustParseLabels(`{foo="bar", bazz="buzz"}`),
@@ -312,7 +310,7 @@ func Test_HeadManager_RecoverHead_CorruptedWAL(t *testing.T) {
 			setupFunc: func(t *testing.T, walPath string, w *headWAL) {
 				require.Nil(t, w.Log(&WALRecord{
 					UserID:      "tenant1",
-					Fingerprint: mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash(),
+					Fingerprint: labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`)),
 					Series: record.RefSeries{
 						Ref:    chunks.HeadSeriesRef(1),
 						Labels: mustParseLabels(`{foo="bar", bazz="buzz"}`),
@@ -394,7 +392,7 @@ func Test_HeadManager_QueryAfterRotate(t *testing.T) {
 		{
 			User:        "tenant1",
 			Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
-			Fingerprint: mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash(),
+			Fingerprint: labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`)),
 			Chunks: []index.ChunkMeta{
 				{
 					MinTime:  1,
@@ -416,7 +414,7 @@ func Test_HeadManager_QueryAfterRotate(t *testing.T) {
 
 	// add data for both tenants
 	for _, tc := range cases {
-		require.Nil(t, mgr.Append(tc.User, tc.Labels, tc.Labels.Hash(), tc.Chunks))
+		require.Nil(t, mgr.Append(tc.User, tc.Labels, labels.StableHash(tc.Labels), tc.Chunks))
 	}
 
 	nextPeriod := time.Now().Add(time.Duration(mgr.period))
@@ -478,7 +476,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 	for i, c := range cases {
 		require.Nil(t, w.Log(&WALRecord{
 			UserID:      c.User,
-			Fingerprint: c.Labels.Hash(),
+			Fingerprint: labels.StableHash(c.Labels),
 			Series: record.RefSeries{
 				Ref:    chunks.HeadSeriesRef(i),
 				Labels: c.Labels,
@@ -510,7 +508,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 
 		lbls := labels.NewBuilder(c.Labels)
 		lbls.Set(TenantLabel, c.User)
-		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Labels.Hash(), c.Chunks), refs)
+		require.Equal(t, chunkMetasToChunkRefs(c.User, labels.StableHash(c.Labels), c.Chunks), refs)
 	}
 
 	// Add data
@@ -530,7 +528,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 		},
 	}
 
-	require.Nil(t, mgr.Append(newCase.User, newCase.Labels, newCase.Labels.Hash(), newCase.Chunks))
+	require.Nil(t, mgr.Append(newCase.User, newCase.Labels, labels.StableHash(newCase.Labels), newCase.Chunks))
 
 	// Ensure old + new data is queryable
 	for _, c := range append(cases, newCase) {
@@ -545,7 +543,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 
 		lbls := labels.NewBuilder(c.Labels)
 		lbls.Set(TenantLabel, c.User)
-		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Labels.Hash(), c.Chunks), refs)
+		require.Equal(t, chunkMetasToChunkRefs(c.User, labels.StableHash(c.Labels), c.Chunks), refs)
 	}
 }
 
@@ -637,7 +635,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 	}{
 		User:        "tenant1",
 		Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
-		Fingerprint: mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash(),
+		Fingerprint: labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`)),
 		Chunks: []index.ChunkMeta{
 			{
 				MinTime:  secondStoreDate.Add(-36 * time.Hour).UnixMilli(),
@@ -696,13 +694,13 @@ func TestBuildLegacyWALs(t *testing.T) {
 				name:           "query-period-1",
 				store:          "period-1",
 				tableRange:     schemaCfg.Configs[0].GetIndexTableNumberRange(config.DayTime{Time: timeToModelTime(secondStoreDate.Add(-time.Millisecond))}),
-				expectedChunks: chunkMetasToLogProtoChunkRefs(c.User, c.Labels.Hash(), c.Chunks[:2]),
+				expectedChunks: chunkMetasToLogProtoChunkRefs(c.User, labels.StableHash(c.Labels), c.Chunks[:2]),
 			},
 			{
 				name:           "query-period-2",
 				store:          "period-2",
 				tableRange:     schemaCfg.Configs[1].GetIndexTableNumberRange(config.DayTime{Time: math.MaxInt64}),
-				expectedChunks: chunkMetasToLogProtoChunkRefs(c.User, c.Labels.Hash(), c.Chunks[1:]),
+				expectedChunks: chunkMetasToLogProtoChunkRefs(c.User, labels.StableHash(c.Labels), c.Chunks[1:]),
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
@@ -756,7 +754,7 @@ func BenchmarkTenantHeads(b *testing.B) {
 			for i := 0; i < 1000; i++ {
 				tenant := i % nTenants
 				ls := mustParseLabels(fmt.Sprintf(`{foo="bar", i="%d"}`, i))
-				heads.Append(fmt.Sprint(tenant), ls, ls.Hash(), index.ChunkMetas{
+				heads.Append(fmt.Sprint(tenant), ls, labels.StableHash(ls), index.ChunkMetas{
 					{},
 				})
 			}
@@ -767,7 +765,7 @@ func BenchmarkTenantHeads(b *testing.B) {
 					wg.Add(1)
 					go func(r int) {
 						defer wg.Done()
-						var res []ChunkRef
+						var res []logproto.ChunkRefWithSizingInfo
 						tenant := r % nTenants
 
 						// nolint:ineffassign,staticcheck

@@ -37,11 +37,11 @@ func (q ProbabilisticQuantileVector) Merge(right ProbabilisticQuantileVector) (P
 		streamHashPool.Put(groups)
 	}()
 	for i, sample := range q {
-		groups[sample.Metric.Hash()] = i
+		groups[labels.StableHash(sample.Metric)] = i
 	}
 
 	for _, sample := range right {
-		i, ok := groups[sample.Metric.Hash()]
+		i, ok := groups[labels.StableHash(sample.Metric)]
 		if !ok {
 			q = append(q, sample)
 			continue

@@ -56,13 +56,13 @@ type parser struct {
 }
 
 func (p *parser) Parse() (Expr, error) {
-	p.lexer.errs = p.lexer.errs[:0]
-	p.lexer.Scanner.Error = func(_ *Scanner, msg string) {
-		p.lexer.Error(msg)
+	p.errs = p.errs[:0]
+	p.Scanner.Error = func(_ *Scanner, msg string) {
+		p.Error(msg)
 	}
 	e := p.p.Parse(p)
-	if e != 0 || len(p.lexer.errs) > 0 {
-		return nil, p.lexer.errs[0]
+	if e != 0 || len(p.errs) > 0 {
+		return nil, p.errs[0]
 	}
 	return p.expr, nil
 }
@@ -99,8 +99,8 @@ func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 	p := parserPool.Get().(*parser)
 	defer parserPool.Put(p)
 
-	p.Reader.Reset(input)
-	p.lexer.Init(p.Reader)
+	p.Reset(input)
+	p.Init(p.Reader)
 	return p.Parse()
 }
 
@@ -220,6 +220,11 @@ func validateSampleExpr(expr SampleExpr) error {
 			if err := validateSortGrouping(e.Grouping); err != nil {
 				return err
 			}
+		}
+		return validateSampleExpr(e.Left)
+	case *LabelReplaceExpr:
+		if e.err != nil {
+			return e.err
 		}
 		return validateSampleExpr(e.Left)
 	default:

@@ -12,10 +12,13 @@ import (
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
+	dskit_log "github.com/grafana/dskit/log"
+	dskit_server "github.com/grafana/dskit/server"
 	"github.com/prometheus/common/config"
 	"github.com/prometheus/common/version"
 
 	"github.com/grafana/loki/v3/pkg/logcli/client"
+	"github.com/grafana/loki/v3/pkg/logcli/delete"
 	"github.com/grafana/loki/v3/pkg/logcli/detected"
 	"github.com/grafana/loki/v3/pkg/logcli/index"
 	"github.com/grafana/loki/v3/pkg/logcli/labelquery"
@@ -25,6 +28,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/logcli/volume"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	_ "github.com/grafana/loki/v3/pkg/util/build"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 var (
@@ -34,6 +38,7 @@ var (
 		Default("false").
 		Short('q').
 		Bool()
+	logLevel   = app.Flag("log.level", "Log level").Default("error").Enum("error", "warning", "info", "debug")
 	statistics = app.Flag("stats", "Show query statistics").Default("false").Bool()
 	outputMode = app.Flag("output", "Specify output mode [default, raw, jsonl]. raw suppresses log labels and timestamp.").
 			Default("default").
@@ -315,12 +320,50 @@ The query is limited to processing 1000 lines per subquery; use --line-limit to 
 `)
 
 	detectedFieldsQuery = newDetectedFieldsQuery(detectedFieldsCmd)
+
+	deleteCmd = app.Command("delete", "Manage log deletion requests.")
+
+	deleteCreateCmd = deleteCmd.Command("create", `Create a new log deletion request.
+
+The "delete create" command creates a new log deletion request for the specified query and time range.
+
+Example:
+
+	logcli delete create '{job="app"}' --from="2023-01-01T00:00:00Z" --to="2023-01-02T00:00:00Z"
+`)
+	deleteCreateQuery = newDeleteCreateQuery(deleteCreateCmd)
+
+	deleteListCmd = deleteCmd.Command("list", `List existing log deletion requests.
+
+The "delete list" command lists all existing log deletion requests for the tenant.
+
+Example:
+
+	logcli delete list
+	logcli delete list --output=json
+`)
+	deleteListQuery = newDeleteListQuery(deleteListCmd)
+
+	deleteCancelCmd = deleteCmd.Command("cancel", `Cancel a log deletion request.
+
+The "delete cancel" command cancels an existing log deletion request by ID.
+
+Example:
+
+	logcli delete cancel --request-id="abc123"
+	logcli delete cancel --request-id="abc123" --force
+`)
+	deleteCancelQuery = newDeleteCancelQuery(deleteCancelCmd)
 )
 
 func main() {
 	log.SetOutput(os.Stderr)
 
 	cmd := kingpin.MustParse(app.Parse(os.Args[1:]))
+
+	var dLevel dskit_log.Level
+	_ = dLevel.Set(*logLevel)
+	util_log.InitLogger(&dskit_server.Config{LogLevel: dLevel}, nil, true)
 
 	if cpuProfile != nil && *cpuProfile != "" {
 		cpuFile, err := os.Create(*cpuProfile)
@@ -471,6 +514,24 @@ func main() {
 		}
 	case detectedFieldsCmd.FullCommand():
 		detectedFieldsQuery.Do(queryClient, *outputMode)
+	case deleteCreateCmd.FullCommand():
+		if err := deleteCreateQuery.CreateQuery(queryClient); err != nil {
+			log.Fatalf("Error creating delete request: %s", err)
+		}
+	case deleteListCmd.FullCommand():
+		if *outputMode == "jsonl" {
+			if err := deleteListQuery.ListQueryJSON(queryClient); err != nil {
+				log.Fatalf("Error listing delete requests: %s", err)
+			}
+		} else {
+			if err := deleteListQuery.ListQuery(queryClient); err != nil {
+				log.Fatalf("Error listing delete requests: %s", err)
+			}
+		}
+	case deleteCancelCmd.FullCommand():
+		if err := deleteCancelQuery.CancelQuery(queryClient, deleteCancelQuery.RequestID, deleteCancelQuery.Force); err != nil {
+			log.Fatalf("Error cancelling delete request: %s", err)
+		}
 	}
 }
 
@@ -778,6 +839,57 @@ func newDetectedFieldsQuery(cmd *kingpin.CmdClause) *detected.FieldsQuery {
 	cmd.Flag("step", "Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.").
 		Default("10s").
 		DurationVar(&q.Step)
+
+	return q
+}
+
+func newDeleteCreateQuery(cmd *kingpin.CmdClause) *delete.Query {
+	var from, to string
+	var since time.Duration
+
+	q := &delete.Query{}
+
+	cmd.Action(func(_ *kingpin.ParseContext) error {
+		defaultEnd := time.Now()
+		defaultStart := defaultEnd.Add(-since)
+
+		q.Start = mustParse(from, defaultStart)
+		q.End = mustParse(to, defaultEnd)
+		q.Quiet = *quiet
+
+		return nil
+	})
+
+	cmd.Arg("query", "LogQL query to match log lines for deletion (e.g. '{job=\"app\"}')").Required().StringVar(&q.QueryString)
+	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
+	cmd.Flag("from", "Start time for deletion (inclusive)").StringVar(&from)
+	cmd.Flag("to", "End time for deletion (exclusive)").StringVar(&to)
+	cmd.Flag("max-interval", "Maximum time interval for delete request").StringVar(&q.MaxInterval)
+
+	return q
+}
+
+func newDeleteListQuery(cmd *kingpin.CmdClause) *delete.Query {
+	q := &delete.Query{}
+
+	cmd.Action(func(_ *kingpin.ParseContext) error {
+		q.Quiet = *quiet
+		return nil
+	})
+
+	return q
+}
+
+func newDeleteCancelQuery(cmd *kingpin.CmdClause) *delete.Query {
+	q := &delete.Query{}
+
+	cmd.Action(func(_ *kingpin.ParseContext) error {
+		q.Quiet = *quiet
+		return nil
+	})
+
+	cmd.Flag("request-id", "ID of the delete request to cancel").Required().StringVar(&q.RequestID)
+	cmd.Flag("force", "Force cancellation of partially completed request").BoolVar(&q.Force)
 
 	return q
 }

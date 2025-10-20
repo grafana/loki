@@ -184,7 +184,7 @@ func TestGetStreamRates(t *testing.T) {
 			l = makeRandomLabels()
 		}
 		uniqueLabels[l.String()] = true
-		labelsByHash[l.Hash()] = l
+		labelsByHash[labels.StableHash(l)] = l
 
 		wg.Add(1)
 		go func(labels string) {
@@ -276,7 +276,7 @@ func TestSyncPeriod(t *testing.T) {
 	require.NoError(t, err)
 
 	// let's verify results
-	s, err := inst.getOrCreateStream(context.Background(), pr.Streams[0], recordPool.GetRecord())
+	s, err := inst.getOrCreateStream(context.Background(), pr.Streams[0], recordPool.GetRecord(), "loki")
 	require.NoError(t, err)
 
 	// make sure each chunk spans max 'sync period' time
@@ -318,11 +318,11 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 
 	retentionHours := util.RetentionHours(tenantsRetention.RetentionPeriodFor("test", labels.EmptyLabels()))
 	for _, testStream := range testStreams {
-		stream, err := instance.getOrCreateStream(context.Background(), testStream, recordPool.GetRecord())
+		stream, err := instance.getOrCreateStream(context.Background(), testStream, recordPool.GetRecord(), "loki")
 		require.NoError(t, err)
 		chunkfmt, headfmt, err := instance.chunkFormatAt(minTs(&testStream))
 		require.NoError(t, err)
-		chunk := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", 0, labels.EmptyLabels(), true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours).NewChunk()
+		chunk := newStream(chunkfmt, headfmt, cfg, limiter.rateLimitStrategy, "fake", 0, labels.EmptyLabels(), true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, stream.policy).NewChunk()
 		for _, entry := range testStream.Entries {
 			dup, err := chunk.Append(&entry)
 			require.False(t, dup)
@@ -581,10 +581,11 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	chunkfmt, headfmt, err := inst.chunkFormatAt(model.Now())
 	require.NoError(b, err)
 	retentionHours := util.RetentionHours(tenantsRetention.RetentionPeriodFor("test", lbs))
+	policy := inst.resolvePolicyForStream(lbs)
 
 	b.Run("addTailersToNewStream", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter.rateLimitStrategy, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours))
+			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter.rateLimitStrategy, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil, nil, retentionHours, policy))
 		}
 	})
 }
@@ -1696,10 +1697,10 @@ type mockUsageTracker struct {
 }
 
 // DiscardedBytesAdd implements push.UsageTracker.
-func (m *mockUsageTracker) DiscardedBytesAdd(_ context.Context, _ string, _ string, _ labels.Labels, value float64) {
+func (m *mockUsageTracker) DiscardedBytesAdd(_ context.Context, _ string, _ string, _ labels.Labels, value float64, _ string) {
 	m.discardedBytes += value
 }
 
 // ReceivedBytesAdd implements push.UsageTracker.
-func (*mockUsageTracker) ReceivedBytesAdd(_ context.Context, _ string, _ time.Duration, _ labels.Labels, _ float64) {
+func (*mockUsageTracker) ReceivedBytesAdd(_ context.Context, _ string, _ time.Duration, _ labels.Labels, _ float64, _ string) {
 }

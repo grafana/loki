@@ -188,3 +188,7 @@ topk(
 ```
 
 `__count_min_sketch__` is calculated for each shard and merged on the frontend. Then `eval_cms` iterates through the labels list and determines the count for each. Then `topk` selects the top items.
+
+## Further resources
+
+- Watch: [How to turn logs into metrics with Grafana Loki](https://youtube.com/live/tKcnQ0Q2E-k) (Loki Community Call July 2025)

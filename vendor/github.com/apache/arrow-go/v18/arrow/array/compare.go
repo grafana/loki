@@ -72,7 +72,7 @@ func RecordApproxEqual(left, right arrow.Record, opts ...EqualOption) bool {
 func chunkedBinaryApply(left, right *arrow.Chunked, fn func(left arrow.Array, lbeg, lend int64, right arrow.Array, rbeg, rend int64) bool) {
 	var (
 		pos               int64
-		length            int64 = int64(left.Len())
+		length            = int64(left.Len())
 		leftIdx, rightIdx int
 		leftPos, rightPos int64
 	)
@@ -118,7 +118,7 @@ func ChunkedEqual(left, right *arrow.Chunked) bool {
 		return false
 	}
 
-	var isequal bool = true
+	var isequal = true
 	chunkedBinaryApply(left, right, func(left arrow.Array, lbeg, lend int64, right arrow.Array, rbeg, rend int64) bool {
 		isequal = SliceEqual(left, lbeg, lend, right, rbeg, rend)
 		return isequal

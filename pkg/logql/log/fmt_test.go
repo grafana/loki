@@ -509,7 +509,7 @@ func Test_lineFormatter_Format(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			builder := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			builder := NewBaseLabelsBuilder().ForLabels(tt.lbs, labels.StableHash(tt.lbs))
 			builder.Reset()
 			outLine, _ := tt.fmter.Process(tt.ts, tt.in, builder)
 			require.Equal(t, tt.want, outLine)
@@ -757,7 +757,7 @@ func Test_labelsFormatter_Format(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			builder := NewBaseLabelsBuilder().ForLabels(tt.in, tt.in.Hash())
+			builder := NewBaseLabelsBuilder().ForLabels(tt.in, labels.StableHash(tt.in))
 			builder.Reset()
 			_, _ = tt.fmter.Process(1661518453244672570, []byte("test line"), builder)
 			require.Equal(t, tt.want, builder.LabelsResult().Labels())
@@ -974,7 +974,7 @@ func TestMapPoolPanic(_ *testing.T) {
 	wgFinished := sync.WaitGroup{}
 
 	ls := labels.FromStrings("cluster", "us-central-0")
-	builder := NewBaseLabelsBuilder().ForLabels(ls, ls.Hash())
+	builder := NewBaseLabelsBuilder().ForLabels(ls, labels.StableHash(ls))
 	// this specific line format was part of the query that first alerted us to the panic caused by map pooling in the label/line formatter Process functions
 	tmpl := `[1m{{if .level }}{{alignRight 5 .level}}{{else if .severity}}{{alignRight 5 .severity}}{{end}}[0m [90m[{{alignRight 10 .resources_service_instance_id}}{{if .attributes_thread_name}}/{{alignRight 20 .attributes_thread_name}}{{else if eq "java" .resources_telemetry_sdk_language }}                    {{end}}][0m [36m{{if .instrumentation_scope_name }}{{alignRight 40 .instrumentation_scope_name}}{{end}}[0m {{.body}} {{if .traceid}} [37m[3m[traceid={{.traceid}}]{{end}}`
 	a := newMustLineFormatter(tmpl)

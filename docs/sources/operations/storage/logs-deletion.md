@@ -23,7 +23,7 @@ Enable log entry deletion by setting `retention_enabled` to true in the compacto
 `delete_request_store` also needs to be configured when retention is enabled to process delete requests, this determines the storage bucket that stores the delete requests.
 
 {{< admonition type="warning" >}}
-Be very careful when enabling retention. It is strongly recommended that you also enable versioning on your objects in object storage to allow you to recover from accidental misconfiguration of a retention setting. If you want to enable deletion but not not want to enforce retention, configure the `retention_period` setting with a value of `0s`.
+Be very careful when enabling retention. It is strongly recommended that you also enable versioning on your objects in object storage to allow you to recover from accidental misconfiguration of a retention setting. If you want to enable deletion but do not want to enforce retention, configure the `retention_period` setting with a value of `0s`.
 {{< /admonition >}}
 
 Because it is a runtime configuration, `deletion_mode` can be set per-tenant, if desired.

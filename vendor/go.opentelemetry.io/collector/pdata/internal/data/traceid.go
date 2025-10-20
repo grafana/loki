@@ -4,9 +4,12 @@
 package data // import "go.opentelemetry.io/collector/pdata/internal/data"
 
 import (
+	"encoding/hex"
 	"errors"
 
 	"github.com/gogo/protobuf/proto"
+
+	"go.opentelemetry.io/collector/pdata/internal/json"
 )
 
 const traceIDSize = 16
@@ -20,7 +23,7 @@ var (
 // Protobuf messages.
 type TraceID [traceIDSize]byte
 
-var _ proto.Sizer = (*SpanID)(nil)
+var _ proto.Sizer = (*TraceID)(nil)
 
 // Size returns the size of the data to serialize.
 func (tid TraceID) Size() int {
@@ -63,17 +66,13 @@ func (tid *TraceID) Unmarshal(data []byte) error {
 	return nil
 }
 
-// MarshalJSON converts trace id into a hex string enclosed in quotes.
-func (tid TraceID) MarshalJSON() ([]byte, error) {
-	if tid.IsEmpty() {
-		return []byte(`""`), nil
-	}
-	return marshalJSON(tid[:])
+// MarshalJSONStream converts TraceID into a hex string.
+func (tid TraceID) MarshalJSONStream(dest *json.Stream) {
+	dest.WriteString(hex.EncodeToString(tid[:]))
 }
 
-// UnmarshalJSON inflates trace id from hex string, possibly enclosed in quotes.
-// Called by Protobuf JSON deserialization.
-func (tid *TraceID) UnmarshalJSON(data []byte) error {
-	*tid = [traceIDSize]byte{}
-	return unmarshalJSON(tid[:], data)
+// UnmarshalJSONIter decodes TraceID from hex string.
+func (tid *TraceID) UnmarshalJSONIter(iter *json.Iterator) {
+	*tid = [profileIDSize]byte{}
+	unmarshalJSON(tid[:], iter)
 }

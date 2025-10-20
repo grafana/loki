@@ -35,6 +35,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/types"
 	"github.com/grafana/loki/v3/pkg/util"
 	"github.com/grafana/loki/v3/pkg/util/constants"
+	"github.com/grafana/loki/v3/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	"github.com/grafana/loki/v3/pkg/util/spanlogger"
 	"github.com/grafana/loki/v3/pkg/util/validation"
@@ -410,7 +411,7 @@ func (slm seriesLimiterMiddleware) Wrap(next queryrangebase.Handler) queryrangeb
 
 func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	// no need to fire a request if the limit is already reached.
-	if sl.isLimitReached() {
+	if sl.isLimitReached() && !httpreq.IsLogsDrilldownRequest(ctx) {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
 	}
 
@@ -474,10 +475,13 @@ func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (qu
 				continue
 			}
 		} else {
+			if len(sl.hashes) >= sl.maxSeries && httpreq.IsLogsDrilldownRequest(ctx) {
+				metadata.AddWarning(fmt.Sprintf("maximum number of series (%d) reached for a single query; returning partial results", sl.maxSeries))
+				return res, nil
+			}
+
 			// For non-variant series, track them in the global hashes map
 			sl.hashes[hash] = struct{}{}
-
-			// Check if adding this series would exceed the global limit
 			if len(sl.hashes) > sl.maxSeries {
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
 			}
@@ -666,7 +670,7 @@ func WeightedParallelism(
 		dur := through.Sub(from)
 
 		if i+1 < len(configs) && configs[i+1].From.Time.Before(end) {
-			dur = configs[i+1].From.Time.Sub(from)
+			dur = configs[i+1].From.Sub(from)
 		}
 		if ty := configs[i].IndexType; ty == types.TSDBType {
 			tsdbDur += dur

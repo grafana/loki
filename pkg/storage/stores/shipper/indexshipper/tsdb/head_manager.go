@@ -24,6 +24,7 @@ import (
 	"github.com/prometheus/prometheus/util/compression"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
@@ -577,7 +578,7 @@ func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, leg
 				}
 
 				// labels are always written to the WAL before corresponding chunks
-				if len(rec.Series.Labels) > 0 {
+				if !rec.Series.Labels.IsEmpty() {
 					tenant, ok := seriesMap[rec.UserID]
 					if !ok {
 						tenant = make(map[uint64]*labelsWithFp)
@@ -769,7 +770,7 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 
 }
 
-func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, _ []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, _ []logproto.ChunkRefWithSizingInfo, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]logproto.ChunkRefWithSizingInfo, error) {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil

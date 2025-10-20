@@ -9,24 +9,48 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/prometheus/model/labels"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/logql/log/pattern"
-	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 const (
 	testTenant = "fake"
 )
 
+func TestLogClusterTracksVolume(t *testing.T) {
+	config := DefaultConfig()
+	config.SimTh = 0.3 // Lower threshold for testing
+	limits := &fakeLimits{}
+	d := New(testTenant, config, limits, FormatUnknown, nil)
+
+	// First log line - similar structure with number variation
+	line1 := "server request took 123 ms to complete"
+	d.Train(line1, 0)
+
+	// Second similar log line
+	line2 := "server request took 456 ms to complete"
+	d.Train(line2, 0)
+
+	// Third similar log line
+	line3 := "server request took 789 ms to complete"
+	d.Train(line3, 0)
+
+	// All three should match the same pattern
+	clusters := d.Clusters()
+	require.Len(t, clusters, 1, "Expected one cluster for similar messages")
+
+	cluster := clusters[0]
+	expectedVolume := int64(len(line1) + len(line2) + len(line3))
+	require.Equal(t, expectedVolume, cluster.Volume, "Cluster should track total byte volume")
+	require.Equal(t, int64(3), cluster.SampleCount, "Cluster should track sample count")
+}
+
 func TestDrain_TrainExtractsPatterns(t *testing.T) {
 	t.Parallel()
 
 	// Set this so the test will print the patterns found, in string slice format for easy copy-paste
 	outputPatternsForTestUpdate := false
-	mockWriter := &mockEntryWriter{}
 	tests := []struct {
 		drain         *Drain
 		inputFile     string
@@ -35,7 +59,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 		format        string
 	}{
 		{
-			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", mockWriter, nil),
+			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", nil),
 			inputFile: `testdata/agent-logfmt.txt`,
 			format:    FormatLogfmt,
 			patterns: []string{
@@ -66,7 +90,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			},
 		},
 		{
-			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", mockWriter, nil),
+			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", nil),
 			inputFile: `testdata/ingester-logfmt.txt`,
 			format:    FormatLogfmt,
 			patterns: []string{
@@ -77,7 +101,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			tooManyTokens: []string{},
 		},
 		{
-			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", mockWriter, nil),
+			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", nil),
 			inputFile: `testdata/drone-json.txt`,
 			format:    FormatJSON,
 			patterns: []string{
@@ -92,7 +116,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			},
 		},
 		{
-			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", mockWriter, nil),
+			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", nil),
 			inputFile: "testdata/distributor-logfmt.txt",
 			format:    FormatLogfmt,
 			patterns: []string{
@@ -106,7 +130,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			},
 		},
 		{
-			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", mockWriter, nil),
+			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", nil),
 			inputFile: "testdata/journald.txt",
 			format:    FormatUnknown,
 			patterns: []string{
@@ -228,7 +252,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			},
 		},
 		{
-			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", mockWriter, nil),
+			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", nil),
 			inputFile: "testdata/kafka.txt",
 			format:    FormatUnknown,
 			patterns: []string{
@@ -251,7 +275,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			},
 		},
 		{
-			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", mockWriter, nil),
+			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", nil),
 			inputFile: "testdata/kubernetes.txt",
 			format:    FormatUnknown,
 			patterns: []string{
@@ -292,7 +316,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			},
 		},
 		{
-			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", mockWriter, nil),
+			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", nil),
 			inputFile: "testdata/vault.txt",
 			format:    FormatUnknown,
 			patterns: []string{
@@ -300,7 +324,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			},
 		},
 		{
-			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", mockWriter, nil),
+			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", nil),
 			inputFile: "testdata/calico.txt",
 			format:    FormatUnknown,
 			tooManyTokens: []string{
@@ -395,7 +419,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			},
 		},
 		{
-			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", mockWriter, nil),
+			drain:     New(testTenant, DefaultConfig(), &fakeLimits{}, "", nil),
 			inputFile: "testdata/grafana-ruler.txt",
 			format:    FormatLogfmt,
 			patterns: []string{
@@ -456,7 +480,7 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 			scanner := bufio.NewScanner(file)
 			for scanner.Scan() {
 				line := scanner.Text()
-				tt.drain.Train(info, line, 0, labels.EmptyLabels())
+				tt.drain.Train(line, 0)
 				if !detectedFormat {
 					require.Equal(t, tt.format, DetectLogFormat(line))
 					detectedFormat = true
@@ -489,7 +513,6 @@ func TestDrain_TrainExtractsPatterns(t *testing.T) {
 
 func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) {
 	t.Parallel()
-	mockWriter := &mockEntryWriter{}
 	tests := []struct {
 		name       string
 		drain      *Drain
@@ -497,7 +520,7 @@ func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) 
 	}{
 		{
 			name:  "should extract patterns that all lines match",
-			drain: New(testTenant, DefaultConfig(), &fakeLimits{}, "", mockWriter, nil),
+			drain: New(testTenant, DefaultConfig(), &fakeLimits{}, "", nil),
 			inputLines: []string{
 				"test 1 test test",
 				"test 2 test test",
@@ -507,7 +530,7 @@ func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) 
 		},
 		{
 			name:  "should extract patterns that match if line ends with newlines",
-			drain: New(testTenant, DefaultConfig(), &fakeLimits{}, "", mockWriter, nil),
+			drain: New(testTenant, DefaultConfig(), &fakeLimits{}, "", nil),
 			inputLines: []string{
 				`test 1 test test
 `,
@@ -521,7 +544,7 @@ func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) 
 		},
 		{
 			name:  "should extract patterns that match if line ends with empty space",
-			drain: New(testTenant, DefaultConfig(), &fakeLimits{}, "", mockWriter, nil),
+			drain: New(testTenant, DefaultConfig(), &fakeLimits{}, "", nil),
 			inputLines: []string{
 				`test 1 test test			`,
 				`test 2 test test			`,
@@ -531,7 +554,7 @@ func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) 
 		},
 		{
 			name:  "should extract patterns that match if line starts with empty space",
-			drain: New(testTenant, DefaultConfig(), &fakeLimits{}, "", mockWriter, nil),
+			drain: New(testTenant, DefaultConfig(), &fakeLimits{}, "", nil),
 			inputLines: []string{
 				`			test 1 test test`,
 				`			test 2 test test`,
@@ -541,7 +564,7 @@ func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) 
 		},
 		{
 			name:  "Scheduler patterns are matchable",
-			drain: New(testTenant, DefaultConfig(), &fakeLimits{}, "", mockWriter, nil),
+			drain: New(testTenant, DefaultConfig(), &fakeLimits{}, "", nil),
 			inputLines: []string{
 				`ts=2024-05-30T12:50:36.648377186Z caller=scheduler_processor.go:143 level=warn msg="error contacting scheduler" err="rpc error: code = Unavailable desc = connection error: desc = \"error reading server preface: EOF\"" addr=10.0.151.101:9095`,
 				`ts=2024-05-30T12:50:36.350575929Z caller=scheduler_processor.go:143 level=warn msg="error contacting scheduler" err="rpc error: code = Unavailable desc = connection error: desc = \"error reading server preface: EOF\"" addr=10.0.151.101:9095`,
@@ -557,7 +580,7 @@ func TestDrain_TrainGeneratesPatternsMatchableByLokiPatternFilter(t *testing.T) 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			for _, line := range tt.inputLines {
-				tt.drain.Train(info, line, 0, labels.EmptyLabels())
+				tt.drain.Train(line, 0)
 			}
 			require.Equal(t, 1, len(tt.drain.Clusters()))
 			cluster := tt.drain.Clusters()[0]
@@ -629,12 +652,8 @@ func TestDeduplicatePlaceholders(b *testing.T) {
 	}
 }
 
-var info = constants.LogLevelInfo
-
 func TestDrain_PruneTreeClearsOldBranches(t *testing.T) {
 	t.Parallel()
-	mockWriter := &mockEntryWriter{}
-	mockWriter.On("WriteEntry", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 
 	tests := []struct {
 		name       string
@@ -643,7 +662,7 @@ func TestDrain_PruneTreeClearsOldBranches(t *testing.T) {
 	}{
 		{
 			name:  "should prune old branches",
-			drain: New(testTenant, DefaultConfig(), &fakeLimits{}, "", mockWriter, nil),
+			drain: New(testTenant, DefaultConfig(), &fakeLimits{}, "", nil),
 			inputLines: []string{
 				"test test test A",
 				"test test test B",
@@ -667,7 +686,7 @@ func TestDrain_PruneTreeClearsOldBranches(t *testing.T) {
 				if i < 7 {
 					ts = ts.Add(-time.Duration(7-i) * time.Minute)
 				}
-				tt.drain.Train(info, line, ts.UnixNano(), labels.EmptyLabels())
+				tt.drain.Train(line, ts.UnixNano())
 			}
 
 			require.Len(t, tt.drain.Clusters(), 2)
@@ -704,4 +723,16 @@ type fakeLimits struct {
 
 func (f *fakeLimits) PatternIngesterTokenizableJSONFields(_ string) []string {
 	return []string{"log", "message", "msg", "msg_", "_msg", "content"}
+}
+
+func TestDrainDefaultConfig(t *testing.T) {
+	t.Run("should set default ChunkDuration to 1 hour", func(t *testing.T) {
+		cfg := DefaultConfig()
+		require.Equal(t, time.Hour, cfg.MaxChunkAge, "ChunkDuration should default to 1 hour")
+	})
+
+	t.Run("should set default SampleInterval to 10 seconds", func(t *testing.T) {
+		cfg := DefaultConfig()
+		require.Equal(t, 10*time.Second, cfg.SampleInterval, "SampleInterval should default to 10 seconds")
+	})
 }

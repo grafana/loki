@@ -178,7 +178,7 @@ func Test_Retention(t *testing.T) {
 			marker, err := NewMarker(workDir, expiration, time.Hour, nil, prometheus.NewRegistry())
 			require.NoError(t, err)
 			for _, table := range store.indexTables() {
-				_, _, err := marker.MarkForDelete(context.Background(), table.name, "", table, util_log.Logger)
+				_, _, err := marker.FindAndMarkChunksForDeletion(context.Background(), table.name, "", table, util_log.Logger)
 				require.Nil(t, err)
 			}
 
@@ -659,7 +659,7 @@ func newSeriesCleanRecorder(indexProcessor IndexProcessor) *seriesCleanedRecorde
 }
 
 func (s *seriesCleanedRecorder) CleanupSeries(userID []byte, lbls labels.Labels) error {
-	s.deletedSeries[string(userID)] = map[uint64]struct{}{lbls.Hash(): {}}
+	s.deletedSeries[string(userID)] = map[uint64]struct{}{labels.StableHash(lbls): {}}
 	return s.IndexProcessor.CleanupSeries(userID, lbls)
 }
 
@@ -844,7 +844,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				},
 			},
 			expectedDeletedSeries: []map[uint64]struct{}{
-				{labels.FromStrings("foo", "2").Hash(): struct{}{}},
+				{labels.StableHash(labels.FromStrings("foo", "2")): struct{}{}},
 			},
 			expectedEmpty: []bool{
 				false,
@@ -873,7 +873,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				},
 			},
 			expectedDeletedSeries: []map[uint64]struct{}{
-				{labels.FromStrings("foo", "2").Hash(): struct{}{}},
+				{labels.StableHash(labels.FromStrings("foo", "2")): struct{}{}},
 			},
 			expectedEmpty: []bool{
 				false,

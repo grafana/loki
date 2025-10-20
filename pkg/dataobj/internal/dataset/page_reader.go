@@ -12,13 +12,13 @@ import (
 )
 
 type pageReader struct {
-	page        Page
-	value       datasetmd.ValueType
-	compression datasetmd.CompressionType
-	ready       bool // Whether the pageReader is initialized for page.
+	page         Page
+	physicalType datasetmd.PhysicalType
+	compression  datasetmd.CompressionType
+	ready        bool // Whether the pageReader is initialized for page.
 
-	lastValue    datasetmd.ValueType
-	lastEncoding datasetmd.EncodingType
+	lastPhysicalType datasetmd.PhysicalType
+	lastEncoding     datasetmd.EncodingType
 
 	closer      io.Closer
 	presenceDec *bitmapDecoder
@@ -37,9 +37,9 @@ type pageReader struct {
 // newPageReader returns a new pageReader that reads from the provided page.
 // The page must hold values of the provided value type, and be compressed with
 // the provided compression type.
-func newPageReader(p Page, value datasetmd.ValueType, compression datasetmd.CompressionType) *pageReader {
+func newPageReader(p Page, physicalType datasetmd.PhysicalType, compression datasetmd.CompressionType) *pageReader {
 	var pr pageReader
-	pr.Reset(p, value, compression)
+	pr.Reset(p, physicalType, compression)
 	return &pr
 }
 
@@ -109,7 +109,7 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 	// determines how many values we need to read from the inner page.
 	var presentCount int
 	for _, p := range pr.presenceBuf[:count] {
-		if p.Type() != datasetmd.VALUE_TYPE_UINT64 {
+		if p.Type() != datasetmd.PHYSICAL_TYPE_UINT64 {
 			return n, fmt.Errorf("unexpected presence type: %s", p.Type())
 		}
 		if p.Uint64() == 1 {
@@ -124,7 +124,7 @@ func (pr *pageReader) read(v []Value) (n int, err error) {
 		if err != nil {
 			return n, err
 		} else if valuesCount != presentCount {
-			return n, fmt.Errorf("unexpected number of values: %d", valuesCount)
+			return n, fmt.Errorf("unexpected number of values: %d, expected: %d", valuesCount, presentCount)
 		}
 	}
 
@@ -184,7 +184,7 @@ func (pr *pageReader) init(ctx context.Context) error {
 	}
 
 	memPage := &MemPage{
-		Info: *pr.page.PageInfo(),
+		Desc: *pr.page.PageDesc(),
 		Data: data,
 	}
 
@@ -200,11 +200,11 @@ func (pr *pageReader) init(ctx context.Context) error {
 
 	pr.valuesReader = pr.getValuesReader()
 	pr.valuesReader.Reset(valuesReader)
-	if pr.valuesDec == nil || pr.lastValue != pr.value || pr.lastEncoding != memPage.Info.Encoding {
+	if pr.valuesDec == nil || pr.lastPhysicalType != pr.physicalType || pr.lastEncoding != memPage.Desc.Encoding {
 		var ok bool
-		pr.valuesDec, ok = newValueDecoder(pr.value, memPage.Info.Encoding, pr.valuesReader)
+		pr.valuesDec, ok = newValueDecoder(pr.physicalType, memPage.Desc.Encoding, pr.valuesReader)
 		if !ok {
-			return fmt.Errorf("unsupported value encoding %s/%s", pr.value, memPage.Info.Encoding)
+			return fmt.Errorf("unsupported value encoding %s/%s", pr.physicalType, memPage.Desc.Encoding)
 		}
 	} else {
 		pr.valuesDec.Reset(pr.valuesReader)
@@ -212,8 +212,8 @@ func (pr *pageReader) init(ctx context.Context) error {
 
 	pr.ready = true
 	pr.closer = valuesReader
-	pr.lastValue = pr.value
-	pr.lastEncoding = memPage.Info.Encoding
+	pr.lastPhysicalType = pr.physicalType
+	pr.lastEncoding = memPage.Desc.Encoding
 	pr.pageRow = 0
 	return nil
 }
@@ -252,7 +252,7 @@ func (pr *pageReader) Seek(offset int64, whence int) (int64, error) {
 		pr.nextRow += offset
 
 	case io.SeekEnd:
-		lastRow := int64(pr.page.PageInfo().RowCount)
+		lastRow := int64(pr.page.PageDesc().RowCount)
 		if lastRow+offset < 0 {
 			return 0, errors.New("invalid offset")
 		}
@@ -267,9 +267,9 @@ func (pr *pageReader) Seek(offset int64, whence int) (int64, error) {
 
 // Reset resets the page reader to read from the start of the provided page.
 // This permits reusing a page reader rather than allocating a new one.
-func (pr *pageReader) Reset(page Page, value datasetmd.ValueType, compression datasetmd.CompressionType) {
+func (pr *pageReader) Reset(page Page, physicalType datasetmd.PhysicalType, compression datasetmd.CompressionType) {
 	pr.page = page
-	pr.value = value
+	pr.physicalType = physicalType
 	pr.compression = compression
 	pr.ready = false
 

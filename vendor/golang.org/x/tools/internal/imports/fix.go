@@ -27,12 +27,13 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"maps"
+
 	"golang.org/x/tools/go/ast/astutil"
 	"golang.org/x/tools/internal/event"
 	"golang.org/x/tools/internal/gocommand"
 	"golang.org/x/tools/internal/gopathwalk"
 	"golang.org/x/tools/internal/stdlib"
-	"maps"
 )
 
 // importToGroup is a list of functions which map from an import path to
@@ -290,8 +291,8 @@ func (p *pass) loadPackageNames(ctx context.Context, imports []*ImportInfo) erro
 	return nil
 }
 
-// if there is a trailing major version, remove it
-func withoutVersion(nm string) string {
+// WithoutVersion removes a trailing major version, if there is one.
+func WithoutVersion(nm string) string {
 	if v := path.Base(nm); len(v) > 0 && v[0] == 'v' {
 		if _, err := strconv.Atoi(v[1:]); err == nil {
 			// this is, for instance, called with rand/v2 and returns rand
@@ -313,7 +314,7 @@ func (p *pass) importIdentifier(imp *ImportInfo) string {
 	}
 	known := p.knownPackages[imp.ImportPath]
 	if known != nil && known.Name != "" {
-		return withoutVersion(known.Name)
+		return WithoutVersion(known.Name)
 	}
 	return ImportPathToAssumedName(imp.ImportPath)
 }

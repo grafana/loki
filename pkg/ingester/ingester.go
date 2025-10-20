@@ -365,7 +365,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	i.lifecyclerWatcher.WatchService(i.lifecycler)
 
 	if i.cfg.KafkaIngestion.Enabled {
-		i.ingestPartitionID, err = partitionring.ExtractIngesterPartitionID(cfg.LifecyclerConfig.ID)
+		i.ingestPartitionID, err = partitionring.ExtractPartitionID(cfg.LifecyclerConfig.ID)
 		if err != nil {
 			return nil, fmt.Errorf("calculating ingester partition ID: %w", err)
 		}
@@ -458,7 +458,7 @@ func (i *Ingester) setupAutoForget() {
 
 	go func() {
 		ctx := context.Background()
-		err := i.Service.AwaitRunning(ctx)
+		err := i.AwaitRunning(ctx)
 		if err != nil {
 			level.Error(i.logger).Log("msg", fmt.Sprintf("autoforget received error %s, autoforget is disabled", err.Error()))
 			return
@@ -765,7 +765,7 @@ func (i *Ingester) loop() {
 	// flush at the same time. Flushing at the same time can cause concurrently
 	// writing the same chunk to object storage, which in AWS S3 leads to being
 	// rate limited.
-	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8))) //#nosec G404 -- Jitter does not require a CSPRNG.
+	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8))) //#nosec G404 -- Jitter does not require a CSPRNG. -- nosemgrep: math-random-used
 	initialDelay := time.NewTimer(jitter)
 	defer initialDelay.Stop()
 

@@ -126,6 +126,9 @@
         "config": {
             "component": "config"
         },
+        "configdelivery": {
+            "component": "configdelivery"
+        },
         "contactcenterinsights": {
             "component": "contactcenterinsights"
         },
@@ -246,6 +249,9 @@
         "language": {
             "component": "language"
         },
+        "licensemanager": {
+            "component": "licensemanager"
+        },
         "lifesciences": {
             "component": "lifesciences"
         },
@@ -254,6 +260,9 @@
         },
         "lustre": {
             "component": "lustre"
+        },
+        "maintenance": {
+            "component": "maintenance"
         },
         "managedidentities": {
             "component": "managedidentities"

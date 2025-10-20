@@ -11,10 +11,14 @@ import (
 // https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/ns-sysinfoapi-memorystatusex
 // https://learn.microsoft.com/en-us/windows/win32/api/psapi/ns-psapi-performance_information
 type ExVirtualMemory struct {
-	CommitLimit  uint64 `json:"commitLimit"`
-	CommitTotal  uint64 `json:"commitTotal"`
-	VirtualTotal uint64 `json:"virtualTotal"`
-	VirtualAvail uint64 `json:"virtualAvail"`
+	CommitLimit   uint64 `json:"commitLimit"`
+	CommitTotal   uint64 `json:"commitTotal"`
+	VirtualTotal  uint64 `json:"virtualTotal"`
+	VirtualAvail  uint64 `json:"virtualAvail"`
+	PhysTotal     uint64 `json:"physTotal"`
+	PhysAvail     uint64 `json:"physAvail"`
+	PageFileTotal uint64 `json:"pageFileTotal"`
+	PageFileAvail uint64 `json:"pageFileAvail"`
 }
 
 type ExWindows struct{}
@@ -23,7 +27,7 @@ func NewExWindows() *ExWindows {
 	return &ExWindows{}
 }
 
-func (e *ExWindows) VirtualMemory() (*ExVirtualMemory, error) {
+func (*ExWindows) VirtualMemory() (*ExVirtualMemory, error) {
 	var memInfo memoryStatusEx
 	memInfo.cbSize = uint32(unsafe.Sizeof(memInfo))
 	// If mem == 0 since this is an error according to GlobalMemoryStatusEx documentation
@@ -44,10 +48,14 @@ func (e *ExWindows) VirtualMemory() (*ExVirtualMemory, error) {
 	}
 
 	ret := &ExVirtualMemory{
-		CommitLimit:  perfInfo.commitLimit * perfInfo.pageSize,
-		CommitTotal:  perfInfo.commitTotal * perfInfo.pageSize,
-		VirtualTotal: memInfo.ullTotalVirtual,
-		VirtualAvail: memInfo.ullAvailVirtual,
+		CommitLimit:   perfInfo.commitLimit * perfInfo.pageSize,
+		CommitTotal:   perfInfo.commitTotal * perfInfo.pageSize,
+		VirtualTotal:  memInfo.ullTotalVirtual,
+		VirtualAvail:  memInfo.ullAvailVirtual,
+		PhysTotal:     memInfo.ullTotalPhys,
+		PhysAvail:     memInfo.ullAvailPhys,
+		PageFileTotal: memInfo.ullTotalPageFile,
+		PageFileAvail: memInfo.ullAvailPageFile,
 	}
 
 	return ret, nil

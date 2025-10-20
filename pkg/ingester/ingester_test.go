@@ -515,6 +515,14 @@ func (s *mockStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
 }
 
+func (s *mockStore) HasChunkSizingInfo(_, _ model.Time) bool {
+	return false
+}
+
+func (s *mockStore) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	return nil, nil
+}
+
 func (s *mockStore) Volume(_ context.Context, _ string, _, _ model.Time, limit int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return &logproto.VolumeResponse{
 		Volumes: []logproto.Volume{
@@ -1020,7 +1028,7 @@ func Test_DedupeIngester(t *testing.T) {
 	for i := int64(0); i < streamCount; i++ {
 		s := labels.FromStrings("foo", "bar", "bar", fmt.Sprintf("baz%d", i))
 		streams = append(streams, s)
-		streamHashes = append(streamHashes, s.Hash())
+		streamHashes = append(streamHashes, labels.StableHash(s))
 	}
 	sort.Slice(streamHashes, func(i, j int) bool { return streamHashes[i] < streamHashes[j] })
 
