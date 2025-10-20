@@ -118,6 +118,7 @@ func (qb *queryBlocker) tagsMatch(ctx context.Context, q *validation.BlockedQuer
 	}
 
 	raw := httpreq.ExtractQueryTagsFromContext(ctx)
+	// TagsToKeyValues is expected to always return an even set of key value pairs
 	kvs := httpreq.TagsToKeyValues(raw)
 
 	// Build a lowercased expected map once (size m) and scan kvs once (size n)
@@ -150,7 +151,7 @@ func (qb *queryBlocker) tagsMatch(ctx context.Context, q *validation.BlockedQuer
 	}
 
 	for k := range expected {
-		level.Debug(logger).Log("msg", "query blocker tags mismatch: missing or mismatched key", "key", k)
+		level.Debug(logger).Log("msg", "query blocker tags mismatch: missing or mismatched key", "key", k, "tagsRaw", raw)
 	}
 	return false
 }
