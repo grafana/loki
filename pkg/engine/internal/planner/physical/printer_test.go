@@ -12,13 +12,17 @@ func TestPrinter(t *testing.T) {
 
 		limit := p.graph.Add(&Limit{id: "limit"})
 		filter := p.graph.Add(&Filter{id: "filter"})
-		merge := p.graph.Add(&SortMerge{id: "merge"})
-		scan1 := p.graph.Add(&DataObjScan{id: "scan1"})
-		scan2 := p.graph.Add(&DataObjScan{id: "scan2"})
+		scanSet := p.graph.Add(&ScanSet{
+			id: "set",
+
+			Targets: []*ScanTarget{
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+			},
+		})
+
 		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: filter})
-		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: merge})
-		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: scan1})
-		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: merge, Child: scan2})
+		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scanSet})
 
 		repr := PrintAsTree(p)
 		t.Log("\n" + repr)

@@ -1,0 +1,133 @@
+name: Publish loki-query-tee images
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "cmd/querytee/**"
+      - "tools/querytee/**"
+      - ".github/workflows/querytee-images.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+env:
+  BUILD_TIMEOUT: 60
+  IMAGE_PREFIX: grafana
+  GO_VERSION: "1.24.4"
+
+jobs:
+  loki-query-tee-image:
+    runs-on: ${{ matrix.runs_on }}
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: linux/amd64
+            runs_on:
+              - github-hosted-ubuntu-x64-small
+          - arch: linux/arm64
+            runs_on:
+              - github-hosted-ubuntu-arm64-small
+    outputs:
+      image_digest_linux_amd64: ${{ steps.digest.outputs.digest_linux_amd64 }}
+      image_digest_linux_arm64: ${{ steps.digest.outputs.digest_linux_arm64 }}
+      image_name: ${{ steps.pr-version.outputs.image_name }}
+      image_tag: ${{ steps.pr-version.outputs.image_version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2
+
+      - name: Login to DockerHub (from Vault)
+        uses: grafana/shared-workflows/actions/dockerhub-login@fa48192dac470ae356b3f7007229f3ac28c48a25
+
+      - id: pr-version
+        name: Generate version from commit SHA
+        run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          version="main-${SHORT_SHA}"
+          echo "image_version=$version" >> $GITHUB_OUTPUT
+          echo "image_name=${{ env.IMAGE_PREFIX }}/loki-query-tee" >> $GITHUB_OUTPUT
+          echo "image_full_name=${{ env.IMAGE_PREFIX }}/loki-query-tee:$version" >> $GITHUB_OUTPUT
+
+      - id: platform
+        name: Parse image platform
+        run: |
+          platform="$(echo "${{ matrix.arch }}" | sed "s/\(.*\)\/\(.*\)/\1-\2/")"
+          echo "platform=${platform}" >> $GITHUB_OUTPUT
+          echo "platform_short=$(echo ${{ matrix.arch }} | cut -d / -f 2)" >> $GITHUB_OUTPUT
+
+      - id: build-push
+        name: Build and push
+        timeout-minutes: ${{ fromJSON(env.BUILD_TIMEOUT) }}
+        uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1
+        with:
+          build-args: |
+            IMAGE_TAG=${{ steps.pr-version.outputs.image_version }}
+            GO_VERSION=${{ env.GO_VERSION }}
+          context: .
+          file: ./cmd/querytee/Dockerfile.cross
+          outputs: push-by-digest=true,type=image,name=${{ steps.pr-version.outputs.image_name }},push=true
+          platforms: ${{ matrix.arch }}
+          provenance: true
+          tags: ${{ steps.pr-version.outputs.image_name }}
+
+      - env:
+          OUTPUTS_DIGEST: ${{ steps.build-push.outputs.digest }}
+        id: digest
+        name: Process image digest
+        run: |
+          arch=$(echo ${{ matrix.arch }} | tr "/" "_")
+          echo "digest_$arch=$OUTPUTS_DIGEST" >> $GITHUB_OUTPUT
+
+  loki-query-tee-manifest:
+    needs:
+      - loki-query-tee-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      IMAGE_DIGEST_AMD64: ${{ needs.loki-query-tee-image.outputs.image_digest_linux_amd64 }}
+      IMAGE_DIGEST_ARM64: ${{ needs.loki-query-tee-image.outputs.image_digest_linux_arm64 }}
+      OUTPUTS_IMAGE_NAME: ${{ needs.loki-query-tee-image.outputs.image_name }}
+      OUTPUTS_IMAGE_TAG: ${{ needs.loki-query-tee-image.outputs.image_tag }}
+    steps:
+      - name: Set up Docker buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2
+
+      - name: Login to DockerHub (from Vault)
+        uses: grafana/shared-workflows/actions/dockerhub-login@75804962c1ba608148988c1e2dc35fbb0ee21746
+
+      - name: Publish multi-arch manifest
+        run: |
+          # Unfortunately there is no better way atm than having a separate named output for each digest
+          echo "linux/arm64 $IMAGE_DIGEST_ARM64"
+          echo "linux/amd64 $IMAGE_DIGEST_AMD64"
+          IMAGE="${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+          echo "Create multi-arch manifest for $IMAGE"
+          docker buildx imagetools create -t $IMAGE \
+            ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_ARM64} \
+            ${OUTPUTS_IMAGE_NAME}@${IMAGE_DIGEST_AMD64}
+          docker buildx imagetools inspect $IMAGE
+
+      - name: Print image info
+        run: |
+          IMAGE="${OUTPUTS_IMAGE_NAME}:${OUTPUTS_IMAGE_TAG}"
+          echo "### 🐳 loki-query-tee Docker Image"
+          echo ""
+          echo "Multi-arch image built and pushed:"
+          echo "\`\`\`"
+          echo "$IMAGE"
+          echo "\`\`\`"
+          echo ""
+

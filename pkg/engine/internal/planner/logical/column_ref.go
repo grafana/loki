@@ -1,7 +1,6 @@
 package logical
 
 import (
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -24,13 +23,6 @@ func (c *ColumnRef) Name() string {
 // String returns [ColumnRef.Name].
 func (c *ColumnRef) String() string {
 	return c.Ref.String()
-}
-
-// Schema returns the schema of the column being referenced.
-func (c *ColumnRef) Schema() *schema.Schema {
-	// TODO(rfratto): Update *schema.Schema to allow representing a single
-	// column.
-	return nil
 }
 
 func (c *ColumnRef) isValue() {}

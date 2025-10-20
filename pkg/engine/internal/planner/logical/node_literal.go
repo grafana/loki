@@ -1,7 +1,6 @@
 package logical
 
 import (
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -41,12 +40,6 @@ func (l Literal) String() string {
 // Value returns lit's value as untyped interface{}.
 func (l Literal) Value() any {
 	return l.Any()
-}
-
-func (l *Literal) Schema() *schema.Schema {
-	// TODO(rfratto): schema.Schema needs to be updated to be a more general
-	// "type" instead.
-	return nil
 }
 
 func (l *Literal) isValue() {}

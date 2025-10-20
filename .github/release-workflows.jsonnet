@@ -7,7 +7,7 @@ local checkTemplate = 'grafana/loki-release/.github/workflows/check.yml@%s' % re
 local buildImageVersion = std.extVar('BUILD_IMAGE_VERSION');
 local goVersion = std.extVar('GO_VERSION');
 local buildImage = 'grafana/loki-build-image:%s' % buildImageVersion;
-local golangCiLintVersion = 'v2.3.0';
+local golangCiLintVersion = 'v2.5.0';
 local imageBuildTimeoutMin = 60;
 local imagePrefix = 'grafana';
 local dockerPluginDir = 'clients/cmd/docker-driver';
@@ -29,7 +29,7 @@ local imageJobs = {
   'loki-canary': build.image('loki-canary', 'cmd/loki-canary', platform=platforms.all),
   'loki-canary-boringcrypto': build.image('loki-canary-boringcrypto', 'cmd/loki-canary-boringcrypto', platform=platforms.all),
   promtail: build.image('promtail', 'clients/cmd/promtail', platform=platforms.all),
-  querytee: build.image('loki-query-tee', 'cmd/querytee', platform=platforms.amd),
+  querytee: build.image('loki-query-tee', 'cmd/querytee', platform=[r.forPlatform('linux/amd64'), r.forPlatform('linux/arm64')]),
   'loki-docker-driver': build.dockerPlugin('loki-docker-driver', dockerPluginDir, buildImage=buildImage, platform=[r.forPlatform('linux/amd64'), r.forPlatform('linux/arm64')]),
 };
 

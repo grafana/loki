@@ -2,8 +2,6 @@ package logical
 
 import (
 	"fmt"
-
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 )
 
 // A ShardInfo defines a subset of a table relation. ShardInfo only implements [Value].
@@ -25,11 +23,6 @@ func (s *ShardInfo) Name() string {
 // String returns [ShardInfo.Name].
 func (s *ShardInfo) String() string {
 	return s.Name()
-}
-
-// Schema returns the schema of the column being referenced.
-func (s *ShardInfo) Schema() *schema.Schema {
-	return nil
 }
 
 func (s *ShardInfo) isValue() {}

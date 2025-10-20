@@ -28,6 +28,14 @@ func (v *VectorAggregation) ID() string {
 	return v.id
 }
 
+// Clone returns a deep copy of the node (minus its ID).
+func (v *VectorAggregation) Clone() Node {
+	return &VectorAggregation{
+		GroupBy:   cloneExpressions(v.GroupBy),
+		Operation: v.Operation,
+	}
+}
+
 // Type implements the [Node] interface.
 // Returns the type of the node.
 func (*VectorAggregation) Type() NodeType {

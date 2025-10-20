@@ -2,8 +2,6 @@ package logical
 
 import (
 	"fmt"
-
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 )
 
 // The Select instruction filters rows from a table relation. Select implements
@@ -35,13 +33,6 @@ func (s *Select) Name() string {
 // String returns the disassembled SSA form of the Select instruction.
 func (s *Select) String() string {
 	return fmt.Sprintf("SELECT %s [predicate=%s]", s.Table.Name(), s.Predicate.Name())
-}
-
-// Schema returns the schema of the Select plan.
-func (s *Select) Schema() *schema.Schema {
-	// Since Select only filters rows from a table, the schema is the same as the
-	// input table relation.
-	return s.Table.Schema()
 }
 
 func (s *Select) isInstruction() {}

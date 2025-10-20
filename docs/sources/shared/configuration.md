@@ -5061,6 +5061,11 @@ label_results_cache:
   # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.label-results-cache.compression
   [compression: <string> | default = ""]
+
+# Enable routing of queries to the v2 engine when they fall within the
+# configured time range.
+# CLI flag: -querier.enable-v2-engine-router
+[enable_v2_engine_router: <boolean> | default = false]
 ```
 
 ### query_scheduler

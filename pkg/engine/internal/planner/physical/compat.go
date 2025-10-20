@@ -27,6 +27,15 @@ func (m *ColumnCompat) ID() string {
 	return m.id
 }
 
+// Clone returns a deep copy of the node (minus its ID).
+func (m *ColumnCompat) Clone() Node {
+	return &ColumnCompat{
+		Source:      m.Source,
+		Destination: m.Destination,
+		Collision:   m.Collision,
+	}
+}
+
 // Type implements the [Node] interface.
 // Returns the type of the node.
 func (m *ColumnCompat) Type() NodeType {

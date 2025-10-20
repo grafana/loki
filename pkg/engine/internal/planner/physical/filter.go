@@ -24,6 +24,13 @@ func (f *Filter) ID() string {
 	return f.id
 }
 
+// Clone returns a deep copy of the node (minus its ID).
+func (f *Filter) Clone() Node {
+	return &Filter{
+		Predicates: cloneExpressions(f.Predicates),
+	}
+}
+
 // Type implements the [Node] interface.
 // Returns the type of the node.
 func (*Filter) Type() NodeType {

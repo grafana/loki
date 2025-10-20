@@ -17,6 +17,9 @@ const (
 	NodeTypeMerge
 	NodeTypeParse
 	NodeTypeCompat
+	NodeTypeTopK
+	NodeTypeParallelize
+	NodeTypeScanSet
 )
 
 func (t NodeType) String() string {
@@ -41,6 +44,12 @@ func (t NodeType) String() string {
 		return "Parse"
 	case NodeTypeCompat:
 		return "Compat"
+	case NodeTypeTopK:
+		return "TopK"
+	case NodeTypeParallelize:
+		return "Parallelize"
+	case NodeTypeScanSet:
+		return "ScanSet"
 	default:
 		return "Undefined"
 	}
@@ -57,6 +66,9 @@ type Node interface {
 	ID() string
 	// Type returns the node type
 	Type() NodeType
+	// Clone creates a deep copy of the Node. Cloned nodes do not retain the
+	// same ID.
+	Clone() Node
 	// Accept allows the object to be visited by a [Visitor] as part of the
 	// visitor pattern. It typically calls back to the appropriate Visit method
 	// on the Visitor for the concrete type being visited.
@@ -67,8 +79,6 @@ type Node interface {
 }
 
 var _ Node = (*DataObjScan)(nil)
-var _ Node = (*Merge)(nil)
-var _ Node = (*SortMerge)(nil)
 var _ Node = (*Projection)(nil)
 var _ Node = (*Limit)(nil)
 var _ Node = (*Filter)(nil)
@@ -76,10 +86,11 @@ var _ Node = (*RangeAggregation)(nil)
 var _ Node = (*VectorAggregation)(nil)
 var _ Node = (*ParseNode)(nil)
 var _ Node = (*ColumnCompat)(nil)
+var _ Node = (*TopK)(nil)
+var _ Node = (*Parallelize)(nil)
+var _ Node = (*ScanSet)(nil)
 
 func (*DataObjScan) isNode()       {}
-func (*Merge) isNode()             {}
-func (*SortMerge) isNode()         {}
 func (*Projection) isNode()        {}
 func (*Limit) isNode()             {}
 func (*Filter) isNode()            {}
@@ -87,6 +98,9 @@ func (*RangeAggregation) isNode()  {}
 func (*VectorAggregation) isNode() {}
 func (*ParseNode) isNode()         {}
 func (*ColumnCompat) isNode()      {}
+func (*TopK) isNode()              {}
+func (*Parallelize) isNode()       {}
+func (*ScanSet) isNode()           {}
 
 // WalkOrder defines the order for how a node and its children are visited.
 type WalkOrder uint8

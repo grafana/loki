@@ -2,8 +2,6 @@ package logical
 
 import (
 	"fmt"
-
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 )
 
 // Sort represents a plan node that sorts rows based on sort expressions.
@@ -44,13 +42,6 @@ func (s *Sort) String() string {
 		s.Ascending,
 		s.NullsFirst,
 	)
-}
-
-// Schema returns the schema of the sort plan.
-func (s *Sort) Schema() *schema.Schema {
-	// The schema is the same as the input plan's schema since sorting only
-	// affects the order of rows, not their structure.
-	return s.Table.Schema()
 }
 
 func (s *Sort) isInstruction() {}

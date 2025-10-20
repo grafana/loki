@@ -3,7 +3,6 @@ package logical
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -51,37 +50,6 @@ func (v *VectorAggregation) String() string {
 	}
 
 	return fmt.Sprintf("VECTOR_AGGREGATION %s [%s]", v.Table.Name(), props)
-}
-
-// Schema returns the schema of the vector aggregation plan.
-func (v *VectorAggregation) Schema() *schema.Schema {
-	// Schema is comprised of:
-	// 1. Group by columns (if any)
-	// 2. Timestamp column (implicitly grouped by)
-	// 3. Aggregated value column
-	outputSchema := schema.Schema{
-		Columns: make([]schema.ColumnSchema, 0, len(v.GroupBy)+2), // +2 for timestamp and value
-	}
-
-	outputSchema.Columns = append(outputSchema.Columns,
-		schema.ColumnSchema{
-			Name: types.ColumnNameBuiltinTimestamp,
-			Type: schema.ValueTypeTimestamp,
-		},
-		schema.ColumnSchema{
-			Name: types.ColumnNameGeneratedValue,
-			Type: schema.ValueTypeFloat64,
-		},
-	)
-
-	// Add group by columns
-	for _, columnRef := range v.GroupBy {
-		outputSchema.Columns = append(outputSchema.Columns,
-			schema.ColumnSchema{Name: columnRef.Ref.Column, Type: schema.ValueTypeString},
-		)
-	}
-
-	return &outputSchema
 }
 
 func (v *VectorAggregation) isInstruction() {}

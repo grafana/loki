@@ -29,9 +29,10 @@ type DataObjV2EngineStore struct {
 func NewDataObjV2EngineStore(dir string, tenantID string) (*DataObjV2EngineStore, error) {
 	storageDir := filepath.Join(dir, storageDir)
 	return dataobjV2StoreWithOpts(storageDir, tenantID, engine.Config{
-		Enable:      true,
-		BatchSize:   512,
-		RangeConfig: rangeio.DefaultConfig,
+		Enable:             true,
+		BatchSize:          512,
+		RangeConfig:        rangeio.DefaultConfig,
+		MergePrefetchCount: 8,
 	}, metastore.Config{
 		IndexStoragePrefix: "index/v0",
 	})

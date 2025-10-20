@@ -568,6 +568,20 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:select:Managed
         - urn:alm:descriptor:com.tectonic.ui:select:Unmanaged
+      - description: |-
+          NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+          When enabled, the operator creates NetworkPolicies to control ingress/egress between
+          Loki components and related services.
+        displayName: Network Policies
+        path: networkPolicies
+      - description: |-
+          Disabled allows explicitly disabling NetworkPolicies.
+          When false, NetworkPolicies are enabled.
+          When true, NetworkPolicies are disabled.
+        displayName: Disabled
+        path: networkPolicies.disabled
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: Proxy defines the spec for the object proxy to configure cluster
           proxy information.
         displayName: Cluster Proxy

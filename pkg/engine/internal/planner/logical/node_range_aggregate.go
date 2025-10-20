@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
@@ -57,50 +56,6 @@ func (r *RangeAggregation) String() string {
 	}
 
 	return fmt.Sprintf("RANGE_AGGREGATION %s [%s]", r.Table.Name(), props)
-}
-
-// Schema returns the schema of the sort plan.
-func (r *RangeAggregation) Schema() *schema.Schema {
-	// When partition by is specified, Schema is comprised of partition columns, timestamp and the aggregated value.
-	if len(r.PartitionBy) > 0 {
-		outputSchema := schema.Schema{
-			Columns: make([]schema.ColumnSchema, 0, len(r.PartitionBy)+2),
-		}
-
-		for _, columnRef := range r.PartitionBy {
-			outputSchema.Columns = append(outputSchema.Columns,
-				schema.ColumnSchema{Name: columnRef.Ref.Column, Type: schema.ValueTypeString},
-			)
-		}
-
-		outputSchema.Columns = append(outputSchema.Columns, schema.ColumnSchema{
-			Name: types.ColumnNameBuiltinTimestamp,
-			Type: schema.ValueTypeTimestamp,
-		})
-		// Using int64 since only count_over_time is supported.
-		outputSchema.Columns = append(outputSchema.Columns, schema.ColumnSchema{
-			Name: types.ColumnNameGeneratedValue,
-			Type: schema.ValueTypeFloat64,
-		})
-	}
-
-	// If partition by is empty, we aggregate by query-time series.
-	// Schema is then comprised of:
-	// - input columns excluding message Column
-	// - aggregated value column
-	outputSchema := schema.Schema{
-		Columns: make([]schema.ColumnSchema, 0, len(r.Table.Schema().Columns)),
-	}
-	for _, col := range r.Table.Schema().Columns {
-		if col.Name != types.ColumnNameBuiltinMessage { // Exclude message column
-			outputSchema.Columns = append(outputSchema.Columns, col)
-		}
-	}
-	outputSchema.Columns = append(outputSchema.Columns, schema.ColumnSchema{
-		Name: types.ColumnNameGeneratedValue,
-		Type: schema.ValueTypeInt64,
-	})
-	return &outputSchema
 }
 
 func (r *RangeAggregation) isInstruction() {}
