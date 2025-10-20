@@ -257,14 +257,14 @@ func BenchmarkRateStore(b *testing.B) {
 	}
 }
 
-func requireRatesAndPushesEqual(t *testing.T, expectedRate int64, expectedPushes float64, r *rateStore, tenant string, streamhash uint64) {
+func requireRatesAndPushesEqual(t *testing.T, expectedRate int64, expectedPushes float64, r *RateStoreService, tenant string, streamhash uint64) {
 	actualRate, actualPushes := r.RateFor(tenant, streamhash)
 	require.Equal(t, expectedRate, actualRate)
 	require.Equal(t, expectedPushes, actualPushes)
 }
 
 func BenchmarkAggregateByShard(b *testing.B) {
-	rs := &rateStore{rates: make(map[string]map[uint64]expiringRate)}
+	rs := &RateStoreService{rates: make(map[string]map[uint64]expiringRate)}
 	rates := make(map[string]map[uint64]*logproto.StreamRate)
 	rates["fake"] = make(map[uint64]*logproto.StreamRate)
 	for i := 0; i < 1000; i++ {
@@ -357,13 +357,13 @@ func (c *fakeOverrides) ShardStreams(_ string) shardstreams.Config {
 type testContext struct {
 	ring       *fakeRing
 	clientPool *fakeClientPool
-	rateStore  *rateStore
+	rateStore  *RateStoreService
 }
 
 func setup(shardingEnabled bool) *testContext {
 	ring := newFakeRing()
 	cp := newFakeClientPool()
-	cfg := RateStoreConfig{MaxParallelism: 5, IngesterReqTimeout: time.Second, StreamRateUpdateInterval: 10 * time.Millisecond}
+	cfg := RateStoreConfig{MaxParallelism: 5, IngesterReqTimeout: time.Second, StreamRateUpdateInterval: 10 * time.Millisecond, RateKeepAlive: 10 * time.Minute}
 
 	return &testContext{
 		ring:       ring,
