@@ -84,7 +84,7 @@ groups:
       histogram_quantile(0.99,
         sum(
           irate(
-            loki_request_duration_seconds_bucket{route!~"(?i).*tail.*"}[1m]
+            loki_request_duration_seconds_bucket{route!~"(?i).*tail.*"}[2m]
           )
         ) by (job, le, namespace, route)
       )
@@ -193,6 +193,24 @@ groups:
     for: 15m
     labels:
       severity: warning
+  - alert: LokiIngesterFlushFailureRateCritical
+    annotations:
+      summary: "Loki ingester has critical flush failure rate"
+      description: |
+        Loki ingester {{ $labels.pod }} in the namespace {{ $labels.namespace }} has a critical flush failure rate of
+        {{ $value | humanizePercentage }} over the last 5 minutes. This requires immediate attention as data is
+        not being flushed to the storage. Validate if the storage configuration is still valid and if the storage is
+        still reachable. Current failure rate: {{ $value | humanizePercentage }} Threshold: 20%
+    expr: |
+      sum (
+        rate(loki_ingester_chunks_flush_failures_total[5m])
+        /
+        rate(loki_ingester_chunks_flush_requests_total[5m])
+      ) by (namespace, pod)
+      > 0.20
+    for: 15m
+    labels:
+      severity: critical
   - alert: LokistackSchemaUpgradesRequired
     annotations:
       description: |-
@@ -207,5 +225,22 @@ groups:
       ) by (stack_namespace, stack_name)
       > 0
     for: 1m
+    labels:
+      severity: warning
+  - alert: LokistackComponentsNotReadyWarning
+    annotations:
+      description: |-
+        The LokiStack "{{ $labels.stack_name }}" in namespace "{{ $labels.namespace }}" has components that are not ready.
+      summary: "One or more LokiStack components are not ready."
+      runbook_url: "[[ .RunbookURL ]]#Lokistack-Components-Not-Ready-Warning"
+    expr: |
+      sum (
+        label_replace(
+          lokistack_status_condition{reason="ReadyComponents", status="false"},
+          "namespace", "$1", "stack_namespace", "(.+)"
+        )
+      ) by (stack_name, namespace)
+      > 0
+    for: 15m
     labels:
       severity: warning

@@ -253,7 +253,7 @@
       "location": "northamerica-south1"
     }
   ],
-  "etag": "\"3136333632333439343533383832363638313632\"",
+  "etag": "\"3131343633323936333034313936343439353533\"",
   "icons": {
     "x16": "https://www.google.com/images/icons/product/cloud_storage-16.png",
     "x32": "https://www.google.com/images/icons/product/cloud_storage-32.png"
@@ -1082,6 +1082,11 @@
               ],
               "location": "query",
               "type": "string"
+            },
+            "returnPartialSuccess": {
+              "description": "If true, return a list of bucket resource names for buckets that are in unreachable locations.",
+              "location": "query",
+              "type": "boolean"
             },
             "softDeleted": {
               "description": "If true, only soft-deleted bucket versions will be returned. The default is false. For more information, see [Soft Delete](https://cloud.google.com/storage/docs/soft-delete).",
@@ -4544,7 +4549,7 @@
       }
     }
   },
-  "revision": "20250814",
+  "revision": "20250925",
   "rootUrl": "https://storage.googleapis.com/",
   "schemas": {
     "AdvanceRelocateBucketOperationRequest": {
@@ -5385,6 +5390,13 @@
         "nextPageToken": {
           "description": "The continuation token, used to page through large result sets. Provide this value in a subsequent request to return the next page of results.",
           "type": "string"
+        },
+        "unreachable": {
+          "description": "The list of bucket resource names that could not be reached during the listing operation.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "type": "object"

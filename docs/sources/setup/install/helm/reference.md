@@ -3913,7 +3913,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.5.4"
+    "tag": "3.5.5"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -4060,7 +4060,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.5.4"
+"3.5.5"
 </pre>
 </td>
 		</tr>
@@ -7584,6 +7584,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.replicas</td>
+			<td>int</td>
+			<td>Replicas for `loki-canary` when using a Deployment</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.resources</td>
 			<td>object</td>
 			<td>Resource requests and limits for the canary</td>
@@ -7762,6 +7771,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>memcached.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe for memcached pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>memcachedExporter.containerSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext for memcached exporter containers</td>
@@ -7878,6 +7896,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>memcachedExporter.startupProbe</td>
+			<td>object</td>
+			<td>Startup probe for memcached exporter</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>migrate</td>
 			<td>object</td>
 			<td>Options that may be necessary when performing a migration from another helm chart</td>
@@ -7987,6 +8014,7 @@ false
   },
   "rules": {
     "additionalGroups": [],
+    "additionalRuleAnnotations": {},
     "additionalRuleLabels": {},
     "alerting": true,
     "annotations": {},
@@ -8091,6 +8119,7 @@ null
 			<td><pre lang="json">
 {
   "additionalGroups": [],
+  "additionalRuleAnnotations": {},
   "additionalRuleLabels": {},
   "alerting": true,
   "annotations": {},
@@ -8108,6 +8137,15 @@ null
 			<td>Additional groups to add to the rules file</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.rules.additionalRuleAnnotations</td>
+			<td>object</td>
+			<td>Additional annotations for PrometheusRule alerts</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -12545,6 +12583,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.persistence.enableStatefulSetRecreationForSizeChange</td>
+			<td>bool</td>
+			<td>Enable StatefulSetRecreation for changes to PVC size. This means that the StatefulSet will be deleted, recreated (with the same name) and rolled when a change to the PVC size is detected. That way the PVC can be resized without manual intervention.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.persistence.enabled</td>
 			<td>bool</td>
 			<td>Enable persistent disk</td>
@@ -12586,6 +12633,24 @@ null
 			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.whenDeleted</td>
+			<td>string</td>
+			<td>What to do with the volumes when the StatefulSet is deleted.</td>
+			<td><pre lang="json">
+"Delete"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.whenScaled</td>
+			<td>string</td>
+			<td>What to do with the volume when the StatefulSet is scaled down.</td>
+			<td><pre lang="json">
+"Delete"
 </pre>
 </td>
 		</tr>

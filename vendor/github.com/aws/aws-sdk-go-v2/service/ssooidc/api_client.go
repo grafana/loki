@@ -419,24 +419,33 @@ func setResolvedDefaultsMode(o *Options) {
 // NewFromConfig returns a new client from the provided config.
 func NewFromConfig(cfg aws.Config, optFns ...func(*Options)) *Client {
 	opts := Options{
-		Region:             cfg.Region,
-		DefaultsMode:       cfg.DefaultsMode,
-		RuntimeEnvironment: cfg.RuntimeEnvironment,
-		HTTPClient:         cfg.HTTPClient,
-		Credentials:        cfg.Credentials,
-		APIOptions:         cfg.APIOptions,
-		Logger:             cfg.Logger,
-		ClientLogMode:      cfg.ClientLogMode,
-		AppID:              cfg.AppID,
+		Region:               cfg.Region,
+		DefaultsMode:         cfg.DefaultsMode,
+		RuntimeEnvironment:   cfg.RuntimeEnvironment,
+		HTTPClient:           cfg.HTTPClient,
+		Credentials:          cfg.Credentials,
+		APIOptions:           cfg.APIOptions,
+		Logger:               cfg.Logger,
+		ClientLogMode:        cfg.ClientLogMode,
+		AppID:                cfg.AppID,
+		AuthSchemePreference: cfg.AuthSchemePreference,
 	}
 	resolveAWSRetryerProvider(cfg, &opts)
 	resolveAWSRetryMaxAttempts(cfg, &opts)
 	resolveAWSRetryMode(cfg, &opts)
 	resolveAWSEndpointResolver(cfg, &opts)
+	resolveInterceptors(cfg, &opts)
 	resolveUseDualStackEndpoint(cfg, &opts)
 	resolveUseFIPSEndpoint(cfg, &opts)
 	resolveBaseEndpoint(cfg, &opts)
-	return New(opts, optFns...)
+	return New(opts, func(o *Options) {
+		for _, opt := range cfg.ServiceOptions {
+			opt(ServiceID, o)
+		}
+		for _, opt := range optFns {
+			opt(o)
+		}
+	})
 }
 
 func resolveHTTPClient(o *Options) {
@@ -548,6 +557,10 @@ func resolveAWSEndpointResolver(cfg aws.Config, o *Options) {
 		return
 	}
 	o.EndpointResolver = withEndpointResolver(cfg.EndpointResolver, cfg.EndpointResolverWithOptions)
+}
+
+func resolveInterceptors(cfg aws.Config, o *Options) {
+	o.Interceptors = cfg.Interceptors.Copy()
 }
 
 func addClientUserAgent(stack *middleware.Stack, options Options) error {
@@ -854,6 +867,69 @@ func addDisableHTTPSMiddleware(stack *middleware.Stack, o Options) error {
 	return stack.Finalize.Insert(&disableHTTPSMiddleware{
 		DisableHTTPS: o.EndpointOptions.DisableHTTPS,
 	}, "ResolveEndpointV2", middleware.After)
+}
+
+func addInterceptBeforeRetryLoop(stack *middleware.Stack, opts Options) error {
+	return stack.Finalize.Insert(&smithyhttp.InterceptBeforeRetryLoop{
+		Interceptors: opts.Interceptors.BeforeRetryLoop,
+	}, "Retry", middleware.Before)
+}
+
+func addInterceptAttempt(stack *middleware.Stack, opts Options) error {
+	return stack.Finalize.Insert(&smithyhttp.InterceptAttempt{
+		BeforeAttempt: opts.Interceptors.BeforeAttempt,
+		AfterAttempt:  opts.Interceptors.AfterAttempt,
+	}, "Retry", middleware.After)
+}
+
+func addInterceptExecution(stack *middleware.Stack, opts Options) error {
+	return stack.Initialize.Add(&smithyhttp.InterceptExecution{
+		BeforeExecution: opts.Interceptors.BeforeExecution,
+		AfterExecution:  opts.Interceptors.AfterExecution,
+	}, middleware.Before)
+}
+
+func addInterceptBeforeSerialization(stack *middleware.Stack, opts Options) error {
+	return stack.Serialize.Insert(&smithyhttp.InterceptBeforeSerialization{
+		Interceptors: opts.Interceptors.BeforeSerialization,
+	}, "OperationSerializer", middleware.Before)
+}
+
+func addInterceptAfterSerialization(stack *middleware.Stack, opts Options) error {
+	return stack.Serialize.Insert(&smithyhttp.InterceptAfterSerialization{
+		Interceptors: opts.Interceptors.AfterSerialization,
+	}, "OperationSerializer", middleware.After)
+}
+
+func addInterceptBeforeSigning(stack *middleware.Stack, opts Options) error {
+	return stack.Finalize.Insert(&smithyhttp.InterceptBeforeSigning{
+		Interceptors: opts.Interceptors.BeforeSigning,
+	}, "Signing", middleware.Before)
+}
+
+func addInterceptAfterSigning(stack *middleware.Stack, opts Options) error {
+	return stack.Finalize.Insert(&smithyhttp.InterceptAfterSigning{
+		Interceptors: opts.Interceptors.AfterSigning,
+	}, "Signing", middleware.After)
+}
+
+func addInterceptTransmit(stack *middleware.Stack, opts Options) error {
+	return stack.Deserialize.Add(&smithyhttp.InterceptTransmit{
+		BeforeTransmit: opts.Interceptors.BeforeTransmit,
+		AfterTransmit:  opts.Interceptors.AfterTransmit,
+	}, middleware.After)
+}
+
+func addInterceptBeforeDeserialization(stack *middleware.Stack, opts Options) error {
+	return stack.Deserialize.Insert(&smithyhttp.InterceptBeforeDeserialization{
+		Interceptors: opts.Interceptors.BeforeDeserialization,
+	}, "OperationDeserializer", middleware.After) // (deserialize stack is called in reverse)
+}
+
+func addInterceptAfterDeserialization(stack *middleware.Stack, opts Options) error {
+	return stack.Deserialize.Insert(&smithyhttp.InterceptAfterDeserialization{
+		Interceptors: opts.Interceptors.AfterDeserialization,
+	}, "OperationDeserializer", middleware.Before)
 }
 
 type spanInitializeStart struct {
