@@ -11,7 +11,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
@@ -175,7 +175,7 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		compat         *physical.ColumnCompat
+		compat         *physicalpb.ColumnCompat
 		schema         *arrow.Schema
 		inputRows      []arrowtest.Rows
 		expectedSchema *arrow.Schema
@@ -185,10 +185,10 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 	}{
 		{
 			name: "no column collisions - returns early",
-			compat: &physical.ColumnCompat{
-				Collision:   types.ColumnTypeLabel,
-				Source:      types.ColumnTypeMetadata,
-				Destination: types.ColumnTypeMetadata,
+			compat: &physicalpb.ColumnCompat{
+				Collision:   physicalpb.COLUMN_TYPE_LABEL,
+				Source:      physicalpb.COLUMN_TYPE_METADATA,
+				Destination: physicalpb.COLUMN_TYPE_METADATA,
 			},
 			schema: arrow.NewSchema([]arrow.Field{
 				semconv.FieldFromFQN("utf8.builtin.message", true),
@@ -217,10 +217,10 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 		},
 		{
 			name: "single column collision - string type",
-			compat: &physical.ColumnCompat{
-				Collision:   types.ColumnTypeLabel,
-				Source:      types.ColumnTypeMetadata,
-				Destination: types.ColumnTypeMetadata,
+			compat: &physicalpb.ColumnCompat{
+				Collision:   physicalpb.COLUMN_TYPE_LABEL,
+				Source:      physicalpb.COLUMN_TYPE_METADATA,
+				Destination: physicalpb.COLUMN_TYPE_METADATA,
 			},
 			schema: arrow.NewSchema([]arrow.Field{
 				semconv.FieldFromFQN("utf8.builtin.message", true),
@@ -250,10 +250,10 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 		},
 		{
 			name: "multiple column collisions",
-			compat: &physical.ColumnCompat{
-				Collision:   types.ColumnTypeLabel,
-				Source:      types.ColumnTypeMetadata,
-				Destination: types.ColumnTypeMetadata,
+			compat: &physicalpb.ColumnCompat{
+				Collision:   physicalpb.COLUMN_TYPE_LABEL,
+				Source:      physicalpb.COLUMN_TYPE_METADATA,
+				Destination: physicalpb.COLUMN_TYPE_METADATA,
 			},
 			schema: arrow.NewSchema([]arrow.Field{
 				semconv.FieldFromFQN("utf8.builtin.message", true),
@@ -302,10 +302,10 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 		},
 		{
 			name: "collision with null values in collision column",
-			compat: &physical.ColumnCompat{
-				Collision:   types.ColumnTypeLabel,
-				Source:      types.ColumnTypeMetadata,
-				Destination: types.ColumnTypeMetadata,
+			compat: &physicalpb.ColumnCompat{
+				Collision:   physicalpb.COLUMN_TYPE_LABEL,
+				Source:      physicalpb.COLUMN_TYPE_METADATA,
+				Destination: physicalpb.COLUMN_TYPE_METADATA,
 			},
 			schema: arrow.NewSchema([]arrow.Field{
 				semconv.FieldFromFQN("utf8.label.status", true),
@@ -335,10 +335,10 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 		},
 		{
 			name: "collision with null values in source column",
-			compat: &physical.ColumnCompat{
-				Collision:   types.ColumnTypeLabel,
-				Source:      types.ColumnTypeMetadata,
-				Destination: types.ColumnTypeMetadata,
+			compat: &physicalpb.ColumnCompat{
+				Collision:   physicalpb.COLUMN_TYPE_LABEL,
+				Source:      physicalpb.COLUMN_TYPE_METADATA,
+				Destination: physicalpb.COLUMN_TYPE_METADATA,
 			},
 			schema: arrow.NewSchema([]arrow.Field{
 				semconv.FieldFromFQN("utf8.label.status", true),
@@ -362,10 +362,10 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 		},
 		{
 			name: "multiple batches with collisions",
-			compat: &physical.ColumnCompat{
-				Collision:   types.ColumnTypeLabel,
-				Source:      types.ColumnTypeMetadata,
-				Destination: types.ColumnTypeMetadata,
+			compat: &physicalpb.ColumnCompat{
+				Collision:   physicalpb.COLUMN_TYPE_LABEL,
+				Source:      physicalpb.COLUMN_TYPE_METADATA,
+				Destination: physicalpb.COLUMN_TYPE_METADATA,
 			},
 			schema: arrow.NewSchema([]arrow.Field{
 				semconv.FieldFromFQN("utf8.label.status", true),
@@ -397,10 +397,10 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 		},
 		{
 			name: "empty batch does not add _extracted column",
-			compat: &physical.ColumnCompat{
-				Collision:   types.ColumnTypeLabel,
-				Source:      types.ColumnTypeMetadata,
-				Destination: types.ColumnTypeMetadata,
+			compat: &physicalpb.ColumnCompat{
+				Collision:   physicalpb.COLUMN_TYPE_LABEL,
+				Source:      physicalpb.COLUMN_TYPE_METADATA,
+				Destination: physicalpb.COLUMN_TYPE_METADATA,
 			},
 			schema: arrow.NewSchema([]arrow.Field{
 				semconv.FieldFromFQN("utf8.label.status", true),
@@ -419,10 +419,10 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 		},
 		{
 			name: "non-string column types - should copy through unchanged",
-			compat: &physical.ColumnCompat{
-				Collision:   types.ColumnTypeLabel,
-				Source:      types.ColumnTypeMetadata,
-				Destination: types.ColumnTypeMetadata,
+			compat: &physicalpb.ColumnCompat{
+				Collision:   physicalpb.COLUMN_TYPE_LABEL,
+				Source:      physicalpb.COLUMN_TYPE_METADATA,
+				Destination: physicalpb.COLUMN_TYPE_METADATA,
 			},
 			schema: arrow.NewSchema([]arrow.Field{
 				semconv.FieldFromFQN("utf8.builtin.message", true),
@@ -547,10 +547,10 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 
 	t.Run("invalid field name in schema", func(t *testing.T) {
-		compat := &physical.ColumnCompat{
-			Collision:   types.ColumnTypeLabel,
-			Source:      types.ColumnTypeMetadata,
-			Destination: types.ColumnTypeMetadata,
+		compat := &physicalpb.ColumnCompat{
+			Collision:   physicalpb.COLUMN_TYPE_LABEL,
+			Source:      physicalpb.COLUMN_TYPE_METADATA,
+			Destination: physicalpb.COLUMN_TYPE_METADATA,
 		}
 
 		// Create schema with invalid field name that cannot be parsed by semconv.ParseFQN
@@ -571,10 +571,10 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 	})
 
 	t.Run("input pipeline error", func(t *testing.T) {
-		compat := &physical.ColumnCompat{
-			Collision:   types.ColumnTypeLabel,
-			Source:      types.ColumnTypeMetadata,
-			Destination: types.ColumnTypeMetadata,
+		compat := &physicalpb.ColumnCompat{
+			Collision:   physicalpb.COLUMN_TYPE_LABEL,
+			Source:      physicalpb.COLUMN_TYPE_METADATA,
+			Destination: physicalpb.COLUMN_TYPE_METADATA,
 		}
 
 		// Create a pipeline that will return an expected error
@@ -589,10 +589,10 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 	})
 
 	t.Run("non-string collision column should panic", func(t *testing.T) {
-		compat := &physical.ColumnCompat{
-			Collision:   types.ColumnTypeLabel,
-			Source:      types.ColumnTypeMetadata,
-			Destination: types.ColumnTypeMetadata,
+		compat := &physicalpb.ColumnCompat{
+			Collision:   physicalpb.COLUMN_TYPE_LABEL,
+			Source:      physicalpb.COLUMN_TYPE_METADATA,
+			Destination: physicalpb.COLUMN_TYPE_METADATA,
 		}
 
 		// Create schema where source column is not string type

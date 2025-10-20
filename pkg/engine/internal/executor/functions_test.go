@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -28,7 +29,7 @@ func createBoolArray(mem memory.Allocator, values []bool, nulls []bool) *Array {
 	return &Array{
 		array: builder.NewArray(),
 		dt:    types.Loki.Bool,
-		ct:    types.ColumnTypeBuiltin,
+		ct:    physicalpb.COLUMN_TYPE_BUILTIN,
 		rows:  int64(len(values)),
 	}
 }
@@ -49,7 +50,7 @@ func createStringArray(mem memory.Allocator, values []string, nulls []bool) *Arr
 	return &Array{
 		array: builder.NewArray(),
 		dt:    types.Loki.String,
-		ct:    types.ColumnTypeBuiltin,
+		ct:    physicalpb.COLUMN_TYPE_BUILTIN,
 		rows:  int64(len(values)),
 	}
 }
@@ -70,7 +71,7 @@ func createInt64Array(mem memory.Allocator, values []int64, nulls []bool) *Array
 	return &Array{
 		array: builder.NewArray(),
 		dt:    types.Loki.Integer,
-		ct:    types.ColumnTypeBuiltin,
+		ct:    physicalpb.COLUMN_TYPE_BUILTIN,
 		rows:  int64(len(values)),
 	}
 }
@@ -91,7 +92,7 @@ func createTimestampArray(mem memory.Allocator, values []arrow.Timestamp, nulls 
 	return &Array{
 		array: builder.NewArray(),
 		dt:    types.Loki.Timestamp,
-		ct:    types.ColumnTypeBuiltin,
+		ct:    physicalpb.COLUMN_TYPE_BUILTIN,
 		rows:  int64(len(values)),
 	}
 }
@@ -112,7 +113,7 @@ func createFloat64Array(mem memory.Allocator, values []float64, nulls []bool) *A
 	return &Array{
 		array: builder.NewArray(),
 		dt:    types.Loki.Float,
-		ct:    types.ColumnTypeBuiltin,
+		ct:    physicalpb.COLUMN_TYPE_BUILTIN,
 		rows:  int64(len(values)),
 	}
 }
@@ -134,61 +135,61 @@ func extractBoolValues(result ColumnVector) []bool {
 func TestBinaryFunctionRegistry_GetForSignature(t *testing.T) {
 	tests := []struct {
 		name        string
-		op          types.BinaryOp
+		op          physicalpb.BinaryOp
 		dataType    arrow.DataType
 		expectError bool
 	}{
 		{
 			name:        "valid equality operation for boolean",
-			op:          types.BinaryOpEq,
+			op:          physicalpb.BINARY_OP_EQ,
 			dataType:    arrow.FixedWidthTypes.Boolean,
 			expectError: false,
 		},
 		{
 			name:        "valid equality operation for string",
-			op:          types.BinaryOpEq,
+			op:          physicalpb.BINARY_OP_EQ,
 			dataType:    arrow.BinaryTypes.String,
 			expectError: false,
 		},
 		{
 			name:        "valid equality operation for int64",
-			op:          types.BinaryOpEq,
+			op:          physicalpb.BINARY_OP_EQ,
 			dataType:    arrow.PrimitiveTypes.Int64,
 			expectError: false,
 		},
 		{
 			name:        "valid equality operation for timestamp",
-			op:          types.BinaryOpEq,
+			op:          physicalpb.BINARY_OP_EQ,
 			dataType:    arrow.FixedWidthTypes.Timestamp_ns,
 			expectError: false,
 		},
 		{
 			name:        "valid equality operation for float64",
-			op:          types.BinaryOpEq,
+			op:          physicalpb.BINARY_OP_EQ,
 			dataType:    arrow.PrimitiveTypes.Float64,
 			expectError: false,
 		},
 		{
 			name:        "valid string contains operation",
-			op:          types.BinaryOpMatchSubstr,
+			op:          physicalpb.BINARY_OP_MATCH_SUBSTR,
 			dataType:    arrow.BinaryTypes.String,
 			expectError: false,
 		},
 		{
 			name:        "valid regex match operation",
-			op:          types.BinaryOpMatchRe,
+			op:          physicalpb.BINARY_OP_MATCH_RE,
 			dataType:    arrow.BinaryTypes.String,
 			expectError: false,
 		},
 		{
 			name:        "invalid operation",
-			op:          types.BinaryOpAdd, // Not registered
+			op:          physicalpb.BINARY_OP_ADD, // Not registered
 			dataType:    arrow.PrimitiveTypes.Int64,
 			expectError: true,
 		},
 		{
 			name:        "invalid data type for operation",
-			op:          types.BinaryOpEq,
+			op:          physicalpb.BINARY_OP_EQ,
 			dataType:    arrow.PrimitiveTypes.Int32, // Not registered
 			expectError: true,
 		},
@@ -215,49 +216,49 @@ func TestBooleanComparisonFunctions(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		op       types.BinaryOp
+		op       physicalpb.BinaryOp
 		lhs      []bool
 		rhs      []bool
 		expected []bool
 	}{
 		{
 			name:     "boolean equality",
-			op:       types.BinaryOpEq,
+			op:       physicalpb.BINARY_OP_EQ,
 			lhs:      []bool{true, false, true, false},
 			rhs:      []bool{true, false, false, true},
 			expected: []bool{true, true, false, false},
 		},
 		{
 			name:     "boolean inequality",
-			op:       types.BinaryOpNeq,
+			op:       physicalpb.BINARY_OP_NEQ,
 			lhs:      []bool{true, false, true, false},
 			rhs:      []bool{true, false, false, true},
 			expected: []bool{false, false, true, true},
 		},
 		{
 			name:     "boolean greater than",
-			op:       types.BinaryOpGt,
+			op:       physicalpb.BINARY_OP_GT,
 			lhs:      []bool{true, false, true, false},
 			rhs:      []bool{false, true, true, false},
 			expected: []bool{true, false, false, false},
 		},
 		{
 			name:     "boolean greater than or equal",
-			op:       types.BinaryOpGte,
+			op:       physicalpb.BINARY_OP_GTE,
 			lhs:      []bool{true, false, true, false},
 			rhs:      []bool{false, true, true, false},
 			expected: []bool{true, false, true, true},
 		},
 		{
 			name:     "boolean less than",
-			op:       types.BinaryOpLt,
+			op:       physicalpb.BINARY_OP_LT,
 			lhs:      []bool{true, false, true, false},
 			rhs:      []bool{false, true, true, false},
 			expected: []bool{false, true, false, false},
 		},
 		{
 			name:     "boolean less than or equal",
-			op:       types.BinaryOpLte,
+			op:       physicalpb.BINARY_OP_LTE,
 			lhs:      []bool{true, false, true, false},
 			rhs:      []bool{false, true, true, false},
 			expected: []bool{false, true, true, true},
@@ -289,49 +290,49 @@ func TestStringComparisonFunctions(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		op       types.BinaryOp
+		op       physicalpb.BinaryOp
 		lhs      []string
 		rhs      []string
 		expected []bool
 	}{
 		{
 			name:     "string equality",
-			op:       types.BinaryOpEq,
+			op:       physicalpb.BINARY_OP_EQ,
 			lhs:      []string{"hello", "world", "test", ""},
 			rhs:      []string{"hello", "world", "different", ""},
 			expected: []bool{true, true, false, true},
 		},
 		{
 			name:     "string inequality",
-			op:       types.BinaryOpNeq,
+			op:       physicalpb.BINARY_OP_NEQ,
 			lhs:      []string{"hello", "world", "test", ""},
 			rhs:      []string{"hello", "world", "different", ""},
 			expected: []bool{false, false, true, false},
 		},
 		{
 			name:     "string greater than",
-			op:       types.BinaryOpGt,
+			op:       physicalpb.BINARY_OP_GT,
 			lhs:      []string{"b", "a", "z", "hello"},
 			rhs:      []string{"a", "b", "a", "world"},
 			expected: []bool{true, false, true, false},
 		},
 		{
 			name:     "string greater than or equal",
-			op:       types.BinaryOpGte,
+			op:       physicalpb.BINARY_OP_GTE,
 			lhs:      []string{"b", "a", "z", "hello"},
 			rhs:      []string{"a", "a", "a", "hello"},
 			expected: []bool{true, true, true, true},
 		},
 		{
 			name:     "string less than",
-			op:       types.BinaryOpLt,
+			op:       physicalpb.BINARY_OP_LT,
 			lhs:      []string{"a", "b", "a", "world"},
 			rhs:      []string{"b", "a", "z", "hello"},
 			expected: []bool{true, false, true, false},
 		},
 		{
 			name:     "string less than or equal",
-			op:       types.BinaryOpLte,
+			op:       physicalpb.BINARY_OP_LTE,
 			lhs:      []string{"a", "a", "a", "hello"},
 			rhs:      []string{"b", "a", "z", "hello"},
 			expected: []bool{true, true, true, true},
@@ -363,49 +364,49 @@ func TestIntegerComparisonFunctions(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		op       types.BinaryOp
+		op       physicalpb.BinaryOp
 		lhs      []int64
 		rhs      []int64
 		expected []bool
 	}{
 		{
 			name:     "int64 equality",
-			op:       types.BinaryOpEq,
+			op:       physicalpb.BINARY_OP_EQ,
 			lhs:      []int64{1, 2, 3, 0, -1},
 			rhs:      []int64{1, 3, 3, 0, 1},
 			expected: []bool{true, false, true, true, false},
 		},
 		{
 			name:     "int64 inequality",
-			op:       types.BinaryOpNeq,
+			op:       physicalpb.BINARY_OP_NEQ,
 			lhs:      []int64{1, 2, 3, 0, -1},
 			rhs:      []int64{1, 3, 3, 0, 1},
 			expected: []bool{false, true, false, false, true},
 		},
 		{
 			name:     "int64 greater than",
-			op:       types.BinaryOpGt,
+			op:       physicalpb.BINARY_OP_GT,
 			lhs:      []int64{2, 1, 3, 0, -1},
 			rhs:      []int64{1, 2, 3, 0, -2},
 			expected: []bool{true, false, false, false, true},
 		},
 		{
 			name:     "int64 greater than or equal",
-			op:       types.BinaryOpGte,
+			op:       physicalpb.BINARY_OP_GTE,
 			lhs:      []int64{2, 1, 3, 0, -1},
 			rhs:      []int64{1, 1, 3, 0, -1},
 			expected: []bool{true, true, true, true, true},
 		},
 		{
 			name:     "int64 less than",
-			op:       types.BinaryOpLt,
+			op:       physicalpb.BINARY_OP_LT,
 			lhs:      []int64{1, 2, 3, 0, -2},
 			rhs:      []int64{2, 1, 3, 0, -1},
 			expected: []bool{true, false, false, false, true},
 		},
 		{
 			name:     "int64 less than or equal",
-			op:       types.BinaryOpLte,
+			op:       physicalpb.BINARY_OP_LTE,
 			lhs:      []int64{1, 1, 3, 0, -1},
 			rhs:      []int64{2, 1, 3, 0, -1},
 			expected: []bool{true, true, true, true, true},
@@ -437,49 +438,49 @@ func TestTimestampComparisonFunctions(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		op       types.BinaryOp
+		op       physicalpb.BinaryOp
 		lhs      []arrow.Timestamp
 		rhs      []arrow.Timestamp
 		expected []bool
 	}{
 		{
 			name:     "timestamp equality",
-			op:       types.BinaryOpEq,
+			op:       physicalpb.BINARY_OP_EQ,
 			lhs:      []arrow.Timestamp{1, 2, 3, 0, 100},
 			rhs:      []arrow.Timestamp{1, 3, 3, 0, 50},
 			expected: []bool{true, false, true, true, false},
 		},
 		{
 			name:     "timestamp inequality",
-			op:       types.BinaryOpNeq,
+			op:       physicalpb.BINARY_OP_NEQ,
 			lhs:      []arrow.Timestamp{1, 2, 3, 0, 100},
 			rhs:      []arrow.Timestamp{1, 3, 3, 0, 50},
 			expected: []bool{false, true, false, false, true},
 		},
 		{
 			name:     "timestamp greater than",
-			op:       types.BinaryOpGt,
+			op:       physicalpb.BINARY_OP_GT,
 			lhs:      []arrow.Timestamp{2, 1, 3, 0, 100},
 			rhs:      []arrow.Timestamp{1, 2, 3, 0, 50},
 			expected: []bool{true, false, false, false, true},
 		},
 		{
 			name:     "timestamp greater than or equal",
-			op:       types.BinaryOpGte,
+			op:       physicalpb.BINARY_OP_GTE,
 			lhs:      []arrow.Timestamp{2, 1, 3, 0, 100},
 			rhs:      []arrow.Timestamp{1, 1, 3, 0, 100},
 			expected: []bool{true, true, true, true, true},
 		},
 		{
 			name:     "timestamp less than",
-			op:       types.BinaryOpLt,
+			op:       physicalpb.BINARY_OP_LT,
 			lhs:      []arrow.Timestamp{1, 2, 3, 0, 50},
 			rhs:      []arrow.Timestamp{2, 1, 3, 0, 100},
 			expected: []bool{true, false, false, false, true},
 		},
 		{
 			name:     "timestamp less than or equal",
-			op:       types.BinaryOpLte,
+			op:       physicalpb.BINARY_OP_LTE,
 			lhs:      []arrow.Timestamp{1, 1, 3, 0, 100},
 			rhs:      []arrow.Timestamp{2, 1, 3, 0, 100},
 			expected: []bool{true, true, true, true, true},
@@ -511,49 +512,49 @@ func TestFloat64ComparisonFunctions(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		op       types.BinaryOp
+		op       physicalpb.BinaryOp
 		lhs      []float64
 		rhs      []float64
 		expected []bool
 	}{
 		{
 			name:     "float64 equality",
-			op:       types.BinaryOpEq,
+			op:       physicalpb.BINARY_OP_EQ,
 			lhs:      []float64{1.0, 2.5, 3.14, 0.0, -1.5},
 			rhs:      []float64{1.0, 2.6, 3.14, 0.0, 1.5},
 			expected: []bool{true, false, true, true, false},
 		},
 		{
 			name:     "float64 inequality",
-			op:       types.BinaryOpNeq,
+			op:       physicalpb.BINARY_OP_NEQ,
 			lhs:      []float64{1.0, 2.5, 3.14, 0.0, -1.5},
 			rhs:      []float64{1.0, 2.6, 3.14, 0.0, 1.5},
 			expected: []bool{false, true, false, false, true},
 		},
 		{
 			name:     "float64 greater than",
-			op:       types.BinaryOpGt,
+			op:       physicalpb.BINARY_OP_GT,
 			lhs:      []float64{2.0, 1.5, 3.14, 0.0, -1.0},
 			rhs:      []float64{1.0, 2.0, 3.14, 0.0, -2.0},
 			expected: []bool{true, false, false, false, true},
 		},
 		{
 			name:     "float64 greater than or equal",
-			op:       types.BinaryOpGte,
+			op:       physicalpb.BINARY_OP_GTE,
 			lhs:      []float64{2.0, 1.5, 3.14, 0.0, -1.0},
 			rhs:      []float64{1.0, 1.5, 3.14, 0.0, -1.0},
 			expected: []bool{true, true, true, true, true},
 		},
 		{
 			name:     "float64 less than",
-			op:       types.BinaryOpLt,
+			op:       physicalpb.BINARY_OP_LT,
 			lhs:      []float64{1.0, 2.0, 3.14, 0.0, -2.0},
 			rhs:      []float64{2.0, 1.5, 3.14, 0.0, -1.0},
 			expected: []bool{true, false, false, false, true},
 		},
 		{
 			name:     "float64 less than or equal",
-			op:       types.BinaryOpLte,
+			op:       physicalpb.BINARY_OP_LTE,
 			lhs:      []float64{1.0, 1.5, 3.14, 0.0, -1.0},
 			rhs:      []float64{2.0, 1.5, 3.14, 0.0, -1.0},
 			expected: []bool{true, true, true, true, true},
@@ -585,49 +586,49 @@ func TestStringMatchingFunctions(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		op       types.BinaryOp
+		op       physicalpb.BinaryOp
 		lhs      []string
 		rhs      []string
 		expected []bool
 	}{
 		{
 			name:     "string contains",
-			op:       types.BinaryOpMatchSubstr,
+			op:       physicalpb.BINARY_OP_MATCH_SUBSTR,
 			lhs:      []string{"hello world", "test string", "foobar", ""},
 			rhs:      []string{"world", "test", "baz", ""},
 			expected: []bool{true, true, false, true},
 		},
 		{
 			name:     "string does not contain",
-			op:       types.BinaryOpNotMatchSubstr,
+			op:       physicalpb.BINARY_OP_NOT_MATCH_SUBSTR,
 			lhs:      []string{"hello world", "test string", "foobar", ""},
 			rhs:      []string{"world", "test", "baz", ""},
 			expected: []bool{false, false, true, false},
 		},
 		{
 			name:     "regex match",
-			op:       types.BinaryOpMatchRe,
+			op:       physicalpb.BINARY_OP_MATCH_RE,
 			lhs:      []string{"hello123", "test456", "abc", ""},
 			rhs:      []string{"^hello\\d+$", "^\\d+", "^[a-z]+$", ".+"},
 			expected: []bool{true, false, true, false},
 		},
 		{
 			name:     "regex not match",
-			op:       types.BinaryOpNotMatchRe,
+			op:       physicalpb.BINARY_OP_NOT_MATCH_RE,
 			lhs:      []string{"hello123", "test456", "abc", ""},
 			rhs:      []string{"^hello\\d+$", "^\\d+", "^[a-z]+$", ".+"},
 			expected: []bool{false, true, false, true},
 		},
 		{
 			name:     "case sensitive substring matching",
-			op:       types.BinaryOpMatchSubstr,
+			op:       physicalpb.BINARY_OP_MATCH_SUBSTR,
 			lhs:      []string{"Hello World", "TEST", "CaseSensitive"},
 			rhs:      []string{"hello", "test", "Case"},
 			expected: []bool{false, false, true},
 		},
 		{
 			name:     "special characters in contains",
-			op:       types.BinaryOpMatchSubstr,
+			op:       physicalpb.BINARY_OP_MATCH_SUBSTR,
 			lhs:      []string{"hello@world.com", "test[123]", "foo.bar", ""},
 			rhs:      []string{"@world", "[123]", ".", ""},
 			expected: []bool{true, true, true, true},
@@ -659,14 +660,14 @@ func TestNullValueHandling(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		op       types.BinaryOp
+		op       physicalpb.BinaryOp
 		dataType arrow.DataType
 		setup    func() (*Array, *Array)
 		expected []bool
 	}{
 		{
 			name:     "boolean with nulls",
-			op:       types.BinaryOpEq,
+			op:       physicalpb.BINARY_OP_EQ,
 			dataType: arrow.FixedWidthTypes.Boolean,
 			setup: func() (*Array, *Array) {
 				lhs := createBoolArray(mem, []bool{true, false, true}, []bool{false, true, false})
@@ -677,7 +678,7 @@ func TestNullValueHandling(t *testing.T) {
 		},
 		{
 			name:     "string with nulls",
-			op:       types.BinaryOpEq,
+			op:       physicalpb.BINARY_OP_EQ,
 			dataType: arrow.BinaryTypes.String,
 			setup: func() (*Array, *Array) {
 				lhs := createStringArray(mem, []string{"hello", "world", "test"}, []bool{false, true, false})
@@ -688,7 +689,7 @@ func TestNullValueHandling(t *testing.T) {
 		},
 		{
 			name:     "int64 with nulls",
-			op:       types.BinaryOpGt,
+			op:       physicalpb.BINARY_OP_GT,
 			dataType: arrow.PrimitiveTypes.Int64,
 			setup: func() (*Array, *Array) {
 				lhs := createInt64Array(mem, []int64{5, 10, 15}, []bool{false, true, false})
@@ -723,13 +724,13 @@ func TestArrayLengthMismatch(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		op       types.BinaryOp
+		op       physicalpb.BinaryOp
 		dataType arrow.DataType
 		setup    func() (*Array, *Array)
 	}{
 		{
 			name:     "boolean length mismatch",
-			op:       types.BinaryOpEq,
+			op:       physicalpb.BINARY_OP_EQ,
 			dataType: arrow.FixedWidthTypes.Boolean,
 			setup: func() (*Array, *Array) {
 				lhs := createBoolArray(mem, []bool{true, false}, nil)
@@ -739,7 +740,7 @@ func TestArrayLengthMismatch(t *testing.T) {
 		},
 		{
 			name:     "string length mismatch",
-			op:       types.BinaryOpEq,
+			op:       physicalpb.BINARY_OP_EQ,
 			dataType: arrow.BinaryTypes.String,
 			setup: func() (*Array, *Array) {
 				lhs := createStringArray(mem, []string{"hello"}, nil)
@@ -749,7 +750,7 @@ func TestArrayLengthMismatch(t *testing.T) {
 		},
 		{
 			name:     "int64 length mismatch",
-			op:       types.BinaryOpGt,
+			op:       physicalpb.BINARY_OP_GT,
 			dataType: arrow.PrimitiveTypes.Int64,
 			setup: func() (*Array, *Array) {
 				lhs := createInt64Array(mem, []int64{1, 2, 3}, nil)
@@ -785,7 +786,7 @@ func TestRegexCompileError(t *testing.T) {
 	defer lhs.array.Release()
 	defer rhs.array.Release()
 
-	fn, err := binaryFunctions.GetForSignature(types.BinaryOpMatchRe, arrow.BinaryTypes.String)
+	fn, err := binaryFunctions.GetForSignature(physicalpb.BINARY_OP_MATCH_RE, arrow.BinaryTypes.String)
 	require.NoError(t, err)
 
 	_, err = fn.Evaluate(lhs, rhs)
@@ -828,7 +829,7 @@ func TestEmptyArrays(t *testing.T) {
 	defer lhs.array.Release()
 	defer rhs.array.Release()
 
-	fn, err := binaryFunctions.GetForSignature(types.BinaryOpEq, arrow.BinaryTypes.String)
+	fn, err := binaryFunctions.GetForSignature(physicalpb.BINARY_OP_EQ, arrow.BinaryTypes.String)
 	require.NoError(t, err)
 
 	result, err := fn.Evaluate(lhs, rhs)

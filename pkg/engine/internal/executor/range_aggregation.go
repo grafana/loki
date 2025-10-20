@@ -12,6 +12,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -23,16 +24,16 @@ type rangeAggregationOptions struct {
 	endTs         time.Time     // end timestamp of the query
 	rangeInterval time.Duration // range interval
 	step          time.Duration // step used for range queries
-	operation     types.RangeAggregationType
+	operation     physicalpb.AggregateRangeOp
 }
 
 var (
 	// rangeAggregationOperations holds the mapping of range aggregation types to operations for an aggregator.
-	rangeAggregationOperations = map[types.RangeAggregationType]aggregationOperation{
-		types.RangeAggregationTypeSum:   aggregationOperationSum,
-		types.RangeAggregationTypeCount: aggregationOperationCount,
-		types.RangeAggregationTypeMax:   aggregationOperationMax,
-		types.RangeAggregationTypeMin:   aggregationOperationMin,
+	rangeAggregationOperations = map[physicalpb.AggregateRangeOp]aggregationOperation{
+		physicalpb.AggregateRangeOpSum:   aggregationOperationSum,
+		physicalpb.AggregateRangeOpCount: aggregationOperationCount,
+		physicalpb.AggregateRangeOpMax:   aggregationOperationMax,
+		physicalpb.AggregateRangeOpMin:   aggregationOperationMin,
 	}
 )
 
@@ -124,14 +125,14 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 		tsColumnExpr = &physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: types.ColumnNameBuiltinTimestamp,
-				Type:   types.ColumnTypeBuiltin,
+				Type:   physicalpb.COLUMN_TYPE_BUILTIN,
 			},
 		} // timestamp column expression
 
 		valColumnExpr = &physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: types.ColumnNameGeneratedValue,
-				Type:   types.ColumnTypeGenerated,
+				Type:   physicalpb.COLUMN_TYPE_GENERATED,
 			},
 		} // value column expression
 
@@ -184,7 +185,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 
 			// no need to extract value column for COUNT aggregation
 			var valVec ColumnVector
-			if r.opts.operation != types.RangeAggregationTypeCount {
+			if r.opts.operation != physicalpb.AggregateRangeOpCount {
 				valVec, err = r.evaluator.eval(valColumnExpr, record)
 				if err != nil {
 					return nil, err
@@ -205,7 +206,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				}
 
 				var value float64
-				if r.opts.operation != types.RangeAggregationTypeCount {
+				if r.opts.operation != physicalpb.AggregateRangeOpCount {
 					switch v := valVec.Value(row).(type) {
 					case float64:
 						value = v

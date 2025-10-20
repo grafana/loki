@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -228,7 +229,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 				&physical.ColumnExpr{
 					Ref: types.ColumnRef{
 						Column: types.ColumnNameBuiltinTimestamp,
-						Type:   types.ColumnTypeBuiltin,
+						Type:   physicalpb.COLUMN_TYPE_BUILTIN,
 					},
 				},
 			},

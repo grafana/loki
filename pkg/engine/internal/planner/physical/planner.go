@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
@@ -23,7 +24,7 @@ type Context struct {
 	from          time.Time
 	through       time.Time
 	rangeInterval time.Duration
-	direction     SortOrder
+	direction     physicalpb.SortOrder
 	v1Compatible  bool
 }
 
@@ -43,7 +44,7 @@ func (pc *Context) Clone() *Context {
 	}
 }
 
-func (pc *Context) WithDirection(direction SortOrder) *Context {
+func (pc *Context) WithDirection(direction physicalpb.SortOrder) *Context {
 	cloned := pc.Clone()
 	cloned.direction = direction
 	return cloned
@@ -114,30 +115,30 @@ func (p *Planner) reset() {
 }
 
 // Convert a predicate from an [logical.Instruction] into an [Expression].
-func (p *Planner) convertPredicate(inst logical.Value) Expression {
+func (p *Planner) convertPredicate(inst logical.Value) *physicalpb.Expression {
 	switch inst := inst.(type) {
 	case *logical.UnaryOp:
-		return &UnaryExpr{
-			Left: p.convertPredicate(inst.Value),
-			Op:   inst.Op,
-		}
+		return UnaryExpressionToExpression(&physicalpb.UnaryExpression{
+			Value: p.convertPredicate(inst.Value),
+			Op:    inst.Op,
+		})
 	case *logical.BinOp:
-		return &BinaryExpr{
+		return BinaryExpressionToExpression(&physicalpb.BinaryExpression{
 			Left:  p.convertPredicate(inst.Left),
 			Right: p.convertPredicate(inst.Right),
 			Op:    inst.Op,
-		}
+		})
 	case *logical.ColumnRef:
-		return &ColumnExpr{Ref: inst.Ref}
+		return ColumnExpressionToExpression(&physicalpb.ColumnExpression{Name: inst.Ref.Column, Type: inst.Ref.Type})
 	case *logical.Literal:
-		return NewLiteral(inst.Value())
+		return LiteralExpressionToExpression(NewLiteral(inst.Value()))
 	default:
 		panic(fmt.Sprintf("invalid value for predicate: %T", inst))
 	}
 }
 
 // Convert a [logical.Instruction] into one or multiple [Node]s.
-func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
+func (p *Planner) process(inst logical.Value, ctx *Context) ([]physicalpb.Node, error) {
 	switch inst := inst.(type) {
 	case *logical.MakeTable:
 		return p.processMakeTable(inst, ctx)
@@ -160,38 +161,38 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 	return nil, nil
 }
 
-func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, baseNode Node, ctx *Context) error {
-	scans := []Node{}
+func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, baseNode physicalpb.Node, ctx *Context) error {
+	scans := []physicalpb.Node{}
 	for _, descriptor := range currentGroup {
 		// output current group to nodes
 		for _, section := range descriptor.Sections {
-			scan := &DataObjScan{
-				Location:  descriptor.Location,
-				StreamIDs: descriptor.Streams,
-				Section:   section,
-				Direction: ctx.direction,
+			scan := &physicalpb.DataObjScan{
+				Location:  string(descriptor.Location),
+				StreamIds: descriptor.Streams,
+				Section:   int64(section),
+				SortOrder: ctx.direction,
 			}
 			p.plan.graph.Add(scan)
 			scans = append(scans, scan)
 		}
 	}
-	if len(scans) > 1 && ctx.direction != UNSORTED {
-		sortMerge := &SortMerge{
-			Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
+	if len(scans) > 1 && ctx.direction != physicalpb.SORT_ORDER_INVALID {
+		sortMerge := &physicalpb.SortMerge{
+			Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, physicalpb.COLUMN_TYPE_BUILTIN),
 			Order:  ctx.direction, // apply direction from previously visited Sort node
 		}
 		p.plan.graph.Add(sortMerge)
 		for _, scan := range scans {
-			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: sortMerge, Child: scan}); err != nil {
+			if err := p.plan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge, Child: scan}); err != nil {
 				return err
 			}
 		}
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: baseNode, Child: sortMerge}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: baseNode, Child: sortMerge}); err != nil {
 			return err
 		}
 	} else {
 		for _, scan := range scans {
-			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: baseNode, Child: scan}); err != nil {
+			if err := p.plan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: baseNode, Child: scan}); err != nil {
 				return err
 			}
 		}
@@ -222,30 +223,30 @@ func overlappingShardDescriptors(filteredShardDescriptors []FilteredShardDescrip
 }
 
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
-func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node, error) {
+func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]physicalpb.Node, error) {
 	shard, ok := lp.Shard.(*logical.ShardInfo)
 	if !ok {
 		return nil, fmt.Errorf("invalid shard, got %T", lp.Shard)
 	}
 
-	predicates := make([]Expression, len(lp.Predicates))
+	predicates := make([]*physicalpb.Expression, len(lp.Predicates))
 	for i, predicate := range lp.Predicates {
 		predicates[i] = p.convertPredicate(predicate)
 	}
 
 	from, through := ctx.GetResolveTimeRange()
 
-	filteredShardDescriptors, err := p.catalog.ResolveShardDescriptorsWithShard(p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
+	filteredShardDescriptors, err := p.catalog.ResolveShardDescriptorsWithShard(*p.convertPredicate(lp.Selector), predicates, ShardInfo(*shard), from, through)
 	if err != nil {
 		return nil, err
 	}
 
 	groups := overlappingShardDescriptors(filteredShardDescriptors)
-	if ctx.direction == ASC {
+	if ctx.direction == physicalpb.SORT_ORDER_ASCENDING {
 		slices.Reverse(groups)
 	}
 
-	var node Node = &Merge{}
+	var node physicalpb.Node = &physicalpb.Merge{}
 	p.plan.graph.Add(node)
 	for _, gr := range groups {
 		if err := p.buildNodeGroup(gr, node, ctx); err != nil {
@@ -254,10 +255,10 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 	}
 
 	if p.context.v1Compatible {
-		compat := &ColumnCompat{
-			Source:      types.ColumnTypeMetadata,
-			Destination: types.ColumnTypeMetadata,
-			Collision:   types.ColumnTypeLabel,
+		compat := &physicalpb.ColumnCompat{
+			Source:      physicalpb.COLUMN_TYPE_METADATA,
+			Destination: physicalpb.COLUMN_TYPE_METADATA,
+			Collision:   physicalpb.COLUMN_TYPE_LABEL,
 		}
 		node, err = p.wrapNodeWith(node, compat)
 		if err != nil {
@@ -265,13 +266,13 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 		}
 	}
 
-	return []Node{node}, nil
+	return []physicalpb.Node{node}, nil
 }
 
 // Convert [logical.Select] into one [Filter] node.
-func (p *Planner) processSelect(lp *logical.Select, ctx *Context) ([]Node, error) {
-	node := &Filter{
-		Predicates: []Expression{p.convertPredicate(lp.Predicate)},
+func (p *Planner) processSelect(lp *logical.Select, ctx *Context) ([]physicalpb.Node, error) {
+	node := &physicalpb.Filter{
+		Predicates: []*physicalpb.Expression{p.convertPredicate(lp.Predicate)},
 	}
 	p.plan.graph.Add(node)
 	children, err := p.process(lp.Table, ctx)
@@ -279,26 +280,26 @@ func (p *Planner) processSelect(lp *logical.Select, ctx *Context) ([]Node, error
 		return nil, err
 	}
 	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
 		}
 	}
-	return []Node{node}, nil
+	return []physicalpb.Node{node}, nil
 }
 
 // Pass sort direction from [logical.Sort] to the children.
-func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]Node, error) {
-	order := DESC
+func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]physicalpb.Node, error) {
+	order := physicalpb.SORT_ORDER_DESCENDING
 	if lp.Ascending {
-		order = ASC
+		order = physicalpb.SORT_ORDER_ASCENDING
 	}
 
 	return p.process(lp.Table, ctx.WithDirection(order))
 }
 
 // Convert [logical.Limit] into one [Limit] node.
-func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) ([]Node, error) {
-	node := &Limit{
+func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) ([]physicalpb.Node, error) {
+	node := &physicalpb.Limit{
 		Skip:  lp.Skip,
 		Fetch: lp.Fetch,
 	}
@@ -308,26 +309,26 @@ func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) ([]Node, error) 
 		return nil, err
 	}
 	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
 		}
 	}
-	return []Node{node}, nil
+	return []physicalpb.Node{node}, nil
 }
 
-func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) ([]Node, error) {
-	partitionBy := make([]ColumnExpression, len(r.PartitionBy))
+func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) ([]physicalpb.Node, error) {
+	partitionBy := make([]*physicalpb.ColumnExpression, len(r.PartitionBy))
 	for i, col := range r.PartitionBy {
-		partitionBy[i] = &ColumnExpr{Ref: col.Ref}
+		partitionBy[i] = &physicalpb.ColumnExpression{Name: col.Name()}
 	}
 
-	node := &RangeAggregation{
-		PartitionBy: partitionBy,
-		Operation:   r.Operation,
-		Start:       r.Start,
-		End:         r.End,
-		Range:       r.RangeInterval,
-		Step:        r.Step,
+	node := &physicalpb.AggregateRange{
+		PartitionBy:    partitionBy,
+		Operation:      r.Operation,
+		StartUnixNanos: r.Start.UnixNano(),
+		EndUnixNanos:   r.End.UnixNano(),
+		RangeNs:        r.RangeInterval.Nanoseconds(),
+		StepNs:         r.Step.Nanoseconds(),
 	}
 	p.plan.graph.Add(node)
 
@@ -337,21 +338,21 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Cont
 	}
 
 	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
 		}
 	}
-	return []Node{node}, nil
+	return []physicalpb.Node{node}, nil
 }
 
 // Convert [logical.VectorAggregation] into one [VectorAggregation] node.
-func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *Context) ([]Node, error) {
-	groupBy := make([]ColumnExpression, len(lp.GroupBy))
+func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *Context) ([]physicalpb.Node, error) {
+	groupBy := make([]*physicalpb.ColumnExpression, len(lp.GroupBy))
 	for i, col := range lp.GroupBy {
-		groupBy[i] = &ColumnExpr{Ref: col.Ref}
+		groupBy[i] = &physicalpb.ColumnExpression{Name: col.Ref.Column, Type: col.Ref.Type}
 	}
 
-	node := &VectorAggregation{
+	node := &physicalpb.AggregateVector{
 		GroupBy:   groupBy,
 		Operation: lp.Operation,
 	}
@@ -361,18 +362,18 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 		return nil, err
 	}
 	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
 		}
 	}
-	return []Node{node}, nil
+	return []physicalpb.Node{node}, nil
 }
 
 // Convert [logical.Parse] into one [ParseNode] node.
 // A ParseNode initially has an empty list of RequestedKeys which will be populated during optimization.
-func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) {
-	var node Node = &ParseNode{
-		Kind: convertParserKind(lp.Kind),
+func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]physicalpb.Node, error) {
+	var node physicalpb.Node = &physicalpb.Parse{
+		Operation: convertParserKind(lp.Kind),
 	}
 	p.plan.graph.Add(node)
 
@@ -382,16 +383,16 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) 
 	}
 
 	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
 		}
 	}
 
 	if p.context.v1Compatible {
-		compat := &ColumnCompat{
-			Source:      types.ColumnTypeParsed,
-			Destination: types.ColumnTypeParsed,
-			Collision:   types.ColumnTypeLabel,
+		compat := &physicalpb.ColumnCompat{
+			Source:      physicalpb.COLUMN_TYPE_PARSED,
+			Destination: physicalpb.COLUMN_TYPE_PARSED,
+			Collision:   physicalpb.COLUMN_TYPE_LABEL,
 		}
 		node, err = p.wrapNodeWith(node, compat)
 		if err != nil {
@@ -399,12 +400,12 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) 
 		}
 	}
 
-	return []Node{node}, nil
+	return []physicalpb.Node{node}, nil
 }
 
-func (p *Planner) wrapNodeWith(node Node, wrapper Node) (Node, error) {
+func (p *Planner) wrapNodeWith(node physicalpb.Node, wrapper physicalpb.Node) (physicalpb.Node, error) {
 	p.plan.graph.Add(wrapper)
-	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: wrapper, Child: node}); err != nil {
+	if err := p.plan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: wrapper, Child: node}); err != nil {
 		return nil, err
 	}
 	return wrapper, nil
@@ -440,13 +441,13 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 	return plan, nil
 }
 
-func convertParserKind(kind logical.ParserKind) ParserKind {
+func convertParserKind(kind logical.ParserKind) physicalpb.ParseOp {
 	switch kind {
 	case logical.ParserLogfmt:
-		return ParserLogfmt
+		return physicalpb.PARSE_OP_LOGFMT
 	case logical.ParserJSON:
-		return ParserJSON
+		return physicalpb.PARSE_OP_JSON
 	default:
-		return ParserInvalid
+		return physicalpb.PARSE_OP_INVALID
 	}
 }

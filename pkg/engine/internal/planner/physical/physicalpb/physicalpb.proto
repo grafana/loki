@@ -213,7 +213,7 @@ enum SortOrder {
 // ColumnCompat represents a compactibilty operation in the physical plan that
 // moves a values from a conflicting metadata column with a label column into a new column suffixed with `_extracted`.
 message ColumnCompat {
-	string id = 1;
+	PlanNodeID id = 1 [(gogoproto.nullable) = false];
 
 	// TODO(chaudum): These fields are poorly named. Come up with more descriptive names.
 	ColumnType Source = 2; // column type of the column that may colide with columns of the same name but with collision type

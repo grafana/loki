@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 type testDataSource struct {
@@ -25,16 +25,16 @@ func TestFormatSimpleQuery(t *testing.T) {
 	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
-				Left:  NewColumnRef("app", types.ColumnTypeLabel),
+				Left:  NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
 				Right: NewLiteral("users"),
-				Op:    types.BinaryOpEq,
+				Op:    physicalpb.BINARY_OP_EQ,
 			},
 		},
 	).Select(
 		&BinOp{
-			Left:  NewColumnRef("age", types.ColumnTypeMetadata),
+			Left:  NewColumnRef("age", physicalpb.COLUMN_TYPE_METADATA),
 			Right: NewLiteral(int64(21)),
-			Op:    types.BinaryOpGt,
+			Op:    physicalpb.BINARY_OP_GT,
 		},
 	)
 
@@ -68,18 +68,18 @@ func TestFormatSortQuery(t *testing.T) {
 	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
-				Left:  NewColumnRef("app", types.ColumnTypeLabel),
+				Left:  NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
 				Right: NewLiteral("users"),
-				Op:    types.BinaryOpEq,
+				Op:    physicalpb.BINARY_OP_EQ,
 			},
 		},
 	).Select(
 		&BinOp{
-			Left:  NewColumnRef("age", types.ColumnTypeMetadata),
+			Left:  NewColumnRef("age", physicalpb.COLUMN_TYPE_METADATA),
 			Right: NewLiteral(int64(21)),
-			Op:    types.BinaryOpGt,
+			Op:    physicalpb.BINARY_OP_GT,
 		},
-	).Sort(*NewColumnRef("age", types.ColumnTypeMetadata), true, false)
+	).Sort(*NewColumnRef("age", physicalpb.COLUMN_TYPE_METADATA), true, false)
 
 	// Convert to plan so that node IDs get populated
 	plan, _ := b.ToPlan()
@@ -112,20 +112,20 @@ func TestFormatRangeAggregationQuery(t *testing.T) {
 	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
-				Left:  NewColumnRef("app", types.ColumnTypeLabel),
+				Left:  NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
 				Right: NewLiteral("users"),
-				Op:    types.BinaryOpEq,
+				Op:    physicalpb.BINARY_OP_EQ,
 			},
 		},
 	).Select(
 		&BinOp{
-			Left:  NewColumnRef("age", types.ColumnTypeMetadata),
+			Left:  NewColumnRef("age", physicalpb.COLUMN_TYPE_METADATA),
 			Right: NewLiteral(int64(21)),
-			Op:    types.BinaryOpGt,
+			Op:    physicalpb.BINARY_OP_GT,
 		},
 	).RangeAggregation(
-		[]ColumnRef{*NewColumnRef("label1", types.ColumnTypeAmbiguous), *NewColumnRef("label2", types.ColumnTypeAmbiguous)},
-		types.RangeAggregationTypeCount,
+		[]ColumnRef{*NewColumnRef("label1", physicalpb.COLUMN_TYPE_AMBIGUOUS), *NewColumnRef("label2", physicalpb.COLUMN_TYPE_AMBIGUOUS)},
+		physicalpb.AggregateRangeOpCount,
 		time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(1970, 1, 1, 1, 0, 0, 0, time.UTC), // End Time
 		time.Minute,
@@ -166,17 +166,17 @@ func TestFormatVectorAggregationQuery(t *testing.T) {
 	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
-				Left:  NewColumnRef("app", types.ColumnTypeLabel),
+				Left:  NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
 				Right: NewLiteral("users"),
-				Op:    types.BinaryOpEq,
+				Op:    physicalpb.BINARY_OP_EQ,
 			},
 		},
 	).VectorAggregation(
 		[]ColumnRef{
-			*NewColumnRef("app", types.ColumnTypeLabel),
-			*NewColumnRef("env", types.ColumnTypeLabel),
+			*NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
+			*NewColumnRef("env", physicalpb.COLUMN_TYPE_LABEL),
 		},
-		types.VectorAggregationTypeSum,
+		physicalpb.AggregateVectorOpSum,
 	)
 
 	// Convert to plan so that node IDs get populated

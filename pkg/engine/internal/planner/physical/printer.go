@@ -6,16 +6,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/tree"
 )
 
 // BuildTree converts a physical plan node and its children into a tree structure
 // that can be used for visualization and debugging purposes.
-func BuildTree(p *Plan, n Node) *tree.Node {
+func BuildTree(p *Plan, n physicalpb.Node) *tree.Node {
 	return toTree(p, n)
 }
 
-func toTree(p *Plan, n Node) *tree.Node {
+func toTree(p *Plan, n physicalpb.Node) *tree.Node {
 	root := toTreeNode(n)
 	for _, child := range p.Children(n) {
 		if ch := toTree(p, child); ch != nil {
@@ -25,48 +26,48 @@ func toTree(p *Plan, n Node) *tree.Node {
 	return root
 }
 
-func toTreeNode(n Node) *tree.Node {
-	treeNode := tree.NewNode(n.Type().String(), "")
+func toTreeNode(n physicalpb.Node) *tree.Node {
+	treeNode := tree.NewNode(n.Kind().String(), "")
 	switch node := n.(type) {
-	case *DataObjScan:
+	case *physicalpb.DataObjScan:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("location", false, node.Location),
-			tree.NewProperty("streams", false, len(node.StreamIDs)),
+			tree.NewProperty("streams", false, len(node.StreamIds)),
 			tree.NewProperty("section_id", false, node.Section),
 			tree.NewProperty("projections", true, toAnySlice(node.Projections)...),
-			tree.NewProperty("direction", false, node.Direction),
+			tree.NewProperty("direction", false, node.SortOrder),
 			tree.NewProperty("limit", false, node.Limit),
 		}
 		for i := range node.Predicates {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
-	case *SortMerge:
+	case *physicalpb.SortMerge:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("column", false, node.Column),
 			tree.NewProperty("order", false, node.Order),
 		}
-	case *Projection:
+	case *physicalpb.Projection:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("columns", true, toAnySlice(node.Columns)...),
 		}
-	case *Filter:
+	case *physicalpb.Filter:
 		for i := range node.Predicates {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
-	case *Merge:
+	case *physicalpb.Merge:
 		// nothing to add
-	case *Limit:
+	case *physicalpb.Limit:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("offset", false, node.Skip),
 			tree.NewProperty("limit", false, node.Fetch),
 		}
-	case *RangeAggregation:
+	case *physicalpb.AggregateRange:
 		properties := []tree.Property{
 			tree.NewProperty("operation", false, node.Operation),
-			tree.NewProperty("start", false, node.Start.Format(time.RFC3339Nano)),
-			tree.NewProperty("end", false, node.End.Format(time.RFC3339Nano)),
-			tree.NewProperty("step", false, node.Step),
-			tree.NewProperty("range", false, node.Range),
+			tree.NewProperty("start", false, time.Unix(0, node.StartUnixNanos).Format(time.RFC3339Nano)),
+			tree.NewProperty("end", false, time.Unix(0, node.EndUnixNanos).Format(time.RFC3339Nano)),
+			tree.NewProperty("step", false, node.StepNs),
+			tree.NewProperty("range", false, node.RangeNs),
 		}
 
 		if len(node.PartitionBy) > 0 {
@@ -74,19 +75,19 @@ func toTreeNode(n Node) *tree.Node {
 		}
 
 		treeNode.Properties = properties
-	case *ParseNode:
+	case *physicalpb.Parse:
 		treeNode.Properties = []tree.Property{
-			tree.NewProperty("kind", false, node.Kind.String()),
+			tree.NewProperty("kind", false, node.Kind().String()),
 		}
 		if len(node.RequestedKeys) > 0 {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("requested_keys", true, toAnySlice(node.RequestedKeys)...))
 		}
-	case *ColumnCompat:
-		treeNode.Properties = []tree.Property{
-			tree.NewProperty("src", false, node.Source),
-			tree.NewProperty("dst", false, node.Destination),
-			tree.NewProperty("collision", false, node.Collision),
-		}
+		// case *ColumnCompat:
+		// 	treeNode.Properties = []tree.Property{
+		// 		tree.NewProperty("src", false, node.Source),
+		// 		tree.NewProperty("dst", false, node.Destination),
+		// 		tree.NewProperty("collision", false, node.Collision),
+		// 	}
 	}
 	return treeNode
 }

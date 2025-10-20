@@ -8,45 +8,46 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 func TestCatalog_ConvertLiteral(t *testing.T) {
 	tests := []struct {
-		expr    Expression
+		expr    physicalpb.Expression
 		want    string
 		wantErr bool
 	}{
 		{
-			expr: NewLiteral("foo"),
+			expr: *LiteralExpressionToExpression(NewLiteral("foo")),
 			want: "foo",
 		},
 		{
-			expr:    NewLiteral(false),
+			expr:    *LiteralExpressionToExpression(NewLiteral(false)),
 			wantErr: true,
 		},
 		{
-			expr:    NewLiteral(int64(123)),
+			expr:    *LiteralExpressionToExpression(NewLiteral(int64(123))),
 			wantErr: true,
 		},
 		{
-			expr:    NewLiteral(types.Timestamp(time.Now().UnixNano())),
+			expr:    *LiteralExpressionToExpression(NewLiteral(types.Timestamp(time.Now().UnixNano()))),
 			wantErr: true,
 		},
 		{
-			expr:    NewLiteral(types.Duration(time.Hour.Nanoseconds())),
+			expr:    *LiteralExpressionToExpression(NewLiteral(types.Duration(time.Hour.Nanoseconds()))),
 			wantErr: true,
 		},
 		{
-			expr:    newColumnExpr("foo", types.ColumnTypeLabel),
+			expr:    *ColumnExpressionToExpression(newColumnExpr("foo", physicalpb.COLUMN_TYPE_LABEL)),
 			wantErr: true,
 		},
 		{
-			expr: &BinaryExpr{
-				Left:  newColumnExpr("foo", types.ColumnTypeLabel),
-				Right: NewLiteral("foo"),
-				Op:    types.BinaryOpEq,
-			},
+			expr: *BinaryExpressionToExpression(&physicalpb.BinaryExpression{
+				Left:  ColumnExpressionToExpression(newColumnExpr("foo", physicalpb.COLUMN_TYPE_LABEL)),
+				Right: LiteralExpressionToExpression(NewLiteral("foo")),
+				Op:    physicalpb.BINARY_OP_EQ,
+			}),
 			wantErr: true,
 		},
 	}
@@ -66,32 +67,32 @@ func TestCatalog_ConvertLiteral(t *testing.T) {
 
 func TestCatalog_ConvertColumnRef(t *testing.T) {
 	tests := []struct {
-		expr    Expression
+		expr    physicalpb.Expression
 		want    string
 		wantErr bool
 	}{
 		{
-			expr: newColumnExpr("foo", types.ColumnTypeLabel),
+			expr: *ColumnExpressionToExpression(newColumnExpr("foo", physicalpb.COLUMN_TYPE_LABEL)),
 			want: "foo",
 		},
 		{
-			expr:    newColumnExpr("foo", types.ColumnTypeAmbiguous),
+			expr:    *ColumnExpressionToExpression(newColumnExpr("foo", physicalpb.COLUMN_TYPE_AMBIGUOUS)),
 			wantErr: true,
 		},
 		{
-			expr:    newColumnExpr("foo", types.ColumnTypeBuiltin),
+			expr:    *ColumnExpressionToExpression(newColumnExpr("foo", physicalpb.COLUMN_TYPE_BUILTIN)),
 			wantErr: true,
 		},
 		{
-			expr:    NewLiteral(false),
+			expr:    *LiteralExpressionToExpression(NewLiteral(false)),
 			wantErr: true,
 		},
 		{
-			expr: &BinaryExpr{
-				Left:  newColumnExpr("foo", types.ColumnTypeLabel),
-				Right: NewLiteral("foo"),
-				Op:    types.BinaryOpEq,
-			},
+			expr: *BinaryExpressionToExpression(&physicalpb.BinaryExpression{
+				Left:  ColumnExpressionToExpression(newColumnExpr("foo", physicalpb.COLUMN_TYPE_LABEL)),
+				Right: LiteralExpressionToExpression(NewLiteral("foo")),
+				Op:    physicalpb.BINARY_OP_EQ,
+			}),
 			wantErr: true,
 		},
 	}
@@ -111,42 +112,42 @@ func TestCatalog_ConvertColumnRef(t *testing.T) {
 
 func TestCatalog_ExpressionToMatchers(t *testing.T) {
 	tests := []struct {
-		expr    Expression
+		expr    physicalpb.Expression
 		want    []*labels.Matcher
 		wantErr bool
 	}{
 		{
-			expr:    newColumnExpr("foo", types.ColumnTypeLabel),
+			expr:    *ColumnExpressionToExpression(newColumnExpr("foo", physicalpb.COLUMN_TYPE_LABEL)),
 			wantErr: true,
 		},
 		{
-			expr:    NewLiteral("foo"),
+			expr:    *LiteralExpressionToExpression(NewLiteral("foo")),
 			wantErr: true,
 		},
 		{
-			expr: &BinaryExpr{
-				Left:  newColumnExpr("foo", types.ColumnTypeLabel),
-				Right: NewLiteral("bar"),
-				Op:    types.BinaryOpEq,
-			},
+			expr: *BinaryExpressionToExpression(&physicalpb.BinaryExpression{
+				Left:  ColumnExpressionToExpression(newColumnExpr("foo", physicalpb.COLUMN_TYPE_LABEL)),
+				Right: LiteralExpressionToExpression(NewLiteral("bar")),
+				Op:    physicalpb.BINARY_OP_EQ,
+			}),
 			want: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
 			},
 		},
 		{
-			expr: &BinaryExpr{
-				Left: &BinaryExpr{
-					Left:  newColumnExpr("foo", types.ColumnTypeLabel),
-					Right: NewLiteral("bar"),
-					Op:    types.BinaryOpEq,
-				},
-				Right: &BinaryExpr{
-					Left:  newColumnExpr("bar", types.ColumnTypeLabel),
-					Right: NewLiteral("baz"),
-					Op:    types.BinaryOpNeq,
-				},
-				Op: types.BinaryOpAnd,
-			},
+			expr: *BinaryExpressionToExpression(&physicalpb.BinaryExpression{
+				Left: BinaryExpressionToExpression(&physicalpb.BinaryExpression{
+					Left:  ColumnExpressionToExpression(newColumnExpr("foo", physicalpb.COLUMN_TYPE_LABEL)),
+					Right: LiteralExpressionToExpression(NewLiteral("bar")),
+					Op:    physicalpb.BINARY_OP_EQ,
+				}),
+				Right: BinaryExpressionToExpression(&physicalpb.BinaryExpression{
+					Left:  ColumnExpressionToExpression(newColumnExpr("bar", physicalpb.COLUMN_TYPE_LABEL)),
+					Right: LiteralExpressionToExpression(NewLiteral("baz")),
+					Op:    physicalpb.BINARY_OP_NEQ,
+				}),
+				Op: physicalpb.BINARY_OP_AND,
+			}),
 			want: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
 				labels.MustNewMatcher(labels.MatchNotEqual, "bar", "baz"),

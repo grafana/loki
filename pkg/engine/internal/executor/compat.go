@@ -9,11 +9,11 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 )
 
-func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipeline) Pipeline {
+func newColumnCompatibilityPipeline(compat *physicalpb.ColumnCompat, input Pipeline) Pipeline {
 	const extracted = "_extracted"
 
 	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {

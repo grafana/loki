@@ -11,6 +11,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -57,9 +58,9 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 			newFields = append(newFields, schema.Field(i))
 		}
 		for _, header := range headers {
-			ct := types.ColumnTypeParsed
+			ct := physicalpb.COLUMN_TYPE_PARSED
 			if header == semconv.ColumnIdentError.ShortName() || header == semconv.ColumnIdentErrorDetails.ShortName() {
-				ct = types.ColumnTypeGenerated
+				ct = physicalpb.COLUMN_TYPE_GENERATED
 			}
 			ident := semconv.NewIdentifier(header, ct, types.Loki.String)
 			newFields = append(newFields, semconv.FieldFromIdent(ident, true))

@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -100,7 +101,7 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 		}
 
 		// Extract label
-		if ident.ColumnType() == types.ColumnTypeLabel {
+		if ident.ColumnType() == physicalpb.COLUMN_TYPE_LABEL {
 			switch arr := col.(type) {
 			case *array.String:
 				lbs.Set(shortName, arr.Value(i))
@@ -109,7 +110,7 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 		}
 
 		// Extract metadata
-		if ident.ColumnType() == types.ColumnTypeMetadata {
+		if ident.ColumnType() == physicalpb.COLUMN_TYPE_METADATA {
 			switch arr := col.(type) {
 			case *array.String:
 				metadata.Set(shortName, arr.Value(i))
@@ -120,7 +121,7 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 		}
 
 		// Extract parsed
-		if ident.ColumnType() == types.ColumnTypeParsed {
+		if ident.ColumnType() == physicalpb.COLUMN_TYPE_PARSED {
 			switch arr := col.(type) {
 			case *array.String:
 				// TODO: keep errors if --strict is set

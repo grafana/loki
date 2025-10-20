@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -77,18 +78,18 @@ func TestVectorAggregationPipeline(t *testing.T) {
 		&physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: "env",
-				Type:   types.ColumnTypeAmbiguous,
+				Type:   physicalpb.COLUMN_TYPE_AMBIGUOUS,
 			},
 		},
 		&physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: "service",
-				Type:   types.ColumnTypeAmbiguous,
+				Type:   physicalpb.COLUMN_TYPE_AMBIGUOUS,
 			},
 		},
 	}
 
-	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, groupBy, expressionEvaluator{}, types.VectorAggregationTypeSum)
+	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, groupBy, expressionEvaluator{}, physicalpb.AggregateVectorOpSum)
 	require.NoError(t, err)
 	defer pipeline.Close()
 

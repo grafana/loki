@@ -5,6 +5,7 @@ import (
 	"slices"
 	"sort"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -12,7 +13,7 @@ import (
 type rule interface {
 	// apply tries to apply the transformation on the node.
 	// It returns a boolean indicating whether the transformation has been applied.
-	apply(Node) bool
+	apply(physicalpb.Node) bool
 }
 
 // removeNoopFilter is a rule that removes Filter nodes without predicates.
@@ -21,10 +22,10 @@ type removeNoopFilter struct {
 }
 
 // apply implements rule.
-func (r *removeNoopFilter) apply(node Node) bool {
+func (r *removeNoopFilter) apply(node physicalpb.Node) bool {
 	changed := false
 	switch node := node.(type) {
-	case *Filter:
+	case *physicalpb.Filter:
 		if len(node.Predicates) == 0 {
 			r.plan.graph.Eliminate(node)
 			changed = true
@@ -41,10 +42,10 @@ type removeNoopMerge struct {
 }
 
 // apply implements rule.
-func (r *removeNoopMerge) apply(node Node) bool {
+func (r *removeNoopMerge) apply(node physicalpb.Node) bool {
 	changed := false
 	switch node := node.(type) {
-	case *Merge, *SortMerge:
+	case *physicalpb.Merge, *physicalpb.SortMerge:
 		if len(r.plan.Children(node)) <= 1 {
 			r.plan.graph.Eliminate(node)
 			changed = true
@@ -61,12 +62,12 @@ type predicatePushdown struct {
 }
 
 // apply implements rule.
-func (r *predicatePushdown) apply(node Node) bool {
+func (r *predicatePushdown) apply(node physicalpb.Node) bool {
 	changed := false
 	switch node := node.(type) {
-	case *Filter:
+	case *physicalpb.Filter:
 		for i := 0; i < len(node.Predicates); i++ {
-			if ok := r.applyPredicatePushdown(node, node.Predicates[i]); ok {
+			if ok := r.applyPredicatePushdown(node, *node.Predicates[i]); ok {
 				changed = true
 				// remove predicates that have been pushed down
 				node.Predicates = slices.Delete(node.Predicates, i, i+1)
@@ -77,11 +78,11 @@ func (r *predicatePushdown) apply(node Node) bool {
 	return changed
 }
 
-func (r *predicatePushdown) applyPredicatePushdown(node Node, predicate Expression) bool {
+func (r *predicatePushdown) applyPredicatePushdown(node physicalpb.Node, predicate physicalpb.Expression) bool {
 	switch node := node.(type) {
-	case *DataObjScan:
+	case *physicalpb.DataObjScan:
 		if canApplyPredicate(predicate) {
-			node.Predicates = append(node.Predicates, predicate)
+			node.Predicates = append(node.Predicates, &predicate)
 			return true
 		}
 		return false
@@ -94,13 +95,13 @@ func (r *predicatePushdown) applyPredicatePushdown(node Node, predicate Expressi
 	return true
 }
 
-func canApplyPredicate(predicate Expression) bool {
-	switch pred := predicate.(type) {
-	case *BinaryExpr:
-		return canApplyPredicate(pred.Left) && canApplyPredicate(pred.Right)
-	case *ColumnExpr:
-		return pred.Ref.Type == types.ColumnTypeBuiltin || pred.Ref.Type == types.ColumnTypeMetadata
-	case *LiteralExpr:
+func canApplyPredicate(predicate physicalpb.Expression) bool {
+	switch pr := predicate.Kind.(type) {
+	case *physicalpb.Expression_BinaryExpression:
+		return canApplyPredicate(*pr.BinaryExpression.Left) && canApplyPredicate(*pr.BinaryExpression.Right)
+	case *physicalpb.Expression_ColumnExpression:
+		return physicalpb.ColumnType(pr.ColumnExpression.Type) == physicalpb.COLUMN_TYPE_BUILTIN || physicalpb.ColumnType(pr.ColumnExpression.Type) == physicalpb.COLUMN_TYPE_METADATA
+	case *physicalpb.Expression_LiteralExpression:
 		return true
 	default:
 		return false
@@ -115,21 +116,22 @@ type limitPushdown struct {
 }
 
 // apply implements rule.
-func (r *limitPushdown) apply(node Node) bool {
-	switch node := node.(type) {
-	case *Limit:
-		return r.applyLimitPushdown(node, node.Fetch)
+func (r *limitPushdown) apply(node physicalpb.Node) bool {
+	switch node.Kind() {
+	case physicalpb.NodeKindLimit:
+		return r.applyLimitPushdown(node, node.ToPlanNode().GetLimit().Fetch)
 	}
 	return false
 }
 
-func (r *limitPushdown) applyLimitPushdown(node Node, limit uint32) bool {
-	switch node := node.(type) {
-	case *DataObjScan:
+func (r *limitPushdown) applyLimitPushdown(node physicalpb.Node, limit uint32) bool {
+	n := node.ToPlanNode()
+	switch node.Kind() {
+	case physicalpb.NodeKindDataObjScan:
 		// In case the scan node is reachable from multiple different limit nodes, we need to take the largest limit.
-		node.Limit = max(node.Limit, limit)
+		n.GetScan().Limit = max(n.GetScan().Limit, limit)
 		return true
-	case *Filter:
+	case physicalpb.NodeKindFilter:
 		// If there is a filter, child nodes may need to read up to all their lines to successfully apply the filter, so stop applying limit pushdown.
 		return false
 	}
@@ -152,10 +154,11 @@ type projectionPushdown struct {
 }
 
 // apply implements rule.
-func (r *projectionPushdown) apply(node Node) bool {
-	switch node := node.(type) {
-	case *VectorAggregation:
-		if len(node.GroupBy) == 0 {
+func (r *projectionPushdown) apply(node physicalpb.Node) bool {
+	n := node.ToPlanNode()
+	switch node.Kind() {
+	case physicalpb.NodeKindAggregateVector:
+		if len(n.GetAggregateVector().GroupBy) == 0 {
 			return false
 		}
 
@@ -165,42 +168,43 @@ func (r *projectionPushdown) apply(node Node) bool {
 		// MAX -> MAX
 		// MIN -> MIN
 
-		applyToRangeAggregations := func(ops ...types.RangeAggregationType) bool {
+		applyToRangeAggregations := func(ops ...physicalpb.AggregateRangeOp) bool {
 			anyChanged := false
 			for _, child := range r.plan.Children(node) {
-				if ra, ok := child.(*RangeAggregation); ok {
+				if child.Kind() == physicalpb.NodeKindAggregateRange {
+					ra := child.ToPlanNode().GetAggregateRange()
 					if slices.Contains(ops, ra.Operation) {
-						anyChanged = r.handleRangeAggregation(ra, node.GroupBy) || anyChanged
+						anyChanged = r.handleRangeAggregation(*ra, n.GetAggregateVector().GroupBy) || anyChanged
 					}
 				}
 			}
 			return anyChanged
 		}
 
-		switch node.Operation {
-		case types.VectorAggregationTypeSum:
-			return applyToRangeAggregations(types.RangeAggregationTypeSum, types.RangeAggregationTypeCount)
-		case types.VectorAggregationTypeMax:
-			return applyToRangeAggregations(types.RangeAggregationTypeMax)
-		case types.VectorAggregationTypeMin:
-			return applyToRangeAggregations(types.RangeAggregationTypeMin)
+		switch node.ToPlanNode().GetAggregateVector().Operation {
+		case physicalpb.AGGREGATE_VECTOR_OP_SUM:
+			return applyToRangeAggregations(physicalpb.AGGREGATE_RANGE_OP_SUM, physicalpb.AGGREGATE_RANGE_OP_COUNT)
+		case physicalpb.AGGREGATE_VECTOR_OP_MAX:
+			return applyToRangeAggregations(physicalpb.AGGREGATE_RANGE_OP_MAX)
+		case physicalpb.AGGREGATE_VECTOR_OP_MIN:
+			return applyToRangeAggregations(physicalpb.AGGREGATE_RANGE_OP_MIN)
 		default:
 			return false
 		}
-	case *RangeAggregation:
-		if !slices.Contains(types.SupportedRangeAggregationTypes, node.Operation) {
+	case physicalpb.NodeKindAggregateRange:
+		if !slices.Contains(physicalpb.SupportedRangeAggregationTypes, node.ToPlanNode().GetAggregateRange().Operation) {
 			return false
 		}
-
-		projections := make([]ColumnExpression, len(node.PartitionBy)+1)
-		copy(projections, node.PartitionBy)
+		ar := node.ToPlanNode().GetAggregateRange()
+		projections := make([]*physicalpb.ColumnExpression, len(ar.PartitionBy)+1)
+		copy(projections, ar.PartitionBy)
 		// Always project timestamp column even if partitionBy is empty.
 		// Timestamp values are required to perform range aggregation.
-		projections[len(node.PartitionBy)] = &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}
+		projections[len(ar.PartitionBy)] = &physicalpb.ColumnExpression{Name: types.ColumnNameBuiltinTimestamp, Type: physicalpb.COLUMN_TYPE_BUILTIN}
 
 		return r.pushToChildren(node, projections, false)
-	case *Filter:
-		projections := extractColumnsFromPredicates(node.Predicates)
+	case physicalpb.NodeKindFilter:
+		projections := extractColumnsFromPredicates(node.ToPlanNode().GetFilter().Predicates)
 		if len(projections) == 0 {
 			return false
 		}
@@ -220,18 +224,18 @@ func (r *projectionPushdown) apply(node Node) bool {
 // we can't push all projections down to the scan node, since some may be referencing parsed columns.
 // if applyIfNotEmpty is true, it will apply the projection pushdown only if the node has existing projections.
 func (r *projectionPushdown) applyProjectionPushdown(
-	node Node,
-	projections []ColumnExpression,
+	node physicalpb.Node,
+	projections []*physicalpb.ColumnExpression,
 	applyIfNotEmpty bool,
 ) bool {
-	switch node := node.(type) {
-	case *DataObjScan:
-		return r.handleDataObjScan(node, projections, applyIfNotEmpty)
-	case *ParseNode:
-		return r.handleParseNode(node, projections, applyIfNotEmpty)
-	case *RangeAggregation:
-		return r.handleRangeAggregation(node, projections)
-	case *Filter, *Merge, *SortMerge, *ColumnCompat:
+	switch node.Kind() {
+	case physicalpb.NodeKindDataObjScan:
+		return r.handleDataObjScan(node.ToPlanNode().GetScan(), projections, applyIfNotEmpty)
+	case physicalpb.NodeKindParse:
+		return r.handleParseNode(node.ToPlanNode().GetParse(), projections, applyIfNotEmpty)
+	case physicalpb.NodeKindProjection:
+		return r.handleRangeAggregation(*node.ToPlanNode().GetAggregateRange(), projections)
+	case physicalpb.NodeKindFilter, physicalpb.NodeKindMerge, physicalpb.NodeKindSortMerge, physicalpb.NodeKindColumnCompat:
 		// Push to next direct child that cares about projections
 		return r.pushToChildren(node, projections, applyIfNotEmpty)
 	}
@@ -240,7 +244,7 @@ func (r *projectionPushdown) applyProjectionPushdown(
 }
 
 // handleDataObjScan handles projection pushdown for DataObjScan nodes
-func (r *projectionPushdown) handleDataObjScan(node *DataObjScan, projections []ColumnExpression, applyIfNotEmpty bool) bool {
+func (r *projectionPushdown) handleDataObjScan(node *physicalpb.DataObjScan, projections []*physicalpb.ColumnExpression, applyIfNotEmpty bool) bool {
 	shouldNotApply := len(projections) == 0 && applyIfNotEmpty
 	if !r.isMetricQuery() || shouldNotApply {
 		return false
@@ -249,11 +253,6 @@ func (r *projectionPushdown) handleDataObjScan(node *DataObjScan, projections []
 	// Add to scan projections if not already present
 	changed := false
 	for _, colExpr := range projections {
-		colExpr, ok := colExpr.(*ColumnExpr)
-		if !ok {
-			continue
-		}
-
 		var wasAdded bool
 		node.Projections, wasAdded = addUniqueProjection(node.Projections, colExpr)
 		if wasAdded {
@@ -270,7 +269,7 @@ func (r *projectionPushdown) handleDataObjScan(node *DataObjScan, projections []
 }
 
 // handleParseNode handles projection pushdown for ParseNode nodes
-func (r *projectionPushdown) handleParseNode(node *ParseNode, projections []ColumnExpression, applyIfNotEmpty bool) bool {
+func (r *projectionPushdown) handleParseNode(node *physicalpb.Parse, projections []*physicalpb.ColumnExpression, applyIfNotEmpty bool) bool {
 	unambiguousProjections, ambiguousProjections := disambiguateColumns(projections)
 	shouldNotApply := len(ambiguousProjections) == 0 && applyIfNotEmpty
 
@@ -286,14 +285,9 @@ func (r *projectionPushdown) handleParseNode(node *ParseNode, projections []Colu
 	}
 
 	for _, p := range ambiguousProjections {
-		colExpr, ok := p.(*ColumnExpr)
-		if !ok {
-			continue
-		}
-
 		// Only collect ambiguous columns to push to parse nodes
-		if !requestedKeys[colExpr.Ref.Column] {
-			requestedKeys[colExpr.Ref.Column] = true
+		if !requestedKeys[p.Name] {
+			requestedKeys[p.Name] = true
 		}
 	}
 
@@ -305,11 +299,9 @@ func (r *projectionPushdown) handleParseNode(node *ParseNode, projections []Colu
 		node.RequestedKeys = newKeys
 	}
 
-	projectionsToPushDown := make([]ColumnExpression, len(unambiguousProjections)+1)
+	projectionsToPushDown := make([]*physicalpb.ColumnExpression, len(unambiguousProjections)+1)
 	copy(projectionsToPushDown, unambiguousProjections)
-	projectionsToPushDown[len(projectionsToPushDown)-1] = &ColumnExpr{
-		Ref: types.ColumnRef{Column: types.ColumnNameBuiltinMessage, Type: types.ColumnTypeBuiltin},
-	}
+	projectionsToPushDown[len(projectionsToPushDown)-1] = &physicalpb.ColumnExpression{Name: types.ColumnNameBuiltinMessage, Type: physicalpb.COLUMN_TYPE_BUILTIN}
 
 	// Push non-ambiguous projections down to children that care about them
 	childrenChanged := r.pushToChildren(node, projectionsToPushDown, true)
@@ -317,14 +309,9 @@ func (r *projectionPushdown) handleParseNode(node *ParseNode, projections []Colu
 }
 
 // handleRangeAggregation handles projection pushdown for RangeAggregation nodes
-func (r *projectionPushdown) handleRangeAggregation(node *RangeAggregation, projections []ColumnExpression) bool {
+func (r *projectionPushdown) handleRangeAggregation(node physicalpb.AggregateRange, projections []*physicalpb.ColumnExpression) bool {
 	changed := false
 	for _, colExpr := range projections {
-		colExpr, ok := colExpr.(*ColumnExpr)
-		if !ok {
-			continue
-		}
-
 		var wasAdded bool
 		node.PartitionBy, wasAdded = addUniqueProjection(node.PartitionBy, colExpr)
 		if wasAdded {
@@ -335,7 +322,7 @@ func (r *projectionPushdown) handleRangeAggregation(node *RangeAggregation, proj
 }
 
 // pushToChildren is a helper method to push projections to all children of a node
-func (r *projectionPushdown) pushToChildren(node Node, projections []ColumnExpression, applyIfNotEmpty bool) bool {
+func (r *projectionPushdown) pushToChildren(node physicalpb.Node, projections []*physicalpb.ColumnExpression, applyIfNotEmpty bool) bool {
 	var anyChanged bool
 	for _, child := range r.plan.Children(node) {
 		if changed := r.applyProjectionPushdown(child, projections, applyIfNotEmpty); changed {
@@ -345,18 +332,11 @@ func (r *projectionPushdown) pushToChildren(node Node, projections []ColumnExpre
 	return anyChanged
 }
 
-func sortProjections(a, b ColumnExpression) int {
-	exprA, aOk := a.(*ColumnExpr)
-	exprB, bOk := b.(*ColumnExpr)
-	if !aOk || !bOk {
-		return 0
-	}
-
-	if exprA.Ref.Column < exprB.Ref.Column {
+func sortProjections(a, b *physicalpb.ColumnExpression) int {
+	if a.Name < b.Name {
 		return -1
 	}
-
-	if exprA.Ref.Column > exprB.Ref.Column {
+	if a.Name > b.Name {
 		return 1
 	}
 
@@ -366,10 +346,7 @@ func sortProjections(a, b ColumnExpression) int {
 // isMetricQuery checks if the plan contains a RangeAggregation or VectorAggregation node, indicating a metric query
 func (r *projectionPushdown) isMetricQuery() bool {
 	for node := range r.plan.graph.Nodes() {
-		if _, ok := node.(*RangeAggregation); ok {
-			return true
-		}
-		if _, ok := node.(*VectorAggregation); ok {
+		if node.Kind() == physicalpb.NodeKindAggregateRange || node.Kind() == physicalpb.NodeKindAggregateVector {
 			return true
 		}
 	}
@@ -379,18 +356,16 @@ func (r *projectionPushdown) isMetricQuery() bool {
 var _ rule = (*projectionPushdown)(nil)
 
 // disambiguateColumns splits columns into ambiguous and unambiguous columns
-func disambiguateColumns(columns []ColumnExpression) ([]ColumnExpression, []ColumnExpression) {
-	ambiguousColumns := make([]ColumnExpression, 0, len(columns))
-	unambiguousColumns := make([]ColumnExpression, 0, len(columns))
+func disambiguateColumns(columns []*physicalpb.ColumnExpression) ([]*physicalpb.ColumnExpression, []*physicalpb.ColumnExpression) {
+	ambiguousColumns := make([]*physicalpb.ColumnExpression, 0, len(columns))
+	unambiguousColumns := make([]*physicalpb.ColumnExpression, 0, len(columns))
 	for _, col := range columns {
-		if colExpr, ok := col.(*ColumnExpr); ok {
-			// Only collect ambiguous columns (might need parsing)
-			// Skip labels (from stream selector) and builtins (like timestamp/message)
-			if colExpr.Ref.Type == types.ColumnTypeAmbiguous {
-				ambiguousColumns = append(ambiguousColumns, col)
-			} else {
-				unambiguousColumns = append(unambiguousColumns, col)
-			}
+		// Only collect ambiguous columns (might need parsing)
+		// Skip labels (from stream selector) and builtins (like timestamp/message)
+		if col.Type == physicalpb.COLUMN_TYPE_AMBIGUOUS {
+			ambiguousColumns = append(ambiguousColumns, col)
+		} else {
+			unambiguousColumns = append(unambiguousColumns, col)
 		}
 	}
 
@@ -416,7 +391,7 @@ func (o *optimization) withRules(rules ...rule) *optimization {
 	return o
 }
 
-func (o *optimization) optimize(node Node) {
+func (o *optimization) optimize(node physicalpb.Node) {
 	iterations, maxIterations := 0, 3
 
 	for iterations < maxIterations {
@@ -429,7 +404,7 @@ func (o *optimization) optimize(node Node) {
 	}
 }
 
-func (o *optimization) applyRules(node Node) bool {
+func (o *optimization) applyRules(node physicalpb.Node) bool {
 	anyChanged := false
 
 	for _, child := range o.plan.Children(node) {
@@ -459,46 +434,43 @@ func newOptimizer(plan *Plan, passes []*optimization) *optimizer {
 	return &optimizer{plan: plan, optimisations: passes}
 }
 
-func (o *optimizer) optimize(node Node) {
+func (o *optimizer) optimize(node physicalpb.Node) {
 	for _, optimisation := range o.optimisations {
 		optimisation.optimize(node)
 	}
 }
 
-func extractColumnsFromPredicates(predicates []Expression) []ColumnExpression {
-	columns := make([]ColumnExpression, 0, len(predicates))
+func extractColumnsFromPredicates(predicates []*physicalpb.Expression) []*physicalpb.ColumnExpression {
+	columns := make([]*physicalpb.ColumnExpression, 0, len(predicates))
 	for _, p := range predicates {
-		extractColumnsFromExpression(p, &columns)
+		extractColumnsFromExpression(*p, &columns)
 	}
 
 	return deduplicateColumns(columns)
 }
 
-func extractColumnsFromExpression(expr Expression, columns *[]ColumnExpression) {
-	switch e := expr.(type) {
-	case *ColumnExpr:
-		*columns = append(*columns, e)
-	case *BinaryExpr:
-		extractColumnsFromExpression(e.Left, columns)
-		extractColumnsFromExpression(e.Right, columns)
-	case *UnaryExpr:
-		extractColumnsFromExpression(e.Left, columns)
+func extractColumnsFromExpression(expr physicalpb.Expression, columns *[]*physicalpb.ColumnExpression) {
+	switch ex := expr.Kind.(type) {
+	case *physicalpb.Expression_ColumnExpression:
+		*columns = append(*columns, ex.ColumnExpression)
+	case *physicalpb.Expression_BinaryExpression:
+		extractColumnsFromExpression(*ex.BinaryExpression.Left, columns)
+		extractColumnsFromExpression(*ex.BinaryExpression.Right, columns)
+	case *physicalpb.Expression_UnaryExpression:
+		extractColumnsFromExpression(*ex.UnaryExpression.Value, columns)
 	default:
 		// Ignore other expression types
 	}
 }
 
-func deduplicateColumns(columns []ColumnExpression) []ColumnExpression {
+func deduplicateColumns(columns []*physicalpb.ColumnExpression) []*physicalpb.ColumnExpression {
 	seen := make(map[string]bool)
-	var result []ColumnExpression
+	var result []*physicalpb.ColumnExpression
 
 	for _, col := range columns {
-		if colExpr, ok := col.(*ColumnExpr); ok {
-			key := colExpr.Ref.Column
-			if !seen[key] {
-				seen[key] = true
-				result = append(result, col)
-			}
+		if !seen[col.Name] {
+			seen[col.Name] = true
+			result = append(result, col)
 		}
 	}
 
@@ -506,12 +478,10 @@ func deduplicateColumns(columns []ColumnExpression) []ColumnExpression {
 }
 
 // addUniqueProjection adds a column to the projections list if it's not already present
-func addUniqueProjection(projections []ColumnExpression, colExpr *ColumnExpr) ([]ColumnExpression, bool) {
+func addUniqueProjection(projections []*physicalpb.ColumnExpression, colExpr *physicalpb.ColumnExpression) ([]*physicalpb.ColumnExpression, bool) {
 	for _, existing := range projections {
-		if existingCol, ok := existing.(*ColumnExpr); ok {
-			if existingCol.Ref.Column == colExpr.Ref.Column {
-				return projections, false // already exists
-			}
+		if existing.Name == colExpr.Name {
+			return projections, false // already exists
 		}
 	}
 	return append(projections, colExpr), true

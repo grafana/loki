@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -13,16 +14,16 @@ const (
 )
 
 var (
-	ColumnIdentMessage      = NewIdentifier("message", types.ColumnTypeBuiltin, types.Loki.String)
-	ColumnIdentTimestamp    = NewIdentifier("timestamp", types.ColumnTypeBuiltin, types.Loki.Timestamp)
-	ColumnIdentValue        = NewIdentifier("value", types.ColumnTypeGenerated, types.Loki.Float)
-	ColumnIdentError        = NewIdentifier("__error__", types.ColumnTypeGenerated, types.Loki.String)
-	ColumnIdentErrorDetails = NewIdentifier("__error_details__", types.ColumnTypeGenerated, types.Loki.String)
+	ColumnIdentMessage      = NewIdentifier("message", physicalpb.COLUMN_TYPE_BUILTIN, types.Loki.String)
+	ColumnIdentTimestamp    = NewIdentifier("timestamp", physicalpb.COLUMN_TYPE_BUILTIN, types.Loki.Timestamp)
+	ColumnIdentValue        = NewIdentifier("value", physicalpb.COLUMN_TYPE_GENERATED, types.Loki.Float)
+	ColumnIdentError        = NewIdentifier("__error__", physicalpb.COLUMN_TYPE_GENERATED, types.Loki.String)
+	ColumnIdentErrorDetails = NewIdentifier("__error_details__", physicalpb.COLUMN_TYPE_GENERATED, types.Loki.String)
 )
 
 // NewIdentifier creates a new column identifier from given name, column type, and data type.
 // The semantic type of an identifier is derived from its column type.
-func NewIdentifier(name string, ct types.ColumnType, dt types.DataType) *Identifier {
+func NewIdentifier(name string, ct physicalpb.ColumnType, dt types.DataType) *Identifier {
 	return &Identifier{
 		columnName: name,
 		columnType: ct,
@@ -35,7 +36,7 @@ func NewIdentifier(name string, ct types.ColumnType, dt types.DataType) *Identif
 // The fully qualified name is represented as [DATA_TYPE].[COLUMN_TYPE].[COLUMN_NAME].
 type Identifier struct {
 	columnName string
-	columnType types.ColumnType
+	columnType physicalpb.ColumnType
 	dataType   types.DataType
 
 	// fqn is the cached fully qualified name to avoid allocations when calling FQN() multiple times
@@ -48,7 +49,7 @@ func (i *Identifier) DataType() types.DataType {
 }
 
 // ColumnType returns the column type of the identifier.
-func (i *Identifier) ColumnType() types.ColumnType {
+func (i *Identifier) ColumnType() physicalpb.ColumnType {
 	return i.columnType
 }
 
@@ -102,7 +103,7 @@ func (i *Identifier) Equal(other *Identifier) bool {
 }
 
 // FQN returns a fully qualified name for a column by given name, column type, and data type.
-func FQN(name string, ct types.ColumnType, dt types.DataType) string {
+func FQN(name string, ct physicalpb.ColumnType, dt types.DataType) string {
 	return NewIdentifier(name, ct, dt).FQN()
 }
 
@@ -133,7 +134,7 @@ func ParseFQN(fqn string) (*Identifier, error) {
 	if columnName == "" {
 		return nil, errors.New("missing column name")
 	}
-	columnType := types.ColumnTypeFromString(ct)
+	columnType := physicalpb.ColumnTypeFromString(ct)
 
 	return &Identifier{
 		columnName: columnName,
@@ -185,20 +186,20 @@ const (
 	InvalidType   = semType("")
 )
 
-// SemTypeForColumnType converts a given [types.ColumnType] into a [SemanticType].
-func SemTypeForColumnType(value types.ColumnType) SemanticType {
+// SemTypeForColumnType converts a given [physicalpb.ColumnType] into a [SemanticType].
+func SemTypeForColumnType(value physicalpb.ColumnType) SemanticType {
 	switch value {
-	case types.ColumnTypeLabel:
+	case physicalpb.COLUMN_TYPE_LABEL:
 		return SemanticType{Resource, Attribute}
-	case types.ColumnTypeBuiltin:
+	case physicalpb.COLUMN_TYPE_BUILTIN:
 		return SemanticType{Record, Builtin}
-	case types.ColumnTypeMetadata:
+	case physicalpb.COLUMN_TYPE_METADATA:
 		return SemanticType{Record, Attribute}
-	case types.ColumnTypeParsed:
+	case physicalpb.COLUMN_TYPE_PARSED:
 		return SemanticType{Generated, Attribute}
-	case types.ColumnTypeGenerated:
+	case physicalpb.COLUMN_TYPE_GENERATED:
 		return SemanticType{Generated, Builtin}
-	case types.ColumnTypeAmbiguous:
+	case physicalpb.COLUMN_TYPE_AMBIGUOUS:
 		return SemanticType{Unscoped, Attribute}
 	default:
 		return SemanticType{}

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -201,6 +202,6 @@ Dave,40
 func createColumnRef(name string) types.ColumnRef {
 	return types.ColumnRef{
 		Column: name,
-		Type:   types.ColumnTypeBuiltin,
+		Type:   physicalpb.COLUMN_TYPE_BUILTIN,
 	}
 }

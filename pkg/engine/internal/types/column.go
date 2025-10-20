@@ -2,6 +2,8 @@ package types //nolint:revive
 
 import (
 	"fmt"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 )
 
 // ColumnType denotes the column type for a [ColumnRef].
@@ -98,8 +100,8 @@ func ColumnTypePrecedence(ct ColumnType) int {
 
 // A ColumnRef referenes a column within a table relation.
 type ColumnRef struct {
-	Column string     // Name of the column being referenced.
-	Type   ColumnType // Type of the column being referenced.
+	Column string                // Name of the column being referenced.
+	Type   physicalpb.ColumnType // Type of the column being referenced.
 }
 
 // Name returns the identifier of the ColumnRef, which combines the column type

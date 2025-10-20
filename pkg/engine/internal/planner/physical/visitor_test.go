@@ -2,100 +2,103 @@ package physical
 
 import (
 	"fmt"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 )
 
-var _ Visitor = (*nodeCollectVisitor)(nil)
+var _ physicalpb.Visitor = (*nodeCollectVisitor)(nil)
 
 // A visitor implementation that collects nodes during traversal and optionally
 // executes custom functions for each node type. Used primarily for testing
 // traversal behavior.
 type nodeCollectVisitor struct {
-	visited                  []string
-	onVisitDataObjScan       func(*DataObjScan) error
-	onVisitFilter            func(*Filter) error
-	onVisitLimit             func(*Limit) error
-	onVisitSortMerge         func(*SortMerge) error
-	onVisitMerge             func(*Merge) error
-	onVisitProjection        func(*Projection) error
-	onVisitRangeAggregation  func(*RangeAggregation) error
-	onVisitVectorAggregation func(*VectorAggregation) error
-	onVisitParse             func(*ParseNode) error
+	visited                []string
+	onVisitDataObjScan     func(*physicalpb.DataObjScan) error
+	onVisitFilter          func(*physicalpb.Filter) error
+	onVisitLimit           func(*physicalpb.Limit) error
+	onVisitSortMerge       func(*physicalpb.SortMerge) error
+	onVisitMerge           func(*physicalpb.Merge) error
+	onVisitProjection      func(*physicalpb.Projection) error
+	onVisitAggregateRange  func(*physicalpb.AggregateRange) error
+	onVisitAggregateVector func(*physicalpb.AggregateVector) error
+	onVisitParse           func(*physicalpb.Parse) error
+	onVisitColumnCompat    func(*physicalpb.ColumnCompat) error
 }
 
-func (v *nodeCollectVisitor) VisitDataObjScan(n *DataObjScan) error {
+func (v *nodeCollectVisitor) VisitDataObjScan(n *physicalpb.DataObjScan) error {
 	if v.onVisitDataObjScan != nil {
 		return v.onVisitDataObjScan(n)
 	}
-	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Kind().String(), n.ID()))
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitFilter(n *Filter) error {
+func (v *nodeCollectVisitor) VisitFilter(n *physicalpb.Filter) error {
 	if v.onVisitFilter != nil {
 		return v.onVisitFilter(n)
 	}
-	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Kind().String(), n.ID()))
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitLimit(n *Limit) error {
+func (v *nodeCollectVisitor) VisitLimit(n *physicalpb.Limit) error {
 	if v.onVisitLimit != nil {
 		return v.onVisitLimit(n)
 	}
-	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Kind().String(), n.ID()))
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitProjection(n *Projection) error {
+func (v *nodeCollectVisitor) VisitProjection(n *physicalpb.Projection) error {
 	if v.onVisitProjection != nil {
 		return v.onVisitProjection(n)
 	}
-	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Kind().String(), n.ID()))
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitSortMerge(n *SortMerge) error {
+func (v *nodeCollectVisitor) VisitSortMerge(n *physicalpb.SortMerge) error {
 	if v.onVisitSortMerge != nil {
 		return v.onVisitSortMerge(n)
 	}
-	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Kind().String(), n.ID()))
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitMerge(n *Merge) error {
+func (v *nodeCollectVisitor) VisitMerge(n *physicalpb.Merge) error {
 	if v.onVisitMerge != nil {
 		return v.onVisitMerge(n)
 	}
 
-	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Kind().String(), n.ID()))
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitRangeAggregation(n *RangeAggregation) error {
-	if v.onVisitRangeAggregation != nil {
-		return v.onVisitRangeAggregation(n)
+func (v *nodeCollectVisitor) VisitAggregateRange(n *physicalpb.AggregateRange) error {
+	if v.onVisitAggregateRange != nil {
+		return v.onVisitAggregateRange(n)
 	}
 
-	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Kind().String(), n.ID()))
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitVectorAggregation(n *VectorAggregation) error {
-	if v.onVisitVectorAggregation != nil {
-		return v.onVisitVectorAggregation(n)
+func (v *nodeCollectVisitor) VisitAggregateVector(n *physicalpb.AggregateVector) error {
+	if v.onVisitAggregateVector != nil {
+		return v.onVisitAggregateVector(n)
 	}
-	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Kind().String(), n.ID()))
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitParse(n *ParseNode) error {
+func (v *nodeCollectVisitor) VisitParse(n *physicalpb.Parse) error {
 	if v.onVisitParse != nil {
 		return v.onVisitParse(n)
 	}
-	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Kind().String(), n.ID()))
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitCompat(*ColumnCompat) error {
+func (v *nodeCollectVisitor) VisitColumnCompat(*physicalpb.ColumnCompat) error {
 	return nil
 }

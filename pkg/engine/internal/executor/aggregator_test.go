@@ -7,25 +7,21 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 var (
-	groupBy = []physical.ColumnExpression{
-		&physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: "env",
-				Type:   types.ColumnTypeLabel,
-			},
+	groupBy = []physicalpb.ColumnExpression{
+		physicalpb.ColumnExpression{
+			Name: "env",
+			Type: physicalpb.COLUMN_TYPE_LABEL,
 		},
-		&physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: "service",
-				Type:   types.ColumnTypeLabel,
-			},
+		physicalpb.ColumnExpression{
+			Name: "service",
+			Type: physicalpb.COLUMN_TYPE_LABEL,
 		},
 	}
 )
@@ -33,8 +29,8 @@ var (
 func TestAggregator(t *testing.T) {
 	colTs := semconv.ColumnIdentTimestamp.FQN()
 	colVal := semconv.ColumnIdentValue.FQN()
-	colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String).FQN()
-	colSvc := semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String).FQN()
+	colEnv := semconv.NewIdentifier("env", physicalpb.COLUMN_TYPE_LABEL, types.Loki.String).FQN()
+	colSvc := semconv.NewIdentifier("service", physicalpb.COLUMN_TYPE_LABEL, types.Loki.String).FQN()
 
 	t.Run("basic SUM aggregation with record building", func(t *testing.T) {
 		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
@@ -230,7 +226,7 @@ func TestAggregator(t *testing.T) {
 		defer alloc.AssertSize(t, 0)
 
 		// Empty groupBy represents sum by () or sum(...) - all values aggregated into single group
-		groupBy := []physical.ColumnExpression{}
+		groupBy := []physicalpb.ColumnExpression{}
 
 		agg := newAggregator(groupBy, 1, aggregationOperationSum)
 

@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
@@ -171,12 +171,12 @@ func TestNewFilterPipeline(t *testing.T) {
 				&physical.BinaryExpr{
 					Left:  &physical.ColumnExpr{Ref: createColumnRef("name")},
 					Right: physical.NewLiteral("Bob"),
-					Op:    types.BinaryOpEq,
+					Op:    physicalpb.BINARY_OP_EQ,
 				},
 				&physical.BinaryExpr{
 					Left:  &physical.ColumnExpr{Ref: createColumnRef("valid")},
 					Right: physical.NewLiteral(false),
-					Op:    types.BinaryOpNeq,
+					Op:    physicalpb.BINARY_OP_NEQ,
 				},
 			},
 		}

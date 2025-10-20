@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -26,7 +27,7 @@ func TestSortMerge(t *testing.T) {
 			Column: &physical.ColumnExpr{
 				Ref: types.ColumnRef{
 					Column: "not_a_timestamp_column",
-					Type:   types.ColumnTypeBuiltin,
+					Type:   physicalpb.COLUMN_TYPE_BUILTIN,
 				},
 			},
 			Order: physical.ASC,
@@ -51,7 +52,7 @@ func TestSortMerge(t *testing.T) {
 			Column: &physical.ColumnExpr{
 				Ref: types.ColumnRef{
 					Column: types.ColumnNameBuiltinTimestamp,
-					Type:   types.ColumnTypeBuiltin,
+					Type:   physicalpb.COLUMN_TYPE_BUILTIN,
 				},
 			},
 			Order: physical.ASC,
@@ -98,7 +99,7 @@ func TestSortMerge(t *testing.T) {
 			Column: &physical.ColumnExpr{
 				Ref: types.ColumnRef{
 					Column: types.ColumnNameBuiltinTimestamp,
-					Type:   types.ColumnTypeBuiltin,
+					Type:   physicalpb.COLUMN_TYPE_BUILTIN,
 				},
 			},
 			Order: physical.DESC,

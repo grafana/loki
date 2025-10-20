@@ -3,6 +3,7 @@ package logical
 import (
 	"fmt"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -19,7 +20,7 @@ type VectorAggregation struct {
 	GroupBy []ColumnRef
 
 	// The type of aggregation operation to perform (e.g., sum, min, max)
-	Operation types.VectorAggregationType
+	Operation physicalpb.AggregateVectorOp
 }
 
 var (

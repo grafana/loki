@@ -9,6 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -83,7 +84,7 @@ func exprsToFields(exprs []physical.ColumnExpression) ([]arrow.Field, error) {
 
 func guessLokiType(ref types.ColumnRef) (types.DataType, error) {
 	switch ref.Type {
-	case types.ColumnTypeBuiltin:
+	case physicalpb.COLUMN_TYPE_BUILTIN:
 		switch ref.Column {
 		case types.ColumnNameBuiltinTimestamp:
 			return types.Loki.Timestamp, nil
@@ -92,9 +93,9 @@ func guessLokiType(ref types.ColumnRef) (types.DataType, error) {
 		default:
 			panic(fmt.Sprintf("unsupported builtin column type %s", ref))
 		}
-	case types.ColumnTypeGenerated:
+	case physicalpb.COLUMN_TYPE_GENERATED:
 		return types.Loki.Float, nil
-	case types.ColumnTypeAmbiguous:
+	case physicalpb.COLUMN_TYPE_AMBIGUOUS:
 		// TODO(rfratto): It's not clear how topk should sort when there's an
 		// ambiguous column reference, since ambiguous column references can
 		// refer to multiple columns.

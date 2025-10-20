@@ -1,7 +1,6 @@
 package executor
 
 import (
-	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -12,7 +11,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/cespare/xxhash/v2"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -33,7 +32,7 @@ const (
 
 // aggregator is used to aggregate sample values by a set of grouping keys for each point in time.
 type aggregator struct {
-	groupBy   []physical.ColumnExpression          // columns to group by
+	groupBy   []physicalpb.ColumnExpression        // columns to group by
 	points    map[time.Time]map[uint64]*groupState // holds the groupState for each point in time series
 	digest    *xxhash.Digest                       // used to compute key for each group
 	operation aggregationOperation                 // aggregation type
@@ -43,7 +42,7 @@ type aggregator struct {
 // empty groupBy indicates no grouping. All values are aggregated into a single group.
 // TODO: add without argument to support `without(...)` grouping.
 // A special case of `without()` that has empty groupBy is used for Noop grouping which retains the input labels as is.
-func newAggregator(groupBy []physical.ColumnExpression, pointsSizeHint int, operation aggregationOperation) *aggregator {
+func newAggregator(groupBy []physicalpb.ColumnExpression, pointsSizeHint int, operation aggregationOperation) *aggregator {
 	a := aggregator{
 		groupBy:   groupBy,
 		digest:    xxhash.New(),
@@ -140,11 +139,7 @@ func (a *aggregator) BuildRecord() (arrow.Record, error) {
 	)
 
 	for _, column := range a.groupBy {
-		colExpr, ok := column.(*physical.ColumnExpr)
-		if !ok {
-			panic(fmt.Sprintf("invalid column expression type %T", column))
-		}
-		ident := semconv.NewIdentifier(colExpr.Ref.Column, colExpr.Ref.Type, types.Loki.String)
+		ident := semconv.NewIdentifier(column.Name, column.Type, types.Loki.String)
 		fields = append(fields, semconv.FieldFromIdent(ident, true))
 	}
 

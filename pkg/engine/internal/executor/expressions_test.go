@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -110,7 +111,7 @@ func TestEvaluateColumnExpression(t *testing.T) {
 		colExpr := &physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: "does_not_exist",
-				Type:   types.ColumnTypeBuiltin,
+				Type:   physicalpb.COLUMN_TYPE_BUILTIN,
 			},
 		}
 
@@ -128,7 +129,7 @@ func TestEvaluateColumnExpression(t *testing.T) {
 		colExpr := &physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: "message",
-				Type:   types.ColumnTypeBuiltin,
+				Type:   physicalpb.COLUMN_TYPE_BUILTIN,
 			},
 		}
 
@@ -155,12 +156,12 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 	t.Run("error if types do not match", func(t *testing.T) {
 		expr := &physical.BinaryExpr{
 			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "name", Type: types.ColumnTypeBuiltin},
+				Ref: types.ColumnRef{Column: "name", Type: physicalpb.COLUMN_TYPE_BUILTIN},
 			},
 			Right: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin},
+				Ref: types.ColumnRef{Column: "timestamp", Type: physicalpb.COLUMN_TYPE_BUILTIN},
 			},
-			Op: types.BinaryOpEq,
+			Op: physicalpb.BINARY_OP_EQ,
 		}
 
 		_, err := e.eval(expr, rec)
@@ -170,12 +171,12 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 	t.Run("error if function for signature is not registered", func(t *testing.T) {
 		expr := &physical.BinaryExpr{
 			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "name", Type: types.ColumnTypeBuiltin},
+				Ref: types.ColumnRef{Column: "name", Type: physicalpb.COLUMN_TYPE_BUILTIN},
 			},
 			Right: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "name", Type: types.ColumnTypeBuiltin},
+				Ref: types.ColumnRef{Column: "name", Type: physicalpb.COLUMN_TYPE_BUILTIN},
 			},
-			Op: types.BinaryOpXor,
+			Op: physicalpb.BINARY_OP_XOR,
 		}
 
 		_, err := e.eval(expr, rec)
@@ -185,10 +186,10 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 	t.Run("EQ(string,string)", func(t *testing.T) {
 		expr := &physical.BinaryExpr{
 			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "name", Type: types.ColumnTypeBuiltin},
+				Ref: types.ColumnRef{Column: "name", Type: physicalpb.COLUMN_TYPE_BUILTIN},
 			},
 			Right: physical.NewLiteral("Charlie"),
-			Op:    types.BinaryOpEq,
+			Op:    physicalpb.BINARY_OP_EQ,
 		}
 
 		res, err := e.eval(expr, rec)
@@ -200,10 +201,10 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 	t.Run("GT(float,float)", func(t *testing.T) {
 		expr := &physical.BinaryExpr{
 			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "value", Type: types.ColumnTypeBuiltin},
+				Ref: types.ColumnRef{Column: "value", Type: physicalpb.COLUMN_TYPE_BUILTIN},
 			},
 			Right: physical.NewLiteral(0.5),
-			Op:    types.BinaryOpGt,
+			Op:    physicalpb.BINARY_OP_GT,
 		}
 
 		res, err := e.eval(expr, rec)
@@ -298,7 +299,7 @@ null,null,null`
 		colExpr := &physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: "test",
-				Type:   types.ColumnTypeAmbiguous,
+				Type:   physicalpb.COLUMN_TYPE_AMBIGUOUS,
 			},
 		}
 
@@ -306,7 +307,7 @@ null,null,null`
 		require.NoError(t, err)
 		require.IsType(t, &CoalesceVector{}, colVec)
 		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
-		require.Equal(t, types.ColumnTypeAmbiguous, colVec.ColumnType())
+		require.Equal(t, physicalpb.COLUMN_TYPE_AMBIGUOUS, colVec.ColumnType())
 
 		// Test per-row precedence resolution
 		require.Equal(t, "generated_0", colVec.Value(0)) // Generated has highest precedence
@@ -319,7 +320,7 @@ null,null,null`
 		colExpr := &physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: "test",
-				Type:   types.ColumnTypeAmbiguous,
+				Type:   physicalpb.COLUMN_TYPE_AMBIGUOUS,
 			},
 		}
 
@@ -355,7 +356,7 @@ label_2
 		colExpr := &physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: "single",
-				Type:   types.ColumnTypeAmbiguous,
+				Type:   physicalpb.COLUMN_TYPE_AMBIGUOUS,
 			},
 		}
 
@@ -363,7 +364,7 @@ label_2
 		require.NoError(t, err)
 		require.IsType(t, &Array{}, colVec)
 		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
-		require.Equal(t, types.ColumnTypeLabel, colVec.ColumnType())
+		require.Equal(t, physicalpb.COLUMN_TYPE_LABEL, colVec.ColumnType())
 
 		// Test single column behavior
 		require.Equal(t, "label_0", colVec.Value(0))
@@ -375,7 +376,7 @@ label_2
 		colExpr := &physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: "nonexistent",
-				Type:   types.ColumnTypeAmbiguous,
+				Type:   physicalpb.COLUMN_TYPE_AMBIGUOUS,
 			},
 		}
 

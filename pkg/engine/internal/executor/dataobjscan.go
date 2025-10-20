@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -147,7 +148,7 @@ func projectedLabelColumns(sec *streams.Section, projections []physical.ColumnEx
 
 		// We're loading the sterams section for joining stream labels into
 		// records, so we only need to consider label and ambiguous columns here.
-		if expr.Ref.Type != types.ColumnTypeLabel && expr.Ref.Type != types.ColumnTypeAmbiguous {
+		if expr.Ref.Type != physicalpb.COLUMN_TYPE_LABEL && expr.Ref.Type != physicalpb.COLUMN_TYPE_AMBIGUOUS {
 			continue
 		}
 
@@ -256,7 +257,7 @@ func logsColumnToEngineField(col *logs.Column) (arrow.Field, error) {
 		return semconv.FieldFromIdent(semconv.ColumnIdentMessage, true), nil
 
 	case logs.ColumnTypeMetadata:
-		return semconv.FieldFromIdent(semconv.NewIdentifier(col.Name, types.ColumnTypeMetadata, types.Loki.String), true), nil
+		return semconv.FieldFromIdent(semconv.NewIdentifier(col.Name, physicalpb.COLUMN_TYPE_METADATA, types.Loki.String), true), nil
 	}
 
 	return arrow.Field{}, fmt.Errorf("unsupported logs column type %s", col.Type)
@@ -321,25 +322,25 @@ NextProjection:
 
 		// Ignore columns that cannot exist in the logs section.
 		switch expr.Ref.Type {
-		case types.ColumnTypeLabel, types.ColumnTypeParsed, types.ColumnTypeGenerated:
+		case physicalpb.COLUMN_TYPE_LABEL, physicalpb.COLUMN_TYPE_PARSED, physicalpb.COLUMN_TYPE_GENERATED:
 			continue NextProjection
 		}
 
 		for _, col := range sec.Columns() {
 			switch {
-			case expr.Ref.Type == types.ColumnTypeBuiltin && expr.Ref.Column == types.ColumnNameBuiltinTimestamp && col.Type == logs.ColumnTypeTimestamp:
+			case expr.Ref.Type == physicalpb.COLUMN_TYPE_BUILTIN && expr.Ref.Column == types.ColumnNameBuiltinTimestamp && col.Type == logs.ColumnTypeTimestamp:
 				found = append(found, col)
 				continue NextProjection
 
-			case expr.Ref.Type == types.ColumnTypeBuiltin && expr.Ref.Column == types.ColumnNameBuiltinMessage && col.Type == logs.ColumnTypeMessage:
+			case expr.Ref.Type == physicalpb.COLUMN_TYPE_BUILTIN && expr.Ref.Column == types.ColumnNameBuiltinMessage && col.Type == logs.ColumnTypeMessage:
 				found = append(found, col)
 				continue NextProjection
 
-			case expr.Ref.Type == types.ColumnTypeMetadata && col.Type == logs.ColumnTypeMetadata && col.Name == expr.Ref.Column:
+			case expr.Ref.Type == physicalpb.COLUMN_TYPE_METADATA && col.Type == logs.ColumnTypeMetadata && col.Name == expr.Ref.Column:
 				found = append(found, col)
 				continue NextProjection
 
-			case expr.Ref.Type == types.ColumnTypeAmbiguous && col.Type == logs.ColumnTypeMetadata && col.Name == expr.Ref.Column:
+			case expr.Ref.Type == physicalpb.COLUMN_TYPE_AMBIGUOUS && col.Type == logs.ColumnTypeMetadata && col.Name == expr.Ref.Column:
 				found = append(found, col)
 				continue NextProjection
 			}

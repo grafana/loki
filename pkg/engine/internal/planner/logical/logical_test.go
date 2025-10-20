@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 )
 
 func TestPlan_String(t *testing.T) {
@@ -17,19 +17,19 @@ func TestPlan_String(t *testing.T) {
 	b := NewBuilder(
 		&MakeTable{
 			Selector: &BinOp{
-				Left:  NewColumnRef("app", types.ColumnTypeLabel),
+				Left:  NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
 				Right: NewLiteral("users"),
-				Op:    types.BinaryOpEq,
+				Op:    physicalpb.BINARY_OP_EQ,
 			},
 			Shard: noShard,
 		},
 	).Select(
 		&BinOp{
-			Left:  NewColumnRef("age", types.ColumnTypeMetadata),
+			Left:  NewColumnRef("age", physicalpb.COLUMN_TYPE_METADATA),
 			Right: NewLiteral(int64(21)),
-			Op:    types.BinaryOpGt,
+			Op:    physicalpb.BINARY_OP_GT,
 		},
-	).Sort(*NewColumnRef("age", types.ColumnTypeMetadata), true, false)
+	).Sort(*NewColumnRef("age", physicalpb.COLUMN_TYPE_METADATA), true, false)
 
 	// Convert to SSA
 	ssaForm, err := b.ToPlan()

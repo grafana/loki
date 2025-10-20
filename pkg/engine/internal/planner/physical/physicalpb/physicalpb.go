@@ -1,7 +1,9 @@
 // Package physicalpb contains the protobuf definitions for physical plan nodes.
 package physicalpb
 
-import fmt "fmt"
+import (
+	fmt "fmt"
+)
 
 type NodeKind uint8
 
@@ -34,7 +36,7 @@ var nodeKinds = [...]string{
 }
 
 func (k NodeKind) String() string {
-	if k >= 0 && int(k) < len(nodeKinds) {
+	if int(k) < len(nodeKinds) {
 		return nodeKinds[k]
 	}
 	return fmt.Sprintf("NodeKind(%d)", k)
@@ -82,7 +84,7 @@ func GetNode(planNode *PlanNode) Node {
 		return kind.Projection
 	case *PlanNode_SortMerge:
 		return kind.SortMerge
-	case *PlanNode.ColumnCompat:
+	case *PlanNode_ColumnCompat:
 		return kind.ColumnCompat
 	default:
 		panic(fmt.Sprintf("unknown node kind %T", kind))
@@ -164,4 +166,59 @@ func (n *ColumnCompat) ToPlanNode() *PlanNode    { return planNode(&PlanNode_Col
 
 func planNode(kind isPlanNode_Kind) *PlanNode {
 	return &PlanNode{Kind: kind}
+}
+
+var SupportedRangeAggregationTypes = []AggregateRangeOp{
+	AGGREGATE_RANGE_OP_COUNT, AGGREGATE_RANGE_OP_SUM, AGGREGATE_RANGE_OP_MAX, AGGREGATE_RANGE_OP_MIN,
+}
+
+var SupportedVectorAggregationTypes = []AggregateVectorOp{AGGREGATE_VECTOR_OP_SUM, AGGREGATE_VECTOR_OP_MAX, AGGREGATE_VECTOR_OP_MIN, AGGREGATE_VECTOR_OP_COUNT}
+
+// ColumnTypePrecedence returns the precedence of the given [ColumnType].
+func ColumnTypePrecedence(ct ColumnType) int {
+	switch ct {
+	case COLUMN_TYPE_GENERATED:
+		return PrecedenceGenerated
+	case COLUMN_TYPE_PARSED:
+		return PrecedenceParsed
+	case COLUMN_TYPE_METADATA:
+		return PrecedenceMetadata
+	case COLUMN_TYPE_LABEL:
+		return PrecedenceLabel
+	default:
+		return PrecedenceBuiltin // Default to lowest precedence
+	}
+}
+
+// Column type precedence for ambiguous column resolution (highest to lowest):
+// Generated > Parsed > Metadata > Label > Builtin
+const (
+	PrecedenceGenerated = iota // 0 - highest precedence
+
+	PrecedenceParsed   // 1
+	PrecedenceMetadata // 2
+	PrecedenceLabel    // 3
+	PrecedenceBuiltin  // 4 - lowest precedence
+)
+
+var ctNames = [7]string{"invalid", "builtin", "label", "metadata", "parsed", "ambiguous", "generated"}
+
+// ColumnTypeFromString returns the [ColumnType] from its string representation.
+func ColumnTypeFromString(ct string) ColumnType {
+	switch ct {
+	case ctNames[1]:
+		return COLUMN_TYPE_BUILTIN
+	case ctNames[2]:
+		return COLUMN_TYPE_LABEL
+	case ctNames[3]:
+		return COLUMN_TYPE_METADATA
+	case ctNames[4]:
+		return COLUMN_TYPE_PARSED
+	case ctNames[5]:
+		return COLUMN_TYPE_AMBIGUOUS
+	case ctNames[6]:
+		return COLUMN_TYPE_GENERATED
+	default:
+		panic(fmt.Sprintf("invalid column type: %s", ct))
+	}
 }

@@ -34,56 +34,56 @@ const (
 	// BinaryOpInvalid indicates an invalid binary operation.
 	BinaryOpInvalid BinaryOp = iota
 
-	BinaryOpEq  // Equality comparison (==).
-	BinaryOpNeq // Inequality comparison (!=).
-	BinaryOpGt  // Greater than comparison (>).
-	BinaryOpGte // Greater than or equal comparison (>=).
-	BinaryOpLt  // Less than comparison (<).
-	BinaryOpLte // Less than or equal comparison (<=).
+	BINARY_OP_EQ  // Equality comparison (==).
+	BINARY_OP_NEQ // Inequality comparison (!=).
+	BINARY_OP_GT  // Greater than comparison (>).
+	BINARY_OP_GTE // Greater than or equal comparison (>=).
+	BINARY_OP_LT  // Less than comparison (<).
+	BINARY_OP_LTE // Less than or equal comparison (<=).
 
-	BinaryOpAnd // Logical AND operation (&&).
-	BinaryOpOr  // Logical OR operation (||).
-	BinaryOpXor // Logical XOR operation (^).
-	BinaryOpNot // Logical NOT operation (!).
+	BINARY_OP_AND // Logical AND operation (&&).
+	BINARY_OP_OR  // Logical OR operation (||).
+	BINARY_OP_XOR // Logical XOR operation (^).
+	BinaryOpNot   // Logical NOT operation (!).
 
-	BinaryOpAdd // Addition operation (+).
-	BinaryOpSub // Subtraction operation (-).
-	BinaryOpMul // Multiplication operation (*).
-	BinaryOpDiv // Division operation (/).
-	BinaryOpMod // Modulo operation (%).
+	BINARY_OP_ADD // Addition operation (+).
+	BinaryOpSub   // Subtraction operation (-).
+	BinaryOpMul   // Multiplication operation (*).
+	BinaryOpDiv   // Division operation (/).
+	BinaryOpMod   // Modulo operation (%).
 
-	BinaryOpMatchSubstr     // Substring matching operation (|=). Used for string match filter.
-	BinaryOpNotMatchSubstr  // Substring non-matching operation (!=). Used for string match filter.
-	BinaryOpMatchRe         // Regular expression matching operation (|~). Used for regex match filter and label matcher.
-	BinaryOpNotMatchRe      // Regular expression non-matching operation (!~). Used for regex match filter and label matcher.
-	BinaryOpMatchPattern    // Pattern matching operation (|>). Used for pattern match filter.
-	BinaryOpNotMatchPattern // Pattern non-matching operation (!>). Use for pattern match filter.
+	BINARY_OP_MATCH_SUBSTR      // Substring matching operation (|=). Used for string match filter.
+	BINARY_OP_NOT_MATCH_SUBSTR  // Substring non-matching operation (!=). Used for string match filter.
+	BINARY_OP_MATCH_RE          // Regular expression matching operation (|~). Used for regex match filter and label matcher.
+	BINARY_OP_NOT_MATCH_RE      // Regular expression non-matching operation (!~). Used for regex match filter and label matcher.
+	BINARY_OP_MATCH_PATTERN     // Pattern matching operation (|>). Used for pattern match filter.
+	BINARY_OP_NOT_MATCH_PATTERN // Pattern non-matching operation (!>). Use for pattern match filter.
 )
 
 // String returns a human-readable representation of the binary operation kind.
 func (t BinaryOp) String() string {
 	switch t {
-	case BinaryOpEq:
+	case BINARY_OP_EQ:
 		return "EQ"
-	case BinaryOpNeq:
+	case BINARY_OP_NEQ:
 		return "NEQ" // convenience for NOT(EQ(expr))
-	case BinaryOpGt:
+	case BINARY_OP_GT:
 		return "GT"
-	case BinaryOpGte:
+	case BINARY_OP_GTE:
 		return "GTE"
-	case BinaryOpLt:
+	case BINARY_OP_LT:
 		return "LT" // convenience for NOT(GTE(expr))
-	case BinaryOpLte:
+	case BINARY_OP_LTE:
 		return "LTE" // convenience for NOT(GT(expr))
-	case BinaryOpAnd:
+	case BINARY_OP_AND:
 		return "AND"
-	case BinaryOpOr:
+	case BINARY_OP_OR:
 		return "OR"
-	case BinaryOpXor:
+	case BINARY_OP_XOR:
 		return "XOR"
 	case BinaryOpNot:
 		return "NOT"
-	case BinaryOpAdd:
+	case BINARY_OP_ADD:
 		return "ADD"
 	case BinaryOpSub:
 		return "SUB"
@@ -93,17 +93,17 @@ func (t BinaryOp) String() string {
 		return "DIV"
 	case BinaryOpMod:
 		return "MOD"
-	case BinaryOpMatchSubstr:
+	case BINARY_OP_MATCH_SUBSTR:
 		return "MATCH_STR"
-	case BinaryOpNotMatchSubstr:
+	case BINARY_OP_NOT_MATCH_SUBSTR:
 		return "NOT_MATCH_STR" // convenience for NOT(MATCH_STR(...))
-	case BinaryOpMatchRe:
+	case BINARY_OP_MATCH_RE:
 		return "MATCH_RE"
-	case BinaryOpNotMatchRe:
+	case BINARY_OP_NOT_MATCH_RE:
 		return "NOT_MATCH_RE" // convenience for NOT(MATCH_RE(...))
-	case BinaryOpMatchPattern:
+	case BINARY_OP_MATCH_PATTERN:
 		return "MATCH_PAT"
-	case BinaryOpNotMatchPattern:
+	case BINARY_OP_NOT_MATCH_PATTERN:
 		return "NOT_MATCH_PAT" // convenience for NOT(MATCH_PAT(...))
 	default:
 		panic(fmt.Sprintf("unknown binary operator %d", t))

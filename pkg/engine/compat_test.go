@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -36,7 +37,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 	t.Run("rows without log line, timestamp, or labels are ignored", func(t *testing.T) {
 		colTs := semconv.ColumnIdentTimestamp
 		colMsg := semconv.ColumnIdentMessage
-		colEnv := semconv.NewIdentifier("env", types.ColumnTypeMetadata, types.Loki.String)
+		colEnv := semconv.NewIdentifier("env", physicalpb.COLUMN_TYPE_METADATA, types.Loki.String)
 
 		schema := arrow.NewSchema(
 			[]arrow.Field{
@@ -80,9 +81,9 @@ func TestStreamsResultBuilder(t *testing.T) {
 	t.Run("successful conversion of labels, log line, timestamp, and structured metadata ", func(t *testing.T) {
 		colTs := semconv.ColumnIdentTimestamp
 		colMsg := semconv.ColumnIdentMessage
-		colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String)
-		colNs := semconv.NewIdentifier("namespace", types.ColumnTypeLabel, types.Loki.String)
-		colTid := semconv.NewIdentifier("traceID", types.ColumnTypeMetadata, types.Loki.String)
+		colEnv := semconv.NewIdentifier("env", physicalpb.COLUMN_TYPE_LABEL, types.Loki.String)
+		colNs := semconv.NewIdentifier("namespace", physicalpb.COLUMN_TYPE_LABEL, types.Loki.String)
+		colTid := semconv.NewIdentifier("traceID", physicalpb.COLUMN_TYPE_METADATA, types.Loki.String)
 
 		schema := arrow.NewSchema(
 			[]arrow.Field{
@@ -197,8 +198,8 @@ func TestVectorResultBuilder(t *testing.T) {
 	t.Run("successful conversion of vector data", func(t *testing.T) {
 		colTs := semconv.ColumnIdentTimestamp
 		colVal := semconv.ColumnIdentValue
-		colInst := semconv.NewIdentifier("instance", types.ColumnTypeMetadata, types.Loki.String)
-		colJob := semconv.NewIdentifier("job", types.ColumnTypeMetadata, types.Loki.String)
+		colInst := semconv.NewIdentifier("instance", physicalpb.COLUMN_TYPE_METADATA, types.Loki.String)
+		colJob := semconv.NewIdentifier("job", physicalpb.COLUMN_TYPE_METADATA, types.Loki.String)
 
 		schema := arrow.NewSchema(
 			[]arrow.Field{
@@ -262,7 +263,7 @@ func TestVectorResultBuilder(t *testing.T) {
 	t.Run("rows without timestamp or value are ignored", func(t *testing.T) {
 		colTs := semconv.ColumnIdentTimestamp
 		colVal := semconv.ColumnIdentValue
-		colInst := semconv.NewIdentifier("instance", types.ColumnTypeMetadata, types.Loki.String)
+		colInst := semconv.NewIdentifier("instance", physicalpb.COLUMN_TYPE_METADATA, types.Loki.String)
 
 		schema := arrow.NewSchema(
 			[]arrow.Field{
@@ -304,8 +305,8 @@ func TestMatrixResultBuilder(t *testing.T) {
 	t.Run("successful conversion of matrix data", func(t *testing.T) {
 		colTs := semconv.ColumnIdentTimestamp
 		colVal := semconv.ColumnIdentValue
-		colInst := semconv.NewIdentifier("instance", types.ColumnTypeMetadata, types.Loki.String)
-		colJob := semconv.NewIdentifier("job", types.ColumnTypeMetadata, types.Loki.String)
+		colInst := semconv.NewIdentifier("instance", physicalpb.COLUMN_TYPE_METADATA, types.Loki.String)
+		colJob := semconv.NewIdentifier("job", physicalpb.COLUMN_TYPE_METADATA, types.Loki.String)
 
 		schema := arrow.NewSchema(
 			[]arrow.Field{

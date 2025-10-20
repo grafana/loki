@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
@@ -54,7 +55,7 @@ func Test_topk(t *testing.T) {
 		Inputs: []Pipeline{pipelineA, pipelineB},
 		SortBy: []physical.ColumnExpression{
 			&physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin},
+				Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: physicalpb.COLUMN_TYPE_BUILTIN},
 			},
 		},
 		Ascending: true,
@@ -86,7 +87,7 @@ func Test_topk_emptyPipelines(t *testing.T) {
 		Inputs: []Pipeline{emptyPipeline()},
 		SortBy: []physical.ColumnExpression{
 			&physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin},
+				Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: physicalpb.COLUMN_TYPE_BUILTIN},
 			},
 		},
 		Ascending: true,

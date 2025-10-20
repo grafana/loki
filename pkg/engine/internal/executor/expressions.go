@@ -9,6 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -22,14 +23,14 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		return &Scalar{
 			value: expr.Literal,
 			rows:  input.NumRows(),
-			ct:    types.ColumnTypeAmbiguous,
+			ct:    physicalpb.COLUMN_TYPE_AMBIGUOUS,
 		}, nil
 
 	case *physical.ColumnExpr:
 		colIdent := semconv.NewIdentifier(expr.Ref.Column, expr.Ref.Type, types.Loki.String)
 
 		// For non-ambiguous columns, we can look up the column in the schema by its fully qualified name.
-		if expr.Ref.Type != types.ColumnTypeAmbiguous {
+		if expr.Ref.Type != physicalpb.COLUMN_TYPE_AMBIGUOUS {
 			for idx, field := range input.Schema().Fields() {
 				ident, err := semconv.ParseFQN(field.Name)
 				if err != nil {
@@ -49,7 +50,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		}
 
 		// For ambiguous columns, we need to filter on the name and type and combine matching columns into a CoalesceVector.
-		if expr.Ref.Type == types.ColumnTypeAmbiguous {
+		if expr.Ref.Type == physicalpb.COLUMN_TYPE_AMBIGUOUS {
 			var fieldIndices []int
 			var fieldIdents []*semconv.Identifier
 
@@ -93,7 +94,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 			if len(vecs) > 1 {
 				// Multiple matches - sort by precedence and create CoalesceVector
 				slices.SortFunc(vecs, func(a, b ColumnVector) int {
-					return types.ColumnTypePrecedence(a.ColumnType()) - types.ColumnTypePrecedence(b.ColumnType())
+					return physicalpb.ColumnTypePrecedence(a.ColumnType()) - physicalpb.ColumnTypePrecedence(b.ColumnType())
 				})
 				return &CoalesceVector{
 					vectors: vecs,
@@ -108,7 +109,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		return &Scalar{
 			value: types.NewLiteral(""),
 			rows:  input.NumRows(),
-			ct:    types.ColumnTypeGenerated,
+			ct:    physicalpb.COLUMN_TYPE_GENERATED,
 		}, nil
 
 	case *physical.UnaryExpr:
@@ -172,7 +173,7 @@ type ColumnVector interface {
 	// Type returns the Loki data type of the column vector.
 	Type() types.DataType
 	// ColumnType returns the type of column the vector originates from.
-	ColumnType() types.ColumnType
+	ColumnType() physicalpb.ColumnType
 	// Len returns the length of the vector
 	Len() int64
 	// Release decreases the reference count by 1 on underlying Arrow array
@@ -183,7 +184,7 @@ type ColumnVector interface {
 type Scalar struct {
 	value types.Literal
 	rows  int64
-	ct    types.ColumnType
+	ct    physicalpb.ColumnType
 }
 
 var _ ColumnVector = (*Scalar)(nil)
@@ -234,7 +235,7 @@ func (v *Scalar) Type() types.DataType {
 }
 
 // ColumnType implements ColumnVector.
-func (v *Scalar) ColumnType() types.ColumnType {
+func (v *Scalar) ColumnType() physicalpb.ColumnType {
 	return v.ct
 }
 
@@ -251,7 +252,7 @@ func (v *Scalar) Len() int64 {
 type Array struct {
 	array arrow.Array
 	dt    types.DataType
-	ct    types.ColumnType
+	ct    physicalpb.ColumnType
 	rows  int64
 }
 
@@ -290,7 +291,7 @@ func (a *Array) Type() types.DataType {
 }
 
 // ColumnType implements ColumnVector.
-func (a *Array) ColumnType() types.ColumnType {
+func (a *Array) ColumnType() physicalpb.ColumnType {
 	return a.ct
 }
 
@@ -304,7 +305,7 @@ func (a *Array) Release() {
 	a.array.Release()
 }
 
-// CoalesceVector represents multiple columns with the same name but different [types.ColumnType]
+// CoalesceVector represents multiple columns with the same name but different [physicalpb.ColumnType]
 // Vectors are ordered by precedence (highest precedence first).
 type CoalesceVector struct {
 	vectors []ColumnVector // Ordered by precedence (Generated first, Label last)
@@ -356,8 +357,8 @@ func (m *CoalesceVector) Type() types.DataType {
 }
 
 // ColumnType implements ColumnVector.
-func (m *CoalesceVector) ColumnType() types.ColumnType {
-	return types.ColumnTypeAmbiguous
+func (m *CoalesceVector) ColumnType() physicalpb.ColumnType {
+	return physicalpb.COLUMN_TYPE_AMBIGUOUS
 }
 
 // Len implements ColumnVector.
