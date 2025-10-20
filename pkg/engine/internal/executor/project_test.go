@@ -41,8 +41,8 @@ func TestNewProjectPipeline(t *testing.T) {
 		}
 
 		// Create project pipeline
-		e := newExpressionEvaluator(nil)
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e)
+		e := newExpressionEvaluator()
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, alloc)
 		require.NoError(t, err)
 
 		// Create expected output
@@ -61,9 +61,12 @@ func TestNewProjectPipeline(t *testing.T) {
 	})
 
 	t.Run("project multiple columns", func(t *testing.T) {
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer alloc.AssertSize(t, 0)
+
 		// Create input data
 		inputCSV := "Alice,30,New York\nBob,25,Boston\nCharlie,35,Seattle"
-		inputRecord, err := CSVToArrow(fields, inputCSV)
+		inputRecord, err := CSVToArrowWithAllocator(alloc, fields, inputCSV)
 		require.NoError(t, err)
 		defer inputRecord.Release()
 
@@ -81,8 +84,8 @@ func TestNewProjectPipeline(t *testing.T) {
 		}
 
 		// Create project pipeline
-		e := newExpressionEvaluator(nil)
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e)
+		e := newExpressionEvaluator()
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, alloc)
 		require.NoError(t, err)
 
 		// Create expected output
@@ -91,7 +94,7 @@ func TestNewProjectPipeline(t *testing.T) {
 			semconv.FieldFromFQN("utf8.builtin.name", false),
 			semconv.FieldFromFQN("utf8.builtin.city", false),
 		}
-		expectedRecord, err := CSVToArrow(expectedFields, expectedCSV)
+		expectedRecord, err := CSVToArrowWithAllocator(alloc, expectedFields, expectedCSV)
 		require.NoError(t, err)
 		defer expectedRecord.Release()
 
@@ -102,15 +105,18 @@ func TestNewProjectPipeline(t *testing.T) {
 	})
 
 	t.Run("project with multiple input batches", func(t *testing.T) {
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer alloc.AssertSize(t, 0)
+
 		// Create input data split across multiple records
 		inputCSV1 := "Alice,30,New York\nBob,25,Boston"
 		inputCSV2 := "Charlie,35,Seattle\nDave,40,Portland"
 
-		inputRecord1, err := CSVToArrow(fields, inputCSV1)
+		inputRecord1, err := CSVToArrowWithAllocator(alloc, fields, inputCSV1)
 		require.NoError(t, err)
 		defer inputRecord1.Release()
 
-		inputRecord2, err := CSVToArrow(fields, inputCSV2)
+		inputRecord2, err := CSVToArrowWithAllocator(alloc, fields, inputCSV2)
 		require.NoError(t, err)
 		defer inputRecord2.Release()
 
@@ -128,8 +134,8 @@ func TestNewProjectPipeline(t *testing.T) {
 		}
 
 		// Create project pipeline
-		e := newExpressionEvaluator(nil)
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e)
+		e := newExpressionEvaluator()
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, alloc)
 		require.NoError(t, err)
 
 		// Create expected output also split across multiple records
@@ -239,7 +245,7 @@ Dave,40
 					All:         true,
 					Drop:        true,
 				}
-				pipeline, err := NewProjectPipeline(input, proj, &expressionEvaluator{})
+				pipeline, err := NewProjectPipeline(input, proj, &expressionEvaluator{}, alloc)
 				require.NoError(t, err)
 
 				ctx := t.Context()
@@ -502,7 +508,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 				tt.input,
 			)
 
-			e := newExpressionEvaluator(alloc)
+			e := newExpressionEvaluator()
 			pipeline, err := NewProjectPipeline(
 				input,
 				&physical.Projection{
@@ -510,7 +516,8 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 					Expand:      true,
 					All:         true,
 				},
-				&e)
+				&e,
+				alloc)
 			require.NoError(t, err)
 			defer pipeline.Close()
 

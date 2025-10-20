@@ -36,7 +36,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		mergePrefetchCount: cfg.MergePrefetchCount,
 		bucket:             cfg.Bucket,
 		logger:             logger,
-		evaluator:          newExpressionEvaluator(allocator),
+		evaluator:          newExpressionEvaluator(),
 		allocator:          allocator,
 	}
 	if plan == nil {
@@ -305,7 +305,7 @@ func (c *Context) executeProjection(ctx context.Context, proj *physical.Projecti
 		return errorPipeline(ctx, fmt.Errorf("projection expects at least one expression, got 0"))
 	}
 
-	p, err := NewProjectPipeline(inputs[0], proj, &c.evaluator)
+	p, err := NewProjectPipeline(inputs[0], proj, &c.evaluator, c.allocator)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
@@ -327,7 +327,7 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 		return emptyPipeline()
 	}
 
-	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
+	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, c.allocator, rangeAggregationOptions{
 		partitionBy:   plan.PartitionBy,
 		startTs:       plan.Start,
 		endTs:         plan.End,
@@ -353,7 +353,7 @@ func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.V
 		return emptyPipeline()
 	}
 
-	pipeline, err := newVectorAggregationPipeline(inputs, plan.GroupBy, c.evaluator, plan.Operation)
+	pipeline, err := newVectorAggregationPipeline(inputs, plan.GroupBy, c.evaluator, c.allocator, plan.Operation)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
