@@ -215,10 +215,8 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.C
 
 	// if an s3 url is passed use it to initialize the s3Config and then override with any additional params
 	if cfg.S3.URL != nil {
-		key, secret, session, err := CredentialsFromURL(cfg.S3.URL)
-		if err != nil {
-			return nil, err
-		}
+		key, secret, session := CredentialsFromURL(cfg.S3.URL)
+
 		// Only set credentials if they were provided in the URL
 		// Otherwise, let AWS SDK use the default credential chain
 		if key != "" || secret != "" {

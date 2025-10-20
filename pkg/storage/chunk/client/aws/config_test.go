@@ -14,7 +14,6 @@ func TestCredentialsFromURL(t *testing.T) {
 		expectedKey     string
 		expectedSecret  string
 		expectedSession string
-		expectError     bool
 	}{
 		{
 			name:            "URL with username and password",
@@ -22,7 +21,6 @@ func TestCredentialsFromURL(t *testing.T) {
 			expectedKey:     "mykey",
 			expectedSecret:  "mysecret",
 			expectedSession: "",
-			expectError:     false,
 		},
 		{
 			name:            "URL with only username",
@@ -30,7 +28,6 @@ func TestCredentialsFromURL(t *testing.T) {
 			expectedKey:     "mykey",
 			expectedSecret:  "",
 			expectedSession: "",
-			expectError:     false,
 		},
 		{
 			name:            "URL without credentials (should not error)",
@@ -38,7 +35,6 @@ func TestCredentialsFromURL(t *testing.T) {
 			expectedKey:     "",
 			expectedSecret:  "",
 			expectedSession: "",
-			expectError:     false,
 		},
 		{
 			name:            "URL with endpoint without credentials",
@@ -46,7 +42,6 @@ func TestCredentialsFromURL(t *testing.T) {
 			expectedKey:     "",
 			expectedSecret:  "",
 			expectedSession: "",
-			expectError:     false,
 		},
 	}
 
@@ -55,17 +50,10 @@ func TestCredentialsFromURL(t *testing.T) {
 			u, err := url.Parse(tt.urlStr)
 			require.NoError(t, err)
 
-			key, secret, session, err := CredentialsFromURL(u)
-			
-			if tt.expectError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.expectedKey, key)
-				require.Equal(t, tt.expectedSecret, secret)
-				require.Equal(t, tt.expectedSession, session)
-			}
+			key, secret, session := CredentialsFromURL(u)
+			require.Equal(t, tt.expectedKey, key)
+			require.Equal(t, tt.expectedSecret, secret)
+			require.Equal(t, tt.expectedSession, session)
 		})
 	}
 }
-
