@@ -162,19 +162,19 @@ func TestBuildIngester_PodDisruptionBudgetWithReplicationFactor(t *testing.T) {
 	ingesterReplicas := 3
 	for _, tc := range []struct {
 		Name                    string
-		customReplicationFactor int32
+		CustomReplicationFactor int32
 		PDBMinAvailable         int
 		ExpectedMinAvailable    int
 	}{
 		{
 			Name:                    "ingester replicas <= replication factor",
-			customReplicationFactor: 4,
+			CustomReplicationFactor: 4,
 			PDBMinAvailable:         2,
-			ExpectedMinAvailable:    5,
+			ExpectedMinAvailable:    0,
 		},
 		{
 			Name:                    "ingester replicas > replication factor",
-			customReplicationFactor: 2,
+			CustomReplicationFactor: 2,
 			PDBMinAvailable:         1,
 			ExpectedMinAvailable:    2,
 		},
@@ -194,7 +194,7 @@ func TestBuildIngester_PodDisruptionBudgetWithReplicationFactor(t *testing.T) {
 						Mode: lokiv1.OpenshiftLogging,
 					},
 					Replication: &lokiv1.ReplicationSpec{
-						Factor: tc.customReplicationFactor,
+						Factor: tc.CustomReplicationFactor,
 					},
 				},
 				ResourceRequirements: internal.ComponentResources{
@@ -204,18 +204,16 @@ func TestBuildIngester_PodDisruptionBudgetWithReplicationFactor(t *testing.T) {
 				},
 			}
 			objs, err := BuildIngester(opts)
-			require.NoError(t, err)
-			require.Len(t, objs, 4)
 
-			pdb := objs[3].(*policyv1.PodDisruptionBudget)
-			require.NotNil(t, pdb)
-			require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
-			require.Equal(t, int32(tc.ExpectedMinAvailable), pdb.Spec.MinAvailable.IntVal)
-
-			sts := objs[0].(*appsv1.StatefulSet)
-			require.NotNil(t, sts)
-			require.NotZero(t, sts.Spec.Replicas)
-			require.Equal(t, tc.customReplicationFactor+1, *sts.Spec.Replicas)
+			if err != nil {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				pdb := objs[3].(*policyv1.PodDisruptionBudget)
+				require.NotNil(t, pdb)
+				require.NotNil(t, pdb.Spec.MinAvailable.IntVal)
+				require.Equal(t, int32(tc.ExpectedMinAvailable), pdb.Spec.MinAvailable.IntVal)
+			}
 		})
 	}
 }

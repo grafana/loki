@@ -14,6 +14,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
@@ -62,10 +63,10 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
-	upscaledReplicas, pdbMinAvailable := GetPDBMinAvailable(opts)
+	err, pdbMinAvailable := GetPDBMinAvailable(opts)
 
-	if upscaledReplicas != 0 {
-		statefulSet.Spec.Replicas = &upscaledReplicas
+	if err != nil {
+		return nil, err
 	}
 
 	return []client.Object{
@@ -320,15 +321,15 @@ func newIngesterPodDisruptionBudget(opts Options, pdbMinAvailable intstr.IntOrSt
 	}
 }
 
-func GetPDBMinAvailable(opts Options) (int32, intstr.IntOrString) {
+func GetPDBMinAvailable(opts Options) (error, intstr.IntOrString) {
 	if opts.Stack.Replication != nil && opts.Stack.Replication.Factor != 0 {
 		rf := opts.Stack.Replication.Factor
 		if opts.Stack.Template.Ingester.Replicas <= rf {
-			// scale up replicas to create a enough pods for rolling updates
-			return rf + 1, intstr.FromInt32(rf + 1)
+			err := kverrors.New("failed to set PodDisruptionBudget. Replication factor should be less than ingester replicas")
+			return err, intstr.FromInt32(0)
 		}
-		return 0, intstr.FromInt32(rf)
+		return nil, intstr.FromInt32(rf)
 	}
-	return 0, intstr.FromInt(opts.ResourceRequirements.Ingester.PDBMinAvailable)
+	return nil, intstr.FromInt(opts.ResourceRequirements.Ingester.PDBMinAvailable)
 
 }
