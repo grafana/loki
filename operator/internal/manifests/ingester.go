@@ -64,11 +64,6 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
-	/* pdbMinAvailable, err := GetPDBMinAvailable(opts)
-	if err != nil {
-		return nil, err
-	} */
-
 	pdb, err := newIngesterPodDisruptionBudget(opts)
 	if err != nil {
 		return nil, err
