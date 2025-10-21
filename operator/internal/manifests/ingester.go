@@ -4,6 +4,11 @@ import (
 	"fmt"
 	"path"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
+
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -13,10 +18,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 // BuildIngester builds the k8s objects required to run Loki Ingester
@@ -63,8 +64,12 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
-	err, pdbMinAvailable := GetPDBMinAvailable(opts)
+	/* pdbMinAvailable, err := GetPDBMinAvailable(opts)
+	if err != nil {
+		return nil, err
+	} */
 
+	pdb, err := newIngesterPodDisruptionBudget(opts)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +78,7 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 		statefulSet,
 		NewIngesterGRPCService(opts),
 		NewIngesterHTTPService(opts),
-		newIngesterPodDisruptionBudget(opts, pdbMinAvailable),
+		pdb,
 	}, nil
 }
 
@@ -295,13 +300,16 @@ func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) erro
 
 // newIngesterPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack
 // Ingester pods.
-func newIngesterPodDisruptionBudget(opts Options, pdbMinAvailable intstr.IntOrString) *policyv1.PodDisruptionBudget {
+func newIngesterPodDisruptionBudget(opts Options) (*policyv1.PodDisruptionBudget, error) {
 	l := ComponentLabels(LabelIngesterComponent, opts.Name)
-	// Default to 1 if not defined in ResourceRequirementsTable for a given size
-	mu := intstr.FromInt(1)
+	mu, err := getPDBMinAvailable(opts)
+	if err != nil {
+		return nil, err
+	}
+	/* mu := intstr.FromInt(1)
 	if opts.ResourceRequirements.Ingester.PDBMinAvailable > 0 {
 		mu = pdbMinAvailable
-	}
+	} */
 	return &policyv1.PodDisruptionBudget{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PodDisruptionBudget",
@@ -318,18 +326,27 @@ func newIngesterPodDisruptionBudget(opts Options, pdbMinAvailable intstr.IntOrSt
 			},
 			MinAvailable: &mu,
 		},
-	}
+	}, nil
 }
 
-func GetPDBMinAvailable(opts Options) (error, intstr.IntOrString) {
-	if opts.Stack.Replication != nil && opts.Stack.Replication.Factor != 0 {
-		rf := opts.Stack.Replication.Factor
-		if opts.Stack.Template.Ingester.Replicas <= rf {
-			err := kverrors.New("failed to set PodDisruptionBudget. Replication factor should be less than ingester replicas")
-			return err, intstr.FromInt32(0)
-		}
-		return nil, intstr.FromInt32(rf)
-	}
-	return nil, intstr.FromInt(opts.ResourceRequirements.Ingester.PDBMinAvailable)
+func getPDBMinAvailable(opts Options) (intstr.IntOrString, error) {
+	/*
+	   size          | ReplicationFactor | PDBMinAvailablePods | Ingester Replicas
+	   1x.demo       | 1                 | 1                   | 1
+	   1x.pico       | 2                 | 2                   | 3
+	   1x.extra-small| 2                 | 1                   | 2
+	   1x.small      | 2 				 | 1				   | 2
+	   1x.medium	 | 2                 | 2   				   | 3 */
 
+	switch opts.Stack.Size {
+	case lokiv1.SizeOneXDemo:
+		return intstr.FromInt(1), nil
+	case lokiv1.SizeOneXExtraSmall, lokiv1.SizeOneXSmall:
+		return intstr.FromInt32(opts.Stack.Replication.Factor - 1), nil
+	}
+	if opts.Stack.Template.Ingester.Replicas <= opts.Stack.Replication.Factor {
+		err := kverrors.New("failed to set PodDisruptionBudget. Replication factor should be less than ingester replicas")
+		return intstr.FromInt32(0), err
+	}
+	return intstr.FromInt32(opts.Stack.Replication.Factor), nil
 }

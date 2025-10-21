@@ -12,7 +12,6 @@ import (
 
 	v1 "github.com/grafana/loki/operator/api/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests/internal"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
@@ -108,16 +107,19 @@ func TestNewIngesterStatefulSet_SelectorMatchesLabels(t *testing.T) {
 func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 	for _, tc := range []struct {
 		Name                 string
+		Size                 lokiv1.LokiStackSizeType
 		PDBMinAvailable      int
 		ExpectedMinAvailable int
 	}{
 		{
 			Name:                 "Small stack",
+			Size:                 lokiv1.SizeOneXSmall,
 			PDBMinAvailable:      1,
 			ExpectedMinAvailable: 1,
 		},
 		{
 			Name:                 "Medium stack",
+			Size:                 lokiv1.SizeOneXMedium,
 			PDBMinAvailable:      2,
 			ExpectedMinAvailable: 2,
 		},
@@ -127,12 +129,8 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 				Name:      "abcd",
 				Namespace: "efgh",
 				Gates:     v1.FeatureGates{},
-				ResourceRequirements: internal.ComponentResources{
-					Ingester: internal.ResourceRequirements{
-						PDBMinAvailable: tc.PDBMinAvailable,
-					},
-				},
 				Stack: lokiv1.LokiStackSpec{
+					Size: tc.Size,
 					Template: &lokiv1.LokiTemplateSpec{
 						Ingester: &lokiv1.LokiComponentSpec{
 							Replicas: rand.Int31(),
@@ -140,6 +138,9 @@ func TestBuildIngester_PodDisruptionBudget(t *testing.T) {
 					},
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftLogging,
+					},
+					Replication: &lokiv1.ReplicationSpec{
+						Factor: int32(2),
 					},
 				},
 			}
@@ -195,11 +196,6 @@ func TestBuildIngester_PodDisruptionBudgetWithReplicationFactor(t *testing.T) {
 					},
 					Replication: &lokiv1.ReplicationSpec{
 						Factor: tc.CustomReplicationFactor,
-					},
-				},
-				ResourceRequirements: internal.ComponentResources{
-					Ingester: internal.ResourceRequirements{
-						PDBMinAvailable: tc.PDBMinAvailable,
 					},
 				},
 			}
