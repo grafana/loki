@@ -424,9 +424,15 @@ func (p *Planner) processMathExpressionChild(c logical.Value, rootNode bool, ctx
 				Expand: true,
 			}
 			p.plan.graph.Add(projection)
-			p.plan.graph.AddEdge(dag.Edge[Node]{Parent: join, Child: projection})
-			p.plan.graph.AddEdge(dag.Edge[Node]{Parent: projection, Child: leftInput})
-			p.plan.graph.AddEdge(dag.Edge[Node]{Parent: projection, Child: rightInput})
+			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: join, Child: projection}); err != nil {
+				return nil, nil, nil, err
+			}
+			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: projection, Child: leftInput}); err != nil {
+				return nil, nil, nil, err
+			}
+			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: projection, Child: rightInput}); err != nil {
+				return nil, nil, nil, err
+			}
 
 			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
 
@@ -454,7 +460,9 @@ func (p *Planner) processMathExpressionChild(c logical.Value, rootNode bool, ctx
 				Expand:      true,
 			}
 			p.plan.graph.Add(projection)
-			p.plan.graph.AddEdge(dag.Edge[Node]{Parent: projection, Child: input})
+			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: projection, Child: input}); err != nil {
+				return nil, nil, nil, err
+			}
 
 			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
 
@@ -478,7 +486,9 @@ func (p *Planner) processMathExpressionChild(c logical.Value, rootNode bool, ctx
 				Expand:      true,
 			}
 			p.plan.graph.Add(projection)
-			p.plan.graph.AddEdge(dag.Edge[Node]{Parent: projection, Child: input})
+			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: projection, Child: input}); err != nil {
+				return nil, nil, nil, err
+			}
 
 			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
 
