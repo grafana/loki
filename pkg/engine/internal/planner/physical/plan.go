@@ -1,6 +1,8 @@
 package physical
 
 import (
+	"iter"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
@@ -78,6 +80,19 @@ type Node interface {
 	isNode()
 }
 
+// ShardableNode is a Node that can be split into multiple smaller partitions.
+type ShardableNode interface {
+	Node
+
+	// Shards produces a sequence of nodes that represent a fragment of the
+	// original node. Returned nodes do not need to be the same type as the
+	// original node.
+	//
+	// Implementations must produce unique values of Node in each call to
+	// Shards.
+	Shards() iter.Seq[Node]
+}
+
 var _ Node = (*DataObjScan)(nil)
 var _ Node = (*Projection)(nil)
 var _ Node = (*Limit)(nil)
@@ -125,6 +140,15 @@ const (
 type Plan struct {
 	graph dag.Graph[Node]
 }
+
+// FromGraph constructs a Plan from a given DAG.
+func FromGraph(graph dag.Graph[Node]) *Plan {
+	return &Plan{graph: graph}
+}
+
+// Graph returns the underlying graph of the plan. Modifications to the returned
+// graph will affect the Plan.
+func (p *Plan) Graph() *dag.Graph[Node] { return &p.graph }
 
 // Len returns the number of nodes in the graph.
 func (p *Plan) Len() int { return p.graph.Len() }
