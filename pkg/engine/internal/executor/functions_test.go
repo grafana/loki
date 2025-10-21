@@ -293,14 +293,13 @@ func TestBooleanComparisonFunctions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			lhsArray := createBoolArray(mem, tt.lhs, nil)
 			rhsArray := createBoolArray(mem, tt.rhs, nil)
-			defer lhsArray.array.Release()
-			defer rhsArray.array.Release()
 
 			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.FixedWidthTypes.Boolean)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhsArray, rhsArray)
+			result, err := fn.Evaluate(lhsArray, rhsArray, mem)
 			require.NoError(t, err)
+			defer result.ToArray().Release()
 
 			actual := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
@@ -367,14 +366,13 @@ func TestStringComparisonFunctions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			lhsArray := createStringArray(mem, tt.lhs, nil)
 			rhsArray := createStringArray(mem, tt.rhs, nil)
-			defer lhsArray.array.Release()
-			defer rhsArray.array.Release()
 
 			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.BinaryTypes.String)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhsArray, rhsArray)
+			result, err := fn.Evaluate(lhsArray, rhsArray, mem)
 			require.NoError(t, err)
+			defer result.ToArray().Release()
 
 			actual := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
@@ -441,14 +439,13 @@ func TestIntegerComparisonFunctions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			lhsArray := createInt64Array(mem, tt.lhs, nil)
 			rhsArray := createInt64Array(mem, tt.rhs, nil)
-			defer lhsArray.array.Release()
-			defer rhsArray.array.Release()
 
 			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.PrimitiveTypes.Int64)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhsArray, rhsArray)
+			result, err := fn.Evaluate(lhsArray, rhsArray, mem)
 			require.NoError(t, err)
+			defer result.ToArray().Release()
 
 			actual := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
@@ -515,13 +512,12 @@ func TestTimestampComparisonFunctions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			lhsArray := createTimestampArray(mem, tt.lhs, nil)
 			rhsArray := createTimestampArray(mem, tt.rhs, nil)
-			defer lhsArray.array.Release()
-			defer rhsArray.array.Release()
 
 			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.FixedWidthTypes.Timestamp_ns)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhsArray, rhsArray)
+			result, err := fn.Evaluate(lhsArray, rhsArray, mem)
+			defer result.ToArray().Release()
 			require.NoError(t, err)
 
 			actual := extractBoolValues(result)
@@ -589,14 +585,13 @@ func TestFloat64ComparisonFunctions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			lhsArray := createFloat64Array(mem, tt.lhs, nil)
 			rhsArray := createFloat64Array(mem, tt.rhs, nil)
-			defer lhsArray.array.Release()
-			defer rhsArray.array.Release()
 
 			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.PrimitiveTypes.Float64)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhsArray, rhsArray)
+			result, err := fn.Evaluate(lhsArray, rhsArray, mem)
 			require.NoError(t, err)
+			defer result.ToArray().Release()
 
 			actual := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
@@ -663,14 +658,13 @@ func TestStringMatchingFunctions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			lhsArray := createStringArray(mem, tt.lhs, nil)
 			rhsArray := createStringArray(mem, tt.rhs, nil)
-			defer lhsArray.array.Release()
-			defer rhsArray.array.Release()
 
 			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.BinaryTypes.String)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhsArray, rhsArray)
+			result, err := fn.Evaluate(lhsArray, rhsArray, mem)
 			require.NoError(t, err)
+			defer result.ToArray().Release()
 
 			actual := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
@@ -727,14 +721,13 @@ func TestNullValueHandling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			lhs, rhs := tt.setup()
-			defer lhs.array.Release()
-			defer rhs.array.Release()
 
 			fn, err := binaryFunctions.GetForSignature(tt.op, tt.dataType)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhs, rhs)
+			result, err := fn.Evaluate(lhs, rhs, mem)
 			require.NoError(t, err)
+			defer result.ToArray().Release()
 
 			actual := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
@@ -787,13 +780,11 @@ func TestArrayLengthMismatch(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			lhs, rhs := tt.setup()
-			defer lhs.array.Release()
-			defer rhs.array.Release()
 
 			fn, err := binaryFunctions.GetForSignature(tt.op, tt.dataType)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhs, rhs)
+			result, err := fn.Evaluate(lhs, rhs, mem)
 			assert.Error(t, err)
 			assert.Nil(t, result)
 		})
@@ -807,13 +798,11 @@ func TestRegexCompileError(t *testing.T) {
 	// Test with invalid regex patterns
 	lhs := createStringArray(mem, []string{"hello", "world"}, nil)
 	rhs := createStringArray(mem, []string{"[", "("}, nil) // Invalid regex patterns
-	defer lhs.array.Release()
-	defer rhs.array.Release()
 
 	fn, err := binaryFunctions.GetForSignature(types.BinaryOpMatchRe, arrow.BinaryTypes.String)
 	require.NoError(t, err)
 
-	_, err = fn.Evaluate(lhs, rhs)
+	_, err = fn.Evaluate(lhs, rhs, mem)
 	require.Error(t, err)
 }
 
@@ -850,13 +839,11 @@ func TestEmptyArrays(t *testing.T) {
 	// Test with empty arrays
 	lhs := createStringArray(mem, []string{}, nil)
 	rhs := createStringArray(mem, []string{}, nil)
-	defer lhs.array.Release()
-	defer rhs.array.Release()
 
 	fn, err := binaryFunctions.GetForSignature(types.BinaryOpEq, arrow.BinaryTypes.String)
 	require.NoError(t, err)
 
-	result, err := fn.Evaluate(lhs, rhs)
+	result, err := fn.Evaluate(lhs, rhs, mem)
 	require.NoError(t, err)
 
 	assert.Equal(t, int64(0), result.Len())

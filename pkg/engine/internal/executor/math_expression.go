@@ -29,11 +29,11 @@ func NewMathExpressionPipeline(expr *physical.MathExpression, input Pipeline, ev
 			return nil, err
 		}
 		data := res.ToArray()
+		defer data.Release()
 		if data.DataType().ID() != arrow.FLOAT64 {
 			return nil, fmt.Errorf("expression returned non-float64 type %s", data.DataType())
 		}
 		valCol := data.(*array.Float64)
-		defer valCol.Release()
 
 		// Build output by moving all columns from the input except columns that were used for expression evaluation
 		// and add the result `value` column. In case of simple math expressions this will replace `value` with `value`.

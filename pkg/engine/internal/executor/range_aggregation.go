@@ -183,13 +183,14 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 			defer tsCol.Release()
 
 			// no need to extract value column for COUNT aggregation
-			var valVec ColumnVector
+			var valArr *array.Float64
 			if r.opts.operation != types.RangeAggregationTypeCount {
-				valVec, err = r.evaluator.eval(valColumnExpr, record)
+				valVec, err := r.evaluator.eval(valColumnExpr, record)
 				if err != nil {
 					return nil, err
 				}
-				defer valVec.Release()
+				valArr = valVec.ToArray().(*array.Float64)
+				defer valArr.Release()
 			}
 
 			for row := range int(record.NumRows()) {
@@ -206,12 +207,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 
 				var value float64
 				if r.opts.operation != types.RangeAggregationTypeCount {
-					switch v := valVec.Value(row).(type) {
-					case float64:
-						value = v
-					case int64:
-						value = float64(v)
-					}
+					value = valArr.Value(row)
 				}
 
 				for _, w := range windows {

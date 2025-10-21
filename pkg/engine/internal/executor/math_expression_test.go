@@ -57,7 +57,7 @@ func TestNewMathExpressionPipeline(t *testing.T) {
 			},
 		}
 
-		pipeline := NewMathExpressionPipeline(mathExpr, input1, expressionEvaluator{})
+		pipeline := NewMathExpressionPipeline(mathExpr, input1, newExpressionEvaluator(alloc))
 		defer pipeline.Close()
 
 		// Read the pipeline output
@@ -126,7 +126,7 @@ func TestNewMathExpressionPipeline(t *testing.T) {
 			},
 		}
 
-		pipeline := NewMathExpressionPipeline(mathExpr, input1, expressionEvaluator{})
+		pipeline := NewMathExpressionPipeline(mathExpr, input1, newExpressionEvaluator(alloc))
 		defer pipeline.Close()
 
 		// Read the pipeline output
@@ -195,7 +195,7 @@ func TestNewMathExpressionPipeline(t *testing.T) {
 			},
 		}
 
-		pipeline := NewMathExpressionPipeline(mathExpr, input1, expressionEvaluator{})
+		pipeline := NewMathExpressionPipeline(mathExpr, input1, newExpressionEvaluator(alloc))
 		defer pipeline.Close()
 
 		// Read the pipeline output
