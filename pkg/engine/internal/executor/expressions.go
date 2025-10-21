@@ -13,21 +13,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-type expressionEvaluator struct {
-	allocator memory.Allocator
+type expressionEvaluator struct{}
+
+func newExpressionEvaluator() expressionEvaluator {
+	return expressionEvaluator{}
 }
 
-func newExpressionEvaluator(allocator memory.Allocator) expressionEvaluator {
-	if allocator == nil {
-		allocator = memory.DefaultAllocator
-	}
-
-	return expressionEvaluator{
-		allocator: allocator,
-	}
-}
-
-func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) (ColumnVector, error) {
+func (e expressionEvaluator) eval(expr physical.Expression, allocator memory.Allocator, input arrow.Record) (ColumnVector, error) {
 	switch expr := expr.(type) {
 
 	case *physical.LiteralExpr:
@@ -124,7 +116,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		}, nil
 
 	case *physical.UnaryExpr:
-		lhr, err := e.eval(expr.Left, input)
+		lhr, err := e.eval(expr.Left, allocator, input)
 		if err != nil {
 			return nil, err
 		}
@@ -134,16 +126,16 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		if err != nil {
 			return nil, fmt.Errorf("failed to lookup unary function: %w", err)
 		}
-		return fn.Evaluate(lhr, e.allocator)
+		return fn.Evaluate(lhr, allocator)
 
 	case *physical.BinaryExpr:
-		lhs, err := e.eval(expr.Left, input)
+		lhs, err := e.eval(expr.Left, allocator, input)
 		if err != nil {
 			return nil, err
 		}
 		defer lhs.Release()
 
-		rhs, err := e.eval(expr.Right, input)
+		rhs, err := e.eval(expr.Right, allocator, input)
 		if err != nil {
 			return nil, err
 		}
@@ -167,9 +159,9 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 }
 
 // newFunc returns a new function that can evaluate an input against a binded expression.
-func (e expressionEvaluator) newFunc(expr physical.Expression) evalFunc {
+func (e expressionEvaluator) newFunc(expr physical.Expression, allocator memory.Allocator) evalFunc {
 	return func(input arrow.Record) (ColumnVector, error) {
-		return e.eval(expr, input)
+		return e.eval(expr, allocator, input)
 	}
 }
 
