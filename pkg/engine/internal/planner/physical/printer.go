@@ -79,10 +79,6 @@ func toTreeNode(n Node) *tree.Node {
 		if len(node.RequestedKeys) > 0 {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("requested_keys", true, toAnySlice(node.RequestedKeys)...))
 		}
-	case *MathExpression:
-		treeNode.Properties = []tree.Property{
-			tree.NewProperty("expression", false, node.Expression.String()),
-		}
 	case *ColumnCompat:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("src", false, node.Source),

@@ -86,8 +86,8 @@ func TestMockCatalog(t *testing.T) {
 	}
 }
 
-func locations(t *testing.T, plan *Plan, nodes []Node) []string {
-	res := make([]string, 0, len(nodes))
+func locations(t *testing.T, plan *Plan, node Node) []string {
+	res := make([]string, 0)
 
 	visitor := &nodeCollectVisitor{
 		onVisitScanSet: func(set *ScanSet) error {
@@ -101,14 +101,12 @@ func locations(t *testing.T, plan *Plan, nodes []Node) []string {
 		},
 	}
 
-	for _, n := range nodes {
-		require.NoError(t, plan.DFSWalk(n, visitor, PreOrderWalk))
-	}
+	require.NoError(t, plan.DFSWalk(node, visitor, PreOrderWalk))
 	return res
 }
 
-func sections(t *testing.T, plan *Plan, nodes []Node) [][]int {
-	res := make([][]int, 0, len(nodes))
+func sections(t *testing.T, plan *Plan, node Node) [][]int {
+	res := make([][]int, 0)
 
 	visitor := &nodeCollectVisitor{
 		onVisitScanSet: func(set *ScanSet) error {
@@ -122,9 +120,7 @@ func sections(t *testing.T, plan *Plan, nodes []Node) [][]int {
 		},
 	}
 
-	for _, n := range nodes {
-		require.NoError(t, plan.DFSWalk(n, visitor, PreOrderWalk))
-	}
+	require.NoError(t, plan.DFSWalk(node, visitor, PreOrderWalk))
 	return res
 }
 
@@ -204,10 +200,10 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 				Shard:    tt.shard,
 			}
 			planner.reset()
-			nodes, err := planner.processMakeTable(relation, NewContext(timeStart, timeEnd))
+			node, err := planner.processMakeTable(relation, NewContext(timeStart, timeEnd))
 			require.NoError(t, err)
-			require.ElementsMatch(t, tt.expPaths, locations(t, planner.plan, nodes))
-			require.ElementsMatch(t, tt.expSections, sections(t, planner.plan, nodes))
+			require.ElementsMatch(t, tt.expPaths, locations(t, planner.plan, node))
+			require.ElementsMatch(t, tt.expSections, sections(t, planner.plan, node))
 		})
 	}
 }

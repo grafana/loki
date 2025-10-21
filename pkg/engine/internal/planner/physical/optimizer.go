@@ -216,7 +216,7 @@ func (r *projectionPushdown) applyProjectionPushdown(
 		return r.handleParseNode(node, projections, applyIfNotEmpty)
 	case *RangeAggregation:
 		return r.handleRangeAggregation(node, projections)
-	case *Parallelize, *Filter, *ColumnCompat, *MathExpression:
+	case *Parallelize, *Filter, *ColumnCompat:
 		// Push to next direct child that cares about projections
 		return r.pushToChildren(node, projections, applyIfNotEmpty)
 	}
@@ -484,50 +484,6 @@ func disambiguateColumns(columns []ColumnExpression) ([]ColumnExpression, []Colu
 	}
 
 	return unambiguousColumns, ambiguousColumns
-}
-
-// mathExpressionsMerge is a rule that merges adjacent math expressions nodes into one node with a complex expression
-type mathExpressionsMerge struct {
-	plan *Plan
-}
-
-// apply implements rule.
-func (r *mathExpressionsMerge) apply(node Node) bool {
-	changed := false
-	children := r.plan.Children(node)
-	switch node := node.(type) {
-	case *MathExpression:
-		switch e := node.Expression.(type) {
-		case *BinaryExpr:
-			// If LHS is a column reference
-			if _, ok := e.Left.(*ColumnExpr); ok {
-				if c, ok := children[0].(*MathExpression); ok {
-					e.Left = c.Expression
-					r.plan.graph.Eliminate(c)
-					changed = true
-				}
-			}
-			// If RHS is a column reference
-			if _, ok := e.Right.(*ColumnExpr); ok {
-				if c, ok := children[len(children)-1].(*MathExpression); ok {
-					e.Right = c.Expression
-					r.plan.graph.Eliminate(c)
-					changed = true
-				}
-			}
-
-		case *UnaryExpr:
-			// If LHS is a column reference
-			if _, ok := e.Left.(*ColumnExpr); ok {
-				if c, ok := children[0].(*MathExpression); ok {
-					e.Left = c.Expression
-					r.plan.graph.Eliminate(c)
-					changed = true
-				}
-			}
-		}
-	}
-	return changed
 }
 
 // optimization represents a single optimization pass and can hold multiple rules.

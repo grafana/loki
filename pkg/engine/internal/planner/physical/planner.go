@@ -95,12 +95,9 @@ func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
 	for _, inst := range lp.Instructions {
 		switch inst := inst.(type) {
 		case *logical.Return:
-			nodes, err := p.process(inst.Value, p.context)
+			_, err := p.process(inst.Value, p.context)
 			if err != nil {
 				return nil, err
-			}
-			if len(nodes) > 1 {
-				return nil, errors.New("logical plan has more than 1 return value")
 			}
 			return p.plan, nil
 		}
@@ -136,8 +133,8 @@ func (p *Planner) convertPredicate(inst logical.Value) Expression {
 	}
 }
 
-// Convert a [logical.Instruction] into one or multiple [Node]s.
-func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
+// Convert a [logical.Instruction] into [Node].
+func (p *Planner) process(inst logical.Value, ctx *Context) (Node, error) {
 	switch inst := inst.(type) {
 	case *logical.MakeTable:
 		return p.processMakeTable(inst, ctx)
@@ -167,7 +164,7 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 }
 
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
-func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node, error) {
+func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, error) {
 	shard, ok := lp.Shard.(*logical.ShardInfo)
 	if !ok {
 		return nil, fmt.Errorf("invalid shard, got %T", lp.Shard)
@@ -232,29 +229,27 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: base}); err != nil {
 		return nil, err
 	}
-	return []Node{parallelize}, nil
+	return parallelize, nil
 }
 
 // Convert [logical.Select] into one [Filter] node.
-func (p *Planner) processSelect(lp *logical.Select, ctx *Context) ([]Node, error) {
+func (p *Planner) processSelect(lp *logical.Select, ctx *Context) (Node, error) {
 	node := &Filter{
 		Predicates: []Expression{p.convertPredicate(lp.Predicate)},
 	}
 	p.plan.graph.Add(node)
-	children, err := p.process(lp.Table, ctx)
+	child, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
-	return []Node{node}, nil
+	return node, nil
 }
 
 // processSort processes a [logical.Sort] node.
-func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]Node, error) {
+func (p *Planner) processSort(lp *logical.Sort, ctx *Context) (Node, error) {
 	order := DESC
 	if lp.Ascending {
 		order = ASC
@@ -273,21 +268,19 @@ func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]Node, error) {
 
 	p.plan.graph.Add(node)
 
-	children, err := p.process(lp.Table, ctx.WithDirection(order))
+	child, err := p.process(lp.Table, ctx.WithDirection(order))
 	if err != nil {
 		return nil, err
 	}
 
-	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
-	return []Node{node}, nil
+	return node, nil
 }
 
 // Converts a [logical.Projection] into a physical [Projection] node.
-func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) ([]Node, error) {
+func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node, error) {
 	expressions := make([]Expression, len(lp.Expressions))
 	for i := range lp.Expressions {
 		expressions[i] = p.convertPredicate(lp.Expressions[i])
@@ -301,39 +294,35 @@ func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) ([]Nod
 	}
 	p.plan.graph.Add(node)
 
-	children, err := p.process(lp.Relation, ctx)
+	child, err := p.process(lp.Relation, ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
 
-	return []Node{node}, nil
+	return node, nil
 }
 
 // Convert [logical.Limit] into one [Limit] node.
-func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) ([]Node, error) {
+func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) (Node, error) {
 	node := &Limit{
 		Skip:  lp.Skip,
 		Fetch: lp.Fetch,
 	}
 	p.plan.graph.Add(node)
-	children, err := p.process(lp.Table, ctx)
+	child, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
-	return []Node{node}, nil
+	return node, nil
 }
 
-func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) ([]Node, error) {
+func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) (Node, error) {
 	partitionBy := make([]ColumnExpression, len(r.PartitionBy))
 	for i, col := range r.PartitionBy {
 		partitionBy[i] = &ColumnExpr{Ref: col.Ref}
@@ -349,21 +338,19 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Cont
 	}
 	p.plan.graph.Add(node)
 
-	children, err := p.process(r.Table, ctx.WithRangeInterval(r.RangeInterval))
+	child, err := p.process(r.Table, ctx.WithRangeInterval(r.RangeInterval))
 	if err != nil {
 		return nil, err
 	}
 
-	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
-	return []Node{node}, nil
+	return node, nil
 }
 
 // Convert [logical.VectorAggregation] into one [VectorAggregation] node.
-func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *Context) ([]Node, error) {
+func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *Context) (Node, error) {
 	groupBy := make([]ColumnExpression, len(lp.GroupBy))
 	for i, col := range lp.GroupBy {
 		groupBy[i] = &ColumnExpr{Ref: col.Ref}
@@ -374,16 +361,14 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 		Operation: lp.Operation,
 	}
 	p.plan.graph.Add(node)
-	children, err := p.process(lp.Table, ctx)
+	child, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
-	return []Node{node}, nil
+	return node, nil
 }
 
 func (p *Planner) hasNonMathExpressionChild(n Node) bool {
@@ -391,7 +376,7 @@ func (p *Planner) hasNonMathExpressionChild(n Node) bool {
 		return false
 	}
 
-	if _, ok := n.(*MathExpression); ok {
+	if _, ok := n.(*Projection); ok {
 		for _, c := range p.plan.Children(n) {
 			if p.hasNonMathExpressionChild(c) {
 				return true
@@ -403,81 +388,126 @@ func (p *Planner) hasNonMathExpressionChild(n Node) bool {
 	}
 }
 
-func (p *Planner) processBinOp(lp *logical.BinOp, ctx *Context) ([]Node, error) {
-	var left, right Expression
-	var leftChild, rightChild Node
-
-	if l, ok := lp.Left.(*logical.Literal); ok {
-		left = &LiteralExpr{Literal: l.Literal}
-	} else {
-		left = newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
-
-		leftChildren, err := p.process(lp.Left, ctx)
+func (p *Planner) processMathExpressionChild(c logical.Value, rootNode bool, ctx *Context) (Expression, Node, *ColumnExpr, error) {
+	switch v := c.(type) {
+	case *logical.BinOp:
+		leftChild, leftInput, leftInputRef, err := p.processMathExpressionChild(v.Left, false, ctx)
 		if err != nil {
-			return nil, err
+			return nil, nil, nil, err
 		}
-		leftChild = leftChildren[0]
-	}
-
-	if l, ok := lp.Right.(*logical.Literal); ok {
-		right = &LiteralExpr{l.Literal}
-	} else {
-		right = newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
-
-		rightChildren, err := p.process(lp.Right, ctx)
+		rightChild, rightInput, rightInputRef, err := p.processMathExpressionChild(v.Right, false, ctx)
 		if err != nil {
-			return nil, err
-		}
-		rightChild = rightChildren[0]
-	}
-
-	mathExprNode := &MathExpression{
-		Expression: &BinaryExpr{
-			Left:  left,
-			Right: right,
-			Op:    lp.Op,
-		},
-	}
-	p.plan.graph.Add(mathExprNode)
-
-	// If both left and right children have some data scans
-	if p.hasNonMathExpressionChild(leftChild) && p.hasNonMathExpressionChild(rightChild) {
-		// Rename column references to match 2 joined `value` columns
-		mathExprNode.Expression = &BinaryExpr{
-			Left:  newColumnExpr("value_left", types.ColumnTypeGenerated),
-			Right: newColumnExpr("value_right", types.ColumnTypeGenerated),
-			Op:    lp.Op,
+			return nil, nil, nil, err
 		}
 
-		// Insert InnerJoin node between this math expression and its two inputs.
-		joinNode := &Join{}
-		p.plan.graph.Add(joinNode)
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: joinNode, Child: leftChild}); err != nil {
-			return nil, err
-		}
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: joinNode, Child: rightChild}); err != nil {
-			return nil, err
-		}
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: mathExprNode, Child: joinNode}); err != nil {
-			return nil, err
-		}
-	} else {
-		if leftChild != nil {
-			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: mathExprNode, Child: leftChild}); err != nil {
-				return nil, err
+		// both left and right expressions have obj scans, replace with join
+		if leftInput != nil && rightInput != nil {
+			leftInputRef.Ref = types.ColumnRef{
+				Column: "value_left",
+				Type:   types.ColumnTypeGenerated,
 			}
-		}
-		if rightChild != nil {
-			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: mathExprNode, Child: rightChild}); err != nil {
-				return nil, err
+			rightInputRef.Ref = types.ColumnRef{
+				Column: "value_right",
+				Type:   types.ColumnTypeGenerated,
 			}
-		}
-	}
+			join := &Join{}
+			p.plan.graph.Add(join)
+			projection := &Projection{
+				Expressions: []Expression{
+					&BinaryExpr{
+						Left:  leftChild,
+						Right: rightChild,
+						Op:    v.Op,
+					},
+				},
+				All:    true,
+				Expand: true,
+			}
+			p.plan.graph.Add(projection)
+			p.plan.graph.AddEdge(dag.Edge[Node]{Parent: join, Child: projection})
+			p.plan.graph.AddEdge(dag.Edge[Node]{Parent: projection, Child: leftInput})
+			p.plan.graph.AddEdge(dag.Edge[Node]{Parent: projection, Child: rightInput})
 
-	return []Node{mathExprNode}, nil
+			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
+
+			return columnRef, join, columnRef, nil
+		}
+
+		input := leftInput
+		if leftInput == nil {
+			input = rightInput
+		}
+		inputRef := leftInputRef
+		if leftInputRef == nil {
+			inputRef = rightInputRef
+		}
+		expr := &BinaryExpr{
+			Left:  leftChild,
+			Right: rightChild,
+			Op:    v.Op,
+		}
+
+		if rootNode {
+			projection := &Projection{
+				Expressions: []Expression{expr},
+				All:         true,
+				Expand:      true,
+			}
+			p.plan.graph.Add(projection)
+			p.plan.graph.AddEdge(dag.Edge[Node]{Parent: projection, Child: input})
+
+			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
+
+			return columnRef, projection, columnRef, nil
+		} else {
+			return expr, input, inputRef, nil
+		}
+	case *logical.UnaryOp:
+		child, input, inputRef, err := p.processMathExpressionChild(v.Value, false, ctx)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		expr := &UnaryExpr{
+			Left: child,
+			Op:   v.Op,
+		}
+		if rootNode {
+			projection := &Projection{
+				Expressions: []Expression{expr},
+				All:         true,
+				Expand:      true,
+			}
+			p.plan.graph.Add(projection)
+			p.plan.graph.AddEdge(dag.Edge[Node]{Parent: projection, Child: input})
+
+			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
+
+			return columnRef, projection, columnRef, nil
+		} else {
+			return expr, input, inputRef, nil
+		}
+	case *logical.Literal:
+		return &LiteralExpr{Literal: v.Literal}, nil, nil, nil
+	default:
+		columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
+		child, err := p.process(c, ctx)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		return columnRef, child, columnRef, nil
+	}
 }
 
-func (p *Planner) processUnaryOp(lp *logical.UnaryOp, ctx *Context) ([]Node, error) {
+func (p *Planner) processBinOp(lp *logical.BinOp, ctx *Context) (Node, error) {
+	_, node, _, err := p.processMathExpressionChild(lp, true, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return node, nil
+}
+
+func (p *Planner) processUnaryOp(lp *logical.UnaryOp, ctx *Context) (Node, error) {
 	var left Expression
 
 	if l, ok := lp.Value.(*logical.Literal); ok {
@@ -486,45 +516,47 @@ func (p *Planner) processUnaryOp(lp *logical.UnaryOp, ctx *Context) ([]Node, err
 		left = newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
 	}
 
-	node := &MathExpression{
-		Expression: &UnaryExpr{
-			Left: left,
-			Op:   lp.Op,
+	projectionNode := &Projection{
+		Expressions: []Expression{
+			&UnaryExpr{
+				Left: left,
+				Op:   lp.Op,
+			},
 		},
+		All:    true,
+		Expand: true,
 	}
-	p.plan.graph.Add(node)
+	p.plan.graph.Add(projectionNode)
 
 	// if lhs is not a literal, then process children nodes
 	if _, ok := lp.Value.(*logical.Literal); !ok {
-		leftChildren, err := p.process(lp.Value, ctx)
+		leftChild, err := p.process(lp.Value, ctx)
 		if err != nil {
 			return nil, err
 		}
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: leftChildren[0]}); err != nil {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: projectionNode, Child: leftChild}); err != nil {
 			return nil, err
 		}
 	}
 
-	return []Node{node}, nil
+	return projectionNode, nil
 }
 
 // Convert [logical.Parse] into one [ParseNode] node.
 // A ParseNode initially has an empty list of RequestedKeys which will be populated during optimization.
-func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) {
+func (p *Planner) processParse(lp *logical.Parse, ctx *Context) (Node, error) {
 	var node Node = &ParseNode{
 		Kind: convertParserKind(lp.Kind),
 	}
 	p.plan.graph.Add(node)
 
-	children, err := p.process(lp.Table, ctx)
+	child, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
 
 	if p.context.v1Compatible {
@@ -539,7 +571,7 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) 
 		}
 	}
 
-	return []Node{node}, nil
+	return node, nil
 }
 
 func (p *Planner) wrapNodeWith(node Node, wrapper Node) (Node, error) {
@@ -555,9 +587,6 @@ func (p *Planner) wrapNodeWith(node Node, wrapper Node) (Node, error) {
 func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 	for i, root := range plan.Roots() {
 		optimizations := []*optimization{
-			newOptimization("MathExpressionsMerge", plan).withRules(
-				&mathExpressionsMerge{plan: plan},
-			),
 			newOptimization("PredicatePushdown", plan).withRules(
 				&predicatePushdown{plan: plan},
 			),
