@@ -125,7 +125,7 @@ func TestCancellation(t *testing.T) {
 
 			// Notify the workflow that the root task has entered a terminal
 			// state.
-			rt.handler(t.Context(), rootTask, state)
+			rt.handler(t.Context(), rootTask, TaskStatus{State: state})
 
 			_ = wf.graph.Walk(rootTask, func(n *Task) error {
 				if n == rootTask {
@@ -230,7 +230,7 @@ func (f *fakeRunner) Start(ctx context.Context, handler TaskEventHandler, tasks 
 		}
 
 		// Inform handler of task state change.
-		handler(ctx, task, TaskStatePending)
+		handler(ctx, task, TaskStatus{State: TaskStatePending})
 	}
 
 	return nil
@@ -246,7 +246,7 @@ func (f *fakeRunner) Cancel(ctx context.Context, tasks ...*Task) error {
 			continue
 		}
 
-		rt.handler(ctx, task, TaskStateCancelled)
+		rt.handler(ctx, task, TaskStatus{State: TaskStateCancelled})
 		delete(f.tasks, task.ULID)
 	}
 
