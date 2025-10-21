@@ -383,9 +383,9 @@ func (p *Planner) hasNonMathExpressionChild(n Node) bool {
 			}
 		}
 		return false
-	} else {
-		return true
 	}
+
+	return true
 }
 
 func (p *Planner) processMathExpressionChild(c logical.Value, rootNode bool, ctx *Context) (Expression, Node, *ColumnExpr, error) {
@@ -467,9 +467,9 @@ func (p *Planner) processMathExpressionChild(c logical.Value, rootNode bool, ctx
 			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
 
 			return columnRef, projection, columnRef, nil
-		} else {
-			return expr, input, inputRef, nil
 		}
+
+		return expr, input, inputRef, nil
 	case *logical.UnaryOp:
 		child, input, inputRef, err := p.processMathExpressionChild(v.Value, false, ctx)
 		if err != nil {
@@ -493,9 +493,9 @@ func (p *Planner) processMathExpressionChild(c logical.Value, rootNode bool, ctx
 			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
 
 			return columnRef, projection, columnRef, nil
-		} else {
-			return expr, input, inputRef, nil
 		}
+
+		return expr, input, inputRef, nil
 	case *logical.Literal:
 		return &LiteralExpr{Literal: v.Literal}, nil, nil, nil
 	default:
