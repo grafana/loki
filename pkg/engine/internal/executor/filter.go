@@ -24,7 +24,7 @@ func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expres
 		cols := make([]*array.Boolean, 0, len(filter.Predicates))
 
 		for i, pred := range filter.Predicates {
-			vec, err := evaluator.eval(pred, batch)
+			vec, err := evaluator.eval(pred, allocator, batch)
 			if err != nil {
 				return nil, err
 			}

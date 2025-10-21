@@ -7,13 +7,14 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
+	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *expressionEvaluator) (Pipeline, error) {
+func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *expressionEvaluator, allocator memory.Allocator) (Pipeline, error) {
 	// Shortcut for ALL=true DROP=false EXPAND=false
 	if proj.All && !proj.Drop && !proj.Expand {
 		return input, nil
@@ -68,7 +69,7 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 	// Keep all columns and expand the ones referenced in proj.Expressions.
 	// TODO: as implmented, epanding and keeping/dropping cannot happen in the same projection. Is this desired?
 	if proj.All && proj.Expand {
-		return newExpandPipeline(unaryExprs, evaluator, input)
+		return newExpandPipeline(unaryExprs, evaluator, allocator, input)
 	}
 
 	return nil, errNotImplemented
@@ -106,7 +107,7 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 	}, input), nil
 }
 
-func newExpandPipeline(expressions []physical.UnaryExpression, evaluator *expressionEvaluator, input Pipeline) (*GenericPipeline, error) {
+func newExpandPipeline(expressions []physical.UnaryExpression, evaluator *expressionEvaluator, allocator memory.Allocator, input Pipeline) (*GenericPipeline, error) {
 	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
@@ -127,7 +128,7 @@ func newExpandPipeline(expressions []physical.UnaryExpression, evaluator *expres
 		}
 
 		for _, expr := range expressions {
-			vec, err := evaluator.eval(expr, batch)
+			vec, err := evaluator.eval(expr, allocator, batch)
 			if err != nil {
 				return nil, err
 			}

@@ -29,12 +29,15 @@ type Config struct {
 }
 
 func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
+	allocator := memory.DefaultAllocator
 	c := &Context{
 		plan:               plan,
 		batchSize:          cfg.BatchSize,
 		mergePrefetchCount: cfg.MergePrefetchCount,
 		bucket:             cfg.Bucket,
 		logger:             logger,
+		evaluator:          newExpressionEvaluator(),
+		allocator:          allocator,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -53,6 +56,7 @@ type Context struct {
 	logger    log.Logger
 	plan      *physical.Plan
 	evaluator expressionEvaluator
+	allocator memory.Allocator
 	bucket    objstore.Bucket
 
 	mergePrefetchCount int
@@ -198,8 +202,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		Predicates:  predicates,
 		Projections: node.Projections,
 
-		// TODO(rfratto): pass custom allocator
-		Allocator: memory.DefaultAllocator,
+		Allocator: c.allocator,
 
 		BatchSize: c.batchSize,
 	}, log.With(c.logger, "location", string(node.Location), "section", node.Section))
@@ -281,10 +284,7 @@ func (c *Context) executeFilter(ctx context.Context, filter *physical.Filter, in
 		return errorPipeline(ctx, fmt.Errorf("filter expects exactly one input, got %d", len(inputs)))
 	}
 
-	// Use memory allocator from context or default
-	allocator := memory.DefaultAllocator
-
-	return NewFilterPipeline(filter, inputs[0], c.evaluator, allocator)
+	return NewFilterPipeline(filter, inputs[0], c.evaluator, c.allocator)
 }
 
 func (c *Context) executeProjection(ctx context.Context, proj *physical.Projection, inputs []Pipeline) Pipeline {
@@ -307,7 +307,7 @@ func (c *Context) executeProjection(ctx context.Context, proj *physical.Projecti
 		return errorPipeline(ctx, fmt.Errorf("projection expects at least one expression, got 0"))
 	}
 
-	p, err := NewProjectPipeline(inputs[0], proj, &c.evaluator)
+	p, err := NewProjectPipeline(inputs[0], proj, &c.evaluator, c.allocator)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
@@ -329,7 +329,7 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 		return emptyPipeline()
 	}
 
-	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
+	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, c.allocator, rangeAggregationOptions{
 		partitionBy:   plan.PartitionBy,
 		startTs:       plan.Start,
 		endTs:         plan.End,
@@ -355,7 +355,7 @@ func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.V
 		return emptyPipeline()
 	}
 
-	pipeline, err := newVectorAggregationPipeline(inputs, plan.GroupBy, c.evaluator, plan.Operation)
+	pipeline, err := newVectorAggregationPipeline(inputs, plan.GroupBy, c.evaluator, c.allocator, plan.Operation)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
@@ -372,10 +372,7 @@ func (c *Context) executeParse(ctx context.Context, parse *physical.ParseNode, i
 		return errorPipeline(ctx, fmt.Errorf("parse expects exactly one input, got %d", len(inputs)))
 	}
 
-	// Use memory allocator from context or default
-	allocator := memory.DefaultAllocator
-
-	return NewParsePipeline(parse, inputs[0], allocator)
+	return NewParsePipeline(parse, inputs[0], c.allocator)
 }
 
 func (c *Context) executeMathExpression(ctx context.Context, expr *physical.MathExpression, inputs []Pipeline) Pipeline {

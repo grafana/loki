@@ -86,12 +86,12 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 			literal := physical.NewLiteral(tt.value)
 			alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 			defer alloc.AssertSize(t, 0) // Assert empty on test exit
-			e := newExpressionEvaluator(alloc)
+			e := newExpressionEvaluator()
 
 			n := len(words)
 			rec := batch(n, time.Now(), alloc)
 			defer rec.Release()
-			colVec, err := e.eval(literal, rec)
+			colVec, err := e.eval(literal, alloc, rec)
 			require.NoError(t, err)
 			require.Equalf(t, tt.arrowType, colVec.Type().ArrowType().ID(), "expected: %v got: %v", tt.arrowType.String(), colVec.Type().ArrowType().ID().String())
 
@@ -110,7 +110,7 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 func TestEvaluateColumnExpression(t *testing.T) {
 	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer alloc.AssertSize(t, 0) // Assert empty on test exit
-	e := newExpressionEvaluator(alloc)
+	e := newExpressionEvaluator()
 
 	t.Run("unknown column", func(t *testing.T) {
 		colExpr := &physical.ColumnExpr{
@@ -123,7 +123,7 @@ func TestEvaluateColumnExpression(t *testing.T) {
 		n := len(words)
 		rec := batch(n, time.Now(), alloc)
 		defer rec.Release()
-		colVec, err := e.eval(colExpr, rec)
+		colVec, err := e.eval(colExpr, alloc, rec)
 		require.NoError(t, err)
 
 		col, ok := colVec.(*Scalar)
@@ -144,7 +144,7 @@ func TestEvaluateColumnExpression(t *testing.T) {
 		n := len(words)
 		rec := batch(n, time.Now(), alloc)
 		defer rec.Release()
-		colVec, err := e.eval(colExpr, rec)
+		colVec, err := e.eval(colExpr, alloc, rec)
 		require.NoError(t, err)
 		arr := colVec.ToArray()
 		defer arr.Release()
@@ -164,7 +164,7 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 
 	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer alloc.AssertSize(t, 0) // Assert empty on test exit
-	e := newExpressionEvaluator(alloc)
+	e := newExpressionEvaluator()
 
 	t.Run("error if types do not match", func(t *testing.T) {
 		expr := &physical.BinaryExpr{
@@ -177,7 +177,7 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 			Op: types.BinaryOpEq,
 		}
 
-		_, err := e.eval(expr, rec)
+		_, err := e.eval(expr, alloc, rec)
 		require.ErrorContains(t, err, "failed to lookup binary function for signature EQ(utf8,timestamp_ns): types do not match")
 	})
 
@@ -192,7 +192,7 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 			Op: types.BinaryOpXor,
 		}
 
-		_, err := e.eval(expr, rec)
+		_, err := e.eval(expr, alloc, rec)
 		require.ErrorContains(t, err, "failed to lookup binary function for signature XOR(utf8,utf8): not implemented")
 	})
 
@@ -205,7 +205,7 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 			Op:    types.BinaryOpEq,
 		}
 
-		res, err := e.eval(expr, rec)
+		res, err := e.eval(expr, alloc, rec)
 		require.NoError(t, err)
 		result := collectBooleanColumnVector(res)
 		require.Equal(t, []bool{false, false, true, false, false, false, false, false, false, false}, result)
@@ -220,7 +220,7 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 			Op:    types.BinaryOpGt,
 		}
 
-		res, err := e.eval(expr, rec)
+		res, err := e.eval(expr, alloc, rec)
 		require.NoError(t, err)
 		result := collectBooleanColumnVector(res)
 		require.Equal(t, []bool{false, true, false, true, false, true, true, false, true, false}, result)
@@ -306,7 +306,7 @@ null,null,null`
 
 	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer alloc.AssertSize(t, 0) // Assert empty on test exit
-	e := newExpressionEvaluator(alloc)
+	e := newExpressionEvaluator()
 
 	t.Run("ambiguous column should use per-row precedence order", func(t *testing.T) {
 		colExpr := &physical.ColumnExpr{
@@ -316,7 +316,7 @@ null,null,null`
 			},
 		}
 
-		colVec, err := e.eval(colExpr, record)
+		colVec, err := e.eval(colExpr, alloc, record)
 		require.NoError(t, err)
 		require.IsType(t, &CoalesceVector{}, colVec)
 		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
@@ -337,7 +337,7 @@ null,null,null`
 			},
 		}
 
-		colVec, err := e.eval(colExpr, record)
+		colVec, err := e.eval(colExpr, alloc, record)
 		require.NoError(t, err)
 		require.IsType(t, &CoalesceVector{}, colVec)
 
@@ -373,7 +373,7 @@ label_2
 			},
 		}
 
-		colVec, err := e.eval(colExpr, singleRecord)
+		colVec, err := e.eval(colExpr, alloc, singleRecord)
 		require.NoError(t, err)
 		require.IsType(t, &Array{}, colVec)
 		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
@@ -393,7 +393,7 @@ label_2
 			},
 		}
 
-		colVec, err := e.eval(colExpr, record)
+		colVec, err := e.eval(colExpr, alloc, record)
 		require.NoError(t, err)
 		require.IsType(t, &Scalar{}, colVec)
 	})
@@ -408,7 +408,7 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 	t.Run("unknown column", func(t *testing.T) {
 		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 		defer alloc.AssertSize(t, 0) // Assert empty on test exit
-		e := newExpressionEvaluator(alloc)
+		e := newExpressionEvaluator()
 		expr := &physical.UnaryExpr{
 			Left: &physical.ColumnExpr{
 				Ref: types.ColumnRef{
@@ -422,7 +422,7 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 		n := len(words)
 		rec := batch(n, time.Now(), alloc)
 		defer rec.Release()
-		colVec, err := e.eval(expr, rec)
+		colVec, err := e.eval(expr, alloc, rec)
 		require.NoError(t, err)
 
 		id := colVec.Type().ArrowType().ID()
@@ -463,7 +463,7 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 
 		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 		defer alloc.AssertSize(t, 0) // Assert empty on test exit
-		e := newExpressionEvaluator(alloc)
+		e := newExpressionEvaluator()
 
 		schema := arrow.NewSchema(
 			[]arrow.Field{
@@ -482,7 +482,7 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 		record := rows.Record(alloc, schema)
 		defer record.Release()
 
-		colVec, err := e.eval(expr, record)
+		colVec, err := e.eval(expr, alloc, record)
 		require.NoError(t, err)
 		id := colVec.Type().ArrowType().ID()
 		require.Equal(t, arrow.STRUCT, id)
@@ -514,7 +514,7 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 
 		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 		defer alloc.AssertSize(t, 0) // Assert empty on test exit
-		e := newExpressionEvaluator(alloc)
+		e := newExpressionEvaluator()
 
 		schema := arrow.NewSchema(
 			[]arrow.Field{
@@ -533,7 +533,7 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 		record := rows.Record(alloc, schema)
 		defer record.Release()
 
-		colVec, err := e.eval(expr, record)
+		colVec, err := e.eval(expr, alloc, record)
 		require.NoError(t, err)
 		id := colVec.Type().ArrowType().ID()
 		require.Equal(t, arrow.STRUCT, id)
@@ -564,7 +564,7 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 
 		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 		defer alloc.AssertSize(t, 0) // Assert empty on test exit
-		e := newExpressionEvaluator(alloc)
+		e := newExpressionEvaluator()
 
 		schema := arrow.NewSchema(
 			[]arrow.Field{
@@ -584,7 +584,7 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 		record := rows.Record(alloc, schema)
 		defer record.Release()
 
-		colVec, err := e.eval(colExpr, record)
+		colVec, err := e.eval(colExpr, alloc, record)
 		require.NoError(t, err)
 		id := colVec.Type().ArrowType().ID()
 		require.Equal(t, arrow.STRUCT, id)

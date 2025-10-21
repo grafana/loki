@@ -47,7 +47,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		e := newExpressionEvaluator(alloc)
+		e := newExpressionEvaluator()
 		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
@@ -89,7 +89,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		e := newExpressionEvaluator(alloc)
+		e := newExpressionEvaluator()
 		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
@@ -129,7 +129,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		e := newExpressionEvaluator(alloc)
+		e := newExpressionEvaluator()
 		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
@@ -185,7 +185,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		e := newExpressionEvaluator(alloc)
+		e := newExpressionEvaluator()
 		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
@@ -228,7 +228,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		e := newExpressionEvaluator(alloc)
+		e := newExpressionEvaluator()
 		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
@@ -272,7 +272,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		e := newExpressionEvaluator(alloc)
+		e := newExpressionEvaluator()
 		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
@@ -333,7 +333,7 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		e := newExpressionEvaluator(alloc)
+		e := newExpressionEvaluator()
 		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
