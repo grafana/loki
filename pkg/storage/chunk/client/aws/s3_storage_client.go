@@ -284,8 +284,6 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.C
 			if key != "" || secret != "" {
 				s3Options.Credentials = credentials.NewStaticCredentialsProvider(key, secret, "")
 			}
-		} else {
-			s3Options.Region = "dummy"
 		}
 
 		if cfg.DisableDualstack {
