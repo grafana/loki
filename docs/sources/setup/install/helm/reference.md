@@ -8018,6 +8018,39 @@ false
     "additionalRuleLabels": {},
     "alerting": true,
     "annotations": {},
+    "configs": {
+      "LokiCanaryLatency": {
+        "enabled": true,
+        "for": "15m",
+        "lookbackPeriod": "5m",
+        "severity": "warning",
+        "threshold": 5
+      },
+      "LokiRequestErrors": {
+        "enabled": true,
+        "for": "15m",
+        "lookbackPeriod": "2m",
+        "severity": "critical",
+        "threshold": 10
+      },
+      "LokiRequestLatency": {
+        "enabled": true,
+        "for": "15m",
+        "severity": "critical",
+        "threshold": 1
+      },
+      "LokiRequestPanics": {
+        "enabled": true,
+        "lookbackPeriod": "10m",
+        "severity": "critical",
+        "threshold": 0
+      },
+      "LokiTooManyCompactorsRunning": {
+        "enabled": true,
+        "for": "5m",
+        "severity": "warning"
+      }
+    },
     "disabled": {},
     "enabled": false,
     "labels": {},
@@ -8123,6 +8156,39 @@ null
   "additionalRuleLabels": {},
   "alerting": true,
   "annotations": {},
+  "configs": {
+    "LokiCanaryLatency": {
+      "enabled": true,
+      "for": "15m",
+      "lookbackPeriod": "5m",
+      "severity": "warning",
+      "threshold": 5
+    },
+    "LokiRequestErrors": {
+      "enabled": true,
+      "for": "15m",
+      "lookbackPeriod": "2m",
+      "severity": "critical",
+      "threshold": 10
+    },
+    "LokiRequestLatency": {
+      "enabled": true,
+      "for": "15m",
+      "severity": "critical",
+      "threshold": 1
+    },
+    "LokiRequestPanics": {
+      "enabled": true,
+      "lookbackPeriod": "10m",
+      "severity": "critical",
+      "threshold": 0
+    },
+    "LokiTooManyCompactorsRunning": {
+      "enabled": true,
+      "for": "5m",
+      "severity": "warning"
+    }
+  },
   "disabled": {},
   "enabled": false,
   "labels": {},
@@ -8179,7 +8245,7 @@ true
 		<tr>
 			<td>monitoring.rules.disabled</td>
 			<td>object</td>
-			<td>If you disable all the alerts and keep .monitoring.rules.alerting set to true, the chart will fail to render.</td>
+			<td>DEPRECATED: use monitoring.rules.configs.*.enabled instead</td>
 			<td><pre lang="json">
 {}
 </pre>
