@@ -35,4 +35,7 @@ spec:
       {{- end }}
   selector:
     {{- include "loki.querySchedulerSelectorLabels" . | nindent 4 }}
+{{- if .Values.queryScheduler.trafficDistribution }}
+  trafficDistribution: {{ .Values.queryScheduler.trafficDistribution }}
+{{- end }}
 {{- end }}

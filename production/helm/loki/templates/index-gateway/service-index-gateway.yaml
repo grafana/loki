@@ -33,4 +33,7 @@ spec:
       {{- end }}
   selector:
     {{- include "loki.indexGatewaySelectorLabels" . | nindent 4 }}
+{{- if .Values.indexGateway.trafficDistribution }}
+  trafficDistribution: {{ .Values.indexGateway.trafficDistribution }}
+{{- end }}
 {{- end }}

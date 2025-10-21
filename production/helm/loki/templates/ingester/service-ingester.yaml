@@ -33,4 +33,7 @@ spec:
       {{- end }}
   selector:
     {{- include "loki.ingesterSelectorLabels" . | nindent 4 }}
+{{- if .Values.ingester.trafficDistribution }}
+  trafficDistribution: {{ .Values.ingester.trafficDistribution }}
+{{- end }}
 {{- end -}}
