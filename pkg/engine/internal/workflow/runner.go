@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // A Runner can asynchronously execute a workflow.
@@ -91,7 +92,21 @@ func (s StreamState) String() string {
 }
 
 // TaskEventHandler is a function that handles events for changed tasks.
-type TaskEventHandler func(ctx context.Context, t *Task, newState TaskState)
+type TaskEventHandler func(ctx context.Context, t *Task, newStatus TaskStatus)
+
+// TaskStatus holds the state of a task and additional information about that
+// state.
+type TaskStatus struct {
+	State TaskState
+
+	// Error holds the error that occurred during task execution, if any. Only
+	// set when State is [TaskStateFailed].
+	Error error
+
+	// Statistics report analytics about the lifetime of a task. Only set
+	// for terminal task states (see [TaskState.Terminal]).
+	Statistics *stats.Result
+}
 
 // TaskState represents the state of a Task. It is sent as an event by a
 // [Runner] whenever a Task associated with a task changes its state.
