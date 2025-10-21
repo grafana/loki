@@ -27,6 +27,8 @@ func toTree(p *Plan, n Node) *tree.Node {
 
 func toTreeNode(n Node) *tree.Node {
 	treeNode := tree.NewNode(n.Type().String(), "")
+	treeNode.Context = n
+
 	switch node := n.(type) {
 	case *DataObjScan:
 		treeNode.Properties = []tree.Property{
@@ -34,27 +36,23 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("streams", false, len(node.StreamIDs)),
 			tree.NewProperty("section_id", false, node.Section),
 			tree.NewProperty("projections", true, toAnySlice(node.Projections)...),
-			tree.NewProperty("direction", false, node.Direction),
-			tree.NewProperty("limit", false, node.Limit),
 		}
 		for i := range node.Predicates {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
-	case *SortMerge:
-		treeNode.Properties = []tree.Property{
-			tree.NewProperty("column", false, node.Column),
-			tree.NewProperty("order", false, node.Order),
-		}
 	case *Projection:
 		treeNode.Properties = []tree.Property{
-			tree.NewProperty("columns", true, toAnySlice(node.Columns)...),
+			tree.NewProperty("all", false, node.All),
+		}
+		if node.Expand {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("expand", true, toAnySlice(node.Expressions)...))
+		} else if node.Drop {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("drop", true, toAnySlice(node.Expressions)...))
 		}
 	case *Filter:
 		for i := range node.Predicates {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
-	case *Merge:
-		// nothing to add
 	case *Limit:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("offset", false, node.Skip),
@@ -80,6 +78,47 @@ func toTreeNode(n Node) *tree.Node {
 		}
 		if len(node.RequestedKeys) > 0 {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("requested_keys", true, toAnySlice(node.RequestedKeys)...))
+		}
+	case *ColumnCompat:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("src", false, node.Source),
+			tree.NewProperty("dst", false, node.Destination),
+			tree.NewProperty("collision", false, node.Collision),
+		}
+	case *TopK:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("sort_by", false, node.SortBy.String()),
+			tree.NewProperty("ascending", false, node.Ascending),
+			tree.NewProperty("nulls_first", false, node.NullsFirst),
+			tree.NewProperty("k", false, node.K),
+		}
+	case *Parallelize:
+		// Nothing to add
+	case *ScanSet:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("num_targets", false, len(node.Targets)),
+		}
+
+		if len(node.Projections) > 0 {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("projections", true, toAnySlice(node.Projections)...))
+		}
+		for i := range node.Predicates {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
+		}
+
+		for _, target := range node.Targets {
+			properties := []tree.Property{
+				tree.NewProperty("type", false, target.Type.String()),
+			}
+
+			switch target.Type {
+			case ScanTypeDataObject:
+				// Create a child node to extract the properties of the target.
+				childNode := toTreeNode(target.DataObject)
+				properties = append(properties, childNode.Properties...)
+			}
+
+			treeNode.AddComment("@target", "", properties)
 		}
 	}
 	return treeNode

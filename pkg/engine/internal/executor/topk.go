@@ -9,6 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -38,7 +39,6 @@ type topkPipeline struct {
 	batch  *topkBatch
 
 	computed bool
-	state    state
 }
 
 var _ Pipeline = (*topkPipeline)(nil)
@@ -70,39 +70,38 @@ func exprsToFields(exprs []physical.ColumnExpression) ([]arrow.Field, error) {
 			panic("topkPipeline only supports ColumnExpr expressions")
 		}
 
-		if expr.Ref.Type == types.ColumnTypeAmbiguous {
-			// TODO(rfratto): It's not clear how topk should sort when there's an
-			// ambiguous column reference, since ambiguous column references can
-			// refer to multiple columns.
-			return nil, fmt.Errorf("topkPipeline does not support ambiguous column types")
+		dt, err := guessLokiType(expr.Ref)
+		if err != nil {
+			return nil, err
 		}
 
-		dt, md := arrowTypeFromColumnRef(expr.Ref)
-
-		fields = append(fields, arrow.Field{
-			Name:     expr.Ref.Column,
-			Type:     dt,
-			Nullable: true,
-			Metadata: md,
-		})
+		ident := semconv.NewIdentifier(expr.Ref.Column, expr.Ref.Type, dt)
+		fields = append(fields, semconv.FieldFromIdent(ident, true))
 	}
-
 	return fields, nil
 }
 
-func arrowTypeFromColumnRef(ref types.ColumnRef) (arrow.DataType, arrow.Metadata) {
-	if ref.Type == types.ColumnTypeBuiltin {
+func guessLokiType(ref types.ColumnRef) (types.DataType, error) {
+	switch ref.Type {
+	case types.ColumnTypeBuiltin:
 		switch ref.Column {
 		case types.ColumnNameBuiltinTimestamp:
-			return arrow.FixedWidthTypes.Timestamp_ns, types.ColumnMetadataBuiltinTimestamp
+			return types.Loki.Timestamp, nil
 		case types.ColumnNameBuiltinMessage:
-			return arrow.BinaryTypes.String, types.ColumnMetadataBuiltinMessage
+			return types.Loki.String, nil
 		default:
 			panic(fmt.Sprintf("unsupported builtin column type %s", ref))
 		}
+	case types.ColumnTypeGenerated:
+		return types.Loki.Float, nil
+	case types.ColumnTypeAmbiguous:
+		// TODO(rfratto): It's not clear how topk should sort when there's an
+		// ambiguous column reference, since ambiguous column references can
+		// refer to multiple columns.
+		return nil, fmt.Errorf("topkPipeline does not support ambiguous column types")
+	default:
+		return types.Loki.String, nil
 	}
-
-	return types.Arrow.String, types.ColumnMetadata(ref.Type, types.Loki.String)
 }
 
 // Read computes the topk as the next record. Read blocks until all input
@@ -118,7 +117,7 @@ func (p *topkPipeline) Read(ctx context.Context) (arrow.Record, error) {
 
 func (p *topkPipeline) compute(ctx context.Context) (arrow.Record, error) {
 NextInput:
-	for _, in := range p.Inputs() {
+	for _, in := range p.inputs {
 		for {
 			rec, err := in.Read(ctx)
 			if err != nil && errors.Is(err, EOF) {
@@ -141,10 +140,6 @@ NextInput:
 	return compacted, nil
 }
 
-// Value returns the topk record computed by the pipeline after
-// [topkPipeline.Read] has been called.
-func (p *topkPipeline) Value() (arrow.Record, error) { return p.state.Value() }
-
 // Close closes the resources of the pipeline.
 func (p *topkPipeline) Close() {
 	p.batch.Reset()
@@ -152,7 +147,3 @@ func (p *topkPipeline) Close() {
 		in.Close()
 	}
 }
-
-func (p *topkPipeline) Inputs() []Pipeline { return p.inputs }
-
-func (p *topkPipeline) Transport() Transport { return Local }

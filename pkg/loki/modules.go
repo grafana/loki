@@ -1146,6 +1146,7 @@ func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	middleware, stopper, err := queryrange.NewMiddleware(
 		t.Cfg.QueryRange,
 		t.Cfg.Querier.Engine,
+		t.Cfg.Querier.EngineV2,
 		ingesterQueryOptions{t.Cfg.Querier},
 		util_log.Logger,
 		t.Overrides,
@@ -1620,21 +1621,30 @@ func (t *Loki) initCompactorWorkerMode() (services.Service, error) {
 		return nil, err
 	}
 
-	objectClients := make(map[config.DayTime]client.ObjectClient)
+	chunkClients := make(map[config.DayTime]client.Client)
 	for _, periodConfig := range t.Cfg.SchemaConfig.Configs {
 		if !config.IsObjectStorageIndex(periodConfig.IndexType) {
 			continue
 		}
 
-		objectClient, err := storage.NewObjectClient(periodConfig.ObjectType, "compactor", t.Cfg.StorageConfig, t.ClientMetrics)
+		chunkClient, err := storage.NewChunkClient(
+			periodConfig.ObjectType,
+			"compactor-worker",
+			t.Cfg.StorageConfig,
+			t.Cfg.SchemaConfig,
+			periodConfig,
+			prometheus.DefaultRegisterer,
+			t.ClientMetrics,
+			util_log.Logger,
+		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create object client: %w", err)
+			return nil, fmt.Errorf("failed to create chunk client: %w", err)
 		}
 
-		objectClients[periodConfig.From] = objectClient
+		chunkClients[periodConfig.From] = chunkClient
 	}
 
-	return compactor.NewWorkerManager(t.Cfg.CompactorConfig, compactorClient, t.Cfg.SchemaConfig, objectClients, prometheus.DefaultRegisterer)
+	return compactor.NewWorkerManager(t.Cfg.CompactorConfig, compactorClient, t.Cfg.SchemaConfig, chunkClients, prometheus.DefaultRegisterer)
 }
 
 func (t *Loki) initCompactor() (services.Service, error) {

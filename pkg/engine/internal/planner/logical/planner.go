@@ -15,6 +15,7 @@ import (
 )
 
 var errUnimplemented = errors.New("query contains unimplemented features")
+var unimplementedFeature = func(s string) error { return fmt.Errorf("%w: %s", errUnimplemented, s) }
 
 // BuildPlan converts a LogQL query represented as [logql.Params] into a logical [Plan].
 // It may return an error as second argument in case the traversal of the AST of the query fails.
@@ -37,6 +38,9 @@ func BuildPlan(params logql.Params) (*Plan, error) {
 		return nil, fmt.Errorf("failed to convert AST into logical plan: %w", err)
 	}
 
+	// TODO(chaudum): Make compatibility mode configurable
+	builder = builder.Compat(true)
+
 	return builder.ToPlan()
 }
 
@@ -52,6 +56,8 @@ func buildPlanForLogQuery(
 	var (
 		err      error
 		selector Value
+
+		dropCols []Value
 
 		// parse statements in LogQL introduce additional ambiguouity, requiring post
 		// parse filters to be tracked separately, and not included in maketable predicates
@@ -112,12 +118,29 @@ func buildPlanForLogQuery(
 				}
 			}
 			return true
-			//TODO Support logfmt and json expression parset expressions
-		case *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
-			*syntax.LineFmtExpr, *syntax.LabelFmtExpr,
-			*syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
+		case *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr:
 			err = errUnimplemented
 			return false // do not traverse children
+		case *syntax.LineFmtExpr:
+			err = unimplementedFeature("line_format")
+			return false // do not traverse children
+		case *syntax.LabelFmtExpr:
+			err = unimplementedFeature("label_format")
+			return false // do not traverse children
+		case *syntax.KeepLabelsExpr:
+			err = unimplementedFeature("keep")
+			return false // do not traverse children
+		case *syntax.DropLabelsExpr:
+			if e.HasNamedMatchers() {
+				// Example: `| drop __error__=~"Unknown Error: .*"`
+				err = unimplementedFeature("drop with named matchers")
+				return false // do not traverse children
+			}
+			for _, name := range e.Names() {
+				value := NewColumnRef(name, types.ColumnTypeAmbiguous)
+				dropCols = append(dropCols, value)
+			}
+			return true
 		default:
 			err = errUnimplemented
 			return false // do not traverse children
@@ -140,6 +163,9 @@ func buildPlanForLogQuery(
 			Shard:      shard,
 		},
 	)
+
+	// Do we need a projection of all comlumns right after maketable?
+	// builder = builder.ProjectAll(false, false)
 
 	direction := params.Direction()
 	if !isMetricQuery && direction == logproto.FORWARD {
@@ -171,6 +197,11 @@ func buildPlanForLogQuery(
 		builder = builder.Select(value)
 	}
 
+	// TODO(chaudum): Drop stages can happen throughout the pipeline
+	if len(dropCols) > 0 {
+		builder = builder.ProjectDrop(dropCols...)
+	}
+
 	// Metric queries do not apply a limit.
 	if !isMetricQuery {
 		// SORT -> SortMerge
@@ -195,6 +226,10 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 
 		vecAggType types.VectorAggregationType
 		groupBy    []ColumnRef
+
+		// unwrap-related variables
+		unwrapIdentifier string
+		unwrapOperation  types.UnaryOp
 	)
 
 	e.Walk(func(e syntax.Expr) bool {
@@ -221,11 +256,33 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 			}
 
 			rangeInterval = e.Left.Interval
-			return false // do not traverse log range query
 
+			// Check for unwrap in the LogRangeExpr
+			if e.Left.Unwrap != nil {
+				// TODO: do we need to support multiple unwraps?
+				if unwrapIdentifier != "" {
+					err = errUnimplemented
+					return false
+				}
+				unwrapIdentifier = e.Left.Unwrap.Identifier
+
+				switch e.Left.Unwrap.Operation {
+				case "":
+					unwrapOperation = types.UnaryOpCastFloat
+				case syntax.OpConvBytes:
+					unwrapOperation = types.UnaryOpCastBytes
+				case syntax.OpConvDuration, syntax.OpConvDurationSeconds:
+					unwrapOperation = types.UnaryOpCastDuration
+				default:
+					err = errUnimplemented
+					return false
+				}
+			}
+
+			return false // do not traverse log range query
 		case *syntax.VectorAggregationExpr:
-			// grouping by at least one label is required.
-			if e.Grouping == nil || len(e.Grouping.Groups) == 0 || e.Grouping.Without {
+			// `without()` grouping is not supported.
+			if e.Grouping != nil && e.Grouping.Without {
 				err = errUnimplemented
 				return false
 			}
@@ -271,6 +328,11 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 	builder, err := buildPlanForLogQuery(logSelectorExpr, params, true, rangeInterval)
 	if err != nil {
 		return nil, err
+	}
+
+	// Add unwrap instruction if present
+	if unwrapIdentifier != "" {
+		builder = builder.Cast(unwrapIdentifier, unwrapOperation)
 	}
 
 	builder = builder.RangeAggregation(

@@ -8,26 +8,32 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 func TestNewFilterPipeline(t *testing.T) {
+	colName := "utf8.builtin.name"
+	colValid := "bool.builtin.valid"
+
 	fields := []arrow.Field{
-		{Name: "name", Type: arrow.BinaryTypes.String, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.String)},
-		{Name: "valid", Type: arrow.FixedWidthTypes.Boolean, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Bool)},
+		semconv.FieldFromFQN(colName, true),
+		semconv.FieldFromFQN(colValid, true),
 	}
 
 	t.Run("filter with true literal predicate", func(t *testing.T) {
-		alloc := memory.DefaultAllocator
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer alloc.AssertSize(t, 0)
+
 		schema := arrow.NewSchema(fields, nil)
 
 		// Create input data using arrowtest.Rows
 		inputRows := []arrowtest.Rows{
 			{
-				{"name": "Alice", "valid": true},
-				{"name": "Bob", "valid": false},
-				{"name": "Charlie", "valid": true},
+				{colName: "Alice", colValid: true},
+				{colName: "Bob", colValid: false},
+				{colName: "Charlie", colValid: true},
 			},
 		}
 		input := NewArrowtestPipeline(alloc, schema, inputRows...)
@@ -41,7 +47,8 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{})
+		e := newExpressionEvaluator(alloc)
+		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
 		// Read the pipeline output
@@ -56,15 +63,17 @@ func TestNewFilterPipeline(t *testing.T) {
 	})
 
 	t.Run("filter with false literal predicate", func(t *testing.T) {
-		alloc := memory.DefaultAllocator
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer alloc.AssertSize(t, 0)
+
 		schema := arrow.NewSchema(fields, nil)
 
 		// Create input data using arrowtest.Rows
 		inputRows := []arrowtest.Rows{
 			{
-				{"name": "Alice", "valid": true},
-				{"name": "Bob", "valid": false},
-				{"name": "Charlie", "valid": true},
+				{colName: "Alice", colValid: true},
+				{colName: "Bob", colValid: false},
+				{colName: "Charlie", colValid: true},
 			},
 		}
 
@@ -80,7 +89,8 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{})
+		e := newExpressionEvaluator(alloc)
+		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
 		// Read the pipeline output
@@ -92,15 +102,17 @@ func TestNewFilterPipeline(t *testing.T) {
 	})
 
 	t.Run("filter on boolean column with column expression", func(t *testing.T) {
-		alloc := memory.DefaultAllocator
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer alloc.AssertSize(t, 0)
+
 		schema := arrow.NewSchema(fields, nil)
 
 		// Create input data using arrowtest.Rows
 		inputRows := []arrowtest.Rows{
 			{
-				{"name": "Alice", "valid": true},
-				{"name": "Bob", "valid": false},
-				{"name": "Charlie", "valid": true},
+				{colName: "Alice", colValid: true},
+				{colName: "Bob", colValid: false},
+				{colName: "Charlie", colValid: true},
 			},
 		}
 		input := NewArrowtestPipeline(alloc, schema, inputRows...)
@@ -117,13 +129,14 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{})
+		e := newExpressionEvaluator(alloc)
+		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
 		// Create expected output (only rows where valid=true)
 		expectedRows := arrowtest.Rows{
-			{"name": "Alice", "valid": true},
-			{"name": "Charlie", "valid": true},
+			{colName: "Alice", colValid: true},
+			{colName: "Charlie", colValid: true},
 		}
 
 		// Read the pipeline output
@@ -138,16 +151,18 @@ func TestNewFilterPipeline(t *testing.T) {
 	})
 
 	t.Run("filter on multiple columns with binary expressions", func(t *testing.T) {
-		alloc := memory.DefaultAllocator
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer alloc.AssertSize(t, 0)
+
 		schema := arrow.NewSchema(fields, nil)
 
 		// Create input data using arrowtest.Rows
 		inputRows := []arrowtest.Rows{
 			{
-				{"name": "Alice", "valid": true},
-				{"name": "Bob", "valid": false},
-				{"name": "Bob", "valid": true},
-				{"name": "Charlie", "valid": false},
+				{colName: "Alice", colValid: true},
+				{colName: "Bob", colValid: false},
+				{colName: "Bob", colValid: true},
+				{colName: "Charlie", colValid: false},
 			},
 		}
 		input := NewArrowtestPipeline(alloc, schema, inputRows...)
@@ -170,12 +185,13 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{})
+		e := newExpressionEvaluator(alloc)
+		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
 		// Create expected output (only rows where name=="Bob" AND valid!=false)
 		expectedRows := arrowtest.Rows{
-			{"name": "Bob", "valid": true},
+			{colName: "Bob", colValid: true},
 		}
 
 		// Read the pipeline output
@@ -191,7 +207,9 @@ func TestNewFilterPipeline(t *testing.T) {
 
 	// TODO: instead of returning empty batch, filter should read the next non-empty batch.
 	t.Run("filter on empty batch", func(t *testing.T) {
-		alloc := memory.DefaultAllocator
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer alloc.AssertSize(t, 0)
+
 		schema := arrow.NewSchema(fields, nil)
 
 		// Create empty input data using arrowtest.Rows
@@ -210,7 +228,8 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{})
+		e := newExpressionEvaluator(alloc)
+		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
 		record, err := pipeline.Read(t.Context())
@@ -223,18 +242,20 @@ func TestNewFilterPipeline(t *testing.T) {
 	})
 
 	t.Run("filter with multiple input batches", func(t *testing.T) {
-		alloc := memory.DefaultAllocator
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer alloc.AssertSize(t, 0)
+
 		schema := arrow.NewSchema(fields, nil)
 
 		// Create input data split across multiple batches using arrowtest.Rows
 		inputRows := []arrowtest.Rows{
 			{
-				{"name": "Alice", "valid": true},
-				{"name": "Bob", "valid": false},
+				{colName: "Alice", colValid: true},
+				{colName: "Bob", colValid: false},
 			},
 			{
-				{"name": "Charlie", "valid": true},
-				{"name": "Dave", "valid": false},
+				{colName: "Charlie", colValid: true},
+				{colName: "Dave", colValid: false},
 			},
 		}
 		input := NewArrowtestPipeline(alloc, schema, inputRows...)
@@ -251,13 +272,14 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{})
+		e := newExpressionEvaluator(alloc)
+		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
 		// Create expected output (only rows where valid=true)
 		expectedRows := arrowtest.Rows{
-			{"name": "Alice", "valid": true},
-			{"name": "Charlie", "valid": true},
+			{colName: "Alice", colValid: true},
+			{colName: "Charlie", colValid: true},
 		}
 
 		// Read the pipeline output
@@ -284,15 +306,17 @@ func TestNewFilterPipeline(t *testing.T) {
 	})
 
 	t.Run("filter with null values", func(t *testing.T) {
-		alloc := memory.DefaultAllocator
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer alloc.AssertSize(t, 0)
+
 		schema := arrow.NewSchema(fields, nil)
 
 		// Create input data with null values
 		inputRows := []arrowtest.Rows{
 			{
-				{"name": "Alice", "valid": true},
-				{"name": nil, "valid": true}, // null name
-				{"name": "Bob", "valid": false},
+				{colName: "Alice", colValid: true},
+				{colName: nil, colValid: true}, // null name
+				{colName: "Bob", colValid: false},
 			},
 		}
 		input := NewArrowtestPipeline(alloc, schema, inputRows...)
@@ -309,13 +333,14 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{})
+		e := newExpressionEvaluator(alloc)
+		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
 		// Create expected output (only rows where valid=true, including null name)
 		expectedRows := arrowtest.Rows{
-			{"name": "Alice", "valid": true},
-			{"name": nil, "valid": true}, // null name should be retained
+			{colName: "Alice", colValid: true},
+			{colName: nil, colValid: true}, // null name should be retained
 		}
 
 		// Read the pipeline output

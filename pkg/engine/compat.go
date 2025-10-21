@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -73,68 +74,70 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 
 	for colIdx := range int(rec.NumCols()) {
 		col := rec.Column(colIdx)
-		colName := rec.ColumnName(colIdx)
-
-		// TODO(chaudum): We need to add metadata to columns to identify builtins, labels, metadata, and parsed.
-		field := rec.Schema().Field(colIdx)
-		colType, ok := field.Metadata.GetValue(types.MetadataKeyColumnType)
-
-		// Ignore column values that are NULL or invalid or don't have a column typ
-		if col.IsNull(i) || !col.IsValid(i) || !ok {
+		// Ignore column values that are NULL or invalid
+		if col.IsNull(i) || !col.IsValid(i) {
 			continue
 		}
 
+		field := rec.Schema().Field(colIdx)
+		ident, err := semconv.ParseFQN(field.Name)
+		if err != nil {
+			continue
+		}
+
+		shortName := ident.ShortName()
+
 		// Extract line
-		if colName == types.ColumnNameBuiltinMessage && colType == types.ColumnTypeBuiltin.String() {
+		if ident.Equal(semconv.ColumnIdentMessage) {
 			entry.Line = col.(*array.String).Value(i)
 			continue
 		}
 
 		// Extract timestamp
-		if colName == types.ColumnNameBuiltinTimestamp && colType == types.ColumnTypeBuiltin.String() {
+		if ident.Equal(semconv.ColumnIdentTimestamp) {
 			entry.Timestamp = time.Unix(0, int64(col.(*array.Timestamp).Value(i)))
 			continue
 		}
 
 		// Extract label
-		if colType == types.ColumnTypeLabel.String() {
+		if ident.ColumnType() == types.ColumnTypeLabel {
 			switch arr := col.(type) {
 			case *array.String:
-				lbs.Set(colName, arr.Value(i))
+				lbs.Set(shortName, arr.Value(i))
 			}
 			continue
 		}
 
 		// Extract metadata
-		if colType == types.ColumnTypeMetadata.String() {
+		if ident.ColumnType() == types.ColumnTypeMetadata {
 			switch arr := col.(type) {
 			case *array.String:
-				metadata.Set(colName, arr.Value(i))
+				metadata.Set(shortName, arr.Value(i))
 				// include structured metadata in stream labels
-				lbs.Set(colName, arr.Value(i))
+				lbs.Set(shortName, arr.Value(i))
 			}
 			continue
 		}
 
 		// Extract parsed
-		if colType == types.ColumnTypeParsed.String() {
+		if ident.ColumnType() == types.ColumnTypeParsed {
 			switch arr := col.(type) {
 			case *array.String:
 				// TODO: keep errors if --strict is set
 				// These are reserved column names used to track parsing errors. We are dropping them until
 				// we add support for --strict parsing.
-				if colName == types.ColumnNameParsedError || colName == types.ColumnNameParsedErrorDetails {
+				if shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails {
 					continue
 				}
 
-				if parsed.Get(colName) != "" {
+				if parsed.Get(shortName) != "" {
 					continue
 				}
 
-				parsed.Set(colName, arr.Value(i))
-				lbs.Set(colName, arr.Value(i))
-				if metadata.Get(colName) != "" {
-					metadata.Del(colName)
+				parsed.Set(shortName, arr.Value(i))
+				lbs.Set(shortName, arr.Value(i))
+				if metadata.Get(shortName) != "" {
+					metadata.Del(shortName)
 				}
 			}
 		}
@@ -282,37 +285,41 @@ func collectSamplesFromRow(builder *labels.Builder, rec arrow.Record, i int) (pr
 	// TODO: we add a lot of overhead by reading row by row. Switch to vectorized conversion.
 	for colIdx := range int(rec.NumCols()) {
 		col := rec.Column(colIdx)
-		colName := rec.ColumnName(colIdx)
-
 		field := rec.Schema().Field(colIdx)
-		colDataType, ok := field.Metadata.GetValue(types.MetadataKeyColumnDataType)
-		if !ok {
+		ident, err := semconv.ParseFQN(field.Name)
+		if err != nil {
 			return promql.Sample{}, false
 		}
 
-		switch colName {
-		case types.ColumnNameBuiltinTimestamp:
-			if col.IsNull(i) {
+		shortName := ident.ShortName()
+
+		// Extract timestamp
+		if ident.Equal(semconv.ColumnIdentTimestamp) {
+			// Ignore column values that are NULL or invalid
+			if col.IsNull(i) || !col.IsValid(i) {
 				return promql.Sample{}, false
 			}
-
 			// [promql.Sample] expects milliseconds as timestamp unit
 			sample.T = int64(col.(*array.Timestamp).Value(i) / 1e6)
-		case types.ColumnNameGeneratedValue:
-			if col.IsNull(i) {
+			continue
+		}
+
+		if ident.Equal(semconv.ColumnIdentValue) {
+			// Ignore column values that are NULL or invalid
+			if col.IsNull(i) || !col.IsValid(i) {
 				return promql.Sample{}, false
 			}
-
 			col, ok := col.(*array.Float64)
 			if !ok {
 				return promql.Sample{}, false
 			}
 			sample.F = col.Value(i)
-		default:
-			// allow any string columns
-			if colDataType == types.Loki.String.String() {
-				builder.Set(colName, col.(*array.String).Value(i))
-			}
+			continue
+		}
+
+		// allow any string columns
+		if ident.DataType() == types.Loki.String {
+			builder.Set(shortName, col.(*array.String).Value(i))
 		}
 	}
 

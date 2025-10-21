@@ -10,11 +10,20 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 const arrowTimestampFormat = "2006-01-02T15:04:05.000000000Z"
+
+var (
+	colTs  = "timestamp_ns.builtin.timestamp"
+	colEnv = "utf8.label.env"
+	colSvc = "utf8.label.service"
+	colLvl = "utf8.metadata.severity"
+	colVal = "float64.generated.value"
+)
 
 func TestRangeAggregationPipeline_instant(t *testing.T) {
 	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
@@ -22,31 +31,31 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 
 	// input schema with timestamp, partition-by columns and non-partition columns
 	fields := []arrow.Field{
-		{Name: types.ColumnNameBuiltinTimestamp, Type: types.Arrow.Timestamp, Metadata: types.ColumnMetadataBuiltinTimestamp},
-		{Name: "env", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeLabel, types.Loki.String)},
-		{Name: "service", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeLabel, types.Loki.String)},
-		{Name: "severity", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeMetadata, types.Loki.String)}, // extra column not included in partition_by
+		semconv.FieldFromFQN(colTs, false),
+		semconv.FieldFromFQN(colEnv, false),
+		semconv.FieldFromFQN(colSvc, false),
+		semconv.FieldFromFQN(colLvl, true),
 	}
 	schema := arrow.NewSchema(fields, nil)
 
 	rowsPipelineA := []arrowtest.Rows{
 		{
-			{"timestamp": time.Unix(20, 0).UTC(), "env": "prod", "service": "app1", "severity": "error"}, // included
-			{"timestamp": time.Unix(15, 0).UTC(), "env": "prod", "service": "app1", "severity": "info"},
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app1", "severity": "error"}, // excluded, open interval
-			{"timestamp": time.Unix(12, 0).UTC(), "env": "prod", "service": "app2", "severity": "error"},
-			{"timestamp": time.Unix(12, 0).UTC(), "env": "dev", "service": "", "severity": "error"},
+			{colTs: time.Unix(20, 0).UTC(), colEnv: "prod", colSvc: "app1", colLvl: "error"}, // included
+			{colTs: time.Unix(15, 0).UTC(), colEnv: "prod", colSvc: "app1", colLvl: "info"},
+			{colTs: time.Unix(10, 0).UTC(), colEnv: "prod", colSvc: "app1", colLvl: "error"}, // excluded, open interval
+			{colTs: time.Unix(12, 0).UTC(), colEnv: "prod", colSvc: "app2", colLvl: "error"},
+			{colTs: time.Unix(12, 0).UTC(), colEnv: "dev", colSvc: "", colLvl: "error"},
 		},
 	}
 	rowsPipelineB := []arrowtest.Rows{
 		{
-			{"timestamp": time.Unix(15, 0).UTC(), "env": "prod", "service": "app2", "severity": "info"},
-			{"timestamp": time.Unix(12, 0).UTC(), "env": "prod", "service": "app2", "severity": "error"},
+			{colTs: time.Unix(15, 0).UTC(), colEnv: "prod", colSvc: "app2", colLvl: "info"},
+			{colTs: time.Unix(12, 0).UTC(), colEnv: "prod", colSvc: "app2", colLvl: "error"},
 		},
 		{
-			{"timestamp": time.Unix(15, 0).UTC(), "env": "prod", "service": "app3", "severity": "info"},
-			{"timestamp": time.Unix(12, 0).UTC(), "env": "prod", "service": "app3", "severity": "error"},
-			{"timestamp": time.Unix(5, 0).UTC(), "env": "dev", "service": "app2", "severity": "error"}, // excluded, out of range
+			{colTs: time.Unix(15, 0).UTC(), colEnv: "prod", colSvc: "app3", colLvl: "info"},
+			{colTs: time.Unix(12, 0).UTC(), colEnv: "prod", colSvc: "app3", colLvl: "error"},
+			{colTs: time.Unix(5, 0).UTC(), colEnv: "dev", colSvc: "app2", colLvl: "error"}, // excluded, out of range
 		},
 	}
 
@@ -73,7 +82,7 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 
 	inputA := NewArrowtestPipeline(alloc, schema, rowsPipelineA...)
 	inputB := NewArrowtestPipeline(alloc, schema, rowsPipelineB...)
-	pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, expressionEvaluator{}, opts)
+	pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(alloc), opts)
 	require.NoError(t, err)
 	defer pipeline.Close()
 
@@ -83,10 +92,10 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 	defer record.Release()
 
 	expect := arrowtest.Rows{
-		{"timestamp": time.Unix(20, 0).UTC(), "value": float64(2), "env": "prod", "service": "app1"},
-		{"timestamp": time.Unix(20, 0).UTC(), "value": float64(3), "env": "prod", "service": "app2"},
-		{"timestamp": time.Unix(20, 0).UTC(), "value": float64(2), "env": "prod", "service": "app3"},
-		{"timestamp": time.Unix(20, 0).UTC(), "value": float64(1), "env": "dev", "service": nil},
+		{colTs: time.Unix(20, 0).UTC(), colVal: float64(2), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1"},
+		{colTs: time.Unix(20, 0).UTC(), colVal: float64(3), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2"},
+		{colTs: time.Unix(20, 0).UTC(), colVal: float64(2), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app3"},
+		{colTs: time.Unix(20, 0).UTC(), colVal: float64(1), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": nil},
 	}
 
 	rows, err := arrowtest.RecordRows(record)
@@ -105,10 +114,10 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 	var (
 		fields = []arrow.Field{
-			{Name: types.ColumnNameBuiltinTimestamp, Type: types.Arrow.Timestamp, Metadata: types.ColumnMetadataBuiltinTimestamp},
-			{Name: "env", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeMetadata, types.Loki.String)},
-			{Name: "service", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeMetadata, types.Loki.String)},
-			{Name: "severity", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeMetadata, types.Loki.String)},
+			semconv.FieldFromFQN(colTs, false),
+			semconv.FieldFromFQN(colEnv, false),
+			semconv.FieldFromFQN(colSvc, false),
+			semconv.FieldFromFQN(colLvl, true),
 		}
 
 		schema = arrow.NewSchema(fields, nil)
@@ -117,23 +126,23 @@ func TestRangeAggregationPipeline(t *testing.T) {
 		rowsPipelineA = []arrowtest.Rows{
 			{
 				// time.Unix(0, 0) is not part of any window, it falls on the open interval of the first window
-				{"timestamp": time.Unix(0, 0).UTC(), "env": "prod", "service": "app1", "severity": "info"},
-				{"timestamp": time.Unix(2, 0).UTC(), "env": "prod", "service": "app1", "severity": "warn"},
-				{"timestamp": time.Unix(4, 0).UTC(), "env": "prod", "service": "app1", "severity": "info"},
-				{"timestamp": time.Unix(5, 0).UTC(), "env": "prod", "service": "app2", "severity": "error"},
+				{colTs: time.Unix(0, 0).UTC(), colEnv: "prod", colSvc: "app1", colLvl: "info"},
+				{colTs: time.Unix(2, 0).UTC(), colEnv: "prod", colSvc: "app1", colLvl: "warn"},
+				{colTs: time.Unix(4, 0).UTC(), colEnv: "prod", colSvc: "app1", colLvl: "info"},
+				{colTs: time.Unix(5, 0).UTC(), colEnv: "prod", colSvc: "app2", colLvl: "error"},
 			}, {
-				{"timestamp": time.Unix(6, 0).UTC(), "env": "dev", "service": "app1", "severity": "info"},
-				{"timestamp": time.Unix(8, 0).UTC(), "env": "prod", "service": "app1", "severity": "error"},
-				{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app2", "severity": "info"},
-				{"timestamp": time.Unix(12, 0).UTC(), "env": "prod", "service": "app1", "severity": "info"},
-				{"timestamp": time.Unix(15, 0).UTC(), "env": "prod", "service": "app2", "severity": "error"},
+				{colTs: time.Unix(6, 0).UTC(), colEnv: "dev", colSvc: "app1", colLvl: "info"},
+				{colTs: time.Unix(8, 0).UTC(), colEnv: "prod", colSvc: "app1", colLvl: "error"},
+				{colTs: time.Unix(10, 0).UTC(), colEnv: "prod", colSvc: "app2", colLvl: "info"},
+				{colTs: time.Unix(12, 0).UTC(), colEnv: "prod", colSvc: "app1", colLvl: "info"},
+				{colTs: time.Unix(15, 0).UTC(), colEnv: "prod", colSvc: "app2", colLvl: "error"},
 			},
 		}
 		rowsPiplelineB = []arrowtest.Rows{{
-			{"timestamp": time.Unix(20, 0).UTC(), "env": "dev", "service": "app1", "severity": "info"},
-			{"timestamp": time.Unix(25, 0).UTC(), "env": "dev", "service": "app2", "severity": "error"},
-			{"timestamp": time.Unix(28, 0).UTC(), "env": "dev", "service": "app1", "severity": "info"},
-			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app2", "severity": "info"},
+			{colTs: time.Unix(20, 0).UTC(), colEnv: "dev", colSvc: "app1", colLvl: "info"},
+			{colTs: time.Unix(25, 0).UTC(), colEnv: "dev", colSvc: "app2", colLvl: "error"},
+			{colTs: time.Unix(28, 0).UTC(), colEnv: "dev", colSvc: "app1", colLvl: "info"},
+			{colTs: time.Unix(30, 0).UTC(), colEnv: "dev", colSvc: "app2", colLvl: "info"},
 		}}
 	)
 
@@ -164,7 +173,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		inputA := NewArrowtestPipeline(alloc, schema, rowsPipelineA...)
 		inputB := NewArrowtestPipeline(alloc, schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, expressionEvaluator{}, opts)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(alloc), opts)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -174,18 +183,18 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		expect := arrowtest.Rows{
 			// time.Unix(10, 0)
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app1", "value": float64(3)},
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app2", "value": float64(2)},
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
+			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1", colVal: float64(3)},
+			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2", colVal: float64(2)},
+			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 
 			// time.Unix(20, 0)
-			{"timestamp": time.Unix(20, 0).UTC(), "env": "prod", "service": "app1", "value": float64(1)},
-			{"timestamp": time.Unix(20, 0).UTC(), "env": "prod", "service": "app2", "value": float64(1)},
-			{"timestamp": time.Unix(20, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
+			{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2", colVal: float64(1)},
+			{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 
 			// time.Unix(30, 0)
-			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app2", "value": float64(2)},
-			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
+			{colTs: time.Unix(30, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app2", colVal: float64(2)},
+			{colTs: time.Unix(30, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 		}
 
 		rows, err := arrowtest.RecordRows(record)
@@ -195,7 +204,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 		// rows are expected to be sorted by timestamp.
 		// for a given timestamp, no ordering is enforced based on labels.
 		require.True(t, slices.IsSortedFunc(rows, func(a, b arrowtest.Row) int {
-			return a["timestamp"].(time.Time).Compare(b["timestamp"].(time.Time))
+			return a[colTs].(time.Time).Compare(b[colTs].(time.Time))
 		}))
 		require.ElementsMatch(t, expect, rows)
 	})
@@ -212,7 +221,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		inputA := NewArrowtestPipeline(alloc, schema, rowsPipelineA...)
 		inputB := NewArrowtestPipeline(alloc, schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, expressionEvaluator{}, opts)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(alloc), opts)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -222,31 +231,31 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		expect := arrowtest.Rows{
 			// time.Unix(10, 0)
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app1", "value": float64(3)},
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app2", "value": float64(2)},
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
+			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1", colVal: float64(3)},
+			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2", colVal: float64(2)},
+			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 
 			// time.Unix(15, 0)
-			{"timestamp": time.Unix(15, 0).UTC(), "env": "prod", "service": "app2", "value": float64(2)},
-			{"timestamp": time.Unix(15, 0).UTC(), "env": "prod", "service": "app1", "value": float64(2)},
-			{"timestamp": time.Unix(15, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
+			{colTs: time.Unix(15, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2", colVal: float64(2)},
+			{colTs: time.Unix(15, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1", colVal: float64(2)},
+			{colTs: time.Unix(15, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 
 			// time.Unix(20, 0)
-			{"timestamp": time.Unix(20, 0).UTC(), "env": "prod", "service": "app1", "value": float64(1)},
-			{"timestamp": time.Unix(20, 0).UTC(), "env": "prod", "service": "app2", "value": float64(1)},
-			{"timestamp": time.Unix(20, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
+			{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2", colVal: float64(1)},
+			{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 
 			// time.Unix(25, 0)
-			{"timestamp": time.Unix(25, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
-			{"timestamp": time.Unix(25, 0).UTC(), "env": "dev", "service": "app2", "value": float64(1)},
+			{colTs: time.Unix(25, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(25, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app2", colVal: float64(1)},
 
 			// time.Unix(30, 0)
-			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app2", "value": float64(2)},
-			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
+			{colTs: time.Unix(30, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app2", colVal: float64(2)},
+			{colTs: time.Unix(30, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 
 			// time.Unix(35, 0)
-			{"timestamp": time.Unix(35, 0).UTC(), "env": "dev", "service": "app2", "value": float64(1)},
-			{"timestamp": time.Unix(35, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
+			{colTs: time.Unix(35, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app2", colVal: float64(1)},
+			{colTs: time.Unix(35, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 		}
 
 		rows, err := arrowtest.RecordRows(record)
@@ -256,7 +265,8 @@ func TestRangeAggregationPipeline(t *testing.T) {
 		// rows are expected to be sorted by timestamp.
 		// for a given timestamp, no ordering is enforced based on labels.
 		require.True(t, slices.IsSortedFunc(rows, func(a, b arrowtest.Row) int {
-			return a["timestamp"].(time.Time).Compare(b["timestamp"].(time.Time))
+			t.Log(a, b)
+			return a[colTs].(time.Time).Compare(b[colTs].(time.Time))
 		}))
 		require.ElementsMatch(t, expect, rows)
 	})
@@ -273,7 +283,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		inputA := NewArrowtestPipeline(alloc, schema, rowsPipelineA...)
 		inputB := NewArrowtestPipeline(alloc, schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, expressionEvaluator{}, opts)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(alloc), opts)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -283,16 +293,16 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		expect := arrowtest.Rows{
 			// time.Unix(10, 0)
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app1", "value": float64(1)},
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "prod", "service": "app2", "value": float64(1)},
-			{"timestamp": time.Unix(10, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
+			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2", colVal: float64(1)},
+			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 
 			// time.Unix(20, 0)
-			{"timestamp": time.Unix(20, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
+			{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 
 			// time.Unix(30, 0)
-			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app2", "value": float64(1)},
-			{"timestamp": time.Unix(30, 0).UTC(), "env": "dev", "service": "app1", "value": float64(1)},
+			{colTs: time.Unix(30, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app2", colVal: float64(1)},
+			{colTs: time.Unix(30, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 		}
 
 		rows, err := arrowtest.RecordRows(record)
@@ -302,7 +312,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 		// rows are expected to be sorted by timestamp.
 		// for a given timestamp, no ordering is enforced based on labels.
 		require.True(t, slices.IsSortedFunc(rows, func(a, b arrowtest.Row) int {
-			return a["timestamp"].(time.Time).Compare(b["timestamp"].(time.Time))
+			return a[colTs].(time.Time).Compare(b[colTs].(time.Time))
 		}))
 		require.ElementsMatch(t, expect, rows)
 	})

@@ -7,7 +7,6 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
@@ -18,7 +17,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 var tracer = otel.Tracer("pkg/engine/internal/executor")
@@ -79,14 +77,12 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 			return tracePipeline("physical.DataObjScan", c.executeDataObjScan(ctx, n))
 		}, inputs)
 
-	case *physical.SortMerge:
-		return tracePipeline("physical.SortMerge", c.executeSortMerge(ctx, n, inputs))
+	case *physical.TopK:
+		return tracePipeline("physical.TopK", c.executeTopK(ctx, n, inputs))
 	case *physical.Limit:
 		return tracePipeline("physical.Limit", c.executeLimit(ctx, n, inputs))
 	case *physical.Filter:
 		return tracePipeline("physical.Filter", c.executeFilter(ctx, n, inputs))
-	case *physical.Merge:
-		return tracePipeline("physical.Merge", c.executeMerge(ctx, n, inputs))
 	case *physical.Projection:
 		return tracePipeline("physical.Projection", c.executeProjection(ctx, n, inputs))
 	case *physical.RangeAggregation:
@@ -95,6 +91,12 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return tracePipeline("physical.VectorAggregation", c.executeVectorAggregation(ctx, n, inputs))
 	case *physical.ParseNode:
 		return tracePipeline("physical.ParseNode", c.executeParse(ctx, n, inputs))
+	case *physical.ColumnCompat:
+		return tracePipeline("physical.ColumnCompat", c.executeColumnCompat(ctx, n, inputs))
+	case *physical.Parallelize:
+		return tracePipeline("physical.Parallelize", c.executeParallelize(ctx, n, inputs))
+	case *physical.ScanSet:
+		return tracePipeline("physical.ScanSet", c.executeScanSet(ctx, n))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
@@ -104,8 +106,6 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	ctx, span := tracer.Start(ctx, "Context.executeDataObjScan", trace.WithAttributes(
 		attribute.String("location", string(node.Location)),
 		attribute.Int("section", node.Section),
-		attribute.Stringer("direction", node.Direction),
-		attribute.Int("limit", int(node.Limit)),
 		attribute.Int("num_stream_ids", len(node.StreamIDs)),
 		attribute.Int("num_predicates", len(node.Predicates)),
 		attribute.Int("num_projections", len(node.Projections)),
@@ -202,48 +202,6 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		BatchSize: c.batchSize,
 	}, log.With(c.logger, "location", string(node.Location), "section", node.Section))
 
-	sortType, sortDirection, err := logsSection.PrimarySortOrder()
-	if err != nil {
-		level.Warn(c.logger).Log("msg", "could not determine primary sort order for logs section, forcing topk sort", "err", err)
-
-		sortType = logs.ColumnTypeInvalid
-		sortDirection = logs.SortDirectionUnspecified
-	}
-
-	// Wrap our pipeline to enforce expected sorting. We always emit logs in
-	// timestamp-sorted order, so we need to sort if either the section doesn't
-	// match the expected sort order or the requested sort type is not timestamp.
-	//
-	// If it's already sorted, we wrap by LimitPipeline to enforce the limit
-	// given to the node (if defined).
-	if node.Direction != physical.UNSORTED && (node.Direction != logsSortOrder(sortDirection) || sortType != logs.ColumnTypeTimestamp) {
-		level.Debug(c.logger).Log("msg", "sorting logs section", "source_sort", sortType, "source_direction", sortDirection, "requested_sort", logs.ColumnTypeTimestamp, "requested_dir", node.Direction)
-
-		pipeline, err = newTopkPipeline(topkOptions{
-			Inputs: []Pipeline{pipeline},
-
-			SortBy: []physical.ColumnExpression{
-				&physical.ColumnExpr{
-					Ref: types.ColumnRef{
-						Column: types.ColumnNameBuiltinTimestamp,
-						Type:   types.ColumnTypeBuiltin,
-					},
-				},
-			},
-			Ascending: node.Direction == physical.ASC,
-			K:         int(node.Limit),
-
-			MaxUnused: int(c.batchSize) * 2,
-		})
-		if err != nil {
-			return errorPipeline(ctx, err)
-		}
-		span.AddEvent("injected topk")
-	} else if node.Limit > 0 {
-		pipeline = NewLimitPipeline(pipeline, 0, node.Limit)
-		span.AddEvent("injected limit")
-	}
-
 	return pipeline
 }
 
@@ -258,24 +216,33 @@ func logsSortOrder(dir logs.SortDirection) physical.SortOrder {
 	return physical.UNSORTED
 }
 
-func (c *Context) executeSortMerge(ctx context.Context, sortmerge *physical.SortMerge, inputs []Pipeline) Pipeline {
-	ctx, span := tracer.Start(ctx, "Context.executeSortMerge", trace.WithAttributes(
-		attribute.Stringer("order", sortmerge.Order),
-		attribute.Int("num_inputs", len(inputs)),
+func (c *Context) executeTopK(ctx context.Context, topK *physical.TopK, inputs []Pipeline) Pipeline {
+	ctx, span := tracer.Start(ctx, "Context.executeTopK", trace.WithAttributes(
+		attribute.Int("k", topK.K),
+		attribute.Bool("ascending", topK.Ascending),
 	))
-	if sortmerge.Column != nil {
-		span.SetAttributes(attribute.Stringer("column", sortmerge.Column))
-	}
 	defer span.End()
+
+	if topK.SortBy != nil {
+		span.SetAttributes(attribute.Stringer("sort_by", topK.SortBy))
+	}
 
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
 
-	pipeline, err := NewSortMergePipeline(inputs, sortmerge.Order, sortmerge.Column, c.evaluator)
+	pipeline, err := newTopkPipeline(topkOptions{
+		Inputs:     inputs,
+		SortBy:     []physical.ColumnExpression{topK.SortBy},
+		Ascending:  topK.Ascending,
+		NullsFirst: topK.NullsFirst,
+		K:          topK.K,
+		MaxUnused:  int(c.batchSize) * 2,
+	})
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
+
 	return pipeline
 }
 
@@ -312,30 +279,15 @@ func (c *Context) executeFilter(ctx context.Context, filter *physical.Filter, in
 		return errorPipeline(ctx, fmt.Errorf("filter expects exactly one input, got %d", len(inputs)))
 	}
 
-	return NewFilterPipeline(filter, inputs[0], c.evaluator)
-}
+	// Use memory allocator from context or default
+	allocator := memory.DefaultAllocator
 
-func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []Pipeline) Pipeline {
-	ctx, span := tracer.Start(ctx, "Context.executeMerge", trace.WithAttributes(
-		attribute.Int("num_inputs", len(inputs)),
-	))
-	defer span.End()
-
-	if len(inputs) == 0 {
-		return emptyPipeline()
-	}
-
-	pipeline, err := newMergePipeline(inputs, c.mergePrefetchCount)
-	if err != nil {
-		return errorPipeline(ctx, err)
-	}
-
-	return pipeline
+	return NewFilterPipeline(filter, inputs[0], c.evaluator, allocator)
 }
 
 func (c *Context) executeProjection(ctx context.Context, proj *physical.Projection, inputs []Pipeline) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeProjection", trace.WithAttributes(
-		attribute.Int("num_columns", len(proj.Columns)),
+		attribute.Int("num_expressions", len(proj.Expressions)),
 		attribute.Int("num_inputs", len(inputs)),
 	))
 	defer span.End()
@@ -349,11 +301,11 @@ func (c *Context) executeProjection(ctx context.Context, proj *physical.Projecti
 		return errorPipeline(ctx, fmt.Errorf("projection expects exactly one input, got %d", len(inputs)))
 	}
 
-	if len(proj.Columns) == 0 {
-		return errorPipeline(ctx, fmt.Errorf("projection expects at least one column, got 0"))
+	if len(proj.Expressions) == 0 {
+		return errorPipeline(ctx, fmt.Errorf("projection expects at least one expression, got 0"))
 	}
 
-	p, err := NewProjectPipeline(inputs[0], proj.Columns, &c.evaluator)
+	p, err := NewProjectPipeline(inputs[0], proj, &c.evaluator)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
@@ -422,4 +374,67 @@ func (c *Context) executeParse(ctx context.Context, parse *physical.ParseNode, i
 	allocator := memory.DefaultAllocator
 
 	return NewParsePipeline(parse, inputs[0], allocator)
+}
+
+func (c *Context) executeColumnCompat(ctx context.Context, compat *physical.ColumnCompat, inputs []Pipeline) Pipeline {
+	if len(inputs) == 0 {
+		return emptyPipeline()
+	}
+
+	if len(inputs) > 1 {
+		return errorPipeline(ctx, fmt.Errorf("columncompat expects exactly one input, got %d", len(inputs)))
+	}
+
+	return newColumnCompatibilityPipeline(compat, inputs[0])
+}
+
+func (c *Context) executeParallelize(ctx context.Context, _ *physical.Parallelize, inputs []Pipeline) Pipeline {
+	if len(inputs) == 0 {
+		return emptyPipeline()
+	} else if len(inputs) > 1 {
+		return errorPipeline(ctx, fmt.Errorf("parallelize expects exactly one input, got %d", len(inputs)))
+	}
+
+	// Parallelize is a hint node to the scheduler for parallel execution. If we
+	// see an Parallelize node in the plan, we ignore it and immediately
+	// propagate up the input.
+	return inputs[0]
+}
+
+func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pipeline {
+	// ScanSet typically gets partitioned by the scheduler into multiple scan
+	// nodes.
+	//
+	// However, for locally testing unpartitioned pipelines, we still supprt
+	// running a ScanSet. In this case, we treat internally execute it as a
+	// Merge on top of multiple sequential scans.
+
+	var targets []Pipeline
+
+	for _, target := range set.Targets {
+		switch target.Type {
+		case physical.ScanTypeDataObject:
+			// Make sure projections and predicates get passed down to the
+			// individual scan.
+			partition := target.DataObject
+			partition.Predicates = set.Predicates
+			partition.Projections = set.Projections
+
+			targets = append(targets, newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
+				return tracePipeline("physical.DataObjScan", c.executeDataObjScan(ctx, partition))
+			}, nil))
+		default:
+			return errorPipeline(ctx, fmt.Errorf("unrecognized ScanSet target %s", target.Type))
+		}
+	}
+	if len(targets) == 0 {
+		return emptyPipeline()
+	}
+
+	pipeline, err := newMergePipeline(targets, c.mergePrefetchCount)
+	if err != nil {
+		return errorPipeline(ctx, err)
+	}
+
+	return pipeline
 }

@@ -10,15 +10,17 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 var (
 	fields = []arrow.Field{
-		{Name: "name", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.String)},
-		{Name: "timestamp", Type: types.Arrow.Timestamp, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Timestamp)},
-		{Name: "value", Type: types.Arrow.Float, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Float)},
-		{Name: "valid", Type: types.Arrow.Bool, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Bool)},
+		semconv.FieldFromFQN("utf8.builtin.name", false),
+		semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", false),
+		semconv.FieldFromFQN("float64.builtin.value", false),
+		semconv.FieldFromFQN("bool.builtin.valid", false),
 	}
 	sampledata = `Alice,1745487598764058205,0.2586284611568047,false
 Bob,1745487598764058305,0.7823145698741236,true
@@ -82,7 +84,9 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			literal := physical.NewLiteral(tt.value)
-			e := expressionEvaluator{}
+			alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+			defer alloc.AssertSize(t, 0) // Assert empty on test exit
+			e := newExpressionEvaluator(alloc)
 
 			n := len(words)
 			rec := batch(n, time.Now())
@@ -103,7 +107,9 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 }
 
 func TestEvaluateColumnExpression(t *testing.T) {
-	e := expressionEvaluator{}
+	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+	defer alloc.AssertSize(t, 0) // Assert empty on test exit
+	e := newExpressionEvaluator(alloc)
 
 	t.Run("unknown column", func(t *testing.T) {
 		colExpr := &physical.ColumnExpr{
@@ -149,7 +155,9 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 	require.NoError(t, err)
 	defer rec.Release()
 
-	e := expressionEvaluator{}
+	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+	defer alloc.AssertSize(t, 0) // Assert empty on test exit
+	e := newExpressionEvaluator(alloc)
 
 	t.Run("error if types do not match", func(t *testing.T) {
 		expr := &physical.BinaryExpr{
@@ -215,6 +223,7 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 func collectBooleanColumnVector(vec ColumnVector) []bool {
 	res := make([]bool, 0, vec.Len())
 	arr := vec.ToArray().(*array.Boolean)
+	defer arr.Release()
 	for i := range int(vec.Len()) {
 		res = append(res, arr.Value(i))
 	}
@@ -230,8 +239,8 @@ func batch(n int, now time.Time) arrow.Record {
 	// 2. Define the schema
 	schema := arrow.NewSchema(
 		[]arrow.Field{
-			{Name: "message", Type: types.Arrow.String, Metadata: types.ColumnMetadataBuiltinMessage},
-			{Name: "timestamp", Type: types.Arrow.Timestamp, Metadata: types.ColumnMetadataBuiltinTimestamp},
+			semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
+			semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
 		},
 		nil, // No metadata
 	)
@@ -272,9 +281,9 @@ func batch(n int, now time.Time) arrow.Record {
 func TestEvaluateAmbiguousColumnExpression(t *testing.T) {
 	// Test precedence between generated, metadata, and label columns
 	fields := []arrow.Field{
-		{Name: "test", Type: arrow.BinaryTypes.String, Metadata: types.ColumnMetadata(types.ColumnTypeLabel, types.Loki.String)},
-		{Name: "test", Type: arrow.BinaryTypes.String, Metadata: types.ColumnMetadata(types.ColumnTypeMetadata, types.Loki.String)},
-		{Name: "test", Type: arrow.BinaryTypes.String, Metadata: types.ColumnMetadata(types.ColumnTypeGenerated, types.Loki.String)},
+		semconv.FieldFromFQN("utf8.label.test", true),
+		semconv.FieldFromFQN("utf8.metadata.test", true),
+		semconv.FieldFromFQN("utf8.generated.test", true),
 	}
 
 	// CSV data where:
@@ -291,7 +300,9 @@ null,null,null`
 	require.NoError(t, err)
 	defer record.Release()
 
-	e := expressionEvaluator{}
+	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+	defer alloc.AssertSize(t, 0) // Assert empty on test exit
+	e := newExpressionEvaluator(alloc)
 
 	t.Run("ambiguous column should use per-row precedence order", func(t *testing.T) {
 		colExpr := &physical.ColumnExpr{
@@ -325,8 +336,10 @@ null,null,null`
 		colVec, err := e.eval(colExpr, record)
 		require.NoError(t, err)
 		require.IsType(t, &CoalesceVector{}, colVec)
+		defer colVec.Release()
 
 		arr := colVec.ToArray()
+		defer arr.Release()
 		require.IsType(t, &array.String{}, arr)
 		stringArr := arr.(*array.String)
 
@@ -340,7 +353,7 @@ null,null,null`
 	t.Run("look-up matching single column should return Array", func(t *testing.T) {
 		// Create a record with only one column type
 		fields := []arrow.Field{
-			{Name: "single", Type: arrow.BinaryTypes.String, Metadata: types.ColumnMetadata(types.ColumnTypeLabel, types.Loki.String)},
+			semconv.FieldFromFQN("utf8.label.single", false),
 		}
 		data := `label_0
 label_1
@@ -381,5 +394,253 @@ label_2
 		colVec, err := e.eval(colExpr, record)
 		require.NoError(t, err)
 		require.IsType(t, &Scalar{}, colVec)
+	})
+}
+
+func TestEvaluateUnaryCastExpression(t *testing.T) {
+	colMsg := semconv.ColumnIdentMessage
+	colStatusCode := semconv.NewIdentifier("status_code", types.ColumnTypeMetadata, types.Loki.String)
+	colTimeout := semconv.NewIdentifier("timeout", types.ColumnTypeParsed, types.Loki.String)
+	colMixedValues := semconv.NewIdentifier("mixed_values", types.ColumnTypeMetadata, types.Loki.String)
+
+	t.Run("unknown column", func(t *testing.T) {
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer alloc.AssertSize(t, 0) // Assert empty on test exit
+		e := newExpressionEvaluator(alloc)
+		expr := &physical.UnaryExpr{
+			Left: &physical.ColumnExpr{
+				Ref: types.ColumnRef{
+					Column: "does_not_exist",
+					Type:   types.ColumnTypeAmbiguous,
+				},
+			},
+			Op: types.UnaryOpCastFloat,
+		}
+
+		n := len(words)
+		rec := batch(n, time.Now())
+		colVec, err := e.eval(expr, rec)
+		require.NoError(t, err)
+		defer colVec.Release()
+
+		id := colVec.Type().ArrowType().ID()
+		require.Equal(t, arrow.STRUCT, id)
+
+		arr, ok := colVec.ToArray().(*array.Struct)
+		require.True(t, ok)
+		defer arr.Release()
+
+		require.Equal(t, 3, arr.NumField()) // value, error, error_details
+		value, ok := arr.Field(0).(*array.Float64)
+		require.True(t, ok)
+
+		errorField, ok := arr.Field(1).(*array.String)
+		require.True(t, ok)
+
+		errorDetailsField, ok := arr.Field(2).(*array.String)
+		require.True(t, ok)
+
+		require.Equal(t, n, value.Len())
+		for i := range n {
+			require.Equal(t, 0.0, value.Value(i), "expected value to be 0.0 for row %d", i)
+			require.Equal(t, types.SampleExtractionErrorType, errorField.Value(i))
+			require.Contains(t, `strconv.ParseFloat: parsing "": invalid syntax`, errorDetailsField.Value(i))
+		}
+	})
+
+	t.Run("cast column generates a value", func(t *testing.T) {
+		expr := &physical.UnaryExpr{
+			Left: &physical.ColumnExpr{
+				Ref: types.ColumnRef{
+					Column: "status_code",
+					Type:   types.ColumnTypeAmbiguous,
+				},
+			},
+			Op: types.UnaryOpCastBytes,
+		}
+
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer alloc.AssertSize(t, 0) // Assert empty on test exit
+		e := newExpressionEvaluator(alloc)
+
+		schema := arrow.NewSchema(
+			[]arrow.Field{
+				semconv.FieldFromIdent(colMsg, false),
+				semconv.FieldFromIdent(colStatusCode, true),
+				semconv.FieldFromIdent(colTimeout, true),
+			},
+			nil,
+		)
+		rows := arrowtest.Rows{
+			{"utf8.builtin.message": "timeout set", "utf8.metadata.status_code": "200", "utf8.parsed.timeout": "2m"},
+			{"utf8.builtin.message": "short timeout", "utf8.metadata.status_code": "204", "utf8.parsed.timeout": "10s"},
+			{"utf8.builtin.message": "long timeout", "utf8.metadata.status_code": "404", "utf8.parsed.timeout": "1h"},
+		}
+
+		record := rows.Record(alloc, schema)
+		defer record.Release()
+
+		colVec, err := e.eval(expr, record)
+		require.NoError(t, err)
+		defer colVec.Release()
+		id := colVec.Type().ArrowType().ID()
+		require.Equal(t, arrow.STRUCT, id)
+
+		arr, ok := colVec.ToArray().(*array.Struct)
+		require.True(t, ok)
+		defer arr.Release()
+
+		require.Equal(t, 1, arr.NumField())
+		value, ok := arr.Field(0).(*array.Float64)
+		require.True(t, ok)
+
+		require.Equal(t, 3, value.Len())
+		require.Equal(t, 200.0, value.Value(0))
+		require.Equal(t, 204.0, value.Value(1))
+		require.Equal(t, 404.0, value.Value(2))
+	})
+
+	t.Run("cast column generates a value from a parsed column", func(t *testing.T) {
+		expr := &physical.UnaryExpr{
+			Left: &physical.ColumnExpr{
+				Ref: types.ColumnRef{
+					Column: "timeout",
+					Type:   types.ColumnTypeAmbiguous,
+				},
+			},
+			Op: types.UnaryOpCastDuration,
+		}
+
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer alloc.AssertSize(t, 0) // Assert empty on test exit
+		e := newExpressionEvaluator(alloc)
+
+		schema := arrow.NewSchema(
+			[]arrow.Field{
+				semconv.FieldFromIdent(colMsg, false),
+				semconv.FieldFromIdent(colStatusCode, true),
+				semconv.FieldFromIdent(colTimeout, true),
+			},
+			nil,
+		)
+		rows := arrowtest.Rows{
+			{"utf8.builtin.message": "timeout set", "utf8.metadata.status_code": "200", "utf8.parsed.timeout": "2m"},
+			{"utf8.builtin.message": "short timeout", "utf8.metadata.status_code": "204", "utf8.parsed.timeout": "10s"},
+			{"utf8.builtin.message": "long timeout", "utf8.metadata.status_code": "404", "utf8.parsed.timeout": "1h"},
+		}
+
+		record := rows.Record(alloc, schema)
+		defer record.Release()
+
+		colVec, err := e.eval(expr, record)
+		require.NoError(t, err)
+		defer colVec.Release()
+		id := colVec.Type().ArrowType().ID()
+		require.Equal(t, arrow.STRUCT, id)
+
+		arr, ok := colVec.ToArray().(*array.Struct)
+		require.True(t, ok)
+		defer arr.Release()
+
+		require.Equal(t, 1, arr.NumField())
+		value, ok := arr.Field(0).(*array.Float64)
+		require.True(t, ok)
+
+		require.Equal(t, 3, value.Len())
+		require.Equal(t, 120.0, value.Value(0))
+		require.Equal(t, 3600.0, value.Value(2))
+	})
+
+	t.Run("cast operation tracks errors", func(t *testing.T) {
+		colExpr := &physical.UnaryExpr{
+			Left: &physical.ColumnExpr{
+				Ref: types.ColumnRef{
+					Column: "mixed_values",
+					Type:   types.ColumnTypeAmbiguous,
+				},
+			},
+			Op: types.UnaryOpCastFloat,
+		}
+
+		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
+		defer alloc.AssertSize(t, 0) // Assert empty on test exit
+		e := newExpressionEvaluator(alloc)
+
+		schema := arrow.NewSchema(
+			[]arrow.Field{
+				semconv.FieldFromIdent(colMsg, false),
+				semconv.FieldFromIdent(colMixedValues, true),
+			},
+			nil,
+		)
+		rows := arrowtest.Rows{
+			{"utf8.builtin.message": "valid numeric", "utf8.metadata.mixed_values": "42.5"},
+			{"utf8.builtin.message": "invalid numeric", "utf8.metadata.mixed_values": "not_a_number"},
+			{"utf8.builtin.message": "valid bytes", "utf8.metadata.mixed_values": "1KB"},
+			{"utf8.builtin.message": "invalid bytes", "utf8.metadata.mixed_values": "invalid_bytes"},
+			{"utf8.builtin.message": "empty string", "utf8.metadata.mixed_values": ""},
+		}
+
+		record := rows.Record(alloc, schema)
+		defer record.Release()
+
+		colVec, err := e.eval(colExpr, record)
+		require.NoError(t, err)
+		defer colVec.Release()
+		id := colVec.Type().ArrowType().ID()
+		require.Equal(t, arrow.STRUCT, id)
+
+		arr, ok := colVec.ToArray().(*array.Struct)
+		require.True(t, ok)
+		defer arr.Release()
+
+		require.Equal(t, 3, arr.NumField()) //value, error, errorDetails
+
+		// Find the value, error, and errorDetails fields using schema
+		var valueField *array.Float64
+		var errorField, errorDetailsField *array.String
+		valueField, ok = arr.Field(0).(*array.Float64)
+		require.True(t, ok)
+		errorField, ok = arr.Field(1).(*array.String)
+		require.True(t, ok)
+		errorDetailsField, ok = arr.Field(2).(*array.String)
+		require.True(t, ok)
+
+		require.NotNil(t, valueField, "expected to find a Float64 value field in struct")
+		require.NotNil(t, errorField, "expected to find error field in struct")
+		require.NotNil(t, errorDetailsField, "expected to find errorDetails field in struct")
+
+		// Verify values: first row is valid (42.5), rest are invalid (0.0 with errors)
+		require.Equal(t, 42.5, valueField.Value(0))
+		require.False(t, valueField.IsNull(0))
+		require.True(t, errorField.IsNull(0))
+
+		// Row 1: invalid - "not_a_number"
+		require.Equal(t, 0.0, valueField.Value(1))
+		require.False(t, valueField.IsNull(1)) // Verify value is non-null 0.0
+		require.False(t, errorField.IsNull(1))
+		require.Equal(t, types.SampleExtractionErrorType, errorField.Value(1))
+		require.Contains(t, errorDetailsField.Value(1), `strconv.ParseFloat: parsing "not_a_number": invalid syntax`)
+
+		// Row 2: invalid - "1KB"
+		require.Equal(t, 0.0, valueField.Value(2))
+		require.False(t, valueField.IsNull(2)) // Verify value is non-null 0.0
+		require.False(t, errorField.IsNull(2))
+		require.Equal(t, types.SampleExtractionErrorType, errorField.Value(2))
+		require.Contains(t, errorDetailsField.Value(2), `strconv.ParseFloat: parsing "1KB": invalid syntax`)
+
+		// Row 3: invalid - "invalid_bytes"
+		require.Equal(t, 0.0, valueField.Value(3))
+		require.False(t, valueField.IsNull(3)) // Verify value is non-null 0.0
+		require.False(t, errorField.IsNull(3))
+		require.Equal(t, types.SampleExtractionErrorType, errorField.Value(3))
+		require.Contains(t, errorDetailsField.Value(3), `strconv.ParseFloat: parsing "invalid_bytes": invalid syntax`)
+
+		// Row 4: invalid - empty string
+		require.Equal(t, 0.0, valueField.Value(4))
+		require.False(t, valueField.IsNull(4)) // Verify value is non-null 0.0
+		require.False(t, errorField.IsNull(4))
+		require.Equal(t, types.SampleExtractionErrorType, errorField.Value(4))
+		require.Contains(t, errorDetailsField.Value(4), `strconv.ParseFloat: parsing "": invalid syntax`)
 	})
 }

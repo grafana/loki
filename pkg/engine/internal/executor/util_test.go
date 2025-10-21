@@ -11,14 +11,14 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 var (
 	incrementingIntPipeline = newRecordGenerator(
 		arrow.NewSchema([]arrow.Field{
-			{Name: "id", Type: types.Arrow.Integer, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Integer)},
+			semconv.FieldFromFQN("int64.builtin.id", false),
 		}, nil),
 
 		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record {
@@ -55,8 +55,8 @@ const (
 func timestampPipeline(start time.Time, order time.Duration) *recordGenerator {
 	return newRecordGenerator(
 		arrow.NewSchema([]arrow.Field{
-			{Name: "id", Type: types.Arrow.Integer, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Integer)},
-			{Name: "timestamp", Type: types.Arrow.Timestamp, Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Timestamp)},
+			semconv.FieldFromFQN("int64.builtin.id", false),
+			semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", false),
 		}, nil),
 
 		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record {
@@ -101,14 +101,13 @@ func newRecordGenerator(schema *arrow.Schema, batch batchFunc) *recordGenerator 
 func (p *recordGenerator) Pipeline(batchSize int64, rows int64) Pipeline {
 	var pos int64
 	return newGenericPipeline(
-		Local,
-		func(_ context.Context, _ []Pipeline) state {
+		func(_ context.Context, _ []Pipeline) (arrow.Record, error) {
 			if pos >= rows {
-				return Exhausted
+				return nil, EOF
 			}
 			batch := p.batch(pos, rows, batchSize, p.schema)
 			pos += batch.NumRows()
-			return successState(batch)
+			return batch, nil
 		},
 		nil,
 	)
@@ -182,9 +181,3 @@ func (p *ArrowtestPipeline) Read(_ context.Context) (arrow.Record, error) {
 
 // Close implements [Pipeline], immediately exhausting the pipeline.
 func (p *ArrowtestPipeline) Close() { p.cur = math.MaxInt64 }
-
-// Inputs implements [Pipeline], returning nil as this pipeline has no inputs.
-func (p *ArrowtestPipeline) Inputs() []Pipeline { return nil }
-
-// Transport implements [Pipeline], returning [Local].
-func (p *ArrowtestPipeline) Transport() Transport { return Local }

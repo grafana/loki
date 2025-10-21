@@ -17,6 +17,8 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
+	dskit_flagext "github.com/grafana/dskit/flagext"
+
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
@@ -68,6 +70,9 @@ type Config struct {
 	// Enable the next generation Loki Query Engine for supported queries.
 	Enable bool `yaml:"enable" category:"experimental"`
 
+	DataobjStorageLag   time.Duration      `yaml:"dataobj_storage_lag" category:"experimental"`
+	DataobjStorageStart dskit_flagext.Time `yaml:"dataobj_storage_start" category:"experimental"`
+
 	// Batch size of the v2 execution engine.
 	BatchSize int `yaml:"batch_size" category:"experimental"`
 
@@ -78,11 +83,18 @@ type Config struct {
 	RangeConfig rangeio.Config `yaml:"range_reads" category:"experimental" doc:"description=Configures how to read byte ranges from object storage when using the V2 engine."`
 }
 
-func (opts *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.BoolVar(&opts.Enable, prefix+"enable", false, "Experimental: Enable next generation query engine for supported queries.")
-	f.IntVar(&opts.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
-	f.IntVar(&opts.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
-	opts.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.BoolVar(&cfg.Enable, prefix+"enable", false, "Experimental: Enable next generation query engine for supported queries.")
+	f.IntVar(&cfg.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
+	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
+	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
+
+	f.DurationVar(&cfg.DataobjStorageLag, prefix+"dataobj-storage-lag", 1*time.Hour, "Amount of time until data objects are available.")
+	f.Var(&cfg.DataobjStorageStart, prefix+"dataobj-storage-start", "Initial date when data objects became available. Format YYYY-MM-DD. If not set, assume data objects are always available no matter how far back.")
+}
+
+func (cfg *Config) ValidQueryRange() (time.Time, time.Time) {
+	return time.Time(cfg.DataobjStorageStart).UTC(), time.Now().UTC().Add(-cfg.DataobjStorageLag)
 }
 
 // QueryEngine combines logical planning, physical planning, and execution to evaluate LogQL queries.
@@ -158,7 +170,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 		level.Info(logger).Log(
 			"msg", "finished logical planning",
 			"plan", logicalPlan.String(),
-			"duration", durLogicalPlanning.Seconds(),
+			"duration", durLogicalPlanning.String(),
 		)
 		span.SetStatus(codes.Ok, "")
 		return logicalPlan, nil
@@ -199,7 +211,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 		level.Info(logger).Log(
 			"msg", "finished physical planning",
 			"plan", physical.PrintAsTree(plan),
-			"duration", durPhysicalPlanning.Seconds(),
+			"duration", durPhysicalPlanning.String(),
 		)
 		span.SetStatus(codes.Ok, "")
 		return plan, nil
@@ -274,6 +286,11 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 	metadataCtx.AddWarning("Query was executed using the new experimental query engine and dataobj storage.")
 	span.SetStatus(codes.Ok, "")
 	return builder.Build(stats, metadataCtx), nil
+}
+
+func IsQuerySupported(params logql.Params) bool {
+	_, err := logical.BuildPlan(params)
+	return err == nil
 }
 
 func collectResult(ctx context.Context, pipeline executor.Pipeline, builder ResultBuilder) error {

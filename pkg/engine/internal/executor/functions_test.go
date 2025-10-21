@@ -120,6 +120,8 @@ func createFloat64Array(mem memory.Allocator, values []float64, nulls []bool) *A
 // Helper function to extract boolean values from result
 func extractBoolValues(result ColumnVector) []bool {
 	arr := result.ToArray().(*array.Boolean)
+	defer arr.Release()
+
 	values := make([]bool, arr.Len())
 	for i := 0; i < arr.Len(); i++ {
 		if arr.IsNull(i) {
@@ -210,7 +212,7 @@ func TestBinaryFunctionRegistry_GetForSignature(t *testing.T) {
 }
 
 func TestBooleanComparisonFunctions(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.NewGoAllocator())
+	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer mem.AssertSize(t, 0)
 
 	tests := []struct {
@@ -284,7 +286,7 @@ func TestBooleanComparisonFunctions(t *testing.T) {
 }
 
 func TestStringComparisonFunctions(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.NewGoAllocator())
+	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer mem.AssertSize(t, 0)
 
 	tests := []struct {
@@ -358,7 +360,7 @@ func TestStringComparisonFunctions(t *testing.T) {
 }
 
 func TestIntegerComparisonFunctions(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.NewGoAllocator())
+	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer mem.AssertSize(t, 0)
 
 	tests := []struct {
@@ -432,7 +434,7 @@ func TestIntegerComparisonFunctions(t *testing.T) {
 }
 
 func TestTimestampComparisonFunctions(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.NewGoAllocator())
+	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer mem.AssertSize(t, 0)
 
 	tests := []struct {
@@ -506,7 +508,7 @@ func TestTimestampComparisonFunctions(t *testing.T) {
 }
 
 func TestFloat64ComparisonFunctions(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.NewGoAllocator())
+	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer mem.AssertSize(t, 0)
 
 	tests := []struct {
@@ -580,7 +582,7 @@ func TestFloat64ComparisonFunctions(t *testing.T) {
 }
 
 func TestStringMatchingFunctions(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.NewGoAllocator())
+	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer mem.AssertSize(t, 0)
 
 	tests := []struct {
@@ -654,7 +656,7 @@ func TestStringMatchingFunctions(t *testing.T) {
 }
 
 func TestNullValueHandling(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.NewGoAllocator())
+	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer mem.AssertSize(t, 0)
 
 	tests := []struct {
@@ -718,7 +720,7 @@ func TestNullValueHandling(t *testing.T) {
 }
 
 func TestArrayLengthMismatch(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.NewGoAllocator())
+	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer mem.AssertSize(t, 0)
 
 	tests := []struct {
@@ -776,7 +778,7 @@ func TestArrayLengthMismatch(t *testing.T) {
 }
 
 func TestRegexCompileError(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.NewGoAllocator())
+	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer mem.AssertSize(t, 0)
 
 	// Test with invalid regex patterns
@@ -819,7 +821,7 @@ func TestBoolToIntConversion(t *testing.T) {
 }
 
 func TestEmptyArrays(t *testing.T) {
-	mem := memory.NewCheckedAllocator(memory.NewGoAllocator())
+	mem := memory.NewCheckedAllocator(memory.DefaultAllocator)
 	defer mem.AssertSize(t, 0)
 
 	// Test with empty arrays

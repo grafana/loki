@@ -2123,6 +2123,22 @@ TenantsSpec
 <p>Tenants defines the per-tenant authentication and authorization spec for the lokistack-gateway component.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>networkPolicies</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-NetworkPoliciesSpec">
+NetworkPoliciesSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+When enabled, the operator creates NetworkPolicies to control ingress/egress between
+Loki components and related services.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -2169,6 +2185,20 @@ LokiStackStorageStatus
 <em>(Optional)</em>
 <p>Storage provides summary of all changes that have occurred
 to the storage configuration.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>networkPolicies</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-NetworkPoliciesStatus">
+NetworkPoliciesStatus
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>NetworkPolicies indicates whether NetworkPolicies are enabled or disabled for this LokiStack.</p>
 </td>
 </tr>
 <tr>
@@ -2515,6 +2545,62 @@ for the memberlist.</p>
 </tr><tr><td><p>&#34;static&#34;</p></td>
 <td><p>Static mode asserts the Authorization Spec&rsquo;s Roles and RoleBindings
 using an in-process OpenPolicyAgent Rego authorizer.</p>
+</td>
+</tr></tbody>
+</table>
+
+## NetworkPoliciesSpec { #loki-grafana-com-v1-NetworkPoliciesSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
+</p>
+<div>
+<p>NetworkPoliciesSpec defines the configuration for NetworkPolicies.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>disabled</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Disabled allows explicitly disabling NetworkPolicies.
+When false, NetworkPolicies are enabled.
+When true, NetworkPolicies are disabled.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## NetworkPoliciesStatus { #loki-grafana-com-v1-NetworkPoliciesStatus }
+(<code>string</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStatus">LokiStackStatus</a>)
+</p>
+<div>
+<p>NetworkPoliciesStatus defines the observed state of NetworkPolicies deployment.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;Disabled&#34;</p></td>
+<td><p>NetworkPoliciesStatusDisabled when NetworkPolicies are not deployed.</p>
+</td>
+</tr><tr><td><p>&#34;Enabled&#34;</p></td>
+<td><p>NetworkPoliciesStatusEnabled when NetworkPolicies are deployed.</p>
 </td>
 </tr></tbody>
 </table>

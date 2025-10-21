@@ -35,9 +35,5 @@ priorityClassName: {{ $pcn }}
 read target
 */}}
 {{- define "loki.readTarget" -}}
-{{- if .Values.loki.ui.enable -}}
-{{- print "%s,ui" .Values.read.targetModule -}}
-{{- else -}}
-{{- print "%s" .Values.read.targetModule -}}
-{{- end -}}
+{{- .Values.read.targetModule -}}{{- if .Values.loki.ui.enabled -}},ui{{- end -}}
 {{- end -}}

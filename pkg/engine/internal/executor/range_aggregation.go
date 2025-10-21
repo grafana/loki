@@ -152,9 +152,9 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				}
 				return nil, err
 			}
+			defer record.Release()
 
 			inputsExhausted = false
-			defer record.Release()
 
 			// extract all the columns that are used for partitioning
 			arrays := make([]*array.String, 0, len(r.opts.partitionBy))
@@ -163,12 +163,16 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				if err != nil {
 					return nil, err
 				}
+				defer vec.Release()
 
 				if vec.Type() != types.Loki.String {
 					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.Type())
 				}
 
-				arrays = append(arrays, vec.ToArray().(*array.String))
+				arr := vec.ToArray().(*array.String)
+				defer arr.Release()
+
+				arrays = append(arrays, arr)
 			}
 
 			// extract timestamp column to check if the entry is in range
@@ -176,7 +180,9 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 			if err != nil {
 				return nil, err
 			}
+			defer tsVec.Release()
 			tsCol := tsVec.ToArray().(*array.Timestamp)
+			defer tsCol.Release()
 
 			// no need to extract value column for COUNT aggregation
 			var valVec ColumnVector
@@ -185,6 +191,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				if err != nil {
 					return nil, err
 				}
+				defer valVec.Release()
 			}
 
 			for row := range int(record.NumRows()) {
@@ -226,16 +233,6 @@ func (r *rangeAggregationPipeline) Close() {
 	for _, input := range r.inputs {
 		input.Close()
 	}
-}
-
-// Inputs returns the inputs of the pipeline.
-func (r *rangeAggregationPipeline) Inputs() []Pipeline {
-	return r.inputs
-}
-
-// Transport returns the type of transport of the implementation.
-func (r *rangeAggregationPipeline) Transport() Transport {
-	return Local
 }
 
 func newMatcherFactoryFromOpts(opts rangeAggregationOptions) *matcherFactory {

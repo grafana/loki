@@ -1507,6 +1507,10 @@ singleBinary:
     whenDeleted: Delete
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: true
+    # -- Enable StatefulSetRecreation for changes to PVC size.
+    # This means that the StatefulSet will be deleted, recreated (with the same name) and rolled when a change to the
+    # PVC size is detected. That way the PVC can be resized without manual intervention.
+    enableStatefulSetRecreationForSizeChange: false
     # -- Enable persistent disk
     enabled: true
     # -- Set access modes on the PersistentVolumeClaim
@@ -3500,6 +3504,8 @@ memcached:
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
+  # -- Startup probe for memcached pods
+  startupProbe: {}
 
 memcachedExporter:
   # -- Whether memcached metrics should be exported
@@ -3545,6 +3551,8 @@ memcachedExporter:
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
+  # -- Startup probe for memcached exporter
+  startupProbe: {}
 
 resultsCache:
   # -- Specifies whether memcached based results-cache should be enabled
@@ -4076,6 +4084,12 @@ monitoring:
     annotations: {}
     # -- Additional labels for the rules PrometheusRule resource
     labels: {}
+    # -- Additional annotations for PrometheusRule alerts
+    additionalRuleAnnotations: {}
+    # e.g.:
+    # additionalRuleAnnotations:
+    #   runbook_url: "https://runbooks.example.com/oncall/loki"
+    #   summary: "What this alert means and how to respond"
     # -- Additional labels for PrometheusRule alerts
     additionalRuleLabels: {}
     # -- Additional groups to add to the rules file

@@ -4,6 +4,8 @@ import (
 	"fmt"
 )
 
+var _ Visitor = (*nodeCollectVisitor)(nil)
+
 // A visitor implementation that collects nodes during traversal and optionally
 // executes custom functions for each node type. Used primarily for testing
 // traversal behavior.
@@ -12,12 +14,12 @@ type nodeCollectVisitor struct {
 	onVisitDataObjScan       func(*DataObjScan) error
 	onVisitFilter            func(*Filter) error
 	onVisitLimit             func(*Limit) error
-	onVisitSortMerge         func(*SortMerge) error
-	onVisitMerge             func(*Merge) error
 	onVisitProjection        func(*Projection) error
 	onVisitRangeAggregation  func(*RangeAggregation) error
 	onVisitVectorAggregation func(*VectorAggregation) error
 	onVisitParse             func(*ParseNode) error
+	onVisitParallelize       func(*Parallelize) error
+	onVisitScanSet           func(*ScanSet) error
 }
 
 func (v *nodeCollectVisitor) VisitDataObjScan(n *DataObjScan) error {
@@ -52,23 +54,6 @@ func (v *nodeCollectVisitor) VisitProjection(n *Projection) error {
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitSortMerge(n *SortMerge) error {
-	if v.onVisitSortMerge != nil {
-		return v.onVisitSortMerge(n)
-	}
-	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
-	return nil
-}
-
-func (v *nodeCollectVisitor) VisitMerge(n *Merge) error {
-	if v.onVisitMerge != nil {
-		return v.onVisitMerge(n)
-	}
-
-	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
-	return nil
-}
-
 func (v *nodeCollectVisitor) VisitRangeAggregation(n *RangeAggregation) error {
 	if v.onVisitRangeAggregation != nil {
 		return v.onVisitRangeAggregation(n)
@@ -89,6 +74,32 @@ func (v *nodeCollectVisitor) VisitVectorAggregation(n *VectorAggregation) error 
 func (v *nodeCollectVisitor) VisitParse(n *ParseNode) error {
 	if v.onVisitParse != nil {
 		return v.onVisitParse(n)
+	}
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	return nil
+}
+
+func (v *nodeCollectVisitor) VisitCompat(*ColumnCompat) error {
+	return nil
+}
+
+func (v *nodeCollectVisitor) VisitTopK(n *TopK) error {
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	return nil
+}
+
+func (v *nodeCollectVisitor) VisitParallelize(n *Parallelize) error {
+	if v.onVisitParallelize != nil {
+		return v.onVisitParallelize(n)
+	}
+
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	return nil
+}
+
+func (v *nodeCollectVisitor) VisitScanSet(n *ScanSet) error {
+	if v.onVisitScanSet != nil {
+		return v.onVisitScanSet(n)
 	}
 	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
 	return nil

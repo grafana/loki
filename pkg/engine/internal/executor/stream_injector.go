@@ -10,10 +10,14 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-var streamInjectorColumnName = "stream_id.int64"
+var (
+	streamInjectorColumnName  = "int64.generated.stream_id"
+	streamInjectorColumnIdent = semconv.MustParseFQN(streamInjectorColumnName)
+)
 
 // streamInjector injects stream labels into a logs Arrow record, replacing the
 // streams ID column with columns for the labels composing those streams.
@@ -39,14 +43,14 @@ func newStreamInjector(alloc memory.Allocator, view *streamsView) *streamInjecto
 //
 // The returned record must be Release()d by the caller when no longer needed.
 func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Record, error) {
-	streamIDIndex, err := si.findStreamIDColumn(in)
+	streamIDCol, streamIDIndex, err := columnForIdent(streamInjectorColumnIdent, in)
 	if err != nil {
-		return nil, fmt.Errorf("finding stream ID column: %w", err)
+		return nil, err
 	}
 
-	streamIDValues, ok := in.Column(streamIDIndex).(*array.Int64)
+	streamIDValues, ok := streamIDCol.(*array.Int64)
 	if !ok {
-		return nil, fmt.Errorf("stream ID column %q must be of type int64, got %s", streamInjectorColumnName, in.Schema().Field(streamIDIndex).Type)
+		return nil, fmt.Errorf("column %s must be of type int64, got %s", streamInjectorColumnIdent.FQN(), in.Schema().Field(streamIDIndex))
 	}
 
 	type labelColumn struct {
@@ -65,22 +69,19 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 	}()
 
 	getColumn := func(name string) *labelColumn {
-		if col, ok := labelLookup[name]; ok {
+		ident := semconv.NewIdentifier(name, types.ColumnTypeLabel, types.Loki.String)
+
+		if col, ok := labelLookup[ident.FQN()]; ok {
 			return col
 		}
 
 		col := &labelColumn{
-			Field: arrow.Field{
-				Name:     name,
-				Type:     arrow.BinaryTypes.String,
-				Nullable: true,
-				Metadata: types.ColumnMetadata(types.ColumnTypeLabel, types.Loki.String),
-			},
+			Field:   semconv.FieldFromIdent(ident, true), // labels are nullable
 			Builder: array.NewStringBuilder(si.alloc),
 		}
 
 		labels = append(labels, col)
-		labelLookup[name] = col
+		labelLookup[ident.FQN()] = col
 		return col
 	}
 
@@ -147,14 +148,4 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 
 	schema := arrow.NewSchemaWithEndian(fields, &md, in.Schema().Endianness())
 	return array.NewRecord(schema, arrs, in.NumRows()), nil
-}
-
-func (si *streamInjector) findStreamIDColumn(in arrow.Record) (int, error) {
-	indices := in.Schema().FieldIndices(streamInjectorColumnName)
-	if len(indices) == 0 {
-		return -1, fmt.Errorf("stream ID column %q not found in input record", streamInjectorColumnName)
-	} else if len(indices) > 1 {
-		return -1, fmt.Errorf("multiple stream ID columns found in input record: %v", indices)
-	}
-	return indices[0], nil
 }

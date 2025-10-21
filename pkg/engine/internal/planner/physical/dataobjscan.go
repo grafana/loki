@@ -1,6 +1,9 @@
 package physical
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 // DataObjLocation is a string that uniquely indentifies a data object location in
 // object storage.
@@ -8,8 +11,7 @@ type DataObjLocation string
 
 // DataObjScan represents a physical plan operation for reading data objects.
 // It contains information about the object location, stream IDs, projections,
-// predicates, scan direction, and result limit for reading data from a data
-// object.
+// predicates for reading data from a data object.
 type DataObjScan struct {
 	id string
 
@@ -29,10 +31,6 @@ type DataObjScan struct {
 	// returned. Predicates would almost always contain a time range filter to
 	// only read the logs for the requested time range.
 	Predicates []Expression
-	// Direction defines in what order columns are read.
-	Direction SortOrder
-	// Limit is used to stop scanning the data object once it is reached.
-	Limit uint32
 }
 
 // ID implements the [Node] interface.
@@ -42,6 +40,17 @@ func (s *DataObjScan) ID() string {
 		return fmt.Sprintf("%p", s)
 	}
 	return s.id
+}
+
+// Clone returns a deep copy of the node (minus its ID).
+func (s *DataObjScan) Clone() Node {
+	return &DataObjScan{
+		Location:    s.Location,
+		Section:     s.Section,
+		StreamIDs:   slices.Clone(s.StreamIDs),
+		Projections: cloneExpressions(s.Projections),
+		Predicates:  cloneExpressions(s.Predicates),
+	}
 }
 
 // Type implements the [Node] interface.

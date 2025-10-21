@@ -152,7 +152,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.8.0
-    createdAt: "2025-10-17T10:32:22Z"
+    createdAt: "2025-10-21T12:58:43Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -648,6 +648,20 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:select:Managed
         - urn:alm:descriptor:com.tectonic.ui:select:Unmanaged
+      - description: |-
+          NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+          When enabled, the operator creates NetworkPolicies to control ingress/egress between
+          Loki components and related services.
+        displayName: Network Policies
+        path: networkPolicies
+      - description: |-
+          Disabled allows explicitly disabling NetworkPolicies.
+          When false, NetworkPolicies are enabled.
+          When true, NetworkPolicies are disabled.
+        displayName: Disabled
+        path: networkPolicies.disabled
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
       - description: Proxy defines the spec for the object proxy to configure cluster
           proxy information.
         displayName: Cluster Proxy
@@ -1699,6 +1713,7 @@ spec:
           - config.openshift.io
           resources:
           - apiservers
+          - clusterversions
           - dnses
           - proxies
           verbs:
@@ -1776,6 +1791,7 @@ spec:
           - networking.k8s.io
           resources:
           - ingresses
+          - networkpolicies
           verbs:
           - create
           - delete

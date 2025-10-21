@@ -62,6 +62,7 @@ rules:
   - config.openshift.io
   resources:
   - apiservers
+  - clusterversions
   - dnses
   - proxies
   verbs:
@@ -139,6 +140,7 @@ rules:
   - networking.k8s.io
   resources:
   - ingresses
+  - networkpolicies
   verbs:
   - create
   - delete

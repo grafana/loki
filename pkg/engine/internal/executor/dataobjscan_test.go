@@ -14,15 +14,11 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/grafana/loki/pkg/push"
-)
-
-var (
-	labelMD    = types.ColumnMetadata(types.ColumnTypeLabel, types.Loki.String)
-	metadataMD = types.ColumnMetadata(types.ColumnTypeMetadata, types.Loki.String)
 )
 
 func Test_dataobjScan(t *testing.T) {
@@ -89,12 +85,12 @@ func Test_dataobjScan(t *testing.T) {
 		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
-			{Name: "env", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
-			{Name: "service", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
-			{Name: "guid", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
-			{Name: "pod", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
-			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: types.ColumnMetadataBuiltinTimestamp, Nullable: true},
-			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: types.ColumnMetadataBuiltinMessage, Nullable: true},
+			semconv.FieldFromFQN("utf8.label.env", true),
+			semconv.FieldFromFQN("utf8.label.service", true),
+			semconv.FieldFromFQN("utf8.metadata.guid", true),
+			semconv.FieldFromFQN("utf8.metadata.pod", true),
+			semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", true), // should be nullable=false?
+			semconv.FieldFromFQN("utf8.builtin.message", true),           // should be nullable=false?
 		}
 
 		expectCSV := `prod,loki,eeee-ffff-aaaa-bbbb,NULL,1970-01-01 00:00:10,goodbye world
@@ -123,8 +119,8 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
-			{Name: "env", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
-			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: types.ColumnMetadataBuiltinTimestamp, Nullable: true},
+			semconv.FieldFromFQN("utf8.label.env", true),
+			semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", true), // should be not nullable?
 		}
 
 		expectCSV := `prod,1970-01-01 00:00:10
@@ -150,12 +146,12 @@ prod,1970-01-01 00:00:02`
 		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
-			{Name: "env", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
-			{Name: "service", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
-			{Name: "guid", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
-			{Name: "pod", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
-			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: types.ColumnMetadataBuiltinTimestamp, Nullable: true},
-			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: types.ColumnMetadataBuiltinMessage, Nullable: true},
+			semconv.FieldFromFQN("utf8.label.env", true),
+			semconv.FieldFromFQN("utf8.label.service", true),
+			semconv.FieldFromFQN("utf8.metadata.guid", true),
+			semconv.FieldFromFQN("utf8.metadata.pod", true),
+			semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", true), // should be nullable=false?
+			semconv.FieldFromFQN("utf8.builtin.message", true),           // should be nullable=false?
 		}
 
 		expectCSV := `prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:03,goodbye world
@@ -182,7 +178,7 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
-			{Name: "env", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
+			semconv.FieldFromFQN("utf8.label.env", true),
 		}
 
 		expectCSV := `prod
@@ -262,16 +258,16 @@ func Test_dataobjScan_DuplicateColumns(t *testing.T) {
 		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
-			{Name: "env", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
-			{Name: "namespace", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
-			{Name: "pod", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
-			{Name: "service", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
+			semconv.FieldFromFQN("utf8.label.env", true),
+			semconv.FieldFromFQN("utf8.label.namespace", true),
+			semconv.FieldFromFQN("utf8.label.pod", true),
+			semconv.FieldFromFQN("utf8.label.service", true),
 
-			{Name: "namespace", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
-			{Name: "pod", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
+			semconv.FieldFromFQN("utf8.metadata.namespace", true),
+			semconv.FieldFromFQN("utf8.metadata.pod", true),
 
-			{Name: "timestamp", Type: arrow.FixedWidthTypes.Timestamp_ns, Metadata: types.ColumnMetadataBuiltinTimestamp, Nullable: true},
-			{Name: "message", Type: arrow.BinaryTypes.String, Metadata: types.ColumnMetadataBuiltinMessage, Nullable: true},
+			semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", true),
+			semconv.FieldFromFQN("utf8.builtin.message", true),
 		}
 
 		expectCSV := `prod,namespace-2,NULL,loki,NULL,NULL,1970-01-01 00:00:03,message 3
@@ -297,8 +293,8 @@ prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1`
 		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
-			{Name: "pod", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
-			{Name: "pod", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
+			semconv.FieldFromFQN("utf8.label.pod", true),
+			semconv.FieldFromFQN("utf8.metadata.pod", true),
 		}
 
 		expectCSV := `NULL,NULL
@@ -324,8 +320,8 @@ pod-1,override`
 		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
-			{Name: "namespace", Type: arrow.BinaryTypes.String, Metadata: labelMD, Nullable: true},
-			{Name: "namespace", Type: arrow.BinaryTypes.String, Metadata: metadataMD, Nullable: true},
+			semconv.FieldFromFQN("utf8.label.namespace", true),
+			semconv.FieldFromFQN("utf8.metadata.namespace", true),
 		}
 
 		expectCSV := `namespace-2,NULL
@@ -349,6 +345,7 @@ func buildDataobj(t testing.TB, streams []logproto.Stream) *dataobj.Object {
 		TargetSectionSize:       32_000,
 		BufferSize:              8_000,
 		SectionStripeMergeLimit: 2,
+		DataobjSortOrder:        "timestamp-desc",
 	}, nil)
 	require.NoError(t, err)
 
