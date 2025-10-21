@@ -2148,6 +2148,16 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 		util_log.Logger,
 	)
 
+	httpMiddleware := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
+	)
+	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/dataobj-consumer/prepare_partition_downscale").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(t.dataObjConsumer.CatchAllHandler)),
+	)
+	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/dataobj-consumer/prepare_downscale").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(t.dataObjConsumer.CatchAllHandler)),
+	)
+
 	return t.dataObjConsumer, nil
 }
 
