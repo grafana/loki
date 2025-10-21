@@ -17,7 +17,6 @@ type planner struct {
 	physical *physical.Plan
 
 	streamWriters map[*Stream]*Task // Lookup of stream to which task writes to it
-	streamReaders map[*Stream]*Task // Lookup of stream to which task reads from it
 }
 
 // planWorkflow partitions a physical plan into a graph of tasks.
@@ -34,7 +33,6 @@ func planWorkflow(plan *physical.Plan) (dag.Graph[*Task], error) {
 		physical: plan,
 
 		streamWriters: make(map[*Stream]*Task),
-		streamReaders: make(map[*Stream]*Task),
 	}
 	if err := planner.Process(root); err != nil {
 		return dag.Graph[*Task]{}, err
@@ -54,7 +52,7 @@ func (p *planner) Process(root physical.Node) error {
 // indicates whether pipeline breaker nodes should be split off into their own
 // task.
 //
-// The reuslting task is the task immediately produced by node, which callers
+// The resulting task is the task immediately produced by node, which callers
 // can use to add edges. All tasks, including those produced in recursive calls
 // to processNode, are added into p.Graph.
 func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, error) {
@@ -116,7 +114,6 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 						return nil, err
 					}
 					sources[next] = append(sources[next], stream)
-					p.streamReaders[stream] = task
 				}
 
 			case child.Type() == physical.NodeTypeParallelize:
@@ -140,7 +137,6 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 						return nil, err
 					}
 					sources[next] = append(sources[next], stream)
-					p.streamReaders[stream] = task
 				}
 
 			default:

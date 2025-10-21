@@ -59,7 +59,7 @@ func New(logger log.Logger, runner Runner, plan *physical.Plan) (*Workflow, erro
 	}, nil
 }
 
-// injectResultsStreams injects a new stream into the sinks of the root task for
+// injectResultsStream injects a new stream into the sinks of the root task for
 // the workflow to receive final results.
 func injectResultsStream(graph *dag.Graph[*Task]) (*Stream, error) {
 	results := &Stream{ULID: ulid.Make()}
@@ -143,7 +143,7 @@ func (wf *Workflow) allStreams() []*Stream {
 		_ = wf.graph.Walk(root, func(t *Task) error {
 			// Task construction guarantees that there is a sink for each source
 			// (minus the results stream we generate), so there's no point in
-			// interating over Sources and Sinks.
+			// iterating over Sources and Sinks.
 			for _, streams := range t.Sources {
 				for _, stream := range streams {
 					if _, seen := seenStreams[stream]; seen {
