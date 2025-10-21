@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
 // Workflow represents a physical plan that has been partitioned into
@@ -23,6 +24,9 @@ type Workflow struct {
 	runner        Runner
 	graph         dag.Graph[*Task]
 	resultsStream *Stream
+
+	statsMut sync.Mutex
+	stats    stats.Result
 
 	tasksMut   sync.RWMutex
 	taskStates map[*Task]TaskState
@@ -123,6 +127,11 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 			// The same thing applies to RemoveStreams.
 			_ = wf.runner.Cancel(context.Background(), tasks...)
 			_ = wf.runner.RemoveStreams(context.Background(), streams...)
+
+			// Merge final stats results back into the caller.
+			wf.statsMut.Lock()
+			defer wf.statsMut.Unlock()
+			stats.JoinResults(ctx, wf.stats)
 		},
 	}
 	return wrapped, nil
@@ -187,13 +196,20 @@ func (wf *Workflow) onStreamChange(_ context.Context, stream *Stream, newState S
 	// out what to do here will need to wait until the scheduler is available.
 }
 
-func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newState TaskState) {
+func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus TaskStatus) {
 	wf.tasksMut.Lock()
-	wf.taskStates[task] = newState
+	wf.taskStates[task] = newStatus.State
 	wf.tasksMut.Unlock()
 
-	if !newState.Terminal() {
+	if !newStatus.State.Terminal() {
 		return
+	}
+
+	// TODO(rfratto): If newStatus represents a failure, should we propagate the
+	// error to the workflow owner?
+
+	if newStatus.Statistics != nil {
+		wf.mergeResults(*newStatus.Statistics)
 	}
 
 	// task reached a terminal state. We need to detect if task's immediate
@@ -224,6 +240,13 @@ func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newState TaskS
 	if err := wf.runner.Cancel(ctx, tasksToCancel...); err != nil {
 		level.Warn(wf.logger).Log("msg", "failed to cancel tasks", "err", err)
 	}
+}
+
+func (wf *Workflow) mergeResults(results stats.Result) {
+	wf.statsMut.Lock()
+	defer wf.statsMut.Unlock()
+
+	wf.stats.Merge(results)
 }
 
 type wrappedPipeline struct {
