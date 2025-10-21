@@ -263,15 +263,25 @@ func tokenAuthCredentials(opts Options) []corev1.EnvVar {
 }
 
 func serverSideEncryption(opts Options) []corev1.EnvVar {
-	secretName := opts.SecretName
-	switch opts.SharedStore {
-	case lokiv1.ObjectStorageSecretS3:
-		if opts.S3 != nil && opts.S3.SSE.Type == SSEKMSType && opts.S3.SSE.KMSEncryptionContext != "" {
-			return []corev1.EnvVar{
-				envVarFromSecret(EnvAWSSseKmsEncryptionContext, secretName, KeyAWSSseKmsEncryptionContext),
-			}
-		}
+	if opts.SharedStore != lokiv1.ObjectStorageSecretS3 || opts.S3 == nil {
 		return []corev1.EnvVar{}
+	}
+
+	secretName := opts.SecretName
+
+	switch opts.S3.SSE.Type {
+	case SSEKMSType:
+		if opts.S3.SSE.KMSEncryptionContext == "" {
+			return []corev1.EnvVar{}
+		}
+
+		return []corev1.EnvVar{
+			envVarFromSecret(EnvAWSSseKmsEncryptionContext, secretName, KeyAWSSseKmsEncryptionContext),
+		}
+	case SSECType:
+		return []corev1.EnvVar{
+			envVarFromSecret(EnvAWSSseCEncryptionKey, secretName, KeyAWSSseCEncryptionKey),
+		}
 	default:
 		return []corev1.EnvVar{}
 	}

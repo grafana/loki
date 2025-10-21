@@ -446,3 +446,24 @@ storage_config:
 
 ```
 
+## 18-S3-With-SSE-C-Snippet.yaml
+
+
+{{< admonition type="caution" >}}  
+Use caution when opting for server-side encryption with customer-provided keys (SSE-C). Unlike SSE-S3 and SSE-KMS, where key rotation is handled automatically by AWS, SSE-C requires manual key rotation which can be complex and error-prone in production environments.  
+{{< /admonition >}}
+
+
+
+This partial configuration uses S3 for chunk storage and an SSE-C customer key for encryption.
+
+```yaml
+
+storage_config:
+  aws:
+    s3: s3://access_key:secret_access_key@region/bucket_name
+    sse:
+      type: SSE-C
+      encryption_key: <YOUR-32-BYTE-ENCRYPTION-KEY>
+
+```
