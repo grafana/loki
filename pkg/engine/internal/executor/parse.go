@@ -70,7 +70,6 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline) *GenericPipelin
 		// Copy original columns
 		for i := range numOriginalCols {
 			col := batch.Column(i)
-			col.Retain() // Retain since we're releasing the batch
 			allColumns[i] = col
 		}
 

@@ -26,7 +26,6 @@ func NewArrays(mem memory.Allocator, dt arrow.DataType) *Arrays {
 // Append appends the entirety of the given array to the builder. The data type
 // of arr is not checked until calling [Arrays.Aggregate].
 func (a *Arrays) Append(arr arrow.Array) {
-	arr.Retain()
 	a.nrows++
 	a.in = append(a.in, arr)
 }

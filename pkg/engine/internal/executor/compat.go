@@ -25,7 +25,6 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 
 		// Return early if the batch has zero rows, even if column names would collide.
 		if batch.NumRows() == 0 {
-			batch.Retain() // retain to account for deferred release after reading the batch from the input
 			return batch, nil
 		}
 

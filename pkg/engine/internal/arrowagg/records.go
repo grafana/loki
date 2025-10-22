@@ -53,7 +53,6 @@ func NewRecords(mem memory.Allocator) *Records {
 func (r *Records) Append(rec arrow.Record) {
 	r.processSchema(rec.Schema())
 
-	rec.Retain()
 	r.records = append(r.records, rec)
 	r.rows += rec.NumRows()
 }
