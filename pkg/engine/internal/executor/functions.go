@@ -142,7 +142,7 @@ type BinaryFunctionRegistry interface {
 //		Evaluate(lhs ColumnVector[L], rhs ColumnVector[R]) (ColumnVector[arrow.BOOL], error)
 //	}
 type BinaryFunction interface {
-	Evaluate(lhs, rhs ColumnVector) (ColumnVector, error)
+	Evaluate(lhs, rhs ColumnVector, allocator memory.Allocator) (ColumnVector, error)
 }
 
 type binaryFuncReg struct {
@@ -192,40 +192,42 @@ type genericFunction[E arrayType[T], T comparable] struct {
 }
 
 // Evaluate implements BinaryFunction.
-func (f *genericFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector) (ColumnVector, error) {
+func (f *genericFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector, allocator memory.Allocator) (ColumnVector, error) {
+	lhsArr := lhs.ToArray()
+	defer lhsArr.Release()
+	rhsArr := rhs.ToArray()
+	defer rhsArr.Release()
+
 	if lhs.Len() != rhs.Len() {
 		return nil, arrow.ErrIndex
 	}
 
-	lhsArr, ok := lhs.ToArray().(E)
+	lhsArCasted, ok := lhsArr.(E)
 	if !ok {
 		return nil, arrow.ErrType
 	}
-	defer lhsArr.Release()
 
-	rhsArr, ok := rhs.ToArray().(E)
+	rhsArrCasted, ok := rhsArr.(E)
 	if !ok {
 		return nil, arrow.ErrType
 	}
-	defer rhsArr.Release()
 
-	mem := memory.NewGoAllocator()
-	builder := array.NewBooleanBuilder(mem)
+	builder := array.NewBooleanBuilder(allocator)
 	defer builder.Release()
 
-	for i := range lhsArr.Len() {
-		if lhsArr.IsNull(i) || rhsArr.IsNull(i) {
+	for i := range lhsArCasted.Len() {
+		if lhsArCasted.IsNull(i) || rhsArrCasted.IsNull(i) {
 			builder.Append(false)
 			continue
 		}
-		res, err := f.eval(lhsArr.Value(i), rhsArr.Value(i))
+		res, err := f.eval(lhsArCasted.Value(i), rhsArrCasted.Value(i))
 		if err != nil {
 			return nil, err
 		}
 		builder.Append(res)
 	}
 
-	return &Array{array: builder.NewArray()}, nil
+	return &Array{array: builder.NewArray(), dt: types.Loki.Bool, ct: types.ColumnTypeGenerated}, nil
 }
 
 // Compiler optimized version of converting boolean b into an integer of value 0 or 1

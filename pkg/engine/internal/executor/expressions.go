@@ -19,6 +19,10 @@ func newExpressionEvaluator() expressionEvaluator {
 	return expressionEvaluator{}
 }
 
+type releaser interface {
+	release()
+}
+
 func (e expressionEvaluator) eval(expr physical.Expression, allocator memory.Allocator, input arrow.Record) (ColumnVector, error) {
 	switch expr := expr.(type) {
 
@@ -120,7 +124,6 @@ func (e expressionEvaluator) eval(expr physical.Expression, allocator memory.All
 		if err != nil {
 			return nil, err
 		}
-		defer lhr.Release()
 
 		fn, err := unaryFunctions.GetForSignature(expr.Op, lhr.Type().ArrowType())
 		if err != nil {
@@ -133,13 +136,11 @@ func (e expressionEvaluator) eval(expr physical.Expression, allocator memory.All
 		if err != nil {
 			return nil, err
 		}
-		defer lhs.Release()
 
 		rhs, err := e.eval(expr.Right, allocator, input)
 		if err != nil {
 			return nil, err
 		}
-		defer rhs.Release()
 
 		// At the moment we only support functions that accept the same input types.
 		// TODO(chaudum): Compare Loki type, not Arrow type
@@ -152,7 +153,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, allocator memory.All
 		if err != nil {
 			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): %w", expr.Op, lhs.Type(), rhs.Type(), err)
 		}
-		return fn.Evaluate(lhs, rhs)
+		return fn.Evaluate(lhs, rhs, allocator)
 	}
 
 	return nil, fmt.Errorf("unknown expression: %v", expr)
@@ -179,8 +180,6 @@ type ColumnVector interface {
 	ColumnType() types.ColumnType
 	// Len returns the length of the vector
 	Len() int64
-	// Release decreases the reference count by 1 on underlying Arrow array
-	Release()
 }
 
 // Scalar represents a single value repeated any number of times.
@@ -242,8 +241,8 @@ func (v *Scalar) ColumnType() types.ColumnType {
 	return v.ct
 }
 
-// Release implements ColumnVector.
-func (v *Scalar) Release() {
+// release implements releaser.
+func (v *Scalar) release() {
 }
 
 // Len implements ColumnVector.
@@ -263,7 +262,7 @@ var _ ColumnVector = (*Array)(nil)
 
 // ToArray implements ColumnVector.
 func (a *Array) ToArray() arrow.Array {
-	a.array.Retain()
+	// this should already has 1 ref counter
 	return a.array
 }
 
@@ -304,8 +303,8 @@ func (a *Array) Len() int64 {
 	return int64(a.array.Len())
 }
 
-// Release implements ColumnVector.
-func (a *Array) Release() {
+// release implements releaser.
+func (a *Array) release() {
 	a.array.Release()
 }
 
@@ -331,7 +330,6 @@ func NewArrayStruct(arr *array.Struct, ct types.ColumnType) *ArrayStruct {
 // ToArray implements ColumnVector.
 // Returns the underlying struct array.
 func (a *ArrayStruct) ToArray() arrow.Array {
-	a.array.Retain()
 	return a.array
 }
 
@@ -461,6 +459,11 @@ func (m *CoalesceVector) Len() int64 {
 	return m.rows
 }
 
-// Release implements ColumnVector.
-func (m *CoalesceVector) Release() {
+// release implements releaser.
+func (m *CoalesceVector) release() {
+	for _, v := range m.vectors {
+		if r, ok := v.(releaser); ok {
+			r.release()
+		}
+	}
 }

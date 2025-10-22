@@ -28,7 +28,6 @@ func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expres
 			if err != nil {
 				return nil, err
 			}
-			defer vec.Release()
 
 			arr := vec.ToArray()
 			// boolean filters are only used for filtering; they're not returned

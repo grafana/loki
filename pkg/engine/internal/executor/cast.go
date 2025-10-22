@@ -28,10 +28,10 @@ func castFn(operation types.UnaryOp) UnaryFunction {
 		conversionFn := getConversionFunction(operation)
 		castCol, errTracker := castValues(sourceCol, conversionFn, allocator)
 		defer castCol.Release()
+		defer errTracker.releaseBuilders()
 
 		// Build error columns if needed
 		errorCol, errorDetailsCol := errTracker.buildArrays()
-		defer errTracker.releaseBuilders()
 		if errTracker.hasErrors {
 			defer errorCol.Release()
 			defer errorDetailsCol.Release()

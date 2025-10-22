@@ -89,7 +89,8 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 			e := newExpressionEvaluator()
 
 			n := len(words)
-			rec := batch(n, time.Now())
+			rec := batch(n, time.Now(), alloc)
+			defer rec.Release()
 			colVec, err := e.eval(literal, alloc, rec)
 			require.NoError(t, err)
 			require.Equalf(t, tt.arrowType, colVec.Type().ArrowType().ID(), "expected: %v got: %v", tt.arrowType.String(), colVec.Type().ArrowType().ID().String())
@@ -120,12 +121,15 @@ func TestEvaluateColumnExpression(t *testing.T) {
 		}
 
 		n := len(words)
-		rec := batch(n, time.Now())
+		rec := batch(n, time.Now(), alloc)
+		defer rec.Release()
 		colVec, err := e.eval(colExpr, alloc, rec)
 		require.NoError(t, err)
 
-		_, ok := colVec.(*Scalar)
+		col, ok := colVec.(*Scalar)
 		require.True(t, ok, "expected column vector to be a *Scalar, got %T", colVec)
+		arr := col.ToArray()
+		defer arr.Release()
 		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
 	})
 
@@ -138,9 +142,12 @@ func TestEvaluateColumnExpression(t *testing.T) {
 		}
 
 		n := len(words)
-		rec := batch(n, time.Now())
+		rec := batch(n, time.Now(), alloc)
+		defer rec.Release()
 		colVec, err := e.eval(colExpr, alloc, rec)
 		require.NoError(t, err)
+		arr := colVec.ToArray()
+		defer arr.Release()
 		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
 
 		for i := range n {
@@ -232,11 +239,8 @@ func collectBooleanColumnVector(vec ColumnVector) []bool {
 
 var words = []string{"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"}
 
-func batch(n int, now time.Time) arrow.Record {
-	// 1. Create a memory allocator
-	mem := memory.NewGoAllocator()
-
-	// 2. Define the schema
+func batch(n int, now time.Time, allocator memory.Allocator) arrow.Record {
+	// Define the schema
 	schema := arrow.NewSchema(
 		[]arrow.Field{
 			semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
@@ -245,14 +249,14 @@ func batch(n int, now time.Time) arrow.Record {
 		nil, // No metadata
 	)
 
-	// 3. Create builders for each column
-	logBuilder := array.NewStringBuilder(mem)
+	// Create builders for each column
+	logBuilder := array.NewStringBuilder(allocator)
 	defer logBuilder.Release()
 
-	tsBuilder := array.NewTimestampBuilder(mem, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
+	tsBuilder := array.NewTimestampBuilder(allocator, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
 	defer tsBuilder.Release()
 
-	// 4. Append data to the builders
+	// Append data to the builders
 	logs := make([]string, n)
 	ts := make([]arrow.Timestamp, n)
 
@@ -264,14 +268,14 @@ func batch(n int, now time.Time) arrow.Record {
 	tsBuilder.AppendValues(ts, nil)
 	logBuilder.AppendValues(logs, nil)
 
-	// 5. Build the arrays
+	// Build the arrays
 	logArray := logBuilder.NewArray()
 	defer logArray.Release()
 
 	tsArray := tsBuilder.NewArray()
 	defer tsArray.Release()
 
-	// 6. Create the record
+	// Create the record
 	columns := []arrow.Array{logArray, tsArray}
 	record := array.NewRecord(schema, columns, int64(n))
 
@@ -336,10 +340,8 @@ null,null,null`
 		colVec, err := e.eval(colExpr, alloc, record)
 		require.NoError(t, err)
 		require.IsType(t, &CoalesceVector{}, colVec)
-		defer colVec.Release()
 
 		arr := colVec.ToArray()
-		defer arr.Release()
 		require.IsType(t, &array.String{}, arr)
 		stringArr := arr.(*array.String)
 
@@ -418,10 +420,10 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 		}
 
 		n := len(words)
-		rec := batch(n, time.Now())
+		rec := batch(n, time.Now(), alloc)
+		defer rec.Release()
 		colVec, err := e.eval(expr, alloc, rec)
 		require.NoError(t, err)
-		defer colVec.Release()
 
 		id := colVec.Type().ArrowType().ID()
 		require.Equal(t, arrow.STRUCT, id)
@@ -482,7 +484,6 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 
 		colVec, err := e.eval(expr, alloc, record)
 		require.NoError(t, err)
-		defer colVec.Release()
 		id := colVec.Type().ArrowType().ID()
 		require.Equal(t, arrow.STRUCT, id)
 
@@ -534,7 +535,6 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 
 		colVec, err := e.eval(expr, alloc, record)
 		require.NoError(t, err)
-		defer colVec.Release()
 		id := colVec.Type().ArrowType().ID()
 		require.Equal(t, arrow.STRUCT, id)
 
@@ -586,7 +586,6 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 
 		colVec, err := e.eval(colExpr, alloc, record)
 		require.NoError(t, err)
-		defer colVec.Release()
 		id := colVec.Type().ArrowType().ID()
 		require.Equal(t, arrow.STRUCT, id)
 
