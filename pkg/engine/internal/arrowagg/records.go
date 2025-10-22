@@ -106,9 +106,8 @@ func (r *Records) AppendSlice(rec arrow.Record, i, j int64) {
 	r.Append(slice)
 }
 
-// Aggregate all appended records into a single record. The returned record
-// must be Release'd after use. If no records have been appended, Aggregate
-// returns an error.
+// Aggregate all appended records into a single record.
+// If no records have been appended, Aggregate returns an error.
 //
 // The returned record will have a schema composed of the union of all fields
 // from the input records, sorted by the order in which each field was first

@@ -94,7 +94,6 @@ func createFloat64Array(values []float64, nulls []bool) *Column {
 }
 
 // Helper function to extract boolean values from result
-// Releases the array from the column vector
 func extractBoolValues(result ColumnVector) []bool {
 	arr := result.Array().(*array.Boolean)
 

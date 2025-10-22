@@ -95,7 +95,6 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 			require.NoError(t, err)
 
 			arr := colVec.Array()
-			defer arr.Release()
 			require.Equalf(t, tt.arrowType, arr.DataType().ID(), "expected: %v got: %v", tt.arrowType.String(), arr.DataType().ID().String())
 
 			for i := range n {
@@ -125,7 +124,6 @@ func TestEvaluateColumnExpression(t *testing.T) {
 		rec := batch(n, time.Now())
 		colVec, err := e.eval(colExpr, rec)
 		require.NoError(t, err)
-		defer colVec.Array().Release()
 
 		require.Equal(t, "utf8.generated.__scalar__", colVec.Ident().FQN())
 		require.Equal(t, arrow.STRING, colVec.Array().DataType().ID())
@@ -143,7 +141,6 @@ func TestEvaluateColumnExpression(t *testing.T) {
 		rec := batch(n, time.Now())
 		colVec, err := e.eval(colExpr, rec)
 		require.NoError(t, err)
-		defer colVec.Array().Release()
 		require.Equal(t, arrow.STRING, colVec.Array().DataType().ID())
 
 		for i := range n {
@@ -308,7 +305,6 @@ null,null,null`
 		require.NoError(t, err)
 
 		arr := colVec.Array()
-		defer arr.Release()
 
 		require.Equal(t, arrow.STRING, arr.DataType().ID())
 		require.Equal(t, types.ColumnTypeAmbiguous, colVec.Ident().ColumnType())
@@ -365,7 +361,6 @@ label_2
 		require.NoError(t, err)
 
 		arr := colVec.Array()
-		defer arr.Release()
 
 		require.Equal(t, arrow.STRING, arr.DataType().ID())
 		require.Equal(t, types.ColumnTypeLabel, colVec.Ident().ColumnType())
@@ -389,7 +384,6 @@ label_2
 		require.NoError(t, err)
 
 		arr := colVec.Array()
-		defer arr.Release()
 
 		require.Equal(t, arrow.STRING, arr.DataType().ID())
 		require.Equal(t, "utf8.generated.__scalar__", colVec.Ident().FQN())
