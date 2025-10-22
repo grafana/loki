@@ -8,7 +8,6 @@ import (
 	"math"
 	"math/rand"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -38,7 +37,7 @@ type SegmentTeeConfig struct {
 	Enabled bool `yaml:"enabled"`
 
 	// Topic is the Kafka topic name to write segmented logs to
-	Topic string `yaml:"topic_name"`
+	Topic string `yaml:"topic"`
 
 	// MaxBufferedBytes is the maximum number of bytes that can be buffered before producing to Kafka
 	MaxBufferedBytes flagext.Bytes `yaml:"max_buffered_bytes"`
@@ -62,7 +61,7 @@ type SegmentTeeConfig struct {
 // RegisterFlags registers the flags for the SegmentTopicConfig
 func (cfg *SegmentTeeConfig) RegisterFlags(fs *flag.FlagSet) {
 	fs.BoolVar(&cfg.Enabled, "distributor.segment-topic.enabled", false, "Enable segment topic writer.")
-	fs.StringVar(&cfg.Topic, "distributor.segment-topic.topic-name", "loki-segments", "Topic name for segment topic writer.")
+	fs.StringVar(&cfg.Topic, "distributor.segment-topic.topic", "loki-segments", "Topic name for segment topic writer.")
 	cfg.MaxBufferedBytes = 100 << 20 // 100MB default
 	fs.Var(&cfg.MaxBufferedBytes, "distributor.segment-topic.max-buffered-bytes", "Maximum number of bytes that can be buffered before producing to Kafka.")
 	cfg.MaxRecordSizeBytes = kafka.MaxProducerRecordDataBytesLimit
