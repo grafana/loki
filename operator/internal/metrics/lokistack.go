@@ -74,8 +74,13 @@ func (l *lokiStackCollector) Collect(m chan<- prometheus.Metric) {
 
 		m <- prometheus.MustNewConstMetric(lokiStackInfoDesc, prometheus.GaugeValue, 1.0, labels...)
 
-		if !slices.ContainsFunc(stack.Status.Conditions, func(c metav1.Condition) bool { return c.Type == string(lokiv1.ConditionReady) }) {
-			m <- prometheus.MustNewConstMetric(lokiStackConditionsCountDesc, prometheus.GaugeValue, 1.0, append(labels, string(lokiv1.ConditionReady), string(lokiv1.ReasonReadyComponents), "false")...)
+		// Main condition should always be present to make things like alerts easier to write.
+		conditionInDefault := []lokiv1.LokiStackConditionType{lokiv1.ConditionFailed, lokiv1.ConditionReady, lokiv1.ConditionPending}
+		for _, c := range conditionInDefault {
+			if !slices.ContainsFunc(stack.Status.Conditions, func(cond metav1.Condition) bool { return cond.Type == string(c) }) {
+				m <- prometheus.MustNewConstMetric(lokiStackConditionsCountDesc, prometheus.GaugeValue, 0.0, append(labels, string(c), string(lokiv1.ReasonFailedComponents), "true")...)
+				m <- prometheus.MustNewConstMetric(lokiStackConditionsCountDesc, prometheus.GaugeValue, 1.0, append(labels, string(c), string(lokiv1.ReasonFailedComponents), "false")...)
+			}
 		}
 
 		for _, c := range stack.Status.Conditions {
