@@ -212,30 +212,28 @@ type genericBoolFunction[E arrayType[T], T comparable] struct {
 
 // Evaluate implements BinaryFunction.
 func (f *genericBoolFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector) (ColumnVector, error) {
-	lhsArr := lhs.ToArray()
-	rhsArr := rhs.ToArray()
-
 	if lhs.Len() != rhs.Len() {
 		return nil, arrow.ErrIndex
 	}
 
-	lhsArCasted, ok := lhsArr.(E)
+	lhsArr, ok := lhs.ToArray().(E)
 	if !ok {
 		return nil, arrow.ErrType
 	}
-	rhsArrCasted, ok := rhsArr.(E)
+
+	rhsArr, ok := rhs.ToArray().(E)
 	if !ok {
 		return nil, arrow.ErrType
 	}
 
 	builder := array.NewBooleanBuilder(memory.DefaultAllocator)
 
-	for i := range lhsArCasted.Len() {
-		if lhsArCasted.IsNull(i) || rhsArrCasted.IsNull(i) {
+	for i := range lhsArr.Len() {
+		if lhsArr.IsNull(i) || rhsArr.IsNull(i) {
 			builder.Append(false)
 			continue
 		}
-		res, err := f.eval(lhsArCasted.Value(i), rhsArrCasted.Value(i))
+		res, err := f.eval(lhsArr.Value(i), rhsArr.Value(i))
 		if err != nil {
 			return nil, err
 		}
@@ -253,31 +251,28 @@ type genericFloat64Function[E arrayType[T], T comparable] struct {
 
 // Evaluate implements BinaryFunction.
 func (f *genericFloat64Function[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector) (ColumnVector, error) {
-	lhsArr := lhs.ToArray()
-	rhsArr := rhs.ToArray()
-
 	if lhs.Len() != rhs.Len() {
 		return nil, arrow.ErrIndex
 	}
 
-	lhsArrCasted, ok := lhsArr.(E)
+	lhsArr, ok := lhs.ToArray().(E)
 	if !ok {
 		return nil, arrow.ErrType
 	}
 
-	rhsArrCasted, ok := rhsArr.(E)
+	rhsArr, ok := rhs.ToArray().(E)
 	if !ok {
 		return nil, arrow.ErrType
 	}
 
 	builder := array.NewFloat64Builder(memory.DefaultAllocator)
 
-	for i := range lhsArrCasted.Len() {
-		if lhsArrCasted.IsNull(i) || rhsArrCasted.IsNull(i) {
+	for i := range lhsArr.Len() {
+		if lhsArr.IsNull(i) || rhsArr.IsNull(i) {
 			builder.AppendNull()
 			continue
 		}
-		res, err := f.eval(lhsArrCasted.Value(i), rhsArrCasted.Value(i))
+		res, err := f.eval(lhsArr.Value(i), rhsArr.Value(i))
 		if err != nil {
 			return nil, err
 		}

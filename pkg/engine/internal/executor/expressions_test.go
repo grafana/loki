@@ -120,10 +120,8 @@ func TestEvaluateColumnExpression(t *testing.T) {
 		colVec, err := e.eval(colExpr, rec)
 		require.NoError(t, err)
 
-		col, ok := colVec.(*Scalar)
+		_, ok := colVec.(*Scalar)
 		require.True(t, ok, "expected column vector to be a *Scalar, got %T", colVec)
-		arr := col.ToArray()
-		defer arr.Release()
 		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
 	})
 
@@ -139,8 +137,6 @@ func TestEvaluateColumnExpression(t *testing.T) {
 		rec := batch(n, time.Now())
 		colVec, err := e.eval(colExpr, rec)
 		require.NoError(t, err)
-		arr := colVec.ToArray()
-		defer arr.Release()
 		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
 
 		for i := range n {

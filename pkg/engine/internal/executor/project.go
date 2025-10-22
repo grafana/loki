@@ -142,14 +142,12 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 		if err != nil {
 			return nil, err
 		}
-		arr := vec.ToArray()
-		defer arr.Release()
 
-		switch arrCasted := arr.(type) {
+		switch arrCasted := vec.ToArray().(type) {
 		case *array.Struct:
 			structSchema, ok := arrCasted.DataType().(*arrow.StructType)
 			if !ok {
-				return nil, fmt.Errorf("unexpected type returned from evaluation %T", arr.DataType())
+				return nil, fmt.Errorf("unexpected type returned from evaluation %T", arrCasted.DataType())
 			}
 			for i := range arrCasted.NumField() {
 				outputCols = append(outputCols, arrCasted.Field(i))
@@ -159,25 +157,11 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 			outputFields = append(outputFields, semconv.FieldFromIdent(semconv.ColumnIdentValue, false))
 			outputCols = append(outputCols, arrCasted)
 		default:
-			return nil, fmt.Errorf("unexpected type returned from evaluation %T", arr.DataType())
+			return nil, fmt.Errorf("unexpected type returned from evaluation %T", arrCasted.DataType())
 		}
 
 		metadata := schema.Metadata()
 		outputSchema := arrow.NewSchema(outputFields, &metadata)
 		return array.NewRecord(outputSchema, outputCols, batch.NumRows()), nil
 	}, input), nil
-}
-
-// getAllColumnRefs finds all column ref from the expression. Should 1 or 2, but might be deep in the expression tree.
-func getAllColumnRefs(expr physical.Expression) []*types.ColumnRef {
-	switch expr := expr.(type) {
-	case *physical.BinaryExpr:
-		return append(getAllColumnRefs(expr.Left), getAllColumnRefs(expr.Right)...)
-	case *physical.UnaryExpr:
-		return getAllColumnRefs(expr.Left)
-	case *physical.ColumnExpr:
-		return []*types.ColumnRef{&expr.Ref}
-	}
-
-	return nil
 }

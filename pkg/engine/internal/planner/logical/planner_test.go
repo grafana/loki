@@ -284,6 +284,7 @@ func TestCanExecuteQuery(t *testing.T) {
 			expected:  true,
 		},
 		{
+			// rate is not supported
 			statement: `sum by (level) (rate({env="prod"}[1m]))`,
 		},
 		{
@@ -295,7 +296,6 @@ func TestCanExecuteQuery(t *testing.T) {
 			statement: `sum by (level) (count_over_time({env="prod"}[1m] offset 5m))`,
 		},
 		{
-			// unwrap is not supported
 			statement: `sum by (level) (sum_over_time({env="prod"} | unwrap size [1m]))`,
 			expected:  true,
 		},

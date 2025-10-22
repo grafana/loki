@@ -371,23 +371,6 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 	return node, nil
 }
 
-func (p *Planner) hasNonMathExpressionChild(n Node) bool {
-	if n == nil {
-		return false
-	}
-
-	if _, ok := n.(*Projection); ok {
-		for _, c := range p.plan.Children(n) {
-			if p.hasNonMathExpressionChild(c) {
-				return true
-			}
-		}
-		return false
-	}
-
-	return true
-}
-
 func (p *Planner) processMathExpressionChild(c logical.Value, rootNode bool, ctx *Context) (Expression, Node, *ColumnExpr, error) {
 	switch v := c.(type) {
 	case *logical.BinOp:
@@ -402,6 +385,7 @@ func (p *Planner) processMathExpressionChild(c logical.Value, rootNode bool, ctx
 
 		// both left and right expressions have obj scans, replace with join
 		if leftInput != nil && rightInput != nil {
+			// replace column references with `_left` and `_right` indicating that there are two inputs coming from a Join
 			leftInputRef.Ref = types.ColumnRef{
 				Column: "value_left",
 				Type:   types.ColumnTypeGenerated,
@@ -410,8 +394,11 @@ func (p *Planner) processMathExpressionChild(c logical.Value, rootNode bool, ctx
 				Column: "value_right",
 				Type:   types.ColumnTypeGenerated,
 			}
+
+			// Insert an InnerJoin on timestamp before Projection
 			join := &Join{}
 			p.plan.graph.Add(join)
+
 			projection := &Projection{
 				Expressions: []Expression{
 					&BinaryExpr{
@@ -424,6 +411,7 @@ func (p *Planner) processMathExpressionChild(c logical.Value, rootNode bool, ctx
 				Expand: true,
 			}
 			p.plan.graph.Add(projection)
+
 			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: join, Child: projection}); err != nil {
 				return nil, nil, nil, err
 			}
@@ -499,6 +487,8 @@ func (p *Planner) processMathExpressionChild(c logical.Value, rootNode bool, ctx
 	case *logical.Literal:
 		return &LiteralExpr{Literal: v.Literal}, nil, nil, nil
 	default:
+		// If it is neigher a literal or an expression, then we continue `p.process` on this node and represent in
+		// as a column ref `value` in the final math expression.
 		columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
 		child, err := p.process(c, ctx)
 		if err != nil {
@@ -508,6 +498,9 @@ func (p *Planner) processMathExpressionChild(c logical.Value, rootNode bool, ctx
 	}
 }
 
+// Convert one or several [logical.BinOp]s into one [Projection] node where the result expression might be complex with
+// multiple binary or unary operations. It also might insert a [Join] node before a [Projection] if this math expression
+// reads data on both left and right sides.
 func (p *Planner) processBinOp(lp *logical.BinOp, ctx *Context) (Node, error) {
 	_, node, _, err := p.processMathExpressionChild(lp, true, ctx)
 	if err != nil {
