@@ -300,7 +300,7 @@ func New(
 
 		if cfg.SegmentTee.Enabled {
 			// Create SegmentTopicWriter with ingestLimits
-			segmentWriter, err := NewSegmentTopicWriter(cfg.SegmentTee, kafkaClient, overrides, partitionRing, ingestLimits, registerer, logger)
+			segmentWriter, err := NewSegmentTopicWriter(cfg.SegmentTee, kafkaClient, overrides, dataObjConsumerPartitionRing, ingestLimits, registerer, logger)
 			if err != nil {
 				return nil, fmt.Errorf("failed to start segment topic writer: %w", err)
 			}
