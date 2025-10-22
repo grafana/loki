@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
@@ -17,7 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -31,7 +31,7 @@ type Config struct {
 	MergePrefetchCount int
 }
 
-func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger) Pipeline {
+func Run(ctx context.Context, cfg Config, plan *physicalpb.Plan, logger log.Logger) Pipeline {
 	c := &Context{
 		plan:               plan,
 		batchSize:          cfg.BatchSize,
@@ -54,14 +54,14 @@ type Context struct {
 	batchSize int64
 
 	logger    log.Logger
-	plan      *physical.Plan
+	plan      *physicalpb.Plan
 	evaluator expressionEvaluator
 	bucket    objstore.Bucket
 
 	mergePrefetchCount int
 }
 
-func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
+func (c *Context) execute(ctx context.Context, node physicalpb.Node) Pipeline {
 	children := c.plan.Children(node)
 	inputs := make([]Pipeline, 0, len(children))
 	for _, child := range children {
@@ -69,7 +69,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 	}
 
 	switch n := node.(type) {
-	case *physical.DataObjScan:
+	case *physicalpb.DataObjScan:
 		// DataObjScan reads from object storage to determine the full pipeline to
 		// construct, making it expensive to call during planning time.
 		//
@@ -77,39 +77,39 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		// which wraps the pipeline with a topk/limit without reintroducing
 		// planning cost for thousands of scan nodes.
 		return newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
-			return tracePipeline("physical.DataObjScan", c.executeDataObjScan(ctx, n))
+			return tracePipeline("physicalpb.DataObjScan", c.executeDataObjScan(ctx, n))
 		}, inputs)
 
-	case *physical.SortMerge:
-		return tracePipeline("physical.SortMerge", c.executeSortMerge(ctx, n, inputs))
-	case *physical.Limit:
-		return tracePipeline("physical.Limit", c.executeLimit(ctx, n, inputs))
-	case *physical.Filter:
-		return tracePipeline("physical.Filter", c.executeFilter(ctx, n, inputs))
-	case *physical.Merge:
-		return tracePipeline("physical.Merge", c.executeMerge(ctx, n, inputs))
-	case *physical.Projection:
-		return tracePipeline("physical.Projection", c.executeProjection(ctx, n, inputs))
-	case *physical.RangeAggregation:
-		return tracePipeline("physical.RangeAggregation", c.executeRangeAggregation(ctx, n, inputs))
-	case *physical.VectorAggregation:
-		return tracePipeline("physical.VectorAggregation", c.executeVectorAggregation(ctx, n, inputs))
-	case *physical.ParseNode:
-		return tracePipeline("physical.ParseNode", c.executeParse(ctx, n, inputs))
-	case *physical.ColumnCompat:
-		return tracePipeline("physical.ColumnCompat", c.executeColumnCompat(ctx, n, inputs))
+	case *physicalpb.SortMerge:
+		return tracePipeline("physicalpb.SortMerge", c.executeSortMerge(ctx, n, inputs))
+	case *physicalpb.Limit:
+		return tracePipeline("physicalpb.Limit", c.executeLimit(ctx, n, inputs))
+	case *physicalpb.Filter:
+		return tracePipeline("physicalpb.Filter", c.executeFilter(ctx, n, inputs))
+	case *physicalpb.Merge:
+		return tracePipeline("physicalpb.Merge", c.executeMerge(ctx, n, inputs))
+	case *physicalpb.Projection:
+		return tracePipeline("physicalpb.Projection", c.executeProjection(ctx, n, inputs))
+	case *physicalpb.AggregateRange:
+		return tracePipeline("physicalpb.RangeAggregation", c.executeRangeAggregation(ctx, n, inputs))
+	case *physicalpb.AggregateVector:
+		return tracePipeline("physicalpb.VectorAggregation", c.executeVectorAggregation(ctx, n, inputs))
+	case *physicalpb.Parse:
+		return tracePipeline("physicalpb.ParseNode", c.executeParse(ctx, n, inputs))
+	case *physicalpb.ColumnCompat:
+		return tracePipeline("physicalpb.ColumnCompat", c.executeColumnCompat(ctx, n, inputs))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
 }
 
-func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObjScan) Pipeline {
+func (c *Context) executeDataObjScan(ctx context.Context, node *physicalpb.DataObjScan) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeDataObjScan", trace.WithAttributes(
 		attribute.String("location", string(node.Location)),
-		attribute.Int("section", node.Section),
-		attribute.Stringer("direction", node.Direction),
+		attribute.Int64("section", node.Section),
+		attribute.Stringer("direction", node.SortOrder),
 		attribute.Int("limit", int(node.Limit)),
-		attribute.Int("num_stream_ids", len(node.StreamIDs)),
+		attribute.Int("num_stream_ids", len(node.StreamIds)),
 		attribute.Int("num_predicates", len(node.Predicates)),
 		attribute.Int("num_projections", len(node.Projections)),
 	))
@@ -157,7 +157,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	}
 
 	for i, sec := range obj.Sections().Filter(logs.CheckSection) {
-		if i != node.Section {
+		if int64(i) != node.Section {
 			continue
 		}
 
@@ -176,7 +176,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	predicates := make([]logs.Predicate, 0, len(node.Predicates))
 
 	for _, p := range node.Predicates {
-		conv, err := buildLogsPredicate(p, logsSection.Columns())
+		conv, err := buildLogsPredicate(*p, logsSection.Columns())
 		if err != nil {
 			return errorPipeline(ctx, err)
 		}
@@ -195,7 +195,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		StreamsSection: streamsSection,
 
 		LogsSection: logsSection,
-		StreamIDs:   node.StreamIDs,
+		StreamIDs:   node.StreamIds,
 		Predicates:  predicates,
 		Projections: node.Projections,
 
@@ -219,21 +219,19 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	//
 	// If it's already sorted, we wrap by LimitPipeline to enforce the limit
 	// given to the node (if defined).
-	if node.Direction != physical.UNSORTED && (node.Direction != logsSortOrder(sortDirection) || sortType != logs.ColumnTypeTimestamp) {
-		level.Debug(c.logger).Log("msg", "sorting logs section", "source_sort", sortType, "source_direction", sortDirection, "requested_sort", logs.ColumnTypeTimestamp, "requested_dir", node.Direction)
+	if node.SortOrder != physicalpb.SORT_ORDER_INVALID && (node.SortOrder != logsSortOrder(sortDirection) || sortType != logs.ColumnTypeTimestamp) {
+		level.Debug(c.logger).Log("msg", "sorting logs section", "source_sort", sortType, "source_direction", sortDirection, "requested_sort", logs.ColumnTypeTimestamp, "requested_dir", node.SortOrder.String())
 
 		pipeline, err = newTopkPipeline(topkOptions{
 			Inputs: []Pipeline{pipeline},
 
-			SortBy: []physical.ColumnExpression{
-				&physical.ColumnExpr{
-					Ref: types.ColumnRef{
-						Column: types.ColumnNameBuiltinTimestamp,
-						Type:   physicalpb.COLUMN_TYPE_BUILTIN,
-					},
+			SortBy: []*physicalpb.ColumnExpression{
+				&physicalpb.ColumnExpression{
+					Name: types.ColumnNameBuiltinTimestamp,
+					Type: physicalpb.COLUMN_TYPE_BUILTIN,
 				},
 			},
-			Ascending: node.Direction == physical.ASC,
+			Ascending: node.SortOrder == physicalpb.SORT_ORDER_ASCENDING,
 			K:         int(node.Limit),
 
 			MaxUnused: int(c.batchSize) * 2,
@@ -250,18 +248,18 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 	return pipeline
 }
 
-func logsSortOrder(dir logs.SortDirection) physical.SortOrder {
+func logsSortOrder(dir logs.SortDirection) physicalpb.SortOrder {
 	switch dir {
 	case logs.SortDirectionAscending:
-		return physical.ASC
+		return physicalpb.SORT_ORDER_ASCENDING
 	case logs.SortDirectionDescending:
-		return physical.DESC
+		return physicalpb.SORT_ORDER_DESCENDING
 	}
 
-	return physical.UNSORTED
+	return physicalpb.SORT_ORDER_INVALID
 }
 
-func (c *Context) executeSortMerge(ctx context.Context, sortmerge *physical.SortMerge, inputs []Pipeline) Pipeline {
+func (c *Context) executeSortMerge(ctx context.Context, sortmerge *physicalpb.SortMerge, inputs []Pipeline) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeSortMerge", trace.WithAttributes(
 		attribute.Stringer("order", sortmerge.Order),
 		attribute.Int("num_inputs", len(inputs)),
@@ -275,14 +273,14 @@ func (c *Context) executeSortMerge(ctx context.Context, sortmerge *physical.Sort
 		return emptyPipeline()
 	}
 
-	pipeline, err := NewSortMergePipeline(inputs, sortmerge.Order, sortmerge.Column, c.evaluator)
+	pipeline, err := NewSortMergePipeline(inputs, sortmerge.Order, *sortmerge.Column, c.evaluator)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
 	return pipeline
 }
 
-func (c *Context) executeLimit(ctx context.Context, limit *physical.Limit, inputs []Pipeline) Pipeline {
+func (c *Context) executeLimit(ctx context.Context, limit *physicalpb.Limit, inputs []Pipeline) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeLimit", trace.WithAttributes(
 		attribute.Int("skip", int(limit.Skip)),
 		attribute.Int("fetch", int(limit.Fetch)),
@@ -301,7 +299,7 @@ func (c *Context) executeLimit(ctx context.Context, limit *physical.Limit, input
 	return NewLimitPipeline(inputs[0], limit.Skip, limit.Fetch)
 }
 
-func (c *Context) executeFilter(ctx context.Context, filter *physical.Filter, inputs []Pipeline) Pipeline {
+func (c *Context) executeFilter(ctx context.Context, filter *physicalpb.Filter, inputs []Pipeline) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeFilter", trace.WithAttributes(
 		attribute.Int("num_inputs", len(inputs)),
 	))
@@ -321,7 +319,7 @@ func (c *Context) executeFilter(ctx context.Context, filter *physical.Filter, in
 	return NewFilterPipeline(filter, inputs[0], c.evaluator, allocator)
 }
 
-func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []Pipeline) Pipeline {
+func (c *Context) executeMerge(ctx context.Context, _ *physicalpb.Merge, inputs []Pipeline) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeMerge", trace.WithAttributes(
 		attribute.Int("num_inputs", len(inputs)),
 	))
@@ -339,7 +337,7 @@ func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []
 	return pipeline
 }
 
-func (c *Context) executeProjection(ctx context.Context, proj *physical.Projection, inputs []Pipeline) Pipeline {
+func (c *Context) executeProjection(ctx context.Context, proj *physicalpb.Projection, inputs []Pipeline) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeProjection", trace.WithAttributes(
 		attribute.Int("num_columns", len(proj.Columns)),
 		attribute.Int("num_inputs", len(inputs)),
@@ -366,13 +364,13 @@ func (c *Context) executeProjection(ctx context.Context, proj *physical.Projecti
 	return p
 }
 
-func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.RangeAggregation, inputs []Pipeline) Pipeline {
+func (c *Context) executeRangeAggregation(ctx context.Context, plan *physicalpb.AggregateRange, inputs []Pipeline) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeRangeAggregation", trace.WithAttributes(
 		attribute.Int("num_partition_by", len(plan.PartitionBy)),
-		attribute.Int64("start_ts", plan.Start.UnixNano()),
-		attribute.Int64("end_ts", plan.End.UnixNano()),
-		attribute.Int64("range_interval", int64(plan.Range)),
-		attribute.Int64("step", int64(plan.Step)),
+		attribute.Int64("start_ts", plan.StartUnixNanos),
+		attribute.Int64("end_ts", plan.EndUnixNanos),
+		attribute.Int64("range_interval", int64(plan.RangeNs)),
+		attribute.Int64("step", int64(plan.StepNs)),
 		attribute.Int("num_inputs", len(inputs)),
 	))
 	defer span.End()
@@ -383,10 +381,10 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 
 	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
 		partitionBy:   plan.PartitionBy,
-		startTs:       plan.Start,
-		endTs:         plan.End,
-		rangeInterval: plan.Range,
-		step:          plan.Step,
+		startTs:       time.Unix(0, plan.StartUnixNanos),
+		endTs:         time.Unix(0, plan.EndUnixNanos),
+		rangeInterval: time.Duration(plan.RangeNs),
+		step:          time.Duration(plan.StepNs),
 		operation:     plan.Operation,
 	})
 	if err != nil {
@@ -396,7 +394,7 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physical.Ra
 	return pipeline
 }
 
-func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.VectorAggregation, inputs []Pipeline) Pipeline {
+func (c *Context) executeVectorAggregation(ctx context.Context, plan *physicalpb.AggregateVector, inputs []Pipeline) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeVectorAggregation", trace.WithAttributes(
 		attribute.Int("num_group_by", len(plan.GroupBy)),
 		attribute.Int("num_inputs", len(inputs)),
@@ -415,7 +413,7 @@ func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.V
 	return pipeline
 }
 
-func (c *Context) executeParse(ctx context.Context, parse *physical.ParseNode, inputs []Pipeline) Pipeline {
+func (c *Context) executeParse(ctx context.Context, parse *physicalpb.Parse, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}
@@ -430,7 +428,7 @@ func (c *Context) executeParse(ctx context.Context, parse *physical.ParseNode, i
 	return NewParsePipeline(parse, inputs[0], allocator)
 }
 
-func (c *Context) executeColumnCompat(ctx context.Context, compat *physical.ColumnCompat, inputs []Pipeline) Pipeline {
+func (c *Context) executeColumnCompat(ctx context.Context, compat *physicalpb.ColumnCompat, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	}

@@ -12,11 +12,11 @@ import (
 
 // BuildTree converts a physical plan node and its children into a tree structure
 // that can be used for visualization and debugging purposes.
-func BuildTree(p *Plan, n physicalpb.Node) *tree.Node {
+func BuildTree(p *physicalpb.Plan, n physicalpb.Node) *tree.Node {
 	return toTree(p, n)
 }
 
-func toTree(p *Plan, n physicalpb.Node) *tree.Node {
+func toTree(p *physicalpb.Plan, n physicalpb.Node) *tree.Node {
 	root := toTreeNode(n)
 	for _, child := range p.Children(n) {
 		if ch := toTree(p, child); ch != nil {
@@ -103,7 +103,7 @@ func toAnySlice[T any](s []T) []any {
 // PrintAsTree converts a physical [Plan] into a human-readable tree representation.
 // It processes each root node in the plan graph, and returns the combined
 // string output of all trees joined by newlines.
-func PrintAsTree(p *Plan) string {
+func PrintAsTree(p *physicalpb.Plan) string {
 	results := make([]string, 0, len(p.Roots()))
 
 	for _, root := range p.Roots() {
@@ -117,7 +117,7 @@ func PrintAsTree(p *Plan) string {
 	return strings.Join(results, "\n")
 }
 
-func WriteMermaidFormat(w io.Writer, p *Plan) {
+func WriteMermaidFormat(w io.Writer, p *physicalpb.Plan) {
 	for _, root := range p.Roots() {
 		node := BuildTree(p, root)
 		printer := tree.NewMermaid(w)

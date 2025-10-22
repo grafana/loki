@@ -11,13 +11,12 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 type rangeAggregationOptions struct {
-	partitionBy []physical.ColumnExpression
+	partitionBy []*physicalpb.ColumnExpression
 
 	// start and end timestamps are equal for instant queries.
 	startTs       time.Time     // start timestamp of the query
@@ -30,10 +29,10 @@ type rangeAggregationOptions struct {
 var (
 	// rangeAggregationOperations holds the mapping of range aggregation types to operations for an aggregator.
 	rangeAggregationOperations = map[physicalpb.AggregateRangeOp]aggregationOperation{
-		physicalpb.AggregateRangeOpSum:   aggregationOperationSum,
-		physicalpb.AggregateRangeOpCount: aggregationOperationCount,
-		physicalpb.AggregateRangeOpMax:   aggregationOperationMax,
-		physicalpb.AggregateRangeOpMin:   aggregationOperationMin,
+		physicalpb.AGGREGATE_RANGE_OP_SUM:   aggregationOperationSum,
+		physicalpb.AGGREGATE_RANGE_OP_COUNT: aggregationOperationCount,
+		physicalpb.AGGREGATE_RANGE_OP_MAX:   aggregationOperationMax,
+		physicalpb.AGGREGATE_RANGE_OP_MIN:   aggregationOperationMin,
 	}
 )
 
@@ -122,18 +121,14 @@ func (r *rangeAggregationPipeline) Read(ctx context.Context) (arrow.Record, erro
 // - Add toggle to return partial results on Read() call instead of returning only after exhausting all inputs.
 func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, error) {
 	var (
-		tsColumnExpr = &physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: types.ColumnNameBuiltinTimestamp,
-				Type:   physicalpb.COLUMN_TYPE_BUILTIN,
-			},
+		tsColumnExpr = &physicalpb.ColumnExpression{
+			Name: types.ColumnNameBuiltinTimestamp,
+			Type: physicalpb.COLUMN_TYPE_BUILTIN,
 		} // timestamp column expression
 
-		valColumnExpr = &physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: types.ColumnNameGeneratedValue,
-				Type:   physicalpb.COLUMN_TYPE_GENERATED,
-			},
+		valColumnExpr = &physicalpb.ColumnExpression{
+			Name: types.ColumnNameGeneratedValue,
+			Type: physicalpb.COLUMN_TYPE_GENERATED,
 		} // value column expression
 
 		// reused on each row read
@@ -160,7 +155,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 			// extract all the columns that are used for partitioning
 			arrays := make([]*array.String, 0, len(r.opts.partitionBy))
 			for _, columnExpr := range r.opts.partitionBy {
-				vec, err := r.evaluator.eval(columnExpr, record)
+				vec, err := r.evaluator.eval(*columnExpr.ToExpression(), record)
 				if err != nil {
 					return nil, err
 				}
@@ -176,7 +171,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 			}
 
 			// extract timestamp column to check if the entry is in range
-			tsVec, err := r.evaluator.eval(tsColumnExpr, record)
+			tsVec, err := r.evaluator.eval(*tsColumnExpr.ToExpression(), record)
 			if err != nil {
 				return nil, err
 			}
@@ -185,8 +180,8 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 
 			// no need to extract value column for COUNT aggregation
 			var valVec ColumnVector
-			if r.opts.operation != physicalpb.AggregateRangeOpCount {
-				valVec, err = r.evaluator.eval(valColumnExpr, record)
+			if r.opts.operation != physicalpb.AGGREGATE_RANGE_OP_COUNT {
+				valVec, err = r.evaluator.eval(*valColumnExpr.ToExpression(), record)
 				if err != nil {
 					return nil, err
 				}
@@ -206,7 +201,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				}
 
 				var value float64
-				if r.opts.operation != physicalpb.AggregateRangeOpCount {
+				if r.opts.operation != physicalpb.AGGREGATE_RANGE_OP_COUNT {
 					switch v := valVec.Value(row).(type) {
 					case float64:
 						value = v

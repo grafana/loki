@@ -7,7 +7,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -34,9 +33,10 @@ func TestNewProjectPipeline(t *testing.T) {
 		inputPipeline := NewBufferedPipeline(inputRecord)
 
 		// Create projection columns (just the "name" column)
-		columns := []physical.ColumnExpression{
-			&physical.ColumnExpr{
-				Ref: createColumnRef("name"),
+		columns := []*physicalpb.ColumnExpression{
+			&physicalpb.ColumnExpression{
+				Name: "name",
+				Type: physicalpb.COLUMN_TYPE_BUILTIN,
 			},
 		}
 
@@ -70,12 +70,14 @@ func TestNewProjectPipeline(t *testing.T) {
 		inputPipeline := NewBufferedPipeline(inputRecord)
 
 		// Create projection columns (both "name" and "city" columns)
-		columns := []physical.ColumnExpression{
-			&physical.ColumnExpr{
-				Ref: createColumnRef("name"),
+		columns := []*physicalpb.ColumnExpression{
+			&physicalpb.ColumnExpression{
+				Name: "name",
+				Type: physicalpb.COLUMN_TYPE_BUILTIN,
 			},
-			&physical.ColumnExpr{
-				Ref: createColumnRef("city"),
+			&physicalpb.ColumnExpression{
+				Name: "city",
+				Type: physicalpb.COLUMN_TYPE_BUILTIN,
 			},
 		}
 
@@ -110,15 +112,18 @@ func TestNewProjectPipeline(t *testing.T) {
 		inputPipeline := NewBufferedPipeline(inputRecord)
 
 		// Create projection columns (reordering columns)
-		columns := []physical.ColumnExpression{
-			&physical.ColumnExpr{
-				Ref: createColumnRef("city"),
+		columns := []*physicalpb.ColumnExpression{
+			&physicalpb.ColumnExpression{
+				Name: "city",
+				Type: physicalpb.COLUMN_TYPE_BUILTIN,
 			},
-			&physical.ColumnExpr{
-				Ref: createColumnRef("age"),
+			&physicalpb.ColumnExpression{
+				Name: "age",
+				Type: physicalpb.COLUMN_TYPE_BUILTIN,
 			},
-			&physical.ColumnExpr{
-				Ref: createColumnRef("name"),
+			&physicalpb.ColumnExpression{
+				Name: "name",
+				Type: physicalpb.COLUMN_TYPE_BUILTIN,
 			},
 		}
 
@@ -160,12 +165,14 @@ func TestNewProjectPipeline(t *testing.T) {
 		inputPipeline := NewBufferedPipeline(inputRecord1, inputRecord2)
 
 		// Create projection columns
-		columns := []physical.ColumnExpression{
-			&physical.ColumnExpr{
-				Ref: createColumnRef("name"),
+		columns := []*physicalpb.ColumnExpression{
+			&physicalpb.ColumnExpression{
+				Name: "name",
+				Type: physicalpb.COLUMN_TYPE_BUILTIN,
 			},
-			&physical.ColumnExpr{
-				Ref: createColumnRef("age"),
+			&physicalpb.ColumnExpression{
+				Name: "age",
+				Type: physicalpb.COLUMN_TYPE_BUILTIN,
 			},
 		}
 

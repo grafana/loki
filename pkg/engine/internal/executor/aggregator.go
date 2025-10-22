@@ -32,7 +32,7 @@ const (
 
 // aggregator is used to aggregate sample values by a set of grouping keys for each point in time.
 type aggregator struct {
-	groupBy   []physicalpb.ColumnExpression        // columns to group by
+	groupBy   []*physicalpb.ColumnExpression       // columns to group by
 	points    map[time.Time]map[uint64]*groupState // holds the groupState for each point in time series
 	digest    *xxhash.Digest                       // used to compute key for each group
 	operation aggregationOperation                 // aggregation type
@@ -42,7 +42,7 @@ type aggregator struct {
 // empty groupBy indicates no grouping. All values are aggregated into a single group.
 // TODO: add without argument to support `without(...)` grouping.
 // A special case of `without()` that has empty groupBy is used for Noop grouping which retains the input labels as is.
-func newAggregator(groupBy []physicalpb.ColumnExpression, pointsSizeHint int, operation aggregationOperation) *aggregator {
+func newAggregator(groupBy []*physicalpb.ColumnExpression, pointsSizeHint int, operation aggregationOperation) *aggregator {
 	a := aggregator{
 		groupBy:   groupBy,
 		digest:    xxhash.New(),

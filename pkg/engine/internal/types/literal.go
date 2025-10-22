@@ -7,6 +7,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
 
@@ -213,6 +214,26 @@ var (
 	_ Literal                 = (*BytesLiteral)(nil)
 	_ TypedLiteral[Bytes]     = (*BytesLiteral)(nil)
 )
+
+func NewLiteralFromKind(value physicalpb.LiteralExpression) Literal {
+	switch kind := value.Kind.(type) {
+	case *physicalpb.LiteralExpression_BoolLiteral:
+		return BoolLiteral(kind.BoolLiteral.Value)
+	case *physicalpb.LiteralExpression_StringLiteral:
+		return StringLiteral(kind.StringLiteral.Value)
+	case *physicalpb.LiteralExpression_IntegerLiteral:
+		return IntegerLiteral(kind.IntegerLiteral.Value)
+	case *physicalpb.LiteralExpression_FloatLiteral:
+		return FloatLiteral(kind.FloatLiteral.Value)
+	case *physicalpb.LiteralExpression_TimestampLiteral:
+		return TimestampLiteral(kind.TimestampLiteral.Value)
+	case *physicalpb.LiteralExpression_DurationLiteral:
+		return DurationLiteral(kind.DurationLiteral.Value)
+	case *physicalpb.LiteralExpression_BytesLiteral:
+		return BytesLiteral(kind.BytesLiteral.Value)
+	}
+	panic(fmt.Sprintf("invalid literal value type %T", value.Kind))
+}
 
 func NewLiteral[T LiteralType](value T) Literal {
 	switch val := any(value).(type) {

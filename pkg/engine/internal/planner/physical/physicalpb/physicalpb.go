@@ -2,7 +2,12 @@
 package physicalpb
 
 import (
+	"errors"
 	fmt "fmt"
+	"slices"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/ulid"
 )
 
 type NodeKind uint8
@@ -51,6 +56,9 @@ type Node interface {
 
 	// ID returns a string that uniquely identifies a node in the plan.
 	ID() string
+
+	// ulid returns the ULID value that uniquely identifies a node in the plan.
+	ulid() ulid.ULID
 
 	// Kind returns the kind for this node.
 	Kind() NodeKind
@@ -130,6 +138,17 @@ func (n *Parse) ID() string           { return n.GetId().Value.String() }
 func (n *Projection) ID() string      { return n.GetId().Value.String() }
 func (n *SortMerge) ID() string       { return n.GetId().Value.String() }
 func (n *ColumnCompat) ID() string    { return n.GetId().Value.String() }
+
+func (n *AggregateRange) ulid() ulid.ULID  { return n.GetId().Value }
+func (n *AggregateVector) ulid() ulid.ULID { return n.GetId().Value }
+func (n *DataObjScan) ulid() ulid.ULID     { return n.GetId().Value }
+func (n *Filter) ulid() ulid.ULID          { return n.GetId().Value }
+func (n *Limit) ulid() ulid.ULID           { return n.GetId().Value }
+func (n *Merge) ulid() ulid.ULID           { return n.GetId().Value }
+func (n *Parse) ulid() ulid.ULID           { return n.GetId().Value }
+func (n *Projection) ulid() ulid.ULID      { return n.GetId().Value }
+func (n *SortMerge) ulid() ulid.ULID       { return n.GetId().Value }
+func (n *ColumnCompat) ulid() ulid.ULID    { return n.GetId().Value }
 
 func (n *AggregateRange) Kind() NodeKind  { return NodeKindAggregateRange }
 func (n *AggregateVector) Kind() NodeKind { return NodeKindAggregateVector }
@@ -221,4 +240,204 @@ func ColumnTypeFromString(ct string) ColumnType {
 	default:
 		panic(fmt.Sprintf("invalid column type: %s", ct))
 	}
+}
+
+func (p *Plan) NodeById(id PlanNodeID) Node {
+	for _, n := range p.Nodes {
+		if GetNode(n).ID() == id.String() {
+			return GetNode(n)
+		}
+	}
+	return nil
+}
+
+func (p *Plan) NodeByStringId(id string) Node {
+	for _, n := range p.Nodes {
+		if GetNode(n).ID() == id {
+			return GetNode(n)
+		}
+	}
+	return nil
+}
+
+func (p *Plan) Roots() []Node {
+	if len(p.Nodes) == 0 {
+		return nil
+	}
+
+	var nodes = p.Nodes
+	roots := []Node{}
+	for _, n := range nodes {
+		roots = append(roots, GetNode(n))
+	}
+	for _, edge := range p.Edges {
+		if i := slices.Index(roots, p.NodeById(edge.Child)); i > 0 {
+			roots = append(roots[:i], roots[i+1:]...)
+		}
+	}
+	return roots
+}
+
+func (p *Plan) Root() (Node, error) {
+	roots := p.Roots()
+	if len(roots) == 0 {
+		return nil, fmt.Errorf("plan has no root node")
+	}
+	if len(roots) == 1 {
+		return roots[0], nil
+	}
+	return nil, fmt.Errorf("plan has multiple root nodes")
+}
+
+func (p *Plan) Leaves() []Node {
+	if len(p.Nodes) == 0 {
+		return nil
+	}
+
+	var nodes = p.Nodes
+	leaves := []Node{}
+	for _, n := range nodes {
+		leaves = append(leaves, GetNode(n))
+	}
+	for _, edge := range p.Edges {
+		if i := slices.Index(leaves, p.NodeById(edge.Parent)); i > 0 {
+			leaves = append(leaves[:i], leaves[i+1:]...)
+		}
+	}
+	return leaves
+}
+
+func (p *Plan) Parents(n Node) []Node {
+	parents := []Node{}
+	for _, e := range p.Edges {
+		if e.Child.String() == n.ID() {
+			parents = append(parents, p.NodeById(e.Parent))
+		}
+	}
+	return parents
+}
+
+func (p *Plan) Children(n Node) []Node {
+	children := []Node{}
+	for _, e := range p.Edges {
+		if e.Parent.String() == n.ID() {
+			children = append(children, p.NodeById(e.Child))
+		}
+	}
+	return children
+}
+
+func (p *Plan) Add(n Node) *PlanNode {
+	p.Nodes = append(p.Nodes, n.ToPlanNode())
+	return n.ToPlanNode()
+}
+
+func (p *Plan) AddEdge(e dag.Edge[Node]) error {
+	if (e.Parent == nil) || (e.Child == nil) {
+		return fmt.Errorf("parent and child nodes must not be zero values")
+	}
+	if e.Parent.ID() == e.Child.ID() {
+		return fmt.Errorf("cannot connect a node (%v) to itself", e.Parent.ID())
+	}
+	if p.NodeById(PlanNodeID{e.Parent.ulid()}) == nil || p.NodeById(PlanNodeID{e.Child.ulid()}) == nil {
+		return fmt.Errorf("both nodes %v and %v must already exist in the plan", e.Parent.ID(), e.Child.ID())
+	}
+	for _, edge := range p.Edges {
+		if (edge.Parent == PlanNodeID{Value: e.Parent.ulid()}) && (edge.Child == PlanNodeID{Value: e.Child.ulid()}) {
+			return fmt.Errorf("edge between node %v and %v already exists", e.Parent.ID(), e.Child.ID())
+		}
+	}
+	p.Edges = append(p.Edges, &PlanEdge{PlanNodeID{Value: e.Parent.ulid()}, PlanNodeID{Value: e.Child.ulid()}})
+	return nil
+}
+
+func (p *Plan) Eliminate(n Node) {
+	// For each parent p in the node to eliminate, push up n's children to
+	// become children of p, and remove n as a child of p.
+	parents := p.Parents(n)
+
+	// First remove n as a child of p
+	for i := 0; i < len(p.Edges); i++ {
+		edge := p.Edges[i]
+		if edge.Child.String() == n.ID() {
+			p.Edges = append(p.Edges[:i], p.Edges[:i+1]...)
+			i--
+		}
+	}
+
+	// Now push up n's children to become children of p
+	for _, child := range p.Children(n) {
+		for _, parent := range parents {
+			edgeExists := false
+			for _, e := range p.Edges {
+				if e.Parent.String() == parent.ID() && e.Child.String() == child.ID() {
+					// edge already exists, skip
+					edgeExists = true
+				}
+			}
+			if !edgeExists {
+				p.AddEdge(dag.Edge[Node]{Parent: parent, Child: child})
+			}
+		}
+	}
+	nodeIdx := slices.Index(p.Nodes, n.ToPlanNode())
+	p.Nodes = append(p.Nodes[:nodeIdx], p.Nodes[:nodeIdx+1]...)
+}
+
+// WalkFunc is a function that gets invoked when walking a Graph. Walking will
+// stop if WalkFunc returns a non-nil error.
+type WalkFunc func(n Node) error
+
+func (p *Plan) VisitorWalk(n Node, v Visitor, o WalkOrder) error {
+	return p.Walk(n, func(n Node) error { return n.Accept(v) }, o)
+}
+
+// Walk performs a depth-first walk of outgoing edges for all nodes in start,
+// invoking the provided fn for each node. Walk returns the error returned by
+// fn.
+//
+// Nodes unreachable from start will not be passed to fn.
+func (p *Plan) Walk(n Node, f WalkFunc, order WalkOrder) error {
+	visited := map[Node]bool{}
+	switch order {
+	case PRE_ORDER_WALK:
+		return p.preOrderWalk(n, f, visited)
+	case POST_ORDER_WALK:
+		return p.postOrderWalk(n, f, visited)
+	default:
+		return errors.New("unsupported walk order. must be one of PreOrderWalk and PostOrderWalk")
+	}
+}
+
+func (p *Plan) preOrderWalk(n Node, f WalkFunc, visited map[Node]bool) error {
+	if visited[n] {
+		return nil
+	}
+	visited[n] = true
+
+	if err := f(n); err != nil {
+		return err
+	}
+
+	for _, child := range p.Children(n) {
+		if err := p.preOrderWalk(child, f, visited); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *Plan) postOrderWalk(n Node, f WalkFunc, visited map[Node]bool) error {
+	if visited[n] {
+		return nil
+	}
+	visited[n] = true
+
+	for _, child := range p.Children(n) {
+		if err := p.postOrderWalk(child, f, visited); err != nil {
+			return err
+		}
+	}
+
+	return f(n)
 }

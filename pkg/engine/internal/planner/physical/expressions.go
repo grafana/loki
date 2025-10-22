@@ -41,16 +41,3 @@ func newColumnExpr(column string, ty physicalpb.ColumnType) *physicalpb.ColumnEx
 func newBinaryExpr(left *physicalpb.Expression, right *physicalpb.Expression, op physicalpb.BinaryOp) *physicalpb.BinaryExpression {
 	return &physicalpb.BinaryExpression{Left: left, Right: right, Op: op}
 }
-
-func BinaryExpressionToExpression(e *physicalpb.BinaryExpression) *physicalpb.Expression {
-	return &physicalpb.Expression{Kind: &physicalpb.Expression_BinaryExpression{BinaryExpression: e}}
-}
-func ColumnExpressionToExpression(e *physicalpb.ColumnExpression) *physicalpb.Expression {
-	return &physicalpb.Expression{Kind: &physicalpb.Expression_ColumnExpression{ColumnExpression: e}}
-}
-func LiteralExpressionToExpression(e *physicalpb.LiteralExpression) *physicalpb.Expression {
-	return &physicalpb.Expression{Kind: &physicalpb.Expression_LiteralExpression{LiteralExpression: e}}
-}
-func UnaryExpressionToExpression(e *physicalpb.UnaryExpression) *physicalpb.Expression {
-	return &physicalpb.Expression{Kind: &physicalpb.Expression_UnaryExpression{UnaryExpression: e}}
-}

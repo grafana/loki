@@ -125,7 +125,7 @@ func TestFormatRangeAggregationQuery(t *testing.T) {
 		},
 	).RangeAggregation(
 		[]ColumnRef{*NewColumnRef("label1", physicalpb.COLUMN_TYPE_AMBIGUOUS), *NewColumnRef("label2", physicalpb.COLUMN_TYPE_AMBIGUOUS)},
-		physicalpb.AggregateRangeOpCount,
+		physicalpb.AGGREGATE_RANGE_OP_COUNT,
 		time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(1970, 1, 1, 1, 0, 0, 0, time.UTC), // End Time
 		time.Minute,
@@ -176,7 +176,7 @@ func TestFormatVectorAggregationQuery(t *testing.T) {
 			*NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
 			*NewColumnRef("env", physicalpb.COLUMN_TYPE_LABEL),
 		},
-		physicalpb.AggregateVectorOpSum,
+		physicalpb.AGGREGATE_VECTOR_OP_SUM,
 	)
 
 	// Convert to plan so that node IDs get populated

@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
@@ -169,7 +170,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 		return logqlmodel.Result{}, err
 	}
 
-	physicalPlan, err := func() (*physical.Plan, error) {
+	physicalPlan, err := func() (*physicalpb.Plan, error) {
 		ctx, span := tracer.Start(ctx, "QueryEngine.Execute.physicalPlan")
 		defer span.End()
 

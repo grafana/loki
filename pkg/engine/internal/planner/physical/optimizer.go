@@ -18,7 +18,7 @@ type rule interface {
 
 // removeNoopFilter is a rule that removes Filter nodes without predicates.
 type removeNoopFilter struct {
-	plan *Plan
+	plan *physicalpb.Plan
 }
 
 // apply implements rule.
@@ -27,7 +27,7 @@ func (r *removeNoopFilter) apply(node physicalpb.Node) bool {
 	switch node := node.(type) {
 	case *physicalpb.Filter:
 		if len(node.Predicates) == 0 {
-			r.plan.graph.Eliminate(node)
+			r.plan.Eliminate(node)
 			changed = true
 		}
 	}
@@ -38,7 +38,7 @@ var _ rule = (*removeNoopFilter)(nil)
 
 // removeNoopMerge is a rule that removes merge/sortmerge nodes with only a single input
 type removeNoopMerge struct {
-	plan *Plan
+	plan *physicalpb.Plan
 }
 
 // apply implements rule.
@@ -47,7 +47,7 @@ func (r *removeNoopMerge) apply(node physicalpb.Node) bool {
 	switch node := node.(type) {
 	case *physicalpb.Merge, *physicalpb.SortMerge:
 		if len(r.plan.Children(node)) <= 1 {
-			r.plan.graph.Eliminate(node)
+			r.plan.Eliminate(node)
 			changed = true
 		}
 	}
@@ -58,7 +58,7 @@ var _ rule = (*removeNoopMerge)(nil)
 
 // predicatePushdown is a rule that moves down filter predicates to the scan nodes.
 type predicatePushdown struct {
-	plan *Plan
+	plan *physicalpb.Plan
 }
 
 // apply implements rule.
@@ -112,7 +112,7 @@ var _ rule = (*predicatePushdown)(nil)
 
 // limitPushdown is a rule that moves down the limit to the scan nodes.
 type limitPushdown struct {
-	plan *Plan
+	plan *physicalpb.Plan
 }
 
 // apply implements rule.
@@ -150,7 +150,7 @@ var _ rule = (*limitPushdown)(nil)
 // projectionPushdown is a rule that pushes down column projections.
 // Currently, it only projects partition labels from range aggregations to scan nodes.
 type projectionPushdown struct {
-	plan *Plan
+	plan *physicalpb.Plan
 }
 
 // apply implements rule.
@@ -345,8 +345,9 @@ func sortProjections(a, b *physicalpb.ColumnExpression) int {
 
 // isMetricQuery checks if the plan contains a RangeAggregation or VectorAggregation node, indicating a metric query
 func (r *projectionPushdown) isMetricQuery() bool {
-	for node := range r.plan.graph.Nodes() {
-		if node.Kind() == physicalpb.NodeKindAggregateRange || node.Kind() == physicalpb.NodeKindAggregateVector {
+	for _, node := range r.plan.Nodes {
+		switch node.Kind.(type) {
+		case *physicalpb.PlanNode_AggregateRange, *physicalpb.PlanNode_AggregateVector:
 			return true
 		}
 	}
@@ -374,12 +375,12 @@ func disambiguateColumns(columns []*physicalpb.ColumnExpression) ([]*physicalpb.
 
 // optimization represents a single optimization pass and can hold multiple rules.
 type optimization struct {
-	plan  *Plan
+	plan  *physicalpb.Plan
 	name  string
 	rules []rule
 }
 
-func newOptimization(name string, plan *Plan) *optimization {
+func newOptimization(name string, plan *physicalpb.Plan) *optimization {
 	return &optimization{
 		name: name,
 		plan: plan,
@@ -406,8 +407,8 @@ func (o *optimization) optimize(node physicalpb.Node) {
 
 func (o *optimization) applyRules(node physicalpb.Node) bool {
 	anyChanged := false
-
-	for _, child := range o.plan.Children(node) {
+	for _, edge := range o.plan.Edges {
+		child := o.plan.NodeById(edge.Child)
 		changed := o.applyRules(child)
 		if changed {
 			anyChanged = true
@@ -426,11 +427,11 @@ func (o *optimization) applyRules(node physicalpb.Node) bool {
 
 // The optimizer can optimize physical plans using the provided optimization passes.
 type optimizer struct {
-	plan          *Plan
+	plan          *physicalpb.Plan
 	optimisations []*optimization
 }
 
-func newOptimizer(plan *Plan, passes []*optimization) *optimizer {
+func newOptimizer(plan *physicalpb.Plan, passes []*optimization) *optimizer {
 	return &optimizer{plan: plan, optimisations: passes}
 }
 

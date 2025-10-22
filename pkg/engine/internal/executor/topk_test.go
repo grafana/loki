@@ -8,7 +8,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -53,9 +52,9 @@ func Test_topk(t *testing.T) {
 
 	topkPipeline, err := newTopkPipeline(topkOptions{
 		Inputs: []Pipeline{pipelineA, pipelineB},
-		SortBy: []physical.ColumnExpression{
-			&physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: physicalpb.COLUMN_TYPE_BUILTIN},
+		SortBy: []*physicalpb.ColumnExpression{
+			&physicalpb.ColumnExpression{
+				Name: types.ColumnNameBuiltinTimestamp, Type: physicalpb.COLUMN_TYPE_BUILTIN,
 			},
 		},
 		Ascending: true,
@@ -85,9 +84,9 @@ func Test_topk(t *testing.T) {
 func Test_topk_emptyPipelines(t *testing.T) {
 	topkPipeline, err := newTopkPipeline(topkOptions{
 		Inputs: []Pipeline{emptyPipeline()},
-		SortBy: []physical.ColumnExpression{
-			&physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: physicalpb.COLUMN_TYPE_BUILTIN},
+		SortBy: []*physicalpb.ColumnExpression{
+			&physicalpb.ColumnExpression{
+				Name: types.ColumnNameBuiltinTimestamp, Type: physicalpb.COLUMN_TYPE_BUILTIN,
 			},
 		},
 		Ascending: true,

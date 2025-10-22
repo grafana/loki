@@ -2,25 +2,20 @@ package executor
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 )
 
-func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, evaluator *expressionEvaluator) (*GenericPipeline, error) {
+func NewProjectPipeline(input Pipeline, columns []*physicalpb.ColumnExpression, evaluator *expressionEvaluator) (*GenericPipeline, error) {
 	// Get the column names from the projection expressions
 	columnNames := make([]string, len(columns))
 
 	for i, col := range columns {
-		if colExpr, ok := col.(*physical.ColumnExpr); ok {
-			columnNames[i] = colExpr.Ref.Column
-		} else {
-			return nil, fmt.Errorf("projection column %d is not a column expression", i)
-		}
+		columnNames[i] = col.Name
 	}
 
 	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
@@ -36,7 +31,7 @@ func NewProjectPipeline(input Pipeline, columns []physical.ColumnExpression, eva
 		fields := make([]arrow.Field, 0, len(columns))
 
 		for i := range columns {
-			vec, err := evaluator.eval(columns[i], batch)
+			vec, err := evaluator.eval(*columns[i].ToExpression(), batch)
 			if err != nil {
 				return nil, err
 			}

@@ -17,6 +17,11 @@ message Plan {
     repeated PlanEdge edges = 2;
 }
 
+enum WalkOrder {
+    PRE_ORDER_WALK = 0;	// PreOrderWalk processes the current vertex before visiting any of its children.
+    POST_ORDER_WALK = 1; // PostOrderWalk processes the current vertex after visiting all of its children.
+}
+
 // PlanEdge represents a relationship between two nodes in the physical plan.
 message PlanEdge {
     PlanNodeID parent = 1 [(gogoproto.nullable) = false];

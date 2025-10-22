@@ -216,9 +216,9 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 			case syntax.OpRangeTypeSum:
 				rangeAggType = physicalpb.AGGREGATE_RANGE_OP_SUM
 			//case syntax.OpRangeTypeMax:
-			//	rangeAggType = physicalpb.AggregateRangeOpMax
+			//	rangeAggType = physicalpb.AGGREGATE_RANGE_OP_MAX
 			//case syntax.OpRangeTypeMin:
-			//	rangeAggType = physicalpb.AggregateRangeOpMin
+			//	rangeAggType = physicalpb.AGGREGATE_RANGE_OP_MIN
 			default:
 				err = errUnimplemented
 				return false
@@ -236,13 +236,13 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 
 			switch e.Operation {
 			//case syntax.OpTypeCount:
-			//	vecAggType = physicalpb.AggregateVectorOpCount
+			//	vecAggType = physicalpb.AGGREGATE_VECTOR_OP_COUNT
 			case syntax.OpTypeSum:
 				vecAggType = physicalpb.AGGREGATE_VECTOR_OP_SUM
 			//case syntax.OpTypeMax:
-			//	vecAggType = physicalpb.AggregateVectorOpMax
+			//	vecAggType = physicalpb.AGGREGATE_VECTOR_OP_MAX
 			//case syntax.OpTypeMin:
-			//	vecAggType = physicalpb.AggregateVectorOpMin
+			//	vecAggType = physicalpb.AGGREGATE_VECTOR_OP_MIN
 			default:
 				err = errUnimplemented
 				return false

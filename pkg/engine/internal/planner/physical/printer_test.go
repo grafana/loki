@@ -10,22 +10,22 @@ import (
 
 func TestPrinter(t *testing.T) {
 	t.Run("simple tree", func(t *testing.T) {
-		p := &Plan{}
+		p := &physicalpb.Plan{}
 		limitId := physicalpb.PlanNodeID{Value: ulid.New()}
 		filterId := physicalpb.PlanNodeID{Value: ulid.New()}
 		mergeId := physicalpb.PlanNodeID{Value: ulid.New()}
 		scan1Id := physicalpb.PlanNodeID{Value: ulid.New()}
 		scan2Id := physicalpb.PlanNodeID{Value: ulid.New()}
 
-		limit := p.graph.Add(&physicalpb.Limit{Id: limitId})
-		filter := p.graph.Add(&physicalpb.Filter{Id: filterId})
-		merge := p.graph.Add(&physicalpb.SortMerge{Id: mergeId})
-		scan1 := p.graph.Add(&physicalpb.DataObjScan{Id: scan1Id})
-		scan2 := p.graph.Add(&physicalpb.DataObjScan{Id: scan2Id})
-		_ = p.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit, Child: filter})
-		_ = p.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter, Child: merge})
-		_ = p.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: merge, Child: scan1})
-		_ = p.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: merge, Child: scan2})
+		limit := p.Add(&physicalpb.Limit{Id: limitId})
+		filter := p.Add(&physicalpb.Filter{Id: filterId})
+		merge := p.Add(&physicalpb.SortMerge{Id: mergeId})
+		scan1 := p.Add(&physicalpb.DataObjScan{Id: scan1Id})
+		scan2 := p.Add(&physicalpb.DataObjScan{Id: scan2Id})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit.GetLimit(), Child: filter.GetFilter()})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter.GetFilter(), Child: merge.GetMerge()})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: merge.GetMerge(), Child: scan1.GetScan()})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: merge.GetMerge(), Child: scan2.GetScan()})
 
 		repr := PrintAsTree(p)
 		t.Log("\n" + repr)
@@ -37,15 +37,15 @@ func TestPrinter(t *testing.T) {
 		scan1Id := physicalpb.PlanNodeID{Value: ulid.New()}
 		scan2Id := physicalpb.PlanNodeID{Value: ulid.New()}
 
-		p := &Plan{}
+		p := &physicalpb.Plan{}
 
-		limit1 := p.graph.Add(&physicalpb.Limit{Id: limit1Id})
-		scan1 := p.graph.Add(&physicalpb.DataObjScan{Id: scan1Id})
-		_ = p.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit1, Child: scan1})
+		limit1 := p.Add(&physicalpb.Limit{Id: limit1Id})
+		scan1 := p.Add(&physicalpb.DataObjScan{Id: scan1Id})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit1.GetLimit(), Child: scan1.GetScan()})
 
-		limit2 := p.graph.Add(&physicalpb.Limit{Id: limit2Id})
-		scan2 := p.graph.Add(&physicalpb.DataObjScan{Id: scan2Id})
-		_ = p.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit2, Child: scan2})
+		limit2 := p.Add(&physicalpb.Limit{Id: limit2Id})
+		scan2 := p.Add(&physicalpb.DataObjScan{Id: scan2Id})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit2.GetLimit(), Child: scan2.GetScan()})
 
 		repr := PrintAsTree(p)
 		t.Log("\n" + repr)
@@ -57,15 +57,15 @@ func TestPrinter(t *testing.T) {
 		filter2Id := physicalpb.PlanNodeID{Value: ulid.New()}
 		scanId := physicalpb.PlanNodeID{Value: ulid.New()}
 
-		p := &Plan{}
-		limit := p.graph.Add(&physicalpb.Limit{Id: limitId})
-		filter1 := p.graph.Add(&physicalpb.Limit{Id: filter1Id})
-		filter2 := p.graph.Add(&physicalpb.Limit{Id: filter2Id})
-		scan := p.graph.Add(&physicalpb.DataObjScan{Id: scanId})
-		_ = p.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit, Child: filter1})
-		_ = p.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit, Child: filter2})
-		_ = p.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter1, Child: scan})
-		_ = p.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter2, Child: scan})
+		p := &physicalpb.Plan{}
+		limit := p.Add(&physicalpb.Limit{Id: limitId})
+		filter1 := p.Add(&physicalpb.Limit{Id: filter1Id})
+		filter2 := p.Add(&physicalpb.Limit{Id: filter2Id})
+		scan := p.Add(&physicalpb.DataObjScan{Id: scanId})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit.GetLimit(), Child: filter1.GetFilter()})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit.GetLimit(), Child: filter2.GetFilter()})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter1.GetFilter(), Child: scan.GetScan()})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter2.GetFilter(), Child: scan.GetScan()})
 
 		repr := PrintAsTree(p)
 		t.Log("\n" + repr)

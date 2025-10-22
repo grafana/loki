@@ -8,7 +8,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -19,7 +18,7 @@ type topkOptions struct {
 	Inputs []Pipeline
 
 	// SortBy is the list of columns to sort by, in order of precedence.
-	SortBy     []physical.ColumnExpression
+	SortBy     []*physicalpb.ColumnExpression
 	Ascending  bool // Sorts lines in ascending order if true.
 	NullsFirst bool // When true, considers NULLs < non-NULLs when sorting.
 	K          int  // Number of top rows to compute.
@@ -63,35 +62,30 @@ func newTopkPipeline(opts topkOptions) (*topkPipeline, error) {
 	}, nil
 }
 
-func exprsToFields(exprs []physical.ColumnExpression) ([]arrow.Field, error) {
+func exprsToFields(exprs []*physicalpb.ColumnExpression) ([]arrow.Field, error) {
 	fields := make([]arrow.Field, 0, len(exprs))
 	for _, expr := range exprs {
-		expr, ok := expr.(*physical.ColumnExpr)
-		if !ok {
-			panic("topkPipeline only supports ColumnExpr expressions")
-		}
-
-		dt, err := guessLokiType(expr.Ref)
+		dt, err := guessLokiType(expr)
 		if err != nil {
 			return nil, err
 		}
 
-		ident := semconv.NewIdentifier(expr.Ref.Column, expr.Ref.Type, dt)
+		ident := semconv.NewIdentifier(expr.Name, expr.Type, dt)
 		fields = append(fields, semconv.FieldFromIdent(ident, true))
 	}
 	return fields, nil
 }
 
-func guessLokiType(ref types.ColumnRef) (types.DataType, error) {
-	switch ref.Type {
+func guessLokiType(expr *physicalpb.ColumnExpression) (types.DataType, error) {
+	switch expr.Type {
 	case physicalpb.COLUMN_TYPE_BUILTIN:
-		switch ref.Column {
+		switch expr.Name {
 		case types.ColumnNameBuiltinTimestamp:
 			return types.Loki.Timestamp, nil
 		case types.ColumnNameBuiltinMessage:
 			return types.Loki.String, nil
 		default:
-			panic(fmt.Sprintf("unsupported builtin column type %s", ref))
+			panic(fmt.Sprintf("unsupported builtin column type %s", expr))
 		}
 	case physicalpb.COLUMN_TYPE_GENERATED:
 		return types.Loki.Float, nil

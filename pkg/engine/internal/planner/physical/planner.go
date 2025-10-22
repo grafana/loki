@@ -78,7 +78,7 @@ func (pc *Context) GetResolveTimeRange() (from, through time.Time) {
 type Planner struct {
 	context *Context
 	catalog Catalog
-	plan    *Plan
+	plan    *physicalpb.Plan
 }
 
 // NewPlanner creates a new planner instance with the given context.
@@ -91,7 +91,7 @@ func NewPlanner(ctx *Context, catalog Catalog) *Planner {
 
 // Build converts a given logical plan into a physical plan and returns an error if the conversion fails.
 // The resulting plan can be accessed using [Planner.Plan].
-func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
+func (p *Planner) Build(lp *logical.Plan) (*physicalpb.Plan, error) {
 	p.reset()
 	for _, inst := range lp.Instructions {
 		switch inst := inst.(type) {
@@ -111,27 +111,27 @@ func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
 
 // reset resets the internal state of the planner
 func (p *Planner) reset() {
-	p.plan = &Plan{}
+	p.plan = &physicalpb.Plan{}
 }
 
 // Convert a predicate from an [logical.Instruction] into an [Expression].
 func (p *Planner) convertPredicate(inst logical.Value) *physicalpb.Expression {
 	switch inst := inst.(type) {
 	case *logical.UnaryOp:
-		return UnaryExpressionToExpression(&physicalpb.UnaryExpression{
+		return (&physicalpb.UnaryExpression{
 			Value: p.convertPredicate(inst.Value),
 			Op:    inst.Op,
-		})
+		}).ToExpression()
 	case *logical.BinOp:
-		return BinaryExpressionToExpression(&physicalpb.BinaryExpression{
+		return (&physicalpb.BinaryExpression{
 			Left:  p.convertPredicate(inst.Left),
 			Right: p.convertPredicate(inst.Right),
 			Op:    inst.Op,
-		})
+		}).ToExpression()
 	case *logical.ColumnRef:
-		return ColumnExpressionToExpression(&physicalpb.ColumnExpression{Name: inst.Ref.Column, Type: inst.Ref.Type})
+		return (&physicalpb.ColumnExpression{Name: inst.Ref.Column, Type: inst.Ref.Type}).ToExpression()
 	case *logical.Literal:
-		return LiteralExpressionToExpression(NewLiteral(inst.Value()))
+		return NewLiteral(inst.Value()).ToExpression()
 	default:
 		panic(fmt.Sprintf("invalid value for predicate: %T", inst))
 	}
@@ -172,7 +172,7 @@ func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, baseNod
 				Section:   int64(section),
 				SortOrder: ctx.direction,
 			}
-			p.plan.graph.Add(scan)
+			p.plan.Add(scan)
 			scans = append(scans, scan)
 		}
 	}
@@ -181,18 +181,18 @@ func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, baseNod
 			Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, physicalpb.COLUMN_TYPE_BUILTIN),
 			Order:  ctx.direction, // apply direction from previously visited Sort node
 		}
-		p.plan.graph.Add(sortMerge)
+		p.plan.Add(sortMerge)
 		for _, scan := range scans {
-			if err := p.plan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge, Child: scan}); err != nil {
+			if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge, Child: scan}); err != nil {
 				return err
 			}
 		}
-		if err := p.plan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: baseNode, Child: sortMerge}); err != nil {
+		if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: baseNode, Child: sortMerge}); err != nil {
 			return err
 		}
 	} else {
 		for _, scan := range scans {
-			if err := p.plan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: baseNode, Child: scan}); err != nil {
+			if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: baseNode, Child: scan}); err != nil {
 				return err
 			}
 		}
@@ -247,7 +247,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]physi
 	}
 
 	var node physicalpb.Node = &physicalpb.Merge{}
-	p.plan.graph.Add(node)
+	p.plan.Add(node)
 	for _, gr := range groups {
 		if err := p.buildNodeGroup(gr, node, ctx); err != nil {
 			return nil, err
@@ -274,13 +274,13 @@ func (p *Planner) processSelect(lp *logical.Select, ctx *Context) ([]physicalpb.
 	node := &physicalpb.Filter{
 		Predicates: []*physicalpb.Expression{p.convertPredicate(lp.Predicate)},
 	}
-	p.plan.graph.Add(node)
+	p.plan.Add(node)
 	children, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
 	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
+		if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
 		}
 	}
@@ -303,13 +303,13 @@ func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) ([]physicalpb.No
 		Skip:  lp.Skip,
 		Fetch: lp.Fetch,
 	}
-	p.plan.graph.Add(node)
+	p.plan.Add(node)
 	children, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
 	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
+		if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
 		}
 	}
@@ -330,7 +330,7 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Cont
 		RangeNs:        r.RangeInterval.Nanoseconds(),
 		StepNs:         r.Step.Nanoseconds(),
 	}
-	p.plan.graph.Add(node)
+	p.plan.Add(node)
 
 	children, err := p.process(r.Table, ctx.WithRangeInterval(r.RangeInterval))
 	if err != nil {
@@ -338,7 +338,7 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Cont
 	}
 
 	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
+		if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
 		}
 	}
@@ -356,13 +356,13 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 		GroupBy:   groupBy,
 		Operation: lp.Operation,
 	}
-	p.plan.graph.Add(node)
+	p.plan.Add(node)
 	children, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
 	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
+		if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
 		}
 	}
@@ -375,7 +375,7 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]physicalpb.No
 	var node physicalpb.Node = &physicalpb.Parse{
 		Operation: convertParserKind(lp.Kind),
 	}
-	p.plan.graph.Add(node)
+	p.plan.Add(node)
 
 	children, err := p.process(lp.Table, ctx)
 	if err != nil {
@@ -383,7 +383,7 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]physicalpb.No
 	}
 
 	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
+		if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
 		}
 	}
@@ -404,8 +404,8 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]physicalpb.No
 }
 
 func (p *Planner) wrapNodeWith(node physicalpb.Node, wrapper physicalpb.Node) (physicalpb.Node, error) {
-	p.plan.graph.Add(wrapper)
-	if err := p.plan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: wrapper, Child: node}); err != nil {
+	p.plan.Add(wrapper)
+	if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: wrapper, Child: node}); err != nil {
 		return nil, err
 	}
 	return wrapper, nil
@@ -413,7 +413,7 @@ func (p *Planner) wrapNodeWith(node physicalpb.Node, wrapper physicalpb.Node) (p
 
 // Optimize runs optimization passes over the plan, modifying it
 // if any optimizations can be applied.
-func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
+func (p *Planner) Optimize(plan *physicalpb.Plan) (*physicalpb.Plan, error) {
 	for i, root := range plan.Roots() {
 		optimizations := []*optimization{
 			newOptimization("PredicatePushdown", plan).withRules(

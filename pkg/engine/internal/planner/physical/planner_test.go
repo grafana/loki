@@ -88,7 +88,7 @@ func TestMockCatalog(t *testing.T) {
 	}
 }
 
-func locations(t *testing.T, plan *Plan, nodes []physicalpb.Node) []string {
+func locations(t *testing.T, plan *physicalpb.Plan, nodes []physicalpb.Node) []string {
 	res := make([]string, 0, len(nodes))
 
 	visitor := &nodeCollectVisitor{
@@ -99,12 +99,12 @@ func locations(t *testing.T, plan *Plan, nodes []physicalpb.Node) []string {
 	}
 
 	for _, n := range nodes {
-		require.NoError(t, plan.DFSWalk(n, visitor, PreOrderWalk))
+		require.NoError(t, plan.VisitorWalk(n, visitor, physicalpb.PRE_ORDER_WALK))
 	}
 	return res
 }
 
-func sections(t *testing.T, plan *Plan, nodes []physicalpb.Node) [][]int {
+func sections(t *testing.T, plan *physicalpb.Plan, nodes []physicalpb.Node) [][]int {
 	res := make([][]int, 0, len(nodes))
 
 	visitor := &nodeCollectVisitor{
@@ -115,7 +115,7 @@ func sections(t *testing.T, plan *Plan, nodes []physicalpb.Node) [][]int {
 	}
 
 	for _, n := range nodes {
-		require.NoError(t, plan.DFSWalk(n, visitor, PreOrderWalk))
+		require.NoError(t, plan.VisitorWalk(n, visitor, physicalpb.PRE_ORDER_WALK))
 	}
 	return res
 }
@@ -380,7 +380,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		}
 		root, err := physicalPlan.Root()
 		require.NoError(t, err)
-		err = physicalPlan.DFSWalk(root, visitor, PreOrderWalk)
+		err = physicalPlan.VisitorWalk(root, visitor, physicalpb.PRE_ORDER_WALK)
 		require.NoError(t, err)
 		require.NotNil(t, parseNode, "ParseNode should exist in the plan")
 
@@ -482,26 +482,26 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		plan, err := planner.Build(logicalPlan)
 		require.NoError(t, err)
 
-		expectedPlan := &Plan{}
-		compat := expectedPlan.graph.Add(&physicalpb.ColumnCompat{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Source: physicalpb.COLUMN_TYPE_METADATA, Destination: physicalpb.COLUMN_TYPE_METADATA, Collision: physicalpb.COLUMN_TYPE_LABEL})
-		merge := expectedPlan.graph.Add(&physicalpb.Merge{Id: physicalpb.PlanNodeID{Value: ulid.New()}})
-		sortMerge1 := expectedPlan.graph.Add(&physicalpb.SortMerge{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Order: physicalpb.SORT_ORDER_ASCENDING, Column: &physicalpb.ColumnExpression{Name: "timestamp", Type: physicalpb.COLUMN_TYPE_BUILTIN}})
-		sortMerge2 := expectedPlan.graph.Add(&physicalpb.SortMerge{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Order: physicalpb.SORT_ORDER_ASCENDING, Column: &physicalpb.ColumnExpression{Name: "timestamp", Type: physicalpb.COLUMN_TYPE_BUILTIN}})
-		scan1 := expectedPlan.graph.Add(&physicalpb.DataObjScan{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Location: "obj1", Section: 3, StreamIds: []int64{1, 2}, SortOrder: physicalpb.SORT_ORDER_ASCENDING})
-		scan2 := expectedPlan.graph.Add(&physicalpb.DataObjScan{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Location: "obj2", Section: 1, StreamIds: []int64{3, 4}, SortOrder: physicalpb.SORT_ORDER_ASCENDING})
-		scan3 := expectedPlan.graph.Add(&physicalpb.DataObjScan{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Location: "obj3", Section: 2, StreamIds: []int64{5, 1}, SortOrder: physicalpb.SORT_ORDER_ASCENDING})
-		scan4 := expectedPlan.graph.Add(&physicalpb.DataObjScan{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Location: "obj3", Section: 3, StreamIds: []int64{5, 1}, SortOrder: physicalpb.SORT_ORDER_ASCENDING})
+		expectedPlan := &physicalpb.Plan{}
+		compat := expectedPlan.Add(&physicalpb.ColumnCompat{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Source: physicalpb.COLUMN_TYPE_METADATA, Destination: physicalpb.COLUMN_TYPE_METADATA, Collision: physicalpb.COLUMN_TYPE_LABEL})
+		merge := expectedPlan.Add(&physicalpb.Merge{Id: physicalpb.PlanNodeID{Value: ulid.New()}})
+		sortMerge1 := expectedPlan.Add(&physicalpb.SortMerge{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Order: physicalpb.SORT_ORDER_ASCENDING, Column: &physicalpb.ColumnExpression{Name: "timestamp", Type: physicalpb.COLUMN_TYPE_BUILTIN}})
+		sortMerge2 := expectedPlan.Add(&physicalpb.SortMerge{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Order: physicalpb.SORT_ORDER_ASCENDING, Column: &physicalpb.ColumnExpression{Name: "timestamp", Type: physicalpb.COLUMN_TYPE_BUILTIN}})
+		scan1 := expectedPlan.Add(&physicalpb.DataObjScan{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Location: "obj1", Section: 3, StreamIds: []int64{1, 2}, SortOrder: physicalpb.SORT_ORDER_ASCENDING})
+		scan2 := expectedPlan.Add(&physicalpb.DataObjScan{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Location: "obj2", Section: 1, StreamIds: []int64{3, 4}, SortOrder: physicalpb.SORT_ORDER_ASCENDING})
+		scan3 := expectedPlan.Add(&physicalpb.DataObjScan{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Location: "obj3", Section: 2, StreamIds: []int64{5, 1}, SortOrder: physicalpb.SORT_ORDER_ASCENDING})
+		scan4 := expectedPlan.Add(&physicalpb.DataObjScan{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Location: "obj3", Section: 3, StreamIds: []int64{5, 1}, SortOrder: physicalpb.SORT_ORDER_ASCENDING})
 
-		_ = expectedPlan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: compat, Child: merge})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: merge, Child: sortMerge1})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: merge, Child: sortMerge2})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: compat.GetColumnCompat(), Child: merge.GetMerge()})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: merge.GetMerge(), Child: sortMerge1.GetSortMerge()})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: merge.GetMerge(), Child: sortMerge2.GetSortMerge()})
 
 		// Sort merges should be added in the order of the scan timestamps
 		// ASC => oldest to newest
-		_ = expectedPlan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge1, Child: scan3})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge1, Child: scan4})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge2, Child: scan1})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge2, Child: scan2})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge1.GetSortMerge(), Child: scan3.GetScan()})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge1.GetSortMerge(), Child: scan4.GetScan()})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge2.GetSortMerge(), Child: scan1.GetScan()})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge2.GetSortMerge(), Child: scan2.GetScan()})
 
 		actual := PrintAsTree(plan)
 		expected := PrintAsTree(expectedPlan)
@@ -518,25 +518,25 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		plan, err := planner.Build(logicalPlan)
 		require.NoError(t, err)
 
-		expectedPlan := &Plan{}
-		compat := expectedPlan.graph.Add(&physicalpb.ColumnCompat{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Source: physicalpb.COLUMN_TYPE_METADATA, Destination: physicalpb.COLUMN_TYPE_METADATA, Collision: physicalpb.COLUMN_TYPE_LABEL})
-		merge := expectedPlan.graph.Add(&physicalpb.Merge{Id: physicalpb.PlanNodeID{Value: ulid.New()}})
-		sortMerge1 := expectedPlan.graph.Add(&physicalpb.SortMerge{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Order: physicalpb.SORT_ORDER_DESCENDING, Column: &physicalpb.ColumnExpression{Name: "timestamp", Type: physicalpb.COLUMN_TYPE_BUILTIN}})
-		sortMerge2 := expectedPlan.graph.Add(&physicalpb.SortMerge{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Order: physicalpb.SORT_ORDER_DESCENDING, Column: &physicalpb.ColumnExpression{Name: "timestamp", Type: physicalpb.COLUMN_TYPE_BUILTIN}})
-		scan1 := expectedPlan.graph.Add(&physicalpb.DataObjScan{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Location: "obj1", Section: 3, StreamIds: []int64{1, 2}, SortOrder: physicalpb.SORT_ORDER_DESCENDING})
-		scan2 := expectedPlan.graph.Add(&physicalpb.DataObjScan{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Location: "obj2", Section: 1, StreamIds: []int64{3, 4}, SortOrder: physicalpb.SORT_ORDER_DESCENDING})
-		scan3 := expectedPlan.graph.Add(&physicalpb.DataObjScan{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Location: "obj3", Section: 2, StreamIds: []int64{5, 1}, SortOrder: physicalpb.SORT_ORDER_DESCENDING})
-		scan4 := expectedPlan.graph.Add(&physicalpb.DataObjScan{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Location: "obj3", Section: 3, StreamIds: []int64{5, 1}, SortOrder: physicalpb.SORT_ORDER_DESCENDING})
+		expectedPlan := &physicalpb.Plan{}
+		compat := expectedPlan.Add(&physicalpb.ColumnCompat{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Source: physicalpb.COLUMN_TYPE_METADATA, Destination: physicalpb.COLUMN_TYPE_METADATA, Collision: physicalpb.COLUMN_TYPE_LABEL})
+		merge := expectedPlan.Add(&physicalpb.Merge{Id: physicalpb.PlanNodeID{Value: ulid.New()}})
+		sortMerge1 := expectedPlan.Add(&physicalpb.SortMerge{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Order: physicalpb.SORT_ORDER_DESCENDING, Column: &physicalpb.ColumnExpression{Name: "timestamp", Type: physicalpb.COLUMN_TYPE_BUILTIN}})
+		sortMerge2 := expectedPlan.Add(&physicalpb.SortMerge{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Order: physicalpb.SORT_ORDER_DESCENDING, Column: &physicalpb.ColumnExpression{Name: "timestamp", Type: physicalpb.COLUMN_TYPE_BUILTIN}})
+		scan1 := expectedPlan.Add(&physicalpb.DataObjScan{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Location: "obj1", Section: 3, StreamIds: []int64{1, 2}, SortOrder: physicalpb.SORT_ORDER_DESCENDING})
+		scan2 := expectedPlan.Add(&physicalpb.DataObjScan{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Location: "obj2", Section: 1, StreamIds: []int64{3, 4}, SortOrder: physicalpb.SORT_ORDER_DESCENDING})
+		scan3 := expectedPlan.Add(&physicalpb.DataObjScan{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Location: "obj3", Section: 2, StreamIds: []int64{5, 1}, SortOrder: physicalpb.SORT_ORDER_DESCENDING})
+		scan4 := expectedPlan.Add(&physicalpb.DataObjScan{Id: physicalpb.PlanNodeID{Value: ulid.New()}, Location: "obj3", Section: 3, StreamIds: []int64{5, 1}, SortOrder: physicalpb.SORT_ORDER_DESCENDING})
 
-		_ = expectedPlan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: compat, Child: merge})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: merge, Child: sortMerge1})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: merge, Child: sortMerge2})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: compat.GetColumnCompat(), Child: merge.GetMerge()})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: merge.GetMerge(), Child: sortMerge1.GetSortMerge()})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: merge.GetMerge(), Child: sortMerge2.GetSortMerge()})
 
 		// Sort merges should be added in the order of the scan timestamps
-		_ = expectedPlan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge1, Child: scan1})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge1, Child: scan2})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge2, Child: scan3})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge2, Child: scan4})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge1.GetSortMerge(), Child: scan1.GetScan()})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge1.GetSortMerge(), Child: scan2.GetScan()})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge2.GetSortMerge(), Child: scan3.GetScan()})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge2.GetSortMerge(), Child: scan4.GetScan()})
 
 		actual := PrintAsTree(plan)
 		expected := PrintAsTree(expectedPlan)

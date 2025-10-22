@@ -9,7 +9,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -23,14 +22,12 @@ func TestSortMerge(t *testing.T) {
 	}
 
 	t.Run("invalid column name", func(t *testing.T) {
-		merge := &physical.SortMerge{
-			Column: &physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: "not_a_timestamp_column",
-					Type:   physicalpb.COLUMN_TYPE_BUILTIN,
-				},
+		merge := &physicalpb.SortMerge{
+			Column: &physicalpb.ColumnExpression{
+				Name: "not_a_timestamp_column",
+				Type: physicalpb.COLUMN_TYPE_BUILTIN,
 			},
-			Order: physical.ASC,
+			Order: physicalpb.SORT_ORDER_ASCENDING,
 		}
 
 		inputs := []Pipeline{
@@ -39,7 +36,7 @@ func TestSortMerge(t *testing.T) {
 			ascendingTimestampPipeline(now.Add(3*time.Nanosecond)).Pipeline(batchSize, 10),
 		}
 
-		pipeline, err := NewSortMergePipeline(inputs, merge.Order, merge.Column, expressionEvaluator{})
+		pipeline, err := NewSortMergePipeline(inputs, merge.Order, *merge.Column, expressionEvaluator{})
 		require.NoError(t, err)
 
 		ctx := t.Context()
@@ -48,14 +45,12 @@ func TestSortMerge(t *testing.T) {
 	})
 
 	t.Run("ascending timestamp", func(t *testing.T) {
-		merge := &physical.SortMerge{
-			Column: &physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: types.ColumnNameBuiltinTimestamp,
-					Type:   physicalpb.COLUMN_TYPE_BUILTIN,
-				},
+		merge := &physicalpb.SortMerge{
+			Column: &physicalpb.ColumnExpression{
+				Name: types.ColumnNameBuiltinTimestamp,
+				Type: physicalpb.COLUMN_TYPE_BUILTIN,
 			},
-			Order: physical.ASC,
+			Order: physicalpb.SORT_ORDER_ASCENDING,
 		}
 
 		inputs := []Pipeline{
@@ -64,7 +59,7 @@ func TestSortMerge(t *testing.T) {
 			ascendingTimestampPipeline(now.Add(3*time.Second)).Pipeline(batchSize, 10),
 		}
 
-		pipeline, err := NewSortMergePipeline(inputs, merge.Order, merge.Column, expressionEvaluator{})
+		pipeline, err := NewSortMergePipeline(inputs, merge.Order, *merge.Column, expressionEvaluator{})
 		require.NoError(t, err)
 
 		ctx := t.Context()
@@ -79,7 +74,7 @@ func TestSortMerge(t *testing.T) {
 				t.Fatalf("did not expect error, got %s", err.Error())
 			}
 
-			tsCol, err := c.evaluator.eval(merge.Column, batch)
+			tsCol, err := c.evaluator.eval(*merge.Column.ToExpression(), batch)
 			require.NoError(t, err)
 			arr := tsCol.ToArray().(*array.Timestamp)
 
@@ -95,14 +90,12 @@ func TestSortMerge(t *testing.T) {
 	})
 
 	t.Run("descending timestamp", func(t *testing.T) {
-		merge := &physical.SortMerge{
-			Column: &physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: types.ColumnNameBuiltinTimestamp,
-					Type:   physicalpb.COLUMN_TYPE_BUILTIN,
-				},
+		merge := &physicalpb.SortMerge{
+			Column: &physicalpb.ColumnExpression{
+				Name: types.ColumnNameBuiltinTimestamp,
+				Type: physicalpb.COLUMN_TYPE_BUILTIN,
 			},
-			Order: physical.DESC,
+			Order: physicalpb.SORT_ORDER_DESCENDING,
 		}
 
 		inputs := []Pipeline{
@@ -111,7 +104,7 @@ func TestSortMerge(t *testing.T) {
 			descendingTimestampPipeline(now.Add(3*time.Second)).Pipeline(batchSize, 10),
 		}
 
-		pipeline, err := NewSortMergePipeline(inputs, merge.Order, merge.Column, expressionEvaluator{})
+		pipeline, err := NewSortMergePipeline(inputs, merge.Order, *merge.Column, expressionEvaluator{})
 		require.NoError(t, err)
 
 		ctx := t.Context()
@@ -126,7 +119,7 @@ func TestSortMerge(t *testing.T) {
 				t.Fatalf("did not expect error, got %s", err.Error())
 			}
 
-			tsCol, err := c.evaluator.eval(merge.Column, batch)
+			tsCol, err := c.evaluator.eval(*merge.Column.ToExpression(), batch)
 			require.NoError(t, err)
 			arr := tsCol.ToArray().(*array.Timestamp)
 

@@ -10,13 +10,12 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memory.Allocator) *GenericPipeline {
+func NewParsePipeline(parse *physicalpb.Parse, input Pipeline, allocator memory.Allocator) *GenericPipeline {
 	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
@@ -42,13 +41,13 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 
 		var headers []string
 		var parsedColumns []arrow.Array
-		switch parse.Kind {
-		case physical.ParserLogfmt:
+		switch parse.Operation {
+		case physicalpb.PARSE_OP_LOGFMT:
 			headers, parsedColumns = buildLogfmtColumns(stringCol, parse.RequestedKeys, allocator)
-		case physical.ParserJSON:
+		case physicalpb.PARSE_OP_JSON:
 			headers, parsedColumns = buildJSONColumns(stringCol, parse.RequestedKeys, allocator)
 		default:
-			return nil, fmt.Errorf("unsupported parser kind: %v", parse.Kind)
+			return nil, fmt.Errorf("unsupported parser kind: %v", parse.Operation)
 		}
 
 		// Build new schema with original fields plus parsed fields

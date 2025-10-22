@@ -14,12 +14,12 @@ import (
 )
 
 var (
-	groupBy = []physicalpb.ColumnExpression{
-		physicalpb.ColumnExpression{
+	groupBy = []*physicalpb.ColumnExpression{
+		&physicalpb.ColumnExpression{
 			Name: "env",
 			Type: physicalpb.COLUMN_TYPE_LABEL,
 		},
-		physicalpb.ColumnExpression{
+		&physicalpb.ColumnExpression{
 			Name: "service",
 			Type: physicalpb.COLUMN_TYPE_LABEL,
 		},
@@ -226,7 +226,7 @@ func TestAggregator(t *testing.T) {
 		defer alloc.AssertSize(t, 0)
 
 		// Empty groupBy represents sum by () or sum(...) - all values aggregated into single group
-		groupBy := []physicalpb.ColumnExpression{}
+		groupBy := []*physicalpb.ColumnExpression{}
 
 		agg := newAggregator(groupBy, 1, aggregationOperationSum)
 

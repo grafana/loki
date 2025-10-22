@@ -8,7 +8,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -16,21 +15,21 @@ import (
 
 type expressionEvaluator struct{}
 
-func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) (ColumnVector, error) {
-	switch expr := expr.(type) {
+func (e expressionEvaluator) eval(expr physicalpb.Expression, input arrow.Record) (ColumnVector, error) {
+	switch expr := expr.Kind.(type) {
 
-	case *physical.LiteralExpr:
+	case *physicalpb.Expression_LiteralExpression:
 		return &Scalar{
-			value: expr.Literal,
+			value: types.NewLiteral(expr.LiteralExpression.Kind),
 			rows:  input.NumRows(),
 			ct:    physicalpb.COLUMN_TYPE_AMBIGUOUS,
 		}, nil
 
-	case *physical.ColumnExpr:
-		colIdent := semconv.NewIdentifier(expr.Ref.Column, expr.Ref.Type, types.Loki.String)
+	case *physicalpb.Expression_ColumnExpression:
+		colIdent := semconv.NewIdentifier(expr.ColumnExpression.Name, expr.ColumnExpression.Type, types.Loki.String)
 
 		// For non-ambiguous columns, we can look up the column in the schema by its fully qualified name.
-		if expr.Ref.Type != physicalpb.COLUMN_TYPE_AMBIGUOUS {
+		if expr.ColumnExpression.Type != physicalpb.COLUMN_TYPE_AMBIGUOUS {
 			for idx, field := range input.Schema().Fields() {
 				ident, err := semconv.ParseFQN(field.Name)
 				if err != nil {
@@ -50,7 +49,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		}
 
 		// For ambiguous columns, we need to filter on the name and type and combine matching columns into a CoalesceVector.
-		if expr.Ref.Type == physicalpb.COLUMN_TYPE_AMBIGUOUS {
+		if expr.ColumnExpression.Type == physicalpb.COLUMN_TYPE_AMBIGUOUS {
 			var fieldIndices []int
 			var fieldIdents []*semconv.Identifier
 
@@ -112,27 +111,27 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 			ct:    physicalpb.COLUMN_TYPE_GENERATED,
 		}, nil
 
-	case *physical.UnaryExpr:
-		lhr, err := e.eval(expr.Left, input)
+	case *physicalpb.Expression_UnaryExpression:
+		lhr, err := e.eval(*expr.UnaryExpression.Value, input)
 		if err != nil {
 			return nil, err
 		}
 		defer lhr.Release()
 
-		fn, err := unaryFunctions.GetForSignature(expr.Op, lhr.Type().ArrowType())
+		fn, err := unaryFunctions.GetForSignature(expr.UnaryExpression.Op, lhr.Type().ArrowType())
 		if err != nil {
 			return nil, fmt.Errorf("failed to lookup unary function: %w", err)
 		}
 		return fn.Evaluate(lhr)
 
-	case *physical.BinaryExpr:
-		lhs, err := e.eval(expr.Left, input)
+	case *physicalpb.Expression_BinaryExpression:
+		lhs, err := e.eval(*expr.BinaryExpression.Left, input)
 		if err != nil {
 			return nil, err
 		}
 		defer lhs.Release()
 
-		rhs, err := e.eval(expr.Right, input)
+		rhs, err := e.eval(*expr.BinaryExpression.Right, input)
 		if err != nil {
 			return nil, err
 		}
@@ -141,13 +140,13 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		// At the moment we only support functions that accept the same input types.
 		// TODO(chaudum): Compare Loki type, not Arrow type
 		if lhs.Type().ArrowType().ID() != rhs.Type().ArrowType().ID() {
-			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): types do not match", expr.Op, lhs.Type(), rhs.Type())
+			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): types do not match", expr.BinaryExpression.Op, lhs.Type(), rhs.Type())
 		}
 
 		// TODO(chaudum): Resolve function by Loki type
-		fn, err := binaryFunctions.GetForSignature(expr.Op, lhs.Type().ArrowType())
+		fn, err := binaryFunctions.GetForSignature(expr.BinaryExpression.Op, lhs.Type().ArrowType())
 		if err != nil {
-			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): %w", expr.Op, lhs.Type(), rhs.Type(), err)
+			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): %w", expr.BinaryExpression.Op, lhs.Type(), rhs.Type(), err)
 		}
 		return fn.Evaluate(lhs, rhs)
 	}
@@ -156,7 +155,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 }
 
 // newFunc returns a new function that can evaluate an input against a binded expression.
-func (e expressionEvaluator) newFunc(expr physical.Expression) evalFunc {
+func (e expressionEvaluator) newFunc(expr physicalpb.Expression) evalFunc {
 	return func(input arrow.Record) (ColumnVector, error) {
 		return e.eval(expr, input)
 	}

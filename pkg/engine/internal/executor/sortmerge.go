@@ -10,18 +10,18 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 )
 
 type compareFunc[T comparable] func(a, b T) bool
 
 // NewSortMergePipeline returns a new pipeline that merges already sorted inputs into a single output.
-func NewSortMergePipeline(inputs []Pipeline, order physical.SortOrder, column physical.ColumnExpression, evaluator expressionEvaluator) (*KWayMerge, error) {
+func NewSortMergePipeline(inputs []Pipeline, order physicalpb.SortOrder, column physicalpb.ColumnExpression, evaluator expressionEvaluator) (*KWayMerge, error) {
 	var lessFunc func(a, b int64) bool
 	switch order {
-	case physical.ASC:
+	case physicalpb.SORT_ORDER_ASCENDING:
 		lessFunc = func(a, b int64) bool { return a <= b }
-	case physical.DESC:
+	case physicalpb.SORT_ORDER_DESCENDING:
 		lessFunc = func(a, b int64) bool { return a >= b }
 	default:
 		return nil, fmt.Errorf("invalid sort order %v", order)
@@ -33,7 +33,7 @@ func NewSortMergePipeline(inputs []Pipeline, order physical.SortOrder, column ph
 
 	return &KWayMerge{
 		inputs:     inputs,
-		columnEval: evaluator.newFunc(column),
+		columnEval: evaluator.newFunc(*column.ToExpression()),
 		compare:    lessFunc,
 	}, nil
 }

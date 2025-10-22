@@ -88,7 +88,7 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 
 			n := len(words)
 			rec := batch(n, time.Now())
-			colVec, err := e.eval(literal, rec)
+			colVec, err := e.eval(*literal.ToExpression(), rec)
 			require.NoError(t, err)
 			require.Equalf(t, tt.arrowType, colVec.Type().ArrowType().ID(), "expected: %v got: %v", tt.arrowType.String(), colVec.Type().ArrowType().ID().String())
 
@@ -108,16 +108,14 @@ func TestEvaluateColumnExpression(t *testing.T) {
 	e := expressionEvaluator{}
 
 	t.Run("unknown column", func(t *testing.T) {
-		colExpr := &physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: "does_not_exist",
-				Type:   physicalpb.COLUMN_TYPE_BUILTIN,
-			},
+		colExpr := &physicalpb.ColumnExpression{
+			Name: "does_not_exist",
+			Type: physicalpb.COLUMN_TYPE_BUILTIN,
 		}
 
 		n := len(words)
 		rec := batch(n, time.Now())
-		colVec, err := e.eval(colExpr, rec)
+		colVec, err := e.eval(*colExpr.ToExpression(), rec)
 		require.NoError(t, err)
 
 		_, ok := colVec.(*Scalar)
@@ -126,16 +124,14 @@ func TestEvaluateColumnExpression(t *testing.T) {
 	})
 
 	t.Run("string(message)", func(t *testing.T) {
-		colExpr := &physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: "message",
-				Type:   physicalpb.COLUMN_TYPE_BUILTIN,
-			},
+		colExpr := &physicalpb.ColumnExpression{
+			Name: "message",
+			Type: physicalpb.COLUMN_TYPE_BUILTIN,
 		}
 
 		n := len(words)
 		rec := batch(n, time.Now())
-		colVec, err := e.eval(colExpr, rec)
+		colVec, err := e.eval(*colExpr.ToExpression(), rec)
 		require.NoError(t, err)
 		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
 
@@ -154,60 +150,60 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 	e := expressionEvaluator{}
 
 	t.Run("error if types do not match", func(t *testing.T) {
-		expr := &physical.BinaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "name", Type: physicalpb.COLUMN_TYPE_BUILTIN},
-			},
-			Right: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "timestamp", Type: physicalpb.COLUMN_TYPE_BUILTIN},
-			},
+		expr := &physicalpb.BinaryExpression{
+			Left: (&physicalpb.ColumnExpression{
+				Name: "name", Type: physicalpb.COLUMN_TYPE_BUILTIN,
+			}).ToExpression(),
+			Right: (&physicalpb.ColumnExpression{
+				Name: "timestamp", Type: physicalpb.COLUMN_TYPE_BUILTIN,
+			}).ToExpression(),
 			Op: physicalpb.BINARY_OP_EQ,
 		}
 
-		_, err := e.eval(expr, rec)
+		_, err := e.eval(*expr.ToExpression(), rec)
 		require.ErrorContains(t, err, "failed to lookup binary function for signature EQ(utf8,timestamp_ns): types do not match")
 	})
 
 	t.Run("error if function for signature is not registered", func(t *testing.T) {
-		expr := &physical.BinaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "name", Type: physicalpb.COLUMN_TYPE_BUILTIN},
-			},
-			Right: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "name", Type: physicalpb.COLUMN_TYPE_BUILTIN},
-			},
+		expr := &physicalpb.BinaryExpression{
+			Left: (&physicalpb.ColumnExpression{
+				Name: "name", Type: physicalpb.COLUMN_TYPE_BUILTIN,
+			}).ToExpression(),
+			Right: (&physicalpb.ColumnExpression{
+				Name: "name", Type: physicalpb.COLUMN_TYPE_BUILTIN,
+			}).ToExpression(),
 			Op: physicalpb.BINARY_OP_XOR,
 		}
 
-		_, err := e.eval(expr, rec)
+		_, err := e.eval(*expr.ToExpression(), rec)
 		require.ErrorContains(t, err, "failed to lookup binary function for signature XOR(utf8,utf8): not implemented")
 	})
 
 	t.Run("EQ(string,string)", func(t *testing.T) {
-		expr := &physical.BinaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "name", Type: physicalpb.COLUMN_TYPE_BUILTIN},
-			},
-			Right: physical.NewLiteral("Charlie"),
+		expr := &physicalpb.BinaryExpression{
+			Left: (&physicalpb.ColumnExpression{
+				Name: "name", Type: physicalpb.COLUMN_TYPE_BUILTIN,
+			}).ToExpression(),
+			Right: physical.NewLiteral("Charlie").ToExpression(),
 			Op:    physicalpb.BINARY_OP_EQ,
 		}
 
-		res, err := e.eval(expr, rec)
+		res, err := e.eval(*expr.ToExpression(), rec)
 		require.NoError(t, err)
 		result := collectBooleanColumnVector(res)
 		require.Equal(t, []bool{false, false, true, false, false, false, false, false, false, false}, result)
 	})
 
 	t.Run("GT(float,float)", func(t *testing.T) {
-		expr := &physical.BinaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "value", Type: physicalpb.COLUMN_TYPE_BUILTIN},
-			},
-			Right: physical.NewLiteral(0.5),
+		expr := &physicalpb.BinaryExpression{
+			Left: (&physicalpb.ColumnExpression{
+				Name: "value", Type: physicalpb.COLUMN_TYPE_BUILTIN,
+			}).ToExpression(),
+			Right: physical.NewLiteral(0.5).ToExpression(),
 			Op:    physicalpb.BINARY_OP_GT,
 		}
 
-		res, err := e.eval(expr, rec)
+		res, err := e.eval(*expr.ToExpression(), rec)
 		require.NoError(t, err)
 		result := collectBooleanColumnVector(res)
 		require.Equal(t, []bool{false, true, false, true, false, true, true, false, true, false}, result)
@@ -296,14 +292,12 @@ null,null,null`
 	e := expressionEvaluator{}
 
 	t.Run("ambiguous column should use per-row precedence order", func(t *testing.T) {
-		colExpr := &physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: "test",
-				Type:   physicalpb.COLUMN_TYPE_AMBIGUOUS,
-			},
+		colExpr := &physicalpb.ColumnExpression{
+			Name: "test",
+			Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
 		}
 
-		colVec, err := e.eval(colExpr, record)
+		colVec, err := e.eval(*colExpr.ToExpression(), record)
 		require.NoError(t, err)
 		require.IsType(t, &CoalesceVector{}, colVec)
 		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
@@ -317,14 +311,12 @@ null,null,null`
 	})
 
 	t.Run("ToArray method should return correct Arrow array", func(t *testing.T) {
-		colExpr := &physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: "test",
-				Type:   physicalpb.COLUMN_TYPE_AMBIGUOUS,
-			},
+		colExpr := &physicalpb.ColumnExpression{
+			Name: "test",
+			Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
 		}
 
-		colVec, err := e.eval(colExpr, record)
+		colVec, err := e.eval(*colExpr.ToExpression(), record)
 		require.NoError(t, err)
 		require.IsType(t, &CoalesceVector{}, colVec)
 
@@ -353,14 +345,12 @@ label_2
 		require.NoError(t, err)
 		defer singleRecord.Release()
 
-		colExpr := &physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: "single",
-				Type:   physicalpb.COLUMN_TYPE_AMBIGUOUS,
-			},
+		colExpr := &physicalpb.ColumnExpression{
+			Name: "single",
+			Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
 		}
 
-		colVec, err := e.eval(colExpr, singleRecord)
+		colVec, err := e.eval(*colExpr.ToExpression(), singleRecord)
 		require.NoError(t, err)
 		require.IsType(t, &Array{}, colVec)
 		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
@@ -373,14 +363,12 @@ label_2
 	})
 
 	t.Run("ambiguous column with no matching columns should return default scalar", func(t *testing.T) {
-		colExpr := &physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: "nonexistent",
-				Type:   physicalpb.COLUMN_TYPE_AMBIGUOUS,
-			},
+		colExpr := &physicalpb.ColumnExpression{
+			Name: "nonexistent",
+			Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
 		}
 
-		colVec, err := e.eval(colExpr, record)
+		colVec, err := e.eval(*colExpr.ToExpression(), record)
 		require.NoError(t, err)
 		require.IsType(t, &Scalar{}, colVec)
 	})
