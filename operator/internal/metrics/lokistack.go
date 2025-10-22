@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"slices"
 
 	"github.com/go-logr/logr"
 	"github.com/prometheus/client_golang/prometheus"
@@ -72,6 +73,10 @@ func (l *lokiStackCollector) Collect(m chan<- prometheus.Metric) {
 		}
 
 		m <- prometheus.MustNewConstMetric(lokiStackInfoDesc, prometheus.GaugeValue, 1.0, labels...)
+
+		if !slices.ContainsFunc(stack.Status.Conditions, func(c metav1.Condition) bool { return c.Type == string(lokiv1.ConditionReady) }) {
+			m <- prometheus.MustNewConstMetric(lokiStackConditionsCountDesc, prometheus.GaugeValue, 1.0, append(labels, string(lokiv1.ConditionReady), string(lokiv1.ReasonReadyComponents), "false")...)
+		}
 
 		for _, c := range stack.Status.Conditions {
 			activeValue := 0.0
