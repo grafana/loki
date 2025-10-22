@@ -174,9 +174,7 @@ func (p *prefetchWrapper) Close() {
 		// This check can only be done if p.cancel is non-nil, otherwise we may
 		// deadlock if [prefetchWrapper.Close] is called before
 		// [prefetchWrapper.init].
-		if state, ok := <-p.ch; ok && state.batch != nil {
-			//state.batch.Release()
-		}
+		<-p.ch
 	}
 	p.Pipeline.Close()
 }
