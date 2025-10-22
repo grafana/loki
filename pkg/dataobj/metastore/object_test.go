@@ -412,6 +412,7 @@ func TestSectionsForPredicateMatchers(t *testing.T) {
 	})
 	require.NoError(t, err)
 	err = builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-3*time.Hour), 5)
+	require.NoError(t, err)
 	err = builder.ObserveLogLine(tenantID, "test-path", 0, 1, 1, now.Add(-2*time.Hour), 0)
 	require.NoError(t, err)
 
