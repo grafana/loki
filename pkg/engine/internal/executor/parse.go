@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memory.Allocator) *GenericPipeline {
+func NewParsePipeline(parse *physical.ParseNode, input Pipeline) *GenericPipeline {
 	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
@@ -23,10 +23,6 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		if err != nil {
 			return nil, err
 		}
-
-		// Batch needs to be released here since it won't be passed to the caller and won't be reused after
-		// this call to newGenericPipeline.
-		defer batch.Release()
 
 		// Find the message column
 		msgCol, msgIdx, err := columnForIdent(semconv.ColumnIdentMessage, batch)
@@ -43,9 +39,9 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		var parsedColumns []arrow.Array
 		switch parse.Kind {
 		case physical.ParserLogfmt:
-			headers, parsedColumns = buildLogfmtColumns(stringCol, parse.RequestedKeys, allocator)
+			headers, parsedColumns = buildLogfmtColumns(stringCol, parse.RequestedKeys)
 		case physical.ParserJSON:
-			headers, parsedColumns = buildJSONColumns(stringCol, parse.RequestedKeys, allocator)
+			headers, parsedColumns = buildJSONColumns(stringCol, parse.RequestedKeys)
 		default:
 			return nil, fmt.Errorf("unsupported parser kind: %v", parse.Kind)
 		}
@@ -91,11 +87,6 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline, allocator memor
 		// Create the new record
 		newRecord := array.NewRecord(newSchema, allColumns, int64(stringCol.Len()))
 
-		// Release the columns we retained/created
-		for _, col := range allColumns {
-			col.Release()
-		}
-
 		return newRecord, nil
 	}, input)
 }
@@ -105,9 +96,9 @@ type parseFunc func(line string, requestedKeys []string) (map[string]string, err
 
 // buildColumns builds Arrow columns from input lines using the provided parser
 // Returns the column headers, the Arrow columns, and any error
-func buildColumns(input *array.String, requestedKeys []string, allocator memory.Allocator, parseFunc parseFunc, errorType string) ([]string, []arrow.Array) {
+func buildColumns(input *array.String, requestedKeys []string, parseFunc parseFunc, errorType string) ([]string, []arrow.Array) {
 	columnBuilders := make(map[string]*array.StringBuilder)
-	columnOrder := parseLines(input, requestedKeys, columnBuilders, allocator, parseFunc, errorType)
+	columnOrder := parseLines(input, requestedKeys, columnBuilders, parseFunc, errorType)
 
 	// Build final arrays
 	columns := make([]arrow.Array, 0, len(columnOrder))
@@ -117,14 +108,13 @@ func buildColumns(input *array.String, requestedKeys []string, allocator memory.
 		builder := columnBuilders[key]
 		columns = append(columns, builder.NewArray())
 		headers = append(headers, key)
-		builder.Release()
 	}
 
 	return headers, columns
 }
 
 // parseLines discovers columns dynamically as lines are parsed
-func parseLines(input *array.String, requestedKeys []string, columnBuilders map[string]*array.StringBuilder, allocator memory.Allocator, parseFunc parseFunc, errorType string) []string {
+func parseLines(input *array.String, requestedKeys []string, columnBuilders map[string]*array.StringBuilder, parseFunc parseFunc, errorType string) []string {
 	columnOrder := []string{}
 	var errorBuilder, errorDetailsBuilder *array.StringBuilder
 	hasErrorColumns := false
@@ -137,8 +127,8 @@ func parseLines(input *array.String, requestedKeys []string, columnBuilders map[
 		if err != nil {
 			// Create error columns on first error
 			if !hasErrorColumns {
-				errorBuilder = array.NewStringBuilder(allocator)
-				errorDetailsBuilder = array.NewStringBuilder(allocator)
+				errorBuilder = array.NewStringBuilder(memory.DefaultAllocator)
+				errorDetailsBuilder = array.NewStringBuilder(memory.DefaultAllocator)
 				columnBuilders[semconv.ColumnIdentError.ShortName()] = errorBuilder
 				columnBuilders[semconv.ColumnIdentErrorDetails.ShortName()] = errorDetailsBuilder
 				columnOrder = append(
@@ -181,7 +171,7 @@ func parseLines(input *array.String, requestedKeys []string, columnBuilders map[
 				builder, exists := columnBuilders[key]
 				if !exists {
 					// New column discovered - create and backfill
-					builder = array.NewStringBuilder(allocator)
+					builder = array.NewStringBuilder(memory.DefaultAllocator)
 					columnBuilders[key] = builder
 					columnOrder = append(columnOrder, key)
 

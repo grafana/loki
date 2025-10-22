@@ -67,9 +67,6 @@ func (a *Arrays) Aggregate() (arrow.Array, error) {
 
 // Reset releases all arrays currently appended to a and resets it for reuse.
 func (a *Arrays) Reset() {
-	for _, arr := range a.in {
-		arr.Release()
-	}
 	clear(a.in)
 	a.in = a.in[:0]
 	a.nrows = 0
