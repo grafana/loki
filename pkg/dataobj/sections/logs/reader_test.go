@@ -206,7 +206,7 @@ func TestReaderStats(t *testing.T) {
 	statsCtx, ctx := stats.NewContext(context.Background())
 
 	// Read the data
-	actualTable, err := readTable(ctx, r)
+	_, err := readTable(ctx, r)
 	require.NoError(t, err)
 
 	// Get the reader stats
