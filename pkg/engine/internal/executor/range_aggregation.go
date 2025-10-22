@@ -10,7 +10,6 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -67,15 +66,13 @@ type rangeAggregationPipeline struct {
 	aggregator          *aggregator
 	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
 	evaluator           expressionEvaluator          // used to evaluate column expressions
-	allocator           memory.Allocator
 	opts                rangeAggregationOptions
 }
 
-func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, allocator memory.Allocator, opts rangeAggregationOptions) (*rangeAggregationPipeline, error) {
+func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions) (*rangeAggregationPipeline, error) {
 	r := &rangeAggregationPipeline{
 		inputs:    inputs,
 		evaluator: evaluator,
-		allocator: allocator,
 		opts:      opts,
 	}
 	r.init()
@@ -155,14 +152,13 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				}
 				return nil, err
 			}
-			defer record.Release()
 
 			inputsExhausted = false
 
 			// extract all the columns that are used for partitioning
 			arrays := make([]*array.String, 0, len(r.opts.partitionBy))
 			for _, columnExpr := range r.opts.partitionBy {
-				vec, err := r.evaluator.eval(columnExpr, r.allocator, record)
+				vec, err := r.evaluator.eval(columnExpr, record)
 				if err != nil {
 					return nil, err
 				}
@@ -172,28 +168,24 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				}
 
 				arr := vec.ToArray().(*array.String)
-				defer arr.Release()
-
 				arrays = append(arrays, arr)
 			}
 
 			// extract timestamp column to check if the entry is in range
-			tsVec, err := r.evaluator.eval(tsColumnExpr, r.allocator, record)
+			tsVec, err := r.evaluator.eval(tsColumnExpr, record)
 			if err != nil {
 				return nil, err
 			}
 			tsCol := tsVec.ToArray().(*array.Timestamp)
-			defer tsCol.Release()
 
 			// no need to extract value column for COUNT aggregation
 			var valArr *array.Float64
 			if r.opts.operation != types.RangeAggregationTypeCount {
-				valVec, err := r.evaluator.eval(valColumnExpr, r.allocator, record)
+				valVec, err := r.evaluator.eval(valColumnExpr, record)
 				if err != nil {
 					return nil, err
 				}
 				valArr = valVec.ToArray().(*array.Float64)
-				defer valArr.Release()
 			}
 
 			for row := range int(record.NumRows()) {

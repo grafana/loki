@@ -111,13 +111,13 @@ type UnaryFunctionRegistry interface {
 }
 
 type UnaryFunction interface {
-	Evaluate(lhs ColumnVector, allocator memory.Allocator) (ColumnVector, error)
+	Evaluate(lhs ColumnVector) (ColumnVector, error)
 }
 
-type UnaryFunc func(ColumnVector, memory.Allocator) (ColumnVector, error)
+type UnaryFunc func(ColumnVector) (ColumnVector, error)
 
-func (f UnaryFunc) Evaluate(lhs ColumnVector, allocator memory.Allocator) (ColumnVector, error) {
-	return f(lhs, allocator)
+func (f UnaryFunc) Evaluate(lhs ColumnVector) (ColumnVector, error) {
+	return f(lhs)
 }
 
 type unaryFuncReg struct {
@@ -162,7 +162,7 @@ type BinaryFunctionRegistry interface {
 //		Evaluate(lhs ColumnVector[L], rhs ColumnVector[R]) (ColumnVector[arrow.BOOL], error)
 //	}
 type BinaryFunction interface {
-	Evaluate(lhs, rhs ColumnVector, allocator memory.Allocator) (ColumnVector, error)
+	Evaluate(lhs, rhs ColumnVector) (ColumnVector, error)
 }
 
 type binaryFuncReg struct {
@@ -211,11 +211,9 @@ type genericBoolFunction[E arrayType[T], T comparable] struct {
 }
 
 // Evaluate implements BinaryFunction.
-func (f *genericBoolFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector, allocator memory.Allocator) (ColumnVector, error) {
+func (f *genericBoolFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector) (ColumnVector, error) {
 	lhsArr := lhs.ToArray()
-	defer lhsArr.Release()
 	rhsArr := rhs.ToArray()
-	defer rhsArr.Release()
 
 	if lhs.Len() != rhs.Len() {
 		return nil, arrow.ErrIndex
@@ -230,8 +228,7 @@ func (f *genericBoolFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector,
 		return nil, arrow.ErrType
 	}
 
-	builder := array.NewBooleanBuilder(allocator)
-	defer builder.Release()
+	builder := array.NewBooleanBuilder(memory.DefaultAllocator)
 
 	for i := range lhsArCasted.Len() {
 		if lhsArCasted.IsNull(i) || rhsArrCasted.IsNull(i) {
@@ -255,11 +252,9 @@ type genericFloat64Function[E arrayType[T], T comparable] struct {
 }
 
 // Evaluate implements BinaryFunction.
-func (f *genericFloat64Function[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector, allocator memory.Allocator) (ColumnVector, error) {
+func (f *genericFloat64Function[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector) (ColumnVector, error) {
 	lhsArr := lhs.ToArray()
-	defer lhsArr.Release()
 	rhsArr := rhs.ToArray()
-	defer rhsArr.Release()
 
 	if lhs.Len() != rhs.Len() {
 		return nil, arrow.ErrIndex
@@ -275,8 +270,7 @@ func (f *genericFloat64Function[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVect
 		return nil, arrow.ErrType
 	}
 
-	builder := array.NewFloat64Builder(allocator)
-	defer builder.Release()
+	builder := array.NewFloat64Builder(memory.DefaultAllocator)
 
 	for i := range lhsArrCasted.Len() {
 		if lhsArrCasted.IsNull(i) || rhsArrCasted.IsNull(i) {

@@ -19,11 +19,7 @@ func newExpressionEvaluator() expressionEvaluator {
 	return expressionEvaluator{}
 }
 
-type releaser interface {
-	release()
-}
-
-func (e expressionEvaluator) eval(expr physical.Expression, allocator memory.Allocator, input arrow.Record) (ColumnVector, error) {
+func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) (ColumnVector, error) {
 	switch expr := expr.(type) {
 
 	case *physical.LiteralExpr:
@@ -45,7 +41,6 @@ func (e expressionEvaluator) eval(expr physical.Expression, allocator memory.All
 				}
 				if ident.ShortName() == colIdent.ShortName() && ident.ColumnType() == colIdent.ColumnType() {
 					arr := input.Column(idx)
-					arr.Retain()
 					return &Array{
 						array: arr,
 						dt:    ident.DataType(),
@@ -85,7 +80,6 @@ func (e expressionEvaluator) eval(expr physical.Expression, allocator memory.All
 				}
 
 				arr := input.Column(idx)
-				arr.Retain()
 				vecs = append(vecs, &Array{
 					array: arr,
 					dt:    ident.DataType(),
@@ -120,7 +114,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, allocator memory.All
 		}, nil
 
 	case *physical.UnaryExpr:
-		lhr, err := e.eval(expr.Left, allocator, input)
+		lhr, err := e.eval(expr.Left, input)
 		if err != nil {
 			return nil, err
 		}
@@ -129,15 +123,15 @@ func (e expressionEvaluator) eval(expr physical.Expression, allocator memory.All
 		if err != nil {
 			return nil, fmt.Errorf("failed to lookup unary function: %w", err)
 		}
-		return fn.Evaluate(lhr, allocator)
+		return fn.Evaluate(lhr)
 
 	case *physical.BinaryExpr:
-		lhs, err := e.eval(expr.Left, allocator, input)
+		lhs, err := e.eval(expr.Left, input)
 		if err != nil {
 			return nil, err
 		}
 
-		rhs, err := e.eval(expr.Right, allocator, input)
+		rhs, err := e.eval(expr.Right, input)
 		if err != nil {
 			return nil, err
 		}
@@ -153,16 +147,16 @@ func (e expressionEvaluator) eval(expr physical.Expression, allocator memory.All
 		if err != nil {
 			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): %w", expr.Op, lhs.Type(), rhs.Type(), err)
 		}
-		return fn.Evaluate(lhs, rhs, allocator)
+		return fn.Evaluate(lhs, rhs)
 	}
 
 	return nil, fmt.Errorf("unknown expression: %v", expr)
 }
 
 // newFunc returns a new function that can evaluate an input against a binded expression.
-func (e expressionEvaluator) newFunc(expr physical.Expression, allocator memory.Allocator) evalFunc {
+func (e expressionEvaluator) newFunc(expr physical.Expression) evalFunc {
 	return func(input arrow.Record) (ColumnVector, error) {
-		return e.eval(expr, allocator, input)
+		return e.eval(expr, input)
 	}
 }
 
@@ -195,7 +189,6 @@ var _ ColumnVector = (*Scalar)(nil)
 func (v *Scalar) ToArray() arrow.Array {
 	mem := memory.NewGoAllocator()
 	builder := array.NewBuilder(mem, v.Type().ArrowType())
-	defer builder.Release()
 
 	switch builder := builder.(type) {
 	case *array.NullBuilder:
@@ -241,10 +234,6 @@ func (v *Scalar) ColumnType() types.ColumnType {
 	return v.ct
 }
 
-// release implements releaser.
-func (v *Scalar) release() {
-}
-
 // Len implements ColumnVector.
 func (v *Scalar) Len() int64 {
 	return v.rows
@@ -262,7 +251,6 @@ var _ ColumnVector = (*Array)(nil)
 
 // ToArray implements ColumnVector.
 func (a *Array) ToArray() arrow.Array {
-	// this should already has 1 ref counter
 	return a.array
 }
 
@@ -301,11 +289,6 @@ func (a *Array) ColumnType() types.ColumnType {
 // Len implements ColumnVector.
 func (a *Array) Len() int64 {
 	return int64(a.array.Len())
-}
-
-// release implements releaser.
-func (a *Array) release() {
-	a.array.Release()
 }
 
 // ArrayStruct represents multiple columns of data, stored as an [array.Struct].
@@ -393,11 +376,6 @@ func (a *ArrayStruct) Len() int64 {
 	return a.rows
 }
 
-// Release decreases the reference count by 1 on underlying Arrow array
-func (a *ArrayStruct) Release() {
-	a.array.Release()
-}
-
 // CoalesceVector represents multiple columns with the same name but different [types.ColumnType]
 // Vectors are ordered by precedence (highest precedence first).
 type CoalesceVector struct {
@@ -409,9 +387,7 @@ var _ ColumnVector = (*CoalesceVector)(nil)
 
 // ToArray implements [ColumnVector].
 func (m *CoalesceVector) ToArray() arrow.Array {
-	mem := memory.NewGoAllocator()
-	builder := array.NewBuilder(mem, m.Type().ArrowType())
-	defer builder.Release()
+	builder := array.NewBuilder(memory.DefaultAllocator, m.Type().ArrowType())
 
 	// use Value() method which already handles precedence logic
 	for i := 0; i < int(m.rows); i++ {
@@ -457,13 +433,4 @@ func (m *CoalesceVector) ColumnType() types.ColumnType {
 // Len implements ColumnVector.
 func (m *CoalesceVector) Len() int64 {
 	return m.rows
-}
-
-// release implements releaser.
-func (m *CoalesceVector) release() {
-	for _, v := range m.vectors {
-		if r, ok := v.(releaser); ok {
-			r.release()
-		}
-	}
 }

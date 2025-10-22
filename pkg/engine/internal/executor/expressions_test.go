@@ -84,14 +84,11 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			literal := physical.NewLiteral(tt.value)
-			alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-			defer alloc.AssertSize(t, 0) // Assert empty on test exit
 			e := newExpressionEvaluator()
 
 			n := len(words)
-			rec := batch(n, time.Now(), alloc)
-			defer rec.Release()
-			colVec, err := e.eval(literal, alloc, rec)
+			rec := batch(n, time.Now())
+			colVec, err := e.eval(literal, rec)
 			require.NoError(t, err)
 			require.Equalf(t, tt.arrowType, colVec.Type().ArrowType().ID(), "expected: %v got: %v", tt.arrowType.String(), colVec.Type().ArrowType().ID().String())
 
@@ -108,8 +105,6 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 }
 
 func TestEvaluateColumnExpression(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0) // Assert empty on test exit
 	e := newExpressionEvaluator()
 
 	t.Run("unknown column", func(t *testing.T) {
@@ -121,9 +116,8 @@ func TestEvaluateColumnExpression(t *testing.T) {
 		}
 
 		n := len(words)
-		rec := batch(n, time.Now(), alloc)
-		defer rec.Release()
-		colVec, err := e.eval(colExpr, alloc, rec)
+		rec := batch(n, time.Now())
+		colVec, err := e.eval(colExpr, rec)
 		require.NoError(t, err)
 
 		col, ok := colVec.(*Scalar)
@@ -142,9 +136,8 @@ func TestEvaluateColumnExpression(t *testing.T) {
 		}
 
 		n := len(words)
-		rec := batch(n, time.Now(), alloc)
-		defer rec.Release()
-		colVec, err := e.eval(colExpr, alloc, rec)
+		rec := batch(n, time.Now())
+		colVec, err := e.eval(colExpr, rec)
 		require.NoError(t, err)
 		arr := colVec.ToArray()
 		defer arr.Release()
@@ -160,10 +153,7 @@ func TestEvaluateColumnExpression(t *testing.T) {
 func TestEvaluateBinaryExpression(t *testing.T) {
 	rec, err := CSVToArrow(fields, sampledata)
 	require.NoError(t, err)
-	defer rec.Release()
 
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0) // Assert empty on test exit
 	e := newExpressionEvaluator()
 
 	t.Run("error if types do not match", func(t *testing.T) {
@@ -177,7 +167,7 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 			Op: types.BinaryOpEq,
 		}
 
-		_, err := e.eval(expr, alloc, rec)
+		_, err := e.eval(expr, rec)
 		require.ErrorContains(t, err, "failed to lookup binary function for signature EQ(utf8,timestamp_ns): types do not match")
 	})
 
@@ -192,7 +182,7 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 			Op: types.BinaryOpXor,
 		}
 
-		_, err := e.eval(expr, alloc, rec)
+		_, err := e.eval(expr, rec)
 		require.ErrorContains(t, err, "failed to lookup binary function for signature XOR(utf8,utf8): not implemented")
 	})
 
@@ -205,7 +195,7 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 			Op:    types.BinaryOpEq,
 		}
 
-		res, err := e.eval(expr, alloc, rec)
+		res, err := e.eval(expr, rec)
 		require.NoError(t, err)
 		result := collectBooleanColumnVector(res)
 		require.Equal(t, []bool{false, false, true, false, false, false, false, false, false, false}, result)
@@ -220,7 +210,7 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 			Op:    types.BinaryOpGt,
 		}
 
-		res, err := e.eval(expr, alloc, rec)
+		res, err := e.eval(expr, rec)
 		require.NoError(t, err)
 		result := collectBooleanColumnVector(res)
 		require.Equal(t, []bool{false, true, false, true, false, true, true, false, true, false}, result)
@@ -230,7 +220,6 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 func collectBooleanColumnVector(vec ColumnVector) []bool {
 	res := make([]bool, 0, vec.Len())
 	arr := vec.ToArray().(*array.Boolean)
-	defer arr.Release()
 	for i := range int(vec.Len()) {
 		res = append(res, arr.Value(i))
 	}
@@ -239,7 +228,7 @@ func collectBooleanColumnVector(vec ColumnVector) []bool {
 
 var words = []string{"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"}
 
-func batch(n int, now time.Time, allocator memory.Allocator) arrow.Record {
+func batch(n int, now time.Time) arrow.Record {
 	// Define the schema
 	schema := arrow.NewSchema(
 		[]arrow.Field{
@@ -250,11 +239,8 @@ func batch(n int, now time.Time, allocator memory.Allocator) arrow.Record {
 	)
 
 	// Create builders for each column
-	logBuilder := array.NewStringBuilder(allocator)
-	defer logBuilder.Release()
-
-	tsBuilder := array.NewTimestampBuilder(allocator, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
-	defer tsBuilder.Release()
+	logBuilder := array.NewStringBuilder(memory.DefaultAllocator)
+	tsBuilder := array.NewTimestampBuilder(memory.DefaultAllocator, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
 
 	// Append data to the builders
 	logs := make([]string, n)
@@ -270,10 +256,8 @@ func batch(n int, now time.Time, allocator memory.Allocator) arrow.Record {
 
 	// Build the arrays
 	logArray := logBuilder.NewArray()
-	defer logArray.Release()
 
 	tsArray := tsBuilder.NewArray()
-	defer tsArray.Release()
 
 	// Create the record
 	columns := []arrow.Array{logArray, tsArray}
@@ -302,10 +286,7 @@ null,null,null`
 
 	record, err := CSVToArrow(fields, data)
 	require.NoError(t, err)
-	defer record.Release()
 
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0) // Assert empty on test exit
 	e := newExpressionEvaluator()
 
 	t.Run("ambiguous column should use per-row precedence order", func(t *testing.T) {
@@ -316,7 +297,7 @@ null,null,null`
 			},
 		}
 
-		colVec, err := e.eval(colExpr, alloc, record)
+		colVec, err := e.eval(colExpr, record)
 		require.NoError(t, err)
 		require.IsType(t, &CoalesceVector{}, colVec)
 		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
@@ -337,7 +318,7 @@ null,null,null`
 			},
 		}
 
-		colVec, err := e.eval(colExpr, alloc, record)
+		colVec, err := e.eval(colExpr, record)
 		require.NoError(t, err)
 		require.IsType(t, &CoalesceVector{}, colVec)
 
@@ -364,7 +345,6 @@ label_2
 
 		singleRecord, err := CSVToArrow(fields, data)
 		require.NoError(t, err)
-		defer singleRecord.Release()
 
 		colExpr := &physical.ColumnExpr{
 			Ref: types.ColumnRef{
@@ -373,7 +353,7 @@ label_2
 			},
 		}
 
-		colVec, err := e.eval(colExpr, alloc, singleRecord)
+		colVec, err := e.eval(colExpr, singleRecord)
 		require.NoError(t, err)
 		require.IsType(t, &Array{}, colVec)
 		require.Equal(t, arrow.STRING, colVec.Type().ArrowType().ID())
@@ -393,7 +373,7 @@ label_2
 			},
 		}
 
-		colVec, err := e.eval(colExpr, alloc, record)
+		colVec, err := e.eval(colExpr, record)
 		require.NoError(t, err)
 		require.IsType(t, &Scalar{}, colVec)
 	})
@@ -406,8 +386,6 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 	colMixedValues := semconv.NewIdentifier("mixed_values", types.ColumnTypeMetadata, types.Loki.String)
 
 	t.Run("unknown column", func(t *testing.T) {
-		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-		defer alloc.AssertSize(t, 0) // Assert empty on test exit
 		e := newExpressionEvaluator()
 		expr := &physical.UnaryExpr{
 			Left: &physical.ColumnExpr{
@@ -420,9 +398,8 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 		}
 
 		n := len(words)
-		rec := batch(n, time.Now(), alloc)
-		defer rec.Release()
-		colVec, err := e.eval(expr, alloc, rec)
+		rec := batch(n, time.Now())
+		colVec, err := e.eval(expr, rec)
 		require.NoError(t, err)
 
 		id := colVec.Type().ArrowType().ID()
@@ -430,7 +407,6 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 
 		arr, ok := colVec.ToArray().(*array.Struct)
 		require.True(t, ok)
-		defer arr.Release()
 
 		require.Equal(t, 3, arr.NumField()) // value, error, error_details
 		value, ok := arr.Field(0).(*array.Float64)
@@ -461,8 +437,6 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 			Op: types.UnaryOpCastBytes,
 		}
 
-		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-		defer alloc.AssertSize(t, 0) // Assert empty on test exit
 		e := newExpressionEvaluator()
 
 		schema := arrow.NewSchema(
@@ -479,17 +453,15 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 			{"utf8.builtin.message": "long timeout", "utf8.metadata.status_code": "404", "utf8.parsed.timeout": "1h"},
 		}
 
-		record := rows.Record(alloc, schema)
-		defer record.Release()
+		record := rows.Record(memory.DefaultAllocator, schema)
 
-		colVec, err := e.eval(expr, alloc, record)
+		colVec, err := e.eval(expr, record)
 		require.NoError(t, err)
 		id := colVec.Type().ArrowType().ID()
 		require.Equal(t, arrow.STRUCT, id)
 
 		arr, ok := colVec.ToArray().(*array.Struct)
 		require.True(t, ok)
-		defer arr.Release()
 
 		require.Equal(t, 1, arr.NumField())
 		value, ok := arr.Field(0).(*array.Float64)
@@ -512,8 +484,6 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 			Op: types.UnaryOpCastDuration,
 		}
 
-		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-		defer alloc.AssertSize(t, 0) // Assert empty on test exit
 		e := newExpressionEvaluator()
 
 		schema := arrow.NewSchema(
@@ -530,17 +500,15 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 			{"utf8.builtin.message": "long timeout", "utf8.metadata.status_code": "404", "utf8.parsed.timeout": "1h"},
 		}
 
-		record := rows.Record(alloc, schema)
-		defer record.Release()
+		record := rows.Record(memory.DefaultAllocator, schema)
 
-		colVec, err := e.eval(expr, alloc, record)
+		colVec, err := e.eval(expr, record)
 		require.NoError(t, err)
 		id := colVec.Type().ArrowType().ID()
 		require.Equal(t, arrow.STRUCT, id)
 
 		arr, ok := colVec.ToArray().(*array.Struct)
 		require.True(t, ok)
-		defer arr.Release()
 
 		require.Equal(t, 1, arr.NumField())
 		value, ok := arr.Field(0).(*array.Float64)
@@ -562,8 +530,6 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 			Op: types.UnaryOpCastFloat,
 		}
 
-		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-		defer alloc.AssertSize(t, 0) // Assert empty on test exit
 		e := newExpressionEvaluator()
 
 		schema := arrow.NewSchema(
@@ -581,17 +547,15 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 			{"utf8.builtin.message": "empty string", "utf8.metadata.mixed_values": ""},
 		}
 
-		record := rows.Record(alloc, schema)
-		defer record.Release()
+		record := rows.Record(memory.DefaultAllocator, schema)
 
-		colVec, err := e.eval(colExpr, alloc, record)
+		colVec, err := e.eval(colExpr, record)
 		require.NoError(t, err)
 		id := colVec.Type().ArrowType().ID()
 		require.Equal(t, arrow.STRUCT, id)
 
 		arr, ok := colVec.ToArray().(*array.Struct)
 		require.True(t, ok)
-		defer arr.Release()
 
 		require.Equal(t, 3, arr.NumField()) //value, error, errorDetails
 
