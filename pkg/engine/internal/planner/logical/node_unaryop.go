@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 )
 
 // The UnaryOp instruction yields the result of unary operation Op Value.
@@ -31,14 +30,7 @@ func (u *UnaryOp) Name() string {
 
 // String returns the disassembled SSA form of the UnaryOp instruction.
 func (u *UnaryOp) String() string {
-	return fmt.Sprintf("%s %s", u.Op, u.Value.Name())
-}
-
-// Schema returns the schema of the UnaryOp plan.
-func (u *UnaryOp) Schema() *schema.Schema {
-	// TODO(rfratto): What should be returned here? Should the schema of BinOp
-	// take on the schema of its Value? Does it depend on the operation?
-	return nil
+	return fmt.Sprintf("%s(%s)", u.Op, u.Value.Name())
 }
 
 func (u *UnaryOp) isValue()       {}

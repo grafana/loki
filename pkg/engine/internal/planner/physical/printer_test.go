@@ -10,22 +10,21 @@ import (
 
 func TestPrinter(t *testing.T) {
 	t.Run("simple tree", func(t *testing.T) {
-		p := &physicalpb.Plan{}
-		limitId := physicalpb.PlanNodeID{Value: ulid.New()}
-		filterId := physicalpb.PlanNodeID{Value: ulid.New()}
-		mergeId := physicalpb.PlanNodeID{Value: ulid.New()}
-		scan1Id := physicalpb.PlanNodeID{Value: ulid.New()}
-		scan2Id := physicalpb.PlanNodeID{Value: ulid.New()}
+		p := &Plan{}
 
-		limit := p.Add(&physicalpb.Limit{Id: limitId})
-		filter := p.Add(&physicalpb.Filter{Id: filterId})
-		merge := p.Add(&physicalpb.SortMerge{Id: mergeId})
-		scan1 := p.Add(&physicalpb.DataObjScan{Id: scan1Id})
-		scan2 := p.Add(&physicalpb.DataObjScan{Id: scan2Id})
-		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit.GetLimit(), Child: filter.GetFilter()})
-		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter.GetFilter(), Child: merge.GetMerge()})
-		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: merge.GetMerge(), Child: scan1.GetScan()})
-		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: merge.GetMerge(), Child: scan2.GetScan()})
+		limit := p.graph.Add(&Limit{id: "limit"})
+		filter := p.graph.Add(&Filter{id: "filter"})
+		scanSet := p.graph.Add(&ScanSet{
+			id: "set",
+
+			Targets: []*ScanTarget{
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+			},
+		})
+
+		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: filter})
+		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scanSet})
 
 		repr := PrintAsTree(p)
 		t.Log("\n" + repr)

@@ -77,7 +77,7 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 
 	inputA := NewArrowtestPipeline(alloc, schema, rowsPipelineA...)
 	inputB := NewArrowtestPipeline(alloc, schema, rowsPipelineB...)
-	pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, expressionEvaluator{}, opts)
+	pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), alloc, opts)
 	require.NoError(t, err)
 	defer pipeline.Close()
 
@@ -164,7 +164,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		inputA := NewArrowtestPipeline(alloc, schema, rowsPipelineA...)
 		inputB := NewArrowtestPipeline(alloc, schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, expressionEvaluator{}, opts)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), alloc, opts)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -212,7 +212,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		inputA := NewArrowtestPipeline(alloc, schema, rowsPipelineA...)
 		inputB := NewArrowtestPipeline(alloc, schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, expressionEvaluator{}, opts)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), alloc, opts)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -274,7 +274,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		inputA := NewArrowtestPipeline(alloc, schema, rowsPipelineA...)
 		inputB := NewArrowtestPipeline(alloc, schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, expressionEvaluator{}, opts)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), alloc, opts)
 		require.NoError(t, err)
 		defer pipeline.Close()
 

@@ -3,8 +3,6 @@ package logical
 import (
 	"fmt"
 	"strings"
-
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 )
 
 // The MakeTable instruction yields a table relation from an identifier.
@@ -49,14 +47,6 @@ func (t *MakeTable) String() string {
 		predicateNames[i] = predicate.Name()
 	}
 	return fmt.Sprintf("MAKETABLE [selector=%s, predicates=[%s], shard=%s]", t.Selector.Name(), strings.Join(predicateNames, ", "), t.Shard.Name())
-}
-
-// Schema returns the schema of the table.
-// This implements part of the Plan interface.
-func (t *MakeTable) Schema() *schema.Schema {
-	// TODO(rfratto): What should we return here? What's possible for the logical
-	// planner to know about the selector at planning time?
-	return nil
 }
 
 func (t *MakeTable) isInstruction() {}

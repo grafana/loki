@@ -144,6 +144,8 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]physicalpb.Node, 
 		return p.processMakeTable(inst, ctx)
 	case *logical.Select:
 		return p.processSelect(inst, ctx)
+	case *logical.Projection:
+		return p.processProjection(inst, ctx)
 	case *logical.Sort:
 		return p.processSort(inst, ctx)
 	case *logical.Limit:
@@ -222,6 +224,8 @@ func overlappingShardDescriptors(filteredShardDescriptors []FilteredShardDescrip
 	return groups
 }
 
+=======
+>>>>>>> main
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
 func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]physicalpb.Node, error) {
 	shard, ok := lp.Shard.(*logical.ShardInfo)
@@ -240,19 +244,36 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]physi
 	if err != nil {
 		return nil, err
 	}
-
-	groups := overlappingShardDescriptors(filteredShardDescriptors)
+	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
+		return filteredShardDescriptors[i].TimeRange.End.After(filteredShardDescriptors[j].TimeRange.End)
+	})
 	if ctx.direction == physicalpb.SORT_ORDER_ASCENDING {
-		slices.Reverse(groups)
+		slices.Reverse(filteredShardDescriptors)
 	}
 
-	var node physicalpb.Node = &physicalpb.Merge{}
-	p.plan.Add(node)
-	for _, gr := range groups {
-		if err := p.buildNodeGroup(gr, node, ctx); err != nil {
-			return nil, err
+	// Scan work can be parallelized across multiple workers, so we wrap
+	// everything into a single Parallelize node.
+	var parallelize Node = &Parallelize{}
+	p.plan.graph.Add(parallelize)
+
+	scanSet := &ScanSet{}
+	p.plan.graph.Add(scanSet)
+
+	for _, desc := range filteredShardDescriptors {
+		for _, section := range desc.Sections {
+			scanSet.Targets = append(scanSet.Targets, &ScanTarget{
+				Type: ScanTypeDataObject,
+
+				DataObject: &DataObjScan{
+					Location:  desc.Location,
+					StreamIDs: desc.Streams,
+					Section:   section,
+				},
+			})
 		}
 	}
+
+	var base Node = scanSet
 
 	if p.context.v1Compatible {
 		compat := &physicalpb.ColumnCompat{
@@ -260,13 +281,18 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]physi
 			Destination: physicalpb.COLUMN_TYPE_METADATA,
 			Collision:   physicalpb.COLUMN_TYPE_LABEL,
 		}
-		node, err = p.wrapNodeWith(node, compat)
+		base, err = p.wrapNodeWith(base, compat)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return []physicalpb.Node{node}, nil
+	// Add an edge between the parallelize and the final base node (which may
+	// have been changed after processing compatibility).
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: base}); err != nil {
+		return nil, err
+	}
+	return []Node{parallelize}, nil
 }
 
 // Convert [logical.Select] into one [Filter] node.
@@ -294,7 +320,90 @@ func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]physicalpb.Node
 		order = physicalpb.SORT_ORDER_ASCENDING
 	}
 
-	return p.process(lp.Table, ctx.WithDirection(order))
+	node := &TopK{
+		SortBy:     &ColumnExpr{Ref: lp.Column.Ref},
+		Ascending:  order == ASC,
+		NullsFirst: false,
+		// K initially starts at 0, indicating to sort everything. The
+		// [limitPushdown] optimization pass can update this value based on how
+		// many rows are needed.
+		K: 0,
+	}
+
+	p.plan.graph.Add(node)
+
+	children, err := p.process(lp.Table, ctx.WithDirection(order))
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range children {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
+			return nil, err
+		}
+	}
+	return []Node{node}, nil
+}
+
+// Pass sort direction from [logical.Sort] to the children.
+func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]Node, error) {
+	order := DESC
+	if lp.Ascending {
+		order = ASC
+	}
+
+	node := &TopK{
+		SortBy:     &ColumnExpr{Ref: lp.Column.Ref},
+		Ascending:  order == ASC,
+		NullsFirst: false,
+
+		// K initially starts at 0, indicating to sort everything. The
+		// [limitPushdown] optimization pass can update this value based on how
+		// many rows are needed.
+		K: 0,
+	}
+
+	p.plan.graph.Add(node)
+
+	children, err := p.process(lp.Table, ctx.WithDirection(order))
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range children {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
+			return nil, err
+		}
+	}
+	return []Node{node}, nil
+}
+
+// Converts a [logical.Projection] into a physical [Projection] node.
+func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) ([]Node, error) {
+	expressions := make([]Expression, len(lp.Expressions))
+	for i := range lp.Expressions {
+		expressions[i] = p.convertPredicate(lp.Expressions[i])
+	}
+
+	node := &Projection{
+		Expressions: expressions,
+		All:         lp.All,
+		Expand:      lp.Expand,
+		Drop:        lp.Drop,
+	}
+	p.plan.graph.Add(node)
+
+	children, err := p.process(lp.Relation, ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range children {
+		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
+			return nil, err
+		}
+	}
+
+	return []Node{node}, nil
 }
 
 // Convert [logical.Limit] into one [Limit] node.
@@ -303,7 +412,7 @@ func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) ([]physicalpb.No
 		Skip:  lp.Skip,
 		Fetch: lp.Fetch,
 	}
-	p.plan.Add(node)
+	p.plan.graph.Add(node)
 	children, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
@@ -313,11 +422,11 @@ func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) ([]physicalpb.No
 			return nil, err
 		}
 	}
-	return []physicalpb.Node{node}, nil
+	return []Node{node}, nil
 }
 
-func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) ([]physicalpb.Node, error) {
-	partitionBy := make([]*physicalpb.ColumnExpression, len(r.PartitionBy))
+func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) ([]Node, error) {
+	partitionBy := make([]ColumnExpression, len(r.PartitionBy))
 	for i, col := range r.PartitionBy {
 		partitionBy[i] = &physicalpb.ColumnExpression{Name: col.Name()}
 	}
@@ -419,17 +528,19 @@ func (p *Planner) Optimize(plan *physicalpb.Plan) (*physicalpb.Plan, error) {
 			newOptimization("PredicatePushdown", plan).withRules(
 				&predicatePushdown{plan: plan},
 			),
-			newOptimization("CleanupFilters", plan).withRules(
-				&removeNoopFilter{plan: plan},
-			),
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
 			),
 			newOptimization("ProjectionPushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
 			),
-			newOptimization("CleanupMerge", plan).withRules(
-				&removeNoopMerge{plan: plan},
+			newOptimization("ParallelPushdown", plan).withRules(
+				&parallelPushdown{plan: plan},
+			),
+
+			// Perform cleanups at the very end.
+			newOptimization("Cleanup", plan).withRules(
+				&removeNoopFilter{plan: plan},
 			),
 		}
 		optimizer := newOptimizer(plan, optimizations)

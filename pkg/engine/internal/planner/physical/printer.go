@@ -28,6 +28,8 @@ func toTree(p *physicalpb.Plan, n physicalpb.Node) *tree.Node {
 
 func toTreeNode(n physicalpb.Node) *tree.Node {
 	treeNode := tree.NewNode(n.Kind().String(), "")
+	treeNode.Context = n
+
 	switch node := n.(type) {
 	case *physicalpb.DataObjScan:
 		treeNode.Properties = []tree.Property{
@@ -48,7 +50,12 @@ func toTreeNode(n physicalpb.Node) *tree.Node {
 		}
 	case *physicalpb.Projection:
 		treeNode.Properties = []tree.Property{
-			tree.NewProperty("columns", true, toAnySlice(node.Columns)...),
+			tree.NewProperty("all", false, node.All),
+		}
+		if node.Expand {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("expand", true, toAnySlice(node.Expressions)...))
+		} else if node.Drop {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("drop", true, toAnySlice(node.Expressions)...))
 		}
 	case *physicalpb.Filter:
 		for i := range node.Predicates {
@@ -82,12 +89,47 @@ func toTreeNode(n physicalpb.Node) *tree.Node {
 		if len(node.RequestedKeys) > 0 {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("requested_keys", true, toAnySlice(node.RequestedKeys)...))
 		}
-		// case *ColumnCompat:
-		// 	treeNode.Properties = []tree.Property{
-		// 		tree.NewProperty("src", false, node.Source),
-		// 		tree.NewProperty("dst", false, node.Destination),
-		// 		tree.NewProperty("collision", false, node.Collision),
-		// 	}
+	case *physicalpb.ColumnCompat:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("src", false, node.Source),
+			tree.NewProperty("dst", false, node.Destination),
+			tree.NewProperty("collision", false, node.Collision),
+		}
+	case *physicalpb.TopK:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("sort_by", false, node.SortBy.String()),
+			tree.NewProperty("ascending", false, node.Ascending),
+			tree.NewProperty("nulls_first", false, node.NullsFirst),
+			tree.NewProperty("k", false, node.K),
+		}
+	case *Parallelize:
+		// Nothing to add
+	case *ScanSet:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("num_targets", false, len(node.Targets)),
+		}
+
+		if len(node.Projections) > 0 {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("projections", true, toAnySlice(node.Projections)...))
+		}
+		for i := range node.Predicates {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
+		}
+
+		for _, target := range node.Targets {
+			properties := []tree.Property{
+				tree.NewProperty("type", false, target.Type.String()),
+			}
+
+			switch target.Type {
+			case ScanTypeDataObject:
+				// Create a child node to extract the properties of the target.
+				childNode := toTreeNode(target.DataObject)
+				properties = append(properties, childNode.Properties...)
+			}
+
+			treeNode.AddComment("@target", "", properties)
+		}
 	}
 	return treeNode
 }

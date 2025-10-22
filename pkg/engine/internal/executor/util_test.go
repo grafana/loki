@@ -101,7 +101,6 @@ func newRecordGenerator(schema *arrow.Schema, batch batchFunc) *recordGenerator 
 func (p *recordGenerator) Pipeline(batchSize int64, rows int64) Pipeline {
 	var pos int64
 	return newGenericPipeline(
-		Local,
 		func(_ context.Context, _ []Pipeline) (arrow.Record, error) {
 			if pos >= rows {
 				return nil, EOF
@@ -182,9 +181,3 @@ func (p *ArrowtestPipeline) Read(_ context.Context) (arrow.Record, error) {
 
 // Close implements [Pipeline], immediately exhausting the pipeline.
 func (p *ArrowtestPipeline) Close() { p.cur = math.MaxInt64 }
-
-// Inputs implements [Pipeline], returning nil as this pipeline has no inputs.
-func (p *ArrowtestPipeline) Inputs() []Pipeline { return nil }
-
-// Transport implements [Pipeline], returning [Local].
-func (p *ArrowtestPipeline) Transport() Transport { return Local }

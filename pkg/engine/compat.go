@@ -127,7 +127,7 @@ func (b *streamsResultBuilder) collectRow(rec arrow.Record, i int) (labels.Label
 				// TODO: keep errors if --strict is set
 				// These are reserved column names used to track parsing errors. We are dropping them until
 				// we add support for --strict parsing.
-				if shortName == types.ColumnNameParsedError || shortName == types.ColumnNameParsedErrorDetails {
+				if shortName == types.ColumnNameError || shortName == types.ColumnNameErrorDetails {
 					continue
 				}
 

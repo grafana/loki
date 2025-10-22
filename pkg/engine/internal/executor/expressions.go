@@ -15,7 +15,11 @@ import (
 
 type expressionEvaluator struct{}
 
-func (e expressionEvaluator) eval(expr physicalpb.Expression, input arrow.Record) (ColumnVector, error) {
+func newExpressionEvaluator() expressionEvaluator {
+	return expressionEvaluator{}
+}
+
+func (e expressionEvaluator) eval(expr physicalpb.Expression, allocator memory.Allocator, input arrow.Record) (ColumnVector, error) {
 	switch expr := expr.Kind.(type) {
 
 	case *physicalpb.Expression_LiteralExpression:
@@ -112,7 +116,7 @@ func (e expressionEvaluator) eval(expr physicalpb.Expression, input arrow.Record
 		}, nil
 
 	case *physicalpb.Expression_UnaryExpression:
-		lhr, err := e.eval(*expr.UnaryExpression.Value, input)
+		lhr, err := e.eval(*expr.UnaryExpression.Value, allocator, input)
 		if err != nil {
 			return nil, err
 		}
@@ -122,16 +126,16 @@ func (e expressionEvaluator) eval(expr physicalpb.Expression, input arrow.Record
 		if err != nil {
 			return nil, fmt.Errorf("failed to lookup unary function: %w", err)
 		}
-		return fn.Evaluate(lhr)
+		return fn.Evaluate(lhr, allocator)
 
 	case *physicalpb.Expression_BinaryExpression:
-		lhs, err := e.eval(*expr.BinaryExpression.Left, input)
+		lhs, err := e.eval(*expr.BinaryExpression.Left, allocator, input)
 		if err != nil {
 			return nil, err
 		}
 		defer lhs.Release()
 
-		rhs, err := e.eval(*expr.BinaryExpression.Right, input)
+		rhs, err := e.eval(*expr.BinaryExpression.Right, allocator, input)
 		if err != nil {
 			return nil, err
 		}
@@ -155,9 +159,9 @@ func (e expressionEvaluator) eval(expr physicalpb.Expression, input arrow.Record
 }
 
 // newFunc returns a new function that can evaluate an input against a binded expression.
-func (e expressionEvaluator) newFunc(expr physicalpb.Expression) evalFunc {
+func (e expressionEvaluator) newFunc(expr physicalpb.Expression, allocator memory.Allocator) evalFunc {
 	return func(input arrow.Record) (ColumnVector, error) {
-		return e.eval(expr, input)
+		return e.eval(expr, allocator, input)
 	}
 }
 
@@ -259,6 +263,7 @@ var _ ColumnVector = (*Array)(nil)
 
 // ToArray implements ColumnVector.
 func (a *Array) ToArray() arrow.Array {
+	a.array.Retain()
 	return a.array
 }
 
@@ -304,7 +309,98 @@ func (a *Array) Release() {
 	a.array.Release()
 }
 
-// CoalesceVector represents multiple columns with the same name but different [physicalpb.ColumnType]
+// ArrayStruct represents multiple columns of data, stored as an [array.Struct].
+// It implements the ColumnVector interface while preserving access to individual fields.
+type ArrayStruct struct {
+	array *array.Struct
+	ct    types.ColumnType
+	rows  int64
+}
+
+var _ ColumnVector = (*ArrayStruct)(nil)
+
+// NewArrayStruct creates a new ArrayStruct from an array.Struct
+func NewArrayStruct(arr *array.Struct, ct types.ColumnType) *ArrayStruct {
+	return &ArrayStruct{
+		array: arr,
+		ct:    ct,
+		rows:  int64(arr.Len()),
+	}
+}
+
+// ToArray implements ColumnVector.
+// Returns the underlying struct array.
+func (a *ArrayStruct) ToArray() arrow.Array {
+	a.array.Retain()
+	return a.array
+}
+
+// Value implements ColumnVector.
+// Returns a map of field names to values at the specified index.
+func (a *ArrayStruct) Value(i int) any {
+	if a.array.IsNull(i) || !a.array.IsValid(i) {
+		return nil
+	}
+
+	// Return a map representing the struct's fields at this index
+	result := make(map[string]any)
+	structType := a.array.DataType().(*arrow.StructType)
+
+	for fieldIdx := 0; fieldIdx < a.array.NumField(); fieldIdx++ {
+		field := a.array.Field(fieldIdx)
+		if field.IsNull(i) {
+			continue
+		}
+		fieldMeta := structType.Field(fieldIdx)
+
+		// Extract value from the field array at index i
+		var value any
+		switch arr := field.(type) {
+		case *array.Boolean:
+			value = arr.Value(i)
+		case *array.String:
+			value = arr.Value(i)
+		case *array.Int64:
+			value = arr.Value(i)
+		case *array.Uint64:
+			value = arr.Value(i)
+		case *array.Float64:
+			value = arr.Value(i)
+		default:
+			value = nil
+		}
+		result[fieldMeta.Name] = value
+	}
+
+	return result
+}
+
+// Type implements ColumnVector.
+func (a *ArrayStruct) Type() types.DataType {
+	dt := a.array.DataType()
+	st, ok := dt.(*arrow.StructType)
+	if !ok {
+		return nil
+	}
+	return types.NewStructType(st)
+}
+
+// ColumnType implements ColumnVector.
+func (a *ArrayStruct) ColumnType() types.ColumnType {
+	return a.ct
+}
+
+// Len implements ColumnVector.
+func (a *ArrayStruct) Len() int64 {
+	return a.rows
+}
+
+// Release decreases the reference count by 1 on underlying Arrow array
+func (a *ArrayStruct) Release() {
+	a.array.Release()
+}
+
+// CoalesceVector represents multiple columns with the same name but different [types.ColumnType]
 // Vectors are ordered by precedence (highest precedence first).
 type CoalesceVector struct {
 	vectors []ColumnVector // Ordered by precedence (Generated first, Label last)

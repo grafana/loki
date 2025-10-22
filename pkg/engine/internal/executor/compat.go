@@ -16,7 +16,7 @@ import (
 func newColumnCompatibilityPipeline(compat *physicalpb.ColumnCompat, input Pipeline) Pipeline {
 	const extracted = "_extracted"
 
-	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		input := inputs[0]
 		batch, err := input.Read(ctx)
 		if err != nil {

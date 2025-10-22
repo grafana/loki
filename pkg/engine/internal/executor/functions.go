@@ -10,6 +10,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/errors"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 var (
@@ -78,6 +79,11 @@ func init() {
 		}
 		return !reg.Match([]byte(a)), nil
 	}})
+
+	// Cast functions
+	unaryFunctions.register(types.UnaryOpCastFloat, arrow.BinaryTypes.String, castFn(types.UnaryOpCastFloat))
+	unaryFunctions.register(types.UnaryOpCastBytes, arrow.BinaryTypes.String, castFn(types.UnaryOpCastBytes))
+	unaryFunctions.register(types.UnaryOpCastDuration, arrow.BinaryTypes.String, castFn(types.UnaryOpCastDuration))
 }
 
 type UnaryFunctionRegistry interface {
@@ -86,7 +92,13 @@ type UnaryFunctionRegistry interface {
 }
 
 type UnaryFunction interface {
-	Evaluate(lhs ColumnVector) (ColumnVector, error)
+	Evaluate(lhs ColumnVector, allocator memory.Allocator) (ColumnVector, error)
+}
+
+type UnaryFunc func(ColumnVector, memory.Allocator) (ColumnVector, error)
+
+func (f UnaryFunc) Evaluate(lhs ColumnVector, allocator memory.Allocator) (ColumnVector, error) {
+	return f(lhs, allocator)
 }
 
 type unaryFuncReg struct {
@@ -106,8 +118,18 @@ func (u *unaryFuncReg) register(op physicalpb.UnaryOp, ltype arrow.DataType, f U
 }
 
 // GetForSignature implements UnaryFunctionRegistry.
-func (u *unaryFuncReg) GetForSignature(physicalpb.UnaryOp, arrow.DataType) (UnaryFunction, error) {
-	return nil, errors.ErrNotImplemented
+func (u *unaryFuncReg) GetForSignature(op physicalpb.UnaryOp, ltype arrow.DataType) (UnaryFunction, error) {
+	// Get registered functions for the specific operation
+	reg, ok := u.reg[op]
+	if !ok {
+		return nil, errors.ErrNotImplemented
+	}
+	// Get registered function for the specific data type
+	fn, ok := reg[ltype]
+	if !ok {
+		return nil, errors.ErrNotImplemented
+	}
+	return fn, nil
 }
 
 type BinaryFunctionRegistry interface {
@@ -161,6 +183,7 @@ type arrayType[T comparable] interface {
 	IsNull(int) bool
 	Value(int) T
 	Len() int
+	Release()
 }
 
 // genericFunction is a struct that implements the [BinaryFunction] interface methods
@@ -179,11 +202,13 @@ func (f *genericFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector) (Co
 	if !ok {
 		return nil, arrow.ErrType
 	}
+	defer lhsArr.Release()
 
 	rhsArr, ok := rhs.ToArray().(E)
 	if !ok {
 		return nil, arrow.ErrType
 	}
+	defer rhsArr.Release()
 
 	mem := memory.NewGoAllocator()
 	builder := array.NewBooleanBuilder(mem)

@@ -389,10 +389,3 @@ func (s *dataobjScan) Close() {
 	s.streamsInjector = nil
 	s.reader = nil
 }
-
-// Inputs implements [Pipeline] and returns nil, since dataobjScan accepts no
-// pipelines as input.
-func (s *dataobjScan) Inputs() []Pipeline { return nil }
-
-// Transport implements [Pipeline] and returns [Local].
-func (s *dataobjScan) Transport() Transport { return Local }

@@ -47,7 +47,8 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{}, alloc)
+		e := newExpressionEvaluator()
+		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
 		// Read the pipeline output
@@ -88,7 +89,8 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{}, alloc)
+		e := newExpressionEvaluator()
+		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
 		// Read the pipeline output
@@ -127,7 +129,8 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{}, alloc)
+		e := newExpressionEvaluator()
+		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
 		// Create expected output (only rows where valid=true)
@@ -182,7 +185,8 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{}, alloc)
+		e := newExpressionEvaluator()
+		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
 		// Create expected output (only rows where name=="Bob" AND valid!=false)
@@ -224,7 +228,8 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{}, alloc)
+		e := newExpressionEvaluator()
+		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
 		record, err := pipeline.Read(t.Context())
@@ -267,7 +272,8 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{}, alloc)
+		e := newExpressionEvaluator()
+		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
 		// Create expected output (only rows where valid=true)
@@ -327,7 +333,8 @@ func TestNewFilterPipeline(t *testing.T) {
 		}
 
 		// Create filter pipeline
-		pipeline := NewFilterPipeline(filter, input, expressionEvaluator{}, alloc)
+		e := newExpressionEvaluator()
+		pipeline := NewFilterPipeline(filter, input, e, alloc)
 		defer pipeline.Close()
 
 		// Create expected output (only rows where valid=true, including null name)

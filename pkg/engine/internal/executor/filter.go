@@ -11,7 +11,7 @@ import (
 )
 
 func NewFilterPipeline(filter *physicalpb.Filter, input Pipeline, evaluator expressionEvaluator, allocator memory.Allocator) *GenericPipeline {
-	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
 		batch, err := input.Read(ctx)
@@ -23,20 +23,21 @@ func NewFilterPipeline(filter *physicalpb.Filter, input Pipeline, evaluator expr
 		cols := make([]*array.Boolean, 0, len(filter.Predicates))
 
 		for i, pred := range filter.Predicates {
-			res, err := evaluator.eval(*pred, batch)
+			vec, err := evaluator.eval(*pred, allocator, batch)
 			if err != nil {
 				return nil, err
 			}
-			data := res.ToArray()
+			defer vec.Release()
 
+			arr := vec.ToArray()
 			// boolean filters are only used for filtering; they're not returned
 			// and must be released
-			defer data.Release()
+			defer arr.Release()
 
-			if data.DataType().ID() != arrow.BOOL {
-				return nil, fmt.Errorf("predicate %d returned non-boolean type %s", i, data.DataType())
+			if arr.DataType().ID() != arrow.BOOL {
+				return nil, fmt.Errorf("predicate %d returned non-boolean type %s", i, arr.DataType())
 			}
-			casted := data.(*array.Boolean)
+			casted := arr.(*array.Boolean)
 			cols = append(cols, casted)
 		}
 

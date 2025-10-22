@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 // Builder provides an ergonomic interface for constructing a [Plan].
@@ -45,6 +45,28 @@ func (b *Builder) Parse(kind ParserKind) *Builder {
 		val: &Parse{
 			Table: b.val,
 			Kind:  kind,
+		},
+	}
+}
+
+// Cast applies an [Projection] operation, with an [UnaryOp] cast operation, to the Builder.
+func (b *Builder) Cast(identifier string, operation types.UnaryOp) *Builder {
+	return &Builder{
+		val: &Projection{
+			Relation: b.val,
+			Expressions: []Value{
+				&UnaryOp{
+					Op: operation,
+					Value: &ColumnRef{
+						Ref: types.ColumnRef{
+							Column: identifier,
+							Type:   types.ColumnTypeAmbiguous,
+						},
+					},
+				},
+			},
+			All:    true,
+			Expand: true,
 		},
 	}
 }
@@ -110,9 +132,28 @@ func (b *Builder) Compat(logqlCompatibility bool) *Builder {
 	return b
 }
 
-// Schema returns the schema of the data that will be produced by this Builder.
-func (b *Builder) Schema() *schema.Schema {
-	return b.val.Schema()
+func (b *Builder) Project(all, expand, drop bool, expr ...Value) *Builder {
+	return &Builder{
+		val: &Projection{
+			Relation:    b.val,
+			All:         all,
+			Expand:      expand,
+			Drop:        drop,
+			Expressions: expr,
+		},
+	}
+}
+
+func (b *Builder) ProjectAll(expand, drop bool, expr ...Value) *Builder {
+	return b.Project(true, expand, drop, expr...)
+}
+
+func (b *Builder) ProjectDrop(expr ...Value) *Builder {
+	return b.ProjectAll(false, true, expr...)
+}
+
+func (b *Builder) ProjectExpand(expr ...Value) *Builder {
+	return b.ProjectAll(true, false, expr...)
 }
 
 // Value returns the underlying [Value]. This is useful when you need to access

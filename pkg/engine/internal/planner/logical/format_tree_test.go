@@ -8,16 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 )
-
-type testDataSource struct {
-	name   string
-	schema schema.Schema
-}
-
-func (t *testDataSource) Schema() schema.Schema { return t.schema }
-func (t *testDataSource) Name() string          { return t.name }
 
 func TestFormatSimpleQuery(t *testing.T) {
 	// Build a simple query plan:
