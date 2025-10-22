@@ -124,7 +124,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 				if err != nil {
 					return nil, err
 				}
-			
+
 				if vec.Type() != types.Loki.String {
 					return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.Type())
 				}
