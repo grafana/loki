@@ -3,14 +3,13 @@ package executor
 import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 )
 
-func buildLogfmtColumns(input *array.String, requestedKeys []string, allocator memory.Allocator) ([]string, []arrow.Array) {
-	return buildColumns(input, requestedKeys, allocator, tokenizeLogfmt, types.LogfmtParserErrorType)
+func buildLogfmtColumns(input *array.String, requestedKeys []string) ([]string, []arrow.Array) {
+	return buildColumns(input, requestedKeys, tokenizeLogfmt, types.LogfmtParserErrorType)
 }
 
 // tokenizeLogfmt parses logfmt input using the standard decoder

@@ -7,7 +7,6 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -23,7 +22,6 @@ type vectorAggregationPipeline struct {
 
 	aggregator *aggregator
 	evaluator  expressionEvaluator
-	allocator  memory.Allocator
 	groupBy    []physical.ColumnExpression
 
 	tsEval    evalFunc // used to evaluate the timestamp column
@@ -39,7 +37,7 @@ var (
 	}
 )
 
-func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnExpression, evaluator expressionEvaluator, allocator memory.Allocator, operation types.VectorAggregationType) (*vectorAggregationPipeline, error) {
+func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnExpression, evaluator expressionEvaluator, operation types.VectorAggregationType) (*vectorAggregationPipeline, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("vector aggregation expects at least one input")
 	}
@@ -52,7 +50,6 @@ func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnEx
 	return &vectorAggregationPipeline{
 		inputs:     inputs,
 		evaluator:  evaluator,
-		allocator:  allocator,
 		groupBy:    groupBy,
 		aggregator: newAggregator(groupBy, 0, op),
 		tsEval: evaluator.newFunc(&physical.ColumnExpr{
@@ -60,13 +57,13 @@ func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnEx
 				Column: types.ColumnNameBuiltinTimestamp,
 				Type:   types.ColumnTypeBuiltin,
 			},
-		}, allocator),
+		}),
 		valueEval: evaluator.newFunc(&physical.ColumnExpr{
 			Ref: types.ColumnRef{
 				Column: types.ColumnNameGeneratedValue,
 				Type:   types.ColumnTypeGenerated,
 			},
-		}, allocator),
+		}),
 	}, nil
 }
 
@@ -96,7 +93,6 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 				}
 				return nil, err
 			}
-			defer record.Release()
 
 			inputsExhausted = false
 
@@ -105,35 +101,29 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 			if err != nil {
 				return nil, err
 			}
-			defer tsVec.Release()
 			tsCol := tsVec.ToArray().(*array.Timestamp)
-			defer tsCol.Release()
 
 			// extract value column
 			valueVec, err := v.valueEval(record)
 			if err != nil {
 				return nil, err
 			}
-			defer valueVec.Release()
 			valueArr := valueVec.ToArray().(*array.Float64)
-			defer valueArr.Release()
 
 			// extract all the columns that are used for grouping
 			arrays := make([]*array.String, 0, len(v.groupBy))
 
 			for _, columnExpr := range v.groupBy {
-				vec, err := v.evaluator.eval(columnExpr, v.allocator, record)
+				vec, err := v.evaluator.eval(columnExpr, record)
 				if err != nil {
 					return nil, err
 				}
-				defer vec.Release()
 
 				if vec.Type() != types.Loki.String {
 					return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.Type())
 				}
 
 				arr := vec.ToArray().(*array.String)
-				defer arr.Release()
 
 				arrays = append(arrays, arr)
 			}

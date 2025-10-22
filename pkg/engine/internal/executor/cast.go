@@ -15,9 +15,8 @@ import (
 )
 
 func castFn(operation types.UnaryOp) UnaryFunction {
-	return UnaryFunc(func(input ColumnVector, allocator memory.Allocator) (ColumnVector, error) {
+	return UnaryFunc(func(input ColumnVector) (ColumnVector, error) {
 		arr := input.ToArray()
-		defer arr.Release()
 
 		sourceCol, ok := arr.(*array.String)
 		if !ok {
@@ -26,16 +25,10 @@ func castFn(operation types.UnaryOp) UnaryFunction {
 
 		// Get conversion function and process values
 		conversionFn := getConversionFunction(operation)
-		castCol, errTracker := castValues(sourceCol, conversionFn, allocator)
-		defer castCol.Release()
+		castCol, errTracker := castValues(sourceCol, conversionFn)
 
 		// Build error columns if needed
 		errorCol, errorDetailsCol := errTracker.buildArrays()
-		defer errTracker.releaseBuilders()
-		if errTracker.hasErrors {
-			defer errorCol.Release()
-			defer errorDetailsCol.Release()
-		}
 
 		// Build output schema and record
 		fields := buildValueAndErrorFields(errTracker.hasErrors)
@@ -67,12 +60,10 @@ func getConversionFunction(operation types.UnaryOp) conversionFn {
 func castValues(
 	sourceCol *array.String,
 	conversionFn conversionFn,
-	allocator memory.Allocator,
 ) (arrow.Array, *errorTracker) {
-	castBuilder := array.NewFloat64Builder(allocator)
-	defer castBuilder.Release()
+	castBuilder := array.NewFloat64Builder(memory.DefaultAllocator)
 
-	tracker := newErrorTracker(allocator)
+	tracker := newErrorTracker()
 
 	for i := 0; i < sourceCol.Len(); i++ {
 		if sourceCol.IsNull(i) {
@@ -162,17 +153,16 @@ type errorTracker struct {
 	hasErrors      bool
 	errorBuilder   *array.StringBuilder
 	detailsBuilder *array.StringBuilder
-	allocator      memory.Allocator
 }
 
-func newErrorTracker(allocator memory.Allocator) *errorTracker {
-	return &errorTracker{allocator: allocator}
+func newErrorTracker() *errorTracker {
+	return &errorTracker{}
 }
 
 func (et *errorTracker) recordError(rowIndex int, err error) {
 	if !et.hasErrors {
-		et.errorBuilder = array.NewStringBuilder(et.allocator)
-		et.detailsBuilder = array.NewStringBuilder(et.allocator)
+		et.errorBuilder = array.NewStringBuilder(memory.DefaultAllocator)
+		et.detailsBuilder = array.NewStringBuilder(memory.DefaultAllocator)
 		// Backfill nulls for previous rows
 		for range rowIndex {
 			et.errorBuilder.AppendNull()
@@ -196,11 +186,4 @@ func (et *errorTracker) buildArrays() (arrow.Array, arrow.Array) {
 		return nil, nil
 	}
 	return et.errorBuilder.NewArray(), et.detailsBuilder.NewArray()
-}
-
-func (et *errorTracker) releaseBuilders() {
-	if et.hasErrors {
-		et.errorBuilder.Release()
-		et.detailsBuilder.Release()
-	}
 }
