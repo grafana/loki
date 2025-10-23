@@ -82,7 +82,7 @@ func TestTokenBucket_ConcurrentClaimAndReturn(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := bucket.Claim(tokensPerGoroutine)
+			err := bucket.Claim(uint(tokensPerGoroutine))
 			require.NoError(t, err)
 			counter.Add(1)
 
@@ -91,7 +91,7 @@ func TestTokenBucket_ConcurrentClaimAndReturn(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				time.Sleep(time.Duration(rand.Int64N(100)) * time.Millisecond) // wait before putting back the tokens
-				bucket.Return(tokensPerGoroutine)
+				bucket.Return(uint(tokensPerGoroutine))
 				counter.Sub(1)
 			}()
 
@@ -133,7 +133,7 @@ func BenchmarkTokenBucket_ClaimReturn(b *testing.B) {
 		i := 0
 		for pb.Next() {
 			if i%2 == 0 {
-				bucket.Claim(5) // Ignore errors in benchmark
+				_ = bucket.Claim(5) // Ignore errors in benchmark
 			} else {
 				bucket.Return(5)
 			}
@@ -144,7 +144,7 @@ func BenchmarkTokenBucket_ClaimReturn(b *testing.B) {
 
 func TestTokenBucketWithContext_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
-	bucket := newTokenBucketWithContext(5, ctx)
+	bucket := newTokenBucketWithContext(ctx, 5)
 
 	// Claim some tokens
 	_ = bucket.Claim(3)
@@ -179,7 +179,7 @@ func TestTokenBucketWithContext_ContextCancellation(t *testing.T) {
 func TestTokenBucketWithContext_ContextTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
 	defer cancel()
-	bucket := newTokenBucketWithContext(5, ctx)
+	bucket := newTokenBucketWithContext(ctx, 5)
 
 	// Claim some tokens
 	_ = bucket.Claim(3)

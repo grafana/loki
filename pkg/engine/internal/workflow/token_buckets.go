@@ -111,7 +111,7 @@ type tokenBucketWithContext struct {
 	bucket *simpleTokenBucket
 }
 
-func newTokenBucketWithContext(capacity uint, ctx context.Context) *tokenBucketWithContext {
+func newTokenBucketWithContext(ctx context.Context, capacity uint) *tokenBucketWithContext {
 	tb := &tokenBucketWithContext{
 		bucket: newTokenBucket(capacity),
 		ctx:    ctx,
@@ -252,7 +252,7 @@ type batchTokenBucketWithContext struct {
 	ctx   context.Context
 }
 
-func newBatchTokenBucketWithContext(capacity uint, ctx context.Context) *batchTokenBucketWithContext {
+func newBatchTokenBucketWithContext(ctx context.Context, capacity uint) *batchTokenBucketWithContext {
 	return &batchTokenBucketWithContext{
 		inner: newBatchTokenBucket(capacity),
 		ctx:   ctx,
