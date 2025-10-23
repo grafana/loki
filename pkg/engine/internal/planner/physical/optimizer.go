@@ -43,43 +43,51 @@ type predicatePushdown struct {
 }
 
 // apply implements rule.
-func (r *predicatePushdown) apply(node Node) (bool, error) {
+func (r *predicatePushdown) apply(root Node) (bool, error) {
+	// collect filter nodes.
+	nodes := findMatchingNodes(r.plan, root, func(node Node) bool {
+		_, ok := node.(*Filter)
+		return ok
+	})
+
 	changed := false
-	switch node := node.(type) {
-	case *Filter:
-		for i := 0; i < len(node.Predicates); i++ {
-			if ok := r.applyPredicatePushdown(node, node.Predicates[i]); ok {
+	for _, n := range nodes {
+		filter := n.(*Filter)
+		for i := 0; i < len(filter.Predicates); i++ {
+			if !canApplyPredicate(filter.Predicates[i]) {
+				continue
+			}
+
+			if ok := r.applyToTargets(filter, filter.Predicates[i]); ok {
 				changed = true
 				// remove predicates that have been pushed down
-				node.Predicates = slices.Delete(node.Predicates, i, i+1)
+				filter.Predicates = slices.Delete(filter.Predicates, i, i+1)
 				i--
 			}
 		}
 	}
+
 	return changed, nil
 }
 
-func (r *predicatePushdown) applyPredicatePushdown(node Node, predicate Expression) bool {
+func (r *predicatePushdown) applyToTargets(node Node, predicate Expression) bool {
 	switch node := node.(type) {
 	case *ScanSet:
-		if canApplyPredicate(predicate) {
-			node.Predicates = append(node.Predicates, predicate)
-			return true
-		}
-		return false
+		node.Predicates = append(node.Predicates, predicate)
+		return true
 	case *DataObjScan:
-		if canApplyPredicate(predicate) {
-			node.Predicates = append(node.Predicates, predicate)
-			return true
-		}
-		return false
+		// This is a Noop as we only have ScanSet nodes in the physical plan.
+		node.Predicates = append(node.Predicates, predicate)
+		return true
 	}
+
+	changed := false
 	for _, child := range r.plan.Children(node) {
-		if ok := r.applyPredicatePushdown(child, predicate); !ok {
-			return false
+		if r.applyToTargets(child, predicate) {
+			changed = true
 		}
 	}
-	return true
+	return changed
 }
 
 func canApplyPredicate(predicate Expression) bool {
@@ -114,17 +122,15 @@ func (r *limitPushdown) apply(root Node) (bool, error) {
 	changed := false
 	for _, n := range nodes {
 		limit := n.(*Limit)
-		if applied, err := r.propagateLimitDown(limit, limit.Fetch); err != nil {
-			return false, err
-		} else if applied {
+		if r.applyToTargets(limit, limit.Fetch) {
 			changed = true
 		}
 	}
 	return changed, nil
 }
 
-// propagateLimitDown propagates a limit value down the dag, stopping at breaker nodes
-func (r *limitPushdown) propagateLimitDown(node Node, limit uint32) (bool, error) {
+// applyToTargets applies limit on target nodes.
+func (r *limitPushdown) applyToTargets(node Node, limit uint32) bool {
 	var changed bool
 	switch node := node.(type) {
 	case *TopK:
@@ -133,30 +139,19 @@ func (r *limitPushdown) propagateLimitDown(node Node, limit uint32) (bool, error
 	case *Filter:
 		// If there is a filter, child nodes may need to read up to all their lines
 		// to successfully apply the filter, so stop applying limit pushdown.
-		return false, nil
+		return false
 	}
 
 	// Continue to children
 	for _, child := range r.plan.Children(node) {
-		if childChanged, err := r.propagateLimitDown(child, limit); err != nil {
-			return false, err
-		} else if childChanged {
+		if r.applyToTargets(child, limit) {
 			changed = true
 		}
 	}
-	return changed, nil
+	return changed
 }
 
 var _ rule = (*limitPushdown)(nil)
-
-type groupByPushdown struct {
-	plan *Plan
-}
-
-func (r *groupByPushdown) apply(node Node) (bool, error) {
-
-	panic("")
-}
 
 // projectionPushdown is a rule that pushes down column projections.
 // Currently, it only projects partition labels from range aggregations to scan nodes.
