@@ -17,8 +17,7 @@ func TestHTTP2BasicConnectivity(t *testing.T) {
 	defer cancel()
 
 	// Start HTTP/2 listener
-	listener, err := NewHTTP2Listener("127.0.0.1:0", NewJSONProtocol, 5*time.Second, 5*time.Second, 10, 10*time.Second)
-	require.NoError(t, err)
+	listener := prepareListener(t)
 	defer listener.Close(ctx)
 
 	addr := listener.Addr().String()
@@ -75,8 +74,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	defer cancel()
 
 	// Start HTTP/2 listener
-	listener, err := NewHTTP2Listener("127.0.0.1:0", NewJSONProtocol, 5*time.Second, 5*time.Second, 10, 10*time.Second)
-	require.NoError(t, err)
+	listener := prepareListener(t)
 	defer listener.Close(ctx)
 
 	addr := listener.Addr().String()
@@ -106,7 +104,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	}
 
 	// Client handler
-	clientHandler := func(ctx context.Context, peer *Peer, message Message) error {
+	clientHandler := func(_ context.Context, _ *Peer, message Message) error {
 		clientReceivedMu.Lock()
 		clientReceived = append(clientReceived, message)
 		clientReceivedMu.Unlock()
@@ -211,8 +209,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 	defer cancel()
 
 	// Start HTTP/2 listener
-	listener, err := NewHTTP2Listener("127.0.0.1:0", NewJSONProtocol, 5*time.Second, 5*time.Second, 10, 10*time.Second)
-	require.NoError(t, err)
+	listener := prepareListener(t)
 	defer listener.Close(ctx)
 
 	addr := listener.Addr().String()
@@ -297,7 +294,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 			defer conn.Close()
 
 			// Handler to count received messages
-			handler := func(ctx context.Context, peer *Peer, message Message) error {
+			handler := func(_ context.Context, _ *Peer, message Message) error {
 				clientReceivedMu.Lock()
 				clientReceivedCounts[clientIdx]++
 				count := clientReceivedCounts[clientIdx]
@@ -380,14 +377,13 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	defer cancel()
 
 	// Start HTTP/2 listener
-	listener, err := NewHTTP2Listener("127.0.0.1:0", NewJSONProtocol, 5*time.Second, 5*time.Second, 10, 10*time.Second)
-	require.NoError(t, err)
+	listener := prepareListener(t)
 	defer listener.Close(ctx)
 
 	addr := listener.Addr().String()
 
 	// Handler that returns an error
-	errorHandler := func(ctx context.Context, peer *Peer, message Message) error {
+	errorHandler := func(_ context.Context, _ *Peer, _ Message) error {
 		return errors.New("simulated error")
 	}
 
@@ -421,7 +417,7 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	clientPeer := &Peer{
 		Logger:  log.NewNopLogger(),
 		Conn:    clientConn,
-		Handler: func(ctx context.Context, peer *Peer, message Message) error { return nil },
+		Handler: func(_ context.Context, _ *Peer, _ Message) error { return nil },
 		Buffer:  10,
 	}
 
@@ -461,8 +457,7 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	defer cancel()
 
 	// Start HTTP/2 listener
-	listener, err := NewHTTP2Listener("127.0.0.1:0", NewJSONProtocol, 5*time.Second, 5*time.Second, 10, 10*time.Second)
-	require.NoError(t, err)
+	listener := prepareListener(t)
 	defer listener.Close(ctx)
 
 	addr := listener.Addr().String()
@@ -515,4 +510,18 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 			require.IsType(t, tc.message, receivedFrame.Message)
 		})
 	}
+}
+
+func prepareListener(t *testing.T) *HTTP2Listener {
+	listener, err := NewHTTP2Listener(
+		"127.0.0.1:0",
+		NewJSONProtocol,
+		WithHTTP2ListenerConnAcceptTimeout(1*time.Second),
+		WithHTTP2ListenerServerShutdownTimeout(1*time.Second),
+		WithHTTP2ListenerMaxPendingConns(1),
+		WithHTTP2ListenerReadHeaderTimeout(1*time.Second),
+		WithHTTP2ListenerLogger(log.NewNopLogger()),
+	)
+	require.NoError(t, err)
+	return listener
 }
