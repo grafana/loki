@@ -17,7 +17,7 @@ func TestHTTP2BasicConnectivity(t *testing.T) {
 	defer cancel()
 
 	// Start HTTP/2 listener
-	listener := prepareListener(t)
+	listener := prepareHTTP2Listener(t)
 	defer listener.Close(ctx)
 
 	addr := listener.Addr().String()
@@ -33,7 +33,7 @@ func TestHTTP2BasicConnectivity(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := DialHTTP2(ctx, addr, NewJSONProtocol)
+	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, NewJSONProtocol)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -74,7 +74,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	defer cancel()
 
 	// Start HTTP/2 listener
-	listener := prepareListener(t)
+	listener := prepareHTTP2Listener(t)
 	defer listener.Close(ctx)
 
 	addr := listener.Addr().String()
@@ -123,7 +123,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := DialHTTP2(ctx, addr, NewJSONProtocol)
+	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, NewJSONProtocol)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -209,7 +209,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 	defer cancel()
 
 	// Start HTTP/2 listener
-	listener := prepareListener(t)
+	listener := prepareHTTP2Listener(t)
 	defer listener.Close(ctx)
 
 	addr := listener.Addr().String()
@@ -286,7 +286,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 			defer clientWg.Done()
 
 			// Connect
-			conn, err := DialHTTP2(ctx, addr, NewJSONProtocol)
+			conn, err := NewHTTP2Dialer().Dial(ctx, addr, NewJSONProtocol)
 			if err != nil {
 				t.Errorf("Client %d dial failed: %v", clientIdx, err)
 				return
@@ -377,7 +377,7 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	defer cancel()
 
 	// Start HTTP/2 listener
-	listener := prepareListener(t)
+	listener := prepareHTTP2Listener(t)
 	defer listener.Close(ctx)
 
 	addr := listener.Addr().String()
@@ -397,7 +397,7 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := DialHTTP2(ctx, addr, NewJSONProtocol)
+	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, NewJSONProtocol)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -457,7 +457,7 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	defer cancel()
 
 	// Start HTTP/2 listener
-	listener := prepareListener(t)
+	listener := prepareHTTP2Listener(t)
 	defer listener.Close(ctx)
 
 	addr := listener.Addr().String()
@@ -472,7 +472,7 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := DialHTTP2(ctx, addr, NewJSONProtocol)
+	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, NewJSONProtocol)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -512,7 +512,7 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	}
 }
 
-func prepareListener(t *testing.T) *HTTP2Listener {
+func prepareHTTP2Listener(t *testing.T) *HTTP2Listener {
 	listener, err := NewHTTP2Listener(
 		"127.0.0.1:0",
 		NewJSONProtocol,

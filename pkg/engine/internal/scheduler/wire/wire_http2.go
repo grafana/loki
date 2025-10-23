@@ -34,7 +34,7 @@ type HTTP2Listener struct {
 
 var _ Listener = (*HTTP2Listener)(nil)
 
-type HTTP2ListenerOpts struct {
+type http2ListenerOpts struct {
 	// ConnAcceptTimeout defines how long to wait for a connection to be accepted via .Accept().
 	// The connection is closed if Accept() is too slow.
 	ConnAcceptTimeout time.Duration
@@ -53,34 +53,34 @@ type HTTP2ListenerOpts struct {
 	Logger log.Logger
 }
 
-type HTTP2ListenerOptFunc func(*HTTP2ListenerOpts)
+type HTTP2ListenerOptFunc func(*http2ListenerOpts)
 
 func WithHTTP2ListenerConnAcceptTimeout(timeout time.Duration) HTTP2ListenerOptFunc {
-	return func(o *HTTP2ListenerOpts) {
+	return func(o *http2ListenerOpts) {
 		o.ConnAcceptTimeout = timeout
 	}
 }
 
 func WithHTTP2ListenerServerShutdownTimeout(timeout time.Duration) HTTP2ListenerOptFunc {
-	return func(o *HTTP2ListenerOpts) {
+	return func(o *http2ListenerOpts) {
 		o.ServerShutdownTimeout = timeout
 	}
 }
 
 func WithHTTP2ListenerMaxPendingConns(maxPendingConns uint) HTTP2ListenerOptFunc {
-	return func(o *HTTP2ListenerOpts) {
+	return func(o *http2ListenerOpts) {
 		o.MaxPendingConns = maxPendingConns
 	}
 }
 
 func WithHTTP2ListenerReadHeaderTimeout(timeout time.Duration) HTTP2ListenerOptFunc {
-	return func(o *HTTP2ListenerOpts) {
+	return func(o *http2ListenerOpts) {
 		o.ReadHeaderTimeout = timeout
 	}
 }
 
 func WithHTTP2ListenerLogger(logger log.Logger) HTTP2ListenerOptFunc {
-	return func(o *HTTP2ListenerOpts) {
+	return func(o *http2ListenerOpts) {
 		o.Logger = logger
 	}
 }
@@ -96,7 +96,7 @@ func NewHTTP2Listener(
 		return nil, err
 	}
 
-	opts := HTTP2ListenerOpts{
+	opts := http2ListenerOpts{
 		ConnAcceptTimeout:     1 * time.Second,
 		ServerShutdownTimeout: 1 * time.Second,
 		MaxPendingConns:       10,
@@ -151,7 +151,6 @@ func (l *HTTP2Listener) handleWire(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Send success headers immediately
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
@@ -159,17 +158,23 @@ func (l *HTTP2Listener) handleWire(w http.ResponseWriter, r *http.Request) {
 	conn := newHTTP2Conn(l.listener.Addr(), r.RemoteAddr, r.Body, w, flusher, l.protocolFactory())
 
 	// Try to enqueue the connection without blocking indefinitely
-	// TODO(ivkalita): properly handle and log errors
 	select {
 	case <-l.closed:
-		_ = conn.Close()
+		err := conn.Close()
+		if err != nil {
+			level.Error(l.logger).Log("msg", "failed to close connection on listener close", "err", err.Error())
+		}
 		return
 	case l.connCh <- conn:
 		// Connection accepted, wait for it to close
 		<-conn.done
 	case <-time.After(l.connAcceptTimeout):
 		// If Accept() is too slow, close the connection
-		_ = conn.Close()
+		err := conn.Close()
+		if err != nil {
+			level.Error(l.logger).Log("msg", "failed to close not accepted connection", "err", err.Error())
+		}
+
 		http.Error(w, "connection not accepted", http.StatusServiceUnavailable)
 	}
 }
@@ -230,7 +235,14 @@ type HTTP2Conn struct {
 var _ Conn = (*HTTP2Conn)(nil)
 
 // newHTTP2Conn creates a new HTTP/2 connection.
-func newHTTP2Conn(localAddr net.Addr, remoteAddr string, reader io.ReadCloser, writer io.Writer, flusher http.Flusher, protocol FrameProtocol) *HTTP2Conn {
+func newHTTP2Conn(
+	localAddr net.Addr,
+	remoteAddr string,
+	reader io.ReadCloser,
+	writer io.Writer,
+	flusher http.Flusher,
+	protocol FrameProtocol,
+) *HTTP2Conn {
 	// Bind protocol to reader and writer
 	protocol.BindReader(reader)
 	protocol.BindWriter(writer)
@@ -274,8 +286,6 @@ func (c *HTTP2Conn) Send(ctx context.Context, frame Frame) error {
 }
 
 // Recv receives a frame from the connection.
-// Note: Uses a goroutine to make blocking Decode() interruptible via context.
-// The buffered channel prevents goroutine leaks even if context is cancelled.
 func (c *HTTP2Conn) Recv(ctx context.Context) (Frame, error) {
 	select {
 	case <-ctx.Done():
@@ -293,7 +303,6 @@ func (c *HTTP2Conn) Recv(ctx context.Context) (Frame, error) {
 
 	go func() {
 		frame, err := c.protocol.ReadFrame()
-		// Buffered channel ensures this never blocks, even if receiver moved on
 		resultCh <- result{frame: frame, err: err}
 	}()
 
@@ -318,17 +327,18 @@ func (c *HTTP2Conn) Recv(ctx context.Context) (Frame, error) {
 
 // Close closes the connection.
 func (c *HTTP2Conn) Close() error {
+	var err error
 	c.closeOnce.Do(func() {
 		close(c.closed)
 		if c.reader != nil {
-			c.reader.Close()
+			err = c.reader.Close()
 		}
 		if c.cleanup != nil {
 			c.cleanup()
 		}
 		close(c.done)
 	})
-	return nil
+	return err
 }
 
 // LocalAddr returns the local network address.
@@ -341,77 +351,69 @@ func (c *HTTP2Conn) RemoteAddr() net.Addr {
 	return c.remoteAddr
 }
 
-// DialHTTP2 establishes an HTTP/2 connection to the specified address.
-func DialHTTP2(ctx context.Context, addr string, protocolFactory func() FrameProtocol) (Conn, error) {
-	// Create a pipe for bidirectional communication
+// HTTP2Dialer holds an http client to pool the connections.
+type HTTP2Dialer struct {
+	client *http.Client
+}
+
+// NewHTTP2Dialer creates a new HTTP/2 dialer that can open HTTP/2 connections to the specified address.
+func NewHTTP2Dialer() *HTTP2Dialer {
+	return &HTTP2Dialer{
+		client: &http.Client{
+			Transport: &http2.Transport{
+				// No TLS
+				AllowHTTP: true,
+				DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
+					return (&net.Dialer{}).DialContext(ctx, network, addr)
+				},
+			},
+			// Context is used for cancellation, no timeout
+			Timeout: 0,
+		},
+	}
+}
+
+// Dial establishes an HTTP/2 connection to the specified address.
+func (d *HTTP2Dialer) Dial(ctx context.Context, addr string, protocolFactory func() FrameProtocol) (Conn, error) {
 	pr, pw := io.Pipe()
 
-	// Build the request
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://%s/wire", addr), pr)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
-	// Create HTTP/2 client with reasonable timeouts
-	client := &http.Client{
-		Transport: &http2.Transport{
-			AllowHTTP: true,
-			DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
-				return (&net.Dialer{}).DialContext(ctx, network, addr)
-			},
-		},
-		Timeout: 0, // No timeout, use context
-	}
-
-	// Make the request in a goroutine
-	respCh := make(chan *http.Response, 1)
-	errCh := make(chan error, 1)
-
-	go func() {
-		resp, err := client.Do(req)
-		if err != nil {
-			errCh <- err
-			pw.Close()
-			return
-		}
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			pw.Close()
-			errCh <- fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-			return
-		}
-		respCh <- resp
-	}()
-
-	// Wait for response headers
-	var resp *http.Response
-	select {
-	case <-ctx.Done():
-		pw.Close()
-		return nil, ctx.Err()
-	case err := <-errCh:
+	resp, err := d.client.Do(req)
+	if err != nil {
+		_ = pw.Close()
 		return nil, err
-	case resp = <-respCh:
 	}
 
+	if resp.StatusCode != http.StatusOK {
+		// Drain and close response body to allow connection reuse
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		_ = pw.Close()
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	// Create connection
 	conn := newHTTP2Conn(
 		&tcpAddr{addr: "client"},
 		addr,
 		resp.Body,
 		pw,
-		nil, // Client doesn't need flusher,
+		nil, // client doesn't need flusher, it's handled by the pipe writer
 		protocolFactory(),
 	)
 
-	// Set cleanup function to close pipe writer
+	// when connection is closed, close the pipe writer
 	conn.cleanup = func() {
-		pw.Close()
+		_ = pw.Close()
 	}
 
 	return conn, nil
 }
 
-// tcpAddr implements net.Addr for HTTP/2 connections.
 type tcpAddr struct {
 	addr string
 }
