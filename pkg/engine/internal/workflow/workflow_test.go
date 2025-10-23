@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -140,8 +141,9 @@ func TestCancellation(t *testing.T) {
 }
 
 type fakeRunner struct {
-	streams map[ulid.ULID]*runnerStream
-	tasks   map[ulid.ULID]*runnerTask
+	streams  map[ulid.ULID]*runnerStream
+	tasks    map[ulid.ULID]*runnerTask
+	tasksMtx sync.RWMutex
 }
 
 func newFakeRunner() *fakeRunner {
@@ -193,14 +195,20 @@ func (f *fakeRunner) Listen(_ context.Context, stream *Stream) (executor.Pipelin
 
 func (f *fakeRunner) Start(ctx context.Context, handler TaskEventHandler, tasks ...*Task) error {
 	for _, task := range tasks {
+
+		f.tasksMtx.RLock()
 		if _, exist := f.tasks[task.ULID]; exist {
+			f.tasksMtx.RUnlock()
 			return fmt.Errorf("task %s already added", task.ULID)
 		}
+		f.tasksMtx.RUnlock()
 
+		f.tasksMtx.Lock()
 		f.tasks[task.ULID] = &runnerTask{
 			task:    task,
 			handler: handler,
 		}
+		f.tasksMtx.Unlock()
 
 		for _, streams := range task.Sinks {
 			for _, stream := range streams {

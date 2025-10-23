@@ -158,6 +158,7 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 		Fragment: physical.FromGraph(taskPlan),
 		Sources:  sources,
 		Sinks:    make(map[physical.Node][]*Stream),
+		Cost:     1, // TODO: Associate real costs with each task
 	}
 	p.graph.Add(task)
 

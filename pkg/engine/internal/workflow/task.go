@@ -22,6 +22,9 @@ type Task struct {
 	// Sinks defines which Streams physical nodes write to. Sinks are only
 	// defined for nodes in the Fragment which write data across task boundaries.
 	Sinks map[physical.Node][]*Stream
+
+	// Cost associated with the task.
+	Cost uint
 }
 
 // ID returns the string form of the Task's ULID.

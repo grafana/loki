@@ -82,7 +82,7 @@ func TestTokenBucket_ConcurrentClaimAndReturn(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := bucket.Claim(tokensPerGoroutine)
+			err := bucket.Claim(uint(tokensPerGoroutine))
 			require.NoError(t, err)
 			counter.Add(1)
 
@@ -91,7 +91,7 @@ func TestTokenBucket_ConcurrentClaimAndReturn(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				time.Sleep(time.Duration(rand.Int64N(100)) * time.Millisecond) // wait before putting back the tokens
-				bucket.Return(tokensPerGoroutine)
+				bucket.Return(uint(tokensPerGoroutine))
 				counter.Sub(1)
 			}()
 
