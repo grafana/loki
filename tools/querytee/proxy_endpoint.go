@@ -359,6 +359,7 @@ func (p *ProxyEndpoint) processWithGoldfish(r *http.Request, cellAResp, cellBRes
 		level.Error(p.logger).Log("msg", "failed to capture cell A response", "err", err)
 		return
 	}
+	cellAData.BackendName = cellAResp.backend.name
 
 	cellBData, err := goldfish.CaptureResponse(&http.Response{
 		StatusCode: cellBResp.status,
@@ -368,6 +369,7 @@ func (p *ProxyEndpoint) processWithGoldfish(r *http.Request, cellAResp, cellBRes
 		level.Error(p.logger).Log("msg", "failed to capture cell B response", "err", err)
 		return
 	}
+	cellBData.BackendName = cellBResp.backend.name
 
 	p.goldfishManager.ProcessQueryPair(ctx, r, cellAData, cellBData)
 }

@@ -76,6 +76,14 @@ type SampledQuery struct {
 	CellAStatusCode   *int    `json:"cellAStatusCode" db:"cell_a_status_code"`
 	CellBStatusCode   *int    `json:"cellBStatusCode" db:"cell_b_status_code"`
 
+	// Result storage metadata - nullable when persistence is disabled
+	CellAResultURI         *string `json:"cellAResultURI,omitempty" db:"cell_a_result_uri"`
+	CellBResultURI         *string `json:"cellBResultURI,omitempty" db:"cell_b_result_uri"`
+	CellAResultSizeBytes   *int64  `json:"cellAResultSizeBytes,omitempty" db:"cell_a_result_size_bytes"`
+	CellBResultSizeBytes   *int64  `json:"cellBResultSizeBytes,omitempty" db:"cell_b_result_size_bytes"`
+	CellAResultCompression *string `json:"cellAResultCompression,omitempty" db:"cell_a_result_compression"`
+	CellBResultCompression *string `json:"cellBResultCompression,omitempty" db:"cell_b_result_compression"`
+
 	// Trace IDs - nullable as not all requests have traces
 	CellATraceID *string `json:"cellATraceID" db:"cell_a_trace_id"`
 	CellBTraceID *string `json:"cellBTraceID" db:"cell_b_trace_id"`
@@ -240,6 +248,25 @@ func (s *Service) GetSampledQueriesWithContext(ctx context.Context, page, pageSi
 			CellBSpanID:        strPtr(q.CellBSpanID),
 			CellAUsedNewEngine: q.CellAUsedNewEngine,
 			CellBUsedNewEngine: q.CellBUsedNewEngine,
+		}
+
+		if q.CellAResultURI != "" {
+			uiQuery.CellAResultURI = strPtr(q.CellAResultURI)
+			size := q.CellAResultSize
+			uiQuery.CellAResultSizeBytes = &size
+			if q.CellAResultCompression != "" {
+				comp := q.CellAResultCompression
+				uiQuery.CellAResultCompression = &comp
+			}
+		}
+		if q.CellBResultURI != "" {
+			uiQuery.CellBResultURI = strPtr(q.CellBResultURI)
+			size := q.CellBResultSize
+			uiQuery.CellBResultSizeBytes = &size
+			if q.CellBResultCompression != "" {
+				comp := q.CellBResultCompression
+				uiQuery.CellBResultCompression = &comp
+			}
 		}
 
 		// Determine comparison status based on response codes and hashes
