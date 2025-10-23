@@ -11,12 +11,16 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 )
 
 // HTTP2Listener implements Listener for HTTP/2-based connections.
 type HTTP2Listener struct {
+	logger log.Logger
+
 	server                *http.Server
 	listener              net.Listener
 	connCh                chan Conn
@@ -30,28 +34,88 @@ type HTTP2Listener struct {
 
 var _ Listener = (*HTTP2Listener)(nil)
 
+type HTTP2ListenerOpts struct {
+	// ConnAcceptTimeout defines how long to wait for a connection to be accepted via .Accept().
+	// The connection is closed if Accept() is too slow.
+	ConnAcceptTimeout time.Duration
+
+	// ServerShutdownTimeout defines how long to wait for the server to gracefully shutdown.
+	ServerShutdownTimeout time.Duration
+
+	// MaxPendingConns defines the maximum number of pending connections (which are not Accepted yet).
+	MaxPendingConns uint
+
+	// ReadHeaderTimeout defines how long to wait for the server to read the request headers for the first call
+	// to establish a connection.
+	ReadHeaderTimeout time.Duration
+
+	// Logger is used for logging.
+	Logger log.Logger
+}
+
+type HTTP2ListenerOptFunc func(*HTTP2ListenerOpts)
+
+func WithHTTP2ListenerConnAcceptTimeout(timeout time.Duration) HTTP2ListenerOptFunc {
+	return func(o *HTTP2ListenerOpts) {
+		o.ConnAcceptTimeout = timeout
+	}
+}
+
+func WithHTTP2ListenerServerShutdownTimeout(timeout time.Duration) HTTP2ListenerOptFunc {
+	return func(o *HTTP2ListenerOpts) {
+		o.ServerShutdownTimeout = timeout
+	}
+}
+
+func WithHTTP2ListenerMaxPendingConns(maxPendingConns uint) HTTP2ListenerOptFunc {
+	return func(o *HTTP2ListenerOpts) {
+		o.MaxPendingConns = maxPendingConns
+	}
+}
+
+func WithHTTP2ListenerReadHeaderTimeout(timeout time.Duration) HTTP2ListenerOptFunc {
+	return func(o *HTTP2ListenerOpts) {
+		o.ReadHeaderTimeout = timeout
+	}
+}
+
+func WithHTTP2ListenerLogger(logger log.Logger) HTTP2ListenerOptFunc {
+	return func(o *HTTP2ListenerOpts) {
+		o.Logger = logger
+	}
+}
+
 // NewHTTP2Listener creates a new HTTP/2 listener on the specified address.
-// TODO(ivkalita): opt funcs for configuration
 func NewHTTP2Listener(
 	addr string,
 	protocolFactory func() FrameProtocol,
-	connAcceptTimeout time.Duration,
-	serverShutdownTimeout time.Duration,
-	maxPendingConns int,
-	readHeaderTimeout time.Duration,
+	optFuncs ...HTTP2ListenerOptFunc,
 ) (*HTTP2Listener, error) {
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
 
+	opts := HTTP2ListenerOpts{
+		ConnAcceptTimeout:     1 * time.Second,
+		ServerShutdownTimeout: 1 * time.Second,
+		MaxPendingConns:       10,
+		ReadHeaderTimeout:     1 * time.Second,
+		Logger:                log.NewNopLogger(),
+	}
+	for _, optFunc := range optFuncs {
+		optFunc(&opts)
+	}
+
 	l := &HTTP2Listener{
+		logger: opts.Logger,
+
 		listener:              listener,
-		connCh:                make(chan Conn, maxPendingConns),
+		connCh:                make(chan Conn, opts.MaxPendingConns),
 		closed:                make(chan struct{}),
 		protocolFactory:       protocolFactory,
-		connAcceptTimeout:     connAcceptTimeout,
-		serverShutdownTimeout: serverShutdownTimeout,
+		connAcceptTimeout:     opts.ConnAcceptTimeout,
+		serverShutdownTimeout: opts.ServerShutdownTimeout,
 	}
 
 	mux := http.NewServeMux()
@@ -59,14 +123,16 @@ func NewHTTP2Listener(
 
 	l.server = &http.Server{
 		Handler:           h2c.NewHandler(mux, &http2.Server{}),
-		ReadHeaderTimeout: readHeaderTimeout,
+		ReadHeaderTimeout: opts.ReadHeaderTimeout,
 	}
 
 	l.wgServe.Add(1)
 	go func() {
 		defer l.wgServe.Done()
-		// TODO(ivkalita): log error properly
-		_ = l.server.Serve(listener)
+		err := l.server.Serve(listener)
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			_ = level.Error(l.logger).Log("msg", "http2 server error", "err", err.Error())
+		}
 	}()
 
 	return l, nil
