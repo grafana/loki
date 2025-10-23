@@ -130,6 +130,10 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.indexGateway.resources | nindent 12 }}
+          {{- with .Values.indexGateway.lifecycle }}
+          lifecycle:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
         {{- if .Values.indexGateway.extraContainers }}
         {{- toYaml .Values.indexGateway.extraContainers | nindent 8}}
         {{- end }}
