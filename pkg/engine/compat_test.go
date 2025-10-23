@@ -225,7 +225,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 				colEnv.FQN(): "dev",
 			},
 		}
-		record1 := rows1.Record(alloc, schema)
+		record1 := rows1.Record(memory.DefaultAllocator, schema)
 		defer record1.Release()
 
 		// Second record: prod and staging streams
@@ -241,7 +241,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 				colEnv.FQN(): "staging",
 			},
 		}
-		record2 := rows2.Record(alloc, schema)
+		record2 := rows2.Record(memory.DefaultAllocator, schema)
 		defer record2.Release()
 
 		builder := newStreamsResultBuilder()
@@ -311,7 +311,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 				colEnv.FQN(): "prod",
 			}
 		}
-		record1 := rows1.Record(alloc, schema)
+		record1 := rows1.Record(memory.DefaultAllocator, schema)
 		builder.CollectRecord(record1)
 		record1.Release()
 		require.Equal(t, 5, builder.Len())
@@ -326,7 +326,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 				colEnv.FQN(): "dev",
 			}
 		}
-		record2 := rows2.Record(alloc, schema)
+		record2 := rows2.Record(memory.DefaultAllocator, schema)
 		builder.CollectRecord(record2)
 		record2.Release()
 		require.Equal(t, 7, builder.Len())
@@ -341,7 +341,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 				colEnv.FQN(): "staging",
 			}
 		}
-		record3 := rows3.Record(alloc, schema)
+		record3 := rows3.Record(memory.DefaultAllocator, schema)
 		builder.CollectRecord(record3)
 		record3.Release()
 		require.Equal(t, 17, builder.Len())
@@ -380,14 +380,14 @@ func TestStreamsResultBuilder(t *testing.T) {
 				colEnv.FQN(): "prod",
 			}
 		}
-		record1 := rows1.Record(alloc, schema)
+		record1 := rows1.Record(memory.DefaultAllocator, schema)
 		builder.CollectRecord(record1)
 		record1.Release()
 		require.Equal(t, 3, builder.Len())
 
 		// Second record: empty (0 rows)
 		rows2 := arrowtest.Rows{}
-		record2 := rows2.Record(alloc, schema)
+		record2 := rows2.Record(memory.DefaultAllocator, schema)
 		builder.CollectRecord(record2)
 		record2.Release()
 		require.Equal(t, 3, builder.Len(), "empty record should not change count")
@@ -401,7 +401,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 				colEnv.FQN(): "dev",
 			}
 		}
-		record3 := rows3.Record(alloc, schema)
+		record3 := rows3.Record(memory.DefaultAllocator, schema)
 		builder.CollectRecord(record3)
 		record3.Release()
 		require.Equal(t, 5, builder.Len(), "should have 5 total entries")

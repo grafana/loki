@@ -10,10 +10,10 @@ import (
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/push"
-	"github.com/grafana/loki/v3/pkg/logproto"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -147,7 +147,7 @@ func (b *streamsResultBuilder) CollectRecord(rec arrow.Record) {
 	}
 
 	// Convert columnar representation to a row-based one
-	for rowIdx := 0; rowIdx < numRows; rowIdx++ {
+	for rowIdx := range numRows {
 		lbs := b.rowBuilders[rowIdx].lbsBuilder.Labels()
 		ts := b.rowBuilders[rowIdx].timestamp
 		line := b.rowBuilders[rowIdx].line
