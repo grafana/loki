@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
@@ -139,9 +141,98 @@ func TestCancellation(t *testing.T) {
 	}
 }
 
+func TestAdmissionControl(t *testing.T) {
+	numScanTasks := 100 // more tasks than the capacity of the token bucket
+	var physicalGraph dag.Graph[physical.Node]
+
+	scanSet := &physical.ScanSet{}
+	for i := range numScanTasks {
+		scanSet.Targets = append(scanSet.Targets, &physical.ScanTarget{
+			Type: physical.ScanTypeDataObject,
+			DataObject: &physical.DataObjScan{
+				Section: i,
+			},
+		})
+	}
+
+	var (
+		rangeAgg = physicalGraph.Add(&physical.RangeAggregation{})
+		parallel = physicalGraph.Add(&physical.Parallelize{})
+		_        = physicalGraph.Add(scanSet)
+	)
+
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: parallel})
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallel, Child: scanSet})
+
+	physicalPlan := physical.FromGraph(physicalGraph)
+
+	fr := newFakeRunner()
+
+	wf, err := New(log.NewNopLogger(), "tenant", fr, physicalPlan)
+	require.NoError(t, err, "workflow should construct properly")
+	require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
+
+	defer func() {
+		if !t.Failed() {
+			return
+		}
+
+		t.Log("Failing workflow:")
+		t.Log(Sprint(wf))
+	}()
+
+	// Run returns an error if any of the methods in our fake runner failed.
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	t.Cleanup(cancel)
+
+	var p executor.Pipeline
+	done := make(chan struct{}, 1)
+
+	go func() {
+		p, err = wf.Run(ctx)
+		require.NoError(t, err, "Workflow should start properly")
+		done <- struct{}{}
+	}()
+
+	select {
+	case <-done:
+		t.Error("should have blocked but hasn't")
+	case <-time.After(100 * time.Millisecond):
+		t.Log("scheduling tasks is throttled")
+	}
+
+	// Simulate tasks being completed
+	for _, task := range wf.allTasks() {
+		time.Sleep(5 * time.Millisecond) // need to make sure that we don't "finish" tasks before they are dispatched
+		wf.onTaskChange(ctx, task, TaskStatus{State: TaskStateCompleted})
+	}
+
+	select {
+	case <-done:
+		t.Log("workflow run started properly")
+	default:
+		t.Error("should have started but hasn't")
+	}
+
+	defer func() {
+		p.Close()
+
+		// Closing the pipeline should remove all remaining streams and tasks.
+		require.Len(t, fr.streams, 0, "all streams should be removed after closing the pipeline")
+		require.Len(t, fr.tasks, 0, "all streams should be removed after closing the pipeline")
+	}()
+
+	rs, ok := fr.streams[wf.resultsStream.ULID]
+	require.True(t, ok, "results stream should be registered in runner")
+	require.NotEqual(t, ulid.Zero, rs.Sender, "results stream should have a sender")
+	require.Equal(t, ulid.Zero, rs.TaskReceiver, "results stream should not have a task receiver")
+	require.NotNil(t, rs.Listener, "results stream should have a listener")
+}
+
 type fakeRunner struct {
-	streams map[ulid.ULID]*runnerStream
-	tasks   map[ulid.ULID]*runnerTask
+	streams  map[ulid.ULID]*runnerStream
+	tasks    map[ulid.ULID]*runnerTask
+	tasksMtx sync.RWMutex
 }
 
 func newFakeRunner() *fakeRunner {
@@ -193,14 +284,20 @@ func (f *fakeRunner) Listen(_ context.Context, stream *Stream) (executor.Pipelin
 
 func (f *fakeRunner) Start(ctx context.Context, handler TaskEventHandler, tasks ...*Task) error {
 	for _, task := range tasks {
+
+		f.tasksMtx.RLock()
 		if _, exist := f.tasks[task.ULID]; exist {
+			f.tasksMtx.RUnlock()
 			return fmt.Errorf("task %s already added", task.ULID)
 		}
+		f.tasksMtx.RUnlock()
 
+		f.tasksMtx.Lock()
 		f.tasks[task.ULID] = &runnerTask{
 			task:    task,
 			handler: handler,
 		}
+		f.tasksMtx.Unlock()
 
 		for _, streams := range task.Sinks {
 			for _, stream := range streams {
@@ -240,14 +337,18 @@ func (f *fakeRunner) Cancel(ctx context.Context, tasks ...*Task) error {
 	var errs []error
 
 	for _, task := range tasks {
+		f.tasksMtx.RLock()
 		rt, exist := f.tasks[task.ULID]
+		f.tasksMtx.RUnlock()
 		if !exist {
 			errs = append(errs, fmt.Errorf("task %s not found", task.ULID))
 			continue
 		}
 
 		rt.handler(ctx, task, TaskStatus{State: TaskStateCancelled})
+		f.tasksMtx.Lock()
 		delete(f.tasks, task.ULID)
+		f.tasksMtx.Unlock()
 	}
 
 	return errors.Join(errs...)
