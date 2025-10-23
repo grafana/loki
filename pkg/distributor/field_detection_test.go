@@ -167,6 +167,65 @@ func Test_DetectLogLevels(t *testing.T) {
 			Value: constants.LogLevelTrace,
 		})
 	})
+
+	t.Run("indexed OTEL severity takes precedence over structured metadata or log line", func(t *testing.T) {
+		limits, ingester := setup(true)
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		writeReq := makeWriteRequestWithLabels(2, 10, []string{`{foo="bar", SeverityText="debug"}`}, false, false, false)
+		writeReq.Streams[0].Entries[0].Line = `{"msg":"this is a test message", "level":"error"}`
+		writeReq.Streams[0].Entries[0].StructuredMetadata = push.LabelsAdapter{
+			{
+				Name:  loghttp_push.OTLPSeverityNumber,
+				Value: fmt.Sprintf("%d", plog.SeverityNumberWarn),
+			},
+		}
+		writeReq.Streams[0].Entries[1].Line = `{"msg":"this is another message", "level":"trace"}`
+		writeReq.Streams[0].Entries[1].StructuredMetadata = push.LabelsAdapter{
+			{
+				Name:  loghttp_push.OTLPSeverityText,
+				Value: constants.LogLevelInfo,
+			},
+		}
+
+		_, err := distributors[0].Push(ctx, writeReq)
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Equal(t, `{SeverityText="debug", foo="bar"}`, topVal.Streams[0].Labels)
+
+		// Verify that detected_level from structured metadata is preserved and used
+		sm := topVal.Streams[0].Entries[0].StructuredMetadata
+
+		detectedLevelLbls := make([]logproto.LabelAdapter, 0, len(sm))
+		for _, sm := range sm {
+			if sm.Name == constants.LevelLabel {
+				detectedLevelLbls = append(detectedLevelLbls, sm)
+			}
+		}
+
+		require.Len(t, detectedLevelLbls, 1)
+		require.Contains(t, detectedLevelLbls, logproto.LabelAdapter{
+			Name:  constants.LevelLabel,
+			Value: constants.LogLevelDebug,
+		})
+
+		// Verify that detected_level from structured metadata is preserved and used
+		sm2 := topVal.Streams[0].Entries[1].StructuredMetadata
+
+		detectedLevelLbls2 := make([]logproto.LabelAdapter, 0, len(sm))
+		for _, sm := range sm2 {
+			if sm.Name == constants.LevelLabel {
+				detectedLevelLbls2 = append(detectedLevelLbls2, sm)
+			}
+		}
+
+		require.Len(t, detectedLevelLbls2, 1)
+		require.Contains(t, detectedLevelLbls2, logproto.LabelAdapter{
+			Name:  constants.LevelLabel,
+			Value: constants.LogLevelDebug,
+		})
+	})
+
 }
 
 func Test_detectLogLevelFromLogEntry(t *testing.T) {
