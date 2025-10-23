@@ -109,7 +109,7 @@ func (l *Local) Accept(ctx context.Context) (Conn, error) {
 }
 
 // Close closes the listener. Any blocked Accept operations will be unblocked and return errors.
-func (l *Local) Close() error {
+func (l *Local) Close(_ context.Context) error {
 	l.lazyInit()
 
 	l.closeOnce.Do(func() {

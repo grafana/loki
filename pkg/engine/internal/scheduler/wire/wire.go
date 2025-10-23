@@ -19,7 +19,7 @@ type Listener interface {
 
 	// Close closes the listener. Any blocked Accept operations will be
 	// unblocked and return errors.
-	Close() error
+	Close(ctx context.Context) error
 
 	// Addr returns the listener's advertised network address. Peers use this
 	// address to connect to the listener.

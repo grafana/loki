@@ -20,7 +20,7 @@ import (
 // Callers must call [Peer.Serve] to run the peer.
 type Peer struct {
 	Logger  log.Logger
-	Conn    Conn    // Local connection to use.
+	Conn    Conn    // Connection to use for communication.
 	Handler Handler // Handler for incoming messages from the remote peer.
 	Buffer  int     // Buffer size for incoming and outgoing messages.
 
