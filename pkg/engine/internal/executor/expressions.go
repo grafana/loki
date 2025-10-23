@@ -2,7 +2,6 @@ package executor
 
 import (
 	"fmt"
-	"slices"
 
 	"github.com/apache/arrow-go/v18/arrow"
 
@@ -35,7 +34,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 					return nil, fmt.Errorf("failed to parse column %s: %w", field.Name, err)
 				}
 				if ident.ShortName() == colIdent.ShortName() && ident.ColumnType() == colIdent.ColumnType() {
-					return NewColumn(ident, input.Column(idx)), nil
+					return NewColumn(input.Column(idx)), nil
 				}
 			}
 		}
@@ -57,7 +56,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 			}
 
 			// Collect all matching columns and order by precedence
-			var vecs []*Column
+			var vecs []*columnWithType
 			for i := range fieldIndices {
 				idx := fieldIndices[i]
 				ident := fieldIdents[i]
@@ -67,21 +66,19 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 				if ident.DataType() != types.Loki.String {
 					return nil, fmt.Errorf("column %s has datatype %s, but expression expects %s", ident.ShortName(), ident.DataType(), types.Loki.String)
 				}
-				vecs = append(vecs, NewColumn(ident, input.Column(idx)))
+				col := NewColumn(input.Column(idx))
+				vecs = append(vecs, &columnWithType{col: col, ct: ident.ColumnType()})
 			}
 
+			// Single column matches
 			if len(vecs) == 1 {
-				return vecs[0], nil
+				return vecs[0].col, nil
 			}
 
+			// Multiple columns match
 			if len(vecs) > 1 {
-				// Multiple matches - sort by precedence and create CoalesceVector
-				slices.SortFunc(vecs, func(a, b *Column) int {
-					return types.ColumnTypePrecedence(a.ColumnType()) - types.ColumnTypePrecedence(b.ColumnType())
-				})
 				return NewCoalesce(vecs), nil
 			}
-
 		}
 
 		// A non-existent column is represented as a string scalar with zero-value.
@@ -94,7 +91,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 			return nil, err
 		}
 
-		fn, err := unaryFunctions.GetForSignature(expr.Op, lhr.Array().DataType())
+		fn, err := unaryFunctions.GetForSignature(expr.Op, lhr.DataType())
 		if err != nil {
 			return nil, fmt.Errorf("failed to lookup unary function: %w", err)
 		}
@@ -113,14 +110,14 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 
 		// At the moment we only support functions that accept the same input types.
 		// TODO(chaudum): Compare Loki type, not Arrow type
-		if lhs.Array().DataType().ID() != rhs.Array().DataType().ID() {
-			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): types do not match", expr.Op, lhs.Ident().DataType(), rhs.Ident().DataType())
+		if lhs.DataType().ID() != rhs.DataType().ID() {
+			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): types do not match", expr.Op, lhs.DataType(), rhs.DataType())
 		}
 
 		// TODO(chaudum): Resolve function by Loki type
-		fn, err := binaryFunctions.GetForSignature(expr.Op, lhs.Array().DataType())
+		fn, err := binaryFunctions.GetForSignature(expr.Op, lhs.DataType())
 		if err != nil {
-			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): %w", expr.Op, lhs.Ident().DataType(), rhs.Ident().DataType(), err)
+			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): %w", expr.Op, lhs.DataType(), rhs.DataType(), err)
 		}
 		return fn.Evaluate(lhs, rhs)
 	}
@@ -136,3 +133,8 @@ func (e expressionEvaluator) newFunc(expr physical.Expression) evalFunc {
 }
 
 type evalFunc func(input arrow.Record) (ColumnVector, error)
+
+type columnWithType struct {
+	col *Column
+	ct  types.ColumnType
+}

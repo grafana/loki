@@ -10,7 +10,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/errors"
-	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -173,34 +172,26 @@ func (b *binaryFuncReg) GetForSignature(op types.BinaryOp, ltype arrow.DataType)
 	return fn, nil
 }
 
-// arrayType combines the IsNull function from the [arrow.Array] interface with the
-// type specific function Value from the concrete types, such as [array.String].
-type arrayType[T comparable] interface {
-	IsNull(int) bool
-	Value(int) T
-	Len() int
-}
-
 // genericFunction is a struct that implements the [BinaryFunction] interface methods
 // and can be used for any array type with compareable elements.
-type genericFunction[E arrayType[T], T comparable] struct {
+type genericFunction[E arrow.TypedArray[T], T arrow.ValueType] struct {
 	eval func(a, b T) (bool, error)
 }
 
 // Evaluate implements BinaryFunction.
 func (f *genericFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector) (ColumnVector, error) {
-	if lhs.Array().Len() != rhs.Array().Len() {
+	if lhs.Len() != rhs.Len() {
 		return nil, arrow.ErrIndex
 	}
 
-	lhsArr, ok := lhs.Array().(E)
+	lhsArr, ok := lhs.Impl().(E)
 	if !ok {
-		return nil, arrow.ErrType
+		return nil, fmt.Errorf("invalid array type: expected %T, got %T", new(E), lhs)
 	}
 
-	rhsArr, ok := rhs.Array().(E)
+	rhsArr, ok := rhs.Impl().(E)
 	if !ok {
-		return nil, arrow.ErrType
+		return nil, fmt.Errorf("invalid array type: expected %T, got %T", new(E), rhs)
 	}
 
 	builder := array.NewBooleanBuilder(memory.DefaultAllocator)
@@ -217,9 +208,7 @@ func (f *genericFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector) (Co
 		builder.Append(res)
 	}
 
-	name := fmt.Sprintf("%s_%s", lhs.Ident().ShortName(), rhs.Ident().ShortName())
-	ident := semconv.NewIdentifier(name, types.ColumnTypeGenerated, types.Loki.Bool)
-	return NewColumn(ident, builder.NewArray()), nil
+	return NewColumn(builder.NewArray()), nil
 }
 
 // Compiler optimized version of converting boolean b into an integer of value 0 or 1

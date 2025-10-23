@@ -129,7 +129,7 @@ func newExpandPipeline(expressions []physical.UnaryExpression, evaluator *expres
 			if err != nil {
 				return nil, err
 			}
-			if arrStruct, ok := vec.Array().(*array.Struct); ok {
+			if arrStruct, ok := vec.Impl().(*array.Struct); ok {
 				structSchema, ok := arrStruct.DataType().(*arrow.StructType)
 				if !ok {
 					return nil, fmt.Errorf("unexpected type returned from evaluation, expected *arrow.StructType, got %T", arrStruct.DataType())

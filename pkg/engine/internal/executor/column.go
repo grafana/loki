@@ -2,86 +2,43 @@ package executor
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 type ColumnVector interface {
-	Ident() *semconv.Identifier
-	Field() arrow.Field
-	Array() arrow.Array
-
-	// TODO(chaudum): Should we expose convenience functions?
-	// Len() int
-	// LokiType() types.DataType
-	// ArrayType() array.Type
+	arrow.Array
+	Impl() arrow.Array
 }
 
-func ColumnFrom(field arrow.Field, array arrow.Array) *Column {
-	ident := semconv.MustParseFQN(field.Name)
+func NewColumn(array arrow.Array) *Column {
 	return &Column{
-		ident: ident,
-		array: array,
-		field: field,
-	}
-}
-
-func NewColumn(ident *semconv.Identifier, array arrow.Array) *Column {
-	return &Column{
-		ident: ident,
-		array: array,
-		field: semconv.FieldFromIdent(ident, true),
+		Array: array,
 	}
 }
 
 type Column struct {
-	ident *semconv.Identifier
-	field arrow.Field
-	array arrow.Array
+	arrow.Array
 }
 
 // Column implements [ColumnVector].
 var _ ColumnVector = (*Column)(nil)
 
-func (c *Column) Ident() *semconv.Identifier {
-	return c.ident
-}
-
-func (c *Column) Field() arrow.Field {
-	return c.field
-}
-
-func (c *Column) Array() arrow.Array {
-	return c.array
-}
-
-func (c *Column) ArrowType() arrow.DataType {
-	return c.ident.DataType().ArrowType()
-}
-
-func (c *Column) LokiType() types.DataType {
-	return c.ident.DataType()
-}
-
-func (c *Column) ColumnType() types.ColumnType {
-	return c.ident.ColumnType()
-}
-
-func (c *Column) Len() int {
-	return c.array.Len()
+func (c *Column) Impl() arrow.Array {
+	return c.Array
 }
 
 func (c *Column) Value(i int) any {
-	if c.array.IsNull(i) || !c.array.IsValid(i) {
+	if c.Array.IsNull(i) || !c.Array.IsValid(i) {
 		return nil
 	}
 
-	switch arr := c.array.(type) {
+	switch arr := c.Array.(type) {
 	case *array.Boolean:
 		return arr.Value(i)
 	case *array.String:
@@ -100,11 +57,8 @@ func (c *Column) Value(i int) any {
 }
 
 func NewScalar(value types.Literal, rows int) *Column {
-	ident := semconv.NewIdentifier("__scalar__", types.ColumnTypeGenerated, value.Type())
 	return &Column{
-		ident: ident,
-		array: scalarArray(value, rows),
-		field: semconv.FieldFromIdent(ident, true),
+		Array: scalarArray(value, rows),
 	}
 }
 
@@ -153,26 +107,28 @@ func scalarArray(value types.Literal, rows int) arrow.Array {
 	return builder.NewArray()
 }
 
-func NewCoalesce(columns []*Column) *Column {
+func NewCoalesce(columns []*columnWithType) *Column {
 	if len(columns) == 0 {
 		return nil
 	}
 	if len(columns) == 1 {
-		return columns[0]
+		return columns[0].col
 	}
-	ident := semconv.NewIdentifier(fmt.Sprintf("__coalesce_%s__", columns[0].Ident().ShortName()), types.ColumnTypeAmbiguous, columns[0].LokiType())
+
+	// Sort columns by precedence
+	slices.SortFunc(columns, func(a, b *columnWithType) int {
+		return types.ColumnTypePrecedence(a.ct) - types.ColumnTypePrecedence(b.ct)
+	})
 	return &Column{
-		ident: ident,
-		array: coalesceArray(columns),
-		field: semconv.FieldFromIdent(ident, true),
+		Array: coalesceArray(columns),
 	}
 }
 
-func coalesceArray(columns []*Column) arrow.Array {
-	builder := array.NewBuilder(memory.DefaultAllocator, columns[0].Array().DataType()).(*array.StringBuilder)
+func coalesceArray(columns []*columnWithType) arrow.Array {
+	builder := array.NewBuilder(memory.DefaultAllocator, columns[0].col.DataType()).(*array.StringBuilder)
 
 	// use Value() method which already handles precedence logic
-	for i := 0; i < columns[0].Len(); i++ {
+	for i := 0; i < columns[0].col.Len(); i++ {
 		val := firstNotNullValue(i, columns)
 		if val == nil {
 			builder.AppendNull()
@@ -188,9 +144,9 @@ func coalesceArray(columns []*Column) arrow.Array {
 	return builder.NewArray()
 }
 
-func firstNotNullValue(i int, columns []*Column) any {
+func firstNotNullValue(i int, columns []*columnWithType) any {
 	for _, col := range columns {
-		val := col.Value(i)
+		val := col.col.Value(i)
 		if val != nil {
 			return val
 		}

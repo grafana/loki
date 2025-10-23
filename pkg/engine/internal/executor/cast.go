@@ -16,11 +16,9 @@ import (
 
 func castFn(operation types.UnaryOp) UnaryFunction {
 	return UnaryFunc(func(input ColumnVector) (ColumnVector, error) {
-		arr := input.Array()
-
-		sourceCol, ok := arr.(*array.String)
+		sourceCol, ok := input.Impl().(*array.String)
 		if !ok {
-			return nil, fmt.Errorf("expected column to be of type string, got %T", arr)
+			return nil, fmt.Errorf("expected column to be of type string, got %T", input)
 		}
 
 		// Get conversion function and process values
@@ -36,7 +34,7 @@ func castFn(operation types.UnaryOp) UnaryFunction {
 		if err != nil {
 			return nil, err
 		}
-		return NewColumn(input.Ident(), result), nil
+		return NewColumn(result), nil
 	})
 }
 

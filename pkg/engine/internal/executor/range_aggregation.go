@@ -163,11 +163,11 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 					return nil, err
 				}
 
-				if vec.Ident().DataType() != types.Loki.String {
-					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.Ident().DataType())
+				if vec.DataType().ID() != types.Arrow.String.ID() {
+					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.DataType())
 				}
 
-				arr := vec.Array().(*array.String)
+				arr := vec.Impl().(*array.String)
 				arrays = append(arrays, arr)
 			}
 
@@ -176,7 +176,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 			if err != nil {
 				return nil, err
 			}
-			tsCol := tsVec.Array().(*array.Timestamp)
+			tsCol := tsVec.Impl().(*array.Timestamp)
 
 			// no need to extract value column for COUNT aggregation
 			var valVec ColumnVector
@@ -201,7 +201,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 
 				var value float64
 				if r.opts.operation != types.RangeAggregationTypeCount {
-					switch arr := valVec.Array().(type) {
+					switch arr := valVec.Impl().(type) {
 					case *array.Int64:
 						value = float64(arr.Value(row))
 					case *array.Float64:

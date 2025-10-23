@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -25,8 +24,7 @@ func createBoolArray(values []bool, nulls []bool) *Column {
 		}
 	}
 
-	ident := semconv.NewIdentifier("bool_column", types.ColumnTypeGenerated, types.Loki.Bool)
-	return NewColumn(ident, builder.NewArray())
+	return NewColumn(builder.NewArray())
 }
 
 // Helper function to create a string array
@@ -41,8 +39,7 @@ func createStringArray(values []string, nulls []bool) *Column {
 		}
 	}
 
-	ident := semconv.NewIdentifier("utf8_column", types.ColumnTypeGenerated, types.Loki.String)
-	return NewColumn(ident, builder.NewArray())
+	return NewColumn(builder.NewArray())
 }
 
 // Helper function to create an int64 array
@@ -57,8 +54,7 @@ func createInt64Array(values []int64, nulls []bool) *Column {
 		}
 	}
 
-	ident := semconv.NewIdentifier("int64_column", types.ColumnTypeGenerated, types.Loki.String)
-	return NewColumn(ident, builder.NewArray())
+	return NewColumn(builder.NewArray())
 }
 
 // Helper function to create a arrow.Timestamp array
@@ -73,8 +69,7 @@ func createTimestampArray(values []arrow.Timestamp, nulls []bool) *Column {
 		}
 	}
 
-	ident := semconv.NewIdentifier("int64_column", types.ColumnTypeGenerated, types.Loki.Timestamp)
-	return NewColumn(ident, builder.NewArray())
+	return NewColumn(builder.NewArray())
 }
 
 // Helper function to create a float64 array
@@ -89,13 +84,12 @@ func createFloat64Array(values []float64, nulls []bool) *Column {
 		}
 	}
 
-	ident := semconv.NewIdentifier("float64_column", types.ColumnTypeGenerated, types.Loki.Float)
-	return NewColumn(ident, builder.NewArray())
+	return NewColumn(builder.NewArray())
 }
 
 // Helper function to extract boolean values from result
 func extractBoolValues(result ColumnVector) []bool {
-	arr := result.Array().(*array.Boolean)
+	arr := result.Impl().(*array.Boolean)
 
 	values := make([]bool, arr.Len())
 	for i := 0; i < arr.Len(); i++ {
@@ -761,5 +755,5 @@ func TestEmptyArrays(t *testing.T) {
 	result, err := fn.Evaluate(lhs, rhs)
 	require.NoError(t, err)
 
-	assert.Equal(t, int(0), result.Array().Len())
+	assert.Equal(t, int(0), result.Len())
 }
