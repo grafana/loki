@@ -3860,7 +3860,7 @@ discover_generic_fields:
 # Field name to use for log levels. If not set, log level would be detected
 # based on pre-defined labels as mentioned above.
 # CLI flag: -validation.log-level-fields
-[log_level_fields: <list of strings> | default = [level LEVEL Level Severity severity SEVERITY lvl LVL Lvl severity_text Severity_Text SEVERITY_TEXT]]
+[log_level_fields: <list of strings> | default = [level LEVEL Level log.level severity SEVERITY Severity SeverityText lvl LVL Lvl severity_text Severity_Text SEVERITY_TEXT]]
 
 # Maximum depth to search for log level fields in JSON logs. A value of 0 or
 # less means unlimited depth. Default is 2 which searches the first 2 levels of
