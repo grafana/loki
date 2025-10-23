@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/ViaQ/logerr/v2/kverrors"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -297,14 +296,22 @@ func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) erro
 // Ingester pods.
 func newIngesterPodDisruptionBudget(opts Options) (*policyv1.PodDisruptionBudget, error) {
 	l := ComponentLabels(LabelIngesterComponent, opts.Name)
-	mu, err := getPDBMinAvailable(opts)
-	if err != nil {
-		return nil, err
+	pdbMinAvailable := intstr.FromInt32(int32(1))
+	switch opts.Stack.Size {
+	case lokiv1.SizeOneXPico, lokiv1.SizeOneXMedium:
+		// For these sizes, default Replication.Factor = 2 and Ingester.Replicas = 3
+		if opts.Stack.Template.Ingester.Replicas <= opts.Stack.Replication.Factor {
+			return nil, lokiv1.ErrReplicationFactorTooHigh
+		}
+		pdbMinAvailable = intstr.FromInt32(opts.Stack.Replication.Factor)
+	case lokiv1.SizeOneXExtraSmall, lokiv1.SizeOneXSmall:
+		// For these sizes, default Replication.Factor = 2 and Ingester.Replicas = 2
+		// Therefore set the pdbMinAvailable to 1 to keep 1 spare pod for rolling updates
+		if opts.Stack.Template.Ingester.Replicas > opts.Stack.Replication.Factor {
+			pdbMinAvailable = intstr.FromInt32(opts.Stack.Replication.Factor - 1)
+		}
 	}
-	/* mu := intstr.FromInt(1)
-	if opts.ResourceRequirements.Ingester.PDBMinAvailable > 0 {
-		mu = pdbMinAvailable
-	} */
+
 	return &policyv1.PodDisruptionBudget{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PodDisruptionBudget",
@@ -319,29 +326,7 @@ func newIngesterPodDisruptionBudget(opts Options) (*policyv1.PodDisruptionBudget
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},
-			MinAvailable: &mu,
+			MinAvailable: &pdbMinAvailable,
 		},
 	}, nil
-}
-
-func getPDBMinAvailable(opts Options) (intstr.IntOrString, error) {
-	/*
-	   size          | ReplicationFactor | PDBMinAvailablePods | Ingester Replicas
-	   1x.demo       | 1                 | 1                   | 1
-	   1x.pico       | 2                 | 2                   | 3
-	   1x.extra-small| 2                 | 1                   | 2
-	   1x.small      | 2 				 | 1				   | 2
-	   1x.medium	 | 2                 | 2   				   | 3 */
-
-	switch opts.Stack.Size {
-	case lokiv1.SizeOneXDemo:
-		return intstr.FromInt(1), nil
-	case lokiv1.SizeOneXExtraSmall, lokiv1.SizeOneXSmall:
-		return intstr.FromInt32(opts.Stack.Replication.Factor - 1), nil
-	}
-	if opts.Stack.Template.Ingester.Replicas <= opts.Stack.Replication.Factor {
-		err := kverrors.New("failed to set PodDisruptionBudget. Replication factor should be less than ingester replicas")
-		return intstr.FromInt32(0), err
-	}
-	return intstr.FromInt32(opts.Stack.Replication.Factor), nil
 }

@@ -194,6 +194,7 @@ func TestBuildIngester_PodDisruptionBudgetWithReplicationFactor(t *testing.T) {
 					Tenants: &lokiv1.TenantsSpec{
 						Mode: lokiv1.OpenshiftLogging,
 					},
+					Size: lokiv1.SizeOneXPico,
 					Replication: &lokiv1.ReplicationSpec{
 						Factor: tc.CustomReplicationFactor,
 					},
