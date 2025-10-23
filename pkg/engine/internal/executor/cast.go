@@ -15,8 +15,8 @@ import (
 )
 
 func castFn(operation types.UnaryOp) UnaryFunction {
-	return UnaryFunc(func(input ColumnVector) (ColumnVector, error) {
-		sourceCol, ok := input.Impl().(*array.String)
+	return UnaryFunc(func(input arrow.Array) (arrow.Array, error) {
+		sourceCol, ok := input.(*array.String)
 		if !ok {
 			return nil, fmt.Errorf("expected column to be of type string, got %T", input)
 		}
@@ -30,11 +30,7 @@ func castFn(operation types.UnaryOp) UnaryFunction {
 
 		// Build output schema and record
 		fields := buildValueAndErrorFields(errTracker.hasErrors)
-		result, err := buildValueAndErrorStruct(castCol, errorCol, errorDetailsCol, fields)
-		if err != nil {
-			return nil, err
-		}
-		return NewColumn(result), nil
+		return buildValueAndErrorStruct(castCol, errorCol, errorDetailsCol, fields)
 	})
 }
 

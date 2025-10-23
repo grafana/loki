@@ -16,7 +16,7 @@ func newExpressionEvaluator() expressionEvaluator {
 	return expressionEvaluator{}
 }
 
-func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) (ColumnVector, error) {
+func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) (arrow.Array, error) {
 
 	switch expr := expr.(type) {
 
@@ -34,7 +34,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 					return nil, fmt.Errorf("failed to parse column %s: %w", field.Name, err)
 				}
 				if ident.ShortName() == colIdent.ShortName() && ident.ColumnType() == colIdent.ColumnType() {
-					return NewColumn(input.Column(idx)), nil
+					return input.Column(idx), nil
 				}
 			}
 		}
@@ -66,8 +66,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 				if ident.DataType() != types.Loki.String {
 					return nil, fmt.Errorf("column %s has datatype %s, but expression expects %s", ident.ShortName(), ident.DataType(), types.Loki.String)
 				}
-				col := NewColumn(input.Column(idx))
-				vecs = append(vecs, &columnWithType{col: col, ct: ident.ColumnType()})
+				vecs = append(vecs, &columnWithType{col: input.Column(idx), ct: ident.ColumnType()})
 			}
 
 			// Single column matches
@@ -127,14 +126,14 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 
 // newFunc returns a new function that can evaluate an input against a binded expression.
 func (e expressionEvaluator) newFunc(expr physical.Expression) evalFunc {
-	return func(input arrow.Record) (ColumnVector, error) {
+	return func(input arrow.Record) (arrow.Array, error) {
 		return e.eval(expr, input)
 	}
 }
 
-type evalFunc func(input arrow.Record) (ColumnVector, error)
+type evalFunc func(input arrow.Record) (arrow.Array, error)
 
 type columnWithType struct {
-	col *Column
+	col arrow.Array
 	ct  types.ColumnType
 }

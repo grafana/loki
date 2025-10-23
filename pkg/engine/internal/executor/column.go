@@ -1,7 +1,6 @@
 package executor
 
 import (
-	"fmt"
 	"slices"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -11,58 +10,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-type ColumnVector interface {
-	arrow.Array
-	Impl() arrow.Array
-}
-
-func NewColumn(array arrow.Array) *Column {
-	return &Column{
-		Array: array,
-	}
-}
-
-type Column struct {
-	arrow.Array
-}
-
-// Column implements [ColumnVector].
-var _ ColumnVector = (*Column)(nil)
-
-func (c *Column) Impl() arrow.Array {
-	return c.Array
-}
-
-func (c *Column) Value(i int) any {
-	if c.Array.IsNull(i) || !c.Array.IsValid(i) {
-		return nil
-	}
-
-	switch arr := c.Array.(type) {
-	case *array.Boolean:
-		return arr.Value(i)
-	case *array.String:
-		return arr.Value(i)
-	case *array.Int64:
-		return arr.Value(i)
-	case *array.Uint64:
-		return arr.Value(i)
-	case *array.Float64:
-		return arr.Value(i)
-	case *array.Timestamp:
-		return arr.Value(i)
-	default:
-		return nil
-	}
-}
-
-func NewScalar(value types.Literal, rows int) *Column {
-	return &Column{
-		Array: scalarArray(value, rows),
-	}
-}
-
-func scalarArray(value types.Literal, rows int) arrow.Array {
+func NewScalar(value types.Literal, rows int) arrow.Array {
 	builder := array.NewBuilder(memory.DefaultAllocator, value.Type().ArrowType())
 
 	switch builder := builder.(type) {
@@ -107,7 +55,7 @@ func scalarArray(value types.Literal, rows int) arrow.Array {
 	return builder.NewArray()
 }
 
-func NewCoalesce(columns []*columnWithType) *Column {
+func NewCoalesce(columns []*columnWithType) arrow.Array {
 	if len(columns) == 0 {
 		return nil
 	}
@@ -119,37 +67,26 @@ func NewCoalesce(columns []*columnWithType) *Column {
 	slices.SortFunc(columns, func(a, b *columnWithType) int {
 		return types.ColumnTypePrecedence(a.ct) - types.ColumnTypePrecedence(b.ct)
 	})
-	return &Column{
-		Array: coalesceArray(columns),
-	}
-}
 
-func coalesceArray(columns []*columnWithType) arrow.Array {
+	// Only string columns are supported
 	builder := array.NewBuilder(memory.DefaultAllocator, columns[0].col.DataType()).(*array.StringBuilder)
-
-	// use Value() method which already handles precedence logic
 	for i := 0; i < columns[0].col.Len(); i++ {
-		val := firstNotNullValue(i, columns)
-		if val == nil {
+		val, isNull := firstNotNullValue(i, columns)
+		if isNull {
 			builder.AppendNull()
 			continue
 		}
-		if strVal, ok := val.(string); ok {
-			builder.Append(strVal)
-		} else {
-			// Fallback: convert to string representation
-			builder.Append(fmt.Sprintf("%v", val))
-		}
+		builder.Append(val)
 	}
 	return builder.NewArray()
 }
 
-func firstNotNullValue(i int, columns []*columnWithType) any {
+func firstNotNullValue(i int, columns []*columnWithType) (string, bool) {
 	for _, col := range columns {
-		val := col.col.Value(i)
-		if val != nil {
-			return val
+		if col.col.IsNull(i) || !col.col.IsValid(i) {
+			continue
 		}
+		return col.col.(*array.String).Value(i), false
 	}
-	return nil
+	return "", true
 }

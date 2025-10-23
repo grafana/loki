@@ -101,14 +101,14 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 			if err != nil {
 				return nil, err
 			}
-			tsCol := tsVec.Impl().(*array.Timestamp)
+			tsCol := tsVec.(*array.Timestamp)
 
 			// extract value column
 			valueVec, err := v.valueEval(record)
 			if err != nil {
 				return nil, err
 			}
-			valueArr := valueVec.Impl().(*array.Float64)
+			valueArr := valueVec.(*array.Float64)
 
 			// extract all the columns that are used for grouping
 			arrays := make([]*array.String, 0, len(v.groupBy))
@@ -123,7 +123,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 					return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.DataType())
 				}
 
-				arr := vec.Impl().(*array.String)
+				arr := vec.(*array.String)
 				arrays = append(arrays, arr)
 			}
 
