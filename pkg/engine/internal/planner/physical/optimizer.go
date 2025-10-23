@@ -6,13 +6,15 @@ import (
 	"sort"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
 // A rule is a transformation that can be applied on a Node.
 type rule interface {
 	// apply tries to apply the transformation on the node.
-	// It returns a boolean indicating whether the transformation has been applied.
-	apply(Node) bool
+	// It returns a boolean indicating whether the transformation has been applied,
+	// and an error if the transformation failed.
+	apply(Node) (bool, error)
 }
 
 // removeNoopFilter is a rule that removes Filter nodes without predicates.
@@ -21,7 +23,7 @@ type removeNoopFilter struct {
 }
 
 // apply implements rule.
-func (r *removeNoopFilter) apply(node Node) bool {
+func (r *removeNoopFilter) apply(node Node) (bool, error) {
 	changed := false
 	switch node := node.(type) {
 	case *Filter:
@@ -30,7 +32,7 @@ func (r *removeNoopFilter) apply(node Node) bool {
 			changed = true
 		}
 	}
-	return changed
+	return changed, nil
 }
 
 var _ rule = (*removeNoopFilter)(nil)
@@ -41,7 +43,7 @@ type predicatePushdown struct {
 }
 
 // apply implements rule.
-func (r *predicatePushdown) apply(node Node) bool {
+func (r *predicatePushdown) apply(node Node) (bool, error) {
 	changed := false
 	switch node := node.(type) {
 	case *Filter:
@@ -54,7 +56,7 @@ func (r *predicatePushdown) apply(node Node) bool {
 			}
 		}
 	}
-	return changed
+	return changed, nil
 }
 
 func (r *predicatePushdown) applyPredicatePushdown(node Node, predicate Expression) bool {
@@ -101,34 +103,60 @@ type limitPushdown struct {
 }
 
 // apply implements rule.
-func (r *limitPushdown) apply(node Node) bool {
-	switch node := node.(type) {
-	case *Limit:
-		return r.applyLimitPushdown(node, node.Fetch)
+func (r *limitPushdown) apply(root Node) (bool, error) {
+	// collect limit nodes.
+	nodes := findMatchingNodes(r.plan, root, func(node Node) bool {
+		_, ok := node.(*Limit)
+		return ok
+	})
+
+	// propagate limit to target child nodes.
+	changed := false
+	for _, n := range nodes {
+		limit := n.(*Limit)
+		if applied, err := r.propagateLimitDown(limit, limit.Fetch); err != nil {
+			return false, err
+		} else if applied {
+			changed = true
+		}
 	}
-	return false
+	return changed, nil
 }
 
-func (r *limitPushdown) applyLimitPushdown(node Node, limit uint32) bool {
+// propagateLimitDown propagates a limit value down the dag, stopping at breaker nodes
+func (r *limitPushdown) propagateLimitDown(node Node, limit uint32) (bool, error) {
 	var changed bool
 	switch node := node.(type) {
 	case *TopK:
 		node.K = max(node.K, int(limit))
 		changed = true
 	case *Filter:
-		// If there is a filter, child nodes may need to read up to all their lines to successfully apply the filter, so stop applying limit pushdown.
-		return false
+		// If there is a filter, child nodes may need to read up to all their lines
+		// to successfully apply the filter, so stop applying limit pushdown.
+		return false, nil
 	}
 
+	// Continue to children
 	for _, child := range r.plan.Children(node) {
-		if ok := r.applyLimitPushdown(child, limit); ok {
+		if childChanged, err := r.propagateLimitDown(child, limit); err != nil {
+			return false, err
+		} else if childChanged {
 			changed = true
 		}
 	}
-	return changed
+	return changed, nil
 }
 
 var _ rule = (*limitPushdown)(nil)
+
+type groupByPushdown struct {
+	plan *Plan
+}
+
+func (r *groupByPushdown) apply(node Node) (bool, error) {
+
+	panic("")
+}
 
 // projectionPushdown is a rule that pushes down column projections.
 // Currently, it only projects partition labels from range aggregations to scan nodes.
@@ -137,11 +165,11 @@ type projectionPushdown struct {
 }
 
 // apply implements rule.
-func (r *projectionPushdown) apply(node Node) bool {
+func (r *projectionPushdown) apply(node Node) (bool, error) {
 	switch node := node.(type) {
 	case *VectorAggregation:
 		if len(node.GroupBy) == 0 {
-			return false
+			return false, nil
 		}
 
 		// Pushdown from vector aggregation to range aggregations is only valid for:
@@ -164,17 +192,17 @@ func (r *projectionPushdown) apply(node Node) bool {
 
 		switch node.Operation {
 		case types.VectorAggregationTypeSum:
-			return applyToRangeAggregations(types.RangeAggregationTypeSum, types.RangeAggregationTypeCount)
+			return applyToRangeAggregations(types.RangeAggregationTypeSum, types.RangeAggregationTypeCount), nil
 		case types.VectorAggregationTypeMax:
-			return applyToRangeAggregations(types.RangeAggregationTypeMax)
+			return applyToRangeAggregations(types.RangeAggregationTypeMax), nil
 		case types.VectorAggregationTypeMin:
-			return applyToRangeAggregations(types.RangeAggregationTypeMin)
+			return applyToRangeAggregations(types.RangeAggregationTypeMin), nil
 		default:
-			return false
+			return false, nil
 		}
 	case *RangeAggregation:
 		if !slices.Contains(types.SupportedRangeAggregationTypes, node.Operation) {
-			return false
+			return false, nil
 		}
 
 		projections := make([]ColumnExpression, len(node.PartitionBy)+1)
@@ -183,11 +211,11 @@ func (r *projectionPushdown) apply(node Node) bool {
 		// Timestamp values are required to perform range aggregation.
 		projections[len(node.PartitionBy)] = &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}
 
-		return r.pushToChildren(node, projections, false)
+		return r.pushToChildren(node, projections, false), nil
 	case *Filter:
 		projections := extractColumnsFromPredicates(node.Predicates)
 		if len(projections) == 0 {
-			return false
+			return false, nil
 		}
 
 		// Filter nodes should only add their predicate columns to projections when
@@ -195,10 +223,10 @@ func (r *projectionPushdown) apply(node Node) bool {
 		// For log queries that read all columns, filter columns should not be projected.
 		//
 		// Setting applyIfNotEmpty argument as true for this reason.
-		return r.pushToChildren(node, projections, true)
+		return r.pushToChildren(node, projections, true), nil
 	}
 
-	return false
+	return false, nil
 }
 
 // applyProjectionPushdown applies the projection pushdown rule to the given node.
@@ -404,17 +432,17 @@ type parallelPushdown struct {
 
 var _ rule = (*parallelPushdown)(nil)
 
-func (p *parallelPushdown) apply(node Node) bool {
+func (p *parallelPushdown) apply(node Node) (bool, error) {
 	// canPushdown only returns true if all children of node are [Parallelize].
 	if !p.canPushdown(node) {
-		return false
+		return false, nil
 	}
 
 	if p.pushed == nil {
 		p.pushed = make(map[Node]struct{})
 	} else if _, ok := p.pushed[node]; ok {
 		// Don't apply the rule to a node more than once.
-		return false
+		return false, nil
 	}
 
 	// There are two catchall cases here:
@@ -439,17 +467,17 @@ func (p *parallelPushdown) apply(node Node) bool {
 		}
 		p.plan.graph.Eliminate(node)
 		p.pushed[node] = struct{}{}
-		return true
+		return true, nil
 
 	case *TopK: // Catchall for sharding nodes
 		for _, parallelize := range p.plan.Children(node) {
 			p.plan.graph.Inject(parallelize, node.Clone())
 		}
 		p.pushed[node] = struct{}{}
-		return true
+		return true, nil
 	}
 
-	return false
+	return false, nil
 }
 
 // canPushdown returns true if the given node has children that are all of type
@@ -531,7 +559,7 @@ func (o *optimization) applyRules(node Node) bool {
 	}
 
 	for _, rule := range o.rules {
-		changed := rule.apply(node)
+		changed, _ := rule.apply(node)
 		if changed {
 			anyChanged = true
 		}
@@ -606,4 +634,16 @@ func addUniqueProjection(projections []ColumnExpression, colExpr *ColumnExpr) ([
 		}
 	}
 	return append(projections, colExpr), true
+}
+
+// findMatchingNodes finds all nodes in the plan tree that match the given matchFn.
+func findMatchingNodes(plan *Plan, root Node, matchFn func(Node) bool) []Node {
+	var result []Node
+	plan.graph.Walk(root, func(node Node) error {
+		if matchFn(node) {
+			result = append(result, node)
+		}
+		return nil
+	}, dag.PreOrderWalk)
+	return result
 }
