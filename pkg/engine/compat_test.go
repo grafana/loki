@@ -24,9 +24,6 @@ import (
 )
 
 func TestStreamsResultBuilder(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	t.Run("empty builder returns non-nil result", func(t *testing.T) {
 		builder := newStreamsResultBuilder()
 		md, _ := metadata.NewContext(t.Context())
@@ -64,8 +61,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 			},
 		}
 
-		record := rows.Record(alloc, schema)
-		defer record.Release()
+		record := rows.Record(memory.DefaultAllocator, schema)
 
 		pipeline := executor.NewBufferedPipeline(record)
 		defer pipeline.Close()
@@ -132,8 +128,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 			},
 		}
 
-		record := rows.Record(alloc, schema)
-		defer record.Release()
+		record := rows.Record(memory.DefaultAllocator, schema)
 
 		pipeline := executor.NewBufferedPipeline(record)
 		defer pipeline.Close()
@@ -185,9 +180,6 @@ func TestStreamsResultBuilder(t *testing.T) {
 }
 
 func TestVectorResultBuilder(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	t.Run("empty builder returns non-nil result", func(t *testing.T) {
 		builder := newVectorResultBuilder()
 		md, _ := metadata.NewContext(t.Context())
@@ -216,8 +208,7 @@ func TestVectorResultBuilder(t *testing.T) {
 			{colTs.FQN(): time.Unix(0, 1620000000000000000).UTC(), colVal.FQN(): float64(15), colInst.FQN(): "localhost:9100", colJob.FQN(): "prometheus"},
 		}
 
-		record := rows.Record(alloc, schema)
-		defer record.Release()
+		record := rows.Record(memory.DefaultAllocator, schema)
 
 		pipeline := executor.NewBufferedPipeline(record)
 		defer pipeline.Close()
@@ -277,8 +268,7 @@ func TestVectorResultBuilder(t *testing.T) {
 			{colTs.FQN(): time.Unix(0, 1620000000000000000).UTC(), colVal.FQN(): nil, colInst.FQN(): "localhost:9100"},
 		}
 
-		record := rows.Record(alloc, schema)
-		defer record.Release()
+		record := rows.Record(memory.DefaultAllocator, schema)
 
 		pipeline := executor.NewBufferedPipeline(record)
 		defer pipeline.Close()
@@ -292,9 +282,6 @@ func TestVectorResultBuilder(t *testing.T) {
 }
 
 func TestMatrixResultBuilder(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	t.Run("empty builder returns non-nil result", func(t *testing.T) {
 		builder := newMatrixResultBuilder()
 		md, _ := metadata.NewContext(t.Context())
@@ -325,8 +312,7 @@ func TestMatrixResultBuilder(t *testing.T) {
 			{colTs.FQN(): time.Unix(0, 1620000002000000000).UTC(), colVal.FQN(): float64(25), colInst.FQN(): "localhost:9100", colJob.FQN(): "node-exporter"},
 		}
 
-		record := rows.Record(alloc, schema)
-		defer record.Release()
+		record := rows.Record(memory.DefaultAllocator, schema)
 
 		pipeline := executor.NewBufferedPipeline(record)
 		defer pipeline.Close()

@@ -28,8 +28,6 @@ type dataobjScanOptions struct {
 	Predicates     []logs.Predicate            // Predicate to apply to the logs.
 	Projections    []physical.ColumnExpression // Columns to include. An empty slice means all columns.
 
-	Allocator memory.Allocator // Allocator to use for reading sections and building records.
-
 	BatchSize int64 // The buffer size for reading rows, derived from the engine batch size.
 }
 
@@ -52,10 +50,6 @@ var _ Pipeline = (*dataobjScan)(nil)
 // in the returned record are ordered by timestamp in the direction specified
 // by opts.Direction.
 func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger) *dataobjScan {
-	if opts.Allocator == nil {
-		opts.Allocator = memory.DefaultAllocator
-	}
-
 	return &dataobjScan{
 		opts:   opts,
 		logger: logger,
@@ -107,7 +101,7 @@ func (s *dataobjScan) initStreams() error {
 		BatchSize:    int(s.opts.BatchSize),
 	})
 
-	s.streamsInjector = newStreamInjector(s.opts.Allocator, s.streams)
+	s.streamsInjector = newStreamInjector(s.streams)
 	return nil
 }
 
@@ -210,7 +204,7 @@ func (s *dataobjScan) initLogs() error {
 		Columns: columnsToRead,
 
 		Predicates: predicates,
-		Allocator:  s.opts.Allocator,
+		Allocator:  memory.DefaultAllocator,
 	})
 
 	// Create the engine-compatible expected schema for the logs section.
@@ -359,20 +353,15 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.Record, error) {
 	} else if (rec == nil || rec.NumRows() == 0) && errors.Is(err, io.EOF) {
 		return nil, EOF
 	}
-	defer rec.Release()
 
 	// Update the schema of the record to match the schema the engine expects.
 	rec, err = changeSchema(rec, s.desiredSchema)
 	if err != nil {
 		return nil, fmt.Errorf("changing schema: %w", err)
 	}
-	defer rec.Release()
 
 	if s.streamsInjector == nil {
 		// No streams injector needed, so we return the record as-is.
-		// We add an extra retain to counteract the Release() call above (for ease
-		// of readability).
-		rec.Retain()
 		return rec, nil
 	}
 

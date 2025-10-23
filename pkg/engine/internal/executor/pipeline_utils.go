@@ -16,12 +16,6 @@ type BufferedPipeline struct {
 // NewBufferedPipeline creates a new BufferedPipeline from a set of Arrow records.
 // The pipeline will return these records in sequence.
 func NewBufferedPipeline(records ...arrow.Record) *BufferedPipeline {
-	for _, rec := range records {
-		if rec != nil {
-			rec.Retain()
-		}
-	}
-
 	return &BufferedPipeline{
 		records: records,
 		current: -1, // Start before the first record
@@ -42,11 +36,5 @@ func (p *BufferedPipeline) Read(_ context.Context) (arrow.Record, error) {
 
 // Close implements Pipeline. It releases all unreturned records.
 func (p *BufferedPipeline) Close() {
-	remRecords := min(p.current, len(p.records))
-	for _, rec := range p.records[remRecords:] {
-		if rec != nil {
-			rec.Release()
-		}
-	}
 	p.records = nil
 }

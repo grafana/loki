@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	v2config "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -209,52 +210,12 @@ func buildSSEParsedConfig(cfg S3Config) (*SSEParsedConfig, error) {
 	return nil, nil
 }
 
-func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.Client, error) {
-	s3Options := s3.Options{}
-	var err error
-
-	// if an s3 url is passed use it to initialize the s3Config and then override with any additional params
-	if cfg.S3.URL != nil {
-		key, secret, session, err := CredentialsFromURL(cfg.S3.URL)
-		if err != nil {
-			return nil, err
-		}
-		s3Options.Credentials = credentials.NewStaticCredentialsProvider(key, secret, session)
-	} else {
-		s3Options.Region = "dummy"
-	}
-
-	if cfg.DisableDualstack {
-		s3Options.EndpointOptions.UseDualStackEndpoint = aws.DualStackEndpointStateDisabled
-	}
-	s3Options.RetryMaxAttempts = 0                // We do our own retries, so we can monitor them
-	s3Options.UsePathStyle = cfg.S3ForcePathStyle // support for Path Style S3 url if has the flag
-
-	if cfg.Endpoint != "" {
-		s3Options.BaseEndpoint = &cfg.Endpoint
-	}
-
-	if cfg.Insecure {
-		s3Options.EndpointOptions.DisableHTTPS = true
-	}
-
-	if cfg.Region != "" {
-		s3Options.Region = cfg.Region
-	}
-
-	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() == "" ||
-		cfg.AccessKeyID == "" && cfg.SecretAccessKey.String() != "" {
-		return nil, errors.New("must supply both an Access Key ID and Secret Access Key or neither")
-	}
-
-	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" {
-		s3Options.Credentials = credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey.String(), cfg.SessionToken.String())
-	}
-
+func mountS3HTTPClient(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*http.Client, error) {
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: cfg.HTTPConfig.InsecureSkipVerify, //#nosec G402 -- User has explicitly requested to disable TLS -- nosemgrep: tls-with-insecure-cipher
 	}
 
+	var err error
 	if cfg.HTTPConfig.CAFile != "" {
 		tlsConfig.RootCAs = x509.NewCertPool()
 		data, err := os.ReadFile(cfg.HTTPConfig.CAFile)
@@ -299,10 +260,70 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.C
 		}
 	}
 
-	s3Options.HTTPClient = httpClient
-	s3Client := s3.New(s3Options)
+	return httpClient, nil
+}
 
-	return s3Client, nil
+func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.Client, error) {
+	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() == "" ||
+		cfg.AccessKeyID == "" && cfg.SecretAccessKey.String() != "" {
+		return nil, errors.New("must supply both an Access Key ID and Secret Access Key or neither")
+	}
+
+	awsCfg, err := v2config.LoadDefaultConfig(context.Background())
+	if err != nil {
+		return nil, err
+	}
+
+	var s3InitializationError error
+	s3Client := s3.NewFromConfig(awsCfg, func(s3Options *s3.Options) {
+		if cfg.S3.URL != nil {
+			key, secret := CredentialsFromURL(cfg.S3.URL)
+
+			// Only set credentials if they were provided in the URL
+			// Otherwise, let AWS SDK use the default credential chain
+			if key != "" || secret != "" {
+				s3Options.Credentials = credentials.NewStaticCredentialsProvider(key, secret, "")
+			}
+		} else {
+			s3Options.Region = "dummy"
+		}
+
+		if cfg.DisableDualstack {
+			s3Options.EndpointOptions.UseDualStackEndpoint = aws.DualStackEndpointStateDisabled
+		}
+
+		s3Options.RetryMaxAttempts = 0                // We do our own retries, so we can monitor them
+		s3Options.UsePathStyle = cfg.S3ForcePathStyle // support for Path Style S3 url if has the flag
+
+		if cfg.Endpoint != "" {
+			s3Options.BaseEndpoint = &cfg.Endpoint
+		}
+
+		if cfg.Insecure {
+			s3Options.EndpointOptions.DisableHTTPS = true
+		}
+
+		if cfg.Region != "" {
+			s3Options.Region = cfg.Region
+		}
+
+		if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" {
+			s3Options.Credentials = credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey.String(), cfg.SessionToken.String())
+		}
+
+		httpClient, err := mountS3HTTPClient(cfg, hedgingCfg, hedging)
+		if err != nil {
+			s3InitializationError = err
+			return
+		}
+		s3Options.HTTPClient = httpClient
+	})
+
+	if s3InitializationError != nil {
+		return nil, s3InitializationError
+	}
+
+	return s3Client, s3InitializationError
 }
 
 func buckets(cfg S3Config) ([]string, error) {

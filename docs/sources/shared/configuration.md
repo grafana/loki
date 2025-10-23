@@ -3622,6 +3622,11 @@ wal:
   # CLI flag: -ingester.wal-replay-memory-ceiling
   [replay_memory_ceiling: <int> | default = 4GB]
 
+  # Threshold for disk usage (0.0 to 1.0) at which the WAL will throttle
+  # incoming writes. Set to 0 to disable throttling.
+  # CLI flag: -ingester.wal-disk-full-threshold
+  [disk_full_threshold: <float> | default = 0.9]
+
 # Shard factor used in the ingesters for the in process reverse index. This MUST
 # be evenly divisible by ALL schema shard factors or Loki will not start.
 # CLI flag: -ingester.index-shards

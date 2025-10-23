@@ -84,7 +84,6 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 		if err != nil {
 			return nil, err
 		}
-		defer batch.Release()
 
 		columns := make([]arrow.Array, 0, batch.NumCols())
 		fields := make([]arrow.Field, 0, batch.NumCols())
@@ -116,7 +115,6 @@ func newExpandPipeline(expressions []physical.UnaryExpression, evaluator *expres
 		if err != nil {
 			return nil, err
 		}
-		defer batch.Release()
 
 		columns := []arrow.Array{}
 		fields := []arrow.Field{}
@@ -131,9 +129,7 @@ func newExpandPipeline(expressions []physical.UnaryExpression, evaluator *expres
 			if err != nil {
 				return nil, err
 			}
-			defer vec.Release()
 			if arrStruct, ok := vec.ToArray().(*array.Struct); ok {
-				defer arrStruct.Release()
 				structSchema, ok := arrStruct.DataType().(*arrow.StructType)
 				if !ok {
 					return nil, fmt.Errorf("unexpected type returned from evaluation, expected *arrow.StructType, got %T", arrStruct.DataType())

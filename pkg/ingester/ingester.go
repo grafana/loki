@@ -1000,6 +1000,11 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 		return nil, ErrReadOnly
 	}
 
+	// Check if disk is too full and throttle writes if needed
+	if i.wal.IsDiskThrottled() {
+		return nil, ErrReadOnly
+	}
+
 	// Set profiling tags
 	defer pprof.SetGoroutineLabels(ctx)
 	ctx = pprof.WithLabels(ctx, pprof.Labels("path", "write"))

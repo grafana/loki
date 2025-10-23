@@ -272,13 +272,21 @@ func (m *ObjectMetastore) Sections(ctx context.Context, start, end time.Time, ma
 	if len(predicates) > 0 {
 		// Search the section AMQs to estimate sections that might match the predicates
 		// AMQs may return false positives so this is an over-estimate.
-		pointerMatchers := pointerPredicateFromMatchers(predicates...)
-		sectionMembershipEstimates, err := m.estimateSectionsForPredicates(ctx, indexObjects, pointerMatchers)
-		if err != nil {
-			return nil, err
-		}
+		//
+		// Only match one predicate at a time in order to obtain the intersection of all estimates, rather than the union.
+		for _, predicate := range predicates {
+			pointerMatchers := pointerPredicateFromMatcher(predicate)
+			sectionMembershipEstimates, err := m.estimateSectionsForPredicates(ctx, indexObjects, pointerMatchers)
+			if err != nil {
+				return nil, err
+			}
 
-		streamSectionPointers = intersectSections(streamSectionPointers, sectionMembershipEstimates)
+			streamSectionPointers = intersectSections(streamSectionPointers, sectionMembershipEstimates)
+			if len(streamSectionPointers) == 0 {
+				// Short circuit here if no sections match the predicates
+				return streamSectionPointers, nil
+			}
+		}
 	}
 
 	duration := sectionsTimer.ObserveDuration()
@@ -432,36 +440,20 @@ func streamPredicateFromMatchers(start, end time.Time, matchers ...*labels.Match
 	return current
 }
 
-func pointerPredicateFromMatchers(matchers ...*labels.Matcher) pointers.RowPredicate {
-	if len(matchers) == 0 {
+func pointerPredicateFromMatcher(matcher *labels.Matcher) pointers.RowPredicate {
+	if matcher == nil {
 		return nil
 	}
-
-	predicates := make([]pointers.RowPredicate, 0, len(matchers)+1)
-	for _, matcher := range matchers {
-		switch matcher.Type {
-		case labels.MatchEqual:
-			predicates = append(predicates, pointers.BloomExistenceRowPredicate{
-				Name:  matcher.Name,
-				Value: matcher.Value,
-			})
+	switch matcher.Type {
+	case labels.MatchEqual:
+		return pointers.BloomExistenceRowPredicate{
+			Name:  matcher.Name,
+			Value: matcher.Value,
 		}
-	}
-
-	if len(predicates) == 0 {
+	default:
+		// unsupported matcher type
 		return nil
 	}
-
-	current := predicates[0]
-
-	for _, predicate := range predicates[1:] {
-		and := pointers.AndRowPredicate{
-			Left:  predicate,
-			Right: current,
-		}
-		current = and
-	}
-	return current
 }
 
 // listObjectsFromTables concurrently lists objects from multiple metastore files
@@ -651,6 +643,12 @@ func (m *ObjectMetastore) estimateSectionsForPredicates(ctx context.Context, ind
 				return fmt.Errorf("reading object from bucket: %w", err)
 			}
 			pointerReadTimer.ObserveDuration()
+
+			if len(objectSectionDescriptors) == 0 {
+				// TODO(benclive): Find a way to differentiate between unknown columns and columns missing the target value.
+				// For now, log a warning to track how often this happens.
+				level.Warn(m.logger).Log("msg", "no section descriptors found for column")
+			}
 
 			sectionDescriptorsMutex.Lock()
 			sectionDescriptors = append(sectionDescriptors, objectSectionDescriptors...)

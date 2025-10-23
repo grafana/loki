@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -240,12 +239,8 @@ func TestNewParsePipeline_logfmt(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-			defer alloc.AssertSize(t, 0) // Assert empty on test exit
-
 			// Create input data with message column containing logfmt
 			input := NewArrowtestPipeline(
-				alloc,
 				tt.schema,
 				tt.input,
 			)
@@ -256,13 +251,12 @@ func TestNewParsePipeline_logfmt(t *testing.T) {
 				RequestedKeys: tt.requestedKeys,
 			}
 
-			pipeline := NewParsePipeline(parseNode, input, alloc)
+			pipeline := NewParsePipeline(parseNode, input)
 
 			// Read first record
 			ctx := t.Context()
 			record, err := pipeline.Read(ctx)
 			require.NoError(t, err)
-			defer record.Release()
 
 			// Verify the output has the expected number of fields
 			outputSchema := record.Schema()
@@ -633,12 +627,8 @@ func TestNewParsePipeline_JSON(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-			defer alloc.AssertSize(t, 0) // Assert empty on test exit
-
 			// Create input data with message column containing JSON
 			input := NewArrowtestPipeline(
-				alloc,
 				tt.schema,
 				tt.input,
 			)
@@ -649,13 +639,12 @@ func TestNewParsePipeline_JSON(t *testing.T) {
 				RequestedKeys: tt.requestedKeys,
 			}
 
-			pipeline := NewParsePipeline(parseNode, input, alloc)
+			pipeline := NewParsePipeline(parseNode, input)
 
 			// Read first record
 			ctx := t.Context()
 			record, err := pipeline.Read(ctx)
 			require.NoError(t, err)
-			defer record.Release()
 
 			// Verify the output has the expected number of fields
 			outputSchema := record.Schema()

@@ -8,7 +8,6 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -17,9 +16,6 @@ import (
 )
 
 func TestVectorAggregationPipeline(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	// input schema with timestamp, value and group by columns
 	fields := []arrow.Field{
 		semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
@@ -60,13 +56,11 @@ func TestVectorAggregationPipeline(t *testing.T) {
 		fmt.Sprintf("%s,40,dev,app2", t3.Format(arrowTimestampFormat)),
 	}, "\n")
 
-	input1Record, err := CSVToArrowWithAllocator(alloc, fields, input1CSV)
+	input1Record, err := CSVToArrow(fields, input1CSV)
 	require.NoError(t, err)
-	defer input1Record.Release()
 
-	input2Record, err := CSVToArrowWithAllocator(alloc, fields, input2CSV)
+	input2Record, err := CSVToArrow(fields, input2CSV)
 	require.NoError(t, err)
-	defer input2Record.Release()
 
 	// Create input pipelines
 	input1 := NewBufferedPipeline(input1Record)
@@ -88,14 +82,13 @@ func TestVectorAggregationPipeline(t *testing.T) {
 		},
 	}
 
-	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, groupBy, newExpressionEvaluator(nil), types.VectorAggregationTypeSum)
+	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, groupBy, newExpressionEvaluator(), types.VectorAggregationTypeSum)
 	require.NoError(t, err)
 	defer pipeline.Close()
 
 	// Read the pipeline output
 	record, err := pipeline.Read(t.Context())
 	require.NoError(t, err)
-	defer record.Release()
 
 	// Define expected results - sum of values for each group at each timestamp
 	expected := map[time.Time]map[string]float64{

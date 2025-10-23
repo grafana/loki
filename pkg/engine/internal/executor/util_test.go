@@ -23,7 +23,6 @@ var (
 
 		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record {
 			builder := array.NewInt64Builder(memory.DefaultAllocator)
-			defer builder.Release()
 
 			rows := int64(0)
 			for ; rows < batchSize && offset+rows < maxRows; rows++ {
@@ -31,7 +30,6 @@ var (
 			}
 
 			data := builder.NewArray()
-			defer data.Release()
 
 			columns := []arrow.Array{data}
 			return array.NewRecord(schema, columns, rows)
@@ -61,10 +59,7 @@ func timestampPipeline(start time.Time, order time.Duration) *recordGenerator {
 
 		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record {
 			idColBuilder := array.NewInt64Builder(memory.DefaultAllocator)
-			defer idColBuilder.Release()
-
 			tsColBuilder := array.NewTimestampBuilder(memory.DefaultAllocator, arrow.FixedWidthTypes.Timestamp_ns.(*arrow.TimestampType))
-			defer tsColBuilder.Release()
 
 			rows := int64(0)
 			for ; rows < batchSize && offset+rows < maxRows; rows++ {
@@ -73,10 +68,7 @@ func timestampPipeline(start time.Time, order time.Duration) *recordGenerator {
 			}
 
 			idData := idColBuilder.NewArray()
-			defer idData.Release()
-
 			tsData := tsColBuilder.NewArray()
-			defer tsData.Release()
 
 			columns := []arrow.Array{idData, tsData}
 			return array.NewRecord(schema, columns, rows)
@@ -134,7 +126,6 @@ func collect(t *testing.T, pipeline Pipeline) (batches int64, rows int64) {
 // ArrowtestPipeline creates a [Pipeline] that emits test data from a sequence
 // of [arrowtest.Rows].
 type ArrowtestPipeline struct {
-	alloc  memory.Allocator
 	schema *arrow.Schema
 	rows   []arrowtest.Rows
 
@@ -148,13 +139,8 @@ var _ Pipeline = (*ArrowtestPipeline)(nil)
 //
 // If schema is defined, all rows will be emitted using that schema. If schema
 // is nil, the schema is derived from each element in rows as it is emitted.
-func NewArrowtestPipeline(alloc memory.Allocator, schema *arrow.Schema, rows ...arrowtest.Rows) *ArrowtestPipeline {
-	if alloc == nil {
-		alloc = memory.DefaultAllocator
-	}
-
+func NewArrowtestPipeline(schema *arrow.Schema, rows ...arrowtest.Rows) *ArrowtestPipeline {
 	return &ArrowtestPipeline{
-		alloc:  alloc,
 		schema: schema,
 		rows:   rows,
 	}
@@ -176,7 +162,7 @@ func (p *ArrowtestPipeline) Read(_ context.Context) (arrow.Record, error) {
 	}
 
 	p.cur++
-	return rows.Record(p.alloc, schema), nil
+	return rows.Record(memory.DefaultAllocator, schema), nil
 }
 
 // Close implements [Pipeline], immediately exhausting the pipeline.

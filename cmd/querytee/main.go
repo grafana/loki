@@ -42,6 +42,7 @@ func main() {
 		trace, err := tracing.NewOTelOrJaegerFromEnv("loki-querytee", util_log.Logger)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
+			os.Exit(1)
 		}
 
 		defer func() {

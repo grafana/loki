@@ -91,13 +91,13 @@ type UnaryFunctionRegistry interface {
 }
 
 type UnaryFunction interface {
-	Evaluate(lhs ColumnVector, allocator memory.Allocator) (ColumnVector, error)
+	Evaluate(lhs ColumnVector) (ColumnVector, error)
 }
 
-type UnaryFunc func(ColumnVector, memory.Allocator) (ColumnVector, error)
+type UnaryFunc func(ColumnVector) (ColumnVector, error)
 
-func (f UnaryFunc) Evaluate(lhs ColumnVector, allocator memory.Allocator) (ColumnVector, error) {
-	return f(lhs, allocator)
+func (f UnaryFunc) Evaluate(lhs ColumnVector) (ColumnVector, error) {
+	return f(lhs)
 }
 
 type unaryFuncReg struct {
@@ -182,7 +182,6 @@ type arrayType[T comparable] interface {
 	IsNull(int) bool
 	Value(int) T
 	Len() int
-	Release()
 }
 
 // genericFunction is a struct that implements the [BinaryFunction] interface methods
@@ -201,17 +200,13 @@ func (f *genericFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector) (Co
 	if !ok {
 		return nil, arrow.ErrType
 	}
-	defer lhsArr.Release()
 
 	rhsArr, ok := rhs.ToArray().(E)
 	if !ok {
 		return nil, arrow.ErrType
 	}
-	defer rhsArr.Release()
 
-	mem := memory.NewGoAllocator()
-	builder := array.NewBooleanBuilder(mem)
-	defer builder.Release()
+	builder := array.NewBooleanBuilder(memory.DefaultAllocator)
 
 	for i := range lhsArr.Len() {
 		if lhsArr.IsNull(i) || rhsArr.IsNull(i) {

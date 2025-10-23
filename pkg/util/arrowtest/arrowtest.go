@@ -100,12 +100,9 @@ func determineDatatype(value any) arrow.DataType {
 // Record converts rows into an [arrow.Record] with the provided schema. A
 // schema can be inferred from rows by using [Rows.Schema].
 //
-// The returned record must be Release()'d after use.
-//
 // Record panics if schema references a column not found in one of the rows.
 func (rows Rows) Record(alloc memory.Allocator, schema *arrow.Schema) arrow.Record {
 	builder := array.NewRecordBuilder(alloc, schema)
-	defer builder.Release()
 
 	for i := range schema.NumFields() {
 		field := schema.Field(i)
@@ -192,7 +189,6 @@ func TableRows(alloc memory.Allocator, table arrow.Table) (Rows, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rec.Release()
 
 	return RecordRows(rec)
 }
@@ -207,7 +203,6 @@ func mergeTable(alloc memory.Allocator, table arrow.Table) (arrow.Record, error)
 		if err != nil {
 			return nil, err
 		}
-		defer column.Release()
 		recordColumns[i] = column
 	}
 

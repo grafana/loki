@@ -30,7 +30,6 @@ func AssertPipelinesEqual(t testing.TB, left, right Pipeline) {
 		// Load batches if needed
 		if leftRemain == 0 {
 			if leftBatch != nil {
-				leftBatch.Release()
 				leftBatch = nil
 			}
 
@@ -43,7 +42,6 @@ func AssertPipelinesEqual(t testing.TB, left, right Pipeline) {
 
 		if rightRemain == 0 {
 			if rightBatch != nil {
-				rightBatch.Release()
 				rightBatch = nil
 			}
 
@@ -138,22 +136,16 @@ func TestAssertPipelinesEqual(t *testing.T) {
 	csvData := "Alice,30\nBob,25\nCharlie,35\nDave,40"
 	record, err := CSVToArrow(fields, csvData)
 	require.NoError(t, err)
-	defer record.Release()
 
 	// Split the record into two smaller records
 	csvData1 := "Alice,30\nBob,25"
 	csvData2 := "Charlie,35\nDave,40"
 	record1, err := CSVToArrow(fields, csvData1)
 	require.NoError(t, err)
-	defer record1.Release()
 	record2, err := CSVToArrow(fields, csvData2)
 	require.NoError(t, err)
-	defer record2.Release()
 
 	t.Run("identical pipelines with same batch size", func(t *testing.T) {
-		// Retain records to use in multiple pipelines
-		record.Retain()
-		record.Retain()
 		p1 := NewBufferedPipeline(record)
 		p2 := NewBufferedPipeline(record)
 
@@ -163,12 +155,9 @@ func TestAssertPipelinesEqual(t *testing.T) {
 
 	t.Run("identical pipelines with different batch sizes", func(t *testing.T) {
 		// First pipeline has one batch with all data
-		record.Retain()
 		p1 := NewBufferedPipeline(record)
 
 		// Second pipeline has two smaller batches
-		record1.Retain()
-		record2.Retain()
 		p2 := NewBufferedPipeline(record1, record2)
 
 		// This should not fail despite different batch sizes

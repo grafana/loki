@@ -11,9 +11,6 @@ import (
 )
 
 func Test_streamInjector(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	inputStreams := []labels.Labels{
 		labels.FromStrings("app", "loki", "env", "prod", "region", "us-west"),
 		labels.FromStrings("app", "loki", "env", "dev"),
@@ -29,17 +26,13 @@ func Test_streamInjector(t *testing.T) {
 		{streamInjectorColumnName: 2, "ts": int64(4), "line": "log line 4"},
 	}
 
-	record := input.Record(alloc, input.Schema())
-	defer record.Release()
+	record := input.Record(memory.DefaultAllocator, input.Schema())
 
 	view := newStreamsView(sec, &streamsViewOptions{})
 	defer view.Close()
 
-	injector := newStreamInjector(alloc, view)
+	injector := newStreamInjector(view)
 	output, err := injector.Inject(t.Context(), record)
-	if output != nil {
-		defer output.Release()
-	}
 	require.NoError(t, err)
 
 	expect := arrowtest.Rows{

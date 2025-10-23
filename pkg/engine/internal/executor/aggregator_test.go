@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -37,9 +36,6 @@ func TestAggregator(t *testing.T) {
 	colSvc := semconv.NewIdentifier("service", types.ColumnTypeLabel, types.Loki.String).FQN()
 
 	t.Run("basic SUM aggregation with record building", func(t *testing.T) {
-		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-		defer alloc.AssertSize(t, 0)
-
 		agg := newAggregator(groupBy, 10, aggregationOperationSum)
 
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
@@ -62,7 +58,6 @@ func TestAggregator(t *testing.T) {
 
 		record, err := agg.BuildRecord()
 		require.NoError(t, err)
-		defer record.Release()
 
 		expect := arrowtest.Rows{
 			{colTs: ts1, colVal: float64(15), colEnv: "prod", colSvc: "app1"},
@@ -81,9 +76,6 @@ func TestAggregator(t *testing.T) {
 	})
 
 	t.Run("basic COUNT aggregation with record building", func(t *testing.T) {
-		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-		defer alloc.AssertSize(t, 0)
-
 		agg := newAggregator(groupBy, 10, aggregationOperationCount)
 
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
@@ -113,7 +105,6 @@ func TestAggregator(t *testing.T) {
 
 		record, err := agg.BuildRecord()
 		require.NoError(t, err)
-		defer record.Release()
 
 		expect := arrowtest.Rows{
 			{colTs: ts1, colVal: float64(3), colEnv: "prod", colSvc: "app1"},
@@ -136,9 +127,6 @@ func TestAggregator(t *testing.T) {
 	})
 
 	t.Run("basic MAX aggregation with record building", func(t *testing.T) {
-		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-		defer alloc.AssertSize(t, 0)
-
 		agg := newAggregator(groupBy, 10, aggregationOperationMax)
 
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
@@ -162,7 +150,6 @@ func TestAggregator(t *testing.T) {
 
 		record, err := agg.BuildRecord()
 		require.NoError(t, err)
-		defer record.Release()
 
 		expect := arrowtest.Rows{
 			{colTs: ts1, colVal: float64(15), colEnv: "prod", colSvc: "app1"},
@@ -181,9 +168,6 @@ func TestAggregator(t *testing.T) {
 	})
 
 	t.Run("basic MIN aggregation with record building", func(t *testing.T) {
-		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-		defer alloc.AssertSize(t, 0)
-
 		agg := newAggregator(groupBy, 10, aggregationOperationMin)
 
 		ts1 := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
@@ -207,7 +191,6 @@ func TestAggregator(t *testing.T) {
 
 		record, err := agg.BuildRecord()
 		require.NoError(t, err)
-		defer record.Release()
 
 		expect := arrowtest.Rows{
 			{colTs: ts1, colVal: float64(5), colEnv: "prod", colSvc: "app1"},
@@ -226,9 +209,6 @@ func TestAggregator(t *testing.T) {
 	})
 
 	t.Run("SUM aggregation with empty groupBy", func(t *testing.T) {
-		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-		defer alloc.AssertSize(t, 0)
-
 		// Empty groupBy represents sum by () or sum(...) - all values aggregated into single group
 		groupBy := []physical.ColumnExpression{}
 
@@ -253,7 +233,6 @@ func TestAggregator(t *testing.T) {
 
 		record, err := agg.BuildRecord()
 		require.NoError(t, err)
-		defer record.Release()
 
 		expect := arrowtest.Rows{
 			// ts1: all series aggregated into single value = 65
