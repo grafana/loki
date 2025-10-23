@@ -13,7 +13,7 @@ import (
 )
 
 // Helper function to create a boolean array
-func createBoolArray(values []bool, nulls []bool) *Column {
+func createBoolArray(values []bool, nulls []bool) arrow.Array {
 	builder := array.NewBooleanBuilder(memory.DefaultAllocator)
 
 	for i, val := range values {
@@ -24,11 +24,11 @@ func createBoolArray(values []bool, nulls []bool) *Column {
 		}
 	}
 
-	return NewColumn(builder.NewArray())
+	return builder.NewArray()
 }
 
 // Helper function to create a string array
-func createStringArray(values []string, nulls []bool) *Column {
+func createStringArray(values []string, nulls []bool) arrow.Array {
 	builder := array.NewStringBuilder(memory.DefaultAllocator)
 
 	for i, val := range values {
@@ -39,11 +39,11 @@ func createStringArray(values []string, nulls []bool) *Column {
 		}
 	}
 
-	return NewColumn(builder.NewArray())
+	return builder.NewArray()
 }
 
 // Helper function to create an int64 array
-func createInt64Array(values []int64, nulls []bool) *Column {
+func createInt64Array(values []int64, nulls []bool) arrow.Array {
 	builder := array.NewInt64Builder(memory.DefaultAllocator)
 
 	for i, val := range values {
@@ -54,11 +54,11 @@ func createInt64Array(values []int64, nulls []bool) *Column {
 		}
 	}
 
-	return NewColumn(builder.NewArray())
+	return builder.NewArray()
 }
 
 // Helper function to create a arrow.Timestamp array
-func createTimestampArray(values []arrow.Timestamp, nulls []bool) *Column {
+func createTimestampArray(values []arrow.Timestamp, nulls []bool) arrow.Array {
 	builder := array.NewTimestampBuilder(memory.DefaultAllocator, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
 
 	for i, val := range values {
@@ -69,11 +69,11 @@ func createTimestampArray(values []arrow.Timestamp, nulls []bool) *Column {
 		}
 	}
 
-	return NewColumn(builder.NewArray())
+	return builder.NewArray()
 }
 
 // Helper function to create a float64 array
-func createFloat64Array(values []float64, nulls []bool) *Column {
+func createFloat64Array(values []float64, nulls []bool) arrow.Array {
 	builder := array.NewFloat64Builder(memory.DefaultAllocator)
 
 	for i, val := range values {
@@ -84,12 +84,12 @@ func createFloat64Array(values []float64, nulls []bool) *Column {
 		}
 	}
 
-	return NewColumn(builder.NewArray())
+	return builder.NewArray()
 }
 
 // Helper function to extract boolean values from result
-func extractBoolValues(result ColumnVector) []bool {
-	arr := result.Impl().(*array.Boolean)
+func extractBoolValues(result arrow.Array) []bool {
+	arr := result.(*array.Boolean)
 
 	values := make([]bool, arr.Len())
 	for i := 0; i < arr.Len(); i++ {
@@ -599,14 +599,14 @@ func TestNullValueHandling(t *testing.T) {
 		name     string
 		op       types.BinaryOp
 		dataType arrow.DataType
-		setup    func() (*Column, *Column)
+		setup    func() (arrow.Array, arrow.Array)
 		expected []bool
 	}{
 		{
 			name:     "boolean with nulls",
 			op:       types.BinaryOpEq,
 			dataType: arrow.FixedWidthTypes.Boolean,
-			setup: func() (*Column, *Column) {
+			setup: func() (arrow.Array, arrow.Array) {
 				lhs := createBoolArray([]bool{true, false, true}, []bool{false, true, false})
 				rhs := createBoolArray([]bool{true, false, false}, []bool{true, false, false})
 				return lhs, rhs
@@ -617,7 +617,7 @@ func TestNullValueHandling(t *testing.T) {
 			name:     "string with nulls",
 			op:       types.BinaryOpEq,
 			dataType: arrow.BinaryTypes.String,
-			setup: func() (*Column, *Column) {
+			setup: func() (arrow.Array, arrow.Array) {
 				lhs := createStringArray([]string{"hello", "world", "test"}, []bool{false, true, false})
 				rhs := createStringArray([]string{"hello", "world", "different"}, []bool{true, false, false})
 				return lhs, rhs
@@ -628,7 +628,7 @@ func TestNullValueHandling(t *testing.T) {
 			name:     "int64 with nulls",
 			op:       types.BinaryOpGt,
 			dataType: arrow.PrimitiveTypes.Int64,
-			setup: func() (*Column, *Column) {
+			setup: func() (arrow.Array, arrow.Array) {
 				lhs := createInt64Array([]int64{5, 10, 15}, []bool{false, true, false})
 				rhs := createInt64Array([]int64{3, 8, 20}, []bool{true, false, false})
 				return lhs, rhs
@@ -658,13 +658,13 @@ func TestArrayLengthMismatch(t *testing.T) {
 		name     string
 		op       types.BinaryOp
 		dataType arrow.DataType
-		setup    func() (*Column, *Column)
+		setup    func() (arrow.Array, arrow.Array)
 	}{
 		{
 			name:     "boolean length mismatch",
 			op:       types.BinaryOpEq,
 			dataType: arrow.FixedWidthTypes.Boolean,
-			setup: func() (*Column, *Column) {
+			setup: func() (arrow.Array, arrow.Array) {
 				lhs := createBoolArray([]bool{true, false}, nil)
 				rhs := createBoolArray([]bool{true, false, true}, nil)
 				return lhs, rhs
@@ -674,7 +674,7 @@ func TestArrayLengthMismatch(t *testing.T) {
 			name:     "string length mismatch",
 			op:       types.BinaryOpEq,
 			dataType: arrow.BinaryTypes.String,
-			setup: func() (*Column, *Column) {
+			setup: func() (arrow.Array, arrow.Array) {
 				lhs := createStringArray([]string{"hello"}, nil)
 				rhs := createStringArray([]string{"hello", "world"}, nil)
 				return lhs, rhs
@@ -684,7 +684,7 @@ func TestArrayLengthMismatch(t *testing.T) {
 			name:     "int64 length mismatch",
 			op:       types.BinaryOpGt,
 			dataType: arrow.PrimitiveTypes.Int64,
-			setup: func() (*Column, *Column) {
+			setup: func() (arrow.Array, arrow.Array) {
 				lhs := createInt64Array([]int64{1, 2, 3}, nil)
 				rhs := createInt64Array([]int64{1, 2}, nil)
 				return lhs, rhs

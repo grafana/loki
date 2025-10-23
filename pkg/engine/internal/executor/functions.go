@@ -92,12 +92,12 @@ type UnaryFunctionRegistry interface {
 }
 
 type UnaryFunction interface {
-	Evaluate(lhs ColumnVector) (ColumnVector, error)
+	Evaluate(lhs arrow.Array) (arrow.Array, error)
 }
 
-type UnaryFunc func(ColumnVector) (ColumnVector, error)
+type UnaryFunc func(arrow.Array) (arrow.Array, error)
 
-func (f UnaryFunc) Evaluate(lhs ColumnVector) (ColumnVector, error) {
+func (f UnaryFunc) Evaluate(lhs arrow.Array) (arrow.Array, error) {
 	return f(lhs)
 }
 
@@ -138,7 +138,7 @@ type BinaryFunctionRegistry interface {
 }
 
 type BinaryFunction interface {
-	Evaluate(lhs, rhs ColumnVector) (ColumnVector, error)
+	Evaluate(lhs, rhs arrow.Array) (arrow.Array, error)
 }
 
 type binaryFuncReg struct {
@@ -179,17 +179,17 @@ type genericFunction[E arrow.TypedArray[T], T arrow.ValueType] struct {
 }
 
 // Evaluate implements BinaryFunction.
-func (f *genericFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector) (ColumnVector, error) {
+func (f *genericFunction[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array) (arrow.Array, error) {
 	if lhs.Len() != rhs.Len() {
 		return nil, arrow.ErrIndex
 	}
 
-	lhsArr, ok := lhs.Impl().(E)
+	lhsArr, ok := lhs.(E)
 	if !ok {
 		return nil, fmt.Errorf("invalid array type: expected %T, got %T", new(E), lhs)
 	}
 
-	rhsArr, ok := rhs.Impl().(E)
+	rhsArr, ok := rhs.(E)
 	if !ok {
 		return nil, fmt.Errorf("invalid array type: expected %T, got %T", new(E), rhs)
 	}
@@ -208,7 +208,7 @@ func (f *genericFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector) (Co
 		builder.Append(res)
 	}
 
-	return NewColumn(builder.NewArray()), nil
+	return builder.NewArray(), nil
 }
 
 // Compiler optimized version of converting boolean b into an integer of value 0 or 1
