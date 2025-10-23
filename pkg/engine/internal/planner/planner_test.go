@@ -206,6 +206,20 @@ VectorAggregation
                         └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
 						`,
 		},
+		{
+			comment: "math expression",
+			query:   `sum by (bar) (count_over_time({app="foo"}[1m]) / 300)`,
+			expected: `
+VectorAggregation
+└── Projection all=true expand=(DIV(generated.value, 300))
+    └── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s partition_by=(ambiguous.bar)
+        └── Parallelize
+            └── Compat src=metadata dst=metadata collision=label
+                └── ScanSet num_targets=2 projections=(ambiguous.bar, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
+                        ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
+                        └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+						`,
+		},
 	}
 
 	for _, tc := range testCases {
