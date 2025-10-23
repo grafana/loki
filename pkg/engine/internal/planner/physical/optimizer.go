@@ -551,13 +551,6 @@ func (o *optimization) optimize(node Node) {
 func (o *optimization) applyRules(node Node) bool {
 	anyChanged := false
 
-	for _, child := range o.plan.Children(node) {
-		changed := o.applyRules(child)
-		if changed {
-			anyChanged = true
-		}
-	}
-
 	for _, rule := range o.rules {
 		changed, _ := rule.apply(node)
 		if changed {
