@@ -23,15 +23,22 @@ type removeNoopFilter struct {
 }
 
 // apply implements rule.
-func (r *removeNoopFilter) apply(node Node) (bool, error) {
+func (r *removeNoopFilter) apply(root Node) (bool, error) {
+	// collect filter nodes.
+	nodes := findMatchingNodes(r.plan, root, func(node Node) bool {
+		_, ok := node.(*Filter)
+		return ok
+	})
+
 	changed := false
-	switch node := node.(type) {
-	case *Filter:
-		if len(node.Predicates) == 0 {
-			r.plan.graph.Eliminate(node)
+	for _, n := range nodes {
+		filter := n.(*Filter)
+		if len(filter.Predicates) == 0 {
+			r.plan.graph.Eliminate(filter)
 			changed = true
 		}
 	}
+
 	return changed, nil
 }
 
@@ -153,8 +160,79 @@ func (r *limitPushdown) applyToTargets(node Node, limit uint32) bool {
 
 var _ rule = (*limitPushdown)(nil)
 
+// groupByPushdown is an optimisation rule that enables groupby labels to be pushed down to range aggregations.
+type groupByPushdown struct {
+	plan *Plan
+}
+
+func (r *groupByPushdown) apply(root Node) (bool, error) {
+	nodes := findMatchingNodes(r.plan, root, func(n Node) bool {
+		_, ok := n.(*VectorAggregation)
+		return ok
+	})
+
+	var changed bool
+	for _, n := range nodes {
+		vecAgg := n.(*VectorAggregation)
+		if len(vecAgg.GroupBy) == 0 {
+			continue
+		}
+
+		// Pushing down groupBy is valid only for certain combinations as these are both commutative and associative.
+		// SUM -> SUM, COUNT
+		// MAX -> MAX
+		// MIN -> MIN
+		var supportedAggTypes []types.RangeAggregationType
+		switch vecAgg.Operation {
+		case types.VectorAggregationTypeSum:
+			supportedAggTypes = append(supportedAggTypes, types.RangeAggregationTypeSum, types.RangeAggregationTypeCount)
+		case types.VectorAggregationTypeMax:
+			supportedAggTypes = append(supportedAggTypes, types.RangeAggregationTypeMax)
+		case types.VectorAggregationTypeMin:
+			supportedAggTypes = append(supportedAggTypes, types.RangeAggregationTypeMin)
+		default:
+			return false, nil
+		}
+
+		if r.applyToTargets(vecAgg, vecAgg.GroupBy, supportedAggTypes...) {
+			changed = true
+		}
+	}
+
+	return changed, nil
+}
+
+func (r *groupByPushdown) applyToTargets(node Node, groupBy []ColumnExpression, supportedAggTypes ...types.RangeAggregationType) bool {
+	var changed bool
+	switch node := node.(type) {
+	case *RangeAggregation:
+		for _, colExpr := range groupBy {
+			colExpr, ok := colExpr.(*ColumnExpr)
+			if !ok {
+				continue
+			}
+
+			var wasAdded bool
+			node.PartitionBy, wasAdded = addUniqueColumnExpr(node.PartitionBy, colExpr)
+			if wasAdded {
+				changed = true
+			}
+		}
+
+		return changed
+	}
+
+	// Continue to children
+	for _, child := range r.plan.Children(node) {
+		if r.applyToTargets(child, groupBy, supportedAggTypes...) {
+			changed = true
+		}
+	}
+
+	return changed
+}
+
 // projectionPushdown is a rule that pushes down column projections.
-// Currently, it only projects partition labels from range aggregations to scan nodes.
 type projectionPushdown struct {
 	plan *Plan
 }
@@ -162,39 +240,6 @@ type projectionPushdown struct {
 // apply implements rule.
 func (r *projectionPushdown) apply(node Node) (bool, error) {
 	switch node := node.(type) {
-	case *VectorAggregation:
-		if len(node.GroupBy) == 0 {
-			return false, nil
-		}
-
-		// Pushdown from vector aggregation to range aggregations is only valid for:
-		// SUM -> COUNT
-		// SUM -> SUM
-		// MAX -> MAX
-		// MIN -> MIN
-
-		applyToRangeAggregations := func(ops ...types.RangeAggregationType) bool {
-			anyChanged := false
-			for _, child := range r.plan.Children(node) {
-				if ra, ok := child.(*RangeAggregation); ok {
-					if slices.Contains(ops, ra.Operation) {
-						anyChanged = r.handleRangeAggregation(ra, node.GroupBy) || anyChanged
-					}
-				}
-			}
-			return anyChanged
-		}
-
-		switch node.Operation {
-		case types.VectorAggregationTypeSum:
-			return applyToRangeAggregations(types.RangeAggregationTypeSum, types.RangeAggregationTypeCount), nil
-		case types.VectorAggregationTypeMax:
-			return applyToRangeAggregations(types.RangeAggregationTypeMax), nil
-		case types.VectorAggregationTypeMin:
-			return applyToRangeAggregations(types.RangeAggregationTypeMin), nil
-		default:
-			return false, nil
-		}
 	case *RangeAggregation:
 		if !slices.Contains(types.SupportedRangeAggregationTypes, node.Operation) {
 			return false, nil
@@ -239,8 +284,6 @@ func (r *projectionPushdown) applyProjectionPushdown(
 		return r.handleDataObjScan(node, projections, applyIfNotEmpty)
 	case *ParseNode:
 		return r.handleParseNode(node, projections, applyIfNotEmpty)
-	case *RangeAggregation:
-		return r.handleRangeAggregation(node, projections)
 	case *Parallelize, *Filter, *ColumnCompat:
 		// Push to next direct child that cares about projections
 		return r.pushToChildren(node, projections, applyIfNotEmpty)
@@ -265,7 +308,7 @@ func (r *projectionPushdown) handleScanSet(node *ScanSet, projections []ColumnEx
 		}
 
 		var wasAdded bool
-		node.Projections, wasAdded = addUniqueProjection(node.Projections, colExpr)
+		node.Projections, wasAdded = addUniqueColumnExpr(node.Projections, colExpr)
 		if wasAdded {
 			changed = true
 		}
@@ -295,7 +338,7 @@ func (r *projectionPushdown) handleDataObjScan(node *DataObjScan, projections []
 		}
 
 		var wasAdded bool
-		node.Projections, wasAdded = addUniqueProjection(node.Projections, colExpr)
+		node.Projections, wasAdded = addUniqueColumnExpr(node.Projections, colExpr)
 		if wasAdded {
 			changed = true
 		}
@@ -354,24 +397,6 @@ func (r *projectionPushdown) handleParseNode(node *ParseNode, projections []Colu
 	// Push non-ambiguous projections down to children that care about them
 	childrenChanged := r.pushToChildren(node, projectionsToPushDown, true)
 	return changed || childrenChanged
-}
-
-// handleRangeAggregation handles projection pushdown for RangeAggregation nodes
-func (r *projectionPushdown) handleRangeAggregation(node *RangeAggregation, projections []ColumnExpression) bool {
-	changed := false
-	for _, colExpr := range projections {
-		colExpr, ok := colExpr.(*ColumnExpr)
-		if !ok {
-			continue
-		}
-
-		var wasAdded bool
-		node.PartitionBy, wasAdded = addUniqueProjection(node.PartitionBy, colExpr)
-		if wasAdded {
-			changed = true
-		}
-	}
-	return changed
 }
 
 // pushToChildren is a helper method to push projections to all children of a node
@@ -612,8 +637,8 @@ func deduplicateColumns(columns []ColumnExpression) []ColumnExpression {
 	return result
 }
 
-// addUniqueProjection adds a column to the projections list if it's not already present
-func addUniqueProjection(projections []ColumnExpression, colExpr *ColumnExpr) ([]ColumnExpression, bool) {
+// addUniqueColumnExpr adds a column to the projections list if it's not already present
+func addUniqueColumnExpr(projections []ColumnExpression, colExpr *ColumnExpr) ([]ColumnExpression, bool) {
 	for _, existing := range projections {
 		if existingCol, ok := existing.(*ColumnExpr); ok {
 			if existingCol.Ref.Column == colExpr.Ref.Column {
