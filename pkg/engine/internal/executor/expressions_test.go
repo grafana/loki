@@ -240,10 +240,7 @@ func collectBooleanArray(arr *array.Boolean) []bool {
 var words = []string{"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"}
 
 func batch(n int, now time.Time) arrow.Record {
-	// 1. Create a memory allocator
-	mem := memory.NewGoAllocator()
-
-	// 2. Define the schema
+	// Define the schema
 	schema := arrow.NewSchema(
 		[]arrow.Field{
 			semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
@@ -252,12 +249,11 @@ func batch(n int, now time.Time) arrow.Record {
 		nil, // No metadata
 	)
 
-	// 3. Create builders for each column
-	logBuilder := array.NewStringBuilder(mem)
+	// Create builders for each column
+	logBuilder := array.NewStringBuilder(memory.DefaultAllocator)
+	tsBuilder := array.NewTimestampBuilder(memory.DefaultAllocator, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
 
-	tsBuilder := array.NewTimestampBuilder(mem, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
-
-	// 4. Append data to the builders
+	// Append data to the builders
 	logs := make([]string, n)
 	ts := make([]arrow.Timestamp, n)
 
@@ -269,12 +265,12 @@ func batch(n int, now time.Time) arrow.Record {
 	tsBuilder.AppendValues(ts, nil)
 	logBuilder.AppendValues(logs, nil)
 
-	// 5. Build the arrays
+	// Build the arrays
 	logArray := logBuilder.NewArray()
 
 	tsArray := tsBuilder.NewArray()
 
-	// 6. Create the record
+	// Create the record
 	columns := []arrow.Array{logArray, tsArray}
 	record := array.NewRecord(schema, columns, int64(n))
 

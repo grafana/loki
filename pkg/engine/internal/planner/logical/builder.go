@@ -83,6 +83,28 @@ func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 	}
 }
 
+// BinOpRight adds a binary arithmetic operation with a given right value
+func (b *Builder) BinOpRight(op types.BinaryOp, right Value) *Builder {
+	return &Builder{
+		val: &BinOp{
+			Left:  b.val,
+			Right: right,
+			Op:    op,
+		},
+	}
+}
+
+// BinOpLeft adds a binary arithmetic operation with a given left value
+func (b *Builder) BinOpLeft(op types.BinaryOp, left Value) *Builder {
+	return &Builder{
+		val: &BinOp{
+			Left:  left,
+			Right: b.val,
+			Op:    op,
+		},
+	}
+}
+
 // RangeAggregation applies a [RangeAggregation] operation to the Builder.
 func (b *Builder) RangeAggregation(
 	partitionBy []ColumnRef,
