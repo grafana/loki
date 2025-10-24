@@ -635,7 +635,7 @@ func findMatchingNodes(plan *Plan, root Node, matchFn func(Node) bool) []Node {
 	// Using PostOrderWalk to return child nodes first.
 	// This can be useful for optimizations like predicate pushdown
 	// where it is ideal to process child Filter before parent Filter.
-	plan.graph.Walk(root, func(node Node) error {
+	_ = plan.graph.Walk(root, func(node Node) error {
 		if matchFn(node) {
 			result = append(result, node)
 		}
