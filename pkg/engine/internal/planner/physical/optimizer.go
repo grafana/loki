@@ -14,7 +14,7 @@ type rule interface {
 	// apply tries to apply the transformation on the node.
 	// It returns a boolean indicating whether the transformation has been applied,
 	// and an error if the transformation failed.
-	apply(Node) (bool, error)
+	apply(Node) bool
 }
 
 var _ rule = (*removeNoopFilter)(nil)
@@ -25,7 +25,7 @@ type removeNoopFilter struct {
 }
 
 // apply implements rule.
-func (r *removeNoopFilter) apply(root Node) (bool, error) {
+func (r *removeNoopFilter) apply(root Node) bool {
 	// collect filter nodes.
 	nodes := findMatchingNodes(r.plan, root, func(node Node) bool {
 		_, ok := node.(*Filter)
@@ -41,7 +41,7 @@ func (r *removeNoopFilter) apply(root Node) (bool, error) {
 		}
 	}
 
-	return changed, nil
+	return changed
 }
 
 var _ rule = (*predicatePushdown)(nil)
@@ -52,7 +52,7 @@ type predicatePushdown struct {
 }
 
 // apply implements rule.
-func (r *predicatePushdown) apply(root Node) (bool, error) {
+func (r *predicatePushdown) apply(root Node) bool {
 	// collect filter nodes.
 	nodes := findMatchingNodes(r.plan, root, func(node Node) bool {
 		_, ok := node.(*Filter)
@@ -76,7 +76,7 @@ func (r *predicatePushdown) apply(root Node) (bool, error) {
 		}
 	}
 
-	return changed, nil
+	return changed
 }
 
 func (r *predicatePushdown) applyToTargets(node Node, predicate Expression) bool {
@@ -116,7 +116,7 @@ type limitPushdown struct {
 }
 
 // apply implements rule.
-func (r *limitPushdown) apply(root Node) (bool, error) {
+func (r *limitPushdown) apply(root Node) bool {
 	// collect limit nodes.
 	nodes := findMatchingNodes(r.plan, root, func(node Node) bool {
 		_, ok := node.(*Limit)
@@ -131,7 +131,7 @@ func (r *limitPushdown) apply(root Node) (bool, error) {
 			changed = true
 		}
 	}
-	return changed, nil
+	return changed
 }
 
 // applyToTargets applies limit on target nodes.
@@ -163,7 +163,7 @@ type groupByPushdown struct {
 	plan *Plan
 }
 
-func (r *groupByPushdown) apply(root Node) (bool, error) {
+func (r *groupByPushdown) apply(root Node) bool {
 	nodes := findMatchingNodes(r.plan, root, func(n Node) bool {
 		_, ok := n.(*VectorAggregation)
 		return ok
@@ -189,7 +189,7 @@ func (r *groupByPushdown) apply(root Node) (bool, error) {
 		case types.VectorAggregationTypeMin:
 			supportedAggTypes = append(supportedAggTypes, types.RangeAggregationTypeMin)
 		default:
-			return false, nil
+			return false
 		}
 
 		if r.applyToTargets(vecAgg, vecAgg.GroupBy, supportedAggTypes...) {
@@ -197,7 +197,7 @@ func (r *groupByPushdown) apply(root Node) (bool, error) {
 		}
 	}
 
-	return changed, nil
+	return changed
 }
 
 func (r *groupByPushdown) applyToTargets(node Node, groupBy []ColumnExpression, supportedAggTypes ...types.RangeAggregationType) bool {
@@ -242,12 +242,12 @@ type projectionPushdown struct {
 }
 
 // apply implements rule.
-func (r *projectionPushdown) apply(node Node) (bool, error) {
+func (r *projectionPushdown) apply(node Node) bool {
 	if !r.isMetricQuery() {
-		return false, nil
+		return false
 	}
 
-	return r.propagateProjections(node, nil), nil
+	return r.propagateProjections(node, nil)
 }
 
 // propagateProjections propagates projections down the plan tree.
@@ -413,7 +413,7 @@ type parallelPushdown struct {
 
 var _ rule = (*parallelPushdown)(nil)
 
-func (p *parallelPushdown) apply(root Node) (bool, error) {
+func (p *parallelPushdown) apply(root Node) bool {
 	if p.pushed == nil {
 		p.pushed = make(map[Node]struct{})
 	}
@@ -436,7 +436,7 @@ func (p *parallelPushdown) apply(root Node) (bool, error) {
 		}
 	}
 
-	return changed, nil
+	return changed
 }
 
 func (p *parallelPushdown) applyParallelization(node Node) bool {
@@ -530,8 +530,7 @@ func (o *optimization) applyRules(node Node) bool {
 	anyChanged := false
 
 	for _, rule := range o.rules {
-		changed, _ := rule.apply(node)
-		if changed {
+		if rule.apply(node) {
 			anyChanged = true
 		}
 	}
