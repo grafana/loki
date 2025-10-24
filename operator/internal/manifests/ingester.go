@@ -14,6 +14,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	lokiv1 "github.com/grafana/loki/operator/api/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
@@ -62,11 +63,16 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	pdb, err := newIngesterPodDisruptionBudget(opts)
+	if err != nil {
+		return nil, err
+	}
+
 	return []client.Object{
 		statefulSet,
 		NewIngesterGRPCService(opts),
 		NewIngesterHTTPService(opts),
-		newIngesterPodDisruptionBudget(opts),
+		pdb,
 	}, nil
 }
 
@@ -288,13 +294,24 @@ func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) erro
 
 // newIngesterPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack
 // Ingester pods.
-func newIngesterPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
+func newIngesterPodDisruptionBudget(opts Options) (*policyv1.PodDisruptionBudget, error) {
 	l := ComponentLabels(LabelIngesterComponent, opts.Name)
-	// Default to 1 if not defined in ResourceRequirementsTable for a given size
-	mu := intstr.FromInt(1)
-	if opts.ResourceRequirements.Ingester.PDBMinAvailable > 0 {
-		mu = intstr.FromInt(opts.ResourceRequirements.Ingester.PDBMinAvailable)
+	pdbMinAvailable := intstr.FromInt32(int32(1))
+	switch opts.Stack.Size {
+	case lokiv1.SizeOneXPico, lokiv1.SizeOneXMedium:
+		// For these sizes, default Replication.Factor = 2 and Ingester.Replicas = 3
+		if opts.Stack.Template.Ingester.Replicas <= opts.Stack.Replication.Factor {
+			return nil, lokiv1.ErrReplicationFactorTooHigh
+		}
+		pdbMinAvailable = intstr.FromInt32(opts.Stack.Replication.Factor)
+	case lokiv1.SizeOneXExtraSmall, lokiv1.SizeOneXSmall:
+		// For these sizes, default Replication.Factor = 2 and Ingester.Replicas = 2
+		// Therefore set the pdbMinAvailable to 1 to keep 1 spare pod for rolling updates
+		if opts.Stack.Template.Ingester.Replicas > opts.Stack.Replication.Factor {
+			pdbMinAvailable = intstr.FromInt32(opts.Stack.Replication.Factor - 1)
+		}
 	}
+
 	return &policyv1.PodDisruptionBudget{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PodDisruptionBudget",
@@ -309,7 +326,7 @@ func newIngesterPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget 
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},
-			MinAvailable: &mu,
+			MinAvailable: &pdbMinAvailable,
 		},
-	}
+	}, nil
 }
