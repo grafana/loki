@@ -13,7 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
-- [CHANGE] `nameOverride` now passed through helps tpl function.
+- [CHANGE] `nameOverride` now passed through helm tpl function [#19590](https://github.com/grafana/loki/pull/19590).
 
 ## 6.44.0
 
