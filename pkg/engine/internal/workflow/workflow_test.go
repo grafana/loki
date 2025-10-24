@@ -41,7 +41,7 @@ func Test(t *testing.T) {
 
 	fr := newFakeRunner()
 
-	wf, err := New(log.NewNopLogger(), fr, physicalPlan)
+	wf, err := New(log.NewNopLogger(), "", fr, physicalPlan)
 	require.NoError(t, err, "workflow should construct properly")
 	require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
@@ -99,7 +99,7 @@ func TestCancellation(t *testing.T) {
 	for _, state := range terminalStates {
 		t.Run(state.String(), func(t *testing.T) {
 			fr := newFakeRunner()
-			wf, err := New(log.NewNopLogger(), fr, physicalPlan)
+			wf, err := New(log.NewNopLogger(), "", fr, physicalPlan)
 			require.NoError(t, err, "workflow should construct properly")
 			require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
