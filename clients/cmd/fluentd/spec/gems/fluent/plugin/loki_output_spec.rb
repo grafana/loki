@@ -263,6 +263,69 @@ RSpec.describe Fluent::Plugin::LokiOutput do
     expect(body[:streams][0]['values'][0][1]).to eq content[0]
   end
 
+  it 'adds structured metadata to entries' do
+    config = <<-CONF
+      url     https://logs-us-west1.grafana.net
+      line_format json
+      <structured_metadata>
+        request.id $.request.id
+        user_name user
+      </structured_metadata>
+    CONF
+    driver = Fluent::Test::Driver::Output.new(described_class)
+    driver.configure(config)
+    record = {
+      'message' => 'hello world',
+      'request' => { 'id' => 'abc-123', 'source' => 'frontend' },
+      'user' => 'alice'
+    }
+    line = [Time.at(1_700_000_000), record]
+    payload = driver.instance.generic_to_loki([line])
+    stream = payload[0]
+
+    expect(stream['stream']).to eq({})
+    expect(stream['values'].count).to eq 1
+    timestamp, line_content, structured_metadata = stream['values'][0]
+
+    expect(timestamp).to eq '1700000000000000000'
+    expect(Yajl.load(line_content)).to eq('message' => 'hello world', 'request' => { 'source' => 'frontend' })
+    expect(structured_metadata).to eq('request_id' => 'abc-123', 'user_name' => 'alice')
+  end
+
+  it 'maps structured metadata using structured_metadata_map_keys' do
+    config = <<-CONF
+      url     https://logs-us-west1.grafana.net
+      line_format json
+      structured_metadata_map_keys $.kubernetes.labels,$.metadata
+    CONF
+    driver = Fluent::Test::Driver::Output.new(described_class)
+    driver.configure(config)
+    record = {
+      'message' => 'hello map',
+      'kubernetes' => {
+        'labels' => {
+          'component' => 'frontend',
+          'tier' => 'prod'
+        },
+        'pod_name' => 'mypod-0'
+      },
+      'metadata' => {
+        'trace-id' => 'abc123',
+        'span' => 'def456'
+      }
+    }
+    line = [Time.at(1_800_000_000), record]
+
+    payload = driver.instance.generic_to_loki([line])
+    stream = payload[0]
+
+    expect(stream['stream']).to eq({})
+    timestamp, _, structured_metadata = stream['values'][0]
+
+    expect(timestamp).to eq '1800000000000000000'
+    expect(structured_metadata).to eq('component' => 'frontend', 'tier' => 'prod', 'trace_id' => 'abc123', 'span' => 'def456')
+  end
+
   it 'order by timestamp then index when received unordered' do
     config = <<-CONF
       url     https://logs-us-west1.grafana.net
