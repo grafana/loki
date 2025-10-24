@@ -17,6 +17,8 @@ type rule interface {
 	apply(Node) (bool, error)
 }
 
+var _ rule = (*removeNoopFilter)(nil)
+
 // removeNoopFilter is a rule that removes Filter nodes without predicates.
 type removeNoopFilter struct {
 	plan *Plan
@@ -42,7 +44,7 @@ func (r *removeNoopFilter) apply(root Node) (bool, error) {
 	return changed, nil
 }
 
-var _ rule = (*removeNoopFilter)(nil)
+var _ rule = (*predicatePushdown)(nil)
 
 // predicatePushdown is a rule that moves down filter predicates to the scan nodes.
 type predicatePushdown struct {
@@ -110,7 +112,7 @@ func canApplyPredicate(predicate Expression) bool {
 	}
 }
 
-var _ rule = (*predicatePushdown)(nil)
+var _ rule = (*limitPushdown)(nil)
 
 // limitPushdown is a rule that moves down the limit to the scan nodes.
 type limitPushdown struct {
@@ -158,7 +160,7 @@ func (r *limitPushdown) applyToTargets(node Node, limit uint32) bool {
 	return changed
 }
 
-var _ rule = (*limitPushdown)(nil)
+var _ rule = (*groupByPushdown)(nil)
 
 // groupByPushdown is an optimisation rule that enables groupby labels to be pushed down to range aggregations.
 type groupByPushdown struct {
@@ -232,6 +234,8 @@ func (r *groupByPushdown) applyToTargets(node Node, groupBy []ColumnExpression, 
 	return changed
 }
 
+var _ rule = (*projectionPushdown)(nil)
+
 // projectionPushdown is a rule that pushes down column projections.
 type projectionPushdown struct {
 	plan *Plan
@@ -239,93 +243,62 @@ type projectionPushdown struct {
 
 // apply implements rule.
 func (r *projectionPushdown) apply(node Node) (bool, error) {
+	if !r.isMetricQuery() {
+		return false, nil
+	}
+
+	return r.propagateProjections(node, nil), nil
+}
+
+// propagateProjections propagates projections down the plan tree.
+// It collects required columns from source nodes (consumers) and pushes them down to target nodes (scanners).
+func (r *projectionPushdown) propagateProjections(node Node, projections []ColumnExpression) bool {
+	var changed bool
 	switch node := node.(type) {
 	case *RangeAggregation:
-		if !slices.Contains(types.SupportedRangeAggregationTypes, node.Operation) {
-			return false, nil
-		}
-
-		projections := make([]ColumnExpression, len(node.PartitionBy)+1)
-		copy(projections, node.PartitionBy)
+		// [Source] RangeAggregation requires partitionBy columns & timestamp.
+		projections = append(projections, node.PartitionBy...)
 		// Always project timestamp column even if partitionBy is empty.
 		// Timestamp values are required to perform range aggregation.
-		projections[len(node.PartitionBy)] = &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}}
-
-		return r.pushToChildren(node, projections, false), nil
+		projections = append(projections, &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}})
 	case *Filter:
-		projections := extractColumnsFromPredicates(node.Predicates)
-		if len(projections) == 0 {
-			return false, nil
-		}
+		// [Source] Filter nodes require predicate columns.
+		extracted := extractColumnsFromPredicates(node.Predicates)
+		projections = append(projections, extracted...)
 
-		// Filter nodes should only add their predicate columns to projections when
-		// there's already a projection list in the plan (indicating a metric query).
-		// For log queries that read all columns, filter columns should not be projected.
-		//
-		// Setting applyIfNotEmpty argument as true for this reason.
-		return r.pushToChildren(node, projections, true), nil
-	}
-
-	return false, nil
-}
-
-// applyProjectionPushdown applies the projection pushdown rule to the given node.
-// we can't push all projections down to the scan node, since some may be referencing parsed columns.
-// if applyIfNotEmpty is true, it will apply the projection pushdown only if the node has existing projections.
-func (r *projectionPushdown) applyProjectionPushdown(
-	node Node,
-	projections []ColumnExpression,
-	applyIfNotEmpty bool,
-) bool {
-	switch node := node.(type) {
-	case *ScanSet:
-		return r.handleScanSet(node, projections, applyIfNotEmpty)
-	case *DataObjScan:
-		return r.handleDataObjScan(node, projections, applyIfNotEmpty)
 	case *ParseNode:
-		return r.handleParseNode(node, projections, applyIfNotEmpty)
-	case *Parallelize, *Filter, *ColumnCompat:
-		// Push to next direct child that cares about projections
-		return r.pushToChildren(node, projections, applyIfNotEmpty)
-	}
-
-	return false
-}
-
-// handleScanSet handles projection pushdown for ScanSet nodes
-func (r *projectionPushdown) handleScanSet(node *ScanSet, projections []ColumnExpression, applyIfNotEmpty bool) bool {
-	shouldNotApply := len(projections) == 0 && applyIfNotEmpty
-	if !r.isMetricQuery() || shouldNotApply {
-		return false
-	}
-
-	// Add to scan projections if not already present
-	changed := false
-	for _, colExpr := range projections {
-		colExpr, ok := colExpr.(*ColumnExpr)
-		if !ok {
-			continue
-		}
-
-		var wasAdded bool
-		node.Projections, wasAdded = addUniqueColumnExpr(node.Projections, colExpr)
-		if wasAdded {
+		// ParseNode is a special case. It is both a target for projections and a source of projections.
+		// [Target] Ambiguous columns are applied as requested keys to ParseNode.
+		// [Source] Appends builtin message column.
+		var parseNodeChanged bool
+		parseNodeChanged, projections = r.handleParseNode(node, projections)
+		if parseNodeChanged {
 			changed = true
 		}
+
+	case *ScanSet:
+		// [Target] ScanSet - projections are applied here.
+		return r.handleScanSet(node, projections)
+	default:
+		// propagate to children
 	}
 
-	if changed {
-		// Sort projections by column name for deterministic order
-		slices.SortFunc(node.Projections, sortProjections)
+	// dedupe after updating projection list
+	deduplicateColumns(projections)
+
+	// Continue to children
+	for _, child := range r.plan.Children(node) {
+		if r.propagateProjections(child, projections) {
+			changed = true
+		}
 	}
 
 	return changed
 }
 
-// handleDataObjScan handles projection pushdown for DataObjScan nodes
-func (r *projectionPushdown) handleDataObjScan(node *DataObjScan, projections []ColumnExpression, applyIfNotEmpty bool) bool {
-	shouldNotApply := len(projections) == 0 && applyIfNotEmpty
-	if !r.isMetricQuery() || shouldNotApply {
+// handleScanSet handles projection pushdown for ScanSet nodes
+func (r *projectionPushdown) handleScanSet(node *ScanSet, projections []ColumnExpression) bool {
+	if len(projections) == 0 {
 		return false
 	}
 
@@ -353,14 +326,8 @@ func (r *projectionPushdown) handleDataObjScan(node *DataObjScan, projections []
 }
 
 // handleParseNode handles projection pushdown for ParseNode nodes
-func (r *projectionPushdown) handleParseNode(node *ParseNode, projections []ColumnExpression, applyIfNotEmpty bool) bool {
-	unambiguousProjections, ambiguousProjections := disambiguateColumns(projections)
-	shouldNotApply := len(ambiguousProjections) == 0 && applyIfNotEmpty
-
-	// Only apply the pushdown for Metric queries. Log queries should request all keys
-	if !r.isMetricQuery() || shouldNotApply {
-		return false
-	}
+func (r *projectionPushdown) handleParseNode(node *ParseNode, projections []ColumnExpression) (bool, []ColumnExpression) {
+	_, ambiguousProjections := disambiguateColumns(projections)
 
 	// Found a ParseNode - update its keys
 	requestedKeys := make(map[string]bool)
@@ -388,26 +355,11 @@ func (r *projectionPushdown) handleParseNode(node *ParseNode, projections []Colu
 		node.RequestedKeys = newKeys
 	}
 
-	projectionsToPushDown := make([]ColumnExpression, len(unambiguousProjections)+1)
-	copy(projectionsToPushDown, unambiguousProjections)
-	projectionsToPushDown[len(projectionsToPushDown)-1] = &ColumnExpr{
+	projections = append(projections, &ColumnExpr{
 		Ref: types.ColumnRef{Column: types.ColumnNameBuiltinMessage, Type: types.ColumnTypeBuiltin},
-	}
+	})
 
-	// Push non-ambiguous projections down to children that care about them
-	childrenChanged := r.pushToChildren(node, projectionsToPushDown, true)
-	return changed || childrenChanged
-}
-
-// pushToChildren is a helper method to push projections to all children of a node
-func (r *projectionPushdown) pushToChildren(node Node, projections []ColumnExpression, applyIfNotEmpty bool) bool {
-	var anyChanged bool
-	for _, child := range r.plan.Children(node) {
-		if changed := r.applyProjectionPushdown(child, projections, applyIfNotEmpty); changed {
-			anyChanged = true
-		}
-	}
-	return anyChanged
+	return changed, projections
 }
 
 func sortProjections(a, b ColumnExpression) int {
@@ -440,8 +392,6 @@ func (r *projectionPushdown) isMetricQuery() bool {
 	}
 	return false
 }
-
-var _ rule = (*projectionPushdown)(nil)
 
 // parallelPushdown is a rule that moves or splits supported operations as a
 // child of [Parallelize] to parallelize as much work as possible.
@@ -515,25 +465,6 @@ func (p *parallelPushdown) canPushdown(node Node) bool {
 		return n.Type() != NodeTypeParallelize
 	})
 	return !foundNonParallelize
-}
-
-// disambiguateColumns splits columns into ambiguous and unambiguous columns
-func disambiguateColumns(columns []ColumnExpression) ([]ColumnExpression, []ColumnExpression) {
-	ambiguousColumns := make([]ColumnExpression, 0, len(columns))
-	unambiguousColumns := make([]ColumnExpression, 0, len(columns))
-	for _, col := range columns {
-		if colExpr, ok := col.(*ColumnExpr); ok {
-			// Only collect ambiguous columns (might need parsing)
-			// Skip labels (from stream selector) and builtins (like timestamp/message)
-			if colExpr.Ref.Type == types.ColumnTypeAmbiguous {
-				ambiguousColumns = append(ambiguousColumns, col)
-			} else {
-				unambiguousColumns = append(unambiguousColumns, col)
-			}
-		}
-	}
-
-	return unambiguousColumns, ambiguousColumns
 }
 
 // optimization represents a single optimization pass and can hold multiple rules.
@@ -618,6 +549,25 @@ func extractColumnsFromExpression(expr Expression, columns *[]ColumnExpression) 
 	default:
 		// Ignore other expression types
 	}
+}
+
+// disambiguateColumns splits columns into ambiguous and unambiguous columns
+func disambiguateColumns(columns []ColumnExpression) ([]ColumnExpression, []ColumnExpression) {
+	ambiguousColumns := make([]ColumnExpression, 0, len(columns))
+	unambiguousColumns := make([]ColumnExpression, 0, len(columns))
+	for _, col := range columns {
+		if colExpr, ok := col.(*ColumnExpr); ok {
+			// Only collect ambiguous columns (might need parsing)
+			// Skip labels (from stream selector) and builtins (like timestamp/message)
+			if colExpr.Ref.Type == types.ColumnTypeAmbiguous {
+				ambiguousColumns = append(ambiguousColumns, col)
+			} else {
+				unambiguousColumns = append(unambiguousColumns, col)
+			}
+		}
+	}
+
+	return unambiguousColumns, ambiguousColumns
 }
 
 func deduplicateColumns(columns []ColumnExpression) []ColumnExpression {

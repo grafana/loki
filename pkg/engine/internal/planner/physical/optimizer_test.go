@@ -224,7 +224,16 @@ func TestOptimizer(t *testing.T) {
 		// generate plan for sum by(service, instance) (count_over_time{...}[])
 		plan := &Plan{}
 		{
-			scan1 := plan.graph.Add(&DataObjScan{id: "scan1"})
+			scanSet := plan.graph.Add(&ScanSet{
+				id: "set",
+
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
+
+				Predicates: []Expression{},
+			})
 			rangeAgg := plan.graph.Add(&RangeAggregation{
 				id:        "count_over_time",
 				Operation: types.RangeAggregationTypeCount,
@@ -236,12 +245,13 @@ func TestOptimizer(t *testing.T) {
 			})
 
 			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: rangeAgg})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan1})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet})
 		}
 
 		// apply optimisation
 		optimizations := []*optimization{
 			newOptimization("projection pushdown", plan).withRules(
+				&groupByPushdown{plan: plan},
 				&projectionPushdown{plan: plan},
 			),
 		}
@@ -257,7 +267,15 @@ func TestOptimizer(t *testing.T) {
 				&ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}},
 			}
 
-			scan1 := expectedPlan.graph.Add(&DataObjScan{id: "scan1", Projections: expectedProjections})
+			scanSet := expectedPlan.graph.Add(&ScanSet{
+				id: "set",
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
+				Predicates:  []Expression{},
+				Projections: expectedProjections,
+			})
 			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
 				id:          "count_over_time",
 				Operation:   types.RangeAggregationTypeCount,
@@ -270,7 +288,7 @@ func TestOptimizer(t *testing.T) {
 			})
 
 			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: rangeAgg})
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan1})
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet})
 		}
 
 		actual := PrintAsTree(plan)
@@ -290,7 +308,14 @@ func TestOptimizer(t *testing.T) {
 		// generate plan for max by(service) (sum_over_time{...}[])
 		plan := &Plan{}
 		{
-			scan1 := plan.graph.Add(&DataObjScan{id: "scan1"})
+			scanSet := plan.graph.Add(&ScanSet{
+				id: "set",
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
+				Predicates: []Expression{},
+			})
 			rangeAgg := plan.graph.Add(&RangeAggregation{
 				id:          "sum_over_time",
 				Operation:   types.RangeAggregationTypeSum,
@@ -303,12 +328,13 @@ func TestOptimizer(t *testing.T) {
 			})
 
 			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: rangeAgg})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan1})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet})
 		}
 
 		// apply optimisation
 		optimizations := []*optimization{
 			newOptimization("projection pushdown", plan).withRules(
+				&groupByPushdown{plan: plan},
 				&projectionPushdown{plan: plan},
 			),
 		}
@@ -320,14 +346,26 @@ func TestOptimizer(t *testing.T) {
 			// groupby was not pushed down
 			expectedProjections := []ColumnExpression{
 				&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
+				&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
 				&ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}},
 			}
 
-			scan1 := expectedPlan.graph.Add(&DataObjScan{id: "scan1", Projections: expectedProjections})
+			scanSet := expectedPlan.graph.Add(&ScanSet{
+				id: "set",
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
+				Predicates:  []Expression{},
+				Projections: expectedProjections,
+			})
 			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
-				id:          "sum_over_time",
-				Operation:   types.RangeAggregationTypeSum,
-				PartitionBy: partitionBy,
+				id:        "sum_over_time",
+				Operation: types.RangeAggregationTypeSum,
+				PartitionBy: []ColumnExpression{
+					&ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
+					&ColumnExpr{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}},
+				},
 			})
 			vectorAgg := expectedPlan.graph.Add(&VectorAggregation{
 				id:        "max_of",
@@ -336,7 +374,7 @@ func TestOptimizer(t *testing.T) {
 			})
 
 			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: rangeAgg})
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan1})
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanSet})
 		}
 
 		actual := PrintAsTree(plan)
@@ -352,11 +390,12 @@ func TestOptimizer(t *testing.T) {
 
 		plan := &Plan{}
 		{
-			scan1 := plan.graph.Add(&DataObjScan{
-				id: "scan1",
-			})
-			scan2 := plan.graph.Add(&DataObjScan{
-				id: "scan2",
+			scanset := plan.graph.Add(&ScanSet{
+				id: "set",
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
 			})
 			rangeAgg := plan.graph.Add(&RangeAggregation{
 				id:          "range1",
@@ -364,13 +403,13 @@ func TestOptimizer(t *testing.T) {
 				PartitionBy: partitionBy,
 			})
 
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan1})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan2})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanset})
 		}
 
 		// apply optimisations
 		optimizations := []*optimization{
 			newOptimization("projection pushdown", plan).withRules(
+				&groupByPushdown{plan: plan},
 				&projectionPushdown{plan: plan},
 			),
 		}
@@ -380,12 +419,12 @@ func TestOptimizer(t *testing.T) {
 		expectedPlan := &Plan{}
 		{
 			projected := append(partitionBy, &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}})
-			scan1 := expectedPlan.graph.Add(&DataObjScan{
-				id:          "scan1",
-				Projections: projected,
-			})
-			scan2 := expectedPlan.graph.Add(&DataObjScan{
-				id:          "scan2",
+			scanset := expectedPlan.graph.Add(&ScanSet{
+				id: "set",
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
 				Projections: projected,
 			})
 
@@ -395,8 +434,7 @@ func TestOptimizer(t *testing.T) {
 				PartitionBy: partitionBy,
 			})
 
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan1})
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan2})
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scanset})
 		}
 
 		actual := PrintAsTree(plan)
@@ -425,8 +463,13 @@ func TestOptimizer(t *testing.T) {
 
 		plan := &Plan{}
 		{
-			scan1 := plan.graph.Add(&DataObjScan{id: "scan1"})
-			scan2 := plan.graph.Add(&DataObjScan{id: "scan2"})
+			scanset := plan.graph.Add(&ScanSet{
+				id: "set",
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
+			})
 			filter := plan.graph.Add(&Filter{
 				id:         "filter1",
 				Predicates: filterPredicates,
@@ -438,13 +481,13 @@ func TestOptimizer(t *testing.T) {
 			})
 
 			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: filter})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scan1})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scan2})
+			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scanset})
 		}
 
 		// apply optimisations
 		optimizations := []*optimization{
 			newOptimization("projection pushdown", plan).withRules(
+				&groupByPushdown{plan: plan},
 				&projectionPushdown{plan: plan},
 			),
 		}
@@ -460,12 +503,12 @@ func TestOptimizer(t *testing.T) {
 				&ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}},
 			}
 
-			scan1 := expectedPlan.graph.Add(&DataObjScan{
-				id:          "scan1",
-				Projections: expectedProjections,
-			})
-			scan2 := expectedPlan.graph.Add(&DataObjScan{
-				id:          "scan2",
+			scanset := expectedPlan.graph.Add(&ScanSet{
+				id: "set",
+				Targets: []*ScanTarget{
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				},
 				Projections: expectedProjections,
 			})
 			filter := expectedPlan.graph.Add(&Filter{
@@ -479,8 +522,7 @@ func TestOptimizer(t *testing.T) {
 			})
 
 			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: filter})
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scan1})
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scan2})
+			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scanset})
 		}
 
 		actual := PrintAsTree(plan)
@@ -521,6 +563,7 @@ func TestOptimizer(t *testing.T) {
 		// apply optimisations
 		optimizations := []*optimization{
 			newOptimization("projection pushdown", plan).withRules(
+				&groupByPushdown{plan: plan},
 				&projectionPushdown{plan: plan},
 			),
 		}
