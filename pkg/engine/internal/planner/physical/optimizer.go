@@ -268,13 +268,13 @@ func (r *projectionPushdown) propagateProjections(node Node, projections []Colum
 		extracted := extractColumnsFromPredicates(node.Predicates)
 		projections = append(projections, extracted...)
 
-	case *ParseNode:
-		// ParseNode is a special case. It is both a target for projections and a source of projections.
-		// [Target] Ambiguous columns are applied as requested keys to ParseNode.
-		// [Source] Appends builtin message column.
-		var parseNodeChanged bool
-		parseNodeChanged, projections = r.handleParseNode(node, projections)
-		if parseNodeChanged {
+	case *Proejction:
+		// Projections are a special case. It is both a target for and a source of projections.
+		// [Target] Operations may take columns as arguments, such as requested keys for parse..
+		// [Source] Operations may contain columns to append, such as builtin message column for parse.
+		var projectionNodeChanged bool
+		projectionNodeChanged, projections = r.handleProjection(node, projections)
+		if projectionNodeChanged {
 			changed = true
 		}
 
@@ -371,13 +371,52 @@ func (r *projectionPushdown) handleDataobjScan(node *DataObjScan, projections []
 	return changed
 }
 
-// handleParseNode handles projection pushdown for ParseNode nodes
-func (r *projectionPushdown) handleParseNode(node *ParseNode, projections []ColumnExpression) (bool, []ColumnExpression) {
+// handleProjection handles projection pushdown for expressions on Projection nodes
+func (r *projectionPushdown) handleProjection(node *Projection, projections []ColumnExpression, applyIfNotEmpty bool) (bool, []ColumnExpression) {
+	anyChanged := false
+	for _, e := range node.Expressions {
+		switch e := e.(type) {
+		case *FunctionExpr:
+			if e.Op == types.FunctionOpParseJSON || e.Op == types.FunctionOpParseLogfmt {
+				return r.handleParse(e, projections, applyIfNotEmpty)
+			}
+		}
+	}
+
+	return anyChanged
+}
+
+func (r *projectionPushdown) handleParse(expr *FunctionExpr, projections []ColumnExpression, applyIfNotEmpty bool) (bool, []ColumnExpression) {
 	_, ambiguousProjections := disambiguateColumns(projections)
+
+	var requestedKeysExpr *NamedLiteralExpr
+	for _, e := range expr.Expressions {
+		switch e := e.(type) {
+		case *NamedLiteralExpr:
+			if e.Name != types.ParseRequestedKeys {
+				continue
+			}
+
+			requestedKeysExpr = e
+		}
+	}
+
+	if requestedKeysExpr == nil {
+		requestedKeysExpr = &NamedLiteralExpr{
+			Name:    types.ParseRequestedKeys,
+			Literal: types.NewLiteral([]string{}),
+		}
+		expr.Expressions = append(expr.Expressions, requestedKeysExpr)
+	}
+
+	existingKeys, ok := requestedKeysExpr.Literal.(types.StringListLiteral)
+	if !ok {
+		return nil, false
+	}
 
 	// Found a ParseNode - update its keys
 	requestedKeys := make(map[string]bool)
-	for _, k := range node.RequestedKeys {
+	for _, k := range existingKeys {
 		requestedKeys[k] = true
 	}
 
@@ -393,12 +432,12 @@ func (r *projectionPushdown) handleParseNode(node *ParseNode, projections []Colu
 		}
 	}
 
-	changed := len(requestedKeys) > len(node.RequestedKeys)
+	changed := len(requestedKeys) > len(existingKeys)
 	if changed {
 		// Convert back to sorted slice
 		newKeys := slices.Collect(maps.Keys(requestedKeys))
 		sort.Strings(newKeys)
-		node.RequestedKeys = newKeys
+		requestedKeysExpr.Literal = types.NewLiteral(newKeys)
 	}
 
 	projections = append(projections, &ColumnExpr{
@@ -491,7 +530,7 @@ func (p *parallelPushdown) applyParallelization(node Node) bool {
 	// There can be additional special cases, such as parallelizing an `avg` by
 	// pushing down a `sum` and `count` into the Parallelize.
 	switch node.(type) {
-	case *Projection, *Filter, *ParseNode, *ColumnCompat: // Catchall for shifting nodes
+	case *Projection, *Filter, *ColumnCompat: // Catchall for shifting nodes
 		for _, parallelize := range p.plan.Children(node) {
 			p.plan.graph.Inject(parallelize, node.Clone())
 		}

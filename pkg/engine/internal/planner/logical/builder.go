@@ -3,6 +3,7 @@ package logical
 import (
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -39,35 +40,31 @@ func (b *Builder) Limit(skip uint32, fetch uint32) *Builder {
 }
 
 // Parse applies a [Parse] operation to the Builder.
-func (b *Builder) Parse(kind ParserKind) *Builder {
-	return &Builder{
-		val: &Parse{
-			Table: b.val,
-			Kind:  kind,
+func (b *Builder) Parse(op types.FunctionOp) *Builder {
+	val := &FunctionOp{
+		Op: op,
+		Values: []Value{
+			// source column
+			&ColumnRef{
+				Ref: semconv.ColumnIdentMessage.ColumnRef(),
+			},
 		},
 	}
+	return b.ProjectExpand(val)
 }
 
 // Cast applies an [Projection] operation, with an [UnaryOp] cast operation, to the Builder.
-func (b *Builder) Cast(identifier string, operation types.UnaryOp) *Builder {
-	return &Builder{
-		val: &Projection{
-			Relation: b.val,
-			Expressions: []Value{
-				&UnaryOp{
-					Op: operation,
-					Value: &ColumnRef{
-						Ref: types.ColumnRef{
-							Column: identifier,
-							Type:   types.ColumnTypeAmbiguous,
-						},
-					},
-				},
+func (b *Builder) Cast(identifier string, op types.UnaryOp) *Builder {
+	val := &UnaryOp{
+		Op: op,
+		Value: &ColumnRef{
+			Ref: types.ColumnRef{
+				Column: identifier,
+				Type:   types.ColumnTypeAmbiguous,
 			},
-			All:    true,
-			Expand: true,
 		},
 	}
+	return b.ProjectExpand(val)
 }
 
 // Sort applies a [Sort] operation to the Builder.

@@ -99,7 +99,6 @@ var _ Node = (*Limit)(nil)
 var _ Node = (*Filter)(nil)
 var _ Node = (*RangeAggregation)(nil)
 var _ Node = (*VectorAggregation)(nil)
-var _ Node = (*ParseNode)(nil)
 var _ Node = (*ColumnCompat)(nil)
 var _ Node = (*TopK)(nil)
 var _ Node = (*Parallelize)(nil)
@@ -111,7 +110,6 @@ func (*Limit) isNode()             {}
 func (*Filter) isNode()            {}
 func (*RangeAggregation) isNode()  {}
 func (*VectorAggregation) isNode() {}
-func (*ParseNode) isNode()         {}
 func (*ColumnCompat) isNode()      {}
 func (*TopK) isNode()              {}
 func (*Parallelize) isNode()       {}

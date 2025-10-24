@@ -2,6 +2,7 @@ package physical
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -14,6 +15,7 @@ const (
 
 	ExprTypeUnary
 	ExprTypeBinary
+	ExprTypeFunction
 	ExprTypeLiteral
 	ExprTypeColumn
 )
@@ -25,6 +27,8 @@ func (t ExpressionType) String() string {
 		return "UnaryExpression"
 	case ExprTypeBinary:
 		return "BinaryExpression"
+	case ExprTypeFunction:
+		return "FunctionExpression"
 	case ExprTypeLiteral:
 		return "LiteralExpression"
 	case ExprTypeColumn:
@@ -62,6 +66,13 @@ type UnaryExpression interface {
 type BinaryExpression interface {
 	Expression
 	isBinaryExpr()
+}
+
+// FunctionExpression is the common interface for all function expressions in a
+// physical plan.
+type FunctionExpression interface {
+	Expression
+	isFunctionExpr()
 }
 
 // LiteralExpression is the common interface for all literal expressions in a
@@ -102,7 +113,7 @@ func (e *UnaryExpr) String() string {
 	return fmt.Sprintf("%s(%s)", e.Op, e.Left)
 }
 
-// ID returns the type of the [UnaryExpr].
+// Type returns the type of the [UnaryExpr].
 func (*UnaryExpr) Type() ExpressionType {
 	return ExprTypeUnary
 }
@@ -129,7 +140,7 @@ func (e *BinaryExpr) String() string {
 	return fmt.Sprintf("%s(%s, %s)", e.Op, e.Left, e.Right)
 }
 
-// ID returns the type of the [BinaryExpr].
+// Type returns the type of the [BinaryExpr].
 func (*BinaryExpr) Type() ExpressionType {
 	return ExprTypeBinary
 }
@@ -153,7 +164,7 @@ func (e *LiteralExpr) String() string {
 	return e.Literal.String()
 }
 
-// ID returns the type of the [LiteralExpr].
+// Type returns the type of the [LiteralExpr].
 func (*LiteralExpr) Type() ExpressionType {
 	return ExprTypeLiteral
 }
@@ -198,7 +209,74 @@ func (e *ColumnExpr) String() string {
 	return e.Ref.String()
 }
 
-// ID returns the type of the [ColumnExpr].
+// Type returns the type of the [ColumnExpr].
 func (e *ColumnExpr) Type() ExpressionType {
 	return ExprTypeColumn
+}
+
+// FunctionExpr is an expression that implements the [FunctionExpression] interface.
+type FunctionExpr struct {
+	// Op is the function operation to apply to the parameters
+	Op types.FunctionOp
+
+	// Expressions are the parameters paaws to the function
+	Expressions []Expression
+}
+
+func (*FunctionExpr) isExpr()         {}
+func (*FunctionExpr) isFunctionExpr() {}
+
+// Clone returns a copy of the [FunctionExpr].
+func (e *FunctionExpr) Clone() Expression {
+	params := make([]Expression, len(e.Expressions))
+	for i, param := range e.Expressions {
+		params[i] = param.Clone()
+	}
+
+	return &FunctionExpr{
+		Expressions: params,
+		Op:          e.Op,
+	}
+}
+
+func (e *FunctionExpr) String() string {
+	exprs := make([]string, len(e.Expressions))
+	for i, expr := range e.Expressions {
+		exprs[i] = expr.String()
+	}
+	return fmt.Sprintf("%s(%s)", e.Op, strings.Join(exprs, ", "))
+}
+
+// Type returns the type of the [FunctionExpr].
+func (*FunctionExpr) Type() ExpressionType {
+	return ExprTypeFunction
+}
+
+type NamedLiteralExpr struct {
+	types.Literal
+	Name string
+}
+
+func (*NamedLiteralExpr) isExpr()        {}
+func (*NamedLiteralExpr) isLiteralExpr() {}
+
+// Clone returns a copy of the [NamedLiteralExpr].
+func (e *NamedLiteralExpr) Clone() Expression {
+	// No need to clone literals.
+	return &NamedLiteralExpr{Literal: e.Literal, Name: e.Name}
+}
+
+// String returns the string representation of the literal value.
+func (e *NamedLiteralExpr) String() string {
+	return fmt.Sprintf("%s: %s", e.Name, e.Literal.String())
+}
+
+// Type returns the type of the [FuntionLiteralParameterExpr].
+func (*NamedLiteralExpr) Type() ExpressionType {
+	return ExprTypeLiteral
+}
+
+// ValueType returns the kind of value represented by the literal.
+func (e *NamedLiteralExpr) ValueType() types.DataType {
+	return e.Literal.Type()
 }

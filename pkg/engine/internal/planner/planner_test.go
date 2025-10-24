@@ -252,10 +252,39 @@ VectorAggregation operation=sum
 
 			`,
 		},
+		{
+			comment: "parse logfmt",
+			query:   `{app="foo"} | logfmt`,
+			expected: `
+Limit offset=0 limit=1000
+└── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+    └── Parallelize
+        └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+            └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
+                └── Compat src=metadata dst=metadata collision=label
+                    └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
+                            ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
+                            └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+						`,
+		},
+		{
+			comment: "parse logfmt with grouping",
+			query:   `sum by (bar) (count_over_time({app="foo"} | logfmt[1m]))`,
+			expected: `
+VectorAggregation
+└── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s partition_by=(ambiguous.bar)
+    └── Parallelize
+        └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, requestedKeys: [bar]))
+            └── Compat src=metadata dst=metadata collision=label
+                └── ScanSet num_targets=2 projections=(builtin.message, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
+                        ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
+                        └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+						`,
+		},
 	}
 
 	for _, tc := range testCases {
-		t.Run(tc.query, func(t *testing.T) {
+		t.Run(tc.comment, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			t.Cleanup(cancel)
 

@@ -89,8 +89,6 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return tracePipeline("physical.RangeAggregation", c.executeRangeAggregation(ctx, n, inputs))
 	case *physical.VectorAggregation:
 		return tracePipeline("physical.VectorAggregation", c.executeVectorAggregation(ctx, n, inputs))
-	case *physical.ParseNode:
-		return tracePipeline("physical.ParseNode", c.executeParse(ctx, n, inputs))
 	case *physical.ColumnCompat:
 		return tracePipeline("physical.ColumnCompat", c.executeColumnCompat(ctx, n, inputs))
 	case *physical.Parallelize:
@@ -353,18 +351,6 @@ func (c *Context) executeVectorAggregation(ctx context.Context, plan *physical.V
 	}
 
 	return pipeline
-}
-
-func (c *Context) executeParse(ctx context.Context, parse *physical.ParseNode, inputs []Pipeline) Pipeline {
-	if len(inputs) == 0 {
-		return emptyPipeline()
-	}
-
-	if len(inputs) > 1 {
-		return errorPipeline(ctx, fmt.Errorf("parse expects exactly one input, got %d", len(inputs)))
-	}
-
-	return NewParsePipeline(parse, inputs[0])
 }
 
 func (c *Context) executeColumnCompat(ctx context.Context, compat *physical.ColumnCompat, inputs []Pipeline) Pipeline {

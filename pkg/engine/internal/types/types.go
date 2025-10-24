@@ -20,6 +20,7 @@ const (
 	FLOAT64   = Type(arrow.FLOAT64)
 	TIMESTAMP = Type(arrow.TIMESTAMP)
 	STRUCT    = Type(arrow.STRUCT)
+	LIST      = Type(arrow.LIST)
 )
 
 func (t Type) String() string {
@@ -109,6 +110,14 @@ func (t tStruct) ArrowType() arrow.DataType { return t.arrowType }
 func NewStructType(arrowType *arrow.StructType) DataType {
 	return tStruct{arrowType: arrowType}
 }
+
+type tList struct {
+	arrowType *arrow.ListType
+}
+
+func (t tList) ID() Type                  { return LIST }
+func (t tList) String() string            { return "list" }
+func (t tList) ArrowType() arrow.DataType { return t.arrowType }
 
 var (
 	names = map[string]DataType{

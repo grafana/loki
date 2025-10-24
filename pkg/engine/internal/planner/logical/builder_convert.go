@@ -47,10 +47,6 @@ func (b *ssaBuilder) process(value Value) (Value, error) {
 		return b.processRangeAggregate(value)
 	case *VectorAggregation:
 		return b.processVectorAggregation(value)
-	case *Parse:
-		return b.processParsePlan(value)
-	case *UnaryOp:
-		return b.processUnaryOp(value)
 	case *BinOp:
 		return b.processBinOp(value)
 	case *ColumnRef:
@@ -140,19 +136,6 @@ func (b *ssaBuilder) processLimitPlan(plan *Limit) (Value, error) {
 }
 
 func (b *ssaBuilder) processSortPlan(plan *Sort) (Value, error) {
-	if _, err := b.process(plan.Table); err != nil {
-		return nil, err
-	}
-
-	// Only append the first time we see this.
-	if plan.id == "" {
-		plan.id = fmt.Sprintf("%%%d", b.getID())
-		b.instructions = append(b.instructions, plan)
-	}
-	return plan, nil
-}
-
-func (b *ssaBuilder) processParsePlan(plan *Parse) (Value, error) {
 	if _, err := b.process(plan.Table); err != nil {
 		return nil, err
 	}
