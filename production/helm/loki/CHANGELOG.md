@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [BUGFIX] Wrong context passed to loki.namespace helper from table manager servicemonitor. [#19461](https://github.com/grafana/loki/pull/19461)
+
 ## 6.44.0
 
 - [DEPRECATION] The Loki Helm chart uses MinIO as an object store. MinIO will be removed from the Helm Charts in a future release.  See [this issue](https://github.com/minio/minio/issues/21647) for more information.  The Loki team is still investigating alternatives to replace MinIO.
