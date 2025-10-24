@@ -459,7 +459,7 @@ func (p *parallelPushdown) applyParallelization(node Node) bool {
 	// There can be additional special cases, such as parallelizing an `avg` by
 	// pushing down a `sum` and `count` into the Parallelize.
 	switch node.(type) {
-	case *Projection, *Filter, *ParseNode: // Catchall for shifting nodes
+	case *Projection, *Filter, *ParseNode, *ColumnCompat: // Catchall for shifting nodes
 		for _, parallelize := range p.plan.Children(node) {
 			p.plan.graph.Inject(parallelize, node.Clone())
 		}
@@ -468,6 +468,8 @@ func (p *parallelPushdown) applyParallelization(node Node) bool {
 		return true
 
 	case *TopK: // Catchall for sharding nodes
+		// TODO: Add Range aggregation as a sharding node
+
 		for _, parallelize := range p.plan.Children(node) {
 			p.plan.graph.Inject(parallelize, node.Clone())
 		}
