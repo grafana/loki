@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := all
-.PHONY: lint lint-yaml install-distributed install-single-binary uninstall update-chart update
+.PHONY: lint lint-yaml helm-unittest install-distributed install-single-binary uninstall update-chart update
 
 # Optional image override, example: make install-distributed IMAGE=grafana/loki:2.9.0
 IMAGE ?=
@@ -44,6 +44,9 @@ lint: lint-yaml
 
 lint-yaml:
 	yamllint -c $(CURDIR)/src/.yamllint.yaml $(CURDIR)/src
+
+helm-unittest:
+	docker run --rm -u $(id -u):$(id -g) -v ./:/apps helmunittest/helm-unittest:3.18.6-1.0.1 --strict --file 'unittests/**/*.yaml' /apps
 
 # Helm chart installation targets
 install-distributed:
