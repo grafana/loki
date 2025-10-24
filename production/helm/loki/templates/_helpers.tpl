@@ -10,8 +10,11 @@ See https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#sy
 Expand the name of the chart.
 */}}
 {{- define "loki.name" -}}
-{{- $default := ternary "enterprise-logs" "loki" .Values.enterprise.enabled }}
-{{- coalesce .Values.nameOverride $default | trunc 63 | trimSuffix "-" }}
+{{- $name := ternary "enterprise-logs" "loki" .Values.enterprise.enabled }}
+{{- if .Values.nameOverride }}
+{{- $name = (tpl .Values.nameOverride $) }}
+{{- end }}
+{{- $name | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
@@ -32,7 +35,7 @@ singleBinary fullname
 {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
-{{- $name := default .Chart.Name .Values.nameOverride -}}
+{{- $name := (include "loki.name" $) -}}
 {{- if contains $name .Release.Name -}}
 {{- .Release.Name | trunc 63 | trimSuffix "-" -}}
 {{- else -}}
@@ -149,10 +152,12 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 Create the name of the service account to use
 */}}
 {{- define "loki.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create -}}
-    {{ default (include "loki.name" .) .Values.serviceAccount.name }}
+{{- if .Values.serviceAccount.name }}
+  {{- tpl .Values.serviceAccount.name $ }}
+{{- else if .Values.serviceAccount.create -}}
+  {{- include "loki.fullname" . }}
 {{- else -}}
-    {{ default "default" .Values.serviceAccount.name }}
+  {{- "default" }}
 {{- end -}}
 {{- end -}}
 
@@ -668,7 +673,16 @@ Create the service endpoint including port for MinIO.
 
 {{/* Configure the correct name for the memberlist service */}}
 {{- define "loki.memberlist" -}}
-{{ include "loki.name" . }}-memberlist
+{{- if .Values.memberlist.service.name }}
+{{- tpl .Values.memberlist.service.name $ }}
+{{- else }}
+{{- include "loki.fullname" . }}-memberlist
+{{- end -}}
+{{- end -}}
+
+{{/* Configure the correct name for the runtime config */}}
+{{- define "loki.runtime.name" -}}
+{{ include "loki.fullname" . }}-runtime
 {{- end -}}
 
 {{/* Determine the public host for the Loki cluster */}}
