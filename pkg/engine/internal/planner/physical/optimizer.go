@@ -83,6 +83,9 @@ func (r *predicatePushdown) applyToTargets(node Node, predicate Expression) bool
 	case *ScanSet:
 		node.Predicates = append(node.Predicates, predicate)
 		return true
+	case *DataObjScan:
+		node.Predicates = append(node.Predicates, predicate)
+		return true
 	}
 
 	changed := false
@@ -279,6 +282,10 @@ func (r *projectionPushdown) propagateProjections(node Node, projections []Colum
 		// [Target] ScanSet - projections are applied here.
 		return r.handleScanSet(node, projections)
 
+	case *DataObjScan:
+		// [Target] DataObjScan - projections are applied here.
+		return r.handleDataobjScan(node, projections)
+
 	case *Projection:
 		if node.Expand {
 			// [Source] column referred by unwrap.
@@ -308,6 +315,35 @@ func (r *projectionPushdown) propagateProjections(node Node, projections []Colum
 
 // handleScanSet handles projection pushdown for ScanSet nodes
 func (r *projectionPushdown) handleScanSet(node *ScanSet, projections []ColumnExpression) bool {
+	if len(projections) == 0 {
+		return false
+	}
+
+	// Add to scan projections if not already present
+	changed := false
+	for _, colExpr := range projections {
+		colExpr, ok := colExpr.(*ColumnExpr)
+		if !ok {
+			continue
+		}
+
+		var wasAdded bool
+		node.Projections, wasAdded = addUniqueColumnExpr(node.Projections, colExpr)
+		if wasAdded {
+			changed = true
+		}
+	}
+
+	if changed {
+		// Sort projections by column name for deterministic order
+		slices.SortFunc(node.Projections, sortProjections)
+	}
+
+	return changed
+}
+
+// handleDataobjScan handles projection pushdown for DataObjScan nodes
+func (r *projectionPushdown) handleDataobjScan(node *DataObjScan, projections []ColumnExpression) bool {
 	if len(projections) == 0 {
 		return false
 	}
