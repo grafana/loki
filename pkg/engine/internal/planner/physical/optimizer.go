@@ -81,9 +81,6 @@ func (r *predicatePushdown) apply(root Node) (bool, error) {
 
 func (r *predicatePushdown) applyToTargets(node Node, predicate Expression) bool {
 	switch node := node.(type) {
-	case *ParseNode:
-		// Parse node can introduce new columns that are used by the predicates. Stop pushdown here.
-		return false
 	case *ScanSet:
 		node.Predicates = append(node.Predicates, predicate)
 		return true

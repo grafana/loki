@@ -108,129 +108,50 @@ func dummyPlan() *Plan {
 }
 
 func TestPredicatePushdown(t *testing.T) {
-	t.Run("should pushdown non-ambiguous predicates", func(t *testing.T) {
-		plan := dummyPlan()
-		optimizations := []*optimization{
-			newOptimization("predicate pushdown", plan).withRules(
-				&predicatePushdown{plan},
-			),
-		}
+	plan := dummyPlan()
+	optimizations := []*optimization{
+		newOptimization("predicate pushdown", plan).withRules(
+			&predicatePushdown{plan},
+		),
+	}
 
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
-		actual := PrintAsTree(plan)
+	o := newOptimizer(plan, optimizations)
+	o.optimize(plan.Roots()[0])
+	actual := PrintAsTree(plan)
 
-		optimized := &Plan{}
-		scanSet := optimized.graph.Add(&ScanSet{
-			id: "set",
+	optimized := &Plan{}
+	scanSet := optimized.graph.Add(&ScanSet{
+		id: "set",
 
-			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-			},
+		Targets: []*ScanTarget{
+			{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+			{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+		},
 
-			Predicates: []Expression{
-				&BinaryExpr{
-					Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-					Right: NewLiteral(time1000),
-					Op:    types.BinaryOpGt,
-				},
-			},
-		})
-		filter1 := optimized.graph.Add(&Filter{id: "filter1", Predicates: []Expression{}})
-		filter2 := optimized.graph.Add(&Filter{id: "filter2", Predicates: []Expression{
-			&BinaryExpr{
-				Left:  newColumnExpr("level", types.ColumnTypeAmbiguous),
-				Right: NewLiteral("debug|info"),
-				Op:    types.BinaryOpMatchRe,
-			},
-		}}) // ambiguous column predicates are not pushed down.
-		filter3 := optimized.graph.Add(&Filter{id: "filter3", Predicates: []Expression{}})
-
-		_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: filter3, Child: filter2})
-		_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: filter2, Child: filter1})
-		_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: filter1, Child: scanSet})
-
-		expected := PrintAsTree(optimized)
-		require.Equal(t, expected, actual)
-
-	})
-
-	t.Run("Filters above ParseNode should not be pushed down", func(t *testing.T) {
-		plan := &Plan{}
-		scanSet := plan.graph.Add(&ScanSet{
-			id: "set",
-
-			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-			},
-		})
-		filter1 := plan.graph.Add(&Filter{id: "filter1", Predicates: []Expression{
+		Predicates: []Expression{
 			&BinaryExpr{
 				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
 				Right: NewLiteral(time1000),
 				Op:    types.BinaryOpGt,
 			},
-		}})
-		filter2 := plan.graph.Add(&Filter{id: "filter1", Predicates: []Expression{
-			&BinaryExpr{
-				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-				Right: NewLiteral(time1000),
-				Op:    types.BinaryOpLt,
-			},
-		}})
-		parseNode := plan.graph.Add(&ParseNode{id: "parse1", Kind: ParserLogfmt})
-
-		_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter2, Child: parseNode})
-		_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: parseNode, Child: filter1})
-		_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter1, Child: scanSet})
-
-		optimizations := []*optimization{
-			newOptimization("predicate pushdown", plan).withRules(
-				&predicatePushdown{plan},
-			),
-		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
-		actual := PrintAsTree(plan)
-
-		optimized := &Plan{}
-		{
-			scanSet := optimized.graph.Add(&ScanSet{
-				id: "set",
-
-				Targets: []*ScanTarget{
-					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-				},
-
-				Predicates: []Expression{
-					&BinaryExpr{
-						Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-						Right: NewLiteral(time1000),
-						Op:    types.BinaryOpGt,
-					},
-				},
-			})
-			filter1 := optimized.graph.Add(&Filter{id: "filter1", Predicates: []Expression{}})
-			filter2 := optimized.graph.Add(&Filter{id: "filter1", Predicates: []Expression{
-				&BinaryExpr{
-					Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-					Right: NewLiteral(time1000),
-					Op:    types.BinaryOpLt,
-				},
-			}})
-			parseNode := optimized.graph.Add(&ParseNode{id: "parse1", Kind: ParserLogfmt})
-
-			_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: filter2, Child: parseNode})
-			_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: parseNode, Child: filter1})
-			_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: filter1, Child: scanSet})
-		}
-
-		expected := PrintAsTree(optimized)
-		require.Equal(t, expected, actual)
+		},
 	})
+	filter1 := optimized.graph.Add(&Filter{id: "filter1", Predicates: []Expression{}})
+	filter2 := optimized.graph.Add(&Filter{id: "filter2", Predicates: []Expression{
+		&BinaryExpr{
+			Left:  newColumnExpr("level", types.ColumnTypeAmbiguous),
+			Right: NewLiteral("debug|info"),
+			Op:    types.BinaryOpMatchRe,
+		},
+	}}) // ambiguous column predicates are not pushed down.
+	filter3 := optimized.graph.Add(&Filter{id: "filter3", Predicates: []Expression{}})
+
+	_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: filter3, Child: filter2})
+	_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: filter2, Child: filter1})
+	_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: filter1, Child: scanSet})
+
+	expected := PrintAsTree(optimized)
+	require.Equal(t, expected, actual)
 }
 
 func TestLimitPushdown(t *testing.T) {
