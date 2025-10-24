@@ -81,6 +81,9 @@ func (r *predicatePushdown) apply(root Node) (bool, error) {
 
 func (r *predicatePushdown) applyToTargets(node Node, predicate Expression) bool {
 	switch node := node.(type) {
+	case *ParseNode:
+		// Parse node can introduce new columns that are used by the predicates. Stop pushdown here.
+		return false
 	case *ScanSet:
 		node.Predicates = append(node.Predicates, predicate)
 		return true
@@ -279,6 +282,17 @@ func (r *projectionPushdown) propagateProjections(node Node, projections []Colum
 	case *ScanSet:
 		// [Target] ScanSet - projections are applied here.
 		return r.handleScanSet(node, projections)
+
+	case *Projection:
+		if node.Expand {
+			// [Source] column referred by unwrap.
+			for _, e := range node.Expressions {
+				e, isUnary := e.(*UnaryExpr)
+				if isUnary && slices.Contains([]types.UnaryOp{types.UnaryOpCastFloat, types.UnaryOpCastBytes, types.UnaryOpCastDuration}, e.Op) {
+					projections = append(projections, e.Left.(ColumnExpression))
+				}
+			}
+		}
 	default:
 		// propagate to children
 	}
@@ -616,11 +630,14 @@ func addUniqueColumnExpr(projections []ColumnExpression, colExpr *ColumnExpr) ([
 // findMatchingNodes finds all nodes in the plan tree that match the given matchFn.
 func findMatchingNodes(plan *Plan, root Node, matchFn func(Node) bool) []Node {
 	var result []Node
+	// Using PostOrderWalk to return child nodes first.
+	// This can be useful for optimizations like predicate pushdown
+	// where it is ideal to process child Filter before parent Filter.
 	plan.graph.Walk(root, func(node Node) error {
 		if matchFn(node) {
 			result = append(result, node)
 		}
 		return nil
-	}, dag.PreOrderWalk)
+	}, dag.PostOrderWalk)
 	return result
 }

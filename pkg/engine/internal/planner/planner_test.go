@@ -201,7 +201,7 @@ VectorAggregation
     └── Parallelize
         └── Projection all=true expand=(CAST_DURATION(ambiguous.request_duration))
             └── Compat src=metadata dst=metadata collision=label
-                └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
+                └── ScanSet num_targets=2 projections=(ambiguous.bar, ambiguous.request_duration, builtin.timestamp)  predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
                         ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
                         └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
 						`,
