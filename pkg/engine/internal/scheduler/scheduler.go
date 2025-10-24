@@ -222,7 +222,7 @@ func (s *Scheduler) handleStreamStatus(ctx context.Context, msg wire.StreamStatu
 }
 
 // changeStreamState updates the state of the target stream. changeStreamState
-// must be called with the resourcesMut lock held.
+// must be called while the resourcesMut lock is held.
 func (s *Scheduler) changeStreamState(ctx context.Context, target *stream, newState workflow.StreamState) error {
 	changed, err := target.setState(newState)
 	if err != nil {
@@ -410,7 +410,7 @@ func (s *Scheduler) trackAssignment(assigned *task, owner *wire.Peer) {
 // tryBind is a no-op if the stream does not have both a sender and receiver
 // yet.
 //
-// tryBind must be called with resourcesMut held.
+// tryBind must be called while the resourcesMut lock is held.
 func (s *Scheduler) tryBind(ctx context.Context, check *stream) {
 	sendingTask, hasSendingTask := s.tasks[check.taskSender]
 	if !hasSendingTask || sendingTask.owner == nil {

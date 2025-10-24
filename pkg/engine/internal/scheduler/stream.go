@@ -31,7 +31,7 @@ var validStreamTransitions = map[workflow.StreamState][]workflow.StreamState{
 // setState updates the state of the stream. setState returns an error if the
 // transition is invalid.
 //
-// Return true if the state was updated, false otherwise (such as if the state
+// Returns true if the state was updated, false otherwise (such as if the task
 // is already in the desired state).
 func (s *stream) setState(newState workflow.StreamState) (bool, error) {
 	oldState := s.state

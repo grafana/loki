@@ -27,10 +27,10 @@ var validTaskTransitions = map[workflow.TaskState][]workflow.TaskState{
 	workflow.TaskStateFailed:    {}, // Terminal state, can't transition
 }
 
-// setState updates the state of the stream. setState returns an error if the
+// setState updates the state of the task. setState returns an error if the
 // transition is invalid.
 //
-// Return true if the state was updated, false otherwise (such as if the state
+// Returns true if the state was updated, false otherwise (such as if the task
 // is already in the desired state).
 func (t *task) setState(newStatus workflow.TaskStatus) (bool, error) {
 	oldState, newState := t.status.State, newStatus.State
