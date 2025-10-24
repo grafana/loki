@@ -28,7 +28,6 @@ type consumer struct {
 	client           kafkaConsumer
 	partitionManager *partitionManager
 	usage            *usageStore
-	limits           Limits
 	// readinessCheck checks if a waiting or replaying partition can be
 	// switched to ready.
 	readinessCheck partitionReadinessCheck
@@ -51,7 +50,6 @@ func newConsumer(
 	client kafkaConsumer,
 	partitionManager *partitionManager,
 	usage *usageStore,
-	limits Limits,
 	readinessCheck partitionReadinessCheck,
 	zone string,
 	logger log.Logger,
@@ -61,7 +59,6 @@ func newConsumer(
 		client:           client,
 		partitionManager: partitionManager,
 		usage:            usage,
-		limits:           limits,
 		readinessCheck:   readinessCheck,
 		zone:             zone,
 		logger:           logger,

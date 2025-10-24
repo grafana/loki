@@ -206,9 +206,11 @@ func TestUsageStore_RateBucketsAreNotUsed(t *testing.T) {
 		TotalSize:  100,
 	}
 	require.NoError(t, s.Update("tenant", metadata, clock.Now()))
-	stream, ok := s.getForTests("tenant", 0x1)
-	require.True(t, ok)
 
+	partition := s.getPartitionForHash(0x1)
+	i := s.getStripe("tenant")
+	stream, ok := s.stripes[i]["tenant"][partition][noPolicy][0x1]
+	require.True(t, ok)
 	require.Equal(t, uint64(0), stream.totalSize)
 	require.Nil(t, stream.rateBuckets)
 }

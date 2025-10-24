@@ -143,7 +143,6 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 		s.kafkaReader,
 		s.partitionManager,
 		s.usage,
-		limits,
 		newOffsetReadinessCheck(s.partitionManager),
 		cfg.LifecyclerConfig.Zone,
 		logger,
@@ -158,7 +157,6 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 		reg,
 	)
 	s.limitsChecker = newLimitsChecker(
-		limits,
 		s.usage,
 		s.producer,
 		s.partitionManager,

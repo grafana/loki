@@ -22,7 +22,6 @@ type Limits interface {
 }
 
 type limitsChecker struct {
-	limits           Limits
 	store            *usageStore
 	producer         *producer
 	partitionManager *partitionManager
@@ -37,9 +36,8 @@ type limitsChecker struct {
 	clock quartz.Clock
 }
 
-func newLimitsChecker(limits Limits, store *usageStore, producer *producer, partitionManager *partitionManager, numPartitions int, logger log.Logger, reg prometheus.Registerer) *limitsChecker {
+func newLimitsChecker(store *usageStore, producer *producer, partitionManager *partitionManager, numPartitions int, logger log.Logger, reg prometheus.Registerer) *limitsChecker {
 	return &limitsChecker{
-		limits:           limits,
 		store:            store,
 		producer:         producer,
 		partitionManager: partitionManager,

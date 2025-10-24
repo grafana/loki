@@ -55,7 +55,7 @@ func TestIngestLimits_ServeHTTP(t *testing.T) {
 	var data httpTenantLimitsResponse
 	require.NoError(t, json.Unmarshal(b, &data))
 	require.Equal(t, "tenant1", data.Tenant)
-	require.Equal(t, uint64(1), data.Streams)
+	require.Equal(t, uint64(1), data.StreamsTotal)
 	require.Greater(t, data.Rate, 0.0)
 	require.Less(t, data.Rate, 1.0)
 
@@ -68,6 +68,6 @@ func TestIngestLimits_ServeHTTP(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(b, &data))
 	require.Equal(t, "tenant2", data.Tenant)
-	require.Equal(t, uint64(0), data.Streams)
+	require.Equal(t, uint64(0), data.StreamsTotal)
 	require.Equal(t, 0.0, data.Rate)
 }

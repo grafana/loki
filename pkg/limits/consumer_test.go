@@ -54,7 +54,7 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
 		require.NoError(t, err)
 		u.clock = clock
-		c := newConsumer(&kafka, m, u, &mockLimits{}, newOffsetReadinessCheck(m), "zone1",
+		c := newConsumer(&kafka, m, u, newOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
 		ctx := context.Background()
 		require.NoError(t, c.pollFetches(ctx))
@@ -104,7 +104,7 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
 		require.NoError(t, err)
 		u.clock = clock
-		c := newConsumer(&kafka, m, u, &mockLimits{}, newOffsetReadinessCheck(m), "zone1",
+		c := newConsumer(&kafka, m, u, newOffsetReadinessCheck(m), "zone1",
 			log.NewNopLogger(), prometheus.NewRegistry())
 		ctx := context.Background()
 		require.NoError(t, c.pollFetches(ctx))
@@ -183,7 +183,7 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
 	require.NoError(t, err)
 	u.clock = clock
-	c := newConsumer(&kafka, m, u, &mockLimits{}, newOffsetReadinessCheck(m), "zone1",
+	c := newConsumer(&kafka, m, u, newOffsetReadinessCheck(m), "zone1",
 		log.NewNopLogger(), prometheus.NewRegistry())
 	// The first poll should fetch the first record.
 	ctx := context.Background()

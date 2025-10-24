@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
-	"math"
 	"sync"
 	"time"
 
@@ -42,12 +41,12 @@ type iterateFunc func(tenant string, partition int32, stream streamUsage)
 // getPolicyBucketAndLimit determines which policy bucket to use and the max streams limit
 // for a given tenant and policy. Returns the policy bucket name and the max streams limit.
 // The policy bucket will be the input policy name only if the max streams limit is overriden for the policy.
-func (s *usageStore) getPolicyBucketAndLimit(tenant, policy string) (policyBucket string, maxStreams uint64) {
-	defaultMaxStreams := uint64(math.Max(float64(s.limits.MaxGlobalStreamsPerUser(tenant)/s.numPartitions), 1))
+func (s *usageStore) getPolicyBucketAndStreamsLimit(tenant, policy string) (policyBucket string, maxStreams uint64) {
+	defaultMaxStreams := uint64(s.limits.MaxGlobalStreamsPerUser(tenant) / s.numPartitions)
 
-	if policy != "" {
+	if policy != noPolicy {
 		if policyMaxStreams := s.limits.PolicyMaxGlobalStreamsPerUser(tenant, policy); policyMaxStreams > 0 {
-			return policy, uint64(math.Max(float64(policyMaxStreams/s.numPartitions), 1)) // Use policy-specific bucket
+			return policy, uint64(policyMaxStreams / s.numPartitions) // Use policy-specific bucket
 		}
 	}
 	return "", defaultMaxStreams // Use default bucket
@@ -68,9 +67,11 @@ type usageStore struct {
 	clock quartz.Clock
 }
 
+const noPolicy = ""
+
 // tenantUsage contains the per-partition stream usage for a tenant.
 // The structure is: partition -> policy -> streamHash -> streamUsage
-// Policy "" represents streams that don't match any specific policy.
+// Policy "" (noPolicy) represents streams that don't match any specific policy.
 type tenantUsage map[int32]map[string]map[uint64]streamUsage
 
 // streamUsage represents the metadata for a stream loaded from the kafka topic.
@@ -86,7 +87,13 @@ type streamUsage struct {
 	// implementing rate limits to a later date in the future.
 	totalSize   uint64
 	rateBuckets []rateBucket
-	policy      string // The ingestion policy for this stream if any
+
+	// The policy bucket for this stream if any.
+	// Policy "" (noPolicy) represents streams that don't match any specific policy
+	// or for which the policy did not have a custom stream limit.
+	// NOTE(salvacorts): if we find this is using too much memory, we can use a hash
+	// of the policy string instead. That way we can store a int64 instead of a string.
+	policy string
 }
 
 // RateBucket represents the bytes received during a specific time interval
@@ -181,37 +188,12 @@ func (s *usageStore) IterTenant(tenant string, f iterateFunc) {
 	})
 }
 
-// Get returns the stream for the tenant. It returns false if the stream has
-// expired or does not exist.
-func (s *usageStore) Get(tenant string, streamHash uint64) (streamUsage, bool) {
-	var (
-		now                = s.clock.Now()
-		withinActiveWindow = s.newActiveWindowFunc(now)
-		withinRateWindow   = s.newRateWindowFunc(now)
-		partition          = s.getPartitionForHash(streamHash)
-		stream             streamUsage
-		ok                 bool
-	)
-	s.withRLock(tenant, func(i int) {
-		stream, ok = s.get(i, tenant, partition, streamHash)
-		if !ok {
-			return
-		}
-		if !withinActiveWindow(stream.lastSeenAt) {
-			ok = false
-			return
-		}
-		stream.rateBuckets = getActiveRateBuckets(stream.rateBuckets, withinRateWindow)
-	})
-	return stream, ok
-}
-
 func (s *usageStore) Update(tenant string, metadata *proto.StreamMetadata, seenAt time.Time) error {
 	if !s.withinActiveWindow(seenAt.UnixNano()) {
 		return errOutsideActiveWindow
 	}
 	partition := s.getPartitionForHash(metadata.StreamHash)
-	policyBucket, _ := s.getPolicyBucketAndLimit(tenant, metadata.IngestionPolicy)
+	policyBucket, _ := s.getPolicyBucketAndStreamsLimit(tenant, metadata.IngestionPolicy)
 	s.withLock(tenant, func(i int) {
 		s.update(i, tenant, partition, policyBucket, metadata, seenAt)
 	})
@@ -234,7 +216,7 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 			partition := s.getPartitionForHash(m.StreamHash)
 
 			// Determine which policy bucket to use and the max streams limit
-			policyBucket, maxStreamsForStream := s.getPolicyBucketAndLimit(tenant, m.IngestionPolicy)
+			policyBucket, maxStreams := s.getPolicyBucketAndStreamsLimit(tenant, m.IngestionPolicy)
 
 			s.checkInitMap(i, tenant, partition, policyBucket)
 			streams := s.stripes[i][tenant][partition][policyBucket]
@@ -257,7 +239,7 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 				// limit until evicted.
 				numStreams := uint64(len(s.stripes[i][tenant][partition][policyBucket]))
 
-				if numStreams >= maxStreamsForStream {
+				if numStreams >= maxStreams {
 					rejected = append(rejected, m)
 					continue
 				}
@@ -357,26 +339,6 @@ func (s *usageStore) Collect(metrics chan<- prometheus.Metric) {
 	}
 }
 
-func (s *usageStore) get(i int, tenant string, partition int32, streamHash uint64) (stream streamUsage, ok bool) {
-	partitions, ok := s.stripes[i][tenant]
-	if !ok {
-		return
-	}
-	policies, ok := partitions[partition]
-	if !ok {
-		return
-	}
-	// Search across all policies for this stream
-	// Note that in most cases, there will only be one item on this list (empty policy, "").
-	// and at most just a few items. One idea to speed this up would be to keep a cache of tenant-partition-streamHash -> policy for those streams that have a matching policy.
-	for _, streams := range policies {
-		if stream, ok = streams[streamHash]; ok {
-			return
-		}
-	}
-	return streamUsage{}, false
-}
-
 func (s *usageStore) update(i int, tenant string, partition int32, policyBucket string, metadata *proto.StreamMetadata, seenAt time.Time) {
 	s.checkInitMap(i, tenant, partition, policyBucket)
 	streamHash := metadata.StreamHash
@@ -387,7 +349,7 @@ func (s *usageStore) update(i int, tenant string, partition int32, policyBucket 
 	if !ok || stream.lastSeenAt < cutoff {
 		stream.hash = streamHash
 		stream.totalSize = 0
-		stream.policy = metadata.IngestionPolicy
+		stream.policy = policyBucket
 		// stream.rateBuckets = make([]rateBucket, s.numBuckets)
 	}
 	seenAtUnixNano := seenAt.UnixNano()
@@ -508,13 +470,6 @@ func (s *usageStore) checkInitMap(i int, tenant string, partition int32, policy 
 	if _, ok := s.stripes[i][tenant][partition][policy]; !ok {
 		s.stripes[i][tenant][partition][policy] = make(map[uint64]streamUsage)
 	}
-}
-
-// Used in tests. Is not goroutine-safe.
-func (s *usageStore) getForTests(tenant string, streamHash uint64) (streamUsage, bool) {
-	partition := s.getPartitionForHash(streamHash)
-	i := s.getStripe(tenant)
-	return s.get(i, tenant, partition, streamHash)
 }
 
 // Used in tests. Is not goroutine-safe.
