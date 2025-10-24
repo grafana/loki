@@ -7,7 +7,6 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/buger/jsonparser"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -32,8 +31,8 @@ var (
 	}
 )
 
-func buildJSONColumns(input *array.String, requestedKeys []string, allocator memory.Allocator) ([]string, []arrow.Array) {
-	return buildColumns(input, requestedKeys, allocator, parseJSONLine, types.JSONParserErrorType)
+func buildJSONColumns(input *array.String, requestedKeys []string) ([]string, []arrow.Array) {
+	return buildColumns(input, requestedKeys, parseJSONLine, types.JSONParserErrorType)
 }
 
 // parseJSONLine parses a single JSON line and extracts key-value pairs
@@ -77,7 +76,6 @@ func (j *jsonParser) process(line []byte, requestedKeys []string) (map[string]st
 	err := jsonparser.ObjectEach(line, func(key []byte, value []byte, dataType jsonparser.ValueType, _ int) error {
 		return j.parseObject(key, value, dataType, result, requestedKeyLookup)
 	})
-
 	// If there's an error, return empty result for consistency with malformed JSON handling
 	if err != nil {
 		return make(map[string]string), err
@@ -143,6 +141,11 @@ func (j *jsonParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	// Convert the value to string based on its type
 	parsedValue := parseValue(value, dataType)
 	if parsedValue != "" {
+		// First-wins semantics for duplicates
+		_, exists := result[keyString]
+		if exists {
+			return nil
+		}
 		result[keyString] = parsedValue
 	}
 

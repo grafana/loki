@@ -630,6 +630,19 @@ spec:
                 - Managed
                 - Unmanaged
                 type: string
+              networkPolicies:
+                description: |-
+                  NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+                  When enabled, the operator creates NetworkPolicies to control ingress/egress between
+                  Loki components and related services.
+                properties:
+                  disabled:
+                    description: |-
+                      Disabled allows explicitly disabling NetworkPolicies.
+                      When false, NetworkPolicies are enabled.
+                      When true, NetworkPolicies are disabled.
+                    type: boolean
+                type: object
               proxy:
                 description: Proxy defines the spec for the object proxy to configure
                   cluster proxy information.
@@ -4044,6 +4057,13 @@ spec:
                   - type
                   type: object
                 type: array
+              networkPolicies:
+                description: NetworkPolicies indicates whether NetworkPolicies are
+                  enabled or disabled for this LokiStack.
+                enum:
+                - Enabled
+                - Disabled
+                type: string
               storage:
                 description: |-
                   Storage provides summary of all changes that have occurred

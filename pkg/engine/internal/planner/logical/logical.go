@@ -30,8 +30,6 @@ package logical
 import (
 	"fmt"
 	"strings"
-
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 )
 
 // An Instruction is an SSA instruction that computes a new [Value] or has some
@@ -61,9 +59,6 @@ type Value interface {
 	// implements [Instruction], String returns the disassembled form of the
 	// Instruction as documented by [Instruction.String].
 	String() string
-
-	// Schema returns the type of this Value.
-	Schema() *schema.Schema
 
 	// isValue is a marker method to prevent external implementations.
 	isValue()

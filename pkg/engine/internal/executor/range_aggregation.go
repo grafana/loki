@@ -152,7 +152,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				}
 				return nil, err
 			}
-			defer record.Release()
 
 			inputsExhausted = false
 
@@ -163,15 +162,12 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				if err != nil {
 					return nil, err
 				}
-				defer vec.Release()
 
-				if vec.Type() != types.Loki.String {
-					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.Type())
+				if vec.DataType().ID() != types.Arrow.String.ID() {
+					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.DataType())
 				}
 
-				arr := vec.ToArray().(*array.String)
-				defer arr.Release()
-
+				arr := vec.(*array.String)
 				arrays = append(arrays, arr)
 			}
 
@@ -180,18 +176,15 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 			if err != nil {
 				return nil, err
 			}
-			defer tsVec.Release()
-			tsCol := tsVec.ToArray().(*array.Timestamp)
-			defer tsCol.Release()
+			tsCol := tsVec.(*array.Timestamp)
 
 			// no need to extract value column for COUNT aggregation
-			var valVec ColumnVector
+			var valVec arrow.Array
 			if r.opts.operation != types.RangeAggregationTypeCount {
 				valVec, err = r.evaluator.eval(valColumnExpr, record)
 				if err != nil {
 					return nil, err
 				}
-				defer valVec.Release()
 			}
 
 			for row := range int(record.NumRows()) {
@@ -208,11 +201,13 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 
 				var value float64
 				if r.opts.operation != types.RangeAggregationTypeCount {
-					switch v := valVec.Value(row).(type) {
-					case float64:
-						value = v
-					case int64:
-						value = float64(v)
+					switch arr := valVec.(type) {
+					case *array.Int64:
+						value = float64(arr.Value(row))
+					case *array.Float64:
+						value = float64(arr.Value(row))
+					default:
+						return nil, fmt.Errorf("invalid array type. expected int64 or float64, got %T", arr)
 					}
 				}
 
@@ -233,16 +228,6 @@ func (r *rangeAggregationPipeline) Close() {
 	for _, input := range r.inputs {
 		input.Close()
 	}
-}
-
-// Inputs returns the inputs of the pipeline.
-func (r *rangeAggregationPipeline) Inputs() []Pipeline {
-	return r.inputs
-}
-
-// Transport returns the type of transport of the implementation.
-func (r *rangeAggregationPipeline) Transport() Transport {
-	return Local
 }
 
 func newMatcherFactoryFromOpts(opts rangeAggregationOptions) *matcherFactory {

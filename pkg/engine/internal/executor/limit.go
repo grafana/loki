@@ -14,7 +14,7 @@ func NewLimitPipeline(input Pipeline, skip, fetch uint32) *GenericPipeline {
 		limitRemaining  = int64(fetch)
 	)
 
-	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		var length int64
 		var start, end int64
 		var batch arrow.Record

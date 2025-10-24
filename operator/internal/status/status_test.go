@@ -57,6 +57,7 @@ func TestRefreshSuccess(t *testing.T) {
 		Storage: lokiv1.LokiStackStorageStatus{
 			CredentialMode: lokiv1.CredentialModeStatic,
 		},
+		NetworkPolicies: lokiv1.NetworkPoliciesStatusDisabled,
 		Conditions: []metav1.Condition{
 			{
 				Type:               string(lokiv1.ConditionReady),
@@ -70,7 +71,11 @@ func TestRefreshSuccess(t *testing.T) {
 
 	k, sw := setupListClient(t, stack, componentPods)
 
-	err := Refresh(context.Background(), k, req, now, lokiv1.CredentialModeStatic, nil)
+	statusInfo := &LokiStackStatusInfo{
+		Storage:         lokiv1.CredentialModeStatic,
+		NetworkPolicies: lokiv1.NetworkPoliciesStatusDisabled,
+	}
+	err := Refresh(context.Background(), k, req, now, statusInfo)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, k.GetCallCount())
@@ -132,7 +137,11 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 		return nil
 	}
 
-	err := Refresh(context.Background(), k, req, now, lokiv1.CredentialModeStatic, nil)
+	statusInfo := &LokiStackStatusInfo{
+		Storage:         lokiv1.CredentialModeStatic,
+		NetworkPolicies: lokiv1.NetworkPoliciesStatusDisabled,
+	}
+	err := Refresh(context.Background(), k, req, now, statusInfo)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, k.GetCallCount())

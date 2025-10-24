@@ -70,14 +70,13 @@ type topkReference struct {
 // contribute towards the total unused rows in b. Once the number of unused
 // rows exceeds MaxUnused, Put calls [topkBatch.Compact] to clean up record
 // references.
-func (b *topkBatch) Put(alloc memory.Allocator, rec arrow.Record) {
+func (b *topkBatch) Put(rec arrow.Record) {
 	b.put(rec)
 
 	// Compact if adding this record pushed us over the limit of unused rows.
 	if _, unused := b.Size(); unused > b.MaxUnused {
-		compacted := b.Compact(alloc)
+		compacted := b.Compact()
 		b.put(compacted)
-		compacted.Release()
 	}
 }
 
@@ -104,12 +103,10 @@ func (b *topkBatch) put(rec arrow.Record) {
 		case topk.PushResultPushed:
 			b.usedCount[rec]++
 			b.usedSchemas[rec.Schema()]++
-			rec.Retain()
 
 		case topk.PushResultReplaced:
 			b.usedCount[rec]++
 			b.usedSchemas[rec.Schema()]++
-			rec.Retain()
 
 			b.usedCount[prev.Record]--
 			b.usedSchemas[prev.Record.Schema()]--
@@ -120,7 +117,6 @@ func (b *topkBatch) put(rec arrow.Record) {
 				b.mapper.RemoveSchema(prev.Record.Schema())
 				delete(b.usedSchemas, prev.Record.Schema())
 			}
-			prev.Record.Release()
 		}
 	}
 }
@@ -224,10 +220,7 @@ func (b *topkBatch) Size() (rows int, unused int) {
 // values for those fields.
 //
 // Compact returns nil if no rows are in the top K.
-//
-// The returned record should be Release'd by the caller when it is no longer
-// needed.
-func (b *topkBatch) Compact(alloc memory.Allocator) arrow.Record {
+func (b *topkBatch) Compact() arrow.Record {
 	if len(b.usedCount) == 0 {
 		return nil
 	}
@@ -237,7 +230,7 @@ func (b *topkBatch) Compact(alloc memory.Allocator) arrow.Record {
 	rowRefs := b.heap.PopAll()
 	slices.Reverse(rowRefs)
 
-	compactor := arrowagg.NewRecords(alloc)
+	compactor := arrowagg.NewRecords(memory.DefaultAllocator)
 	for _, ref := range rowRefs {
 		compactor.AppendSlice(ref.Record, int64(ref.Row), int64(ref.Row)+1)
 	}
@@ -260,12 +253,6 @@ func (b *topkBatch) Reset() {
 	b.nextID = 0
 	b.mapper.Reset()
 	b.heap.PopAll()
-
-	for rec, count := range b.usedCount {
-		for range count {
-			rec.Release()
-		}
-	}
 
 	clear(b.usedCount)
 	clear(b.usedSchemas)

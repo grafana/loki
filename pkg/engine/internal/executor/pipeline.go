@@ -10,14 +10,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-type Transport uint8
-
-const (
-	_ Transport = iota
-	Local
-	Remote
-)
-
 // Pipeline represents a data processing pipeline that can read Arrow records.
 // It provides methods to read data, access the current record, and close resources.
 type Pipeline interface {
@@ -27,10 +19,6 @@ type Pipeline interface {
 	// Close closes the resources of the pipeline.
 	// The implementation must close all the of the pipeline's inputs.
 	Close()
-	// Inputs returns the inputs of the pipeline.
-	Inputs() []Pipeline
-	// Transport returns the type of transport of the implementation.
-	Transport() Transport
 }
 
 var (
@@ -46,25 +34,18 @@ type state struct {
 type readFunc func(context.Context, []Pipeline) (arrow.Record, error)
 
 type GenericPipeline struct {
-	t      Transport
 	inputs []Pipeline
 	read   readFunc
 }
 
-func newGenericPipeline(t Transport, read readFunc, inputs ...Pipeline) *GenericPipeline {
+func newGenericPipeline(read readFunc, inputs ...Pipeline) *GenericPipeline {
 	return &GenericPipeline{
-		t:      t,
 		read:   read,
 		inputs: inputs,
 	}
 }
 
 var _ Pipeline = (*GenericPipeline)(nil)
-
-// Inputs implements Pipeline.
-func (p *GenericPipeline) Inputs() []Pipeline {
-	return p.inputs
-}
 
 // Read implements Pipeline.
 func (p *GenericPipeline) Read(ctx context.Context) (arrow.Record, error) {
@@ -81,23 +62,18 @@ func (p *GenericPipeline) Close() {
 	}
 }
 
-// Transport implements Pipeline.
-func (p *GenericPipeline) Transport() Transport {
-	return p.t
-}
-
 func errorPipeline(ctx context.Context, err error) Pipeline {
 	span := trace.SpanFromContext(ctx)
 	span.RecordError(err)
 	span.SetStatus(codes.Error, err.Error())
 
-	return newGenericPipeline(Local, func(_ context.Context, _ []Pipeline) (arrow.Record, error) {
+	return newGenericPipeline(func(_ context.Context, _ []Pipeline) (arrow.Record, error) {
 		return nil, fmt.Errorf("failed to execute pipeline: %w", err)
 	})
 }
 
 func emptyPipeline() Pipeline {
-	return newGenericPipeline(Local, func(_ context.Context, _ []Pipeline) (arrow.Record, error) {
+	return newGenericPipeline(func(_ context.Context, _ []Pipeline) (arrow.Record, error) {
 		return nil, EOF
 	})
 }
@@ -169,8 +145,6 @@ func (p prefetchWrapper) prefetch(ctx context.Context) error {
 			// If the context is cancelled while waiting to send, we return.
 			select {
 			case <-ctx.Done():
-				// The record is dropped, release it immediately.
-				s.batch.Release()
 				return ctx.Err()
 			case p.ch <- s:
 			}
@@ -200,9 +174,7 @@ func (p *prefetchWrapper) Close() {
 		// This check can only be done if p.cancel is non-nil, otherwise we may
 		// deadlock if [prefetchWrapper.Close] is called before
 		// [prefetchWrapper.init].
-		if state, ok := <-p.ch; ok && state.batch != nil {
-			state.batch.Release()
-		}
+		<-p.ch
 	}
 	p.Pipeline.Close()
 }
@@ -237,10 +209,6 @@ func (p *tracedPipeline) Read(ctx context.Context) (arrow.Record, error) {
 }
 
 func (p *tracedPipeline) Close() { p.inner.Close() }
-
-func (p *tracedPipeline) Inputs() []Pipeline { return p.inner.Inputs() }
-
-func (p *tracedPipeline) Transport() Transport { return Local }
 
 type lazyPipeline struct {
 	ctor func(ctx context.Context, inputs []Pipeline) Pipeline
@@ -280,9 +248,3 @@ func (lp *lazyPipeline) Close() {
 	}
 	lp.built = nil
 }
-
-// Inputs implements [Pipeline].
-func (lp *lazyPipeline) Inputs() []Pipeline { return lp.inputs }
-
-// Transport implements [Pipeline].
-func (lp *lazyPipeline) Transport() Transport { return Local }

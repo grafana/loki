@@ -132,7 +132,7 @@ func (d *Distributor) pushHandler(w http.ResponseWriter, r *http.Request, pushRe
 					"stream", s.Labels,
 					"streamLabelsHash", util.HashedQuery(s.Labels), // this is to make it easier to do searching and grouping
 					"streamSizeBytes", humanize.Bytes(uint64(pushStats.StreamSizeBytes[s.Labels])),
-					"policy", streamResolver.PolicyFor(lbs),
+					"policy", streamResolver.PolicyFor(r.Context(), lbs),
 				}
 				if timestamp, ok := pushStats.MostRecentEntryTimestampPerStream[s.Labels]; ok {
 					logValues = append(logValues, "mostRecentLagMs", time.Since(timestamp).Milliseconds())

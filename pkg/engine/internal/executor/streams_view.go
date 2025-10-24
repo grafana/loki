@@ -169,11 +169,6 @@ func (v *streamsView) init(ctx context.Context) (err error) {
 	r := streams.NewReader(readerOptions)
 
 	var records []arrow.Record
-	defer func() {
-		for _, rec := range records {
-			rec.Release()
-		}
-	}()
 
 	for {
 		rec, err := r.Read(ctx, v.batchSize)
@@ -189,11 +184,6 @@ func (v *streamsView) init(ctx context.Context) (err error) {
 	}
 
 	table := array.NewTableFromRecords(r.Schema(), records)
-	defer func() {
-		if err != nil {
-			table.Release()
-		}
-	}()
 
 	idMapping := make(map[int64]int, table.NumRows())
 	for colIndex := range int(table.NumCols()) {
@@ -257,7 +247,6 @@ func (v *streamsView) Close() {
 	}
 
 	v.initialized = false
-	v.streams.Release()
 	v.streams = nil
 	clear(v.idRowMapping)
 }
