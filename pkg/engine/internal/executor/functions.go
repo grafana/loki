@@ -17,6 +17,7 @@ import (
 var (
 	unaryFunctions  UnaryFunctionRegistry  = &unaryFuncReg{}
 	binaryFunctions BinaryFunctionRegistry = &binaryFuncReg{}
+	functions       FunctionRegistry       = &funcReg{}
 )
 
 func init() {
@@ -108,6 +109,10 @@ func init() {
 	unaryFunctions.register(types.UnaryOpCastFloat, arrow.BinaryTypes.String, castFn(types.UnaryOpCastFloat))
 	unaryFunctions.register(types.UnaryOpCastBytes, arrow.BinaryTypes.String, castFn(types.UnaryOpCastBytes))
 	unaryFunctions.register(types.UnaryOpCastDuration, arrow.BinaryTypes.String, castFn(types.UnaryOpCastDuration))
+
+	// Parse functions
+	functions.register(types.FunctionOpParseLogfmt, parseFn(types.FunctionOpParseLogfmt))
+	functions.register(types.FunctionOpParseJSON, parseFn(types.FunctionOpParseJSON))
 }
 
 type UnaryFunctionRegistry interface {
@@ -341,4 +346,42 @@ func boolToInt(b bool) int {
 		i = 0
 	}
 	return i
+}
+
+type FunctionRegistry interface {
+	register(types.FunctionOp, Function)
+	GetForSignature(types.FunctionOp) (Function, error)
+}
+
+type Function interface {
+	Evaluate(args ...arrow.Array) (arrow.Array, error)
+}
+
+type FunctionFunc func(args ...arrow.Array) (arrow.Array, error)
+
+func (f FunctionFunc) Evaluate(args ...arrow.Array) (arrow.Array, error) {
+	return f(args...)
+}
+
+type funcReg struct {
+	reg map[types.FunctionOp]Function
+}
+
+// register implements UnaryFunctionRegistry.
+func (u *funcReg) register(op types.FunctionOp, f Function) {
+	if u.reg == nil {
+		u.reg = make(map[types.FunctionOp]Function)
+	}
+	// TODO(twhitney): Should the function panic when duplicate keys are registered?
+	u.reg[op] = f
+}
+
+// GetForSignature implements UnaryFunctionRegistry.
+func (u *funcReg) GetForSignature(op types.FunctionOp) (Function, error) {
+	// Get registered function for the specific operation
+	fn, ok := u.reg[op]
+	if !ok {
+		return nil, errors.ErrNotImplemented
+	}
+	return fn, nil
 }

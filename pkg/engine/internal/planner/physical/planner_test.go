@@ -270,7 +270,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Shard: logical.NewShard(0, 1),
 			},
 		).Parse(
-			logical.ParserLogfmt,
+			types.FunctionOpParseLogfmt,
 		).Select(
 			&logical.BinOp{
 				Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
@@ -290,7 +290,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
 
 		physicalPlan, err := planner.Build(logicalPlan)
-		t.Logf("Physical plan\n%s\n", PrintAsTree(physicalPlan))
+		t.Logf("\nPhysical plan\n%s\n", PrintAsTree(physicalPlan))
 		require.NoError(t, err)
 
 		// Verify ParseNode exists in correct position
@@ -304,24 +304,33 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		children := physicalPlan.Children(filterNode)
 		require.Len(t, children, 1)
 
-		compatNode, ok := children[0].(*ColumnCompat)
-		require.True(t, ok, "Filter's child should be ColumnCompat")
-		require.Equal(t, types.ColumnTypeParsed, compatNode.Source)
+		projectionNode, ok := children[0].(*Projection)
+		require.True(t, ok, "Filter's child should be Projection")
+		require.Len(t, projectionNode.Expressions, 1)
 
-		children = physicalPlan.Children(compatNode)
-		require.Len(t, children, 1)
+		expr, ok := projectionNode.Expressions[0].(*FunctionExpr)
+		require.True(t, ok)
+		require.Equal(t, types.FunctionOpParseLogfmt, expr.Op)
 
-		parseNode, ok := children[0].(*ParseNode)
-		require.True(t, ok, "ColumnCompat's child should be ParseNode")
-		require.Equal(t, ParserLogfmt, parseNode.Kind)
-		require.Empty(t, parseNode.RequestedKeys)
+		funcArgs := expr.Expressions
+		require.Len(t, funcArgs, 1)
+
+		sourcCol, ok := funcArgs[0].(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ColumnNameBuiltinMessage, sourcCol.Ref.Column)
+		require.Equal(t, types.ColumnTypeBuiltin, sourcCol.Ref.Type)
 
 		physicalPlan, err = planner.Optimize(physicalPlan)
-		t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+		t.Logf("\nOptimized plan\n%s\n", PrintAsTree(physicalPlan))
 		require.NoError(t, err)
 
-		// For log queries, parse nodes should request all keys (nil)
-		require.Nil(t, parseNode.RequestedKeys)
+		funcArgs = expr.Expressions
+		require.Len(t, funcArgs, 1)
+
+		sourcCol, ok = funcArgs[0].(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ColumnNameBuiltinMessage, sourcCol.Ref.Column)
+		require.Equal(t, types.ColumnTypeBuiltin, sourcCol.Ref.Type)
 	})
 
 	t.Run("Build a query plan for a metric query with Parse", func(t *testing.T) {
@@ -340,7 +349,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Shard: logical.NewShard(0, 1),
 			},
 		).Parse(
-			logical.ParserLogfmt,
+			types.FunctionOpParseLogfmt,
 		).Select(
 			&logical.BinOp{
 				Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
@@ -367,32 +376,61 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		planner := NewPlanner(NewContext(start, end), catalog)
 
 		physicalPlan, err := planner.Build(logicalPlan)
-		t.Logf("Physical plan\n%s\n", PrintAsTree(physicalPlan))
+		t.Logf("\nPhysical plan\n%s\n", PrintAsTree(physicalPlan))
 		require.NoError(t, err)
 
-		// Find ParseNode in the plan
-		var parseNode *ParseNode
+		// Verify ParseNode exists in correct position
 		root, err := physicalPlan.Root()
 		require.NoError(t, err)
-		_ = physicalPlan.DFSWalk(root, func(n Node) error {
-			switch node := n.(type) {
-			case *ParseNode:
-				parseNode = node
-			}
-			return nil
-		}, dag.PreOrderWalk)
 
-		require.NotNil(t, parseNode, "ParseNode should exist in the plan")
+		// Physical plan is built bottom up, so it should be RangeAggregation -> Filter -> Projection -> ...
+		rangeAgg, ok := root.(*RangeAggregation)
+		require.True(t, ok, "Root should be RangeAggregation")
 
-		require.Equal(t, ParserLogfmt, parseNode.Kind)
-		require.Empty(t, parseNode.RequestedKeys) // Before optimization
+		children := physicalPlan.Children(rangeAgg)
+		require.Len(t, children, 1)
+
+		filterNode, ok := children[0].(*Filter)
+		require.True(t, ok, "RangeAggregation's child should be Filter")
+
+		children = physicalPlan.Children(filterNode)
+		require.Len(t, children, 1)
+
+		projectionNode, ok := children[0].(*Projection)
+		require.True(t, ok, "Filter's child should be Projection")
+		require.Len(t, projectionNode.Expressions, 1)
+
+		expr, ok := projectionNode.Expressions[0].(*FunctionExpr)
+		require.True(t, ok)
+		require.Equal(t, types.FunctionOpParseLogfmt, expr.Op)
+
+		funcArgs := expr.Expressions
+		require.Len(t, funcArgs, 1)
+
+		sourcCol, ok := funcArgs[0].(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ColumnNameBuiltinMessage, sourcCol.Ref.Column)
+		require.Equal(t, types.ColumnTypeBuiltin, sourcCol.Ref.Type)
 
 		physicalPlan, err = planner.Optimize(physicalPlan)
-		t.Logf("Optimized plan\n%s\n", PrintAsTree(physicalPlan))
+		t.Logf("\nOptimized plan\n%s\n", PrintAsTree(physicalPlan))
 		require.NoError(t, err)
 
-		// For metric queries, parse nodes should request specific keys used in aggregations
-		require.Equal(t, []string{"level"}, parseNode.RequestedKeys)
+		funcArgs = expr.Expressions
+		require.Len(t, funcArgs, 2)
+
+		sourcCol, ok = funcArgs[0].(*ColumnExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ColumnNameBuiltinMessage, sourcCol.Ref.Column)
+		require.Equal(t, types.ColumnTypeBuiltin, sourcCol.Ref.Type)
+
+		reqKeys, ok := funcArgs[1].(*NamedLiteralExpr)
+		require.True(t, ok)
+		require.Equal(t, types.ParseRequestedKeys, reqKeys.Name)
+
+		keys, ok := reqKeys.Literal.(types.StringListLiteral)
+		require.True(t, ok)
+		require.Equal(t, []string{"level"}, keys.Value())
 	})
 }
 
