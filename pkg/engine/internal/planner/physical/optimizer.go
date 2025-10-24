@@ -84,10 +84,6 @@ func (r *predicatePushdown) applyToTargets(node Node, predicate Expression) bool
 	case *ScanSet:
 		node.Predicates = append(node.Predicates, predicate)
 		return true
-	case *DataObjScan:
-		// This is a Noop as we only have ScanSet nodes in the physical plan.
-		node.Predicates = append(node.Predicates, predicate)
-		return true
 	}
 
 	changed := false
@@ -208,6 +204,10 @@ func (r *groupByPushdown) applyToTargets(node Node, groupBy []ColumnExpression, 
 	var changed bool
 	switch node := node.(type) {
 	case *RangeAggregation:
+		if !slices.Contains(supportedAggTypes, node.Operation) {
+			return false
+		}
+
 		for _, colExpr := range groupBy {
 			colExpr, ok := colExpr.(*ColumnExpr)
 			if !ok {
