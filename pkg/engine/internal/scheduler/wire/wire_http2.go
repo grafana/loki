@@ -119,7 +119,7 @@ func NewHTTP2Listener(
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/wire", l.handleWire)
+	mux.HandleFunc("/stream", l.handleStream)
 
 	l.server = &http.Server{
 		Handler:           h2c.NewHandler(mux, &http2.Server{}),
@@ -138,8 +138,8 @@ func NewHTTP2Listener(
 	return l, nil
 }
 
-// handleWire handles incoming wire protocol connections.
-func (l *HTTP2Listener) handleWire(w http.ResponseWriter, r *http.Request) {
+// handleStream handles incoming stream connections.
+func (l *HTTP2Listener) handleStream(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -148,6 +148,11 @@ func (l *HTTP2Listener) handleWire(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	if r.ProtoMajor != 2 {
+		http.Error(w, "protocol not supported", http.StatusHTTPVersionNotSupported)
 		return
 	}
 
@@ -377,7 +382,7 @@ func NewHTTP2Dialer() *HTTP2Dialer {
 func (d *HTTP2Dialer) Dial(ctx context.Context, addr string, protocolFactory func() FrameProtocol) (Conn, error) {
 	pr, pw := io.Pipe()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://%s/wire", addr), pr)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://%s/stream", addr), pr)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
