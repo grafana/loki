@@ -12,9 +12,9 @@ import (
 func TestDebugCmd(t *testing.T) {
 	t.Skip("Test for debugging purposes only")
 
-	orgID = ""              // TODO: set org ID for querying remote instances
 	storageBucket = ""      // TODO: set bucket name for local engine support
-	indexStoragePrefix = "" // TODO: set index storage prefix for local engine v1 support
+	indexStoragePrefix = "" // TODO: set index storage prefix for local engine support
+	orgID = ""              // TODO: set org ID for querying remote instances
 
 	start := time.Date(2025, 10, 24, 0, 0, 0, 0, time.UTC)
 	end := start.Add(45 * time.Minute)

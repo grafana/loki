@@ -29,7 +29,7 @@ func addMetastoreCommand(app *kingpin.Application) {
 	cmd.Flag("end", "End time (RFC3339 format)").Required().StringVar(&cfg.End)
 	cmd.Flag("query", "LogQL query to analyze").Required().StringVar(&cfg.Query)
 
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 		storageBucket = cfg.Bucket
 		orgID = cfg.OrgID
 
@@ -50,8 +50,8 @@ func addMetastoreCommand(app *kingpin.Application) {
 // queryMetastore queries the metastore for stream sections
 func queryMetastore(params logql.LiteralParams) error {
 	query := params.QueryString()
-	close := strings.Index(query, "}")
-	streamMatchers, err := syntax.ParseMatchers(query[:close+1], true)
+	closeIdx := strings.Index(query, "}")
+	streamMatchers, err := syntax.ParseMatchers(query[:closeIdx+1], true)
 	if err != nil {
 		return err
 	}
