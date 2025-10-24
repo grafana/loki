@@ -1,4 +1,5 @@
 deploymentMode: Distributed
+nameOverride: '{{ $.Release.Name }}'
 loki:
   commonConfig:
     replication_factor: 1
