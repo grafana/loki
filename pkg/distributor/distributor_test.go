@@ -2336,10 +2336,10 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 	retentionPeriod = resolver.RetentionPeriodFor(labels.FromStrings("env", "dev"))
 	require.Equal(t, 24*time.Hour, retentionPeriod)
 
-	policy := resolver.PolicyFor(context.Background(), labels.FromStrings("env", "prod"))
+	policy := resolver.PolicyFor(t.Context(), labels.FromStrings("env", "prod"))
 	require.Equal(t, "policy0", policy)
 
-	policy = resolver.PolicyFor(context.Background(), labels.FromStrings("env", "dev"))
+	policy = resolver.PolicyFor(t.Context(), labels.FromStrings("env", "dev"))
 	require.Empty(t, policy)
 
 	// We now modify the underlying limits to test that the resolver is not affected by changes to the limits
@@ -2378,10 +2378,10 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 	retentionPeriod = resolver.RetentionPeriodFor(labels.FromStrings("env", "dev"))
 	require.Equal(t, 24*time.Hour, retentionPeriod)
 
-	policy = resolver.PolicyFor(context.Background(), labels.FromStrings("env", "prod"))
+	policy = resolver.PolicyFor(t.Context(), labels.FromStrings("env", "prod"))
 	require.Equal(t, "policy0", policy)
 
-	policy = resolver.PolicyFor(context.Background(), labels.FromStrings("env", "dev"))
+	policy = resolver.PolicyFor(t.Context(), labels.FromStrings("env", "dev"))
 	require.Empty(t, policy)
 
 	// But a new resolver should return the new values
@@ -2397,10 +2397,10 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 	retentionPeriod = newResolver.RetentionPeriodFor(labels.FromStrings("env", "dev"))
 	require.Equal(t, 72*time.Hour, retentionPeriod)
 
-	policy = newResolver.PolicyFor(context.Background(), labels.FromStrings("env", "prod"))
+	policy = newResolver.PolicyFor(t.Context(), labels.FromStrings("env", "prod"))
 	require.Empty(t, policy)
 
-	policy = newResolver.PolicyFor(context.Background(), labels.FromStrings("env", "dev"))
+	policy = newResolver.PolicyFor(t.Context(), labels.FromStrings("env", "dev"))
 	require.Equal(t, "policy1", policy)
 }
 

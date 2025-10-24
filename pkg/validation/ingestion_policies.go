@@ -65,7 +65,7 @@ func (p *PolicyStreamMapping) Validate() error {
 func (p *PolicyStreamMapping) PolicyFor(ctx context.Context, lbs labels.Labels) []string {
 	// Check if a policy was set via the HTTP header (X-Loki-Ingestion-Policy)
 	// This overrides any stream-to-policy mappings
-	if headerPolicy, ok := ExtractIngestionPolicyContext(ctx); ok && headerPolicy != "" {
+	if headerPolicy := ExtractIngestionPolicyContext(ctx); headerPolicy != "" {
 		return []string{headerPolicy}
 	}
 
@@ -166,25 +166,24 @@ const (
 )
 
 // ExtractIngestionPolicyHTTP retrieves the ingestion policy from the HTTP header and returns it.
-// Returns the policy string and a boolean indicating whether the policy was found.
-func ExtractIngestionPolicyHTTP(r *http.Request) (string, bool) {
-	policy := r.Header.Get(HTTPHeaderIngestionPolicyKey)
-	if policy == "" {
-		return "", false
-	}
-	return policy, true
+// If no policy is found, it returns an empty string.
+func ExtractIngestionPolicyHTTP(r *http.Request) string {
+	return r.Header.Get(HTTPHeaderIngestionPolicyKey)
 }
 
 // InjectIngestionPolicyContext returns a derived context containing the provided ingestion policy.
 func InjectIngestionPolicyContext(ctx context.Context, policy string) context.Context {
-	return context.WithValue(ctx, any(ingestionPolicyContextKey), policy)
+	return context.WithValue(ctx, ingestionPolicyContextKey, policy)
 }
 
 // ExtractIngestionPolicyContext gets the embedded ingestion policy from the context.
-// Returns the policy string and a boolean indicating whether the policy was found.
-func ExtractIngestionPolicyContext(ctx context.Context) (string, bool) {
+// If no policy is found, it returns an empty string.
+func ExtractIngestionPolicyContext(ctx context.Context) string {
 	policy, ok := ctx.Value(ingestionPolicyContextKey).(string)
-	return policy, ok
+	if !ok {
+		return ""
+	}
+	return policy
 }
 
 type ingestionPolicyMiddleware struct {
@@ -202,8 +201,7 @@ func NewIngestionPolicyMiddleware(logger log.Logger) middleware.Interface {
 // Wrap implements the middleware interface
 func (m *ingestionPolicyMiddleware) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		policy, isSet := ExtractIngestionPolicyHTTP(r)
-		if isSet && policy != "" {
+		if policy := ExtractIngestionPolicyHTTP(r); policy != "" {
 			r = r.Clone(InjectIngestionPolicyContext(r.Context(), policy))
 		}
 
