@@ -256,7 +256,7 @@ VectorAggregation operation=sum
 			comment: "math expression",
 			query:   `sum by (bar) (count_over_time({app="foo"}[1m]) / 300)`,
 			expected: `
-VectorAggregation
+VectorAggregation operation=sum group_by=(ambiguous.bar)
 └── Projection all=true expand=(DIV(generated.value, 300))
     └── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s partition_by=(ambiguous.bar)
         └── Parallelize
