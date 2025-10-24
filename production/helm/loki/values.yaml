@@ -5,8 +5,10 @@
 kubeVersionOverride: null
 
 global:
+  # -- Overrides the Docker registry globally for all images (standard format)
+  imageRegistry: null
   image:
-    # -- Overrides the Docker registry globally for all images
+    # -- Overrides the Docker registry globally for all images (deprecated, use global.imageRegistry)
     registry: null
   # -- Overrides the priorityClassName for all pods
   priorityClassName: null
