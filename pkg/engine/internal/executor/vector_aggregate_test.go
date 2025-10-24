@@ -73,11 +73,11 @@ func TestVectorAggregationPipeline(t *testing.T) {
 
 	// Create group by expressions
 	groupBy := []*physicalpb.ColumnExpression{
-		&physicalpb.ColumnExpression{
+		{
 			Name: "env",
 			Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
 		},
-		&physicalpb.ColumnExpression{
+		{
 			Name: "service",
 			Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
 		},

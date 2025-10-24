@@ -313,14 +313,14 @@ func (a *Array) Release() {
 // It implements the ColumnVector interface while preserving access to individual fields.
 type ArrayStruct struct {
 	array *array.Struct
-	ct    types.ColumnType
+	ct    physicalpb.ColumnType
 	rows  int64
 }
 
 var _ ColumnVector = (*ArrayStruct)(nil)
 
 // NewArrayStruct creates a new ArrayStruct from an array.Struct
-func NewArrayStruct(arr *array.Struct, ct types.ColumnType) *ArrayStruct {
+func NewArrayStruct(arr *array.Struct, ct physicalpb.ColumnType) *ArrayStruct {
 	return &ArrayStruct{
 		array: arr,
 		ct:    ct,
@@ -386,7 +386,7 @@ func (a *ArrayStruct) Type() types.DataType {
 }
 
 // ColumnType implements ColumnVector.
-func (a *ArrayStruct) ColumnType() types.ColumnType {
+func (a *ArrayStruct) ColumnType() physicalpb.ColumnType {
 	return a.ct
 }
 

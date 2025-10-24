@@ -3,7 +3,7 @@ package logical
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 // The UnaryOp instruction yields the result of unary operation Op Value.
@@ -11,7 +11,7 @@ import (
 type UnaryOp struct {
 	id string
 
-	Op    physicalpb.UnaryOp
+	Op    types.UnaryOp
 	Value Value
 }
 

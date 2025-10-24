@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
 
@@ -19,7 +19,7 @@ type RangeAggregation struct {
 	Table       Value       // The table relation to aggregate.
 	PartitionBy []ColumnRef // The columns to partition by.
 
-	Operation     physicalpb.AggregateRangeOp // The type of aggregation operation to perform.
+	Operation     types.RangeAggregationType // The type of aggregation operation to perform.
 	Start         time.Time
 	End           time.Time
 	Step          time.Duration

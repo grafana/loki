@@ -3,7 +3,7 @@ package logical
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 // VectorAggregation represents a logical plan node that performs vector aggregations.
@@ -18,7 +18,7 @@ type VectorAggregation struct {
 	GroupBy []ColumnRef
 
 	// The type of aggregation operation to perform (e.g., sum, min, max)
-	Operation physicalpb.AggregateVectorOp
+	Operation types.VectorAggregationType
 }
 
 var (

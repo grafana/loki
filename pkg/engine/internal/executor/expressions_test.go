@@ -388,27 +388,25 @@ label_2
 
 func TestEvaluateUnaryCastExpression(t *testing.T) {
 	colMsg := semconv.ColumnIdentMessage
-	colStatusCode := semconv.NewIdentifier("status_code", types.ColumnTypeMetadata, types.Loki.String)
-	colTimeout := semconv.NewIdentifier("timeout", types.ColumnTypeParsed, types.Loki.String)
-	colMixedValues := semconv.NewIdentifier("mixed_values", types.ColumnTypeMetadata, types.Loki.String)
+	colStatusCode := semconv.NewIdentifier("status_code", physicalpb.COLUMN_TYPE_METADATA, types.Loki.String)
+	colTimeout := semconv.NewIdentifier("timeout", physicalpb.COLUMN_TYPE_PARSED, types.Loki.String)
+	colMixedValues := semconv.NewIdentifier("mixed_values", physicalpb.COLUMN_TYPE_METADATA, types.Loki.String)
 
 	t.Run("unknown column", func(t *testing.T) {
 		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 		defer alloc.AssertSize(t, 0) // Assert empty on test exit
 		e := newExpressionEvaluator()
-		expr := &physical.UnaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: "does_not_exist",
-					Type:   types.ColumnTypeAmbiguous,
-				},
-			},
-			Op: types.UnaryOpCastFloat,
-		}
+		expr := (&physicalpb.UnaryExpression{
+			Value: (&physicalpb.ColumnExpression{
+				Name: "does_not_exist",
+				Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
+			}).ToExpression(),
+			Op: physicalpb.UNARY_OP_CAST_FLOAT,
+		}).ToExpression()
 
 		n := len(words)
 		rec := batch(n, time.Now())
-		colVec, err := e.eval(expr, alloc, rec)
+		colVec, err := e.eval(*expr, alloc, rec)
 		require.NoError(t, err)
 		defer colVec.Release()
 
@@ -438,15 +436,13 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 	})
 
 	t.Run("cast column generates a value", func(t *testing.T) {
-		expr := &physical.UnaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: "status_code",
-					Type:   types.ColumnTypeAmbiguous,
-				},
-			},
-			Op: types.UnaryOpCastBytes,
-		}
+		expr := (&physicalpb.UnaryExpression{
+			Value: (&physicalpb.ColumnExpression{
+				Name: "status_code",
+				Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
+			}).ToExpression(),
+			Op: physicalpb.UNARY_OP_CAST_BYTES,
+		}).ToExpression()
 
 		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 		defer alloc.AssertSize(t, 0) // Assert empty on test exit
@@ -469,7 +465,7 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 		record := rows.Record(alloc, schema)
 		defer record.Release()
 
-		colVec, err := e.eval(expr, alloc, record)
+		colVec, err := e.eval(*expr, alloc, record)
 		require.NoError(t, err)
 		defer colVec.Release()
 		id := colVec.Type().ArrowType().ID()
@@ -490,15 +486,13 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 	})
 
 	t.Run("cast column generates a value from a parsed column", func(t *testing.T) {
-		expr := &physical.UnaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: "timeout",
-					Type:   types.ColumnTypeAmbiguous,
-				},
-			},
-			Op: types.UnaryOpCastDuration,
-		}
+		expr := (&physicalpb.UnaryExpression{
+			Value: (&physicalpb.ColumnExpression{
+				Name: "timeout",
+				Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
+			}).ToExpression(),
+			Op: physicalpb.UNARY_OP_CAST_DURATION,
+		}).ToExpression()
 
 		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 		defer alloc.AssertSize(t, 0) // Assert empty on test exit
@@ -521,7 +515,7 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 		record := rows.Record(alloc, schema)
 		defer record.Release()
 
-		colVec, err := e.eval(expr, alloc, record)
+		colVec, err := e.eval(*expr, alloc, record)
 		require.NoError(t, err)
 		defer colVec.Release()
 		id := colVec.Type().ArrowType().ID()
@@ -541,15 +535,13 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 	})
 
 	t.Run("cast operation tracks errors", func(t *testing.T) {
-		colExpr := &physical.UnaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: "mixed_values",
-					Type:   types.ColumnTypeAmbiguous,
-				},
-			},
-			Op: types.UnaryOpCastFloat,
-		}
+		colExpr := (&physicalpb.UnaryExpression{
+			Value: (&physicalpb.ColumnExpression{
+				Name: "mixed_values",
+				Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
+			}).ToExpression(),
+			Op: physicalpb.UNARY_OP_CAST_FLOAT,
+		}).ToExpression()
 
 		alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
 		defer alloc.AssertSize(t, 0) // Assert empty on test exit
@@ -573,7 +565,7 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 		record := rows.Record(alloc, schema)
 		defer record.Release()
 
-		colVec, err := e.eval(colExpr, alloc, record)
+		colVec, err := e.eval(*colExpr, alloc, record)
 		require.NoError(t, err)
 		defer colVec.Release()
 		id := colVec.Type().ArrowType().ID()

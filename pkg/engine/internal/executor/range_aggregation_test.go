@@ -60,11 +60,11 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 
 	opts := rangeAggregationOptions{
 		partitionBy: []*physicalpb.ColumnExpression{
-			&physicalpb.ColumnExpression{
+			{
 				Name: "env",
 				Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
 			},
-			&physicalpb.ColumnExpression{
+			{
 				Name: "service",
 				Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
 			},
@@ -142,11 +142,11 @@ func TestRangeAggregationPipeline(t *testing.T) {
 	)
 
 	partitionBy := []*physicalpb.ColumnExpression{
-		&physicalpb.ColumnExpression{
+		{
 			Name: "env",
 			Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
 		},
-		&physicalpb.ColumnExpression{
+		{
 			Name: "service",
 			Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
 		},

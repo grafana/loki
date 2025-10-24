@@ -1,7 +1,6 @@
 package logical
 
 import (
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -28,7 +27,7 @@ func (c *ColumnRef) String() string {
 
 func (c *ColumnRef) isValue() {}
 
-func NewColumnRef(name string, ty physicalpb.ColumnType) *ColumnRef {
+func NewColumnRef(name string, ty types.ColumnType) *ColumnRef {
 	return &ColumnRef{
 		Ref: types.ColumnRef{
 			Column: name,

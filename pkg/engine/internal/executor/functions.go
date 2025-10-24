@@ -10,7 +10,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/errors"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 var (
@@ -81,9 +80,9 @@ func init() {
 	}})
 
 	// Cast functions
-	unaryFunctions.register(types.UnaryOpCastFloat, arrow.BinaryTypes.String, castFn(types.UnaryOpCastFloat))
-	unaryFunctions.register(types.UnaryOpCastBytes, arrow.BinaryTypes.String, castFn(types.UnaryOpCastBytes))
-	unaryFunctions.register(types.UnaryOpCastDuration, arrow.BinaryTypes.String, castFn(types.UnaryOpCastDuration))
+	unaryFunctions.register(physicalpb.UNARY_OP_CAST_FLOAT, arrow.BinaryTypes.String, castFn(physicalpb.UNARY_OP_CAST_FLOAT))
+	unaryFunctions.register(physicalpb.UNARY_OP_CAST_BYTES, arrow.BinaryTypes.String, castFn(physicalpb.UNARY_OP_CAST_BYTES))
+	unaryFunctions.register(physicalpb.UNARY_OP_CAST_DURATION, arrow.BinaryTypes.String, castFn(physicalpb.UNARY_OP_CAST_DURATION))
 }
 
 type UnaryFunctionRegistry interface {

@@ -7,7 +7,6 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -222,10 +221,10 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 	var (
 		err error
 
-		rangeAggType  physicalpb.AggregateRangeOp
+		rangeAggType  types.RangeAggregationType
 		rangeInterval time.Duration
 
-		vecAggType physicalpb.AggregateVectorOp
+		vecAggType types.VectorAggregationType
 		groupBy    []ColumnRef
 
 		// unwrap-related variables
@@ -244,13 +243,13 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 
 			switch e.Operation {
 			case syntax.OpRangeTypeCount:
-				rangeAggType = physicalpb.AGGREGATE_RANGE_OP_COUNT
+				rangeAggType = types.RangeAggregationTypeCount
 			case syntax.OpRangeTypeSum:
-				rangeAggType = physicalpb.AGGREGATE_RANGE_OP_SUM
+				rangeAggType = types.RangeAggregationTypeSum
 			//case syntax.OpRangeTypeMax:
-			//	rangeAggType = physicalpb.AGGREGATE_RANGE_OP_MAX
+			//	rangeAggType = types.RangeAggregationTypeMax
 			//case syntax.OpRangeTypeMin:
-			//	rangeAggType = physicalpb.AGGREGATE_RANGE_OP_MIN
+			//	rangeAggType = types.RangeAggregationTypeMin
 			default:
 				err = errUnimplemented
 				return false
@@ -290,13 +289,13 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 
 			switch e.Operation {
 			//case syntax.OpTypeCount:
-			//	vecAggType = physicalpb.AGGREGATE_VECTOR_OP_COUNT
+			//	vecAggType = types.VectorAggregationTypeCount
 			case syntax.OpTypeSum:
-				vecAggType = physicalpb.AGGREGATE_VECTOR_OP_SUM
+				vecAggType = types.VectorAggregationTypeSum
 			//case syntax.OpTypeMax:
-			//	vecAggType = physicalpb.AGGREGATE_VECTOR_OP_MAX
+			//	vecAggType = types.VectorAggregationTypeMax
 			//case syntax.OpTypeMin:
-			//	vecAggType = physicalpb.AGGREGATE_VECTOR_OP_MIN
+			//	vecAggType = types.VectorAggregationTypeMin
 			default:
 				err = errUnimplemented
 				return false
@@ -304,7 +303,7 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 
 			groupBy = make([]ColumnRef, 0, len(e.Grouping.Groups))
 			for _, group := range e.Grouping.Groups {
-				groupBy = append(groupBy, *NewColumnRef(group, physicalpb.COLUMN_TYPE_AMBIGUOUS))
+				groupBy = append(groupBy, *NewColumnRef(group, types.ColumnTypeAmbiguous))
 			}
 
 			return true
@@ -317,7 +316,7 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 		return nil, err
 	}
 
-	if rangeAggType == physicalpb.AGGREGATE_RANGE_OP_INVALID || vecAggType == physicalpb.AGGREGATE_VECTOR_OP_INVALID {
+	if rangeAggType == types.RangeAggregationTypeInvalid || vecAggType == types.VectorAggregationTypeInvalid {
 		return nil, errUnimplemented
 	}
 
@@ -348,7 +347,7 @@ func convertLabelMatchers(matchers []*labels.Matcher) Value {
 
 	for i, matcher := range matchers {
 		expr := &BinOp{
-			Left:  NewColumnRef(matcher.Name, physicalpb.COLUMN_TYPE_LABEL),
+			Left:  NewColumnRef(matcher.Name, types.ColumnTypeLabel),
 			Right: NewLiteral(matcher.Value),
 			Op:    convertMatcherType(matcher.Type),
 		}
@@ -359,32 +358,32 @@ func convertLabelMatchers(matchers []*labels.Matcher) Value {
 		value = &BinOp{
 			Left:  value,
 			Right: expr,
-			Op:    physicalpb.BINARY_OP_AND,
+			Op:    types.BinaryOpAnd,
 		}
 	}
 
 	return value
 }
 
-func convertMatcherType(t labels.MatchType) physicalpb.BinaryOp {
+func convertMatcherType(t labels.MatchType) types.BinaryOp {
 	switch t {
 	case labels.MatchEqual:
-		return physicalpb.BINARY_OP_EQ
+		return types.BinaryOpEq
 	case labels.MatchNotEqual:
-		return physicalpb.BINARY_OP_NEQ
+		return types.BinaryOpNeq
 	case labels.MatchRegexp:
-		return physicalpb.BINARY_OP_MATCH_RE
+		return types.BinaryOpMatchRe
 	case labels.MatchNotRegexp:
-		return physicalpb.BINARY_OP_NOT_MATCH_RE
+		return types.BinaryOpNotMatchRe
 	}
-	return physicalpb.BINARY_OP_INVALID
+	return types.BinaryOpInvalid
 }
 
 func convertLineFilterExpr(expr *syntax.LineFilterExpr) Value {
 	if expr.Left != nil {
-		op := physicalpb.BINARY_OP_AND
+		op := types.BinaryOpAnd
 		if expr.IsOrChild {
-			op = physicalpb.BINARY_OP_OR
+			op = types.BinaryOpOr
 		}
 		return &BinOp{
 			Left:  convertLineFilterExpr(expr.Left),
@@ -403,43 +402,43 @@ func convertLineFilter(filter syntax.LineFilter) Value {
 	}
 }
 
-func convertLineMatchType(op log.LineMatchType) physicalpb.BinaryOp {
+func convertLineMatchType(op log.LineMatchType) types.BinaryOp {
 	switch op {
 	case log.LineMatchEqual:
-		return physicalpb.BINARY_OP_MATCH_SUBSTR
+		return types.BinaryOpMatchSubstr
 	case log.LineMatchNotEqual:
-		return physicalpb.BINARY_OP_NOT_MATCH_SUBSTR
+		return types.BinaryOpNotMatchSubstr
 	case log.LineMatchRegexp:
-		return physicalpb.BINARY_OP_MATCH_RE
+		return types.BinaryOpMatchRe
 	case log.LineMatchNotRegexp:
-		return physicalpb.BINARY_OP_NOT_MATCH_RE
+		return types.BinaryOpNotMatchRe
 	case log.LineMatchPattern:
-		return physicalpb.BINARY_OP_MATCH_PATTERN
+		return types.BinaryOpMatchPattern
 	case log.LineMatchNotPattern:
-		return physicalpb.BINARY_OP_NOT_MATCH_PATTERN
+		return types.BinaryOpNotMatchPattern
 	default:
 		panic("invalid match type")
 	}
 }
 
 func timestampColumnRef() *ColumnRef {
-	return NewColumnRef(types.ColumnNameBuiltinTimestamp, physicalpb.COLUMN_TYPE_BUILTIN)
+	return NewColumnRef(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin)
 }
 
 func lineColumnRef() *ColumnRef {
-	return NewColumnRef(types.ColumnNameBuiltinMessage, physicalpb.COLUMN_TYPE_BUILTIN)
+	return NewColumnRef(types.ColumnNameBuiltinMessage, types.ColumnTypeBuiltin)
 }
 
-func convertLabelMatchType(op labels.MatchType) physicalpb.BinaryOp {
+func convertLabelMatchType(op labels.MatchType) types.BinaryOp {
 	switch op {
 	case labels.MatchEqual:
-		return physicalpb.BINARY_OP_EQ
+		return types.BinaryOpEq
 	case labels.MatchNotEqual:
-		return physicalpb.BINARY_OP_NEQ
+		return types.BinaryOpNeq
 	case labels.MatchRegexp:
-		return physicalpb.BINARY_OP_MATCH_RE
+		return types.BinaryOpMatchRe
 	case labels.MatchNotRegexp:
-		return physicalpb.BINARY_OP_NOT_MATCH_RE
+		return types.BinaryOpNotMatchRe
 	default:
 		panic("invalid match type")
 	}
@@ -448,9 +447,9 @@ func convertLabelMatchType(op labels.MatchType) physicalpb.BinaryOp {
 func convertLabelFilter(expr log.LabelFilterer) (Value, error) {
 	switch e := expr.(type) {
 	case *log.BinaryLabelFilter:
-		op := physicalpb.BINARY_OP_OR
+		op := types.BinaryOpOr
 		if e.And {
-			op = physicalpb.BINARY_OP_AND
+			op = types.BinaryOpAnd
 		}
 		left, err := convertLabelFilter(e.Left)
 		if err != nil {
@@ -472,14 +471,14 @@ func convertLabelFilter(expr log.LabelFilterer) (Value, error) {
 	case *log.StringLabelFilter:
 		m := e.Matcher
 		return &BinOp{
-			Left:  NewColumnRef(m.Name, physicalpb.COLUMN_TYPE_AMBIGUOUS),
+			Left:  NewColumnRef(m.Name, types.ColumnTypeAmbiguous),
 			Right: NewLiteral(m.Value),
 			Op:    convertLabelMatchType(m.Type),
 		}, nil
 	case *log.LineFilterLabelFilter:
 		m := e.Matcher
 		return &BinOp{
-			Left:  NewColumnRef(m.Name, physicalpb.COLUMN_TYPE_AMBIGUOUS),
+			Left:  NewColumnRef(m.Name, types.ColumnTypeAmbiguous),
 			Right: NewLiteral(m.Value),
 			Op:    convertLabelMatchType(m.Type),
 		}, nil
@@ -492,12 +491,12 @@ func convertQueryRangeToPredicates(start, end time.Time) []*BinOp {
 		{
 			Left:  timestampColumnRef(),
 			Right: NewLiteral(types.Timestamp(start.UTC().UnixNano())),
-			Op:    physicalpb.BINARY_OP_GTE,
+			Op:    types.BinaryOpGte,
 		},
 		{
 			Left:  timestampColumnRef(),
 			Right: NewLiteral(types.Timestamp(end.UTC().UnixNano())),
-			Op:    physicalpb.BINARY_OP_LT,
+			Op:    types.BinaryOpLt,
 		},
 	}
 }

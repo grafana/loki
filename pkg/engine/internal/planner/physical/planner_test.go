@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/ulid"
 )
 
 type catalog struct {
@@ -94,8 +95,8 @@ func locations(t *testing.T, plan *physicalpb.Plan, nodes []physicalpb.Node) []s
 		onVisitScanSet: func(set *physicalpb.ScanSet) error {
 			for _, target := range set.Targets {
 				switch target.Type {
-				case ScanTypeDataObject:
-					res = append(res, string(target.DataObject.Location))
+				case physicalpb.SCAN_TYPE_DATA_OBJECT:
+					res = append(res, target.DataObject.Location)
 				}
 			}
 			return nil
@@ -115,8 +116,8 @@ func sections(t *testing.T, plan *physicalpb.Plan, nodes []physicalpb.Node) [][]
 		onVisitScanSet: func(set *physicalpb.ScanSet) error {
 			for _, target := range set.Targets {
 				switch target.Type {
-				case ScanTypeDataObject:
-					res = append(res, []int{target.DataObject.Section})
+				case physicalpb.SCAN_TYPE_DATA_OBJECT:
+					res = append(res, []int{int(target.DataObject.Section)})
 				}
 			}
 			return nil
@@ -149,9 +150,9 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 	planner := NewPlanner(NewContext(time.Now(), time.Now()), catalog)
 
 	streamSelector := &logical.BinOp{
-		Left:  logical.NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
+		Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
 		Right: logical.NewLiteral("users"),
-		Op:    physicalpb.BINARY_OP_EQ,
+		Op:    types.BinaryOpEq,
 	}
 
 	for _, tt := range []struct {
@@ -219,27 +220,27 @@ func TestPlanner_Convert(t *testing.T) {
 	b := logical.NewBuilder(
 		&logical.MakeTable{
 			Selector: &logical.BinOp{
-				Left:  logical.NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
+				Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
 				Right: logical.NewLiteral("users"),
-				Op:    physicalpb.BINARY_OP_EQ,
+				Op:    types.BinaryOpEq,
 			},
 			Shard: logical.NewShard(0, 1), // no sharding
 		},
 	).Sort(
-		*logical.NewColumnRef("timestamp", physicalpb.COLUMN_TYPE_BUILTIN),
+		*logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
 		true,
 		false,
 	).Select(
 		&logical.BinOp{
-			Left:  logical.NewColumnRef("age", physicalpb.COLUMN_TYPE_METADATA),
+			Left:  logical.NewColumnRef("age", types.ColumnTypeMetadata),
 			Right: logical.NewLiteral(int64(21)),
-			Op:    physicalpb.BINARY_OP_GT,
+			Op:    types.BinaryOpGt,
 		},
 	).Select(
 		&logical.BinOp{
-			Left:  logical.NewColumnRef("timestamp", physicalpb.COLUMN_TYPE_BUILTIN),
+			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
 			Right: logical.NewLiteral(types.Timestamp(1742826126000000000)),
-			Op:    physicalpb.BINARY_OP_LT,
+			Op:    types.BinaryOpLt,
 		},
 	).Limit(0, 1000)
 
@@ -272,9 +273,9 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		b := logical.NewBuilder(
 			&logical.MakeTable{
 				Selector: &logical.BinOp{
-					Left:  logical.NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
 					Right: logical.NewLiteral("users"),
-					Op:    physicalpb.BINARY_OP_EQ,
+					Op:    types.BinaryOpEq,
 				},
 				Shard: logical.NewShard(0, 1),
 			},
@@ -282,9 +283,9 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 			logical.ParserLogfmt,
 		).Select(
 			&logical.BinOp{
-				Left:  logical.NewColumnRef("level", physicalpb.COLUMN_TYPE_AMBIGUOUS),
+				Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
 				Right: logical.NewLiteral("error"),
-				Op:    physicalpb.BINARY_OP_EQ,
+				Op:    types.BinaryOpEq,
 			},
 		).Compat(true)
 
@@ -342,9 +343,9 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		b := logical.NewBuilder(
 			&logical.MakeTable{
 				Selector: &logical.BinOp{
-					Left:  logical.NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
 					Right: logical.NewLiteral("users"),
-					Op:    physicalpb.BINARY_OP_EQ,
+					Op:    types.BinaryOpEq,
 				},
 				Shard: logical.NewShard(0, 1),
 			},
@@ -352,13 +353,13 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 			logical.ParserLogfmt,
 		).Select(
 			&logical.BinOp{
-				Left:  logical.NewColumnRef("level", physicalpb.COLUMN_TYPE_AMBIGUOUS),
+				Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
 				Right: logical.NewLiteral("error"),
-				Op:    physicalpb.BINARY_OP_EQ,
+				Op:    types.BinaryOpEq,
 			},
 		).RangeAggregation(
-			[]logical.ColumnRef{*logical.NewColumnRef("level", physicalpb.COLUMN_TYPE_AMBIGUOUS)},
-			physicalpb.AGGREGATE_RANGE_OP_COUNT,
+			[]logical.ColumnRef{*logical.NewColumnRef("level", types.ColumnTypeAmbiguous)},
+			types.RangeAggregationTypeCount,
 			start,         // Start time
 			end,           // End time
 			time.Minute,   // Step
@@ -441,7 +442,7 @@ func TestPlanner_Convert_WithCastProjection(t *testing.T) {
 		require.NoError(t, err)
 
 		// Root should be a Projection node with the unwrap cast operation
-		projectionNode, ok := root.(*Projection)
+		projectionNode, ok := root.(*physicalpb.Projection)
 		require.True(t, ok, "Root should be Projection")
 		require.NotEmpty(t, projectionNode.Expressions, "Projection should have expressions")
 
@@ -456,27 +457,27 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 	b := logical.NewBuilder(
 		&logical.MakeTable{
 			Selector: &logical.BinOp{
-				Left:  logical.NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
+				Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
 				Right: logical.NewLiteral("users"),
-				Op:    physicalpb.BINARY_OP_EQ,
+				Op:    types.BinaryOpEq,
 			},
 			Shard: logical.NewShard(0, 1), // no sharding
 		},
 	).Select(
 		&logical.BinOp{
-			Left:  logical.NewColumnRef("age", physicalpb.COLUMN_TYPE_METADATA),
+			Left:  logical.NewColumnRef("age", types.ColumnTypeMetadata),
 			Right: logical.NewLiteral(int64(21)),
-			Op:    physicalpb.BINARY_OP_GT,
+			Op:    types.BinaryOpGt,
 		},
 	).Select(
 		&logical.BinOp{
-			Left:  logical.NewColumnRef("timestamp", physicalpb.COLUMN_TYPE_BUILTIN),
+			Left:  logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
 			Right: logical.NewLiteral(types.Timestamp(1742826126000000000)),
-			Op:    physicalpb.BINARY_OP_LT,
+			Op:    types.BinaryOpLt,
 		},
 	).RangeAggregation(
-		[]logical.ColumnRef{*logical.NewColumnRef("label1", physicalpb.COLUMN_TYPE_AMBIGUOUS), *logical.NewColumnRef("label2", physicalpb.COLUMN_TYPE_METADATA)},
-		physicalpb.AGGREGATE_RANGE_OP_COUNT,
+		[]logical.ColumnRef{*logical.NewColumnRef("label1", types.ColumnTypeAmbiguous), *logical.NewColumnRef("label2", types.ColumnTypeMetadata)},
+		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
 		0,             // Step
@@ -521,9 +522,9 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 	b := logical.NewBuilder(
 		&logical.MakeTable{
 			Selector: &logical.BinOp{
-				Left:  logical.NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
+				Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
 				Right: logical.NewLiteral("users"),
-				Op:    physicalpb.BINARY_OP_EQ,
+				Op:    types.BinaryOpEq,
 			},
 			Shard: logical.NewShard(0, 1), // no sharding
 		},
@@ -533,28 +534,36 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("ascending", func(t *testing.T) {
+		parallelizeID := physicalpb.PlanNodeID{Value: ulid.New()}
+		compatID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scanSetID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan2ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan3ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan4ID := physicalpb.PlanNodeID{Value: ulid.New()}
+
 		planner := NewPlanner(NewContext(time.Now(), time.Now()).WithDirection(physicalpb.SORT_ORDER_ASCENDING), catalog)
 		plan, err := planner.Build(logicalPlan)
 		require.NoError(t, err)
 
-		expectedPlan := &Plan{}
-		parallelize := expectedPlan.graph.Add(&Parallelize{id: "parallelize"})
-		compat := expectedPlan.graph.Add(&ColumnCompat{id: "compat", Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
-		scanSet := expectedPlan.graph.Add(&ScanSet{
-			id: "scanset",
+		expectedPlan := &physicalpb.Plan{}
+		parallelize := expectedPlan.Add(&physicalpb.Parallelize{Id: parallelizeID})
+		compat := expectedPlan.Add(&physicalpb.ColumnCompat{Id: compatID, Source: physicalpb.COLUMN_TYPE_METADATA, Destination: physicalpb.COLUMN_TYPE_METADATA, Collision: physicalpb.COLUMN_TYPE_LABEL})
+		scanSet := expectedPlan.Add(&physicalpb.ScanSet{
+			Id: scanSetID,
 
 			// Targets should be added in the order of the scan timestamps
 			// ASC => oldest to newest
-			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
+			Targets: []*physicalpb.ScanTarget{
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Id: scan4ID, Location: "obj3", Section: 3, StreamIds: []int64{5, 1}}},
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Id: scan3ID, Location: "obj3", Section: 2, StreamIds: []int64{5, 1}}},
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Id: scan2ID, Location: "obj2", Section: 1, StreamIds: []int64{3, 4}}},
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Id: scan1ID, Location: "obj1", Section: 3, StreamIds: []int64{1, 2}}},
 			},
 		})
 
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: compat})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: compat, Child: scanSet})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parallelize), Child: physicalpb.GetNode(compat)})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(compat), Child: physicalpb.GetNode(scanSet)})
 
 		actual := PrintAsTree(plan)
 		expected := PrintAsTree(expectedPlan)
@@ -567,27 +576,34 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 	})
 
 	t.Run("descending", func(t *testing.T) {
+		parallelizeID := physicalpb.PlanNodeID{Value: ulid.New()}
+		compatID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scanSetID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan2ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan3ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan4ID := physicalpb.PlanNodeID{Value: ulid.New()}
 		planner := NewPlanner(NewContext(time.Now(), time.Now()).WithDirection(physicalpb.SORT_ORDER_DESCENDING), catalog)
 		plan, err := planner.Build(logicalPlan)
 		require.NoError(t, err)
 
-		expectedPlan := &Plan{}
-		parallelize := expectedPlan.graph.Add(&Parallelize{id: "parallelize"})
-		compat := expectedPlan.graph.Add(&ColumnCompat{id: "compat", Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
-		scanSet := expectedPlan.graph.Add(&ScanSet{
-			id: "scanset",
+		expectedPlan := &physicalpb.Plan{}
+		parallelize := expectedPlan.Add(&physicalpb.Parallelize{Id: parallelizeID})
+		compat := expectedPlan.Add(&physicalpb.ColumnCompat{Id: compatID, Source: physicalpb.COLUMN_TYPE_METADATA, Destination: physicalpb.COLUMN_TYPE_METADATA, Collision: physicalpb.COLUMN_TYPE_LABEL})
+		scanSet := expectedPlan.Add(&physicalpb.ScanSet{
+			Id: scanSetID,
 
 			// Targets should be added in the order of the scan timestamps
-			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
+			Targets: []*physicalpb.ScanTarget{
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Id: scan1ID, Location: "obj1", Section: 3, StreamIds: []int64{1, 2}}},
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Id: scan2ID, Location: "obj2", Section: 1, StreamIds: []int64{3, 4}}},
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Id: scan3ID, Location: "obj3", Section: 2, StreamIds: []int64{5, 1}}},
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Id: scan4ID, Location: "obj3", Section: 3, StreamIds: []int64{5, 1}}},
 			},
 		})
 
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: compat})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: compat, Child: scanSet})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parallelize), Child: physicalpb.GetNode(compat)})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(compat), Child: physicalpb.GetNode(scanSet)})
 
 		actual := PrintAsTree(plan)
 		expected := PrintAsTree(expectedPlan)

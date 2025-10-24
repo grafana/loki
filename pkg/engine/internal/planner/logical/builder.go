@@ -3,7 +3,6 @@ package logical
 import (
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -87,7 +86,7 @@ func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 // RangeAggregation applies a [RangeAggregation] operation to the Builder.
 func (b *Builder) RangeAggregation(
 	partitionBy []ColumnRef,
-	operation physicalpb.AggregateRangeOp,
+	operation types.RangeAggregationType,
 	startTS, endTS time.Time,
 	step time.Duration,
 	rangeInterval time.Duration,
@@ -109,7 +108,7 @@ func (b *Builder) RangeAggregation(
 // VectorAggregation applies a [VectorAggregation] operation to the Builder.
 func (b *Builder) VectorAggregation(
 	groupBy []ColumnRef,
-	operation physicalpb.AggregateVectorOp,
+	operation types.VectorAggregationType,
 ) *Builder {
 	return &Builder{
 		val: &VectorAggregation{

@@ -233,7 +233,7 @@ func convertColumnRef(expr physicalpb.Expression, allowAmbiguousColumnRefs bool)
 	if !ok {
 		return "", fmt.Errorf("expected column expression, got %T", expr)
 	}
-	if !allowAmbiguousColumnRefs && physicalpb.ColumnType(ref.ColumnExpression.Type) != physicalpb.ColumnType(physicalpb.COLUMN_TYPE_LABEL) {
+	if !allowAmbiguousColumnRefs && ref.ColumnExpression.Type != physicalpb.COLUMN_TYPE_LABEL {
 		return "", fmt.Errorf("column type is not a label, got %v", ref.ColumnExpression.Type)
 	}
 	return ref.ColumnExpression.Name, nil

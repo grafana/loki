@@ -12,7 +12,7 @@ import (
 	"github.com/oklog/ulid/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
@@ -40,7 +40,7 @@ type Workflow struct {
 // cannot be partitioned into a Workflow.
 //
 // The provided Runner will be used for Workflow execution.
-func New(logger log.Logger, runner Runner, plan *physical.Plan) (*Workflow, error) {
+func New(logger log.Logger, runner Runner, plan *physicalpb.Plan) (*Workflow, error) {
 	graph, err := planWorkflow(plan)
 	if err != nil {
 		return nil, err

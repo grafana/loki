@@ -45,6 +45,9 @@ message PlanNode {
         Projection projection = 8;
         SortMerge sort_merge = 9;
         ColumnCompat column_compat = 10;
+        ScanSet scan_set = 11;
+        TopK top_k = 12;
+        Parallelize parallelize = 13;
     }
 }
 
@@ -187,9 +190,14 @@ enum ParseOp {
 message Projection {
     // ID for the node.
     PlanNodeID id = 1 [(gogoproto.nullable) = false];
-
+	// Expressions is a set of column expressions that are used to drop not needed
+	// columns that match the column expression, or to expand columns that result
+	// from the expressions.
+    repeated Expression Expressions = 2;
+    bool All = 3; // Marker for projecting all columns of input relation (similar to SQL `SELECT *`)
+    bool Expand = 4; // Indicates that projected columns should be added to input relation
+    bool Drop = 5; // Indicates that projected columns should be dropped from input Relation
     // Columns that should be kept in the output.
-    repeated ColumnExpression columns = 2;
 }
 
 // SortMerge represents an operation in the physical plan. It merges a sequence
@@ -223,5 +231,52 @@ message ColumnCompat {
 	// TODO(chaudum): These fields are poorly named. Come up with more descriptive names.
 	ColumnType Source = 2; // column type of the column that may colide with columns of the same name but with collision type
 	ColumnType Destination = 3; // column type of the generated _extracted column (should be same as source)
-	ColumnType Collision = 4;    // column type of the column that a source type column may collide with}
+	ColumnType Collision = 4; // column type of the column that a source type column may collide with}
+}
+
+message TopK {
+	PlanNodeID id = 1 [(gogoproto.nullable) = false];
+    ColumnExpression SortBy = 2; // SortBy is the column to sort by.
+    bool Ascending = 3; // Sort lines in ascending order if true.
+    bool NullsFirst = 4; // When true, considers NULLs < non-NULLs when sorting.
+    int64 K = 5; // Number of top rows to return.
+
+}
+
+// ScanSet represents a physical plan operation for reading data from targets.
+message ScanSet {
+ 	PlanNodeID id = 1 [(gogoproto.nullable) = false];
+    // Targets to scan
+    repeated ScanTarget Targets = 2;
+    // Projections are used to limit the columns that are read to the ones
+	// provided in the column expressions to reduce the amount of data that
+	// needs to be processed.
+    repeated ColumnExpression Projections = 3;
+	// Predicates are used to filter rows to reduce the amount of rows that are
+	// returned. Predicates would almost always contain a time range filter to
+	// only read the logs for the requested time range.
+    repeated Expression Predicates = 4;
+}
+
+// ScanTarget represents a target of a [ScanSet].
+message ScanTarget{
+    ScanType Type = 1;
+
+	// DataObject is non-nil if Type is [ScanTypeDataObject]. Despite DataObjScan
+	// implementing [Node], the value is not inserted into the graph as a node.
+	DataObjScan DataObject = 2;
+
+}
+
+// ScanType represents the data being scanned in a target of a [ScanSet].
+enum ScanType {
+    SCAN_TYPE_INVALID = 0;
+    SCAN_TYPE_DATA_OBJECT = 1;
+}
+
+// Parallelize represents a hint to the engine to partition and parallelize the
+// children branches of the Parallelize and emit results as a single sequence
+// with no guaranteed order.
+message Parallelize {
+    PlanNodeID id = 1 [(gogoproto.nullable) = false];
 }

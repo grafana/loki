@@ -21,8 +21,8 @@ func TestGraph(t *testing.T) {
 
 	t.Run("adding a single node makes it both root and leave node", func(t *testing.T) {
 		var p physicalpb.Plan
-		scanId := physicalpb.PlanNodeID{Value: ulid.New()}
-		p.Add(&physicalpb.DataObjScan{Id: scanId})
+		scanID := physicalpb.PlanNodeID{Value: ulid.New()}
+		p.Add(&physicalpb.DataObjScan{Id: scanID})
 
 		require.Len(t, p.Roots(), 1)
 		require.Len(t, p.Leaves(), 1)
@@ -30,14 +30,14 @@ func TestGraph(t *testing.T) {
 
 	t.Run("adding an edge for nodes that do not exist fails", func(t *testing.T) {
 		var p physicalpb.Plan
-		scanId := physicalpb.PlanNodeID{Value: ulid.New()}
-		sortId := physicalpb.PlanNodeID{Value: ulid.New()}
+		scanID := physicalpb.PlanNodeID{Value: ulid.New()}
+		sortID := physicalpb.PlanNodeID{Value: ulid.New()}
 
 		err := p.AddEdge(dag.Edge[physicalpb.Node]{
-			Parent: &physicalpb.SortMerge{Id: sortId},
-			Child:  &physicalpb.DataObjScan{Id: scanId},
+			Parent: &physicalpb.SortMerge{Id: sortID},
+			Child:  &physicalpb.DataObjScan{Id: scanID},
 		})
-		require.ErrorContains(t, err, fmt.Sprintf("both nodes %v and %v must already exist in the plan", sortId.Value.String(), scanId.String()))
+		require.ErrorContains(t, err, fmt.Sprintf("both nodes %v and %v must already exist in the plan", sortID.Value.String(), scanID.Value.String()))
 	})
 
 	t.Run("adding an edge for zero value nodes fails", func(t *testing.T) {
@@ -49,18 +49,22 @@ func TestGraph(t *testing.T) {
 
 	t.Run("test roots and leaves", func(t *testing.T) {
 		var p physicalpb.Plan
-		scan1Id := physicalpb.PlanNodeID{Value: ulid.New()}
-		scan2Id := physicalpb.PlanNodeID{Value: ulid.New()}
-		mergeId := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan2ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		mergeID := physicalpb.PlanNodeID{Value: ulid.New()}
 
 		var (
-			scan1 = p.Add(&physicalpb.DataObjScan{Id: scan1Id})
-			scan2 = p.Add(&physicalpb.DataObjScan{Id: scan2Id})
-			merge = p.Add(&physicalpb.Merge{Id: mergeId})
+			scan1 = p.Add(&physicalpb.DataObjScan{Id: scan1ID})
+			scan2 = p.Add(&physicalpb.DataObjScan{Id: scan2ID})
+			merge = p.Add(&physicalpb.Merge{Id: mergeID})
 		)
 
-		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: merge.GetMerge(), Child: scan1.GetScan()})
-		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: merge.GetMerge(), Child: scan2.GetScan()})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(merge), Child: physicalpb.GetNode(scan1)})
+		err := p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(merge), Child: physicalpb.GetNode(scan2)})
+		if err != nil {
+			fmt.Println(err)
+			panic("AA")
+		}
 
 		require.Equal(t, len(p.Nodes), 3)
 		require.Len(t, p.Roots(), 1)
@@ -69,49 +73,49 @@ func TestGraph(t *testing.T) {
 
 	t.Run("child ordering is preserved", func(t *testing.T) {
 		var p physicalpb.Plan
-		parentId := physicalpb.PlanNodeID{Value: ulid.New()}
-		child1Id := physicalpb.PlanNodeID{Value: ulid.New()}
-		child2Id := physicalpb.PlanNodeID{Value: ulid.New()}
+		parentID := physicalpb.PlanNodeID{Value: ulid.New()}
+		child1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		child2ID := physicalpb.PlanNodeID{Value: ulid.New()}
 		var (
-			parent = p.Add(&physicalpb.Merge{Id: parentId})
-			child1 = p.Add(&physicalpb.Merge{Id: child1Id})
-			child2 = p.Add(&physicalpb.Merge{Id: child2Id})
+			parent = p.Add(&physicalpb.Merge{Id: parentID})
+			child1 = p.Add(&physicalpb.Merge{Id: child1ID})
+			child2 = p.Add(&physicalpb.Merge{Id: child2ID})
 		)
 
-		require.NoError(t, p.AddEdge(dag.Edge[physicalpb.Node]{Parent: parent.GetMerge(), Child: child1.GetMerge()}))
-		require.NoError(t, p.AddEdge(dag.Edge[physicalpb.Node]{Parent: parent.GetMerge(), Child: child2.GetMerge()}))
-		require.Equal(t, p.Children(parent.GetMerge()), []*physicalpb.Merge{child1.GetMerge(), child2.GetMerge()})
+		require.NoError(t, p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parent), Child: physicalpb.GetNode(child1)}))
+		require.NoError(t, p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parent), Child: physicalpb.GetNode(child2)}))
+		require.Equal(t, p.Children(physicalpb.GetNode(parent)), []physicalpb.Node{child1.GetMerge(), child2.GetMerge()})
 	})
 
 	t.Run("test eliminate node", func(t *testing.T) {
 		var p physicalpb.Plan
-		parentId := physicalpb.PlanNodeID{Value: ulid.New()}
-		middleId := physicalpb.PlanNodeID{Value: ulid.New()}
-		child1Id := physicalpb.PlanNodeID{Value: ulid.New()}
-		child2Id := physicalpb.PlanNodeID{Value: ulid.New()}
+		parentID := physicalpb.PlanNodeID{Value: ulid.New()}
+		middleID := physicalpb.PlanNodeID{Value: ulid.New()}
+		child1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		child2ID := physicalpb.PlanNodeID{Value: ulid.New()}
 
 		var (
-			parent = p.Add(&physicalpb.Merge{Id: parentId})
-			middle = p.Add(&physicalpb.Merge{Id: middleId})
-			child1 = p.Add(&physicalpb.Merge{Id: child1Id})
-			child2 = p.Add(&physicalpb.Merge{Id: child2Id})
+			parent = p.Add(&physicalpb.Merge{Id: parentID})
+			middle = p.Add(&physicalpb.Merge{Id: middleID})
+			child1 = p.Add(&physicalpb.Merge{Id: child1ID})
+			child2 = p.Add(&physicalpb.Merge{Id: child2ID})
 		)
 
-		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: parent.GetMerge(), Child: middle.GetMerge()})
-		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: middle.GetMerge(), Child: child1.GetMerge()})
-		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: middle.GetMerge(), Child: child2.GetMerge()})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parent), Child: physicalpb.GetNode(middle)})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(middle), Child: physicalpb.GetNode(child1)})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(middle), Child: physicalpb.GetNode(child2)})
 
 		require.Equal(t, len(p.Nodes), 4)
-		require.Equal(t, p.Parents(middle.GetMerge()), []*physicalpb.Merge{parent.GetMerge()})
-		require.Equal(t, p.Parents(child1.GetMerge()), []*physicalpb.Merge{middle.GetMerge()})
-		require.Equal(t, p.Parents(child2.GetMerge()), []*physicalpb.Merge{middle.GetMerge()})
+		require.Equal(t, p.Parents(physicalpb.GetNode(middle)), []physicalpb.Node{physicalpb.GetNode(parent)})
+		require.Equal(t, p.Parents(physicalpb.GetNode(child1)), []physicalpb.Node{physicalpb.GetNode(middle)})
+		require.Equal(t, p.Parents(physicalpb.GetNode(child2)), []physicalpb.Node{physicalpb.GetNode(middle)})
 
-		p.Eliminate(middle.GetMerge())
+		p.Eliminate(physicalpb.GetNode(middle))
 
 		require.Equal(t, len(p.Nodes), 3)
-		require.Equal(t, p.Parents(child1.GetMerge()), []*physicalpb.Merge{parent.GetMerge()})
-		require.Equal(t, p.Parents(child2.GetMerge()), []*physicalpb.Merge{parent.GetMerge()})
-		require.Equal(t, p.Children(parent.GetMerge()), []*physicalpb.Merge{child1.GetMerge(), child2.GetMerge()})
+		require.Equal(t, p.Parents(physicalpb.GetNode(child1)), []physicalpb.Node{physicalpb.GetNode(parent)})
+		require.Equal(t, p.Parents(physicalpb.GetNode(child2)), []physicalpb.Node{physicalpb.GetNode(parent)})
+		require.Equal(t, p.Children(physicalpb.GetNode(parent)), []physicalpb.Node{physicalpb.GetNode(child1), physicalpb.GetNode(child2)})
 	})
 	t.Run("test root returns error for empty graph", func(t *testing.T) {
 		var p physicalpb.Plan
@@ -121,30 +125,30 @@ func TestGraph(t *testing.T) {
 	})
 
 	t.Run("test root returns error for multiple roots", func(t *testing.T) {
-		root1Id := physicalpb.PlanNodeID{Value: ulid.New()}
-		root2Id := physicalpb.PlanNodeID{Value: ulid.New()}
+		root1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		root2ID := physicalpb.PlanNodeID{Value: ulid.New()}
 		var p physicalpb.Plan
-		p.Add(&physicalpb.Merge{Id: root1Id})
-		p.Add(&physicalpb.Merge{Id: root2Id})
+		p.Add(&physicalpb.Merge{Id: root1ID})
+		p.Add(&physicalpb.Merge{Id: root2ID})
 
 		_, err := p.Root()
 		require.ErrorContains(t, err, "plan has multiple root nodes")
 	})
 
 	t.Run("test root returns single root", func(t *testing.T) {
-		rootId := physicalpb.PlanNodeID{Value: ulid.New()}
-		childId := physicalpb.PlanNodeID{Value: ulid.New()}
+		rootID := physicalpb.PlanNodeID{Value: ulid.New()}
+		childID := physicalpb.PlanNodeID{Value: ulid.New()}
 		var p physicalpb.Plan
 
 		var (
-			root  = p.Add(&physicalpb.Merge{Id: rootId})
-			child = p.Add(&physicalpb.Merge{Id: childId})
+			root  = p.Add(&physicalpb.Merge{Id: rootID})
+			child = p.Add(&physicalpb.Merge{Id: childID})
 		)
-		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: root.GetMerge(), Child: child.GetMerge()})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(root), Child: physicalpb.GetNode(child)})
 
 		actualRoot, err := p.Root()
 		require.NoError(t, err)
-		require.Equal(t, root, actualRoot)
+		require.Equal(t, physicalpb.GetNode(root).ID(), actualRoot.ID())
 	})
 
 	t.Run("adding zero value node is no-op", func(t *testing.T) {
@@ -156,26 +160,65 @@ func TestGraph(t *testing.T) {
 
 	t.Run("parent and children methods handle missing nodes", func(t *testing.T) {
 		var p physicalpb.Plan
-		nonExistentId := physicalpb.PlanNodeID{Value: ulid.New()}
-		nonExistent := &physicalpb.Merge{Id: nonExistentId}
+		nonExistentID := physicalpb.PlanNodeID{Value: ulid.New()}
+		nonExistent := &physicalpb.Merge{Id: nonExistentID}
 
-		require.Nil(t, p.Parents(nonExistent))
-		require.Nil(t, p.Children(nonExistent))
+		require.Empty(t, p.Parents(nonExistent))
+		require.Empty(t, p.Children(nonExistent))
 	})
 
 	t.Run("walk with error stops traversal", func(t *testing.T) {
-		rootId := physicalpb.PlanNodeID{Value: ulid.New()}
-		childId := physicalpb.PlanNodeID{Value: ulid.New()}
+		rootID := physicalpb.PlanNodeID{Value: ulid.New()}
+		childID := physicalpb.PlanNodeID{Value: ulid.New()}
 		var p physicalpb.Plan
 
 		var (
-			root  = p.Add(&physicalpb.Merge{Id: rootId})
-			child = p.Add(&physicalpb.Merge{Id: childId})
+			root  = p.Add(&physicalpb.Merge{Id: rootID})
+			child = p.Add(&physicalpb.Merge{Id: childID})
 		)
-		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: root.GetMerge(), Child: child.GetMerge()})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(root), Child: physicalpb.GetNode(child)})
 
 		expectedErr := fmt.Errorf("test error")
-		err := p.Walk(root.GetMerge(), func(physicalpb.Node) error { return expectedErr }, physicalpb.PRE_ORDER_WALK)
+		err := p.Walk(physicalpb.GetNode(root), func(physicalpb.Node) error { return expectedErr }, physicalpb.PRE_ORDER_WALK)
 		require.Equal(t, expectedErr, err)
 	})
+
+	t.Run("test inject node", func(t *testing.T) {
+		var p physicalpb.Plan
+		parentID := physicalpb.PlanNodeID{Value: ulid.New()}
+		child1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		child2ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		injectedID := physicalpb.PlanNodeID{Value: ulid.New()}
+		var (
+			parent = p.Add(&physicalpb.Merge{Id: parentID})
+			child1 = p.Add(&physicalpb.Merge{Id: child1ID})
+			child2 = p.Add(&physicalpb.Merge{Id: child2ID})
+		)
+
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parent), Child: physicalpb.GetNode(child1)})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parent), Child: physicalpb.GetNode(child2)})
+
+		newNode := p.Inject(physicalpb.GetNode(parent), &physicalpb.Merge{Id: injectedID})
+
+		require.Equal(t, len(p.Nodes), 4)
+		require.Equal(t, p.Parents(newNode), []physicalpb.Node{physicalpb.GetNode(parent)})
+		require.Equal(t, p.Parents(physicalpb.GetNode(child1)), []physicalpb.Node{newNode})
+		require.Equal(t, p.Parents(physicalpb.GetNode(child2)), []physicalpb.Node{newNode})
+		require.Equal(t, p.Children(physicalpb.GetNode(parent)), []physicalpb.Node{newNode})
+		require.Equal(t, p.Children(newNode), []physicalpb.Node{physicalpb.GetNode(child1), physicalpb.GetNode(child2)})
+	})
+
+	t.Run("test inject node panics if node already exists", func(t *testing.T) {
+		var p physicalpb.Plan
+		parentID := physicalpb.PlanNodeID{Value: ulid.New()}
+		existingID := physicalpb.PlanNodeID{Value: ulid.New()}
+
+		var (
+			parent   = p.Add(&physicalpb.Merge{Id: parentID})
+			existing = p.Add(&physicalpb.Merge{Id: existingID})
+		)
+
+		require.Panics(t, func() { p.Inject(physicalpb.GetNode(parent), physicalpb.GetNode(existing)) })
+	})
+
 }

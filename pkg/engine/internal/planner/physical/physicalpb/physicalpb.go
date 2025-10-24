@@ -4,6 +4,7 @@ package physicalpb
 import (
 	"errors"
 	fmt "fmt"
+	"iter"
 	"slices"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
@@ -24,6 +25,9 @@ const (
 	NodeKindMerge                           // NodeKindMerge is used for [Merge].
 	NodeKindParse                           // NodeKindParse is used for [Parse].
 	NodeKindColumnCompat                    // NodeKindColumnCompat is used for [ColumnCompat].
+	NodeKindTopK                            // NodeKindTopK is used for [TopK].
+	NodeKindScanSet                         // NodeKindScanSet is used for [ScanSet].
+	NodeKindParallelize                     // NodeKindParallelize is used for [Parallelize].
 )
 
 var nodeKinds = [...]string{
@@ -38,6 +42,9 @@ var nodeKinds = [...]string{
 	NodeKindMerge:           "Merge",
 	NodeKindParse:           "Parse",
 	NodeKindColumnCompat:    "ColumnCompat",
+	NodeKindTopK:            "TopK",
+	NodeKindScanSet:         "ScanSet",
+	NodeKindParallelize:     "Parallelize",
 }
 
 func (k NodeKind) String() string {
@@ -69,6 +76,9 @@ type Node interface {
 
 	// ToPlanNode converts the node to a PlanNode.
 	ToPlanNode() *PlanNode
+
+	// Clone returns a deep copy of the node (minus its ID).
+	Clone() Node
 }
 
 // GetNode returns the underlying Node from the PlanNode.
@@ -94,6 +104,12 @@ func GetNode(planNode *PlanNode) Node {
 		return kind.SortMerge
 	case *PlanNode_ColumnCompat:
 		return kind.ColumnCompat
+	case *PlanNode_TopK:
+		return kind.TopK
+	case *PlanNode_ScanSet:
+		return kind.ScanSet
+	case *PlanNode_Parallelize:
+		return kind.Parallelize
 	default:
 		panic(fmt.Sprintf("unknown node kind %T", kind))
 	}
@@ -111,6 +127,9 @@ type Visitor interface {
 	VisitProjection(*Projection) error
 	VisitSortMerge(*SortMerge) error
 	VisitColumnCompat(*ColumnCompat) error
+	VisitTopK(*TopK) error
+	VisitScanSet(*ScanSet) error
+	VisitParallelize(*Parallelize) error
 }
 
 //
@@ -127,6 +146,9 @@ func (n *Parse) isNode()           {}
 func (n *Projection) isNode()      {}
 func (n *SortMerge) isNode()       {}
 func (n *ColumnCompat) isNode()    {}
+func (n *TopK) isNode()            {}
+func (n *ScanSet) isNode()         {}
+func (n *Parallelize) isNode()     {}
 
 func (n *AggregateRange) ID() string  { return n.GetId().Value.String() }
 func (n *AggregateVector) ID() string { return n.GetId().Value.String() }
@@ -138,6 +160,9 @@ func (n *Parse) ID() string           { return n.GetId().Value.String() }
 func (n *Projection) ID() string      { return n.GetId().Value.String() }
 func (n *SortMerge) ID() string       { return n.GetId().Value.String() }
 func (n *ColumnCompat) ID() string    { return n.GetId().Value.String() }
+func (n *TopK) ID() string            { return n.GetId().Value.String() }
+func (n *ScanSet) ID() string         { return n.GetId().Value.String() }
+func (n *Parallelize) ID() string     { return n.GetId().Value.String() }
 
 func (n *AggregateRange) ulid() ulid.ULID  { return n.GetId().Value }
 func (n *AggregateVector) ulid() ulid.ULID { return n.GetId().Value }
@@ -149,6 +174,9 @@ func (n *Parse) ulid() ulid.ULID           { return n.GetId().Value }
 func (n *Projection) ulid() ulid.ULID      { return n.GetId().Value }
 func (n *SortMerge) ulid() ulid.ULID       { return n.GetId().Value }
 func (n *ColumnCompat) ulid() ulid.ULID    { return n.GetId().Value }
+func (n *TopK) ulid() ulid.ULID            { return n.GetId().Value }
+func (n *ScanSet) ulid() ulid.ULID         { return n.GetId().Value }
+func (n *Parallelize) ulid() ulid.ULID     { return n.GetId().Value }
 
 func (n *AggregateRange) Kind() NodeKind  { return NodeKindAggregateRange }
 func (n *AggregateVector) Kind() NodeKind { return NodeKindAggregateVector }
@@ -160,6 +188,9 @@ func (n *Parse) Kind() NodeKind           { return NodeKindParse }
 func (n *Projection) Kind() NodeKind      { return NodeKindProjection }
 func (n *SortMerge) Kind() NodeKind       { return NodeKindSortMerge }
 func (n *ColumnCompat) Kind() NodeKind    { return NodeKindColumnCompat }
+func (n *TopK) Kind() NodeKind            { return NodeKindTopK }
+func (n *ScanSet) Kind() NodeKind         { return NodeKindScanSet }
+func (n *Parallelize) Kind() NodeKind     { return NodeKindParallelize }
 
 func (n *AggregateRange) Accept(v Visitor) error  { return v.VisitAggregateRange(n) }
 func (n *AggregateVector) Accept(v Visitor) error { return v.VisitAggregateVector(n) }
@@ -171,6 +202,9 @@ func (n *Parse) Accept(v Visitor) error           { return v.VisitParse(n) }
 func (n *Projection) Accept(v Visitor) error      { return v.VisitProjection(n) }
 func (n *SortMerge) Accept(v Visitor) error       { return v.VisitSortMerge(n) }
 func (n *ColumnCompat) Accept(v Visitor) error    { return v.VisitColumnCompat(n) }
+func (n *TopK) Accept(v Visitor) error            { return v.VisitTopK(n) }
+func (n *ScanSet) Accept(v Visitor) error         { return v.VisitScanSet(n) }
+func (n *Parallelize) Accept(v Visitor) error     { return v.VisitParallelize(n) }
 
 func (n *AggregateRange) ToPlanNode() *PlanNode  { return planNode(&PlanNode_AggregateRange{n}) }
 func (n *AggregateVector) ToPlanNode() *PlanNode { return planNode(&PlanNode_AggregateVector{n}) }
@@ -182,9 +216,147 @@ func (n *Parse) ToPlanNode() *PlanNode           { return planNode(&PlanNode_Par
 func (n *Projection) ToPlanNode() *PlanNode      { return planNode(&PlanNode_Projection{n}) }
 func (n *SortMerge) ToPlanNode() *PlanNode       { return planNode(&PlanNode_SortMerge{n}) }
 func (n *ColumnCompat) ToPlanNode() *PlanNode    { return planNode(&PlanNode_ColumnCompat{n}) }
+func (n *TopK) ToPlanNode() *PlanNode            { return planNode(&PlanNode_TopK{n}) }
+func (n *ScanSet) ToPlanNode() *PlanNode         { return planNode(&PlanNode_ScanSet{n}) }
+func (n *Parallelize) ToPlanNode() *PlanNode     { return planNode(&PlanNode_Parallelize{n}) }
+
+// Clone returns a deep copy of the node (minus its ID).
+func (n *AggregateRange) Clone() Node {
+	return &AggregateRange{
+		PartitionBy:    cloneColExpressions(n.PartitionBy),
+		Operation:      n.Operation,
+		StartUnixNanos: n.StartUnixNanos,
+		EndUnixNanos:   n.EndUnixNanos,
+		StepNs:         n.StepNs,
+		RangeNs:        n.RangeNs,
+	}
+}
+func (n *AggregateVector) Clone() Node {
+	return &AggregateVector{
+		GroupBy:   cloneColExpressions(n.GroupBy),
+		Operation: n.Operation,
+	}
+}
+func (n *DataObjScan) Clone() Node {
+	return &DataObjScan{
+		Location:    n.Location,
+		Section:     n.Section,
+		StreamIds:   slices.Clone(n.StreamIds),
+		Projections: cloneColExpressions(n.Projections),
+		Predicates:  cloneExpressions(n.Predicates),
+	}
+}
+func (n *Filter) Clone() Node {
+	return &Filter{
+		Predicates: cloneExpressions(n.Predicates),
+	}
+}
+func (n *Limit) Clone() Node {
+	return &Limit{
+		Skip:  n.Skip,
+		Fetch: n.Fetch,
+	}
+}
+func (n *Merge) Clone() Node {
+	return &Merge{}
+}
+func (n *Parse) Clone() Node {
+	return &Parse{
+		Operation:     n.Operation,
+		RequestedKeys: slices.Clone(n.RequestedKeys),
+	}
+}
+func (n *Projection) Clone() Node {
+	return &Projection{
+		Expressions: cloneExpressions(n.Expressions),
+		All:         n.All,
+		Expand:      n.Expand,
+		Drop:        n.Drop,
+	}
+}
+func (n *SortMerge) Clone() Node {
+	tmpCol := n.Column.Clone()
+	return &SortMerge{
+		Column: tmpCol.GetColumnExpression(),
+		Order:  n.Order,
+	}
+}
+func (n *ColumnCompat) Clone() Node {
+	return &ColumnCompat{
+		Source:      n.Source,
+		Destination: n.Destination,
+		Collision:   n.Collision,
+	}
+}
+func (n *TopK) Clone() Node {
+	tmp := (*n.SortBy).Clone()
+	return &TopK{
+		SortBy:     tmp.GetColumnExpression(),
+		Ascending:  n.Ascending,
+		NullsFirst: n.NullsFirst,
+		K:          n.K,
+	}
+}
+func (n *ScanSet) Clone() Node {
+	newTargets := make([]*ScanTarget, 0, len(n.Targets))
+	for _, target := range n.Targets {
+		newTargets = append(newTargets, target.Clone())
+	}
+
+	return &ScanSet{Targets: newTargets}
+}
+func (p *Parallelize) Clone() Node {
+	return &Parallelize{ /* nothing to clone */ }
+}
+
+func (t *ScanTarget) Clone() *ScanTarget {
+	res := &ScanTarget{Type: t.Type}
+	if t.DataObject != nil {
+		res.DataObject = t.DataObject.Clone().(*DataObjScan)
+	}
+	return res
+}
 
 func planNode(kind isPlanNode_Kind) *PlanNode {
 	return &PlanNode{Kind: kind}
+}
+
+// ShardableNode is a Node that can be split into multiple smaller partitions.
+type ShardableNode interface {
+	Node
+
+	// Shards produces a sequence of nodes that represent a fragment of the
+	// original node. Returned nodes do not need to be the same type as the
+	// original node.
+	//
+	// Implementations must produce unique values of Node in each call to
+	// Shards.
+	Shards() iter.Seq[Node]
+}
+
+// Shards returns an iterator over the shards of the scan. Each emitted shard
+// will be a clone. Projections and predicates on the ScanSet are cloned and
+// applied to each shard.
+//
+// Shards panics if one of the targets is invalid.
+func (n *ScanSet) Shards() iter.Seq[Node] {
+	return func(yield func(Node) bool) {
+		for _, target := range n.Targets {
+			switch target.Type {
+			case SCAN_TYPE_DATA_OBJECT:
+				node := target.DataObject.Clone().(*DataObjScan)
+				node.Projections = cloneColExpressions(n.Projections)
+				node.Predicates = cloneExpressions(n.Predicates)
+
+				if !yield(node) {
+					return
+				}
+
+			default:
+				panic(fmt.Sprintf("invalid scan type %s", target.Type))
+			}
+		}
+	}
 }
 
 var SupportedRangeAggregationTypes = []AggregateRangeOp{
@@ -244,7 +416,7 @@ func ColumnTypeFromString(ct string) ColumnType {
 
 func (p *Plan) NodeById(id PlanNodeID) Node {
 	for _, n := range p.Nodes {
-		if GetNode(n).ID() == id.String() {
+		if GetNode(n).ulid() == id.Value {
 			return GetNode(n)
 		}
 	}
@@ -271,7 +443,7 @@ func (p *Plan) Roots() []Node {
 		roots = append(roots, GetNode(n))
 	}
 	for _, edge := range p.Edges {
-		if i := slices.Index(roots, p.NodeById(edge.Child)); i > 0 {
+		if i := slices.Index(roots, p.NodeById(edge.Child)); i >= 0 {
 			roots = append(roots[:i], roots[i+1:]...)
 		}
 	}
@@ -300,7 +472,7 @@ func (p *Plan) Leaves() []Node {
 		leaves = append(leaves, GetNode(n))
 	}
 	for _, edge := range p.Edges {
-		if i := slices.Index(leaves, p.NodeById(edge.Parent)); i > 0 {
+		if i := slices.Index(leaves, p.NodeById(edge.Parent)); i >= 0 {
 			leaves = append(leaves[:i], leaves[i+1:]...)
 		}
 	}
@@ -310,7 +482,7 @@ func (p *Plan) Leaves() []Node {
 func (p *Plan) Parents(n Node) []Node {
 	parents := []Node{}
 	for _, e := range p.Edges {
-		if e.Child.String() == n.ID() {
+		if e.Child.Value == n.ulid() {
 			parents = append(parents, p.NodeById(e.Parent))
 		}
 	}
@@ -320,7 +492,7 @@ func (p *Plan) Parents(n Node) []Node {
 func (p *Plan) Children(n Node) []Node {
 	children := []Node{}
 	for _, e := range p.Edges {
-		if e.Parent.String() == n.ID() {
+		if e.Parent.Value == n.ulid() {
 			children = append(children, p.NodeById(e.Child))
 		}
 	}
@@ -328,6 +500,9 @@ func (p *Plan) Children(n Node) []Node {
 }
 
 func (p *Plan) Add(n Node) *PlanNode {
+	if n == nil {
+		return nil
+	}
 	p.Nodes = append(p.Nodes, n.ToPlanNode())
 	return n.ToPlanNode()
 }
@@ -339,11 +514,11 @@ func (p *Plan) AddEdge(e dag.Edge[Node]) error {
 	if e.Parent.ID() == e.Child.ID() {
 		return fmt.Errorf("cannot connect a node (%v) to itself", e.Parent.ID())
 	}
-	if p.NodeById(PlanNodeID{e.Parent.ulid()}) == nil || p.NodeById(PlanNodeID{e.Child.ulid()}) == nil {
+	if p.NodeByStringId(e.Parent.ID()) == nil || p.NodeByStringId(e.Child.ID()) == nil {
 		return fmt.Errorf("both nodes %v and %v must already exist in the plan", e.Parent.ID(), e.Child.ID())
 	}
 	for _, edge := range p.Edges {
-		if (edge.Parent == PlanNodeID{Value: e.Parent.ulid()}) && (edge.Child == PlanNodeID{Value: e.Child.ulid()}) {
+		if (edge.Parent.Value == e.Parent.ulid()) && (edge.Child.Value == e.Child.ulid()) {
 			return fmt.Errorf("edge between node %v and %v already exists", e.Parent.ID(), e.Child.ID())
 		}
 	}
@@ -352,6 +527,9 @@ func (p *Plan) AddEdge(e dag.Edge[Node]) error {
 }
 
 func (p *Plan) Eliminate(n Node) {
+	if p.NodeByStringId(n.ID()) == nil {
+		return // no node to eliminate
+	}
 	// For each parent p in the node to eliminate, push up n's children to
 	// become children of p, and remove n as a child of p.
 	parents := p.Parents(n)
@@ -359,8 +537,8 @@ func (p *Plan) Eliminate(n Node) {
 	// First remove n as a child of p
 	for i := 0; i < len(p.Edges); i++ {
 		edge := p.Edges[i]
-		if edge.Child.String() == n.ID() {
-			p.Edges = append(p.Edges[:i], p.Edges[:i+1]...)
+		if edge.Child.Value.String() == n.ID() {
+			p.Edges = append(p.Edges[:i], p.Edges[i+1:]...)
 			i--
 		}
 	}
@@ -370,7 +548,7 @@ func (p *Plan) Eliminate(n Node) {
 		for _, parent := range parents {
 			edgeExists := false
 			for _, e := range p.Edges {
-				if e.Parent.String() == parent.ID() && e.Child.String() == child.ID() {
+				if e.Parent.Value.String() == parent.ID() && e.Child.Value.String() == child.ID() {
 					// edge already exists, skip
 					edgeExists = true
 				}
@@ -380,8 +558,50 @@ func (p *Plan) Eliminate(n Node) {
 			}
 		}
 	}
-	nodeIdx := slices.Index(p.Nodes, n.ToPlanNode())
-	p.Nodes = append(p.Nodes[:nodeIdx], p.Nodes[:nodeIdx+1]...)
+	// Next remove n as a parent of n's children
+	for i := 0; i < len(p.Edges); i++ {
+		edge := p.Edges[i]
+		if edge.Parent.Value.String() == n.ID() {
+			p.Edges = append(p.Edges[:i], p.Edges[i+1:]...)
+			i--
+		}
+	}
+
+	// Finally, remove n
+	var nodeIds []ulid.ULID
+	for _, node := range p.Nodes {
+		nodeIds = append(nodeIds, GetNode(node).ulid())
+	}
+	nodeIdx := slices.Index(nodeIds, n.ulid()) // guaranteed to be >=0 since we found n earlier
+	p.Nodes = append(p.Nodes[:nodeIdx], p.Nodes[nodeIdx+1:]...)
+}
+
+// Inject injects a new node between a parent and its children:
+//
+// * The children of parent become children of node.
+// * The child of parent becomes node.
+//
+// Inject panics if given a node that already exists in the plan.
+//
+// For convenience, Inject returns node without modification.
+func (p *Plan) Inject(parent, node Node) Node {
+	if p.NodeByStringId(node.ID()) != nil {
+		panic("injectNode: target node already exists in plan")
+	}
+	p.Add(node)
+
+	// Update parent's children so that their parent is node.
+	for i := 0; i < len(p.Edges); i++ {
+		if p.Edges[i].Parent.Value.String() == parent.ID() {
+			p.AddEdge(dag.Edge[Node]{Parent: node, Child: p.NodeByStringId(p.Edges[i].Child.Value.String())})
+			p.Edges = append(p.Edges[:i], p.Edges[i+1:]...)
+			i--
+		}
+	}
+
+	// Add an edge between parent and node.
+	p.AddEdge(dag.Edge[Node]{Parent: parent, Child: node})
+	return node
 }
 
 // WalkFunc is a function that gets invoked when walking a Graph. Walking will
@@ -440,4 +660,34 @@ func (p *Plan) postOrderWalk(n Node, f WalkFunc, visited map[Node]bool) error {
 	}
 
 	return f(n)
+}
+
+// FromGraph constructs a Plan from a given DAG.
+func FromGraph(graph dag.Graph[Node]) *Plan {
+	p := &Plan{}
+	for _, root := range graph.Roots() {
+		fromGraphHelper(p, graph, root)
+	}
+	return p
+}
+
+func fromGraphHelper(p *Plan, g dag.Graph[Node], n Node) {
+	p.Add(n)
+	for _, c := range g.Children(n) {
+		p.Add(c)
+		p.AddEdge(dag.Edge[Node]{Parent: n, Child: c})
+		fromGraphHelper(p, g, c)
+	}
+}
+
+// Graph returns the underlying graph of the plan.
+func (p *Plan) Graph() *dag.Graph[Node] {
+	g := &dag.Graph[Node]{}
+	for _, n := range p.Nodes {
+		g.Add(GetNode(n))
+	}
+	for _, e := range p.Edges {
+		g.AddEdge(dag.Edge[Node]{Parent: p.NodeById(e.Parent), Child: p.NodeById(e.Child)})
+	}
+	return g
 }

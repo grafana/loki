@@ -110,8 +110,8 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 			LogsSection:    logsSection,
 			StreamIDs:      []int64{1, 2}, // All streams
 			Projections: []*physicalpb.ColumnExpression{
-				&physicalpb.ColumnExpression{Name: "env", Type: physicalpb.COLUMN_TYPE_LABEL},
-				&physicalpb.ColumnExpression{Name: "timestamp", Type: physicalpb.COLUMN_TYPE_BUILTIN},
+				{Name: "env", Type: physicalpb.COLUMN_TYPE_LABEL},
+				{Name: "timestamp", Type: physicalpb.COLUMN_TYPE_BUILTIN},
 			},
 
 			BatchSize: 512,
@@ -171,7 +171,7 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 			LogsSection:    logsSection,
 			StreamIDs:      []int64{1, 2}, // All streams
 			Projections: []*physicalpb.ColumnExpression{
-				&physicalpb.ColumnExpression{Name: "env", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS},
+				{Name: "env", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS},
 			},
 			BatchSize: 512,
 		}, log.NewNopLogger())
@@ -286,7 +286,7 @@ prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1`
 			LogsSection:    logsSection,
 			StreamIDs:      []int64{1, 2, 3}, // All streams
 			Projections: []*physicalpb.ColumnExpression{
-				&physicalpb.ColumnExpression{Name: "pod", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS},
+				{Name: "pod", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS},
 			},
 			BatchSize: 512,
 		}, log.NewNopLogger())
@@ -313,7 +313,7 @@ pod-1,override`
 			LogsSection:    logsSection,
 			StreamIDs:      []int64{1, 2, 3}, // All streams
 			Projections: []*physicalpb.ColumnExpression{
-				&physicalpb.ColumnExpression{Name: "namespace", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS},
+				{Name: "namespace", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS},
 			},
 			BatchSize: 512,
 		}, log.NewNopLogger())

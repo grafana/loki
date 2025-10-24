@@ -19,9 +19,9 @@ type topkOptions struct {
 
 	// SortBy is the list of columns to sort by, in order of precedence.
 	SortBy     []*physicalpb.ColumnExpression
-	Ascending  bool // Sorts lines in ascending order if true.
-	NullsFirst bool // When true, considers NULLs < non-NULLs when sorting.
-	K          int  // Number of top rows to compute.
+	Ascending  bool  // Sorts lines in ascending order if true.
+	NullsFirst bool  // When true, considers NULLs < non-NULLs when sorting.
+	K          int64 // Number of top rows to compute.
 
 	// MaxUnused determines the maximum number of unused rows to retain. An
 	// unused row is any row from a retained record that does not contribute to
@@ -56,7 +56,7 @@ func newTopkPipeline(opts topkOptions) (*topkPipeline, error) {
 			Fields:     fields,
 			Ascending:  opts.Ascending,
 			NullsFirst: opts.NullsFirst,
-			K:          opts.K,
+			K:          int(opts.K),
 			MaxUnused:  opts.MaxUnused,
 		},
 	}, nil

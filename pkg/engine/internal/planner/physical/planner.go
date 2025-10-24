@@ -120,16 +120,16 @@ func (p *Planner) convertPredicate(inst logical.Value) *physicalpb.Expression {
 	case *logical.UnaryOp:
 		return (&physicalpb.UnaryExpression{
 			Value: p.convertPredicate(inst.Value),
-			Op:    inst.Op,
+			Op:    unaryOpLogToPhys(inst.Op),
 		}).ToExpression()
 	case *logical.BinOp:
 		return (&physicalpb.BinaryExpression{
 			Left:  p.convertPredicate(inst.Left),
 			Right: p.convertPredicate(inst.Right),
-			Op:    inst.Op,
+			Op:    binaryOpLogToPhys(inst.Op),
 		}).ToExpression()
 	case *logical.ColumnRef:
-		return (&physicalpb.ColumnExpression{Name: inst.Ref.Column, Type: inst.Ref.Type}).ToExpression()
+		return (&physicalpb.ColumnExpression{Name: inst.Ref.Column, Type: columnTypeLogToPhys(inst.Ref.Type)}).ToExpression()
 	case *logical.Literal:
 		return NewLiteral(inst.Value()).ToExpression()
 	default:
@@ -137,7 +137,7 @@ func (p *Planner) convertPredicate(inst logical.Value) *physicalpb.Expression {
 	}
 }
 
-// Convert a [logical.Instruction] into one or multiple [Node]s.
+// Convert a [logical.Instruction] into one or multiple [physicalpb.Node]s.
 func (p *Planner) process(inst logical.Value, ctx *Context) ([]physicalpb.Node, error) {
 	switch inst := inst.(type) {
 	case *logical.MakeTable:
@@ -163,69 +163,6 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]physicalpb.Node, 
 	return nil, nil
 }
 
-func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, baseNode physicalpb.Node, ctx *Context) error {
-	scans := []physicalpb.Node{}
-	for _, descriptor := range currentGroup {
-		// output current group to nodes
-		for _, section := range descriptor.Sections {
-			scan := &physicalpb.DataObjScan{
-				Location:  string(descriptor.Location),
-				StreamIds: descriptor.Streams,
-				Section:   int64(section),
-				SortOrder: ctx.direction,
-			}
-			p.plan.Add(scan)
-			scans = append(scans, scan)
-		}
-	}
-	if len(scans) > 1 && ctx.direction != physicalpb.SORT_ORDER_INVALID {
-		sortMerge := &physicalpb.SortMerge{
-			Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, physicalpb.COLUMN_TYPE_BUILTIN),
-			Order:  ctx.direction, // apply direction from previously visited Sort node
-		}
-		p.plan.Add(sortMerge)
-		for _, scan := range scans {
-			if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: sortMerge, Child: scan}); err != nil {
-				return err
-			}
-		}
-		if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: baseNode, Child: sortMerge}); err != nil {
-			return err
-		}
-	} else {
-		for _, scan := range scans {
-			if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: baseNode, Child: scan}); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func overlappingShardDescriptors(filteredShardDescriptors []FilteredShardDescriptor) [][]FilteredShardDescriptor {
-	// Ensure that shard descriptors are sorted by end time
-	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
-		return filteredShardDescriptors[i].TimeRange.End.After(filteredShardDescriptors[j].TimeRange.End)
-	})
-
-	groups := make([][]FilteredShardDescriptor, 0, len(filteredShardDescriptors))
-	var tr TimeRange
-	for i, shardDesc := range filteredShardDescriptors {
-		if i == 0 || !tr.Overlaps(shardDesc.TimeRange) {
-			// Create new group for first item or if item does not overlap with previous group
-			groups = append(groups, []FilteredShardDescriptor{shardDesc})
-			tr = shardDesc.TimeRange
-		} else {
-			// Append to existing group
-			groups[len(groups)-1] = append(groups[len(groups)-1], shardDesc)
-			tr = tr.Merge(shardDesc.TimeRange)
-		}
-	}
-	return groups
-}
-
-=======
->>>>>>> main
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
 func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]physicalpb.Node, error) {
 	shard, ok := lp.Shard.(*logical.ShardInfo)
@@ -253,27 +190,27 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]physi
 
 	// Scan work can be parallelized across multiple workers, so we wrap
 	// everything into a single Parallelize node.
-	var parallelize Node = &Parallelize{}
-	p.plan.graph.Add(parallelize)
+	var parallelize physicalpb.Node = &physicalpb.Parallelize{}
+	p.plan.Add(parallelize)
 
-	scanSet := &ScanSet{}
-	p.plan.graph.Add(scanSet)
+	scanSet := &physicalpb.ScanSet{}
+	p.plan.Add(scanSet)
 
 	for _, desc := range filteredShardDescriptors {
 		for _, section := range desc.Sections {
-			scanSet.Targets = append(scanSet.Targets, &ScanTarget{
-				Type: ScanTypeDataObject,
+			scanSet.Targets = append(scanSet.Targets, &physicalpb.ScanTarget{
+				Type: physicalpb.SCAN_TYPE_DATA_OBJECT,
 
-				DataObject: &DataObjScan{
-					Location:  desc.Location,
-					StreamIDs: desc.Streams,
-					Section:   section,
+				DataObject: &physicalpb.DataObjScan{
+					Location:  string(desc.Location),
+					StreamIds: desc.Streams,
+					Section:   int64(section),
 				},
 			})
 		}
 	}
 
-	var base Node = scanSet
+	var base physicalpb.Node = scanSet
 
 	if p.context.v1Compatible {
 		compat := &physicalpb.ColumnCompat{
@@ -289,10 +226,10 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]physi
 
 	// Add an edge between the parallelize and the final base node (which may
 	// have been changed after processing compatibility).
-	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: base}); err != nil {
+	if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: parallelize, Child: base}); err != nil {
 		return nil, err
 	}
-	return []Node{parallelize}, nil
+	return []physicalpb.Node{parallelize}, nil
 }
 
 // Convert [logical.Select] into one [Filter] node.
@@ -320,9 +257,9 @@ func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]physicalpb.Node
 		order = physicalpb.SORT_ORDER_ASCENDING
 	}
 
-	node := &TopK{
-		SortBy:     &ColumnExpr{Ref: lp.Column.Ref},
-		Ascending:  order == ASC,
+	node := &physicalpb.TopK{
+		SortBy:     &physicalpb.ColumnExpression{Name: lp.Column.Ref.Column, Type: columnTypeLogToPhys(lp.Column.Ref.Type)},
+		Ascending:  order == physicalpb.SORT_ORDER_ASCENDING,
 		NullsFirst: false,
 		// K initially starts at 0, indicating to sort everything. The
 		// [limitPushdown] optimization pass can update this value based on how
@@ -330,7 +267,7 @@ func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]physicalpb.Node
 		K: 0,
 	}
 
-	p.plan.graph.Add(node)
+	p.plan.Add(node)
 
 	children, err := p.process(lp.Table, ctx.WithDirection(order))
 	if err != nil {
@@ -338,72 +275,39 @@ func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]physicalpb.Node
 	}
 
 	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
+		if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
 		}
 	}
-	return []Node{node}, nil
-}
-
-// Pass sort direction from [logical.Sort] to the children.
-func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]Node, error) {
-	order := DESC
-	if lp.Ascending {
-		order = ASC
-	}
-
-	node := &TopK{
-		SortBy:     &ColumnExpr{Ref: lp.Column.Ref},
-		Ascending:  order == ASC,
-		NullsFirst: false,
-
-		// K initially starts at 0, indicating to sort everything. The
-		// [limitPushdown] optimization pass can update this value based on how
-		// many rows are needed.
-		K: 0,
-	}
-
-	p.plan.graph.Add(node)
-
-	children, err := p.process(lp.Table, ctx.WithDirection(order))
-	if err != nil {
-		return nil, err
-	}
-
-	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
-	}
-	return []Node{node}, nil
+	return []physicalpb.Node{node}, nil
 }
 
 // Converts a [logical.Projection] into a physical [Projection] node.
-func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) ([]Node, error) {
-	expressions := make([]Expression, len(lp.Expressions))
+func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) ([]physicalpb.Node, error) {
+	expressions := make([]*physicalpb.Expression, len(lp.Expressions))
 	for i := range lp.Expressions {
 		expressions[i] = p.convertPredicate(lp.Expressions[i])
 	}
 
-	node := &Projection{
+	node := &physicalpb.Projection{
 		Expressions: expressions,
 		All:         lp.All,
 		Expand:      lp.Expand,
 		Drop:        lp.Drop,
 	}
-	p.plan.graph.Add(node)
+	p.plan.Add(node)
 
 	children, err := p.process(lp.Relation, ctx)
 	if err != nil {
 		return nil, err
 	}
 	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
+		if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
 			return nil, err
 		}
 	}
 
-	return []Node{node}, nil
+	return []physicalpb.Node{node}, nil
 }
 
 // Convert [logical.Limit] into one [Limit] node.
@@ -412,7 +316,7 @@ func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) ([]physicalpb.No
 		Skip:  lp.Skip,
 		Fetch: lp.Fetch,
 	}
-	p.plan.graph.Add(node)
+	p.plan.Add(node)
 	children, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
@@ -422,18 +326,18 @@ func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) ([]physicalpb.No
 			return nil, err
 		}
 	}
-	return []Node{node}, nil
+	return []physicalpb.Node{node}, nil
 }
 
-func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) ([]Node, error) {
-	partitionBy := make([]ColumnExpression, len(r.PartitionBy))
+func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) ([]physicalpb.Node, error) {
+	partitionBy := make([]*physicalpb.ColumnExpression, len(r.PartitionBy))
 	for i, col := range r.PartitionBy {
 		partitionBy[i] = &physicalpb.ColumnExpression{Name: col.Name()}
 	}
 
 	node := &physicalpb.AggregateRange{
 		PartitionBy:    partitionBy,
-		Operation:      r.Operation,
+		Operation:      rangeAggregationTypeLogToPhys(r.Operation),
 		StartUnixNanos: r.Start.UnixNano(),
 		EndUnixNanos:   r.End.UnixNano(),
 		RangeNs:        r.RangeInterval.Nanoseconds(),
@@ -458,12 +362,12 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Cont
 func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *Context) ([]physicalpb.Node, error) {
 	groupBy := make([]*physicalpb.ColumnExpression, len(lp.GroupBy))
 	for i, col := range lp.GroupBy {
-		groupBy[i] = &physicalpb.ColumnExpression{Name: col.Ref.Column, Type: col.Ref.Type}
+		groupBy[i] = &physicalpb.ColumnExpression{Name: col.Ref.Column, Type: columnTypeLogToPhys(col.Ref.Type)}
 	}
 
 	node := &physicalpb.AggregateVector{
 		GroupBy:   groupBy,
-		Operation: lp.Operation,
+		Operation: vectorAggregationTypeLogToPhys(lp.Operation),
 	}
 	p.plan.Add(node)
 	children, err := p.process(lp.Table, ctx)
@@ -560,5 +464,137 @@ func convertParserKind(kind logical.ParserKind) physicalpb.ParseOp {
 		return physicalpb.PARSE_OP_JSON
 	default:
 		return physicalpb.PARSE_OP_INVALID
+	}
+}
+
+func unaryOpLogToPhys(op types.UnaryOp) physicalpb.UnaryOp {
+	switch op {
+	case types.UnaryOpAbs:
+		return physicalpb.UNARY_OP_ABS
+	case types.UnaryOpCastBytes:
+		return physicalpb.UNARY_OP_CAST_BYTES
+	case types.UnaryOpCastDuration:
+		return physicalpb.UNARY_OP_CAST_DURATION
+	case types.UnaryOpCastFloat:
+		return physicalpb.UNARY_OP_CAST_FLOAT
+	case types.UnaryOpNot:
+		return physicalpb.UNARY_OP_NOT
+	default:
+		return physicalpb.UNARY_OP_INVALID
+	}
+}
+
+func binaryOpLogToPhys(op types.BinaryOp) physicalpb.BinaryOp {
+	switch op {
+	case types.BinaryOpEq:
+		return physicalpb.BINARY_OP_EQ
+	case types.BinaryOpNeq:
+		return physicalpb.BINARY_OP_NEQ
+	case types.BinaryOpGt:
+		return physicalpb.BINARY_OP_GT
+	case types.BinaryOpGte:
+		return physicalpb.BINARY_OP_GTE
+	case types.BinaryOpLt:
+		return physicalpb.BINARY_OP_LT
+	case types.BinaryOpLte:
+		return physicalpb.BINARY_OP_LTE
+
+	case types.BinaryOpAnd:
+		return physicalpb.BINARY_OP_AND
+	case types.BinaryOpOr:
+		return physicalpb.BINARY_OP_OR
+	case types.BinaryOpXor:
+		return physicalpb.BINARY_OP_XOR
+	case types.BinaryOpNot:
+		return physicalpb.BINARY_OP_NOT
+
+	case types.BinaryOpAdd:
+		return physicalpb.BINARY_OP_ADD
+	case types.BinaryOpSub:
+		return physicalpb.BINARY_OP_SUB
+	case types.BinaryOpMul:
+		return physicalpb.BINARY_OP_MUL
+	case types.BinaryOpDiv:
+		return physicalpb.BINARY_OP_DIV
+	case types.BinaryOpMod:
+		return physicalpb.BINARY_OP_MOD
+
+	case types.BinaryOpMatchSubstr:
+		return physicalpb.BINARY_OP_MATCH_SUBSTR
+	case types.BinaryOpNotMatchSubstr:
+		return physicalpb.BINARY_OP_NOT_MATCH_SUBSTR
+	case types.BinaryOpMatchRe:
+		return physicalpb.BINARY_OP_MATCH_RE
+	case types.BinaryOpNotMatchRe:
+		return physicalpb.BINARY_OP_NOT_MATCH_RE
+	case types.BinaryOpMatchPattern:
+		return physicalpb.BINARY_OP_MATCH_PATTERN
+	case types.BinaryOpNotMatchPattern:
+		return physicalpb.BINARY_OP_NOT_MATCH_PATTERN
+	default:
+		return physicalpb.BINARY_OP_INVALID
+	}
+}
+
+func columnTypeLogToPhys(colType types.ColumnType) physicalpb.ColumnType {
+	switch colType {
+	case types.ColumnTypeBuiltin:
+		return physicalpb.COLUMN_TYPE_BUILTIN
+	case types.ColumnTypeLabel:
+		return physicalpb.COLUMN_TYPE_LABEL
+	case types.ColumnTypeMetadata:
+		return physicalpb.COLUMN_TYPE_METADATA
+	case types.ColumnTypeParsed:
+		return physicalpb.COLUMN_TYPE_PARSED
+	case types.ColumnTypeAmbiguous:
+		return physicalpb.COLUMN_TYPE_AMBIGUOUS
+	case types.ColumnTypeGenerated:
+		return physicalpb.COLUMN_TYPE_GENERATED
+	default:
+		return physicalpb.COLUMN_TYPE_INVALID
+	}
+}
+
+func rangeAggregationTypeLogToPhys(rangeAggType types.RangeAggregationType) physicalpb.AggregateRangeOp {
+	switch rangeAggType {
+	case types.RangeAggregationTypeCount:
+		return physicalpb.AGGREGATE_RANGE_OP_COUNT
+	case types.RangeAggregationTypeSum:
+		return physicalpb.AGGREGATE_RANGE_OP_SUM
+	case types.RangeAggregationTypeMax:
+		return physicalpb.AGGREGATE_RANGE_OP_MAX
+	case types.RangeAggregationTypeMin:
+		return physicalpb.AGGREGATE_RANGE_OP_MIN
+	default:
+		return physicalpb.AGGREGATE_RANGE_OP_INVALID
+	}
+}
+
+func vectorAggregationTypeLogToPhys(vectorAggType types.VectorAggregationType) physicalpb.AggregateVectorOp {
+	switch vectorAggType {
+	case types.VectorAggregationTypeSum:
+		return physicalpb.AGGREGATE_VECTOR_OP_SUM
+	case types.VectorAggregationTypeMax:
+		return physicalpb.AGGREGATE_VECTOR_OP_MAX
+	case types.VectorAggregationTypeMin:
+		return physicalpb.AGGREGATE_VECTOR_OP_MIN
+	case types.VectorAggregationTypeCount:
+		return physicalpb.AGGREGATE_VECTOR_OP_COUNT
+	case types.VectorAggregationTypeAvg:
+		return physicalpb.AGGREGATE_VECTOR_OP_AVG
+	case types.VectorAggregationTypeStddev:
+		return physicalpb.AGGREGATE_VECTOR_OP_STDDEV
+	case types.VectorAggregationTypeStdvar:
+		return physicalpb.AGGREGATE_VECTOR_OP_STDVAR
+	case types.VectorAggregationTypeBottomK:
+		return physicalpb.AGGREGATE_VECTOR_OP_BOTTOMK
+	case types.VectorAggregationTypeTopK:
+		return physicalpb.AGGREGATE_VECTOR_OP_TOPK
+	case types.VectorAggregationTypeSort:
+		return physicalpb.AGGREGATE_VECTOR_OP_SORT
+	case types.VectorAggregationTypeSortDesc:
+		return physicalpb.AGGREGATE_VECTOR_OP_SORT_DESC
+	default:
+		return physicalpb.AGGREGATE_VECTOR_OP_INVALID
 	}
 }

@@ -22,9 +22,12 @@ message UnaryExpression {
 
 // UnaryOp denotes the kind of unary operation to perform.
 enum UnaryOp {
-    UNARY_OP_INVALID = 0;  // Invalid unary operation.
-    UNARY_OP_NOT = 1; // Logical NOT operation (!).
-    UNARY_OP_ABS = 2; // Mathematical absolute operation (abs).
+    UNARY_OP_INVALID = 0;  		// Invalid unary operation.
+    UNARY_OP_NOT = 1; 			// Logical NOT operation (!).
+    UNARY_OP_ABS = 2; 			// Mathematical absolute operation (abs).
+	UNARY_OP_CAST_FLOAT = 3;    // Cast string to float value operation (unwrap).
+	UNARY_OP_CAST_BYTES = 4;    // Cast string bytes to float value operation (unwrap).
+	UNARY_OP_CAST_DURATION = 5; // Cast string duration to float value operation (unwrap).
 }
 
 // BinaryExpression represents a binary operation applied to two expressions.

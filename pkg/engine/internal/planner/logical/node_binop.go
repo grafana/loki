@@ -3,7 +3,7 @@ package logical
 import (
 	"fmt"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 // The BinOp instruction yields the result of binary operation Left Op Right.
@@ -12,7 +12,7 @@ type BinOp struct {
 	id string
 
 	Left, Right Value
-	Op          physicalpb.BinaryOp
+	Op          types.BinaryOp
 }
 
 var (

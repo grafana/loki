@@ -275,7 +275,7 @@ func buildDataobjScalar(lit physicalpb.LiteralExpression) (scalar.Scalar, error)
 		return scalar.NewInt64Scalar(lit.IntegerLiteral.Value), nil
 	case *physicalpb.LiteralExpression_BytesLiteral:
 		// [types.BytesLiteral] refers to byte sizes, not binary data.
-		return scalar.NewInt64Scalar(int64(lit.BytesLiteral.Value)), nil
+		return scalar.NewInt64Scalar(lit.BytesLiteral.Value), nil
 	case *physicalpb.LiteralExpression_TimestampLiteral:
 		ts := arrow.Timestamp(lit.TimestampLiteral.Value)
 		tsType := arrow.FixedWidthTypes.Timestamp_ns

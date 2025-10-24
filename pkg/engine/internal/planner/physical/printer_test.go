@@ -10,40 +10,42 @@ import (
 
 func TestPrinter(t *testing.T) {
 	t.Run("simple tree", func(t *testing.T) {
-		p := &Plan{}
+		p := &physicalpb.Plan{}
+		limitID := physicalpb.PlanNodeID{Value: ulid.New()}
+		filterID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scanSetID := physicalpb.PlanNodeID{Value: ulid.New()}
+		limit := p.Add(&physicalpb.Limit{Id: limitID})
+		filter := p.Add(&physicalpb.Filter{Id: filterID})
+		scanSet := p.Add(&physicalpb.ScanSet{
+			Id: scanSetID,
 
-		limit := p.graph.Add(&Limit{id: "limit"})
-		filter := p.graph.Add(&Filter{id: "filter"})
-		scanSet := p.graph.Add(&ScanSet{
-			id: "set",
-
-			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+			Targets: []*physicalpb.ScanTarget{
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{}},
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{}},
 			},
 		})
 
-		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: filter})
-		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scanSet})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(limit), Child: physicalpb.GetNode(filter)})
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(filter), Child: physicalpb.GetNode(scanSet)})
 
 		repr := PrintAsTree(p)
 		t.Log("\n" + repr)
 	})
 
 	t.Run("multiple root nodes", func(t *testing.T) {
-		limit1Id := physicalpb.PlanNodeID{Value: ulid.New()}
-		limit2Id := physicalpb.PlanNodeID{Value: ulid.New()}
-		scan1Id := physicalpb.PlanNodeID{Value: ulid.New()}
-		scan2Id := physicalpb.PlanNodeID{Value: ulid.New()}
+		limit1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		limit2ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan2ID := physicalpb.PlanNodeID{Value: ulid.New()}
 
 		p := &physicalpb.Plan{}
 
-		limit1 := p.Add(&physicalpb.Limit{Id: limit1Id})
-		scan1 := p.Add(&physicalpb.DataObjScan{Id: scan1Id})
+		limit1 := p.Add(&physicalpb.Limit{Id: limit1ID})
+		scan1 := p.Add(&physicalpb.DataObjScan{Id: scan1ID})
 		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit1.GetLimit(), Child: scan1.GetScan()})
 
-		limit2 := p.Add(&physicalpb.Limit{Id: limit2Id})
-		scan2 := p.Add(&physicalpb.DataObjScan{Id: scan2Id})
+		limit2 := p.Add(&physicalpb.Limit{Id: limit2ID})
+		scan2 := p.Add(&physicalpb.DataObjScan{Id: scan2ID})
 		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit2.GetLimit(), Child: scan2.GetScan()})
 
 		repr := PrintAsTree(p)
@@ -51,16 +53,16 @@ func TestPrinter(t *testing.T) {
 	})
 
 	t.Run("multiple parents sharing the same child node", func(t *testing.T) {
-		limitId := physicalpb.PlanNodeID{Value: ulid.New()}
-		filter1Id := physicalpb.PlanNodeID{Value: ulid.New()}
-		filter2Id := physicalpb.PlanNodeID{Value: ulid.New()}
-		scanId := physicalpb.PlanNodeID{Value: ulid.New()}
+		limitID := physicalpb.PlanNodeID{Value: ulid.New()}
+		filter1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		filter2ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scanID := physicalpb.PlanNodeID{Value: ulid.New()}
 
 		p := &physicalpb.Plan{}
-		limit := p.Add(&physicalpb.Limit{Id: limitId})
-		filter1 := p.Add(&physicalpb.Limit{Id: filter1Id})
-		filter2 := p.Add(&physicalpb.Limit{Id: filter2Id})
-		scan := p.Add(&physicalpb.DataObjScan{Id: scanId})
+		limit := p.Add(&physicalpb.Limit{Id: limitID})
+		filter1 := p.Add(&physicalpb.Limit{Id: filter1ID})
+		filter2 := p.Add(&physicalpb.Limit{Id: filter2ID})
+		scan := p.Add(&physicalpb.DataObjScan{Id: scanID})
 		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit.GetLimit(), Child: filter1.GetFilter()})
 		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit.GetLimit(), Child: filter2.GetFilter()})
 		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter1.GetFilter(), Child: scan.GetScan()})

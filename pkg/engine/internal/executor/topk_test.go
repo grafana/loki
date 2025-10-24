@@ -53,7 +53,7 @@ func Test_topk(t *testing.T) {
 	topkPipeline, err := newTopkPipeline(topkOptions{
 		Inputs: []Pipeline{pipelineA, pipelineB},
 		SortBy: []*physicalpb.ColumnExpression{
-			&physicalpb.ColumnExpression{
+			{
 				Name: types.ColumnNameBuiltinTimestamp, Type: physicalpb.COLUMN_TYPE_BUILTIN,
 			},
 		},
@@ -85,7 +85,7 @@ func Test_topk_emptyPipelines(t *testing.T) {
 	topkPipeline, err := newTopkPipeline(topkOptions{
 		Inputs: []Pipeline{emptyPipeline()},
 		SortBy: []*physicalpb.ColumnExpression{
-			&physicalpb.ColumnExpression{
+			{
 				Name: types.ColumnNameBuiltinTimestamp, Type: physicalpb.COLUMN_TYPE_BUILTIN,
 			},
 		},

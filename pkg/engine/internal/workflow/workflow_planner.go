@@ -7,14 +7,14 @@ import (
 
 	"github.com/oklog/ulid/v2"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
 // planner is responsible for constructing the Task graph held by a [Workflow].
 type planner struct {
 	graph    dag.Graph[*Task]
-	physical *physical.Plan
+	physical *physicalpb.Plan
 
 	streamWriters map[*Stream]*Task // Lookup of stream to which task writes to it
 }
@@ -23,7 +23,7 @@ type planner struct {
 //
 // planWorkflow returns an error if the provided physical plan does not
 // have exactly one root node, or if the physical plan cannot be partitioned.
-func planWorkflow(plan *physical.Plan) (dag.Graph[*Task], error) {
+func planWorkflow(plan *physicalpb.Plan) (dag.Graph[*Task], error) {
 	root, err := plan.Root()
 	if err != nil {
 		return dag.Graph[*Task]{}, err
@@ -43,7 +43,7 @@ func planWorkflow(plan *physical.Plan) (dag.Graph[*Task], error) {
 
 // Process builds a set of tasks from a root physical plan node. Built tasks are
 // added to p.graph.
-func (p *planner) Process(root physical.Node) error {
+func (p *planner) Process(root physicalpb.Node) error {
 	_, err := p.processNode(root, true)
 	return err
 }
@@ -55,12 +55,12 @@ func (p *planner) Process(root physical.Node) error {
 // The resulting task is the task immediately produced by node, which callers
 // can use to add edges. All tasks, including those produced in recursive calls
 // to processNode, are added into p.Graph.
-func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, error) {
+func (p *planner) processNode(node physicalpb.Node, splitOnBreaker bool) (*Task, error) {
 	var (
 		// taskPlan is the in-progress physical plan for an individual task.
-		taskPlan dag.Graph[physical.Node]
+		taskPlan dag.Graph[physicalpb.Node]
 
-		sources = make(map[physical.Node][]*Stream)
+		sources = make(map[physicalpb.Node][]*Stream)
 
 		// childrenTasks is the slice of immediate Tasks produced by processing
 		// the children of node.
@@ -71,9 +71,9 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 	taskPlan.Add(node)
 
 	var (
-		stack     = make(stack[physical.Node], 0, p.physical.Len())
-		visited   = make(map[physical.Node]struct{}, p.physical.Len())
-		nodeTasks = make(map[physical.Node][]*Task, p.physical.Len())
+		stack     = make(stack[physicalpb.Node], 0, len(p.physical.Nodes))
+		visited   = make(map[physicalpb.Node]struct{}, len(p.physical.Nodes))
+		nodeTasks = make(map[physicalpb.Node][]*Task, len(p.physical.Nodes))
 	)
 
 	stack.Push(node)
@@ -116,11 +116,11 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 					sources[next] = append(sources[next], stream)
 				}
 
-			case child.Type() == physical.NodeTypeParallelize:
+			case child.Kind() == physicalpb.NodeKindParallelize:
 				childTasks, found := nodeTasks[child]
 				if !found {
 					// Split the pipeline breaker into its own set of tasks.
-					tasks, err := p.processParallelizeNode(child.(*physical.Parallelize))
+					tasks, err := p.processParallelizeNode(child.ToPlanNode().GetParallelize())
 					if err != nil {
 						return nil, err
 					}
@@ -143,7 +143,7 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 				// Add child node into the plan (if we haven't already) and
 				// retain existing edges.
 				taskPlan.Add(child)
-				_ = taskPlan.AddEdge(dag.Edge[physical.Node]{
+				_ = taskPlan.AddEdge(dag.Edge[physicalpb.Node]{
 					Parent: next,
 					Child:  child,
 				})
@@ -155,9 +155,9 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 
 	task := &Task{
 		ULID:     ulid.Make(),
-		Fragment: physical.FromGraph(taskPlan),
+		Fragment: physicalpb.FromGraph(taskPlan),
 		Sources:  sources,
-		Sinks:    make(map[physical.Node][]*Stream),
+		Sinks:    make(map[physicalpb.Node][]*Stream),
 	}
 	p.graph.Add(task)
 
@@ -209,13 +209,13 @@ func (p *planner) removeSink(sink *Stream) error {
 }
 
 // isPipelineBreaker returns true if the node is a pipeline breaker.
-func isPipelineBreaker(node physical.Node) bool {
+func isPipelineBreaker(node physicalpb.Node) bool {
 	// TODO(rfratto): Should this information be exposed by the node itself? A
 	// decision on this should wait until we're able to serialize the node over
 	// the network, since that might impact how we're able to define this at the
 	// node level.
-	switch node.Type() {
-	case physical.NodeTypeTopK, physical.NodeTypeRangeAggregation, physical.NodeTypeVectorAggregation:
+	switch node.Kind() {
+	case physicalpb.NodeKindTopK, physicalpb.NodeKindAggregateRange, physicalpb.NodeKindAggregateVector:
 		return true
 	}
 
@@ -223,7 +223,7 @@ func isPipelineBreaker(node physical.Node) bool {
 }
 
 // processParallelizeNode builds a set of tasks for a Parallelize node.
-func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, error) {
+func (p *planner) processParallelizeNode(node *physicalpb.Parallelize) ([]*Task, error) {
 	// Parallelize nodes are used as a marker task for splitting a branch of the
 	// query plan into many distributed tasks.
 	//
@@ -300,7 +300,7 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 
 		// The sources of the template task need to be replaced with new unique
 		// streams.
-		shardSources := make(map[physical.Node][]*Stream, len(templateTask.Sources))
+		shardSources := make(map[physicalpb.Node][]*Stream, len(templateTask.Sources))
 		for node, templateStreams := range templateTask.Sources {
 			shardStreams := make([]*Stream, 0, len(templateStreams))
 
@@ -324,9 +324,9 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 		partition := &Task{
 			ULID: ulid.Make(),
 
-			Fragment: physical.FromGraph(*shardedPlan),
+			Fragment: physicalpb.FromGraph(*shardedPlan),
 			Sources:  shardSources,
-			Sinks:    make(map[physical.Node][]*Stream),
+			Sinks:    make(map[physicalpb.Node][]*Stream),
 		}
 		p.graph.Add(partition)
 
@@ -363,16 +363,16 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 // If there is no shardable leaf node reachable from root, findShardableNode
 // returns nil. findShardableNode returns an error if there are two shardable
 // leaf nodes.
-func findShardableNode(graph *dag.Graph[physical.Node], root physical.Node) (physical.ShardableNode, error) {
-	var found physical.ShardableNode
+func findShardableNode(graph *dag.Graph[physicalpb.Node], root physicalpb.Node) (physicalpb.ShardableNode, error) {
+	var found physicalpb.ShardableNode
 
-	err := graph.Walk(root, func(n physical.Node) error {
+	err := graph.Walk(root, func(n physicalpb.Node) error {
 		isLeaf := len(graph.Children(n)) == 0
 		if !isLeaf {
 			return nil
 		}
 
-		shardable, ok := n.(physical.ShardableNode)
+		shardable, ok := n.(physicalpb.ShardableNode)
 		if !ok {
 			return nil
 		} else if found != nil {

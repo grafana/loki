@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow/memory"
-	"github.com/go-kit/kit/log/level"
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 	"github.com/thanos-io/objstore"
 	"go.opentelemetry.io/otel"
@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -85,8 +84,6 @@ func (c *Context) execute(ctx context.Context, node physicalpb.Node) Pipeline {
 			return tracePipeline("physicalpb.DataObjScan", c.executeDataObjScan(ctx, n))
 		}, inputs)
 
-	case *physicalpb.SortMerge:
-		return tracePipeline("physicalpb.SortMerge", c.executeSortMerge(ctx, n, inputs))
 	case *physicalpb.Limit:
 		return tracePipeline("physicalpb.Limit", c.executeLimit(ctx, n, inputs))
 	case *physicalpb.Filter:
@@ -104,9 +101,11 @@ func (c *Context) execute(ctx context.Context, node physicalpb.Node) Pipeline {
 	case *physicalpb.ColumnCompat:
 		return tracePipeline("physicalpb.ColumnCompat", c.executeColumnCompat(ctx, n, inputs))
 	case *physicalpb.Parallelize:
-		return tracePipeline("physical.Parallelize", c.executeParallelize(ctx, n, inputs))
+		return tracePipeline("physicalpb.Parallelize", c.executeParallelize(ctx, n, inputs))
 	case *physicalpb.ScanSet:
-		return tracePipeline("physical.ScanSet", c.executeScanSet(ctx, n))
+		return tracePipeline("physicalpb.ScanSet", c.executeScanSet(ctx, n))
+	case *physicalpb.TopK:
+		return tracePipeline("physicalpb.TopK", c.executeTopK(ctx, n, inputs))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
@@ -114,7 +113,7 @@ func (c *Context) execute(ctx context.Context, node physicalpb.Node) Pipeline {
 
 func (c *Context) executeDataObjScan(ctx context.Context, node *physicalpb.DataObjScan) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeDataObjScan", trace.WithAttributes(
-		attribute.String("location", string(node.Location)),
+		attribute.String("location", node.Location),
 		attribute.Int64("section", node.Section),
 		attribute.Stringer("direction", node.SortOrder),
 		attribute.Int("limit", int(node.Limit)),
@@ -128,7 +127,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physicalpb.DataO
 		return errorPipeline(ctx, errors.New("no object store bucket configured"))
 	}
 
-	obj, err := dataobj.FromBucket(ctx, c.bucket, string(node.Location))
+	obj, err := dataobj.FromBucket(ctx, c.bucket, node.Location)
 	if err != nil {
 		return errorPipeline(ctx, fmt.Errorf("creating data object: %w", err))
 	}
@@ -211,7 +210,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physicalpb.DataO
 		Allocator: c.allocator,
 
 		BatchSize: c.batchSize,
-	}, log.With(c.logger, "location", string(node.Location), "section", node.Section))
+	}, log.With(c.logger, "location", node.Location, "section", node.Section))
 
 	sortType, sortDirection, err := logsSection.PrimarySortOrder()
 	if err != nil {
@@ -234,13 +233,13 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physicalpb.DataO
 			Inputs: []Pipeline{pipeline},
 
 			SortBy: []*physicalpb.ColumnExpression{
-				&physicalpb.ColumnExpression{
+				{
 					Name: types.ColumnNameBuiltinTimestamp,
 					Type: physicalpb.COLUMN_TYPE_BUILTIN,
 				},
 			},
 			Ascending: node.SortOrder == physicalpb.SORT_ORDER_ASCENDING,
-			K:         int(node.Limit),
+			K:         int64(node.Limit),
 
 			MaxUnused: int(c.batchSize) * 2,
 		})
@@ -269,7 +268,7 @@ func logsSortOrder(dir logs.SortDirection) physicalpb.SortOrder {
 
 func (c *Context) executeTopK(ctx context.Context, topK *physicalpb.TopK, inputs []Pipeline) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeTopK", trace.WithAttributes(
-		attribute.Int("k", topK.K),
+		attribute.Int64("k", topK.K),
 		attribute.Bool("ascending", topK.Ascending),
 	))
 	defer span.End()
@@ -284,7 +283,7 @@ func (c *Context) executeTopK(ctx context.Context, topK *physicalpb.TopK, inputs
 
 	pipeline, err := newTopkPipeline(topkOptions{
 		Inputs:     inputs,
-		SortBy:     []physicalpb.ColumnExpression{topK.SortBy},
+		SortBy:     []*physicalpb.ColumnExpression{topK.SortBy},
 		Ascending:  topK.Ascending,
 		NullsFirst: topK.NullsFirst,
 		K:          topK.K,
@@ -383,8 +382,8 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physicalpb.
 		attribute.Int("num_partition_by", len(plan.PartitionBy)),
 		attribute.Int64("start_ts", plan.StartUnixNanos),
 		attribute.Int64("end_ts", plan.EndUnixNanos),
-		attribute.Int64("range_interval", int64(plan.RangeNs)),
-		attribute.Int64("step", int64(plan.StepNs)),
+		attribute.Int64("range_interval", plan.RangeNs),
+		attribute.Int64("step", plan.StepNs),
 		attribute.Int("num_inputs", len(inputs)),
 	))
 	defer span.End()
@@ -451,7 +450,7 @@ func (c *Context) executeColumnCompat(ctx context.Context, compat *physicalpb.Co
 	return newColumnCompatibilityPipeline(compat, inputs[0])
 }
 
-func (c *Context) executeParallelize(ctx context.Context, _ *physical.Parallelize, inputs []Pipeline) Pipeline {
+func (c *Context) executeParallelize(ctx context.Context, _ *physicalpb.Parallelize, inputs []Pipeline) Pipeline {
 	if len(inputs) == 0 {
 		return emptyPipeline()
 	} else if len(inputs) > 1 {
@@ -464,7 +463,7 @@ func (c *Context) executeParallelize(ctx context.Context, _ *physical.Paralleliz
 	return inputs[0]
 }
 
-func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pipeline {
+func (c *Context) executeScanSet(ctx context.Context, set *physicalpb.ScanSet) Pipeline {
 	// ScanSet typically gets partitioned by the scheduler into multiple scan
 	// nodes.
 	//
@@ -476,7 +475,7 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pip
 
 	for _, target := range set.Targets {
 		switch target.Type {
-		case physical.ScanTypeDataObject:
+		case physicalpb.SCAN_TYPE_DATA_OBJECT:
 			// Make sure projections and predicates get passed down to the
 			// individual scan.
 			partition := target.DataObject

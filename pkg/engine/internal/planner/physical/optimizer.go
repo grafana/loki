@@ -36,26 +36,6 @@ func (r *removeNoopFilter) apply(node physicalpb.Node) bool {
 
 var _ rule = (*removeNoopFilter)(nil)
 
-// removeNoopMerge is a rule that removes merge/sortmerge nodes with only a single input
-type removeNoopMerge struct {
-	plan *physicalpb.Plan
-}
-
-// apply implements rule.
-func (r *removeNoopMerge) apply(node physicalpb.Node) bool {
-	changed := false
-	switch node := node.(type) {
-	case *physicalpb.Merge, *physicalpb.SortMerge:
-		if len(r.plan.Children(node)) <= 1 {
-			r.plan.Eliminate(node)
-			changed = true
-		}
-	}
-	return changed
-}
-
-var _ rule = (*removeNoopMerge)(nil)
-
 // predicatePushdown is a rule that moves down filter predicates to the scan nodes.
 type predicatePushdown struct {
 	plan *physicalpb.Plan
@@ -80,9 +60,9 @@ func (r *predicatePushdown) apply(node physicalpb.Node) bool {
 
 func (r *predicatePushdown) applyPredicatePushdown(node physicalpb.Node, predicate physicalpb.Expression) bool {
 	switch node := node.(type) {
-	case *ScanSet:
+	case *physicalpb.ScanSet:
 		if canApplyPredicate(predicate) {
-			node.Predicates = append(node.Predicates, predicate)
+			node.Predicates = append(node.Predicates, &predicate)
 			return true
 		}
 		return false
@@ -106,7 +86,7 @@ func canApplyPredicate(predicate physicalpb.Expression) bool {
 	case *physicalpb.Expression_BinaryExpression:
 		return canApplyPredicate(*pr.BinaryExpression.Left) && canApplyPredicate(*pr.BinaryExpression.Right)
 	case *physicalpb.Expression_ColumnExpression:
-		return physicalpb.ColumnType(pr.ColumnExpression.Type) == physicalpb.COLUMN_TYPE_BUILTIN || physicalpb.ColumnType(pr.ColumnExpression.Type) == physicalpb.COLUMN_TYPE_METADATA
+		return (pr.ColumnExpression.Type == physicalpb.COLUMN_TYPE_BUILTIN) || (pr.ColumnExpression.Type == physicalpb.COLUMN_TYPE_METADATA)
 	case *physicalpb.Expression_LiteralExpression:
 		return true
 	default:
@@ -134,7 +114,7 @@ func (r *limitPushdown) applyLimitPushdown(node physicalpb.Node, limit uint32) b
 	n := node.ToPlanNode()
 	switch node.Kind() {
 	case physicalpb.NodeKindTopK:
-		n.GetTopK().K = max(n.GetTopK().K, limit)
+		n.GetTopK().K = max(n.GetTopK().K, int64(limit))
 	case physicalpb.NodeKindDataObjScan:
 		// In case the scan node is reachable from multiple different limit nodes, we need to take the largest limit.
 		n.GetScan().Limit = max(n.GetScan().Limit, limit)
@@ -146,10 +126,10 @@ func (r *limitPushdown) applyLimitPushdown(node physicalpb.Node, limit uint32) b
 
 	for _, child := range r.plan.Children(node) {
 		if ok := r.applyLimitPushdown(child, limit); ok {
-			changed = true
+			return true
 		}
 	}
-	return changed
+	return false
 }
 
 var _ rule = (*limitPushdown)(nil)
@@ -236,7 +216,7 @@ func (r *projectionPushdown) applyProjectionPushdown(
 	applyIfNotEmpty bool,
 ) bool {
 	switch node.Kind() {
-	case physicalpb.ScanSet:
+	case physicalpb.NodeKindScanSet:
 		return r.handleScanSet(node.ToPlanNode().GetScanSet(), projections, applyIfNotEmpty)
 	case physicalpb.NodeKindDataObjScan:
 		return r.handleDataObjScan(node.ToPlanNode().GetScan(), projections, applyIfNotEmpty)
@@ -253,7 +233,7 @@ func (r *projectionPushdown) applyProjectionPushdown(
 }
 
 // handleScanSet handles projection pushdown for ScanSet nodes
-func (r *projectionPushdown) handleScanSet(node *physicalpb.ScanSet, projections []physicalpb.ColumnExpression, applyIfNotEmpty bool) bool {
+func (r *projectionPushdown) handleScanSet(node *physicalpb.ScanSet, projections []*physicalpb.ColumnExpression, applyIfNotEmpty bool) bool {
 	shouldNotApply := len(projections) == 0 && applyIfNotEmpty
 	if !r.isMetricQuery() || shouldNotApply {
 		return false
@@ -263,7 +243,7 @@ func (r *projectionPushdown) handleScanSet(node *physicalpb.ScanSet, projections
 	changed := false
 	for _, colExpr := range projections {
 		var wasAdded bool
-		node.Projections, wasAdded = addUniqueProjection(node.Projections, &colExpr)
+		node.Projections, wasAdded = addUniqueProjection(node.Projections, colExpr)
 		if wasAdded {
 			changed = true
 		}
@@ -393,20 +373,20 @@ var _ rule = (*projectionPushdown)(nil)
 // parallelPushdown is a rule that moves or splits supported operations as a
 // child of [Parallelize] to parallelize as much work as possible.
 type parallelPushdown struct {
-	plan   *Plan
-	pushed map[Node]struct{}
+	plan   *physicalpb.Plan
+	pushed map[physicalpb.Node]struct{}
 }
 
 var _ rule = (*parallelPushdown)(nil)
 
-func (p *parallelPushdown) apply(node Node) bool {
+func (p *parallelPushdown) apply(node physicalpb.Node) bool {
 	// canPushdown only returns true if all children of node are [Parallelize].
 	if !p.canPushdown(node) {
 		return false
 	}
 
 	if p.pushed == nil {
-		p.pushed = make(map[Node]struct{})
+		p.pushed = make(map[physicalpb.Node]struct{})
 	} else if _, ok := p.pushed[node]; ok {
 		// Don't apply the rule to a node more than once.
 		return false
@@ -428,17 +408,17 @@ func (p *parallelPushdown) apply(node Node) bool {
 	// There can be additional special cases, such as parallelizing an `avg` by
 	// pushing down a `sum` and `count` into the Parallelize.
 	switch node.(type) {
-	case *Projection, *Filter, *ParseNode: // Catchall for shifting nodes
+	case *physicalpb.Projection, *physicalpb.Filter, *physicalpb.Parse: // Catchall for shifting nodes
 		for _, parallelize := range p.plan.Children(node) {
-			p.plan.graph.Inject(parallelize, node.Clone())
+			p.plan.Inject(parallelize, node.Clone())
 		}
-		p.plan.graph.Eliminate(node)
+		p.plan.Eliminate(node)
 		p.pushed[node] = struct{}{}
 		return true
 
-	case *TopK: // Catchall for sharding nodes
+	case *physicalpb.TopK: // Catchall for sharding nodes
 		for _, parallelize := range p.plan.Children(node) {
-			p.plan.graph.Inject(parallelize, node.Clone())
+			p.plan.Inject(parallelize, node.Clone())
 		}
 		p.pushed[node] = struct{}{}
 		return true
@@ -449,7 +429,7 @@ func (p *parallelPushdown) apply(node Node) bool {
 
 // canPushdown returns true if the given node has children that are all of type
 // [NodeTypeParallelize]. Nodes with no children are not supported.
-func (p *parallelPushdown) canPushdown(node Node) bool {
+func (p *parallelPushdown) canPushdown(node physicalpb.Node) bool {
 	children := p.plan.Children(node)
 	if len(children) == 0 {
 		// Must have at least one child.
@@ -458,8 +438,12 @@ func (p *parallelPushdown) canPushdown(node Node) bool {
 
 	// foundNonParallelize is true if there is at least one child that is not of
 	// type [NodeTypeParallelize].
-	foundNonParallelize := slices.ContainsFunc(children, func(n Node) bool {
-		return n.Type() != NodeTypeParallelize
+	foundNonParallelize := slices.ContainsFunc(children, func(n physicalpb.Node) bool {
+		switch n.Kind() {
+		case physicalpb.NodeKindParallelize:
+			return false
+		}
+		return true
 	})
 	return !foundNonParallelize
 }
@@ -515,8 +499,7 @@ func (o *optimization) optimize(node physicalpb.Node) {
 
 func (o *optimization) applyRules(node physicalpb.Node) bool {
 	anyChanged := false
-	for _, edge := range o.plan.Edges {
-		child := o.plan.NodeById(edge.Child)
+	for _, child := range o.plan.Children(node) {
 		changed := o.applyRules(child)
 		if changed {
 			anyChanged = true

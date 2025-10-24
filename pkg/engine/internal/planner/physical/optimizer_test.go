@@ -71,41 +71,49 @@ func TestCanApplyPredicate(t *testing.T) {
 
 var time1000 = types.Timestamp(1000000000)
 
-func dummyPlan() *Plan {
-	plan := &Plan{}
+func dummyPlan() *physicalpb.Plan {
+	setID := physicalpb.PlanNodeID{Value: ulid.New()}
+	filter1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+	filter2ID := physicalpb.PlanNodeID{Value: ulid.New()}
+	filter3ID := physicalpb.PlanNodeID{Value: ulid.New()}
 
-	scanSet := plan.graph.Add(&ScanSet{
-		id: "set",
+	plan := &physicalpb.Plan{}
 
-		Targets: []*ScanTarget{
-			{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-			{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+	scanSet := plan.Add(&physicalpb.ScanSet{
+		Id: setID,
+		Targets: []*physicalpb.ScanTarget{
+			{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{}},
+			{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{}},
 		},
 	})
-	filter1 := plan.graph.Add(&Filter{id: "filter1", Predicates: []Expression{
-		&BinaryExpr{
-			Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-			Right: NewLiteral(time1000),
-			Op:    types.BinaryOpGt,
-		},
+	filter1 := plan.Add(&physicalpb.Filter{Id: filter1ID, Predicates: []*physicalpb.Expression{
+		(&physicalpb.BinaryExpression{
+			Left:  newColumnExpr("timestamp", physicalpb.COLUMN_TYPE_BUILTIN).ToExpression(),
+			Right: NewLiteral(time1000).ToExpression(),
+			Op:    physicalpb.BINARY_OP_GT,
+		}).ToExpression(),
 	}})
-	filter2 := plan.graph.Add(&Filter{id: "filter2", Predicates: []Expression{
-		&BinaryExpr{
-			Left:  newColumnExpr("level", types.ColumnTypeAmbiguous),
-			Right: NewLiteral("debug|info"),
-			Op:    types.BinaryOpMatchRe,
-		},
+	filter2 := plan.Add(&physicalpb.Filter{Id: filter2ID, Predicates: []*physicalpb.Expression{
+		(&physicalpb.BinaryExpression{
+			Left:  newColumnExpr("level", physicalpb.COLUMN_TYPE_AMBIGUOUS).ToExpression(),
+			Right: NewLiteral("debug|info").ToExpression(),
+			Op:    physicalpb.BINARY_OP_MATCH_RE,
+		}).ToExpression(),
 	}})
-	filter3 := plan.graph.Add(&Filter{id: "filter3", Predicates: []Expression{}})
+	filter3 := plan.Add(&physicalpb.Filter{Id: filter3ID, Predicates: []*physicalpb.Expression{}})
 
-	_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter3, Child: filter2})
-	_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter2, Child: filter1})
-	_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter1, Child: scanSet})
+	_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter3.GetFilter(), Child: filter2.GetFilter()})
+	_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter2.GetFilter(), Child: filter1.GetFilter()})
+	_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter1.GetFilter(), Child: scanSet.GetFilter()})
 
 	return plan
 }
 
 func TestOptimizer(t *testing.T) {
+	setID := physicalpb.PlanNodeID{Value: ulid.New()}
+	filter1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+	filter2ID := physicalpb.PlanNodeID{Value: ulid.New()}
+	filter3ID := physicalpb.PlanNodeID{Value: ulid.New()}
 
 	t.Run("noop", func(t *testing.T) {
 		plan := dummyPlan()
@@ -133,36 +141,35 @@ func TestOptimizer(t *testing.T) {
 		o.optimize(plan.Roots()[0])
 		actual := PrintAsTree(plan)
 
-		optimized := &Plan{}
-		scanSet := optimized.graph.Add(&ScanSet{
-			id: "set",
-
-			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+		optimized := &physicalpb.Plan{}
+		scanSet := optimized.Add(&physicalpb.ScanSet{
+			Id: setID,
+			Targets: []*physicalpb.ScanTarget{
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{}},
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{}},
 			},
 
-			Predicates: []Expression{
-				&BinaryExpr{
-					Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-					Right: NewLiteral(time1000),
-					Op:    types.BinaryOpGt,
-				},
+			Predicates: []*physicalpb.Expression{
+				(&physicalpb.BinaryExpression{
+					Left:  newColumnExpr("timestamp", physicalpb.COLUMN_TYPE_BUILTIN).ToExpression(),
+					Right: NewLiteral(time1000).ToExpression(),
+					Op:    physicalpb.BINARY_OP_GT,
+				}).ToExpression(),
 			},
 		})
-		filter1 := optimized.graph.Add(&Filter{id: "filter1", Predicates: []Expression{}})
-		filter2 := optimized.graph.Add(&Filter{id: "filter2", Predicates: []Expression{
-			&BinaryExpr{
-				Left:  newColumnExpr("level", types.ColumnTypeAmbiguous),
-				Right: NewLiteral("debug|info"),
-				Op:    types.BinaryOpMatchRe,
-			},
+		filter1 := optimized.Add(&physicalpb.Filter{Id: filter1ID, Predicates: []*physicalpb.Expression{}})
+		filter2 := optimized.Add(&physicalpb.Filter{Id: filter2ID, Predicates: []*physicalpb.Expression{
+			(&physicalpb.BinaryExpression{
+				Left:  newColumnExpr("level", physicalpb.COLUMN_TYPE_AMBIGUOUS).ToExpression(),
+				Right: NewLiteral("debug|info").ToExpression(),
+				Op:    physicalpb.BINARY_OP_MATCH_RE,
+			}).ToExpression(),
 		}})
-		filter3 := optimized.Add(&physicalpb.Filter{Id: filter3Id, Predicates: []*physicalpb.Expression{}})
+		filter3 := optimized.Add(&physicalpb.Filter{Id: filter3ID, Predicates: []*physicalpb.Expression{}})
 
-		_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: filter3, Child: filter2})
-		_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: filter2, Child: filter1})
-		_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: filter1, Child: scanSet})
+		_ = optimized.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(filter3), Child: physicalpb.GetNode(filter2)})
+		_ = optimized.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(filter2), Child: physicalpb.GetNode(filter1)})
+		_ = optimized.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(filter1), Child: physicalpb.GetNode(scanSet)})
 
 		expected := PrintAsTree(optimized)
 		require.Equal(t, expected, actual)
@@ -180,42 +187,43 @@ func TestOptimizer(t *testing.T) {
 		o.optimize(plan.Roots()[0])
 		actual := PrintAsTree(plan)
 
-		optimized := &Plan{}
-		scanSet := optimized.graph.Add(&ScanSet{
-			id: "set",
+		optimized := &physicalpb.Plan{}
+		scanSet := optimized.Add(&physicalpb.ScanSet{
+			Id: setID,
 
-			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+			Targets: []*physicalpb.ScanTarget{
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{}},
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{}},
 			},
 
-			Predicates: []Expression{},
+			Predicates: []*physicalpb.Expression{},
 		})
-		filter1 := optimized.graph.Add(&Filter{id: "filter1", Predicates: []Expression{
-			&BinaryExpr{
-				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-				Right: NewLiteral(time1000),
-				Op:    types.BinaryOpGt,
-			},
+		filter1 := optimized.Add(&physicalpb.Filter{Id: filter1ID, Predicates: []*physicalpb.Expression{
+			(&physicalpb.BinaryExpression{
+				Left:  newColumnExpr("timestamp", physicalpb.COLUMN_TYPE_BUILTIN).ToExpression(),
+				Right: NewLiteral(time1000).ToExpression(),
+				Op:    physicalpb.BINARY_OP_GT,
+			}).ToExpression(),
 		}})
-		filter2 := optimized.graph.Add(&Filter{id: "filter2", Predicates: []Expression{
-			&BinaryExpr{
-				Left:  newColumnExpr("level", types.ColumnTypeAmbiguous),
-				Right: NewLiteral("debug|info"),
-				Op:    types.BinaryOpMatchRe,
-			},
+		filter2 := optimized.Add(&physicalpb.Filter{Id: filter2ID, Predicates: []*physicalpb.Expression{
+			(&physicalpb.BinaryExpression{
+				Left:  newColumnExpr("level", physicalpb.COLUMN_TYPE_AMBIGUOUS).ToExpression(),
+				Right: NewLiteral("debug|info").ToExpression(),
+				Op:    physicalpb.BINARY_OP_MATCH_RE,
+			}).ToExpression(),
 		}})
 
-		_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: filter2, Child: filter1})
-		_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: filter1, Child: scanSet})
+		_ = optimized.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(filter2), Child: physicalpb.GetNode(filter1)})
+		_ = optimized.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(filter1), Child: physicalpb.GetNode(scanSet)})
 
 		expected := PrintAsTree(optimized)
 		require.Equal(t, expected, actual)
 	})
 
 	t.Run("projection pushdown handles groupby for SUM->COUNT", func(t *testing.T) {
-		countOverTimeId := physicalpb.PlanNodeID{Value: ulid.New()}
-		sumOfId := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		countOverTimeID := physicalpb.PlanNodeID{Value: ulid.New()}
+		sumOfID := physicalpb.PlanNodeID{Value: ulid.New()}
 
 		groupBy := []*physicalpb.ColumnExpression{
 			newColumnExpr("service", physicalpb.COLUMN_TYPE_LABEL),
@@ -225,13 +233,13 @@ func TestOptimizer(t *testing.T) {
 		// generate plan for sum by(service, instance) (count_over_time{...}[])
 		plan := &physicalpb.Plan{}
 		{
-			scan1 := plan.Add(&physicalpb.DataObjScan{Id: scan1Id})
+			scan1 := plan.Add(&physicalpb.DataObjScan{Id: scan1ID})
 			rangeAgg := plan.Add(&physicalpb.AggregateRange{
-				Id:        countOverTimeId,
+				Id:        countOverTimeID,
 				Operation: physicalpb.AGGREGATE_RANGE_OP_COUNT,
 			})
 			vectorAgg := plan.Add(&physicalpb.AggregateVector{
-				Id:        sumOfId,
+				Id:        sumOfID,
 				Operation: physicalpb.AGGREGATE_VECTOR_OP_SUM,
 				GroupBy:   groupBy,
 			})
@@ -258,14 +266,14 @@ func TestOptimizer(t *testing.T) {
 				newColumnExpr(types.ColumnNameBuiltinTimestamp, physicalpb.COLUMN_TYPE_BUILTIN),
 			}
 
-			scan1 := expectedPlan.Add(&physicalpb.DataObjScan{Id: scan1Id, Projections: expectedProjections})
+			scan1 := expectedPlan.Add(&physicalpb.DataObjScan{Id: scan1ID, Projections: expectedProjections})
 			rangeAgg := expectedPlan.Add(&physicalpb.AggregateRange{
-				Id:          countOverTimeId,
+				Id:          countOverTimeID,
 				Operation:   physicalpb.AGGREGATE_RANGE_OP_COUNT,
 				PartitionBy: groupBy,
 			})
 			vectorAgg := expectedPlan.Add(&physicalpb.AggregateVector{
-				Id:        sumOfId,
+				Id:        sumOfID,
 				Operation: physicalpb.AGGREGATE_VECTOR_OP_SUM,
 				GroupBy:   groupBy,
 			})
@@ -280,8 +288,9 @@ func TestOptimizer(t *testing.T) {
 	})
 
 	t.Run("projection pushdown does not handle groupby for MAX->SUM", func(t *testing.T) {
-		sumOverTimeId := physicalpb.PlanNodeID{Value: ulid.New()}
-		maxOfId := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		sumOverTimeID := physicalpb.PlanNodeID{Value: ulid.New()}
+		maxOfID := physicalpb.PlanNodeID{Value: ulid.New()}
 		groupBy := []*physicalpb.ColumnExpression{
 			newColumnExpr("service", physicalpb.COLUMN_TYPE_LABEL),
 		}
@@ -293,14 +302,14 @@ func TestOptimizer(t *testing.T) {
 		// generate plan for max by(service) (sum_over_time{...}[])
 		plan := &physicalpb.Plan{}
 		{
-			scan1 := plan.Add(&physicalpb.DataObjScan{Id: scan1Id})
+			scan1 := plan.Add(&physicalpb.DataObjScan{Id: scan1ID})
 			rangeAgg := plan.Add(&physicalpb.AggregateRange{
-				Id:          sumOverTimeId,
+				Id:          sumOverTimeID,
 				Operation:   physicalpb.AGGREGATE_RANGE_OP_SUM,
 				PartitionBy: partitionBy,
 			})
 			vectorAgg := plan.Add(&physicalpb.AggregateVector{
-				Id:        maxOfId,
+				Id:        maxOfID,
 				Operation: physicalpb.AGGREGATE_VECTOR_OP_MAX,
 				GroupBy:   groupBy,
 			})
@@ -326,14 +335,14 @@ func TestOptimizer(t *testing.T) {
 				newColumnExpr(types.ColumnNameBuiltinTimestamp, physicalpb.COLUMN_TYPE_BUILTIN),
 			}
 
-			scan1 := expectedPlan.Add(&physicalpb.DataObjScan{Id: scan1Id, Projections: expectedProjections})
+			scan1 := expectedPlan.Add(&physicalpb.DataObjScan{Id: scan1ID, Projections: expectedProjections})
 			rangeAgg := expectedPlan.Add(&physicalpb.AggregateRange{
-				Id:          sumOverTimeId,
+				Id:          sumOverTimeID,
 				Operation:   physicalpb.AGGREGATE_RANGE_OP_SUM,
 				PartitionBy: partitionBy,
 			})
 			vectorAgg := expectedPlan.Add(&physicalpb.AggregateVector{
-				Id:        maxOfId,
+				Id:        maxOfID,
 				Operation: physicalpb.AGGREGATE_VECTOR_OP_MAX,
 				GroupBy:   groupBy,
 			})
@@ -348,7 +357,9 @@ func TestOptimizer(t *testing.T) {
 	})
 
 	t.Run("projection pushdown handles partition by", func(t *testing.T) {
-		range1Id := physicalpb.PlanNodeID{Value: ulid.New()}
+		range1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan2ID := physicalpb.PlanNodeID{Value: ulid.New()}
 		partitionBy := []*physicalpb.ColumnExpression{
 			newColumnExpr("level", physicalpb.COLUMN_TYPE_LABEL),
 			newColumnExpr("service", physicalpb.COLUMN_TYPE_LABEL),
@@ -357,13 +368,13 @@ func TestOptimizer(t *testing.T) {
 		plan := &physicalpb.Plan{}
 		{
 			scan1 := plan.Add(&physicalpb.DataObjScan{
-				Id: scan1Id,
+				Id: scan1ID,
 			})
 			scan2 := plan.Add(&physicalpb.DataObjScan{
-				Id: scan2Id,
+				Id: scan2ID,
 			})
 			rangeAgg := plan.Add(&physicalpb.AggregateRange{
-				Id:          range1Id,
+				Id:          range1ID,
 				Operation:   physicalpb.AGGREGATE_RANGE_OP_COUNT,
 				PartitionBy: partitionBy,
 			})
@@ -385,16 +396,16 @@ func TestOptimizer(t *testing.T) {
 		{
 			projected := append(partitionBy, newColumnExpr(types.ColumnNameBuiltinTimestamp, physicalpb.COLUMN_TYPE_BUILTIN))
 			scan1 := expectedPlan.Add(&physicalpb.DataObjScan{
-				Id:          scan1Id,
+				Id:          scan1ID,
 				Projections: projected,
 			})
 			scan2 := expectedPlan.Add(&physicalpb.DataObjScan{
-				Id:          scan2Id,
+				Id:          scan2ID,
 				Projections: projected,
 			})
 
 			rangeAgg := expectedPlan.Add(&physicalpb.AggregateRange{
-				Id:          range1Id,
+				Id:          range1ID,
 				Operation:   physicalpb.AGGREGATE_RANGE_OP_COUNT,
 				PartitionBy: partitionBy,
 			})
@@ -410,7 +421,10 @@ func TestOptimizer(t *testing.T) {
 
 	t.Run("predicate column projection pushdown with existing projections", func(t *testing.T) {
 		// Predicate columns should be projected when there are existing projections (metric query)
-		range1Id := physicalpb.PlanNodeID{Value: ulid.New()}
+		range1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan2ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		filter1ID := physicalpb.PlanNodeID{Value: ulid.New()}
 
 		partitionBy := []*physicalpb.ColumnExpression{
 			newColumnExpr("service", physicalpb.COLUMN_TYPE_LABEL),
@@ -431,14 +445,14 @@ func TestOptimizer(t *testing.T) {
 
 		plan := &physicalpb.Plan{}
 		{
-			scan1 := plan.Add(&physicalpb.DataObjScan{Id: scan1Id})
-			scan2 := plan.Add(&physicalpb.DataObjScan{Id: scan2Id})
+			scan1 := plan.Add(&physicalpb.DataObjScan{Id: scan1ID})
+			scan2 := plan.Add(&physicalpb.DataObjScan{Id: scan2ID})
 			filter := plan.Add(&physicalpb.Filter{
-				Id:         filter1Id,
+				Id:         filter1ID,
 				Predicates: filterPredicates,
 			})
 			rangeAgg := plan.Add(&physicalpb.AggregateRange{
-				Id:          range1Id,
+				Id:          range1ID,
 				Operation:   physicalpb.AGGREGATE_RANGE_OP_COUNT,
 				PartitionBy: partitionBy,
 			})
@@ -467,19 +481,19 @@ func TestOptimizer(t *testing.T) {
 			}
 
 			scan1 := expectedPlan.Add(&physicalpb.DataObjScan{
-				Id:          scan1Id,
+				Id:          scan1ID,
 				Projections: expectedProjections,
 			})
 			scan2 := expectedPlan.Add(&physicalpb.DataObjScan{
-				Id:          scan2Id,
+				Id:          scan2ID,
 				Projections: expectedProjections,
 			})
 			filter := expectedPlan.Add(&physicalpb.Filter{
-				Id:         filter1Id,
+				Id:         filter1ID,
 				Predicates: filterPredicates,
 			})
 			rangeAgg := expectedPlan.Add(&physicalpb.AggregateRange{
-				Id:          range1Id,
+				Id:          range1ID,
 				Operation:   physicalpb.AGGREGATE_RANGE_OP_COUNT,
 				PartitionBy: partitionBy,
 			})
@@ -495,7 +509,11 @@ func TestOptimizer(t *testing.T) {
 	})
 
 	t.Run("predicate column projection pushdown without existing projections", func(t *testing.T) {
-		limit1Id := physicalpb.PlanNodeID{Value: ulid.New()}
+		limit1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan2ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		filter1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+
 		// Predicate columns should NOT be projected when there are no existing projections (log query)
 		filterPredicates := []*physicalpb.Expression{
 			newBinaryExpr(
@@ -512,13 +530,13 @@ func TestOptimizer(t *testing.T) {
 
 		plan := &physicalpb.Plan{}
 		{
-			scan1 := plan.Add(&physicalpb.DataObjScan{Id: scan1Id})
-			scan2 := plan.Add(&physicalpb.DataObjScan{Id: scan2Id})
+			scan1 := plan.Add(&physicalpb.DataObjScan{Id: scan1ID})
+			scan2 := plan.Add(&physicalpb.DataObjScan{Id: scan2ID})
 			filter := plan.Add(&physicalpb.Filter{
-				Id:         filter1Id,
+				Id:         filter1ID,
 				Predicates: filterPredicates,
 			})
-			limit := plan.Add(&physicalpb.Limit{Id: limit1Id, Fetch: 100})
+			limit := plan.Add(&physicalpb.Limit{Id: limit1ID, Fetch: 100})
 
 			_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit.GetLimit(), Child: filter.GetFilter()})
 			_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter.GetFilter(), Child: scan1.GetScan()})
@@ -536,13 +554,13 @@ func TestOptimizer(t *testing.T) {
 
 		expectedPlan := &physicalpb.Plan{}
 		{
-			scan1 := expectedPlan.Add(&physicalpb.DataObjScan{Id: scan1Id})
-			scan2 := expectedPlan.Add(&physicalpb.DataObjScan{Id: scan2Id})
+			scan1 := expectedPlan.Add(&physicalpb.DataObjScan{Id: scan1ID})
+			scan2 := expectedPlan.Add(&physicalpb.DataObjScan{Id: scan2ID})
 			filter := expectedPlan.Add(&physicalpb.Filter{
-				Id:         filter1Id,
+				Id:         filter1ID,
 				Predicates: filterPredicates,
 			})
-			limit := expectedPlan.Add(&physicalpb.Limit{Id: limit1Id, Fetch: 100})
+			limit := expectedPlan.Add(&physicalpb.Limit{Id: limit1ID, Fetch: 100})
 
 			_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit.GetLimit(), Child: filter.GetFilter()})
 			_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter.GetFilter(), Child: scan1.GetScan()})
@@ -555,7 +573,12 @@ func TestOptimizer(t *testing.T) {
 	})
 
 	t.Run("limit pushdown with filter should not propagate limit to child nodes", func(t *testing.T) {
-		limit1Id := physicalpb.PlanNodeID{Value: ulid.New()}
+		limit1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan2ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		topK1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		topK2ID := physicalpb.PlanNodeID{Value: ulid.New()}
+
 		// Limit should not be propagated to child nodes when there are filters
 		filterPredicates := []*physicalpb.Expression{
 			newBinaryExpr(
@@ -567,23 +590,22 @@ func TestOptimizer(t *testing.T) {
 
 		plan := &physicalpb.Plan{}
 		{
-			scan1 := plan.graph.Add(&DataObjScan{id: "scan1"})
-			scan2 := plan.graph.Add(&DataObjScan{id: "scan2"})
-			topK1 := plan.graph.Add(&TopK{id: "topK1", SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
-			topK2 := plan.graph.Add(&TopK{id: "topK2", SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
-			filter := plan.graph.Add(&Filter{
-				id:         "filter1",
+			scan1 := plan.Add(&physicalpb.DataObjScan{Id: scan1ID})
+			scan2 := plan.Add(&physicalpb.DataObjScan{Id: scan2ID})
+			topK1 := plan.Add(&physicalpb.TopK{Id: topK1ID, SortBy: newColumnExpr("timestamp", physicalpb.COLUMN_TYPE_BUILTIN)})
+			topK2 := plan.Add(&physicalpb.TopK{Id: topK2ID, SortBy: newColumnExpr("timestamp", physicalpb.COLUMN_TYPE_BUILTIN)})
+			filter := plan.Add(&physicalpb.Filter{
+				Id:         filter1ID,
 				Predicates: filterPredicates,
 			})
-			limit := plan.Add(&physicalpb.Limit{Id: limit1Id, Fetch: 100})
+			limit := plan.Add(&physicalpb.Limit{Id: limit1ID, Fetch: 100})
 
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: filter})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: topK1})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: topK2})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: topK1, Child: scan1})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: topK2, Child: scan2})
+			_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(limit), Child: physicalpb.GetNode(filter)})
+			_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(filter), Child: physicalpb.GetNode(topK1)})
+			_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(filter), Child: physicalpb.GetNode(topK2)})
+			_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(topK1), Child: physicalpb.GetNode(scan1)})
+			_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(topK2), Child: physicalpb.GetNode(scan2)})
 		}
-		orig := PrintAsTree(plan)
 
 		// apply optimisations
 		optimizations := []*optimization{
@@ -596,13 +618,13 @@ func TestOptimizer(t *testing.T) {
 
 		expectedPlan := &physicalpb.Plan{}
 		{
-			scan1 := expectedPlan.Add(&physicalpb.DataObjScan{Id: scan1Id})
-			scan2 := expectedPlan.Add(&physicalpb.DataObjScan{Id: scan2Id})
+			scan1 := expectedPlan.Add(&physicalpb.DataObjScan{Id: scan1ID})
+			scan2 := expectedPlan.Add(&physicalpb.DataObjScan{Id: scan2ID})
 			filter := expectedPlan.Add(&physicalpb.Filter{
-				Id:         filter1Id,
+				Id:         filter1ID,
 				Predicates: filterPredicates,
 			})
-			limit := expectedPlan.Add(&physicalpb.Limit{Id: limit1Id, Fetch: 100})
+			limit := expectedPlan.Add(&physicalpb.Limit{Id: limit1ID, Fetch: 100})
 
 			_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit.GetLimit(), Child: filter.GetFilter()})
 			_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter.GetFilter(), Child: scan1.GetScan()})
@@ -615,19 +637,23 @@ func TestOptimizer(t *testing.T) {
 	})
 
 	t.Run("limit pushdown without filter should propagate limit to child nodes", func(t *testing.T) {
-		limit1Id := physicalpb.PlanNodeID{Value: ulid.New()}
+		limit1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan2ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		topK1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		topK2ID := physicalpb.PlanNodeID{Value: ulid.New()}
 		plan := &physicalpb.Plan{}
 		{
-			scan1 := plan.graph.Add(&DataObjScan{id: "scan1"})
-			scan2 := plan.graph.Add(&DataObjScan{id: "scan2"})
-			topK1 := plan.graph.Add(&TopK{id: "topK1", SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
-			topK2 := plan.graph.Add(&TopK{id: "topK2", SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
-			limit := plan.graph.Add(&Limit{id: "limit1", Fetch: 100})
+			scan1 := plan.Add(&physicalpb.DataObjScan{Id: scan1ID})
+			scan2 := plan.Add(&physicalpb.DataObjScan{Id: scan2ID})
+			topK1 := plan.Add(&physicalpb.TopK{Id: topK1ID, SortBy: newColumnExpr("timestamp", physicalpb.COLUMN_TYPE_BUILTIN)})
+			topK2 := plan.Add(&physicalpb.TopK{Id: topK2ID, SortBy: newColumnExpr("timestamp", physicalpb.COLUMN_TYPE_BUILTIN)})
+			limit := plan.Add(&physicalpb.Limit{Id: limit1ID, Fetch: 100})
 
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: topK1, Child: scan1})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: topK2, Child: scan2})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: topK1})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: topK2})
+			_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(topK1), Child: physicalpb.GetNode(scan1)})
+			_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(topK2), Child: physicalpb.GetNode(scan2)})
+			_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(limit), Child: physicalpb.GetNode(topK1)})
+			_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(limit), Child: physicalpb.GetNode(topK2)})
 		}
 
 		// apply optimisations
@@ -641,21 +667,18 @@ func TestOptimizer(t *testing.T) {
 
 		expectedPlan := &physicalpb.Plan{}
 		{
-			scan1 := expectedPlan.Add(&physicalpb.DataObjScan{Id: scan1Id, Limit: 100})
-			scan2 := expectedPlan.Add(&physicalpb.DataObjScan{Id: scan2Id, Limit: 100})
-			limit := expectedPlan.Add(&physicalpb.Limit{Id: limit1Id, Fetch: 100})
-			scan1 := expectedPlan.graph.Add(&DataObjScan{id: "scan1"})
-			scan2 := expectedPlan.graph.Add(&DataObjScan{id: "scan2"})
-			topK1 := expectedPlan.graph.Add(&TopK{id: "topK1", SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin), K: 100})
-			topK2 := expectedPlan.graph.Add(&TopK{id: "topK2", SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin), K: 100})
-			limit := expectedPlan.graph.Add(&Limit{id: "limit1", Fetch: 100})
+			scan1 := expectedPlan.Add(&physicalpb.DataObjScan{Id: scan1ID, Limit: 100})
+			scan2 := expectedPlan.Add(&physicalpb.DataObjScan{Id: scan2ID, Limit: 100})
+			limit := expectedPlan.Add(&physicalpb.Limit{Id: limit1ID, Fetch: 100})
+			topK1 := expectedPlan.Add(&physicalpb.TopK{Id: topK1ID, SortBy: newColumnExpr("timestamp", physicalpb.COLUMN_TYPE_BUILTIN), K: 100})
+			topK2 := expectedPlan.Add(&physicalpb.TopK{Id: topK2ID, SortBy: newColumnExpr("timestamp", physicalpb.COLUMN_TYPE_BUILTIN), K: 100})
 
 			_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit.GetLimit(), Child: scan1.GetScan()})
 			_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit.GetLimit(), Child: scan2.GetScan()})
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: topK1})
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: topK2})
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: topK1, Child: scan1})
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: topK2, Child: scan2})
+			_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(limit), Child: physicalpb.GetNode(topK1)})
+			_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(limit), Child: physicalpb.GetNode(topK2)})
+			_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(topK1), Child: physicalpb.GetNode(scan1)})
+			_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(topK2), Child: physicalpb.GetNode(scan2)})
 		}
 
 		actual := PrintAsTree(plan)
@@ -665,27 +688,30 @@ func TestOptimizer(t *testing.T) {
 
 	// both predicate pushdown and limits pushdown should work together
 	t.Run("predicate and limits pushdown", func(t *testing.T) {
-		plan := &Plan{}
+		filterID := physicalpb.PlanNodeID{Value: ulid.New()}
+		limitID := physicalpb.PlanNodeID{Value: ulid.New()}
+		limit1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		plan := &physicalpb.Plan{}
 
-		scanSet := plan.graph.Add(&ScanSet{
-			id: "set",
+		scanSet := plan.Add(&physicalpb.ScanSet{
+			Id: setID,
 
-			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+			Targets: []*physicalpb.ScanTarget{
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{}},
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{}},
 			},
 		})
-		filter := plan.graph.Add(&Filter{id: "filter", Predicates: []Expression{
-			&BinaryExpr{
-				Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-				Right: NewLiteral(time1000),
-				Op:    types.BinaryOpGt,
-			},
+		filter := plan.Add(&physicalpb.Filter{Id: filterID, Predicates: []*physicalpb.Expression{
+			(&physicalpb.BinaryExpression{
+				Left:  newColumnExpr("timestamp", physicalpb.COLUMN_TYPE_BUILTIN).ToExpression(),
+				Right: NewLiteral(time1000).ToExpression(),
+				Op:    physicalpb.BINARY_OP_GT,
+			}).ToExpression(),
 		}})
-		limit := plan.graph.Add(&Limit{id: "limit", Fetch: 100})
+		limit := plan.Add(&physicalpb.Limit{Id: limitID, Fetch: 100})
 
-		_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: filter})
-		_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scanSet})
+		_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(limit), Child: physicalpb.GetNode(filter)})
+		_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(filter), Child: physicalpb.GetNode(scanSet)})
 
 		planner := NewPlanner(NewContext(time.Unix(0, 0), time.Unix(3600, 0)), &catalog{})
 		actual, err := planner.Optimize(plan)
@@ -693,25 +719,25 @@ func TestOptimizer(t *testing.T) {
 
 		optimized := &physicalpb.Plan{}
 		{
-			scanSet := optimized.graph.Add(&ScanSet{
-				id: "set",
+			scanSet := optimized.Add(&physicalpb.ScanSet{
+				Id: setID,
 
-				Targets: []*ScanTarget{
-					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
+				Targets: []*physicalpb.ScanTarget{
+					{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{}},
+					{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{}},
 				},
 
-				Predicates: []Expression{
-					&BinaryExpr{
-						Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
-						Right: NewLiteral(time1000),
-						Op:    types.BinaryOpGt,
-					},
+				Predicates: []*physicalpb.Expression{
+					(&physicalpb.BinaryExpression{
+						Left:  newColumnExpr("timestamp", physicalpb.COLUMN_TYPE_BUILTIN).ToExpression(),
+						Right: NewLiteral(time1000).ToExpression(),
+						Op:    physicalpb.BINARY_OP_GT,
+					}).ToExpression(),
 				},
 			})
-			limit := optimized.graph.Add(&Limit{id: "limit1", Fetch: 100})
+			limit := optimized.Add(&physicalpb.Limit{Id: limit1ID, Fetch: 100})
 
-			_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: scanSet})
+			_ = optimized.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(limit), Child: physicalpb.GetNode(scanSet)})
 		}
 
 		expected := PrintAsTree(optimized)
@@ -732,9 +758,9 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 				// Create a simple log query with no filters that need parsed fields
 				// {app="test"} | logfmt
 				selectorPredicate := &logical.BinOp{
-					Left:  logical.NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
 					Right: logical.NewLiteral("test"),
-					Op:    physicalpb.BINARY_OP_EQ,
+					Op:    types.BinaryOpEq,
 				}
 				builder := logical.NewBuilder(&logical.MakeTable{
 					Selector:   selectorPredicate,
@@ -751,12 +777,12 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 			name: "ParseNode skips label and builtin columns, only collects ambiguous",
 			buildLogical: func() logical.Value {
 				// {app="test"} | logfmt | app="frontend" | level="error"
-				// This is a log query (no RangeAggregation) so should parse all keys
+				// This is a log query (no physicalpb.AggregateRange) so should parse all keys
 				builder := logical.NewBuilder(&logical.MakeTable{
 					Selector: &logical.BinOp{
-						Left:  logical.NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
 						Right: logical.NewLiteral("test"),
-						Op:    physicalpb.BINARY_OP_EQ,
+						Op:    types.BinaryOpEq,
 					},
 					Shard: logical.NewShard(0, 1),
 				})
@@ -765,17 +791,17 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 
 				// Add filter on label column (should be skipped)
 				labelFilter := &logical.BinOp{
-					Left:  logical.NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
 					Right: logical.NewLiteral("frontend"),
-					Op:    physicalpb.BINARY_OP_EQ,
+					Op:    types.BinaryOpEq,
 				}
 				builder = builder.Select(labelFilter)
 
 				// Add filter on ambiguous column (should be collected)
 				ambiguousFilter := &logical.BinOp{
-					Left:  logical.NewColumnRef("level", physicalpb.COLUMN_TYPE_AMBIGUOUS),
+					Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
 					Right: logical.NewLiteral("error"),
-					Op:    physicalpb.BINARY_OP_EQ,
+					Op:    types.BinaryOpEq,
 				}
 				builder = builder.Select(ambiguousFilter)
 
@@ -783,14 +809,14 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 			},
 		},
 		{
-			name: "RangeAggregation with PartitionBy on ambiguous columns",
+			name: "physicalpb.AggregateRange with PartitionBy on ambiguous columns",
 			buildLogical: func() logical.Value {
 				// count_over_time({app="test"} | logfmt [5m]) by (duration, service)
 				builder := logical.NewBuilder(&logical.MakeTable{
 					Selector: &logical.BinOp{
-						Left:  logical.NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
 						Right: logical.NewLiteral("test"),
-						Op:    physicalpb.BINARY_OP_EQ,
+						Op:    types.BinaryOpEq,
 					},
 					Shard: logical.NewShard(0, 1),
 				})
@@ -800,10 +826,10 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 				// Range aggregation with PartitionBy
 				builder = builder.RangeAggregation(
 					[]logical.ColumnRef{
-						{Ref: types.ColumnRef{Column: "duration", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS}},
-						{Ref: types.ColumnRef{Column: "service", Type: physicalpb.COLUMN_TYPE_LABEL}}, // Label should be skipped
+						{Ref: types.ColumnRef{Column: "duration", Type: types.ColumnTypeAmbiguous}},
+						{Ref: types.ColumnRef{Column: "service", Type: types.ColumnTypeLabel}}, // Label should be skipped
 					},
-					physicalpb.AGGREGATE_RANGE_OP_COUNT,
+					types.RangeAggregationTypeCount,
 					time.Unix(0, 0),
 					time.Unix(3600, 0),
 					5*time.Minute,
@@ -820,12 +846,12 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 			buildLogical: func() logical.Value {
 				// Create a logical plan that represents:
 				// {app="test"} | logfmt | level="error"
-				// This is a log query (no RangeAggregation) so should parse all keys
+				// This is a log query (no physicalpb.AggregateRange) so should parse all keys
 				builder := logical.NewBuilder(&logical.MakeTable{
 					Selector: &logical.BinOp{
-						Left:  logical.NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
 						Right: logical.NewLiteral("test"),
-						Op:    physicalpb.BINARY_OP_EQ,
+						Op:    types.BinaryOpEq,
 					},
 					Shard: logical.NewShard(0, 1), // noShard
 				})
@@ -835,9 +861,9 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 
 				// Add filter with ambiguous column
 				filterExpr := &logical.BinOp{
-					Left:  logical.NewColumnRef("level", physicalpb.COLUMN_TYPE_AMBIGUOUS),
+					Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
 					Right: logical.NewLiteral("error"),
-					Op:    physicalpb.BINARY_OP_EQ,
+					Op:    types.BinaryOpEq,
 				}
 				builder = builder.Select(filterExpr)
 				return builder.Value()
@@ -851,9 +877,9 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 				// sum by(status) (count_over_time({app="test"} | logfmt [5m]))
 				builder := logical.NewBuilder(&logical.MakeTable{
 					Selector: &logical.BinOp{
-						Left:  logical.NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
 						Right: logical.NewLiteral("test"),
-						Op:    physicalpb.BINARY_OP_EQ,
+						Op:    types.BinaryOpEq,
 					},
 					Shard: logical.NewShard(0, 1), // noShard
 				})
@@ -864,7 +890,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 				// Range aggregation
 				builder = builder.RangeAggregation(
 					[]logical.ColumnRef{}, // no partition by
-					physicalpb.AGGREGATE_RANGE_OP_COUNT,
+					types.RangeAggregationTypeCount,
 					time.Unix(0, 0),
 					time.Unix(3600, 0),
 					5*time.Minute, // step
@@ -874,9 +900,9 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 				// Vector aggregation with groupby on ambiguous column
 				builder = builder.VectorAggregation(
 					[]logical.ColumnRef{
-						{Ref: types.ColumnRef{Column: "status", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS}},
+						{Ref: types.ColumnRef{Column: "status", Type: types.ColumnTypeAmbiguous}},
 					},
-					physicalpb.AGGREGATE_VECTOR_OP_SUM,
+					types.VectorAggregationTypeSum,
 				)
 				return builder.Value()
 			},
@@ -890,9 +916,9 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 				// sum by(status,code) (count_over_time({app="test"} | logfmt | duration > 100 [5m]))
 				builder := logical.NewBuilder(&logical.MakeTable{
 					Selector: &logical.BinOp{
-						Left:  logical.NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
 						Right: logical.NewLiteral("test"),
-						Op:    physicalpb.BINARY_OP_EQ,
+						Op:    types.BinaryOpEq,
 					},
 					Shard: logical.NewShard(0, 1), // noShard
 				})
@@ -902,16 +928,16 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 
 				// Add filter with ambiguous column
 				filterExpr := &logical.BinOp{
-					Left:  logical.NewColumnRef("duration", physicalpb.COLUMN_TYPE_AMBIGUOUS),
+					Left:  logical.NewColumnRef("duration", types.ColumnTypeAmbiguous),
 					Right: logical.NewLiteral(int64(100)),
-					Op:    physicalpb.BINARY_OP_GT,
+					Op:    types.BinaryOpGt,
 				}
 				builder = builder.Select(filterExpr)
 
 				// Range aggregation
 				builder = builder.RangeAggregation(
 					[]logical.ColumnRef{}, // no partition by
-					physicalpb.AGGREGATE_RANGE_OP_COUNT,
+					types.RangeAggregationTypeCount,
 					time.Unix(0, 0),
 					time.Unix(3600, 0),
 					5*time.Minute, // step
@@ -921,10 +947,10 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 				// Vector aggregation with groupby on ambiguous columns
 				builder = builder.VectorAggregation(
 					[]logical.ColumnRef{
-						{Ref: types.ColumnRef{Column: "status", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS}},
-						{Ref: types.ColumnRef{Column: "code", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS}},
+						{Ref: types.ColumnRef{Column: "status", Type: types.ColumnTypeAmbiguous}},
+						{Ref: types.ColumnRef{Column: "code", Type: types.ColumnTypeAmbiguous}},
 					},
-					physicalpb.AGGREGATE_VECTOR_OP_SUM,
+					types.VectorAggregationTypeSum,
 				)
 				return builder.Value()
 			},
@@ -939,9 +965,9 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 				// This is a log query (no range aggregation) so should parse all keys
 				builder := logical.NewBuilder(&logical.MakeTable{
 					Selector: &logical.BinOp{
-						Left:  logical.NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
+						Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
 						Right: logical.NewLiteral("test"),
-						Op:    physicalpb.BINARY_OP_EQ,
+						Op:    types.BinaryOpEq,
 					},
 					Shard: logical.NewShard(0, 1),
 				})
@@ -951,9 +977,9 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 
 				// Add filter on ambiguous column
 				filterExpr := &logical.BinOp{
-					Left:  logical.NewColumnRef("level", physicalpb.COLUMN_TYPE_AMBIGUOUS),
+					Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
 					Right: logical.NewLiteral("error"),
-					Op:    physicalpb.BINARY_OP_EQ,
+					Op:    types.BinaryOpEq,
 				}
 				builder = builder.Select(filterExpr)
 
@@ -969,9 +995,9 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 				// Create a logical plan that represents:
 				// sum by(app) (count_over_time({app="test"} | logfmt | level="error" [5m]) by (status, app))
 				selectorPredicate := &logical.BinOp{
-					Left:  logical.NewColumnRef("app", physicalpb.COLUMN_TYPE_LABEL),
+					Left:  logical.NewColumnRef("app", types.ColumnTypeLabel),
 					Right: logical.NewLiteral("test"),
-					Op:    physicalpb.BINARY_OP_EQ,
+					Op:    types.BinaryOpEq,
 				}
 				builder := logical.NewBuilder(&logical.MakeTable{
 					Selector:   selectorPredicate,
@@ -984,19 +1010,19 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 
 				// Add filter with ambiguous column (different from grouping field)
 				filterExpr := &logical.BinOp{
-					Left:  logical.NewColumnRef("level", physicalpb.COLUMN_TYPE_AMBIGUOUS),
+					Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
 					Right: logical.NewLiteral("error"),
-					Op:    physicalpb.BINARY_OP_EQ,
+					Op:    types.BinaryOpEq,
 				}
 				builder = builder.Select(filterExpr)
 
 				// Range aggregation
 				builder = builder.RangeAggregation(
 					[]logical.ColumnRef{
-						{Ref: types.ColumnRef{Column: "status", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS}},
-						{Ref: types.ColumnRef{Column: "app", Type: physicalpb.COLUMN_TYPE_LABEL}},
+						{Ref: types.ColumnRef{Column: "status", Type: types.ColumnTypeAmbiguous}},
+						{Ref: types.ColumnRef{Column: "app", Type: types.ColumnTypeLabel}},
 					}, // no partition by
-					physicalpb.AGGREGATE_RANGE_OP_COUNT,
+					types.RangeAggregationTypeCount,
 					time.Unix(0, 0),
 					time.Unix(3600, 0),
 					5*time.Minute, // step
@@ -1006,9 +1032,9 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 				// Vector aggregation with single groupby on parsed field (different from filter field)
 				builder = builder.VectorAggregation(
 					[]logical.ColumnRef{
-						{Ref: types.ColumnRef{Column: "app", Type: physicalpb.COLUMN_TYPE_LABEL}},
+						{Ref: types.ColumnRef{Column: "app", Type: types.ColumnTypeLabel}},
 					},
-					physicalpb.AGGREGATE_VECTOR_OP_SUM,
+					types.VectorAggregationTypeSum,
 				)
 				return builder.Value()
 			},
@@ -1055,10 +1081,9 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 					parseNode = kind.Parse
 					continue
 				}
-				if pn, ok := node.(*ScanSet); ok {
-					for _, colExpr := range pn.Projections {
-						expr := colExpr.(*ColumnExpr)
-						projections[expr.Ref.Column] = struct{}{}
+				if pn, ok := node.Kind.(*physicalpb.PlanNode_ScanSet); ok {
+					for _, colExpr := range pn.ScanSet.Projections {
+						projections[colExpr.Name] = struct{}{}
 					}
 				}
 			}
@@ -1080,7 +1105,7 @@ func Test_parallelPushdown(t *testing.T) {
 	t.Run("canPushdown", func(t *testing.T) {
 		tt := []struct {
 			name     string
-			children []Node
+			children []physicalpb.Node
 			expected bool
 		}{
 			{
@@ -1090,75 +1115,75 @@ func Test_parallelPushdown(t *testing.T) {
 			},
 			{
 				name:     "one child (not Parallelize)",
-				children: []Node{&DataObjScan{}},
+				children: []physicalpb.Node{&physicalpb.DataObjScan{}},
 				expected: false,
 			},
 			{
 				name:     "one child (Parallelize)",
-				children: []Node{&Parallelize{}},
+				children: []physicalpb.Node{&physicalpb.Parallelize{}},
 				expected: true,
 			},
 			{
 				name:     "multiple children (all Parallelize)",
-				children: []Node{&Parallelize{}, &Parallelize{}},
+				children: []physicalpb.Node{&physicalpb.Parallelize{}, &physicalpb.Parallelize{}},
 				expected: true,
 			},
 			{
 				name:     "multiple children (not all Parallelize)",
-				children: []Node{&Parallelize{}, &DataObjScan{}},
+				children: []physicalpb.Node{&physicalpb.Parallelize{}, &physicalpb.DataObjScan{}},
 				expected: false,
 			},
 		}
 
 		for _, tc := range tt {
 			t.Run(tc.name, func(t *testing.T) {
-				var plan Plan
-				parent := plan.graph.Add(&Filter{})
+				var plan physicalpb.Plan
+				parent := plan.Add(&physicalpb.Filter{})
 
 				for _, child := range tc.children {
-					plan.graph.Add(child)
-					require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parent, Child: child}))
+					plan.Add(child)
+					require.NoError(t, plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parent), Child: child}))
 				}
 
 				pass := parallelPushdown{plan: &plan}
-				require.Equal(t, tc.expected, pass.canPushdown(parent))
+				require.Equal(t, tc.expected, pass.canPushdown(physicalpb.GetNode(parent)))
 			})
 		}
 	})
 
 	t.Run("Shifts Filter", func(t *testing.T) {
-		var plan Plan
+		var plan physicalpb.Plan
 		{
-			vectorAgg := plan.graph.Add(&VectorAggregation{})
-			rangeAgg := plan.graph.Add(&RangeAggregation{})
-			filter := plan.graph.Add(&Filter{})
-			parallelize := plan.graph.Add(&Parallelize{})
-			scan := plan.graph.Add(&DataObjScan{})
+			vectorAgg := plan.Add(&physicalpb.AggregateVector{})
+			rangeAgg := plan.Add(&physicalpb.AggregateRange{})
+			filter := plan.Add(&physicalpb.Filter{})
+			parallelize := plan.Add(&physicalpb.Parallelize{})
+			scan := plan.Add(&physicalpb.DataObjScan{})
 
-			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: rangeAgg}))
-			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: filter}))
-			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: parallelize}))
-			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
+			require.NoError(t, plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(vectorAgg), Child: physicalpb.GetNode(rangeAgg)}))
+			require.NoError(t, plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(rangeAgg), Child: physicalpb.GetNode(filter)}))
+			require.NoError(t, plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(filter), Child: physicalpb.GetNode(parallelize)}))
+			require.NoError(t, plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parallelize), Child: physicalpb.GetNode(scan)}))
 		}
 
 		opt := newOptimizer(&plan, []*optimization{
 			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
 		})
-		root, _ := plan.graph.Root()
+		root, _ := plan.Root()
 		opt.optimize(root)
 
-		var expectedPlan Plan
+		var expectedPlan physicalpb.Plan
 		{
-			vectorAgg := expectedPlan.graph.Add(&VectorAggregation{})
-			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{})
-			parallelize := expectedPlan.graph.Add(&Parallelize{})
-			filter := expectedPlan.graph.Add(&Filter{})
-			scan := expectedPlan.graph.Add(&DataObjScan{})
+			vectorAgg := expectedPlan.Add(&physicalpb.AggregateVector{})
+			rangeAgg := expectedPlan.Add(&physicalpb.AggregateRange{})
+			parallelize := expectedPlan.Add(&physicalpb.Parallelize{})
+			filter := expectedPlan.Add(&physicalpb.Filter{})
+			scan := expectedPlan.Add(&physicalpb.DataObjScan{})
 
-			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: rangeAgg}))
-			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: parallelize}))
-			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: filter}))
-			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scan}))
+			require.NoError(t, expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(vectorAgg), Child: physicalpb.GetNode(rangeAgg)}))
+			require.NoError(t, expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(rangeAgg), Child: physicalpb.GetNode(parallelize)}))
+			require.NoError(t, expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parallelize), Child: physicalpb.GetNode(filter)}))
+			require.NoError(t, expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(filter), Child: physicalpb.GetNode(scan)}))
 		}
 
 		expected := PrintAsTree(&expectedPlan)
@@ -1166,38 +1191,38 @@ func Test_parallelPushdown(t *testing.T) {
 	})
 
 	t.Run("Shifts Parse", func(t *testing.T) {
-		var plan Plan
+		var plan physicalpb.Plan
 		{
-			vectorAgg := plan.graph.Add(&VectorAggregation{})
-			rangeAgg := plan.graph.Add(&RangeAggregation{})
-			parse := plan.graph.Add(&ParseNode{})
-			parallelize := plan.graph.Add(&Parallelize{})
-			scan := plan.graph.Add(&DataObjScan{})
+			vectorAgg := plan.Add(&physicalpb.AggregateVector{})
+			rangeAgg := plan.Add(&physicalpb.AggregateRange{})
+			parse := plan.Add(&physicalpb.Parse{})
+			parallelize := plan.Add(&physicalpb.Parallelize{})
+			scan := plan.Add(&physicalpb.DataObjScan{})
 
-			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: rangeAgg}))
-			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: parse}))
-			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parse, Child: parallelize}))
-			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
+			require.NoError(t, plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(vectorAgg), Child: physicalpb.GetNode(rangeAgg)}))
+			require.NoError(t, plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(rangeAgg), Child: physicalpb.GetNode(parse)}))
+			require.NoError(t, plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parse), Child: physicalpb.GetNode(parallelize)}))
+			require.NoError(t, plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parallelize), Child: physicalpb.GetNode(scan)}))
 		}
 
 		opt := newOptimizer(&plan, []*optimization{
 			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
 		})
-		root, _ := plan.graph.Root()
+		root, _ := plan.Root()
 		opt.optimize(root)
 
-		var expectedPlan Plan
+		var expectedPlan physicalpb.Plan
 		{
-			vectorAgg := expectedPlan.graph.Add(&VectorAggregation{})
-			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{})
-			parallelize := expectedPlan.graph.Add(&Parallelize{})
-			parse := expectedPlan.graph.Add(&ParseNode{})
-			scan := expectedPlan.graph.Add(&DataObjScan{})
+			vectorAgg := expectedPlan.Add(&physicalpb.AggregateVector{})
+			rangeAgg := expectedPlan.Add(&physicalpb.AggregateRange{})
+			parallelize := expectedPlan.Add(&physicalpb.Parallelize{})
+			parse := expectedPlan.Add(&physicalpb.Parse{})
+			scan := expectedPlan.Add(&physicalpb.DataObjScan{})
 
-			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: rangeAgg}))
-			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: parallelize}))
-			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: parse}))
-			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parse, Child: scan}))
+			require.NoError(t, expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(vectorAgg), Child: physicalpb.GetNode(rangeAgg)}))
+			require.NoError(t, expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(rangeAgg), Child: physicalpb.GetNode(parallelize)}))
+			require.NoError(t, expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parallelize), Child: physicalpb.GetNode(parse)}))
+			require.NoError(t, expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parse), Child: physicalpb.GetNode(scan)}))
 		}
 
 		expected := PrintAsTree(&expectedPlan)
@@ -1205,22 +1230,22 @@ func Test_parallelPushdown(t *testing.T) {
 	})
 
 	t.Run("Splits TopK", func(t *testing.T) {
-		var plan Plan
+		var plan physicalpb.Plan
 		{
-			limit := plan.graph.Add(&Limit{})
-			topk := plan.graph.Add(&TopK{SortBy: &ColumnExpr{}})
-			parallelize := plan.graph.Add(&Parallelize{})
-			scan := plan.graph.Add(&DataObjScan{})
+			limit := plan.Add(&physicalpb.Limit{})
+			topk := plan.Add(&physicalpb.TopK{SortBy: &physicalpb.ColumnExpression{}})
+			parallelize := plan.Add(&physicalpb.Parallelize{})
+			scan := plan.Add(&physicalpb.DataObjScan{})
 
-			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: topk}))
-			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: topk, Child: parallelize}))
-			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
+			require.NoError(t, plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(limit), Child: physicalpb.GetNode(topk)}))
+			require.NoError(t, plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(topk), Child: physicalpb.GetNode(parallelize)}))
+			require.NoError(t, plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parallelize), Child: physicalpb.GetNode(scan)}))
 		}
 
 		opt := newOptimizer(&plan, []*optimization{
 			newOptimization("ParallelPushdown", &plan).withRules(&parallelPushdown{plan: &plan}),
 		})
-		root, _ := plan.graph.Root()
+		root, _ := plan.Root()
 
 		// Since [optimization.optimize] does up to three passes,
 		// parallelPushdown must ignore a node after it's already been
@@ -1235,18 +1260,18 @@ func Test_parallelPushdown(t *testing.T) {
 		//             DataObjScan
 		opt.optimize(root)
 
-		var expectedPlan Plan
+		var expectedPlan physicalpb.Plan
 		{
-			limit := expectedPlan.graph.Add(&Limit{})
-			globalTopK := expectedPlan.graph.Add(&TopK{SortBy: &ColumnExpr{}})
-			parallelize := expectedPlan.graph.Add(&Parallelize{})
-			localTopK := expectedPlan.graph.Add(&TopK{SortBy: &ColumnExpr{}})
-			scan := expectedPlan.graph.Add(&DataObjScan{})
+			limit := expectedPlan.Add(&physicalpb.Limit{})
+			globalTopK := expectedPlan.Add(&physicalpb.TopK{SortBy: &physicalpb.ColumnExpression{}})
+			parallelize := expectedPlan.Add(&physicalpb.Parallelize{})
+			localTopK := expectedPlan.Add(&physicalpb.TopK{SortBy: &physicalpb.ColumnExpression{}})
+			scan := expectedPlan.Add(&physicalpb.DataObjScan{})
 
-			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: globalTopK}))
-			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: globalTopK, Child: parallelize}))
-			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: localTopK}))
-			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: localTopK, Child: scan}))
+			require.NoError(t, expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(limit), Child: physicalpb.GetNode(globalTopK)}))
+			require.NoError(t, expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(globalTopK), Child: physicalpb.GetNode(parallelize)}))
+			require.NoError(t, expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parallelize), Child: physicalpb.GetNode(localTopK)}))
+			require.NoError(t, expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(localTopK), Child: physicalpb.GetNode(scan)}))
 		}
 
 		expected := PrintAsTree(&expectedPlan)

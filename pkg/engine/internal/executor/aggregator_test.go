@@ -15,11 +15,11 @@ import (
 
 var (
 	groupBy = []*physicalpb.ColumnExpression{
-		&physicalpb.ColumnExpression{
+		{
 			Name: "env",
 			Type: physicalpb.COLUMN_TYPE_LABEL,
 		},
-		&physicalpb.ColumnExpression{
+		{
 			Name: "service",
 			Type: physicalpb.COLUMN_TYPE_LABEL,
 		},

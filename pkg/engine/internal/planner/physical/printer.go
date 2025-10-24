@@ -102,9 +102,9 @@ func toTreeNode(n physicalpb.Node) *tree.Node {
 			tree.NewProperty("nulls_first", false, node.NullsFirst),
 			tree.NewProperty("k", false, node.K),
 		}
-	case *Parallelize:
+	case *physicalpb.Parallelize:
 		// Nothing to add
-	case *ScanSet:
+	case *physicalpb.ScanSet:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("num_targets", false, len(node.Targets)),
 		}
@@ -122,7 +122,7 @@ func toTreeNode(n physicalpb.Node) *tree.Node {
 			}
 
 			switch target.Type {
-			case ScanTypeDataObject:
+			case physicalpb.SCAN_TYPE_DATA_OBJECT:
 				// Create a child node to extract the properties of the target.
 				childNode := toTreeNode(target.DataObject)
 				properties = append(properties, childNode.Properties...)

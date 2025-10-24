@@ -9,27 +9,26 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
-	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
-func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *expressionEvaluator, allocator memory.Allocator) (Pipeline, error) {
+func NewProjectPipeline(input Pipeline, proj *physicalpb.Projection, evaluator *expressionEvaluator, allocator memory.Allocator) (Pipeline, error) {
 	// Shortcut for ALL=true DROP=false EXPAND=false
 	if proj.All && !proj.Drop && !proj.Expand {
 		return input, nil
 	}
 
 	// Get the column names from the projection expressions
-	colRefs := make([]types.ColumnRef, 0, len(proj.Expressions))
-	unaryExprs := make([]physical.UnaryExpression, 0, len(proj.Expressions))
+	colRefs := make([]physicalpb.ColumnExpression, 0, len(proj.Expressions))
+	unaryExprs := make([]physicalpb.UnaryExpression, 0, len(proj.Expressions))
 
 	for i, expr := range proj.Expressions {
-		switch expr := expr.(type) {
-		case *physical.ColumnExpr:
-			colRefs = append(colRefs, expr.Ref)
-		case *physical.UnaryExpr:
-			unaryExprs = append(unaryExprs, expr)
+		switch expr := expr.Kind.(type) {
+		case *physicalpb.Expression_ColumnExpression:
+			colRefs = append(colRefs, *expr.ColumnExpression)
+		case *physicalpb.Expression_UnaryExpression:
+			unaryExprs = append(unaryExprs, *expr.UnaryExpression)
 		default:
 			return nil, fmt.Errorf("projection expression %d is unsupported", i)
 		}
@@ -38,14 +37,14 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 	// Create KEEP projection pipeline:
 	// Drop all columns except the ones referenced in proj.Expressions.
 	if !proj.All && !proj.Drop && !proj.Expand {
-		return newKeepPipeline(colRefs, func(refs []types.ColumnRef, ident *semconv.Identifier) bool {
-			return slices.ContainsFunc(refs, func(ref types.ColumnRef) bool {
+		return newKeepPipeline(colRefs, func(refs []physicalpb.ColumnExpression, ident *semconv.Identifier) bool {
+			return slices.ContainsFunc(refs, func(ref physicalpb.ColumnExpression) bool {
 				// Keep all of the ambiguous columns
-				if ref.Type == types.ColumnTypeAmbiguous {
-					return ref.Column == ident.ShortName()
+				if ref.Type == physicalpb.COLUMN_TYPE_AMBIGUOUS {
+					return ref.Name == ident.ShortName()
 				}
 				// Keep only if type matches
-				return ref.Column == ident.ShortName() && ref.Type == ident.ColumnType()
+				return ref.Name == ident.ShortName() && ref.Type == ident.ColumnType()
 			})
 		}, input)
 	}
@@ -53,21 +52,21 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 	// Create DROP projection pipeline:
 	// Keep all columns except the ones referenced in proj.Expressions.
 	if proj.All && proj.Drop {
-		return newKeepPipeline(colRefs, func(refs []types.ColumnRef, ident *semconv.Identifier) bool {
-			return !slices.ContainsFunc(refs, func(ref types.ColumnRef) bool {
+		return newKeepPipeline(colRefs, func(refs []physicalpb.ColumnExpression, ident *semconv.Identifier) bool {
+			return !slices.ContainsFunc(refs, func(ref physicalpb.ColumnExpression) bool {
 				// Drop all of the ambiguous columns
-				if ref.Type == types.ColumnTypeAmbiguous {
-					return ref.Column == ident.ShortName()
+				if ref.Type == physicalpb.COLUMN_TYPE_AMBIGUOUS {
+					return ref.Name == ident.ShortName()
 				}
 				// Drop only if type matches
-				return ref.Column == ident.ShortName() && ref.Type == ident.ColumnType()
+				return ref.Name == ident.ShortName() && ref.Type == ident.ColumnType()
 			})
 		}, input)
 	}
 
 	// Create EXPAND projection pipeline:
 	// Keep all columns and expand the ones referenced in proj.Expressions.
-	// TODO: as implmented, epanding and keeping/dropping cannot happen in the same projection. Is this desired?
+	// TODO: as implemented, epanding and keeping/dropping cannot happen in the same projection. Is this desired?
 	if proj.All && proj.Expand {
 		return newExpandPipeline(unaryExprs, evaluator, allocator, input)
 	}
@@ -75,7 +74,7 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 	return nil, errNotImplemented
 }
 
-func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef, *semconv.Identifier) bool, input Pipeline) (*GenericPipeline, error) {
+func newKeepPipeline(colRefs []physicalpb.ColumnExpression, keepFunc func([]physicalpb.ColumnExpression, *semconv.Identifier) bool, input Pipeline) (*GenericPipeline, error) {
 	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
@@ -107,7 +106,7 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 	}, input), nil
 }
 
-func newExpandPipeline(expressions []physical.UnaryExpression, evaluator *expressionEvaluator, allocator memory.Allocator, input Pipeline) (*GenericPipeline, error) {
+func newExpandPipeline(expressions []physicalpb.UnaryExpression, evaluator *expressionEvaluator, allocator memory.Allocator, input Pipeline) (*GenericPipeline, error) {
 	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
@@ -117,7 +116,6 @@ func newExpandPipeline(expressions []physical.UnaryExpression, evaluator *expres
 		if err != nil {
 			return nil, err
 		}
-		defer batch.Release()
 
 		columns := []arrow.Array{}
 		fields := []arrow.Field{}
@@ -128,13 +126,11 @@ func newExpandPipeline(expressions []physical.UnaryExpression, evaluator *expres
 		}
 
 		for _, expr := range expressions {
-			vec, err := evaluator.eval(expr, allocator, batch)
+			vec, err := evaluator.eval(*expr.ToExpression(), allocator, batch)
 			if err != nil {
 				return nil, err
 			}
-			defer vec.Release()
 			if arrStruct, ok := vec.ToArray().(*array.Struct); ok {
-				defer arrStruct.Release()
 				structSchema, ok := arrStruct.DataType().(*arrow.StructType)
 				if !ok {
 					return nil, fmt.Errorf("unexpected type returned from evaluation, expected *arrow.StructType, got %T", arrStruct.DataType())
