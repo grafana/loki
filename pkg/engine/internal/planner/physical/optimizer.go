@@ -12,8 +12,7 @@ import (
 // A rule is a transformation that can be applied on a Node.
 type rule interface {
 	// apply tries to apply the transformation on the node.
-	// It returns a boolean indicating whether the transformation has been applied,
-	// and an error if the transformation failed.
+	// It returns a boolean indicating whether the transformation has been applied.
 	apply(Node) bool
 }
 
