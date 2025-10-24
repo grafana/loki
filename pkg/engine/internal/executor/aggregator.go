@@ -150,7 +150,6 @@ func (a *aggregator) BuildRecord() (arrow.Record, error) {
 
 	schema := arrow.NewSchema(fields, nil)
 	rb := array.NewRecordBuilder(memory.NewGoAllocator(), schema)
-	defer rb.Release()
 
 	// emit aggregated results in sorted order of timestamp
 	for _, ts := range a.getSortedTimestamps() {

@@ -27,6 +27,8 @@ func toTree(p *Plan, n Node) *tree.Node {
 
 func toTreeNode(n Node) *tree.Node {
 	treeNode := tree.NewNode(n.Type().String(), "")
+	treeNode.Context = n
+
 	switch node := n.(type) {
 	case *DataObjScan:
 		treeNode.Properties = []tree.Property{
@@ -70,6 +72,14 @@ func toTreeNode(n Node) *tree.Node {
 		}
 
 		treeNode.Properties = properties
+	case *VectorAggregation:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("operation", false, node.Operation),
+		}
+
+		if len(node.GroupBy) > 0 {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("group_by", true, toAnySlice(node.GroupBy)...))
+		}
 	case *ParseNode:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("kind", false, node.Kind.String()),

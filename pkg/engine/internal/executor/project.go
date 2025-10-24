@@ -21,17 +21,23 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 
 	// Get the column names from the projection expressions
 	colRefs := make([]types.ColumnRef, 0, len(proj.Expressions))
-	unaryExprs := make([]physical.UnaryExpression, 0, len(proj.Expressions))
+	mathExprs := make([]physical.Expression, 0, len(proj.Expressions))
 
 	for i, expr := range proj.Expressions {
 		switch expr := expr.(type) {
 		case *physical.ColumnExpr:
 			colRefs = append(colRefs, expr.Ref)
 		case *physical.UnaryExpr:
-			unaryExprs = append(unaryExprs, expr)
+			mathExprs = append(mathExprs, expr)
+		case *physical.BinaryExpr:
+			mathExprs = append(mathExprs, expr)
 		default:
 			return nil, fmt.Errorf("projection expression %d is unsupported", i)
 		}
+	}
+
+	if len(mathExprs) > 1 {
+		return nil, fmt.Errorf("there might be only one math expression for `value` column at a time")
 	}
 
 	// Create KEEP projection pipeline:
@@ -66,9 +72,9 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 
 	// Create EXPAND projection pipeline:
 	// Keep all columns and expand the ones referenced in proj.Expressions.
-	// TODO: as implmented, epanding and keeping/dropping cannot happen in the same projection. Is this desired?
-	if proj.All && proj.Expand {
-		return newExpandPipeline(unaryExprs, evaluator, input)
+	// TODO: as implemented, epanding and keeping/dropping cannot happen in the same projection. Is this desired?
+	if proj.All && proj.Expand && len(mathExprs) > 0 {
+		return newExpandPipeline(mathExprs[0], evaluator, input)
 	}
 
 	return nil, errNotImplemented
@@ -84,7 +90,6 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 		if err != nil {
 			return nil, err
 		}
-		defer batch.Release()
 
 		columns := make([]arrow.Array, 0, batch.NumCols())
 		fields := make([]arrow.Field, 0, batch.NumCols())
@@ -106,7 +111,7 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 	}, input), nil
 }
 
-func newExpandPipeline(expressions []physical.UnaryExpression, evaluator *expressionEvaluator, input Pipeline) (*GenericPipeline, error) {
+func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator, input Pipeline) (*GenericPipeline, error) {
 	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
@@ -116,38 +121,47 @@ func newExpandPipeline(expressions []physical.UnaryExpression, evaluator *expres
 		if err != nil {
 			return nil, err
 		}
-		defer batch.Release()
 
-		columns := []arrow.Array{}
-		fields := []arrow.Field{}
+		outputFields := make([]arrow.Field, 0)
+		outputCols := make([]arrow.Array, 0)
+		schema := batch.Schema()
 
+		// move all columns into the output except `value`
 		for i, field := range batch.Schema().Fields() {
-			columns = append(columns, batch.Column(i))
-			fields = append(fields, field)
-		}
-
-		for _, expr := range expressions {
-			vec, err := evaluator.eval(expr, batch)
+			ident, err := semconv.ParseFQN(schema.Field(i).Name)
 			if err != nil {
 				return nil, err
 			}
-			defer vec.Release()
-			if arrStruct, ok := vec.ToArray().(*array.Struct); ok {
-				defer arrStruct.Release()
-				structSchema, ok := arrStruct.DataType().(*arrow.StructType)
-				if !ok {
-					return nil, fmt.Errorf("unexpected type returned from evaluation, expected *arrow.StructType, got %T", arrStruct.DataType())
-				}
-
-				for i := range arrStruct.NumField() {
-					columns = append(columns, arrStruct.Field(i))
-					fields = append(fields, structSchema.Field(i))
-				}
+			if !ident.Equal(semconv.ColumnIdentValue) {
+				outputCols = append(outputCols, batch.Column(i))
+				outputFields = append(outputFields, field)
 			}
 		}
 
-		metadata := batch.Schema().Metadata()
-		schema := arrow.NewSchema(fields, &metadata)
-		return array.NewRecord(schema, columns, batch.NumRows()), nil
+		vec, err := evaluator.eval(expr, batch)
+		if err != nil {
+			return nil, err
+		}
+
+		switch arrCasted := vec.(type) {
+		case *array.Struct:
+			structSchema, ok := arrCasted.DataType().(*arrow.StructType)
+			if !ok {
+				return nil, fmt.Errorf("unexpected type returned from evaluation, expected *arrow.StructType, got %T", arrCasted.DataType())
+			}
+			for i := range arrCasted.NumField() {
+				outputCols = append(outputCols, arrCasted.Field(i))
+				outputFields = append(outputFields, structSchema.Field(i))
+			}
+		case *array.Float64:
+			outputFields = append(outputFields, semconv.FieldFromIdent(semconv.ColumnIdentValue, false))
+			outputCols = append(outputCols, arrCasted)
+		default:
+			return nil, fmt.Errorf("unexpected type returned from evaluation %T", arrCasted.DataType())
+		}
+
+		metadata := schema.Metadata()
+		outputSchema := arrow.NewSchema(outputFields, &metadata)
+		return array.NewRecord(outputSchema, outputCols, batch.NumRows()), nil
 	}, input), nil
 }

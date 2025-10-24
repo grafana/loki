@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
@@ -126,14 +125,11 @@ NextInput:
 				return nil, err
 			}
 
-			p.batch.Put(memory.DefaultAllocator, rec)
-
-			// Release the record; p.batch.Put will add an extra retain if necessary.
-			rec.Release()
+			p.batch.Put(rec)
 		}
 	}
 
-	compacted := p.batch.Compact(memory.DefaultAllocator)
+	compacted := p.batch.Compact()
 	if compacted == nil {
 		return nil, EOF
 	}

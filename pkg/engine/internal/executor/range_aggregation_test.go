@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -26,9 +25,6 @@ var (
 )
 
 func TestRangeAggregationPipeline_instant(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	// input schema with timestamp, partition-by columns and non-partition columns
 	fields := []arrow.Field{
 		semconv.FieldFromFQN(colTs, false),
@@ -80,16 +76,15 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 		operation:     types.RangeAggregationTypeCount,
 	}
 
-	inputA := NewArrowtestPipeline(alloc, schema, rowsPipelineA...)
-	inputB := NewArrowtestPipeline(alloc, schema, rowsPipelineB...)
-	pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(alloc), opts)
+	inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
+	inputB := NewArrowtestPipeline(schema, rowsPipelineB...)
+	pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts)
 	require.NoError(t, err)
 	defer pipeline.Close()
 
 	// Read the pipeline output
 	record, err := pipeline.Read(t.Context())
 	require.NoError(t, err)
-	defer record.Release()
 
 	expect := arrowtest.Rows{
 		{colTs: time.Unix(20, 0).UTC(), colVal: float64(2), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1"},
@@ -109,9 +104,6 @@ func TestRangeAggregationPipeline(t *testing.T) {
 	// 1. Overlapping windows (range > step) - data points can appear in multiple windows
 	// 2. Aligned windows (step = range) - each data point appears in exactly one window
 	// 3. Non-overlapping windows (step > range) - gaps between windows
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	var (
 		fields = []arrow.Field{
 			semconv.FieldFromFQN(colTs, false),
@@ -171,15 +163,14 @@ func TestRangeAggregationPipeline(t *testing.T) {
 			operation:     types.RangeAggregationTypeCount,
 		}
 
-		inputA := NewArrowtestPipeline(alloc, schema, rowsPipelineA...)
-		inputB := NewArrowtestPipeline(alloc, schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(alloc), opts)
+		inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
+		inputB := NewArrowtestPipeline(schema, rowsPiplelineB...)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
 		record, err := pipeline.Read(t.Context())
 		require.NoError(t, err)
-		defer record.Release()
 
 		expect := arrowtest.Rows{
 			// time.Unix(10, 0)
@@ -219,15 +210,14 @@ func TestRangeAggregationPipeline(t *testing.T) {
 			operation:     types.RangeAggregationTypeCount,
 		}
 
-		inputA := NewArrowtestPipeline(alloc, schema, rowsPipelineA...)
-		inputB := NewArrowtestPipeline(alloc, schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(alloc), opts)
+		inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
+		inputB := NewArrowtestPipeline(schema, rowsPiplelineB...)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
 		record, err := pipeline.Read(t.Context())
 		require.NoError(t, err)
-		defer record.Release()
 
 		expect := arrowtest.Rows{
 			// time.Unix(10, 0)
@@ -281,15 +271,14 @@ func TestRangeAggregationPipeline(t *testing.T) {
 			operation:     types.RangeAggregationTypeCount,
 		}
 
-		inputA := NewArrowtestPipeline(alloc, schema, rowsPipelineA...)
-		inputB := NewArrowtestPipeline(alloc, schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(alloc), opts)
+		inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
+		inputB := NewArrowtestPipeline(schema, rowsPiplelineB...)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
 		record, err := pipeline.Read(t.Context())
 		require.NoError(t, err)
-		defer record.Release()
 
 		expect := arrowtest.Rows{
 			// time.Unix(10, 0)
