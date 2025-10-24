@@ -328,6 +328,7 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 			Fragment: physical.FromGraph(*shardedPlan),
 			Sources:  shardSources,
 			Sinks:    make(map[physical.Node][]*Stream),
+			Cost:     1, // TODO(chaudum): Assign real cost
 		}
 		p.graph.Add(partition)
 
