@@ -36,7 +36,7 @@ func addCompareCommand(app *kingpin.Application) {
 	cmd.Flag("host1", "First Loki host").Default("localhost:3101").StringVar(&host1)
 	cmd.Flag("host2", "Second Loki host").Default("localhost:3102").StringVar(&host2)
 
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 		storageBucket = cfg.Bucket
 		orgID = cfg.OrgID
 

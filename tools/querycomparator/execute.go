@@ -45,7 +45,7 @@ func addExecuteCommand(app *kingpin.Application) {
 	cmd.Flag("limit", "Maximum number of entries to return").Default("100").IntVar(&cfg.Limit)
 	cmd.Flag("engine", "Engine version (1 or 2)").Default("2").IntVar(&engineVersion)
 
-	cmd.Action(func(c *kingpin.ParseContext) error {
+	cmd.Action(func(_ *kingpin.ParseContext) error {
 		storageBucket = cfg.Bucket
 		orgID = cfg.OrgID
 
@@ -138,7 +138,10 @@ func doLocalQueryWithV1Engine(params logql.LiteralParams) (logqlmodel.Result, er
 		return logqlmodel.Result{}, err
 	}
 
-	os.MkdirAll("temp_index_cache", 0o755)
+	err = os.MkdirAll("temp_index_cache", 0o755)
+	if err != nil {
+		return logqlmodel.Result{}, fmt.Errorf("failed to create temp index cache directory: %w", err)
+	}
 
 	store, err := storage.NewStore(storage.Config{
 		ObjectStore: bucket.ConfigWithNamedStores{
