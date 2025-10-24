@@ -703,7 +703,8 @@ func TestOTLPLogToPushEntry(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, res, err := otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig(defaultGlobalOTLPConfig), false, nil)
+			cache := newLabelNameCache()
+			_, res, err := otlpLogToPushEntry(tc.buildLogRecord(), DefaultOTLPConfig(defaultGlobalOTLPConfig), false, nil, cache)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedResp, res)
 		})
@@ -812,7 +813,8 @@ func TestAttributesToLabels(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			lbls, err := attributesToLabels(tc.buildAttrs(), "")
+			cache := newLabelNameCache()
+			lbls, err := attributesToLabels(tc.buildAttrs(), "", cache)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedResp, lbls)
 		})

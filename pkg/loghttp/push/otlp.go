@@ -16,7 +16,6 @@ import (
 	"github.com/pierrec/lz4/v4"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -128,6 +127,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 		return &logproto.PushRequest{}, nil
 	}
 
+	labelCache := newLabelNameCache()
 	rls := ld.ResourceLogs()
 	pushRequestsByStream := make(map[string]logproto.Stream, rls.Len())
 
@@ -166,7 +166,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				return true
 			}
 
-			attributeAsLabels, err := attributeToLabels(k, v, "")
+			attributeAsLabels, err := attributeToLabels(k, v, "", labelCache)
 			if err != nil {
 				rangeErr = err
 				return false
@@ -283,7 +283,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 					return true
 				}
 
-				attributeAsLabels, err := attributeToLabels(k, v, "")
+				attributeAsLabels, err := attributeToLabels(k, v, "", labelCache)
 				if err != nil {
 					rangeErr = err
 					return false
@@ -322,11 +322,17 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 			totalBytesReceived += int64(scopeAttributesAsStructuredMetadataSize)
 
 			stats.ResourceAndSourceMetadataLabels[policy][retentionPeriodForUser] = append(stats.ResourceAndSourceMetadataLabels[policy][retentionPeriodForUser], scopeAttributesAsStructuredMetadata...)
+
+			combinedResourceScopeMetadata := make(push.LabelsAdapter, 0,
+				len(resourceAttributesAsStructuredMetadata)+len(scopeAttributesAsStructuredMetadata))
+			combinedResourceScopeMetadata = append(combinedResourceScopeMetadata, resourceAttributesAsStructuredMetadata...)
+			combinedResourceScopeMetadata = append(combinedResourceScopeMetadata, scopeAttributesAsStructuredMetadata...)
+
 			for k := 0; k < logs.Len(); k++ {
 				log := logs.At(k)
 
 				// Use the existing function that already handles log attributes properly
-				logLabels, entry, err := otlpLogToPushEntry(log, otlpConfig, logServiceNameDiscovery, pushedLabels)
+				logLabels, entry, err := otlpLogToPushEntry(log, otlpConfig, logServiceNameDiscovery, pushedLabels, labelCache)
 				if err != nil {
 					return nil, err
 				}
@@ -371,16 +377,13 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 				// This preserves the intent of tracking entry-specific metadata separately without requiring subtraction
 				entryOwnMetadataSize := int64(loki_util.StructuredMetadataSize(entry.StructuredMetadata))
 
-				// if entry.StructuredMetadata doesn't have capacity to add resource and scope attributes, make a new slice with enough capacity
-				attributesAsStructuredMetadataLen := len(resourceAttributesAsStructuredMetadata) + len(scopeAttributesAsStructuredMetadata)
-				if cap(entry.StructuredMetadata) < len(entry.StructuredMetadata)+attributesAsStructuredMetadataLen {
-					structuredMetadata := make(push.LabelsAdapter, 0, len(entry.StructuredMetadata)+len(scopeAttributesAsStructuredMetadata)+len(resourceAttributesAsStructuredMetadata))
-					structuredMetadata = append(structuredMetadata, entry.StructuredMetadata...)
-					entry.StructuredMetadata = structuredMetadata
+				requiredCap := len(entry.StructuredMetadata) + len(combinedResourceScopeMetadata)
+				if cap(entry.StructuredMetadata) < requiredCap {
+					newMetadata := make(push.LabelsAdapter, len(entry.StructuredMetadata), requiredCap)
+					copy(newMetadata, entry.StructuredMetadata)
+					entry.StructuredMetadata = newMetadata
 				}
-
-				entry.StructuredMetadata = append(entry.StructuredMetadata, resourceAttributesAsStructuredMetadata...)
-				entry.StructuredMetadata = append(entry.StructuredMetadata, scopeAttributesAsStructuredMetadata...)
+				entry.StructuredMetadata = append(entry.StructuredMetadata, combinedResourceScopeMetadata...)
 				stream := pushRequestsByStream[entryLabelsStr]
 				stream.Entries = append(stream.Entries, entry)
 				pushRequestsByStream[entryLabelsStr] = stream
@@ -455,7 +458,7 @@ func otlpToLokiPushRequest(ctx context.Context, ld plog.Logs, userID string, otl
 }
 
 // otlpLogToPushEntry converts an OTLP log record to a Loki push.Entry.
-func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNameDiscovery bool, pushedLabels model.LabelSet) (model.LabelSet, push.Entry, error) {
+func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNameDiscovery bool, pushedLabels model.LabelSet, cache *labelNameCache) (model.LabelSet, push.Entry, error) {
 	// copy log attributes and all the fields from log(except log.Body) to structured metadata
 	logAttrs := log.Attributes()
 	structuredMetadata := make(push.LabelsAdapter, 0, logAttrs.Len()+7)
@@ -468,7 +471,7 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNam
 			return true
 		}
 
-		attributeAsLabels, err := attributeToLabels(k, v, "")
+		attributeAsLabels, err := attributeToLabels(k, v, "", cache)
 		if err != nil {
 			rangeErr = err
 			return false
@@ -555,7 +558,7 @@ func otlpLogToPushEntry(log plog.LogRecord, otlpConfig OTLPConfig, logServiceNam
 	}, nil
 }
 
-func attributesToLabels(attrs pcommon.Map, prefix string) (push.LabelsAdapter, error) {
+func attributesToLabels(attrs pcommon.Map, prefix string, cache *labelNameCache) (push.LabelsAdapter, error) {
 	labelsAdapter := make(push.LabelsAdapter, 0, attrs.Len())
 	if attrs.Len() == 0 {
 		return labelsAdapter, nil
@@ -563,7 +566,7 @@ func attributesToLabels(attrs pcommon.Map, prefix string) (push.LabelsAdapter, e
 
 	var rangeErr error
 	attrs.Range(func(k string, v pcommon.Value) bool {
-		lbls, err := attributeToLabels(k, v, prefix)
+		lbls, err := attributeToLabels(k, v, prefix, cache)
 		if err != nil {
 			rangeErr = err
 			return false
@@ -575,7 +578,7 @@ func attributesToLabels(attrs pcommon.Map, prefix string) (push.LabelsAdapter, e
 	return labelsAdapter, rangeErr
 }
 
-func attributeToLabels(k string, v pcommon.Value, prefix string) (push.LabelsAdapter, error) {
+func attributeToLabels(k string, v pcommon.Value, prefix string, cache *labelNameCache) (push.LabelsAdapter, error) {
 	var labelsAdapter push.LabelsAdapter
 
 	keyWithPrefix := k
@@ -583,8 +586,7 @@ func attributeToLabels(k string, v pcommon.Value, prefix string) (push.LabelsAda
 		keyWithPrefix = prefix + "_" + k
 	}
 
-	labelNamer := otlptranslator.LabelNamer{}
-	keyWithPrefix, err := labelNamer.Build(keyWithPrefix)
+	keyWithPrefix, err := cache.Build(keyWithPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("symbolizer lookup: %w", err)
 	}
@@ -595,7 +597,7 @@ func attributeToLabels(k string, v pcommon.Value, prefix string) (push.LabelsAda
 		labelsAdapter = make(push.LabelsAdapter, 0, mv.Len())
 		var rangeErr error
 		mv.Range(func(k string, v pcommon.Value) bool {
-			lbls, err := attributeToLabels(k, v, keyWithPrefix)
+			lbls, err := attributeToLabels(k, v, keyWithPrefix, cache)
 			if err != nil {
 				rangeErr = fmt.Errorf("symbolizer lookup: %w", err)
 				return false
