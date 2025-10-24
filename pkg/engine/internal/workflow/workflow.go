@@ -40,14 +40,14 @@ type Workflow struct {
 // cannot be partitioned into a Workflow.
 //
 // The provided Runner will be used for Workflow execution.
-func New(logger log.Logger, runner Runner, plan *physical.Plan) (*Workflow, error) {
-	graph, err := planWorkflow(plan)
+func New(logger log.Logger, tenantID string, runner Runner, plan *physical.Plan) (*Workflow, error) {
+	graph, err := planWorkflow(tenantID, plan)
 	if err != nil {
 		return nil, err
 	}
 
 	// Inject a stream for final task results.
-	results, err := injectResultsStream(&graph)
+	results, err := injectResultsStream(tenantID, &graph)
 	if err != nil {
 		return nil, err
 	}
@@ -65,8 +65,8 @@ func New(logger log.Logger, runner Runner, plan *physical.Plan) (*Workflow, erro
 
 // injectResultsStream injects a new stream into the sinks of the root task for
 // the workflow to receive final results.
-func injectResultsStream(graph *dag.Graph[*Task]) (*Stream, error) {
-	results := &Stream{ULID: ulid.Make()}
+func injectResultsStream(tenantID string, graph *dag.Graph[*Task]) (*Stream, error) {
+	results := &Stream{ULID: ulid.Make(), TenantID: tenantID}
 
 	// Inject a stream for final task results.
 	rootTask, err := graph.Root()
