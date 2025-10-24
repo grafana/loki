@@ -402,19 +402,33 @@ type parallelPushdown struct {
 
 var _ rule = (*parallelPushdown)(nil)
 
-func (p *parallelPushdown) apply(node Node) (bool, error) {
-	// canPushdown only returns true if all children of node are [Parallelize].
-	if !p.canPushdown(node) {
-		return false, nil
-	}
-
+func (p *parallelPushdown) apply(root Node) (bool, error) {
 	if p.pushed == nil {
 		p.pushed = make(map[Node]struct{})
-	} else if _, ok := p.pushed[node]; ok {
-		// Don't apply the rule to a node more than once.
-		return false, nil
 	}
 
+	// find all nodes that can be parallelized
+	nodes := findMatchingNodes(p.plan, root, func(node Node) bool {
+		if _, ok := p.pushed[node]; ok {
+			return false
+		}
+
+		// canPushdown only returns true if all children of node are [Parallelize].
+		return p.canPushdown(node)
+	})
+
+	// apply parallel pushdown to each node
+	changed := false
+	for _, node := range nodes {
+		if p.applyParallelization(node) {
+			changed = true
+		}
+	}
+
+	return changed, nil
+}
+
+func (p *parallelPushdown) applyParallelization(node Node) bool {
 	// There are two catchall cases here:
 	//
 	// 1. Nodes which get *shifted* down into a parallel pushdown, where the
@@ -437,17 +451,17 @@ func (p *parallelPushdown) apply(node Node) (bool, error) {
 		}
 		p.plan.graph.Eliminate(node)
 		p.pushed[node] = struct{}{}
-		return true, nil
+		return true
 
 	case *TopK: // Catchall for sharding nodes
 		for _, parallelize := range p.plan.Children(node) {
 			p.plan.graph.Inject(parallelize, node.Clone())
 		}
 		p.pushed[node] = struct{}{}
-		return true, nil
+		return true
 	}
 
-	return false, nil
+	return false
 }
 
 // canPushdown returns true if the given node has children that are all of type
@@ -487,7 +501,7 @@ func (o *optimization) withRules(rules ...rule) *optimization {
 }
 
 func (o *optimization) optimize(node Node) {
-	iterations, maxIterations := 0, 3
+	iterations, maxIterations := 0, 10
 
 	for iterations < maxIterations {
 		iterations++
