@@ -119,7 +119,7 @@ require (
 	github.com/IBM/ibm-cos-sdk-go v1.12.3
 	github.com/apache/arrow-go/v18 v18.4.0
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.51.0
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.58.3
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.88.4
 	github.com/axiomhq/hyperloglog v0.2.5
 	github.com/bits-and-blooms/bloom/v3 v3.7.0
 	github.com/buger/jsonparser v1.1.1
@@ -183,12 +183,12 @@ require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aws/aws-sdk-go v1.55.7 // indirect
-	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.7 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.3.15 // indirect
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.1 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.9 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.3.17 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.9 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.17.15 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.9 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.1 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.22.0 // indirect
