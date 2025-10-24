@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"fmt"
 	"math"
 	"regexp"
 	"strings"
@@ -111,12 +112,12 @@ type UnaryFunctionRegistry interface {
 }
 
 type UnaryFunction interface {
-	Evaluate(lhs ColumnVector) (ColumnVector, error)
+	Evaluate(lhs arrow.Array) (arrow.Array, error)
 }
 
-type UnaryFunc func(ColumnVector) (ColumnVector, error)
+type UnaryFunc func(arrow.Array) (arrow.Array, error)
 
-func (f UnaryFunc) Evaluate(lhs ColumnVector) (ColumnVector, error) {
+func (f UnaryFunc) Evaluate(lhs arrow.Array) (arrow.Array, error) {
 	return f(lhs)
 }
 
@@ -156,13 +157,8 @@ type BinaryFunctionRegistry interface {
 	GetForSignature(types.BinaryOp, arrow.DataType) (BinaryFunction, error)
 }
 
-// TODO(chaudum): Make BinaryFunction typed:
-//
-//	type BinaryFunction[L, R arrow.DataType] interface {
-//		Evaluate(lhs ColumnVector[L], rhs ColumnVector[R]) (ColumnVector[arrow.BOOL], error)
-//	}
 type BinaryFunction interface {
-	Evaluate(lhs, rhs ColumnVector) (ColumnVector, error)
+	Evaluate(lhs, rhs arrow.Array) (arrow.Array, error)
 }
 
 type binaryFuncReg struct {
@@ -206,24 +202,24 @@ type arrayType[T comparable] interface {
 
 // genericBoolFunction is a struct that implements the [BinaryFunction] interface methods
 // and can be used for any array type with comparable elements.
-type genericBoolFunction[E arrayType[T], T comparable] struct {
+type genericBoolFunction[E arrow.TypedArray[T], T arrow.ValueType] struct {
 	eval func(a, b T) (bool, error)
 }
 
 // Evaluate implements BinaryFunction.
-func (f *genericBoolFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector) (ColumnVector, error) {
+func (f *genericBoolFunction[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array) (arrow.Array, error) {
 	if lhs.Len() != rhs.Len() {
 		return nil, arrow.ErrIndex
 	}
 
-	lhsArr, ok := lhs.ToArray().(E)
+	lhsArr, ok := lhs.(E)
 	if !ok {
-		return nil, arrow.ErrType
+		return nil, fmt.Errorf("invalid array type: expected %T, got %T", new(E), lhs)
 	}
 
-	rhsArr, ok := rhs.ToArray().(E)
+	rhsArr, ok := rhs.(E)
 	if !ok {
-		return nil, arrow.ErrType
+		return nil, fmt.Errorf("invalid array type: expected %T, got %T", new(E), rhs)
 	}
 
 	builder := array.NewBooleanBuilder(memory.DefaultAllocator)
@@ -240,29 +236,29 @@ func (f *genericBoolFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector)
 		builder.Append(res)
 	}
 
-	return &Array{array: builder.NewArray(), dt: types.Loki.Bool, ct: types.ColumnTypeGenerated}, nil
+	return builder.NewArray(), nil
 }
 
 // genericFloat64Function is a struct that implements the [BinaryFunction] interface methods
 // and can be used for any array type with numeric elements.
-type genericFloat64Function[E arrayType[T], T comparable] struct {
+type genericFloat64Function[E arrow.TypedArray[T], T arrow.ValueType] struct {
 	eval func(a, b T) (float64, error)
 }
 
 // Evaluate implements BinaryFunction.
-func (f *genericFloat64Function[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector) (ColumnVector, error) {
+func (f *genericFloat64Function[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array) (arrow.Array, error) {
 	if lhs.Len() != rhs.Len() {
 		return nil, arrow.ErrIndex
 	}
 
-	lhsArr, ok := lhs.ToArray().(E)
+	lhsArr, ok := lhs.(E)
 	if !ok {
-		return nil, arrow.ErrType
+		return nil, fmt.Errorf("invalid array type: expected %T, got %T", new(E), lhs)
 	}
 
-	rhsArr, ok := rhs.ToArray().(E)
+	rhsArr, ok := rhs.(E)
 	if !ok {
-		return nil, arrow.ErrType
+		return nil, fmt.Errorf("invalid array type: expected %T, got %T", new(E), rhs)
 	}
 
 	builder := array.NewFloat64Builder(memory.DefaultAllocator)
@@ -279,7 +275,7 @@ func (f *genericFloat64Function[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVect
 		builder.Append(res)
 	}
 
-	return &Array{array: builder.NewArray(), dt: types.Loki.Float, ct: types.ColumnTypeGenerated}, nil
+	return builder.NewArray(), nil
 }
 
 // Compiler optimized version of converting boolean b into an integer of value 0 or 1

@@ -24,6 +24,7 @@ type Peer struct {
 	Handler Handler // Handler for incoming messages from the remote peer.
 	Buffer  int     // Buffer size for incoming and outgoing messages.
 
+	done     chan struct{}     // Closed when the peer connection is closed.
 	incoming chan MessageFrame // Buffered frame of incoming messages.
 	outgoing chan Frame        // Buffered frame of outgoing frames.
 	initOnce sync.Once
@@ -63,12 +64,15 @@ func (p *Peer) lazyInit() {
 	}
 
 	p.initOnce.Do(func() {
+		p.done = make(chan struct{})
 		p.incoming = make(chan MessageFrame, p.Buffer)
 		p.outgoing = make(chan Frame, p.Buffer)
 	})
 }
 
 func (p *Peer) recvMessages(ctx context.Context) error {
+	defer close(p.done)
+
 	for {
 		frame, err := p.Conn.Recv(ctx)
 		if err != nil && ctx.Err() != nil {
@@ -131,6 +135,8 @@ func (p *Peer) handleIncoming(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-p.done:
+			return nil // Closed connection.
 		case frame := <-p.incoming:
 			p.processMessage(ctx, frame.ID, frame.Message)
 		}
@@ -142,6 +148,8 @@ func (p *Peer) handleOutgoing(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-p.done:
+			return nil // Closed connection.
 		case frame := <-p.outgoing:
 			if err := p.Conn.Send(ctx, frame); err != nil && ctx.Err() == nil {
 				level.Warn(p.Logger).Log("msg", "failed to send message", "error", err)
@@ -163,6 +171,7 @@ func (p *Peer) notifyError(frame Frame, err error) {
 		req := val.(*request)
 
 		select {
+		case <-p.done: // Connection closed
 		case req.result <- err:
 		default:
 			level.Warn(p.Logger).Log("msg", "ignoring duplicate acknowledgement")
@@ -219,6 +228,8 @@ func (p *Peer) SendMessage(ctx context.Context, message Message) error {
 	case <-ctx.Done():
 		// TODO(rfratto): queue a DiscardFrame
 		return ctx.Err()
+	case <-p.done:
+		return ErrConnClosed
 	case err := <-req.result:
 		return err
 	}
@@ -242,6 +253,8 @@ func (p *Peer) enqueueFrame(ctx context.Context, frame Frame) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
+	case <-p.done:
+		return ErrConnClosed
 	case p.outgoing <- frame:
 		return nil
 	}

@@ -72,7 +72,7 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 
 	// Create EXPAND projection pipeline:
 	// Keep all columns and expand the ones referenced in proj.Expressions.
-	// TODO: as implmented, epanding and keeping/dropping cannot happen in the same projection. Is this desired?
+	// TODO: as implemented, epanding and keeping/dropping cannot happen in the same projection. Is this desired?
 	if proj.All && proj.Expand && len(mathExprs) > 0 {
 		return newExpandPipeline(mathExprs[0], evaluator, input)
 	}
@@ -143,11 +143,11 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 			return nil, err
 		}
 
-		switch arrCasted := vec.ToArray().(type) {
+		switch arrCasted := vec.(type) {
 		case *array.Struct:
 			structSchema, ok := arrCasted.DataType().(*arrow.StructType)
 			if !ok {
-				return nil, fmt.Errorf("unexpected type returned from evaluation %T", arrCasted.DataType())
+				return nil, fmt.Errorf("unexpected type returned from evaluation, expected *arrow.StructType, got %T", arrCasted.DataType())
 			}
 			for i := range arrCasted.NumField() {
 				outputCols = append(outputCols, arrCasted.Field(i))
