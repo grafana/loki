@@ -374,7 +374,7 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 // collapseMathExpressions traverses over a subtree of math expressions `c` (BinOps, UnaryOps, or Literals) and collapses them
 // into a Projection node with a complex Expression. It may insert a Join node if it finds a BinOp with two obj scan inputs.
 // Parameters:
-//   - c: current logical plan node
+//   - lp: current logical plan node
 //   - rootNode: true indicates that this is the first call and the function should produce a Node. false indicates
 //     that this is a recursive call and the function should keep accumulating Expression if possible.
 //   - ctx: context from the current planner call.
@@ -385,8 +385,8 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 //   - inputRef: a pointer to a node in `acc` that refers the input, if any. This is for convenience of
 //     renaming the column refenrece without a need to search for it in `acc` expression.
 //   - err: error
-func (p *Planner) collapseMathExpressions(c logical.Value, rootNode bool, ctx *Context) (acc Expression, input Node, inputRef *ColumnExpr, err error) {
-	switch v := c.(type) {
+func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *Context) (acc Expression, input Node, inputRef *ColumnExpr, err error) {
+	switch v := lp.(type) {
 	case *logical.BinOp:
 		// Traverse left and right children
 		leftChild, leftInput, leftInputRef, err := p.collapseMathExpressions(v.Left, false, ctx)
@@ -510,7 +510,7 @@ func (p *Planner) collapseMathExpressions(c logical.Value, rootNode bool, ctx *C
 		// If it is neigher a literal nor an expression, then we continue `p.process` on this node and represent in
 		// as a column ref `value` in the final math expression.
 		columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
-		child, err := p.process(c, ctx)
+		child, err := p.process(lp, ctx)
 		if err != nil {
 			return nil, nil, nil, err
 		}
