@@ -186,12 +186,12 @@ func buildPlanForLogQuery(
 
 	// TODO: there's a subtle bug here, as it is actually possible to have both a logfmt parser and a json parser
 	// for example, the query `{app="foo"} | json | line_format "{{.nested_json}}" | json ` is valid, and will need
-	// multiple parse stages. We will handle thid in a future PR.
+	// multiple parse stages. We will handle this in a future PR.
 	if hasLogfmtParser {
-		builder = builder.Parse(ParserLogfmt)
+		builder = builder.Parse(types.FunctionOpParseLogfmt)
 	}
 	if hasJSONParser {
-		builder = builder.Parse(ParserJSON)
+		builder = builder.Parse(types.FunctionOpParseJSON)
 	}
 	for _, value := range postParsePredicates {
 		builder = builder.Select(value)

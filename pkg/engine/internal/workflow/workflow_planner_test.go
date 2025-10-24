@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
@@ -127,7 +129,22 @@ RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:
 			parallelize = physicalGraph.Add(&physical.Parallelize{})
 
 			filter  = physicalGraph.Add(&physical.Filter{})
-			parse   = physicalGraph.Add(&physical.ParseNode{Kind: physical.ParserLogfmt})
+			project = physicalGraph.Add(
+				&physical.Projection{
+					Expressions: []physical.Expression{
+						&physical.FunctionExpr{
+							Op: types.FunctionOpParseLogfmt,
+							Expressions: []physical.Expression{
+								&physical.ColumnExpr{
+									Ref: semconv.ColumnIdentMessage.ColumnRef(),
+								},
+							},
+						},
+					},
+					All:    true,
+					Expand: true,
+				},
+			)
 			scanSet = physicalGraph.Add(&physical.ScanSet{
 				Targets: []*physical.ScanTarget{
 					{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{Location: "a"}},
@@ -140,8 +157,8 @@ RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:
 		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: vectorAgg, Child: rangeAgg})
 		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: parallelize})
 		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallelize, Child: filter})
-		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: filter, Child: parse})
-		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parse, Child: scanSet})
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: filter, Child: project})
+		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: project, Child: scanSet})
 
 		physicalPlan := physical.FromGraph(physicalGraph)
 
@@ -169,21 +186,21 @@ Task 00000000000000000000000003
 -------------------------------
 Filter
 │   └── @sink stream=00000000000000000000000007
-└── Parse kind=logfmt
+└── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
     └── DataObjScan location=a streams=0 section_id=0 projections=()
 
 Task 00000000000000000000000004
 -------------------------------
 Filter
 │   └── @sink stream=00000000000000000000000008
-└── Parse kind=logfmt
+└── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
     └── DataObjScan location=b streams=0 section_id=0 projections=()
 
 Task 00000000000000000000000005
 -------------------------------
 Filter
 │   └── @sink stream=00000000000000000000000009
-└── Parse kind=logfmt
+└── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
     └── DataObjScan location=c streams=0 section_id=0 projections=()
 `)
 
