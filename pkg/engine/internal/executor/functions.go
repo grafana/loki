@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -91,12 +92,12 @@ type UnaryFunctionRegistry interface {
 }
 
 type UnaryFunction interface {
-	Evaluate(lhs ColumnVector) (ColumnVector, error)
+	Evaluate(lhs arrow.Array) (arrow.Array, error)
 }
 
-type UnaryFunc func(ColumnVector) (ColumnVector, error)
+type UnaryFunc func(arrow.Array) (arrow.Array, error)
 
-func (f UnaryFunc) Evaluate(lhs ColumnVector) (ColumnVector, error) {
+func (f UnaryFunc) Evaluate(lhs arrow.Array) (arrow.Array, error) {
 	return f(lhs)
 }
 
@@ -136,13 +137,8 @@ type BinaryFunctionRegistry interface {
 	GetForSignature(types.BinaryOp, arrow.DataType) (BinaryFunction, error)
 }
 
-// TODO(chaudum): Make BinaryFunction typed:
-//
-//	type BinaryFunction[L, R arrow.DataType] interface {
-//		Evaluate(lhs ColumnVector[L], rhs ColumnVector[R]) (ColumnVector[arrow.BOOL], error)
-//	}
 type BinaryFunction interface {
-	Evaluate(lhs, rhs ColumnVector) (ColumnVector, error)
+	Evaluate(lhs, rhs arrow.Array) (arrow.Array, error)
 }
 
 type binaryFuncReg struct {
@@ -176,34 +172,26 @@ func (b *binaryFuncReg) GetForSignature(op types.BinaryOp, ltype arrow.DataType)
 	return fn, nil
 }
 
-// arrayType combines the IsNull function from the [arrow.Array] interface with the
-// type specific function Value from the concrete types, such as [array.String].
-type arrayType[T comparable] interface {
-	IsNull(int) bool
-	Value(int) T
-	Len() int
-}
-
 // genericFunction is a struct that implements the [BinaryFunction] interface methods
 // and can be used for any array type with compareable elements.
-type genericFunction[E arrayType[T], T comparable] struct {
+type genericFunction[E arrow.TypedArray[T], T arrow.ValueType] struct {
 	eval func(a, b T) (bool, error)
 }
 
 // Evaluate implements BinaryFunction.
-func (f *genericFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector) (ColumnVector, error) {
+func (f *genericFunction[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array) (arrow.Array, error) {
 	if lhs.Len() != rhs.Len() {
 		return nil, arrow.ErrIndex
 	}
 
-	lhsArr, ok := lhs.ToArray().(E)
+	lhsArr, ok := lhs.(E)
 	if !ok {
-		return nil, arrow.ErrType
+		return nil, fmt.Errorf("invalid array type: expected %T, got %T", new(E), lhs)
 	}
 
-	rhsArr, ok := rhs.ToArray().(E)
+	rhsArr, ok := rhs.(E)
 	if !ok {
-		return nil, arrow.ErrType
+		return nil, fmt.Errorf("invalid array type: expected %T, got %T", new(E), rhs)
 	}
 
 	builder := array.NewBooleanBuilder(memory.DefaultAllocator)
@@ -220,7 +208,7 @@ func (f *genericFunction[E, T]) Evaluate(lhs ColumnVector, rhs ColumnVector) (Co
 		builder.Append(res)
 	}
 
-	return &Array{array: builder.NewArray()}, nil
+	return builder.NewArray(), nil
 }
 
 // Compiler optimized version of converting boolean b into an integer of value 0 or 1

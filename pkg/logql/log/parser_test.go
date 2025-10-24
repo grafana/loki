@@ -57,7 +57,8 @@ func Test_jsonParser_Parse(t *testing.T) {
 			},
 			NoParserHints(),
 		},
-		{"numeric",
+		{
+			"numeric",
 			[]byte(`{"counter":1, "price": {"_net_":5.56909}}`),
 			labels.EmptyLabels(),
 			labels.FromStrings("counter", "1",
@@ -662,6 +663,18 @@ func TestJSONExpressionParser(t *testing.T) {
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
 				"app", `{"name":"great \"loki\""}`,
+			),
+			NoParserHints(),
+		},
+		{
+			"duplicate field name takes first value",
+			[]byte(`{"app":"foo","app":"duplicate"}`),
+			[]LabelExtractionExpr{
+				NewLabelExtractionExpr("app", `app`),
+			},
+			labels.FromStrings("foo", "bar"),
+			labels.FromStrings("foo", "bar",
+				"app", "foo",
 			),
 			NoParserHints(),
 		},
@@ -1428,7 +1441,6 @@ func TestLogfmtConsistentPrecedence(t *testing.T) {
 		require.Equal(t, ParsedLabel, cat)
 		require.True(t, ok)
 	})
-
 }
 
 func TestLogfmtExpressionParser(t *testing.T) {
