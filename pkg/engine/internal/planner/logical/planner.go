@@ -259,14 +259,40 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 		builder = builder.Cast(unwrapIdentifier, unwrapOperation)
 	}
 
-	rangeAggType := convertRangeAggregationType(e.Operation)
-	if rangeAggType == types.RangeAggregationTypeInvalid {
+	var rangeAggType types.RangeAggregationType
+	switch e.Operation {
+	case syntax.OpRangeTypeCount:
+		rangeAggType = types.RangeAggregationTypeCount
+	case syntax.OpRangeTypeSum:
+		rangeAggType = types.RangeAggregationTypeSum
+	//case syntax.OpRangeTypeMax:
+	//	rangeAggType = types.RangeAggregationTypeMax
+	//case syntax.OpRangeTypeMin:
+	//	rangeAggType = types.RangeAggregationTypeMin
+	//case syntax.OpRangeTypeBytesRate:
+	//	rangeAggType = types.RangeAggregationTypeBytes // bytes_rate is implemented as bytes_over_time/$interval
+	case syntax.OpRangeTypeRate:
+		rangeAggType = types.RangeAggregationTypeCount // rate is implemented as count_over_time/$interval
+	default:
 		return nil, errUnimplemented
 	}
 
 	builder = builder.RangeAggregation(
 		nil, rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,
 	)
+
+	switch e.Operation {
+	//case syntax.OpRangeTypeBytesRate:
+	//	// bytes_rate is implemented as bytes_over_time/$interval
+	//	builder = builder.BinOpRight(types.BinaryOpDiv, &Literal{
+	//		Literal: NewLiteral(params.Interval().Seconds()),
+	//	})
+	case syntax.OpRangeTypeRate:
+		// rate is implemented as count_over_time/$interval
+		builder = builder.BinOpRight(types.BinaryOpDiv, &Literal{
+			Literal: NewLiteral(params.Interval().Seconds()),
+		})
+	}
 
 	return builder.Value(), nil
 }
@@ -423,21 +449,6 @@ func convertVectorAggregationType(op string) types.VectorAggregationType {
 	//	return types.VectorAggregationTypeMin
 	default:
 		return types.VectorAggregationTypeInvalid
-	}
-}
-
-func convertRangeAggregationType(op string) types.RangeAggregationType {
-	switch op {
-	case syntax.OpRangeTypeCount:
-		return types.RangeAggregationTypeCount
-	case syntax.OpRangeTypeSum:
-		return types.RangeAggregationTypeSum
-	//case syntax.OpRangeTypeMax:
-	//	return types.RangeAggregationTypeMax
-	//case syntax.OpRangeTypeMin:
-	//	return types.RangeAggregationTypeMin
-	default:
-		return types.RangeAggregationTypeInvalid
 	}
 }
 
