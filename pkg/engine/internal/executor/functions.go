@@ -192,14 +192,6 @@ func (b *binaryFuncReg) GetForSignature(op types.BinaryOp, ltype arrow.DataType)
 	return fn, nil
 }
 
-// arrayType combines the IsNull function from the [arrow.Array] interface with the
-// type specific function Value from the concrete types, such as [array.String].
-type arrayType[T comparable] interface {
-	IsNull(int) bool
-	Value(int) T
-	Len() int
-}
-
 // genericBoolFunction is a struct that implements the [BinaryFunction] interface methods
 // and can be used for any array type with comparable elements.
 type genericBoolFunction[E arrow.TypedArray[T], T arrow.ValueType] struct {
