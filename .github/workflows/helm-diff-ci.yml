@@ -79,7 +79,7 @@ jobs:
           helm dependency build production/helm/loki
          
       - name: Install KEDA (if required)
-        if: ${{ matrix.scenario.install_keda }} && ${{ matrix.scenario.use_k3d }}
+        if: ${{ matrix.scenario.install_keda && matrix.scenario.use_k3d }}
         run: |
           helm install keda kedacore/keda --namespace keda --create-namespace
 
