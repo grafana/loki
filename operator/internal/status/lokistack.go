@@ -12,6 +12,18 @@ import (
 	"github.com/grafana/loki/operator/internal/external/k8s"
 )
 
+// LokiStackStatusInfo holds all status information calculated during LokiStack reconciliation
+type LokiStackStatusInfo struct {
+	// DegradedError contains information about why the managed LokiStack has an invalid configuration.
+	DegradedError *DegradedError
+
+	// Storage contains the credential mode used for object storage access
+	Storage lokiv1.CredentialMode
+
+	// NetworkPolicies indicates whether network policies are enabled or disabled
+	NetworkPolicies lokiv1.NetworkPoliciesStatus
+}
+
 const (
 	messageReady                           = "All components ready"
 	messageFailed                          = "One or more LokiStack components failed"

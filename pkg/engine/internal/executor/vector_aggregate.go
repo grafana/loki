@@ -93,7 +93,6 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 				}
 				return nil, err
 			}
-			defer record.Release()
 
 			inputsExhausted = false
 
@@ -102,16 +101,14 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 			if err != nil {
 				return nil, err
 			}
-			tsCol := tsVec.ToArray().(*array.Timestamp)
-			defer tsCol.Release()
+			tsCol := tsVec.(*array.Timestamp)
 
 			// extract value column
 			valueVec, err := v.valueEval(record)
 			if err != nil {
 				return nil, err
 			}
-			valueArr := valueVec.ToArray().(*array.Float64)
-			defer valueArr.Release()
+			valueArr := valueVec.(*array.Float64)
 
 			// extract all the columns that are used for grouping
 			arrays := make([]*array.String, 0, len(v.groupBy))
@@ -122,13 +119,11 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 					return nil, err
 				}
 
-				if vec.Type() != types.Loki.String {
-					return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.Type())
+				if vec.DataType().ID() != types.Arrow.String.ID() {
+					return nil, fmt.Errorf("unsupported datatype for grouping %s", vec.DataType())
 				}
 
-				arr := vec.ToArray().(*array.String)
-				defer arr.Release()
-
+				arr := vec.(*array.String)
 				arrays = append(arrays, arr)
 			}
 
@@ -154,14 +149,4 @@ func (v *vectorAggregationPipeline) Close() {
 	for _, input := range v.inputs {
 		input.Close()
 	}
-}
-
-// Inputs returns the inputs of the pipeline.
-func (v *vectorAggregationPipeline) Inputs() []Pipeline {
-	return v.inputs
-}
-
-// Transport returns the transport type of the pipeline.
-func (v *vectorAggregationPipeline) Transport() Transport {
-	return Local
 }

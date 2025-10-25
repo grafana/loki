@@ -15,7 +15,6 @@ type Merge struct {
 	maxPrefetch int
 	initialized bool
 	currInput   int // index of the currently processed input
-	state       state
 }
 
 var _ Pipeline = (*Merge)(nil)
@@ -78,7 +77,7 @@ func (m *Merge) startPrefetchingInputAtIndex(ctx context.Context, i int) {
 	}
 }
 
-// Read reads the next value into its state.
+// Read reads the next batch from the pipeline.
 // It returns an error if reading fails or when the pipeline is exhausted.
 func (m *Merge) Read(ctx context.Context) (arrow.Record, error) {
 	m.init(ctx)
@@ -118,14 +117,4 @@ func (m *Merge) Close() {
 	for _, input := range m.inputs[m.currInput:] {
 		input.Close()
 	}
-}
-
-// Inputs returns the inputs of the pipeline.
-func (m *Merge) Inputs() []Pipeline {
-	return m.inputs
-}
-
-// Transport returns the type of transport of the implementation.
-func (m *Merge) Transport() Transport {
-	return Local
 }

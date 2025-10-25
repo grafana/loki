@@ -37,8 +37,17 @@ func (t ExpressionType) String() string {
 // Expression is the common interface for all expressions in a physical plan.
 type Expression interface {
 	fmt.Stringer
+	Clone() Expression
 	Type() ExpressionType
 	isExpr()
+}
+
+func cloneExpressions[E Expression](exprs []E) []E {
+	clonedExprs := make([]E, len(exprs))
+	for i, expr := range exprs {
+		clonedExprs[i] = expr.Clone().(E)
+	}
+	return clonedExprs
 }
 
 // UnaryExpression is the common interface for all unary expressions in a
@@ -81,6 +90,14 @@ type UnaryExpr struct {
 func (*UnaryExpr) isExpr()      {}
 func (*UnaryExpr) isUnaryExpr() {}
 
+// Clone returns a copy of the [UnaryExpr].
+func (e *UnaryExpr) Clone() Expression {
+	return &UnaryExpr{
+		Left: e.Left.Clone(),
+		Op:   e.Op,
+	}
+}
+
 func (e *UnaryExpr) String() string {
 	return fmt.Sprintf("%s(%s)", e.Op, e.Left)
 }
@@ -99,6 +116,15 @@ type BinaryExpr struct {
 func (*BinaryExpr) isExpr()       {}
 func (*BinaryExpr) isBinaryExpr() {}
 
+// Clone returns a copy of the [BinaryExpr].
+func (e *BinaryExpr) Clone() Expression {
+	return &BinaryExpr{
+		Left:  e.Left.Clone(),
+		Right: e.Right.Clone(),
+		Op:    e.Op,
+	}
+}
+
 func (e *BinaryExpr) String() string {
 	return fmt.Sprintf("%s(%s, %s)", e.Op, e.Left, e.Right)
 }
@@ -115,6 +141,12 @@ type LiteralExpr struct {
 
 func (*LiteralExpr) isExpr()        {}
 func (*LiteralExpr) isLiteralExpr() {}
+
+// Clone returns a copy of the [LiteralExpr].
+func (e *LiteralExpr) Clone() Expression {
+	// No need to clone literals.
+	return &LiteralExpr{Literal: e.Literal}
+}
 
 // String returns the string representation of the literal value.
 func (e *LiteralExpr) String() string {
@@ -154,6 +186,11 @@ func newColumnExpr(column string, ty types.ColumnType) *ColumnExpr {
 
 func (e *ColumnExpr) isExpr()       {}
 func (e *ColumnExpr) isColumnExpr() {}
+
+// Clone returns a copy of the [ColumnExpr].
+func (e *ColumnExpr) Clone() Expression {
+	return &ColumnExpr{Ref: e.Ref}
+}
 
 // String returns the string representation of the column expression.
 // It contains of the name of the column and its type, joined by a dot (`.`).
