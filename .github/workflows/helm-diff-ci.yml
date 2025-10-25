@@ -62,6 +62,7 @@ jobs:
           helm repo add minio https://charts.min.io/
           helm repo add grafana https://grafana.github.io/helm-charts
           helm repo add grafana-operator https://grafana.github.io/helm-charts
+          helm repo add kedacore https://kedacore.github.io/charts
           helm repo update
 
       - name: Setup K3D
@@ -80,8 +81,6 @@ jobs:
       - name: Install KEDA (if required)
         if: ${{ matrix.scenario.install_keda }} && ${{ matrix.scenario.use_k3d }}
         run: |
-          helm repo add kedacore https://kedacore.github.io/charts  
-          helm repo update
           helm install keda kedacore/keda --namespace keda --create-namespace
 
       # Conditional steps based on whether K3D is used
