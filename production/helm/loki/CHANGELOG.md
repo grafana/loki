@@ -12,6 +12,7 @@ Entries should be ordered as follows:
 Entries should include a reference to the pull request that introduced the change.
 
 ## Unreleased
+- [BUGFIX] Set `FOLDER_ANNOTATION` in Distributed and SingleBinary deployments. [#19593](https://github.com/grafana/loki/pull/19593)
 
 ## 6.45.2
 
