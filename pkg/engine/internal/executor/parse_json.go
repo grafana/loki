@@ -76,7 +76,6 @@ func (j *jsonParser) process(line []byte, requestedKeys []string) (map[string]st
 	err := jsonparser.ObjectEach(line, func(key []byte, value []byte, dataType jsonparser.ValueType, _ int) error {
 		return j.parseObject(key, value, dataType, result, requestedKeyLookup)
 	})
-
 	// If there's an error, return empty result for consistency with malformed JSON handling
 	if err != nil {
 		return make(map[string]string), err
@@ -142,6 +141,11 @@ func (j *jsonParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 	// Convert the value to string based on its type
 	parsedValue := parseValue(value, dataType)
 	if parsedValue != "" {
+		// First-wins semantics for duplicates
+		_, exists := result[keyString]
+		if exists {
+			return nil
+		}
 		result[keyString] = parsedValue
 	}
 
