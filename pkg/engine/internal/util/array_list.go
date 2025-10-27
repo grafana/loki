@@ -1,4 +1,4 @@
-package util
+package util //nolint:revive
 
 import (
 	"github.com/apache/arrow-go/v18/arrow/array"
