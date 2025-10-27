@@ -14,6 +14,7 @@ aliases:
 Loki is a horizontally scalable, highly available, multi-tenant log aggregation system inspired by Prometheus.
 It's designed to be very cost-effective and easy to operate.
 It doesn't index the contents of the logs, but rather a set of labels for each log stream.
+Note that the entire content of the log line is searchable, using labels just makes searching more efficient by narrowing the number of logs retrieved during querying.
 
 Because all Loki implementations are unique, the installation process is different for every customer.
 But there are some steps in the process that are common to every installation.
