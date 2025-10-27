@@ -261,7 +261,7 @@ func (r *Reader) init(ctx context.Context) error {
 	innerOptions := dataset.ReaderOptions{
 		Dataset:    dset,
 		Columns:    dset.Columns(),
-		Predicates: orderPredicates(preds),
+		Predicates: preds,
 		Prefetch:   true,
 	}
 	if r.inner == nil {
