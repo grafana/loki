@@ -373,12 +373,12 @@ func (u *variadicFuncReg) register(op types.VariadicOp, f VariadicFunction) {
 		u.reg = make(map[types.VariadicOp]VariadicFunction)
 	}
 
-  _, exists := u.reg[op]
-  if exists {
-    panic(fmt.Sprintf("duplicate variadic function registration for %s", op))
-  }
+	_, exists := u.reg[op]
+	if exists {
+		panic(fmt.Sprintf("duplicate variadic function registration for %s", op))
+	}
 
-  u.reg[op] = f
+	u.reg[op] = f
 }
 
 // GetForSignature implements VariadicFunctionRegistry.

@@ -40,7 +40,7 @@ func (t Type) String() string {
 	case STRUCT:
 		return "STRUCT"
 	case LIST:
-    return "LIST"
+		return "LIST"
 	default:
 		return "INVALID"
 	}
@@ -132,7 +132,7 @@ var (
 		Loki.Duration.String():  Loki.Duration,
 		Loki.Bytes.String():     Loki.Bytes,
 		Loki.Struct.String():    Loki.Struct,
-    Loki.List.String():      Loki.List,
+		Loki.List.String():      Loki.List,
 	}
 )
 
