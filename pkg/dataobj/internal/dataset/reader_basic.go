@@ -63,7 +63,7 @@ func (pr *basicReader) ReadColumns(ctx context.Context, columns []Column, s []Ro
 		s[i].Index = int(pr.nextRow + int64(i))
 	}
 
-	n, err = pr.fill(ctx, columns, s)
+	n, err = pr.fill(ctx, columns, s, false)
 	pr.nextRow += int64(n)
 	return n, err
 }
@@ -95,7 +95,7 @@ func (pr *basicReader) Fill(ctx context.Context, columns []Column, s []Row) (n i
 	}
 
 	for partition := range partitionRows(s) {
-		pn, err := pr.fill(ctx, columns, partition)
+		pn, err := pr.fill(ctx, columns, partition, true)
 		n += pn
 		if err != nil {
 			return n, err
@@ -132,7 +132,8 @@ func partitionRows(s []Row) iter.Seq[[]Row] {
 
 // fill implements fill for a single slice of rows that are consecutive and
 // have no gaps between them.
-func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n int, err error) {
+// shouldFill indicates whether to fill rows of s with NULLs when columns are exhausted.
+func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row, shouldFill bool) (n int, err error) {
 	if len(s) == 0 {
 		return 0, nil
 	}
@@ -203,10 +204,16 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 
 		// We check for atEOF here instead of maxRead == 0 to preserve the pattern
 		// of io.Reader: readers may return 0, nil even when they're not at EOF.
-		if maxRead == 0 && atEOF {
+		if atEOF {
+			if maxRead == 0 && !shouldFill {
+				return n, io.EOF
+			}
+
 			// It is possible that all the columns being filled have fewer rows than max rows in the dataset.
 			// Setting maxRead to len(s)-n so the following loop can fill the remaining rows with NULLs.
-			maxRead = len(s) - n
+			if shouldFill && len(s)-n > 0 {
+				maxRead = len(s) - n
+			}
 		}
 
 		// Some columns may have read fewer rows than maxRead. These columns need
@@ -237,6 +244,10 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 
 		n += maxRead
 		startRow += int64(maxRead)
+
+		if atEOF {
+			return n, io.EOF
+		}
 	}
 
 	return n, nil
