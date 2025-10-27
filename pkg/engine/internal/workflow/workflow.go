@@ -108,16 +108,6 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 		return nil, err
 	}
 
-	// TODO(rfratto): For logs queries, we want a system to limit how many scan
-	// tasks get sent to the runner at once.
-	//
-	// This will limit unnecessary resource consumption of workflows when
-	// there's a lot of compute capacity.
-	if err := wf.runner.Start(ctx, wf.onTaskChange, tasks...); err != nil {
-		pipeline.Close()
-		return nil, err
-	}
-
 	wrapped := &wrappedPipeline{
 		inner: pipeline,
 		onClose: func() {
@@ -134,6 +124,25 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 			stats.JoinResults(ctx, wf.stats)
 		},
 	}
+
+	wrappedHandler := func(ctx context.Context, task *Task, newStatus TaskStatus) {
+		wf.onTaskChange(ctx, task, newStatus)
+
+		if newStatus.State == TaskStateFailed {
+			wrapped.SetError(newStatus.Error)
+		}
+	}
+
+	// TODO(rfratto): For logs queries, we want a system to limit how many scan
+	// tasks get sent to the runner at once.
+	//
+	// This will limit unnecessary resource consumption of workflows when
+	// there's a lot of compute capacity.
+	if err := wf.runner.Start(ctx, wrappedHandler, tasks...); err != nil {
+		pipeline.Close()
+		return nil, err
+	}
+
 	return wrapped, nil
 }
 
@@ -187,6 +196,8 @@ func (wf *Workflow) allTasks() []*Task {
 }
 
 func (wf *Workflow) onStreamChange(_ context.Context, stream *Stream, newState StreamState) {
+	level.Debug(wf.logger).Log("msg", "stream state change", "stream_id", stream.ULID, "new_state", newState)
+
 	wf.streamsMut.Lock()
 	defer wf.streamsMut.Unlock()
 
@@ -197,6 +208,8 @@ func (wf *Workflow) onStreamChange(_ context.Context, stream *Stream, newState S
 }
 
 func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus TaskStatus) {
+	level.Debug(wf.logger).Log("msg", "task state change", "task_id", task.ULID, "new_state", newStatus.State)
+
 	wf.tasksMut.Lock()
 	wf.taskStates[task] = newStatus.State
 	wf.tasksMut.Unlock()
@@ -204,9 +217,6 @@ func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus Task
 	if !newStatus.State.Terminal() {
 		return
 	}
-
-	// TODO(rfratto): If newStatus represents a failure, should we propagate the
-	// error to the workflow owner?
 
 	if newStatus.Statistics != nil {
 		wf.mergeResults(*newStatus.Statistics)
@@ -250,16 +260,56 @@ func (wf *Workflow) mergeResults(results stats.Result) {
 }
 
 type wrappedPipeline struct {
+	initOnce sync.Once
+
+	err      error
+	errCond  chan struct{}
+	failOnce sync.Once
+
 	inner   executor.Pipeline
 	onClose func()
 }
 
 func (p *wrappedPipeline) Read(ctx context.Context) (arrow.Record, error) {
-	return p.inner.Read(ctx)
+	p.lazyInit()
+
+	rec, err := p.inner.Read(ctx)
+
+	// Before returning the actual record and error, check to see if an internal
+	// error was set.
+	//
+	// This needs to be checked _after_ doing the inner read, since it's
+	// unlikely that our error condition will be set before that call.
+	select {
+	case <-p.errCond:
+		return rec, p.err
+	default:
+		return rec, err
+	}
+}
+
+func (p *wrappedPipeline) lazyInit() {
+	p.initOnce.Do(func() {
+		p.errCond = make(chan struct{})
+	})
 }
 
 // Close closes the resources of the pipeline.
 func (p *wrappedPipeline) Close() {
 	p.inner.Close()
 	p.onClose()
+}
+
+// SetError sets the error for the pipeline. Calls to SetError with a non-nil
+// error after the first are ignored.
+func (p *wrappedPipeline) SetError(err error) {
+	if err == nil {
+		return
+	}
+
+	p.lazyInit()
+	p.failOnce.Do(func() {
+		p.err = err
+		close(p.errCond)
+	})
 }
