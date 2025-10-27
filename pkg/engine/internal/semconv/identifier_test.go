@@ -18,17 +18,17 @@ func TestFullyQualifiedName(t *testing.T) {
 		expected   string
 	}{
 		// Resource scope
-		{"service_name", physicalpb.COLUMN_TYPE_LABEL, types.Loki.String, "utf8.label.service_name"},
-		{"service.name", physicalpb.COLUMN_TYPE_LABEL, types.Loki.String, "utf8.label.service.name"},
+		{"service_name", physicalpb.COLUMN_TYPE_LABEL, types.Loki.String, "utf8.COLUMN_TYPE_LABEL.service_name"},
+		{"service.name", physicalpb.COLUMN_TYPE_LABEL, types.Loki.String, "utf8.COLUMN_TYPE_LABEL.service.name"},
 		// Record scope
-		{"message", physicalpb.COLUMN_TYPE_BUILTIN, types.Loki.String, "utf8.builtin.message"},
-		{"timestamp", physicalpb.COLUMN_TYPE_BUILTIN, types.Loki.Timestamp, "timestamp_ns.builtin.timestamp"},
-		{"trace_id", physicalpb.COLUMN_TYPE_METADATA, types.Loki.String, "utf8.metadata.trace_id"},
+		{"message", physicalpb.COLUMN_TYPE_BUILTIN, types.Loki.String, "utf8.COLUMN_TYPE_BUILTIN.message"},
+		{"timestamp", physicalpb.COLUMN_TYPE_BUILTIN, types.Loki.Timestamp, "timestamp_ns.COLUMN_TYPE_BUILTIN.timestamp"},
+		{"trace_id", physicalpb.COLUMN_TYPE_METADATA, types.Loki.String, "utf8.COLUMN_TYPE_METADATA.trace_id"},
 		// Generated scope
-		{"value", physicalpb.COLUMN_TYPE_GENERATED, types.Loki.Float, "float64.generated.value"},
-		{"caller", physicalpb.COLUMN_TYPE_PARSED, types.Loki.String, "utf8.parsed.caller"},
+		{"value", physicalpb.COLUMN_TYPE_GENERATED, types.Loki.Float, "float64.COLUMN_TYPE_GENERATED.value"},
+		{"caller", physicalpb.COLUMN_TYPE_PARSED, types.Loki.String, "utf8.COLUMN_TYPE_PARSED.caller"},
 		// Unscoped
-		{"service.name", physicalpb.COLUMN_TYPE_AMBIGUOUS, types.Loki.String, "utf8.ambiguous.service.name"},
+		{"service.name", physicalpb.COLUMN_TYPE_AMBIGUOUS, types.Loki.String, "utf8.COLUMN_TYPE_AMBIGUOUS.service.name"},
 	}
 
 	for _, tt := range tc {
@@ -68,11 +68,11 @@ func TestScope(t *testing.T) {
 		name     string
 		expected SemanticType
 	}{
-		{"utf8.builtin.message", SemanticType{Record, Builtin}},
-		{"utf8.label.service_name", SemanticType{Resource, Attribute}},
-		{"utf8.metadata.service_name", SemanticType{Record, Attribute}},
-		{"utf8.parsed.level", SemanticType{Generated, Attribute}},
-		{"utf8.generated.value", SemanticType{Generated, Builtin}},
+		{"utf8.COLUMN_TYPE_BUILTIN.message", SemanticType{Record, Builtin}},
+		{"utf8.COLUMN_TYPE_LABEL.service_name", SemanticType{Resource, Attribute}},
+		{"utf8.COLUMN_TYPE_METADATA.service_name", SemanticType{Record, Attribute}},
+		{"utf8.COLUMN_TYPE_PARSED.level", SemanticType{Generated, Attribute}},
+		{"utf8.COLUMN_TYPE_GENERATED.value", SemanticType{Generated, Builtin}},
 	}
 
 	for _, tt := range tc {

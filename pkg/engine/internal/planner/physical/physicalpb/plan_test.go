@@ -60,14 +60,11 @@ func TestGraph(t *testing.T) {
 		)
 
 		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(merge), Child: physicalpb.GetNode(scan1)})
-		err := p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(merge), Child: physicalpb.GetNode(scan2)})
-		if err != nil {
-			fmt.Println(err)
-			panic("AA")
-		}
+		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(merge), Child: physicalpb.GetNode(scan2)})
 
 		require.Equal(t, len(p.Nodes), 3)
 		require.Len(t, p.Roots(), 1)
+		require.Equal(t, mergeID.Value.String(), p.Roots()[0].ID())
 		require.Len(t, p.Leaves(), 2)
 	})
 
@@ -84,7 +81,7 @@ func TestGraph(t *testing.T) {
 
 		require.NoError(t, p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parent), Child: physicalpb.GetNode(child1)}))
 		require.NoError(t, p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parent), Child: physicalpb.GetNode(child2)}))
-		require.Equal(t, p.Children(physicalpb.GetNode(parent)), []physicalpb.Node{child1.GetMerge(), child2.GetMerge()})
+		require.Equal(t, []physicalpb.Node{child1.GetMerge(), child2.GetMerge()}, p.Children(physicalpb.GetNode(parent)))
 	})
 
 	t.Run("test eliminate node", func(t *testing.T) {
@@ -106,16 +103,16 @@ func TestGraph(t *testing.T) {
 		_ = p.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(middle), Child: physicalpb.GetNode(child2)})
 
 		require.Equal(t, len(p.Nodes), 4)
-		require.Equal(t, p.Parents(physicalpb.GetNode(middle)), []physicalpb.Node{physicalpb.GetNode(parent)})
-		require.Equal(t, p.Parents(physicalpb.GetNode(child1)), []physicalpb.Node{physicalpb.GetNode(middle)})
-		require.Equal(t, p.Parents(physicalpb.GetNode(child2)), []physicalpb.Node{physicalpb.GetNode(middle)})
+		require.Equal(t, []physicalpb.Node{physicalpb.GetNode(parent)}, p.Parents(physicalpb.GetNode(middle)))
+		require.Equal(t, []physicalpb.Node{physicalpb.GetNode(middle)}, p.Parents(physicalpb.GetNode(child1)))
+		require.Equal(t, []physicalpb.Node{physicalpb.GetNode(middle)}, p.Parents(physicalpb.GetNode(child2)))
 
 		p.Eliminate(physicalpb.GetNode(middle))
 
 		require.Equal(t, len(p.Nodes), 3)
-		require.Equal(t, p.Parents(physicalpb.GetNode(child1)), []physicalpb.Node{physicalpb.GetNode(parent)})
-		require.Equal(t, p.Parents(physicalpb.GetNode(child2)), []physicalpb.Node{physicalpb.GetNode(parent)})
-		require.Equal(t, p.Children(physicalpb.GetNode(parent)), []physicalpb.Node{physicalpb.GetNode(child1), physicalpb.GetNode(child2)})
+		require.Equal(t, []physicalpb.Node{physicalpb.GetNode(parent)}, p.Parents(physicalpb.GetNode(child1)))
+		require.Equal(t, []physicalpb.Node{physicalpb.GetNode(parent)}, p.Parents(physicalpb.GetNode(child2)))
+		require.Equal(t, []physicalpb.Node{physicalpb.GetNode(child1), physicalpb.GetNode(child2)}, p.Children(physicalpb.GetNode(parent)))
 	})
 	t.Run("test root returns error for empty graph", func(t *testing.T) {
 		var p physicalpb.Plan
@@ -201,11 +198,11 @@ func TestGraph(t *testing.T) {
 		newNode := p.Inject(physicalpb.GetNode(parent), &physicalpb.Merge{Id: injectedID})
 
 		require.Equal(t, len(p.Nodes), 4)
-		require.Equal(t, p.Parents(newNode), []physicalpb.Node{physicalpb.GetNode(parent)})
-		require.Equal(t, p.Parents(physicalpb.GetNode(child1)), []physicalpb.Node{newNode})
-		require.Equal(t, p.Parents(physicalpb.GetNode(child2)), []physicalpb.Node{newNode})
-		require.Equal(t, p.Children(physicalpb.GetNode(parent)), []physicalpb.Node{newNode})
-		require.Equal(t, p.Children(newNode), []physicalpb.Node{physicalpb.GetNode(child1), physicalpb.GetNode(child2)})
+		require.Equal(t, []physicalpb.Node{physicalpb.GetNode(parent)}, p.Parents(newNode))
+		require.Equal(t, []physicalpb.Node{newNode}, p.Parents(physicalpb.GetNode(child1)))
+		require.Equal(t, []physicalpb.Node{newNode}, p.Parents(physicalpb.GetNode(child2)))
+		require.Equal(t, []physicalpb.Node{newNode}, p.Children(physicalpb.GetNode(parent)))
+		require.Equal(t, []physicalpb.Node{physicalpb.GetNode(child1), physicalpb.GetNode(child2)}, p.Children(newNode))
 	})
 
 	t.Run("test inject node panics if node already exists", func(t *testing.T) {

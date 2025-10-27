@@ -84,7 +84,7 @@ func toTreeNode(n physicalpb.Node) *tree.Node {
 		treeNode.Properties = properties
 	case *physicalpb.Parse:
 		treeNode.Properties = []tree.Property{
-			tree.NewProperty("kind", false, node.Kind().String()),
+			tree.NewProperty("kind", false, node.Operation.String()),
 		}
 		if len(node.RequestedKeys) > 0 {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("requested_keys", true, toAnySlice(node.RequestedKeys)...))

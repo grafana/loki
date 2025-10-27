@@ -111,10 +111,12 @@ func (r *limitPushdown) apply(node physicalpb.Node) bool {
 }
 
 func (r *limitPushdown) applyLimitPushdown(node physicalpb.Node, limit uint32) bool {
+	var changed bool
 	n := node.ToPlanNode()
 	switch node.Kind() {
 	case physicalpb.NodeKindTopK:
 		n.GetTopK().K = max(n.GetTopK().K, int64(limit))
+		changed = true
 	case physicalpb.NodeKindDataObjScan:
 		// In case the scan node is reachable from multiple different limit nodes, we need to take the largest limit.
 		n.GetScan().Limit = max(n.GetScan().Limit, limit)
@@ -126,10 +128,10 @@ func (r *limitPushdown) applyLimitPushdown(node physicalpb.Node, limit uint32) b
 
 	for _, child := range r.plan.Children(node) {
 		if ok := r.applyLimitPushdown(child, limit); ok {
-			return true
+			changed = true
 		}
 	}
-	return false
+	return changed
 }
 
 var _ rule = (*limitPushdown)(nil)
@@ -161,7 +163,7 @@ func (r *projectionPushdown) apply(node physicalpb.Node) bool {
 				if child.Kind() == physicalpb.NodeKindAggregateRange {
 					ra := child.ToPlanNode().GetAggregateRange()
 					if slices.Contains(ops, ra.Operation) {
-						anyChanged = r.handleRangeAggregation(*ra, n.GetAggregateVector().GroupBy) || anyChanged
+						anyChanged = r.handleRangeAggregation(ra, n.GetAggregateVector().GroupBy) || anyChanged
 					}
 				}
 			}
@@ -179,10 +181,10 @@ func (r *projectionPushdown) apply(node physicalpb.Node) bool {
 			return false
 		}
 	case physicalpb.NodeKindAggregateRange:
-		if !slices.Contains(physicalpb.SupportedRangeAggregationTypes, node.ToPlanNode().GetAggregateRange().Operation) {
+		if !slices.Contains(physicalpb.SupportedRangeAggregationTypes, n.GetAggregateRange().Operation) {
 			return false
 		}
-		ar := node.ToPlanNode().GetAggregateRange()
+		ar := n.GetAggregateRange()
 		projections := make([]*physicalpb.ColumnExpression, len(ar.PartitionBy)+1)
 		copy(projections, ar.PartitionBy)
 		// Always project timestamp column even if partitionBy is empty.
@@ -223,8 +225,10 @@ func (r *projectionPushdown) applyProjectionPushdown(
 	case physicalpb.NodeKindParse:
 		return r.handleParseNode(node.ToPlanNode().GetParse(), projections, applyIfNotEmpty)
 	case physicalpb.NodeKindProjection:
-		return r.handleRangeAggregation(*node.ToPlanNode().GetAggregateRange(), projections)
-	case physicalpb.NodeKindFilter, physicalpb.NodeKindMerge, physicalpb.NodeKindSortMerge, physicalpb.NodeKindColumnCompat, physicalpb.NodeKindParallelize:
+		return r.handleProjection(node.ToPlanNode().GetProjection(), projections)
+	case physicalpb.NodeKindAggregateRange:
+		return r.handleRangeAggregation(node.ToPlanNode().GetAggregateRange(), projections)
+	case physicalpb.NodeKindFilter, physicalpb.NodeKindColumnCompat, physicalpb.NodeKindParallelize:
 		// Push to next direct child that cares about projections
 		return r.pushToChildren(node, projections, applyIfNotEmpty)
 	}
@@ -323,13 +327,32 @@ func (r *projectionPushdown) handleParseNode(node *physicalpb.Parse, projections
 }
 
 // handleRangeAggregation handles projection pushdown for RangeAggregation nodes
-func (r *projectionPushdown) handleRangeAggregation(node physicalpb.AggregateRange, projections []*physicalpb.ColumnExpression) bool {
+func (r *projectionPushdown) handleRangeAggregation(node *physicalpb.AggregateRange, projections []*physicalpb.ColumnExpression) bool {
 	changed := false
 	for _, colExpr := range projections {
 		var wasAdded bool
 		node.PartitionBy, wasAdded = addUniqueProjection(node.PartitionBy, colExpr)
 		if wasAdded {
 			changed = true
+		}
+	}
+	return changed
+}
+
+// handleRangeAggregation handles projection pushdown for Projection nodes
+func (r *projectionPushdown) handleProjection(node *physicalpb.Projection, projections []*physicalpb.ColumnExpression) bool {
+	changed := false
+	if node.Expand {
+		for _, e := range node.Expressions {
+			switch e.Kind.(type) {
+			case *physicalpb.Expression_UnaryExpression:
+				if slices.Contains([]physicalpb.UnaryOp{physicalpb.UNARY_OP_CAST_FLOAT, physicalpb.UNARY_OP_CAST_BYTES, physicalpb.UNARY_OP_CAST_DURATION}, e.GetUnaryExpression().Op) {
+					if e.GetUnaryExpression().Value.GetColumnExpression() != nil {
+						projections = append(projections, e.GetUnaryExpression().Value.GetColumnExpression())
+						changed = true
+					}
+				}
+			}
 		}
 	}
 	return changed
@@ -410,7 +433,7 @@ func (p *parallelPushdown) apply(node physicalpb.Node) bool {
 	switch node.(type) {
 	case *physicalpb.Projection, *physicalpb.Filter, *physicalpb.Parse: // Catchall for shifting nodes
 		for _, parallelize := range p.plan.Children(node) {
-			p.plan.Inject(parallelize, node.Clone())
+			p.plan.Inject(parallelize, node.CloneWithNewID())
 		}
 		p.plan.Eliminate(node)
 		p.pushed[node] = struct{}{}
@@ -418,7 +441,7 @@ func (p *parallelPushdown) apply(node physicalpb.Node) bool {
 
 	case *physicalpb.TopK: // Catchall for sharding nodes
 		for _, parallelize := range p.plan.Children(node) {
-			p.plan.Inject(parallelize, node.Clone())
+			p.plan.Inject(parallelize, node.CloneWithNewID())
 		}
 		p.pushed[node] = struct{}{}
 		return true
@@ -439,11 +462,7 @@ func (p *parallelPushdown) canPushdown(node physicalpb.Node) bool {
 	// foundNonParallelize is true if there is at least one child that is not of
 	// type [NodeTypeParallelize].
 	foundNonParallelize := slices.ContainsFunc(children, func(n physicalpb.Node) bool {
-		switch n.Kind() {
-		case physicalpb.NodeKindParallelize:
-			return false
-		}
-		return true
+		return n.Kind() != physicalpb.NodeKindParallelize
 	})
 	return !foundNonParallelize
 }

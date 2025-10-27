@@ -20,6 +20,11 @@ type ULID ulid.ULID
 
 func New() ULID { return ULID(ulid.Make()) }
 
+// NewFromBytes returns a new ULID from the given byte array.  Used for testing only.
+func NewFromULID(ulid ulid.ULID) ULID {
+	return ULID(ulid)
+}
+
 // Marshal marshals id as a [ProtoULID].
 
 func (id ULID) Marshal() ([]byte, error) {

@@ -79,6 +79,9 @@ type Node interface {
 
 	// Clone returns a deep copy of the node (minus its ID).
 	Clone() Node
+
+	// CloneWithNewID returns a deep copy of the node with a new ID.
+	CloneWithNewID() Node
 }
 
 // GetNode returns the underlying Node from the PlanNode.
@@ -305,7 +308,7 @@ func (n *ScanSet) Clone() Node {
 
 	return &ScanSet{Targets: newTargets}
 }
-func (p *Parallelize) Clone() Node {
+func (n *Parallelize) Clone() Node {
 	return &Parallelize{ /* nothing to clone */ }
 }
 
@@ -315,6 +318,74 @@ func (t *ScanTarget) Clone() *ScanTarget {
 		res.DataObject = t.DataObject.Clone().(*DataObjScan)
 	}
 	return res
+}
+
+// CloneWithNewID returns a deep copy of the node with a new ID.
+func (n *AggregateRange) CloneWithNewID() Node {
+	tmp := n.Clone().ToPlanNode().GetAggregateRange()
+	tmp.Id = PlanNodeID{ulid.New()}
+	return tmp
+}
+func (n *AggregateVector) CloneWithNewID() Node {
+	tmp := n.Clone().ToPlanNode().GetAggregateVector()
+	tmp.Id = PlanNodeID{ulid.New()}
+	return tmp
+}
+func (n *DataObjScan) CloneWithNewID() Node {
+	tmp := n.Clone().ToPlanNode().GetScan()
+	tmp.Id = PlanNodeID{ulid.New()}
+	return tmp
+}
+func (n *Filter) CloneWithNewID() Node {
+	tmp := n.Clone().ToPlanNode().GetFilter()
+	tmp.Id = PlanNodeID{ulid.New()}
+	return tmp
+
+}
+func (n *Limit) CloneWithNewID() Node {
+	tmp := n.Clone().ToPlanNode().GetLimit()
+	tmp.Id = PlanNodeID{ulid.New()}
+	return tmp
+}
+func (n *Merge) CloneWithNewID() Node {
+	tmp := n.Clone().ToPlanNode().GetMerge()
+	tmp.Id = PlanNodeID{ulid.New()}
+	return tmp
+}
+func (n *Parse) CloneWithNewID() Node {
+	tmp := n.Clone().ToPlanNode().GetParse()
+	tmp.Id = PlanNodeID{ulid.New()}
+	return tmp
+}
+func (n *Projection) CloneWithNewID() Node {
+	tmp := n.Clone().ToPlanNode().GetProjection()
+	tmp.Id = PlanNodeID{ulid.New()}
+	return tmp
+}
+func (n *SortMerge) CloneWithNewID() Node {
+	tmp := n.Clone().ToPlanNode().GetSortMerge()
+	tmp.Id = PlanNodeID{ulid.New()}
+	return tmp
+}
+func (n *ColumnCompat) CloneWithNewID() Node {
+	tmp := n.Clone().ToPlanNode().GetColumnCompat()
+	tmp.Id = PlanNodeID{ulid.New()}
+	return tmp
+}
+func (n *TopK) CloneWithNewID() Node {
+	tmp := n.Clone().ToPlanNode().GetTopK()
+	tmp.Id = PlanNodeID{ulid.New()}
+	return tmp
+}
+func (n *ScanSet) CloneWithNewID() Node {
+	tmp := n.Clone().ToPlanNode().GetScanSet()
+	tmp.Id = PlanNodeID{ulid.New()}
+	return tmp
+}
+func (n *Parallelize) CloneWithNewID() Node {
+	tmp := n.Clone().ToPlanNode().GetParallelize()
+	tmp.Id = PlanNodeID{ulid.New()}
+	return tmp
 }
 
 func planNode(kind isPlanNode_Kind) *PlanNode {
@@ -392,7 +463,7 @@ const (
 	PrecedenceBuiltin  // 4 - lowest precedence
 )
 
-var ctNames = [7]string{"invalid", "builtin", "label", "metadata", "parsed", "ambiguous", "generated"}
+var ctNames = [7]string{"COLUMN_TYPE_INVALID", "COLUMN_TYPE_BUILTIN", "COLUMN_TYPE_LABEL", "COLUMN_TYPE_METADATA", "COLUMN_TYPE_PARSED", "COLUMN_TYPE_AMBIGUOUS", "COLUMN_TYPE_GENERATED"}
 
 // ColumnTypeFromString returns the [ColumnType] from its string representation.
 func ColumnTypeFromString(ct string) ColumnType {
@@ -503,7 +574,9 @@ func (p *Plan) Add(n Node) *PlanNode {
 	if n == nil {
 		return nil
 	}
-	p.Nodes = append(p.Nodes, n.ToPlanNode())
+	if p.NodeById(PlanNodeID{n.ulid()}) == nil { // only add if it's not already present
+		p.Nodes = append(p.Nodes, n.ToPlanNode())
+	}
 	return n.ToPlanNode()
 }
 

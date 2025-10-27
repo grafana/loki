@@ -4,11 +4,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/oklog/ulid/v2"
+	oklogULID "github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/ulid"
 )
 
 // TODO(rfratto): Once physical plans can be serializable, we should be able to
@@ -25,7 +26,8 @@ func Test_planWorkflow(t *testing.T) {
 		ulidGen := ulidGenerator{}
 
 		var physicalGraph dag.Graph[physicalpb.Node]
-		physicalGraph.Add(&physicalpb.DataObjScan{})
+		scanId := physicalpb.PlanNodeID{Value: ulid.New()}
+		physicalGraph.Add(&physicalpb.DataObjScan{Id: scanId})
 
 		physicalPlan := physicalpb.FromGraph(physicalGraph)
 
@@ -38,7 +40,7 @@ func Test_planWorkflow(t *testing.T) {
 		expectOuptut := strings.TrimSpace(`
 Task 00000000000000000000000001
 -------------------------------
-DataObjScan location= streams=0 section_id=0 projections=()
+DataObjScan location= streams=0 section_id=0 projections=() direction=SORT_ORDER_INVALID limit=0
 `)
 
 		actualOutput := Sprint(&Workflow{graph: graph})
@@ -47,18 +49,17 @@ DataObjScan location= streams=0 section_id=0 projections=()
 
 	t.Run("ends with one pipeline breaker", func(t *testing.T) {
 		ulidGen := ulidGenerator{}
-
 		var physicalGraph dag.Graph[physicalpb.Node]
 
 		var (
-			scan     = physicalGraph.Add(&physicalpb.DataObjScan{})
-			rangeAgg = physicalGraph.Add(&physicalpb.AggregateRange{})
+			scanId     = physicalpb.PlanNodeID{Value: ulid.New()}
+			rangeAggId = physicalpb.PlanNodeID{Value: ulid.New()}
+			scan       = physicalGraph.Add(&physicalpb.DataObjScan{Id: scanId})
+			rangeAgg   = physicalGraph.Add(&physicalpb.AggregateRange{Id: rangeAggId})
 		)
 
 		_ = physicalGraph.AddEdge(dag.Edge[physicalpb.Node]{Parent: rangeAgg, Child: scan})
-
 		physicalPlan := physicalpb.FromGraph(physicalGraph)
-
 		graph, err := planWorkflow(physicalPlan)
 		require.NoError(t, err)
 		require.Equal(t, 1, graph.Len())
@@ -68,8 +69,8 @@ DataObjScan location= streams=0 section_id=0 projections=()
 		expectOuptut := strings.TrimSpace(`
 Task 00000000000000000000000001
 -------------------------------
-RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:00:00Z step=0s range=0s
-└── DataObjScan location= streams=0 section_id=0 projections=()
+AggregateRange operation=AGGREGATE_RANGE_OP_INVALID start=1969-12-31T19:00:00-05:00 end=1969-12-31T19:00:00-05:00 step=0 range=0
+└── DataObjScan location= streams=0 section_id=0 projections=() direction=SORT_ORDER_INVALID limit=0
 `)
 
 		actualOutput := Sprint(&Workflow{graph: graph})
@@ -82,9 +83,12 @@ RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:
 		var physicalGraph dag.Graph[physicalpb.Node]
 
 		var (
-			scan      = physicalGraph.Add(&physicalpb.DataObjScan{})
-			rangeAgg  = physicalGraph.Add(&physicalpb.AggregateRange{})
-			vectorAgg = physicalGraph.Add(&physicalpb.AggregateVector{})
+			scanId      = physicalpb.PlanNodeID{Value: ulid.New()}
+			rangeAggId  = physicalpb.PlanNodeID{Value: ulid.New()}
+			vectorAggId = physicalpb.PlanNodeID{Value: ulid.New()}
+			scan        = physicalGraph.Add(&physicalpb.DataObjScan{Id: scanId})
+			rangeAgg    = physicalGraph.Add(&physicalpb.AggregateRange{Id: rangeAggId})
+			vectorAgg   = physicalGraph.Add(&physicalpb.AggregateVector{Id: vectorAggId})
 		)
 
 		_ = physicalGraph.AddEdge(dag.Edge[physicalpb.Node]{Parent: rangeAgg, Child: scan})
@@ -101,14 +105,14 @@ RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:
 		expectOuptut := strings.TrimSpace(`
 Task 00000000000000000000000001
 -------------------------------
-VectorAggregation
+AggregateVector
     └── @source stream=00000000000000000000000003
 
 Task 00000000000000000000000002
 -------------------------------
-RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:00:00Z step=0s range=0s
+AggregateRange operation=AGGREGATE_RANGE_OP_INVALID start=1969-12-31T19:00:00-05:00 end=1969-12-31T19:00:00-05:00 step=0 range=0
 │   └── @sink stream=00000000000000000000000003
-└── DataObjScan location= streams=0 section_id=0 projections=()
+└── DataObjScan location= streams=0 section_id=0 projections=() direction=SORT_ORDER_INVALID limit=0
 `)
 
 		actualOutput := Sprint(&Workflow{graph: graph})
@@ -121,14 +125,21 @@ RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:
 		var physicalGraph dag.Graph[physicalpb.Node]
 
 		var (
-			vectorAgg = physicalGraph.Add(&physicalpb.AggregateVector{})
-			rangeAgg  = physicalGraph.Add(&physicalpb.AggregateRange{})
+			vectorAggId   = physicalpb.PlanNodeID{Value: ulid.New()}
+			rangeAggId    = physicalpb.PlanNodeID{Value: ulid.New()}
+			parallelizeId = physicalpb.PlanNodeID{Value: ulid.New()}
+			filterId      = physicalpb.PlanNodeID{Value: ulid.New()}
+			parseId       = physicalpb.PlanNodeID{Value: ulid.New()}
+			scanSetId     = physicalpb.PlanNodeID{Value: ulid.New()}
 
-			parallelize = physicalGraph.Add(&physicalpb.Parallelize{})
+			vectorAgg = physicalGraph.Add(&physicalpb.AggregateVector{Id: vectorAggId})
+			rangeAgg  = physicalGraph.Add(&physicalpb.AggregateRange{Id: rangeAggId})
 
-			filter  = physicalGraph.Add(&physicalpb.Filter{})
-			parse   = physicalGraph.Add(&physicalpb.Parse{Operation: physicalpb.PARSE_OP_LOGFMT})
-			scanSet = physicalGraph.Add(&physicalpb.ScanSet{
+			parallelize = physicalGraph.Add(&physicalpb.Parallelize{Id: parallelizeId})
+
+			filter  = physicalGraph.Add(&physicalpb.Filter{Id: filterId})
+			parse   = physicalGraph.Add(&physicalpb.Parse{Operation: physicalpb.PARSE_OP_LOGFMT, Id: parseId})
+			scanSet = physicalGraph.Add(&physicalpb.ScanSet{Id: scanSetId,
 				Targets: []*physicalpb.ScanTarget{
 					{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Location: "a"}},
 					{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Location: "b"}},
@@ -154,12 +165,12 @@ RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:
 		expectOuptut := strings.TrimSpace(`
 Task 00000000000000000000000001
 -------------------------------
-VectorAggregation
+AggregateVector
     └── @source stream=00000000000000000000000006
 
 Task 00000000000000000000000002
 -------------------------------
-RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:00:00Z step=0s range=0s
+AggregateRange operation=AGGREGATE_RANGE_OP_INVALID start=1969-12-31T19:00:00-05:00 end=1969-12-31T19:00:00-05:00 step=0 range=0
     ├── @source stream=00000000000000000000000007
     ├── @source stream=00000000000000000000000008
     ├── @source stream=00000000000000000000000009
@@ -169,22 +180,22 @@ Task 00000000000000000000000003
 -------------------------------
 Filter
 │   └── @sink stream=00000000000000000000000007
-└── Parse kind=logfmt
-    └── DataObjScan location=a streams=0 section_id=0 projections=()
+└── Parse kind=PARSE_OP_LOGFMT
+    └── DataObjScan location=a streams=0 section_id=0 projections=() direction=SORT_ORDER_INVALID limit=0
 
 Task 00000000000000000000000004
 -------------------------------
 Filter
 │   └── @sink stream=00000000000000000000000008
-└── Parse kind=logfmt
-    └── DataObjScan location=b streams=0 section_id=0 projections=()
+└── Parse kind=PARSE_OP_LOGFMT
+    └── DataObjScan location=b streams=0 section_id=0 projections=() direction=SORT_ORDER_INVALID limit=0
 
 Task 00000000000000000000000005
 -------------------------------
 Filter
 │   └── @sink stream=00000000000000000000000009
-└── Parse kind=logfmt
-    └── DataObjScan location=c streams=0 section_id=0 projections=()
+└── Parse kind=PARSE_OP_LOGFMT
+    └── DataObjScan location=c streams=0 section_id=0 projections=() direction=SORT_ORDER_INVALID limit=0
 `)
 
 		actualOutput := Sprint(&Workflow{graph: graph})
@@ -271,7 +282,7 @@ type ulidGenerator struct {
 	lastCounter uint64
 }
 
-func (g *ulidGenerator) Make() ulid.ULID {
+func (g *ulidGenerator) Make() oklogULID.ULID {
 	g.lastCounter++
 	value := g.lastCounter
 
@@ -281,5 +292,5 @@ func (g *ulidGenerator) Make() ulid.ULID {
 	for i := range 8 {
 		ulidBytes[15-i] = byte(value >> (8 * i))
 	}
-	return ulid.ULID(ulidBytes)
+	return oklogULID.ULID(ulidBytes)
 }

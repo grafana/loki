@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	streamInjectorColumnName  = "int64.generated.stream_id"
+	streamInjectorColumnName  = "int64.COLUMN_TYPE_GENERATED.stream_id"
 	streamInjectorColumnIdent = semconv.MustParseFQN(streamInjectorColumnName)
 )
 

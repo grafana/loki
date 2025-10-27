@@ -237,20 +237,38 @@ func NewLiteralFromKind(value physicalpb.LiteralExpression) Literal {
 
 func NewLiteral[T LiteralType](value T) Literal {
 	switch val := any(value).(type) {
+	case *physicalpb.LiteralExpression_BoolLiteral:
+		return BoolLiteral(val.BoolLiteral.Value)
 	case bool:
 		return BoolLiteral(val)
+	case *physicalpb.LiteralExpression_StringLiteral:
+		return StringLiteral(val.StringLiteral.Value)
 	case string:
 		return StringLiteral(val)
+	case *physicalpb.LiteralExpression_IntegerLiteral:
+		return IntegerLiteral(val.IntegerLiteral.Value)
 	case int64:
 		return IntegerLiteral(val)
+	case *physicalpb.LiteralExpression_FloatLiteral:
+		return FloatLiteral(val.FloatLiteral.Value)
 	case float64:
 		return FloatLiteral(val)
+	case *physicalpb.LiteralExpression_TimestampLiteral:
+		return TimestampLiteral(val.TimestampLiteral.Value)
 	case Timestamp:
 		return TimestampLiteral(val)
+	case *physicalpb.LiteralExpression_DurationLiteral:
+		return DurationLiteral(val.DurationLiteral.Value)
 	case Duration:
 		return DurationLiteral(val)
+	case *physicalpb.LiteralExpression_BytesLiteral:
+		return BytesLiteral(val.BytesLiteral.Value)
 	case Bytes:
 		return BytesLiteral(val)
+	case *physicalpb.LiteralExpression_NullLiteral:
+		return NewNullLiteral()
+	case nil:
+		return NewNullLiteral()
 	}
 	panic(fmt.Sprintf("invalid literal value type %T", value))
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/ulid"
 )
 
 // Context carries planning state that needs to be propagated down the plan tree.
@@ -190,10 +191,10 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]physi
 
 	// Scan work can be parallelized across multiple workers, so we wrap
 	// everything into a single Parallelize node.
-	var parallelize physicalpb.Node = &physicalpb.Parallelize{}
+	var parallelize physicalpb.Node = &physicalpb.Parallelize{Id: physicalpb.PlanNodeID{Value: ulid.New()}}
 	p.plan.Add(parallelize)
 
-	scanSet := &physicalpb.ScanSet{}
+	scanSet := &physicalpb.ScanSet{Id: physicalpb.PlanNodeID{Value: ulid.New()}}
 	p.plan.Add(scanSet)
 
 	for _, desc := range filteredShardDescriptors {
@@ -202,6 +203,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]physi
 				Type: physicalpb.SCAN_TYPE_DATA_OBJECT,
 
 				DataObject: &physicalpb.DataObjScan{
+					Id:        physicalpb.PlanNodeID{Value: ulid.New()},
 					Location:  string(desc.Location),
 					StreamIds: desc.Streams,
 					Section:   int64(section),
@@ -217,6 +219,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]physi
 			Source:      physicalpb.COLUMN_TYPE_METADATA,
 			Destination: physicalpb.COLUMN_TYPE_METADATA,
 			Collision:   physicalpb.COLUMN_TYPE_LABEL,
+			Id:          physicalpb.PlanNodeID{Value: ulid.New()},
 		}
 		base, err = p.wrapNodeWith(base, compat)
 		if err != nil {
@@ -235,6 +238,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]physi
 // Convert [logical.Select] into one [Filter] node.
 func (p *Planner) processSelect(lp *logical.Select, ctx *Context) ([]physicalpb.Node, error) {
 	node := &physicalpb.Filter{
+		Id:         physicalpb.PlanNodeID{Value: ulid.New()},
 		Predicates: []*physicalpb.Expression{p.convertPredicate(lp.Predicate)},
 	}
 	p.plan.Add(node)
@@ -258,6 +262,7 @@ func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]physicalpb.Node
 	}
 
 	node := &physicalpb.TopK{
+		Id:         physicalpb.PlanNodeID{Value: ulid.New()},
 		SortBy:     &physicalpb.ColumnExpression{Name: lp.Column.Ref.Column, Type: columnTypeLogToPhys(lp.Column.Ref.Type)},
 		Ascending:  order == physicalpb.SORT_ORDER_ASCENDING,
 		NullsFirst: false,
@@ -290,6 +295,7 @@ func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) ([]phy
 	}
 
 	node := &physicalpb.Projection{
+		Id:          physicalpb.PlanNodeID{Value: ulid.New()},
 		Expressions: expressions,
 		All:         lp.All,
 		Expand:      lp.Expand,
@@ -313,6 +319,7 @@ func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) ([]phy
 // Convert [logical.Limit] into one [Limit] node.
 func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) ([]physicalpb.Node, error) {
 	node := &physicalpb.Limit{
+		Id:    physicalpb.PlanNodeID{Value: ulid.New()},
 		Skip:  lp.Skip,
 		Fetch: lp.Fetch,
 	}
@@ -332,10 +339,11 @@ func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) ([]physicalpb.No
 func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) ([]physicalpb.Node, error) {
 	partitionBy := make([]*physicalpb.ColumnExpression, len(r.PartitionBy))
 	for i, col := range r.PartitionBy {
-		partitionBy[i] = &physicalpb.ColumnExpression{Name: col.Name()}
+		partitionBy[i] = &physicalpb.ColumnExpression{Name: col.Ref.Column, Type: columnTypeLogToPhys(col.Ref.Type)}
 	}
 
 	node := &physicalpb.AggregateRange{
+		Id:             physicalpb.PlanNodeID{Value: ulid.New()},
 		PartitionBy:    partitionBy,
 		Operation:      rangeAggregationTypeLogToPhys(r.Operation),
 		StartUnixNanos: r.Start.UnixNano(),
@@ -366,6 +374,7 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 	}
 
 	node := &physicalpb.AggregateVector{
+		Id:        physicalpb.PlanNodeID{Value: ulid.New()},
 		GroupBy:   groupBy,
 		Operation: vectorAggregationTypeLogToPhys(lp.Operation),
 	}
@@ -386,6 +395,7 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 // A ParseNode initially has an empty list of RequestedKeys which will be populated during optimization.
 func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]physicalpb.Node, error) {
 	var node physicalpb.Node = &physicalpb.Parse{
+		Id:        physicalpb.PlanNodeID{Value: ulid.New()},
 		Operation: convertParserKind(lp.Kind),
 	}
 	p.plan.Add(node)

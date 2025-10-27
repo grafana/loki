@@ -1,6 +1,7 @@
 package physical
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -71,11 +72,12 @@ func TestCanApplyPredicate(t *testing.T) {
 
 var time1000 = types.Timestamp(1000000000)
 
+var setID = physicalpb.PlanNodeID{Value: ulid.New()}
+var filter1ID = physicalpb.PlanNodeID{Value: ulid.New()}
+var filter2ID = physicalpb.PlanNodeID{Value: ulid.New()}
+var filter3ID = physicalpb.PlanNodeID{Value: ulid.New()}
+
 func dummyPlan() *physicalpb.Plan {
-	setID := physicalpb.PlanNodeID{Value: ulid.New()}
-	filter1ID := physicalpb.PlanNodeID{Value: ulid.New()}
-	filter2ID := physicalpb.PlanNodeID{Value: ulid.New()}
-	filter3ID := physicalpb.PlanNodeID{Value: ulid.New()}
 
 	plan := &physicalpb.Plan{}
 
@@ -104,16 +106,12 @@ func dummyPlan() *physicalpb.Plan {
 
 	_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter3.GetFilter(), Child: filter2.GetFilter()})
 	_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter2.GetFilter(), Child: filter1.GetFilter()})
-	_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter1.GetFilter(), Child: scanSet.GetFilter()})
+	_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter1.GetFilter(), Child: scanSet.GetScanSet()})
 
 	return plan
 }
 
 func TestOptimizer(t *testing.T) {
-	setID := physicalpb.PlanNodeID{Value: ulid.New()}
-	filter1ID := physicalpb.PlanNodeID{Value: ulid.New()}
-	filter2ID := physicalpb.PlanNodeID{Value: ulid.New()}
-	filter3ID := physicalpb.PlanNodeID{Value: ulid.New()}
 
 	t.Run("noop", func(t *testing.T) {
 		plan := dummyPlan()
@@ -607,6 +605,7 @@ func TestOptimizer(t *testing.T) {
 			_ = plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(topK2), Child: physicalpb.GetNode(scan2)})
 		}
 
+		orig := PrintAsTree(plan)
 		// apply optimisations
 		optimizations := []*optimization{
 			newOptimization("limit pushdown", plan).withRules(
@@ -616,24 +615,8 @@ func TestOptimizer(t *testing.T) {
 		o := newOptimizer(plan, optimizations)
 		o.optimize(plan.Roots()[0])
 
-		expectedPlan := &physicalpb.Plan{}
-		{
-			scan1 := expectedPlan.Add(&physicalpb.DataObjScan{Id: scan1ID})
-			scan2 := expectedPlan.Add(&physicalpb.DataObjScan{Id: scan2ID})
-			filter := expectedPlan.Add(&physicalpb.Filter{
-				Id:         filter1ID,
-				Predicates: filterPredicates,
-			})
-			limit := expectedPlan.Add(&physicalpb.Limit{Id: limit1ID, Fetch: 100})
-
-			_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: limit.GetLimit(), Child: filter.GetFilter()})
-			_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter.GetFilter(), Child: scan1.GetScan()})
-			_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: filter.GetFilter(), Child: scan2.GetScan()})
-		}
-
 		actual := PrintAsTree(plan)
-		expected := PrintAsTree(expectedPlan)
-		require.Equal(t, expected, actual)
+		require.Equal(t, orig, actual)
 	})
 
 	t.Run("limit pushdown without filter should propagate limit to child nodes", func(t *testing.T) {
@@ -1063,6 +1046,9 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 			}
 			ctx := NewContext(time.Unix(0, 0), time.Unix(3600, 0))
 			planner := NewPlanner(ctx, catalog)
+			if tt.expectedParseKeysRequested != nil {
+				fmt.Println("Interesting test case")
+			}
 
 			// Build physical plan
 			physicalPlan, err := planner.Build(logicalPlan)
@@ -1115,22 +1101,22 @@ func Test_parallelPushdown(t *testing.T) {
 			},
 			{
 				name:     "one child (not Parallelize)",
-				children: []physicalpb.Node{&physicalpb.DataObjScan{}},
+				children: []physicalpb.Node{&physicalpb.DataObjScan{Id: physicalpb.PlanNodeID{Value: ulid.New()}}},
 				expected: false,
 			},
 			{
 				name:     "one child (Parallelize)",
-				children: []physicalpb.Node{&physicalpb.Parallelize{}},
+				children: []physicalpb.Node{&physicalpb.Parallelize{Id: physicalpb.PlanNodeID{Value: ulid.New()}}},
 				expected: true,
 			},
 			{
 				name:     "multiple children (all Parallelize)",
-				children: []physicalpb.Node{&physicalpb.Parallelize{}, &physicalpb.Parallelize{}},
+				children: []physicalpb.Node{&physicalpb.Parallelize{Id: physicalpb.PlanNodeID{Value: ulid.New()}}, &physicalpb.Parallelize{Id: physicalpb.PlanNodeID{Value: ulid.New()}}},
 				expected: true,
 			},
 			{
 				name:     "multiple children (not all Parallelize)",
-				children: []physicalpb.Node{&physicalpb.Parallelize{}, &physicalpb.DataObjScan{}},
+				children: []physicalpb.Node{&physicalpb.Parallelize{Id: physicalpb.PlanNodeID{Value: ulid.New()}}, &physicalpb.DataObjScan{Id: physicalpb.PlanNodeID{Value: ulid.New()}}},
 				expected: false,
 			},
 		}
@@ -1153,12 +1139,17 @@ func Test_parallelPushdown(t *testing.T) {
 
 	t.Run("Shifts Filter", func(t *testing.T) {
 		var plan physicalpb.Plan
+		vectorAggId := physicalpb.PlanNodeID{Value: ulid.New()}
+		rangeAggId := physicalpb.PlanNodeID{Value: ulid.New()}
+		filterId := physicalpb.PlanNodeID{Value: ulid.New()}
+		parallelizeId := physicalpb.PlanNodeID{Value: ulid.New()}
+		scanId := physicalpb.PlanNodeID{Value: ulid.New()}
 		{
-			vectorAgg := plan.Add(&physicalpb.AggregateVector{})
-			rangeAgg := plan.Add(&physicalpb.AggregateRange{})
-			filter := plan.Add(&physicalpb.Filter{})
-			parallelize := plan.Add(&physicalpb.Parallelize{})
-			scan := plan.Add(&physicalpb.DataObjScan{})
+			vectorAgg := plan.Add(&physicalpb.AggregateVector{Id: vectorAggId})
+			rangeAgg := plan.Add(&physicalpb.AggregateRange{Id: rangeAggId})
+			filter := plan.Add(&physicalpb.Filter{Id: filterId})
+			parallelize := plan.Add(&physicalpb.Parallelize{Id: parallelizeId})
+			scan := plan.Add(&physicalpb.DataObjScan{Id: scanId})
 
 			require.NoError(t, plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(vectorAgg), Child: physicalpb.GetNode(rangeAgg)}))
 			require.NoError(t, plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(rangeAgg), Child: physicalpb.GetNode(filter)}))
@@ -1174,11 +1165,11 @@ func Test_parallelPushdown(t *testing.T) {
 
 		var expectedPlan physicalpb.Plan
 		{
-			vectorAgg := expectedPlan.Add(&physicalpb.AggregateVector{})
-			rangeAgg := expectedPlan.Add(&physicalpb.AggregateRange{})
-			parallelize := expectedPlan.Add(&physicalpb.Parallelize{})
-			filter := expectedPlan.Add(&physicalpb.Filter{})
-			scan := expectedPlan.Add(&physicalpb.DataObjScan{})
+			vectorAgg := expectedPlan.Add(&physicalpb.AggregateVector{Id: vectorAggId})
+			rangeAgg := expectedPlan.Add(&physicalpb.AggregateRange{Id: rangeAggId})
+			parallelize := expectedPlan.Add(&physicalpb.Parallelize{Id: parallelizeId})
+			filter := expectedPlan.Add(&physicalpb.Filter{Id: filterId})
+			scan := expectedPlan.Add(&physicalpb.DataObjScan{Id: scanId})
 
 			require.NoError(t, expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(vectorAgg), Child: physicalpb.GetNode(rangeAgg)}))
 			require.NoError(t, expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(rangeAgg), Child: physicalpb.GetNode(parallelize)}))
@@ -1192,12 +1183,17 @@ func Test_parallelPushdown(t *testing.T) {
 
 	t.Run("Shifts Parse", func(t *testing.T) {
 		var plan physicalpb.Plan
+		vectorAggId := physicalpb.PlanNodeID{Value: ulid.New()}
+		rangeAggId := physicalpb.PlanNodeID{Value: ulid.New()}
+		parseId := physicalpb.PlanNodeID{Value: ulid.New()}
+		parallelizeId := physicalpb.PlanNodeID{Value: ulid.New()}
+		scanId := physicalpb.PlanNodeID{Value: ulid.New()}
 		{
-			vectorAgg := plan.Add(&physicalpb.AggregateVector{})
-			rangeAgg := plan.Add(&physicalpb.AggregateRange{})
-			parse := plan.Add(&physicalpb.Parse{})
-			parallelize := plan.Add(&physicalpb.Parallelize{})
-			scan := plan.Add(&physicalpb.DataObjScan{})
+			vectorAgg := plan.Add(&physicalpb.AggregateVector{Id: vectorAggId})
+			rangeAgg := plan.Add(&physicalpb.AggregateRange{Id: rangeAggId})
+			parse := plan.Add(&physicalpb.Parse{Id: parseId})
+			parallelize := plan.Add(&physicalpb.Parallelize{Id: parallelizeId})
+			scan := plan.Add(&physicalpb.DataObjScan{Id: scanId})
 
 			require.NoError(t, plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(vectorAgg), Child: physicalpb.GetNode(rangeAgg)}))
 			require.NoError(t, plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(rangeAgg), Child: physicalpb.GetNode(parse)}))
@@ -1213,11 +1209,11 @@ func Test_parallelPushdown(t *testing.T) {
 
 		var expectedPlan physicalpb.Plan
 		{
-			vectorAgg := expectedPlan.Add(&physicalpb.AggregateVector{})
-			rangeAgg := expectedPlan.Add(&physicalpb.AggregateRange{})
-			parallelize := expectedPlan.Add(&physicalpb.Parallelize{})
-			parse := expectedPlan.Add(&physicalpb.Parse{})
-			scan := expectedPlan.Add(&physicalpb.DataObjScan{})
+			vectorAgg := expectedPlan.Add(&physicalpb.AggregateVector{Id: vectorAggId})
+			rangeAgg := expectedPlan.Add(&physicalpb.AggregateRange{Id: rangeAggId})
+			parallelize := expectedPlan.Add(&physicalpb.Parallelize{Id: parallelizeId})
+			parse := expectedPlan.Add(&physicalpb.Parse{Id: parseId})
+			scan := expectedPlan.Add(&physicalpb.DataObjScan{Id: scanId})
 
 			require.NoError(t, expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(vectorAgg), Child: physicalpb.GetNode(rangeAgg)}))
 			require.NoError(t, expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(rangeAgg), Child: physicalpb.GetNode(parallelize)}))
@@ -1231,11 +1227,17 @@ func Test_parallelPushdown(t *testing.T) {
 
 	t.Run("Splits TopK", func(t *testing.T) {
 		var plan physicalpb.Plan
+		limitId := physicalpb.PlanNodeID{Value: ulid.New()}
+		topKId := physicalpb.PlanNodeID{Value: ulid.New()}
+		parallelizeId := physicalpb.PlanNodeID{Value: ulid.New()}
+		scanId := physicalpb.PlanNodeID{Value: ulid.New()}
+		globalTopKId := physicalpb.PlanNodeID{Value: ulid.New()}
+		localTopKId := physicalpb.PlanNodeID{Value: ulid.New()}
 		{
-			limit := plan.Add(&physicalpb.Limit{})
-			topk := plan.Add(&physicalpb.TopK{SortBy: &physicalpb.ColumnExpression{}})
-			parallelize := plan.Add(&physicalpb.Parallelize{})
-			scan := plan.Add(&physicalpb.DataObjScan{})
+			limit := plan.Add(&physicalpb.Limit{Id: limitId})
+			topk := plan.Add(&physicalpb.TopK{SortBy: &physicalpb.ColumnExpression{}, Id: topKId})
+			parallelize := plan.Add(&physicalpb.Parallelize{Id: parallelizeId})
+			scan := plan.Add(&physicalpb.DataObjScan{Id: scanId})
 
 			require.NoError(t, plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(limit), Child: physicalpb.GetNode(topk)}))
 			require.NoError(t, plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(topk), Child: physicalpb.GetNode(parallelize)}))
@@ -1262,11 +1264,11 @@ func Test_parallelPushdown(t *testing.T) {
 
 		var expectedPlan physicalpb.Plan
 		{
-			limit := expectedPlan.Add(&physicalpb.Limit{})
-			globalTopK := expectedPlan.Add(&physicalpb.TopK{SortBy: &physicalpb.ColumnExpression{}})
-			parallelize := expectedPlan.Add(&physicalpb.Parallelize{})
-			localTopK := expectedPlan.Add(&physicalpb.TopK{SortBy: &physicalpb.ColumnExpression{}})
-			scan := expectedPlan.Add(&physicalpb.DataObjScan{})
+			limit := expectedPlan.Add(&physicalpb.Limit{Id: limitId})
+			globalTopK := expectedPlan.Add(&physicalpb.TopK{Id: globalTopKId, SortBy: &physicalpb.ColumnExpression{}})
+			parallelize := expectedPlan.Add(&physicalpb.Parallelize{Id: parallelizeId})
+			localTopK := expectedPlan.Add(&physicalpb.TopK{Id: localTopKId, SortBy: &physicalpb.ColumnExpression{}})
+			scan := expectedPlan.Add(&physicalpb.DataObjScan{Id: scanId})
 
 			require.NoError(t, expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(limit), Child: physicalpb.GetNode(globalTopK)}))
 			require.NoError(t, expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(globalTopK), Child: physicalpb.GetNode(parallelize)}))
