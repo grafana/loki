@@ -493,6 +493,49 @@ func (w *WALCheckpointWriter) deleteCheckpoints(maxIndex int) (err error) {
 	return errs.Err()
 }
 
+// cleanupOrphanedCheckpoints removes checkpoints that reference WAL segments that
+// no longer exist. A checkpoint is considered orphaned if its index is less than
+// the first available WAL segment. The protectedCheckpointIdx parameter specifies
+// a checkpoint that should never be deleted (typically the most recent or current checkpoint).
+func cleanupOrphanedCheckpoints(dir string, protectedCheckpointIdx int, logger log.Logger) {
+	firstSegment, _, err := wlog.Segments(dir)
+	if err != nil {
+		level.Error(logger).Log("msg", "unable to list WAL segments for orphaned checkpoint cleanup", "err", err)
+		return
+	}
+
+	if firstSegment <= 0 {
+		// No cleanup needed if we're starting from segment 0
+		return
+	}
+
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		level.Error(logger).Log("msg", "unable to read WAL directory for orphaned checkpoint cleanup", "err", err)
+		return
+	}
+
+	for _, fi := range files {
+		// Check if this is a completed checkpoint (not .tmp)
+		idx, err := checkpointIndex(fi.Name(), false)
+		if err != nil || !fi.IsDir() {
+			continue
+		}
+
+		// Delete checkpoints that are both:
+		// 1. Older than the first available WAL segment (orphaned)
+		// 2. Not the protected checkpoint
+		if idx < firstSegment && idx < protectedCheckpointIdx {
+			orphanedPath := filepath.Join(dir, fi.Name())
+			if err := os.RemoveAll(orphanedPath); err != nil {
+				level.Error(logger).Log("msg", "unable to cleanup orphaned checkpoint", "dir", orphanedPath, "err", err)
+			} else {
+				level.Info(logger).Log("msg", "cleaned up orphaned checkpoint", "dir", fi.Name(), "idx", idx, "firstSegment", firstSegment, "protectedCheckpoint", protectedCheckpointIdx)
+			}
+		}
+	}
+}
+
 func (w *WALCheckpointWriter) Close(abort bool) error {
 	if len(w.recs) > 0 {
 		if err := w.flush(); err != nil {
@@ -531,35 +574,7 @@ func (w *WALCheckpointWriter) Close(abort bool) error {
 		// This handles the bug where checkpoint attempts fail, leaving behind old checkpoints
 		// that reference WAL segments that have since been truncated.
 		// Example: checkpoint.017205 exists but lowest WAL segment is 00017206
-		firstSegment, _, segErr := wlog.Segments(w.segmentWAL.Dir())
-		if segErr != nil {
-			level.Error(util_log.Logger).Log("msg", "unable to list WAL segments for orphaned checkpoint cleanup", "err", segErr)
-		} else if firstSegment > w.lastSegment {
-			// If firstSegment > w.lastSegment, it means segments have been truncated beyond
-			// the checkpoint we just created. Check for orphaned checkpoints that reference
-			// segments that no longer exist, but don't delete the checkpoint we just created.
-			files, readErr := os.ReadDir(w.segmentWAL.Dir())
-			if readErr != nil {
-				level.Error(util_log.Logger).Log("msg", "unable to read WAL directory for orphaned checkpoint cleanup", "err", readErr)
-			} else {
-				for _, fi := range files {
-					// Check if this is a completed checkpoint (not .tmp)
-					if idx, cpErr := checkpointIndex(fi.Name(), false); cpErr == nil && fi.IsDir() {
-						// Delete checkpoints that are both:
-						// 1. Older than the first available WAL segment (orphaned)
-						// 2. Not the checkpoint we just created
-						if idx < firstSegment && idx < w.lastSegment {
-							orphanedPath := filepath.Join(w.segmentWAL.Dir(), fi.Name())
-							if rmErr := os.RemoveAll(orphanedPath); rmErr != nil {
-								level.Error(util_log.Logger).Log("msg", "unable to cleanup orphaned checkpoint", "dir", orphanedPath, "err", rmErr)
-							} else {
-								level.Info(util_log.Logger).Log("msg", "cleaned up orphaned checkpoint", "dir", fi.Name(), "idx", idx, "firstSegment", firstSegment, "currentCheckpoint", w.lastSegment)
-							}
-						}
-					}
-				}
-			}
-		}
+		cleanupOrphanedCheckpoints(w.segmentWAL.Dir(), w.lastSegment, util_log.Logger)
 	}
 
 	return nil

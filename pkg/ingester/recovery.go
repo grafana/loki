@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"runtime"
 	"sync"
 
@@ -58,18 +56,7 @@ func newCheckpointReader(dir string, logger log.Logger) (WALReader, io.Closer, e
 // cleanupOrphanedCheckpointsAtStartup removes checkpoints that reference WAL segments
 // that no longer exist. This is called at startup/recovery time for proactive cleanup.
 func cleanupOrphanedCheckpointsAtStartup(dir string, logger log.Logger) {
-	firstSegment, _, err := wlog.Segments(dir)
-	if err != nil {
-		level.Error(logger).Log("msg", "unable to list WAL segments for startup orphaned checkpoint cleanup", "err", err)
-		return
-	}
-
-	if firstSegment <= 0 {
-		// No cleanup needed if we're starting from segment 0
-		return
-	}
-
-	// Find the most recent valid checkpoint
+	// Find the most recent valid checkpoint to protect it from deletion
 	_, latestCheckpointIdx, err := lastCheckpoint(dir)
 	if err != nil {
 		level.Error(logger).Log("msg", "unable to find latest checkpoint for startup orphaned cleanup", "err", err)
@@ -81,31 +68,8 @@ func cleanupOrphanedCheckpointsAtStartup(dir string, logger log.Logger) {
 		return
 	}
 
-	files, err := os.ReadDir(dir)
-	if err != nil {
-		level.Error(logger).Log("msg", "unable to read WAL directory for startup orphaned checkpoint cleanup", "err", err)
-		return
-	}
-
-	for _, fi := range files {
-		// Check if this is a completed checkpoint (not .tmp)
-		idx, err := checkpointIndex(fi.Name(), false)
-		if err != nil || !fi.IsDir() {
-			continue
-		}
-
-		// Only delete if:
-		// 1. Checkpoint is older than first available segment (orphaned)
-		// 2. Checkpoint is NOT the latest checkpoint (safety)
-		if idx < firstSegment && idx < latestCheckpointIdx {
-			orphanedPath := filepath.Join(dir, fi.Name())
-			if err := os.RemoveAll(orphanedPath); err != nil {
-				level.Error(logger).Log("msg", "unable to cleanup orphaned checkpoint at startup", "dir", orphanedPath, "err", err)
-			} else {
-				level.Info(logger).Log("msg", "cleaned up orphaned checkpoint at startup", "dir", fi.Name(), "idx", idx, "firstSegment", firstSegment)
-			}
-		}
-	}
+	// Delegate to the shared cleanup function, protecting the latest checkpoint
+	cleanupOrphanedCheckpoints(dir, latestCheckpointIdx, logger)
 }
 
 type Recoverer interface {
