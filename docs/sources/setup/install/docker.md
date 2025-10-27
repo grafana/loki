@@ -98,12 +98,12 @@ Run the following commands in your command line. They work for Windows or Linux 
     cd loki
     ```
 
-1. Copy and paste the following commands into your command line to download the `docker-compose.yaml` and `alloy-local-config.yaml` files.
+1. Copy and paste the following commands into your command line to download the `docker-compose.yaml` and `alloy-local-config.yaml` files.  Update the version number to match your version of Loki.
 
     ```bash
-    wget https://raw.githubusercontent.com/grafana/loki/v3.4.1/examples/getting-started/docker-compose.yaml -O docker-compose.yaml
-    wget https://raw.githubusercontent.com/grafana/loki/v3.4.1/examples/getting-started/alloy-local-config.yaml -O alloy-local-config.yaml
-    wget https://raw.githubusercontent.com/grafana/loki/v3.4.1/examples/getting-started/loki-config.yaml -O loki-config.yaml
+    wget https://raw.githubusercontent.com/grafana/loki/v3.5.7/examples/getting-started/docker-compose.yaml -O docker-compose.yaml
+    wget https://raw.githubusercontent.com/grafana/loki/v3.5.7/examples/getting-started/alloy-local-config.yaml -O alloy-local-config.yaml
+    wget https://raw.githubusercontent.com/grafana/loki/v3.5.7/examples/getting-started/loki-config.yaml -O loki-config.yaml
     ```
 
 1. With `loki` as the current working directory, run the following 'docker-compose` command:
