@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
-	"math"
 	"sync"
 	"time"
 
@@ -219,11 +218,6 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 			// Determine which policy bucket to use and the max streams limit
 			policyBucket, maxStreams := s.getPolicyBucketAndStreamsLimit(tenant, m.IngestionPolicy)
 
-			// Unlimited stream limit
-			if maxStreams == 0 {
-				maxStreams = math.MaxInt64
-			}
-
 			s.checkInitMap(i, tenant, partition, policyBucket)
 			streams := s.stripes[i][tenant][partition][policyBucket]
 			stream, ok := streams[m.StreamHash]
@@ -237,17 +231,21 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 					// towards the active streams.
 					delete(streams, m.StreamHash)
 				}
-				// Get the total number of streams, including expired
-				// streams. While we would like to count just the number of
-				// active streams, this would mean iterating all streams
-				// in the partition which is O(N) instead of O(1). Instead,
-				// we accept that expired streams will be counted towards the
-				// limit until evicted.
-				numStreams := uint64(len(s.stripes[i][tenant][partition][policyBucket]))
 
-				if numStreams >= maxStreams {
-					rejected = append(rejected, m)
-					continue
+				// If the configured max streams limit is _not_ unlimited, check if the stream would exceed the limit.
+				if maxStreams > 0 {
+					// Get the total number of streams, including expired
+					// streams. While we would like to count just the number of
+					// active streams, this would mean iterating all streams
+					// in the partition which is O(N) instead of O(1). Instead,
+					// we accept that expired streams will be counted towards the
+					// limit until evicted.
+					numStreams := uint64(len(s.stripes[i][tenant][partition][policyBucket]))
+
+					if numStreams >= maxStreams {
+						rejected = append(rejected, m)
+						continue
+					}
 				}
 			}
 			s.update(i, tenant, partition, policyBucket, m, seenAt)
