@@ -639,11 +639,11 @@ type mockLimitsWithPolicy struct {
 	policyLimits map[string]int
 }
 
-func (m *mockLimitsWithPolicy) PolicyMaxGlobalStreamsPerUser(_, policy string) int {
+func (m *mockLimitsWithPolicy) PolicyMaxGlobalStreamsPerUser(_, policy string) (int, bool) {
 	if limit, exists := m.policyLimits[policy]; exists {
-		return limit
+		return limit, true
 	}
-	return 0 // No custom limit for this policy
+	return 0, false // No custom limit for this policy
 }
 
 func newRateBuckets(rateWindow, bucketSize time.Duration) []rateBucket {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"math"
 	"sync"
 	"time"
 
@@ -45,11 +46,11 @@ func (s *usageStore) getPolicyBucketAndStreamsLimit(tenant, policy string) (poli
 	defaultMaxStreams := uint64(s.limits.MaxGlobalStreamsPerUser(tenant) / s.numPartitions)
 
 	if policy != noPolicy {
-		if policyMaxStreams := s.limits.PolicyMaxGlobalStreamsPerUser(tenant, policy); policyMaxStreams > 0 {
+		if policyMaxStreams, exists := s.limits.PolicyMaxGlobalStreamsPerUser(tenant, policy); exists {
 			return policy, uint64(policyMaxStreams / s.numPartitions) // Use policy-specific bucket
 		}
 	}
-	return "", defaultMaxStreams // Use default bucket
+	return noPolicy, defaultMaxStreams // Use default bucket (noPolicy)
 }
 
 // usageStore stores per-tenant stream usage data.
@@ -217,6 +218,11 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 
 			// Determine which policy bucket to use and the max streams limit
 			policyBucket, maxStreams := s.getPolicyBucketAndStreamsLimit(tenant, m.IngestionPolicy)
+
+			// Unlimited stream limit
+			if maxStreams == 0 {
+				maxStreams = math.MaxInt64
+			}
 
 			s.checkInitMap(i, tenant, partition, policyBucket)
 			streams := s.stripes[i][tenant][partition][policyBucket]
