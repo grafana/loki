@@ -13,7 +13,7 @@ import (
 )
 
 // Helper function to create a boolean array
-func createBoolArray(values []bool, nulls []bool) *Array {
+func createBoolArray(values []bool, nulls []bool) arrow.Array {
 	builder := array.NewBooleanBuilder(memory.DefaultAllocator)
 
 	for i, val := range values {
@@ -24,16 +24,11 @@ func createBoolArray(values []bool, nulls []bool) *Array {
 		}
 	}
 
-	return &Array{
-		array: builder.NewArray(),
-		dt:    types.Loki.Bool,
-		ct:    types.ColumnTypeBuiltin,
-		rows:  int64(len(values)),
-	}
+	return builder.NewArray()
 }
 
 // Helper function to create a string array
-func createStringArray(values []string, nulls []bool) *Array {
+func createStringArray(values []string, nulls []bool) arrow.Array {
 	builder := array.NewStringBuilder(memory.DefaultAllocator)
 
 	for i, val := range values {
@@ -44,16 +39,11 @@ func createStringArray(values []string, nulls []bool) *Array {
 		}
 	}
 
-	return &Array{
-		array: builder.NewArray(),
-		dt:    types.Loki.String,
-		ct:    types.ColumnTypeBuiltin,
-		rows:  int64(len(values)),
-	}
+	return builder.NewArray()
 }
 
 // Helper function to create an int64 array
-func createInt64Array(values []int64, nulls []bool) *Array {
+func createInt64Array(values []int64, nulls []bool) arrow.Array {
 	builder := array.NewInt64Builder(memory.DefaultAllocator)
 
 	for i, val := range values {
@@ -64,16 +54,11 @@ func createInt64Array(values []int64, nulls []bool) *Array {
 		}
 	}
 
-	return &Array{
-		array: builder.NewArray(),
-		dt:    types.Loki.Integer,
-		ct:    types.ColumnTypeBuiltin,
-		rows:  int64(len(values)),
-	}
+	return builder.NewArray()
 }
 
 // Helper function to create a arrow.Timestamp array
-func createTimestampArray(values []arrow.Timestamp, nulls []bool) *Array {
+func createTimestampArray(values []arrow.Timestamp, nulls []bool) arrow.Array {
 	builder := array.NewTimestampBuilder(memory.DefaultAllocator, &arrow.TimestampType{Unit: arrow.Nanosecond, TimeZone: "UTC"})
 
 	for i, val := range values {
@@ -84,16 +69,11 @@ func createTimestampArray(values []arrow.Timestamp, nulls []bool) *Array {
 		}
 	}
 
-	return &Array{
-		array: builder.NewArray(),
-		dt:    types.Loki.Timestamp,
-		ct:    types.ColumnTypeBuiltin,
-		rows:  int64(len(values)),
-	}
+	return builder.NewArray()
 }
 
 // Helper function to create a float64 array
-func createFloat64Array(values []float64, nulls []bool) *Array {
+func createFloat64Array(values []float64, nulls []bool) arrow.Array {
 	builder := array.NewFloat64Builder(memory.DefaultAllocator)
 
 	for i, val := range values {
@@ -104,17 +84,12 @@ func createFloat64Array(values []float64, nulls []bool) *Array {
 		}
 	}
 
-	return &Array{
-		array: builder.NewArray(),
-		dt:    types.Loki.Float,
-		ct:    types.ColumnTypeBuiltin,
-		rows:  int64(len(values)),
-	}
+	return builder.NewArray()
 }
 
 // Helper function to extract boolean values from result
-func extractBoolValues(result ColumnVector) []bool {
-	arr := result.ToArray().(*array.Boolean)
+func extractBoolValues(result arrow.Array) []bool {
+	arr := result.(*array.Boolean)
 
 	values := make([]bool, arr.Len())
 	for i := 0; i < arr.Len(); i++ {
@@ -177,9 +152,33 @@ func TestBinaryFunctionRegistry_GetForSignature(t *testing.T) {
 			expectError: false,
 		},
 		{
+			name:        "valid div operation",
+			op:          types.BinaryOpDiv,
+			dataType:    arrow.PrimitiveTypes.Float64,
+			expectError: false,
+		},
+		{
+			name:        "valid add operation",
+			op:          types.BinaryOpAdd,
+			dataType:    arrow.PrimitiveTypes.Float64,
+			expectError: false,
+		},
+		{
+			name:        "valid Mul operation",
+			op:          types.BinaryOpMul,
+			dataType:    arrow.PrimitiveTypes.Float64,
+			expectError: false,
+		},
+		{
+			name:        "valid sub operation",
+			op:          types.BinaryOpSub,
+			dataType:    arrow.PrimitiveTypes.Float64,
+			expectError: false,
+		},
+		{
 			name:        "invalid operation",
-			op:          types.BinaryOpAdd, // Not registered
-			dataType:    arrow.PrimitiveTypes.Int64,
+			op:          types.BinaryOpAnd, // Not registered
+			dataType:    arrow.FixedWidthTypes.Boolean,
 			expectError: true,
 		},
 		{
@@ -624,14 +623,14 @@ func TestNullValueHandling(t *testing.T) {
 		name     string
 		op       types.BinaryOp
 		dataType arrow.DataType
-		setup    func() (*Array, *Array)
+		setup    func() (arrow.Array, arrow.Array)
 		expected []bool
 	}{
 		{
 			name:     "boolean with nulls",
 			op:       types.BinaryOpEq,
 			dataType: arrow.FixedWidthTypes.Boolean,
-			setup: func() (*Array, *Array) {
+			setup: func() (arrow.Array, arrow.Array) {
 				lhs := createBoolArray([]bool{true, false, true}, []bool{false, true, false})
 				rhs := createBoolArray([]bool{true, false, false}, []bool{true, false, false})
 				return lhs, rhs
@@ -642,7 +641,7 @@ func TestNullValueHandling(t *testing.T) {
 			name:     "string with nulls",
 			op:       types.BinaryOpEq,
 			dataType: arrow.BinaryTypes.String,
-			setup: func() (*Array, *Array) {
+			setup: func() (arrow.Array, arrow.Array) {
 				lhs := createStringArray([]string{"hello", "world", "test"}, []bool{false, true, false})
 				rhs := createStringArray([]string{"hello", "world", "different"}, []bool{true, false, false})
 				return lhs, rhs
@@ -653,7 +652,7 @@ func TestNullValueHandling(t *testing.T) {
 			name:     "int64 with nulls",
 			op:       types.BinaryOpGt,
 			dataType: arrow.PrimitiveTypes.Int64,
-			setup: func() (*Array, *Array) {
+			setup: func() (arrow.Array, arrow.Array) {
 				lhs := createInt64Array([]int64{5, 10, 15}, []bool{false, true, false})
 				rhs := createInt64Array([]int64{3, 8, 20}, []bool{true, false, false})
 				return lhs, rhs
@@ -683,13 +682,13 @@ func TestArrayLengthMismatch(t *testing.T) {
 		name     string
 		op       types.BinaryOp
 		dataType arrow.DataType
-		setup    func() (*Array, *Array)
+		setup    func() (arrow.Array, arrow.Array)
 	}{
 		{
 			name:     "boolean length mismatch",
 			op:       types.BinaryOpEq,
 			dataType: arrow.FixedWidthTypes.Boolean,
-			setup: func() (*Array, *Array) {
+			setup: func() (arrow.Array, arrow.Array) {
 				lhs := createBoolArray([]bool{true, false}, nil)
 				rhs := createBoolArray([]bool{true, false, true}, nil)
 				return lhs, rhs
@@ -699,7 +698,7 @@ func TestArrayLengthMismatch(t *testing.T) {
 			name:     "string length mismatch",
 			op:       types.BinaryOpEq,
 			dataType: arrow.BinaryTypes.String,
-			setup: func() (*Array, *Array) {
+			setup: func() (arrow.Array, arrow.Array) {
 				lhs := createStringArray([]string{"hello"}, nil)
 				rhs := createStringArray([]string{"hello", "world"}, nil)
 				return lhs, rhs
@@ -709,7 +708,7 @@ func TestArrayLengthMismatch(t *testing.T) {
 			name:     "int64 length mismatch",
 			op:       types.BinaryOpGt,
 			dataType: arrow.PrimitiveTypes.Int64,
-			setup: func() (*Array, *Array) {
+			setup: func() (arrow.Array, arrow.Array) {
 				lhs := createInt64Array([]int64{1, 2, 3}, nil)
 				rhs := createInt64Array([]int64{1, 2}, nil)
 				return lhs, rhs
@@ -780,5 +779,5 @@ func TestEmptyArrays(t *testing.T) {
 	result, err := fn.Evaluate(lhs, rhs)
 	require.NoError(t, err)
 
-	assert.Equal(t, int64(0), result.Len())
+	assert.Equal(t, int(0), result.Len())
 }

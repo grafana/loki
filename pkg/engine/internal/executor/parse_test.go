@@ -237,6 +237,24 @@ func TestNewParsePipeline_logfmt(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "handle duplicate keys with first-wins semantics",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: "level=info status=200 level=debug"},
+			},
+			requestedKeys:  nil,
+			expectedFields: 3, // 3 columns: message, level, status
+			expectedOutput: arrowtest.Rows{
+				{
+					colMsg:               "level=info status=200 level=debug",
+					"utf8.parsed.level":  "info",
+					"utf8.parsed.status": "200",
+				},
+			},
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create input data with message column containing logfmt
@@ -622,6 +640,23 @@ func TestNewParsePipeline_JSON(t *testing.T) {
 					"utf8.parsed.response_time":    nil,
 					"utf8.parsed.user_id":          "123",
 					"utf8.parsed.user_profile_age": "25",
+				},
+			},
+		},
+		{
+			name: "duplicate field name takes first value",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: `{"app": "foo", "app": "duplicate"}`},
+			},
+			requestedKeys:  nil, // Extract all keys
+			expectedFields: 2,   // message, app
+			expectedOutput: arrowtest.Rows{
+				{
+					colMsg:            `{"app": "foo", "app": "duplicate"}`,
+					"utf8.parsed.app": "foo",
 				},
 			},
 		},

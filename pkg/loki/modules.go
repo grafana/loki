@@ -104,60 +104,62 @@ const maxChunkAgeForTableManager = 12 * time.Hour
 
 // The various modules that make up Loki.
 const (
-	Ring                     = "ring"
-	Overrides                = "overrides"
-	OverridesExporter        = "overrides-exporter"
-	TenantConfigs            = "tenant-configs"
-	Server                   = "server"
-	InternalServer           = "internal-server"
-	Distributor              = "distributor"
-	IngestLimits             = "ingest-limits"
-	IngestLimitsRing         = "ingest-limits-ring"
-	IngestLimitsFrontend     = "ingest-limits-frontend"
-	IngestLimitsFrontendRing = "ingest-limits-frontend-ring"
-	Ingester                 = "ingester"
-	PatternIngester          = "pattern-ingester"
-	PatternRingClient        = "pattern-ring-client"
-	PatternIngesterTee       = "pattern-ingester-tee"
-	Querier                  = "querier"
-	QueryFrontend            = "query-frontend"
-	QueryFrontendTripperware = "query-frontend-tripperware"
-	QueryLimiter             = "query-limiter"
-	QueryLimitsInterceptors  = "query-limits-interceptors"
-	QueryLimitsTripperware   = "query-limits-tripperware"
-	Store                    = "store"
-	TableManager             = "table-manager"
-	RulerStorage             = "ruler-storage"
-	Ruler                    = "ruler"
-	RuleEvaluator            = "rule-evaluator"
-	Compactor                = "compactor"
-	IndexGateway             = "index-gateway"
-	IndexGatewayRing         = "index-gateway-ring"
-	IndexGatewayInterceptors = "index-gateway-interceptors"
-	BloomStore               = "bloom-store"
-	BloomGateway             = "bloom-gateway"
-	BloomGatewayClient       = "bloom-gateway-client"
-	BloomPlanner             = "bloom-planner"
-	BloomBuilder             = "bloom-builder"
-	QueryScheduler           = "query-scheduler"
-	QuerySchedulerRing       = "query-scheduler-ring"
-	IngesterQuerier          = "ingester-querier"
-	IngesterGRPCInterceptors = "ingester-grpc-interceptors"
-	RuntimeConfig            = "runtime-config"
-	MemberlistKV             = "memberlist-kv"
-	Analytics                = "analytics"
-	CacheGenerationLoader    = "cache-generation-loader"
-	PartitionRing            = "partition-ring"
-	DataObjExplorer          = "dataobj-explorer"
-	DataObjConsumer          = "dataobj-consumer"
-	DataObjIndexBuilder      = "dataobj-index-builder"
-	ScratchStore             = "scratch-store"
-	UIRing                   = "ui-ring"
-	UI                       = "ui"
-	All                      = "all"
-	Read                     = "read"
-	Write                    = "write"
-	Backend                  = "backend"
+	Ring                         = "ring"
+	Overrides                    = "overrides"
+	OverridesExporter            = "overrides-exporter"
+	TenantConfigs                = "tenant-configs"
+	Server                       = "server"
+	InternalServer               = "internal-server"
+	Distributor                  = "distributor"
+	IngestLimits                 = "ingest-limits"
+	IngestLimitsRing             = "ingest-limits-ring"
+	IngestLimitsFrontend         = "ingest-limits-frontend"
+	IngestLimitsFrontendRing     = "ingest-limits-frontend-ring"
+	Ingester                     = "ingester"
+	PatternIngester              = "pattern-ingester"
+	PatternRingClient            = "pattern-ring-client"
+	PatternIngesterTee           = "pattern-ingester-tee"
+	Querier                      = "querier"
+	QueryFrontend                = "query-frontend"
+	QueryFrontendTripperware     = "query-frontend-tripperware"
+	QueryLimiter                 = "query-limiter"
+	QueryLimitsInterceptors      = "query-limits-interceptors"
+	QueryLimitsTripperware       = "query-limits-tripperware"
+	Store                        = "store"
+	TableManager                 = "table-manager"
+	RulerStorage                 = "ruler-storage"
+	Ruler                        = "ruler"
+	RuleEvaluator                = "rule-evaluator"
+	Compactor                    = "compactor"
+	IndexGateway                 = "index-gateway"
+	IndexGatewayRing             = "index-gateway-ring"
+	IndexGatewayInterceptors     = "index-gateway-interceptors"
+	BloomStore                   = "bloom-store"
+	BloomGateway                 = "bloom-gateway"
+	BloomGatewayClient           = "bloom-gateway-client"
+	BloomPlanner                 = "bloom-planner"
+	BloomBuilder                 = "bloom-builder"
+	QueryScheduler               = "query-scheduler"
+	QuerySchedulerRing           = "query-scheduler-ring"
+	IngesterQuerier              = "ingester-querier"
+	IngesterGRPCInterceptors     = "ingester-grpc-interceptors"
+	RuntimeConfig                = "runtime-config"
+	MemberlistKV                 = "memberlist-kv"
+	Analytics                    = "analytics"
+	CacheGenerationLoader        = "cache-generation-loader"
+	PartitionRing                = "partition-ring"
+	DataObjExplorer              = "dataobj-explorer"
+	DataObjConsumer              = "dataobj-consumer"
+	DataObjConsumerRing          = "dataobj-consumer-ring"
+	DataObjConsumerPartitionRing = "dataobj-consumer-partition-ring"
+	DataObjIndexBuilder          = "dataobj-index-builder"
+	ScratchStore                 = "scratch-store"
+	UIRing                       = "ui-ring"
+	UI                           = "ui"
+	All                          = "all"
+	Read                         = "read"
+	Write                        = "write"
+	Backend                      = "backend"
 )
 
 const (
@@ -305,6 +307,7 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 	// of projects based on Loki forgetting the wiring if they override module's init method (they also don't have access to private symbols).
 	t.Cfg.CompactorConfig.CompactorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Distributor.DistributorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.Cfg.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.IndexGateway.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
@@ -368,6 +371,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		t.Cfg.IngestLimitsFrontendClient,
 		t.ingestLimitsFrontendRing,
 		t.Cfg.IngestLimits.NumPartitions,
+		t.dataObjConsumerPartitionRing,
 		logger,
 	)
 	if err != nil {
@@ -387,6 +391,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	httpPushHandlerMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 		t.HTTPAuthMiddleware,
+		validation.NewIngestionPolicyMiddleware(util_log.Logger),
 	)
 
 	lokiPushHandler := httpPushHandlerMiddleware.Wrap(http.HandlerFunc(t.distributor.PushHandler))
@@ -1591,6 +1596,8 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.IngestLimits.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.IngestLimitsFrontend.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.UI.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.DataObj.Consumer.PartitionRingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 
@@ -2126,6 +2133,70 @@ func (t *Loki) initUI() (services.Service, error) {
 	return svc, nil
 }
 
+func (t *Loki) initDataObjConsumerRing() (_ services.Service, err error) {
+	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
+		return nil, nil
+	}
+
+	reg := prometheus.WrapRegistererWithPrefix(t.Cfg.MetricsNamespace+"_", prometheus.DefaultRegisterer)
+
+	t.dataObjConsumerRing, err = ring.New(
+		t.Cfg.DataObj.Consumer.LifecyclerConfig.RingConfig,
+		consumer.RingName,
+		consumer.RingKey,
+		util_log.Logger,
+		reg,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create %s ring: %w", consumer.RingName, err)
+	}
+
+	t.Server.HTTP.Path("/dataobj-consumer/ring").Methods("GET", "POST").Handler(t.dataObjConsumerRing)
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/dataobj-consumer/ring").Methods("GET", "POST").Handler(t.dataObjConsumerRing)
+	}
+
+	return t.dataObjConsumerRing, nil
+}
+
+func (t *Loki) initDataObjConsumerPartitionRing() (services.Service, error) {
+	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
+		return nil, nil
+	}
+	kvClient, err := kv.NewClient(
+		t.Cfg.DataObj.Consumer.PartitionRingConfig.KVStore,
+		ring.GetPartitionRingCodec(),
+		kv.RegistererWithKVName(prometheus.DefaultRegisterer, consumer.PartitionRingName+"-watcher"),
+		util_log.Logger,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create KV store for dataobj ring watcher: %w", err)
+	}
+	t.DataObjConsumerPartitionRingWatcher = ring.NewPartitionRingWatcher(
+		consumer.PartitionRingName,
+		consumer.PartitionRingKey,
+		kvClient,
+		util_log.Logger,
+		prometheus.WrapRegistererWithPrefix("loki_", prometheus.DefaultRegisterer),
+	)
+	t.dataObjConsumerPartitionRing = ring.NewPartitionInstanceRing(
+		t.DataObjConsumerPartitionRingWatcher,
+		t.dataObjConsumerRing,
+		t.Cfg.DataObj.Consumer.LifecyclerConfig.RingConfig.HeartbeatTimeout,
+	)
+
+	// Expose a web page to view the partitions ring state.
+	t.Server.HTTP.Path("/dataobj-consumer/partition-ring").
+		Methods("GET", "POST").
+		Handler(
+			ring.NewPartitionRingPageHandler(
+				t.DataObjConsumerPartitionRingWatcher,
+				ring.NewPartitionRingEditor(consumer.PartitionRingKey, kvClient),
+			))
+
+	return t.DataObjConsumerPartitionRingWatcher, nil
+}
+
 func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
 		return nil, nil
@@ -2135,8 +2206,10 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 		return nil, err
 	}
 
+	t.Cfg.DataObj.Consumer.LifecyclerConfig.ListenPort = t.Cfg.Server.GRPCListenPort
+
 	level.Info(util_log.Logger).Log("msg", "initializing dataobj consumer", "instance", t.Cfg.Ingester.LifecyclerConfig.ID)
-	t.dataObjConsumer = consumer.New(
+	dataObjConsumer, err := consumer.New(
 		t.Cfg.KafkaConfig,
 		t.Cfg.DataObj.Consumer,
 		t.Cfg.DataObj.Metastore,
@@ -2146,6 +2219,17 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 		t.partitionRing,
 		prometheus.DefaultRegisterer,
 		util_log.Logger,
+	)
+	if err != nil {
+		return nil, err
+	}
+	t.dataObjConsumer = dataObjConsumer
+
+	httpMiddleware := middleware.Merge(
+		serverutil.RecoveryHTTPMiddleware,
+	)
+	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/dataobj-consumer/prepare_partition_downscale").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(t.dataObjConsumer.PreparePartitionDownscaleHandler)),
 	)
 
 	return t.dataObjConsumer, nil
