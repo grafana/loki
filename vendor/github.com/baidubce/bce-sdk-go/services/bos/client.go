@@ -231,6 +231,9 @@ func NewClientWithConfig(config *BosClientConfiguration) (*Client, error) {
 	if len(endpoint) == 0 {
 		endpoint = DEFAULT_SERVICE_DOMAIN
 	}
+	if config.retryPolicy == nil {
+		config.retryPolicy = bce.DEFAULT_RETRY_POLICY
+	}
 	defaultSignOptions := &auth.SignOptions{
 		HeadersToSign: auth.DEFAULT_HEADERS_TO_SIGN,
 		ExpireSeconds: auth.DEFAULT_EXPIRE_SECONDS}
@@ -2780,9 +2783,6 @@ func (c *Client) ParallelCopy(srcBucketName string, srcObjectName string,
 		Expires:            objectMeta.Expires,
 		StorageClass:       objectMeta.StorageClass,
 		CopySource:         source,
-		CannedAcl:          args.CannedAcl,
-		GrantRead:          args.GrantRead,
-		GrantFullControl:   args.GrantFullControl,
 	}
 	if args != nil {
 		if len(args.StorageClass) != 0 {
@@ -2793,6 +2793,15 @@ func (c *Client) ParallelCopy(srcBucketName string, srcObjectName string,
 		}
 		if len(args.TaggingDirective) != 0 {
 			initArgs.TaggingDirective = args.TaggingDirective
+		}
+		if len(args.CannedAcl) != 0 {
+			initArgs.CannedAcl = args.CannedAcl
+		}
+		if len(args.GrantRead) != 0 {
+			initArgs.GrantRead = args.GrantRead
+		}
+		if len(args.GrantFullControl) != 0 {
+			initArgs.GrantFullControl = args.GrantFullControl
 		}
 	}
 	initiateMultipartUploadResult, err := api.InitiateMultipartUpload(c, destBucketName, destObjectName, objectMeta.ContentType, &initArgs, c.BosContext)
@@ -2809,12 +2818,23 @@ func (c *Client) ParallelCopy(srcBucketName string, srcObjectName string,
 	}
 
 	completeArgs := &api.CompleteMultipartUploadArgs{
-		Parts:             partEtags,
-		UserMeta:          args.UserMeta,
-		ContentCrc32:      args.ContentCrc32,
-		ContentCrc32c:     args.ContentCrc32c,
-		ContentCrc32cFlag: args.ContentCrc32cFlag,
-		ObjectExpires:     args.ObjectExpires,
+		Parts: partEtags,
+	}
+
+	if args != nil {
+		if args.UserMeta != nil {
+			completeArgs.UserMeta = args.UserMeta
+		}
+		if len(args.ContentCrc32) != 0 {
+			completeArgs.ContentCrc32 = args.ContentCrc32
+		}
+		if len(args.ContentCrc32c) != 0 {
+			completeArgs.ContentCrc32c = args.ContentCrc32c
+		}
+		completeArgs.ContentCrc32cFlag = args.ContentCrc32cFlag
+		if args.ObjectExpires > 0 {
+			completeArgs.ObjectExpires = args.ObjectExpires
+		}
 	}
 
 	completeMultipartUploadResult, err := c.CompleteMultipartUploadFromStruct(destBucketName, destObjectName, initiateMultipartUploadResult.UploadId, completeArgs)

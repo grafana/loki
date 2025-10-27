@@ -34,6 +34,8 @@ message GetAssignedPartitionsResponse {
 message StreamMetadata {
   uint64 streamHash = 1;
   uint64 totalSize = 2;
+  // The resolved ingestion policy for this stream if any. May be used to override some ingestion limits for this stream such as the max streams allowed.
+  string ingestionPolicy = 3;
 }
 
 message StreamMetadataRecord {
