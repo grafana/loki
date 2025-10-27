@@ -101,7 +101,7 @@ RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:
 		expectOuptut := strings.TrimSpace(`
 Task 00000000000000000000000001
 -------------------------------
-VectorAggregation
+VectorAggregation operation=invalid
     └── @source stream=00000000000000000000000003
 
 Task 00000000000000000000000002
@@ -154,7 +154,7 @@ RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:
 		expectOuptut := strings.TrimSpace(`
 Task 00000000000000000000000001
 -------------------------------
-VectorAggregation
+VectorAggregation operation=invalid
     └── @source stream=00000000000000000000000006
 
 Task 00000000000000000000000002

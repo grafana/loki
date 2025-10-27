@@ -109,12 +109,15 @@ type Config struct {
 	IngestLimitsDryRunEnabled bool `yaml:"ingest_limits_dry_run_enabled"`
 
 	KafkaConfig kafka.Config `yaml:"-"`
+
+	DataObjTeeConfig DataObjTeeConfig `yaml:"dataobj_tee"`
 }
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.OTLPConfig.RegisterFlags(fs)
 	cfg.DistributorRing.RegisterFlags(fs)
+	cfg.DataObjTeeConfig.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
 	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 	fs.IntVar(&cfg.MaxRecvMsgSize, "distributor.max-recv-msg-size", 100<<20, "The maximum size of a received message.")
@@ -128,6 +131,9 @@ func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 func (cfg *Config) Validate() error {
 	if !cfg.KafkaEnabled && !cfg.IngesterEnabled {
 		return fmt.Errorf("at least one of kafka and ingestor writes must be enabled")
+	}
+	if err := cfg.DataObjTeeConfig.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -226,6 +232,7 @@ func New(
 	limitsFrontendCfg limits_frontend_client.Config,
 	limitsFrontendRing ring.ReadRing,
 	numMetadataPartitions int,
+	dataObjConsumerPartitionRing ring.PartitionRingReader,
 	logger log.Logger,
 ) (*Distributor, error) {
 	ingesterClientFactory := cfg.factory
@@ -284,6 +291,20 @@ func New(
 		}
 		kafkaWriter = kafka_client.NewProducer("distributor", kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
 			prometheus.WrapRegistererWithPrefix("loki_", registerer))
+
+		if cfg.DataObjTeeConfig.Enabled {
+			dataObjTee, err := NewDataObjTee(
+				&cfg.DataObjTeeConfig,
+				kafkaClient,
+				dataObjConsumerPartitionRing,
+				logger,
+				registerer,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create data object tee: %w", err)
+			}
+			tee = WrapTee(tee, dataObjTee)
+		}
 	}
 
 	d := &Distributor{
@@ -580,7 +601,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 
 			var lbs labels.Labels
 			var retentionHours, policy string
-			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(validationContext, stream.Labels, stream, streamResolver, format)
+			lbs, stream.Labels, stream.Hash, retentionHours, policy, err = d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
 			if err != nil {
 				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
@@ -894,7 +915,7 @@ func (d *Distributor) trackDiscardedData(
 
 	if d.usageTracker != nil {
 		for _, stream := range req.Streams {
-			lbs, _, _, _, _, err := d.parseStreamLabels(validationContext, stream.Labels, stream, streamResolver, format)
+			lbs, _, _, _, _, err := d.parseStreamLabels(ctx, validationContext, stream.Labels, stream, streamResolver, format)
 			if err != nil {
 				continue
 			}
@@ -1288,10 +1309,10 @@ type labelData struct {
 }
 
 // parseStreamLabels parses stream labels using a request-scoped policy resolver
-func (d *Distributor) parseStreamLabels(vContext validationContext, key string, stream logproto.Stream, streamResolver push.StreamResolver, format string) (labels.Labels, string, uint64, string, string, error) {
+func (d *Distributor) parseStreamLabels(ctx context.Context, vContext validationContext, key string, stream logproto.Stream, streamResolver push.StreamResolver, format string) (labels.Labels, string, uint64, string, string, error) {
 	if val, ok := d.labelCache.Get(key); ok {
 		retentionHours := streamResolver.RetentionHoursFor(val.ls)
-		policy := streamResolver.PolicyFor(val.ls)
+		policy := streamResolver.PolicyFor(ctx, val.ls)
 		return val.ls, val.ls.String(), val.hash, retentionHours, policy, nil
 	}
 
@@ -1302,7 +1323,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 		return labels.EmptyLabels(), "", 0, retentionHours, "", fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
-	policy := streamResolver.PolicyFor(ls)
+	policy := streamResolver.PolicyFor(ctx, ls)
 	retentionHours := d.tenantsRetention.RetentionHoursFor(vContext.userID, ls)
 
 	if err := d.validator.ValidateLabels(vContext, ls, stream, retentionHours, policy, format); err != nil {
@@ -1433,8 +1454,8 @@ func (r requestScopedStreamResolver) RetentionHoursFor(lbs labels.Labels) string
 	return r.retention.RetentionHoursFor(lbs)
 }
 
-func (r requestScopedStreamResolver) PolicyFor(lbs labels.Labels) string {
-	policies := r.policyStreamMappings.PolicyFor(lbs)
+func (r requestScopedStreamResolver) PolicyFor(ctx context.Context, lbs labels.Labels) string {
+	policies := r.policyStreamMappings.PolicyFor(ctx, lbs)
 
 	var policy string
 	if len(policies) > 0 {

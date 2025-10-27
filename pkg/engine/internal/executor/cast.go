@@ -15,12 +15,10 @@ import (
 )
 
 func castFn(operation types.UnaryOp) UnaryFunction {
-	return UnaryFunc(func(input ColumnVector) (ColumnVector, error) {
-		arr := input.ToArray()
-
-		sourceCol, ok := arr.(*array.String)
+	return UnaryFunc(func(input arrow.Array) (arrow.Array, error) {
+		sourceCol, ok := input.(*array.String)
 		if !ok {
-			return nil, fmt.Errorf("expected column to be of type string, got %T", arr)
+			return nil, fmt.Errorf("expected column to be of type string, got %T", input)
 		}
 
 		// Get conversion function and process values
@@ -32,15 +30,7 @@ func castFn(operation types.UnaryOp) UnaryFunction {
 
 		// Build output schema and record
 		fields := buildValueAndErrorFields(errTracker.hasErrors)
-		result, err := buildValueAndErrorStruct(castCol, errorCol, errorDetailsCol, fields)
-		if err != nil {
-			return nil, err
-		}
-		return &ArrayStruct{
-			array: result,
-			ct:    types.ColumnTypeGenerated,
-			rows:  input.Len(),
-		}, nil
+		return buildValueAndErrorStruct(castCol, errorCol, errorDetailsCol, fields)
 	})
 }
 

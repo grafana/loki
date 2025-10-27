@@ -40,12 +40,11 @@ type Runner interface {
 	// Implementations must track executed tasks until the tasks enter a
 	// terminal state.
 	//
-	// The provided context is used for the lifetime of the tasks. Cancelling
-	// the context will cancel all tasks, and close associated streams for
-	// sending.
+	// The provided context is used for the lifetime of the Start call. To
+	// cancel started tasks, use [Runner.Cancel].
 	Start(ctx context.Context, handler TaskEventHandler, tasks ...*Task) error
 
-	// Cancel requests cancelation of the specified tasks. Cancel returns an
+	// Cancel requests cancellation of the specified tasks. Cancel returns an
 	// error if any of the tasks were not found.
 	Cancel(ctx context.Context, tasks ...*Task) error
 }

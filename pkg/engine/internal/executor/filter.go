@@ -28,12 +28,10 @@ func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expres
 				return nil, err
 			}
 
-			arr := vec.ToArray()
-
-			if arr.DataType().ID() != arrow.BOOL {
-				return nil, fmt.Errorf("predicate %d returned non-boolean type %s", i, arr.DataType())
+			if vec.DataType().ID() != arrow.BOOL {
+				return nil, fmt.Errorf("predicate %d returned non-boolean type %s", i, vec.DataType())
 			}
-			casted := arr.(*array.Boolean)
+			casted := vec.(*array.Boolean)
 			cols = append(cols, casted)
 		}
 

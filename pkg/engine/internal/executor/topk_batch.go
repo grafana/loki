@@ -220,9 +220,6 @@ func (b *topkBatch) Size() (rows int, unused int) {
 // values for those fields.
 //
 // Compact returns nil if no rows are in the top K.
-//
-// The returned record should be Release'd by the caller when it is no longer
-// needed.
 func (b *topkBatch) Compact() arrow.Record {
 	if len(b.usedCount) == 0 {
 		return nil

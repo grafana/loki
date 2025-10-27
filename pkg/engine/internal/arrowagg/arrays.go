@@ -46,9 +46,8 @@ func (a *Arrays) AppendNulls(n int) {
 // Len returns the total number of rows currently appended to the builder.
 func (a *Arrays) Len() int { return a.nrows }
 
-// Aggregate all appended arrays into a single array. The returned array must
-// be Release'd after use. If no arrays have been appended, Aggregate returns a
-// zero-length array.
+// Aggregate all appended arrays into a single array.
+// If no arrays have been appended, Aggregate returns a zero-length array.
 //
 // Aggregate returns an error if any of the appended arrays do not match the
 // data type passed to [NewArrays].

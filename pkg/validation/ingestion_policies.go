@@ -1,9 +1,13 @@
 package validation
 
 import (
+	"context"
 	"fmt"
+	"net/http"
 	"slices"
 
+	"github.com/go-kit/log"
+	"github.com/grafana/dskit/middleware"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -11,6 +15,8 @@ import (
 
 const (
 	GlobalPolicy = "*"
+
+	HTTPHeaderIngestionPolicyKey = "X-Loki-Ingestion-Policy"
 )
 
 type PriorityStream struct {
@@ -54,7 +60,15 @@ func (p *PolicyStreamMapping) Validate() error {
 // with the same priority.
 // Returned policies are sorted alphabetically.
 // If no policies match, it returns an empty slice.
-func (p *PolicyStreamMapping) PolicyFor(lbs labels.Labels) []string {
+// If a policy is set via the X-Loki-Ingestion-Policy header (passed through context), it overrides
+// all stream-to-policy mappings and returns that policy.
+func (p *PolicyStreamMapping) PolicyFor(ctx context.Context, lbs labels.Labels) []string {
+	// Check if a policy was set via the HTTP header (X-Loki-Ingestion-Policy)
+	// This overrides any stream-to-policy mappings
+	if headerPolicy := ExtractIngestionPolicyContext(ctx); headerPolicy != "" {
+		return []string{headerPolicy}
+	}
+
 	var (
 		found           bool
 		highestPriority int
@@ -142,4 +156,55 @@ func (p *PolicyStreamMapping) ApplyDefaultPolicyStreamMappings(defaults PolicySt
 		return fmt.Errorf("validation failed after merging with the defaults: %w", err)
 	}
 	return nil
+}
+
+// policyContextKey is used as a key for context values to avoid collisions
+type policyContextKey int
+
+const (
+	ingestionPolicyContextKey policyContextKey = 1
+)
+
+// ExtractIngestionPolicyHTTP retrieves the ingestion policy from the HTTP header and returns it.
+// If no policy is found, it returns an empty string.
+func ExtractIngestionPolicyHTTP(r *http.Request) string {
+	return r.Header.Get(HTTPHeaderIngestionPolicyKey)
+}
+
+// InjectIngestionPolicyContext returns a derived context containing the provided ingestion policy.
+func InjectIngestionPolicyContext(ctx context.Context, policy string) context.Context {
+	return context.WithValue(ctx, ingestionPolicyContextKey, policy)
+}
+
+// ExtractIngestionPolicyContext gets the embedded ingestion policy from the context.
+// If no policy is found, it returns an empty string.
+func ExtractIngestionPolicyContext(ctx context.Context) string {
+	policy, ok := ctx.Value(ingestionPolicyContextKey).(string)
+	if !ok {
+		return ""
+	}
+	return policy
+}
+
+type ingestionPolicyMiddleware struct {
+	logger log.Logger
+}
+
+// NewIngestionPolicyMiddleware creates a middleware that extracts the ingestion policy
+// from the HTTP header and injects it into the context of the request.
+func NewIngestionPolicyMiddleware(logger log.Logger) middleware.Interface {
+	return &ingestionPolicyMiddleware{
+		logger: logger,
+	}
+}
+
+// Wrap implements the middleware interface
+func (m *ingestionPolicyMiddleware) Wrap(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if policy := ExtractIngestionPolicyHTTP(r); policy != "" {
+			r = r.Clone(InjectIngestionPolicyContext(r.Context(), policy))
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }

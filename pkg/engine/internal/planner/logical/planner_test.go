@@ -63,7 +63,7 @@ func (q *query) GetStoreChunks() *logproto.ChunkRefGroup {
 
 // Interval implements logql.Params.
 func (q *query) Interval() time.Duration {
-	panic("unimplemented")
+	return q.interval
 }
 
 // Shards implements logql.Params.
@@ -123,18 +123,19 @@ RETURN %21
 }
 
 func TestConvertAST_MetricQuery_Success(t *testing.T) {
-	q := &query{
-		statement: `sum by (level) (count_over_time({cluster="prod", namespace=~"loki-.*"} |= "metric.go"[5m]))`,
-		start:     3600,
-		end:       7200,
-		interval:  5 * time.Minute,
-	}
+	t.Run("simple metric query", func(t *testing.T) {
+		q := &query{
+			statement: `sum by (level) (count_over_time({cluster="prod", namespace=~"loki-.*"} |= "metric.go"[5m]))`,
+			start:     3600,
+			end:       7200,
+			interval:  5 * time.Minute,
+		}
 
-	logicalPlan, err := BuildPlan(q)
-	require.NoError(t, err)
-	t.Logf("\n%s\n", logicalPlan.String())
+		logicalPlan, err := BuildPlan(q)
+		require.NoError(t, err)
+		t.Logf("\n%s\n", logicalPlan.String())
 
-	expected := `%1 = EQ label.cluster "prod"
+		expected := `%1 = EQ label.cluster "prod"
 %2 = MATCH_RE label.namespace "loki-.*"
 %3 = AND %1 %2
 %4 = MATCH_STR builtin.message "metric.go"
@@ -150,12 +151,48 @@ func TestConvertAST_MetricQuery_Success(t *testing.T) {
 RETURN %13
 `
 
-	require.Equal(t, expected, logicalPlan.String())
+		require.Equal(t, expected, logicalPlan.String())
 
-	var sb strings.Builder
-	PrintTree(&sb, logicalPlan.Value())
+		var sb strings.Builder
+		PrintTree(&sb, logicalPlan.Value())
 
-	t.Logf("\n%s\n", sb.String())
+		t.Logf("\n%s\n", sb.String())
+	})
+
+	t.Run(`metric query with one binary math operation`, func(t *testing.T) {
+		q := &query{
+			statement: `sum by (level) (count_over_time({cluster="prod", namespace=~"loki-.*"}[5m]) / 300)`,
+			start:     3600,
+			end:       7200,
+			interval:  5 * time.Minute,
+		}
+
+		logicalPlan, err := BuildPlan(q)
+		require.NoError(t, err)
+		t.Logf("\n%s\n", logicalPlan.String())
+
+		expected := `%1 = EQ label.cluster "prod"
+%2 = MATCH_RE label.namespace "loki-.*"
+%3 = AND %1 %2
+%4 = MAKETABLE [selector=%3, predicates=[], shard=0_of_1]
+%5 = GTE builtin.timestamp 1970-01-01T00:55:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%8 = SELECT %6 [predicate=%7]
+%9 = RANGE_AGGREGATION %8 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%10 = DIV %9 300
+%11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
+%12 = LOGQL_COMPAT %11
+RETURN %12
+`
+
+		require.Equal(t, expected, logicalPlan.String())
+
+		var sb strings.Builder
+		PrintTree(&sb, logicalPlan.Value())
+
+		t.Logf("\n%s\n", sb.String())
+	})
 }
 
 func TestCanExecuteQuery(t *testing.T) {
@@ -222,6 +259,18 @@ func TestCanExecuteQuery(t *testing.T) {
 		{
 			statement: `sum by (level) (count_over_time({env="prod"}[1m]))`,
 			expected:  true,
+		},
+		{
+			statement: `sum by (level) (count_over_time({env="prod"}[1m]) / 60)`,
+			expected:  true,
+		},
+		{
+			statement: `sum by (level) (count_over_time({env="prod"}[1m]) / 60 * 4)`,
+			expected:  true,
+		},
+		{
+			// two inputs are not supported
+			statement: `sum by (level) (count_over_time({env="prod"} |= "error" [1m]) / count_over_time({env="prod"}[1m]))`,
 		},
 		{
 			statement: `sum without (level) (count_over_time({env="prod"}[1m]))`,

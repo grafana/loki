@@ -62,6 +62,7 @@ const (
 	BinaryOpMul // Multiplication operation (*).
 	BinaryOpDiv // Division operation (/).
 	BinaryOpMod // Modulo operation (%).
+	BinaryOpPow // power/exponentiation operation (^).
 
 	BinaryOpMatchSubstr     // Substring matching operation (|=). Used for string match filter.
 	BinaryOpNotMatchSubstr  // Substring non-matching operation (!=). Used for string match filter.
@@ -104,6 +105,8 @@ func (t BinaryOp) String() string {
 		return "DIV"
 	case BinaryOpMod:
 		return "MOD"
+	case BinaryOpPow:
+		return "POW"
 	case BinaryOpMatchSubstr:
 		return "MATCH_STR"
 	case BinaryOpNotMatchSubstr:
