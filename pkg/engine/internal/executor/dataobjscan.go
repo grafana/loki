@@ -12,6 +12,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/arrow-go/v18/arrow/scalar"
+	"github.com/go-kit/kit/log/level"
 	"github.com/go-kit/log"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
@@ -349,6 +350,7 @@ NextProjection:
 func (s *dataobjScan) read(ctx context.Context) (arrow.Record, error) {
 	rec, err := s.reader.Read(ctx, int(s.opts.BatchSize))
 	if err != nil && !errors.Is(err, io.EOF) {
+		level.Error(s.logger).Log("msg", "error reading logs section", "err", err)
 		return nil, err
 	} else if (rec == nil || rec.NumRows() == 0) && errors.Is(err, io.EOF) {
 		return nil, EOF

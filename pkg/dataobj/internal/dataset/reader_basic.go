@@ -204,7 +204,9 @@ func (pr *basicReader) fill(ctx context.Context, columns []Column, s []Row) (n i
 		// We check for atEOF here instead of maxRead == 0 to preserve the pattern
 		// of io.Reader: readers may return 0, nil even when they're not at EOF.
 		if maxRead == 0 && atEOF {
-			return n, io.EOF
+			// It is possible that all the columns being filled have fewer rows than max rows in the dataset.
+			// Setting maxRead to len(s)-n so the following loop can fill the remaining rows with NULLs.
+			maxRead = len(s) - n
 		}
 
 		// Some columns may have read fewer rows than maxRead. These columns need
