@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"testing"
 	"time"
@@ -696,4 +697,266 @@ func TestIngesterWALReplaysUnorderedToOrdered(t *testing.T) {
 			ensureIngesterData(ctx, t, start, end, i)
 		})
 	}
+}
+
+func TestCheckpointCleanupStaleTmpDirectories(t *testing.T) {
+	walDir := t.TempDir()
+	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
+
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	newStore := func() *mockStore {
+		return &mockStore{
+			chunks: map[string][]chunk.Chunk{},
+		}
+	}
+
+	readRingMock := mockReadRingWithOneActiveIngester()
+
+	// Create some fake stale .tmp checkpoint directories
+	staleTmpDirs := []string{
+		"checkpoint.000100.tmp",
+		"checkpoint.000200.tmp",
+		"checkpoint.000300.tmp",
+	}
+	for _, dir := range staleTmpDirs {
+		tmpPath := filepath.Join(walDir, dir)
+		require.NoError(t, os.MkdirAll(tmpPath, 0750))
+	}
+
+	// Verify the stale .tmp directories exist
+	files, err := os.ReadDir(walDir)
+	require.NoError(t, err)
+	tmpCount := 0
+	for _, f := range files {
+		if f.IsDir() && filepath.Ext(f.Name()) == ".tmp" {
+			tmpCount++
+		}
+	}
+	require.Equal(t, 3, tmpCount, "expected 3 .tmp directories before starting ingester")
+
+	// Start the ingester - this should trigger checkpoint cleanup
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
+	require.NoError(t, err)
+	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
+
+	// Push some data to trigger checkpoint
+	req := logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{
+				Labels: `{foo="bar"}`,
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Now(),
+						Line:      "test line",
+					},
+				},
+			},
+		},
+	}
+	ctx := user.InjectOrgID(context.Background(), "test")
+	_, err = i.Push(ctx, &req)
+	require.NoError(t, err)
+
+	// Wait for a checkpoint to be created
+	expectCheckpoint(t, walDir, true, ingesterConfig.WAL.CheckpointDuration*10)
+
+	// Stop the ingester to ensure no new checkpoints are being created
+	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+	// Verify all stale .tmp directories have been cleaned up
+	files, err = os.ReadDir(walDir)
+	require.NoError(t, err)
+	tmpCount = 0
+	for _, f := range files {
+		if f.IsDir() && filepath.Ext(f.Name()) == ".tmp" {
+			tmpCount++
+		}
+	}
+	require.Equal(t, 0, tmpCount, "expected all .tmp directories to be cleaned up after checkpoint")
+}
+
+func TestCheckpointCleanupOrphanedCheckpoints(t *testing.T) {
+	walDir := t.TempDir()
+	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
+
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	newStore := func() *mockStore {
+		return &mockStore{
+			chunks: map[string][]chunk.Chunk{},
+		}
+	}
+
+	readRingMock := mockReadRingWithOneActiveIngester()
+
+	// Phase 1: Start ingester and create some WAL segments and a checkpoint
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
+	require.NoError(t, err)
+	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
+
+	// Push some data to create WAL segments
+	req := logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{
+				Labels: `{foo="bar"}`,
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Now(),
+						Line:      "test line",
+					},
+				},
+			},
+		},
+	}
+	ctx := user.InjectOrgID(context.Background(), "test")
+	_, err = i.Push(ctx, &req)
+	require.NoError(t, err)
+
+	// Wait for a checkpoint to be created
+	expectCheckpoint(t, walDir, true, ingesterConfig.WAL.CheckpointDuration*10)
+
+	// Stop the ingester
+	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+	// Phase 2: Manually create an orphaned checkpoint with a very low index
+	// This simulates the bug scenario where checkpoint.017205 exists
+	// but the lowest WAL segment is 00017206
+	orphanedCheckpointDir := filepath.Join(walDir, "checkpoint.000001")
+	require.NoError(t, os.MkdirAll(orphanedCheckpointDir, 0750))
+
+	// Verify the orphaned checkpoint exists
+	_, err = os.Stat(orphanedCheckpointDir)
+	require.NoError(t, err, "orphaned checkpoint should exist before cleanup")
+
+	// Phase 3: Restart the ingester
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
+	require.NoError(t, err)
+	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
+
+	// Push more data to trigger another checkpoint which will clean up orphaned checkpoints
+	_, err = i.Push(ctx, &req)
+	require.NoError(t, err)
+
+	// Wait for another checkpoint to be created (this triggers cleanup in Close())
+	time.Sleep(ingesterConfig.WAL.CheckpointDuration * 2)
+
+	// Stop the ingester
+	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+	// Phase 4: Verify the orphaned checkpoint has been cleaned up
+	_, err = os.Stat(orphanedCheckpointDir)
+	require.True(t, os.IsNotExist(err), "orphaned checkpoint should be deleted after cleanup")
+
+	// Double-check by listing directory
+	files, err := os.ReadDir(walDir)
+	require.NoError(t, err)
+	for _, f := range files {
+		require.NotEqual(t, "checkpoint.000001", f.Name(), "orphaned checkpoint should not exist in directory listing")
+	}
+}
+
+func TestCheckpointCleanupOrphanedCheckpointsAtStartup(t *testing.T) {
+	walDir := t.TempDir()
+	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
+
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	newStore := func() *mockStore {
+		return &mockStore{
+			chunks: map[string][]chunk.Chunk{},
+		}
+	}
+
+	readRingMock := mockReadRingWithOneActiveIngester()
+
+	// Phase 1: Start ingester and create some WAL segments and a checkpoint
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
+	require.NoError(t, err)
+	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
+
+	// Push some data to create WAL segments
+	req := logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{
+				Labels: `{foo="bar"}`,
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Now(),
+						Line:      "test line",
+					},
+				},
+			},
+		},
+	}
+	ctx := user.InjectOrgID(context.Background(), "test")
+	_, err = i.Push(ctx, &req)
+	require.NoError(t, err)
+
+	// Wait for a checkpoint to be created
+	expectCheckpoint(t, walDir, true, ingesterConfig.WAL.CheckpointDuration*10)
+
+	// Push more data and wait for another checkpoint to ensure we have multiple checkpoints
+	// and segments have been truncated
+	_, err = i.Push(ctx, &req)
+	require.NoError(t, err)
+	time.Sleep(ingesterConfig.WAL.CheckpointDuration * 2)
+
+	// Stop the ingester
+	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+	// Phase 2: Manually create an orphaned checkpoint with a very low index
+	// This simulates the exact bug scenario where checkpoint.017205 exists
+	// but the lowest WAL segment is 00017206
+	orphanedCheckpointDir := filepath.Join(walDir, "checkpoint.000000")
+	require.NoError(t, os.MkdirAll(orphanedCheckpointDir, 0750))
+
+	// Verify the orphaned checkpoint exists
+	_, err = os.Stat(orphanedCheckpointDir)
+	require.NoError(t, err, "orphaned checkpoint should exist before startup")
+
+	// Count checkpoints before restart
+	files, err := os.ReadDir(walDir)
+	require.NoError(t, err)
+	checkpointsBefore := 0
+	for _, f := range files {
+		if _, cpErr := checkpointIndex(f.Name(), false); cpErr == nil && f.IsDir() {
+			checkpointsBefore++
+		}
+	}
+	require.GreaterOrEqual(t, checkpointsBefore, 2, "should have at least 2 checkpoints before restart")
+
+	// Phase 3: Restart the ingester WITHOUT pushing new data
+	// This tests that startup cleanup works independently of new checkpoints
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
+	require.NoError(t, err)
+	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
+
+	// Phase 4: Verify the orphaned checkpoint was cleaned up AT STARTUP
+	// (without needing to create a new checkpoint)
+	_, err = os.Stat(orphanedCheckpointDir)
+	require.True(t, os.IsNotExist(err), "orphaned checkpoint should be deleted at startup")
+
+	// Verify it's actually gone from directory listing
+	files, err = os.ReadDir(walDir)
+	require.NoError(t, err)
+	for _, f := range files {
+		require.NotEqual(t, "checkpoint.000000", f.Name(), "orphaned checkpoint should not exist after startup")
+	}
+
+	// Verify we still have at least one checkpoint (the valid one wasn't deleted)
+	checkpointsAfter := 0
+	for _, f := range files {
+		if _, cpErr := checkpointIndex(f.Name(), false); cpErr == nil && f.IsDir() {
+			checkpointsAfter++
+		}
+	}
+	require.GreaterOrEqual(t, checkpointsAfter, 1, "should still have at least one valid checkpoint")
+	require.Less(t, checkpointsAfter, checkpointsBefore, "should have fewer checkpoints after startup cleanup")
+
+	// Stop the ingester
+	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
 }
