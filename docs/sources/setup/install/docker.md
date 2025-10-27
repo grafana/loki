@@ -8,7 +8,7 @@ weight: 400
 ---
 # Install Loki with Docker or Docker Compose
 
-You can install Loki and Promtail with Docker or Docker Compose if you are evaluating, testing, or developing Loki.
+You can install Loki and Alloy with Docker or Docker Compose if you are evaluating, testing, or developing Loki.
 For production, Grafana recommends installing with Helm or Tanka.
 
 The configuration files associated with these installation instructions run Loki as a single binary.
@@ -98,10 +98,12 @@ Run the following commands in your command line. They work for Windows or Linux 
     cd loki
     ```
 
-1. Copy and paste the following command into your command line to download the `docker-compose` file.
+1. Copy and paste the following commands into your command line to download the `docker-compose.yaml` and `alloy-local-config.yaml` files.  Update the version number to match your version of Loki.
 
     ```bash
-    wget https://raw.githubusercontent.com/grafana/loki/v3.4.1/production/docker-compose.yaml -O docker-compose.yaml
+    wget https://raw.githubusercontent.com/grafana/loki/v3.5.7/examples/getting-started/docker-compose.yaml -O docker-compose.yaml
+    wget https://raw.githubusercontent.com/grafana/loki/v3.5.7/examples/getting-started/alloy-local-config.yaml -O alloy-local-config.yaml
+    wget https://raw.githubusercontent.com/grafana/loki/v3.5.7/examples/getting-started/loki-config.yaml -O loki-config.yaml
     ```
 
 1. With `loki` as the current working directory, run the following 'docker-compose` command:
@@ -115,7 +117,7 @@ Run the following commands in your command line. They work for Windows or Linux 
     ```bash
     ✔ Container loki-loki-1      Started              0.0s
     ✔ Container loki-grafana-1   Started              0.0s
-    ✔ Container loki-promtail-1  Started              0.0s
+    ✔ Container loki-alloy-1     Started              0.0s
     ```
 
 1. Verify that Loki is up and running.
