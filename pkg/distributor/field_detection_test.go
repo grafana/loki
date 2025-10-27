@@ -242,7 +242,7 @@ func Test_DetectLogLevels(t *testing.T) {
 			require.Equal(t, tc.expected, sm[0].Value, "Stream label %q should normalize to %q in detected_level", tc.streamLabel, tc.expected)
 		}
 	})
-  
+
 	t.Run("indexed OTEL severity takes precedence over structured metadata or log line", func(t *testing.T) {
 		limits, ingester := setup(true)
 		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
