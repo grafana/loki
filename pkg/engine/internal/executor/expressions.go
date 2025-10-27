@@ -35,18 +35,6 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 				}
 				if ident.ShortName() == colIdent.ShortName() && ident.ColumnType() == colIdent.ColumnType() {
 					return input.Column(idx), nil
-	case *physical.ColumnExpr:
-		colIdent := semconv.NewIdentifier(expr.Ref.Column, expr.Ref.Type, types.Loki.String)
-
-		// For non-ambiguous columns, we can look up the column in the schema by its fully qualified name.
-		if expr.Ref.Type != types.ColumnTypeAmbiguous {
-			for idx, field := range input.Schema().Fields() {
-				ident, err := semconv.ParseFQN(field.Name)
-				if err != nil {
-					return nil, fmt.Errorf("failed to parse column %s: %w", field.Name, err)
-				}
-				if ident.ShortName() == colIdent.ShortName() && ident.ColumnType() == colIdent.ColumnType() {
-					return input.Column(idx), nil
 				}
 			}
 		}
@@ -137,8 +125,8 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		_, rhsIsScalar := expr.Right.(*physical.LiteralExpr)
 		return fn.Evaluate(lhs, rhs, lhsIsScalar, rhsIsScalar)
 
-	case *physical.FunctionExpr:
-		args := make(arrow.Array, len(expr.Expressions))
+	case *physical.VariadicExpr:
+		args := make([]arrow.Array, len(expr.Expressions))
 		for i, arg := range expr.Expressions {
 			p, err := e.eval(arg, input)
 			if err != nil {
@@ -147,7 +135,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 			args[i] = p
 		}
 
-		fn, err := functions.GetForSignature(expr.Op)
+		fn, err := variadicFunctions.GetForSignature(expr.Op)
 		if err != nil {
 			return nil, fmt.Errorf("failed to lookup unary function: %w", err)
 		}

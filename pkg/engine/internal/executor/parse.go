@@ -11,21 +11,22 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
 
-func parseFn(op types.FunctionOp) Function {
-	return FunctionFunc(func(args ...ColumnVector) (ColumnVector, error) {
+func parseFn(op types.VariadicOp) VariadicFunction {
+	return VariadicFunctionFunc(func(args ...arrow.Array) (arrow.Array, error) {
 		sourceCol, requestedKeys, err := extractParseFnParameters(args)
 		if err != nil {
-			return nil, err
+			panic(err)
 		}
 
 		var headers []string
 		var parsedColumns []arrow.Array
 		switch op {
-		case types.FunctionOpParseLogfmt:
+		case types.VariadicOpParseLogfmt:
 			headers, parsedColumns = buildLogfmtColumns(sourceCol, requestedKeys)
-		case types.FunctionOpParseJSON:
+		case types.VariadicOpParseJSON:
 			headers, parsedColumns = buildJSONColumns(sourceCol, requestedKeys)
 		default:
 			return nil, fmt.Errorf("unsupported parser kind: %v", op)
@@ -47,15 +48,11 @@ func parseFn(op types.FunctionOp) Function {
 			return nil, err
 		}
 
-		return &ArrayStruct{
-			array: result,
-			ct:    types.ColumnTypeParsed,
-			rows:  int64(sourceCol.Len()),
-		}, nil
+		return result, nil
 	})
 }
 
-func extractParseFnParameters(args []ColumnVector) (*array.String, []string, error) {
+func extractParseFnParameters(args []arrow.Array) (*array.String, []string, error) {
 	// Valid signatures:
 	//parse(sourceColVec)
 	//parse(sourceColVec, requestedKeys)
@@ -63,31 +60,39 @@ func extractParseFnParameters(args []ColumnVector) (*array.String, []string, err
 		return nil, nil, fmt.Errorf("parse function expected 1 or 2 arguments, got %d", len(args))
 	}
 
-	var sourceColVec, requestedKeysColVec ColumnVector
-	sourceColVec = args[0]
+	var sourceColArr, requestedKeysArr arrow.Array
+	sourceColArr = args[0]
 	if len(args) == 2 {
-		requestedKeysColVec = args[1]
+		requestedKeysArr = args[1]
 	}
 
-	if sourceColVec == nil {
-		return nil, nil, fmt.Errorf("parse function arguments did no include a source ColumnVector to parse")
+	if sourceColArr == nil {
+		return nil, nil, fmt.Errorf("parse function arguments did not include a source ColumnVector to parse")
 	}
 
-	arr := sourceColVec.ToArray()
-
-	sourceCol, ok := arr.(*array.String)
+	sourceCol, ok := sourceColArr.(*array.String)
 	if !ok {
-		return nil, nil, fmt.Errorf("parse can only operate on string column types, got %T", arr)
+		return nil, nil, fmt.Errorf("parse can only operate on string column types, got %T", sourceColArr)
 	}
 
 	var requestedKeys []string
-	if requestedKeysColVec != nil {
-		reqKeysValue := requestedKeysColVec.Value(0)
-		requestedKeys, ok = reqKeysValue.([]string)
-		if !ok {
-			return nil, nil, fmt.Errorf("expected %s argument to be of type []string, got %T", types.ParseRequestedKeys, reqKeysValue)
-		}
+
+	// Rquested keys will be the same for all rows, so we only need the first one
+	reqKeysIdx := 0
+	if requestedKeysArr == nil || requestedKeysArr.IsNull(reqKeysIdx) {
+		return sourceCol, requestedKeys, nil
 	}
+
+	reqKeysList, ok := requestedKeysArr.(*array.List)
+	if !ok {
+		return nil, nil, fmt.Errorf("requested keys must be a list of string arrays, got %T", requestedKeysArr)
+	}
+
+	firstRow, ok := util.ArrayListValue(reqKeysList, reqKeysIdx).([]string)
+	if !ok {
+		return nil, nil, fmt.Errorf("requested keys must be a list of string arrays, got a list of %T", firstRow)
+	}
+	requestedKeys = append(requestedKeys, firstRow...)
 	return sourceCol, requestedKeys, nil
 }
 

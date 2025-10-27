@@ -124,26 +124,26 @@ func (t BinaryOp) String() string {
 	}
 }
 
-// FunctionOp denotes the kind of [FunctionOp] operation to perform.
-type FunctionOp uint32
+// VariadicOp denotes the kind of [VariadicOp] operation to perform.
+type VariadicOp uint32
 
-// Recognized values of [FunctionOp].
+// Recognized values of [VariadicOp].
 const (
 	// VariadicOpKindInvalid indicates an invalid unary operation.
-	FunctionOpInvalid FunctionOp = iota
+	VariadicOpInvalid VariadicOp = iota
 
-	FunctionOpParseLogfmt // Parse logfmt line to set of columns operation (logfmt).
-	FunctionOpParseJSON   // Parse JSON line to set of columns operation (json).
+	VariadicOpParseLogfmt // Parse logfmt line to set of columns operation (logfmt).
+	VariadicOpParseJSON   // Parse JSON line to set of columns operation (json).
 )
 
 // String returns the string representation of the UnaryOp.
-func (t FunctionOp) String() string {
+func (t VariadicOp) String() string {
 	switch t {
-	case FunctionOpParseLogfmt:
+	case VariadicOpParseLogfmt:
 		return "PARSE_LOGFMT"
-	case FunctionOpParseJSON:
+	case VariadicOpParseJSON:
 		return "PARSE_JSON"
 	default:
-		panic(fmt.Sprintf("unknown unary operator %d", t))
+		panic(fmt.Sprintf("unknown variadic operator %d", t))
 	}
 }

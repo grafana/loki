@@ -133,7 +133,7 @@ func (p *Planner) convertPredicate(inst logical.Value) Expression {
 		for i, v := range inst.Values {
 			exprs[i] = p.convertPredicate(v)
 		}
-		return &FunctionExpr{
+		return &VariadicExpr{
 			Op:          inst.Op,
 			Expressions: exprs,
 		}

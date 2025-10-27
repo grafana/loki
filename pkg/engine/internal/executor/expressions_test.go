@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
@@ -85,7 +86,7 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 			arrowType: arrow.INT64,
 		},
 		{
-			name:      "list",
+			name:      "string list",
 			value:     []string{"a", "b", "c"},
 			arrowType: arrow.LIST,
 		},
@@ -116,6 +117,8 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 					val = arr.Value(i)
 				case *array.Timestamp:
 					val = arr.Value(i)
+				case *array.List:
+					val = util.ArrayListValue(arr, i)
 				}
 				if tt.want != nil {
 					require.Equal(t, tt.want, val)
@@ -125,30 +128,6 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestEvaluateNamedListeralListExpression(t *testing.T) {
-	colMsg := "utf8.builtin.message"
-	lit := &physical.NamedLiteralExpr{
-		Name:    "test",
-		Literal: types.NewLiteral([]string{"a", "b", "c"}),
-	}
-	types.NewLiteral([]string{"a", "b", "c"})
-	e := newExpressionEvaluator()
-	schema := arrow.NewSchema([]arrow.Field{
-		semconv.FieldFromIdent(semconv.ColumnIdentMessage, false),
-	}, nil)
-	input := arrowtest.Rows{
-		{colMsg: `some log`},
-		{colMsg: `some other log`},
-	}
-	record := input.Record(memory.DefaultAllocator, schema)
-	result, err := e.eval(lit, record)
-	require.NoError(t, err)
-
-	require.Equal(t, int64(2), result.Len())
-	require.Equal(t, []string{"a", "b", "c"}, result.Value(0))
-	require.Equal(t, []string{"a", "b", "c"}, result.Value(1))
 }
 
 func TestEvaluateColumnExpression(t *testing.T) {
@@ -790,14 +769,13 @@ func TestEvaluateParseExpression_Logfmt(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			expr := &physical.FunctionExpr{
-				Op: types.FunctionOpParseLogfmt,
+			expr := &physical.VariadicExpr{
+				Op: types.VariadicOpParseLogfmt,
 				Expressions: []physical.Expression{
 					&physical.ColumnExpr{
 						Ref: semconv.ColumnIdentMessage.ColumnRef(),
 					},
-					&physical.NamedLiteralExpr{
-						Name:    types.ParseRequestedKeys,
+					&physical.LiteralExpr{
 						Literal: types.NewLiteral(tt.requestedKeys),
 					},
 				},
@@ -805,12 +783,12 @@ func TestEvaluateParseExpression_Logfmt(t *testing.T) {
 			e := newExpressionEvaluator()
 
 			record := tt.input.Record(memory.DefaultAllocator, tt.schema)
-			colVec, err := e.eval(expr, record)
+			col, err := e.eval(expr, record)
 			require.NoError(t, err)
-			id := colVec.Type().ArrowType().ID()
+			id := col.DataType().ID()
 			require.Equal(t, arrow.STRUCT, id)
 
-			arr, ok := colVec.ToArray().(*array.Struct)
+			arr, ok := col.(*array.Struct)
 			require.True(t, ok)
 			defer arr.Release()
 
@@ -1187,14 +1165,13 @@ func TestEvaluateParseExpression_JSON(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			alloc := memory.DefaultAllocator
 
-			expr := &physical.FunctionExpr{
-				Op: types.FunctionOpParseJSON,
+			expr := &physical.VariadicExpr{
+				Op: types.VariadicOpParseJSON,
 				Expressions: []physical.Expression{
 					&physical.ColumnExpr{
 						Ref: semconv.ColumnIdentMessage.ColumnRef(),
 					},
-					&physical.NamedLiteralExpr{
-						Name:    types.ParseRequestedKeys,
+					&physical.LiteralExpr{
 						Literal: types.NewLiteral(tt.requestedKeys),
 					},
 				},
@@ -1202,12 +1179,12 @@ func TestEvaluateParseExpression_JSON(t *testing.T) {
 			e := newExpressionEvaluator()
 
 			record := tt.input.Record(alloc, tt.schema)
-			colVec, err := e.eval(expr, record)
+			col, err := e.eval(expr, record)
 			require.NoError(t, err)
-			id := colVec.Type().ArrowType().ID()
+			id := col.DataType().ID()
 			require.Equal(t, arrow.STRUCT, id)
 
-			arr, ok := colVec.ToArray().(*array.Struct)
+			arr, ok := col.(*array.Struct)
 			require.True(t, ok)
 
 			require.Equal(t, tt.expectedFields, arr.NumField()) //value, error, errorDetails
@@ -1224,8 +1201,8 @@ func TestEvaluateParseExpression_HandleMissingRequestedKeys(t *testing.T) {
 	colMsg := "utf8.builtin.message"
 	alloc := memory.DefaultAllocator
 
-	expr := &physical.FunctionExpr{
-		Op: types.FunctionOpParseJSON,
+	expr := &physical.VariadicExpr{
+		Op: types.VariadicOpParseJSON,
 		Expressions: []physical.Expression{
 			&physical.ColumnExpr{
 				Ref: semconv.ColumnIdentMessage.ColumnRef(),
@@ -1245,12 +1222,12 @@ func TestEvaluateParseExpression_HandleMissingRequestedKeys(t *testing.T) {
 	}, nil)
 
 	record := input.Record(alloc, schema)
-	colVec, err := e.eval(expr, record)
+	col, err := e.eval(expr, record)
 	require.NoError(t, err)
-	id := colVec.Type().ArrowType().ID()
+	id := col.DataType().ID()
 	require.Equal(t, arrow.STRUCT, id)
 
-	arr, ok := colVec.ToArray().(*array.Struct)
+	arr, ok := col.(*array.Struct)
 	require.True(t, ok)
 
 	require.Equal(t, 2, arr.NumField()) //level, status

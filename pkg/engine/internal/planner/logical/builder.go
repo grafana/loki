@@ -40,7 +40,7 @@ func (b *Builder) Limit(skip uint32, fetch uint32) *Builder {
 }
 
 // Parse applies a [Parse] operation to the Builder.
-func (b *Builder) Parse(op types.FunctionOp) *Builder {
+func (b *Builder) Parse(op types.VariadicOp) *Builder {
 	val := &FunctionOp{
 		Op: op,
 		Values: []Value{

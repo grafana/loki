@@ -47,6 +47,8 @@ func (b *ssaBuilder) process(value Value) (Value, error) {
 		return b.processRangeAggregate(value)
 	case *VectorAggregation:
 		return b.processVectorAggregation(value)
+	case *UnaryOp:
+		return b.processUnaryOp(value)
 	case *BinOp:
 		return b.processBinOp(value)
 	case *ColumnRef:

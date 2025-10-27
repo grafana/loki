@@ -12,7 +12,7 @@ import (
 type FunctionOp struct {
 	id string
 
-	Op     types.FunctionOp
+	Op     types.VariadicOp
 	Values []Value
 }
 

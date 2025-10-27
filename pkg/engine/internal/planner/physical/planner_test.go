@@ -270,7 +270,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Shard: logical.NewShard(0, 1),
 			},
 		).Parse(
-			types.FunctionOpParseLogfmt,
+			types.VariadicOpParseLogfmt,
 		).Select(
 			&logical.BinOp{
 				Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
@@ -308,9 +308,9 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		require.True(t, ok, "Filter's child should be Projection")
 		require.Len(t, projectionNode.Expressions, 1)
 
-		expr, ok := projectionNode.Expressions[0].(*FunctionExpr)
+		expr, ok := projectionNode.Expressions[0].(*VariadicExpr)
 		require.True(t, ok)
-		require.Equal(t, types.FunctionOpParseLogfmt, expr.Op)
+		require.Equal(t, types.VariadicOpParseLogfmt, expr.Op)
 
 		funcArgs := expr.Expressions
 		require.Len(t, funcArgs, 1)
@@ -349,7 +349,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Shard: logical.NewShard(0, 1),
 			},
 		).Parse(
-			types.FunctionOpParseLogfmt,
+			types.VariadicOpParseLogfmt,
 		).Select(
 			&logical.BinOp{
 				Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
@@ -400,9 +400,9 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		require.True(t, ok, "Filter's child should be Projection")
 		require.Len(t, projectionNode.Expressions, 1)
 
-		expr, ok := projectionNode.Expressions[0].(*FunctionExpr)
+		expr, ok := projectionNode.Expressions[0].(*VariadicExpr)
 		require.True(t, ok)
-		require.Equal(t, types.FunctionOpParseLogfmt, expr.Op)
+		require.Equal(t, types.VariadicOpParseLogfmt, expr.Op)
 
 		funcArgs := expr.Expressions
 		require.Len(t, funcArgs, 1)
@@ -424,9 +424,8 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		require.Equal(t, types.ColumnNameBuiltinMessage, sourcCol.Ref.Column)
 		require.Equal(t, types.ColumnTypeBuiltin, sourcCol.Ref.Type)
 
-		reqKeys, ok := funcArgs[1].(*NamedLiteralExpr)
+		reqKeys, ok := funcArgs[1].(*LiteralExpr)
 		require.True(t, ok)
-		require.Equal(t, types.ParseRequestedKeys, reqKeys.Name)
 
 		keys, ok := reqKeys.Literal.(types.StringListLiteral)
 		require.True(t, ok)

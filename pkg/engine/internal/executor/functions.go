@@ -15,9 +15,9 @@ import (
 )
 
 var (
-	unaryFunctions  UnaryFunctionRegistry  = &unaryFuncReg{}
-	binaryFunctions BinaryFunctionRegistry = &binaryFuncReg{}
-	functions       FunctionRegistry       = &funcReg{}
+	unaryFunctions    UnaryFunctionRegistry    = &unaryFuncReg{}
+	binaryFunctions   BinaryFunctionRegistry   = &binaryFuncReg{}
+	variadicFunctions VariadicFunctionRegistry = &variadicFuncReg{}
 )
 
 func init() {
@@ -111,8 +111,8 @@ func init() {
 	unaryFunctions.register(types.UnaryOpCastDuration, arrow.BinaryTypes.String, castFn(types.UnaryOpCastDuration))
 
 	// Parse functions
-	functions.register(types.FunctionOpParseLogfmt, parseFn(types.FunctionOpParseLogfmt))
-	functions.register(types.FunctionOpParseJSON, parseFn(types.FunctionOpParseJSON))
+	variadicFunctions.register(types.VariadicOpParseLogfmt, parseFn(types.VariadicOpParseLogfmt))
+	variadicFunctions.register(types.VariadicOpParseJSON, parseFn(types.VariadicOpParseJSON))
 }
 
 type UnaryFunctionRegistry interface {
@@ -348,36 +348,41 @@ func boolToInt(b bool) int {
 	return i
 }
 
-type FunctionRegistry interface {
-	register(types.FunctionOp, Function)
-	GetForSignature(types.FunctionOp) (Function, error)
+type VariadicFunctionRegistry interface {
+	register(types.VariadicOp, VariadicFunction)
+	GetForSignature(types.VariadicOp) (VariadicFunction, error)
 }
 
-type Function interface {
+type VariadicFunction interface {
 	Evaluate(args ...arrow.Array) (arrow.Array, error)
 }
 
-type FunctionFunc func(args ...arrow.Array) (arrow.Array, error)
+type VariadicFunctionFunc func(args ...arrow.Array) (arrow.Array, error)
 
-func (f FunctionFunc) Evaluate(args ...arrow.Array) (arrow.Array, error) {
+func (f VariadicFunctionFunc) Evaluate(args ...arrow.Array) (arrow.Array, error) {
 	return f(args...)
 }
 
-type funcReg struct {
-	reg map[types.FunctionOp]Function
+type variadicFuncReg struct {
+	reg map[types.VariadicOp]VariadicFunction
 }
 
-// register implements UnaryFunctionRegistry.
-func (u *funcReg) register(op types.FunctionOp, f Function) {
+// register implements VariadicFunctionRegistry.
+func (u *variadicFuncReg) register(op types.VariadicOp, f VariadicFunction) {
 	if u.reg == nil {
-		u.reg = make(map[types.FunctionOp]Function)
+		u.reg = make(map[types.VariadicOp]VariadicFunction)
 	}
-	// TODO(twhitney): Should the function panic when duplicate keys are registered?
-	u.reg[op] = f
+
+  _, exists := u.reg[op]
+  if exists {
+    panic(fmt.Sprintf("duplicate variadic function registration for %s", op))
+  }
+
+  u.reg[op] = f
 }
 
-// GetForSignature implements UnaryFunctionRegistry.
-func (u *funcReg) GetForSignature(op types.FunctionOp) (Function, error) {
+// GetForSignature implements VariadicFunctionRegistry.
+func (u *variadicFuncReg) GetForSignature(op types.VariadicOp) (VariadicFunction, error) {
 	// Get registered function for the specific operation
 	fn, ok := u.reg[op]
 	if !ok {

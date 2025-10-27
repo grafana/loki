@@ -623,7 +623,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 				})
 
 				// Add parse but no filters requiring parsed fields
-				builder = builder.Parse(types.FunctionOpParseLogfmt)
+				builder = builder.Parse(types.VariadicOpParseLogfmt)
 				return builder.Value()
 			},
 		},
@@ -643,7 +643,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 				})
 
 				// Don't set RequestedKeys here - optimization should determine them
-				builder = builder.Parse(logical.ParserLogfmt)
+				builder = builder.Parse(types.VariadicOpParseLogfmt)
 
 				// Add filter with ambiguous column
 				filterExpr := &logical.BinOp{
@@ -670,7 +670,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 					Shard: logical.NewShard(0, 1),
 				})
 
-				builder = builder.Parse(types.FunctionOpParseLogfmt)
+				builder = builder.Parse(types.VariadicOpParseLogfmt)
 
 				// Add filter on label column (should be skipped)
 				labelFilter := &logical.BinOp{
@@ -714,7 +714,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 					Shard: logical.NewShard(0, 1),
 				})
 
-				builder = builder.Parse(types.FunctionOpParseLogfmt)
+				builder = builder.Parse(types.VariadicOpParseLogfmt)
 
 				// Range aggregation with PartitionBy
 				builder = builder.RangeAggregation(
@@ -749,7 +749,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 				})
 
 				// Don't set RequestedKeys here - optimization should determine them
-				builder = builder.Parse(types.FunctionOpParseLogfmt)
+				builder = builder.Parse(types.VariadicOpParseLogfmt)
 
 				// Add filter with ambiguous column
 				filterExpr := &logical.BinOp{
@@ -798,7 +798,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 				})
 
 				// Add parse without specifying RequestedKeys
-				builder = builder.Parse(types.FunctionOpParseLogfmt)
+				builder = builder.Parse(types.VariadicOpParseLogfmt)
 
 				// Add filter on ambiguous column
 				filterExpr := &logical.BinOp{
@@ -861,17 +861,14 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 			}
 
 			require.NotNil(t, projectionNode, "Projection not found in plan")
-			var requestedKeys *NamedLiteralExpr
+			var requestedKeys *LiteralExpr
 			for _, expr := range projectionNode.Expressions {
 				switch expr := expr.(type) {
-				case *FunctionExpr:
+				case *VariadicExpr:
 					for _, e := range expr.Expressions {
 						switch e := e.(type) {
-						case *NamedLiteralExpr:
-							if e.Name == types.ParseRequestedKeys {
-								requestedKeys = e
-								break
-							}
+						case *LiteralExpr:
+							requestedKeys = e
 						}
 					}
 				}

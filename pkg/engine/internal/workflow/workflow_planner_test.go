@@ -132,8 +132,8 @@ RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:
 			project = physicalGraph.Add(
 				&physical.Projection{
 					Expressions: []physical.Expression{
-						&physical.FunctionExpr{
-							Op: types.FunctionOpParseLogfmt,
+						&physical.VariadicExpr{
+							Op: types.VariadicOpParseLogfmt,
 							Expressions: []physical.Expression{
 								&physical.ColumnExpr{
 									Ref: semconv.ColumnIdentMessage.ColumnRef(),

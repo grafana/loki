@@ -54,11 +54,6 @@ const (
 	SampleExtractionErrorType = "SampleExtractionErr"
 )
 
-// Named function arguments
-const (
-	ParseRequestedKeys = "requestedKeys"
-)
-
 var ctNames = [7]string{"invalid", "builtin", "label", "metadata", "parsed", "ambiguous", "generated"}
 
 // String returns a human-readable representation of the column type.

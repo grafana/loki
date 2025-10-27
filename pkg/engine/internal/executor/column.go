@@ -51,6 +51,18 @@ func NewScalar(value types.Literal, rows int) arrow.Array {
 		for range rows {
 			builder.Append(arrow.Timestamp(value))
 		}
+	case *array.ListBuilder:
+		//TODO(twhitney): currently only supporting string list, but we can add more types here as we need them
+		value, ok := value.Any().([]string)
+		if ok {
+			valueBuilder := builder.ValueBuilder().(*array.StringBuilder)
+			for range rows {
+				builder.Append(true)
+				for _, val := range value {
+					valueBuilder.Append(val)
+				}
+			}
+		}
 	}
 	return builder.NewArray()
 }

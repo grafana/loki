@@ -190,10 +190,10 @@ func buildPlanForLogQuery(
 	// for example, the query `{app="foo"} | json | line_format "{{.nested_json}}" | json ` is valid, and will need
 	// multiple parse stages. We will handle this in a future PR.
 	if hasLogfmtParser {
-		builder = builder.Parse(types.FunctionOpParseLogfmt)
+		builder = builder.Parse(types.VariadicOpParseLogfmt)
 	}
 	if hasJSONParser {
-		builder = builder.Parse(types.FunctionOpParseJSON)
+		builder = builder.Parse(types.VariadicOpParseJSON)
 	}
 	for _, value := range postParsePredicates {
 		builder = builder.Select(value)

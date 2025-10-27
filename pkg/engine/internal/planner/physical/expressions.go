@@ -15,7 +15,7 @@ const (
 
 	ExprTypeUnary
 	ExprTypeBinary
-	ExprTypeFunction
+	ExprTypeVariadic
 	ExprTypeLiteral
 	ExprTypeColumn
 )
@@ -27,8 +27,8 @@ func (t ExpressionType) String() string {
 		return "UnaryExpression"
 	case ExprTypeBinary:
 		return "BinaryExpression"
-	case ExprTypeFunction:
-		return "FunctionExpression"
+	case ExprTypeVariadic:
+		return "VariadicExpression"
 	case ExprTypeLiteral:
 		return "LiteralExpression"
 	case ExprTypeColumn:
@@ -214,32 +214,27 @@ func (e *ColumnExpr) Type() ExpressionType {
 	return ExprTypeColumn
 }
 
-// FunctionExpr is an expression that implements the [FunctionExpression] interface.
-type FunctionExpr struct {
+// VariadicExpr is an expression that implements the [FunctionExpression] interface.
+type VariadicExpr struct {
 	// Op is the function operation to apply to the parameters
-	Op types.FunctionOp
+	Op types.VariadicOp
 
 	// Expressions are the parameters paaws to the function
 	Expressions []Expression
 }
 
-func (*FunctionExpr) isExpr()         {}
-func (*FunctionExpr) isFunctionExpr() {}
+func (*VariadicExpr) isExpr()         {}
+func (*VariadicExpr) isFunctionExpr() {}
 
-// Clone returns a copy of the [FunctionExpr].
-func (e *FunctionExpr) Clone() Expression {
-	params := make([]Expression, len(e.Expressions))
-	for i, param := range e.Expressions {
-		params[i] = param.Clone()
-	}
-
-	return &FunctionExpr{
-		Expressions: params,
+// Clone returns a copy of the [VariadicExpr].
+func (e *VariadicExpr) Clone() Expression {
+	return &VariadicExpr{
+		Expressions: cloneExpressions(e.Expressions),
 		Op:          e.Op,
 	}
 }
 
-func (e *FunctionExpr) String() string {
+func (e *VariadicExpr) String() string {
 	exprs := make([]string, len(e.Expressions))
 	for i, expr := range e.Expressions {
 		exprs[i] = expr.String()
@@ -247,36 +242,7 @@ func (e *FunctionExpr) String() string {
 	return fmt.Sprintf("%s(%s)", e.Op, strings.Join(exprs, ", "))
 }
 
-// Type returns the type of the [FunctionExpr].
-func (*FunctionExpr) Type() ExpressionType {
-	return ExprTypeFunction
-}
-
-type NamedLiteralExpr struct {
-	types.Literal
-	Name string
-}
-
-func (*NamedLiteralExpr) isExpr()        {}
-func (*NamedLiteralExpr) isLiteralExpr() {}
-
-// Clone returns a copy of the [NamedLiteralExpr].
-func (e *NamedLiteralExpr) Clone() Expression {
-	// No need to clone literals.
-	return &NamedLiteralExpr{Literal: e.Literal, Name: e.Name}
-}
-
-// String returns the string representation of the literal value.
-func (e *NamedLiteralExpr) String() string {
-	return fmt.Sprintf("%s: %s", e.Name, e.Literal.String())
-}
-
-// Type returns the type of the [FuntionLiteralParameterExpr].
-func (*NamedLiteralExpr) Type() ExpressionType {
-	return ExprTypeLiteral
-}
-
-// ValueType returns the kind of value represented by the literal.
-func (e *NamedLiteralExpr) ValueType() types.DataType {
-	return e.Literal.Type()
+// Type returns the type of the [VariadicExpr].
+func (*VariadicExpr) Type() ExpressionType {
+	return ExprTypeVariadic
 }
