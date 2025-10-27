@@ -259,8 +259,14 @@ func (r *Reader) init(ctx context.Context) error {
 	r.stats.LinkGlobalStats(stats.FromContext(ctx))
 
 	innerOptions := dataset.ReaderOptions{
-		Dataset:    dset,
-		Columns:    dset.Columns(),
+		Dataset: dset,
+		Columns: dset.Columns(),
+		// TODO(ashwanth): Ordering of predicate by selectivity and cost is currently disabled.
+		// This optimization can cause issues when a selective predicate operates on
+		// a column that has fewer rows than the dataset's max row count. In such cases,
+		// the predicate would limit the total number of rows we can read, even though other
+		// columns might have more data available.
+		// Predicates: orderPredicates(preds),
 		Predicates: preds,
 		Prefetch:   true,
 	}
