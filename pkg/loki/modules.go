@@ -2134,7 +2134,7 @@ func (t *Loki) initUI() (services.Service, error) {
 }
 
 func (t *Loki) initDataObjConsumerRing() (_ services.Service, err error) {
-	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
+	if !t.Cfg.DataObj.Enabled {
 		return nil, nil
 	}
 
@@ -2160,7 +2160,7 @@ func (t *Loki) initDataObjConsumerRing() (_ services.Service, err error) {
 }
 
 func (t *Loki) initDataObjConsumerPartitionRing() (services.Service, error) {
-	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
+	if !t.Cfg.DataObj.Enabled {
 		return nil, nil
 	}
 	kvClient, err := kv.NewClient(
@@ -2198,7 +2198,7 @@ func (t *Loki) initDataObjConsumerPartitionRing() (services.Service, error) {
 }
 
 func (t *Loki) initDataObjConsumer() (services.Service, error) {
-	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
+	if !t.Cfg.DataObj.Enabled {
 		return nil, nil
 	}
 	store, err := t.createDataObjBucket("dataobj-consumer")
@@ -2236,7 +2236,7 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 }
 
 func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
-	if !t.Cfg.Ingester.KafkaIngestion.Enabled {
+	if !t.Cfg.DataObj.Enabled {
 		return nil, nil
 	}
 	store, err := t.createDataObjBucket("dataobj-index-builder")
