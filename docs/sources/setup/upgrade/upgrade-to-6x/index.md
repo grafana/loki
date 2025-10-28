@@ -84,6 +84,85 @@ resultsCache:
 
 With these caches disabled, Loki will return to defaults which enables an in-memory results and chunks cache, so you will still get some caching.
 
+#### BREAKING: Zone-aware ingester StatefulSet serviceName fix (6.34.0+)
+
+**Affected users**: Only deployments using zone-aware ingester replication (`ingester.zoneAwareReplication.enabled: true`)
+
+In Helm chart version 6.34.0, [PR #18558](https://github.com/grafana/loki/pull/18558) fixed the `serviceName` field in zone-aware ingester StatefulSets to correctly reference headless services. However, since `serviceName` is an immutable field in Kubernetes StatefulSets, upgrading to 6.34.0 requires manual intervention.
+
+**Required action before upgrading to 6.34.0**:
+
+1. **Check if you're affected**:
+
+   ```bash
+   helm get values <RELEASE_NAME> | grep -A5 zoneAwareReplication
+   ```
+
+   If `enabled: true` appears, you need to follow these steps.
+
+2. **Delete the StatefulSets** (data will be preserved):
+
+   ```bash
+   kubectl delete statefulset \
+     <RELEASE_NAME>-ingester-zone-a \
+     <RELEASE_NAME>-ingester-zone-b \
+     <RELEASE_NAME>-ingester-zone-c \
+     --cascade=orphan
+   ```
+
+3. **Proceed with the Helm upgrade**:
+
+   ```bash
+   helm upgrade <RELEASE_NAME> grafana/loki --version 6.34.0
+   ```
+
+**What happens**:
+
+- PersistentVolumeClaims and data are preserved
+- New StatefulSets will be created with correct service references
+- Pods will restart and reattach to existing storage
+
+**Why this change was necessary**:
+The previous configuration caused ingester scaling operations to fail because the rollout-operator couldn't find the correct headless services for the `/ingester/prepare-downscale` endpoint.
+
+#### BREAKING: Make access modes for persistence on all PVCs and StatefulSets editable (6.38.0+)
+
+Version 6.38.0 of the Helm charts introduced the ability to edit the access modes for persistence on all PVCs and StatefulSets. This is a breaking change because it requires users to manually orphan StatefulSets before upgrading.
+
+**Required action before upgrading to 6.38.0**:
+
+1. **Delete the StatefulSets** (delete only the ones that exist in your deployment):
+
+   ```bash
+   # Core components (SimpleScalable mode)
+   kubectl delete statefulset <RELEASE_NAME>-write --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-backend --cascade=orphan
+   
+   # Single binary mode
+   kubectl delete statefulset <RELEASE_NAME> --cascade=orphan
+   
+   # Distributed mode components
+   kubectl delete statefulset <RELEASE_NAME>-ingester --cascade=orphan
+
+   # Zone-aware ingester (if zoneAwareReplication.enabled is true)
+   kubectl delete statefulset <RELEASE_NAME>-ingester-zone-a --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-ingester-zone-b --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-ingester-zone-c --cascade=orphan
+
+   kubectl delete statefulset <RELEASE_NAME>-index-gateway --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-compactor --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-ruler --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-pattern-ingester --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-bloom-planner --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-bloom-gateway --cascade=orphan
+   ```
+
+2. **Proceed with the Helm upgrade**:
+
+   ```bash
+   helm upgrade <RELEASE_NAME> grafana/loki --version 6.38.0
+   ```
+
 #### Distributed mode
 
 This chart introduces the ability to run Loki in distributed, or [microservices mode](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/deployment-modes/#microservices-mode). Separate instructions on how to enable this as well as how to migrate from the existing community chart will be coming shortly.
