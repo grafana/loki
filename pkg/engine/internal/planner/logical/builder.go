@@ -3,7 +3,6 @@ package logical
 import (
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -49,6 +48,28 @@ func (b *Builder) Parse(kind ParserKind) *Builder {
 	}
 }
 
+// Cast applies an [Projection] operation, with an [UnaryOp] cast operation, to the Builder.
+func (b *Builder) Cast(identifier string, operation types.UnaryOp) *Builder {
+	return &Builder{
+		val: &Projection{
+			Relation: b.val,
+			Expressions: []Value{
+				&UnaryOp{
+					Op: operation,
+					Value: &ColumnRef{
+						Ref: types.ColumnRef{
+							Column: identifier,
+							Type:   types.ColumnTypeAmbiguous,
+						},
+					},
+				},
+			},
+			All:    true,
+			Expand: true,
+		},
+	}
+}
+
 // Sort applies a [Sort] operation to the Builder.
 func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 	return &Builder{
@@ -58,6 +79,28 @@ func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 			Column:     column,
 			Ascending:  ascending,
 			NullsFirst: nullsFirst,
+		},
+	}
+}
+
+// BinOpRight adds a binary arithmetic operation with a given right value
+func (b *Builder) BinOpRight(op types.BinaryOp, right Value) *Builder {
+	return &Builder{
+		val: &BinOp{
+			Left:  b.val,
+			Right: right,
+			Op:    op,
+		},
+	}
+}
+
+// BinOpLeft adds a binary arithmetic operation with a given left value
+func (b *Builder) BinOpLeft(op types.BinaryOp, left Value) *Builder {
+	return &Builder{
+		val: &BinOp{
+			Left:  left,
+			Right: b.val,
+			Op:    op,
 		},
 	}
 }
@@ -110,9 +153,28 @@ func (b *Builder) Compat(logqlCompatibility bool) *Builder {
 	return b
 }
 
-// Schema returns the schema of the data that will be produced by this Builder.
-func (b *Builder) Schema() *schema.Schema {
-	return b.val.Schema()
+func (b *Builder) Project(all, expand, drop bool, expr ...Value) *Builder {
+	return &Builder{
+		val: &Projection{
+			Relation:    b.val,
+			All:         all,
+			Expand:      expand,
+			Drop:        drop,
+			Expressions: expr,
+		},
+	}
+}
+
+func (b *Builder) ProjectAll(expand, drop bool, expr ...Value) *Builder {
+	return b.Project(true, expand, drop, expr...)
+}
+
+func (b *Builder) ProjectDrop(expr ...Value) *Builder {
+	return b.ProjectAll(false, true, expr...)
+}
+
+func (b *Builder) ProjectExpand(expr ...Value) *Builder {
+	return b.ProjectAll(true, false, expr...)
 }
 
 // Value returns the underlying [Value]. This is useful when you need to access

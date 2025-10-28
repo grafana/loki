@@ -2,6 +2,7 @@ package physical
 
 import (
 	"fmt"
+	"iter"
 )
 
 // ScanTarget represents a target of a [ScanSet].
@@ -11,6 +12,15 @@ type ScanTarget struct {
 	// DataObj is non-nil if Type is [ScanTypeDataObject]. Despite DataObjScan
 	// implementing [Node], the value is not inserted into the graph as a node.
 	DataObject *DataObjScan
+}
+
+// Clone returns a copy of the scan target.
+func (t *ScanTarget) Clone() *ScanTarget {
+	res := &ScanTarget{Type: t.Type}
+	if t.DataObject != nil {
+		res.DataObject = t.DataObject.Clone().(*DataObjScan)
+	}
+	return res
 }
 
 // ScanType represents the data being scanned in a target of a [ScanSet].
@@ -59,6 +69,16 @@ func (s *ScanSet) ID() string {
 	return s.id
 }
 
+// Clone returns a deep copy of the node (minus its ID).
+func (s *ScanSet) Clone() Node {
+	newTargets := make([]*ScanTarget, 0, len(s.Targets))
+	for _, target := range s.Targets {
+		newTargets = append(newTargets, target.Clone())
+	}
+
+	return &ScanSet{Targets: newTargets}
+}
+
 // Type returns [NodeTypeScanSet].
 func (s *ScanSet) Type() NodeType {
 	return NodeTypeScanSet
@@ -67,4 +87,29 @@ func (s *ScanSet) Type() NodeType {
 // Accept dispatches s to the provided [Visitor] v.
 func (s *ScanSet) Accept(v Visitor) error {
 	return v.VisitScanSet(s)
+}
+
+// Shards returns an iterator over the shards of the scan. Each emitted shard
+// will be a clone. Projections and predicates on the ScanSet are cloned and
+// applied to each shard.
+//
+// Shards panics if one of the targets is invalid.
+func (s *ScanSet) Shards() iter.Seq[Node] {
+	return func(yield func(Node) bool) {
+		for _, target := range s.Targets {
+			switch target.Type {
+			case ScanTypeDataObject:
+				node := target.DataObject.Clone().(*DataObjScan)
+				node.Projections = cloneExpressions(s.Projections)
+				node.Predicates = cloneExpressions(s.Predicates)
+
+				if !yield(node) {
+					return
+				}
+
+			default:
+				panic(fmt.Sprintf("invalid scan type %s", target.Type))
+			}
+		}
+	}
 }

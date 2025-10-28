@@ -22,11 +22,9 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		if err != nil {
 			return nil, err
 		}
-		defer batch.Release()
 
 		// Return early if the batch has zero rows, even if column names would collide.
 		if batch.NumRows() == 0 {
-			batch.Retain() // retain to account for deferred release after reading the batch from the input
 			return batch, nil
 		}
 
@@ -60,7 +58,6 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 
 		// Return early if there are no colliding column names.
 		if len(duplicates) == 0 {
-			batch.Retain() // retain to account for deferred release after reading the batch from the input
 			return batch, nil
 		}
 
@@ -97,7 +94,6 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 		// otherwise the full column from the input record is copied into the new record.
 		builder := array.NewRecordBuilder(memory.DefaultAllocator, newSchema)
 		builder.Reserve(int(batch.NumRows()))
-		defer builder.Release()
 
 		newSchemaColumns := make([]arrow.Array, newSchema.NumFields())
 
@@ -138,11 +134,9 @@ func newColumnCompatibilityPipeline(compat *physical.ColumnCompat, input Pipelin
 				}
 
 				sourceCol := sourceFieldBuilder.NewArray()
-				defer sourceCol.Release()
 				newSchemaColumns[duplicate.sourceIdx] = sourceCol
 
 				destinationCol := destinationFieldBuilder.NewArray()
-				defer destinationCol.Release()
 				newSchemaColumns[duplicate.destinationIdx] = destinationCol
 			default:
 				panic("invalid source column type: only string columns can be checked for collisions")

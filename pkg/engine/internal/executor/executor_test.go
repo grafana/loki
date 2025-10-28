@@ -72,11 +72,11 @@ func TestExecutor_Projection(t *testing.T) {
 
 	t.Run("missing column expression results in error", func(t *testing.T) {
 		ctx := t.Context()
-		cols := []physical.ColumnExpression{}
+		cols := []physical.Expression{}
 		c := &Context{}
-		pipeline := c.executeProjection(ctx, &physical.Projection{Columns: cols}, []Pipeline{emptyPipeline()})
+		pipeline := c.executeProjection(ctx, &physical.Projection{Expressions: cols}, []Pipeline{emptyPipeline()})
 		_, err := pipeline.Read(ctx)
-		require.ErrorContains(t, err, "projection expects at least one column, got 0")
+		require.ErrorContains(t, err, "projection expects at least one expression, got 0")
 	})
 
 	t.Run("multiple inputs result in error", func(t *testing.T) {

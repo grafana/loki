@@ -152,7 +152,6 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				}
 				return nil, err
 			}
-			defer record.Release()
 
 			inputsExhausted = false
 
@@ -163,15 +162,12 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				if err != nil {
 					return nil, err
 				}
-				defer vec.Release()
 
-				if vec.Type() != types.Loki.String {
-					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.Type())
+				if vec.DataType().ID() != types.Arrow.String.ID() {
+					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.DataType())
 				}
 
-				arr := vec.ToArray().(*array.String)
-				defer arr.Release()
-
+				arr := vec.(*array.String)
 				arrays = append(arrays, arr)
 			}
 
@@ -180,18 +176,16 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 			if err != nil {
 				return nil, err
 			}
-			defer tsVec.Release()
-			tsCol := tsVec.ToArray().(*array.Timestamp)
-			defer tsCol.Release()
+			tsCol := tsVec.(*array.Timestamp)
 
 			// no need to extract value column for COUNT aggregation
-			var valVec ColumnVector
+			var valArr *array.Float64
 			if r.opts.operation != types.RangeAggregationTypeCount {
-				valVec, err = r.evaluator.eval(valColumnExpr, record)
+				valVec, err := r.evaluator.eval(valColumnExpr, record)
 				if err != nil {
 					return nil, err
 				}
-				defer valVec.Release()
+				valArr = valVec.(*array.Float64)
 			}
 
 			for row := range int(record.NumRows()) {
@@ -208,12 +202,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 
 				var value float64
 				if r.opts.operation != types.RangeAggregationTypeCount {
-					switch v := valVec.Value(row).(type) {
-					case float64:
-						value = v
-					case int64:
-						value = float64(v)
-					}
+					value = valArr.Value(row)
 				}
 
 				for _, w := range windows {
