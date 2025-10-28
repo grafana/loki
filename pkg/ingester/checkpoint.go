@@ -475,6 +475,9 @@ func (w *WALCheckpointWriter) deleteCheckpoints(maxIndex int) (err error) {
 }
 
 // cleanupOldCheckpoints removes old checkpoints that have been superseded by a newer checkpoint.
+// This is primarily used during startup to clean up old checkpoints when repeated checkpoint failures
+// have prevented normal cleanup (which happens via deleteCheckpoints() after successful completion).
+//
 // A checkpoint at index N contains a complete snapshot of state through segment N, so segments <= N
 // can be deleted once that checkpoint is successfully written. This function cleans up old checkpoints
 // that are no longer needed because their corresponding segments have been truncated.
@@ -486,6 +489,9 @@ func (w *WALCheckpointWriter) deleteCheckpoints(maxIndex int) (err error) {
 // Note: It's normal for checkpoint.N to exist while firstSegment is N+1, since the checkpoint replaces
 // the need for segment N. This function relies on the protectedCheckpointIdx to determine which
 // checkpoints are safe to delete, not just the segment numbers.
+//
+// This differs from deleteCheckpoints() which runs after successful checkpoint completion and handles
+// normal cleanup including .tmp files.
 func cleanupOldCheckpoints(dir string, protectedCheckpointIdx int, logger log.Logger) {
 	firstSegment, _, err := wlog.Segments(dir)
 	if err != nil {
@@ -586,12 +592,6 @@ func (w *WALCheckpointWriter) Close(abort bool) error {
 			// We can try again next time.
 			level.Error(util_log.Logger).Log("msg", "error deleting old checkpoint", "err", err)
 		}
-
-		// Additionally, cleanup old checkpoints that have been superseded by this new checkpoint.
-		// After a successful checkpoint at segment N, older checkpoints are no longer needed
-		// since this checkpoint contains more recent state. We protect the current checkpoint
-		// (w.lastSegment) to ensure at least one valid recovery point always exists.
-		cleanupOldCheckpoints(w.segmentWAL.Dir(), w.lastSegment, util_log.Logger)
 	}
 
 	return nil

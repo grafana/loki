@@ -777,7 +777,7 @@ func TestCheckpointCleanupStaleTmpDirectories(t *testing.T) {
 	require.Equal(t, 0, tmpCount, "expected all .tmp directories to be cleaned up after checkpoint")
 }
 
-func TestCheckpointCleanupOrphanedCheckpoints(t *testing.T) {
+func TestCheckpointCleanupOldCheckpoints(t *testing.T) {
 	walDir := t.TempDir()
 	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
 
@@ -821,44 +821,46 @@ func TestCheckpointCleanupOrphanedCheckpoints(t *testing.T) {
 	// Stop the ingester
 	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
 
-	// Phase 2: Manually create an orphaned checkpoint with a very low index
-	// This simulates the bug scenario where checkpoint.017205 exists
-	// but the lowest WAL segment is 00017206
-	orphanedCheckpointDir := filepath.Join(walDir, "checkpoint.000001")
-	require.NoError(t, os.MkdirAll(orphanedCheckpointDir, 0750))
+	// Phase 2: Manually create a very old checkpoint that should have been deleted
+	// This simulates the scenario where repeated checkpoint failures prevented normal cleanup.
+	// In a healthy system, when checkpoint.000002 (or higher) completes, checkpoint.000001 would
+	// be deleted by deleteCheckpoints(). But if checkpoints kept failing, old checkpoints accumulate.
+	// The cleanup function should remove these superseded old checkpoints.
+	oldCheckpointDir := filepath.Join(walDir, "checkpoint.000001")
+	require.NoError(t, os.MkdirAll(oldCheckpointDir, 0750))
 
-	// Verify the orphaned checkpoint exists
-	_, err = os.Stat(orphanedCheckpointDir)
-	require.NoError(t, err, "orphaned checkpoint should exist before cleanup")
+	// Verify the old checkpoint exists
+	_, err = os.Stat(oldCheckpointDir)
+	require.NoError(t, err, "old checkpoint should exist before cleanup")
 
 	// Phase 3: Restart the ingester
 	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
 	require.NoError(t, err)
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 
-	// Push more data to trigger another checkpoint which will clean up orphaned checkpoints
+	// Push more data to trigger another checkpoint which will clean up old checkpoints
 	_, err = i.Push(ctx, &req)
 	require.NoError(t, err)
 
-	// Wait for another checkpoint to be created (this triggers cleanup in Close())
+	// Wait for another checkpoint to be created (this triggers cleanup via deleteCheckpoints())
 	time.Sleep(ingesterConfig.WAL.CheckpointDuration * 2)
 
 	// Stop the ingester
 	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
 
-	// Phase 4: Verify the orphaned checkpoint has been cleaned up
-	_, err = os.Stat(orphanedCheckpointDir)
-	require.True(t, os.IsNotExist(err), "orphaned checkpoint should be deleted after cleanup")
+	// Phase 4: Verify the old checkpoint has been cleaned up
+	_, err = os.Stat(oldCheckpointDir)
+	require.True(t, os.IsNotExist(err), "old checkpoint should be deleted after new checkpoint completes")
 
 	// Double-check by listing directory
 	files, err := os.ReadDir(walDir)
 	require.NoError(t, err)
 	for _, f := range files {
-		require.NotEqual(t, "checkpoint.000001", f.Name(), "orphaned checkpoint should not exist in directory listing")
+		require.NotEqual(t, "checkpoint.000001", f.Name(), "old checkpoint should not exist in directory listing")
 	}
 }
 
-func TestCheckpointCleanupOrphanedCheckpointsAtStartup(t *testing.T) {
+func TestCheckpointCleanupOldCheckpointsAtStartup(t *testing.T) {
 	walDir := t.TempDir()
 	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
 
@@ -908,15 +910,17 @@ func TestCheckpointCleanupOrphanedCheckpointsAtStartup(t *testing.T) {
 	// Stop the ingester
 	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
 
-	// Phase 2: Manually create an orphaned checkpoint with a very low index
-	// This simulates the exact bug scenario where checkpoint.017205 exists
-	// but the lowest WAL segment is 00017206
-	orphanedCheckpointDir := filepath.Join(walDir, "checkpoint.000000")
-	require.NoError(t, os.MkdirAll(orphanedCheckpointDir, 0750))
+	// Phase 2: Manually create a very old checkpoint that should have been deleted
+	// This simulates the scenario where repeated checkpoint failures prevented normal cleanup.
+	// In a healthy system, when newer checkpoints complete, checkpoint.000000 would be deleted
+	// by deleteCheckpoints(). But if checkpoints kept failing, old checkpoints accumulate.
+	// This test verifies that startup cleanup removes these superseded old checkpoints.
+	oldCheckpointDir := filepath.Join(walDir, "checkpoint.000000")
+	require.NoError(t, os.MkdirAll(oldCheckpointDir, 0750))
 
-	// Verify the orphaned checkpoint exists
-	_, err = os.Stat(orphanedCheckpointDir)
-	require.NoError(t, err, "orphaned checkpoint should exist before startup")
+	// Verify the old checkpoint exists
+	_, err = os.Stat(oldCheckpointDir)
+	require.NoError(t, err, "old checkpoint should exist before startup")
 
 	// Count checkpoints before restart
 	files, err := os.ReadDir(walDir)
@@ -935,16 +939,16 @@ func TestCheckpointCleanupOrphanedCheckpointsAtStartup(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 
-	// Phase 4: Verify the orphaned checkpoint was cleaned up AT STARTUP
+	// Phase 4: Verify the old checkpoint was cleaned up AT STARTUP
 	// (without needing to create a new checkpoint)
-	_, err = os.Stat(orphanedCheckpointDir)
-	require.True(t, os.IsNotExist(err), "orphaned checkpoint should be deleted at startup")
+	_, err = os.Stat(oldCheckpointDir)
+	require.True(t, os.IsNotExist(err), "old checkpoint should be deleted at startup")
 
 	// Verify it's actually gone from directory listing
 	files, err = os.ReadDir(walDir)
 	require.NoError(t, err)
 	for _, f := range files {
-		require.NotEqual(t, "checkpoint.000000", f.Name(), "orphaned checkpoint should not exist after startup")
+		require.NotEqual(t, "checkpoint.000000", f.Name(), "old checkpoint should not exist after startup")
 	}
 
 	// Verify we still have at least one checkpoint (the valid one wasn't deleted)
