@@ -22,8 +22,7 @@ var (
 // streamInjector injects stream labels into a logs Arrow record, replacing the
 // streams ID column with columns for the labels composing those streams.
 type streamInjector struct {
-	alloc memory.Allocator
-	view  *streamsView
+	view *streamsView
 }
 
 // newStreamInjector creates a new streamInjector that uses the provided view
@@ -31,8 +30,8 @@ type streamInjector struct {
 //
 // streamInjector does not take ownership of the view, so the caller is
 // responsible for closing the view when it is no longer needed.
-func newStreamInjector(alloc memory.Allocator, view *streamsView) *streamInjector {
-	return &streamInjector{alloc: alloc, view: view}
+func newStreamInjector(view *streamsView) *streamInjector {
+	return &streamInjector{view: view}
 }
 
 // Inject returns a new Arrow record where the stream ID column is replaced
@@ -40,8 +39,6 @@ func newStreamInjector(alloc memory.Allocator, view *streamsView) *streamInjecto
 //
 // Inject fails if there is no stream ID column in the input record, or if the
 // stream ID doesn't exist in the view given to [newStreamInjector].
-//
-// The returned record must be Release()d by the caller when no longer needed.
 func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Record, error) {
 	streamIDCol, streamIDIndex, err := columnForIdent(streamInjectorColumnIdent, in)
 	if err != nil {
@@ -62,11 +59,6 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 		labels      = make([]*labelColumn, 0, si.view.NumLabels())
 		labelLookup = make(map[string]*labelColumn, si.view.NumLabels())
 	)
-	defer func() {
-		for _, col := range labels {
-			col.Builder.Release()
-		}
-	}()
 
 	getColumn := func(name string) *labelColumn {
 		ident := semconv.NewIdentifier(name, types.ColumnTypeLabel, types.Loki.String)
@@ -77,7 +69,7 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 
 		col := &labelColumn{
 			Field:   semconv.FieldFromIdent(ident, true), // labels are nullable
-			Builder: array.NewStringBuilder(si.alloc),
+			Builder: array.NewStringBuilder(memory.DefaultAllocator),
 		}
 
 		labels = append(labels, col)
@@ -93,7 +85,7 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 		// label column all at once.
 		it, err := si.view.Labels(ctx, findID)
 		if err != nil {
-			return nil, fmt.Errorf("stream ID %d not found in section", findID)
+			return nil, err
 		}
 
 		for label := range it {
@@ -130,7 +122,6 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 		}
 
 		arr := col.Builder.NewArray()
-		defer arr.Release()
 
 		fields = append(fields, col.Field)
 		arrs = append(arrs, arr)

@@ -23,9 +23,6 @@ import (
 
 // TestReader does a basic end-to-end test over a reader with a predicate applied.
 func TestReader(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	sec := buildSection(t, []logs.Record{
 		{StreamID: 2, Timestamp: unixTime(40), Metadata: labels.FromStrings("trace_id", "789012"), Line: []byte("baz qux")},
 		{StreamID: 2, Timestamp: unixTime(30), Metadata: labels.FromStrings("trace_id", "123456"), Line: []byte("foo bar")},
@@ -78,7 +75,7 @@ func TestReader(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := logs.NewReader(logs.ReaderOptions{
 				Columns:   tt.columns,
-				Allocator: alloc,
+				Allocator: memory.DefaultAllocator,
 				Predicates: []logs.Predicate{
 					logs.FuncPredicate{
 						Column: traceID,
@@ -102,12 +99,9 @@ func TestReader(t *testing.T) {
 			})
 
 			actualTable, err := readTable(context.Background(), r)
-			if actualTable != nil {
-				defer actualTable.Release()
-			}
 			require.NoError(t, err)
 
-			actual, err := arrowtest.TableRows(alloc, actualTable)
+			actual, err := arrowtest.TableRows(memory.DefaultAllocator, actualTable)
 			require.NoError(t, err, "failed to get rows from table")
 			require.Equal(t, tt.expected, actual)
 		})
@@ -151,7 +145,6 @@ func readTable(ctx context.Context, r *logs.Reader) (arrow.Table, error) {
 			if rec.NumRows() > 0 {
 				recs = append(recs, rec)
 			}
-			defer rec.Release()
 		}
 
 		if err != nil && errors.Is(err, io.EOF) {
@@ -170,9 +163,6 @@ func readTable(ctx context.Context, r *logs.Reader) (arrow.Table, error) {
 
 // TestReaderStats tests that the reader properly tracks statistics
 func TestReaderStats(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	sec := buildSection(t, []logs.Record{
 		{StreamID: 2, Timestamp: unixTime(40), Metadata: labels.FromStrings("trace_id", "789012"), Line: []byte("baz qux")},
 		{StreamID: 2, Timestamp: unixTime(30), Metadata: labels.FromStrings("trace_id", "123456"), Line: []byte("foo bar")},
@@ -189,7 +179,7 @@ func TestReaderStats(t *testing.T) {
 	// Create a reader with predicates
 	r := logs.NewReader(logs.ReaderOptions{
 		Columns:   []*logs.Column{streamID, traceID, message},
-		Allocator: alloc,
+		Allocator: memory.DefaultAllocator,
 		Predicates: []logs.Predicate{
 			logs.FuncPredicate{
 				Column: traceID,
@@ -216,10 +206,7 @@ func TestReaderStats(t *testing.T) {
 	statsCtx, ctx := stats.NewContext(context.Background())
 
 	// Read the data
-	actualTable, err := readTable(ctx, r)
-	if actualTable != nil {
-		defer actualTable.Release()
-	}
+	_, err := readTable(ctx, r)
 	require.NoError(t, err)
 
 	// Get the reader stats

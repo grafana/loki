@@ -623,22 +623,32 @@ func TestLimits_PolicyOverrideLimits(t *testing.T) {
 
 	// Test policy-specific limits
 	require.Equal(t, 100, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "finance"))
-	require.Equal(t, 1000, overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance"))
+	limit, ok := overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance")
+	require.True(t, ok)
+	require.Equal(t, 1000, limit)
 	require.Equal(t, 50, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "ops"))
-	require.Equal(t, 500, overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "ops"))
+	limit, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "ops")
+	require.True(t, ok)
+	require.Equal(t, 500, limit)
 
-	// Test non-existent policy returns 0
+	// Test non-existent policy returns 0, false
 	require.Equal(t, 0, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "nonexistent"))
-	require.Equal(t, 0, overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "nonexistent"))
+	limit, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "nonexistent")
+	require.False(t, ok)
+	require.Equal(t, 0, limit)
 
-	// Test empty policy returns 0
+	// Test empty policy returns 0, false
 	require.Equal(t, 0, overrides.PolicyMaxLocalStreamsPerUser("tenant1", ""))
-	require.Equal(t, 0, overrides.PolicyMaxGlobalStreamsPerUser("tenant1", ""))
+	limit, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "")
+	require.False(t, ok)
+	require.Equal(t, 0, limit)
 
-	// Test nil PolicyOverrideLimits returns 0
+	// Test nil PolicyOverrideLimits returns 0, false
 	limits.PolicyOverrideLimits = nil
 	require.Equal(t, 0, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "finance"))
-	require.Equal(t, 0, overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance"))
+	limit, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance")
+	require.False(t, ok)
+	require.Equal(t, 0, limit)
 }
 
 func TestOTLPConfig(t *testing.T) {

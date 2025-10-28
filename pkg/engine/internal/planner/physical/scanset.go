@@ -2,6 +2,7 @@ package physical
 
 import (
 	"fmt"
+	"iter"
 )
 
 // ScanTarget represents a target of a [ScanSet].
@@ -86,4 +87,29 @@ func (s *ScanSet) Type() NodeType {
 // Accept dispatches s to the provided [Visitor] v.
 func (s *ScanSet) Accept(v Visitor) error {
 	return v.VisitScanSet(s)
+}
+
+// Shards returns an iterator over the shards of the scan. Each emitted shard
+// will be a clone. Projections and predicates on the ScanSet are cloned and
+// applied to each shard.
+//
+// Shards panics if one of the targets is invalid.
+func (s *ScanSet) Shards() iter.Seq[Node] {
+	return func(yield func(Node) bool) {
+		for _, target := range s.Targets {
+			switch target.Type {
+			case ScanTypeDataObject:
+				node := target.DataObject.Clone().(*DataObjScan)
+				node.Projections = cloneExpressions(s.Projections)
+				node.Predicates = cloneExpressions(s.Predicates)
+
+				if !yield(node) {
+					return
+				}
+
+			default:
+				panic(fmt.Sprintf("invalid scan type %s", target.Type))
+			}
+		}
+	}
 }

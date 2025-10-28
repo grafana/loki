@@ -304,7 +304,6 @@ func collectResult(ctx context.Context, pipeline executor.Pipeline, builder Resu
 		}
 
 		builder.CollectRecord(rec)
-		rec.Release()
 	}
 	return nil
 }

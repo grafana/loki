@@ -103,6 +103,11 @@ func BuildAll(opts Options) ([]client.Object, error) {
 		res = append(res, prometheusRuleObjs...)
 	}
 
+	if opts.Stack.NetworkPolicies != nil && !opts.Stack.NetworkPolicies.Disabled {
+		networkPolicyObjs := BuildNetworkPolicies(opts)
+		res = append(res, networkPolicyObjs...)
+	}
+
 	return res, nil
 }
 

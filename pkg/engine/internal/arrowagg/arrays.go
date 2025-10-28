@@ -26,7 +26,6 @@ func NewArrays(mem memory.Allocator, dt arrow.DataType) *Arrays {
 // Append appends the entirety of the given array to the builder. The data type
 // of arr is not checked until calling [Arrays.Aggregate].
 func (a *Arrays) Append(arr arrow.Array) {
-	arr.Retain()
 	a.nrows++
 	a.in = append(a.in, arr)
 }
@@ -47,9 +46,8 @@ func (a *Arrays) AppendNulls(n int) {
 // Len returns the total number of rows currently appended to the builder.
 func (a *Arrays) Len() int { return a.nrows }
 
-// Aggregate all appended arrays into a single array. The returned array must
-// be Release'd after use. If no arrays have been appended, Aggregate returns a
-// zero-length array.
+// Aggregate all appended arrays into a single array.
+// If no arrays have been appended, Aggregate returns a zero-length array.
 //
 // Aggregate returns an error if any of the appended arrays do not match the
 // data type passed to [NewArrays].
@@ -67,9 +65,6 @@ func (a *Arrays) Aggregate() (arrow.Array, error) {
 
 // Reset releases all arrays currently appended to a and resets it for reuse.
 func (a *Arrays) Reset() {
-	for _, arr := range a.in {
-		arr.Release()
-	}
 	clear(a.in)
 	a.in = a.in[:0]
 	a.nrows = 0
