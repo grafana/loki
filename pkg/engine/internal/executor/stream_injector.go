@@ -85,7 +85,7 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 		// label column all at once.
 		it, err := si.view.Labels(ctx, findID)
 		if err != nil {
-			return nil, fmt.Errorf("stream ID %d not found in section", findID)
+			return nil, err
 		}
 
 		for label := range it {
