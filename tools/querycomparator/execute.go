@@ -116,8 +116,7 @@ func checkResult(result logqlmodel.Result) error {
 // doLocalQueryWithV2Engine executes a query using the V2 engine
 func doLocalQueryWithV2Engine(params logql.LiteralParams) (logqlmodel.Result, error) {
 	ctx := user.InjectOrgID(context.Background(), orgID)
-	qe := engine.NewBasic(engine.Config{
-		Enable:    true,
+	qe := engine.NewBasic(engine.ExecutorConfig{
 		BatchSize: 512,
 	}, metastore.Config{
 		IndexStoragePrefix: "index/v0",

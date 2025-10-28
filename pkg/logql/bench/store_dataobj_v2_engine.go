@@ -28,8 +28,7 @@ type DataObjV2EngineStore struct {
 // NewDataObjV2EngineStore creates a new store that uses the v2 dataobj engine.
 func NewDataObjV2EngineStore(dir string, tenantID string) (*DataObjV2EngineStore, error) {
 	storageDir := filepath.Join(dir, storageDir)
-	return dataobjV2StoreWithOpts(storageDir, tenantID, engine.Config{
-		Enable:             true,
+	return dataobjV2StoreWithOpts(storageDir, tenantID, engine.ExecutorConfig{
 		BatchSize:          512,
 		RangeConfig:        rangeio.DefaultConfig,
 		MergePrefetchCount: 8,
@@ -38,7 +37,7 @@ func NewDataObjV2EngineStore(dir string, tenantID string) (*DataObjV2EngineStore
 	})
 }
 
-func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Config, metastoreCfg metastore.Config) (*DataObjV2EngineStore, error) {
+func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.ExecutorConfig, metastoreCfg metastore.Config) (*DataObjV2EngineStore, error) {
 	logger := log.NewNopLogger()
 
 	// Setup filesystem client as objstore.Bucket

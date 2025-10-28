@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
@@ -16,8 +17,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
-
-	dskit_flagext "github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
@@ -40,7 +39,7 @@ var ErrNotSupported = errors.New("feature not supported in new query engine")
 // NewBasic creates a new instance of the basic query engine that implements the
 // [logql.Engine] interface. The basic engine executes plans sequentially with
 // no local or distributed parallelism.
-func NewBasic(cfg Config, metastoreCfg metastore.Config, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *Basic {
+func NewBasic(cfg ExecutorConfig, metastoreCfg metastore.Config, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *Basic {
 	var ms metastore.Metastore
 	if bucket != nil {
 		indexBucket := bucket
@@ -72,8 +71,18 @@ type Config struct {
 	// Enable the next generation Loki Query Engine for supported queries.
 	Enable bool `yaml:"enable" category:"experimental"`
 
-	DataobjStorageLag   time.Duration      `yaml:"dataobj_storage_lag" category:"experimental"`
-	DataobjStorageStart dskit_flagext.Time `yaml:"dataobj_storage_start" category:"experimental"`
+	Executor ExecutorConfig `yaml:",inline"`
+}
+
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.BoolVar(&cfg.Enable, prefix+"enable", false, "Experimental: Enable next generation query engine for supported queries.")
+	cfg.Executor.RegisterFlagsWithPrefix(prefix, f)
+}
+
+// ExecutorConfig configures engine execution.
+type ExecutorConfig struct {
+	DataobjStorageLag   time.Duration `yaml:"dataobj_storage_lag" category:"experimental"`
+	DataobjStorageStart flagext.Time  `yaml:"dataobj_storage_start" category:"experimental"`
 
 	// Batch size of the v2 execution engine.
 	BatchSize int `yaml:"batch_size" category:"experimental"`
@@ -85,8 +94,7 @@ type Config struct {
 	RangeConfig rangeio.Config `yaml:"range_reads" category:"experimental" doc:"description=Configures how to read byte ranges from object storage when using the V2 engine."`
 }
 
-func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.BoolVar(&cfg.Enable, prefix+"enable", false, "Experimental: Enable next generation query engine for supported queries.")
+func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.IntVar(&cfg.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
 	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
 	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
@@ -95,7 +103,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.DataobjStorageStart, prefix+"dataobj-storage-start", "Initial date when data objects became available. Format YYYY-MM-DD. If not set, assume data objects are always available no matter how far back.")
 }
 
-func (cfg *Config) ValidQueryRange() (time.Time, time.Time) {
+func (cfg *ExecutorConfig) ValidQueryRange() (time.Time, time.Time) {
 	return time.Time(cfg.DataobjStorageStart).UTC(), time.Now().UTC().Add(-cfg.DataobjStorageLag)
 }
 
@@ -107,7 +115,7 @@ type Basic struct {
 	limits    logql.Limits
 	metastore metastore.Metastore
 	bucket    objstore.Bucket
-	cfg       Config
+	cfg       ExecutorConfig
 }
 
 // Query implements [logql.Engine].
