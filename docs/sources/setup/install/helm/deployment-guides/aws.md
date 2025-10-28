@@ -61,8 +61,8 @@ apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
 
 metadata:
-  name: <INSERT-CLUSTER-NAME>
-  region: <INSERT-REGION-FOR-CLUSTER>
+  name: <INSERT_CLUSTER_NAME>
+  region: <INSERT_REGION_FOR_CLUSTER>
   version: "1.31"
 
 iam:

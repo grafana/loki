@@ -73,7 +73,10 @@ loki:
     httpGet:
       path: /ready
       port: http-metrics
-    initialDelaySeconds: 30
+    periodSeconds: 10
+    initialDelaySeconds: 15
+    successThreshold: 1
+    failureThreshold: 3
     timeoutSeconds: 1
   # Configures the startup probe for all of the Loki pods
   startupProbe: {}
