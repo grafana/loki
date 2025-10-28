@@ -27,6 +27,7 @@ var testBuilderConfig = BuilderConfig{
 
 	BufferSize:              2048 * 8,
 	SectionStripeMergeLimit: 2,
+	DataobjSortOrder:        sortTimestampDESC,
 }
 
 func TestBuilder(t *testing.T) {

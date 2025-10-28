@@ -3,18 +3,17 @@ package executor
 import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 )
 
-func buildLogfmtColumns(input *array.String, requestedKeys []string, allocator memory.Allocator) ([]string, []arrow.Array) {
-	return buildColumns(input, requestedKeys, allocator, tokenizeLogfmt, types.LogfmtParserErrorType)
+func buildLogfmtColumns(input *array.String, requestedKeys []string) ([]string, []arrow.Array) {
+	return buildColumns(input, requestedKeys, tokenizeLogfmt, types.LogfmtParserErrorType)
 }
 
 // tokenizeLogfmt parses logfmt input using the standard decoder
-// Returns a map of key-value pairs with last-wins semantics for duplicates
+// Returns a map of key-value pairs with first-wins semantics for duplicates
 // If requestedKeys is provided, the result will be filtered to only include those keys
 func tokenizeLogfmt(input string, requestedKeys []string) (map[string]string, error) {
 	result := make(map[string]string)
@@ -38,11 +37,15 @@ func tokenizeLogfmt(input string, requestedKeys []string) (map[string]string, er
 
 		val := decoder.Value()
 		if len(val) == 0 {
-			//TODO: retain empty values if --keep-empty is set
+			// TODO: retain empty values if --keep-empty is set
 			continue
 		}
 
-		// Last-wins semantics for duplicates
+		// First-wins semantics for duplicates
+		_, exists := result[key]
+		if exists {
+			continue
+		}
 		result[key] = unsafeString(decoder.Value())
 	}
 

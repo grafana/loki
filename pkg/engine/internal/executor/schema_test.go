@@ -11,9 +11,6 @@ import (
 )
 
 func Test_changeSchema(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	var (
 		oldSchema = arrow.NewSchema([]arrow.Field{
 			{Name: "a", Type: arrow.PrimitiveTypes.Int64, Nullable: true},
@@ -38,12 +35,10 @@ func Test_changeSchema(t *testing.T) {
 		}
 	)
 
-	rec := data.Record(alloc, oldSchema)
-	defer rec.Release()
+	rec := data.Record(memory.DefaultAllocator, oldSchema)
 
 	newRec, err := changeSchema(rec, newSchema)
 	require.NoError(t, err, "changeSchema should not return an error")
-	defer newRec.Release()
 
 	actual, err := arrowtest.RecordRows(newRec)
 	require.NoError(t, err, "arrowtest.RecordRows should not return an error")

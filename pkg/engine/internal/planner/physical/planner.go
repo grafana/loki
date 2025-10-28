@@ -95,12 +95,9 @@ func (p *Planner) Build(lp *logical.Plan) (*Plan, error) {
 	for _, inst := range lp.Instructions {
 		switch inst := inst.(type) {
 		case *logical.Return:
-			nodes, err := p.process(inst.Value, p.context)
+			_, err := p.process(inst.Value, p.context)
 			if err != nil {
 				return nil, err
-			}
-			if len(nodes) > 1 {
-				return nil, errors.New("logical plan has more than 1 return value")
 			}
 			return p.plan, nil
 		}
@@ -136,13 +133,15 @@ func (p *Planner) convertPredicate(inst logical.Value) Expression {
 	}
 }
 
-// Convert a [logical.Instruction] into one or multiple [Node]s.
-func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
+// Convert a [logical.Instruction] into [Node].
+func (p *Planner) process(inst logical.Value, ctx *Context) (Node, error) {
 	switch inst := inst.(type) {
 	case *logical.MakeTable:
 		return p.processMakeTable(inst, ctx)
 	case *logical.Select:
 		return p.processSelect(inst, ctx)
+	case *logical.Projection:
+		return p.processProjection(inst, ctx)
 	case *logical.Sort:
 		return p.processSort(inst, ctx)
 	case *logical.Limit:
@@ -153,6 +152,10 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 		return p.processVectorAggregation(inst, ctx)
 	case *logical.Parse:
 		return p.processParse(inst, ctx)
+	case *logical.BinOp:
+		return p.processBinOp(inst, ctx)
+	case *logical.UnaryOp:
+		return p.processUnaryOp(inst, ctx)
 	case *logical.LogQLCompat:
 		p.context.v1Compatible = true
 		return p.process(inst.Value, ctx)
@@ -160,69 +163,8 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]Node, error) {
 	return nil, nil
 }
 
-func (p *Planner) buildNodeGroup(currentGroup []FilteredShardDescriptor, baseNode Node, ctx *Context) error {
-	scans := []Node{}
-	for _, descriptor := range currentGroup {
-		// output current group to nodes
-		for _, section := range descriptor.Sections {
-			scan := &DataObjScan{
-				Location:  descriptor.Location,
-				StreamIDs: descriptor.Streams,
-				Section:   section,
-				Direction: ctx.direction,
-			}
-			p.plan.graph.Add(scan)
-			scans = append(scans, scan)
-		}
-	}
-	if len(scans) > 1 && ctx.direction != UNSORTED {
-		sortMerge := &SortMerge{
-			Column: newColumnExpr(types.ColumnNameBuiltinTimestamp, types.ColumnTypeBuiltin),
-			Order:  ctx.direction, // apply direction from previously visited Sort node
-		}
-		p.plan.graph.Add(sortMerge)
-		for _, scan := range scans {
-			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: sortMerge, Child: scan}); err != nil {
-				return err
-			}
-		}
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: baseNode, Child: sortMerge}); err != nil {
-			return err
-		}
-	} else {
-		for _, scan := range scans {
-			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: baseNode, Child: scan}); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func overlappingShardDescriptors(filteredShardDescriptors []FilteredShardDescriptor) [][]FilteredShardDescriptor {
-	// Ensure that shard descriptors are sorted by end time
-	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
-		return filteredShardDescriptors[i].TimeRange.End.After(filteredShardDescriptors[j].TimeRange.End)
-	})
-
-	groups := make([][]FilteredShardDescriptor, 0, len(filteredShardDescriptors))
-	var tr TimeRange
-	for i, shardDesc := range filteredShardDescriptors {
-		if i == 0 || !tr.Overlaps(shardDesc.TimeRange) {
-			// Create new group for first item or if item does not overlap with previous group
-			groups = append(groups, []FilteredShardDescriptor{shardDesc})
-			tr = shardDesc.TimeRange
-		} else {
-			// Append to existing group
-			groups[len(groups)-1] = append(groups[len(groups)-1], shardDesc)
-			tr = tr.Merge(shardDesc.TimeRange)
-		}
-	}
-	return groups
-}
-
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
-func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node, error) {
+func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, error) {
 	shard, ok := lp.Shard.(*logical.ShardInfo)
 	if !ok {
 		return nil, fmt.Errorf("invalid shard, got %T", lp.Shard)
@@ -239,19 +181,36 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 	if err != nil {
 		return nil, err
 	}
-
-	groups := overlappingShardDescriptors(filteredShardDescriptors)
+	sort.Slice(filteredShardDescriptors, func(i, j int) bool {
+		return filteredShardDescriptors[i].TimeRange.End.After(filteredShardDescriptors[j].TimeRange.End)
+	})
 	if ctx.direction == ASC {
-		slices.Reverse(groups)
+		slices.Reverse(filteredShardDescriptors)
 	}
 
-	var node Node = &Merge{}
-	p.plan.graph.Add(node)
-	for _, gr := range groups {
-		if err := p.buildNodeGroup(gr, node, ctx); err != nil {
-			return nil, err
+	// Scan work can be parallelized across multiple workers, so we wrap
+	// everything into a single Parallelize node.
+	var parallelize Node = &Parallelize{}
+	p.plan.graph.Add(parallelize)
+
+	scanSet := &ScanSet{}
+	p.plan.graph.Add(scanSet)
+
+	for _, desc := range filteredShardDescriptors {
+		for _, section := range desc.Sections {
+			scanSet.Targets = append(scanSet.Targets, &ScanTarget{
+				Type: ScanTypeDataObject,
+
+				DataObject: &DataObjScan{
+					Location:  desc.Location,
+					StreamIDs: desc.Streams,
+					Section:   section,
+				},
+			})
 		}
 	}
+
+	var base Node = scanSet
 
 	if p.context.v1Compatible {
 		compat := &ColumnCompat{
@@ -259,63 +218,111 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]Node,
 			Destination: types.ColumnTypeMetadata,
 			Collision:   types.ColumnTypeLabel,
 		}
-		node, err = p.wrapNodeWith(node, compat)
+		base, err = p.wrapNodeWith(base, compat)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	return []Node{node}, nil
+	// Add an edge between the parallelize and the final base node (which may
+	// have been changed after processing compatibility).
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: base}); err != nil {
+		return nil, err
+	}
+	return parallelize, nil
 }
 
 // Convert [logical.Select] into one [Filter] node.
-func (p *Planner) processSelect(lp *logical.Select, ctx *Context) ([]Node, error) {
+func (p *Planner) processSelect(lp *logical.Select, ctx *Context) (Node, error) {
 	node := &Filter{
 		Predicates: []Expression{p.convertPredicate(lp.Predicate)},
 	}
 	p.plan.graph.Add(node)
-	children, err := p.process(lp.Table, ctx)
+	child, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
-	return []Node{node}, nil
+	return node, nil
 }
 
-// Pass sort direction from [logical.Sort] to the children.
-func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]Node, error) {
+// processSort processes a [logical.Sort] node.
+func (p *Planner) processSort(lp *logical.Sort, ctx *Context) (Node, error) {
 	order := DESC
 	if lp.Ascending {
 		order = ASC
 	}
 
-	return p.process(lp.Table, ctx.WithDirection(order))
+	node := &TopK{
+		SortBy:     &ColumnExpr{Ref: lp.Column.Ref},
+		Ascending:  order == ASC,
+		NullsFirst: false,
+
+		// K initially starts at 0, indicating to sort everything. The
+		// [limitPushdown] optimization pass can update this value based on how
+		// many rows are needed.
+		K: 0,
+	}
+
+	p.plan.graph.Add(node)
+
+	child, err := p.process(lp.Table, ctx.WithDirection(order))
+	if err != nil {
+		return nil, err
+	}
+
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
+	}
+	return node, nil
+}
+
+// Converts a [logical.Projection] into a physical [Projection] node.
+func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node, error) {
+	expressions := make([]Expression, len(lp.Expressions))
+	for i := range lp.Expressions {
+		expressions[i] = p.convertPredicate(lp.Expressions[i])
+	}
+
+	node := &Projection{
+		Expressions: expressions,
+		All:         lp.All,
+		Expand:      lp.Expand,
+		Drop:        lp.Drop,
+	}
+	p.plan.graph.Add(node)
+
+	child, err := p.process(lp.Relation, ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
+	}
+
+	return node, nil
 }
 
 // Convert [logical.Limit] into one [Limit] node.
-func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) ([]Node, error) {
+func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) (Node, error) {
 	node := &Limit{
 		Skip:  lp.Skip,
 		Fetch: lp.Fetch,
 	}
 	p.plan.graph.Add(node)
-	children, err := p.process(lp.Table, ctx)
+	child, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
-	return []Node{node}, nil
+	return node, nil
 }
 
-func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) ([]Node, error) {
+func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) (Node, error) {
 	partitionBy := make([]ColumnExpression, len(r.PartitionBy))
 	for i, col := range r.PartitionBy {
 		partitionBy[i] = &ColumnExpr{Ref: col.Ref}
@@ -331,21 +338,19 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Cont
 	}
 	p.plan.graph.Add(node)
 
-	children, err := p.process(r.Table, ctx.WithRangeInterval(r.RangeInterval))
+	child, err := p.process(r.Table, ctx.WithRangeInterval(r.RangeInterval))
 	if err != nil {
 		return nil, err
 	}
 
-	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
-	return []Node{node}, nil
+	return node, nil
 }
 
 // Convert [logical.VectorAggregation] into one [VectorAggregation] node.
-func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *Context) ([]Node, error) {
+func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *Context) (Node, error) {
 	groupBy := make([]ColumnExpression, len(lp.GroupBy))
 	for i, col := range lp.GroupBy {
 		groupBy[i] = &ColumnExpr{Ref: col.Ref}
@@ -356,35 +361,202 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 		Operation: lp.Operation,
 	}
 	p.plan.graph.Add(node)
-	children, err := p.process(lp.Table, ctx)
+	child, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
-	return []Node{node}, nil
+	return node, nil
+}
+
+// collapseMathExpressions traverses over a subtree of math expressions `c` (BinOps, UnaryOps, or Literals) and collapses them
+// into a Projection node with a complex Expression. It may insert a Join node if it finds a BinOp with two obj scan inputs.
+// Parameters:
+//   - lp: current logical plan node
+//   - rootNode: true indicates that this is the first call and the function should produce a Node. false indicates
+//     that this is a recursive call and the function should keep accumulating Expression if possible.
+//   - ctx: context from the current planner call.
+//
+// Return:
+//   - acc: currently accumulated expression.
+//   - input: a physical plan node of the only input of that expression, if any.
+//   - inputRef: a pointer to a node in `acc` that refers the input, if any. This is for convenience of
+//     renaming the column refenrece without a need to search for it in `acc` expression.
+//   - err: error
+func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *Context) (acc Expression, input Node, inputRef *ColumnExpr, err error) {
+	switch v := lp.(type) {
+	case *logical.BinOp:
+		// Traverse left and right children
+		leftChild, leftInput, leftInputRef, err := p.collapseMathExpressions(v.Left, false, ctx)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		rightChild, rightInput, rightInputRef, err := p.collapseMathExpressions(v.Right, false, ctx)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		// Both left and right expressions have obj scans, replace with join
+		if leftInput != nil && rightInput != nil {
+			// Replace column references with `_left` and `_right` indicating that there are two inputs coming from a Join
+			leftInputRef.Ref = types.ColumnRef{
+				Column: "value_left",
+				Type:   types.ColumnTypeGenerated,
+			}
+			rightInputRef.Ref = types.ColumnRef{
+				Column: "value_right",
+				Type:   types.ColumnTypeGenerated,
+			}
+
+			// Insert an InnerJoin on timestamp before Projection
+			join := &Join{}
+			p.plan.graph.Add(join)
+
+			projection := &Projection{
+				Expressions: []Expression{
+					&BinaryExpr{
+						Left:  leftChild,
+						Right: rightChild,
+						Op:    v.Op,
+					},
+				},
+				All:    true,
+				Expand: true,
+			}
+			p.plan.graph.Add(projection)
+
+			// Connect the join to the projection
+			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: projection, Child: join}); err != nil {
+				return nil, nil, nil, err
+			}
+			// Connect left and right children to the join
+			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: join, Child: leftInput}); err != nil {
+				return nil, nil, nil, err
+			}
+			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: join, Child: rightInput}); err != nil {
+				return nil, nil, nil, err
+			}
+
+			// Result of this math expression returns `value` column
+			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
+
+			return columnRef, join, columnRef, nil
+		}
+
+		// Eigther left or right expression has an obj scan. Pick the non-nil one.
+		input := leftInput
+		if leftInput == nil {
+			input = rightInput
+		}
+		inputRef := leftInputRef
+		if leftInputRef == nil {
+			inputRef = rightInputRef
+		}
+		expr := &BinaryExpr{
+			Left:  leftChild,
+			Right: rightChild,
+			Op:    v.Op,
+		}
+
+		// we have to stop here and produce a Node, otherwise keep collapsing
+		if rootNode {
+			projection := &Projection{
+				Expressions: []Expression{expr},
+				All:         true,
+				Expand:      true,
+			}
+			p.plan.graph.Add(projection)
+			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: projection, Child: input}); err != nil {
+				return nil, nil, nil, err
+			}
+
+			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
+
+			return columnRef, projection, columnRef, nil
+		}
+
+		return expr, input, inputRef, nil
+	case *logical.UnaryOp:
+		child, input, inputRef, err := p.collapseMathExpressions(v.Value, false, ctx)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		expr := &UnaryExpr{
+			Left: child,
+			Op:   v.Op,
+		}
+		if rootNode {
+			projection := &Projection{
+				Expressions: []Expression{expr},
+				All:         true,
+				Expand:      true,
+			}
+			p.plan.graph.Add(projection)
+			if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: projection, Child: input}); err != nil {
+				return nil, nil, nil, err
+			}
+
+			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
+
+			return columnRef, projection, columnRef, nil
+		}
+
+		return expr, input, inputRef, nil
+	case *logical.Literal:
+		return &LiteralExpr{Literal: v.Literal}, nil, nil, nil
+	default:
+		// If it is neigher a literal nor an expression, then we continue `p.process` on this node and represent in
+		// as a column ref `value` in the final math expression.
+		columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
+		child, err := p.process(lp, ctx)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		return columnRef, child, columnRef, nil
+	}
+}
+
+// Convert one or several [logical.BinOp]s into one [Projection] node where the result expression might be complex with
+// multiple binary or unary operations. It also might insert a [Join] node before a [Projection] if this math expression
+// reads data on both left and right sides.
+func (p *Planner) processBinOp(lp *logical.BinOp, ctx *Context) (Node, error) {
+	_, node, _, err := p.collapseMathExpressions(lp, true, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return node, nil
+}
+
+// Convert one or several [logical.UnaryOp]s into one [Projection] node where the result expression might be complex with
+// multiple binary or unary operations. It also might insert a [Join] node before a [Projection] if this math expression
+// reads data on both left and right sides.
+func (p *Planner) processUnaryOp(lp *logical.UnaryOp, ctx *Context) (Node, error) {
+	_, node, _, err := p.collapseMathExpressions(lp, true, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return node, nil
 }
 
 // Convert [logical.Parse] into one [ParseNode] node.
 // A ParseNode initially has an empty list of RequestedKeys which will be populated during optimization.
-func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) {
+func (p *Planner) processParse(lp *logical.Parse, ctx *Context) (Node, error) {
 	var node Node = &ParseNode{
 		Kind: convertParserKind(lp.Kind),
 	}
 	p.plan.graph.Add(node)
 
-	children, err := p.process(lp.Table, ctx)
+	child, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	for i := range children {
-		if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
 
 	if p.context.v1Compatible {
@@ -399,7 +571,7 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]Node, error) 
 		}
 	}
 
-	return []Node{node}, nil
+	return node, nil
 }
 
 func (p *Planner) wrapNodeWith(node Node, wrapper Node) (Node, error) {
@@ -418,17 +590,22 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 			newOptimization("PredicatePushdown", plan).withRules(
 				&predicatePushdown{plan: plan},
 			),
-			newOptimization("CleanupFilters", plan).withRules(
-				&removeNoopFilter{plan: plan},
-			),
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
+			),
+			newOptimization("groupByPushdown", plan).withRules(
+				&groupByPushdown{plan: plan},
 			),
 			newOptimization("ProjectionPushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
 			),
-			newOptimization("CleanupMerge", plan).withRules(
-				&removeNoopMerge{plan: plan},
+			newOptimization("ParallelPushdown", plan).withRules(
+				&parallelPushdown{plan: plan},
+			),
+
+			// Perform cleanups at the very end.
+			newOptimization("Cleanup", plan).withRules(
+				&removeNoopFilter{plan: plan},
 			),
 		}
 		optimizer := newOptimizer(plan, optimizations)

@@ -9,9 +9,14 @@ import "fmt"
 type Projection struct {
 	id string
 
-	// Columns is a set of column expressions that are used to drop not needed
-	// columns that do not match the expression evaluation.
-	Columns []ColumnExpression
+	// Expressions is a set of column expressions that are used to drop not needed
+	// columns that match the column expression, or to expand columns that result
+	// from the expressions.
+	Expressions []Expression
+
+	All    bool // Marker for projecting all columns of input relation (similar to SQL `SELECT *`)
+	Expand bool // Indicates that projected columns should be added to input relation
+	Drop   bool // Indicates that projected columns should be dropped from input Relation
 }
 
 // ID implements the [Node] interface.
@@ -21,6 +26,16 @@ func (p *Projection) ID() string {
 		return fmt.Sprintf("%p", p)
 	}
 	return p.id
+}
+
+// Clone returns a deep copy of the node (minus its ID).
+func (p *Projection) Clone() Node {
+	return &Projection{
+		Expressions: cloneExpressions(p.Expressions),
+		All:         p.All,
+		Expand:      p.Expand,
+		Drop:        p.Drop,
+	}
 }
 
 // Type implements the [Node] interface.

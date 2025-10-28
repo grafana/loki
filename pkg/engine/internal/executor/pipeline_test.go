@@ -64,24 +64,13 @@ func TestCSVPipeline(t *testing.T) {
 	// Convert to Arrow records
 	record1, err := CSVToArrow(fields, csvData1)
 	require.NoError(t, err)
-	defer record1.Release()
 
 	record2, err := CSVToArrow(fields, csvData2)
 	require.NoError(t, err)
-	defer record2.Release()
 
 	// Create a CSVPipeline with the test records
 	pipeline := NewBufferedPipeline(record1, record2)
 	defer pipeline.Close()
-
-	// Test pipeline behavior
-	t.Run("should have correct transport type", func(t *testing.T) {
-		require.Equal(t, Local, pipeline.Transport())
-	})
-
-	t.Run("should have no inputs", func(t *testing.T) {
-		require.Empty(t, pipeline.Inputs())
-	})
 
 	t.Run("should return records in order", func(t *testing.T) {
 		ctx := t.Context()
@@ -117,12 +106,6 @@ type instrumentedPipeline struct {
 	callCount map[string]int
 }
 
-// Inputs implements Pipeline.
-func (i *instrumentedPipeline) Inputs() []Pipeline {
-	i.callCount["Inputs"]++
-	return i.inner.Inputs()
-}
-
 // Close implements Pipeline.
 func (i *instrumentedPipeline) Close() {
 	i.callCount["Close"]++
@@ -135,18 +118,9 @@ func (i *instrumentedPipeline) Read(ctx context.Context) (arrow.Record, error) {
 	return i.inner.Read(ctx)
 }
 
-// Transport implements Pipeline.
-func (i *instrumentedPipeline) Transport() Transport {
-	i.callCount["Transport"]++
-	return i.inner.Transport()
-}
-
 var _ Pipeline = (*instrumentedPipeline)(nil)
 
 func Test_prefetchWrapper_Read(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	batch1 := arrowtest.Rows{
 		{"message": "log line 1"},
 		{"message": "log line 2"},
@@ -160,12 +134,9 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 	}
 
 	records := []arrow.Record{
-		batch1.Record(alloc, batch1.Schema()),
-		batch2.Record(alloc, batch2.Schema()),
-		batch3.Record(alloc, batch3.Schema()),
-	}
-	for _, rec := range records {
-		defer rec.Release()
+		batch1.Record(memory.DefaultAllocator, batch1.Schema()),
+		batch2.Record(memory.DefaultAllocator, batch2.Schema()),
+		batch3.Record(memory.DefaultAllocator, batch3.Schema()),
 	}
 
 	pipeline := NewBufferedPipeline(records...)
@@ -180,7 +151,6 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 	// Read first batch
 	v, err := prefetchingPipeline.Read(ctx)
 	require.NoError(t, err)
-	v.Release()
 	require.Equal(t, int64(2), v.NumRows())
 
 	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched
@@ -189,7 +159,6 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 	// Read second batch
 	v, err = prefetchingPipeline.Read(ctx)
 	require.NoError(t, err)
-	v.Release()
 	require.Equal(t, int64(2), v.NumRows())
 
 	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched
@@ -198,7 +167,6 @@ func Test_prefetchWrapper_Read(t *testing.T) {
 	// Read third/last batch
 	v, err = prefetchingPipeline.Read(ctx)
 	require.NoError(t, err)
-	v.Release()
 	require.Equal(t, int64(1), v.NumRows())
 
 	time.Sleep(10 * time.Millisecond)                           // ensure that next batch has been prefetched
