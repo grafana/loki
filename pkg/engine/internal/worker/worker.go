@@ -100,7 +100,11 @@ type Worker struct {
 func New(config Config) (*Worker, error) {
 	if config.Logger == nil {
 		config.Logger = log.NewNopLogger()
-	} else if config.LocalScheduler == nil {
+	}
+
+	// TODO(rfratto): support connecting to a remote scheduler, so that a local
+	// scheduler isn't always required.
+	if config.LocalScheduler == nil {
 		return nil, errors.New("local scheduler is required")
 	}
 

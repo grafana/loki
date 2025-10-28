@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/go-kit/log"
@@ -127,6 +128,8 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 			// the nodeSource is closed, and reads return EOF.
 			input := new(nodeSource)
 
+			var errs []error
+
 			for _, stream := range streams {
 				source, found := job.Sources[stream.ULID]
 				if !found {
@@ -134,8 +137,17 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 					continue
 				} else if err := source.Bind(input); err != nil {
 					level.Error(logger).Log("msg", "failed to bind source", "err", err)
+					errs = append(errs, fmt.Errorf("binding source %s: %w", stream.ULID, err))
 					continue
 				}
+			}
+
+			if len(errs) > 0 {
+				// Since we're returning an error pipeline, we need to close
+				// input so that writing to any already bound streams doesn't
+				// block.
+				input.Close()
+				return []executor.Pipeline{errorPipeline(errs)}
 			}
 
 			return []executor.Pipeline{input}
