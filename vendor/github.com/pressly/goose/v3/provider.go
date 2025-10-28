@@ -1,11 +1,13 @@
 package goose
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"math"
 	"strconv"
 	"strings"
@@ -63,7 +65,6 @@ func NewProvider(dialect Dialect, db *sql.DB, fsys fs.FS, opts ...ProviderOption
 		registered:      make(map[int64]*Migration),
 		excludePaths:    make(map[string]bool),
 		excludeVersions: make(map[int64]bool),
-		logger:          &stdLogger{},
 	}
 	for _, opt := range opts {
 		if err := opt.apply(&cfg); err != nil {
@@ -78,10 +79,19 @@ func NewProvider(dialect Dialect, db *sql.DB, fsys fs.FS, opts ...ProviderOption
 	if dialect != DialectCustom && cfg.store != nil {
 		return nil, errors.New("custom store must not be specified when using one of the default dialects, use DialectCustom instead")
 	}
+	// Allow table name to be set only if store is not set.
+	if cfg.tableName != "" && cfg.store != nil {
+		return nil, errors.New("WithTableName cannot be used with WithStore; set the table name directly on your custom store")
+	}
+
+	// Set default logger if neither was provided
+	if cfg.slogger == nil && cfg.logger == nil {
+		cfg.logger = &stdLogger{}
+	}
 	var store database.Store
 	if dialect != "" {
 		var err error
-		store, err = database.NewStore(dialect, DefaultTablename)
+		store, err = database.NewStore(dialect, cmp.Or(cfg.tableName, DefaultTablename))
 		if err != nil {
 			return nil, err
 		}
@@ -156,16 +166,16 @@ func (p *Provider) Status(ctx context.Context) ([]*MigrationStatus, error) {
 // HasPending returns true if there are pending migrations to apply, otherwise, it returns false. If
 // out-of-order migrations are disabled, yet some are detected, this method returns an error.
 //
-// Note, this method will not use a SessionLocker if one is configured. This allows callers to check
-// for pending migrations without blocking or being blocked by other operations.
+// Note, this method will not use a SessionLocker or Locker if one is configured. This allows
+// callers to check for pending migrations without blocking or being blocked by other operations.
 func (p *Provider) HasPending(ctx context.Context) (bool, error) {
 	return p.hasPending(ctx)
 }
 
 // GetVersions returns the max database version and the target version to migrate to.
 //
-// Note, this method will not use a SessionLocker if one is configured. This allows callers to check
-// for versions without blocking or being blocked by other operations.
+// Note, this method will not use a SessionLocker or Locker if one is configured. This allows
+// callers to check for versions without blocking or being blocked by other operations.
 func (p *Provider) GetVersions(ctx context.Context) (current, target int64, err error) {
 	return p.getVersions(ctx)
 }
@@ -435,7 +445,11 @@ func (p *Provider) down(
 	}
 	// We never migrate the zero version down.
 	if dbMigrations[0].Version == 0 {
-		p.printf("no migrations to run, current version: 0")
+		p.logf(ctx,
+			"no migrations to run, current version: 0",
+			"no migrations to run",
+			slog.Int64("version", 0),
+		)
 		return nil, nil
 	}
 	var apply []*Migration

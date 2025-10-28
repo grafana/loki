@@ -167,9 +167,12 @@ func (t *table) compact() error {
 		indexSetsMtx.Lock()
 		defer indexSetsMtx.Unlock()
 
-		var err error
-		t.indexSets[userID], err = newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger)
-		return t.indexSets[userID], err
+		indexSet, err := newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger)
+		if err != nil {
+			return nil, err
+		}
+		t.indexSets[userID] = indexSet
+		return indexSet, nil
 	}, t.periodConfig)
 
 	return tableCompactor.CompactTable()

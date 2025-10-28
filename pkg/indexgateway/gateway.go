@@ -418,7 +418,7 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 		return err
 	}
 
-	forSeries, ok := g.indexQuerier.HasForSeries(request.From, request.Through)
+	ok := g.indexQuerier.HasChunkSizingInfo(request.From, request.Through)
 	if !ok {
 		sp.AddEvent("index does not support forSeries", trace.WithAttributes(
 			attribute.String("action", "falling back to indexQuerier.GetShards impl"),
@@ -438,7 +438,7 @@ func (g *Gateway) GetShards(request *logproto.ShardsRequest, server logproto.Ind
 		return server.Send(shards)
 	}
 
-	return g.boundedShards(ctx, request, server, instanceID, p, forSeries)
+	return g.boundedShards(ctx, request, server, instanceID, p)
 }
 
 // boundedShards handles bounded shard requests, optionally returning precomputed chunks.
@@ -448,7 +448,6 @@ func (g *Gateway) boundedShards(
 	server logproto.IndexGateway_GetShardsServer,
 	instanceID string,
 	p chunk.Predicate,
-	forSeries sharding.ForSeries,
 ) error {
 	// TODO(owen-d): instead of using GetChunks which buffers _all_ the chunks
 	// (expensive when looking at the full fingerprint space), we should
@@ -467,27 +466,16 @@ func (g *Gateway) boundedShards(
 	defer sp.End()
 
 	// 1) for all bounds, get chunk refs
-	grps, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, p, nil)
+	refs, err := g.indexQuerier.GetChunkRefsWithSizingInfo(ctx, instanceID, req.From, req.Through, p)
 	if err != nil {
 		return err
 	}
 
-	var ct int
-	for _, g := range grps {
-		ct += len(g)
-	}
+	ct := len(refs)
 
 	sp.AddEvent("queried local index", trace.WithAttributes(
 		attribute.Int("index_chunks_resolved", ct),
 	))
-	// TODO(owen-d): pool
-	refs := make([]*logproto.ChunkRef, 0, ct)
-
-	for _, cs := range grps {
-		for j := range cs {
-			refs = append(refs, &cs[j].ChunkRef)
-		}
-	}
 
 	filtered := refs
 
@@ -523,7 +511,7 @@ func (g *Gateway) boundedShards(
 		}
 
 	} else {
-		shards, chunkGrps, err := accumulateChunksToShards(ctx, instanceID, forSeries, req, p, filtered)
+		shards, chunkGrps, err := accumulateChunksToShards(req, refs)
 		if err != nil {
 			return err
 		}
@@ -597,71 +585,14 @@ func ExtractShardRequestMatchersAndAST(query string) (chunk.Predicate, error) {
 	}), nil
 }
 
-// TODO(owen-d): consider extending index impl to support returning chunkrefs _with_ sizing info
-// TODO(owen-d): perf, this is expensive :(
 func accumulateChunksToShards(
-	ctx context.Context,
-	user string,
-	forSeries sharding.ForSeries,
 	req *logproto.ShardsRequest,
-	p chunk.Predicate,
-	filtered []*logproto.ChunkRef,
+	filtered []logproto.ChunkRefWithSizingInfo,
 ) ([]logproto.Shard, []logproto.ChunkRefGroup, error) {
 	// map for looking up post-filtered chunks in O(n) while iterating the index again for sizing info
-	filteredM := make(map[model.Fingerprint][]refWithSizingInfo, 1024)
+	filteredM := make(map[model.Fingerprint][]logproto.ChunkRefWithSizingInfo, 1024)
 	for _, ref := range filtered {
-		x := refWithSizingInfo{ref: ref}
-		filteredM[model.Fingerprint(ref.Fingerprint)] = append(filteredM[model.Fingerprint(ref.Fingerprint)], x)
-	}
-
-	var mtx sync.Mutex
-
-	if err := forSeries.ForSeries(
-		ctx,
-		user,
-		v1.NewBounds(filtered[0].FingerprintModel(), filtered[len(filtered)-1].FingerprintModel()),
-		req.From, req.Through,
-		func(l labels.Labels, fp model.Fingerprint, chks []tsdb_index.ChunkMeta) (stop bool) {
-			mtx.Lock()
-			defer mtx.Unlock()
-
-			// check if this is a fingerprint we need
-			if _, ok := filteredM[fp]; !ok {
-				return false
-			}
-
-			filteredChks := filteredM[fp]
-			var j int
-
-		outer:
-			for i := range filteredChks {
-				for j < len(chks) {
-					switch filteredChks[i].Cmp(chks[j]) {
-					case iter.Less:
-						// this chunk is not in the queried index, continue checking other chunks
-						continue outer
-					case iter.Greater:
-						// next chunk in index but didn't pass filter; continue
-						j++
-						continue
-					case iter.Eq:
-						// a match; set the sizing info
-						filteredChks[i].KB = chks[j].KB
-						filteredChks[i].Entries = chks[j].Entries
-						j++
-						continue outer
-					}
-				}
-
-				// we've finished this index's chunks; no need to keep checking filtered chunks
-				break
-			}
-
-			return false
-		},
-		p.Matchers...,
-	); err != nil {
-		return nil, nil, err
+		filteredM[model.Fingerprint(ref.Fingerprint)] = append(filteredM[model.Fingerprint(ref.Fingerprint)], ref)
 	}
 
 	collectedSeries := sharding.SizedFPs(sharding.SizedFPsPool.Get(len(filteredM)))
@@ -689,11 +620,20 @@ func accumulateChunksToShards(
 			return filtered[i].Fingerprint > uint64(s.Bounds.Max)
 		})
 		chkGrps = append(chkGrps, logproto.ChunkRefGroup{
-			Refs: filtered[from:through],
+			Refs: refsWithSizingInfoToRefs(filtered[from:through]),
 		})
 	}
 
 	return shards, chkGrps, nil
+}
+
+func refsWithSizingInfoToRefs(refsWithSizingInfo []logproto.ChunkRefWithSizingInfo) []*logproto.ChunkRef {
+	refs := make([]*logproto.ChunkRef, 0, len(refsWithSizingInfo))
+	for _, refWithSizingInfo := range refsWithSizingInfo {
+		refs = append(refs, &refWithSizingInfo.ChunkRef)
+	}
+
+	return refs
 }
 
 type refWithSizingInfo struct {

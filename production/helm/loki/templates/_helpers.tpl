@@ -160,7 +160,7 @@ Create the name of the service account to use
 Base template for building docker image reference
 */}}
 {{- define "loki.baseImage" }}
-{{- $registry := .global.registry | default .service.registry | default "" -}}
+{{- $registry := .global.imageRegistry | default ((.global.image).registry) | default .global.registry | default .service.registry | default "" -}}
 {{- $repository := .service.repository | default "" -}}
 {{- $ref := ternary (printf ":%s" (.service.tag | default .defaultVersion | toString)) (printf "@%s" .service.digest) (empty .service.digest) -}}
 {{- if and $registry $repository -}}
@@ -198,9 +198,10 @@ Docker image name
 Generated storage config for loki common config
 */}}
 {{- define "loki.commonStorageConfig" -}}
+{{- $bucketName := required "Please define loki.storage.bucketNames.chunks" (dig "storage" "bucketNames" "chunks" "" .Values.loki) }}
 {{- if .Values.loki.storage.use_thanos_objstore -}}
 object_store:
-  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 2 }}
+  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" $bucketName) | nindent 2 }}
 {{- else if .Values.minio.enabled -}}
 s3:
   endpoint: {{ include "loki.minio" $ }}
@@ -210,7 +211,7 @@ s3:
   s3forcepathstyle: true
   insecure: true
 {{- else if (eq (include "loki.isUsingObjectStorage" . ) "true")  -}}
-{{- include "loki.lokiStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.chunks) | nindent 0 }}
+{{- include "loki.lokiStorageConfig" (dict "ctx" . "bucketName" $bucketName) | nindent 0 }}
 {{- else if .Values.loki.storage.filesystem }}
 filesystem:
   {{- toYaml .Values.loki.storage.filesystem | nindent 2 }}
@@ -227,7 +228,8 @@ s3:
   bucketnames: ruler
 {{- else if (eq (include "loki.isUsingObjectStorage" . ) "true") }}
 type: {{ .Values.loki.storage.type | quote }}
-{{- include "loki.lokiStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 0 }}
+{{- $bucketName := required "Please define loki.storage.bucketNames.ruler" (dig "storage" "bucketNames" "ruler" "" .Values.loki) }}
+{{- include "loki.lokiStorageConfig" (dict "ctx" . "bucketName" $bucketName) | nindent 0 }}
 {{- else }}
 type: "local"
 {{- end }}
@@ -390,7 +392,8 @@ ruler:
 {{- define "loki.rulerThanosStorageConfig" -}}
 {{- if and .Values.loki.storage.use_thanos_objstore .Values.ruler.enabled}}
   backend: {{ .Values.loki.storage.object_store.type }}
-  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" .Values.loki.storage.bucketNames.ruler) | nindent 2 }}
+  {{- $bucketName := required "Please define loki.storage.bucketNames.ruler" (dig "storage" "bucketNames" "ruler" "" .Values.loki) }}
+  {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" $bucketName) | nindent 2 }}
 {{- end }}
 {{- end }}
 
@@ -829,7 +832,7 @@ http {
     {{- $rulerHost := include "loki.rulerFullname" .}}
     {{- $compactorHost := include "loki.compactorFullname" .}}
     {{- $schedulerHost := include "loki.querySchedulerFullname" .}}
-
+    {{- $querierHost := include "loki.querierFullname" .}}
 
     {{- $distributorUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $distributorHost $namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) -}}
     {{- $ingesterUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $ingesterHost $namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
@@ -838,6 +841,7 @@ http {
     {{- $rulerUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $rulerHost $namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
     {{- $compactorUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $compactorHost $namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
     {{- $schedulerUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $schedulerHost $namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
+    {{- $querierUrl := printf "%s://%s.%s.svc.%s:%s" $httpSchema $querierHost $namespace .Values.global.clusterDomain (.Values.loki.server.http_listen_port | toString) }}
 
     {{- if eq (include "loki.deployment.isSingleBinary" .) "true"}}
     {{- $distributorUrl = $singleBinaryUrl }}
@@ -847,10 +851,12 @@ http {
     {{- $rulerUrl = $singleBinaryUrl }}
     {{- $compactorUrl = $singleBinaryUrl }}
     {{- $schedulerUrl = $singleBinaryUrl }}
+    {{- $querierUrl = $singleBinaryUrl }}
     {{- else if eq (include "loki.deployment.isScalable" .) "true"}}
     {{- $distributorUrl = $writeUrl }}
     {{- $ingesterUrl = $writeUrl }}
     {{- $queryFrontendUrl = $readUrl }}
+    {{- $querierUrl = $readUrl }}
     {{- $indexGatewayUrl = $backendUrl }}
     {{- $rulerUrl = $backendUrl }}
     {{- $compactorUrl = $backendUrl }}
@@ -862,7 +868,7 @@ http {
       {{- with .Values.gateway.nginxConfig.locationSnippet }}
       {{- tpl . $ | nindent 6 }}
       {{- end }}
-      proxy_pass       {{ $distributorUrl }}$request_uri;
+      proxy_pass       {{ $querierUrl }}$request_uri;
     }
     {{- end }}
 
