@@ -51,6 +51,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/distributor"
+	engine_v2 "github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/limits"
@@ -125,6 +126,9 @@ const (
 	QueryLimiter                 = "query-limiter"
 	QueryLimitsInterceptors      = "query-limits-interceptors"
 	QueryLimitsTripperware       = "query-limits-tripperware"
+	QueryEngine                  = "query-engine"
+	QueryEngineScheduler         = "query-engine-scheduler"
+	QueryEngineWorker            = "query-engine-worker"
 	Store                        = "store"
 	TableManager                 = "table-manager"
 	RulerStorage                 = "ruler-storage"
@@ -1376,6 +1380,76 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		}
 		return nil
 	}), nil
+}
+
+func (t *Loki) initV2QueryEngine() (services.Service, error) {
+	if !t.Cfg.Querier.EngineV2.Enable {
+		return nil, nil
+	}
+
+	store, err := t.createDataObjBucket("query-engine")
+	if err != nil {
+		return nil, err
+	}
+
+	engine, err := engine_v2.New(engine_v2.Params{
+		Logger:     log.With(util_log.Logger, "component", "query-engine"),
+		Registerer: prometheus.DefaultRegisterer,
+
+		Config:          t.Cfg.Querier.EngineV2.Executor,
+		MetastoreConfig: t.Cfg.DataObj.Metastore,
+
+		Scheduler: t.queryEngineV2Scheduler,
+		Bucket:    store,
+		Limits:    t.Overrides,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	t.queryEngineV2 = engine
+	return nil, nil
+}
+
+func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
+	if !t.Cfg.Querier.EngineV2.Enable {
+		return nil, nil
+	}
+
+	logger := log.With(util_log.Logger, "component", "query-engine-scheduler")
+	sched, err := engine_v2.NewScheduler(logger)
+	if err != nil {
+		return nil, err
+	}
+
+	t.queryEngineV2Scheduler = sched
+	return sched.Service(), nil
+}
+
+func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
+	if !t.Cfg.Querier.EngineV2.Enable {
+		return nil, nil
+	}
+
+	store, err := t.createDataObjBucket("query-engine-worker")
+	if err != nil {
+		return nil, err
+	}
+
+	worker, err := engine_v2.NewWorker(engine_v2.WorkerParams{
+		Logger: log.With(util_log.Logger, "component", "query-engine-worker"),
+		Bucket: store,
+
+		Config:   t.Cfg.Querier.EngineV2.Worker,
+		Executor: t.Cfg.Querier.EngineV2.Executor,
+
+		LocalScheduler: t.queryEngineV2Scheduler,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return worker.Service(), nil
 }
 
 func (t *Loki) initRulerStorage() (_ services.Service, err error) {
