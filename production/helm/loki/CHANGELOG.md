@@ -13,6 +13,13 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [BUGFIX] Wrong context passed to loki.namespace helper from table manager servicemonitor. [#19461](https://github.com/grafana/loki/pull/19461)
+- [CHANGE] Remove unused `storageClass` field from compactor persistence configuration. Storage class should be configured per-claim in the `claims` array instead.[#19443](https://github.com/grafana/loki/pull/19443)
+- [FEATURE] Make loki-canary readinessProbe configurable via values.yaml  [#19328](https://github.com/grafana/loki/pull/19328)
+- [FEATURE]: Allow auto-resizing the volume by recreating the StatefulSet. [#19217](https://github.com/grafana/loki/pull/19217)
+- [BUGFIX] Add single-binary component to ingress NetworkPolicy [#19229](https://github.com/grafana/loki/pull/19229)
+- [BUGFIX] Use strings in stead of integers for ports in CiliumNetworkPolicies [#19252](https://github.com/grafana/loki/pull/19252)
+- [ENHANCEMENT] Update default readiness probe values to match operator [#19529](https://github.com/grafana/loki/pull/19529)
 - [ENHANCEMENT] Allow configuration of alert rule severities and thresholds
 
 ## 6.44.0
