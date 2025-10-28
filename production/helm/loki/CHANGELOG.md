@@ -50,6 +50,7 @@ Before upgrading to this version, make sure that the CustomResourceDefinitions (
 
 - [BUGFIX] Explicitly set registry for k8s-sidecar image [#19233](<https://github.com/grafana/loki/pull/19233>]
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for the nginx container in the gateway pods. [#18545](https://github.com/grafana/loki/pull/18545)
+- [ENHANCEMENT] Standardize global image registry configuration to match other Grafana charts [#19246](https://github.com/grafana/loki/pull/19246)
 
 ## 6.40.0
 
