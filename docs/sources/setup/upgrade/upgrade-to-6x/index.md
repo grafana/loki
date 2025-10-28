@@ -100,7 +100,7 @@ In Helm chart version 6.34.0, [PR #18558](https://github.com/grafana/loki/pull/1
 1. **Check if you're affected**:
 
    ```bash
-   helm get values <release-name> | grep -A5 zoneAwareReplication
+   helm get values <RELEASE_NAME> | grep -A5 zoneAwareReplication
    ```
 
    If `enabled: true` appears, you need to follow these steps.
@@ -109,16 +109,16 @@ In Helm chart version 6.34.0, [PR #18558](https://github.com/grafana/loki/pull/1
 
    ```bash
    kubectl delete statefulset \
-     <release-name>-ingester-zone-a \
-     <release-name>-ingester-zone-b \
-     <release-name>-ingester-zone-c \
+     <RELEASE_NAME>-ingester-zone-a \
+     <RELEASE_NAME>-ingester-zone-b \
+     <RELEASE_NAME>-ingester-zone-c \
      --cascade=orphan
    ```
 
 3. **Proceed with the Helm upgrade**:
 
    ```bash
-   helm upgrade <release-name> grafana/loki --version 6.34.0
+   helm upgrade <RELEASE_NAME> grafana/loki --version 6.34.0
    ```
 
 **What happens**:
@@ -140,32 +140,32 @@ Version 6.38.0 of the Helm charts introduced the ability to edit the access mode
 
    ```bash
    # Core components (SimpleScalable mode)
-   kubectl delete statefulset <release-name>-write --cascade=orphan
-   kubectl delete statefulset <release-name>-backend --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-write --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-backend --cascade=orphan
    
    # Single binary mode
-   kubectl delete statefulset <release-name> --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME> --cascade=orphan
    
    # Distributed mode components
-   kubectl delete statefulset <release-name>-ingester --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-ingester --cascade=orphan
 
    # Zone-aware ingester (if zoneAwareReplication.enabled is true)
-   kubectl delete statefulset <release-name>-ingester-zone-a --cascade=orphan
-   kubectl delete statefulset <release-name>-ingester-zone-b --cascade=orphan
-   kubectl delete statefulset <release-name>-ingester-zone-c --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-ingester-zone-a --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-ingester-zone-b --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-ingester-zone-c --cascade=orphan
 
-   kubectl delete statefulset <release-name>-index-gateway --cascade=orphan
-   kubectl delete statefulset <release-name>-compactor --cascade=orphan
-   kubectl delete statefulset <release-name>-ruler --cascade=orphan
-   kubectl delete statefulset <release-name>-pattern-ingester --cascade=orphan
-   kubectl delete statefulset <release-name>-bloom-planner --cascade=orphan
-   kubectl delete statefulset <release-name>-bloom-gateway --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-index-gateway --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-compactor --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-ruler --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-pattern-ingester --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-bloom-planner --cascade=orphan
+   kubectl delete statefulset <RELEASE_NAME>-bloom-gateway --cascade=orphan
    ```
 
 2. **Proceed with the Helm upgrade**:
 
    ```bash
-   helm upgrade <release-name> grafana/loki --version 6.38.0
+   helm upgrade <RELEASE_NAME> grafana/loki --version 6.38.0
    ```
 
 #### Distributed mode
