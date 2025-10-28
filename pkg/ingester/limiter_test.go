@@ -482,11 +482,11 @@ func (m *mockLimits) PolicyMaxLocalStreamsPerUser(_, policy string) int {
 	return 0
 }
 
-func (m *mockLimits) PolicyMaxGlobalStreamsPerUser(_, policy string) int {
+func (m *mockLimits) PolicyMaxGlobalStreamsPerUser(_, policy string) (int, bool) {
 	if policyLimit, exists := m.policyLimits[policy]; exists {
-		return policyLimit.global
+		return policyLimit.global, true
 	}
-	return 0
+	return 0, false
 }
 
 type mockRingStrategy struct {

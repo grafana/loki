@@ -1,6 +1,5 @@
 ---
 title: Block unwanted queries
-menuTitle: Unwanted queries
 description: Describes how to configure Grafana Loki to block unwanted or expensive queries using per-tenant overrides.
 weight: 
 ---
