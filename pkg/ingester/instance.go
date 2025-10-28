@@ -396,6 +396,7 @@ func (i *instance) onStreamCreated(s *stream) {
 			"msg", "successfully created stream",
 			"org_id", i.instanceID,
 			"stream", s.labels.String(),
+			"policy", s.policy,
 		)
 	}
 }
