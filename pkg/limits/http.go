@@ -10,9 +10,10 @@ import (
 )
 
 type httpTenantLimitsResponse struct {
-	Tenant  string  `json:"tenant"`
-	Streams uint64  `json:"streams"`
-	Rate    float64 `json:"rate"`
+	Tenant          string            `json:"tenant"`
+	StreamsTotal    uint64            `json:"streams_total"`
+	StreamsByPolicy map[string]uint64 `json:"streams_by_policy"`
+	Rate            float64           `json:"rate"`
 }
 
 // ServeHTTP implements the http.Handler interface.
@@ -24,11 +25,13 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var streams, sumBuckets uint64
+	streamsByPolicy := make(map[string]uint64)
 	s.usage.IterTenant(tenant, func(_ string, _ int32, stream streamUsage) {
 		streams++
 		for _, bucket := range stream.rateBuckets {
 			sumBuckets += bucket.size
 		}
+		streamsByPolicy[stream.policy]++
 	})
 	rate := float64(sumBuckets) / s.cfg.ActiveWindow.Seconds()
 
@@ -44,8 +47,9 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Use util.WriteJSONResponse to write the JSON response
 	util.WriteJSONResponse(w, httpTenantLimitsResponse{
-		Tenant:  tenant,
-		Streams: streams,
-		Rate:    rate,
+		Tenant:          tenant,
+		StreamsTotal:    streams,
+		StreamsByPolicy: streamsByPolicy,
+		Rate:            rate,
 	})
 }
