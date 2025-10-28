@@ -33,8 +33,8 @@ func (NoopWALReader) Record() []byte { return nil }
 func (NoopWALReader) Close() error   { return nil }
 
 func newCheckpointReader(dir string, logger log.Logger) (WALReader, io.Closer, error) {
-	// Proactively clean up orphaned checkpoints at startup before recovery
-	cleanupOrphanedCheckpointsAtStartup(dir, logger)
+	// Proactively clean up stale checkpoints at startup before recovery
+	cleanupCheckpointsAtStartup(dir, logger)
 
 	lastCheckpointDir, idx, err := lastCheckpoint(dir)
 	if err != nil {
@@ -53,9 +53,11 @@ func newCheckpointReader(dir string, logger log.Logger) (WALReader, io.Closer, e
 	return wlog.NewReader(r), r, nil
 }
 
-// cleanupOrphanedCheckpointsAtStartup removes checkpoints that reference WAL segments
-// that no longer exist. This is called at startup/recovery time for proactive cleanup.
-func cleanupOrphanedCheckpointsAtStartup(dir string, logger log.Logger) {
+// cleanupCheckpointsAtStartup performs cleanup of stale checkpoint data at startup.
+// This includes removing incomplete .tmp checkpoint directories from failed attempts, and
+// removing old completed checkpoints that have been superseded. The most recent valid
+// checkpoint is always protected to ensure a recovery point exists.
+func cleanupCheckpointsAtStartup(dir string, logger log.Logger) {
 	// First, clean up any stale .tmp checkpoint directories from failed checkpoint attempts.
 	// These are always safe to delete at startup since they represent incomplete operations.
 	cleanupStaleTmpCheckpoints(dir, logger)
@@ -63,7 +65,7 @@ func cleanupOrphanedCheckpointsAtStartup(dir string, logger log.Logger) {
 	// Find the most recent valid checkpoint to protect it from deletion
 	_, latestCheckpointIdx, err := lastCheckpoint(dir)
 	if err != nil {
-		level.Error(logger).Log("msg", "unable to find latest checkpoint for startup orphaned cleanup", "err", err)
+		level.Error(logger).Log("msg", "unable to find latest checkpoint for startup checkpoint cleanup", "err", err)
 		return
 	}
 
@@ -72,8 +74,9 @@ func cleanupOrphanedCheckpointsAtStartup(dir string, logger log.Logger) {
 		return
 	}
 
-	// Delegate to the shared cleanup function, protecting the latest checkpoint
-	cleanupOrphanedCheckpoints(dir, latestCheckpointIdx, logger)
+	// Delegate to the shared cleanup function, protecting the latest checkpoint.
+	// This will remove any old checkpoints that are superseded by the latest one.
+	cleanupOldCheckpoints(dir, latestCheckpointIdx, logger)
 }
 
 type Recoverer interface {
