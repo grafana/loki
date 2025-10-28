@@ -3036,8 +3036,6 @@ null
     ],
     "enableStatefulSetAutoDeletePVC": false,
     "enabled": false,
-    "size": "10Gi",
-    "storageClass": null,
     "whenDeleted": "Retain",
     "whenScaled": "Retain"
   },
@@ -3280,24 +3278,6 @@ false
 			<td>Enable creating PVCs for the compactor</td>
 			<td><pre lang="json">
 false
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>compactor.persistence.size</td>
-			<td>string</td>
-			<td>Size of persistent disk</td>
-			<td><pre lang="json">
-"10Gi"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>compactor.persistence.storageClass</td>
-			<td>string</td>
-			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
-			<td><pre lang="json">
-null
 </pre>
 </td>
 		</tr>
@@ -5402,7 +5382,16 @@ true
 		<tr>
 			<td>global.image.registry</td>
 			<td>string</td>
-			<td>Overrides the Docker registry globally for all images</td>
+			<td>Overrides the Docker registry globally for all images (deprecated, use global.imageRegistry)</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>global.imageRegistry</td>
+			<td>string</td>
+			<td>Overrides the Docker registry globally for all images (standard format)</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -8018,6 +8007,39 @@ false
     "additionalRuleLabels": {},
     "alerting": true,
     "annotations": {},
+    "configs": {
+      "LokiCanaryLatency": {
+        "enabled": true,
+        "for": "15m",
+        "lookbackPeriod": "5m",
+        "severity": "warning",
+        "threshold": 5
+      },
+      "LokiRequestErrors": {
+        "enabled": true,
+        "for": "15m",
+        "lookbackPeriod": "2m",
+        "severity": "critical",
+        "threshold": 10
+      },
+      "LokiRequestLatency": {
+        "enabled": true,
+        "for": "15m",
+        "severity": "critical",
+        "threshold": 1
+      },
+      "LokiRequestPanics": {
+        "enabled": true,
+        "lookbackPeriod": "10m",
+        "severity": "critical",
+        "threshold": 0
+      },
+      "LokiTooManyCompactorsRunning": {
+        "enabled": true,
+        "for": "5m",
+        "severity": "warning"
+      }
+    },
     "disabled": {},
     "enabled": false,
     "labels": {},
@@ -8123,6 +8145,39 @@ null
   "additionalRuleLabels": {},
   "alerting": true,
   "annotations": {},
+  "configs": {
+    "LokiCanaryLatency": {
+      "enabled": true,
+      "for": "15m",
+      "lookbackPeriod": "5m",
+      "severity": "warning",
+      "threshold": 5
+    },
+    "LokiRequestErrors": {
+      "enabled": true,
+      "for": "15m",
+      "lookbackPeriod": "2m",
+      "severity": "critical",
+      "threshold": 10
+    },
+    "LokiRequestLatency": {
+      "enabled": true,
+      "for": "15m",
+      "severity": "critical",
+      "threshold": 1
+    },
+    "LokiRequestPanics": {
+      "enabled": true,
+      "lookbackPeriod": "10m",
+      "severity": "critical",
+      "threshold": 0
+    },
+    "LokiTooManyCompactorsRunning": {
+      "enabled": true,
+      "for": "5m",
+      "severity": "warning"
+    }
+  },
   "disabled": {},
   "enabled": false,
   "labels": {},
@@ -8179,7 +8234,7 @@ true
 		<tr>
 			<td>monitoring.rules.disabled</td>
 			<td>object</td>
-			<td>If you disable all the alerts and keep .monitoring.rules.alerting set to true, the chart will fail to render.</td>
+			<td>DEPRECATED: use monitoring.rules.configs.*.enabled instead</td>
 			<td><pre lang="json">
 {}
 </pre>

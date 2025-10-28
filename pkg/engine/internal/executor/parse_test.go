@@ -255,6 +255,25 @@ func TestNewParsePipeline_logfmt(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "parsed keys with invalid characteres are sanitized",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: "level=info status=200 index-store=1234"},
+			},
+			requestedKeys:  nil,
+			expectedFields: 4, // 4 columns: message, level, status, index-store
+			expectedOutput: arrowtest.Rows{
+				{
+					colMsg:                    "level=info status=200 index-store=1234",
+					"utf8.parsed.level":       "info",
+					"utf8.parsed.status":      "200",
+					"utf8.parsed.index_store": "1234",
+				},
+			},
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create input data with message column containing logfmt
@@ -657,6 +676,23 @@ func TestNewParsePipeline_JSON(t *testing.T) {
 				{
 					colMsg:            `{"app": "foo", "app": "duplicate"}`,
 					"utf8.parsed.app": "foo",
+				},
+			},
+		},
+		{
+			name: "parsed keys with invalid characteres are sanitized",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: `{"index-store": "foo"}`},
+			},
+			requestedKeys:  nil,
+			expectedFields: 2, // 2 columns: message, index-store
+			expectedOutput: arrowtest.Rows{
+				{
+					colMsg:                    `{"index-store": "foo"}`,
+					"utf8.parsed.index_store": "foo",
 				},
 			},
 		},

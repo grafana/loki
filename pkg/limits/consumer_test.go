@@ -51,7 +51,7 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		m.SetReplaying(1, 1000)
 		// Create a usage store, we will use this to check if the record
 		// was stored.
-		u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
+		u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
 		require.NoError(t, err)
 		u.clock = clock
 		c := newConsumer(&kafka, m, u, newOffsetReadinessCheck(m), "zone1",
@@ -101,7 +101,7 @@ func TestConsumer_ProcessRecords(t *testing.T) {
 		m.SetReady(1)
 		// Create a usage store, we will use this to check if the record
 		// was discarded.
-		u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
+		u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
 		require.NoError(t, err)
 		u.clock = clock
 		c := newConsumer(&kafka, m, u, newOffsetReadinessCheck(m), "zone1",
@@ -180,7 +180,7 @@ func TestConsumer_ReadinessCheck(t *testing.T) {
 	// has been consumed.
 	m.SetReplaying(1, 2)
 	// We don't need the usage store for this test.
-	u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, reg)
+	u, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 1, &mockLimits{}, reg)
 	require.NoError(t, err)
 	u.clock = clock
 	c := newConsumer(&kafka, m, u, newOffsetReadinessCheck(m), "zone1",

@@ -184,6 +184,9 @@ func nudgeSemaphore(sema chan struct{}) {
 }
 
 func (s *Scheduler) handleTaskStatus(ctx context.Context, msg wire.TaskStatusMessage) error {
+	var n notifier
+	defer n.Notify(ctx)
+
 	s.resourcesMut.Lock()
 	defer s.resourcesMut.Unlock()
 
@@ -195,22 +198,28 @@ func (s *Scheduler) handleTaskStatus(ctx context.Context, msg wire.TaskStatusMes
 	changed, err := task.setState(msg.Status)
 	if err != nil {
 		return err
+	} else if changed {
+		// Notify the owner about the change.
+		n.AddTaskEvent(taskNotification{
+			Handler:   task.handler,
+			Task:      task.inner,
+			NewStatus: msg.Status,
+		})
 	}
 
 	// If the task's current state is terminal, we can untrack it now. For
 	// simplicity, we lazily check this even if the state hasn't changed.
 	if task.status.State.Terminal() {
-		s.deleteTask(task)
+		s.deleteTask(ctx, &n, task)
 	}
 
-	if changed {
-		// Inform the owner about the change.
-		task.handler(ctx, task.inner, msg.Status)
-	}
 	return nil
 }
 
 func (s *Scheduler) handleStreamStatus(ctx context.Context, msg wire.StreamStatusMessage) error {
+	var n notifier
+	defer n.Notify(ctx)
+
 	s.resourcesMut.Lock()
 	defer s.resourcesMut.Unlock()
 
@@ -218,12 +227,12 @@ func (s *Scheduler) handleStreamStatus(ctx context.Context, msg wire.StreamStatu
 	if !found {
 		return fmt.Errorf("stream %s not found", msg.StreamID)
 	}
-	return s.changeStreamState(ctx, stream, msg.State)
+	return s.changeStreamState(ctx, &n, stream, msg.State)
 }
 
 // changeStreamState updates the state of the target stream. changeStreamState
 // must be called while the resourcesMut lock is held.
-func (s *Scheduler) changeStreamState(ctx context.Context, target *stream, newState workflow.StreamState) error {
+func (s *Scheduler) changeStreamState(ctx context.Context, n *notifier, target *stream, newState workflow.StreamState) error {
 	changed, err := target.setState(newState)
 	if err != nil {
 		return err
@@ -242,7 +251,11 @@ func (s *Scheduler) changeStreamState(ctx context.Context, target *stream, newSt
 	}
 
 	// Inform the owner about the change.
-	target.handler(ctx, target.inner, newState)
+	n.AddStreamEvent(streamNotification{
+		Handler:  target.handler,
+		Stream:   target.inner,
+		NewState: newState,
+	})
 	return nil
 }
 
@@ -252,6 +265,9 @@ func (s *Scheduler) changeStreamState(ctx context.Context, target *stream, newSt
 // If the reason argument is nil, the tasks are cancelled. Otherwise, they are
 // marked as failed with the provided reason.
 func (s *Scheduler) abortWorkerTasks(ctx context.Context, worker *wire.Peer, reason error) {
+	var n notifier
+	defer n.Notify(ctx)
+
 	s.resourcesMut.Lock()
 	defer s.resourcesMut.Unlock()
 
@@ -268,11 +284,15 @@ func (s *Scheduler) abortWorkerTasks(ctx context.Context, worker *wire.Peer, rea
 			continue
 		}
 
-		s.deleteTask(task)
+		s.deleteTask(ctx, &n, task)
 
 		// We only need to inform the handler about the change. There's nothing
 		// to send to the owner of the task since worker has disconnected.
-		task.handler(ctx, task.inner, newStatus)
+		n.AddTaskEvent(taskNotification{
+			Handler:   task.handler,
+			Task:      task.inner,
+			NewStatus: newStatus,
+		})
 	}
 
 	delete(s.workerTasks, worker)
@@ -290,6 +310,9 @@ func (s *Scheduler) runAssignLoop(ctx context.Context) error {
 }
 
 func (s *Scheduler) assignTasks(ctx context.Context) {
+	var n notifier
+	defer n.Notify(ctx)
+
 	// We need to grab the lock on resources to prevent stream states from being
 	// modified while we're assigning the task.
 	//
@@ -313,7 +336,7 @@ func (s *Scheduler) assignTasks(ctx context.Context) {
 		// We may have a canceled task in our queue; we take this opportunity to
 		// clean them up.
 		if state := task.status.State; state.Terminal() {
-			s.deleteTask(task)
+			s.deleteTask(ctx, &n, task)
 			s.taskQueue = s.taskQueue[1:]
 			continue
 		}
@@ -484,6 +507,9 @@ func (s *Scheduler) AddStreams(_ context.Context, handler workflow.StreamEventHa
 //
 // RemoveStreams returns an error if there are active tasks using the streams.
 func (s *Scheduler) RemoveStreams(ctx context.Context, streams ...*workflow.Stream) error {
+	var n notifier
+	defer n.Notify(ctx)
+
 	s.resourcesMut.Lock()
 	defer s.resourcesMut.Unlock()
 
@@ -508,7 +534,11 @@ func (s *Scheduler) RemoveStreams(ctx context.Context, streams ...*workflow.Stre
 
 		changed, _ := registered.setState(workflow.StreamStateClosed)
 		if changed {
-			registered.handler(ctx, streamToRemove, workflow.StreamStateClosed)
+			n.AddStreamEvent(streamNotification{
+				Handler:  registered.handler,
+				Stream:   streamToRemove,
+				NewState: workflow.StreamStateClosed,
+			})
 		}
 
 		delete(s.streams, streamToRemove.ULID)
@@ -577,6 +607,9 @@ func (s *Scheduler) Start(ctx context.Context, handler workflow.TaskEventHandler
 // registerTasks registers the provided tasks with the scheduler without
 // enqueuing them.
 func (s *Scheduler) registerTasks(ctx context.Context, handler workflow.TaskEventHandler, tasks ...*workflow.Task) ([]*task, error) {
+	var n notifier
+	defer n.Notify(ctx)
+
 	newTasks := make([]*task, 0, len(tasks))
 
 	s.resourcesMut.Lock()
@@ -629,7 +662,11 @@ NextTask:
 		newTasks = append(newTasks, newTask)
 
 		// Inform the owner about the state change from Created to Pending.
-		handler(ctx, taskToStart, newTask.status)
+		n.AddTaskEvent(taskNotification{
+			Handler:   handler,
+			Task:      taskToStart,
+			NewStatus: newTask.status,
+		})
 	}
 
 	if len(errs) == 0 {
@@ -652,6 +689,9 @@ func (s *Scheduler) enqueueTasks(tasks []*task) {
 // Cancel requests cancellation of the specified tasks. Cancel returns an error
 // if any of the tasks were not found.
 func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
+	var n notifier
+	defer n.Notify(ctx)
+
 	s.resourcesMut.Lock()
 	defer s.resourcesMut.Unlock()
 
@@ -665,27 +705,12 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 		}
 
 		// Immediately clean up our own resources.
-		s.deleteTask(registered)
+		s.deleteTask(ctx, &n, registered)
 
 		if changed, _ := registered.setState(workflow.TaskStatus{State: workflow.TaskStateCancelled}); !changed {
 			// Ignore if the task couldn't move into the canceled state, which
 			// indicates it's already in a terminal state.
 			continue
-		}
-
-		// Close all associated sink streams.
-		for _, sinks := range registered.inner.Sinks {
-			for _, rawSink := range sinks {
-				sink, ok := s.streams[rawSink.ULID]
-				if !ok {
-					continue
-				}
-
-				// changeStreamState only returns an error for an invalid state
-				// change, which isn't possible here (it's never invalid to move
-				// to Closed, only a no-op if it's already Closed).
-				_ = s.changeStreamState(ctx, sink, workflow.StreamStateClosed)
-			}
 		}
 
 		// If the task has an owner, we'll inform it that the task has been
@@ -697,7 +722,11 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 		}
 
 		// Inform the owner about the change.
-		registered.handler(ctx, taskToCancel, registered.status)
+		n.AddTaskEvent(taskNotification{
+			Handler:   registered.handler,
+			Task:      taskToCancel,
+			NewStatus: registered.status,
+		})
 	}
 
 	if len(errs) == 0 {
@@ -706,13 +735,28 @@ func (s *Scheduler) Cancel(ctx context.Context, tasks ...*workflow.Task) error {
 	return errors.Join(errs...)
 }
 
-func (s *Scheduler) deleteTask(t *task) {
+func (s *Scheduler) deleteTask(ctx context.Context, n *notifier, t *task) {
 	delete(s.tasks, t.inner.ULID)
 
 	if owner := t.owner; owner != nil {
 		knownTasks := s.workerTasks[owner]
 		if knownTasks != nil {
 			delete(knownTasks, t)
+		}
+	}
+
+	// Close all associated sink streams.
+	for _, sinks := range t.inner.Sinks {
+		for _, rawSink := range sinks {
+			sink, ok := s.streams[rawSink.ULID]
+			if !ok {
+				continue
+			}
+
+			// changeStreamState only returns an error for an invalid state
+			// change, which isn't possible here (it's never invalid to move
+			// to Closed, only a no-op if it's already Closed).
+			_ = s.changeStreamState(ctx, n, sink, workflow.StreamStateClosed)
 		}
 	}
 }

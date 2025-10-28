@@ -767,19 +767,22 @@ func (o *Overrides) MaxGlobalStreamsPerUser(userID string) int {
 }
 
 // PolicyMaxGlobalStreamsPerUser returns the maximum number of streams a user is allowed to store
-// across the cluster for a specific policy. Returns 0 if no policy-specific override is set.
-func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) int {
+// across the cluster for a specific policy.
+// Returns 0 and false if the policy does not have a custom stream limit override.
+// Returns the custom stream limit override and true if it exists.
+func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool) {
 	if policy == "" {
-		return 0
+		return 0, false
 	}
 	limits := o.getOverridesForUser(userID)
 	if len(limits.PolicyOverrideLimits) == 0 {
-		return 0
+		return 0, false
 	}
+
 	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
-		return policyLimits.MaxGlobalStreamsPerUser
+		return policyLimits.MaxGlobalStreamsPerUser, true
 	}
-	return 0
+	return 0, false
 }
 
 // MaxChunksPerQuery returns the maximum number of chunks allowed per query.
@@ -1374,8 +1377,8 @@ type OverwriteMarshalingStringMap struct {
 
 // PolicyOverridableLimits contains limits that can be overridden on a per-policy basis.
 type PolicyOverridableLimits struct {
-	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user" json:"max_streams_per_user"`
-	MaxGlobalStreamsPerUser int `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user"`
+	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user" json:"max_streams_per_user" doc:"max_streams_per_user for a specific policy. 0 means unlimited."`
+	MaxGlobalStreamsPerUser int `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user" doc:"max_global_streams_per_user for a specific policy. 0 means unlimited."`
 }
 
 func NewOverwriteMarshalingStringMap(m map[string]string) OverwriteMarshalingStringMap {
