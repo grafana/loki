@@ -272,7 +272,11 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 	//case syntax.OpRangeTypeBytesRate:
 	//	rangeAggType = types.RangeAggregationTypeBytes // bytes_rate is implemented as bytes_over_time/$interval
 	case syntax.OpRangeTypeRate:
-		rangeAggType = types.RangeAggregationTypeCount // rate is implemented as count_over_time/$interval
+		if e.Left.Unwrap != nil {
+			rangeAggType = types.RangeAggregationTypeSum // rate of an unwrap is implemented as sum_over_time/$interval
+		} else {
+			rangeAggType = types.RangeAggregationTypeCount // rate is implemented as count_over_time/$interval
+		}
 	default:
 		return nil, errUnimplemented
 	}
@@ -285,12 +289,12 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 	//case syntax.OpRangeTypeBytesRate:
 	//	// bytes_rate is implemented as bytes_over_time/$interval
 	//	builder = builder.BinOpRight(types.BinaryOpDiv, &Literal{
-	//		Literal: NewLiteral(params.Interval().Seconds()),
+	//		Literal: NewLiteral(rangeInterval.Seconds()),
 	//	})
 	case syntax.OpRangeTypeRate:
 		// rate is implemented as count_over_time/$interval
 		builder = builder.BinOpRight(types.BinaryOpDiv, &Literal{
-			Literal: NewLiteral(params.Interval().Seconds()),
+			Literal: NewLiteral(rangeInterval.Seconds()),
 		})
 	}
 
