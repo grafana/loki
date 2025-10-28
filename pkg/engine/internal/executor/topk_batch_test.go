@@ -104,9 +104,6 @@ func Test_topkBatch(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-			defer alloc.AssertSize(t, 0)
-
 			b := topkBatch{
 				Fields:     []arrow.Field{{Name: "ts", Type: arrow.PrimitiveTypes.Int64, Nullable: true}},
 				K:          5,
@@ -117,13 +114,11 @@ func Test_topkBatch(t *testing.T) {
 			defer b.Reset()
 
 			for _, rows := range records {
-				rec := rows.Record(alloc, rows.Schema())
-				b.Put(alloc, rec)
-				rec.Release()
+				rec := rows.Record(memory.DefaultAllocator, rows.Schema())
+				b.Put(rec)
 			}
 
-			output := b.Compact(alloc)
-			defer output.Release()
+			output := b.Compact()
 
 			actual, err := arrowtest.RecordRows(output)
 			require.NoError(t, err)
@@ -135,9 +130,6 @@ func Test_topkBatch(t *testing.T) {
 // Test_topkBatch_MaxUnused ensures that compaction is automatically triggered
 // upon appending a record when the number of unused rows gets too high.
 func Test_topkBatch_MaxUnused(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
-
 	// TopK 2, descending order.
 	b := topkBatch{
 		Fields:    []arrow.Field{{Name: "ts", Type: arrow.PrimitiveTypes.Int64, Nullable: true}},
@@ -202,9 +194,8 @@ func Test_topkBatch_MaxUnused(t *testing.T) {
 	}
 
 	for i, tc := range seq {
-		rec := tc.rows.Record(alloc, tc.rows.Schema())
-		b.Put(alloc, rec)
-		rec.Release()
+		rec := tc.rows.Record(memory.DefaultAllocator, tc.rows.Schema())
+		b.Put(rec)
 
 		used, unused := b.Size()
 		assert.Equal(t, tc.expectUsed, used, "unexpected number of used rows after record %d", i)

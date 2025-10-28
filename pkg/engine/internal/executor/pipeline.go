@@ -145,8 +145,6 @@ func (p prefetchWrapper) prefetch(ctx context.Context) error {
 			// If the context is cancelled while waiting to send, we return.
 			select {
 			case <-ctx.Done():
-				// The record is dropped, release it immediately.
-				s.batch.Release()
 				return ctx.Err()
 			case p.ch <- s:
 			}
@@ -176,9 +174,7 @@ func (p *prefetchWrapper) Close() {
 		// This check can only be done if p.cancel is non-nil, otherwise we may
 		// deadlock if [prefetchWrapper.Close] is called before
 		// [prefetchWrapper.init].
-		if state, ok := <-p.ch; ok && state.batch != nil {
-			state.batch.Release()
-		}
+		<-p.ch
 	}
 	p.Pipeline.Close()
 }

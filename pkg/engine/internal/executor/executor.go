@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/thanos-io/objstore"
@@ -35,6 +34,7 @@ func Run(ctx context.Context, cfg Config, plan *physical.Plan, logger log.Logger
 		mergePrefetchCount: cfg.MergePrefetchCount,
 		bucket:             cfg.Bucket,
 		logger:             logger,
+		evaluator:          newExpressionEvaluator(),
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -77,16 +77,12 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 			return tracePipeline("physical.DataObjScan", c.executeDataObjScan(ctx, n))
 		}, inputs)
 
-	case *physical.SortMerge:
-		return tracePipeline("physical.SortMerge", c.executeSortMerge(ctx, n, inputs))
 	case *physical.TopK:
 		return tracePipeline("physical.TopK", c.executeTopK(ctx, n, inputs))
 	case *physical.Limit:
 		return tracePipeline("physical.Limit", c.executeLimit(ctx, n, inputs))
 	case *physical.Filter:
 		return tracePipeline("physical.Filter", c.executeFilter(ctx, n, inputs))
-	case *physical.Merge:
-		return tracePipeline("physical.Merge", c.executeMerge(ctx, n, inputs))
 	case *physical.Projection:
 		return tracePipeline("physical.Projection", c.executeProjection(ctx, n, inputs))
 	case *physical.RangeAggregation:
@@ -99,6 +95,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		return tracePipeline("physical.ColumnCompat", c.executeColumnCompat(ctx, n, inputs))
 	case *physical.Parallelize:
 		return tracePipeline("physical.Parallelize", c.executeParallelize(ctx, n, inputs))
+	case *physical.ScanSet:
+		return tracePipeline("physical.ScanSet", c.executeScanSet(ctx, n))
 	default:
 		return errorPipeline(ctx, fmt.Errorf("invalid node type: %T", node))
 	}
@@ -198,9 +196,6 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		Predicates:  predicates,
 		Projections: node.Projections,
 
-		// TODO(rfratto): pass custom allocator
-		Allocator: memory.DefaultAllocator,
-
 		BatchSize: c.batchSize,
 	}, log.With(c.logger, "location", string(node.Location), "section", node.Section))
 
@@ -248,27 +243,6 @@ func (c *Context) executeTopK(ctx context.Context, topK *physical.TopK, inputs [
 	return pipeline
 }
 
-func (c *Context) executeSortMerge(ctx context.Context, sortmerge *physical.SortMerge, inputs []Pipeline) Pipeline {
-	ctx, span := tracer.Start(ctx, "Context.executeSortMerge", trace.WithAttributes(
-		attribute.Stringer("order", sortmerge.Order),
-		attribute.Int("num_inputs", len(inputs)),
-	))
-	if sortmerge.Column != nil {
-		span.SetAttributes(attribute.Stringer("column", sortmerge.Column))
-	}
-	defer span.End()
-
-	if len(inputs) == 0 {
-		return emptyPipeline()
-	}
-
-	pipeline, err := NewSortMergePipeline(inputs, sortmerge.Order, sortmerge.Column, c.evaluator)
-	if err != nil {
-		return errorPipeline(ctx, err)
-	}
-	return pipeline
-}
-
 func (c *Context) executeLimit(ctx context.Context, limit *physical.Limit, inputs []Pipeline) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeLimit", trace.WithAttributes(
 		attribute.Int("skip", int(limit.Skip)),
@@ -302,33 +276,12 @@ func (c *Context) executeFilter(ctx context.Context, filter *physical.Filter, in
 		return errorPipeline(ctx, fmt.Errorf("filter expects exactly one input, got %d", len(inputs)))
 	}
 
-	// Use memory allocator from context or default
-	allocator := memory.DefaultAllocator
-
-	return NewFilterPipeline(filter, inputs[0], c.evaluator, allocator)
-}
-
-func (c *Context) executeMerge(ctx context.Context, _ *physical.Merge, inputs []Pipeline) Pipeline {
-	ctx, span := tracer.Start(ctx, "Context.executeMerge", trace.WithAttributes(
-		attribute.Int("num_inputs", len(inputs)),
-	))
-	defer span.End()
-
-	if len(inputs) == 0 {
-		return emptyPipeline()
-	}
-
-	pipeline, err := newMergePipeline(inputs, c.mergePrefetchCount)
-	if err != nil {
-		return errorPipeline(ctx, err)
-	}
-
-	return pipeline
+	return NewFilterPipeline(filter, inputs[0], c.evaluator)
 }
 
 func (c *Context) executeProjection(ctx context.Context, proj *physical.Projection, inputs []Pipeline) Pipeline {
 	ctx, span := tracer.Start(ctx, "Context.executeProjection", trace.WithAttributes(
-		attribute.Int("num_columns", len(proj.Columns)),
+		attribute.Int("num_expressions", len(proj.Expressions)),
 		attribute.Int("num_inputs", len(inputs)),
 	))
 	defer span.End()
@@ -342,11 +295,11 @@ func (c *Context) executeProjection(ctx context.Context, proj *physical.Projecti
 		return errorPipeline(ctx, fmt.Errorf("projection expects exactly one input, got %d", len(inputs)))
 	}
 
-	if len(proj.Columns) == 0 {
-		return errorPipeline(ctx, fmt.Errorf("projection expects at least one column, got 0"))
+	if len(proj.Expressions) == 0 {
+		return errorPipeline(ctx, fmt.Errorf("projection expects at least one expression, got 0"))
 	}
 
-	p, err := NewProjectPipeline(inputs[0], proj.Columns, &c.evaluator)
+	p, err := NewProjectPipeline(inputs[0], proj, &c.evaluator)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
@@ -411,10 +364,7 @@ func (c *Context) executeParse(ctx context.Context, parse *physical.ParseNode, i
 		return errorPipeline(ctx, fmt.Errorf("parse expects exactly one input, got %d", len(inputs)))
 	}
 
-	// Use memory allocator from context or default
-	allocator := memory.DefaultAllocator
-
-	return NewParsePipeline(parse, inputs[0], allocator)
+	return NewParsePipeline(parse, inputs[0])
 }
 
 func (c *Context) executeColumnCompat(ctx context.Context, compat *physical.ColumnCompat, inputs []Pipeline) Pipeline {
@@ -440,4 +390,42 @@ func (c *Context) executeParallelize(ctx context.Context, _ *physical.Paralleliz
 	// see an Parallelize node in the plan, we ignore it and immediately
 	// propagate up the input.
 	return inputs[0]
+}
+
+func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet) Pipeline {
+	// ScanSet typically gets partitioned by the scheduler into multiple scan
+	// nodes.
+	//
+	// However, for locally testing unpartitioned pipelines, we still supprt
+	// running a ScanSet. In this case, we treat internally execute it as a
+	// Merge on top of multiple sequential scans.
+
+	var targets []Pipeline
+
+	for _, target := range set.Targets {
+		switch target.Type {
+		case physical.ScanTypeDataObject:
+			// Make sure projections and predicates get passed down to the
+			// individual scan.
+			partition := target.DataObject
+			partition.Predicates = set.Predicates
+			partition.Projections = set.Projections
+
+			targets = append(targets, newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
+				return tracePipeline("physical.DataObjScan", c.executeDataObjScan(ctx, partition))
+			}, nil))
+		default:
+			return errorPipeline(ctx, fmt.Errorf("unrecognized ScanSet target %s", target.Type))
+		}
+	}
+	if len(targets) == 0 {
+		return emptyPipeline()
+	}
+
+	pipeline, err := newMergePipeline(targets, c.mergePrefetchCount)
+	if err != nil {
+		return errorPipeline(ctx, err)
+	}
+
+	return pipeline
 }
