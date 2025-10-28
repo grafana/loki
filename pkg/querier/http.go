@@ -72,7 +72,7 @@ func NewQuerierAPI(cfg Config, mCfg metastore.Config, querier Querier, limits qu
 	}
 
 	if cfg.EngineV2.Enable {
-		q.engineV2 = engine.New(cfg.EngineV2, mCfg, store, limits, reg, logger)
+		q.engineV2 = engine.NewBasic(cfg.EngineV2, mCfg, store, limits, reg, logger)
 	}
 
 	return q

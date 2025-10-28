@@ -37,8 +37,10 @@ var tracer = otel.Tracer("pkg/engine")
 
 var ErrNotSupported = errors.New("feature not supported in new query engine")
 
-// New creates a new instance of the query engine that implements the [logql.Engine] interface.
-func New(cfg Config, metastoreCfg metastore.Config, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *QueryEngine {
+// NewBasic creates a new instance of the basic query engine that implements the
+// [logql.Engine] interface. The basic engine executes plans sequentially with
+// no local or distributed parallelism.
+func NewBasic(cfg Config, metastoreCfg metastore.Config, bucket objstore.Bucket, limits logql.Limits, reg prometheus.Registerer, logger log.Logger) *Basic {
 	var ms metastore.Metastore
 	if bucket != nil {
 		indexBucket := bucket
@@ -55,7 +57,7 @@ func New(cfg Config, metastoreCfg metastore.Config, bucket objstore.Bucket, limi
 		cfg.RangeConfig = rangeio.DefaultConfig
 	}
 
-	return &QueryEngine{
+	return &Basic{
 		logger:    logger,
 		metrics:   newMetrics(reg),
 		limits:    limits,
@@ -97,8 +99,9 @@ func (cfg *Config) ValidQueryRange() (time.Time, time.Time) {
 	return time.Time(cfg.DataobjStorageStart).UTC(), time.Now().UTC().Add(-cfg.DataobjStorageLag)
 }
 
-// QueryEngine combines logical planning, physical planning, and execution to evaluate LogQL queries.
-type QueryEngine struct {
+// Basic is a basic LogQL evaluation engine. Evaluation is performed
+// sequentially, with no local or distributed parallelism.
+type Basic struct {
 	logger    log.Logger
 	metrics   *metrics
 	limits    logql.Limits
@@ -108,7 +111,7 @@ type QueryEngine struct {
 }
 
 // Query implements [logql.Engine].
-func (e *QueryEngine) Query(params logql.Params) logql.Query {
+func (e *Basic) Query(params logql.Params) logql.Query {
 	return &queryAdapter{
 		engine: e,
 		params: params,
@@ -120,7 +123,7 @@ func (e *QueryEngine) Query(params logql.Params) logql.Query {
 //  1. Create a logical plan from the provided query parameters.
 //  2. Create a physical plan from the logical plan using information from the catalog.
 //  3. Evaluate the physical plan with the executor.
-func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error) {
+func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error) {
 	ctx, span := tracer.Start(ctx, "QueryEngine.Execute", trace.WithAttributes(
 		attribute.String("type", string(logql.GetRangeType(params))),
 		attribute.String("query", params.QueryString()),
@@ -308,12 +311,12 @@ func collectResult(ctx context.Context, pipeline executor.Pipeline, builder Resu
 	return nil
 }
 
-var _ logql.Engine = (*QueryEngine)(nil)
+var _ logql.Engine = (*Basic)(nil)
 
 // queryAdapter dispatches query execution to the wrapped engine.
 type queryAdapter struct {
 	params logql.Params
-	engine *QueryEngine
+	engine *Basic
 }
 
 // Exec implements [logql.Query].
