@@ -960,3 +960,90 @@ func TestCheckpointCleanupOrphanedCheckpointsAtStartup(t *testing.T) {
 	// Stop the ingester
 	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
 }
+
+func TestCheckpointCleanupStaleTmpDirectoriesAtStartup(t *testing.T) {
+	walDir := t.TempDir()
+	ingesterConfig := defaultIngesterTestConfigWithWAL(t, walDir)
+
+	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+	require.NoError(t, err)
+
+	newStore := func() *mockStore {
+		return &mockStore{
+			chunks: map[string][]chunk.Chunk{},
+		}
+	}
+
+	readRingMock := mockReadRingWithOneActiveIngester()
+
+	// Phase 1: Start ingester and create some WAL data, then stop
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
+	require.NoError(t, err)
+	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
+
+	// Push some data to create WAL segments
+	req := logproto.PushRequest{
+		Streams: []logproto.Stream{
+			{
+				Labels: `{foo="bar"}`,
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Now(),
+						Line:      "test line",
+					},
+				},
+			},
+		},
+	}
+	ctx := user.InjectOrgID(context.Background(), "test")
+	_, err = i.Push(ctx, &req)
+	require.NoError(t, err)
+
+	// Wait for a checkpoint to be created
+	expectCheckpoint(t, walDir, true, ingesterConfig.WAL.CheckpointDuration*10)
+
+	// Stop the ingester
+	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
+
+	// Phase 2: Manually create stale .tmp checkpoint directories to simulate crashed checkpoints
+	staleTmpDirs := []string{
+		"checkpoint.000100.tmp",
+		"checkpoint.000200.tmp",
+		"checkpoint.000300.tmp",
+	}
+	for _, dir := range staleTmpDirs {
+		tmpPath := filepath.Join(walDir, dir)
+		require.NoError(t, os.MkdirAll(tmpPath, 0750))
+	}
+
+	// Verify the stale .tmp directories exist before restart
+	files, err := os.ReadDir(walDir)
+	require.NoError(t, err)
+	tmpCountBefore := 0
+	for _, f := range files {
+		if f.IsDir() && filepath.Ext(f.Name()) == ".tmp" {
+			tmpCountBefore++
+		}
+	}
+	require.Equal(t, 3, tmpCountBefore, "expected 3 .tmp directories before restarting ingester")
+
+	// Phase 3: Restart the ingester - this should trigger IMMEDIATE cleanup at startup
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{}, constants.Loki, gokit_log.NewNopLogger(), nil, readRingMock, nil)
+	require.NoError(t, err)
+	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
+
+	// Phase 4: Verify all stale .tmp directories have been cleaned up IMMEDIATELY
+	// (without waiting for a new checkpoint to be created)
+	files, err = os.ReadDir(walDir)
+	require.NoError(t, err)
+	tmpCountAfter := 0
+	for _, f := range files {
+		if f.IsDir() && filepath.Ext(f.Name()) == ".tmp" {
+			tmpCountAfter++
+		}
+	}
+	require.Equal(t, 0, tmpCountAfter, "expected all .tmp directories to be cleaned up immediately at startup")
+
+	// Stop the ingester
+	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
+}

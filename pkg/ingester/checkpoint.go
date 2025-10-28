@@ -338,26 +338,7 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 	checkpointDirTemp := checkpointDir + ".tmp"
 
 	// cleanup any old partial checkpoints (not just the current one)
-	files, err := os.ReadDir(w.segmentWAL.Dir())
-	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "unable to read WAL directory for tmp cleanup", "err", err)
-		return false, err
-	}
-	for _, fi := range files {
-		// Check if this is a .tmp checkpoint directory
-		if _, tmpErr := checkpointIndex(fi.Name(), true); tmpErr == nil && fi.IsDir() {
-			// Only delete if it actually has the .tmp suffix
-			if filepath.Ext(fi.Name()) == ".tmp" {
-				tmpPath := filepath.Join(w.segmentWAL.Dir(), fi.Name())
-				if err := os.RemoveAll(tmpPath); err != nil {
-					level.Error(util_log.Logger).Log("msg", "unable to cleanup old tmp checkpoint", "dir", tmpPath, "err", err)
-					// Continue cleaning up other .tmp directories even if one fails
-				} else {
-					level.Info(util_log.Logger).Log("msg", "cleaned up stale tmp checkpoint", "dir", fi.Name())
-				}
-			}
-		}
-	}
+	cleanupStaleTmpCheckpoints(w.segmentWAL.Dir(), util_log.Logger)
 
 	if err := os.MkdirAll(checkpointDirTemp, 0750); err != nil {
 		return false, fmt.Errorf("create checkpoint dir: %w", err)
@@ -531,6 +512,33 @@ func cleanupOrphanedCheckpoints(dir string, protectedCheckpointIdx int, logger l
 				level.Error(logger).Log("msg", "unable to cleanup orphaned checkpoint", "dir", orphanedPath, "err", err)
 			} else {
 				level.Info(logger).Log("msg", "cleaned up orphaned checkpoint", "dir", fi.Name(), "idx", idx, "firstSegment", firstSegment, "protectedCheckpoint", protectedCheckpointIdx)
+			}
+		}
+	}
+}
+
+// cleanupStaleTmpCheckpoints removes all .tmp checkpoint directories which represent
+// incomplete/failed checkpoint operations. These are safe to delete because recovery
+// only uses completed checkpoints (those without the .tmp suffix).
+func cleanupStaleTmpCheckpoints(dir string, logger log.Logger) {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		level.Error(logger).Log("msg", "unable to read WAL directory for tmp checkpoint cleanup", "err", err)
+		return
+	}
+
+	for _, fi := range files {
+		// Check if this is a .tmp checkpoint directory
+		if _, tmpErr := checkpointIndex(fi.Name(), true); tmpErr == nil && fi.IsDir() {
+			// Only delete if it actually has the .tmp suffix
+			if filepath.Ext(fi.Name()) == ".tmp" {
+				tmpPath := filepath.Join(dir, fi.Name())
+				if err := os.RemoveAll(tmpPath); err != nil {
+					level.Error(logger).Log("msg", "unable to cleanup stale tmp checkpoint", "dir", tmpPath, "err", err)
+					// Continue cleaning up other .tmp directories even if one fails
+				} else {
+					level.Info(logger).Log("msg", "cleaned up stale tmp checkpoint at startup", "dir", fi.Name())
+				}
 			}
 		}
 	}

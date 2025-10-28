@@ -56,6 +56,10 @@ func newCheckpointReader(dir string, logger log.Logger) (WALReader, io.Closer, e
 // cleanupOrphanedCheckpointsAtStartup removes checkpoints that reference WAL segments
 // that no longer exist. This is called at startup/recovery time for proactive cleanup.
 func cleanupOrphanedCheckpointsAtStartup(dir string, logger log.Logger) {
+	// First, clean up any stale .tmp checkpoint directories from failed checkpoint attempts.
+	// These are always safe to delete at startup since they represent incomplete operations.
+	cleanupStaleTmpCheckpoints(dir, logger)
+
 	// Find the most recent valid checkpoint to protect it from deletion
 	_, latestCheckpointIdx, err := lastCheckpoint(dir)
 	if err != nil {
