@@ -113,12 +113,8 @@ func hasDataObjectsAvailable(config Config, start, end time.Time) bool {
 	// Data objects in object storage lag behind 20-30 minutes.
 	// We are generous and only enable v2 engine queries that end earlier than 1DataObjStorageLag ago (default 1h),
 	// to ensure data objects are available.
-	if config.DataobjStorageStart != "" {
-		startTime, _ := time.Parse("2006-01-02", config.DataobjStorageStart) // already validated
-		return end.Before(time.Now().Add(-1*config.DataobjStorageLag.Abs())) && start.After(startTime)
-	}
-	// no start time; assume we always have data objects no matter how far back
-	return end.Before(time.Now().Add(-1 * config.DataobjStorageLag.Abs()))
+	v2Start, v2End := config.EngineV2.ValidQueryRange()
+	return end.Before(v2End) && start.After(v2Start)
 }
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.

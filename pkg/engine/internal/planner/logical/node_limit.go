@@ -2,8 +2,6 @@ package logical
 
 import (
 	"fmt"
-
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
 )
 
 // The Limit instruction limits the number of rows from a table relation. Limit
@@ -40,13 +38,6 @@ func (l *Limit) String() string {
 	// TODO(rfratto): change the type of l.Input to [Value] so we can use
 	// s.Value.Name here.
 	return fmt.Sprintf("LIMIT %v [skip=%d, fetch=%d]", l.Table.Name(), l.Skip, l.Fetch)
-}
-
-// Schema returns the schema of the limit operation.
-func (l *Limit) Schema() *schema.Schema {
-	// The schema is the same as the input plan's schema since limiting
-	// only affects the number of rows, not their structure.
-	return l.Table.Schema()
 }
 
 func (l *Limit) isInstruction() {}
