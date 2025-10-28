@@ -12,19 +12,17 @@ var _ physicalpb.Visitor = (*nodeCollectVisitor)(nil)
 // executes custom functions for each node type. Used primarily for testing
 // traversal behavior.
 type nodeCollectVisitor struct {
-	visited                []string
-	onVisitDataObjScan     func(*physicalpb.DataObjScan) error
-	onVisitFilter          func(*physicalpb.Filter) error
-	onVisitLimit           func(*physicalpb.Limit) error
-	onVisitProjection      func(*physicalpb.Projection) error
-	onVisitAggregateRange  func(*physicalpb.AggregateRange) error
-	onVisitAggregateVector func(*physicalpb.AggregateVector) error
-	onVisitParse           func(*physicalpb.Parse) error
-	onVisitColumnCompat    func(*physicalpb.ColumnCompat) error
-	onVisitParallelize     func(*physicalpb.Parallelize) error
-	onVisitScanSet         func(*physicalpb.ScanSet) error
-	onVisitMerge           func(*physicalpb.Merge) error
-	onVisitSortMerge       func(*physicalpb.SortMerge) error
+	visited                  []string
+	onVisitDataObjScan       func(*physicalpb.DataObjScan) error
+	onVisitFilter            func(*physicalpb.Filter) error
+	onVisitLimit             func(*physicalpb.Limit) error
+	onVisitProjection        func(*physicalpb.Projection) error
+	onVisitRangeAggregation  func(*physicalpb.AggregateRange) error
+	onVisitVectorAggregation func(*physicalpb.AggregateVector) error
+	onVisitParse             func(*physicalpb.Parse) error
+	onVisitParallelize       func(*physicalpb.Parallelize) error
+	onVisitScanSet           func(*physicalpb.ScanSet) error
+	onVisitJoin              func(*physicalpb.Join) error
 }
 
 func (v *nodeCollectVisitor) VisitDataObjScan(n *physicalpb.DataObjScan) error {
@@ -118,18 +116,18 @@ func (v *nodeCollectVisitor) VisitColumnCompat(n *physicalpb.ColumnCompat) error
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitMerge(n *physicalpb.Merge) error {
-	if v.onVisitMerge != nil {
-		return v.onVisitMerge(n)
+func (v *nodeCollectVisitor) VisitJoin(n *Join) error {
+	if v.onVisitJoin != nil {
+		return v.onVisitJoin(n)
 	}
-	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Kind().String(), n.ID()))
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitSortMerge(n *physicalpb.SortMerge) error {
-	if v.onVisitMerge != nil {
-		return v.onVisitSortMerge(n)
+func (v *nodeCollectVisitor) VisitJoin(n *Join) error {
+	if v.onVisitJoin != nil {
+		return v.onVisitJoin(n)
 	}
-	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Kind().String(), n.ID()))
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
 	return nil
 }

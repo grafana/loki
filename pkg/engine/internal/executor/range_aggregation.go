@@ -10,7 +10,6 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -67,15 +66,13 @@ type rangeAggregationPipeline struct {
 	aggregator          *aggregator
 	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
 	evaluator           expressionEvaluator          // used to evaluate column expressions
-	allocator           memory.Allocator
 	opts                rangeAggregationOptions
 }
 
-func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, allocator memory.Allocator, opts rangeAggregationOptions) (*rangeAggregationPipeline, error) {
+func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions) (*rangeAggregationPipeline, error) {
 	r := &rangeAggregationPipeline{
 		inputs:    inputs,
 		evaluator: evaluator,
-		allocator: allocator,
 		opts:      opts,
 	}
 	r.init()
@@ -151,46 +148,40 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 				}
 				return nil, err
 			}
-			defer record.Release()
 
 			inputsExhausted = false
 
 			// extract all the columns that are used for partitioning
 			arrays := make([]*array.String, 0, len(r.opts.partitionBy))
 			for _, columnExpr := range r.opts.partitionBy {
-				vec, err := r.evaluator.eval(*columnExpr.ToExpression(), r.allocator, record)
+				vec, err := r.evaluator.eval(*columnExpr.ToExpression(), record)
 				if err != nil {
 					return nil, err
 				}
-				defer vec.Release()
 
-				if vec.Type() != types.Loki.String {
-					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.Type())
+				if vec.DataType().ID() != types.Arrow.String.ID() {
+					return nil, fmt.Errorf("unsupported datatype for partitioning %s", vec.DataType())
 				}
 
-				arr := vec.ToArray().(*array.String)
-				defer arr.Release()
-
+				arr := vec.(*array.String)
 				arrays = append(arrays, arr)
 			}
 
 			// extract timestamp column to check if the entry is in range
-			tsVec, err := r.evaluator.eval(*tsColumnExpr.ToExpression(), r.allocator, record)
+			tsVec, err := r.evaluator.eval(*tsColumnExpr.ToExpression(), record)
 			if err != nil {
 				return nil, err
 			}
-			defer tsVec.Release()
-			tsCol := tsVec.ToArray().(*array.Timestamp)
-			defer tsCol.Release()
+			tsCol := tsVec.(*array.Timestamp)
 
 			// no need to extract value column for COUNT aggregation
-			var valVec ColumnVector
+			var valArr *array.Float64
 			if r.opts.operation != physicalpb.AGGREGATE_RANGE_OP_COUNT {
-				valVec, err = r.evaluator.eval(*valColumnExpr.ToExpression(), r.allocator, record)
+				valVec, err := r.evaluator.eval(*valColumnExpr.ToExpression(), record)
 				if err != nil {
 					return nil, err
 				}
-				defer valVec.Release()
+				valArr = valVec.(*array.Float64)
 			}
 
 			for row := range int(record.NumRows()) {
@@ -207,12 +198,7 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.Record, erro
 
 				var value float64
 				if r.opts.operation != physicalpb.AGGREGATE_RANGE_OP_COUNT {
-					switch v := valVec.Value(row).(type) {
-					case float64:
-						value = v
-					case int64:
-						value = float64(v)
-					}
+					value = valArr.Value(row)
 				}
 
 				for _, w := range windows {

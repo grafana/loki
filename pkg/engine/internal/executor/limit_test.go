@@ -39,9 +39,7 @@ func TestExecuteLimit(t *testing.T) {
 		csvData := "Alice\nBob\nCharlie"
 		record, err := CSVToArrow(fields, csvData)
 		require.NoError(t, err)
-		defer record.Release()
 
-		record.Retain()
 		source := NewBufferedPipeline(record)
 
 		// Execute limit with skip=1 and fetch=1
@@ -77,17 +75,13 @@ func TestExecuteLimit(t *testing.T) {
 		batch1Data := "A\nB\nC"
 		batch1, err := CSVToArrow(fields, batch1Data)
 		require.NoError(t, err)
-		defer batch1.Release()
 
 		// Create second batch with letters D-F
 		batch2Data := "D\nE\nF"
 		batch2, err := CSVToArrow(fields, batch2Data)
 		require.NoError(t, err)
-		defer batch2.Release()
 
 		// Create source pipeline with both batches
-		batch1.Retain()
-		batch2.Retain()
 		source := NewBufferedPipeline(batch1, batch2)
 
 		// Create limit pipeline that skips 2 and fetches 3
@@ -104,7 +98,6 @@ func TestExecuteLimit(t *testing.T) {
 		expectedData := "C\nD\nE"
 		expectedRecord, err := CSVToArrow(expectedFields, expectedData)
 		require.NoError(t, err)
-		defer expectedRecord.Release()
 
 		expectedPipeline := NewBufferedPipeline(expectedRecord)
 		defer expectedPipeline.Close()
@@ -127,9 +120,7 @@ func TestLimitPipeline_Skip_Fetch(t *testing.T) {
 
 	record, err := CSVToArrow(fields, data)
 	require.NoError(t, err)
-	defer record.Release()
 
-	record.Retain()
 	source := NewBufferedPipeline(record)
 
 	// Test with skip=3, fetch=4 (should return 4,5,6,7)
@@ -166,16 +157,12 @@ func TestLimitPipeline_MultipleBatches(t *testing.T) {
 	data1 := "1\n2\n3\n4\n5\n"
 	record1, err := CSVToArrow(fields, data1)
 	require.NoError(t, err)
-	defer record1.Release()
 
 	// Second batch: 6-10
 	data2 := "6\n7\n8\n9\n10\n"
 	record2, err := CSVToArrow(fields, data2)
 	require.NoError(t, err)
-	defer record2.Release()
 
-	record1.Retain()
-	record2.Retain()
 	source := NewBufferedPipeline(record1, record2)
 
 	// Test with skip=3, fetch=5 (should return 4,5,6,7,8)
@@ -189,7 +176,6 @@ func TestLimitPipeline_MultipleBatches(t *testing.T) {
 	expectedData := "4\n5\n6\n7\n8\n"
 	expectedRecord, err := CSVToArrow(expectedFields, expectedData)
 	require.NoError(t, err)
-	defer expectedRecord.Release()
 
 	expectedPipeline := NewBufferedPipeline(expectedRecord)
 	defer expectedPipeline.Close()

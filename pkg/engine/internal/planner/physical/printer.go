@@ -82,6 +82,14 @@ func toTreeNode(n physicalpb.Node) *tree.Node {
 		}
 
 		treeNode.Properties = properties
+	case *physicalpb.AggregateVector:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("operation", false, node.Operation),
+		}
+
+		if len(node.GroupBy) > 0 {
+			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("group_by", true, toAnySlice(node.GroupBy)...))
+		}
 	case *physicalpb.Parse:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("kind", false, node.Operation.String()),

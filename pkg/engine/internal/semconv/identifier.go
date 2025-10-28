@@ -81,7 +81,7 @@ func (i *Identifier) ShortName() string {
 // String returns the string representation of the column.
 // This must not be used as name for [arrow.Field].
 func (i *Identifier) String() string {
-	return fmt.Sprintf("%s[%s]", i.SemName(), i.columnType)
+	return fmt.Sprintf("%s[%s]", i.SemName(), i.dataType)
 }
 
 // FQN returns the fully qualified name of the identifier.

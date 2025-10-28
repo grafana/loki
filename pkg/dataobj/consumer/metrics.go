@@ -80,18 +80,13 @@ func (p *partitionOffsetMetrics) getCurrentOffset() float64 {
 
 func (p *partitionOffsetMetrics) register(reg prometheus.Registerer) error {
 	collectors := []prometheus.Collector{
-		p.currentOffset,
-
 		p.commitFailures,
 		p.appendFailures,
-
-		p.commitsTotal,
 		p.appendsTotal,
-
 		p.latestDelay,
 		p.processingDelay,
-
 		p.bytesProcessed,
+		p.currentOffset,
 	}
 
 	for _, collector := range collectors {
@@ -108,9 +103,11 @@ func (p *partitionOffsetMetrics) unregister(reg prometheus.Registerer) {
 	collectors := []prometheus.Collector{
 		p.commitFailures,
 		p.appendFailures,
-		p.currentOffset,
+		p.appendsTotal,
+		p.latestDelay,
 		p.processingDelay,
 		p.bytesProcessed,
+		p.currentOffset,
 	}
 
 	for _, collector := range collectors {

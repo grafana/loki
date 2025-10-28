@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
@@ -32,7 +31,6 @@ type Config struct {
 }
 
 func Run(ctx context.Context, cfg Config, plan *physicalpb.Plan, logger log.Logger) Pipeline {
-	allocator := memory.DefaultAllocator
 	c := &Context{
 		plan:               plan,
 		batchSize:          cfg.BatchSize,
@@ -40,7 +38,6 @@ func Run(ctx context.Context, cfg Config, plan *physicalpb.Plan, logger log.Logg
 		bucket:             cfg.Bucket,
 		logger:             logger,
 		evaluator:          newExpressionEvaluator(),
-		allocator:          allocator,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -59,7 +56,6 @@ type Context struct {
 	logger    log.Logger
 	plan      *physicalpb.Plan
 	evaluator expressionEvaluator
-	allocator memory.Allocator
 	bucket    objstore.Bucket
 
 	mergePrefetchCount int
@@ -88,8 +84,6 @@ func (c *Context) execute(ctx context.Context, node physicalpb.Node) Pipeline {
 		return tracePipeline("physicalpb.Limit", c.executeLimit(ctx, n, inputs))
 	case *physicalpb.Filter:
 		return tracePipeline("physicalpb.Filter", c.executeFilter(ctx, n, inputs))
-	case *physicalpb.Merge:
-		return tracePipeline("physicalpb.Merge", c.executeMerge(ctx, n, inputs))
 	case *physicalpb.Projection:
 		return tracePipeline("physicalpb.Projection", c.executeProjection(ctx, n, inputs))
 	case *physicalpb.AggregateRange:
@@ -206,8 +200,6 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physicalpb.DataO
 		StreamIDs:   node.StreamIds,
 		Predicates:  predicates,
 		Projections: node.Projections,
-
-		Allocator: c.allocator,
 
 		BatchSize: c.batchSize,
 	}, log.With(c.logger, "location", node.Location, "section", node.Section))
@@ -329,25 +321,7 @@ func (c *Context) executeFilter(ctx context.Context, filter *physicalpb.Filter, 
 		return errorPipeline(ctx, fmt.Errorf("filter expects exactly one input, got %d", len(inputs)))
 	}
 
-	return NewFilterPipeline(filter, inputs[0], c.evaluator, c.allocator)
-}
-
-func (c *Context) executeMerge(ctx context.Context, _ *physicalpb.Merge, inputs []Pipeline) Pipeline {
-	ctx, span := tracer.Start(ctx, "Context.executeMerge", trace.WithAttributes(
-		attribute.Int("num_inputs", len(inputs)),
-	))
-	defer span.End()
-
-	if len(inputs) == 0 {
-		return emptyPipeline()
-	}
-
-	pipeline, err := newMergePipeline(inputs, c.mergePrefetchCount)
-	if err != nil {
-		return errorPipeline(ctx, err)
-	}
-
-	return pipeline
+	return NewFilterPipeline(filter, inputs[0], c.evaluator)
 }
 
 func (c *Context) executeProjection(ctx context.Context, proj *physicalpb.Projection, inputs []Pipeline) Pipeline {
@@ -370,7 +344,7 @@ func (c *Context) executeProjection(ctx context.Context, proj *physicalpb.Projec
 		return errorPipeline(ctx, fmt.Errorf("projection expects at least one expression, got 0"))
 	}
 
-	p, err := NewProjectPipeline(inputs[0], proj, &c.evaluator, c.allocator)
+	p, err := NewProjectPipeline(inputs[0], proj, &c.evaluator)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
@@ -392,7 +366,7 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physicalpb.
 		return emptyPipeline()
 	}
 
-	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, c.allocator, rangeAggregationOptions{
+	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
 		partitionBy:   plan.PartitionBy,
 		startTs:       time.Unix(0, plan.StartUnixNanos),
 		endTs:         time.Unix(0, plan.EndUnixNanos),
@@ -418,7 +392,7 @@ func (c *Context) executeVectorAggregation(ctx context.Context, plan *physicalpb
 		return emptyPipeline()
 	}
 
-	pipeline, err := newVectorAggregationPipeline(inputs, plan.GroupBy, c.evaluator, c.allocator, plan.Operation)
+	pipeline, err := newVectorAggregationPipeline(inputs, plan.GroupBy, c.evaluator, plan.Operation)
 	if err != nil {
 		return errorPipeline(ctx, err)
 	}
@@ -435,7 +409,7 @@ func (c *Context) executeParse(ctx context.Context, parse *physicalpb.Parse, inp
 		return errorPipeline(ctx, fmt.Errorf("parse expects exactly one input, got %d", len(inputs)))
 	}
 
-	return NewParsePipeline(parse, inputs[0], c.allocator)
+	return NewParsePipeline(parse, inputs[0])
 }
 
 func (c *Context) executeColumnCompat(ctx context.Context, compat *physicalpb.ColumnCompat, inputs []Pipeline) Pipeline {

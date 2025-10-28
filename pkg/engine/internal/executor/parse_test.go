@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
@@ -238,14 +237,28 @@ func TestNewParsePipeline_logfmt(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "handle duplicate keys with first-wins semantics",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: "level=info status=200 level=debug"},
+			},
+			requestedKeys:  nil,
+			expectedFields: 3, // 3 columns: message, level, status
+			expectedOutput: arrowtest.Rows{
+				{
+					colMsg:               "level=info status=200 level=debug",
+					"utf8.parsed.level":  "info",
+					"utf8.parsed.status": "200",
+				},
+			},
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-			defer alloc.AssertSize(t, 0) // Assert empty on test exit
-
 			// Create input data with message column containing logfmt
 			input := NewArrowtestPipeline(
-				alloc,
 				tt.schema,
 				tt.input,
 			)
@@ -256,13 +269,12 @@ func TestNewParsePipeline_logfmt(t *testing.T) {
 				RequestedKeys: tt.requestedKeys,
 			}
 
-			pipeline := NewParsePipeline(parseNode, input, alloc)
+			pipeline := NewParsePipeline(parseNode, input)
 
 			// Read first record
 			ctx := t.Context()
 			record, err := pipeline.Read(ctx)
 			require.NoError(t, err)
-			defer record.Release()
 
 			// Verify the output has the expected number of fields
 			outputSchema := record.Schema()
@@ -631,14 +643,27 @@ func TestNewParsePipeline_JSON(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "duplicate field name takes first value",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: `{"app": "foo", "app": "duplicate"}`},
+			},
+			requestedKeys:  nil, // Extract all keys
+			expectedFields: 2,   // message, app
+			expectedOutput: arrowtest.Rows{
+				{
+					colMsg:            `{"app": "foo", "app": "duplicate"}`,
+					"utf8.parsed.app": "foo",
+				},
+			},
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-			defer alloc.AssertSize(t, 0) // Assert empty on test exit
-
 			// Create input data with message column containing JSON
 			input := NewArrowtestPipeline(
-				alloc,
 				tt.schema,
 				tt.input,
 			)
@@ -649,13 +674,12 @@ func TestNewParsePipeline_JSON(t *testing.T) {
 				RequestedKeys: tt.requestedKeys,
 			}
 
-			pipeline := NewParsePipeline(parseNode, input, alloc)
+			pipeline := NewParsePipeline(parseNode, input)
 
 			// Read first record
 			ctx := t.Context()
 			record, err := pipeline.Read(ctx)
 			require.NoError(t, err)
-			defer record.Release()
 
 			// Verify the output has the expected number of fields
 			outputSchema := record.Schema()

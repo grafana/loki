@@ -97,12 +97,9 @@ func (p *Planner) Build(lp *logical.Plan) (*physicalpb.Plan, error) {
 	for _, inst := range lp.Instructions {
 		switch inst := inst.(type) {
 		case *logical.Return:
-			nodes, err := p.process(inst.Value, p.context)
+			_, err := p.process(inst.Value, p.context)
 			if err != nil {
 				return nil, err
-			}
-			if len(nodes) > 1 {
-				return nil, errors.New("logical plan has more than 1 return value")
 			}
 			return p.plan, nil
 		}
@@ -138,8 +135,8 @@ func (p *Planner) convertPredicate(inst logical.Value) *physicalpb.Expression {
 	}
 }
 
-// Convert a [logical.Instruction] into one or multiple [physicalpb.Node]s.
-func (p *Planner) process(inst logical.Value, ctx *Context) ([]physicalpb.Node, error) {
+// Convert a [logical.Instruction] into [physicalpb.Node].
+func (p *Planner) process(inst logical.Value, ctx *Context) (physicalpb.Node, error) {
 	switch inst := inst.(type) {
 	case *logical.MakeTable:
 		return p.processMakeTable(inst, ctx)
@@ -157,6 +154,10 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]physicalpb.Node, 
 		return p.processVectorAggregation(inst, ctx)
 	case *logical.Parse:
 		return p.processParse(inst, ctx)
+	case *logical.BinOp:
+		return p.processBinOp(inst, ctx)
+	case *logical.UnaryOp:
+		return p.processUnaryOp(inst, ctx)
 	case *logical.LogQLCompat:
 		p.context.v1Compatible = true
 		return p.process(inst.Value, ctx)
@@ -165,7 +166,7 @@ func (p *Planner) process(inst logical.Value, ctx *Context) ([]physicalpb.Node, 
 }
 
 // Convert [logical.MakeTable] into one or more [DataObjScan] nodes.
-func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]physicalpb.Node, error) {
+func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (physicalpb.Node, error) {
 	shard, ok := lp.Shard.(*logical.ShardInfo)
 	if !ok {
 		return nil, fmt.Errorf("invalid shard, got %T", lp.Shard)
@@ -232,30 +233,28 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) ([]physi
 	if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: parallelize, Child: base}); err != nil {
 		return nil, err
 	}
-	return []physicalpb.Node{parallelize}, nil
+	return parallelize, nil
 }
 
 // Convert [logical.Select] into one [Filter] node.
-func (p *Planner) processSelect(lp *logical.Select, ctx *Context) ([]physicalpb.Node, error) {
+func (p *Planner) processSelect(lp *logical.Select, ctx *Context) (physicalpb.Node, error) {
 	node := &physicalpb.Filter{
 		Id:         physicalpb.PlanNodeID{Value: ulid.New()},
 		Predicates: []*physicalpb.Expression{p.convertPredicate(lp.Predicate)},
 	}
 	p.plan.Add(node)
-	children, err := p.process(lp.Table, ctx)
+	child, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range children {
-		if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
-	return []physicalpb.Node{node}, nil
+	return node, nil
 }
 
 // Pass sort direction from [logical.Sort] to the children.
-func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]physicalpb.Node, error) {
+func (p *Planner) processSort(lp *logical.Sort, ctx *Context) (physicalpb.Node, error) {
 	order := physicalpb.SORT_ORDER_DESCENDING
 	if lp.Ascending {
 		order = physicalpb.SORT_ORDER_ASCENDING
@@ -274,21 +273,19 @@ func (p *Planner) processSort(lp *logical.Sort, ctx *Context) ([]physicalpb.Node
 
 	p.plan.Add(node)
 
-	children, err := p.process(lp.Table, ctx.WithDirection(order))
+	child, err := p.process(lp.Table, ctx.WithDirection(order))
 	if err != nil {
 		return nil, err
 	}
 
-	for i := range children {
-		if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
-	return []physicalpb.Node{node}, nil
+	return node, nil
 }
 
 // Converts a [logical.Projection] into a physical [Projection] node.
-func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) ([]physicalpb.Node, error) {
+func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (physicalpb.Node, error) {
 	expressions := make([]*physicalpb.Expression, len(lp.Expressions))
 	for i := range lp.Expressions {
 		expressions[i] = p.convertPredicate(lp.Expressions[i])
@@ -303,40 +300,36 @@ func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) ([]phy
 	}
 	p.plan.Add(node)
 
-	children, err := p.process(lp.Relation, ctx)
+	child, err := p.process(lp.Relation, ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range children {
-		if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
 
-	return []physicalpb.Node{node}, nil
+	return node, nil
 }
 
 // Convert [logical.Limit] into one [Limit] node.
-func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) ([]physicalpb.Node, error) {
+func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) (physicalpb.Node, error) {
 	node := &physicalpb.Limit{
 		Id:    physicalpb.PlanNodeID{Value: ulid.New()},
 		Skip:  lp.Skip,
 		Fetch: lp.Fetch,
 	}
 	p.plan.Add(node)
-	children, err := p.process(lp.Table, ctx)
+	child, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range children {
-		if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
-	return []physicalpb.Node{node}, nil
+	return node, nil
 }
 
-func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) ([]physicalpb.Node, error) {
+func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) (physicalpb.Node, error) {
 	partitionBy := make([]*physicalpb.ColumnExpression, len(r.PartitionBy))
 	for i, col := range r.PartitionBy {
 		partitionBy[i] = &physicalpb.ColumnExpression{Name: col.Ref.Column, Type: columnTypeLogToPhys(col.Ref.Type)}
@@ -353,21 +346,19 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Cont
 	}
 	p.plan.Add(node)
 
-	children, err := p.process(r.Table, ctx.WithRangeInterval(r.RangeInterval))
+	child, err := p.process(r.Table, ctx.WithRangeInterval(r.RangeInterval))
 	if err != nil {
 		return nil, err
 	}
 
-	for i := range children {
-		if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
-	return []physicalpb.Node{node}, nil
+	return node, nil
 }
 
 // Convert [logical.VectorAggregation] into one [VectorAggregation] node.
-func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *Context) ([]physicalpb.Node, error) {
+func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *Context) (physicalpb.Node, error) {
 	groupBy := make([]*physicalpb.ColumnExpression, len(lp.GroupBy))
 	for i, col := range lp.GroupBy {
 		groupBy[i] = &physicalpb.ColumnExpression{Name: col.Ref.Column, Type: columnTypeLogToPhys(col.Ref.Type)}
@@ -379,36 +370,203 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 		Operation: vectorAggregationTypeLogToPhys(lp.Operation),
 	}
 	p.plan.Add(node)
-	children, err := p.process(lp.Table, ctx)
+	child, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range children {
-		if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
-	return []physicalpb.Node{node}, nil
+	return node, nil
+}
+
+// collapseMathExpressions traverses over a subtree of math expressions `c` (BinOps, UnaryOps, or Literals) and collapses them
+// into a Projection node with a complex Expression. It may insert a Join node if it finds a BinOp with two obj scan inputs.
+// Parameters:
+//   - lp: current logical plan node
+//   - rootNode: true indicates that this is the first call and the function should produce a Node. false indicates
+//     that this is a recursive call and the function should keep accumulating Expression if possible.
+//   - ctx: context from the current planner call.
+//
+// Return:
+//   - acc: currently accumulated expression.
+//   - input: a physical plan node of the only input of that expression, if any.
+//   - inputRef: a pointer to a node in `acc` that refers the input, if any. This is for convenience of
+//     renaming the column refenrece without a need to search for it in `acc` expression.
+//   - err: error
+func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *Context) (acc Expression, input Node, inputRef *ColumnExpr, err error) {
+	switch v := lp.(type) {
+	case *logical.BinOp:
+		// Traverse left and right children
+		leftChild, leftInput, leftInputRef, err := p.collapseMathExpressions(v.Left, false, ctx)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		rightChild, rightInput, rightInputRef, err := p.collapseMathExpressions(v.Right, false, ctx)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		// Both left and right expressions have obj scans, replace with join
+		if leftInput != nil && rightInput != nil {
+			// Replace column references with `_left` and `_right` indicating that there are two inputs coming from a Join
+			leftInputRef.Ref = types.ColumnRef{
+				Column: "value_left",
+				Type:   types.ColumnTypeGenerated,
+			}
+			rightInputRef.Ref = types.ColumnRef{
+				Column: "value_right",
+				Type:   types.ColumnTypeGenerated,
+			}
+
+			// Insert an InnerJoin on timestamp before Projection
+			join := &physicalpb.Join{}
+			p.plan.Add(join)
+
+			projection := &Projection{
+				Expressions: []Expression{
+					&BinaryExpr{
+						Left:  leftChild,
+						Right: rightChild,
+						Op:    v.Op,
+					},
+				},
+				All:    true,
+				Expand: true,
+			}
+			p.plan.Add(projection)
+
+			// Connect the join to the projection
+			if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: projection, Child: join}); err != nil {
+				return nil, nil, nil, err
+			}
+			// Connect left and right children to the join
+			if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: join, Child: leftInput}); err != nil {
+				return nil, nil, nil, err
+			}
+			if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: join, Child: rightInput}); err != nil {
+				return nil, nil, nil, err
+			}
+
+			// Result of this math expression returns `value` column
+			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
+
+			return columnRef, join, columnRef, nil
+		}
+
+		// Eigther left or right expression has an obj scan. Pick the non-nil one.
+		input := leftInput
+		if leftInput == nil {
+			input = rightInput
+		}
+		inputRef := leftInputRef
+		if leftInputRef == nil {
+			inputRef = rightInputRef
+		}
+		expr := &physicalpb.BinaryExpression{
+			Left:  leftChild,
+			Right: rightChild,
+			Op:    v.Op,
+		}
+
+		// we have to stop here and produce a Node, otherwise keep collapsing
+		if rootNode {
+			projection := &physicalpb.Projection{
+				Expressions: []*physicalpb.Expression{expr.ToExpression()},
+				All:         true,
+				Expand:      true,
+			}
+			p.plan.Add(projection)
+			if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: projection, Child: input}); err != nil {
+				return nil, nil, nil, err
+			}
+
+			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
+
+			return columnRef, projection, columnRef, nil
+		}
+
+		return expr, input, inputRef, nil
+	case *logical.UnaryOp:
+		child, input, inputRef, err := p.collapseMathExpressions(v.Value, false, ctx)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		expr := &physicalpb.UnaryExpression{
+			Value: child,
+			Op:    v.Op,
+		}
+		if rootNode {
+			projection := &physicalpb.Projection{
+				Expressions: []*physicalpb.Expression{expr.ToExpression()},
+				All:         true,
+				Expand:      true,
+			}
+			p.plan.Add(projection)
+			if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: projection, Child: input}); err != nil {
+				return nil, nil, nil, err
+			}
+
+			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
+
+			return columnRef, projection, columnRef, nil
+		}
+
+		return expr, input, inputRef, nil
+	case *logical.Literal:
+		return &physicalpb.LiteralExpression{Literal: v.Literal}, nil, nil, nil
+	default:
+		// If it is neigher a literal nor an expression, then we continue `p.process` on this node and represent in
+		// as a column ref `value` in the final math expression.
+		columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
+		child, err := p.process(lp, ctx)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		return columnRef, child, columnRef, nil
+	}
+}
+
+// Convert one or several [logical.BinOp]s into one [Projection] node where the result expression might be complex with
+// multiple binary or unary operations. It also might insert a [Join] node before a [Projection] if this math expression
+// reads data on both left and right sides.
+func (p *Planner) processBinOp(lp *logical.BinOp, ctx *Context) (physicalpb.Node, error) {
+	_, node, _, err := p.collapseMathExpressions(lp, true, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return node, nil
+}
+
+// Convert one or several [logical.UnaryOp]s into one [Projection] node where the result expression might be complex with
+// multiple binary or unary operations. It also might insert a [Join] node before a [Projection] if this math expression
+// reads data on both left and right sides.
+func (p *Planner) processUnaryOp(lp *logical.UnaryOp, ctx *Context) (physicalpb.Node, error) {
+	_, node, _, err := p.collapseMathExpressions(lp, true, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return node, nil
 }
 
 // Convert [logical.Parse] into one [ParseNode] node.
 // A ParseNode initially has an empty list of RequestedKeys which will be populated during optimization.
-func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]physicalpb.Node, error) {
+func (p *Planner) processParse(lp *logical.Parse, ctx *Context) (physicalpb.Node, error) {
 	var node physicalpb.Node = &physicalpb.Parse{
 		Id:        physicalpb.PlanNodeID{Value: ulid.New()},
 		Operation: convertParserKind(lp.Kind),
 	}
 	p.plan.Add(node)
 
-	children, err := p.process(lp.Table, ctx)
+	child, err := p.process(lp.Table, ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	for i := range children {
-		if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: children[i]}); err != nil {
-			return nil, err
-		}
+	if err := p.plan.AddEdge(dag.Edge[physicalpb.Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
 	}
 
 	if p.context.v1Compatible {
@@ -423,7 +581,7 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) ([]physicalpb.No
 		}
 	}
 
-	return []physicalpb.Node{node}, nil
+	return node, nil
 }
 
 func (p *Planner) wrapNodeWith(node physicalpb.Node, wrapper physicalpb.Node) (physicalpb.Node, error) {
@@ -444,6 +602,9 @@ func (p *Planner) Optimize(plan *physicalpb.Plan) (*physicalpb.Plan, error) {
 			),
 			newOptimization("LimitPushdown", plan).withRules(
 				&limitPushdown{plan: plan},
+			),
+			newOptimization("groupByPushdown", plan).withRules(
+				&groupByPushdown{plan: plan},
 			),
 			newOptimization("ProjectionPushdown", plan).withRules(
 				&projectionPushdown{plan: plan},
