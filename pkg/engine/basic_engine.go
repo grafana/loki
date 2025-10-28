@@ -2,14 +2,12 @@ package engine
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
@@ -64,47 +62,6 @@ func NewBasic(cfg ExecutorConfig, metastoreCfg metastore.Config, bucket objstore
 		bucket:    bucket,
 		cfg:       cfg,
 	}
-}
-
-// Config holds the configuration options to use with the next generation Loki Query Engine.
-type Config struct {
-	// Enable the next generation Loki Query Engine for supported queries.
-	Enable bool `yaml:"enable" category:"experimental"`
-
-	Executor ExecutorConfig `yaml:",inline"`
-}
-
-func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.BoolVar(&cfg.Enable, prefix+"enable", false, "Experimental: Enable next generation query engine for supported queries.")
-	cfg.Executor.RegisterFlagsWithPrefix(prefix, f)
-}
-
-// ExecutorConfig configures engine execution.
-type ExecutorConfig struct {
-	DataobjStorageLag   time.Duration `yaml:"dataobj_storage_lag" category:"experimental"`
-	DataobjStorageStart flagext.Time  `yaml:"dataobj_storage_start" category:"experimental"`
-
-	// Batch size of the v2 execution engine.
-	BatchSize int `yaml:"batch_size" category:"experimental"`
-
-	// MergePrefetchCount controls the number of inputs that are prefetched simultaneously by any Merge node.
-	MergePrefetchCount int `yaml:"merge_prefetch_count" category:"experimental"`
-
-	// RangeConfig determines how to optimize range reads in the V2 engine.
-	RangeConfig rangeio.Config `yaml:"range_reads" category:"experimental" doc:"description=Configures how to read byte ranges from object storage when using the V2 engine."`
-}
-
-func (cfg *ExecutorConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.IntVar(&cfg.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
-	f.IntVar(&cfg.MergePrefetchCount, prefix+"merge-prefetch-count", 0, "Experimental: The number of inputs that are prefetched simultaneously by any Merge node. A value of 0 means that only the currently processed input is prefetched, 1 means that only the next input is prefetched, and so on. A negative value means that all inputs are be prefetched in parallel.")
-	cfg.RangeConfig.RegisterFlags(prefix+"range-reads.", f)
-
-	f.DurationVar(&cfg.DataobjStorageLag, prefix+"dataobj-storage-lag", 1*time.Hour, "Amount of time until data objects are available.")
-	f.Var(&cfg.DataobjStorageStart, prefix+"dataobj-storage-start", "Initial date when data objects became available. Format YYYY-MM-DD. If not set, assume data objects are always available no matter how far back.")
-}
-
-func (cfg *ExecutorConfig) ValidQueryRange() (time.Time, time.Time) {
-	return time.Time(cfg.DataobjStorageStart).UTC(), time.Now().UTC().Add(-cfg.DataobjStorageLag)
 }
 
 // Basic is a basic LogQL evaluation engine. Evaluation is performed
