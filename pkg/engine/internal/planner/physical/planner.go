@@ -127,7 +127,7 @@ func (p *Planner) convertPredicate(inst logical.Value) *physicalpb.Expression {
 			Op:    binaryOpLogToPhys(inst.Op),
 		}).ToExpression()
 	case *logical.ColumnRef:
-		return (&physicalpb.ColumnExpression{Name: inst.Ref.Column, Type: columnTypeLogToPhys(inst.Ref.Type)}).ToExpression()
+		return (&physicalpb.ColumnExpression{Name: inst.Ref.Column, Type: ColumnTypeLogToPhys(inst.Ref.Type)}).ToExpression()
 	case *logical.Literal:
 		return NewLiteral(inst.Value()).ToExpression()
 	default:
@@ -217,10 +217,10 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (physica
 
 	if p.context.v1Compatible {
 		compat := &physicalpb.ColumnCompat{
+			Id:          physicalpb.PlanNodeID{Value: ulid.New()},
 			Source:      physicalpb.COLUMN_TYPE_METADATA,
 			Destination: physicalpb.COLUMN_TYPE_METADATA,
 			Collision:   physicalpb.COLUMN_TYPE_LABEL,
-			Id:          physicalpb.PlanNodeID{Value: ulid.New()},
 		}
 		base, err = p.wrapNodeWith(base, compat)
 		if err != nil {
@@ -262,7 +262,7 @@ func (p *Planner) processSort(lp *logical.Sort, ctx *Context) (physicalpb.Node, 
 
 	node := &physicalpb.TopK{
 		Id:         physicalpb.PlanNodeID{Value: ulid.New()},
-		SortBy:     &physicalpb.ColumnExpression{Name: lp.Column.Ref.Column, Type: columnTypeLogToPhys(lp.Column.Ref.Type)},
+		SortBy:     &physicalpb.ColumnExpression{Name: lp.Column.Ref.Column, Type: ColumnTypeLogToPhys(lp.Column.Ref.Type)},
 		Ascending:  order == physicalpb.SORT_ORDER_ASCENDING,
 		NullsFirst: false,
 		// K initially starts at 0, indicating to sort everything. The
@@ -332,7 +332,7 @@ func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) (physicalpb.Node
 func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Context) (physicalpb.Node, error) {
 	partitionBy := make([]*physicalpb.ColumnExpression, len(r.PartitionBy))
 	for i, col := range r.PartitionBy {
-		partitionBy[i] = &physicalpb.ColumnExpression{Name: col.Ref.Column, Type: columnTypeLogToPhys(col.Ref.Type)}
+		partitionBy[i] = &physicalpb.ColumnExpression{Name: col.Ref.Column, Type: ColumnTypeLogToPhys(col.Ref.Type)}
 	}
 
 	node := &physicalpb.AggregateRange{
@@ -361,7 +361,7 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Cont
 func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *Context) (physicalpb.Node, error) {
 	groupBy := make([]*physicalpb.ColumnExpression, len(lp.GroupBy))
 	for i, col := range lp.GroupBy {
-		groupBy[i] = &physicalpb.ColumnExpression{Name: col.Ref.Column, Type: columnTypeLogToPhys(col.Ref.Type)}
+		groupBy[i] = &physicalpb.ColumnExpression{Name: col.Ref.Column, Type: ColumnTypeLogToPhys(col.Ref.Type)}
 	}
 
 	node := &physicalpb.AggregateVector{
@@ -394,7 +394,7 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 //   - inputRef: a pointer to a node in `acc` that refers the input, if any. This is for convenience of
 //     renaming the column refenrece without a need to search for it in `acc` expression.
 //   - err: error
-func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *Context) (acc Expression, input Node, inputRef *ColumnExpr, err error) {
+func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *Context) (acc *physicalpb.Expression, input physicalpb.Node, inputRef *physicalpb.ColumnExpression, err error) {
 	switch v := lp.(type) {
 	case *logical.BinOp:
 		// Traverse left and right children
@@ -410,26 +410,26 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 		// Both left and right expressions have obj scans, replace with join
 		if leftInput != nil && rightInput != nil {
 			// Replace column references with `_left` and `_right` indicating that there are two inputs coming from a Join
-			leftInputRef.Ref = types.ColumnRef{
-				Column: "value_left",
-				Type:   types.ColumnTypeGenerated,
+			leftInputRef = &physicalpb.ColumnExpression{
+				Name: "value_left",
+				Type: physicalpb.COLUMN_TYPE_GENERATED,
 			}
-			rightInputRef.Ref = types.ColumnRef{
-				Column: "value_right",
-				Type:   types.ColumnTypeGenerated,
+			rightInputRef = &physicalpb.ColumnExpression{
+				Name: "value_right",
+				Type: physicalpb.COLUMN_TYPE_GENERATED,
 			}
 
 			// Insert an InnerJoin on timestamp before Projection
-			join := &physicalpb.Join{}
+			join := &physicalpb.Join{Id: physicalpb.PlanNodeID{Value: ulid.New()}}
 			p.plan.Add(join)
 
-			projection := &Projection{
-				Expressions: []Expression{
-					&BinaryExpr{
+			projection := &physicalpb.Projection{
+				Expressions: []*physicalpb.Expression{
+					(&physicalpb.BinaryExpression{
 						Left:  leftChild,
 						Right: rightChild,
-						Op:    v.Op,
-					},
+						Op:    binaryOpLogToPhys(v.Op),
+					}).ToExpression(),
 				},
 				All:    true,
 				Expand: true,
@@ -449,9 +449,9 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 			}
 
 			// Result of this math expression returns `value` column
-			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
+			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, physicalpb.COLUMN_TYPE_GENERATED)
 
-			return columnRef, join, columnRef, nil
+			return columnRef.ToExpression(), join, columnRef, nil
 		}
 
 		// Eigther left or right expression has an obj scan. Pick the non-nil one.
@@ -466,12 +466,13 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 		expr := &physicalpb.BinaryExpression{
 			Left:  leftChild,
 			Right: rightChild,
-			Op:    v.Op,
+			Op:    binaryOpLogToPhys(v.Op),
 		}
 
 		// we have to stop here and produce a Node, otherwise keep collapsing
 		if rootNode {
 			projection := &physicalpb.Projection{
+				Id:          physicalpb.PlanNodeID{Value: ulid.New()},
 				Expressions: []*physicalpb.Expression{expr.ToExpression()},
 				All:         true,
 				Expand:      true,
@@ -481,12 +482,12 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 				return nil, nil, nil, err
 			}
 
-			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
+			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, physicalpb.COLUMN_TYPE_GENERATED)
 
-			return columnRef, projection, columnRef, nil
+			return columnRef.ToExpression(), projection, columnRef, nil
 		}
 
-		return expr, input, inputRef, nil
+		return expr.ToExpression(), input, inputRef, nil
 	case *logical.UnaryOp:
 		child, input, inputRef, err := p.collapseMathExpressions(v.Value, false, ctx)
 		if err != nil {
@@ -494,10 +495,11 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 		}
 		expr := &physicalpb.UnaryExpression{
 			Value: child,
-			Op:    v.Op,
+			Op:    unaryOpLogToPhys(v.Op),
 		}
 		if rootNode {
 			projection := &physicalpb.Projection{
+				Id:          physicalpb.PlanNodeID{Value: ulid.New()},
 				Expressions: []*physicalpb.Expression{expr.ToExpression()},
 				All:         true,
 				Expand:      true,
@@ -507,23 +509,23 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 				return nil, nil, nil, err
 			}
 
-			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
+			columnRef := newColumnExpr(types.ColumnNameGeneratedValue, physicalpb.COLUMN_TYPE_GENERATED)
 
-			return columnRef, projection, columnRef, nil
+			return columnRef.ToExpression(), projection, columnRef, nil
 		}
 
-		return expr, input, inputRef, nil
+		return expr.ToExpression(), input, inputRef, nil
 	case *logical.Literal:
-		return &physicalpb.LiteralExpression{Literal: v.Literal}, nil, nil, nil
+		return NewLiteral(v.Value()).ToExpression(), nil, nil, nil
 	default:
 		// If it is neigher a literal nor an expression, then we continue `p.process` on this node and represent in
 		// as a column ref `value` in the final math expression.
-		columnRef := newColumnExpr(types.ColumnNameGeneratedValue, types.ColumnTypeGenerated)
+		columnRef := newColumnExpr(types.ColumnNameGeneratedValue, physicalpb.COLUMN_TYPE_GENERATED)
 		child, err := p.process(lp, ctx)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		return columnRef, child, columnRef, nil
+		return columnRef.ToExpression(), child, columnRef, nil
 	}
 }
 
@@ -571,6 +573,7 @@ func (p *Planner) processParse(lp *logical.Parse, ctx *Context) (physicalpb.Node
 
 	if p.context.v1Compatible {
 		compat := &physicalpb.ColumnCompat{
+			Id:          physicalpb.PlanNodeID{Value: ulid.New()},
 			Source:      physicalpb.COLUMN_TYPE_PARSED,
 			Destination: physicalpb.COLUMN_TYPE_PARSED,
 			Collision:   physicalpb.COLUMN_TYPE_LABEL,
@@ -689,6 +692,8 @@ func binaryOpLogToPhys(op types.BinaryOp) physicalpb.BinaryOp {
 		return physicalpb.BINARY_OP_DIV
 	case types.BinaryOpMod:
 		return physicalpb.BINARY_OP_MOD
+	case types.BinaryOpPow:
+		return physicalpb.BINARY_OP_POW
 
 	case types.BinaryOpMatchSubstr:
 		return physicalpb.BINARY_OP_MATCH_SUBSTR
@@ -707,7 +712,7 @@ func binaryOpLogToPhys(op types.BinaryOp) physicalpb.BinaryOp {
 	}
 }
 
-func columnTypeLogToPhys(colType types.ColumnType) physicalpb.ColumnType {
+func ColumnTypeLogToPhys(colType types.ColumnType) physicalpb.ColumnType {
 	switch colType {
 	case types.ColumnTypeBuiltin:
 		return physicalpb.COLUMN_TYPE_BUILTIN

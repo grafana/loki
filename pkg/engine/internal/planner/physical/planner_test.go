@@ -319,7 +319,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 
 		parseNode, ok := children[0].(*physicalpb.Parse)
 		require.True(t, ok, "ColumnCompat's child should be ParseNode")
-		require.Equal(t, physicalpb.PARSE_OP_LOGFMT, parseNode.Kind)
+		require.Equal(t, physicalpb.PARSE_OP_LOGFMT, parseNode.Operation)
 		require.Empty(t, parseNode.RequestedKeys)
 
 		physicalPlan, err = planner.Optimize(physicalPlan)
@@ -390,7 +390,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, parseNode, "ParseNode should exist in the plan")
 
-		require.Equal(t, physicalpb.PARSE_OP_LOGFMT, parseNode.Kind)
+		require.Equal(t, physicalpb.PARSE_OP_LOGFMT, parseNode.Operation)
 		require.Empty(t, parseNode.RequestedKeys) // Before optimization
 
 		physicalPlan, err = planner.Optimize(physicalPlan)

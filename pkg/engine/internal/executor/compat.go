@@ -45,10 +45,10 @@ func newColumnCompatibilityPipeline(compat *physicalpb.ColumnCompat, input Pipel
 				return nil, err
 			}
 			switch ident.ColumnType() {
-			case compat.Collision:
+			case semconv.ColumnTypePhysToLog(compat.Collision):
 				collisionFieldIndices = append(collisionFieldIndices, idx)
 				collisionFieldNames = append(collisionFieldNames, ident.ShortName())
-			case compat.Source:
+			case semconv.ColumnTypePhysToLog(compat.Source):
 				sourceFieldIndices = append(sourceFieldIndices, idx)
 				sourceFieldNames = append(sourceFieldNames, ident.ShortName())
 			}

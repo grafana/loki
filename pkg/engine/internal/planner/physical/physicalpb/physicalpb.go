@@ -28,6 +28,7 @@ const (
 	NodeKindTopK                            // NodeKindTopK is used for [TopK].
 	NodeKindScanSet                         // NodeKindScanSet is used for [ScanSet].
 	NodeKindParallelize                     // NodeKindParallelize is used for [Parallelize].
+	NodeKindJoin                            // NodeKindJoin is used for [Join].
 )
 
 var nodeKinds = [...]string{
@@ -45,6 +46,7 @@ var nodeKinds = [...]string{
 	NodeKindTopK:            "TopK",
 	NodeKindScanSet:         "ScanSet",
 	NodeKindParallelize:     "Parallelize",
+	NodeKindJoin:            "Join",
 }
 
 func (k NodeKind) String() string {
@@ -113,6 +115,8 @@ func GetNode(planNode *PlanNode) Node {
 		return kind.ScanSet
 	case *PlanNode_Parallelize:
 		return kind.Parallelize
+	case *PlanNode_Join:
+		return kind.Join
 	default:
 		panic(fmt.Sprintf("unknown node kind %T", kind))
 	}
@@ -133,6 +137,7 @@ type Visitor interface {
 	VisitTopK(*TopK) error
 	VisitScanSet(*ScanSet) error
 	VisitParallelize(*Parallelize) error
+	VisitJoin(*Join) error
 }
 
 //
@@ -152,6 +157,7 @@ func (n *ColumnCompat) isNode()    {}
 func (n *TopK) isNode()            {}
 func (n *ScanSet) isNode()         {}
 func (n *Parallelize) isNode()     {}
+func (n *Join) isNode()            {}
 
 func (n *AggregateRange) ID() string  { return n.GetId().Value.String() }
 func (n *AggregateVector) ID() string { return n.GetId().Value.String() }
@@ -166,6 +172,7 @@ func (n *ColumnCompat) ID() string    { return n.GetId().Value.String() }
 func (n *TopK) ID() string            { return n.GetId().Value.String() }
 func (n *ScanSet) ID() string         { return n.GetId().Value.String() }
 func (n *Parallelize) ID() string     { return n.GetId().Value.String() }
+func (n *Join) ID() string            { return n.GetId().Value.String() }
 
 func (n *AggregateRange) ulid() ulid.ULID  { return n.GetId().Value }
 func (n *AggregateVector) ulid() ulid.ULID { return n.GetId().Value }
@@ -180,6 +187,7 @@ func (n *ColumnCompat) ulid() ulid.ULID    { return n.GetId().Value }
 func (n *TopK) ulid() ulid.ULID            { return n.GetId().Value }
 func (n *ScanSet) ulid() ulid.ULID         { return n.GetId().Value }
 func (n *Parallelize) ulid() ulid.ULID     { return n.GetId().Value }
+func (n *Join) ulid() ulid.ULID            { return n.GetId().Value }
 
 func (n *AggregateRange) Kind() NodeKind  { return NodeKindAggregateRange }
 func (n *AggregateVector) Kind() NodeKind { return NodeKindAggregateVector }
@@ -194,6 +202,7 @@ func (n *ColumnCompat) Kind() NodeKind    { return NodeKindColumnCompat }
 func (n *TopK) Kind() NodeKind            { return NodeKindTopK }
 func (n *ScanSet) Kind() NodeKind         { return NodeKindScanSet }
 func (n *Parallelize) Kind() NodeKind     { return NodeKindParallelize }
+func (n *Join) Kind() NodeKind            { return NodeKindJoin }
 
 func (n *AggregateRange) Accept(v Visitor) error  { return v.VisitAggregateRange(n) }
 func (n *AggregateVector) Accept(v Visitor) error { return v.VisitAggregateVector(n) }
@@ -208,6 +217,7 @@ func (n *ColumnCompat) Accept(v Visitor) error    { return v.VisitColumnCompat(n
 func (n *TopK) Accept(v Visitor) error            { return v.VisitTopK(n) }
 func (n *ScanSet) Accept(v Visitor) error         { return v.VisitScanSet(n) }
 func (n *Parallelize) Accept(v Visitor) error     { return v.VisitParallelize(n) }
+func (n *Join) Accept(v Visitor) error            { return v.VisitJoin(n) }
 
 func (n *AggregateRange) ToPlanNode() *PlanNode  { return planNode(&PlanNode_AggregateRange{n}) }
 func (n *AggregateVector) ToPlanNode() *PlanNode { return planNode(&PlanNode_AggregateVector{n}) }
@@ -222,6 +232,7 @@ func (n *ColumnCompat) ToPlanNode() *PlanNode    { return planNode(&PlanNode_Col
 func (n *TopK) ToPlanNode() *PlanNode            { return planNode(&PlanNode_TopK{n}) }
 func (n *ScanSet) ToPlanNode() *PlanNode         { return planNode(&PlanNode_ScanSet{n}) }
 func (n *Parallelize) ToPlanNode() *PlanNode     { return planNode(&PlanNode_Parallelize{n}) }
+func (n *Join) ToPlanNode() *PlanNode            { return planNode(&PlanNode_Join{n}) }
 
 // Clone returns a deep copy of the node (minus its ID).
 func (n *AggregateRange) Clone() Node {
@@ -312,6 +323,10 @@ func (n *Parallelize) Clone() Node {
 	return &Parallelize{ /* nothing to clone */ }
 }
 
+func (n *Join) Clone() Node {
+	return &Join{ /* nothing to clone */ }
+}
+
 func (t *ScanTarget) Clone() *ScanTarget {
 	res := &ScanTarget{Type: t.Type}
 	if t.DataObject != nil {
@@ -384,6 +399,11 @@ func (n *ScanSet) CloneWithNewID() Node {
 }
 func (n *Parallelize) CloneWithNewID() Node {
 	tmp := n.Clone().ToPlanNode().GetParallelize()
+	tmp.Id = PlanNodeID{ulid.New()}
+	return tmp
+}
+func (n *Join) CloneWithNewID() Node {
+	tmp := n.Clone().ToPlanNode().GetJoin()
 	tmp.Id = PlanNodeID{ulid.New()}
 	return tmp
 }
@@ -463,7 +483,7 @@ const (
 	PrecedenceBuiltin  // 4 - lowest precedence
 )
 
-var ctNames = [7]string{"COLUMN_TYPE_INVALID", "COLUMN_TYPE_BUILTIN", "COLUMN_TYPE_LABEL", "COLUMN_TYPE_METADATA", "COLUMN_TYPE_PARSED", "COLUMN_TYPE_AMBIGUOUS", "COLUMN_TYPE_GENERATED"}
+var ctNames = [7]string{"invalid", "builtin", "label", "metadata", "parsed", "ambiguous", "generated"}
 
 // ColumnTypeFromString returns the [ColumnType] from its string representation.
 func ColumnTypeFromString(ct string) ColumnType {

@@ -202,7 +202,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 	t.Run("multiple records with different streams are accumulated correctly", func(t *testing.T) {
 		colTs := semconv.ColumnIdentTimestamp
 		colMsg := semconv.ColumnIdentMessage
-		colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String)
+		colEnv := semconv.NewIdentifier("env", physicalpb.COLUMN_TYPE_LABEL, types.Loki.String)
 
 		schema := arrow.NewSchema(
 			[]arrow.Field{
@@ -290,7 +290,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 	t.Run("buffer reuse with varying record sizes", func(t *testing.T) {
 		colTs := semconv.ColumnIdentTimestamp
 		colMsg := semconv.ColumnIdentMessage
-		colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String)
+		colEnv := semconv.NewIdentifier("env", physicalpb.COLUMN_TYPE_LABEL, types.Loki.String)
 
 		schema := arrow.NewSchema(
 			[]arrow.Field{
@@ -359,7 +359,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 	t.Run("empty records mixed with valid records", func(t *testing.T) {
 		colTs := semconv.ColumnIdentTimestamp
 		colMsg := semconv.ColumnIdentMessage
-		colEnv := semconv.NewIdentifier("env", types.ColumnTypeLabel, types.Loki.String)
+		colEnv := semconv.NewIdentifier("env", physicalpb.COLUMN_TYPE_LABEL, types.Loki.String)
 
 		schema := arrow.NewSchema(
 			[]arrow.Field{

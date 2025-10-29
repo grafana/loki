@@ -18,7 +18,7 @@ import (
 var (
 	incrementingIntPipeline = newRecordGenerator(
 		arrow.NewSchema([]arrow.Field{
-			semconv.FieldFromFQN("int64.COLUMN_TYPE_BUILTIN.id", false),
+			semconv.FieldFromFQN("int64.builtin.id", false),
 		}, nil),
 
 		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record {

@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 // Helper function to create a boolean array
@@ -154,25 +153,25 @@ func TestBinaryFunctionRegistry_GetForSignature(t *testing.T) {
 		},
 		{
 			name:        "valid div operation",
-			op:          types.BinaryOpDiv,
+			op:          physicalpb.BINARY_OP_DIV,
 			dataType:    arrow.PrimitiveTypes.Float64,
 			expectError: false,
 		},
 		{
 			name:        "valid add operation",
-			op:          types.BinaryOpAdd,
+			op:          physicalpb.BINARY_OP_ADD,
 			dataType:    arrow.PrimitiveTypes.Float64,
 			expectError: false,
 		},
 		{
 			name:        "valid Mul operation",
-			op:          types.BinaryOpMul,
+			op:          physicalpb.BINARY_OP_MUL,
 			dataType:    arrow.PrimitiveTypes.Float64,
 			expectError: false,
 		},
 		{
 			name:        "valid sub operation",
-			op:          types.BinaryOpSub,
+			op:          physicalpb.BINARY_OP_SUB,
 			dataType:    arrow.PrimitiveTypes.Float64,
 			expectError: false,
 		},

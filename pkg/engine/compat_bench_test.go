@@ -8,6 +8,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
@@ -97,7 +98,7 @@ func prepareSchema(numLabels int, numMeta int, numParsed int) (*arrow.Schema, []
 	for i := 0; i < numLabels; i++ {
 		ident := semconv.NewIdentifier(
 			fmt.Sprintf("label_%d", i),
-			types.ColumnTypeLabel,
+			physicalpb.COLUMN_TYPE_LABEL,
 			types.Loki.String,
 		)
 		labelIdents[i] = ident
@@ -109,7 +110,7 @@ func prepareSchema(numLabels int, numMeta int, numParsed int) (*arrow.Schema, []
 	for i := 0; i < numMeta; i++ {
 		ident := semconv.NewIdentifier(
 			fmt.Sprintf("meta_%d", i),
-			types.ColumnTypeMetadata,
+			physicalpb.COLUMN_TYPE_METADATA,
 			types.Loki.String,
 		)
 		metaIdents[i] = ident
@@ -121,7 +122,7 @@ func prepareSchema(numLabels int, numMeta int, numParsed int) (*arrow.Schema, []
 	for i := 0; i < numParsed; i++ {
 		ident := semconv.NewIdentifier(
 			fmt.Sprintf("parsed_%d", i),
-			types.ColumnTypeParsed,
+			physicalpb.COLUMN_TYPE_PARSED,
 			types.Loki.String,
 		)
 		parsedIdents[i] = ident

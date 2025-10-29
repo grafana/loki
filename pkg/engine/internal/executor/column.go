@@ -7,11 +7,26 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 )
 
-func NewScalar(value types.Literal, rows int) arrow.Array {
-	builder := array.NewBuilder(memory.DefaultAllocator, value.Type().ArrowType())
+func NewScalar(value physicalpb.LiteralExpression, rows int) arrow.Array {
+	var tmp arrow.DataType
+	switch value.Kind.(type) {
+	case *physicalpb.LiteralExpression_NullLiteral:
+		tmp = arrow.Null
+	case *physicalpb.LiteralExpression_BoolLiteral:
+		tmp = arrow.FixedWidthTypes.Boolean
+	case *physicalpb.LiteralExpression_StringLiteral:
+		tmp = arrow.BinaryTypes.String
+	case *physicalpb.LiteralExpression_IntegerLiteral, *physicalpb.LiteralExpression_DurationLiteral, *physicalpb.LiteralExpression_BytesLiteral:
+		tmp = arrow.PrimitiveTypes.Int64
+	case *physicalpb.LiteralExpression_FloatLiteral:
+		tmp = arrow.PrimitiveTypes.Float64
+	case *physicalpb.LiteralExpression_TimestampLiteral:
+		tmp = arrow.FixedWidthTypes.Timestamp_ns
+	}
+	builder := array.NewBuilder(memory.DefaultAllocator, tmp)
 
 	switch builder := builder.(type) {
 	case *array.NullBuilder:
@@ -19,35 +34,35 @@ func NewScalar(value types.Literal, rows int) arrow.Array {
 			builder.AppendNull()
 		}
 	case *array.BooleanBuilder:
-		value := value.Any().(bool)
+		value := value.GetBoolLiteral().Value
 		for range rows {
 			builder.Append(value)
 		}
 	case *array.StringBuilder:
-		value := value.Any().(string)
+		value := value.GetStringLiteral().Value
 		for range rows {
 			builder.Append(value)
 		}
 	case *array.Int64Builder:
 		var v int64
-		switch value.Type() {
-		case types.Loki.Integer:
-			v = value.Any().(int64)
-		case types.Loki.Duration:
-			v = int64(value.Any().(types.Duration))
-		case types.Loki.Bytes:
-			v = int64(value.Any().(types.Bytes))
+		switch value.Kind.(type) {
+		case *physicalpb.LiteralExpression_IntegerLiteral:
+			v = value.GetIntegerLiteral().Value
+		case *physicalpb.LiteralExpression_DurationLiteral:
+			v = value.GetDurationLiteral().Value
+		case *physicalpb.LiteralExpression_BytesLiteral:
+			v = int64(value.GetBytesLiteral().Value)
 		}
 		for range rows {
 			builder.Append(v)
 		}
 	case *array.Float64Builder:
-		value := value.Any().(float64)
+		value := value.GetFloatLiteral().Value
 		for range rows {
 			builder.Append(value)
 		}
 	case *array.TimestampBuilder:
-		value := value.Any().(types.Timestamp)
+		value := value.GetTimestampLiteral().Value
 		for range rows {
 			builder.Append(arrow.Timestamp(value))
 		}
@@ -65,7 +80,7 @@ func NewCoalesce(columns []*columnWithType) arrow.Array {
 
 	// Sort columns by precedence
 	slices.SortFunc(columns, func(a, b *columnWithType) int {
-		return types.ColumnTypePrecedence(a.ct) - types.ColumnTypePrecedence(b.ct)
+		return physicalpb.ColumnTypePrecedence(a.ct) - physicalpb.ColumnTypePrecedence(b.ct)
 	})
 
 	// Only string columns are supported

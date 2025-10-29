@@ -23,6 +23,9 @@ type nodeCollectVisitor struct {
 	onVisitParallelize       func(*physicalpb.Parallelize) error
 	onVisitScanSet           func(*physicalpb.ScanSet) error
 	onVisitJoin              func(*physicalpb.Join) error
+	onVisitColumnCompat      func(*physicalpb.ColumnCompat) error
+	onVisitMerge             func(*physicalpb.Merge) error
+	onVisitSortMerge         func(*physicalpb.SortMerge) error
 }
 
 func (v *nodeCollectVisitor) VisitDataObjScan(n *physicalpb.DataObjScan) error {
@@ -58,8 +61,8 @@ func (v *nodeCollectVisitor) VisitProjection(n *physicalpb.Projection) error {
 }
 
 func (v *nodeCollectVisitor) VisitAggregateRange(n *physicalpb.AggregateRange) error {
-	if v.onVisitAggregateRange != nil {
-		return v.onVisitAggregateRange(n)
+	if v.onVisitRangeAggregation != nil {
+		return v.onVisitRangeAggregation(n)
 	}
 
 	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Kind().String(), n.ID()))
@@ -67,8 +70,8 @@ func (v *nodeCollectVisitor) VisitAggregateRange(n *physicalpb.AggregateRange) e
 }
 
 func (v *nodeCollectVisitor) VisitAggregateVector(n *physicalpb.AggregateVector) error {
-	if v.onVisitAggregateVector != nil {
-		return v.onVisitAggregateVector(n)
+	if v.onVisitVectorAggregation != nil {
+		return v.onVisitVectorAggregation(n)
 	}
 	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Kind().String(), n.ID()))
 	return nil
@@ -116,18 +119,25 @@ func (v *nodeCollectVisitor) VisitColumnCompat(n *physicalpb.ColumnCompat) error
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitJoin(n *Join) error {
+func (v *nodeCollectVisitor) VisitJoin(n *physicalpb.Join) error {
 	if v.onVisitJoin != nil {
 		return v.onVisitJoin(n)
 	}
-	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Kind().String(), n.ID()))
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitJoin(n *Join) error {
-	if v.onVisitJoin != nil {
-		return v.onVisitJoin(n)
+func (v *nodeCollectVisitor) VisitMerge(n *physicalpb.Merge) error {
+	if v.onVisitMerge != nil {
+		return v.onVisitMerge(n)
 	}
-	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Type().String(), n.ID()))
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Kind().String(), n.ID()))
+	return nil
+}
+func (v *nodeCollectVisitor) VisitSortMerge(n *physicalpb.SortMerge) error {
+	if v.onVisitSortMerge != nil {
+		return v.onVisitSortMerge(n)
+	}
+	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Kind().String(), n.ID()))
 	return nil
 }

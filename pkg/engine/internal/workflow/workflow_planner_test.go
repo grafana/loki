@@ -105,7 +105,7 @@ AggregateRange operation=AGGREGATE_RANGE_OP_INVALID start=1969-12-31T19:00:00-05
 		expectOuptut := strings.TrimSpace(`
 Task 00000000000000000000000001
 -------------------------------
-AggregateVector
+AggregateVector operation=AGGREGATE_VECTOR_OP_INVALID
     └── @source stream=00000000000000000000000003
 
 Task 00000000000000000000000002
@@ -165,7 +165,7 @@ AggregateRange operation=AGGREGATE_RANGE_OP_INVALID start=1969-12-31T19:00:00-05
 		expectOuptut := strings.TrimSpace(`
 Task 00000000000000000000000001
 -------------------------------
-AggregateVector
+AggregateVector operation=AGGREGATE_VECTOR_OP_INVALID
     └── @source stream=00000000000000000000000006
 
 Task 00000000000000000000000002

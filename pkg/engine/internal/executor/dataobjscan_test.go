@@ -84,12 +84,12 @@ func Test_dataobjScan(t *testing.T) {
 		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.env", true),
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.service", true),
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.guid", true),
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.pod", true),
-			semconv.FieldFromFQN("timestamp_ns.COLUMN_TYPE_BUILTIN.timestamp", true), // should be nullable=false?
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_BUILTIN.message", true),           // should be nullable=false?
+			semconv.FieldFromFQN("utf8.label.env", true),
+			semconv.FieldFromFQN("utf8.label.service", true),
+			semconv.FieldFromFQN("utf8.metadata.guid", true),
+			semconv.FieldFromFQN("utf8.metadata.pod", true),
+			semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", true), // should be nullable=false?
+			semconv.FieldFromFQN("utf8.builtin.message", true),           // should be nullable=false?
 		}
 
 		expectCSV := `prod,loki,eeee-ffff-aaaa-bbbb,NULL,1970-01-01 00:00:10,goodbye world
@@ -117,8 +117,8 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.env", true),
-			semconv.FieldFromFQN("timestamp_ns.COLUMN_TYPE_BUILTIN.timestamp", true), // should be not nullable?
+			semconv.FieldFromFQN("utf8.label.env", true),
+			semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", true), // should be not nullable?
 		}
 
 		expectCSV := `prod,1970-01-01 00:00:10
@@ -143,12 +143,12 @@ prod,1970-01-01 00:00:02`
 		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.env", true),
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.service", true),
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.guid", true),
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.pod", true),
-			semconv.FieldFromFQN("timestamp_ns.COLUMN_TYPE_BUILTIN.timestamp", true), // should be nullable=false?
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_BUILTIN.message", true),           // should be nullable=false?
+			semconv.FieldFromFQN("utf8.label.env", true),
+			semconv.FieldFromFQN("utf8.label.service", true),
+			semconv.FieldFromFQN("utf8.metadata.guid", true),
+			semconv.FieldFromFQN("utf8.metadata.pod", true),
+			semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", true), // should be nullable=false?
+			semconv.FieldFromFQN("utf8.builtin.message", true),           // should be nullable=false?
 		}
 
 		expectCSV := `prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:03,goodbye world
@@ -174,7 +174,7 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.env", true),
+			semconv.FieldFromFQN("utf8.label.env", true),
 		}
 
 		expectCSV := `prod
@@ -253,16 +253,16 @@ func Test_dataobjScan_DuplicateColumns(t *testing.T) {
 		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.env", true),
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.namespace", true),
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.pod", true),
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.service", true),
+			semconv.FieldFromFQN("utf8.label.env", true),
+			semconv.FieldFromFQN("utf8.label.namespace", true),
+			semconv.FieldFromFQN("utf8.label.pod", true),
+			semconv.FieldFromFQN("utf8.label.service", true),
 
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.namespace", true),
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.pod", true),
+			semconv.FieldFromFQN("utf8.metadata.namespace", true),
+			semconv.FieldFromFQN("utf8.metadata.pod", true),
 
-			semconv.FieldFromFQN("timestamp_ns.COLUMN_TYPE_BUILTIN.timestamp", true),
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_BUILTIN.message", true),
+			semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", true),
+			semconv.FieldFromFQN("utf8.builtin.message", true),
 		}
 
 		expectCSV := `prod,namespace-2,NULL,loki,NULL,NULL,1970-01-01 00:00:03,message 3
@@ -287,8 +287,8 @@ prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1`
 		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.pod", true),
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.pod", true),
+			semconv.FieldFromFQN("utf8.label.pod", true),
+			semconv.FieldFromFQN("utf8.metadata.pod", true),
 		}
 
 		expectCSV := `NULL,NULL
@@ -313,8 +313,8 @@ pod-1,override`
 		}, log.NewNopLogger())
 
 		expectFields := []arrow.Field{
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.namespace", true),
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.namespace", true),
+			semconv.FieldFromFQN("utf8.label.namespace", true),
+			semconv.FieldFromFQN("utf8.metadata.namespace", true),
 		}
 
 		expectCSV := `namespace-2,NULL

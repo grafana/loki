@@ -16,11 +16,11 @@ import (
 const arrowTimestampFormat = "2006-01-02T15:04:05.000000000Z"
 
 var (
-	colTs  = "timestamp_ns.COLUMN_TYPE_BUILTIN.timestamp"
-	colEnv = "utf8.COLUMN_TYPE_LABEL.env"
-	colSvc = "utf8.COLUMN_TYPE_LABEL.service"
-	colLvl = "utf8.COLUMN_TYPE_METADATA.severity"
-	colVal = "float64.COLUMN_TYPE_GENERATED.value"
+	colTs  = "timestamp_ns.builtin.timestamp"
+	colEnv = "utf8.label.env"
+	colSvc = "utf8.label.service"
+	colLvl = "utf8.metadata.severity"
+	colVal = "float64.generated.value"
 )
 
 func TestRangeAggregationPipeline_instant(t *testing.T) {
@@ -82,10 +82,10 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 	require.NoError(t, err)
 
 	expect := arrowtest.Rows{
-		{colTs: time.Unix(20, 0).UTC(), colVal: float64(2), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "prod", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1"},
-		{colTs: time.Unix(20, 0).UTC(), colVal: float64(3), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "prod", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app2"},
-		{colTs: time.Unix(20, 0).UTC(), colVal: float64(2), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "prod", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app3"},
-		{colTs: time.Unix(20, 0).UTC(), colVal: float64(1), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "dev", "utf8.COLUMN_TYPE_AMBIGUOUS.service": nil},
+		{colTs: time.Unix(20, 0).UTC(), colVal: float64(2), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1"},
+		{colTs: time.Unix(20, 0).UTC(), colVal: float64(3), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2"},
+		{colTs: time.Unix(20, 0).UTC(), colVal: float64(2), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app3"},
+		{colTs: time.Unix(20, 0).UTC(), colVal: float64(1), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": nil},
 	}
 
 	rows, err := arrowtest.RecordRows(record)
@@ -165,18 +165,18 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		expect := arrowtest.Rows{
 			// time.Unix(10, 0)
-			{colTs: time.Unix(10, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "prod", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1", colVal: float64(3)},
-			{colTs: time.Unix(10, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "prod", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app2", colVal: float64(2)},
-			{colTs: time.Unix(10, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "dev", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1", colVal: float64(3)},
+			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2", colVal: float64(2)},
+			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 
 			// time.Unix(20, 0)
-			{colTs: time.Unix(20, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "prod", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1", colVal: float64(1)},
-			{colTs: time.Unix(20, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "prod", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app2", colVal: float64(1)},
-			{colTs: time.Unix(20, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "dev", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2", colVal: float64(1)},
+			{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 
 			// time.Unix(30, 0)
-			{colTs: time.Unix(30, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "dev", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app2", colVal: float64(2)},
-			{colTs: time.Unix(30, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "dev", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(30, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app2", colVal: float64(2)},
+			{colTs: time.Unix(30, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 		}
 
 		rows, err := arrowtest.RecordRows(record)
@@ -212,31 +212,31 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		expect := arrowtest.Rows{
 			// time.Unix(10, 0)
-			{colTs: time.Unix(10, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "prod", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1", colVal: float64(3)},
-			{colTs: time.Unix(10, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "prod", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app2", colVal: float64(2)},
-			{colTs: time.Unix(10, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "dev", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1", colVal: float64(3)},
+			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2", colVal: float64(2)},
+			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 
 			// time.Unix(15, 0)
-			{colTs: time.Unix(15, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "prod", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app2", colVal: float64(2)},
-			{colTs: time.Unix(15, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "prod", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1", colVal: float64(2)},
-			{colTs: time.Unix(15, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "dev", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(15, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2", colVal: float64(2)},
+			{colTs: time.Unix(15, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1", colVal: float64(2)},
+			{colTs: time.Unix(15, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 
 			// time.Unix(20, 0)
-			{colTs: time.Unix(20, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "prod", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1", colVal: float64(1)},
-			{colTs: time.Unix(20, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "prod", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app2", colVal: float64(1)},
-			{colTs: time.Unix(20, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "dev", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2", colVal: float64(1)},
+			{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 
 			// time.Unix(25, 0)
-			{colTs: time.Unix(25, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "dev", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1", colVal: float64(1)},
-			{colTs: time.Unix(25, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "dev", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app2", colVal: float64(1)},
+			{colTs: time.Unix(25, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(25, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app2", colVal: float64(1)},
 
 			// time.Unix(30, 0)
-			{colTs: time.Unix(30, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "dev", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app2", colVal: float64(2)},
-			{colTs: time.Unix(30, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "dev", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(30, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app2", colVal: float64(2)},
+			{colTs: time.Unix(30, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 
 			// time.Unix(35, 0)
-			{colTs: time.Unix(35, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "dev", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app2", colVal: float64(1)},
-			{colTs: time.Unix(35, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "dev", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(35, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app2", colVal: float64(1)},
+			{colTs: time.Unix(35, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 		}
 
 		rows, err := arrowtest.RecordRows(record)
@@ -273,16 +273,16 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		expect := arrowtest.Rows{
 			// time.Unix(10, 0)
-			{colTs: time.Unix(10, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "prod", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1", colVal: float64(1)},
-			{colTs: time.Unix(10, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "prod", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app2", colVal: float64(1)},
-			{colTs: time.Unix(10, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "dev", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "prod", "utf8.ambiguous.service": "app2", colVal: float64(1)},
+			{colTs: time.Unix(10, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 
 			// time.Unix(20, 0)
-			{colTs: time.Unix(20, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "dev", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(20, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 
 			// time.Unix(30, 0)
-			{colTs: time.Unix(30, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "dev", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app2", colVal: float64(1)},
-			{colTs: time.Unix(30, 0).UTC(), "utf8.COLUMN_TYPE_AMBIGUOUS.env": "dev", "utf8.COLUMN_TYPE_AMBIGUOUS.service": "app1", colVal: float64(1)},
+			{colTs: time.Unix(30, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app2", colVal: float64(1)},
+			{colTs: time.Unix(30, 0).UTC(), "utf8.ambiguous.env": "dev", "utf8.ambiguous.service": "app1", colVal: float64(1)},
 		}
 
 		rows, err := arrowtest.RecordRows(record)

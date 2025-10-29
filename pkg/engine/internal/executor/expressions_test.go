@@ -18,10 +18,10 @@ import (
 
 var (
 	fields = []arrow.Field{
-		semconv.FieldFromFQN("utf8.COLUMN_TYPE_BUILTIN.name", false),
-		semconv.FieldFromFQN("timestamp_ns.COLUMN_TYPE_BUILTIN.timestamp", false),
-		semconv.FieldFromFQN("float64.COLUMN_TYPE_BUILTIN.value", false),
-		semconv.FieldFromFQN("bool.COLUMN_TYPE_BUILTIN.valid", false),
+		semconv.FieldFromFQN("utf8.builtin.name", false),
+		semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", false),
+		semconv.FieldFromFQN("float64.builtin.value", false),
+		semconv.FieldFromFQN("bool.builtin.valid", false),
 	}
 	sampledata = `Alice,1745487598764058205,0.2586284611568047,false
 Bob,1745487598764058305,0.7823145698741236,true
@@ -277,9 +277,9 @@ func batch(n int, now time.Time) arrow.Record {
 func TestEvaluateAmbiguousColumnExpression(t *testing.T) {
 	// Test precedence between generated, metadata, and label columns
 	fields := []arrow.Field{
-		semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.test", true),
-		semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.test", true),
-		semconv.FieldFromFQN("utf8.COLUMN_TYPE_GENERATED.test", true),
+		semconv.FieldFromFQN("utf8.label.test", true),
+		semconv.FieldFromFQN("utf8.metadata.test", true),
+		semconv.FieldFromFQN("utf8.generated.test", true),
 	}
 
 	// CSV data where:
@@ -318,7 +318,7 @@ null,null,null`
 	t.Run("look-up matching single column should return Array", func(t *testing.T) {
 		// Create a record with only one column type
 		fields := []arrow.Field{
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.single", false),
+			semconv.FieldFromFQN("utf8.label.single", false),
 		}
 		data := `label_0
 label_1
@@ -402,15 +402,13 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 	})
 
 	t.Run("cast column generates a value", func(t *testing.T) {
-		expr := &physical.UnaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: "status_code",
-					Type:   types.ColumnTypeAmbiguous,
-				},
-			},
-			Op: types.UnaryOpCastBytes,
-		}
+		expr := (&physicalpb.UnaryExpression{
+			Value: (&physicalpb.ColumnExpression{
+				Name: "status_code",
+				Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
+			}).ToExpression(),
+			Op: physicalpb.UNARY_OP_CAST_BYTES,
+		}).ToExpression()
 
 		e := newExpressionEvaluator()
 
@@ -423,9 +421,9 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 			nil,
 		)
 		rows := arrowtest.Rows{
-			{"utf8.COLUMN_TYPE_BUILTIN.message": "timeout set", "utf8.COLUMN_TYPE_METADATA.status_code": "200", "utf8.COLUMN_TYPE_PARSED.timeout": "2m"},
-			{"utf8.COLUMN_TYPE_BUILTIN.message": "short timeout", "utf8.COLUMN_TYPE_METADATA.status_code": "204", "utf8.COLUMN_TYPE_PARSED.timeout": "10s"},
-			{"utf8.COLUMN_TYPE_BUILTIN.message": "long timeout", "utf8.COLUMN_TYPE_METADATA.status_code": "404", "utf8.COLUMN_TYPE_PARSED.timeout": "1h"},
+			{"utf8.builtin.message": "timeout set", "utf8.metadata.status_code": "200", "utf8.parsed.timeout": "2m"},
+			{"utf8.builtin.message": "short timeout", "utf8.metadata.status_code": "204", "utf8.parsed.timeout": "10s"},
+			{"utf8.builtin.message": "long timeout", "utf8.metadata.status_code": "404", "utf8.parsed.timeout": "1h"},
 		}
 
 		record := rows.Record(memory.DefaultAllocator, schema)
@@ -449,15 +447,13 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 	})
 
 	t.Run("cast column generates a value from a parsed column", func(t *testing.T) {
-		expr := &physical.UnaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: "timeout",
-					Type:   types.ColumnTypeAmbiguous,
-				},
-			},
-			Op: types.UnaryOpCastDuration,
-		}
+		expr := (&physicalpb.UnaryExpression{
+			Value: (&physicalpb.ColumnExpression{
+				Name: "timeout",
+				Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
+			}).ToExpression(),
+			Op: physicalpb.UNARY_OP_CAST_DURATION,
+		}).ToExpression()
 
 		e := newExpressionEvaluator()
 
@@ -470,9 +466,9 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 			nil,
 		)
 		rows := arrowtest.Rows{
-			{"utf8.COLUMN_TYPE_BUILTIN.message": "timeout set", "utf8.COLUMN_TYPE_METADATA.status_code": "200", "utf8.COLUMN_TYPE_PARSED.timeout": "2m"},
-			{"utf8.COLUMN_TYPE_BUILTIN.message": "short timeout", "utf8.COLUMN_TYPE_METADATA.status_code": "204", "utf8.COLUMN_TYPE_PARSED.timeout": "10s"},
-			{"utf8.COLUMN_TYPE_BUILTIN.message": "long timeout", "utf8.COLUMN_TYPE_METADATA.status_code": "404", "utf8.COLUMN_TYPE_PARSED.timeout": "1h"},
+			{"utf8.builtin.message": "timeout set", "utf8.metadata.status_code": "200", "utf8.parsed.timeout": "2m"},
+			{"utf8.builtin.message": "short timeout", "utf8.metadata.status_code": "204", "utf8.parsed.timeout": "10s"},
+			{"utf8.builtin.message": "long timeout", "utf8.metadata.status_code": "404", "utf8.parsed.timeout": "1h"},
 		}
 
 		record := rows.Record(memory.DefaultAllocator, schema)
@@ -495,15 +491,13 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 	})
 
 	t.Run("cast operation tracks errors", func(t *testing.T) {
-		colExpr := &physical.UnaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: "mixed_values",
-					Type:   types.ColumnTypeAmbiguous,
-				},
-			},
-			Op: types.UnaryOpCastFloat,
-		}
+		expr := (&physicalpb.UnaryExpression{
+			Value: (&physicalpb.ColumnExpression{
+				Name: "mixed_values",
+				Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
+			}).ToExpression(),
+			Op: physicalpb.UNARY_OP_CAST_FLOAT,
+		}).ToExpression()
 
 		e := newExpressionEvaluator()
 
@@ -515,16 +509,16 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 			nil,
 		)
 		rows := arrowtest.Rows{
-			{"utf8.COLUMN_TYPE_BUILTIN.message": "valid numeric", "utf8.COLUMN_TYPE_METADATA.mixed_values": "42.5"},
-			{"utf8.COLUMN_TYPE_BUILTIN.message": "invalid numeric", "utf8.COLUMN_TYPE_METADATA.mixed_values": "not_a_number"},
-			{"utf8.COLUMN_TYPE_BUILTIN.message": "valid bytes", "utf8.COLUMN_TYPE_METADATA.mixed_values": "1KB"},
-			{"utf8.COLUMN_TYPE_BUILTIN.message": "invalid bytes", "utf8.COLUMN_TYPE_METADATA.mixed_values": "invalid_bytes"},
-			{"utf8.COLUMN_TYPE_BUILTIN.message": "empty string", "utf8.COLUMN_TYPE_METADATA.mixed_values": ""},
+			{"utf8.builtin.message": "valid numeric", "utf8.metadata.mixed_values": "42.5"},
+			{"utf8.builtin.message": "invalid numeric", "utf8.metadata.mixed_values": "not_a_number"},
+			{"utf8.builtin.message": "valid bytes", "utf8.metadata.mixed_values": "1KB"},
+			{"utf8.builtin.message": "invalid bytes", "utf8.metadata.mixed_values": "invalid_bytes"},
+			{"utf8.builtin.message": "empty string", "utf8.metadata.mixed_values": ""},
 		}
 
 		record := rows.Record(memory.DefaultAllocator, schema)
 
-		colVec, err := e.eval(*colExpr, record)
+		colVec, err := e.eval(*expr, record)
 		require.NoError(t, err)
 		id := colVec.DataType().ID()
 		require.Equal(t, arrow.STRUCT, id)

@@ -8,7 +8,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
-	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
 type expressionEvaluator struct{}
@@ -22,7 +21,7 @@ func (e expressionEvaluator) eval(expr physicalpb.Expression, input arrow.Record
 	switch expr := expr.Kind.(type) {
 
 	case *physicalpb.Expression_LiteralExpression:
-		return NewScalar(expr.LiteralExpression.Kind, int(input.NumRows())), nil
+		return NewScalar(*expr.LiteralExpression, int(input.NumRows())), nil
 
 	case *physicalpb.Expression_ColumnExpression:
 		colIdent := semconv.NewIdentifier(expr.ColumnExpression.Name, expr.ColumnExpression.Type, types.Loki.String)
@@ -67,7 +66,7 @@ func (e expressionEvaluator) eval(expr physicalpb.Expression, input arrow.Record
 				if ident.DataType() != types.Loki.String {
 					return nil, fmt.Errorf("column %s has datatype %s, but expression expects %s", ident.ShortName(), ident.DataType(), types.Loki.String)
 				}
-				vecs = append(vecs, &columnWithType{col: input.Column(idx), ct: ident.ColumnType()})
+				vecs = append(vecs, &columnWithType{col: input.Column(idx), ct: ident.ColumnTypePhys()})
 			}
 
 			// Single column matches
@@ -83,7 +82,7 @@ func (e expressionEvaluator) eval(expr physicalpb.Expression, input arrow.Record
 
 		// A non-existent column is represented as a string scalar with zero-value.
 		// This reflects current behaviour, where a label filter `| foo=""` would match all if `foo` is not defined.
-		return NewScalar(types.NewLiteral(""), int(input.NumRows())), nil
+		return NewScalar(physicalpb.LiteralExpression{Kind: &physicalpb.LiteralExpression_StringLiteral{StringLiteral: &physicalpb.StringLiteral{Value: ""}}}, int(input.NumRows())), nil
 
 	case *physicalpb.Expression_UnaryExpression:
 		lhr, err := e.eval(*expr.UnaryExpression.Value, input)
@@ -126,7 +125,7 @@ func (e expressionEvaluator) eval(expr physicalpb.Expression, input arrow.Record
 }
 
 // newFunc returns a new function that can evaluate an input against a binded expression.
-func (e expressionEvaluator) newFunc(expr physical.Expression) evalFunc {
+func (e expressionEvaluator) newFunc(expr physicalpb.Expression) evalFunc {
 	return func(input arrow.Record) (arrow.Array, error) {
 		return e.eval(expr, input)
 	}
@@ -136,5 +135,5 @@ type evalFunc func(input arrow.Record) (arrow.Array, error)
 
 type columnWithType struct {
 	col arrow.Array
-	ct  types.ColumnType
+	ct  physicalpb.ColumnType
 }

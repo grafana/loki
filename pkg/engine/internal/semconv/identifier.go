@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -21,12 +22,31 @@ var (
 	ColumnIdentErrorDetails = NewIdentifier("__error_details__", physicalpb.COLUMN_TYPE_GENERATED, types.Loki.String)
 )
 
+func ColumnTypePhysToLog(colType physicalpb.ColumnType) types.ColumnType {
+	switch colType {
+	case physicalpb.COLUMN_TYPE_BUILTIN:
+		return types.ColumnTypeBuiltin
+	case physicalpb.COLUMN_TYPE_LABEL:
+		return types.ColumnTypeLabel
+	case physicalpb.COLUMN_TYPE_METADATA:
+		return types.ColumnTypeMetadata
+	case physicalpb.COLUMN_TYPE_PARSED:
+		return types.ColumnTypeParsed
+	case physicalpb.COLUMN_TYPE_AMBIGUOUS:
+		return types.ColumnTypeAmbiguous
+	case physicalpb.COLUMN_TYPE_GENERATED:
+		return types.ColumnTypeGenerated
+	default:
+		return types.ColumnTypeInvalid
+	}
+}
+
 // NewIdentifier creates a new column identifier from given name, column type, and data type.
 // The semantic type of an identifier is derived from its column type.
 func NewIdentifier(name string, ct physicalpb.ColumnType, dt types.DataType) *Identifier {
 	return &Identifier{
 		columnName: name,
-		columnType: ct,
+		columnType: ColumnTypePhysToLog(ct),
 		dataType:   dt,
 	}
 }
@@ -36,7 +56,7 @@ func NewIdentifier(name string, ct physicalpb.ColumnType, dt types.DataType) *Id
 // The fully qualified name is represented as [DATA_TYPE].[COLUMN_TYPE].[COLUMN_NAME].
 type Identifier struct {
 	columnName string
-	columnType physicalpb.ColumnType
+	columnType types.ColumnType
 	dataType   types.DataType
 
 	// fqn is the cached fully qualified name to avoid allocations when calling FQN() multiple times
@@ -49,8 +69,13 @@ func (i *Identifier) DataType() types.DataType {
 }
 
 // ColumnType returns the column type of the identifier.
-func (i *Identifier) ColumnType() physicalpb.ColumnType {
+func (i *Identifier) ColumnType() types.ColumnType {
 	return i.columnType
+}
+
+// ColumnTypePhys returns the column type of the identifier as a physicalpb.ColumnType.
+func (i *Identifier) ColumnTypePhys() physicalpb.ColumnType {
+	return physical.ColumnTypeLogToPhys(i.columnType)
 }
 
 // SemType returns the semantic type of the identifier.
@@ -134,7 +159,7 @@ func ParseFQN(fqn string) (*Identifier, error) {
 	if columnName == "" {
 		return nil, errors.New("missing column name")
 	}
-	columnType := physicalpb.ColumnTypeFromString(ct)
+	columnType := types.ColumnTypeFromString(ct)
 
 	return &Identifier{
 		columnName: columnName,
@@ -187,19 +212,19 @@ const (
 )
 
 // SemTypeForColumnType converts a given [physicalpb.ColumnType] into a [SemanticType].
-func SemTypeForColumnType(value physicalpb.ColumnType) SemanticType {
+func SemTypeForColumnType(value types.ColumnType) SemanticType {
 	switch value {
-	case physicalpb.COLUMN_TYPE_LABEL:
+	case types.ColumnTypeLabel:
 		return SemanticType{Resource, Attribute}
-	case physicalpb.COLUMN_TYPE_BUILTIN:
+	case types.ColumnTypeBuiltin:
 		return SemanticType{Record, Builtin}
-	case physicalpb.COLUMN_TYPE_METADATA:
+	case types.ColumnTypeMetadata:
 		return SemanticType{Record, Attribute}
-	case physicalpb.COLUMN_TYPE_PARSED:
+	case types.ColumnTypeParsed:
 		return SemanticType{Generated, Attribute}
-	case physicalpb.COLUMN_TYPE_GENERATED:
+	case types.ColumnTypeGenerated:
 		return SemanticType{Generated, Builtin}
-	case physicalpb.COLUMN_TYPE_AMBIGUOUS:
+	case types.ColumnTypeAmbiguous:
 		return SemanticType{Unscoped, Attribute}
 	default:
 		return SemanticType{}

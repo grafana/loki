@@ -7,6 +7,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -542,18 +543,16 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 		input1 := NewArrowtestPipeline(schema, rowsPipeline1...)
 
 		// value / 10
-		projection := &physical.Projection{
-			Expressions: []physical.Expression{
-				&physical.BinaryExpr{
-					Left: &physical.ColumnExpr{
-						Ref: types.ColumnRef{
-							Column: types.ColumnNameGeneratedValue,
-							Type:   types.ColumnTypeGenerated,
-						},
-					},
-					Right: physical.NewLiteral(float64(10)),
-					Op:    types.BinaryOpDiv,
-				},
+		projection := &physicalpb.Projection{
+			Expressions: []*physicalpb.Expression{
+				(&physicalpb.BinaryExpression{
+					Left: (&physicalpb.ColumnExpression{
+						Name: types.ColumnNameGeneratedValue,
+						Type: physicalpb.COLUMN_TYPE_GENERATED,
+					}).ToExpression(),
+					Right: physical.NewLiteral(float64(10)).ToExpression(),
+					Op:    physicalpb.BINARY_OP_DIV,
+				}).ToExpression(),
 			},
 			All:    true,
 			Expand: true,
@@ -604,26 +603,24 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 		input1 := NewArrowtestPipeline(schema, rowsPipeline1...)
 
 		// value * 10 + 100 / 10
-		projection := &physical.Projection{
-			Expressions: []physical.Expression{
-				&physical.BinaryExpr{
-					Left: &physical.BinaryExpr{
-						Left: &physical.ColumnExpr{
-							Ref: types.ColumnRef{
-								Column: types.ColumnNameGeneratedValue,
-								Type:   types.ColumnTypeGenerated,
-							},
-						},
-						Right: physical.NewLiteral(float64(10)),
-						Op:    types.BinaryOpMul,
-					},
-					Right: &physical.BinaryExpr{
-						Left:  physical.NewLiteral(float64(100)),
-						Right: physical.NewLiteral(float64(10)),
-						Op:    types.BinaryOpDiv,
-					},
-					Op: types.BinaryOpAdd,
-				},
+		projection := &physicalpb.Projection{
+			Expressions: []*physicalpb.Expression{
+				(&physicalpb.BinaryExpression{
+					Left: (&physicalpb.BinaryExpression{
+						Left: (&physicalpb.ColumnExpression{
+							Name: types.ColumnNameGeneratedValue,
+							Type: physicalpb.COLUMN_TYPE_GENERATED,
+						}).ToExpression(),
+						Right: physical.NewLiteral(float64(10)).ToExpression(),
+						Op:    physicalpb.BINARY_OP_MUL,
+					}).ToExpression(),
+					Right: (&physicalpb.BinaryExpression{
+						Left:  physical.NewLiteral(float64(100)).ToExpression(),
+						Right: physical.NewLiteral(float64(10)).ToExpression(),
+						Op:    physicalpb.BINARY_OP_DIV,
+					}).ToExpression(),
+					Op: physicalpb.BINARY_OP_ADD,
+				}).ToExpression(),
 			},
 			All:    true,
 			Expand: true,
@@ -677,23 +674,19 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 		input1 := NewArrowtestPipeline(schema, rowsPipeline1...)
 
 		// value_left / value_right
-		projection := &physical.Projection{
-			Expressions: []physical.Expression{
-				&physical.BinaryExpr{
-					Left: &physical.ColumnExpr{
-						Ref: types.ColumnRef{
-							Column: "value_left",
-							Type:   types.ColumnTypeGenerated,
-						},
-					},
-					Right: &physical.ColumnExpr{
-						Ref: types.ColumnRef{
-							Column: "value_right",
-							Type:   types.ColumnTypeGenerated,
-						},
-					},
-					Op: types.BinaryOpDiv,
-				},
+		projection := &physicalpb.Projection{
+			Expressions: []*physicalpb.Expression{
+				(&physicalpb.BinaryExpression{
+					Left: (&physicalpb.ColumnExpression{
+						Name: "value_left",
+						Type: physicalpb.COLUMN_TYPE_GENERATED,
+					}).ToExpression(),
+					Right: (&physicalpb.ColumnExpression{
+						Name: "value_right",
+						Type: physicalpb.COLUMN_TYPE_GENERATED,
+					}).ToExpression(),
+					Op: physicalpb.BINARY_OP_DIV,
+				}).ToExpression(),
 			},
 			All:    true,
 			Expand: true,
@@ -719,20 +712,4 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 		require.Equal(t, len(expect), len(rows), "number of rows should match")
 		require.ElementsMatch(t, expect, rows)
 	})
-}
-
-// Helper to create a column reference
-func createColumnRef(name string) types.ColumnRef {
-	return types.ColumnRef{
-		Column: name,
-		Type:   types.ColumnTypeBuiltin,
-	}
-}
-
-// Helper to create a column reference
-func createAmbiguousColumnRef(name string) types.ColumnRef {
-	return types.ColumnRef{
-		Column: name,
-		Type:   types.ColumnTypeAmbiguous,
-	}
 }

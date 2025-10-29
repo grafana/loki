@@ -71,10 +71,10 @@ func toTreeNode(n physicalpb.Node) *tree.Node {
 	case *physicalpb.AggregateRange:
 		properties := []tree.Property{
 			tree.NewProperty("operation", false, node.Operation),
-			tree.NewProperty("start", false, time.Unix(0, node.StartUnixNanos).Format(time.RFC3339Nano)),
-			tree.NewProperty("end", false, time.Unix(0, node.EndUnixNanos).Format(time.RFC3339Nano)),
-			tree.NewProperty("step", false, node.StepNs),
-			tree.NewProperty("range", false, node.RangeNs),
+			tree.NewProperty("start", false, time.Unix(0, node.StartUnixNanos).UTC().Format(time.RFC3339Nano)),
+			tree.NewProperty("end", false, time.Unix(0, node.EndUnixNanos).UTC().Format(time.RFC3339Nano)),
+			tree.NewProperty("step", false, time.Duration(node.StepNs)),
+			tree.NewProperty("range", false, time.Duration(node.RangeNs)),
 		}
 
 		if len(node.PartitionBy) > 0 {

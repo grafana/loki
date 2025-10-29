@@ -368,8 +368,8 @@ func (c *Context) executeRangeAggregation(ctx context.Context, plan *physicalpb.
 
 	pipeline, err := newRangeAggregationPipeline(inputs, c.evaluator, rangeAggregationOptions{
 		partitionBy:   plan.PartitionBy,
-		startTs:       time.Unix(0, plan.StartUnixNanos),
-		endTs:         time.Unix(0, plan.EndUnixNanos),
+		startTs:       time.Unix(0, plan.StartUnixNanos).UTC(),
+		endTs:         time.Unix(0, plan.EndUnixNanos).UTC(),
 		rangeInterval: time.Duration(plan.RangeNs),
 		step:          time.Duration(plan.StepNs),
 		operation:     plan.Operation,

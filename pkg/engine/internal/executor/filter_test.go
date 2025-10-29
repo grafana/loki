@@ -13,8 +13,8 @@ import (
 )
 
 func TestNewFilterPipeline(t *testing.T) {
-	colName := "utf8.COLUMN_TYPE_BUILTIN.name"
-	colValid := "bool.COLUMN_TYPE_BUILTIN.valid"
+	colName := "utf8.builtin.name"
+	colValid := "bool.builtin.valid"
 
 	fields := []arrow.Field{
 		semconv.FieldFromFQN(colName, true),

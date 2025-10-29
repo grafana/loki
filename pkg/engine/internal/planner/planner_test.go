@@ -2,6 +2,7 @@ package planner
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -182,33 +183,16 @@ Limit offset=0 limit=1000
 			query:   `{app="foo"} |= "bar" | logfmt | level="error"`,
 			expected: `
 Limit offset=0 limit=1000
-└── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
-    └── Parallelize
-        └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
-            └── Filter predicate[0]=EQ(ambiguous.level, "error")
-                └── Compat src=parsed dst=parsed collision=label
-                    └── Parse kind=logfmt
-                        └── Compat src=metadata dst=metadata collision=label
-                            └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z) predicate[2]=MATCH_STR(builtin.message, "bar")
-                                    ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                                    └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
-			`,
-		},
-		{
-			comment: "log: parse and filter",
-			query:   `{app="foo"} |= "bar" | logfmt | level="error"`,
-			expected: `
-Limit offset=0 limit=1000
 └── TopK sort_by=&ColumnExpression{Name:timestamp,Type:COLUMN_TYPE_BUILTIN,} ascending=false nulls_first=false k=1000
     └── Parallelize
-        └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
-            └── Projection all=true drop=(ambiguous.service_name, ambiguous.__error__)
-                └── Compat src=parsed dst=parsed collision=label
-                    └── Parse kind=logfmt
-                        └── Compat src=metadata dst=metadata collision=label
-                            └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
-                                    ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                                    └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+        └── TopK sort_by=&ColumnExpression{Name:timestamp,Type:COLUMN_TYPE_BUILTIN,} ascending=false nulls_first=false k=1000
+            └── Filter predicate[0]=&Expression{Kind:&Expression_BinaryExpression{BinaryExpression:&BinaryExpression{Op:BINARY_OP_EQ,Left:&Expression{Kind:&Expression_ColumnExpression{ColumnExpression:&ColumnExpression{Name:level,Type:COLUMN_TYPE_AMBIGUOUS,},},},Right:&Expression{Kind:&Expression_LiteralExpression{LiteralExpression:&LiteralExpression{Kind:&LiteralExpression_StringLiteral{StringLiteral:&StringLiteral{Value:error,},},},},},},},}
+                └── ColumnCompat src=COLUMN_TYPE_PARSED dst=COLUMN_TYPE_PARSED collision=COLUMN_TYPE_LABEL
+                    └── Parse kind=PARSE_OP_LOGFMT
+                        └── ColumnCompat src=COLUMN_TYPE_METADATA dst=COLUMN_TYPE_METADATA collision=COLUMN_TYPE_LABEL
+                            └── ScanSet num_targets=2 predicate[0]=&Expression{Kind:&Expression_BinaryExpression{BinaryExpression:&BinaryExpression{Op:BINARY_OP_GTE,Left:&Expression{Kind:&Expression_ColumnExpression{ColumnExpression:&ColumnExpression{Name:timestamp,Type:COLUMN_TYPE_BUILTIN,},},},Right:&Expression{Kind:&Expression_LiteralExpression{LiteralExpression:&LiteralExpression{Kind:&LiteralExpression_TimestampLiteral{TimestampLiteral:&TimestampLiteral{Value:1735689600000000000,},},},},},},},} predicate[1]=&Expression{Kind:&Expression_BinaryExpression{BinaryExpression:&BinaryExpression{Op:BINARY_OP_LT,Left:&Expression{Kind:&Expression_ColumnExpression{ColumnExpression:&ColumnExpression{Name:timestamp,Type:COLUMN_TYPE_BUILTIN,},},},Right:&Expression{Kind:&Expression_LiteralExpression{LiteralExpression:&LiteralExpression{Kind:&LiteralExpression_TimestampLiteral{TimestampLiteral:&TimestampLiteral{Value:1735693200000000000,},},},},},},},} predicate[2]=&Expression{Kind:&Expression_BinaryExpression{BinaryExpression:&BinaryExpression{Op:BINARY_OP_MATCH_SUBSTR,Left:&Expression{Kind:&Expression_ColumnExpression{ColumnExpression:&ColumnExpression{Name:message,Type:COLUMN_TYPE_BUILTIN,},},},Right:&Expression{Kind:&Expression_LiteralExpression{LiteralExpression:&LiteralExpression{Kind:&LiteralExpression_StringLiteral{StringLiteral:&StringLiteral{Value:bar,},},},},},},},}
+                                    ├── @target type=SCAN_TYPE_DATA_OBJECT location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=() direction=SORT_ORDER_INVALID limit=0
+                                    └── @target type=SCAN_TYPE_DATA_OBJECT location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=() direction=SORT_ORDER_INVALID limit=0
 			`,
 		},
 		{
@@ -219,51 +203,50 @@ Limit offset=0 limit=1000
 			comment: "metric: parse, unwrap and aggregate",
 			query:   `sum by (bar) (sum_over_time({app="foo"} | logfmt | request_duration != "" | unwrap duration(request_duration)[1m]))`,
 			expected: `
-VectorAggregation operation=sum group_by=(ambiguous.bar)
-└── RangeAggregation operation=sum start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s partition_by=(ambiguous.bar)
+AggregateVector operation=AGGREGATE_VECTOR_OP_SUM group_by=(&ColumnExpression{Name:bar,Type:COLUMN_TYPE_AMBIGUOUS,})
+└── AggregateRange operation=AGGREGATE_RANGE_OP_SUM start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s partition_by=(&ColumnExpression{Name:bar,Type:COLUMN_TYPE_AMBIGUOUS,})
     └── Parallelize
-        └── Projection all=true expand=(CAST_DURATION(ambiguous.request_duration))
-            └── Filter predicate[0]=NEQ(ambiguous.request_duration, "")
-                └── Compat src=parsed dst=parsed collision=label
-                    └── Parse kind=logfmt requested_keys=(bar, request_duration)
-                        └── Compat src=metadata dst=metadata collision=label
-                            └── ScanSet num_targets=2 projections=(ambiguous.bar, builtin.message, ambiguous.request_duration, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
-                                    ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                                    └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+        └── Projection all=true expand=(&Expression{Kind:&Expression_UnaryExpression{UnaryExpression:&UnaryExpression{Op:UNARY_OP_CAST_DURATION,Value:&Expression{Kind:&Expression_ColumnExpression{ColumnExpression:&ColumnExpression{Name:request_duration,Type:COLUMN_TYPE_AMBIGUOUS,},},},},},})
+            └── Filter predicate[0]=&Expression{Kind:&Expression_BinaryExpression{BinaryExpression:&BinaryExpression{Op:BINARY_OP_NEQ,Left:&Expression{Kind:&Expression_ColumnExpression{ColumnExpression:&ColumnExpression{Name:request_duration,Type:COLUMN_TYPE_AMBIGUOUS,},},},Right:&Expression{Kind:&Expression_LiteralExpression{LiteralExpression:&LiteralExpression{Kind:&LiteralExpression_StringLiteral{StringLiteral:&StringLiteral{Value:,},},},},},},},}
+                └── ColumnCompat src=COLUMN_TYPE_PARSED dst=COLUMN_TYPE_PARSED collision=COLUMN_TYPE_LABEL
+                    └── Parse kind=PARSE_OP_LOGFMT requested_keys=(bar, request_duration)
+                        └── ColumnCompat src=COLUMN_TYPE_METADATA dst=COLUMN_TYPE_METADATA collision=COLUMN_TYPE_LABEL
+                            └── ScanSet num_targets=2 projections=(&ColumnExpression{Name:bar,Type:COLUMN_TYPE_AMBIGUOUS,}, &ColumnExpression{Name:message,Type:COLUMN_TYPE_BUILTIN,}, &ColumnExpression{Name:request_duration,Type:COLUMN_TYPE_AMBIGUOUS,}, &ColumnExpression{Name:timestamp,Type:COLUMN_TYPE_BUILTIN,}) predicate[0]=&Expression{Kind:&Expression_BinaryExpression{BinaryExpression:&BinaryExpression{Op:BINARY_OP_GTE,Left:&Expression{Kind:&Expression_ColumnExpression{ColumnExpression:&ColumnExpression{Name:timestamp,Type:COLUMN_TYPE_BUILTIN,},},},Right:&Expression{Kind:&Expression_LiteralExpression{LiteralExpression:&LiteralExpression{Kind:&LiteralExpression_TimestampLiteral{TimestampLiteral:&TimestampLiteral{Value:1735689540000000000,},},},},},},},} predicate[1]=&Expression{Kind:&Expression_BinaryExpression{BinaryExpression:&BinaryExpression{Op:BINARY_OP_LT,Left:&Expression{Kind:&Expression_ColumnExpression{ColumnExpression:&ColumnExpression{Name:timestamp,Type:COLUMN_TYPE_BUILTIN,},},},Right:&Expression{Kind:&Expression_LiteralExpression{LiteralExpression:&LiteralExpression{Kind:&LiteralExpression_TimestampLiteral{TimestampLiteral:&TimestampLiteral{Value:1735693200000000000,},},},},},},},}
+                                    ├── @target type=SCAN_TYPE_DATA_OBJECT location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=() direction=SORT_ORDER_INVALID limit=0
+                                    └── @target type=SCAN_TYPE_DATA_OBJECT location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=() direction=SORT_ORDER_INVALID limit=0
 			`,
 		},
 		{
 			comment: `metric: multiple parse stages`,
 			query:   `sum(count_over_time({app="foo"} | detected_level="error" | json | logfmt | drop __error__,__error_details__[1m]))`,
 			expected: `
-VectorAggregation operation=sum
-└── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s
+AggregateVector operation=AGGREGATE_VECTOR_OP_SUM
+└── AggregateRange operation=AGGREGATE_RANGE_OP_COUNT start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s
     └── Parallelize
-        └── Projection all=true drop=(ambiguous.__error__, ambiguous.__error_details__)
-            └── Compat src=parsed dst=parsed collision=label
-                └── Parse kind=json
-                    └── Compat src=parsed dst=parsed collision=label
-                        └── Parse kind=logfmt
-                            └── Filter predicate[0]=EQ(ambiguous.detected_level, "error")
-                                └── Compat src=metadata dst=metadata collision=label
-                                    └── ScanSet num_targets=2 projections=(ambiguous.detected_level, builtin.message, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
-                                            ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                                            └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
-
+        └── Projection all=true drop=(&Expression{Kind:&Expression_ColumnExpression{ColumnExpression:&ColumnExpression{Name:__error__,Type:COLUMN_TYPE_AMBIGUOUS,},},}, &Expression{Kind:&Expression_ColumnExpression{ColumnExpression:&ColumnExpression{Name:__error_details__,Type:COLUMN_TYPE_AMBIGUOUS,},},})
+            └── ColumnCompat src=COLUMN_TYPE_PARSED dst=COLUMN_TYPE_PARSED collision=COLUMN_TYPE_LABEL
+                └── Parse kind=PARSE_OP_JSON
+                    └── ColumnCompat src=COLUMN_TYPE_PARSED dst=COLUMN_TYPE_PARSED collision=COLUMN_TYPE_LABEL
+                        └── Parse kind=PARSE_OP_LOGFMT
+                            └── Filter predicate[0]=&Expression{Kind:&Expression_BinaryExpression{BinaryExpression:&BinaryExpression{Op:BINARY_OP_EQ,Left:&Expression{Kind:&Expression_ColumnExpression{ColumnExpression:&ColumnExpression{Name:detected_level,Type:COLUMN_TYPE_AMBIGUOUS,},},},Right:&Expression{Kind:&Expression_LiteralExpression{LiteralExpression:&LiteralExpression{Kind:&LiteralExpression_StringLiteral{StringLiteral:&StringLiteral{Value:error,},},},},},},},}
+                                └── ColumnCompat src=COLUMN_TYPE_METADATA dst=COLUMN_TYPE_METADATA collision=COLUMN_TYPE_LABEL
+                                    └── ScanSet num_targets=2 projections=(&ColumnExpression{Name:detected_level,Type:COLUMN_TYPE_AMBIGUOUS,}, &ColumnExpression{Name:message,Type:COLUMN_TYPE_BUILTIN,}, &ColumnExpression{Name:timestamp,Type:COLUMN_TYPE_BUILTIN,}) predicate[0]=&Expression{Kind:&Expression_BinaryExpression{BinaryExpression:&BinaryExpression{Op:BINARY_OP_GTE,Left:&Expression{Kind:&Expression_ColumnExpression{ColumnExpression:&ColumnExpression{Name:timestamp,Type:COLUMN_TYPE_BUILTIN,},},},Right:&Expression{Kind:&Expression_LiteralExpression{LiteralExpression:&LiteralExpression{Kind:&LiteralExpression_TimestampLiteral{TimestampLiteral:&TimestampLiteral{Value:1735689540000000000,},},},},},},},} predicate[1]=&Expression{Kind:&Expression_BinaryExpression{BinaryExpression:&BinaryExpression{Op:BINARY_OP_LT,Left:&Expression{Kind:&Expression_ColumnExpression{ColumnExpression:&ColumnExpression{Name:timestamp,Type:COLUMN_TYPE_BUILTIN,},},},Right:&Expression{Kind:&Expression_LiteralExpression{LiteralExpression:&LiteralExpression{Kind:&LiteralExpression_TimestampLiteral{TimestampLiteral:&TimestampLiteral{Value:1735693200000000000,},},},},},},},}
+                                            ├── @target type=SCAN_TYPE_DATA_OBJECT location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=() direction=SORT_ORDER_INVALID limit=0
+                                            └── @target type=SCAN_TYPE_DATA_OBJECT location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=() direction=SORT_ORDER_INVALID limit=0
 			`,
 		},
 		{
 			comment: "math expression",
 			query:   `sum by (bar) (count_over_time({app="foo"}[1m]) / 300)`,
 			expected: `
-VectorAggregation operation=sum group_by=(ambiguous.bar)
-└── Projection all=true expand=(DIV(generated.value, 300))
-    └── RangeAggregation operation=count start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s partition_by=(ambiguous.bar)
+AggregateVector operation=AGGREGATE_VECTOR_OP_SUM group_by=(&ColumnExpression{Name:bar,Type:COLUMN_TYPE_AMBIGUOUS,})
+└── Projection all=true expand=(&Expression{Kind:&Expression_BinaryExpression{BinaryExpression:&BinaryExpression{Op:BINARY_OP_DIV,Left:&Expression{Kind:&Expression_ColumnExpression{ColumnExpression:&ColumnExpression{Name:value,Type:COLUMN_TYPE_GENERATED,},},},Right:&Expression{Kind:&Expression_LiteralExpression{LiteralExpression:&LiteralExpression{Kind:&LiteralExpression_FloatLiteral{FloatLiteral:&FloatLiteral{Value:300,},},},},},},},})
+    └── AggregateRange operation=AGGREGATE_RANGE_OP_COUNT start=2025-01-01T00:00:00Z end=2025-01-01T01:00:00Z step=0s range=1m0s partition_by=(&ColumnExpression{Name:bar,Type:COLUMN_TYPE_AMBIGUOUS,})
         └── Parallelize
-            └── Compat src=metadata dst=metadata collision=label
-                └── ScanSet num_targets=2 projections=(ambiguous.bar, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
-                        ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                        └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+            └── ColumnCompat src=COLUMN_TYPE_METADATA dst=COLUMN_TYPE_METADATA collision=COLUMN_TYPE_LABEL
+                └── ScanSet num_targets=2 projections=(&ColumnExpression{Name:bar,Type:COLUMN_TYPE_AMBIGUOUS,}, &ColumnExpression{Name:timestamp,Type:COLUMN_TYPE_BUILTIN,}) predicate[0]=&Expression{Kind:&Expression_BinaryExpression{BinaryExpression:&BinaryExpression{Op:BINARY_OP_GTE,Left:&Expression{Kind:&Expression_ColumnExpression{ColumnExpression:&ColumnExpression{Name:timestamp,Type:COLUMN_TYPE_BUILTIN,},},},Right:&Expression{Kind:&Expression_LiteralExpression{LiteralExpression:&LiteralExpression{Kind:&LiteralExpression_TimestampLiteral{TimestampLiteral:&TimestampLiteral{Value:1735689540000000000,},},},},},},},} predicate[1]=&Expression{Kind:&Expression_BinaryExpression{BinaryExpression:&BinaryExpression{Op:BINARY_OP_LT,Left:&Expression{Kind:&Expression_ColumnExpression{ColumnExpression:&ColumnExpression{Name:timestamp,Type:COLUMN_TYPE_BUILTIN,},},},Right:&Expression{Kind:&Expression_LiteralExpression{LiteralExpression:&LiteralExpression{Kind:&LiteralExpression_TimestampLiteral{TimestampLiteral:&TimestampLiteral{Value:1735693200000000000,},},},},},},},}
+                        ├── @target type=SCAN_TYPE_DATA_OBJECT location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=() direction=SORT_ORDER_INVALID limit=0
+                        └── @target type=SCAN_TYPE_DATA_OBJECT location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=() direction=SORT_ORDER_INVALID limit=0
 						`,
 		},
 	}
@@ -282,6 +265,7 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
 				direction: logproto.BACKWARD,
 			}
 
+			fmt.Println(tc.query)
 			logicalPlan, err := logical.BuildPlan(q)
 			require.NoError(t, err)
 
@@ -289,11 +273,17 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
 			planner := physical.NewPlanner(physical.NewContext(q.Start(), q.End()), catalog)
 
 			plan, err := planner.Build(logicalPlan)
+			//tmp := physical.PrintAsTree(plan)
+			//fmt.Println(tmp)
+
 			require.NoError(t, err)
 			plan, err = planner.Optimize(plan)
 			require.NoError(t, err)
 
 			actual := physical.PrintAsTree(plan)
+			if tc.comment == `metric: multiple parse stages` {
+				t.Logf("first failing test case")
+			}
 			require.Equal(t, strings.TrimSpace(tc.expected), strings.TrimSpace(actual))
 		})
 	}

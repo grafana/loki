@@ -10,7 +10,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
-	"github.com/grafana/loki/v3/pkg/engine/planner/physical"
 )
 
 func NewProjectPipeline(input Pipeline, proj *physicalpb.Projection, evaluator *expressionEvaluator) (Pipeline, error) {
@@ -50,7 +49,7 @@ func NewProjectPipeline(input Pipeline, proj *physicalpb.Projection, evaluator *
 					return ref.Name == ident.ShortName()
 				}
 				// Keep only if type matches
-				return ref.Name == ident.ShortName() && ref.Type == ident.ColumnType()
+				return ref.Name == ident.ShortName() && ref.Type == ident.ColumnTypePhys()
 			})
 		}, input)
 	}
@@ -65,7 +64,7 @@ func NewProjectPipeline(input Pipeline, proj *physicalpb.Projection, evaluator *
 					return ref.Name == ident.ShortName()
 				}
 				// Drop only if type matches
-				return ref.Name == ident.ShortName() && ref.Type == ident.ColumnType()
+				return ref.Name == ident.ShortName() && ref.Type == ident.ColumnTypePhys()
 			})
 		}, input)
 	}
@@ -111,7 +110,7 @@ func newKeepPipeline(colRefs []physicalpb.ColumnExpression, keepFunc func([]phys
 	}, input), nil
 }
 
-func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator, input Pipeline) (*GenericPipeline, error) {
+func newExpandPipeline(expr physicalpb.Expression, evaluator *expressionEvaluator, input Pipeline) (*GenericPipeline, error) {
 	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))

@@ -188,27 +188,27 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 				Destination: physicalpb.COLUMN_TYPE_METADATA,
 			},
 			schema: arrow.NewSchema([]arrow.Field{
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_BUILTIN.message", true),
-				semconv.FieldFromFQN("timestamp_ns.COLUMN_TYPE_BUILTIN.timestamp", false),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.service", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.detected_level", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.org_id", true),
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+				semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", false),
+				semconv.FieldFromFQN("utf8.label.service", true),
+				semconv.FieldFromFQN("utf8.metadata.detected_level", true),
+				semconv.FieldFromFQN("utf8.metadata.org_id", true),
 			}, nil),
 			inputRows: []arrowtest.Rows{
 				{
-					{"utf8.COLUMN_TYPE_BUILTIN.message": "test message", "timestamp_ns.COLUMN_TYPE_BUILTIN.timestamp": time.Unix(1000, 0).UTC(), "utf8.COLUMN_TYPE_LABEL.service": "api", "utf8.COLUMN_TYPE_METADATA.detected_level": "info", "utf8.COLUMN_TYPE_METADATA.org_id": "1"},
+					{"utf8.builtin.message": "test message", "timestamp_ns.builtin.timestamp": time.Unix(1000, 0).UTC(), "utf8.label.service": "api", "utf8.metadata.detected_level": "info", "utf8.metadata.org_id": "1"},
 				},
 			},
 			expectedSchema: arrow.NewSchema([]arrow.Field{
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_BUILTIN.message", true),
-				semconv.FieldFromFQN("timestamp_ns.COLUMN_TYPE_BUILTIN.timestamp", false),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.service", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.detected_level", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.org_id", true),
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+				semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", false),
+				semconv.FieldFromFQN("utf8.label.service", true),
+				semconv.FieldFromFQN("utf8.metadata.detected_level", true),
+				semconv.FieldFromFQN("utf8.metadata.org_id", true),
 			}, nil),
 			expectedRows: []arrowtest.Rows{
 				{
-					{"utf8.COLUMN_TYPE_BUILTIN.message": "test message", "timestamp_ns.COLUMN_TYPE_BUILTIN.timestamp": time.Unix(1000, 0).UTC(), "utf8.COLUMN_TYPE_LABEL.service": "api", "utf8.COLUMN_TYPE_METADATA.detected_level": "info", "utf8.COLUMN_TYPE_METADATA.org_id": "1"},
+					{"utf8.builtin.message": "test message", "timestamp_ns.builtin.timestamp": time.Unix(1000, 0).UTC(), "utf8.label.service": "api", "utf8.metadata.detected_level": "info", "utf8.metadata.org_id": "1"},
 				},
 			},
 		},
@@ -220,28 +220,28 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 				Destination: physicalpb.COLUMN_TYPE_METADATA,
 			},
 			schema: arrow.NewSchema([]arrow.Field{
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_BUILTIN.message", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.env", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.status", true),    // collision column
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status", true), // source column with same name
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+				semconv.FieldFromFQN("utf8.label.env", true),
+				semconv.FieldFromFQN("utf8.label.status", true),    // collision column
+				semconv.FieldFromFQN("utf8.metadata.status", true), // source column with same name
 			}, nil),
 			inputRows: []arrowtest.Rows{
 				{
-					{"utf8.COLUMN_TYPE_BUILTIN.message": "line 1", "utf8.COLUMN_TYPE_LABEL.env": "dev", "utf8.COLUMN_TYPE_LABEL.status": "success", "utf8.COLUMN_TYPE_METADATA.status": "200"},
-					{"utf8.COLUMN_TYPE_BUILTIN.message": "line 2", "utf8.COLUMN_TYPE_LABEL.env": "dev", "utf8.COLUMN_TYPE_LABEL.status": "failure", "utf8.COLUMN_TYPE_METADATA.status": "500"},
+					{"utf8.builtin.message": "line 1", "utf8.label.env": "dev", "utf8.label.status": "success", "utf8.metadata.status": "200"},
+					{"utf8.builtin.message": "line 2", "utf8.label.env": "dev", "utf8.label.status": "failure", "utf8.metadata.status": "500"},
 				},
 			},
 			expectedSchema: arrow.NewSchema([]arrow.Field{
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_BUILTIN.message", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.env", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.status", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status_extracted", true), // new extracted column
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+				semconv.FieldFromFQN("utf8.label.env", true),
+				semconv.FieldFromFQN("utf8.label.status", true),
+				semconv.FieldFromFQN("utf8.metadata.status", true),
+				semconv.FieldFromFQN("utf8.metadata.status_extracted", true), // new extracted column
 			}, nil),
 			expectedRows: []arrowtest.Rows{
 				{
-					{"utf8.COLUMN_TYPE_BUILTIN.message": "line 1", "utf8.COLUMN_TYPE_LABEL.env": "dev", "utf8.COLUMN_TYPE_LABEL.status": "success", "utf8.COLUMN_TYPE_METADATA.status": nil, "utf8.COLUMN_TYPE_METADATA.status_extracted": "200"},
-					{"utf8.COLUMN_TYPE_BUILTIN.message": "line 2", "utf8.COLUMN_TYPE_LABEL.env": "dev", "utf8.COLUMN_TYPE_LABEL.status": "failure", "utf8.COLUMN_TYPE_METADATA.status": nil, "utf8.COLUMN_TYPE_METADATA.status_extracted": "500"},
+					{"utf8.builtin.message": "line 1", "utf8.label.env": "dev", "utf8.label.status": "success", "utf8.metadata.status": nil, "utf8.metadata.status_extracted": "200"},
+					{"utf8.builtin.message": "line 2", "utf8.label.env": "dev", "utf8.label.status": "failure", "utf8.metadata.status": nil, "utf8.metadata.status_extracted": "500"},
 				},
 			},
 		},
@@ -253,46 +253,46 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 				Destination: physicalpb.COLUMN_TYPE_METADATA,
 			},
 			schema: arrow.NewSchema([]arrow.Field{
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_BUILTIN.message", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.status", true),    // collision column 1
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.level", true),     // collision column 2
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status", true), // source column 1
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.level", true),  // source column 2
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.unique", true), // non-colliding source column
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+				semconv.FieldFromFQN("utf8.label.status", true),    // collision column 1
+				semconv.FieldFromFQN("utf8.label.level", true),     // collision column 2
+				semconv.FieldFromFQN("utf8.metadata.status", true), // source column 1
+				semconv.FieldFromFQN("utf8.metadata.level", true),  // source column 2
+				semconv.FieldFromFQN("utf8.metadata.unique", true), // non-colliding source column
 			}, nil),
 			inputRows: []arrowtest.Rows{
 				{
 					{
-						"utf8.COLUMN_TYPE_BUILTIN.message": "test message",
-						"utf8.COLUMN_TYPE_LABEL.status":    "active",
-						"utf8.COLUMN_TYPE_LABEL.level":     "prod",
-						"utf8.COLUMN_TYPE_METADATA.status": "200",
-						"utf8.COLUMN_TYPE_METADATA.level":  "info",
-						"utf8.COLUMN_TYPE_METADATA.unique": "value",
+						"utf8.builtin.message": "test message",
+						"utf8.label.status":    "active",
+						"utf8.label.level":     "prod",
+						"utf8.metadata.status": "200",
+						"utf8.metadata.level":  "info",
+						"utf8.metadata.unique": "value",
 					},
 				},
 			},
 			expectedSchema: arrow.NewSchema([]arrow.Field{
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_BUILTIN.message", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.status", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.level", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.level", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.unique", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.level_extracted", true), // sorted by name: level comes before status
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status_extracted", true),
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+				semconv.FieldFromFQN("utf8.label.status", true),
+				semconv.FieldFromFQN("utf8.label.level", true),
+				semconv.FieldFromFQN("utf8.metadata.status", true),
+				semconv.FieldFromFQN("utf8.metadata.level", true),
+				semconv.FieldFromFQN("utf8.metadata.unique", true),
+				semconv.FieldFromFQN("utf8.metadata.level_extracted", true), // sorted by name: level comes before status
+				semconv.FieldFromFQN("utf8.metadata.status_extracted", true),
 			}, nil),
 			expectedRows: []arrowtest.Rows{
 				{
 					{
-						"utf8.COLUMN_TYPE_BUILTIN.message":           "test message",
-						"utf8.COLUMN_TYPE_LABEL.status":              "active",
-						"utf8.COLUMN_TYPE_LABEL.level":               "prod",
-						"utf8.COLUMN_TYPE_METADATA.status":           nil,     // nullified due to collision
-						"utf8.COLUMN_TYPE_METADATA.level":            nil,     // nullified due to collision
-						"utf8.COLUMN_TYPE_METADATA.unique":           "value", // preserved as no collision
-						"utf8.COLUMN_TYPE_METADATA.level_extracted":  "info",
-						"utf8.COLUMN_TYPE_METADATA.status_extracted": "200",
+						"utf8.builtin.message":           "test message",
+						"utf8.label.status":              "active",
+						"utf8.label.level":               "prod",
+						"utf8.metadata.status":           nil,     // nullified due to collision
+						"utf8.metadata.level":            nil,     // nullified due to collision
+						"utf8.metadata.unique":           "value", // preserved as no collision
+						"utf8.metadata.level_extracted":  "info",
+						"utf8.metadata.status_extracted": "200",
 					},
 				},
 			},
@@ -305,28 +305,28 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 				Destination: physicalpb.COLUMN_TYPE_METADATA,
 			},
 			schema: arrow.NewSchema([]arrow.Field{
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.status", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status", true),
+				semconv.FieldFromFQN("utf8.label.status", true),
+				semconv.FieldFromFQN("utf8.metadata.status", true),
 			}, nil),
 			inputRows: []arrowtest.Rows{
 				{
-					{"utf8.COLUMN_TYPE_LABEL.status": nil, "utf8.COLUMN_TYPE_METADATA.status": "200"},      // null collision column
-					{"utf8.COLUMN_TYPE_LABEL.status": "active", "utf8.COLUMN_TYPE_METADATA.status": nil},   // null source column
-					{"utf8.COLUMN_TYPE_LABEL.status": nil, "utf8.COLUMN_TYPE_METADATA.status": nil},        // both null
-					{"utf8.COLUMN_TYPE_LABEL.status": "active", "utf8.COLUMN_TYPE_METADATA.status": "200"}, // both non-null
+					{"utf8.label.status": nil, "utf8.metadata.status": "200"},      // null collision column
+					{"utf8.label.status": "active", "utf8.metadata.status": nil},   // null source column
+					{"utf8.label.status": nil, "utf8.metadata.status": nil},        // both null
+					{"utf8.label.status": "active", "utf8.metadata.status": "200"}, // both non-null
 				},
 			},
 			expectedSchema: arrow.NewSchema([]arrow.Field{
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.status", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status_extracted", true),
+				semconv.FieldFromFQN("utf8.label.status", true),
+				semconv.FieldFromFQN("utf8.metadata.status", true),
+				semconv.FieldFromFQN("utf8.metadata.status_extracted", true),
 			}, nil),
 			expectedRows: []arrowtest.Rows{
 				{
-					{"utf8.COLUMN_TYPE_LABEL.status": nil, "utf8.COLUMN_TYPE_METADATA.status": "200", "utf8.COLUMN_TYPE_METADATA.status_extracted": nil},      // null collision -> null extraction
-					{"utf8.COLUMN_TYPE_LABEL.status": "active", "utf8.COLUMN_TYPE_METADATA.status": nil, "utf8.COLUMN_TYPE_METADATA.status_extracted": nil},   // null source -> null extraction
-					{"utf8.COLUMN_TYPE_LABEL.status": nil, "utf8.COLUMN_TYPE_METADATA.status": nil, "utf8.COLUMN_TYPE_METADATA.status_extracted": nil},        // both null -> null extraction
-					{"utf8.COLUMN_TYPE_LABEL.status": "active", "utf8.COLUMN_TYPE_METADATA.status": nil, "utf8.COLUMN_TYPE_METADATA.status_extracted": "200"}, // both non-null -> extract
+					{"utf8.label.status": nil, "utf8.metadata.status": "200", "utf8.metadata.status_extracted": nil},      // null collision -> null extraction
+					{"utf8.label.status": "active", "utf8.metadata.status": nil, "utf8.metadata.status_extracted": nil},   // null source -> null extraction
+					{"utf8.label.status": nil, "utf8.metadata.status": nil, "utf8.metadata.status_extracted": nil},        // both null -> null extraction
+					{"utf8.label.status": "active", "utf8.metadata.status": nil, "utf8.metadata.status_extracted": "200"}, // both non-null -> extract
 				},
 			},
 		},
@@ -338,22 +338,22 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 				Destination: physicalpb.COLUMN_TYPE_METADATA,
 			},
 			schema: arrow.NewSchema([]arrow.Field{
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.status", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status", true),
+				semconv.FieldFromFQN("utf8.label.status", true),
+				semconv.FieldFromFQN("utf8.metadata.status", true),
 			}, nil),
 			inputRows: []arrowtest.Rows{
 				{
-					{"utf8.COLUMN_TYPE_LABEL.status": "active", "utf8.COLUMN_TYPE_METADATA.status": nil}, // null source column
+					{"utf8.label.status": "active", "utf8.metadata.status": nil}, // null source column
 				},
 			},
 			expectedSchema: arrow.NewSchema([]arrow.Field{
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.status", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status_extracted", true),
+				semconv.FieldFromFQN("utf8.label.status", true),
+				semconv.FieldFromFQN("utf8.metadata.status", true),
+				semconv.FieldFromFQN("utf8.metadata.status_extracted", true),
 			}, nil),
 			expectedRows: []arrowtest.Rows{
 				{
-					{"utf8.COLUMN_TYPE_LABEL.status": "active", "utf8.COLUMN_TYPE_METADATA.status": nil, "utf8.COLUMN_TYPE_METADATA.status_extracted": nil},
+					{"utf8.label.status": "active", "utf8.metadata.status": nil, "utf8.metadata.status_extracted": nil},
 				},
 			},
 		},
@@ -365,30 +365,30 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 				Destination: physicalpb.COLUMN_TYPE_METADATA,
 			},
 			schema: arrow.NewSchema([]arrow.Field{
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.status", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status", true),
+				semconv.FieldFromFQN("utf8.label.status", true),
+				semconv.FieldFromFQN("utf8.metadata.status", true),
 			}, nil),
 			inputRows: []arrowtest.Rows{
 				{
-					{"utf8.COLUMN_TYPE_LABEL.status": "active", "utf8.COLUMN_TYPE_METADATA.status": "200"},
-					{"utf8.COLUMN_TYPE_LABEL.status": "inactive", "utf8.COLUMN_TYPE_METADATA.status": "404"},
+					{"utf8.label.status": "active", "utf8.metadata.status": "200"},
+					{"utf8.label.status": "inactive", "utf8.metadata.status": "404"},
 				},
 				{
-					{"utf8.COLUMN_TYPE_LABEL.status": "pending", "utf8.COLUMN_TYPE_METADATA.status": "202"},
+					{"utf8.label.status": "pending", "utf8.metadata.status": "202"},
 				},
 			},
 			expectedSchema: arrow.NewSchema([]arrow.Field{
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.status", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status_extracted", true),
+				semconv.FieldFromFQN("utf8.label.status", true),
+				semconv.FieldFromFQN("utf8.metadata.status", true),
+				semconv.FieldFromFQN("utf8.metadata.status_extracted", true),
 			}, nil),
 			expectedRows: []arrowtest.Rows{
 				{
-					{"utf8.COLUMN_TYPE_LABEL.status": "active", "utf8.COLUMN_TYPE_METADATA.status": nil, "utf8.COLUMN_TYPE_METADATA.status_extracted": "200"},
-					{"utf8.COLUMN_TYPE_LABEL.status": "inactive", "utf8.COLUMN_TYPE_METADATA.status": nil, "utf8.COLUMN_TYPE_METADATA.status_extracted": "404"},
+					{"utf8.label.status": "active", "utf8.metadata.status": nil, "utf8.metadata.status_extracted": "200"},
+					{"utf8.label.status": "inactive", "utf8.metadata.status": nil, "utf8.metadata.status_extracted": "404"},
 				},
 				{
-					{"utf8.COLUMN_TYPE_LABEL.status": "pending", "utf8.COLUMN_TYPE_METADATA.status": nil, "utf8.COLUMN_TYPE_METADATA.status_extracted": "202"},
+					{"utf8.label.status": "pending", "utf8.metadata.status": nil, "utf8.metadata.status_extracted": "202"},
 				},
 			},
 		},
@@ -400,15 +400,15 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 				Destination: physicalpb.COLUMN_TYPE_METADATA,
 			},
 			schema: arrow.NewSchema([]arrow.Field{
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.status", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status", true),
+				semconv.FieldFromFQN("utf8.label.status", true),
+				semconv.FieldFromFQN("utf8.metadata.status", true),
 			}, nil),
 			inputRows: []arrowtest.Rows{
 				{}, // empty batch
 			},
 			expectedSchema: arrow.NewSchema([]arrow.Field{
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.status", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status", true),
+				semconv.FieldFromFQN("utf8.label.status", true),
+				semconv.FieldFromFQN("utf8.metadata.status", true),
 			}, nil),
 			expectedRows: []arrowtest.Rows{
 				{}, // empty result
@@ -422,44 +422,44 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 				Destination: physicalpb.COLUMN_TYPE_METADATA,
 			},
 			schema: arrow.NewSchema([]arrow.Field{
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_BUILTIN.message", true),
-				semconv.FieldFromFQN("timestamp_ns.COLUMN_TYPE_BUILTIN.timestamp", false),
-				semconv.FieldFromFQN("float64.COLUMN_TYPE_BUILTIN.value", false),
-				semconv.FieldFromFQN("int64.COLUMN_TYPE_BUILTIN.count", false),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.status", true),    // collision column
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status", true), // source column
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+				semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", false),
+				semconv.FieldFromFQN("float64.builtin.value", false),
+				semconv.FieldFromFQN("int64.builtin.count", false),
+				semconv.FieldFromFQN("utf8.label.status", true),    // collision column
+				semconv.FieldFromFQN("utf8.metadata.status", true), // source column
 			}, nil),
 			inputRows: []arrowtest.Rows{
 				{
 					{
-						"utf8.COLUMN_TYPE_BUILTIN.message":           "test message",
-						"timestamp_ns.COLUMN_TYPE_BUILTIN.timestamp": time.Unix(1000000, 0).UTC(),
-						"float64.COLUMN_TYPE_BUILTIN.value":          3.14,
-						"int64.COLUMN_TYPE_BUILTIN.count":            int64(42),
-						"utf8.COLUMN_TYPE_LABEL.status":              "active",
-						"utf8.COLUMN_TYPE_METADATA.status":           "200",
+						"utf8.builtin.message":           "test message",
+						"timestamp_ns.builtin.timestamp": time.Unix(1000000, 0).UTC(),
+						"float64.builtin.value":          3.14,
+						"int64.builtin.count":            int64(42),
+						"utf8.label.status":              "active",
+						"utf8.metadata.status":           "200",
 					},
 				},
 			},
 			expectedSchema: arrow.NewSchema([]arrow.Field{
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_BUILTIN.message", true),
-				semconv.FieldFromFQN("timestamp_ns.COLUMN_TYPE_BUILTIN.timestamp", false),
-				semconv.FieldFromFQN("float64.COLUMN_TYPE_BUILTIN.value", false),
-				semconv.FieldFromFQN("int64.COLUMN_TYPE_BUILTIN.count", false),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.status", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status", true),
-				semconv.FieldFromFQN("utf8.COLUMN_TYPE_METADATA.status_extracted", true),
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+				semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", false),
+				semconv.FieldFromFQN("float64.builtin.value", false),
+				semconv.FieldFromFQN("int64.builtin.count", false),
+				semconv.FieldFromFQN("utf8.label.status", true),
+				semconv.FieldFromFQN("utf8.metadata.status", true),
+				semconv.FieldFromFQN("utf8.metadata.status_extracted", true),
 			}, nil),
 			expectedRows: []arrowtest.Rows{
 				{
 					{
-						"utf8.COLUMN_TYPE_BUILTIN.message":           "test message",
-						"timestamp_ns.COLUMN_TYPE_BUILTIN.timestamp": time.Unix(1000000, 0).UTC(),
-						"float64.COLUMN_TYPE_BUILTIN.value":          3.14,
-						"int64.COLUMN_TYPE_BUILTIN.count":            int64(42),
-						"utf8.COLUMN_TYPE_LABEL.status":              "active",
-						"utf8.COLUMN_TYPE_METADATA.status":           nil,
-						"utf8.COLUMN_TYPE_METADATA.status_extracted": "200",
+						"utf8.builtin.message":           "test message",
+						"timestamp_ns.builtin.timestamp": time.Unix(1000000, 0).UTC(),
+						"float64.builtin.value":          3.14,
+						"int64.builtin.count":            int64(42),
+						"utf8.label.status":              "active",
+						"utf8.metadata.status":           nil,
+						"utf8.metadata.status_extracted": "200",
 					},
 				},
 			},
@@ -587,12 +587,12 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 		// Create schema where source column is not string type
 		// This should trigger the panic in the switch statement for non-string columns
 		schema := arrow.NewSchema([]arrow.Field{
-			semconv.FieldFromFQN("utf8.COLUMN_TYPE_LABEL.status", false),    // collision column - string
-			semconv.FieldFromFQN("int64.COLUMN_TYPE_METADATA.status", true), // source column - not string
+			semconv.FieldFromFQN("utf8.label.status", false),    // collision column - string
+			semconv.FieldFromFQN("int64.metadata.status", true), // source column - not string
 		}, nil)
 
 		input := NewArrowtestPipeline(schema, arrowtest.Rows{
-			{"utf8.COLUMN_TYPE_LABEL.status": "200", "int64.COLUMN_TYPE_METADATA.status": int64(200)},
+			{"utf8.label.status": "200", "int64.metadata.status": int64(200)},
 		})
 
 		pipeline := newColumnCompatibilityPipeline(compat, input)
