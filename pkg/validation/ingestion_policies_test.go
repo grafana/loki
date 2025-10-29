@@ -478,7 +478,7 @@ func TestGRPCIngestionPolicy(t *testing.T) {
 		policy := "test-policy"
 
 		// Inject policy into context
-		ctx := InjectIngestionPolicyContext(context.Background(), policy)
+		ctx := InjectIngestionPolicyContext(t.Context(), policy)
 
 		// Inject into gRPC metadata
 		ctx, err := injectIntoGRPCRequest(ctx)
@@ -494,7 +494,7 @@ func TestGRPCIngestionPolicy(t *testing.T) {
 	})
 
 	t.Run("extract from empty context returns empty", func(t *testing.T) {
-		ctx, err := extractFromGRPCRequest(context.Background())
+		ctx, err := extractFromGRPCRequest(t.Context())
 		require.NoError(t, err)
 
 		policy := ExtractIngestionPolicyContext(ctx)
@@ -503,7 +503,7 @@ func TestGRPCIngestionPolicy(t *testing.T) {
 
 	t.Run("inject empty policy does not add metadata", func(t *testing.T) {
 		// Inject empty policy into context
-		ctx := InjectIngestionPolicyContext(context.Background(), "")
+		ctx := InjectIngestionPolicyContext(t.Context(), "")
 
 		// Try to inject into gRPC metadata
 		ctx, err := injectIntoGRPCRequest(ctx)
@@ -519,10 +519,8 @@ func TestGRPCIngestionPolicy(t *testing.T) {
 	})
 
 	t.Run("inject context without policy does nothing", func(t *testing.T) {
-		ctx := context.Background()
-
 		// Try to inject into gRPC metadata (no policy in context)
-		ctx, err := injectIntoGRPCRequest(ctx)
+		ctx, err := injectIntoGRPCRequest(t.Context())
 		require.NoError(t, err)
 
 		// Extract from gRPC metadata
