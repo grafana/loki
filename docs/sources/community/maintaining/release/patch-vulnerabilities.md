@@ -43,7 +43,7 @@ Before start patching vulnerabilities, know what are you patching. It can be one
 	1. Check if [dependabot already patched the dependency](https://github.com/grafana/loki/pulls?q=is%3Apr+label%3Adependencies+is%3Aclosed) or [have a PR opened to patch](https://github.com/grafana/loki/pulls?q=is%3Apr+is%3Aopen+label%3Adependencies) . If not, manually upgrade the package on the `main` branch as follows.
 
 		```shell
-		go get -u -v <package-path>@<patched-version>
+		go get -u -v <PACKAGE_PATH>@<PATCHED_VERSION>
 		go mod tidy
 		go mod vendor
 		```
