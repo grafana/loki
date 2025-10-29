@@ -6,121 +6,135 @@ option go_package = "github.com/grafana/loki/v3/pkg/engine/internal/planner/phys
 
 // Expression represents an expression used to compute values in output arrays.
 message Expression {
-    oneof kind {
-        UnaryExpression unary_expression = 1;
-        BinaryExpression binary_expression = 2;
-        LiteralExpression literal_expression = 3;
-        ColumnExpression column_expression = 4;
-    }
+  oneof kind {
+    UnaryExpression unary_expression = 1;
+    BinaryExpression binary_expression = 2;
+    LiteralExpression literal_expression = 3;
+    ColumnExpression column_expression = 4;
+  }
 }
 
 // UnaryExpression represents a unary operation applied to an expression.
 message UnaryExpression {
-    UnaryOp op = 1;
-    Expression value = 2;
+  UnaryOp op = 1;
+  Expression value = 2;
 }
 
 // UnaryOp denotes the kind of unary operation to perform.
 enum UnaryOp {
-    UNARY_OP_INVALID = 0;  		// Invalid unary operation.
-    UNARY_OP_NOT = 1; 			// Logical NOT operation (!).
-    UNARY_OP_ABS = 2; 			// Mathematical absolute operation (abs).
-	UNARY_OP_CAST_FLOAT = 3;    // Cast string to float value operation (unwrap).
-	UNARY_OP_CAST_BYTES = 4;    // Cast string bytes to float value operation (unwrap).
-	UNARY_OP_CAST_DURATION = 5; // Cast string duration to float value operation (unwrap).
+  UNARY_OP_INVALID = 0; // Invalid unary operation.
+  UNARY_OP_NOT = 1; // Logical NOT operation (!).
+  UNARY_OP_ABS = 2; // Mathematical absolute operation (abs).
+  UNARY_OP_CAST_FLOAT = 3; // Cast string to float value operation (unwrap).
+  UNARY_OP_CAST_BYTES = 4; // Cast string bytes to float value operation (unwrap).
+  UNARY_OP_CAST_DURATION = 5; // Cast string duration to float value operation (unwrap).
 }
 
 // BinaryExpression represents a binary operation applied to two expressions.
 message BinaryExpression {
-    BinaryOp op = 1;
-    Expression left = 2;
-    Expression right = 3;
+  BinaryOp op = 1;
+  Expression left = 2;
+  Expression right = 3;
 }
 
 // BinaryOp denotes the kind of binary operation to perform.
 enum BinaryOp {
-	BINARY_OP_INVALID = 0; // Invalid binary operation.
+  BINARY_OP_INVALID = 0; // Invalid binary operation.
 
-	BINARY_OP_EQ = 1;  // Equality comparison (==).
-	BINARY_OP_NEQ = 2; // Inequality comparison (!=).
-	BINARY_OP_GT = 3;  // Greater than comparison (>).
-	BINARY_OP_GTE = 4; // Greater than or equal comparison (>=).
-	BINARY_OP_LT = 5;  // Less than comparison (<).
-	BINARY_OP_LTE = 6; // Less than or equal comparison (<=).
+  BINARY_OP_EQ = 1; // Equality comparison (==).
+  BINARY_OP_NEQ = 2; // Inequality comparison (!=).
+  BINARY_OP_GT = 3; // Greater than comparison (>).
+  BINARY_OP_GTE = 4; // Greater than or equal comparison (>=).
+  BINARY_OP_LT = 5; // Less than comparison (<).
+  BINARY_OP_LTE = 6; // Less than or equal comparison (<=).
 
-	BINARY_OP_AND = 7; // Logical AND operation (&&).
-	BINARY_OP_OR = 8;  // Logical OR operation (||).
-	BINARY_OP_XOR = 9; // Logical XOR operation (^).
-	BINARY_OP_NOT = 10; // Logical NOT operation (!).
+  BINARY_OP_AND = 7; // Logical AND operation (&&).
+  BINARY_OP_OR = 8; // Logical OR operation (||).
+  BINARY_OP_XOR = 9; // Logical XOR operation (^).
+  BINARY_OP_NOT = 10; // Logical NOT operation (!).
 
-	BINARY_OP_ADD = 11; // Addition operation (+).
-	BINARY_OP_SUB = 12; // Subtraction operation (-).
-	BINARY_OP_MUL = 13; // Multiplication operation (*).
-	BINARY_OP_DIV = 14; // Division operation (/).
-	BINARY_OP_MOD = 15; // Modulo operation (%).
-	BINARY_OP_POW = 16; // power/exponentiation operation (^).
+  BINARY_OP_ADD = 11; // Addition operation (+).
+  BINARY_OP_SUB = 12; // Subtraction operation (-).
+  BINARY_OP_MUL = 13; // Multiplication operation (*).
+  BINARY_OP_DIV = 14; // Division operation (/).
+  BINARY_OP_MOD = 15; // Modulo operation (%).
+  BINARY_OP_POW = 16; // power/exponentiation operation (^).
 
-	BINARY_OP_MATCH_SUBSTR = 17;     // Substring matching operation (|=). Used for string match filter.
-	BINARY_OP_NOT_MATCH_SUBSTR = 18;  // Substring non-matching operation (!=). Used for string match filter.
-	BINARY_OP_MATCH_RE = 19;         // Regular expression matching operation (|~). Used for regex match filter and label matcher.
-	BINARY_OP_NOT_MATCH_RE = 20;      // Regular expression non-matching operation (!~). Used for regex match filter and label matcher.
-	BINARY_OP_MATCH_PATTERN = 21;    // Pattern matching operation (|>). Used for pattern match filter.
-	BINARY_OP_NOT_MATCH_PATTERN = 22; // Pattern non-matching operation (!>). Use for pattern match filter.
+  BINARY_OP_MATCH_SUBSTR = 17; // Substring matching operation (|=). Used for string match filter.
+  BINARY_OP_NOT_MATCH_SUBSTR = 18; // Substring non-matching operation (!=). Used for string match filter.
+  BINARY_OP_MATCH_RE = 19; // Regular expression matching operation (|~). Used for regex match filter and label matcher.
+  BINARY_OP_NOT_MATCH_RE = 20; // Regular expression non-matching operation (!~). Used for regex match filter and label matcher.
+  BINARY_OP_MATCH_PATTERN = 21; // Pattern matching operation (|>). Used for pattern match filter.
+  BINARY_OP_NOT_MATCH_PATTERN = 22; // Pattern non-matching operation (!>). Use for pattern match filter.
 }
 
 // LiteralExpression represents a constant literal value in an expression tree.
 message LiteralExpression {
-    oneof kind {
-        NullLiteral null_literal = 1;
-        BoolLiteral bool_literal = 2;
-        StringLiteral string_literal = 3;
-        IntegerLiteral integer_literal = 4;
-        FloatLiteral float_literal = 5;
-        TimestampLiteral timestamp_literal = 6;
-        DurationLiteral duration_literal = 7;
-        BytesLiteral bytes_literal = 8;
-    }
+  oneof kind {
+    NullLiteral null_literal = 1;
+    BoolLiteral bool_literal = 2;
+    StringLiteral string_literal = 3;
+    IntegerLiteral integer_literal = 4;
+    FloatLiteral float_literal = 5;
+    TimestampLiteral timestamp_literal = 6;
+    DurationLiteral duration_literal = 7;
+    BytesLiteral bytes_literal = 8;
+  }
 }
 
 // NullLiteral represents a null literal value.
-message NullLiteral { }
+message NullLiteral {}
 
 // BoolLiteral represents a boolean literal value.
-message BoolLiteral { bool value = 1; }
+message BoolLiteral {
+  bool value = 1;
+}
 
 // StringLiteral represents a string literal value.
-message StringLiteral { string value = 1; }
+message StringLiteral {
+  string value = 1;
+}
 
 // IntegerLiteral represents a signed integer literal value.
-message IntegerLiteral { int64 value = 1; }
+message IntegerLiteral {
+  int64 value = 1;
+}
 
 // FloatLiteral represents a floating point literal value.
-message FloatLiteral { double value = 1; }
+message FloatLiteral {
+  double value = 1;
+}
 
 // TimestampLiteral represents a timestamp literal value in nanoseconds since
 // the Unix epoch.
-message TimestampLiteral { int64 value = 1;  }
+message TimestampLiteral {
+  int64 value = 1;
+}
 
 // DurationLiteral represents a duration literal value in nanoseconds.
-message DurationLiteral { int64 value = 1; }
+message DurationLiteral {
+  int64 value = 1;
+}
 
 // BytesLiteral represents a bytes count literal value.
-message BytesLiteral { int64 value = 1;}
+message BytesLiteral {
+  int64 value = 1;
+}
 
 // ColumnExpression is an expression used to reference a column.
 message ColumnExpression {
-    string name = 1; // Name of the column being referenced.
-    ColumnType type = 2; // Type of the column being referenced.
+  string name = 1; // Name of the column being referenced.
+  ColumnType type = 2; // Type of the column being referenced.
 }
 
 // ColumnType holds valid types of columns that can be referenced.
 enum ColumnType {
-	COLUMN_TYPE_INVALID = 0; // Invalid column type.
+  COLUMN_TYPE_INVALID = 0; // Invalid column type.
 
-	COLUMN_TYPE_BUILTIN = 1;   // COLUMN_TYPE_BUILTIN represents a builtin column (such as timestamp).
-	COLUMN_TYPE_LABEL = 2;     // COLUMN_TYPE_LABEL represents a column from a stream label.
-	COLUMN_TYPE_METADATA = 3;  // COLUMN_TYPE_METADATA represents a column from a log metadata.
-	COLUMN_TYPE_PARSED = 4;    // COLUMN_TYPE_PARSED represents a parsed column from a parser stage.
-	COLUMN_TYPE_AMBIGUOUS = 5; // COLUMN_TYPE_AMBIGUOUS represents a column that can either be a builtin, label, metadata, or parsed.
-	COLUMN_TYPE_GENERATED = 6; // COLUMN_TYPE_GENERATED represents a column that is generated from an expression or computation.
+  COLUMN_TYPE_BUILTIN = 1; // COLUMN_TYPE_BUILTIN represents a builtin column (such as timestamp).
+  COLUMN_TYPE_LABEL = 2; // COLUMN_TYPE_LABEL represents a column from a stream label.
+  COLUMN_TYPE_METADATA = 3; // COLUMN_TYPE_METADATA represents a column from a log metadata.
+  COLUMN_TYPE_PARSED = 4; // COLUMN_TYPE_PARSED represents a parsed column from a parser stage.
+  COLUMN_TYPE_AMBIGUOUS = 5; // COLUMN_TYPE_AMBIGUOUS represents a column that can either be a builtin, label, metadata, or parsed.
+  COLUMN_TYPE_GENERATED = 6; // COLUMN_TYPE_GENERATED represents a column that is generated from an expression or computation.
 }
