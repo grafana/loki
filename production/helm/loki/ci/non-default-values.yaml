@@ -1,4 +1,7 @@
 deploymentMode: Distributed
+nameOverride: '{{ $.Release.Name }}'
+test:
+  enabled: true
 loki:
   commonConfig:
     replication_factor: 1
@@ -50,6 +53,7 @@ queryFrontend:
 queryScheduler:
   replicas: 1
 lokiCanary:
+  enabled: true
   kind: Deployment
 chunksCache:
   suffix: "l1"
