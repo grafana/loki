@@ -92,34 +92,42 @@ func TestSingleIdx(t *testing.T) {
 				refs, err := idx.GetChunkRefs(context.Background(), "fake", 1, 5, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 				require.Nil(t, err)
 
-				expected := []ChunkRef{
+				expected := []logproto.ChunkRefWithSizingInfo{
 					{
-						User:        "fake",
-						Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar"}`))),
-						Start:       0,
-						End:         3,
-						Checksum:    0,
+						ChunkRef: logproto.ChunkRef{
+							UserID:      "fake",
+							Fingerprint: labels.StableHash(mustParseLabels(`{foo="bar"}`)),
+							From:        0,
+							Through:     3,
+							Checksum:    0,
+						},
 					},
 					{
-						User:        "fake",
-						Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar"}`))),
-						Start:       1,
-						End:         4,
-						Checksum:    1,
+						ChunkRef: logproto.ChunkRef{
+							UserID:      "fake",
+							Fingerprint: labels.StableHash(mustParseLabels(`{foo="bar"}`)),
+							From:        1,
+							Through:     4,
+							Checksum:    1,
+						},
 					},
 					{
-						User:        "fake",
-						Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar"}`))),
-						Start:       2,
-						End:         5,
-						Checksum:    2,
+						ChunkRef: logproto.ChunkRef{
+							UserID:      "fake",
+							Fingerprint: labels.StableHash(mustParseLabels(`{foo="bar"}`)),
+							From:        2,
+							Through:     5,
+							Checksum:    2,
+						},
 					},
 					{
-						User:        "fake",
-						Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`))),
-						Start:       1,
-						End:         10,
-						Checksum:    3,
+						ChunkRef: logproto.ChunkRef{
+							UserID:      "fake",
+							Fingerprint: labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`)),
+							From:        1,
+							Through:     10,
+							Checksum:    3,
+						},
 					},
 				}
 				require.Equal(t, expected, refs)
@@ -134,12 +142,14 @@ func TestSingleIdx(t *testing.T) {
 
 				require.Nil(t, err)
 
-				require.Equal(t, []ChunkRef{{
-					User:        "fake",
-					Fingerprint: model.Fingerprint(labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`))),
-					Start:       1,
-					End:         10,
-					Checksum:    3,
+				require.Equal(t, []logproto.ChunkRefWithSizingInfo{{
+					ChunkRef: logproto.ChunkRef{
+						UserID:      "fake",
+						Fingerprint: labels.StableHash(mustParseLabels(`{foo="bar", bazz="buzz"}`)),
+						From:        1,
+						Through:     10,
+						Checksum:    3,
+					},
 				}}, shardedRefs)
 			})
 

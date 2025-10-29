@@ -2,7 +2,7 @@ module github.com/grafana/loki/v3
 
 go 1.24.0
 
-toolchain go1.24.1
+toolchain go1.24.8
 
 require (
 	cloud.google.com/go/bigtable v1.40.1
@@ -21,7 +21,7 @@ require (
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/aws/aws-sdk-go-v2 v1.39.2
-	github.com/aws/aws-sdk-go-v2/config v1.30.0 // indirect
+	github.com/aws/aws-sdk-go-v2/config v1.30.0
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.16
 	github.com/baidubce/bce-sdk-go v0.9.245
 	github.com/bmatcuk/doublestar/v4 v4.9.1
@@ -53,7 +53,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20250828173137-de14cf923eeb
+	github.com/grafana/dskit v0.0.0-20250917065751-798f5a8fa154
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20250828162811-a96f6acee2fe
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
@@ -139,6 +139,7 @@ require (
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
 	github.com/ncw/swift/v2 v2.0.4
+	github.com/oklog/ulid/v2 v2.1.1
 	github.com/parquet-go/parquet-go v0.25.1
 	github.com/pressly/goose/v3 v3.26.0
 	github.com/prometheus/alertmanager v0.28.1
@@ -208,7 +209,7 @@ require (
 	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.1 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
-	github.com/go-viper/mapstructure/v2 v2.3.0 // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
@@ -241,7 +242,6 @@ require (
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/ncw/swift v1.0.53 // indirect
-	github.com/oklog/ulid/v2 v2.1.1 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/exp/metrics v0.129.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatautil v0.129.0 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/processor/deltatocumulativeprocessor v0.129.0 // indirect

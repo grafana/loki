@@ -53,7 +53,6 @@ func NewRecords(mem memory.Allocator) *Records {
 func (r *Records) Append(rec arrow.Record) {
 	r.processSchema(rec.Schema())
 
-	rec.Retain()
 	r.records = append(r.records, rec)
 	r.rows += rec.NumRows()
 }
@@ -104,13 +103,11 @@ func (r *Records) hashField(field arrow.Field) uint64 {
 // input record from i to j.
 func (r *Records) AppendSlice(rec arrow.Record, i, j int64) {
 	slice := rec.NewSlice(i, j)
-	defer slice.Release()
 	r.Append(slice)
 }
 
-// Aggregate all appended records into a single record. The returned record
-// must be Release'd after use. If no records have been appended, Aggregate
-// returns an error.
+// Aggregate all appended records into a single record.
+// If no records have been appended, Aggregate returns an error.
 //
 // The returned record will have a schema composed of the union of all fields
 // from the input records, sorted by the order in which each field was first
@@ -131,11 +128,6 @@ func (r *Records) Aggregate() (arrow.Record, error) {
 	defer mapper.Reset() // Allow immediately freeing memory used by the mapper.
 
 	var columns []arrow.Array
-	defer func() {
-		for _, column := range columns {
-			column.Release()
-		}
-	}()
 
 	for fieldIndex, field := range r.fields {
 		columnAgg := NewArrays(r.mem, field.Type)
@@ -163,9 +155,6 @@ func (r *Records) Aggregate() (arrow.Record, error) {
 // Reset releases all resources held by r and clears its state, allowing it to
 // be reused for aggregating new records.
 func (r *Records) Reset() {
-	for _, rec := range r.records {
-		rec.Release()
-	}
 	clear(r.records)
 
 	r.records = r.records[:0]

@@ -66,6 +66,25 @@ const (
 	defaultBlockedIngestionStatusCode = 260 // 260 is a custom status code to indicate blocked ingestion
 )
 
+var (
+	DefaultAllowedLevelFields = []string{
+		"level",
+		"LEVEL",
+		"Level",
+		"log.level",
+		"severity",
+		"SEVERITY",
+		"Severity",
+		"SeverityText",
+		"lvl",
+		"LVL",
+		"Lvl",
+		"severity_text",
+		"Severity_Text",
+		"SEVERITY_TEXT",
+	}
+)
+
 // Limits describe all the limits for users; can be used to describe global default
 // limits via flags, or per-user limits via yaml config.
 // NOTE: we use custom `model.Duration` instead of standard `time.Duration` because,
@@ -316,7 +335,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	}
 	f.Var((*dskit_flagext.StringSlice)(&l.DiscoverServiceName), "validation.discover-service-name", "If no service_name label exists, Loki maps a single label from the configured list to service_name. If none of the configured labels exist in the stream, label is set to unknown_service. Empty list disables setting the label.")
 	f.BoolVar(&l.DiscoverLogLevels, "validation.discover-log-levels", true, "Discover and add log levels during ingestion, if not present already. Levels would be added to Structured Metadata with name level/LEVEL/Level/Severity/severity/SEVERITY/lvl/LVL/Lvl (case-sensitive) and one of the values from 'trace', 'debug', 'info', 'warn', 'error', 'critical', 'fatal' (case insensitive).")
-	l.LogLevelFields = []string{"level", "LEVEL", "Level", "Severity", "severity", "SEVERITY", "lvl", "LVL", "Lvl", "severity_text", "Severity_Text", "SEVERITY_TEXT"}
+	l.LogLevelFields = make([]string, len(DefaultAllowedLevelFields))
+	copy(l.LogLevelFields, DefaultAllowedLevelFields)
 	f.Var((*dskit_flagext.StringSlice)(&l.LogLevelFields), "validation.log-level-fields", "Field name to use for log levels. If not set, log level would be detected based on pre-defined labels as mentioned above.")
 	f.IntVar(&l.LogLevelFromJSONMaxDepth, "validation.log-level-from-json-max-depth", 2, "Maximum depth to search for log level fields in JSON logs. A value of 0 or less means unlimited depth. Default is 2 which searches the first 2 levels of the JSON object.")
 
@@ -747,19 +767,22 @@ func (o *Overrides) MaxGlobalStreamsPerUser(userID string) int {
 }
 
 // PolicyMaxGlobalStreamsPerUser returns the maximum number of streams a user is allowed to store
-// across the cluster for a specific policy. Returns 0 if no policy-specific override is set.
-func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) int {
+// across the cluster for a specific policy.
+// Returns 0 and false if the policy does not have a custom stream limit override.
+// Returns the custom stream limit override and true if it exists.
+func (o *Overrides) PolicyMaxGlobalStreamsPerUser(userID, policy string) (int, bool) {
 	if policy == "" {
-		return 0
+		return 0, false
 	}
 	limits := o.getOverridesForUser(userID)
 	if len(limits.PolicyOverrideLimits) == 0 {
-		return 0
+		return 0, false
 	}
+
 	if policyLimits, exists := limits.PolicyOverrideLimits[policy]; exists {
-		return policyLimits.MaxGlobalStreamsPerUser
+		return policyLimits.MaxGlobalStreamsPerUser, true
 	}
-	return 0
+	return 0, false
 }
 
 // MaxChunksPerQuery returns the maximum number of chunks allowed per query.
@@ -1354,8 +1377,8 @@ type OverwriteMarshalingStringMap struct {
 
 // PolicyOverridableLimits contains limits that can be overridden on a per-policy basis.
 type PolicyOverridableLimits struct {
-	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user" json:"max_streams_per_user"`
-	MaxGlobalStreamsPerUser int `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user"`
+	MaxLocalStreamsPerUser  int `yaml:"max_streams_per_user" json:"max_streams_per_user" doc:"max_streams_per_user for a specific policy. 0 means unlimited."`
+	MaxGlobalStreamsPerUser int `yaml:"max_global_streams_per_user" json:"max_global_streams_per_user" doc:"max_global_streams_per_user for a specific policy. 0 means unlimited."`
 }
 
 func NewOverwriteMarshalingStringMap(m map[string]string) OverwriteMarshalingStringMap {

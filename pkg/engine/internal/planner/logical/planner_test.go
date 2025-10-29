@@ -63,7 +63,7 @@ func (q *query) GetStoreChunks() *logproto.ChunkRefGroup {
 
 // Interval implements logql.Params.
 func (q *query) Interval() time.Duration {
-	panic("unimplemented")
+	return q.interval
 }
 
 // Shards implements logql.Params.
@@ -110,7 +110,8 @@ func TestConvertAST_Success(t *testing.T) {
 %18 = SELECT %17 [predicate=%11]
 %19 = SORT %18 [column=builtin.timestamp, asc=false, nulls_first=false]
 %20 = LIMIT %19 [skip=0, fetch=1000]
-RETURN %20
+%21 = LOGQL_COMPAT %20
+RETURN %21
 `
 
 	require.Equal(t, expected, logicalPlan.String())
@@ -122,18 +123,19 @@ RETURN %20
 }
 
 func TestConvertAST_MetricQuery_Success(t *testing.T) {
-	q := &query{
-		statement: `sum by (level) (count_over_time({cluster="prod", namespace=~"loki-.*"} |= "metric.go"[5m]))`,
-		start:     3600,
-		end:       7200,
-		interval:  5 * time.Minute,
-	}
+	t.Run("simple metric query", func(t *testing.T) {
+		q := &query{
+			statement: `sum by (level) (count_over_time({cluster="prod", namespace=~"loki-.*"} |= "metric.go"[5m]))`,
+			start:     3600,
+			end:       7200,
+			interval:  5 * time.Minute,
+		}
 
-	logicalPlan, err := BuildPlan(q)
-	require.NoError(t, err)
-	t.Logf("\n%s\n", logicalPlan.String())
+		logicalPlan, err := BuildPlan(q)
+		require.NoError(t, err)
+		t.Logf("\n%s\n", logicalPlan.String())
 
-	expected := `%1 = EQ label.cluster "prod"
+		expected := `%1 = EQ label.cluster "prod"
 %2 = MATCH_RE label.namespace "loki-.*"
 %3 = AND %1 %2
 %4 = MATCH_STR builtin.message "metric.go"
@@ -145,15 +147,87 @@ func TestConvertAST_MetricQuery_Success(t *testing.T) {
 %10 = SELECT %9 [predicate=%4]
 %11 = RANGE_AGGREGATION %10 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
 %12 = VECTOR_AGGREGATION %11 [operation=sum, group_by=(ambiguous.level)]
+%13 = LOGQL_COMPAT %12
+RETURN %13
+`
+
+		require.Equal(t, expected, logicalPlan.String())
+
+		var sb strings.Builder
+		PrintTree(&sb, logicalPlan.Value())
+
+		t.Logf("\n%s\n", sb.String())
+	})
+
+	t.Run(`metric query with one binary math operation`, func(t *testing.T) {
+		q := &query{
+			statement: `sum by (level) (count_over_time({cluster="prod", namespace=~"loki-.*"}[5m]) / 300)`,
+			start:     3600,
+			end:       7200,
+			interval:  5 * time.Minute,
+		}
+
+		logicalPlan, err := BuildPlan(q)
+		require.NoError(t, err)
+		t.Logf("\n%s\n", logicalPlan.String())
+
+		expected := `%1 = EQ label.cluster "prod"
+%2 = MATCH_RE label.namespace "loki-.*"
+%3 = AND %1 %2
+%4 = MAKETABLE [selector=%3, predicates=[], shard=0_of_1]
+%5 = GTE builtin.timestamp 1970-01-01T00:55:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%8 = SELECT %6 [predicate=%7]
+%9 = RANGE_AGGREGATION %8 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%10 = DIV %9 300
+%11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
+%12 = LOGQL_COMPAT %11
 RETURN %12
 `
 
-	require.Equal(t, expected, logicalPlan.String())
+		require.Equal(t, expected, logicalPlan.String())
 
-	var sb strings.Builder
-	PrintTree(&sb, logicalPlan.Value())
+		var sb strings.Builder
+		PrintTree(&sb, logicalPlan.Value())
 
-	t.Logf("\n%s\n", sb.String())
+		t.Logf("\n%s\n", sb.String())
+	})
+
+	t.Run(`rate metric query with nested math expression`, func(t *testing.T) {
+		q := &query{
+			statement: `sum by (level) ((rate({cluster="prod"}[5m]) - 100) ^ 2)`,
+			start:     3600,
+			end:       7200,
+			interval:  5 * time.Minute,
+		}
+
+		logicalPlan, err := BuildPlan(q)
+		require.NoError(t, err)
+		t.Logf("\n%s\n", logicalPlan.String())
+
+		expected := `%1 = EQ label.cluster "prod"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = GTE builtin.timestamp 1970-01-01T00:55:00Z
+%4 = SELECT %2 [predicate=%3]
+%5 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = RANGE_AGGREGATION %6 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%8 = DIV %7 300
+%9 = SUB %8 100
+%10 = POW %9 2
+%11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
+%12 = LOGQL_COMPAT %11
+RETURN %12
+`
+
+		require.Equal(t, expected, logicalPlan.String())
+
+		var sb strings.Builder
+		PrintTree(&sb, logicalPlan.Value())
+
+		t.Logf("\n%s\n", sb.String())
+	})
 }
 
 func TestCanExecuteQuery(t *testing.T) {
@@ -222,16 +296,31 @@ func TestCanExecuteQuery(t *testing.T) {
 			expected:  true,
 		},
 		{
+			statement: `sum by (level) (count_over_time({env="prod"}[1m]) / 60)`,
+			expected:  true,
+		},
+		{
+			statement: `sum by (level) (count_over_time({env="prod"}[1m]) / 60 * 4)`,
+			expected:  true,
+		},
+		{
+			// two inputs are not supported
+			statement: `sum by (level) (count_over_time({env="prod"} |= "error" [1m]) / count_over_time({env="prod"}[1m]))`,
+		},
+		{
+			statement: `sum without (level) (count_over_time({env="prod"}[1m]))`,
+		},
+		{
 			// both vector and range aggregation are required
 			statement: `count_over_time({env="prod"}[1m])`,
 		},
 		{
-			// group by labels are required
 			statement: `sum(count_over_time({env="prod"}[1m]))`,
+			expected:  true,
 		},
 		{
-			// rate is not supported
 			statement: `sum by (level) (rate({env="prod"}[1m]))`,
+			expected:  true,
 		},
 		{
 			// max is not supported
@@ -250,8 +339,8 @@ func TestCanExecuteQuery(t *testing.T) {
 			statement: `sum_over_time({env="prod"} | unwrap size [1m])`,
 		},
 		{
-			// group by labels are required
 			statement: `sum(sum_over_time({env="prod"} | unwrap size [1m]))`,
+			expected:  true,
 		},
 		{
 			// max is not supported
@@ -264,6 +353,13 @@ func TestCanExecuteQuery(t *testing.T) {
 		{
 			// max_over_time is not supported
 			statement: `max_over_time({env="prod"} | unwrap size [1m])`,
+		},
+		{
+			statement: `sum(count_over_time({env="prod"} | logfmt | drop __error__ [1m]))`,
+			expected:  true,
+		},
+		{
+			statement: `sum(count_over_time({env="prod"} | logfmt | drop __error__=~"Unknown Error: .*" [1m]))`,
 		},
 	} {
 		t.Run(tt.statement, func(t *testing.T) {
@@ -285,6 +381,38 @@ func TestCanExecuteQuery(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPlannerCreatesCastOperationForUnwrap(t *testing.T) {
+	t.Run("creates projection with unary cast operation instruction for metric query with unwrap duration", func(t *testing.T) {
+		// Query with duration unwrap in a sum_over_time metric query
+		q := &query{
+			statement: `sum by (status) (sum_over_time({app="api"} | unwrap duration(response_time) [5m]))`,
+			start:     3600,
+			end:       7200,
+			interval:  5 * time.Minute,
+		}
+
+		plan, err := BuildPlan(q)
+		require.NoError(t, err)
+		t.Logf("\n%s\n", plan.String())
+
+		// Assert against the correct SSA representation
+		// The UNWRAP should appear after SELECT operations but before RANGE_AGGREGATION
+		expected := `%1 = EQ label.app "api"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = GTE builtin.timestamp 1970-01-01T00:55:00Z
+%4 = SELECT %2 [predicate=%3]
+%5 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = PROJECT %6 [mode=*E, expr=CAST_DURATION(ambiguous.response_time)]
+%8 = RANGE_AGGREGATION %7 [operation=sum, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%9 = VECTOR_AGGREGATION %8 [operation=sum, group_by=(ambiguous.status)]
+%10 = LOGQL_COMPAT %9
+RETURN %10
+`
+		require.Equal(t, expected, plan.String())
+	})
 }
 
 func TestPlannerCreatesParse(t *testing.T) {
@@ -314,7 +442,8 @@ func TestPlannerCreatesParse(t *testing.T) {
 %9 = SELECT %7 [predicate=%8]
 %10 = RANGE_AGGREGATION %9 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
 %11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
-RETURN %11
+%12 = LOGQL_COMPAT %11
+RETURN %12
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -344,7 +473,8 @@ RETURN %11
 %9 = SELECT %7 [predicate=%8]
 %10 = SORT %9 [column=builtin.timestamp, asc=false, nulls_first=false]
 %11 = LIMIT %10 [skip=0, fetch=1000]
-RETURN %11
+%12 = LOGQL_COMPAT %11
+RETURN %12
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -374,7 +504,8 @@ RETURN %11
 %9 = SELECT %7 [predicate=%8]
 %10 = RANGE_AGGREGATION %9 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
 %11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
-RETURN %11
+%12 = LOGQL_COMPAT %11
+RETURN %12
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -403,7 +534,8 @@ RETURN %11
 %9 = SELECT %7 [predicate=%8]
 %10 = SORT %9 [column=builtin.timestamp, asc=false, nulls_first=false]
 %11 = LIMIT %10 [skip=0, fetch=1000]
-RETURN %11
+%12 = LOGQL_COMPAT %11
+RETURN %12
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -441,7 +573,8 @@ RETURN %11
 %13 = SELECT %11 [predicate=%12]
 %14 = SORT %13 [column=builtin.timestamp, asc=false, nulls_first=false]
 %15 = LIMIT %14 [skip=0, fetch=1000]
-RETURN %15
+%16 = LOGQL_COMPAT %15
+RETURN %16
 `
 
 		require.Equal(t, expected, plan.String(), "Operations should be in the correct order: LineFilter before Parse, LabelFilter after Parse")
@@ -477,9 +610,43 @@ RETURN %15
 %13 = SELECT %11 [predicate=%12]
 %14 = RANGE_AGGREGATION %13 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
 %15 = VECTOR_AGGREGATION %14 [operation=sum, group_by=(ambiguous.level)]
-RETURN %15
+%16 = LOGQL_COMPAT %15
+RETURN %16
 `
 
 		require.Equal(t, expected, plan.String(), "Metric query should preserve operation order: filters before parse, then parse, then filters after parse")
+	})
+}
+
+func TestPlannerCreatesProjection(t *testing.T) {
+	t.Run("", func(t *testing.T) {
+		// Query with duration unwrap in a sum_over_time metric query
+		q := &query{
+			statement: `{service_name="loki"} | drop level,detected_level`,
+			start:     0,
+			end:       3600,
+			interval:  5 * time.Minute,
+			direction: logproto.BACKWARD,
+		}
+
+		plan, err := BuildPlan(q)
+		require.NoError(t, err)
+		t.Logf("\n%s\n", plan.String())
+
+		// Assert against the correct SSA representation
+		// The UNWRAP should appear after SELECT operations but before RANGE_AGGREGATION
+		expected := `%1 = EQ label.service_name "loki"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = GTE builtin.timestamp 1970-01-01T00:00:00Z
+%4 = SELECT %2 [predicate=%3]
+%5 = LT builtin.timestamp 1970-01-01T01:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = PROJECT %6 [mode=*D, expr=ambiguous.level, expr=ambiguous.detected_level]
+%8 = SORT %7 [column=builtin.timestamp, asc=false, nulls_first=false]
+%9 = LIMIT %8 [skip=0, fetch=0]
+%10 = LOGQL_COMPAT %9
+RETURN %10
+`
+		require.Equal(t, expected, plan.String())
 	})
 }

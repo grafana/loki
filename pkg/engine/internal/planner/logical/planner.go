@@ -15,20 +15,21 @@ import (
 )
 
 var errUnimplemented = errors.New("query contains unimplemented features")
+var unimplementedFeature = func(s string) error { return fmt.Errorf("%w: %s", errUnimplemented, s) }
 
 // BuildPlan converts a LogQL query represented as [logql.Params] into a logical [Plan].
 // It may return an error as second argument in case the traversal of the AST of the query fails.
 func BuildPlan(params logql.Params) (*Plan, error) {
 	var (
-		builder *Builder
-		err     error
+		value Value
+		err   error
 	)
 
 	switch e := params.GetExpression().(type) {
 	case syntax.LogSelectorExpr:
-		builder, err = buildPlanForLogQuery(e, params, false, 0)
+		value, err = buildPlanForLogQuery(e, params, false, 0)
 	case syntax.SampleExpr:
-		builder, err = buildPlanForSampleQuery(e, params)
+		value, err = buildPlanForSampleQuery(e, params)
 	default:
 		err = fmt.Errorf("unexpected expression type (%T)", e)
 	}
@@ -36,6 +37,11 @@ func BuildPlan(params logql.Params) (*Plan, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert AST into logical plan: %w", err)
 	}
+
+	builder := NewBuilder(value)
+
+	// TODO(chaudum): Make compatibility mode configurable
+	builder = builder.Compat(true)
 
 	return builder.ToPlan()
 }
@@ -48,10 +54,12 @@ func buildPlanForLogQuery(
 	params logql.Params,
 	isMetricQuery bool,
 	rangeInterval time.Duration,
-) (*Builder, error) {
+) (Value, error) {
 	var (
 		err      error
 		selector Value
+
+		dropCols []Value
 
 		// parse statements in LogQL introduce additional ambiguouity, requiring post
 		// parse filters to be tracked separately, and not included in maketable predicates
@@ -112,12 +120,29 @@ func buildPlanForLogQuery(
 				}
 			}
 			return true
-			//TODO Support logfmt and json expression parset expressions
-		case *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr,
-			*syntax.LineFmtExpr, *syntax.LabelFmtExpr,
-			*syntax.KeepLabelsExpr, *syntax.DropLabelsExpr:
+		case *syntax.LogfmtExpressionParserExpr, *syntax.JSONExpressionParserExpr:
 			err = errUnimplemented
 			return false // do not traverse children
+		case *syntax.LineFmtExpr:
+			err = unimplementedFeature("line_format")
+			return false // do not traverse children
+		case *syntax.LabelFmtExpr:
+			err = unimplementedFeature("label_format")
+			return false // do not traverse children
+		case *syntax.KeepLabelsExpr:
+			err = unimplementedFeature("keep")
+			return false // do not traverse children
+		case *syntax.DropLabelsExpr:
+			if e.HasNamedMatchers() {
+				// Example: `| drop __error__=~"Unknown Error: .*"`
+				err = unimplementedFeature("drop with named matchers")
+				return false // do not traverse children
+			}
+			for _, name := range e.Names() {
+				value := NewColumnRef(name, types.ColumnTypeAmbiguous)
+				dropCols = append(dropCols, value)
+			}
+			return true
 		default:
 			err = errUnimplemented
 			return false // do not traverse children
@@ -140,6 +165,9 @@ func buildPlanForLogQuery(
 			Shard:      shard,
 		},
 	)
+
+	// Do we need a projection of all comlumns right after maketable?
+	// builder = builder.ProjectAll(false, false)
 
 	direction := params.Direction()
 	if !isMetricQuery && direction == logproto.FORWARD {
@@ -171,6 +199,11 @@ func buildPlanForLogQuery(
 		builder = builder.Select(value)
 	}
 
+	// TODO(chaudum): Drop stages can happen throughout the pipeline
+	if len(dropCols) > 0 {
+		builder = builder.ProjectDrop(dropCols...)
+	}
+
 	// Metric queries do not apply a limit.
 	if !isMetricQuery {
 		// SORT -> SortMerge
@@ -183,83 +216,12 @@ func buildPlanForLogQuery(
 		builder = builder.Limit(0, limit)
 	}
 
-	return builder, nil
+	return builder.Value(), nil
 }
 
-func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder, error) {
-	var (
-		err error
-
-		rangeAggType  types.RangeAggregationType
-		rangeInterval time.Duration
-
-		vecAggType types.VectorAggregationType
-		groupBy    []ColumnRef
-	)
-
-	e.Walk(func(e syntax.Expr) bool {
-		switch e := e.(type) {
-		case *syntax.RangeAggregationExpr:
-			// offsets are not yet supported.
-			if e.Left.Offset != 0 {
-				err = errUnimplemented
-				return false
-			}
-
-			switch e.Operation {
-			case syntax.OpRangeTypeCount:
-				rangeAggType = types.RangeAggregationTypeCount
-			case syntax.OpRangeTypeSum:
-				rangeAggType = types.RangeAggregationTypeSum
-			//case syntax.OpRangeTypeMax:
-			//	rangeAggType = types.RangeAggregationTypeMax
-			//case syntax.OpRangeTypeMin:
-			//	rangeAggType = types.RangeAggregationTypeMin
-			default:
-				err = errUnimplemented
-				return false
-			}
-
-			rangeInterval = e.Left.Interval
-			return false // do not traverse log range query
-
-		case *syntax.VectorAggregationExpr:
-			// grouping by at least one label is required.
-			if e.Grouping == nil || len(e.Grouping.Groups) == 0 || e.Grouping.Without {
-				err = errUnimplemented
-				return false
-			}
-
-			switch e.Operation {
-			//case syntax.OpTypeCount:
-			//	vecAggType = types.VectorAggregationTypeCount
-			case syntax.OpTypeSum:
-				vecAggType = types.VectorAggregationTypeSum
-			//case syntax.OpTypeMax:
-			//	vecAggType = types.VectorAggregationTypeMax
-			//case syntax.OpTypeMin:
-			//	vecAggType = types.VectorAggregationTypeMin
-			default:
-				err = errUnimplemented
-				return false
-			}
-
-			groupBy = make([]ColumnRef, 0, len(e.Grouping.Groups))
-			for _, group := range e.Grouping.Groups {
-				groupBy = append(groupBy, *NewColumnRef(group, types.ColumnTypeAmbiguous))
-			}
-
-			return true
-		default:
-			err = errUnimplemented
-			return false // do not traverse children
-		}
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if rangeAggType == types.RangeAggregationTypeInvalid || vecAggType == types.VectorAggregationTypeInvalid {
+func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (Value, error) {
+	// offsets are not yet supported.
+	if e.Left.Offset != 0 {
 		return nil, errUnimplemented
 	}
 
@@ -268,16 +230,192 @@ func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (*Builder
 		return nil, err
 	}
 
-	builder, err := buildPlanForLogQuery(logSelectorExpr, params, true, rangeInterval)
+	rangeInterval := e.Left.Interval
+
+	logQuery, err := buildPlanForLogQuery(logSelectorExpr, params, true, rangeInterval)
 	if err != nil {
 		return nil, err
 	}
 
+	builder := NewBuilder(logQuery)
+
+	// Check for unwrap in the LogRangeExpr
+	if e.Left.Unwrap != nil {
+		// TODO: do we need to support multiple unwraps?
+		unwrapIdentifier := e.Left.Unwrap.Identifier
+
+		var unwrapOperation types.UnaryOp
+		switch e.Left.Unwrap.Operation {
+		case "":
+			unwrapOperation = types.UnaryOpCastFloat
+		case syntax.OpConvBytes:
+			unwrapOperation = types.UnaryOpCastBytes
+		case syntax.OpConvDuration, syntax.OpConvDurationSeconds:
+			unwrapOperation = types.UnaryOpCastDuration
+		default:
+			return nil, errUnimplemented
+		}
+
+		builder = builder.Cast(unwrapIdentifier, unwrapOperation)
+	}
+
+	var rangeAggType types.RangeAggregationType
+	switch e.Operation {
+	case syntax.OpRangeTypeCount:
+		rangeAggType = types.RangeAggregationTypeCount
+	case syntax.OpRangeTypeSum:
+		rangeAggType = types.RangeAggregationTypeSum
+	//case syntax.OpRangeTypeMax:
+	//	rangeAggType = types.RangeAggregationTypeMax
+	//case syntax.OpRangeTypeMin:
+	//	rangeAggType = types.RangeAggregationTypeMin
+	//case syntax.OpRangeTypeBytesRate:
+	//	rangeAggType = types.RangeAggregationTypeBytes // bytes_rate is implemented as bytes_over_time/$interval
+	case syntax.OpRangeTypeRate:
+		if e.Left.Unwrap != nil {
+			rangeAggType = types.RangeAggregationTypeSum // rate of an unwrap is implemented as sum_over_time/$interval
+		} else {
+			rangeAggType = types.RangeAggregationTypeCount // rate is implemented as count_over_time/$interval
+		}
+	default:
+		return nil, errUnimplemented
+	}
+
 	builder = builder.RangeAggregation(
 		nil, rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,
-	).VectorAggregation(groupBy, vecAggType)
+	)
 
-	return builder, nil
+	switch e.Operation {
+	//case syntax.OpRangeTypeBytesRate:
+	//	// bytes_rate is implemented as bytes_over_time/$interval
+	//	builder = builder.BinOpRight(types.BinaryOpDiv, &Literal{
+	//		Literal: NewLiteral(rangeInterval.Seconds()),
+	//	})
+	case syntax.OpRangeTypeRate:
+		// rate is implemented as count_over_time/$interval
+		builder = builder.BinOpRight(types.BinaryOpDiv, &Literal{
+			Literal: NewLiteral(rangeInterval.Seconds()),
+		})
+	}
+
+	return builder.Value(), nil
+}
+
+func walkVectorAggregation(e *syntax.VectorAggregationExpr, params logql.Params) (Value, error) {
+	// `without()` grouping is not supported.
+	if e.Grouping != nil && e.Grouping.Without {
+		return nil, errUnimplemented
+	}
+
+	left, err := walk(e.Left, params)
+	if err != nil {
+		return nil, err
+	}
+
+	vecAggType := convertVectorAggregationType(e.Operation)
+	if vecAggType == types.VectorAggregationTypeInvalid {
+		return nil, errUnimplemented
+	}
+
+	groupBy := make([]ColumnRef, 0, len(e.Grouping.Groups))
+	for _, group := range e.Grouping.Groups {
+		groupBy = append(groupBy, *NewColumnRef(group, types.ColumnTypeAmbiguous))
+	}
+
+	return &VectorAggregation{
+		Table:     left,
+		GroupBy:   groupBy,
+		Operation: vecAggType,
+	}, nil
+}
+
+func hasNonMathExpressionChild(n Value) bool {
+	if _, ok := n.(*VectorAggregation); ok {
+		return true
+	}
+
+	if _, ok := n.(*RangeAggregation); ok {
+		return true
+	}
+
+	if b, ok := n.(*BinOp); ok {
+		return hasNonMathExpressionChild(b.Left) || hasNonMathExpressionChild(b.Right)
+	}
+
+	return false
+}
+
+func walkBinOp(e *syntax.BinOpExpr, params logql.Params) (Value, error) {
+	left, err := walk(e.SampleExpr, params)
+	if err != nil {
+		return nil, err
+	}
+	right, err := walk(e.RHS, params)
+	if err != nil {
+		return nil, err
+	}
+
+	op := convertBinaryArithmeticOp(e.Op)
+	if op == types.BinaryOpInvalid {
+		return nil, errUnimplemented
+	}
+
+	// this is to check that there is only one non-literal input on either side, otherwise it is not implemented yet.
+	// TODO remove when inner joins on timestamp are implemented
+	if hasNonMathExpressionChild(left) && hasNonMathExpressionChild(right) {
+		return nil, errUnimplemented
+	}
+
+	return &BinOp{
+		Left:  left,
+		Right: right,
+		Op:    op,
+	}, nil
+}
+
+func walkLiteral(e *syntax.LiteralExpr, _ logql.Params) (Value, error) {
+	return &Literal{
+		NewLiteral(e.Val),
+	}, nil
+}
+
+func walk(e syntax.Expr, params logql.Params) (Value, error) {
+	switch e := e.(type) {
+	case *syntax.RangeAggregationExpr:
+		return walkRangeAggregation(e, params)
+	case *syntax.VectorAggregationExpr:
+		return walkVectorAggregation(e, params)
+	case *syntax.BinOpExpr:
+		return walkBinOp(e, params)
+	case *syntax.LiteralExpr:
+		return walkLiteral(e, params)
+	}
+
+	return nil, errUnimplemented
+}
+
+func buildPlanForSampleQuery(e syntax.SampleExpr, params logql.Params) (Value, error) {
+	val, err := walk(e, params)
+
+	// this is to check that there are both range and vector aggregations, otherwise it is not implemented yet.
+	// TODO remove when all permutations of vector aggregations and range aggregations are implemented.
+	hasRangeAgg := false
+	hasVecAgg := false
+	e.Walk(func(e syntax.Expr) bool {
+		switch e.(type) {
+		case *syntax.RangeAggregationExpr:
+			hasRangeAgg = true
+			return false
+		case *syntax.VectorAggregationExpr:
+			hasVecAgg = true
+		}
+		return true
+	})
+	if !hasRangeAgg || !hasVecAgg {
+		return nil, errUnimplemented
+	}
+
+	return val, err
 }
 
 func convertLabelMatchers(matchers []*labels.Matcher) Value {
@@ -301,6 +439,21 @@ func convertLabelMatchers(matchers []*labels.Matcher) Value {
 	}
 
 	return value
+}
+
+func convertVectorAggregationType(op string) types.VectorAggregationType {
+	switch op {
+	case syntax.OpTypeSum:
+		return types.VectorAggregationTypeSum
+	//case syntax.OpTypeCount:
+	//	return types.VectorAggregationTypeCount
+	//case syntax.OpTypeMax:
+	//	return types.VectorAggregationTypeMax
+	//case syntax.OpTypeMin:
+	//	return types.VectorAggregationTypeMin
+	default:
+		return types.VectorAggregationTypeInvalid
+	}
 }
 
 func convertMatcherType(t labels.MatchType) types.BinaryOp {
@@ -337,6 +490,25 @@ func convertLineFilter(filter syntax.LineFilter) Value {
 		Left:  lineColumnRef(),
 		Right: NewLiteral(filter.Match),
 		Op:    convertLineMatchType(filter.Ty),
+	}
+}
+
+func convertBinaryArithmeticOp(op string) types.BinaryOp {
+	switch op {
+	case syntax.OpTypeAdd:
+		return types.BinaryOpAdd
+	case syntax.OpTypeSub:
+		return types.BinaryOpSub
+	case syntax.OpTypeMul:
+		return types.BinaryOpMul
+	case syntax.OpTypeDiv:
+		return types.BinaryOpDiv
+	case syntax.OpTypeMod:
+		return types.BinaryOpMod
+	case syntax.OpTypePow:
+		return types.BinaryOpPow
+	default:
+		return types.BinaryOpInvalid
 	}
 }
 

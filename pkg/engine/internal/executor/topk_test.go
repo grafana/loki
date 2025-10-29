@@ -5,61 +5,44 @@ import (
 	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 func Test_topk(t *testing.T) {
-	alloc := memory.NewCheckedAllocator(memory.DefaultAllocator)
-	defer alloc.AssertSize(t, 0)
+	colTs := semconv.ColumnIdentTimestamp.FQN()
+	colMsg := semconv.ColumnIdentMessage.FQN()
 
 	var (
 		fields = []arrow.Field{
-			{
-				Name:     types.ColumnNameBuiltinTimestamp,
-				Type:     arrow.FixedWidthTypes.Timestamp_ns,
-				Nullable: true,
-				Metadata: types.ColumnMetadata(
-					types.ColumnTypeBuiltin,
-					types.Loki.Timestamp,
-				),
-			},
-			{
-				Name:     types.ColumnNameBuiltinMessage,
-				Type:     arrow.BinaryTypes.String,
-				Nullable: true,
-				Metadata: types.ColumnMetadata(
-					types.ColumnTypeBuiltin,
-					types.Loki.String,
-				),
-			},
+			semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, true),
+			semconv.FieldFromIdent(semconv.ColumnIdentMessage, true),
 		}
-
 		schema = arrow.NewSchema(fields, nil)
 	)
 
 	var (
-		pipelineA = NewArrowtestPipeline(alloc, schema, arrowtest.Rows{
-			{"timestamp": time.Unix(1, 0).UTC(), "message": "line A"},
-			{"timestamp": time.Unix(6, 0).UTC(), "message": "line F"},
+		pipelineA = NewArrowtestPipeline(schema, arrowtest.Rows{
+			{colTs: time.Unix(1, 0).UTC(), colMsg: "line A"},
+			{colTs: time.Unix(6, 0).UTC(), colMsg: "line F"},
 		}, arrowtest.Rows{
-			{"timestamp": time.Unix(2, 0).UTC(), "message": "line B"},
-			{"timestamp": time.Unix(7, 0).UTC(), "message": "line G"},
+			{colTs: time.Unix(2, 0).UTC(), colMsg: "line B"},
+			{colTs: time.Unix(7, 0).UTC(), colMsg: "line G"},
 		}, arrowtest.Rows{
-			{"timestamp": time.Unix(3, 0).UTC(), "message": "line C"},
-			{"timestamp": time.Unix(8, 0).UTC(), "message": "line H"},
+			{colTs: time.Unix(3, 0).UTC(), colMsg: "line C"},
+			{colTs: time.Unix(8, 0).UTC(), colMsg: "line H"},
 		})
 
-		pipelineB = NewArrowtestPipeline(alloc, schema, arrowtest.Rows{
-			{"timestamp": time.Unix(4, 0).UTC(), "message": "line D"},
-			{"timestamp": time.Unix(9, 0).UTC(), "message": "line I"},
+		pipelineB = NewArrowtestPipeline(schema, arrowtest.Rows{
+			{colTs: time.Unix(4, 0).UTC(), colMsg: "line D"},
+			{colTs: time.Unix(9, 0).UTC(), colMsg: "line I"},
 		}, arrowtest.Rows{
-			{"timestamp": time.Unix(5, 0).UTC(), "message": "line E"},
-			{"timestamp": time.Unix(10, 0).UTC(), "message": "line J"},
+			{colTs: time.Unix(5, 0).UTC(), colMsg: "line E"},
+			{colTs: time.Unix(10, 0).UTC(), colMsg: "line J"},
 		})
 	)
 
@@ -80,12 +63,10 @@ func Test_topk(t *testing.T) {
 	rec, err := topkPipeline.Read(t.Context())
 	require.NoError(t, err, "should be able to read the sorted batch")
 
-	defer rec.Release()
-
 	expect := arrowtest.Rows{
-		{"timestamp": time.Unix(1, 0).UTC(), "message": "line A"},
-		{"timestamp": time.Unix(2, 0).UTC(), "message": "line B"},
-		{"timestamp": time.Unix(3, 0).UTC(), "message": "line C"},
+		{colTs: time.Unix(1, 0).UTC(), colMsg: "line A"},
+		{colTs: time.Unix(2, 0).UTC(), colMsg: "line B"},
+		{colTs: time.Unix(3, 0).UTC(), colMsg: "line C"},
 	}
 
 	rows, err := arrowtest.RecordRows(rec)
