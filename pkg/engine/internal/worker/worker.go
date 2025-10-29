@@ -290,10 +290,9 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 
 	handleAssignment := func(peer *wire.Peer, msg wire.TaskAssignMessage) error {
 		reqsMut.Lock()
-		defer reqsMut.Unlock()
-
 		req := readyReqs[0]
 		readyReqs = readyReqs[1:]
+		reqsMut.Unlock()
 
 		job, err := w.newJob(req.Context, peer, logger, msg)
 		if err != nil {
@@ -306,22 +305,37 @@ func (w *Worker) handleSchedulerConn(ctx context.Context, logger log.Logger, con
 		return nil
 	}
 
-	requestAssignment := func(ctx context.Context, peer *wire.Peer, req readyRequest) {
+	failAssignment := func(err error) {
 		reqsMut.Lock()
 		defer reqsMut.Unlock()
 
-		// Keep the lock held while we send the request to the scheduler. Once
-		// we get the acknowledgement back we can move req to the readyReqs
-		// stack.
-		err := peer.SendMessage(ctx, wire.WorkerReadyMessage{})
-		if err != nil {
-			// Response is guaranteed to be buffered so we don't need to worry about
-			// blocking here.
-			req.Response <- readyResponse{Error: err}
+		if len(readyReqs) == 0 {
+			// If this hits, the scheduler responded with an assignment after we
+			// marked the SendMessage call as failing. We'll just ignore it
+			// here.
 			return
 		}
 
+		req := readyReqs[0]
+		readyReqs = readyReqs[1:]
+
+		// Response is guaranteed to be buffered so we don't need to worry about
+		// blocking here.
+		req.Response <- readyResponse{Error: err}
+	}
+
+	requestAssignment := func(ctx context.Context, peer *wire.Peer, req readyRequest) {
+		reqsMut.Lock()
 		readyReqs = append(readyReqs, req)
+		reqsMut.Unlock()
+
+		err := peer.SendMessage(ctx, wire.WorkerReadyMessage{})
+		if err != nil {
+			// Fail one of the requests. It really doesn't matter which one, as
+			// long as one of them is told about the error.
+			failAssignment(err)
+			return
+		}
 	}
 
 	peer := &wire.Peer{
