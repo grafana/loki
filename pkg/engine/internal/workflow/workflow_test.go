@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
@@ -26,18 +26,18 @@ import (
 // Some of these assertions are handled by [fakeRunner], which returns an error
 // when used improperly.
 func Test(t *testing.T) {
-	var physicalGraph dag.Graph[physical.Node]
+	var physicalGraph dag.Graph[physicalpb.Node]
 
 	var (
-		scan      = physicalGraph.Add(&physical.DataObjScan{})
-		rangeAgg  = physicalGraph.Add(&physical.RangeAggregation{})
-		vectorAgg = physicalGraph.Add(&physical.VectorAggregation{})
+		scan      = physicalGraph.Add(&physicalpb.DataObjScan{})
+		rangeAgg  = physicalGraph.Add(&physicalpb.AggregateRange{})
+		vectorAgg = physicalGraph.Add(&physicalpb.AggregateVector{})
 	)
 
-	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: scan})
-	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: vectorAgg, Child: rangeAgg})
+	_ = physicalGraph.AddEdge(dag.Edge[physicalpb.Node]{Parent: rangeAgg, Child: scan})
+	_ = physicalGraph.AddEdge(dag.Edge[physicalpb.Node]{Parent: vectorAgg, Child: rangeAgg})
 
-	physicalPlan := physical.FromGraph(physicalGraph)
+	physicalPlan := physicalpb.FromGraph(physicalGraph)
 
 	fr := newFakeRunner()
 
@@ -82,18 +82,18 @@ func Test(t *testing.T) {
 // TestCancellation tasks that a task entering a terminal state cancels all
 // downstream tasks.
 func TestCancellation(t *testing.T) {
-	var physicalGraph dag.Graph[physical.Node]
+	var physicalGraph dag.Graph[physicalpb.Node]
 
 	var (
-		scan      = physicalGraph.Add(&physical.DataObjScan{})
-		rangeAgg  = physicalGraph.Add(&physical.RangeAggregation{})
-		vectorAgg = physicalGraph.Add(&physical.VectorAggregation{})
+		scan      = physicalGraph.Add(&physicalpb.DataObjScan{})
+		rangeAgg  = physicalGraph.Add(&physicalpb.AggregateRange{})
+		vectorAgg = physicalGraph.Add(&physicalpb.AggregateVector{})
 	)
 
-	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: scan})
-	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: vectorAgg, Child: rangeAgg})
+	_ = physicalGraph.AddEdge(dag.Edge[physicalpb.Node]{Parent: rangeAgg, Child: scan})
+	_ = physicalGraph.AddEdge(dag.Edge[physicalpb.Node]{Parent: vectorAgg, Child: rangeAgg})
 
-	physicalPlan := physical.FromGraph(physicalGraph)
+	physicalPlan := physicalpb.FromGraph(physicalGraph)
 
 	terminalStates := []TaskState{TaskStateCancelled, TaskStateCancelled, TaskStateFailed}
 	for _, state := range terminalStates {

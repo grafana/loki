@@ -13,7 +13,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
@@ -111,7 +111,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		BatchSize: t.BatchSize,
 		Bucket:    t.Bucket,
 
-		GetExternalInputs: func(_ context.Context, node physical.Node) []executor.Pipeline {
+		GetExternalInputs: func(_ context.Context, node physicalpb.Node) []executor.Pipeline {
 			streams := job.Task.Sources[node]
 			if len(streams) == 0 {
 				return nil

@@ -7,7 +7,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -17,10 +17,10 @@ type topkOptions struct {
 	Inputs []Pipeline
 
 	// SortBy is the list of columns to sort by, in order of precedence.
-	SortBy     []physical.ColumnExpression
-	Ascending  bool // Sorts lines in ascending order if true.
-	NullsFirst bool // When true, considers NULLs < non-NULLs when sorting.
-	K          int  // Number of top rows to compute.
+	SortBy     []*physicalpb.ColumnExpression
+	Ascending  bool  // Sorts lines in ascending order if true.
+	NullsFirst bool  // When true, considers NULLs < non-NULLs when sorting.
+	K          int64 // Number of top rows to compute.
 
 	// MaxUnused determines the maximum number of unused rows to retain. An
 	// unused row is any row from a retained record that does not contribute to
@@ -55,45 +55,40 @@ func newTopkPipeline(opts topkOptions) (*topkPipeline, error) {
 			Fields:     fields,
 			Ascending:  opts.Ascending,
 			NullsFirst: opts.NullsFirst,
-			K:          opts.K,
+			K:          int(opts.K),
 			MaxUnused:  opts.MaxUnused,
 		},
 	}, nil
 }
 
-func exprsToFields(exprs []physical.ColumnExpression) ([]arrow.Field, error) {
+func exprsToFields(exprs []*physicalpb.ColumnExpression) ([]arrow.Field, error) {
 	fields := make([]arrow.Field, 0, len(exprs))
 	for _, expr := range exprs {
-		expr, ok := expr.(*physical.ColumnExpr)
-		if !ok {
-			panic("topkPipeline only supports ColumnExpr expressions")
-		}
-
-		dt, err := guessLokiType(expr.Ref)
+		dt, err := guessLokiType(expr)
 		if err != nil {
 			return nil, err
 		}
 
-		ident := semconv.NewIdentifier(expr.Ref.Column, expr.Ref.Type, dt)
+		ident := semconv.NewIdentifier(expr.Name, expr.Type, dt)
 		fields = append(fields, semconv.FieldFromIdent(ident, true))
 	}
 	return fields, nil
 }
 
-func guessLokiType(ref types.ColumnRef) (types.DataType, error) {
-	switch ref.Type {
-	case types.ColumnTypeBuiltin:
-		switch ref.Column {
+func guessLokiType(expr *physicalpb.ColumnExpression) (types.DataType, error) {
+	switch expr.Type {
+	case physicalpb.COLUMN_TYPE_BUILTIN:
+		switch expr.Name {
 		case types.ColumnNameBuiltinTimestamp:
 			return types.Loki.Timestamp, nil
 		case types.ColumnNameBuiltinMessage:
 			return types.Loki.String, nil
 		default:
-			panic(fmt.Sprintf("unsupported builtin column type %s", ref))
+			panic(fmt.Sprintf("unsupported builtin column type %s", expr))
 		}
-	case types.ColumnTypeGenerated:
+	case physicalpb.COLUMN_TYPE_GENERATED:
 		return types.Loki.Float, nil
-	case types.ColumnTypeAmbiguous:
+	case physicalpb.COLUMN_TYPE_AMBIGUOUS:
 		// TODO(rfratto): It's not clear how topk should sort when there's an
 		// ambiguous column reference, since ambiguous column references can
 		// refer to multiple columns.

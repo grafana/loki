@@ -6,28 +6,29 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 func TestFullyQualifiedName(t *testing.T) {
 	tc := []struct {
 		name       string
-		columnType types.ColumnType
+		columnType physicalpb.ColumnType
 		dataType   types.DataType
 		expected   string
 	}{
 		// Resource scope
-		{"service_name", types.ColumnTypeLabel, types.Loki.String, "utf8.label.service_name"},
-		{"service.name", types.ColumnTypeLabel, types.Loki.String, "utf8.label.service.name"},
+		{"service_name", physicalpb.COLUMN_TYPE_LABEL, types.Loki.String, "utf8.label.service_name"},
+		{"service.name", physicalpb.COLUMN_TYPE_LABEL, types.Loki.String, "utf8.label.service.name"},
 		// Record scope
-		{"message", types.ColumnTypeBuiltin, types.Loki.String, "utf8.builtin.message"},
-		{"timestamp", types.ColumnTypeBuiltin, types.Loki.Timestamp, "timestamp_ns.builtin.timestamp"},
-		{"trace_id", types.ColumnTypeMetadata, types.Loki.String, "utf8.metadata.trace_id"},
+		{"message", physicalpb.COLUMN_TYPE_BUILTIN, types.Loki.String, "utf8.builtin.message"},
+		{"timestamp", physicalpb.COLUMN_TYPE_BUILTIN, types.Loki.Timestamp, "timestamp_ns.builtin.timestamp"},
+		{"trace_id", physicalpb.COLUMN_TYPE_METADATA, types.Loki.String, "utf8.metadata.trace_id"},
 		// Generated scope
-		{"value", types.ColumnTypeGenerated, types.Loki.Float, "float64.generated.value"},
-		{"caller", types.ColumnTypeParsed, types.Loki.String, "utf8.parsed.caller"},
+		{"value", physicalpb.COLUMN_TYPE_GENERATED, types.Loki.Float, "float64.generated.value"},
+		{"caller", physicalpb.COLUMN_TYPE_PARSED, types.Loki.String, "utf8.parsed.caller"},
 		// Unscoped
-		{"service.name", types.ColumnTypeAmbiguous, types.Loki.String, "utf8.ambiguous.service.name"},
+		{"service.name", physicalpb.COLUMN_TYPE_AMBIGUOUS, types.Loki.String, "utf8.ambiguous.service.name"},
 	}
 
 	for _, tt := range tc {

@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
-	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
@@ -38,8 +38,8 @@ func TestNewFilterPipeline(t *testing.T) {
 		truePredicate := physical.NewLiteral(true)
 
 		// Create a Filter node
-		filter := &physical.Filter{
-			Predicates: []physical.Expression{truePredicate},
+		filter := &physicalpb.Filter{
+			Predicates: []*physicalpb.Expression{truePredicate.ToExpression()},
 		}
 
 		// Create filter pipeline
@@ -76,8 +76,8 @@ func TestNewFilterPipeline(t *testing.T) {
 		falsePredicate := physical.NewLiteral(false)
 
 		// Create a Filter node
-		filter := &physical.Filter{
-			Predicates: []physical.Expression{falsePredicate},
+		filter := &physicalpb.Filter{
+			Predicates: []*physicalpb.Expression{falsePredicate.ToExpression()},
 		}
 
 		// Create filter pipeline
@@ -107,13 +107,13 @@ func TestNewFilterPipeline(t *testing.T) {
 		defer input.Close()
 
 		// Create a filter predicate that uses the 'valid' column directly
-		validColumnPredicate := &physical.ColumnExpr{
-			Ref: createColumnRef("valid"),
+		validColumnPredicate := &physicalpb.ColumnExpression{
+			Name: "valid", Type: physicalpb.COLUMN_TYPE_BUILTIN,
 		}
 
 		// Create a Filter node
-		filter := &physical.Filter{
-			Predicates: []physical.Expression{validColumnPredicate},
+		filter := &physicalpb.Filter{
+			Predicates: []*physicalpb.Expression{validColumnPredicate.ToExpression()},
 		}
 
 		// Create filter pipeline
@@ -153,18 +153,18 @@ func TestNewFilterPipeline(t *testing.T) {
 		defer input.Close()
 
 		// Create a Filter node
-		filter := &physical.Filter{
-			Predicates: []physical.Expression{
-				&physical.BinaryExpr{
-					Left:  &physical.ColumnExpr{Ref: createColumnRef("name")},
-					Right: physical.NewLiteral("Bob"),
-					Op:    types.BinaryOpEq,
-				},
-				&physical.BinaryExpr{
-					Left:  &physical.ColumnExpr{Ref: createColumnRef("valid")},
-					Right: physical.NewLiteral(false),
-					Op:    types.BinaryOpNeq,
-				},
+		filter := &physicalpb.Filter{
+			Predicates: []*physicalpb.Expression{
+				(&physicalpb.BinaryExpression{
+					Left:  (&physicalpb.ColumnExpression{Name: "name", Type: physicalpb.COLUMN_TYPE_BUILTIN}).ToExpression(),
+					Right: physical.NewLiteral("Bob").ToExpression(),
+					Op:    physicalpb.BINARY_OP_EQ,
+				}).ToExpression(),
+				(&physicalpb.BinaryExpression{
+					Left:  (&physicalpb.ColumnExpression{Name: "valid", Type: physicalpb.COLUMN_TYPE_BUILTIN}).ToExpression(),
+					Right: physical.NewLiteral(false).ToExpression(),
+					Op:    physicalpb.BINARY_OP_NEQ,
+				}).ToExpression(),
 			},
 		}
 
@@ -203,8 +203,8 @@ func TestNewFilterPipeline(t *testing.T) {
 		truePredicate := physical.NewLiteral(true)
 
 		// Create a Filter node
-		filter := &physical.Filter{
-			Predicates: []physical.Expression{truePredicate},
+		filter := &physicalpb.Filter{
+			Predicates: []*physicalpb.Expression{truePredicate.ToExpression()},
 		}
 
 		// Create filter pipeline
@@ -238,13 +238,13 @@ func TestNewFilterPipeline(t *testing.T) {
 		defer input.Close()
 
 		// Create a filter predicate that uses the 'valid' column directly
-		validColumnPredicate := &physical.ColumnExpr{
-			Ref: createColumnRef("valid"),
+		validColumnPredicate := &physicalpb.ColumnExpression{
+			Name: "valid", Type: physicalpb.COLUMN_TYPE_BUILTIN,
 		}
 
 		// Create a Filter node
-		filter := &physical.Filter{
-			Predicates: []physical.Expression{validColumnPredicate},
+		filter := &physicalpb.Filter{
+			Predicates: []*physicalpb.Expression{validColumnPredicate.ToExpression()},
 		}
 
 		// Create filter pipeline
@@ -294,13 +294,13 @@ func TestNewFilterPipeline(t *testing.T) {
 		defer input.Close()
 
 		// Create a filter predicate that uses the 'valid' column directly
-		validColumnPredicate := &physical.ColumnExpr{
-			Ref: createColumnRef("valid"),
+		validColumnPredicate := &physicalpb.ColumnExpression{
+			Name: "valid", Type: physicalpb.COLUMN_TYPE_BUILTIN,
 		}
 
 		// Create a Filter node
-		filter := &physical.Filter{
-			Predicates: []physical.Expression{validColumnPredicate},
+		filter := &physicalpb.Filter{
+			Predicates: []*physicalpb.Expression{validColumnPredicate.ToExpression()},
 		}
 
 		// Create filter pipeline

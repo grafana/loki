@@ -5,7 +5,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -16,18 +16,18 @@ func newExpressionEvaluator() expressionEvaluator {
 	return expressionEvaluator{}
 }
 
-func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) (arrow.Array, error) {
+func (e expressionEvaluator) eval(expr physicalpb.Expression, input arrow.Record) (arrow.Array, error) {
 
-	switch expr := expr.(type) {
+	switch expr := expr.Kind.(type) {
 
-	case *physical.LiteralExpr:
-		return NewScalar(expr.Literal, int(input.NumRows())), nil
+	case *physicalpb.Expression_LiteralExpression:
+		return NewScalar(*expr.LiteralExpression, int(input.NumRows())), nil
 
-	case *physical.ColumnExpr:
-		colIdent := semconv.NewIdentifier(expr.Ref.Column, expr.Ref.Type, types.Loki.String)
+	case *physicalpb.Expression_ColumnExpression:
+		colIdent := semconv.NewIdentifier(expr.ColumnExpression.Name, expr.ColumnExpression.Type, types.Loki.String)
 
 		// For non-ambiguous columns, we can look up the column in the schema by its fully qualified name.
-		if expr.Ref.Type != types.ColumnTypeAmbiguous {
+		if expr.ColumnExpression.Type != physicalpb.COLUMN_TYPE_AMBIGUOUS {
 			for idx, field := range input.Schema().Fields() {
 				ident, err := semconv.ParseFQN(field.Name)
 				if err != nil {
@@ -40,7 +40,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		}
 
 		// For ambiguous columns, we need to filter on the name and type and combine matching columns into a CoalesceVector.
-		if expr.Ref.Type == types.ColumnTypeAmbiguous {
+		if expr.ColumnExpression.Type == physicalpb.COLUMN_TYPE_AMBIGUOUS {
 			var fieldIndices []int
 			var fieldIdents []*semconv.Identifier
 
@@ -66,7 +66,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 				if ident.DataType() != types.Loki.String {
 					return nil, fmt.Errorf("column %s has datatype %s, but expression expects %s", ident.ShortName(), ident.DataType(), types.Loki.String)
 				}
-				vecs = append(vecs, &columnWithType{col: input.Column(idx), ct: ident.ColumnType()})
+				vecs = append(vecs, &columnWithType{col: input.Column(idx), ct: ident.ColumnTypePhys()})
 			}
 
 			// Single column matches
@@ -82,27 +82,27 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 
 		// A non-existent column is represented as a string scalar with zero-value.
 		// This reflects current behaviour, where a label filter `| foo=""` would match all if `foo` is not defined.
-		return NewScalar(types.NewLiteral(""), int(input.NumRows())), nil
+		return NewScalar(physicalpb.LiteralExpression{Kind: &physicalpb.LiteralExpression_StringLiteral{StringLiteral: &physicalpb.StringLiteral{Value: ""}}}, int(input.NumRows())), nil
 
-	case *physical.UnaryExpr:
-		lhr, err := e.eval(expr.Left, input)
+	case *physicalpb.Expression_UnaryExpression:
+		lhr, err := e.eval(*expr.UnaryExpression.Value, input)
 		if err != nil {
 			return nil, err
 		}
 
-		fn, err := unaryFunctions.GetForSignature(expr.Op, lhr.DataType())
+		fn, err := unaryFunctions.GetForSignature(expr.UnaryExpression.Op, lhr.DataType())
 		if err != nil {
 			return nil, fmt.Errorf("failed to lookup unary function: %w", err)
 		}
 		return fn.Evaluate(lhr)
 
-	case *physical.BinaryExpr:
-		lhs, err := e.eval(expr.Left, input)
+	case *physicalpb.Expression_BinaryExpression:
+		lhs, err := e.eval(*expr.BinaryExpression.Left, input)
 		if err != nil {
 			return nil, err
 		}
 
-		rhs, err := e.eval(expr.Right, input)
+		rhs, err := e.eval(*expr.BinaryExpression.Right, input)
 		if err != nil {
 			return nil, err
 		}
@@ -110,13 +110,13 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		// At the moment we only support functions that accept the same input types.
 		// TODO(chaudum): Compare Loki type, not Arrow type
 		if lhs.DataType().ID() != rhs.DataType().ID() {
-			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): types do not match", expr.Op, lhs.DataType(), rhs.DataType())
+			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): types do not match", expr.BinaryExpression.Op, lhs.DataType(), rhs.DataType())
 		}
 
 		// TODO(chaudum): Resolve function by Loki type
-		fn, err := binaryFunctions.GetForSignature(expr.Op, lhs.DataType())
+		fn, err := binaryFunctions.GetForSignature(expr.BinaryExpression.Op, lhs.DataType())
 		if err != nil {
-			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): %w", expr.Op, lhs.DataType(), rhs.DataType(), err)
+			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): %w", expr.BinaryExpression.Op, lhs.DataType(), rhs.DataType(), err)
 		}
 		return fn.Evaluate(lhs, rhs)
 	}
@@ -125,7 +125,7 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 }
 
 // newFunc returns a new function that can evaluate an input against a binded expression.
-func (e expressionEvaluator) newFunc(expr physical.Expression) evalFunc {
+func (e expressionEvaluator) newFunc(expr physicalpb.Expression) evalFunc {
 	return func(input arrow.Record) (arrow.Array, error) {
 		return e.eval(expr, input)
 	}
@@ -135,5 +135,5 @@ type evalFunc func(input arrow.Record) (arrow.Array, error)
 
 type columnWithType struct {
 	col arrow.Array
-	ct  types.ColumnType
+	ct  physicalpb.ColumnType
 }

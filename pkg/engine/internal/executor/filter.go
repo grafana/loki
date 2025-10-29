@@ -8,10 +8,10 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 )
 
-func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expressionEvaluator) *GenericPipeline {
+func NewFilterPipeline(filter *physicalpb.Filter, input Pipeline, evaluator expressionEvaluator) *GenericPipeline {
 	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
@@ -23,7 +23,7 @@ func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expres
 		cols := make([]*array.Boolean, 0, len(filter.Predicates))
 
 		for i, pred := range filter.Predicates {
-			vec, err := evaluator.eval(pred, batch)
+			vec, err := evaluator.eval(*pred, batch)
 			if err != nil {
 				return nil, err
 			}

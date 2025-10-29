@@ -10,7 +10,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/scalar"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -28,24 +28,25 @@ import (
 //   - Expressions cannot be represented as a boolean value
 //   - An expression is not supported (such as comparing two columns or comparing
 //     two literals).
-func buildLogsPredicate(expr physical.Expression, columns []*logs.Column) (logs.Predicate, error) {
-	switch expr := expr.(type) {
-	case physical.UnaryExpression:
-		return buildLogsUnaryPredicate(expr, columns)
+func buildLogsPredicate(expr physicalpb.Expression, columns []*logs.Column) (logs.Predicate, error) {
+	switch expr := expr.Kind.(type) {
+	case *physicalpb.Expression_UnaryExpression:
+		return buildLogsUnaryPredicate(*expr.UnaryExpression, columns)
 
-	case physical.BinaryExpression:
-		return buildLogsBinaryPredicate(expr, columns)
+	case *physicalpb.Expression_BinaryExpression:
+		return buildLogsBinaryPredicate(*expr.BinaryExpression, columns)
 
-	case *physical.LiteralExpr:
-		if expr.Literal.Type() == types.Loki.Bool {
-			val := expr.Literal.(types.TypedLiteral[bool]).Value()
+	case *physicalpb.Expression_LiteralExpression:
+		switch (expr.LiteralExpression.Kind).(type) {
+		case *physicalpb.LiteralExpression_BoolLiteral:
+			val := expr.LiteralExpression.GetBoolLiteral().Value
 			if val {
 				return logs.TruePredicate{}, nil
 			}
 			return logs.FalsePredicate{}, nil
 		}
 
-	case *physical.ColumnExpr:
+	case *physicalpb.Expression_ColumnExpression:
 		// TODO(rfratto): This would add support for statements like
 		//
 		// SELECT * WHERE boolean_column
@@ -66,78 +67,68 @@ func buildLogsPredicate(expr physical.Expression, columns []*logs.Column) (logs.
 	return nil, fmt.Errorf("expression %[1]s (type %[1]T) cannot be interpreted as a boolean", expr)
 }
 
-func buildLogsUnaryPredicate(expr physical.UnaryExpression, columns []*logs.Column) (logs.Predicate, error) {
-	unaryExpr, ok := expr.(*physical.UnaryExpr)
-	if !ok {
-		return nil, fmt.Errorf("expected physical.UnaryExpr, got %[1]T", expr)
-	}
-
-	inner, err := buildLogsPredicate(unaryExpr.Left, columns)
+func buildLogsUnaryPredicate(expr physicalpb.UnaryExpression, columns []*logs.Column) (logs.Predicate, error) {
+	inner, err := buildLogsPredicate(*expr.Value, columns)
 	if err != nil {
 		return nil, fmt.Errorf("building unary predicate: %w", err)
 	}
 
-	switch unaryExpr.Op {
-	case types.UnaryOpNot:
+	switch expr.Op {
+	case physicalpb.UNARY_OP_NOT:
 		return logs.NotPredicate{Inner: inner}, nil
 	}
 
-	return nil, fmt.Errorf("unsupported unary operator %s in logs predicate", unaryExpr.Op)
+	return nil, fmt.Errorf("unsupported unary operator %s in logs predicate", expr.Op)
 }
 
-var comparisonBinaryOps = map[types.BinaryOp]struct{}{
-	types.BinaryOpEq:              {},
-	types.BinaryOpNeq:             {},
-	types.BinaryOpGt:              {},
-	types.BinaryOpGte:             {},
-	types.BinaryOpLt:              {},
-	types.BinaryOpLte:             {},
-	types.BinaryOpMatchSubstr:     {},
-	types.BinaryOpNotMatchSubstr:  {},
-	types.BinaryOpMatchRe:         {},
-	types.BinaryOpNotMatchRe:      {},
-	types.BinaryOpMatchPattern:    {},
-	types.BinaryOpNotMatchPattern: {},
+var comparisonBinaryOps = map[physicalpb.BinaryOp]struct{}{
+	physicalpb.BINARY_OP_EQ:                {},
+	physicalpb.BINARY_OP_NEQ:               {},
+	physicalpb.BINARY_OP_GT:                {},
+	physicalpb.BINARY_OP_GTE:               {},
+	physicalpb.BINARY_OP_LT:                {},
+	physicalpb.BINARY_OP_LTE:               {},
+	physicalpb.BINARY_OP_MATCH_SUBSTR:      {},
+	physicalpb.BINARY_OP_NOT_MATCH_SUBSTR:  {},
+	physicalpb.BINARY_OP_MATCH_RE:          {},
+	physicalpb.BINARY_OP_NOT_MATCH_RE:      {},
+	physicalpb.BINARY_OP_MATCH_PATTERN:     {},
+	physicalpb.BINARY_OP_NOT_MATCH_PATTERN: {},
 }
 
-func buildLogsBinaryPredicate(expr physical.BinaryExpression, columns []*logs.Column) (logs.Predicate, error) {
-	binaryExpr, ok := expr.(*physical.BinaryExpr)
-	if !ok {
-		return nil, fmt.Errorf("expected physical.BinaryExpr, got %[1]T", expr)
-	}
-
-	switch binaryExpr.Op {
-	case types.BinaryOpAnd:
-		left, err := buildLogsPredicate(binaryExpr.Left, columns)
+func buildLogsBinaryPredicate(expr physicalpb.BinaryExpression, columns []*logs.Column) (logs.Predicate, error) {
+	switch expr.Op {
+	case physicalpb.BINARY_OP_AND:
+		left, err := buildLogsPredicate(*expr.Left, columns)
 		if err != nil {
 			return nil, fmt.Errorf("building left binary predicate: %w", err)
 		}
-		right, err := buildLogsPredicate(binaryExpr.Right, columns)
+		right, err := buildLogsPredicate(*expr.Right, columns)
 		if err != nil {
 			return nil, fmt.Errorf("building right binary predicate: %w", err)
 		}
 		return logs.AndPredicate{Left: left, Right: right}, nil
 
-	case types.BinaryOpOr:
-		left, err := buildLogsPredicate(binaryExpr.Left, columns)
+	case physicalpb.BINARY_OP_OR:
+		left, err := buildLogsPredicate(*expr.Left, columns)
 		if err != nil {
 			return nil, fmt.Errorf("building left binary predicate: %w", err)
 		}
-		right, err := buildLogsPredicate(binaryExpr.Right, columns)
+		right, err := buildLogsPredicate(*expr.Right, columns)
 		if err != nil {
 			return nil, fmt.Errorf("building right binary predicate: %w", err)
 		}
 		return logs.OrPredicate{Left: left, Right: right}, nil
 	}
 
-	if _, ok := comparisonBinaryOps[binaryExpr.Op]; ok {
-		return buildLogsComparison(binaryExpr, columns)
+	if _, ok := comparisonBinaryOps[expr.Op]; ok {
+		return buildLogsComparison(&expr, columns)
 	}
 
 	return nil, fmt.Errorf("expression %[1]s (type %[1]T) cannot be interpreted as a boolean", expr)
 }
 
-func buildLogsComparison(expr *physical.BinaryExpr, columns []*logs.Column) (logs.Predicate, error) {
+func buildLogsComparison(expr *physicalpb.BinaryExpression, columns []*logs.Column) (logs.Predicate, error) {
 	// Currently, we only support comparisons where the left-hand side is a
 	// [physical.ColumnExpr] and the right-hand side is a [physical.LiteralExpr].
 	//
@@ -150,8 +141,8 @@ func buildLogsComparison(expr *physical.BinaryExpr, columns []*logs.Column) (log
 	// * LHS ColumnExpr, RHS ColumnExpr could be supported in the future, but would need
 	//   support down to the dataset level.
 
-	columnRef, leftValid := expr.Left.(*physical.ColumnExpr)
-	literalExpr, rightValid := expr.Right.(*physical.LiteralExpr)
+	columnRef, leftValid := expr.Left.Kind.(*physicalpb.Expression_ColumnExpression)
+	literalExpr, rightValid := expr.Right.Kind.(*physicalpb.Expression_LiteralExpression)
 
 	if !leftValid || !rightValid {
 		return nil, fmt.Errorf("binary comparisons require the left-hand operation to reference a column (got %T) and the right-hand operation to be a literal (got %T)", expr.Left, expr.Right)
@@ -160,18 +151,18 @@ func buildLogsComparison(expr *physical.BinaryExpr, columns []*logs.Column) (log
 	// findColumn may return nil for col if the referenced column doesn't exist;
 	// this is handled in the switch statement below and converts to either
 	// [logs.FalsePredicate] or [logs.TruePredicate] depending on the operation.
-	col, err := findColumn(columnRef.Ref, columns)
+	col, err := findColumn(*columnRef.ColumnExpression, columns)
 	if err != nil {
-		return nil, fmt.Errorf("finding column %s: %w", columnRef.Ref, err)
+		return nil, fmt.Errorf("finding column %s: %w", columnRef.ColumnExpression, err)
 	}
 
-	s, err := buildDataobjScalar(literalExpr.Literal)
+	s, err := buildDataobjScalar(*literalExpr.LiteralExpression)
 	if err != nil {
 		return nil, err
 	}
 
 	switch expr.Op {
-	case types.BinaryOpEq:
+	case physicalpb.BINARY_OP_EQ:
 		if col == nil && s.IsValid() {
 			return logs.FalsePredicate{}, nil // Column(NULL) == non-null: always fails
 		} else if col == nil && !s.IsValid() {
@@ -179,7 +170,7 @@ func buildLogsComparison(expr *physical.BinaryExpr, columns []*logs.Column) (log
 		}
 		return logs.EqualPredicate{Column: col, Value: s}, nil
 
-	case types.BinaryOpNeq:
+	case physicalpb.BINARY_OP_NEQ:
 		if col == nil && s.IsValid() {
 			return logs.TruePredicate{}, nil // Column(NULL) != non-null: always passes
 		} else if col == nil && !s.IsValid() {
@@ -187,13 +178,13 @@ func buildLogsComparison(expr *physical.BinaryExpr, columns []*logs.Column) (log
 		}
 		return logs.NotPredicate{Inner: logs.EqualPredicate{Column: col, Value: s}}, nil
 
-	case types.BinaryOpGt:
+	case physicalpb.BINARY_OP_GT:
 		if col == nil {
 			return logs.FalsePredicate{}, nil // Column(NULL) > value: always fails
 		}
 		return logs.GreaterThanPredicate{Column: col, Value: s}, nil
 
-	case types.BinaryOpGte:
+	case physicalpb.BINARY_OP_GTE:
 		if col == nil {
 			return logs.FalsePredicate{}, nil // Column(NULL) >= value: always fails
 		}
@@ -202,13 +193,13 @@ func buildLogsComparison(expr *physical.BinaryExpr, columns []*logs.Column) (log
 			Right: logs.EqualPredicate{Column: col, Value: s},
 		}, nil
 
-	case types.BinaryOpLt:
+	case physicalpb.BINARY_OP_LT:
 		if col == nil {
 			return logs.FalsePredicate{}, nil // Column(NULL) < value: always fails
 		}
 		return logs.LessThanPredicate{Column: col, Value: s}, nil
 
-	case types.BinaryOpLte:
+	case physicalpb.BINARY_OP_LTE:
 		if col == nil {
 			return logs.FalsePredicate{}, nil // Column(NULL) <= value: always fails
 		}
@@ -217,13 +208,13 @@ func buildLogsComparison(expr *physical.BinaryExpr, columns []*logs.Column) (log
 			Right: logs.EqualPredicate{Column: col, Value: s},
 		}, nil
 
-	case types.BinaryOpMatchSubstr, types.BinaryOpMatchRe, types.BinaryOpMatchPattern:
+	case physicalpb.BINARY_OP_MATCH_SUBSTR, physicalpb.BINARY_OP_MATCH_RE, physicalpb.BINARY_OP_MATCH_PATTERN:
 		if col == nil {
 			return logs.FalsePredicate{}, nil // Match operations against a non-existent column will always fail.
 		}
 		return buildLogsMatch(col, expr.Op, s)
 
-	case types.BinaryOpNotMatchSubstr, types.BinaryOpNotMatchRe, types.BinaryOpNotMatchPattern:
+	case physicalpb.BINARY_OP_NOT_MATCH_SUBSTR, physicalpb.BINARY_OP_NOT_MATCH_RE, physicalpb.BINARY_OP_NOT_MATCH_PATTERN:
 		if col == nil {
 			return logs.TruePredicate{}, nil // Not match operations against a non-existent column will always pass.
 		}
@@ -236,19 +227,19 @@ func buildLogsComparison(expr *physical.BinaryExpr, columns []*logs.Column) (log
 // findColumn finds a column by ref in the slice of columns. If ref is invalid,
 // findColumn returns an error. If the column does not exist, findColumn
 // returns nil.
-func findColumn(ref types.ColumnRef, columns []*logs.Column) (*logs.Column, error) {
-	if ref.Type != types.ColumnTypeBuiltin && ref.Type != types.ColumnTypeMetadata && ref.Type != types.ColumnTypeAmbiguous {
+func findColumn(ref physicalpb.ColumnExpression, columns []*logs.Column) (*logs.Column, error) {
+	if ref.Type != physicalpb.COLUMN_TYPE_BUILTIN && ref.Type != physicalpb.COLUMN_TYPE_METADATA && ref.Type != physicalpb.COLUMN_TYPE_AMBIGUOUS {
 		return nil, fmt.Errorf("invalid column ref %s, expected builtin or metadata", ref)
 	}
 
-	columnMatch := func(ref types.ColumnRef, column *logs.Column) bool {
+	columnMatch := func(ref physicalpb.ColumnExpression, column *logs.Column) bool {
 		switch {
-		case ref.Type == types.ColumnTypeBuiltin && ref.Column == types.ColumnNameBuiltinTimestamp:
+		case ref.Type == physicalpb.COLUMN_TYPE_BUILTIN && ref.Name == types.ColumnNameBuiltinTimestamp:
 			return column.Type == logs.ColumnTypeTimestamp
-		case ref.Type == types.ColumnTypeBuiltin && ref.Column == types.ColumnNameBuiltinMessage:
+		case ref.Type == physicalpb.COLUMN_TYPE_BUILTIN && ref.Name == types.ColumnNameBuiltinMessage:
 			return column.Type == logs.ColumnTypeMessage
-		case ref.Type == types.ColumnTypeMetadata || ref.Type == types.ColumnTypeAmbiguous:
-			return column.Name == ref.Column
+		case ref.Type == physicalpb.COLUMN_TYPE_METADATA || ref.Type == physicalpb.COLUMN_TYPE_AMBIGUOUS:
+			return column.Name == ref.Name
 		}
 
 		return false
@@ -265,7 +256,7 @@ func findColumn(ref types.ColumnRef, columns []*logs.Column) (*logs.Column, erro
 
 // buildDataobjScalar builds a dataobj-compatible [scalar.Scalar] from a
 // [types.Literal].
-func buildDataobjScalar(lit types.Literal) (scalar.Scalar, error) {
+func buildDataobjScalar(lit physicalpb.LiteralExpression) (scalar.Scalar, error) {
 	// [logs.ReaderOptions.Validate] specifies that all scalars must be one of
 	// the given types:
 	//
@@ -277,27 +268,27 @@ func buildDataobjScalar(lit types.Literal) (scalar.Scalar, error) {
 	//
 	// All of our mappings below evaluate to one of the above types.
 
-	switch lit := lit.(type) {
-	case types.NullLiteral:
+	switch lit := lit.Kind.(type) {
+	case *physicalpb.LiteralExpression_NullLiteral:
 		return scalar.ScalarNull, nil
-	case types.IntegerLiteral:
-		return scalar.NewInt64Scalar(lit.Value()), nil
-	case types.BytesLiteral:
+	case *physicalpb.LiteralExpression_IntegerLiteral:
+		return scalar.NewInt64Scalar(lit.IntegerLiteral.Value), nil
+	case *physicalpb.LiteralExpression_BytesLiteral:
 		// [types.BytesLiteral] refers to byte sizes, not binary data.
-		return scalar.NewInt64Scalar(int64(lit.Value())), nil
-	case types.TimestampLiteral:
-		ts := arrow.Timestamp(lit.Value())
+		return scalar.NewInt64Scalar(lit.BytesLiteral.Value), nil
+	case *physicalpb.LiteralExpression_TimestampLiteral:
+		ts := arrow.Timestamp(lit.TimestampLiteral.Value)
 		tsType := arrow.FixedWidthTypes.Timestamp_ns
 		return scalar.NewTimestampScalar(ts, tsType), nil
-	case types.StringLiteral:
-		buf := memory.NewBufferBytes([]byte(lit.Value()))
+	case *physicalpb.LiteralExpression_StringLiteral:
+		buf := memory.NewBufferBytes([]byte(lit.StringLiteral.Value))
 		return scalar.NewBinaryScalar(buf, arrow.BinaryTypes.Binary), nil
 	}
 
 	return nil, fmt.Errorf("unsupported literal type %T", lit)
 }
 
-func buildLogsMatch(col *logs.Column, op types.BinaryOp, value scalar.Scalar) (logs.Predicate, error) {
+func buildLogsMatch(col *logs.Column, op physicalpb.BinaryOp, value scalar.Scalar) (logs.Predicate, error) {
 	// All the match operations require the value to be a string or a binary.
 	var find []byte
 
@@ -311,7 +302,7 @@ func buildLogsMatch(col *logs.Column, op types.BinaryOp, value scalar.Scalar) (l
 	}
 
 	switch op {
-	case types.BinaryOpMatchSubstr:
+	case physicalpb.BINARY_OP_MATCH_SUBSTR:
 		return logs.FuncPredicate{
 			Column: col,
 			Keep: func(_ *logs.Column, value scalar.Scalar) bool {
@@ -319,7 +310,7 @@ func buildLogsMatch(col *logs.Column, op types.BinaryOp, value scalar.Scalar) (l
 			},
 		}, nil
 
-	case types.BinaryOpNotMatchSubstr:
+	case physicalpb.BINARY_OP_NOT_MATCH_SUBSTR:
 		return logs.FuncPredicate{
 			Column: col,
 			Keep: func(_ *logs.Column, value scalar.Scalar) bool {
@@ -327,7 +318,7 @@ func buildLogsMatch(col *logs.Column, op types.BinaryOp, value scalar.Scalar) (l
 			},
 		}, nil
 
-	case types.BinaryOpMatchRe:
+	case physicalpb.BINARY_OP_MATCH_RE:
 		re, err := regexp.Compile(string(find))
 		if err != nil {
 			return nil, err
@@ -339,7 +330,7 @@ func buildLogsMatch(col *logs.Column, op types.BinaryOp, value scalar.Scalar) (l
 			},
 		}, nil
 
-	case types.BinaryOpNotMatchRe:
+	case physicalpb.BINARY_OP_NOT_MATCH_RE:
 		re, err := regexp.Compile(string(find))
 		if err != nil {
 			return nil, err
@@ -352,7 +343,7 @@ func buildLogsMatch(col *logs.Column, op types.BinaryOp, value scalar.Scalar) (l
 		}, nil
 	}
 
-	// NOTE(rfratto): [types.BinaryOpMatchPattern] and [types.BinaryOpNotMatchPattern]
+	// NOTE(rfratto): [physicalpb.BINARY_OP_MATCH_PATTERN] and [physicalpb.BINARY_OP_NOT_MATCH_PATTERN]
 	// are currently unsupported.
 	return nil, fmt.Errorf("unrecognized match operation %s", op)
 }

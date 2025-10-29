@@ -6,16 +6,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/tree"
 )
 
 // BuildTree converts a physical plan node and its children into a tree structure
 // that can be used for visualization and debugging purposes.
-func BuildTree(p *Plan, n Node) *tree.Node {
+func BuildTree(p *physicalpb.Plan, n physicalpb.Node) *tree.Node {
 	return toTree(p, n)
 }
 
-func toTree(p *Plan, n Node) *tree.Node {
+func toTree(p *physicalpb.Plan, n physicalpb.Node) *tree.Node {
 	root := toTreeNode(n)
 	for _, child := range p.Children(n) {
 		if ch := toTree(p, child); ch != nil {
@@ -25,22 +26,29 @@ func toTree(p *Plan, n Node) *tree.Node {
 	return root
 }
 
-func toTreeNode(n Node) *tree.Node {
-	treeNode := tree.NewNode(n.Type().String(), "")
+func toTreeNode(n physicalpb.Node) *tree.Node {
+	treeNode := tree.NewNode(n.Kind().String(), "")
 	treeNode.Context = n
 
 	switch node := n.(type) {
-	case *DataObjScan:
+	case *physicalpb.DataObjScan:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("location", false, node.Location),
-			tree.NewProperty("streams", false, len(node.StreamIDs)),
+			tree.NewProperty("streams", false, len(node.StreamIds)),
 			tree.NewProperty("section_id", false, node.Section),
 			tree.NewProperty("projections", true, toAnySlice(node.Projections)...),
+			tree.NewProperty("direction", false, node.SortOrder),
+			tree.NewProperty("limit", false, node.Limit),
 		}
 		for i := range node.Predicates {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
-	case *Projection:
+	case *physicalpb.SortMerge:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("column", false, node.Column),
+			tree.NewProperty("order", false, node.Order),
+		}
+	case *physicalpb.Projection:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("all", false, node.All),
 		}
@@ -49,22 +57,24 @@ func toTreeNode(n Node) *tree.Node {
 		} else if node.Drop {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("drop", true, toAnySlice(node.Expressions)...))
 		}
-	case *Filter:
+	case *physicalpb.Filter:
 		for i := range node.Predicates {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
-	case *Limit:
+	case *physicalpb.Merge:
+		// nothing to add
+	case *physicalpb.Limit:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("offset", false, node.Skip),
 			tree.NewProperty("limit", false, node.Fetch),
 		}
-	case *RangeAggregation:
+	case *physicalpb.AggregateRange:
 		properties := []tree.Property{
 			tree.NewProperty("operation", false, node.Operation),
-			tree.NewProperty("start", false, node.Start.Format(time.RFC3339Nano)),
-			tree.NewProperty("end", false, node.End.Format(time.RFC3339Nano)),
-			tree.NewProperty("step", false, node.Step),
-			tree.NewProperty("range", false, node.Range),
+			tree.NewProperty("start", false, time.Unix(0, node.StartUnixNanos).UTC().Format(time.RFC3339Nano)),
+			tree.NewProperty("end", false, time.Unix(0, node.EndUnixNanos).UTC().Format(time.RFC3339Nano)),
+			tree.NewProperty("step", false, time.Duration(node.StepNs)),
+			tree.NewProperty("range", false, time.Duration(node.RangeNs)),
 		}
 
 		if len(node.PartitionBy) > 0 {
@@ -72,7 +82,7 @@ func toTreeNode(n Node) *tree.Node {
 		}
 
 		treeNode.Properties = properties
-	case *VectorAggregation:
+	case *physicalpb.AggregateVector:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("operation", false, node.Operation),
 		}
@@ -80,29 +90,29 @@ func toTreeNode(n Node) *tree.Node {
 		if len(node.GroupBy) > 0 {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("group_by", true, toAnySlice(node.GroupBy)...))
 		}
-	case *ParseNode:
+	case *physicalpb.Parse:
 		treeNode.Properties = []tree.Property{
-			tree.NewProperty("kind", false, node.Kind.String()),
+			tree.NewProperty("kind", false, node.Operation.String()),
 		}
 		if len(node.RequestedKeys) > 0 {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("requested_keys", true, toAnySlice(node.RequestedKeys)...))
 		}
-	case *ColumnCompat:
+	case *physicalpb.ColumnCompat:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("src", false, node.Source),
 			tree.NewProperty("dst", false, node.Destination),
 			tree.NewProperty("collision", false, node.Collision),
 		}
-	case *TopK:
+	case *physicalpb.TopK:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("sort_by", false, node.SortBy.String()),
 			tree.NewProperty("ascending", false, node.Ascending),
 			tree.NewProperty("nulls_first", false, node.NullsFirst),
 			tree.NewProperty("k", false, node.K),
 		}
-	case *Parallelize:
+	case *physicalpb.Parallelize:
 		// Nothing to add
-	case *ScanSet:
+	case *physicalpb.ScanSet:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("num_targets", false, len(node.Targets)),
 		}
@@ -120,7 +130,7 @@ func toTreeNode(n Node) *tree.Node {
 			}
 
 			switch target.Type {
-			case ScanTypeDataObject:
+			case physicalpb.SCAN_TYPE_DATA_OBJECT:
 				// Create a child node to extract the properties of the target.
 				childNode := toTreeNode(target.DataObject)
 				properties = append(properties, childNode.Properties...)
@@ -143,7 +153,7 @@ func toAnySlice[T any](s []T) []any {
 // PrintAsTree converts a physical [Plan] into a human-readable tree representation.
 // It processes each root node in the plan graph, and returns the combined
 // string output of all trees joined by newlines.
-func PrintAsTree(p *Plan) string {
+func PrintAsTree(p *physicalpb.Plan) string {
 	results := make([]string, 0, len(p.Roots()))
 
 	for _, root := range p.Roots() {
@@ -157,7 +167,7 @@ func PrintAsTree(p *Plan) string {
 	return strings.Join(results, "\n")
 }
 
-func WriteMermaidFormat(w io.Writer, p *Plan) {
+func WriteMermaidFormat(w io.Writer, p *physicalpb.Plan) {
 	for _, root := range p.Roots() {
 		node := BuildTree(p, root)
 		printer := tree.NewMermaid(w)

@@ -8,7 +8,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -22,22 +22,22 @@ type vectorAggregationPipeline struct {
 
 	aggregator *aggregator
 	evaluator  expressionEvaluator
-	groupBy    []physical.ColumnExpression
+	groupBy    []*physicalpb.ColumnExpression
 
 	tsEval    evalFunc // used to evaluate the timestamp column
 	valueEval evalFunc // used to evaluate the value column
 }
 
 var (
-	vectorAggregationOperations = map[types.VectorAggregationType]aggregationOperation{
-		types.VectorAggregationTypeSum:   aggregationOperationSum,
-		types.VectorAggregationTypeCount: aggregationOperationCount,
-		types.VectorAggregationTypeMax:   aggregationOperationMax,
-		types.VectorAggregationTypeMin:   aggregationOperationMin,
+	vectorAggregationOperations = map[physicalpb.AggregateVectorOp]aggregationOperation{
+		physicalpb.AGGREGATE_VECTOR_OP_SUM:   aggregationOperationSum,
+		physicalpb.AGGREGATE_VECTOR_OP_COUNT: aggregationOperationCount,
+		physicalpb.AGGREGATE_VECTOR_OP_MAX:   aggregationOperationMax,
+		physicalpb.AGGREGATE_VECTOR_OP_MIN:   aggregationOperationMin,
 	}
 )
 
-func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnExpression, evaluator expressionEvaluator, operation types.VectorAggregationType) (*vectorAggregationPipeline, error) {
+func newVectorAggregationPipeline(inputs []Pipeline, groupBy []*physicalpb.ColumnExpression, evaluator expressionEvaluator, operation physicalpb.AggregateVectorOp) (*vectorAggregationPipeline, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("vector aggregation expects at least one input")
 	}
@@ -52,18 +52,14 @@ func newVectorAggregationPipeline(inputs []Pipeline, groupBy []physical.ColumnEx
 		evaluator:  evaluator,
 		groupBy:    groupBy,
 		aggregator: newAggregator(groupBy, 0, op),
-		tsEval: evaluator.newFunc(&physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: types.ColumnNameBuiltinTimestamp,
-				Type:   types.ColumnTypeBuiltin,
-			},
-		}),
-		valueEval: evaluator.newFunc(&physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: types.ColumnNameGeneratedValue,
-				Type:   types.ColumnTypeGenerated,
-			},
-		}),
+		tsEval: evaluator.newFunc(*(&physicalpb.ColumnExpression{
+			Name: types.ColumnNameBuiltinTimestamp,
+			Type: physicalpb.COLUMN_TYPE_BUILTIN,
+		}).ToExpression()),
+		valueEval: evaluator.newFunc(*(&physicalpb.ColumnExpression{
+			Name: types.ColumnNameGeneratedValue,
+			Type: physicalpb.COLUMN_TYPE_GENERATED,
+		}).ToExpression()),
 	}, nil
 }
 
@@ -114,7 +110,7 @@ func (v *vectorAggregationPipeline) read(ctx context.Context) (arrow.Record, err
 			arrays := make([]*array.String, 0, len(v.groupBy))
 
 			for _, columnExpr := range v.groupBy {
-				vec, err := v.evaluator.eval(columnExpr, record)
+				vec, err := v.evaluator.eval(*columnExpr.ToExpression(), record)
 				if err != nil {
 					return nil, err
 				}

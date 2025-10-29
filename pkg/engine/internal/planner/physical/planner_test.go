@@ -9,8 +9,10 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/ulid"
 )
 
 type catalog struct {
@@ -18,12 +20,12 @@ type catalog struct {
 }
 
 // ResolveShardDescriptors implements Catalog.
-func (c *catalog) ResolveShardDescriptors(e Expression, from, through time.Time) ([]FilteredShardDescriptor, error) {
+func (c *catalog) ResolveShardDescriptors(e physicalpb.Expression, from, through time.Time) ([]FilteredShardDescriptor, error) {
 	return c.ResolveShardDescriptorsWithShard(e, nil, noShard, from, through)
 }
 
 // ResolveDataObjForShard implements Catalog.
-func (c *catalog) ResolveShardDescriptorsWithShard(_ Expression, _ []Expression, shard ShardInfo, _, _ time.Time) ([]FilteredShardDescriptor, error) {
+func (c *catalog) ResolveShardDescriptorsWithShard(_ physicalpb.Expression, _ []*physicalpb.Expression, shard ShardInfo, _, _ time.Time) ([]FilteredShardDescriptor, error) {
 	return filterDescriptorsForShard(shard, c.sectionDescriptors)
 }
 
@@ -79,48 +81,48 @@ func TestMockCatalog(t *testing.T) {
 		},
 	} {
 		t.Run("shard "+tt.shard.String(), func(t *testing.T) {
-			filteredShardDescriptors, err := catalog.ResolveShardDescriptorsWithShard(nil, nil, tt.shard, timeStart, timeEnd)
+			filteredShardDescriptors, err := catalog.ResolveShardDescriptorsWithShard(physicalpb.Expression{}, nil, tt.shard, timeStart, timeEnd)
 			require.Nil(t, err)
 			require.ElementsMatch(t, tt.expDescriptors, filteredShardDescriptors)
 		})
 	}
 }
 
-func locations(t *testing.T, plan *Plan, node Node) []string {
+func locations(t *testing.T, plan *physicalpb.Plan, node physicalpb.Node) []string {
 	res := make([]string, 0)
 
 	visitor := &nodeCollectVisitor{
-		onVisitScanSet: func(set *ScanSet) error {
+		onVisitScanSet: func(set *physicalpb.ScanSet) error {
 			for _, target := range set.Targets {
 				switch target.Type {
-				case ScanTypeDataObject:
-					res = append(res, string(target.DataObject.Location))
+				case physicalpb.SCAN_TYPE_DATA_OBJECT:
+					res = append(res, target.DataObject.Location)
 				}
 			}
 			return nil
 		},
 	}
 
-	require.NoError(t, plan.DFSWalk(node, visitor, PreOrderWalk))
+	require.NoError(t, plan.VisitorWalk(node, visitor, physicalpb.PRE_ORDER_WALK))
 	return res
 }
 
-func sections(t *testing.T, plan *Plan, node Node) [][]int {
+func sections(t *testing.T, plan *physicalpb.Plan, node physicalpb.Node) [][]int {
 	res := make([][]int, 0)
 
 	visitor := &nodeCollectVisitor{
-		onVisitScanSet: func(set *ScanSet) error {
+		onVisitScanSet: func(set *physicalpb.ScanSet) error {
 			for _, target := range set.Targets {
 				switch target.Type {
-				case ScanTypeDataObject:
-					res = append(res, []int{target.DataObject.Section})
+				case physicalpb.SCAN_TYPE_DATA_OBJECT:
+					res = append(res, []int{int(target.DataObject.Section)})
 				}
 			}
 			return nil
 		},
 	}
 
-	require.NoError(t, plan.DFSWalk(node, visitor, PreOrderWalk))
+	require.NoError(t, plan.VisitorWalk(node, visitor, physicalpb.PRE_ORDER_WALK))
 	return res
 }
 
@@ -302,22 +304,22 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		require.NoError(t, err)
 
 		// Physical plan is built bottom up, so it should be Filter -> ParseNode -> ...
-		filterNode, ok := root.(*Filter)
+		filterNode, ok := root.(*physicalpb.Filter)
 		require.True(t, ok, "Root should be Filter")
 
 		children := physicalPlan.Children(filterNode)
 		require.Len(t, children, 1)
 
-		compatNode, ok := children[0].(*ColumnCompat)
+		compatNode, ok := children[0].(*physicalpb.ColumnCompat)
 		require.True(t, ok, "Filter's child should be ColumnCompat")
-		require.Equal(t, types.ColumnTypeParsed, compatNode.Source)
+		require.Equal(t, physicalpb.COLUMN_TYPE_PARSED, compatNode.Source)
 
 		children = physicalPlan.Children(compatNode)
 		require.Len(t, children, 1)
 
-		parseNode, ok := children[0].(*ParseNode)
+		parseNode, ok := children[0].(*physicalpb.Parse)
 		require.True(t, ok, "ColumnCompat's child should be ParseNode")
-		require.Equal(t, ParserLogfmt, parseNode.Kind)
+		require.Equal(t, physicalpb.PARSE_OP_LOGFMT, parseNode.Operation)
 		require.Empty(t, parseNode.RequestedKeys)
 
 		physicalPlan, err = planner.Optimize(physicalPlan)
@@ -375,20 +377,20 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		require.NoError(t, err)
 
 		// Find ParseNode in the plan
-		var parseNode *ParseNode
+		var parseNode *physicalpb.Parse
 		visitor := &nodeCollectVisitor{
-			onVisitParse: func(node *ParseNode) error {
+			onVisitParse: func(node *physicalpb.Parse) error {
 				parseNode = node
 				return nil
 			},
 		}
 		root, err := physicalPlan.Root()
 		require.NoError(t, err)
-		err = physicalPlan.DFSWalk(root, visitor, PreOrderWalk)
+		err = physicalPlan.VisitorWalk(root, visitor, physicalpb.PRE_ORDER_WALK)
 		require.NoError(t, err)
 		require.NotNil(t, parseNode, "ParseNode should exist in the plan")
 
-		require.Equal(t, ParserLogfmt, parseNode.Kind)
+		require.Equal(t, physicalpb.PARSE_OP_LOGFMT, parseNode.Operation)
 		require.Empty(t, parseNode.RequestedKeys) // Before optimization
 
 		physicalPlan, err = planner.Optimize(physicalPlan)
@@ -436,7 +438,7 @@ func TestPlanner_Convert_WithCastProjection(t *testing.T) {
 		require.NoError(t, err)
 
 		// Root should be a Projection node with the unwrap cast operation
-		projectionNode, ok := root.(*Projection)
+		projectionNode, ok := root.(*physicalpb.Projection)
 		require.True(t, ok, "Root should be Projection")
 		require.NotEmpty(t, projectionNode.Expressions, "Projection should have expressions")
 
@@ -729,28 +731,36 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("ascending", func(t *testing.T) {
-		planner := NewPlanner(NewContext(time.Now(), time.Now()).WithDirection(ASC), catalog)
+		parallelizeID := physicalpb.PlanNodeID{Value: ulid.New()}
+		compatID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scanSetID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan2ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan3ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan4ID := physicalpb.PlanNodeID{Value: ulid.New()}
+
+		planner := NewPlanner(NewContext(time.Now(), time.Now()).WithDirection(physicalpb.SORT_ORDER_ASCENDING), catalog)
 		plan, err := planner.Build(logicalPlan)
 		require.NoError(t, err)
 
-		expectedPlan := &Plan{}
-		parallelize := expectedPlan.graph.Add(&Parallelize{id: "parallelize"})
-		compat := expectedPlan.graph.Add(&ColumnCompat{id: "compat", Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
-		scanSet := expectedPlan.graph.Add(&ScanSet{
-			id: "scanset",
+		expectedPlan := &physicalpb.Plan{}
+		parallelize := expectedPlan.Add(&physicalpb.Parallelize{Id: parallelizeID})
+		compat := expectedPlan.Add(&physicalpb.ColumnCompat{Id: compatID, Source: physicalpb.COLUMN_TYPE_METADATA, Destination: physicalpb.COLUMN_TYPE_METADATA, Collision: physicalpb.COLUMN_TYPE_LABEL})
+		scanSet := expectedPlan.Add(&physicalpb.ScanSet{
+			Id: scanSetID,
 
 			// Targets should be added in the order of the scan timestamps
 			// ASC => oldest to newest
-			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
+			Targets: []*physicalpb.ScanTarget{
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Id: scan4ID, Location: "obj3", Section: 3, StreamIds: []int64{5, 1}}},
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Id: scan3ID, Location: "obj3", Section: 2, StreamIds: []int64{5, 1}}},
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Id: scan2ID, Location: "obj2", Section: 1, StreamIds: []int64{3, 4}}},
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Id: scan1ID, Location: "obj1", Section: 3, StreamIds: []int64{1, 2}}},
 			},
 		})
 
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: compat})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: compat, Child: scanSet})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parallelize), Child: physicalpb.GetNode(compat)})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(compat), Child: physicalpb.GetNode(scanSet)})
 
 		actual := PrintAsTree(plan)
 		expected := PrintAsTree(expectedPlan)
@@ -763,27 +773,34 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 	})
 
 	t.Run("descending", func(t *testing.T) {
-		planner := NewPlanner(NewContext(time.Now(), time.Now()).WithDirection(DESC), catalog)
+		parallelizeID := physicalpb.PlanNodeID{Value: ulid.New()}
+		compatID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scanSetID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan1ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan2ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan3ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		scan4ID := physicalpb.PlanNodeID{Value: ulid.New()}
+		planner := NewPlanner(NewContext(time.Now(), time.Now()).WithDirection(physicalpb.SORT_ORDER_DESCENDING), catalog)
 		plan, err := planner.Build(logicalPlan)
 		require.NoError(t, err)
 
-		expectedPlan := &Plan{}
-		parallelize := expectedPlan.graph.Add(&Parallelize{id: "parallelize"})
-		compat := expectedPlan.graph.Add(&ColumnCompat{id: "compat", Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
-		scanSet := expectedPlan.graph.Add(&ScanSet{
-			id: "scanset",
+		expectedPlan := &physicalpb.Plan{}
+		parallelize := expectedPlan.Add(&physicalpb.Parallelize{Id: parallelizeID})
+		compat := expectedPlan.Add(&physicalpb.ColumnCompat{Id: compatID, Source: physicalpb.COLUMN_TYPE_METADATA, Destination: physicalpb.COLUMN_TYPE_METADATA, Collision: physicalpb.COLUMN_TYPE_LABEL})
+		scanSet := expectedPlan.Add(&physicalpb.ScanSet{
+			Id: scanSetID,
 
 			// Targets should be added in the order of the scan timestamps
-			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
+			Targets: []*physicalpb.ScanTarget{
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Id: scan1ID, Location: "obj1", Section: 3, StreamIds: []int64{1, 2}}},
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Id: scan2ID, Location: "obj2", Section: 1, StreamIds: []int64{3, 4}}},
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Id: scan3ID, Location: "obj3", Section: 2, StreamIds: []int64{5, 1}}},
+				{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Id: scan4ID, Location: "obj3", Section: 3, StreamIds: []int64{5, 1}}},
 			},
 		})
 
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: compat})
-		_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: compat, Child: scanSet})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(parallelize), Child: physicalpb.GetNode(compat)})
+		_ = expectedPlan.AddEdge(dag.Edge[physicalpb.Node]{Parent: physicalpb.GetNode(compat), Child: physicalpb.GetNode(scanSet)})
 
 		actual := PrintAsTree(plan)
 		expected := PrintAsTree(expectedPlan)

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
@@ -91,7 +92,7 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 
 			n := len(words)
 			rec := batch(n, time.Now())
-			colVec, err := e.eval(literal, rec)
+			colVec, err := e.eval(*literal.ToExpression(), rec)
 			require.NoError(t, err)
 
 			require.Equalf(t, tt.arrowType, colVec.DataType().ID(), "expected: %v got: %v", tt.arrowType.String(), colVec.DataType().ID().String())
@@ -126,32 +127,28 @@ func TestEvaluateColumnExpression(t *testing.T) {
 	e := newExpressionEvaluator()
 
 	t.Run("unknown column", func(t *testing.T) {
-		colExpr := &physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: "does_not_exist",
-				Type:   types.ColumnTypeBuiltin,
-			},
+		colExpr := &physicalpb.ColumnExpression{
+			Name: "does_not_exist",
+			Type: physicalpb.COLUMN_TYPE_BUILTIN,
 		}
 
 		n := len(words)
 		rec := batch(n, time.Now())
-		colVec, err := e.eval(colExpr, rec)
+		colVec, err := e.eval(*colExpr.ToExpression(), rec)
 		require.NoError(t, err)
 
 		require.Equal(t, arrow.STRING, colVec.DataType().ID())
 	})
 
 	t.Run("string(message)", func(t *testing.T) {
-		colExpr := &physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: "message",
-				Type:   types.ColumnTypeBuiltin,
-			},
+		colExpr := &physicalpb.ColumnExpression{
+			Name: "message",
+			Type: physicalpb.COLUMN_TYPE_BUILTIN,
 		}
 
 		n := len(words)
 		rec := batch(n, time.Now())
-		colVec, err := e.eval(colExpr, rec)
+		colVec, err := e.eval(*colExpr.ToExpression(), rec)
 		require.NoError(t, err)
 		require.Equal(t, arrow.STRING, colVec.DataType().ID())
 
@@ -169,60 +166,60 @@ func TestEvaluateBinaryExpression(t *testing.T) {
 	e := newExpressionEvaluator()
 
 	t.Run("error if types do not match", func(t *testing.T) {
-		expr := &physical.BinaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "name", Type: types.ColumnTypeBuiltin},
-			},
-			Right: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin},
-			},
-			Op: types.BinaryOpEq,
+		expr := &physicalpb.BinaryExpression{
+			Left: (&physicalpb.ColumnExpression{
+				Name: "name", Type: physicalpb.COLUMN_TYPE_BUILTIN,
+			}).ToExpression(),
+			Right: (&physicalpb.ColumnExpression{
+				Name: "timestamp", Type: physicalpb.COLUMN_TYPE_BUILTIN,
+			}).ToExpression(),
+			Op: physicalpb.BINARY_OP_EQ,
 		}
 
-		_, err := e.eval(expr, rec)
-		require.ErrorContains(t, err, "failed to lookup binary function for signature EQ(utf8,timestamp[ns, tz=UTC]): types do not match")
+		_, err := e.eval(*expr.ToExpression(), rec)
+		require.ErrorContains(t, err, "failed to lookup binary function for signature BINARY_OP_EQ(utf8,timestamp[ns, tz=UTC]): types do not match")
 	})
 
 	t.Run("error if function for signature is not registered", func(t *testing.T) {
-		expr := &physical.BinaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "name", Type: types.ColumnTypeBuiltin},
-			},
-			Right: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "name", Type: types.ColumnTypeBuiltin},
-			},
-			Op: types.BinaryOpXor,
+		expr := &physicalpb.BinaryExpression{
+			Left: (&physicalpb.ColumnExpression{
+				Name: "name", Type: physicalpb.COLUMN_TYPE_BUILTIN,
+			}).ToExpression(),
+			Right: (&physicalpb.ColumnExpression{
+				Name: "name", Type: physicalpb.COLUMN_TYPE_BUILTIN,
+			}).ToExpression(),
+			Op: physicalpb.BINARY_OP_XOR,
 		}
 
-		_, err := e.eval(expr, rec)
-		require.ErrorContains(t, err, "failed to lookup binary function for signature XOR(utf8,utf8): not implemented")
+		_, err := e.eval(*expr.ToExpression(), rec)
+		require.ErrorContains(t, err, "failed to lookup binary function for signature BINARY_OP_XOR(utf8,utf8): not implemented")
 	})
 
 	t.Run("EQ(string,string)", func(t *testing.T) {
-		expr := &physical.BinaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "name", Type: types.ColumnTypeBuiltin},
-			},
-			Right: physical.NewLiteral("Charlie"),
-			Op:    types.BinaryOpEq,
+		expr := &physicalpb.BinaryExpression{
+			Left: (&physicalpb.ColumnExpression{
+				Name: "name", Type: physicalpb.COLUMN_TYPE_BUILTIN,
+			}).ToExpression(),
+			Right: physical.NewLiteral("Charlie").ToExpression(),
+			Op:    physicalpb.BINARY_OP_EQ,
 		}
 
-		res, err := e.eval(expr, rec)
+		res, err := e.eval(*expr.ToExpression(), rec)
 		require.NoError(t, err)
 		result := collectBooleanArray(res.(*array.Boolean))
 		require.Equal(t, []bool{false, false, true, false, false, false, false, false, false, false}, result)
 	})
 
 	t.Run("GT(float,float)", func(t *testing.T) {
-		expr := &physical.BinaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{Column: "value", Type: types.ColumnTypeBuiltin},
-			},
-			Right: physical.NewLiteral(0.5),
-			Op:    types.BinaryOpGt,
+		expr := &physicalpb.BinaryExpression{
+			Left: (&physicalpb.ColumnExpression{
+				Name: "value", Type: physicalpb.COLUMN_TYPE_BUILTIN,
+			}).ToExpression(),
+			Right: physical.NewLiteral(0.5).ToExpression(),
+			Op:    physicalpb.BINARY_OP_GT,
 		}
 
-		res, err := e.eval(expr, rec)
+		res, err := e.eval(*expr.ToExpression(), rec)
 		require.NoError(t, err)
 		result := collectBooleanArray(res.(*array.Boolean))
 		require.Equal(t, []bool{false, true, false, true, false, true, true, false, true, false}, result)
@@ -301,14 +298,12 @@ null,null,null`
 	e := newExpressionEvaluator()
 
 	t.Run("ambiguous column should use per-row precedence order", func(t *testing.T) {
-		colExpr := &physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: "test",
-				Type:   types.ColumnTypeAmbiguous,
-			},
+		colExpr := &physicalpb.ColumnExpression{
+			Name: "test",
+			Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
 		}
 
-		colVec, err := e.eval(colExpr, record)
+		colVec, err := e.eval(*colExpr.ToExpression(), record)
 		require.NoError(t, err)
 		require.Equal(t, arrow.STRING, colVec.DataType().ID())
 
@@ -333,14 +328,12 @@ label_2
 		singleRecord, err := CSVToArrow(fields, data)
 		require.NoError(t, err)
 
-		colExpr := &physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: "single",
-				Type:   types.ColumnTypeAmbiguous,
-			},
+		colExpr := &physicalpb.ColumnExpression{
+			Name: "single",
+			Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
 		}
 
-		colVec, err := e.eval(colExpr, singleRecord)
+		colVec, err := e.eval(*colExpr.ToExpression(), singleRecord)
 		require.NoError(t, err)
 		require.Equal(t, arrow.STRING, colVec.DataType().ID())
 
@@ -352,14 +345,12 @@ label_2
 	})
 
 	t.Run("ambiguous column with no matching columns should return default scalar", func(t *testing.T) {
-		colExpr := &physical.ColumnExpr{
-			Ref: types.ColumnRef{
-				Column: "nonexistent",
-				Type:   types.ColumnTypeAmbiguous,
-			},
+		colExpr := &physicalpb.ColumnExpression{
+			Name: "nonexistent",
+			Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
 		}
 
-		colVec, err := e.eval(colExpr, record)
+		colVec, err := e.eval(*colExpr.ToExpression(), record)
 		require.NoError(t, err)
 		require.Equal(t, arrow.STRING, colVec.DataType().ID())
 	})
@@ -367,25 +358,23 @@ label_2
 
 func TestEvaluateUnaryCastExpression(t *testing.T) {
 	colMsg := semconv.ColumnIdentMessage
-	colStatusCode := semconv.NewIdentifier("status_code", types.ColumnTypeMetadata, types.Loki.String)
-	colTimeout := semconv.NewIdentifier("timeout", types.ColumnTypeParsed, types.Loki.String)
-	colMixedValues := semconv.NewIdentifier("mixed_values", types.ColumnTypeMetadata, types.Loki.String)
+	colStatusCode := semconv.NewIdentifier("status_code", physicalpb.COLUMN_TYPE_METADATA, types.Loki.String)
+	colTimeout := semconv.NewIdentifier("timeout", physicalpb.COLUMN_TYPE_PARSED, types.Loki.String)
+	colMixedValues := semconv.NewIdentifier("mixed_values", physicalpb.COLUMN_TYPE_METADATA, types.Loki.String)
 
 	t.Run("unknown column", func(t *testing.T) {
 		e := newExpressionEvaluator()
-		expr := &physical.UnaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: "does_not_exist",
-					Type:   types.ColumnTypeAmbiguous,
-				},
-			},
-			Op: types.UnaryOpCastFloat,
-		}
+		expr := (&physicalpb.UnaryExpression{
+			Value: (&physicalpb.ColumnExpression{
+				Name: "does_not_exist",
+				Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
+			}).ToExpression(),
+			Op: physicalpb.UNARY_OP_CAST_FLOAT,
+		}).ToExpression()
 
 		n := len(words)
 		rec := batch(n, time.Now())
-		colVec, err := e.eval(expr, rec)
+		colVec, err := e.eval(*expr, rec)
 		require.NoError(t, err)
 
 		id := colVec.DataType().ID()
@@ -413,15 +402,13 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 	})
 
 	t.Run("cast column generates a value", func(t *testing.T) {
-		expr := &physical.UnaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: "status_code",
-					Type:   types.ColumnTypeAmbiguous,
-				},
-			},
-			Op: types.UnaryOpCastBytes,
-		}
+		expr := (&physicalpb.UnaryExpression{
+			Value: (&physicalpb.ColumnExpression{
+				Name: "status_code",
+				Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
+			}).ToExpression(),
+			Op: physicalpb.UNARY_OP_CAST_BYTES,
+		}).ToExpression()
 
 		e := newExpressionEvaluator()
 
@@ -441,7 +428,7 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 
 		record := rows.Record(memory.DefaultAllocator, schema)
 
-		colVec, err := e.eval(expr, record)
+		colVec, err := e.eval(*expr, record)
 		require.NoError(t, err)
 		id := colVec.DataType().ID()
 		require.Equal(t, arrow.STRUCT, id)
@@ -460,15 +447,13 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 	})
 
 	t.Run("cast column generates a value from a parsed column", func(t *testing.T) {
-		expr := &physical.UnaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: "timeout",
-					Type:   types.ColumnTypeAmbiguous,
-				},
-			},
-			Op: types.UnaryOpCastDuration,
-		}
+		expr := (&physicalpb.UnaryExpression{
+			Value: (&physicalpb.ColumnExpression{
+				Name: "timeout",
+				Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
+			}).ToExpression(),
+			Op: physicalpb.UNARY_OP_CAST_DURATION,
+		}).ToExpression()
 
 		e := newExpressionEvaluator()
 
@@ -488,7 +473,7 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 
 		record := rows.Record(memory.DefaultAllocator, schema)
 
-		colVec, err := e.eval(expr, record)
+		colVec, err := e.eval(*expr, record)
 		require.NoError(t, err)
 		id := colVec.DataType().ID()
 		require.Equal(t, arrow.STRUCT, id)
@@ -506,15 +491,13 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 	})
 
 	t.Run("cast operation tracks errors", func(t *testing.T) {
-		colExpr := &physical.UnaryExpr{
-			Left: &physical.ColumnExpr{
-				Ref: types.ColumnRef{
-					Column: "mixed_values",
-					Type:   types.ColumnTypeAmbiguous,
-				},
-			},
-			Op: types.UnaryOpCastFloat,
-		}
+		expr := (&physicalpb.UnaryExpression{
+			Value: (&physicalpb.ColumnExpression{
+				Name: "mixed_values",
+				Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
+			}).ToExpression(),
+			Op: physicalpb.UNARY_OP_CAST_FLOAT,
+		}).ToExpression()
 
 		e := newExpressionEvaluator()
 
@@ -535,7 +518,7 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 
 		record := rows.Record(memory.DefaultAllocator, schema)
 
-		colVec, err := e.eval(colExpr, record)
+		colVec, err := e.eval(*expr, record)
 		require.NoError(t, err)
 		id := colVec.DataType().ID()
 		require.Equal(t, arrow.STRUCT, id)

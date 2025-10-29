@@ -7,7 +7,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
@@ -283,8 +283,8 @@ func TestNewParsePipeline_logfmt(t *testing.T) {
 			)
 
 			// Create ParseNode requesting "level" field
-			parseNode := &physical.ParseNode{
-				Kind:          physical.ParserLogfmt,
+			parseNode := &physicalpb.Parse{
+				Operation:     physicalpb.PARSE_OP_LOGFMT,
 				RequestedKeys: tt.requestedKeys,
 			}
 
@@ -705,8 +705,8 @@ func TestNewParsePipeline_JSON(t *testing.T) {
 			)
 
 			// Create ParseNode for JSON parsing
-			parseNode := &physical.ParseNode{
-				Kind:          physical.ParserJSON,
+			parseNode := &physicalpb.Parse{
+				Operation:     physicalpb.PARSE_OP_JSON,
 				RequestedKeys: tt.requestedKeys,
 			}
 
