@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/goldfish"
 )
@@ -23,6 +24,7 @@ type mockStorage struct {
 	queries        []goldfish.QuerySample
 	capturedFilter goldfish.QueryFilter // Add this to capture the full filter
 	error          error
+	getQueryFunc   func(ctx context.Context, correlationID string) (*goldfish.QuerySample, error)
 }
 
 func (m *mockStorage) StoreQuerySample(_ context.Context, _ *goldfish.QuerySample) error {
@@ -63,7 +65,103 @@ func (m *mockStorage) GetSampledQueries(_ context.Context, page, pageSize int, f
 	}, nil
 }
 
+func (m *mockStorage) GetQueryByCorrelationID(ctx context.Context, correlationID string) (*goldfish.QuerySample, error) {
+	if m.getQueryFunc != nil {
+		return m.getQueryFunc(ctx, correlationID)
+	}
+	if m.error != nil {
+		return nil, m.error
+	}
+	// Default behavior: search through queries
+	for _, q := range m.queries {
+		if q.CorrelationID == correlationID {
+			return &q, nil
+		}
+	}
+	return nil, errors.New("query not found")
+}
+
 func (m *mockStorage) Close() error {
+	return nil
+}
+
+// Mock bucket client for testing
+type mockBucket struct {
+	getFunc func(ctx context.Context, key string) (io.ReadCloser, error)
+}
+
+func (m *mockBucket) Get(ctx context.Context, key string) (io.ReadCloser, error) {
+	if m.getFunc != nil {
+		return m.getFunc(ctx, key)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockBucket) Upload(_ context.Context, _ string, _ io.Reader) error {
+	return nil
+}
+
+func (m *mockBucket) Delete(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockBucket) Exists(_ context.Context, _ string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockBucket) Iter(_ context.Context, _ string, _ func(string) error, _ ...objstore.IterOption) error {
+	return nil
+}
+
+func (m *mockBucket) GetRange(_ context.Context, _ string, _ int64, _ int64) (io.ReadCloser, error) {
+	return nil, nil
+}
+
+func (m *mockBucket) Attributes(_ context.Context, _ string) (objstore.ObjectAttributes, error) {
+	return objstore.ObjectAttributes{}, nil
+}
+
+func (m *mockBucket) ObjectSize(_ context.Context, _ string) (uint64, error) {
+	return 0, nil
+}
+
+func (m *mockBucket) Close() error {
+	return nil
+}
+
+func (m *mockBucket) Name() string {
+	return "mock-bucket"
+}
+
+func (m *mockBucket) WithExpectedErrs(_ objstore.IsOpFailureExpectedFunc) objstore.Bucket {
+	return m
+}
+
+func (m *mockBucket) ReaderWithExpectedErrs(_ objstore.IsOpFailureExpectedFunc) objstore.BucketReader {
+	return m
+}
+
+func (m *mockBucket) SupportedIterOptions() []objstore.IterOptionType {
+	return nil
+}
+
+func (m *mockBucket) Provider() objstore.ObjProvider {
+	return objstore.ObjProvider("mock")
+}
+
+func (m *mockBucket) GetAndReplace(_ context.Context, _ string, f func(existing io.ReadCloser) (io.ReadCloser, error)) error {
+	return errors.New("not implemented")
+}
+
+func (m *mockBucket) IsAccessDeniedErr(_ error) bool {
+	return false
+}
+
+func (m *mockBucket) IsObjNotFoundErr(_ error) bool {
+	return false
+}
+
+func (m *mockBucket) IterWithAttributes(_ context.Context, _ string, _ func(objstore.IterObjectAttributes) error, _ ...objstore.IterOption) error {
 	return nil
 }
 

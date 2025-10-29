@@ -3,6 +3,7 @@ package ui
 import (
 	"flag"
 
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 	lokiring "github.com/grafana/loki/v3/pkg/util/ring"
 )
 
@@ -19,6 +20,10 @@ type GoldfishConfig struct {
 	LogsDatasourceUID   string `yaml:"logs_datasource_uid"`   // UID of the Loki datasource in Grafana
 	CellANamespace      string `yaml:"cell_a_namespace"`      // Namespace for Cell A logs
 	CellBNamespace      string `yaml:"cell_b_namespace"`      // Namespace for Cell B logs
+
+	// Result storage configuration for fetching raw query results from object storage
+	ResultsBackend string        `yaml:"results_backend"` // Results storage backend (gcs, s3)
+	ResultsBucket  bucket.Config `yaml:"results_bucket"`  // Bucket configuration for accessing stored results
 }
 
 type Config struct {
@@ -48,4 +53,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Goldfish.LogsDatasourceUID, "ui.goldfish.logs-datasource-uid", "", "UID of the Loki datasource in Grafana.")
 	f.StringVar(&cfg.Goldfish.CellANamespace, "ui.goldfish.cell-a-namespace", "", "Namespace for Cell A logs.")
 	f.StringVar(&cfg.Goldfish.CellBNamespace, "ui.goldfish.cell-b-namespace", "", "Namespace for Cell B logs.")
+
+	// Result storage configuration
+	f.StringVar(&cfg.Goldfish.ResultsBackend, "ui.goldfish.results-backend", "", "Results storage backend (gcs, s3) for fetching stored query results.")
+	cfg.Goldfish.ResultsBucket.RegisterFlagsWithPrefix("ui.goldfish.results.", f)
 }
