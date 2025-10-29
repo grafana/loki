@@ -28,7 +28,7 @@ func tokenizeLogfmt(input string, requestedKeys []string) (map[string]string, er
 
 	decoder := logfmt.NewDecoder(unsafeBytes(input))
 	for !decoder.EOL() && decoder.ScanKeyval() {
-		key := unsafeString(decoder.Key())
+		key := sanitizeLabelKey(unsafeString(decoder.Key()), true)
 		if requestedKeyLookup != nil {
 			if _, wantKey := requestedKeyLookup[key]; !wantKey {
 				continue
