@@ -9,6 +9,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/middleware"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/twmb/franz-go/pkg/kgo"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
@@ -308,4 +309,33 @@ type serverStream struct {
 
 func (ss serverStream) Context() context.Context {
 	return ss.ctx
+}
+
+// IngestionPoliciesKafkaProducerInterceptor extracts the ingestion policy from context and adds it as a record header to all records
+func IngestionPoliciesKafkaProducerInterceptor(ctx context.Context, records []*kgo.Record) error {
+	// Check once if policy exists to avoid looping if not needed
+	policy := ExtractIngestionPolicyContext(ctx)
+	if policy == "" {
+		return nil
+	}
+
+	// Add header to all records
+	header := kgo.RecordHeader{
+		Key:   lowerIngestionPolicyHeaderName,
+		Value: []byte(policy),
+	}
+	for _, record := range records {
+		record.Headers = append(record.Headers, header)
+	}
+	return nil
+}
+
+// IngestionPoliciesKafkaHeadersToContext extracts the ingestion policy from record headers and injects it into context
+func IngestionPoliciesKafkaHeadersToContext(ctx context.Context, headers []kgo.RecordHeader) context.Context {
+	for _, header := range headers {
+		if header.Key == lowerIngestionPolicyHeaderName {
+			return InjectIngestionPolicyContext(ctx, string(header.Value))
+		}
+	}
+	return ctx
 }
