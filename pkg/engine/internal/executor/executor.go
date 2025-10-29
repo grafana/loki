@@ -32,7 +32,7 @@ type Config struct {
 	// GetExternalInputs is an optional function called for each node in the
 	// plan. If GetExternalInputs returns a non-nil slice of Pipelines, they
 	// will be used as inputs to the pipeline of node.
-	GetExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
+	GetExternalInputs func(ctx context.Context, node physicalpb.Node) []Pipeline
 }
 
 func Run(ctx context.Context, cfg Config, plan *physicalpb.Plan, logger log.Logger) Pipeline {
@@ -64,7 +64,7 @@ type Context struct {
 	evaluator expressionEvaluator
 	bucket    objstore.Bucket
 
-	getExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
+	getExternalInputs func(ctx context.Context, node physicalpb.Node) []Pipeline
 
 	mergePrefetchCount int
 }
@@ -469,7 +469,7 @@ func (c *Context) executeScanSet(ctx context.Context, set *physicalpb.ScanSet) P
 			partition.Projections = set.Projections
 
 			targets = append(targets, newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
-				return tracePipeline("physical.DataObjScan", c.executeDataObjScan(ctx, partition))
+				return tracePipeline("physicalpb.DataObjScan", c.executeDataObjScan(ctx, partition))
 			}, nil))
 		default:
 			return errorPipeline(ctx, fmt.Errorf("unrecognized ScanSet target %s", target.Type))
