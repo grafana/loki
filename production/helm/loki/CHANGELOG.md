@@ -218,6 +218,10 @@ Before upgrading to v0.32.0, make sure that the CustomResourceDefinitions (CRDs)
 - [CHANGE] Add extraContainers parameter for the backend pod
 - [CHANGE] Add `tpl()` support for backend, read, write, and admin-api components
 
+## 6.27.1
+
+- [FEATURE] Added a dedicated serviceAccount for the ruler. (#16324)
+
 ## 6.27.0
 
 - [FEATURE] Added support for globals: `extraArgs`, `extraEnv`, `extraEnvFrom`, `extraVolumes`, `extraVolumeMounts` ([#16062](https://github.com/grafana/loki/pull/16062)) relates to ([#12652](https://github.com/grafana/loki/pull/12652))
