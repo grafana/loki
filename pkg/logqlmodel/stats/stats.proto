@@ -112,6 +112,8 @@ message Index {
   int64 shardsDuration = 3 [(gogoproto.jsontag) = "shardsDuration"];
   // Indicates whether the query used blooms to filter chunks
   bool usedBloomFilters = 4 [(gogoproto.jsontag) = "usedBloomFilters"];
+  // Total unique streams matched
+  int64 totalStreams = 5 [(gogoproto.jsontag) = "totalStreams"];
 }
 
 message Querier {
