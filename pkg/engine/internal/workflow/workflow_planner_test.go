@@ -69,7 +69,7 @@ DataObjScan location= streams=0 section_id=0 projections=() direction=SORT_ORDER
 		expectOuptut := strings.TrimSpace(`
 Task 00000000000000000000000001
 -------------------------------
-AggregateRange operation=AGGREGATE_RANGE_OP_INVALID start=1969-12-31T19:00:00-05:00 end=1969-12-31T19:00:00-05:00 step=0 range=0
+AggregateRange operation=AGGREGATE_RANGE_OP_INVALID start=1970-01-01T00:00:00Z end=1970-01-01T00:00:00Z step=0s range=0s
 └── DataObjScan location= streams=0 section_id=0 projections=() direction=SORT_ORDER_INVALID limit=0
 `)
 
@@ -110,7 +110,7 @@ AggregateVector operation=AGGREGATE_VECTOR_OP_INVALID
 
 Task 00000000000000000000000002
 -------------------------------
-AggregateRange operation=AGGREGATE_RANGE_OP_INVALID start=1969-12-31T19:00:00-05:00 end=1969-12-31T19:00:00-05:00 step=0 range=0
+AggregateRange operation=AGGREGATE_RANGE_OP_INVALID start=1970-01-01T00:00:00Z end=1970-01-01T00:00:00Z step=0s range=0s
 │   └── @sink stream=00000000000000000000000003
 └── DataObjScan location= streams=0 section_id=0 projections=() direction=SORT_ORDER_INVALID limit=0
 `)
@@ -170,7 +170,7 @@ AggregateVector operation=AGGREGATE_VECTOR_OP_INVALID
 
 Task 00000000000000000000000002
 -------------------------------
-AggregateRange operation=AGGREGATE_RANGE_OP_INVALID start=1969-12-31T19:00:00-05:00 end=1969-12-31T19:00:00-05:00 step=0 range=0
+AggregateRange operation=AGGREGATE_RANGE_OP_INVALID start=1970-01-01T00:00:00Z end=1970-01-01T00:00:00Z step=0s range=0s
     ├── @source stream=00000000000000000000000007
     ├── @source stream=00000000000000000000000008
     ├── @source stream=00000000000000000000000009
