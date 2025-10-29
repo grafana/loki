@@ -31,7 +31,7 @@ func Test_planWorkflow(t *testing.T) {
 
 		physicalPlan := physicalpb.FromGraph(physicalGraph)
 
-		graph, err := planWorkflow(physicalPlan)
+		graph, err := planWorkflow("", physicalPlan)
 		require.NoError(t, err)
 		require.Equal(t, 1, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -60,7 +60,7 @@ DataObjScan location= streams=0 section_id=0 projections=() direction=SORT_ORDER
 
 		_ = physicalGraph.AddEdge(dag.Edge[physicalpb.Node]{Parent: rangeAgg, Child: scan})
 		physicalPlan := physicalpb.FromGraph(physicalGraph)
-		graph, err := planWorkflow(physicalPlan)
+		graph, err := planWorkflow("", physicalPlan)
 		require.NoError(t, err)
 		require.Equal(t, 1, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -96,7 +96,7 @@ AggregateRange operation=AGGREGATE_RANGE_OP_INVALID start=1970-01-01T00:00:00Z e
 
 		physicalPlan := physicalpb.FromGraph(physicalGraph)
 
-		graph, err := planWorkflow(physicalPlan)
+		graph, err := planWorkflow("", physicalPlan)
 		require.NoError(t, err)
 		require.Equal(t, 2, graph.Len())
 		requireUniqueStreams(t, graph)
@@ -156,7 +156,7 @@ AggregateRange operation=AGGREGATE_RANGE_OP_INVALID start=1970-01-01T00:00:00Z e
 
 		physicalPlan := physicalpb.FromGraph(physicalGraph)
 
-		graph, err := planWorkflow(physicalPlan)
+		graph, err := planWorkflow("", physicalPlan)
 		require.NoError(t, err)
 		require.Equal(t, 5, graph.Len())
 		requireUniqueStreams(t, graph)

@@ -13,6 +13,7 @@ import (
 
 // planner is responsible for constructing the Task graph held by a [Workflow].
 type planner struct {
+	tenantID string
 	graph    dag.Graph[*Task]
 	physical *physicalpb.Plan
 
@@ -23,13 +24,14 @@ type planner struct {
 //
 // planWorkflow returns an error if the provided physical plan does not
 // have exactly one root node, or if the physical plan cannot be partitioned.
-func planWorkflow(plan *physicalpb.Plan) (dag.Graph[*Task], error) {
+func planWorkflow(tenantID string, plan *physicalpb.Plan) (dag.Graph[*Task], error) {
 	root, err := plan.Root()
 	if err != nil {
 		return dag.Graph[*Task]{}, err
 	}
 
 	planner := &planner{
+		tenantID: tenantID,
 		physical: plan,
 
 		streamWriters: make(map[*Stream]*Task),
@@ -109,7 +111,7 @@ func (p *planner) processNode(node physicalpb.Node, splitOnBreaker bool) (*Task,
 				// Create one unique stream for each child task so we can
 				// receive output from them.
 				for _, task := range childTasks {
-					stream := &Stream{ULID: ulid.Make()}
+					stream := &Stream{ULID: ulid.Make(), TenantID: p.tenantID}
 					if err := p.addSink(task, stream); err != nil {
 						return nil, err
 					}
@@ -132,7 +134,7 @@ func (p *planner) processNode(node physicalpb.Node, splitOnBreaker bool) (*Task,
 				// Create one unique stream for each child task so we can
 				// receive output from them.
 				for _, task := range childTasks {
-					stream := &Stream{ULID: ulid.Make()}
+					stream := &Stream{ULID: ulid.Make(), TenantID: p.tenantID}
 					if err := p.addSink(task, stream); err != nil {
 						return nil, err
 					}
@@ -155,6 +157,7 @@ func (p *planner) processNode(node physicalpb.Node, splitOnBreaker bool) (*Task,
 
 	task := &Task{
 		ULID:     ulid.Make(),
+		TenantID: p.tenantID,
 		Fragment: physicalpb.FromGraph(taskPlan),
 		Sources:  sources,
 		Sinks:    make(map[physicalpb.Node][]*Stream),
@@ -322,7 +325,8 @@ func (p *planner) processParallelizeNode(node *physicalpb.Parallelize) ([]*Task,
 		}
 
 		partition := &Task{
-			ULID: ulid.Make(),
+			ULID:     ulid.Make(),
+			TenantID: p.tenantID,
 
 			Fragment: physicalpb.FromGraph(*shardedPlan),
 			Sources:  shardSources,

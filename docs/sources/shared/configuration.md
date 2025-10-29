@@ -1342,6 +1342,10 @@ dataobj:
   # CLI flag: -dataobj-storage-bucket-prefix
   [storage_bucket_prefix: <string> | default = "dataobj/"]
 
+  # Enable data objects.
+  # CLI flag: -dataobj.enabled
+  [enabled: <boolean> | default = false]
+
 ingest_limits:
   # Enable the ingest limits service.
   # CLI flag: -ingest-limits.enabled

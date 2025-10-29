@@ -28,6 +28,11 @@ type Config struct {
 	Bucket    objstore.Bucket
 
 	MergePrefetchCount int
+
+	// GetExternalInputs is an optional function called for each node in the
+	// plan. If GetExternalInputs returns a non-nil slice of Pipelines, they
+	// will be used as inputs to the pipeline of node.
+	GetExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
 }
 
 func Run(ctx context.Context, cfg Config, plan *physicalpb.Plan, logger log.Logger) Pipeline {
@@ -38,6 +43,7 @@ func Run(ctx context.Context, cfg Config, plan *physicalpb.Plan, logger log.Logg
 		bucket:             cfg.Bucket,
 		logger:             logger,
 		evaluator:          newExpressionEvaluator(),
+		getExternalInputs:  cfg.GetExternalInputs,
 	}
 	if plan == nil {
 		return errorPipeline(ctx, errors.New("plan is nil"))
@@ -58,6 +64,8 @@ type Context struct {
 	evaluator expressionEvaluator
 	bucket    objstore.Bucket
 
+	getExternalInputs func(ctx context.Context, node physical.Node) []Pipeline
+
 	mergePrefetchCount int
 }
 
@@ -66,6 +74,10 @@ func (c *Context) execute(ctx context.Context, node physicalpb.Node) Pipeline {
 	inputs := make([]Pipeline, 0, len(children))
 	for _, child := range children {
 		inputs = append(inputs, c.execute(ctx, child))
+	}
+
+	if c.getExternalInputs != nil {
+		inputs = append(inputs, c.getExternalInputs(ctx, node)...)
 	}
 
 	switch n := node.(type) {
