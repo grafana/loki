@@ -493,9 +493,17 @@ func (w *WALCheckpointWriter) deleteCheckpoints(maxIndex int) (err error) {
 // This differs from deleteCheckpoints() which runs after successful checkpoint completion and handles
 // normal cleanup including .tmp files.
 func cleanupOldCheckpoints(dir string, protectedCheckpointIdx int, logger log.Logger) {
+	level.Info(util_log.Logger).Log("msg", "old checkpoint cleanup starting")
+	start := time.Now()
+	allSuccess := true
+	defer func() {
+		elapsed := time.Since(start)
+		level.Info(util_log.Logger).Log("msg", "old checkpoint cleanup done", "duration", elapsed.String(), "success", allSuccess)
+	}()
 	firstSegment, _, err := wlog.Segments(dir)
 	if err != nil {
-		level.Error(logger).Log("msg", "unable to list WAL segments for old checkpoint cleanup", "err", err)
+		level.Error(logger).Log("msg", "unable to list WAL segments for old checkpoint cleanup, checkpoint cleanup cannot proceed, this is not expected and could lead to disk space exhaustion and may indicate disk I/O problems or corruption and should be investigated manually", "err", err)
+		allSuccess = false
 		return
 	}
 
@@ -506,7 +514,8 @@ func cleanupOldCheckpoints(dir string, protectedCheckpointIdx int, logger log.Lo
 
 	files, err := os.ReadDir(dir)
 	if err != nil {
-		level.Error(logger).Log("msg", "unable to read WAL directory for old checkpoint cleanup", "err", err)
+		level.Error(logger).Log("msg", "unable to read WAL directory for old checkpoint cleanup, checkpoint cleanup cannot proceed, this is not expected and could lead to disk space exhaustion and may indicate disk I/O problems or corruption and should be investigated manually", "err", err)
+		allSuccess = false
 		return
 	}
 
@@ -524,7 +533,8 @@ func cleanupOldCheckpoints(dir string, protectedCheckpointIdx int, logger log.Lo
 		if idx < firstSegment && idx < protectedCheckpointIdx {
 			orphanedPath := filepath.Join(dir, fi.Name())
 			if err := os.RemoveAll(orphanedPath); err != nil {
-				level.Error(logger).Log("msg", "unable to cleanup old checkpoint", "dir", orphanedPath, "err", err)
+				level.Error(logger).Log("msg", "unable to cleanup old checkpoint, this is not expected and could lead to disk space exhaustion and may indicate disk I/O problems or corruption and should be investigated manually", "dir", orphanedPath, "err", err)
+				allSuccess = false
 			} else {
 				level.Info(logger).Log("msg", "cleaned up old superseded checkpoint", "dir", fi.Name(), "idx", idx, "firstSegment", firstSegment, "protectedCheckpoint", protectedCheckpointIdx)
 			}
@@ -536,9 +546,18 @@ func cleanupOldCheckpoints(dir string, protectedCheckpointIdx int, logger log.Lo
 // incomplete/failed checkpoint operations. These are safe to delete because recovery
 // only uses completed checkpoints (those without the .tmp suffix).
 func cleanupStaleTmpCheckpoints(dir string, logger log.Logger) {
+	level.Info(util_log.Logger).Log("msg", "tmp checkpoint cleanup starting")
+	start := time.Now()
+	allSuccess := true
+	defer func() {
+		elapsed := time.Since(start)
+		level.Info(util_log.Logger).Log("msg", "tmp checkpoint cleanup done", "duration", elapsed.String(), "success", allSuccess)
+	}()
+
 	files, err := os.ReadDir(dir)
 	if err != nil {
-		level.Error(logger).Log("msg", "unable to read WAL directory for tmp checkpoint cleanup", "err", err)
+		level.Error(logger).Log("msg", "unable to read WAL directory for tmp checkpoint cleanup, checkpoint cleanup cannot proceed, this is not expected and could lead to disk space exhaustion and may indicate disk I/O problems or corruption and should be investigated manually", "err", err)
+		allSuccess = false
 		return
 	}
 
@@ -549,8 +568,9 @@ func cleanupStaleTmpCheckpoints(dir string, logger log.Logger) {
 			if filepath.Ext(fi.Name()) == ".tmp" {
 				tmpPath := filepath.Join(dir, fi.Name())
 				if err := os.RemoveAll(tmpPath); err != nil {
-					level.Error(logger).Log("msg", "unable to cleanup stale tmp checkpoint", "dir", tmpPath, "err", err)
+					level.Error(logger).Log("msg", "unable to cleanup stale tmp checkpoint, this is not expected and could lead to disk space exhaustion and may indicate disk I/O problems or corruption and should be investigated manually", "dir", tmpPath, "err", err)
 					// Continue cleaning up other .tmp directories even if one fails
+					allSuccess = false
 				} else {
 					level.Info(logger).Log("msg", "cleaned up stale tmp checkpoint at startup", "dir", fi.Name())
 				}

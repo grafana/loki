@@ -65,7 +65,7 @@ func cleanupCheckpointsAtStartup(dir string, logger log.Logger) {
 	// Find the most recent valid checkpoint to protect it from deletion
 	_, latestCheckpointIdx, err := lastCheckpoint(dir)
 	if err != nil {
-		level.Error(logger).Log("msg", "unable to find latest checkpoint for startup checkpoint cleanup", "err", err)
+		level.Error(logger).Log("msg", "unable to find latest checkpoint for startup checkpoint cleanu, this is not expected and could lead to disk space exhaustion and may indicate disk I/O problems or corruption and should be investigated manually", "err", err)
 		return
 	}
 
