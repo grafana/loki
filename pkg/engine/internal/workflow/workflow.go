@@ -223,14 +223,20 @@ func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus Task
 	}
 
 	// task reached a terminal state. We need to detect if task's immediate
-	// children should be canceled. We only look at immediate children, since
-	// canceling them will trigger onTaskChange to process indirect children.
+	// children should be canceled. We only look at immediate unterminated
+	// children, since canceling them will trigger onTaskChange to process
+	// indirect children.
 	var tasksToCancel []*Task
 
 	wf.tasksMut.RLock()
 	{
 	NextChild:
 		for _, child := range wf.graph.Children(task) {
+			// Ignore children in terminal states.
+			if childState := wf.taskStates[child]; childState.Terminal() {
+				continue
+			}
+
 			// Cancel the child if and only if all of the child's parents (which
 			// includes the task that just updated) are in a terminal state.
 			for _, parent := range wf.graph.Parents(child) {
