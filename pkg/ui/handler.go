@@ -39,7 +39,7 @@ const (
 )
 
 func goldfishResultPath(cell string) string {
-	return prefixPath + "/api/v1/goldfish/results/{correlationId}/ " + cell
+	return prefixPath + "/api/v1/goldfish/results/{correlationId}/" + cell
 }
 
 // Context keys for trace information
