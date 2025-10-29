@@ -118,7 +118,17 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		if err != nil {
 			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): %w", expr.Op, lhs.DataType(), rhs.DataType(), err)
 		}
-		return fn.Evaluate(lhs, rhs)
+
+		// If the RHS is a Literal (same value for each row), we can compile the regex match function.
+		// This check is not strictly necessary, because LogQL only allows literals as RHS for filter expressions.
+		if _, ok := expr.Right.(*physical.LiteralExpr); ok && (expr.Op == types.BinaryOpMatchRe || expr.Op == types.BinaryOpNotMatchRe) {
+			re, err := fn.CompileRegex(rhs)
+			if err != nil {
+				return nil, fmt.Errorf("failed to compile regular expression for batch: %w", err)
+			}
+			return fn.Evaluate(lhs, rhs, re)
+		}
+		return fn.Evaluate(lhs, rhs, nil)
 	}
 
 	return nil, fmt.Errorf("unknown expression: %v", expr)
