@@ -454,7 +454,7 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 			return columnRef.ToExpression(), join, columnRef, nil
 		}
 
-		// Eigther left or right expression has an obj scan. Pick the non-nil one.
+		// Either left or right expression has an obj scan. Pick the non-nil one.
 		input := leftInput
 		if leftInput == nil {
 			input = rightInput

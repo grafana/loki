@@ -26,8 +26,8 @@ func Test_planWorkflow(t *testing.T) {
 		ulidGen := ulidGenerator{}
 
 		var physicalGraph dag.Graph[physicalpb.Node]
-		scanId := physicalpb.PlanNodeID{Value: ulid.New()}
-		physicalGraph.Add(&physicalpb.DataObjScan{Id: scanId})
+		scanID := physicalpb.PlanNodeID{Value: ulid.New()}
+		physicalGraph.Add(&physicalpb.DataObjScan{Id: scanID})
 
 		physicalPlan := physicalpb.FromGraph(physicalGraph)
 
@@ -52,10 +52,10 @@ DataObjScan location= streams=0 section_id=0 projections=() direction=SORT_ORDER
 		var physicalGraph dag.Graph[physicalpb.Node]
 
 		var (
-			scanId     = physicalpb.PlanNodeID{Value: ulid.New()}
-			rangeAggId = physicalpb.PlanNodeID{Value: ulid.New()}
-			scan       = physicalGraph.Add(&physicalpb.DataObjScan{Id: scanId})
-			rangeAgg   = physicalGraph.Add(&physicalpb.AggregateRange{Id: rangeAggId})
+			scanID     = physicalpb.PlanNodeID{Value: ulid.New()}
+			rangeAggID = physicalpb.PlanNodeID{Value: ulid.New()}
+			scan       = physicalGraph.Add(&physicalpb.DataObjScan{Id: scanID})
+			rangeAgg   = physicalGraph.Add(&physicalpb.AggregateRange{Id: rangeAggID})
 		)
 
 		_ = physicalGraph.AddEdge(dag.Edge[physicalpb.Node]{Parent: rangeAgg, Child: scan})
@@ -83,12 +83,12 @@ AggregateRange operation=AGGREGATE_RANGE_OP_INVALID start=1970-01-01T00:00:00Z e
 		var physicalGraph dag.Graph[physicalpb.Node]
 
 		var (
-			scanId      = physicalpb.PlanNodeID{Value: ulid.New()}
-			rangeAggId  = physicalpb.PlanNodeID{Value: ulid.New()}
-			vectorAggId = physicalpb.PlanNodeID{Value: ulid.New()}
-			scan        = physicalGraph.Add(&physicalpb.DataObjScan{Id: scanId})
-			rangeAgg    = physicalGraph.Add(&physicalpb.AggregateRange{Id: rangeAggId})
-			vectorAgg   = physicalGraph.Add(&physicalpb.AggregateVector{Id: vectorAggId})
+			scanID      = physicalpb.PlanNodeID{Value: ulid.New()}
+			rangeAggID  = physicalpb.PlanNodeID{Value: ulid.New()}
+			vectorAggID = physicalpb.PlanNodeID{Value: ulid.New()}
+			scan        = physicalGraph.Add(&physicalpb.DataObjScan{Id: scanID})
+			rangeAgg    = physicalGraph.Add(&physicalpb.AggregateRange{Id: rangeAggID})
+			vectorAgg   = physicalGraph.Add(&physicalpb.AggregateVector{Id: vectorAggID})
 		)
 
 		_ = physicalGraph.AddEdge(dag.Edge[physicalpb.Node]{Parent: rangeAgg, Child: scan})
@@ -125,21 +125,21 @@ AggregateRange operation=AGGREGATE_RANGE_OP_INVALID start=1970-01-01T00:00:00Z e
 		var physicalGraph dag.Graph[physicalpb.Node]
 
 		var (
-			vectorAggId   = physicalpb.PlanNodeID{Value: ulid.New()}
-			rangeAggId    = physicalpb.PlanNodeID{Value: ulid.New()}
-			parallelizeId = physicalpb.PlanNodeID{Value: ulid.New()}
-			filterId      = physicalpb.PlanNodeID{Value: ulid.New()}
-			parseId       = physicalpb.PlanNodeID{Value: ulid.New()}
-			scanSetId     = physicalpb.PlanNodeID{Value: ulid.New()}
+			vectorAggID   = physicalpb.PlanNodeID{Value: ulid.New()}
+			rangeAggID    = physicalpb.PlanNodeID{Value: ulid.New()}
+			parallelizeID = physicalpb.PlanNodeID{Value: ulid.New()}
+			filterID      = physicalpb.PlanNodeID{Value: ulid.New()}
+			parseID       = physicalpb.PlanNodeID{Value: ulid.New()}
+			scanSetID     = physicalpb.PlanNodeID{Value: ulid.New()}
 
-			vectorAgg = physicalGraph.Add(&physicalpb.AggregateVector{Id: vectorAggId})
-			rangeAgg  = physicalGraph.Add(&physicalpb.AggregateRange{Id: rangeAggId})
+			vectorAgg = physicalGraph.Add(&physicalpb.AggregateVector{Id: vectorAggID})
+			rangeAgg  = physicalGraph.Add(&physicalpb.AggregateRange{Id: rangeAggID})
 
-			parallelize = physicalGraph.Add(&physicalpb.Parallelize{Id: parallelizeId})
+			parallelize = physicalGraph.Add(&physicalpb.Parallelize{Id: parallelizeID})
 
-			filter  = physicalGraph.Add(&physicalpb.Filter{Id: filterId})
-			parse   = physicalGraph.Add(&physicalpb.Parse{Operation: physicalpb.PARSE_OP_LOGFMT, Id: parseId})
-			scanSet = physicalGraph.Add(&physicalpb.ScanSet{Id: scanSetId,
+			filter  = physicalGraph.Add(&physicalpb.Filter{Id: filterID})
+			parse   = physicalGraph.Add(&physicalpb.Parse{Operation: physicalpb.PARSE_OP_LOGFMT, Id: parseID})
+			scanSet = physicalGraph.Add(&physicalpb.ScanSet{Id: scanSetID,
 				Targets: []*physicalpb.ScanTarget{
 					{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Location: "a"}},
 					{Type: physicalpb.SCAN_TYPE_DATA_OBJECT, DataObject: &physicalpb.DataObjScan{Location: "b"}},

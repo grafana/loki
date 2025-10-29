@@ -51,7 +51,7 @@ func NewScalar(value physicalpb.LiteralExpression, rows int) arrow.Array {
 		case *physicalpb.LiteralExpression_DurationLiteral:
 			v = value.GetDurationLiteral().Value
 		case *physicalpb.LiteralExpression_BytesLiteral:
-			v = int64(value.GetBytesLiteral().Value)
+			v = value.GetBytesLiteral().Value
 		}
 		for range rows {
 			builder.Append(v)
