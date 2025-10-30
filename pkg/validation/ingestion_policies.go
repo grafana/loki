@@ -9,6 +9,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/middleware"
 	"github.com/prometheus/prometheus/model/labels"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 )
@@ -16,7 +18,8 @@ import (
 const (
 	GlobalPolicy = "*"
 
-	HTTPHeaderIngestionPolicyKey = "X-Loki-Ingestion-Policy"
+	HTTPHeaderIngestionPolicyKey   = "X-Loki-Ingestion-Policy"
+	lowerIngestionPolicyHeaderName = "x-loki-ingestion-policy"
 )
 
 type PriorityStream struct {
@@ -207,4 +210,102 @@ func (m *ingestionPolicyMiddleware) Wrap(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// gRPC interceptor functions for propagating ingestion policy from distributor to ingester
+
+func injectIntoGRPCRequest(ctx context.Context) (context.Context, error) {
+	policy := ExtractIngestionPolicyContext(ctx)
+	if policy == "" {
+		return ctx, nil
+	}
+
+	// Inject into gRPC metadata
+	md, ok := metadata.FromOutgoingContext(ctx)
+	if !ok {
+		md = metadata.New(map[string]string{})
+	}
+	md = md.Copy()
+	md.Set(lowerIngestionPolicyHeaderName, policy)
+	newCtx := metadata.NewOutgoingContext(ctx, md)
+
+	return newCtx, nil
+}
+
+// ClientIngestionPolicyInterceptor is a gRPC unary client interceptor that propagates the ingestion policy
+func ClientIngestionPolicyInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	ctx, err := injectIntoGRPCRequest(ctx)
+	if err != nil {
+		return err
+	}
+
+	return invoker(ctx, method, req, reply, cc, opts...)
+}
+
+// StreamClientIngestionPolicyInterceptor is a gRPC stream client interceptor that propagates the ingestion policy
+func StreamClientIngestionPolicyInterceptor(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+	ctx, err := injectIntoGRPCRequest(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return streamer(ctx, desc, cc, method, opts...)
+}
+
+func extractFromGRPCRequest(ctx context.Context) (context.Context, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		// No metadata, just return as is
+		return ctx, nil
+	}
+
+	headerValues, ok := md[lowerIngestionPolicyHeaderName]
+	if !ok {
+		// No ingestion policy header in metadata, just return context
+		return ctx, nil
+	}
+
+	if len(headerValues) == 0 {
+		return ctx, nil
+	}
+
+	// Pick first header value
+	policy := headerValues[0]
+	if policy == "" {
+		return ctx, nil
+	}
+
+	return InjectIngestionPolicyContext(ctx, policy), nil
+}
+
+// ServerIngestionPolicyInterceptor is a gRPC unary server interceptor that extracts the ingestion policy
+func ServerIngestionPolicyInterceptor(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	ctx, err := extractFromGRPCRequest(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return handler(ctx, req)
+}
+
+// StreamServerIngestionPolicyInterceptor is a gRPC stream server interceptor that extracts the ingestion policy
+func StreamServerIngestionPolicyInterceptor(srv interface{}, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	ctx, err := extractFromGRPCRequest(ss.Context())
+	if err != nil {
+		return err
+	}
+
+	return handler(srv, serverStream{
+		ctx:          ctx,
+		ServerStream: ss,
+	})
+}
+
+type serverStream struct {
+	ctx context.Context
+	grpc.ServerStream
+}
+
+func (ss serverStream) Context() context.Context {
+	return ss.ctx
 }
