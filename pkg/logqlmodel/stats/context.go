@@ -50,6 +50,12 @@ type Context struct {
 	store Store
 	// result accumulates results for JoinResult.
 	result Result
+	// recvWaitTime accumulates the time the querier spent waiting on ingester
+	// gRPC Recv() in nanoseconds.
+	// We use an int64 nanoseconds value here because the Ingester RecvWaitTime field
+	// is a double (so that it will pass correctly in json), but there are no
+	// atomic operations on doubles.
+	recvWaitTime int64
 
 	mtx sync.Mutex
 }
@@ -95,6 +101,7 @@ func (c *Context) Ingester() Ingester {
 		TotalBatches:       c.ingester.TotalBatches,
 		TotalLinesSent:     c.ingester.TotalLinesSent,
 		Store:              c.store,
+		RecvWaitTime:       time.Duration(c.recvWaitTime).Seconds(),
 	}
 }
 
@@ -140,6 +147,7 @@ func (c *Context) Reset() {
 	c.result.Reset()
 	c.caches.Reset()
 	c.index.Reset()
+	c.recvWaitTime = 0
 }
 
 // Result calculates the summary based on store and ingester data.
@@ -150,9 +158,16 @@ func (c *Context) Result(execTime time.Duration, queueTime time.Duration, totalE
 		Querier: Querier{
 			Store: c.store,
 		},
-		Ingester: c.ingester,
-		Caches:   c.caches,
-		Index:    c.index,
+		Ingester: Ingester{
+			TotalReached:       c.ingester.TotalReached,
+			TotalChunksMatched: c.ingester.TotalChunksMatched,
+			TotalBatches:       c.ingester.TotalBatches,
+			TotalLinesSent:     c.ingester.TotalLinesSent,
+			Store:              c.ingester.Store,
+			RecvWaitTime:       time.Duration(c.recvWaitTime).Seconds(),
+		},
+		Caches: c.caches,
+		Index:  c.index,
 	})
 
 	r.ComputeSummary(execTime, queueTime, totalEntriesReturned)
@@ -261,6 +276,7 @@ func (i *Ingester) Merge(m Ingester) {
 	i.TotalLinesSent += m.TotalLinesSent
 	i.TotalChunksMatched += m.TotalChunksMatched
 	i.TotalReached += m.TotalReached
+	i.RecvWaitTime += m.RecvWaitTime
 }
 
 func (i *Index) Merge(m Index) {
@@ -380,6 +396,12 @@ func (c *Context) AddIngesterTotalChunkMatched(i int64) {
 
 func (c *Context) AddIngesterReached(i int32) {
 	atomic.AddInt32(&c.ingester.TotalReached, i)
+}
+
+// AddIngesterRecvWait accumulates the time the querier spent waiting
+// for batches from ingesters over gRPC Recv().
+func (c *Context) AddIngesterRecvWait(d time.Duration) {
+	atomic.AddInt64(&c.recvWaitTime, int64(d))
 }
 
 func (c *Context) AddHeadChunkLines(i int64) {
@@ -629,6 +651,7 @@ func (r Result) KVList() []any {
 		"Ingester.TotalChunksMatched", r.Ingester.TotalChunksMatched,
 		"Ingester.TotalBatches", r.Ingester.TotalBatches,
 		"Ingester.TotalLinesSent", r.Ingester.TotalLinesSent,
+		"Ingester.RecvWaitTime", ConvertSecondsToNanoseconds(r.Ingester.RecvWaitTime),
 		"Ingester.TotalChunksRef", r.Ingester.Store.TotalChunksRef,
 		"Ingester.TotalChunksDownloaded", r.Ingester.Store.TotalChunksDownloaded,
 		"Ingester.ChunksDownloadTime", time.Duration(r.Ingester.Store.ChunksDownloadTime),

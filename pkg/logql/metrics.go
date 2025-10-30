@@ -202,6 +202,8 @@ func RecordRangeAndInstantQueryMetrics(
 		"ingester_chunk_matches", stats.Ingester.GetTotalChunksMatched(),
 		// Total ingester reached for this query.
 		"ingester_requests", stats.Ingester.GetTotalReached(),
+		// Total time querier spent waiting on ingester gRPC Recv().
+		"ingester_recv_wait_time", logql_stats.ConvertSecondsToNanoseconds(stats.Ingester.RecvWaitTime),
 		// Total bytes processed but was already in memory (found in the headchunk). Includes structured metadata bytes.
 		"ingester_chunk_head_bytes", util.HumanizeBytes(uint64(stats.Ingester.Store.Chunk.GetHeadChunkBytes())),
 		// Total bytes of compressed chunks (blocks) processed.
