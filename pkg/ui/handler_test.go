@@ -279,6 +279,12 @@ func TestParseObjectKeyFromURI(t *testing.T) {
 			expectedKey: "",
 			expectError: true,
 		},
+		{
+			name:        "realistic example",
+			uri:         "gcs://dev-us-central-0-loki-dev-005-goldfish-results/goldfish/results/2024/10/11/fc761f29-edad-4152-bedf-331d8cf2dbd5/cell-a.json.gz",
+			expectedKey: "goldfish/results/2024/10/11/fc761f29-edad-4152-bedf-331d8cf2dbd5/cell-a.json.gz",
+			expectError: false,
+		},
 	}
 
 	for _, tt := range tests {

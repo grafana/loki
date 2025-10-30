@@ -46,6 +46,7 @@ type StoredResult struct {
 
 type bucketResultStore struct {
 	bucket      objstore.InstrumentedBucket
+	bucketName  string
 	prefix      string
 	compression string
 	backend     string
@@ -59,8 +60,19 @@ func NewResultStore(ctx context.Context, cfg ResultsStorageConfig, logger log.Lo
 		return nil, fmt.Errorf("create bucket client: %w", err)
 	}
 
+	var bucketName string
+	switch cfg.Backend {
+	case "s3":
+		bucketName = cfg.Bucket.S3.BucketName
+	case "gcs":
+		bucketName = cfg.Bucket.GCS.BucketName
+	default:
+		return nil, fmt.Errorf("unsupported backend: %s", cfg.Backend)
+	}
+
 	return &bucketResultStore{
 		bucket:      bucketClient,
+		bucketName:  bucketName,
 		prefix:      strings.Trim(cfg.ObjectPrefix, "/"),
 		compression: cfg.Compression,
 		backend:     cfg.Backend,
@@ -92,12 +104,12 @@ func (s *bucketResultStore) Store(ctx context.Context, payload []byte, opts Stor
 		}
 	}
 
-	uri := fmt.Sprintf("%s://%s/%s", s.backend, s.bucket.Name(), key)
+	uri := fmt.Sprintf("%s://%s/%s", s.backend, s.bucketName, key)
 
 	level.Debug(s.logger).Log(
 		"component", "goldfish-result-store",
 		"object", key,
-		"bucket", s.bucket.Name(),
+		"bucket", s.bucketName,
 		"backend", s.backend,
 		"size_bytes", len(encoded),
 	)
