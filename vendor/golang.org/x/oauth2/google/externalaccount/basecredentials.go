@@ -263,7 +263,7 @@ const (
 	fileTypeJSON = "json"
 )
 
-// Format contains information needed to retireve a subject token for URL or File sourced credentials.
+// Format contains information needed to retrieve a subject token for URL or File sourced credentials.
 type Format struct {
 	// Type should be either "text" or "json". This determines whether the file or URL sourced credentials
 	// expect a simple text subject token or if the subject token will be contained in a JSON object.
@@ -486,11 +486,11 @@ func (ts tokenSource) Token() (*oauth2.Token, error) {
 		ClientID:     conf.ClientID,
 		ClientSecret: conf.ClientSecret,
 	}
-	var options map[string]interface{}
+	var options map[string]any
 	// Do not pass workforce_pool_user_project when client authentication is used.
 	// The client ID is sufficient for determining the user project.
 	if conf.WorkforcePoolUserProject != "" && conf.ClientID == "" {
-		options = map[string]interface{}{
+		options = map[string]any{
 			"userProject": conf.WorkforcePoolUserProject,
 		}
 	}

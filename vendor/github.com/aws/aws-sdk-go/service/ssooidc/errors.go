@@ -57,12 +57,26 @@ const (
 	// makes a CreateToken request with an invalid grant type.
 	ErrCodeInvalidGrantException = "InvalidGrantException"
 
+	// ErrCodeInvalidRedirectUriException for service response error code
+	// "InvalidRedirectUriException".
+	//
+	// Indicates that one or more redirect URI in the request is not supported for
+	// this operation.
+	ErrCodeInvalidRedirectUriException = "InvalidRedirectUriException"
+
 	// ErrCodeInvalidRequestException for service response error code
 	// "InvalidRequestException".
 	//
 	// Indicates that something is wrong with the input to the request. For example,
 	// a required parameter might be missing or out of range.
 	ErrCodeInvalidRequestException = "InvalidRequestException"
+
+	// ErrCodeInvalidRequestRegionException for service response error code
+	// "InvalidRequestRegionException".
+	//
+	// Indicates that a token provided as input to the request was issued by and
+	// is only usable by calling IAM Identity Center endpoints in another region.
+	ErrCodeInvalidRequestRegionException = "InvalidRequestRegionException"
 
 	// ErrCodeInvalidScopeException for service response error code
 	// "InvalidScopeException".
@@ -99,7 +113,9 @@ var exceptionFromCode = map[string]func(protocol.ResponseMetadata) error{
 	"InvalidClientException":         newErrorInvalidClientException,
 	"InvalidClientMetadataException": newErrorInvalidClientMetadataException,
 	"InvalidGrantException":          newErrorInvalidGrantException,
+	"InvalidRedirectUriException":    newErrorInvalidRedirectUriException,
 	"InvalidRequestException":        newErrorInvalidRequestException,
+	"InvalidRequestRegionException":  newErrorInvalidRequestRegionException,
 	"InvalidScopeException":          newErrorInvalidScopeException,
 	"SlowDownException":              newErrorSlowDownException,
 	"UnauthorizedClientException":    newErrorUnauthorizedClientException,

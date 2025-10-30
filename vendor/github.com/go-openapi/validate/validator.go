@@ -148,7 +148,7 @@ func (b *basicCommonValidator) SetPath(path string) {
 	b.Path = path
 }
 
-func (b *basicCommonValidator) Applies(source interface{}, kind reflect.Kind) bool {
+func (b *basicCommonValidator) Applies(source interface{}, _ reflect.Kind) bool {
 	switch source.(type) {
 	case *spec.Parameter, *spec.Schema, *spec.Header:
 		return true
@@ -548,7 +548,6 @@ func (n *numberValidator) Validate(val interface{}) *Result {
 		}
 	}
 
-	// nolint: dupl
 	if n.Maximum != nil {
 		// Is the constraint specifier within the range of the specific numeric type and format?
 		resMaximum.AddErrors(IsValueValidAgainstRange(*n.Maximum, n.Type, n.Format, "Maximum boundary", n.Path))
@@ -565,7 +564,6 @@ func (n *numberValidator) Validate(val interface{}) *Result {
 		}
 	}
 
-	// nolint: dupl
 	if n.Minimum != nil {
 		// Is the constraint specifier within the range of the specific numeric type and format?
 		resMinimum.AddErrors(IsValueValidAgainstRange(*n.Minimum, n.Type, n.Format, "Minimum boundary", n.Path))

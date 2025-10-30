@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/retry"
@@ -44,6 +46,19 @@ type WebIdentityRoleOptions struct {
 
 	// Session name, if you wish to uniquely identify this session.
 	RoleSessionName string
+
+	// Expiry duration of the STS credentials. STS will assign a default expiry
+	// duration if this value is unset. This is different from the Duration
+	// option of AssumeRoleProvider, which automatically assigns 15 minutes if
+	// Duration is unset.
+	//
+	// See the STS AssumeRoleWithWebIdentity API reference guide for more
+	// information on defaults.
+	// https://docs.aws.amazon.com/STS/latest/APIReference/API_AssumeRoleWithWebIdentity.html
+	Duration time.Duration
+
+	// An IAM policy in JSON format that you want to use as an inline session policy.
+	Policy *string
 
 	// The Amazon Resource Names (ARNs) of the IAM managed policies that you
 	// want to use as managed session policies.  The policies must exist in the
@@ -100,16 +115,30 @@ func (p *WebIdentityRoleProvider) Retrieve(ctx context.Context) (aws.Credentials
 		// uses unix time in nanoseconds to uniquely identify sessions.
 		sessionName = strconv.FormatInt(sdk.NowTime().UnixNano(), 10)
 	}
-	resp, err := p.options.Client.AssumeRoleWithWebIdentity(ctx, &sts.AssumeRoleWithWebIdentityInput{
+	input := &sts.AssumeRoleWithWebIdentityInput{
 		PolicyArns:       p.options.PolicyARNs,
 		RoleArn:          &p.options.RoleARN,
 		RoleSessionName:  &sessionName,
 		WebIdentityToken: aws.String(string(b)),
-	}, func(options *sts.Options) {
+	}
+	if p.options.Duration != 0 {
+		// If set use the value, otherwise STS will assign a default expiration duration.
+		input.DurationSeconds = aws.Int32(int32(p.options.Duration / time.Second))
+	}
+	if p.options.Policy != nil {
+		input.Policy = p.options.Policy
+	}
+
+	resp, err := p.options.Client.AssumeRoleWithWebIdentity(ctx, input, func(options *sts.Options) {
 		options.Retryer = retry.AddWithErrorCodes(options.Retryer, invalidIdentityTokenExceptionCode)
 	})
 	if err != nil {
 		return aws.Credentials{}, fmt.Errorf("failed to retrieve credentials, %w", err)
+	}
+
+	var accountID string
+	if resp.AssumedRoleUser != nil {
+		accountID = getAccountID(resp.AssumedRoleUser)
 	}
 
 	// InvalidIdentityToken error is a temporary error that can occur
@@ -122,6 +151,19 @@ func (p *WebIdentityRoleProvider) Retrieve(ctx context.Context) (aws.Credentials
 		Source:          WebIdentityProviderName,
 		CanExpire:       true,
 		Expires:         *resp.Credentials.Expiration,
+		AccountID:       accountID,
 	}
 	return value, nil
+}
+
+// extract accountID from arn with format "arn:partition:service:region:account-id:[resource-section]"
+func getAccountID(u *types.AssumedRoleUser) string {
+	if u.Arn == nil {
+		return ""
+	}
+	parts := strings.Split(*u.Arn, ":")
+	if len(parts) < 5 {
+		return ""
+	}
+	return parts[4]
 }

@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package api
 
 import (
@@ -56,7 +59,7 @@ var (
 )
 
 // Lock is used to implement client-side leader election. It is follows the
-// algorithm as described here: https://www.consul.io/docs/guides/leader-election.html.
+// algorithm as described here: https://developer.hashicorp.com/docs/guides/leader-election.html.
 type Lock struct {
 	c    *Client
 	opts *LockOptions

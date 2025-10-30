@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	durpb "github.com/golang/protobuf/ptypes/duration"
-	bttdpb "google.golang.org/genproto/googleapis/bigtable/admin/v2"
+	bttdpb "cloud.google.com/go/bigtable/admin/apiv2/adminpb"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // PolicyType represents the type of GCPolicy
@@ -168,7 +168,7 @@ func (ma MaxAgeGCPolicy) proto() *bttdpb.GcRule {
 	// Fix this if people care about GC policies over 290 years.
 	ns := time.Duration(ma).Nanoseconds()
 	return &bttdpb.GcRule{
-		Rule: &bttdpb.GcRule_MaxAge{MaxAge: &durpb.Duration{
+		Rule: &bttdpb.GcRule_MaxAge{MaxAge: &durationpb.Duration{
 			Seconds: ns / 1e9,
 			Nanos:   int32(ns % 1e9),
 		}},

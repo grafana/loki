@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,22 +32,58 @@ var (
 	_ = (*url.URL)(nil)
 	_ = (*mail.Address)(nil)
 	_ = anypb.Any{}
+	_ = sort.Sort
 )
 
 // Validate checks the field values on StatusAnnotation with the rules defined
-// in the proto definition for this message. If any rules are violated, an
-// error is returned.
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
 func (m *StatusAnnotation) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on StatusAnnotation with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// StatusAnnotationMultiError, or nil if none found.
+func (m *StatusAnnotation) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *StatusAnnotation) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
+
+	var errors []error
 
 	// no validation rules for WorkInProgress
 
 	// no validation rules for PackageVersionStatus
 
+	if len(errors) > 0 {
+		return StatusAnnotationMultiError(errors)
+	}
+
 	return nil
 }
+
+// StatusAnnotationMultiError is an error wrapping multiple validation errors
+// returned by StatusAnnotation.ValidateAll() if the designated constraints
+// aren't met.
+type StatusAnnotationMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m StatusAnnotationMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m StatusAnnotationMultiError) AllErrors() []error { return m }
 
 // StatusAnnotationValidationError is the validation error returned by
 // StatusAnnotation.Validate if the designated constraints aren't met.
