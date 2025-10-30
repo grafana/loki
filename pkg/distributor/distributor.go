@@ -290,7 +290,9 @@ func New(
 			return nil, fmt.Errorf("failed to start kafka client: %w", err)
 		}
 		kafkaWriter = kafka_client.NewProducer("distributor", kafkaClient, cfg.KafkaConfig.ProducerMaxBufferedBytes,
-			prometheus.WrapRegistererWithPrefix("loki_", registerer))
+			prometheus.WrapRegistererWithPrefix("loki_", registerer),
+			kafka_client.WithRecordsInterceptor(validation.IngestionPoliciesKafkaProducerInterceptor),
+		)
 
 		if cfg.DataObjTeeConfig.Enabled {
 			dataObjTee, err := NewDataObjTee(
