@@ -13,8 +13,12 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
-## 6.45.0
 
+## 6.45.1
+
+- [CHANGE] Changed one missed version of Grafana Loki to 3.5.7.
+
+## 6.45.0
 - [CHANGE] Remove unused `storageClass` field from compactor persistence configuration. Storage class should be configured per-claim in the `claims` array instead.[#19443](https://github.com/grafana/loki/pull/19443)
 - [ENHANCEMENT] Update default readiness probe values to match operator [#19529](https://github.com/grafana/loki/pull/19529)
 - [ENHANCEMENT] Allow configuration of alert rule severalties and thresholds[#13730](https://github.com/grafana/loki/pull/13730)
