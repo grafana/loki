@@ -338,7 +338,7 @@ When running multiple rulers, they use a consistent hash ring to distribute rule
 
 The optional **pattern ingester** component receives log data from the ingesters and scans the logs to detect and aggregate patterns. This can be useful for understanding the structure of your logs at scale. The pattern ingester is used by the pattern feature in Logs Drilldown, which lets you detect similar log lines and add or exclude them from your search.
 
-The ingester uses a drain algorithm to identify clusters (patterns) of logs, and maintain their counts over time. Patterns consist of a number, a string, and a Loki series identifier.
+The ingester uses a drain algorithm to identify related logs that share the same pattern, and maintain their counts over time. Patterns consist of a number, a string, and a Loki series identifier.
 
 The pattern ingester exposes a query API, so you can fetch detected patterns. This API is used by the Patterns tab in the Grafana Logs Drilldown plugin.
 
