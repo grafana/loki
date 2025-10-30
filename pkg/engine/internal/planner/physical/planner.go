@@ -133,10 +133,22 @@ func (p *Planner) convertPredicate(inst logical.Value) Expression {
 		for i, v := range inst.Values {
 			exprs[i] = p.convertPredicate(v)
 		}
-		return &VariadicExpr{
+		node := &VariadicExpr{
 			Op:          inst.Op,
 			Expressions: exprs,
 		}
+		if p.context.v1Compatible {
+			compat := &ColumnCompat{
+				Source:      types.ColumnTypeParsed,
+				Destination: types.ColumnTypeParsed,
+				Collision:   types.ColumnTypeLabel,
+			}
+			node, err = p.wrapNodeWith(node, compat)
+			if err != nil {
+				return nil, err
+			}
+		}
+	return node, nil
 	default:
 		panic(fmt.Sprintf("invalid value for predicate: %T", inst))
 	}
