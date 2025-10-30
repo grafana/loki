@@ -120,7 +120,7 @@ $ make loki
 $ ./cmd/loki/loki -config.file=./cmd/loki/loki-local-config.yaml
 ```
 
-To run multiple tenants locally, ensure that auth_enabled is set and provide a runtime config with any tenant specific overrides.
+To run multiple Loki tenants locally, ensure that auth_enabled is set to true and provide a runtime config with any tenant specific overrides.
 ```bash
 # Build binary
 $ make loki
