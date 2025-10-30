@@ -137,6 +137,11 @@ message Ingester {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "store"
   ];
+
+  // Total time querier spent waiting on ingester gRPC Recv(), in seconds.
+  // Omitted from JSON when zero for backwards compatibility.
+  // Grafana expects time values to be returned in seconds as float
+  double recvWaitTime = 6 [(gogoproto.jsontag) = "recvWaitTime,omitempty"];
 }
 
 message Store {
