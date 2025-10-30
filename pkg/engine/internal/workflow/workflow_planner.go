@@ -334,6 +334,7 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 			Sinks:    make(map[physical.Node][]*Stream),
 			Cost:     1, // TODO(chaudum): Assign real cost
 		}
+		partition.SetCategory(TaskIsSharded)
 		p.graph.Add(partition)
 
 		// Copy the downstream edges from the template task into our partitioned

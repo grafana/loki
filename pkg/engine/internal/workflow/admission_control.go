@@ -48,9 +48,8 @@ func (ac *admissionControl) groupByBucket(tasks []*Task) map[TokenBucket][]*Task
 // based on its characteristics.
 // This function panics if the task is nil.
 func (ac *admissionControl) tokenBucketFor(task *Task) TokenBucket {
-	// Scan nodes can be differentiated from other nodes by the number of input sources.
-	if len(task.Sources) > 0 {
-		return ac.other
+	if task.HasCategory(TaskIsSharded) {
+		return ac.scan
 	}
-	return ac.scan
+	return ac.other
 }
