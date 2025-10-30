@@ -59,6 +59,7 @@ var queryTests = []struct {
 				"index": {
 					"postFilterChunks": 0,
 					"totalChunks": 0,
+					"totalStreams": 0,
 					"usedBloomFilters": false,
 					"shardsDuration": 0
 				},

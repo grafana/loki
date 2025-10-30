@@ -13,12 +13,22 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [CHANGE] Remove unused `storageClass` field from compactor persistence configuration. Storage class should be configured per-claim in the `claims` array instead.[#19443](https://github.com/grafana/loki/pull/19443)
+- [FEATURE] Make loki-canary readinessProbe configurable via values.yaml  [#19328](https://github.com/grafana/loki/pull/19328)
+- [ENHANCEMENT] Update default readiness probe values to match operator [#19529](https://github.com/grafana/loki/pull/19529)
+- [ENHANCEMENT] Allow configuration of alert rule severalties and thresholds[#13730](https://github.com/grafana/loki/pull/13730)
+- [ENHANCEMENT] Standardize global image registry configuration to match other Grafana charts [#19246](https://github.com/grafana/loki/pull/19246)
+- [ENHANCEMENT] Add the ability to specify index-gateway container lifecycle. [#19573](https://github.com/grafana/loki/pull/19573)
+- [BUGFIX]  Move bucketName validations into the config helpers.[#19051](https://github.com/grafana/loki/pull/19051)
+- [BUGFIX] Standardize global image registry to match other Grafana charts [#19246](https://github.com/grafana/loki/pull/19246)
+
 ## 6.44.0
 
 - [DEPRECATION] The Loki Helm chart uses MinIO as an object store. MinIO will be removed from the Helm Charts in a future release.  See [this issue](https://github.com/minio/minio/issues/21647) for more information.  The Loki team is still investigating alternatives to replace MinIO.
 - [CHANGE] Changed version of Grafana Loki to 3.5.7.
 - [FEATURE] Allow auto-resizing the volume by recreating the StatefulSet. [#19217](https://github.com/grafana/loki/pull/19217).
 - [BUGFIX] Add single-binary component to the podSelector. [#19229](https://github.com/grafana/loki/pull/19229).
+
 ## 6.43.0
 
 - [BREAKING]  **Loki UI has been completely removed from the Helm chart.**  The experimental Loki UI has been moved to a [Grafana Plugin] (https://github.com/grafana/loki-operational-ui). Enabling the UI in the Helm chart will now only enable the APIs needed by the plugin, and will host them on the querier. The gateway will now forward all UI requests to the queriers. Users who previously had `loki.ui.enabled: true` should remove this configuration and migrate to the Grafana Loki plugin for UI functionality. [#19390](https://github.com/grafana/loki/pull/19390)

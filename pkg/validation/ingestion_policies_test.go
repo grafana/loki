@@ -8,6 +8,7 @@ import (
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
+	"github.com/twmb/franz-go/pkg/kgo"
 )
 
 func Test_PolicyStreamMapping_PolicyFor(t *testing.T) {
@@ -470,5 +471,177 @@ func TestIngestionPolicyMiddleware(t *testing.T) {
 		require.Equal(t, http.StatusOK, rr.Code)
 		policy := ExtractIngestionPolicyContext(capturedCtx)
 		require.Empty(t, policy)
+	})
+}
+
+func TestGRPCIngestionPolicy(t *testing.T) {
+	t.Run("inject and extract policy through gRPC", func(t *testing.T) {
+		policy := "test-policy"
+
+		// Inject policy into context
+		ctx := InjectIngestionPolicyContext(t.Context(), policy)
+
+		// Inject into gRPC metadata
+		ctx, err := injectIntoGRPCRequest(ctx)
+		require.NoError(t, err)
+
+		// Extract from gRPC metadata
+		ctx2, err := extractFromGRPCRequest(ctx)
+		require.NoError(t, err)
+
+		// Verify extracted policy matches original
+		extractedPolicy := ExtractIngestionPolicyContext(ctx2)
+		require.Equal(t, policy, extractedPolicy)
+	})
+
+	t.Run("extract from empty context returns empty", func(t *testing.T) {
+		ctx, err := extractFromGRPCRequest(t.Context())
+		require.NoError(t, err)
+
+		policy := ExtractIngestionPolicyContext(ctx)
+		require.Empty(t, policy)
+	})
+
+	t.Run("inject empty policy does not add metadata", func(t *testing.T) {
+		// Inject empty policy into context
+		ctx := InjectIngestionPolicyContext(t.Context(), "")
+
+		// Try to inject into gRPC metadata
+		ctx, err := injectIntoGRPCRequest(ctx)
+		require.NoError(t, err)
+
+		// Extract from gRPC metadata
+		ctx2, err := extractFromGRPCRequest(ctx)
+		require.NoError(t, err)
+
+		// Should still be empty
+		policy := ExtractIngestionPolicyContext(ctx2)
+		require.Empty(t, policy)
+	})
+
+	t.Run("inject context without policy does nothing", func(t *testing.T) {
+		// Try to inject into gRPC metadata (no policy in context)
+		ctx, err := injectIntoGRPCRequest(t.Context())
+		require.NoError(t, err)
+
+		// Extract from gRPC metadata
+		ctx2, err := extractFromGRPCRequest(ctx)
+		require.NoError(t, err)
+
+		// Should be empty
+		policy := ExtractIngestionPolicyContext(ctx2)
+		require.Empty(t, policy)
+	})
+}
+
+func TestKafkaIngestionPolicyRoundtrip(t *testing.T) {
+	t.Run("roundtrip with policy", func(t *testing.T) {
+		// Start with a context containing a policy
+		originalCtx := InjectIngestionPolicyContext(t.Context(), "test-policy")
+
+		// Create records
+		records := []*kgo.Record{
+			{Value: []byte("record1")},
+			{Value: []byte("record2")},
+		}
+
+		// Simulate producer side: inject policy into record headers
+		err := IngestionPoliciesKafkaProducerInterceptor(originalCtx, records)
+		require.NoError(t, err)
+
+		// Verify headers were added to all records
+		for _, record := range records {
+			require.Len(t, record.Headers, 1)
+			require.Equal(t, lowerIngestionPolicyHeaderName, record.Headers[0].Key)
+			require.Equal(t, []byte("test-policy"), record.Headers[0].Value)
+		}
+
+		// Simulate consumer side: extract policy from record headers back into context
+		for _, record := range records {
+			consumerCtx := IngestionPoliciesKafkaHeadersToContext(t.Context(), record.Headers)
+
+			// Verify the policy was correctly extracted
+			extractedPolicy := ExtractIngestionPolicyContext(consumerCtx)
+			require.Equal(t, "test-policy", extractedPolicy)
+		}
+	})
+
+	t.Run("roundtrip without policy", func(t *testing.T) {
+		// Start with a context without a policy
+		originalCtx := t.Context()
+
+		// Create records
+		records := []*kgo.Record{
+			{Value: []byte("record1")},
+		}
+
+		// Simulate producer side: no policy to inject
+		err := IngestionPoliciesKafkaProducerInterceptor(originalCtx, records)
+		require.NoError(t, err)
+
+		// Verify no headers were added
+		require.Len(t, records[0].Headers, 0)
+
+		// Simulate consumer side: extract from empty headers
+		consumerCtx := IngestionPoliciesKafkaHeadersToContext(t.Context(), records[0].Headers)
+
+		// Verify no policy was extracted
+		extractedPolicy := ExtractIngestionPolicyContext(consumerCtx)
+		require.Empty(t, extractedPolicy)
+	})
+
+	t.Run("roundtrip with empty policy", func(t *testing.T) {
+		// Start with a context with an empty policy
+		originalCtx := InjectIngestionPolicyContext(t.Context(), "")
+
+		// Create records
+		records := []*kgo.Record{
+			{Value: []byte("record1")},
+		}
+
+		// Simulate producer side: empty policy should not be injected
+		err := IngestionPoliciesKafkaProducerInterceptor(originalCtx, records)
+		require.NoError(t, err)
+
+		// Verify no headers were added for empty policy
+		require.Len(t, records[0].Headers, 0)
+
+		// Simulate consumer side
+		consumerCtx := IngestionPoliciesKafkaHeadersToContext(t.Context(), records[0].Headers)
+
+		// Verify no policy was extracted
+		extractedPolicy := ExtractIngestionPolicyContext(consumerCtx)
+		require.Empty(t, extractedPolicy)
+	})
+
+	t.Run("roundtrip with existing headers", func(t *testing.T) {
+		// Start with a context containing a policy
+		originalCtx := InjectIngestionPolicyContext(t.Context(), "test-policy")
+
+		// Create records with existing headers
+		records := []*kgo.Record{
+			{
+				Value: []byte("record1"),
+				Headers: []kgo.RecordHeader{
+					{Key: "existing-header", Value: []byte("existing-value")},
+				},
+			},
+		}
+
+		// Simulate producer side: inject policy into record headers
+		err := IngestionPoliciesKafkaProducerInterceptor(originalCtx, records)
+		require.NoError(t, err)
+
+		// Verify both headers are present
+		require.Len(t, records[0].Headers, 2)
+		require.Equal(t, "existing-header", records[0].Headers[0].Key)
+		require.Equal(t, lowerIngestionPolicyHeaderName, records[0].Headers[1].Key)
+
+		// Simulate consumer side: extract policy from headers
+		consumerCtx := IngestionPoliciesKafkaHeadersToContext(t.Context(), records[0].Headers)
+
+		// Verify the policy was correctly extracted despite other headers
+		extractedPolicy := ExtractIngestionPolicyContext(consumerCtx)
+		require.Equal(t, "test-policy", extractedPolicy)
 	})
 }

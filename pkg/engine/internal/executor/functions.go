@@ -80,22 +80,26 @@ func init() {
 	// Functions for [types.BinaryOpNotMatchSubstr]
 	binaryFunctions.register(types.BinaryOpNotMatchSubstr, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return !strings.Contains(a, b), nil }})
 	// Functions for [types.BinaryOpMatchRe]
-	// TODO(chaudum): Performance of regex evaluation can be improved if RHS is a Scalar,
-	// because the regexp would only need to compiled once for the given scalar value.
-	// TODO(chaudum): Performance of regex evaluation can be improved by simplifying the regex,
-	// see pkg/logql/log/filter.go:645
-	binaryFunctions.register(types.BinaryOpMatchRe, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) {
-		reg, err := regexp.Compile(b)
-		if err != nil {
-			return false, err
+	binaryFunctions.register(types.BinaryOpMatchRe, arrow.BinaryTypes.String, &regexpFunction{eval: func(a, b string, reg *regexp.Regexp) (bool, error) {
+		if reg == nil {
+			// Fallback to per-row regex-compilation due to non-scalar expression
+			var err error
+			reg, err = regexp.Compile(b)
+			if err != nil {
+				return false, err
+			}
 		}
 		return reg.Match([]byte(a)), nil
 	}})
 	// Functions for [types.BinaryOpNotMatchRe]
-	binaryFunctions.register(types.BinaryOpNotMatchRe, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) {
-		reg, err := regexp.Compile(b)
-		if err != nil {
-			return false, err
+	binaryFunctions.register(types.BinaryOpNotMatchRe, arrow.BinaryTypes.String, &regexpFunction{eval: func(a, b string, reg *regexp.Regexp) (bool, error) {
+		if reg == nil {
+			// Fallback to per-row regex-compilation due to non-scalar expression
+			var err error
+			reg, err = regexp.Compile(b)
+			if err != nil {
+				return false, err
+			}
 		}
 		return !reg.Match([]byte(a)), nil
 	}})
@@ -158,7 +162,7 @@ type BinaryFunctionRegistry interface {
 }
 
 type BinaryFunction interface {
-	Evaluate(lhs, rhs arrow.Array) (arrow.Array, error)
+	Evaluate(lhs, rhs arrow.Array, lhsIsScalar, rhsIsScalar bool) (arrow.Array, error)
 }
 
 type binaryFuncReg struct {
@@ -192,6 +196,63 @@ func (b *binaryFuncReg) GetForSignature(op types.BinaryOp, ltype arrow.DataType)
 	return fn, nil
 }
 
+type regexpFunction struct {
+	eval func(a, b string, reg *regexp.Regexp) (bool, error)
+}
+
+func (f *regexpFunction) Evaluate(lhs arrow.Array, rhs arrow.Array, _, rhsIsScalar bool) (arrow.Array, error) {
+	if lhs.Len() != rhs.Len() {
+		return nil, arrow.ErrIndex
+	}
+
+	lhsArr, ok := lhs.(*array.String)
+	if !ok {
+		return nil, fmt.Errorf("invalid array type: expected %T, got %T", new(*array.String), lhs)
+	}
+
+	rhsArr, ok := rhs.(*array.String)
+	if !ok {
+		return nil, fmt.Errorf("invalid array type: expected %T, got %T", new(*array.String), rhs)
+	}
+
+	builder := array.NewBooleanBuilder(memory.DefaultAllocator)
+	if rhs.Len() == 0 {
+		return builder.NewArray(), nil
+	}
+
+	var (
+		re  *regexp.Regexp
+		err error
+	)
+
+	if rhsIsScalar {
+		if rhsArr.IsNull(0) {
+			return nil, fmt.Errorf("invalid NULL value, expected string")
+		}
+		// TODO(chaudum): Performance of regex evaluation can be improved by simplifying the regex,
+		// see pkg/logql/log/filter.go:645
+		re, err = regexp.Compile(rhsArr.Value(0))
+		if err != nil {
+			return nil, fmt.Errorf("failed to compile regular expression for batch: %w", err)
+		}
+	}
+
+	for i := range lhsArr.Len() {
+		if lhsArr.IsNull(i) || rhsArr.IsNull(i) {
+			builder.Append(false)
+			continue
+		}
+		res, err := f.eval(lhsArr.Value(i), rhsArr.Value(i), re)
+		if err != nil {
+			return nil, err
+		}
+		builder.Append(res)
+	}
+
+	return builder.NewArray(), nil
+
+}
+
 // genericBoolFunction is a struct that implements the [BinaryFunction] interface methods
 // and can be used for any array type with comparable elements.
 type genericBoolFunction[E arrow.TypedArray[T], T arrow.ValueType] struct {
@@ -199,7 +260,7 @@ type genericBoolFunction[E arrow.TypedArray[T], T arrow.ValueType] struct {
 }
 
 // Evaluate implements BinaryFunction.
-func (f *genericBoolFunction[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array) (arrow.Array, error) {
+func (f *genericBoolFunction[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array, _, _ bool) (arrow.Array, error) {
 	if lhs.Len() != rhs.Len() {
 		return nil, arrow.ErrIndex
 	}
@@ -238,7 +299,7 @@ type genericFloat64Function[E arrow.TypedArray[T], T arrow.ValueType] struct {
 }
 
 // Evaluate implements BinaryFunction.
-func (f *genericFloat64Function[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array) (arrow.Array, error) {
+func (f *genericFloat64Function[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array, _, _ bool) (arrow.Array, error) {
 	if lhs.Len() != rhs.Len() {
 		return nil, arrow.ErrIndex
 	}
