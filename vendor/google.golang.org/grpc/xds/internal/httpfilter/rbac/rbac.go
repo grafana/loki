@@ -25,13 +25,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes"
-	"google.golang.org/grpc/internal"
-	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/resolver"
 	"google.golang.org/grpc/internal/xds/rbac"
 	"google.golang.org/grpc/xds/internal/httpfilter"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
 	v3rbacpb "github.com/envoyproxy/go-control-plane/envoy/config/rbac/v3"
@@ -39,19 +36,7 @@ import (
 )
 
 func init() {
-	if envconfig.XDSRBAC {
-		httpfilter.Register(builder{})
-	}
-
-	// TODO: Remove these once the RBAC env var is removed.
-	internal.RegisterRBACHTTPFilterForTesting = func() {
-		httpfilter.Register(builder{})
-	}
-	internal.UnregisterRBACHTTPFilterForTesting = func() {
-		for _, typeURL := range builder.TypeURLs(builder{}) {
-			httpfilter.UnregisterForTesting(typeURL)
-		}
-	}
+	httpfilter.Register(builder{})
 }
 
 type builder struct {
@@ -121,7 +106,7 @@ func parseConfig(rbacCfg *rpb.RBAC) (httpfilter.FilterConfig, error) {
 	// "If absent, no enforcing RBAC policy will be applied" - RBAC
 	// Documentation for Rules field.
 	// "At this time, if the RBAC.action is Action.LOG then the policy will be
-	// completely ignored, as if RBAC was not configurated." - A41
+	// completely ignored, as if RBAC was not configured." - A41
 	if rbacCfg.Rules == nil || rbacCfg.GetRules().GetAction() == v3rbacpb.RBAC_LOG {
 		return config{}, nil
 	}
@@ -132,7 +117,7 @@ func parseConfig(rbacCfg *rpb.RBAC) (httpfilter.FilterConfig, error) {
 	ce, err := rbac.NewChainEngine([]*v3rbacpb.RBAC{rbacCfg.GetRules()}, "")
 	if err != nil {
 		// "At this time, if the RBAC.action is Action.LOG then the policy will be
-		// completely ignored, as if RBAC was not configurated." - A41
+		// completely ignored, as if RBAC was not configured." - A41
 		if rbacCfg.GetRules().GetAction() != v3rbacpb.RBAC_LOG {
 			return nil, fmt.Errorf("rbac: error constructing matching engine: %v", err)
 		}
@@ -145,12 +130,12 @@ func (builder) ParseFilterConfig(cfg proto.Message) (httpfilter.FilterConfig, er
 	if cfg == nil {
 		return nil, fmt.Errorf("rbac: nil configuration message provided")
 	}
-	any, ok := cfg.(*anypb.Any)
+	m, ok := cfg.(*anypb.Any)
 	if !ok {
 		return nil, fmt.Errorf("rbac: error parsing config %v: unknown type %T", cfg, cfg)
 	}
 	msg := new(rpb.RBAC)
-	if err := ptypes.UnmarshalAny(any, msg); err != nil {
+	if err := m.UnmarshalTo(msg); err != nil {
 		return nil, fmt.Errorf("rbac: error parsing config %v: %v", cfg, err)
 	}
 	return parseConfig(msg)
@@ -160,12 +145,12 @@ func (builder) ParseFilterConfigOverride(override proto.Message) (httpfilter.Fil
 	if override == nil {
 		return nil, fmt.Errorf("rbac: nil configuration message provided")
 	}
-	any, ok := override.(*anypb.Any)
+	m, ok := override.(*anypb.Any)
 	if !ok {
 		return nil, fmt.Errorf("rbac: error parsing override config %v: unknown type %T", override, override)
 	}
 	msg := new(rpb.RBACPerRoute)
-	if err := ptypes.UnmarshalAny(any, msg); err != nil {
+	if err := m.UnmarshalTo(msg); err != nil {
 		return nil, fmt.Errorf("rbac: error parsing override config %v: %v", override, err)
 	}
 	return parseConfig(msg.Rbac)
@@ -202,7 +187,7 @@ func (builder) BuildServerInterceptor(cfg httpfilter.FilterConfig, override http
 	// "If absent, no enforcing RBAC policy will be applied" - RBAC
 	// Documentation for Rules field.
 	// "At this time, if the RBAC.action is Action.LOG then the policy will be
-	// completely ignored, as if RBAC was not configurated." - A41
+	// completely ignored, as if RBAC was not configured." - A41
 	if c.chainEngine == nil {
 		return nil, nil
 	}

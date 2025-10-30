@@ -2,17 +2,22 @@ package retry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
+	internalcontext "github.com/aws/aws-sdk-go-v2/internal/context"
+	"github.com/aws/smithy-go"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsmiddle "github.com/aws/aws-sdk-go-v2/aws/middleware"
 	"github.com/aws/aws-sdk-go-v2/internal/sdk"
 	"github.com/aws/smithy-go/logging"
-	"github.com/aws/smithy-go/middleware"
+	"github.com/aws/smithy-go/metrics"
 	smithymiddle "github.com/aws/smithy-go/middleware"
+	"github.com/aws/smithy-go/tracing"
 	"github.com/aws/smithy-go/transport/http"
 )
 
@@ -35,9 +40,16 @@ type Attempt struct {
 	// attempts are reached.
 	LogAttempts bool
 
+	// A Meter instance for recording retry-related metrics.
+	OperationMeter metrics.Meter
+
 	retryer       aws.RetryerV2
 	requestCloner RequestCloner
 }
+
+// define the threshold at which we will consider certain kind of errors to be probably
+// caused by clock skew
+const skewThreshold = 4 * time.Minute
 
 // NewAttemptMiddleware returns a new Attempt retry middleware.
 func NewAttemptMiddleware(retryer aws.Retryer, requestCloner RequestCloner, optFns ...func(*Attempt)) *Attempt {
@@ -48,6 +60,10 @@ func NewAttemptMiddleware(retryer aws.Retryer, requestCloner RequestCloner, optF
 	for _, fn := range optFns {
 		fn(m)
 	}
+	if m.OperationMeter == nil {
+		m.OperationMeter = metrics.NopMeterProvider{}.Meter("")
+	}
+
 	return m
 }
 
@@ -73,6 +89,11 @@ func (r *Attempt) HandleFinalize(ctx context.Context, in smithymiddle.FinalizeIn
 	maxAttempts := r.retryer.MaxAttempts()
 	releaseRetryToken := nopRelease
 
+	retryMetrics, err := newAttemptMetrics(r.OperationMeter)
+	if err != nil {
+		return out, metadata, err
+	}
+
 	for {
 		attemptNum++
 		attemptInput := in
@@ -86,11 +107,32 @@ func (r *Attempt) HandleFinalize(ctx context.Context, in smithymiddle.FinalizeIn
 			AttemptClockSkew: attemptClockSkew,
 		})
 
+		// Setting clock skew to be used on other context (like signing)
+		ctx = internalcontext.SetAttemptSkewContext(ctx, attemptClockSkew)
+
 		var attemptResult AttemptResult
+
+		attemptCtx, span := tracing.StartSpan(attemptCtx, "Attempt", func(o *tracing.SpanOptions) {
+			o.Properties.Set("operation.attempt", attemptNum)
+		})
+		retryMetrics.Attempts.Add(ctx, 1, withOperationMetadata(ctx))
+
+		start := sdk.NowTime()
 		out, attemptResult, releaseRetryToken, err = r.handleAttempt(attemptCtx, attemptInput, releaseRetryToken, next)
+		elapsed := sdk.NowTime().Sub(start)
+
+		retryMetrics.AttemptDuration.Record(ctx, float64(elapsed)/1e9, withOperationMetadata(ctx))
+		if err != nil {
+			retryMetrics.Errors.Add(ctx, 1, withOperationMetadata(ctx), func(o *metrics.RecordMetricOptions) {
+				o.Properties.Set("exception.type", errorType(err))
+			})
+		}
+
+		span.End()
+
 		attemptClockSkew, _ = awsmiddle.GetAttemptSkew(attemptResult.ResponseMetadata)
 
-		// AttempResult Retried states that the attempt was not successful, and
+		// AttemptResult Retried states that the attempt was not successful, and
 		// should be retried.
 		shouldRetry := attemptResult.Retried
 
@@ -185,6 +227,8 @@ func (r *Attempt) handleAttempt(
 		return out, attemptResult, nopRelease, err
 	}
 
+	err = wrapAsClockSkew(ctx, err)
+
 	//------------------------------
 	// Is Retryable and Should Retry
 	//------------------------------
@@ -240,6 +284,37 @@ func (r *Attempt) handleAttempt(
 	return out, attemptResult, releaseRetryToken, err
 }
 
+// errors that, if detected when we know there's a clock skew,
+// can be retried and have a high chance of success
+var possibleSkewCodes = map[string]struct{}{
+	"InvalidSignatureException": {},
+	"SignatureDoesNotMatch":     {},
+	"AuthFailure":               {},
+}
+
+var definiteSkewCodes = map[string]struct{}{
+	"RequestExpired":       {},
+	"RequestInTheFuture":   {},
+	"RequestTimeTooSkewed": {},
+}
+
+// wrapAsClockSkew checks if this error could be related to a clock skew
+// error and if so, wrap the error.
+func wrapAsClockSkew(ctx context.Context, err error) error {
+	var v interface{ ErrorCode() string }
+	if !errors.As(err, &v) {
+		return err
+	}
+	if _, ok := definiteSkewCodes[v.ErrorCode()]; ok {
+		return &retryableClockSkewError{Err: err}
+	}
+	_, isPossibleSkewCode := possibleSkewCodes[v.ErrorCode()]
+	if skew := internalcontext.GetAttemptSkewContext(ctx); skew > skewThreshold && isPossibleSkewCode {
+		return &retryableClockSkewError{Err: err}
+	}
+	return err
+}
+
 // MetricsHeader attaches SDK request metric header for retries to the transport
 type MetricsHeader struct{}
 
@@ -292,7 +367,7 @@ type retryMetadataKey struct{}
 // Scoped to stack values. Use github.com/aws/smithy-go/middleware#ClearStackValues
 // to clear all stack values.
 func getRetryMetadata(ctx context.Context) (metadata retryMetadata, ok bool) {
-	metadata, ok = middleware.GetStackValue(ctx, retryMetadataKey{}).(retryMetadata)
+	metadata, ok = smithymiddle.GetStackValue(ctx, retryMetadataKey{}).(retryMetadata)
 	return metadata, ok
 }
 
@@ -301,7 +376,7 @@ func getRetryMetadata(ctx context.Context) (metadata retryMetadata, ok bool) {
 // Scoped to stack values. Use github.com/aws/smithy-go/middleware#ClearStackValues
 // to clear all stack values.
 func setRetryMetadata(ctx context.Context, metadata retryMetadata) context.Context {
-	return middleware.WithStackValue(ctx, retryMetadataKey{}, metadata)
+	return smithymiddle.WithStackValue(ctx, retryMetadataKey{}, metadata)
 }
 
 // AddRetryMiddlewaresOptions is the set of options that can be passed to
@@ -321,11 +396,23 @@ func AddRetryMiddlewares(stack *smithymiddle.Stack, options AddRetryMiddlewaresO
 		middleware.LogAttempts = options.LogRetryAttempts
 	})
 
-	if err := stack.Finalize.Add(attempt, smithymiddle.After); err != nil {
+	// index retry to before signing, if signing exists
+	if err := stack.Finalize.Insert(attempt, "Signing", smithymiddle.Before); err != nil {
 		return err
 	}
-	if err := stack.Finalize.Add(&MetricsHeader{}, smithymiddle.After); err != nil {
+
+	if err := stack.Finalize.Insert(&MetricsHeader{}, attempt.ID(), smithymiddle.After); err != nil {
 		return err
 	}
 	return nil
+}
+
+// Determines the value of exception.type for metrics purposes. We prefer an
+// API-specific error code, otherwise it's just the Go type for the value.
+func errorType(err error) string {
+	var terr smithy.APIError
+	if errors.As(err, &terr) {
+		return terr.ErrorCode()
+	}
+	return fmt.Sprintf("%T", err)
 }

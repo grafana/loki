@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package api
 
 import (
@@ -59,7 +62,7 @@ type AutopilotConfiguration struct {
 }
 
 // Defines default values for the AutopilotConfiguration type, consistent with
-// https://www.consul.io/api-docs/operator/autopilot#parameters-1
+// https://developer.hashicorp.com/api-docs/operator/autopilot#parameters-1
 func NewAutopilotConfiguration() AutopilotConfiguration {
 	cfg := AutopilotConfiguration{
 		CleanupDeadServers:      true,

@@ -185,7 +185,7 @@ copyMatchTry8:
 	// A 16-at-a-time loop doesn't provide a further speedup.
 	CMP  $8, len
 	CCMP HS, offset, $8, $0
-	BLO  copyMatchLoop1
+	BLO  copyMatchTry4
 
 	AND    $7, len, lenRem
 	SUB    $8, len
@@ -201,8 +201,19 @@ copyMatchLoop8:
 	MOVD tmp2, -8(dst)
 	B    copyMatchDone
 
+copyMatchTry4:
+	// Copy words if both len and offset are at least four.
+	CMP  $4, len
+	CCMP HS, offset, $4, $0
+	BLO  copyMatchLoop1
+
+	MOVWU.P 4(match), tmp2
+	MOVWU.P tmp2, 4(dst)
+	SUBS    $4, len
+	BEQ     copyMatchDone
+
 copyMatchLoop1:
-	// Byte-at-a-time copy for small offsets.
+	// Byte-at-a-time copy for small offsets <= 3.
 	MOVBU.P 1(match), tmp2
 	MOVB.P  tmp2, 1(dst)
 	SUBS    $1, len
