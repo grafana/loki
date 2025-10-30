@@ -44,7 +44,3 @@ func (r *RangeAggregation) Clone() Node {
 func (r *RangeAggregation) Type() NodeType {
 	return NodeTypeRangeAggregation
 }
-
-func (r *RangeAggregation) Accept(v Visitor) error {
-	return v.VisitRangeAggregation(r)
-}

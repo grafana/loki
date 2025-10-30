@@ -53,8 +53,3 @@ func (n *ParseNode) Clone() Node {
 func (n *ParseNode) Type() NodeType {
 	return NodeTypeParse
 }
-
-// Accept allows the ParseNode to be visited by a Visitor
-func (n *ParseNode) Accept(v Visitor) error {
-	return v.VisitParse(n)
-}

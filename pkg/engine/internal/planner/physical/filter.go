@@ -36,9 +36,3 @@ func (f *Filter) Clone() Node {
 func (*Filter) Type() NodeType {
 	return NodeTypeFilter
 }
-
-// Accept implements the [Node] interface.
-// Dispatches itself to the provided [Visitor] v
-func (f *Filter) Accept(v Visitor) error {
-	return v.VisitFilter(f)
-}
