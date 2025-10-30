@@ -16,6 +16,7 @@ var emptyStats = `"stats": {
 	"index": {
 		"postFilterChunks": 0,
 		"totalChunks": 0,
+		"totalStreams": 0,
 		"shardsDuration": 0,
 		"usedBloomFilters": false
 	},

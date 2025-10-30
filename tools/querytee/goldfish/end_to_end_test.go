@@ -32,7 +32,7 @@ func TestGoldfishEndToEnd(t *testing.T) {
 	storage := &mockStorage{}
 
 	// Create manager
-	manager, err := NewManager(config, storage, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer manager.Close()
 
@@ -177,7 +177,7 @@ func TestGoldfishMismatchDetection(t *testing.T) {
 	}
 
 	storage := &mockStorage{}
-	manager, err := NewManager(config, storage, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer manager.Close()
 
@@ -287,7 +287,7 @@ func TestGoldfishNewEngineDetection(t *testing.T) {
 	}
 
 	storage := &mockStorage{}
-	manager, err := NewManager(config, storage, log.NewNopLogger(), prometheus.NewRegistry())
+	manager, err := NewManager(config, storage, nil, log.NewNopLogger(), prometheus.NewRegistry())
 	require.NoError(t, err)
 	defer manager.Close()
 

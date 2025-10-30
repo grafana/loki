@@ -5456,6 +5456,7 @@ null
   },
   "initContainers": [],
   "joinMemberlist": true,
+  "lifecycle": {},
   "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
@@ -5633,6 +5634,15 @@ null
 			<td>Whether the index gateway should join the memberlist hashring</td>
 			<td><pre lang="json">
 true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.lifecycle</td>
+			<td>object</td>
+			<td>Lifecycle for the index-gateway container</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>

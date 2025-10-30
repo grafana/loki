@@ -41,9 +41,3 @@ func (m *ColumnCompat) Clone() Node {
 func (m *ColumnCompat) Type() NodeType {
 	return NodeTypeCompat
 }
-
-// Accept implements the [Node] interface.
-// Dispatches itself to the provided [Visitor] v
-func (m *ColumnCompat) Accept(v Visitor) error {
-	return v.VisitCompat(m)
-}

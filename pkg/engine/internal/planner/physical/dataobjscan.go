@@ -58,9 +58,3 @@ func (s *DataObjScan) Clone() Node {
 func (*DataObjScan) Type() NodeType {
 	return NodeTypeDataObjScan
 }
-
-// Accept implements the [Node] interface.
-// Dispatches itself to the provided [Visitor] v
-func (s *DataObjScan) Accept(v Visitor) error {
-	return v.VisitDataObjScan(s)
-}

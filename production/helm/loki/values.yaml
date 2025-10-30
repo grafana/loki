@@ -2598,6 +2598,8 @@ indexGateway:
   initContainers: []
   # -- Grace period to allow the index-gateway to shutdown before it is killed.
   terminationGracePeriodSeconds: 300
+  # -- Lifecycle for the index-gateway container
+  lifecycle: {}
   # -- Affinity for index-gateway pods.
   # @default -- Hard node anti-affinity
   # The value will be passed through tpl.

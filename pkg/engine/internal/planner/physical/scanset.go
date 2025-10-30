@@ -84,11 +84,6 @@ func (s *ScanSet) Type() NodeType {
 	return NodeTypeScanSet
 }
 
-// Accept dispatches s to the provided [Visitor] v.
-func (s *ScanSet) Accept(v Visitor) error {
-	return v.VisitScanSet(s)
-}
-
 // Shards returns an iterator over the shards of the scan. Each emitted shard
 // will be a clone. Projections and predicates on the ScanSet are cloned and
 // applied to each shard.
