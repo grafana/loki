@@ -9,11 +9,12 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
-	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
+	"gopkg.in/yaml.v2"
 )
 
 func TestBucketResultStoreStoresCompressedPayload(t *testing.T) {
@@ -93,22 +94,41 @@ func TestBucketResultStoreStoresUncompressedPayload(t *testing.T) {
 	require.Equal(t, payload, body)
 }
 
-func TestNewResultsBucke_CorrectBucketName(t *testing.T) {
-	bktCfg := ResultsStorageConfig{
+const configWithGCSBackend = `
+storage_prefix: storage-prefix
+gcs:
+  bucket_name:     bucket
+  service_account: |-
+    {
+      "type": "service_account",
+      "project_id": "id",
+      "private_key_id": "id",
+      "private_key": "-----BEGIN PRIVATE KEY-----\nSOMETHING\n-----END PRIVATE KEY-----\n",
+      "client_email": "test@test.com",
+      "client_id": "12345",
+      "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+      "token_uri": "https://oauth2.googleapis.com/token",
+      "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+      "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/test%40test.com"
+    }
+`
+
+func TestNewResultsBucket_CorrectBucketName(t *testing.T) {
+	bktCfg := bucket.Config{}
+	flagext.DefaultValues(&bktCfg)
+
+	err := yaml.Unmarshal([]byte(configWithGCSBackend), &bktCfg)
+	require.NoError(t, err)
+
+	rsCfg := ResultsStorageConfig{
 		Enabled:      false,
 		Mode:         ResultsPersistenceModeMismatchOnly,
 		Backend:      ResultsBackendGCS,
 		ObjectPrefix: "goldfish/results",
 		Compression:  "gzip",
-		Bucket: bucket.Config{
-			GCS: gcs.Config{
-				BucketName: "bucket",
-			},
-			StoragePrefix: "storage-prefix",
-		},
+		Bucket:       bktCfg,
 	}
-
-	resultStorage, err := NewResultStore(context.Background(), bktCfg, log.NewNopLogger())
+	resultStorage, err := NewResultStore(context.Background(), rsCfg, log.NewNopLogger())
 	require.NoError(t, err)
 
 	rs, ok := resultStorage.(*bucketResultStore)
