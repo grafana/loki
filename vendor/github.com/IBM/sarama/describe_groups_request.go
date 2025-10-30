@@ -6,6 +6,10 @@ type DescribeGroupsRequest struct {
 	IncludeAuthorizedOperations bool
 }
 
+func (r *DescribeGroupsRequest) setVersion(v int16) {
+	r.Version = v
+}
+
 func (r *DescribeGroupsRequest) encode(pe packetEncoder) error {
 	if err := pe.putStringArray(r.Groups); err != nil {
 		return err
@@ -31,7 +35,7 @@ func (r *DescribeGroupsRequest) decode(pd packetDecoder, version int16) (err err
 }
 
 func (r *DescribeGroupsRequest) key() int16 {
-	return 15
+	return apiKeyDescribeGroups
 }
 
 func (r *DescribeGroupsRequest) version() int16 {

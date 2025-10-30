@@ -364,7 +364,7 @@ to add a [custom audit logging] header:
 This package includes support for the [Cloud Storage gRPC API]. This
 implementation uses gRPC rather than the default JSON & XML APIs
 to make requests to Cloud Storage. All methods on the [Client] support
-the gRPC API, with the exception of [GetServiceAccount], [Notification],
+the gRPC API, with the exception of the [Client.ServiceAccount], [Notification],
 and [HMACKey] methods.
 
 The Cloud Storage gRPC API is generally available.
@@ -390,7 +390,10 @@ Requirements to use Direct Connectivity include:
   - Your client must use service account authentication.
 
 Additional requirements for Direct Connectivity are documented in the
-[Cloud Storage gRPC docs].
+[Cloud Storage gRPC docs]. If all requirements are met, the client will
+use Direct Connectivity by default without requiring any client options
+or environment variables. To disable Direct Connectivity, you can set
+the environment variable GOOGLE_CLOUD_DISABLE_DIRECT_PATH=true.
 
 Dependencies for the gRPC API may slightly increase the size of binaries for
 applications depending on this package. If you are not using gRPC, you can use

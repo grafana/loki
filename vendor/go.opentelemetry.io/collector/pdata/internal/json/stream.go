@@ -66,6 +66,11 @@ func (ots *Stream) WriteUint64(val uint64) {
 
 // WriteBytes writes the values as a base64 encoded string. This is per the protobuf encoding rules for bytes.
 func (ots *Stream) WriteBytes(val []byte) {
+	if len(val) == 0 {
+		ots.WriteString("")
+		return
+	}
+
 	ots.WriteString(base64.StdEncoding.EncodeToString(val))
 }
 

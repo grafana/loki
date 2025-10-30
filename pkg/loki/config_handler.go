@@ -153,28 +153,27 @@ func filterLimitFields(limits any, allowlist []string) (map[string]any, error) {
 	return filtered, nil
 }
 
-func (t *Loki) tenantLimitsHandler() func(http.ResponseWriter, *http.Request) {
+func (t *Loki) tenantLimitsHandler(forDrilldown bool) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if t.TenantLimits == nil {
-			http.Error(w, "Tenant configs not enabled", http.StatusNotFound)
-			return
-		}
-
 		user, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
 		}
 
-		limit := t.TenantLimits.TenantLimits(user)
-		if limit == nil {
+		// Get tenant limits or defaults
+		var limit *validation.Limits
+		if t.TenantLimits != nil {
+			limit = t.TenantLimits.TenantLimits(user)
+		}
+		if limit == nil && t.Overrides != nil {
 			// There is no limit for this tenant, so we default to the default limits.
 			limit = t.Overrides.DefaultLimits()
-			if limit == nil {
-				// This should not happen, but we handle it gracefully.
-				http.Error(w, "No default limits configured", http.StatusNotFound)
-				return
-			}
+		}
+		if limit == nil {
+			// This should not happen, but we handle it gracefully.
+			http.Error(w, "No default limits configured", http.StatusNotFound)
+			return
 		}
 
 		// Apply allowlist filtering if configured
@@ -185,7 +184,28 @@ func (t *Loki) tenantLimitsHandler() func(http.ResponseWriter, *http.Request) {
 			return
 		}
 
-		writeYAMLResponse(w, filteredLimits)
+		if !forDrilldown {
+			writeYAMLResponse(w, filteredLimits)
+			return
+		}
+
+		// Build response
+		version := build.GetVersion().Version
+		if version == "" {
+			version = "unknown"
+		}
+		response := DrilldownConfigResponse{
+			Limits:                 filteredLimits,
+			PatternIngesterEnabled: t.Cfg.Pattern.Enabled,
+			Version:                version,
+		}
+
+		// Return JSON response
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 }
 

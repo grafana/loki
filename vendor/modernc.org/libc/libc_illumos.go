@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+
 	// "runtime/debug"
 	"time"
 	"unsafe"
@@ -26,6 +27,7 @@ import (
 	"modernc.org/libc/limits"
 	"modernc.org/libc/netdb"
 	"modernc.org/libc/netinet/in"
+
 	// "modernc.org/libc/signal"
 	"modernc.org/libc/stdio"
 	"modernc.org/libc/sys/socket"
@@ -54,6 +56,8 @@ type (
 )
 
 type file uintptr
+
+type Tsize_t = types.Size_t
 
 func (f file) fd() int32 {
 	panic(todo(""))
@@ -2099,6 +2103,13 @@ func (s *byteScanner) UnreadByte() error {
 func Xclock_gettime(t *TLS, clk_id int32, tp uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v clk_id=%v tp=%v, (%v:)", t, clk_id, tp, origin(2))
+	}
+	panic(todo(""))
+}
+
+func Xgmtime_r(tls *TLS, t uintptr, tm uintptr) (r uintptr) {
+	if __ccgo_strace {
+		trc("tls=%v t=%v tm=%v, (%v:)", tls, t, tm, origin(2))
 	}
 	panic(todo(""))
 }

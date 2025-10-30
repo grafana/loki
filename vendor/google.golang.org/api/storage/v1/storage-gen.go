@@ -1611,6 +1611,9 @@ type Buckets struct {
 	// sets. Provide this value in a subsequent request to return the next page of
 	// results.
 	NextPageToken string `json:"nextPageToken,omitempty"`
+	// Unreachable: The list of bucket resource names that could not be reached
+	// during the listing operation.
+	Unreachable []string `json:"unreachable,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
@@ -1645,6 +1648,12 @@ type BulkRestoreObjectsRequest struct {
 	// CopySourceAcl: If true, copies the source object's ACL; otherwise, uses the
 	// bucket's default object ACL. The default is false.
 	CopySourceAcl bool `json:"copySourceAcl,omitempty"`
+	// CreatedAfterTime: Restores only the objects that were created after this
+	// time.
+	CreatedAfterTime string `json:"createdAfterTime,omitempty"`
+	// CreatedBeforeTime: Restores only the objects that were created before this
+	// time.
+	CreatedBeforeTime string `json:"createdBeforeTime,omitempty"`
 	// MatchGlobs: Restores only the objects matching any of the specified glob(s).
 	// If this parameter is not specified, all objects will be restored within the
 	// specified time range.
@@ -5214,6 +5223,14 @@ func (c *BucketsListCall) Prefix(prefix string) *BucketsListCall {
 //	"noAcl" - Omit owner, acl and defaultObjectAcl properties.
 func (c *BucketsListCall) Projection(projection string) *BucketsListCall {
 	c.urlParams_.Set("projection", projection)
+	return c
+}
+
+// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess": If
+// true, return a list of bucket resource names for buckets that are in
+// unreachable locations.
+func (c *BucketsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *BucketsListCall {
+	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
 	return c
 }
 

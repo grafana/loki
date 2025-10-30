@@ -43,12 +43,15 @@ func Test_ChunkIterator(t *testing.T) {
 			tables := store.indexTables()
 			require.Len(t, tables, 1)
 			var actual []retention.Chunk
-			err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
+			err = tables[0].Update(func(tx *bbolt.Tx) error {
 				seriesCleaner := newSeriesCleaner(tx.Bucket(local.IndexBucketName), tt.config, tables[0].name)
 				return ForEachSeries(context.Background(), tx.Bucket(local.IndexBucketName), tt.config, func(series retention.Series) (err error) {
 					actual = append(actual, series.Chunks()...)
 					if string(series.UserID()) == c2.UserID {
-						return seriesCleaner.RemoveChunk(actual[1].From, actual[1].Through, series.UserID(), series.Labels(), actual[1].ChunkID)
+						chunkRemoved, err := seriesCleaner.RemoveChunk(actual[1].From, actual[1].Through, series.UserID(), series.Labels(), actual[1].ChunkID)
+						require.NoError(t, err)
+						require.True(t, chunkRemoved)
+						return nil
 					}
 					return nil
 				})
@@ -61,7 +64,7 @@ func Test_ChunkIterator(t *testing.T) {
 
 			// second pass we delete c2
 			actual = actual[:0]
-			err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
+			err = tables[0].Update(func(tx *bbolt.Tx) error {
 				return ForEachSeries(context.Background(), tx.Bucket(local.IndexBucketName), tt.config, func(series retention.Series) (err error) {
 					actual = append(actual, series.Chunks()...)
 					return nil
@@ -97,7 +100,7 @@ func Test_ChunkIteratorContextCancelation(t *testing.T) {
 	defer cancel()
 
 	var actual []retention.Chunk
-	err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
+	err = tables[0].Update(func(tx *bbolt.Tx) error {
 		return ForEachSeries(ctx, tx.Bucket(local.IndexBucketName), schemaCfg.Configs[0], func(series retention.Series) (err error) {
 			actual = append(actual, series.Chunks()...)
 			cancel()
@@ -131,12 +134,14 @@ func Test_SeriesCleaner(t *testing.T) {
 			tables := store.indexTables()
 			require.Len(t, tables, 1)
 			// remove c1, c2 chunk
-			err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
+			err = tables[0].Update(func(tx *bbolt.Tx) error {
 				seriesCleaner := newSeriesCleaner(tx.Bucket(local.IndexBucketName), tt.config, tables[0].name)
 				return ForEachSeries(context.Background(), tx.Bucket(local.IndexBucketName), tt.config, func(series retention.Series) (err error) {
 					if series.Labels().Get("bar") == "foo" {
 						for _, chk := range series.Chunks() {
-							require.NoError(t, seriesCleaner.RemoveChunk(chk.From, chk.Through, series.UserID(), series.Labels(), chk.ChunkID))
+							chunkExists, err := seriesCleaner.RemoveChunk(chk.From, chk.Through, series.UserID(), series.Labels(), chk.ChunkID)
+							require.NoError(t, err)
+							require.True(t, chunkExists)
 						}
 					}
 					return nil
@@ -144,7 +149,7 @@ func Test_SeriesCleaner(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
+			err = tables[0].Update(func(tx *bbolt.Tx) error {
 				cleaner := newSeriesCleaner(tx.Bucket(local.IndexBucketName), tt.config, tables[0].name)
 				if err := cleaner.CleanupSeries([]byte(c2.UserID), c2.Metric); err != nil {
 					return err
@@ -155,7 +160,7 @@ func Test_SeriesCleaner(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			err = tables[0].DB.View(func(tx *bbolt.Tx) error {
+			err = tables[0].View(func(tx *bbolt.Tx) error {
 				return tx.Bucket(local.IndexBucketName).ForEach(func(k, _ []byte) error {
 					c1SeriesID := labelsSeriesID(c1.Metric)
 					c2SeriesID := labelsSeriesID(c2.Metric)

@@ -1,6 +1,8 @@
-package types
+package types //nolint:revive
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // UnaryOp denotes the kind of [UnaryOp] operation to perform.
 type UnaryOp uint32
@@ -10,8 +12,11 @@ const (
 	// UnaryOpKindInvalid indicates an invalid unary operation.
 	UnaryOpInvalid UnaryOp = iota
 
-	UnaryOpNot // Logical NOT operation (!).
-	UnaryOpAbs // Mathematical absolute operation (abs).
+	UnaryOpNot          // Logical NOT operation (!).
+	UnaryOpAbs          // Mathematical absolute operation (abs).
+	UnaryOpCastFloat    // Cast string to float value operation (unwrap).
+	UnaryOpCastBytes    // Cast string bytes to float value operation (unwrap).
+	UnaryOpCastDuration // Cast string duration to float value operation (unwrap).
 )
 
 // String returns the string representation of the UnaryOp.
@@ -21,6 +26,12 @@ func (t UnaryOp) String() string {
 		return "NOT"
 	case UnaryOpAbs:
 		return "ABS"
+	case UnaryOpCastFloat:
+		return "CAST_FLOAT"
+	case UnaryOpCastBytes:
+		return "CAST_BYTES"
+	case UnaryOpCastDuration:
+		return "CAST_DURATION"
 	default:
 		panic(fmt.Sprintf("unknown unary operator %d", t))
 	}
@@ -51,6 +62,7 @@ const (
 	BinaryOpMul // Multiplication operation (*).
 	BinaryOpDiv // Division operation (/).
 	BinaryOpMod // Modulo operation (%).
+	BinaryOpPow // power/exponentiation operation (^).
 
 	BinaryOpMatchSubstr     // Substring matching operation (|=). Used for string match filter.
 	BinaryOpNotMatchSubstr  // Substring non-matching operation (!=). Used for string match filter.
@@ -93,6 +105,8 @@ func (t BinaryOp) String() string {
 		return "DIV"
 	case BinaryOpMod:
 		return "MOD"
+	case BinaryOpPow:
+		return "POW"
 	case BinaryOpMatchSubstr:
 		return "MATCH_STR"
 	case BinaryOpNotMatchSubstr:

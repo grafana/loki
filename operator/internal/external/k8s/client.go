@@ -24,6 +24,7 @@ type Client interface {
 	DeleteAllOf(ctx context.Context, obj client.Object, opts ...client.DeleteAllOfOption) error
 	List(ctx context.Context, obj client.ObjectList, opts ...client.ListOption) error
 	Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.PatchOption) error
+	Apply(ctx context.Context, config runtime.ApplyConfiguration, opts ...client.ApplyOption) error
 
 	RESTMapper() meta.RESTMapper
 	Scheme() *runtime.Scheme

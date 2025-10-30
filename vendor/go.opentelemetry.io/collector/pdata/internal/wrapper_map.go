@@ -26,6 +26,5 @@ func NewMap(orig *[]otlpcommon.KeyValue, state *State) Map {
 
 func GenerateTestMap() Map {
 	orig := GenerateOrigTestKeyValueSlice()
-	state := StateMutable
-	return NewMap(&orig, &state)
+	return NewMap(&orig, NewState())
 }

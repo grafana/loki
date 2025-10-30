@@ -11,6 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/logql"
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
 
 var errStoreUnimplemented = errors.New("store does not implement this operation")
@@ -25,25 +26,19 @@ type DataObjV2EngineStore struct {
 }
 
 // NewDataObjV2EngineStore creates a new store that uses the v2 dataobj engine.
-func NewDataObjV2EngineStore(dataDir string, tenantID string) (*DataObjV2EngineStore, error) {
-	return dataobjV2StoreWithOpts(dataDir, tenantID, logql.EngineOpts{
-		EnableV2Engine: true,
-		BatchSize:      512,
-	}, metastore.StorageConfig{})
-}
-
-// NewDataObjV2EngineWithIndexesStore creates a new store that uses the v2 dataobj engine but also with index support.
-// This is useful for comparing results between when an index is available and when it is not. Once tested, the indexed engine will be the default.
-func NewDataObjV2EngineWithIndexesStore(dataDir string, tenantID string) (*DataObjV2EngineStore, error) {
-	return dataobjV2StoreWithOpts(dataDir, tenantID, logql.EngineOpts{
-		EnableV2Engine: true,
-		BatchSize:      512,
-	}, metastore.StorageConfig{
+func NewDataObjV2EngineStore(dir string, tenantID string) (*DataObjV2EngineStore, error) {
+	storageDir := filepath.Join(dir, storageDir)
+	return dataobjV2StoreWithOpts(storageDir, tenantID, engine.Config{
+		Enable:             true,
+		BatchSize:          512,
+		RangeConfig:        rangeio.DefaultConfig,
+		MergePrefetchCount: 8,
+	}, metastore.Config{
 		IndexStoragePrefix: "index/v0",
 	})
 }
 
-func dataobjV2StoreWithOpts(dataDir string, tenantID string, engineOpts logql.EngineOpts, cfg metastore.StorageConfig) (*DataObjV2EngineStore, error) {
+func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Config, metastoreCfg metastore.Config) (*DataObjV2EngineStore, error) {
 	logger := log.NewNopLogger()
 
 	// Setup filesystem client as objstore.Bucket
@@ -63,7 +58,7 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, engineOpts logql.En
 	// or derived from the bucket structure if it's multi-tenant aware.
 	// This might require adjustment based on how pkg/engine/engine actually handles multi-tenancy
 	// with a generic objstore.Bucket.
-	queryEngine := engine.New(engineOpts, cfg, bucketClient, logql.NoLimits, nil, logger)
+	queryEngine := engine.New(cfg, metastoreCfg, bucketClient, logql.NoLimits, nil, logger)
 
 	return &DataObjV2EngineStore{
 		engine:   queryEngine,

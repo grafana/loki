@@ -363,6 +363,38 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc lokiring.RingConfig, merg
 		r.IndexGateway.Ring.KVStore = rc.KVStore
 		r.IndexGateway.Ring.EnableIPv6 = rc.EnableIPv6
 	}
+
+	// UI
+	if mergeWithExisting || reflect.DeepEqual(r.UI.Ring, defaults.UI.Ring) {
+		r.UI.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.UI.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.UI.Ring.InstancePort = rc.InstancePort
+		r.UI.Ring.InstanceAddr = rc.InstanceAddr
+		r.UI.Ring.InstanceID = rc.InstanceID
+		r.UI.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.UI.Ring.InstanceZone = rc.InstanceZone
+		r.UI.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.UI.Ring.KVStore = rc.KVStore
+		r.UI.Ring.EnableIPv6 = rc.EnableIPv6
+	}
+
+	// DataObjConsumer
+	if mergeWithExisting || reflect.DeepEqual(r.DataObj.Consumer.LifecyclerConfig.RingConfig, defaults.DataObj.Consumer.LifecyclerConfig.RingConfig) {
+		r.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore = rc.KVStore
+		r.DataObj.Consumer.LifecyclerConfig.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.DataObj.Consumer.LifecyclerConfig.RingConfig.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.DataObj.Consumer.LifecyclerConfig.TokensFilePath = rc.TokensFilePath
+		r.DataObj.Consumer.LifecyclerConfig.RingConfig.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.DataObj.Consumer.LifecyclerConfig.ID = rc.InstanceID
+		r.DataObj.Consumer.LifecyclerConfig.InfNames = rc.InstanceInterfaceNames
+		r.DataObj.Consumer.LifecyclerConfig.Port = rc.InstancePort
+		r.DataObj.Consumer.LifecyclerConfig.Addr = rc.InstanceAddr
+		r.DataObj.Consumer.LifecyclerConfig.Zone = rc.InstanceZone
+		r.DataObj.Consumer.LifecyclerConfig.ListenPort = rc.ListenPort
+		r.DataObj.Consumer.LifecyclerConfig.ObservePeriod = rc.ObservePeriod
+		r.DataObj.Consumer.LifecyclerConfig.EnableInet6 = rc.EnableIPv6
+		r.DataObj.Consumer.PartitionRingConfig.KVStore = rc.KVStore
+	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -414,6 +446,20 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 		return err
 	}
 	cfg.Pattern.LifecyclerConfig.TokensFilePath = f
+
+	// UI
+	f, err = tokensFile(cfg, "ui.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.UI.Ring.TokensFilePath = f
+
+	// Dataobj Consumer
+	f, err = tokensFile(cfg, "dataobjconsumer.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.DataObj.Consumer.LifecyclerConfig.TokensFilePath = f
 
 	return nil
 }
@@ -483,7 +529,7 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	}
 
 	if reflect.DeepEqual(cfg.Frontend.FrontendV2.InfNames, defaults.Frontend.FrontendV2.InfNames) {
-		cfg.Frontend.FrontendV2.InfNames = append(cfg.Config.Frontend.FrontendV2.InfNames, loopbackIface)
+		cfg.Frontend.FrontendV2.InfNames = append(cfg.Frontend.FrontendV2.InfNames, loopbackIface)
 	}
 
 	if reflect.DeepEqual(cfg.Distributor.DistributorRing.InstanceInterfaceNames, defaults.Distributor.DistributorRing.InstanceInterfaceNames) {
@@ -509,6 +555,10 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.IndexGateway.Ring.InstanceInterfaceNames, defaults.IndexGateway.Ring.InstanceInterfaceNames) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
+
+	if reflect.DeepEqual(cfg.DataObj.Consumer.LifecyclerConfig.InfNames, defaults.DataObj.Consumer.LifecyclerConfig.InfNames) {
+		cfg.DataObj.Consumer.LifecyclerConfig.InfNames = append(cfg.DataObj.Consumer.LifecyclerConfig.InfNames, loopbackIface)
+	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -525,6 +575,8 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
+	r.UI.Ring.KVStore.Store = memberlistStr
+	r.DataObj.Consumer.LifecyclerConfig.RingConfig.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")

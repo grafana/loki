@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -251,22 +252,12 @@ func (ca *clusterAdmin) CreateTopic(topic string, detail *TopicDetail, validateO
 	topicDetails := make(map[string]*TopicDetail)
 	topicDetails[topic] = detail
 
-	request := &CreateTopicsRequest{
-		TopicDetails: topicDetails,
-		ValidateOnly: validateOnly,
-		Timeout:      ca.conf.Admin.Timeout,
-	}
-
-	if ca.conf.Version.IsAtLeast(V2_0_0_0) {
-		// Version 3 is the same as version 2 (brokers response before throttling)
-		request.Version = 3
-	} else if ca.conf.Version.IsAtLeast(V0_11_0_0) {
-		// Version 2 is the same as version 1 (response has ThrottleTime)
-		request.Version = 2
-	} else if ca.conf.Version.IsAtLeast(V0_10_2_0) {
-		// Version 1 adds validateOnly.
-		request.Version = 1
-	}
+	request := NewCreateTopicsRequest(
+		ca.conf.Version,
+		topicDetails,
+		ca.conf.Admin.Timeout,
+		validateOnly,
+	)
 
 	return ca.retryOnError(isRetriableControllerError, func() error {
 		b, err := ca.Controller()
@@ -423,7 +414,6 @@ func (ca *clusterAdmin) ListTopics() (map[string]TopicDetail, error) {
 		topicDetails.ConfigEntries = make(map[string]*string)
 
 		for _, entry := range resource.Configs {
-			entry := entry
 			// only include non-default non-sensitive config
 			// (don't actually think topic config will ever be sensitive)
 			if entry.Default || entry.Sensitive {
@@ -1019,7 +1009,10 @@ func (ca *clusterAdmin) ListConsumerGroups() (allGroups map[string]string, err e
 			_ = b.Open(conf) // Ensure that broker is opened
 
 			request := &ListGroupsRequest{}
-			if ca.conf.Version.IsAtLeast(V2_6_0_0) {
+			if ca.conf.Version.IsAtLeast(V3_8_0_0) {
+				// Version 5 adds the TypesFilter field (KIP-848).
+				request.Version = 5
+			} else if ca.conf.Version.IsAtLeast(V2_6_0_0) {
 				// Version 4 adds the StatesFilter field (KIP-518).
 				request.Version = 4
 			} else if ca.conf.Version.IsAtLeast(V2_4_0_0) {
@@ -1040,9 +1033,7 @@ func (ca *clusterAdmin) ListConsumerGroups() (allGroups map[string]string, err e
 			}
 
 			groups := make(map[string]string)
-			for group, typ := range response.Groups {
-				groups[group] = typ
-			}
+			maps.Copy(groups, response.Groups)
 
 			groupMaps <- groups
 		}(b, ca.conf)
@@ -1053,9 +1044,7 @@ func (ca *clusterAdmin) ListConsumerGroups() (allGroups map[string]string, err e
 	close(errChan)
 
 	for groupMap := range groupMaps {
-		for group, protocolType := range groupMap {
-			allGroups[group] = protocolType
-		}
+		maps.Copy(allGroups, groupMap)
 	}
 
 	// Intentionally return only the first error for simplicity
@@ -1187,12 +1176,22 @@ func (ca *clusterAdmin) DescribeLogDirs(brokerIds []int32) (allLogDirs map[int32
 			_ = b.Open(conf) // Ensure that broker is opened
 
 			request := &DescribeLogDirsRequest{}
-			if ca.conf.Version.IsAtLeast(V2_0_0_0) {
+			if ca.conf.Version.IsAtLeast(V3_3_0_0) {
+				request.Version = 4
+			} else if ca.conf.Version.IsAtLeast(V3_2_0_0) {
+				request.Version = 3
+			} else if ca.conf.Version.IsAtLeast(V2_6_0_0) {
+				request.Version = 2
+			} else if ca.conf.Version.IsAtLeast(V2_0_0_0) {
 				request.Version = 1
 			}
 			response, err := b.DescribeLogDirs(request)
 			if err != nil {
 				errChan <- err
+				return
+			}
+			if !errors.Is(response.ErrorCode, ErrNoError) {
+				errChan <- response.ErrorCode
 				return
 			}
 			logDirs := make(map[int32][]DescribeLogDirsResponseDirMetadata)
@@ -1206,9 +1205,7 @@ func (ca *clusterAdmin) DescribeLogDirs(brokerIds []int32) (allLogDirs map[int32
 	close(errChan)
 
 	for logDirsMap := range logDirsMaps {
-		for id, logDirs := range logDirsMap {
-			allLogDirs[id] = logDirs
-		}
+		maps.Copy(allLogDirs, logDirsMap)
 	}
 
 	// Intentionally return only the first error for simplicity

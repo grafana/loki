@@ -30,6 +30,7 @@ const emptyStats = `{
 	"index": {
 		"postFilterChunks": 0,
 		"totalChunks": 0,
+		"totalStreams": 0,
 		"usedBloomFilters": false,
 		"shardsDuration": 0
 	},
@@ -41,6 +42,7 @@ const emptyStats = `{
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
+			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
 			"chunk" :{
 				"compressedBytes": 0,
@@ -82,6 +84,7 @@ const emptyStats = `{
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
+			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
 			"chunk" :{
 				"compressedBytes": 0,

@@ -12,12 +12,15 @@ import (
 
 // MarshalProto marshals ExportResponse into proto bytes.
 func (ms ExportResponse) MarshalProto() ([]byte, error) {
-	return ms.orig.Marshal()
+	size := internal.SizeProtoOrigExportMetricsServiceResponse(ms.orig)
+	buf := make([]byte, size)
+	_ = internal.MarshalProtoOrigExportMetricsServiceResponse(ms.orig, buf)
+	return buf, nil
 }
 
 // UnmarshalProto unmarshalls ExportResponse from proto bytes.
 func (ms ExportResponse) UnmarshalProto(data []byte) error {
-	return ms.orig.Unmarshal(data)
+	return internal.UnmarshalProtoOrigExportMetricsServiceResponse(ms.orig, data)
 }
 
 // MarshalJSON marshals ExportResponse into JSON bytes.

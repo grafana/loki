@@ -77,8 +77,10 @@ type streamKey struct {
 
 // Builder builds a pointers section.
 type Builder struct {
-	metrics  *Metrics
-	pageSize int
+	metrics      *Metrics
+	pageSize     int
+	pageRowCount int
+	tenant       string
 
 	// streamLookup is a map of the stream ID in this index object to the pointer.
 	streamLookup map[streamKey]*SectionPointer
@@ -90,18 +92,25 @@ type Builder struct {
 
 // NewBuilder creates a new pointers section builder. The pageSize argument
 // specifies how large pages should be.
-func NewBuilder(metrics *Metrics, pageSize int) *Builder {
+func NewBuilder(metrics *Metrics, pageSize, pageRows int) *Builder {
 	if metrics == nil {
 		metrics = NewMetrics()
 	}
 	return &Builder{
-		metrics:  metrics,
-		pageSize: pageSize,
+		metrics:      metrics,
+		pageSize:     pageSize,
+		pageRowCount: pageRows,
 
 		streamLookup: make(map[streamKey]*SectionPointer),
 		pointers:     make([]*SectionPointer, 0, 1024),
 	}
 }
+
+func (b *Builder) SetTenant(tenant string) {
+	b.tenant = tenant
+}
+
+func (b *Builder) Tenant() string { return b.tenant }
 
 // Type returns the [dataobj.SectionType] of the pointers builder.
 func (b *Builder) Type() dataobj.SectionType { return sectionType }
@@ -206,6 +215,8 @@ func (b *Builder) Flush(w dataobj.SectionWriter) (n int64, err error) {
 		return 0, fmt.Errorf("building encoder: %w", err)
 	}
 
+	pointersEnc.SetTenant(b.tenant)
+
 	n, err = pointersEnc.Flush(w)
 	if err == nil {
 		b.Reset()
@@ -235,7 +246,8 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	//    keys and values.
 
 	pathBuilder, err := dataset.NewColumnBuilder("path", dataset.BuilderOptions{
-		PageSizeHint: b.pageSize,
+		PageSizeHint:    b.pageSize,
+		PageMaxRowCount: b.pageRowCount,
 		Type: dataset.ColumnType{
 			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
 			Logical:  ColumnTypePath.String(),
@@ -249,44 +261,45 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	if err != nil {
 		return fmt.Errorf("creating path column: %w", err)
 	}
-	sectionBuilder, err := numberColumnBuilder(ColumnTypeSection, b.pageSize)
+	sectionBuilder, err := numberColumnBuilder(ColumnTypeSection, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating section column: %w", err)
 	}
-	pointerKindBuilder, err := numberColumnBuilder(ColumnTypePointerKind, b.pageSize)
+	pointerKindBuilder, err := numberColumnBuilder(ColumnTypePointerKind, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating pointer kind column: %w", err)
 	}
 
 	// Stream info
-	idBuilder, err := numberColumnBuilder(ColumnTypeStreamID, b.pageSize)
+	idBuilder, err := numberColumnBuilder(ColumnTypeStreamID, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating ID column: %w", err)
 	}
-	streamIDRefBuilder, err := numberColumnBuilder(ColumnTypeStreamIDRef, b.pageSize)
+	streamIDRefBuilder, err := numberColumnBuilder(ColumnTypeStreamIDRef, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating stream ID in object column: %w", err)
 	}
-	minTimestampBuilder, err := numberColumnBuilder(ColumnTypeMinTimestamp, b.pageSize)
+	minTimestampBuilder, err := numberColumnBuilder(ColumnTypeMinTimestamp, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating minimum timestamp column: %w", err)
 	}
-	maxTimestampBuilder, err := numberColumnBuilder(ColumnTypeMaxTimestamp, b.pageSize)
+	maxTimestampBuilder, err := numberColumnBuilder(ColumnTypeMaxTimestamp, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating maximum timestamp column: %w", err)
 	}
-	rowCountBuilder, err := numberColumnBuilder(ColumnTypeRowCount, b.pageSize)
+	rowCountBuilder, err := numberColumnBuilder(ColumnTypeRowCount, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating rows column: %w", err)
 	}
-	uncompressedSizeBuilder, err := numberColumnBuilder(ColumnTypeUncompressedSize, b.pageSize)
+	uncompressedSizeBuilder, err := numberColumnBuilder(ColumnTypeUncompressedSize, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating uncompressed size column: %w", err)
 	}
 
 	// Column index info
 	columnNameBuilder, err := dataset.NewColumnBuilder("column_name", dataset.BuilderOptions{
-		PageSizeHint: b.pageSize,
+		PageSizeHint:    b.pageSize,
+		PageMaxRowCount: b.pageRowCount,
 		Type: dataset.ColumnType{
 			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
 			Logical:  ColumnTypeColumnName.String(),
@@ -301,13 +314,14 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		return fmt.Errorf("creating column name column: %w", err)
 	}
 
-	columnIndexBuilder, err := numberColumnBuilder(ColumnTypeColumnIndex, b.pageSize)
+	columnIndexBuilder, err := numberColumnBuilder(ColumnTypeColumnIndex, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating column index column: %w", err)
 	}
 
 	valuesBloomFilterBuilder, err := dataset.NewColumnBuilder("values_bloom_filter", dataset.BuilderOptions{
-		PageSizeHint: b.pageSize,
+		PageSizeHint:    b.pageSize,
+		PageMaxRowCount: b.pageRowCount,
 		Type: dataset.ColumnType{
 			Physical: datasetmd.PHYSICAL_TYPE_BINARY,
 			Logical:  ColumnTypeValuesBloomFilter.String(),
@@ -346,7 +360,7 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	// (which may fail due to a caller) since we guarantee correct usage of the
 	// encoding API.
 	{
-		var errs []error
+		errs := make([]error, 0, 12) // 12 possible errors for 12 columns. Better check if encodeColumn(enc, ...) returns not nil?
 		errs = append(errs, encodeColumn(enc, ColumnTypePath, pathBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypeSection, sectionBuilder))
 		errs = append(errs, encodeColumn(enc, ColumnTypePointerKind, pointerKindBuilder))
@@ -368,9 +382,10 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	return nil
 }
 
-func numberColumnBuilder(logicalType ColumnType, pageSize int) (*dataset.ColumnBuilder, error) {
+func numberColumnBuilder(logicalType ColumnType, pageSize, pageRowCount int) (*dataset.ColumnBuilder, error) {
 	return dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint: pageSize,
+		PageSizeHint:    pageSize,
+		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{
 			Physical: datasetmd.PHYSICAL_TYPE_INT64,
 			Logical:  logicalType.String(),

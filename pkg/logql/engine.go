@@ -19,7 +19,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -95,10 +94,10 @@ func (s SelectLogParams) String() string {
 // LogSelector returns the LogSelectorExpr from the SelectParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectLogParams) LogSelector() (syntax.LogSelectorExpr, error) {
-	if s.QueryRequest.Plan == nil {
+	if s.Plan == nil {
 		return nil, errors.New("query plan is empty")
 	}
-	expr, ok := s.QueryRequest.Plan.AST.(syntax.LogSelectorExpr)
+	expr, ok := s.Plan.AST.(syntax.LogSelectorExpr)
 	if !ok {
 		return nil, errors.New("only log selector is supported")
 	}
@@ -118,10 +117,10 @@ func (s SelectSampleParams) WithStoreChunks(chunkRefGroup *logproto.ChunkRefGrou
 // Expr returns the SampleExpr from the SelectSampleParams.
 // The `LogSelectorExpr` can then returns all matchers and filters to use for that request.
 func (s SelectSampleParams) Expr() (syntax.SampleExpr, error) {
-	if s.SampleQueryRequest.Plan == nil {
+	if s.Plan == nil {
 		return nil, errors.New("query plan is empty")
 	}
-	expr, ok := s.SampleQueryRequest.Plan.AST.(syntax.SampleExpr)
+	expr, ok := s.Plan.AST.(syntax.SampleExpr)
 	if !ok {
 		return nil, errors.New("only sample expression supported")
 	}
@@ -161,30 +160,11 @@ type EngineOpts struct {
 	// MaxCountMinSketchHeapSize is the maximum number of labels the heap for a topk query using a count min sketch
 	// can track. This impacts the memory usage and accuracy of a sharded probabilistic topk query.
 	MaxCountMinSketchHeapSize int `yaml:"max_count_min_sketch_heap_size"`
-
-	// Enable the next generation Loki Query Engine for supported queries.
-	EnableV2Engine bool `yaml:"enable_v2_engine" category:"experimental"`
-
-	// Batch size of the v2 execution engine.
-	BatchSize int `yaml:"batch_size" category:"experimental"`
-
-	// DataobjScanPageCacheSize determines how many bytes of future page data
-	// should be downloaded before it's immediately needed. Used to reduce the
-	// number of roundtrips to object storage. Setting to zero disables
-	// downloading pages that are not immediately needed.
-	//
-	// This setting is only used when the v2 engine is being used.
-	DataobjScanPageCacheSize flagext.Bytes `yaml:"dataobjscan_page_cache_size" category:"experimental"`
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	_ = opts.DataobjScanPageCacheSize.Set("0B")
-
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+"max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	f.IntVar(&opts.MaxCountMinSketchHeapSize, prefix+"max-count-min-sketch-heap-size", 10_000, "The maximum number of labels the heap of a topk query using a count min sketch can track.")
-	f.BoolVar(&opts.EnableV2Engine, prefix+"enable-v2-engine", false, "Experimental: Enable next generation query engine for supported queries.")
-	f.IntVar(&opts.BatchSize, prefix+"batch-size", 100, "Experimental: Batch size of the next generation query engine.")
-	f.Var(&opts.DataobjScanPageCacheSize, prefix+"dataobjscan-page-cache-size", "Experimental: Maximum total size of future pages for DataObjScan to download before they are needed, for roundtrip reduction to object storage. Setting to zero disables downloading future pages. Only used in the next generation query engine.")
 
 	// Log executing query by default
 	opts.LogExecutingQuery = true

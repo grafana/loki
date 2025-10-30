@@ -1,6 +1,6 @@
 ---
 title: Loki components
-menutitle: Components
+menuTitle: Components
 description: Describes the various components that make up Grafana Loki.
 weight: 500
 aliases:

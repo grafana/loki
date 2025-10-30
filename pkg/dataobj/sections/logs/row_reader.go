@@ -101,7 +101,7 @@ func (r *RowReader) Read(ctx context.Context, s []Record) (int, error) {
 	}
 
 	for i := range r.buf[:n] {
-		err := decodeRow(r.sec.Columns(), r.buf[i], &s[i], r.symbols)
+		err := DecodeRow(r.sec.Columns(), r.buf[i], &s[i], r.symbols)
 		if err != nil {
 			return i, fmt.Errorf("decoding record: %w", err)
 		}
@@ -145,8 +145,7 @@ func (r *RowReader) initReader() error {
 		Dataset:    dset,
 		Columns:    columns,
 		Predicates: orderPredicates(predicates),
-
-		TargetCacheSize: 16_000_000, // Permit up to 16MB of cache pages.
+		Prefetch:   true,
 	}
 
 	if r.reader == nil {

@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/util/flagext"
+
 	"github.com/grafana/loki/v3/pkg/pattern"
 	"github.com/grafana/loki/v3/pkg/validation"
 )
@@ -178,7 +180,7 @@ func TestDrilldownConfigOverridesFallback(t *testing.T) {
 		},
 	}
 
-	handler := loki.drilldownConfigHandler()
+	handler := loki.tenantLimitsHandler(true)
 
 	req := httptest.NewRequest("GET", "/loki/api/v1/config", nil)
 	req.Header.Set("X-Scope-OrgID", "unknown-tenant")
@@ -275,7 +277,7 @@ func TestDrilldownConfigTenantLimitsSource(t *testing.T) {
 				},
 			}
 
-			handler := loki.drilldownConfigHandler()
+			handler := loki.tenantLimitsHandler(true)
 
 			req := httptest.NewRequest("GET", "/loki/api/v1/config", nil)
 			req.Header.Set("X-Scope-OrgID", tc.tenantID)
@@ -334,19 +336,19 @@ func (m *mockTenantLimitsWithDefaults) DefaultLimits() *validation.Limits {
 	return m.defaultLimits
 }
 
-func (m *mockTenantLimitsWithDefaults) AllowStructuredMetadata(userID string) bool {
+func (m *mockTenantLimitsWithDefaults) AllowStructuredMetadata(_ string) bool {
 	return false
 }
 
 func TestDrilldownConfig(t *testing.T) {
 	testCases := []struct {
-		name                   string
-		limits                 *validation.Limits
-		allowlist              []string
-		patternEnabled         bool
-		expectedStatus         int
-		expectedContentType    string
-		verifyResponse         func(t *testing.T, response DrilldownConfigResponse)
+		name                string
+		limits              *validation.Limits
+		allowlist           []string
+		patternEnabled      bool
+		expectedStatus      int
+		expectedContentType string
+		verifyResponse      func(t *testing.T, response DrilldownConfigResponse)
 	}{
 		{
 			name: "response structure with all fields and pattern enabled",
@@ -365,6 +367,9 @@ func TestDrilldownConfig(t *testing.T) {
 				MaxGlobalStreamsPerUser: 1000,
 				RetentionPeriod:         model.Duration(24 * time.Hour),
 				MaxQueryParallelism:     32,
+				VolumeEnabled:           true,
+				VolumeMaxSeries:         2000,
+				MaxQueryBytesRead:       flagext.ByteSize(1024 * 1024),
 			},
 			allowlist:           []string{}, // Empty allowlist = all fields
 			patternEnabled:      true,
@@ -380,6 +385,10 @@ func TestDrilldownConfig(t *testing.T) {
 				assert.Equal(t, float64(100), response.Limits["max_label_name_length"])
 				assert.Equal(t, float64(1000), response.Limits["max_query_series"])
 				assert.Equal(t, float64(500), response.Limits["max_streams_per_user"])
+				assert.Equal(t, float64(5000), response.Limits["max_entries_limit_per_query"])
+				assert.Equal(t, "1MB", response.Limits["max_query_bytes_read"]) // ByteSize serializes as string
+				assert.Equal(t, true, response.Limits["volume_enabled"])
+				assert.Equal(t, float64(2000), response.Limits["volume_max_series"])
 
 				// Check pattern ingester enabled field
 				assert.Equal(t, true, response.PatternIngesterEnabled)
@@ -451,7 +460,7 @@ func TestDrilldownConfig(t *testing.T) {
 				},
 			}
 
-			handler := loki.drilldownConfigHandler()
+			handler := loki.tenantLimitsHandler(true)
 
 			req := httptest.NewRequest("GET", "/loki/api/v1/config", nil)
 			req.Header.Set("X-Scope-OrgID", "test-tenant")

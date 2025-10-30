@@ -2,6 +2,7 @@ package bench
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,13 +38,11 @@ var (
 const testTenant = "test-tenant"
 
 const (
-	StoreDataObj                    = "dataobj"
-	StoreDataObjV2Engine            = "dataobj-engine"
-	StoreDataObjV2EngineWithIndexes = "dataobj-engine-with-indexes"
-	StoreChunk                      = "chunk"
+	StoreDataObjV2Engine = "dataobj-engine"
+	StoreChunk           = "chunk"
 )
 
-var allStores = []string{StoreDataObj, StoreDataObjV2Engine, StoreDataObjV2EngineWithIndexes, StoreChunk}
+var allStores = []string{StoreDataObjV2Engine, StoreChunk}
 
 //go:generate go run ./cmd/generate/main.go -size 2147483648 -dir ./data -tenant test-tenant
 
@@ -64,21 +64,6 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) logql.Engine {
 		}
 
 		return store.engine
-	case StoreDataObjV2EngineWithIndexes:
-		store, err := NewDataObjV2EngineWithIndexesStore(DefaultDataDir, testTenant)
-		if err != nil {
-			tb.Fatal(err)
-		}
-		return store.engine
-	case StoreDataObj:
-		store, err := NewDataObjStore(DefaultDataDir, testTenant)
-		if err != nil {
-			tb.Fatal(err)
-		}
-		querier, err = store.Querier()
-		if err != nil {
-			tb.Fatal(err)
-		}
 	case StoreChunk:
 		store, err := NewChunkStore(DefaultDataDir, testTenant)
 		if err != nil {
@@ -201,6 +186,9 @@ func TestStorageEquality(t *testing.T) {
 					humanize.Bytes(uint64(actual.Statistics.Summary.BytesProcessedPerSecond)),
 				)
 
+				dataobjStats, _ := json.Marshal(&actual.Statistics.Querier.Store.Dataobj)
+				t.Log("Dataobj stats:", string(dataobjStats))
+
 				expected, err := baseStore.Engine.Query(params).Exec(ctx)
 				require.NoError(t, err)
 				t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
@@ -212,7 +200,8 @@ func TestStorageEquality(t *testing.T) {
 					humanize.Bytes(uint64(expected.Statistics.Summary.BytesProcessedPerSecond)),
 				)
 
-				assert.Equal(t, expected.Data, actual.Data, "store %q results do not match base store %q", store.Name, baseStore.Name)
+				// Use tolerance-based comparison for floating point precision issues
+				assertDataEqualWithTolerance(t, expected.Data, actual.Data, 1e-5)
 			})
 		}
 	}
@@ -392,4 +381,94 @@ func TestPrintBenchmarkQueries(t *testing.T) {
 	t.Logf("- Log queries: %d (will run in both directions)", logQueries)
 	t.Logf("- Metric queries: %d (forward only)", metricQueries)
 	t.Logf("- Total benchmark cases: %d", len(cases))
+}
+
+func TestStoresGenerateData(t *testing.T) {
+	dir := t.TempDir()
+
+	chunkStore, err := NewChunkStore(dir, testTenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataObjStore, err := NewDataObjStore(dir, testTenant)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	builder := NewBuilder(dir, DefaultOpt(), chunkStore, dataObjStore)
+	err = builder.Generate(context.Background(), 1024)
+	require.NoError(t, err)
+}
+
+// assertDataEqualWithTolerance compares two parser.Value instances with floating point tolerance
+func assertDataEqualWithTolerance(t *testing.T, expected, actual parser.Value, tolerance float64) {
+	switch expectedType := expected.(type) {
+	case promql.Vector:
+		actualVector, ok := actual.(promql.Vector)
+		require.True(t, ok, "expected Vector but got %T", actual)
+		assertVectorEqualWithTolerance(t, expectedType, actualVector, tolerance)
+	case promql.Matrix:
+		actualMatrix, ok := actual.(promql.Matrix)
+		require.True(t, ok, "expected Matrix but got %T", actual)
+		assertMatrixEqualWithTolerance(t, expectedType, actualMatrix, tolerance)
+	case promql.Scalar:
+		actualScalar, ok := actual.(promql.Scalar)
+		require.True(t, ok, "expected Scalar but got %T", actual)
+		assertScalarEqualWithTolerance(t, expectedType, actualScalar, tolerance)
+	default:
+		assert.Equal(t, expected, actual)
+	}
+}
+
+// assertVectorEqualWithTolerance compares two Vector instances with floating point tolerance
+func assertVectorEqualWithTolerance(t *testing.T, expected, actual promql.Vector, tolerance float64) {
+	require.Len(t, actual, len(expected))
+
+	for i := range expected {
+		e := expected[i]
+		a := actual[i]
+		require.Equal(t, e.Metric, a.Metric, "metric labels differ at index %d", i)
+		require.Equal(t, e.T, a.T, "timestamp differs at index %d", i)
+
+		if tolerance > 0 {
+			require.InDelta(t, e.F, a.F, tolerance, "float value differs at index %d", i)
+		} else {
+			require.Equal(t, e.F, a.F, "float value differs at index %d", i)
+		}
+	}
+}
+
+// assertMatrixEqualWithTolerance compares two Matrix instances with floating point tolerance
+func assertMatrixEqualWithTolerance(t *testing.T, expected, actual promql.Matrix, tolerance float64) {
+	require.Len(t, actual, len(expected))
+
+	for i := range expected {
+		e := expected[i]
+		a := actual[i]
+		require.Equal(t, e.Metric, a.Metric, "metric labels differ at series %d", i)
+		require.Len(t, a.Floats, len(e.Floats), "float points count differs at series %d", i)
+
+		for j := range e.Floats {
+			ePoint := e.Floats[j]
+			aPoint := a.Floats[j]
+			require.Equal(t, ePoint.T, aPoint.T, "timestamp differs at series %d, point %d", i, j)
+
+			if tolerance > 0 {
+				require.InDelta(t, ePoint.F, aPoint.F, tolerance, "float value differs at series %d, point %d", i, j)
+			} else {
+				require.Equal(t, ePoint.F, aPoint.F, "float value differs at series %d, point %d", i, j)
+			}
+		}
+	}
+}
+
+// assertScalarEqualWithTolerance compares two Scalar instances with floating point tolerance
+func assertScalarEqualWithTolerance(t *testing.T, expected, actual promql.Scalar, tolerance float64) {
+	require.Equal(t, expected.T, actual.T, "scalar timestamp differs")
+
+	if tolerance > 0 {
+		require.InDelta(t, expected.V, actual.V, tolerance, "scalar value differs")
+	} else {
+		require.Equal(t, expected.V, actual.V, "scalar value differs")
+	}
 }

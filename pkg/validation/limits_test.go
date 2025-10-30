@@ -199,7 +199,7 @@ func TestLimitsDoesNotMutate(t *testing.T) {
 				Selector: `{a="b"}`,
 			},
 		},
-		OTLPConfig: defaultOTLPConfig,
+		OTLPConfig: &defaultOTLPConfig,
 	}
 	SetDefaultLimitsForYAMLUnmarshalling(newDefaults)
 
@@ -227,10 +227,11 @@ ruler_remote_write_headers:
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig:                defaultOTLPConfig,
+				OTLPConfig:                &defaultOTLPConfig,
 				EnforcedLabels:            []string{},
 				PolicyEnforcedLabels:      map[string][]string{},
 				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
@@ -250,10 +251,11 @@ ruler_remote_write_headers:
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig:                defaultOTLPConfig,
+				OTLPConfig:                &defaultOTLPConfig,
 				EnforcedLabels:            []string{},
 				PolicyEnforcedLabels:      map[string][]string{},
 				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
@@ -277,10 +279,11 @@ retention_stream:
 
 				// Rest from new defaults
 				RulerRemoteWriteHeaders:   OverwriteMarshalingStringMap{map[string]string{"a": "b"}},
-				OTLPConfig:                defaultOTLPConfig,
+				OTLPConfig:                &defaultOTLPConfig,
 				EnforcedLabels:            []string{},
 				PolicyEnforcedLabels:      map[string][]string{},
 				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
@@ -303,10 +306,11 @@ reject_old_samples: true
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig:                defaultOTLPConfig,
+				OTLPConfig:                &defaultOTLPConfig,
 				EnforcedLabels:            []string{},
 				PolicyEnforcedLabels:      map[string][]string{},
 				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
@@ -330,10 +334,11 @@ query_timeout: 5m
 						Selector: `{a="b"}`,
 					},
 				},
-				OTLPConfig:                defaultOTLPConfig,
+				OTLPConfig:                &defaultOTLPConfig,
 				EnforcedLabels:            []string{},
 				PolicyEnforcedLabels:      map[string][]string{},
 				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
 				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
 			},
 		},
@@ -353,23 +358,23 @@ func TestLimitsValidation(t *testing.T) {
 		expected error
 	}{
 		{
-			limits:   Limits{DeletionMode: "disabled", BloomBlockEncoding: "none"},
+			limits:   Limits{DeletionMode: "disabled", BloomBlockEncoding: "none", OTLPConfig: &push.OTLPConfig{}},
 			expected: nil,
 		},
 		{
-			limits:   Limits{DeletionMode: "filter-only", BloomBlockEncoding: "none"},
+			limits:   Limits{DeletionMode: "filter-only", BloomBlockEncoding: "none", OTLPConfig: &push.OTLPConfig{}},
 			expected: nil,
 		},
 		{
-			limits:   Limits{DeletionMode: "filter-and-delete", BloomBlockEncoding: "none"},
+			limits:   Limits{DeletionMode: "filter-and-delete", BloomBlockEncoding: "none", OTLPConfig: &push.OTLPConfig{}},
 			expected: nil,
 		},
 		{
-			limits:   Limits{DeletionMode: "something-else", BloomBlockEncoding: "none"},
+			limits:   Limits{DeletionMode: "something-else", BloomBlockEncoding: "none", OTLPConfig: &push.OTLPConfig{}},
 			expected: deletionmode.ErrUnknownMode,
 		},
 		{
-			limits:   Limits{DeletionMode: "disabled", BloomBlockEncoding: "unknown"},
+			limits:   Limits{DeletionMode: "disabled", BloomBlockEncoding: "unknown", OTLPConfig: &push.OTLPConfig{}},
 			expected: fmt.Errorf("invalid encoding: unknown, supported: %s", compression.SupportedCodecs()),
 		},
 	} {
@@ -593,6 +598,355 @@ pattern_rate_threshold: 0.0
 
 			actual := overrides.PatternRateThreshold("fake")
 			require.Equal(t, tc.expected, actual)
+		})
+	}
+}
+
+func TestLimits_PolicyOverrideLimits(t *testing.T) {
+	limits := &Limits{
+		PolicyOverrideLimits: map[string]PolicyOverridableLimits{
+			"finance": {
+				MaxLocalStreamsPerUser:  100,
+				MaxGlobalStreamsPerUser: 1000,
+			},
+			"ops": {
+				MaxLocalStreamsPerUser:  50,
+				MaxGlobalStreamsPerUser: 500,
+			},
+		},
+	}
+
+	overrides := &Overrides{
+		defaultLimits: limits,
+		tenantLimits:  nil,
+	}
+
+	// Test policy-specific limits
+	require.Equal(t, 100, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "finance"))
+	limit, ok := overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance")
+	require.True(t, ok)
+	require.Equal(t, 1000, limit)
+	require.Equal(t, 50, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "ops"))
+	limit, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "ops")
+	require.True(t, ok)
+	require.Equal(t, 500, limit)
+
+	// Test non-existent policy returns 0, false
+	require.Equal(t, 0, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "nonexistent"))
+	limit, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "nonexistent")
+	require.False(t, ok)
+	require.Equal(t, 0, limit)
+
+	// Test empty policy returns 0, false
+	require.Equal(t, 0, overrides.PolicyMaxLocalStreamsPerUser("tenant1", ""))
+	limit, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "")
+	require.False(t, ok)
+	require.Equal(t, 0, limit)
+
+	// Test nil PolicyOverrideLimits returns 0, false
+	limits.PolicyOverrideLimits = nil
+	require.Equal(t, 0, overrides.PolicyMaxLocalStreamsPerUser("tenant1", "finance"))
+	limit, ok = overrides.PolicyMaxGlobalStreamsPerUser("tenant1", "finance")
+	require.False(t, ok)
+	require.Equal(t, 0, limit)
+}
+
+func TestOTLPConfig(t *testing.T) {
+	initialDefault := defaultLimits
+	defer func() {
+		defaultLimits = initialDefault
+	}()
+
+	for _, tc := range []struct {
+		name              string
+		defaultOTLPConfig push.OTLPConfig
+		globalOTLPConfig  push.GlobalOTLPConfig
+		yaml              string
+		exp               Limits
+	}{
+		{
+			name: "no oltp config set",
+			yaml: `
+reject_old_samples: true
+`,
+			exp: Limits{
+				RejectOldSamples: true,
+				OTLPConfig:       &push.OTLPConfig{},
+
+				// set all the values which can't be nil
+				RulerRemoteWriteHeaders:   OverwriteMarshalingStringMap{map[string]string{}},
+				DiscoverServiceName:       []string{},
+				LogLevelFields:            []string{},
+				EnforcedLabels:            []string{},
+				PolicyEnforcedLabels:      map[string][]string{},
+				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
+				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
+			},
+		},
+		{
+			name: "only default otlp config set",
+			defaultOTLPConfig: push.OTLPConfig{
+				ResourceAttributes: push.ResourceAttributesConfig{
+					AttributesConfig: []push.AttributesConfig{
+						{
+							Action:     push.IndexLabel,
+							Attributes: []string{"foo"},
+						},
+					},
+				},
+				ScopeAttributes: []push.AttributesConfig{
+					{
+						Action:     push.Drop,
+						Attributes: []string{"scope1"},
+					},
+				},
+			},
+			yaml: `
+reject_old_samples: true
+`,
+			exp: Limits{
+				RejectOldSamples: true,
+				OTLPConfig: &push.OTLPConfig{
+					ResourceAttributes: push.ResourceAttributesConfig{
+						AttributesConfig: []push.AttributesConfig{
+							{
+								Action:     push.IndexLabel,
+								Attributes: []string{"foo"},
+							},
+						},
+					},
+					ScopeAttributes: []push.AttributesConfig{
+						{
+							Action:     push.Drop,
+							Attributes: []string{"scope1"},
+						},
+					},
+				},
+
+				// set all the values which can't be nil
+				RulerRemoteWriteHeaders:   OverwriteMarshalingStringMap{map[string]string{}},
+				DiscoverServiceName:       []string{},
+				LogLevelFields:            []string{},
+				EnforcedLabels:            []string{},
+				PolicyEnforcedLabels:      map[string][]string{},
+				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
+				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
+			},
+		},
+		{
+			name: "only global otlp config set",
+			globalOTLPConfig: push.GlobalOTLPConfig{
+				DefaultOTLPResourceAttributesAsIndexLabels: []string{"bar"},
+			},
+			yaml: `
+reject_old_samples: true
+`,
+			exp: Limits{
+				RejectOldSamples: true,
+				OTLPConfig: &push.OTLPConfig{
+					ResourceAttributes: push.ResourceAttributesConfig{
+						AttributesConfig: []push.AttributesConfig{
+							{
+								Action:     push.IndexLabel,
+								Attributes: []string{"bar"},
+							},
+						},
+					},
+				},
+
+				// set all the values which can't be nil
+				RulerRemoteWriteHeaders:   OverwriteMarshalingStringMap{map[string]string{}},
+				DiscoverServiceName:       []string{},
+				LogLevelFields:            []string{},
+				EnforcedLabels:            []string{},
+				PolicyEnforcedLabels:      map[string][]string{},
+				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
+				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
+			},
+		},
+		{
+			name: "both global and default otlp config set with no otlp config change in yaml override",
+			globalOTLPConfig: push.GlobalOTLPConfig{
+				DefaultOTLPResourceAttributesAsIndexLabels: []string{"foo"},
+			},
+			defaultOTLPConfig: push.OTLPConfig{
+				ResourceAttributes: push.ResourceAttributesConfig{
+					AttributesConfig: []push.AttributesConfig{
+						{
+							Action:     push.IndexLabel,
+							Attributes: []string{"bar"},
+						},
+					},
+				},
+				ScopeAttributes: []push.AttributesConfig{
+					{
+						Action:     push.Drop,
+						Attributes: []string{"scope1"},
+					},
+				},
+			},
+			yaml: `
+reject_old_samples: true
+`,
+			exp: Limits{
+				RejectOldSamples: true,
+				OTLPConfig: &push.OTLPConfig{
+					ResourceAttributes: push.ResourceAttributesConfig{
+						AttributesConfig: []push.AttributesConfig{
+							{
+								Action:     push.IndexLabel,
+								Attributes: []string{"foo"},
+							},
+							{
+								Action:     push.IndexLabel,
+								Attributes: []string{"bar"},
+							},
+						},
+					},
+					ScopeAttributes: []push.AttributesConfig{
+						{
+							Action:     push.Drop,
+							Attributes: []string{"scope1"},
+						},
+					},
+				},
+
+				// set all the values which can't be nil
+				RulerRemoteWriteHeaders:   OverwriteMarshalingStringMap{map[string]string{}},
+				DiscoverServiceName:       []string{},
+				LogLevelFields:            []string{},
+				EnforcedLabels:            []string{},
+				PolicyEnforcedLabels:      map[string][]string{},
+				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
+				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
+			},
+		},
+		{
+			name: "global and default otlp config set with additional attribute added by yaml override",
+			globalOTLPConfig: push.GlobalOTLPConfig{
+				DefaultOTLPResourceAttributesAsIndexLabels: []string{"foo"},
+			},
+			defaultOTLPConfig: push.OTLPConfig{
+				ResourceAttributes: push.ResourceAttributesConfig{
+					AttributesConfig: []push.AttributesConfig{
+						{
+							Action:     push.IndexLabel,
+							Attributes: []string{"bar"},
+						},
+					},
+				},
+				ScopeAttributes: []push.AttributesConfig{
+					{
+						Action:     push.Drop,
+						Attributes: []string{"scope1"},
+					},
+				},
+			},
+			yaml: `
+otlp_config:
+  resource_attributes:
+    attributes_config:
+      - action: index_label
+        attributes:
+          - fizz
+`,
+			exp: Limits{
+				OTLPConfig: &push.OTLPConfig{
+					ResourceAttributes: push.ResourceAttributesConfig{
+						AttributesConfig: []push.AttributesConfig{
+							{
+								Action:     push.IndexLabel,
+								Attributes: []string{"foo"},
+							},
+							{
+								Action:     push.IndexLabel,
+								Attributes: []string{"fizz"},
+							},
+						},
+					},
+				},
+
+				// set all the values which can't be nil
+				RulerRemoteWriteHeaders:   OverwriteMarshalingStringMap{map[string]string{}},
+				DiscoverServiceName:       []string{},
+				LogLevelFields:            []string{},
+				EnforcedLabels:            []string{},
+				PolicyEnforcedLabels:      map[string][]string{},
+				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
+				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
+			},
+		},
+		{
+			name: "global config ignored by yaml override",
+			globalOTLPConfig: push.GlobalOTLPConfig{
+				DefaultOTLPResourceAttributesAsIndexLabels: []string{"foo"},
+			},
+			defaultOTLPConfig: push.OTLPConfig{
+				ResourceAttributes: push.ResourceAttributesConfig{
+					AttributesConfig: []push.AttributesConfig{
+						{
+							Action:     push.IndexLabel,
+							Attributes: []string{"bar"},
+						},
+					},
+				},
+				ScopeAttributes: []push.AttributesConfig{
+					{
+						Action:     push.Drop,
+						Attributes: []string{"scope1"},
+					},
+				},
+			},
+			yaml: `
+otlp_config:
+  resource_attributes:
+    ignore_defaults: true
+    attributes_config:
+      - action: index_label
+        attributes:
+          - fizz
+`,
+			exp: Limits{
+				OTLPConfig: &push.OTLPConfig{
+					ResourceAttributes: push.ResourceAttributesConfig{
+						IgnoreDefaults: true,
+						AttributesConfig: []push.AttributesConfig{
+							{
+								Action:     push.IndexLabel,
+								Attributes: []string{"fizz"},
+							},
+						},
+					},
+				},
+
+				// set all the values which can't be nil
+				RulerRemoteWriteHeaders:   OverwriteMarshalingStringMap{map[string]string{}},
+				DiscoverServiceName:       []string{},
+				LogLevelFields:            []string{},
+				EnforcedLabels:            []string{},
+				PolicyEnforcedLabels:      map[string][]string{},
+				PolicyStreamMapping:       PolicyStreamMapping{},
+				PolicyOverrideLimits:      map[string]PolicyOverridableLimits{},
+				BlockIngestionPolicyUntil: map[string]dskit_flagext.Time{},
+			},
+		},
+	} {
+
+		t.Run(tc.name, func(t *testing.T) {
+			newDefaults := Limits{
+				OTLPConfig: &tc.defaultOTLPConfig,
+			}
+			newDefaults.SetGlobalOTLPConfig(tc.globalOTLPConfig)
+			SetDefaultLimitsForYAMLUnmarshalling(newDefaults)
+
+			var out Limits
+			require.Nil(t, yaml.UnmarshalStrict([]byte(tc.yaml), &out))
+			require.Equal(t, tc.exp, out)
 		})
 	}
 }

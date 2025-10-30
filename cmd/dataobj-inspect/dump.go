@@ -32,16 +32,16 @@ func (cmd *dumpCommand) run(c *kingpin.ParseContext) error {
 func (cmd *dumpCommand) dumpFile(name string) {
 	f, err := os.Open(name)
 	if err != nil {
-		exitWithError(fmt.Errorf("failed to open file: %w", err))
+		exitWithErr(fmt.Errorf("failed to open file: %w", err))
 	}
 	defer func() { _ = f.Close() }()
 	fi, err := f.Stat()
 	if err != nil {
-		exitWithError(fmt.Errorf("failed to read fileinfo: %w", err))
+		exitWithErr(fmt.Errorf("failed to read fileinfo: %w", err))
 	}
 	dataObj, err := dataobj.FromReaderAt(f, fi.Size())
 	if err != nil {
-		exitWithError(fmt.Errorf("failed to read dataobj: %w", err))
+		exitWithErr(fmt.Errorf("failed to read dataobj: %w", err))
 	}
 	for offset, sec := range dataObj.Sections() {
 		switch {
@@ -58,18 +58,18 @@ func (cmd *dumpCommand) dumpFile(name string) {
 func (cmd *dumpCommand) dumpStreamsSection(ctx context.Context, offset int, sec *dataobj.Section) {
 	streamsSec, err := streams.Open(ctx, sec)
 	if err != nil {
-		exitWithError(err)
+		exitWithErr(err)
 	}
 	bold := color.New(color.Bold)
 	bold.Println("Streams section:")
-	bold.Printf("\toffset: %d\n", offset)
+	bold.Printf("\toffset: %d, tenant: %s\n", offset, sec.Tenant)
 
 	tmp := make([]streams.Stream, 512)
 	r := streams.NewRowReader(streamsSec)
 	for {
 		n, err := r.Read(ctx, tmp)
 		if err != nil && !errors.Is(err, io.EOF) {
-			exitWithError(err)
+			exitWithErr(err)
 		}
 		if n == 0 && errors.Is(err, io.EOF) {
 			return
@@ -86,17 +86,17 @@ func (cmd *dumpCommand) dumpStreamsSection(ctx context.Context, offset int, sec 
 func (cmd *dumpCommand) dumpLogsSection(ctx context.Context, offset int, sec *dataobj.Section) {
 	logsSec, err := logs.Open(ctx, sec)
 	if err != nil {
-		exitWithError(err)
+		exitWithErr(err)
 	}
 	bold := color.New(color.Bold)
 	bold.Println("Logs section:")
-	bold.Printf("\toffset: %d\n", offset)
+	bold.Printf("\toffset: %d, tenant: %s\n", offset, sec.Tenant)
 	tmp := make([]logs.Record, 512)
 	r := logs.NewRowReader(logsSec)
 	for {
 		n, err := r.Read(ctx, tmp)
 		if err != nil && !errors.Is(err, io.EOF) {
-			exitWithError(err)
+			exitWithErr(err)
 		}
 		if n == 0 && errors.Is(err, io.EOF) {
 			return

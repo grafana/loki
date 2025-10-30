@@ -56,6 +56,12 @@ coverage:
 	go test ./ $(GO_TEST_FLAGS) -cover -coverprofile=coverage.out | tparse --follow -sort=elapsed
 	go tool cover -html=coverage.out
 
+test-lock-coverage:
+	go test ./internal/testing/integration/locking ./lock/internal/... -cover -coverpkg=./lock/internal/... -coverprofile=coverage.out
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Lock package coverage: $$(go tool cover -func=coverage.out | tail -1 | awk '{print $$3}')"
+	open coverage.html
+
 #
 # Integration-related targets
 #
@@ -85,9 +91,6 @@ test-mysql: add-gowork
 
 test-turso: add-gowork
 	go test $(GO_TEST_FLAGS) ./internal/testing/integration -run='TestTurso' | tparse --follow -sort=elapsed
-
-test-vertica: add-gowork
-	go test $(GO_TEST_FLAGS) ./internal/testing/integration -run='TestVertica' | tparse --follow -sort=elapsed
 
 test-ydb: add-gowork
 	go test $(GO_TEST_FLAGS) ./internal/testing/integration -run='TestYDB' | tparse --follow -sort=elapsed

@@ -7,42 +7,75 @@
 package internal
 
 import (
+	"fmt"
+	"sync"
+
 	otlpprofiles "go.opentelemetry.io/collector/pdata/internal/data/protogen/profiles/v1development"
 	"go.opentelemetry.io/collector/pdata/internal/json"
 	"go.opentelemetry.io/collector/pdata/internal/proto"
 )
 
-func CopyOrigLocation(dest, src *otlpprofiles.Location) {
-	if srcMappingIndex, ok := src.MappingIndex_.(*otlpprofiles.Location_MappingIndex); ok {
-		destMappingIndex, ok := dest.MappingIndex_.(*otlpprofiles.Location_MappingIndex)
-		if !ok {
-			destMappingIndex = &otlpprofiles.Location_MappingIndex{}
-			dest.MappingIndex_ = destMappingIndex
-		}
-		destMappingIndex.MappingIndex = srcMappingIndex.MappingIndex
-	} else {
-		dest.MappingIndex_ = nil
+var (
+	protoPoolLocation = sync.Pool{
+		New: func() any {
+			return &otlpprofiles.Location{}
+		},
 	}
+)
+
+func NewOrigLocation() *otlpprofiles.Location {
+	if !UseProtoPooling.IsEnabled() {
+		return &otlpprofiles.Location{}
+	}
+	return protoPoolLocation.Get().(*otlpprofiles.Location)
+}
+
+func DeleteOrigLocation(orig *otlpprofiles.Location, nullable bool) {
+	if orig == nil {
+		return
+	}
+
+	if !UseProtoPooling.IsEnabled() {
+		orig.Reset()
+		return
+	}
+
+	for i := range orig.Line {
+		DeleteOrigLine(orig.Line[i], true)
+	}
+
+	orig.Reset()
+	if nullable {
+		protoPoolLocation.Put(orig)
+	}
+}
+
+func CopyOrigLocation(dest, src *otlpprofiles.Location) {
+	// If copying to same object, just return.
+	if src == dest {
+		return
+	}
+	dest.MappingIndex = src.MappingIndex
 	dest.Address = src.Address
 	dest.Line = CopyOrigLineSlice(dest.Line, src.Line)
-	dest.IsFolded = src.IsFolded
 	dest.AttributeIndices = CopyOrigInt32Slice(dest.AttributeIndices, src.AttributeIndices)
 }
 
-func FillOrigTestLocation(orig *otlpprofiles.Location) {
-	orig.MappingIndex_ = &otlpprofiles.Location_MappingIndex{MappingIndex: int32(13)}
+func GenTestOrigLocation() *otlpprofiles.Location {
+	orig := NewOrigLocation()
+	orig.MappingIndex = int32(13)
 	orig.Address = uint64(13)
 	orig.Line = GenerateOrigTestLineSlice()
-	orig.IsFolded = true
 	orig.AttributeIndices = GenerateOrigTestInt32Slice()
+	return orig
 }
 
 // MarshalJSONOrig marshals all properties from the current struct to the destination stream.
 func MarshalJSONOrigLocation(orig *otlpprofiles.Location, dest *json.Stream) {
 	dest.WriteObjectStart()
-	if orig.MappingIndex_ != nil {
+	if orig.MappingIndex != int32(0) {
 		dest.WriteObjectField("mappingIndex")
-		dest.WriteInt32(orig.MappingIndex_.(*otlpprofiles.Location_MappingIndex).MappingIndex)
+		dest.WriteInt32(orig.MappingIndex)
 	}
 	if orig.Address != uint64(0) {
 		dest.WriteObjectField("address")
@@ -57,10 +90,6 @@ func MarshalJSONOrigLocation(orig *otlpprofiles.Location, dest *json.Stream) {
 			MarshalJSONOrigLine(orig.Line[i], dest)
 		}
 		dest.WriteArrayEnd()
-	}
-	if orig.IsFolded != false {
-		dest.WriteObjectField("isFolded")
-		dest.WriteBool(orig.IsFolded)
 	}
 	if len(orig.AttributeIndices) > 0 {
 		dest.WriteObjectField("attributeIndices")
@@ -77,31 +106,35 @@ func MarshalJSONOrigLocation(orig *otlpprofiles.Location, dest *json.Stream) {
 
 // UnmarshalJSONOrigLocation unmarshals all properties from the current struct from the source iterator.
 func UnmarshalJSONOrigLocation(orig *otlpprofiles.Location, iter *json.Iterator) {
-	iter.ReadObjectCB(func(iter *json.Iterator, f string) bool {
+	for f := iter.ReadObject(); f != ""; f = iter.ReadObject() {
 		switch f {
 		case "mappingIndex", "mapping_index":
-			orig.MappingIndex_ = &otlpprofiles.Location_MappingIndex{MappingIndex: iter.ReadInt32()}
+			orig.MappingIndex = iter.ReadInt32()
 		case "address":
 			orig.Address = iter.ReadUint64()
 		case "line":
-			orig.Line = UnmarshalJSONOrigLineSlice(iter)
-		case "isFolded", "is_folded":
-			orig.IsFolded = iter.ReadBool()
+			for iter.ReadArray() {
+				orig.Line = append(orig.Line, NewOrigLine())
+				UnmarshalJSONOrigLine(orig.Line[len(orig.Line)-1], iter)
+			}
+
 		case "attributeIndices", "attribute_indices":
-			orig.AttributeIndices = UnmarshalJSONOrigInt32Slice(iter)
+			for iter.ReadArray() {
+				orig.AttributeIndices = append(orig.AttributeIndices, iter.ReadInt32())
+			}
+
 		default:
 			iter.Skip()
 		}
-		return true
-	})
+	}
 }
 
 func SizeProtoOrigLocation(orig *otlpprofiles.Location) int {
 	var n int
 	var l int
 	_ = l
-	if orig.MappingIndex_ != nil {
-		n += 1 + proto.Sov(uint64(orig.MappingIndex_.(*otlpprofiles.Location_MappingIndex).MappingIndex))
+	if orig.MappingIndex != 0 {
+		n += 1 + proto.Sov(uint64(orig.MappingIndex))
 	}
 	if orig.Address != 0 {
 		n += 1 + proto.Sov(uint64(orig.Address))
@@ -109,9 +142,6 @@ func SizeProtoOrigLocation(orig *otlpprofiles.Location) int {
 	for i := range orig.Line {
 		l = SizeProtoOrigLine(orig.Line[i])
 		n += 1 + proto.Sov(uint64(l)) + l
-	}
-	if orig.IsFolded {
-		n += 2
 	}
 	if len(orig.AttributeIndices) > 0 {
 		l = 0
@@ -127,33 +157,22 @@ func MarshalProtoOrigLocation(orig *otlpprofiles.Location, buf []byte) int {
 	pos := len(buf)
 	var l int
 	_ = l
-	if orig.MappingIndex_ != nil {
-		pos = proto.EncodeVarint(buf, pos, uint64(orig.MappingIndex_.(*otlpprofiles.Location_MappingIndex).MappingIndex))
+	if orig.MappingIndex != 0 {
+		pos = proto.EncodeVarint(buf, pos, uint64(orig.MappingIndex))
 		pos--
 		buf[pos] = 0x8
-
 	}
 	if orig.Address != 0 {
 		pos = proto.EncodeVarint(buf, pos, uint64(orig.Address))
 		pos--
 		buf[pos] = 0x10
 	}
-	for i := range orig.Line {
+	for i := len(orig.Line) - 1; i >= 0; i-- {
 		l = MarshalProtoOrigLine(orig.Line[i], buf[:pos])
 		pos -= l
 		pos = proto.EncodeVarint(buf, pos, uint64(l))
 		pos--
 		buf[pos] = 0x1a
-	}
-	if orig.IsFolded {
-		pos--
-		if orig.IsFolded {
-			buf[pos] = 1
-		} else {
-			buf[pos] = 0
-		}
-		pos--
-		buf[pos] = 0x20
 	}
 	l = len(orig.AttributeIndices)
 	if l > 0 {
@@ -163,11 +182,101 @@ func MarshalProtoOrigLocation(orig *otlpprofiles.Location, buf []byte) int {
 		}
 		pos = proto.EncodeVarint(buf, pos, uint64(endPos-pos))
 		pos--
-		buf[pos] = 0x2a
+		buf[pos] = 0x22
 	}
 	return len(buf) - pos
 }
 
 func UnmarshalProtoOrigLocation(orig *otlpprofiles.Location, buf []byte) error {
-	return orig.Unmarshal(buf)
+	var err error
+	var fieldNum int32
+	var wireType proto.WireType
+
+	l := len(buf)
+	pos := 0
+	for pos < l {
+		// If in a group parsing, move to the next tag.
+		fieldNum, wireType, pos, err = proto.ConsumeTag(buf, pos)
+		if err != nil {
+			return err
+		}
+		switch fieldNum {
+
+		case 1:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field MappingIndex", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.MappingIndex = int32(num)
+
+		case 2:
+			if wireType != proto.WireTypeVarint {
+				return fmt.Errorf("proto: wrong wireType = %d for field Address", wireType)
+			}
+			var num uint64
+			num, pos, err = proto.ConsumeVarint(buf, pos)
+			if err != nil {
+				return err
+			}
+
+			orig.Address = uint64(num)
+
+		case 3:
+			if wireType != proto.WireTypeLen {
+				return fmt.Errorf("proto: wrong wireType = %d for field Line", wireType)
+			}
+			var length int
+			length, pos, err = proto.ConsumeLen(buf, pos)
+			if err != nil {
+				return err
+			}
+			startPos := pos - length
+			orig.Line = append(orig.Line, NewOrigLine())
+			err = UnmarshalProtoOrigLine(orig.Line[len(orig.Line)-1], buf[startPos:pos])
+			if err != nil {
+				return err
+			}
+		case 4:
+			switch wireType {
+			case proto.WireTypeLen:
+				var length int
+				length, pos, err = proto.ConsumeLen(buf, pos)
+				if err != nil {
+					return err
+				}
+				startPos := pos - length
+				var num uint64
+				for startPos < pos {
+					num, startPos, err = proto.ConsumeVarint(buf[:pos], startPos)
+					if err != nil {
+						return err
+					}
+					orig.AttributeIndices = append(orig.AttributeIndices, int32(num))
+				}
+				if startPos != pos {
+					return fmt.Errorf("proto: invalid field len = %d for field AttributeIndices", pos-startPos)
+				}
+			case proto.WireTypeVarint:
+				var num uint64
+				num, pos, err = proto.ConsumeVarint(buf, pos)
+				if err != nil {
+					return err
+				}
+				orig.AttributeIndices = append(orig.AttributeIndices, int32(num))
+			default:
+				return fmt.Errorf("proto: wrong wireType = %d for field AttributeIndices", wireType)
+			}
+		default:
+			pos, err = proto.ConsumeUnknown(buf, pos, wireType)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

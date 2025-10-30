@@ -20,7 +20,7 @@ metadata:
     name: "memcached-{{ $.component }}{{ include "loki.memcached.suffix" .suffix }}"
   annotations:
     {{- toYaml .annotations | nindent 4 }}
-  namespace: {{ $.ctx.Release.Namespace | quote }}
+  namespace: {{ include "loki.namespace" $.ctx | quote }}
 spec:
   podManagementPolicy: {{ .podManagementPolicy }}
   replicas: {{ .replicas }}
@@ -56,8 +56,15 @@ spec:
       {{- if .priorityClassName }}
       priorityClassName: {{ .priorityClassName }}
       {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" $.ctx)) (kindIs "bool" .hostUsers) }}
+      hostUsers: {{ .hostUsers }}
+      {{- end }}
       securityContext:
         {{- toYaml $.ctx.Values.memcached.podSecurityContext | nindent 8 }}
+      {{- with .dnsConfig | default $.ctx.Values.loki.dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       initContainers:
         {{- toYaml .initContainers | nindent 8 }}
       nodeSelector:
@@ -82,10 +89,9 @@ spec:
         {{ toYaml .extraContainers | nindent 8 }}
         {{- end }}
         - name: memcached
-          {{- with $.ctx.Values.memcached.image }}
-          image: {{ .repository }}:{{ .tag }}
-          imagePullPolicy: {{ .pullPolicy }}
-          {{- end }}
+          {{- $dict := dict "service" $.ctx.Values.memcached.image "global" $.ctx.Values.global }}
+          image: {{ include "loki.baseImage" $dict }}
+          imagePullPolicy: {{ $.ctx.Values.memcached.image.pullPolicy }}
           resources:
           {{- if .resources }}
             {{- toYaml .resources | nindent 12 }}
@@ -141,13 +147,16 @@ spec:
           livenessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- with $.ctx.Values.memcached.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
 
       {{- if $.ctx.Values.memcachedExporter.enabled }}
         - name: exporter
-          {{- with $.ctx.Values.memcachedExporter.image }}
-          image: {{ .repository}}:{{ .tag }}
-          imagePullPolicy: {{ .pullPolicy }}
-          {{- end }}
+          {{- $dict := dict "service" $.ctx.Values.memcachedExporter.image "global" $.ctx.Values.global }}
+          image: {{ include "loki.baseImage" $dict }}
+          imagePullPolicy: {{ $.ctx.Values.memcachedExporter.image.pullPolicy }}
           ports:
             - containerPort: 9150
               name: http-metrics
@@ -167,6 +176,10 @@ spec:
           {{- end }}
           {{- with $.ctx.Values.memcachedExporter.livenessProbe }}
           livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $.ctx.Values.memcachedExporter.startupProbe }}
+          startupProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           {{- if .extraVolumeMounts }}

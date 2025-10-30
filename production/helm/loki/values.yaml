@@ -5,8 +5,10 @@
 kubeVersionOverride: null
 
 global:
+  # -- Overrides the Docker registry globally for all images (standard format)
+  imageRegistry: null
   image:
-    # -- Overrides the Docker registry globally for all images
+    # -- Overrides the Docker registry globally for all images (deprecated, use global.imageRegistry)
     registry: null
   # -- Overrides the priorityClassName for all pods
   priorityClassName: null
@@ -39,6 +41,8 @@ global:
 nameOverride: null
 # -- Overrides the chart's computed fullname
 fullnameOverride: null
+# -- Overrides the chart's namespace
+namespaceOverride: null
 # -- Overrides the chart's cluster label
 clusterLabelOverride: null
 # -- Image pull secrets for Docker images
@@ -69,7 +73,10 @@ loki:
     httpGet:
       path: /ready
       port: http-metrics
-    initialDelaySeconds: 30
+    periodSeconds: 10
+    initialDelaySeconds: 15
+    successThreshold: 1
+    failureThreshold: 3
     timeoutSeconds: 1
   # Configures the startup probe for all of the Loki pods
   startupProbe: {}
@@ -79,7 +86,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.5.3
+    tag: 3.5.5
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -111,6 +118,8 @@ loki:
     allowPrivilegeEscalation: false
   # -- Should enableServiceLinks be enabled. Default to enable
   enableServiceLinks: true
+  # -- DNS config for Loki pods
+  dnsConfig: {}
   ######################################################################################################################
   #
   # Loki Configuration
@@ -328,9 +337,6 @@ loki:
     {{- if .Values.loki.ui.enabled }}
     ui:
       enabled: true
-      discovery:
-        join_peers:
-          - '{{ include "loki.queryFrontendFullname" . }}.{{ $.Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}'
     {{- end }}
     {{- with .Values.loki.querier }}
     querier:
@@ -661,7 +667,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.5.2
+    tag: 3.5.7
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -696,14 +702,17 @@ enterprise:
     labels: {}
     # -- Additional annotations for the `provisioner` Job
     annotations: {}
-    # -- Affinity for tokengen Pods
+    # -- Affinity for provisioner Pods
+    # The value will be passed through tpl.
     affinity: {}
-    # -- Node selector for tokengen Pods
+    # -- Node selector for provisioner Pods
     nodeSelector: {}
-    # -- Tolerations for tokengen Pods
+    # -- Tolerations for provisioner Pods
     tolerations: []
     # -- The name of the PriorityClass for provisioner Job
     priorityClassName: null
+    # -- Use the host's user namespace in provisioner pods
+    hostUsers: nil
     # -- Run containers as user `enterprise-logs(uid=10001)`
     securityContext:
       runAsNonRoot: true
@@ -754,11 +763,13 @@ test:
     # -- Docker image repository
     repository: grafana/loki-helm-test
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: "ewelch-distributed-helm-chart-17db5ee"
+    tag: "latest"
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
+  # -- Use the host's user namespace in test pods
+  hostUsers: nil
 # The Loki canary pushes logs to and queries from this loki installation to test
 # that it's working correctly
 lokiCanary:
@@ -803,6 +814,8 @@ lokiCanary:
   affinity: {}
   # -- The name of the PriorityClass for loki-canary pods
   priorityClassName: null
+  # -- Use the host's user namespace in loki-canary pods
+  hostUsers: nil
   # -- Image to use for loki canary
   image:
     # -- The Docker registry
@@ -820,6 +833,8 @@ lokiCanary:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 1
+  # -- Replicas for `loki-canary` when using a Deployment
+  replicas: 1
 ######################################################################################################################
 #
 # Service Accounts and Kubernetes RBAC
@@ -945,6 +960,8 @@ adminApi:
   labels: {}
   # -- Additional annotations for the `admin-api` Deployment
   annotations: {}
+  # -- DNSConfig for `admin-api` pods
+  dnsConfig: {}
   # -- Additional labels and annotations for the `admin-api` Service
   service:
     labels: {}
@@ -982,22 +999,26 @@ adminApi:
   env: []
   # -- Configure optional initContainers
   initContainers: []
-  # -- Conifgure optional extraContainers
+  # -- Configure optional extraContainers
   extraContainers: []
   # -- Additional volumes for Pods
   extraVolumes: []
   # -- Additional volume mounts for Pods
   extraVolumeMounts: []
   # -- Affinity for admin-api Pods
+  # The value will be passed through tpl.
   affinity: {}
   # -- Node selector for admin-api Pods
   nodeSelector: {}
   # -- Topology Spread Constraints for admin-api pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for admin-api Pods
   tolerations: []
   # -- Grace period to allow the admin-api to shutdown before it is killed
   terminationGracePeriodSeconds: 60
+  # -- Use the host's user namespace in admin-api pods
+  hostUsers: nil
 ######################################################################################################################
 #
 # Gateway and Ingress
@@ -1092,6 +1113,8 @@ gateway:
       drop:
         - ALL
     allowPrivilegeEscalation: false
+  # -- Use the host's user namespace in the gateway
+  hostUsers: nil
   # -- Resource requests and limits for the gateway
   resources: {}
   # -- Containers to add to the gateway pods
@@ -1100,18 +1123,22 @@ gateway:
   terminationGracePeriodSeconds: 30
   # -- Affinity for gateway pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: gateway
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- DNS config for gateway pods
   dnsConfig: {}
   # -- Node selector for gateway pods
   nodeSelector: {}
   # -- Topology Spread Constraints for gateway pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for gateway pods
   tolerations: []
@@ -1183,6 +1210,8 @@ gateway:
       {{- end }}
     # -- Existing basic auth secret to use. Must contain '.htpasswd'
     existingSecret: null
+  # -- liveness probe for the nginx container in the gateway pods.
+  livenessProbe: {}
   # Configures the readiness probe for the gateway
   readinessProbe:
     httpGet:
@@ -1190,6 +1219,8 @@ gateway:
       port: http-metrics
     initialDelaySeconds: 15
     timeoutSeconds: 1
+  # -- startup probe for the nginx container in the gateway pods.
+  startupProbe: {}
   nginxConfig:
     # -- Which schema to be used when building URLs. Can be 'http' or 'https'.
     schema: http
@@ -1232,6 +1263,8 @@ enterpriseGateway:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the `gateway` pod
+  hostUsers: nil
   # -- Additional CLI arguments for the `gateway` target
   extraArgs: {}
   # -- Environment variables from secrets or configmaps to add to the enterprise gateway pods
@@ -1283,10 +1316,12 @@ enterpriseGateway:
   # -- Additional volume mounts for Pods
   extraVolumeMounts: []
   # -- Affinity for gateway Pods
+  # The value will be passed through tpl.
   affinity: {}
   # -- Node selector for gateway Pods
   nodeSelector: {}
   # -- Topology Spread Constraints for enterprise-gateway pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for gateway Pods
   tolerations: []
@@ -1428,6 +1463,8 @@ singleBinary:
     annotations: {}
     # -- Additional labels for single binary Service
     labels: {}
+    # -- Service Type for single binary Service
+    type: "ClusterIP"
   # -- Comma-separated list of Loki modules to load for the single binary
   targetModule: "all"
   # -- Labels for single binary service
@@ -1448,14 +1485,19 @@ singleBinary:
   resources: {}
   # -- Grace period to allow the single binary to shutdown before it is killed
   terminationGracePeriodSeconds: 30
+  # -- Use the host's user namespace in the single binary pods
+  hostUsers: nil
   # -- Affinity for single binary pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: single-binary
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- DNS config for single binary pods
   dnsConfig: {}
@@ -1464,10 +1506,21 @@ singleBinary:
   # -- Tolerations for single binary pods
   tolerations: []
   persistence:
+    # -- What to do with the volume when the StatefulSet is scaled down.
+    whenScaled: Delete
+    # -- What to do with the volumes when the StatefulSet is deleted.
+    whenDeleted: Delete
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: true
+    # -- Enable StatefulSetRecreation for changes to PVC size.
+    # This means that the StatefulSet will be deleted, recreated (with the same name) and rolled when a change to the
+    # PVC size is detected. That way the PVC can be resized without manual intervention.
+    enableStatefulSetRecreationForSizeChange: false
     # -- Enable persistent disk
     enabled: true
+    # -- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Size of persistent disk
     size: 10Gi
     # -- Storage class to be used.
@@ -1541,6 +1594,8 @@ write:
     annotations: {}
     # -- Additional labels for write Service
     labels: {}
+    # -- Service Type for write Service
+    type: "ClusterIP"
   # -- Comma-separated list of Loki modules to load for the write
   targetModule: "write"
   # -- Additional CLI args for the write
@@ -1572,20 +1627,26 @@ write:
   # this must be increased. It must be long enough so writes can be gracefully shutdown flushing/transferring
   # all data and to successfully leave the member ring on shutdown.
   terminationGracePeriodSeconds: 300
+  # -- Use the host's user namespace in the write pods.
+  hostUsers: nil
   # -- Affinity for write pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: write
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- DNS config for write pods
   dnsConfig: {}
   # -- Node selector for write pods
   nodeSelector: {}
   # -- Topology Spread Constraints for write pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for write pods
   tolerations: []
@@ -1594,6 +1655,9 @@ write:
   persistence:
     # -- Enable volume claims in pod spec
     volumeClaimsEnabled: true
+    # -- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Parameters used for the `data` volume when volumeClaimEnabled if false
     dataVolumeParameters:
       emptyDir: {}
@@ -1664,6 +1728,8 @@ read:
     annotations: {}
     # -- Additional labels for read Service
     labels: {}
+    # -- Service Type for read Service
+    type: ClusterIP
   # -- Comma-separated list of Loki modules to load for the read
   targetModule: "read"
   # -- Whether or not to use the 2 target type simple scalable mode (read, write) or the
@@ -1672,6 +1738,8 @@ read:
   legacyReadTarget: false
   # -- Additional CLI args for the read
   extraArgs: []
+  # -- init containers to add to the read pods
+  initContainers: []
   # -- Containers to add to the read pods
   extraContainers: []
   # -- Environment variables to add to the read pods
@@ -1690,20 +1758,26 @@ read:
   livenessProbe: {}
   # -- Grace period to allow the read to shutdown before it is killed
   terminationGracePeriodSeconds: 30
+  # -- Use the host's user namespace in the read pods.
+  hostUsers: nil
   # -- Affinity for read pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: read
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- DNS config for read pods
   dnsConfig: {}
   # -- Node selector for read pods
   nodeSelector: {}
   # -- Topology Spread Constraints for read pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for read pods
   tolerations: []
@@ -1713,6 +1787,9 @@ read:
   persistence:
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: true
+    # -- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Size of persistent disk
     size: 10Gi
     # -- Storage class to be used.
@@ -1778,6 +1855,8 @@ backend:
     annotations: {}
     # -- Additional labels for backend Service
     labels: {}
+    # -- Service type for backend Service
+    type: ClusterIP
   # -- Comma-separated list of Loki modules to load for the backend
   targetModule: "backend"
   # -- Additional CLI args for the backend
@@ -1800,20 +1879,26 @@ backend:
   # this must be increased. It must be long enough so backends can be gracefully shutdown flushing/transferring
   # all data and to successfully leave the member ring on shutdown.
   terminationGracePeriodSeconds: 300
+  # -- Use the host's user namespace in the backend pods.
+  hostUsers: nil
   # -- Affinity for backend pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: backend
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- DNS config for backend pods
   dnsConfig: {}
   # -- Node selector for backend pods
   nodeSelector: {}
   # -- Topology Spread Constraints for backend pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for backend pods
   tolerations: []
@@ -1822,6 +1907,9 @@ backend:
   persistence:
     # -- Enable volume claims in pod spec
     volumeClaimsEnabled: true
+    # -- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Parameters used for the `data` volume when volumeClaimEnabled if false
     dataVolumeParameters:
       emptyDir: {}
@@ -1854,11 +1942,15 @@ ingester:
   # -- Number of replicas for the ingester, when zoneAwareReplication.enabled is true, the total
   # number of replicas will match this value with each zone having 1/3rd of the total replicas.
   replicas: 0
+  # -- DNSConfig for ingester pods
+  dnsConfig: {}
   # -- hostAliases to add
   hostAliases: []
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the ingester
+  hostUsers: nil
   autoscaling:
     # -- Enable autoscaling for the ingester
     enabled: false
@@ -1906,6 +1998,8 @@ ingester:
   serviceLabels: {}
   # -- Annotations for ingestor service
   serviceAnnotations: {}
+  # -- Service type for ingestor service
+  serviceType: "ClusterIP"
   # -- Additional CLI args for the ingester
   extraArgs: []
   # -- Environment variables to add to the ingester pods
@@ -1930,6 +2024,7 @@ ingester:
   lifecycle: {}
   # -- topologySpread for ingester pods.
   # @default -- Defaults to allow skew no more than 1 node
+  # The value will be passed through tpl.
   topologySpreadConstraints:
     - maxSkew: 1
       topologyKey: kubernetes.io/hostname
@@ -1937,14 +2032,19 @@ ingester:
       labelSelector:
         matchLabels:
           app.kubernetes.io/component: ingester
+          app.kubernetes.io/name: '{{ include "loki.name" . }}'
+          app.kubernetes.io/instance: '{{ .Release.Name }}'
   # -- Affinity for ingester pods. Ignored if zoneAwareReplication is enabled.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: ingester
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: 1
@@ -1972,6 +2072,9 @@ ingester:
     # @notationType -- list
     claims:
       - name: data
+        # -- Set access modes on the PersistentVolumeClaim
+        accessModes:
+          - ReadWriteOnce
         size: 10Gi
         #   -- Storage class to be used.
         #   If defined, storageClassName: <storageClass>.
@@ -2006,6 +2109,7 @@ ingester:
       # -- optionally define a node selector for this zone
       nodeSelector: null
       # -- optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host
+      # The value will be passed through tpl.
       extraAffinity: {}
       # -- Specific annotations to add to zone A statefulset
       annotations: {}
@@ -2015,6 +2119,7 @@ ingester:
       # -- optionally define a node selector for this zone
       nodeSelector: null
       # -- optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host
+      # The value will be passed through tpl.
       extraAffinity: {}
       # -- Specific annotations to add to zone B statefulset
       annotations: {}
@@ -2024,6 +2129,7 @@ ingester:
       # -- optionally define a node selector for this zone
       nodeSelector: null
       # -- optionally define extra affinity rules, by default different zones are not allowed to schedule on the same host
+      # The value will be passed through tpl.
       extraAffinity: {}
       # -- Specific annotations to add to zone C statefulset
       annotations: {}
@@ -2050,6 +2156,10 @@ distributor:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the distributor
+  hostUsers: nil
+  # -- DNSConfig for distributor pods
+  dnsConfig: {}
   autoscaling:
     # -- Enable autoscaling for the distributor
     enabled: false
@@ -2096,6 +2206,8 @@ distributor:
   serviceLabels: {}
   # -- Annotations for distributor service
   serviceAnnotations: {}
+  # -- Service type for distributor service
+  serviceType: ClusterIP
   # -- Additional CLI args for the distributor
   extraArgs: []
   # -- Environment variables to add to the distributor pods
@@ -2108,18 +2220,23 @@ distributor:
   extraVolumes: []
   # -- Resource requests and limits for the distributor
   resources: {}
+  # -- Init containers to add to the distributor pods
+  initContainers: []
   # -- Containers to add to the distributor pods
   extraContainers: []
   # -- Grace period to allow the distributor to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for distributor pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: distributor
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
@@ -2128,6 +2245,7 @@ distributor:
   # -- Node selector for distributor pods
   nodeSelector: {}
   # -- Topology Spread Constraints for distributor pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for distributor pods
   tolerations: []
@@ -2146,6 +2264,8 @@ querier:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the querier
+  hostUsers: nil
   autoscaling:
     # -- Enable autoscaling for the querier, this is only used if `indexGateway.enabled: true`
     enabled: false
@@ -2192,6 +2312,8 @@ querier:
   serviceLabels: {}
   # -- Annotations for querier service
   serviceAnnotations: {}
+  # -- Service Type for querier service
+  serviceType: "ClusterIP"
   # -- Additional CLI args for the querier
   extraArgs: []
   # -- Environment variables to add to the querier pods
@@ -2212,6 +2334,7 @@ querier:
   terminationGracePeriodSeconds: 30
   # -- topologySpread for querier pods.
   # @default -- Defaults to allow skew no more then 1 node
+  # The value will be passed through tpl.
   topologySpreadConstraints:
     - maxSkew: 1
       topologyKey: kubernetes.io/hostname
@@ -2219,14 +2342,19 @@ querier:
       labelSelector:
         matchLabels:
           app.kubernetes.io/component: querier
+          app.kubernetes.io/name: '{{ include "loki.name" . }}'
+          app.kubernetes.io/instance: '{{ .Release.Name }}'
   # -- Affinity for querier pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: querier
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
@@ -2251,6 +2379,8 @@ queryFrontend:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the query-frontend
+  hostUsers: nil
   autoscaling:
     # -- Enable autoscaling for the query-frontend
     enabled: false
@@ -2297,6 +2427,8 @@ queryFrontend:
   serviceLabels: {}
   # -- Annotations for query-frontend service
   serviceAnnotations: {}
+  # -- Service Type for query-frontend service
+  serviceType: ClusterIP
   # -- Additional CLI args for the query-frontend
   extraArgs: []
   # -- Environment variables to add to the query-frontend pods
@@ -2309,24 +2441,30 @@ queryFrontend:
   extraVolumes: []
   # -- Resource requests and limits for the query-frontend
   resources: {}
+  # -- init containers to add to the query-frontend pods
+  initContainers: []
   # -- Containers to add to the query-frontend pods
   extraContainers: []
   # -- Grace period to allow the query-frontend to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for query-frontend pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: query-frontend
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Node selector for query-frontend pods
   nodeSelector: {}
   # -- Topology Spread Constraints for query-frontend pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for query-frontend pods
   tolerations: []
@@ -2340,11 +2478,15 @@ queryScheduler:
   # It should be lower than `-querier.max-concurrent` to avoid generating back-pressure in queriers;
   # it's also recommended that this value evenly divides the latter
   replicas: 0
+  # -- DNSConfig for query-scheduler
+  dnsConfig: {}
   # -- hostAliases to add
   hostAliases: []
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the query-scheduler
+  hostUsers: nil
   image:
     # -- The Docker registry for the query-scheduler image. Overrides `loki.image.registry`
     registry: null
@@ -2374,24 +2516,30 @@ queryScheduler:
   extraVolumes: []
   # -- Resource requests and limits for the query-scheduler
   resources: {}
+  # -- init containers to add to the query-scheduler pods
+  initContainers: []
   # -- Containers to add to the query-scheduler pods
   extraContainers: []
   # -- Grace period to allow the query-scheduler to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for query-scheduler pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: query-scheduler
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: 1
   # -- Node selector for query-scheduler pods
   nodeSelector: {}
   # -- Topology Spread Constraints for query-scheduler pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for query-scheduler pods
   tolerations: []
@@ -2404,11 +2552,15 @@ indexGateway:
   replicas: 0
   # -- Whether the index gateway should join the memberlist hashring
   joinMemberlist: true
+  # -- DNSConfig for index-gateway pods
+  dnsConfig: {}
   # -- hostAliases to add
   hostAliases: []
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the index-gateway
+  hostUsers: nil
   image:
     # -- The Docker registry for the index-gateway image. Overrides `loki.image.registry`
     registry: null
@@ -2426,6 +2578,8 @@ indexGateway:
   serviceLabels: {}
   # -- Annotations for index-gateway service
   serviceAnnotations: {}
+  # -- Service type for index-gateway service
+  serviceType: "ClusterIP"
   # -- Additional CLI args for the index-gateway
   extraArgs: []
   # -- Environment variables to add to the index-gateway pods
@@ -2444,26 +2598,35 @@ indexGateway:
   initContainers: []
   # -- Grace period to allow the index-gateway to shutdown before it is killed.
   terminationGracePeriodSeconds: 300
+  # -- Lifecycle for the index-gateway container
+  lifecycle: {}
   # -- Affinity for index-gateway pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: index-gateway
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Node selector for index-gateway pods
   nodeSelector: {}
   # -- Topology Spread Constraints for index-gateway pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for index-gateway pods
   tolerations: []
   persistence:
     # -- Enable creating PVCs which is required when using boltdb-shipper
     enabled: false
+    # -- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Use emptyDir with ramdisk for storage. **Please note that all data in indexGateway will be lost on pod restart**
     inMemory: false
     # -- Size of persistent or memory disk
@@ -2501,6 +2664,10 @@ compactor:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the compactor
+  hostUsers: nil
+  # -- DNSConfig for compactor pods
+  dnsConfig: {}
   image:
     # -- The Docker registry for the compactor image. Overrides `loki.image.registry`
     registry: null
@@ -2518,17 +2685,22 @@ compactor:
   podAnnotations: {}
   # -- Affinity for compactor pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: compactor
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Labels for compactor service
   serviceLabels: {}
   # -- Annotations for compactor service
   serviceAnnotations: {}
+  # -- Service type for compactor service
+  serviceType: "ClusterIP"
   # -- Additional CLI args for the compactor
   extraArgs: []
   # -- Environment variables to add to the compactor pods
@@ -2561,18 +2733,13 @@ compactor:
   persistence:
     # -- Enable creating PVCs for the compactor
     enabled: false
-    # -- Size of persistent disk
-    size: 10Gi
-    # -- Storage class to be used.
-    # If defined, storageClassName: <storageClass>.
-    # If set to "-", storageClassName: "", which disables dynamic provisioning.
-    # If empty or set to null, no storageClassName spec is
-    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-    storageClass: null
     # -- List of the compactor PVCs
     # @notationType -- list
     claims:
       - name: data
+        # -- Set access modes on the PersistentVolumeClaim
+        accessModes:
+          - ReadWriteOnce
         size: 10Gi
         #   -- Storage class to be used.
         #   If defined, storageClassName: <storageClass>.
@@ -2611,6 +2778,10 @@ bloomGateway:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the bloom-gateway
+  hostUsers: nil
+  # -- DNSConfig for bloom-gateway pods
+  dnsConfig: {}
   image:
     # -- The Docker registry for the bloom-gateway image. Overrides `loki.image.registry`
     registry: null
@@ -2628,12 +2799,15 @@ bloomGateway:
   podAnnotations: {}
   # -- Affinity for bloom-gateway pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: bloom-gateway
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Labels for bloom-gateway service
   serviceLabels: {}
@@ -2681,6 +2855,9 @@ bloomGateway:
     # @notationType -- list
     claims:
       - name: data
+        # -- Set access modes on the PersistentVolumeClaim
+        accessModes:
+          - ReadWriteOnce
         # -- Size of persistent disk
         size: 10Gi
         #   -- Storage class to be used.
@@ -2715,6 +2892,10 @@ bloomPlanner:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the bloom-planner
+  hostUsers: nil
+  # -- DNSConfig for bloom-planner pods
+  dnsConfig: {}
   image:
     # -- The Docker registry for the bloom-planner image. Overrides `loki.image.registry`
     registry: null
@@ -2732,12 +2913,15 @@ bloomPlanner:
   podAnnotations: {}
   # -- Affinity for bloom-planner pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: bloom-planner
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Labels for bloom-planner service
   serviceLabels: {}
@@ -2781,6 +2965,9 @@ bloomPlanner:
     # @notationType -- list
     claims:
       - name: data
+        # -- Set access modes on the PersistentVolumeClaim
+        accessModes:
+          - ReadWriteOnce
         # -- Size of persistent disk
         size: 10Gi
         #   -- Storage class to be used.
@@ -2819,6 +3006,10 @@ bloomBuilder:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the boom-builder
+  hostUsers: nil
+  # -- DNSConfig for bloom-builder pods
+  dnsConfig: {}
   autoscaling:
     # -- Enable autoscaling for the bloom-builder
     enabled: false
@@ -2877,18 +3068,23 @@ bloomBuilder:
   extraVolumes: []
   # -- Resource requests and limits for the bloom-builder
   resources: {}
+  # -- Init containers to add to the bloom-builder pods
+  initContainers: []
   # -- Containers to add to the bloom-builder pods
   extraContainers: []
   # -- Grace period to allow the bloom-builder to shutdown before it is killed
   terminationGracePeriodSeconds: 30
   # -- Affinity for bloom-builder pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: bloom-builder
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
@@ -2905,11 +3101,15 @@ bloomBuilder:
 patternIngester:
   # -- Number of replicas for the pattern ingester
   replicas: 0
+  # -- DNSConfig for pattern ingester pods
+  dnsConfig: {}
   # -- hostAliases to add
   hostAliases: []
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the pattern ingester
+  hostUsers: nil
   image:
     # -- The Docker registry for the pattern ingester image. Overrides `loki.image.registry`
     registry: null
@@ -2927,12 +3127,15 @@ patternIngester:
   podAnnotations: {}
   # -- Affinity for pattern ingester pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: pattern-ingester
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
@@ -2965,6 +3168,7 @@ patternIngester:
   # -- Node selector for pattern ingester pods
   nodeSelector: {}
   # -- Topology Spread Constraints for pattern ingester pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for pattern ingester pods
   tolerations: []
@@ -2986,6 +3190,9 @@ patternIngester:
     # @notationType -- list
     claims:
       - name: data
+        # -- Set access modes on the PersistentVolumeClaim
+        accessModes:
+          - ReadWriteOnce
         size: 10Gi
         #   -- Storage class to be used.
         #   If defined, storageClassName: <storageClass>.
@@ -3028,6 +3235,8 @@ ruler:
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the ruler
+  hostUsers: nil
   image:
     # -- The Docker registry for the ruler image. Overrides `loki.image.registry`
     registry: null
@@ -3067,18 +3276,22 @@ ruler:
   terminationGracePeriodSeconds: 300
   # -- Affinity for ruler pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: ruler
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Node selector for ruler pods
   nodeSelector: {}
   # -- Topology Spread Constraints for ruler pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for ruler pods
   tolerations: []
@@ -3087,6 +3300,9 @@ ruler:
   persistence:
     # -- Enable creating PVCs which is required when using recording rules
     enabled: false
+    # -- Set access modes on the PersistentVolumeClaim
+    accessModes:
+      - ReadWriteOnce
     # -- Size of persistent disk
     size: 10Gi
     # -- Storage class to be used.
@@ -3175,11 +3391,15 @@ overridesExporter:
   enabled: false
   # -- Number of replicas for the overrides-exporter
   replicas: 0
+  # -- DNSConfig for overrides-exporter
+  dnsConfig: {}
   # -- hostAliases to add
   hostAliases: []
   #  - ip: 1.2.3.4
   #    hostnames:
   #      - domain.tld
+  # -- Use the host's user namespace in the overrides-exporter
+  hostUsers: nil
   image:
     # -- The Docker registry for the overrides-exporter image. Overrides `loki.image.registry`
     registry: null
@@ -3219,18 +3439,22 @@ overridesExporter:
   terminationGracePeriodSeconds: 300
   # -- Affinity for overrides-exporter pods.
   # @default -- Hard node anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: overrides-exporter
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: null
   # -- Node selector for overrides-exporter pods
   nodeSelector: {}
   # -- Topology Spread Constraints for overrides-exporter pods
+  # The value will be passed through tpl.
   topologySpreadConstraints: []
   # -- Tolerations for overrides-exporter pods
   tolerations: []
@@ -3246,7 +3470,7 @@ memcached:
     # -- Memcached Docker image repository
     repository: memcached
     # -- Memcached Docker image tag
-    tag: 1.6.38-alpine
+    tag: 1.6.39-alpine
     # -- Memcached Docker image pull policy
     pullPolicy: IfNotPresent
   # -- The SecurityContext override for memcached pods
@@ -3279,6 +3503,8 @@ memcached:
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
+  # -- Startup probe for memcached pods
+  startupProbe: {}
 
 memcachedExporter:
   # -- Whether memcached metrics should be exported
@@ -3324,12 +3550,14 @@ memcachedExporter:
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
+  # -- Startup probe for memcached exporter
+  startupProbe: {}
 
 resultsCache:
   # -- Specifies whether memcached based results-cache should be enabled
   enabled: true
   # -- Comma separated addresses list in DNS Service Discovery format
-  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "results-cache") }}.{{ $.Release.Namespace }}.svc
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "results-cache") }}.{{ include "loki.namespace" $ }}.svc
   # -- Specify how long cached results should be stored in the results-cache before being expired
   defaultValidity: 12h
   # -- Memcached operation timeout
@@ -3368,8 +3596,12 @@ resultsCache:
   tolerations: []
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: 1
+  # -- DNSConfig for results-cache
+  dnsConfig: {}
   # -- The name of the PriorityClass for results-cache pods
   priorityClassName: null
+  # -- Use the host's user namespace in results-cache pods
+  hostUsers: nil
   # -- Labels for results-cache pods
   podLabels: {}
   # -- Annotations for results-cache pods
@@ -3432,7 +3664,7 @@ chunksCache:
   # -- Specifies whether memcached based chunks-cache should be enabled
   enabled: true
   # -- Comma separated addresses list in DNS Service Discovery format
-  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.suffix ) }}.{{ $.Release.Namespace }}.svc
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.suffix ) }}.{{ include "loki.namespace" $ }}.svc
   # -- Batchsize for sending and receiving chunks from chunks cache
   batchSize: 4
   # -- Parallel threads for sending and receiving chunks from chunks cache
@@ -3475,8 +3707,12 @@ chunksCache:
   tolerations: []
   # -- Pod Disruption Budget maxUnavailable
   maxUnavailable: 1
+  # -- DNSConfig for chunks-cache
+  dnsConfig: {}
   # -- The name of the PriorityClass for chunks-cache pods
   priorityClassName: null
+  # -- Use the host's user namespace in chunks-cache pods
+  hostUsers: nil
   # -- Labels for chunks-cache pods
   podLabels: {}
   # -- Annotations for chunks-cache pods
@@ -3542,7 +3778,7 @@ chunksCache:
     # -- Specifies whether memcached based chunks-cache-l2 should be enabled
     enabled: false
     # -- Comma separated addresses list in DNS Service Discovery format
-    addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.l2.suffix ) }}.{{ $.Release.Namespace }}.svc
+    addresses: 'dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.l2.suffix ) }}.{{ include "loki.namespace" $ }}.svc'
     # -- Batchsize for sending and receiving chunks from chunks cache
     batchSize: 4
     # -- Parallel threads for sending and receiving chunks from chunks cache
@@ -3585,8 +3821,12 @@ chunksCache:
     tolerations: []
     # -- Pod Disruption Budget maxUnavailable
     maxUnavailable: 1
+    # -- DNSConfig for chunks-cache-l2
+    dnsConfig: {}
     # -- The name of the PriorityClass for chunks-cache-l2 pods
     priorityClassName: null
+    # -- Use the host's user namespace in chunks-cache-l2 pods
+    hostUsers: nil
     # -- Labels for chunks-cache-l2 pods
     podLabels: {}
     # -- Annotations for chunks-cache-l2 pods
@@ -3708,9 +3948,11 @@ minio:
       memory: 128Mi
   # Allow the address used by Loki to refer to Minio to be overridden
   address: null
-# Create extra manifests via values. Would be passed through `tpl` for templating
-# objects can also be provided as multiline strings, useful for templating field names
-extraObjects: []
+
+# Create extra manifests via values
+# Can be a list or dictionary, both are passed through `tpl`.  If dict, keys are ignored and only values are used.
+# Objects can also be defined as multiline strings, useful for templating field names
+extraObjects: null
 # - apiVersion: v1
 #   kind: ConfigMap
 #   metadata:
@@ -3743,9 +3985,9 @@ extraObjects: []
 sidecar:
   image:
     # -- The Docker registry and image for the k8s sidecar
-    repository: kiwigrid/k8s-sidecar
+    repository: docker.io/kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.30.7
+    tag: 1.30.10
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy
@@ -3809,16 +4051,8 @@ sidecar:
     watchClientTimeout: 60
     # -- Log level of the sidecar container.
     logLevel: INFO
-############################################## WARNING ###############################################################
-#
-# DEPRECATED VALUES
-#
-# The following values are deprecated and will be removed in a future version of the helm chart!
-#
-############################################## WARNING ##############################################################
 
-# -- DEPRECATED Monitoring section determines which monitoring features to enable, this section is being replaced
-# by https://github.com/grafana/meta-monitoring-chart
+# -- Monitoring section determines which monitoring features to enable
 monitoring:
   # Dashboards for monitoring Loki
   dashboards:
@@ -3831,7 +4065,7 @@ monitoring:
     # -- Labels for the dashboards ConfigMap
     labels:
       grafana_dashboard: "1"
-  # -- DEPRECATED Recording rules for monitoring Loki, required for some dashboards
+  # -- Recording rules for monitoring Loki, required for some dashboards
   rules:
     # -- If enabled, create PrometheusRule resource with Loki recording rules
     enabled: false
@@ -3840,15 +4074,52 @@ monitoring:
     # -- Specify which individual alerts should be disabled
     # -- Instead of turning off each alert one by one, set the .monitoring.rules.alerting value to false instead.
     # -- If you disable all the alerts and keep .monitoring.rules.alerting set to true, the chart will fail to render.
+    #
+    # -- DEPRECATED: use monitoring.rules.configs.*.enabled instead
     disabled: {}
     #  LokiRequestErrors: true
     #  LokiRequestPanics: true
+
+    configs:
+      LokiRequestErrors:
+        enabled: true
+        for: 15m
+        lookbackPeriod: 2m
+        severity: critical
+        threshold: 10
+      LokiRequestPanics:
+        enabled: true
+        lookbackPeriod: 10m
+        severity: critical
+        threshold: 0
+      LokiRequestLatency:
+        enabled: true
+        for: 15m
+        severity: critical
+        threshold: 1
+      LokiTooManyCompactorsRunning:
+        enabled: true
+        for: 5m
+        severity: warning
+      LokiCanaryLatency:
+        enabled: true
+        for: 15m
+        lookbackPeriod: 5m
+        severity: warning
+        threshold: 5
+
     # -- Alternative namespace to create PrometheusRule resources in
     namespace: null
     # -- Additional annotations for the rules PrometheusRule resource
     annotations: {}
     # -- Additional labels for the rules PrometheusRule resource
     labels: {}
+    # -- Additional annotations for PrometheusRule alerts
+    additionalRuleAnnotations: {}
+    # e.g.:
+    # additionalRuleAnnotations:
+    #   runbook_url: "https://runbooks.example.com/oncall/loki"
+    #   summary: "What this alert means and how to respond"
     # -- Additional labels for PrometheusRule alerts
     additionalRuleLabels: {}
     # -- Additional groups to add to the rules file
@@ -3861,7 +4132,7 @@ monitoring:
     #       expr: sum(rate(loki_request_duration_seconds_bucket[1m])) by (le, job, route)
     #     - record: node_namespace_pod_container:container_cpu_usage_seconds_total:sum_rate
     #       expr: sum(rate(container_cpu_usage_seconds_total[1m])) by (node, namespace, pod, container)
-  #  -- DEPRECATED ServiceMonitor configuration
+  # -- ServiceMonitor configuration
   serviceMonitor:
     # -- If enabled, ServiceMonitor resources for Prometheus Operator are created
     enabled: false
@@ -3887,7 +4158,7 @@ monitoring:
     scheme: http
     # -- ServiceMonitor will use these tlsConfig settings to make the health check requests
     tlsConfig: null
-    # -- If defined, will create a MetricsInstance for the Grafana Agent Operator.
+    # -- DEPRECATED If defined, will create a MetricsInstance for the Grafana Agent Operator.
     metricsInstance:
       # -- If enabled, MetricsInstance resources for Grafana Agent Operator are created
       enabled: true
@@ -3898,8 +4169,7 @@ monitoring:
       # -- If defined a MetricsInstance will be created to remote write metrics.
       remoteWrite: null
   # -- DEPRECATED Self monitoring determines whether Loki should scrape its own logs.
-  # This feature currently relies on the Grafana Agent Operator being installed,
-  # which is installed by default using the grafana-agent-operator sub-chart.
+  # This feature relies on Grafana Agent Operator, which is deprecated.
   # It will create custom resources for GrafanaAgent, LogsInstance, and PodLogs to configure
   # scrape configs to scrape its own logs with the labels expected by the included dashboards.
   selfMonitoring:
@@ -3912,7 +4182,8 @@ monitoring:
       password: null
       # -- Namespace to create additional tenant token secret in. Useful if your Grafana instance
       # is in a separate namespace. Token will still be created in the canary namespace.
-      secretNamespace: "{{ .Release.Namespace }}"
+      # @default -- The same namespace as the loki chart is installed in.
+      secretNamespace: '{{ include "loki.namespace" . }}'
     # -- DEPRECATED Grafana Agent configuration
     grafanaAgent:
       # -- DEPRECATED Controls whether to install the Grafana Agent Operator and its CRDs.
@@ -3958,6 +4229,7 @@ monitoring:
       labels: {}
       # -- Additional clients for remote write
       clients: null
+
 # -- DEPRECATED Configuration for the table-manager. The table-manager is only necessary when using a deprecated
 # index type such as Cassandra, Bigtable, or DynamoDB, it has not been necessary since loki introduced self-
 # contained index types like 'boltdb-shipper' and 'tsdb'. This will be removed in a future helm chart.
@@ -4002,14 +4274,19 @@ tableManager:
   extraContainers: []
   # -- Grace period to allow the table-manager to shutdown before it is killed
   terminationGracePeriodSeconds: 30
+  # -- Use the host's user namespace in table-manager pods
+  hostUsers: nil
   # -- Affinity for table-manager pods.
   # @default -- Hard node and anti-affinity
+  # The value will be passed through tpl.
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         - labelSelector:
             matchLabels:
               app.kubernetes.io/component: table-manager
+              app.kubernetes.io/name: '{{ include "loki.name" . }}'
+              app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
   # -- DNS config table-manager pods
   dnsConfig: {}

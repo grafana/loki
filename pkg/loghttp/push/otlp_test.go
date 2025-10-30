@@ -24,6 +24,12 @@ import (
 	"github.com/grafana/loki/pkg/push"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+
+	"bytes"
+
+	"github.com/klauspost/compress/zstd"
+	"github.com/pierrec/lz4/v4"
+	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 )
 
 func TestOTLPToLokiPushRequest(t *testing.T) {
@@ -577,7 +583,7 @@ func TestOTLPToLokiPushRequest(t *testing.T) {
 			stats := NewPushStats()
 			tracker := NewMockTracker()
 			streamResolver := newMockStreamResolver("fake", &fakeLimits{})
-			streamResolver.policyForOverride = func(lbs labels.Labels) string {
+			streamResolver.policyForOverride = func(_ context.Context, lbs labels.Labels) string {
 				if lbs.Get("service_name") == "service-1" {
 					return "service-1-policy"
 				}
@@ -920,7 +926,7 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
 
 	// All logs will use the same policy for simplicity
-	streamResolver.policyForOverride = func(_ labels.Labels) string {
+	streamResolver.policyForOverride = func(_ context.Context, _ labels.Labels) string {
 		return "test-policy"
 	}
 
@@ -936,7 +942,7 @@ func TestOTLPLogAttributesAsIndexLabels(t *testing.T) {
 		stats,
 		log.NewNopLogger(),
 		streamResolver,
-		"otlp",
+		constants.OTLP,
 	)
 	require.NoError(t, err)
 
@@ -1023,7 +1029,7 @@ func TestOTLPStructuredMetadataCalculation(t *testing.T) {
 	tracker := NewMockTracker()
 	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
 
-	streamResolver.policyForOverride = func(_ labels.Labels) string {
+	streamResolver.policyForOverride = func(_ context.Context, _ labels.Labels) string {
 		return "test-policy"
 	}
 
@@ -1209,7 +1215,7 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 	streamResolver := newMockStreamResolver("fake", &fakeLimits{})
 
 	// All logs will use the same policy for simplicity
-	streamResolver.policyForOverride = func(_ labels.Labels) string {
+	streamResolver.policyForOverride = func(_ context.Context, _ labels.Labels) string {
 		return "test-policy"
 	}
 
@@ -1278,4 +1284,229 @@ func TestOTLPSeverityTextAsLabel(t *testing.T) {
 	require.True(t, infoStreamFound, "Stream with INFO severity_text not found")
 	require.True(t, errorStreamFound, "Stream with ERROR severity_text not found")
 	require.True(t, debugStreamFound, "Stream with DEBUG severity_text not found")
+}
+
+func simpleOTLPLogs() plog.Logs {
+	ld := plog.NewLogs()
+	rl := ld.ResourceLogs().AppendEmpty()
+	rl.Resource().Attributes().PutStr("service.name", "test-service")
+	sl := rl.ScopeLogs().AppendEmpty()
+	logRecord := sl.LogRecords().AppendEmpty()
+	logRecord.Body().SetStr("test log message")
+	logRecord.SetTimestamp(pcommon.Timestamp(time.Now().UnixNano()))
+	return ld
+}
+
+func createZstdCompressedProtobuf(logs plog.Logs) ([]byte, error) {
+	req := plogotlp.NewExportRequestFromLogs(logs)
+	protoBytes, err := req.MarshalProto()
+	if err != nil {
+		return nil, err
+	}
+	return compressWithZstd(protoBytes)
+}
+
+func createZstdCompressedJSON(logs plog.Logs) ([]byte, error) {
+	req := plogotlp.NewExportRequestFromLogs(logs)
+	jsonBytes, err := req.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	return compressWithZstd(jsonBytes)
+}
+
+func compressWithZstd(data []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	writer, err := zstd.NewWriter(&buf)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := writer.Write(data); err != nil {
+		return nil, err
+	}
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func createLz4CompressedProtobuf(logs plog.Logs) ([]byte, error) {
+	req := plogotlp.NewExportRequestFromLogs(logs)
+	protoBytes, err := req.MarshalProto()
+	if err != nil {
+		return nil, err
+	}
+	return compressWithLz4(protoBytes)
+}
+
+func createLz4CompressedJSON(logs plog.Logs) ([]byte, error) {
+	req := plogotlp.NewExportRequestFromLogs(logs)
+	jsonBytes, err := req.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	return compressWithLz4(jsonBytes)
+}
+
+func compressWithLz4(data []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	writer := lz4.NewWriter(&buf)
+	_, err := writer.Write(data)
+	if err != nil {
+		return nil, err
+	}
+	err = writer.Close()
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func createOTLPLogWithNestedAttributes() plog.Logs {
+	ld := plog.NewLogs()
+	rl := ld.ResourceLogs().AppendEmpty()
+	rl.Resource().Attributes().PutStr("service.name", "test-service")
+
+	nestedMap := rl.Resource().Attributes().PutEmptyMap("nested")
+	nestedMap.PutStr("key1", "value1")
+	nestedMap.PutInt("key2", 42)
+
+	sl := rl.ScopeLogs().AppendEmpty()
+	logRecord := sl.LogRecords().AppendEmpty()
+	logRecord.Body().SetStr("test log with nested attributes")
+	logRecord.SetTimestamp(pcommon.Timestamp(time.Now().UnixNano()))
+	return ld
+}
+
+func TestContentEncoding(t *testing.T) {
+	testCases := []struct {
+		name            string
+		contentType     string
+		contentEncoding string
+		generateBody    func() ([]byte, error)
+		expectedError   bool
+		expectedLogs    plog.Logs
+	}{
+		{
+			name:            "zstd_valid_protobuf",
+			contentType:     "application/x-protobuf",
+			contentEncoding: "zstd",
+			generateBody: func() ([]byte, error) {
+				return createZstdCompressedProtobuf(simpleOTLPLogs())
+			},
+			expectedError: false,
+			expectedLogs:  simpleOTLPLogs(),
+		},
+		{
+			name:            "zstd_valid_json",
+			contentType:     "application/json",
+			contentEncoding: "zstd",
+			generateBody: func() ([]byte, error) {
+				return createZstdCompressedJSON(simpleOTLPLogs())
+			},
+			expectedError: false,
+			expectedLogs:  simpleOTLPLogs(),
+		},
+		{
+			name:            "zstd_invalid_data",
+			contentType:     "application/x-protobuf",
+			contentEncoding: "zstd",
+			generateBody: func() ([]byte, error) {
+				return []byte("invalid zstd data"), nil
+			},
+			expectedError: true,
+			expectedLogs:  plog.NewLogs(),
+		},
+		{
+			name:            "zstd_nested_attributes",
+			contentType:     "application/x-protobuf",
+			contentEncoding: "zstd",
+			generateBody: func() ([]byte, error) {
+				return createZstdCompressedProtobuf(createOTLPLogWithNestedAttributes())
+			},
+			expectedError: false,
+			expectedLogs:  createOTLPLogWithNestedAttributes(),
+		},
+		{
+			name:            "lz4_valid_protobuf",
+			contentType:     "application/x-protobuf",
+			contentEncoding: "lz4",
+			generateBody: func() ([]byte, error) {
+				return createLz4CompressedProtobuf(simpleOTLPLogs())
+			},
+			expectedError: false,
+			expectedLogs:  simpleOTLPLogs(),
+		},
+		{
+			name:            "lz4_valid_json",
+			contentType:     "application/json",
+			contentEncoding: "lz4",
+			generateBody: func() ([]byte, error) {
+				return createLz4CompressedJSON(simpleOTLPLogs())
+			},
+			expectedError: false,
+			expectedLogs:  simpleOTLPLogs(),
+		},
+		{
+			name:            "lz4_invalid_data",
+			contentType:     "application/x-protobuf",
+			contentEncoding: "lz4",
+			generateBody: func() ([]byte, error) {
+				return []byte("invalid lz4 data"), nil
+			},
+			expectedError: true,
+			expectedLogs:  plog.NewLogs(),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			body, err := tc.generateBody()
+			require.NoError(t, err)
+
+			req := httptest.NewRequest("POST", "/v1/logs", bytes.NewReader(body))
+			req.Header.Set("Content-Type", tc.contentType)
+			req.Header.Set("Content-Encoding", tc.contentEncoding)
+
+			stats := NewPushStats()
+			extractedLogs, err := extractLogs(req, 100<<20, stats)
+
+			if tc.expectedError {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, extractedLogs)
+
+			require.Equal(t, tc.contentEncoding, stats.ContentEncoding)
+			require.Equal(t, tc.contentType, stats.ContentType)
+			require.Greater(t, stats.BodySize, int64(0))
+
+			if tc.expectedLogs.ResourceLogs().Len() > 0 {
+				require.Equal(t, tc.expectedLogs.ResourceLogs().Len(), extractedLogs.ResourceLogs().Len())
+
+				if tc.expectedLogs.ResourceLogs().Len() > 0 {
+					expectedRL := tc.expectedLogs.ResourceLogs().At(0)
+					extractedRL := extractedLogs.ResourceLogs().At(0)
+					expectedServiceName, _ := expectedRL.Resource().Attributes().Get("service.name")
+					extractedServiceName, _ := extractedRL.Resource().Attributes().Get("service.name")
+					require.Equal(t, expectedServiceName.AsString(), extractedServiceName.AsString())
+					require.Equal(t, expectedRL.ScopeLogs().Len(), extractedRL.ScopeLogs().Len())
+
+					if expectedRL.ScopeLogs().Len() > 0 {
+						expectedSL := expectedRL.ScopeLogs().At(0)
+						extractedSL := extractedRL.ScopeLogs().At(0)
+
+						require.Equal(t, expectedSL.LogRecords().Len(), extractedSL.LogRecords().Len())
+						if expectedSL.LogRecords().Len() > 0 && extractedSL.LogRecords().Len() > 0 {
+							expectedLog := expectedSL.LogRecords().At(0)
+							extractedLog := extractedSL.LogRecords().At(0)
+							require.Equal(t, expectedLog.Body().AsString(), extractedLog.Body().AsString())
+						}
+					}
+				}
+			}
+		})
+	}
 }

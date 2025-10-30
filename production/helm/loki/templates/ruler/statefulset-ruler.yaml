@@ -4,7 +4,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.rulerFullname" . }}
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.rulerLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
@@ -37,10 +37,10 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
+      {{- if semverCompare ">=1.19-0" (include "loki.kubeVersion" .) }}
       {{- with .Values.ruler.topologySpreadConstraints }}
       topologySpreadConstraints:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- end }}
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
@@ -51,6 +51,9 @@ spec:
       {{- with .Values.ruler.hostAliases }}
       hostAliases:
         {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.ruler.hostUsers) }}
+      hostUsers: {{ .Values.ruler.hostUsers }}
       {{- end }}
       {{- include "loki.rulerPriorityClassName" . | nindent 6 }}
       securityContext:
@@ -122,10 +125,11 @@ spec:
             {{- toYaml .Values.ruler.resources | nindent 12 }}
         {{- if and .Values.sidecar.rules.enabled .Values.ruler.sidecar }}
         - name: loki-sc-rules
+          {{- $dict := dict "service" .Values.sidecar.image "global" .Values.global }}
           {{- if .Values.sidecar.image.sha }}
-          image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
+          image: "{{ include "loki.baseImage" $dict }}@sha256:{{ .Values.sidecar.image.sha }}"
           {{- else }}
-          image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}"
+          image: {{ include "loki.baseImage" $dict }}
           {{- end }}
           imagePullPolicy: {{ .Values.sidecar.image.pullPolicy }}
           env:
@@ -194,7 +198,7 @@ spec:
         {{- end }}
       {{- with .Values.ruler.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.ruler.nodeSelector }}
       nodeSelector:
@@ -204,7 +208,7 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.ruler.dnsConfig }}
+      {{- with .Values.ruler.dnsConfig | default .Values.loki.dnsConfig }}
       dnsConfig:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -261,7 +265,7 @@ spec:
         {{- end }}
       spec:
         accessModes:
-          - ReadWriteOnce
+          {{- toYaml .Values.ruler.persistence.accessModes | nindent 10 }}
         {{- with .Values.ruler.persistence.storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
         {{- end }}

@@ -8,6 +8,19 @@ import (
 	"runtime"
 	"time"
 
+	// The go.opentelemetry.io/collector/pdata/internal/grpcencoding package
+	// registers its own encoding for proto, falling back to the existing proto
+	// encoding for non-OTLP messages.
+	//
+	// However, if no proto encoding has been registered, the fallback mechanism
+	// will panic. This can happen depending on import order, as encodings are
+	// registered via init functions. To avoid this, we force the correct import
+	// order by keeping this as the very first import.
+	//
+	// This import can be removed once the grpcencoding package includes this
+	// import itself.
+	_ "google.golang.org/grpc/encoding/proto"
+
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/tracing"
@@ -44,6 +57,11 @@ func main() {
 
 	// Set the global OTLP config which is needed in per tenant otlp config
 	config.LimitsConfig.SetGlobalOTLPConfig(config.Distributor.OTLPConfig)
+	// Set the default policy stream mappings which are needed in per tenant policy stream mappings
+	if err := config.LimitsConfig.SetDefaultPolicyStreamMapping(config.Distributor.DefaultPolicyStreamMappings); err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to set default policy stream mappings", "err", err.Error())
+		exit(1)
+	}
 	// This global is set to the config passed into the last call to `NewOverrides`. If we don't
 	// call it atleast once, the defaults are set to an empty struct.
 	// We call it with the flag values so that the config file unmarshalling only overrides the values set in the config.

@@ -3,6 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "loki.tableManagerFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.tableManagerLabels" . | nindent 4 }}
   annotations:
@@ -46,6 +47,9 @@ spec:
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.tableManager.terminationGracePeriodSeconds }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.tableManager.hostUsers) }}
+      hostUsers: {{ .Values.tableManager.hostUsers }}
+      {{- end }}
       containers:
         - name: table-manager
           image: {{ include "loki.image" . }}
@@ -98,9 +102,9 @@ spec:
         {{- end }}
       {{- with .Values.tableManager.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
-      {{- with .Values.tableManager.dnsConfig }}
+      {{- with .Values.tableManager.dnsConfig | default .Values.loki.dnsConfig }}
       dnsConfig:
         {{- tpl . $ | nindent 8 }}
       {{- end }}

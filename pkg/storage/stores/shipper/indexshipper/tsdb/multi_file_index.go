@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 )
@@ -132,15 +133,15 @@ func (i *MultiIndex) forMatchingIndices(ctx context.Context, from, through model
 
 }
 
-func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
-	acc := newResultAccumulator(func(xs [][]ChunkRef) ([]ChunkRef, error) {
+func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []logproto.ChunkRefWithSizingInfo, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]logproto.ChunkRefWithSizingInfo, error) {
+	acc := newResultAccumulator(func(xs [][]logproto.ChunkRefWithSizingInfo) ([]logproto.ChunkRefWithSizingInfo, error) {
 		if res == nil {
 			res = ChunkRefsPool.Get()
 		}
 		res = res[:0]
 
 		// keep track of duplicates
-		seen := make(map[ChunkRef]struct{})
+		seen := make(map[logproto.ChunkRef]struct{})
 
 		// TODO(owen-d): Do this more efficiently,
 		// not all indices overlap each other
@@ -150,17 +151,17 @@ func (i *MultiIndex) GetChunkRefs(ctx context.Context, userID string, from, thro
 			g := group
 			for _, ref := range g {
 
-				_, ok := seen[ref]
+				_, ok := seen[ref.ChunkRef]
 				if ok {
 					continue
 				}
-				seen[ref] = struct{}{}
+				seen[ref.ChunkRef] = struct{}{}
 				res = append(res, ref)
 			}
 			ChunkRefsPool.Put(g)
 		}
 
-		sort.Slice(res, func(i, j int) bool { return res[i].Less(res[j]) })
+		sort.Slice(res, func(i, j int) bool { return res[i].Less(res[j].ChunkRef) })
 
 		return res, nil
 	})
