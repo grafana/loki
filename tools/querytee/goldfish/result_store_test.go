@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
+	"github.com/grafana/loki/v3/pkg/storage/bucket/gcs"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -89,4 +91,28 @@ func TestBucketResultStoreStoresUncompressedPayload(t *testing.T) {
 	body, err := io.ReadAll(rc)
 	require.NoError(t, err)
 	require.Equal(t, payload, body)
+}
+
+func TestNewResultsBucke_CorrectBucketName(t *testing.T) {
+	bktCfg := ResultsStorageConfig{
+		Enabled:      false,
+		Mode:         ResultsPersistenceModeMismatchOnly,
+		Backend:      ResultsBackendGCS,
+		ObjectPrefix: "goldfish/results",
+		Compression:  "gzip",
+		Bucket: bucket.Config{
+			GCS: gcs.Config{
+				BucketName: "bucket",
+			},
+			StoragePrefix: "storage-prefix",
+		},
+	}
+
+	resultStorage, err := NewResultStore(context.Background(), bktCfg, log.NewNopLogger())
+	require.NoError(t, err)
+
+	rs, ok := resultStorage.(*bucketResultStore)
+	require.True(t, ok)
+
+	require.Equal(t, "bucket/storage-prefix", rs.bucketName)
 }

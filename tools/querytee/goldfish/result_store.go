@@ -70,6 +70,10 @@ func NewResultStore(ctx context.Context, cfg ResultsStorageConfig, logger log.Lo
 		return nil, fmt.Errorf("unsupported backend: %s", cfg.Backend)
 	}
 
+	if cfg.Bucket.StoragePrefix != "" {
+		bucketName = fmt.Sprintf("%s/%s", bucketName, strings.Trim(cfg.Bucket.StoragePrefix, "/"))
+	}
+
 	return &bucketResultStore{
 		bucket:      bucketClient,
 		bucketName:  bucketName,
@@ -111,6 +115,7 @@ func (s *bucketResultStore) Store(ctx context.Context, payload []byte, opts Stor
 		"object", key,
 		"bucket", s.bucketName,
 		"backend", s.backend,
+		"uri", uri,
 		"size_bytes", len(encoded),
 	)
 

@@ -398,7 +398,11 @@ func (s *Service) goldfishResultHandler(cell string) http.Handler {
 		// Download object from bucket
 		reader, err := s.goldfishBucket.Get(r.Context(), objectKey)
 		if err != nil {
-			level.Error(s.logger).Log("msg", "failed to fetch object from bucket", "object_key", objectKey, "err", err)
+			level.Error(s.logger).Log(
+        "msg", "failed to fetch object from bucket", 
+        "uri", resultURI,
+        "object_key", objectKey, 
+        "err", err)
 			s.writeJSONError(w, http.StatusInternalServerError, "failed to fetch result from storage")
 			return
 		}
