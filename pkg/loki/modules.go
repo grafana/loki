@@ -354,6 +354,16 @@ func (t *Loki) initDistributor() (services.Service, error) {
 		return nil, errors.New("kafka is enabled in distributor but not in ingester")
 	}
 
+	// Add ingestion policy interceptors to ingester client
+	t.Cfg.IngesterClient.GRPCUnaryClientInterceptors = append(
+		t.Cfg.IngesterClient.GRPCUnaryClientInterceptors,
+		validation.ClientIngestionPolicyInterceptor,
+	)
+	t.Cfg.IngesterClient.GRCPStreamClientInterceptors = append(
+		t.Cfg.IngesterClient.GRCPStreamClientInterceptors,
+		validation.StreamClientIngestionPolicyInterceptor,
+	)
+
 	var err error
 	logger := log.With(util_log.Logger, "component", "distributor")
 	t.distributor, err = distributor.New(
@@ -1993,12 +2003,14 @@ func (t *Loki) initIngesterGRPCInterceptors() (services.Service, error) {
 		t.Cfg.Server.GRPCStreamMiddleware,
 		serverutil.StreamServerQueryTagsInterceptor,
 		serverutil.StreamServerHTTPHeadersInterceptor,
+		validation.StreamServerIngestionPolicyInterceptor,
 	)
 
 	t.Cfg.Server.GRPCMiddleware = append(
 		t.Cfg.Server.GRPCMiddleware,
 		serverutil.UnaryServerQueryTagsInterceptor,
 		serverutil.UnaryServerHTTPHeadersnIterceptor,
+		validation.ServerIngestionPolicyInterceptor,
 	)
 
 	return nil, nil

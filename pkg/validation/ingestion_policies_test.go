@@ -472,3 +472,63 @@ func TestIngestionPolicyMiddleware(t *testing.T) {
 		require.Empty(t, policy)
 	})
 }
+
+func TestGRPCIngestionPolicy(t *testing.T) {
+	t.Run("inject and extract policy through gRPC", func(t *testing.T) {
+		policy := "test-policy"
+
+		// Inject policy into context
+		ctx := InjectIngestionPolicyContext(t.Context(), policy)
+
+		// Inject into gRPC metadata
+		ctx, err := injectIntoGRPCRequest(ctx)
+		require.NoError(t, err)
+
+		// Extract from gRPC metadata
+		ctx2, err := extractFromGRPCRequest(ctx)
+		require.NoError(t, err)
+
+		// Verify extracted policy matches original
+		extractedPolicy := ExtractIngestionPolicyContext(ctx2)
+		require.Equal(t, policy, extractedPolicy)
+	})
+
+	t.Run("extract from empty context returns empty", func(t *testing.T) {
+		ctx, err := extractFromGRPCRequest(t.Context())
+		require.NoError(t, err)
+
+		policy := ExtractIngestionPolicyContext(ctx)
+		require.Empty(t, policy)
+	})
+
+	t.Run("inject empty policy does not add metadata", func(t *testing.T) {
+		// Inject empty policy into context
+		ctx := InjectIngestionPolicyContext(t.Context(), "")
+
+		// Try to inject into gRPC metadata
+		ctx, err := injectIntoGRPCRequest(ctx)
+		require.NoError(t, err)
+
+		// Extract from gRPC metadata
+		ctx2, err := extractFromGRPCRequest(ctx)
+		require.NoError(t, err)
+
+		// Should still be empty
+		policy := ExtractIngestionPolicyContext(ctx2)
+		require.Empty(t, policy)
+	})
+
+	t.Run("inject context without policy does nothing", func(t *testing.T) {
+		// Try to inject into gRPC metadata (no policy in context)
+		ctx, err := injectIntoGRPCRequest(t.Context())
+		require.NoError(t, err)
+
+		// Extract from gRPC metadata
+		ctx2, err := extractFromGRPCRequest(ctx)
+		require.NoError(t, err)
+
+		// Should be empty
+		policy := ExtractIngestionPolicyContext(ctx2)
+		require.Empty(t, policy)
+	})
+}
