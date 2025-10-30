@@ -259,10 +259,6 @@ type genericBoolFunction[E arrow.TypedArray[T], T arrow.ValueType] struct {
 	eval func(a, b T) (bool, error)
 }
 
-func (f *genericBoolFunction[E, T]) CompileRegex(_ arrow.Array) (*regexp.Regexp, error) {
-	return nil, nil
-}
-
 // Evaluate implements BinaryFunction.
 func (f *genericBoolFunction[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array, _, _ bool) (arrow.Array, error) {
 	if lhs.Len() != rhs.Len() {
@@ -300,10 +296,6 @@ func (f *genericBoolFunction[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array, _
 // and can be used for any array type with numeric elements.
 type genericFloat64Function[E arrow.TypedArray[T], T arrow.ValueType] struct {
 	eval func(a, b T) (float64, error)
-}
-
-func (f *genericFloat64Function[E, T]) CompileRegex(_ arrow.Array) (*regexp.Regexp, error) {
-	return nil, nil
 }
 
 // Evaluate implements BinaryFunction.
