@@ -209,59 +209,6 @@ func (t *Loki) tenantLimitsHandler(forDrilldown bool) func(http.ResponseWriter, 
 	}
 }
 
-// drilldownConfigHandler returns a handler for the drilldown config endpoint
-func (t *Loki) drilldownConfigHandler() func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Extract tenant ID from request
-		user, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
-			return
-		}
-
-		// Get tenant limits or defaults
-		var limit *validation.Limits
-		if t.TenantLimits != nil {
-			limit = t.TenantLimits.TenantLimits(user)
-		}
-		if limit == nil && t.Overrides != nil {
-			// There is no limit for this tenant, so we default to the default limits.
-			limit = t.Overrides.DefaultLimits()
-		}
-		if limit == nil {
-			// This should not happen, but we handle it gracefully.
-			http.Error(w, "No default limits configured", http.StatusNotFound)
-			return
-		}
-
-		// Apply allowlist filtering if configured
-		allowlist := t.Cfg.TenantLimitsAllowPublish
-		limitsMap, err := filterLimitFields(limit, allowlist)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// Build response
-		version := build.GetVersion().Version
-		if version == "" {
-			version = "unknown"
-		}
-		response := DrilldownConfigResponse{
-			Limits:                 limitsMap,
-			PatternIngesterEnabled: t.Cfg.Pattern.Enabled,
-			Version:                version,
-		}
-
-		// Return JSON response
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	}
-}
-
 // writeYAMLResponse writes some YAML as a HTTP response.
 func writeYAMLResponse(w http.ResponseWriter, v any) {
 	// There is not standardised content-type for YAML, text/plain ensures the

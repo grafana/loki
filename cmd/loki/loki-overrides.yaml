@@ -7,3 +7,4 @@ overrides:
     allow_structured_metadata: true
     pattern_persistence_enabled: true
     volume_enabled: true
+    max_query_bytes_read: 1073741824
