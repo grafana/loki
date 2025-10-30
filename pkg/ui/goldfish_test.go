@@ -149,7 +149,7 @@ func (m *mockBucket) Provider() objstore.ObjProvider {
 	return objstore.ObjProvider("mock")
 }
 
-func (m *mockBucket) GetAndReplace(_ context.Context, _ string, f func(existing io.ReadCloser) (io.ReadCloser, error)) error {
+func (m *mockBucket) GetAndReplace(_ context.Context, _ string, _ func(existing io.ReadCloser) (io.ReadCloser, error)) error {
 	return errors.New("not implemented")
 }
 

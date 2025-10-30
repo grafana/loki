@@ -153,7 +153,7 @@ func TestGoldfishResultHandler(t *testing.T) {
 
 	t.Run("returns 404 not found when correlation ID not found in database", func(t *testing.T) {
 		storage := &mockStorage{
-			getQueryFunc: func(ctx context.Context, correlationID string) (*goldfish.QuerySample, error) {
+			getQueryFunc: func(_ context.Context, _ string) (*goldfish.QuerySample, error) {
 				return nil, errors.New("not found")
 			},
 		}
@@ -165,7 +165,7 @@ func TestGoldfishResultHandler(t *testing.T) {
 
 	t.Run("returns 404 not found when result URI is empty", func(t *testing.T) {
 		storage := &mockStorage{
-			getQueryFunc: func(ctx context.Context, correlationID string) (*goldfish.QuerySample, error) {
+			getQueryFunc: func(_ context.Context, correlationID string) (*goldfish.QuerySample, error) {
 				return &goldfish.QuerySample{
 					CorrelationID:  correlationID,
 					CellAResultURI: "", // No result URI
@@ -189,7 +189,7 @@ func TestGoldfishResultHandler(t *testing.T) {
 		require.NoError(t, gzWriter.Close())
 
 		storage := &mockStorage{
-			getQueryFunc: func(ctx context.Context, correlationID string) (*goldfish.QuerySample, error) {
+			getQueryFunc: func(_ context.Context, correlationID string) (*goldfish.QuerySample, error) {
 				return &goldfish.QuerySample{
 					CorrelationID:          correlationID,
 					CellAResultURI:         "s3://test-bucket/path/to/result.json.gz",
@@ -199,7 +199,7 @@ func TestGoldfishResultHandler(t *testing.T) {
 		}
 
 		bucket := &mockBucket{
-			getFunc: func(ctx context.Context, key string) (io.ReadCloser, error) {
+			getFunc: func(_ context.Context, key string) (io.ReadCloser, error) {
 				assert.Equal(t, "path/to/result.json.gz", key)
 				return io.NopCloser(bytes.NewReader(compressedBuf.Bytes())), nil
 			},
