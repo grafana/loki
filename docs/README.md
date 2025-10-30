@@ -41,11 +41,17 @@ Note that in Hugo the structure of the documentation is based on the folder stru
 
 ## Shared content
 
-**NOTE:** As of Loki/GEL 3.0, there will be shared files between the Loki docs and the GEL docs. The Grafana Enterprise Logs documentation will pull in content from the Loki repo when publishing the GEL docs. Files that are shared between the two doc sets will contain a comment indicating that the content is shared.
+**NOTE:** As of Loki/GEL 3.0, there are shared files between the Loki docs and the GEL docs. The Grafana Enterprise Logs documentation will pull in content from the Loki repo when publishing the GEL docs. Files that are shared between the two doc sets will contain a comment indicating that the content is shared.
 
 For more information about shared content, see the [reuse content](https://grafana.com/docs/writers-toolkit/write/reuse-content/) section of the Writers' Toolkit.
 
 For more information about building and testing documentation, see the [build and review](https://grafana.com/docs/writers-toolkit/review/) section of the Writers' Toolkit.
+
+### Lambda-Promtail documentation
+
+As of June 2025, the code for the Lambda-promtail client has moved from the Loki repository to a separate [lambda-promtail repository](https://github.com/grafana/lambda-promtail).
+
+As of October 2025, the documentation for the Lambda-promtail client has also moved to the lambda-promtail repository.  You can find it under [docs/sources](https://github.com/grafana/lambda-promtail/tree/main/docs/sources).
 
 ## Testing documentation
 
