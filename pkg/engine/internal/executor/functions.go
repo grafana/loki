@@ -82,6 +82,7 @@ func init() {
 	// Functions for [types.BinaryOpMatchRe]
 	binaryFunctions.register(types.BinaryOpMatchRe, arrow.BinaryTypes.String, &regexpFunction{eval: func(a, b string, reg *regexp.Regexp) (bool, error) {
 		if reg == nil {
+			// Fallback to per-row regex-compilation due to non-scalar expression
 			var err error
 			reg, err = regexp.Compile(b)
 			if err != nil {
@@ -93,6 +94,7 @@ func init() {
 	// Functions for [types.BinaryOpNotMatchRe]
 	binaryFunctions.register(types.BinaryOpNotMatchRe, arrow.BinaryTypes.String, &regexpFunction{eval: func(a, b string, reg *regexp.Regexp) (bool, error) {
 		if reg == nil {
+			// Fallback to per-row regex-compilation due to non-scalar expression
 			var err error
 			reg, err = regexp.Compile(b)
 			if err != nil {
@@ -160,8 +162,7 @@ type BinaryFunctionRegistry interface {
 }
 
 type BinaryFunction interface {
-	Evaluate(lhs, rhs arrow.Array, re *regexp.Regexp) (arrow.Array, error)
-	CompileRegex(rhs arrow.Array) (*regexp.Regexp, error)
+	Evaluate(lhs, rhs arrow.Array, lhsIsScalar, rhsIsScalar bool) (arrow.Array, error)
 }
 
 type binaryFuncReg struct {
@@ -199,31 +200,7 @@ type regexpFunction struct {
 	eval func(a, b string, reg *regexp.Regexp) (bool, error)
 }
 
-func (f *regexpFunction) CompileRegex(rhs arrow.Array) (*regexp.Regexp, error) {
-	if rhs == nil {
-		return nil, nil
-	}
-
-	// Return no error if record has 0 rows
-	if rhs.Len() == 0 {
-		return nil, nil
-	}
-
-	rhsArr, ok := rhs.(*array.String)
-	if !ok {
-		return nil, fmt.Errorf("invalid array type: expected %T, got %T", new(*array.String), rhs)
-	}
-
-	if rhsArr.IsNull(0) {
-		return nil, fmt.Errorf("invalid NULL value, expected string")
-	}
-
-	// TODO(chaudum): Performance of regex evaluation can be improved by simplifying the regex,
-	// see pkg/logql/log/filter.go:645
-	return regexp.Compile(rhsArr.Value(0))
-}
-
-func (f *regexpFunction) Evaluate(lhs arrow.Array, rhs arrow.Array, re *regexp.Regexp) (arrow.Array, error) {
+func (f *regexpFunction) Evaluate(lhs arrow.Array, rhs arrow.Array, _, rhsIsScalar bool) (arrow.Array, error) {
 	if lhs.Len() != rhs.Len() {
 		return nil, arrow.ErrIndex
 	}
@@ -239,6 +216,26 @@ func (f *regexpFunction) Evaluate(lhs arrow.Array, rhs arrow.Array, re *regexp.R
 	}
 
 	builder := array.NewBooleanBuilder(memory.DefaultAllocator)
+	if rhs.Len() == 0 {
+		return builder.NewArray(), nil
+	}
+
+	var (
+		re  *regexp.Regexp
+		err error
+	)
+
+	if rhsIsScalar {
+		if rhsArr.IsNull(0) {
+			return nil, fmt.Errorf("invalid NULL value, expected string")
+		}
+		// TODO(chaudum): Performance of regex evaluation can be improved by simplifying the regex,
+		// see pkg/logql/log/filter.go:645
+		re, err = regexp.Compile(rhsArr.Value(0))
+		if err != nil {
+			return nil, fmt.Errorf("failed to compile regular expression for batch: %w", err)
+		}
+	}
 
 	for i := range lhsArr.Len() {
 		if lhsArr.IsNull(i) || rhsArr.IsNull(i) {
@@ -267,7 +264,7 @@ func (f *genericBoolFunction[E, T]) CompileRegex(_ arrow.Array) (*regexp.Regexp,
 }
 
 // Evaluate implements BinaryFunction.
-func (f *genericBoolFunction[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array, _ *regexp.Regexp) (arrow.Array, error) {
+func (f *genericBoolFunction[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array, _, _ bool) (arrow.Array, error) {
 	if lhs.Len() != rhs.Len() {
 		return nil, arrow.ErrIndex
 	}
@@ -310,7 +307,7 @@ func (f *genericFloat64Function[E, T]) CompileRegex(_ arrow.Array) (*regexp.Rege
 }
 
 // Evaluate implements BinaryFunction.
-func (f *genericFloat64Function[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array, _ *regexp.Regexp) (arrow.Array, error) {
+func (f *genericFloat64Function[E, T]) Evaluate(lhs arrow.Array, rhs arrow.Array, _, _ bool) (arrow.Array, error) {
 	if lhs.Len() != rhs.Len() {
 		return nil, arrow.ErrIndex
 	}
