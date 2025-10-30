@@ -86,41 +86,37 @@ func TestMockCatalog(t *testing.T) {
 	}
 }
 
-func locations(t *testing.T, plan *Plan, node Node) []string {
+func locations(plan *Plan, node Node) []string {
 	res := make([]string, 0)
-
-	visitor := &nodeCollectVisitor{
-		onVisitScanSet: func(set *ScanSet) error {
-			for _, target := range set.Targets {
+	_ = plan.DFSWalk(node, func(n Node) error {
+		switch node := n.(type) {
+		case *ScanSet:
+			for _, target := range node.Targets {
 				switch target.Type {
 				case ScanTypeDataObject:
 					res = append(res, string(target.DataObject.Location))
 				}
 			}
-			return nil
-		},
-	}
-
-	require.NoError(t, plan.DFSWalk(node, visitor, PreOrderWalk))
+		}
+		return nil
+	}, dag.PreOrderWalk)
 	return res
 }
 
-func sections(t *testing.T, plan *Plan, node Node) [][]int {
+func sections(plan *Plan, node Node) [][]int {
 	res := make([][]int, 0)
-
-	visitor := &nodeCollectVisitor{
-		onVisitScanSet: func(set *ScanSet) error {
-			for _, target := range set.Targets {
+	_ = plan.DFSWalk(node, func(n Node) error {
+		switch node := n.(type) {
+		case *ScanSet:
+			for _, target := range node.Targets {
 				switch target.Type {
 				case ScanTypeDataObject:
 					res = append(res, []int{target.DataObject.Section})
 				}
 			}
-			return nil
-		},
-	}
-
-	require.NoError(t, plan.DFSWalk(node, visitor, PreOrderWalk))
+		}
+		return nil
+	}, dag.PreOrderWalk)
 	return res
 }
 
@@ -202,8 +198,8 @@ func TestPlanner_ConvertMaketable(t *testing.T) {
 			planner.reset()
 			node, err := planner.processMakeTable(relation, NewContext(timeStart, timeEnd))
 			require.NoError(t, err)
-			require.ElementsMatch(t, tt.expPaths, locations(t, planner.plan, node))
-			require.ElementsMatch(t, tt.expSections, sections(t, planner.plan, node))
+			require.ElementsMatch(t, tt.expPaths, locations(planner.plan, node))
+			require.ElementsMatch(t, tt.expSections, sections(planner.plan, node))
 		})
 	}
 }
@@ -376,16 +372,16 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 
 		// Find ParseNode in the plan
 		var parseNode *ParseNode
-		visitor := &nodeCollectVisitor{
-			onVisitParse: func(node *ParseNode) error {
-				parseNode = node
-				return nil
-			},
-		}
 		root, err := physicalPlan.Root()
 		require.NoError(t, err)
-		err = physicalPlan.DFSWalk(root, visitor, PreOrderWalk)
-		require.NoError(t, err)
+		_ = physicalPlan.DFSWalk(root, func(n Node) error {
+			switch node := n.(type) {
+			case *ParseNode:
+				parseNode = node
+			}
+			return nil
+		}, dag.PreOrderWalk)
+
 		require.NotNil(t, parseNode, "ParseNode should exist in the plan")
 
 		require.Equal(t, ParserLogfmt, parseNode.Kind)

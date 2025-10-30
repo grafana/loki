@@ -74,10 +74,6 @@ type Node interface {
 	// Clone creates a deep copy of the Node. Cloned nodes do not retain the
 	// same ID.
 	Clone() Node
-	// Accept allows the object to be visited by a [Visitor] as part of the
-	// visitor pattern. It typically calls back to the appropriate Visit method
-	// on the Visitor for the concrete type being visited.
-	Accept(Visitor) error
 	// isNode is a marker interface to denote a node, and only allows it to be
 	// implemented within this package
 	isNode()
@@ -122,19 +118,6 @@ func (*Parallelize) isNode()       {}
 func (*ScanSet) isNode()           {}
 func (*Join) isNode()              {}
 
-// WalkOrder defines the order for how a node and its children are visited.
-type WalkOrder uint8
-
-const (
-	// PreOrderWalk processes the current vertex before visiting any of its
-	// children.
-	PreOrderWalk WalkOrder = iota
-
-	// PostOrderWalk processes the current vertex after visiting all of its
-	// children.
-	PostOrderWalk
-)
-
 // Plan represents a physical execution plan as a directed acyclic graph (DAG).
 // It maintains the relationships between nodes, tracking parent-child connections
 // and providing methods for graph traversal and manipulation.
@@ -177,7 +160,7 @@ func (p *Plan) Leaves() []Node { return p.graph.Leaves() }
 // DFSWalk performs a depth-first traversal of the plan starting from node n.
 // It applies the visitor v to each node according to the specified walk order.
 // The order parameter determines if nodes are visited before their children
-// ([PreOrderWalk]) or after their children ([PostOrderWalk]).
-func (p *Plan) DFSWalk(n Node, v Visitor, order WalkOrder) error {
-	return p.graph.Walk(n, func(n Node) error { return n.Accept(v) }, dag.WalkOrder(order))
+// ([dag.PreOrderWalk]) or after their children ([dag.PostOrderWalk]).
+func (p *Plan) DFSWalk(n Node, f dag.WalkFunc[Node], order dag.WalkOrder) error {
+	return p.graph.Walk(n, f, order)
 }

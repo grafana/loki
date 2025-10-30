@@ -24,6 +24,3 @@ func (p *Parallelize) Clone() Node {
 
 // Type returns [NodeTypeParallelize].
 func (p *Parallelize) Type() NodeType { return NodeTypeParallelize }
-
-// Accept implements the [Node] interface, dispatching itself to v.
-func (p *Parallelize) Accept(v Visitor) error { return v.VisitParallelize(p) }
