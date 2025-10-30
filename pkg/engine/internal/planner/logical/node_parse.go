@@ -30,8 +30,10 @@ func (p ParserKind) String() string {
 type Parse struct {
 	id string
 
-	Table Value // The table relation to parse from
-	Kind  ParserKind
+	Table     Value      // The table relation to parse from
+	Kind      ParserKind
+	Strict    bool       // Strict mode: fail parsing on first error
+	KeepEmpty bool       // KeepEmpty mode: retain empty values
 }
 
 // Name returns an identifier for the Parse operation.

@@ -8,14 +8,19 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/log/logfmt"
 )
 
-func buildLogfmtColumns(input *array.String, requestedKeys []string) ([]string, []arrow.Array) {
-	return buildColumns(input, requestedKeys, tokenizeLogfmt, types.LogfmtParserErrorType)
+func buildLogfmtColumns(input *array.String, requestedKeys []string, strict bool, keepEmpty bool) ([]string, []arrow.Array) {
+	parseFunc := func(line string, keys []string) (map[string]string, error) {
+		return tokenizeLogfmt(line, keys, strict, keepEmpty)
+	}
+	return buildColumns(input, requestedKeys, parseFunc, types.LogfmtParserErrorType)
 }
 
 // tokenizeLogfmt parses logfmt input using the standard decoder
 // Returns a map of key-value pairs with first-wins semantics for duplicates
 // If requestedKeys is provided, the result will be filtered to only include those keys
-func tokenizeLogfmt(input string, requestedKeys []string) (map[string]string, error) {
+// strict: if true, return empty result and error on first parsing error
+// keepEmpty: if true, retain empty values
+func tokenizeLogfmt(input string, requestedKeys []string, strict bool, keepEmpty bool) (map[string]string, error) {
 	result := make(map[string]string)
 
 	var requestedKeyLookup map[string]struct{}
@@ -36,8 +41,8 @@ func tokenizeLogfmt(input string, requestedKeys []string) (map[string]string, er
 		}
 
 		val := decoder.Value()
-		if len(val) == 0 {
-			// TODO: retain empty values if --keep-empty is set
+		if len(val) == 0 && !keepEmpty {
+			// Skip empty values unless --keep-empty is set
 			continue
 		}
 
@@ -51,6 +56,10 @@ func tokenizeLogfmt(input string, requestedKeys []string) (map[string]string, er
 
 	// Check for parsing errors
 	if err := decoder.Err(); err != nil {
+		if strict {
+			// In strict mode, return empty result on error
+			return make(map[string]string), err
+		}
 		return result, err
 	}
 

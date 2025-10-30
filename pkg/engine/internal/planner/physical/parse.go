@@ -11,6 +11,8 @@ type ParseNode struct {
 	id            string
 	Kind          ParserKind
 	RequestedKeys []string
+	Strict        bool // Strict mode: fail parsing on first error
+	KeepEmpty     bool // KeepEmpty mode: retain empty values
 }
 
 // ParserKind represents the type of parser to use
@@ -46,6 +48,8 @@ func (n *ParseNode) Clone() Node {
 	return &ParseNode{
 		Kind:          n.Kind,
 		RequestedKeys: slices.Clone(n.RequestedKeys),
+		Strict:        n.Strict,
+		KeepEmpty:     n.KeepEmpty,
 	}
 }
 

@@ -270,7 +270,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Shard: logical.NewShard(0, 1),
 			},
 		).Parse(
-			logical.ParserLogfmt,
+			logical.ParserLogfmt, false, false,
 		).Select(
 			&logical.BinOp{
 				Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
@@ -340,7 +340,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Shard: logical.NewShard(0, 1),
 			},
 		).Parse(
-			logical.ParserLogfmt,
+			logical.ParserLogfmt, false, false,
 		).Select(
 			&logical.BinOp{
 				Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),

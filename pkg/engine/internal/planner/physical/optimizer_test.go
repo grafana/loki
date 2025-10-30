@@ -623,7 +623,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 				})
 
 				// Add parse but no filters requiring parsed fields
-				builder = builder.Parse(logical.ParserLogfmt)
+				builder = builder.Parse(logical.ParserLogfmt, false, false)
 				return builder.Value()
 			},
 		},
@@ -643,7 +643,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 				})
 
 				// Don't set RequestedKeys here - optimization should determine them
-				builder = builder.Parse(logical.ParserLogfmt)
+				builder = builder.Parse(logical.ParserLogfmt, false, false)
 
 				// Add filter with ambiguous column
 				filterExpr := &logical.BinOp{
@@ -670,7 +670,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 					Shard: logical.NewShard(0, 1),
 				})
 
-				builder = builder.Parse(logical.ParserLogfmt)
+				builder = builder.Parse(logical.ParserLogfmt, false, false)
 
 				// Add filter on label column (should be skipped)
 				labelFilter := &logical.BinOp{
@@ -714,7 +714,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 					Shard: logical.NewShard(0, 1),
 				})
 
-				builder = builder.Parse(logical.ParserLogfmt)
+				builder = builder.Parse(logical.ParserLogfmt, false, false)
 
 				// Range aggregation with PartitionBy
 				builder = builder.RangeAggregation(
@@ -749,7 +749,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseNodes(t *testing.T) {
 				})
 
 				// Don't set RequestedKeys here - optimization should determine them
-				builder = builder.Parse(logical.ParserLogfmt)
+				builder = builder.Parse(logical.ParserLogfmt, false, false)
 
 				// Add filter with ambiguous column
 				filterExpr := &logical.BinOp{

@@ -39,7 +39,7 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline) *GenericPipelin
 		var parsedColumns []arrow.Array
 		switch parse.Kind {
 		case physical.ParserLogfmt:
-			headers, parsedColumns = buildLogfmtColumns(stringCol, parse.RequestedKeys)
+			headers, parsedColumns = buildLogfmtColumns(stringCol, parse.RequestedKeys, parse.Strict, parse.KeepEmpty)
 		case physical.ParserJSON:
 			headers, parsedColumns = buildJSONColumns(stringCol, parse.RequestedKeys)
 		default:
@@ -163,24 +163,23 @@ func parseLines(input *array.String, requestedKeys []string, columnBuilders map[
 			seenKeys[semconv.ColumnIdentErrorDetails.ShortName()] = struct{}{}
 		}
 
-		// Add values for parsed keys (only if no error)
-		if err == nil {
-			for key, value := range parsed {
-				seenKeys[key] = struct{}{}
-				builder, exists := columnBuilders[key]
-				if !exists {
-					// New column discovered - create and backfill
-					builder = array.NewStringBuilder(memory.DefaultAllocator)
-					columnBuilders[key] = builder
-					columnOrder = append(columnOrder, key)
+		// Add values for parsed keys
+		// In non-strict mode, parsed map contains partial results even when err != nil
+		// In strict mode, parsed map is empty when err != nil
+		for key, value := range parsed {
+			seenKeys[key] = struct{}{}
+			builder, exists := columnBuilders[key]
+			if !exists {
+				// New column discovered - create and backfill
+				builder = array.NewStringBuilder(memory.DefaultAllocator)
+				columnBuilders[key] = builder
+				columnOrder = append(columnOrder, key)
 
-					// Backfill NULLs for previous rows
-					builder.AppendNulls(i)
-				}
-				builder.Append(value)
+				// Backfill NULLs for previous rows
+				builder.AppendNulls(i)
 			}
+			builder.Append(value)
 		}
-		// For error cases, don't mark the failed keys as seen - let them get NULLs below
 
 		// Append NULLs for columns not in this row
 		for _, key := range columnOrder {

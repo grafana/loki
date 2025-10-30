@@ -66,6 +66,8 @@ func buildPlanForLogQuery(
 		predicates          []Value
 		postParsePredicates []Value
 		hasLogfmtParser     bool
+		logfmtStrict        bool
+		logfmtKeepEmpty     bool
 		hasJSONParser       bool
 	)
 
@@ -84,17 +86,9 @@ func buildPlanForLogQuery(
 			// which would lead to multiple predicates of the same expression.
 			return false // do not traverse children
 		case *syntax.LogfmtParserExpr:
-			// TODO: support --strict and --keep-empty
-			if e.Strict {
-				err = errUnimplemented
-				return false
-			}
-			if e.KeepEmpty {
-				err = errUnimplemented
-				return false
-			}
-
 			hasLogfmtParser = true
+			logfmtStrict = e.Strict
+			logfmtKeepEmpty = e.KeepEmpty
 			return true // continue traversing to find label filters
 		case *syntax.LineParserExpr:
 			switch e.Op {
@@ -190,10 +184,10 @@ func buildPlanForLogQuery(
 	// for example, the query `{app="foo"} | json | line_format "{{.nested_json}}" | json ` is valid, and will need
 	// multiple parse stages. We will handle thid in a future PR.
 	if hasLogfmtParser {
-		builder = builder.Parse(ParserLogfmt)
+		builder = builder.Parse(ParserLogfmt, logfmtStrict, logfmtKeepEmpty)
 	}
 	if hasJSONParser {
-		builder = builder.Parse(ParserJSON)
+		builder = builder.Parse(ParserJSON, false, false)
 	}
 	for _, value := range postParsePredicates {
 		builder = builder.Select(value)

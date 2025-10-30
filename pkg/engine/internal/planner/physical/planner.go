@@ -546,7 +546,9 @@ func (p *Planner) processUnaryOp(lp *logical.UnaryOp, ctx *Context) (Node, error
 // A ParseNode initially has an empty list of RequestedKeys which will be populated during optimization.
 func (p *Planner) processParse(lp *logical.Parse, ctx *Context) (Node, error) {
 	var node Node = &ParseNode{
-		Kind: convertParserKind(lp.Kind),
+		Kind:      convertParserKind(lp.Kind),
+		Strict:    lp.Strict,
+		KeepEmpty: lp.KeepEmpty,
 	}
 	p.plan.graph.Add(node)
 

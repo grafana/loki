@@ -39,11 +39,13 @@ func (b *Builder) Limit(skip uint32, fetch uint32) *Builder {
 }
 
 // Parse applies a [Parse] operation to the Builder.
-func (b *Builder) Parse(kind ParserKind) *Builder {
+func (b *Builder) Parse(kind ParserKind, strict bool, keepEmpty bool) *Builder {
 	return &Builder{
 		val: &Parse{
-			Table: b.val,
-			Kind:  kind,
+			Table:     b.val,
+			Kind:      kind,
+			Strict:    strict,
+			KeepEmpty: keepEmpty,
 		},
 	}
 }

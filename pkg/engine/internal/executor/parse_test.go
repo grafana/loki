@@ -24,6 +24,8 @@ func TestNewParsePipeline_logfmt(t *testing.T) {
 		schema         *arrow.Schema
 		input          arrowtest.Rows
 		requestedKeys  []string
+		strict         bool
+		keepEmpty      bool
 		expectedFields int
 		expectedOutput arrowtest.Rows
 	}{
@@ -274,6 +276,108 @@ func TestNewParsePipeline_logfmt(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "keep-empty mode retains empty values",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: "level=info status= method=GET"},
+				{colMsg: "level= status=200"},
+			},
+			requestedKeys:  nil,
+			strict:         false,
+			keepEmpty:      true,
+			expectedFields: 4, // 4 columns: message, level, status, method
+			expectedOutput: arrowtest.Rows{
+				{
+					colMsg:               "level=info status= method=GET",
+					"utf8.parsed.level":  "info",
+					"utf8.parsed.method": "GET",
+					"utf8.parsed.status": "",
+				},
+				{
+					colMsg:               "level= status=200",
+					"utf8.parsed.level":  "",
+					"utf8.parsed.method": nil,
+					"utf8.parsed.status": "200",
+				},
+			},
+		},
+		{
+			name: "non-strict mode (default) preserves partial results on error",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: "level=info status=200"},
+				{colMsg: "level=error msg=test status==invalid"},    // Error after parsing some fields
+				{colMsg: "method=GET level=warn duration=\"broken"}, // Error in middle of parsing
+			},
+			requestedKeys:  nil,
+			strict:         false, // Explicitly non-strict (this is the default)
+			keepEmpty:      false,
+			expectedFields: 7, // 7 columns: message, level, method, msg, status, __error__, __error_details__
+			expectedOutput: arrowtest.Rows{
+				{
+					colMsg:                                "level=info status=200",
+					"utf8.parsed.level":                   "info",
+					"utf8.parsed.method":                  nil,
+					"utf8.parsed.msg":                     nil,
+					"utf8.parsed.status":                  "200",
+					semconv.ColumnIdentError.FQN():        nil,
+					semconv.ColumnIdentErrorDetails.FQN(): nil,
+				},
+				{
+					colMsg:                                "level=error msg=test status==invalid",
+					"utf8.parsed.level":                   "error",
+					"utf8.parsed.method":                  nil,
+					"utf8.parsed.msg":                     "test", // Non-strict: partial results preserved
+					"utf8.parsed.status":                  nil,
+					semconv.ColumnIdentError.FQN():        types.LogfmtParserErrorType,
+					semconv.ColumnIdentErrorDetails.FQN(): "logfmt syntax error at pos 29 : unexpected '='",
+				},
+				{
+					colMsg:                                "method=GET level=warn duration=\"broken",
+					"utf8.parsed.level":                   "warn",
+					"utf8.parsed.method":                  "GET", // Non-strict: partial results preserved
+					"utf8.parsed.msg":                     nil,
+					"utf8.parsed.status":                  nil,
+					semconv.ColumnIdentError.FQN():        types.LogfmtParserErrorType,
+					semconv.ColumnIdentErrorDetails.FQN(): "logfmt syntax error at pos 39 : unterminated quoted value",
+				},
+			},
+		},
+		{
+			name: "strict mode clears all results on error",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: "level=info status=200"},
+				{colMsg: "level=error msg=test status==invalid"}, // Error after parsing some fields
+			},
+			requestedKeys:  nil,
+			strict:         true, // Strict mode
+			keepEmpty:      false,
+			expectedFields: 5, // 5 columns: message, level, status, __error__, __error_details__ (no 'msg' column created in strict mode)
+			expectedOutput: arrowtest.Rows{
+				{
+					colMsg:                                "level=info status=200",
+					"utf8.parsed.level":                   "info",
+					"utf8.parsed.status":                  "200",
+					semconv.ColumnIdentError.FQN():        nil,
+					semconv.ColumnIdentErrorDetails.FQN(): nil,
+				},
+				{
+					colMsg:                                "level=error msg=test status==invalid",
+					"utf8.parsed.level":                   nil, // Strict mode: all values cleared on error
+					"utf8.parsed.status":                  nil, // Strict mode: all values cleared on error
+					semconv.ColumnIdentError.FQN():        types.LogfmtParserErrorType,
+					semconv.ColumnIdentErrorDetails.FQN(): "logfmt syntax error at pos 29 : unexpected '='",
+				},
+			},
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create input data with message column containing logfmt
@@ -286,6 +390,8 @@ func TestNewParsePipeline_logfmt(t *testing.T) {
 			parseNode := &physical.ParseNode{
 				Kind:          physical.ParserLogfmt,
 				RequestedKeys: tt.requestedKeys,
+				Strict:        tt.strict,
+				KeepEmpty:     tt.keepEmpty,
 			}
 
 			pipeline := NewParsePipeline(parseNode, input)
