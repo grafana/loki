@@ -10,7 +10,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -62,7 +62,7 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.Record) (arrow.Re
 	)
 
 	getColumn := func(name string) *labelColumn {
-		ident := semconv.NewIdentifier(name, physicalpb.COLUMN_TYPE_LABEL, types.Loki.String)
+		ident := semconv.NewIdentifier(name, physical.COLUMN_TYPE_LABEL, types.Loki.String)
 
 		if col, ok := labelLookup[ident.FQN()]; ok {
 			return col

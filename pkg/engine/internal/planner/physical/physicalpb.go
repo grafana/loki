@@ -1,5 +1,5 @@
 // Package physicalpb contains the protobuf definitions for physical plan nodes.
-package physicalpb
+package physical
 
 import (
 	"errors"

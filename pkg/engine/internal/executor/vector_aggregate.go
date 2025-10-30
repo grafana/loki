@@ -8,7 +8,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -22,22 +22,22 @@ type vectorAggregationPipeline struct {
 
 	aggregator *aggregator
 	evaluator  expressionEvaluator
-	groupBy    []*physicalpb.ColumnExpression
+	groupBy    []*physical.ColumnExpression
 
 	tsEval    evalFunc // used to evaluate the timestamp column
 	valueEval evalFunc // used to evaluate the value column
 }
 
 var (
-	vectorAggregationOperations = map[physicalpb.AggregateVectorOp]aggregationOperation{
-		physicalpb.AGGREGATE_VECTOR_OP_SUM:   aggregationOperationSum,
-		physicalpb.AGGREGATE_VECTOR_OP_COUNT: aggregationOperationCount,
-		physicalpb.AGGREGATE_VECTOR_OP_MAX:   aggregationOperationMax,
-		physicalpb.AGGREGATE_VECTOR_OP_MIN:   aggregationOperationMin,
+	vectorAggregationOperations = map[physical.AggregateVectorOp]aggregationOperation{
+		physical.AGGREGATE_VECTOR_OP_SUM:   aggregationOperationSum,
+		physical.AGGREGATE_VECTOR_OP_COUNT: aggregationOperationCount,
+		physical.AGGREGATE_VECTOR_OP_MAX:   aggregationOperationMax,
+		physical.AGGREGATE_VECTOR_OP_MIN:   aggregationOperationMin,
 	}
 )
 
-func newVectorAggregationPipeline(inputs []Pipeline, groupBy []*physicalpb.ColumnExpression, evaluator expressionEvaluator, operation physicalpb.AggregateVectorOp) (*vectorAggregationPipeline, error) {
+func newVectorAggregationPipeline(inputs []Pipeline, groupBy []*physical.ColumnExpression, evaluator expressionEvaluator, operation physical.AggregateVectorOp) (*vectorAggregationPipeline, error) {
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("vector aggregation expects at least one input")
 	}
@@ -52,13 +52,13 @@ func newVectorAggregationPipeline(inputs []Pipeline, groupBy []*physicalpb.Colum
 		evaluator:  evaluator,
 		groupBy:    groupBy,
 		aggregator: newAggregator(groupBy, 0, op),
-		tsEval: evaluator.newFunc(*(&physicalpb.ColumnExpression{
+		tsEval: evaluator.newFunc(*(&physical.ColumnExpression{
 			Name: types.ColumnNameBuiltinTimestamp,
-			Type: physicalpb.COLUMN_TYPE_BUILTIN,
+			Type: physical.COLUMN_TYPE_BUILTIN,
 		}).ToExpression()),
-		valueEval: evaluator.newFunc(*(&physicalpb.ColumnExpression{
+		valueEval: evaluator.newFunc(*(&physical.ColumnExpression{
 			Name: types.ColumnNameGeneratedValue,
-			Type: physicalpb.COLUMN_TYPE_GENERATED,
+			Type: physical.COLUMN_TYPE_GENERATED,
 		}).ToExpression()),
 	}, nil
 }

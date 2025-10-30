@@ -7,7 +7,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -17,7 +17,7 @@ type topkOptions struct {
 	Inputs []Pipeline
 
 	// SortBy is the list of columns to sort by, in order of precedence.
-	SortBy     []*physicalpb.ColumnExpression
+	SortBy     []*physical.ColumnExpression
 	Ascending  bool  // Sorts lines in ascending order if true.
 	NullsFirst bool  // When true, considers NULLs < non-NULLs when sorting.
 	K          int64 // Number of top rows to compute.
@@ -61,7 +61,7 @@ func newTopkPipeline(opts topkOptions) (*topkPipeline, error) {
 	}, nil
 }
 
-func exprsToFields(exprs []*physicalpb.ColumnExpression) ([]arrow.Field, error) {
+func exprsToFields(exprs []*physical.ColumnExpression) ([]arrow.Field, error) {
 	fields := make([]arrow.Field, 0, len(exprs))
 	for _, expr := range exprs {
 		dt, err := guessLokiType(expr)
@@ -75,9 +75,9 @@ func exprsToFields(exprs []*physicalpb.ColumnExpression) ([]arrow.Field, error) 
 	return fields, nil
 }
 
-func guessLokiType(expr *physicalpb.ColumnExpression) (types.DataType, error) {
+func guessLokiType(expr *physical.ColumnExpression) (types.DataType, error) {
 	switch expr.Type {
-	case physicalpb.COLUMN_TYPE_BUILTIN:
+	case physical.COLUMN_TYPE_BUILTIN:
 		switch expr.Name {
 		case types.ColumnNameBuiltinTimestamp:
 			return types.Loki.Timestamp, nil
@@ -86,9 +86,9 @@ func guessLokiType(expr *physicalpb.ColumnExpression) (types.DataType, error) {
 		default:
 			panic(fmt.Sprintf("unsupported builtin column type %s", expr))
 		}
-	case physicalpb.COLUMN_TYPE_GENERATED:
+	case physical.COLUMN_TYPE_GENERATED:
 		return types.Loki.Float, nil
-	case physicalpb.COLUMN_TYPE_AMBIGUOUS:
+	case physical.COLUMN_TYPE_AMBIGUOUS:
 		// TODO(rfratto): It's not clear how topk should sort when there's an
 		// ambiguous column reference, since ambiguous column references can
 		// refer to multiple columns.

@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
@@ -31,16 +30,16 @@ func TestNewProjectPipeline(t *testing.T) {
 		inputPipeline := NewBufferedPipeline(inputRecord)
 
 		// Create projection columns (just the "name" column)
-		columns := []*physicalpb.Expression{
-			(&physicalpb.ColumnExpression{
+		columns := []*physical.Expression{
+			(&physical.ColumnExpression{
 				Name: "name",
-				Type: physicalpb.COLUMN_TYPE_BUILTIN,
+				Type: physical.COLUMN_TYPE_BUILTIN,
 			}).ToExpression(),
 		}
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physicalpb.Projection{Expressions: columns}, &e)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e)
 		require.NoError(t, err)
 
 		// Create expected output
@@ -67,20 +66,20 @@ func TestNewProjectPipeline(t *testing.T) {
 		inputPipeline := NewBufferedPipeline(inputRecord)
 
 		// Create projection columns (both "name" and "city" columns)
-		columns := []*physicalpb.Expression{
-			(&physicalpb.ColumnExpression{
+		columns := []*physical.Expression{
+			(&physical.ColumnExpression{
 				Name: "name",
-				Type: physicalpb.COLUMN_TYPE_BUILTIN,
+				Type: physical.COLUMN_TYPE_BUILTIN,
 			}).ToExpression(),
-			(&physicalpb.ColumnExpression{
+			(&physical.ColumnExpression{
 				Name: "city",
-				Type: physicalpb.COLUMN_TYPE_BUILTIN,
+				Type: physical.COLUMN_TYPE_BUILTIN,
 			}).ToExpression(),
 		}
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physicalpb.Projection{Expressions: columns}, &e)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e)
 		require.NoError(t, err)
 
 		// Create expected output
@@ -113,20 +112,20 @@ func TestNewProjectPipeline(t *testing.T) {
 		inputPipeline := NewBufferedPipeline(inputRecord1, inputRecord2)
 
 		// Create projection columns
-		columns := []*physicalpb.Expression{
-			(&physicalpb.ColumnExpression{
+		columns := []*physical.Expression{
+			(&physical.ColumnExpression{
 				Name: "name",
-				Type: physicalpb.COLUMN_TYPE_BUILTIN,
+				Type: physical.COLUMN_TYPE_BUILTIN,
 			}).ToExpression(),
-			(&physicalpb.ColumnExpression{
+			(&physical.ColumnExpression{
 				Name: "age",
-				Type: physicalpb.COLUMN_TYPE_BUILTIN,
+				Type: physical.COLUMN_TYPE_BUILTIN,
 			}).ToExpression(),
 		}
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physicalpb.Projection{Expressions: columns}, &e)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e)
 		require.NoError(t, err)
 
 		// Create expected output also split across multiple records
@@ -167,13 +166,13 @@ Dave,40
 
 		for _, tc := range []struct {
 			name           string
-			columns        []*physicalpb.Expression
+			columns        []*physical.Expression
 			expectedFields []arrow.Field
 		}{
 			{
 				name: "single column",
-				columns: []*physicalpb.Expression{
-					(&physicalpb.ColumnExpression{Name: "service", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
+				columns: []*physical.Expression{
+					(&physical.ColumnExpression{Name: "service", Type: physical.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
 				},
 				expectedFields: []arrow.Field{
 					semconv.FieldFromFQN("int64.metadata.count", false),
@@ -182,8 +181,8 @@ Dave,40
 			},
 			{
 				name: "single ambiguous column",
-				columns: []*physicalpb.Expression{
-					(&physicalpb.ColumnExpression{Name: "count", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
+				columns: []*physical.Expression{
+					(&physical.ColumnExpression{Name: "count", Type: physical.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
 				},
 				expectedFields: []arrow.Field{
 					semconv.FieldFromFQN("utf8.builtin.service", false),
@@ -191,8 +190,8 @@ Dave,40
 			},
 			{
 				name: "single non-ambiguous column",
-				columns: []*physicalpb.Expression{
-					(&physicalpb.ColumnExpression{Name: "count", Type: physicalpb.COLUMN_TYPE_METADATA}).ToExpression(),
+				columns: []*physical.Expression{
+					(&physical.ColumnExpression{Name: "count", Type: physical.COLUMN_TYPE_METADATA}).ToExpression(),
 				},
 				expectedFields: []arrow.Field{
 					semconv.FieldFromFQN("utf8.builtin.service", false),
@@ -201,9 +200,9 @@ Dave,40
 			},
 			{
 				name: "multiple columns",
-				columns: []*physicalpb.Expression{
-					(&physicalpb.ColumnExpression{Name: "service", Type: physicalpb.COLUMN_TYPE_BUILTIN}).ToExpression(),
-					(&physicalpb.ColumnExpression{Name: "count", Type: physicalpb.COLUMN_TYPE_PARSED}).ToExpression(),
+				columns: []*physical.Expression{
+					(&physical.ColumnExpression{Name: "service", Type: physical.COLUMN_TYPE_BUILTIN}).ToExpression(),
+					(&physical.ColumnExpression{Name: "count", Type: physical.COLUMN_TYPE_PARSED}).ToExpression(),
 				},
 				expectedFields: []arrow.Field{
 					semconv.FieldFromFQN("int64.metadata.count", false),
@@ -211,8 +210,8 @@ Dave,40
 			},
 			{
 				name: "non existent columns",
-				columns: []*physicalpb.Expression{
-					(&physicalpb.ColumnExpression{Name: "__error__", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
+				columns: []*physical.Expression{
+					(&physical.ColumnExpression{Name: "__error__", Type: physical.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
 				},
 				expectedFields: []arrow.Field{
 					semconv.FieldFromFQN("utf8.builtin.service", false),
@@ -226,7 +225,7 @@ Dave,40
 				input := NewArrowtestPipeline(schema, rows)
 
 				// Create project pipeline
-				proj := &physicalpb.Projection{
+				proj := &physical.Projection{
 					Expressions: tc.columns,
 					All:         true,
 					Drop:        true,
@@ -252,7 +251,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 		name           string
 		schema         *arrow.Schema
 		input          arrowtest.Rows
-		columnExprs    []*physicalpb.Expression
+		columnExprs    []*physical.Expression
 		expectedFields int
 		expectedOutput arrowtest.Rows
 	}{
@@ -268,10 +267,10 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 				{"utf8.builtin.message": "slow request", "utf8.metadata.status_code": "200", "utf8.label.response_time": "500"},
 				{"utf8.builtin.message": "error occurred", "utf8.metadata.status_code": "500", "utf8.label.response_time": "100"},
 			},
-			columnExprs: []*physicalpb.Expression{
-				(&physicalpb.UnaryExpression{
-					Op:    physicalpb.UNARY_OP_CAST_FLOAT,
-					Value: (&physicalpb.ColumnExpression{Name: "response_time", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
+			columnExprs: []*physical.Expression{
+				(&physical.UnaryExpression{
+					Op:    physical.UNARY_OP_CAST_FLOAT,
+					Value: (&physical.ColumnExpression{Name: "response_time", Type: physical.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
 				}).ToExpression(),
 			},
 			expectedFields: 4, // 4 columns: message, status_code, response_time, value
@@ -292,10 +291,10 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 				{"utf8.builtin.message": "large upload", "utf8.parsed.data_size": "5MiB"},
 				{"utf8.builtin.message": "small file", "utf8.parsed.data_size": "512B"},
 			},
-			columnExprs: []*physicalpb.Expression{
-				(&physicalpb.UnaryExpression{
-					Op:    physicalpb.UNARY_OP_CAST_BYTES,
-					Value: (&physicalpb.ColumnExpression{Name: "data_size", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
+			columnExprs: []*physical.Expression{
+				(&physical.UnaryExpression{
+					Op:    physical.UNARY_OP_CAST_BYTES,
+					Value: (&physical.ColumnExpression{Name: "data_size", Type: physical.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
 				}).ToExpression(),
 			},
 			expectedFields: 3, // 4 columns: message, data_size, value
@@ -317,10 +316,10 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 				{"utf8.builtin.message": "fast request", "utf8.metadata.status_code": "200", "utf8.parsed.request_duration": "250ms"},
 				{"utf8.builtin.message": "slow request", "utf8.metadata.status_code": "500", "utf8.parsed.request_duration": "30s"},
 			},
-			columnExprs: []*physicalpb.Expression{
-				(&physicalpb.UnaryExpression{
-					Op:    physicalpb.UNARY_OP_CAST_DURATION,
-					Value: (&physicalpb.ColumnExpression{Name: "request_duration", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
+			columnExprs: []*physical.Expression{
+				(&physical.UnaryExpression{
+					Op:    physical.UNARY_OP_CAST_DURATION,
+					Value: (&physical.ColumnExpression{Name: "request_duration", Type: physical.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
 				}).ToExpression(),
 			},
 			expectedFields: 4, // 4 columns: message, status_code, request_duration, value
@@ -342,10 +341,10 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 				{"utf8.builtin.message": "short timeout", "utf8.metadata.status_code": "200", "utf8.parsed.timeout": "10s"},
 				{"utf8.builtin.message": "long timeout", "utf8.metadata.status_code": "200", "utf8.parsed.timeout": "1h"},
 			},
-			columnExprs: []*physicalpb.Expression{
-				(&physicalpb.UnaryExpression{
-					Op:    physicalpb.UNARY_OP_CAST_DURATION,
-					Value: (&physicalpb.ColumnExpression{Name: "timeout", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
+			columnExprs: []*physical.Expression{
+				(&physical.UnaryExpression{
+					Op:    physical.UNARY_OP_CAST_DURATION,
+					Value: (&physical.ColumnExpression{Name: "timeout", Type: physical.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
 				}).ToExpression(),
 			},
 			expectedFields: 4, // 4 columns: message, status_code, timeout, value
@@ -368,10 +367,10 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 				{"utf8.builtin.message": "invalid bytes", "utf8.parsed.mixed_values": "invalid_bytes"},
 				{"utf8.builtin.message": "empty string", "utf8.parsed.mixed_values": ""},
 			},
-			columnExprs: []*physicalpb.Expression{
-				(&physicalpb.UnaryExpression{
-					Op:    physicalpb.UNARY_OP_CAST_FLOAT,
-					Value: (&physicalpb.ColumnExpression{Name: "mixed_values", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
+			columnExprs: []*physical.Expression{
+				(&physical.UnaryExpression{
+					Op:    physical.UNARY_OP_CAST_FLOAT,
+					Value: (&physical.ColumnExpression{Name: "mixed_values", Type: physical.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
 				}).ToExpression(),
 			},
 			expectedFields: 5,
@@ -410,10 +409,10 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 				{"utf8.builtin.message": "only whitespace", "utf8.parsed.edge_values": "   "},
 				{"utf8.builtin.message": "mixed text and numbers", "utf8.parsed.edge_values": "123abc"},
 			},
-			columnExprs: []*physicalpb.Expression{
-				(&physicalpb.UnaryExpression{
-					Op:    physicalpb.UNARY_OP_CAST_FLOAT,
-					Value: (&physicalpb.ColumnExpression{Name: "edge_values", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
+			columnExprs: []*physical.Expression{
+				(&physical.UnaryExpression{
+					Op:    physical.UNARY_OP_CAST_FLOAT,
+					Value: (&physical.ColumnExpression{Name: "edge_values", Type: physical.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
 				}).ToExpression(),
 			},
 			expectedFields: 5,
@@ -451,10 +450,10 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 				{"utf8.builtin.message": "fractional duration", "utf8.parsed.duration_values": "1.5s"},
 				{"utf8.builtin.message": "invalid duration", "utf8.parsed.duration_values": "5 seconds"}, // space makes it invalid
 			},
-			columnExprs: []*physicalpb.Expression{
-				(&physicalpb.UnaryExpression{
-					Op:    physicalpb.UNARY_OP_CAST_DURATION,
-					Value: (&physicalpb.ColumnExpression{Name: "duration_values", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
+			columnExprs: []*physical.Expression{
+				(&physical.UnaryExpression{
+					Op:    physical.UNARY_OP_CAST_DURATION,
+					Value: (&physical.ColumnExpression{Name: "duration_values", Type: physical.COLUMN_TYPE_AMBIGUOUS}).ToExpression(),
 				}).ToExpression(),
 			},
 			expectedFields: 5,
@@ -492,7 +491,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 			e := newExpressionEvaluator()
 			pipeline, err := NewProjectPipeline(
 				input,
-				&physicalpb.Projection{
+				&physical.Projection{
 					Expressions: tt.columnExprs,
 					Expand:      true,
 					All:         true,
@@ -543,15 +542,15 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 		input1 := NewArrowtestPipeline(schema, rowsPipeline1...)
 
 		// value / 10
-		projection := &physicalpb.Projection{
-			Expressions: []*physicalpb.Expression{
-				(&physicalpb.BinaryExpression{
-					Left: (&physicalpb.ColumnExpression{
+		projection := &physical.Projection{
+			Expressions: []*physical.Expression{
+				(&physical.BinaryExpression{
+					Left: (&physical.ColumnExpression{
 						Name: types.ColumnNameGeneratedValue,
-						Type: physicalpb.COLUMN_TYPE_GENERATED,
+						Type: physical.COLUMN_TYPE_GENERATED,
 					}).ToExpression(),
 					Right: physical.NewLiteral(float64(10)).ToExpression(),
-					Op:    physicalpb.BINARY_OP_DIV,
+					Op:    physical.BINARY_OP_DIV,
 				}).ToExpression(),
 			},
 			All:    true,
@@ -603,23 +602,23 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 		input1 := NewArrowtestPipeline(schema, rowsPipeline1...)
 
 		// value * 10 + 100 / 10
-		projection := &physicalpb.Projection{
-			Expressions: []*physicalpb.Expression{
-				(&physicalpb.BinaryExpression{
-					Left: (&physicalpb.BinaryExpression{
-						Left: (&physicalpb.ColumnExpression{
+		projection := &physical.Projection{
+			Expressions: []*physical.Expression{
+				(&physical.BinaryExpression{
+					Left: (&physical.BinaryExpression{
+						Left: (&physical.ColumnExpression{
 							Name: types.ColumnNameGeneratedValue,
-							Type: physicalpb.COLUMN_TYPE_GENERATED,
+							Type: physical.COLUMN_TYPE_GENERATED,
 						}).ToExpression(),
 						Right: physical.NewLiteral(float64(10)).ToExpression(),
-						Op:    physicalpb.BINARY_OP_MUL,
+						Op:    physical.BINARY_OP_MUL,
 					}).ToExpression(),
-					Right: (&physicalpb.BinaryExpression{
+					Right: (&physical.BinaryExpression{
 						Left:  physical.NewLiteral(float64(100)).ToExpression(),
 						Right: physical.NewLiteral(float64(10)).ToExpression(),
-						Op:    physicalpb.BINARY_OP_DIV,
+						Op:    physical.BINARY_OP_DIV,
 					}).ToExpression(),
-					Op: physicalpb.BINARY_OP_ADD,
+					Op: physical.BINARY_OP_ADD,
 				}).ToExpression(),
 			},
 			All:    true,
@@ -674,18 +673,18 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 		input1 := NewArrowtestPipeline(schema, rowsPipeline1...)
 
 		// value_left / value_right
-		projection := &physicalpb.Projection{
-			Expressions: []*physicalpb.Expression{
-				(&physicalpb.BinaryExpression{
-					Left: (&physicalpb.ColumnExpression{
+		projection := &physical.Projection{
+			Expressions: []*physical.Expression{
+				(&physical.BinaryExpression{
+					Left: (&physical.ColumnExpression{
 						Name: "value_left",
-						Type: physicalpb.COLUMN_TYPE_GENERATED,
+						Type: physical.COLUMN_TYPE_GENERATED,
 					}).ToExpression(),
-					Right: (&physicalpb.ColumnExpression{
+					Right: (&physical.ColumnExpression{
 						Name: "value_right",
-						Type: physicalpb.COLUMN_TYPE_GENERATED,
+						Type: physical.COLUMN_TYPE_GENERATED,
 					}).ToExpression(),
-					Op: physicalpb.BINARY_OP_DIV,
+					Op: physical.BINARY_OP_DIV,
 				}).ToExpression(),
 			},
 			All:    true,

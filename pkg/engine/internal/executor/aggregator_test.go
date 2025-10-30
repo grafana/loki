@@ -6,21 +6,21 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
 var (
-	groupBy = []*physicalpb.ColumnExpression{
+	groupBy = []*physical.ColumnExpression{
 		{
 			Name: "env",
-			Type: physicalpb.COLUMN_TYPE_LABEL,
+			Type: physical.COLUMN_TYPE_LABEL,
 		},
 		{
 			Name: "service",
-			Type: physicalpb.COLUMN_TYPE_LABEL,
+			Type: physical.COLUMN_TYPE_LABEL,
 		},
 	}
 )
@@ -28,8 +28,8 @@ var (
 func TestAggregator(t *testing.T) {
 	colTs := semconv.ColumnIdentTimestamp.FQN()
 	colVal := semconv.ColumnIdentValue.FQN()
-	colEnv := semconv.NewIdentifier("env", physicalpb.COLUMN_TYPE_LABEL, types.Loki.String).FQN()
-	colSvc := semconv.NewIdentifier("service", physicalpb.COLUMN_TYPE_LABEL, types.Loki.String).FQN()
+	colEnv := semconv.NewIdentifier("env", physical.COLUMN_TYPE_LABEL, types.Loki.String).FQN()
+	colSvc := semconv.NewIdentifier("service", physical.COLUMN_TYPE_LABEL, types.Loki.String).FQN()
 
 	t.Run("basic SUM aggregation with record building", func(t *testing.T) {
 		agg := newAggregator(groupBy, 10, aggregationOperationSum)
@@ -206,7 +206,7 @@ func TestAggregator(t *testing.T) {
 
 	t.Run("SUM aggregation with empty groupBy", func(t *testing.T) {
 		// Empty groupBy represents sum by () or sum(...) - all values aggregated into single group
-		groupBy := []*physicalpb.ColumnExpression{}
+		groupBy := []*physical.ColumnExpression{}
 
 		agg := newAggregator(groupBy, 1, aggregationOperationSum)
 

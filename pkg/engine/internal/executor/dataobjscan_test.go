@@ -7,13 +7,13 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/dataobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/consumer/logsobj"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/logproto"
 
@@ -108,9 +108,9 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 			StreamsSection: streamsSection,
 			LogsSection:    logsSection,
 			StreamIDs:      []int64{1, 2}, // All streams
-			Projections: []*physicalpb.ColumnExpression{
-				{Name: "env", Type: physicalpb.COLUMN_TYPE_LABEL},
-				{Name: "timestamp", Type: physicalpb.COLUMN_TYPE_BUILTIN},
+			Projections: []*physical.ColumnExpression{
+				{Name: "env", Type: physical.COLUMN_TYPE_LABEL},
+				{Name: "timestamp", Type: physical.COLUMN_TYPE_BUILTIN},
 			},
 
 			BatchSize: 512,
@@ -167,8 +167,8 @@ prod,notloki,NULL,notloki-pod-1,1970-01-01 00:00:02,hello world`
 			StreamsSection: streamsSection,
 			LogsSection:    logsSection,
 			StreamIDs:      []int64{1, 2}, // All streams
-			Projections: []*physicalpb.ColumnExpression{
-				{Name: "env", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS},
+			Projections: []*physical.ColumnExpression{
+				{Name: "env", Type: physical.COLUMN_TYPE_AMBIGUOUS},
 			},
 			BatchSize: 512,
 		}, log.NewNopLogger())
@@ -280,8 +280,8 @@ prod,NULL,pod-1,loki,NULL,override,1970-01-01 00:00:01,message 1`
 			StreamsSection: streamsSection,
 			LogsSection:    logsSection,
 			StreamIDs:      []int64{1, 2, 3}, // All streams
-			Projections: []*physicalpb.ColumnExpression{
-				{Name: "pod", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS},
+			Projections: []*physical.ColumnExpression{
+				{Name: "pod", Type: physical.COLUMN_TYPE_AMBIGUOUS},
 			},
 			BatchSize: 512,
 		}, log.NewNopLogger())
@@ -306,8 +306,8 @@ pod-1,override`
 			StreamsSection: streamsSection,
 			LogsSection:    logsSection,
 			StreamIDs:      []int64{1, 2, 3}, // All streams
-			Projections: []*physicalpb.ColumnExpression{
-				{Name: "namespace", Type: physicalpb.COLUMN_TYPE_AMBIGUOUS},
+			Projections: []*physical.ColumnExpression{
+				{Name: "namespace", Type: physical.COLUMN_TYPE_AMBIGUOUS},
 			},
 			BatchSize: 512,
 		}, log.NewNopLogger())

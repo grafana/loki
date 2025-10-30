@@ -16,7 +16,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -24,9 +24,9 @@ import (
 type dataobjScanOptions struct {
 	StreamsSection *streams.Section
 	LogsSection    *logs.Section
-	StreamIDs      []int64                        // Stream IDs to match from logs sections.
-	Predicates     []logs.Predicate               // Predicate to apply to the logs.
-	Projections    []*physicalpb.ColumnExpression // Columns to include. An empty slice means all columns.
+	StreamIDs      []int64                      // Stream IDs to match from logs sections.
+	Predicates     []logs.Predicate             // Predicate to apply to the logs.
+	Projections    []*physical.ColumnExpression // Columns to include. An empty slice means all columns.
 
 	BatchSize int64 // The buffer size for reading rows, derived from the engine batch size.
 }
@@ -115,7 +115,7 @@ func (s *dataobjScan) initStreams() error {
 // If projections is non-empty but contains no references to labels or
 // ambiguous columns, projectedLabelColumns returns nil to indicate that no
 // label columns are needed.
-func projectedLabelColumns(sec *streams.Section, projections []*physicalpb.ColumnExpression) []*streams.Column {
+func projectedLabelColumns(sec *streams.Section, projections []*physical.ColumnExpression) []*streams.Column {
 	var found []*streams.Column
 
 	// Special case: if projections is empty, we return all label columns. While
@@ -136,7 +136,7 @@ func projectedLabelColumns(sec *streams.Section, projections []*physicalpb.Colum
 	for _, projection := range projections {
 		// We're loading the sterams section for joining stream labels into
 		// records, so we only need to consider label and ambiguous columns here.
-		if projection.Type != physicalpb.COLUMN_TYPE_LABEL && projection.Type != physicalpb.COLUMN_TYPE_AMBIGUOUS {
+		if projection.Type != physical.COLUMN_TYPE_LABEL && projection.Type != physical.COLUMN_TYPE_AMBIGUOUS {
 			continue
 		}
 
@@ -245,7 +245,7 @@ func logsColumnToEngineField(col *logs.Column) (arrow.Field, error) {
 		return semconv.FieldFromIdent(semconv.ColumnIdentMessage, true), nil
 
 	case logs.ColumnTypeMetadata:
-		return semconv.FieldFromIdent(semconv.NewIdentifier(col.Name, physicalpb.COLUMN_TYPE_METADATA, types.Loki.String), true), nil
+		return semconv.FieldFromIdent(semconv.NewIdentifier(col.Name, physical.COLUMN_TYPE_METADATA, types.Loki.String), true), nil
 	}
 
 	return arrow.Field{}, fmt.Errorf("unsupported logs column type %s", col.Type)
@@ -269,7 +269,7 @@ var logsColumnPrecedence = map[logs.ColumnType]int{
 //
 // projectedLogsColumns never includes the stream ID column in its results, as
 // projections can never reference a stream ID column.
-func projectedLogsColumns(sec *logs.Section, projections []*physicalpb.ColumnExpression) []*logs.Column {
+func projectedLogsColumns(sec *logs.Section, projections []*physical.ColumnExpression) []*logs.Column {
 	var found []*logs.Column
 
 	defer func() {
@@ -306,25 +306,25 @@ NextProjection:
 
 		// Ignore columns that cannot exist in the logs section.
 		switch projection.Type {
-		case physicalpb.COLUMN_TYPE_LABEL, physicalpb.COLUMN_TYPE_PARSED, physicalpb.COLUMN_TYPE_GENERATED:
+		case physical.COLUMN_TYPE_LABEL, physical.COLUMN_TYPE_PARSED, physical.COLUMN_TYPE_GENERATED:
 			continue NextProjection
 		}
 
 		for _, col := range sec.Columns() {
 			switch {
-			case projection.Type == physicalpb.COLUMN_TYPE_BUILTIN && projection.Name == types.ColumnNameBuiltinTimestamp && col.Type == logs.ColumnTypeTimestamp:
+			case projection.Type == physical.COLUMN_TYPE_BUILTIN && projection.Name == types.ColumnNameBuiltinTimestamp && col.Type == logs.ColumnTypeTimestamp:
 				found = append(found, col)
 				continue NextProjection
 
-			case projection.Type == physicalpb.COLUMN_TYPE_BUILTIN && projection.Name == types.ColumnNameBuiltinMessage && col.Type == logs.ColumnTypeMessage:
+			case projection.Type == physical.COLUMN_TYPE_BUILTIN && projection.Name == types.ColumnNameBuiltinMessage && col.Type == logs.ColumnTypeMessage:
 				found = append(found, col)
 				continue NextProjection
 
-			case projection.Type == physicalpb.COLUMN_TYPE_METADATA && col.Type == logs.ColumnTypeMetadata && col.Name == projection.Name:
+			case projection.Type == physical.COLUMN_TYPE_METADATA && col.Type == logs.ColumnTypeMetadata && col.Name == projection.Name:
 				found = append(found, col)
 				continue NextProjection
 
-			case projection.Type == physicalpb.COLUMN_TYPE_AMBIGUOUS && col.Type == logs.ColumnTypeMetadata && col.Name == projection.Name:
+			case projection.Type == physical.COLUMN_TYPE_AMBIGUOUS && col.Type == logs.ColumnTypeMetadata && col.Name == projection.Name:
 				found = append(found, col)
 				continue NextProjection
 			}

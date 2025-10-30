@@ -7,7 +7,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
 
@@ -215,21 +215,21 @@ var (
 	_ TypedLiteral[Bytes]     = (*BytesLiteral)(nil)
 )
 
-func NewLiteralFromKind(value physicalpb.LiteralExpression) Literal {
+func NewLiteralFromKind(value physical.LiteralExpression) Literal {
 	switch kind := value.Kind.(type) {
-	case *physicalpb.LiteralExpression_BoolLiteral:
+	case *physical.LiteralExpression_BoolLiteral:
 		return BoolLiteral(kind.BoolLiteral.Value)
-	case *physicalpb.LiteralExpression_StringLiteral:
+	case *physical.LiteralExpression_StringLiteral:
 		return StringLiteral(kind.StringLiteral.Value)
-	case *physicalpb.LiteralExpression_IntegerLiteral:
+	case *physical.LiteralExpression_IntegerLiteral:
 		return IntegerLiteral(kind.IntegerLiteral.Value)
-	case *physicalpb.LiteralExpression_FloatLiteral:
+	case *physical.LiteralExpression_FloatLiteral:
 		return FloatLiteral(kind.FloatLiteral.Value)
-	case *physicalpb.LiteralExpression_TimestampLiteral:
+	case *physical.LiteralExpression_TimestampLiteral:
 		return TimestampLiteral(kind.TimestampLiteral.Value)
-	case *physicalpb.LiteralExpression_DurationLiteral:
+	case *physical.LiteralExpression_DurationLiteral:
 		return DurationLiteral(kind.DurationLiteral.Value)
-	case *physicalpb.LiteralExpression_BytesLiteral:
+	case *physical.LiteralExpression_BytesLiteral:
 		return BytesLiteral(kind.BytesLiteral.Value)
 	}
 	panic(fmt.Sprintf("invalid literal value type %T", value.Kind))
@@ -237,35 +237,35 @@ func NewLiteralFromKind(value physicalpb.LiteralExpression) Literal {
 
 func NewLiteral[T LiteralType](value T) Literal {
 	switch val := any(value).(type) {
-	case *physicalpb.LiteralExpression_BoolLiteral:
+	case *physical.LiteralExpression_BoolLiteral:
 		return BoolLiteral(val.BoolLiteral.Value)
 	case bool:
 		return BoolLiteral(val)
-	case *physicalpb.LiteralExpression_StringLiteral:
+	case *physical.LiteralExpression_StringLiteral:
 		return StringLiteral(val.StringLiteral.Value)
 	case string:
 		return StringLiteral(val)
-	case *physicalpb.LiteralExpression_IntegerLiteral:
+	case *physical.LiteralExpression_IntegerLiteral:
 		return IntegerLiteral(val.IntegerLiteral.Value)
 	case int64:
 		return IntegerLiteral(val)
-	case *physicalpb.LiteralExpression_FloatLiteral:
+	case *physical.LiteralExpression_FloatLiteral:
 		return FloatLiteral(val.FloatLiteral.Value)
 	case float64:
 		return FloatLiteral(val)
-	case *physicalpb.LiteralExpression_TimestampLiteral:
+	case *physical.LiteralExpression_TimestampLiteral:
 		return TimestampLiteral(val.TimestampLiteral.Value)
 	case Timestamp:
 		return TimestampLiteral(val)
-	case *physicalpb.LiteralExpression_DurationLiteral:
+	case *physical.LiteralExpression_DurationLiteral:
 		return DurationLiteral(val.DurationLiteral.Value)
 	case Duration:
 		return DurationLiteral(val)
-	case *physicalpb.LiteralExpression_BytesLiteral:
+	case *physical.LiteralExpression_BytesLiteral:
 		return BytesLiteral(val.BytesLiteral.Value)
 	case Bytes:
 		return BytesLiteral(val)
-	case *physicalpb.LiteralExpression_NullLiteral:
+	case *physical.LiteralExpression_NullLiteral:
 		return NewNullLiteral()
 	case nil:
 		return NewNullLiteral()

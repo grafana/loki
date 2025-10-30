@@ -8,7 +8,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
@@ -55,20 +55,20 @@ func TestRangeAggregationPipeline_instant(t *testing.T) {
 	}
 
 	opts := rangeAggregationOptions{
-		partitionBy: []*physicalpb.ColumnExpression{
+		partitionBy: []*physical.ColumnExpression{
 			{
 				Name: "env",
-				Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
+				Type: physical.COLUMN_TYPE_AMBIGUOUS,
 			},
 			{
 				Name: "service",
-				Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
+				Type: physical.COLUMN_TYPE_AMBIGUOUS,
 			},
 		},
 		startTs:       time.Unix(20, 0).UTC(),
 		endTs:         time.Unix(20, 0).UTC(),
 		rangeInterval: 10 * time.Second,
-		operation:     physicalpb.AGGREGATE_RANGE_OP_COUNT,
+		operation:     physical.AGGREGATE_RANGE_OP_COUNT,
 	}
 
 	inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
@@ -133,14 +133,14 @@ func TestRangeAggregationPipeline(t *testing.T) {
 		}}
 	)
 
-	partitionBy := []*physicalpb.ColumnExpression{
+	partitionBy := []*physical.ColumnExpression{
 		{
 			Name: "env",
-			Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
+			Type: physical.COLUMN_TYPE_AMBIGUOUS,
 		},
 		{
 			Name: "service",
-			Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
+			Type: physical.COLUMN_TYPE_AMBIGUOUS,
 		},
 	}
 
@@ -151,7 +151,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 			endTs:         time.Unix(40, 0),
 			rangeInterval: 10 * time.Second,
 			step:          10 * time.Second,
-			operation:     physicalpb.AGGREGATE_RANGE_OP_COUNT,
+			operation:     physical.AGGREGATE_RANGE_OP_COUNT,
 		}
 
 		inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
@@ -198,7 +198,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 			endTs:         time.Unix(40, 0),
 			rangeInterval: 10 * time.Second,
 			step:          5 * time.Second,
-			operation:     physicalpb.AGGREGATE_RANGE_OP_COUNT,
+			operation:     physical.AGGREGATE_RANGE_OP_COUNT,
 		}
 
 		inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
@@ -259,7 +259,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 			endTs:         time.Unix(40, 0),
 			rangeInterval: 5 * time.Second,
 			step:          10 * time.Second,
-			operation:     physicalpb.AGGREGATE_RANGE_OP_COUNT,
+			operation:     physical.AGGREGATE_RANGE_OP_COUNT,
 		}
 
 		inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
@@ -305,7 +305,7 @@ func TestMatcher(t *testing.T) {
 			endTs:         time.Unix(1000, 0),
 			rangeInterval: 1000 * time.Second, // covers time range from 0 - 1000
 			step:          0,                  // instant query
-			operation:     physicalpb.AGGREGATE_RANGE_OP_COUNT,
+			operation:     physical.AGGREGATE_RANGE_OP_COUNT,
 		}
 
 		// Create a single window for instant query
@@ -394,7 +394,7 @@ func TestMatcher(t *testing.T) {
 			endTs:         time.Unix(300, 0),
 			rangeInterval: 100 * time.Second,
 			step:          100 * time.Second, // step == rangeInterval
-			operation:     physicalpb.AGGREGATE_RANGE_OP_COUNT,
+			operation:     physical.AGGREGATE_RANGE_OP_COUNT,
 		}
 
 		// Create windows that align with lower/upper bounds and step
@@ -463,7 +463,7 @@ func TestMatcher(t *testing.T) {
 			endTs:         time.Unix(300, 0),
 			rangeInterval: 80 * time.Second,
 			step:          100 * time.Second, // step > rangeInterval
-			operation:     physicalpb.AGGREGATE_RANGE_OP_COUNT,
+			operation:     physical.AGGREGATE_RANGE_OP_COUNT,
 		}
 
 		// Create windows that align with lower/upper bounds and step
@@ -547,7 +547,7 @@ func TestMatcher(t *testing.T) {
 			endTs:         time.Unix(300, 0),
 			rangeInterval: 120 * time.Second,
 			step:          100 * time.Second, // step < rangeInterval
-			operation:     physicalpb.AGGREGATE_RANGE_OP_COUNT,
+			operation:     physical.AGGREGATE_RANGE_OP_COUNT,
 		}
 
 		// Create windows that align with lower/upper bounds and step

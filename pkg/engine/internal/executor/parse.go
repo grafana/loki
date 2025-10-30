@@ -10,12 +10,12 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-func NewParsePipeline(parse *physicalpb.Parse, input Pipeline) *GenericPipeline {
+func NewParsePipeline(parse *physical.Parse, input Pipeline) *GenericPipeline {
 	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
@@ -38,9 +38,9 @@ func NewParsePipeline(parse *physicalpb.Parse, input Pipeline) *GenericPipeline 
 		var headers []string
 		var parsedColumns []arrow.Array
 		switch parse.Operation {
-		case physicalpb.PARSE_OP_LOGFMT:
+		case physical.PARSE_OP_LOGFMT:
 			headers, parsedColumns = buildLogfmtColumns(stringCol, parse.RequestedKeys)
-		case physicalpb.PARSE_OP_JSON:
+		case physical.PARSE_OP_JSON:
 			headers, parsedColumns = buildJSONColumns(stringCol, parse.RequestedKeys)
 		default:
 			return nil, fmt.Errorf("unsupported parser kind: %v", parse.Operation)
@@ -53,9 +53,9 @@ func NewParsePipeline(parse *physicalpb.Parse, input Pipeline) *GenericPipeline 
 			newFields = append(newFields, schema.Field(i))
 		}
 		for _, header := range headers {
-			ct := physicalpb.COLUMN_TYPE_PARSED
+			ct := physical.COLUMN_TYPE_PARSED
 			if header == semconv.ColumnIdentError.ShortName() || header == semconv.ColumnIdentErrorDetails.ShortName() {
-				ct = physicalpb.COLUMN_TYPE_GENERATED
+				ct = physical.COLUMN_TYPE_GENERATED
 			}
 			ident := semconv.NewIdentifier(header, ct, types.Loki.String)
 			newFields = append(newFields, semconv.FieldFromIdent(ident, true))

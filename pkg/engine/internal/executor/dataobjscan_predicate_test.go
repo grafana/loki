@@ -10,7 +10,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -28,7 +27,7 @@ func Test_buildLogsPredicate(t *testing.T) {
 
 	tt := []struct {
 		name   string
-		expr   physicalpb.Expression
+		expr   physical.Expression
 		expect logs.Predicate
 	}{
 		{
@@ -44,8 +43,8 @@ func Test_buildLogsPredicate(t *testing.T) {
 
 		{
 			name: "unary NOT",
-			expr: *(&physicalpb.UnaryExpression{
-				Op:    physicalpb.UNARY_OP_NOT,
+			expr: *(&physical.UnaryExpression{
+				Op:    physical.UNARY_OP_NOT,
 				Value: physical.NewLiteral(false).ToExpression(),
 			}).ToExpression(),
 			expect: logs.NotPredicate{
@@ -55,8 +54,8 @@ func Test_buildLogsPredicate(t *testing.T) {
 
 		{
 			name: "binary AND",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_AND,
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_AND,
 				Left:  physical.NewLiteral(true).ToExpression(),
 				Right: physical.NewLiteral(false).ToExpression(),
 			}).ToExpression(),
@@ -67,8 +66,8 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "binary OR",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_OR,
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_OR,
 				Left:  physical.NewLiteral(true).ToExpression(),
 				Right: physical.NewLiteral(false).ToExpression(),
 			}).ToExpression(),
@@ -79,9 +78,9 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "builtin timestamp reference",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_EQ,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_BUILTIN, types.ColumnNameBuiltinTimestamp).ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_EQ,
+				Left:  columnRef(physical.COLUMN_TYPE_BUILTIN, types.ColumnNameBuiltinTimestamp).ToExpression(),
 				Right: physical.NewLiteral(int64(1234567890)).ToExpression(),
 			}).ToExpression(),
 			expect: logs.EqualPredicate{
@@ -91,9 +90,9 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "builtin message reference",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_EQ,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_BUILTIN, types.ColumnNameBuiltinMessage).ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_EQ,
+				Left:  columnRef(physical.COLUMN_TYPE_BUILTIN, types.ColumnNameBuiltinMessage).ToExpression(),
 				Right: physical.NewLiteral(int64(9876543210)).ToExpression(),
 			}).ToExpression(),
 			expect: logs.EqualPredicate{
@@ -103,9 +102,9 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "metadata reference",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_EQ,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_EQ,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
 				Right: physical.NewLiteral(int64(5555555555)).ToExpression(),
 			}).ToExpression(),
 			expect: logs.EqualPredicate{
@@ -115,9 +114,9 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "ambiguous metadata reference",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_EQ,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_AMBIGUOUS, "metadata").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_EQ,
+				Left:  columnRef(physical.COLUMN_TYPE_AMBIGUOUS, "metadata").ToExpression(),
 				Right: physical.NewLiteral(int64(7777777777)).ToExpression(),
 			}).ToExpression(),
 			expect: logs.EqualPredicate{
@@ -128,9 +127,9 @@ func Test_buildLogsPredicate(t *testing.T) {
 
 		{
 			name: "check column for null literal",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_EQ,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_BUILTIN, types.ColumnNameBuiltinTimestamp).ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_EQ,
+				Left:  columnRef(physical.COLUMN_TYPE_BUILTIN, types.ColumnNameBuiltinTimestamp).ToExpression(),
 				Right: physical.NewLiteral(nil).ToExpression(),
 			}).ToExpression(),
 			expect: logs.EqualPredicate{
@@ -140,9 +139,9 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "check column for integer literal",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_EQ,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_BUILTIN, types.ColumnNameBuiltinTimestamp).ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_EQ,
+				Left:  columnRef(physical.COLUMN_TYPE_BUILTIN, types.ColumnNameBuiltinTimestamp).ToExpression(),
 				Right: physical.NewLiteral(int64(42)).ToExpression(),
 			}).ToExpression(),
 			expect: logs.EqualPredicate{
@@ -152,9 +151,9 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "check column for bytes literal",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_EQ,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_BUILTIN, types.ColumnNameBuiltinTimestamp).ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_EQ,
+				Left:  columnRef(physical.COLUMN_TYPE_BUILTIN, types.ColumnNameBuiltinTimestamp).ToExpression(),
 				Right: physical.NewLiteral(types.Bytes(1024)).ToExpression(),
 			}).ToExpression(),
 			expect: logs.EqualPredicate{
@@ -164,9 +163,9 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "check column for timestamp literal",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_EQ,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_BUILTIN, types.ColumnNameBuiltinTimestamp).ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_EQ,
+				Left:  columnRef(physical.COLUMN_TYPE_BUILTIN, types.ColumnNameBuiltinTimestamp).ToExpression(),
 				Right: physical.NewLiteral(types.Timestamp(1609459200000000000)).ToExpression(), // 2021-01-01 00:00:00 UTC in nanoseconds
 			}).ToExpression(),
 			expect: logs.EqualPredicate{
@@ -176,9 +175,9 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "check column for string literal",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_EQ,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_BUILTIN, types.ColumnNameBuiltinTimestamp).ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_EQ,
+				Left:  columnRef(physical.COLUMN_TYPE_BUILTIN, types.ColumnNameBuiltinTimestamp).ToExpression(),
 				Right: physical.NewLiteral("hello world").ToExpression(),
 			}).ToExpression(),
 			expect: logs.EqualPredicate{
@@ -189,9 +188,9 @@ func Test_buildLogsPredicate(t *testing.T) {
 
 		{
 			name: "binary EQ",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_EQ,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_EQ,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
 				Right: physical.NewLiteral("test_value").ToExpression(),
 			}).ToExpression(),
 			expect: logs.EqualPredicate{
@@ -201,9 +200,9 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "binary NEQ",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_NEQ,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_NEQ,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
 				Right: physical.NewLiteral("test_value").ToExpression(),
 			}).ToExpression(),
 			expect: logs.NotPredicate{
@@ -215,9 +214,9 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "binary GT",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_GT,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_GT,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
 				Right: physical.NewLiteral(int64(100)).ToExpression(),
 			}).ToExpression(),
 			expect: logs.GreaterThanPredicate{
@@ -227,9 +226,9 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "binary GTE",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_GTE,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_GTE,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
 				Right: physical.NewLiteral(int64(100)).ToExpression(),
 			}).ToExpression(),
 			expect: logs.OrPredicate{
@@ -239,9 +238,9 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "binary LT",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_LT,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_LT,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
 				Right: physical.NewLiteral(int64(100)).ToExpression(),
 			}).ToExpression(),
 			expect: logs.LessThanPredicate{
@@ -251,9 +250,9 @@ func Test_buildLogsPredicate(t *testing.T) {
 		},
 		{
 			name: "binary LTE",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_LTE,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_LTE,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
 				Right: physical.NewLiteral(int64(100)).ToExpression(),
 			}).ToExpression(),
 			expect: logs.OrPredicate{
@@ -264,108 +263,108 @@ func Test_buildLogsPredicate(t *testing.T) {
 
 		{
 			name: "binary EQ (invalid column)",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_EQ,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_EQ,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
 				Right: physical.NewLiteral("test_value").ToExpression(),
 			}).ToExpression(),
 			expect: logs.FalsePredicate{}, // non-null value can't equal NULL column
 		},
 		{
 			name: "binary NEQ (invalid column)",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_NEQ,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_NEQ,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
 				Right: physical.NewLiteral("test_value").ToExpression(),
 			}).ToExpression(),
 			expect: logs.TruePredicate{}, // non-null value != NULL column
 		},
 		{
 			name: "binary EQ NULL (invalid column)",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_EQ,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_EQ,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
 				Right: physical.NewLiteral(nil).ToExpression(),
 			}).ToExpression(),
 			expect: logs.TruePredicate{}, // NULL == NULL: always passes
 		},
 		{
 			name: "binary NEQ NULL (invalid column)",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_NEQ,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_NEQ,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
 				Right: physical.NewLiteral(nil).ToExpression(),
 			}).ToExpression(),
 			expect: logs.FalsePredicate{}, // NULL != NULL: always fails
 		},
 		{
 			name: "binary GT (invalid column)",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_GT,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_GT,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
 				Right: physical.NewLiteral(int64(100)).ToExpression(),
 			}).ToExpression(),
 			expect: logs.FalsePredicate{}, // NULL > value always fails
 		},
 		{
 			name: "binary GTE (invalid column)",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_GTE,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_GTE,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
 				Right: physical.NewLiteral(int64(100)).ToExpression(),
 			}).ToExpression(),
 			expect: logs.FalsePredicate{}, // NULL >= value always fails
 		},
 		{
 			name: "binary LT (invalid column)",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_LT,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_LT,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
 				Right: physical.NewLiteral(int64(100)).ToExpression(),
 			}).ToExpression(),
 			expect: logs.FalsePredicate{}, // NULL < value always fails
 		},
 		{
 			name: "binary LTE (invalid column)",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_LTE,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_LTE,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
 				Right: physical.NewLiteral(int64(100)).ToExpression(),
 			}).ToExpression(),
 			expect: logs.FalsePredicate{}, // NULL <= value always fails
 		},
 		{
 			name: "binary MATCH_STR (invalid column)",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_MATCH_SUBSTR,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_MATCH_SUBSTR,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
 				Right: physical.NewLiteral("substring").ToExpression(),
 			}).ToExpression(),
 			expect: logs.FalsePredicate{}, // match against non-existent column always fails
 		},
 		{
 			name: "binary NOT_MATCH_STR (invalid column)",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_NOT_MATCH_SUBSTR,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_NOT_MATCH_SUBSTR,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
 				Right: physical.NewLiteral("substring").ToExpression(),
 			}).ToExpression(),
 			expect: logs.TruePredicate{}, // not match against non-existent column always passes
 		},
 		{
 			name: "binary MATCH_RE (invalid column)",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_MATCH_RE,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_MATCH_RE,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
 				Right: physical.NewLiteral("^test.*").ToExpression(),
 			}).ToExpression(),
 			expect: logs.FalsePredicate{}, // match against non-existent column always fails
 		},
 		{
 			name: "binary NOT_MATCH_RE (invalid column)",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_NOT_MATCH_RE,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_NOT_MATCH_RE,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "nonexistent").ToExpression(),
 				Right: physical.NewLiteral("^test.*").ToExpression(),
 			}).ToExpression(),
 			expect: logs.TruePredicate{}, // not match against non-existent column always passes
@@ -401,15 +400,15 @@ func Test_buildLogsPredicate_FuncPredicates(t *testing.T) {
 
 	tt := []struct {
 		name           string
-		expr           physicalpb.Expression
+		expr           physical.Expression
 		expectedColumn *logs.Column
 		keepTests      []keepTest
 	}{
 		{
 			name: "binary MATCH_STR",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_MATCH_SUBSTR,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_MATCH_SUBSTR,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
 				Right: physical.NewLiteral("substring").ToExpression(),
 			}).ToExpression(),
 			expectedColumn: metadataColumn,
@@ -442,9 +441,9 @@ func Test_buildLogsPredicate_FuncPredicates(t *testing.T) {
 		},
 		{
 			name: "binary NOT_MATCH_STR",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_NOT_MATCH_SUBSTR,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_NOT_MATCH_SUBSTR,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
 				Right: physical.NewLiteral("substring").ToExpression(),
 			}).ToExpression(),
 			expectedColumn: metadataColumn,
@@ -477,9 +476,9 @@ func Test_buildLogsPredicate_FuncPredicates(t *testing.T) {
 		},
 		{
 			name: "binary MATCH_RE",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_MATCH_RE,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_MATCH_RE,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
 				Right: physical.NewLiteral("^test.*").ToExpression(),
 			}).ToExpression(),
 			expectedColumn: metadataColumn,
@@ -512,9 +511,9 @@ func Test_buildLogsPredicate_FuncPredicates(t *testing.T) {
 		},
 		{
 			name: "binary NOT_MATCH_RE",
-			expr: *(&physicalpb.BinaryExpression{
-				Op:    physicalpb.BINARY_OP_NOT_MATCH_RE,
-				Left:  columnRef(physicalpb.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
+			expr: *(&physical.BinaryExpression{
+				Op:    physical.BINARY_OP_NOT_MATCH_RE,
+				Left:  columnRef(physical.COLUMN_TYPE_METADATA, "metadata").ToExpression(),
 				Right: physical.NewLiteral("^test.*").ToExpression(),
 			}).ToExpression(),
 			expectedColumn: metadataColumn,
@@ -568,8 +567,8 @@ func Test_buildLogsPredicate_FuncPredicates(t *testing.T) {
 	}
 }
 
-func columnRef(ty physicalpb.ColumnType, column string) *physicalpb.ColumnExpression {
-	return &physicalpb.ColumnExpression{
+func columnRef(ty physical.ColumnType, column string) *physical.ColumnExpression {
+	return &physical.ColumnExpression{
 		Type: ty,
 		Name: column,
 	}

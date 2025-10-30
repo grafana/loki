@@ -79,7 +79,7 @@ func TestScheduler_RemoveStreams(t *testing.T) {
 				ULID:     ulid.Make(),
 				Fragment: nil,
 
-				Sources: map[physicalpb.Node][]*workflow.Stream{
+				Sources: map[Node][]*workflow.Stream{
 					nil: {&stream},
 				},
 			}
@@ -87,7 +87,7 @@ func TestScheduler_RemoveStreams(t *testing.T) {
 				ULID:     ulid.Make(),
 				Fragment: nil,
 
-				Sinks: map[physicalpb.Node][]*workflow.Stream{
+				Sinks: map[Node][]*workflow.Stream{
 					nil: {&stream},
 				},
 			}
@@ -111,7 +111,7 @@ func TestScheduler_RemoveStreams(t *testing.T) {
 				ULID:     ulid.Make(),
 				Fragment: nil,
 
-				Sinks: map[physicalpb.Node][]*workflow.Stream{
+				Sinks: map[Node][]*workflow.Stream{
 					nil: {&stream},
 				},
 			}
@@ -169,7 +169,7 @@ func TestScheduler_Listen(t *testing.T) {
 				ULID:     ulid.Make(),
 				Fragment: nil,
 
-				Sources: map[physicalpb.Node][]*workflow.Stream{
+				Sources: map[Node][]*workflow.Stream{
 					nil: {&stream},
 				},
 			}
@@ -277,7 +277,7 @@ func TestScheduler_Listen(t *testing.T) {
 				ULID:     ulid.Make(),
 				Fragment: nil,
 
-				Sinks: map[physicalpb.Node][]*workflow.Stream{
+				Sinks: map[Node][]*workflow.Stream{
 					nil: {&stream},
 				},
 			}
@@ -302,7 +302,7 @@ func TestScheduler_Start(t *testing.T) {
 				ULID:     ulid.Make(),
 				Fragment: nil,
 
-				Sources: map[physicalpb.Node][]*workflow.Stream{
+				Sources: map[Node][]*workflow.Stream{
 					nil: {&stream},
 				},
 			}
@@ -310,7 +310,7 @@ func TestScheduler_Start(t *testing.T) {
 				ULID:     ulid.Make(),
 				Fragment: nil,
 
-				Sinks: map[physicalpb.Node][]*workflow.Stream{
+				Sinks: map[Node][]*workflow.Stream{
 					nil: {&stream},
 				},
 			}
@@ -332,7 +332,7 @@ func TestScheduler_Start(t *testing.T) {
 				ULID:     ulid.Make(),
 				Fragment: nil,
 
-				Sinks: map[physicalpb.Node][]*workflow.Stream{
+				Sinks: map[Node][]*workflow.Stream{
 					nil: {&stream},
 				},
 			}
@@ -340,7 +340,7 @@ func TestScheduler_Start(t *testing.T) {
 				ULID:     ulid.Make(),
 				Fragment: nil,
 
-				Sinks: map[physicalpb.Node][]*workflow.Stream{
+				Sinks: map[Node][]*workflow.Stream{
 					nil: {&stream},
 				},
 			}
@@ -361,7 +361,7 @@ func TestScheduler_Start(t *testing.T) {
 				ULID:     ulid.Make(),
 				Fragment: nil,
 
-				Sources: map[physicalpb.Node][]*workflow.Stream{
+				Sources: map[Node][]*workflow.Stream{
 					nil: {&stream},
 				},
 			}
@@ -369,7 +369,7 @@ func TestScheduler_Start(t *testing.T) {
 				ULID:     ulid.Make(),
 				Fragment: nil,
 
-				Sources: map[physicalpb.Node][]*workflow.Stream{
+				Sources: map[Node][]*workflow.Stream{
 					nil: {&stream},
 				},
 			}
@@ -390,7 +390,7 @@ func TestScheduler_Start(t *testing.T) {
 				ULID:     ulid.Make(),
 				Fragment: nil,
 
-				Sources: map[physicalpb.Node][]*workflow.Stream{
+				Sources: map[Node][]*workflow.Stream{
 					nil: {&stream},
 				},
 			}
@@ -635,7 +635,7 @@ func TestScheduler_worker(t *testing.T) {
 				task   = workflow.Task{
 					ULID: ulid.Make(),
 
-					Sinks: map[physicalpb.Node][]*workflow.Stream{
+					Sinks: map[Node][]*workflow.Stream{
 						nil: {&stream},
 					},
 				}
@@ -699,7 +699,7 @@ func TestScheduler_worker(t *testing.T) {
 				task   = workflow.Task{
 					ULID: ulid.Make(),
 
-					Sinks: map[physicalpb.Node][]*workflow.Stream{
+					Sinks: map[Node][]*workflow.Stream{
 						nil: {&stream},
 					},
 				}
@@ -776,7 +776,7 @@ func TestScheduler_worker(t *testing.T) {
 				receiver = workflow.Task{
 					ULID: ulid.Make(),
 
-					Sources: map[physicalpb.Node][]*workflow.Stream{
+					Sources: map[Node][]*workflow.Stream{
 						nil: {&stream},
 					},
 				}
@@ -784,7 +784,7 @@ func TestScheduler_worker(t *testing.T) {
 				sender = workflow.Task{
 					ULID: ulid.Make(),
 
-					Sinks: map[physicalpb.Node][]*workflow.Stream{
+					Sinks: map[Node][]*workflow.Stream{
 						nil: {&stream},
 					},
 				}
@@ -851,7 +851,7 @@ func TestScheduler_worker(t *testing.T) {
 				receiver = workflow.Task{
 					ULID: ulid.Make(),
 
-					Sources: map[physicalpb.Node][]*workflow.Stream{
+					Sources: map[Node][]*workflow.Stream{
 						nil: {&stream},
 					},
 				}
@@ -859,7 +859,7 @@ func TestScheduler_worker(t *testing.T) {
 				sender = workflow.Task{
 					ULID: ulid.Make(),
 
-					Sinks: map[physicalpb.Node][]*workflow.Stream{
+					Sinks: map[Node][]*workflow.Stream{
 						nil: {&stream},
 					},
 				}
@@ -991,7 +991,7 @@ func TestScheduler_worker(t *testing.T) {
 			task   = workflow.Task{
 				ULID: ulid.Make(),
 
-				Sinks: map[physicalpb.Node][]*workflow.Stream{
+				Sinks: map[Node][]*workflow.Stream{
 					nil: {&stream},
 				},
 			}
@@ -1056,14 +1056,14 @@ func TestScheduler_worker(t *testing.T) {
 			receiver = workflow.Task{
 				ULID: ulid.Make(),
 
-				Sources: map[physicalpb.Node][]*workflow.Stream{
+				Sources: map[Node][]*workflow.Stream{
 					nil: {&stream},
 				},
 			}
 			sender = workflow.Task{
 				ULID: ulid.Make(),
 
-				Sinks: map[physicalpb.Node][]*workflow.Stream{
+				Sinks: map[Node][]*workflow.Stream{
 					nil: {&stream},
 				},
 			}
@@ -1145,7 +1145,7 @@ func TestScheduler_worker(t *testing.T) {
 			sender = workflow.Task{
 				ULID: ulid.Make(),
 
-				Sinks: map[physicalpb.Node][]*workflow.Stream{
+				Sinks: map[Node][]*workflow.Stream{
 					nil: {&stream},
 				},
 			}
@@ -1194,7 +1194,7 @@ func TestScheduler_worker(t *testing.T) {
 			receiver = workflow.Task{
 				ULID: ulid.Make(),
 
-				Sources: map[physicalpb.Node][]*workflow.Stream{
+				Sources: map[Node][]*workflow.Stream{
 					nil: {&stream},
 				},
 			}

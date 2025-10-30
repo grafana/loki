@@ -10,7 +10,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 )
 
@@ -66,18 +66,18 @@ func TestVectorAggregationPipeline(t *testing.T) {
 	input2 := NewBufferedPipeline(input2Record)
 
 	// Create group by expressions
-	groupBy := []*physicalpb.ColumnExpression{
+	groupBy := []*physical.ColumnExpression{
 		{
 			Name: "env",
-			Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
+			Type: physical.COLUMN_TYPE_AMBIGUOUS,
 		},
 		{
 			Name: "service",
-			Type: physicalpb.COLUMN_TYPE_AMBIGUOUS,
+			Type: physical.COLUMN_TYPE_AMBIGUOUS,
 		},
 	}
 
-	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, groupBy, newExpressionEvaluator(), physicalpb.AGGREGATE_VECTOR_OP_SUM)
+	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, groupBy, newExpressionEvaluator(), physical.AGGREGATE_VECTOR_OP_SUM)
 	require.NoError(t, err)
 	defer pipeline.Close()
 

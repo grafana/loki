@@ -10,12 +10,12 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/dustin/go-humanize"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
-func castFn(operation physicalpb.UnaryOp) UnaryFunction {
+func castFn(operation physical.UnaryOp) UnaryFunction {
 	return UnaryFunc(func(input arrow.Array) (arrow.Array, error) {
 		sourceCol, ok := input.(*array.String)
 		if !ok {
@@ -37,11 +37,11 @@ func castFn(operation physicalpb.UnaryOp) UnaryFunction {
 
 type conversionFn func(value string) (float64, error)
 
-func getConversionFunction(operation physicalpb.UnaryOp) conversionFn {
+func getConversionFunction(operation physical.UnaryOp) conversionFn {
 	switch operation {
-	case physicalpb.UNARY_OP_CAST_BYTES:
+	case physical.UNARY_OP_CAST_BYTES:
 		return convertBytes
-	case physicalpb.UNARY_OP_CAST_DURATION:
+	case physical.UNARY_OP_CAST_DURATION:
 		return convertDuration
 	default:
 		return convertFloat

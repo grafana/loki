@@ -1,4 +1,4 @@
-// physicalpb.proto holds types for a query engine's physical plan.
+// proto holds types for a query engine's physical plan.
 syntax = "proto3";
 
 package physical.engine.loki.v1;

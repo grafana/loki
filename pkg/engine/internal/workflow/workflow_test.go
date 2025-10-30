@@ -26,18 +26,18 @@ import (
 // Some of these assertions are handled by [fakeRunner], which returns an error
 // when used improperly.
 func Test(t *testing.T) {
-	var physicalGraph dag.Graph[physicalpb.Node]
+	var physicalGraph dag.Graph[Node]
 
 	var (
-		scan      = physicalGraph.Add(&physicalpb.DataObjScan{})
-		rangeAgg  = physicalGraph.Add(&physicalpb.AggregateRange{})
-		vectorAgg = physicalGraph.Add(&physicalpb.AggregateVector{})
+		scan      = physicalGraph.Add(&DataObjScan{})
+		rangeAgg  = physicalGraph.Add(&AggregateRange{})
+		vectorAgg = physicalGraph.Add(&AggregateVector{})
 	)
 
-	_ = physicalGraph.AddEdge(dag.Edge[physicalpb.Node]{Parent: rangeAgg, Child: scan})
-	_ = physicalGraph.AddEdge(dag.Edge[physicalpb.Node]{Parent: vectorAgg, Child: rangeAgg})
+	_ = physicalGraph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan})
+	_ = physicalGraph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: rangeAgg})
 
-	physicalPlan := physicalpb.FromGraph(physicalGraph)
+	physicalPlan := FromGraph(physicalGraph)
 
 	fr := newFakeRunner()
 
@@ -82,18 +82,18 @@ func Test(t *testing.T) {
 // TestCancellation tasks that a task entering a terminal state cancels all
 // downstream tasks.
 func TestCancellation(t *testing.T) {
-	var physicalGraph dag.Graph[physicalpb.Node]
+	var physicalGraph dag.Graph[Node]
 
 	var (
-		scan      = physicalGraph.Add(&physicalpb.DataObjScan{})
-		rangeAgg  = physicalGraph.Add(&physicalpb.AggregateRange{})
-		vectorAgg = physicalGraph.Add(&physicalpb.AggregateVector{})
+		scan      = physicalGraph.Add(&DataObjScan{})
+		rangeAgg  = physicalGraph.Add(&AggregateRange{})
+		vectorAgg = physicalGraph.Add(&AggregateVector{})
 	)
 
-	_ = physicalGraph.AddEdge(dag.Edge[physicalpb.Node]{Parent: rangeAgg, Child: scan})
-	_ = physicalGraph.AddEdge(dag.Edge[physicalpb.Node]{Parent: vectorAgg, Child: rangeAgg})
+	_ = physicalGraph.AddEdge(dag.Edge[Node]{Parent: rangeAgg, Child: scan})
+	_ = physicalGraph.AddEdge(dag.Edge[Node]{Parent: vectorAgg, Child: rangeAgg})
 
-	physicalPlan := physicalpb.FromGraph(physicalGraph)
+	physicalPlan := FromGraph(physicalGraph)
 
 	terminalStates := []TaskState{TaskStateCancelled, TaskStateCancelled, TaskStateFailed}
 	for _, state := range terminalStates {

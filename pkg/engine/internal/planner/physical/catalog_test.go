@@ -14,7 +14,7 @@ import (
 
 func TestCatalog_ConvertLiteral(t *testing.T) {
 	tests := []struct {
-		expr    physicalpb.Expression
+		expr    Expression
 		want    string
 		wantErr bool
 	}{
@@ -39,14 +39,14 @@ func TestCatalog_ConvertLiteral(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			expr:    *newColumnExpr("foo", physicalpb.COLUMN_TYPE_LABEL).ToExpression(),
+			expr:    *newColumnExpr("foo", COLUMN_TYPE_LABEL).ToExpression(),
 			wantErr: true,
 		},
 		{
-			expr: *(&physicalpb.BinaryExpression{
-				Left:  newColumnExpr("foo", physicalpb.COLUMN_TYPE_LABEL).ToExpression(),
+			expr: *(&BinaryExpression{
+				Left:  newColumnExpr("foo", COLUMN_TYPE_LABEL).ToExpression(),
 				Right: NewLiteral("foo").ToExpression(),
-				Op:    physicalpb.BINARY_OP_EQ,
+				Op:    BINARY_OP_EQ,
 			}).ToExpression(),
 			wantErr: true,
 		},
@@ -67,20 +67,20 @@ func TestCatalog_ConvertLiteral(t *testing.T) {
 
 func TestCatalog_ConvertColumnRef(t *testing.T) {
 	tests := []struct {
-		expr    physicalpb.Expression
+		expr    Expression
 		want    string
 		wantErr bool
 	}{
 		{
-			expr: *newColumnExpr("foo", physicalpb.COLUMN_TYPE_LABEL).ToExpression(),
+			expr: *newColumnExpr("foo", COLUMN_TYPE_LABEL).ToExpression(),
 			want: "foo",
 		},
 		{
-			expr:    *newColumnExpr("foo", physicalpb.COLUMN_TYPE_AMBIGUOUS).ToExpression(),
+			expr:    *newColumnExpr("foo", COLUMN_TYPE_AMBIGUOUS).ToExpression(),
 			wantErr: true,
 		},
 		{
-			expr:    *newColumnExpr("foo", physicalpb.COLUMN_TYPE_BUILTIN).ToExpression(),
+			expr:    *newColumnExpr("foo", COLUMN_TYPE_BUILTIN).ToExpression(),
 			wantErr: true,
 		},
 		{
@@ -88,10 +88,10 @@ func TestCatalog_ConvertColumnRef(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			expr: *(&physicalpb.BinaryExpression{
-				Left:  newColumnExpr("foo", physicalpb.COLUMN_TYPE_LABEL).ToExpression(),
+			expr: *(&BinaryExpression{
+				Left:  newColumnExpr("foo", COLUMN_TYPE_LABEL).ToExpression(),
 				Right: NewLiteral("foo").ToExpression(),
-				Op:    physicalpb.BINARY_OP_EQ,
+				Op:    BINARY_OP_EQ,
 			}).ToExpression(),
 			wantErr: true,
 		},
@@ -112,12 +112,12 @@ func TestCatalog_ConvertColumnRef(t *testing.T) {
 
 func TestCatalog_ExpressionToMatchers(t *testing.T) {
 	tests := []struct {
-		expr    physicalpb.Expression
+		expr    Expression
 		want    []*labels.Matcher
 		wantErr bool
 	}{
 		{
-			expr:    *newColumnExpr("foo", physicalpb.COLUMN_TYPE_LABEL).ToExpression(),
+			expr:    *newColumnExpr("foo", COLUMN_TYPE_LABEL).ToExpression(),
 			wantErr: true,
 		},
 		{
@@ -125,28 +125,28 @@ func TestCatalog_ExpressionToMatchers(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			expr: *(&physicalpb.BinaryExpression{
-				Left:  newColumnExpr("foo", physicalpb.COLUMN_TYPE_LABEL).ToExpression(),
+			expr: *(&BinaryExpression{
+				Left:  newColumnExpr("foo", COLUMN_TYPE_LABEL).ToExpression(),
 				Right: NewLiteral("bar").ToExpression(),
-				Op:    physicalpb.BINARY_OP_EQ,
+				Op:    BINARY_OP_EQ,
 			}).ToExpression(),
 			want: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
 			},
 		},
 		{
-			expr: *(&physicalpb.BinaryExpression{
-				Left: (&physicalpb.BinaryExpression{
-					Left:  newColumnExpr("foo", physicalpb.COLUMN_TYPE_LABEL).ToExpression(),
+			expr: *(&BinaryExpression{
+				Left: (&BinaryExpression{
+					Left:  newColumnExpr("foo", COLUMN_TYPE_LABEL).ToExpression(),
 					Right: NewLiteral("bar").ToExpression(),
-					Op:    physicalpb.BINARY_OP_EQ,
+					Op:    BINARY_OP_EQ,
 				}).ToExpression(),
-				Right: (&physicalpb.BinaryExpression{
-					Left:  newColumnExpr("bar", physicalpb.COLUMN_TYPE_LABEL).ToExpression(),
+				Right: (&BinaryExpression{
+					Left:  newColumnExpr("bar", COLUMN_TYPE_LABEL).ToExpression(),
 					Right: NewLiteral("baz").ToExpression(),
-					Op:    physicalpb.BINARY_OP_NEQ,
+					Op:    BINARY_OP_NEQ,
 				}).ToExpression(),
-				Op: physicalpb.BINARY_OP_AND,
+				Op: BINARY_OP_AND,
 			}).ToExpression(),
 			want: []*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),

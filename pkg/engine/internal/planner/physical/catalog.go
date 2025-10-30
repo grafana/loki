@@ -9,15 +9,14 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 )
 
 var (
-	binOpToMatchTypeMapping = map[physicalpb.BinaryOp]labels.MatchType{
-		physicalpb.BINARY_OP_EQ:           labels.MatchEqual,
-		physicalpb.BINARY_OP_NEQ:          labels.MatchNotEqual,
-		physicalpb.BINARY_OP_MATCH_RE:     labels.MatchRegexp,
-		physicalpb.BINARY_OP_NOT_MATCH_RE: labels.MatchNotRegexp,
+	binOpToMatchTypeMapping = map[BinaryOp]labels.MatchType{
+		BINARY_OP_EQ:           labels.MatchEqual,
+		BINARY_OP_NEQ:          labels.MatchNotEqual,
+		BINARY_OP_MATCH_RE:     labels.MatchRegexp,
+		BINARY_OP_NOT_MATCH_RE: labels.MatchNotRegexp,
 	}
 
 	noShard = ShardInfo{Shard: 0, Of: 1}
@@ -83,8 +82,8 @@ type Catalog interface {
 	// a data object path, a list of stream IDs for
 	// each data object path, a list of sections for
 	// each data object path, and a time range.
-	ResolveShardDescriptors(physicalpb.Expression, time.Time, time.Time) ([]FilteredShardDescriptor, error)
-	ResolveShardDescriptorsWithShard(physicalpb.Expression, []*physicalpb.Expression, ShardInfo, time.Time, time.Time) ([]FilteredShardDescriptor, error)
+	ResolveShardDescriptors(Expression, time.Time, time.Time) ([]FilteredShardDescriptor, error)
+	ResolveShardDescriptorsWithShard(Expression, []*Expression, ShardInfo, time.Time, time.Time) ([]FilteredShardDescriptor, error)
 }
 
 // MetastoreCatalog is the default implementation of [Catalog].
@@ -105,11 +104,11 @@ func NewMetastoreCatalog(ctx context.Context, ms metastore.Metastore) *Metastore
 // objects based on a given [Expression]. The expression is required
 // to be a (tree of) [BinaryExpression] with a [ColumnExpression]
 // on the left and a [LiteralExpression] on the right.
-func (c *MetastoreCatalog) ResolveShardDescriptors(selector physicalpb.Expression, from, through time.Time) ([]FilteredShardDescriptor, error) {
+func (c *MetastoreCatalog) ResolveShardDescriptors(selector Expression, from, through time.Time) ([]FilteredShardDescriptor, error) {
 	return c.ResolveShardDescriptorsWithShard(selector, nil, noShard, from, through)
 }
 
-func (c *MetastoreCatalog) ResolveShardDescriptorsWithShard(selector physicalpb.Expression, predicates []*physicalpb.Expression, shard ShardInfo, from, through time.Time) ([]FilteredShardDescriptor, error) {
+func (c *MetastoreCatalog) ResolveShardDescriptorsWithShard(selector Expression, predicates []*Expression, shard ShardInfo, from, through time.Time) ([]FilteredShardDescriptor, error) {
 	if c.metastore == nil {
 		return nil, errors.New("no metastore to resolve objects")
 	}
@@ -118,7 +117,7 @@ func (c *MetastoreCatalog) ResolveShardDescriptorsWithShard(selector physicalpb.
 }
 
 // resolveShardDescriptorsWithIndex expects the metastore to initially point to index objects, not the log objects directly.
-func (c *MetastoreCatalog) resolveShardDescriptorsWithIndex(selector physicalpb.Expression, predicates []*physicalpb.Expression, shard ShardInfo, from, through time.Time) ([]FilteredShardDescriptor, error) {
+func (c *MetastoreCatalog) resolveShardDescriptorsWithIndex(selector Expression, predicates []*Expression, shard ShardInfo, from, through time.Time) ([]FilteredShardDescriptor, error) {
 	if c.metastore == nil {
 		return nil, errors.New("no metastore to resolve objects")
 	}
@@ -175,12 +174,12 @@ func filterDescriptorsForShard(shard ShardInfo, sectionDescriptors []*metastore.
 // The selector expression is required to be a (tree of) [BinaryExpression]
 // with a [ColumnExpression] on the left and a [LiteralExpression] on the right.
 // It optionally supports ambiguous column references. Non-ambiguous column references are label matchers.
-func expressionToMatchers(selector physicalpb.Expression, allowAmbiguousColumnRefs bool) ([]*labels.Matcher, error) {
+func expressionToMatchers(selector Expression, allowAmbiguousColumnRefs bool) ([]*labels.Matcher, error) {
 
 	switch expr := selector.Kind.(type) {
-	case *physicalpb.Expression_BinaryExpression:
+	case *Expression_BinaryExpression:
 		switch expr.BinaryExpression.Op {
-		case physicalpb.BINARY_OP_AND:
+		case BINARY_OP_AND:
 			lhs, err := expressionToMatchers(*expr.BinaryExpression.Left, allowAmbiguousColumnRefs)
 			if err != nil {
 				return nil, err
@@ -190,7 +189,7 @@ func expressionToMatchers(selector physicalpb.Expression, allowAmbiguousColumnRe
 				return nil, err
 			}
 			return append(lhs, rhs...), nil
-		case physicalpb.BINARY_OP_EQ, physicalpb.BINARY_OP_NEQ, physicalpb.BINARY_OP_MATCH_RE, physicalpb.BINARY_OP_NOT_MATCH_RE:
+		case BINARY_OP_EQ, BINARY_OP_NEQ, BINARY_OP_MATCH_RE, BINARY_OP_NOT_MATCH_RE:
 			op, err := convertBinaryOp(expr.BinaryExpression.Op)
 			if err != nil {
 				return nil, err
@@ -216,30 +215,30 @@ func expressionToMatchers(selector physicalpb.Expression, allowAmbiguousColumnRe
 	}
 }
 
-func convertLiteralToString(expr physicalpb.Expression) (string, error) {
-	l, ok := expr.Kind.(*physicalpb.Expression_LiteralExpression)
+func convertLiteralToString(expr Expression) (string, error) {
+	l, ok := expr.Kind.(*Expression_LiteralExpression)
 	if !ok {
 		return "", fmt.Errorf("expected literal expression, got %T", expr)
 	}
-	_, ok = l.LiteralExpression.Kind.(*physicalpb.LiteralExpression_StringLiteral)
+	_, ok = l.LiteralExpression.Kind.(*LiteralExpression_StringLiteral)
 	if !ok {
 		return "", fmt.Errorf("literal type is not a string, got %v", l.LiteralExpression.Kind)
 	}
 	return l.LiteralExpression.GetStringLiteral().Value, nil
 }
 
-func convertColumnRef(expr physicalpb.Expression, allowAmbiguousColumnRefs bool) (string, error) {
-	ref, ok := expr.Kind.(*physicalpb.Expression_ColumnExpression)
+func convertColumnRef(expr Expression, allowAmbiguousColumnRefs bool) (string, error) {
+	ref, ok := expr.Kind.(*Expression_ColumnExpression)
 	if !ok {
 		return "", fmt.Errorf("expected column expression, got %T", expr)
 	}
-	if !allowAmbiguousColumnRefs && ref.ColumnExpression.Type != physicalpb.COLUMN_TYPE_LABEL {
+	if !allowAmbiguousColumnRefs && ref.ColumnExpression.Type != COLUMN_TYPE_LABEL {
 		return "", fmt.Errorf("column type is not a label, got %v", ref.ColumnExpression.Type)
 	}
 	return ref.ColumnExpression.Name, nil
 }
 
-func convertBinaryOp(t physicalpb.BinaryOp) (labels.MatchType, error) {
+func convertBinaryOp(t BinaryOp) (labels.MatchType, error) {
 	ty, ok := binOpToMatchTypeMapping[t]
 	if !ok {
 		return -1, fmt.Errorf("invalid binary operator for matcher: %v", t)

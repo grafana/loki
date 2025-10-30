@@ -7,7 +7,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -17,14 +17,14 @@ func TestExecuteLimit(t *testing.T) {
 
 	t.Run("with no inputs", func(t *testing.T) {
 		ctx := t.Context()
-		pipeline := c.executeLimit(ctx, &physicalpb.Limit{}, nil)
+		pipeline := c.executeLimit(ctx, &physical.Limit{}, nil)
 		_, err := pipeline.Read(ctx)
 		require.Equal(t, EOF, err)
 	})
 
 	t.Run("with multiple inputs", func(t *testing.T) {
 		ctx := t.Context()
-		pipeline := c.executeLimit(ctx, &physicalpb.Limit{}, []Pipeline{emptyPipeline(), emptyPipeline()})
+		pipeline := c.executeLimit(ctx, &physical.Limit{}, []Pipeline{emptyPipeline(), emptyPipeline()})
 		_, err := pipeline.Read(ctx)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "limit expects exactly one input, got 2")
@@ -43,7 +43,7 @@ func TestExecuteLimit(t *testing.T) {
 		source := NewBufferedPipeline(record)
 
 		// Execute limit with skip=1 and fetch=1
-		limit := &physicalpb.Limit{Skip: 1, Fetch: 1}
+		limit := &physical.Limit{Skip: 1, Fetch: 1}
 		pipeline := c.executeLimit(ctx, limit, []Pipeline{source})
 		defer pipeline.Close()
 
@@ -86,7 +86,7 @@ func TestExecuteLimit(t *testing.T) {
 
 		// Create limit pipeline that skips 2 and fetches 3
 		// Should return C from batch1, and D,E from batch2
-		limit := &physicalpb.Limit{Skip: 2, Fetch: 3}
+		limit := &physical.Limit{Skip: 2, Fetch: 3}
 		pipeline := c.executeLimit(ctx, limit, []Pipeline{source})
 		defer pipeline.Close()
 
@@ -221,7 +221,7 @@ func TestLimit(t *testing.T) {
 			c := &Context{
 				batchSize: tt.batchSize,
 			}
-			limit := &physicalpb.Limit{
+			limit := &physical.Limit{
 				Skip:  tt.offset,
 				Fetch: tt.limit,
 			}

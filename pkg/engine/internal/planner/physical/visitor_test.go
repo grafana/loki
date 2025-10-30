@@ -6,29 +6,29 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
 )
 
-var _ physicalpb.Visitor = (*nodeCollectVisitor)(nil)
+var _ Visitor = (*nodeCollectVisitor)(nil)
 
 // A visitor implementation that collects nodes during traversal and optionally
 // executes custom functions for each node type. Used primarily for testing
 // traversal behavior.
 type nodeCollectVisitor struct {
 	visited                  []string
-	onVisitDataObjScan       func(*physicalpb.DataObjScan) error
-	onVisitFilter            func(*physicalpb.Filter) error
-	onVisitLimit             func(*physicalpb.Limit) error
-	onVisitProjection        func(*physicalpb.Projection) error
-	onVisitRangeAggregation  func(*physicalpb.AggregateRange) error
-	onVisitVectorAggregation func(*physicalpb.AggregateVector) error
-	onVisitParse             func(*physicalpb.Parse) error
-	onVisitParallelize       func(*physicalpb.Parallelize) error
-	onVisitScanSet           func(*physicalpb.ScanSet) error
-	onVisitJoin              func(*physicalpb.Join) error
-	onVisitColumnCompat      func(*physicalpb.ColumnCompat) error
-	onVisitMerge             func(*physicalpb.Merge) error
-	onVisitSortMerge         func(*physicalpb.SortMerge) error
+	onVisitDataObjScan       func(*DataObjScan) error
+	onVisitFilter            func(*Filter) error
+	onVisitLimit             func(*Limit) error
+	onVisitProjection        func(*Projection) error
+	onVisitRangeAggregation  func(*AggregateRange) error
+	onVisitVectorAggregation func(*AggregateVector) error
+	onVisitParse             func(*Parse) error
+	onVisitParallelize       func(*Parallelize) error
+	onVisitScanSet           func(*ScanSet) error
+	onVisitJoin              func(*Join) error
+	onVisitColumnCompat      func(*ColumnCompat) error
+	onVisitMerge             func(*Merge) error
+	onVisitSortMerge         func(*SortMerge) error
 }
 
-func (v *nodeCollectVisitor) VisitDataObjScan(n *physicalpb.DataObjScan) error {
+func (v *nodeCollectVisitor) VisitDataObjScan(n *DataObjScan) error {
 	if v.onVisitDataObjScan != nil {
 		return v.onVisitDataObjScan(n)
 	}
@@ -36,7 +36,7 @@ func (v *nodeCollectVisitor) VisitDataObjScan(n *physicalpb.DataObjScan) error {
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitFilter(n *physicalpb.Filter) error {
+func (v *nodeCollectVisitor) VisitFilter(n *Filter) error {
 	if v.onVisitFilter != nil {
 		return v.onVisitFilter(n)
 	}
@@ -44,7 +44,7 @@ func (v *nodeCollectVisitor) VisitFilter(n *physicalpb.Filter) error {
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitLimit(n *physicalpb.Limit) error {
+func (v *nodeCollectVisitor) VisitLimit(n *Limit) error {
 	if v.onVisitLimit != nil {
 		return v.onVisitLimit(n)
 	}
@@ -52,7 +52,7 @@ func (v *nodeCollectVisitor) VisitLimit(n *physicalpb.Limit) error {
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitProjection(n *physicalpb.Projection) error {
+func (v *nodeCollectVisitor) VisitProjection(n *Projection) error {
 	if v.onVisitProjection != nil {
 		return v.onVisitProjection(n)
 	}
@@ -60,7 +60,7 @@ func (v *nodeCollectVisitor) VisitProjection(n *physicalpb.Projection) error {
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitAggregateRange(n *physicalpb.AggregateRange) error {
+func (v *nodeCollectVisitor) VisitAggregateRange(n *AggregateRange) error {
 	if v.onVisitRangeAggregation != nil {
 		return v.onVisitRangeAggregation(n)
 	}
@@ -69,7 +69,7 @@ func (v *nodeCollectVisitor) VisitAggregateRange(n *physicalpb.AggregateRange) e
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitAggregateVector(n *physicalpb.AggregateVector) error {
+func (v *nodeCollectVisitor) VisitAggregateVector(n *AggregateVector) error {
 	if v.onVisitVectorAggregation != nil {
 		return v.onVisitVectorAggregation(n)
 	}
@@ -77,7 +77,7 @@ func (v *nodeCollectVisitor) VisitAggregateVector(n *physicalpb.AggregateVector)
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitParse(n *physicalpb.Parse) error {
+func (v *nodeCollectVisitor) VisitParse(n *Parse) error {
 	if v.onVisitParse != nil {
 		return v.onVisitParse(n)
 	}
@@ -85,16 +85,16 @@ func (v *nodeCollectVisitor) VisitParse(n *physicalpb.Parse) error {
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitCompat(*physicalpb.ColumnCompat) error {
+func (v *nodeCollectVisitor) VisitCompat(*ColumnCompat) error {
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitTopK(n *physicalpb.TopK) error {
+func (v *nodeCollectVisitor) VisitTopK(n *TopK) error {
 	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Kind().String(), n.ID()))
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitParallelize(n *physicalpb.Parallelize) error {
+func (v *nodeCollectVisitor) VisitParallelize(n *Parallelize) error {
 	if v.onVisitParallelize != nil {
 		return v.onVisitParallelize(n)
 	}
@@ -103,7 +103,7 @@ func (v *nodeCollectVisitor) VisitParallelize(n *physicalpb.Parallelize) error {
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitScanSet(n *physicalpb.ScanSet) error {
+func (v *nodeCollectVisitor) VisitScanSet(n *ScanSet) error {
 	if v.onVisitScanSet != nil {
 		return v.onVisitScanSet(n)
 	}
@@ -111,7 +111,7 @@ func (v *nodeCollectVisitor) VisitScanSet(n *physicalpb.ScanSet) error {
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitColumnCompat(n *physicalpb.ColumnCompat) error {
+func (v *nodeCollectVisitor) VisitColumnCompat(n *ColumnCompat) error {
 	if v.onVisitColumnCompat != nil {
 		return v.onVisitColumnCompat(n)
 	}
@@ -119,7 +119,7 @@ func (v *nodeCollectVisitor) VisitColumnCompat(n *physicalpb.ColumnCompat) error
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitJoin(n *physicalpb.Join) error {
+func (v *nodeCollectVisitor) VisitJoin(n *Join) error {
 	if v.onVisitJoin != nil {
 		return v.onVisitJoin(n)
 	}
@@ -127,14 +127,14 @@ func (v *nodeCollectVisitor) VisitJoin(n *physicalpb.Join) error {
 	return nil
 }
 
-func (v *nodeCollectVisitor) VisitMerge(n *physicalpb.Merge) error {
+func (v *nodeCollectVisitor) VisitMerge(n *Merge) error {
 	if v.onVisitMerge != nil {
 		return v.onVisitMerge(n)
 	}
 	v.visited = append(v.visited, fmt.Sprintf("%s.%s", n.Kind().String(), n.ID()))
 	return nil
 }
-func (v *nodeCollectVisitor) VisitSortMerge(n *physicalpb.SortMerge) error {
+func (v *nodeCollectVisitor) VisitSortMerge(n *SortMerge) error {
 	if v.onVisitSortMerge != nil {
 		return v.onVisitSortMerge(n)
 	}

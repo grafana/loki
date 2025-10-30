@@ -8,27 +8,27 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 )
 
-func NewProjectPipeline(input Pipeline, proj *physicalpb.Projection, evaluator *expressionEvaluator) (Pipeline, error) {
+func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *expressionEvaluator) (Pipeline, error) {
 	// Shortcut for ALL=true DROP=false EXPAND=false
 	if proj.All && !proj.Drop && !proj.Expand {
 		return input, nil
 	}
 
 	// Get the column names from the projection expressions
-	colRefs := make([]physicalpb.ColumnExpression, 0, len(proj.Expressions))
-	mathExprs := make([]physicalpb.Expression, 0, len(proj.Expressions))
+	colRefs := make([]physical.ColumnExpression, 0, len(proj.Expressions))
+	mathExprs := make([]physical.Expression, 0, len(proj.Expressions))
 
 	for i, expr := range proj.Expressions {
 		switch expr := expr.Kind.(type) {
-		case *physicalpb.Expression_ColumnExpression:
+		case *physical.Expression_ColumnExpression:
 			colRefs = append(colRefs, *expr.ColumnExpression)
-		case *physicalpb.Expression_UnaryExpression:
+		case *physical.Expression_UnaryExpression:
 			mathExprs = append(mathExprs, *expr.UnaryExpression.ToExpression())
-		case *physicalpb.Expression_BinaryExpression:
+		case *physical.Expression_BinaryExpression:
 			mathExprs = append(mathExprs, *expr.BinaryExpression.ToExpression())
 		default:
 			return nil, fmt.Errorf("projection expression %d is unsupported", i)
@@ -42,10 +42,10 @@ func NewProjectPipeline(input Pipeline, proj *physicalpb.Projection, evaluator *
 	// Create KEEP projection pipeline:
 	// Drop all columns except the ones referenced in proj.Expressions.
 	if !proj.All && !proj.Drop && !proj.Expand {
-		return newKeepPipeline(colRefs, func(refs []physicalpb.ColumnExpression, ident *semconv.Identifier) bool {
-			return slices.ContainsFunc(refs, func(ref physicalpb.ColumnExpression) bool {
+		return newKeepPipeline(colRefs, func(refs []physical.ColumnExpression, ident *semconv.Identifier) bool {
+			return slices.ContainsFunc(refs, func(ref physical.ColumnExpression) bool {
 				// Keep all of the ambiguous columns
-				if ref.Type == physicalpb.COLUMN_TYPE_AMBIGUOUS {
+				if ref.Type == physical.COLUMN_TYPE_AMBIGUOUS {
 					return ref.Name == ident.ShortName()
 				}
 				// Keep only if type matches
@@ -57,10 +57,10 @@ func NewProjectPipeline(input Pipeline, proj *physicalpb.Projection, evaluator *
 	// Create DROP projection pipeline:
 	// Keep all columns except the ones referenced in proj.Expressions.
 	if proj.All && proj.Drop {
-		return newKeepPipeline(colRefs, func(refs []physicalpb.ColumnExpression, ident *semconv.Identifier) bool {
-			return !slices.ContainsFunc(refs, func(ref physicalpb.ColumnExpression) bool {
+		return newKeepPipeline(colRefs, func(refs []physical.ColumnExpression, ident *semconv.Identifier) bool {
+			return !slices.ContainsFunc(refs, func(ref physical.ColumnExpression) bool {
 				// Drop all of the ambiguous columns
-				if ref.Type == physicalpb.COLUMN_TYPE_AMBIGUOUS {
+				if ref.Type == physical.COLUMN_TYPE_AMBIGUOUS {
 					return ref.Name == ident.ShortName()
 				}
 				// Drop only if type matches
@@ -79,7 +79,7 @@ func NewProjectPipeline(input Pipeline, proj *physicalpb.Projection, evaluator *
 	return nil, errNotImplemented
 }
 
-func newKeepPipeline(colRefs []physicalpb.ColumnExpression, keepFunc func([]physicalpb.ColumnExpression, *semconv.Identifier) bool, input Pipeline) (*GenericPipeline, error) {
+func newKeepPipeline(colRefs []physical.ColumnExpression, keepFunc func([]physical.ColumnExpression, *semconv.Identifier) bool, input Pipeline) (*GenericPipeline, error) {
 	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
@@ -110,7 +110,7 @@ func newKeepPipeline(colRefs []physicalpb.ColumnExpression, keepFunc func([]phys
 	}, input), nil
 }
 
-func newExpandPipeline(expr physicalpb.Expression, evaluator *expressionEvaluator, input Pipeline) (*GenericPipeline, error) {
+func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator, input Pipeline) (*GenericPipeline, error) {
 	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))

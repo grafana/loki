@@ -1,4 +1,4 @@
-package physicalpb
+package physical
 
 import fmt "fmt"
 

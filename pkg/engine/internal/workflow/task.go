@@ -3,7 +3,7 @@ package workflow
 import (
 	"github.com/oklog/ulid/v2"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
 
 // A Task is a single unit of work within a workflow. Each Task is a partition
@@ -16,15 +16,15 @@ type Task struct {
 	TenantID string
 
 	// Fragment is the local physical plan that this Task represents.
-	Fragment *physicalpb.Plan
+	Fragment *physical.Plan
 
 	// Sources defines which Streams physical nodes read from. Sources are only
 	// defined for nodes in the Fragment which read data across task boundaries.
-	Sources map[physicalpb.Node][]*Stream
+	Sources map[physical.Node][]*Stream
 
 	// Sinks defines which Streams physical nodes write to. Sinks are only
 	// defined for nodes in the Fragment which write data across task boundaries.
-	Sinks map[physicalpb.Node][]*Stream
+	Sinks map[physical.Node][]*Stream
 }
 
 // ID returns the string form of the Task's ULID.

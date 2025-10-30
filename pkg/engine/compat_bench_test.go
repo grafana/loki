@@ -98,7 +98,7 @@ func prepareSchema(numLabels int, numMeta int, numParsed int) (*arrow.Schema, []
 	for i := 0; i < numLabels; i++ {
 		ident := semconv.NewIdentifier(
 			fmt.Sprintf("label_%d", i),
-			physicalpb.COLUMN_TYPE_LABEL,
+			COLUMN_TYPE_LABEL,
 			types.Loki.String,
 		)
 		labelIdents[i] = ident
@@ -110,7 +110,7 @@ func prepareSchema(numLabels int, numMeta int, numParsed int) (*arrow.Schema, []
 	for i := 0; i < numMeta; i++ {
 		ident := semconv.NewIdentifier(
 			fmt.Sprintf("meta_%d", i),
-			physicalpb.COLUMN_TYPE_METADATA,
+			COLUMN_TYPE_METADATA,
 			types.Loki.String,
 		)
 		metaIdents[i] = ident
@@ -122,7 +122,7 @@ func prepareSchema(numLabels int, numMeta int, numParsed int) (*arrow.Schema, []
 	for i := 0; i < numParsed; i++ {
 		ident := semconv.NewIdentifier(
 			fmt.Sprintf("parsed_%d", i),
-			physicalpb.COLUMN_TYPE_PARSED,
+			COLUMN_TYPE_PARSED,
 			types.Loki.String,
 		)
 		parsedIdents[i] = ident

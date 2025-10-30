@@ -11,7 +11,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/errors"
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
 
 var (
@@ -20,79 +20,79 @@ var (
 )
 
 func init() {
-	// Functions for [physicalpb.BINARY_OP_DIV]
-	binaryFunctions.register(physicalpb.BINARY_OP_DIV, arrow.PrimitiveTypes.Float64, &genericFloat64Function[*array.Float64, float64]{eval: func(a, b float64) (float64, error) { return a / b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_DIV, arrow.PrimitiveTypes.Int64, &genericFloat64Function[*array.Int64, int64]{eval: func(a, b int64) (float64, error) { return float64(a) / float64(b), nil }})
-	// Functions for [physicalpb.BINARY_OP_ADD]
-	binaryFunctions.register(physicalpb.BINARY_OP_ADD, arrow.PrimitiveTypes.Float64, &genericFloat64Function[*array.Float64, float64]{eval: func(a, b float64) (float64, error) { return a + b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_ADD, arrow.PrimitiveTypes.Int64, &genericFloat64Function[*array.Int64, int64]{eval: func(a, b int64) (float64, error) { return float64(a) + float64(b), nil }})
-	// Functions for [physicalpb.BINARY_OP_SUB]
-	binaryFunctions.register(physicalpb.BINARY_OP_SUB, arrow.PrimitiveTypes.Float64, &genericFloat64Function[*array.Float64, float64]{eval: func(a, b float64) (float64, error) { return a - b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_SUB, arrow.PrimitiveTypes.Int64, &genericFloat64Function[*array.Int64, int64]{eval: func(a, b int64) (float64, error) { return float64(a) - float64(b), nil }})
-	// Functions for [physicalpb.BINARY_OP_MUL]
-	binaryFunctions.register(physicalpb.BINARY_OP_MUL, arrow.PrimitiveTypes.Float64, &genericFloat64Function[*array.Float64, float64]{eval: func(a, b float64) (float64, error) { return a * b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_MUL, arrow.PrimitiveTypes.Int64, &genericFloat64Function[*array.Int64, int64]{eval: func(a, b int64) (float64, error) { return float64(a) * float64(b), nil }})
-	// Functions for [physicalpb.BINARY_OP_MOD]
-	binaryFunctions.register(physicalpb.BINARY_OP_MOD, arrow.PrimitiveTypes.Float64, &genericFloat64Function[*array.Float64, float64]{eval: func(a, b float64) (float64, error) { return math.Mod(a, b), nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_MOD, arrow.PrimitiveTypes.Int64, &genericFloat64Function[*array.Int64, int64]{eval: func(a, b int64) (float64, error) { return float64(a % b), nil }})
-	// Functions for [physicalpb.BINARY_OP_POW]
-	binaryFunctions.register(physicalpb.BINARY_OP_POW, arrow.PrimitiveTypes.Float64, &genericFloat64Function[*array.Float64, float64]{eval: func(a, b float64) (float64, error) { return math.Pow(a, b), nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_POW, arrow.PrimitiveTypes.Int64, &genericFloat64Function[*array.Int64, int64]{eval: func(a, b int64) (float64, error) { return math.Pow(float64(a), float64(b)), nil }})
+	// Functions for [physical.BINARY_OP_DIV]
+	binaryFunctions.register(physical.BINARY_OP_DIV, arrow.PrimitiveTypes.Float64, &genericFloat64Function[*array.Float64, float64]{eval: func(a, b float64) (float64, error) { return a / b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_DIV, arrow.PrimitiveTypes.Int64, &genericFloat64Function[*array.Int64, int64]{eval: func(a, b int64) (float64, error) { return float64(a) / float64(b), nil }})
+	// Functions for [physical.BINARY_OP_ADD]
+	binaryFunctions.register(physical.BINARY_OP_ADD, arrow.PrimitiveTypes.Float64, &genericFloat64Function[*array.Float64, float64]{eval: func(a, b float64) (float64, error) { return a + b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_ADD, arrow.PrimitiveTypes.Int64, &genericFloat64Function[*array.Int64, int64]{eval: func(a, b int64) (float64, error) { return float64(a) + float64(b), nil }})
+	// Functions for [physical.BINARY_OP_SUB]
+	binaryFunctions.register(physical.BINARY_OP_SUB, arrow.PrimitiveTypes.Float64, &genericFloat64Function[*array.Float64, float64]{eval: func(a, b float64) (float64, error) { return a - b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_SUB, arrow.PrimitiveTypes.Int64, &genericFloat64Function[*array.Int64, int64]{eval: func(a, b int64) (float64, error) { return float64(a) - float64(b), nil }})
+	// Functions for [physical.BINARY_OP_MUL]
+	binaryFunctions.register(physical.BINARY_OP_MUL, arrow.PrimitiveTypes.Float64, &genericFloat64Function[*array.Float64, float64]{eval: func(a, b float64) (float64, error) { return a * b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_MUL, arrow.PrimitiveTypes.Int64, &genericFloat64Function[*array.Int64, int64]{eval: func(a, b int64) (float64, error) { return float64(a) * float64(b), nil }})
+	// Functions for [physical.BINARY_OP_MOD]
+	binaryFunctions.register(physical.BINARY_OP_MOD, arrow.PrimitiveTypes.Float64, &genericFloat64Function[*array.Float64, float64]{eval: func(a, b float64) (float64, error) { return math.Mod(a, b), nil }})
+	binaryFunctions.register(physical.BINARY_OP_MOD, arrow.PrimitiveTypes.Int64, &genericFloat64Function[*array.Int64, int64]{eval: func(a, b int64) (float64, error) { return float64(a % b), nil }})
+	// Functions for [physical.BINARY_OP_POW]
+	binaryFunctions.register(physical.BINARY_OP_POW, arrow.PrimitiveTypes.Float64, &genericFloat64Function[*array.Float64, float64]{eval: func(a, b float64) (float64, error) { return math.Pow(a, b), nil }})
+	binaryFunctions.register(physical.BINARY_OP_POW, arrow.PrimitiveTypes.Int64, &genericFloat64Function[*array.Int64, int64]{eval: func(a, b int64) (float64, error) { return math.Pow(float64(a), float64(b)), nil }})
 
-	// Functions for [physicalpb.BINARY_OP_EQ]
-	binaryFunctions.register(physicalpb.BINARY_OP_EQ, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return a == b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_EQ, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return a == b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_EQ, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a == b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_EQ, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a == b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_EQ, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a == b, nil }})
-	// Functions for [physicalpb.BINARY_OP_NEQ]
-	binaryFunctions.register(physicalpb.BINARY_OP_NEQ, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return a != b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_NEQ, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return a != b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_NEQ, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a != b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_NEQ, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a != b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_NEQ, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a != b, nil }})
-	// Functions for [physicalpb.BINARY_OP_GT]
-	binaryFunctions.register(physicalpb.BINARY_OP_GT, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return boolToInt(a) > boolToInt(b), nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_GT, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return a > b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_GT, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a > b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_GT, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a > b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_GT, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a > b, nil }})
-	// Functions for [physicalpb.BINARY_OP_GTE]
-	binaryFunctions.register(physicalpb.BINARY_OP_GTE, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return boolToInt(a) >= boolToInt(b), nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_GTE, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return a >= b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_GTE, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a >= b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_GTE, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a >= b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_GTE, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a >= b, nil }})
-	// Functions for [physicalpb.BINARY_OP_LT]
-	binaryFunctions.register(physicalpb.BINARY_OP_LT, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return boolToInt(a) < boolToInt(b), nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_LT, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return a < b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_LT, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a < b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_LT, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a < b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_LT, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a < b, nil }})
-	// Functions for [physicalpb.BINARY_OP_LTE]
-	binaryFunctions.register(physicalpb.BINARY_OP_LTE, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return boolToInt(a) <= boolToInt(b), nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_LTE, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return a <= b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_LTE, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a <= b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_LTE, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a <= b, nil }})
-	binaryFunctions.register(physicalpb.BINARY_OP_LTE, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a <= b, nil }})
-	// Functions for [physicalpb.BINARY_OP_MATCH_SUBSTR]
-	binaryFunctions.register(physicalpb.BINARY_OP_MATCH_SUBSTR, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return strings.Contains(a, b), nil }})
-	// Functions for [physicalpb.BINARY_OP_NOT_MATCH_SUBSTR]
-	binaryFunctions.register(physicalpb.BINARY_OP_NOT_MATCH_SUBSTR, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return !strings.Contains(a, b), nil }})
-	// Functions for [physicalpb.BINARY_OP_MATCH_RE]
+	// Functions for [physical.BINARY_OP_EQ]
+	binaryFunctions.register(physical.BINARY_OP_EQ, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return a == b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_EQ, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return a == b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_EQ, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a == b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_EQ, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a == b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_EQ, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a == b, nil }})
+	// Functions for [physical.BINARY_OP_NEQ]
+	binaryFunctions.register(physical.BINARY_OP_NEQ, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return a != b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_NEQ, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return a != b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_NEQ, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a != b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_NEQ, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a != b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_NEQ, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a != b, nil }})
+	// Functions for [physical.BINARY_OP_GT]
+	binaryFunctions.register(physical.BINARY_OP_GT, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return boolToInt(a) > boolToInt(b), nil }})
+	binaryFunctions.register(physical.BINARY_OP_GT, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return a > b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_GT, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a > b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_GT, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a > b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_GT, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a > b, nil }})
+	// Functions for [physical.BINARY_OP_GTE]
+	binaryFunctions.register(physical.BINARY_OP_GTE, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return boolToInt(a) >= boolToInt(b), nil }})
+	binaryFunctions.register(physical.BINARY_OP_GTE, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return a >= b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_GTE, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a >= b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_GTE, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a >= b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_GTE, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a >= b, nil }})
+	// Functions for [physical.BINARY_OP_LT]
+	binaryFunctions.register(physical.BINARY_OP_LT, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return boolToInt(a) < boolToInt(b), nil }})
+	binaryFunctions.register(physical.BINARY_OP_LT, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return a < b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_LT, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a < b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_LT, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a < b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_LT, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a < b, nil }})
+	// Functions for [physical.BINARY_OP_LTE]
+	binaryFunctions.register(physical.BINARY_OP_LTE, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return boolToInt(a) <= boolToInt(b), nil }})
+	binaryFunctions.register(physical.BINARY_OP_LTE, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return a <= b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_LTE, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a <= b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_LTE, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a <= b, nil }})
+	binaryFunctions.register(physical.BINARY_OP_LTE, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a <= b, nil }})
+	// Functions for [physical.BINARY_OP_MATCH_SUBSTR]
+	binaryFunctions.register(physical.BINARY_OP_MATCH_SUBSTR, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return strings.Contains(a, b), nil }})
+	// Functions for [physical.BINARY_OP_NOT_MATCH_SUBSTR]
+	binaryFunctions.register(physical.BINARY_OP_NOT_MATCH_SUBSTR, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return !strings.Contains(a, b), nil }})
+	// Functions for [physical.BINARY_OP_MATCH_RE]
 	// TODO(chaudum): Performance of regex evaluation can be improved if RHS is a Scalar,
 	// because the regexp would only need to compiled once for the given scalar value.
 	// TODO(chaudum): Performance of regex evaluation can be improved by simplifying the regex,
 	// see pkg/logql/log/filter.go:645
-	binaryFunctions.register(physicalpb.BINARY_OP_MATCH_RE, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) {
+	binaryFunctions.register(physical.BINARY_OP_MATCH_RE, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) {
 		reg, err := regexp.Compile(b)
 		if err != nil {
 			return false, err
 		}
 		return reg.Match([]byte(a)), nil
 	}})
-	// Functions for [physicalpb.BINARY_OP_NOT_MATCH_RE]
-	binaryFunctions.register(physicalpb.BINARY_OP_NOT_MATCH_RE, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) {
+	// Functions for [physical.BINARY_OP_NOT_MATCH_RE]
+	binaryFunctions.register(physical.BINARY_OP_NOT_MATCH_RE, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) {
 		reg, err := regexp.Compile(b)
 		if err != nil {
 			return false, err
@@ -101,14 +101,14 @@ func init() {
 	}})
 
 	// Cast functions
-	unaryFunctions.register(physicalpb.UNARY_OP_CAST_FLOAT, arrow.BinaryTypes.String, castFn(physicalpb.UNARY_OP_CAST_FLOAT))
-	unaryFunctions.register(physicalpb.UNARY_OP_CAST_BYTES, arrow.BinaryTypes.String, castFn(physicalpb.UNARY_OP_CAST_BYTES))
-	unaryFunctions.register(physicalpb.UNARY_OP_CAST_DURATION, arrow.BinaryTypes.String, castFn(physicalpb.UNARY_OP_CAST_DURATION))
+	unaryFunctions.register(physical.UNARY_OP_CAST_FLOAT, arrow.BinaryTypes.String, castFn(physical.UNARY_OP_CAST_FLOAT))
+	unaryFunctions.register(physical.UNARY_OP_CAST_BYTES, arrow.BinaryTypes.String, castFn(physical.UNARY_OP_CAST_BYTES))
+	unaryFunctions.register(physical.UNARY_OP_CAST_DURATION, arrow.BinaryTypes.String, castFn(physical.UNARY_OP_CAST_DURATION))
 }
 
 type UnaryFunctionRegistry interface {
-	register(physicalpb.UnaryOp, arrow.DataType, UnaryFunction)
-	GetForSignature(physicalpb.UnaryOp, arrow.DataType) (UnaryFunction, error)
+	register(physical.UnaryOp, arrow.DataType, UnaryFunction)
+	GetForSignature(physical.UnaryOp, arrow.DataType) (UnaryFunction, error)
 }
 
 type UnaryFunction interface {
@@ -122,13 +122,13 @@ func (f UnaryFunc) Evaluate(lhs arrow.Array) (arrow.Array, error) {
 }
 
 type unaryFuncReg struct {
-	reg map[physicalpb.UnaryOp]map[arrow.DataType]UnaryFunction
+	reg map[physical.UnaryOp]map[arrow.DataType]UnaryFunction
 }
 
 // register implements UnaryFunctionRegistry.
-func (u *unaryFuncReg) register(op physicalpb.UnaryOp, ltype arrow.DataType, f UnaryFunction) {
+func (u *unaryFuncReg) register(op physical.UnaryOp, ltype arrow.DataType, f UnaryFunction) {
 	if u.reg == nil {
-		u.reg = make(map[physicalpb.UnaryOp]map[arrow.DataType]UnaryFunction)
+		u.reg = make(map[physical.UnaryOp]map[arrow.DataType]UnaryFunction)
 	}
 	if _, ok := u.reg[op]; !ok {
 		u.reg[op] = make(map[arrow.DataType]UnaryFunction)
@@ -138,7 +138,7 @@ func (u *unaryFuncReg) register(op physicalpb.UnaryOp, ltype arrow.DataType, f U
 }
 
 // GetForSignature implements UnaryFunctionRegistry.
-func (u *unaryFuncReg) GetForSignature(op physicalpb.UnaryOp, ltype arrow.DataType) (UnaryFunction, error) {
+func (u *unaryFuncReg) GetForSignature(op physical.UnaryOp, ltype arrow.DataType) (UnaryFunction, error) {
 	// Get registered functions for the specific operation
 	reg, ok := u.reg[op]
 	if !ok {
@@ -153,8 +153,8 @@ func (u *unaryFuncReg) GetForSignature(op physicalpb.UnaryOp, ltype arrow.DataTy
 }
 
 type BinaryFunctionRegistry interface {
-	register(physicalpb.BinaryOp, arrow.DataType, BinaryFunction)
-	GetForSignature(physicalpb.BinaryOp, arrow.DataType) (BinaryFunction, error)
+	register(physical.BinaryOp, arrow.DataType, BinaryFunction)
+	GetForSignature(physical.BinaryOp, arrow.DataType) (BinaryFunction, error)
 }
 
 type BinaryFunction interface {
@@ -162,13 +162,13 @@ type BinaryFunction interface {
 }
 
 type binaryFuncReg struct {
-	reg map[physicalpb.BinaryOp]map[arrow.DataType]BinaryFunction
+	reg map[physical.BinaryOp]map[arrow.DataType]BinaryFunction
 }
 
 // register implements BinaryFunctionRegistry.
-func (b *binaryFuncReg) register(op physicalpb.BinaryOp, ty arrow.DataType, f BinaryFunction) {
+func (b *binaryFuncReg) register(op physical.BinaryOp, ty arrow.DataType, f BinaryFunction) {
 	if b.reg == nil {
-		b.reg = make(map[physicalpb.BinaryOp]map[arrow.DataType]BinaryFunction)
+		b.reg = make(map[physical.BinaryOp]map[arrow.DataType]BinaryFunction)
 	}
 	if _, ok := b.reg[op]; !ok {
 		b.reg[op] = make(map[arrow.DataType]BinaryFunction)
@@ -178,7 +178,7 @@ func (b *binaryFuncReg) register(op physicalpb.BinaryOp, ty arrow.DataType, f Bi
 }
 
 // GetForSignature implements BinaryFunctionRegistry.
-func (b *binaryFuncReg) GetForSignature(op physicalpb.BinaryOp, ltype arrow.DataType) (BinaryFunction, error) {
+func (b *binaryFuncReg) GetForSignature(op physical.BinaryOp, ltype arrow.DataType) (BinaryFunction, error) {
 	// Get registered functions for the specific operation
 	reg, ok := b.reg[op]
 	if !ok {

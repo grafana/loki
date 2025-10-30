@@ -5,7 +5,7 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical/physicalpb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -16,18 +16,18 @@ func newExpressionEvaluator() expressionEvaluator {
 	return expressionEvaluator{}
 }
 
-func (e expressionEvaluator) eval(expr physicalpb.Expression, input arrow.Record) (arrow.Array, error) {
+func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) (arrow.Array, error) {
 
 	switch expr := expr.Kind.(type) {
 
-	case *physicalpb.Expression_LiteralExpression:
+	case *physical.Expression_LiteralExpression:
 		return NewScalar(*expr.LiteralExpression, int(input.NumRows())), nil
 
-	case *physicalpb.Expression_ColumnExpression:
+	case *physical.Expression_ColumnExpression:
 		colIdent := semconv.NewIdentifier(expr.ColumnExpression.Name, expr.ColumnExpression.Type, types.Loki.String)
 
 		// For non-ambiguous columns, we can look up the column in the schema by its fully qualified name.
-		if expr.ColumnExpression.Type != physicalpb.COLUMN_TYPE_AMBIGUOUS {
+		if expr.ColumnExpression.Type != physical.COLUMN_TYPE_AMBIGUOUS {
 			for idx, field := range input.Schema().Fields() {
 				ident, err := semconv.ParseFQN(field.Name)
 				if err != nil {
@@ -40,7 +40,7 @@ func (e expressionEvaluator) eval(expr physicalpb.Expression, input arrow.Record
 		}
 
 		// For ambiguous columns, we need to filter on the name and type and combine matching columns into a CoalesceVector.
-		if expr.ColumnExpression.Type == physicalpb.COLUMN_TYPE_AMBIGUOUS {
+		if expr.ColumnExpression.Type == physical.COLUMN_TYPE_AMBIGUOUS {
 			var fieldIndices []int
 			var fieldIdents []*semconv.Identifier
 
@@ -82,9 +82,9 @@ func (e expressionEvaluator) eval(expr physicalpb.Expression, input arrow.Record
 
 		// A non-existent column is represented as a string scalar with zero-value.
 		// This reflects current behaviour, where a label filter `| foo=""` would match all if `foo` is not defined.
-		return NewScalar(physicalpb.LiteralExpression{Kind: &physicalpb.LiteralExpression_StringLiteral{StringLiteral: &physicalpb.StringLiteral{Value: ""}}}, int(input.NumRows())), nil
+		return NewScalar(physical.LiteralExpression{Kind: &physical.LiteralExpression_StringLiteral{StringLiteral: &physical.StringLiteral{Value: ""}}}, int(input.NumRows())), nil
 
-	case *physicalpb.Expression_UnaryExpression:
+	case *physical.Expression_UnaryExpression:
 		lhr, err := e.eval(*expr.UnaryExpression.Value, input)
 		if err != nil {
 			return nil, err
@@ -96,7 +96,7 @@ func (e expressionEvaluator) eval(expr physicalpb.Expression, input arrow.Record
 		}
 		return fn.Evaluate(lhr)
 
-	case *physicalpb.Expression_BinaryExpression:
+	case *physical.Expression_BinaryExpression:
 		lhs, err := e.eval(*expr.BinaryExpression.Left, input)
 		if err != nil {
 			return nil, err
@@ -125,7 +125,7 @@ func (e expressionEvaluator) eval(expr physicalpb.Expression, input arrow.Record
 }
 
 // newFunc returns a new function that can evaluate an input against a binded expression.
-func (e expressionEvaluator) newFunc(expr physicalpb.Expression) evalFunc {
+func (e expressionEvaluator) newFunc(expr physical.Expression) evalFunc {
 	return func(input arrow.Record) (arrow.Array, error) {
 		return e.eval(expr, input)
 	}
@@ -135,5 +135,5 @@ type evalFunc func(input arrow.Record) (arrow.Array, error)
 
 type columnWithType struct {
 	col arrow.Array
-	ct  physicalpb.ColumnType
+	ct  physical.ColumnType
 }
