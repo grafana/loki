@@ -624,8 +624,8 @@ loki:
 enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
-  # Default verion of GEL to deploy
-  version: 3.5.2
+  # Default version of GEL to deploy
+  version: 3.5.4
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -667,7 +667,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.5.7
+    tag: 3.5.4
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
