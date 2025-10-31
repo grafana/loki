@@ -228,11 +228,19 @@ func (b *topkBatch) Compact() arrow.Record {
 
 	// Get all row references to compact.
 	rowRefs := b.heap.PopAll()
-	slices.Reverse(rowRefs)
+
+	recordRows := make(map[arrow.Record][]int, len(b.usedCount))
+	for _, ref := range rowRefs {
+		recordRows[ref.Record] = append(recordRows[ref.Record], ref.Row)
+	}
 
 	compactor := arrowagg.NewRecords(memory.DefaultAllocator)
-	for _, ref := range rowRefs {
-		compactor.AppendSlice(ref.Record, int64(ref.Row), int64(ref.Row)+1)
+	for rec, rows := range recordRows {
+		slices.Sort(rows)
+		iterContiguousRanges(rows, func(start, end int) bool {
+			compactor.AppendSlice(rec, int64(start), int64(end))
+			return true
+		})
 	}
 
 	compacted, err := compactor.Aggregate()
@@ -256,4 +264,31 @@ func (b *topkBatch) Reset() {
 
 	clear(b.usedCount)
 	clear(b.usedSchemas)
+}
+
+// iterContiguousRanges iterates over contiguous ranges of row indices from a sorted
+// slice. Rows must be sorted in ascending order.
+//
+// For example, if rows is [1, 2, 3, 5, 6, 7], it will yield two ranges:
+// [1, 4) and [5, 8), representing the contiguous sequences.
+//
+// The function calls yield for each contiguous range found. If yield returns false,
+// iteration stops.
+func iterContiguousRanges(rows []int, yield func(start, end int) bool) {
+	if len(rows) == 0 {
+		return
+	}
+
+	startRow := rows[0]
+	for i := 1; i < len(rows); i++ {
+		// If current row is not contiguous with previous, yield the previous range
+		if rows[i] != rows[i-1]+1 {
+			if !yield(startRow, rows[i-1]+1) {
+				return
+			}
+			startRow = rows[i]
+		}
+	}
+	// Yield the final contiguous range
+	yield(startRow, rows[len(rows)-1]+1)
 }

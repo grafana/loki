@@ -358,7 +358,7 @@ func (e *Engine) collectResult(ctx context.Context, logger log.Logger, params lo
 	var builder ResultBuilder
 	switch params.GetExpression().(type) {
 	case syntax.LogSelectorExpr:
-		builder = newStreamsResultBuilder()
+		builder = newStreamsResultBuilder(params.Direction())
 	case syntax.SampleExpr:
 		if params.Step() > 0 {
 			builder = newMatrixResultBuilder()
