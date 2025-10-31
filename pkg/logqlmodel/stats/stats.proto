@@ -121,6 +121,10 @@ message Querier {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "store"
   ];
+  // Querier execution time in seconds.
+  // Total time the querier spent executing the query. This is separate from execTime which tracks overall execution time.
+  // Grafana expects time values to be returned in seconds as float.
+  double querierExecTime = 2 [(gogoproto.jsontag) = "querierExecTime"];
 }
 
 message Ingester {
