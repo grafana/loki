@@ -17,8 +17,8 @@ type FunctionOp struct {
 }
 
 var (
-	_ Value       = (*UnaryOp)(nil)
-	_ Instruction = (*UnaryOp)(nil)
+	_ Value       = (*FunctionOp)(nil)
+	_ Instruction = (*FunctionOp)(nil)
 )
 
 // Name returns an identifier for the UnaryOp operation.

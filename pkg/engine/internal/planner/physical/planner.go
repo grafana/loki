@@ -137,18 +137,7 @@ func (p *Planner) convertPredicate(inst logical.Value) Expression {
 			Op:          inst.Op,
 			Expressions: exprs,
 		}
-		if p.context.v1Compatible {
-			compat := &ColumnCompat{
-				Source:      types.ColumnTypeParsed,
-				Destination: types.ColumnTypeParsed,
-				Collision:   types.ColumnTypeLabel,
-			}
-			node, err = p.wrapNodeWith(node, compat)
-			if err != nil {
-				return nil, err
-			}
-		}
-	return node, nil
+		return node
 	default:
 		panic(fmt.Sprintf("invalid value for predicate: %T", inst))
 	}
@@ -301,17 +290,37 @@ func (p *Planner) processSort(lp *logical.Sort, ctx *Context) (Node, error) {
 // Converts a [logical.Projection] into a physical [Projection] node.
 func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node, error) {
 	expressions := make([]Expression, len(lp.Expressions))
+	needsCompat := false
 	for i := range lp.Expressions {
 		expressions[i] = p.convertPredicate(lp.Expressions[i])
+		if funcExpr, ok := lp.Expressions[i].(*logical.FunctionOp); ok {
+			if funcExpr.Op == types.VariadicOpParseJSON || funcExpr.Op == types.VariadicOpParseLogfmt {
+				needsCompat = true
+			}
+		}
 	}
 
-	node := &Projection{
+	var node Node
+	node = &Projection{
 		Expressions: expressions,
 		All:         lp.All,
 		Expand:      lp.Expand,
 		Drop:        lp.Drop,
 	}
 	p.plan.graph.Add(node)
+
+	if needsCompat && p.context.v1Compatible {
+		compat := &ColumnCompat{
+			Source:      types.ColumnTypeParsed,
+			Destination: types.ColumnTypeParsed,
+			Collision:   types.ColumnTypeLabel,
+		}
+		var err error
+		node, err = p.wrapNodeWith(node, compat)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	child, err := p.process(lp.Relation, ctx)
 	if err != nil {

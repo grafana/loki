@@ -297,6 +297,7 @@ func (r *projectionPushdown) propagateProjections(node Node, projections []Colum
 				}
 			}
 		}
+	default:
 		// propagate to children
 	}
 

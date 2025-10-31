@@ -43,9 +43,7 @@ func parseFn(op types.VariadicOp) VariadicFunction {
 			newFields = append(newFields, semconv.FieldFromIdent(ident, true))
 		}
 
-		return  array.NewStructArrayWithFields(parsedColumns, newFields)
-
-		return result, nil
+		return array.NewStructArrayWithFields(parsedColumns, newFields)
 	})
 }
 
