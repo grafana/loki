@@ -77,9 +77,10 @@ func NewReaderService(
 	consumerFactory ConsumerFactory,
 	logger log.Logger,
 	reg prometheus.Registerer,
+	readerOpts ...ReaderOption,
 ) (*ReaderService, error) {
 	readerMetrics := NewReaderMetrics(reg)
-	reader, err := NewKafkaReader(kafkaCfg, partitionID, logger, readerMetrics, reg)
+	reader, err := NewKafkaReader(kafkaCfg, partitionID, logger, readerMetrics, reg, readerOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("creating kafka reader: %w", err)
 	}

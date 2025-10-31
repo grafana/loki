@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/metadata"
 
@@ -486,7 +487,9 @@ func NewSampleQueryClientIterator(client QuerySampleClient) SampleIterator {
 func (i *sampleQueryClientIterator) Next() bool {
 	ctx := i.client.Context()
 	for i.curr == nil || !i.curr.Next() {
+		start := time.Now()
 		batch, err := i.client.Recv()
+		stats.FromContext(ctx).AddIngesterRecvWait(time.Since(start))
 		if err == io.EOF {
 			return false
 		} else if err != nil {

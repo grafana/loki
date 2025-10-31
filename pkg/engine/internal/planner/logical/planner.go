@@ -188,12 +188,12 @@ func buildPlanForLogQuery(
 
 	// TODO: there's a subtle bug here, as it is actually possible to have both a logfmt parser and a json parser
 	// for example, the query `{app="foo"} | json | line_format "{{.nested_json}}" | json ` is valid, and will need
-	// multiple parse stages. We will handle thid in a future PR.
+	// multiple parse stages. We will handle this in a future PR.
 	if hasLogfmtParser {
-		builder = builder.Parse(ParserLogfmt)
+		builder = builder.Parse(types.VariadicOpParseLogfmt)
 	}
 	if hasJSONParser {
-		builder = builder.Parse(ParserJSON)
+		builder = builder.Parse(types.VariadicOpParseJSON)
 	}
 	for _, value := range postParsePredicates {
 		builder = builder.Select(value)
@@ -259,14 +259,44 @@ func walkRangeAggregation(e *syntax.RangeAggregationExpr, params logql.Params) (
 		builder = builder.Cast(unwrapIdentifier, unwrapOperation)
 	}
 
-	rangeAggType := convertRangeAggregationType(e.Operation)
-	if rangeAggType == types.RangeAggregationTypeInvalid {
+	var rangeAggType types.RangeAggregationType
+	switch e.Operation {
+	case syntax.OpRangeTypeCount:
+		rangeAggType = types.RangeAggregationTypeCount
+	case syntax.OpRangeTypeSum:
+		rangeAggType = types.RangeAggregationTypeSum
+	//case syntax.OpRangeTypeMax:
+	//	rangeAggType = types.RangeAggregationTypeMax
+	//case syntax.OpRangeTypeMin:
+	//	rangeAggType = types.RangeAggregationTypeMin
+	//case syntax.OpRangeTypeBytesRate:
+	//	rangeAggType = types.RangeAggregationTypeBytes // bytes_rate is implemented as bytes_over_time/$interval
+	case syntax.OpRangeTypeRate:
+		if e.Left.Unwrap != nil {
+			rangeAggType = types.RangeAggregationTypeSum // rate of an unwrap is implemented as sum_over_time/$interval
+		} else {
+			rangeAggType = types.RangeAggregationTypeCount // rate is implemented as count_over_time/$interval
+		}
+	default:
 		return nil, errUnimplemented
 	}
 
 	builder = builder.RangeAggregation(
 		nil, rangeAggType, params.Start(), params.End(), params.Step(), rangeInterval,
 	)
+
+	switch e.Operation {
+	//case syntax.OpRangeTypeBytesRate:
+	//	// bytes_rate is implemented as bytes_over_time/$interval
+	//	builder = builder.BinOpRight(types.BinaryOpDiv, &Literal{
+	//		Literal: NewLiteral(rangeInterval.Seconds()),
+	//	})
+	case syntax.OpRangeTypeRate:
+		// rate is implemented as count_over_time/$interval
+		builder = builder.BinOpRight(types.BinaryOpDiv, &Literal{
+			Literal: NewLiteral(rangeInterval.Seconds()),
+		})
+	}
 
 	return builder.Value(), nil
 }
@@ -423,21 +453,6 @@ func convertVectorAggregationType(op string) types.VectorAggregationType {
 	//	return types.VectorAggregationTypeMin
 	default:
 		return types.VectorAggregationTypeInvalid
-	}
-}
-
-func convertRangeAggregationType(op string) types.RangeAggregationType {
-	switch op {
-	case syntax.OpRangeTypeCount:
-		return types.RangeAggregationTypeCount
-	case syntax.OpRangeTypeSum:
-		return types.RangeAggregationTypeSum
-	//case syntax.OpRangeTypeMax:
-	//	return types.RangeAggregationTypeMax
-	//case syntax.OpRangeTypeMin:
-	//	return types.RangeAggregationTypeMin
-	default:
-		return types.RangeAggregationTypeInvalid
 	}
 }
 
