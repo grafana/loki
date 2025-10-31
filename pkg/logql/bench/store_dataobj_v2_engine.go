@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -25,6 +26,10 @@ import (
 )
 
 var errStoreUnimplemented = errors.New("store does not implement this operation")
+
+var (
+	engineLogs = flag.Bool("engine-logs", false, "include engine logs in verbose output")
+)
 
 // DataObjV2EngineStore uses the new engine for querying. It assumes the engine
 // can read the "new dataobj format" (e.g. columnar data) from the provided
@@ -50,7 +55,7 @@ func NewDataObjV2EngineStore(dir string, tenantID string) (*DataObjV2EngineStore
 func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.ExecutorConfig, metastoreCfg metastore.Config) (*DataObjV2EngineStore, error) {
 	logger := log.NewNopLogger()
 
-	if testing.Verbose() {
+	if testing.Verbose() && *engineLogs {
 		startTime := time.Now()
 
 		logger = log.NewLogfmtLogger(&unescapeWriter{w: log.NewSyncWriter(os.Stderr)})
