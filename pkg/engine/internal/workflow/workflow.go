@@ -4,12 +4,14 @@ package workflow
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid/v2"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -33,6 +35,8 @@ type Workflow struct {
 
 	streamsMut   sync.RWMutex
 	streamStates map[*Stream]StreamState
+
+	admissionControl *admissionControl
 }
 
 // New creates a new Workflow from a physical plan. New returns an error if the
@@ -133,17 +137,40 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 		}
 	}
 
-	// TODO(rfratto): For logs queries, we want a system to limit how many scan
-	// tasks get sent to the runner at once.
-	//
-	// This will limit unnecessary resource consumption of workflows when
-	// there's a lot of compute capacity.
-	if err := wf.runner.Start(ctx, wrappedHandler, tasks...); err != nil {
-		pipeline.Close()
+	g := wf.dispatchTasks(ctx, wrappedHandler, tasks)
+	if err := g.Wait(); err != nil {
+		wrapped.Close()
 		return nil, err
 	}
 
 	return wrapped, nil
+}
+
+// dispatchTasks groups the slice of tasks by their associated "admission lane" (token bucket)
+// and dispatches them to the runner.
+// Tasks from different admission lanes are dispatched concurrently.
+// The caller needs to wait on the returned error group.
+func (wf *Workflow) dispatchTasks(ctx context.Context, handler TaskEventHandler, tasks []*Task) *errgroup.Group {
+	// TODO(chaudum): Make the capacity of the admission lanes configurable
+	wf.admissionControl = newAdmissionControl(ctx, defaultAdmissionControlOpts)
+
+	g, _ := errgroup.WithContext(ctx)
+	for tokenBucket, tasks := range wf.admissionControl.groupByBucket(tasks) {
+		g.Go(func() error {
+			for _, t := range tasks {
+				// Claim t.Cost amount of tokens from the token bucket.
+				// This blocks until the claim is fulfilled or returns an error.
+				if err := tokenBucket.Claim(t.Cost); err != nil {
+					return fmt.Errorf("failed to start task %s: %w", t.ID(), err)
+				}
+				if err := wf.runner.Start(ctx, handler, t); err != nil {
+					return fmt.Errorf("failed to start task %s: %w", t.ID(), err)
+				}
+			}
+			return nil
+		})
+	}
+	return g
 }
 
 func (wf *Workflow) allStreams() []*Stream {
@@ -216,6 +243,13 @@ func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus Task
 
 	if !newStatus.State.Terminal() {
 		return
+	}
+
+	if wf.admissionControl == nil {
+		level.Warn(wf.logger).Log("msg", "admission control was not initialised")
+	} else {
+		// Return the tokens to the bucket when the function completed
+		defer wf.admissionControl.tokenBucketFor(task).Return(task.Cost)
 	}
 
 	if newStatus.Statistics != nil {
