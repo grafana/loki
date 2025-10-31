@@ -5,6 +5,10 @@ import (
 )
 
 func ArrayListValue(arr *array.List, i int) any {
+	if arr.Len() == 0 {
+		return []string{}
+	}
+
 	start, end := arr.ValueOffsets(i)
 	listValues := arr.ListValues()
 	switch listValues := listValues.(type) {
