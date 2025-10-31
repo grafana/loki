@@ -56,6 +56,11 @@ type Context struct {
 	// is a double (so that it will pass correctly in json), but there are no
 	// atomic operations on doubles.
 	recvWaitTime int64
+	// querierExecTime accumulates the querier execution time in nanoseconds
+	// We use an int64 nanoseconds value here because the Queriers exec time field
+	// is a double (so that it will pass correctly in json), but there are no
+	// atomic operations on doubles.
+	querierExecTime int64
 
 	mtx sync.Mutex
 }
@@ -148,6 +153,7 @@ func (c *Context) Reset() {
 	c.caches.Reset()
 	c.index.Reset()
 	c.recvWaitTime = 0
+	c.querierExecTime = 0
 }
 
 // Result calculates the summary based on store and ingester data.
@@ -155,8 +161,12 @@ func (c *Context) Result(execTime time.Duration, queueTime time.Duration, totalE
 	r := c.result
 
 	r.Merge(Result{
+		// ewelch: I'm not sure why we have a separate store object in the context and we don't use the
+		// store object in the querier object. I didn't try to solve this when adding the querier exec time
+		// but I suspect this could be simplified?
 		Querier: Querier{
-			Store: c.store,
+			Store:           c.store,
+			QuerierExecTime: time.Duration(c.querierExecTime).Seconds(),
 		},
 		Ingester: Ingester{
 			TotalReached:       c.ingester.TotalReached,
@@ -268,6 +278,7 @@ func (s *Summary) Merge(m Summary) {
 
 func (q *Querier) Merge(m Querier) {
 	q.Store.Merge(m.Store)
+	q.QuerierExecTime += m.QuerierExecTime
 }
 
 func (i *Ingester) Merge(m Ingester) {
@@ -332,7 +343,8 @@ func (r *Result) Merge(m Result) {
 	r.Summary.Merge(m.Summary)
 	r.Index.Merge(m.Index)
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
-		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime), int(r.Summary.TotalEntriesReturned))
+		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime),
+		int(r.Summary.TotalEntriesReturned))
 }
 
 // ConvertSecondsToNanoseconds converts time.Duration representation of seconds (float64)
@@ -614,6 +626,11 @@ func (c *Context) SetQueryReferencedStructuredMetadata() {
 
 func (c *Context) SetQueryUsedV2Engine() {
 	c.store.QueryUsedV2Engine = true
+}
+
+// AddQuerierExecTime accumulates the querier execution time.
+func (c *Context) AddQuerierExecTime(d time.Duration) {
+	atomic.AddInt64(&c.querierExecTime, int64(d))
 }
 
 func (c *Context) getCacheStatsByType(t CacheType) *Cache {

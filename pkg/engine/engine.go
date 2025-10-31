@@ -273,6 +273,7 @@ func (e *QueryEngine) Execute(ctx context.Context, params logql.Params) (logqlmo
 
 	durFull := time.Since(startTime)
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
+	statsCtx.AddQuerierExecTime(durFull)
 	stats := statsCtx.Result(durFull, queueTime, builder.Len())
 
 	level.Debug(logger).Log(

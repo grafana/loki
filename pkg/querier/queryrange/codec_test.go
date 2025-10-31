@@ -1955,6 +1955,7 @@ var (
 			"totalReached": 10
 		},
 		"querier": {
+			"querierExecTime": 0,
 			"store" : {
 				"chunk": {
 					"compressedBytes": 11,
