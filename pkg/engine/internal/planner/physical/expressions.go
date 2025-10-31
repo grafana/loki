@@ -2,6 +2,7 @@ package physical
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -14,6 +15,7 @@ const (
 
 	ExprTypeUnary
 	ExprTypeBinary
+	ExprTypeVariadic
 	ExprTypeLiteral
 	ExprTypeColumn
 )
@@ -25,6 +27,8 @@ func (t ExpressionType) String() string {
 		return "UnaryExpression"
 	case ExprTypeBinary:
 		return "BinaryExpression"
+	case ExprTypeVariadic:
+		return "VariadicExpression"
 	case ExprTypeLiteral:
 		return "LiteralExpression"
 	case ExprTypeColumn:
@@ -62,6 +66,13 @@ type UnaryExpression interface {
 type BinaryExpression interface {
 	Expression
 	isBinaryExpr()
+}
+
+// FunctionExpression is the common interface for all function expressions in a
+// physical plan.
+type FunctionExpression interface {
+	Expression
+	isFunctionExpr()
 }
 
 // LiteralExpression is the common interface for all literal expressions in a
@@ -102,7 +113,7 @@ func (e *UnaryExpr) String() string {
 	return fmt.Sprintf("%s(%s)", e.Op, e.Left)
 }
 
-// ID returns the type of the [UnaryExpr].
+// Type returns the type of the [UnaryExpr].
 func (*UnaryExpr) Type() ExpressionType {
 	return ExprTypeUnary
 }
@@ -129,7 +140,7 @@ func (e *BinaryExpr) String() string {
 	return fmt.Sprintf("%s(%s, %s)", e.Op, e.Left, e.Right)
 }
 
-// ID returns the type of the [BinaryExpr].
+// Type returns the type of the [BinaryExpr].
 func (*BinaryExpr) Type() ExpressionType {
 	return ExprTypeBinary
 }
@@ -153,7 +164,7 @@ func (e *LiteralExpr) String() string {
 	return e.Literal.String()
 }
 
-// ID returns the type of the [LiteralExpr].
+// Type returns the type of the [LiteralExpr].
 func (*LiteralExpr) Type() ExpressionType {
 	return ExprTypeLiteral
 }
@@ -198,7 +209,40 @@ func (e *ColumnExpr) String() string {
 	return e.Ref.String()
 }
 
-// ID returns the type of the [ColumnExpr].
+// Type returns the type of the [ColumnExpr].
 func (e *ColumnExpr) Type() ExpressionType {
 	return ExprTypeColumn
+}
+
+// VariadicExpr is an expression that implements the [FunctionExpression] interface.
+type VariadicExpr struct {
+	// Op is the function operation to apply to the parameters
+	Op types.VariadicOp
+
+	// Expressions are the parameters paaws to the function
+	Expressions []Expression
+}
+
+func (*VariadicExpr) isExpr()         {}
+func (*VariadicExpr) isFunctionExpr() {}
+
+// Clone returns a copy of the [VariadicExpr].
+func (e *VariadicExpr) Clone() Expression {
+	return &VariadicExpr{
+		Expressions: cloneExpressions(e.Expressions),
+		Op:          e.Op,
+	}
+}
+
+func (e *VariadicExpr) String() string {
+	exprs := make([]string, len(e.Expressions))
+	for i, expr := range e.Expressions {
+		exprs[i] = expr.String()
+	}
+	return fmt.Sprintf("%s(%s)", e.Op, strings.Join(exprs, ", "))
+}
+
+// Type returns the type of the [VariadicExpr].
+func (*VariadicExpr) Type() ExpressionType {
+	return ExprTypeVariadic
 }
