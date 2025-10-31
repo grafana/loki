@@ -5,7 +5,6 @@ import (
 	"errors"
 	"math"
 	"testing"
-	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
@@ -36,45 +35,6 @@ var (
 		},
 	)
 )
-
-func ascendingTimestampPipeline(start time.Time) *recordGenerator {
-	return timestampPipeline(start, ascending)
-}
-
-func descendingTimestampPipeline(start time.Time) *recordGenerator {
-	return timestampPipeline(start, descending)
-}
-
-const (
-	ascending  = time.Duration(1)
-	descending = time.Duration(-1)
-)
-
-func timestampPipeline(start time.Time, order time.Duration) *recordGenerator {
-	return newRecordGenerator(
-		arrow.NewSchema([]arrow.Field{
-			semconv.FieldFromFQN("int64.builtin.id", false),
-			semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", false),
-		}, nil),
-
-		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record {
-			idColBuilder := array.NewInt64Builder(memory.DefaultAllocator)
-			tsColBuilder := array.NewTimestampBuilder(memory.DefaultAllocator, arrow.FixedWidthTypes.Timestamp_ns.(*arrow.TimestampType))
-
-			rows := int64(0)
-			for ; rows < batchSize && offset+rows < maxRows; rows++ {
-				idColBuilder.Append(offset + rows)
-				tsColBuilder.Append(arrow.Timestamp(start.Add(order * (time.Duration(offset)*time.Second + time.Duration(rows)*time.Millisecond)).UnixNano()))
-			}
-
-			idData := idColBuilder.NewArray()
-			tsData := tsColBuilder.NewArray()
-
-			columns := []arrow.Array{idData, tsData}
-			return array.NewRecord(schema, columns, rows)
-		},
-	)
-}
 
 type batchFunc func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record
 

@@ -391,18 +391,18 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 // Return:
 //   - acc: currently accumulated expression.
 //   - input: a physical plan node of the only input of that expression, if any.
-//   - inputRef: a pointer to a node in `acc` that refers the input, if any. This is for convenience of
+//   - inputExpr: a pointer to a node in `acc` that refers the input, if any. This is for convenience of
 //     renaming the column refenrece without a need to search for it in `acc` expression.
 //   - err: error
 func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *Context) (acc *physicalpb.Expression, input physicalpb.Node, inputRef *physicalpb.ColumnExpression, err error) {
 	switch v := lp.(type) {
 	case *logical.BinOp:
 		// Traverse left and right children
-		leftChild, leftInput, leftInputRef, err := p.collapseMathExpressions(v.Left, false, ctx)
+		leftChild, leftInput, leftInputExpr, err := p.collapseMathExpressions(v.Left, false, ctx)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		rightChild, rightInput, rightInputRef, err := p.collapseMathExpressions(v.Right, false, ctx)
+		rightChild, rightInput, rightInputExpr, err := p.collapseMathExpressions(v.Right, false, ctx)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -410,14 +410,10 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 		// Both left and right expressions have obj scans, replace with join
 		if leftInput != nil && rightInput != nil {
 			// Replace column references with `_left` and `_right` indicating that there are two inputs coming from a Join
-			leftInputRef = &physicalpb.ColumnExpression{
-				Name: "value_left",
-				Type: physicalpb.COLUMN_TYPE_GENERATED,
-			}
-			rightInputRef = &physicalpb.ColumnExpression{
-				Name: "value_right",
-				Type: physicalpb.COLUMN_TYPE_GENERATED,
-			}
+			leftInputExpr.Name = "value_left"
+			leftInputExpr.Type = physicalpb.COLUMN_TYPE_GENERATED
+			rightInputExpr.Name = "value_right"
+			rightInputExpr.Type = physicalpb.COLUMN_TYPE_GENERATED
 
 			// Insert an InnerJoin on timestamp before Projection
 			join := &physicalpb.Join{Id: physicalpb.PlanNodeID{Value: ulid.New()}}
@@ -459,9 +455,9 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 		if leftInput == nil {
 			input = rightInput
 		}
-		inputRef := leftInputRef
-		if leftInputRef == nil {
-			inputRef = rightInputRef
+		inputExpr := leftInputExpr
+		if leftInputExpr == nil {
+			inputExpr = rightInputExpr
 		}
 		expr := &physicalpb.BinaryExpression{
 			Left:  leftChild,
@@ -487,9 +483,9 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 			return columnRef.ToExpression(), projection, columnRef, nil
 		}
 
-		return expr.ToExpression(), input, inputRef, nil
+		return expr.ToExpression(), input, inputExpr, nil
 	case *logical.UnaryOp:
-		child, input, inputRef, err := p.collapseMathExpressions(v.Value, false, ctx)
+		child, input, inputExpr, err := p.collapseMathExpressions(v.Value, false, ctx)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -514,18 +510,18 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 			return columnRef.ToExpression(), projection, columnRef, nil
 		}
 
-		return expr.ToExpression(), input, inputRef, nil
+		return expr.ToExpression(), input, inputExpr, nil
 	case *logical.Literal:
 		return NewLiteral(v.Value()).ToExpression(), nil, nil, nil
 	default:
 		// If it is neigher a literal nor an expression, then we continue `p.process` on this node and represent in
 		// as a column ref `value` in the final math expression.
-		columnRef := newColumnExpr(types.ColumnNameGeneratedValue, physicalpb.COLUMN_TYPE_GENERATED)
+		columnExpr := newColumnExpr(types.ColumnNameGeneratedValue, physicalpb.COLUMN_TYPE_GENERATED)
 		child, err := p.process(lp, ctx)
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		return columnRef.ToExpression(), child, columnRef, nil
+		return columnExpr.ToExpression(), child, columnExpr, nil
 	}
 }
 
