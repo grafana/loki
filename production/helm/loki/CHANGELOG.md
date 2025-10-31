@@ -13,6 +13,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+## 6.45.2
+
+- [BUGFIX] Fix incorrect GEL version in the chart and reference.
 
 ## 6.45.1
 
