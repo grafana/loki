@@ -75,6 +75,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [FEATURE] Add load balancer port to query-frontend service. [#19462](https://github.com/grafana/loki/pull/19462)
 - [FEATURE] Make loki-canary readinessProbe configurable via values.yaml. [#19328](https://github.com/grafana/loki/pull/19328)
 - [BUGFIX] Don't fail for missing bucket name, if local disk is used. [#19675](https://github.com/grafana/loki/pull/19675)
+ [ENHANCEMENT] Allow scaling querier with keda. [#16873](https://github.com/grafana/loki/pull/16873)
 
 ## 6.45.2
 
@@ -110,7 +111,6 @@ Entries should include a reference to the pull request that introduced the chang
 - [ENHANCEMENT] Add configurable `startupProbe` to `startupProbethe memcached container in the memcached pods [#19166](https://github.com/grafana/loki/pull/19166)
 - [BUGFIX] Update loki-helm-test image tag to latest commit [#19227](https://github.com/grafana/loki/pull/19227)
 - [BUGFIX] Update querier, read, and single binary target definitions for UI enablement. [#19461](https://github.com/grafana/loki/pull/19461)
-- [ENHANCEMENT] Allow scaling querier with keda. [#16873](https://github.com/grafana/loki/pull/16873)
 
 ## 6.42.0
 
@@ -122,7 +122,6 @@ Before upgrading to this version, make sure that the CustomResourceDefinitions (
 - [FEATURE] Add replicas to loki-canary deployment [#190095](https://github.com/grafana/loki/pull/19095)
 - [FEATURE] Allow changing the retentionPolicy for the singleBinary StatefulSet [#19097](https://github.com/grafana/loki/pull/19097)
 - [FEATURE]: Allow auto-resizing the volume by recreating the StatefulSet. [#19217](https://github.com/grafana/loki/pull/19217)
-- [ENHANCEMENT] Allow scaling querier with keda. [#16873](https://github.com/grafana/loki/pull/16873)
 
 ## 6.41.1
 
