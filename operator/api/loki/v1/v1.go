@@ -106,4 +106,6 @@ var (
 	ErrSummaryAnnotationMissing = errors.New("rule requires annotation: summary")
 	// ErrDescriptionAnnotationMissing indicates that an alerting rule is missing the description annotation
 	ErrDescriptionAnnotationMissing = errors.New("rule requires annotation: description")
+	// ErrReplicationFactorTooHigh indicates that the lokistack's replication factor must always be less than the number of ingester replicas
+	ErrReplicationFactorTooHigh = errors.New("replication factor must be less than replicas")
 )
