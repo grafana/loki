@@ -597,7 +597,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	var store objstore.Bucket
 	if t.Cfg.Querier.EngineV2.Enable {
-		store, err = t.createDataObjBucket("dataobj-querier")
+		store, err = t.getDataObjBucket("dataobj-querier")
 		if err != nil {
 			return nil, err
 		}
@@ -1387,7 +1387,7 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 		return nil, nil
 	}
 
-	store, err := t.createDataObjBucket("query-engine")
+	store, err := t.getDataObjBucket("query-engine")
 	if err != nil {
 		return nil, err
 	}
@@ -1431,7 +1431,7 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		return nil, nil
 	}
 
-	store, err := t.createDataObjBucket("query-engine-worker")
+	store, err := t.getDataObjBucket("query-engine-worker")
 	if err != nil {
 		return nil, err
 	}
@@ -2176,7 +2176,7 @@ func (t *Loki) initUIRing() (services.Service, error) {
 }
 
 func (t *Loki) initDataObjExplorer() (services.Service, error) {
-	store, err := t.createDataObjBucket("dataobj-explorer")
+	store, err := t.getDataObjBucket("dataobj-explorer")
 	if err != nil {
 		return nil, err
 	}
@@ -2287,7 +2287,7 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	if !t.Cfg.DataObj.Enabled {
 		return nil, nil
 	}
-	store, err := t.createDataObjBucket("dataobj-consumer")
+	store, err := t.getDataObjBucket("dataobj-consumer")
 	if err != nil {
 		return nil, err
 	}
@@ -2325,7 +2325,7 @@ func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
 	if !t.Cfg.DataObj.Enabled {
 		return nil, nil
 	}
-	store, err := t.createDataObjBucket("dataobj-index-builder")
+	store, err := t.getDataObjBucket("dataobj-index-builder")
 	if err != nil {
 		return nil, err
 	}
@@ -2361,7 +2361,7 @@ func (t *Loki) initScratchStore() (services.Service, error) {
 	return services.NewIdleService(nil, nil), nil
 }
 
-func (t *Loki) createDataObjBucket(clientName string) (objstore.Bucket, error) {
+func (t *Loki) getDataObjBucket(clientName string) (objstore.Bucket, error) {
 	schema, err := t.Cfg.SchemaConfig.SchemaForTime(model.Now())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get schema for now: %w", err)
