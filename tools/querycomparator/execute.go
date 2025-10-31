@@ -12,6 +12,9 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+
 	"github.com/grafana/loki/v3/pkg/compactor/deletion"
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine"
@@ -26,8 +29,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/config"
 	"github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper"
 	"github.com/grafana/loki/v3/pkg/validation"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 )
 
 // addExecuteCommand adds the execute command to the application
@@ -115,8 +116,7 @@ func checkResult(result logqlmodel.Result) error {
 // doLocalQueryWithV2Engine executes a query using the V2 engine
 func doLocalQueryWithV2Engine(params logql.LiteralParams) (logqlmodel.Result, error) {
 	ctx := user.InjectOrgID(context.Background(), orgID)
-	qe := engine.New(engine.Config{
-		Enable:    true,
+	qe := engine.NewBasic(engine.ExecutorConfig{
 		BatchSize: 512,
 	}, metastore.Config{
 		IndexStoragePrefix: "index/v0",
