@@ -300,14 +300,21 @@ func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node,
 		}
 	}
 
-	var node Node
-	node = &Projection{
+	var node Node = &Projection{
 		Expressions: expressions,
 		All:         lp.All,
 		Expand:      lp.Expand,
 		Drop:        lp.Drop,
 	}
 	p.plan.graph.Add(node)
+
+	child, err := p.process(lp.Relation, ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
+	}
 
 	if needsCompat && p.context.v1Compatible {
 		compat := &ColumnCompat{
@@ -320,14 +327,6 @@ func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node,
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	child, err := p.process(lp.Relation, ctx)
-	if err != nil {
-		return nil, err
-	}
-	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
-		return nil, err
 	}
 
 	return node, nil

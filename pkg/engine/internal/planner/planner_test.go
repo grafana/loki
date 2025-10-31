@@ -292,7 +292,7 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
         └── Compat src=parsed dst=parsed collision=label
             └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [bar]))
                 └── Compat src=metadata dst=metadata collision=label
-                    └── ScanSet num_targets=2 projections=(builtin.message, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
+                    └── ScanSet num_targets=2 projections=(ambiguous.bar, builtin.message, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
                             ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
                             └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
 						`,
