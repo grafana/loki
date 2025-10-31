@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [BUGFIX] Support global registry override for sidecar
+
 ## 6.45.2
 
 - [BUGFIX] Fix incorrect GEL version in the chart and reference.
