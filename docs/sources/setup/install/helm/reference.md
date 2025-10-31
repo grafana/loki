@@ -7582,11 +7582,26 @@ true
 </pre>
 </td>
 		</tr>
-		<tr>
-			<td>lokiCanary.replicas</td>
-			<td>int</td>
-			<td>Replicas for `loki-canary` when using a Deployment</td>
-			<td><pre lang="json">
+<tr>
+  <td>lokiCanary.readinessProbe</td>
+  <td>object</td>
+  <td>Readiness probe</td>
+  <td><pre lang="json">
+{
+  "httpGet": {
+    "path": "/metrics",
+    "port": "http-metrics"
+  },
+  "initialDelaySeconds": 15,
+  "timeoutSeconds": 1
+}
+  </pre></td>
+</tr>
+<tr>
+  <td>lokiCanary.replicas</td>
+  <td>int</td>
+  <td>Replicas for `loki-canary` when using a Deployment</td>
+  <td><pre lang="json">
 1
 </pre>
 </td>
