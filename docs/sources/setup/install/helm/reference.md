@@ -3929,7 +3929,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "3.5.2"
+  "version": "3.5.4"
 }
 </pre>
 </td>
@@ -4040,7 +4040,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.5.4"
+"3.5.7"
 </pre>
 </td>
 		</tr>
