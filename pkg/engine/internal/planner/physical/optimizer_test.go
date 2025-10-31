@@ -623,7 +623,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 				})
 
 				// Add parse but no filters requiring parsed fields
-				builder = builder.Parse(types.VariadicOpParseLogfmt)
+				builder = builder.Parse(types.VariadicOpParseLogfmt, false, false)
 				return builder.Value()
 			},
 		},
@@ -643,7 +643,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 				})
 
 				// Don't set RequestedKeys here - optimization should determine them
-				builder = builder.Parse(types.VariadicOpParseLogfmt)
+				builder = builder.Parse(types.VariadicOpParseLogfmt, false, false)
 
 				// Add filter with ambiguous column
 				filterExpr := &logical.BinOp{
@@ -670,7 +670,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 					Shard: logical.NewShard(0, 1),
 				})
 
-				builder = builder.Parse(types.VariadicOpParseLogfmt)
+				builder = builder.Parse(types.VariadicOpParseLogfmt, false, false)
 
 				// Add filter on label column (should be skipped)
 				labelFilter := &logical.BinOp{
@@ -714,7 +714,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 					Shard: logical.NewShard(0, 1),
 				})
 
-				builder = builder.Parse(types.VariadicOpParseLogfmt)
+				builder = builder.Parse(types.VariadicOpParseLogfmt, false, false)
 
 				// Range aggregation with PartitionBy
 				builder = builder.RangeAggregation(
@@ -749,7 +749,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 				})
 
 				// Don't set RequestedKeys here - optimization should determine them
-				builder = builder.Parse(types.VariadicOpParseLogfmt)
+				builder = builder.Parse(types.VariadicOpParseLogfmt, false, false)
 
 				// Add filter with ambiguous column
 				filterExpr := &logical.BinOp{
@@ -798,7 +798,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 				})
 
 				// Add parse without specifying RequestedKeys
-				builder = builder.Parse(types.VariadicOpParseLogfmt)
+				builder = builder.Parse(types.VariadicOpParseLogfmt, false, false)
 
 				// Add filter on ambiguous column
 				filterExpr := &logical.BinOp{
@@ -865,9 +865,10 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 			for _, expr := range projectionNode.Expressions {
 				switch expr := expr.(type) {
 				case *VariadicExpr:
-					for _, e := range expr.Expressions {
-						switch e := e.(type) {
-						case *LiteralExpr:
+					// Parse expressions: [sourceCol, requestedKeys, strict, keepEmpty]
+					// We want the requestedKeys (index 1)
+					if len(expr.Expressions) >= 2 {
+						if e, ok := expr.Expressions[1].(*LiteralExpr); ok {
 							requestedKeys = e
 						}
 					}
@@ -875,7 +876,17 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 			}
 
 			if len(tt.expectedParseKeysRequested) == 0 {
-				require.Nil(t, requestedKeys, "Projection should have no requested keys")
+				// When no keys are requested, we expect either nil or a NullLiteral or an empty list
+				if requestedKeys != nil {
+					switch lit := requestedKeys.Literal.(type) {
+					case types.NullLiteral:
+						// OK - null literal
+					case types.StringListLiteral:
+						require.Empty(t, lit.Value(), "Projection should have no requested keys")
+					default:
+						t.Fatalf("Unexpected literal type: %T", requestedKeys.Literal)
+					}
+				}
 			} else {
 				require.NotNil(t, requestedKeys, "Projection should have requested keys")
 				actual := requestedKeys.Literal.(types.StringListLiteral)
