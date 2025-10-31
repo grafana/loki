@@ -12,6 +12,9 @@ type Task struct {
 	// ULID is a unique identifier of the Task.
 	ULID ulid.ULID
 
+	// TenantID is a tenant associated with this task.
+	TenantID string
+
 	// Fragment is the local physical plan that this Task represents.
 	Fragment *physical.Plan
 
@@ -33,4 +36,7 @@ func (t *Task) ID() string { return t.ULID.String() }
 type Stream struct {
 	// ULID is a unique identifier of the Stream.
 	ULID ulid.ULID
+
+	// TenantID is a tenant associated with this stream.
+	TenantID string
 }

@@ -112,6 +112,8 @@ message Index {
   int64 shardsDuration = 3 [(gogoproto.jsontag) = "shardsDuration"];
   // Indicates whether the query used blooms to filter chunks
   bool usedBloomFilters = 4 [(gogoproto.jsontag) = "usedBloomFilters"];
+  // Total unique streams matched
+  int64 totalStreams = 5 [(gogoproto.jsontag) = "totalStreams"];
 }
 
 message Querier {
@@ -119,6 +121,10 @@ message Querier {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "store"
   ];
+  // Querier execution time in seconds.
+  // Total time the querier spent executing the query. This is separate from execTime which tracks overall execution time.
+  // Grafana expects time values to be returned in seconds as float.
+  double querierExecTime = 2 [(gogoproto.jsontag) = "querierExecTime"];
 }
 
 message Ingester {
@@ -135,6 +141,11 @@ message Ingester {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "store"
   ];
+
+  // Total time querier spent waiting on ingester gRPC Recv(), in seconds.
+  // Omitted from JSON when zero for backwards compatibility.
+  // Grafana expects time values to be returned in seconds as float
+  double recvWaitTime = 6 [(gogoproto.jsontag) = "recvWaitTime,omitempty"];
 }
 
 message Store {

@@ -1342,6 +1342,10 @@ dataobj:
   # CLI flag: -dataobj-storage-bucket-prefix
   [storage_bucket_prefix: <string> | default = "dataobj/"]
 
+  # Enable data objects.
+  # CLI flag: -dataobj.enabled
+  [enabled: <boolean> | default = false]
+
 ingest_limits:
   # Enable the ingest limits service.
   # CLI flag: -ingest-limits.enabled
@@ -5113,6 +5117,11 @@ engine_v2:
     # Experimental: minimum size of a byte range
     # CLI flag: -querier.engine-v2.range-reads.min-range-size
     [min_range_size: <int> | default = 1048576]
+
+  # Experimental: Number of worker threads to spawn. Each worker thread runs one
+  # task at a time. 0 means to use GOMAXPROCS value.
+  # CLI flag: -querier.engine-v2.worker-threads
+  [worker_threads: <int> | default = 0]
 
 # The maximum number of queries that can be simultaneously processed by the
 # querier.

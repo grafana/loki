@@ -264,7 +264,7 @@ func TestBooleanComparisonFunctions(t *testing.T) {
 			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.FixedWidthTypes.Boolean)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhsArray, rhsArray)
+			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
 			require.NoError(t, err)
 
 			actual := extractBoolValues(result)
@@ -333,7 +333,7 @@ func TestStringComparisonFunctions(t *testing.T) {
 			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.BinaryTypes.String)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhsArray, rhsArray)
+			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
 			require.NoError(t, err)
 
 			actual := extractBoolValues(result)
@@ -402,7 +402,7 @@ func TestIntegerComparisonFunctions(t *testing.T) {
 			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.PrimitiveTypes.Int64)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhsArray, rhsArray)
+			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
 			require.NoError(t, err)
 
 			actual := extractBoolValues(result)
@@ -471,7 +471,7 @@ func TestTimestampComparisonFunctions(t *testing.T) {
 			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.FixedWidthTypes.Timestamp_ns)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhsArray, rhsArray)
+			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
 			require.NoError(t, err)
 
 			actual := extractBoolValues(result)
@@ -540,7 +540,7 @@ func TestFloat64ComparisonFunctions(t *testing.T) {
 			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.PrimitiveTypes.Float64)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhsArray, rhsArray)
+			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
 			require.NoError(t, err)
 
 			actual := extractBoolValues(result)
@@ -609,13 +609,55 @@ func TestStringMatchingFunctions(t *testing.T) {
 			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.BinaryTypes.String)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhsArray, rhsArray)
+			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
 			require.NoError(t, err)
 
 			actual := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
+}
+
+func TestCompileRegexMatchFunctions(t *testing.T) {
+	tests := []struct {
+		name     string
+		op       types.BinaryOp
+		lhs      []string
+		rhs      []string
+		expected []bool
+	}{
+		{
+			name:     "regex match", // |~ "^\w+\d+$"
+			op:       types.BinaryOpMatchRe,
+			lhs:      []string{"foo123", "foo", "bar456", "bar"},
+			rhs:      []string{"^\\w+\\d+$", "^\\w+\\d+$", "^\\w+\\d+$", "^\\w+\\d+$"},
+			expected: []bool{true, false, true, false},
+		},
+		{
+			name:     "regex not match", // !~ "^\w+\d+$"
+			op:       types.BinaryOpNotMatchRe,
+			lhs:      []string{"foo123", "foo", "bar456", "bar"},
+			rhs:      []string{"^\\w+\\d+$", "^\\w+\\d+$", "^\\w+\\d+$", "^\\w+\\d+$"},
+			expected: []bool{false, true, false, true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lhsArray := createStringArray(tt.lhs, nil)
+			rhsArray := createStringArray(tt.rhs, nil)
+
+			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.BinaryTypes.String)
+			require.NoError(t, err)
+
+			result, err := fn.Evaluate(lhsArray, rhsArray, false, true)
+			require.NoError(t, err)
+
+			actual := extractBoolValues(result)
+			assert.Equal(t, tt.expected, actual)
+		})
+	}
+
 }
 
 func TestNullValueHandling(t *testing.T) {
@@ -668,7 +710,7 @@ func TestNullValueHandling(t *testing.T) {
 			fn, err := binaryFunctions.GetForSignature(tt.op, tt.dataType)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhs, rhs)
+			result, err := fn.Evaluate(lhs, rhs, false, false)
 			require.NoError(t, err)
 
 			actual := extractBoolValues(result)
@@ -723,7 +765,7 @@ func TestArrayLengthMismatch(t *testing.T) {
 			fn, err := binaryFunctions.GetForSignature(tt.op, tt.dataType)
 			require.NoError(t, err)
 
-			result, err := fn.Evaluate(lhs, rhs)
+			result, err := fn.Evaluate(lhs, rhs, false, false)
 			assert.Error(t, err)
 			assert.Nil(t, result)
 		})
@@ -738,7 +780,7 @@ func TestRegexCompileError(t *testing.T) {
 	fn, err := binaryFunctions.GetForSignature(types.BinaryOpMatchRe, arrow.BinaryTypes.String)
 	require.NoError(t, err)
 
-	_, err = fn.Evaluate(lhs, rhs)
+	_, err = fn.Evaluate(lhs, rhs, false, false)
 	require.Error(t, err)
 }
 
@@ -776,7 +818,7 @@ func TestEmptyArrays(t *testing.T) {
 	fn, err := binaryFunctions.GetForSignature(types.BinaryOpEq, arrow.BinaryTypes.String)
 	require.NoError(t, err)
 
-	result, err := fn.Evaluate(lhs, rhs)
+	result, err := fn.Evaluate(lhs, rhs, false, false)
 	require.NoError(t, err)
 
 	assert.Equal(t, int(0), result.Len())

@@ -14,7 +14,7 @@ import (
 
 func TestUsageStore_Iter(t *testing.T) {
 	t.Run("iterates all streams", func(t *testing.T) {
-		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 10, prometheus.NewRegistry())
+		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 10, &mockLimits{}, prometheus.NewRegistry())
 		require.NoError(t, err)
 		clock := quartz.NewMock(t)
 		s.clock = clock
@@ -39,7 +39,7 @@ func TestUsageStore_Iter(t *testing.T) {
 	})
 
 	t.Run("does not iterate expired streams", func(t *testing.T) {
-		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, prometheus.NewRegistry())
+		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
 		require.NoError(t, err)
 		clock := quartz.NewMock(t)
 		s.clock = clock
@@ -61,7 +61,7 @@ func TestUsageStore_Iter(t *testing.T) {
 
 func TestUsageStore_IterTenant(t *testing.T) {
 	t.Run("iterates all streams for tenant", func(t *testing.T) {
-		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 10, prometheus.NewRegistry())
+		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 10, &mockLimits{}, prometheus.NewRegistry())
 		require.NoError(t, err)
 		clock := quartz.NewMock(t)
 		s.clock = clock
@@ -96,7 +96,7 @@ func TestUsageStore_IterTenant(t *testing.T) {
 	})
 
 	t.Run("does not iterate expired streams", func(t *testing.T) {
-		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, prometheus.NewRegistry())
+		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
 		require.NoError(t, err)
 		clock := quartz.NewMock(t)
 		s.clock = clock
@@ -117,7 +117,7 @@ func TestUsageStore_IterTenant(t *testing.T) {
 }
 
 func TestUsageStore_Update(t *testing.T) {
-	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, prometheus.NewRegistry())
+	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
 	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	s.clock = clock
@@ -137,7 +137,7 @@ func TestUsageStore_Update(t *testing.T) {
 // buckets are implemented as a circular list, when we reach the end of
 // list the next bucket is the start of the list.
 // func TestUsageStore_UpdateRateBuckets(t *testing.T) {
-// 	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, prometheus.NewRegistry())
+// 	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
 // 	require.NoError(t, err)
 // 	clock := quartz.NewMock(t)
 // 	s.clock = clock
@@ -197,7 +197,7 @@ func TestUsageStore_Update(t *testing.T) {
 // This test asserts that rate buckets are not updated while the TODOs are
 // in place.
 func TestUsageStore_RateBucketsAreNotUsed(t *testing.T) {
-	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, prometheus.NewRegistry())
+	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
 	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	s.clock = clock
@@ -206,9 +206,11 @@ func TestUsageStore_RateBucketsAreNotUsed(t *testing.T) {
 		TotalSize:  100,
 	}
 	require.NoError(t, s.Update("tenant", metadata, clock.Now()))
-	stream, ok := s.getForTests("tenant", 0x1)
-	require.True(t, ok)
 
+	partition := s.getPartitionForHash(0x1)
+	i := s.getStripe("tenant")
+	stream, ok := s.stripes[i]["tenant"][partition][noPolicy][0x1]
+	require.True(t, ok)
 	require.Equal(t, uint64(0), stream.totalSize)
 	require.Nil(t, stream.rateBuckets)
 }
@@ -337,15 +339,14 @@ func TestUsageStore_UpdateCond(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, test.numPartitions, prometheus.NewRegistry())
+			s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, test.numPartitions, &mockLimits{MaxGlobalStreams: test.maxGlobalStreams}, prometheus.NewRegistry())
 			require.NoError(t, err)
 			clock := quartz.NewMock(t)
 			s.clock = clock
 			for _, stream := range test.seed {
 				require.NoError(t, s.Update("tenant", stream, clock.Now()))
 			}
-			limits := mockLimits{MaxGlobalStreams: test.maxGlobalStreams}
-			toProduce, accepted, rejected, err := s.UpdateCond("tenant", test.streams, clock.Now(), &limits)
+			toProduce, accepted, rejected, err := s.UpdateCond("tenant", test.streams, clock.Now())
 			require.NoError(t, err)
 			require.ElementsMatch(t, test.expectedToProduce, toProduce)
 			require.ElementsMatch(t, test.expectedAccepted, accepted)
@@ -355,16 +356,15 @@ func TestUsageStore_UpdateCond(t *testing.T) {
 }
 
 func TestUsageStore_UpdateCond_ToProduce(t *testing.T) {
-	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, prometheus.NewRegistry())
+	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
 	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	s.clock = clock
-	limits := mockLimits{MaxGlobalStreams: 10}
 	metadata1 := []*proto.StreamMetadata{{
 		StreamHash: 0x1,
 		TotalSize:  100,
 	}}
-	toProduce, accepted, rejected, err := s.UpdateCond("tenant", metadata1, clock.Now(), &limits)
+	toProduce, accepted, rejected, err := s.UpdateCond("tenant", metadata1, clock.Now())
 	require.NoError(t, err)
 	require.Empty(t, rejected)
 	require.Len(t, accepted, 1)
@@ -372,7 +372,7 @@ func TestUsageStore_UpdateCond_ToProduce(t *testing.T) {
 	// Another update for the same stream in the same minute should not produce
 	// a new record.
 	clock.Advance(time.Second)
-	toProduce, accepted, rejected, err = s.UpdateCond("tenant", metadata1, clock.Now(), &limits)
+	toProduce, accepted, rejected, err = s.UpdateCond("tenant", metadata1, clock.Now())
 	require.NoError(t, err)
 	require.Empty(t, rejected)
 	require.Empty(t, toProduce)
@@ -382,14 +382,14 @@ func TestUsageStore_UpdateCond_ToProduce(t *testing.T) {
 		StreamHash: 0x2,
 		TotalSize:  100,
 	}}
-	toProduce, accepted, rejected, err = s.UpdateCond("tenant", metadata2, clock.Now(), &limits)
+	toProduce, accepted, rejected, err = s.UpdateCond("tenant", metadata2, clock.Now())
 	require.NoError(t, err)
 	require.Empty(t, rejected)
 	require.Len(t, accepted, 1)
 	require.Equal(t, metadata2, toProduce)
 	// Move the clock forward and metadata1 should be produced again.
 	clock.Advance(time.Minute)
-	toProduce, accepted, rejected, err = s.UpdateCond("tenant", metadata1, clock.Now(), &limits)
+	toProduce, accepted, rejected, err = s.UpdateCond("tenant", metadata1, clock.Now())
 	require.NoError(t, err)
 	require.Empty(t, rejected)
 	require.Len(t, accepted, 1)
@@ -397,7 +397,7 @@ func TestUsageStore_UpdateCond_ToProduce(t *testing.T) {
 }
 
 func TestUsageStore_Evict(t *testing.T) {
-	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, prometheus.NewRegistry())
+	s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, &mockLimits{}, prometheus.NewRegistry())
 	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	s.clock = clock
@@ -430,7 +430,7 @@ func TestUsageStore_Evict(t *testing.T) {
 
 func TestUsageStore_EvictPartitions(t *testing.T) {
 	// Create a store with 10 partitions.
-	s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 10, prometheus.NewRegistry())
+	s, err := newUsageStore(DefaultActiveWindow, DefaultRateWindow, DefaultBucketSize, 10, &mockLimits{}, prometheus.NewRegistry())
 	require.NoError(t, err)
 	clock := quartz.NewMock(t)
 	s.clock = clock
@@ -448,6 +448,202 @@ func TestUsageStore_EvictPartitions(t *testing.T) {
 		actual = append(actual, partition)
 	})
 	require.ElementsMatch(t, expected, actual)
+}
+
+func TestUsageStore_PolicyBasedStreamLimits(t *testing.T) {
+	t.Run("policy-specific stream limits override default limits", func(t *testing.T) {
+		// Create a mockLimits with policy-specific overrides
+		limits := &mockLimits{
+			MaxGlobalStreams: 10, // Default limit: 10 streams
+		}
+
+		// Add policy-specific limits
+		policyLimits := &mockLimitsWithPolicy{
+			mockLimits: *limits,
+			policyLimits: map[string]int{
+				"high-priority": 5, // Policy-specific limit: 5 streams
+				"low-priority":  3, // Policy-specific limit: 3 streams
+			},
+		}
+
+		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, policyLimits, prometheus.NewRegistry())
+		require.NoError(t, err)
+		clock := quartz.NewMock(t)
+		s.clock = clock
+
+		// Test 1: Default streams (no policy) should use default limit (10)
+		defaultStreams := []*proto.StreamMetadata{
+			{StreamHash: 0x1, TotalSize: 100}, // Should be accepted
+			{StreamHash: 0x2, TotalSize: 100}, // Should be accepted
+			{StreamHash: 0x3, TotalSize: 100}, // Should be accepted
+			{StreamHash: 0x4, TotalSize: 100}, // Should be accepted
+			{StreamHash: 0x5, TotalSize: 100}, // Should be accepted
+			{StreamHash: 0x6, TotalSize: 100}, // Should be accepted
+			{StreamHash: 0x7, TotalSize: 100}, // Should be accepted
+			{StreamHash: 0x8, TotalSize: 100}, // Should be accepted
+			{StreamHash: 0x9, TotalSize: 100}, // Should be accepted
+			{StreamHash: 0xA, TotalSize: 100}, // Should be accepted (10th stream)
+			{StreamHash: 0xB, TotalSize: 100}, // Should be rejected (11th stream)
+		}
+
+		toProduce, accepted, rejected, err := s.UpdateCond("tenant", defaultStreams, clock.Now())
+		require.NoError(t, err)
+		require.Len(t, accepted, 10)  // First 10 streams accepted
+		require.Len(t, rejected, 1)   // 11th stream rejected
+		require.Len(t, toProduce, 10) // First 10 streams should be produced
+	})
+
+	t.Run("streams with different policies tracked separately", func(t *testing.T) {
+		policyLimits := &mockLimitsWithPolicy{
+			mockLimits: mockLimits{MaxGlobalStreams: 10},
+			policyLimits: map[string]int{
+				"high-priority": 3, // 3 streams allowed
+				"low-priority":  2, // 2 streams allowed
+			},
+		}
+
+		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, policyLimits, prometheus.NewRegistry())
+		require.NoError(t, err)
+		clock := quartz.NewMock(t)
+		s.clock = clock
+
+		// Test high-priority policy streams
+		highPriorityStreams := []*proto.StreamMetadata{
+			{StreamHash: 0x1, TotalSize: 100, IngestionPolicy: "high-priority"}, // Accepted
+			{StreamHash: 0x2, TotalSize: 100, IngestionPolicy: "high-priority"}, // Accepted
+			{StreamHash: 0x3, TotalSize: 100, IngestionPolicy: "high-priority"}, // Accepted
+			{StreamHash: 0x4, TotalSize: 100, IngestionPolicy: "high-priority"}, // Rejected (4th stream)
+		}
+
+		toProduce, accepted, rejected, err := s.UpdateCond("tenant", highPriorityStreams, clock.Now())
+		require.NoError(t, err)
+		require.Len(t, accepted, 3) // First 3 streams accepted
+		require.Len(t, rejected, 1) // 4th stream rejected
+		require.Len(t, toProduce, 3)
+
+		// Test low-priority policy streams (should be tracked separately)
+		lowPriorityStreams := []*proto.StreamMetadata{
+			{StreamHash: 0x5, TotalSize: 100, IngestionPolicy: "low-priority"}, // Accepted
+			{StreamHash: 0x6, TotalSize: 100, IngestionPolicy: "low-priority"}, // Accepted
+			{StreamHash: 0x7, TotalSize: 100, IngestionPolicy: "low-priority"}, // Rejected (3rd stream)
+		}
+
+		toProduce, accepted, rejected, err = s.UpdateCond("tenant", lowPriorityStreams, clock.Now())
+		require.NoError(t, err)
+		require.Len(t, accepted, 2) // First 2 streams accepted
+		require.Len(t, rejected, 1) // 3rd stream rejected
+		require.Len(t, toProduce, 2)
+	})
+
+	t.Run("default streams tracked separately from policy streams", func(t *testing.T) {
+		policyLimits := &mockLimitsWithPolicy{
+			mockLimits: mockLimits{MaxGlobalStreams: 5}, // Default limit: 5 streams
+			policyLimits: map[string]int{
+				"special-policy": 3, // Policy limit: 3 streams
+			},
+		}
+
+		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, policyLimits, prometheus.NewRegistry())
+		require.NoError(t, err)
+		clock := quartz.NewMock(t)
+		s.clock = clock
+
+		// First, add some default streams (no policy)
+		defaultStreams := []*proto.StreamMetadata{
+			{StreamHash: 0x1, TotalSize: 100}, // Default stream - accepted
+			{StreamHash: 0x2, TotalSize: 100}, // Default stream - accepted
+			{StreamHash: 0x3, TotalSize: 100}, // Default stream - accepted
+			{StreamHash: 0x4, TotalSize: 100}, // Default stream - accepted
+			{StreamHash: 0x5, TotalSize: 100}, // Default stream - accepted
+			{StreamHash: 0x6, TotalSize: 100}, // Default stream - rejected (6th stream)
+		}
+
+		toProduce, accepted, rejected, err := s.UpdateCond("tenant", defaultStreams, clock.Now())
+		require.NoError(t, err)
+		require.Len(t, accepted, 5) // First 5 default streams accepted
+		require.Len(t, rejected, 1) // 6th default stream rejected
+		require.Len(t, toProduce, 5)
+
+		// Now add policy streams (should be tracked separately and not affect default stream count)
+		policyStreams := []*proto.StreamMetadata{
+			{StreamHash: 0x7, TotalSize: 100, IngestionPolicy: "special-policy"}, // Policy stream - accepted
+			{StreamHash: 0x8, TotalSize: 100, IngestionPolicy: "special-policy"}, // Policy stream - accepted
+			{StreamHash: 0x9, TotalSize: 100, IngestionPolicy: "special-policy"}, // Policy stream - accepted
+			{StreamHash: 0xA, TotalSize: 100, IngestionPolicy: "special-policy"}, // Policy stream - rejected (4th policy stream)
+		}
+
+		toProduce, accepted, rejected, err = s.UpdateCond("tenant", policyStreams, clock.Now())
+		require.NoError(t, err)
+		require.Len(t, accepted, 3) // First 3 policy streams accepted
+		require.Len(t, rejected, 1) // 4th policy stream rejected
+		require.Len(t, toProduce, 3)
+
+		// Verify that we can still add more default streams (they're tracked separately)
+		moreDefaultStreams := []*proto.StreamMetadata{
+			{StreamHash: 0xB, TotalSize: 100}, // This should still be rejected because we already have 5 default streams
+		}
+
+		toProduce, accepted, rejected, err = s.UpdateCond("tenant", moreDefaultStreams, clock.Now())
+		require.NoError(t, err)
+		require.Len(t, accepted, 0) // No more default streams can be accepted
+		require.Len(t, rejected, 1) // This default stream is rejected
+		require.Len(t, toProduce, 0)
+	})
+
+	t.Run("policies without custom limits use default bucket", func(t *testing.T) {
+		policyLimits := &mockLimitsWithPolicy{
+			mockLimits: mockLimits{MaxGlobalStreams: 4}, // Default limit: 4 streams
+			policyLimits: map[string]int{
+				"custom-policy": 2, // Only this policy has a custom limit
+			},
+		}
+
+		s, err := newUsageStore(15*time.Minute, 5*time.Minute, time.Minute, 1, policyLimits, prometheus.NewRegistry())
+		require.NoError(t, err)
+		clock := quartz.NewMock(t)
+		s.clock = clock
+
+		// Streams with "custom-policy" should use the custom limit (2 streams)
+		customPolicyStreams := []*proto.StreamMetadata{
+			{StreamHash: 0x1, TotalSize: 100, IngestionPolicy: "custom-policy"}, // Accepted
+			{StreamHash: 0x2, TotalSize: 100, IngestionPolicy: "custom-policy"}, // Accepted
+			{StreamHash: 0x3, TotalSize: 100, IngestionPolicy: "custom-policy"}, // Rejected (3rd stream)
+		}
+
+		toProduce, accepted, rejected, err := s.UpdateCond("tenant", customPolicyStreams, clock.Now())
+		require.NoError(t, err)
+		require.Len(t, accepted, 2) // First 2 custom policy streams accepted
+		require.Len(t, rejected, 1) // 3rd custom policy stream rejected
+		require.Len(t, toProduce, 2)
+
+		// Streams with "other-policy" (no custom limit) should use default bucket and count against default limit
+		otherPolicyStreams := []*proto.StreamMetadata{
+			{StreamHash: 0x4, TotalSize: 100, IngestionPolicy: "other-policy"}, // Should go to default bucket
+			{StreamHash: 0x5, TotalSize: 100, IngestionPolicy: "other-policy"}, // Should go to default bucket
+			{StreamHash: 0x6, TotalSize: 100, IngestionPolicy: "other-policy"}, // Should go to default bucket
+			{StreamHash: 0x7, TotalSize: 100, IngestionPolicy: "other-policy"}, // Should go to default bucket
+			{StreamHash: 0x8, TotalSize: 100, IngestionPolicy: "other-policy"}, // Should be rejected (5th stream in default bucket)
+		}
+
+		toProduce, accepted, rejected, err = s.UpdateCond("tenant", otherPolicyStreams, clock.Now())
+		require.NoError(t, err)
+		require.Len(t, accepted, 4) // First 4 other policy streams accepted (using default bucket)
+		require.Len(t, rejected, 1) // 5th other policy stream rejected
+		require.Len(t, toProduce, 4)
+	})
+}
+
+// mockLimitsWithPolicy extends mockLimits to support policy-specific limits
+type mockLimitsWithPolicy struct {
+	mockLimits
+	policyLimits map[string]int
+}
+
+func (m *mockLimitsWithPolicy) PolicyMaxGlobalStreamsPerUser(_, policy string) (int, bool) {
+	if limit, exists := m.policyLimits[policy]; exists {
+		return limit, true
+	}
+	return 0, false // No custom limit for this policy
 }
 
 func newRateBuckets(rateWindow, bucketSize time.Duration) []rateBucket {

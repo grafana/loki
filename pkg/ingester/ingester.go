@@ -63,6 +63,7 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	server_util "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/wal"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -391,6 +392,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 			NewKafkaConsumerFactory(i, registerer, cfg.KafkaIngestion.KafkaConfig.MaxConsumerWorkers),
 			logger,
 			registerer,
+			partition.WithHeaderToContextExtractor(validation.IngestionPoliciesKafkaHeadersToContext),
 		)
 		if err != nil {
 			return nil, err

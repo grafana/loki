@@ -337,13 +337,8 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 	level.Info(util_log.Logger).Log("msg", "attempting checkpoint for", "dir", checkpointDir)
 	checkpointDirTemp := checkpointDir + ".tmp"
 
-	// cleanup any old partial checkpoints
-	if _, err := os.Stat(checkpointDirTemp); err == nil {
-		if err := os.RemoveAll(checkpointDirTemp); err != nil {
-			level.Error(util_log.Logger).Log("msg", "unable to cleanup old tmp checkpoint", "dir", checkpointDirTemp)
-			return false, err
-		}
-	}
+	// cleanup any old partial checkpoints (not just the current one)
+	cleanupStaleTmpCheckpoints(w.segmentWAL.Dir(), util_log.Logger)
 
 	if err := os.MkdirAll(checkpointDirTemp, 0750); err != nil {
 		return false, fmt.Errorf("create checkpoint dir: %w", err)
@@ -477,6 +472,111 @@ func (w *WALCheckpointWriter) deleteCheckpoints(maxIndex int) (err error) {
 		}
 	}
 	return errs.Err()
+}
+
+// cleanupOldCheckpoints removes old checkpoints that have been superseded by a newer checkpoint.
+// This is primarily used during startup to clean up old checkpoints when repeated checkpoint failures
+// have prevented normal cleanup (which happens via deleteCheckpoints() after successful completion).
+//
+// A checkpoint at index N contains a complete snapshot of state through segment N, so segments <= N
+// can be deleted once that checkpoint is successfully written. This function cleans up old checkpoints
+// that are no longer needed because their corresponding segments have been truncated.
+//
+// The protectedCheckpointIdx parameter specifies a checkpoint that should never be deleted, typically
+// the most recent successfully completed checkpoint. This ensures we always keep at least one valid
+// recovery point.
+//
+// Note: It's normal for checkpoint.N to exist while firstSegment is N+1, since the checkpoint replaces
+// the need for segment N. This function relies on the protectedCheckpointIdx to determine which
+// checkpoints are safe to delete, not just the segment numbers.
+//
+// This differs from deleteCheckpoints() which runs after successful checkpoint completion and handles
+// normal cleanup including .tmp files.
+func cleanupOldCheckpoints(dir string, protectedCheckpointIdx int, logger log.Logger) {
+	level.Info(util_log.Logger).Log("msg", "old checkpoint cleanup starting")
+	start := time.Now()
+	allSuccess := true
+	defer func() {
+		elapsed := time.Since(start)
+		level.Info(util_log.Logger).Log("msg", "old checkpoint cleanup done", "duration", elapsed.String(), "success", allSuccess)
+	}()
+	firstSegment, _, err := wlog.Segments(dir)
+	if err != nil {
+		level.Error(logger).Log("msg", "unable to list WAL segments for old checkpoint cleanup, checkpoint cleanup cannot proceed, this is not expected and could lead to disk space exhaustion and may indicate disk I/O problems or corruption and should be investigated manually", "err", err)
+		allSuccess = false
+		return
+	}
+
+	if firstSegment <= 0 {
+		// No cleanup needed if we're starting from segment 0
+		return
+	}
+
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		level.Error(logger).Log("msg", "unable to read WAL directory for old checkpoint cleanup, checkpoint cleanup cannot proceed, this is not expected and could lead to disk space exhaustion and may indicate disk I/O problems or corruption and should be investigated manually", "err", err)
+		allSuccess = false
+		return
+	}
+
+	for _, fi := range files {
+		// Check if this is a completed checkpoint (not .tmp)
+		idx, err := checkpointIndex(fi.Name(), false)
+		if err != nil || !fi.IsDir() {
+			continue
+		}
+
+		// Delete checkpoints that are both:
+		// 1. From a time when segments <= firstSegment existed (idx < firstSegment is typical for old checkpoints)
+		// 2. Older than the protected checkpoint (idx < protectedCheckpointIdx means superseded)
+		// The second condition is the key safety check - we never delete the protected checkpoint.
+		if idx < firstSegment && idx < protectedCheckpointIdx {
+			orphanedPath := filepath.Join(dir, fi.Name())
+			if err := os.RemoveAll(orphanedPath); err != nil {
+				level.Error(logger).Log("msg", "unable to cleanup old checkpoint, this is not expected and could lead to disk space exhaustion and may indicate disk I/O problems or corruption and should be investigated manually", "dir", orphanedPath, "err", err)
+				allSuccess = false
+			} else {
+				level.Info(logger).Log("msg", "cleaned up old superseded checkpoint", "dir", fi.Name(), "idx", idx, "firstSegment", firstSegment, "protectedCheckpoint", protectedCheckpointIdx)
+			}
+		}
+	}
+}
+
+// cleanupStaleTmpCheckpoints removes all .tmp checkpoint directories which represent
+// incomplete/failed checkpoint operations. These are safe to delete because recovery
+// only uses completed checkpoints (those without the .tmp suffix).
+func cleanupStaleTmpCheckpoints(dir string, logger log.Logger) {
+	level.Info(util_log.Logger).Log("msg", "tmp checkpoint cleanup starting")
+	start := time.Now()
+	allSuccess := true
+	defer func() {
+		elapsed := time.Since(start)
+		level.Info(util_log.Logger).Log("msg", "tmp checkpoint cleanup done", "duration", elapsed.String(), "success", allSuccess)
+	}()
+
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		level.Error(logger).Log("msg", "unable to read WAL directory for tmp checkpoint cleanup, checkpoint cleanup cannot proceed, this is not expected and could lead to disk space exhaustion and may indicate disk I/O problems or corruption and should be investigated manually", "err", err)
+		allSuccess = false
+		return
+	}
+
+	for _, fi := range files {
+		// Check if this is a .tmp checkpoint directory
+		if _, tmpErr := checkpointIndex(fi.Name(), true); tmpErr == nil && fi.IsDir() {
+			// Only delete if it actually has the .tmp suffix
+			if filepath.Ext(fi.Name()) == ".tmp" {
+				tmpPath := filepath.Join(dir, fi.Name())
+				if err := os.RemoveAll(tmpPath); err != nil {
+					level.Error(logger).Log("msg", "unable to cleanup stale tmp checkpoint, this is not expected and could lead to disk space exhaustion and may indicate disk I/O problems or corruption and should be investigated manually", "dir", tmpPath, "err", err)
+					// Continue cleaning up other .tmp directories even if one fails
+					allSuccess = false
+				} else {
+					level.Info(logger).Log("msg", "cleaned up stale tmp checkpoint at startup", "dir", fi.Name())
+				}
+			}
+		}
+	}
 }
 
 func (w *WALCheckpointWriter) Close(abort bool) error {

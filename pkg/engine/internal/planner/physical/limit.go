@@ -37,9 +37,3 @@ func (l *Limit) Clone() Node {
 func (*Limit) Type() NodeType {
 	return NodeTypeLimit
 }
-
-// Accept implements the [Node] interface.
-// Dispatches itself to the provided [Visitor] v
-func (l *Limit) Accept(v Visitor) error {
-	return v.VisitLimit(l)
-}

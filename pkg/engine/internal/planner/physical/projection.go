@@ -43,9 +43,3 @@ func (p *Projection) Clone() Node {
 func (*Projection) Type() NodeType {
 	return NodeTypeProjection
 }
-
-// Accept implements the [Node] interface.
-// Dispatches itself to the provided [Visitor] v
-func (p *Projection) Accept(v Visitor) error {
-	return v.VisitProjection(p)
-}

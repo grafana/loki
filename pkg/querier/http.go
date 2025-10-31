@@ -72,7 +72,7 @@ func NewQuerierAPI(cfg Config, mCfg metastore.Config, querier Querier, limits qu
 	}
 
 	if cfg.EngineV2.Enable {
-		q.engineV2 = engine.New(cfg.EngineV2, mCfg, store, limits, reg, logger)
+		q.engineV2 = engine.NewBasic(cfg.EngineV2.Executor, mCfg, store, limits, reg, logger)
 	}
 
 	return q
@@ -113,7 +113,7 @@ func hasDataObjectsAvailable(config Config, start, end time.Time) bool {
 	// Data objects in object storage lag behind 20-30 minutes.
 	// We are generous and only enable v2 engine queries that end earlier than 1DataObjStorageLag ago (default 1h),
 	// to ensure data objects are available.
-	v2Start, v2End := config.EngineV2.ValidQueryRange()
+	v2Start, v2End := config.EngineV2.Executor.ValidQueryRange()
 	return end.Before(v2End) && start.After(v2Start)
 }
 

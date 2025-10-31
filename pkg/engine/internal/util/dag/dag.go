@@ -84,10 +84,10 @@ func (g *Graph[NodeType]) AddEdge(e Edge[NodeType]) error {
 		return fmt.Errorf("parent and child nodes must not be zero values")
 	}
 	if !g.nodes.Contains(e.Parent) {
-		return fmt.Errorf("node %s does not exist in graph", e.Parent.ID())
+		return fmt.Errorf("parent node %s does not exist in graph", e.Parent.ID())
 	}
 	if !g.nodes.Contains(e.Child) {
-		return fmt.Errorf("node %s does not exist in graph", e.Child.ID())
+		return fmt.Errorf("child node %s does not exist in graph", e.Child.ID())
 	}
 
 	// Uniquely add the edges.

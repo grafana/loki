@@ -364,7 +364,7 @@ func buildMask(full rowRange, s []Row) iter.Seq[rowRange] {
 			return
 		}
 
-		var start = full.Start
+		start := full.Start
 
 		for _, row := range s {
 			if !full.Contains(uint64(row.Index)) {
@@ -824,7 +824,8 @@ func (r *Reader) buildColumnPredicateRanges(ctx context.Context, c Column, p Pre
 
 		switch p := p.(type) {
 		case EqualPredicate: // EqualPredicate may be true if p.Value is inside the range of the page.
-			include = CompareValues(&p.Value, &minValue) >= 0 && CompareValues(&p.Value, &maxValue) <= 0
+			isEmpty := p.Value.Type() == datasetmd.PHYSICAL_TYPE_BINARY && p.Value.IsZero()
+			include = isEmpty || (CompareValues(&p.Value, &minValue) >= 0 && CompareValues(&p.Value, &maxValue) <= 0)
 		case GreaterThanPredicate: // GreaterThanPredicate may be true if maxValue of a page is greater than p.Value
 			include = CompareValues(&maxValue, &p.Value) > 0
 		case LessThanPredicate: // LessThanPredicate may be true if minValue of a page is less than p.Value

@@ -20,6 +20,7 @@ const (
 	FLOAT64   = Type(arrow.FLOAT64)
 	TIMESTAMP = Type(arrow.TIMESTAMP)
 	STRUCT    = Type(arrow.STRUCT)
+	LIST      = Type(arrow.LIST)
 )
 
 func (t Type) String() string {
@@ -38,6 +39,8 @@ func (t Type) String() string {
 		return "TIMESTAMP"
 	case STRUCT:
 		return "STRUCT"
+	case LIST:
+		return "LIST"
 	default:
 		return "INVALID"
 	}
@@ -110,6 +113,14 @@ func NewStructType(arrowType *arrow.StructType) DataType {
 	return tStruct{arrowType: arrowType}
 }
 
+type tList struct {
+	arrowType *arrow.ListType
+}
+
+func (t tList) ID() Type                  { return LIST }
+func (t tList) String() string            { return "list" }
+func (t tList) ArrowType() arrow.DataType { return t.arrowType }
+
 var (
 	names = map[string]DataType{
 		Loki.Null.String():      Loki.Null,
@@ -121,6 +132,7 @@ var (
 		Loki.Duration.String():  Loki.Duration,
 		Loki.Bytes.String():     Loki.Bytes,
 		Loki.Struct.String():    Loki.Struct,
+		Loki.List.String():      Loki.List,
 	}
 )
 

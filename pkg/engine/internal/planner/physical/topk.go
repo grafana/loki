@@ -41,9 +41,3 @@ func (t *TopK) Clone() Node {
 func (*TopK) Type() NodeType {
 	return NodeTypeTopK
 }
-
-// Accept implements the [Node] interface.
-// Dispatches itself to the provided [Visitor] v
-func (t *TopK) Accept(visitor Visitor) error {
-	return visitor.VisitTopK(t)
-}

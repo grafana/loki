@@ -41,9 +41,3 @@ func (v *VectorAggregation) Clone() Node {
 func (*VectorAggregation) Type() NodeType {
 	return NodeTypeVectorAggregation
 }
-
-// Accept implements the [Node] interface.
-// Dispatches itself to the provided [Visitor] v
-func (v *VectorAggregation) Accept(visitor Visitor) error {
-	return visitor.VisitVectorAggregation(v)
-}

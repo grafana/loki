@@ -5,8 +5,10 @@
 kubeVersionOverride: null
 
 global:
+  # -- Overrides the Docker registry globally for all images (standard format)
+  imageRegistry: null
   image:
-    # -- Overrides the Docker registry globally for all images
+    # -- Overrides the Docker registry globally for all images (deprecated, use global.imageRegistry)
     registry: null
   # -- Overrides the priorityClassName for all pods
   priorityClassName: null
@@ -71,7 +73,10 @@ loki:
     httpGet:
       path: /ready
       port: http-metrics
-    initialDelaySeconds: 30
+    periodSeconds: 10
+    initialDelaySeconds: 15
+    successThreshold: 1
+    failureThreshold: 3
     timeoutSeconds: 1
   # Configures the startup probe for all of the Loki pods
   startupProbe: {}
@@ -81,7 +86,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.5.5
+    tag: 3.5.7
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -2593,6 +2598,8 @@ indexGateway:
   initContainers: []
   # -- Grace period to allow the index-gateway to shutdown before it is killed.
   terminationGracePeriodSeconds: 300
+  # -- Lifecycle for the index-gateway container
+  lifecycle: {}
   # -- Affinity for index-gateway pods.
   # @default -- Hard node anti-affinity
   # The value will be passed through tpl.
@@ -2726,14 +2733,6 @@ compactor:
   persistence:
     # -- Enable creating PVCs for the compactor
     enabled: false
-    # -- Size of persistent disk
-    size: 10Gi
-    # -- Storage class to be used.
-    # If defined, storageClassName: <storageClass>.
-    # If set to "-", storageClassName: "", which disables dynamic provisioning.
-    # If empty or set to null, no storageClassName spec is
-    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-    storageClass: null
     # -- List of the compactor PVCs
     # @notationType -- list
     claims:
@@ -4075,9 +4074,40 @@ monitoring:
     # -- Specify which individual alerts should be disabled
     # -- Instead of turning off each alert one by one, set the .monitoring.rules.alerting value to false instead.
     # -- If you disable all the alerts and keep .monitoring.rules.alerting set to true, the chart will fail to render.
+    #
+    # -- DEPRECATED: use monitoring.rules.configs.*.enabled instead
     disabled: {}
     #  LokiRequestErrors: true
     #  LokiRequestPanics: true
+
+    configs:
+      LokiRequestErrors:
+        enabled: true
+        for: 15m
+        lookbackPeriod: 2m
+        severity: critical
+        threshold: 10
+      LokiRequestPanics:
+        enabled: true
+        lookbackPeriod: 10m
+        severity: critical
+        threshold: 0
+      LokiRequestLatency:
+        enabled: true
+        for: 15m
+        severity: critical
+        threshold: 1
+      LokiTooManyCompactorsRunning:
+        enabled: true
+        for: 5m
+        severity: warning
+      LokiCanaryLatency:
+        enabled: true
+        for: 15m
+        lookbackPeriod: 5m
+        severity: warning
+        threshold: 5
+
     # -- Alternative namespace to create PrometheusRule resources in
     namespace: null
     # -- Additional annotations for the rules PrometheusRule resource

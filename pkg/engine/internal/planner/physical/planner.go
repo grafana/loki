@@ -128,6 +128,16 @@ func (p *Planner) convertPredicate(inst logical.Value) Expression {
 		return &ColumnExpr{Ref: inst.Ref}
 	case *logical.Literal:
 		return NewLiteral(inst.Value())
+	case *logical.FunctionOp:
+		exprs := make([]Expression, len(inst.Values))
+		for i, v := range inst.Values {
+			exprs[i] = p.convertPredicate(v)
+		}
+		node := &VariadicExpr{
+			Op:          inst.Op,
+			Expressions: exprs,
+		}
+		return node
 	default:
 		panic(fmt.Sprintf("invalid value for predicate: %T", inst))
 	}
@@ -150,8 +160,6 @@ func (p *Planner) process(inst logical.Value, ctx *Context) (Node, error) {
 		return p.processRangeAggregation(inst, ctx)
 	case *logical.VectorAggregation:
 		return p.processVectorAggregation(inst, ctx)
-	case *logical.Parse:
-		return p.processParse(inst, ctx)
 	case *logical.BinOp:
 		return p.processBinOp(inst, ctx)
 	case *logical.UnaryOp:
@@ -282,11 +290,17 @@ func (p *Planner) processSort(lp *logical.Sort, ctx *Context) (Node, error) {
 // Converts a [logical.Projection] into a physical [Projection] node.
 func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node, error) {
 	expressions := make([]Expression, len(lp.Expressions))
+	needsCompat := false
 	for i := range lp.Expressions {
 		expressions[i] = p.convertPredicate(lp.Expressions[i])
+		if funcExpr, ok := lp.Expressions[i].(*logical.FunctionOp); ok {
+			if funcExpr.Op == types.VariadicOpParseJSON || funcExpr.Op == types.VariadicOpParseLogfmt {
+				needsCompat = true
+			}
+		}
 	}
 
-	node := &Projection{
+	var node Node = &Projection{
 		Expressions: expressions,
 		All:         lp.All,
 		Expand:      lp.Expand,
@@ -300,6 +314,19 @@ func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node,
 	}
 	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
 		return nil, err
+	}
+
+	if needsCompat && p.context.v1Compatible {
+		compat := &ColumnCompat{
+			Source:      types.ColumnTypeParsed,
+			Destination: types.ColumnTypeParsed,
+			Collision:   types.ColumnTypeLabel,
+		}
+		var err error
+		node, err = p.wrapNodeWith(node, compat)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return node, nil
@@ -542,38 +569,6 @@ func (p *Planner) processUnaryOp(lp *logical.UnaryOp, ctx *Context) (Node, error
 	return node, nil
 }
 
-// Convert [logical.Parse] into one [ParseNode] node.
-// A ParseNode initially has an empty list of RequestedKeys which will be populated during optimization.
-func (p *Planner) processParse(lp *logical.Parse, ctx *Context) (Node, error) {
-	var node Node = &ParseNode{
-		Kind: convertParserKind(lp.Kind),
-	}
-	p.plan.graph.Add(node)
-
-	child, err := p.process(lp.Table, ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
-		return nil, err
-	}
-
-	if p.context.v1Compatible {
-		compat := &ColumnCompat{
-			Source:      types.ColumnTypeParsed,
-			Destination: types.ColumnTypeParsed,
-			Collision:   types.ColumnTypeLabel,
-		}
-		node, err = p.wrapNodeWith(node, compat)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return node, nil
-}
-
 func (p *Planner) wrapNodeWith(node Node, wrapper Node) (Node, error) {
 	p.plan.graph.Add(wrapper)
 	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: wrapper, Child: node}); err != nil {
@@ -615,15 +610,4 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 		}
 	}
 	return plan, nil
-}
-
-func convertParserKind(kind logical.ParserKind) ParserKind {
-	switch kind {
-	case logical.ParserLogfmt:
-		return ParserLogfmt
-	case logical.ParserJSON:
-		return ParserJSON
-	default:
-		return ParserInvalid
-	}
 }

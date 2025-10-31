@@ -30,6 +30,7 @@ const emptyStats = `{
 	"index": {
 		"postFilterChunks": 0,
 		"totalChunks": 0,
+		"totalStreams": 0,
 		"usedBloomFilters": false,
 		"shardsDuration": 0
 	},
@@ -76,6 +77,7 @@ const emptyStats = `{
 		"totalReached": 0
 	},
 	"querier": {
+		"querierExecTime": 0,
 		"store": {
 			"chunksDownloadTime": 0,
 			"congestionControlLatency": 0,

@@ -27,9 +27,3 @@ func (f *Join) Clone() Node {
 func (*Join) Type() NodeType {
 	return NodeTypeJoin
 }
-
-// Accept implements the [Node] interface.
-// Dispatches itself to the provided [Visitor] v
-func (f *Join) Accept(v Visitor) error {
-	return v.VisitJoin(f)
-}

@@ -80,13 +80,6 @@ func toTreeNode(n Node) *tree.Node {
 		if len(node.GroupBy) > 0 {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("group_by", true, toAnySlice(node.GroupBy)...))
 		}
-	case *ParseNode:
-		treeNode.Properties = []tree.Property{
-			tree.NewProperty("kind", false, node.Kind.String()),
-		}
-		if len(node.RequestedKeys) > 0 {
-			treeNode.Properties = append(treeNode.Properties, tree.NewProperty("requested_keys", true, toAnySlice(node.RequestedKeys)...))
-		}
 	case *ColumnCompat:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("src", false, node.Source),

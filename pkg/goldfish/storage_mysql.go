@@ -92,11 +92,14 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 			cell_a_response_hash, cell_b_response_hash,
 			cell_a_response_size, cell_b_response_size,
 			cell_a_status_code, cell_b_status_code,
+			cell_a_result_uri, cell_b_result_uri,
+			cell_a_result_size_bytes, cell_b_result_size_bytes,
+			cell_a_result_compression, cell_b_result_compression,
 			cell_a_trace_id, cell_b_trace_id,
 			cell_a_span_id, cell_b_span_id,
 			cell_a_used_new_engine, cell_b_used_new_engine,
 			sampled_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	// Convert empty span IDs to NULL for database storage
@@ -106,6 +109,25 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 	}
 	if sample.CellBSpanID != "" {
 		cellBSpanID = sample.CellBSpanID
+	}
+
+	// Prepare nullable result storage metadata
+	var cellAResultURI, cellBResultURI any
+	var cellAResultSize, cellBResultSize any
+	var cellAResultCompression, cellBResultCompression any
+	if sample.CellAResultURI != "" {
+		cellAResultURI = sample.CellAResultURI
+		cellAResultSize = sample.CellAResultSize
+		if sample.CellAResultCompression != "" {
+			cellAResultCompression = sample.CellAResultCompression
+		}
+	}
+	if sample.CellBResultURI != "" {
+		cellBResultURI = sample.CellBResultURI
+		cellBResultSize = sample.CellBResultSize
+		if sample.CellBResultCompression != "" {
+			cellBResultCompression = sample.CellBResultCompression
+		}
 	}
 
 	_, err := s.db.ExecContext(ctx, query,
@@ -142,6 +164,12 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 		sample.CellBResponseSize,
 		sample.CellAStatusCode,
 		sample.CellBStatusCode,
+		cellAResultURI,
+		cellBResultURI,
+		cellAResultSize,
+		cellBResultSize,
+		cellAResultCompression,
+		cellBResultCompression,
 		sample.CellATraceID,
 		sample.CellBTraceID,
 		cellASpanID,
@@ -214,6 +242,9 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 			cell_a_entries_returned, cell_b_entries_returned, cell_a_splits, cell_b_splits,
 			cell_a_shards, cell_b_shards, cell_a_response_hash, cell_b_response_hash,
 			cell_a_response_size, cell_b_response_size, cell_a_status_code, cell_b_status_code,
+			cell_a_result_uri, cell_b_result_uri,
+			cell_a_result_size_bytes, cell_b_result_size_bytes,
+			cell_a_result_compression, cell_b_result_compression,
 			cell_a_trace_id, cell_b_trace_id,
 			cell_a_span_id, cell_b_span_id,
 			cell_a_used_new_engine, cell_b_used_new_engine,
@@ -245,6 +276,9 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 		var createdAt time.Time
 		// Use sql.NullString for nullable span ID columns
 		var cellASpanID, cellBSpanID sql.NullString
+		var cellAResultURI, cellBResultURI sql.NullString
+		var cellAResultCompression, cellBResultCompression sql.NullString
+		var cellAResultSize, cellBResultSize sql.NullInt64
 
 		err := rows.Scan(
 			&q.CorrelationID, &q.TenantID, &q.User, &q.Query, &q.QueryType, &q.StartTime, &q.EndTime, &stepDurationMs,
@@ -254,6 +288,9 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 			&q.CellAStats.TotalEntriesReturned, &q.CellBStats.TotalEntriesReturned, &q.CellAStats.Splits, &q.CellBStats.Splits,
 			&q.CellAStats.Shards, &q.CellBStats.Shards, &q.CellAResponseHash, &q.CellBResponseHash,
 			&q.CellAResponseSize, &q.CellBResponseSize, &q.CellAStatusCode, &q.CellBStatusCode,
+			&cellAResultURI, &cellBResultURI,
+			&cellAResultSize, &cellBResultSize,
+			&cellAResultCompression, &cellBResultCompression,
 			&q.CellATraceID, &q.CellBTraceID,
 			&cellASpanID, &cellBSpanID,
 			&q.CellAUsedNewEngine, &q.CellBUsedNewEngine,
@@ -269,6 +306,24 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 		}
 		if cellBSpanID.Valid {
 			q.CellBSpanID = cellBSpanID.String
+		}
+		if cellAResultURI.Valid {
+			q.CellAResultURI = cellAResultURI.String
+		}
+		if cellBResultURI.Valid {
+			q.CellBResultURI = cellBResultURI.String
+		}
+		if cellAResultSize.Valid {
+			q.CellAResultSize = cellAResultSize.Int64
+		}
+		if cellBResultSize.Valid {
+			q.CellBResultSize = cellBResultSize.Int64
+		}
+		if cellAResultCompression.Valid {
+			q.CellAResultCompression = cellAResultCompression.String
+		}
+		if cellBResultCompression.Valid {
+			q.CellBResultCompression = cellBResultCompression.String
 		}
 
 		// Convert step duration from milliseconds to Duration
