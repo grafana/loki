@@ -29,7 +29,7 @@ jobs:
         id: checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref || 'main' }}
+          ref: ${{ inputs.ref }}
 
       - name: Setup Go
         uses: actions/setup-go@v4
