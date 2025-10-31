@@ -16,7 +16,7 @@ import (
 
 func parseFn(op types.VariadicOp) VariadicFunction {
 	return VariadicFunctionFunc(func(args ...arrow.Array) (arrow.Array, error) {
-		sourceCol, requestedKeys, err := extractParseFnParameters(args)
+		sourceCol, requestedKeys, strict, keepEmpty, err := extractParseFnParameters(args)
 		if err != nil {
 			panic(err)
 		}
@@ -25,7 +25,7 @@ func parseFn(op types.VariadicOp) VariadicFunction {
 		var parsedColumns []arrow.Array
 		switch op {
 		case types.VariadicOpParseLogfmt:
-			headers, parsedColumns = buildLogfmtColumns(sourceCol, requestedKeys)
+			headers, parsedColumns = buildLogfmtColumns(sourceCol, requestedKeys, strict, keepEmpty)
 		case types.VariadicOpParseJSON:
 			headers, parsedColumns = buildJSONColumns(sourceCol, requestedKeys)
 		default:
@@ -51,58 +51,75 @@ func parseFn(op types.VariadicOp) VariadicFunction {
 	})
 }
 
-func extractParseFnParameters(args []arrow.Array) (*array.String, []string, error) {
+func extractParseFnParameters(args []arrow.Array) (*array.String, []string, bool, bool, error) {
 	// Valid signatures:
-	//parse(sourceColVec)
-	//parse(sourceColVec, requestedKeys)
-	if len(args) < 1 || len(args) > 2 {
-		return nil, nil, fmt.Errorf("parse function expected 1 or 2 arguments, got %d", len(args))
+	// parse(sourceColVec, requestedKeys, strict, keepEmpty)
+	if len(args) != 4 {
+		return nil, nil, false, false, fmt.Errorf("parse function expected 4 arguments, got %d", len(args))
 	}
 
-	var sourceColArr, requestedKeysArr arrow.Array
+	var sourceColArr, requestedKeysArr, strictArr, keepEmptyArr arrow.Array
 	sourceColArr = args[0]
-	if len(args) == 2 {
-		requestedKeysArr = args[1]
-	}
+	requestedKeysArr = args[1]
+	strictArr = args[2]
+	keepEmptyArr = args[3]
 
 	if sourceColArr == nil {
-		return nil, nil, fmt.Errorf("parse function arguments did not include a source ColumnVector to parse")
+		return nil, nil, false, false, fmt.Errorf("parse function arguments did not include a source ColumnVector to parse")
 	}
 
 	sourceCol, ok := sourceColArr.(*array.String)
 	if !ok {
-		return nil, nil, fmt.Errorf("parse can only operate on string column types, got %T", sourceColArr)
+		return nil, nil, false, false, fmt.Errorf("parse can only operate on string column types, got %T", sourceColArr)
 	}
 
 	var requestedKeys []string
+	var strict, keepEmpty bool
 
-	// Rquested keys will be the same for all rows, so we only need the first one
+	// Requested keys will be the same for all rows, so we only need the first one
 	reqKeysIdx := 0
-	if requestedKeysArr == nil || requestedKeysArr.IsNull(reqKeysIdx) {
-		return sourceCol, requestedKeys, nil
+	if requestedKeysArr != nil && !requestedKeysArr.IsNull(reqKeysIdx) {
+		reqKeysList, ok := requestedKeysArr.(*array.List)
+		if !ok {
+			return nil, nil, false, false, fmt.Errorf("requested keys must be a list of string arrays, got %T", requestedKeysArr)
+		}
+
+		firstRow, ok := util.ArrayListValue(reqKeysList, reqKeysIdx).([]string)
+		if !ok {
+			return nil, nil, false, false, fmt.Errorf("requested keys must be a list of string arrays, got a list of %T", firstRow)
+		}
+		requestedKeys = append(requestedKeys, firstRow...)
 	}
 
-	reqKeysList, ok := requestedKeysArr.(*array.List)
-	if !ok {
-		return nil, nil, fmt.Errorf("requested keys must be a list of string arrays, got %T", requestedKeysArr)
+	// Extract strict flag (boolean scalar array)
+	if strictArr != nil && !strictArr.IsNull(0) {
+		boolArr, ok := strictArr.(*array.Boolean)
+		if !ok {
+			return nil, nil, false, false, fmt.Errorf("strict flag must be a boolean, got %T", strictArr)
+		}
+		strict = boolArr.Value(0)
 	}
 
-	firstRow, ok := util.ArrayListValue(reqKeysList, reqKeysIdx).([]string)
-	if !ok {
-		return nil, nil, fmt.Errorf("requested keys must be a list of string arrays, got a list of %T", firstRow)
+	// Extract keepEmpty flag (boolean scalar array)
+	if keepEmptyArr != nil && !keepEmptyArr.IsNull(0) {
+		boolArr, ok := keepEmptyArr.(*array.Boolean)
+		if !ok {
+			return nil, nil, false, false, fmt.Errorf("keepEmpty flag must be a boolean, got %T", keepEmptyArr)
+		}
+		keepEmpty = boolArr.Value(0)
 	}
-	requestedKeys = append(requestedKeys, firstRow...)
-	return sourceCol, requestedKeys, nil
+
+	return sourceCol, requestedKeys, strict, keepEmpty, nil
 }
 
 // parseFunc represents a function that parses a single line and returns key-value pairs
-type parseFunc func(line string, requestedKeys []string) (map[string]string, error)
+type parseFunc func(line string) (map[string]string, error)
 
 // buildColumns builds Arrow columns from input lines using the provided parser
 // Returns the column headers, the Arrow columns, and any error
-func buildColumns(input *array.String, requestedKeys []string, parseFunc parseFunc, errorType string) ([]string, []arrow.Array) {
+func buildColumns(input *array.String, _ []string, parseFunc parseFunc, errorType string) ([]string, []arrow.Array) {
 	columnBuilders := make(map[string]*array.StringBuilder)
-	columnOrder := parseLines(input, requestedKeys, columnBuilders, parseFunc, errorType)
+	columnOrder := parseLines(input, columnBuilders, parseFunc, errorType)
 
 	// Build final arrays
 	columns := make([]arrow.Array, 0, len(columnOrder))
@@ -118,14 +135,14 @@ func buildColumns(input *array.String, requestedKeys []string, parseFunc parseFu
 }
 
 // parseLines discovers columns dynamically as lines are parsed
-func parseLines(input *array.String, requestedKeys []string, columnBuilders map[string]*array.StringBuilder, parseFunc parseFunc, errorType string) []string {
+func parseLines(input *array.String, columnBuilders map[string]*array.StringBuilder, parseFunc parseFunc, errorType string) []string {
 	columnOrder := []string{}
 	var errorBuilder, errorDetailsBuilder *array.StringBuilder
 	hasErrorColumns := false
 
 	for i := 0; i < input.Len(); i++ {
 		line := input.Value(i)
-		parsed, err := parseFunc(line, requestedKeys)
+		parsed, err := parseFunc(line)
 
 		// Handle error columns
 		if err != nil {
