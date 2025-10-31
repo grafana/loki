@@ -153,7 +153,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		{
 			desc: "ts remove exact dupe forward",
 			input: []entry{
-				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()}, {0, "b", labels.FromStrings("a", "b")},
+				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()},
 			},
 			exp: []entry{
 				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()},
@@ -164,7 +164,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		{
 			desc: "ts remove exact dupe backward",
 			input: []entry{
-				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()}, {0, "b", labels.FromStrings("a", "b")},
+				{0, "a", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {1, "c", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()},
 			},
 			exp: []entry{
 				{1, "c", labels.EmptyLabels()}, {0, "b", labels.EmptyLabels()}, {0, "a", labels.EmptyLabels()},
