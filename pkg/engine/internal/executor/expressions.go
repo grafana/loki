@@ -118,7 +118,12 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		if err != nil {
 			return nil, fmt.Errorf("failed to lookup binary function for signature %v(%v,%v): %w", expr.Op, lhs.DataType(), rhs.DataType(), err)
 		}
-		return fn.Evaluate(lhs, rhs)
+
+		// Check is lhs and rhs are Scalar vectors, because certain function types, such as regexp functions
+		// can optimize the evaluation per batch.
+		_, lhsIsScalar := expr.Left.(*physical.LiteralExpr)
+		_, rhsIsScalar := expr.Right.(*physical.LiteralExpr)
+		return fn.Evaluate(lhs, rhs, lhsIsScalar, rhsIsScalar)
 	}
 
 	return nil, fmt.Errorf("unknown expression: %v", expr)

@@ -454,6 +454,7 @@ func RecordShardsQueryMetrics(
 		"target_bytes_per_shard", datasize.ByteSize(targetBytesPerShard).HumanReadable(),
 		"shards", shards,
 		"index_total_chunks", stats.Index.TotalChunks,
+		"index_total_streams", stats.Index.TotalStreams,
 		"index_post_bloom_filter_chunks", stats.Index.PostFilterChunks,
 		"index_bloom_filter_ratio", fmt.Sprintf("%.2f", bloomRatio),
 	)

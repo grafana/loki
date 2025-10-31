@@ -21,6 +21,19 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX]  Move bucketName validations into the config helpers.[#19051](https://github.com/grafana/loki/pull/19051)
 - [BUGFIX] Standardize global image registry to match other Grafana charts [#19246](https://github.com/grafana/loki/pull/19246)
 
+## 6.45.1
+
+- [CHANGE] Changed one missed version of Grafana Loki to 3.5.7.
+
+## 6.45.0
+- [CHANGE] Remove unused `storageClass` field from compactor persistence configuration. Storage class should be configured per-claim in the `claims` array instead.[#19443](https://github.com/grafana/loki/pull/19443)
+- [ENHANCEMENT] Update default readiness probe values to match operator [#19529](https://github.com/grafana/loki/pull/19529)
+- [ENHANCEMENT] Allow configuration of alert rule severalties and thresholds[#13730](https://github.com/grafana/loki/pull/13730)
+- [ENHANCEMENT] Add the ability to specify index-gateway container lifecycle. [#19573](https://github.com/grafana/loki/pull/19573)
+- [BUGFIX]  Move bucketName validations into the config helpers.[#19051](https://github.com/grafana/loki/pull/19051)
+- [BUGFIX] Standardize global image registry to match other Grafana charts [#19246](https://github.com/grafana/loki/pull/19246)
+- [BUGFIX] Fix wrong context passed to loki.namespace helper from table manager servicemonitor. [#19544](https://github.com/grafana/loki/pull/19544)
+
 ## 6.44.0
 
 - [DEPRECATION] The Loki Helm chart uses MinIO as an object store. MinIO will be removed from the Helm Charts in a future release.  See [this issue](https://github.com/minio/minio/issues/21647) for more information.  The Loki team is still investigating alternatives to replace MinIO.
@@ -57,7 +70,6 @@ Before upgrading to this version, make sure that the CustomResourceDefinitions (
 
 - [BUGFIX] Explicitly set registry for k8s-sidecar image [#19233](<https://github.com/grafana/loki/pull/19233>]
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for the nginx container in the gateway pods. [#18545](https://github.com/grafana/loki/pull/18545)
-- [ENHANCEMENT] Standardize global image registry configuration to match other Grafana charts [#19246](https://github.com/grafana/loki/pull/19246)
 
 ## 6.40.0
 

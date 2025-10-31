@@ -193,6 +193,41 @@ RETURN %12
 
 		t.Logf("\n%s\n", sb.String())
 	})
+
+	t.Run(`rate metric query with nested math expression`, func(t *testing.T) {
+		q := &query{
+			statement: `sum by (level) ((rate({cluster="prod"}[5m]) - 100) ^ 2)`,
+			start:     3600,
+			end:       7200,
+			interval:  5 * time.Minute,
+		}
+
+		logicalPlan, err := BuildPlan(q)
+		require.NoError(t, err)
+		t.Logf("\n%s\n", logicalPlan.String())
+
+		expected := `%1 = EQ label.cluster "prod"
+%2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
+%3 = GTE builtin.timestamp 1970-01-01T00:55:00Z
+%4 = SELECT %2 [predicate=%3]
+%5 = LT builtin.timestamp 1970-01-01T02:00:00Z
+%6 = SELECT %4 [predicate=%5]
+%7 = RANGE_AGGREGATION %6 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
+%8 = DIV %7 300
+%9 = SUB %8 100
+%10 = POW %9 2
+%11 = VECTOR_AGGREGATION %10 [operation=sum, group_by=(ambiguous.level)]
+%12 = LOGQL_COMPAT %11
+RETURN %12
+`
+
+		require.Equal(t, expected, logicalPlan.String())
+
+		var sb strings.Builder
+		PrintTree(&sb, logicalPlan.Value())
+
+		t.Logf("\n%s\n", sb.String())
+	})
 }
 
 func TestCanExecuteQuery(t *testing.T) {
@@ -284,8 +319,8 @@ func TestCanExecuteQuery(t *testing.T) {
 			expected:  true,
 		},
 		{
-			// rate is not supported
 			statement: `sum by (level) (rate({env="prod"}[1m]))`,
+			expected:  true,
 		},
 		{
 			// max is not supported
