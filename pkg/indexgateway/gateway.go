@@ -465,6 +465,8 @@ func (g *Gateway) boundedShards(
 	ctx, sp := tracer.Start(ctx, "indexgateway.boundedShards")
 	defer sp.End()
 
+	start := time.Now()
+
 	// 1) for all bounds, get chunk refs
 	refs, err := g.indexQuerier.GetChunkRefsWithSizingInfo(ctx, instanceID, req.From, req.Through, p)
 	if err != nil {
@@ -549,6 +551,19 @@ func (g *Gateway) boundedShards(
 		"end_delta", time.Since(req.Through.Time()).String(),
 		"filters", len(filters),
 	)
+
+	// Populate index statistics for metrics logging
+	resp.Statistics.Index.TotalChunks = int64(ct)
+	resp.Statistics.Index.PostFilterChunks = int64(len(filtered))
+	// compute unique streams matched post-filtering
+	{
+		seen := make(map[model.Fingerprint]struct{}, 1024)
+		for _, ref := range filtered {
+			seen[model.Fingerprint(ref.Fingerprint)] = struct{}{}
+		}
+		resp.Statistics.Index.TotalStreams = int64(len(seen))
+	}
+	resp.Statistics.Index.ShardsDuration = int64(time.Since(start))
 
 	// 3) build shards
 	return server.Send(resp)
