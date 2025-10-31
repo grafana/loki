@@ -202,3 +202,58 @@ func Test_topkBatch_MaxUnused(t *testing.T) {
 		assert.Equal(t, tc.expectUnused, unused, "unexpected number of unused rows after record %d", i)
 	}
 }
+
+func Test_iterContiguousRanges(t *testing.T) {
+	tt := []struct {
+		name   string
+		rows   []int
+		ranges []struct{ start, end int }
+	}{
+		{
+			name:   "empty slice",
+			rows:   []int{},
+			ranges: []struct{ start, end int }{},
+		},
+		{
+			name:   "single row",
+			rows:   []int{5},
+			ranges: []struct{ start, end int }{{5, 6}},
+		},
+		{
+			name:   "single contiguous range",
+			rows:   []int{1, 2, 3},
+			ranges: []struct{ start, end int }{{1, 4}},
+		},
+		{
+			name:   "multiple contiguous ranges",
+			rows:   []int{1, 2, 3, 5, 6, 7},
+			ranges: []struct{ start, end int }{{1, 4}, {5, 8}},
+		},
+		{
+			name:   "non-contiguous single rows",
+			rows:   []int{1, 3, 5},
+			ranges: []struct{ start, end int }{{1, 2}, {3, 4}, {5, 6}},
+		},
+		{
+			name:   "all rows",
+			rows:   []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+			ranges: []struct{ start, end int }{{0, 10}},
+		},
+		{
+			name:   "first and last row",
+			rows:   []int{0, 9},
+			ranges: []struct{ start, end int }{{0, 1}, {9, 10}},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			var got []struct{ start, end int }
+			iterContiguousRanges(tc.rows, func(start, end int) bool {
+				got = append(got, struct{ start, end int }{start, end})
+				return true
+			})
+			require.Equal(t, tc.ranges, got, "ranges should match")
+		})
+	}
+}
