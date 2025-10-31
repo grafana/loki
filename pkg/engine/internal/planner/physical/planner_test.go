@@ -304,8 +304,12 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		children := physicalPlan.Children(filterNode)
 		require.Len(t, children, 1)
 
+		compatNode, ok := children[0].(*ColumnCompat)
+		require.True(t, ok, "Filter's child should be ColumnCompat")
+		children = physicalPlan.Children(compatNode)
+
 		projectionNode, ok := children[0].(*Projection)
-		require.True(t, ok, "Filter's child should be Projection")
+		require.True(t, ok, "ColumnCompat's child should be Projection")
 		require.Len(t, projectionNode.Expressions, 1)
 
 		expr, ok := projectionNode.Expressions[0].(*VariadicExpr)
@@ -396,8 +400,12 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		children = physicalPlan.Children(filterNode)
 		require.Len(t, children, 1)
 
+		compatNode, ok := children[0].(*ColumnCompat)
+		require.True(t, ok, "Filter's child should be ColumnCompat")
+		children = physicalPlan.Children(compatNode)
+
 		projectionNode, ok := children[0].(*Projection)
-		require.True(t, ok, "Filter's child should be Projection")
+		require.True(t, ok, "ColumnCompat's child should be Projection")
 		require.Len(t, projectionNode.Expressions, 1)
 
 		expr, ok := projectionNode.Expressions[0].(*VariadicExpr)
