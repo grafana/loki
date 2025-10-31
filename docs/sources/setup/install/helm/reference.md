@@ -4040,7 +4040,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.5.7"
+"3.5.4"
 </pre>
 </td>
 		</tr>
