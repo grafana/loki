@@ -531,8 +531,8 @@ func (m *mockGoldfishStorage) Close() error {
 	return nil
 }
 
-func (m *mockGoldfishStorage) GetQueryByCorrelationID(ctx context.Context, correlationID string) (*goldfish.QuerySample, error) {
-	panic("not implemented") // TODO: Implement
+func (m *mockGoldfishStorage) GetQueryByCorrelationID(_ context.Context, _ string) (*goldfish.QuerySample, error) {
+  return nil, nil
 }
 
 func Test_extractTenant(t *testing.T) {
