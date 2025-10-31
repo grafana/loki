@@ -25,7 +25,7 @@ import (
 
 func TestStreamsResultBuilder(t *testing.T) {
 	t.Run("empty builder returns non-nil result", func(t *testing.T) {
-		builder := newStreamsResultBuilder()
+		builder := newStreamsResultBuilder(logproto.BACKWARD)
 		md, _ := metadata.NewContext(t.Context())
 		require.NotNil(t, builder.Build(stats.Result{}, md).Data)
 	})
@@ -66,7 +66,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		pipeline := executor.NewBufferedPipeline(record)
 		defer pipeline.Close()
 
-		builder := newStreamsResultBuilder()
+		builder := newStreamsResultBuilder(logproto.BACKWARD)
 		err := collectResult(context.Background(), pipeline, builder)
 
 		require.NoError(t, err)
@@ -147,7 +147,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		pipeline := executor.NewBufferedPipeline(record)
 		defer pipeline.Close()
 
-		builder := newStreamsResultBuilder()
+		builder := newStreamsResultBuilder(logproto.BACKWARD)
 		err := collectResult(context.Background(), pipeline, builder)
 
 		require.NoError(t, err)
@@ -244,7 +244,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		record2 := rows2.Record(memory.DefaultAllocator, schema)
 		defer record2.Release()
 
-		builder := newStreamsResultBuilder()
+		builder := newStreamsResultBuilder(logproto.BACKWARD)
 
 		// Collect first record
 		builder.CollectRecord(record1)
@@ -300,7 +300,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 			nil,
 		)
 
-		builder := newStreamsResultBuilder()
+		builder := newStreamsResultBuilder(logproto.BACKWARD)
 
 		// First record: 5 rows (buffer grows to 5)
 		rows1 := make(arrowtest.Rows, 5)
@@ -369,7 +369,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 			nil,
 		)
 
-		builder := newStreamsResultBuilder()
+		builder := newStreamsResultBuilder(logproto.BACKWARD)
 
 		// First record: 3 valid rows
 		rows1 := make(arrowtest.Rows, 3)
