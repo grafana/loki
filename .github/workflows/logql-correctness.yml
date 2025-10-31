@@ -2,18 +2,22 @@ name: LogQL correctness tests
 on:
   schedule:
     - cron: "30 2 * * 1-5" # Mon-Fri at 2.30am UTC
+  pull_request:
+    paths:
+      - "pkg/engine/**"
+      - "pkg/dataobj/**"
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Git ref to run correctness tests on'
+        description: "Git ref to run correctness tests on"
         required: false
-        default: 'main'
-        type: 'string'
+        default: "main"
+        type: "string"
       failfast:
-        description: 'Fail fast on first test failure'
+        description: "Fail fast on first test failure"
         required: false
         default: true
-        type: 'boolean'
+        type: "boolean"
 permissions: {}
 jobs:
   generate-testdata:
