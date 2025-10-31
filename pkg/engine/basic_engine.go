@@ -209,7 +209,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		var builder ResultBuilder
 		switch params.GetExpression().(type) {
 		case syntax.LogSelectorExpr:
-			builder = newStreamsResultBuilder()
+			builder = newStreamsResultBuilder(params.Direction())
 		case syntax.SampleExpr:
 			if params.Step() > 0 {
 				builder = newMatrixResultBuilder()
