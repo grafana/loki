@@ -775,18 +775,16 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		require.NoError(t, err)
 
 		expectedPlan := &Plan{}
-		parallelize := expectedPlan.graph.Add(&Parallelize{id: "parallelize"})
-		compat := expectedPlan.graph.Add(&ColumnCompat{id: "compat", Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
+		parallelize := expectedPlan.graph.Add(&Parallelize{})
+		compat := expectedPlan.graph.Add(&ColumnCompat{Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
 		scanSet := expectedPlan.graph.Add(&ScanSet{
-			id: "scanset",
-
 			// Targets should be added in the order of the scan timestamps
 			// ASC => oldest to newest
 			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
 			},
 		})
 
@@ -809,17 +807,15 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		require.NoError(t, err)
 
 		expectedPlan := &Plan{}
-		parallelize := expectedPlan.graph.Add(&Parallelize{id: "parallelize"})
-		compat := expectedPlan.graph.Add(&ColumnCompat{id: "compat", Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
+		parallelize := expectedPlan.graph.Add(&Parallelize{})
+		compat := expectedPlan.graph.Add(&ColumnCompat{Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
 		scanSet := expectedPlan.graph.Add(&ScanSet{
-			id: "scanset",
-
 			// Targets should be added in the order of the scan timestamps
 			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan1", Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan2", Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan3", Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{id: "scan4", Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
 			},
 		})
 

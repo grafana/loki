@@ -77,28 +77,26 @@ func dummyPlan() *Plan {
 	plan := &Plan{}
 
 	scanSet := plan.graph.Add(&ScanSet{
-		id: "set",
-
 		Targets: []*ScanTarget{
 			{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 			{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 		},
 	})
-	filter1 := plan.graph.Add(&Filter{id: "filter1", Predicates: []Expression{
+	filter1 := plan.graph.Add(&Filter{Predicates: []Expression{
 		&BinaryExpr{
 			Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
 			Right: NewLiteral(time1000),
 			Op:    types.BinaryOpGt,
 		},
 	}})
-	filter2 := plan.graph.Add(&Filter{id: "filter2", Predicates: []Expression{
+	filter2 := plan.graph.Add(&Filter{Predicates: []Expression{
 		&BinaryExpr{
 			Left:  newColumnExpr("level", types.ColumnTypeAmbiguous),
 			Right: NewLiteral("debug|info"),
 			Op:    types.BinaryOpMatchRe,
 		},
 	}})
-	filter3 := plan.graph.Add(&Filter{id: "filter3", Predicates: []Expression{}})
+	filter3 := plan.graph.Add(&Filter{Predicates: []Expression{}})
 
 	_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter3, Child: filter2})
 	_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter2, Child: filter1})
@@ -121,8 +119,6 @@ func TestPredicatePushdown(t *testing.T) {
 
 	optimized := &Plan{}
 	scanSet := optimized.graph.Add(&ScanSet{
-		id: "set",
-
 		Targets: []*ScanTarget{
 			{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 			{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
@@ -136,15 +132,15 @@ func TestPredicatePushdown(t *testing.T) {
 			},
 		},
 	})
-	filter1 := optimized.graph.Add(&Filter{id: "filter1", Predicates: []Expression{}})
-	filter2 := optimized.graph.Add(&Filter{id: "filter2", Predicates: []Expression{
+	filter1 := optimized.graph.Add(&Filter{Predicates: []Expression{}})
+	filter2 := optimized.graph.Add(&Filter{Predicates: []Expression{
 		&BinaryExpr{
 			Left:  newColumnExpr("level", types.ColumnTypeAmbiguous),
 			Right: NewLiteral("debug|info"),
 			Op:    types.BinaryOpMatchRe,
 		},
 	}}) // ambiguous column predicates are not pushed down.
-	filter3 := optimized.graph.Add(&Filter{id: "filter3", Predicates: []Expression{}})
+	filter3 := optimized.graph.Add(&Filter{Predicates: []Expression{}})
 
 	_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: filter3, Child: filter2})
 	_ = optimized.graph.AddEdge(dag.Edge[Node]{Parent: filter2, Child: filter1})
@@ -159,15 +155,14 @@ func TestLimitPushdown(t *testing.T) {
 		plan := &Plan{}
 		{
 			scanset := plan.graph.Add(&ScanSet{
-				id: "set",
 				Targets: []*ScanTarget{
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 				},
 			})
-			topK1 := plan.graph.Add(&TopK{id: "topK1", SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
-			topK2 := plan.graph.Add(&TopK{id: "topK2", SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
-			limit := plan.graph.Add(&Limit{id: "limit1", Fetch: 100})
+			topK1 := plan.graph.Add(&TopK{SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
+			topK2 := plan.graph.Add(&TopK{SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
+			limit := plan.graph.Add(&Limit{Fetch: 100})
 
 			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: topK1, Child: scanset})
 			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: topK1})
@@ -186,15 +181,14 @@ func TestLimitPushdown(t *testing.T) {
 		expectedPlan := &Plan{}
 		{
 			scanset := expectedPlan.graph.Add(&ScanSet{
-				id: "set",
 				Targets: []*ScanTarget{
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 				},
 			})
-			topK1 := expectedPlan.graph.Add(&TopK{id: "topK1", SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin), K: 100})
-			topK2 := expectedPlan.graph.Add(&TopK{id: "topK2", SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin), K: 100})
-			limit := expectedPlan.graph.Add(&Limit{id: "limit1", Fetch: 100})
+			topK1 := expectedPlan.graph.Add(&TopK{SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin), K: 100})
+			topK2 := expectedPlan.graph.Add(&TopK{SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin), K: 100})
+			limit := expectedPlan.graph.Add(&Limit{Fetch: 100})
 
 			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: topK1})
 			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: topK2})
@@ -219,19 +213,17 @@ func TestLimitPushdown(t *testing.T) {
 		plan := &Plan{}
 		{
 			scanset := plan.graph.Add(&ScanSet{
-				id: "set",
 				Targets: []*ScanTarget{
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 				},
 			})
-			topK1 := plan.graph.Add(&TopK{id: "topK1", SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
-			topK2 := plan.graph.Add(&TopK{id: "topK2", SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
+			topK1 := plan.graph.Add(&TopK{SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
+			topK2 := plan.graph.Add(&TopK{SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
 			filter := plan.graph.Add(&Filter{
-				id:         "filter1",
 				Predicates: filterPredicates,
 			})
-			limit := plan.graph.Add(&Limit{id: "limit1", Fetch: 100})
+			limit := plan.graph.Add(&Limit{Fetch: 100})
 
 			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: filter})
 			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: topK1})
@@ -265,8 +257,6 @@ func TestGroupByPushdown(t *testing.T) {
 		plan := &Plan{}
 		{
 			scanSet := plan.graph.Add(&ScanSet{
-				id: "set",
-
 				Targets: []*ScanTarget{
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
@@ -275,11 +265,9 @@ func TestGroupByPushdown(t *testing.T) {
 				Predicates: []Expression{},
 			})
 			rangeAgg := plan.graph.Add(&RangeAggregation{
-				id:        "count_over_time",
 				Operation: types.RangeAggregationTypeCount,
 			})
 			vectorAgg := plan.graph.Add(&VectorAggregation{
-				id:        "sum_of",
 				Operation: types.VectorAggregationTypeSum,
 				GroupBy:   groupBy,
 			})
@@ -300,7 +288,6 @@ func TestGroupByPushdown(t *testing.T) {
 		expectedPlan := &Plan{}
 		{
 			scanSet := expectedPlan.graph.Add(&ScanSet{
-				id: "set",
 				Targets: []*ScanTarget{
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
@@ -308,12 +295,10 @@ func TestGroupByPushdown(t *testing.T) {
 				Predicates: []Expression{},
 			})
 			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
-				id:          "count_over_time",
 				Operation:   types.RangeAggregationTypeCount,
 				PartitionBy: groupBy,
 			})
 			vectorAgg := expectedPlan.graph.Add(&VectorAggregation{
-				id:        "sum_of",
 				Operation: types.VectorAggregationTypeSum,
 				GroupBy:   groupBy,
 			})
@@ -336,7 +321,6 @@ func TestGroupByPushdown(t *testing.T) {
 		plan := &Plan{}
 		{
 			scanSet := plan.graph.Add(&ScanSet{
-				id: "set",
 				Targets: []*ScanTarget{
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
@@ -344,11 +328,9 @@ func TestGroupByPushdown(t *testing.T) {
 				Predicates: []Expression{},
 			})
 			rangeAgg := plan.graph.Add(&RangeAggregation{
-				id:        "sum_over_time",
 				Operation: types.RangeAggregationTypeSum,
 			})
 			vectorAgg := plan.graph.Add(&VectorAggregation{
-				id:        "max_of",
 				Operation: types.VectorAggregationTypeMax,
 				GroupBy:   groupBy,
 			})
@@ -383,14 +365,12 @@ func TestProjectionPushdown(t *testing.T) {
 		plan := &Plan{}
 		{
 			scanset := plan.graph.Add(&ScanSet{
-				id: "set",
 				Targets: []*ScanTarget{
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 				},
 			})
 			rangeAgg := plan.graph.Add(&RangeAggregation{
-				id:          "range1",
 				Operation:   types.RangeAggregationTypeCount,
 				PartitionBy: partitionBy,
 			})
@@ -411,7 +391,6 @@ func TestProjectionPushdown(t *testing.T) {
 		{
 			projected := append(partitionBy, &ColumnExpr{Ref: types.ColumnRef{Column: types.ColumnNameBuiltinTimestamp, Type: types.ColumnTypeBuiltin}})
 			scanset := expectedPlan.graph.Add(&ScanSet{
-				id: "set",
 				Targets: []*ScanTarget{
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
@@ -420,7 +399,6 @@ func TestProjectionPushdown(t *testing.T) {
 			})
 
 			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
-				id:          "range1",
 				Operation:   types.RangeAggregationTypeCount,
 				PartitionBy: partitionBy,
 			})
@@ -450,7 +428,6 @@ func TestProjectionPushdown(t *testing.T) {
 		plan := &Plan{}
 		{
 			scanset := plan.graph.Add(&ScanSet{
-				id: "set",
 				Targets: []*ScanTarget{
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
@@ -460,11 +437,9 @@ func TestProjectionPushdown(t *testing.T) {
 				},
 			})
 			filter := plan.graph.Add(&Filter{
-				id:         "filter1",
 				Predicates: filterPredicates,
 			})
 			rangeAgg := plan.graph.Add(&RangeAggregation{
-				id:        "range1",
 				Operation: types.RangeAggregationTypeCount,
 			})
 
@@ -491,7 +466,6 @@ func TestProjectionPushdown(t *testing.T) {
 			}
 
 			scanset := expectedPlan.graph.Add(&ScanSet{
-				id: "set",
 				Targets: []*ScanTarget{
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
@@ -499,11 +473,9 @@ func TestProjectionPushdown(t *testing.T) {
 				Projections: expectedProjections,
 			})
 			filter := expectedPlan.graph.Add(&Filter{
-				id:         "filter1",
 				Predicates: filterPredicates,
 			})
 			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
-				id:        "range1",
 				Operation: types.RangeAggregationTypeCount,
 			})
 
@@ -520,7 +492,6 @@ func TestProjectionPushdown(t *testing.T) {
 		plan := &Plan{}
 		{
 			scanset := plan.graph.Add(&ScanSet{
-				id: "set",
 				Targets: []*ScanTarget{
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
@@ -530,7 +501,6 @@ func TestProjectionPushdown(t *testing.T) {
 				},
 			})
 			project := plan.graph.Add(&Projection{
-				id:     "project1",
 				Expand: true,
 				Expressions: []Expression{
 					&UnaryExpr{
@@ -541,7 +511,6 @@ func TestProjectionPushdown(t *testing.T) {
 			})
 
 			rangeAgg := plan.graph.Add(&RangeAggregation{
-				id:        "range1",
 				Operation: types.RangeAggregationTypeCount,
 			})
 
@@ -567,7 +536,6 @@ func TestProjectionPushdown(t *testing.T) {
 			}
 
 			scanset := expectedPlan.graph.Add(&ScanSet{
-				id: "set",
 				Targets: []*ScanTarget{
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
@@ -575,7 +543,6 @@ func TestProjectionPushdown(t *testing.T) {
 				Projections: expectedProjections,
 			})
 			project := expectedPlan.graph.Add(&Projection{
-				id:     "project1",
 				Expand: true,
 				Expressions: []Expression{
 					&UnaryExpr{
@@ -585,7 +552,6 @@ func TestProjectionPushdown(t *testing.T) {
 				},
 			})
 			rangeAgg := expectedPlan.graph.Add(&RangeAggregation{
-				id:        "range1",
 				Operation: types.RangeAggregationTypeCount,
 			})
 
@@ -906,8 +872,6 @@ func TestRemoveNoopFilter(t *testing.T) {
 
 	optimized := &Plan{}
 	scanSet := optimized.graph.Add(&ScanSet{
-		id: "set",
-
 		Targets: []*ScanTarget{
 			{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
 			{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
@@ -915,14 +879,14 @@ func TestRemoveNoopFilter(t *testing.T) {
 
 		Predicates: []Expression{},
 	})
-	filter1 := optimized.graph.Add(&Filter{id: "filter1", Predicates: []Expression{
+	filter1 := optimized.graph.Add(&Filter{Predicates: []Expression{
 		&BinaryExpr{
 			Left:  newColumnExpr("timestamp", types.ColumnTypeBuiltin),
 			Right: NewLiteral(time1000),
 			Op:    types.BinaryOpGt,
 		},
 	}})
-	filter2 := optimized.graph.Add(&Filter{id: "filter2", Predicates: []Expression{
+	filter2 := optimized.graph.Add(&Filter{Predicates: []Expression{
 		&BinaryExpr{
 			Left:  newColumnExpr("level", types.ColumnTypeAmbiguous),
 			Right: NewLiteral("debug|info"),
