@@ -1,8 +1,9 @@
 package physical
 
 import (
-	"fmt"
 	"slices"
+
+	"github.com/oklog/ulid/v2"
 )
 
 // DataObjLocation is a string that uniquely indentifies a data object location in
@@ -13,7 +14,7 @@ type DataObjLocation string
 // It contains information about the object location, stream IDs, projections,
 // predicates for reading data from a data object.
 type DataObjScan struct {
-	id string
+	NodeID ulid.ULID
 
 	// Location is the unique name of the data object that is used as source for
 	// reading streams.
@@ -35,12 +36,7 @@ type DataObjScan struct {
 
 // ID implements the [Node] interface.
 // Returns a string that uniquely identifies the node in the plan.
-func (s *DataObjScan) ID() string {
-	if s.id == "" {
-		return fmt.Sprintf("%p", s)
-	}
-	return s.id
-}
+func (s *DataObjScan) ID() string { return s.NodeID.String() }
 
 // Clone returns a deep copy of the node (minus its ID).
 func (s *DataObjScan) Clone() Node {

@@ -1,13 +1,13 @@
 package physical
 
-import "fmt"
+import "github.com/oklog/ulid/v2"
 
 // Limit represents a limiting operation in the physical plan that applies
 // offset and limit to the result set. The offset specifies how many rows to
 // skip before starting to return results, while limit specifies the maximum
 // number of rows to return.
 type Limit struct {
-	id string
+	NodeID ulid.ULID
 
 	// Skip specifies how many initial rows should be skipped.
 	Skip uint32
@@ -17,12 +17,7 @@ type Limit struct {
 
 // ID implements the [Node] interface.
 // Returns a string that uniquely identifies the node in the plan.
-func (l *Limit) ID() string {
-	if l.id == "" {
-		return fmt.Sprintf("%p", l)
-	}
-	return l.id
-}
+func (l *Limit) ID() string { return l.NodeID.String() }
 
 // Clone returns a deep copy of the node (minus its ID).
 func (l *Limit) Clone() Node {

@@ -7,6 +7,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/oklog/ulid/v2"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"

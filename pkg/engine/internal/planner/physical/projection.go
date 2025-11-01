@@ -1,13 +1,13 @@
 package physical
 
-import "fmt"
+import "github.com/oklog/ulid/v2"
 
 // Projection represents a column selection operation in the physical plan.
 // It contains a list of columns (column expressions) that are later
 // evaluated against the input columns to remove unnecessary colums from the
 // intermediate result.
 type Projection struct {
-	id string
+	NodeID ulid.ULID
 
 	// Expressions is a set of column expressions that are used to drop not needed
 	// columns that match the column expression, or to expand columns that result
@@ -21,12 +21,7 @@ type Projection struct {
 
 // ID implements the [Node] interface.
 // Returns a string that uniquely identifies the node in the plan.
-func (p *Projection) ID() string {
-	if p.id == "" {
-		return fmt.Sprintf("%p", p)
-	}
-	return p.id
-}
+func (p *Projection) ID() string { return p.NodeID.String() }
 
 // Clone returns a deep copy of the node (minus its ID).
 func (p *Projection) Clone() Node {

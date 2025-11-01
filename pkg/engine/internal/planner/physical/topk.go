@@ -1,14 +1,12 @@
 package physical
 
-import (
-	"fmt"
-)
+import "github.com/oklog/ulid/v2"
 
 // TopK represents a physical plan node that performs topK operation.
 // It sorts rows based on sort expressions and limits the result to the top K rows.
 // This is equivalent to a SORT followed by a LIMIT operation.
 type TopK struct {
-	id string
+	NodeID ulid.ULID
 
 	// SortBy is the column to sort by.
 	SortBy     ColumnExpression
@@ -19,12 +17,7 @@ type TopK struct {
 
 // ID implements the [Node] interface.
 // Returns a string that uniquely identifies the node in the plan.
-func (t *TopK) ID() string {
-	if t.id == "" {
-		return fmt.Sprintf("%p", t)
-	}
-	return t.id
-}
+func (t *TopK) ID() string { return t.NodeID.String() }
 
 // Clone returns a deep copy of the node (minus its ID).
 func (t *TopK) Clone() Node {
