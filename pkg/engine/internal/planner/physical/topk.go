@@ -19,9 +19,11 @@ type TopK struct {
 // Returns a string that uniquely identifies the node in the plan.
 func (t *TopK) ID() string { return t.NodeID.String() }
 
-// Clone returns a deep copy of the node (minus its ID).
+// Clone returns a deep copy of the node with a new unique ID.
 func (t *TopK) Clone() Node {
 	return &TopK{
+		NodeID: ulid.Make(),
+
 		SortBy:     t.SortBy.Clone().(ColumnExpression),
 		Ascending:  t.Ascending,
 		NullsFirst: t.NullsFirst,

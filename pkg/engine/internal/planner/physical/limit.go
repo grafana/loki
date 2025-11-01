@@ -19,9 +19,11 @@ type Limit struct {
 // Returns a string that uniquely identifies the node in the plan.
 func (l *Limit) ID() string { return l.NodeID.String() }
 
-// Clone returns a deep copy of the node (minus its ID).
+// Clone returns a deep copy of the node with a new unique ID.
 func (l *Limit) Clone() Node {
 	return &Limit{
+		NodeID: ulid.Make(),
+
 		Skip:  l.Skip,
 		Fetch: l.Fetch,
 	}

@@ -12,9 +12,11 @@ type Join struct {
 // Returns a string that uniquely identifies the node in the plan.
 func (f *Join) ID() string { return f.NodeID.String() }
 
-// Clone returns a deep copy of the node (minus its ID).
+// Clone returns a deep copy of the node with a new unique ID.
 func (f *Join) Clone() Node {
-	return &Join{}
+	return &Join{
+		NodeID: ulid.Make(),
+	}
 }
 
 // Type implements the [Node] interface.

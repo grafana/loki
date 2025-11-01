@@ -23,9 +23,11 @@ type Projection struct {
 // Returns a string that uniquely identifies the node in the plan.
 func (p *Projection) ID() string { return p.NodeID.String() }
 
-// Clone returns a deep copy of the node (minus its ID).
+// Clone returns a deep copy of the node with a new unique ID.
 func (p *Projection) Clone() Node {
 	return &Projection{
+		NodeID: ulid.Make(),
+
 		Expressions: cloneExpressions(p.Expressions),
 		All:         p.All,
 		Expand:      p.Expand,

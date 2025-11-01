@@ -23,9 +23,11 @@ type VectorAggregation struct {
 // Returns a string that uniquely identifies the node in the plan.
 func (v *VectorAggregation) ID() string { return v.NodeID.String() }
 
-// Clone returns a deep copy of the node (minus its ID).
+// Clone returns a deep copy of the node with a new unique ID.
 func (v *VectorAggregation) Clone() Node {
 	return &VectorAggregation{
+		NodeID: ulid.Make(),
+
 		GroupBy:   cloneExpressions(v.GroupBy),
 		Operation: v.Operation,
 	}

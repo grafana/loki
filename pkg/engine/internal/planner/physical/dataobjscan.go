@@ -38,9 +38,11 @@ type DataObjScan struct {
 // Returns a string that uniquely identifies the node in the plan.
 func (s *DataObjScan) ID() string { return s.NodeID.String() }
 
-// Clone returns a deep copy of the node (minus its ID).
+// Clone returns a deep copy of the node with a new unique ID.
 func (s *DataObjScan) Clone() Node {
 	return &DataObjScan{
+		NodeID: ulid.Make(),
+
 		Location:    s.Location,
 		Section:     s.Section,
 		StreamIDs:   slices.Clone(s.StreamIDs),

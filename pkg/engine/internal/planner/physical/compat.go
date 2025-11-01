@@ -21,12 +21,11 @@ type ColumnCompat struct {
 // Returns a string that uniquely identifies the node in the plan.
 func (m *ColumnCompat) ID() string { return m.NodeID.String() }
 
-	return m.id
-}
-
-// Clone returns a deep copy of the node (minus its ID).
+// Clone returns a deep copy of the node with a new unique ID.
 func (m *ColumnCompat) Clone() Node {
 	return &ColumnCompat{
+		NodeID: ulid.Make(),
+
 		Source:      m.Source,
 		Destination: m.Destination,
 		Collision:   m.Collision,

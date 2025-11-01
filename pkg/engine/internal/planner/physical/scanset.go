@@ -66,14 +66,18 @@ type ScanSet struct {
 // ID returns a string that uniquely identifies the node in the plan.
 func (s *ScanSet) ID() string { return s.NodeID.String() }
 
-// Clone returns a deep copy of the node (minus its ID).
+// Clone returns a deep copy of the node with a new unique ID.
 func (s *ScanSet) Clone() Node {
 	newTargets := make([]*ScanTarget, 0, len(s.Targets))
 	for _, target := range s.Targets {
 		newTargets = append(newTargets, target.Clone())
 	}
 
-	return &ScanSet{Targets: newTargets}
+	return &ScanSet{
+		NodeID: ulid.Make(),
+
+		Targets: newTargets,
+	}
 }
 
 // Type returns [NodeTypeScanSet].

@@ -24,9 +24,11 @@ type RangeAggregation struct {
 // ID returns a string that uniquely identifies the node in the plan.
 func (r *RangeAggregation) ID() string { return r.NodeID.String() }
 
-// Clone returns a deep copy of the node (minus its ID).
+// Clone returns a deep copy of the node with a new unique ID.
 func (r *RangeAggregation) Clone() Node {
 	return &RangeAggregation{
+		NodeID: ulid.Make(),
+
 		PartitionBy: cloneExpressions(r.PartitionBy),
 
 		Operation: r.Operation,

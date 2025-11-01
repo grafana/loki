@@ -19,9 +19,11 @@ type Filter struct {
 // Returns a string that uniquely identifies the node in the plan.
 func (f *Filter) ID() string { return f.NodeID.String() }
 
-// Clone returns a deep copy of the node (minus its ID).
+// Clone returns a deep copy of the node with a new unique ID.
 func (f *Filter) Clone() Node {
 	return &Filter{
+		NodeID: ulid.Make(),
+
 		Predicates: cloneExpressions(f.Predicates),
 	}
 }
