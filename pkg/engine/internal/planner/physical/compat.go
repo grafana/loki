@@ -21,6 +21,10 @@ type ColumnCompat struct {
 // Returns a string that uniquely identifies the node in the plan.
 func (m *ColumnCompat) ID() string { return m.NodeID.String() }
 
+// ULID implements the [Node] interface.
+// Returns the ULID that uniquely identifies the node in the plan.
+func (m *ColumnCompat) ULID() ulid.ULID { return m.NodeID }
+
 // Clone returns a deep copy of the node with a new unique ID.
 func (m *ColumnCompat) Clone() Node {
 	return &ColumnCompat{

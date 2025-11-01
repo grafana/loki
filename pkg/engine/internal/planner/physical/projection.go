@@ -23,6 +23,10 @@ type Projection struct {
 // Returns a string that uniquely identifies the node in the plan.
 func (p *Projection) ID() string { return p.NodeID.String() }
 
+// ULID implements the [Node] interface.
+// Returns the ULID that uniquely identifies the node in the plan.
+func (p *Projection) ULID() ulid.ULID { return p.NodeID }
+
 // Clone returns a deep copy of the node with a new unique ID.
 func (p *Projection) Clone() Node {
 	return &Projection{

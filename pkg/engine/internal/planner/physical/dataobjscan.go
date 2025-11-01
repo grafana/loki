@@ -38,6 +38,10 @@ type DataObjScan struct {
 // Returns a string that uniquely identifies the node in the plan.
 func (s *DataObjScan) ID() string { return s.NodeID.String() }
 
+// ULID implements the [Node] interface.
+// Returns the ULID that uniquely identifies the node in the plan.
+func (s *DataObjScan) ULID() ulid.ULID { return s.NodeID }
+
 // Clone returns a deep copy of the node with a new unique ID.
 func (s *DataObjScan) Clone() Node {
 	return &DataObjScan{

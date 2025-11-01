@@ -19,6 +19,10 @@ type Limit struct {
 // Returns a string that uniquely identifies the node in the plan.
 func (l *Limit) ID() string { return l.NodeID.String() }
 
+// ULID implements the [Node] interface.
+// Returns the ULID that uniquely identifies the node in the plan.
+func (l *Limit) ULID() ulid.ULID { return l.NodeID }
+
 // Clone returns a deep copy of the node with a new unique ID.
 func (l *Limit) Clone() Node {
 	return &Limit{

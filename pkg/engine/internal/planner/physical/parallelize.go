@@ -12,6 +12,10 @@ type Parallelize struct {
 // ID returns a string that uniquely identifies the node in the plan.
 func (p *Parallelize) ID() string { return p.NodeID.String() }
 
+// ULID implements the [Node] interface.
+// Returns the ULID that uniquely identifies the node in the plan.
+func (p *Parallelize) ULID() ulid.ULID { return p.NodeID }
+
 // Clone returns a deep copy of the node with a new unique ID.
 func (p *Parallelize) Clone() Node {
 	return &Parallelize{

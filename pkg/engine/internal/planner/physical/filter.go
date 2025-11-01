@@ -19,6 +19,10 @@ type Filter struct {
 // Returns a string that uniquely identifies the node in the plan.
 func (f *Filter) ID() string { return f.NodeID.String() }
 
+// ULID implements the [Node] interface.
+// Returns the ULID that uniquely identifies the node in the plan.
+func (f *Filter) ULID() ulid.ULID { return f.NodeID }
+
 // Clone returns a deep copy of the node with a new unique ID.
 func (f *Filter) Clone() Node {
 	return &Filter{
