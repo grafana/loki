@@ -10132,6 +10132,9 @@ Defaults to allow skew no more then 1 node
     "tag": null
   },
   "initContainers": [],
+  "loadBalancer": {
+    "enabled": true
+  },
   "maxUnavailable": null,
   "nodeSelector": {},
   "podAnnotations": {},
@@ -10373,6 +10376,17 @@ null
 			<td>init containers to add to the query-frontend pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.loadBalancer</td>
+			<td>object</td>
+			<td>Enable load balancer port for query-frontend</td>
+			<td><pre lang="json">
+{
+  "enabled": true
+}
 </pre>
 </td>
 		</tr>
