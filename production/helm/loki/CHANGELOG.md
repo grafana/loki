@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [BUGFIX] Don't fail for missing bucket name, if local disk is used. [#19675](https://github.com/grafana/loki/pull/19675)
+
 ## 6.45.2
 
 - [BUGFIX] Fix incorrect GEL version in the chart and reference.
