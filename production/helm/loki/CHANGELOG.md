@@ -13,6 +13,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+ [ENHANCEMENT] Allow scaling querier with keda. [#16873](https://github.com/grafana/loki/pull/16873)
+
 ## 6.45.2
 
 - [BUGFIX] Fix incorrect GEL version in the chart and reference.
