@@ -6,7 +6,6 @@ import (
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/memory"
-	"github.com/apache/arrow-go/v18/arrow/scalar"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/arrowagg"
 	"github.com/grafana/loki/v3/pkg/util/topk"
@@ -144,25 +143,17 @@ func (b *topkBatch) less(left, right *topkReference) bool {
 		leftArray := b.findRecordArray(left.Record, b.mapper, fieldIndex)
 		rightArray := b.findRecordArray(right.Record, b.mapper, fieldIndex)
 
-		var leftScalar, rightScalar scalar.Scalar
-
-		if leftArray != nil {
-			leftScalar, _ = scalar.GetScalar(leftArray, left.Row)
-		}
-		if rightArray != nil {
-			rightScalar, _ = scalar.GetScalar(rightArray, right.Row)
-		}
-
-		res, err := compareScalars(leftScalar, rightScalar, b.NullsFirst)
+		// Compare directly from arrays without creating scalars to avoid allocations
+		res, err := compareArrays(leftArray, rightArray, left.Row, right.Row, b.NullsFirst)
 		if err != nil {
-			// Treat failure to compare scalars as equal, so that the sort order is
+			// Treat failure to compare as equal, so that the sort order is
 			// consistent. This should only happen when given invalid values to
-			// compare, as we know leftScalar and rightScalar are of the same type.
+			// compare, as we know leftArray and rightArray are of the same type.
 			continue
 		}
 		switch res {
 		case 0: // left == right
-			// Continue to the next field if two scalars are equal.
+			// Continue to the next field if two values are equal.
 			continue
 		case -1: // left < right
 			return true
