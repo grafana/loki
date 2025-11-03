@@ -7,6 +7,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/oklog/ulid/v2"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
@@ -198,10 +200,14 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 
 	// Scan work can be parallelized across multiple workers, so we wrap
 	// everything into a single Parallelize node.
-	var parallelize Node = &Parallelize{}
+	var parallelize Node = &Parallelize{
+		NodeID: ulid.Make(),
+	}
 	p.plan.graph.Add(parallelize)
 
-	scanSet := &ScanSet{}
+	scanSet := &ScanSet{
+		NodeID: ulid.Make(),
+	}
 	p.plan.graph.Add(scanSet)
 
 	for _, desc := range filteredShardDescriptors {
@@ -210,6 +216,8 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 				Type: ScanTypeDataObject,
 
 				DataObject: &DataObjScan{
+					NodeID: ulid.Make(),
+
 					Location:  desc.Location,
 					StreamIDs: desc.Streams,
 					Section:   section,
@@ -222,6 +230,8 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 
 	if p.context.v1Compatible {
 		compat := &ColumnCompat{
+			NodeID: ulid.Make(),
+
 			Source:      types.ColumnTypeMetadata,
 			Destination: types.ColumnTypeMetadata,
 			Collision:   types.ColumnTypeLabel,
@@ -243,6 +253,8 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 // Convert [logical.Select] into one [Filter] node.
 func (p *Planner) processSelect(lp *logical.Select, ctx *Context) (Node, error) {
 	node := &Filter{
+		NodeID: ulid.Make(),
+
 		Predicates: []Expression{p.convertPredicate(lp.Predicate)},
 	}
 	p.plan.graph.Add(node)
@@ -264,6 +276,8 @@ func (p *Planner) processSort(lp *logical.Sort, ctx *Context) (Node, error) {
 	}
 
 	node := &TopK{
+		NodeID: ulid.Make(),
+
 		SortBy:     &ColumnExpr{Ref: lp.Column.Ref},
 		Ascending:  order == ASC,
 		NullsFirst: false,
@@ -301,6 +315,8 @@ func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node,
 	}
 
 	var node Node = &Projection{
+		NodeID: ulid.Make(),
+
 		Expressions: expressions,
 		All:         lp.All,
 		Expand:      lp.Expand,
@@ -318,6 +334,8 @@ func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node,
 
 	if needsCompat && p.context.v1Compatible {
 		compat := &ColumnCompat{
+			NodeID: ulid.Make(),
+
 			Source:      types.ColumnTypeParsed,
 			Destination: types.ColumnTypeParsed,
 			Collision:   types.ColumnTypeLabel,
@@ -335,6 +353,8 @@ func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node,
 // Convert [logical.Limit] into one [Limit] node.
 func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) (Node, error) {
 	node := &Limit{
+		NodeID: ulid.Make(),
+
 		Skip:  lp.Skip,
 		Fetch: lp.Fetch,
 	}
@@ -356,6 +376,8 @@ func (p *Planner) processRangeAggregation(r *logical.RangeAggregation, ctx *Cont
 	}
 
 	node := &RangeAggregation{
+		NodeID: ulid.Make(),
+
 		PartitionBy: partitionBy,
 		Operation:   r.Operation,
 		Start:       r.Start,
@@ -384,6 +406,8 @@ func (p *Planner) processVectorAggregation(lp *logical.VectorAggregation, ctx *C
 	}
 
 	node := &VectorAggregation{
+		NodeID: ulid.Make(),
+
 		GroupBy:   groupBy,
 		Operation: lp.Operation,
 	}
@@ -438,10 +462,12 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 			}
 
 			// Insert an InnerJoin on timestamp before Projection
-			join := &Join{}
+			join := &Join{NodeID: ulid.Make()}
 			p.plan.graph.Add(join)
 
 			projection := &Projection{
+				NodeID: ulid.Make(),
+
 				Expressions: []Expression{
 					&BinaryExpr{
 						Left:  leftChild,
@@ -490,6 +516,8 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 		// we have to stop here and produce a Node, otherwise keep collapsing
 		if rootNode {
 			projection := &Projection{
+				NodeID: ulid.Make(),
+
 				Expressions: []Expression{expr},
 				All:         true,
 				Expand:      true,
@@ -516,6 +544,8 @@ func (p *Planner) collapseMathExpressions(lp logical.Value, rootNode bool, ctx *
 		}
 		if rootNode {
 			projection := &Projection{
+				NodeID: ulid.Make(),
+
 				Expressions: []Expression{expr},
 				All:         true,
 				Expand:      true,

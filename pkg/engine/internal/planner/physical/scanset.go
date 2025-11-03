@@ -3,6 +3,8 @@ package physical
 import (
 	"fmt"
 	"iter"
+
+	"github.com/oklog/ulid/v2"
 )
 
 // ScanTarget represents a target of a [ScanSet].
@@ -45,7 +47,7 @@ func (ty ScanType) String() string {
 
 // ScanSet represents a physical plan operation for reading data from targets.
 type ScanSet struct {
-	id string
+	NodeID ulid.ULID
 
 	// Targets to scan.
 	Targets []*ScanTarget
@@ -61,22 +63,21 @@ type ScanSet struct {
 	Predicates []Expression
 }
 
-// ID returns a string that uniquely identifies the node in the plan.
-func (s *ScanSet) ID() string {
-	if s.id == "" {
-		return fmt.Sprintf("%p", s)
-	}
-	return s.id
-}
+// ID returns the ULID that uniquely identifies the node in the plan.
+func (s *ScanSet) ID() ulid.ULID { return s.NodeID }
 
-// Clone returns a deep copy of the node (minus its ID).
+// Clone returns a deep copy of the node with a new unique ID.
 func (s *ScanSet) Clone() Node {
 	newTargets := make([]*ScanTarget, 0, len(s.Targets))
 	for _, target := range s.Targets {
 		newTargets = append(newTargets, target.Clone())
 	}
 
-	return &ScanSet{Targets: newTargets}
+	return &ScanSet{
+		NodeID: ulid.Make(),
+
+		Targets: newTargets,
+	}
 }
 
 // Type returns [NodeTypeScanSet].
