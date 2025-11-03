@@ -74,15 +74,21 @@ func newMapping(schema *arrow.Schema, to []arrow.Field) *mapping {
 		checked: make(map[*arrow.Schema]struct{}),
 	}
 
-	for i, field := range to {
+	for i, target := range to {
 		// Default to -1 for fields that are not found in the schema.
 		mapping.lookups[i] = -1
 
-		for j, schemaField := range schema.Fields() {
-			if field.Equal(schemaField) {
-				mapping.lookups[i] = j
-				break
-			}
+		fieldIdxs := schema.FieldIndices(target.Name)
+		if len(fieldIdxs) == 0 {
+			continue
+		} else if len(fieldIdxs) > 1 {
+			// this should not occur as FQN should make field names unique.
+			panic("mapper: multiple fields with the same name in schema")
+		}
+
+		// this check might be unnecessary given FQN uniqueness?
+		if schema.Field(fieldIdxs[0]).Equal(target) {
+			mapping.lookups[i] = fieldIdxs[0]
 		}
 	}
 
