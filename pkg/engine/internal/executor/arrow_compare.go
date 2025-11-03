@@ -195,44 +195,16 @@ func compareArrays(left, right arrow.Array, leftIdx, rightIdx int, nullsFirst bo
 		right := right.(*array.Binary)
 		return bytes.Compare(left.Value(leftIdx), right.Value(rightIdx)), nil
 
-	case *array.Dictionary:
-		right := right.(*array.Dictionary)
-		leftDictIdx := left.GetValueIndex(leftIdx)
-		rightDictIdx := right.GetValueIndex(rightIdx)
-
-		// Get the dictionary arrays
-		leftDict := left.Dictionary()
-		rightDict := right.Dictionary()
-
-		// Compare the dictionary arrays at the respective indices
-		return compareArrays(leftDict, rightDict, leftDictIdx, rightDictIdx, nullsFirst)
-
 	case *array.Duration:
 		right := right.(*array.Duration)
-		return cmp.Compare(left.Value(leftIdx), right.Value(rightIdx)), nil
-
-	case *array.Float16:
-		right := right.(*array.Float16)
-		return left.Value(leftIdx).Cmp(right.Value(rightIdx)), nil
-
-	case *array.Float32:
-		right := right.(*array.Float32)
 		return cmp.Compare(left.Value(leftIdx), right.Value(rightIdx)), nil
 
 	case *array.Float64:
 		right := right.(*array.Float64)
 		return cmp.Compare(left.Value(leftIdx), right.Value(rightIdx)), nil
 
-	case *array.Int8:
-		right := right.(*array.Int8)
-		return cmp.Compare(left.Value(leftIdx), right.Value(rightIdx)), nil
-
-	case *array.Int16:
-		right := right.(*array.Int16)
-		return cmp.Compare(left.Value(leftIdx), right.Value(rightIdx)), nil
-
-	case *array.Int32:
-		right := right.(*array.Int32)
+	case *array.Uint64:
+		right := right.(*array.Uint64)
 		return cmp.Compare(left.Value(leftIdx), right.Value(rightIdx)), nil
 
 	case *array.Int64:
@@ -247,21 +219,6 @@ func compareArrays(left, right arrow.Array, leftIdx, rightIdx int, nullsFirst bo
 		right := right.(*array.Timestamp)
 		return cmp.Compare(left.Value(leftIdx), right.Value(rightIdx)), nil
 
-	case *array.Uint8:
-		right := right.(*array.Uint8)
-		return cmp.Compare(left.Value(leftIdx), right.Value(rightIdx)), nil
-
-	case *array.Uint16:
-		right := right.(*array.Uint16)
-		return cmp.Compare(left.Value(leftIdx), right.Value(rightIdx)), nil
-
-	case *array.Uint32:
-		right := right.(*array.Uint32)
-		return cmp.Compare(left.Value(leftIdx), right.Value(rightIdx)), nil
-
-	case *array.Uint64:
-		right := right.(*array.Uint64)
-		return cmp.Compare(left.Value(leftIdx), right.Value(rightIdx)), nil
 	}
 
 	return 0, nil
