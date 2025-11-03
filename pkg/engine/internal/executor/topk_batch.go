@@ -12,10 +12,14 @@ import (
 )
 
 // topkBatch calculates the top K rows from a stream of [arrow.Record]s, where
-// rows are sorted by the specified Fields.
+// rows are ranked by the specified Fields.
 //
-// Rows with equal values for all sort fields are sorted by the order in which
+// Rows with equal values for all the fields are ranked by the order in which
 // they were appended.
+//
+// topkBatch only identifies which rows belong in the top K, but does not
+// guarantee any specific ordering of those rows in the compacted output. Callers
+// should sort the result if a specific order is required.
 type topkBatch struct {
 	// Fields holds the list of fields to sort by, in order of precedence. If an
 	// incoming record is missing one of these fields, the value for that field
@@ -206,9 +210,9 @@ func (b *topkBatch) Size() (rows int, unused int) {
 // the current top K rows.
 //
 // The returned record will have a combined schema from all of the input
-// records. The sort order of fields in the returned record is not guaranteed.
-// Rows that did not have one of the combined fields will be filled with null
-// values for those fields.
+// records. Neither the order of fields nor the order of rows in the returned
+// record is guaranteed. Rows that did not have one of the
+// combined fields will be filled with null values for those fields.
 //
 // Compact returns nil if no rows are in the top K.
 func (b *topkBatch) Compact() arrow.Record {
@@ -234,6 +238,8 @@ func (b *topkBatch) Compact() arrow.Record {
 		})
 	}
 
+	// Rows are grouped by their source record and appended
+	// in contiguous ranges for efficiency.
 	compacted, err := compactor.Aggregate()
 	if err != nil {
 		// Aggregate should only fail if we didn't aggregate anything, which we
