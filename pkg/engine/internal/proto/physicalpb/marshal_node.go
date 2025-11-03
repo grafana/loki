@@ -49,12 +49,6 @@ func (n *Node_Filter) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 
 // MarshalPhysical converts a protobuf node into a physical plan node. Returns
 // an error if the conversion fails or is unsupported.
-func (n *Node_Limit) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
-	return n.Limit.MarshalPhysical(nodeID)
-}
-
-// MarshalPhysical converts a protobuf node into a physical plan node. Returns
-// an error if the conversion fails or is unsupported.
 func (n *Node_Projection) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return n.Projection.MarshalPhysical(nodeID)
 }
@@ -179,17 +173,6 @@ func (n *Filter) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 		NodeID: nodeID,
 
 		Predicates: marshalExpressions(n.Predicates),
-	}, nil
-}
-
-// MarshalPhysical converts a protobuf Limit into a physical plan node. Returns
-// an error if the conversion fails or is unsupported.
-func (n *Limit) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
-	return &physical.Limit{
-		NodeID: nodeID,
-
-		Skip:  n.Skip,
-		Fetch: n.Fetch,
 	}, nil
 }
 

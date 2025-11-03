@@ -266,7 +266,8 @@ type EvaluatorFactory interface {
 }
 
 type SampleEvaluatorFactory interface {
-	// NewStepEvaluator returns a NewStepEvaluator for a given SampleExpr. It's explicitly passed another NewStepEvaluator// in order to enable arbitrary computation of embedded expressions. This allows more modular & extensible
+	// NewStepEvaluator returns a NewStepEvaluator for a given SampleExpr. It's explicitly passed another NewStepEvaluator
+	// in order to enable arbitrary computation of embedded expressions. This allows more modular & extensible
 	// NewStepEvaluator implementations which can be composed.
 	NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator, error)
 }

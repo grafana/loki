@@ -96,7 +96,6 @@ type ShardableNode interface {
 
 var _ Node = (*DataObjScan)(nil)
 var _ Node = (*Projection)(nil)
-var _ Node = (*Limit)(nil)
 var _ Node = (*Filter)(nil)
 var _ Node = (*RangeAggregation)(nil)
 var _ Node = (*VectorAggregation)(nil)
@@ -108,7 +107,6 @@ var _ Node = (*Join)(nil)
 
 func (*DataObjScan) isNode()       {}
 func (*Projection) isNode()        {}
-func (*Limit) isNode()             {}
 func (*Filter) isNode()            {}
 func (*RangeAggregation) isNode()  {}
 func (*VectorAggregation) isNode() {}

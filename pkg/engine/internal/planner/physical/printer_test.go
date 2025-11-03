@@ -10,7 +10,7 @@ func TestPrinter(t *testing.T) {
 	t.Run("simple tree", func(t *testing.T) {
 		p := &Plan{}
 
-		limit := p.graph.Add(&Limit{})
+		topk := p.graph.Add(&TopK{SortBy: &ColumnExpr{}})
 		filter := p.graph.Add(&Filter{})
 		scanSet := p.graph.Add(&ScanSet{
 			Targets: []*ScanTarget{
@@ -19,7 +19,7 @@ func TestPrinter(t *testing.T) {
 			},
 		})
 
-		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: filter})
+		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: topk, Child: filter})
 		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: scanSet})
 
 		repr := PrintAsTree(p)
@@ -29,13 +29,13 @@ func TestPrinter(t *testing.T) {
 	t.Run("multiple root nodes", func(t *testing.T) {
 		p := &Plan{}
 
-		limit1 := p.graph.Add(&Limit{})
+		topk1 := p.graph.Add(&TopK{SortBy: &ColumnExpr{}})
 		scan1 := p.graph.Add(&DataObjScan{})
-		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: limit1, Child: scan1})
+		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: topk1, Child: scan1})
 
-		limit2 := p.graph.Add(&Limit{})
+		topk2 := p.graph.Add(&TopK{SortBy: &ColumnExpr{}})
 		scan2 := p.graph.Add(&DataObjScan{})
-		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: limit2, Child: scan2})
+		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: topk2, Child: scan2})
 
 		repr := PrintAsTree(p)
 		t.Log("\n" + repr)
@@ -43,12 +43,12 @@ func TestPrinter(t *testing.T) {
 
 	t.Run("multiple parents sharing the same child node", func(t *testing.T) {
 		p := &Plan{}
-		limit := p.graph.Add(&Limit{})
-		filter1 := p.graph.Add(&Limit{})
-		filter2 := p.graph.Add(&Limit{})
+		topk := p.graph.Add(&TopK{SortBy: &ColumnExpr{}})
+		filter1 := p.graph.Add(&Filter{})
+		filter2 := p.graph.Add(&Filter{})
 		scan := p.graph.Add(&DataObjScan{})
-		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: filter1})
-		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: filter2})
+		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: topk, Child: filter1})
+		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: topk, Child: filter2})
 		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: filter1, Child: scan})
 		_ = p.graph.AddEdge(dag.Edge[Node]{Parent: filter2, Child: scan})
 

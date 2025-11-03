@@ -29,7 +29,7 @@ func TestPlan_String(t *testing.T) {
 			Right: NewLiteral(int64(21)),
 			Op:    types.BinaryOpGt,
 		},
-	).Sort(*NewColumnRef("age", types.ColumnTypeMetadata), true, false)
+	).TopK(NewColumnRef("age", types.ColumnTypeMetadata), 1000, true, false)
 
 	// Convert to SSA
 	ssaForm, err := b.ToPlan()
@@ -44,7 +44,7 @@ func TestPlan_String(t *testing.T) {
 %2 = MAKETABLE [selector=%1, predicates=[], shard=0_of_1]
 %3 = GT metadata.age 21
 %4 = SELECT %2 [predicate=%3]
-%5 = SORT %4 [column=metadata.age, asc=true, nulls_first=false]
+%5 = TOPK %4 [sort_by=metadata.age, k=1000, asc=true, nulls_first=false]
 RETURN %5
 `
 	exp = strings.TrimSpace(exp)

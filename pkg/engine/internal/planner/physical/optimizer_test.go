@@ -150,102 +150,6 @@ func TestPredicatePushdown(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
-func TestLimitPushdown(t *testing.T) {
-	t.Run("pushdown limit to target nodes", func(t *testing.T) {
-		plan := &Plan{}
-		{
-			scanset := plan.graph.Add(&ScanSet{
-				Targets: []*ScanTarget{
-					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-				},
-			})
-			topK1 := plan.graph.Add(&TopK{SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
-			topK2 := plan.graph.Add(&TopK{SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
-			limit := plan.graph.Add(&Limit{Fetch: 100})
-
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: topK1, Child: scanset})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: topK1})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: topK2})
-		}
-
-		// apply optimisations
-		optimizations := []*optimization{
-			newOptimization("limit pushdown", plan).withRules(
-				&limitPushdown{plan: plan},
-			),
-		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
-
-		expectedPlan := &Plan{}
-		{
-			scanset := expectedPlan.graph.Add(&ScanSet{
-				Targets: []*ScanTarget{
-					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-				},
-			})
-			topK1 := expectedPlan.graph.Add(&TopK{SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin), K: 100})
-			topK2 := expectedPlan.graph.Add(&TopK{SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin), K: 100})
-			limit := expectedPlan.graph.Add(&Limit{Fetch: 100})
-
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: topK1})
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: topK2})
-			_ = expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: topK1, Child: scanset})
-		}
-
-		actual := PrintAsTree(plan)
-		expected := PrintAsTree(expectedPlan)
-		require.Equal(t, expected, actual)
-	})
-
-	t.Run("pushdown blocked by filter nodes", func(t *testing.T) {
-		// Limit should not be propagated to child nodes when there are filters
-		filterPredicates := []Expression{
-			&BinaryExpr{
-				Left:  &ColumnExpr{Ref: types.ColumnRef{Column: "level", Type: types.ColumnTypeLabel}},
-				Right: NewLiteral("error"),
-				Op:    types.BinaryOpEq,
-			},
-		}
-
-		plan := &Plan{}
-		{
-			scanset := plan.graph.Add(&ScanSet{
-				Targets: []*ScanTarget{
-					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-					{Type: ScanTypeDataObject, DataObject: &DataObjScan{}},
-				},
-			})
-			topK1 := plan.graph.Add(&TopK{SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
-			topK2 := plan.graph.Add(&TopK{SortBy: newColumnExpr("timestamp", types.ColumnTypeBuiltin)})
-			filter := plan.graph.Add(&Filter{
-				Predicates: filterPredicates,
-			})
-			limit := plan.graph.Add(&Limit{Fetch: 100})
-
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: filter})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: topK1})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: filter, Child: topK2})
-			_ = plan.graph.AddEdge(dag.Edge[Node]{Parent: topK1, Child: scanset})
-		}
-		orig := PrintAsTree(plan)
-
-		// apply optimisations
-		optimizations := []*optimization{
-			newOptimization("limit pushdown", plan).withRules(
-				&limitPushdown{plan: plan},
-			),
-		}
-		o := newOptimizer(plan, optimizations)
-		o.optimize(plan.Roots()[0])
-
-		actual := PrintAsTree(plan)
-		require.Equal(t, orig, actual)
-	})
-}
-
 func TestGroupByPushdown(t *testing.T) {
 	t.Run("pushdown to RangeAggregation", func(t *testing.T) {
 		groupBy := []ColumnExpression{
@@ -775,7 +679,7 @@ func TestProjectionPushdown_PushesRequestedKeysToParseOperations(t *testing.T) {
 				builder = builder.Select(filterExpr)
 
 				// Add a limit (typical for log queries)
-				builder = builder.Limit(0, 100)
+				builder = builder.TopK(logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin), 100, true, false)
 
 				return builder.Value()
 			},
@@ -993,12 +897,10 @@ func Test_parallelPushdown(t *testing.T) {
 	t.Run("Splits TopK", func(t *testing.T) {
 		var plan Plan
 		{
-			limit := plan.graph.Add(&Limit{})
 			topk := plan.graph.Add(&TopK{SortBy: &ColumnExpr{}})
 			parallelize := plan.graph.Add(&Parallelize{})
 			scan := plan.graph.Add(&DataObjScan{})
 
-			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: topk}))
 			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: topk, Child: parallelize}))
 			require.NoError(t, plan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: scan}))
 		}
@@ -1023,13 +925,11 @@ func Test_parallelPushdown(t *testing.T) {
 
 		var expectedPlan Plan
 		{
-			limit := expectedPlan.graph.Add(&Limit{})
 			globalTopK := expectedPlan.graph.Add(&TopK{SortBy: &ColumnExpr{}})
 			parallelize := expectedPlan.graph.Add(&Parallelize{})
 			localTopK := expectedPlan.graph.Add(&TopK{SortBy: &ColumnExpr{}})
 			scan := expectedPlan.graph.Add(&DataObjScan{})
 
-			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: limit, Child: globalTopK}))
 			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: globalTopK, Child: parallelize}))
 			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: parallelize, Child: localTopK}))
 			require.NoError(t, expectedPlan.graph.AddEdge(dag.Edge[Node]{Parent: localTopK, Child: scan}))

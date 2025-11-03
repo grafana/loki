@@ -25,10 +25,8 @@ func (t *treeFormatter) convert(value Value) *tree.Node {
 		return t.convertMakeTable(value)
 	case *Select:
 		return t.convertSelect(value)
-	case *Limit:
-		return t.convertLimit(value)
-	case *Sort:
-		return t.convertSort(value)
+	case *TopK:
+		return t.convertTopK(value)
 	case *RangeAggregation:
 		return t.convertRangeAggregation(value)
 	case *VectorAggregation:
@@ -69,17 +67,7 @@ func (t *treeFormatter) convertSelect(ast *Select) *tree.Node {
 	return node
 }
 
-func (t *treeFormatter) convertLimit(ast *Limit) *tree.Node {
-	node := tree.NewNode("LIMIT", ast.Name(),
-		tree.NewProperty("table", false, ast.Table.Name()),
-		tree.NewProperty("offset", false, ast.Skip),
-		tree.NewProperty("fetch", false, ast.Fetch),
-	)
-	node.Children = append(node.Children, t.convert(ast.Table))
-	return node
-}
-
-func (t *treeFormatter) convertSort(ast *Sort) *tree.Node {
+func (t *treeFormatter) convertTopK(ast *TopK) *tree.Node {
 	direction := "asc"
 	if !ast.Ascending {
 		direction = "desc"
@@ -90,13 +78,14 @@ func (t *treeFormatter) convertSort(ast *Sort) *tree.Node {
 		nullsPosition = "first"
 	}
 
-	node := tree.NewNode("SORT", ast.Name(),
+	node := tree.NewNode("TOPK", ast.Name(),
 		tree.NewProperty("table", false, ast.Table.Name()),
-		tree.NewProperty("column", false, ast.Column.Name()),
+		tree.NewProperty("sort_by", false, ast.SortBy.Name()),
+		tree.NewProperty("k", false, ast.K),
 		tree.NewProperty("direction", false, direction),
 		tree.NewProperty("nulls", false, nullsPosition),
 	)
-	node.Comments = append(node.Comments, t.convert(&ast.Column))
+	node.Comments = append(node.Comments, t.convert(ast.SortBy))
 	node.Children = append(node.Children, t.convert(ast.Table))
 	return node
 }

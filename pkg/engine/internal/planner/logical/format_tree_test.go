@@ -52,7 +52,7 @@ SELECT <%4> table=%2 predicate=%3
 	require.Equal(t, expected, actual)
 }
 
-func TestFormatSortQuery(t *testing.T) {
+func TestFormatTopKQuery(t *testing.T) {
 	// Build a query plan for this query sorted by `age` in ascending order:
 	//
 	// { app="users" } | age > 21
@@ -70,7 +70,7 @@ func TestFormatSortQuery(t *testing.T) {
 			Right: NewLiteral(int64(21)),
 			Op:    types.BinaryOpGt,
 		},
-	).Sort(*NewColumnRef("age", types.ColumnTypeMetadata), true, false)
+	).TopK(NewColumnRef("age", types.ColumnTypeMetadata), 1000, true, false)
 
 	// Convert to plan so that node IDs get populated
 	plan, _ := b.ToPlan()
@@ -82,7 +82,7 @@ func TestFormatSortQuery(t *testing.T) {
 	t.Logf("Actual output:\n%s", actual)
 
 	expected := `
-SORT <%5> table=%4 column=metadata.age direction=asc nulls=last
+TOPK <%5> table=%4 sort_by=metadata.age k=1000 direction=asc nulls=last
 │   └── ColumnRef column=age type=metadata
 └── SELECT <%4> table=%2 predicate=%3
     │   └── BinOp <%3> op=GT left=metadata.age right=21

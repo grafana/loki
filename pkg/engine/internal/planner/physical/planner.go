@@ -154,10 +154,8 @@ func (p *Planner) process(inst logical.Value, ctx *Context) (Node, error) {
 		return p.processSelect(inst, ctx)
 	case *logical.Projection:
 		return p.processProjection(inst, ctx)
-	case *logical.Sort:
-		return p.processSort(inst, ctx)
-	case *logical.Limit:
-		return p.processLimit(inst, ctx)
+	case *logical.TopK:
+		return p.processTopK(inst, ctx)
 	case *logical.RangeAggregation:
 		return p.processRangeAggregation(inst, ctx)
 	case *logical.VectorAggregation:
@@ -268,8 +266,8 @@ func (p *Planner) processSelect(lp *logical.Select, ctx *Context) (Node, error) 
 	return node, nil
 }
 
-// processSort processes a [logical.Sort] node.
-func (p *Planner) processSort(lp *logical.Sort, ctx *Context) (Node, error) {
+// processTopK processes a [logical.TopK] node.
+func (p *Planner) processTopK(lp *logical.TopK, ctx *Context) (Node, error) {
 	order := DESC
 	if lp.Ascending {
 		order = ASC
@@ -278,14 +276,10 @@ func (p *Planner) processSort(lp *logical.Sort, ctx *Context) (Node, error) {
 	node := &TopK{
 		NodeID: ulid.Make(),
 
-		SortBy:     &ColumnExpr{Ref: lp.Column.Ref},
+		SortBy:     &ColumnExpr{Ref: lp.SortBy.Ref},
 		Ascending:  order == ASC,
-		NullsFirst: false,
-
-		// K initially starts at 0, indicating to sort everything. The
-		// [limitPushdown] optimization pass can update this value based on how
-		// many rows are needed.
-		K: 0,
+		NullsFirst: lp.NullsFirst,
+		K:          lp.K,
 	}
 
 	p.plan.graph.Add(node)
@@ -347,25 +341,6 @@ func (p *Planner) processProjection(lp *logical.Projection, ctx *Context) (Node,
 		}
 	}
 
-	return node, nil
-}
-
-// Convert [logical.Limit] into one [Limit] node.
-func (p *Planner) processLimit(lp *logical.Limit, ctx *Context) (Node, error) {
-	node := &Limit{
-		NodeID: ulid.Make(),
-
-		Skip:  lp.Skip,
-		Fetch: lp.Fetch,
-	}
-	p.plan.graph.Add(node)
-	child, err := p.process(lp.Table, ctx)
-	if err != nil {
-		return nil, err
-	}
-	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
-		return nil, err
-	}
 	return node, nil
 }
 
@@ -614,9 +589,6 @@ func (p *Planner) Optimize(plan *Plan) (*Plan, error) {
 		optimizations := []*optimization{
 			newOptimization("PredicatePushdown", plan).withRules(
 				&predicatePushdown{plan: plan},
-			),
-			newOptimization("LimitPushdown", plan).withRules(
-				&limitPushdown{plan: plan},
 			),
 			newOptimization("groupByPushdown", plan).withRules(
 				&groupByPushdown{plan: plan},

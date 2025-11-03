@@ -216,8 +216,9 @@ func TestPlanner_Convert(t *testing.T) {
 			},
 			Shard: logical.NewShard(0, 1), // no sharding
 		},
-	).Sort(
-		*logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
+	).TopK(
+		logical.NewColumnRef("timestamp", types.ColumnTypeBuiltin),
+		1000,
 		true,
 		false,
 	).Select(
@@ -232,7 +233,7 @@ func TestPlanner_Convert(t *testing.T) {
 			Right: logical.NewLiteral(types.Timestamp(1742826126000000000)),
 			Op:    types.BinaryOpLt,
 		},
-	).Limit(0, 1000)
+	)
 
 	logicalPlan, err := b.ToPlan()
 	require.NoError(t, err)
