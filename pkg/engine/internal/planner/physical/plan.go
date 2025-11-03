@@ -3,6 +3,8 @@ package physical
 import (
 	"iter"
 
+	"github.com/oklog/ulid/v2"
+
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 )
 
@@ -67,8 +69,8 @@ func (t NodeType) String() string {
 // Nodes can be connected to form a directed acyclic graph (DAG) representing
 // the complete execution plan.
 type Node interface {
-	// ID returns a string that uniquely identifies a node in the plan
-	ID() string
+	// ID returns the ULID that uniquely identifies a node in the plan.
+	ID() ulid.ULID
 	// Type returns the node type
 	Type() NodeType
 	// Clone creates a deep copy of the Node. Cloned nodes do not retain the
