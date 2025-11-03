@@ -74,6 +74,17 @@ func (l *partitionLifecycler) Revoke(_ context.Context, _ *kgo.Client, topics ma
 	}
 }
 
+// Lost implements kgo.OnPartitionsLost.
+func (l *partitionLifecycler) Lost(_ context.Context, _ *kgo.Client, topics map[string][]int32) {
+	for _, partitions := range topics {
+		for _, partition := range partitions {
+			// TODO(grobinson): Implement logic to handle partition loss.
+			// For now, we just log the event to measure if it happens at all.
+			level.Warn(l.logger).Log("msg", "partition lost", "partition", partition)
+		}
+	}
+}
+
 func (l *partitionLifecycler) determineStateFromOffsets(ctx context.Context, partition int32) error {
 	logger := log.With(l.logger, "partition", partition)
 	// Get the start offset for the partition. This can be greater than zero
