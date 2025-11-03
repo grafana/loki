@@ -23,7 +23,7 @@ func (p *Plan) MarshalPhysical() (*physical.Plan, error) {
 			return nil, err
 		}
 		graph.Add(physicalNode)
-		nodeMap[physicalNode.ULID()] = physicalNode
+		nodeMap[physicalNode.ID()] = physicalNode
 	}
 
 	for _, edge := range p.Edges {

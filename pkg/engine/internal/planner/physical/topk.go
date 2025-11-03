@@ -16,12 +16,8 @@ type TopK struct {
 }
 
 // ID implements the [Node] interface.
-// Returns a string that uniquely identifies the node in the plan.
-func (t *TopK) ID() string { return t.NodeID.String() }
-
-// ULID implements the [Node] interface.
 // Returns the ULID that uniquely identifies the node in the plan.
-func (t *TopK) ULID() ulid.ULID { return t.NodeID }
+func (t *TopK) ID() ulid.ULID { return t.NodeID }
 
 // Clone returns a deep copy of the node with a new unique ID.
 func (t *TopK) Clone() Node {

@@ -21,12 +21,8 @@ type RangeAggregation struct {
 	Range     time.Duration
 }
 
-// ID returns a string that uniquely identifies the node in the plan.
-func (r *RangeAggregation) ID() string { return r.NodeID.String() }
-
-// ULID implements the [Node] interface.
-// Returns the ULID that uniquely identifies the node in the plan.
-func (r *RangeAggregation) ULID() ulid.ULID { return r.NodeID }
+// ID returns the ULID that uniquely identifies the node in the plan.
+func (r *RangeAggregation) ID() ulid.ULID { return r.NodeID }
 
 // Clone returns a deep copy of the node with a new unique ID.
 func (r *RangeAggregation) Clone() Node {

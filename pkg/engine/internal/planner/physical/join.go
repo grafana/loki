@@ -9,12 +9,8 @@ type Join struct {
 }
 
 // ID implements the [Node] interface.
-// Returns a string that uniquely identifies the node in the plan.
-func (f *Join) ID() string { return f.NodeID.String() }
-
-// ULID implements the [Node] interface.
 // Returns the ULID that uniquely identifies the node in the plan.
-func (f *Join) ULID() ulid.ULID { return f.NodeID }
+func (f *Join) ID() ulid.ULID { return f.NodeID }
 
 // Clone returns a deep copy of the node with a new unique ID.
 func (f *Join) Clone() Node {

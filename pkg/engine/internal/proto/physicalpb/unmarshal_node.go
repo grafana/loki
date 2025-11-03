@@ -43,7 +43,7 @@ func (n *Node) UnmarshalPhysical(from physical.Node) error {
 	}
 
 	// Set the NodeID from the physical node using the ULID() method
-	n.Id = NodeID{Value: ulid.ULID(from.ULID())}
+	n.Id = NodeID{Value: ulid.ULID(from.ID())}
 
 	u, ok := n.Kind.(unmarshaler)
 	if !ok {

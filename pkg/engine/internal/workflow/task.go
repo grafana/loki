@@ -27,8 +27,8 @@ type Task struct {
 	Sinks map[physical.Node][]*Stream
 }
 
-// ID returns the string form of the Task's ULID.
-func (t *Task) ID() string { return t.ULID.String() }
+// ID returns the Task's ULID.
+func (t *Task) ID() ulid.ULID { return t.ULID }
 
 // A Stream is an abstract representation of how data flows across Task
 // boundaries. Each Stream has exactly one sender (a Task), and one receiver

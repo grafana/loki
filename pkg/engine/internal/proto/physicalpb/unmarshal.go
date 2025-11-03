@@ -26,8 +26,8 @@ func (p *Plan) UnmarshalPhysical(from *physical.Plan) error {
 	for node := range graph.Nodes() {
 		for _, child := range graph.Children(node) {
 			edge := &PlanEdge{
-				Parent: NodeID{Value: ulid.ULID(node.ULID())},
-				Child:  NodeID{Value: ulid.ULID(child.ULID())},
+				Parent: NodeID{Value: ulid.ULID(node.ID())},
+				Child:  NodeID{Value: ulid.ULID(child.ID())},
 			}
 			p.Edges = append(p.Edges, edge)
 		}

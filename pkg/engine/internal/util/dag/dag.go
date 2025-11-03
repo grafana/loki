@@ -8,6 +8,8 @@ import (
 	"iter"
 	"maps"
 	"slices"
+
+	"github.com/oklog/ulid/v2"
 )
 
 // Node represents an individual node in a Graph. The zero value of Node is
@@ -15,7 +17,7 @@ import (
 type Node interface {
 	comparable
 
-	ID() string
+	ID() ulid.ULID
 }
 
 // Edge is a directed connection (parent-child relation) between two nodes.

@@ -20,12 +20,8 @@ type VectorAggregation struct {
 }
 
 // ID implements the [Node] interface.
-// Returns a string that uniquely identifies the node in the plan.
-func (v *VectorAggregation) ID() string { return v.NodeID.String() }
-
-// ULID implements the [Node] interface.
 // Returns the ULID that uniquely identifies the node in the plan.
-func (v *VectorAggregation) ULID() ulid.ULID { return v.NodeID }
+func (v *VectorAggregation) ID() ulid.ULID { return v.NodeID }
 
 // Clone returns a deep copy of the node with a new unique ID.
 func (v *VectorAggregation) Clone() Node {
