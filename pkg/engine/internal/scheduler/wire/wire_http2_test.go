@@ -3,12 +3,16 @@ package wire
 import (
 	"context"
 	"errors"
+	"net"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
 // TestHTTP2BasicConnectivity tests basic connection establishment and communication.
@@ -17,8 +21,8 @@ func TestHTTP2BasicConnectivity(t *testing.T) {
 	defer cancel()
 
 	// Start HTTP/2 listener
-	listener := prepareHTTP2Listener(t)
-	defer listener.Close(ctx)
+	listener, shutdown := prepareHTTP2Listener(t)
+	defer shutdown()
 
 	addr := listener.Addr().String()
 	t.Logf("Server listening on %s", addr)
@@ -74,8 +78,8 @@ func TestHTTP2WithPeers(t *testing.T) {
 	defer cancel()
 
 	// Start HTTP/2 listener
-	listener := prepareHTTP2Listener(t)
-	defer listener.Close(ctx)
+	listener, shutdown := prepareHTTP2Listener(t)
+	defer shutdown()
 
 	addr := listener.Addr().String()
 	t.Logf("Server listening on %s", addr)
@@ -209,8 +213,8 @@ func TestHTTP2MultipleClients(t *testing.T) {
 	defer cancel()
 
 	// Start HTTP/2 listener
-	listener := prepareHTTP2Listener(t)
-	defer listener.Close(ctx)
+	listener, shutdown := prepareHTTP2Listener(t)
+	defer shutdown()
 
 	addr := listener.Addr().String()
 	t.Logf("Server listening on %s", addr)
@@ -377,8 +381,8 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	defer cancel()
 
 	// Start HTTP/2 listener
-	listener := prepareHTTP2Listener(t)
-	defer listener.Close(ctx)
+	listener, shutdown := prepareHTTP2Listener(t)
+	defer shutdown()
 
 	addr := listener.Addr().String()
 
@@ -457,8 +461,8 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	defer cancel()
 
 	// Start HTTP/2 listener
-	listener := prepareHTTP2Listener(t)
-	defer listener.Close(ctx)
+	listener, shutdown := prepareHTTP2Listener(t)
+	defer shutdown()
 
 	addr := listener.Addr().String()
 
@@ -512,16 +516,38 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	}
 }
 
-func prepareHTTP2Listener(t *testing.T) *HTTP2Listener {
-	listener, err := NewHTTP2Listener(
-		"127.0.0.1:0",
+func prepareHTTP2Listener(t *testing.T) (*HTTP2Listener, func()) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	listener := NewHTTP2Listener(
+		l.Addr(),
 		NewJSONProtocol,
 		WithHTTP2ListenerConnAcceptTimeout(1*time.Second),
-		WithHTTP2ListenerServerShutdownTimeout(1*time.Second),
 		WithHTTP2ListenerMaxPendingConns(1),
-		WithHTTP2ListenerReadHeaderTimeout(1*time.Second),
 		WithHTTP2ListenerLogger(log.NewNopLogger()),
 	)
-	require.NoError(t, err)
-	return listener
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/stream", listener.HandleStream)
+
+	server := &http.Server{
+		Handler: h2c.NewHandler(mux, &http2.Server{}),
+	}
+	wgServe := sync.WaitGroup{}
+	wgServe.Add(1)
+
+	go func() {
+		defer wgServe.Done()
+
+		err = server.Serve(l)
+		require.Error(t, err, http.ErrServerClosed)
+	}()
+
+	return listener, func() {
+		ctx := context.Background()
+		require.NoError(t, listener.Close(ctx))
+		require.NoError(t, server.Shutdown(ctx))
+		wgServe.Wait()
+	}
 }
