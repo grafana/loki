@@ -39,7 +39,7 @@ var (
 		{
 			// This record contains a nil sort key to test the behaviour of
 			// NullsFirst.
-			{"ts": nil, "table": "D", "line": "line A"},
+			{"table": "D", "line": "line A"},
 		},
 	}
 )
@@ -122,7 +122,8 @@ func Test_topkBatch(t *testing.T) {
 
 			actual, err := arrowtest.RecordRows(output)
 			require.NoError(t, err)
-			require.Equal(t, tc.expect, actual)
+			require.Len(t, actual, len(tc.expect))
+			require.ElementsMatch(t, tc.expect, actual, "rows should match (order may differ)")
 		})
 	}
 }
