@@ -211,9 +211,8 @@ func Test_iterContiguousRanges(t *testing.T) {
 		ranges []struct{ start, end int }
 	}{
 		{
-			name:   "empty slice",
-			rows:   []int{},
-			ranges: []struct{ start, end int }{},
+			name: "empty slice",
+			rows: []int{},
 		},
 		{
 			name:   "single row",

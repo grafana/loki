@@ -244,7 +244,7 @@ func TestStreamsResultBuilder(t *testing.T) {
 		record2 := rows2.Record(memory.DefaultAllocator, schema)
 		defer record2.Release()
 
-		builder := newStreamsResultBuilder(logproto.BACKWARD)
+		builder := newStreamsResultBuilder(logproto.FORWARD)
 
 		// Collect first record
 		builder.CollectRecord(record1)
