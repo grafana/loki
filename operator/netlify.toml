@@ -9,10 +9,10 @@
   GO_VERSION = "1.24.4"
 
 [context.production]
-  command = "(env && make web) || (sleep 30; false)"
+  command = "(env && mkdir /tmp/gobin && make web GOBIN=/tmp/gobin) || (sleep 30; false)"
 
 [context.deploy-preview]
-  command = "(env && make web WEBSITE_BASE_URL=${DEPLOY_PRIME_URL}) || (sleep 30; false)"
+  command = "(env && mkdir /tmp/gobin && make web GOBIN=/tmp/gobin WEBSITE_BASE_URL=${DEPLOY_PRIME_URL}) || (sleep 30; false)"
 
 [context.branch-deploy]
-  command = "(env && make web WEBSITE_BASE_URL=${DEPLOY_PRIME_URL}) || (sleep 30; false)"
+  command = "(env && mkdir /tmp/gobin && make web GOBIN=/tmp/gobin WEBSITE_BASE_URL=${DEPLOY_PRIME_URL}) || (sleep 30; false)"

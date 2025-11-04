@@ -1,0 +1,225 @@
+// physical.proto holds types for a query engine's physical plan.
+syntax = "proto3";
+
+package loki.physical;
+
+import "gogoproto/gogo.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "pkg/engine/internal/proto/expressionpb/expressionpb.proto";
+import "pkg/engine/internal/proto/ulid/ulid.proto";
+
+option go_package = "github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb";
+
+// Plan represents the physical plan of a query.
+message Plan {
+  repeated Node nodes = 1;
+  repeated PlanEdge edges = 2;
+}
+
+// PlanEdge represents a relationship between two nodes in the physical plan.
+message PlanEdge {
+  NodeID parent = 1 [(gogoproto.nullable) = false];
+  NodeID child = 2 [(gogoproto.nullable) = false];
+}
+
+// NodeID represents a unique identifier for a node in the physical plan.
+message NodeID {
+  ulid.loki.v1.ProtoULID value = 1 [
+    (gogoproto.customtype) = "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid.ULID",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// Node represents a node in the physical plan.
+message Node {
+  // ID of the node.
+  NodeID id = 1 [(gogoproto.nullable) = false];
+
+  oneof kind {
+    AggregateRange aggregate_range = 2;
+    AggregateVector aggregate_vector = 3;
+    DataObjScan scan = 4;
+    Filter filter = 5;
+    Limit limit = 6;
+    Projection projection = 7;
+    ColumnCompat column_compat = 8;
+    ScanSet scan_set = 9;
+    TopK top_k = 10;
+    Parallelize parallelize = 11;
+    Join join = 12;
+  }
+}
+
+// AggregateRange aggregates samples into windowed ranges.
+message AggregateRange {
+  // Columns to partition the data by.
+  repeated loki.expression.ColumnExpression partition_by = 1;
+
+  AggregateRangeOp operation = 2;
+
+  google.protobuf.Timestamp start = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp end = 4 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Duration step = 5 [
+    (gogoproto.stdduration) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Duration range = 6 [
+    (gogoproto.stdduration) = true,
+    (gogoproto.nullable) = false
+  ];
+}
+
+// AggregateRangeOp represents the operation to perform on the aggregated
+// data.
+enum AggregateRangeOp {
+  AGGREGATE_RANGE_OP_INVALID = 0; // Invalid range aggregation operation.
+
+  AGGREGATE_RANGE_OP_COUNT = 1; // Represents LogQL's count_over_time aggregation.
+  AGGREGATE_RANGE_OP_SUM = 2; // Represents LogQL's sum_over_time aggregation.
+  AGGREGATE_RANGE_OP_MAX = 3; // Represents LogQL's max_over_time aggregation.
+  AGGREGATE_RANGE_OP_MIN = 4; // Represents LogQL's min_over_time aggregation.
+  AGGREGATE_RANGE_OP_BYTES = 5; // Represents LogQL's bytes_over_time aggregation.
+}
+
+// AggregateVector represents an operation to aggregate a range vector into an
+// instant vector, with optional grouping on specified dimensions.
+message AggregateVector {
+  // Columns to group the data by. If empty, all rows are aggregated into a single result.
+  repeated loki.expression.ColumnExpression group_by = 1;
+
+  // Aggregation operation to perform over the underlying range vector.
+  AggregateVectorOp operation = 2;
+}
+
+// AggregateVectorOp represents the different aggregation operations that can
+// be performed on a range vector.
+enum AggregateVectorOp {
+  AGGREGATE_VECTOR_OP_INVALID = 0; // Invalid vector aggregation operation.
+
+  AGGREGATE_VECTOR_OP_SUM = 1; // Represents LogQL's sum vector aggregation.
+  AGGREGATE_VECTOR_OP_MAX = 2; // Represents LogQL's max vector aggregation.
+  AGGREGATE_VECTOR_OP_MIN = 3; // Represents LogQL's min vector aggregation.
+  AGGREGATE_VECTOR_OP_COUNT = 4; // Represents LogQL's count vector aggregation.
+  AGGREGATE_VECTOR_OP_AVG = 5; // Represents LogQL's avg vector aggregation.
+  AGGREGATE_VECTOR_OP_STDDEV = 6; // Represents LogQL's stddev vector aggregation.
+  AGGREGATE_VECTOR_OP_STDVAR = 7; // Represents LogQL's stdvar vector aggregation.
+  AGGREGATE_VECTOR_OP_BOTTOMK = 8; // Represents LogQL's bottomk vector aggregation.
+  AGGREGATE_VECTOR_OP_TOPK = 9; // Represents LogQL's topk vector aggregation.
+  AGGREGATE_VECTOR_OP_SORT = 10; // Represents LogQL's sort vector aggregation.
+  AGGREGATE_VECTOR_OP_SORT_DESC = 11; // Represents LogQL's sort_desc vector aggregation.
+}
+
+// DataObjScan represents an operation to read the contents of a data object
+// section.
+message DataObjScan {
+  // Stored location of the data object to read.
+  string location = 1;
+
+  // Section within the data object to read.
+  int64 section = 2;
+
+  // StreamIDs within the section to read.
+  repeated int64 stream_ids = 3;
+
+  // Projections are used to limit the columns that are read.
+  repeated loki.expression.ColumnExpression projections = 4;
+
+  // Predicates are used to filter rows to reduce the amount of rows that are
+  // returned.
+  repeated loki.expression.Expression predicates = 5;
+}
+
+// Filter represents an operation to filter rows based on a condition.
+message Filter {
+  // Predicates to apply to filter rows.
+  repeated loki.expression.Expression predicates = 1;
+}
+
+// Limit represents a limiting operation in the physical plan that applies
+// offset and limit to the result set.
+message Limit {
+  // Skip specifies how many initial rows should be skipped.
+  uint32 skip = 1;
+
+  // Fetch specifies how many rows should be returned in total.
+  uint32 fetch = 2;
+}
+
+// Projection represents an operation to return a subset of columns from the
+// input.
+message Projection {
+  // Expressions is a set of column expressions that are used to drop not needed
+  // columns that match the column expression, or to expand columns that result
+  // from the expressions.
+  repeated loki.expression.Expression expressions = 1;
+
+  bool all = 3; // Marker for projecting all columns of input relation (similar to SQL `SELECT *`)
+  bool expand = 4; // Indicates that projected columns should be added to input relation
+  bool drop = 5; // Indicates that projected columns should be dropped from input Relation
+}
+
+// SortOrder represents the order in which results should be sorted.
+enum SortOrder {
+  SORT_ORDER_INVALID = 0; // Invalid sort order.
+  SORT_ORDER_ASCENDING = 1; // Ascending sort order.
+  SORT_ORDER_DESCENDING = 2; // Descending sort order.
+}
+
+// ColumnCompat represents a compactibilty operation in the physical plan that
+// moves a values from a conflicting metadata column with a label column into a new column suffixed with `_extracted`.
+message ColumnCompat {
+  // TODO(chaudum): These fields are poorly named. Come up with more descriptive names.
+
+  loki.expression.ColumnType source = 1; // column type of the column that may colide with columns of the same name but with collision type
+  loki.expression.ColumnType destination = 2; // column type of the generated _extracted column (should be same as source)
+  loki.expression.ColumnType collision = 3; // column type of the column that a source type column may collide with}
+}
+
+// TopK represents a physical plan node that performs topK operation.
+// It sorts rows based on sort expressions and limits the result to the top K rows.
+// This is equivalent to a SORT followed by a LIMIT operation.
+message TopK {
+  loki.expression.ColumnExpression sort_by = 1; // SortBy is the column to sort by.
+  bool ascending = 2; // Sort lines in ascending order if true.
+  bool nulls_first = 3; // When true, considers NULLs < non-NULLs when sorting.
+  int64 k = 4; // Number of top rows to return.
+}
+
+// ScanSet represents a physical plan operation for reading data from targets.
+message ScanSet {
+  // Targets to scan
+  repeated ScanTarget targets = 1;
+
+  // Projections are used to limit the columns that are read to the ones
+  // provided in the column expressions to reduce the amount of data that
+  // needs to be processed.
+  repeated loki.expression.ColumnExpression projections = 2;
+
+  // Predicates are used to filter rows to reduce the amount of rows that are
+  // returned. Predicates would almost always contain a time range filter to
+  // only read the logs for the requested time range.
+  repeated loki.expression.Expression predicates = 3;
+}
+
+// ScanTarget represents a target of a [ScanSet].
+message ScanTarget {
+  oneof kind {
+    DataObjScan data_object = 1;
+  }
+}
+
+// Parallelize represents a hint to the engine to partition and parallelize the
+// children branches of the Parallelize and emit results as a single sequence
+// with no guaranteed order.
+message Parallelize {}
+
+// Join represents a join operation in the physical plan.
+// For now it is only an inner join on `timestamp`. Will be expanded later.
+message Join {}

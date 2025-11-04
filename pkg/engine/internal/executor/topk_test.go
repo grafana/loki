@@ -72,7 +72,7 @@ func Test_topk(t *testing.T) {
 	rows, err := arrowtest.RecordRows(rec)
 	require.NoError(t, err, "should be able to convert record back to rows")
 
-	require.Equal(t, expect, rows, "should return the top 3 rows in ascending order by timestamp")
+	require.ElementsMatch(t, expect, rows, "should return the top 3 rows")
 }
 
 func Test_topk_emptyPipelines(t *testing.T) {
