@@ -41,9 +41,9 @@ func NewSegmentationPartitionResolver(limits Limits, ringReader ring.PartitionRi
 func (r *SegmentationPartitionResolver) Resolve(tenant string, key SegmentationKey) (int32, error) {
 	ring := r.ringReader.PartitionRing()
 	// Get a subring for the tenant based on the tenant's rate limit and
-	// the maximum rate per tenant per partition in bytes (hardcoded to 5MB/sec).
+	// the maximum rate per tenant per partition in bytes (hardcoded to 1MB/sec).
 	ingestionRateBytes := r.limits.IngestionRateBytes(tenant)
-	const perPartitionRateBytes = 5 * 1024 * 1024
+	const perPartitionRateBytes = 1024 * 1024
 	partitions := math.Min(math.Floor(ingestionRateBytes/perPartitionRateBytes), 1)
 	// Must not exceed the number of active partitions.
 	partitions = math.Max(partitions, float64(len(ring.ActivePartitionIDs())))
