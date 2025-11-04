@@ -203,11 +203,12 @@ Docker image name
 Generated storage config for loki common config
 */}}
 {{- define "loki.commonStorageConfig" -}}
-{{- $bucketName := required "Please define loki.storage.bucketNames.chunks" (dig "storage" "bucketNames" "chunks" "" .Values.loki) }}
 {{- if .Values.loki.storage.use_thanos_objstore -}}
+{{- $bucketName := required "Please define loki.storage.bucketNames.chunks" (dig "storage" "bucketNames" "chunks" "" .Values.loki) }}
 object_store:
   {{- include "loki.thanosStorageConfig" (dict "ctx" . "bucketName" $bucketName) | nindent 2 }}
 {{- else if .Values.minio.enabled -}}
+{{- $bucketName := required "Please define loki.storage.bucketNames.chunks" (dig "storage" "bucketNames" "chunks" "" .Values.loki) }}
 s3:
   endpoint: {{ include "loki.minio" $ }}
   bucketnames: chunks
@@ -216,6 +217,7 @@ s3:
   s3forcepathstyle: true
   insecure: true
 {{- else if (eq (include "loki.isUsingObjectStorage" . ) "true")  -}}
+{{- $bucketName := required "Please define loki.storage.bucketNames.chunks" (dig "storage" "bucketNames" "chunks" "" .Values.loki) }}
 {{- include "loki.lokiStorageConfig" (dict "ctx" . "bucketName" $bucketName) | nindent 0 }}
 {{- else if .Values.loki.storage.filesystem }}
 filesystem:
