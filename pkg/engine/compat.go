@@ -31,8 +31,9 @@ var (
 	_ ResultBuilder = &matrixResultBuilder{}
 )
 
-func newStreamsResultBuilder() *streamsResultBuilder {
+func newStreamsResultBuilder(dir logproto.Direction) *streamsResultBuilder {
 	return &streamsResultBuilder{
+		direction:   dir,
 		data:        make(logqlmodel.Streams, 0),
 		streams:     make(map[string]int),
 		rowBuilders: nil,
@@ -40,6 +41,8 @@ func newStreamsResultBuilder() *streamsResultBuilder {
 }
 
 type streamsResultBuilder struct {
+	direction logproto.Direction
+
 	streams map[string]int
 	data    logqlmodel.Streams
 	count   int
@@ -213,7 +216,7 @@ func (b *streamsResultBuilder) resetRowBuilder(i int) {
 }
 
 func forEachNotNullRowColValue(numRows int, col arrow.Array, f func(rowIdx int)) {
-	for rowIdx := 0; rowIdx < numRows; rowIdx++ {
+	for rowIdx := range numRows {
 		if col.IsNull(rowIdx) {
 			continue
 		}
@@ -222,6 +225,19 @@ func forEachNotNullRowColValue(numRows int, col arrow.Array, f func(rowIdx int))
 }
 
 func (b *streamsResultBuilder) Build(s stats.Result, md *metadata.Context) logqlmodel.Result {
+	// Executor does not guarantee order of entries, so we sort them here.
+	for _, stream := range b.data {
+		if b.direction == logproto.BACKWARD {
+			sort.Slice(stream.Entries, func(a, b int) bool {
+				return stream.Entries[a].Timestamp.After(stream.Entries[b].Timestamp)
+			})
+		} else {
+			sort.Slice(stream.Entries, func(a, b int) bool {
+				return stream.Entries[a].Timestamp.Before(stream.Entries[b].Timestamp)
+			})
+		}
+	}
+
 	sort.Sort(b.data)
 	return logqlmodel.Result{
 		Data:       b.data,

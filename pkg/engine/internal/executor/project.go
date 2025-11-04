@@ -21,22 +21,24 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 
 	// Get the column names from the projection expressions
 	colRefs := make([]types.ColumnRef, 0, len(proj.Expressions))
-	mathExprs := make([]physical.Expression, 0, len(proj.Expressions))
+	expandExprs := make([]physical.Expression, 0, len(proj.Expressions))
 
 	for i, expr := range proj.Expressions {
 		switch expr := expr.(type) {
 		case *physical.ColumnExpr:
 			colRefs = append(colRefs, expr.Ref)
 		case *physical.UnaryExpr:
-			mathExprs = append(mathExprs, expr)
+			expandExprs = append(expandExprs, expr)
 		case *physical.BinaryExpr:
-			mathExprs = append(mathExprs, expr)
+			expandExprs = append(expandExprs, expr)
+		case *physical.VariadicExpr:
+			expandExprs = append(expandExprs, expr)
 		default:
 			return nil, fmt.Errorf("projection expression %d is unsupported", i)
 		}
 	}
 
-	if len(mathExprs) > 1 {
+	if len(expandExprs) > 1 {
 		return nil, fmt.Errorf("there might be only one math expression for `value` column at a time")
 	}
 
@@ -73,8 +75,8 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 	// Create EXPAND projection pipeline:
 	// Keep all columns and expand the ones referenced in proj.Expressions.
 	// TODO: as implemented, epanding and keeping/dropping cannot happen in the same projection. Is this desired?
-	if proj.All && proj.Expand && len(mathExprs) > 0 {
-		return newExpandPipeline(mathExprs[0], evaluator, input)
+	if proj.All && proj.Expand && len(expandExprs) > 0 {
+		return newExpandPipeline(expandExprs[0], evaluator, input)
 	}
 
 	return nil, errNotImplemented
@@ -141,6 +143,10 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 		vec, err := evaluator.eval(expr, batch)
 		if err != nil {
 			return nil, err
+		}
+
+		if vec == nil {
+			return batch, nil
 		}
 
 		switch arrCasted := vec.(type) {

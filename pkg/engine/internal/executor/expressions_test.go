@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
@@ -84,6 +85,11 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 			want:      int64(1024),
 			arrowType: arrow.INT64,
 		},
+		{
+			name:      "string list",
+			value:     []string{"a", "b", "c"},
+			arrowType: arrow.LIST,
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			literal := physical.NewLiteral(tt.value)
@@ -111,6 +117,8 @@ func TestEvaluateLiteralExpression(t *testing.T) {
 					val = arr.Value(i)
 				case *array.Timestamp:
 					val = arr.Value(i)
+				case *array.List:
+					val = util.ArrayListValue(arr, i)
 				}
 				if tt.want != nil {
 					require.Equal(t, tt.want, val)
@@ -545,51 +553,693 @@ func TestEvaluateUnaryCastExpression(t *testing.T) {
 
 		require.Equal(t, 3, arr.NumField()) //value, error, errorDetails
 
-		// Find the value, error, and errorDetails fields using schema
-		var valueField *array.Float64
-		var errorField, errorDetailsField *array.String
-		valueField, ok = arr.Field(0).(*array.Float64)
-		require.True(t, ok)
-		errorField, ok = arr.Field(1).(*array.String)
-		require.True(t, ok)
-		errorDetailsField, ok = arr.Field(2).(*array.String)
-		require.True(t, ok)
+		// Convert struct to rows for comparison
+		actual, err := structToRows(arr)
+		require.NoError(t, err)
 
-		require.NotNil(t, valueField, "expected to find a Float64 value field in struct")
-		require.NotNil(t, errorField, "expected to find error field in struct")
-		require.NotNil(t, errorDetailsField, "expected to find errorDetails field in struct")
+		// Define expected output
+		expected := arrowtest.Rows{
+			{
+				semconv.ColumnIdentValue.FQN():        42.5,
+				semconv.ColumnIdentError.FQN():        nil,
+				semconv.ColumnIdentErrorDetails.FQN(): nil,
+			},
+			{
+				semconv.ColumnIdentValue.FQN():        0.0,
+				semconv.ColumnIdentError.FQN():        types.SampleExtractionErrorType,
+				semconv.ColumnIdentErrorDetails.FQN(): `strconv.ParseFloat: parsing "not_a_number": invalid syntax`,
+			},
+			{
+				semconv.ColumnIdentValue.FQN():        0.0,
+				semconv.ColumnIdentError.FQN():        types.SampleExtractionErrorType,
+				semconv.ColumnIdentErrorDetails.FQN(): `strconv.ParseFloat: parsing "1KB": invalid syntax`,
+			},
+			{
+				semconv.ColumnIdentValue.FQN():        0.0,
+				semconv.ColumnIdentError.FQN():        types.SampleExtractionErrorType,
+				semconv.ColumnIdentErrorDetails.FQN(): `strconv.ParseFloat: parsing "invalid_bytes": invalid syntax`,
+			},
+			{
+				semconv.ColumnIdentValue.FQN():        0.0,
+				semconv.ColumnIdentError.FQN():        types.SampleExtractionErrorType,
+				semconv.ColumnIdentErrorDetails.FQN(): `strconv.ParseFloat: parsing "": invalid syntax`,
+			},
+		}
 
-		// Verify values: first row is valid (42.5), rest are invalid (0.0 with errors)
-		require.Equal(t, 42.5, valueField.Value(0))
-		require.False(t, valueField.IsNull(0))
-		require.True(t, errorField.IsNull(0))
-
-		// Row 1: invalid - "not_a_number"
-		require.Equal(t, 0.0, valueField.Value(1))
-		require.False(t, valueField.IsNull(1)) // Verify value is non-null 0.0
-		require.False(t, errorField.IsNull(1))
-		require.Equal(t, types.SampleExtractionErrorType, errorField.Value(1))
-		require.Contains(t, errorDetailsField.Value(1), `strconv.ParseFloat: parsing "not_a_number": invalid syntax`)
-
-		// Row 2: invalid - "1KB"
-		require.Equal(t, 0.0, valueField.Value(2))
-		require.False(t, valueField.IsNull(2)) // Verify value is non-null 0.0
-		require.False(t, errorField.IsNull(2))
-		require.Equal(t, types.SampleExtractionErrorType, errorField.Value(2))
-		require.Contains(t, errorDetailsField.Value(2), `strconv.ParseFloat: parsing "1KB": invalid syntax`)
-
-		// Row 3: invalid - "invalid_bytes"
-		require.Equal(t, 0.0, valueField.Value(3))
-		require.False(t, valueField.IsNull(3)) // Verify value is non-null 0.0
-		require.False(t, errorField.IsNull(3))
-		require.Equal(t, types.SampleExtractionErrorType, errorField.Value(3))
-		require.Contains(t, errorDetailsField.Value(3), `strconv.ParseFloat: parsing "invalid_bytes": invalid syntax`)
-
-		// Row 4: invalid - empty string
-		require.Equal(t, 0.0, valueField.Value(4))
-		require.False(t, valueField.IsNull(4)) // Verify value is non-null 0.0
-		require.False(t, errorField.IsNull(4))
-		require.Equal(t, types.SampleExtractionErrorType, errorField.Value(4))
-		require.Contains(t, errorDetailsField.Value(4), `strconv.ParseFloat: parsing "": invalid syntax`)
+		require.Equal(t, expected, actual)
 	})
+}
+
+func TestEvaluateParseExpression_Logfmt(t *testing.T) {
+	var (
+		colMsg = "utf8.builtin.message"
+	)
+
+	for _, tt := range []struct {
+		name           string
+		schema         *arrow.Schema
+		input          arrowtest.Rows
+		requestedKeys  []string
+		expectedFields int
+		expectedOutput arrowtest.Rows
+	}{
+		{
+			name: "parse stage transforms records, adding columns parsed from message",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: "level=error status=500"},
+				{colMsg: "level=info status=200"},
+				{colMsg: "level=debug status=201"},
+			},
+			requestedKeys:  []string{"level", "status"},
+			expectedFields: 2, // 2 columns: level, status
+			expectedOutput: arrowtest.Rows{
+				{
+					"utf8.parsed.level":  "error",
+					"utf8.parsed.status": "500",
+				},
+				{
+					"utf8.parsed.level":  "info",
+					"utf8.parsed.status": "200",
+				},
+				{
+					"utf8.parsed.level":  "debug",
+					"utf8.parsed.status": "201",
+				},
+			},
+		},
+		{
+			name: "handle missing keys with NULL",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: "level=error"},
+				{colMsg: "status=200"},
+				{colMsg: "level=info"},
+			},
+			requestedKeys:  []string{"level"},
+			expectedFields: 1, // 1 column: level
+			expectedOutput: arrowtest.Rows{
+				{
+					"utf8.parsed.level": "error",
+				},
+				{
+					"utf8.parsed.level": nil,
+				},
+				{
+					"utf8.parsed.level": "info",
+				},
+			},
+		},
+		{
+			name: "handle errors with error columns",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: "level=info status=200"},       // No errors
+				{colMsg: "status==value level=error"},   // Double equals error on requested key
+				{colMsg: "level=\"unclosed status=500"}, // Unclosed quote error
+			},
+			requestedKeys:  []string{"level", "status"},
+			expectedFields: 4, // 4 columns: level, status, __error__, __error_details__
+			expectedOutput: arrowtest.Rows{
+				{
+					"utf8.parsed.level":                   "info",
+					"utf8.parsed.status":                  "200",
+					semconv.ColumnIdentError.FQN():        nil,
+					semconv.ColumnIdentErrorDetails.FQN(): nil,
+				},
+				{
+					"utf8.parsed.level":                   nil,
+					"utf8.parsed.status":                  nil,
+					semconv.ColumnIdentError.FQN():        types.LogfmtParserErrorType,
+					semconv.ColumnIdentErrorDetails.FQN(): "logfmt syntax error at pos 8 : unexpected '='",
+				},
+				{
+					"utf8.parsed.level":                   nil,
+					"utf8.parsed.status":                  nil,
+					semconv.ColumnIdentError.FQN():        types.LogfmtParserErrorType,
+					semconv.ColumnIdentErrorDetails.FQN(): "logfmt syntax error at pos 27 : unterminated quoted value",
+				},
+			},
+		},
+		{
+			name: "extract all keys when none requested",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: "level=info status=200 method=GET"},
+				{colMsg: "level=warn code=304"},
+				{colMsg: "level=error status=500 method=POST duration=123ms"},
+			},
+			requestedKeys:  nil, // nil means extract all keys
+			expectedFields: 5,   // 5 columns: code, duration, level, method, status
+			expectedOutput: arrowtest.Rows{
+				{
+					"utf8.parsed.code":     nil,
+					"utf8.parsed.duration": nil,
+					"utf8.parsed.level":    "info",
+					"utf8.parsed.method":   "GET",
+					"utf8.parsed.status":   "200",
+				},
+				{
+					"utf8.parsed.code":     "304",
+					"utf8.parsed.duration": nil,
+					"utf8.parsed.level":    "warn",
+					"utf8.parsed.method":   nil,
+					"utf8.parsed.status":   nil,
+				},
+				{
+					"utf8.parsed.code":     nil,
+					"utf8.parsed.duration": "123ms",
+					"utf8.parsed.level":    "error",
+					"utf8.parsed.method":   "POST",
+					"utf8.parsed.status":   "500",
+				},
+			},
+		},
+		{
+			name: "extract all keys with errors when none requested",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: "level=info status=200 method=GET"},       // Valid line
+				{colMsg: "level==error code=500"},                  // Double equals error
+				{colMsg: "msg=\"unclosed duration=100ms code=400"}, // Unclosed quote error
+				{colMsg: "level=debug method=POST"},                // Valid line
+			},
+			requestedKeys:  nil, // nil means extract all keys
+			expectedFields: 5,   // 5 columns: level, method, status, __error__, __error_details__
+			expectedOutput: arrowtest.Rows{
+				{
+					"utf8.parsed.level":                   "info",
+					"utf8.parsed.method":                  "GET",
+					"utf8.parsed.status":                  "200",
+					semconv.ColumnIdentError.FQN():        nil,
+					semconv.ColumnIdentErrorDetails.FQN(): nil,
+				},
+				{
+					"utf8.parsed.level":                   nil,
+					"utf8.parsed.method":                  nil,
+					"utf8.parsed.status":                  nil,
+					semconv.ColumnIdentError.FQN():        types.LogfmtParserErrorType,
+					semconv.ColumnIdentErrorDetails.FQN(): "logfmt syntax error at pos 7 : unexpected '='",
+				},
+				{
+					"utf8.parsed.level":                   nil,
+					"utf8.parsed.method":                  nil,
+					"utf8.parsed.status":                  nil,
+					semconv.ColumnIdentError.FQN():        types.LogfmtParserErrorType,
+					semconv.ColumnIdentErrorDetails.FQN(): "logfmt syntax error at pos 38 : unterminated quoted value",
+				},
+				{
+					"utf8.parsed.level":                   "debug",
+					"utf8.parsed.method":                  "POST",
+					"utf8.parsed.status":                  nil,
+					semconv.ColumnIdentError.FQN():        nil,
+					semconv.ColumnIdentErrorDetails.FQN(): nil,
+				},
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			expr := &physical.VariadicExpr{
+				Op: types.VariadicOpParseLogfmt,
+				Expressions: []physical.Expression{
+					&physical.ColumnExpr{
+						Ref: semconv.ColumnIdentMessage.ColumnRef(),
+					},
+					&physical.LiteralExpr{
+						Literal: types.NewLiteral(tt.requestedKeys),
+					},
+				},
+			}
+			e := newExpressionEvaluator()
+
+			record := tt.input.Record(memory.DefaultAllocator, tt.schema)
+			col, err := e.eval(expr, record)
+			require.NoError(t, err)
+			id := col.DataType().ID()
+			require.Equal(t, arrow.STRUCT, id)
+
+			arr, ok := col.(*array.Struct)
+			require.True(t, ok)
+			defer arr.Release()
+
+			require.Equal(t, tt.expectedFields, arr.NumField()) //value, error, errorDetails
+
+			// Convert record to rows for comparison
+			actual, err := structToRows(arr)
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedOutput, actual)
+		})
+	}
+}
+
+func structToRows(structArr *array.Struct) (arrowtest.Rows, error) {
+	// Get the struct type to extract schema information
+	structType := structArr.DataType().(*arrow.StructType)
+
+	// Create schema from struct fields
+	schema := arrow.NewSchema(structType.Fields(), nil)
+
+	// Extract field arrays from the struct
+	columns := make([]arrow.Array, structArr.NumField())
+	for i := 0; i < structArr.NumField(); i++ {
+		columns[i] = structArr.Field(i)
+	}
+
+	// Create and return the record
+	record := array.NewRecord(schema, columns, int64(structArr.Len()))
+	defer record.Release()
+	return arrowtest.RecordRows(record)
+}
+
+func TestEvaluateParseExpression_JSON(t *testing.T) {
+	var (
+		colTS  = "timestamp_ns.builtin.timestamp"
+		colMsg = "utf8.builtin.message"
+	)
+
+	for _, tt := range []struct {
+		name           string
+		schema         *arrow.Schema
+		input          arrowtest.Rows
+		requestedKeys  []string
+		expectedFields int
+		expectedOutput arrowtest.Rows
+	}{
+		{
+			name: "parse stage transforms records, adding columns parsed from message",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: `{"level": "error", "status": "500"}`},
+				{colMsg: `{"level": "info", "status": "200"}`},
+				{colMsg: `{"level": "debug", "status": "201"}`},
+			},
+			requestedKeys:  []string{"level", "status"},
+			expectedFields: 2, // 2 columns: level, status
+			expectedOutput: arrowtest.Rows{
+				{"utf8.parsed.level": "error", "utf8.parsed.status": "500"},
+				{"utf8.parsed.level": "info", "utf8.parsed.status": "200"},
+				{"utf8.parsed.level": "debug", "utf8.parsed.status": "201"},
+			},
+		},
+		{
+			name: "parse stage preserves existing columns",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", true),
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+				semconv.FieldFromFQN("utf8.label.app", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colTS: time.Unix(1, 0).UTC(), colMsg: `{"level": "error", "status": "500"}`, "utf8.label.app": "frontend"},
+				{colTS: time.Unix(2, 0).UTC(), colMsg: `{"level": "info", "status": "200"}`, "utf8.label.app": "backend"},
+			},
+			requestedKeys:  []string{"level", "status"},
+			expectedFields: 2, // level, status
+			expectedOutput: arrowtest.Rows{
+				{
+					"utf8.parsed.level":  "error",
+					"utf8.parsed.status": "500",
+				},
+				{
+					"utf8.parsed.level":  "info",
+					"utf8.parsed.status": "200",
+				},
+			},
+		},
+		{
+			name: "handle missing keys with NULL",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: `{"level": "error"}`},
+				{colMsg: `{"status": "200"}`},
+				{colMsg: `{"level": "info"}`},
+			},
+			requestedKeys:  []string{"level"},
+			expectedFields: 1, // 1 column: level
+			expectedOutput: arrowtest.Rows{
+				{"utf8.parsed.level": "error"},
+				{"utf8.parsed.level": nil},
+				{"utf8.parsed.level": "info"},
+			},
+		},
+		{
+			name: "handle errors with error columns",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: `{"level": "info", "status": "200"}`}, // No errors
+				{colMsg: `{"level": "error", "status":`},       // Missing closing brace and value
+				{colMsg: `{"level": "info", "status": 200}`},   // Number should be converted to string
+			},
+			requestedKeys:  []string{"level", "status"},
+			expectedFields: 4, // 4 columns: level, status, __error__, __error_details__ (due to malformed JSON)
+			expectedOutput: arrowtest.Rows{
+				{
+					"utf8.parsed.level":                   "info",
+					"utf8.parsed.status":                  "200",
+					semconv.ColumnIdentError.FQN():        nil,
+					semconv.ColumnIdentErrorDetails.FQN(): nil,
+				},
+				{
+					"utf8.parsed.level":                   nil,
+					"utf8.parsed.status":                  nil,
+					semconv.ColumnIdentError.FQN():        "JSONParserErr",
+					semconv.ColumnIdentErrorDetails.FQN(): "Malformed JSON error",
+				},
+				{
+					"utf8.parsed.level":                   "info",
+					"utf8.parsed.status":                  "200",
+					semconv.ColumnIdentError.FQN():        nil,
+					semconv.ColumnIdentErrorDetails.FQN(): nil,
+				},
+			},
+		},
+		{
+			name: "extract all keys when none requested",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: `{"level": "info", "status": "200", "method": "GET"}`},
+				{colMsg: `{"level": "warn", "code": "304"}`},
+				{colMsg: `{"level": "error", "status": "500", "method": "POST", "duration": "123ms"}`},
+			},
+			requestedKeys:  nil, // nil means extract all keys
+			expectedFields: 5,   // 5 columns: message, code, duration, level, method, status
+			expectedOutput: arrowtest.Rows{
+				{
+					"utf8.parsed.code":     nil,
+					"utf8.parsed.duration": nil,
+					"utf8.parsed.level":    "info",
+					"utf8.parsed.method":   "GET",
+					"utf8.parsed.status":   "200",
+				},
+				{
+					"utf8.parsed.code":     "304",
+					"utf8.parsed.duration": nil,
+					"utf8.parsed.level":    "warn",
+					"utf8.parsed.method":   nil,
+					"utf8.parsed.status":   nil,
+				},
+				{
+					"utf8.parsed.code":     nil,
+					"utf8.parsed.duration": "123ms",
+					"utf8.parsed.level":    "error",
+					"utf8.parsed.method":   "POST",
+					"utf8.parsed.status":   "500",
+				},
+			},
+		},
+		{
+			name: "extract all keys with errors when none requested",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: `{"level": "info", "status": "200", "method": "GET"}`}, // Valid line
+				{colMsg: `{"level": "error", "code": 500}`},                     // Also valid, adds code column
+				{colMsg: `{"msg": "unclosed}`},                                  // Unclosed quote
+				{colMsg: `{"level": "debug", "method": "POST"}`},                // Valid line
+			},
+			requestedKeys:  nil, // nil means extract all keys
+			expectedFields: 6,   // 6 columns: level, method, status, code, __error__, __error_details__
+			expectedOutput: arrowtest.Rows{
+				{
+					"utf8.parsed.level":                   "info",
+					"utf8.parsed.method":                  "GET",
+					"utf8.parsed.status":                  "200",
+					"utf8.parsed.code":                    nil,
+					semconv.ColumnIdentError.FQN():        nil,
+					semconv.ColumnIdentErrorDetails.FQN(): nil,
+				},
+				{
+					"utf8.parsed.level":                   "error",
+					"utf8.parsed.method":                  nil,
+					"utf8.parsed.status":                  nil,
+					"utf8.parsed.code":                    "500",
+					semconv.ColumnIdentError.FQN():        nil,
+					semconv.ColumnIdentErrorDetails.FQN(): nil,
+				},
+				{
+					"utf8.parsed.level":                   nil,
+					"utf8.parsed.method":                  nil,
+					"utf8.parsed.status":                  nil,
+					"utf8.parsed.code":                    nil,
+					semconv.ColumnIdentError.FQN():        "JSONParserErr",
+					semconv.ColumnIdentErrorDetails.FQN(): "Value is string, but can't find closing '\"' symbol",
+				},
+				{
+					"utf8.parsed.level":                   "debug",
+					"utf8.parsed.method":                  "POST",
+					"utf8.parsed.status":                  nil,
+					"utf8.parsed.code":                    nil,
+					semconv.ColumnIdentError.FQN():        nil,
+					semconv.ColumnIdentErrorDetails.FQN(): nil,
+				},
+			},
+		},
+		{
+			name: "handle nested JSON objects with underscore flattening",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: `{"user": {"name": "john", "details": {"age": "30", "city": "NYC"}}, "status": "active"}`},
+				{colMsg: `{"app": {"version": "1.0", "config": {"debug": "true"}}, "level": "info"}`},
+				{colMsg: `{"nested": {"deep": {"very": {"deep": "value"}}}}`},
+			},
+			requestedKeys:  nil, // Extract all keys including nested ones
+			expectedFields: 8,   // app_config_debug, app_version, level, nested_deep_very_deep, status, user_details_age, user_details_city, user_name
+			expectedOutput: arrowtest.Rows{
+				{
+					"utf8.parsed.app_config_debug":      nil,
+					"utf8.parsed.app_version":           nil,
+					"utf8.parsed.level":                 nil,
+					"utf8.parsed.nested_deep_very_deep": nil,
+					"utf8.parsed.status":                "active",
+					"utf8.parsed.user_details_age":      "30",
+					"utf8.parsed.user_details_city":     "NYC",
+					"utf8.parsed.user_name":             "john",
+				},
+				{
+					"utf8.parsed.app_config_debug":      "true",
+					"utf8.parsed.app_version":           "1.0",
+					"utf8.parsed.level":                 "info",
+					"utf8.parsed.nested_deep_very_deep": nil,
+					"utf8.parsed.status":                nil,
+					"utf8.parsed.user_details_age":      nil,
+					"utf8.parsed.user_details_city":     nil,
+					"utf8.parsed.user_name":             nil,
+				},
+				{
+					"utf8.parsed.app_config_debug":      nil,
+					"utf8.parsed.app_version":           nil,
+					"utf8.parsed.level":                 nil,
+					"utf8.parsed.nested_deep_very_deep": "value",
+					"utf8.parsed.status":                nil,
+					"utf8.parsed.user_details_age":      nil,
+					"utf8.parsed.user_details_city":     nil,
+					"utf8.parsed.user_name":             nil,
+				},
+			},
+		},
+		{
+			name: "handle nested JSON with specific requested keys",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: `{"user": {"name": "alice", "profile": {"email": "alice@example.com"}}, "level": "debug"}`},
+				{colMsg: `{"user": {"name": "bob"}, "level": "info"}`},
+				{colMsg: `{"level": "error", "error": {"code": "500", "message": "internal"}}`},
+			},
+			requestedKeys:  []string{"user_name", "user_profile_email", "level"},
+			expectedFields: 3, // level, user_name, user_profile_email
+			expectedOutput: arrowtest.Rows{
+				{
+					"utf8.parsed.level":              "debug",
+					"utf8.parsed.user_name":          "alice",
+					"utf8.parsed.user_profile_email": "alice@example.com",
+				},
+				{
+					"utf8.parsed.level":              "info",
+					"utf8.parsed.user_name":          "bob",
+					"utf8.parsed.user_profile_email": nil,
+				},
+				{
+					"utf8.parsed.level":              "error",
+					"utf8.parsed.user_name":          nil,
+					"utf8.parsed.user_profile_email": nil,
+				},
+			},
+		},
+		{
+			name: "accept JSON numbers as strings (v1 compatibility)",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: `{"status": 200, "port": 8080, "timeout": 30.5, "retries": 0}`},
+				{colMsg: `{"level": "info", "pid": 12345, "memory": 256.8}`},
+				{colMsg: `{"score": -1, "version": 2.1, "enabled": true}`},
+			},
+			requestedKeys:  []string{"status", "port", "timeout", "pid", "memory", "score", "version"},
+			expectedFields: 7, // memory, pid, port, score, status, timeout, version
+			expectedOutput: arrowtest.Rows{
+				{
+					"utf8.parsed.memory":  nil,
+					"utf8.parsed.pid":     nil,
+					"utf8.parsed.port":    "8080",
+					"utf8.parsed.score":   nil,
+					"utf8.parsed.status":  "200",
+					"utf8.parsed.timeout": "30.5",
+					"utf8.parsed.version": nil,
+				},
+				{
+					"utf8.parsed.memory":  "256.8",
+					"utf8.parsed.pid":     "12345",
+					"utf8.parsed.port":    nil,
+					"utf8.parsed.score":   nil,
+					"utf8.parsed.status":  nil,
+					"utf8.parsed.timeout": nil,
+					"utf8.parsed.version": nil,
+				},
+				{
+					"utf8.parsed.memory":  nil,
+					"utf8.parsed.pid":     nil,
+					"utf8.parsed.port":    nil,
+					"utf8.parsed.score":   "-1",
+					"utf8.parsed.status":  nil,
+					"utf8.parsed.timeout": nil,
+					"utf8.parsed.version": "2.1",
+				},
+			},
+		},
+		{
+			name: "mixed nested objects and numbers",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: `{"request": {"url": "/api/users", "method": "GET"}, "response": {"status": 200, "time": 45.2}}`},
+				{colMsg: `{"user": {"id": 123, "profile": {"age": 25}}, "active": true}`},
+			},
+			requestedKeys:  nil, // Extract all keys
+			expectedFields: 7,   // active, request_method, request_url, response_status, response_time, user_id, user_profile_age
+			expectedOutput: arrowtest.Rows{
+				{
+					"utf8.parsed.active":           nil,
+					"utf8.parsed.request_method":   "GET",
+					"utf8.parsed.request_url":      "/api/users",
+					"utf8.parsed.response_status":  "200",
+					"utf8.parsed.response_time":    "45.2",
+					"utf8.parsed.user_id":          nil,
+					"utf8.parsed.user_profile_age": nil,
+				},
+				{
+					"utf8.parsed.active":           "true",
+					"utf8.parsed.request_method":   nil,
+					"utf8.parsed.request_url":      nil,
+					"utf8.parsed.response_status":  nil,
+					"utf8.parsed.response_time":    nil,
+					"utf8.parsed.user_id":          "123",
+					"utf8.parsed.user_profile_age": "25",
+				},
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			alloc := memory.DefaultAllocator
+
+			expr := &physical.VariadicExpr{
+				Op: types.VariadicOpParseJSON,
+				Expressions: []physical.Expression{
+					&physical.ColumnExpr{
+						Ref: semconv.ColumnIdentMessage.ColumnRef(),
+					},
+					&physical.LiteralExpr{
+						Literal: types.NewLiteral(tt.requestedKeys),
+					},
+				},
+			}
+			e := newExpressionEvaluator()
+
+			record := tt.input.Record(alloc, tt.schema)
+			col, err := e.eval(expr, record)
+			require.NoError(t, err)
+			id := col.DataType().ID()
+			require.Equal(t, arrow.STRUCT, id)
+
+			arr, ok := col.(*array.Struct)
+			require.True(t, ok)
+
+			require.Equal(t, tt.expectedFields, arr.NumField()) //value, error, errorDetails
+
+			// Convert record to rows for comparison
+			actual, err := structToRows(arr)
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedOutput, actual)
+		})
+	}
+}
+
+func TestEvaluateParseExpression_HandleMissingRequestedKeys(t *testing.T) {
+	colMsg := "utf8.builtin.message"
+	alloc := memory.DefaultAllocator
+
+	expr := &physical.VariadicExpr{
+		Op: types.VariadicOpParseJSON,
+		Expressions: []physical.Expression{
+			&physical.ColumnExpr{
+				Ref: semconv.ColumnIdentMessage.ColumnRef(),
+			},
+		},
+	}
+	e := newExpressionEvaluator()
+
+	input := arrowtest.Rows{
+		{colMsg: `{"level": "error", "status": "500"}`},
+		{colMsg: `{"level": "info", "status": "200"}`},
+		{colMsg: `{"level": "debug", "status": "201"}`},
+	}
+
+	schema := arrow.NewSchema([]arrow.Field{
+		semconv.FieldFromFQN("utf8.builtin.message", true),
+	}, nil)
+
+	record := input.Record(alloc, schema)
+	col, err := e.eval(expr, record)
+	require.NoError(t, err)
+	id := col.DataType().ID()
+	require.Equal(t, arrow.STRUCT, id)
+
+	arr, ok := col.(*array.Struct)
+	require.True(t, ok)
+
+	require.Equal(t, 2, arr.NumField()) //level, status
+
+	// Convert record to rows for comparison
+	actual, err := structToRows(arr)
+	require.NoError(t, err)
+
+	expectedOutput := arrowtest.Rows{
+		{"utf8.parsed.level": "error", "utf8.parsed.status": "500"},
+		{"utf8.parsed.level": "info", "utf8.parsed.status": "200"},
+		{"utf8.parsed.level": "debug", "utf8.parsed.status": "201"},
+	}
+	require.Equal(t, expectedOutput, actual)
 }

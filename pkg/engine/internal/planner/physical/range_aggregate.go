@@ -1,15 +1,16 @@
 package physical
 
 import (
-	"fmt"
 	"time"
+
+	"github.com/oklog/ulid/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 // TODO: Rename based on the actual implementation.
 type RangeAggregation struct {
-	id string
+	NodeID ulid.ULID
 
 	PartitionBy []ColumnExpression // Columns to partition the data by.
 
@@ -20,17 +21,14 @@ type RangeAggregation struct {
 	Range     time.Duration
 }
 
-func (r *RangeAggregation) ID() string {
-	if r.id == "" {
-		return fmt.Sprintf("%p", r)
-	}
+// ID returns the ULID that uniquely identifies the node in the plan.
+func (r *RangeAggregation) ID() ulid.ULID { return r.NodeID }
 
-	return r.id
-}
-
-// Clone returns a deep copy of the node (minus its ID).
+// Clone returns a deep copy of the node with a new unique ID.
 func (r *RangeAggregation) Clone() Node {
 	return &RangeAggregation{
+		NodeID: ulid.Make(),
+
 		PartitionBy: cloneExpressions(r.PartitionBy),
 
 		Operation: r.Operation,
@@ -43,8 +41,4 @@ func (r *RangeAggregation) Clone() Node {
 
 func (r *RangeAggregation) Type() NodeType {
 	return NodeTypeRangeAggregation
-}
-
-func (r *RangeAggregation) Accept(v Visitor) error {
-	return v.VisitRangeAggregation(r)
 }

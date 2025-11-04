@@ -3893,7 +3893,7 @@ null
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs",
-    "tag": "3.5.7"
+    "tag": "3.5.4"
   },
   "license": {
     "contents": "NOTAVALIDLICENSE"
@@ -3929,7 +3929,7 @@ null
     "tolerations": []
   },
   "useExternalLicense": false,
-  "version": "3.5.2"
+  "version": "3.5.4"
 }
 </pre>
 </td>
@@ -4040,7 +4040,7 @@ null
 			<td>string</td>
 			<td>Docker image tag</td>
 			<td><pre lang="json">
-"3.5.7"
+"3.5.4"
 </pre>
 </td>
 		</tr>
@@ -5456,6 +5456,7 @@ null
   },
   "initContainers": [],
   "joinMemberlist": true,
+  "lifecycle": {},
   "maxUnavailable": null,
   "nodeSelector": {},
   "persistence": {
@@ -5633,6 +5634,15 @@ null
 			<td>Whether the index gateway should join the memberlist hashring</td>
 			<td><pre lang="json">
 true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>indexGateway.lifecycle</td>
+			<td>object</td>
+			<td>Lifecycle for the index-gateway container</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -6974,7 +6984,7 @@ null
 			<td>string</td>
 			<td>Overrides the image tag whose default is the chart's appVersion</td>
 			<td><pre lang="json">
-"3.5.5"
+"3.5.7"
 </pre>
 </td>
 		</tr>

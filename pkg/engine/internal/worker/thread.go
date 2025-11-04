@@ -190,6 +190,11 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 
 		totalRows += int(rec.NumRows())
 
+		// Don't bother writing empty records to our peers.
+		if rec.NumRows() == 0 {
+			continue
+		}
+
 		for _, sink := range job.Sinks {
 			err := sink.Send(ctx, rec)
 			if err != nil {

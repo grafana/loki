@@ -1,7 +1,7 @@
 package physical
 
 import (
-	"fmt"
+	"github.com/oklog/ulid/v2"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -9,7 +9,7 @@ import (
 // ColumnCompat represents a compactibilty operation in the physical plan that
 // moves a values from a conflicting metadata column with a label column into a new column suffixed with `_extracted`.
 type ColumnCompat struct {
-	id string
+	NodeID ulid.ULID
 
 	// TODO(chaudum): These fields are poorly named. Come up with more descriptive names.
 	Source      types.ColumnType // column type of the column that may colide with columns of the same name but with collision type
@@ -18,18 +18,14 @@ type ColumnCompat struct {
 }
 
 // ID implements the [Node] interface.
-// Returns a string that uniquely identifies the node in the plan.
-func (m *ColumnCompat) ID() string {
-	if m.id == "" {
-		return fmt.Sprintf("%p", m)
-	}
+// Returns the ULID that uniquely identifies the node in the plan.
+func (m *ColumnCompat) ID() ulid.ULID { return m.NodeID }
 
-	return m.id
-}
-
-// Clone returns a deep copy of the node (minus its ID).
+// Clone returns a deep copy of the node with a new unique ID.
 func (m *ColumnCompat) Clone() Node {
 	return &ColumnCompat{
+		NodeID: ulid.Make(),
+
 		Source:      m.Source,
 		Destination: m.Destination,
 		Collision:   m.Collision,
@@ -40,10 +36,4 @@ func (m *ColumnCompat) Clone() Node {
 // Returns the type of the node.
 func (m *ColumnCompat) Type() NodeType {
 	return NodeTypeCompat
-}
-
-// Accept implements the [Node] interface.
-// Dispatches itself to the provided [Visitor] v
-func (m *ColumnCompat) Accept(v Visitor) error {
-	return v.VisitCompat(m)
 }

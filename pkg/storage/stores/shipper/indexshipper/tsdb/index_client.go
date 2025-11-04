@@ -324,6 +324,9 @@ func (c *IndexClient) GetShards(ctx context.Context, userID string, from, throug
 
 		series = append(series, x)
 	}
+
+	// Record total unique streams matched in index statistics
+	resp.Statistics.Index.TotalStreams += int64(len(m))
 	sort.Sort(series)
 	resp.Shards = series.ShardsFor(targetBytesPerShard)
 
