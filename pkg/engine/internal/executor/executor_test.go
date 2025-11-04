@@ -25,6 +25,24 @@ func TestExecutor(t *testing.T) {
 	})
 }
 
+func TestExecutor_Limit(t *testing.T) {
+	t.Run("no inputs result in empty pipeline", func(t *testing.T) {
+		ctx := t.Context()
+		c := &Context{}
+		pipeline := c.executeLimit(ctx, &physical.Limit{}, nil)
+		_, err := pipeline.Read(ctx)
+		require.ErrorContains(t, err, EOF.Error())
+	})
+
+	t.Run("multiple inputs result in error", func(t *testing.T) {
+		ctx := t.Context()
+		c := &Context{}
+		pipeline := c.executeLimit(ctx, &physical.Limit{}, []Pipeline{emptyPipeline(), emptyPipeline()})
+		_, err := pipeline.Read(ctx)
+		require.ErrorContains(t, err, "limit expects exactly one input, got 2")
+	})
+}
+
 func TestExecutor_Filter(t *testing.T) {
 	t.Run("no inputs result in empty pipeline", func(t *testing.T) {
 		ctx := t.Context()

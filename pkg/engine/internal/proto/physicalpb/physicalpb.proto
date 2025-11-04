@@ -41,6 +41,7 @@ message Node {
     AggregateVector aggregate_vector = 3;
     DataObjScan scan = 4;
     Filter filter = 5;
+    Limit limit = 6;
     Projection projection = 7;
     ColumnCompat column_compat = 8;
     ScanSet scan_set = 9;
@@ -139,6 +140,16 @@ message DataObjScan {
 message Filter {
   // Predicates to apply to filter rows.
   repeated loki.expression.Expression predicates = 1;
+}
+
+// Limit represents a limiting operation in the physical plan that applies
+// offset and limit to the result set.
+message Limit {
+  // Skip specifies how many initial rows should be skipped.
+  uint32 skip = 1;
+
+  // Fetch specifies how many rows should be returned in total.
+  uint32 fetch = 2;
 }
 
 // Projection represents an operation to return a subset of columns from the

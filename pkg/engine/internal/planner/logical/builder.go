@@ -28,6 +28,17 @@ func (b *Builder) Select(predicate Value) *Builder {
 	}
 }
 
+// Limit applies a [Limit] operation to the Builder.
+func (b *Builder) Limit(skip uint32, fetch uint32) *Builder {
+	return &Builder{
+		val: &Limit{
+			Table: b.val,
+			Skip:  skip,
+			Fetch: fetch,
+		},
+	}
+}
+
 // Parse applies a [Parse] operation to the Builder.
 func (b *Builder) Parse(op types.VariadicOp) *Builder {
 	val := &FunctionOp{
@@ -56,16 +67,15 @@ func (b *Builder) Cast(identifier string, op types.UnaryOp) *Builder {
 	return b.ProjectExpand(val)
 }
 
-// TopK applies a [TopK] operation to the Builder.
-func (b *Builder) TopK(sortBy *ColumnRef, K int, ascending, nullsFirst bool) *Builder {
+// Sort applies a [Sort] operation to the Builder.
+func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 	return &Builder{
-		val: &TopK{
+		val: &Sort{
 			Table: b.val,
 
-			SortBy:     sortBy,
+			Column:     column,
 			Ascending:  ascending,
 			NullsFirst: nullsFirst,
-			K:          K,
 		},
 	}
 }

@@ -91,6 +91,8 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 
 	case *physical.TopK:
 		return tracePipeline("physical.TopK", c.executeTopK(ctx, n, inputs))
+	case *physical.Limit:
+		return tracePipeline("physical.Limit", c.executeLimit(ctx, n, inputs))
 	case *physical.Filter:
 		return tracePipeline("physical.Filter", c.executeFilter(ctx, n, inputs))
 	case *physical.Projection:
@@ -249,6 +251,25 @@ func (c *Context) executeTopK(ctx context.Context, topK *physical.TopK, inputs [
 	}
 
 	return pipeline
+}
+
+func (c *Context) executeLimit(ctx context.Context, limit *physical.Limit, inputs []Pipeline) Pipeline {
+	ctx, span := tracer.Start(ctx, "Context.executeLimit", trace.WithAttributes(
+		attribute.Int("skip", int(limit.Skip)),
+		attribute.Int("fetch", int(limit.Fetch)),
+		attribute.Int("num_inputs", len(inputs)),
+	))
+	defer span.End()
+
+	if len(inputs) == 0 {
+		return emptyPipeline()
+	}
+
+	if len(inputs) > 1 {
+		return errorPipeline(ctx, fmt.Errorf("limit expects exactly one input, got %d", len(inputs)))
+	}
+
+	return NewLimitPipeline(inputs[0], limit.Skip, limit.Fetch)
 }
 
 func (c *Context) executeFilter(ctx context.Context, filter *physical.Filter, inputs []Pipeline) Pipeline {

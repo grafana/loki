@@ -53,6 +53,11 @@ func toTreeNode(n Node) *tree.Node {
 		for i := range node.Predicates {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
+	case *Limit:
+		treeNode.Properties = []tree.Property{
+			tree.NewProperty("offset", false, node.Skip),
+			tree.NewProperty("limit", false, node.Fetch),
+		}
 	case *RangeAggregation:
 		properties := []tree.Property{
 			tree.NewProperty("operation", false, node.Operation),

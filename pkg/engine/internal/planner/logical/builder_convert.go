@@ -37,8 +37,10 @@ func (b *ssaBuilder) process(value Value) (Value, error) {
 		return b.processMakeTablePlan(value)
 	case *Select:
 		return b.processSelectPlan(value)
-	case *TopK:
-		return b.processTopKPlan(value)
+	case *Limit:
+		return b.processLimitPlan(value)
+	case *Sort:
+		return b.processSortPlan(value)
 	case *Projection:
 		return b.processProjection(value)
 	case *RangeAggregation:
@@ -122,7 +124,20 @@ func (b *ssaBuilder) processSelectPlan(plan *Select) (Value, error) {
 	return plan, nil
 }
 
-func (b *ssaBuilder) processTopKPlan(plan *TopK) (Value, error) {
+func (b *ssaBuilder) processLimitPlan(plan *Limit) (Value, error) {
+	if _, err := b.process(plan.Table); err != nil {
+		return nil, err
+	}
+
+	// Only append the first time we see this.
+	if plan.id == "" {
+		plan.id = fmt.Sprintf("%%%d", b.getID())
+		b.instructions = append(b.instructions, plan)
+	}
+	return plan, nil
+}
+
+func (b *ssaBuilder) processSortPlan(plan *Sort) (Value, error) {
 	if _, err := b.process(plan.Table); err != nil {
 		return nil, err
 	}

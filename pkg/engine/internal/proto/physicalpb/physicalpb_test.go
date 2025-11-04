@@ -28,15 +28,14 @@ func Test(t *testing.T) {
 			StreamIDs: []int64{100, 200, 300},
 		})
 
-		topkNode := graph.Add(&physical.TopK{
-			NodeID:     ulid.Make(),
-			SortBy:     &physical.ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}},
-			Ascending:  true,
-			NullsFirst: false,
-			K:          100,
+		limitNode := graph.Add(&physical.Limit{
+			NodeID: ulid.Make(),
+
+			Skip:  10,
+			Fetch: 100,
 		})
 
-		err := graph.AddEdge(dag.Edge[physical.Node]{Parent: topkNode, Child: scanNode})
+		err := graph.AddEdge(dag.Edge[physical.Node]{Parent: limitNode, Child: scanNode})
 		require.NoError(t, err, "Failed to add edge")
 
 		expectedPlan = physical.FromGraph(graph)
@@ -83,12 +82,11 @@ func Test_Node(t *testing.T) {
 		},
 		{
 			name: "Limit",
-			node: &physical.TopK{
-				NodeID:     ulid.Make(),
-				SortBy:     &physical.ColumnExpr{Ref: types.ColumnRef{Column: "timestamp", Type: types.ColumnTypeBuiltin}},
-				Ascending:  true,
-				NullsFirst: false,
-				K:          100,
+			node: &physical.Limit{
+				NodeID: ulid.Make(),
+
+				Skip:  25,
+				Fetch: 100,
 			},
 		},
 		{

@@ -24,6 +24,8 @@ func (n *Node) UnmarshalPhysical(from physical.Node) error {
 		n.Kind = &Node_Scan{}
 	case *physical.Filter:
 		n.Kind = &Node_Filter{}
+	case *physical.Limit:
+		n.Kind = &Node_Limit{}
 	case *physical.Projection:
 		n.Kind = &Node_Projection{}
 	case *physical.ColumnCompat:
@@ -76,6 +78,13 @@ func (n *Node_Scan) UnmarshalPhysical(from physical.Node) error {
 func (n *Node_Filter) UnmarshalPhysical(from physical.Node) error {
 	n.Filter = new(Filter)
 	return n.Filter.UnmarshalPhysical(from)
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Node_Limit) UnmarshalPhysical(from physical.Node) error {
+	n.Limit = new(Limit)
+	return n.Limit.UnmarshalPhysical(from)
 }
 
 // UnmarshalPhysical reads from into n. Returns an error if the conversion fails
@@ -248,6 +257,21 @@ func (n *Filter) UnmarshalPhysical(from physical.Node) error {
 
 	*n = Filter{
 		Predicates: predicates,
+	}
+	return nil
+}
+
+// UnmarshalPhysical reads from into n. Returns an error if the conversion fails
+// or is unsupported.
+func (n *Limit) UnmarshalPhysical(from physical.Node) error {
+	limit, ok := from.(*physical.Limit)
+	if !ok {
+		return fmt.Errorf("unsupported physical node type: %T", from)
+	}
+
+	*n = Limit{
+		Skip:  limit.Skip,
+		Fetch: limit.Fetch,
 	}
 	return nil
 }
