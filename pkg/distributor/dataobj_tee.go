@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"strconv"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/ring"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -37,29 +37,30 @@ func (c *DataObjTeeConfig) Validate() error {
 // DataObjTee is a tee that duplicates streams to the data object topic.
 // It is a temporary solution while we work on segmentation keys.
 type DataObjTee struct {
-	cfg        *DataObjTeeConfig
-	client     *kgo.Client
-	ringReader ring.PartitionRingReader
-	logger     log.Logger
+	cfg      *DataObjTeeConfig
+	client   *kgo.Client
+	resolver *SegmentationPartitionResolver
+	logger   log.Logger
 
 	// Metrics.
 	failures prometheus.Counter
 	total    prometheus.Counter
+	produces *prometheus.CounterVec
 }
 
 // NewDataObjTee returns a new DataObjTee.
 func NewDataObjTee(
 	cfg *DataObjTeeConfig,
 	client *kgo.Client,
-	ringReader ring.PartitionRingReader,
+	resolver *SegmentationPartitionResolver,
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (*DataObjTee, error) {
 	return &DataObjTee{
-		cfg:        cfg,
-		client:     client,
-		ringReader: ringReader,
-		logger:     logger,
+		cfg:      cfg,
+		client:   client,
+		resolver: resolver,
+		logger:   logger,
 		failures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_dataobj_tee_duplicate_stream_failures_total",
 			Help: "Total number of streams that could not be duplicated.",
@@ -68,6 +69,10 @@ func NewDataObjTee(
 			Name: "loki_distributor_dataobj_tee_duplicate_streams_total",
 			Help: "Total number of streams duplicated.",
 		}),
+		produces: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_distributor_dataobj_tee_produced_streams_total",
+			Help: "Total number of streams produced.",
+		}, []string{"partition"}),
 	}, nil
 }
 
@@ -80,7 +85,13 @@ func (t *DataObjTee) Duplicate(tenant string, streams []KeyedStream) {
 
 func (t *DataObjTee) duplicate(tenant string, stream KeyedStream) {
 	t.total.Inc()
-	partition, err := t.ringReader.PartitionRing().ActivePartitionForKey(stream.HashKey)
+	segmentationKey, err := GetSegmentationKey(tenant, stream)
+	if err != nil {
+		level.Error(t.logger).Log("msg", "failed to get segmentation key", "err", err)
+		t.failures.Inc()
+		return
+	}
+	partition, err := t.resolver.Resolve(tenant, segmentationKey)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to get partition", "err", err)
 		t.failures.Inc()
@@ -97,4 +108,5 @@ func (t *DataObjTee) duplicate(tenant string, stream KeyedStream) {
 		level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
 		t.failures.Inc()
 	}
+	t.produces.WithLabelValues(strconv.Itoa(int(partition))).Inc()
 }

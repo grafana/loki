@@ -294,11 +294,13 @@ func New(
 			kafka_client.WithRecordsInterceptor(validation.IngestionPoliciesKafkaProducerInterceptor),
 		)
 
+		resolver := NewSegmentationPartitionResolver(overrides, dataObjConsumerPartitionRing)
+
 		if cfg.DataObjTeeConfig.Enabled {
 			dataObjTee, err := NewDataObjTee(
 				&cfg.DataObjTeeConfig,
 				kafkaClient,
-				dataObjConsumerPartitionRing,
+				resolver,
 				logger,
 				registerer,
 			)
