@@ -37,6 +37,14 @@ type Config struct {
 	// still connect to remote schedulers.
 	LocalScheduler *scheduler.Scheduler
 
+	// SchedulerLookupAddress is the address of the remote scheduler to look up.
+	// Scheduler addresses are resolved using DNS SRV records at this address.
+	SchedulerLookupAddress string
+
+	// SchedulerLookupInterval is the frequency at which the worker will attempt
+	// to find new remote schedulers.
+	SchedulerLookupInterval time.Duration
+
 	// BatchSize specifies the maximum number of rows to retrieve in a single
 	// read call of a task pipeline.
 	BatchSize int64
@@ -154,7 +162,23 @@ func (w *Worker) run(ctx context.Context) error {
 	}
 
 	g.Go(func() error { return w.runAcceptLoop(ctx) })
-	g.Go(func() error { return w.runSchedulersLoop(ctx) })
+
+	if w.config.SchedulerLookupAddress != "" {
+		disc, err := newSchedulerLookup(w.logger, w.config.SchedulerLookupAddress, w.config.SchedulerLookupInterval)
+		if err != nil {
+			return fmt.Errorf("creating scheduler lookup: %w", err)
+		}
+		g.Go(func() error {
+			return disc.Run(ctx, func(ctx context.Context, addr net.Addr) {
+				_ = w.schedulerLoop(ctx, addr)
+			})
+		})
+	}
+
+	if w.config.LocalScheduler != nil {
+		level.Info(w.logger).Log("msg", "connecting to local scheduler")
+		g.Go(func() error { return w.schedulerLoop(ctx, wire.LocalScheduler) })
+	}
 
 	return g.Wait()
 }
@@ -205,24 +229,6 @@ func (w *Worker) handleConn(ctx context.Context, conn wire.Conn) {
 	} else {
 		level.Debug(logger).Log("msg", "connection closed")
 	}
-}
-
-// runSchedulersLoop periodically discovers schedulers and maintains connections
-// to them.
-func (w *Worker) runSchedulersLoop(ctx context.Context) error {
-	g, ctx := errgroup.WithContext(ctx)
-
-	// TODO(rfratto): If connecting to remote schedulers, discover them here
-	// (DNS lookup to get all the pods?) and maintain connections to them.
-	//
-	// TODO(rfratto): Once we support multiple schedulers, we'll want
-	// per-scheduler contexts to be able to cancel individual connections (for
-	// when a scheduler disappears from discovery).
-
-	if w.config.LocalScheduler != nil {
-		g.Go(func() error { return w.schedulerLoop(ctx, wire.LocalScheduler) })
-	}
-	return nil
 }
 
 // schedulerLoop manages the lifecycle of a connection to a specific scheduler.
