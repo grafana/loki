@@ -26,13 +26,15 @@ func GetSegmentationKey(tenant string, stream KeyedStream) (SegmentationKey, err
 
 // SegmentationPartitionResolver resolves the partition for a segmentation key.
 type SegmentationPartitionResolver struct {
+	cfg        *DataObjTeeConfig
 	limits     Limits
 	ringReader ring.PartitionRingReader
 }
 
 // NewSegmentationPartitionResolver returns a new SegmentationPartitionResolver.
-func NewSegmentationPartitionResolver(limits Limits, ringReader ring.PartitionRingReader) *SegmentationPartitionResolver {
+func NewSegmentationPartitionResolver(cfg *DataObjTeeConfig, limits Limits, ringReader ring.PartitionRingReader) *SegmentationPartitionResolver {
 	return &SegmentationPartitionResolver{
+		cfg:        cfg,
 		limits:     limits,
 		ringReader: ringReader,
 	}
@@ -43,8 +45,7 @@ func (r *SegmentationPartitionResolver) Resolve(tenant string, key SegmentationK
 	// Get a subring for the tenant based on the tenant's rate limit and
 	// the maximum rate per tenant per partition in bytes (hardcoded to 1MB/sec).
 	ingestionRateBytes := r.limits.IngestionRateBytes(tenant)
-	const perPartitionRateBytes = 1024 * 1024
-	partitions := math.Min(math.Floor(ingestionRateBytes/perPartitionRateBytes), 1)
+	partitions := math.Min(math.Floor(ingestionRateBytes/float64(r.cfg.PerPartitionRateBytes)), 1)
 	// Must not exceed the number of active partitions.
 	partitions = math.Max(partitions, float64(len(ring.ActivePartitionIDs())))
 	subring, err := ring.ShuffleShard(tenant, int(partitions))

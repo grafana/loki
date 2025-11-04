@@ -16,15 +16,17 @@ import (
 )
 
 type DataObjTeeConfig struct {
-	Enabled          bool   `yaml:"enabled"`
-	Topic            string `yaml:"topic"`
-	MaxBufferedBytes int    `yaml:"max_buffered_bytes"`
+	Enabled               bool   `yaml:"enabled"`
+	Topic                 string `yaml:"topic"`
+	MaxBufferedBytes      int    `yaml:"max_buffered_bytes"`
+	PerPartitionRateBytes int    `yaml:"per_partition_rate_bytes"`
 }
 
 func (c *DataObjTeeConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.Enabled, "distributor.dataobj-tee.enabled", false, "Enable data object tee.")
 	f.StringVar(&c.Topic, "distributor.dataobj-tee.topic", "", "Topic for data object tee.")
 	f.IntVar(&c.MaxBufferedBytes, "distributor.dataobj-tee.max-buffered-bytes", 100<<20, "Maximum number of bytes to buffer.")
+	f.IntVar(&c.PerPartitionRateBytes, "distributor.dataobj-tee.per-partition-rate-bytes", 1024*1024, "The per-tenant partition rate (bytes/sec).")
 }
 
 func (c *DataObjTeeConfig) Validate() error {
