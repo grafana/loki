@@ -196,7 +196,7 @@ func newHTTP2Conn(
 
 	c := &HTTP2Conn{
 		localAddr:  localAddr,
-		remoteAddr: &tcpAddr{addr: remoteAddr},
+		remoteAddr: &tcpAddr{Addr: remoteAddr},
 		protocol:   protocol,
 		reader:     reader,
 		writer:     writer,
@@ -345,7 +345,7 @@ func (d *HTTP2Dialer) Dial(ctx context.Context, addr string, protocolFactory fun
 
 	// Create connection
 	conn := newHTTP2Conn(
-		&tcpAddr{addr: "client"},
+		&tcpAddr{Addr: "client"},
 		addr,
 		resp.Body,
 		pw,
@@ -360,10 +360,3 @@ func (d *HTTP2Dialer) Dial(ctx context.Context, addr string, protocolFactory fun
 
 	return conn, nil
 }
-
-type tcpAddr struct {
-	addr string
-}
-
-func (a *tcpAddr) Network() string { return "tcp" }
-func (a *tcpAddr) String() string  { return a.addr }
