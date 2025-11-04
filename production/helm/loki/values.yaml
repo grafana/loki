@@ -2472,6 +2472,9 @@ queryFrontend:
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
     grpc: ""
+  # -- Enable load balancer port for query-frontend
+  loadBalancer:
+    enabled: true
 # -- Configuration for the query-scheduler
 queryScheduler:
   # -- Number of replicas for the query-scheduler.
