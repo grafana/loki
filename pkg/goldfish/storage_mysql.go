@@ -618,7 +618,7 @@ func buildStatsWhereClause(filter StatsFilter) (string, []any) {
 		args = append(args, filter.To)
 	}
 
-	// when use recent data is false, exclude queries that touch data within the last 3 hours
+	// When UsesRecentData is false, exclude queries that touch data within the last 3 hours
 	if !filter.UsesRecentData {
 		conditions = append(conditions, "end_time <= DATE_SUB(NOW(), INTERVAL 3 HOUR)")
 	}
