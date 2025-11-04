@@ -226,6 +226,7 @@ func (c *Compactor) init(
 
 	legacyMarkerDirs := make(map[string]struct{})
 	c.storeContainers = make(map[config.DayTime]storeContainer, len(objectStoreClients))
+	sweeperInitializedForStoreType := make(map[string]bool, len(objectStoreClients))
 	for from, objectClient := range objectStoreClients {
 		period, err := schemaConfig.SchemaForTime(from.Time)
 		if err != nil {
@@ -244,7 +245,9 @@ func (c *Compactor) init(
 				r                = prometheus.WrapRegistererWith(prometheus.Labels{"from": name}, r)
 			)
 
-			markerStorageClient, err := local.NewFSObjectClient(local.FSConfig{Directory: retentionWorkDir})
+			var markerStorageClient client.ObjectClient
+			var err error
+			markerStorageClient, err = local.NewFSObjectClient(local.FSConfig{Directory: retentionWorkDir})
 			if err != nil {
 				return err
 			}
@@ -272,9 +275,27 @@ func (c *Compactor) init(
 			}
 			chunkClient := client.NewClient(objectClient, encoder, schemaConfig)
 
-			sc.sweeper, err = retention.NewSweeper(markerStorageClient, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, c.cfg.RetentionBackoffConfig, r)
-			if err != nil {
-				return fmt.Errorf("failed to init sweeper: %w", err)
+			if c.cfg.DeletionMarkerObjectStorePrefix != "" {
+				markerStorageClient = client.NewPrefixedObjectClient(raw, c.cfg.DeletionMarkerObjectStorePrefix)
+				// Copy all the existing markers to the relevant object storage.
+				if err := retention.CopyMarkers(retentionWorkDir, markerStorageClient); err != nil {
+					return fmt.Errorf("failed to move markers to period specific object storage: %w", err)
+				}
+
+				// remove all the local marker files
+				if err := os.RemoveAll(filepath.Dir(retentionWorkDir)); err != nil {
+					return fmt.Errorf("failed to remove markers on local disk: %w", err)
+				}
+			}
+
+			// When markers are stored in object storage, we want to initialize only one sweeper per object store type.
+			if c.cfg.DeletionMarkerObjectStorePrefix == "" || !sweeperInitializedForStoreType[period.ObjectType] {
+				sc.sweeper, err = retention.NewSweeper(markerStorageClient, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, c.cfg.RetentionBackoffConfig, r)
+				if err != nil {
+					return fmt.Errorf("failed to init sweeper: %w", err)
+				}
+
+				sweeperInitializedForStoreType[period.ObjectType] = true
 			}
 
 			sc.tableMarker, err = retention.NewMarker(markerStorageClient, c.expirationChecker, c.cfg.RetentionTableTimeout, chunkClient, r)
