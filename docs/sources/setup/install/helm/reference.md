@@ -7595,13 +7595,14 @@ true
   "initialDelaySeconds": 15,
   "timeoutSeconds": 1
 }
-  </pre></td>
-</tr>
-<tr>
-  <td>lokiCanary.replicas</td>
-  <td>int</td>
-  <td>Replicas for `loki-canary` when using a Deployment</td>
-  <td><pre lang="json">
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>lokiCanary.replicas</td>
+			<td>int</td>
+			<td>Replicas for `loki-canary` when using a Deployment</td>
+			<td><pre lang="json">
 1
 </pre>
 </td>
