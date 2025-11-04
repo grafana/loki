@@ -3,7 +3,6 @@ package limits
 import (
 	"net/http"
 
-	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
 
 	"github.com/grafana/loki/v3/pkg/util"
@@ -34,18 +33,6 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		streamsByPolicy[stream.policy]++
 	}
 	rate := float64(sumBuckets) / s.cfg.ActiveWindow.Seconds()
-
-	// Log the calculated values for debugging
-	level.Debug(s.logger).Log(
-		"msg", "HTTP endpoint calculated stream usage",
-		"tenant", tenant,
-		"streams", streams,
-		"sum_buckets", util.HumanizeBytes(sumBuckets),
-		"rate_window_seconds", s.cfg.RateWindow.Seconds(),
-		"rate", util.HumanizeBytes(uint64(rate)),
-	)
-
-	// Use util.WriteJSONResponse to write the JSON response
 	util.WriteJSONResponse(w, httpTenantLimitsResponse{
 		Tenant:          tenant,
 		StreamsTotal:    streams,
