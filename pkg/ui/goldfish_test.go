@@ -1169,7 +1169,7 @@ func TestGoldfishStatsHandler(t *testing.T) {
 			},
 			url:            "/ui/api/v1/goldfish/stats",
 			expectedStatus: http.StatusOK,
-			checkResponse: func(t *testing.T, rr *httptest.ResponseRecorder, storage *mockStorage) {
+			checkResponse: func(t *testing.T, rr *httptest.ResponseRecorder, _ *mockStorage) {
 				var stats goldfish.Statistics
 				err := json.Unmarshal(rr.Body.Bytes(), &stats)
 				require.NoError(t, err)
@@ -1185,7 +1185,7 @@ func TestGoldfishStatsHandler(t *testing.T) {
 			config:         GoldfishConfig{Enable: true},
 			url:            "/ui/api/v1/goldfish/stats?from=" + url.QueryEscape(from.Format(time.RFC3339)) + "&to=" + url.QueryEscape(to.Format(time.RFC3339)),
 			expectedStatus: http.StatusOK,
-			checkResponse: func(t *testing.T, rr *httptest.ResponseRecorder, storage *mockStorage) {
+			checkResponse: func(t *testing.T, _ *httptest.ResponseRecorder, storage *mockStorage) {
 				// Verify the filter was correctly captured
 				assert.Equal(t, from, storage.capturedStatsFilter.From)
 				assert.Equal(t, to, storage.capturedStatsFilter.To)
@@ -1197,7 +1197,7 @@ func TestGoldfishStatsHandler(t *testing.T) {
 			config:         GoldfishConfig{Enable: true},
 			url:            "/ui/api/v1/goldfish/stats?usesRecentData=false",
 			expectedStatus: http.StatusOK,
-			checkResponse: func(t *testing.T, rr *httptest.ResponseRecorder, storage *mockStorage) {
+			checkResponse: func(t *testing.T, _ *httptest.ResponseRecorder, storage *mockStorage) {
 				// Verify the filter was correctly set
 				assert.False(t, storage.capturedStatsFilter.UsesRecentData)
 			},
@@ -1207,7 +1207,7 @@ func TestGoldfishStatsHandler(t *testing.T) {
 			config:         GoldfishConfig{Enable: true},
 			url:            "/ui/api/v1/goldfish/stats?from=invalid-time",
 			expectedStatus: http.StatusBadRequest,
-			checkResponse: func(t *testing.T, rr *httptest.ResponseRecorder, storage *mockStorage) {
+			checkResponse: func(t *testing.T, rr *httptest.ResponseRecorder, _ *mockStorage) {
 				var response map[string]string
 				err := json.Unmarshal(rr.Body.Bytes(), &response)
 				require.NoError(t, err)
@@ -1219,7 +1219,7 @@ func TestGoldfishStatsHandler(t *testing.T) {
 			config:         GoldfishConfig{Enable: false},
 			url:            "/ui/api/v1/goldfish/stats",
 			expectedStatus: http.StatusNotFound,
-			checkResponse:  func(t *testing.T, rr *httptest.ResponseRecorder, storage *mockStorage) {},
+			checkResponse:  func(_ *testing.T, _ *httptest.ResponseRecorder, _ *mockStorage) {},
 		},
 		{
 			name:           "storage error",
@@ -1227,7 +1227,7 @@ func TestGoldfishStatsHandler(t *testing.T) {
 			mockError:      errors.New("database connection failed"),
 			url:            "/ui/api/v1/goldfish/stats",
 			expectedStatus: http.StatusInternalServerError,
-			checkResponse: func(t *testing.T, rr *httptest.ResponseRecorder, storage *mockStorage) {
+			checkResponse: func(t *testing.T, rr *httptest.ResponseRecorder, _ *mockStorage) {
 				var response map[string]string
 				err := json.Unmarshal(rr.Body.Bytes(), &response)
 				require.NoError(t, err)
