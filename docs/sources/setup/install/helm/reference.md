@@ -7583,6 +7583,22 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>lokiCanary.readinessProbe</td>
+			<td>object</td>
+			<td>Readiness probe</td>
+			<td><pre lang="json">
+{
+  "httpGet": {
+    "path": "/metrics",
+    "port": "http-metrics"
+  },
+  "initialDelaySeconds": 15,
+  "timeoutSeconds": 1
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>lokiCanary.replicas</td>
 			<td>int</td>
 			<td>Replicas for `loki-canary` when using a Deployment</td>
@@ -10132,6 +10148,9 @@ Defaults to allow skew no more then 1 node
     "tag": null
   },
   "initContainers": [],
+  "loadBalancer": {
+    "enabled": true
+  },
   "maxUnavailable": null,
   "nodeSelector": {},
   "podAnnotations": {},
@@ -10373,6 +10392,17 @@ null
 			<td>init containers to add to the query-frontend pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>queryFrontend.loadBalancer</td>
+			<td>object</td>
+			<td>Enable load balancer port for query-frontend</td>
+			<td><pre lang="json">
+{
+  "enabled": true
+}
 </pre>
 </td>
 		</tr>
