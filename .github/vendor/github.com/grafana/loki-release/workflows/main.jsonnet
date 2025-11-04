@@ -13,6 +13,7 @@
     changelogPath='CHANGELOG.md',
     checkTemplate='./.github/workflows/check.yml',
     distMakeTargets=['dist', 'packages'],
+    distRunsOn='ubuntu-latest',
     dryRun=false,
     dockerUsername='grafana',
     golangCiLintVersion='v1.60.3',
@@ -59,12 +60,12 @@
     local validationSteps = ['check'],
     jobs: {
       check: {
-        permissions: {
+               permissions: {
                  contents: 'write',
                  'pull-requests': 'write',
                  'id-token': 'write',
                },
-      } + $.job.withUses(checkTemplate)
+             } + $.job.withUses(checkTemplate)
              + $.job.with({
                skip_validation: skipValidation,
                build_image: buildImage,
@@ -76,7 +77,7 @@
                GCS_SERVICE_ACCOUNT_KEY: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}',
              }) else {},
       version: $.build.version + $.common.job.withNeeds(validationSteps),
-      dist: $.build.dist(buildImage, skipArm, useGCR, distMakeTargets) 
+      dist: $.build.dist(buildImage, skipArm, useGCR, distMakeTargets, distRunsOn)
             + $.common.job.withNeeds(['version'])
             + $.common.job.withPermissions({
               contents: 'write',
