@@ -9,10 +9,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
+	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
+	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
 // TestHTTP2BasicConnectivity tests basic connection establishment and communication.
@@ -37,7 +44,7 @@ func TestHTTP2BasicConnectivity(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, NewJSONProtocol)
+	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, NewProtobufProtocolFactory(memory.DefaultAllocator, DefaultMaxFrameSizeBytes))
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -127,7 +134,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, NewJSONProtocol)
+	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, NewProtobufProtocolFactory(memory.DefaultAllocator, DefaultMaxFrameSizeBytes))
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -290,7 +297,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 			defer clientWg.Done()
 
 			// Connect
-			conn, err := NewHTTP2Dialer().Dial(ctx, addr, NewJSONProtocol)
+			conn, err := NewHTTP2Dialer().Dial(ctx, addr, NewProtobufProtocolFactory(memory.DefaultAllocator, DefaultMaxFrameSizeBytes))
 			if err != nil {
 				t.Errorf("Client %d dial failed: %v", clientIdx, err)
 				return
@@ -401,7 +408,7 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, NewJSONProtocol)
+	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, NewProtobufProtocolFactory(memory.DefaultAllocator, DefaultMaxFrameSizeBytes))
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -476,7 +483,7 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, NewJSONProtocol)
+	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, NewProtobufProtocolFactory(memory.DefaultAllocator, DefaultMaxFrameSizeBytes))
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -484,6 +491,22 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	require.NoError(t, <-acceptErr)
 	require.NotNil(t, serverConn)
 	defer serverConn.Close()
+
+	expectedPlan := &physical.Plan{}
+	parallelize := expectedPlan.Graph().Add(&physical.Parallelize{NodeID: ulid.Make()})
+	compat := expectedPlan.Graph().Add(&physical.ColumnCompat{NodeID: ulid.Make(), Source: types.ColumnTypeMetadata, Destination: types.ColumnTypeMetadata, Collision: types.ColumnTypeLabel})
+	scanSet := expectedPlan.Graph().Add(&physical.ScanSet{
+		NodeID: ulid.Make(),
+		Targets: []*physical.ScanTarget{
+			{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{NodeID: ulid.Make(), Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
+			{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{NodeID: ulid.Make(), Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
+			{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{NodeID: ulid.Make(), Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
+			{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{NodeID: ulid.Make(), Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
+		},
+	})
+
+	_ = expectedPlan.Graph().AddEdge(dag.Edge[physical.Node]{Parent: parallelize, Child: compat})
+	_ = expectedPlan.Graph().AddEdge(dag.Edge[physical.Node]{Parent: compat, Child: scanSet})
 
 	testCases := []struct {
 		name    string
@@ -493,7 +516,28 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 		{"TaskCancelMessage", TaskCancelMessage{}},
 		{"TaskFlagMessage", TaskFlagMessage{Interruptible: true}},
 		{"TaskStatusMessage", TaskStatusMessage{}},
-		{"StreamBindMessage", StreamBindMessage{}},
+		{"TaskAssignMessage", TaskAssignMessage{
+			Task: &workflow.Task{
+				ULID:     ulid.Make(),
+				TenantID: "fake",
+				Fragment: expectedPlan,
+				Sources: map[physical.Node][]*workflow.Stream{
+					compat: {
+						{ULID: ulid.Make(), TenantID: "fake"},
+					},
+				},
+				Sinks: map[physical.Node][]*workflow.Stream{
+					scanSet: {
+						{ULID: ulid.Make(), TenantID: "fake"},
+					},
+				},
+			},
+			StreamStates: nil,
+		}},
+		{"StreamBindMessage", StreamBindMessage{
+			StreamID: ulid.Make(),
+			Receiver: mustNewTCPAddrFromString("127.0.0.1:1234"),
+		}},
 		{"StreamStatusMessage", StreamStatusMessage{}},
 	}
 
@@ -522,7 +566,7 @@ func prepareHTTP2Listener(t *testing.T) (*HTTP2Listener, func()) {
 
 	listener := NewHTTP2Listener(
 		l.Addr(),
-		NewJSONProtocol,
+		NewProtobufProtocolFactory(memory.DefaultAllocator, DefaultMaxFrameSizeBytes),
 		WithHTTP2ListenerConnAcceptTimeout(1*time.Second),
 		WithHTTP2ListenerMaxPendingConns(1),
 		WithHTTP2ListenerLogger(log.NewNopLogger()),
