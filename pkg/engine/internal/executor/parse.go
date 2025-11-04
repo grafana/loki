@@ -92,7 +92,7 @@ func extractParseFnParameters(args []arrow.Array) (*array.String, []string, bool
 	}
 
 	// Extract strict flag (boolean scalar array)
-	if strictArr != nil && !strictArr.IsNull(0) {
+	if strictArr != nil && strictArr.Len() > 0 {
 		boolArr, ok := strictArr.(*array.Boolean)
 		if !ok {
 			return nil, nil, false, false, fmt.Errorf("strict flag must be a boolean, got %T", strictArr)
@@ -101,7 +101,7 @@ func extractParseFnParameters(args []arrow.Array) (*array.String, []string, bool
 	}
 
 	// Extract keepEmpty flag (boolean scalar array)
-	if keepEmptyArr != nil && !keepEmptyArr.IsNull(0) {
+	if keepEmptyArr != nil && keepEmptyArr.Len() > 0 {
 		boolArr, ok := keepEmptyArr.(*array.Boolean)
 		if !ok {
 			return nil, nil, false, false, fmt.Errorf("keepEmpty flag must be a boolean, got %T", keepEmptyArr)
