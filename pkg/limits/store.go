@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"iter"
 	"sync"
 	"time"
 
@@ -131,9 +132,9 @@ func newUsageStore(activeWindow, rateWindow, bucketSize time.Duration, numPartit
 	return s, nil
 }
 
-// Iter iterates all active streams and calls f for each iterated stream.
-// As this method acquires a read lock, f must not block.
-func (s *usageStore) Iter(f iterateFunc) {
+// ActiveStreams returns an iterator over all active streams. As this method
+// acquires a read lock, the iterator must not block.
+func (s *usageStore) ActiveStreams() iter.Seq2[string, streamUsage] {
 	// To prevent time moving forward while iterating, use the current time
 	// to check the active and rate window.
 	var (
@@ -141,9 +142,42 @@ func (s *usageStore) Iter(f iterateFunc) {
 		withinActiveWindow = s.newActiveWindowFunc(now)
 		withinRateWindow   = s.newRateWindowFunc(now)
 	)
-	s.forEachRLock(func(i int) {
-		for tenant, partitions := range s.stripes[i] {
-			for partition, policies := range partitions {
+	return func(yield func(string, streamUsage) bool) {
+		s.forEachRLock(func(i int) {
+			for tenant, partitions := range s.stripes[i] {
+				for _, policies := range partitions {
+					for _, streams := range policies {
+						for _, stream := range streams {
+							if withinActiveWindow(stream.lastSeenAt) {
+								stream.rateBuckets = getActiveRateBuckets(
+									stream.rateBuckets,
+									withinRateWindow,
+								)
+								if !yield(tenant, stream) {
+									return
+								}
+							}
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+// TenantActiveStreams returns an iterator over all active streams for the
+// tenant. As this method acquires a read lock, the iterator must not block.
+func (s *usageStore) TenantActiveStreams(tenant string) iter.Seq2[string, streamUsage] {
+	// To prevent time moving forward while iterating, use the current time
+	// to check the active and rate window.
+	var (
+		now                = s.clock.Now()
+		withinActiveWindow = s.newActiveWindowFunc(now)
+		withinRateWindow   = s.newRateWindowFunc(now)
+	)
+	return func(yield func(string, streamUsage) bool) {
+		s.withRLock(tenant, func(i int) {
+			for _, policies := range s.stripes[i][tenant] {
 				for _, streams := range policies {
 					for _, stream := range streams {
 						if withinActiveWindow(stream.lastSeenAt) {
@@ -151,41 +185,15 @@ func (s *usageStore) Iter(f iterateFunc) {
 								stream.rateBuckets,
 								withinRateWindow,
 							)
-							f(tenant, partition, stream)
+							if !yield(tenant, stream) {
+								return
+							}
 						}
 					}
 				}
 			}
-		}
-	})
-}
-
-// IterTenant iterates all active streams for the tenant and calls f for
-// each iterated stream. As this method acquires a read lock, f must not
-// block.
-func (s *usageStore) IterTenant(tenant string, f iterateFunc) {
-	// To prevent time moving forward while iterating, use the current time
-	// to check the active and rate window.
-	var (
-		now                = s.clock.Now()
-		withinActiveWindow = s.newActiveWindowFunc(now)
-		withinRateWindow   = s.newRateWindowFunc(now)
-	)
-	s.withRLock(tenant, func(i int) {
-		for partition, policies := range s.stripes[i][tenant] {
-			for _, streams := range policies {
-				for _, stream := range streams {
-					if withinActiveWindow(stream.lastSeenAt) {
-						stream.rateBuckets = getActiveRateBuckets(
-							stream.rateBuckets,
-							withinRateWindow,
-						)
-						f(tenant, partition, stream)
-					}
-				}
-			}
-		}
-	})
+		})
+	}
 }
 
 func (s *usageStore) Update(tenant string, metadata *proto.StreamMetadata, seenAt time.Time) error {
