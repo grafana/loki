@@ -206,7 +206,6 @@ func buildPlanForLogQuery(
 
 	// Metric queries do not apply a limit.
 	if !isMetricQuery {
-		// SORT -> SortMerge
 		// We always sort DESC. ASC timestamp sorting is not supported for logs
 		// queries, and metric queries do not need sorting.
 		builder = builder.TopK(timestampColumnRef(), int(params.Limit()), false, false)
