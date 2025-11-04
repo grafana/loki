@@ -3,8 +3,8 @@ package physical
 import "github.com/oklog/ulid/v2"
 
 // TopK represents a physical plan node that performs topK operation.
-// It sorts rows based on sort expressions and limits the result to the top K rows.
-// This is equivalent to a SORT followed by a LIMIT operation.
+// It ranks rows based on sort expressions and limits the result to the top K rows.
+// Implementations may not guarantee the topK rows to be in sorted order.
 type TopK struct {
 	NodeID ulid.ULID
 
