@@ -2127,7 +2127,7 @@ null
 			<td>string</td>
 			<td>Comma separated addresses list in DNS Service Discovery format</td>
 			<td><pre lang="json">
-"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc"
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc.{{ .Values.global.clusterDomain }}"
 </pre>
 </td>
 		</tr>
@@ -2272,7 +2272,7 @@ true
 			<td>l2 memcache configuration</td>
 			<td><pre lang="json">
 {
-  "addresses": "dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc",
+  "addresses": "dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc.{{ .Values.global.clusterDomain }}",
   "affinity": {},
   "allocatedMemory": 8192,
   "annotations": {},
@@ -2331,7 +2331,7 @@ true
 			<td>string</td>
 			<td>Comma separated addresses list in DNS Service Discovery format</td>
 			<td><pre lang="json">
-"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc"
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"chunks-cache\" \"suffix\" $.Values.chunksCache.l2.suffix ) }}.{{ include \"loki.namespace\" $ }}.svc.{{ .Values.global.clusterDomain }}"
 </pre>
 </td>
 		</tr>
@@ -11380,7 +11380,7 @@ null
 			<td>string</td>
 			<td>Comma separated addresses list in DNS Service Discovery format</td>
 			<td><pre lang="json">
-"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"results-cache\") }}.{{ include \"loki.namespace\" $ }}.svc"
+"dnssrvnoa+_memcached-client._tcp.{{ include \"loki.resourceName\" (dict \"ctx\" $ \"component\" \"results-cache\") }}.{{ include \"loki.namespace\" $ }}.svc.{{ .Values.global.clusterDomain }}"
 </pre>
 </td>
 		</tr>
@@ -13153,7 +13153,7 @@ false
 			<td><pre lang="json">
 {
   "annotations": {},
-  "canaryServiceAddress": "http://loki-canary:3500/metrics",
+  "canaryServiceAddress": "http://{{ include \"loki-canary.fullname\" $ }}.{{ include \"loki.namespace\" $ }}.svc.{{ .Values.global.clusterDomain }}:3500/metrics",
   "enabled": true,
   "hostUsers": "nil",
   "image": {
@@ -13184,7 +13184,7 @@ false
 			<td>string</td>
 			<td>Used to directly query the metrics endpoint of the canary for testing, this approach avoids needing prometheus for testing. This in a newer approach to using prometheusAddress such that tests do not have a dependency on prometheus</td>
 			<td><pre lang="json">
-"http://loki-canary:3500/metrics"
+"http://{{ include \"loki-canary.fullname\" $ }}.{{ include \"loki.namespace\" $ }}.svc.{{ .Values.global.clusterDomain }}:3500/metrics"
 </pre>
 </td>
 		</tr>

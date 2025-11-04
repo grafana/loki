@@ -123,6 +123,8 @@ func newPartitionProcessor(
 	}
 
 	return &partitionProcessor{
+		topic:                   topic,
+		partition:               partition,
 		committer:               committer,
 		logger:                  logger,
 		decoder:                 decoder,
