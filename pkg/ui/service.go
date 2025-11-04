@@ -16,12 +16,14 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/thanos-io/objstore"
 	"golang.org/x/net/http2"
 
 	// This is equivalent to a main.go for the Loki UI, so the blank import is allowed
 	_ "github.com/go-sql-driver/mysql" //nolint:revive
 
 	"github.com/grafana/loki/v3/pkg/goldfish"
+	"github.com/grafana/loki/v3/pkg/storage/bucket"
 )
 
 // This allows to rate limit the number of updates when the cluster is frequently changing (e.g. during rollout).
@@ -42,6 +44,7 @@ type Service struct {
 	reg             prometheus.Registerer
 	goldfishStorage goldfish.Storage
 	goldfishMetrics *GoldfishMetrics
+	goldfishBucket  objstore.InstrumentedBucket
 
 	now func() time.Time
 }
@@ -99,6 +102,9 @@ func (s *Service) stop(_ error) error {
 	level.Info(s.logger).Log("msg", "stopping UI service")
 	if s.goldfishStorage != nil {
 		s.goldfishStorage.Close()
+	}
+	if s.goldfishBucket != nil {
+		s.goldfishBucket.Close()
 	}
 	return nil
 }
@@ -170,5 +176,17 @@ func (s *Service) initGoldfishDB() error {
 
 	s.goldfishStorage = storage
 	level.Info(s.logger).Log("msg", "goldfish storage initialized successfully")
+
+	// Initialize bucket client if results backend is configured
+	if s.cfg.Goldfish.ResultsBackend != "" {
+		bucketClient, err := bucket.NewClient(context.Background(), s.cfg.Goldfish.ResultsBackend, s.cfg.Goldfish.ResultsBucket, "goldfish-ui-results", s.logger)
+		if err != nil {
+			level.Warn(s.logger).Log("msg", "failed to create goldfish bucket client, result fetching will be disabled", "err", err)
+		} else {
+			s.goldfishBucket = bucketClient
+			level.Info(s.logger).Log("msg", "goldfish bucket client initialized successfully", "backend", s.cfg.Goldfish.ResultsBackend)
+		}
+	}
+
 	return nil
 }

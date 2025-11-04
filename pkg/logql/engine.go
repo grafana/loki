@@ -287,7 +287,9 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
-	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
+	execTime := time.Since(start)
+	statsCtx.AddQuerierExecTime(execTime)
+	statResult := statsCtx.Result(execTime, queueTime, q.resultLength(data))
 	sp.SetAttributes(tracing.KeyValuesToOTelAttributes(statResult.KVList())...)
 
 	status, _ := server.ClientHTTPStatusAndError(err)

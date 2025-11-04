@@ -15,13 +15,23 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [CHANGE] `nameOverride` now passed through helm tpl function [#19590](https://github.com/grafana/loki/pull/19590).
 - [BUGFIX] Wrong context passed to loki.namespace helper from table manager servicemonitor. [#19461](https://github.com/grafana/loki/pull/19461)
+
+## 6.45.2
+
+- [BUGFIX] Fix incorrect GEL version in the chart and reference.
+
+## 6.45.1
+
+- [CHANGE] Changed one missed version of Grafana Loki to 3.5.7.
+
+## 6.45.0
 - [CHANGE] Remove unused `storageClass` field from compactor persistence configuration. Storage class should be configured per-claim in the `claims` array instead.[#19443](https://github.com/grafana/loki/pull/19443)
-- [FEATURE] Make loki-canary readinessProbe configurable via values.yaml  [#19328](https://github.com/grafana/loki/pull/19328)
-- [FEATURE]: Allow auto-resizing the volume by recreating the StatefulSet. [#19217](https://github.com/grafana/loki/pull/19217)
-- [BUGFIX] Add single-binary component to ingress NetworkPolicy [#19229](https://github.com/grafana/loki/pull/19229)
-- [BUGFIX] Use strings in stead of integers for ports in CiliumNetworkPolicies [#19252](https://github.com/grafana/loki/pull/19252)
 - [ENHANCEMENT] Update default readiness probe values to match operator [#19529](https://github.com/grafana/loki/pull/19529)
-- [ENHANCEMENT] Allow configuration of alert rule severities and thresholds
+- [ENHANCEMENT] Allow configuration of alert rule severalties and thresholds[#13730](https://github.com/grafana/loki/pull/13730)
+- [ENHANCEMENT] Add the ability to specify index-gateway container lifecycle. [#19573](https://github.com/grafana/loki/pull/19573)
+- [BUGFIX]  Move bucketName validations into the config helpers.[#19051](https://github.com/grafana/loki/pull/19051)
+- [BUGFIX] Standardize global image registry to match other Grafana charts [#19246](https://github.com/grafana/loki/pull/19246)
+- [BUGFIX] Fix wrong context passed to loki.namespace helper from table manager servicemonitor. [#19544](https://github.com/grafana/loki/pull/19544)
 
 ## 6.44.0
 
@@ -59,7 +69,6 @@ Before upgrading to this version, make sure that the CustomResourceDefinitions (
 
 - [BUGFIX] Explicitly set registry for k8s-sidecar image [#19233](<https://github.com/grafana/loki/pull/19233>]
 - [ENHANCEMENT] Add configurable `livenessProbe` and `startupProbe` for the nginx container in the gateway pods. [#18545](https://github.com/grafana/loki/pull/18545)
-- [ENHANCEMENT] Standardize global image registry configuration to match other Grafana charts [#19246](https://github.com/grafana/loki/pull/19246)
 
 ## 6.40.0
 

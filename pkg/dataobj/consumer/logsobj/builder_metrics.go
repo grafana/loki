@@ -144,6 +144,8 @@ func (m *builderMetrics) Register(reg prometheus.Registerer) error {
 	errs = append(errs, reg.Register(m.builtSize))
 	errs = append(errs, reg.Register(m.flushFailures))
 
+	errs = append(errs, reg.Register(m.sortDurationSeconds))
+
 	return errors.Join(errs...)
 }
 
@@ -162,4 +164,6 @@ func (m *builderMetrics) Unregister(reg prometheus.Registerer) {
 	reg.Unregister(m.sizeEstimate)
 	reg.Unregister(m.builtSize)
 	reg.Unregister(m.flushFailures)
+
+	reg.Unregister(m.sortDurationSeconds)
 }

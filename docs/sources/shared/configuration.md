@@ -167,6 +167,18 @@ ui:
     # CLI flag: -ui.goldfish.cell-b-namespace
     [cell_b_namespace: <string> | default = ""]
 
+    # Results storage backend (gcs, s3) for fetching stored query results.
+    # CLI flag: -ui.goldfish.results-backend
+    [results_backend: <string> | default = ""]
+
+    # The thanos_object_store_config block configures the connection to object
+    # storage backend using thanos-io/objstore clients. This will become the
+    # default way of configuring object store clients in future releases.
+    # Currently this is opt-in and takes effect only when `-use-thanos-objstore`
+    # is set to true.
+    # The CLI flags prefix for this block configuration is: ui.goldfish.results
+    [results_bucket: <thanos_object_store_config>]
+
   ring:
     kvstore:
       # Backend storage to use for the ring. Supported values are: consul, etcd,
@@ -5118,6 +5130,11 @@ engine_v2:
     # CLI flag: -querier.engine-v2.range-reads.min-range-size
     [min_range_size: <int> | default = 1048576]
 
+  # Experimental: Number of worker threads to spawn. Each worker thread runs one
+  # task at a time. 0 means to use GOMAXPROCS value.
+  # CLI flag: -querier.engine-v2.worker-threads
+  [worker_threads: <int> | default = 0]
+
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
 # CLI flag: -querier.max-concurrent
@@ -7158,6 +7175,7 @@ Currently this is opt-in and takes effect only when `-use-thanos-objstore` is se
 - `common.storage.object-store`
 - `object-store`
 - `ruler-storage`
+- `ui.goldfish.results`
 
 &nbsp;
 
