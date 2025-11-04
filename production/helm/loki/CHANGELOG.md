@@ -18,6 +18,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [BUGFIX] Wrong context passed to loki.namespace helper from table manager servicemonitor. [#19461](https://github.com/grafana/loki/pull/19461)
 - [BUGFIX] Don't fail for missing bucket name, if local disk is used. [#19675](https://github.com/grafana/loki/pull/19675)
 - [FEATURE] Add load balancer port to query-frontend service. [#19462](https://github.com/grafana/loki/pull/19462)
+- [BUGFIX] Support global registry override for sidecar. [#19671](https://github.com/grafana/loki/pull/19671)
 
 ## 6.45.2
 
