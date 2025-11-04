@@ -319,9 +319,10 @@ func newTestPartitionProcessor(t *testing.T, clock quartz.Clock) *partitionProce
 		60*time.Minute,
 		nil,
 		"test-topic",
-		0,
+		1,
 	)
 	p.clock = clock
 	p.eventsProducerClient = &mockKafka{}
+	require.NotZero(t, p.partition)
 	return p
 }
