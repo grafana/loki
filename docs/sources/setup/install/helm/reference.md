@@ -7582,11 +7582,11 @@ true
 </pre>
 </td>
 		</tr>
-<tr>
-  <td>lokiCanary.readinessProbe</td>
-  <td>object</td>
-  <td>Readiness probe</td>
-  <td><pre lang="json">
+		<tr>
+			<td>lokiCanary.readinessProbe</td>
+			<td>object</td>
+			<td>Readiness probe</td>
+			<td><pre lang="json">
 {
   "httpGet": {
     "path": "/metrics",
