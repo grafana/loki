@@ -15,6 +15,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [FEATURE] Add configurable `singleBinary.topologySpreadConstraints`. [#19534](https://github.com/grafana/loki/pull/19534)
 
+## 6.45.2
+
+- [BUGFIX] Fix incorrect GEL version in the chart and reference.
+
 ## 6.45.1
 
 - [CHANGE] Changed one missed version of Grafana Loki to 3.5.7.

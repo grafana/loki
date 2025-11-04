@@ -1,7 +1,6 @@
 package executor
 
 import (
-	"context"
 	"fmt"
 	"sort"
 	"unsafe"
@@ -10,48 +9,31 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
+	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
 
-func NewParsePipeline(parse *physical.ParseNode, input Pipeline) *GenericPipeline {
-	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
-		// Pull the next item from the input pipeline
-		input := inputs[0]
-		batch, err := input.Read(ctx)
+func parseFn(op types.VariadicOp) VariadicFunction {
+	return VariadicFunctionFunc(func(args ...arrow.Array) (arrow.Array, error) {
+		sourceCol, requestedKeys, err := extractParseFnParameters(args)
 		if err != nil {
-			return nil, err
-		}
-
-		// Find the message column
-		msgCol, msgIdx, err := columnForIdent(semconv.ColumnIdentMessage, batch)
-		if err != nil {
-			return nil, err
-		}
-
-		stringCol, ok := msgCol.(*array.String)
-		if !ok {
-			return nil, fmt.Errorf("column %s must be of type utf8, got %s", semconv.ColumnIdentMessage.FQN(), batch.Schema().Field(msgIdx))
+			panic(err)
 		}
 
 		var headers []string
 		var parsedColumns []arrow.Array
-		switch parse.Kind {
-		case physical.ParserLogfmt:
-			headers, parsedColumns = buildLogfmtColumns(stringCol, parse.RequestedKeys)
-		case physical.ParserJSON:
-			headers, parsedColumns = buildJSONColumns(stringCol, parse.RequestedKeys)
+		switch op {
+		case types.VariadicOpParseLogfmt:
+			headers, parsedColumns = buildLogfmtColumns(sourceCol, requestedKeys)
+		case types.VariadicOpParseJSON:
+			headers, parsedColumns = buildJSONColumns(sourceCol, requestedKeys)
 		default:
-			return nil, fmt.Errorf("unsupported parser kind: %v", parse.Kind)
+			return nil, fmt.Errorf("unsupported parser kind: %v", op)
 		}
 
 		// Build new schema with original fields plus parsed fields
-		schema := batch.Schema()
-		newFields := make([]arrow.Field, 0, schema.NumFields()+len(headers))
-		for i := 0; i < schema.NumFields(); i++ {
-			newFields = append(newFields, schema.Field(i))
-		}
+		newFields := make([]arrow.Field, 0, len(headers))
 		for _, header := range headers {
 			ct := types.ColumnTypeParsed
 			if header == semconv.ColumnIdentError.ShortName() || header == semconv.ColumnIdentErrorDetails.ShortName() {
@@ -60,34 +42,57 @@ func NewParsePipeline(parse *physical.ParseNode, input Pipeline) *GenericPipelin
 			ident := semconv.NewIdentifier(header, ct, types.Loki.String)
 			newFields = append(newFields, semconv.FieldFromIdent(ident, true))
 		}
-		newSchema := arrow.NewSchema(newFields, nil)
 
-		// Build new record with all columns
-		numOriginalCols := int(batch.NumCols())
-		numParsedCols := len(parsedColumns)
-		allColumns := make([]arrow.Array, numOriginalCols+numParsedCols)
-
-		// Copy original columns
-		for i := range numOriginalCols {
-			col := batch.Column(i)
-			allColumns[i] = col
+		if len(parsedColumns) == 0 {
+			return nil, nil
 		}
 
-		// Add parsed columns
-		for i, col := range parsedColumns {
-			// Defenisve check added for clarity and safety, but BuildLogfmtColumns should already guarantee this
-			if col.Len() != stringCol.Len() {
-				return nil, fmt.Errorf("parsed column %d (%s) has %d rows but expected %d",
-					i, headers[i], col.Len(), stringCol.Len())
-			}
-			allColumns[numOriginalCols+i] = col
-		}
+		return array.NewStructArrayWithFields(parsedColumns, newFields)
+	})
+}
 
-		// Create the new record
-		newRecord := array.NewRecord(newSchema, allColumns, int64(stringCol.Len()))
+func extractParseFnParameters(args []arrow.Array) (*array.String, []string, error) {
+	// Valid signatures:
+	//parse(sourceColVec)
+	//parse(sourceColVec, requestedKeys)
+	if len(args) < 1 || len(args) > 2 {
+		return nil, nil, fmt.Errorf("parse function expected 1 or 2 arguments, got %d", len(args))
+	}
 
-		return newRecord, nil
-	}, input)
+	var sourceColArr, requestedKeysArr arrow.Array
+	sourceColArr = args[0]
+	if len(args) == 2 {
+		requestedKeysArr = args[1]
+	}
+
+	if sourceColArr == nil {
+		return nil, nil, fmt.Errorf("parse function arguments did not include a source ColumnVector to parse")
+	}
+
+	sourceCol, ok := sourceColArr.(*array.String)
+	if !ok {
+		return nil, nil, fmt.Errorf("parse can only operate on string column types, got %T", sourceColArr)
+	}
+
+	var requestedKeys []string
+
+	// Rquested keys will be the same for all rows, so we only need the first one
+	reqKeysIdx := 0
+	if requestedKeysArr == nil || requestedKeysArr.IsNull(reqKeysIdx) {
+		return sourceCol, requestedKeys, nil
+	}
+
+	reqKeysList, ok := requestedKeysArr.(*array.List)
+	if !ok {
+		return nil, nil, fmt.Errorf("requested keys must be a list of string arrays, got %T", requestedKeysArr)
+	}
+
+	firstRow, ok := util.ArrayListValue(reqKeysList, reqKeysIdx).([]string)
+	if !ok {
+		return nil, nil, fmt.Errorf("requested keys must be a list of string arrays, got a list of %T", firstRow)
+	}
+	requestedKeys = append(requestedKeys, firstRow...)
+	return sourceCol, requestedKeys, nil
 }
 
 // parseFunc represents a function that parses a single line and returns key-value pairs

@@ -15,8 +15,9 @@ import (
 )
 
 var (
-	unaryFunctions  UnaryFunctionRegistry  = &unaryFuncReg{}
-	binaryFunctions BinaryFunctionRegistry = &binaryFuncReg{}
+	unaryFunctions    UnaryFunctionRegistry    = &unaryFuncReg{}
+	binaryFunctions   BinaryFunctionRegistry   = &binaryFuncReg{}
+	variadicFunctions VariadicFunctionRegistry = &variadicFuncReg{}
 )
 
 func init() {
@@ -108,6 +109,10 @@ func init() {
 	unaryFunctions.register(types.UnaryOpCastFloat, arrow.BinaryTypes.String, castFn(types.UnaryOpCastFloat))
 	unaryFunctions.register(types.UnaryOpCastBytes, arrow.BinaryTypes.String, castFn(types.UnaryOpCastBytes))
 	unaryFunctions.register(types.UnaryOpCastDuration, arrow.BinaryTypes.String, castFn(types.UnaryOpCastDuration))
+
+	// Parse functions
+	variadicFunctions.register(types.VariadicOpParseLogfmt, parseFn(types.VariadicOpParseLogfmt))
+	variadicFunctions.register(types.VariadicOpParseJSON, parseFn(types.VariadicOpParseJSON))
 }
 
 type UnaryFunctionRegistry interface {
@@ -341,4 +346,47 @@ func boolToInt(b bool) int {
 		i = 0
 	}
 	return i
+}
+
+type VariadicFunctionRegistry interface {
+	register(types.VariadicOp, VariadicFunction)
+	GetForSignature(types.VariadicOp) (VariadicFunction, error)
+}
+
+type VariadicFunction interface {
+	Evaluate(args ...arrow.Array) (arrow.Array, error)
+}
+
+type VariadicFunctionFunc func(args ...arrow.Array) (arrow.Array, error)
+
+func (f VariadicFunctionFunc) Evaluate(args ...arrow.Array) (arrow.Array, error) {
+	return f(args...)
+}
+
+type variadicFuncReg struct {
+	reg map[types.VariadicOp]VariadicFunction
+}
+
+// register implements VariadicFunctionRegistry.
+func (u *variadicFuncReg) register(op types.VariadicOp, f VariadicFunction) {
+	if u.reg == nil {
+		u.reg = make(map[types.VariadicOp]VariadicFunction)
+	}
+
+	_, exists := u.reg[op]
+	if exists {
+		panic(fmt.Sprintf("duplicate variadic function registration for %s", op))
+	}
+
+	u.reg[op] = f
+}
+
+// GetForSignature implements VariadicFunctionRegistry.
+func (u *variadicFuncReg) GetForSignature(op types.VariadicOp) (VariadicFunction, error) {
+	// Get registered function for the specific operation
+	fn, ok := u.reg[op]
+	if !ok {
+		return nil, errors.ErrNotImplemented
+	}
+	return fn, nil
 }

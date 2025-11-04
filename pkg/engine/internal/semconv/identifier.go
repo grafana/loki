@@ -101,6 +101,13 @@ func (i *Identifier) Equal(other *Identifier) bool {
 		i.dataType == other.dataType
 }
 
+func (i *Identifier) ColumnRef() types.ColumnRef {
+	return types.ColumnRef{
+		Column: i.ShortName(),
+		Type:   i.columnType,
+	}
+}
+
 // FQN returns a fully qualified name for a column by given name, column type, and data type.
 func FQN(name string, ct types.ColumnType, dt types.DataType) string {
 	return NewIdentifier(name, ct, dt).FQN()

@@ -735,7 +735,7 @@ func NewLogFilterTripperware(cfg Config, engineOpts logql.EngineOpts, v2EngineCf
 
 		// route query range supported by v2 engine to the new engine handler.
 		if cfg.EnableV2EngineRouter {
-			v2Start, v2End := v2EngineCfg.ValidQueryRange()
+			v2Start, v2End := v2EngineCfg.Executor.ValidQueryRange()
 			// TODO: add v2 engine handler.
 			engineRouterMiddleware := newEngineRouterMiddleware(v2Start, v2End, nil, chunksEngineMWs, merger, true, log)
 			queryRangeMiddleware = append(
@@ -802,7 +802,7 @@ func NewLimitedTripperware(cfg Config, engineOpts logql.EngineOpts, v2EngineCfg 
 
 		// route query range supported by v2 engine to the new engine handler.
 		if cfg.EnableV2EngineRouter {
-			v2Start, v2End := v2EngineCfg.ValidQueryRange()
+			v2Start, v2End := v2EngineCfg.Executor.ValidQueryRange()
 			// TODO: add v2 engine handler.
 			engineRouterMiddleware := newEngineRouterMiddleware(v2Start, v2End, nil, chunksEngineMWs, merger, false, log)
 			queryRangeMiddleware = append(
@@ -1091,7 +1091,7 @@ func NewMetricTripperware(cfg Config, engineOpts logql.EngineOpts, v2EngineCfg e
 
 		// route query range supported by v2 engine to the new engine handler.
 		if cfg.EnableV2EngineRouter && !disableEngineRouter {
-			v2Start, v2End := v2EngineCfg.ValidQueryRange()
+			v2Start, v2End := v2EngineCfg.Executor.ValidQueryRange()
 			// TODO: add v2 engine handler.
 			engineRouterMiddleware := newEngineRouterMiddleware(v2Start, v2End, nil, chunksEngineMWs, merger, true, log)
 			queryRangeMiddleware = append(

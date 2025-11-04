@@ -124,6 +124,22 @@ func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) 
 		_, lhsIsScalar := expr.Left.(*physical.LiteralExpr)
 		_, rhsIsScalar := expr.Right.(*physical.LiteralExpr)
 		return fn.Evaluate(lhs, rhs, lhsIsScalar, rhsIsScalar)
+
+	case *physical.VariadicExpr:
+		args := make([]arrow.Array, len(expr.Expressions))
+		for i, arg := range expr.Expressions {
+			p, err := e.eval(arg, input)
+			if err != nil {
+				return nil, err
+			}
+			args[i] = p
+		}
+
+		fn, err := variadicFunctions.GetForSignature(expr.Op)
+		if err != nil {
+			return nil, fmt.Errorf("failed to lookup unary function: %w", err)
+		}
+		return fn.Evaluate(args...)
 	}
 
 	return nil, fmt.Errorf("unknown expression: %v", expr)

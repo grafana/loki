@@ -51,6 +51,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/distributor"
+	engine_v2 "github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
 	"github.com/grafana/loki/v3/pkg/limits"
@@ -125,6 +126,9 @@ const (
 	QueryLimiter                 = "query-limiter"
 	QueryLimitsInterceptors      = "query-limits-interceptors"
 	QueryLimitsTripperware       = "query-limits-tripperware"
+	QueryEngine                  = "query-engine"
+	QueryEngineScheduler         = "query-engine-scheduler"
+	QueryEngineWorker            = "query-engine-worker"
 	Store                        = "store"
 	TableManager                 = "table-manager"
 	RulerStorage                 = "ruler-storage"
@@ -593,7 +597,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	var store objstore.Bucket
 	if t.Cfg.Querier.EngineV2.Enable {
-		store, err = t.createDataObjBucket("dataobj-querier")
+		store, err = t.getDataObjBucket("dataobj-querier")
 		if err != nil {
 			return nil, err
 		}
@@ -1378,6 +1382,76 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	}), nil
 }
 
+func (t *Loki) initV2QueryEngine() (services.Service, error) {
+	if !t.Cfg.Querier.EngineV2.Enable {
+		return nil, nil
+	}
+
+	store, err := t.getDataObjBucket("query-engine")
+	if err != nil {
+		return nil, err
+	}
+
+	engine, err := engine_v2.New(engine_v2.Params{
+		Logger:     log.With(util_log.Logger, "component", "query-engine"),
+		Registerer: prometheus.DefaultRegisterer,
+
+		Config:          t.Cfg.Querier.EngineV2.Executor,
+		MetastoreConfig: t.Cfg.DataObj.Metastore,
+
+		Scheduler: t.queryEngineV2Scheduler,
+		Bucket:    store,
+		Limits:    t.Overrides,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	t.queryEngineV2 = engine
+	return nil, nil
+}
+
+func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
+	if !t.Cfg.Querier.EngineV2.Enable {
+		return nil, nil
+	}
+
+	logger := log.With(util_log.Logger, "component", "query-engine-scheduler")
+	sched, err := engine_v2.NewScheduler(logger)
+	if err != nil {
+		return nil, err
+	}
+
+	t.queryEngineV2Scheduler = sched
+	return sched.Service(), nil
+}
+
+func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
+	if !t.Cfg.Querier.EngineV2.Enable {
+		return nil, nil
+	}
+
+	store, err := t.getDataObjBucket("query-engine-worker")
+	if err != nil {
+		return nil, err
+	}
+
+	worker, err := engine_v2.NewWorker(engine_v2.WorkerParams{
+		Logger: log.With(util_log.Logger, "component", "query-engine-worker"),
+		Bucket: store,
+
+		Config:   t.Cfg.Querier.EngineV2.Worker,
+		Executor: t.Cfg.Querier.EngineV2.Executor,
+
+		LocalScheduler: t.queryEngineV2Scheduler,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return worker.Service(), nil
+}
+
 func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 	// if the ruler is not configured and we're in single binary then let's just log an error and continue.
 	// unfortunately there is no way to generate a "default" config and compare default against actual
@@ -2102,7 +2176,7 @@ func (t *Loki) initUIRing() (services.Service, error) {
 }
 
 func (t *Loki) initDataObjExplorer() (services.Service, error) {
-	store, err := t.createDataObjBucket("dataobj-explorer")
+	store, err := t.getDataObjBucket("dataobj-explorer")
 	if err != nil {
 		return nil, err
 	}
@@ -2213,7 +2287,7 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	if !t.Cfg.DataObj.Enabled {
 		return nil, nil
 	}
-	store, err := t.createDataObjBucket("dataobj-consumer")
+	store, err := t.getDataObjBucket("dataobj-consumer")
 	if err != nil {
 		return nil, err
 	}
@@ -2251,7 +2325,7 @@ func (t *Loki) initDataObjIndexBuilder() (services.Service, error) {
 	if !t.Cfg.DataObj.Enabled {
 		return nil, nil
 	}
-	store, err := t.createDataObjBucket("dataobj-index-builder")
+	store, err := t.getDataObjBucket("dataobj-index-builder")
 	if err != nil {
 		return nil, err
 	}
@@ -2287,7 +2361,7 @@ func (t *Loki) initScratchStore() (services.Service, error) {
 	return services.NewIdleService(nil, nil), nil
 }
 
-func (t *Loki) createDataObjBucket(clientName string) (objstore.Bucket, error) {
+func (t *Loki) getDataObjBucket(clientName string) (objstore.Bucket, error) {
 	schema, err := t.Cfg.SchemaConfig.SchemaForTime(model.Now())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get schema for now: %w", err)
