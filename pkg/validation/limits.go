@@ -285,7 +285,7 @@ type Limits struct {
 	S3SSEKMSEncryptionContext string `yaml:"s3_sse_kms_encryption_context" json:"s3_sse_kms_encryption_context" doc:"nocli|description=S3 server-side encryption KMS encryption context. If unset and the key ID override is set, the encryption context will not be provided to S3. Ignored if the SSE type override is not set."`
 
 	// Per tenant limits for the v2 execution engine
-	MaxScanTaskParallelism int `yaml:"max_scan_task_parallelism"`
+	MaxScanTaskParallelism int `yaml:"max_scan_task_parallelism" json:"max_scan_task_parallelism"`
 }
 
 type FieldDetectorConfig struct {
