@@ -74,7 +74,7 @@ func NewDataObjTee(
 		produces: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_distributor_dataobj_tee_produced_streams_total",
 			Help: "Total number of streams produced.",
-		}, []string{"partition"}),
+		}, []string{"partition", "tenant"}),
 	}, nil
 }
 
@@ -110,5 +110,5 @@ func (t *DataObjTee) duplicate(tenant string, stream KeyedStream) {
 		level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
 		t.failures.Inc()
 	}
-	t.produces.WithLabelValues(strconv.Itoa(int(partition))).Inc()
+	t.produces.WithLabelValues(strconv.Itoa(int(partition)), tenant).Inc()
 }
