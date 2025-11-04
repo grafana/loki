@@ -3,8 +3,9 @@ package workflow
 import (
 	"math"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"golang.org/x/sync/semaphore"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
 
 type weightedSemaphore struct {

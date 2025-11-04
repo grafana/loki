@@ -63,6 +63,7 @@ func New(opts Options, logger log.Logger, tenantID string, runner Runner, plan *
 	}
 
 	return &Workflow{
+		opts:          opts,
 		logger:        logger,
 		runner:        runner,
 		graph:         graph,
