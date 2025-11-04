@@ -15,6 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [CHANGE] `nameOverride` now passed through helm tpl function [#19590](https://github.com/grafana/loki/pull/19590).
 - [BUGFIX] Wrong context passed to loki.namespace helper from table manager servicemonitor. [#19461](https://github.com/grafana/loki/pull/19461)
+- [FEATURE] Add load balancer port to query-frontend service. [#19462](https://github.com/grafana/loki/pull/19462)
 
 ## 6.45.2
 
@@ -54,7 +55,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 **NOTE:** While the Loki chart does not currently use these CRDs, we wanted to note this requirement for the [rollout-operator](https://github.com/grafana/helm-charts/tree/main/charts/rollout-operator#upgrade-of-grafana-rollout-operator).
 Starting with v0.33.0 of the rollout-operator chart, the rollout-operator webhooks are enabled. See https://github.com/grafana/rollout-operator/#webhooks.
-Before upgrading to this version, make sure that the CustomResourceDefinitions (CRDs) in the crds directory are applied to your cluster. Manually applying these CRDs is only required if upgrading from a chart <= v0.32.0.  
+Before upgrading to this version, make sure that the CustomResourceDefinitions (CRDs) in the crds directory are applied to your cluster. Manually applying these CRDs is only required if upgrading from a chart <= v0.32.0.
 
 - [BUGFIX] Use strings instead of integers for ports in CiliumNetworkPolicies [#19252](https://github.com/grafana/loki/pull/19252)
 - [FEATURE] Add replicas to loki-canary deployment [#190095](https://github.com/grafana/loki/pull/19095)
@@ -89,7 +90,7 @@ Before upgrading to this version, make sure that the CustomResourceDefinitions (
 ## 6.38.0
 
 **NOTE:** While the Loki chart does not currently use these CRDs, we wanted to note this requirement for the [rollout-operator](https://github.com/grafana/helm-charts/tree/main/charts/rollout-operator#upgrade-of-grafana-rollout-operator).
-Before upgrading to v0.32.0, make sure that the CustomResourceDefinitions (CRDs) in the `crds` directory are applied to your cluster. Manually applying these CRDs is only required if upgrading from a chart <= v0.32.0.  
+Before upgrading to v0.32.0, make sure that the CustomResourceDefinitions (CRDs) in the `crds` directory are applied to your cluster. Manually applying these CRDs is only required if upgrading from a chart <= v0.32.0.
 
 - un-deprecate all features in `monitoring` block except grafana-agent-operator [#19001](https://github.com/grafana/loki/pull/19001)
 - [FEATURE] Make access modes for persistence on all PVCs and StatefulSets editable [#13474](https://github.com/grafana/loki/pull/13474)
