@@ -2863,6 +2863,11 @@ jobs_config:
     # Maximum number of times to retry a failed or timed out job.
     # CLI flag: -compactor.jobs.deletion.max-retries
     [max_retries: <int> | default = 3]
+
+# Object storage path prefix for storing deletion markers. Leave empty to store
+# deletion markers on local disk.
+# CLI flag: -compactor.deletion-marker-object-store-prefix
+[deletion_marker_object_store_prefix: <string> | default = ""]
 ```
 
 ### consul
