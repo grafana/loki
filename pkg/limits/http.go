@@ -26,13 +26,13 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	var streams, sumBuckets uint64
 	streamsByPolicy := make(map[string]uint64)
-	s.usage.IterTenant(tenant, func(_ string, _ int32, stream streamUsage) {
+	for _, stream := range s.usage.TenantActiveStreams(tenant) {
 		streams++
 		for _, bucket := range stream.rateBuckets {
 			sumBuckets += bucket.size
 		}
 		streamsByPolicy[stream.policy]++
-	})
+	}
 	rate := float64(sumBuckets) / s.cfg.ActiveWindow.Seconds()
 
 	// Log the calculated values for debugging
