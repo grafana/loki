@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"math"
 	"testing"
 
 	"github.com/oklog/ulid/v2"
@@ -11,7 +12,7 @@ import (
 )
 
 func TestAdmissionControl_getBucket(t *testing.T) {
-	ac := newAdmissionControl(defaultAdmissionControlOpts)
+	ac := newAdmissionControl(32, math.MaxInt64)
 
 	t.Run("Task without a DataObjScan node is considered an 'other' task", func(t *testing.T) {
 		fragment := dag.Graph[physical.Node]{}

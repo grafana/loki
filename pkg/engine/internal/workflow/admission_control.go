@@ -4,16 +4,19 @@ import (
 	"math"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"golang.org/x/sync/semaphore"
 )
 
-var defaultAdmissionControlOpts = admissionControlOpts{
-	scanBucketCapacity:  32,
-	otherBucketCapacity: math.MaxInt,
+type weightedSemaphore struct {
+	*semaphore.Weighted
+	capacity int64
 }
 
-type admissionControlOpts struct {
-	scanBucketCapacity  int64
-	otherBucketCapacity int64
+func newWeightedSemaphore(capacity int64) *weightedSemaphore {
+	return &weightedSemaphore{
+		capacity: capacity,
+		Weighted: semaphore.NewWeighted(capacity),
+	}
 }
 
 // admissionControl is a control structure to lookup token buckets ("admission lanes")
@@ -23,10 +26,16 @@ type admissionControl struct {
 	other *weightedSemaphore
 }
 
-func newAdmissionControl(opts admissionControlOpts) *admissionControl {
+func newAdmissionControl(maxScanTasks, maxOtherTasks int64) *admissionControl {
+	if maxScanTasks < 1 {
+		maxScanTasks = math.MaxInt64
+	}
+	if maxOtherTasks < 1 {
+		maxOtherTasks = math.MaxInt64
+	}
 	return &admissionControl{
-		scan:  newWeightedSemaphore(opts.scanBucketCapacity, "scan"),
-		other: newWeightedSemaphore(opts.otherBucketCapacity, "other"),
+		scan:  newWeightedSemaphore(maxScanTasks),
+		other: newWeightedSemaphore(maxOtherTasks),
 	}
 }
 

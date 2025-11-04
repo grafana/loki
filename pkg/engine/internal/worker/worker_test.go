@@ -158,7 +158,11 @@ func buildWorkflow(ctx context.Context, t *testing.T, logger log.Logger, loc obj
 		fmt.Fprintln(os.Stderr, physical.PrintAsTree(plan))
 	}
 
-	wf, err := workflow.New(logger, objtest.Tenant, sched, plan)
+	opts := workflow.Options{
+		MaxRunningScanTasks:  32,
+		MaxRunningOtherTasks: 0, // unlimited
+	}
+	wf, err := workflow.New(opts, logger, objtest.Tenant, sched, plan)
 	require.NoError(t, err)
 
 	if testing.Verbose() {

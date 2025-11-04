@@ -4707,6 +4707,12 @@ otlp_config:
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
+
+# Experimental: Controls the amount of scan tasks that can be running in
+# parallel in the new query engine. The default of 0 means unlimited parallelism
+# and all tasks will be scheduled at once.
+# CLI flag: -limits.max-scan-task-parallelism
+[max_scan_task_parallelism: <int> | default = 0]
 ```
 
 ### local_storage_config

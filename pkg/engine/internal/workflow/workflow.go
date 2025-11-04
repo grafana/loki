@@ -19,9 +19,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
+type Options struct {
+	MaxRunningScanTasks  int
+	MaxRunningOtherTasks int
+}
+
 // Workflow represents a physical plan that has been partitioned into
 // parallelizable tasks.
 type Workflow struct {
+	opts          Options
 	logger        log.Logger
 	runner        Runner
 	graph         dag.Graph[*Task]
@@ -44,7 +50,7 @@ type Workflow struct {
 // cannot be partitioned into a Workflow.
 //
 // The provided Runner will be used for Workflow execution.
-func New(logger log.Logger, tenantID string, runner Runner, plan *physical.Plan) (*Workflow, error) {
+func New(opts Options, logger log.Logger, tenantID string, runner Runner, plan *physical.Plan) (*Workflow, error) {
 	graph, err := planWorkflow(tenantID, plan)
 	if err != nil {
 		return nil, err
@@ -151,8 +157,10 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 // Tasks from different admission lanes are dispatched concurrently.
 // The caller needs to wait on the returned error group.
 func (wf *Workflow) dispatchTasks(ctx context.Context, handler TaskEventHandler, tasks []*Task) *errgroup.Group {
-	// TODO(chaudum): Make the capacity of the admission lanes configurable
-	wf.admissionControl = newAdmissionControl(defaultAdmissionControlOpts)
+	wf.admissionControl = newAdmissionControl(
+		int64(wf.opts.MaxRunningScanTasks),
+		int64(wf.opts.MaxRunningOtherTasks),
+	)
 
 	g, _ := errgroup.WithContext(ctx)
 	for tokenBucket, tasks := range wf.admissionControl.groupByBucket(tasks) {
