@@ -469,6 +469,8 @@ func (s *MySQLStorage) GetStatistics(ctx context.Context, filter StatsFilter) (*
 	// Build WHERE clause for time and uses_recent_data filters
 	whereClause, whereArgs := buildStatsWhereClause(filter)
 
+	// #nosec G201 nosemgrep: string-formatted-query
+	// Safe: buildStatsWhereClause() uses parameterized queries for user inputs
 	queriesExecutedQuery := `
 		SELECT COUNT(sampled_at) as value
 		FROM sampled_queries
@@ -480,6 +482,8 @@ func (s *MySQLStorage) GetStatistics(ctx context.Context, filter StatsFilter) (*
 		return nil, fmt.Errorf("failed to get queries executed: %w", err)
 	}
 
+	// #nosec G201 nosemgrep: string-formatted-query
+	// Safe: buildStatsWhereClause() uses parameterized queries for user inputs
 	engineCoverageQuery := `
 		SELECT
 			CASE
@@ -494,6 +498,8 @@ func (s *MySQLStorage) GetStatistics(ctx context.Context, filter StatsFilter) (*
 	}
 
 	// Matching Queries (average of matching hashes for successful queries with new engine)
+	// #nosec G201 nosemgrep: string-formatted-query
+	// Safe: buildStatsWhereClause() uses parameterized queries for user inputs
 	matchingQueriesQuery := `
 		SELECT
 			COALESCE(AVG(cell_a_response_hash = cell_b_response_hash), 0) as value
@@ -510,6 +516,8 @@ func (s *MySQLStorage) GetStatistics(ctx context.Context, filter StatsFilter) (*
 
 	// Performance Difference (geometric mean of performance ratio for matching queries)
 	// Only calculate for queries that match and have valid data
+	// #nosec G201 nosemgrep: string-formatted-query
+	// Safe: buildStatsWhereClause() uses parameterized queries for user inputs
 	perfDifferenceQuery := `
 		SELECT
 			COALESCE(EXP(AVG(LN(cell_b_exec_time_ms / cell_a_exec_time_ms))) - 1, 0) as value
