@@ -53,6 +53,6 @@ Create the name of the service account to use
 {{- if .Values.ruler.serviceAccount.create -}}
     {{ .Values.ruler.serviceAccount.name | default printf "%s-ruler" (include "loki.serviceAccountName" .) }}
 {{- else -}}
-    {{ default (include "loki.serviceAccountName" .) }}
+    {{ include "loki.serviceAccountName" . }}
 {{- end -}}
 {{- end -}}
