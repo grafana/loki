@@ -147,13 +147,16 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 			continue
 		}
 
+		if streamsSection != nil {
+			return errorPipeline(ctx, fmt.Errorf("multiple streams sections found in data object %q", node.Location))
+		}
+
 		var err error
 		streamsSection, err = streams.Open(ctx, sec)
 		if err != nil {
 			return errorPipeline(ctx, fmt.Errorf("opening streams section %q: %w", sec.Type, err))
 		}
 		span.AddEvent("opened streams section")
-		break
 	}
 	if streamsSection == nil {
 		return errorPipeline(ctx, fmt.Errorf("streams section not found in data object %q", node.Location))
