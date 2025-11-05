@@ -18,11 +18,3 @@ func newTCPAddrFromString(s string) (net.Addr, error) {
 	}
 	return &tcpAddr{Addr: s}, nil
 }
-
-func mustNewTCPAddrFromString(s string) net.Addr {
-	addr, err := newTCPAddrFromString(s)
-	if err != nil {
-		panic(err)
-	}
-	return addr
-}

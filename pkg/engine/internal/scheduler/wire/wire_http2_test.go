@@ -1,4 +1,4 @@
-package wire
+package wire_test
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
@@ -34,7 +35,7 @@ func TestHTTP2BasicConnectivity(t *testing.T) {
 	t.Logf("Server listening on %s", addr)
 
 	// Accept connection in goroutine
-	var serverConn Conn
+	var serverConn wire.Conn
 	acceptErr := make(chan error, 1)
 	go func() {
 		var err error
@@ -43,7 +44,7 @@ func TestHTTP2BasicConnectivity(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, DefaultProtobufProtocol)
+	clientConn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtobufProtocol)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -58,7 +59,7 @@ func TestHTTP2BasicConnectivity(t *testing.T) {
 	t.Logf("Server local: %s, remote: %s", serverConn.LocalAddr(), serverConn.RemoteAddr())
 
 	// Send a frame from client to server
-	testFrame := AckFrame{ID: 42}
+	testFrame := wire.AckFrame{ID: 42}
 	err = clientConn.Send(ctx, testFrame)
 	require.NoError(t, err)
 
@@ -68,7 +69,7 @@ func TestHTTP2BasicConnectivity(t *testing.T) {
 	require.Equal(t, testFrame, receivedFrame)
 
 	// Send a frame back from server to client
-	responseFrame := AckFrame{ID: 43}
+	responseFrame := wire.AckFrame{ID: 43}
 	err = serverConn.Send(ctx, responseFrame)
 	require.NoError(t, err)
 
@@ -93,13 +94,13 @@ func TestHTTP2WithPeers(t *testing.T) {
 	// Track received messages
 	var (
 		serverReceivedMu sync.Mutex
-		serverReceived   []Message
+		serverReceived   []wire.Message
 		clientReceivedMu sync.Mutex
-		clientReceived   []Message
+		clientReceived   []wire.Message
 	)
 
 	// Server handler
-	serverHandler := func(ctx context.Context, peer *Peer, message Message) error {
+	serverHandler := func(ctx context.Context, peer *wire.Peer, message wire.Message) error {
 		serverReceivedMu.Lock()
 		serverReceived = append(serverReceived, message)
 		serverReceivedMu.Unlock()
@@ -107,14 +108,14 @@ func TestHTTP2WithPeers(t *testing.T) {
 		t.Logf("Server received: %T %+v", message, message)
 
 		// Echo back a WorkerReadyMessage
-		if _, ok := message.(TaskStatusMessage); ok {
-			return peer.SendMessageAsync(ctx, WorkerReadyMessage{})
+		if _, ok := message.(wire.TaskStatusMessage); ok {
+			return peer.SendMessageAsync(ctx, wire.WorkerReadyMessage{})
 		}
 		return nil
 	}
 
 	// Client handler
-	clientHandler := func(_ context.Context, _ *Peer, message Message) error {
+	clientHandler := func(_ context.Context, _ *wire.Peer, message wire.Message) error {
 		clientReceivedMu.Lock()
 		clientReceived = append(clientReceived, message)
 		clientReceivedMu.Unlock()
@@ -124,7 +125,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	}
 
 	// Accept server connection in goroutine
-	var serverConn Conn
+	var serverConn wire.Conn
 	acceptErr := make(chan error, 1)
 	go func() {
 		var err error
@@ -133,7 +134,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, DefaultProtobufProtocol)
+	clientConn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtobufProtocol)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -143,7 +144,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	defer serverConn.Close()
 
 	// Create server peer
-	serverPeer := &Peer{
+	serverPeer := &wire.Peer{
 		Logger:  log.NewNopLogger(),
 		Conn:    serverConn,
 		Handler: serverHandler,
@@ -151,7 +152,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	}
 
 	// Create client peer
-	clientPeer := &Peer{
+	clientPeer := &wire.Peer{
 		Logger:  log.NewNopLogger(),
 		Conn:    clientConn,
 		Handler: clientHandler,
@@ -179,7 +180,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Send message from client to server (synchronous)
-	err = clientPeer.SendMessage(ctx, TaskStatusMessage{})
+	err = clientPeer.SendMessage(ctx, wire.TaskStatusMessage{})
 	require.NoError(t, err)
 
 	// Wait for message to be processed
@@ -192,7 +193,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	// Verify server received the message
 	serverReceivedMu.Lock()
 	require.Len(t, serverReceived, 1)
-	require.IsType(t, TaskStatusMessage{}, serverReceived[0])
+	require.IsType(t, wire.TaskStatusMessage{}, serverReceived[0])
 	serverReceivedMu.Unlock()
 
 	// Wait for echo response
@@ -205,7 +206,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	// Verify client received the echo
 	clientReceivedMu.Lock()
 	require.Len(t, clientReceived, 1)
-	require.IsType(t, WorkerReadyMessage{}, clientReceived[0])
+	require.IsType(t, wire.WorkerReadyMessage{}, clientReceived[0])
 	clientReceivedMu.Unlock()
 
 	// Clean shutdown
@@ -230,11 +231,11 @@ func TestHTTP2MultipleClients(t *testing.T) {
 	// Track messages received by server from each client
 	var (
 		serverReceivedMu sync.Mutex
-		serverReceived   = make(map[string][]Message)
+		serverReceived   = make(map[string][]wire.Message)
 	)
 
 	// Server handler
-	serverHandler := func(ctx context.Context, peer *Peer, message Message) error {
+	serverHandler := func(ctx context.Context, peer *wire.Peer, message wire.Message) error {
 		remoteAddr := peer.RemoteAddr().String()
 		serverReceivedMu.Lock()
 		serverReceived[remoteAddr] = append(serverReceived[remoteAddr], message)
@@ -244,11 +245,11 @@ func TestHTTP2MultipleClients(t *testing.T) {
 		t.Logf("Server received from %s: %T (total: %d)", remoteAddr, message, count)
 
 		// Send acknowledgment back
-		return peer.SendMessageAsync(ctx, WorkerReadyMessage{})
+		return peer.SendMessageAsync(ctx, wire.WorkerReadyMessage{})
 	}
 
 	// Accept connections and create server peers
-	var serverPeers []*Peer
+	var serverPeers []*wire.Peer
 	var serverWg sync.WaitGroup
 
 	peerCtx, peerCancel := context.WithCancel(ctx)
@@ -265,7 +266,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 				return
 			}
 
-			peer := &Peer{
+			peer := &wire.Peer{
 				Logger:  log.NewNopLogger(),
 				Conn:    conn,
 				Handler: serverHandler,
@@ -274,7 +275,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 			serverPeers = append(serverPeers, peer)
 
 			serverWg.Add(1)
-			go func(p *Peer) {
+			go func(p *wire.Peer) {
 				defer serverWg.Done()
 				_ = p.Serve(peerCtx)
 			}(peer)
@@ -296,7 +297,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 			defer clientWg.Done()
 
 			// Connect
-			conn, err := NewHTTP2Dialer().Dial(ctx, addr, DefaultProtobufProtocol)
+			conn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtobufProtocol)
 			if err != nil {
 				t.Errorf("Client %d dial failed: %v", clientIdx, err)
 				return
@@ -304,7 +305,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 			defer conn.Close()
 
 			// Handler to count received messages
-			handler := func(_ context.Context, _ *Peer, message Message) error {
+			handler := func(_ context.Context, _ *wire.Peer, message wire.Message) error {
 				clientReceivedMu.Lock()
 				clientReceivedCounts[clientIdx]++
 				count := clientReceivedCounts[clientIdx]
@@ -314,7 +315,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 				return nil
 			}
 
-			peer := &Peer{
+			peer := &wire.Peer{
 				Logger:  log.NewNopLogger(),
 				Conn:    conn,
 				Handler: handler,
@@ -337,7 +338,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 
 			// Send messages
 			for j := 0; j < 3; j++ {
-				msg := TaskStatusMessage{}
+				msg := wire.TaskStatusMessage{}
 				err := peer.SendMessage(ctx, msg)
 				if err != nil {
 					t.Errorf("Client %d send failed: %v", clientIdx, err)
@@ -393,12 +394,12 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	addr := listener.Addr().String()
 
 	// Handler that returns an error
-	errorHandler := func(_ context.Context, _ *Peer, _ Message) error {
+	errorHandler := func(_ context.Context, _ *wire.Peer, _ wire.Message) error {
 		return errors.New("simulated error")
 	}
 
 	// Accept connection
-	var serverConn Conn
+	var serverConn wire.Conn
 	acceptErr := make(chan error, 1)
 	go func() {
 		var err error
@@ -407,7 +408,7 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, DefaultProtobufProtocol)
+	clientConn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtobufProtocol)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -417,17 +418,17 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	defer serverConn.Close()
 
 	// Create peers
-	serverPeer := &Peer{
+	serverPeer := &wire.Peer{
 		Logger:  log.NewNopLogger(),
 		Conn:    serverConn,
 		Handler: errorHandler,
 		Buffer:  10,
 	}
 
-	clientPeer := &Peer{
+	clientPeer := &wire.Peer{
 		Logger:  log.NewNopLogger(),
 		Conn:    clientConn,
-		Handler: func(_ context.Context, _ *Peer, _ Message) error { return nil },
+		Handler: func(_ context.Context, _ *wire.Peer, _ wire.Message) error { return nil },
 		Buffer:  10,
 	}
 
@@ -452,7 +453,7 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Send message that will trigger error
-	err = clientPeer.SendMessage(ctx, WorkerReadyMessage{})
+	err = clientPeer.SendMessage(ctx, wire.WorkerReadyMessage{})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "simulated error")
 
@@ -473,7 +474,7 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	addr := listener.Addr().String()
 
 	// Accept connection
-	var serverConn Conn
+	var serverConn wire.Conn
 	acceptErr := make(chan error, 1)
 	go func() {
 		var err error
@@ -482,7 +483,7 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, DefaultProtobufProtocol)
+	clientConn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtobufProtocol)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -509,13 +510,13 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 
 	testCases := []struct {
 		name    string
-		message Message
+		message wire.Message
 	}{
-		{"WorkerReadyMessage", WorkerReadyMessage{}},
-		{"TaskCancelMessage", TaskCancelMessage{}},
-		{"TaskFlagMessage", TaskFlagMessage{Interruptible: true}},
-		{"TaskStatusMessage", TaskStatusMessage{}},
-		{"TaskAssignMessage", TaskAssignMessage{
+		{"WorkerReadyMessage", wire.WorkerReadyMessage{}},
+		{"TaskCancelMessage", wire.TaskCancelMessage{}},
+		{"TaskFlagMessage", wire.TaskFlagMessage{Interruptible: true}},
+		{"TaskStatusMessage", wire.TaskStatusMessage{}},
+		{"TaskAssignMessage", wire.TaskAssignMessage{
 			Task: &workflow.Task{
 				ULID:     ulid.Make(),
 				TenantID: "fake",
@@ -533,17 +534,13 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 			},
 			StreamStates: nil,
 		}},
-		{"StreamBindMessage", StreamBindMessage{
-			StreamID: ulid.Make(),
-			Receiver: mustNewTCPAddrFromString("127.0.0.1:1234"),
-		}},
-		{"StreamStatusMessage", StreamStatusMessage{}},
+		{"StreamStatusMessage", wire.StreamStatusMessage{}},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Send message frame
-			frame := MessageFrame{ID: 123, Message: tc.message}
+			frame := wire.MessageFrame{ID: 123, Message: tc.message}
 			err := clientConn.Send(ctx, frame)
 			require.NoError(t, err)
 
@@ -551,7 +548,7 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 			received, err := serverConn.Recv(ctx)
 			require.NoError(t, err)
 
-			receivedFrame, ok := received.(MessageFrame)
+			receivedFrame, ok := received.(wire.MessageFrame)
 			require.True(t, ok, "expected MessageFrame")
 			require.Equal(t, uint64(123), receivedFrame.ID)
 			require.IsType(t, tc.message, receivedFrame.Message)
@@ -559,16 +556,16 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	}
 }
 
-func prepareHTTP2Listener(t *testing.T) (*HTTP2Listener, func()) {
+func prepareHTTP2Listener(t *testing.T) (*wire.HTTP2Listener, func()) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
-	listener := NewHTTP2Listener(
+	listener := wire.NewHTTP2Listener(
 		l.Addr(),
-		DefaultProtobufProtocol,
-		WithHTTP2ListenerConnAcceptTimeout(1*time.Second),
-		WithHTTP2ListenerMaxPendingConns(1),
-		WithHTTP2ListenerLogger(log.NewNopLogger()),
+		wire.DefaultProtobufProtocol,
+		wire.WithHTTP2ListenerConnAcceptTimeout(1*time.Second),
+		wire.WithHTTP2ListenerMaxPendingConns(1),
+		wire.WithHTTP2ListenerLogger(log.NewNopLogger()),
 	)
 
 	mux := http.NewServeMux()
