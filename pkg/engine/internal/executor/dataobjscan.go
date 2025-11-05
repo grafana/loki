@@ -27,7 +27,6 @@ type dataobjScanOptions struct {
 	StreamIDs      []int64                     // Stream IDs to match from logs sections.
 	Predicates     []logs.Predicate            // Predicate to apply to the logs.
 	Projections    []physical.ColumnExpression // Columns to include. An empty slice means all columns.
-	TimeRange      physical.TimeRange          // Time range of the logs in data object
 
 	BatchSize int64 // The buffer size for reading rows, derived from the engine batch size.
 }
