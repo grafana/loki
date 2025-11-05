@@ -468,6 +468,7 @@ func (a *parseExprs) Unpack(exprs []Expression) error {
 func (a *parseExprs) Pack(dst []Expression) []Expression {
 	if cap(dst) >= 4 {
 		dst = dst[:4]
+		clear(dst[4:])
 	} else {
 		dst = make([]Expression, 4)
 	}
