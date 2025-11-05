@@ -55,7 +55,6 @@ const (
 	BinaryOpAnd // Logical AND operation (&&).
 	BinaryOpOr  // Logical OR operation (||).
 	BinaryOpXor // Logical XOR operation (^).
-	BinaryOpNot // Logical NOT operation (!).
 
 	BinaryOpAdd // Addition operation (+).
 	BinaryOpSub // Subtraction operation (-).
@@ -93,8 +92,6 @@ func (t BinaryOp) String() string {
 		return "OR"
 	case BinaryOpXor:
 		return "XOR"
-	case BinaryOpNot:
-		return "NOT"
 	case BinaryOpAdd:
 		return "ADD"
 	case BinaryOpSub:

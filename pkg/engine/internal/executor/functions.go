@@ -76,6 +76,12 @@ func init() {
 	binaryFunctions.register(types.BinaryOpLte, arrow.PrimitiveTypes.Int64, &genericBoolFunction[*array.Int64, int64]{eval: func(a, b int64) (bool, error) { return a <= b, nil }})
 	binaryFunctions.register(types.BinaryOpLte, arrow.FixedWidthTypes.Timestamp_ns, &genericBoolFunction[*array.Timestamp, arrow.Timestamp]{eval: func(a, b arrow.Timestamp) (bool, error) { return a <= b, nil }})
 	binaryFunctions.register(types.BinaryOpLte, arrow.PrimitiveTypes.Float64, &genericBoolFunction[*array.Float64, float64]{eval: func(a, b float64) (bool, error) { return a <= b, nil }})
+	// Functions for [types.BinaryOpAnd]
+	binaryFunctions.register(types.BinaryOpAnd, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return a && b, nil }})
+	// Functions for [types.BinaryOpOr]
+	binaryFunctions.register(types.BinaryOpOr, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return a || b, nil }})
+	// Functions for [types.BinaryOpXor]
+	binaryFunctions.register(types.BinaryOpXor, arrow.FixedWidthTypes.Boolean, &genericBoolFunction[*array.Boolean, bool]{eval: func(a, b bool) (bool, error) { return a != b, nil }})
 	// Functions for [types.BinaryOpMatchSubstr]
 	binaryFunctions.register(types.BinaryOpMatchSubstr, arrow.BinaryTypes.String, &genericBoolFunction[*array.String, string]{eval: func(a, b string) (bool, error) { return strings.Contains(a, b), nil }})
 	// Functions for [types.BinaryOpNotMatchSubstr]
@@ -104,6 +110,25 @@ func init() {
 		}
 		return !reg.Match([]byte(a)), nil
 	}})
+
+	// Functions for [types.UnaryOpNot]
+	unaryFunctions.register(types.UnaryOpNot, arrow.FixedWidthTypes.Boolean, UnaryFunc(func(input arrow.Array) (arrow.Array, error) {
+		arr, ok := input.(*array.Boolean)
+		if !ok {
+			return nil, fmt.Errorf("invalid array type: expected *array.Boolean, got %T", input)
+		}
+
+		builder := array.NewBooleanBuilder(memory.DefaultAllocator)
+		for i := range arr.Len() {
+			if arr.IsNull(i) {
+				builder.AppendNull()
+				continue
+			}
+			builder.Append(!arr.Value(i))
+		}
+
+		return builder.NewArray(), nil
+	}))
 
 	// Cast functions
 	unaryFunctions.register(types.UnaryOpCastFloat, arrow.BinaryTypes.String, castFn(types.UnaryOpCastFloat))

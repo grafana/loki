@@ -5135,6 +5135,14 @@ engine_v2:
   # CLI flag: -querier.engine-v2.worker-threads
   [worker_threads: <int> | default = 0]
 
+  # Experimental: Address holding DNS SRV records of schedulers to connect to.
+  # CLI flag: -querier.engine-v2.scheduler-lookup-address
+  [scheduler_lookup_address: <string> | default = ""]
+
+  # Experimental: Interval at which to lookup new schedulers by DNS SRV records.
+  # CLI flag: -querier.engine-v2.scheduler-lookup-interval
+  [scheduler_lookup_interval: <duration> | default = 10s]
+
 # The maximum number of queries that can be simultaneously processed by the
 # querier.
 # CLI flag: -querier.max-concurrent
