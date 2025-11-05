@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
@@ -44,7 +43,7 @@ func TestHTTP2BasicConnectivity(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, NewProtobufProtocolFactory(memory.DefaultAllocator, DefaultMaxFrameSizeBytes))
+	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, DefaultProtobufProtocol)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -134,7 +133,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, NewProtobufProtocolFactory(memory.DefaultAllocator, DefaultMaxFrameSizeBytes))
+	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, DefaultProtobufProtocol)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -297,7 +296,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 			defer clientWg.Done()
 
 			// Connect
-			conn, err := NewHTTP2Dialer().Dial(ctx, addr, NewProtobufProtocolFactory(memory.DefaultAllocator, DefaultMaxFrameSizeBytes))
+			conn, err := NewHTTP2Dialer().Dial(ctx, addr, DefaultProtobufProtocol)
 			if err != nil {
 				t.Errorf("Client %d dial failed: %v", clientIdx, err)
 				return
@@ -408,7 +407,7 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, NewProtobufProtocolFactory(memory.DefaultAllocator, DefaultMaxFrameSizeBytes))
+	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, DefaultProtobufProtocol)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -483,7 +482,7 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, NewProtobufProtocolFactory(memory.DefaultAllocator, DefaultMaxFrameSizeBytes))
+	clientConn, err := NewHTTP2Dialer().Dial(ctx, addr, DefaultProtobufProtocol)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -566,7 +565,7 @@ func prepareHTTP2Listener(t *testing.T) (*HTTP2Listener, func()) {
 
 	listener := NewHTTP2Listener(
 		l.Addr(),
-		NewProtobufProtocolFactory(memory.DefaultAllocator, DefaultMaxFrameSizeBytes),
+		DefaultProtobufProtocol,
 		WithHTTP2ListenerConnAcceptTimeout(1*time.Second),
 		WithHTTP2ListenerMaxPendingConns(1),
 		WithHTTP2ListenerLogger(log.NewNopLogger()),
