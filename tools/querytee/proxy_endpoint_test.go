@@ -527,12 +527,16 @@ func (m *mockGoldfishStorage) GetSampledQueries(_ context.Context, page, pageSiz
 	}, nil
 }
 
+func (m *mockGoldfishStorage) GetStatistics(_ context.Context, _ goldfish.StatsFilter) (*goldfish.Statistics, error) {
+	return nil, nil
+}
+
 func (m *mockGoldfishStorage) Close() error {
 	return nil
 }
 
 func (m *mockGoldfishStorage) GetQueryByCorrelationID(_ context.Context, _ string) (*goldfish.QuerySample, error) {
-  return nil, nil
+	return nil, nil
 }
 
 func Test_extractTenant(t *testing.T) {

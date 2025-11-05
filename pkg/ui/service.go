@@ -26,9 +26,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/storage/bucket"
 )
 
-// This allows to rate limit the number of updates when the cluster is frequently changing (e.g. during rollout).
-const stateUpdateMinInterval = 5 * time.Second
-
 type Service struct {
 	services.Service
 	ring          *ring.Ring
