@@ -7,8 +7,11 @@ package libc // import "modernc.org/libc"
 import (
 	crand "crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	mbits "math/bits"
 	"os"
 	"os/exec"
 	gosignal "os/signal"
@@ -39,6 +42,7 @@ import (
 	"modernc.org/libc/unistd"
 	"modernc.org/libc/uuid/uuid"
 	"modernc.org/libc/wctype"
+	"modernc.org/memory"
 )
 
 const (
@@ -49,15 +53,13 @@ const (
 // 	in6_addr_any in.In6_addr
 // )
 
+type Tsize_t = types.Size_t
+
 type (
 	syscallErrno = unix.Errno
 	long         = types.User_long_t
 	ulong        = types.User_ulong_t
 )
-
-type pthreadAttr struct {
-	detachState int32
-}
 
 // // Keep these outside of the var block otherwise go generate will miss them.
 var X__stderrp = Xstdout
@@ -94,6 +96,18 @@ func (f file) setErr() {
 	(*stdio.FILE)(unsafe.Pointer(f)).F_flags |= 1
 }
 
+func (f file) clearErr() {
+	(*stdio.FILE)(unsafe.Pointer(f)).F_flags &^= 3
+}
+
+func (f file) eof() bool {
+	return (*stdio.FILE)(unsafe.Pointer(f)).F_flags&2 != 0
+}
+
+func (f file) setEOF() {
+	(*stdio.FILE)(unsafe.Pointer(f)).F_flags |= 2
+}
+
 func (f file) close(t *TLS) int32 {
 	r := Xclose(t, f.fd())
 	Xfree(t, uintptr(f))
@@ -123,6 +137,19 @@ func fwrite(fd int32, b []byte) (int, error) {
 		dmesg("%v: fd %v: %s", origin(1), fd, hex.Dump(b))
 	}
 	return unix.Write(int(fd), b)
+}
+
+func Xclearerr(tls *TLS, f uintptr) {
+	file(f).clearErr()
+}
+
+func Xfeof(t *TLS, f uintptr) (r int32) {
+	if __ccgo_strace {
+		trc("t=%v f=%v, (%v:)", t, f, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	r = BoolInt32(file(f).eof())
+	return r
 }
 
 func X__inline_isnand(t *TLS, x float64) int32 {
@@ -355,6 +382,9 @@ func Xlocaltime(_ *TLS, timep uintptr) uintptr {
 	localtime.Ftm_wday = int32(t.Weekday())
 	localtime.Ftm_yday = int32(t.YearDay())
 	localtime.Ftm_isdst = Bool32(isTimeDST(t))
+	_, off := t.Zone()
+	localtime.Ftm_gmtoff = int64(off)
+	localtime.Ftm_zone = 0
 	return uintptr(unsafe.Pointer(&localtime))
 }
 
@@ -372,6 +402,9 @@ func Xlocaltime_r(_ *TLS, timep, result uintptr) uintptr {
 	(*time.Tm)(unsafe.Pointer(result)).Ftm_wday = int32(t.Weekday())
 	(*time.Tm)(unsafe.Pointer(result)).Ftm_yday = int32(t.YearDay())
 	(*time.Tm)(unsafe.Pointer(result)).Ftm_isdst = Bool32(isTimeDST(t))
+	_, off := t.Zone()
+	(*time.Tm)(unsafe.Pointer(result)).Ftm_gmtoff = int64(off)
+	(*time.Tm)(unsafe.Pointer(result)).Ftm_zone = 0
 	return result
 }
 
@@ -1539,6 +1572,9 @@ func Xfread(t *TLS, ptr uintptr, size, nmemb types.Size_t, stream uintptr) types
 		n, err = unix.Read(int(fd), nil)
 	default:
 		n, err = unix.Read(int(fd), (*RawMem)(unsafe.Pointer(ptr))[:count:count])
+		if n == 0 {
+			file(stream).setEOF()
+		}
 		if dmesgs && err == nil {
 			dmesg("%v: fd %v, n %#x\n%s", origin(1), fd, n, hex.Dump((*RawMem)(unsafe.Pointer(ptr))[:n:n]))
 		}
@@ -1670,12 +1706,11 @@ func Xfputs(t *TLS, s, stream uintptr) int32 {
 	if __ccgo_strace {
 		trc("t=%v stream=%v, (%v:)", t, stream, origin(2))
 	}
-	panic(todo(""))
-	// if _, _, err := unix.Syscall(unix.SYS_WRITE, uintptr(file(stream).fd()), s, uintptr(Xstrlen(t, s))); err != 0 {
-	// 	return -1
-	// }
+	if _, _, err := unix.Syscall(unix.SYS_WRITE, uintptr(file(stream).fd()), s, uintptr(Xstrlen(t, s))); err != 0 {
+		return -1
+	}
 
-	// return 0
+	return 0
 }
 
 var getservbynameStaticResult netdb.Servent
@@ -2174,11 +2209,13 @@ func Xpthread_attr_getdetachstate(tls *TLS, a uintptr, state uintptr) int32 {
 	panic(todo(""))
 }
 
-func Xpthread_attr_setdetachstate(tls *TLS, a uintptr, state int32) int32 {
-	if __ccgo_strace {
-		trc("tls=%v a=%v state=%v, (%v:)", tls, a, state, origin(2))
+func Xpthread_attr_setdetachstate(tls *TLS, a uintptr, state int32) (r int32) {
+	if uint32(state) > 1 {
+		return errno.EINVAL
 	}
-	panic(todo(""))
+
+	(*pthreadAttr)(unsafe.Pointer(a)).detachState = state
+	return 0
 }
 
 func Xpthread_mutexattr_destroy(tls *TLS, a uintptr) int32 {
@@ -2447,11 +2484,20 @@ func Xnanosleep(t *TLS, req, rem uintptr) int32 {
 // }
 
 // size_t malloc_size(const void *ptr);
-func Xmalloc_size(t *TLS, ptr uintptr) types.Size_t {
+func Xmalloc_size(t *TLS, p uintptr) (r types.Size_t) {
 	if __ccgo_strace {
-		trc("t=%v ptr=%v, (%v:)", t, ptr, origin(2))
+		trc("t=%v p=%v, (%v:)", t, p, origin(2))
+		defer func() { trc("-> %v", r) }()
 	}
-	panic(todo(""))
+	if p == 0 {
+		return 0
+	}
+
+	allocMu.Lock()
+
+	defer allocMu.Unlock()
+
+	return types.Size_t(memory.UintptrUsableSize(p))
 }
 
 // int open(const char *pathname, int flags, ...);
@@ -2517,4 +2563,227 @@ func X__builtin_lround(tls *TLS, x float64) (r long) {
 
 func Xlround(tls *TLS, x float64) (r long) {
 	return long(Xround(tls, x))
+}
+
+// https://g.co/gemini/share/2c37d5b57994
+
+// Constants mirroring C's ftw type flags
+const (
+	FTW_F   = 0 // Regular file
+	FTW_D   = 1 // Directory (visited pre-order)
+	FTW_DNR = 2 // Directory that cannot be read
+	FTW_NS  = 4 // Stat failed (permissions, broken link, etc.)
+	FTW_SL  = 4 // Symbolic link (lstat was used)
+	// Note: C's ftw might have other flags like FTW_DP (post-order dir) or FTW_SLN
+	// which are not directly supported by filepath.WalkDir's simple pre-order traversal.
+	// This emulation focuses on the most common flags associated with stat/lstat results.
+)
+
+// ftwStopError is used internally to signal that the walk should stop
+// because the user callback returned a non-zero value.
+type ftwStopError struct {
+	stopValue int
+}
+
+func (e *ftwStopError) Error() string {
+	return fmt.Sprintf("ftw walk stopped by callback with return value %d", e.stopValue)
+}
+
+// goFtwFunc is the callback function type, mirroring the C ftw callback.
+// It receives the path, file info (if available), and a type flag.
+// Returning a non-zero value stops the walk and becomes the return value of Ftw.
+// Returning 0 continues the walk.
+type goFtwFunc func(path string, info os.FileInfo, typeflag int) int
+
+// Ftw emulates the C standard library function ftw(3).
+// It walks the directory tree starting at 'dirpath' and calls the 'callback'
+// function for each entry encountered.
+//
+// Parameters:
+//   - dirpath: The root directory path for the traversal.
+//   - callback: The goFtwFunc to call for each file system entry.
+//   - nopenfd: This parameter is part of the C ftw signature but is IGNORED
+//     in this Go implementation. Go's filepath.WalkDir manages concurrency
+//     and file descriptors internally.
+//
+// Returns:
+//   - 0 on successful completion of the walk.
+//   - The non-zero value returned by the callback, if the callback terminated the walk.
+//   - -1 if an error occurred during the walk that wasn't handled by calling
+//     the callback with FTW_DNR or FTW_NS (e.g., error accessing the initial dirpath).
+func ftw(dirpath string, callback goFtwFunc, nopenfd int) int {
+	// nopenfd is ignored in this Go implementation.
+
+	walkErr := filepath.WalkDir(dirpath, func(path string, d fs.DirEntry, err error) error {
+		var info os.FileInfo
+		var typeflag int
+
+		// --- Handle errors passed by WalkDir ---
+		if err != nil {
+			// Check if the error is related to accessing a directory
+			if errors.Is(err, fs.ErrPermission) || errors.Is(err, unix.EACCES) { // Added syscall.EACCES check
+				// Try to determine if it's a directory we can't read
+				// We might not have 'd' if the error occurred trying to list 'path' contents
+				// Let's try a direct Lstat on the path itself if d is nil
+				lstatInfo, lstatErr := os.Lstat(path)
+				if lstatErr == nil && lstatInfo.IsDir() {
+					typeflag = FTW_DNR // Directory, but WalkDir errored (likely reading it)
+					info = lstatInfo   // Provide the info we could get
+				} else {
+					// Can't confirm it's a directory, or Lstat itself failed
+					typeflag = FTW_NS // Treat as general stat failure
+					// info remains nil
+				}
+			} else {
+				// Other errors (e.g., broken symlink during traversal, I/O error)
+				typeflag = FTW_NS
+				// Attempt to get Lstat info even if WalkDir had an error, maybe it's available
+				lstatInfo, _ := os.Lstat(path) // Ignore error here, if it fails info stays nil
+				info = lstatInfo
+			}
+			// Even with errors, call the callback with the path and appropriate flag
+			stopVal := callback(path, info, typeflag)
+			if stopVal != 0 {
+				return &ftwStopError{stopValue: stopVal}
+			}
+			// If the error was on a directory, returning the error might stop WalkDir
+			// from descending. If it was fs.ErrPermission on a dir, WalkDir might
+			// pass filepath.SkipDir implicitly or continue depending on implementation.
+			// Let's return nil here to *try* to continue the walk for other siblings
+			// if the callback didn't stop it. The callback *was* notified.
+			// If the error prevents further progress WalkDir will stop anyway.
+			return nil // Allow walk to potentially continue elsewhere
+		}
+
+		// --- No error from WalkDir, process the DirEntry ---
+		info, err = d.Info() // Get FileInfo (like C's stat/lstat result)
+		if err != nil {
+			// Error getting info for an entry WalkDir *could* list (rare, maybe permissions changed?)
+			typeflag = FTW_NS
+			// info remains nil
+		} else {
+			// Determine type flag based on file mode
+			mode := info.Mode()
+			if mode&fs.ModeSymlink != 0 {
+				typeflag = FTW_SL
+			} else if mode.IsDir() {
+				typeflag = FTW_D // Visited pre-order
+			} else if mode.IsRegular() {
+				typeflag = FTW_F
+			} else {
+				// Other types (device, socket, pipe, etc.) - C ftw usually lumps these under FTW_F
+				// or might have FTW_NS if stat fails. Let's treat non-dir, non-link, non-regular
+				// as FTW_F for simplicity, aligning with common C practice, or FTW_NS if stat failed above.
+				// Since we have info here, we know stat didn't fail.
+				// Let's be more specific, maybe treat others as FTW_NS? Or stick to FTW_F?
+				// C ftw man page isn't super specific about all types. FTW_F seems reasonable.
+				typeflag = FTW_F // Treat other valid types as 'files' for simplicity
+			}
+		}
+
+		// --- Call the user callback ---
+		stopVal := callback(path, info, typeflag)
+		if stopVal != 0 {
+			// User wants to stop the walk
+			return &ftwStopError{stopValue: stopVal}
+		}
+
+		return nil // Continue walk
+	})
+
+	// --- Handle WalkDir's final return value ---
+	if walkErr == nil {
+		return 0 // Success
+	}
+
+	// Check if the error was our custom stop signal
+	var stopErr *ftwStopError
+	if errors.As(walkErr, &stopErr) {
+		return stopErr.stopValue // Return the value from the callback
+	}
+
+	// Otherwise, it was an unhandled error during the walk
+	// (e.g., initial dirpath access error, or other error not mapped to FTW_NS/DNR)
+	return -1 // General error return
+}
+
+func Xftw(tls *TLS, path uintptr, fn uintptr, fd_limit int32) (r int32) {
+	statp := tls.Alloc(int(unsafe.Sizeof(unix.Stat_t{})))
+
+	defer tls.Free(int(unsafe.Sizeof(unix.Stat_t{})))
+
+	return int32(ftw(
+		GoString(path),
+		func(path string, info os.FileInfo, typeflag int) int {
+			cs, _ := CString(path)
+
+			defer Xfree(tls, cs)
+
+			Xstat(tls, cs, statp)
+			return int((*(*func(*TLS, uintptr, uintptr, int32) int32)(unsafe.Pointer(&struct{ uintptr }{fn})))(tls, cs, statp, int32(typeflag)))
+		},
+		int(fd_limit),
+	))
+}
+
+func Xexecve(tls *TLS, path uintptr, argv uintptr, envp uintptr) (r int32) {
+	goPath := GoString(path)
+	var goArgv, goEnvp []string
+	for p := *(*uintptr)(unsafe.Pointer(argv)); p != 0; p = *(*uintptr)(unsafe.Pointer(argv)) {
+		goArgv = append(goArgv, GoString(p))
+		argv += unsafe.Sizeof(uintptr(0))
+	}
+	for p := *(*uintptr)(unsafe.Pointer(envp)); p != 0; p = *(*uintptr)(unsafe.Pointer(envp)) {
+		goEnvp = append(goEnvp, GoString(p))
+		envp += unsafe.Sizeof(uintptr(0))
+	}
+	if err := unix.Exec(goPath, goArgv, goEnvp); err != nil {
+		tls.setErrno(err)
+		return -1
+	}
+	panic("unreachable")
+}
+
+func Xsetuid(tls *TLS, uid uint32) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v uid=%v, (%v:)", tls, uid, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	if err := unix.Setuid(int(uid)); err != nil {
+		tls.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
+func Xsetgid(tls *TLS, gid uint32) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v gid=%v, (%v:)", tls, gid, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	if err := unix.Setgid(int(gid)); err != nil {
+		tls.setErrno(err)
+		return -1
+	}
+
+	return 0
+}
+
+func Xdup(tls *TLS, fd int32) (r int32) {
+	if __ccgo_strace {
+		trc("tls=%v fd=%v, (%v:)", tls, fd, origin(2))
+		defer func() { trc("-> %v", r) }()
+	}
+	nfd, err := unix.Dup(int(fd))
+	if err != nil {
+		tls.setErrno(err)
+		return -1
+	}
+
+	return int32(nfd)
+}
+
+func X__builtin_ctz(t *TLS, n uint32) int32 {
+	return int32(mbits.TrailingZeros32(n))
 }

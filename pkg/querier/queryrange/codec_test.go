@@ -17,13 +17,15 @@ import (
 	"github.com/axiomhq/hyperloglog"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/user"
-	"github.com/opentracing/opentracing-go/mocktracer"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
@@ -569,19 +571,29 @@ func TestLokiRequestSpanLogging(t *testing.T) {
 		EndTs:   end,
 	}
 
-	span := mocktracer.MockSpan{}
-	req.LogToSpan(&span)
+	exporter := tracetest.NewInMemoryExporter()
+	tp := tracesdk.NewTracerProvider(
+		tracesdk.WithSpanProcessor(tracesdk.NewSimpleSpanProcessor(exporter)),
+	)
+	_, sp := tp.Tracer("test").Start(context.Background(), "request")
+	req.LogToSpan(sp)
+	sp.End()
 
-	for _, l := range span.Logs() {
-		for _, field := range l.Fields {
-			if field.Key == "start" {
-				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
-			}
-			if field.Key == "end" {
-				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
-			}
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1)
+	span := spans[0]
+	found := 0
+	for _, l := range span.Attributes {
+		if l.Key == "start" {
+			require.Equal(t, attribute.StringValue(timestamp.Time(now.UnixMilli()).String()), l.Value)
+			found++
+		}
+		if l.Key == "end" {
+			require.Equal(t, attribute.StringValue(timestamp.Time(end.UnixMilli()).String()), l.Value)
+			found++
 		}
 	}
+	require.Equal(t, 2, found, "expected to find start and end attributes in span")
 }
 
 func TestLokiInstantRequestSpanLogging(t *testing.T) {
@@ -590,16 +602,25 @@ func TestLokiInstantRequestSpanLogging(t *testing.T) {
 		TimeTs: now,
 	}
 
-	span := mocktracer.MockSpan{}
-	req.LogToSpan(&span)
+	exporter := tracetest.NewInMemoryExporter()
+	tp := tracesdk.NewTracerProvider(
+		tracesdk.WithSpanProcessor(tracesdk.NewSimpleSpanProcessor(exporter)),
+	)
+	_, sp := tp.Tracer("test").Start(context.Background(), "request")
+	req.LogToSpan(sp)
+	sp.End()
 
-	for _, l := range span.Logs() {
-		for _, field := range l.Fields {
-			if field.Key == "ts" {
-				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
-			}
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1)
+	span := spans[0]
+	found := 0
+	for _, l := range span.Attributes {
+		if l.Key == "ts" {
+			require.Equal(t, attribute.StringValue(timestamp.Time(now.UnixMilli()).String()), l.Value)
+			found++
 		}
 	}
+	require.Equal(t, 1, found, "expected to find ts attribute in span")
 }
 
 func TestLokiSeriesRequestSpanLogging(t *testing.T) {
@@ -610,19 +631,29 @@ func TestLokiSeriesRequestSpanLogging(t *testing.T) {
 		EndTs:   end,
 	}
 
-	span := mocktracer.MockSpan{}
-	req.LogToSpan(&span)
+	exporter := tracetest.NewInMemoryExporter()
+	tp := tracesdk.NewTracerProvider(
+		tracesdk.WithSpanProcessor(tracesdk.NewSimpleSpanProcessor(exporter)),
+	)
+	_, sp := tp.Tracer("test").Start(context.Background(), "request")
+	req.LogToSpan(sp)
+	sp.End()
 
-	for _, l := range span.Logs() {
-		for _, field := range l.Fields {
-			if field.Key == "start" {
-				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
-			}
-			if field.Key == "end" {
-				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
-			}
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1)
+	span := spans[0]
+	found := 0
+	for _, l := range span.Attributes {
+		if l.Key == "start" {
+			require.Equal(t, attribute.StringValue(timestamp.Time(now.UnixMilli()).String()), l.Value)
+			found++
+		}
+		if l.Key == "end" {
+			require.Equal(t, attribute.StringValue(timestamp.Time(end.UnixMilli()).String()), l.Value)
+			found++
 		}
 	}
+	require.Equal(t, 2, found, "expected to find start and end attributes in span")
 }
 
 func TestLabelRequestSpanLogging(t *testing.T) {
@@ -635,19 +666,29 @@ func TestLabelRequestSpanLogging(t *testing.T) {
 		},
 	}
 
-	span := mocktracer.MockSpan{}
-	req.LogToSpan(&span)
+	exporter := tracetest.NewInMemoryExporter()
+	tp := tracesdk.NewTracerProvider(
+		tracesdk.WithSpanProcessor(tracesdk.NewSimpleSpanProcessor(exporter)),
+	)
+	_, sp := tp.Tracer("test").Start(context.Background(), "request")
+	req.LogToSpan(sp)
+	sp.End()
 
-	for _, l := range span.Logs() {
-		for _, field := range l.Fields {
-			if field.Key == "start" {
-				require.Equal(t, timestamp.Time(now.UnixMilli()).String(), field.ValueString)
-			}
-			if field.Key == "end" {
-				require.Equal(t, timestamp.Time(end.UnixMilli()).String(), field.ValueString)
-			}
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1)
+	span := spans[0]
+	found := 0
+	for _, l := range span.Attributes {
+		if l.Key == "start" {
+			require.Equal(t, attribute.StringValue(timestamp.Time(now.UnixMilli()).String()), l.Value)
+			found++
+		}
+		if l.Key == "end" {
+			require.Equal(t, attribute.StringValue(timestamp.Time(end.UnixMilli()).String()), l.Value)
+			found++
 		}
 	}
+	require.Equal(t, 2, found, "expected to find start and end attributes in span")
 }
 
 func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
@@ -1371,6 +1412,15 @@ func Test_codec_MergeResponse(t *testing.T) {
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
 						{
+							Labels: `{foo="bar", level="debug"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: time.Unix(0, 16), Line: "16"},
+								{Timestamp: time.Unix(0, 15), Line: "15"},
+								{Timestamp: time.Unix(0, 6), Line: "6"},
+								{Timestamp: time.Unix(0, 5), Line: "5"},
+							},
+						},
+						{
 							Labels: `{foo="bar", level="error"}`,
 							Entries: []logproto.Entry{
 								{Timestamp: time.Unix(0, 10), Line: "10"},
@@ -1378,15 +1428,6 @@ func Test_codec_MergeResponse(t *testing.T) {
 								{Timestamp: time.Unix(0, 9), Line: "9"},
 								{Timestamp: time.Unix(0, 2), Line: "2"},
 								{Timestamp: time.Unix(0, 1), Line: "1"},
-							},
-						},
-						{
-							Labels: `{foo="bar", level="debug"}`,
-							Entries: []logproto.Entry{
-								{Timestamp: time.Unix(0, 16), Line: "16"},
-								{Timestamp: time.Unix(0, 15), Line: "15"},
-								{Timestamp: time.Unix(0, 6), Line: "6"},
-								{Timestamp: time.Unix(0, 5), Line: "5"},
 							},
 						},
 					},
@@ -1459,19 +1500,19 @@ func Test_codec_MergeResponse(t *testing.T) {
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
 						{
-							Labels: `{foo="bar", level="error"}`,
-							Entries: []logproto.Entry{
-								{Timestamp: time.Unix(0, 10), Line: "10"},
-								{Timestamp: time.Unix(0, 9), Line: "9"},
-								{Timestamp: time.Unix(0, 9), Line: "9"},
-							},
-						},
-						{
 							Labels: `{foo="bar", level="debug"}`,
 							Entries: []logproto.Entry{
 								{Timestamp: time.Unix(0, 16), Line: "16"},
 								{Timestamp: time.Unix(0, 15), Line: "15"},
 								{Timestamp: time.Unix(0, 6), Line: "6"},
+							},
+						},
+						{
+							Labels: `{foo="bar", level="error"}`,
+							Entries: []logproto.Entry{
+								{Timestamp: time.Unix(0, 10), Line: "10"},
+								{Timestamp: time.Unix(0, 9), Line: "9"},
+								{Timestamp: time.Unix(0, 9), Line: "9"},
 							},
 						},
 					},
@@ -1898,12 +1939,14 @@ var (
 					"prePredicateDecompressedRows": 0,
 					"prePredicateDecompressedBytes": 0,
 					"prePredicateDecompressedStructuredMetadataBytes": 0,
+					"totalPageDownloadTime": 0,
 					"totalRowsAvailable": 0
 				},
 				"totalChunksRef": 0,
 				"totalChunksDownloaded": 0,
 				"chunkRefsFetchTime": 0,
 				"queryReferencedStructuredMetadata": false,
+				"queryUsedV2Engine": false,
 				"pipelineWrapperFilteredLines": 2
 			},
 			"totalBatches": 6,
@@ -1912,6 +1955,7 @@ var (
 			"totalReached": 10
 		},
 		"querier": {
+			"querierExecTime": 0,
 			"store" : {
 				"chunk": {
 					"compressedBytes": 11,
@@ -1938,18 +1982,21 @@ var (
 					"prePredicateDecompressedRows": 0,
 					"prePredicateDecompressedBytes": 0,
 					"prePredicateDecompressedStructuredMetadataBytes": 0,
+					"totalPageDownloadTime": 0,
 					"totalRowsAvailable": 0
 				},
 				"totalChunksRef": 17,
 				"totalChunksDownloaded": 18,
 				"chunkRefsFetchTime": 19,
 				"queryReferencedStructuredMetadata": true,
+				"queryUsedV2Engine": false,
 				"pipelineWrapperFilteredLines": 4
 			}
 		},
 		"index": {
 			"postFilterChunks": 0,
 			"totalChunks": 0,
+			"totalStreams": 0,
 			"shardsDuration": 0,
 			"usedBloomFilters": false
 		},
@@ -2632,7 +2679,7 @@ func Benchmark_CodecDecodeSeries(b *testing.B) {
 }
 
 func Benchmark_MergeResponses(b *testing.B) {
-	var responses []queryrangebase.Response = make([]queryrangebase.Response, 100)
+	responses := make([]queryrangebase.Response, 100)
 	for i := range responses {
 		responses[i] = &LokiSeriesResponse{
 			Status:     "200",

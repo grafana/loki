@@ -3,6 +3,7 @@
     <name>Zig</name>
     <alias>zig</alias>
     <filename>*.zig</filename>
+    <filename>*.zon</filename>
     <mime_type>text/zig</mime_type>
   </config>
   <rules>

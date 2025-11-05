@@ -37,7 +37,8 @@ func TestEvictor(t *testing.T) {
 	go e.Run() //nolint:errcheck
 	call, err := trap.Wait(ctx)
 	require.NoError(t, err)
-	call.Release()
+	err = call.Release(ctx)
+	require.NoError(t, err)
 
 	// Do a tick.
 	clock.Advance(time.Second).MustWait(ctx)

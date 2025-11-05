@@ -29,11 +29,10 @@ import (
 
 	"github.com/grafana/regexp"
 	"github.com/prometheus/client_golang/prometheus"
+	common_templates "github.com/prometheus/common/helpers/templates"
 	"github.com/prometheus/common/model"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
-
-	common_templates "github.com/prometheus/common/helpers/templates"
 
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/util/strutil"
@@ -264,6 +263,17 @@ func NewTemplateExpander(
 
 				return floatToTime(v)
 			},
+			"toDuration": func(i interface{}) (*time.Duration, error) {
+				v, err := common_templates.ConvertToFloat(i)
+				if err != nil {
+					return nil, err
+				}
+				d := time.Duration(v * float64(time.Second))
+				return &d, nil
+			},
+			"now": func() float64 {
+				return float64(timestamp) / 1000.0
+			},
 			"pathPrefix": func() string {
 				return externalURL.Path
 			},
@@ -271,7 +281,7 @@ func NewTemplateExpander(
 				return externalURL.String()
 			},
 			"parseDuration": func(d string) (float64, error) {
-				v, err := model.ParseDuration(d)
+				v, err := model.ParseDurationAllowNegative(d)
 				if err != nil {
 					return 0, err
 				}

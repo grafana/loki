@@ -66,6 +66,7 @@ var TypeToRR = map[uint16]func() RR{
 	TypeOPT:        func() RR { return new(OPT) },
 	TypePTR:        func() RR { return new(PTR) },
 	TypePX:         func() RR { return new(PX) },
+	TypeRESINFO:    func() RR { return new(RESINFO) },
 	TypeRKEY:       func() RR { return new(RKEY) },
 	TypeRP:         func() RR { return new(RP) },
 	TypeRRSIG:      func() RR { return new(RRSIG) },
@@ -154,6 +155,7 @@ var TypeToString = map[uint16]string{
 	TypeOPT:        "OPT",
 	TypePTR:        "PTR",
 	TypePX:         "PX",
+	TypeRESINFO:    "RESINFO",
 	TypeRKEY:       "RKEY",
 	TypeRP:         "RP",
 	TypeRRSIG:      "RRSIG",
@@ -238,6 +240,7 @@ func (rr *OPENPGPKEY) Header() *RR_Header { return &rr.Hdr }
 func (rr *OPT) Header() *RR_Header        { return &rr.Hdr }
 func (rr *PTR) Header() *RR_Header        { return &rr.Hdr }
 func (rr *PX) Header() *RR_Header         { return &rr.Hdr }
+func (rr *RESINFO) Header() *RR_Header    { return &rr.Hdr }
 func (rr *RFC3597) Header() *RR_Header    { return &rr.Hdr }
 func (rr *RKEY) Header() *RR_Header       { return &rr.Hdr }
 func (rr *RP) Header() *RR_Header         { return &rr.Hdr }
@@ -619,6 +622,14 @@ func (rr *PX) len(off int, compression map[string]struct{}) int {
 	l += 2 // Preference
 	l += domainNameLen(rr.Map822, off+l, compression, false)
 	l += domainNameLen(rr.Mapx400, off+l, compression, false)
+	return l
+}
+
+func (rr *RESINFO) len(off int, compression map[string]struct{}) int {
+	l := rr.Hdr.len(off, compression)
+	for _, x := range rr.Txt {
+		l += len(x) + 1
+	}
 	return l
 }
 
@@ -1146,6 +1157,10 @@ func (rr *PX) copy() RR {
 		rr.Map822,
 		rr.Mapx400,
 	}
+}
+
+func (rr *RESINFO) copy() RR {
+	return &RESINFO{rr.Hdr, cloneSlice(rr.Txt)}
 }
 
 func (rr *RFC3597) copy() RR {

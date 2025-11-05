@@ -33,15 +33,23 @@ import (
 // It sets how often to emit metrics [metric.WithInterval] when using
 // [metric.NewPeriodicReader]
 // When using Cloud Monitoring interval must be at minimum 1 [time.Minute].
+// This option is ignored if WithMeterProvider is also set.
 func WithMetricInterval(metricInterval time.Duration) option.ClientOption {
 	return internal.WithMetricInterval.(func(time.Duration) option.ClientOption)(metricInterval)
 }
 
 // WithMetricExporter provides a [option.ClientOption] that may be passed to [storage.NewGRPCClient].
 // Set an alternate client-side metric Exporter to emit metrics through.
-// Must implement [metric.Exporter]
+// Must implement [metric.Exporter]. This option is ignored if WithMeterProvider is also set.
 func WithMetricExporter(ex *metric.Exporter) option.ClientOption {
 	return internal.WithMetricExporter.(func(*metric.Exporter) option.ClientOption)(ex)
+}
+
+// WithMeterProvider provides a [option.ClientOption] that may be passed to [storage.NewGRPCClient].
+// Set an alternate client-side meter provider to emit metrics through.
+// This option takes precedence over WithMetricExporter and WithMetricInterval.
+func WithMeterProvider(mp *metric.MeterProvider) option.ClientOption {
+	return internal.WithMeterProvider.(func(*metric.MeterProvider) option.ClientOption)(mp)
 }
 
 // WithReadStallTimeout provides a [option.ClientOption] that may be passed to [storage.NewClient].
@@ -77,11 +85,25 @@ type ReadStallTimeoutConfig struct {
 // WithGRPCBidiReads provides an [option.ClientOption] that may be passed to
 // [cloud.google.com/go/storage.NewGRPCClient].
 // It enables the client to use bi-directional gRPC APIs for downloads rather than the
-// server streaming API. In particular, it allows users to use the [storage.MultiRangeDownloader]
+// server streaming API. In particular, it allows users to use the
+// [cloud.google.com/go/storage.MultiRangeDownloader]
 // surface, which requires bi-directional streaming.
 //
 // The bi-directional API is in private preview; please contact your account manager if
 // interested.
 func WithGRPCBidiReads() option.ClientOption {
 	return internal.WithGRPCBidiReads.(func() option.ClientOption)()
+}
+
+// WithZonalBucketAPIs provides an [option.ClientOption] that may be passed to
+// [cloud.google.com/go/storage.NewGRPCClient].
+// It enables the client to use bi-directional gRPC APIs for downloads rather than the
+// server streaming API (same as [WithGRPCBidiReads]) as well as appendable
+// object semantics for uploads. By setting this option, both upload and download
+// paths will use zonal bucket compatible APIs by default.
+//
+// Zonal buckets and rapid storage is in private preview; please contact your
+// account manager if interested.
+func WithZonalBucketAPIs() option.ClientOption {
+	return internal.WithZonalBucketAPIs.(func() option.ClientOption)()
 }

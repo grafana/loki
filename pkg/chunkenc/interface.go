@@ -69,7 +69,7 @@ type Chunk interface {
 	CompressedSize() int
 	Close() error
 	Encoding() compression.Codec
-	Rebound(start, end time.Time, filter filter.Func) (Chunk, error)
+	Rewrite(filter filter.Func) (Chunk, error)
 }
 
 // Block is a chunk block.

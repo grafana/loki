@@ -1,4 +1,4 @@
-package util
+package util //nolint:revive
 
 import (
 	"context"
@@ -6,8 +6,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-
-	ot "github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/loki/v3/pkg/storage/stores/series/index"
 )
@@ -35,8 +33,8 @@ func DoParallelQueries(
 	// Run n parallel goroutines fetching queries from the queue
 	for i := 0; i < n; i++ {
 		go func() {
-			sp, ctx := ot.StartSpanFromContext(ctx, "DoParallelQueries-worker")
-			defer sp.Finish()
+			ctx, sp := tracer.Start(ctx, "DoParallelQueries-worker")
+			defer sp.End()
 			for {
 				query, ok := <-queue
 				if !ok {

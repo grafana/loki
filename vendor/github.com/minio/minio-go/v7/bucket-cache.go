@@ -84,18 +84,18 @@ func processBucketLocationResponse(resp *http.Response, bucketName string) (buck
 			// request. Move forward and let the top level callers
 			// succeed if possible based on their policy.
 			switch errResp.Code {
-			case "NotImplemented":
+			case NotImplemented:
 				switch errResp.Server {
 				case "AmazonSnowball":
 					return "snowball", nil
 				case "cloudflare":
 					return "us-east-1", nil
 				}
-			case "AuthorizationHeaderMalformed":
+			case AuthorizationHeaderMalformed:
 				fallthrough
-			case "InvalidRegion":
+			case InvalidRegion:
 				fallthrough
-			case "AccessDenied":
+			case AccessDenied:
 				if errResp.Region == "" {
 					return "us-east-1", nil
 				}

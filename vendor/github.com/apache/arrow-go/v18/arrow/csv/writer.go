@@ -27,13 +27,14 @@ import (
 
 // Writer wraps encoding/csv.Writer and writes arrow.Record based on a schema.
 type Writer struct {
-	boolFormatter  func(bool) string
-	header         bool
-	nullValue      string
-	stringReplacer func(string) string
-	once           sync.Once
-	schema         *arrow.Schema
-	w              *csv.Writer
+	boolFormatter       func(bool) string
+	header              bool
+	nullValue           string
+	stringReplacer      func(string) string
+	customTypeConverter func(typ arrow.DataType, col arrow.Array) (result []string, handled bool)
+	once                sync.Once
+	schema              *arrow.Schema
+	w                   *csv.Writer
 }
 
 // NewWriter returns a writer that writes arrow.Records to the CSV file
@@ -43,14 +44,14 @@ type Writer struct {
 // primitive types.
 // For BinaryType the writer will use base64 encoding with padding as per base64.StdEncoding.
 func NewWriter(w io.Writer, schema *arrow.Schema, opts ...Option) *Writer {
-	validate(schema)
 
 	ww := &Writer{
-		boolFormatter:  strconv.FormatBool,                 // override by passing WithBoolWriter() as an option
-		nullValue:      "NULL",                             // override by passing WithNullWriter() as an option
-		stringReplacer: func(x string) string { return x }, // override by passing WithStringsReplacer() as an option
-		schema:         schema,
-		w:              csv.NewWriter(w),
+		boolFormatter:       strconv.FormatBool,                 // override by passing WithBoolWriter() as an option
+		nullValue:           "NULL",                             // override by passing WithNullWriter() as an option
+		stringReplacer:      func(x string) string { return x }, // override by passing WithStringsReplacer() as an option
+		customTypeConverter: nil,                                // override by passing WithCustomTypeConverter() as an option
+		schema:              schema,
+		w:                   csv.NewWriter(w),
 	}
 	for _, opt := range opts {
 		opt(ww)

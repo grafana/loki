@@ -73,10 +73,7 @@ func resize(buf []byte, size int) []byte {
 }
 
 func grow(buf []byte, size int) []byte {
-	newCap := 2 * cap(buf)
-	if newCap < size {
-		newCap = size
-	}
+	newCap := max(2*cap(buf), size)
 	newBuf := make([]byte, size, newCap)
 	copy(newBuf, buf)
 	return newBuf

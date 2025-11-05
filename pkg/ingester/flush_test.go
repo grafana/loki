@@ -74,6 +74,7 @@ type fullWAL struct{}
 func (fullWAL) Log(_ *wal.Record) error { return &os.PathError{Err: syscall.ENOSPC} }
 func (fullWAL) Start()                  {}
 func (fullWAL) Stop() error             { return nil }
+func (fullWAL) IsDiskThrottled() bool   { return false }
 
 func Benchmark_FlushLoop(b *testing.B) {
 	var (
@@ -290,7 +291,7 @@ func Test_flush_not_owned_stream(t *testing.T) {
 	require.True(t, found)
 	fingerprint := instance.getHashForLabels(labels.FromStrings("app", "l"))
 	require.Equal(t, model.Fingerprint(16794418009594958), fingerprint)
-	instance.ownedStreamsSvc.trackStreamOwnership(fingerprint, false)
+	instance.ownedStreamsSvc.trackStreamOwnership(fingerprint, false, noPolicy)
 
 	time.Sleep(2 * cfg.FlushCheckPeriod)
 
@@ -500,6 +501,14 @@ func (s *testStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
 }
 
+func (s *testStore) HasChunkSizingInfo(_, _ model.Time) bool {
+	return false
+}
+
+func (s *testStore) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	return nil, nil
+}
+
 func (s *testStore) GetSchemaConfigs() []config.PeriodConfig {
 	return defaultPeriodConfigs
 }
@@ -568,6 +577,19 @@ func buildTestStreams(offset int) []logproto.Stream {
 // check that the store is holding data equivalent to what we expect
 func (s *testStore) checkData(t *testing.T, testData map[string][]logproto.Stream) {
 	for userID, expected := range testData {
+		// Ensure all empty label sets use an empty set of adapters, rather than a nil slice, to make the assertion below easier.
+		for _, stream := range expected {
+			for i := range stream.Entries {
+				if len(stream.Entries[i].Parsed) == 0 {
+					stream.Entries[i].Parsed = logproto.EmptyLabelAdapters()
+				}
+
+				if len(stream.Entries[i].StructuredMetadata) == 0 {
+					stream.Entries[i].StructuredMetadata = logproto.EmptyLabelAdapters()
+				}
+			}
+		}
+
 		streams := s.getStreamsForUser(t, userID)
 		require.Equal(t, expected, streams)
 	}

@@ -8,7 +8,19 @@ docker.stop:
 
 test:
 	$(MAKE) docker.start
-	$(MAKE) test.ci
+	@if [ -z "$(REDIS_VERSION)" ]; then \
+		echo "REDIS_VERSION not set, running all tests"; \
+		$(MAKE) test.ci; \
+	else \
+		MAJOR_VERSION=$$(echo "$(REDIS_VERSION)" | cut -d. -f1); \
+		if [ "$$MAJOR_VERSION" -ge 8 ]; then \
+			echo "REDIS_VERSION $(REDIS_VERSION) >= 8, running all tests"; \
+			$(MAKE) test.ci; \
+		else \
+			echo "REDIS_VERSION $(REDIS_VERSION) < 8, skipping vector_sets tests"; \
+			$(MAKE) test.ci.skip-vectorsets; \
+		fi; \
+	fi
 	$(MAKE) docker.stop
 
 test.ci:
@@ -17,15 +29,27 @@ test.ci:
 	  (cd "$${dir}" && \
 	    go mod tidy -compat=1.18 && \
 	    go vet && \
-	    go test -v -coverprofile=coverage.txt -covermode=atomic ./... -race); \
+	    go test -v -coverprofile=coverage.txt -covermode=atomic ./... -race -skip Example); \
+	done
+	cd internal/customvet && go build .
+	go vet -vettool ./internal/customvet/customvet
+
+test.ci.skip-vectorsets:
+	set -e; for dir in $(GO_MOD_DIRS); do \
+	  echo "go test in $${dir} (skipping vector sets)"; \
+	  (cd "$${dir}" && \
+	    go mod tidy -compat=1.18 && \
+	    go vet && \
+	    go test -v -coverprofile=coverage.txt -covermode=atomic ./... -race \
+	      -run '^(?!.*(?:VectorSet|vectorset|ExampleClient_vectorset)).*$$' -skip Example); \
 	done
 	cd internal/customvet && go build .
 	go vet -vettool ./internal/customvet/customvet
 
 bench:
-	go test ./... -test.run=NONE -test.bench=. -test.benchmem
+	go test ./... -test.run=NONE -test.bench=. -test.benchmem -skip Example
 
-.PHONY: all test bench fmt
+.PHONY: all test test.ci test.ci.skip-vectorsets bench fmt
 
 build:
 	go build .

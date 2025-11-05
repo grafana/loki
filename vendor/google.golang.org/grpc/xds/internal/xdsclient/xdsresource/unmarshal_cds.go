@@ -133,10 +133,6 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster, serv
 		rhLBCfg := []byte(fmt.Sprintf("{\"minRingSize\": %d, \"maxRingSize\": %d}", minSize, maxSize))
 		lbPolicy = []byte(fmt.Sprintf(`[{"ring_hash_experimental": %s}]`, rhLBCfg))
 	case v3clusterpb.Cluster_LEAST_REQUEST:
-		if !envconfig.LeastRequestLB {
-			return ClusterUpdate{}, fmt.Errorf("unexpected lbPolicy %v in response: %+v", cluster.GetLbPolicy(), cluster)
-		}
-
 		// "The configuration for the Least Request LB policy is the
 		// least_request_lb_config field. The field is optional; if not present,
 		// defaults will be assumed for all of its values." - A48
@@ -291,8 +287,8 @@ func securityConfigFromCluster(cluster *v3clusterpb.Cluster) (*SecurityConfig, e
 		return nil, fmt.Errorf("transport_socket field has unexpected name: %s", name)
 	}
 	tc := ts.GetTypedConfig()
-	if tc == nil || tc.TypeUrl != version.V3UpstreamTLSContextURL {
-		return nil, fmt.Errorf("transport_socket field has unexpected typeURL: %s", tc.TypeUrl)
+	if typeURL := tc.GetTypeUrl(); typeURL != version.V3UpstreamTLSContextURL {
+		return nil, fmt.Errorf("transport_socket missing typed_config or wrong type_url: %q", typeURL)
 	}
 	upstreamCtx := &v3tlspb.UpstreamTlsContext{}
 	if err := proto.Unmarshal(tc.GetValue(), upstreamCtx); err != nil {

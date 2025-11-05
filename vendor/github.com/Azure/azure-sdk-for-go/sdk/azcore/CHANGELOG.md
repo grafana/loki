@@ -1,5 +1,19 @@
 # Release History
 
+## 1.18.0 (2025-04-03)
+
+### Features Added
+
+* Added `AccessToken.RefreshOn` and updated `BearerTokenPolicy` to consider nonzero values of it when deciding whether to request a new token
+
+
+## 1.17.1 (2025-03-20)
+
+### Other Changes
+
+* Upgraded to Go 1.23
+* Upgraded dependencies
+
 ## 1.17.0 (2025-01-07)
 
 ### Features Added

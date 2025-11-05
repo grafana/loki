@@ -35,7 +35,6 @@ import (
 	"github.com/grafana/loki/v3/clients/pkg/promtail/config"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/positions"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/scrapeconfig"
-	"github.com/grafana/loki/v3/clients/pkg/promtail/server"
 	pserver "github.com/grafana/loki/v3/clients/pkg/promtail/server"
 	file2 "github.com/grafana/loki/v3/clients/pkg/promtail/targets/file"
 	"github.com/grafana/loki/v3/clients/pkg/promtail/targets/testutils"
@@ -124,7 +123,7 @@ func TestPromtail(t *testing.T) {
 
 	svr := p.server.(*pserver.PromtailServer)
 
-	httpListenAddr := svr.Server.HTTPListenAddr()
+	httpListenAddr := svr.HTTPListenAddr()
 
 	expectedCounts := map[string]int{}
 
@@ -481,13 +480,7 @@ func (h *testServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.t.Error("Failed to parse incoming labels", err)
 			return
 		}
-		file := ""
-		for _, label := range parsedLabels {
-			if label.Name == file2.FilenameLabel {
-				file = label.Value
-				continue
-			}
-		}
+		file := parsedLabels.Get(file2.FilenameLabel)
 		if file == "" {
 			h.t.Error("Expected to find a label with name `filename` but did not!")
 			return
@@ -522,7 +515,7 @@ func getPromMetrics(t *testing.T, httpListenAddr net.Addr) ([]byte, string) {
 func parsePromMetrics(t *testing.T, bytes []byte, contentType string, metricName string, label string) map[string]float64 {
 	rb := map[string]float64{}
 
-	pr, err := textparse.New(bytes, contentType, "", false, false, nil)
+	pr, err := textparse.New(bytes, contentType, "", false, false, false, nil)
 	require.NoError(t, err)
 	for {
 		et, err := pr.Next()
@@ -536,7 +529,7 @@ func parsePromMetrics(t *testing.T, bytes []byte, contentType string, metricName
 		case textparse.EntrySeries:
 			var res labels.Labels
 			_, _, v := pr.Series()
-			pr.Metric(&res)
+			pr.Labels(&res)
 			switch res.Get(labels.MetricName) {
 			case metricName:
 				rb[res.Get(label)] = v
@@ -654,7 +647,7 @@ func Test_DryRun(t *testing.T) {
 	// aren't doing any CLI parsing ala RegisterFlags and thus don't get the defaults.
 	// Required because a hardcoded value became a configuration setting in this commit
 	// https://github.com/weaveworks/common/commit/c44eeb028a671c5931b047976f9a0171910571ce
-	serverCfg := server.Config{
+	serverCfg := pserver.Config{
 		Config: serverww.Config{
 			HTTPListenNetwork: serverww.DefaultNetwork,
 			GRPCListenNetwork: serverww.DefaultNetwork,
@@ -700,7 +693,7 @@ func Test_Reload(t *testing.T) {
 	defer os.Remove(f.Name())
 
 	cfg := config.Config{
-		ServerConfig: server.Config{
+		ServerConfig: pserver.Config{
 			Reload: true,
 			Config: localhostConfig,
 		},
@@ -714,7 +707,7 @@ func Test_Reload(t *testing.T) {
 	expectCfgStr := cfg.String()
 
 	expectedConfig := &config.Config{
-		ServerConfig: server.Config{
+		ServerConfig: pserver.Config{
 			Reload: true,
 			Config: localhostConfig,
 		},
@@ -750,7 +743,7 @@ func Test_Reload(t *testing.T) {
 
 	require.NotEqual(t, len(expectedConfig.String()), len(svr.PromtailConfig()))
 	require.NotEqual(t, expectedConfig.String(), svr.PromtailConfig())
-	result, err := reload(t, svr.Server.HTTPListenAddr())
+	result, err := reload(t, svr.HTTPListenAddr())
 	require.NoError(t, err)
 	expectedReloadResult := ""
 	require.Equal(t, expectedReloadResult, result)
@@ -771,7 +764,7 @@ func Test_ReloadFail_NotPanic(t *testing.T) {
 	defer os.Remove(f.Name())
 
 	cfg := config.Config{
-		ServerConfig: server.Config{
+		ServerConfig: pserver.Config{
 			Reload: true,
 			Config: localhostConfig,
 		},
@@ -783,7 +776,7 @@ func Test_ReloadFail_NotPanic(t *testing.T) {
 	}
 
 	expectedConfig := &config.Config{
-		ServerConfig: server.Config{
+		ServerConfig: pserver.Config{
 			Reload: true,
 			Config: localhostConfig,
 		},
@@ -809,18 +802,18 @@ func Test_ReloadFail_NotPanic(t *testing.T) {
 		defer wg.Done()
 		err = promtailServer.Run()
 		if err != nil {
-			err = errors.Wrap(err, "Failed to start promtail")
+			err = errors.Wrap(err, "failed to start promtail")
 		}
 	}()
 	defer promtailServer.Shutdown() // In case the test fails before the call to Shutdown below.
 
 	svr := promtailServer.server.(*pserver.PromtailServer)
-	httpListenAddr := svr.Server.HTTPListenAddr()
+	httpListenAddr := svr.HTTPListenAddr()
 	require.NotEqual(t, len(expectedConfig.String()), len(svr.PromtailConfig()))
 	require.NotEqual(t, expectedConfig.String(), svr.PromtailConfig())
 	result, err := reload(t, httpListenAddr)
 	require.Error(t, err)
-	expectedReloadResult := fmt.Sprintf("failed to reload config: Error new Config: %s\n", newConfigErr)
+	expectedReloadResult := fmt.Sprintf("failed to reload config: error new Config: %s\n", newConfigErr)
 	require.Equal(t, expectedReloadResult, result)
 
 	pb := &dto.Metric{}

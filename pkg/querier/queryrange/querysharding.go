@@ -152,7 +152,7 @@ func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard
 
 func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	logger := util_log.WithContext(ctx, ast.logger)
-	spLogger := spanlogger.FromContextWithFallback(
+	spLogger := spanlogger.FromContext(
 		ctx,
 		logger,
 	)

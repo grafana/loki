@@ -5,7 +5,7 @@ env:
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "main"
+  RELEASE_LIB_REF: "dfe753760ce6ec2f4549fc11d2df24a2aa584e3f"
   RELEASE_REPO: "grafana/loki"
   USE_GITHUB_APP_TOKEN: true
 jobs:
@@ -44,10 +44,16 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+        package-manager-cache: false
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
     - name: "auth gcs"
       uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Cloud SDK"
       uses: "google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a"
       with:
@@ -257,10 +263,15 @@ jobs:
         path: "release"
         persist-credentials: false
         repository: "${{ env.RELEASE_REPO }}"
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
     - name: "auth gcs"
       uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Cloud SDK"
       uses: "google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a"
       with:
@@ -300,10 +311,15 @@ jobs:
         persist-credentials: false
         ref: "${{ env.RELEASE_LIB_REF }}"
         repository: "grafana/loki-release"
+    - id: "fetch_gcs_credentials"
+      name: "fetch gcs credentials from vault"
+      uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"
+      with:
+        repo_secrets: "GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key"
     - name: "auth gcs"
       uses: "google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f"
       with:
-        credentials_json: "${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}"
+        credentials_json: "${{ env.GCS_SERVICE_ACCOUNT_KEY }}"
     - name: "Set up Cloud SDK"
       uses: "google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a"
       with:

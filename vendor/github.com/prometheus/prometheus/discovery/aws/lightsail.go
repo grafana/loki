@@ -83,7 +83,7 @@ type LightsailSDConfig struct {
 }
 
 // NewDiscovererMetrics implements discovery.Config.
-func (*LightsailSDConfig) NewDiscovererMetrics(reg prometheus.Registerer, rmi discovery.RefreshMetricsInstantiator) discovery.DiscovererMetrics {
+func (*LightsailSDConfig) NewDiscovererMetrics(_ prometheus.Registerer, rmi discovery.RefreshMetricsInstantiator) discovery.DiscovererMetrics {
 	return &lightsailMetrics{
 		refreshMetrics: rmi,
 	}
@@ -115,6 +115,7 @@ func (c *LightsailSDConfig) UnmarshalYAML(unmarshal func(interface{}) error) err
 
 		region, err := metadata.Region()
 		if err != nil {
+			//nolint:staticcheck // Capitalized first word.
 			return errors.New("Lightsail SD configuration requires a region")
 		}
 		c.Region = region

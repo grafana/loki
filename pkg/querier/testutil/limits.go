@@ -19,6 +19,9 @@ type MockLimits struct {
 	MaxStreamsMatchersPerQueryVal int
 	EnableMultiVariantQueriesVal  bool
 	MetricAggregationEnabledVal   bool
+	PatternPersistenceEnabledVal  bool
+	PatternRateThresholdVal       float64
+	PersistenceGranularityVal     time.Duration
 }
 
 func (m *MockLimits) EnableMultiVariantQueries(_ string) bool {
@@ -63,4 +66,24 @@ func (m *MockLimits) BlockedQueries(_ context.Context, _ string) []*validation.B
 
 func (m *MockLimits) MetricAggregationEnabled(_ string) bool {
 	return m.MetricAggregationEnabledVal
+}
+
+// PatternIngesterTokenizableJSONFields implements pattern.drain.Limits interface
+func (m *MockLimits) PatternIngesterTokenizableJSONFields(_ string) []string {
+	return []string{}
+}
+
+// PatternPersistenceEnabled implements pattern.Limits interface
+func (m *MockLimits) PatternPersistenceEnabled(_ string) bool {
+	return m.PatternPersistenceEnabledVal
+}
+
+// PatternRateThreshold implements pattern.Limits interface
+func (m *MockLimits) PatternRateThreshold(_ string) float64 {
+	return m.PatternRateThresholdVal
+}
+
+// PersistenceGranularity implements pattern.Limits interface
+func (m *MockLimits) PersistenceGranularity(_ string) time.Duration {
+	return m.PersistenceGranularityVal
 }

@@ -109,9 +109,9 @@ func (l *CachingGroupLoader) AlertingRules() []rulefmt.Rule {
 		for _, g := range group.Groups {
 			for _, rule := range g.Rules {
 				rules = append(rules, rulefmt.Rule{
-					Record:      rule.Record.Value,
-					Alert:       rule.Alert.Value,
-					Expr:        rule.Expr.Value,
+					Record:      rule.Record,
+					Alert:       rule.Alert,
+					Expr:        rule.Expr,
 					For:         rule.For,
 					Labels:      rule.Labels,
 					Annotations: rule.Annotations,

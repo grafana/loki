@@ -44,7 +44,7 @@ Loki automatically tries to populate a default `service_name` label while ingest
 - Grafana Cloud Application Observability
 
 {{< admonition type="note" >}}
-If you are already applying a `service_name`, Loki will use that value.
+If you are already applying a `service_name`, Loki will use that value. For example, if you are using the Kubernetes monitoring Helm Chart, the Alloy configuration applies a `service_name` by default.
 {{< /admonition >}}
 
 Loki will attempt to create the `service_name` label by looking for the following labels in this order:
@@ -98,6 +98,11 @@ For Grafana Cloud Logs, see the [current OpenTelemetry guidance](https://grafana
 {{< /admonition >}}
 
 The default list of resource attributes to store as labels can be configured using `default_resource_attributes_as_index_labels` under the [distributor's otlp_config](https://grafana.com/docs/loki/<LOKI_VERSION>/configure/#distributor). You can set global limits using [limits_config.otlp_config](/docs/loki/<LOKI_VERSION>/configure/#limits_config). If you are using Grafana Cloud, contact support to configure this setting.
+
+{{< admonition type="caution" >}}
+Because of the potential for high [cardinality](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/cardinality/), `k8s.pod.name` and `service.instance.id` are no longer recommended as default labels. But because removing these resource attributes from the default labels would be a breaking change for existing users, they have not yet been deprecated as default labels. If you are a new user of Grafana Loki, we recommend that you modify your Alloy or OpenTelemetry Collector configuration to convert `k8s.pod.name` and `service.instance.id` from index labels to structured metadata.
+For sample configurations, refer to [Remove default labels](https://grafana.com/docs/loki/<LOKI_VERSION>/get-started/labels/remove-default-labels).
+{{< /admonition >}}
 
 ## Labeling is iterative
 

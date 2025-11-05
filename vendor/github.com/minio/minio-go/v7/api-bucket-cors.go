@@ -98,7 +98,7 @@ func (c *Client) GetBucketCors(ctx context.Context, bucketName string) (*cors.Co
 	bucketCors, err := c.getBucketCors(ctx, bucketName)
 	if err != nil {
 		errResponse := ToErrorResponse(err)
-		if errResponse.Code == "NoSuchCORSConfiguration" {
+		if errResponse.Code == NoSuchCORSConfiguration {
 			return nil, nil
 		}
 		return nil, err

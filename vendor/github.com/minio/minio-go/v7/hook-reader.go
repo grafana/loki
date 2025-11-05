@@ -84,7 +84,7 @@ func (hr *hookReader) Read(b []byte) (n int, err error) {
 // reports the data read from the source to the hook.
 func newHook(source, hook io.Reader) io.Reader {
 	if hook == nil {
-		return source
+		return &hookReader{source: source}
 	}
 	return &hookReader{
 		source: source,

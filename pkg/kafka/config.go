@@ -29,9 +29,6 @@ const (
 
 var (
 	ErrMissingKafkaAddress                 = errors.New("the Kafka address has not been configured")
-	ErrAmbiguousKafkaAddress               = errors.New("the Kafka address has been configured in both kafka.address and kafka.reader_config.address or kafka.writer_config.address")
-	ErrAmbiguousKafkaClientID              = errors.New("the Kafka client ID has been configured in both kafka.client_id and kafka.reader_config.client_id or kafka.writer_config.client_id")
-	ErrMixingOldAndNewClientConfig         = errors.New("mixing old and new client config is not allowed")
 	ErrMissingKafkaTopic                   = errors.New("the Kafka topic has not been configured")
 	ErrInconsistentSASLUsernameAndPassword = errors.New("both sasl username and password must be set")
 	ErrInvalidProducerMaxRecordSizeBytes   = fmt.Errorf("the configured producer max record size bytes must be a value between %d and %d", minProducerRecordDataBytesLimit, MaxProducerRecordDataBytesLimit)
@@ -74,7 +71,7 @@ type ClientConfig struct {
 }
 
 func (cfg *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&cfg.Address, prefix+".address", "", "The Kafka backend address.")
+	f.StringVar(&cfg.Address, prefix+".address", "localhost:9092", "The Kafka backend address.")
 	f.StringVar(&cfg.ClientID, prefix+".client-id", "", "The Kafka client ID.")
 }
 
@@ -86,9 +83,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.ReaderConfig.RegisterFlagsWithPrefix(prefix+".reader", f)
 	cfg.WriterConfig.RegisterFlagsWithPrefix(prefix+".writer", f)
 
-	f.StringVar(&cfg.Address, prefix+".address", "", "The Kafka backend address. This setting is deprecated and will be removed in the next minor release.")
 	f.StringVar(&cfg.Topic, prefix+".topic", "", "The Kafka topic name.")
-	f.StringVar(&cfg.ClientID, prefix+".client-id", "", "The Kafka client ID. This setting is deprecated and will be removed in the next minor release.")
 	f.DurationVar(&cfg.DialTimeout, prefix+".dial-timeout", 2*time.Second, "The maximum time allowed to open a connection to a Kafka broker.")
 	f.DurationVar(&cfg.WriteTimeout, prefix+".write-timeout", 10*time.Second, "How long to wait for an incoming write request to be successfully committed to the Kafka backend.")
 
@@ -119,32 +114,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 func (cfg *Config) Validate() error {
-	if cfg.Address == "" && cfg.ReaderConfig.Address == "" && cfg.WriterConfig.Address == "" {
+	if cfg.ReaderConfig.Address == "" && cfg.WriterConfig.Address == "" {
 		return ErrMissingKafkaAddress
-	}
-	if cfg.Address != "" && cfg.ReaderConfig.Address != "" {
-		return ErrAmbiguousKafkaAddress
-	}
-	if cfg.Address != "" && cfg.WriterConfig.Address != "" {
-		return ErrAmbiguousKafkaAddress
-	}
-	if cfg.ClientID != "" && cfg.ReaderConfig.ClientID != "" {
-		return ErrAmbiguousKafkaClientID
-	}
-	if cfg.ClientID != "" && cfg.WriterConfig.ClientID != "" {
-		return ErrAmbiguousKafkaClientID
-	}
-	if cfg.Address != "" && cfg.ReaderConfig.ClientID != "" {
-		return ErrMixingOldAndNewClientConfig
-	}
-	if cfg.Address != "" && cfg.WriterConfig.ClientID != "" {
-		return ErrMixingOldAndNewClientConfig
-	}
-	if cfg.ClientID != "" && cfg.ReaderConfig.Address != "" {
-		return ErrMixingOldAndNewClientConfig
-	}
-	if cfg.ClientID != "" && cfg.WriterConfig.Address != "" {
-		return ErrMixingOldAndNewClientConfig
 	}
 	if cfg.Topic == "" {
 		return ErrMissingKafkaTopic

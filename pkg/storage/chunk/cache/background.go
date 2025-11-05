@@ -6,10 +6,10 @@ import (
 	"sync"
 
 	"github.com/go-kit/log/level"
-	opentracing "github.com/opentracing/opentracing-go"
-	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	attribute "go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/util/constants"
@@ -175,10 +175,12 @@ func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byt
 func (c *backgroundCache) failStore(ctx context.Context, size int, num int, reason string) {
 	c.droppedWriteBackBytes.Add(float64(size))
 	c.droppedWriteBack.Add(float64(num))
-	sp := opentracing.SpanFromContext(ctx)
-	if sp != nil {
-		sp.LogFields(otlog.String("reason", reason), otlog.Int("dropped", num), otlog.Int("dropped_bytes", size))
-	}
+	sp := trace.SpanFromContext(ctx)
+	sp.SetAttributes(
+		attribute.String("reason", reason),
+		attribute.Int("dropped", num),
+		attribute.Int("dropped_bytes", size),
+	)
 }
 
 func (c *backgroundCache) writeBackLoop() {

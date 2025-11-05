@@ -21,24 +21,24 @@ import (
 	"sync/atomic"
 	"time"
 
+	otelattribute "go.opentelemetry.io/otel/attribute"
+	otelmetric "go.opentelemetry.io/otel/metric"
+
 	"google.golang.org/grpc"
 	estats "google.golang.org/grpc/experimental/stats"
 	"google.golang.org/grpc/internal"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/stats"
 	"google.golang.org/grpc/status"
-
-	otelattribute "go.opentelemetry.io/otel/attribute"
-	otelmetric "go.opentelemetry.io/otel/metric"
 )
 
-type serverStatsHandler struct {
+type serverMetricsHandler struct {
 	estats.MetricsRecorder
 	options       Options
 	serverMetrics serverMetrics
 }
 
-func (h *serverStatsHandler) initializeMetrics() {
+func (h *serverMetricsHandler) initializeMetrics() {
 	// Will set no metrics to record, logically making this stats handler a
 	// no-op.
 	if h.options.MetricsOptions.MeterProvider == nil {
@@ -54,7 +54,7 @@ func (h *serverStatsHandler) initializeMetrics() {
 		metrics = DefaultMetrics()
 	}
 
-	h.serverMetrics.callStarted = createInt64Counter(metrics.Metrics(), "grpc.server.call.started", meter, otelmetric.WithUnit("call"), otelmetric.WithDescription("Number of server calls started."))
+	h.serverMetrics.callStarted = createInt64Counter(metrics.Metrics(), "grpc.server.call.started", meter, otelmetric.WithUnit("{call}"), otelmetric.WithDescription("Number of server calls started."))
 	h.serverMetrics.callSentTotalCompressedMessageSize = createInt64Histogram(metrics.Metrics(), "grpc.server.call.sent_total_compressed_message_size", meter, otelmetric.WithUnit("By"), otelmetric.WithDescription("Compressed message bytes sent per server call."), otelmetric.WithExplicitBucketBoundaries(DefaultSizeBounds...))
 	h.serverMetrics.callRcvdTotalCompressedMessageSize = createInt64Histogram(metrics.Metrics(), "grpc.server.call.rcvd_total_compressed_message_size", meter, otelmetric.WithUnit("By"), otelmetric.WithDescription("Compressed message bytes received per server call."), otelmetric.WithExplicitBucketBoundaries(DefaultSizeBounds...))
 	h.serverMetrics.callDuration = createFloat64Histogram(metrics.Metrics(), "grpc.server.call.duration", meter, otelmetric.WithUnit("s"), otelmetric.WithDescription("End-to-end time taken to complete a call from server transport's perspective."), otelmetric.WithExplicitBucketBoundaries(DefaultLatencyBounds...))
@@ -90,13 +90,12 @@ func (s *attachLabelsTransportStream) SendHeader(md metadata.MD) error {
 	return s.ServerTransportStream.SendHeader(md)
 }
 
-func (h *serverStatsHandler) unaryInterceptor(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+func (h *serverMetricsHandler) unaryInterceptor(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 	var metadataExchangeLabels metadata.MD
 	if h.options.MetricsOptions.pluginOption != nil {
 		metadataExchangeLabels = h.options.MetricsOptions.pluginOption.GetMetadata()
 	}
 
-	// - Server-side: The first stats event after the RPC request is received.
 	sts := grpc.ServerTransportStreamFromContext(ctx)
 
 	alts := &attachLabelsTransportStream{
@@ -152,7 +151,7 @@ func (s *attachLabelsStream) SendMsg(m any) error {
 	return s.ServerStream.SendMsg(m)
 }
 
-func (h *serverStatsHandler) streamInterceptor(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+func (h *serverMetricsHandler) streamInterceptor(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 	var metadataExchangeLabels metadata.MD
 	if h.options.MetricsOptions.pluginOption != nil {
 		metadataExchangeLabels = h.options.MetricsOptions.pluginOption.GetMetadata()
@@ -172,15 +171,15 @@ func (h *serverStatsHandler) streamInterceptor(srv any, ss grpc.ServerStream, _ 
 }
 
 // TagConn exists to satisfy stats.Handler.
-func (h *serverStatsHandler) TagConn(ctx context.Context, _ *stats.ConnTagInfo) context.Context {
+func (h *serverMetricsHandler) TagConn(ctx context.Context, _ *stats.ConnTagInfo) context.Context {
 	return ctx
 }
 
 // HandleConn exists to satisfy stats.Handler.
-func (h *serverStatsHandler) HandleConn(context.Context, stats.ConnStats) {}
+func (h *serverMetricsHandler) HandleConn(context.Context, stats.ConnStats) {}
 
-// TagRPC implements per RPC context management.
-func (h *serverStatsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) context.Context {
+// TagRPC implements per RPC context management for metrics.
+func (h *serverMetricsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo) context.Context {
 	method := info.FullMethodName
 	if h.options.MetricsOptions.MethodAttributeFilter != nil {
 		if !h.options.MetricsOptions.MethodAttributeFilter(method) {
@@ -197,35 +196,24 @@ func (h *serverStatsHandler) TagRPC(ctx context.Context, info *stats.RPCTagInfo)
 			method = "other"
 		}
 	}
+	ctx, ai := getOrCreateRPCAttemptInfo(ctx)
+	ai.startTime = time.Now()
+	ai.method = removeLeadingSlash(method)
 
-	ai := &attemptInfo{
-		startTime: time.Now(),
-		method:    removeLeadingSlash(method),
-	}
-	if h.options.isTracingEnabled() {
-		ctx, ai = h.traceTagRPC(ctx, ai)
-	}
-	return setRPCInfo(ctx, &rpcInfo{
-		ai: ai,
-	})
+	return setRPCInfo(ctx, &rpcInfo{ai: ai})
 }
 
-// HandleRPC implements per RPC tracing and stats implementation.
-func (h *serverStatsHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
+// HandleRPC handles per RPC stats implementation.
+func (h *serverMetricsHandler) HandleRPC(ctx context.Context, rs stats.RPCStats) {
 	ri := getRPCInfo(ctx)
 	if ri == nil {
 		logger.Error("ctx passed into server side stats handler metrics event handling has no server call data present")
 		return
 	}
-	if h.options.isTracingEnabled() {
-		populateSpan(rs, ri.ai)
-	}
-	if h.options.isMetricsEnabled() {
-		h.processRPCData(ctx, rs, ri.ai)
-	}
+	h.processRPCData(ctx, rs, ri.ai)
 }
 
-func (h *serverStatsHandler) processRPCData(ctx context.Context, s stats.RPCStats, ai *attemptInfo) {
+func (h *serverMetricsHandler) processRPCData(ctx context.Context, s stats.RPCStats, ai *attemptInfo) {
 	switch st := s.(type) {
 	case *stats.InHeader:
 		if ai.pluginOptionLabels == nil && h.options.MetricsOptions.pluginOption != nil {
@@ -249,7 +237,7 @@ func (h *serverStatsHandler) processRPCData(ctx context.Context, s stats.RPCStat
 	}
 }
 
-func (h *serverStatsHandler) processRPCEnd(ctx context.Context, ai *attemptInfo, e *stats.End) {
+func (h *serverMetricsHandler) processRPCEnd(ctx context.Context, ai *attemptInfo, e *stats.End) {
 	latency := float64(time.Since(ai.startTime)) / float64(time.Second)
 	st := "OK"
 	if e.Error != nil {

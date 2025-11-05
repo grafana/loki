@@ -104,6 +104,7 @@
   setupNode: $.step.new('setup node', 'actions/setup-node@v4')
              + $.step.with({
                'node-version': 20,
+               'package-manager-cache': false,
              }),
 
   makeTarget: function(target) 'make %s' % target,
@@ -115,9 +116,15 @@
     ],
   },
 
+  fetchGcsCredentials: $.step.new('fetch gcs credentials from vault', 'grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760')
+                       + $.step.withId('fetch_gcs_credentials')
+                       + $.step.with({
+                         repo_secrets: 'GCS_SERVICE_ACCOUNT_KEY=gcs:service-account-key',
+                       }),
+
   googleAuth: $.step.new('auth gcs', 'google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f')  // v2
               + $.step.with({
-                credentials_json: '${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}',
+                credentials_json: '${{ env.GCS_SERVICE_ACCOUNT_KEY }}',
               }),
   setupGoogleCloudSdk: $.step.new('Set up Cloud SDK', 'google-github-actions/setup-gcloud@6189d56e4096ee891640bb02ac264be376592d6a')  // v2
                        + $.step.with({

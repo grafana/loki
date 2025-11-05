@@ -78,7 +78,7 @@ outer:
 		ls := mustParseLabels(stream.Labels)
 
 		// filter by shard if requested
-		if shard != nil && ls.Hash()%uint64(shard.Of) != uint64(shard.Shard) {
+		if shard != nil && labels.StableHash(ls)%uint64(shard.Of) != uint64(shard.Shard) {
 			continue
 		}
 
@@ -148,7 +148,7 @@ func processSeries(in []logproto.Stream, ex []log.SampleExtractor) ([]logproto.S
 			exs := extractor.ForStream(mustParseLabels(stream.Labels))
 			for _, e := range stream.Entries {
 
-				if samples, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line)); ok {
+				if samples, ok := exs.Process(e.Timestamp.UnixNano(), []byte(e.Line), labels.EmptyLabels()); ok {
 					for _, sample := range samples {
 						lbs := sample.Labels
 						f := sample.Value
@@ -215,7 +215,7 @@ outer:
 		ls := mustParseLabels(stream.Labels)
 
 		// filter by shard if requested
-		if shard != nil && ls.Hash()%uint64(shard.Of) != uint64(shard.Shard) {
+		if shard != nil && labels.StableHash(ls)%uint64(shard.Of) != uint64(shard.Shard) {
 			continue
 		}
 
@@ -267,19 +267,19 @@ func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQu
 // create nStreams of nEntries with labelNames each where each label value
 // with the exception of the "index" label is modulo'd into a shard
 func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueField bool) (streams []logproto.Stream) {
-	r := rand.New(rand.NewSource(42)) //#nosec G404 -- Generation of test data only, no need for a cryptographic PRNG
+	r := rand.New(rand.NewSource(42)) //#nosec G404 -- Generation of test data only, no need for a cryptographic PRNG -- nosemgrep: math-random-used
 	for i := 0; i < nStreams; i++ {
 		// labels
 		stream := logproto.Stream{}
-		ls := labels.Labels{{Name: "index", Value: fmt.Sprintf("%d", i)}}
+		ls := []labels.Label{{Name: "index", Value: fmt.Sprintf("%d", i)}}
 
 		for _, lName := range labelNames {
 			// I needed a way to hash something to uint64
 			// in order to get some form of random label distribution
-			shard := append(ls, labels.Label{
+			shard := labels.StableHash(labels.New(append(ls, labels.Label{
 				Name:  lName,
 				Value: fmt.Sprintf("%d", i),
-			}).Hash() % uint64(nShards)
+			})...)) % uint64(nShards)
 
 			ls = append(ls, labels.Label{
 				Name:  lName,
@@ -298,8 +298,9 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueFi
 			})
 		}
 
-		stream.Labels = ls.String()
-		stream.Hash = ls.Hash()
+		r := labels.New(ls...)
+		stream.Labels = r.String()
+		stream.Hash = labels.StableHash(r)
 		streams = append(streams, stream)
 	}
 	return streams

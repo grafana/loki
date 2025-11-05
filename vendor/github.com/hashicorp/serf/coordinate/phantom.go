@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package coordinate
 
 import (
@@ -168,6 +171,9 @@ type Stats struct {
 // distances and compares them with the given truth matrix, returning summary
 // stats.
 func Evaluate(clients []*Client, truth [][]time.Duration) (stats Stats) {
+	if len(clients) <= 1 {
+		return
+	}
 	nodes := len(clients)
 	count := 0
 	for i := 0; i < nodes; i++ {

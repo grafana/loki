@@ -24,6 +24,15 @@ func DelegatingLexer(root Lexer, language Lexer) Lexer {
 	}
 }
 
+func (d *delegatingLexer) SetTracing(enable bool) {
+	if l, ok := d.language.(TracingLexer); ok {
+		l.SetTracing(enable)
+	}
+	if l, ok := d.root.(TracingLexer); ok {
+		l.SetTracing(enable)
+	}
+}
+
 func (d *delegatingLexer) AnalyseText(text string) float32 {
 	return d.root.AnalyseText(text)
 }

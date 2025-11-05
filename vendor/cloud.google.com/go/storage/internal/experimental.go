@@ -26,6 +26,10 @@ var (
 	// Set an alternate client-side metric Exporter to emit metrics through.
 	WithMetricExporter any // func (*metric.Exporter) option.ClientOption
 
+	// WithMeterProvider is a function which is implemented by storage package.
+	// Set an alternate client-side meter provider to emit metrics through.
+	WithMeterProvider any // func (*metric.MeterProvider) option.ClientOption
+
 	// WithReadStallTimeout is a function which is implemented by storage package.
 	// It takes ReadStallTimeoutConfig as inputs and returns a option.ClientOption.
 	WithReadStallTimeout any // func (*ReadStallTimeoutConfig) option.ClientOption
@@ -33,4 +37,9 @@ var (
 	// WithGRPCBidiReads is a function which is implemented by the storage package.
 	// It sets the gRPC client to use the BidiReadObject API for downloads.
 	WithGRPCBidiReads any // func() option.ClientOption
+
+	// WithZonalBucketAPIs is a function which is implemented by the storage package.
+	// It sets the gRPC client to use the BidiReadObject API for downloads and
+	// appendable object semantics by default for uploads.
+	WithZonalBucketAPIs any // func() option.ClientOption
 )

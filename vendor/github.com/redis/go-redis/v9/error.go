@@ -15,6 +15,13 @@ import (
 // ErrClosed performs any operation on the closed client will return this error.
 var ErrClosed = pool.ErrClosed
 
+// ErrPoolExhausted is returned from a pool connection method
+// when the maximum number of database connections in the pool has been reached.
+var ErrPoolExhausted = pool.ErrPoolExhausted
+
+// ErrPoolTimeout timed out waiting to get a connection from the connection pool.
+var ErrPoolTimeout = pool.ErrPoolTimeout
+
 // HasErrorPrefix checks if the err is a Redis error and the message contains a prefix.
 func HasErrorPrefix(err error, prefix string) bool {
 	var rErr Error

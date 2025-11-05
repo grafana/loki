@@ -14,6 +14,7 @@ const snapshotBasePath = "v2/snapshots"
 type SnapshotsService interface {
 	List(context.Context, *ListOptions) ([]Snapshot, *Response, error)
 	ListVolume(context.Context, *ListOptions) ([]Snapshot, *Response, error)
+	ListVolumeSnapshotByRegion(context.Context, string, *ListOptions) ([]Snapshot, *Response, error)
 	ListDroplet(context.Context, *ListOptions) ([]Snapshot, *Response, error)
 	Get(context.Context, string) (*Snapshot, *Response, error)
 	Delete(context.Context, string) (*Response, error)
@@ -52,6 +53,7 @@ type snapshotsRoot struct {
 
 type listSnapshotOptions struct {
 	ResourceType string `url:"resource_type,omitempty"`
+	Region       string `url:"region,omitempty"`
 }
 
 func (s Snapshot) String() string {
@@ -72,6 +74,12 @@ func (s *SnapshotsServiceOp) ListDroplet(ctx context.Context, opt *ListOptions) 
 // ListVolume lists all the volume snapshots.
 func (s *SnapshotsServiceOp) ListVolume(ctx context.Context, opt *ListOptions) ([]Snapshot, *Response, error) {
 	listOpt := listSnapshotOptions{ResourceType: "volume"}
+	return s.list(ctx, opt, &listOpt)
+}
+
+// ListVolumeSnapshotByRegion lists all the volume snapshot for given region
+func (s *SnapshotsServiceOp) ListVolumeSnapshotByRegion(ctx context.Context, region string, opt *ListOptions) ([]Snapshot, *Response, error) {
+	listOpt := listSnapshotOptions{ResourceType: "volume", Region: region}
 	return s.list(ctx, opt, &listOpt)
 }
 

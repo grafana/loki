@@ -21,7 +21,6 @@ package hashing
 
 import (
 	"bytes"
-	"math"
 	"unsafe"
 )
 
@@ -47,6 +46,16 @@ type MemoTable interface {
 	// the table, including whether or not a null value has been
 	// inserted via GetOrInsertNull.
 	Size() int
+	// CopyValues populates out with the values currently in the table, out must
+	// be a slice of the appropriate type for the table type.
+	CopyValues(out any)
+	// CopyValuesSubset is like CopyValues but only copies a subset of values starting
+	// at the indicated index.
+	CopyValuesSubset(start int, out any)
+	// Get returns the index of the table the specified value is, and a boolean indicating
+	// whether or not the value was found in the table. Will panic if val is not the appropriate
+	// type for the underlying table.
+	Get(val interface{}) (int, bool)
 	// GetOrInsert returns the index of the table the specified value is,
 	// and a boolean indicating whether or not the value was found in
 	// the table (if false, the value was inserted). An error is returned
@@ -74,6 +83,18 @@ type MemoTable interface {
 	WriteOutSubset(offset int, out []byte)
 }
 
+type MemoTypes interface {
+	int8 | int16 | int32 | int64 |
+		uint8 | uint16 | uint32 | uint64 |
+		float32 | float64 | []byte
+}
+
+type TypedMemoTable[T MemoTypes] interface {
+	MemoTable
+	Exists(T) bool
+	InsertOrGet(val T) (idx int, found bool, err error)
+}
+
 type NumericMemoTable interface {
 	MemoTable
 	WriteOutLE(out []byte)
@@ -84,15 +105,6 @@ const (
 	sentinel   uint64 = 0
 	loadFactor int64  = 2
 )
-
-func max(a, b uint64) uint64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-var isNan32Cmp = func(v float32) bool { return math.IsNaN(float64(v)) }
 
 // KeyNotFound is the constant returned by memo table functions when a key isn't found in the table
 const KeyNotFound = -1
@@ -117,7 +129,7 @@ type BinaryBuilderIFace interface {
 // while using a hash table to keep track of the indexes into the dictionary that
 // is created as we go.
 type BinaryMemoTable struct {
-	tbl     *Int32HashTable
+	tbl     *HashTable[int32]
 	builder BinaryBuilderIFace
 	nullIdx int
 }
@@ -134,7 +146,7 @@ func NewBinaryMemoTable(initial, valuesize int, bldr BinaryBuilderIFace) *Binary
 		datasize = initial * 4
 	}
 	bldr.ReserveData(datasize)
-	return &BinaryMemoTable{tbl: NewInt32HashTable(uint64(initial)), builder: bldr, nullIdx: KeyNotFound}
+	return &BinaryMemoTable{tbl: NewHashTable[int32](uint64(initial)), builder: bldr, nullIdx: KeyNotFound}
 }
 
 type unimplementedtraits struct{}
@@ -202,23 +214,15 @@ func (BinaryMemoTable) getHash(val interface{}) uint64 {
 	}
 }
 
-// helper function to append the given value to the builder regardless
-// of the underlying binary type.
-func (b *BinaryMemoTable) appendVal(val interface{}) {
-	switch v := val.(type) {
-	case string:
-		b.builder.AppendString(v)
-	case []byte:
-		b.builder.Append(v)
-	case ByteSlice:
-		b.builder.Append(v.Bytes())
-	}
-}
-
-func (b *BinaryMemoTable) lookup(h uint64, val []byte) (*entryInt32, bool) {
+func (b *BinaryMemoTable) lookup(h uint64, val []byte) (*entry[int32], bool) {
 	return b.tbl.Lookup(h, func(i int32) bool {
 		return bytes.Equal(val, b.builder.Value(int(i)))
 	})
+}
+
+func (b *BinaryMemoTable) Exists(val []byte) bool {
+	_, ok := b.lookup(b.getHash(val), val)
+	return ok
 }
 
 // Get returns the index of the specified value in the table or KeyNotFound,
@@ -246,17 +250,21 @@ func (b *BinaryMemoTable) GetOrInsertBytes(val []byte) (idx int, found bool, err
 	return
 }
 
+func (b *BinaryMemoTable) GetOrInsert(val interface{}) (idx int, found bool, err error) {
+	return b.InsertOrGet(b.valAsByteSlice(val))
+}
+
 // GetOrInsert returns the index of the given value in the table, if not found
 // it is inserted into the table. The return value 'found' indicates whether the value
 // was found in the table (true) or inserted (false) along with any possible error.
-func (b *BinaryMemoTable) GetOrInsert(val interface{}) (idx int, found bool, err error) {
+func (b *BinaryMemoTable) InsertOrGet(val []byte) (idx int, found bool, err error) {
 	h := b.getHash(val)
-	p, found := b.lookup(h, b.valAsByteSlice(val))
+	p, found := b.lookup(h, val)
 	if found {
 		idx = int(p.payload.val)
 	} else {
 		idx = b.Size()
-		b.appendVal(val)
+		b.builder.Append(val)
 		b.tbl.Insert(p, h, int32(idx), -1)
 	}
 	return

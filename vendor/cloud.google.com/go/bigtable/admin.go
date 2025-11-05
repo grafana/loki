@@ -38,16 +38,54 @@ import (
 	"google.golang.org/api/option"
 	gtransport "google.golang.org/api/transport/grpc"
 	"google.golang.org/genproto/googleapis/rpc/status"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	grpcstatus "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
 	field_mask "google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const adminAddr = "bigtableadmin.googleapis.com:443"
+// UNIVERSE_DOMAIN placeholder is replaced by the UniverseDomain from DialSettings while creating GRPC connection/dial pool.
+const adminAddr = "bigtableadmin.UNIVERSE_DOMAIN:443"
 const mtlsAdminAddr = "bigtableadmin.mtls.googleapis.com:443"
 
-var errExpiryMissing = errors.New("WithExpiry is a required option")
+var (
+	errExpiryMissing  = errors.New("WithExpiry is a required option")
+	adminRetryOptions = []gax.CallOption{
+		gax.WithRetry(func() gax.Retryer {
+			return &bigtableAdminRetryer{
+				Backoff: defaultBackoff,
+			}
+		}),
+	}
+)
+
+// bigtableAdminRetryer extends the generic gax Retryer, but also checks
+// error messages to check if operation can be retried
+//
+// Retry is made if :
+// - error code is one of the `idempotentRetryCodes` OR
+// - error code is internal and error message is one of the `retryableInternalErrMsgs`
+type bigtableAdminRetryer struct {
+	gax.Backoff
+}
+
+func (r *bigtableAdminRetryer) Retry(err error) (time.Duration, bool) {
+	// Similar to gax.OnCodes but shares the backoff with INTERNAL retry messages check
+	st, ok := grpcstatus.FromError(err)
+	if !ok {
+		return 0, false
+	}
+	c := st.Code()
+	_, isIdempotent := isIdempotentRetryCode[c]
+	if isIdempotent ||
+		(grpcstatus.Code(err) == codes.Internal && containsAny(err.Error(), retryableInternalErrMsgs)) {
+		pause := r.Backoff.Pause()
+		return pause, true
+	}
+	return 0, false
+}
 
 // ErrPartiallyUnavailable is returned when some locations (clusters) are
 // unavailable. Both partial results (retrieved from available locations)
@@ -128,6 +166,10 @@ func (ac *AdminClient) backupPath(cluster, instance, backup string) string {
 
 func (ac *AdminClient) authorizedViewPath(table, authorizedView string) string {
 	return fmt.Sprintf("%s/tables/%s/authorizedViews/%s", ac.instancePrefix(), table, authorizedView)
+}
+
+func (ac *AdminClient) schemaBundlePath(table, schemaBundle string) string {
+	return fmt.Sprintf("%s/tables/%s/schemaBundles/%s", ac.instancePrefix(), table, schemaBundle)
 }
 
 func logicalViewPath(project, instance, logicalView string) string {
@@ -221,7 +263,7 @@ func (ac *AdminClient) Tables(ctx context.Context) ([]string, error) {
 		var err error
 		res, err = ac.tClient.ListTables(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -238,9 +280,10 @@ func (ac *AdminClient) Tables(ctx context.Context) ([]string, error) {
 // disable change stream retention.
 type ChangeStreamRetention optional.Duration
 
-// DeletionProtection indicates whether the table is protected against data loss
-// i.e. when set to protected, deleting the table, the column families in the table,
-// and the instance containing the table would be prohibited.
+// DeletionProtection indicates whether the table, authorized view, logical view or
+// materialized view is protected against data loss i.e. when set to protected,
+// deleting the view, the table, the column families in the table,
+// and the instance containing the table or view would be prohibited.
 type DeletionProtection int
 
 // None indicates that deletion protection is unset
@@ -660,7 +703,7 @@ func (ac *AdminClient) getTable(ctx context.Context, table string, view btapb.Ta
 		var err error
 		res, err = ac.tClient.GetTable(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -913,7 +956,7 @@ func (ac *AdminClient) Snapshots(ctx context.Context, cluster string) *SnapshotI
 			var err error
 			resp, err = ac.tClient.ListSnapshots(ctx, req)
 			return err
-		}, retryOptions...)
+		}, adminRetryOptions...)
 		if err != nil {
 			return "", err
 		}
@@ -1018,7 +1061,7 @@ func (ac *AdminClient) SnapshotInfo(ctx context.Context, cluster, snapshot strin
 		var err error
 		resp, err = ac.tClient.GetSnapshot(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -1070,7 +1113,7 @@ func (ac *AdminClient) isConsistent(ctx context.Context, tableName, token string
 		var err error
 		resp, err = ac.tClient.CheckConsistency(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return false, err
 	}
@@ -1124,7 +1167,8 @@ func (ac *AdminClient) AuthorizedViewIAM(table, authorizedView string) *iam.Hand
 	return iam.InternalNewHandleGRPCClient(ac.tClient, ac.authorizedViewPath(table, authorizedView))
 }
 
-const instanceAdminAddr = "bigtableadmin.googleapis.com:443"
+// UNIVERSE_DOMAIN placeholder is replaced by the UniverseDomain from DialSettings while creating GRPC connection/dial pool.
+const instanceAdminAddr = "bigtableadmin.UNIVERSE_DOMAIN:443"
 const mtlsInstanceAdminAddr = "bigtableadmin.mtls.googleapis.com:443"
 
 // InstanceAdminClient is a client type for performing admin operations on instances.
@@ -1430,7 +1474,7 @@ func (iac *InstanceAdminClient) Instances(ctx context.Context) ([]*InstanceInfo,
 		var err error
 		res, err = iac.iClient.ListInstances(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -1468,7 +1512,7 @@ func (iac *InstanceAdminClient) InstanceInfo(ctx context.Context, instanceID str
 		var err error
 		res, err = iac.iClient.GetInstance(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -1744,7 +1788,7 @@ func (iac *InstanceAdminClient) Clusters(ctx context.Context, instanceID string)
 		var err error
 		res, err = iac.iClient.ListClusters(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -1792,7 +1836,7 @@ func (iac *InstanceAdminClient) GetCluster(ctx context.Context, instanceID, clus
 		var err error
 		c, err = iac.iClient.GetCluster(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -2187,7 +2231,7 @@ func (iac *InstanceAdminClient) GetAppProfile(ctx context.Context, instanceID, n
 		var err error
 		ap, err = iac.iClient.GetAppProfile(ctx, profileRequest)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -2209,7 +2253,7 @@ func (iac *InstanceAdminClient) ListAppProfiles(ctx context.Context, instanceID 
 			var err error
 			profileRes, err = iac.iClient.ListAppProfiles(ctx, listRequest)
 			return err
-		}, retryOptions...)
+		}, adminRetryOptions...)
 		if err != nil {
 			return "", err
 		}
@@ -2228,7 +2272,6 @@ func (iac *InstanceAdminClient) ListAppProfiles(ctx context.Context, instanceID 
 // UpdateAppProfile updates an app profile within an instance.
 // updateAttrs should be set. If unset, all fields will be replaced.
 func (iac *InstanceAdminClient) UpdateAppProfile(ctx context.Context, instanceID, profileID string, updateAttrs ProfileAttrsToUpdate) error {
-	fmt.Println("Entering UpdateAppProfile")
 	ctx = mergeOutgoingMetadata(ctx, iac.md)
 
 	profile := &btapb.AppProfile{
@@ -2595,7 +2638,7 @@ func (ac *AdminClient) Backups(ctx context.Context, cluster string) *BackupItera
 			var err error
 			resp, err = ac.tClient.ListBackups(ctx, req)
 			return err
-		}, retryOptions...)
+		}, adminRetryOptions...)
 		if err != nil {
 			return "", err
 		}
@@ -2744,7 +2787,7 @@ func (ac *AdminClient) BackupInfo(ctx context.Context, cluster, backup string) (
 		var err error
 		resp, err = ac.tClient.GetBackup(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -2983,7 +3026,7 @@ func (ac *AdminClient) AuthorizedViewInfo(ctx context.Context, tableID, authoriz
 		var err error
 		res, err = ac.tClient.GetAuthorizedView(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 
 	if err != nil {
 		return nil, err
@@ -3017,7 +3060,7 @@ func (ac *AdminClient) AuthorizedViews(ctx context.Context, tableID string) ([]s
 		var err error
 		res, err = ac.tClient.ListAuthorizedViews(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -3087,13 +3130,25 @@ func (iac *InstanceAdminClient) CreateLogicalView(ctx context.Context, instanceI
 		return errors.New("LogicalViewID is required")
 	}
 
+	lv := &btapb.LogicalView{
+		Query: conf.Query,
+	}
+	if conf.DeletionProtection != None {
+		switch dp := conf.DeletionProtection; dp {
+		case Protected:
+			lv.DeletionProtection = true
+		case Unprotected:
+			lv.DeletionProtection = false
+		default:
+			break
+		}
+	}
+
 	ctx = mergeOutgoingMetadata(ctx, iac.md)
 	req := &btapb.CreateLogicalViewRequest{
 		Parent:        instancePrefix(iac.project, instanceID),
 		LogicalViewId: conf.LogicalViewID,
-		LogicalView: &btapb.LogicalView{
-			Query: conf.Query,
-		},
+		LogicalView:   lv,
 	}
 
 	op, err := iac.iClient.CreateLogicalView(ctx, req)
@@ -3108,7 +3163,8 @@ func (iac *InstanceAdminClient) CreateLogicalView(ctx context.Context, instanceI
 type LogicalViewInfo struct {
 	LogicalViewID string
 
-	Query string
+	Query              string
+	DeletionProtection DeletionProtection
 }
 
 // LogicalViewInfo retrieves information about a logical view.
@@ -3124,12 +3180,18 @@ func (iac *InstanceAdminClient) LogicalViewInfo(ctx context.Context, instanceID,
 		var err error
 		res, err = iac.iClient.GetLogicalView(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 
 	if err != nil {
 		return nil, err
 	}
-	return &LogicalViewInfo{LogicalViewID: strings.TrimPrefix(res.Name, prefix+"/logicalViews/"), Query: res.Query}, nil
+	lv := &LogicalViewInfo{LogicalViewID: strings.TrimPrefix(res.Name, prefix+"/logicalViews/"), Query: res.Query}
+	if res.DeletionProtection {
+		lv.DeletionProtection = Protected
+	} else {
+		lv.DeletionProtection = Unprotected
+	}
+	return lv, nil
 }
 
 // LogicalViews returns a list of the logical views in the instance.
@@ -3144,13 +3206,19 @@ func (iac *InstanceAdminClient) LogicalViews(ctx context.Context, instanceID str
 		var err error
 		res, err = iac.iClient.ListLogicalViews(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, lv := range res.LogicalViews {
-		views = append(views, LogicalViewInfo{LogicalViewID: strings.TrimPrefix(lv.Name, prefix+"/logicalViews/"), Query: lv.Query})
+	for _, lView := range res.LogicalViews {
+		lv := LogicalViewInfo{LogicalViewID: strings.TrimPrefix(lView.Name, prefix+"/logicalViews/"), Query: lView.Query}
+		if lView.DeletionProtection {
+			lv.DeletionProtection = Protected
+		} else {
+			lv.DeletionProtection = Unprotected
+		}
+		views = append(views, lv)
 	}
 	return views, nil
 }
@@ -3170,6 +3238,17 @@ func (iac *InstanceAdminClient) UpdateLogicalView(ctx context.Context, instanceI
 	if conf.Query != "" {
 		updateMask.Paths = append(updateMask.Paths, "query")
 		lv.Query = conf.Query
+	}
+	if conf.DeletionProtection != None {
+		updateMask.Paths = append(updateMask.Paths, "deletion_protection")
+		switch dp := conf.DeletionProtection; dp {
+		case Protected:
+			lv.DeletionProtection = true
+		case Unprotected:
+			lv.DeletionProtection = false
+		default:
+			break
+		}
 	}
 	req := &btapb.UpdateLogicalViewRequest{
 		LogicalView: lv,
@@ -3253,7 +3332,7 @@ func (iac *InstanceAdminClient) MaterializedViewInfo(ctx context.Context, instan
 		var err error
 		res, err = iac.iClient.GetMaterializedView(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 
 	if err != nil {
 		return nil, err
@@ -3279,7 +3358,7 @@ func (iac *InstanceAdminClient) MaterializedViews(ctx context.Context, instanceI
 		var err error
 		res, err = iac.iClient.ListMaterializedViews(ctx, req)
 		return err
-	}, retryOptions...)
+	}, adminRetryOptions...)
 	if err != nil {
 		return nil, err
 	}
@@ -3346,5 +3425,172 @@ func (iac *InstanceAdminClient) DeleteMaterializedView(ctx context.Context, inst
 		Name: materializedlViewPath(iac.project, instanceID, materializedViewID),
 	}
 	_, err := iac.iClient.DeleteMaterializedView(ctx, req)
+	return err
+}
+
+// SchemaBundles
+
+// SchemaBundleConf contains the information necessary to create or update a schema bundle.
+type SchemaBundleConf struct {
+	TableID        string
+	SchemaBundleID string
+	ProtoSchema    *ProtoSchemaInfo
+
+	// Etag is used for optimistic concurrency control during updates.
+	// Ignored during creation.
+	Etag string
+}
+
+// ProtoSchemaInfo represents a protobuf schema.
+type ProtoSchemaInfo struct {
+	// Contains a protobuf-serialized
+	// [google.protobuf.FileDescriptorSet](https://github.com/protocolbuffers/protobuf/blob/main/src/google/protobuf/descriptor.proto),
+	// which could include multiple proto files.
+	ProtoDescriptors []byte
+}
+
+// CreateSchemaBundle creates a new schema bundle in a table.
+func (ac *AdminClient) CreateSchemaBundle(ctx context.Context, conf *SchemaBundleConf) error {
+	if conf.TableID == "" || conf.SchemaBundleID == "" {
+		return errors.New("both SchemaBundleID and TableID are required in SchemaBundleConf")
+	}
+	schemaBundle := &btapb.SchemaBundle{}
+	if len(conf.ProtoSchema.ProtoDescriptors) > 0 {
+		schemaBundle.Type = &btapb.SchemaBundle_ProtoSchema{
+			ProtoSchema: &btapb.ProtoSchema{
+				ProtoDescriptors: conf.ProtoSchema.ProtoDescriptors,
+			},
+		}
+	}
+
+	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	req := &btapb.CreateSchemaBundleRequest{
+		Parent:         fmt.Sprintf("%s/tables/%s", ac.instancePrefix(), conf.TableID),
+		SchemaBundleId: conf.SchemaBundleID,
+		SchemaBundle:   schemaBundle,
+	}
+	op, err := ac.tClient.CreateSchemaBundle(ctx, req)
+	if err != nil {
+		return err
+	}
+	resp := btapb.SchemaBundle{}
+	return longrunning.InternalNewOperation(ac.lroClient, op).Wait(ctx, &resp)
+}
+
+// SchemaBundleInfo represents information about a schema bundle. Schema bundle is a named collection of related schemas.
+// This struct is read-only.
+type SchemaBundleInfo struct {
+	TableID        string
+	SchemaBundleID string
+
+	Etag         string
+	SchemaBundle []byte
+}
+
+// GetSchemaBundle retrieves information about a schema bundle.
+func (ac *AdminClient) GetSchemaBundle(ctx context.Context, tableID, schemaBundleID string) (*SchemaBundleInfo, error) {
+	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	req := &btapb.GetSchemaBundleRequest{
+		Name: ac.schemaBundlePath(tableID, schemaBundleID),
+	}
+	var res *btapb.SchemaBundle
+
+	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
+		var err error
+		res, err = ac.tClient.GetSchemaBundle(ctx, req)
+		return err
+	}, adminRetryOptions...)
+	if err != nil {
+		return nil, err
+	}
+
+	sb := &SchemaBundleInfo{
+		TableID:        tableID,
+		SchemaBundleID: schemaBundleID,
+		Etag:           res.Etag,
+	}
+	if len(res.GetProtoSchema().GetProtoDescriptors()) > 0 {
+		sb.SchemaBundle = res.GetProtoSchema().GetProtoDescriptors()
+	}
+
+	return sb, nil
+}
+
+// SchemaBundles returns a list of the schema bundles in the table.
+func (ac *AdminClient) SchemaBundles(ctx context.Context, tableID string) ([]string, error) {
+	names := []string{}
+	prefix := fmt.Sprintf("%s/tables/%s", ac.instancePrefix(), tableID)
+
+	req := &btapb.ListSchemaBundlesRequest{
+		Parent: prefix,
+	}
+	var res *btapb.ListSchemaBundlesResponse
+	err := gax.Invoke(ctx, func(ctx context.Context, _ gax.CallSettings) error {
+		var err error
+		res, err = ac.tClient.ListSchemaBundles(ctx, req)
+		return err
+	}, adminRetryOptions...)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, res := range res.SchemaBundles {
+		names = append(names, strings.TrimPrefix(res.Name, prefix+"/schemaBundles/"))
+	}
+	return names, nil
+}
+
+// UpdateSchemaBundleConf contains all the information necessary to update or partial update a schema bundle.
+type UpdateSchemaBundleConf struct {
+	SchemaBundleConf SchemaBundleConf
+	IgnoreWarnings   bool
+}
+
+// UpdateSchemaBundle updates a schema bundle in a table according to the given configuration.
+func (ac *AdminClient) UpdateSchemaBundle(ctx context.Context, conf UpdateSchemaBundleConf) error {
+	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	if conf.SchemaBundleConf.TableID == "" || conf.SchemaBundleConf.SchemaBundleID == "" {
+		return errors.New("both SchemaBundleID and TableID is required")
+	}
+	sb := &btapb.SchemaBundle{
+		Name: ac.schemaBundlePath(conf.SchemaBundleConf.TableID, conf.SchemaBundleConf.SchemaBundleID),
+		Etag: conf.SchemaBundleConf.Etag,
+	}
+
+	updateMask := &field_mask.FieldMask{
+		Paths: []string{},
+	}
+	if len(conf.SchemaBundleConf.ProtoSchema.ProtoDescriptors) > 0 {
+		sb.Type = &btapb.SchemaBundle_ProtoSchema{
+			ProtoSchema: &btapb.ProtoSchema{
+				ProtoDescriptors: conf.SchemaBundleConf.ProtoSchema.ProtoDescriptors,
+			},
+		}
+		updateMask.Paths = append(updateMask.Paths, "proto_schema")
+	}
+	req := &btapb.UpdateSchemaBundleRequest{
+		SchemaBundle:   sb,
+		UpdateMask:     updateMask,
+		IgnoreWarnings: conf.IgnoreWarnings,
+	}
+	lro, err := ac.tClient.UpdateSchemaBundle(ctx, req)
+	if err != nil {
+		return fmt.Errorf("error from update schema bundle: %w", err)
+	}
+	var res btapb.SchemaBundle
+	op := longrunning.InternalNewOperation(ac.lroClient, lro)
+	if err = op.Wait(ctx, &res); err != nil {
+		return fmt.Errorf("error from operation: %v", err)
+	}
+	return nil
+}
+
+// DeleteSchemaBundle deletes a schema bundle in a table.
+func (ac *AdminClient) DeleteSchemaBundle(ctx context.Context, tableID, schemaBundleID string) error {
+	ctx = mergeOutgoingMetadata(ctx, ac.md)
+	req := &btapb.DeleteSchemaBundleRequest{
+		Name: ac.schemaBundlePath(tableID, schemaBundleID),
+	}
+	_, err := ac.tClient.DeleteSchemaBundle(ctx, req)
 	return err
 }

@@ -12,3 +12,6 @@ else
 end
 
 gem "webmock", "~> 3.8"
+# I could not find the reason why the `cgi` gem is required after the upgrade of jruby inside the logstash bash Docker image.
+# However, the build fails without this dependency.
+gem "cgi"

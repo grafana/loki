@@ -475,7 +475,7 @@ type Metric struct {
 	// description of the metric, which can be used in documentation.
 	Description string `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
 	// unit in which the metric value is reported. Follows the format
-	// described by http://unitsofmeasure.org/ucum.html.
+	// described by https://unitsofmeasure.org/ucum.html.
 	Unit string `protobuf:"bytes,3,opt,name=unit,proto3" json:"unit,omitempty"`
 	// Data determines the aggregation type (if any) of the metric, what is the
 	// reported value type for the data points, as well as the relatationship to
@@ -872,7 +872,7 @@ func (m *ExponentialHistogram) GetAggregationTemporality() AggregationTemporalit
 
 // Summary metric data are used to convey quantile summaries,
 // a Prometheus (see: https://prometheus.io/docs/concepts/metric_types/#summary)
-// and OpenMetrics (see: https://github.com/OpenObservability/OpenMetrics/blob/4dbf6075567ab43296eed941037c12951faafb92/protos/prometheus.proto#L45)
+// and OpenMetrics (see: https://github.com/prometheus/OpenMetrics/blob/4dbf6075567ab43296eed941037c12951faafb92/protos/prometheus.proto#L45)
 // data type. These data points cannot always be merged in a meaningful way.
 // While they can be useful in some applications, histogram data points are
 // recommended for new applications.
@@ -930,6 +930,16 @@ type NumberDataPoint struct {
 	// where this point belongs. The list may be empty (may contain 0 elements).
 	// Attribute keys MUST be unique (it is not allowed to have more than one
 	// attribute with the same key).
+	//
+	// The attribute values SHOULD NOT contain empty values.
+	// The attribute values SHOULD NOT contain bytes values.
+	// The attribute values SHOULD NOT contain array values different than array of string values, bool values, int values,
+	// double values.
+	// The attribute values SHOULD NOT contain kvlist values.
+	// The behavior of software that receives attributes containing such values can be unpredictable.
+	// These restrictions can change in a minor release.
+	// The restrictions take origin from the OpenTelemetry specification:
+	// https://github.com/open-telemetry/opentelemetry-specification/blob/v1.47.0/specification/common/README.md#attribute.
 	Attributes []v11.KeyValue `protobuf:"bytes,7,rep,name=attributes,proto3" json:"attributes"`
 	// StartTimeUnixNano is optional but strongly encouraged, see the
 	// the detailed comments above Metric.
@@ -1085,6 +1095,16 @@ type HistogramDataPoint struct {
 	// where this point belongs. The list may be empty (may contain 0 elements).
 	// Attribute keys MUST be unique (it is not allowed to have more than one
 	// attribute with the same key).
+	//
+	// The attribute values SHOULD NOT contain empty values.
+	// The attribute values SHOULD NOT contain bytes values.
+	// The attribute values SHOULD NOT contain array values different than array of string values, bool values, int values,
+	// double values.
+	// The attribute values SHOULD NOT contain kvlist values.
+	// The behavior of software that receives attributes containing such values can be unpredictable.
+	// These restrictions can change in a minor release.
+	// The restrictions take origin from the OpenTelemetry specification:
+	// https://github.com/open-telemetry/opentelemetry-specification/blob/v1.47.0/specification/common/README.md#attribute.
 	Attributes []v11.KeyValue `protobuf:"bytes,9,rep,name=attributes,proto3" json:"attributes"`
 	// StartTimeUnixNano is optional but strongly encouraged, see the
 	// the detailed comments above Metric.
@@ -1119,7 +1139,9 @@ type HistogramDataPoint struct {
 	// The sum of the bucket_counts must equal the value in the count field.
 	//
 	// The number of elements in bucket_counts array must be by one greater than
-	// the number of elements in explicit_bounds array.
+	// the number of elements in explicit_bounds array. The exception to this rule
+	// is when the length of bucket_counts is 0, then the length of explicit_bounds
+	// must also be 0.
 	BucketCounts []uint64 `protobuf:"fixed64,6,rep,packed,name=bucket_counts,json=bucketCounts,proto3" json:"bucket_counts,omitempty"`
 	// explicit_bounds specifies buckets with explicitly defined bounds for values.
 	//
@@ -1134,6 +1156,9 @@ type HistogramDataPoint struct {
 	// Histogram buckets are inclusive of their upper boundary, except the last
 	// bucket where the boundary is at infinity. This format is intentionally
 	// compatible with the OpenMetrics histogram definition.
+	//
+	// If bucket_counts length is 0 then explicit_bounds length must also be 0,
+	// otherwise the data point is invalid.
 	ExplicitBounds []float64 `protobuf:"fixed64,7,rep,packed,name=explicit_bounds,json=explicitBounds,proto3" json:"explicit_bounds,omitempty"`
 	// (Optional) List of exemplars collected from
 	// measurements that were used to form the data point
@@ -1330,6 +1355,16 @@ type ExponentialHistogramDataPoint struct {
 	// where this point belongs. The list may be empty (may contain 0 elements).
 	// Attribute keys MUST be unique (it is not allowed to have more than one
 	// attribute with the same key).
+	//
+	// The attribute values SHOULD NOT contain empty values.
+	// The attribute values SHOULD NOT contain bytes values.
+	// The attribute values SHOULD NOT contain array values different than array of string values, bool values, int values,
+	// double values.
+	// The attribute values SHOULD NOT contain kvlist values.
+	// The behavior of software that receives attributes containing such values can be unpredictable.
+	// These restrictions can change in a minor release.
+	// The restrictions take origin from the OpenTelemetry specification:
+	// https://github.com/open-telemetry/opentelemetry-specification/blob/v1.47.0/specification/common/README.md#attribute.
 	Attributes []v11.KeyValue `protobuf:"bytes,1,rep,name=attributes,proto3" json:"attributes"`
 	// StartTimeUnixNano is optional but strongly encouraged, see the
 	// the detailed comments above Metric.
@@ -1675,6 +1710,16 @@ type SummaryDataPoint struct {
 	// where this point belongs. The list may be empty (may contain 0 elements).
 	// Attribute keys MUST be unique (it is not allowed to have more than one
 	// attribute with the same key).
+	//
+	// The attribute values SHOULD NOT contain empty values.
+	// The attribute values SHOULD NOT contain bytes values.
+	// The attribute values SHOULD NOT contain array values different than array of string values, bool values, int values,
+	// double values.
+	// The attribute values SHOULD NOT contain kvlist values.
+	// The behavior of software that receives attributes containing such values can be unpredictable.
+	// These restrictions can change in a minor release.
+	// The restrictions take origin from the OpenTelemetry specification:
+	// https://github.com/open-telemetry/opentelemetry-specification/blob/v1.47.0/specification/common/README.md#attribute.
 	Attributes []v11.KeyValue `protobuf:"bytes,7,rep,name=attributes,proto3" json:"attributes"`
 	// StartTimeUnixNano is optional but strongly encouraged, see the
 	// the detailed comments above Metric.

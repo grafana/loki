@@ -21,6 +21,10 @@ pkgs.buildGo124Module {
       "-X ${prefix}.BuildDate=unknown"
     ];
 
+  tags = [
+     "slicelabels"
+  ];
+
   subPackages = [ "cmd/loki" ];
 
   nativeBuildInputs = with pkgs; [ makeWrapper ];

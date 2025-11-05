@@ -107,6 +107,14 @@ type Version struct {
 		M int // Parity blocks
 	} `xml:"Internal"`
 
+	// Checksum values. Only returned by AiStor servers.
+	ChecksumCRC32     string `xml:",omitempty"`
+	ChecksumCRC32C    string `xml:",omitempty"`
+	ChecksumSHA1      string `xml:",omitempty"`
+	ChecksumSHA256    string `xml:",omitempty"`
+	ChecksumCRC64NVME string `xml:",omitempty"`
+	ChecksumType      string `xml:",omitempty"`
+
 	isDeleteMarker bool
 }
 

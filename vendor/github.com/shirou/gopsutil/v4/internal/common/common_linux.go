@@ -119,18 +119,18 @@ func BootTimeWithContext(ctx context.Context, enableCache bool) (uint64, error) 
 }
 
 func handleBootTimeFileReadErr(err error) (uint64, error) {
-	if os.IsPermission(err) {
-		var info syscall.Sysinfo_t
-		err := syscall.Sysinfo(&info)
-		if err != nil {
-			return 0, err
-		}
-
-		currentTime := time.Now().UnixNano() / int64(time.Second)
-		t := currentTime - int64(info.Uptime)
-		return uint64(t), nil
+	if !os.IsPermission(err) {
+		return 0, err
 	}
-	return 0, err
+	var info syscall.Sysinfo_t
+	err = syscall.Sysinfo(&info)
+	if err != nil {
+		return 0, err
+	}
+
+	currentTime := time.Now().UnixNano() / int64(time.Second)
+	t := currentTime - int64(info.Uptime)
+	return uint64(t), nil
 }
 
 func readBootTimeStat(ctx context.Context) (uint64, error) {
@@ -317,11 +317,11 @@ func VirtualizationWithContext(ctx context.Context) (string, string, error) {
 	return system, role, nil
 }
 
-func GetOSRelease() (platform string, version string, err error) {
+func GetOSRelease() (platform, version string, err error) {
 	return GetOSReleaseWithContext(context.Background())
 }
 
-func GetOSReleaseWithContext(ctx context.Context) (platform string, version string, err error) {
+func GetOSReleaseWithContext(ctx context.Context) (platform, version string, err error) {
 	contents, err := ReadLines(HostEtcWithContext(ctx, "os-release"))
 	if err != nil {
 		return "", "", nil // return empty

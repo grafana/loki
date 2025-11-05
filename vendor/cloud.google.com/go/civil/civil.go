@@ -193,6 +193,10 @@ func (d *Date) Scan(v any) error {
 			*d, err = ParseDate(string(*vt))
 		}
 		return err
+	case Date:
+		*d = vt
+	case *Date:
+		*d = *vt
 	default:
 		return fmt.Errorf("unsupported scan type for Date: %T", v)
 	}
@@ -337,6 +341,10 @@ func (t *Time) Scan(v any) error {
 			*t, err = ParseTime(string(*vt))
 		}
 		return err
+	case Time:
+		*t = vt
+	case *Time:
+		*t = *vt
 	default:
 		return fmt.Errorf("unsupported scan type for Time: %T", v)
 	}
@@ -481,6 +489,10 @@ func (dt *DateTime) Scan(v any) error {
 			*dt, err = ParseDateTime(string(*vt))
 		}
 		return err
+	case DateTime:
+		*dt = vt
+	case *DateTime:
+		*dt = *vt
 	default:
 		return fmt.Errorf("unsupported scan type for DateTime: %T", v)
 	}

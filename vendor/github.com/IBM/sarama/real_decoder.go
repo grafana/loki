@@ -110,12 +110,14 @@ func (rd *realDecoder) getArrayLength() (int, error) {
 		rd.off = len(rd.raw)
 		return -1, ErrInsufficientData
 	}
+	// cast to int32 first to get correct signedness for length before then
+	// casting to int for ease of interop
 	tmp := int(int32(binary.BigEndian.Uint32(rd.raw[rd.off:])))
 	rd.off += 4
 	if tmp > rd.remaining() {
 		rd.off = len(rd.raw)
 		return -1, ErrInsufficientData
-	} else if tmp > 2*math.MaxUint16 {
+	} else if tmp > int(MaxResponseSize) {
 		return -1, errInvalidArrayLength
 	}
 	return tmp, nil
@@ -306,20 +308,17 @@ func (rd *realDecoder) getInt32Array() ([]int32, error) {
 		rd.off = len(rd.raw)
 		return nil, ErrInsufficientData
 	}
-	n := int(binary.BigEndian.Uint32(rd.raw[rd.off:]))
-	rd.off += 4
+	n, err := rd.getArrayLength()
+	if err != nil {
+		return nil, err
+	}
+	if n <= 0 {
+		return nil, nil
+	}
 
 	if rd.remaining() < 4*n {
 		rd.off = len(rd.raw)
 		return nil, ErrInsufficientData
-	}
-
-	if n == 0 {
-		return nil, nil
-	}
-
-	if n < 0 {
-		return nil, errInvalidArrayLength
 	}
 
 	ret := make([]int32, n)
@@ -335,20 +334,17 @@ func (rd *realDecoder) getInt64Array() ([]int64, error) {
 		rd.off = len(rd.raw)
 		return nil, ErrInsufficientData
 	}
-	n := int(binary.BigEndian.Uint32(rd.raw[rd.off:]))
-	rd.off += 4
+	n, err := rd.getArrayLength()
+	if err != nil {
+		return nil, err
+	}
+	if n <= 0 {
+		return nil, nil
+	}
 
 	if rd.remaining() < 8*n {
 		rd.off = len(rd.raw)
 		return nil, ErrInsufficientData
-	}
-
-	if n == 0 {
-		return nil, nil
-	}
-
-	if n < 0 {
-		return nil, errInvalidArrayLength
 	}
 
 	ret := make([]int64, n)
@@ -364,15 +360,13 @@ func (rd *realDecoder) getStringArray() ([]string, error) {
 		rd.off = len(rd.raw)
 		return nil, ErrInsufficientData
 	}
-	n := int(binary.BigEndian.Uint32(rd.raw[rd.off:]))
-	rd.off += 4
 
-	if n == 0 {
-		return nil, nil
+	n, err := rd.getArrayLength()
+	if err != nil {
+		return nil, err
 	}
-
-	if n < 0 {
-		return nil, errInvalidArrayLength
+	if n <= 0 {
+		return nil, nil
 	}
 
 	ret := make([]string, n)

@@ -30,6 +30,7 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
+	"go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/dskit/tenant"
@@ -41,6 +42,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/util"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
+
+var tracer = otel.Tracer("pkg/ruler/base")
 
 var (
 	supportedShardingStrategies = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
@@ -802,7 +805,7 @@ func RemoveRuleTokenFromGroupName(name string) string {
 func (r *Ruler) GetRules(ctx context.Context, req *RulesRequest) ([]*GroupStateDesc, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("no user id found in context")
+		return nil, fmt.Errorf("no user id found in context: %w", err)
 	}
 
 	if r.cfg.EnableSharding {

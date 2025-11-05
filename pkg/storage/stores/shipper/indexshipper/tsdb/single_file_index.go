@@ -10,12 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/opentracing/opentracing-go"
-
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
@@ -213,7 +212,7 @@ func (i *TSDBIndex) forPostings(
 	return fn(p)
 }
 
-func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []logproto.ChunkRefWithSizingInfo, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]logproto.ChunkRefWithSizingInfo, error) {
 	if res == nil {
 		res = ChunkRefsPool.Get()
 	}
@@ -221,13 +220,16 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 
 	if err := i.ForSeries(ctx, "", fpFilter, from, through, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
 		for _, chk := range chks {
-
-			res = append(res, ChunkRef{
-				User:        userID, // assumed to be the same, will be enforced by caller.
-				Fingerprint: fp,
-				Start:       chk.From(),
-				End:         chk.Through(),
-				Checksum:    chk.Checksum,
+			res = append(res, logproto.ChunkRefWithSizingInfo{
+				ChunkRef: logproto.ChunkRef{
+					UserID:      userID, // assumed to be the same, will be enforced by caller.
+					Fingerprint: uint64(fp),
+					From:        chk.From(),
+					Through:     chk.Through(),
+					Checksum:    chk.Checksum,
+				},
+				KB:      chk.KB,
+				Entries: chk.Entries,
 			})
 		}
 		return false
@@ -367,13 +369,13 @@ func (i *TSDBIndex) Volume(
 	aggregateBy string,
 	matchers ...*labels.Matcher,
 ) error {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "Index.Volume")
-	defer sp.Finish()
+	ctx, sp := tracer.Start(ctx, "Index.Volume")
+	defer sp.End()
 
 	labelsToMatch, matchers, includeAll := util.PrepareLabelsAndMatchers(targetLabels, matchers, TenantLabel)
 
 	seriesNames := make(map[uint64]string)
-	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch)))
+	seriesLabelsBuilder := labels.NewScratchBuilder(len(labelsToMatch))
 
 	aggregateBySeries := seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == ""
 	var by map[string]struct{}
@@ -416,17 +418,17 @@ func (i *TSDBIndex) Volume(
 				var labelVolumes map[string]uint64
 
 				if aggregateBySeries {
-					seriesLabels = seriesLabels[:0]
-					for _, l := range ls {
+					seriesLabelsBuilder.Reset()
+					ls.Range(func(l labels.Label) {
 						if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
-							seriesLabels = append(seriesLabels, l)
+							seriesLabelsBuilder.Add(l.Name, l.Value)
 						}
-					}
+					})
 				} else {
 					// when aggregating by labels, capture sizes for target labels if provided,
 					// otherwise for all intersecting labels
-					labelVolumes = make(map[string]uint64, len(ls))
-					for _, l := range ls {
+					labelVolumes = make(map[string]uint64, ls.Len())
+					ls.Range(func(l labels.Label) {
 						if len(targetLabels) > 0 {
 							if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
 								labelVolumes[l.Name] += stats.KB << 10
@@ -436,12 +438,15 @@ func (i *TSDBIndex) Volume(
 								labelVolumes[l.Name] += stats.KB << 10
 							}
 						}
-					}
+					})
 				}
+
+				seriesLabelsBuilder.Sort()
+				seriesLabels := seriesLabelsBuilder.Labels()
 
 				// If the labels are < 1k, this does not alloc
 				// https://github.com/prometheus/prometheus/pull/8025
-				hash := seriesLabels.Hash()
+				hash := labels.StableHash(seriesLabels)
 				if _, ok := seriesNames[hash]; !ok {
 					seriesNames[hash] = seriesLabels.String()
 				}

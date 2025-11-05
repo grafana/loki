@@ -270,7 +270,7 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) (err erro
 	return nil
 }
 
-func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reader) (io.Reader, error)) error {
+func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.ReadCloser) (io.ReadCloser, error)) error {
 	file := filepath.Join(b.rootDir, name)
 
 	// Acquire a file lock before modifiying as file-systems don't support conditional writes like cloud providers.
@@ -284,26 +284,23 @@ func (b *Bucket) GetAndReplace(ctx context.Context, name string, f func(io.Reade
 	}
 	defer fileLock.Unlock()
 
-	var missing bool
+	// We use rc for our callback instead of passing openedFile directly, since
+	// passing a concrete type directly will always be detected as non-nil,
+	// due to the way Go converts concrete types to interfaces.
+	var rc io.ReadCloser
+
 	openedFile, err := os.Open(file)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return err
-		}
-		missing = true
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	} else if openedFile != nil {
+		rc = openedFile
 	}
 
-	// redefine the callback reader so a nil originalContent (with concrete type but no value)
-	// doesn't pass nil-checks in the callback
-	var reader io.Reader
-	if !missing {
-		reader = openedFile
-		defer openedFile.Close()
-	}
-
-	newContent, err := f(reader)
+	newContent, err := f(rc)
 	if err != nil {
 		return err
+	} else if newContent != nil {
+		defer newContent.Close()
 	}
 
 	content, err := io.ReadAll(newContent)

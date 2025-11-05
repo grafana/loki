@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
-	"sync/atomic"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/bitutil"
@@ -39,7 +38,9 @@ type Float16Builder struct {
 }
 
 func NewFloat16Builder(mem memory.Allocator) *Float16Builder {
-	return &Float16Builder{builder: builder{refCount: 1, mem: mem}}
+	fb := &Float16Builder{builder: builder{mem: mem}}
+	fb.refCount.Add(1)
+	return fb
 }
 
 func (b *Float16Builder) Type() arrow.DataType { return arrow.FixedWidthTypes.Float16 }
@@ -47,9 +48,9 @@ func (b *Float16Builder) Type() arrow.DataType { return arrow.FixedWidthTypes.Fl
 // Release decreases the reference count by 1.
 // When the reference count goes to zero, the memory is freed.
 func (b *Float16Builder) Release() {
-	debug.Assert(atomic.LoadInt64(&b.refCount) > 0, "too many releases")
+	debug.Assert(b.refCount.Load() > 0, "too many releases")
 
-	if atomic.AddInt64(&b.refCount, -1) == 0 {
+	if b.refCount.Add(-1) == 0 {
 		if b.nullBitmap != nil {
 			b.nullBitmap.Release()
 			b.nullBitmap = nil
@@ -120,7 +121,7 @@ func (b *Float16Builder) AppendValues(v []float16.Num, valid []bool) {
 	if len(v) > 0 {
 		arrow.Float16Traits.Copy(b.rawData[b.length:], v)
 	}
-	b.builder.unsafeAppendBoolsToBitmap(valid, len(v))
+	b.unsafeAppendBoolsToBitmap(valid, len(v))
 }
 
 func (b *Float16Builder) init(capacity int) {
@@ -135,7 +136,7 @@ func (b *Float16Builder) init(capacity int) {
 // Reserve ensures there is enough space for appending n elements
 // by checking the capacity and calling Resize if necessary.
 func (b *Float16Builder) Reserve(n int) {
-	b.builder.reserve(n, b.Resize)
+	b.reserve(n, b.Resize)
 }
 
 // Resize adjusts the space allocated by b to n elements. If n is greater than b.Cap(),
@@ -149,7 +150,7 @@ func (b *Float16Builder) Resize(n int) {
 	if b.capacity == 0 {
 		b.init(n)
 	} else {
-		b.builder.resize(nBuilder, b.init)
+		b.resize(nBuilder, b.init)
 		b.data.Resize(arrow.Float16Traits.BytesRequired(n))
 		b.rawData = arrow.Float16Traits.CastFromBytes(b.data.Bytes())
 	}

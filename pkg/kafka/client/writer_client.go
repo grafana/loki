@@ -41,17 +41,10 @@ func NewWriterClient(component string, kafkaCfg kafka.Config, maxInflightProduce
 	// Do not export the client ID, because we use it to specify options to the backend.
 	metrics := NewClientMetrics(component, reg, kafkaCfg.EnableKafkaHistograms)
 
-	address := kafkaCfg.Address
-	clientID := kafkaCfg.ClientID
-	if kafkaCfg.WriterConfig.Address != "" {
-		address = kafkaCfg.WriterConfig.Address
-		clientID = kafkaCfg.WriterConfig.ClientID
-	}
-
 	opts := append(
 		commonKafkaClientOptions(kafkaCfg, metrics, logger),
-		kgo.ClientID(clientID),
-		kgo.SeedBrokers(address),
+		kgo.ClientID(kafkaCfg.WriterConfig.ClientID),
+		kgo.SeedBrokers(kafkaCfg.WriterConfig.Address),
 		kgo.RequiredAcks(kgo.AllISRAcks()),
 		kgo.DefaultProduceTopic(kafkaCfg.Topic),
 
@@ -230,9 +223,6 @@ func commonKafkaClientOptions(cfg kafka.Config, metrics *kprom.Metrics, logger l
 type Producer struct {
 	*kgo.Client
 
-	closeOnce *sync.Once
-	closed    chan struct{}
-
 	// Keep track of Kafka records size (bytes) currently in-flight in the Kafka client.
 	// This counter is used to implement a limit on the max buffered bytes.
 	bufferedBytes *atomic.Int64
@@ -240,37 +230,38 @@ type Producer struct {
 	// The max buffered bytes allowed. Once this limit is reached, produce requests fail.
 	maxBufferedBytes int64
 
+	// Optional interceptor called before actually writing records to kafka.
+	recordsInterceptor func(context.Context, []*kgo.Record) error
+
 	// Custom metrics.
-	bufferedProduceBytes      prometheus.Summary
 	bufferedProduceBytesLimit prometheus.Gauge
 	produceRequestsTotal      prometheus.Counter
 	produceFailuresTotal      *prometheus.CounterVec
+}
+
+// ProducerOption is a functional option for configuring a Producer.
+type ProducerOption func(*Producer)
+
+// WithRecordsInterceptor configures an interceptor to be called before producing records.
+func WithRecordsInterceptor(interceptor func(context.Context, []*kgo.Record) error) ProducerOption {
+	return func(p *Producer) {
+		p.recordsInterceptor = interceptor
+	}
 }
 
 // NewProducer returns a new KafkaProducer.
 //
 // The input prometheus.Registerer must be wrapped with a prefix (the names of metrics
 // registered don't have a prefix).
-func NewProducer(component string, client *kgo.Client, maxBufferedBytes int64, reg prometheus.Registerer) *Producer {
+func NewProducer(component string, client *kgo.Client, maxBufferedBytes int64, reg prometheus.Registerer, opts ...ProducerOption) *Producer {
 	wrappedRegisterer := WrapPrometheusRegisterer(component, reg)
 
 	producer := &Producer{
 		Client:           client,
-		closeOnce:        &sync.Once{},
-		closed:           make(chan struct{}),
 		bufferedBytes:    atomic.NewInt64(0),
 		maxBufferedBytes: maxBufferedBytes,
 
 		// Metrics.
-		bufferedProduceBytes: promauto.With(wrappedRegisterer).NewSummary(
-			prometheus.SummaryOpts{
-				Namespace:  "kafka_client",
-				Name:       "buffered_produce_bytes",
-				Help:       "The buffered produce records in bytes. Quantile buckets keep track of buffered records size over the last 60s.",
-				Objectives: map[float64]float64{0.5: 0.05, 0.99: 0.001, 1: 0.001},
-				MaxAge:     time.Minute,
-				AgeBuckets: 6,
-			}),
 		bufferedProduceBytesLimit: promauto.With(wrappedRegisterer).NewGauge(
 			prometheus.GaugeOpts{
 				Namespace: "kafka_client",
@@ -291,33 +282,16 @@ func NewProducer(component string, client *kgo.Client, maxBufferedBytes int64, r
 
 	producer.bufferedProduceBytesLimit.Set(float64(maxBufferedBytes))
 
-	go producer.updateMetricsLoop()
+	// Apply functional options
+	for _, opt := range opts {
+		opt(producer)
+	}
 
 	return producer
 }
 
 func (c *Producer) Close() {
-	c.closeOnce.Do(func() {
-		close(c.closed)
-	})
-
 	c.Client.Close()
-}
-
-func (c *Producer) updateMetricsLoop() {
-	// We observe buffered produce bytes and at regular intervals, to have a good
-	// approximation of the peak value reached over the observation period.
-	ticker := time.NewTicker(250 * time.Millisecond)
-
-	for {
-		select {
-		case <-ticker.C:
-			c.bufferedProduceBytes.Observe(float64(c.Client.BufferedProduceBytes()))
-
-		case <-c.closed:
-			return
-		}
-	}
 }
 
 // ProduceSync produces records to Kafka and returns once all records have been successfully committed,
@@ -326,6 +300,18 @@ func (c *Producer) updateMetricsLoop() {
 // This function honors the configure max buffered bytes and refuse to produce a record, returnin kgo.ErrMaxBuffered,
 // if the configured limit is reached.
 func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.ProduceResults {
+	// Call interceptor with all records if configured
+	if c.recordsInterceptor != nil {
+		if err := c.recordsInterceptor(ctx, records); err != nil {
+			// If interceptor fails, return error for all records
+			results := make(kgo.ProduceResults, len(records))
+			for i, record := range records {
+				results[i] = kgo.ProduceResult{Record: record, Err: err}
+			}
+			return results
+		}
+	}
+
 	var (
 		remaining = atomic.NewInt64(int64(len(records)))
 		done      = make(chan struct{})
@@ -371,7 +357,7 @@ func (c *Producer) ProduceSync(ctx context.Context, records []*kgo.Record) kgo.P
 		// Produce() may theoretically block if the buffer is full, but we configure the Kafka client with
 		// unlimited buffer because we implement the buffer limit ourselves (see maxBufferedBytes). This means
 		// Produce() should never block for us in practice.
-		c.Client.Produce(context.WithoutCancel(ctx), record, onProduceDone)
+		c.Produce(context.WithoutCancel(ctx), record, onProduceDone)
 	}
 
 	// Wait for a response or until the context has done.

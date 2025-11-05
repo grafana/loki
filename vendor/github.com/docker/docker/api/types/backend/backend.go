@@ -1,5 +1,5 @@
 // Package backend includes types to send information to server backends.
-package backend // import "github.com/docker/docker/api/types/backend"
+package backend
 
 import (
 	"io"
@@ -160,7 +160,7 @@ type ImageInspectOpts struct {
 type CommitConfig struct {
 	Author              string
 	Comment             string
-	Config              *container.Config
+	Config              *container.Config // TODO(thaJeztah); change this to [dockerspec.DockerOCIImageConfig]
 	ContainerConfig     *container.Config
 	ContainerID         string
 	ContainerMountLabel string

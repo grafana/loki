@@ -1,7 +1,7 @@
 ---
 title: Cardinality
 description:  Describes what cardinality is and how it affects Loki performance.
-weight: 
+weight: 200
 ---
 
 # Cardinality

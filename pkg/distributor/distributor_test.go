@@ -16,12 +16,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	otlptranslate "github.com/prometheus/otlptranslator"
-
 	"github.com/c2h5oh/datasize"
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
-	dskit_flagext "github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/consul"
@@ -31,6 +28,7 @@ import (
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/otlptranslator"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,7 +47,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/runtime"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	fe "github.com/grafana/loki/v3/pkg/util/flagext"
 	loki_flagext "github.com/grafana/loki/v3/pkg/util/flagext"
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	loki_net "github.com/grafana/loki/v3/pkg/util/net"
@@ -126,7 +123,7 @@ func TestDistributor(t *testing.T) {
 			flagext.DefaultValues(limits)
 			limits.IngestionRateMB = ingestionRateLimitMB
 			limits.IngestionBurstSizeMB = ingestionRateLimitMB
-			limits.MaxLineSize = fe.ByteSize(tc.maxLineSize)
+			limits.MaxLineSize = loki_flagext.ByteSize(tc.maxLineSize)
 
 			distributors, _ := prepare(t, 1, 5, limits, nil)
 
@@ -725,6 +722,20 @@ func Test_TruncateLogLines(t *testing.T) {
 		topVal := ingester.Peek()
 		require.Len(t, topVal.Streams[0].Entries[0].Line, 5)
 	})
+
+	t.Run("it truncates lines and adds suffix if configured", func(t *testing.T) {
+		limits, ingester := setup()
+		limits.MaxLineSize = 8
+		limits.MaxLineSizeTruncateIdentifier = "[...]"
+
+		distributors, _ := prepare(t, 1, 5, limits, func(_ string) (ring_client.PoolClient, error) { return ingester, nil })
+
+		_, err := distributors[0].Push(ctx, makeWriteRequest(1, 10))
+		require.NoError(t, err)
+		topVal := ingester.Peek()
+		require.Len(t, topVal.Streams[0].Entries[0].Line, int(limits.MaxLineSize))
+		require.Equal(t, "000[...]", topVal.Streams[0].Entries[0].Line)
+	})
 }
 
 func Test_DiscardEmptyStreamsAfterValidation(t *testing.T) {
@@ -763,7 +774,7 @@ func TestStreamShard(t *testing.T) {
 	baseLabels := "{app='myapp'}"
 	lbs, err := syntax.ParseLabels(baseLabels)
 	require.NoError(t, err)
-	baseStream.Hash = lbs.Hash()
+	baseStream.Hash = labels.StableHash(lbs)
 	baseStream.Labels = lbs.String()
 
 	totalEntries := generateEntries(100)
@@ -850,7 +861,7 @@ func TestStreamShard(t *testing.T) {
 				shardTracker:     NewShardTracker(),
 			}
 
-			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake")
+			derivedStreams := d.shardStream(baseStream, tc.streamSize, "fake", "")
 			require.Len(t, derivedStreams, tc.wantDerivedStreamSize)
 
 			for _, s := range derivedStreams {
@@ -858,7 +869,7 @@ func TestStreamShard(t *testing.T) {
 				lbls, err := syntax.ParseLabels(s.Stream.Labels)
 				require.NoError(t, err)
 
-				require.Equal(t, lbls.Hash(), s.Stream.Hash)
+				require.Equal(t, labels.StableHash(lbls), s.Stream.Hash)
 				require.Equal(t, lbls.String(), s.Stream.Labels)
 			}
 		})
@@ -871,7 +882,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 	baseLabels := "{app='myapp'}"
 	lbs, err := syntax.ParseLabels(baseLabels)
 	require.NoError(t, err)
-	baseStream.Hash = lbs.Hash()
+	baseStream.Hash = labels.StableHash(lbs)
 	baseStream.Labels = lbs.String()
 	baseStream.Entries = generateEntries(2)
 
@@ -895,7 +906,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			shardTracker:     NewShardTracker(),
 		}
 
-		derivedStreams := d.shardStream(baseStream, streamRate, "fake")
+		derivedStreams := d.shardStream(baseStream, streamRate, "fake", "")
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
@@ -906,7 +917,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 			require.Equal(t, lbls.Get(ingester.ShardLbName), fmt.Sprint(i))
 		}
 
-		derivedStreams = d.shardStream(baseStream, streamRate, "fake")
+		derivedStreams = d.shardStream(baseStream, streamRate, "fake", "")
 		require.Len(t, derivedStreams, 2)
 
 		for i, s := range derivedStreams {
@@ -1162,7 +1173,7 @@ func TestStreamShardByTime(t *testing.T) {
 			require.NoError(t, err)
 			stream := logproto.Stream{
 				Labels:  tc.labels,
-				Hash:    lbls.Hash(),
+				Hash:    labels.StableHash(lbls),
 				Entries: tc.entries,
 			}
 
@@ -1197,10 +1208,9 @@ func generateEntries(n int) []logproto.Entry {
 
 func BenchmarkShardStream(b *testing.B) {
 	stream := logproto.Stream{}
-	labels := "{app='myapp', job='fizzbuzz'}"
-	lbs, err := syntax.ParseLabels(labels)
+	lbs, err := syntax.ParseLabels("{app='myapp', job='fizzbuzz'}")
 	require.NoError(b, err)
-	stream.Hash = lbs.Hash()
+	stream.Hash = labels.StableHash(lbs)
 	stream.Labels = lbs.String()
 
 	allEntries := generateEntries(25000)
@@ -1235,7 +1245,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
 		}
 	})
 
@@ -1245,7 +1255,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
 		}
 	})
 
@@ -1255,7 +1265,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
 		}
 	})
 
@@ -1265,7 +1275,7 @@ func BenchmarkShardStream(b *testing.B) {
 
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			d.shardStream(stream, 0, "fake") //nolint:errcheck
+			d.shardStream(stream, 0, "fake", "") //nolint:errcheck
 		}
 	})
 }
@@ -1281,7 +1291,7 @@ func Benchmark_SortLabelsOnPush(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		stream := request.Streams[0]
 		stream.Labels = `{buzz="f", a="b"}`
-		_, _, _, _, _, err := d.parseStreamLabels(vCtx, stream.Labels, stream, streamResolver)
+		_, _, _, _, _, err := d.parseStreamLabels(context.Background(), vCtx, stream.Labels, stream, streamResolver, constants.Loki)
 		if err != nil {
 			panic("parseStreamLabels fail,err:" + err.Error())
 		}
@@ -1321,9 +1331,9 @@ func TestParseStreamLabels(t *testing.T) {
 		vCtx := d.validator.getValidationContextForTime(testTime, "123")
 		streamResolver := newRequestScopedStreamResolver("123", d.validator.Limits, nil)
 		t.Run(tc.name, func(t *testing.T) {
-			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(vCtx, tc.origLabels, logproto.Stream{
+			lbs, lbsString, hash, _, _, err := d.parseStreamLabels(context.Background(), vCtx, tc.origLabels, logproto.Stream{
 				Labels: tc.origLabels,
-			}, streamResolver)
+			}, streamResolver, constants.Loki)
 			if tc.expectedErr != nil {
 				require.Equal(t, tc.expectedErr, err)
 				return
@@ -1331,7 +1341,7 @@ func TestParseStreamLabels(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedLabels.String(), lbsString)
 			require.Equal(t, tc.expectedLabels, lbs)
-			require.Equal(t, tc.expectedLabels.Hash(), hash)
+			require.Equal(t, labels.StableHash(tc.expectedLabels), hash)
 		})
 	}
 }
@@ -1803,9 +1813,9 @@ func TestDistributor_PushIngestionBlockedByPolicy(t *testing.T) {
 
 			// Configure policy blocks
 			if tc.blockUntil != nil {
-				limits.BlockIngestionPolicyUntil = make(map[string]dskit_flagext.Time)
+				limits.BlockIngestionPolicyUntil = make(map[string]flagext.Time)
 				for policy, until := range tc.blockUntil {
-					limits.BlockIngestionPolicyUntil[policy] = dskit_flagext.Time(until)
+					limits.BlockIngestionPolicyUntil[policy] = flagext.Time(until)
 				}
 			}
 
@@ -1927,7 +1937,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 		ingesterConfig := ingester.Config{MaxChunkAge: 2 * time.Hour}
 		limitsFrontendCfg := limits_frontend_client.Config{}
 
-		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, 1, log.NewNopLogger())
+		d, err := New(distributorConfig, ingesterConfig, clientConfig, runtime.DefaultTenantConfigs(), ingestersRing, partitionRingReader, overrides, prometheus.NewPedanticRegistry(), constants.Loki, nil, nil, limitsFrontendCfg, limitsFrontendRing, 1, nil, log.NewNopLogger())
 		require.NoError(t, err)
 		require.NoError(t, services.StartAndAwaitRunning(context.Background(), d))
 		distributors[i] = d
@@ -2069,6 +2079,7 @@ func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...gr
 		time.Sleep(i.succeedAfter)
 	}
 
+	labelNamer := otlptranslator.LabelNamer{}
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	for _, s := range in.Streams {
@@ -2077,7 +2088,11 @@ func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...gr
 				if strings.ContainsRune(sm.Value, utf8.RuneError) {
 					return nil, fmt.Errorf("sm value was not sanitized before being pushed to ignester, invalid utf 8 rune %d", utf8.RuneError)
 				}
-				if sm.Name != otlptranslate.NormalizeLabel(sm.Name) {
+				name, err := labelNamer.Build(sm.Name)
+				if err != nil {
+					return nil, err
+				}
+				if sm.Name != name {
 					return nil, fmt.Errorf("sm name was not sanitized before being sent to ingester, contained characters %s", sm.Name)
 
 				}
@@ -2221,7 +2236,7 @@ func TestDistributor_StructuredMetadataSanitization(t *testing.T) {
 		response, err := distributors[0].Push(ctx, &request)
 		require.NoError(t, err)
 		assert.Equal(t, tc.expectedResponse, response)
-		assert.Equal(t, tc.numSanitizations, testutil.ToFloat64(distributors[0].tenantPushSanitizedStructuredMetadata.WithLabelValues("test")))
+		assert.Equal(t, tc.numSanitizations, testutil.ToFloat64(distributors[0].tenantPushSanitizedStructuredMetadata.WithLabelValues("test", constants.Loki)))
 	}
 }
 
@@ -2321,10 +2336,10 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 	retentionPeriod = resolver.RetentionPeriodFor(labels.FromStrings("env", "dev"))
 	require.Equal(t, 24*time.Hour, retentionPeriod)
 
-	policy := resolver.PolicyFor(labels.FromStrings("env", "prod"))
+	policy := resolver.PolicyFor(t.Context(), labels.FromStrings("env", "prod"))
 	require.Equal(t, "policy0", policy)
 
-	policy = resolver.PolicyFor(labels.FromStrings("env", "dev"))
+	policy = resolver.PolicyFor(t.Context(), labels.FromStrings("env", "dev"))
 	require.Empty(t, policy)
 
 	// We now modify the underlying limits to test that the resolver is not affected by changes to the limits
@@ -2363,10 +2378,10 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 	retentionPeriod = resolver.RetentionPeriodFor(labels.FromStrings("env", "dev"))
 	require.Equal(t, 24*time.Hour, retentionPeriod)
 
-	policy = resolver.PolicyFor(labels.FromStrings("env", "prod"))
+	policy = resolver.PolicyFor(t.Context(), labels.FromStrings("env", "prod"))
 	require.Equal(t, "policy0", policy)
 
-	policy = resolver.PolicyFor(labels.FromStrings("env", "dev"))
+	policy = resolver.PolicyFor(t.Context(), labels.FromStrings("env", "dev"))
 	require.Empty(t, policy)
 
 	// But a new resolver should return the new values
@@ -2382,10 +2397,10 @@ func TestRequestScopedStreamResolver(t *testing.T) {
 	retentionPeriod = newResolver.RetentionPeriodFor(labels.FromStrings("env", "dev"))
 	require.Equal(t, 72*time.Hour, retentionPeriod)
 
-	policy = newResolver.PolicyFor(labels.FromStrings("env", "prod"))
+	policy = newResolver.PolicyFor(t.Context(), labels.FromStrings("env", "prod"))
 	require.Empty(t, policy)
 
-	policy = newResolver.PolicyFor(labels.FromStrings("env", "dev"))
+	policy = newResolver.PolicyFor(t.Context(), labels.FromStrings("env", "dev"))
 	require.Equal(t, "policy1", policy)
 }
 
@@ -2459,38 +2474,10 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		limitsResponse: &limitsproto.ExceedsLimitsResponse{
 			Results: []*limitsproto.ExceedsLimitsResult{{
 				StreamHash: 0x90eb45def17f924,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
-		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits: max streams exceeded",
-	}, {
-		name:                "rate limit is exceeded",
-		ingestLimitsEnabled: true,
-		tenant:              "test",
-		streams: logproto.PushRequest{
-			Streams: []logproto.Stream{{
-				Labels: "{foo=\"bar\"}",
-				Entries: []logproto.Entry{{
-					Timestamp: time.Now(),
-					Line:      "baz",
-				}},
-			}},
-		},
-		expectedLimitsCalls: 1,
-		expectedLimitsRequest: &limitsproto.ExceedsLimitsRequest{
-			Tenant: "test",
-			Streams: []*limitsproto.StreamMetadata{{
-				StreamHash: 0x90eb45def17f924,
-				TotalSize:  0x3,
-			}},
-		},
-		limitsResponse: &limitsproto.ExceedsLimitsResponse{
-			Results: []*limitsproto.ExceedsLimitsResult{{
-				StreamHash: 0x90eb45def17f924,
-				Reason:     uint32(limits.ReasonExceedsRateLimit),
-			}},
-		},
-		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits: rate limit exceeded",
+		expectedErr: "rpc error: code = Code(429) desc = request exceeded limits",
 	}, {
 		name:                "one of two streams exceed max stream limit, request is accepted",
 		ingestLimitsEnabled: true,
@@ -2524,7 +2511,7 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		limitsResponse: &limitsproto.ExceedsLimitsResponse{
 			Results: []*limitsproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
 	}, {
@@ -2552,7 +2539,7 @@ func TestDistributor_PushIngestLimits(t *testing.T) {
 		limitsResponse: &limitsproto.ExceedsLimitsResponse{
 			Results: []*limitsproto.ExceedsLimitsResult{{
 				StreamHash: 1,
-				Reason:     uint32(limits.ReasonExceedsMaxStreams),
+				Reason:     uint32(limits.ReasonMaxStreams),
 			}},
 		},
 	}, {

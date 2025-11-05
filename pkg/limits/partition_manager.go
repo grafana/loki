@@ -1,16 +1,32 @@
 package limits
 
 import (
-	"context"
+	"fmt"
+	"strconv"
 	"sync"
 
 	"github.com/coder/quartz"
+	"github.com/prometheus/client_golang/prometheus"
+)
+
+var (
+	// partitionsDesc is a gauge which tracks the state of the partitions
+	// in the partitionManager. The value of the gauge is set to the value of
+	// the partitionState enum.
+	partitionsDesc = prometheus.NewDesc(
+		"loki_ingest_limits_partitions",
+		"The state of each partition.",
+		[]string{"partition"},
+		nil,
+	)
 )
 
 type partitionState int
 
 const (
-	partitionPending partitionState = iota
+	// partitionUnknown is the zero value.
+	partitionUnknown partitionState = iota
+	partitionPending
 	partitionReplaying
 	partitionReady
 )
@@ -33,7 +49,7 @@ func (s partitionState) String() string {
 // each partition a timestamp of when it was assigned.
 type partitionManager struct {
 	partitions map[int32]partitionEntry
-	mtx        sync.Mutex
+	mtx        sync.RWMutex
 
 	// Used for tests.
 	clock quartz.Clock
@@ -47,15 +63,19 @@ type partitionEntry struct {
 }
 
 // newPartitionManager returns a new [PartitionManager].
-func newPartitionManager() *partitionManager {
-	return &partitionManager{
+func newPartitionManager(reg prometheus.Registerer) (*partitionManager, error) {
+	m := partitionManager{
 		partitions: make(map[int32]partitionEntry),
 		clock:      quartz.NewReal(),
 	}
+	if err := reg.Register(&m); err != nil {
+		return nil, fmt.Errorf("failed to register metrics: %w", err)
+	}
+	return &m, nil
 }
 
-// assign assigns the partitions.
-func (m *partitionManager) assign(_ context.Context, partitions []int32) {
+// Assign assigns the partitions.
+func (m *partitionManager) Assign(partitions []int32) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	for _, partition := range partitions {
@@ -66,20 +86,39 @@ func (m *partitionManager) assign(_ context.Context, partitions []int32) {
 	}
 }
 
-// getState returns the current state of the partition. It returns false
-// if the partition does not exist.
-func (m *partitionManager) getState(partition int32) (partitionState, bool) {
+// CheckReady returns true if all partitions are ready.
+func (m *partitionManager) CheckReady() bool {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	for _, entry := range m.partitions {
+		if entry.state != partitionReady {
+			return false
+		}
+	}
+	return true
+}
+
+// Count returns the number of assigned partitions.
+func (m *partitionManager) Count() int {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
+	return len(m.partitions)
+}
+
+// GetState returns the current state of the partition. It returns false
+// if the partition does not exist.
+func (m *partitionManager) GetState(partition int32) (partitionState, bool) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	entry, ok := m.partitions[partition]
 	return entry.state, ok
 }
 
-// targetOffsetReached returns true if the partition is replaying and the
+// TargetOffsetReached returns true if the partition is replaying and the
 // target offset has been reached.
-func (m *partitionManager) targetOffsetReached(partition int32, offset int64) bool {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+func (m *partitionManager) TargetOffsetReached(partition int32, offset int64) bool {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	entry, ok := m.partitions[partition]
 	if ok {
 		return entry.state == partitionReplaying && entry.targetOffset <= offset
@@ -87,19 +126,19 @@ func (m *partitionManager) targetOffsetReached(partition int32, offset int64) bo
 	return false
 }
 
-// has returns true if the partition is assigned, otherwise false.
-func (m *partitionManager) has(partition int32) bool {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+// Has returns true if the partition is assigned, otherwise false.
+func (m *partitionManager) Has(partition int32) bool {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	_, ok := m.partitions[partition]
 	return ok
 }
 
-// list returns a map of all assigned partitions and the timestamp of when
+// List returns a map of all assigned partitions and the timestamp of when
 // each partition was assigned.
-func (m *partitionManager) list() map[int32]int64 {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+func (m *partitionManager) List() map[int32]int64 {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	result := make(map[int32]int64)
 	for partition, entry := range m.partitions {
 		result[partition] = entry.assignedAt
@@ -107,11 +146,11 @@ func (m *partitionManager) list() map[int32]int64 {
 	return result
 }
 
-// listByState returns all partitions with the specified state and their last
+// ListByState returns all partitions with the specified state and their last
 // updated timestamps.
-func (m *partitionManager) listByState(state partitionState) map[int32]int64 {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
+func (m *partitionManager) ListByState(state partitionState) map[int32]int64 {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
 	result := make(map[int32]int64)
 	for partition, entry := range m.partitions {
 		if entry.state == state {
@@ -121,10 +160,10 @@ func (m *partitionManager) listByState(state partitionState) map[int32]int64 {
 	return result
 }
 
-// setReplaying sets the partition as replaying and the offset that must
+// SetReplaying sets the partition as replaying and the offset that must
 // be consumed for it to become ready. It returns false if the partition
 // does not exist.
-func (m *partitionManager) setReplaying(partition int32, offset int64) bool {
+func (m *partitionManager) SetReplaying(partition int32, offset int64) bool {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	entry, ok := m.partitions[partition]
@@ -136,9 +175,9 @@ func (m *partitionManager) setReplaying(partition int32, offset int64) bool {
 	return ok
 }
 
-// setReady sets the partition as ready. It returns false if the partition
+// SetReady sets the partition as ready. It returns false if the partition
 // does not exist.
-func (m *partitionManager) setReady(partition int32) bool {
+func (m *partitionManager) SetReady(partition int32) bool {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	entry, ok := m.partitions[partition]
@@ -150,11 +189,30 @@ func (m *partitionManager) setReady(partition int32) bool {
 	return ok
 }
 
-// revoke deletes the partitions.
-func (m *partitionManager) revoke(_ context.Context, partitions []int32) {
+// Revoke deletes the partitions.
+func (m *partitionManager) Revoke(partitions []int32) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	for _, partition := range partitions {
 		delete(m.partitions, partition)
+	}
+}
+
+// Describe implements [prometheus.Collector].
+func (m *partitionManager) Describe(descs chan<- *prometheus.Desc) {
+	descs <- partitionsDesc
+}
+
+// Collect implements [prometheus.Collector].
+func (m *partitionManager) Collect(metrics chan<- prometheus.Metric) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	for partition, entry := range m.partitions {
+		metrics <- prometheus.MustNewConstMetric(
+			partitionsDesc,
+			prometheus.GaugeValue,
+			float64(entry.state),
+			strconv.FormatInt(int64(partition), 10),
+		)
 	}
 }

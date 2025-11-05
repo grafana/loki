@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
 	"unsafe"
 )
 
@@ -154,10 +155,8 @@ func (f *filter) Valid(index int) bool {
 
 func (f *filter) Label(index int) Label {
 	l := f.underlying.Label(index)
-	for _, f := range f.keys {
-		if l.Key() == f {
-			return Label{}
-		}
+	if slices.Contains(f.keys, l.Key()) {
+		return Label{}
 	}
 	return l
 }

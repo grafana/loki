@@ -1,238 +1,190 @@
 package consumer
 
 import (
-	"bytes"
 	"context"
-	"errors"
-	"strconv"
-	"sync"
-	"time"
+	"fmt"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
 	"github.com/twmb/franz-go/pkg/kgo"
 
-	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/kafka"
-	"github.com/grafana/loki/v3/pkg/kafka/partitionring/consumer"
+	"github.com/grafana/loki/v3/pkg/kafka/client"
+	"github.com/grafana/loki/v3/pkg/kafka/partition"
+	"github.com/grafana/loki/v3/pkg/kafka/partitionring"
+	"github.com/grafana/loki/v3/pkg/scratch"
 )
 
 const (
-	groupName = "dataobj-consumer"
+	RingKey           = "dataobj-consumer"
+	RingName          = "dataobj-consumer"
+	PartitionRingKey  = "dataobj-consumer-partitions-key"
+	PartitionRingName = "dataobj-consumer-partitions"
 )
 
 type Service struct {
 	services.Service
-
-	logger log.Logger
-	reg    prometheus.Registerer
-	client *consumer.Client
-
-	cfg    Config
-	bucket objstore.Bucket
-	codec  distributor.TenantPrefixCodec
-
-	// Partition management
-	partitionMtx      sync.RWMutex
-	partitionHandlers map[string]map[int32]*partitionProcessor
-
-	bufPool *sync.Pool
+	cfg                         Config
+	metastoreEvents             *kgo.Client
+	lifecycler                  *ring.Lifecycler
+	partitionInstanceLifecycler *ring.PartitionInstanceLifecycler
+	partitionReader             *partition.ReaderService
+	watcher                     *services.FailureWatcher
+	logger                      log.Logger
+	reg                         prometheus.Registerer
 }
 
-func New(kafkaCfg kafka.Config, cfg Config, topicPrefix string, bucket objstore.Bucket, instanceID string, partitionRing ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) *Service {
+func New(kafkaCfg kafka.Config, cfg Config, mCfg metastore.Config, bucket objstore.Bucket, scratchStore scratch.Store, _ string, _ ring.PartitionRingReader, reg prometheus.Registerer, logger log.Logger) (*Service, error) {
+	logger = log.With(logger, "component", "dataobj-consumer")
+
 	s := &Service{
-		logger:            log.With(logger, "component", groupName),
-		cfg:               cfg,
-		bucket:            bucket,
-		codec:             distributor.TenantPrefixCodec(topicPrefix),
-		partitionHandlers: make(map[string]map[int32]*partitionProcessor),
-		reg:               reg,
-		bufPool: &sync.Pool{
-			New: func() interface{} {
-				return bytes.NewBuffer(make([]byte, 0, cfg.BuilderConfig.TargetObjectSize))
-			},
-		},
+		cfg:    cfg,
+		logger: logger,
+		reg:    reg,
 	}
 
-	client, err := consumer.NewGroupClient(
-		kafkaCfg,
-		partitionRing,
-		groupName,
+	// Set up the Kafka client that produces events for the metastore. This
+	// must be done before we can set up the client that consumes records
+	// from distributors, as the code that consumes these records from also
+	// needs to be able to produce metastore events.
+	metastoreEventsCfg := kafkaCfg
+	metastoreEventsCfg.Topic = "loki.metastore-events"
+	metastoreEventsCfg.AutoCreateTopicDefaultPartitions = 1
+	metastoreEvents, err := client.NewWriterClient("loki.metastore-events", metastoreEventsCfg, 50, logger, reg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client for metastore events topic: %w", err)
+	}
+	s.metastoreEvents = metastoreEvents
+
+	lifecycler, err := ring.NewLifecycler(
+		cfg.LifecyclerConfig,
+		s,
+		RingName,
+		RingKey,
+		false,
 		logger,
-		reg,
-		kgo.InstanceID(instanceID),
-		kgo.SessionTimeout(3*time.Minute),
-		kgo.RebalanceTimeout(5*time.Minute),
-		kgo.OnPartitionsAssigned(s.handlePartitionsAssigned),
-		kgo.OnPartitionsRevoked(func(_ context.Context, _ *kgo.Client, m map[string][]int32) {
-			s.handlePartitionsRevoked(m)
-		}),
+		prometheus.WrapRegistererWithPrefix("dataobj-consumer_", reg),
 	)
 	if err != nil {
-		level.Error(logger).Log("msg", "failed to create consumer", "err", err)
-		return nil
+		return nil, fmt.Errorf("failed to create %s lifecycler: %w", RingName, err)
 	}
-	s.client = client
-	s.Service = services.NewBasicService(nil, s.run, s.stopping)
-	return s
-}
+	s.lifecycler = lifecycler
 
-func (s *Service) handlePartitionsAssigned(ctx context.Context, client *kgo.Client, partitions map[string][]int32) {
-	level.Info(s.logger).Log("msg", "partitions assigned", "partitions", formatPartitionsMap(partitions))
-	s.partitionMtx.Lock()
-	defer s.partitionMtx.Unlock()
-
-	for topic, parts := range partitions {
-		tenant, virtualShard, err := s.codec.Decode(topic)
-		// TODO: should propage more effectively
+	// An instance must register itself in the partition ring. Each instance
+	// is responsible for consuming exactly one partition determined by
+	// its partition ID. Once ready, the instance will declare its partition
+	// as active in the partition ring. This is how distributors know which
+	// partitions have a ready consumer.
+	partitionID, err := partitionring.ExtractPartitionID(cfg.LifecyclerConfig.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract partition ID from lifecycler configuration: %w", err)
+	}
+	partitionRingKV := cfg.PartitionRingConfig.KVStore.Mock
+	// The mock KV is used in tests. If this is not a test then we must
+	// initialize a real kv.
+	if partitionRingKV == nil {
+		partitionRingKV, err = kv.NewClient(
+			cfg.PartitionRingConfig.KVStore,
+			ring.GetPartitionRingCodec(),
+			kv.RegistererWithKVName(reg, "dataobj-consumer-lifecycler"),
+			logger,
+		)
 		if err != nil {
-			level.Error(s.logger).Log("msg", "failed to decode topic", "topic", topic, "err", err)
-			continue
-		}
-
-		if _, ok := s.partitionHandlers[topic]; !ok {
-			s.partitionHandlers[topic] = make(map[int32]*partitionProcessor)
-		}
-
-		for _, partition := range parts {
-			processor := newPartitionProcessor(ctx, client, s.cfg.BuilderConfig, s.cfg.UploaderConfig, s.bucket, tenant, virtualShard, topic, partition, s.logger, s.reg, s.bufPool, s.cfg.IdleFlushTimeout)
-			s.partitionHandlers[topic][partition] = processor
-			processor.start()
+			return nil, fmt.Errorf("failed to set up partition ring: %w", err)
 		}
 	}
+	partitionInstanceLifecycler := ring.NewPartitionInstanceLifecycler(
+		cfg.PartitionRingConfig.ToLifecyclerConfig(partitionID, cfg.LifecyclerConfig.ID),
+		PartitionRingName,
+		PartitionRingKey,
+		partitionRingKV,
+		logger,
+		prometheus.WrapRegistererWithPrefix("loki_", reg))
+	s.partitionInstanceLifecycler = partitionInstanceLifecycler
+
+	processorFactory := newPartitionProcessorFactory(
+		cfg,
+		mCfg,
+		metastoreEvents,
+		bucket,
+		scratchStore,
+		logger,
+		reg,
+		cfg.Topic,
+		partitionID,
+	)
+	kafkaCfg.Topic = cfg.Topic
+	partitionReader, err := partition.NewReaderService(
+		kafkaCfg,
+		partitionID,
+		cfg.LifecyclerConfig.ID,
+		processorFactory.New,
+		logger,
+		prometheus.WrapRegistererWithPrefix("loki_dataobj_consumer_", reg),
+	)
+	if err != nil {
+		return nil, err
+	}
+	s.partitionReader = partitionReader
+
+	watcher := services.NewFailureWatcher()
+	watcher.WatchService(lifecycler)
+	watcher.WatchService(partitionInstanceLifecycler)
+	s.watcher = watcher
+
+	s.Service = services.NewBasicService(s.starting, s.running, s.stopping)
+	return s, nil
 }
 
-func (s *Service) handlePartitionsRevoked(partitions map[string][]int32) {
-	level.Info(s.logger).Log("msg", "partitions revoked", "partitions", formatPartitionsMap(partitions))
-	if s.State() == services.Stopping {
-		// On shutdown, franz-go will send one more partitionRevoked event which we need to ignore to shutdown gracefully.
-		return
+// starting implements the Service interface's starting method.
+func (s *Service) starting(ctx context.Context) error {
+	level.Info(s.logger).Log("msg", "starting")
+	if err := services.StartAndAwaitRunning(ctx, s.lifecycler); err != nil {
+		return fmt.Errorf("failed to start lifecycler: %w", err)
 	}
-	s.partitionMtx.Lock()
-	defer s.partitionMtx.Unlock()
-
-	var wg sync.WaitGroup
-	for topic, parts := range partitions {
-		if handlers, ok := s.partitionHandlers[topic]; ok {
-			for _, partition := range parts {
-				if processor, exists := handlers[partition]; exists {
-					wg.Add(1)
-					go func(p *partitionProcessor) {
-						defer wg.Done()
-						p.stop()
-					}(processor)
-					delete(handlers, partition)
-				}
-			}
-			if len(handlers) == 0 {
-				delete(s.partitionHandlers, topic)
-			}
-		}
+	if err := services.StartAndAwaitRunning(ctx, s.partitionInstanceLifecycler); err != nil {
+		return fmt.Errorf("failed to start partition instance lifecycler: %w", err)
 	}
-	wg.Wait()
+	if err := services.StartAndAwaitRunning(ctx, s.partitionReader); err != nil {
+		return fmt.Errorf("failed to start partition reader: %w", err)
+	}
+	return nil
 }
 
-func (s *Service) run(ctx context.Context) error {
-	for {
-		fetches := s.client.PollRecords(ctx, -1)
-		if fetches.IsClientClosed() || ctx.Err() != nil {
-			return nil
-		}
-		if errs := fetches.Errors(); len(errs) > 0 {
-			var multiErr error
-			for _, err := range errs {
-				multiErr = errors.Join(multiErr, err.Err)
-			}
-			level.Error(s.logger).Log("msg", "error fetching records", "err", multiErr.Error())
-			continue
-		}
-		if fetches.Empty() {
-			continue
-		}
-
-		fetches.EachPartition(func(ftp kgo.FetchTopicPartition) {
-			s.partitionMtx.RLock()
-			handlers, ok := s.partitionHandlers[ftp.Topic]
-			if !ok {
-				s.partitionMtx.RUnlock()
-				return
-			}
-			processor, ok := handlers[ftp.Partition]
-			s.partitionMtx.RUnlock()
-			if !ok {
-				return
-			}
-
-			// Collect all records for this partition
-			records := ftp.Records
-			if len(records) == 0 {
-				return
-			}
-
-			// Calculate total bytes in this batch
-			var totalBytes int64
-			for _, record := range records {
-				totalBytes += int64(len(record.Value))
-			}
-
-			// Update metrics
-			processor.metrics.addBytesProcessed(totalBytes)
-
-			_ = processor.Append(records)
-		})
-	}
+// running implements the Service interface's running method.
+func (s *Service) running(ctx context.Context) error {
+	<-ctx.Done()
+	return nil
 }
 
+// stopping implements the Service interface's stopping method.
 func (s *Service) stopping(failureCase error) error {
-	s.partitionMtx.Lock()
-	defer s.partitionMtx.Unlock()
-
-	var wg sync.WaitGroup
-	for _, handlers := range s.partitionHandlers {
-		for _, processor := range handlers {
-			wg.Add(1)
-			go func(p *partitionProcessor) {
-				defer wg.Done()
-				p.stop()
-			}(processor)
-		}
+	level.Info(s.logger).Log("msg", "stopping")
+	ctx := context.TODO()
+	if err := services.StopAndAwaitTerminated(ctx, s.partitionReader); err != nil {
+		level.Warn(s.logger).Log("msg", "failed to stop partition reader", "err", err)
 	}
-	wg.Wait()
-	// Only close the client once all partitions have been stopped.
-	// This is to ensure that all records have been processed before closing and offsets committed.
-	s.client.Close()
-	level.Info(s.logger).Log("msg", "consumer stopped")
+	if err := services.StopAndAwaitTerminated(ctx, s.partitionInstanceLifecycler); err != nil {
+		level.Warn(s.logger).Log("msg", "failed to stop partition instance lifecycler", "err", err)
+	}
+	if err := services.StopAndAwaitTerminated(ctx, s.lifecycler); err != nil {
+		level.Warn(s.logger).Log("msg", "failed to stop lifecycler", "err", err)
+	}
+	s.metastoreEvents.Close()
+	level.Info(s.logger).Log("msg", "stopped")
 	return failureCase
 }
 
-// Helper function to format []int32 slice
-func formatInt32Slice(slice []int32) string {
-	if len(slice) == 0 {
-		return "[]"
-	}
-	result := "["
-	for i, v := range slice {
-		if i > 0 {
-			result += ","
-		}
-		result += strconv.Itoa(int(v))
-	}
-	result += "]"
-	return result
-}
+// Flush implements the [ring.FlushTransferer] interface.
+func (s *Service) Flush() {}
 
-// Helper function to format map[string][]int32 into a readable string
-func formatPartitionsMap(partitions map[string][]int32) string {
-	var result string
-	for topic, parts := range partitions {
-		if len(result) > 0 {
-			result += ", "
-		}
-		result += topic + "=" + formatInt32Slice(parts)
-	}
-	return result
+// TransferOut implements the [ring.FlushTransferer] interface.
+func (s *Service) TransferOut(_ context.Context) error {
+	return nil
 }

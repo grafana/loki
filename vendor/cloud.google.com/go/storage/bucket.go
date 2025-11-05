@@ -199,11 +199,11 @@ func (b *BucketHandle) SignedURL(object string, opts *SignedURLOptions) (string,
 		newopts.GoogleAccessID = id
 	}
 	if newopts.SignBytes == nil && len(newopts.PrivateKey) == 0 {
-		if b.c.creds != nil && len(b.c.creds.JSON) > 0 {
+		if j, ok := b.c.credsJSON(); ok {
 			var sa struct {
 				PrivateKey string `json:"private_key"`
 			}
-			err := json.Unmarshal(b.c.creds.JSON, &sa)
+			err := json.Unmarshal(j, &sa)
 			if err == nil && sa.PrivateKey != "" {
 				newopts.PrivateKey = []byte(sa.PrivateKey)
 			}
@@ -224,6 +224,11 @@ func (b *BucketHandle) SignedURL(object string, opts *SignedURLOptions) (string,
 // This method requires the Expires field in the specified PostPolicyV4Options
 // to be non-nil. You may need to set the GoogleAccessID and PrivateKey fields
 // in some cases. Read more on the [automatic detection of credentials] for this method.
+//
+// To allow the unauthenticated client to upload to any object name in the
+// bucket with a given prefix rather than a specific object name, you can pass
+// an empty string for object and set [PostPolicyV4Options].Conditions to
+// include [ConditionStartsWith]("$key", "prefix").
 //
 // [automatic detection of credentials]: https://pkg.go.dev/cloud.google.com/go/storage#hdr-Credential_requirements_for_signing
 func (b *BucketHandle) GenerateSignedPostPolicyV4(object string, opts *PostPolicyV4Options) (*PostPolicyV4, error) {
@@ -247,11 +252,11 @@ func (b *BucketHandle) GenerateSignedPostPolicyV4(object string, opts *PostPolic
 		newopts.GoogleAccessID = id
 	}
 	if newopts.SignBytes == nil && newopts.SignRawBytes == nil && len(newopts.PrivateKey) == 0 {
-		if b.c.creds != nil && len(b.c.creds.JSON) > 0 {
+		if j, ok := b.c.credsJSON(); ok {
 			var sa struct {
 				PrivateKey string `json:"private_key"`
 			}
-			err := json.Unmarshal(b.c.creds.JSON, &sa)
+			err := json.Unmarshal(j, &sa)
 			if err == nil && sa.PrivateKey != "" {
 				newopts.PrivateKey = []byte(sa.PrivateKey)
 			}
@@ -269,14 +274,14 @@ func (b *BucketHandle) GenerateSignedPostPolicyV4(object string, opts *PostPolic
 func (b *BucketHandle) detectDefaultGoogleAccessID() (string, error) {
 	returnErr := errors.New("no credentials found on client and not on GCE (Google Compute Engine)")
 
-	if b.c.creds != nil && len(b.c.creds.JSON) > 0 {
+	if j, ok := b.c.credsJSON(); ok {
 		var sa struct {
 			ClientEmail        string `json:"client_email"`
 			SAImpersonationURL string `json:"service_account_impersonation_url"`
 			CredType           string `json:"type"`
 		}
 
-		err := json.Unmarshal(b.c.creds.JSON, &sa)
+		err := json.Unmarshal(j, &sa)
 		if err != nil {
 			returnErr = err
 		} else {
@@ -322,7 +327,7 @@ func (b *BucketHandle) defaultSignBytesFunc(email string) func([]byte) ([]byte, 
 		opts := []option.ClientOption{option.WithHTTPClient(b.c.hc)}
 
 		if b.c.creds != nil {
-			universeDomain, err := b.c.creds.GetUniverseDomain()
+			universeDomain, err := b.c.creds.UniverseDomain(ctx)
 			if err != nil {
 				return nil, err
 			}

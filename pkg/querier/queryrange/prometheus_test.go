@@ -16,6 +16,7 @@ var emptyStats = `"stats": {
 	"index": {
 		"postFilterChunks": 0,
 		"totalChunks": 0,
+		"totalStreams": 0,
 		"shardsDuration": 0,
 		"usedBloomFilters": false
 	},
@@ -27,6 +28,7 @@ var emptyStats = `"stats": {
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
+			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
 			"chunk" :{
 				"compressedBytes": 0,
@@ -51,6 +53,7 @@ var emptyStats = `"stats": {
 				"prePredicateDecompressedRows": 0,
 				"prePredicateDecompressedBytes": 0,
 				"prePredicateDecompressedStructuredMetadataBytes": 0,
+				"totalPageDownloadTime": 0,
 				"totalRowsAvailable": 0
 			}
 		},
@@ -60,6 +63,7 @@ var emptyStats = `"stats": {
 		"totalReached": 0
 	},
 	"querier": {
+		"querierExecTime": 0,
 		"store": {
 			"chunksDownloadTime": 0,
 			"congestionControlLatency": 0,
@@ -67,6 +71,7 @@ var emptyStats = `"stats": {
 			"totalChunksDownloaded": 0,
 			"chunkRefsFetchTime": 0,
 			"queryReferencedStructuredMetadata": false,
+			"queryUsedV2Engine": false,
 			"pipelineWrapperFilteredLines": 0,
 			"chunk" :{
 				"compressedBytes": 0,
@@ -91,6 +96,7 @@ var emptyStats = `"stats": {
 				"prePredicateDecompressedRows": 0,
 				"prePredicateDecompressedBytes": 0,
 				"prePredicateDecompressedStructuredMetadataBytes": 0,
+				"totalPageDownloadTime": 0,
 				"totalRowsAvailable": 0
 			}
 		}

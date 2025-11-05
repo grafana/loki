@@ -1,3 +1,15 @@
+# v1.13.1 (2025-08-27)
+
+* **Dependency Update**: Update to smithy-go v1.23.0.
+
+# v1.13.0 (2025-07-28)
+
+* **Feature**: Add support for HTTP interceptors.
+
+# v1.12.4 (2025-06-17)
+
+* **Dependency Update**: Update to smithy-go v1.22.4.
+
 # v1.12.3 (2025-02-18)
 
 * **Bug Fix**: Bump go version to 1.22

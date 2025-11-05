@@ -730,6 +730,8 @@ type Metrics struct {
 	Errors TimedErrStats `json:"failed,omitempty"`
 	// Total number of entries that are queued for replication
 	QStats InQueueMetric `json:"queued"`
+	// Total number of entries that have replication in progress
+	InProgress InProgressMetric `json:"inProgress"`
 	// Deprecated fields
 	// Total Pending size in bytes across targets
 	PendingSize uint64 `json:"pendingReplicationSize,omitempty"`
@@ -830,6 +832,9 @@ type InQueueMetric struct {
 	Max  QStat `json:"peak" msg:"pq"`
 }
 
+// InProgressMetric holds stats for objects with replication in progress
+type InProgressMetric InQueueMetric
+
 // MetricName name of replication metric
 type MetricName string
 
@@ -849,6 +854,14 @@ type WorkerStat struct {
 	Max  int32   `json:"max"`
 }
 
+// TgtHealth holds health status of a target
+type TgtHealth struct {
+	Online        bool          `json:"online"`
+	LastOnline    time.Time     `json:"lastOnline"`
+	TotalDowntime time.Duration `json:"totalDowntime"`
+	OfflineCount  int64         `json:"offlineCount"`
+}
+
 // ReplMRFStats holds stats of MRF backlog saved to disk in the last 5 minutes
 // and number of entries that failed replication after 3 retries
 type ReplMRFStats struct {
@@ -863,15 +876,18 @@ type ReplMRFStats struct {
 type ReplQNodeStats struct {
 	NodeName string     `json:"nodeName"`
 	Uptime   int64      `json:"uptime"`
-	Workers  WorkerStat `json:"activeWorkers"`
+	Workers  WorkerStat `json:"workers"`
 
 	XferStats    map[MetricName]XferStats            `json:"transferSummary"`
 	TgtXferStats map[string]map[MetricName]XferStats `json:"tgtTransferStats"`
 
-	QStats   InQueueMetric  `json:"queueStats"`
-	MRFStats ReplMRFStats   `json:"mrfStats"`
-	Retries  CounterSummary `json:"retries"`
-	Errors   CounterSummary `json:"errors"`
+	QStats          InQueueMetric    `json:"queueStats"`
+	InProgressStats InProgressMetric `json:"progressStats"`
+
+	MRFStats  ReplMRFStats         `json:"mrfStats"`
+	Retries   CounterSummary       `json:"retries"`
+	Errors    CounterSummary       `json:"errors"`
+	TgtHealth map[string]TgtHealth `json:"tgtHealth,omitempty"`
 }
 
 // CounterSummary denotes the stats counter summary
@@ -918,6 +934,19 @@ func (q ReplQueueStats) qStatSummary() InQueueMetric {
 	return m
 }
 
+// inProgressSummary returns cluster level stats for objects with replication in progress
+func (q ReplQueueStats) inProgressSummary() InProgressMetric {
+	m := InProgressMetric{}
+	for _, v := range q.Nodes {
+		m.Avg.Add(v.InProgressStats.Avg)
+		m.Curr.Add(v.InProgressStats.Curr)
+		if m.Max.Count < v.InProgressStats.Max.Count {
+			m.Max.Add(v.InProgressStats.Max)
+		}
+	}
+	return m
+}
+
 // ReplQStats holds stats for objects in replication queue
 type ReplQStats struct {
 	Uptime  int64      `json:"uptime"`
@@ -926,7 +955,9 @@ type ReplQStats struct {
 	XferStats    map[MetricName]XferStats            `json:"xferStats"`
 	TgtXferStats map[string]map[MetricName]XferStats `json:"tgtXferStats"`
 
-	QStats   InQueueMetric  `json:"qStats"`
+	QStats          InQueueMetric    `json:"qStats"`
+	InProgressStats InProgressMetric `json:"progressStats"`
+
 	MRFStats ReplMRFStats   `json:"mrfStats"`
 	Retries  CounterSummary `json:"retries"`
 	Errors   CounterSummary `json:"errors"`
@@ -935,10 +966,10 @@ type ReplQStats struct {
 // QStats returns cluster level stats for objects in replication queue
 func (q ReplQueueStats) QStats() (r ReplQStats) {
 	r.QStats = q.qStatSummary()
+	r.InProgressStats = q.inProgressSummary()
 	r.XferStats = make(map[MetricName]XferStats)
 	r.TgtXferStats = make(map[string]map[MetricName]XferStats)
 	r.Workers = q.Workers()
-
 	for _, node := range q.Nodes {
 		for arn := range node.TgtXferStats {
 			xmap, ok := node.TgtXferStats[arn]

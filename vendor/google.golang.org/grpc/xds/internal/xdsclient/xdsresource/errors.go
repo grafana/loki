@@ -18,7 +18,10 @@
 
 package xdsresource
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // ErrorType is the type of the error that the watcher will receive from the xds
 // client.
@@ -40,6 +43,9 @@ const (
 	// ErrTypeStreamFailedAfterRecv indicates an ADS stream error, after
 	// successful receipt of at least one message from the server.
 	ErrTypeStreamFailedAfterRecv
+	// ErrorTypeNACKed indicates that configuration provided by the xDS management
+	// server was NACKed.
+	ErrorTypeNACKed
 )
 
 type xdsClientError struct {
@@ -57,9 +63,16 @@ func NewErrorf(t ErrorType, format string, args ...any) error {
 	return &xdsClientError{t: t, desc: fmt.Sprintf(format, args...)}
 }
 
+// NewError creates an xDS client error. The callbacks are called with this
+// error, to pass additional information about the error.
+func NewError(t ErrorType, message string) error {
+	return NewErrorf(t, "%s", message)
+}
+
 // ErrType returns the error's type.
-func ErrType(e error) ErrorType {
-	if xe, ok := e.(*xdsClientError); ok {
+func ErrType(err error) ErrorType {
+	var xe *xdsClientError
+	if errors.As(err, &xe) {
 		return xe.t
 	}
 	return ErrorTypeUnknown

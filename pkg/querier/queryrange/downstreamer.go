@@ -8,10 +8,11 @@ import (
 
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/tenant"
-	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -141,9 +142,16 @@ func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQue
 		} else {
 			req = ParamsToLokiRequest(qry.Params).WithQuery(qry.Params.GetExpression().String())
 		}
-		sp, ctx := opentracing.StartSpanFromContext(ctx, "DownstreamHandler.instance")
-		defer sp.Finish()
-		sp.LogKV("shards", fmt.Sprintf("%+v", qry.Params.Shards()), "query", req.GetQuery(), "start", req.GetStart(), "end", req.GetEnd(), "step", req.GetStep(), "handler", reflect.TypeOf(in.handler), "engine", "downstream")
+		ctx, sp := tracer.Start(ctx, "DownstreamHandler.instance", trace.WithAttributes(
+			attribute.String("shards", fmt.Sprintf("%+v", qry.Params.Shards())),
+			attribute.String("query", req.GetQuery()),
+			attribute.String("start", req.GetStart().String()),
+			attribute.String("end", req.GetEnd().String()),
+			attribute.Int64("step", req.GetStep()),
+			attribute.String("handler", reflect.TypeOf(in.handler).String()),
+			attribute.String("engine", "downstream"),
+		))
+		defer sp.End()
 
 		res, err := in.handler.Do(ctx, req)
 		if err != nil {

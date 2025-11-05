@@ -4,7 +4,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.rulerFullname" . }}
-  namespace: {{ $.Release.Namespace }}
+  namespace: {{ include "loki.namespace" . }}
   labels:
     {{- include "loki.rulerLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
@@ -29,6 +29,7 @@ spec:
         {{- with .Values.ruler.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+        kubectl.kubernetes.io/default-container: "ruler"
       labels:
         {{- include "loki.rulerLabels" . | nindent 8 }}
         app.kubernetes.io/part-of: memberlist
@@ -36,10 +37,10 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
-      {{- if semverCompare ">=1.19-0" .Capabilities.KubeVersion.Version }}
+      {{- if semverCompare ">=1.19-0" (include "loki.kubeVersion" .) }}
       {{- with .Values.ruler.topologySpreadConstraints }}
       topologySpreadConstraints:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- end }}
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
@@ -51,6 +52,9 @@ spec:
       hostAliases:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if and (semverCompare ">=1.33-0" (include "loki.kubeVersion" .)) (kindIs "bool" .Values.ruler.hostUsers) }}
+      hostUsers: {{ .Values.ruler.hostUsers }}
+      {{- end }}
       {{- include "loki.rulerPriorityClassName" . | nindent 6 }}
       securityContext:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
@@ -60,12 +64,72 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-      {{- if and .Values.sidecar.rules.enabled .Values.ruler.sidecar }}
+        - name: ruler
+          image: {{ include "loki.image" . }}
+          imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
+          args:
+            - -config.file=/etc/loki/config/config.yaml
+            - -target=ruler
+            {{- with (concat .Values.global.extraArgs .Values.ruler.extraArgs) | uniq }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http-metrics
+              containerPort: 3100
+              protocol: TCP
+            - name: grpc
+              containerPort: 9095
+              protocol: TCP
+            - name: http-memberlist
+              containerPort: 7946
+              protocol: TCP
+          {{- with (concat .Values.global.extraEnv .Values.ruler.extraEnv) | uniq }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with (concat .Values.global.extraEnvFrom .Values.ruler.extraEnvFrom) | uniq }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
+          {{- with .Values.loki.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/loki/config
+            - name: runtime-config
+              mountPath: /etc/loki/runtime-config
+            - name: data
+              mountPath: /var/loki
+            - name: tmp
+              mountPath: /tmp/loki
+            {{- if .Values.enterprise.enabled }}
+            - name: license
+              mountPath: /etc/loki/license
+            {{- end }}
+            {{- if and .Values.sidecar.rules.enabled .Values.ruler.sidecar }}
+            - name: sc-rules-volume
+              mountPath: {{ .Values.sidecar.rules.folder | quote }}
+            {{- end}}
+            {{- range $dir, $_ := .Values.ruler.directories }}
+            - name: {{ include "loki.rulerRulesDirName" $dir }}
+              mountPath: /etc/loki/rules/{{ $dir }}
+            {{- end }}
+            {{- with (concat .Values.global.extraVolumeMounts .Values.ruler.extraVolumeMounts) | uniq }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.ruler.resources | nindent 12 }}
+        {{- if and .Values.sidecar.rules.enabled .Values.ruler.sidecar }}
         - name: loki-sc-rules
+          {{- $dict := dict "service" .Values.sidecar.image "global" .Values.global }}
           {{- if .Values.sidecar.image.sha }}
-          image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}@sha256:{{ .Values.sidecar.image.sha }}"
+          image: "{{ include "loki.baseImage" $dict }}@sha256:{{ .Values.sidecar.image.sha }}"
           {{- else }}
-          image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}"
+          image: {{ include "loki.baseImage" $dict }}
           {{- end }}
           imagePullPolicy: {{ .Values.sidecar.image.pullPolicy }}
           env:
@@ -129,69 +193,12 @@ spec:
             - name: sc-rules-volume
               mountPath: {{ .Values.sidecar.rules.folder | quote }}
         {{- end}}
-        - name: ruler
-          image: {{ include "loki.image" . }}
-          imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
-          args:
-            - -config.file=/etc/loki/config/config.yaml
-            - -target=ruler
-            {{- with (concat .Values.global.extraArgs .Values.ruler.extraArgs) | uniq }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
-          ports:
-            - name: http-metrics
-              containerPort: 3100
-              protocol: TCP
-            - name: grpc
-              containerPort: 9095
-              protocol: TCP
-            - name: http-memberlist
-              containerPort: 7946
-              protocol: TCP
-          {{- with (concat .Values.global.extraEnv .Values.ruler.extraEnv) | uniq }}
-          env:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          {{- with (concat .Values.global.extraEnvFrom .Values.ruler.extraEnvFrom) | uniq }}
-          envFrom:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          securityContext:
-            {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
-          readinessProbe:
-            {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
-          volumeMounts:
-            - name: config
-              mountPath: /etc/loki/config
-            - name: runtime-config
-              mountPath: /etc/loki/runtime-config
-            - name: data
-              mountPath: /var/loki
-            - name: tmp
-              mountPath: /tmp/loki
-            {{- if .Values.enterprise.enabled }}
-            - name: license
-              mountPath: /etc/loki/license
-            {{- end }}
-            {{- if and .Values.sidecar.rules.enabled .Values.ruler.sidecar }}
-            - name: sc-rules-volume
-              mountPath: {{ .Values.sidecar.rules.folder | quote }}
-            {{- end}}
-            {{- range $dir, $_ := .Values.ruler.directories }}
-            - name: {{ include "loki.rulerRulesDirName" $dir }}
-              mountPath: /etc/loki/rules/{{ $dir }}
-            {{- end }}
-            {{- with (concat .Values.global.extraVolumeMounts .Values.ruler.extraVolumeMounts) | uniq }}
-            {{- toYaml . | nindent 12 }}
-            {{- end }}
-          resources:
-            {{- toYaml .Values.ruler.resources | nindent 12 }}
         {{- with .Values.ruler.extraContainers }}
         {{- toYaml . | nindent 8}}
         {{- end }}
       {{- with .Values.ruler.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- tpl ( . | toYaml) $ | nindent 8 }}
       {{- end }}
       {{- with .Values.ruler.nodeSelector }}
       nodeSelector:
@@ -201,7 +208,7 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.ruler.dnsConfig }}
+      {{- with .Values.ruler.dnsConfig | default .Values.loki.dnsConfig }}
       dnsConfig:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -252,9 +259,13 @@ spec:
         annotations:
           {{- . | toYaml | nindent 10 }}
         {{- end }}
+        {{- with .Values.ruler.persistence.labels }}
+        labels:
+          {{- . | toYaml | nindent 10 }}
+        {{- end }}
       spec:
         accessModes:
-          - ReadWriteOnce
+          {{- toYaml .Values.ruler.persistence.accessModes | nindent 10 }}
         {{- with .Values.ruler.persistence.storageClass }}
         storageClassName: {{ if (eq "-" .) }}""{{ else }}{{ . }}{{ end }}
         {{- end }}

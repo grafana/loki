@@ -315,9 +315,10 @@ func Test_StructuredMetadata(t *testing.T) {
 						Labels: labels.NewBuilder(lbs).Set("foo", "1").Labels().String(),
 						Entries: []logproto.Entry{
 							{
-								Timestamp: time.Unix(0, 1),
-								Line:      "foo=1",
-								Parsed:    logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "1")),
+								Timestamp:          time.Unix(0, 1),
+								Line:               "foo=1",
+								Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "1")),
+								StructuredMetadata: logproto.EmptyLabelAdapters(),
 							},
 						},
 					},

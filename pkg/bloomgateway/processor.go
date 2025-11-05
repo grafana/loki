@@ -5,10 +5,9 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/pkg/errors"
-
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/multierror"
+	"github.com/pkg/errors"
 
 	iter "github.com/grafana/loki/v3/pkg/iter/v2"
 	v1 "github.com/grafana/loki/v3/pkg/storage/bloom/v1"
@@ -161,12 +160,10 @@ func (p *processor) processBlock(_ context.Context, bq *bloomshipper.CloseableBl
 		// NB(owen-d): can be helpful for debugging, but is noisy
 		// and don't feel like threading this through a configuration
 
-		// if sp := opentracing.SpanFromContext(task.ctx); sp != nil {
-		// 	md, _ := blockQuerier.Metadata()
-		// 	blk := bloomshipper.BlockRefFrom(task.tenant, task.table.String(), md)
-		// 	blockID := blk.String()
-		// 	sp.LogKV("process block", blockID, "series", len(task.series))
-		// }
+		//sp := trace.SpanFromContext(task.ctx)
+		//md, _ := blockQuerier.Metadata()
+		//blk := bloomshipper.BlockRefFrom(task.tenant, task.table.String(), md)
+		//sp.SetAttributes(attribute.String("process block", blk.String()), attribute.Int("series", len(task.series)))
 
 		it := iter.NewPeekIter(task.RequestIter())
 		iters = append(iters, it)

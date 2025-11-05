@@ -1,26 +1,39 @@
 package bench
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"flag"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
+	"runtime"
+	"testing"
+	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/services"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore/providers/filesystem"
 
+	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine"
-	"github.com/grafana/loki/v3/pkg/iter"
-	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
+	"github.com/grafana/loki/v3/pkg/util/rangeio"
 )
 
 var errStoreUnimplemented = errors.New("store does not implement this operation")
 
-// DataObjV2EngineStore uses the new pkg/engine/engine.New for querying.
-// It assumes the engine can read the "new dataobj format" (e.g. Parquet)
-// from the provided dataDir via a filesystem objstore.Bucket.
+var (
+	engineLogs = flag.Bool("engine-logs", false, "include engine logs in verbose output")
+)
+
+// DataObjV2EngineStore uses the new engine for querying. It assumes the engine
+// can read the "new dataobj format" (e.g. columnar data) from the provided
+// dataDir via a filesystem objstore.Bucket.
 type DataObjV2EngineStore struct {
 	engine   logql.Engine // Use the interface type
 	tenantID string
@@ -28,106 +41,127 @@ type DataObjV2EngineStore struct {
 }
 
 // NewDataObjV2EngineStore creates a new store that uses the v2 dataobj engine.
-func NewDataObjV2EngineStore(dataDir string, tenantID string) (*DataObjV2EngineStore, error) {
+func NewDataObjV2EngineStore(dir string, tenantID string) (*DataObjV2EngineStore, error) {
+	storageDir := filepath.Join(dir, storageDir)
+	return dataobjV2StoreWithOpts(storageDir, tenantID, engine.ExecutorConfig{
+		BatchSize:          512,
+		RangeConfig:        rangeio.DefaultConfig,
+		MergePrefetchCount: 8,
+	}, metastore.Config{
+		IndexStoragePrefix: "index/v0",
+	})
+}
+
+func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.ExecutorConfig, metastoreCfg metastore.Config) (*DataObjV2EngineStore, error) {
 	logger := log.NewNopLogger()
 
-	// Setup filesystem client as objstore.Bucket
-	// This assumes the engine is configured to read its specific data format (e.g., Parquet)
-	// from this directory structure. The existing benchmark data generation might need adjustments
-	// if it doesn't produce this format.
-	// Use NewBucket from thanos-io/objstore/providers/filesystem, similar to store_dataobj.go
+	if testing.Verbose() && *engineLogs {
+		startTime := time.Now()
+
+		logger = log.NewLogfmtLogger(&unescapeWriter{w: log.NewSyncWriter(os.Stderr)})
+
+		// Rather than reporting timestamp, it can be useful in the context of
+		// our tests and benchmarks to report the elapsed time since the store
+		// was created.
+		logger = log.With(logger, "elapsed", log.Valuer(func() any {
+			return time.Since(startTime).String()
+		}))
+	}
+
 	storeDir := filepath.Join(dataDir, "dataobj")
 	bucketClient, err := filesystem.NewBucket(storeDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create filesystem bucket for DataObjV2EngineStore: %w", err)
 	}
 
-	// Default EngineOpts. Adjust if specific configurations are needed.
-	engineOpts := logql.EngineOpts{
-		EnableV2Engine: true,
+	sched, err := engine.NewScheduler(logger)
+	if err != nil {
+		return nil, fmt.Errorf("creating scheduler: %w", err)
+	} else if err := services.StartAndAwaitRunning(context.Background(), sched.Service()); err != nil {
+		return nil, fmt.Errorf("starting scheduler service: %w", err)
 	}
 
-	// Instantiate the new engine
-	// Note: The tenantID is not directly passed to engine.New here.
-	// The engine might expect tenant information to be part of the query context
-	// or derived from the bucket structure if it's multi-tenant aware.
-	// This might require adjustment based on how pkg/engine/engine actually handles multi-tenancy
-	// with a generic objstore.Bucket.
-	queryEngine := engine.New(engineOpts, bucketClient, logql.NoLimits, nil, logger)
+	worker, err := engine.NewWorker(engine.WorkerParams{
+		Logger:         logger,
+		Bucket:         bucketClient,
+		LocalScheduler: sched,
+		Config: engine.WorkerConfig{
+			// Try to create one thread per host CPU core. However, we always
+			// create at least 8 threads. This prevents situations where
+			// no task can make progress because a parent task hasn't been
+			// scheduled yet.
+			//
+			// Eventually, this will be fixed by the scheduler detecting
+			// deadlocks and preempting deadlocked tasks. In the meantime, 8
+			// threads is always more than enough for any currently producible
+			// LogQL query.
+			WorkerThreads: max(runtime.GOMAXPROCS(0), 8),
+		},
+		Executor: cfg,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating worker: %w", err)
+	} else if err := services.StartAndAwaitRunning(context.Background(), worker.Service()); err != nil {
+		return nil, fmt.Errorf("starting worker service: %w", err)
+	}
+
+	newEngine, err := engine.New(engine.Params{
+		Logger:          logger,
+		Registerer:      prometheus.NewRegistry(),
+		Config:          cfg,
+		MetastoreConfig: metastoreCfg,
+		Scheduler:       sched,
+		Bucket:          bucketClient,
+		Limits:          logql.NoLimits,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating engine: %w", err)
+	}
 
 	return &DataObjV2EngineStore{
-		engine:   queryEngine,
+		engine:   (*engineAdapter)(newEngine),
 		tenantID: tenantID, // Store for context or if querier needs it
 		dataDir:  dataDir,
 	}, nil
 }
 
-// Querier returns a logql.Querier for the DataObjV2EngineStore.
-func (s *DataObjV2EngineStore) Querier() (logql.Querier, error) {
-	return &dataObjV2EngineQuerier{
-		engine:   s.engine,
-		tenantID: s.tenantID, // Pass tenantID if SelectLogs needs it for context
-	}, nil
+type engineAdapter engine.Engine
+
+var _ logql.Engine = (*engineAdapter)(nil)
+
+func (a *engineAdapter) Query(p logql.Params) logql.Query {
+	return &queryAdapter{engine: (*engine.Engine)(a), params: p}
 }
 
-type dataObjV2EngineQuerier struct {
-	engine   logql.Engine
-	tenantID string
+type queryAdapter struct {
+	engine *engine.Engine
+	params logql.Params
 }
 
-// SelectLogs implements logql.Querier.
-func (q *dataObjV2EngineQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) (iter.EntryIterator, error) {
-	// Construct logql.Params from logql.SelectLogParams
-	// The logql.SelectLogParams.Query is the full LogQL query string.
-	logqlParams, err := logql.NewLiteralParams(
-		params.QueryRequest.Plan.String(), // Assuming this is the correct way to get the full query string
-		params.Start,
-		params.End,
-		0,
-		0,
-		params.Direction,
-		params.Limit,
-		nil,
-		nil,
-	)
+func (a *queryAdapter) Exec(ctx context.Context) (logqlmodel.Result, error) {
+	return a.engine.Execute(ctx, a.params)
+}
+
+// unescapeWriter is a writer that unescapes newline characters in messages with
+// actual newlines.
+//
+// This is useful for making it easier to read engine plans, which have text
+// across multiple lines.
+type unescapeWriter struct{ w io.Writer }
+
+func (uw *unescapeWriter) Write(p []byte) (int, error) {
+	if bytes.Count(p, []byte("\\n")) == 0 {
+		// Write without replacement.
+		return uw.w.Write(p)
+	}
+
+	replaced := bytes.ReplaceAll(p, []byte("\\n"), []byte("\n\t"))
+	n, err := uw.w.Write(replaced)
 	if err != nil {
-		return nil, fmt.Errorf("DataObjV2EngineStore failed to create literal params: %w", err)
+		return 0, err
+	} else if n != len(replaced) {
+		return 0, io.ErrShortWrite
 	}
 
-	// Inject tenantID into context if required by the engine.
-	// This is a common pattern.
-	// ctx = user.InjectOrgID(ctx, q.tenantID) // If using dskit/user for tenant context
-
-	// Execute query
-	compiledQuery := q.engine.Query(logqlParams)
-	result, err := compiledQuery.Exec(ctx)
-	if err != nil && errors.Is(err, engine.ErrNotSupported) {
-		return nil, errors.Join(errStoreUnimplemented, err)
-	} else if err != nil {
-		return nil, fmt.Errorf("DataObjV2EngineStore query execution failed: %w", err)
-	}
-
-	// Convert result (logqlmodel.Streams) to iter.EntryIterator
-	switch data := result.Data.(type) {
-	case logqlmodel.Streams:
-		return newStreamsEntryIterator(data, params.Direction), nil // Pass direction
-	default:
-		return nil, fmt.Errorf("DataObjV2EngineStore: unexpected result type for SelectLogs: %T", result.Data)
-	}
-}
-
-// SelectSamples implements logql.Querier.
-func (q *dataObjV2EngineQuerier) SelectSamples(_ context.Context, _ logql.SelectSampleParams) (iter.SampleIterator, error) {
-	return nil, errStoreUnimplemented
-}
-
-// newStreamsEntryIterator creates a sorted entry iterator from multiple logqlmodel.Streams.
-func newStreamsEntryIterator(streams logqlmodel.Streams, direction logproto.Direction) iter.EntryIterator {
-	iterators := make([]iter.EntryIterator, 0, len(streams))
-	for _, stream := range streams {
-		if len(stream.Entries) > 0 {
-			iterators = append(iterators, iter.NewStreamIterator(stream))
-		}
-	}
-	return iter.NewSortEntryIterator(iterators, direction)
+	return len(p), nil
 }

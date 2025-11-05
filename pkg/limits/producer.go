@@ -56,10 +56,10 @@ func newProducer(client kafkaProducer, topic string, numPartitions int, zone str
 	}
 }
 
-// produce encodes the metadata in a [proto.StreamMetadataRecord] record
+// Produce encodes the metadata in a [proto.StreamMetadataRecord] record
 // and pushes it to the metadata topic. It does not wait for the push to
 // complete.
-func (p *producer) produce(ctx context.Context, tenant string, metadata *proto.StreamMetadata) error {
+func (p *producer) Produce(ctx context.Context, tenant string, metadata *proto.StreamMetadata) error {
 	v := proto.StreamMetadataRecord{
 		Zone:     p.zone,
 		Tenant:   tenant,

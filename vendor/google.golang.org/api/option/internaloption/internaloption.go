@@ -289,21 +289,22 @@ func GetLogger(opts []option.ClientOption) *slog.Logger {
 // options provided via [option.ClientOption], including legacy oauth2/google
 // options, in this order:
 //
-// * [option.WithAuthCredentials]
-// * [option/internaloption.WithCredentials] (internal use only)
-// * [option.WithCredentials]
-// * [option.WithTokenSource]
+//   - [option.WithoutAuthentication]
+//   - [option.WithAuthCredentials]
+//   - [WithCredentials] (internal use only)
+//   - [option.WithCredentials]
+//   - [option.WithTokenSource]
 //
 // If there are no applicable credentials options, then it passes the
 // following options to [cloud.google.com/go/auth/credentials.DetectDefault] and
 // returns the result:
 //
-// * [option.WithAudiences]
-// * [option.WithCredentialsFile]
-// * [option.WithCredentialsJSON]
-// * [option.WithScopes]
-// * [option/internaloption.WithDefaultScopes] (internal use only)
-// * [option/internaloption.EnableJwtWithScope] (internal use only)
+//   - [option.WithAudiences]
+//   - [option.WithCredentialsFile]
+//   - [option.WithCredentialsJSON]
+//   - [option.WithScopes]
+//   - [WithDefaultScopes] (internal use only)
+//   - [EnableJwtWithScope] (internal use only)
 //
 // This function should only be used internally by generated clients. This is an
 // EXPERIMENTAL API and may be changed or removed in the future.
