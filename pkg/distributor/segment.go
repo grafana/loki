@@ -44,9 +44,11 @@ func (r *SegmentationPartitionResolver) Resolve(tenant string, _ SegmentationKey
 	// Get a subring for the tenant based on the tenant's rate limit and
 	// the maximum rate per tenant per partition in bytes (hardcoded to 1MB/sec).
 	ingestionRateBytes := r.limits.IngestionRateBytes(tenant)
-	partitions := math.Min(math.Floor(ingestionRateBytes/float64(r.cfg.PerPartitionRateBytes)), 1)
+	partitions := math.Floor(ingestionRateBytes / float64(r.cfg.PerPartitionRateBytes))
+	// Must be at least 1 partition.
+	partitions = math.Max(partitions, 1)
 	// Must not exceed the number of active partitions.
-	partitions = math.Max(partitions, float64(len(ring.ActivePartitionIDs())))
+	partitions = math.Min(partitions, float64(len(ring.ActivePartitionIDs())))
 	subring, err := ring.ShuffleShard(tenant, int(partitions))
 	if err != nil {
 		return 0, err
