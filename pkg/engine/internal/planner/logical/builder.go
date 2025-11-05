@@ -49,7 +49,7 @@ func (b *Builder) Parse(op types.VariadicOp, strict bool, keepEmpty bool) *Build
 				Ref: semconv.ColumnIdentMessage.ColumnRef(),
 			},
 			// nil for requested keys (to be filled in by projection pushdown optimizer)
-			NewLiteral(nil),
+			NewLiteral([]string{}),
 			NewLiteral(strict),
 			NewLiteral(keepEmpty),
 		},
