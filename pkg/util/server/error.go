@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/grafana/dskit/grpcutil"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/promql"
@@ -65,49 +66,57 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 	)
 
 	me, ok := err.(util.MultiError)
-	if ok && me.Is(context.Canceled) {
-		return StatusClientClosedRequest, errors.New(ErrClientCanceled)
-	}
-	if ok && me.IsDeadlineExceeded() {
-		return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
-	}
-
-	if s, isRPC := status.FromError(err); isRPC {
-		if s.Code() == codes.DeadlineExceeded {
+	if ok {
+		// Handle pure MultiError cases first
+		if me.Is(context.Canceled) {
+			return StatusClientClosedRequest, errors.New(ErrClientCanceled)
+		}
+		if me.IsDeadlineExceeded() {
 			return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
-		} else if int(s.Code())/100 == 4 || int(s.Code())/100 == 5 {
-			return int(s.Code()), errors.New(s.Message())
 		}
-		return http.StatusInternalServerError, err
+		// For mixed MultiError cases, fall through to default handling
+		// Don't use errors.Is() below as it will unwrap and match individual errors
+		// in mixed cases where we want to return 500
+	} else {
+		// Only use errors.Is() for non-MultiError cases
+		if s, isRPC := grpcutil.ErrorToStatus(err); isRPC {
+			if s.Code() == codes.DeadlineExceeded {
+				return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
+			} else if int(s.Code())/100 == 4 || int(s.Code())/100 == 5 {
+				return int(s.Code()), errors.New(s.Message())
+			}
+			return http.StatusInternalServerError, err
+		}
+
+		switch {
+		case errors.Is(err, context.Canceled) ||
+			(errors.As(err, &promErr) && errors.Is(promErr.Err, context.Canceled)):
+			return StatusClientClosedRequest, errors.New(ErrClientCanceled)
+		case errors.Is(err, context.DeadlineExceeded):
+			return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
+		case errors.As(err, &queryErr):
+			return http.StatusBadRequest, err
+		case errors.Is(err, logqlmodel.ErrLimit) ||
+			errors.Is(err, logqlmodel.ErrParse) ||
+			errors.Is(err, logqlmodel.ErrPipeline) ||
+			errors.Is(err, logqlmodel.ErrBlocked) ||
+			errors.Is(err, logqlmodel.ErrParseMatchers) ||
+			errors.Is(err, logqlmodel.ErrUnsupportedSyntaxForInstantQuery):
+			return http.StatusBadRequest, err
+		case errors.Is(err, user.ErrNoOrgID):
+			return http.StatusBadRequest, err
+		case errors.As(err, &userErr):
+			return http.StatusBadRequest, err
+		case errors.Is(err, logqlmodel.ErrVariantsDisabled):
+			return http.StatusBadRequest, err
+		}
 	}
 
-	switch {
-	case errors.Is(err, context.Canceled) ||
-		(errors.As(err, &promErr) && errors.Is(promErr.Err, context.Canceled)):
-		return StatusClientClosedRequest, errors.New(ErrClientCanceled)
-	case errors.Is(err, context.DeadlineExceeded):
-		return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
-	case errors.As(err, &queryErr):
-		return http.StatusBadRequest, err
-	case errors.Is(err, logqlmodel.ErrLimit) ||
-		errors.Is(err, logqlmodel.ErrParse) ||
-		errors.Is(err, logqlmodel.ErrPipeline) ||
-		errors.Is(err, logqlmodel.ErrBlocked) ||
-		errors.Is(err, logqlmodel.ErrParseMatchers) ||
-		errors.Is(err, logqlmodel.ErrUnsupportedSyntaxForInstantQuery):
-		return http.StatusBadRequest, err
-	case errors.Is(err, user.ErrNoOrgID):
-		return http.StatusBadRequest, err
-	case errors.As(err, &userErr):
-		return http.StatusBadRequest, err
-	case errors.Is(err, logqlmodel.ErrVariantsDisabled):
-		return http.StatusBadRequest, err
-	default:
-		if grpcErr, ok := httpgrpc.HTTPResponseFromError(err); ok {
-			return int(grpcErr.Code), errors.New(string(grpcErr.Body))
-		}
-		return http.StatusInternalServerError, err
+	// Default case for mixed MultiError and other unhandled errors
+	if grpcErr, ok := httpgrpc.HTTPResponseFromError(err); ok {
+		return int(grpcErr.Code), errors.New(string(grpcErr.Body))
 	}
+	return http.StatusInternalServerError, err
 }
 
 // WrapError wraps an error in a protobuf status.
