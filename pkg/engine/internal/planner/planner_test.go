@@ -187,7 +187,7 @@ Limit offset=0 limit=1000
         └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
             └── Filter predicate[0]=EQ(ambiguous.level, "error")
                 └── Compat src=parsed dst=parsed collision=label
-                    └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, null, false, false))
+                    └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [], false, false))
                         └── Compat src=metadata dst=metadata collision=label
                             └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z) predicate[2]=MATCH_STR(builtin.message, "bar")
                                     ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
@@ -204,7 +204,7 @@ Limit offset=0 limit=1000
         └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
             └── Projection all=true drop=(ambiguous.service_name, ambiguous.__error__)
                 └── Compat src=parsed dst=parsed collision=label
-                    └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, null, false, false))
+                    └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [], false, false))
                         └── Compat src=metadata dst=metadata collision=label
                             └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
                                     ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
@@ -241,9 +241,9 @@ VectorAggregation operation=sum
     └── Parallelize
         └── Projection all=true drop=(ambiguous.__error__, ambiguous.__error_details__)
             └── Compat src=parsed dst=parsed collision=label
-                └── Projection all=true expand=(PARSE_JSON(builtin.message, null, false, false))
+                └── Projection all=true expand=(PARSE_JSON(builtin.message, [], false, false))
                     └── Compat src=parsed dst=parsed collision=label
-                        └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, null, false, false))
+                        └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [], false, false))
                             └── Filter predicate[0]=EQ(ambiguous.detected_level, "error")
                                 └── Compat src=metadata dst=metadata collision=label
                                     └── ScanSet num_targets=2 projections=(ambiguous.detected_level, builtin.message, builtin.timestamp) predicate[0]=GTE(builtin.timestamp, 2024-12-31T23:59:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
@@ -275,7 +275,7 @@ Limit offset=0 limit=1000
     └── Parallelize
         └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
             └── Compat src=parsed dst=parsed collision=label
-                └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, null, false, false))
+                └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [], false, false))
                     └── Compat src=metadata dst=metadata collision=label
                         └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
                                 ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
