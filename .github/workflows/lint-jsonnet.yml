@@ -1,6 +1,7 @@
 ---
 name: lint-jsonnet
-on: [pull_request]
+on:
+  [pull_request]
   # pull_request:
   #   paths: "production/**"
 
@@ -20,7 +21,7 @@ jobs:
       - name: setup go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.24.8"
+          go-version: "1.24.9"
       - name: setup jsonnet
         run: |
           go install github.com/google/go-jsonnet/cmd/jsonnet@v0.20.0

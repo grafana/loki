@@ -88,18 +88,19 @@ func createFloat64Array(values []float64, nulls []bool) arrow.Array {
 }
 
 // Helper function to extract boolean values from result
-func extractBoolValues(result arrow.Array) []bool {
+func extractBoolValues(result arrow.Array) ([]bool, []bool) {
 	arr := result.(*array.Boolean)
 
 	values := make([]bool, arr.Len())
+	nulls := make([]bool, arr.Len())
 	for i := 0; i < arr.Len(); i++ {
 		if arr.IsNull(i) {
-			values[i] = false
+			nulls[i] = true
 		} else {
 			values[i] = arr.Value(i)
 		}
 	}
-	return values
+	return values, nulls
 }
 
 func TestBinaryFunctionRegistry_GetForSignature(t *testing.T) {
@@ -174,12 +175,6 @@ func TestBinaryFunctionRegistry_GetForSignature(t *testing.T) {
 			op:          types.BinaryOpSub,
 			dataType:    arrow.PrimitiveTypes.Float64,
 			expectError: false,
-		},
-		{
-			name:        "invalid operation",
-			op:          types.BinaryOpAnd, // Not registered
-			dataType:    arrow.FixedWidthTypes.Boolean,
-			expectError: true,
 		},
 		{
 			name:        "invalid data type for operation",
@@ -267,7 +262,55 @@ func TestBooleanComparisonFunctions(t *testing.T) {
 			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
 			require.NoError(t, err)
 
-			actual := extractBoolValues(result)
+			actual, _ := extractBoolValues(result)
+			assert.Equal(t, tt.expected, actual)
+		})
+	}
+}
+
+func TestBooleanLogicalOperations(t *testing.T) {
+	tests := []struct {
+		name     string
+		op       types.BinaryOp
+		lhs      []bool
+		rhs      []bool
+		expected []bool
+	}{
+		{
+			name:     "logical AND",
+			op:       types.BinaryOpAnd,
+			lhs:      []bool{true, true, false, false},
+			rhs:      []bool{true, false, true, false},
+			expected: []bool{true, false, false, false},
+		},
+		{
+			name:     "logical OR",
+			op:       types.BinaryOpOr,
+			lhs:      []bool{true, true, false, false},
+			rhs:      []bool{true, false, true, false},
+			expected: []bool{true, true, true, false},
+		},
+		{
+			name:     "logical XOR",
+			op:       types.BinaryOpXor,
+			lhs:      []bool{true, true, false, false},
+			rhs:      []bool{true, false, true, false},
+			expected: []bool{false, true, true, false},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lhsArray := createBoolArray(tt.lhs, nil)
+			rhsArray := createBoolArray(tt.rhs, nil)
+
+			fn, err := binaryFunctions.GetForSignature(tt.op, arrow.FixedWidthTypes.Boolean)
+			require.NoError(t, err)
+
+			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
+			require.NoError(t, err)
+
+			actual, _ := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
@@ -336,7 +379,7 @@ func TestStringComparisonFunctions(t *testing.T) {
 			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
 			require.NoError(t, err)
 
-			actual := extractBoolValues(result)
+			actual, _ := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
@@ -405,7 +448,7 @@ func TestIntegerComparisonFunctions(t *testing.T) {
 			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
 			require.NoError(t, err)
 
-			actual := extractBoolValues(result)
+			actual, _ := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
@@ -474,7 +517,7 @@ func TestTimestampComparisonFunctions(t *testing.T) {
 			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
 			require.NoError(t, err)
 
-			actual := extractBoolValues(result)
+			actual, _ := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
@@ -543,7 +586,7 @@ func TestFloat64ComparisonFunctions(t *testing.T) {
 			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
 			require.NoError(t, err)
 
-			actual := extractBoolValues(result)
+			actual, _ := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
@@ -612,7 +655,7 @@ func TestStringMatchingFunctions(t *testing.T) {
 			result, err := fn.Evaluate(lhsArray, rhsArray, false, false)
 			require.NoError(t, err)
 
-			actual := extractBoolValues(result)
+			actual, _ := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
@@ -653,7 +696,7 @@ func TestCompileRegexMatchFunctions(t *testing.T) {
 			result, err := fn.Evaluate(lhsArray, rhsArray, false, true)
 			require.NoError(t, err)
 
-			actual := extractBoolValues(result)
+			actual, _ := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
@@ -713,7 +756,7 @@ func TestNullValueHandling(t *testing.T) {
 			result, err := fn.Evaluate(lhs, rhs, false, false)
 			require.NoError(t, err)
 
-			actual := extractBoolValues(result)
+			actual, _ := extractBoolValues(result)
 			assert.Equal(t, tt.expected, actual)
 		})
 	}
@@ -822,4 +865,44 @@ func TestEmptyArrays(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, int(0), result.Len())
+}
+
+func TestUnaryNot(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []bool
+		nulls    []bool
+		expected []bool
+	}{
+		{
+			name:     "NOT operation",
+			input:    []bool{true, false, true, false},
+			nulls:    nil,
+			expected: []bool{false, true, false, true},
+		},
+		{
+			name:     "NOT with nulls",
+			input:    []bool{true, false, true},
+			nulls:    []bool{false, true, false},
+			expected: []bool{false, false, false}, // nulls result in false in extractBoolValues
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inputArray := createBoolArray(tt.input, tt.nulls)
+
+			fn, err := unaryFunctions.GetForSignature(types.UnaryOpNot, arrow.FixedWidthTypes.Boolean)
+			require.NoError(t, err)
+
+			result, err := fn.Evaluate(inputArray)
+			require.NoError(t, err)
+
+			actual, nulls := extractBoolValues(result)
+			assert.Equal(t, tt.expected, actual)
+			if tt.nulls != nil {
+				assert.Equal(t, tt.nulls, nulls)
+			}
+		})
+	}
 }

@@ -13,10 +13,14 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
-- [CHANGE] `nameOverride` now passed through helm tpl function [#19590](https://github.com/grafana/loki/pull/19590).
-- [BUGFIX] Wrong context passed to loki.namespace helper from table manager servicemonitor. [#19461](https://github.com/grafana/loki/pull/19461)
-- [BUGFIX] Don't fail for missing bucket name, if local disk is used. [#19675](https://github.com/grafana/loki/pull/19675)
+
+## 6.46.0
+
+- [CHANGE] `nameOverride` now passed through Helm template function. [#19590](https://github.com/grafana/loki/pull/19590)
+- [FEATURE] Add configurable `singleBinary.topologySpreadConstraints`. [#19534](https://github.com/grafana/loki/pull/19534)
 - [FEATURE] Add load balancer port to query-frontend service. [#19462](https://github.com/grafana/loki/pull/19462)
+- [FEATURE] Make loki-canary readinessProbe configurable via values.yaml. [#19328](https://github.com/grafana/loki/pull/19328)
+- [BUGFIX] Don't fail for missing bucket name, if local disk is used. [#19675](https://github.com/grafana/loki/pull/19675)
 
 ## 6.45.2
 
