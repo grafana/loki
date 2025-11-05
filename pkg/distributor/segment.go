@@ -1,7 +1,6 @@
 package distributor
 
 import (
-	"hash/fnv"
 	"math"
 
 	"github.com/grafana/dskit/ring"
@@ -40,7 +39,7 @@ func NewSegmentationPartitionResolver(cfg *DataObjTeeConfig, limits Limits, ring
 	}
 }
 
-func (r *SegmentationPartitionResolver) Resolve(tenant string, key SegmentationKey) (int32, error) {
+func (r *SegmentationPartitionResolver) Resolve(tenant string, _ SegmentationKey, streamHash uint32) (int32, error) {
 	ring := r.ringReader.PartitionRing()
 	// Get a subring for the tenant based on the tenant's rate limit and
 	// the maximum rate per tenant per partition in bytes (hardcoded to 1MB/sec).
@@ -52,10 +51,13 @@ func (r *SegmentationPartitionResolver) Resolve(tenant string, key SegmentationK
 	if err != nil {
 		return 0, err
 	}
-	// Hash the segmentation key with fnv32 to turn it into a uint32.
-	fnv := fnv.New32a()
-	fnv.Write([]byte(key))
-	partition, err := subring.ActivePartitionForKey(fnv.Sum32())
+	// Shuffle shard the segmentation key.
+	// partitions2 := math.Max(5, float64(subring.ActivePartitionsCount()))
+	// subring2, err := subring.ShuffleShard(string(key), int(partitions2))
+	// if err != nil {
+	// 	return 0, err
+	// }
+	partition, err := subring.ActivePartitionForKey(streamHash)
 	if err != nil {
 		return 0, err
 	}

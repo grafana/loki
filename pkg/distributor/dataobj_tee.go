@@ -93,7 +93,7 @@ func (t *DataObjTee) duplicate(tenant string, stream KeyedStream) {
 		t.failures.Inc()
 		return
 	}
-	partition, err := t.resolver.Resolve(tenant, segmentationKey)
+	partition, err := t.resolver.Resolve(tenant, segmentationKey, stream.HashKey)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to get partition", "err", err)
 		t.failures.Inc()
