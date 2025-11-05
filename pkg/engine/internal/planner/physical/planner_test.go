@@ -515,8 +515,8 @@ func TestPlanner_Convert_RangeAggregations(t *testing.T) {
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
-		0,             // Step
-		time.Minute*5, // Range
+		0,                                            // Step
+		time.Minute*5,                                // Range
 	).Compat(true)
 
 	logicalPlan, err := b.ToPlan()
@@ -569,8 +569,8 @@ func TestPlanner_Convert_Rate(t *testing.T) {
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
-		0,             // Step
-		time.Minute*5, // Range
+		0,                                            // Step
+		time.Minute*5,                                // Range
 	).BinOpRight(
 		types.BinaryOpDiv, logical.NewLiteral(int64(300)),
 	)
@@ -625,8 +625,8 @@ func TestPlanner_BuildMathExpressions(t *testing.T) {
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
-		0,             // Step
-		time.Minute*5, // Range
+		0,                                            // Step
+		time.Minute*5,                                // Range
 	).BinOpRight(
 		types.BinaryOpDiv, logical.NewLiteral(int64(300)),
 	).BinOpRight(
@@ -679,8 +679,8 @@ func TestPlanner_BuildMathExpressionsWithTwoInputs(t *testing.T) {
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
-		0,             // Step
-		time.Minute*5, // Range
+		0,                                            // Step
+		time.Minute*5,                                // Range
 	).BinOpRight(
 		types.BinaryOpDiv, logical.NewLiteral(float64(300)),
 	)
@@ -712,8 +712,8 @@ func TestPlanner_BuildMathExpressionsWithTwoInputs(t *testing.T) {
 		types.RangeAggregationTypeCount,
 		time.Date(2023, 10, 1, 0, 0, 0, 0, time.UTC), // Start Time
 		time.Date(2023, 10, 1, 1, 0, 0, 0, time.UTC), // End Time
-		0,             // Step
-		time.Minute*5, // Range
+		0,                                            // Step
+		time.Minute*5,                                // Range
 	).BinOpRight(
 		types.BinaryOpDiv, logical.NewLiteral(float64(300)),
 	).BinOpRight(
@@ -770,7 +770,7 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("ascending", func(t *testing.T) {
-		planner := NewPlanner(NewContext(time.Now(), time.Now()).WithDirection(ASC), catalog)
+		planner := NewPlanner(NewContext(now, now.Add(time.Minute)).WithDirection(ASC), catalog)
 		plan, err := planner.Build(logicalPlan)
 		require.NoError(t, err)
 
@@ -781,10 +781,18 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 			// Targets should be added in the order of the scan timestamps
 			// ASC => oldest to newest
 			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, TimeRange: TimeRange{Start: now.Add(-2 * time.Minute), End: now.Add(-45 * time.Second)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, TimeRange: TimeRange{Start: now.Add(-time.Minute), End: now.Add(-30 * time.Second)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}, TimeRange: TimeRange{Start: now, End: now.Add(time.Second * 10)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}, TimeRange: TimeRange{Start: now, End: now.Add(time.Second * 10)},
+				}},
 			},
 		})
 
@@ -802,7 +810,7 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 	})
 
 	t.Run("descending", func(t *testing.T) {
-		planner := NewPlanner(NewContext(time.Now(), time.Now()).WithDirection(DESC), catalog)
+		planner := NewPlanner(NewContext(now, now.Add(time.Minute)).WithDirection(DESC), catalog)
 		plan, err := planner.Build(logicalPlan)
 		require.NoError(t, err)
 
@@ -812,10 +820,18 @@ func TestPlanner_MakeTable_Ordering(t *testing.T) {
 		scanSet := expectedPlan.graph.Add(&ScanSet{
 			// Targets should be added in the order of the scan timestamps
 			Targets: []*ScanTarget{
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}}},
-				{Type: ScanTypeDataObject, DataObject: &DataObjScan{Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj1", Section: 3, StreamIDs: []int64{1, 2}, TimeRange: TimeRange{Start: now, End: now.Add(time.Second * 10)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj2", Section: 1, StreamIDs: []int64{3, 4}, TimeRange: TimeRange{Start: now, End: now.Add(time.Second * 10)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj3", Section: 2, StreamIDs: []int64{5, 1}, TimeRange: TimeRange{Start: now.Add(-time.Minute), End: now.Add(-30 * time.Second)},
+				}},
+				{Type: ScanTypeDataObject, DataObject: &DataObjScan{
+					Location: "obj3", Section: 3, StreamIDs: []int64{5, 1}, TimeRange: TimeRange{Start: now.Add(-2 * time.Minute), End: now.Add(-45 * time.Second)},
+				}},
 			},
 		})
 

@@ -221,6 +221,7 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 					Location:  desc.Location,
 					StreamIDs: desc.Streams,
 					Section:   section,
+					TimeRange: desc.TimeRange,
 				},
 			})
 		}

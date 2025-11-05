@@ -147,10 +147,6 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 			continue
 		}
 
-		if streamsSection != nil {
-			return errorPipeline(ctx, fmt.Errorf("multiple streams sections found in data object %q", node.Location))
-		}
-
 		var err error
 		streamsSection, err = streams.Open(ctx, sec)
 		if err != nil {
@@ -205,6 +201,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		StreamIDs:   node.StreamIDs,
 		Predicates:  predicates,
 		Projections: node.Projections,
+		TimeRange:   node.TimeRange,
 
 		BatchSize: c.batchSize,
 	}, log.With(c.logger, "location", string(node.Location), "section", node.Section))

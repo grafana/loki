@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/dag"
@@ -29,7 +30,7 @@ func Fprint(w io.Writer, wf *Workflow) error {
 			}
 			visited[n] = struct{}{}
 
-			fmt.Fprintf(w, "Task %s\n", n.ID())
+			fmt.Fprintf(w, "Task id=%s start=%s end=%s\n", n.ID(), n.TimeRange.Start.Format(time.RFC3339Nano), n.TimeRange.End.Format(time.RFC3339Nano))
 			fmt.Fprintln(w, "-------------------------------")
 
 			var sb strings.Builder

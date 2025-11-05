@@ -3,6 +3,7 @@ package workflow
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
@@ -27,7 +28,9 @@ func Test_planWorkflow(t *testing.T) {
 		ulidGen := ulidGenerator{}
 
 		var physicalGraph dag.Graph[physical.Node]
-		physicalGraph.Add(&physical.DataObjScan{})
+		physicalGraph.Add(&physical.DataObjScan{
+			TimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()},
+		})
 
 		physicalPlan := physical.FromGraph(physicalGraph)
 
@@ -38,9 +41,9 @@ func Test_planWorkflow(t *testing.T) {
 		generateConsistentULIDs(&ulidGen, graph)
 
 		expectOuptut := strings.TrimSpace(`
-Task 00000000000000000000000001
+Task id=00000000000000000000000001 start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 -------------------------------
-DataObjScan location= streams=0 section_id=0 projections=()
+DataObjScan location= streams=0 section_id=0 projections=() start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 `)
 
 		actualOutput := Sprint(&Workflow{graph: graph})
@@ -53,8 +56,13 @@ DataObjScan location= streams=0 section_id=0 projections=()
 		var physicalGraph dag.Graph[physical.Node]
 
 		var (
-			scan     = physicalGraph.Add(&physical.DataObjScan{})
-			rangeAgg = physicalGraph.Add(&physical.RangeAggregation{})
+			scan = physicalGraph.Add(&physical.DataObjScan{
+				TimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()},
+			})
+			rangeAgg = physicalGraph.Add(&physical.RangeAggregation{
+				Start: time.Unix(30, 0).UTC(),
+				End:   time.Unix(45, 0).UTC(),
+			})
 		)
 
 		_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: scan})
@@ -68,10 +76,10 @@ DataObjScan location= streams=0 section_id=0 projections=()
 		generateConsistentULIDs(&ulidGen, graph)
 
 		expectOuptut := strings.TrimSpace(`
-Task 00000000000000000000000001
+Task id=00000000000000000000000001 start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
 -------------------------------
-RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:00:00Z step=0s range=0s
-└── DataObjScan location= streams=0 section_id=0 projections=()
+RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s
+└── DataObjScan location= streams=0 section_id=0 projections=() start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 `)
 
 		actualOutput := Sprint(&Workflow{graph: graph})
@@ -84,8 +92,13 @@ RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:
 		var physicalGraph dag.Graph[physical.Node]
 
 		var (
-			scan      = physicalGraph.Add(&physical.DataObjScan{})
-			rangeAgg  = physicalGraph.Add(&physical.RangeAggregation{})
+			scan = physicalGraph.Add(&physical.DataObjScan{
+				TimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()},
+			})
+			rangeAgg = physicalGraph.Add(&physical.RangeAggregation{
+				Start: time.Unix(30, 0).UTC(),
+				End:   time.Unix(45, 0).UTC(),
+			})
 			vectorAgg = physicalGraph.Add(&physical.VectorAggregation{})
 		)
 
@@ -101,16 +114,16 @@ RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:
 		generateConsistentULIDs(&ulidGen, graph)
 
 		expectOuptut := strings.TrimSpace(`
-Task 00000000000000000000000001
+Task id=00000000000000000000000001 start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
 -------------------------------
 VectorAggregation operation=invalid
     └── @source stream=00000000000000000000000003
 
-Task 00000000000000000000000002
+Task id=00000000000000000000000002 start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z
 -------------------------------
-RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:00:00Z step=0s range=0s
+RangeAggregation operation=invalid start=1970-01-01T00:00:30Z end=1970-01-01T00:00:45Z step=0s range=0s
 │   └── @sink stream=00000000000000000000000003
-└── DataObjScan location= streams=0 section_id=0 projections=()
+└── DataObjScan location= streams=0 section_id=0 projections=() start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 `)
 
 		actualOutput := Sprint(&Workflow{graph: graph})
@@ -124,7 +137,10 @@ RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:
 
 		var (
 			vectorAgg = physicalGraph.Add(&physical.VectorAggregation{})
-			rangeAgg  = physicalGraph.Add(&physical.RangeAggregation{})
+			rangeAgg  = physicalGraph.Add(&physical.RangeAggregation{
+				Start: time.Unix(5, 0).UTC(),
+				End:   time.Unix(45, 0).UTC(),
+			})
 
 			parallelize = physicalGraph.Add(&physical.Parallelize{})
 
@@ -147,9 +163,18 @@ RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:
 			)
 			scanSet = physicalGraph.Add(&physical.ScanSet{
 				Targets: []*physical.ScanTarget{
-					{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{Location: "a"}},
-					{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{Location: "b"}},
-					{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{Location: "c"}},
+					{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+						Location:  "a",
+						TimeRange: physical.TimeRange{Start: time.Unix(10, 0).UTC(), End: time.Unix(50, 0).UTC()}},
+					},
+					{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+						Location:  "b",
+						TimeRange: physical.TimeRange{Start: time.Unix(20, 0).UTC(), End: time.Unix(60, 0).UTC()}},
+					},
+					{Type: physical.ScanTypeDataObject, DataObject: &physical.DataObjScan{
+						Location:  "c",
+						TimeRange: physical.TimeRange{Start: time.Unix(0, 0).UTC(), End: time.Unix(50, 0).UTC()}},
+					},
 				},
 			})
 		)
@@ -169,39 +194,39 @@ RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:
 		generateConsistentULIDs(&ulidGen, graph)
 
 		expectOuptut := strings.TrimSpace(`
-Task 00000000000000000000000001
+Task id=00000000000000000000000001 start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 -------------------------------
 VectorAggregation operation=invalid
     └── @source stream=00000000000000000000000006
 
-Task 00000000000000000000000002
+Task id=00000000000000000000000002 start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z
 -------------------------------
-RangeAggregation operation=invalid start=0001-01-01T00:00:00Z end=0001-01-01T00:00:00Z step=0s range=0s
+RangeAggregation operation=invalid start=1970-01-01T00:00:05Z end=1970-01-01T00:00:45Z step=0s range=0s
     ├── @source stream=00000000000000000000000007
     ├── @source stream=00000000000000000000000008
     ├── @source stream=00000000000000000000000009
     └── @sink stream=00000000000000000000000006
 
-Task 00000000000000000000000003
+Task id=00000000000000000000000003 start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 -------------------------------
 Filter
 │   └── @sink stream=00000000000000000000000007
 └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
-    └── DataObjScan location=a streams=0 section_id=0 projections=()
+    └── DataObjScan location=a streams=0 section_id=0 projections=() start=1970-01-01T00:00:10Z end=1970-01-01T00:00:50Z
 
-Task 00000000000000000000000004
+Task id=00000000000000000000000004 start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
 -------------------------------
 Filter
 │   └── @sink stream=00000000000000000000000008
 └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
-    └── DataObjScan location=b streams=0 section_id=0 projections=()
+    └── DataObjScan location=b streams=0 section_id=0 projections=() start=1970-01-01T00:00:20Z end=1970-01-01T00:01:00Z
 
-Task 00000000000000000000000005
+Task id=00000000000000000000000005 start=1970-01-01T00:00:00Z end=1970-01-01T00:00:50Z
 -------------------------------
 Filter
 │   └── @sink stream=00000000000000000000000009
 └── Projection all=true expand=(PARSE_LOGFMT(builtin.message))
-    └── DataObjScan location=c streams=0 section_id=0 projections=()
+    └── DataObjScan location=c streams=0 section_id=0 projections=() start=1970-01-01T00:00:00Z end=1970-01-01T00:00:50Z
 `)
 
 		actualOutput := Sprint(&Workflow{graph: graph})

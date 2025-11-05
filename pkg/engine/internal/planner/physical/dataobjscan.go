@@ -32,6 +32,8 @@ type DataObjScan struct {
 	// returned. Predicates would almost always contain a time range filter to
 	// only read the logs for the requested time range.
 	Predicates []Expression
+	// TimeRange is a time range of data inside the data object.
+	TimeRange TimeRange
 }
 
 // ID implements the [Node] interface.
@@ -48,6 +50,7 @@ func (s *DataObjScan) Clone() Node {
 		StreamIDs:   slices.Clone(s.StreamIDs),
 		Projections: cloneExpressions(s.Projections),
 		Predicates:  cloneExpressions(s.Predicates),
+		TimeRange:   s.TimeRange,
 	}
 }
 
