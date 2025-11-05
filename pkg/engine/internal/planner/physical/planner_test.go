@@ -270,7 +270,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Shard: logical.NewShard(0, 1),
 			},
 		).Parse(
-			types.VariadicOpParseLogfmt,
+			types.VariadicOpParseLogfmt, false, false,
 		).Select(
 			&logical.BinOp{
 				Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
@@ -317,7 +317,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		require.Equal(t, types.VariadicOpParseLogfmt, expr.Op)
 
 		funcArgs := expr.Expressions
-		require.Len(t, funcArgs, 1)
+		require.Len(t, funcArgs, 4)
 
 		sourcCol, ok := funcArgs[0].(*ColumnExpr)
 		require.True(t, ok)
@@ -329,7 +329,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		require.NoError(t, err)
 
 		funcArgs = expr.Expressions
-		require.Len(t, funcArgs, 1)
+		require.Len(t, funcArgs, 4)
 
 		sourcCol, ok = funcArgs[0].(*ColumnExpr)
 		require.True(t, ok)
@@ -353,7 +353,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 				Shard: logical.NewShard(0, 1),
 			},
 		).Parse(
-			types.VariadicOpParseLogfmt,
+			types.VariadicOpParseLogfmt, false, false,
 		).Select(
 			&logical.BinOp{
 				Left:  logical.NewColumnRef("level", types.ColumnTypeAmbiguous),
@@ -413,7 +413,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		require.Equal(t, types.VariadicOpParseLogfmt, expr.Op)
 
 		funcArgs := expr.Expressions
-		require.Len(t, funcArgs, 1)
+		require.Len(t, funcArgs, 4)
 
 		sourcCol, ok := funcArgs[0].(*ColumnExpr)
 		require.True(t, ok)
@@ -425,7 +425,7 @@ func TestPlanner_Convert_WithParse(t *testing.T) {
 		require.NoError(t, err)
 
 		funcArgs = expr.Expressions
-		require.Len(t, funcArgs, 2)
+		require.Len(t, funcArgs, 4)
 
 		sourcCol, ok = funcArgs[0].(*ColumnExpr)
 		require.True(t, ok)
