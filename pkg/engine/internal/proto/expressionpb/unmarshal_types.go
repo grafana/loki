@@ -27,7 +27,6 @@ var (
 		types.BinaryOpAnd:             BINARY_OP_AND,
 		types.BinaryOpOr:              BINARY_OP_OR,
 		types.BinaryOpXor:             BINARY_OP_XOR,
-		types.BinaryOpNot:             BINARY_OP_NOT,
 		types.BinaryOpAdd:             BINARY_OP_ADD,
 		types.BinaryOpSub:             BINARY_OP_SUB,
 		types.BinaryOpMul:             BINARY_OP_MUL,

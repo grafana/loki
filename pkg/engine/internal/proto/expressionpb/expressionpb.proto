@@ -52,21 +52,20 @@ enum BinaryOp {
   BINARY_OP_AND = 7; // Logical AND operation (&&).
   BINARY_OP_OR = 8; // Logical OR operation (||).
   BINARY_OP_XOR = 9; // Logical XOR operation (^).
-  BINARY_OP_NOT = 10; // Logical NOT operation (!).
 
-  BINARY_OP_ADD = 11; // Addition operation (+).
-  BINARY_OP_SUB = 12; // Subtraction operation (-).
-  BINARY_OP_MUL = 13; // Multiplication operation (*).
-  BINARY_OP_DIV = 14; // Division operation (/).
-  BINARY_OP_MOD = 15; // Modulo operation (%).
-  BINARY_OP_POW = 16; // power/exponentiation operation (^).
+  BINARY_OP_ADD = 10; // Addition operation (+).
+  BINARY_OP_SUB = 11; // Subtraction operation (-).
+  BINARY_OP_MUL = 12; // Multiplication operation (*).
+  BINARY_OP_DIV = 13; // Division operation (/).
+  BINARY_OP_MOD = 14; // Modulo operation (%).
+  BINARY_OP_POW = 15; // power/exponentiation operation (^).
 
-  BINARY_OP_MATCH_SUBSTR = 17; // Substring matching operation (|=). Used for string match filter.
-  BINARY_OP_NOT_MATCH_SUBSTR = 18; // Substring non-matching operation (!=). Used for string match filter.
-  BINARY_OP_MATCH_RE = 19; // Regular expression matching operation (|~). Used for regex match filter and label matcher.
-  BINARY_OP_NOT_MATCH_RE = 20; // Regular expression non-matching operation (!~). Used for regex match filter and label matcher.
-  BINARY_OP_MATCH_PATTERN = 21; // Pattern matching operation (|>). Used for pattern match filter.
-  BINARY_OP_NOT_MATCH_PATTERN = 22; // Pattern non-matching operation (!>). Use for pattern match filter.
+  BINARY_OP_MATCH_SUBSTR = 16; // Substring matching operation (|=). Used for string match filter.
+  BINARY_OP_NOT_MATCH_SUBSTR = 17; // Substring non-matching operation (!=). Used for string match filter.
+  BINARY_OP_MATCH_RE = 18; // Regular expression matching operation (|~). Used for regex match filter and label matcher.
+  BINARY_OP_NOT_MATCH_RE = 19; // Regular expression non-matching operation (!~). Used for regex match filter and label matcher.
+  BINARY_OP_MATCH_PATTERN = 20; // Pattern matching operation (|>). Used for pattern match filter.
+  BINARY_OP_NOT_MATCH_PATTERN = 21; // Pattern non-matching operation (!>). Use for pattern match filter.
 }
 
 // VariadicExpression is an expression that executes a function with a variable
