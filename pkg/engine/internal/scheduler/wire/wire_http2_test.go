@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
@@ -44,7 +45,7 @@ func TestHTTP2BasicConnectivity(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtobufProtocol)
+	clientConn, err := wire.NewHTTP2Dialer(memory.DefaultAllocator, "stream").Dial(ctx, addr)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -134,7 +135,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtobufProtocol)
+	clientConn, err := wire.NewHTTP2Dialer(memory.DefaultAllocator, "stream").Dial(ctx, addr)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -297,7 +298,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 			defer clientWg.Done()
 
 			// Connect
-			conn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtobufProtocol)
+			conn, err := wire.NewHTTP2Dialer(memory.DefaultAllocator, "stream").Dial(ctx, addr)
 			if err != nil {
 				t.Errorf("Client %d dial failed: %v", clientIdx, err)
 				return
@@ -408,7 +409,7 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtobufProtocol)
+	clientConn, err := wire.NewHTTP2Dialer(memory.DefaultAllocator, "stream").Dial(ctx, addr)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -483,7 +484,7 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtobufProtocol)
+	clientConn, err := wire.NewHTTP2Dialer(memory.DefaultAllocator, "stream").Dial(ctx, addr)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -562,14 +563,14 @@ func prepareHTTP2Listener(t *testing.T) (*wire.HTTP2Listener, func()) {
 
 	listener := wire.NewHTTP2Listener(
 		l.Addr(),
-		wire.DefaultProtobufProtocol,
+		memory.DefaultAllocator,
 		wire.WithHTTP2ListenerConnAcceptTimeout(1*time.Second),
 		wire.WithHTTP2ListenerMaxPendingConns(1),
 		wire.WithHTTP2ListenerLogger(log.NewNopLogger()),
 	)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/stream", listener.HandleStream)
+	mux.HandleFunc("/stream", listener.ServeHTTP)
 
 	server := &http.Server{
 		Handler: h2c.NewHandler(mux, &http2.Server{}),

@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
-func TestProtoMapper_Frames(t *testing.T) {
+func TestProtobufCodec_Frames(t *testing.T) {
 	tests := map[string]struct {
 		frame Frame
 	}{
@@ -36,14 +36,14 @@ func TestProtoMapper_Frames(t *testing.T) {
 		},
 	}
 
-	mapper := &protoMapper{memory.DefaultAllocator}
+	codec := &protobufCodec{memory.DefaultAllocator}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			pbFrame, err := mapper.frameToPbFrame(tt.frame)
+			pbFrame, err := codec.frameToPbFrame(tt.frame)
 			require.NoError(t, err)
 
-			actualFrame, err := mapper.frameFromPbFrame(pbFrame)
+			actualFrame, err := codec.frameFromPbFrame(pbFrame)
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.frame, actualFrame)
@@ -51,7 +51,7 @@ func TestProtoMapper_Frames(t *testing.T) {
 	}
 }
 
-func TestProtoMapper_Messages(t *testing.T) {
+func TestProtobufCodec_Messages(t *testing.T) {
 	taskULID := ulid.Make()
 	streamULID := ulid.Make()
 
@@ -167,7 +167,7 @@ func TestProtoMapper_Messages(t *testing.T) {
 		},
 	}
 
-	mapper := &protoMapper{memory.DefaultAllocator}
+	codec := &protobufCodec{memory.DefaultAllocator}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -176,10 +176,10 @@ func TestProtoMapper_Messages(t *testing.T) {
 				Message: tt.message,
 			}
 
-			pbFrame, err := mapper.frameToPbFrame(frame)
+			pbFrame, err := codec.frameToPbFrame(frame)
 			require.NoError(t, err)
 
-			actualFrame, err := mapper.frameFromPbFrame(pbFrame)
+			actualFrame, err := codec.frameFromPbFrame(pbFrame)
 			require.NoError(t, err)
 
 			assert.Equal(t, frame, actualFrame)
@@ -187,9 +187,9 @@ func TestProtoMapper_Messages(t *testing.T) {
 	}
 }
 
-func TestProtoMapper_StreamDataMessage(t *testing.T) {
+func TestProtobufCodec_StreamDataMessage(t *testing.T) {
 	streamULID := ulid.Make()
-	mapper := &protoMapper{memory.DefaultAllocator}
+	codec := &protobufCodec{memory.DefaultAllocator}
 
 	originalRecord := createTestArrowRecord()
 
@@ -203,10 +203,10 @@ func TestProtoMapper_StreamDataMessage(t *testing.T) {
 		Message: message,
 	}
 
-	pbFrame, err := mapper.frameToPbFrame(frame)
+	pbFrame, err := codec.frameToPbFrame(frame)
 	require.NoError(t, err)
 
-	actualFrame, err := mapper.frameFromPbFrame(pbFrame)
+	actualFrame, err := codec.frameFromPbFrame(pbFrame)
 	require.NoError(t, err)
 
 	actualMessage := actualFrame.(MessageFrame).Message.(StreamDataMessage)
@@ -220,7 +220,7 @@ func TestProtoMapper_StreamDataMessage(t *testing.T) {
 	assert.Equal(t, originalRecord.NumCols(), actualMessage.Data.NumCols())
 }
 
-func TestProtoMapper_TaskStates(t *testing.T) {
+func TestProtobufCodec_TaskStates(t *testing.T) {
 	taskULID := ulid.Make()
 
 	states := []workflow.TaskState{
@@ -232,7 +232,7 @@ func TestProtoMapper_TaskStates(t *testing.T) {
 		workflow.TaskStateFailed,
 	}
 
-	mapper := &protoMapper{memory.DefaultAllocator}
+	codec := &protobufCodec{memory.DefaultAllocator}
 
 	for _, state := range states {
 		t.Run(state.String(), func(t *testing.T) {
@@ -248,10 +248,10 @@ func TestProtoMapper_TaskStates(t *testing.T) {
 				Message: message,
 			}
 
-			pbFrame, err := mapper.frameToPbFrame(frame)
+			pbFrame, err := codec.frameToPbFrame(frame)
 			require.NoError(t, err)
 
-			actualFrame, err := mapper.frameFromPbFrame(pbFrame)
+			actualFrame, err := codec.frameFromPbFrame(pbFrame)
 			require.NoError(t, err)
 
 			actualMessage := actualFrame.(MessageFrame).Message.(TaskStatusMessage)
@@ -260,7 +260,7 @@ func TestProtoMapper_TaskStates(t *testing.T) {
 	}
 }
 
-func TestProtoMapper_StreamStates(t *testing.T) {
+func TestProtobufCodec_StreamStates(t *testing.T) {
 	streamULID := ulid.Make()
 
 	states := []workflow.StreamState{
@@ -270,7 +270,7 @@ func TestProtoMapper_StreamStates(t *testing.T) {
 		workflow.StreamStateClosed,
 	}
 
-	mapper := &protoMapper{memory.DefaultAllocator}
+	codec := &protobufCodec{memory.DefaultAllocator}
 
 	for _, state := range states {
 		t.Run(state.String(), func(t *testing.T) {
@@ -284,10 +284,10 @@ func TestProtoMapper_StreamStates(t *testing.T) {
 				Message: message,
 			}
 
-			pbFrame, err := mapper.frameToPbFrame(frame)
+			pbFrame, err := codec.frameToPbFrame(frame)
 			require.NoError(t, err)
 
-			actualFrame, err := mapper.frameFromPbFrame(pbFrame)
+			actualFrame, err := codec.frameFromPbFrame(pbFrame)
 			require.NoError(t, err)
 
 			actualMessage := actualFrame.(MessageFrame).Message.(StreamStatusMessage)
@@ -296,48 +296,48 @@ func TestProtoMapper_StreamStates(t *testing.T) {
 	}
 }
 
-func TestProtoMapper_ErrorCases(t *testing.T) {
-	mapper := &protoMapper{memory.DefaultAllocator}
+func TestProtobufCodec_ErrorCases(t *testing.T) {
+	codec := &protobufCodec{memory.DefaultAllocator}
 
 	t.Run("nil frame to protobuf", func(t *testing.T) {
-		_, err := mapper.frameToPbFrame(nil)
+		_, err := codec.frameToPbFrame(nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "nil frame")
 	})
 
 	t.Run("nil frame from protobuf", func(t *testing.T) {
-		_, err := mapper.frameFromPbFrame(nil)
+		_, err := codec.frameFromPbFrame(nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "nil frame")
 	})
 
 	t.Run("nil message to protobuf", func(t *testing.T) {
-		_, err := mapper.messageToPbMessage(nil)
+		_, err := codec.messageToPbMessage(nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "nil message")
 	})
 
 	t.Run("nil task to protobuf", func(t *testing.T) {
-		_, err := mapper.taskToPbTask(nil)
+		_, err := codec.taskToPbTask(nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "nil task")
 	})
 
 	t.Run("nil arrow record serialization", func(t *testing.T) {
-		_, err := mapper.serializeArrowRecord(nil)
+		_, err := codec.serializeArrowRecord(nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "nil arrow record")
 	})
 
 	t.Run("empty arrow data deserialization", func(t *testing.T) {
-		_, err := mapper.deserializeArrowRecord([]byte{})
+		_, err := codec.deserializeArrowRecord([]byte{})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "empty arrow data")
 	})
 }
 
-func TestProtoMapper_ArrowRecordSerialization(t *testing.T) {
-	mapper := &protoMapper{memory.DefaultAllocator}
+func TestProtobufCodec_ArrowRecordSerialization(t *testing.T) {
+	codec := &protobufCodec{memory.DefaultAllocator}
 
 	tests := map[string]struct {
 		createRecord func() arrow.Record
@@ -385,11 +385,11 @@ func TestProtoMapper_ArrowRecordSerialization(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			original := tt.createRecord()
 
-			data, err := mapper.serializeArrowRecord(original)
+			data, err := codec.serializeArrowRecord(original)
 			require.NoError(t, err)
 			require.NotEmpty(t, data)
 
-			deserialized, err := mapper.deserializeArrowRecord(data)
+			deserialized, err := codec.deserializeArrowRecord(data)
 			require.NoError(t, err)
 			require.NotNil(t, deserialized)
 
