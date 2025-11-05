@@ -24,7 +24,7 @@ type HTTP2Listener struct {
 	connCh            chan Conn
 	closeOnce         sync.Once
 	closed            chan struct{}
-	protocolFactory   func() FrameProtocol
+	protocol          FrameProtocol
 	connAcceptTimeout time.Duration
 }
 
@@ -65,7 +65,7 @@ func WithHTTP2ListenerLogger(logger log.Logger) HTTP2ListenerOptFunc {
 // NewHTTP2Listener creates a new HTTP/2 listener on the specified address.
 func NewHTTP2Listener(
 	addr net.Addr,
-	protocolFactory func() FrameProtocol,
+	protocol FrameProtocol,
 	optFuncs ...HTTP2ListenerOptFunc,
 ) *HTTP2Listener {
 	opts := http2ListenerOpts{
@@ -83,7 +83,7 @@ func NewHTTP2Listener(
 
 		connCh:            make(chan Conn, opts.MaxPendingConns),
 		closed:            make(chan struct{}),
-		protocolFactory:   protocolFactory,
+		protocol:          protocol,
 		connAcceptTimeout: opts.ConnAcceptTimeout,
 	}
 
@@ -111,8 +111,7 @@ func (l *HTTP2Listener) HandleStream(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	// Create a new protocol instance for this connection (protocols are stateful)
-	conn := newHTTP2Conn(l.Addr(), r.RemoteAddr, r.Body, w, flusher, l.protocolFactory())
+	conn := newHTTP2Conn(l.Addr(), r.RemoteAddr, r.Body, w, flusher, l.protocol)
 
 	// Try to enqueue the connection without blocking indefinitely
 	select {
@@ -190,10 +189,6 @@ func newHTTP2Conn(
 	flusher http.Flusher,
 	protocol FrameProtocol,
 ) *HTTP2Conn {
-	// Bind protocol to reader and writer
-	protocol.BindReader(reader)
-	protocol.BindWriter(writer)
-
 	c := &HTTP2Conn{
 		localAddr:  localAddr,
 		remoteAddr: &tcpAddr{Addr: remoteAddr},
@@ -220,7 +215,7 @@ func (c *HTTP2Conn) Send(ctx context.Context, frame Frame) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 
-	if err := c.protocol.WriteFrame(frame); err != nil {
+	if err := c.protocol.WriteFrame(c.writer, frame); err != nil {
 		return fmt.Errorf("write frame: %w", err)
 	}
 
@@ -249,13 +244,13 @@ func (c *HTTP2Conn) Recv(ctx context.Context) (Frame, error) {
 	resultCh := make(chan result, 1)
 
 	go func() {
-		frame, err := c.protocol.ReadFrame()
+		frame, err := c.protocol.ReadFrame(c.reader)
 		resultCh <- result{frame: frame, err: err}
 	}()
 
 	select {
 	case <-ctx.Done():
-		// Close reader to unblock the decoder goroutine
+		// Close reader to unblock the reader goroutine
 		c.reader.Close()
 		return nil, ctx.Err()
 	case <-c.closed:
@@ -321,7 +316,7 @@ func NewHTTP2Dialer() *HTTP2Dialer {
 }
 
 // Dial establishes an HTTP/2 connection to the specified address.
-func (d *HTTP2Dialer) Dial(ctx context.Context, addr string, protocolFactory func() FrameProtocol) (Conn, error) {
+func (d *HTTP2Dialer) Dial(ctx context.Context, addr string, protocol FrameProtocol) (Conn, error) {
 	pr, pw := io.Pipe()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://%s/stream", addr), pr)
@@ -350,7 +345,7 @@ func (d *HTTP2Dialer) Dial(ctx context.Context, addr string, protocolFactory fun
 		resp.Body,
 		pw,
 		nil, // client doesn't need flusher, it's handled by the pipe writer
-		protocolFactory(),
+		protocol,
 	)
 
 	// when connection is closed, close the pipe writer

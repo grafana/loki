@@ -2,7 +2,6 @@ package wire
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 
@@ -12,43 +11,28 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/wirepb"
 )
 
-const DefaultMaxFrameSizeBytes = 100 * 1024 * 1024 // 100MB
-
 // ProtobufProtocol implements a protobuf-based protocol for frames.
 // Messages are length-prefixed: [4-byte length][protobuf payload]
 type ProtobufProtocol struct {
 	mapper            *protoMapper
 	maxFrameSizeBytes uint32
-	w                 io.Writer
-	r                 io.Reader
 }
 
-func NewProtobufProtocolFactory(allocator memory.Allocator, maxFrameSizeBytes uint32) func() FrameProtocol {
-	return func() FrameProtocol {
-		return &ProtobufProtocol{
-			mapper:            &protoMapper{allocator},
-			maxFrameSizeBytes: maxFrameSizeBytes,
-		}
+var _ FrameProtocol = (*ProtobufProtocol)(nil)
+
+const DefaultMaxFrameSizeBytes = 100 * 1024 * 1024 // 100MB
+var DefaultProtobufProtocol = NewProtobufProtocol(memory.NewGoAllocator(), DefaultMaxFrameSizeBytes)
+
+func NewProtobufProtocol(allocator memory.Allocator, maxFrameSizeBytes uint32) *ProtobufProtocol {
+	return &ProtobufProtocol{
+		mapper:            &protoMapper{allocator},
+		maxFrameSizeBytes: maxFrameSizeBytes,
 	}
 }
 
-// BindWriter binds the protocol to a writer.
-func (p *ProtobufProtocol) BindWriter(w io.Writer) {
-	p.w = w
-}
-
-// BindReader binds the protocol to a reader.
-func (p *ProtobufProtocol) BindReader(r io.Reader) {
-	p.r = r
-}
-
-// WriteFrame encodes a frame as protobuf and writes it to the bound writer.
+// WriteFrame encodes a frame as protobuf and writes it to the writer.
 // Format: [4-byte length (big-endian)][protobuf payload]
-func (p *ProtobufProtocol) WriteFrame(frame Frame) error {
-	if p.w == nil {
-		return errors.New("writer not bound")
-	}
-
+func (p *ProtobufProtocol) WriteFrame(w io.Writer, frame Frame) error {
 	// Convert wire.Frame to protobuf
 	pbFrame, err := p.mapper.FrameToPbFrame(frame)
 	if err != nil {
@@ -63,12 +47,12 @@ func (p *ProtobufProtocol) WriteFrame(frame Frame) error {
 
 	// Write length prefix (4 bytes, big-endian)
 	length := uint32(len(data))
-	if err := binary.Write(p.w, binary.BigEndian, length); err != nil {
+	if err := binary.Write(w, binary.BigEndian, length); err != nil {
 		return fmt.Errorf("failed to write length prefix: %w", err)
 	}
 
 	// Write payload
-	n, err := p.w.Write(data)
+	n, err := w.Write(data)
 	if err != nil {
 		return fmt.Errorf("failed to write payload: %w", err)
 	}
@@ -81,14 +65,10 @@ func (p *ProtobufProtocol) WriteFrame(frame Frame) error {
 
 // ReadFrame reads and decodes a frame from the bound reader.
 // Format: [4-byte length (big-endian)][protobuf payload]
-func (p *ProtobufProtocol) ReadFrame() (Frame, error) {
-	if p.r == nil {
-		return nil, errors.New("reader not bound")
-	}
-
+func (p *ProtobufProtocol) ReadFrame(r io.Reader) (Frame, error) {
 	// Read length prefix (4 bytes, big-endian)
 	var length uint32
-	if err := binary.Read(p.r, binary.BigEndian, &length); err != nil {
+	if err := binary.Read(r, binary.BigEndian, &length); err != nil {
 		return nil, fmt.Errorf("failed to read length prefix: %w", err)
 	}
 
@@ -99,7 +79,7 @@ func (p *ProtobufProtocol) ReadFrame() (Frame, error) {
 
 	// Read payload
 	data := make([]byte, length)
-	n, err := io.ReadFull(p.r, data)
+	n, err := io.ReadFull(r, data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read payload: %w", err)
 	}
