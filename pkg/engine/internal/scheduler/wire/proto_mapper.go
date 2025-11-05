@@ -21,7 +21,7 @@ type protoMapper struct {
 	allocator memory.Allocator
 }
 
-func (m *protoMapper) FrameFromPbFrame(f *wirepb.Frame) (Frame, error) {
+func (m *protoMapper) frameFromPbFrame(f *wirepb.Frame) (Frame, error) {
 	if f == nil {
 		return nil, errors.New("nil frame")
 	}
@@ -44,7 +44,7 @@ func (m *protoMapper) FrameFromPbFrame(f *wirepb.Frame) (Frame, error) {
 		return DiscardFrame{ID: k.Discard.Id}, nil
 
 	case *wirepb.Frame_Message:
-		msg, err := m.MessageFromPbMessage(k.Message)
+		msg, err := m.messageFromPbMessage(k.Message)
 		if err != nil {
 			return nil, err
 		}
@@ -58,7 +58,7 @@ func (m *protoMapper) FrameFromPbFrame(f *wirepb.Frame) (Frame, error) {
 	}
 }
 
-func (m *protoMapper) MessageFromPbMessage(mf *wirepb.MessageFrame) (Message, error) {
+func (m *protoMapper) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, error) {
 	if mf == nil {
 		return nil, errors.New("nil message frame")
 	}
@@ -68,7 +68,7 @@ func (m *protoMapper) MessageFromPbMessage(mf *wirepb.MessageFrame) (Message, er
 		return WorkerReadyMessage{}, nil
 
 	case *wirepb.MessageFrame_TaskAssign:
-		task, err := m.TaskFromPbTask(k.TaskAssign.Task)
+		task, err := m.taskFromPbTask(k.TaskAssign.Task)
 		if err != nil {
 			return nil, err
 		}
@@ -79,7 +79,7 @@ func (m *protoMapper) MessageFromPbMessage(mf *wirepb.MessageFrame) (Message, er
 			if err != nil {
 				return nil, fmt.Errorf("invalid stream ID %q: %w", idStr, err)
 			}
-			streamStates[id] = m.StreamStateFromPbStreamState(state)
+			streamStates[id] = m.streamStateFromPbStreamState(state)
 		}
 
 		return TaskAssignMessage{
@@ -99,7 +99,7 @@ func (m *protoMapper) MessageFromPbMessage(mf *wirepb.MessageFrame) (Message, er
 		}, nil
 
 	case *wirepb.MessageFrame_TaskStatus:
-		status, err := m.TaskStatusFromPbTaskStatus(&k.TaskStatus.Status)
+		status, err := m.taskStatusFromPbTaskStatus(&k.TaskStatus.Status)
 		if err != nil {
 			return nil, err
 		}
@@ -132,7 +132,7 @@ func (m *protoMapper) MessageFromPbMessage(mf *wirepb.MessageFrame) (Message, er
 	case *wirepb.MessageFrame_StreamStatus:
 		return StreamStatusMessage{
 			StreamID: ulid.ULID(k.StreamStatus.StreamId),
-			State:    m.StreamStateFromPbStreamState(k.StreamStatus.State),
+			State:    m.streamStateFromPbStreamState(k.StreamStatus.State),
 		}, nil
 
 	default:
@@ -140,7 +140,7 @@ func (m *protoMapper) MessageFromPbMessage(mf *wirepb.MessageFrame) (Message, er
 	}
 }
 
-func (m *protoMapper) TaskFromPbTask(t *wirepb.Task) (*workflow.Task, error) {
+func (m *protoMapper) taskFromPbTask(t *wirepb.Task) (*workflow.Task, error) {
 	if t == nil {
 		return nil, errors.New("nil task")
 	}
@@ -150,12 +150,12 @@ func (m *protoMapper) TaskFromPbTask(t *wirepb.Task) (*workflow.Task, error) {
 		return nil, fmt.Errorf("failed to marshal fragment: %w", err)
 	}
 
-	sources, err := m.NodeStreamMapFromPbNodeStreamList(t.Sources, fragment)
+	sources, err := m.nodeStreamMapFromPbNodeStreamList(t.Sources, fragment)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal sources: %w", err)
 	}
 
-	sinks, err := m.NodeStreamMapFromPbNodeStreamList(t.Sinks, fragment)
+	sinks, err := m.nodeStreamMapFromPbNodeStreamList(t.Sinks, fragment)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal sinks: %w", err)
 	}
@@ -169,13 +169,13 @@ func (m *protoMapper) TaskFromPbTask(t *wirepb.Task) (*workflow.Task, error) {
 	}, nil
 }
 
-func (m *protoMapper) TaskStatusFromPbTaskStatus(ts *wirepb.TaskStatus) (workflow.TaskStatus, error) {
+func (m *protoMapper) taskStatusFromPbTaskStatus(ts *wirepb.TaskStatus) (workflow.TaskStatus, error) {
 	if ts == nil {
 		return workflow.TaskStatus{}, errors.New("nil task status")
 	}
 
 	status := workflow.TaskStatus{
-		State: m.TaskStateFromPbTaskState(ts.State),
+		State: m.taskStateFromPbTaskState(ts.State),
 	}
 
 	if ts.Error != "" {
@@ -185,7 +185,7 @@ func (m *protoMapper) TaskStatusFromPbTaskStatus(ts *wirepb.TaskStatus) (workflo
 	return status, nil
 }
 
-func (m *protoMapper) TaskStateFromPbTaskState(state wirepb.TaskState) workflow.TaskState {
+func (m *protoMapper) taskStateFromPbTaskState(state wirepb.TaskState) workflow.TaskState {
 	switch state {
 	case wirepb.TASK_STATE_CREATED:
 		return workflow.TaskStateCreated
@@ -204,7 +204,7 @@ func (m *protoMapper) TaskStateFromPbTaskState(state wirepb.TaskState) workflow.
 	}
 }
 
-func (m *protoMapper) StreamStateFromPbStreamState(state wirepb.StreamState) workflow.StreamState {
+func (m *protoMapper) streamStateFromPbStreamState(state wirepb.StreamState) workflow.StreamState {
 	switch state {
 	case wirepb.STREAM_STATE_IDLE:
 		return workflow.StreamStateIdle
@@ -219,7 +219,7 @@ func (m *protoMapper) StreamStateFromPbStreamState(state wirepb.StreamState) wor
 	}
 }
 
-func (m *protoMapper) NodeStreamMapFromPbNodeStreamList(pbMap map[string]*wirepb.StreamList, fragment *physical.Plan) (map[physical.Node][]*workflow.Stream, error) {
+func (m *protoMapper) nodeStreamMapFromPbNodeStreamList(pbMap map[string]*wirepb.StreamList, fragment *physical.Plan) (map[physical.Node][]*workflow.Stream, error) {
 	result := make(map[physical.Node][]*workflow.Stream)
 
 	// Build a map of node IDs to nodes from the fragment
@@ -255,7 +255,7 @@ func (m *protoMapper) NodeStreamMapFromPbNodeStreamList(pbMap map[string]*wirepb
 	return result, nil
 }
 
-func (m *protoMapper) FrameToPbFrame(from Frame) (*wirepb.Frame, error) {
+func (m *protoMapper) frameToPbFrame(from Frame) (*wirepb.Frame, error) {
 	if from == nil {
 		return nil, errors.New("nil frame")
 	}
@@ -286,7 +286,7 @@ func (m *protoMapper) FrameToPbFrame(from Frame) (*wirepb.Frame, error) {
 		}
 
 	case MessageFrame:
-		mf, err := m.MessageToPbMessage(v.Message)
+		mf, err := m.messageToPbMessage(v.Message)
 		if err != nil {
 			return nil, err
 		}
@@ -300,7 +300,7 @@ func (m *protoMapper) FrameToPbFrame(from Frame) (*wirepb.Frame, error) {
 	return f, nil
 }
 
-func (m *protoMapper) MessageToPbMessage(from Message) (*wirepb.MessageFrame, error) {
+func (m *protoMapper) messageToPbMessage(from Message) (*wirepb.MessageFrame, error) {
 	if from == nil {
 		return nil, errors.New("nil message")
 	}
@@ -314,14 +314,14 @@ func (m *protoMapper) MessageToPbMessage(from Message) (*wirepb.MessageFrame, er
 		}
 
 	case TaskAssignMessage:
-		task, err := m.TaskToPbTask(v.Task)
+		task, err := m.taskToPbTask(v.Task)
 		if err != nil {
 			return nil, err
 		}
 
 		streamStates := make(map[string]wirepb.StreamState)
 		for id, state := range v.StreamStates {
-			streamStates[id.String()] = m.StreamStateToPbStreamState(state)
+			streamStates[id.String()] = m.streamStateToPbStreamState(state)
 		}
 
 		mf.Kind = &wirepb.MessageFrame_TaskAssign{
@@ -347,7 +347,7 @@ func (m *protoMapper) MessageToPbMessage(from Message) (*wirepb.MessageFrame, er
 		}
 
 	case TaskStatusMessage:
-		status, err := m.TaskStatusToPbTaskStatus(v.Status)
+		status, err := m.taskStatusToPbTaskStatus(v.Status)
 		if err != nil {
 			return nil, err
 		}
@@ -383,7 +383,7 @@ func (m *protoMapper) MessageToPbMessage(from Message) (*wirepb.MessageFrame, er
 		mf.Kind = &wirepb.MessageFrame_StreamStatus{
 			StreamStatus: &wirepb.StreamStatusMessage{
 				StreamId: protoUlid.ULID(v.StreamID),
-				State:    m.StreamStateToPbStreamState(v.State),
+				State:    m.streamStateToPbStreamState(v.State),
 			},
 		}
 
@@ -394,7 +394,7 @@ func (m *protoMapper) MessageToPbMessage(from Message) (*wirepb.MessageFrame, er
 	return mf, nil
 }
 
-func (m *protoMapper) TaskToPbTask(from *workflow.Task) (*wirepb.Task, error) {
+func (m *protoMapper) taskToPbTask(from *workflow.Task) (*wirepb.Task, error) {
 	if from == nil {
 		return nil, errors.New("nil task")
 	}
@@ -404,12 +404,12 @@ func (m *protoMapper) TaskToPbTask(from *workflow.Task) (*wirepb.Task, error) {
 		return nil, fmt.Errorf("failed to unmarshal fragment: %w", err)
 	}
 
-	sources, err := m.NodeStreamMapToPbNodeStreamList(from.Sources)
+	sources, err := m.nodeStreamMapToPbNodeStreamList(from.Sources)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal sources: %w", err)
 	}
 
-	sinks, err := m.NodeStreamMapToPbNodeStreamList(from.Sinks)
+	sinks, err := m.nodeStreamMapToPbNodeStreamList(from.Sinks)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal sinks: %w", err)
 	}
@@ -423,9 +423,9 @@ func (m *protoMapper) TaskToPbTask(from *workflow.Task) (*wirepb.Task, error) {
 	}, nil
 }
 
-func (m *protoMapper) TaskStatusToPbTaskStatus(from workflow.TaskStatus) (*wirepb.TaskStatus, error) {
+func (m *protoMapper) taskStatusToPbTaskStatus(from workflow.TaskStatus) (*wirepb.TaskStatus, error) {
 	ts := &wirepb.TaskStatus{
-		State: m.TaskStateToPbTaskState(from.State),
+		State: m.taskStateToPbTaskState(from.State),
 	}
 
 	if from.Error != nil {
@@ -435,7 +435,7 @@ func (m *protoMapper) TaskStatusToPbTaskStatus(from workflow.TaskStatus) (*wirep
 	return ts, nil
 }
 
-func (m *protoMapper) TaskStateToPbTaskState(state workflow.TaskState) wirepb.TaskState {
+func (m *protoMapper) taskStateToPbTaskState(state workflow.TaskState) wirepb.TaskState {
 	switch state {
 	case workflow.TaskStateCreated:
 		return wirepb.TASK_STATE_CREATED
@@ -454,7 +454,7 @@ func (m *protoMapper) TaskStateToPbTaskState(state workflow.TaskState) wirepb.Ta
 	}
 }
 
-func (m *protoMapper) StreamStateToPbStreamState(state workflow.StreamState) wirepb.StreamState {
+func (m *protoMapper) streamStateToPbStreamState(state workflow.StreamState) wirepb.StreamState {
 	switch state {
 	case workflow.StreamStateIdle:
 		return wirepb.STREAM_STATE_IDLE
@@ -469,7 +469,7 @@ func (m *protoMapper) StreamStateToPbStreamState(state workflow.StreamState) wir
 	}
 }
 
-func (m *protoMapper) NodeStreamMapToPbNodeStreamList(nodeMap map[physical.Node][]*workflow.Stream) (map[string]*wirepb.StreamList, error) {
+func (m *protoMapper) nodeStreamMapToPbNodeStreamList(nodeMap map[physical.Node][]*workflow.Stream) (map[string]*wirepb.StreamList, error) {
 	result := make(map[string]*wirepb.StreamList)
 
 	for node, streams := range nodeMap {
@@ -549,7 +549,9 @@ func (m *protoMapper) deserializeArrowRecord(data []byte) (arrow.Record, error) 
 		return nil, errors.New("no record in arrow data")
 	}
 
-	return reader.Record(), nil
+	rec := reader.Record()
+	rec.Retain()
+	return rec, nil
 }
 
 // readerAdapter adapts a byte slice to io.Reader for Arrow IPC.

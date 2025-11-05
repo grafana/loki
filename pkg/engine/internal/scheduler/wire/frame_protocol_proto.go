@@ -34,7 +34,7 @@ func NewProtobufProtocol(allocator memory.Allocator, maxFrameSizeBytes uint32) *
 // Format: [4-byte length (big-endian)][protobuf payload]
 func (p *ProtobufProtocol) WriteFrame(w io.Writer, frame Frame) error {
 	// Convert wire.Frame to protobuf
-	pbFrame, err := p.mapper.FrameToPbFrame(frame)
+	pbFrame, err := p.mapper.frameToPbFrame(frame)
 	if err != nil {
 		return fmt.Errorf("failed to convert frame to protobuf: %w", err)
 	}
@@ -94,7 +94,7 @@ func (p *ProtobufProtocol) ReadFrame(r io.Reader) (Frame, error) {
 	}
 
 	// Convert protobuf to wire.Frame
-	frame, err := p.mapper.FrameFromPbFrame(pbFrame)
+	frame, err := p.mapper.frameFromPbFrame(pbFrame)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert protobuf to frame: %w", err)
 	}
