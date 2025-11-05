@@ -8,23 +8,31 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
 
-type weightedSemaphore struct {
+type taskType string
+
+const (
+	taskTypeScan  taskType = "scan"
+	taskTypeOther taskType = "other"
+)
+
+type admissionLane struct {
 	*semaphore.Weighted
 	capacity int64
+	lane     taskType
 }
 
-func newWeightedSemaphore(capacity int64) *weightedSemaphore {
-	return &weightedSemaphore{
-		capacity: capacity,
+func newAdmissionLane(lane taskType, capacity int64) *admissionLane {
+	return &admissionLane{
 		Weighted: semaphore.NewWeighted(capacity),
+		capacity: capacity,
+		lane:     lane,
 	}
 }
 
-// admissionControl is a control structure to lookup token buckets ("admission lanes")
-// for different types of tasks.
+// admissionControl is a control structure to lookup "admission lanes" for different types of tasks.
+// It is a lightweight wrapper around a mapping of task type to admission lane.
 type admissionControl struct {
-	scan  *weightedSemaphore
-	other *weightedSemaphore
+	mapping map[taskType]*admissionLane
 }
 
 func newAdmissionControl(maxScanTasks, maxOtherTasks int64) *admissionControl {
@@ -34,35 +42,50 @@ func newAdmissionControl(maxScanTasks, maxOtherTasks int64) *admissionControl {
 	if maxOtherTasks < 1 {
 		maxOtherTasks = math.MaxInt64
 	}
+
 	return &admissionControl{
-		scan:  newWeightedSemaphore(maxScanTasks),
-		other: newWeightedSemaphore(maxOtherTasks),
+		mapping: map[taskType]*admissionLane{
+			taskTypeScan:  newAdmissionLane(taskTypeScan, maxScanTasks),
+			taskTypeOther: newAdmissionLane(taskTypeOther, maxOtherTasks),
+		},
 	}
 }
 
 // groupByBucket categorizes a slice of tasks into groups based on their characteristics (scan, other, ...).
-func (ac *admissionControl) groupByBucket(tasks []*Task) map[*weightedSemaphore][]*Task {
-	tasksPerBucket := map[*weightedSemaphore][]*Task{
-		ac.scan:  make([]*Task, 0, len(tasks)),
-		ac.other: make([]*Task, 0, len(tasks)),
+func (ac *admissionControl) groupByType(tasks []*Task) map[taskType][]*Task {
+	groups := map[taskType][]*Task{
+		taskTypeScan:  make([]*Task, 0, len(tasks)),
+		taskTypeOther: make([]*Task, 0, len(tasks)),
 	}
 
 	for _, t := range tasks {
-		bucket := ac.tokenBucketFor(t)
-		tasksPerBucket[bucket] = append(tasksPerBucket[bucket], t)
+		ty := ac.typeFor(t)
+		groups[ty] = append(groups[ty], t)
 	}
 
-	return tasksPerBucket
+	return groups
 }
 
-// tokenBucketFor returns the token bucket ("admission lane") for the given task
-// based on its characteristics.
-// This function panics if the task is nil.
-func (ac *admissionControl) tokenBucketFor(task *Task) *weightedSemaphore {
+func (ac *admissionControl) typeFor(task *Task) taskType {
+	if isScanTask(task) {
+		return taskTypeScan
+	}
+	return taskTypeOther
+}
+
+func (ac *admissionControl) laneFor(task *Task) *admissionLane {
+	return ac.mapping[ac.typeFor(task)]
+}
+
+func (ac *admissionControl) get(ty taskType) *admissionLane {
+	return ac.mapping[ty]
+}
+
+func isScanTask(task *Task) bool {
 	for node := range task.Fragment.Graph().Nodes() {
 		if node.Type() == physical.NodeTypeDataObjScan {
-			return ac.scan
+			return true
 		}
 	}
-	return ac.other
+	return false
 }

@@ -11,7 +11,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/oklog/ulid/v2"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
@@ -144,11 +143,14 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 		}
 	}
 
-	g := wf.dispatchTasks(ctx, wrappedHandler, tasks)
-	if err := g.Wait(); err != nil {
-		wrapped.Close()
-		return nil, err
-	}
+	// Start dispatching in background goroutine
+	go func() {
+		err := wf.dispatchTasks(ctx, wrappedHandler, tasks)
+		if err != nil {
+			wrapped.SetError(err)
+			wrapped.Close()
+		}
+	}()
 
 	return wrapped, nil
 }
@@ -157,31 +159,36 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 // and dispatches them to the runner.
 // Tasks from different admission lanes are dispatched concurrently.
 // The caller needs to wait on the returned error group.
-func (wf *Workflow) dispatchTasks(ctx context.Context, handler TaskEventHandler, tasks []*Task) *errgroup.Group {
+func (wf *Workflow) dispatchTasks(ctx context.Context, handler TaskEventHandler, tasks []*Task) error {
 	wf.admissionControl = newAdmissionControl(
 		int64(wf.opts.MaxRunningScanTasks),
 		int64(wf.opts.MaxRunningOtherTasks),
 	)
 
-	g, _ := errgroup.WithContext(ctx)
-	for tokenBucket, tasks := range wf.admissionControl.groupByBucket(tasks) {
-		g.Go(func() error {
-			var offset int64
-			total := int64(len(tasks))
-			maxBatchSize := min(total, tokenBucket.capacity)
-			for ; offset < total; offset += maxBatchSize {
-				batchSize := min(maxBatchSize, total-offset)
-				if err := tokenBucket.Acquire(ctx, batchSize); err != nil {
-					return err
-				}
-				if err := wf.runner.Start(ctx, handler, tasks[offset:offset+batchSize]...); err != nil {
-					return fmt.Errorf("failed to start tasks: %w", err)
-				}
+	groups := wf.admissionControl.groupByType(tasks)
+	for _, taskType := range []taskType{
+		taskTypeOther,
+		taskTypeScan,
+	} {
+		lane := wf.admissionControl.get(taskType)
+		tasks := groups[taskType]
+
+		var offset int64
+		total := int64(len(tasks))
+		maxBatchSize := min(total, lane.capacity)
+
+		for ; offset < total; offset += maxBatchSize {
+			batchSize := min(maxBatchSize, total-offset)
+			if err := lane.Acquire(ctx, batchSize); err != nil {
+				return fmt.Errorf("failed to acquire tokens from admission lane %s: %w", taskType, err)
 			}
-			return nil
-		})
+			if err := wf.runner.Start(ctx, handler, tasks[offset:offset+batchSize]...); err != nil {
+				return fmt.Errorf("failed to start tasks: %w", err)
+			}
+		}
 	}
-	return g
+
+	return nil
 }
 
 func (wf *Workflow) allStreams() []*Stream {
@@ -265,7 +272,7 @@ func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus Task
 		level.Warn(wf.logger).Log("msg", "admission control was not initialised")
 	} else if oldState == TaskStatePending || oldState == TaskStateRunning {
 		// Release tokens only if the task was already enqueued and therefore either pending or running.
-		defer wf.admissionControl.tokenBucketFor(task).Release(1)
+		defer wf.admissionControl.laneFor(task).Release(1)
 	}
 
 	if newStatus.Statistics != nil {

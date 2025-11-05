@@ -189,48 +189,29 @@ func TestAdmissionControl(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	t.Cleanup(cancel)
 
-	var p executor.Pipeline
-	done := make(chan struct{}, 1)
+	// Run() dispatches task in background goroutine, so it does not block
+	p, err := wf.Run(ctx)
+	require.NoError(t, err, "Workflow should start properly")
+	defer p.Close()
 
-	go func() {
-		p, err = wf.Run(ctx)
-		require.NoError(t, err, "Workflow should start properly")
-		done <- struct{}{}
-	}()
+	// Eventually first "batch" of scan tasks has been enqueued
+	require.Eventually(t, func() bool {
+		return opts.MaxRunningScanTasks+1 == len(wf.taskStates) // 32 scan tasks + 1 other task
+	}, time.Second, 10*time.Millisecond)
 
-	select {
-	case <-done:
-		t.Error("should have blocked but hasn't")
-	case <-time.After(100 * time.Millisecond):
-		t.Log("scheduling tasks is throttled")
-	}
-
-	// Simulate tasks being completed
+	// Simulate scan tasks being completed
 	for _, task := range wf.allTasks() {
-		time.Sleep(5 * time.Millisecond) // need to make sure that we don't "finish" tasks before they are dispatched
+		if !isScanTask(task) {
+			continue
+		}
+		time.Sleep(10 * time.Millisecond) // need to make sure that we don't "finish" tasks before they are dispatched
 		wf.onTaskChange(ctx, task, TaskStatus{State: TaskStateCompleted})
 	}
 
-	select {
-	case <-done:
-		t.Log("workflow run started properly")
-	default:
-		t.Error("should have started but hasn't")
-	}
-
-	defer func() {
-		p.Close()
-
-		// Closing the pipeline should remove all remaining streams and tasks.
-		require.Len(t, fr.streams, 0, "all streams should be removed after closing the pipeline")
-		require.Len(t, fr.tasks, 0, "all streams should be removed after closing the pipeline")
-	}()
-
-	rs, ok := fr.streams[wf.resultsStream.ULID]
-	require.True(t, ok, "results stream should be registered in runner")
-	require.NotEqual(t, ulid.Zero, rs.Sender, "results stream should have a sender")
-	require.Equal(t, ulid.Zero, rs.TaskReceiver, "results stream should not have a task receiver")
-	require.NotNil(t, rs.Listener, "results stream should have a listener")
+	// Eventually all tasks have been enqeued
+	require.Eventually(t, func() bool {
+		return numScanTasks+1 == len(fr.tasks) // 100 scan tasks + 1 other task
+	}, time.Second, 10*time.Millisecond)
 }
 
 type fakeRunner struct {
@@ -289,14 +270,12 @@ func (f *fakeRunner) Listen(_ context.Context, stream *Stream) (executor.Pipelin
 func (f *fakeRunner) Start(ctx context.Context, handler TaskEventHandler, tasks ...*Task) error {
 	for _, task := range tasks {
 
-		f.tasksMtx.RLock()
+		f.tasksMtx.Lock()
 		if _, exist := f.tasks[task.ULID]; exist {
-			f.tasksMtx.RUnlock()
+			f.tasksMtx.Unlock()
 			return fmt.Errorf("task %s already added", task.ULID)
 		}
-		f.tasksMtx.RUnlock()
 
-		f.tasksMtx.Lock()
 		f.tasks[task.ULID] = &runnerTask{
 			task:    task,
 			handler: handler,

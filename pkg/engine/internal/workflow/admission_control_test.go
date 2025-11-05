@@ -20,8 +20,8 @@ func TestAdmissionControl_getBucket(t *testing.T) {
 			ULID:     ulid.Make(),
 			Fragment: physical.FromGraph(fragment),
 		}
-		bucket := ac.tokenBucketFor(task)
-		require.Equal(t, ac.other, bucket)
+		bucket := ac.typeFor(task)
+		require.Equal(t, taskTypeOther, bucket)
 	})
 
 	t.Run("Task with a DataObjScan node is considered an 'scan' task", func(t *testing.T) {
@@ -32,7 +32,7 @@ func TestAdmissionControl_getBucket(t *testing.T) {
 			ULID:     ulid.Make(),
 			Fragment: physical.FromGraph(fragment),
 		}
-		bucket := ac.tokenBucketFor(task)
-		require.Equal(t, ac.scan, bucket)
+		ty := ac.typeFor(task)
+		require.Equal(t, taskTypeScan, ty)
 	})
 }
