@@ -60,6 +60,10 @@ func Test(t *testing.T) {
 	p, err := wf.Run(t.Context())
 	require.NoError(t, err, "Workflow should start properly")
 
+	require.Eventually(t, func() bool {
+		return len(fr.tasks) == 2
+	}, 100*time.Millisecond, 10*time.Millisecond)
+
 	defer func() {
 		p.Close()
 
@@ -118,6 +122,10 @@ func TestCancellation(t *testing.T) {
 			p, err := wf.Run(t.Context())
 			require.NoError(t, err, "Workflow should start properly")
 			defer p.Close()
+
+			require.Eventually(t, func() bool {
+				return len(fr.tasks) == 2
+			}, 100*time.Millisecond, 10*time.Millisecond)
 
 			rootTask, err := wf.graph.Root()
 			require.NoError(t, err, "should be able to retrieve singular root task")
