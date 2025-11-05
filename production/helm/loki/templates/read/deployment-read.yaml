@@ -101,6 +101,10 @@ spec:
           livenessProbe:
             {{- toYaml .Values.read.livenessProbe | nindent 12 }}
           {{- end }}
+          {{- if .Values.read.startupProbe }}
+          startupProbe:
+            {{- toYaml .Values.read.startupProbe | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config

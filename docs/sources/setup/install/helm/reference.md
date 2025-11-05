@@ -9707,6 +9707,18 @@ false
     "annotations": {},
     "labels": {}
   },
+  "startupProbe": {
+    "failureThreshold": 3,
+    "httpGet": {
+      "path": "/loki/api/v1/labels?since=1h",
+      "port": 3100,
+      "scheme": "HTTP"
+    },
+    "initialDelaySeconds": 60,
+    "periodSeconds": 30,
+    "successThreshold": 1,
+    "timeoutSeconds": 1
+  },
   "targetModule": "read",
   "terminationGracePeriodSeconds": 30,
   "tolerations": [],
@@ -10051,6 +10063,26 @@ null
 			<td>Additional labels for read Service</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.startupProbe</td>
+			<td>object</td>
+			<td>statup probe for the read pods. Default is set to this because of this issue: https://github.com/grafana/loki/issues/15191</td>
+			<td><pre lang="json">
+{
+  "failureThreshold": 3,
+  "httpGet": {
+    "path": "/loki/api/v1/labels?since=1h",
+    "port": 3100,
+    "scheme": "HTTP"
+  },
+  "initialDelaySeconds": 60,
+  "periodSeconds": 30,
+  "successThreshold": 1,
+  "timeoutSeconds": 1
+}
 </pre>
 </td>
 		</tr>
