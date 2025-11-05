@@ -241,7 +241,7 @@ func getTimeRangeForPlan(plan dag.Graph[physical.Node]) physical.TimeRange {
 	timeRange := physical.TimeRange{}
 
 	for _, root := range plan.Roots() {
-		plan.Walk(root, func(n physical.Node) error {
+		_ = plan.Walk(root, func(n physical.Node) error {
 			switch s := n.(type) {
 			case *physical.RangeAggregation:
 				timeRange.Start = s.Start

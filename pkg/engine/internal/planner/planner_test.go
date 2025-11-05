@@ -96,7 +96,7 @@ func (t *TestMetastore) Labels(_ context.Context, _ time.Time, _ time.Time, _ ..
 }
 
 // Sections implements metastore.Metastore.
-func (t *TestMetastore) Sections(_ context.Context, start time.Time, end time.Time, _ []*labels.Matcher, _ []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
+func (t *TestMetastore) Sections(_ context.Context, _ time.Time, _ time.Time, _ []*labels.Matcher, _ []*labels.Matcher) ([]*metastore.DataobjSectionDescriptor, error) {
 	return []*metastore.DataobjSectionDescriptor{
 		{
 			SectionKey: metastore.SectionKey{
