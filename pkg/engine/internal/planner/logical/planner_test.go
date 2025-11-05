@@ -437,7 +437,7 @@ func TestPlannerCreatesProjectionWithParseOperation(t *testing.T) {
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = PROJECT %6 [mode=*E, expr=PARSE_LOGFMT(builtin.message)]
+%7 = PROJECT %6 [mode=*E, expr=PARSE_LOGFMT(builtin.message, [], false, false)]
 %8 = EQ ambiguous.level "error"
 %9 = SELECT %7 [predicate=%8]
 %10 = RANGE_AGGREGATION %9 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
@@ -468,7 +468,7 @@ RETURN %12
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = PROJECT %6 [mode=*E, expr=PARSE_LOGFMT(builtin.message)]
+%7 = PROJECT %6 [mode=*E, expr=PARSE_LOGFMT(builtin.message, [], false, false)]
 %8 = EQ ambiguous.level "error"
 %9 = SELECT %7 [predicate=%8]
 %10 = SORT %9 [column=builtin.timestamp, asc=false, nulls_first=false]
@@ -499,7 +499,7 @@ RETURN %12
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = PROJECT %6 [mode=*E, expr=PARSE_JSON(builtin.message)]
+%7 = PROJECT %6 [mode=*E, expr=PARSE_JSON(builtin.message, [], false, false)]
 %8 = EQ ambiguous.level "error"
 %9 = SELECT %7 [predicate=%8]
 %10 = RANGE_AGGREGATION %9 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
@@ -529,7 +529,7 @@ RETURN %12
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = PROJECT %6 [mode=*E, expr=PARSE_JSON(builtin.message)]
+%7 = PROJECT %6 [mode=*E, expr=PARSE_JSON(builtin.message, [], false, false)]
 %8 = EQ ambiguous.level "error"
 %9 = SELECT %7 [predicate=%8]
 %10 = SORT %9 [column=builtin.timestamp, asc=false, nulls_first=false]
@@ -568,7 +568,7 @@ RETURN %12
 %8 = SELECT %6 [predicate=%7]
 %9 = SELECT %8 [predicate=%2]
 %10 = SELECT %9 [predicate=%3]
-%11 = PROJECT %10 [mode=*E, expr=PARSE_LOGFMT(builtin.message)]
+%11 = PROJECT %10 [mode=*E, expr=PARSE_LOGFMT(builtin.message, [], false, false)]
 %12 = EQ ambiguous.level "debug"
 %13 = SELECT %11 [predicate=%12]
 %14 = SORT %13 [column=builtin.timestamp, asc=false, nulls_first=false]
@@ -605,7 +605,7 @@ RETURN %16
 %8 = SELECT %6 [predicate=%7]
 %9 = SELECT %8 [predicate=%2]
 %10 = SELECT %9 [predicate=%3]
-%11 = PROJECT %10 [mode=*E, expr=PARSE_LOGFMT(builtin.message)]
+%11 = PROJECT %10 [mode=*E, expr=PARSE_LOGFMT(builtin.message, [], false, false)]
 %12 = EQ ambiguous.level "debug"
 %13 = SELECT %11 [predicate=%12]
 %14 = RANGE_AGGREGATION %13 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
