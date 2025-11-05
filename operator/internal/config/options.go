@@ -5,9 +5,11 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"reflect"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -95,16 +97,18 @@ func setLeaderElectionConfig(o manager.Options, obj configv1.ControllerManagerCo
 		o.LeaderElectionID = obj.LeaderElection.ResourceName
 	}
 
-	if o.LeaseDuration == nil && !reflect.DeepEqual(obj.LeaderElection.LeaseDuration, metav1.Duration{}) {
-		o.LeaseDuration = &obj.LeaderElection.LeaseDuration.Duration
+	// Change to recommended leader-election parameters:
+	// https://github.com/openshift/enhancements/blob/61581dcd985130357d6e4b0e72b87ee35394bf6e/CONVENTIONS.md#handling-kube-apiserver-disruption
+	if o.LeaseDuration == nil {
+		o.LeaseDuration = ptr.To(137 * time.Second)
 	}
 
-	if o.RenewDeadline == nil && !reflect.DeepEqual(obj.LeaderElection.RenewDeadline, metav1.Duration{}) {
-		o.RenewDeadline = &obj.LeaderElection.RenewDeadline.Duration
+	if o.RenewDeadline == nil {
+		o.RenewDeadline = ptr.To(107 * time.Second)
 	}
 
 	if o.RetryPeriod == nil && !reflect.DeepEqual(obj.LeaderElection.RetryPeriod, metav1.Duration{}) {
-		o.RetryPeriod = &obj.LeaderElection.RetryPeriod.Duration
+		o.RetryPeriod = ptr.To(26 * time.Second)
 	}
 
 	return o
