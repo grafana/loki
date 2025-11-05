@@ -20,7 +20,7 @@ jobs:
       pull-requests: "write"
     uses: "grafana/loki-release/.github/workflows/check.yml@7dca223953eb062745c8b9fd2b3fde3cd3ee7e50"
     with:
-      build_image: "grafana/loki-build-image:0.34.3-loki-2.9.x"
+      build_image: "grafana/loki-build-image:0.34.4-loki-2.9.x"
       golang_ci_lint_version: "v1.60.3"
       release_lib_ref: "7dca223953eb062745c8b9fd2b3fde3cd3ee7e50"
       skip_validation: false
@@ -177,7 +177,7 @@ jobs:
           --env SKIP_ARM \
           --volume .:/src/loki \
           --workdir /src/loki \
-          --entrypoint /bin/sh "grafana/loki-build-image:0.34.3-loki-2.9.x"
+          --entrypoint /bin/sh "grafana/loki-build-image:0.34.4-loki-2.9.x"
           git config --global --add safe.directory /src/loki
           echo "${NFPM_SIGNING_KEY}" > $NFPM_SIGNING_KEY_FILE
           make dist packages
