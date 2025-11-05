@@ -5,10 +5,11 @@ import (
 )
 
 // TopK represents a plan node that performs topK operation.
-// It sorts rows based on sort expressions and limits the result to the top K rows.
-// This is equivalent to a SORT followed by a LIMIT operation.
+// Topk only identifies which rows belong in the top K, but does not
+// guarantee any specific ordering of those rows in the compacted output. Callers
+// should sort the result if a specific order is required.
 
-// The TopK instruction sorts rows from a table relation. Sort implements both
+// The TopK instruction find the top K rows from a table relation. TopK implements both
 // [Instruction] and [Value].
 type TopK struct {
 	id string

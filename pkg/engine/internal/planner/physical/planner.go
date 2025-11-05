@@ -315,7 +315,7 @@ func (p *Planner) processTopK(lp *logical.TopK, ctx *Context) (Node, error) {
 
 		SortBy:     &ColumnExpr{Ref: lp.SortBy.Ref},
 		Ascending:  order == ASC,
-		NullsFirst: false,
+		NullsFirst: lp.NullsFirst,
 		K:          lp.K,
 	}
 
