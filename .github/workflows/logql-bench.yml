@@ -3,30 +3,30 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: 'Git ref to run benchmarks on'
+        description: "Git ref to run benchmarks on"
         required: false
-        default: 'main'
-        type: 'string'
+        default: "main"
+        type: "string"
       bench_chunks_v1:
-        description: 'Benchmark V1 chunk store'
+        description: "Benchmark V1 chunk store"
         required: false
         default: true
-        type: 'boolean'
+        type: "boolean"
       bench_dataobj_old_engine:
-        description: 'Benchmark data object store with old engine'
+        description: "Benchmark data object store with old engine"
         required: false
         default: true
-        type: 'boolean'
+        type: "boolean"
       bench_dataobj_new_engine:
-        description: 'Benchmark data object store with new engine'
+        description: "Benchmark data object store with new engine"
         required: false
         default: false # Disabled by default due to less complete implementation
-        type: 'boolean'
+        type: "boolean"
       instant_queries:
-        description: 'Run benchmarks for Instant queries'
+        description: "Run benchmarks for Instant queries"
         required: false
         default: false
-        type: 'boolean'
+        type: "boolean"
 permissions: {}
 jobs:
   generate-testdata:
@@ -42,7 +42,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: "1.24.8"
+          go-version: "1.24.9"
 
       # The metastore generates invalid filenames for Windows (with colons),
       # which get rejected by upload-artifact. We zip these files to avoid this
@@ -105,7 +105,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v4
         with:
-          go-version: "1.24.8"
+          go-version: "1.24.9"
 
       - name: Create results directory
         run: mkdir -p ./pkg/logql/bench/results
