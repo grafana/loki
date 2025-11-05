@@ -26,8 +26,12 @@ type Task struct {
 	// defined for nodes in the Fragment which write data across task boundaries.
 	Sinks map[physical.Node][]*Stream
 
-	// TimeRange is a time tange of data that is gonna be processed by this task.
-	TimeRange physical.TimeRange
+	// The maximum boundary of timestamps that the task can possibly emit.
+	// Does not account for predicates.
+	// MaxTimeRange is not read when executing a task fragment. It can be used
+	// as metadata to control execution (such as cancelling ongoing tasks based
+	// on their maximum time range).
+	MaxTimeRange physical.TimeRange
 }
 
 // ID returns the Task's ULID.

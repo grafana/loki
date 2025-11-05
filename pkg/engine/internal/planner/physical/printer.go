@@ -36,12 +36,14 @@ func toTreeNode(n Node) *tree.Node {
 			tree.NewProperty("streams", false, len(node.StreamIDs)),
 			tree.NewProperty("section_id", false, node.Section),
 			tree.NewProperty("projections", true, toAnySlice(node.Projections)...),
-			tree.NewProperty("start", false, node.TimeRange.Start.Format(time.RFC3339Nano)),
-			tree.NewProperty("end", false, node.TimeRange.End.Format(time.RFC3339Nano)),
 		}
 		for i := range node.Predicates {
 			treeNode.Properties = append(treeNode.Properties, tree.NewProperty(fmt.Sprintf("predicate[%d]", i), false, node.Predicates[i].String()))
 		}
+		treeNode.AddComment("@max_time_range", "", []tree.Property{
+			tree.NewProperty("start", false, node.MaxTimeRange.Start.Format(time.RFC3339Nano)),
+			tree.NewProperty("end", false, node.MaxTimeRange.End.Format(time.RFC3339Nano)),
+		})
 	case *Projection:
 		treeNode.Properties = []tree.Property{
 			tree.NewProperty("all", false, node.All),

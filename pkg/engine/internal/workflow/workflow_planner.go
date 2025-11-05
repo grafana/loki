@@ -119,7 +119,7 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 					sources[next] = append(sources[next], stream)
 
 					// Merge in time ranges of each child
-					timeRange = timeRange.Merge(task.TimeRange)
+					timeRange = timeRange.Merge(task.MaxTimeRange)
 				}
 
 			case child.Type() == physical.NodeTypeParallelize:
@@ -145,7 +145,7 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 					sources[next] = append(sources[next], stream)
 
 					// Merge in time ranges of each child
-					timeRange = timeRange.Merge(task.TimeRange)
+					timeRange = timeRange.Merge(task.MaxTimeRange)
 				}
 
 			default:
@@ -162,17 +162,17 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 		}
 	}
 
-	planTimeRange := getTimeRangeForPlan(taskPlan)
+	planTimeRange := getMaxTimeRangeForPlan(taskPlan)
 	if !planTimeRange.IsZero() {
 		timeRange = planTimeRange
 	}
 	task := &Task{
-		ULID:      ulid.Make(),
-		TenantID:  p.tenantID,
-		Fragment:  physical.FromGraph(taskPlan),
-		Sources:   sources,
-		Sinks:     make(map[physical.Node][]*Stream),
-		TimeRange: timeRange,
+		ULID:         ulid.Make(),
+		TenantID:     p.tenantID,
+		Fragment:     physical.FromGraph(taskPlan),
+		Sources:      sources,
+		Sinks:        make(map[physical.Node][]*Stream),
+		MaxTimeRange: timeRange,
 	}
 	p.graph.Add(task)
 
@@ -237,7 +237,7 @@ func isPipelineBreaker(node physical.Node) bool {
 	return false
 }
 
-func getTimeRangeForPlan(plan dag.Graph[physical.Node]) physical.TimeRange {
+func getMaxTimeRangeForPlan(plan dag.Graph[physical.Node]) physical.TimeRange {
 	timeRange := physical.TimeRange{}
 
 	for _, root := range plan.Roots() {
@@ -249,10 +249,10 @@ func getTimeRangeForPlan(plan dag.Graph[physical.Node]) physical.TimeRange {
 				return fmt.Errorf("stop after RangeAggregation")
 			case *physical.ScanSet:
 				for _, t := range s.Targets {
-					timeRange = timeRange.Merge(t.DataObject.TimeRange)
+					timeRange = timeRange.Merge(t.DataObject.MaxTimeRange)
 				}
 			case *physical.DataObjScan:
-				timeRange = timeRange.Merge(s.TimeRange)
+				timeRange = timeRange.Merge(s.MaxTimeRange)
 			}
 
 			return nil
@@ -365,10 +365,11 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 			ULID:     ulid.Make(),
 			TenantID: p.tenantID,
 
-			Fragment:  physical.FromGraph(*shardedPlan),
-			Sources:   shardSources,
-			Sinks:     make(map[physical.Node][]*Stream),
-			TimeRange: getTimeRangeForPlan(*shardedPlan),
+			Fragment: physical.FromGraph(*shardedPlan),
+			Sources:  shardSources,
+			Sinks:    make(map[physical.Node][]*Stream),
+			// Recalculate MaxTimeRange because the new injected `shard` node can cover another time range.
+			MaxTimeRange: getMaxTimeRangeForPlan(*shardedPlan),
 		}
 		p.graph.Add(partition)
 

@@ -201,7 +201,7 @@ func (c *Context) executeDataObjScan(ctx context.Context, node *physical.DataObj
 		StreamIDs:   node.StreamIDs,
 		Predicates:  predicates,
 		Projections: node.Projections,
-		TimeRange:   node.TimeRange,
+		TimeRange:   node.MaxTimeRange,
 
 		BatchSize: c.batchSize,
 	}, log.With(c.logger, "location", string(node.Location), "section", node.Section))

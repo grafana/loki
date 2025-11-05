@@ -148,12 +148,24 @@ func (n *DataObjScan) MarshalPhysical(nodeID ulid.ULID) (physical.Node, error) {
 	return &physical.DataObjScan{
 		NodeID: nodeID,
 
-		Location:    physical.DataObjLocation(n.Location),
-		Section:     int(n.Section),
-		StreamIDs:   n.StreamIds,
-		Projections: marshalColumnExpressions(n.Projections),
-		Predicates:  marshalExpressions(n.Predicates),
+		Location:     physical.DataObjLocation(n.Location),
+		Section:      int(n.Section),
+		StreamIDs:    n.StreamIds,
+		Projections:  marshalColumnExpressions(n.Projections),
+		Predicates:   marshalExpressions(n.Predicates),
+		MaxTimeRange: marshalTimeRange(n.MaxTimeRange),
 	}, nil
+}
+
+func marshalTimeRange(timeRange *TimeRange) physical.TimeRange {
+	if timeRange == nil {
+		return physical.TimeRange{}
+	}
+	
+	return physical.TimeRange{
+		Start: timeRange.Start,
+		End:   timeRange.End,
+	}
 }
 
 func marshalExpressions(exprs []*expressionpb.Expression) []physical.Expression {
