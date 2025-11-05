@@ -1,140 +1,93 @@
-package dataobj
+package dataobj_test
 
 import (
-	"bytes"
-	"context"
-	"errors"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/push"
-
-	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/dataobj"
 )
 
-var testBuilderConfig = BuilderConfig{
-	TargetPageSize:    2048,
-	TargetObjectSize:  4096,
-	TargetSectionSize: 4096,
-
-	BufferSize: 2048 * 8,
-}
-
-func TestBuilder(t *testing.T) {
-	buf := bytes.NewBuffer(nil)
-	dirtyBuf := bytes.NewBuffer([]byte("dirty"))
-
-	streams := []logproto.Stream{
-		{
-			Labels: `{cluster="test",app="foo"}`,
-			Entries: []push.Entry{
-				{
-					Timestamp: time.Unix(10, 0).UTC(),
-					Line:      "hello",
-					StructuredMetadata: push.LabelsAdapter{
-						{Name: "trace_id", Value: "123"},
-					},
-				},
-				{
-					Timestamp: time.Unix(5, 0).UTC(),
-					Line:      "hello again",
-					StructuredMetadata: push.LabelsAdapter{
-						{Name: "trace_id", Value: "456"},
-						{Name: "span_id", Value: "789"},
-					},
-				},
-			},
+func TestBuilder_preserve_section_version(t *testing.T) {
+	builder := dataobj.NewBuilder(nil)
+	err := builder.Append(fakeSectionBuilder{
+		SectionType: dataobj.SectionType{
+			Namespace: "github.com/grafana/loki",
+			Kind:      "custom-section",
+			Version:   42,
 		},
-
-		{
-			Labels: `{cluster="test",app="bar"}`,
-			Entries: []push.Entry{
-				{
-					Timestamp: time.Unix(15, 0).UTC(),
-					Line:      "world",
-					StructuredMetadata: push.LabelsAdapter{
-						{Name: "trace_id", Value: "abc"},
-					},
-				},
-				{
-					Timestamp: time.Unix(20, 0).UTC(),
-					Line:      "world again",
-					StructuredMetadata: push.LabelsAdapter{
-						{Name: "trace_id", Value: "def"},
-						{Name: "span_id", Value: "ghi"},
-					},
-				},
-			},
-		},
-	}
-
-	t.Run("Build", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig)
-		require.NoError(t, err)
-
-		for _, entry := range streams {
-			require.NoError(t, builder.Append(entry))
-		}
-		_, err = builder.Flush(buf)
-		require.NoError(t, err)
 	})
-
-	t.Run("Read", func(t *testing.T) {
-		obj := FromReaderAt(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-		md, err := obj.Metadata(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, 1, md.StreamsSections)
-		require.Equal(t, 1, md.LogsSections)
-	})
-
-	t.Run("BuildWithDirtyBuffer", func(t *testing.T) {
-		builder, err := NewBuilder(testBuilderConfig)
-		require.NoError(t, err)
-
-		for _, entry := range streams {
-			require.NoError(t, builder.Append(entry))
-		}
-
-		_, err = builder.Flush(dirtyBuf)
-		require.NoError(t, err)
-
-		require.Equal(t, buf.Len(), dirtyBuf.Len()-5)
-	})
-
-	t.Run("ReadFromDirtyBuffer", func(t *testing.T) {
-		obj := FromReaderAt(bytes.NewReader(dirtyBuf.Bytes()[5:]), int64(dirtyBuf.Len()-5))
-		md, err := obj.Metadata(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, 1, md.StreamsSections)
-		require.Equal(t, 1, md.LogsSections)
-	})
-}
-
-// TestBuilder_Append ensures that appending to the buffer eventually reports
-// that the buffer is full.
-func TestBuilder_Append(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
-
-	builder, err := NewBuilder(testBuilderConfig)
 	require.NoError(t, err)
 
-	for {
-		require.NoError(t, ctx.Err())
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
 
-		err := builder.Append(logproto.Stream{
-			Labels: `{cluster="test",app="foo"}`,
-			Entries: []push.Entry{{
-				Timestamp: time.Now().UTC(),
-				Line:      strings.Repeat("a", 1024),
-			}},
-		})
-		if errors.Is(err, ErrBuilderFull) {
-			break
-		}
-		require.NoError(t, err)
+	require.Len(t, obj.Sections(), 1, "expected only one section in the object")
+	require.Equal(t, uint32(42), obj.Sections()[0].Type.Version, "expected section version to be preserved")
+}
+
+func TestBuilder_preserve_extension(t *testing.T) {
+	builder := dataobj.NewBuilder(nil)
+	err := builder.Append(fakeSectionBuilder{
+		SectionType: dataobj.SectionType{Namespace: "github.com/grafana/loki", Kind: "logs"},
+		FlushFunc: func(w dataobj.SectionWriter) (n int64, err error) {
+			opts := &dataobj.WriteSectionOptions{
+				ExtensionData: []byte("test extension"),
+			}
+			return w.WriteSection(opts, []byte("test data"), []byte("test metadata"))
+		},
+	})
+	require.NoError(t, err)
+
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	require.Len(t, obj.Sections(), 1, "expected only one section in the object")
+	require.Equal(t, []byte("test extension"), obj.Sections()[0].Reader.ExtensionData())
+}
+
+func TestBuilder_preserve_tenant(t *testing.T) {
+	builder := dataobj.NewBuilder(nil)
+	err := builder.Append(fakeSectionBuilder{
+		SectionType: dataobj.SectionType{Namespace: "github.com/grafana/loki", Kind: "logs"},
+		FlushFunc: func(w dataobj.SectionWriter) (n int64, err error) {
+			opts := &dataobj.WriteSectionOptions{
+				Tenant: "my-test-tenant",
+			}
+			return w.WriteSection(opts, []byte("test data"), []byte("test metadata"))
+		},
+	})
+	require.NoError(t, err)
+
+	obj, closer, err := builder.Flush()
+	require.NoError(t, err)
+	defer closer.Close()
+
+	require.Len(t, obj.Sections(), 1, "expected only one section in the object")
+	require.Equal(t, "my-test-tenant", obj.Sections()[0].Tenant)
+}
+
+type fakeSectionBuilder struct {
+	SectionType dataobj.SectionType
+	FlushFunc   func(w dataobj.SectionWriter) (n int64, err error)
+	ResetFunc   func()
+}
+
+var _ dataobj.SectionBuilder = (*fakeSectionBuilder)(nil)
+
+func (fake fakeSectionBuilder) Type() dataobj.SectionType { return fake.SectionType }
+
+func (fake fakeSectionBuilder) Flush(w dataobj.SectionWriter) (n int64, err error) {
+	if fake.FlushFunc != nil {
+		return fake.FlushFunc(w)
+	}
+	return w.WriteSection(nil, nil, nil)
+}
+
+func (fake fakeSectionBuilder) Reset() {
+	if fake.ResetFunc != nil {
+		fake.ResetFunc()
 	}
 }

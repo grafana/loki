@@ -1,13 +1,14 @@
 package parquet
 
 import (
+	"slices"
 	"strings"
 )
 
 type columnPath []string
 
 func (path columnPath) append(names ...string) columnPath {
-	return append(path[:len(path):len(path)], names...)
+	return slices.Concat(path, names)
 }
 
 func (path columnPath) equal(other columnPath) bool {
@@ -37,13 +38,9 @@ func stringsAreEqual(strings1, strings2 []string) bool {
 }
 
 func stringsAreOrdered(strings1, strings2 []string) bool {
-	n := len(strings1)
+	n := min(len(strings1), len(strings2))
 
-	if n > len(strings2) {
-		n = len(strings2)
-	}
-
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if strings1[i] >= strings2[i] {
 			return false
 		}

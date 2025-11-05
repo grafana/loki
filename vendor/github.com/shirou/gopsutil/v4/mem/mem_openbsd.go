@@ -10,15 +10,16 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/shirou/gopsutil/v4/internal/common"
 	"golang.org/x/sys/unix"
+
+	"github.com/shirou/gopsutil/v4/internal/common"
 )
 
 func GetPageSize() (uint64, error) {
 	return GetPageSizeWithContext(context.Background())
 }
 
-func GetPageSizeWithContext(ctx context.Context) (uint64, error) {
+func GetPageSizeWithContext(_ context.Context) (uint64, error) {
 	uvmexp, err := unix.SysctlUvmexp("vm.uvmexp")
 	if err != nil {
 		return 0, err
@@ -30,7 +31,7 @@ func VirtualMemory() (*VirtualMemoryStat, error) {
 	return VirtualMemoryWithContext(context.Background())
 }
 
-func VirtualMemoryWithContext(ctx context.Context) (*VirtualMemoryStat, error) {
+func VirtualMemoryWithContext(_ context.Context) (*VirtualMemoryStat, error) {
 	uvmexp, err := unix.SysctlUvmexp("vm.uvmexp")
 	if err != nil {
 		return nil, err
@@ -60,8 +61,7 @@ func VirtualMemoryWithContext(ctx context.Context) (*VirtualMemoryStat, error) {
 	}
 	var bcs Bcachestats
 	br := bytes.NewReader(buf)
-	err = common.Read(br, binary.LittleEndian, &bcs)
-	if err != nil {
+	if err := binary.Read(br, binary.LittleEndian, &bcs); err != nil {
 		return nil, err
 	}
 	ret.Buffers = uint64(bcs.Numbufpages) * p

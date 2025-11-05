@@ -6,6 +6,7 @@ import (
 )
 
 var (
+	ErrMissingBloomFilter = errors.New("missing bloom filter")
 	ErrMissingColumnIndex = errors.New("missing column index")
 	ErrMissingOffsetIndex = errors.New("missing offset index")
 )
@@ -46,6 +47,113 @@ type ColumnChunk interface {
 	// This quantity may differ from the number of rows in the parent row group
 	// because repeated columns may hold zero or more values per row.
 	NumValues() int64
+}
+
+// AsyncColumnChunk returns a ColumnChunk that reads pages asynchronously.
+func AsyncColumnChunk(columnChunk ColumnChunk) ColumnChunk {
+	return &asyncColumnChunk{columnChunk}
+}
+
+type asyncColumnChunk struct {
+	ColumnChunk
+}
+
+func (c *asyncColumnChunk) Pages() Pages {
+	return AsyncPages(c.ColumnChunk.Pages())
+}
+
+// NewColumnChunkRowReader creates a new ColumnChunkRowReader for the given
+// column chunks.
+func NewColumnChunkRowReader(columns []ColumnChunk) RowReadSeekCloser {
+	return newRowGroupRows(nil, columns, defaultValueBufferSize)
+}
+
+// ColumnChunkValueReader is an interface for reading values from a column chunk.
+type ColumnChunkValueReader interface {
+	ValueReader
+	RowSeeker
+	io.Closer
+}
+
+// NewColumnChunkValueReader creates a new ColumnChunkValueReader for the given
+// column chunk.
+func NewColumnChunkValueReader(column ColumnChunk) ColumnChunkValueReader {
+	return &columnChunkValueReader{pages: column.Pages(), release: Release}
+}
+
+type columnChunkValueReader struct {
+	pages   Pages
+	page    Page
+	values  ValueReader
+	release func(Page)
+}
+
+func (r *columnChunkValueReader) clear() {
+	if r.page != nil {
+		r.release(r.page)
+		r.page = nil
+		r.values = nil
+	}
+}
+
+func (r *columnChunkValueReader) Reset() {
+	if r.pages != nil {
+		// Ignore errors because we are resetting the reader, if the error
+		// persists we will see it on the next read, and otherwise we can
+		// read back from the beginning.
+		r.pages.SeekToRow(0)
+	}
+	r.clear()
+}
+
+func (r *columnChunkValueReader) Close() error {
+	var err error
+	if r.pages != nil {
+		err = r.pages.Close()
+		r.pages = nil
+	}
+	r.clear()
+	return err
+}
+
+func (r *columnChunkValueReader) ReadValues(values []Value) (int, error) {
+	if r.pages == nil {
+		return 0, io.EOF
+	}
+
+	for {
+		if r.values == nil {
+			p, err := r.pages.ReadPage()
+			if err != nil {
+				return 0, err
+			}
+			r.page = p
+			r.values = p.Values()
+		}
+
+		n, err := r.values.ReadValues(values)
+		if n > 0 {
+			return n, nil
+		}
+		if err == nil {
+			return 0, io.ErrNoProgress
+		}
+		if err != io.EOF {
+			return 0, err
+		}
+		r.clear()
+	}
+}
+
+func (r *columnChunkValueReader) SeekToRow(rowIndex int64) error {
+	if r.pages == nil {
+		return io.ErrClosedPipe
+	}
+	if err := r.pages.SeekToRow(rowIndex); err != nil {
+		return err
+	}
+	r.clear()
+	return nil
 }
 
 type pageAndValueWriter interface {
@@ -186,7 +294,7 @@ func readRowsFuncOfLeaf(columnIndex int, repetitionDepth byte) (int, readRowsFun
 
 			for i := range rows {
 				if col.offset == col.length {
-					n, err := col.values.ReadValues(buf)
+					n, err := col.reader.ReadValues(buf)
 					col.offset = 0
 					col.length = int32(n)
 					if n == 0 && err != nil {
@@ -209,7 +317,7 @@ func readRowsFuncOfLeaf(columnIndex int, repetitionDepth byte) (int, readRowsFun
 			buf := r.buffer(columnIndex)
 
 			if col.offset == col.length {
-				n, err := col.values.ReadValues(buf)
+				n, err := col.reader.ReadValues(buf)
 				col.offset = 0
 				col.length = int32(n)
 				if n == 0 && err != nil {

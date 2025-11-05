@@ -1,16 +1,29 @@
-package registry // import "github.com/docker/docker/api/types/registry"
+package registry
+
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
-
-	"github.com/pkg/errors"
 )
 
 // AuthHeader is the name of the header used to send encoded registry
 // authorization credentials for registry operations (push/pull).
 const AuthHeader = "X-Registry-Auth"
+
+// RequestAuthConfig is a function interface that clients can supply
+// to retry operations after getting an authorization error.
+//
+// The function must return the [AuthHeader] value ([AuthConfig]), encoded
+// in base64url format ([RFC4648, section 5]), which can be decoded by
+// [DecodeAuthConfig].
+//
+// It must return an error if the privilege request fails.
+//
+// [RFC4648, section 5]: https://tools.ietf.org/html/rfc4648#section-5
+type RequestAuthConfig func(context.Context) (string, error)
 
 // AuthConfig contains authorization information for connecting to a Registry.
 type AuthConfig struct {
@@ -19,8 +32,8 @@ type AuthConfig struct {
 	Auth     string `json:"auth,omitempty"`
 
 	// Email is an optional value associated with the username.
-	// This field is deprecated and will be removed in a later
-	// version of docker.
+	//
+	// Deprecated: This field is deprecated since docker 1.11 (API v1.23) and will be removed in the next release.
 	Email string `json:"email,omitempty"`
 
 	ServerAddress string `json:"serveraddress,omitempty"`
@@ -70,6 +83,8 @@ func DecodeAuthConfig(authEncoded string) (*AuthConfig, error) {
 // Like [DecodeAuthConfig], this function always returns an [AuthConfig], even if an
 // error occurs. It is up to the caller to decide if authentication is required,
 // and if the error can be ignored.
+//
+// Deprecated: this function is no longer used and will be removed in the next release.
 func DecodeAuthConfigBody(rdr io.ReadCloser) (*AuthConfig, error) {
 	return decodeAuthConfigFromReader(rdr)
 }
@@ -85,7 +100,7 @@ func decodeAuthConfigFromReader(rdr io.Reader) (*AuthConfig, error) {
 }
 
 func invalid(err error) error {
-	return errInvalidParameter{errors.Wrap(err, "invalid X-Registry-Auth header")}
+	return errInvalidParameter{fmt.Errorf("invalid X-Registry-Auth header: %w", err)}
 }
 
 type errInvalidParameter struct{ error }

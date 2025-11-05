@@ -27,6 +27,7 @@ type Tracer struct {
 	clientID       string
 	consumerGroup  string
 	keyFormatter   func(*kgo.Record) (string, error)
+	linkSpans      bool
 }
 
 // TracerOpt interface used for setting optional config properties.
@@ -68,6 +69,12 @@ func ConsumerGroup(group string) TracerOpt {
 // formatter returns an error, the key is not attached to the span.
 func KeyFormatter(fn func(*kgo.Record) (string, error)) TracerOpt {
 	return tracerOptFunc(func(t *Tracer) { t.keyFormatter = fn })
+}
+
+// LinkSpans enables consumer spans to be linked to the parent span,
+// instead of creating a child relationship.
+func LinkSpans() TracerOpt {
+	return tracerOptFunc(func(t *Tracer) { t.linkSpans = true })
 }
 
 // NewTracer returns a Tracer, used as option for kotel to instrument franz-go
@@ -148,6 +155,14 @@ func (t *Tracer) WithProcessSpan(r *kgo.Record) (context.Context, trace.Span) {
 	if r.Context == nil {
 		r.Context = context.Background()
 	}
+
+	if t.linkSpans {
+		opts = append(opts, trace.WithNewRoot())
+		if s := trace.SpanContextFromContext(r.Context); s.IsValid() {
+			opts = append(opts, trace.WithLinks(trace.Link{SpanContext: s}))
+		}
+	}
+
 	// Start a new span using the provided context and options.
 	return t.tracer.Start(r.Context, r.Topic+" process", opts...)
 }
@@ -240,6 +255,14 @@ func (t *Tracer) OnFetchRecordBuffered(r *kgo.Record) {
 	}
 	// Extract the span context from the record.
 	ctx := t.propagators.Extract(r.Context, NewRecordCarrier(r))
+
+	if t.linkSpans {
+		opts = append(opts, trace.WithNewRoot())
+		if s := trace.SpanContextFromContext(ctx); s.IsValid() {
+			opts = append(opts, trace.WithLinks(trace.Link{SpanContext: s}))
+		}
+	}
+
 	// Start the "receive" span.
 	newCtx, _ := t.tracer.Start(ctx, r.Topic+" receive", opts...)
 	// Update the record context.

@@ -13,6 +13,8 @@ type Limits interface {
 	retention.Limits
 	MaxLineSize(userID string) int
 	MaxLineSizeTruncate(userID string) bool
+	MaxLineSizeTruncateIdentifier(userID string) string
+
 	MaxLabelNamesPerSeries(userID string) int
 	MaxLabelNameLength(userID string) int
 	MaxLabelValueLength(userID string) int
@@ -44,4 +46,6 @@ type Limits interface {
 	PolicyEnforcedLabels(userID string, policy string) []string
 
 	IngestionPartitionsTenantShardSize(userID string) int
+
+	SimulatedPushLatency(userID string) time.Duration
 }

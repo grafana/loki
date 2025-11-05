@@ -24,16 +24,29 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 	"google.golang.org/protobuf/proto"
+	"gopkg.in/yaml.v2"
 )
 
 var (
-	// NameValidationScheme determines the method of name validation to be used by
-	// all calls to IsValidMetricName() and LabelName IsValid(). Setting UTF-8
-	// mode in isolation from other components that don't support UTF-8 may result
-	// in bugs or other undefined behavior. This value can be set to
-	// LegacyValidation during startup if a binary is not UTF-8-aware binaries. To
-	// avoid need for locking, this value should be set once, ideally in an
-	// init(), before multiple goroutines are started.
+	// NameValidationScheme determines the global default method of the name
+	// validation to be used by all calls to IsValidMetricName() and LabelName
+	// IsValid().
+	//
+	// Deprecated: This variable should not be used and might be removed in the
+	// far future. If you wish to stick to the legacy name validation use
+	// `IsValidLegacyMetricName()` and `LabelName.IsValidLegacy()` methods
+	// instead. This variable is here as an escape hatch for emergency cases,
+	// given the recent change from `LegacyValidation` to `UTF8Validation`, e.g.,
+	// to delay UTF-8 migrations in time or aid in debugging unforeseen results of
+	// the change. In such a case, a temporary assignment to `LegacyValidation`
+	// value in the `init()` function in your main.go or so, could be considered.
+	//
+	// Historically we opted for a global variable for feature gating different
+	// validation schemes in operations that were not otherwise easily adjustable
+	// (e.g. Labels yaml unmarshaling). That could have been a mistake, a separate
+	// Labels structure or package might have been a better choice. Given the
+	// change was made and many upgraded the common already, we live this as-is
+	// with this warning and learning for the future.
 	NameValidationScheme = UTF8Validation
 
 	// NameEscapingScheme defines the default way that names will be escaped when
@@ -50,15 +63,69 @@ var (
 type ValidationScheme int
 
 const (
-	// LegacyValidation is a setting that requirets that metric and label names
+	// UnsetValidation represents an undefined ValidationScheme.
+	// Should not be used in practice.
+	UnsetValidation ValidationScheme = iota
+
+	// LegacyValidation is a setting that requires that all metric and label names
 	// conform to the original Prometheus character requirements described by
 	// MetricNameRE and LabelNameRE.
-	LegacyValidation ValidationScheme = iota
+	LegacyValidation
 
 	// UTF8Validation only requires that metric and label names be valid UTF-8
 	// strings.
 	UTF8Validation
 )
+
+var (
+	_ yaml.Marshaler = UnsetValidation
+	_ fmt.Stringer   = UnsetValidation
+)
+
+// String returns the string representation of s.
+func (s ValidationScheme) String() string {
+	switch s {
+	case UnsetValidation:
+		return "unset"
+	case LegacyValidation:
+		return "legacy"
+	case UTF8Validation:
+		return "utf8"
+	default:
+		panic(fmt.Errorf("unhandled ValidationScheme: %d", s))
+	}
+}
+
+// MarshalYAML implements the yaml.Marshaler interface.
+func (s ValidationScheme) MarshalYAML() (any, error) {
+	switch s {
+	case UnsetValidation:
+		return "", nil
+	case LegacyValidation, UTF8Validation:
+		return s.String(), nil
+	default:
+		panic(fmt.Errorf("unhandled ValidationScheme: %d", s))
+	}
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (s *ValidationScheme) UnmarshalYAML(unmarshal func(any) error) error {
+	var scheme string
+	if err := unmarshal(&scheme); err != nil {
+		return err
+	}
+	switch scheme {
+	case "":
+		// Don't change the value.
+	case "legacy":
+		*s = LegacyValidation
+	case "utf8":
+		*s = UTF8Validation
+	default:
+		return fmt.Errorf("unrecognized ValidationScheme: %q", scheme)
+	}
+	return nil
+}
 
 type EscapingScheme int
 
@@ -173,7 +240,7 @@ func IsValidMetricName(n LabelValue) bool {
 		}
 		return utf8.ValidString(string(n))
 	default:
-		panic(fmt.Sprintf("Invalid name validation scheme requested: %d", NameValidationScheme))
+		panic(fmt.Sprintf("Invalid name validation scheme requested: %s", NameValidationScheme.String()))
 	}
 }
 

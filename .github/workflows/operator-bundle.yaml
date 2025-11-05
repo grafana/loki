@@ -13,19 +13,17 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        go: ['1.22']
+    permissions:
+      contents: "read"
     steps:
-    - name: Set up Go 1.x
-      uses: actions/setup-go@v5
+    - uses: actions/checkout@v5
       with:
-        go-version: ${{ matrix.go }}
-      id: go
-    - uses: actions/checkout@v4
-    - name: Install make
-      run: sudo apt-get install make
+        persist-credentials: false
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: ./operator/go.mod
+        cache-dependency-path: ./operator/go.sum
     - name: make bundle
       run: |
         make bundle-all && git diff --exit-code -I'^    createdAt: '

@@ -304,4 +304,4 @@ client := subscriptions.NewClient()
 client.Authorizer = azidext.NewTokenCredentialAdapter(cred, []string{"https://management.azure.com//.default"})
 ```
 
-![Impressions](https://azure-sdk-impressions.azurewebsites.net/api/impressions/azure-sdk-for-go%2Fsdk%2Fazidentity%2FMIGRATION.png)
+

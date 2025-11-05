@@ -14,6 +14,7 @@
     query_scheduler:: self.loki,
     ruler:: self.loki,
     compactor:: self.loki,
+    compactor_worker:: self.loki,
     index_gateway:: self.loki,
     overrides_exporter:: self.loki,
     bloom_gateway:: self.loki,

@@ -1,21 +1,22 @@
 # Release Process
 
+## Create a `Version Release` issue
+
+Create a `Version Release` issue to track the release process.
+
 ## Semantic Convention Generation
 
 New versions of the [OpenTelemetry Semantic Conventions] mean new versions of the `semconv` package need to be generated.
 The `semconv-generate` make target is used for this.
 
-1. Checkout a local copy of the [OpenTelemetry Semantic Conventions] to the desired release tag.
-2. Pull the latest `otel/semconvgen` image: `docker pull otel/semconvgen:latest`
-3. Run the `make semconv-generate ...` target from this repository.
+1. Set the `TAG` environment variable to the semantic convention tag you want to generate.
+2. Run the `make semconv-generate ...` target from this repository.
 
 For example,
 
 ```sh
-export TAG="v1.21.0" # Change to the release version you are generating.
-export OTEL_SEMCONV_REPO="/absolute/path/to/opentelemetry/semantic-conventions"
-docker pull otel/semconvgen:latest
-make semconv-generate # Uses the exported TAG and OTEL_SEMCONV_REPO.
+export TAG="v1.30.0" # Change to the release version you are generating.
+make semconv-generate # Uses the exported TAG.
 ```
 
 This should create a new sub-package of [`semconv`](./semconv).
@@ -111,6 +112,29 @@ It is critical you make sure the version you push upstream is correct.
 Finally create a Release for the new `<new tag>` on GitHub.
 The release body should include all the release notes from the Changelog for this release.
 
+### Sign the Release Artifact
+
+To ensure we comply with CNCF best practices, we need to sign the release artifact.
+The tarball attached to the GitHub release needs to be signed with your GPG key.
+
+Follow [these steps] to sign the release artifact and upload it to GitHub.
+You can use [this script] to verify the contents of the tarball before signing it.
+
+Be sure to use the correct GPG key when signing the release artifact.
+
+```terminal
+gpg --local-user <key-id> --armor --detach-sign opentelemetry-go-<version>.tar.gz
+```
+
+You can verify the signature with:
+
+```terminal
+gpg --verify opentelemetry-go-<version>.tar.gz.asc opentelemetry-go-<version>.tar.gz
+```
+
+[these steps]: https://wiki.debian.org/Creating%20signed%20GitHub%20releases
+[this script]: https://github.com/MrAlias/attest-sh
+
 ## Post-Release
 
 ### Contrib Repository
@@ -126,6 +150,16 @@ Importantly, bump any package versions referenced to be the latest one you just 
 [Go instrumentation documentation]: https://opentelemetry.io/docs/languages/go/
 [content/en/docs/languages/go]: https://github.com/open-telemetry/opentelemetry.io/tree/main/content/en/docs/languages/go
 
+### Close the milestone
+
+Once a release is made, ensure all issues that were fixed and PRs that were merged as part of this release are added to the corresponding milestone.
+This helps track what changes were included in each release.
+
+- To find issues that haven't been included in a milestone, use this [GitHub search query](https://github.com/open-telemetry/opentelemetry-go/issues?q=is%3Aissue%20no%3Amilestone%20is%3Aclosed%20sort%3Aupdated-desc%20reason%3Acompleted%20-label%3AStale%20linked%3Apr)
+- To find merged PRs that haven't been included in a milestone, use this [GitHub search query](https://github.com/open-telemetry/opentelemetry-go/pulls?q=is%3Apr+no%3Amilestone+is%3Amerged).
+
+Once all related issues and PRs have been added to the milestone, close the milestone.
+
 ### Demo Repository
 
 Bump the dependencies in the following Go services:
@@ -133,3 +167,7 @@ Bump the dependencies in the following Go services:
 - [`accounting`](https://github.com/open-telemetry/opentelemetry-demo/tree/main/src/accounting)
 - [`checkoutservice`](https://github.com/open-telemetry/opentelemetry-demo/tree/main/src/checkout)
 - [`productcatalogservice`](https://github.com/open-telemetry/opentelemetry-demo/tree/main/src/product-catalog)
+
+### Close the `Version Release` issue
+
+Once the todo list in the `Version Release` issue is complete, close the issue.

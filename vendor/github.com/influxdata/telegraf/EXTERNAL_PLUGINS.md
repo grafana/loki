@@ -30,8 +30,6 @@ Pull requests welcome.
 - [knot](https://github.com/x70b1/telegraf-knot) - Collect stats from Knot DNS.
 - [fritzbox](https://github.com/hdecarne-github/fritzbox-telegraf-plugin) - Gather statistics from [FRITZ!Box](https://avm.de/produkte/fritzbox/) router and repeater
 - [linux-psi-telegraf-plugin](https://github.com/gridscale/linux-psi-telegraf-plugin) - Gather pressure stall information ([PSI](https://facebookmicrosites.github.io/psi/)) from the Linux Kernel
-- [huebridge](https://github.com/hdecarne-github/huebridge-telegraf-plugin) - Gather smart home statistics from [Hue Bridge](https://www.philips-hue.com/) devices
-- [nsdp](https://github.com/hdecarne-github/nsdp-telegraf-plugin) - Gather switch network statistics via [Netgear Switch Discovery Protocol](https://en.wikipedia.org/wiki/Netgear_Switch_Discovery_Protocol)
 - [hwinfo](https://github.com/zachstence/hwinfo-telegraf-plugin) - Gather Windows system hardware information from [HWiNFO](https://www.hwinfo.com/)
 - [libvirt](https://gitlab.com/warrenio/tools/telegraf-input-libvirt) - Gather libvirt domain stats, based on a historical Telegraf implementation [libvirt](https://libvirt.org/)
 - [bacnet](https://github.com/JurajMarcin/telegraf-bacnet) - Gather statistics from BACnet devices, with support for device discovery and Change of Value subscriptions

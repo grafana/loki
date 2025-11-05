@@ -59,8 +59,8 @@ func ParseBoundsFromParts(a, b string) (FingerprintBounds, error) {
 	return NewBounds(minFingerprint, maxFingerprint), nil
 }
 
-func NewBounds(min, max model.Fingerprint) FingerprintBounds {
-	return FingerprintBounds{Min: min, Max: max}
+func NewBounds(minVal, maxVal model.Fingerprint) FingerprintBounds {
+	return FingerprintBounds{Min: minVal, Max: maxVal}
 }
 
 func (b FingerprintBounds) Hash(h hash.Hash32) error {
@@ -120,8 +120,8 @@ func (b FingerprintBounds) Bounds() (model.Fingerprint, model.Fingerprint) {
 }
 
 // Slice returns a new fingerprint bounds clipped to the target bounds or nil if there is no overlap
-func (b FingerprintBounds) Slice(min, max model.Fingerprint) *FingerprintBounds {
-	return b.Intersection(FingerprintBounds{Min: min, Max: max})
+func (b FingerprintBounds) Slice(minVal, maxVal model.Fingerprint) *FingerprintBounds {
+	return b.Intersection(FingerprintBounds{Min: minVal, Max: maxVal})
 }
 
 // Within returns whether the fingerprint is fully within the target bounds

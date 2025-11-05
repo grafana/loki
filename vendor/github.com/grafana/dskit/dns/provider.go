@@ -6,6 +6,7 @@ package dns
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -40,13 +41,27 @@ const (
 	MiekgdnsResolverType ResolverType = "miekgdns"
 )
 
-func (t ResolverType) ToResolver(logger log.Logger) ipLookupResolver {
+func (t ResolverType) String() string {
+	return string(t)
+}
+
+func (t *ResolverType) Set(v string) error {
+	switch ResolverType(v) {
+	case GolangResolverType, MiekgdnsResolverType:
+		*t = ResolverType(v)
+		return nil
+	default:
+		return fmt.Errorf("unsupported resolver type %s", v)
+	}
+}
+
+func (t ResolverType) toResolver(logger log.Logger) ipLookupResolver {
 	var r ipLookupResolver
 	switch t {
 	case GolangResolverType:
 		r = &godns.Resolver{Resolver: net.DefaultResolver}
 	case MiekgdnsResolverType:
-		r = &miekgdns.Resolver{ResolvConf: miekgdns.DefaultResolvConfPath}
+		r = miekgdns.NewResolver(miekgdns.DefaultResolvConfPath, logger)
 	default:
 		level.Warn(logger).Log("msg", "no such resolver type, defaulting to golang", "type", t)
 		r = &godns.Resolver{Resolver: net.DefaultResolver}
@@ -58,7 +73,7 @@ func (t ResolverType) ToResolver(logger log.Logger) ipLookupResolver {
 // If empty resolver type is net.DefaultResolver.
 func NewProvider(logger log.Logger, reg prometheus.Registerer, resolverType ResolverType) *Provider {
 	p := &Provider{
-		resolver: NewResolver(resolverType.ToResolver(logger), logger),
+		resolver: NewResolver(resolverType.toResolver(logger), logger),
 		resolved: make(map[string][]string),
 		logger:   logger,
 		resolverAddrsDesc: prometheus.NewDesc(

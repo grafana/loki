@@ -1,22 +1,14 @@
 package magic
 
-import "bytes"
+import (
+	"bytes"
+)
 
 var (
 	// AVIF matches an AV1 Image File Format still or animated.
 	// Wikipedia page seems outdated listing image/avif-sequence for animations.
 	// https://github.com/AOMediaCodec/av1-avif/issues/59
 	AVIF = ftyp([]byte("avif"), []byte("avis"))
-	// Mp4 matches an MP4 file.
-	Mp4 = ftyp(
-		[]byte("avc1"), []byte("dash"), []byte("iso2"), []byte("iso3"),
-		[]byte("iso4"), []byte("iso5"), []byte("iso6"), []byte("isom"),
-		[]byte("mmp4"), []byte("mp41"), []byte("mp42"), []byte("mp4v"),
-		[]byte("mp71"), []byte("MSNV"), []byte("NDAS"), []byte("NDSC"),
-		[]byte("NSDC"), []byte("NSDH"), []byte("NDSM"), []byte("NDSP"),
-		[]byte("NDSS"), []byte("NDXC"), []byte("NDXH"), []byte("NDXM"),
-		[]byte("NDXP"), []byte("NDXS"), []byte("F4V "), []byte("F4P "),
-	)
 	// ThreeGP matches a 3GPP file.
 	ThreeGP = ftyp(
 		[]byte("3gp1"), []byte("3gp2"), []byte("3gp3"), []byte("3gp4"),
@@ -53,6 +45,17 @@ var (
 	Heif = ftyp([]byte("mif1"), []byte("heim"), []byte("heis"), []byte("avic"))
 	// HeifSequence matches a High Efficiency Image File Format (HEIF) file sequence.
 	HeifSequence = ftyp([]byte("msf1"), []byte("hevm"), []byte("hevs"), []byte("avcs"))
+	// Mj2 matches a Motion JPEG 2000 file: https://en.wikipedia.org/wiki/Motion_JPEG_2000.
+	Mj2 = ftyp([]byte("mj2s"), []byte("mjp2"), []byte("MFSM"), []byte("MGSV"))
+	// Dvb matches a Digital Video Broadcasting file: https://dvb.org.
+	// https://cconcolato.github.io/mp4ra/filetype.html
+	// https://github.com/file/file/blob/512840337ead1076519332d24fefcaa8fac36e06/magic/Magdir/animation#L135-L154
+	Dvb = ftyp(
+		[]byte("dby1"), []byte("dsms"), []byte("dts1"), []byte("dts2"),
+		[]byte("dts3"), []byte("dxo "), []byte("dmb1"), []byte("dmpf"),
+		[]byte("drc1"), []byte("dv1a"), []byte("dv1b"), []byte("dv2a"),
+		[]byte("dv2b"), []byte("dv3a"), []byte("dv3b"), []byte("dvr1"),
+		[]byte("dvt1"), []byte("emsg"))
 	// TODO: add support for remaining video formats at ftyps.com.
 )
 
@@ -85,4 +88,22 @@ func QuickTime(raw []byte, _ uint32) bool {
 		}
 	}
 	return bytes.Equal(raw[:8], []byte("\x00\x00\x00\x08wide"))
+}
+
+// Mp4 detects an .mp4 file. Mp4 detections only does a basic ftyp check.
+// Mp4 has many registered and unregistered code points so it's hard to keep track
+// of all. Detection will default on video/mp4 for all ftyp files.
+// ISO_IEC_14496-12 is the specification for the iso container.
+func Mp4(raw []byte, _ uint32) bool {
+	if len(raw) < 12 {
+		return false
+	}
+	// ftyps are made out of boxes. The first 4 bytes of the box represent
+	// its size in big-endian uint32. First box is the ftyp box and it is small
+	// in size. Check most significant byte is 0 to filter out false positive
+	// text files that happen to contain the string "ftyp" at index 4.
+	if raw[0] != 0 {
+		return false
+	}
+	return bytes.Equal(raw[4:8], []byte("ftyp"))
 }

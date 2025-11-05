@@ -23,7 +23,7 @@ func TestProbabilisticQuantileMatrixSerialization(t *testing.T) {
 
 	matrix := ProbabilisticQuantileMatrix([]ProbabilisticQuantileVector{
 		[]ProbabilisticQuantileSample{
-			{T: 0, F: emptySketch, Metric: []labels.Label{{Name: "foo", Value: "bar"}}},
+			{T: 0, F: emptySketch, Metric: labels.FromStrings("foo", "bar")},
 		},
 	})
 
@@ -51,7 +51,7 @@ func TestProbabilisticQuantileMatrixSerialization(t *testing.T) {
 func TestQuantileSketchStepEvaluatorError(t *testing.T) {
 	iter := errorRangeVectorIterator{
 		result: ProbabilisticQuantileVector([]ProbabilisticQuantileSample{
-			{T: 43, F: nil, Metric: labels.Labels{{Name: logqlmodel.ErrorLabel, Value: "my error"}}},
+			{T: 43, F: nil, Metric: labels.FromStrings(logqlmodel.ErrorLabel, "my error")},
 		}),
 	}
 	ev := QuantileSketchStepEvaluator{

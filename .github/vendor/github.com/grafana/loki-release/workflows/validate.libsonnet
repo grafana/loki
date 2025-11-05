@@ -5,9 +5,12 @@ local _validationJob = common.validationJob;
 
 local setupValidationDeps = function(job) job {
   steps: [
-    common.checkout,
+    common.fetchReleaseRepo,
     common.fetchReleaseLib,
     common.fixDubiousOwnership,
+    step.new('install dependencies')
+    + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
+    + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
     step.new('install tar')
     + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
     + step.withRun(|||
@@ -33,7 +36,8 @@ local validationJob = _validationJob(false);
   local validationMakeStep = function(name, target)
     step.new(name)
     + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
-    + step.withRun(common.makeTarget(target)),
+    + step.withRun(common.makeTarget(target))
+    + step.withWorkingDirectory('release'),
 
   // Test jobs
   collectPackages: job.new()
@@ -44,7 +48,7 @@ local validationJob = _validationJob(false);
                      + step.withId('gather-tests')
                      + step.withRun(|||
                        echo "packages=$(find . -path '*_test.go' -printf '%h\n' \
-                         | grep -e "pkg/push" -e "integration" -e "operator" -e "lambda-promtail" -e "helm" -v \
+                         | grep -e "pkg/push" -e "integration" -e "operator" -e "helm" -v \
                          | cut  -d / -f 2,3 \
                          | uniq \
                          | sort \
@@ -57,7 +61,7 @@ local validationJob = _validationJob(false);
 
   integration: validationJob
                + job.withSteps([
-                 common.checkout,
+                 common.fetchReleaseRepo,
                  common.fixDubiousOwnership,
                  validationMakeStep('integration', 'test-integration'),
                ]),
@@ -69,36 +73,41 @@ local validationJob = _validationJob(false);
                     package: '${{fromJson(needs.collectPackages.outputs.packages)}}',
                   },
                 })
+                + job.withEnv({
+                  MATRIX_PACKAGE: '${{ matrix.package }}',
+                })
                 + job.withSteps([
-                  common.checkout,
+                  common.fetchReleaseRepo,
                   common.fixDubiousOwnership,
+                  common.fetchReleaseLib,
+                  step.new('install dependencies')
+                  + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
+                  + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
                   step.new('test ${{ matrix.package }}')
                   + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
                   + step.withRun(|||
-                    gotestsum -- -covermode=atomic -coverprofile=coverage.txt -p=4 ./${{ matrix.package }}/...
-                  |||),
+                    gotestsum -- -tags=assert -covermode=atomic -coverprofile=coverage.txt -p=4 ./${MATRIX_PACKAGE}/...
+                  |||)
+                  + step.withWorkingDirectory('release'),
                 ]),
-
-
-  testLambdaPromtail: validationJob
-                      + job.withSteps([
-                        common.checkout,
-                        common.fixDubiousOwnership,
-                        step.new('test push package')
-                        + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
-                        + step.withWorkingDirectory('tools/lambda-promtail')
-                        + step.withRun(|||
-                          gotestsum -- -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
-                        |||),
-                      ]),
 
   testPushPackage: validationJob
                    + job.withSteps([
-                     common.checkout,
+                     common.fetchReleaseRepo,
                      common.fixDubiousOwnership,
+                     common.fetchReleaseLib,
+                     step.new('install dependencies')
+                     + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
+                     + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
+                     step.new('go mod tidy')
+                     + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
+                     + step.withWorkingDirectory('release/pkg/push')
+                     + step.withRun(|||
+                       go mod tidy
+                     |||),
                      step.new('test push package')
                      + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
-                     + step.withWorkingDirectory('pkg/push')
+                     + step.withWorkingDirectory('release/pkg/push')
                      + step.withRun(|||
                        gotestsum -- -covermode=atomic -coverprofile=coverage.txt -p=4 ./...
                      |||),
@@ -119,6 +128,7 @@ local validationJob = _validationJob(false);
       steps+: [
         step.new('build docs website')
         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
+        + step.withWorkingDirectory('release')
         + step.withRun(|||
           cat <<EOF | docker run \
             --interactive \
@@ -141,25 +151,30 @@ local validationJob = _validationJob(false);
   faillint:
     validationJob
     + job.withSteps([
-      common.checkout,
+      common.fetchReleaseRepo,
       common.fixDubiousOwnership,
+      common.fetchReleaseLib,
+      step.new('install dependencies')
+      + step.withIf("${{ !fromJSON(env.SKIP_VALIDATION) && startsWith(inputs.build_image, 'golang') }}")
+      + step.withRun('lib/workflows/install_workflow_dependencies.sh loki-release'),
       step.new('faillint')
       + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
       + step.withRun(|||
         faillint -paths "sync/atomic=go.uber.org/atomic" ./...
-
-      |||),
+      |||)
+      + step.withWorkingDirectory('release'),
     ]),
 
   golangciLint: setupValidationDeps(
     validationJob
     + job.withSteps(
       [
-        step.new('golangci-lint', 'golangci/golangci-lint-action@08e2f20817b15149a52b5b3ebe7de50aff2ba8c5')
+        common.checkout,
+        step.new('golangci-lint', 'golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9')
         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
         + step.with({
           version: '${{ inputs.golang_ci_lint_version }}',
-          'only-new-issues': true,
+          'only-new-issues': false,  // we want a PR to fail if the target branch fails
           args: '-v --timeout 15m --build-tags linux,promtail_journal_enabled',
         }),
       ],
@@ -176,7 +191,8 @@ local validationJob = _validationJob(false);
         + step.withRun(|||
           git fetch origin
           make check-format
-        |||),
+        |||)
+        + step.withWorkingDirectory('release'),
       ]
     )
   ),
@@ -188,7 +204,6 @@ local validationJob = _validationJob(false);
                'golangciLint',
                'lintFiles',
                'integration',
-               'testLambdaPromtail',
                'testPackages',
                'testPushPackage',
              ])
@@ -197,7 +212,6 @@ local validationJob = _validationJob(false);
              })
              + job.withIf("${{ !fromJSON(inputs.skip_validation) && (cancelled() || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'failure')) }}")
              + job.withSteps([
-               common.checkout,
                step.new('verify checks passed')
                + step.withRun(|||
                  echo "Some checks have failed!"
@@ -212,7 +226,6 @@ local validationJob = _validationJob(false);
            'golangciLint',
            'lintFiles',
            'integration',
-           'testLambdaPromtail',
            'testPackages',
            'testPushPackage',
          ])
@@ -220,7 +233,6 @@ local validationJob = _validationJob(false);
            SKIP_VALIDATION: '${{ inputs.skip_validation }}',
          })
          + job.withSteps([
-           common.checkout,
            step.new('checks passed')
            + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
            + step.withRun(|||

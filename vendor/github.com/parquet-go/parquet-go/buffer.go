@@ -4,6 +4,7 @@ import (
 	"log"
 	"reflect"
 	"runtime"
+	"slices"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -226,6 +227,10 @@ func NewBuffer(options ...RowGroupOption) *Buffer {
 	return buf
 }
 
+// configure sets up the buffer's columns based on the provided schema.
+// It also prepares the internal sorting logic by using only the requested sorting columns
+// (from buf.config.Sorting.SortingColumns) that are actually found within the schema,
+// preserving the requested order but ignoring missing columns.
 func (buf *Buffer) configure(schema *Schema) {
 	if schema == nil {
 		return
@@ -239,7 +244,7 @@ func (buf *Buffer) configure(schema *Schema) {
 		columnType := leaf.node.Type()
 		bufferCap := buf.config.ColumnBufferCapacity
 		dictionary := (Dictionary)(nil)
-		encoding := encodingOf(leaf.node)
+		encoding := encodingOf(leaf.node, nil)
 
 		if isDictionaryEncoding(encoding) {
 			estimatedDictBufferSize := columnType.EstimateSize(bufferCap)
@@ -273,6 +278,8 @@ func (buf *Buffer) configure(schema *Schema) {
 		}
 	})
 
+	buf.sorted = slices.DeleteFunc(buf.sorted, func(cb ColumnBuffer) bool { return cb == nil })
+
 	buf.schema = schema
 	buf.rowbuf = make([]Row, 0, 1)
 	buf.colbuf = make([][]Value, len(buf.columns))
@@ -298,10 +305,10 @@ func (buf *Buffer) NumRows() int64 { return int64(buf.Len()) }
 // ColumnChunks returns the buffer columns.
 func (buf *Buffer) ColumnChunks() []ColumnChunk { return buf.chunks }
 
-// ColumnBuffer returns the buffer columns.
+// ColumnBuffers returns the buffer columns.
 //
 // This method is similar to ColumnChunks, but returns a list of ColumnBuffer
-// instead of a ColumnChunk values (the latter being read-only); calling
+// instead of a list of ColumnChunk (the latter being read-only); calling
 // ColumnBuffers or ColumnChunks with the same index returns the same underlying
 // objects, but with different types, which removes the need for making a type
 // assertion if the program needed to write directly to the column buffers.
@@ -360,7 +367,7 @@ func (buf *Buffer) Reset() {
 }
 
 // Write writes a row held in a Go value to the buffer.
-func (buf *Buffer) Write(row interface{}) error {
+func (buf *Buffer) Write(row any) error {
 	if buf.schema == nil {
 		buf.configure(SchemaOf(row))
 	}
@@ -414,7 +421,7 @@ func (buf *Buffer) WriteRowGroup(rowGroup RowGroup) (int64, error) {
 		return 0, ErrRowGroupSchemaMissing
 	case buf.schema == nil:
 		buf.configure(rowGroupSchema)
-	case !nodesAreEqual(buf.schema, rowGroupSchema):
+	case !EqualNodes(buf.schema, rowGroupSchema):
 		return 0, ErrRowGroupSchemaMismatch
 	}
 	if !sortingColumnsHavePrefix(rowGroup.SortingColumns(), buf.SortingColumns()) {
@@ -431,7 +438,7 @@ func (buf *Buffer) WriteRowGroup(rowGroup RowGroup) (int64, error) {
 //
 // The buffer and the returned reader share memory. Mutating the buffer
 // concurrently to reading rows may result in non-deterministic behavior.
-func (buf *Buffer) Rows() Rows { return newRowGroupRows(buf, ReadModeSync) }
+func (buf *Buffer) Rows() Rows { return NewRowGroupRowReader(buf) }
 
 // bufferWriter is an adapter for Buffer which implements both RowWriter and
 // PageWriter to enable optimizations in CopyRows for types that support writing
@@ -570,7 +577,7 @@ func bufferPoolNextSize(size int) int {
 func bufferPoolBucketIndexAndSizeOfGet(size int) (int, int) {
 	limit := bufferPoolMinSize
 
-	for i := 0; i < bufferPoolBucketCount; i++ {
+	for i := range bufferPoolBucketCount {
 		if size <= limit {
 			return i, limit
 		}
@@ -586,7 +593,7 @@ func bufferPoolBucketIndexAndSizeOfPut(size int) (int, int) {
 	// have to put the buffer is the highest bucket with a size less or equal
 	// to the buffer capacity.
 	if limit := bufferPoolMinSize; size >= limit {
-		for i := 0; i < bufferPoolBucketCount; i++ {
+		for i := range bufferPoolBucketCount {
 			n := bufferPoolNextSize(limit)
 			if size < n {
 				return i, limit

@@ -143,17 +143,17 @@ func (r *RuleCommand) Register(app *kingpin.Application) {
 
 		c.Flag("tls-ca-path", "TLS CA certificate to verify Loki API as part of mTLS, alternatively set LOKI_TLS_CA_PATH.").
 			Default("").
-			Envar("LOKI_TLS_CA_CERT").
+			Envar("LOKI_TLS_CA_PATH").
 			StringVar(&r.ClientConfig.TLS.CAPath)
 
-		c.Flag("tls-cert-path", "TLS client certificate to authenticate with Loki API as part of mTLS, alternatively set Loki_TLS_CERT_PATH.").
+		c.Flag("tls-cert-path", "TLS client certificate to authenticate with Loki API as part of mTLS, alternatively set LOKI_TLS_CERT_PATH.").
 			Default("").
-			Envar("LOKI_TLS_CLIENT_CERT").
+			Envar("LOKI_TLS_CERT_PATH").
 			StringVar(&r.ClientConfig.TLS.CertPath)
 
 		c.Flag("tls-key-path", "TLS client certificate private key to authenticate with Loki API as part of mTLS, alternatively set LOKI_TLS_KEY_PATH.").
 			Default("").
-			Envar("LOKI_TLS_CLIENT_KEY").
+			Envar("LOKI_TLS_KEY_PATH").
 			StringVar(&r.ClientConfig.TLS.KeyPath)
 
 	}
@@ -628,7 +628,7 @@ func (r *RuleCommand) prepare(_ *kingpin.ParseContext) error {
 	}
 
 	// Do not apply the aggregation label to excluded rule groups.
-	applyTo := func(group rwrulefmt.RuleGroup, _ rulefmt.RuleNode) bool {
+	applyTo := func(group rwrulefmt.RuleGroup, _ rulefmt.Rule) bool {
 		_, excluded := r.aggregationLabelExcludedRuleGroupsList[group.Name]
 		return !excluded
 	}
@@ -749,11 +749,11 @@ func checkDuplicates(groups []rwrulefmt.RuleGroup) []compareRuleType {
 	return duplicates
 }
 
-func ruleMetric(rule rulefmt.RuleNode) string {
-	if rule.Alert.Value != "" {
-		return rule.Alert.Value
+func ruleMetric(rule rulefmt.Rule) string {
+	if rule.Alert != "" {
+		return rule.Alert
 	}
-	return rule.Record.Value
+	return rule.Record
 }
 
 // End taken from https://github.com/prometheus/prometheus/blob/8c8de46003d1800c9d40121b4a5e5de8582ef6e1/cmd/promtool/main.go#L403
@@ -772,7 +772,7 @@ func save(nss map[string]rules.RuleNamespace, i bool) error {
 			filepath = filepath + ".result"
 		}
 
-		if err := os.WriteFile(filepath, payload, 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions
+		if err := os.WriteFile(filepath, payload, 0640); err != nil { // #nosec G306 -- this is fencing off the "other" permissions -- nosemgrep: incorrect-default-permissions
 			return err
 		}
 	}

@@ -44,7 +44,7 @@ func (c *Client) putObjectMultipart(ctx context.Context, bucketName, objectName 
 		errResp := ToErrorResponse(err)
 		// Verify if multipart functionality is not available, if not
 		// fall back to single PutObject operation.
-		if errResp.Code == "AccessDenied" && strings.Contains(errResp.Message, "Access Denied") {
+		if errResp.Code == AccessDenied && strings.Contains(errResp.Message, "Access Denied") {
 			// Verify if size of reader is greater than '5GiB'.
 			if size > maxSinglePutObjectSize {
 				return UploadInfo{}, errEntityTooLarge(size, maxSinglePutObjectSize, bucketName, objectName)
@@ -82,16 +82,12 @@ func (c *Client) putObjectMultipartNoStream(ctx context.Context, bucketName, obj
 	// avoid sha256 with non-v4 signature request or
 	// HTTPS connection.
 	hashAlgos, hashSums := c.hashMaterials(opts.SendContentMd5, !opts.DisableContentSha256)
-	if len(hashSums) == 0 {
-		addAutoChecksumHeaders(&opts)
-	}
 
 	// Initiate a new multipart upload.
 	uploadID, err := c.newUploadID(ctx, bucketName, objectName, opts)
 	if err != nil {
 		return UploadInfo{}, err
 	}
-	delete(opts.UserMetadata, "X-Amz-Checksum-Algorithm")
 
 	defer func() {
 		if err != nil {
@@ -145,11 +141,15 @@ func (c *Client) putObjectMultipartNoStream(ctx context.Context, bucketName, obj
 		if hashSums["sha256"] != nil {
 			sha256Hex = hex.EncodeToString(hashSums["sha256"])
 		}
-		if len(hashSums) == 0 {
+		if opts.AutoChecksum.IsSet() {
 			crc.Reset()
 			crc.Write(buf[:length])
 			cSum := crc.Sum(nil)
 			customHeader.Set(opts.AutoChecksum.Key(), base64.StdEncoding.EncodeToString(cSum))
+			customHeader.Set(amzChecksumAlgo, opts.AutoChecksum.String())
+			if opts.AutoChecksum.FullObjectRequested() {
+				customHeader.Set(amzChecksumMode, ChecksumFullObjectMode.String())
+			}
 		}
 
 		p := uploadPartParams{bucketName: bucketName, objectName: objectName, uploadID: uploadID, reader: rd, partNumber: partNumber, md5Base64: md5Base64, sha256Hex: sha256Hex, size: int64(length), sse: opts.ServerSideEncryption, streamSha256: !opts.DisableContentSha256, customHeader: customHeader}
@@ -392,13 +392,14 @@ func (c *Client) completeMultipartUpload(ctx context.Context, bucketName, object
 	// Instantiate all the complete multipart buffer.
 	completeMultipartUploadBuffer := bytes.NewReader(completeMultipartUploadBytes)
 	reqMetadata := requestMetadata{
-		bucketName:       bucketName,
-		objectName:       objectName,
-		queryValues:      urlValues,
-		contentBody:      completeMultipartUploadBuffer,
-		contentLength:    int64(len(completeMultipartUploadBytes)),
-		contentSHA256Hex: sum256Hex(completeMultipartUploadBytes),
-		customHeader:     headers,
+		bucketName:           bucketName,
+		objectName:           objectName,
+		queryValues:          urlValues,
+		contentBody:          completeMultipartUploadBuffer,
+		contentLength:        int64(len(completeMultipartUploadBytes)),
+		contentSHA256Hex:     sum256Hex(completeMultipartUploadBytes),
+		customHeader:         headers,
+		expect200OKWithError: true,
 	}
 
 	// Execute POST to complete multipart upload for an objectName.
@@ -457,5 +458,6 @@ func (c *Client) completeMultipartUpload(ctx context.Context, bucketName, object
 		ChecksumCRC32:     completeMultipartUploadResult.ChecksumCRC32,
 		ChecksumCRC32C:    completeMultipartUploadResult.ChecksumCRC32C,
 		ChecksumCRC64NVME: completeMultipartUploadResult.ChecksumCRC64NVME,
+		ChecksumMode:      completeMultipartUploadResult.ChecksumType,
 	}, nil
 }

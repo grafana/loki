@@ -234,7 +234,7 @@ func NewAndFilters(filters []Filterer) Filterer {
 	n := 0
 	for _, filter := range filters {
 		// Make sure we take care of panics in case a nil or noop filter is passed.
-		if !(filter == nil || isTrueFilter(WrapFilterer(filter))) {
+		if filter != nil && !isTrueFilter(WrapFilterer(filter)) {
 			switch c := filter.(type) {
 			case *containsFilter:
 				// Start accumulating contains filters.
@@ -322,16 +322,16 @@ func newOrFilter(left MatcherFilterer, right MatcherFilterer) MatcherFilterer {
 }
 
 // ChainOrMatcherFilterer is a syntax sugar to chain multiple `or` filters. (1 or many)
-func ChainOrMatcherFilterer(curr, new MatcherFilterer) MatcherFilterer {
+func ChainOrMatcherFilterer(curr, newFilterer MatcherFilterer) MatcherFilterer {
 	if curr == nil {
-		return new
+		return newFilterer
 	}
-	return newOrFilter(curr, new)
+	return newOrFilter(curr, newFilterer)
 }
 
 // ChainOrFilter is a syntax sugar to chain multiple `or` filters. (1 or many)
-func ChainOrFilter(curr, new Filterer) Filterer {
-	return ChainOrMatcherFilterer(WrapFilterer(curr), WrapFilterer(new))
+func ChainOrFilter(curr, newFilterer Filterer) Filterer {
+	return ChainOrMatcherFilterer(WrapFilterer(curr), WrapFilterer(newFilterer))
 }
 
 func (a orFilter) Filter(line []byte) bool {

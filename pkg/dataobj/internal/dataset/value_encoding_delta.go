@@ -1,7 +1,9 @@
 package dataset
 
 import (
+	"errors"
 	"fmt"
+	"io"
 
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/metadata/datasetmd"
 	"github.com/grafana/loki/v3/pkg/dataobj/internal/streamio"
@@ -10,7 +12,7 @@ import (
 func init() {
 	// Register the encoding so instances of it can be dynamically created.
 	registerValueEncoding(
-		datasetmd.VALUE_TYPE_INT64,
+		datasetmd.PHYSICAL_TYPE_INT64,
 		datasetmd.ENCODING_TYPE_DELTA,
 		func(w streamio.Writer) valueEncoder { return newDeltaEncoder(w) },
 		func(r streamio.Reader) valueDecoder { return newDeltaDecoder(r) },
@@ -33,9 +35,9 @@ func newDeltaEncoder(w streamio.Writer) *deltaEncoder {
 	return &enc
 }
 
-// ValueType returns [datasetmd.VALUE_TYPE_INT64].
-func (enc *deltaEncoder) ValueType() datasetmd.ValueType {
-	return datasetmd.VALUE_TYPE_INT64
+// PhysicalType returns [datasetmd.PHYSICAL_TYPE_INT64].
+func (enc *deltaEncoder) PhysicalType() datasetmd.PhysicalType {
+	return datasetmd.PHYSICAL_TYPE_INT64
 }
 
 // EncodingType returns [datasetmd.ENCODING_TYPE_DELTA].
@@ -45,7 +47,7 @@ func (enc *deltaEncoder) EncodingType() datasetmd.EncodingType {
 
 // Encode encodes a new value.
 func (enc *deltaEncoder) Encode(v Value) error {
-	if v.Type() != datasetmd.VALUE_TYPE_INT64 {
+	if v.Type() != datasetmd.PHYSICAL_TYPE_INT64 {
 		return fmt.Errorf("delta: invalid value type %v", v.Type())
 	}
 	iv := v.Int64()
@@ -82,9 +84,9 @@ func newDeltaDecoder(r streamio.Reader) *deltaDecoder {
 	return &dec
 }
 
-// ValueType returns [datasetmd.VALUE_TYPE_INT64].
-func (dec *deltaDecoder) ValueType() datasetmd.ValueType {
-	return datasetmd.VALUE_TYPE_INT64
+// PhysicalType returns [datasetmd.PHYSICAL_TYPE_INT64].
+func (dec *deltaDecoder) PhysicalType() datasetmd.PhysicalType {
+	return datasetmd.PHYSICAL_TYPE_INT64
 }
 
 // Type returns [datasetmd.ENCODING_TYPE_DELTA].
@@ -92,8 +94,34 @@ func (dec *deltaDecoder) EncodingType() datasetmd.EncodingType {
 	return datasetmd.ENCODING_TYPE_DELTA
 }
 
-// Decode decodes the next value.
-func (dec *deltaDecoder) Decode() (Value, error) {
+// Decode decodes up to len(s) values, storing the results into s. The
+// number of decoded values is returned, followed by an error (if any).
+// At the end of the stream, Decode returns 0, [io.EOF].
+func (dec *deltaDecoder) Decode(s []Value) (int, error) {
+	if len(s) == 0 {
+		return 0, nil
+	}
+
+	var err error
+	var v Value
+
+	for i := range s {
+		v, err = dec.decode()
+		if errors.Is(err, io.EOF) {
+			if i == 0 {
+				return 0, io.EOF
+			}
+			return i, nil
+		} else if err != nil {
+			return i, err
+		}
+		s[i] = v
+	}
+	return len(s), nil
+}
+
+// decode reads the next uint64 value from the stream.
+func (dec *deltaDecoder) decode() (Value, error) {
 	delta, err := streamio.ReadVarint(dec.r)
 	if err != nil {
 		return Int64Value(dec.prev), err

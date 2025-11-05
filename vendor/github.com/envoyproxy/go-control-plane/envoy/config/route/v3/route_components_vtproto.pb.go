@@ -4303,6 +4303,63 @@ func (m *RateLimit_Action_RequestHeaders) MarshalToSizedBufferVTStrict(dAtA []by
 	return len(dAtA) - i, nil
 }
 
+func (m *RateLimit_Action_QueryParameters) MarshalVTStrict() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVTStrict(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *RateLimit_Action_QueryParameters) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *RateLimit_Action_QueryParameters) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.SkipIfAbsent {
+		i--
+		if m.SkipIfAbsent {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x18
+	}
+	if len(m.DescriptorKey) > 0 {
+		i -= len(m.DescriptorKey)
+		copy(dAtA[i:], m.DescriptorKey)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.DescriptorKey)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.QueryParameterName) > 0 {
+		i -= len(m.QueryParameterName)
+		copy(dAtA[i:], m.QueryParameterName)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.QueryParameterName)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *RateLimit_Action_RemoteAddress) MarshalVTStrict() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -4757,6 +4814,13 @@ func (m *RateLimit_Action) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if msg, ok := m.ActionSpecifier.(*RateLimit_Action_QueryParameters_); ok {
+		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+	}
 	if msg, ok := m.ActionSpecifier.(*RateLimit_Action_QueryParameterValueMatch_); ok {
 		size, err := msg.MarshalToSizedBufferVTStrict(dAtA[:i])
 		if err != nil {
@@ -5102,6 +5166,29 @@ func (m *RateLimit_Action_QueryParameterValueMatch_) MarshalToSizedBufferVTStric
 	}
 	return len(dAtA) - i, nil
 }
+func (m *RateLimit_Action_QueryParameters_) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *RateLimit_Action_QueryParameters_) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	if m.QueryParameters != nil {
+		size, err := m.QueryParameters.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x62
+	} else {
+		i = protohelpers.EncodeVarint(dAtA, i, 0)
+		i--
+		dAtA[i] = 0x62
+	}
+	return len(dAtA) - i, nil
+}
 func (m *RateLimit_Override_DynamicMetadata) MarshalVTStrict() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -5220,6 +5307,56 @@ func (m *RateLimit_Override_DynamicMetadata_) MarshalToSizedBufferVTStrict(dAtA 
 	}
 	return len(dAtA) - i, nil
 }
+func (m *RateLimit_HitsAddend) MarshalVTStrict() (dAtA []byte, err error) {
+	if m == nil {
+		return nil, nil
+	}
+	size := m.SizeVT()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBufferVTStrict(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *RateLimit_HitsAddend) MarshalToVTStrict(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
+}
+
+func (m *RateLimit_HitsAddend) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
+	if m == nil {
+		return 0, nil
+	}
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.unknownFields != nil {
+		i -= len(m.unknownFields)
+		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.Format) > 0 {
+		i -= len(m.Format)
+		copy(dAtA[i:], m.Format)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.Format)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if m.Number != nil {
+		size, err := (*wrapperspb.UInt64Value)(m.Number).MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *RateLimit) MarshalVTStrict() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -5249,6 +5386,26 @@ func (m *RateLimit) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.ApplyOnStreamDone {
+		i--
+		if m.ApplyOnStreamDone {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x30
+	}
+	if m.HitsAddend != nil {
+		size, err := m.HitsAddend.MarshalToSizedBufferVTStrict(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
+		i--
+		dAtA[i] = 0x2a
 	}
 	if m.Limit != nil {
 		size, err := m.Limit.MarshalToSizedBufferVTStrict(dAtA[:i])
@@ -7649,6 +7806,27 @@ func (m *RateLimit_Action_RequestHeaders) SizeVT() (n int) {
 	return n
 }
 
+func (m *RateLimit_Action_QueryParameters) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.QueryParameterName)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.DescriptorKey)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.SkipIfAbsent {
+		n += 2
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *RateLimit_Action_RemoteAddress) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -7986,6 +8164,20 @@ func (m *RateLimit_Action_QueryParameterValueMatch_) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *RateLimit_Action_QueryParameters_) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.QueryParameters != nil {
+		l = m.QueryParameters.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	} else {
+		n += 2
+	}
+	return n
+}
 func (m *RateLimit_Override_DynamicMetadata) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -8033,6 +8225,24 @@ func (m *RateLimit_Override_DynamicMetadata_) SizeVT() (n int) {
 	}
 	return n
 }
+func (m *RateLimit_HitsAddend) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Number != nil {
+		l = (*wrapperspb.UInt64Value)(m.Number).SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.Format)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	n += len(m.unknownFields)
+	return n
+}
+
 func (m *RateLimit) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -8056,6 +8266,13 @@ func (m *RateLimit) SizeVT() (n int) {
 	if m.Limit != nil {
 		l = m.Limit.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.HitsAddend != nil {
+		l = m.HitsAddend.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.ApplyOnStreamDone {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n

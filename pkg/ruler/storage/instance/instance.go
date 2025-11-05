@@ -179,13 +179,13 @@ type Instance struct {
 
 // New creates a new Instance with a directory for storing the WAL. The instance
 // will not start until Run is called on the instance.
-func New(reg prometheus.Registerer, cfg Config, metrics *wal.Metrics, logger log.Logger) (*Instance, error) {
+func New(reg prometheus.Registerer, cfg Config, metrics *wal.Metrics, logger log.Logger, enableReplay bool) (*Instance, error) {
 	logger = log.With(logger, "instance", cfg.Name)
 
 	instWALDir := filepath.Join(cfg.Dir, cfg.Tenant)
 
 	newWal := func(reg prometheus.Registerer) (walStorage, error) {
-		return wal.NewStorage(logger, metrics, reg, instWALDir)
+		return wal.NewStorage(logger, metrics, reg, instWALDir, enableReplay)
 	}
 
 	return newInstance(cfg, reg, logger, newWal, cfg.Tenant)
@@ -281,7 +281,11 @@ func (i *Instance) Run(ctx context.Context) error {
 type noopScrapeManager struct{}
 
 func (n noopScrapeManager) Get() (*scrape.Manager, error) {
-	return nil, errors.New("No-op Scrape manager not ready")
+	return nil, errors.New("no-op Scrape manager not ready")
+}
+
+func (n noopScrapeManager) Ready() bool {
+	return false
 }
 
 // initialize sets up the various Prometheus components with their initial
@@ -304,7 +308,7 @@ func (i *Instance) initialize(_ context.Context, reg prometheus.Registerer, cfg 
 
 	// Setup the remote storage
 	remoteLogger := log.With(i.logger, "component", "remote")
-	i.remoteStore = remote.NewStorage(util_log.SlogFromGoKit(remoteLogger), reg, i.wal.StartTime, i.wal.Directory(), cfg.RemoteFlushDeadline, noopScrapeManager{}, false)
+	i.remoteStore = remote.NewStorage(util_log.SlogFromGoKit(remoteLogger), reg, i.wal.StartTime, i.wal.Directory(), cfg.RemoteFlushDeadline, noopScrapeManager{})
 	err = i.remoteStore.ApplyConfig(&config.Config{
 		RemoteWriteConfigs: cfg.RemoteWrite,
 	})

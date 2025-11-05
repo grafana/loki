@@ -42,7 +42,9 @@ var (
 	errS3EndpointUnparseable       = errors.New("can not parse S3 endpoint as URL")
 	errS3EndpointNoURL             = errors.New("endpoint for S3 must be an HTTP or HTTPS URL")
 	errS3EndpointUnsupportedScheme = errors.New("scheme of S3 endpoint URL is unsupported")
+	errS3EndpointPathNotAllowed    = errors.New("endpoint for S3 must not include a path")
 	errS3EndpointAWSInvalid        = errors.New("endpoint for AWS S3 must include correct region")
+	errS3ForcePathStyleInvalid     = errors.New(`forcepathstyle must be "true" or "false"`)
 
 	errGCPParseCredentialsFile      = errors.New("gcp storage secret cannot be parsed from JSON content")
 	errGCPWrongCredentialSourceFile = errors.New("credential source in secret needs to point to token file")
@@ -410,9 +412,22 @@ func extractS3ConfigSecret(s *corev1.Secret, credentialMode lokiv1.CredentialMod
 		roleArn  = s.Data[storage.KeyAWSRoleArn]
 		audience = s.Data[storage.KeyAWSAudience]
 		// Optional fields
-		region         = s.Data[storage.KeyAWSRegion]
-		forcePathStyle = !strings.HasSuffix(string(endpoint), awsEndpointSuffix)
+		region = s.Data[storage.KeyAWSRegion]
 	)
+
+	// Determine if we should use path style URLs for S3
+	// default to false for non-AWS endpoints
+	forcePathStyle := !strings.HasSuffix(string(endpoint), awsEndpointSuffix)
+	// Check if the user has specified forcepathstyle
+	if configForcePathStyle, ok := s.Data[storage.KeyAWSForcePathStyle]; ok {
+		strForcePathStyle := string(configForcePathStyle)
+		switch strForcePathStyle {
+		case "true", "false":
+			forcePathStyle = strForcePathStyle == "true"
+		default:
+			return nil, fmt.Errorf("%w: %s", errS3ForcePathStyleInvalid, strForcePathStyle)
+		}
+	}
 
 	sseCfg, err := extractS3SSEConfig(s.Data)
 	if err != nil {
@@ -487,7 +502,11 @@ func validateS3Endpoint(endpoint string, region string) error {
 		return fmt.Errorf("%w: %s", errS3EndpointUnsupportedScheme, parsedURL.Scheme)
 	}
 
-	if strings.HasSuffix(endpoint, awsEndpointSuffix) {
+	if parsedURL.Path != "" && parsedURL.Path != "/" {
+		return fmt.Errorf("%w: %s", errS3EndpointPathNotAllowed, parsedURL.Path)
+	}
+
+	if strings.HasSuffix(parsedURL.Host, awsEndpointSuffix) {
 		if len(region) == 0 {
 			return fmt.Errorf("%w: %s", errSecretMissingField, storage.KeyAWSRegion)
 		}

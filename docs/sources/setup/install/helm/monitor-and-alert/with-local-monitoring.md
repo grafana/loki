@@ -13,6 +13,13 @@ keywords:
 
 # Monitor Loki using a local LGTM (Loki, Grafana, Tempo and Mimir) stack
 
+
+<!-- vale Grafana.We = NO -->
+{{< admonition type="warning" >}}
+We no longer recommend using the meta-monitoring Helm chart to monitor Loki. To consolidate monitoring efforts into one Helm chart, Grafana Labs recommends using the Kubernetes monitoring Helm chart. Instructions for setting up the Kubernetes monitoring Helm chart can be found under [Manage](https://grafana.com/docs/loki/<LOKI_VERSION>/operations/meta-monitoring/).
+{{< /admonition >}}
+<!-- vale Grafana.We = YES -->
+
 This topic will walk you through using the meta-monitoring Helm chart to deploy a local stack to monitor your production Loki installation. This approach leverages many of the chart's _self monitoring_ features, but instead of sending logs back to Loki itself, it sends them to a small Loki, Grafana, Tempo, Mimir (LGTM) stack running within the `meta` namespace. 
 
 

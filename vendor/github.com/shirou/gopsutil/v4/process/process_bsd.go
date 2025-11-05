@@ -16,61 +16,61 @@ type MemoryInfoExStat struct{}
 
 type MemoryMapsStat struct{}
 
-func (p *Process) TgidWithContext(ctx context.Context) (int32, error) {
+func (*Process) TgidWithContext(_ context.Context) (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
 
-func (p *Process) IOniceWithContext(ctx context.Context) (int32, error) {
+func (*Process) IOniceWithContext(_ context.Context) (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
 
-func (p *Process) RlimitWithContext(ctx context.Context) ([]RlimitStat, error) {
+func (*Process) RlimitWithContext(_ context.Context) ([]RlimitStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func (p *Process) RlimitUsageWithContext(ctx context.Context, gatherUsed bool) ([]RlimitStat, error) {
+func (*Process) RlimitUsageWithContext(_ context.Context, _ bool) ([]RlimitStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func (p *Process) NumCtxSwitchesWithContext(ctx context.Context) (*NumCtxSwitchesStat, error) {
+func (*Process) NumCtxSwitchesWithContext(_ context.Context) (*NumCtxSwitchesStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func (p *Process) NumFDsWithContext(ctx context.Context) (int32, error) {
+func (*Process) NumFDsWithContext(_ context.Context) (int32, error) {
 	return 0, common.ErrNotImplementedError
 }
 
-func (p *Process) CPUAffinityWithContext(ctx context.Context) ([]int32, error) {
+func (*Process) CPUAffinityWithContext(_ context.Context) ([]int32, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func (p *Process) MemoryInfoExWithContext(ctx context.Context) (*MemoryInfoExStat, error) {
+func (*Process) MemoryInfoExWithContext(_ context.Context) (*MemoryInfoExStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func (p *Process) PageFaultsWithContext(ctx context.Context) (*PageFaultsStat, error) {
+func (*Process) PageFaultsWithContext(_ context.Context) (*PageFaultsStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func (p *Process) OpenFilesWithContext(ctx context.Context) ([]OpenFilesStat, error) {
+func (*Process) OpenFilesWithContext(_ context.Context) ([]OpenFilesStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func (p *Process) MemoryMapsWithContext(ctx context.Context, grouped bool) (*[]MemoryMapsStat, error) {
+func (*Process) MemoryMapsWithContext(_ context.Context, _ bool) (*[]MemoryMapsStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func (p *Process) ThreadsWithContext(ctx context.Context) (map[int32]*cpu.TimesStat, error) {
+func (*Process) ThreadsWithContext(_ context.Context) (map[int32]*cpu.TimesStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func (p *Process) EnvironWithContext(ctx context.Context) ([]string, error) {
+func (*Process) EnvironWithContext(_ context.Context) ([]string, error) {
 	return nil, common.ErrNotImplementedError
 }
 
 func parseKinfoProc(buf []byte) (KinfoProc, error) {
 	var k KinfoProc
 	br := bytes.NewReader(buf)
-	err := common.Read(br, binary.LittleEndian, &k)
+	err := binary.Read(br, binary.LittleEndian, &k)
 	return k, err
 }

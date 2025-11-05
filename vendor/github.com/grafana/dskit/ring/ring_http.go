@@ -30,9 +30,12 @@ var defaultPageTemplate = template.Must(template.New("webpage").Funcs(template.F
 }).Parse(defaultPageContent))
 
 type httpResponse struct {
-	Ingesters  []ingesterDesc `json:"shards"`
-	Now        time.Time      `json:"now"`
-	ShowTokens bool           `json:"-"`
+	Ingesters []ingesterDesc `json:"shards"`
+	Now       time.Time      `json:"now"`
+	// ShowTokens indicates whether the Show Tokens button is clicked.
+	ShowTokens bool `json:"-"`
+	// DisableTokens hides the concept of tokens entirely in the page, across all elements.
+	DisableTokens bool `json:"-"`
 }
 
 type ingesterDesc struct {
@@ -57,12 +60,14 @@ type ringAccess interface {
 type ringPageHandler struct {
 	r                ringAccess
 	heartbeatTimeout time.Duration
+	disableTokens    bool
 }
 
-func newRingPageHandler(r ringAccess, heartbeatTimeout time.Duration) *ringPageHandler {
+func newRingPageHandler(r ringAccess, heartbeatTimeout time.Duration, disableTokens bool) *ringPageHandler {
 	return &ringPageHandler{
 		r:                r,
 		heartbeatTimeout: heartbeatTimeout,
+		disableTokens:    disableTokens,
 	}
 }
 
@@ -132,9 +137,10 @@ func (h *ringPageHandler) handle(w http.ResponseWriter, req *http.Request) {
 	tokensParam := req.URL.Query().Get("tokens")
 
 	renderHTTPResponse(w, httpResponse{
-		Ingesters:  ingesters,
-		Now:        now,
-		ShowTokens: tokensParam == "true",
+		Ingesters:     ingesters,
+		Now:           now,
+		ShowTokens:    tokensParam == "true",
+		DisableTokens: h.disableTokens,
 	}, defaultPageTemplate, req)
 }
 

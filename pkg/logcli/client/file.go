@@ -42,17 +42,14 @@ type FileClient struct {
 	labels      []string
 	labelValues []string
 	orgID       string
-	engine      *logql.Engine
+	engine      logql.Engine
 }
 
 // NewFileClient returns the new instance of FileClient for the given `io.ReadCloser`
 func NewFileClient(r io.ReadCloser) *FileClient {
-	lbs := []labels.Label{
-		{
-			Name:  defaultLabelKey,
-			Value: defaultLabelValue,
-		},
-	}
+	lbs := labels.New(
+		labels.Label{Name: defaultLabelKey, Value: defaultLabelValue},
+	)
 
 	eng := logql.NewEngine(logql.EngineOpts{}, &querier{r: r, labels: lbs}, &limiter{n: defaultMetricSeriesLimit}, log.Logger)
 	return &FileClient{
@@ -217,6 +214,18 @@ func (f *FileClient) GetDetectedFields(
 	return nil, ErrNotSupported
 }
 
+func (f *FileClient) CreateDeleteRequest(_ DeleteRequestParams, _ bool) error {
+	return ErrNotSupported
+}
+
+func (f *FileClient) ListDeleteRequests(_ bool) ([]DeleteRequest, error) {
+	return nil, ErrNotSupported
+}
+
+func (f *FileClient) CancelDeleteRequest(_ string, _ bool, _ bool) error {
+	return ErrNotSupported
+}
+
 type limiter struct {
 	n int
 }
@@ -241,6 +250,10 @@ func (l *limiter) RequiredLabels(_ context.Context, _ string) []string {
 	return nil
 }
 
+func (l *limiter) EnableMultiVariantQueries(_ string) bool {
+	return false // Multi-variant queries disabled by default for file client
+}
+
 type querier struct {
 	r      io.Reader
 	labels labels.Labels
@@ -259,7 +272,7 @@ func (q *querier) SelectLogs(_ context.Context, params logql.SelectLogParams) (i
 }
 
 func (q *querier) SelectSamples(_ context.Context, _ logql.SelectSampleParams) (iter.SampleIterator, error) {
-	return nil, fmt.Errorf("Metrics Query: %w", ErrNotSupported)
+	return nil, fmt.Errorf("metrics Query: %w", ErrNotSupported)
 }
 
 func newFileIterator(
@@ -285,7 +298,7 @@ func newFileIterator(
 
 	processLine := func(line string) {
 		ts := time.Now()
-		parsedLine, parsedLabels, matches := pipeline.ProcessString(ts.UnixNano(), line)
+		parsedLine, parsedLabels, matches := pipeline.ProcessString(ts.UnixNano(), line, labels.EmptyLabels())
 		if !matches {
 			return
 		}

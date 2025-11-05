@@ -23,10 +23,10 @@ type cachedIterator struct {
 
 // NewCachedIterator creates an iterator that cache iteration result and can be iterated again
 // after closing it without re-using the underlaying iterator `it`.
-func NewCachedIterator(it EntryIterator, cap int) CacheEntryIterator {
+func NewCachedIterator(it EntryIterator, capacity int) CacheEntryIterator {
 	c := &cachedIterator{
 		wrapped: it,
-		cache:   make([]entryWithLabels, 0, cap),
+		cache:   make([]entryWithLabels, 0, capacity),
 		curr:    -1,
 	}
 	return c
@@ -120,10 +120,10 @@ type cachedSampleIterator struct {
 
 // NewCachedSampleIterator creates an iterator that cache iteration result and can be iterated again
 // after closing it without re-using the underlaying iterator `it`.
-func NewCachedSampleIterator(it SampleIterator, cap int) CacheSampleIterator {
+func NewCachedSampleIterator(it SampleIterator, capacity int) CacheSampleIterator {
 	c := &cachedSampleIterator{
 		wrapped: it,
-		cache:   make([]sampleWithLabels, 0, cap),
+		cache:   make([]sampleWithLabels, 0, capacity),
 		curr:    -1,
 	}
 	return c

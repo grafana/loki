@@ -316,49 +316,6 @@ func (m *FilterChainMatch) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error
 	return len(dAtA) - i, nil
 }
 
-func (m *FilterChain_OnDemandConfiguration) MarshalVTStrict() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVTStrict(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *FilterChain_OnDemandConfiguration) MarshalToVTStrict(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVTStrict(dAtA[:size])
-}
-
-func (m *FilterChain_OnDemandConfiguration) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.RebuildTimeout != nil {
-		size, err := (*durationpb.Duration)(m.RebuildTimeout).MarshalToSizedBufferVTStrict(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
 func (m *FilterChain) MarshalVTStrict() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -398,16 +355,6 @@ func (m *FilterChain) MarshalToSizedBufferVTStrict(dAtA []byte) (int, error) {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 		i--
 		dAtA[i] = 0x4a
-	}
-	if m.OnDemandConfiguration != nil {
-		size, err := m.OnDemandConfiguration.MarshalToSizedBufferVTStrict(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x42
 	}
 	if len(m.Name) > 0 {
 		i -= len(m.Name)
@@ -986,20 +933,6 @@ func (m *FilterChainMatch) SizeVT() (n int) {
 	return n
 }
 
-func (m *FilterChain_OnDemandConfiguration) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.RebuildTimeout != nil {
-		l = (*durationpb.Duration)(m.RebuildTimeout).SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
 func (m *FilterChain) SizeVT() (n int) {
 	if m == nil {
 		return 0
@@ -1042,10 +975,6 @@ func (m *FilterChain) SizeVT() (n int) {
 	}
 	l = len(m.Name)
 	if l > 0 {
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.OnDemandConfiguration != nil {
-		l = m.OnDemandConfiguration.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	if m.TransportSocketConnectTimeout != nil {

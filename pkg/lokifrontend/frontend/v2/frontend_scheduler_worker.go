@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
@@ -17,7 +18,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/v3/pkg/util"
-	lokiutil "github.com/grafana/loki/v3/pkg/util"
 )
 
 type frontendSchedulerWorkers struct {
@@ -49,7 +49,7 @@ func newFrontendSchedulerWorkers(cfg Config, frontendAddress string, ring ring.R
 	switch {
 	case ring != nil:
 		// Use the scheduler ring and RingWatcher to find schedulers.
-		w, err := lokiutil.NewRingWatcher(log.With(logger, "component", "frontend-scheduler-worker"), ring, cfg.DNSLookupPeriod, f)
+		w, err := util.NewRingWatcher(log.With(logger, "component", "frontend-scheduler-worker"), ring, cfg.DNSLookupPeriod, f)
 		if err != nil {
 			return nil, err
 		}
@@ -153,7 +153,7 @@ func (f *frontendSchedulerWorkers) getWorkersCount() int {
 
 func (f *frontendSchedulerWorkers) connectToScheduler(ctx context.Context, address string) (*grpc.ClientConn, error) {
 	// Because we only use single long-running method, it doesn't make sense to inject user ID, send over tracing or add metrics.
-	opts, err := f.cfg.GRPCClientConfig.DialOption(nil, nil)
+	opts, err := f.cfg.GRPCClientConfig.DialOption(nil, nil, middleware.NoOpInvalidClusterValidationReporter)
 	if err != nil {
 		return nil, err
 	}

@@ -72,26 +72,26 @@ func (s *CountMinSketch) Increment(event []byte) {
 func (s *CountMinSketch) ConservativeAdd(event []byte, count float64) (float64, uint32, uint32) {
 	s.HyperLogLog.Insert(event)
 
-	min := float64(math.MaxUint64)
+	minVal := float64(math.MaxUint64)
 
 	h1, h2 := hashn(event)
 	// inline Count to save time/memory
 	var pos uint32
 	for i := uint32(0); i < s.Depth; i++ {
 		pos = s.getPos(h1, h2, i)
-		if s.Counters[i][pos] < min {
-			min = s.Counters[i][pos]
+		if s.Counters[i][pos] < minVal {
+			minVal = s.Counters[i][pos]
 		}
 	}
-	min += count
+	minVal += count
 	for i := uint32(0); i < s.Depth; i++ {
 		pos = s.getPos(h1, h2, i)
 		v := s.Counters[i][pos]
-		if v < min {
-			s.Counters[i][pos] = min
+		if v < minVal {
+			s.Counters[i][pos] = minVal
 		}
 	}
-	return min, h1, h2
+	return minVal, h1, h2
 }
 
 func (s *CountMinSketch) ConservativeIncrement(event []byte) (float64, uint32, uint32) {
@@ -100,24 +100,24 @@ func (s *CountMinSketch) ConservativeIncrement(event []byte) (float64, uint32, u
 
 // Count returns the approximate min count for the given input.
 func (s *CountMinSketch) Count(event []byte) float64 {
-	min := float64(math.MaxUint64)
+	minVal := float64(math.MaxUint64)
 	h1, h2 := hashn(event)
 
 	var pos uint32
 	for i := uint32(0); i < s.Depth; i++ {
 		pos = s.getPos(h1, h2, i)
-		if s.Counters[i][pos] < min {
-			min = s.Counters[i][pos]
+		if s.Counters[i][pos] < minVal {
+			minVal = s.Counters[i][pos]
 		}
 	}
-	return min
+	return minVal
 }
 
 // Merge the given sketch into this one.
 // The sketches must have the same dimensions.
 func (s *CountMinSketch) Merge(from *CountMinSketch) error {
 	if s.Depth != from.Depth || s.Width != from.Width {
-		return fmt.Errorf("Can't merge different sketches with different dimensions")
+		return fmt.Errorf("can't merge different sketches with different dimensions")
 	}
 
 	for i, l := range from.Counters {

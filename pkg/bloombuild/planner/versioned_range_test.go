@@ -20,8 +20,8 @@ func Test_TsdbTokenRange(t *testing.T) {
 		added bool
 		err   bool
 	}
-	mk := func(version int, min, max model.Fingerprint) addition {
-		return addition{version, v1.FingerprintBounds{Min: min, Max: max}}
+	mk := func(version int, minVal, maxVal model.Fingerprint) addition {
+		return addition{version, v1.FingerprintBounds{Min: minVal, Max: maxVal}}
 	}
 	tok := func(version int, through model.Fingerprint) tsdbToken {
 		return tsdbToken{version: version, through: through}

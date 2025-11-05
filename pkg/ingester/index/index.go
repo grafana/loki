@@ -139,9 +139,9 @@ func labelsString(b *bytes.Buffer, ls labels.Labels) {
 	b.WriteString("logs")
 	b.WriteByte('{')
 	i := 0
-	for _, l := range ls {
+	ls.Range(func(l labels.Label) {
 		if l.Name == labels.MetricName {
-			continue
+			return
 		}
 		if i > 0 {
 			b.WriteByte(',')
@@ -152,7 +152,7 @@ func labelsString(b *bytes.Buffer, ls labels.Labels) {
 		var buf [1000]byte
 		b.Write(strconv.AppendQuote(buf[:0], l.Value))
 		i++
-	}
+	})
 	b.WriteByte('}')
 }
 
@@ -258,9 +258,9 @@ func (shard *indexShard) add(metric []logproto.LabelAdapter, fp model.Fingerprin
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
 
-	internedLabels := make(labels.Labels, len(metric))
+	builder := labels.NewScratchBuilder(len(metric))
 
-	for i, pair := range metric {
+	for _, pair := range metric {
 		values, ok := shard.idx[pair.Name]
 		if !ok {
 			values = indexEntry{
@@ -283,10 +283,9 @@ func (shard *indexShard) add(metric []logproto.LabelAdapter, fp model.Fingerprin
 		copy(fingerprints.fps[j+1:], fingerprints.fps[j:])
 		fingerprints.fps[j] = fp
 		values.fps[fingerprints.value] = fingerprints
-		internedLabels[i] = labels.Label{Name: values.name, Value: fingerprints.value}
+		builder.Add(values.name, fingerprints.value)
 	}
-	sort.Sort(internedLabels)
-	return internedLabels
+	return builder.Labels()
 }
 
 func (shard *indexShard) lookup(matchers []*labels.Matcher) []model.Fingerprint {
@@ -400,19 +399,19 @@ func (shard *indexShard) labelValues(
 	return extractor(values)
 }
 
-func (shard *indexShard) delete(labels labels.Labels, fp model.Fingerprint) {
+func (shard *indexShard) delete(lbls labels.Labels, fp model.Fingerprint) {
 	shard.mtx.Lock()
 	defer shard.mtx.Unlock()
 
-	for _, pair := range labels {
+	lbls.Range(func(pair labels.Label) {
 		name, value := pair.Name, pair.Value
 		values, ok := shard.idx[name]
 		if !ok {
-			continue
+			return
 		}
 		fingerprints, ok := values.fps[value]
 		if !ok {
-			continue
+			return
 		}
 
 		j := sort.Search(len(fingerprints.fps), func(i int) bool {
@@ -421,7 +420,7 @@ func (shard *indexShard) delete(labels labels.Labels, fp model.Fingerprint) {
 
 		// see if search didn't find fp which matches the condition which means we don't have to do anything.
 		if j >= len(fingerprints.fps) || fingerprints.fps[j] != fp {
-			continue
+			return
 		}
 		fingerprints.fps = fingerprints.fps[:j+copy(fingerprints.fps[j:], fingerprints.fps[j+1:])]
 
@@ -436,7 +435,7 @@ func (shard *indexShard) delete(labels labels.Labels, fp model.Fingerprint) {
 		} else {
 			shard.idx[name] = values
 		}
-	}
+	})
 }
 
 // intersect two sorted lists of fingerprints.  Assumes there are no duplicate

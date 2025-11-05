@@ -49,3 +49,13 @@ func main() {
 	slogger.WithGroup("example_group").With("foo", "bar").Info("hello world")
 }
 ```
+
+## Development
+
+Contributions are welcome! Commits should follow [conventional commits](https://www.conventionalcommits.org/en/v1.0.0/) syntax.
+
+### Required Software/Tools
+
+- Working Go environment
+- Docker
+- GNU Make

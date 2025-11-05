@@ -3,7 +3,9 @@ package grpcutil
 import (
 	"context"
 	"errors"
+	"fmt"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/status"
 	"google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
@@ -58,6 +60,21 @@ func ErrorToStatusCode(err error) codes.Code {
 		}
 	}
 	return codes.Unknown
+}
+
+// Status creates a new a *github.com/gogo/status.Status with the
+// given error code, error message and error details.
+func Status(errCode codes.Code, errMessage string, details ...proto.Message) *status.Status {
+	stat := status.New(errCode, errMessage)
+	if len(details) > 0 {
+		statWithDetails, err := stat.WithDetails(details...)
+		if err == nil {
+			return statWithDetails
+		}
+		statusErr := fmt.Errorf("error while creating details for a Status with code %s and error message %q: %w", errCode, errMessage, err)
+		return status.New(codes.InvalidArgument, statusErr.Error())
+	}
+	return stat
 }
 
 // IsCanceled checks whether an error comes from an operation being canceled.

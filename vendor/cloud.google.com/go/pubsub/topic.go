@@ -282,6 +282,10 @@ type TopicConfig struct {
 	// IngestionDataSourceSettings are settings for ingestion from a
 	// data source into this topic.
 	IngestionDataSourceSettings *IngestionDataSourceSettings
+
+	// MessageTransforms are the transforms to be applied to messages published to the topic.
+	// Transforms are applied in the order specified.
+	MessageTransforms []MessageTransform
 }
 
 // String returns the printable globally unique name for the topic config.
@@ -316,6 +320,7 @@ func (tc *TopicConfig) toProto() *pb.Topic {
 		SchemaSettings:              schemaSettingsToProto(tc.SchemaSettings),
 		MessageRetentionDuration:    retDur,
 		IngestionDataSourceSettings: tc.IngestionDataSourceSettings.toProto(),
+		MessageTransforms:           messageTransformsToProto(tc.MessageTransforms),
 	}
 	return pbt
 }
@@ -356,6 +361,9 @@ type TopicConfigToUpdate struct {
 	//
 	// Use the zero value &IngestionDataSourceSettings{} to remove the ingestion settings from the topic.
 	IngestionDataSourceSettings *IngestionDataSourceSettings
+
+	// If non-nil, the entire list of message transforms is replaced with the following.
+	MessageTransforms []MessageTransform
 }
 
 func protoToTopicConfig(pbt *pb.Topic) TopicConfig {
@@ -367,6 +375,7 @@ func protoToTopicConfig(pbt *pb.Topic) TopicConfig {
 		SchemaSettings:              protoToSchemaSettings(pbt.SchemaSettings),
 		State:                       TopicState(pbt.State),
 		IngestionDataSourceSettings: protoToIngestionDataSourceSettings(pbt.IngestionDataSourceSettings),
+		MessageTransforms:           protoToMessageTransforms(pbt.MessageTransforms),
 	}
 	if pbt.GetMessageRetentionDuration() != nil {
 		tc.RetentionDuration = pbt.GetMessageRetentionDuration().AsDuration()
@@ -1052,6 +1061,10 @@ func (t *Topic) updateRequest(cfg TopicConfigToUpdate) *pb.UpdateTopicRequest {
 	if cfg.IngestionDataSourceSettings != nil {
 		pt.IngestionDataSourceSettings = cfg.IngestionDataSourceSettings.toProto()
 		paths = append(paths, "ingestion_data_source_settings")
+	}
+	if cfg.MessageTransforms != nil {
+		pt.MessageTransforms = messageTransformsToProto(cfg.MessageTransforms)
+		paths = append(paths, "message_transforms")
 	}
 	return &pb.UpdateTopicRequest{
 		Topic:      pt,

@@ -240,10 +240,10 @@ func Test_ownedStreamsPartitionStrategy_isOwnedStream(t *testing.T) {
 }
 
 func createStream(t *testing.T, inst *instance, fingerprint int) *stream {
-	lbls := labels.Labels{labels.Label{Name: "mock", Value: strconv.Itoa(fingerprint)}}
+	lbls := labels.FromStrings("mock", strconv.Itoa(fingerprint))
 
 	stream, _, err := inst.streams.LoadOrStoreNew(lbls.String(), func() (*stream, error) {
-		return inst.createStreamByFP(lbls, model.Fingerprint(fingerprint))
+		return inst.createStreamByFP(context.Background(), lbls, model.Fingerprint(fingerprint))
 	}, nil)
 	require.NoError(t, err)
 	return stream

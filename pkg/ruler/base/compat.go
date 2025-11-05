@@ -135,6 +135,7 @@ type RulesLimits interface {
 	RulerMaxRuleGroupsPerTenant(userID string) int
 	RulerMaxRulesPerRuleGroup(userID string) int
 	RulerAlertManagerConfig(userID string) *config.AlertManagerConfig
+	RulerEnableWALReplay(userID string) bool
 }
 
 func MetricsQueryFunc(qf rules.QueryFunc, queries, failedQueries prometheus.Counter) rules.QueryFunc {

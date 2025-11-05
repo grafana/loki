@@ -13,7 +13,7 @@ services:
       - ./provisioning:/etc/grafana/provisioning/
       - ./data/grafana/:/var/lib/grafana/
     extra_hosts:
-      - 'host.docker.internal:host-gateway'
+      - "host.docker.internal:host-gateway"
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     ports:
@@ -25,7 +25,7 @@ services:
     depends_on:
       - broker
     extra_hosts:
-      - 'host.docker.internal:host-gateway'
+      - "host.docker.internal:host-gateway"
   broker:
     image: apache/kafka:latest
     hostname: broker
@@ -49,5 +49,5 @@ services:
       KAFKA_LOG_DIRS: /tmp/kraft-combined-logs
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
   generator:
-    image: ctovena/log-generator:latest
+    image: theperiklis/log-generator:latest
     command: -url http://host.docker.internal:3100/loki/api/v1/push

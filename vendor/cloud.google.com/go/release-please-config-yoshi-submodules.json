@@ -90,6 +90,9 @@
         "chat": {
             "component": "chat"
         },
+        "chronicle": {
+            "component": "chronicle"
+        },
         "cloudbuild": {
             "component": "cloudbuild"
         },
@@ -122,6 +125,9 @@
         },
         "config": {
             "component": "config"
+        },
+        "configdelivery": {
+            "component": "configdelivery"
         },
         "contactcenterinsights": {
             "component": "contactcenterinsights"
@@ -165,6 +171,9 @@
         "developerconnect": {
             "component": "developerconnect"
         },
+        "devicestreaming": {
+            "component": "devicestreaming"
+        },
         "dialogflow": {
             "component": "dialogflow"
         },
@@ -194,6 +203,9 @@
         },
         "filestore": {
             "component": "filestore"
+        },
+        "financialservices": {
+            "component": "financialservices"
         },
         "functions": {
             "component": "functions"
@@ -237,11 +249,20 @@
         "language": {
             "component": "language"
         },
+        "licensemanager": {
+            "component": "licensemanager"
+        },
         "lifesciences": {
             "component": "lifesciences"
         },
         "longrunning": {
             "component": "longrunning"
+        },
+        "lustre": {
+            "component": "lustre"
+        },
+        "maintenance": {
+            "component": "maintenance"
         },
         "managedidentities": {
             "component": "managedidentities"
@@ -266,6 +287,9 @@
         },
         "migrationcenter": {
             "component": "migrationcenter"
+        },
+        "modelarmor": {
+            "component": "modelarmor"
         },
         "monitoring": {
             "component": "monitoring"
@@ -345,9 +369,6 @@
         "resourcemanager": {
             "component": "resourcemanager"
         },
-        "resourcesettings": {
-            "component": "resourcesettings"
-        },
         "retail": {
             "component": "retail"
         },
@@ -396,8 +417,14 @@
         "shopping": {
             "component": "shopping"
         },
+        "spanner/benchmarks": {
+            "component": "spanner/benchmarks"
+        },
         "speech": {
             "component": "speech"
+        },
+        "storagebatchoperations": {
+            "component": "storagebatchoperations"
         },
         "storageinsights": {
             "component": "storageinsights"

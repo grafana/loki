@@ -19,6 +19,7 @@ package bce
 import (
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/baidubce/bce-sdk-go/util/log"
@@ -70,6 +71,11 @@ func (b *BackOffRetryPolicy) ShouldRetry(err BceError, attempts int) bool {
 
 	// Always retry on IO error
 	if _, ok := err.(net.Error); ok {
+		// context canceled should not retry
+		if strings.Contains(err.Error(), "context deadline exceeded") ||
+			strings.Contains(err.Error(), "context canceled") {
+			return false
+		}
 		return true
 	}
 

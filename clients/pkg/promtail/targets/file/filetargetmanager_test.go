@@ -26,7 +26,7 @@ import (
 func newTestLogDirectories(t *testing.T) string {
 	tmpDir := t.TempDir()
 	logFileDir := filepath.Join(tmpDir, "logs")
-	err := os.MkdirAll(logFileDir, 0750)
+	err := os.MkdirAll(logFileDir, 0o750)
 	assert.NoError(t, err)
 	return logFileDir
 }
@@ -71,7 +71,7 @@ func newTestFileTargetManager(logger log.Logger, client api.EntryHandler, positi
 	}
 
 	metrics := NewMetrics(nil)
-	ftm, err := NewFileTargetManager(metrics, logger, positions, client, []scrapeconfig.Config{sc}, tc, DefaultWatchConig)
+	ftm, err := NewFileTargetManager(metrics, logger, positions, client, []scrapeconfig.Config{sc}, tc, DefaultWatchConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -492,7 +492,7 @@ func TestDeadlockStartWatchingDuringSync(t *testing.T) {
 	go func() {
 		for i := 0; i < 10; i++ {
 			dir := filepath.Join(newLogDir, fmt.Sprintf("%d", i))
-			err := os.MkdirAll(dir, 0750)
+			err := os.MkdirAll(dir, 0o750)
 			assert.NoError(t, err)
 			time.Sleep(1 * time.Millisecond)
 			for j := 0; j < 100; j++ {
@@ -551,13 +551,13 @@ func TestLabelSetUpdate(t *testing.T) {
 		},
 	}
 
-	var target = model.LabelSet{
+	target := model.LabelSet{
 		hostLabel: "localhost",
 		pathLabel: "baz",
 		"job":     "foo",
 	}
 
-	var target2 = model.LabelSet{
+	target2 := model.LabelSet{
 		hostLabel: "localhost",
 		pathLabel: "baz",
 		"job":     "foo2",
@@ -593,7 +593,6 @@ func TestLabelSetUpdate(t *testing.T) {
 	}, targetEventHandler)
 	require.Equal(t, 0, len(syncer.targets))
 	require.Equal(t, 0, len(syncer.fileEventWatchers))
-
 }
 
 func TestFulfillKubePodSelector(t *testing.T) {

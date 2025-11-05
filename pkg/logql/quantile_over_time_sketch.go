@@ -37,11 +37,11 @@ func (q ProbabilisticQuantileVector) Merge(right ProbabilisticQuantileVector) (P
 		streamHashPool.Put(groups)
 	}()
 	for i, sample := range q {
-		groups[sample.Metric.Hash()] = i
+		groups[labels.StableHash(sample.Metric)] = i
 	}
 
 	for _, sample := range right {
-		i, ok := groups[sample.Metric.Hash()]
+		i, ok := groups[labels.StableHash(sample.Metric)]
 		if !ok {
 			q = append(q, sample)
 			continue
@@ -218,10 +218,10 @@ type ProbabilisticQuantileSample struct {
 }
 
 func (q ProbabilisticQuantileSample) ToProto() *logproto.QuantileSketchSample {
-	metric := make([]*logproto.LabelPair, len(q.Metric))
-	for i, m := range q.Metric {
-		metric[i] = &logproto.LabelPair{Name: m.Name, Value: m.Value}
-	}
+	metric := make([]*logproto.LabelPair, 0, q.Metric.Len())
+	q.Metric.Range(func(l labels.Label) {
+		metric = append(metric, &logproto.LabelPair{Name: l.Name, Value: l.Value})
+	})
 
 	sketch := q.F.ToProto()
 
@@ -238,14 +238,15 @@ func probabilisticQuantileSampleFromProto(proto *logproto.QuantileSketchSample) 
 		return ProbabilisticQuantileSample{}, err
 	}
 	out := ProbabilisticQuantileSample{
-		T:      proto.TimestampMs,
-		F:      s,
-		Metric: make(labels.Labels, len(proto.Metric)),
+		T: proto.TimestampMs,
+		F: s,
 	}
 
-	for i, p := range proto.Metric {
-		out.Metric[i] = labels.Label{Name: p.Name, Value: p.Value}
+	b := labels.NewScratchBuilder(len(proto.Metric))
+	for _, p := range proto.Metric {
+		b.Add(p.Name, p.Value)
 	}
+	out.Metric = b.Labels()
 
 	return out, nil
 }

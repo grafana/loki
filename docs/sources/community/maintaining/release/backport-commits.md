@@ -9,7 +9,7 @@ Any PRs or commits not on the release branch that you want to include in the rel
 
 ## Before you begin
 
-1. Determine the [VERSION_PREFIX]({{< relref "./concepts/version" >}}).
+1. Determine the [VERSION_PREFIX](../concepts/version/).
 
 2. If the release branch already has all the code changes on it, skip this step.
 

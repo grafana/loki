@@ -30,6 +30,7 @@ import (
 	"crypto/x509"
 	"errors"
 
+	"github.com/spiffe/go-spiffe/v2/bundle/spiffebundle"
 	"google.golang.org/grpc/internal"
 )
 
@@ -93,7 +94,12 @@ type KeyMaterial struct {
 	// Certs contains a slice of cert/key pairs used to prove local identity.
 	Certs []tls.Certificate
 	// Roots contains the set of trusted roots to validate the peer's identity.
+	// This field will only be used if the `SPIFFEBundleMap` field is unset.
 	Roots *x509.CertPool
+	// SPIFFEBundleMap is an in-memory representation of a spiffe trust bundle
+	// map. If this value exists, it will be used to find the roots for a given
+	// trust domain rather than the Roots in this struct.
+	SPIFFEBundleMap map[string]*spiffebundle.Bundle
 }
 
 // BuildOptions contains parameters passed to a Provider at build time.

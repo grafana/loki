@@ -310,14 +310,28 @@ type OpenshiftTenantSpec struct {
 type OpenshiftOTLPConfig struct {
 	// DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.
 	//
-	// Enabling this setting removes the "recommended attributes" from the generated Loki configuration. This will cause
-	// some stream labels to disappear from the index, potentially making queries more expensive and less performant.
+	// Enabling this setting removes the "recommended attributes" from the stream labels. This requires an update
+	// to queries that relied on these attributes as stream labels, as they will no longer be indexed as such.
 	//
-	// Note that there is a set of "required attributes", needed for OpenShift Logging to work properly. Those will be
-	// added to the configuration, even if this field is set to true.
+	// The recommended attributes are:
+	//
+	//  - k8s.container.name
+	//  - k8s.cronjob.name
+	//  - k8s.daemonset.name
+	//  - k8s.deployment.name
+	//  - k8s.job.name
+	//  - k8s.node.name
+	//  - k8s.pod.name
+	//  - k8s.statefulset.name
+	//  - kubernetes.container_name
+	//  - kubernetes.host
+	//  - kubernetes.pod_name
+	//  - service.name
 	//
 	// This option is supposed to be combined with a custom attribute configuration listing the stream labels that
 	// should continue to exist.
+	//
+	// See also: https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -361,6 +375,17 @@ type LokiComponentSpec struct {
 // LokiTemplateSpec defines the template of all requirements to configure
 // scheduling of all Loki components to be deployed.
 type LokiTemplateSpec struct {
+	// When UseRequestsAsLimits is true, the operand Pods are configured to have resource limits equal to the resource
+	// requests. This imposes a hard limit on resource usage of the LokiStack, but limits its ability to react to load
+	// spikes, whether on the ingestion or query side.
+	//
+	// Note: This is currently a tech-preview feature.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Use resource requests as limits"
+	UseRequestsAsLimits bool `json:"useRequestsAsLimits,omitempty"`
+
 	// Compactor defines the compaction component spec.
 	//
 	// +optional
@@ -1015,6 +1040,18 @@ type LimitsSpec struct {
 	Tenants map[string]PerTenantLimitsTemplateSpec `json:"tenants,omitempty"`
 }
 
+// NetworkPoliciesSpec defines the configuration for NetworkPolicies.
+type NetworkPoliciesSpec struct {
+	// Disabled allows explicitly disabling NetworkPolicies.
+	// When false, NetworkPolicies are enabled.
+	// When true, NetworkPolicies are disabled.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Disabled"
+	Disabled bool `json:"disabled,omitempty"`
+}
+
 // RulesSpec defines the spec for the ruler component.
 type RulesSpec struct {
 	// Enabled defines a flag to enable/disable the ruler component
@@ -1130,6 +1167,15 @@ type LokiStackSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Tenants Configuration"
 	Tenants *TenantsSpec `json:"tenants,omitempty"`
+
+	// NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+	// When enabled, the operator creates NetworkPolicies to control ingress/egress between
+	// Loki components and related services.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Network Policies"
+	NetworkPolicies *NetworkPoliciesSpec `json:"networkPolicies,omitempty"`
 }
 
 type ReplicationSpec struct {
@@ -1355,6 +1401,18 @@ const (
 	CredentialModeTokenCCO CredentialMode = "token-cco"
 )
 
+// NetworkPoliciesStatus defines the observed state of NetworkPolicies deployment.
+//
+// +kubebuilder:validation:Enum=Enabled;Disabled
+type NetworkPoliciesStatus string
+
+const (
+	// NetworkPoliciesStatusDisabled when NetworkPolicies are not deployed.
+	NetworkPoliciesStatusDisabled NetworkPoliciesStatus = "Disabled"
+	// NetworkPoliciesStatusEnabled when NetworkPolicies are deployed.
+	NetworkPoliciesStatusEnabled NetworkPoliciesStatus = "Enabled"
+)
+
 // LokiStackStorageStatus defines the observed state of
 // the Loki storage configuration.
 type LokiStackStorageStatus struct {
@@ -1387,6 +1445,12 @@ type LokiStackStatus struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	Storage LokiStackStorageStatus `json:"storage,omitempty"`
+
+	// NetworkPolicies indicates whether NetworkPolicies are enabled or disabled for this LokiStack.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	NetworkPolicies NetworkPoliciesStatus `json:"networkPolicies,omitempty"`
 
 	// Conditions of the Loki deployment health.
 	//

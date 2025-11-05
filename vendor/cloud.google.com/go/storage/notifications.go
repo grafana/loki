@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"regexp"
 
-	"cloud.google.com/go/internal/trace"
 	raw "google.golang.org/api/storage/v1"
 )
 
@@ -121,8 +120,8 @@ func toRawNotification(n *Notification) *raw.Notification {
 // returned Notification's ID can be used to refer to it.
 // Note: gRPC is not supported.
 func (b *BucketHandle) AddNotification(ctx context.Context, n *Notification) (ret *Notification, err error) {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.AddNotification")
-	defer func() { trace.EndSpan(ctx, err) }()
+	ctx, _ = startSpan(ctx, "Bucket.AddNotification")
+	defer func() { endSpan(ctx, err) }()
 
 	if n.ID != "" {
 		return nil, errors.New("storage: AddNotification: ID must not be set")
@@ -143,8 +142,8 @@ func (b *BucketHandle) AddNotification(ctx context.Context, n *Notification) (re
 // indexed by notification ID.
 // Note: gRPC is not supported.
 func (b *BucketHandle) Notifications(ctx context.Context) (n map[string]*Notification, err error) {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.Notifications")
-	defer func() { trace.EndSpan(ctx, err) }()
+	ctx, _ = startSpan(ctx, "Bucket.Notifications")
+	defer func() { endSpan(ctx, err) }()
 
 	opts := makeStorageOpts(true, b.retry, b.userProject)
 	n, err = b.c.tc.ListNotifications(ctx, b.name, opts...)
@@ -162,8 +161,8 @@ func notificationsToMap(rns []*raw.Notification) map[string]*Notification {
 // DeleteNotification deletes the notification with the given ID.
 // Note: gRPC is not supported.
 func (b *BucketHandle) DeleteNotification(ctx context.Context, id string) (err error) {
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.Bucket.DeleteNotification")
-	defer func() { trace.EndSpan(ctx, err) }()
+	ctx, _ = startSpan(ctx, "Bucket.DeleteNotification")
+	defer func() { endSpan(ctx, err) }()
 
 	opts := makeStorageOpts(true, b.retry, b.userProject)
 	return b.c.tc.DeleteNotification(ctx, b.name, id, opts...)

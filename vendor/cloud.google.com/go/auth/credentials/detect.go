@@ -27,6 +27,7 @@ import (
 	"cloud.google.com/go/auth"
 	"cloud.google.com/go/auth/internal"
 	"cloud.google.com/go/auth/internal/credsfile"
+	"cloud.google.com/go/auth/internal/trustboundary"
 	"cloud.google.com/go/compute/metadata"
 	"github.com/googleapis/gax-go/v2/internallog"
 )
@@ -49,6 +50,23 @@ const (
 var (
 	// for testing
 	allowOnGCECheck = true
+)
+
+// TokenBindingType specifies the type of binding used when requesting a token
+// whether to request a hard-bound token using mTLS or an instance identity
+// bound token using ALTS.
+type TokenBindingType int
+
+const (
+	// NoBinding specifies that requested tokens are not required to have a
+	// binding. This is the default option.
+	NoBinding TokenBindingType = iota
+	// MTLSHardBinding specifies that a hard-bound token should be requested
+	// using an mTLS with S2A channel.
+	MTLSHardBinding
+	// ALTSHardBinding specifies that an instance identity bound token should
+	// be requested using an ALTS channel.
+	ALTSHardBinding
 )
 
 // OnGCE reports whether this process is running in Google Cloud.
@@ -78,6 +96,10 @@ func DetectDefault(opts *DetectOptions) (*auth.Credentials, error) {
 	if err := opts.validate(); err != nil {
 		return nil, err
 	}
+	trustBoundaryEnabled, err := trustboundary.IsEnabled()
+	if err != nil {
+		return nil, err
+	}
 	if len(opts.CredentialsJSON) > 0 {
 		return readCredentialsFileJSON(opts.CredentialsJSON, opts)
 	}
@@ -99,16 +121,29 @@ func DetectDefault(opts *DetectOptions) (*auth.Credentials, error) {
 
 	if OnGCE() {
 		metadataClient := metadata.NewWithOptions(&metadata.Options{
-			Logger: opts.logger(),
+			Logger:           opts.logger(),
+			UseDefaultClient: true,
 		})
+		gceUniverseDomainProvider := &internal.ComputeUniverseDomainProvider{
+			MetadataClient: metadataClient,
+		}
+
+		tp := computeTokenProvider(opts, metadataClient)
+		if trustBoundaryEnabled {
+			gceConfigProvider := trustboundary.NewGCEConfigProvider(gceUniverseDomainProvider)
+			var err error
+			tp, err = trustboundary.NewProvider(opts.client(), gceConfigProvider, opts.logger(), tp)
+			if err != nil {
+				return nil, fmt.Errorf("credentials: failed to initialize GCE trust boundary provider: %w", err)
+			}
+
+		}
 		return auth.NewCredentials(&auth.CredentialsOptions{
-			TokenProvider: computeTokenProvider(opts, metadataClient),
+			TokenProvider: tp,
 			ProjectIDProvider: auth.CredentialsPropertyFunc(func(ctx context.Context) (string, error) {
 				return metadataClient.ProjectIDWithContext(ctx)
 			}),
-			UniverseDomainProvider: &internal.ComputeUniverseDomainProvider{
-				MetadataClient: metadataClient,
-			},
+			UniverseDomainProvider: gceUniverseDomainProvider,
 		}), nil
 	}
 
@@ -121,6 +156,10 @@ type DetectOptions struct {
 	// https://www.googleapis.com/auth/cloud-platform. Required if Audience is
 	// not provided.
 	Scopes []string
+	// TokenBindingType specifies the type of binding used when requesting a
+	// token whether to request a hard-bound token using mTLS or an instance
+	// identity bound token using ALTS. Optional.
+	TokenBindingType TokenBindingType
 	// Audience that credentials tokens should have. Only applicable for 2LO
 	// flows with service accounts. If specified, scopes should not be provided.
 	Audience string

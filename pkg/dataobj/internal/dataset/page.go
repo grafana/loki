@@ -30,8 +30,8 @@ type (
 	// non-NULL values.
 	PageData []byte
 
-	// PageInfo describes a page.
-	PageInfo struct {
+	// PageDesc describes a page.
+	PageDesc struct {
 		UncompressedSize int    // UncompressedSize is the size of a page before compression.
 		CompressedSize   int    // CompressedSize is the size of a page after compression.
 		CRC32            uint32 // CRC32 checksum of the page after encoding and compression.
@@ -49,8 +49,8 @@ type (
 // A Page holds an encoded and optionally compressed sequence of [Value]s
 // within a [Column].
 type Page interface {
-	// PageInfo returns the metadata for the Page.
-	PageInfo() *PageInfo
+	// PageDesc returns the metadata for the Page.
+	PageDesc() *PageDesc
 
 	// ReadPage returns the [PageData] for the Page.
 	ReadPage(ctx context.Context) (PageData, error)
@@ -59,15 +59,15 @@ type Page interface {
 // MemPage holds an encoded (and optionally compressed) sequence of [Value]
 // entries of a common type. Use [ColumnBuilder] to construct sets of pages.
 type MemPage struct {
-	Info PageInfo // Information about the page.
+	Desc PageDesc // Description of the page.
 	Data PageData // Data for the page.
 }
 
 var _ Page = (*MemPage)(nil)
 
-// PageInfo implements [Page] and returns p.Info.
-func (p *MemPage) PageInfo() *PageInfo {
-	return &p.Info
+// PageDesc implements [Page] and returns p.Desc.
+func (p *MemPage) PageDesc() *PageDesc {
+	return &p.Desc
 }
 
 // ReadPage implements [Page] and returns p.Data.
@@ -80,8 +80,8 @@ var checksumTable = crc32.MakeTable(crc32.Castagnoli)
 // reader returns a reader for decompressed page data. Reader returns an error
 // if the CRC32 fails to validate.
 func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Reader, values io.ReadCloser, err error) {
-	if actual := crc32.Checksum(p.Data, checksumTable); p.Info.CRC32 != actual {
-		return nil, nil, fmt.Errorf("invalid CRC32 checksum %x, expected %x", actual, p.Info.CRC32)
+	if actual := crc32.Checksum(p.Data, checksumTable); p.Desc.CRC32 != actual {
+		return nil, nil, fmt.Errorf("invalid CRC32 checksum %x, expected %x", actual, p.Desc.CRC32)
 	}
 
 	bitmapSize, n := binary.Uvarint(p.Data)
@@ -105,13 +105,38 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 		sr := snappyPool.Get().(*snappy.Reader)
 		sr.Reset(compressedValuesReader)
 		return bitmapReader, &closerFunc{Reader: sr, onClose: func() error {
+			sr.Reset(nil) // Allow releasing the buffer.
 			snappyPool.Put(sr)
 			return nil
 		}}, nil
 
 	case datasetmd.COMPRESSION_TYPE_ZSTD:
-		zr := &fixedZstdReader{page: p, data: compressedValuesData}
-		return bitmapReader, zr, nil
+		zr, err := getZstdDecoder()
+		if err != nil {
+			return nil, nil, err
+		}
+
+		decompressed := bufpool.Get(p.PageDesc().UncompressedSize)
+		defer func() {
+			// Return the buffer to the pool immediately if there was an error.
+			// Otherwise, the buffer will be returned to the pool when the reader is
+			// closed.
+			if err != nil {
+				bufpool.Put(decompressed)
+			}
+		}()
+
+		// We use DecodeAll which supports concurrent calls with the same
+		// decoder, unlike Decode.
+		buf, err := zr.DecodeAll(compressedValuesData, decompressed.Bytes())
+		if err != nil {
+			return nil, nil, err
+		}
+
+		return bitmapReader, &closerFunc{Reader: bytes.NewReader(buf), onClose: func() error {
+			bufpool.Put(decompressed)
+			return nil
+		}}, nil
 
 	default:
 		// We do *not* want to panic here, as we may be trying to read a page from
@@ -121,7 +146,7 @@ func (p *MemPage) reader(compression datasetmd.CompressionType) (presence io.Rea
 }
 
 var snappyPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return snappy.NewReader(nil)
 	},
 }
@@ -133,59 +158,13 @@ type closerFunc struct {
 
 func (c *closerFunc) Close() error { return c.onClose() }
 
-// globalZstdDecoder is a shared zstd decoder for [fixedZstdReader]. Concurrent
-// uses of globalZstdDecoder are only safe when using [zstd.Decoder.DecodeAll].
-var globalZstdDecoder = func() *zstd.Decoder {
-	d, err := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
-	if err != nil {
-		panic(err)
-	}
-	return d
-}()
+// getZstdDecoder lazily initializes a global Zstd decoder. It is only safe to
+// use DecodeAll concurrently.
+var getZstdDecoder = sync.OnceValues(func() (*zstd.Decoder, error) {
+	// NOTE(rfratto): We used to use pooled decoders here with streaming decodes
+	// (Decode rather than DecodeAll), but using pooled decoders made it
+	// difficult to control total allocations.
 
-// fixedZstdReader is an [io.ReadCloser] that decompresses a zstd buffer in a
-// single pass.
-type fixedZstdReader struct {
-	page *MemPage
-	data []byte
-
-	uncompressedBuf *bytes.Buffer
-	closed          bool
-}
-
-func (r *fixedZstdReader) Read(p []byte) (int, error) {
-	if r.closed {
-		return 0, io.ErrClosedPipe
-	}
-
-	if r.uncompressedBuf != nil {
-		return r.uncompressedBuf.Read(p)
-	}
-
-	// We decompress the entire buffer in a single pass. While a pooled zstd
-	// reader would require less memory and would allow us to stream values as we
-	// decompress, pooling zstd decoders is difficult to do properly, as it
-	// requires a finalizer to release resources, and the goroutines spawned by
-	// decoders prevent the finalizer from ever being called.
-	//
-	// To make efficient zstd decoding less error prone, we opt for this instead.
-	r.uncompressedBuf = bufpool.Get(r.page.Info.UncompressedSize)
-	r.uncompressedBuf.Reset()
-
-	buf, err := globalZstdDecoder.DecodeAll(r.data, r.uncompressedBuf.AvailableBuffer())
-	if err != nil {
-		return 0, fmt.Errorf("decoding zstd: %w", err)
-	}
-	_, _ = r.uncompressedBuf.Write(buf)
-
-	return r.uncompressedBuf.Read(p)
-}
-
-func (r *fixedZstdReader) Close() error {
-	if r.uncompressedBuf != nil {
-		bufpool.Put(r.uncompressedBuf)
-		r.uncompressedBuf = nil
-	}
-	r.closed = true
-	return nil
-}
+	// Using a concurrency of 0 will use GOMAXPROCS workers.
+	return zstd.NewReader(nil, zstd.WithDecoderConcurrency(0))
+})

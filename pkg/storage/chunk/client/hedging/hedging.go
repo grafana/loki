@@ -118,10 +118,10 @@ type limitedHedgingRoundTripper struct {
 	limiter *rate.Limiter
 }
 
-func newLimitedHedgingRoundTripper(max int, next http.RoundTripper) *limitedHedgingRoundTripper {
+func newLimitedHedgingRoundTripper(maxVal int, next http.RoundTripper) *limitedHedgingRoundTripper {
 	return &limitedHedgingRoundTripper{
 		next:    next,
-		limiter: rate.NewLimiter(rate.Limit(max), max),
+		limiter: rate.NewLimiter(rate.Limit(maxVal), maxVal),
 	}
 }
 

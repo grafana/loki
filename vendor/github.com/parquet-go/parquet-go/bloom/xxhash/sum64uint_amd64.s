@@ -65,8 +65,8 @@ passing as a guarantee that they have not introduced regressions.
 #define prime1 R12
 #define prime2 R13
 #define prime3 R14
-#define prime4 R15
-#define prime5 R15 // same as prime4 because they are not used together
+#define prime4 R11
+#define prime5 R11 // same as prime4 because they are not used together
 
 #define prime1ZMM Z12
 #define prime2ZMM Z13

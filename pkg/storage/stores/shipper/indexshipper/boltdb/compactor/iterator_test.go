@@ -31,8 +31,8 @@ func Test_ChunkIterator(t *testing.T) {
 			chunkfmt, headfmt, err := tt.config.ChunkFormat()
 			require.NoError(t, err)
 
-			c1 := createChunk(t, chunkfmt, headfmt, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, tt.from, tt.from.Add(1*time.Hour))
-			c2 := createChunk(t, chunkfmt, headfmt, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, tt.from, tt.from.Add(1*time.Hour))
+			c1 := createChunk(t, chunkfmt, headfmt, "1", labels.New(labels.Label{Name: "foo", Value: "bar"}), tt.from, tt.from.Add(1*time.Hour))
+			c2 := createChunk(t, chunkfmt, headfmt, "2", labels.New(labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}), tt.from, tt.from.Add(1*time.Hour))
 
 			require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{
 				c1, c2,
@@ -42,30 +42,37 @@ func Test_ChunkIterator(t *testing.T) {
 
 			tables := store.indexTables()
 			require.Len(t, tables, 1)
-			var actual []retention.ChunkEntry
-			err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
-				return ForEachChunk(context.Background(), tx.Bucket(local.IndexBucketName), tt.config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
-					actual = append(actual, entry)
-					return len(actual) == 2, nil
+			var actual []retention.Chunk
+			err = tables[0].Update(func(tx *bbolt.Tx) error {
+				seriesCleaner := newSeriesCleaner(tx.Bucket(local.IndexBucketName), tt.config, tables[0].name)
+				return ForEachSeries(context.Background(), tx.Bucket(local.IndexBucketName), tt.config, func(series retention.Series) (err error) {
+					actual = append(actual, series.Chunks()...)
+					if string(series.UserID()) == c2.UserID {
+						chunkRemoved, err := seriesCleaner.RemoveChunk(actual[1].From, actual[1].Through, series.UserID(), series.Labels(), actual[1].ChunkID)
+						require.NoError(t, err)
+						require.True(t, chunkRemoved)
+						return nil
+					}
+					return nil
 				})
 			})
 			require.NoError(t, err)
-			require.Equal(t, []retention.ChunkEntry{
-				entryFromChunk(store.schemaCfg, c1),
-				entryFromChunk(store.schemaCfg, c2),
+			require.Equal(t, []retention.Chunk{
+				retentionChunkFromChunk(store.schemaCfg, c1),
+				retentionChunkFromChunk(store.schemaCfg, c2),
 			}, actual)
 
 			// second pass we delete c2
 			actual = actual[:0]
-			err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
-				return ForEachChunk(context.Background(), tx.Bucket(local.IndexBucketName), tt.config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
-					actual = append(actual, entry)
-					return false, nil
+			err = tables[0].Update(func(tx *bbolt.Tx) error {
+				return ForEachSeries(context.Background(), tx.Bucket(local.IndexBucketName), tt.config, func(series retention.Series) (err error) {
+					actual = append(actual, series.Chunks()...)
+					return nil
 				})
 			})
 			require.NoError(t, err)
-			require.Equal(t, []retention.ChunkEntry{
-				entryFromChunk(store.schemaCfg, c1),
+			require.Equal(t, []retention.Chunk{
+				retentionChunkFromChunk(store.schemaCfg, c1),
 			}, actual)
 		})
 	}
@@ -80,8 +87,8 @@ func Test_ChunkIteratorContextCancelation(t *testing.T) {
 	chunkfmt, headfmt, err := schemaCfg.Configs[0].ChunkFormat()
 	require.NoError(t, err)
 
-	c1 := createChunk(t, chunkfmt, headfmt, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, from, from.Add(1*time.Hour))
-	c2 := createChunk(t, chunkfmt, headfmt, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, from, from.Add(1*time.Hour))
+	c1 := createChunk(t, chunkfmt, headfmt, "1", labels.New(labels.Label{Name: "foo", Value: "bar"}), from, from.Add(1*time.Hour))
+	c2 := createChunk(t, chunkfmt, headfmt, "2", labels.New(labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}), from, from.Add(1*time.Hour))
 
 	require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{c1, c2}))
 	store.Stop()
@@ -92,12 +99,12 @@ func Test_ChunkIteratorContextCancelation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var actual []retention.ChunkEntry
-	err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
-		return ForEachChunk(ctx, tx.Bucket(local.IndexBucketName), schemaCfg.Configs[0], func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
-			actual = append(actual, entry)
+	var actual []retention.Chunk
+	err = tables[0].Update(func(tx *bbolt.Tx) error {
+		return ForEachSeries(ctx, tx.Bucket(local.IndexBucketName), schemaCfg.Configs[0], func(series retention.Series) (err error) {
+			actual = append(actual, series.Chunks()...)
 			cancel()
-			return len(actual) == 2, nil
+			return nil
 		})
 	})
 
@@ -110,14 +117,13 @@ func Test_SeriesCleaner(t *testing.T) {
 		t.Run(tt.schema, func(t *testing.T) {
 			cm := storage.NewClientMetrics()
 			defer cm.Unregister()
-			testSchema := config.SchemaConfig{Configs: []config.PeriodConfig{tt.config}}
 			store := newTestStore(t, cm)
 			chunkfmt, headfmt, err := tt.config.ChunkFormat()
 			require.NoError(t, err)
 
-			c1 := createChunk(t, chunkfmt, headfmt, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, tt.from, tt.from.Add(1*time.Hour))
-			c2 := createChunk(t, chunkfmt, headfmt, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}}, tt.from, tt.from.Add(1*time.Hour))
-			c3 := createChunk(t, chunkfmt, headfmt, "2", labels.Labels{labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "buzz"}}, tt.from, tt.from.Add(1*time.Hour))
+			c1 := createChunk(t, chunkfmt, headfmt, "1", labels.New(labels.Label{Name: "foo", Value: "bar"}), tt.from, tt.from.Add(1*time.Hour))
+			c2 := createChunk(t, chunkfmt, headfmt, "2", labels.New(labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "foo"}), tt.from, tt.from.Add(1*time.Hour))
+			c3 := createChunk(t, chunkfmt, headfmt, "2", labels.New(labels.Label{Name: "foo", Value: "buzz"}, labels.Label{Name: "bar", Value: "buzz"}), tt.from, tt.from.Add(1*time.Hour))
 
 			require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{
 				c1, c2, c3,
@@ -128,28 +134,36 @@ func Test_SeriesCleaner(t *testing.T) {
 			tables := store.indexTables()
 			require.Len(t, tables, 1)
 			// remove c1, c2 chunk
-			err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
-				return ForEachChunk(context.Background(), tx.Bucket(local.IndexBucketName), tt.config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
-					return entry.Labels.Get("bar") == "foo", nil
+			err = tables[0].Update(func(tx *bbolt.Tx) error {
+				seriesCleaner := newSeriesCleaner(tx.Bucket(local.IndexBucketName), tt.config, tables[0].name)
+				return ForEachSeries(context.Background(), tx.Bucket(local.IndexBucketName), tt.config, func(series retention.Series) (err error) {
+					if series.Labels().Get("bar") == "foo" {
+						for _, chk := range series.Chunks() {
+							chunkExists, err := seriesCleaner.RemoveChunk(chk.From, chk.Through, series.UserID(), series.Labels(), chk.ChunkID)
+							require.NoError(t, err)
+							require.True(t, chunkExists)
+						}
+					}
+					return nil
 				})
 			})
 			require.NoError(t, err)
 
-			err = tables[0].DB.Update(func(tx *bbolt.Tx) error {
+			err = tables[0].Update(func(tx *bbolt.Tx) error {
 				cleaner := newSeriesCleaner(tx.Bucket(local.IndexBucketName), tt.config, tables[0].name)
-				if err := cleaner.CleanupSeries(entryFromChunk(testSchema, c2).UserID, c2.Metric); err != nil {
+				if err := cleaner.CleanupSeries([]byte(c2.UserID), c2.Metric); err != nil {
 					return err
 				}
 
 				// remove series for c1 without __name__ label, which should work just fine
-				return cleaner.CleanupSeries(entryFromChunk(testSchema, c1).UserID, labels.NewBuilder(c1.Metric).Del(labels.MetricName).Labels())
+				return cleaner.CleanupSeries([]byte(c1.UserID), labels.NewBuilder(c1.Metric).Del(labels.MetricName).Labels())
 			})
 			require.NoError(t, err)
 
-			err = tables[0].DB.View(func(tx *bbolt.Tx) error {
+			err = tables[0].View(func(tx *bbolt.Tx) error {
 				return tx.Bucket(local.IndexBucketName).ForEach(func(k, _ []byte) error {
-					c1SeriesID := entryFromChunk(testSchema, c1).SeriesID
-					c2SeriesID := entryFromChunk(testSchema, c2).SeriesID
+					c1SeriesID := labelsSeriesID(c1.Metric)
+					c2SeriesID := labelsSeriesID(c2.Metric)
 					series, ok, err := parseLabelIndexSeriesID(decodeKey(k))
 					if !ok {
 						return nil
@@ -187,7 +201,7 @@ func encodeBase64Bytes(bytes []byte) []byte {
 // Backwards-compatible with model.Metric.String()
 func labelsString(ls labels.Labels) string {
 	metricName := ls.Get(labels.MetricName)
-	if metricName != "" && len(ls) == 1 {
+	if metricName != "" && ls.Len() == 1 {
 		return metricName
 	}
 	var b strings.Builder
@@ -196,9 +210,9 @@ func labelsString(ls labels.Labels) string {
 	b.WriteString(metricName)
 	b.WriteByte('{')
 	i := 0
-	for _, l := range ls {
+	ls.Range(func(l labels.Label) {
 		if l.Name == labels.MetricName {
-			continue
+			return // (will continue Range loop, not abort)
 		}
 		if i > 0 {
 			b.WriteByte(',')
@@ -209,26 +223,19 @@ func labelsString(ls labels.Labels) string {
 		var buf [1000]byte
 		b.Write(strconv.AppendQuote(buf[:0], l.Value))
 		i++
-	}
+	})
 	b.WriteByte('}')
 
 	return b.String()
 }
 
-func entryFromChunk(s config.SchemaConfig, c chunk.Chunk) retention.ChunkEntry {
-	return retention.ChunkEntry{
-		ChunkRef: retention.ChunkRef{
-			UserID:   []byte(c.UserID),
-			SeriesID: labelsSeriesID(c.Metric),
-			ChunkID:  []byte(s.ExternalKey(c.ChunkRef)),
-			From:     c.From,
-			Through:  c.Through,
-		},
-		Labels: labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels(),
+func retentionChunkFromChunk(s config.SchemaConfig, c chunk.Chunk) retention.Chunk {
+	return retention.Chunk{
+		ChunkID: s.ExternalKey(c.ChunkRef),
+		From:    c.From,
+		Through: c.Through,
 	}
 }
-
-var chunkEntry retention.ChunkEntry
 
 func Benchmark_ChunkIterator(b *testing.B) {
 	cm := storage.NewClientMetrics()
@@ -240,7 +247,7 @@ func Benchmark_ChunkIterator(b *testing.B) {
 		require.NoError(b, store.Put(context.TODO(),
 			[]chunk.Chunk{
 				createChunk(b, chunkfmt, headfmt, "1",
-					labels.Labels{labels.Label{Name: "foo", Value: "bar"}, labels.Label{Name: "i", Value: fmt.Sprintf("%d", i)}},
+					labels.New(labels.Label{Name: "foo", Value: "bar"}, labels.Label{Name: "i", Value: fmt.Sprintf("%d", i)}),
 					allSchemas[0].from, allSchemas[0].from.Add(1*time.Hour)),
 			},
 		))
@@ -249,14 +256,13 @@ func Benchmark_ChunkIterator(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	var total int64
+	var total int
 	_ = store.indexTables()[0].Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket(local.IndexBucketName)
 		for n := 0; n < b.N; n++ {
-			err := ForEachChunk(context.Background(), bucket, allSchemas[0].config, func(entry retention.ChunkEntry) (deleteChunk bool, err error) {
-				chunkEntry = entry
-				total++
-				return true, nil
+			err := ForEachSeries(context.Background(), bucket, allSchemas[0].config, func(series retention.Series) (err error) {
+				total += len(series.Chunks())
+				return nil
 			})
 			require.NoError(b, err)
 		}

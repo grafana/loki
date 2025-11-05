@@ -55,6 +55,8 @@ type LifecyclerConfig struct {
 
 	// Injected internally
 	ListenPort int `yaml:"-"`
+	// HideTokensInStatusPage allows tokens to be hidden from management tools e.g. the status page, for use in contexts which do not utilize tokens.
+	HideTokensInStatusPage bool `yaml:"-"`
 
 	// If set, specifies the TokenGenerator implementation that will be used for generating tokens.
 	// Default value is nil, which means that RandomTokenGenerator is used.
@@ -167,6 +169,7 @@ type Lifecycler struct {
 	healthyInstancesInZoneCount int
 	instancesInZoneCount        int
 	zonesCount                  int
+	zones                       []string
 
 	tokenGenerator TokenGenerator
 	// The maximum time allowed to wait on the CanJoin() condition.
@@ -437,7 +440,7 @@ func (i *Lifecycler) ClaimTokensFor(ctx context.Context, ingesterID string) erro
 		claimTokens := func(in interface{}) (out interface{}, retry bool, err error) {
 			ringDesc, ok := in.(*Desc)
 			if !ok || ringDesc == nil {
-				return nil, false, fmt.Errorf("Cannot claim tokens in an empty ring")
+				return nil, false, fmt.Errorf("cannot claim tokens in an empty ring")
 			}
 
 			tokens = ringDesc.ClaimTokens(ingesterID, i.ID)
@@ -518,6 +521,15 @@ func (i *Lifecycler) ZonesCount() int {
 	defer i.countersLock.RUnlock()
 
 	return i.zonesCount
+}
+
+// Zones return the list of zones for which there's at least 1 instance registered
+// in the ring. They are guaranteed to be sorted alphabetically.
+func (i *Lifecycler) Zones() []string {
+	i.countersLock.RLock()
+	defer i.countersLock.RUnlock()
+
+	return i.zones
 }
 
 func (i *Lifecycler) loop(ctx context.Context) error {
@@ -966,12 +978,13 @@ func (i *Lifecycler) updateConsul(ctx context.Context) error {
 func (i *Lifecycler) changeState(ctx context.Context, state InstanceState) error {
 	currState := i.GetState()
 	// Only the following state transitions can be triggered externally
+	//nolint:staticcheck
 	if !((currState == PENDING && state == JOINING) || // triggered by TransferChunks at the beginning
 		(currState == JOINING && state == PENDING) || // triggered by TransferChunks on failure
 		(currState == JOINING && state == ACTIVE) || // triggered by TransferChunks on success
 		(currState == PENDING && state == ACTIVE) || // triggered by autoJoin
 		(currState == ACTIVE && state == LEAVING)) { // triggered by shutdown
-		return fmt.Errorf("Changing instance state from %v -> %v is disallowed", currState, state)
+		return fmt.Errorf("changing instance state from %v -> %v is disallowed", currState, state)
 	}
 
 	level.Info(i.logger).Log("msg", "changing instance state from", "old_state", currState, "new_state", state, "ring", i.RingName)
@@ -1004,6 +1017,12 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 		}
 	}
 
+	zoneNames := make([]string, 0, len(zones))
+	for zone := range zones {
+		zoneNames = append(zoneNames, zone)
+	}
+	sort.Strings(zoneNames)
+
 	// Update counters
 	i.countersLock.Lock()
 	i.healthyInstancesCount = healthyInstancesCount
@@ -1012,6 +1031,7 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 	i.healthyInstancesInZoneCount = healthyInstancesInZone[i.cfg.Zone]
 	i.instancesInZoneCount = zones[i.cfg.Zone]
 	i.zonesCount = len(zones)
+	i.zones = zoneNames
 	i.countersLock.Unlock()
 }
 
@@ -1088,7 +1108,7 @@ func (i *Lifecycler) getRing(ctx context.Context) (*Desc, error) {
 }
 
 func (i *Lifecycler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	newRingPageHandler(i, i.cfg.HeartbeatTimeout).handle(w, req)
+	newRingPageHandler(i, i.cfg.HeartbeatTimeout, i.cfg.HideTokensInStatusPage).handle(w, req)
 }
 
 // unregister removes our entry from consul.

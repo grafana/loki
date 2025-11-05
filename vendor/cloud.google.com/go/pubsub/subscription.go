@@ -310,8 +310,12 @@ type BigQueryConfig struct {
 	Table string
 
 	// When true, use the topic's schema as the columns to write to in BigQuery,
-	// if it exists.
+	// if it exists. Cannot be enabled at the same time as UseTableSchema.
 	UseTopicSchema bool
+
+	// When true, use the table's schema as the columns to write to in BigQuery,
+	// if it exists. Cannot be enabled at the same time as UseTopicSchema.
+	UseTableSchema bool
 
 	// When true, write the subscription name, message_id, publish_time,
 	// attributes, and ordering_key to additional columns in the table. The
@@ -345,6 +349,7 @@ func (bc *BigQueryConfig) toProto() *pb.BigQueryConfig {
 	pbCfg := &pb.BigQueryConfig{
 		Table:             bc.Table,
 		UseTopicSchema:    bc.UseTopicSchema,
+		UseTableSchema:    bc.UseTableSchema,
 		WriteMetadata:     bc.WriteMetadata,
 		DropUnknownFields: bc.DropUnknownFields,
 		State:             pb.BigQueryConfig_State(bc.State),
@@ -602,6 +607,10 @@ type SubscriptionConfig struct {
 	// receive messages. This field is set only in responses from the server;
 	// it is ignored if it is set in any requests.
 	State SubscriptionState
+
+	// MessageTransforms are the transforms to be applied to messages before they are delivered
+	// to subscribers. Transforms are applied in the order specified.
+	MessageTransforms []MessageTransform
 }
 
 // String returns the globally unique printable name of the subscription config.
@@ -660,6 +669,7 @@ func (cfg *SubscriptionConfig) toProto(name string) *pb.Subscription {
 		RetryPolicy:               pbRetryPolicy,
 		Detached:                  cfg.Detached,
 		EnableExactlyOnceDelivery: cfg.EnableExactlyOnceDelivery,
+		MessageTransforms:         messageTransformsToProto(cfg.MessageTransforms),
 	}
 }
 
@@ -690,6 +700,7 @@ func protoToSubscriptionConfig(pbSub *pb.Subscription, c *Client) (SubscriptionC
 		TopicMessageRetentionDuration: pbSub.TopicMessageRetentionDuration.AsDuration(),
 		EnableExactlyOnceDelivery:     pbSub.EnableExactlyOnceDelivery,
 		State:                         SubscriptionState(pbSub.State),
+		MessageTransforms:             protoToMessageTransforms(pbSub.MessageTransforms),
 	}
 	if pc := protoToPushConfig(pbSub.PushConfig); pc != nil {
 		subC.PushConfig = *pc
@@ -739,6 +750,7 @@ func protoToBQConfig(pbBQ *pb.BigQueryConfig) *BigQueryConfig {
 	bq := &BigQueryConfig{
 		Table:             pbBQ.GetTable(),
 		UseTopicSchema:    pbBQ.GetUseTopicSchema(),
+		UseTableSchema:    pbBQ.GetUseTableSchema(),
 		DropUnknownFields: pbBQ.GetDropUnknownFields(),
 		WriteMetadata:     pbBQ.GetWriteMetadata(),
 		State:             BigQueryConfigState(pbBQ.State),
@@ -1057,6 +1069,9 @@ type SubscriptionConfigToUpdate struct {
 
 	// If set, EnableExactlyOnce is changed.
 	EnableExactlyOnceDelivery optional.Bool
+
+	// If non-nil, the entire list of message transforms is replaced with the following.
+	MessageTransforms []MessageTransform
 }
 
 // Update changes an existing subscription according to the fields set in cfg.
@@ -1124,6 +1139,10 @@ func (s *Subscription) updateRequest(cfg *SubscriptionConfigToUpdate) *pb.Update
 	if cfg.EnableExactlyOnceDelivery != nil {
 		psub.EnableExactlyOnceDelivery = optional.ToBool(cfg.EnableExactlyOnceDelivery)
 		paths = append(paths, "enable_exactly_once_delivery")
+	}
+	if cfg.MessageTransforms != nil {
+		psub.MessageTransforms = messageTransformsToProto(cfg.MessageTransforms)
+		paths = append(paths, "message_transforms")
 	}
 	return &pb.UpdateSubscriptionRequest{
 		Subscription: psub,

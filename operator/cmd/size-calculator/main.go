@@ -47,7 +47,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		logsCollectedInGB := int(math.Ceil(logsCollected / math.Pow(1024, 3)))
+		logsCollectedInGB := int(math.Ceil(logsCollected / float64(1024*1024*1024)))
 		logger.Info(fmt.Sprintf("Amount of logs expected in 24 hours is %f Bytes or %dGB", logsCollected, logsCollectedInGB))
 
 		if logsCollectedInGB <= range1xSmall {

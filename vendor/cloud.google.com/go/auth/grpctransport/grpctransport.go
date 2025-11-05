@@ -30,6 +30,7 @@ import (
 	"cloud.google.com/go/auth/credentials"
 	"cloud.google.com/go/auth/internal"
 	"cloud.google.com/go/auth/internal/transport"
+	"cloud.google.com/go/auth/internal/transport/headers"
 	"github.com/googleapis/gax-go/v2/internallog"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
@@ -204,6 +205,10 @@ type InternalOptions struct {
 	EnableDirectPathXds bool
 	// EnableJWTWithScope specifies if scope can be used with self-signed JWT.
 	EnableJWTWithScope bool
+	// AllowHardBoundTokens allows libraries to request a hard-bound token.
+	// Obtaining hard-bound tokens requires the connection to be established
+	// using either ALTS or mTLS with S2A.
+	AllowHardBoundTokens []string
 	// DefaultAudience specifies a default audience to be used as the audience
 	// field ("aud") for the JWT token authentication.
 	DefaultAudience string
@@ -262,13 +267,13 @@ func dial(ctx context.Context, secure bool, opts *Options) (*grpc.ClientConn, er
 		tOpts.EnableDirectPath = io.EnableDirectPath
 		tOpts.EnableDirectPathXds = io.EnableDirectPathXds
 	}
-	transportCreds, endpoint, err := transport.GetGRPCTransportCredsAndEndpoint(tOpts)
+	transportCreds, err := transport.GetGRPCTransportCredsAndEndpoint(tOpts)
 	if err != nil {
 		return nil, err
 	}
 
 	if !secure {
-		transportCreds = grpcinsecure.NewCredentials()
+		transportCreds.TransportCredentials = grpcinsecure.NewCredentials()
 	}
 
 	// Initialize gRPC dial options with transport-level security options.
@@ -297,8 +302,21 @@ func dial(ctx context.Context, secure bool, opts *Options) (*grpc.ClientConn, er
 		if opts.Credentials != nil {
 			creds = opts.Credentials
 		} else {
+			// This condition is only met for non-DirectPath clients because
+			// TransportTypeMTLSS2A is used only when InternalOptions.EnableDirectPath
+			// is false.
+			optsClone := opts.resolveDetectOptions()
+			if transportCreds.TransportType == transport.TransportTypeMTLSS2A {
+				// Check that the client allows requesting hard-bound token for the transport type mTLS using S2A.
+				for _, ev := range opts.InternalOptions.AllowHardBoundTokens {
+					if ev == "MTLS_S2A" {
+						optsClone.TokenBindingType = credentials.MTLSHardBinding
+						break
+					}
+				}
+			}
 			var err error
-			creds, err = credentials.DetectDefault(opts.resolveDetectOptions())
+			creds, err = credentials.DetectDefault(optsClone)
 			if err != nil {
 				return nil, err
 			}
@@ -324,9 +342,11 @@ func dial(ctx context.Context, secure bool, opts *Options) (*grpc.ClientConn, er
 				clientUniverseDomain: opts.UniverseDomain,
 			}),
 		)
-
 		// Attempt Direct Path
-		grpcOpts, endpoint = configureDirectPath(grpcOpts, opts, endpoint, creds)
+		grpcOpts, transportCreds.Endpoint, err = configureDirectPath(grpcOpts, opts, transportCreds.Endpoint, creds)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Add tracing, but before the other options, so that clients can override the
@@ -335,7 +355,7 @@ func dial(ctx context.Context, secure bool, opts *Options) (*grpc.ClientConn, er
 	grpcOpts = addOpenTelemetryStatsHandler(grpcOpts, opts)
 	grpcOpts = append(grpcOpts, opts.GRPCDialOpts...)
 
-	return grpc.Dial(endpoint, grpcOpts...)
+	return grpc.DialContext(ctx, transportCreds.Endpoint, grpcOpts...)
 }
 
 // grpcKeyProvider satisfies https://pkg.go.dev/google.golang.org/grpc/credentials#PerRPCCredentials.
@@ -409,21 +429,11 @@ func (c *grpcCredentialsProvider) GetRequestMetadata(ctx context.Context, uri ..
 		}
 	}
 	metadata := make(map[string]string, len(c.metadata)+1)
-	setAuthMetadata(token, metadata)
+	headers.SetAuthMetadata(token, metadata)
 	for k, v := range c.metadata {
 		metadata[k] = v
 	}
 	return metadata, nil
-}
-
-// setAuthMetadata uses the provided token to set the Authorization metadata.
-// If the token.Type is empty, the type is assumed to be Bearer.
-func setAuthMetadata(token *auth.Token, m map[string]string) {
-	typ := token.Type
-	if typ == "" {
-		typ = internal.TokenTypeBearer
-	}
-	m["authorization"] = typ + " " + token.Value
 }
 
 func (c *grpcCredentialsProvider) RequireTransportSecurity() bool {

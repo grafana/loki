@@ -16,7 +16,6 @@ package storage
 
 import (
 	"context"
-	"io"
 	"time"
 
 	"cloud.google.com/go/iam/apiv1/iampb"
@@ -88,7 +87,7 @@ type storageClient interface {
 	RewriteObject(ctx context.Context, req *rewriteObjectRequest, opts ...storageOption) (*rewriteObjectResponse, error)
 
 	NewRangeReader(ctx context.Context, params *newRangeReaderParams, opts ...storageOption) (*Reader, error)
-	OpenWriter(params *openWriterParams, opts ...storageOption) (*io.PipeWriter, error)
+	OpenWriter(params *openWriterParams, opts ...storageOption) (internalWriter, error)
 
 	// IAM methods.
 
@@ -257,6 +256,9 @@ type openWriterParams struct {
 	// conds - see `Writer.o.conds`.
 	// Optional.
 	conds *Conditions
+	// appendGen -- object generation to write to.
+	// Optional; required for taking over appendable objects only
+	appendGen int64
 	// encryptionKey - see `Writer.o.encryptionKey`
 	// Optional.
 	encryptionKey []byte
@@ -266,6 +268,10 @@ type openWriterParams struct {
 	// append - Write with appendable object semantics.
 	// Optional.
 	append bool
+	// finalizeOnClose - Finalize the object when the storage.Writer is closed
+	// successfully.
+	// Optional.
+	finalizeOnClose bool
 
 	// Writer callbacks
 
@@ -281,6 +287,10 @@ type openWriterParams struct {
 	// setObj callback for reporting the resulting object - see `Writer.obj`.
 	// Required.
 	setObj func(*ObjectAttrs)
+	// setSize callback for updated the persisted size in Writer.obj.
+	setSize func(int64)
+	// setTakeoverOffset callback for returning offset to start writing from to Writer.
+	setTakeoverOffset func(int64)
 }
 
 type newMultiRangeDownloaderParams struct {

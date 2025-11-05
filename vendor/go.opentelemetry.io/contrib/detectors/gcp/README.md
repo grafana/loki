@@ -2,12 +2,12 @@
 
 The GCP resource detector supports detecting resources on:
 
- * Google Compute Engine (GCE)
- * Google Kubernetes Engine (GKE)
- * Google App Engine (GAE)
- * Cloud Run
- * Cloud Run jobs
- * Cloud Functions
+* Google Compute Engine (GCE)
+* Google Kubernetes Engine (GKE)
+* Google App Engine (GAE)
+* Cloud Run
+* Cloud Run jobs
+* Cloud Functions
 
 ## Usage
 
@@ -56,6 +56,7 @@ env:
   value: my-container-name
 - name: OTEL_RESOURCE_ATTRIBUTES
   value: k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(NAMESPACE_NAME),k8s.container.name=$(CONTAINER_NAME)
+
 ```
 To have a detector unpack the `OTEL_RESOURCE_ATTRIBUTES` envvar, use the `WithFromEnv` option:
 

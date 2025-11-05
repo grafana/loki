@@ -86,7 +86,7 @@ func convertToSelf(column []Value) error { return nil }
 func convertToType(targetType, sourceType Type) conversionFunc {
 	return func(column []Value) error {
 		for i, v := range column {
-			v, err := sourceType.ConvertValue(v, targetType)
+			v, err := targetType.ConvertValue(v, sourceType)
 			if err != nil {
 				return err
 			}
@@ -249,7 +249,7 @@ func Convert(to, from Node) (conv Conversion, err error) {
 		schema = NewSchema("", to)
 	}
 
-	if nodesAreEqual(to, from) {
+	if EqualNodes(to, from) {
 		return identity{schema}, nil
 	}
 
@@ -280,7 +280,7 @@ func Convert(to, from Node) (conv Conversion, err error) {
 			targetNode := to
 			sourceNode := from
 
-			for j := 0; j < len(path); j++ {
+			for j := range path {
 				targetNode = fieldByName(targetNode, path[j])
 				sourceNode = fieldByName(sourceNode, path[j])
 
@@ -432,7 +432,7 @@ func maskMissingRowGroupColumns(r RowGroup, numColumns int, conv Conversion) Row
 		columns[i] = &missing[i]
 	}
 
-	for i := 0; i < numColumns; i++ {
+	for i := range numColumns {
 		j := conv.Column(i)
 		if j >= 0 && j < len(columns) {
 			columns[j] = rowGroupColumns[j]

@@ -4,7 +4,9 @@ import (
 	"container/heap"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -233,7 +235,7 @@ func (s *stickyBalanceStrategy) Plan(members map[string]ConsumerGroupMemberMetad
 			delete(unvisitedPartitions, partition)
 			currentPartitionConsumers[partition] = memberID
 
-			if !strsContains(members[memberID].Topics, partition.Topic) {
+			if !slices.Contains(members[memberID].Topics, partition.Topic) {
 				unassignedPartitions = append(unassignedPartitions, partition)
 				continue
 			}
@@ -279,15 +281,6 @@ func (s *stickyBalanceStrategy) AssignmentData(memberID string, topics map[strin
 	}, nil)
 }
 
-func strsContains(s []string, value string) bool {
-	for _, entry := range s {
-		if entry == value {
-			return true
-		}
-	}
-	return false
-}
-
 // Balance assignments across consumers for maximum fairness and stickiness.
 func (s *stickyBalanceStrategy) balance(currentAssignment map[string][]topicPartitionAssignment, prevAssignment map[topicPartitionAssignment]consumerGenerationPair, sortedPartitions []topicPartitionAssignment, unassignedPartitions []topicPartitionAssignment, sortedCurrentSubscriptions []string, consumer2AllPotentialPartitions map[string][]topicPartitionAssignment, partition2AllPotentialConsumers map[topicPartitionAssignment][]string, currentPartitionConsumer map[topicPartitionAssignment]string) {
 	initializing := len(sortedCurrentSubscriptions) == 0 || len(currentAssignment[sortedCurrentSubscriptions[0]]) == 0
@@ -321,9 +314,7 @@ func (s *stickyBalanceStrategy) balance(currentAssignment map[string][]topicPart
 	// create a deep copy of the current assignment so we can revert to it if we do not get a more balanced assignment later
 	preBalanceAssignment := deepCopyAssignment(currentAssignment)
 	preBalancePartitionConsumers := make(map[topicPartitionAssignment]string, len(currentPartitionConsumer))
-	for k, v := range currentPartitionConsumer {
-		preBalancePartitionConsumers[k] = v
-	}
+	maps.Copy(preBalancePartitionConsumers, currentPartitionConsumer)
 
 	reassignmentPerformed := s.performReassignments(sortedPartitions, currentAssignment, prevAssignment, sortedCurrentSubscriptions, consumer2AllPotentialPartitions, partition2AllPotentialConsumers, currentPartitionConsumer)
 
@@ -332,15 +323,11 @@ func (s *stickyBalanceStrategy) balance(currentAssignment map[string][]topicPart
 	if !initializing && reassignmentPerformed && getBalanceScore(currentAssignment) >= getBalanceScore(preBalanceAssignment) {
 		currentAssignment = deepCopyAssignment(preBalanceAssignment)
 		currentPartitionConsumer = make(map[topicPartitionAssignment]string, len(preBalancePartitionConsumers))
-		for k, v := range preBalancePartitionConsumers {
-			currentPartitionConsumer[k] = v
-		}
+		maps.Copy(currentPartitionConsumer, preBalancePartitionConsumers)
 	}
 
 	// add the fixed assignments (those that could not change) back
-	for consumer, assignments := range fixedAssignments {
-		currentAssignment[consumer] = assignments
-	}
+	maps.Copy(currentAssignment, fixedAssignments)
 }
 
 // NewBalanceStrategyRoundRobin returns a round-robin balance strategy,
@@ -659,12 +646,7 @@ func removeTopicPartitionFromMemberAssignments(assignments []topicPartitionAssig
 }
 
 func memberAssignmentsIncludeTopicPartition(assignments []topicPartitionAssignment, topic topicPartitionAssignment) bool {
-	for _, assignment := range assignments {
-		if assignment == topic {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(assignments, topic)
 }
 
 func sortPartitions(currentAssignment map[string][]topicPartitionAssignment, partitionsWithADifferentPreviousAssignment map[topicPartitionAssignment]consumerGenerationPair, isFreshAssignment bool, partition2AllPotentialConsumers map[topicPartitionAssignment][]string, consumer2AllPotentialPartitions map[string][]topicPartitionAssignment) []topicPartitionAssignment {
@@ -989,7 +971,7 @@ func (p *partitionMovements) getTheActualPartitionToBeMoved(partition topicParti
 	return reversePairPartition
 }
 
-//nolint:unused // this is used but only in unittests as a helper (which are excluded by the integration build tag)
+//lint:ignore U1000 // this is used but only in unittests as a helper (which are excluded by the integration build tag)
 func (p *partitionMovements) isLinked(src, dst string, pairs []consumerPair, currentPath []string) ([]string, bool) {
 	if src == dst {
 		return currentPath, false
@@ -1024,7 +1006,7 @@ func (p *partitionMovements) isLinked(src, dst string, pairs []consumerPair, cur
 	return currentPath, false
 }
 
-//nolint:unused // this is used but only in unittests as a helper (which are excluded by the integration build tag)
+//lint:ignore U1000 // this is used but only in unittests as a helper (which are excluded by the integration build tag)
 func (p *partitionMovements) in(cycle []string, cycles [][]string) bool {
 	superCycle := make([]string, len(cycle)-1)
 	for i := 0; i < len(cycle)-1; i++ {
@@ -1039,7 +1021,7 @@ func (p *partitionMovements) in(cycle []string, cycles [][]string) bool {
 	return false
 }
 
-//nolint:unused // this is used but only in unittests as a helper (which are excluded by the integration build tag)
+//lint:ignore U1000 // this is used but only in unittests as a helper (which are excluded by the integration build tag)
 func (p *partitionMovements) hasCycles(pairs []consumerPair) bool {
 	cycles := make([][]string, 0)
 	for _, pair := range pairs {
@@ -1071,7 +1053,7 @@ func (p *partitionMovements) hasCycles(pairs []consumerPair) bool {
 	return false
 }
 
-//nolint:unused // this is used but only in unittests as a helper (which are excluded by the integration build tag)
+//lint:ignore U1000 // this is used but only in unittests as a helper (which are excluded by the integration build tag)
 func (p *partitionMovements) isSticky() bool {
 	for topic, movements := range p.PartitionMovementsByTopic {
 		movementPairs := make([]consumerPair, len(movements))
@@ -1089,7 +1071,7 @@ func (p *partitionMovements) isSticky() bool {
 	return true
 }
 
-//nolint:unused // this is used but only in unittests as a helper (which are excluded by the integration build tag)
+//lint:ignore U1000 // this is used but only in unittests as a helper (which are excluded by the integration build tag)
 func indexOfSubList(source []string, target []string) int {
 	targetSize := len(target)
 	maxCandidate := len(source) - targetSize

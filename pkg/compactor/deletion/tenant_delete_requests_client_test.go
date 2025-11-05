@@ -6,11 +6,13 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/v3/pkg/compactor/deletion/deletionproto"
 )
 
 func TestTenantDeleteRequestsClient(t *testing.T) {
 	fakeClient := &fakeRequestsClient{
-		reqs: []DeleteRequest{{
+		reqs: []deletionproto.DeleteRequest{{
 			RequestID: "test-request",
 		}},
 	}
@@ -19,7 +21,7 @@ func TestTenantDeleteRequestsClient(t *testing.T) {
 	t.Run("tenant enabled", func(t *testing.T) {
 		reqs, err := perTenantClient.GetAllDeleteRequestsForUser(context.Background(), "1")
 		require.Nil(t, err)
-		require.Equal(t, []DeleteRequest{{RequestID: "test-request"}}, reqs)
+		require.Equal(t, []deletionproto.DeleteRequest{{RequestID: "test-request"}}, reqs)
 	})
 
 	t.Run("tenant disabled", func(t *testing.T) {
@@ -32,10 +34,10 @@ func TestTenantDeleteRequestsClient(t *testing.T) {
 type fakeRequestsClient struct {
 	DeleteRequestsClient
 
-	reqs []DeleteRequest
+	reqs []deletionproto.DeleteRequest
 }
 
-func (c *fakeRequestsClient) GetAllDeleteRequestsForUser(_ context.Context, _ string) ([]DeleteRequest, error) {
+func (c *fakeRequestsClient) GetAllDeleteRequestsForUser(_ context.Context, _ string) ([]deletionproto.DeleteRequest, error) {
 	return c.reqs, nil
 }
 

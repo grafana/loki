@@ -101,9 +101,9 @@ type ClientStream interface {
 	// It must only be called after stream.CloseAndRecv has returned, or
 	// stream.Recv has returned a non-nil error (including io.EOF).
 	Trailer() metadata.MD
-	// CloseSend closes the send direction of the stream. It closes the stream
-	// when non-nil error is met. It is also not safe to call CloseSend
-	// concurrently with SendMsg.
+	// CloseSend closes the send direction of the stream. This method always
+	// returns a nil error. The status of the stream may be discovered using
+	// RecvMsg. It is also not safe to call CloseSend concurrently with SendMsg.
 	CloseSend() error
 	// Context returns the context for this stream.
 	//
@@ -212,14 +212,15 @@ func newClientStream(ctx context.Context, desc *StreamDesc, cc *ClientConn, meth
 	}
 	// Provide an opportunity for the first RPC to see the first service config
 	// provided by the resolver.
-	if err := cc.waitForResolvedAddrs(ctx); err != nil {
+	nameResolutionDelayed, err := cc.waitForResolvedAddrs(ctx)
+	if err != nil {
 		return nil, err
 	}
 
 	var mc serviceconfig.MethodConfig
 	var onCommit func()
 	newStream := func(ctx context.Context, done func()) (iresolver.ClientStream, error) {
-		return newClientStreamWithParams(ctx, desc, cc, method, mc, onCommit, done, opts...)
+		return newClientStreamWithParams(ctx, desc, cc, method, mc, onCommit, done, nameResolutionDelayed, opts...)
 	}
 
 	rpcInfo := iresolver.RPCInfo{Context: ctx, Method: method}
@@ -257,10 +258,10 @@ func newClientStream(ctx context.Context, desc *StreamDesc, cc *ClientConn, meth
 	return newStream(ctx, func() {})
 }
 
-func newClientStreamWithParams(ctx context.Context, desc *StreamDesc, cc *ClientConn, method string, mc serviceconfig.MethodConfig, onCommit, doneFunc func(), opts ...CallOption) (_ iresolver.ClientStream, err error) {
-	c := defaultCallInfo()
+func newClientStreamWithParams(ctx context.Context, desc *StreamDesc, cc *ClientConn, method string, mc serviceconfig.MethodConfig, onCommit, doneFunc func(), nameResolutionDelayed bool, opts ...CallOption) (_ iresolver.ClientStream, err error) {
+	callInfo := defaultCallInfo()
 	if mc.WaitForReady != nil {
-		c.failFast = !*mc.WaitForReady
+		callInfo.failFast = !*mc.WaitForReady
 	}
 
 	// Possible context leak:
@@ -281,59 +282,61 @@ func newClientStreamWithParams(ctx context.Context, desc *StreamDesc, cc *Client
 	}()
 
 	for _, o := range opts {
-		if err := o.before(c); err != nil {
+		if err := o.before(callInfo); err != nil {
 			return nil, toRPCErr(err)
 		}
 	}
-	c.maxSendMessageSize = getMaxSize(mc.MaxReqSize, c.maxSendMessageSize, defaultClientMaxSendMessageSize)
-	c.maxReceiveMessageSize = getMaxSize(mc.MaxRespSize, c.maxReceiveMessageSize, defaultClientMaxReceiveMessageSize)
-	if err := setCallInfoCodec(c); err != nil {
+	callInfo.maxSendMessageSize = getMaxSize(mc.MaxReqSize, callInfo.maxSendMessageSize, defaultClientMaxSendMessageSize)
+	callInfo.maxReceiveMessageSize = getMaxSize(mc.MaxRespSize, callInfo.maxReceiveMessageSize, defaultClientMaxReceiveMessageSize)
+	if err := setCallInfoCodec(callInfo); err != nil {
 		return nil, err
 	}
 
 	callHdr := &transport.CallHdr{
 		Host:           cc.authority,
 		Method:         method,
-		ContentSubtype: c.contentSubtype,
+		ContentSubtype: callInfo.contentSubtype,
 		DoneFunc:       doneFunc,
+		Authority:      callInfo.authority,
 	}
 
 	// Set our outgoing compression according to the UseCompressor CallOption, if
 	// set.  In that case, also find the compressor from the encoding package.
 	// Otherwise, use the compressor configured by the WithCompressor DialOption,
 	// if set.
-	var cp Compressor
-	var comp encoding.Compressor
-	if ct := c.compressorType; ct != "" {
+	var compressorV0 Compressor
+	var compressorV1 encoding.Compressor
+	if ct := callInfo.compressorName; ct != "" {
 		callHdr.SendCompress = ct
 		if ct != encoding.Identity {
-			comp = encoding.GetCompressor(ct)
-			if comp == nil {
+			compressorV1 = encoding.GetCompressor(ct)
+			if compressorV1 == nil {
 				return nil, status.Errorf(codes.Internal, "grpc: Compressor is not installed for requested grpc-encoding %q", ct)
 			}
 		}
-	} else if cc.dopts.cp != nil {
-		callHdr.SendCompress = cc.dopts.cp.Type()
-		cp = cc.dopts.cp
+	} else if cc.dopts.compressorV0 != nil {
+		callHdr.SendCompress = cc.dopts.compressorV0.Type()
+		compressorV0 = cc.dopts.compressorV0
 	}
-	if c.creds != nil {
-		callHdr.Creds = c.creds
+	if callInfo.creds != nil {
+		callHdr.Creds = callInfo.creds
 	}
 
 	cs := &clientStream{
-		callHdr:      callHdr,
-		ctx:          ctx,
-		methodConfig: &mc,
-		opts:         opts,
-		callInfo:     c,
-		cc:           cc,
-		desc:         desc,
-		codec:        c.codec,
-		cp:           cp,
-		comp:         comp,
-		cancel:       cancel,
-		firstAttempt: true,
-		onCommit:     onCommit,
+		callHdr:             callHdr,
+		ctx:                 ctx,
+		methodConfig:        &mc,
+		opts:                opts,
+		callInfo:            callInfo,
+		cc:                  cc,
+		desc:                desc,
+		codec:               callInfo.codec,
+		compressorV0:        compressorV0,
+		compressorV1:        compressorV1,
+		cancel:              cancel,
+		firstAttempt:        true,
+		onCommit:            onCommit,
+		nameResolutionDelay: nameResolutionDelayed,
 	}
 	if !cc.dopts.disableRetry {
 		cs.retryThrottler = cc.retryThrottler.Load().(*retryThrottler)
@@ -412,12 +415,12 @@ func (cs *clientStream) newAttemptLocked(isTransparent bool) (*csAttempt, error)
 		return nil, ErrClientConnClosing
 	}
 
-	ctx := newContextWithRPCInfo(cs.ctx, cs.callInfo.failFast, cs.callInfo.codec, cs.cp, cs.comp)
+	ctx := newContextWithRPCInfo(cs.ctx, cs.callInfo.failFast, cs.callInfo.codec, cs.compressorV0, cs.compressorV1)
 	method := cs.callHdr.Method
 	var beginTime time.Time
 	shs := cs.cc.dopts.copts.StatsHandlers
 	for _, sh := range shs {
-		ctx = sh.TagRPC(ctx, &stats.RPCTagInfo{FullMethodName: method, FailFast: cs.callInfo.failFast})
+		ctx = sh.TagRPC(ctx, &stats.RPCTagInfo{FullMethodName: method, FailFast: cs.callInfo.failFast, NameResolutionDelay: cs.nameResolutionDelay})
 		beginTime = time.Now()
 		begin := &stats.Begin{
 			Client:                    true,
@@ -454,20 +457,21 @@ func (cs *clientStream) newAttemptLocked(isTransparent bool) (*csAttempt, error)
 	}
 
 	return &csAttempt{
-		ctx:           ctx,
-		beginTime:     beginTime,
-		cs:            cs,
-		dc:            cs.cc.dopts.dc,
-		statsHandlers: shs,
-		trInfo:        trInfo,
+		ctx:            ctx,
+		beginTime:      beginTime,
+		cs:             cs,
+		decompressorV0: cs.cc.dopts.dc,
+		statsHandlers:  shs,
+		trInfo:         trInfo,
 	}, nil
 }
 
 func (a *csAttempt) getTransport() error {
 	cs := a.cs
 
-	var err error
-	a.t, a.pickResult, err = cs.cc.getTransport(a.ctx, cs.callInfo.failFast, cs.callHdr.Method)
+	pickInfo := balancer.PickInfo{Ctx: a.ctx, FullMethodName: cs.callHdr.Method}
+	pick, err := cs.cc.pickerWrapper.pick(a.ctx, cs.callInfo.failFast, pickInfo)
+	a.transport, a.pickResult = pick.transport, pick.result
 	if err != nil {
 		if de, ok := err.(dropError); ok {
 			err = de.error
@@ -476,7 +480,12 @@ func (a *csAttempt) getTransport() error {
 		return err
 	}
 	if a.trInfo != nil {
-		a.trInfo.firstLine.SetRemoteAddr(a.t.RemoteAddr())
+		a.trInfo.firstLine.SetRemoteAddr(a.transport.RemoteAddr())
+	}
+	if pick.blocked {
+		for _, sh := range a.statsHandlers {
+			sh.HandleRPC(a.ctx, &stats.DelayedPickComplete{})
+		}
 	}
 	return nil
 }
@@ -503,7 +512,7 @@ func (a *csAttempt) newStream() error {
 		a.ctx = metadata.NewOutgoingContext(a.ctx, md)
 	}
 
-	s, err := a.t.NewStream(a.ctx, cs.callHdr)
+	s, err := a.transport.NewStream(a.ctx, cs.callHdr)
 	if err != nil {
 		nse, ok := err.(*transport.NewStreamError)
 		if !ok {
@@ -518,9 +527,9 @@ func (a *csAttempt) newStream() error {
 		// Unwrap and convert error.
 		return toRPCErr(nse.Err)
 	}
-	a.s = s
+	a.transportStream = s
 	a.ctx = s.Context()
-	a.p = &parser{r: s, bufferPool: a.cs.cc.dopts.copts.BufferPool}
+	a.parser = &parser{r: s, bufferPool: a.cs.cc.dopts.copts.BufferPool}
 	return nil
 }
 
@@ -532,9 +541,9 @@ type clientStream struct {
 	cc       *ClientConn
 	desc     *StreamDesc
 
-	codec baseCodec
-	cp    Compressor
-	comp  encoding.Compressor
+	codec        baseCodec
+	compressorV0 Compressor
+	compressorV1 encoding.Compressor
 
 	cancel context.CancelFunc // cancels all attempts
 
@@ -573,6 +582,9 @@ type clientStream struct {
 	onCommit         func()
 	replayBuffer     []replayOp // operations to replay on retry
 	replayBufferSize int        // current size of replayBuffer
+	// nameResolutionDelay indicates if there was a delay in the name resolution.
+	// This field is only valid on client side, it's always false on server side.
+	nameResolutionDelay bool
 }
 
 type replayOp struct {
@@ -583,17 +595,17 @@ type replayOp struct {
 // csAttempt implements a single transport stream attempt within a
 // clientStream.
 type csAttempt struct {
-	ctx        context.Context
-	cs         *clientStream
-	t          transport.ClientTransport
-	s          *transport.ClientStream
-	p          *parser
-	pickResult balancer.PickResult
+	ctx             context.Context
+	cs              *clientStream
+	transport       transport.ClientTransport
+	transportStream *transport.ClientStream
+	parser          *parser
+	pickResult      balancer.PickResult
 
-	finished  bool
-	dc        Decompressor
-	decomp    encoding.Compressor
-	decompSet bool
+	finished        bool
+	decompressorV0  Decompressor
+	decompressorV1  encoding.Compressor
+	decompressorSet bool
 
 	mu sync.Mutex // guards trInfo.tr
 	// trInfo may be nil (if EnableTracing is false).
@@ -639,14 +651,14 @@ func (a *csAttempt) shouldRetry(err error) (bool, error) {
 		// RPC is finished or committed or was dropped by the picker; cannot retry.
 		return false, err
 	}
-	if a.s == nil && a.allowTransparentRetry {
+	if a.transportStream == nil && a.allowTransparentRetry {
 		return true, nil
 	}
 	// Wait for the trailers.
 	unprocessed := false
-	if a.s != nil {
-		<-a.s.Done()
-		unprocessed = a.s.Unprocessed()
+	if a.transportStream != nil {
+		<-a.transportStream.Done()
+		unprocessed = a.transportStream.Unprocessed()
 	}
 	if cs.firstAttempt && unprocessed {
 		// First attempt, stream unprocessed: transparently retry.
@@ -658,14 +670,14 @@ func (a *csAttempt) shouldRetry(err error) (bool, error) {
 
 	pushback := 0
 	hasPushback := false
-	if a.s != nil {
-		if !a.s.TrailersOnly() {
+	if a.transportStream != nil {
+		if !a.transportStream.TrailersOnly() {
 			return false, err
 		}
 
 		// TODO(retry): Move down if the spec changes to not check server pushback
 		// before considering this a failure for throttling.
-		sps := a.s.Trailer()["grpc-retry-pushback-ms"]
+		sps := a.transportStream.Trailer()["grpc-retry-pushback-ms"]
 		if len(sps) == 1 {
 			var e error
 			if pushback, e = strconv.Atoi(sps[0]); e != nil || pushback < 0 {
@@ -682,8 +694,8 @@ func (a *csAttempt) shouldRetry(err error) (bool, error) {
 	}
 
 	var code codes.Code
-	if a.s != nil {
-		code = a.s.Status().Code()
+	if a.transportStream != nil {
+		code = a.transportStream.Status().Code()
 	} else {
 		code = status.Code(err)
 	}
@@ -756,8 +768,8 @@ func (cs *clientStream) Context() context.Context {
 	cs.commitAttempt()
 	// No need to lock before using attempt, since we know it is committed and
 	// cannot change.
-	if cs.attempt.s != nil {
-		return cs.attempt.s.Context()
+	if cs.attempt.transportStream != nil {
+		return cs.attempt.transportStream.Context()
 	}
 	return cs.ctx
 }
@@ -794,9 +806,9 @@ func (cs *clientStream) withRetry(op func(a *csAttempt) error, onSuccess func())
 			continue
 		}
 		if err == io.EOF {
-			<-a.s.Done()
+			<-a.transportStream.Done()
 		}
-		if err == nil || (err == io.EOF && a.s.Status().Code() == codes.OK) {
+		if err == nil || (err == io.EOF && a.transportStream.Status().Code() == codes.OK) {
 			onSuccess()
 			cs.mu.Unlock()
 			return err
@@ -812,7 +824,7 @@ func (cs *clientStream) Header() (metadata.MD, error) {
 	var m metadata.MD
 	err := cs.withRetry(func(a *csAttempt) error {
 		var err error
-		m, err = a.s.Header()
+		m, err = a.transportStream.Header()
 		return toRPCErr(err)
 	}, cs.commitAttemptLocked)
 
@@ -856,10 +868,10 @@ func (cs *clientStream) Trailer() metadata.MD {
 	// directions -- it will prevent races and should not meaningfully impact
 	// performance.
 	cs.commitAttempt()
-	if cs.attempt.s == nil {
+	if cs.attempt.transportStream == nil {
 		return nil
 	}
-	return cs.attempt.s.Trailer()
+	return cs.attempt.transportStream.Trailer()
 }
 
 func (cs *clientStream) replayBufferLocked(attempt *csAttempt) error {
@@ -904,7 +916,7 @@ func (cs *clientStream) SendMsg(m any) (err error) {
 	}
 
 	// load hdr, payload, data
-	hdr, data, payload, pf, err := prepareMsg(m, cs.codec, cs.cp, cs.comp, cs.cc.dopts.copts.BufferPool)
+	hdr, data, payload, pf, err := prepareMsg(m, cs.codec, cs.compressorV0, cs.compressorV1, cs.cc.dopts.copts.BufferPool)
 	if err != nil {
 		return err
 	}
@@ -987,12 +999,12 @@ func (cs *clientStream) RecvMsg(m any) error {
 
 func (cs *clientStream) CloseSend() error {
 	if cs.sentLast {
-		// TODO: return an error and finish the stream instead, due to API misuse?
+		// Return a nil error on repeated calls to this method.
 		return nil
 	}
 	cs.sentLast = true
 	op := func(a *csAttempt) error {
-		a.s.Write(nil, nil, &transport.WriteOptions{Last: true})
+		a.transportStream.Write(nil, nil, &transport.WriteOptions{Last: true})
 		// Always return nil; io.EOF is the only error that might make sense
 		// instead, but there is no need to signal the client to call RecvMsg
 		// as the only use left for the stream after CloseSend is to call
@@ -1008,7 +1020,10 @@ func (cs *clientStream) CloseSend() error {
 			binlog.Log(cs.ctx, chc)
 		}
 	}
-	// We never returned an error here for reasons.
+	// We don't return an error here as we expect users to read all messages
+	// from the stream and get the RPC status from RecvMsg().  Note that
+	// SendMsg() must return an error when one occurs so the application
+	// knows to stop sending messages, but that does not apply here.
 	return nil
 }
 
@@ -1030,7 +1045,7 @@ func (cs *clientStream) finish(err error) {
 	if cs.attempt != nil {
 		cs.attempt.finish(err)
 		// after functions all rely upon having a stream.
-		if cs.attempt.s != nil {
+		if cs.attempt.transportStream != nil {
 			for _, o := range cs.opts {
 				o.after(cs.callInfo, cs.attempt)
 			}
@@ -1084,7 +1099,7 @@ func (a *csAttempt) sendMsg(m any, hdr []byte, payld mem.BufferSlice, dataLength
 		}
 		a.mu.Unlock()
 	}
-	if err := a.s.Write(hdr, payld, &transport.WriteOptions{Last: !cs.desc.ClientStreams}); err != nil {
+	if err := a.transportStream.Write(hdr, payld, &transport.WriteOptions{Last: !cs.desc.ClientStreams}); err != nil {
 		if !cs.desc.ClientStreams {
 			// For non-client-streaming RPCs, we return nil instead of EOF on error
 			// because the generated code requires it.  finish is not called; RecvMsg()
@@ -1108,25 +1123,25 @@ func (a *csAttempt) recvMsg(m any, payInfo *payloadInfo) (err error) {
 		defer payInfo.free()
 	}
 
-	if !a.decompSet {
+	if !a.decompressorSet {
 		// Block until we receive headers containing received message encoding.
-		if ct := a.s.RecvCompress(); ct != "" && ct != encoding.Identity {
-			if a.dc == nil || a.dc.Type() != ct {
+		if ct := a.transportStream.RecvCompress(); ct != "" && ct != encoding.Identity {
+			if a.decompressorV0 == nil || a.decompressorV0.Type() != ct {
 				// No configured decompressor, or it does not match the incoming
 				// message encoding; attempt to find a registered compressor that does.
-				a.dc = nil
-				a.decomp = encoding.GetCompressor(ct)
+				a.decompressorV0 = nil
+				a.decompressorV1 = encoding.GetCompressor(ct)
 			}
 		} else {
 			// No compression is used; disable our decompressor.
-			a.dc = nil
+			a.decompressorV0 = nil
 		}
 		// Only initialize this state once per stream.
-		a.decompSet = true
+		a.decompressorSet = true
 	}
-	if err := recv(a.p, cs.codec, a.s, a.dc, m, *cs.callInfo.maxReceiveMessageSize, payInfo, a.decomp, false); err != nil {
+	if err := recv(a.parser, cs.codec, a.transportStream, a.decompressorV0, m, *cs.callInfo.maxReceiveMessageSize, payInfo, a.decompressorV1, false); err != nil {
 		if err == io.EOF {
-			if statusErr := a.s.Status().Err(); statusErr != nil {
+			if statusErr := a.transportStream.Status().Err(); statusErr != nil {
 				return statusErr
 			}
 			return io.EOF // indicates successful end of stream.
@@ -1157,12 +1172,12 @@ func (a *csAttempt) recvMsg(m any, payInfo *payloadInfo) (err error) {
 	}
 	// Special handling for non-server-stream rpcs.
 	// This recv expects EOF or errors, so we don't collect inPayload.
-	if err := recv(a.p, cs.codec, a.s, a.dc, m, *cs.callInfo.maxReceiveMessageSize, nil, a.decomp, false); err == io.EOF {
-		return a.s.Status().Err() // non-server streaming Recv returns nil on success
+	if err := recv(a.parser, cs.codec, a.transportStream, a.decompressorV0, m, *cs.callInfo.maxReceiveMessageSize, nil, a.decompressorV1, false); err == io.EOF {
+		return a.transportStream.Status().Err() // non-server streaming Recv returns nil on success
 	} else if err != nil {
 		return toRPCErr(err)
 	}
-	return toRPCErr(errors.New("grpc: client streaming protocol violation: get <nil>, want <EOF>"))
+	return status.Errorf(codes.Internal, "cardinality violation: expected <EOF> for non server-streaming RPCs, but received another message")
 }
 
 func (a *csAttempt) finish(err error) {
@@ -1177,20 +1192,20 @@ func (a *csAttempt) finish(err error) {
 		err = nil
 	}
 	var tr metadata.MD
-	if a.s != nil {
-		a.s.Close(err)
-		tr = a.s.Trailer()
+	if a.transportStream != nil {
+		a.transportStream.Close(err)
+		tr = a.transportStream.Trailer()
 	}
 
 	if a.pickResult.Done != nil {
 		br := false
-		if a.s != nil {
-			br = a.s.BytesReceived()
+		if a.transportStream != nil {
+			br = a.transportStream.BytesReceived()
 		}
 		a.pickResult.Done(balancer.DoneInfo{
 			Err:           err,
 			Trailer:       tr,
-			BytesSent:     a.s != nil,
+			BytesSent:     a.transportStream != nil,
 			BytesReceived: br,
 			ServerLoad:    balancerload.Parse(tr),
 		})
@@ -1272,7 +1287,7 @@ func newNonRetryClientStream(ctx context.Context, desc *StreamDesc, method strin
 	// if set.
 	var cp Compressor
 	var comp encoding.Compressor
-	if ct := c.compressorType; ct != "" {
+	if ct := c.compressorName; ct != "" {
 		callHdr.SendCompress = ct
 		if ct != encoding.Identity {
 			comp = encoding.GetCompressor(ct)
@@ -1280,9 +1295,9 @@ func newNonRetryClientStream(ctx context.Context, desc *StreamDesc, method strin
 				return nil, status.Errorf(codes.Internal, "grpc: Compressor is not installed for requested grpc-encoding %q", ct)
 			}
 		}
-	} else if ac.cc.dopts.cp != nil {
-		callHdr.SendCompress = ac.cc.dopts.cp.Type()
-		cp = ac.cc.dopts.cp
+	} else if ac.cc.dopts.compressorV0 != nil {
+		callHdr.SendCompress = ac.cc.dopts.compressorV0.Type()
+		cp = ac.cc.dopts.compressorV0
 	}
 	if c.creds != nil {
 		callHdr.Creds = c.creds
@@ -1290,26 +1305,26 @@ func newNonRetryClientStream(ctx context.Context, desc *StreamDesc, method strin
 
 	// Use a special addrConnStream to avoid retry.
 	as := &addrConnStream{
-		callHdr:  callHdr,
-		ac:       ac,
-		ctx:      ctx,
-		cancel:   cancel,
-		opts:     opts,
-		callInfo: c,
-		desc:     desc,
-		codec:    c.codec,
-		cp:       cp,
-		comp:     comp,
-		t:        t,
+		callHdr:          callHdr,
+		ac:               ac,
+		ctx:              ctx,
+		cancel:           cancel,
+		opts:             opts,
+		callInfo:         c,
+		desc:             desc,
+		codec:            c.codec,
+		sendCompressorV0: cp,
+		sendCompressorV1: comp,
+		transport:        t,
 	}
 
-	s, err := as.t.NewStream(as.ctx, as.callHdr)
+	s, err := as.transport.NewStream(as.ctx, as.callHdr)
 	if err != nil {
 		err = toRPCErr(err)
 		return nil, err
 	}
-	as.s = s
-	as.p = &parser{r: s, bufferPool: ac.dopts.copts.BufferPool}
+	as.transportStream = s
+	as.parser = &parser{r: s, bufferPool: ac.dopts.copts.BufferPool}
 	ac.incrCallsStarted()
 	if desc != unaryStreamDesc {
 		// Listen on stream context to cleanup when the stream context is
@@ -1335,29 +1350,31 @@ func newNonRetryClientStream(ctx context.Context, desc *StreamDesc, method strin
 }
 
 type addrConnStream struct {
-	s         *transport.ClientStream
-	ac        *addrConn
-	callHdr   *transport.CallHdr
-	cancel    context.CancelFunc
-	opts      []CallOption
-	callInfo  *callInfo
-	t         transport.ClientTransport
-	ctx       context.Context
-	sentLast  bool
-	desc      *StreamDesc
-	codec     baseCodec
-	cp        Compressor
-	comp      encoding.Compressor
-	decompSet bool
-	dc        Decompressor
-	decomp    encoding.Compressor
-	p         *parser
-	mu        sync.Mutex
-	finished  bool
+	transportStream  *transport.ClientStream
+	ac               *addrConn
+	callHdr          *transport.CallHdr
+	cancel           context.CancelFunc
+	opts             []CallOption
+	callInfo         *callInfo
+	transport        transport.ClientTransport
+	ctx              context.Context
+	sentLast         bool
+	desc             *StreamDesc
+	codec            baseCodec
+	sendCompressorV0 Compressor
+	sendCompressorV1 encoding.Compressor
+	decompressorSet  bool
+	decompressorV0   Decompressor
+	decompressorV1   encoding.Compressor
+	parser           *parser
+
+	// mu guards finished and is held for the entire finish method.
+	mu       sync.Mutex
+	finished bool
 }
 
 func (as *addrConnStream) Header() (metadata.MD, error) {
-	m, err := as.s.Header()
+	m, err := as.transportStream.Header()
 	if err != nil {
 		as.finish(toRPCErr(err))
 	}
@@ -1365,17 +1382,17 @@ func (as *addrConnStream) Header() (metadata.MD, error) {
 }
 
 func (as *addrConnStream) Trailer() metadata.MD {
-	return as.s.Trailer()
+	return as.transportStream.Trailer()
 }
 
 func (as *addrConnStream) CloseSend() error {
 	if as.sentLast {
-		// TODO: return an error and finish the stream instead, due to API misuse?
+		// Return a nil error on repeated calls to this method.
 		return nil
 	}
 	as.sentLast = true
 
-	as.s.Write(nil, nil, &transport.WriteOptions{Last: true})
+	as.transportStream.Write(nil, nil, &transport.WriteOptions{Last: true})
 	// Always return nil; io.EOF is the only error that might make sense
 	// instead, but there is no need to signal the client to call RecvMsg
 	// as the only use left for the stream after CloseSend is to call
@@ -1384,7 +1401,7 @@ func (as *addrConnStream) CloseSend() error {
 }
 
 func (as *addrConnStream) Context() context.Context {
-	return as.s.Context()
+	return as.transportStream.Context()
 }
 
 func (as *addrConnStream) SendMsg(m any) (err error) {
@@ -1406,7 +1423,7 @@ func (as *addrConnStream) SendMsg(m any) (err error) {
 	}
 
 	// load hdr, payload, data
-	hdr, data, payload, pf, err := prepareMsg(m, as.codec, as.cp, as.comp, as.ac.dopts.copts.BufferPool)
+	hdr, data, payload, pf, err := prepareMsg(m, as.codec, as.sendCompressorV0, as.sendCompressorV1, as.ac.dopts.copts.BufferPool)
 	if err != nil {
 		return err
 	}
@@ -1425,7 +1442,7 @@ func (as *addrConnStream) SendMsg(m any) (err error) {
 		return status.Errorf(codes.ResourceExhausted, "trying to send message larger than max (%d vs. %d)", payload.Len(), *as.callInfo.maxSendMessageSize)
 	}
 
-	if err := as.s.Write(hdr, payload, &transport.WriteOptions{Last: !as.desc.ClientStreams}); err != nil {
+	if err := as.transportStream.Write(hdr, payload, &transport.WriteOptions{Last: !as.desc.ClientStreams}); err != nil {
 		if !as.desc.ClientStreams {
 			// For non-client-streaming RPCs, we return nil instead of EOF on error
 			// because the generated code requires it.  finish is not called; RecvMsg()
@@ -1446,25 +1463,25 @@ func (as *addrConnStream) RecvMsg(m any) (err error) {
 		}
 	}()
 
-	if !as.decompSet {
+	if !as.decompressorSet {
 		// Block until we receive headers containing received message encoding.
-		if ct := as.s.RecvCompress(); ct != "" && ct != encoding.Identity {
-			if as.dc == nil || as.dc.Type() != ct {
+		if ct := as.transportStream.RecvCompress(); ct != "" && ct != encoding.Identity {
+			if as.decompressorV0 == nil || as.decompressorV0.Type() != ct {
 				// No configured decompressor, or it does not match the incoming
 				// message encoding; attempt to find a registered compressor that does.
-				as.dc = nil
-				as.decomp = encoding.GetCompressor(ct)
+				as.decompressorV0 = nil
+				as.decompressorV1 = encoding.GetCompressor(ct)
 			}
 		} else {
 			// No compression is used; disable our decompressor.
-			as.dc = nil
+			as.decompressorV0 = nil
 		}
 		// Only initialize this state once per stream.
-		as.decompSet = true
+		as.decompressorSet = true
 	}
-	if err := recv(as.p, as.codec, as.s, as.dc, m, *as.callInfo.maxReceiveMessageSize, nil, as.decomp, false); err != nil {
+	if err := recv(as.parser, as.codec, as.transportStream, as.decompressorV0, m, *as.callInfo.maxReceiveMessageSize, nil, as.decompressorV1, false); err != nil {
 		if err == io.EOF {
-			if statusErr := as.s.Status().Err(); statusErr != nil {
+			if statusErr := as.transportStream.Status().Err(); statusErr != nil {
 				return statusErr
 			}
 			return io.EOF // indicates successful end of stream.
@@ -1479,12 +1496,12 @@ func (as *addrConnStream) RecvMsg(m any) (err error) {
 
 	// Special handling for non-server-stream rpcs.
 	// This recv expects EOF or errors, so we don't collect inPayload.
-	if err := recv(as.p, as.codec, as.s, as.dc, m, *as.callInfo.maxReceiveMessageSize, nil, as.decomp, false); err == io.EOF {
-		return as.s.Status().Err() // non-server streaming Recv returns nil on success
+	if err := recv(as.parser, as.codec, as.transportStream, as.decompressorV0, m, *as.callInfo.maxReceiveMessageSize, nil, as.decompressorV1, false); err == io.EOF {
+		return as.transportStream.Status().Err() // non-server streaming Recv returns nil on success
 	} else if err != nil {
 		return toRPCErr(err)
 	}
-	return toRPCErr(errors.New("grpc: client streaming protocol violation: get <nil>, want <EOF>"))
+	return status.Errorf(codes.Internal, "cardinality violation: expected <EOF> for non server-streaming RPCs, but received another message")
 }
 
 func (as *addrConnStream) finish(err error) {
@@ -1498,8 +1515,8 @@ func (as *addrConnStream) finish(err error) {
 		// Ending a stream with EOF indicates a success.
 		err = nil
 	}
-	if as.s != nil {
-		as.s.Close(err)
+	if as.transportStream != nil {
+		as.transportStream.Close(err)
 	}
 
 	if err != nil {
@@ -1569,13 +1586,16 @@ type serverStream struct {
 	s     *transport.ServerStream
 	p     *parser
 	codec baseCodec
+	desc  *StreamDesc
 
-	cp     Compressor
-	dc     Decompressor
-	comp   encoding.Compressor
-	decomp encoding.Compressor
+	compressorV0   Compressor
+	compressorV1   encoding.Compressor
+	decompressorV0 Decompressor
+	decompressorV1 encoding.Compressor
 
 	sendCompressorName string
+
+	recvFirstMsg bool // set after the first message is received
 
 	maxReceiveMessageSize int
 	maxSendMessageSize    int
@@ -1669,12 +1689,12 @@ func (ss *serverStream) SendMsg(m any) (err error) {
 	// Server handler could have set new compressor by calling SetSendCompressor.
 	// In case it is set, we need to use it for compressing outbound message.
 	if sendCompressorsName := ss.s.SendCompress(); sendCompressorsName != ss.sendCompressorName {
-		ss.comp = encoding.GetCompressor(sendCompressorsName)
+		ss.compressorV1 = encoding.GetCompressor(sendCompressorsName)
 		ss.sendCompressorName = sendCompressorsName
 	}
 
 	// load hdr, payload, data
-	hdr, data, payload, pf, err := prepareMsg(m, ss.codec, ss.cp, ss.comp, ss.p.bufferPool)
+	hdr, data, payload, pf, err := prepareMsg(m, ss.codec, ss.compressorV0, ss.compressorV1, ss.p.bufferPool)
 	if err != nil {
 		return err
 	}
@@ -1755,13 +1775,17 @@ func (ss *serverStream) RecvMsg(m any) (err error) {
 		payInfo = &payloadInfo{}
 		defer payInfo.free()
 	}
-	if err := recv(ss.p, ss.codec, ss.s, ss.dc, m, ss.maxReceiveMessageSize, payInfo, ss.decomp, true); err != nil {
+	if err := recv(ss.p, ss.codec, ss.s, ss.decompressorV0, m, ss.maxReceiveMessageSize, payInfo, ss.decompressorV1, true); err != nil {
 		if err == io.EOF {
 			if len(ss.binlogs) != 0 {
 				chc := &binarylog.ClientHalfClose{}
 				for _, binlog := range ss.binlogs {
 					binlog.Log(ss.ctx, chc)
 				}
+			}
+			// Received no request msg for non-client streaming rpcs.
+			if !ss.desc.ClientStreams && !ss.recvFirstMsg {
+				return status.Error(codes.Internal, "cardinality violation: received no request message from non-client-streaming RPC")
 			}
 			return err
 		}
@@ -1770,6 +1794,7 @@ func (ss *serverStream) RecvMsg(m any) (err error) {
 		}
 		return toRPCErr(err)
 	}
+	ss.recvFirstMsg = true
 	if len(ss.statsHandler) != 0 {
 		for _, sh := range ss.statsHandler {
 			sh.HandleRPC(ss.s.Context(), &stats.InPayload{
@@ -1789,7 +1814,19 @@ func (ss *serverStream) RecvMsg(m any) (err error) {
 			binlog.Log(ss.ctx, cm)
 		}
 	}
-	return nil
+
+	if ss.desc.ClientStreams {
+		// Subsequent messages should be received by subsequent RecvMsg calls.
+		return nil
+	}
+	// Special handling for non-client-stream rpcs.
+	// This recv expects EOF or errors, so we don't collect inPayload.
+	if err := recv(ss.p, ss.codec, ss.s, ss.decompressorV0, m, ss.maxReceiveMessageSize, nil, ss.decompressorV1, true); err == io.EOF {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return status.Error(codes.Internal, "cardinality violation: received multiple request messages for non-client-streaming RPC")
 }
 
 // MethodFromServerStream returns the method string for the input stream.

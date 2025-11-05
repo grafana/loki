@@ -70,6 +70,67 @@ func (t FieldRepetitionType) String() string {
 	}
 }
 
+// A structure for capturing metadata for estimating the unencoded,
+// uncompressed size of data written. This is useful for readers to estimate
+// how much memory is needed to reconstruct data in their memory model and for
+// fine grained filter pushdown on nested structures (the histograms contained
+// in this structure can help determine the number of nulls at a particular
+// nesting level and maximum length of lists).
+type SizeStatistics struct {
+	// The number of physical bytes stored for BYTE_ARRAY data values assuming
+	// no encoding. This is exclusive of the bytes needed to store the length of
+	// each byte array. In other words, this field is equivalent to the `(size
+	// of PLAIN-ENCODING the byte array values) - (4 bytes * number of values
+	// written)`. To determine unencoded sizes of other types readers can use
+	// schema information multiplied by the number of non-null and null values.
+	// The number of null/non-null values can be inferred from the histograms
+	// below.
+	//
+	// For example, if a column chunk is dictionary-encoded with dictionary
+	// ["a", "bc", "cde"], and a data page contains the indices [0, 0, 1, 2],
+	// then this value for that data page should be 7 (1 + 1 + 2 + 3).
+	//
+	// This field should only be set for types that use BYTE_ARRAY as their
+	// physical type.
+	UnencodedByteArrayDataBytes *int64 `thrift:"1,optional"`
+
+	// When present, there is expected to be one element corresponding to each
+	// repetition (i.e. size=max repetition_level+1) where each element
+	// represents the number of times the repetition level was observed in the
+	// data.
+	//
+	// This field may be omitted if max_repetition_level is 0 without loss
+	// of information.
+	RepetitionLevelHistogram []int64 `thrift:"2,optional"`
+
+	// Same as repetition_level_histogram except for definition levels.
+	//
+	// This field may be omitted if max_definition_level is 0 or 1 without
+	// loss of information.
+	DefinitionLevelHistogram []int64 `thrift:"3,optional"`
+}
+
+// Bounding box for GEOMETRY or GEOGRAPHY type in the representation of min/max
+// value pair of coordinates from each axis.
+type BoundingBox struct {
+	XMin float64  `thrift:"1,required"`
+	XMax float64  `thrift:"2,required"`
+	YMin float64  `thrift:"3,required"`
+	YMax float64  `thrift:"4,required"`
+	ZMin *float64 `thrift:"5,optional"`
+	ZMax *float64 `thrift:"6,optional"`
+	MMin *float64 `thrift:"7,optional"`
+	MMax *float64 `thrift:"8,optional"`
+}
+
+// Statistics specific to Geometry and Geography logical types
+type GeospatialStatistics struct {
+	// A bounding box of geospatial instances
+	BBox *BoundingBox `thrift:"1,optional"`
+	// Geospatial type codes of all instances, or an empty list if not known
+	GeoSpatialTypes []int32 `thrift:"2,optional"`
+}
+
 // Statistics per row group and per page.
 // All fields are optional.
 type Statistics struct {
@@ -99,19 +160,21 @@ type Statistics struct {
 }
 
 // Empty structs to use as logical type annotations.
-type StringType struct{} // allowed for BINARY, must be encoded with UTF-8
-type UUIDType struct{}   // allowed for FIXED[16], must encode raw UUID bytes
-type MapType struct{}    // see see LogicalTypes.md
-type ListType struct{}   // see LogicalTypes.md
-type EnumType struct{}   // allowed for BINARY, must be encoded with UTF-8
-type DateType struct{}   // allowed for INT32
+type StringType struct{}  // allowed for BINARY, must be encoded with UTF-8
+type UUIDType struct{}    // allowed for FIXED[16], must encode raw UUID bytes
+type MapType struct{}     // see LogicalTypes.md
+type ListType struct{}    // see LogicalTypes.md
+type EnumType struct{}    // allowed for BINARY, must be encoded with UTF-8
+type DateType struct{}    // allowed for INT32
+type Float16Type struct{} // allowed for FIXED[2], must encoded raw FLOAT16 bytes
 
-func (*StringType) String() string { return "STRING" }
-func (*UUIDType) String() string   { return "UUID" }
-func (*MapType) String() string    { return "MAP" }
-func (*ListType) String() string   { return "LIST" }
-func (*EnumType) String() string   { return "ENUM" }
-func (*DateType) String() string   { return "DATE" }
+func (*StringType) String() string  { return "STRING" }
+func (*UUIDType) String() string    { return "UUID" }
+func (*MapType) String() string     { return "MAP" }
+func (*ListType) String() string    { return "LIST" }
+func (*EnumType) String() string    { return "ENUM" }
+func (*DateType) String() string    { return "DATE" }
+func (*Float16Type) String() string { return "FLOAT16" }
 
 // Logical type to annotate a column that is always null.
 //
@@ -218,6 +281,91 @@ type BsonType struct{}
 
 func (t *BsonType) String() string { return "BSON" }
 
+// Embedded Variant logical type annotation
+type VariantType struct{}
+
+func (*VariantType) String() string { return "VARIANT" }
+
+// Edge interpolation algorithm for Geography logical type
+type EdgeInterpolationAlgorithm int32
+
+const (
+	Spherical EdgeInterpolationAlgorithm = 0
+	Vincenty  EdgeInterpolationAlgorithm = 1
+	Thomas    EdgeInterpolationAlgorithm = 2
+	Andoyer   EdgeInterpolationAlgorithm = 3
+	Karney    EdgeInterpolationAlgorithm = 4
+)
+
+func (e EdgeInterpolationAlgorithm) String() string {
+	switch e {
+	case Spherical:
+		return "SPHERICAL"
+	case Vincenty:
+		return "VINCENTY"
+	case Thomas:
+		return "THOMAS"
+	case Andoyer:
+		return "ANDOYER"
+	case Karney:
+		return "KARNEY"
+	default:
+		return "EdgeInterpolationAlgorithm(?)"
+	}
+}
+
+// Embedded Geometry logical type annotation
+//
+// Geospatial features in the Well-Known Binary (WKB) format and edges interpolation
+// is always linear/planar.
+//
+// A custom CRS can be set by the crs field. If unset, it defaults to "OGC:CRS84",
+// which means that the geometries must be stored in longitude, latitude based on
+// the WGS84 datum.
+//
+// Allowed for physical type: BYTE_ARRAY.
+//
+// See Geospatial.md for details.
+type GeometryType struct {
+	CRS string `thrift:"1,optional"`
+}
+
+func (t *GeometryType) String() string {
+	crs := t.CRS
+	if crs == "" {
+		crs = "OGC:CRS84"
+	}
+	return fmt.Sprintf("GEOMETRY(%q)", crs)
+}
+
+// Embedded Geography logical type annotation
+//
+// Geospatial features in the WKB format with an explicit (non-linear/non-planar)
+// edges interpolation algorithm.
+//
+// A custom geographic CRS can be set by the crs field, where longitudes are
+// bound by [-180, 180] and latitudes are bound by [-90, 90]. If unset, the CRS
+// defaults to "OGC:CRS84".
+//
+// An optional algorithm can be set to correctly interpret edges interpolation
+// of the geometries. If unset, the algorithm defaults to SPHERICAL.
+//
+// Allowed for physical type: BYTE_ARRAY.
+//
+// See Geospatial.md for details.
+type GeographyType struct {
+	CRS       string                     `thrift:"1,optional"`
+	Algorithm EdgeInterpolationAlgorithm `thrift:"2,optional"`
+}
+
+func (t *GeographyType) String() string {
+	crs := t.CRS
+	if crs == "" {
+		crs = "OGC:CRS84"
+	}
+	return fmt.Sprintf("GEOGRAPHY(%q, %s)", crs, t.Algorithm)
+}
+
 // LogicalType annotations to replace ConvertedType.
 //
 // To maintain compatibility, implementations using LogicalType for a
@@ -240,11 +388,15 @@ type LogicalType struct { // union
 	Timestamp *TimestampType `thrift:"8"`
 
 	// 9: reserved for Interval
-	Integer *IntType  `thrift:"10"` // use ConvertedType Int* or Uint*
-	Unknown *NullType `thrift:"11"` // no compatible ConvertedType
-	Json    *JsonType `thrift:"12"` // use ConvertedType JSON
-	Bson    *BsonType `thrift:"13"` // use ConvertedType BSON
-	UUID    *UUIDType `thrift:"14"` // no compatible ConvertedType
+	Integer   *IntType       `thrift:"10"` // use ConvertedType Int* or Uint*
+	Unknown   *NullType      `thrift:"11"` // no compatible ConvertedType
+	Json      *JsonType      `thrift:"12"` // use ConvertedType JSON
+	Bson      *BsonType      `thrift:"13"` // use ConvertedType BSON
+	UUID      *UUIDType      `thrift:"14"` // no compatible ConvertedType
+	Float16   *Float16Type   `thrift:"15"` // no compatible ConvertedType
+	Variant   *VariantType   `thrift:"16"` // no compatible ConvertedType
+	Geometry  *GeometryType  `thrift:"17"` // no compatible ConvertedType
+	Geography *GeographyType `thrift:"18"` // no compatible ConvertedType
 }
 
 func (t *LogicalType) String() string {
@@ -275,6 +427,14 @@ func (t *LogicalType) String() string {
 		return t.Bson.String()
 	case t.UUID != nil:
 		return t.UUID.String()
+	case t.Float16 != nil:
+		return t.Float16.String()
+	case t.Variant != nil:
+		return t.Variant.String()
+	case t.Geometry != nil:
+		return t.Geometry.String()
+	case t.Geography != nil:
+		return t.Geography.String()
 	default:
 		return ""
 	}
@@ -743,6 +903,29 @@ type ColumnMetaData struct {
 
 	// Byte offset from beginning of file to Bloom filter data.
 	BloomFilterOffset int64 `thrift:"14,optional"`
+
+	// Size of Bloom filter data including the serialized header, in bytes.
+	// Added in 2.10 so readers may not read this field from old files and
+	// it can be obtained after the BloomFilterHeader has been deserialized.
+	// Writers should write this field so readers can read the bloom filter
+	// in a single I/O.
+	BloomFilterLength *int32 `thrift:"15,optional"`
+
+	// Optional statistics to help estimate total memory when converted to in-memory
+	// representations. The histograms contained in these statistics can
+	// also be useful in some cases for more fine-grained nullability/list length
+	// filter pushdown.
+	// TODO: Uncomment this field when Thrift decoding is fixed. Strangely, when it is
+	// uncommented, test cases in file_test.go fail with an inexplicable error decoding
+	// an unrelated field:
+	//    reading parquet file metadata: decoding thrift payload: 4:FIELD<LIST> → 0/1:LIST<STRUCT>: missing required field: 2:FIELD<I64>
+	// (Seems to be complaining about field TotalBytesSize of RowGroup). This only occurs
+	// with testdata/dict-page-offset-zero.parquet, in both TestOpenFileWithoutPageIndex
+	// and TestOpenFile.
+	//SizeStatistics *SizeStatistics `thrift:"16,optional"`
+
+	// Optional statistics specific for Geometry and Geography logical types
+	GeospatialStatistics *GeospatialStatistics `thrift:"17,optional"`
 }
 
 type EncryptionWithFooterKey struct{}
@@ -856,6 +1039,9 @@ type ColumnOrder struct { // union
 	//   ENUM - unsigned byte-wise comparison
 	//   LIST - undefined
 	//   MAP - undefined
+	//   VARIANT - undefined
+	//   GEOMETRY - undefined
+	//   GEOGRAPHY - undefined
 	//
 	// In the absence of logical types, the sort order is determined by the physical type:
 	//   BOOLEAN - false, true
@@ -895,6 +1081,12 @@ type OffsetIndex struct {
 	// PageLocations, ordered by increasing PageLocation.offset. It is required
 	// that page_locations[i].first_row_index < page_locations[i+1].first_row_index.
 	PageLocations []PageLocation `thrift:"1,required"`
+
+	// Unencoded/uncompressed size for BYTE_ARRAY types.
+	//
+	// See documention for unencoded_byte_array_data_bytes in SizeStatistics for
+	// more details on this field.
+	UnencodedByteArrayDataBytes []int64 `thrift:"2,optional"`
 }
 
 // Description for ColumnIndex.
@@ -926,6 +1118,21 @@ type ColumnIndex struct {
 
 	// A list containing the number of null values for each page.
 	NullCounts []int64 `thrift:"5,optional"`
+
+	// Contains repetition level histograms for each page
+	// concatenated together.  The repetition_level_histogram field on
+	// SizeStatistics contains more details.
+	//
+	// When present the length should always be (number of pages *
+	// (max_repetition_level + 1)) elements.
+	//
+	// Element 0 is the first element of the histogram for the first page.
+	// Element (max_repetition_level + 1) is the first element of the histogram
+	// for the second page.
+	RepetitionLevelHistogram []int64 `thrift:"6,optional"`
+
+	// Same as repetition_level_histograms except for definitions levels.
+	DefinitionLevelHistogram []int64 `thrift:"7,optional"`
 }
 
 type AesGcmV1 struct {

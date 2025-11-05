@@ -14,8 +14,8 @@ labels:
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
 - pairs:
-    app.kubernetes.io/instance: loki-operator-v0.7.1
-    app.kubernetes.io/version: 0.7.1
+    app.kubernetes.io/instance: loki-operator-v0.8.0
+    app.kubernetes.io/version: 0.8.0
 
 configMapGenerator:
 - behavior: replace
@@ -27,7 +27,7 @@ configMapGenerator:
 images:
 - name: controller
   newName: docker.io/grafana/loki-operator
-  newTag: 0.7.1
+  newTag: 0.8.0
 
 patches:
 - path: manager_related_image_patch.yaml

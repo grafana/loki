@@ -20,7 +20,7 @@ type ClusterSeed struct {
 
 // Merge implements the memberlist.Mergeable interface.
 // It allow to merge the content of two different seeds.
-func (c *ClusterSeed) Merge(mergeable memberlist.Mergeable, _ bool) (change memberlist.Mergeable, error error) {
+func (c *ClusterSeed) Merge(mergeable memberlist.Mergeable, _ bool) (change memberlist.Mergeable, err error) {
 	if mergeable == nil {
 		return nil, nil
 	}
@@ -35,7 +35,7 @@ func (c *ClusterSeed) Merge(mergeable memberlist.Mergeable, _ bool) (change memb
 	if c.CreatedAt.Before(other.CreatedAt) {
 		return nil, nil
 	}
-	if c.CreatedAt == other.CreatedAt {
+	if c.CreatedAt.Equal(other.CreatedAt) {
 		// if we have the exact same creation date but the key is different
 		// we take the smallest UID using string alphabetical comparison to ensure stability.
 		if c.UID > other.UID {

@@ -50,7 +50,7 @@ type WatchConfig struct {
 	MaxPollFrequency time.Duration `mapstructure:"max_poll_frequency" yaml:"max_poll_frequency"`
 }
 
-var DefaultWatchConig = WatchConfig{
+var DefaultWatchConfig = WatchConfig{
 	MinPollFrequency: 250 * time.Millisecond,
 	MaxPollFrequency: 250 * time.Millisecond,
 }
@@ -58,7 +58,7 @@ var DefaultWatchConig = WatchConfig{
 // RegisterFlags with prefix registers flags where every name is prefixed by
 // prefix. If prefix is a non-empty string, prefix should end with a period.
 func (cfg *WatchConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	d := DefaultWatchConig
+	d := DefaultWatchConfig
 
 	f.DurationVar(&cfg.MinPollFrequency, prefix+"min_poll_frequency", d.MinPollFrequency, "Minimum period to poll for file changes")
 	f.DurationVar(&cfg.MaxPollFrequency, prefix+"max_poll_frequency", d.MaxPollFrequency, "Maximum period to poll for file changes")
@@ -247,7 +247,6 @@ func (t *FileTarget) sync() error {
 	} else {
 		// Gets current list of files to tail.
 		matches, err = doublestar.FilepathGlob(t.path)
-
 		if err != nil {
 			return errors.Wrap(err, "filetarget.sync.filepath.Glob")
 		}
@@ -257,7 +256,6 @@ func (t *FileTarget) sync() error {
 		matchesExcluded = []string{t.pathExclude}
 	} else {
 		matchesExcluded, err = doublestar.FilepathGlob(t.pathExclude)
-
 		if err != nil {
 			return errors.Wrap(err, "filetarget.sync.filepathexclude.Glob")
 		}

@@ -17,7 +17,7 @@ var defaultGoKitLogger = log.NewLogfmtLogger(os.Stderr)
 type GoKitHandler struct {
 	level        slog.Leveler
 	logger       log.Logger
-	preformatted []any
+	preformatted []slog.Attr
 	group        string
 }
 
@@ -70,10 +70,14 @@ func (h *GoKitHandler) Handle(_ context.Context, record slog.Record) error {
 	// creation time here.
 	pairs := make([]any, 0, (2 * record.NumAttrs()))
 	if !record.Time.IsZero() {
-		pairs = append(pairs, "time", record.Time)
+		pairs = append(pairs, slog.TimeKey, record.Time)
 	}
-	pairs = append(pairs, "msg", record.Message)
-	pairs = append(pairs, h.preformatted...)
+	pairs = append(pairs, slog.MessageKey, record.Message)
+
+	// preformatted attributes have already had their group prefix applied in WithAttr
+	for _, a := range h.preformatted {
+		pairs = appendPair(pairs, "", a)
+	}
 
 	record.Attrs(func(a slog.Attr) bool {
 		pairs = appendPair(pairs, h.group, a)
@@ -86,9 +90,13 @@ func (h *GoKitHandler) Handle(_ context.Context, record slog.Record) error {
 // WithAttrs formats the provided attributes and caches them in the handler to
 // attach to all future log calls. It implements slog.Handler.
 func (h *GoKitHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	pairs := make([]any, 0, 2*len(attrs))
-	for _, a := range attrs {
-		pairs = appendPair(pairs, h.group, a)
+	pairs := make([]slog.Attr, 0, len(attrs)+len(h.preformatted))
+	for _, attr := range attrs {
+		// preresolve the group to simplify attr tracking
+		if h.group != "" {
+			attr.Key = h.group + "." + attr.Key
+		}
+		pairs = append(pairs, attr)
 	}
 
 	if h.preformatted != nil {
@@ -156,7 +164,7 @@ func appendPair(pairs []any, groupPrefix string, attr slog.Attr) []any {
 			key = groupPrefix + "." + key
 		}
 
-		pairs = append(pairs, key, attr.Value)
+		pairs = append(pairs, key, attr.Value.Resolve())
 	}
 
 	return pairs

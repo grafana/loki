@@ -28,10 +28,10 @@ var Go = Register(MustNewLexer(
 func goRules() Rules {
 	return Rules{
 		"root": {
-			{`\n`, Text, nil},
-			{`\s+`, Text, nil},
-			{`\\\n`, Text, nil},
-			{`//[^\n\r]*`, CommentSingle, nil},
+			{`\n`, TextWhitespace, nil},
+			{`\s+`, TextWhitespace, nil},
+			{`//[^\s][^\n\r]*`, CommentPreproc, nil},
+			{`//\s+[^\n\r]*`, CommentSingle, nil},
 			{`/(\\\n)?[*](.|\n)*?[*](\\\n)?/`, CommentMultiline, nil},
 			{`(import|package)\b`, KeywordNamespace, nil},
 			{`(var|func|struct|map|chan|type|interface|const)\b`, KeywordDeclaration, nil},

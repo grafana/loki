@@ -155,9 +155,6 @@ func NewService(ctx context.Context, opts ...option.ClientOption) (*Service, err
 	s.Objects = NewObjectsService(s)
 	s.Operations = NewOperationsService(s)
 	s.Projects = NewProjectsService(s)
-	if err != nil {
-		return nil, err
-	}
 	if endpoint != "" {
 		s.BasePath = endpoint
 	}
@@ -173,7 +170,7 @@ func New(client *http.Client) (*Service, error) {
 	if client == nil {
 		return nil, errors.New("client is nil")
 	}
-	return NewService(context.Background(), option.WithHTTPClient(client))
+	return NewService(context.TODO(), option.WithHTTPClient(client))
 }
 
 type Service struct {
@@ -712,24 +709,152 @@ func (s BucketCustomPlacementConfig) MarshalJSON() ([]byte, error) {
 
 // BucketEncryption: Encryption configuration for a bucket.
 type BucketEncryption struct {
+	// CustomerManagedEncryptionEnforcementConfig: If set, the new objects created
+	// in this bucket must comply with this enforcement config. Changing this has
+	// no effect on existing objects; it applies to new objects only. If omitted,
+	// the new objects are allowed to be encrypted with Customer Managed Encryption
+	// type by default.
+	CustomerManagedEncryptionEnforcementConfig *BucketEncryptionCustomerManagedEncryptionEnforcementConfig `json:"customerManagedEncryptionEnforcementConfig,omitempty"`
+	// CustomerSuppliedEncryptionEnforcementConfig: If set, the new objects created
+	// in this bucket must comply with this enforcement config. Changing this has
+	// no effect on existing objects; it applies to new objects only. If omitted,
+	// the new objects are allowed to be encrypted with Customer Supplied
+	// Encryption type by default.
+	CustomerSuppliedEncryptionEnforcementConfig *BucketEncryptionCustomerSuppliedEncryptionEnforcementConfig `json:"customerSuppliedEncryptionEnforcementConfig,omitempty"`
 	// DefaultKmsKeyName: A Cloud KMS key that will be used to encrypt objects
 	// inserted into this bucket, if no encryption method is specified.
 	DefaultKmsKeyName string `json:"defaultKmsKeyName,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "DefaultKmsKeyName") to
-	// unconditionally include in API requests. By default, fields with empty or
-	// default values are omitted from API requests. See
+	// GoogleManagedEncryptionEnforcementConfig: If set, the new objects created in
+	// this bucket must comply with this enforcement config. Changing this has no
+	// effect on existing objects; it applies to new objects only. If omitted, the
+	// new objects are allowed to be encrypted with Google Managed Encryption type
+	// by default.
+	GoogleManagedEncryptionEnforcementConfig *BucketEncryptionGoogleManagedEncryptionEnforcementConfig `json:"googleManagedEncryptionEnforcementConfig,omitempty"`
+	// ForceSendFields is a list of field names (e.g.
+	// "CustomerManagedEncryptionEnforcementConfig") to unconditionally include in
+	// API requests. By default, fields with empty or default values are omitted
+	// from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "DefaultKmsKeyName") to include in
-	// API requests with the JSON null value. By default, fields with empty values
-	// are omitted from API requests. See
+	// NullFields is a list of field names (e.g.
+	// "CustomerManagedEncryptionEnforcementConfig") to include in API requests
+	// with the JSON null value. By default, fields with empty values are omitted
+	// from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
 
 func (s BucketEncryption) MarshalJSON() ([]byte, error) {
 	type NoMethod BucketEncryption
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BucketEncryptionCustomerManagedEncryptionEnforcementConfig: If set, the new
+// objects created in this bucket must comply with this enforcement config.
+// Changing this has no effect on existing objects; it applies to new objects
+// only. If omitted, the new objects are allowed to be encrypted with Customer
+// Managed Encryption type by default.
+type BucketEncryptionCustomerManagedEncryptionEnforcementConfig struct {
+	// EffectiveTime: Server-determined value that indicates the time from which
+	// configuration was enforced and effective. This value is in RFC 3339 format.
+	EffectiveTime string `json:"effectiveTime,omitempty"`
+	// RestrictionMode: Restriction mode for Customer-Managed Encryption Keys.
+	// Defaults to NotRestricted.
+	//
+	// Possible values:
+	//   "NotRestricted" - Creation of new objects with Customer-Managed Encryption
+	// is not restricted.
+	//   "FullyRestricted" - Creation of new objects with Customer-Managed
+	// Encryption is fully restricted.
+	RestrictionMode string `json:"restrictionMode,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "EffectiveTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "EffectiveTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BucketEncryptionCustomerManagedEncryptionEnforcementConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod BucketEncryptionCustomerManagedEncryptionEnforcementConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BucketEncryptionCustomerSuppliedEncryptionEnforcementConfig: If set, the new
+// objects created in this bucket must comply with this enforcement config.
+// Changing this has no effect on existing objects; it applies to new objects
+// only. If omitted, the new objects are allowed to be encrypted with Customer
+// Supplied Encryption type by default.
+type BucketEncryptionCustomerSuppliedEncryptionEnforcementConfig struct {
+	// EffectiveTime: Server-determined value that indicates the time from which
+	// configuration was enforced and effective. This value is in RFC 3339 format.
+	EffectiveTime string `json:"effectiveTime,omitempty"`
+	// RestrictionMode: Restriction mode for Customer-Supplied Encryption Keys.
+	// Defaults to NotRestricted.
+	//
+	// Possible values:
+	//   "NotRestricted" - Creation of new objects with Customer-Supplied
+	// Encryption is not restricted.
+	//   "FullyRestricted" - Creation of new objects with Customer-Supplied
+	// Encryption is fully restricted.
+	RestrictionMode string `json:"restrictionMode,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "EffectiveTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "EffectiveTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BucketEncryptionCustomerSuppliedEncryptionEnforcementConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod BucketEncryptionCustomerSuppliedEncryptionEnforcementConfig
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// BucketEncryptionGoogleManagedEncryptionEnforcementConfig: If set, the new
+// objects created in this bucket must comply with this enforcement config.
+// Changing this has no effect on existing objects; it applies to new objects
+// only. If omitted, the new objects are allowed to be encrypted with Google
+// Managed Encryption type by default.
+type BucketEncryptionGoogleManagedEncryptionEnforcementConfig struct {
+	// EffectiveTime: Server-determined value that indicates the time from which
+	// configuration was enforced and effective. This value is in RFC 3339 format.
+	EffectiveTime string `json:"effectiveTime,omitempty"`
+	// RestrictionMode: Restriction mode for Google-Managed Encryption Keys.
+	// Defaults to NotRestricted.
+	//
+	// Possible values:
+	//   "NotRestricted" - Creation of new objects with Google Managed Encryption
+	// is not restricted.
+	//   "FullyRestricted" - Creation of new objects with Google Managed Encryption
+	// is fully restricted.
+	RestrictionMode string `json:"restrictionMode,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "EffectiveTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "EffectiveTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s BucketEncryptionGoogleManagedEncryptionEnforcementConfig) MarshalJSON() ([]byte, error) {
+	type NoMethod BucketEncryptionGoogleManagedEncryptionEnforcementConfig
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -855,6 +980,12 @@ func (s BucketIamConfigurationUniformBucketLevelAccess) MarshalJSON() ([]byte, e
 // sources that are allowed to access the operations on the bucket, as well as
 // its underlying objects. Only enforced when the mode is set to 'Enabled'.
 type BucketIpFilter struct {
+	// AllowAllServiceAgentAccess: Whether to allow all service agents to access
+	// the bucket regardless of the IP filter configuration.
+	AllowAllServiceAgentAccess bool `json:"allowAllServiceAgentAccess,omitempty"`
+	// AllowCrossOrgVpcs: Whether to allow cross-org VPCs in the bucket's IP filter
+	// configuration.
+	AllowCrossOrgVpcs bool `json:"allowCrossOrgVpcs,omitempty"`
 	// Mode: The mode of the IP filter. Valid values are 'Enabled' and 'Disabled'.
 	Mode string `json:"mode,omitempty"`
 	// PublicNetworkSource: The public network source of the bucket's IP filter.
@@ -862,15 +993,15 @@ type BucketIpFilter struct {
 	// VpcNetworkSources: The list of VPC network
 	// (https://cloud.google.com/vpc/docs/vpc) sources of the bucket's IP filter.
 	VpcNetworkSources []*BucketIpFilterVpcNetworkSources `json:"vpcNetworkSources,omitempty"`
-	// ForceSendFields is a list of field names (e.g. "Mode") to unconditionally
-	// include in API requests. By default, fields with empty or default values are
-	// omitted from API requests. See
+	// ForceSendFields is a list of field names (e.g. "AllowAllServiceAgentAccess")
+	// to unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
 	// details.
 	ForceSendFields []string `json:"-"`
-	// NullFields is a list of field names (e.g. "Mode") to include in API requests
-	// with the JSON null value. By default, fields with empty values are omitted
-	// from API requests. See
+	// NullFields is a list of field names (e.g. "AllowAllServiceAgentAccess") to
+	// include in API requests with the JSON null value. By default, fields with
+	// empty values are omitted from API requests. See
 	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
 	NullFields []string `json:"-"`
 }
@@ -1480,6 +1611,9 @@ type Buckets struct {
 	// sets. Provide this value in a subsequent request to return the next page of
 	// results.
 	NextPageToken string `json:"nextPageToken,omitempty"`
+	// Unreachable: The list of bucket resource names that could not be reached
+	// during the listing operation.
+	Unreachable []string `json:"unreachable,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
 	googleapi.ServerResponse `json:"-"`
@@ -1514,6 +1648,12 @@ type BulkRestoreObjectsRequest struct {
 	// CopySourceAcl: If true, copies the source object's ACL; otherwise, uses the
 	// bucket's default object ACL. The default is false.
 	CopySourceAcl bool `json:"copySourceAcl,omitempty"`
+	// CreatedAfterTime: Restores only the objects that were created after this
+	// time.
+	CreatedAfterTime string `json:"createdAfterTime,omitempty"`
+	// CreatedBeforeTime: Restores only the objects that were created before this
+	// time.
+	CreatedBeforeTime string `json:"createdBeforeTime,omitempty"`
 	// MatchGlobs: Restores only the objects matching any of the specified glob(s).
 	// If this parameter is not specified, all objects will be restored within the
 	// specified time range.
@@ -2209,6 +2349,10 @@ type Object struct {
 	// ContentType: Content-Type of the object data. If an object is stored without
 	// a Content-Type, it is served as application/octet-stream.
 	ContentType string `json:"contentType,omitempty"`
+	// Contexts: User-defined or system-defined object contexts. Each object
+	// context is a key-payload pair, where the key provides the identification and
+	// the payload holds the associated value and additional metadata.
+	Contexts *ObjectContexts `json:"contexts,omitempty"`
 	// Crc32c: CRC32c checksum, as described in RFC 4960, Appendix B; encoded using
 	// base64 in big-endian byte order. For more information about using the CRC32c
 	// checksum, see Data Validation and Change Detection
@@ -2334,6 +2478,30 @@ type Object struct {
 
 func (s Object) MarshalJSON() ([]byte, error) {
 	type NoMethod Object
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
+// ObjectContexts: User-defined or system-defined object contexts. Each object
+// context is a key-payload pair, where the key provides the identification and
+// the payload holds the associated value and additional metadata.
+type ObjectContexts struct {
+	// Custom: User-defined object contexts.
+	Custom map[string]ObjectCustomContextPayload `json:"custom,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "Custom") to unconditionally
+	// include in API requests. By default, fields with empty or default values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "Custom") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ObjectContexts) MarshalJSON() ([]byte, error) {
+	type NoMethod ObjectContexts
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
@@ -2528,6 +2696,35 @@ func (s ObjectAccessControls) MarshalJSON() ([]byte, error) {
 	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
 }
 
+// ObjectCustomContextPayload: The payload of a single user-defined object
+// context.
+type ObjectCustomContextPayload struct {
+	// CreateTime: The time at which the object context was created in RFC 3339
+	// format.
+	CreateTime string `json:"createTime,omitempty"`
+	// UpdateTime: The time at which the object context was last updated in RFC
+	// 3339 format.
+	UpdateTime string `json:"updateTime,omitempty"`
+	// Value: The value of the object context.
+	Value string `json:"value,omitempty"`
+	// ForceSendFields is a list of field names (e.g. "CreateTime") to
+	// unconditionally include in API requests. By default, fields with empty or
+	// default values are omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-ForceSendFields for more
+	// details.
+	ForceSendFields []string `json:"-"`
+	// NullFields is a list of field names (e.g. "CreateTime") to include in API
+	// requests with the JSON null value. By default, fields with empty values are
+	// omitted from API requests. See
+	// https://pkg.go.dev/google.golang.org/api#hdr-NullFields for more details.
+	NullFields []string `json:"-"`
+}
+
+func (s ObjectCustomContextPayload) MarshalJSON() ([]byte, error) {
+	type NoMethod ObjectCustomContextPayload
+	return gensupport.MarshalJSON(NoMethod(s), s.ForceSendFields, s.NullFields)
+}
+
 // Objects: A list of objects.
 type Objects struct {
 	// Items: The list of items.
@@ -2611,24 +2808,24 @@ type PolicyBindings struct {
 	Condition *Expr `json:"condition,omitempty"`
 	// Members: A collection of identifiers for members who may assume the provided
 	// role. Recognized identifiers are as follows:
-	// - allUsers — A special identifier that represents anyone on the internet;
+	// - allUsers - A special identifier that represents anyone on the internet;
 	// with or without a Google account.
-	// - allAuthenticatedUsers — A special identifier that represents anyone who
-	// is authenticated with a Google account or a service account.
-	// - user:emailid — An email address that represents a specific account. For
+	// - allAuthenticatedUsers - A special identifier that represents anyone who is
+	// authenticated with a Google account or a service account.
+	// - user:emailid - An email address that represents a specific account. For
 	// example, user:alice@gmail.com or user:joe@example.com.
-	// - serviceAccount:emailid — An email address that represents a service
+	// - serviceAccount:emailid - An email address that represents a service
 	// account. For example,
 	// serviceAccount:my-other-app@appspot.gserviceaccount.com .
-	// - group:emailid — An email address that represents a Google group. For
+	// - group:emailid - An email address that represents a Google group. For
 	// example, group:admins@example.com.
-	// - domain:domain — A Google Apps domain name that represents all the users
-	// of that domain. For example, domain:google.com or domain:example.com.
-	// - projectOwner:projectid — Owners of the given project. For example,
+	// - domain:domain - A Google Apps domain name that represents all the users of
+	// that domain. For example, domain:google.com or domain:example.com.
+	// - projectOwner:projectid - Owners of the given project. For example,
 	// projectOwner:my-example-project
-	// - projectEditor:projectid — Editors of the given project. For example,
+	// - projectEditor:projectid - Editors of the given project. For example,
 	// projectEditor:my-example-project
-	// - projectViewer:projectid — Viewers of the given project. For example,
+	// - projectViewer:projectid - Viewers of the given project. For example,
 	// projectViewer:my-example-project
 	Members []string `json:"members,omitempty"`
 	// Role: The role to which members belong. Two types of roles are supported:
@@ -2636,25 +2833,24 @@ type PolicyBindings struct {
 	// provided by ACLs, and legacy IAM roles, which do map directly to ACL
 	// permissions. All roles are of the format roles/storage.specificRole.
 	// The new IAM roles are:
-	// - roles/storage.admin — Full control of Google Cloud Storage resources.
-	//
-	// - roles/storage.objectViewer — Read-Only access to Google Cloud Storage
+	// - roles/storage.admin - Full control of Google Cloud Storage resources.
+	// - roles/storage.objectViewer - Read-Only access to Google Cloud Storage
 	// objects.
-	// - roles/storage.objectCreator — Access to create objects in Google Cloud
+	// - roles/storage.objectCreator - Access to create objects in Google Cloud
 	// Storage.
-	// - roles/storage.objectAdmin — Full control of Google Cloud Storage
-	// objects.   The legacy IAM roles are:
-	// - roles/storage.legacyObjectReader — Read-only access to objects without
+	// - roles/storage.objectAdmin - Full control of Google Cloud Storage objects.
+	//  The legacy IAM roles are:
+	// - roles/storage.legacyObjectReader - Read-only access to objects without
 	// listing. Equivalent to an ACL entry on an object with the READER role.
-	// - roles/storage.legacyObjectOwner — Read/write access to existing objects
+	// - roles/storage.legacyObjectOwner - Read/write access to existing objects
 	// without listing. Equivalent to an ACL entry on an object with the OWNER
 	// role.
-	// - roles/storage.legacyBucketReader — Read access to buckets with object
+	// - roles/storage.legacyBucketReader - Read access to buckets with object
 	// listing. Equivalent to an ACL entry on a bucket with the READER role.
-	// - roles/storage.legacyBucketWriter — Read access to buckets with object
+	// - roles/storage.legacyBucketWriter - Read access to buckets with object
 	// listing/creation/deletion. Equivalent to an ACL entry on a bucket with the
 	// WRITER role.
-	// - roles/storage.legacyBucketOwner — Read and write access to existing
+	// - roles/storage.legacyBucketOwner - Read and write access to existing
 	// buckets with object listing/creation/deletion. Equivalent to an ACL entry on
 	// a bucket with the OWNER role.
 	Role string `json:"role,omitempty"`
@@ -2807,27 +3003,26 @@ type TestIamPermissionsResponse struct {
 	// Permissions: The permissions held by the caller. Permissions are always of
 	// the format storage.resource.capability, where resource is one of buckets,
 	// objects, or managedFolders. The supported permissions are as follows:
-	// - storage.buckets.delete — Delete bucket.
-	// - storage.buckets.get — Read bucket metadata.
-	// - storage.buckets.getIamPolicy — Read bucket IAM policy.
-	// - storage.buckets.create — Create bucket.
-	// - storage.buckets.list — List buckets.
-	// - storage.buckets.setIamPolicy — Update bucket IAM policy.
-	// - storage.buckets.update — Update bucket metadata.
-	// - storage.objects.delete — Delete object.
-	// - storage.objects.get — Read object data and metadata.
-	// - storage.objects.getIamPolicy — Read object IAM policy.
-	// - storage.objects.create — Create object.
-	// - storage.objects.list — List objects.
-	// - storage.objects.setIamPolicy — Update object IAM policy.
-	// - storage.objects.update — Update object metadata.
-	// - storage.managedFolders.delete — Delete managed folder.
-	// - storage.managedFolders.get — Read managed folder metadata.
-	// - storage.managedFolders.getIamPolicy — Read managed folder IAM policy.
-	//
-	// - storage.managedFolders.create — Create managed folder.
-	// - storage.managedFolders.list — List managed folders.
-	// - storage.managedFolders.setIamPolicy — Update managed folder IAM policy.
+	// - storage.buckets.delete - Delete bucket.
+	// - storage.buckets.get - Read bucket metadata.
+	// - storage.buckets.getIamPolicy - Read bucket IAM policy.
+	// - storage.buckets.create - Create bucket.
+	// - storage.buckets.list - List buckets.
+	// - storage.buckets.setIamPolicy - Update bucket IAM policy.
+	// - storage.buckets.update - Update bucket metadata.
+	// - storage.objects.delete - Delete object.
+	// - storage.objects.get - Read object data and metadata.
+	// - storage.objects.getIamPolicy - Read object IAM policy.
+	// - storage.objects.create - Create object.
+	// - storage.objects.list - List objects.
+	// - storage.objects.setIamPolicy - Update object IAM policy.
+	// - storage.objects.update - Update object metadata.
+	// - storage.managedFolders.delete - Delete managed folder.
+	// - storage.managedFolders.get - Read managed folder metadata.
+	// - storage.managedFolders.getIamPolicy - Read managed folder IAM policy.
+	// - storage.managedFolders.create - Create managed folder.
+	// - storage.managedFolders.list - List managed folders.
+	// - storage.managedFolders.setIamPolicy - Update managed folder IAM policy.
 	Permissions []string `json:"permissions,omitempty"`
 
 	// ServerResponse contains the HTTP response code and headers from the server.
@@ -5031,6 +5226,14 @@ func (c *BucketsListCall) Projection(projection string) *BucketsListCall {
 	return c
 }
 
+// ReturnPartialSuccess sets the optional parameter "returnPartialSuccess": If
+// true, return a list of bucket resource names for buckets that are in
+// unreachable locations.
+func (c *BucketsListCall) ReturnPartialSuccess(returnPartialSuccess bool) *BucketsListCall {
+	c.urlParams_.Set("returnPartialSuccess", fmt.Sprint(returnPartialSuccess))
+	return c
+}
+
 // SoftDeleted sets the optional parameter "softDeleted": If true, only
 // soft-deleted bucket versions will be returned. The default is false. For
 // more information, see Soft Delete
@@ -7116,7 +7319,7 @@ func (r *FoldersService) Insert(bucket string, folder *Folder) *FoldersInsertCal
 }
 
 // Recursive sets the optional parameter "recursive": If true, any parent
-// folder which doesn’t exist will be created automatically.
+// folder which doesn't exist will be created automatically.
 func (c *FoldersInsertCall) Recursive(recursive bool) *FoldersInsertCall {
 	c.urlParams_.Set("recursive", fmt.Sprint(recursive))
 	return c
@@ -10915,6 +11118,14 @@ func (c *ObjectsListCall) EndOffset(endOffset string) *ObjectsListCall {
 	return c
 }
 
+// Filter sets the optional parameter "filter": Filter the returned objects.
+// Currently only supported for the contexts field. If delimiter is set, the
+// returned prefixes are exempt from this filter.
+func (c *ObjectsListCall) Filter(filter string) *ObjectsListCall {
+	c.urlParams_.Set("filter", filter)
+	return c
+}
+
 // IncludeFoldersAsPrefixes sets the optional parameter
 // "includeFoldersAsPrefixes": Only applicable if delimiter is set to '/'. If
 // true, will also include folders and managed folders (besides objects) in the
@@ -11230,6 +11441,18 @@ func (c *ObjectsMoveCall) IfSourceMetagenerationMatch(ifSourceMetagenerationMatc
 // in the request.
 func (c *ObjectsMoveCall) IfSourceMetagenerationNotMatch(ifSourceMetagenerationNotMatch int64) *ObjectsMoveCall {
 	c.urlParams_.Set("ifSourceMetagenerationNotMatch", fmt.Sprint(ifSourceMetagenerationNotMatch))
+	return c
+}
+
+// Projection sets the optional parameter "projection": Set of properties to
+// return. Defaults to noAcl.
+//
+// Possible values:
+//
+//	"full" - Include all properties.
+//	"noAcl" - Omit the owner, acl property.
+func (c *ObjectsMoveCall) Projection(projection string) *ObjectsMoveCall {
+	c.urlParams_.Set("projection", projection)
 	return c
 }
 

@@ -107,7 +107,7 @@ func ParseNetstat(output string, mode string,
 }
 
 // Deprecated: use process.PidsWithContext instead
-func PidsWithContext(ctx context.Context) ([]int32, error) {
+func PidsWithContext(_ context.Context) ([]int32, error) {
 	return nil, common.ErrNotImplementedError
 }
 
@@ -150,26 +150,26 @@ func IOCountersWithContext(ctx context.Context, pernic bool) ([]IOCountersStat, 
 		ret = append(ret, ioc)
 	}
 
-	if pernic == false {
-		return getIOCountersAll(ret)
+	if !pernic {
+		return getIOCountersAll(ret), nil
 	}
 
 	return ret, nil
 }
 
-func IOCountersByFileWithContext(ctx context.Context, pernic bool, filename string) ([]IOCountersStat, error) {
-	return IOCounters(pernic)
+func IOCountersByFileWithContext(ctx context.Context, pernic bool, _ string) ([]IOCountersStat, error) {
+	return IOCountersWithContext(ctx, pernic)
 }
 
-func FilterCountersWithContext(ctx context.Context) ([]FilterStat, error) {
+func FilterCountersWithContext(_ context.Context) ([]FilterStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func ConntrackStatsWithContext(ctx context.Context, percpu bool) ([]ConntrackStat, error) {
+func ConntrackStatsWithContext(_ context.Context, _ bool) ([]ConntrackStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func ProtoCountersWithContext(ctx context.Context, protocols []string) ([]ProtoCountersStat, error) {
+func ProtoCountersWithContext(_ context.Context, _ []string) ([]ProtoCountersStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
@@ -217,34 +217,34 @@ func parseNetstatLine(line string) (ConnectionStat, error) {
 	return n, nil
 }
 
-func parseNetstatAddr(local string, remote string, family uint32) (laddr Addr, raddr Addr, err error) {
-	parse := func(l string) (Addr, error) {
-		matches := portMatch.FindStringSubmatch(l)
-		if matches == nil {
-			return Addr{}, fmt.Errorf("wrong addr, %s", l)
-		}
-		host := matches[1]
-		port := matches[2]
-		if host == "*" {
-			switch family {
-			case syscall.AF_INET:
-				host = "0.0.0.0"
-			case syscall.AF_INET6:
-				host = "::"
-			default:
-				return Addr{}, fmt.Errorf("unknown family, %d", family)
-			}
-		}
-		lport, err := strconv.ParseInt(port, 10, 32)
-		if err != nil {
-			return Addr{}, err
-		}
-		return Addr{IP: host, Port: uint32(lport)}, nil
+func parseAddr(l string, family uint32) (Addr, error) {
+	matches := portMatch.FindStringSubmatch(l)
+	if matches == nil {
+		return Addr{}, fmt.Errorf("wrong addr, %s", l)
 	}
+	host := matches[1]
+	port := matches[2]
+	if host == "*" {
+		switch family {
+		case syscall.AF_INET:
+			host = "0.0.0.0"
+		case syscall.AF_INET6:
+			host = "::"
+		default:
+			return Addr{}, fmt.Errorf("unknown family, %d", family)
+		}
+	}
+	lport, err := strconv.ParseInt(port, 10, 32)
+	if err != nil {
+		return Addr{}, err
+	}
+	return Addr{IP: host, Port: uint32(lport)}, nil
+}
 
-	laddr, err = parse(local)
+func parseNetstatAddr(local, remote string, family uint32) (laddr, raddr Addr, err error) {
+	laddr, err = parseAddr(local, family)
 	if remote != "*.*" { // remote addr exists
-		raddr, err = parse(remote)
+		raddr, err = parseAddr(remote, family)
 		if err != nil {
 			return laddr, raddr, err
 		}
@@ -260,11 +260,7 @@ func ConnectionsWithContext(ctx context.Context, kind string) ([]ConnectionStat,
 	switch strings.ToLower(kind) {
 	default:
 		fallthrough
-	case "":
-		fallthrough
-	case "all":
-		fallthrough
-	case "inet":
+	case "", "all", "inet":
 		// nothing to add
 	case "inet4":
 		args = append(args, "-finet")
@@ -296,7 +292,7 @@ func ConnectionsWithContext(ctx context.Context, kind string) ([]ConnectionStat,
 	}
 	lines := strings.Split(string(out), "\n")
 	for _, line := range lines {
-		if !(strings.HasPrefix(line, "tcp") || strings.HasPrefix(line, "udp")) {
+		if !strings.HasPrefix(line, "tcp") && !strings.HasPrefix(line, "udp") {
 			continue
 		}
 		n, err := parseNetstatLine(line)
@@ -310,15 +306,15 @@ func ConnectionsWithContext(ctx context.Context, kind string) ([]ConnectionStat,
 	return ret, nil
 }
 
-func ConnectionsPidWithContext(ctx context.Context, kind string, pid int32) ([]ConnectionStat, error) {
+func ConnectionsPidWithContext(_ context.Context, _ string, _ int32) ([]ConnectionStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func ConnectionsMaxWithContext(ctx context.Context, kind string, maxConn int) ([]ConnectionStat, error) {
+func ConnectionsMaxWithContext(_ context.Context, _ string, _ int) ([]ConnectionStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
-func ConnectionsPidMaxWithContext(ctx context.Context, kind string, pid int32, maxConn int) ([]ConnectionStat, error) {
+func ConnectionsPidMaxWithContext(_ context.Context, _ string, _ int32, _ int) ([]ConnectionStat, error) {
 	return nil, common.ErrNotImplementedError
 }
 
@@ -338,6 +334,6 @@ func ConnectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, p
 	return connectionsPidMaxWithoutUidsWithContext(ctx, kind, pid, maxConn)
 }
 
-func connectionsPidMaxWithoutUidsWithContext(ctx context.Context, kind string, pid int32, maxConn int) ([]ConnectionStat, error) {
+func connectionsPidMaxWithoutUidsWithContext(_ context.Context, _ string, _ int32, _ int) ([]ConnectionStat, error) {
 	return nil, common.ErrNotImplementedError
 }

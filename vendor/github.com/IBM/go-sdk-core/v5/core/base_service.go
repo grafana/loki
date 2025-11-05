@@ -357,13 +357,13 @@ func (service *BaseService) SetUserAgent(userAgent string) {
 //
 // err: a non-nil error object if an error occurred
 func (service *BaseService) Request(req *http.Request, result interface{}) (detailedResponse *DetailedResponse, err error) {
-	// Add default headers.
+	// Set default headers on the request.
 	if service.DefaultHeaders != nil {
 		for k, v := range service.DefaultHeaders {
-			req.Header.Add(k, strings.Join(v, ""))
+			req.Header.Set(k, strings.Join(v, ""))
 		}
 
-		// After adding the default headers, make one final check to see if the user
+		// After setting the default headers, make one final check to see if the user
 		// specified the "Host" header within the default headers.
 		// This needs to be handled separately because it will be ignored by
 		// the Request.Write() method.

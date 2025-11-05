@@ -133,10 +133,6 @@ func validateClusterAndConstructClusterUpdate(cluster *v3clusterpb.Cluster, serv
 		rhLBCfg := []byte(fmt.Sprintf("{\"minRingSize\": %d, \"maxRingSize\": %d}", minSize, maxSize))
 		lbPolicy = []byte(fmt.Sprintf(`[{"ring_hash_experimental": %s}]`, rhLBCfg))
 	case v3clusterpb.Cluster_LEAST_REQUEST:
-		if !envconfig.LeastRequestLB {
-			return ClusterUpdate{}, fmt.Errorf("unexpected lbPolicy %v in response: %+v", cluster.GetLbPolicy(), cluster)
-		}
-
 		// "The configuration for the Least Request LB policy is the
 		// least_request_lb_config field. The field is optional; if not present,
 		// defaults will be assumed for all of its values." - A48
@@ -291,8 +287,8 @@ func securityConfigFromCluster(cluster *v3clusterpb.Cluster) (*SecurityConfig, e
 		return nil, fmt.Errorf("transport_socket field has unexpected name: %s", name)
 	}
 	tc := ts.GetTypedConfig()
-	if tc == nil || tc.TypeUrl != version.V3UpstreamTLSContextURL {
-		return nil, fmt.Errorf("transport_socket field has unexpected typeURL: %s", tc.TypeUrl)
+	if typeURL := tc.GetTypeUrl(); typeURL != version.V3UpstreamTLSContextURL {
+		return nil, fmt.Errorf("transport_socket missing typed_config or wrong type_url: %q", typeURL)
 	}
 	upstreamCtx := &v3tlspb.UpstreamTlsContext{}
 	if err := proto.Unmarshal(tc.GetValue(), upstreamCtx); err != nil {
@@ -322,12 +318,13 @@ func securityConfigFromCommonTLSContext(common *v3tlspb.CommonTlsContext, server
 	// For now, if we can't get a valid security config from the new fields, we
 	// fallback to the old deprecated fields.
 	// TODO: Drop support for deprecated fields. NACK if err != nil here.
-	sc, _ := securityConfigFromCommonTLSContextUsingNewFields(common, server)
+	sc, err1 := securityConfigFromCommonTLSContextUsingNewFields(common, server)
 	if sc == nil || sc.Equal(&SecurityConfig{}) {
 		var err error
 		sc, err = securityConfigFromCommonTLSContextWithDeprecatedFields(common, server)
 		if err != nil {
-			return nil, err
+			// Retain the validation error from using the new fields.
+			return nil, errors.Join(err1, fmt.Errorf("failed to parse config using deprecated fields: %v", err))
 		}
 	}
 	if sc != nil {
@@ -338,7 +335,7 @@ func securityConfigFromCommonTLSContext(common *v3tlspb.CommonTlsContext, server
 				return nil, errors.New("security configuration on the server-side does not contain identity certificate provider instance name")
 			}
 		} else {
-			if sc.RootInstanceName == "" {
+			if !sc.UseSystemRootCerts && sc.RootInstanceName == "" {
 				return nil, errors.New("security configuration on the client-side does not contain root certificate provider instance name")
 			}
 		}
@@ -437,6 +434,8 @@ func securityConfigFromCommonTLSContextUsingNewFields(common *v3tlspb.CommonTlsC
 	// we are interested in:
 	//  - `ca_certificate_provider_instance`
 	//    - this is of type `CertificateProviderPluginInstance`
+	//  - `system_root_certs`:
+	//    - This indicates the usage of system root certs for validation.
 	//  - `match_subject_alt_names`
 	//    - this is a list of string matchers
 	//
@@ -460,12 +459,32 @@ func securityConfigFromCommonTLSContextUsingNewFields(common *v3tlspb.CommonTlsC
 	}
 	// If we get here, it means that the `CertificateValidationContext` message
 	// was found through one of the supported ways. It is an error if the
-	// validation context is specified, but it does not contain the
-	// ca_certificate_provider_instance field which contains information about
-	// the certificate provider to be used for the root certificates.
-	if validationCtx.GetCaCertificateProviderInstance() == nil {
-		return nil, fmt.Errorf("expected field ca_certificate_provider_instance is missing in CommonTlsContext message: %+v", common)
+	// validation context is specified, but it does not specify a way to
+	// validate TLS certificates. Peer TLS certs can be verified in the
+	// following ways:
+	// 1. If the ca_certificate_provider_instance field is set, it contains
+	//    information about the certificate provider to be used for the root
+	//    certificates, else
+	// 2. If the system_root_certs field is set, and the config is for a client,
+	//    use the system default root certs.
+	useSystemRootCerts := false
+	if validationCtx.GetCaCertificateProviderInstance() == nil && envconfig.XDSSystemRootCertsEnabled {
+		if server {
+			if validationCtx.GetSystemRootCerts() != nil {
+				// The `system_root_certs` field will not be supported on the
+				// gRPC server side. If `ca_certificate_provider_instance` is
+				// unset and `system_root_certs` is set, the LDS resource will
+				// be NACKed.
+				// - A82
+				return nil, fmt.Errorf("expected field ca_certificate_provider_instance is missing and unexpected field system_root_certs is set for server in CommonTlsContext message: %+v", common)
+			}
+		} else {
+			if validationCtx.GetSystemRootCerts() != nil {
+				useSystemRootCerts = true
+			}
+		}
 	}
+
 	// The following fields are ignored:
 	// - trusted_ca
 	// - watched_directory
@@ -487,7 +506,15 @@ func securityConfigFromCommonTLSContextUsingNewFields(common *v3tlspb.CommonTlsC
 	if rootProvider := validationCtx.GetCaCertificateProviderInstance(); rootProvider != nil {
 		sc.RootInstanceName = rootProvider.GetInstanceName()
 		sc.RootCertName = rootProvider.GetCertificateName()
+	} else if useSystemRootCerts {
+		sc.UseSystemRootCerts = true
+	} else if !server && envconfig.XDSSystemRootCertsEnabled {
+		return nil, fmt.Errorf("expected fields ca_certificate_provider_instance and system_root_certs are missing in CommonTlsContext message: %+v", common)
+	} else {
+		// Don't mention the system_root_certs field if it was not checked.
+		return nil, fmt.Errorf("expected field ca_certificate_provider_instance is missing in CommonTlsContext message: %+v", common)
 	}
+
 	var matchers []matcher.StringMatcher
 	for _, m := range validationCtx.GetMatchSubjectAltNames() {
 		matcher, err := matcher.StringMatcherFromProto(m)

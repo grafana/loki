@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.16.3
+    controller-gen.kubebuilder.io/version: v0.19.0
   name: lokistacks.loki.grafana.com
 spec:
   group: loki.grafana.com
@@ -612,6 +612,19 @@ spec:
                 - Managed
                 - Unmanaged
                 type: string
+              networkPolicies:
+                description: |-
+                  NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+                  When enabled, the operator creates NetworkPolicies to control ingress/egress between
+                  Loki components and related services.
+                properties:
+                  disabled:
+                    description: |-
+                      Disabled allows explicitly disabling NetworkPolicies.
+                      When false, NetworkPolicies are enabled.
+                      When true, NetworkPolicies are disabled.
+                    type: boolean
+                type: object
               proxy:
                 description: Proxy defines the spec for the object proxy to configure
                   cluster proxy information.
@@ -3637,6 +3650,14 @@ spec:
                           type: object
                         type: array
                     type: object
+                  useRequestsAsLimits:
+                    description: |-
+                      When UseRequestsAsLimits is true, the operand Pods are configured to have resource limits equal to the resource
+                      requests. This imposes a hard limit on resource usage of the LokiStack, but limits its ability to react to load
+                      spikes, whether on the ingestion or query side.
+
+                      Note: This is currently a tech-preview feature.
+                    type: boolean
                 type: object
               tenants:
                 description: Tenants defines the per-tenant authentication and authorization
@@ -3855,14 +3876,28 @@ spec:
                             description: |-
                               DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.
 
-                              Enabling this setting removes the "recommended attributes" from the generated Loki configuration. This will cause
-                              some stream labels to disappear from the index, potentially making queries more expensive and less performant.
+                              Enabling this setting removes the "recommended attributes" from the stream labels. This requires an update
+                              to queries that relied on these attributes as stream labels, as they will no longer be indexed as such.
 
-                              Note that there is a set of "required attributes", needed for OpenShift Logging to work properly. Those will be
-                              added to the configuration, even if this field is set to true.
+                              The recommended attributes are:
+
+                               - k8s.container.name
+                               - k8s.cronjob.name
+                               - k8s.daemonset.name
+                               - k8s.deployment.name
+                               - k8s.job.name
+                               - k8s.node.name
+                               - k8s.pod.name
+                               - k8s.statefulset.name
+                               - kubernetes.container_name
+                               - kubernetes.host
+                               - kubernetes.pod_name
+                               - service.name
 
                               This option is supposed to be combined with a custom attribute configuration listing the stream labels that
                               should continue to exist.
+
+                              See also: https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes
                             type: boolean
                         type: object
                     type: object
@@ -4004,6 +4039,13 @@ spec:
                   - type
                   type: object
                 type: array
+              networkPolicies:
+                description: NetworkPolicies indicates whether NetworkPolicies are
+                  enabled or disabled for this LokiStack.
+                enum:
+                - Enabled
+                - Disabled
+                type: string
               storage:
                 description: |-
                   Storage provides summary of all changes that have occurred

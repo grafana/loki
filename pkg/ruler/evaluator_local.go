@@ -3,7 +3,6 @@ package ruler
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/go-kit/log"
@@ -13,12 +12,13 @@ import (
 	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logqlmodel"
 	"github.com/grafana/loki/v3/pkg/util"
+	util_log "github.com/grafana/loki/v3/pkg/util/log"
 )
 
 const EvalModeLocal = "local"
 
 type LocalEvaluator struct {
-	engine *logql.Engine
+	engine *logql.QueryEngine
 	logger log.Logger
 
 	// we don't want/need to log all the additional context, such as
@@ -27,12 +27,16 @@ type LocalEvaluator struct {
 	insightsLogger log.Logger
 }
 
-func NewLocalEvaluator(engine *logql.Engine, logger log.Logger) (*LocalEvaluator, error) {
+func NewLocalEvaluator(engine *logql.QueryEngine, logger log.Logger) (*LocalEvaluator, error) {
 	if engine == nil {
 		return nil, fmt.Errorf("given engine is nil")
 	}
 
-	return &LocalEvaluator{engine: engine, logger: logger, insightsLogger: log.NewLogfmtLogger(os.Stderr)}, nil
+	return &LocalEvaluator{
+		engine:         engine,
+		logger:         logger,
+		insightsLogger: log.With(util_log.Logger, "msg", "request timings", "insight", "true", "source", "loki_ruler"),
+	}, nil
 }
 
 func (l *LocalEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*logqlmodel.Result, error) {
@@ -60,6 +64,6 @@ func (l *LocalEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*l
 	// Retrieve rule details from context
 	ruleName, ruleType := GetRuleDetailsFromContext(ctx)
 
-	level.Info(l.insightsLogger).Log("msg", "request timings", "insight", "true", "source", "loki_ruler", "rule_name", ruleName, "rule_type", ruleType, "total", res.Statistics.Summary.ExecTime, "total_bytes", res.Statistics.Summary.TotalBytesProcessed, "query_hash", util.HashedQuery(qs))
+	level.Info(l.insightsLogger).Log("rule_name", ruleName, "rule_type", ruleType, "total", res.Statistics.Summary.ExecTime, "total_bytes", res.Statistics.Summary.TotalBytesProcessed, "query_hash", util.HashedQuery(qs))
 	return &res, nil
 }

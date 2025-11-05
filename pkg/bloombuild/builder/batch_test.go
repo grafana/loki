@@ -209,8 +209,8 @@ func TestOverlappingBlocksIter(t *testing.T) {
 	}
 }
 
-func genBlockRef(min, max model.Fingerprint) bloomshipper.BlockRef {
-	bounds := v1.NewBounds(min, max)
+func genBlockRef(minVal, maxVal model.Fingerprint) bloomshipper.BlockRef {
+	bounds := v1.NewBounds(minVal, maxVal)
 	return bloomshipper.BlockRef{
 		Ref: bloomshipper.Ref{
 			Bounds: bounds,

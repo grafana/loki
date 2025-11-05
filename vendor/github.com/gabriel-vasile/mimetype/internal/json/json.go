@@ -34,6 +34,7 @@ package json
 
 import (
 	"fmt"
+	"sync"
 )
 
 type (
@@ -73,10 +74,31 @@ type (
 	}
 )
 
+var scannerPool = sync.Pool{
+	New: func() any {
+		return &scanner{}
+	},
+}
+
+func newScanner() *scanner {
+	s := scannerPool.Get().(*scanner)
+	s.reset()
+	return s
+}
+
+func freeScanner(s *scanner) {
+	// Avoid hanging on to too much memory in extreme cases.
+	if len(s.parseState) > 1024 {
+		s.parseState = nil
+	}
+	scannerPool.Put(s)
+}
+
 // Scan returns the number of bytes scanned and if there was any error
 // in trying to reach the end of data.
 func Scan(data []byte) (int, error) {
-	s := &scanner{}
+	s := newScanner()
+	defer freeScanner(s)
 	_ = checkValid(data, s)
 	return s.index, s.err
 }
@@ -84,7 +106,6 @@ func Scan(data []byte) (int, error) {
 // checkValid verifies that data is valid JSON-encoded data.
 // scan is passed in for use by checkValid to avoid an allocation.
 func checkValid(data []byte, scan *scanner) error {
-	scan.reset()
 	for _, c := range data {
 		scan.index++
 		if scan.step(scan, c) == scanError {
@@ -105,6 +126,8 @@ func (s *scanner) reset() {
 	s.step = stateBeginValue
 	s.parseState = s.parseState[0:0]
 	s.err = nil
+	s.endTop = false
+	s.index = 0
 }
 
 // eof tells the scanner that the end of input has been reached.

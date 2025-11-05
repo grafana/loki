@@ -21,7 +21,7 @@ type nullIndexFunc func(bits []uint64, rows sparse.Array)
 
 func nullIndex[T comparable](bits []uint64, rows sparse.Array) {
 	var zero T
-	for i := 0; i < rows.Len(); i++ {
+	for i := range rows.Len() {
 		v := *(*T)(rows.Index(i))
 		if v != zero {
 			x := uint(i) / 64
@@ -100,7 +100,7 @@ func nullIndexFuncOf(t reflect.Type) nullIndexFunc {
 
 func nullIndexFuncOfByteArray(n int) nullIndexFunc {
 	return func(bits []uint64, rows sparse.Array) {
-		for i := 0; i < rows.Len(); i++ {
+		for i := range rows.Len() {
 			p := (*byte)(rows.Index(i))
 			b := unsafe.Slice(p, n)
 			if !isZero(b) {

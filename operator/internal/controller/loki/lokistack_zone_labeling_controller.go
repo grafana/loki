@@ -19,6 +19,8 @@ import (
 	"github.com/grafana/loki/operator/internal/handlers"
 )
 
+const ControllerNameZoneAware = "lokistack-zoneaware-pod"
+
 var createOrUpdatePodWithLabelPred = builder.WithPredicates(predicate.Funcs{
 	UpdateFunc:  func(e event.UpdateEvent) bool { return eventPodHasLabel(e.ObjectNew) },
 	CreateFunc:  func(e event.CreateEvent) bool { return eventPodHasLabel(e.Object) },
@@ -39,7 +41,7 @@ type LokiStackZoneAwarePodReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.11.0/pkg/reconcile
 func (r *LokiStackZoneAwarePodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	lokiPod := &corev1.Pod{}
-	if err := r.Client.Get(ctx, req.NamespacedName, lokiPod); err != nil {
+	if err := r.Get(ctx, req.NamespacedName, lokiPod); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
@@ -62,8 +64,8 @@ func (r *LokiStackZoneAwarePodReconciler) SetupWithManager(mgr ctrl.Manager) err
 
 func (r *LokiStackZoneAwarePodReconciler) buildController(bld k8s.Builder) error {
 	return bld.
-		Named("ZoneAwarePod").
 		Watches(&corev1.Pod{}, &handler.EnqueueRequestForObject{}, createOrUpdatePodWithLabelPred).
+		Named(ControllerNameZoneAware).
 		Complete(r)
 }
 

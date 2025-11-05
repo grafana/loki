@@ -30,6 +30,7 @@ import (
 	"hash"
 	"io"
 	"math/rand"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -41,6 +42,7 @@ import (
 
 	md5simd "github.com/minio/md5-simd"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
+	"github.com/minio/minio-go/v7/pkg/tags"
 )
 
 func trimEtag(etag string) string {
@@ -209,6 +211,7 @@ func extractObjMetadata(header http.Header) http.Header {
 		"X-Amz-Server-Side-Encryption",
 		"X-Amz-Tagging-Count",
 		"X-Amz-Meta-",
+		"X-Minio-Meta-",
 		// Add new headers to be preserved.
 		// if you add new headers here, please extend
 		// PutObjectOptions{} to preserve them
@@ -222,6 +225,16 @@ func extractObjMetadata(header http.Header) http.Header {
 				continue
 			}
 			found = true
+			if prefix == "X-Amz-Meta-" || prefix == "X-Minio-Meta-" {
+				for index, val := range v {
+					if strings.HasPrefix(val, "=?") {
+						decoder := mime.WordDecoder{}
+						if decoded, err := decoder.DecodeHeader(val); err == nil {
+							v[index] = decoded
+						}
+					}
+				}
+			}
 			break
 		}
 		if found {
@@ -267,7 +280,7 @@ func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, err
 		if err != nil {
 			// Content-Length is not valid
 			return ObjectInfo{}, ErrorResponse{
-				Code:       "InternalError",
+				Code:       InternalError,
 				Message:    fmt.Sprintf("Content-Length is not an integer, failed with %v", err),
 				BucketName: bucketName,
 				Key:        objectName,
@@ -282,7 +295,7 @@ func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, err
 	mtime, err := parseRFC7231Time(h.Get("Last-Modified"))
 	if err != nil {
 		return ObjectInfo{}, ErrorResponse{
-			Code:       "InternalError",
+			Code:       InternalError,
 			Message:    fmt.Sprintf("Last-Modified time format is invalid, failed with %v", err),
 			BucketName: bucketName,
 			Key:        objectName,
@@ -304,7 +317,7 @@ func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, err
 		expiry, err = parseRFC7231Time(expiryStr)
 		if err != nil {
 			return ObjectInfo{}, ErrorResponse{
-				Code:       "InternalError",
+				Code:       InternalError,
 				Message:    fmt.Sprintf("'Expiry' is not in supported format: %v", err),
 				BucketName: bucketName,
 				Key:        objectName,
@@ -322,14 +335,20 @@ func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, err
 			userMetadata[strings.TrimPrefix(k, "X-Amz-Meta-")] = v[0]
 		}
 	}
-	userTags := s3utils.TagDecode(h.Get(amzTaggingHeader))
+
+	userTags, err := tags.ParseObjectTags(h.Get(amzTaggingHeader))
+	if err != nil {
+		return ObjectInfo{}, ErrorResponse{
+			Code: InternalError,
+		}
+	}
 
 	var tagCount int
 	if count := h.Get(amzTaggingCount); count != "" {
 		tagCount, err = strconv.Atoi(count)
 		if err != nil {
 			return ObjectInfo{}, ErrorResponse{
-				Code:       "InternalError",
+				Code:       InternalError,
 				Message:    fmt.Sprintf("x-amz-tagging-count is not an integer, failed with %v", err),
 				BucketName: bucketName,
 				Key:        objectName,
@@ -373,7 +392,7 @@ func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, err
 		// which are not part of object metadata.
 		Metadata:     metadata,
 		UserMetadata: userMetadata,
-		UserTags:     userTags,
+		UserTags:     userTags.ToMap(),
 		UserTagCount: tagCount,
 		Restore:      restore,
 
@@ -383,6 +402,7 @@ func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, err
 		ChecksumSHA1:      h.Get(ChecksumSHA1.Key()),
 		ChecksumSHA256:    h.Get(ChecksumSHA256.Key()),
 		ChecksumCRC64NVME: h.Get(ChecksumCRC64NVME.Key()),
+		ChecksumMode:      h.Get(ChecksumFullObjectMode.Key()),
 	}, nil
 }
 

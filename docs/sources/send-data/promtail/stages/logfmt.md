@@ -31,7 +31,7 @@ This stage uses the [go-logfmt](https://github.com/go-logfmt/logfmt) unmarshaler
 numbers or booleans will be unmarshaled into those types. The extracted data
 can hold non-string values, and this stage does not do any type conversions;
 downstream stages will need to perform correct type conversion of these values
-as necessary. Please refer to the [`template` stage]({{< relref "./template" >}}) for how
+as necessary. Please refer to the [`template` stage](../template/) for how
 to do this.
 
 If the value extracted is a complex type, its value is extracted as a string.
@@ -54,7 +54,7 @@ For the given pipeline:
 Given the following log line:
 
 ```
-time=2012-11-01T22:08:41+00:00 app=loki level=WARN duration=125 message="this is a log line" extra="user=foo""
+time=2012-11-01T22:08:41+00:00 app=loki level=WARN duration=125 message="this is a log line" extra="user=foo"
 ```
 
 The following key-value pairs would be created in the set of extracted data:

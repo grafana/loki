@@ -10,10 +10,7 @@ local setupValidationDeps = function(job) job {
     common.fixDubiousOwnership,
     step.new('install dependencies')
     + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
-    + step.withRun(|||
-      apt update
-      apt install -qy tar xz-utils
-    |||),
+    + step.withRun('lib/workflows/install_workflow_dependencies.sh'),
     step.new('install shellcheck', './lib/actions/install-binary')
     + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
     + step.with({
@@ -36,7 +33,7 @@ local setupValidationDeps = function(job) job {
   ] + job.steps,
 };
 
-local validationJob = _validationJob(true);
+local validationJob = _validationJob(false);
 
 
 {
@@ -56,7 +53,7 @@ local validationJob = _validationJob(true);
     validationJob
     + job.withSteps(
       [
-        step.new('golangci-lint', 'golangci/golangci-lint-action@08e2f20817b15149a52b5b3ebe7de50aff2ba8c5')
+        step.new('golangci-lint', 'golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9')
         + step.withIf('${{ !fromJSON(env.SKIP_VALIDATION) }}')
         + step.with({
           version: '${{ inputs.golang_ci_lint_version }}',

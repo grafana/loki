@@ -17,23 +17,25 @@ limitations under the License.
 package bigtable // import "cloud.google.com/go/bigtable"
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	btpb "cloud.google.com/go/bigtable/apiv2/bigtablepb"
 	btopt "cloud.google.com/go/bigtable/internal/option"
 	"cloud.google.com/go/internal/trace"
 	gax "github.com/googleapis/gax-go/v2"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
+	"github.com/googleapis/gax-go/v2/apierror"
 	"google.golang.org/api/option"
 	"google.golang.org/api/option/internaloption"
 	gtransport "google.golang.org/api/transport/grpc"
@@ -42,28 +44,36 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
-
-	// Install google-c2p resolver, which is required for direct path.
-	_ "google.golang.org/grpc/xds/googledirectpath"
-	// Install RLS load balancer policy, which is needed for gRPC RLS.
-	_ "google.golang.org/grpc/balancer/rls"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const prodAddr = "bigtable.googleapis.com:443"
-const mtlsProdAddr = "bigtable.mtls.googleapis.com:443"
-const featureFlagsHeaderKey = "bigtable-features"
+const (
+	// UNIVERSE_DOMAIN placeholder is replaced by the UniverseDomain from DialSettings while creating GRPC connection/dial pool.
+	prodAddr                         = "bigtable.UNIVERSE_DOMAIN:443"
+	mtlsProdAddr                     = "bigtable.mtls.googleapis.com:443"
+	featureFlagsHeaderKey            = "bigtable-features"
+	queryExpiredViolationType        = "PREPARED_QUERY_EXPIRED"
+	preparedQueryExpireEarlyDuration = time.Second
+	methodNameReadRows               = "ReadRows"
+)
 
 var errNegativeRowLimit = errors.New("bigtable: row limit cannot be negative")
+
+var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
 
 // Client is a client for reading and writing data to tables in an instance.
 //
 // A Client is safe to use concurrently, except for its Close method.
 type Client struct {
-	connPool             gtransport.ConnPool
-	client               btpb.BigtableClient
-	project, instance    string
-	appProfile           string
-	metricsTracerFactory *builtinMetricsTracerFactory
+	connPool                gtransport.ConnPool
+	client                  btpb.BigtableClient
+	project, instance       string
+	appProfile              string
+	metricsTracerFactory    *builtinMetricsTracerFactory
+	disableRetryInfo        bool
+	retryOption             gax.CallOption
+	executeQueryRetryOption gax.CallOption
+	enableDirectAccess      bool
 }
 
 // ClientConfig has configurations for the client.
@@ -114,9 +124,16 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 	if err != nil {
 		return nil, err
 	}
+	// for otel metrics
+	if metricsTracerFactory.enabled {
+		if len(metricsTracerFactory.clientOpts) > 0 {
+			o = append(o, metricsTracerFactory.clientOpts...)
+		}
+	}
+
 	// Add gRPC client interceptors to supply Google client information. No external interceptors are passed.
 	o = append(o, btopt.ClientInterceptorOptions(nil, nil)...)
-
+	o = append(o, option.WithGRPCDialOption(grpc.WithStatsHandler(sharedLatencyStatsHandler)))
 	// Default to a small connection pool that can be overridden.
 	o = append(o,
 		option.WithGRPCConnectionPool(4),
@@ -124,37 +141,45 @@ func NewClientWithConfig(ctx context.Context, project, instance string, config C
 		option.WithGRPCDialOption(grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(1<<28), grpc.MaxCallRecvMsgSize(1<<28))),
 	)
 
+	enableDirectAccess, _ := strconv.ParseBool(os.Getenv("CBT_ENABLE_DIRECTPATH"))
+	if enableDirectAccess {
+		o = append(o, internaloption.EnableDirectPath(true), internaloption.EnableDirectPathXds())
+	}
+
 	// Allow non-default service account in DirectPath.
 	o = append(o, internaloption.AllowNonDefaultServiceAccount(true))
 	o = append(o, opts...)
 
 	// TODO(b/372244283): Remove after b/358175516 has been fixed
-	asyncRefreshMetricAttrs := metricsTracerFactory.clientAttributes
-	asyncRefreshMetricAttrs = append(asyncRefreshMetricAttrs,
-		attribute.String(metricLabelKeyTag, "async_refresh_dry_run"),
-		// Table, cluster and zone are unknown at this point
-		// Use default values
-		attribute.String(monitoredResLabelKeyTable, defaultTable),
-		attribute.String(monitoredResLabelKeyCluster, defaultCluster),
-		attribute.String(monitoredResLabelKeyZone, defaultZone),
-	)
-	o = append(o, internaloption.EnableAsyncRefreshDryRun(func() {
-		metricsTracerFactory.debugTags.Add(context.Background(), 1,
-			metric.WithAttributes(asyncRefreshMetricAttrs...))
-	}))
+	o = append(o, internaloption.EnableAsyncRefreshDryRun(metricsTracerFactory.newAsyncRefreshErrHandler()))
 
 	connPool, err := gtransport.DialPool(ctx, o...)
 	if err != nil {
 		return nil, err
 	}
 
+	disableRetryInfo := false
+
+	// If DISABLE_RETRY_INFO=1, library does not base retry decision and back off time on server returned RetryInfo value.
+	disableRetryInfoEnv := os.Getenv("DISABLE_RETRY_INFO")
+	disableRetryInfo = disableRetryInfoEnv == "1"
+	retryOption := defaultRetryOption
+	executeQueryRetryOption := defaultExecuteQueryRetryOption
+	if disableRetryInfo {
+		retryOption = clientOnlyRetryOption
+		executeQueryRetryOption = clientOnlyExecuteQueryRetryOption
+	}
 	return &Client{
-		connPool:             connPool,
-		client:               btpb.NewBigtableClient(connPool),
-		project:              project,
-		instance:             instance,
-		appProfile:           config.AppProfile,
-		metricsTracerFactory: metricsTracerFactory,
+		connPool:                connPool,
+		client:                  btpb.NewBigtableClient(connPool),
+		project:                 project,
+		instance:                instance,
+		appProfile:              config.AppProfile,
+		metricsTracerFactory:    metricsTracerFactory,
+		disableRetryInfo:        disableRetryInfo,
+		retryOption:             retryOption,
+		executeQueryRetryOption: executeQueryRetryOption,
+		enableDirectAccess:      enableDirectAccess,
 	}, nil
 }
 
@@ -167,31 +192,111 @@ func (c *Client) Close() error {
 }
 
 var (
-	idempotentRetryCodes  = []codes.Code{codes.DeadlineExceeded, codes.Unavailable, codes.Aborted}
-	isIdempotentRetryCode = make(map[codes.Code]bool)
-	retryOptions          = []gax.CallOption{
-		gax.WithRetry(func() gax.Retryer {
-			backoff := gax.Backoff{
-				Initial:    100 * time.Millisecond,
-				Max:        2 * time.Second,
-				Multiplier: 1.2,
-			}
-			return &bigtableRetryer{
-				Retryer: gax.OnCodes(idempotentRetryCodes, backoff),
-				Backoff: backoff,
-			}
-		}),
-	}
+	idempotentRetryCodes     = []codes.Code{codes.DeadlineExceeded, codes.Unavailable, codes.Aborted}
+	isIdempotentRetryCode    = make(map[codes.Code]bool)
 	retryableInternalErrMsgs = []string{
 		"stream terminated by RST_STREAM", // Retry similar to spanner client. Special case due to https://github.com/googleapis/google-cloud-go/issues/6476
+
+		// Special cases due to: https://github.com/googleapis/google-cloud-go/issues/10207#issuecomment-2307562026
+		"Received Rst stream",
+		"RST_STREAM closed stream",
+		"Received RST_STREAM",
 	}
+	defaultBackoff = gax.Backoff{
+		Initial:    100 * time.Millisecond,
+		Max:        2 * time.Second,
+		Multiplier: 1.2,
+	}
+	clientOnlyRetryOption             = newRetryOption(clientOnlyRetry, true)
+	clientOnlyExecuteQueryRetryOption = newRetryOption(clientOnlyExecuteQueryRetry, true)
+	defaultRetryOption                = newRetryOption(clientOnlyRetry, false)
+	defaultExecuteQueryRetryOption    = newRetryOption(clientOnlyExecuteQueryRetry, false)
 )
 
-// bigtableRetryer extends the generic gax Retryer, but also checks
-// error messages to check if operation can be retried
+func newRetryOption(retryFn func(*gax.Backoff, error) (time.Duration, bool), disableRetryInfo bool) gax.CallOption {
+	return gax.WithRetry(func() gax.Retryer {
+		// Create a new Backoff instance for each retryer to ensure independent state.
+		newBackoffInstance := gax.Backoff{
+			Initial:    defaultBackoff.Initial,
+			Max:        defaultBackoff.Max,
+			Multiplier: defaultBackoff.Multiplier,
+		}
+		return &bigtableRetryer{
+			baseRetryFn:      retryFn,
+			backoff:          newBackoffInstance,
+			disableRetryInfo: disableRetryInfo,
+		}
+	})
+}
+
+func clientOnlyRetry(backoff *gax.Backoff, err error) (time.Duration, bool) {
+	// Similar to gax.OnCodes but shares the backoff with INTERNAL retry messages check
+	st, ok := status.FromError(err)
+	if !ok {
+		return 0, false
+	}
+	c := st.Code()
+	_, isIdempotent := isIdempotentRetryCode[c]
+	if isIdempotent ||
+		(status.Code(err) == codes.Internal && containsAny(err.Error(), retryableInternalErrMsgs)) {
+		pause := backoff.Pause()
+		return pause, true
+	}
+	return 0, false
+}
+
+func clientOnlyExecuteQueryRetry(backoff *gax.Backoff, err error) (time.Duration, bool) {
+	if isQueryExpiredViolation(err) {
+		return backoff.Pause(), true
+	}
+	return clientOnlyRetry(backoff, err)
+}
+
+func isQueryExpiredViolation(err error) bool {
+	apiErr, ok := apierror.FromError(err)
+	if ok && apiErr != nil && apiErr.Details().PreconditionFailure != nil && status.Code(err) == codes.FailedPrecondition {
+		for _, violation := range apiErr.Details().PreconditionFailure.GetViolations() {
+			if violation != nil && violation.GetType() == queryExpiredViolationType {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// bigtableRetryer implements the gax.Retryer interface. It manages retry decisions,
+// incorporating server-sent RetryInfo if enabled, and client-side exponential backoff.
+// It specifically handles reseting the client-side backoff to its initial state if
+// RetryInfo was previously used for an operation and then stops being provided.
 type bigtableRetryer struct {
-	gax.Retryer
-	gax.Backoff
+	baseRetryFn               func(*gax.Backoff, error) (time.Duration, bool)
+	backoff                   gax.Backoff
+	disableRetryInfo          bool // If true, this retryer will process server-sent RetryInfo.
+	wasLastDelayFromRetryInfo bool // true if the previous retry delay for this operation was from RetryInfo.
+
+}
+
+// Retry determines if an operation should be retried and for how long to wait.
+func (r *bigtableRetryer) Retry(err error) (time.Duration, bool) {
+	if !r.disableRetryInfo {
+		apiErr, ok := apierror.FromError(err)
+		if ok && apiErr != nil && apiErr.Details().RetryInfo != nil {
+			// RetryInfo is present in the current error. Use its delay.
+			r.wasLastDelayFromRetryInfo = true
+			return apiErr.Details().RetryInfo.GetRetryDelay().AsDuration(), true
+		}
+
+		if r.wasLastDelayFromRetryInfo {
+			r.backoff = gax.Backoff{
+				Initial:    r.backoff.Initial,
+				Max:        r.backoff.Max,
+				Multiplier: r.backoff.Multiplier,
+			}
+		}
+		r.wasLastDelayFromRetryInfo = false
+	}
+
+	return r.baseRetryFn(&r.backoff, err)
 }
 
 func containsAny(str string, substrs []string) bool {
@@ -201,19 +306,6 @@ func containsAny(str string, substrs []string) bool {
 		}
 	}
 	return false
-}
-
-func (r *bigtableRetryer) Retry(err error) (time.Duration, bool) {
-	if status.Code(err) == codes.Internal && containsAny(err.Error(), retryableInternalErrMsgs) {
-		return r.Backoff.Pause(), true
-	}
-
-	delay, shouldRetry := r.Retryer.Retry(err)
-	if !shouldRetry {
-		return 0, false
-	}
-
-	return delay, true
 }
 
 func init() {
@@ -240,6 +332,10 @@ func convertToGrpcStatusErr(err error) (codes.Code, error) {
 	return codes.Unknown, err
 }
 
+func (c *Client) fullInstanceName() string {
+	return fmt.Sprintf("projects/%s/instances/%s", c.project, c.instance)
+}
+
 func (c *Client) fullTableName(table string) string {
 	return fmt.Sprintf("projects/%s/instances/%s/tables/%s", c.project, c.instance, table)
 }
@@ -248,8 +344,16 @@ func (c *Client) fullAuthorizedViewName(table string, authorizedView string) str
 	return fmt.Sprintf("projects/%s/instances/%s/tables/%s/authorizedViews/%s", c.project, c.instance, table, authorizedView)
 }
 
-func (c *Client) requestParamsHeaderValue(table string) string {
+func (c *Client) fullMaterializedViewName(materializedView string) string {
+	return fmt.Sprintf("projects/%s/instances/%s/materializedViews/%s", c.project, c.instance, materializedView)
+}
+
+func (c *Client) reqParamsHeaderValTable(table string) string {
 	return fmt.Sprintf("table_name=%s&app_profile_id=%s", url.QueryEscape(c.fullTableName(table)), url.QueryEscape(c.appProfile))
+}
+
+func (c *Client) reqParamsHeaderValInstance() string {
+	return fmt.Sprintf("name=%s&app_profile_id=%s", url.QueryEscape(c.fullInstanceName()), url.QueryEscape(c.appProfile))
 }
 
 // mergeOutgoingMetadata returns a context populated by the existing outgoing
@@ -261,13 +365,14 @@ func mergeOutgoingMetadata(ctx context.Context, mds ...metadata.MD) context.Cont
 	return metadata.NewOutgoingContext(ctx, metadata.Join(allMDs...))
 }
 
-// TableAPI interface allows existing data APIs to be applied to either an authorized view or a table.
+// TableAPI interface allows existing data APIs to be applied to either an authorized view, a materialized view or a table.
+// A materialized view is a read-only entity.
 type TableAPI interface {
 	ReadRows(ctx context.Context, arg RowSet, f func(Row) bool, opts ...ReadOption) error
 	ReadRow(ctx context.Context, row string, opts ...ReadOption) (Row, error)
+	SampleRowKeys(ctx context.Context) ([]string, error)
 	Apply(ctx context.Context, row string, m *Mutation, opts ...ApplyOption) error
 	ApplyBulk(ctx context.Context, rowKeys []string, muts []*Mutation, opts ...ApplyOption) ([]error, error)
-	SampleRowKeys(ctx context.Context) ([]string, error)
 	ApplyReadModifyWrite(ctx context.Context, row string, m *ReadModifyWrite) (Row, error)
 }
 
@@ -283,8 +388,9 @@ type Table struct {
 	table string
 
 	// Metadata to be sent with each request.
-	md             metadata.MD
-	authorizedView string
+	md               metadata.MD
+	authorizedView   string
+	materializedView string
 }
 
 // newFeatureFlags creates the feature flags `bigtable-features` header
@@ -295,6 +401,9 @@ func (c *Client) newFeatureFlags() metadata.MD {
 		ReverseScans:             true,
 		LastScannedRowResponses:  true,
 		ClientSideMetricsEnabled: c.metricsTracerFactory.enabled,
+		RetryInfo:                !c.disableRetryInfo,
+		TrafficDirectorEnabled:   c.enableDirectAccess,
+		DirectAccessRequested:    c.enableDirectAccess,
 	}
 
 	val := ""
@@ -313,7 +422,7 @@ func (c *Client) Open(table string) *Table {
 		table: table,
 		md: metadata.Join(metadata.Pairs(
 			resourcePrefixHeader, c.fullTableName(table),
-			requestParamsHeader, c.requestParamsHeaderValue(table),
+			requestParamsHeader, c.reqParamsHeaderValTable(table),
 		), c.newFeatureFlags()),
 	}
 }
@@ -325,7 +434,7 @@ func (c *Client) OpenTable(table string) TableAPI {
 		table: table,
 		md: metadata.Join(metadata.Pairs(
 			resourcePrefixHeader, c.fullTableName(table),
-			requestParamsHeader, c.requestParamsHeaderValue(table),
+			requestParamsHeader, c.reqParamsHeaderValTable(table),
 		), c.newFeatureFlags()),
 	}}
 }
@@ -337,10 +446,520 @@ func (c *Client) OpenAuthorizedView(table, authorizedView string) TableAPI {
 		table: table,
 		md: metadata.Join(metadata.Pairs(
 			resourcePrefixHeader, c.fullAuthorizedViewName(table, authorizedView),
-			requestParamsHeader, c.requestParamsHeaderValue(table),
+			requestParamsHeader, c.reqParamsHeaderValTable(table),
 		), c.newFeatureFlags()),
 		authorizedView: authorizedView,
 	}}
+}
+
+// OpenMaterializedView opens a materialized view.
+func (c *Client) OpenMaterializedView(materializedView string) TableAPI {
+	return &tableImpl{Table{
+		c: c,
+		md: metadata.Join(metadata.Pairs(
+			resourcePrefixHeader, c.fullMaterializedViewName(materializedView),
+			requestParamsHeader, c.reqParamsHeaderValTable(materializedView),
+		), c.newFeatureFlags()),
+		materializedView: materializedView,
+	}}
+}
+
+// PreparedStatement stores the results of query preparation that can be used to
+// create [BoundStatements]s to execute queries.
+//
+// Whenever possible this should be shared across different instances of the same query,
+// in order to amortize query preparation costs.
+type PreparedStatement struct {
+	c          *Client
+	query      string
+	paramTypes map[string]SQLType
+	opts       []PrepareOption
+
+	data         *preparedQueryData
+	refreshMutex sync.Mutex
+}
+
+type preparedQueryData struct {
+	// Structure of rows in the response stream of `ExecuteQueryResponse` for the
+	// returned `prepared_query`.
+	metadata *btpb.ResultSetMetadata
+	// A serialized prepared query. It is an opaque
+	// blob of bytes to send in `ExecuteQueryRequest`.
+	preparedQuery []byte
+	// The time at which the prepared query token becomes invalid.
+	// A token may become invalid early due to changes in the data being read, but
+	// it provides a guideline to refresh query plans asynchronously.
+	validUntil *timestamppb.Timestamp
+
+	Metadata *ResultRowMetadata
+}
+
+func (pqd *preparedQueryData) initializeMetadataAndMap() error {
+	rrMetadata, err := newResultRowMetadata(pqd.metadata)
+	if err != nil {
+		return err
+	}
+	pqd.Metadata = rrMetadata
+	return nil
+}
+
+// PrepareOption can be passed while preparing a query statement.
+type PrepareOption interface{}
+
+// PrepareStatement prepares a query for execution. If possible, this should be called once and
+// reused across requests. This will amortize the cost of query preparation.
+//
+// The query string can be a parameterized query containing placeholders in the form of @ followed by the parameter name
+// Parameter names may consist of any combination of letters, numbers, and underscores.
+//
+// Parameters can appear anywhere that a literal value is expected. The same parameter name can
+// be used more than once, for example: WHERE cf["qualifier1"] = @value OR cf["qualifier2"] = @value
+func (c *Client) PrepareStatement(ctx context.Context, query string, paramTypes map[string]SQLType, opts ...PrepareOption) (preparedStatement *PreparedStatement, err error) {
+	md := metadata.Join(metadata.Pairs(
+		resourcePrefixHeader, c.fullInstanceName(),
+		requestParamsHeader, c.reqParamsHeaderValInstance(),
+	), c.newFeatureFlags())
+
+	ctx = mergeOutgoingMetadata(ctx, md)
+	return c.prepareStatementWithMetadata(ctx, query, paramTypes, opts...)
+}
+
+// Called when context already has the required metadata
+func (c *Client) prepareStatementWithMetadata(ctx context.Context, query string, paramTypes map[string]SQLType, opts ...PrepareOption) (preparedStatement *PreparedStatement, err error) {
+	ctx = trace.StartSpan(ctx, "cloud.google.com/go/bigtable.PrepareQuery")
+	defer func() { trace.EndSpan(ctx, err) }()
+
+	mt := c.newBuiltinMetricsTracer(ctx, "", false)
+	defer mt.recordOperationCompletion()
+
+	preparedStatement, err = c.prepareStatement(ctx, mt, query, paramTypes, opts...)
+	statusCode, statusErr := convertToGrpcStatusErr(err)
+	mt.setCurrOpStatus(statusCode.String())
+	return preparedStatement, statusErr
+}
+
+func (c *Client) prepareStatement(ctx context.Context, mt *builtinMetricsTracer, query string, paramTypes map[string]SQLType, opts ...PrepareOption) (*PreparedStatement, error) {
+	reqParamTypes := map[string]*btpb.Type{}
+	for k, v := range paramTypes {
+		if v == nil {
+			return nil, errors.New("bigtable: invalid SQLType: nil")
+		}
+		if !v.isValidPrepareParamType() {
+			return nil, fmt.Errorf("bigtable: %T cannot be used as parameter type", v)
+		}
+		tpb, err := v.typeProto()
+		if err != nil {
+			return nil, err
+		}
+		reqParamTypes[k] = tpb
+	}
+	req := &btpb.PrepareQueryRequest{
+		InstanceName: c.fullInstanceName(),
+		AppProfileId: c.appProfile,
+		Query:        query,
+		DataFormat: &btpb.PrepareQueryRequest_ProtoFormat{
+			ProtoFormat: &btpb.ProtoFormat{},
+		},
+		ParamTypes: reqParamTypes,
+	}
+	var res *btpb.PrepareQueryResponse
+	err := gaxInvokeWithRecorder(ctx, mt, "PrepareQuery", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
+		var err error
+		res, err = c.client.PrepareQuery(ctx, req, grpc.Header(headerMD), grpc.Trailer(trailerMD))
+		return err
+	}, c.retryOption)
+	if err != nil {
+		return nil, err
+	}
+
+	return &PreparedStatement{
+		c: c,
+		data: &preparedQueryData{
+			metadata:      res.Metadata,
+			preparedQuery: res.PreparedQuery,
+			validUntil:    res.ValidUntil,
+		},
+		query:      query,
+		paramTypes: paramTypes,
+		opts:       opts,
+	}, err
+}
+
+// Bind binds a set of parameters to a prepared statement.
+//
+// Allowed parameter value types are []byte, string, int64, float32, float64, bool,
+// time.Time, civil.Date, array, slice and nil
+func (ps *PreparedStatement) Bind(values map[string]any) (*BoundStatement, error) {
+	if ps == nil {
+		return nil, errors.New("bigtable: nil prepared statement")
+	}
+	// check that every parameter is bound
+	for paramName := range ps.paramTypes {
+		_, found := values[paramName]
+		if !found {
+			return nil, fmt.Errorf("bigtable: parameter %q not bound in call to Bind", paramName)
+		}
+	}
+
+	boundParams := map[string]*btpb.Value{}
+	for paramName, paramVal := range values {
+		// Validate that the parameter was specified during prepare
+		psType, found := ps.paramTypes[paramName]
+		if !found {
+			return nil, errors.New("bigtable: no parameter with name " + paramName + " in prepared statement")
+		}
+
+		// Convert value specified by user to *btpb.Value
+		pbVal, err := anySQLTypeToPbVal(paramVal, psType)
+		if err != nil {
+			return nil, err
+		}
+		boundParams[paramName] = pbVal
+	}
+
+	return &BoundStatement{
+		ps:     ps,
+		params: boundParams,
+	}, nil
+}
+
+func (ps *PreparedStatement) refreshIfInvalid(ctx context.Context) error {
+	/*
+	   | valid | validEarly | behaviour            |
+	   |-------|------------|----------------------|
+	   | true  |   true     | nil                 |
+	   | false |   true     | impossible condition |
+	   | true  |   false    | async refresh token  |
+	   | false |   false    | sync refresh token   |
+	*/
+	valid, validEarly := ps.valid()
+	if validEarly {
+		// Token valid
+		return nil
+	}
+	if !valid {
+		// Token already expired
+		ps.refreshMutex.Lock()
+		defer ps.refreshMutex.Unlock()
+		// Check if token became valid while acquiring lock
+		valid, _ = ps.valid()
+		if valid {
+			return nil
+		}
+		return ps.refresh(ctx)
+	}
+
+	// Token about to expire
+	go func() {
+		ps.refreshMutex.Lock()
+		defer ps.refreshMutex.Unlock()
+		// Check if token became valid while acquiring lock
+		valid, _ = ps.valid()
+		if valid {
+			return
+		}
+		ps.refresh(ctx)
+	}()
+	return nil
+}
+
+// valid is true if the prepared query is valid, and validEarly is true
+// if the prepared query is valid and has not reached the early expiration threshold.
+func (ps *PreparedStatement) valid() (valid bool, validEarly bool) {
+	nowTime := time.Now().UTC()
+	expireTime := ps.data.validUntil.AsTime()
+	return nowTime.Before(expireTime), nowTime.Add(preparedQueryExpireEarlyDuration).Before(expireTime)
+}
+
+func (ps *PreparedStatement) refresh(ctx context.Context) error {
+	newPs, err := ps.c.prepareStatementWithMetadata(ctx, ps.query, ps.paramTypes, ps.opts...)
+	if err != nil {
+		return err
+	}
+	ps.data = &preparedQueryData{
+		metadata:      newPs.data.metadata,
+		preparedQuery: newPs.data.preparedQuery,
+		validUntil:    newPs.data.validUntil,
+	}
+	return err
+}
+
+// BoundStatement is a statement that has been bound to a set of parameters.
+// It is created by calling [PreparedStatement.Bind].
+type BoundStatement struct {
+	ps     *PreparedStatement
+	params map[string]*btpb.Value
+}
+
+// ExecuteOption is an optional argument to Execute.
+type ExecuteOption interface{}
+
+// Execute executes a previously prepared query. f is called for each row in result set.
+// If f returns false, the stream is shut down and Execute returns.
+// f owns its argument, and f is called serially in order of results returned.
+// f will be executed in the same Go routine as the caller.
+func (bs *BoundStatement) Execute(ctx context.Context, f func(ResultRow) bool, opts ...ExecuteOption) (err error) {
+	md := metadata.Join(metadata.Pairs(
+		resourcePrefixHeader, bs.ps.c.fullInstanceName(),
+		requestParamsHeader, bs.ps.c.reqParamsHeaderValInstance(),
+	), bs.ps.c.newFeatureFlags())
+	ctx = mergeOutgoingMetadata(ctx, md)
+
+	ctx = trace.StartSpan(ctx, "cloud.google.com/go/bigtable.ExecuteQuery")
+	defer func() { trace.EndSpan(ctx, err) }()
+
+	mt := bs.ps.c.newBuiltinMetricsTracer(ctx, "", true)
+	defer mt.recordOperationCompletion()
+
+	err = bs.execute(ctx, f, mt)
+	statusCode, statusErr := convertToGrpcStatusErr(err)
+	mt.setCurrOpStatus(statusCode.String())
+	return statusErr
+}
+
+func newPreparedQueryData(ps *PreparedStatement) *preparedQueryData {
+	data := *ps.data
+	return &data
+}
+
+func (bs *BoundStatement) execute(ctx context.Context, f func(ResultRow) bool, mt *builtinMetricsTracer) error {
+	// buffer data constructed from the fields in PartialRows`
+	var ongoingResultBatch bytes.Buffer
+
+	// data buffered since the last non-empty `ResumeToken`
+	valuesBuffer := []*btpb.Value{}
+
+	var resumeToken []byte
+
+	receivedResumeToken := false
+	var prevError error
+
+	// Metadata could change on planned query refresh.
+	// E.g.
+	// 1. 'SELECT *' request with ps started at t1
+	// 2. A column family is added to the table
+	// 3. Some other request triggers refresh of ps at t2
+	// 4. If the metadata from the refreshed ps at t2 is used, metadata contains the new column family,
+	//    the responses do not (because the request used the plan from t1)`
+	//
+	// So, do not use latest metadata from `bs.ps`
+	var finalizedStmt *preparedQueryData
+	err := gaxInvokeWithRecorder(ctx, mt, "ExecuteQuery", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
+		ctx, cancel := context.WithCancel(ctx) // for aborting the stream
+		defer cancel()
+
+		if isQueryExpiredViolation(prevError) {
+			// Query could have other expiry conditions apart from time based expiry.
+			// So, it is possible that the query does not get refreshed in `refreshIfInvalid`
+			bs.ps.refreshMutex.Lock()
+			defer bs.ps.refreshMutex.Unlock()
+			err := bs.ps.refresh(ctx)
+			if err != nil {
+				prevError = err
+				return err
+			}
+		}
+
+		if !receivedResumeToken {
+			// Once we have a resume token we need the prepared query to never change
+			// The Bigtable servive will only send the query expired error for requests without a token
+			// (before sending any responses).
+			// We don't want the plan to change on a transient error once we've already received a token.
+			err := bs.ps.refreshIfInvalid(ctx)
+			if err != nil {
+				prevError = err
+				return err
+			}
+		}
+
+		candFinalizedStmt := finalizedStmt
+		if candFinalizedStmt == nil {
+			candFinalizedStmt = newPreparedQueryData(bs.ps)
+		}
+		req := &btpb.ExecuteQueryRequest{
+			InstanceName:  bs.ps.c.fullInstanceName(),
+			AppProfileId:  bs.ps.c.appProfile,
+			PreparedQuery: candFinalizedStmt.preparedQuery,
+			Params:        bs.params,
+		}
+		stream, err := bs.ps.c.client.ExecuteQuery(ctx, req)
+		if err != nil {
+			prevError = err
+			return err
+		}
+
+		// Ignore error since header is only being used to record builtin metrics
+		// Failure to record metrics should not fail the operation
+		*headerMD, _ = stream.Header()
+		eqResp := new(btpb.ExecuteQueryResponse)
+		for {
+			proto.Reset(eqResp)
+			err := stream.RecvMsg(eqResp)
+			if err == io.EOF {
+				return handleExecuteStreamEnd(stream, trailerMD, valuesBuffer, err, &prevError)
+			}
+			if err != nil {
+				// Setup for next call
+				req.ResumeToken = resumeToken
+				return handleExecuteStreamEnd(stream, trailerMD, valuesBuffer, err, &prevError)
+			}
+
+			resp := eqResp.GetResponse()
+			results, ok := resp.(*btpb.ExecuteQueryResponse_Results)
+			if !ok {
+				prevError = errors.New("bigtable: unexpected response type")
+				return prevError
+			}
+
+			partialResultSet := results.Results
+			if partialResultSet.GetReset_() {
+				valuesBuffer = []*btpb.Value{}
+				ongoingResultBatch.Reset()
+			}
+
+			var batchData []byte
+			if partialResultSet.GetProtoRowsBatch() != nil {
+				batchData = partialResultSet.GetProtoRowsBatch().GetBatchData()
+				ongoingResultBatch.Write(batchData)
+			}
+
+			// Validate checksum if exists
+			var protoRows *btpb.ProtoRows
+			if partialResultSet.BatchChecksum != nil {
+				// Current batch is now complete
+
+				// Validate checksum
+				currBatchChecksum := crc32.Checksum(ongoingResultBatch.Bytes(), crc32cTable)
+				if *partialResultSet.BatchChecksum != currBatchChecksum {
+					prevError = errors.New("bigtable: batch_checksum mismatch")
+					return prevError
+				}
+
+				// Parse the batch
+				protoRows = new(btpb.ProtoRows)
+				if err := proto.Unmarshal(ongoingResultBatch.Bytes(), protoRows); err != nil {
+					prevError = err
+					return err
+				}
+				valuesBuffer = append(valuesBuffer, protoRows.GetValues()...)
+
+				// Prepare to receive next batch of results
+				ongoingResultBatch.Reset()
+			}
+			if partialResultSet.GetResumeToken() != nil {
+				// Values can be yielded to the caller
+
+				// If `resume_token` is non-empty and any data has been received since the
+				// last one, BatchChecksum is guaranteed to be non-empty. In other words, a batch will
+				// never cross a `resume_token` boundary. It is an error otherwise
+				if ongoingResultBatch.Len() != 0 &&
+					partialResultSet.BatchChecksum == nil {
+					prevError = errors.New("bigtable: received resume_token with buffered data and no batch_checksum")
+					return prevError
+				}
+
+				if !receivedResumeToken {
+					// first ResumeToken received
+					finalizedStmt = candFinalizedStmt
+					finalizedStmt.initializeMetadataAndMap()
+					receivedResumeToken = true
+				}
+
+				// Save ResumeToken for subsequent requests
+				resumeToken = partialResultSet.GetResumeToken()
+
+				if finalizedStmt.metadata == nil || finalizedStmt.metadata.GetProtoSchema() == nil {
+					prevError = errors.New("bigtable: metadata missing")
+					return prevError
+				}
+				cols := finalizedStmt.metadata.GetProtoSchema().GetColumns()
+				numCols := len(cols)
+
+				// Parse rows
+				for len(valuesBuffer) != 0 {
+					var completeRowValues []*btpb.Value
+
+					// Pop first 'numCols' values to create a row
+					if len(valuesBuffer) < numCols {
+						prevError = fmt.Errorf("bigtable: metadata and data mismatch: %d columns in metadata but received %d values", numCols, len(valuesBuffer))
+						return prevError
+					}
+
+					completeRowValues, valuesBuffer = valuesBuffer[0:numCols], valuesBuffer[numCols:]
+
+					// Construct ResultRow
+					rr, err := newResultRow(completeRowValues, finalizedStmt.metadata, finalizedStmt.Metadata)
+					if err != nil {
+						return err
+					}
+					continueReading := f(*rr)
+					if !continueReading {
+						// Cancel and drain stream.
+						cancel()
+						for {
+							proto.Reset(eqResp)
+							if err := stream.RecvMsg(eqResp); err != nil {
+								handleExecuteStreamEnd(stream, trailerMD, valuesBuffer, err, &prevError)
+								// The stream has ended. We don't return an error
+								// because the caller has intentionally interrupted the scan.
+								return nil
+							}
+						}
+					}
+				}
+			}
+		}
+	}, bs.ps.c.executeQueryRetryOption)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func handleExecuteStreamEnd(stream btpb.Bigtable_ExecuteQueryClient, trailerMD *metadata.MD, valuesBuffer []*btpb.Value, err error, prevError *error) error {
+	*prevError = err
+	if err != nil && err != io.EOF {
+		return err
+	}
+	*trailerMD = stream.Trailer()
+	if len(valuesBuffer) != 0 {
+		return errors.New("bigtable: server stream ended without sending a resume token")
+	}
+	return nil
+}
+
+// PingAndWarm pings the server and warms up the connection.
+func (c *Client) PingAndWarm(ctx context.Context) (err error) {
+	md := metadata.Join(metadata.Pairs(
+		resourcePrefixHeader, c.fullInstanceName(),
+		requestParamsHeader, c.reqParamsHeaderValInstance(),
+	), c.newFeatureFlags())
+
+	ctx = mergeOutgoingMetadata(ctx, md)
+	ctx = trace.StartSpan(ctx, "cloud.google.com/go/bigtable/PingAndWarm")
+	defer func() { trace.EndSpan(ctx, err) }()
+	mt := c.newBuiltinMetricsTracer(ctx, "", false)
+	defer mt.recordOperationCompletion()
+
+	err = c.pingerWithMetadata(ctx, mt)
+	statusCode, statusErr := convertToGrpcStatusErr(err)
+	mt.currOp.setStatus(statusCode.String())
+	return statusErr
+}
+
+func (c *Client) pingerWithMetadata(ctx context.Context, mt *builtinMetricsTracer) (err error) {
+	req := &btpb.PingAndWarmRequest{
+		Name:         c.fullInstanceName(),
+		AppProfileId: c.appProfile,
+	}
+	err = gaxInvokeWithRecorder(ctx, mt, "PingAndWarm", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
+		var err error
+		_, err = c.client.PingAndWarm(ctx, req, grpc.Header(headerMD), grpc.Trailer(trailerMD))
+		return err
+	})
+
+	return err
+
 }
 
 func (ti *tableImpl) ReadRows(ctx context.Context, arg RowSet, f func(Row) bool, opts ...ReadOption) error {
@@ -382,11 +1001,11 @@ func (t *Table) ReadRows(ctx context.Context, arg RowSet, f func(Row) bool, opts
 	defer func() { trace.EndSpan(ctx, err) }()
 
 	mt := t.newBuiltinMetricsTracer(ctx, true)
-	defer recordOperationCompletion(mt)
+	defer mt.recordOperationCompletion()
 
 	err = t.readRows(ctx, arg, f, mt, opts...)
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.currOp.setStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode.String())
 	return statusErr
 }
 
@@ -407,7 +1026,8 @@ func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *
 		return errNegativeRowLimit
 	}
 
-	err = gaxInvokeWithRecorder(ctx, mt, "ReadRows", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
+	firstResponseRecorded := false
+	err = gaxInvokeWithRecorder(ctx, mt, methodNameReadRows, func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
 		if rowLimitSet && numRowsRead >= intialRowLimit {
 			return nil
 		}
@@ -415,7 +1035,9 @@ func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *
 		req := &btpb.ReadRowsRequest{
 			AppProfileId: t.c.appProfile,
 		}
-		if t.authorizedView == "" {
+		if t.materializedView != "" {
+			req.MaterializedViewName = t.c.fullMaterializedViewName(t.materializedView)
+		} else if t.authorizedView == "" {
 			req.TableName = t.c.fullTableName(t.table)
 		} else {
 			req.AuthorizedViewName = t.c.fullAuthorizedViewName(t.table, t.authorizedView)
@@ -457,6 +1079,10 @@ func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *
 		for {
 			proto.Reset(res)
 			err := stream.RecvMsg(res)
+			if !firstResponseRecorded && (err == nil || err == io.EOF) {
+				firstResponseRecorded = true
+				mt.currOp.setFirstRespTime(time.Now())
+			}
 			if err == io.EOF {
 				*trailerMD = stream.Trailer()
 				break
@@ -493,8 +1119,12 @@ func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *
 					continue
 				}
 				prevRowKey = row.Key()
+
+				appBlockingLatencyStart := time.Now()
 				continueReading := f(row)
 				numRowsRead++
+				mt.incrementAppBlockingLatency(convertToMs(time.Since(appBlockingLatencyStart)))
+
 				if !continueReading {
 					// Cancel and drain stream.
 					cancel()
@@ -526,7 +1156,7 @@ func (t *Table) readRows(ctx context.Context, arg RowSet, f func(Row) bool, mt *
 			}
 		}
 		return err
-	}, retryOptions...)
+	}, t.c.retryOption)
 
 	return err
 }
@@ -1041,7 +1671,7 @@ func mutationsAreRetryable(muts []*btpb.Mutation) bool {
 	return true
 }
 
-// Overriden in tests
+// Overridden in tests
 var maxMutations = 100000
 
 // Apply mutates a row atomically. A mutation must contain at least one
@@ -1051,11 +1681,11 @@ func (t *Table) Apply(ctx context.Context, row string, m *Mutation, opts ...Appl
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/bigtable/Apply")
 	defer func() { trace.EndSpan(ctx, err) }()
 	mt := t.newBuiltinMetricsTracer(ctx, false)
-	defer recordOperationCompletion(mt)
+	defer mt.recordOperationCompletion()
 
 	err = t.apply(ctx, mt, row, m, opts...)
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.currOp.setStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode.String())
 	return statusErr
 }
 
@@ -1079,7 +1709,7 @@ func (t *Table) apply(ctx context.Context, mt *builtinMetricsTracer, row string,
 			req.AuthorizedViewName = t.c.fullAuthorizedViewName(t.table, t.authorizedView)
 		}
 		if mutationsAreRetryable(m.ops) {
-			callOptions = retryOptions
+			callOptions = append(callOptions, t.c.retryOption)
 		}
 		var res *btpb.MutateRowResponse
 		err := gaxInvokeWithRecorder(ctx, mt, "MutateRow", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
@@ -1329,7 +1959,7 @@ func (t *Table) ApplyBulk(ctx context.Context, rowKeys []string, muts []*Mutatio
 func (t *Table) applyGroup(ctx context.Context, group []*entryErr, opts ...ApplyOption) (err error) {
 	attrMap := make(map[string]interface{})
 	mt := t.newBuiltinMetricsTracer(ctx, true)
-	defer recordOperationCompletion(mt)
+	defer mt.recordOperationCompletion()
 
 	err = gaxInvokeWithRecorder(ctx, mt, "MutateRows", func(ctx context.Context, headerMD, trailerMD *metadata.MD, _ gax.CallSettings) error {
 		attrMap["rowCount"] = len(group)
@@ -1347,10 +1977,10 @@ func (t *Table) applyGroup(ctx context.Context, group []*entryErr, opts ...Apply
 			return status.Errorf(idempotentRetryCodes[0], "Synthetic error: partial failure of ApplyBulk")
 		}
 		return nil
-	}, retryOptions...)
+	}, t.c.retryOption)
 
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.currOp.setStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode.String())
 	return statusErr
 }
 
@@ -1420,7 +2050,7 @@ func (t *Table) doApplyBulk(ctx context.Context, entryErrs []*entryErr, headerMD
 			if s.Code == int32(codes.OK) {
 				entryErrs[entry.Index].Err = nil
 			} else {
-				entryErrs[entry.Index].Err = status.Errorf(codes.Code(s.Code), s.Message)
+				entryErrs[entry.Index].Err = status.Error(codes.Code(s.Code), s.Message)
 			}
 		}
 		after(res)
@@ -1491,11 +2121,11 @@ func (t *Table) ApplyReadModifyWrite(ctx context.Context, row string, m *ReadMod
 	ctx = mergeOutgoingMetadata(ctx, t.md)
 
 	mt := t.newBuiltinMetricsTracer(ctx, false)
-	defer recordOperationCompletion(mt)
+	defer mt.recordOperationCompletion()
 
 	updatedRow, err := t.applyReadModifyWrite(ctx, mt, row, m)
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.currOp.setStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode.String())
 	return updatedRow, statusErr
 }
 
@@ -1572,11 +2202,11 @@ func (t *Table) SampleRowKeys(ctx context.Context) ([]string, error) {
 	ctx = mergeOutgoingMetadata(ctx, t.md)
 
 	mt := t.newBuiltinMetricsTracer(ctx, true)
-	defer recordOperationCompletion(mt)
+	defer mt.recordOperationCompletion()
 
 	rowKeys, err := t.sampleRowKeys(ctx, mt)
 	statusCode, statusErr := convertToGrpcStatusErr(err)
-	mt.currOp.setStatus(statusCode.String())
+	mt.setCurrOpStatus(statusCode.String())
 	return rowKeys, statusErr
 }
 
@@ -1587,7 +2217,9 @@ func (t *Table) sampleRowKeys(ctx context.Context, mt *builtinMetricsTracer) ([]
 		req := &btpb.SampleRowKeysRequest{
 			AppProfileId: t.c.appProfile,
 		}
-		if t.authorizedView == "" {
+		if t.materializedView != "" {
+			req.MaterializedViewName = t.c.fullMaterializedViewName(t.materializedView)
+		} else if t.authorizedView == "" {
 			req.TableName = t.c.fullTableName(t.table)
 		} else {
 			req.AuthorizedViewName = t.c.fullAuthorizedViewName(t.table, t.authorizedView)
@@ -1622,38 +2254,18 @@ func (t *Table) sampleRowKeys(ctx context.Context, mt *builtinMetricsTracer) ([]
 			sampledRowKeys = append(sampledRowKeys, key)
 		}
 		return nil
-	}, retryOptions...)
+	}, t.c.retryOption)
 
 	return sampledRowKeys, err
 }
 
 func (t *Table) newBuiltinMetricsTracer(ctx context.Context, isStreaming bool) *builtinMetricsTracer {
-	mt := t.c.metricsTracerFactory.createBuiltinMetricsTracer(ctx, t.table, isStreaming)
-	return &mt
+	return t.c.newBuiltinMetricsTracer(ctx, t.table, isStreaming)
 }
 
-// recordOperationCompletion records as many operation specific metrics as it can
-// Ignores error seen while creating metric attributes since metric can still
-// be recorded with rest of the attributes
-func recordOperationCompletion(mt *builtinMetricsTracer) {
-	if !mt.builtInEnabled {
-		return
-	}
-
-	// Calculate elapsed time
-	elapsedTimeMs := convertToMs(time.Since(mt.currOp.startTime))
-
-	// Record operation_latencies
-	opLatAttrs, _ := mt.toOtelMetricAttrs(metricNameOperationLatencies)
-	mt.instrumentOperationLatencies.Record(mt.ctx, elapsedTimeMs, metric.WithAttributes(opLatAttrs...))
-
-	// Record retry_count
-	retryCntAttrs, _ := mt.toOtelMetricAttrs(metricNameRetryCount)
-	if mt.currOp.attemptCount > 1 {
-		// Only record when retry count is greater than 0 so the retry
-		// graph will be less confusing
-		mt.instrumentRetryCount.Add(mt.ctx, mt.currOp.attemptCount-1, metric.WithAttributes(retryCntAttrs...))
-	}
+func (c *Client) newBuiltinMetricsTracer(ctx context.Context, table string, isStreaming bool) *builtinMetricsTracer {
+	mt := c.metricsTracerFactory.createBuiltinMetricsTracer(ctx, table, isStreaming)
+	return &mt
 }
 
 // gaxInvokeWithRecorder:
@@ -1668,66 +2280,16 @@ func gaxInvokeWithRecorder(ctx context.Context, mt *builtinMetricsTracer, method
 	attempTrailerMD := metadata.New(nil)
 	mt.setMethod(method)
 
-	var callWrapper func(context.Context, gax.CallSettings) error
-	if !mt.builtInEnabled {
-		callWrapper = func(ctx context.Context, callSettings gax.CallSettings) error {
-			// f makes calls to CBT service
-			return f(ctx, &attemptHeaderMD, &attempTrailerMD, callSettings)
-		}
-	} else {
-		callWrapper = func(ctx context.Context, callSettings gax.CallSettings) error {
-			// Increment number of attempts
-			mt.currOp.incrementAttemptCount()
+	callWrapper := func(ctx context.Context, callSettings gax.CallSettings) error {
+		mt.recordAttemptStart()
 
-			mt.currOp.currAttempt = attemptTracer{}
+		// f makes calls to CBT service
+		err := f(ctx, &attemptHeaderMD, &attempTrailerMD, callSettings)
 
-			// record start time
-			mt.currOp.currAttempt.setStartTime(time.Now())
-
-			// f makes calls to CBT service
-			err := f(ctx, &attemptHeaderMD, &attempTrailerMD, callSettings)
-
-			// Set attempt status
-			statusCode, _ := convertToGrpcStatusErr(err)
-			mt.currOp.currAttempt.setStatus(statusCode.String())
-
-			// Get location attributes from metadata and set it in tracer
-			// Ignore get location error since the metric can still be recorded with rest of the attributes
-			clusterID, zoneID, _ := extractLocation(attemptHeaderMD, attempTrailerMD)
-			mt.currOp.currAttempt.setClusterID(clusterID)
-			mt.currOp.currAttempt.setZoneID(zoneID)
-
-			// Set server latency in tracer
-			serverLatency, serverLatencyErr := extractServerLatency(attemptHeaderMD, attempTrailerMD)
-			mt.currOp.currAttempt.setServerLatencyErr(serverLatencyErr)
-			mt.currOp.currAttempt.setServerLatency(serverLatency)
-
-			// Record attempt specific metrics
-			recordAttemptCompletion(mt)
-			return err
-		}
+		// Record attempt specific metrics
+		mt.recordAttemptCompletion(attemptHeaderMD, attempTrailerMD, err)
+		return err
 	}
+
 	return gax.Invoke(ctx, callWrapper, opts...)
-}
-
-// recordAttemptCompletion records as many attempt specific metrics as it can
-// Ignore errors seen while creating metric attributes since metric can still
-// be recorded with rest of the attributes
-func recordAttemptCompletion(mt *builtinMetricsTracer) {
-	if !mt.builtInEnabled {
-		return
-	}
-
-	// Calculate elapsed time
-	elapsedTime := convertToMs(time.Since(mt.currOp.currAttempt.startTime))
-
-	// Record attempt_latencies
-	attemptLatAttrs, _ := mt.toOtelMetricAttrs(metricNameAttemptLatencies)
-	mt.instrumentAttemptLatencies.Record(mt.ctx, elapsedTime, metric.WithAttributes(attemptLatAttrs...))
-
-	// Record server_latencies
-	serverLatAttrs, _ := mt.toOtelMetricAttrs(metricNameServerLatencies)
-	if mt.currOp.currAttempt.serverLatencyErr == nil {
-		mt.instrumentServerLatencies.Record(mt.ctx, mt.currOp.currAttempt.serverLatency, metric.WithAttributes(serverLatAttrs...))
-	}
 }

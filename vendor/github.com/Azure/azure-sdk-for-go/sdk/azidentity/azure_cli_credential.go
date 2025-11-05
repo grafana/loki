@@ -70,7 +70,11 @@ func NewAzureCLICredential(options *AzureCLICredentialOptions) (*AzureCLICredent
 	}
 	for _, r := range cp.Subscription {
 		if !(alphanumeric(r) || r == '-' || r == '_' || r == ' ' || r == '.') {
-			return nil, fmt.Errorf("%s: invalid Subscription %q", credNameAzureCLI, cp.Subscription)
+			return nil, fmt.Errorf(
+				"%s: Subscription %q contains invalid characters. If this is the name of a subscription, use its ID instead",
+				credNameAzureCLI,
+				cp.Subscription,
+			)
 		}
 	}
 	if cp.TenantID != "" && !validTenantID(cp.TenantID) {
@@ -144,8 +148,14 @@ var defaultAzTokenProvider azTokenProvider = func(ctx context.Context, scopes []
 	cliCmd.Env = os.Environ()
 	var stderr bytes.Buffer
 	cliCmd.Stderr = &stderr
+	cliCmd.WaitDelay = 100 * time.Millisecond
 
-	output, err := cliCmd.Output()
+	stdout, err := cliCmd.Output()
+	if errors.Is(err, exec.ErrWaitDelay) && len(stdout) > 0 {
+		// The child process wrote to stdout and exited without closing it.
+		// Swallow this error and return stdout because it may contain a token.
+		return stdout, nil
+	}
 	if err != nil {
 		msg := stderr.String()
 		var exErr *exec.ExitError
@@ -158,7 +168,7 @@ var defaultAzTokenProvider azTokenProvider = func(ctx context.Context, scopes []
 		return nil, newCredentialUnavailableError(credNameAzureCLI, msg)
 	}
 
-	return output, nil
+	return stdout, nil
 }
 
 func (c *AzureCLICredential) createAccessToken(tk []byte) (azcore.AccessToken, error) {

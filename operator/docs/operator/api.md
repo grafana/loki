@@ -2123,6 +2123,22 @@ TenantsSpec
 <p>Tenants defines the per-tenant authentication and authorization spec for the lokistack-gateway component.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>networkPolicies</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-NetworkPoliciesSpec">
+NetworkPoliciesSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>NetworkPolicies defines the NetworkPolicies configuration for LokiStack components.
+When enabled, the operator creates NetworkPolicies to control ingress/egress between
+Loki components and related services.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -2169,6 +2185,20 @@ LokiStackStorageStatus
 <em>(Optional)</em>
 <p>Storage provides summary of all changes that have occurred
 to the storage configuration.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>networkPolicies</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-NetworkPoliciesStatus">
+NetworkPoliciesStatus
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>NetworkPolicies indicates whether NetworkPolicies are enabled or disabled for this LokiStack.</p>
 </td>
 </tr>
 <tr>
@@ -2252,6 +2282,21 @@ scheduling of all Loki components to be deployed.</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>
+<code>useRequestsAsLimits</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>When UseRequestsAsLimits is true, the operand Pods are configured to have resource limits equal to the resource
+requests. This imposes a hard limit on resource usage of the LokiStack, but limits its ability to react to load
+spikes, whether on the ingestion or query side.</p>
+<p>Note: This is currently a tech-preview feature.</p>
+</td>
+</tr>
 <tr>
 <td>
 <code>compactor</code><br/>
@@ -2500,6 +2545,62 @@ for the memberlist.</p>
 </tr><tr><td><p>&#34;static&#34;</p></td>
 <td><p>Static mode asserts the Authorization Spec&rsquo;s Roles and RoleBindings
 using an in-process OpenPolicyAgent Rego authorizer.</p>
+</td>
+</tr></tbody>
+</table>
+
+## NetworkPoliciesSpec { #loki-grafana-com-v1-NetworkPoliciesSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
+</p>
+<div>
+<p>NetworkPoliciesSpec defines the configuration for NetworkPolicies.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>disabled</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Disabled allows explicitly disabling NetworkPolicies.
+When false, NetworkPolicies are enabled.
+When true, NetworkPolicies are disabled.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## NetworkPoliciesStatus { #loki-grafana-com-v1-NetworkPoliciesStatus }
+(<code>string</code> alias)
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackStatus">LokiStackStatus</a>)
+</p>
+<div>
+<p>NetworkPoliciesStatus defines the observed state of NetworkPolicies deployment.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr><td><p>&#34;Disabled&#34;</p></td>
+<td><p>NetworkPoliciesStatusDisabled when NetworkPolicies are not deployed.</p>
+</td>
+</tr><tr><td><p>&#34;Enabled&#34;</p></td>
+<td><p>NetworkPoliciesStatusEnabled when NetworkPolicies are deployed.</p>
 </td>
 </tr></tbody>
 </table>
@@ -3102,12 +3203,26 @@ bool
 <td>
 <em>(Optional)</em>
 <p>DisableRecommendedAttributes can be used to reduce the number of attributes used as stream labels.</p>
-<p>Enabling this setting removes the &ldquo;recommended attributes&rdquo; from the generated Loki configuration. This will cause
-some stream labels to disappear from the index, potentially making queries more expensive and less performant.</p>
-<p>Note that there is a set of &ldquo;required attributes&rdquo;, needed for OpenShift Logging to work properly. Those will be
-added to the configuration, even if this field is set to true.</p>
+<p>Enabling this setting removes the &ldquo;recommended attributes&rdquo; from the stream labels. This requires an update
+to queries that relied on these attributes as stream labels, as they will no longer be indexed as such.</p>
+<p>The recommended attributes are:</p>
+<ul>
+<li>k8s.container.name</li>
+<li>k8s.cronjob.name</li>
+<li>k8s.daemonset.name</li>
+<li>k8s.deployment.name</li>
+<li>k8s.job.name</li>
+<li>k8s.node.name</li>
+<li>k8s.pod.name</li>
+<li>k8s.statefulset.name</li>
+<li>kubernetes.container_name</li>
+<li>kubernetes.host</li>
+<li>kubernetes.pod_name</li>
+<li>service.name</li>
+</ul>
 <p>This option is supposed to be combined with a custom attribute configuration listing the stream labels that
 should continue to exist.</p>
+<p>See also: <a href="https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes">https://github.com/rhobs/observability-data-model/blob/main/cluster-logging.md#attributes</a></p>
 </td>
 </tr>
 </tbody>

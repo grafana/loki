@@ -8,6 +8,7 @@ import (
 	"os"
 
 	stats "github.com/lufia/plan9stats"
+
 	"github.com/shirou/gopsutil/v4/internal/common"
 )
 
@@ -63,6 +64,6 @@ func SwapDevices() ([]*SwapDevice, error) {
 	return SwapDevicesWithContext(context.Background())
 }
 
-func SwapDevicesWithContext(ctx context.Context) ([]*SwapDevice, error) {
+func SwapDevicesWithContext(_ context.Context) ([]*SwapDevice, error) {
 	return nil, common.ErrNotImplementedError
 }

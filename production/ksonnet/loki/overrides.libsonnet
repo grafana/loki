@@ -1,5 +1,5 @@
-local common = import 'common.libsonnet';
 local k = import 'ksonnet-util/kausal.libsonnet';
+
 {
   _config+: {
     overrides: {
@@ -39,47 +39,4 @@ local k = import 'ksonnet-util/kausal.libsonnet';
         + (if std.length($._config.multi_kv_config) > 0 then { multi_kv_config: $._config.multi_kv_config } else {}),
       ),
     }),
-
-  local checkRetentionStreams(retentionStreams, maxQueryLookback) =
-    std.foldl(
-      function(acc, retentionStream) acc && common.parseDuration(retentionStream.period) <= common.parseDuration(maxQueryLookback),
-      retentionStreams,
-      true
-    ),
-
-  isLookbackLongerThanRetention(tenantCfg)::
-    local retentionPeriod = tenantCfg.retention_period;
-    local lookback = tenantCfg.max_query_lookback;
-    if std.objectHas(tenantCfg, 'max_query_lookback') &&
-       std.objectHas(tenantCfg, 'retention_period') then
-      common.parseDuration(lookback) >= common.parseDuration(retentionPeriod)
-    else
-      true,
-
-  isLookbackLongerThanStreamRetention(tenantCfg)::
-    local retentionStream = tenantCfg.retention_stream;
-    local lookback = tenantCfg.max_query_lookback;
-    if std.objectHas(tenantCfg, 'max_query_lookback') &&
-       std.objectHas(tenantCfg, 'retention_stream') then
-      checkRetentionStreams(retentionStream, lookback)
-    else
-      true,
-
-  checkTenantRetention(tenant)::
-    local tenantCfg = $._config.overrides[tenant];
-    if $.isLookbackLongerThanRetention(tenantCfg) &&
-       $.isLookbackLongerThanStreamRetention(tenantCfg) then
-      true
-    else
-      false,
-
-  local tenants = std.objectFields($._config.overrides),
-
-  local validRetentionsCheck = std.foldl(
-    function(acc, tenant) if !$.checkTenantRetention(tenant) then { valid: false, failedTenant: [tenant] + acc.failedTenant } else acc,
-    tenants,
-    { valid: true, failedTenant: [] }
-  ),
-
-  assert validRetentionsCheck.valid : 'retention period longer than max_query_lookback for tenants %s' % std.join(', ', validRetentionsCheck.failedTenant),
 }

@@ -146,6 +146,16 @@ func (i *InstanceDesc) GetRegisteredAt() time.Time {
 	return time.Unix(i.RegisteredTimestamp, 0)
 }
 
+// GetLastHeartbeatAt returns the timestamp of the last heartbeat sent by the instance
+// or a zero value if unknown.
+func (i *InstanceDesc) GetLastHeartbeatAt() time.Time {
+	if i == nil || i.Timestamp == 0 {
+		return time.Time{}
+	}
+
+	return time.Unix(i.Timestamp, 0)
+}
+
 // GetReadOnlyState returns the read-only state and timestamp of last read-only state update.
 func (i *InstanceDesc) GetReadOnlyState() (bool, time.Time) {
 	if i == nil {

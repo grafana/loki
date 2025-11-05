@@ -16,7 +16,6 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/util/constants"
-	"github.com/grafana/loki/v3/pkg/util/math"
 )
 
 // MemcachedConfig is config to make a Memcached
@@ -150,7 +149,7 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 		start = time.Now()
 		items map[string]*memcache.Item
 	)
-	items, err = c.memcache.GetMulti(keys)
+	items, err = c.memcache.GetMulti(ctx, keys)
 	c.requestDuration.After(ctx, "Memcache.GetMulti", memcacheStatusCode(err), start)
 	if err != nil {
 		return found, bufs, keys, err
@@ -174,7 +173,7 @@ func (c *Memcached) fetchKeysBatched(ctx context.Context, keys []string) (found 
 
 	go func() {
 		for i, j := 0, 0; i < len(keys); i += batchSize {
-			batchKeys := keys[i:math.Min(i+batchSize, len(keys))]
+			batchKeys := keys[i:min(i+batchSize, len(keys))]
 			select {
 			case <-c.closed:
 				return

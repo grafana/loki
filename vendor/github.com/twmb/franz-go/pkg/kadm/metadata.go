@@ -230,7 +230,7 @@ func (cl *Client) Metadata(
 func (cl *Client) metadata(ctx context.Context, noTopics bool, topics []string) (Metadata, error) {
 	req := kmsg.NewPtrMetadataRequest()
 	req.IncludeClusterAuthorizedOperations = true
-	req.IncludeTopicAuthorizedOperations = true
+	req.IncludeTopicAuthorizedOperations = ctx.Value(&includeAuthOps) != nil
 	for _, t := range topics {
 		rt := kmsg.NewMetadataRequestTopic()
 		rt.Topic = kmsg.StringPtr(t)
@@ -420,7 +420,7 @@ func (cl *Client) ListCommittedOffsets(ctx context.Context, topics ...string) (L
 	return cl.listOffsets(ctx, 1, -1, topics)
 }
 
-// ListOffsetsAfterMilli returns the first offsets after the requested
+// ListOffsetsAfterMilli returns the first offsets at or after the requested
 // millisecond timestamp. Unlike listing start/end/committed offsets, offsets
 // returned from this function also include the timestamp of the offset. If no
 // topics are specified, all topics are listed. If a partition has no offsets

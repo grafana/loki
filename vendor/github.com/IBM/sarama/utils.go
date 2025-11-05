@@ -3,8 +3,15 @@ package sarama
 import (
 	"bufio"
 	"fmt"
+	"math/rand"
 	"net"
 	"regexp"
+	"time"
+)
+
+const (
+	defaultRetryBackoff    = 100 * time.Millisecond
+	defaultRetryMaxBackoff = 1000 * time.Millisecond
 )
 
 type none struct{}
@@ -203,6 +210,7 @@ var (
 	V3_6_2_0  = newKafkaVersion(3, 6, 2, 0)
 	V3_7_0_0  = newKafkaVersion(3, 7, 0, 0)
 	V3_7_1_0  = newKafkaVersion(3, 7, 1, 0)
+	V3_7_2_0  = newKafkaVersion(3, 7, 2, 0)
 	V3_8_0_0  = newKafkaVersion(3, 8, 0, 0)
 	V3_8_1_0  = newKafkaVersion(3, 8, 1, 0)
 	V3_9_0_0  = newKafkaVersion(3, 9, 0, 0)
@@ -275,6 +283,7 @@ var (
 		V3_6_2_0,
 		V3_7_0_0,
 		V3_7_1_0,
+		V3_7_2_0,
 		V3_8_0_0,
 		V3_8_1_0,
 		V3_9_0_0,
@@ -341,4 +350,40 @@ func (v KafkaVersion) String() string {
 	}
 
 	return fmt.Sprintf("%d.%d.%d", v.version[0], v.version[1], v.version[2])
+}
+
+// NewExponentialBackoff returns a function that implements an exponential backoff strategy with jitter.
+// It follows KIP-580, implementing the formula:
+// MIN(retry.backoff.max.ms, (retry.backoff.ms * 2**(failures - 1)) * random(0.8, 1.2))
+// This ensures retries start with `backoff` and exponentially increase until `maxBackoff`, with added jitter.
+// The behavior when `failures = 0` is not explicitly defined in KIP-580 and is left to implementation discretion.
+//
+// Example usage:
+//
+//	backoffFunc := sarama.NewExponentialBackoff(config.Producer.Retry.Backoff, 2*time.Second)
+//	config.Producer.Retry.BackoffFunc = backoffFunc
+func NewExponentialBackoff(backoff time.Duration, maxBackoff time.Duration) func(retries, maxRetries int) time.Duration {
+	if backoff <= 0 {
+		backoff = defaultRetryBackoff
+	}
+	if maxBackoff <= 0 {
+		maxBackoff = defaultRetryMaxBackoff
+	}
+
+	if backoff > maxBackoff {
+		Logger.Println("Warning: backoff is greater than maxBackoff, using maxBackoff instead.")
+		backoff = maxBackoff
+	}
+
+	return func(retries, maxRetries int) time.Duration {
+		if retries <= 0 {
+			return backoff
+		}
+
+		calculatedBackoff := backoff * time.Duration(1<<(retries-1))
+		jitter := 0.8 + 0.4*rand.Float64()
+		calculatedBackoff = time.Duration(float64(calculatedBackoff) * jitter)
+
+		return min(calculatedBackoff, maxBackoff)
+	}
 }

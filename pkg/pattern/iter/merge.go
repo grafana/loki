@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/util/constants"
 	"github.com/grafana/loki/v3/pkg/util/loser"
 )
 
@@ -16,18 +17,21 @@ type mergeIterator struct {
 
 type patternSample struct {
 	pattern string
+	level   string
 	sample  logproto.PatternSample
 }
 
-var max = patternSample{
+var maxSample = patternSample{
 	pattern: "",
+	level:   constants.LogLevelUnknown,
 	sample:  logproto.PatternSample{Timestamp: math.MaxInt64},
 }
 
 func NewMerge(iters ...Iterator) Iterator {
-	tree := loser.New(iters, max, func(s Iterator) patternSample {
+	tree := loser.New(iters, maxSample, func(s Iterator) patternSample {
 		return patternSample{
 			pattern: s.Pattern(),
+			level:   s.Level(),
 			sample:  s.At(),
 		}
 	}, func(e1, e2 patternSample) bool {
@@ -57,10 +61,13 @@ func (m *mergeIterator) Next() bool {
 	}
 
 	m.current.pattern = m.tree.Winner().Pattern()
+	m.current.level = m.tree.Winner().Level()
 	m.current.sample = m.tree.Winner().At()
 
 	for m.tree.Next() {
-		if m.current.sample.Timestamp != m.tree.Winner().At().Timestamp || m.current.pattern != m.tree.Winner().Pattern() {
+		if m.current.sample.Timestamp != m.tree.Winner().At().Timestamp ||
+			m.current.pattern != m.tree.Winner().Pattern() ||
+			m.current.level != m.tree.Winner().Level() {
 			return true
 		}
 		m.current.sample.Value += m.tree.Winner().At().Value
@@ -72,6 +79,10 @@ func (m *mergeIterator) Next() bool {
 
 func (m *mergeIterator) Pattern() string {
 	return m.current.pattern
+}
+
+func (m *mergeIterator) Level() string {
+	return m.current.level
 }
 
 func (m *mergeIterator) At() logproto.PatternSample {

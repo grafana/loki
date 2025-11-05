@@ -25,14 +25,51 @@ import (
 	"errors"
 	"hash"
 	"hash/crc32"
-	"hash/crc64"
 	"io"
 	"math/bits"
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/minio/crc64nvme"
 )
+
+// ChecksumMode contains information about the checksum mode on the object
+type ChecksumMode uint32
+
+const (
+	// ChecksumFullObjectMode Full object checksum `csumCombine(csum1, csum2...)...), csumN...)`
+	ChecksumFullObjectMode ChecksumMode = 1 << iota
+
+	// ChecksumCompositeMode Composite checksum `csum([csum1 + csum2 ... + csumN])`
+	ChecksumCompositeMode
+
+	// Keep after all valid checksums
+	checksumLastMode
+
+	// checksumModeMask is a mask for valid checksum mode types.
+	checksumModeMask = checksumLastMode - 1
+)
+
+// Is returns if c is all of t.
+func (c ChecksumMode) Is(t ChecksumMode) bool {
+	return c&t == t
+}
+
+// Key returns the header key.
+func (c ChecksumMode) Key() string {
+	return amzChecksumMode
+}
+
+func (c ChecksumMode) String() string {
+	switch c & checksumModeMask {
+	case ChecksumFullObjectMode:
+		return "FULL_OBJECT"
+	case ChecksumCompositeMode:
+		return "COMPOSITE"
+	}
+	return ""
+}
 
 // ChecksumType contains information about the checksum type.
 type ChecksumType uint32
@@ -75,6 +112,7 @@ const (
 	amzChecksumSHA1      = "x-amz-checksum-sha1"
 	amzChecksumSHA256    = "x-amz-checksum-sha256"
 	amzChecksumCRC64NVME = "x-amz-checksum-crc64nvme"
+	amzChecksumMode      = "x-amz-checksum-type"
 )
 
 // Base returns the base type, without modifiers.
@@ -147,7 +185,7 @@ func (c ChecksumType) RawByteLen() int {
 	case ChecksumSHA256:
 		return sha256.Size
 	case ChecksumCRC64NVME:
-		return crc64.Size
+		return crc64nvme.Size
 	}
 	return 0
 }
@@ -395,9 +433,19 @@ func addAutoChecksumHeaders(opts *PutObjectOptions) {
 	if opts.UserMetadata == nil {
 		opts.UserMetadata = make(map[string]string, 1)
 	}
-	opts.UserMetadata["X-Amz-Checksum-Algorithm"] = opts.AutoChecksum.String()
-	if opts.AutoChecksum.FullObjectRequested() {
-		opts.UserMetadata["X-Amz-Checksum-Type"] = "FULL_OBJECT"
+
+	addChecksum := true
+	for k := range opts.UserMetadata {
+		if strings.HasPrefix(strings.ToLower(k), "x-amz-checksum-") {
+			addChecksum = false
+		}
+	}
+
+	if addChecksum && opts.AutoChecksum.IsSet() {
+		opts.UserMetadata[amzChecksumAlgo] = opts.AutoChecksum.String()
+		if opts.AutoChecksum.FullObjectRequested() {
+			opts.UserMetadata[amzChecksumMode] = ChecksumFullObjectMode.String()
+		}
 	}
 }
 
@@ -409,12 +457,18 @@ func applyAutoChecksum(opts *PutObjectOptions, allParts []ObjectPart) {
 		// Add composite hash of hashes.
 		crc, err := opts.AutoChecksum.CompositeChecksum(allParts)
 		if err == nil {
-			opts.UserMetadata = map[string]string{opts.AutoChecksum.Key(): crc.Encoded()}
+			opts.UserMetadata = map[string]string{
+				opts.AutoChecksum.Key(): crc.Encoded(),
+				amzChecksumMode:         ChecksumCompositeMode.String(),
+			}
 		}
 	} else if opts.AutoChecksum.CanMergeCRC() {
 		crc, err := opts.AutoChecksum.FullObjectChecksum(allParts)
 		if err == nil {
-			opts.UserMetadata = map[string]string{opts.AutoChecksum.KeyCapitalized(): crc.Encoded(), "X-Amz-Checksum-Type": "FULL_OBJECT"}
+			opts.UserMetadata = map[string]string{
+				opts.AutoChecksum.Key(): crc.Encoded(),
+				amzChecksumMode:         ChecksumFullObjectMode.String(),
+			}
 		}
 	}
 }

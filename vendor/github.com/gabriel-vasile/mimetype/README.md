@@ -81,7 +81,7 @@ To prevent loading entire files into memory, when detecting from a
 or from a [file](https://pkg.go.dev/github.com/gabriel-vasile/mimetype#DetectFile)
 **mimetype** limits itself to reading only the header of the input.
 <div align="center">
-  <img alt="structure" src="https://github.com/gabriel-vasile/mimetype/blob/420a05228c6a6efbb6e6f080168a25663414ff36/mimetype.gif?raw=true" width="88%">
+  <img alt="how project is structured" src="https://raw.githubusercontent.com/gabriel-vasile/mimetype/master/testdata/gif.gif" width="88%">
 </div>
 
 ## Performance

@@ -20,7 +20,7 @@ TEXT ·Count(SB), NOSPLIT, $0-40
     XORQ R12, R12
     XORQ R13, R13
     XORQ R14, R14
-    XORQ R15, R15
+    XORQ DI, DI
 
     CMPB ·hasAVX512Count(SB), $0
     JE initAVX2
@@ -49,14 +49,14 @@ loopAVX512:
     ADDQ R8, R12
     ADDQ R9, R13
     ADDQ R10, R14
-    ADDQ R11, R15
+    ADDQ R11, DI
     ADDQ $256, AX
     CMPQ AX, DX
     JNE loopAVX512
     ADDQ R12, R13
-    ADDQ R14, R15
+    ADDQ R14, DI
     ADDQ R13, SI
-    ADDQ R15, SI
+    ADDQ DI, SI
     JMP doneAVX
 
 initAVX2:
@@ -74,12 +74,12 @@ loopAVX2:
     POPCNTL R12, R12
     POPCNTL R13, R13
     ADDQ R12, R14
-    ADDQ R13, R15
+    ADDQ R13, DI
     ADDQ $64, AX
     CMPQ AX, DX
     JNE loopAVX2
     ADDQ R14, SI
-    ADDQ R15, SI
+    ADDQ DI, SI
 
 doneAVX:
     VZEROUPPER

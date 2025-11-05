@@ -200,7 +200,7 @@ type FilterIter[T any] struct {
 
 func (i *FilterIter[T]) Next() bool {
 	hasNext := i.Iterator.Next()
-	for hasNext && !i.match(i.Iterator.At()) {
+	for hasNext && !i.match(i.At()) {
 		hasNext = i.Iterator.Next()
 	}
 	return hasNext
@@ -227,10 +227,10 @@ func (it *CounterIter[T]) Count() int {
 	return it.count
 }
 
-func WithClose[T any](itr Iterator[T], close func() bool) *CloseIter[T] {
+func WithClose[T any](itr Iterator[T], closeFunc func() bool) *CloseIter[T] {
 	return &CloseIter[T]{
 		Iterator: itr,
-		close:    close,
+		close:    closeFunc,
 	}
 }
 

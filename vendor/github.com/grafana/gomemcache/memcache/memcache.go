@@ -20,6 +20,7 @@ package memcache
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -174,14 +175,6 @@ type Client struct {
 	// Consider your expected traffic rates and latency carefully. This should
 	// be set to a number higher than your peak parallel requests.
 	MaxIdleConns int
-
-	// WriteBufferSizeBytes specifies the size of the write buffer (in bytes). The buffer
-	// is allocated for each connection. If <= 0, the default value of 4KB will be used.
-	WriteBufferSizeBytes int
-
-	// ReadBufferSizeBytes specifies the size of the read buffer (in bytes). The buffer
-	// is allocated for each connection. If <= 0, the default value of 4KB will be used.
-	ReadBufferSizeBytes int
 
 	// recentlyUsedConnsThreshold is the default grace period given to an
 	// idle connection to consider it "recently used". Recently used connections
@@ -425,19 +418,8 @@ func (c *Client) getConn(addr net.Addr) (*conn, error) {
 		return nil, err
 	}
 
-	// Init buffered writer.
-	if c.WriteBufferSizeBytes > 0 {
-		writer = bufio.NewWriterSize(nc, c.WriteBufferSizeBytes)
-	} else {
-		writer = bufio.NewWriter(nc)
-	}
-
-	// Init buffered reader.
-	if c.ReadBufferSizeBytes > 0 {
-		reader = bufio.NewReaderSize(nc, c.ReadBufferSizeBytes)
-	} else {
-		reader = bufio.NewReader(nc)
-	}
+	writer = bufio.NewWriter(nc)
+	reader = bufio.NewReader(nc)
 
 	cn = &conn{
 		nc:   nc,
@@ -474,7 +456,7 @@ func (c *Client) FlushAll() error {
 func (c *Client) Get(key string, opts ...Option) (item *Item, err error) {
 	options := newOptions(opts...)
 	err = c.withKeyAddr(key, func(addr net.Addr) error {
-		return c.getFromAddr(addr, []string{key}, options, func(it *Item) { item = it })
+		return c.getFromAddr(context.Background(), addr, []string{key}, options, func(it *Item) { item = it })
 	})
 	if err == nil && item == nil {
 		err = ErrCacheMiss
@@ -519,7 +501,7 @@ func (c *Client) withKeyRw(key string, fn func(*conn) error) error {
 	})
 }
 
-func (c *Client) getFromAddr(addr net.Addr, keys []string, opts *Options, cb func(*Item)) error {
+func (c *Client) getFromAddr(ctx context.Context, addr net.Addr, keys []string, opts *Options, cb func(*Item)) error {
 	return c.withAddrRw(addr, func(conn *conn) error {
 		rw := conn.rw
 		if _, err := fmt.Fprintf(rw, "gets %s\r\n", strings.Join(keys, " ")); err != nil {
@@ -528,7 +510,7 @@ func (c *Client) getFromAddr(addr net.Addr, keys []string, opts *Options, cb fun
 		if err := rw.Flush(); err != nil {
 			return err
 		}
-		if err := c.parseGetResponse(rw.Reader, conn, opts, cb); err != nil {
+		if err := c.parseGetResponse(ctx, rw.Reader, conn, opts, cb); err != nil {
 			return err
 		}
 		return nil
@@ -615,7 +597,14 @@ func (c *Client) touchFromAddr(addr net.Addr, keys []string, expiration int32) e
 // items may have fewer elements than the input slice, due to memcache
 // cache misses. Each key must be at most 250 bytes in length.
 // If no error is returned, the returned map will also be non-nil.
-func (c *Client) GetMulti(keys []string, opts ...Option) (map[string]*Item, error) {
+func (c *Client) GetMulti(ctx context.Context, keys []string, opts ...Option) (map[string]*Item, error) {
+	// Check if context is already cancelled before doing any work
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("memcache GetMulti: %w", ctx.Err())
+	default:
+	}
+
 	options := newOptions(opts...)
 
 	var lk sync.Mutex
@@ -641,15 +630,23 @@ func (c *Client) GetMulti(keys []string, opts ...Option) (map[string]*Item, erro
 	ch := make(chan error, buffered)
 	for addr, keys := range keyMap {
 		go func(addr net.Addr, keys []string) {
-			err := c.getFromAddr(addr, keys, options, addItemToMap)
-			ch <- err
+			err := c.getFromAddr(ctx, addr, keys, options, addItemToMap)
+			select {
+			case ch <- err:
+			case <-ctx.Done():
+			}
 		}(addr, keys)
 	}
 
 	var err error
-	for range keyMap {
-		if ge := <-ch; ge != nil {
-			err = ge
+	for i := 0; i < len(keyMap); i++ {
+		select {
+		case ge := <-ch:
+			if ge != nil {
+				err = ge
+			}
+		case <-ctx.Done():
+			return nil, fmt.Errorf("memcache GetMulti: %w", ctx.Err())
 		}
 	}
 	return m, err
@@ -657,7 +654,7 @@ func (c *Client) GetMulti(keys []string, opts ...Option) (map[string]*Item, erro
 
 // parseGetResponse reads a GET response from r and calls cb for each
 // read and allocated Item
-func (c *Client) parseGetResponse(r *bufio.Reader, conn *conn, opts *Options, cb func(*Item)) error {
+func (c *Client) parseGetResponse(ctx context.Context, r *bufio.Reader, conn *conn, opts *Options, cb func(*Item)) error {
 	for {
 		// extend deadline before each additional call, otherwise all cumulative calls use the same overall deadline
 		conn.extendDeadline()
@@ -675,6 +672,20 @@ func (c *Client) parseGetResponse(r *bufio.Reader, conn *conn, opts *Options, cb
 			return err
 		}
 		buffSize := size + 2
+
+		// Check if context is cancelled before allocating memory
+		select {
+		case <-ctx.Done():
+			// Still need to read the data to keep connection in valid state
+			_, err = io.CopyN(io.Discard, r, int64(buffSize))
+			if err != nil {
+				return err
+			}
+			// Continue reading without processing to maintain connection state
+			continue
+		default:
+		}
+
 		buff := opts.Alloc.Get(buffSize)
 		it.Value = (*buff)[:buffSize]
 		_, err = io.ReadFull(r, it.Value)

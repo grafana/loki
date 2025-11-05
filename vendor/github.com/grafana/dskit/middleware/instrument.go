@@ -6,10 +6,12 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/felixge/httpsnoop"
 	"github.com/gorilla/mux"
@@ -18,38 +20,46 @@ import (
 	"github.com/grafana/dskit/instrument"
 )
 
-const mb = 1024 * 1024
-
 // BodySizeBuckets defines buckets for request/response body sizes.
-var BodySizeBuckets = []float64{1 * mb, 2.5 * mb, 5 * mb, 10 * mb, 25 * mb, 50 * mb, 100 * mb, 250 * mb}
+var BodySizeBuckets = prometheus.ExponentialBuckets(4, 4, 15)
 
 // RouteMatcher matches routes
 type RouteMatcher interface {
 	Match(*http.Request, *mux.RouteMatch) bool
 }
 
-// PerTenantCallback is a function that returns a tenant ID for a given request. When the returned tenant ID is not empty, it is used to label the duration histogram.
-type PerTenantCallback func(context.Context) string
+type PerTenantConfig struct {
+	TenantID          string
+	DurationHistogram bool
+	TotalCounter      bool
+}
 
-func (f PerTenantCallback) shouldInstrument(ctx context.Context) (string, bool) {
+// PerTenantCallback is a function that returns a per-tenant metrics config for a given request. If the function returns a non-nil config, the request will be instrumented with per-tenant metrics.
+type PerTenantCallback func(context.Context) *PerTenantConfig
+
+func (f PerTenantCallback) shouldInstrument(ctx context.Context) (*PerTenantConfig, bool) {
 	if f == nil {
-		return "", false
+		return nil, false
 	}
-	tenantID := f(ctx)
-	if tenantID == "" {
-		return "", false
+	cfg := f(ctx)
+	if cfg == nil || cfg.TenantID == "" {
+		return nil, false
 	}
-	return tenantID, true
+	return cfg, true
 }
 
 // Instrument is a Middleware which records timings for every HTTP request
 type Instrument struct {
 	Duration          *prometheus.HistogramVec
 	PerTenantDuration *prometheus.HistogramVec
+	PerTenantTotal    *prometheus.CounterVec
 	PerTenantCallback PerTenantCallback
 	RequestBodySize   *prometheus.HistogramVec
 	ResponseBodySize  *prometheus.HistogramVec
 	InflightRequests  *prometheus.GaugeVec
+	LatencyCutoff     time.Duration
+	ThroughputUnit    string
+	RequestThroughput *prometheus.HistogramVec
 }
 
 // IsWSHandshakeRequest returns true if the given request is a websocket handshake request.
@@ -101,11 +111,47 @@ func (i Instrument) Wrap(next http.Handler) http.Handler {
 		}
 		labelValues = labelValues[:len(labelValues)-1]
 		instrument.ObserveWithExemplar(r.Context(), i.Duration.WithLabelValues(labelValues...), respMetrics.Duration.Seconds())
-		if tenantID, ok := i.PerTenantCallback.shouldInstrument(r.Context()); ok {
-			labelValues = append(labelValues, tenantID)
-			instrument.ObserveWithExemplar(r.Context(), i.PerTenantDuration.WithLabelValues(labelValues...), respMetrics.Duration.Seconds())
+		if cfg, ok := i.PerTenantCallback.shouldInstrument(r.Context()); ok {
+			labelValues = append(labelValues, cfg.TenantID)
+			if cfg.DurationHistogram {
+				instrument.ObserveWithExemplar(r.Context(), i.PerTenantDuration.WithLabelValues(labelValues...), respMetrics.Duration.Seconds())
+			}
+			if cfg.TotalCounter {
+				i.PerTenantTotal.WithLabelValues(labelValues...).Inc()
+			}
+		}
+		if i.LatencyCutoff > 0 && respMetrics.Duration > i.LatencyCutoff {
+			volume, err := extractValueFromMultiValueHeader(w.Header().Get("Server-Timing"), i.ThroughputUnit, "val")
+			if err == nil {
+				instrument.ObserveWithExemplar(r.Context(), i.RequestThroughput.WithLabelValues(r.Method, route), volume/respMetrics.Duration.Seconds())
+			}
 		}
 	})
+}
+
+// Extracts a single value from a multi-value header, e.g. "name0;key0=0.0;key1=1.1, name1;key0=1.1"
+func extractValueFromMultiValueHeader(h, name string, key string) (float64, error) {
+	parts := strings.Split(h, ", ")
+	if len(parts) == 0 {
+		return 0, fmt.Errorf("not a multi-value header")
+	}
+	for _, part := range parts {
+		if part, found := strings.CutPrefix(part, name); found {
+			for _, spart := range strings.Split(part, ";") {
+				if !strings.HasPrefix(spart, key) {
+					continue
+				}
+				var value float64
+				_, err := fmt.Sscanf(spart, key+"=%f", &value)
+				if err != nil {
+					return 0, fmt.Errorf("failed to parse value from header: %w", err)
+				}
+				return value, nil
+			}
+		}
+
+	}
+	return 0, fmt.Errorf("desired name not found in header")
 }
 
 // Return a name identifier for ths request.  There are three options:

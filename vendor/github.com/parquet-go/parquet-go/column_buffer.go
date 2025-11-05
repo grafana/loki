@@ -2,11 +2,13 @@ package parquet
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
 	"math/bits"
 	"reflect"
+	"slices"
 	"sort"
 	"time"
 	"unsafe"
@@ -177,8 +179,8 @@ func (col *optionalColumnBuffer) Clone() ColumnBuffer {
 		base:               col.base.Clone(),
 		reordered:          col.reordered,
 		maxDefinitionLevel: col.maxDefinitionLevel,
-		rows:               append([]int32{}, col.rows...),
-		definitionLevels:   append([]byte{}, col.definitionLevels...),
+		rows:               slices.Clone(col.rows),
+		definitionLevels:   slices.Clone(col.definitionLevels),
 		nullOrdering:       col.nullOrdering,
 	}
 }
@@ -466,9 +468,9 @@ func (col *repeatedColumnBuffer) Clone() ColumnBuffer {
 		reordered:          col.reordered,
 		maxRepetitionLevel: col.maxRepetitionLevel,
 		maxDefinitionLevel: col.maxDefinitionLevel,
-		rows:               append([]offsetMapping{}, col.rows...),
-		repetitionLevels:   append([]byte{}, col.repetitionLevels...),
-		definitionLevels:   append([]byte{}, col.definitionLevels...),
+		rows:               slices.Clone(col.rows),
+		repetitionLevels:   slices.Clone(col.repetitionLevels),
+		definitionLevels:   slices.Clone(col.definitionLevels),
 		nullOrdering:       col.nullOrdering,
 	}
 }
@@ -758,7 +760,7 @@ func (col *booleanColumnBuffer) Clone() ColumnBuffer {
 	return &booleanColumnBuffer{
 		booleanPage: booleanPage{
 			typ:         col.typ,
-			bits:        append([]byte{}, col.bits...),
+			bits:        slices.Clone(col.bits),
 			offset:      col.offset,
 			numValues:   col.numValues,
 			columnIndex: col.columnIndex,
@@ -919,7 +921,7 @@ func (col *int32ColumnBuffer) Clone() ColumnBuffer {
 	return &int32ColumnBuffer{
 		int32Page: int32Page{
 			typ:         col.typ,
-			values:      append([]int32{}, col.values...),
+			values:      slices.Clone(col.values),
 			columnIndex: col.columnIndex,
 		},
 	}
@@ -1017,7 +1019,7 @@ func (col *int64ColumnBuffer) Clone() ColumnBuffer {
 	return &int64ColumnBuffer{
 		int64Page: int64Page{
 			typ:         col.typ,
-			values:      append([]int64{}, col.values...),
+			values:      slices.Clone(col.values),
 			columnIndex: col.columnIndex,
 		},
 	}
@@ -1114,7 +1116,7 @@ func (col *int96ColumnBuffer) Clone() ColumnBuffer {
 	return &int96ColumnBuffer{
 		int96Page: int96Page{
 			typ:         col.typ,
-			values:      append([]deprecated.Int96{}, col.values...),
+			values:      slices.Clone(col.values),
 			columnIndex: col.columnIndex,
 		},
 	}
@@ -1169,7 +1171,7 @@ func (col *int96ColumnBuffer) WriteValues(values []Value) (int, error) {
 }
 
 func (col *int96ColumnBuffer) writeValues(rows sparse.Array, _ columnLevels) {
-	for i := 0; i < rows.Len(); i++ {
+	for i := range rows.Len() {
 		p := rows.Index(i)
 		col.values = append(col.values, *(*deprecated.Int96)(p))
 	}
@@ -1211,7 +1213,7 @@ func (col *floatColumnBuffer) Clone() ColumnBuffer {
 	return &floatColumnBuffer{
 		floatPage: floatPage{
 			typ:         col.typ,
-			values:      append([]float32{}, col.values...),
+			values:      slices.Clone(col.values),
 			columnIndex: col.columnIndex,
 		},
 	}
@@ -1308,7 +1310,7 @@ func (col *doubleColumnBuffer) Clone() ColumnBuffer {
 	return &doubleColumnBuffer{
 		doublePage: doublePage{
 			typ:         col.typ,
-			values:      append([]float64{}, col.values...),
+			values:      slices.Clone(col.values),
 			columnIndex: col.columnIndex,
 		},
 	}
@@ -1515,7 +1517,7 @@ func (col *byteArrayColumnBuffer) WriteValues(values []Value) (int, error) {
 }
 
 func (col *byteArrayColumnBuffer) writeValues(rows sparse.Array, _ columnLevels) {
-	for i := 0; i < rows.Len(); i++ {
+	for i := range rows.Len() {
 		p := rows.Index(i)
 		col.append(*(*string)(p))
 	}
@@ -1577,7 +1579,7 @@ func (col *fixedLenByteArrayColumnBuffer) Clone() ColumnBuffer {
 		fixedLenByteArrayPage: fixedLenByteArrayPage{
 			typ:         col.typ,
 			size:        col.size,
-			data:        append([]byte{}, col.data...),
+			data:        slices.Clone(col.data),
 			columnIndex: col.columnIndex,
 		},
 		tmp: make([]byte, col.size),
@@ -1629,8 +1631,11 @@ func (col *fixedLenByteArrayColumnBuffer) Write(b []byte) (int, error) {
 }
 
 func (col *fixedLenByteArrayColumnBuffer) WriteFixedLenByteArrays(values []byte) (int, error) {
+	if len(values) == 0 {
+		return 0, nil
+	}
 	d, m := len(values)/col.size, len(values)%col.size
-	if m != 0 {
+	if d == 0 || m != 0 {
 		return 0, fmt.Errorf("cannot write FIXED_LEN_BYTE_ARRAY values of size %d from input of size %d", col.size, len(values))
 	}
 	col.data = append(col.data, values...)
@@ -1638,7 +1643,10 @@ func (col *fixedLenByteArrayColumnBuffer) WriteFixedLenByteArrays(values []byte)
 }
 
 func (col *fixedLenByteArrayColumnBuffer) WriteValues(values []Value) (int, error) {
-	for _, v := range values {
+	for i, v := range values {
+		if n := len(v.byteArray()); n != col.size {
+			return i, fmt.Errorf("cannot write FIXED_LEN_BYTE_ARRAY values of size %d from input of size %d", col.size, n)
+		}
 		col.data = append(col.data, v.byteArray()...)
 	}
 	return len(values), nil
@@ -1656,7 +1664,7 @@ func (col *fixedLenByteArrayColumnBuffer) writeValues(rows sparse.Array, _ colum
 	col.data = col.data[:j]
 	newData := col.data[i:]
 
-	for i := 0; i < rows.Len(); i++ {
+	for i := range rows.Len() {
 		p := rows.Index(i)
 		copy(newData[i*col.size:], unsafe.Slice((*byte)(p), col.size))
 	}
@@ -1698,7 +1706,7 @@ func (col *uint32ColumnBuffer) Clone() ColumnBuffer {
 	return &uint32ColumnBuffer{
 		uint32Page: uint32Page{
 			typ:         col.typ,
-			values:      append([]uint32{}, col.values...),
+			values:      slices.Clone(col.values),
 			columnIndex: col.columnIndex,
 		},
 	}
@@ -1795,7 +1803,7 @@ func (col *uint64ColumnBuffer) Clone() ColumnBuffer {
 	return &uint64ColumnBuffer{
 		uint64Page: uint64Page{
 			typ:         col.typ,
-			values:      append([]uint64{}, col.values...),
+			values:      slices.Clone(col.values),
 			columnIndex: col.columnIndex,
 		},
 	}
@@ -1892,7 +1900,7 @@ func (col *be128ColumnBuffer) Clone() ColumnBuffer {
 	return &be128ColumnBuffer{
 		be128Page: be128Page{
 			typ:         col.typ,
-			values:      append([][16]byte{}, col.values...),
+			values:      slices.Clone(col.values),
 			columnIndex: col.columnIndex,
 		},
 	}
@@ -2024,7 +2032,7 @@ func writeRowsFuncOf(t reflect.Type, schema *Schema, path columnPath) writeRowsF
 
 	case reflect.Array:
 		if t.Elem().Kind() == reflect.Uint8 {
-			return writeRowsFuncOfRequired(t, schema, path)
+			return writeRowsFuncOfArray(t, schema, path)
 		}
 
 	case reflect.Pointer:
@@ -2041,7 +2049,7 @@ func writeRowsFuncOf(t reflect.Type, schema *Schema, path columnPath) writeRowsF
 }
 
 func writeRowsFuncOfRequired(t reflect.Type, schema *Schema, path columnPath) writeRowsFunc {
-	column := schema.mapping.lookup(path)
+	column := schema.lazyLoadState().mapping.lookup(path)
 	columnIndex := column.columnIndex
 	return func(columns []ColumnBuffer, rows sparse.Array, levels columnLevels) error {
 		columns[columnIndex].writeValues(rows, levels)
@@ -2050,6 +2058,15 @@ func writeRowsFuncOfRequired(t reflect.Type, schema *Schema, path columnPath) wr
 }
 
 func writeRowsFuncOfOptional(t reflect.Type, schema *Schema, path columnPath, writeRows writeRowsFunc) writeRowsFunc {
+	if t.Kind() == reflect.Slice { // assume nested list
+		return func(columns []ColumnBuffer, rows sparse.Array, levels columnLevels) error {
+			if rows.Len() == 0 {
+				return writeRows(columns, rows, levels)
+			}
+			levels.definitionLevel++
+			return writeRows(columns, rows, levels)
+		}
+	}
 	nullIndex := nullIndexFuncOf(t)
 	return func(columns []ColumnBuffer, rows sparse.Array, levels columnLevels) error {
 		if rows.Len() == 0 {
@@ -2148,6 +2165,16 @@ func writeRowsFuncOfOptional(t reflect.Type, schema *Schema, path columnPath, wr
 	}
 }
 
+func writeRowsFuncOfArray(t reflect.Type, schema *Schema, path columnPath) writeRowsFunc {
+	column := schema.lazyLoadState().mapping.lookup(path)
+	arrayLen := t.Len()
+	columnLen := column.node.Type().Length()
+	if arrayLen != columnLen {
+		panic(fmt.Sprintf("cannot convert Go values of type "+typeNameOf(t)+" to FIXED_LEN_BYTE_ARRAY(%d)", columnLen))
+	}
+	return writeRowsFuncOfRequired(t, schema, path)
+}
+
 func writeRowsFuncOfPointer(t reflect.Type, schema *Schema, path columnPath) writeRowsFunc {
 	elemType := t.Elem()
 	elemSize := uintptr(elemType.Size())
@@ -2163,7 +2190,7 @@ func writeRowsFuncOfPointer(t reflect.Type, schema *Schema, path columnPath) wri
 				return writeRows(columns, rows, levels)
 			}
 
-			for i := 0; i < rows.Len(); i++ {
+			for i := range rows.Len() {
 				p := *(*unsafe.Pointer)(rows.Index(i))
 				a := sparse.Array{}
 				if p != nil {
@@ -2183,7 +2210,7 @@ func writeRowsFuncOfPointer(t reflect.Type, schema *Schema, path columnPath) wri
 			return writeRows(columns, rows, levels)
 		}
 
-		for i := 0; i < rows.Len(); i++ {
+		for i := range rows.Len() {
 			p := *(*unsafe.Pointer)(rows.Index(i))
 			a := sparse.Array{}
 			elemLevels := levels
@@ -2220,7 +2247,7 @@ func writeRowsFuncOfSlice(t reflect.Type, schema *Schema, path columnPath) write
 
 		levels.repetitionDepth++
 
-		for i := 0; i < rows.Len(); i++ {
+		for i := range rows.Len() {
 			p := (*sliceHeader)(rows.Index(i))
 			a := makeArray(p.base, p.len, elemSize)
 			b := sparse.Array{}
@@ -2258,11 +2285,12 @@ func writeRowsFuncOfStruct(t reflect.Type, schema *Schema, path columnPath) writ
 	columns := make([]column, len(fields))
 
 	for i, f := range fields {
-		optional := false
+		list, optional := false, false
 		columnPath := path.append(f.Name)
 		forEachStructTagOption(f, func(_ reflect.Type, option, _ string) {
 			switch option {
 			case "list":
+				list = true
 				columnPath = columnPath.append("list", "element")
 			case "optional":
 				optional = true
@@ -2271,8 +2299,10 @@ func writeRowsFuncOfStruct(t reflect.Type, schema *Schema, path columnPath) writ
 
 		writeRows := writeRowsFuncOf(f.Type, schema, columnPath)
 		if optional {
-			switch f.Type.Kind() {
-			case reflect.Pointer, reflect.Slice:
+			kind := f.Type.Kind()
+			switch {
+			case kind == reflect.Pointer:
+			case kind == reflect.Slice && !list:
 			default:
 				writeRows = writeRowsFuncOfOptional(f.Type, schema, columnPath, writeRows)
 			}
@@ -2329,10 +2359,15 @@ func writeRowsFuncOfMap(t reflect.Type, schema *Schema, path columnPath) writeRo
 		}
 
 		levels.repetitionDepth++
-		mapKey := reflect.New(keyType).Elem()
-		mapValue := reflect.New(valueType).Elem()
+		mapKey := reflect.Value{}
+		mapValue := reflect.Value{}
+		compareKeys := compareFuncOf(keyType)
+		if compareKeys == nil {
+			mapKey = reflect.New(keyType).Elem()
+			mapValue = reflect.New(valueType).Elem()
+		}
 
-		for i := 0; i < rows.Len(); i++ {
+		for i := range rows.Len() {
 			m := reflect.NewAt(t, rows.Index(i)).Elem()
 
 			if m.Len() == 0 {
@@ -2340,10 +2375,29 @@ func writeRowsFuncOfMap(t reflect.Type, schema *Schema, path columnPath) writeRo
 				if err := writeKeyValues(columns, empty, empty, levels); err != nil {
 					return err
 				}
-			} else {
-				elemLevels := levels
-				elemLevels.definitionLevel++
+				continue
+			}
 
+			elemLevels := levels
+			elemLevels.definitionLevel++
+
+			if compareKeys != nil {
+				keys := m.MapKeys()
+				slices.SortFunc(keys, compareKeys)
+
+				for _, key := range keys {
+					value := m.MapIndex(key)
+
+					k := makeArray(reflectValueData(key), 1, keySize)
+					v := makeArray(reflectValueData(value), 1, valueSize)
+
+					if err := writeKeyValues(columns, k, v, elemLevels); err != nil {
+						return err
+					}
+
+					elemLevels.repetitionLevel = elemLevels.repetitionDepth
+				}
+			} else {
 				for it := m.MapRange(); it.Next(); {
 					mapKey.SetIterKey(it)
 					mapValue.SetIterValue(it)
@@ -2360,6 +2414,29 @@ func writeRowsFuncOfMap(t reflect.Type, schema *Schema, path columnPath) writeRo
 			}
 		}
 
+		return nil
+	}
+}
+
+func compareFuncOf(t reflect.Type) func(reflect.Value, reflect.Value) int {
+	switch t.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return func(a, b reflect.Value) int {
+			return cmp.Compare(a.Int(), b.Int())
+		}
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return func(a, b reflect.Value) int {
+			return cmp.Compare(a.Uint(), b.Uint())
+		}
+	case reflect.Float32, reflect.Float64:
+		return func(a, b reflect.Value) int {
+			return cmp.Compare(a.Float(), b.Float())
+		}
+	case reflect.String:
+		return func(a, b reflect.Value) int {
+			return cmp.Compare(a.String(), b.String())
+		}
+	default:
 		return nil
 	}
 }
@@ -2383,7 +2460,7 @@ func writeRowsFuncOfJSON(t reflect.Type, schema *Schema, path columnPath) writeR
 		if rows.Len() == 0 {
 			return writer(columns, rows, levels)
 		}
-		for i := 0; i < rows.Len(); i++ {
+		for i := range rows.Len() {
 			val := reflect.NewAt(t, rows.Index(i))
 			asI := val.Interface()
 
@@ -2420,7 +2497,7 @@ func writeRowsFuncOfTime(_ reflect.Type, schema *Schema, path columnPath) writeR
 		}
 
 		times := rows.TimeArray()
-		for i := 0; i < times.Len(); i++ {
+		for i := range times.Len() {
 			t := times.Index(i)
 			var val int64
 			switch {

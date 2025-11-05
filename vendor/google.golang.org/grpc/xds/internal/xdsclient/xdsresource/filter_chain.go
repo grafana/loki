@@ -23,7 +23,9 @@ import (
 	"net"
 	"sync/atomic"
 
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/internal/resolver"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/xds/internal/httpfilter"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/proto"
@@ -99,8 +101,15 @@ type RouteWithInterceptors struct {
 // UsableRouteConfiguration contains a matchable route configuration, with
 // instantiated HTTP Filters per route.
 type UsableRouteConfiguration struct {
-	VHS []VirtualHostWithInterceptors
-	Err error
+	VHS    []VirtualHostWithInterceptors
+	Err    error
+	NodeID string // For logging purposes. Populated by the listener wrapper.
+}
+
+// StatusErrWithNodeID returns an error produced by the status package with the
+// specified code and message, and includes the xDS node ID.
+func (rc *UsableRouteConfiguration) StatusErrWithNodeID(c codes.Code, msg string, args ...any) error {
+	return status.Error(c, fmt.Sprintf("[xDS node id: %v]: %s", rc.NodeID, fmt.Sprintf(msg, args...)))
 }
 
 // ConstructUsableRouteConfiguration takes Route Configuration and converts it
@@ -122,12 +131,8 @@ func (fc *FilterChain) ConstructUsableRouteConfiguration(config RouteConfigUpdat
 func (fc *FilterChain) convertVirtualHost(virtualHost *VirtualHost) (VirtualHostWithInterceptors, error) {
 	rs := make([]RouteWithInterceptors, len(virtualHost.Routes))
 	for i, r := range virtualHost.Routes {
-		var err error
 		rs[i].ActionType = r.ActionType
-		rs[i].M, err = RouteToMatcher(r)
-		if err != nil {
-			return VirtualHostWithInterceptors{}, fmt.Errorf("matcher construction: %v", err)
-		}
+		rs[i].M = RouteToMatcher(r)
 		for _, filter := range fc.HTTPFilters {
 			// Route is highest priority on server side, as there is no concept
 			// of an upstream cluster on server side.
@@ -537,8 +542,8 @@ func (fcm *FilterChainManager) filterChainFromProto(fc *v3listenerpb.FilterChain
 		return nil, fmt.Errorf("transport_socket field has unexpected name: %s", name)
 	}
 	tc := ts.GetTypedConfig()
-	if tc == nil || tc.TypeUrl != version.V3DownstreamTLSContextURL {
-		return nil, fmt.Errorf("transport_socket field has unexpected typeURL: %s", tc.TypeUrl)
+	if typeURL := tc.GetTypeUrl(); typeURL != version.V3DownstreamTLSContextURL {
+		return nil, fmt.Errorf("transport_socket missing typed_config or wrong type_url: %q", typeURL)
 	}
 	downstreamCtx := &v3tlspb.DownstreamTlsContext{}
 	if err := proto.Unmarshal(tc.GetValue(), downstreamCtx); err != nil {

@@ -65,9 +65,16 @@ func sysctlGetInt64(unknown int, names ...string) int {
 	return unknown
 }
 
-func setFeature(c *CPUInfo, name string, feature FeatureID) {
-	c.featureSet.setIf(sysctlGetBool(name), feature)
+func setFeature(c *CPUInfo, feature FeatureID, aliases ...string) {
+	for _, alias := range aliases {
+		set := sysctlGetBool(alias)
+		c.featureSet.setIf(set, feature)
+		if set {
+			break
+		}
+	}
 }
+
 func tryToFillCPUInfoFomSysctl(c *CPUInfo) {
 	c.BrandName = sysctlGetString("machdep.cpu.brand_string")
 
@@ -87,35 +94,36 @@ func tryToFillCPUInfoFomSysctl(c *CPUInfo) {
 	c.Cache.L2 = sysctlGetInt64(-1, "hw.l2cachesize")
 	c.Cache.L3 = sysctlGetInt64(-1, "hw.l3cachesize")
 
-	// from https://developer.arm.com/downloads/-/exploration-tools/feature-names-for-a-profile
-	setFeature(c, "hw.optional.arm.FEAT_AES", AESARM)
-	setFeature(c, "hw.optional.AdvSIMD", ASIMD)
-	setFeature(c, "hw.optional.arm.FEAT_DotProd", ASIMDDP)
-	setFeature(c, "hw.optional.arm.FEAT_RDM", ASIMDRDM)
-	setFeature(c, "hw.optional.FEAT_CRC32", CRC32)
-	setFeature(c, "hw.optional.arm.FEAT_DPB", DCPOP)
-	// setFeature(c, "", EVTSTRM)
-	setFeature(c, "hw.optional.arm.FEAT_FCMA", FCMA)
-	setFeature(c, "hw.optional.arm.FEAT_FP", FP)
-	setFeature(c, "hw.optional.arm.FEAT_FP16", FPHP)
-	setFeature(c, "hw.optional.arm.FEAT_PAuth", GPA)
-	setFeature(c, "hw.optional.arm.FEAT_JSCVT", JSCVT)
-	setFeature(c, "hw.optional.arm.FEAT_LRCPC", LRCPC)
-	setFeature(c, "hw.optional.arm.FEAT_PMULL", PMULL)
-	setFeature(c, "hw.optional.arm.FEAT_SHA1", SHA1)
-	setFeature(c, "hw.optional.arm.FEAT_SHA256", SHA2)
-	setFeature(c, "hw.optional.arm.FEAT_SHA3", SHA3)
-	setFeature(c, "hw.optional.arm.FEAT_SHA512", SHA512)
-	// setFeature(c, "", SM3)
-	// setFeature(c, "", SM4)
-	setFeature(c, "hw.optional.arm.FEAT_SVE", SVE)
-
-	// from empirical observation
-	setFeature(c, "hw.optional.AdvSIMD_HPFPCvt", ASIMDHP)
-	setFeature(c, "hw.optional.armv8_1_atomics", ATOMICS)
-	setFeature(c, "hw.optional.floatingpoint", FP)
-	setFeature(c, "hw.optional.armv8_2_sha3", SHA3)
-	setFeature(c, "hw.optional.armv8_2_sha512", SHA512)
-	setFeature(c, "hw.optional.armv8_3_compnum", FCMA)
-	setFeature(c, "hw.optional.armv8_crc32", CRC32)
+	// ARM features:
+	//
+	// Note: On some Apple Silicon system, some feats have aliases. See:
+	// https://developer.apple.com/documentation/kernel/1387446-sysctlbyname/determining_instruction_set_characteristics
+	// When so, we look at all aliases and consider a feature available when at least one identifier matches.
+	setFeature(c, AESARM, "hw.optional.arm.FEAT_AES")                                   // AES instructions
+	setFeature(c, ASIMD, "hw.optional.arm.AdvSIMD", "hw.optional.neon")                 // Advanced SIMD
+	setFeature(c, ASIMDDP, "hw.optional.arm.FEAT_DotProd")                              // SIMD Dot Product
+	setFeature(c, ASIMDHP, "hw.optional.arm.AdvSIMD_HPFPCvt", "hw.optional.neon_hpfp")  // Advanced SIMD half-precision floating point
+	setFeature(c, ASIMDRDM, "hw.optional.arm.FEAT_RDM")                                 // Rounding Double Multiply Accumulate/Subtract
+	setFeature(c, ATOMICS, "hw.optional.arm.FEAT_LSE", "hw.optional.armv8_1_atomics")   // Large System Extensions (LSE)
+	setFeature(c, CRC32, "hw.optional.arm.FEAT_CRC32", "hw.optional.armv8_crc32")       // CRC32/CRC32C instructions
+	setFeature(c, DCPOP, "hw.optional.arm.FEAT_DPB")                                    // Data cache clean to Point of Persistence (DC CVAP)
+	setFeature(c, EVTSTRM, "hw.optional.arm.FEAT_ECV")                                  // Generic timer
+	setFeature(c, FCMA, "hw.optional.arm.FEAT_FCMA", "hw.optional.armv8_3_compnum")     // Floating point complex number addition and multiplication
+	setFeature(c, FHM, "hw.optional.armv8_2_fhm", "hw.optional.arm.FEAT_FHM")           // FMLAL and FMLSL instructions
+	setFeature(c, FP, "hw.optional.floatingpoint")                                      // Single-precision and double-precision floating point
+	setFeature(c, FPHP, "hw.optional.arm.FEAT_FP16", "hw.optional.neon_fp16")           // Half-precision floating point
+	setFeature(c, GPA, "hw.optional.arm.FEAT_PAuth")                                    // Generic Pointer Authentication
+	setFeature(c, JSCVT, "hw.optional.arm.FEAT_JSCVT")                                  // Javascript-style double->int convert (FJCVTZS)
+	setFeature(c, LRCPC, "hw.optional.arm.FEAT_LRCPC")                                  // Weaker release consistency (LDAPR, etc)
+	setFeature(c, PMULL, "hw.optional.arm.FEAT_PMULL")                                  // Polynomial Multiply instructions (PMULL/PMULL2)
+	setFeature(c, RNDR, "hw.optional.arm.FEAT_RNG")                                     // Random Number instructions
+	setFeature(c, TLB, "hw.optional.arm.FEAT_TLBIOS", "hw.optional.arm.FEAT_TLBIRANGE") // Outer Shareable and TLB range maintenance instructions
+	setFeature(c, TS, "hw.optional.arm.FEAT_FlagM", "hw.optional.arm.FEAT_FlagM2")      // Flag manipulation instructions
+	setFeature(c, SHA1, "hw.optional.arm.FEAT_SHA1")                                    // SHA-1 instructions (SHA1C, etc)
+	setFeature(c, SHA2, "hw.optional.arm.FEAT_SHA256")                                  // SHA-2 instructions (SHA256H, etc)
+	setFeature(c, SHA3, "hw.optional.arm.FEAT_SHA3")                                    // SHA-3 instructions (EOR3, RAXI, XAR, BCAX)
+	setFeature(c, SHA512, "hw.optional.arm.FEAT_SHA512")                                // SHA512 instructions
+	setFeature(c, SM3, "hw.optional.arm.FEAT_SM3")                                      // SM3 instructions
+	setFeature(c, SM4, "hw.optional.arm.FEAT_SM4")                                      // SM4 instructions
+	setFeature(c, SVE, "hw.optional.arm.FEAT_SVE")                                      // Scalable Vector Extension
 }

@@ -4,6 +4,7 @@
 package v1development
 
 import (
+	encoding_binary "encoding/binary"
 	fmt "fmt"
 	io "io"
 	math "math"
@@ -116,6 +117,131 @@ func (AggregationTemporality) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_ddd0cf081a2fe76f, []int{0}
 }
 
+// ProfilesDictionary represents the profiles data shared across the
+// entire message being sent.
+//
+// Note that all fields in this message MUST have a zero value encoded as the first element.
+// This allows for _index fields pointing into the dictionary to use a 0 pointer value
+// to indicate 'null' / 'not set'. Unless otherwise defined, a 'zero value' message value
+// is one with all default field values, so as to minimize wire encoded size.
+type ProfilesDictionary struct {
+	// Mappings from address ranges to the image/binary/library mapped
+	// into that address range referenced by locations via Location.mapping_index.
+	MappingTable []*Mapping `protobuf:"bytes,1,rep,name=mapping_table,json=mappingTable,proto3" json:"mapping_table,omitempty"`
+	// Locations referenced by samples via Stack.location_indices.
+	LocationTable []*Location `protobuf:"bytes,2,rep,name=location_table,json=locationTable,proto3" json:"location_table,omitempty"`
+	// Functions referenced by locations via Line.function_index.
+	FunctionTable []*Function `protobuf:"bytes,3,rep,name=function_table,json=functionTable,proto3" json:"function_table,omitempty"`
+	// Links referenced by samples via Sample.link_index.
+	LinkTable []*Link `protobuf:"bytes,4,rep,name=link_table,json=linkTable,proto3" json:"link_table,omitempty"`
+	// A common table for strings referenced by various messages.
+	// string_table[0] must always be "".
+	StringTable []string `protobuf:"bytes,5,rep,name=string_table,json=stringTable,proto3" json:"string_table,omitempty"`
+	// A common table for attributes referenced by various messages.
+	// It is a collection of key/value pairs. Note, global attributes
+	// like server name can be set using the resource API. Examples of attributes:
+	//
+	//     "/http/user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36"
+	//     "/http/server_latency": 300
+	//     "abc.com/myattribute": true
+	//     "abc.com/score": 10.239
+	//
+	// The attribute values SHOULD NOT contain empty values.
+	// The attribute values SHOULD NOT contain bytes values.
+	// The attribute values SHOULD NOT contain array values different than array of string values, bool values, int values,
+	// double values.
+	// The attribute values SHOULD NOT contain kvlist values.
+	// The behavior of software that receives attributes containing such values can be unpredictable.
+	// These restrictions can change in a minor release.
+	// The restrictions take origin from the OpenTelemetry specification:
+	// https://github.com/open-telemetry/opentelemetry-specification/blob/v1.47.0/specification/common/README.md#attribute.
+	AttributeTable []*KeyValueAndUnit `protobuf:"bytes,6,rep,name=attribute_table,json=attributeTable,proto3" json:"attribute_table,omitempty"`
+	// Stacks referenced by samples via Sample.stack_index.
+	StackTable []*Stack `protobuf:"bytes,7,rep,name=stack_table,json=stackTable,proto3" json:"stack_table,omitempty"`
+}
+
+func (m *ProfilesDictionary) Reset()         { *m = ProfilesDictionary{} }
+func (m *ProfilesDictionary) String() string { return proto.CompactTextString(m) }
+func (*ProfilesDictionary) ProtoMessage()    {}
+func (*ProfilesDictionary) Descriptor() ([]byte, []int) {
+	return fileDescriptor_ddd0cf081a2fe76f, []int{0}
+}
+func (m *ProfilesDictionary) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ProfilesDictionary) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ProfilesDictionary.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ProfilesDictionary) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ProfilesDictionary.Merge(m, src)
+}
+func (m *ProfilesDictionary) XXX_Size() int {
+	return m.Size()
+}
+func (m *ProfilesDictionary) XXX_DiscardUnknown() {
+	xxx_messageInfo_ProfilesDictionary.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ProfilesDictionary proto.InternalMessageInfo
+
+func (m *ProfilesDictionary) GetMappingTable() []*Mapping {
+	if m != nil {
+		return m.MappingTable
+	}
+	return nil
+}
+
+func (m *ProfilesDictionary) GetLocationTable() []*Location {
+	if m != nil {
+		return m.LocationTable
+	}
+	return nil
+}
+
+func (m *ProfilesDictionary) GetFunctionTable() []*Function {
+	if m != nil {
+		return m.FunctionTable
+	}
+	return nil
+}
+
+func (m *ProfilesDictionary) GetLinkTable() []*Link {
+	if m != nil {
+		return m.LinkTable
+	}
+	return nil
+}
+
+func (m *ProfilesDictionary) GetStringTable() []string {
+	if m != nil {
+		return m.StringTable
+	}
+	return nil
+}
+
+func (m *ProfilesDictionary) GetAttributeTable() []*KeyValueAndUnit {
+	if m != nil {
+		return m.AttributeTable
+	}
+	return nil
+}
+
+func (m *ProfilesDictionary) GetStackTable() []*Stack {
+	if m != nil {
+		return m.StackTable
+	}
+	return nil
+}
+
 // ProfilesData represents the profiles data that can be stored in persistent storage,
 // OR can be embedded by other protocols that transfer OTLP profiles data but do not
 // implement the OTLP protocol.
@@ -128,18 +254,24 @@ func (AggregationTemporality) EnumDescriptor() ([]byte, []int) {
 // as well.
 type ProfilesData struct {
 	// An array of ResourceProfiles.
-	// For data coming from a single resource this array will typically contain
-	// one element. Intermediary nodes that receive data from multiple origins
-	// typically batch the data before forwarding further and in that case this
-	// array will contain multiple elements.
+	// For data coming from an SDK profiler, this array will typically contain one
+	// element. Host-level profilers will usually create one ResourceProfile per
+	// container, as well as one additional ResourceProfile grouping all samples
+	// from non-containerized processes.
+	// Other resource groupings are possible as well and clarified via
+	// Resource.attributes and semantic conventions.
+	// Tools that visualize profiles should prefer displaying
+	// resources_profiles[0].scope_profiles[0].profiles[0] by default.
 	ResourceProfiles []*ResourceProfiles `protobuf:"bytes,1,rep,name=resource_profiles,json=resourceProfiles,proto3" json:"resource_profiles,omitempty"`
+	// One instance of ProfilesDictionary
+	Dictionary ProfilesDictionary `protobuf:"bytes,2,opt,name=dictionary,proto3" json:"dictionary"`
 }
 
 func (m *ProfilesData) Reset()         { *m = ProfilesData{} }
 func (m *ProfilesData) String() string { return proto.CompactTextString(m) }
 func (*ProfilesData) ProtoMessage()    {}
 func (*ProfilesData) Descriptor() ([]byte, []int) {
-	return fileDescriptor_ddd0cf081a2fe76f, []int{0}
+	return fileDescriptor_ddd0cf081a2fe76f, []int{1}
 }
 func (m *ProfilesData) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -175,6 +307,13 @@ func (m *ProfilesData) GetResourceProfiles() []*ResourceProfiles {
 	return nil
 }
 
+func (m *ProfilesData) GetDictionary() ProfilesDictionary {
+	if m != nil {
+		return m.Dictionary
+	}
+	return ProfilesDictionary{}
+}
+
 // A collection of ScopeProfiles from a Resource.
 type ResourceProfiles struct {
 	// The resource for the profiles in this message.
@@ -195,7 +334,7 @@ func (m *ResourceProfiles) Reset()         { *m = ResourceProfiles{} }
 func (m *ResourceProfiles) String() string { return proto.CompactTextString(m) }
 func (*ResourceProfiles) ProtoMessage()    {}
 func (*ResourceProfiles) Descriptor() ([]byte, []int) {
-	return fileDescriptor_ddd0cf081a2fe76f, []int{1}
+	return fileDescriptor_ddd0cf081a2fe76f, []int{2}
 }
 func (m *ResourceProfiles) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -265,7 +404,7 @@ func (m *ScopeProfiles) Reset()         { *m = ScopeProfiles{} }
 func (m *ScopeProfiles) String() string { return proto.CompactTextString(m) }
 func (*ScopeProfiles) ProtoMessage()    {}
 func (*ScopeProfiles) Descriptor() ([]byte, []int) {
-	return fileDescriptor_ddd0cf081a2fe76f, []int{2}
+	return fileDescriptor_ddd0cf081a2fe76f, []int{3}
 }
 func (m *ScopeProfiles) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -315,102 +454,67 @@ func (m *ScopeProfiles) GetSchemaUrl() string {
 	return ""
 }
 
-// Represents a complete profile, including sample types, samples,
-// mappings to binaries, locations, functions, string table, and additional metadata.
-// It modifies and annotates pprof Profile with OpenTelemetry specific fields.
+// Represents a complete profile, including sample types, samples, mappings to
+// binaries, stacks, locations, functions, string table, and additional
+// metadata. It modifies and annotates pprof Profile with OpenTelemetry
+// specific fields.
 //
 // Note that whilst fields in this message retain the name and field id from pprof in most cases
 // for ease of understanding data migration, it is not intended that pprof:Profile and
 // OpenTelemetry:Profile encoding be wire compatible.
 type Profile struct {
-	// A description of the samples associated with each Sample.value.
-	// For a cpu profile this might be:
-	//   [["cpu","nanoseconds"]] or [["wall","seconds"]] or [["syscall","count"]]
+	// The type and unit of all Sample.values in this profile.
+	// For a cpu or off-cpu profile this might be:
+	//   ["cpu","nanoseconds"] or ["off_cpu","nanoseconds"]
 	// For a heap profile, this might be:
-	//   [["allocations","count"], ["space","bytes"]],
-	// If one of the values represents the number of events represented
-	// by the sample, by convention it should be at index 0 and use
-	// sample_type.unit == "count".
-	SampleType []*ValueType `protobuf:"bytes,1,rep,name=sample_type,json=sampleType,proto3" json:"sample_type,omitempty"`
+	//   ["allocated_objects","count"] or ["allocated_space","bytes"],
+	SampleType ValueType `protobuf:"bytes,1,opt,name=sample_type,json=sampleType,proto3" json:"sample_type"`
 	// The set of samples recorded in this profile.
 	Sample []*Sample `protobuf:"bytes,2,rep,name=sample,proto3" json:"sample,omitempty"`
-	// Mapping from address ranges to the image/binary/library mapped
-	// into that address range.  mapping[0] will be the main binary.
-	// If multiple binaries contribute to the Profile and no main
-	// binary can be identified, mapping[0] has no special meaning.
-	MappingTable []*Mapping `protobuf:"bytes,3,rep,name=mapping_table,json=mappingTable,proto3" json:"mapping_table,omitempty"`
-	// Locations referenced by samples via location_indices.
-	LocationTable []*Location `protobuf:"bytes,4,rep,name=location_table,json=locationTable,proto3" json:"location_table,omitempty"`
-	// Array of locations referenced by samples.
-	LocationIndices []int32 `protobuf:"varint,5,rep,packed,name=location_indices,json=locationIndices,proto3" json:"location_indices,omitempty"`
-	// Functions referenced by locations.
-	FunctionTable []*Function `protobuf:"bytes,6,rep,name=function_table,json=functionTable,proto3" json:"function_table,omitempty"`
-	// Lookup table for attributes.
-	AttributeTable []v11.KeyValue `protobuf:"bytes,7,rep,name=attribute_table,json=attributeTable,proto3" json:"attribute_table"`
-	// Represents a mapping between Attribute Keys and Units.
-	AttributeUnits []*AttributeUnit `protobuf:"bytes,8,rep,name=attribute_units,json=attributeUnits,proto3" json:"attribute_units,omitempty"`
-	// Lookup table for links.
-	LinkTable []*Link `protobuf:"bytes,9,rep,name=link_table,json=linkTable,proto3" json:"link_table,omitempty"`
-	// A common table for strings referenced by various messages.
-	// string_table[0] must always be "".
-	StringTable []string `protobuf:"bytes,10,rep,name=string_table,json=stringTable,proto3" json:"string_table,omitempty"`
 	// Time of collection (UTC) represented as nanoseconds past the epoch.
-	TimeNanos int64 `protobuf:"varint,11,opt,name=time_nanos,json=timeNanos,proto3" json:"time_nanos,omitempty"`
+	TimeUnixNano uint64 `protobuf:"fixed64,3,opt,name=time_unix_nano,json=timeUnixNano,proto3" json:"time_unix_nano,omitempty"`
 	// Duration of the profile, if a duration makes sense.
-	DurationNanos int64 `protobuf:"varint,12,opt,name=duration_nanos,json=durationNanos,proto3" json:"duration_nanos,omitempty"`
+	DurationNano uint64 `protobuf:"varint,4,opt,name=duration_nano,json=durationNano,proto3" json:"duration_nano,omitempty"`
 	// The kind of events between sampled occurrences.
 	// e.g [ "cpu","cycles" ] or [ "heap","bytes" ]
-	PeriodType ValueType `protobuf:"bytes,13,opt,name=period_type,json=periodType,proto3" json:"period_type"`
+	PeriodType ValueType `protobuf:"bytes,5,opt,name=period_type,json=periodType,proto3" json:"period_type"`
 	// The number of events between sampled occurrences.
-	Period int64 `protobuf:"varint,14,opt,name=period,proto3" json:"period,omitempty"`
+	Period int64 `protobuf:"varint,6,opt,name=period,proto3" json:"period,omitempty"`
 	// Free-form text associated with the profile. The text is displayed as is
 	// to the user by the tools that read profiles (e.g. by pprof). This field
 	// should not be used to store any machine-readable information, it is only
 	// for human-friendly content. The profile must stay functional if this field
 	// is cleaned.
-	CommentStrindices []int32 `protobuf:"varint,15,rep,packed,name=comment_strindices,json=commentStrindices,proto3" json:"comment_strindices,omitempty"`
-	// Index into the string table of the type of the preferred sample
-	// value. If unset, clients should default to the last sample value.
-	DefaultSampleTypeStrindex int32 `protobuf:"varint,16,opt,name=default_sample_type_strindex,json=defaultSampleTypeStrindex,proto3" json:"default_sample_type_strindex,omitempty"`
+	CommentStrindices []int32 `protobuf:"varint,7,rep,packed,name=comment_strindices,json=commentStrindices,proto3" json:"comment_strindices,omitempty"`
 	// A globally unique identifier for a profile. The ID is a 16-byte array. An ID with
-	// all zeroes is considered invalid.
-	//
-	// This field is required.
-	ProfileId go_opentelemetry_io_collector_pdata_internal_data.ProfileID `protobuf:"bytes,17,opt,name=profile_id,json=profileId,proto3,customtype=go.opentelemetry.io/collector/pdata/internal/data.ProfileID" json:"profile_id"`
+	// all zeroes is considered invalid. It may be used for deduplication and signal
+	// correlation purposes. It is acceptable to treat two profiles with different values
+	// in this field as not equal, even if they represented the same object at an earlier
+	// time.
+	// This field is optional; an ID may be assigned to an ID-less profile in a later step.
+	ProfileId go_opentelemetry_io_collector_pdata_internal_data.ProfileID `protobuf:"bytes,8,opt,name=profile_id,json=profileId,proto3,customtype=go.opentelemetry.io/collector/pdata/internal/data.ProfileID" json:"profile_id"`
 	// dropped_attributes_count is the number of attributes that were discarded. Attributes
 	// can be discarded because their keys are too long or because there are too many
 	// attributes. If this value is 0, then no attributes were dropped.
-	DroppedAttributesCount uint32 `protobuf:"varint,19,opt,name=dropped_attributes_count,json=droppedAttributesCount,proto3" json:"dropped_attributes_count,omitempty"`
+	DroppedAttributesCount uint32 `protobuf:"varint,9,opt,name=dropped_attributes_count,json=droppedAttributesCount,proto3" json:"dropped_attributes_count,omitempty"`
 	// Specifies format of the original payload. Common values are defined in semantic conventions. [required if original_payload is present]
-	OriginalPayloadFormat string `protobuf:"bytes,20,opt,name=original_payload_format,json=originalPayloadFormat,proto3" json:"original_payload_format,omitempty"`
+	OriginalPayloadFormat string `protobuf:"bytes,10,opt,name=original_payload_format,json=originalPayloadFormat,proto3" json:"original_payload_format,omitempty"`
 	// Original payload can be stored in this field. This can be useful for users who want to get the original payload.
 	// Formats such as JFR are highly extensible and can contain more information than what is defined in this spec.
 	// Inclusion of original payload should be configurable by the user. Default behavior should be to not include the original payload.
 	// If the original payload is in pprof format, it SHOULD not be included in this field.
 	// The field is optional, however if it is present then equivalent converted data should be populated in other fields
 	// of this message as far as is practicable.
-	OriginalPayload []byte `protobuf:"bytes,21,opt,name=original_payload,json=originalPayload,proto3" json:"original_payload,omitempty"`
+	OriginalPayload []byte `protobuf:"bytes,11,opt,name=original_payload,json=originalPayload,proto3" json:"original_payload,omitempty"`
 	// References to attributes in attribute_table. [optional]
-	// It is a collection of key/value pairs. Note, global attributes
-	// like server name can be set using the resource API. Examples of attributes:
-	//
-	//     "/http/user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36"
-	//     "/http/server_latency": 300
-	//     "abc.com/myattribute": true
-	//     "abc.com/score": 10.239
-	//
-	// The OpenTelemetry API specification further restricts the allowed value types:
-	// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/common/README.md#attribute
-	// Attribute keys MUST be unique (it is not allowed to have more than one
-	// attribute with the same key).
-	AttributeIndices []int32 `protobuf:"varint,22,rep,packed,name=attribute_indices,json=attributeIndices,proto3" json:"attribute_indices,omitempty"`
+	AttributeIndices []int32 `protobuf:"varint,12,rep,packed,name=attribute_indices,json=attributeIndices,proto3" json:"attribute_indices,omitempty"`
 }
 
 func (m *Profile) Reset()         { *m = Profile{} }
 func (m *Profile) String() string { return proto.CompactTextString(m) }
 func (*Profile) ProtoMessage()    {}
 func (*Profile) Descriptor() ([]byte, []int) {
-	return fileDescriptor_ddd0cf081a2fe76f, []int{3}
+	return fileDescriptor_ddd0cf081a2fe76f, []int{4}
 }
 func (m *Profile) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -439,11 +543,11 @@ func (m *Profile) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_Profile proto.InternalMessageInfo
 
-func (m *Profile) GetSampleType() []*ValueType {
+func (m *Profile) GetSampleType() ValueType {
 	if m != nil {
 		return m.SampleType
 	}
-	return nil
+	return ValueType{}
 }
 
 func (m *Profile) GetSample() []*Sample {
@@ -453,72 +557,16 @@ func (m *Profile) GetSample() []*Sample {
 	return nil
 }
 
-func (m *Profile) GetMappingTable() []*Mapping {
+func (m *Profile) GetTimeUnixNano() uint64 {
 	if m != nil {
-		return m.MappingTable
-	}
-	return nil
-}
-
-func (m *Profile) GetLocationTable() []*Location {
-	if m != nil {
-		return m.LocationTable
-	}
-	return nil
-}
-
-func (m *Profile) GetLocationIndices() []int32 {
-	if m != nil {
-		return m.LocationIndices
-	}
-	return nil
-}
-
-func (m *Profile) GetFunctionTable() []*Function {
-	if m != nil {
-		return m.FunctionTable
-	}
-	return nil
-}
-
-func (m *Profile) GetAttributeTable() []v11.KeyValue {
-	if m != nil {
-		return m.AttributeTable
-	}
-	return nil
-}
-
-func (m *Profile) GetAttributeUnits() []*AttributeUnit {
-	if m != nil {
-		return m.AttributeUnits
-	}
-	return nil
-}
-
-func (m *Profile) GetLinkTable() []*Link {
-	if m != nil {
-		return m.LinkTable
-	}
-	return nil
-}
-
-func (m *Profile) GetStringTable() []string {
-	if m != nil {
-		return m.StringTable
-	}
-	return nil
-}
-
-func (m *Profile) GetTimeNanos() int64 {
-	if m != nil {
-		return m.TimeNanos
+		return m.TimeUnixNano
 	}
 	return 0
 }
 
-func (m *Profile) GetDurationNanos() int64 {
+func (m *Profile) GetDurationNano() uint64 {
 	if m != nil {
-		return m.DurationNanos
+		return m.DurationNano
 	}
 	return 0
 }
@@ -542,13 +590,6 @@ func (m *Profile) GetCommentStrindices() []int32 {
 		return m.CommentStrindices
 	}
 	return nil
-}
-
-func (m *Profile) GetDefaultSampleTypeStrindex() int32 {
-	if m != nil {
-		return m.DefaultSampleTypeStrindex
-	}
-	return 0
 }
 
 func (m *Profile) GetDroppedAttributesCount() uint32 {
@@ -577,61 +618,6 @@ func (m *Profile) GetAttributeIndices() []int32 {
 		return m.AttributeIndices
 	}
 	return nil
-}
-
-// Represents a mapping between Attribute Keys and Units.
-type AttributeUnit struct {
-	// Index into string table.
-	AttributeKeyStrindex int32 `protobuf:"varint,1,opt,name=attribute_key_strindex,json=attributeKeyStrindex,proto3" json:"attribute_key_strindex,omitempty"`
-	// Index into string table.
-	UnitStrindex int32 `protobuf:"varint,2,opt,name=unit_strindex,json=unitStrindex,proto3" json:"unit_strindex,omitempty"`
-}
-
-func (m *AttributeUnit) Reset()         { *m = AttributeUnit{} }
-func (m *AttributeUnit) String() string { return proto.CompactTextString(m) }
-func (*AttributeUnit) ProtoMessage()    {}
-func (*AttributeUnit) Descriptor() ([]byte, []int) {
-	return fileDescriptor_ddd0cf081a2fe76f, []int{4}
-}
-func (m *AttributeUnit) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *AttributeUnit) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_AttributeUnit.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *AttributeUnit) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_AttributeUnit.Merge(m, src)
-}
-func (m *AttributeUnit) XXX_Size() int {
-	return m.Size()
-}
-func (m *AttributeUnit) XXX_DiscardUnknown() {
-	xxx_messageInfo_AttributeUnit.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_AttributeUnit proto.InternalMessageInfo
-
-func (m *AttributeUnit) GetAttributeKeyStrindex() int32 {
-	if m != nil {
-		return m.AttributeKeyStrindex
-	}
-	return 0
-}
-
-func (m *AttributeUnit) GetUnitStrindex() int32 {
-	if m != nil {
-		return m.UnitStrindex
-	}
-	return 0
 }
 
 // A pointer from a profile Sample to a trace Span.
@@ -738,33 +724,44 @@ func (m *ValueType) GetAggregationTemporality() AggregationTemporality {
 	return AggregationTemporality_AGGREGATION_TEMPORALITY_UNSPECIFIED
 }
 
-// Each Sample records values encountered in some program
-// context. The program context is typically a stack trace, perhaps
-// augmented with auxiliary information like the thread-id, some
-// indicator of a higher level request being handled etc.
+// Each Sample records values encountered in some program context. The program
+// context is typically a stack trace, perhaps augmented with auxiliary
+// information like the thread-id, some indicator of a higher level request
+// being handled etc.
+//
+// A Sample MUST have have at least one values or timestamps_unix_nano entry. If
+// both fields are populated, they MUST contain the same number of elements, and
+// the elements at the same index MUST refer to the same event.
+//
+// Examples of different ways of representing a sample with the total value of 10:
+//
+// Report of a stacktrace at 10 timestamps (consumers must assume the value is 1 for each point):
+//
+//	values: []
+//	timestamps_unix_nano: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+//
+// Report of a stacktrace with an aggregated value without timestamps:
+//
+//	values: [10]
+//	 timestamps_unix_nano: []
+//
+// Report of a stacktrace at 4 timestamps where each point records a specific value:
+//
+//	values: [2, 2, 3, 3]
+//	timestamps_unix_nano: [1, 2, 3, 4]
 type Sample struct {
-	// locations_start_index along with locations_length refers to to a slice of locations in Profile.location_indices.
-	LocationsStartIndex int32 `protobuf:"varint,1,opt,name=locations_start_index,json=locationsStartIndex,proto3" json:"locations_start_index,omitempty"`
-	// locations_length along with locations_start_index refers to a slice of locations in Profile.location_indices.
-	// Supersedes location_index.
-	LocationsLength int32 `protobuf:"varint,2,opt,name=locations_length,json=locationsLength,proto3" json:"locations_length,omitempty"`
-	// The type and unit of each value is defined by the corresponding
-	// entry in Profile.sample_type. All samples must have the same
-	// number of values, the same as the length of Profile.sample_type.
-	// When aggregating multiple samples into a single sample, the
-	// result has a list of values that is the element-wise sum of the
-	// lists of the originals.
-	Value []int64 `protobuf:"varint,3,rep,packed,name=value,proto3" json:"value,omitempty"`
-	// References to attributes in Profile.attribute_table. [optional]
-	AttributeIndices []int32 `protobuf:"varint,4,rep,packed,name=attribute_indices,json=attributeIndices,proto3" json:"attribute_indices,omitempty"`
-	// Reference to link in Profile.link_table. [optional]
-	//
-	// Types that are valid to be assigned to LinkIndex_:
-	//	*Sample_LinkIndex
-	LinkIndex_ isSample_LinkIndex_ `protobuf_oneof:"link_index_"`
-	// Timestamps associated with Sample represented in nanoseconds. These timestamps are expected
-	// to fall within the Profile's time range. [optional]
-	TimestampsUnixNano []uint64 `protobuf:"varint,6,rep,packed,name=timestamps_unix_nano,json=timestampsUnixNano,proto3" json:"timestamps_unix_nano,omitempty"`
+	// Reference to stack in ProfilesDictionary.stack_table.
+	StackIndex int32 `protobuf:"varint,1,opt,name=stack_index,json=stackIndex,proto3" json:"stack_index,omitempty"`
+	// The type and unit of each value is defined by Profile.sample_type.
+	Values []int64 `protobuf:"varint,2,rep,packed,name=values,proto3" json:"values,omitempty"`
+	// References to attributes in ProfilesDictionary.attribute_table. [optional]
+	AttributeIndices []int32 `protobuf:"varint,3,rep,packed,name=attribute_indices,json=attributeIndices,proto3" json:"attribute_indices,omitempty"`
+	// Reference to link in ProfilesDictionary.link_table. [optional]
+	// It can be unset / set to 0 if no link exists, as link_table[0] is always a 'null' default value.
+	LinkIndex int32 `protobuf:"varint,4,opt,name=link_index,json=linkIndex,proto3" json:"link_index,omitempty"`
+	// Timestamps associated with Sample represented in nanoseconds. These
+	// timestamps should fall within the Profile's time range.
+	TimestampsUnixNano []uint64 `protobuf:"fixed64,5,rep,packed,name=timestamps_unix_nano,json=timestampsUnixNano,proto3" json:"timestamps_unix_nano,omitempty"`
 }
 
 func (m *Sample) Reset()         { *m = Sample{} }
@@ -800,42 +797,16 @@ func (m *Sample) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_Sample proto.InternalMessageInfo
 
-type isSample_LinkIndex_ interface {
-	isSample_LinkIndex_()
-	MarshalTo([]byte) (int, error)
-	Size() int
-}
-
-type Sample_LinkIndex struct {
-	LinkIndex int32 `protobuf:"varint,5,opt,name=link_index,json=linkIndex,proto3,oneof" json:"link_index,omitempty"`
-}
-
-func (*Sample_LinkIndex) isSample_LinkIndex_() {}
-
-func (m *Sample) GetLinkIndex_() isSample_LinkIndex_ {
+func (m *Sample) GetStackIndex() int32 {
 	if m != nil {
-		return m.LinkIndex_
-	}
-	return nil
-}
-
-func (m *Sample) GetLocationsStartIndex() int32 {
-	if m != nil {
-		return m.LocationsStartIndex
+		return m.StackIndex
 	}
 	return 0
 }
 
-func (m *Sample) GetLocationsLength() int32 {
+func (m *Sample) GetValues() []int64 {
 	if m != nil {
-		return m.LocationsLength
-	}
-	return 0
-}
-
-func (m *Sample) GetValue() []int64 {
-	if m != nil {
-		return m.Value
+		return m.Values
 	}
 	return nil
 }
@@ -848,8 +819,8 @@ func (m *Sample) GetAttributeIndices() []int32 {
 }
 
 func (m *Sample) GetLinkIndex() int32 {
-	if x, ok := m.GetLinkIndex_().(*Sample_LinkIndex); ok {
-		return x.LinkIndex
+	if m != nil {
+		return m.LinkIndex
 	}
 	return 0
 }
@@ -859,13 +830,6 @@ func (m *Sample) GetTimestampsUnixNano() []uint64 {
 		return m.TimestampsUnixNano
 	}
 	return nil
-}
-
-// XXX_OneofWrappers is for the internal use of the proto package.
-func (*Sample) XXX_OneofWrappers() []interface{} {
-	return []interface{}{
-		(*Sample_LinkIndex)(nil),
-	}
 }
 
 // Describes the mapping of a binary in memory, including its address range,
@@ -881,13 +845,8 @@ type Mapping struct {
 	// disk for the main binary and shared libraries, or virtual
 	// abstractions like "[vdso]".
 	FilenameStrindex int32 `protobuf:"varint,4,opt,name=filename_strindex,json=filenameStrindex,proto3" json:"filename_strindex,omitempty"`
-	// References to attributes in Profile.attribute_table. [optional]
+	// References to attributes in ProfilesDictionary.attribute_table. [optional]
 	AttributeIndices []int32 `protobuf:"varint,5,rep,packed,name=attribute_indices,json=attributeIndices,proto3" json:"attribute_indices,omitempty"`
-	// The following fields indicate the resolution of symbolic info.
-	HasFunctions    bool `protobuf:"varint,6,opt,name=has_functions,json=hasFunctions,proto3" json:"has_functions,omitempty"`
-	HasFilenames    bool `protobuf:"varint,7,opt,name=has_filenames,json=hasFilenames,proto3" json:"has_filenames,omitempty"`
-	HasLineNumbers  bool `protobuf:"varint,8,opt,name=has_line_numbers,json=hasLineNumbers,proto3" json:"has_line_numbers,omitempty"`
-	HasInlineFrames bool `protobuf:"varint,9,opt,name=has_inline_frames,json=hasInlineFrames,proto3" json:"has_inline_frames,omitempty"`
 }
 
 func (m *Mapping) Reset()         { *m = Mapping{} }
@@ -958,43 +917,59 @@ func (m *Mapping) GetAttributeIndices() []int32 {
 	return nil
 }
 
-func (m *Mapping) GetHasFunctions() bool {
-	if m != nil {
-		return m.HasFunctions
-	}
-	return false
+// A Stack represents a stack trace as a list of locations.
+type Stack struct {
+	// References to locations in ProfilesDictionary.location_table.
+	// The first location is the leaf frame.
+	LocationIndices []int32 `protobuf:"varint,1,rep,packed,name=location_indices,json=locationIndices,proto3" json:"location_indices,omitempty"`
 }
 
-func (m *Mapping) GetHasFilenames() bool {
-	if m != nil {
-		return m.HasFilenames
+func (m *Stack) Reset()         { *m = Stack{} }
+func (m *Stack) String() string { return proto.CompactTextString(m) }
+func (*Stack) ProtoMessage()    {}
+func (*Stack) Descriptor() ([]byte, []int) {
+	return fileDescriptor_ddd0cf081a2fe76f, []int{9}
+}
+func (m *Stack) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *Stack) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_Stack.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
 	}
-	return false
+}
+func (m *Stack) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Stack.Merge(m, src)
+}
+func (m *Stack) XXX_Size() int {
+	return m.Size()
+}
+func (m *Stack) XXX_DiscardUnknown() {
+	xxx_messageInfo_Stack.DiscardUnknown(m)
 }
 
-func (m *Mapping) GetHasLineNumbers() bool {
-	if m != nil {
-		return m.HasLineNumbers
-	}
-	return false
-}
+var xxx_messageInfo_Stack proto.InternalMessageInfo
 
-func (m *Mapping) GetHasInlineFrames() bool {
+func (m *Stack) GetLocationIndices() []int32 {
 	if m != nil {
-		return m.HasInlineFrames
+		return m.LocationIndices
 	}
-	return false
+	return nil
 }
 
 // Describes function and line table debug information.
 type Location struct {
-	// Reference to mapping in Profile.mapping_table.
-	// It can be unset if the mapping is unknown or not applicable for
-	// this profile type.
-	//
-	// Types that are valid to be assigned to MappingIndex_:
-	//	*Location_MappingIndex
-	MappingIndex_ isLocation_MappingIndex_ `protobuf_oneof:"mapping_index_"`
+	// Reference to mapping in ProfilesDictionary.mapping_table.
+	// It can be unset / set to 0 if the mapping is unknown or not applicable for
+	// this profile type, as mapping_table[0] is always a 'null' default mapping.
+	MappingIndex int32 `protobuf:"varint,1,opt,name=mapping_index,json=mappingIndex,proto3" json:"mapping_index,omitempty"`
 	// The instruction address for this location, if available.  It
 	// should be within [Mapping.memory_start...Mapping.memory_limit]
 	// for the corresponding mapping. A non-leaf address may be in the
@@ -1009,21 +984,15 @@ type Location struct {
 	//    line[0].function_name == "memcpy"
 	//    line[1].function_name == "printf"
 	Line []*Line `protobuf:"bytes,3,rep,name=line,proto3" json:"line,omitempty"`
-	// Provides an indication that multiple symbols map to this location's
-	// address, for example due to identical code folding by the linker. In that
-	// case the line information above represents one of the multiple
-	// symbols. This field must be recomputed when the symbolization state of the
-	// profile changes.
-	IsFolded bool `protobuf:"varint,4,opt,name=is_folded,json=isFolded,proto3" json:"is_folded,omitempty"`
-	// References to attributes in Profile.attribute_table. [optional]
-	AttributeIndices []int32 `protobuf:"varint,5,rep,packed,name=attribute_indices,json=attributeIndices,proto3" json:"attribute_indices,omitempty"`
+	// References to attributes in ProfilesDictionary.attribute_table. [optional]
+	AttributeIndices []int32 `protobuf:"varint,4,rep,packed,name=attribute_indices,json=attributeIndices,proto3" json:"attribute_indices,omitempty"`
 }
 
 func (m *Location) Reset()         { *m = Location{} }
 func (m *Location) String() string { return proto.CompactTextString(m) }
 func (*Location) ProtoMessage()    {}
 func (*Location) Descriptor() ([]byte, []int) {
-	return fileDescriptor_ddd0cf081a2fe76f, []int{9}
+	return fileDescriptor_ddd0cf081a2fe76f, []int{10}
 }
 func (m *Location) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1052,28 +1021,9 @@ func (m *Location) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_Location proto.InternalMessageInfo
 
-type isLocation_MappingIndex_ interface {
-	isLocation_MappingIndex_()
-	MarshalTo([]byte) (int, error)
-	Size() int
-}
-
-type Location_MappingIndex struct {
-	MappingIndex int32 `protobuf:"varint,1,opt,name=mapping_index,json=mappingIndex,proto3,oneof" json:"mapping_index,omitempty"`
-}
-
-func (*Location_MappingIndex) isLocation_MappingIndex_() {}
-
-func (m *Location) GetMappingIndex_() isLocation_MappingIndex_ {
-	if m != nil {
-		return m.MappingIndex_
-	}
-	return nil
-}
-
 func (m *Location) GetMappingIndex() int32 {
-	if x, ok := m.GetMappingIndex_().(*Location_MappingIndex); ok {
-		return x.MappingIndex
+	if m != nil {
+		return m.MappingIndex
 	}
 	return 0
 }
@@ -1092,13 +1042,6 @@ func (m *Location) GetLine() []*Line {
 	return nil
 }
 
-func (m *Location) GetIsFolded() bool {
-	if m != nil {
-		return m.IsFolded
-	}
-	return false
-}
-
 func (m *Location) GetAttributeIndices() []int32 {
 	if m != nil {
 		return m.AttributeIndices
@@ -1106,20 +1049,13 @@ func (m *Location) GetAttributeIndices() []int32 {
 	return nil
 }
 
-// XXX_OneofWrappers is for the internal use of the proto package.
-func (*Location) XXX_OneofWrappers() []interface{} {
-	return []interface{}{
-		(*Location_MappingIndex)(nil),
-	}
-}
-
 // Details a specific line in a source code, linked to a function.
 type Line struct {
-	// Reference to function in Profile.function_table.
+	// Reference to function in ProfilesDictionary.function_table.
 	FunctionIndex int32 `protobuf:"varint,1,opt,name=function_index,json=functionIndex,proto3" json:"function_index,omitempty"`
-	// Line number in source code.
+	// Line number in source code. 0 means unset.
 	Line int64 `protobuf:"varint,2,opt,name=line,proto3" json:"line,omitempty"`
-	// Column number in source code.
+	// Column number in source code. 0 means unset.
 	Column int64 `protobuf:"varint,3,opt,name=column,proto3" json:"column,omitempty"`
 }
 
@@ -1127,7 +1063,7 @@ func (m *Line) Reset()         { *m = Line{} }
 func (m *Line) String() string { return proto.CompactTextString(m) }
 func (*Line) ProtoMessage()    {}
 func (*Line) Descriptor() ([]byte, []int) {
-	return fileDescriptor_ddd0cf081a2fe76f, []int{10}
+	return fileDescriptor_ddd0cf081a2fe76f, []int{11}
 }
 func (m *Line) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1180,14 +1116,14 @@ func (m *Line) GetColumn() int64 {
 // Describes a function, including its human-readable name, system name,
 // source file, and starting line number in the source.
 type Function struct {
-	// Name of the function, in human-readable form if available.
+	// Function name. Empty string if not available.
 	NameStrindex int32 `protobuf:"varint,1,opt,name=name_strindex,json=nameStrindex,proto3" json:"name_strindex,omitempty"`
-	// Name of the function, as identified by the system.
-	// For instance, it can be a C++ mangled name.
+	// Function name, as identified by the system. For instance,
+	// it can be a C++ mangled name. Empty string if not available.
 	SystemNameStrindex int32 `protobuf:"varint,2,opt,name=system_name_strindex,json=systemNameStrindex,proto3" json:"system_name_strindex,omitempty"`
-	// Source file containing the function.
+	// Source file containing the function. Empty string if not available.
 	FilenameStrindex int32 `protobuf:"varint,3,opt,name=filename_strindex,json=filenameStrindex,proto3" json:"filename_strindex,omitempty"`
-	// Line number in source file.
+	// Line number in source file. 0 means unset.
 	StartLine int64 `protobuf:"varint,4,opt,name=start_line,json=startLine,proto3" json:"start_line,omitempty"`
 }
 
@@ -1195,7 +1131,7 @@ func (m *Function) Reset()         { *m = Function{} }
 func (m *Function) String() string { return proto.CompactTextString(m) }
 func (*Function) ProtoMessage()    {}
 func (*Function) Descriptor() ([]byte, []int) {
-	return fileDescriptor_ddd0cf081a2fe76f, []int{11}
+	return fileDescriptor_ddd0cf081a2fe76f, []int{12}
 }
 func (m *Function) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -1252,20 +1188,85 @@ func (m *Function) GetStartLine() int64 {
 	return 0
 }
 
+// A custom 'dictionary native' style of encoding attributes which is more convenient
+// for profiles than opentelemetry.proto.common.v1.KeyValue
+// Specifically, uses the string table for keys and allows optional unit information.
+type KeyValueAndUnit struct {
+	KeyStrindex  int32        `protobuf:"varint,1,opt,name=key_strindex,json=keyStrindex,proto3" json:"key_strindex,omitempty"`
+	Value        v11.AnyValue `protobuf:"bytes,2,opt,name=value,proto3" json:"value"`
+	UnitStrindex int32        `protobuf:"varint,3,opt,name=unit_strindex,json=unitStrindex,proto3" json:"unit_strindex,omitempty"`
+}
+
+func (m *KeyValueAndUnit) Reset()         { *m = KeyValueAndUnit{} }
+func (m *KeyValueAndUnit) String() string { return proto.CompactTextString(m) }
+func (*KeyValueAndUnit) ProtoMessage()    {}
+func (*KeyValueAndUnit) Descriptor() ([]byte, []int) {
+	return fileDescriptor_ddd0cf081a2fe76f, []int{13}
+}
+func (m *KeyValueAndUnit) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *KeyValueAndUnit) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_KeyValueAndUnit.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *KeyValueAndUnit) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_KeyValueAndUnit.Merge(m, src)
+}
+func (m *KeyValueAndUnit) XXX_Size() int {
+	return m.Size()
+}
+func (m *KeyValueAndUnit) XXX_DiscardUnknown() {
+	xxx_messageInfo_KeyValueAndUnit.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_KeyValueAndUnit proto.InternalMessageInfo
+
+func (m *KeyValueAndUnit) GetKeyStrindex() int32 {
+	if m != nil {
+		return m.KeyStrindex
+	}
+	return 0
+}
+
+func (m *KeyValueAndUnit) GetValue() v11.AnyValue {
+	if m != nil {
+		return m.Value
+	}
+	return v11.AnyValue{}
+}
+
+func (m *KeyValueAndUnit) GetUnitStrindex() int32 {
+	if m != nil {
+		return m.UnitStrindex
+	}
+	return 0
+}
+
 func init() {
 	proto.RegisterEnum("opentelemetry.proto.profiles.v1development.AggregationTemporality", AggregationTemporality_name, AggregationTemporality_value)
+	proto.RegisterType((*ProfilesDictionary)(nil), "opentelemetry.proto.profiles.v1development.ProfilesDictionary")
 	proto.RegisterType((*ProfilesData)(nil), "opentelemetry.proto.profiles.v1development.ProfilesData")
 	proto.RegisterType((*ResourceProfiles)(nil), "opentelemetry.proto.profiles.v1development.ResourceProfiles")
 	proto.RegisterType((*ScopeProfiles)(nil), "opentelemetry.proto.profiles.v1development.ScopeProfiles")
 	proto.RegisterType((*Profile)(nil), "opentelemetry.proto.profiles.v1development.Profile")
-	proto.RegisterType((*AttributeUnit)(nil), "opentelemetry.proto.profiles.v1development.AttributeUnit")
 	proto.RegisterType((*Link)(nil), "opentelemetry.proto.profiles.v1development.Link")
 	proto.RegisterType((*ValueType)(nil), "opentelemetry.proto.profiles.v1development.ValueType")
 	proto.RegisterType((*Sample)(nil), "opentelemetry.proto.profiles.v1development.Sample")
 	proto.RegisterType((*Mapping)(nil), "opentelemetry.proto.profiles.v1development.Mapping")
+	proto.RegisterType((*Stack)(nil), "opentelemetry.proto.profiles.v1development.Stack")
 	proto.RegisterType((*Location)(nil), "opentelemetry.proto.profiles.v1development.Location")
 	proto.RegisterType((*Line)(nil), "opentelemetry.proto.profiles.v1development.Line")
 	proto.RegisterType((*Function)(nil), "opentelemetry.proto.profiles.v1development.Function")
+	proto.RegisterType((*KeyValueAndUnit)(nil), "opentelemetry.proto.profiles.v1development.KeyValueAndUnit")
 }
 
 func init() {
@@ -1273,107 +1274,216 @@ func init() {
 }
 
 var fileDescriptor_ddd0cf081a2fe76f = []byte{
-	// 1591 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x58, 0xdb, 0x6f, 0x13, 0x57,
-	0x1a, 0xcf, 0xd8, 0x8e, 0x2f, 0x9f, 0x2f, 0x71, 0x0e, 0x21, 0xcc, 0xb2, 0x4b, 0x62, 0x8c, 0x58,
-	0x4c, 0x56, 0x24, 0x24, 0xb0, 0x2b, 0xd0, 0xae, 0xb4, 0x9b, 0xc4, 0x09, 0x18, 0x42, 0x92, 0x9d,
-	0x38, 0x51, 0x69, 0x91, 0xa6, 0x27, 0x9e, 0x63, 0x67, 0xca, 0xdc, 0x34, 0xe7, 0x38, 0xc2, 0xea,
-	0xbf, 0xc0, 0x43, 0xff, 0x8e, 0x4a, 0xfd, 0x1b, 0xfa, 0xca, 0x23, 0xea, 0x13, 0xea, 0x03, 0xaa,
-	0xe0, 0x85, 0x56, 0xea, 0x6b, 0x9f, 0xab, 0x73, 0x99, 0xb1, 0x9d, 0x3a, 0x82, 0xe9, 0x4b, 0x34,
-	0xe7, 0x3b, 0xbf, 0xf3, 0x3b, 0xdf, 0xfd, 0x3b, 0x0e, 0xdc, 0xf7, 0x03, 0xe2, 0x31, 0xe2, 0x10,
-	0x97, 0xb0, 0x70, 0xb0, 0x12, 0x84, 0x3e, 0xf3, 0xf9, 0xdf, 0xae, 0xed, 0x10, 0xba, 0x72, 0xba,
-	0x6a, 0x91, 0x53, 0xe2, 0xf8, 0x81, 0x4b, 0x3c, 0x16, 0x8b, 0x97, 0x05, 0x0a, 0x2d, 0x8d, 0x1d,
-	0x95, 0xc2, 0xe5, 0x18, 0x33, 0x76, 0xf4, 0xf2, 0x5c, 0xcf, 0xef, 0xf9, 0x92, 0x9c, 0x7f, 0x49,
-	0xf0, 0xe5, 0xa5, 0x49, 0x97, 0x77, 0x7c, 0xd7, 0xf5, 0xbd, 0x95, 0xd3, 0x55, 0xf5, 0xa5, 0xb0,
-	0xcb, 0x93, 0xb0, 0x21, 0xa1, 0x7e, 0x3f, 0xec, 0x10, 0x8e, 0x8e, 0xbe, 0x25, 0xbe, 0x3e, 0x80,
-	0xd2, 0xbe, 0xd2, 0xa5, 0x89, 0x19, 0x46, 0x36, 0xcc, 0x46, 0x08, 0x33, 0x52, 0x52, 0xd7, 0x6a,
-	0xe9, 0x46, 0x71, 0xed, 0x3f, 0xcb, 0x9f, 0x6e, 0xc9, 0xb2, 0xa1, 0x48, 0x22, 0x72, 0xa3, 0x1a,
-	0x9e, 0x91, 0xd4, 0x3f, 0x68, 0x50, 0x3d, 0x0b, 0x43, 0x8f, 0x21, 0x1f, 0x01, 0x75, 0xad, 0xa6,
-	0x35, 0x8a, 0x6b, 0x37, 0x27, 0x5e, 0x1b, 0x9b, 0x71, 0xba, 0x1a, 0xdf, 0xb5, 0x91, 0x79, 0xf5,
-	0x76, 0x71, 0xca, 0x88, 0x09, 0xd0, 0x97, 0x50, 0xa1, 0x1d, 0x3f, 0x18, 0xb1, 0x24, 0x25, 0x2c,
-	0xb9, 0x9f, 0xc4, 0x92, 0x03, 0xce, 0x10, 0x9b, 0x51, 0xa6, 0xa3, 0x4b, 0x74, 0x05, 0x80, 0x76,
-	0x4e, 0x88, 0x8b, 0xcd, 0x7e, 0xe8, 0xe8, 0xe9, 0x9a, 0xd6, 0x28, 0x18, 0x05, 0x29, 0x39, 0x0c,
-	0x9d, 0x47, 0xd9, 0xfc, 0x87, 0x5c, 0xf5, 0xe7, 0x5c, 0xfd, 0xb5, 0x06, 0xe5, 0x31, 0x1e, 0xb4,
-	0x07, 0xd3, 0x82, 0x49, 0x19, 0x79, 0x67, 0xa2, 0x46, 0x2a, 0xb2, 0xa7, 0xab, 0xcb, 0x2d, 0x8f,
-	0xb2, 0xb0, 0xcf, 0xf5, 0xc1, 0xcc, 0xf6, 0x3d, 0xc1, 0xa5, 0xcc, 0x95, 0x3c, 0x68, 0x0f, 0xf2,
-	0x67, 0xac, 0xbc, 0x93, 0xc4, 0x4a, 0xa5, 0x98, 0x11, 0x93, 0x7c, 0xc4, 0xb4, 0xfa, 0x6f, 0x00,
-	0x39, 0x75, 0x08, 0x1d, 0x41, 0x91, 0x62, 0x37, 0x70, 0x88, 0xc9, 0x06, 0xc2, 0x24, 0x7e, 0xfd,
-	0x3f, 0x93, 0x5c, 0x7f, 0x84, 0x9d, 0x3e, 0x69, 0x0f, 0x02, 0x62, 0x80, 0x64, 0xe2, 0xdf, 0xe8,
-	0x11, 0x64, 0xe5, 0x4a, 0x59, 0xb4, 0x96, 0x28, 0x6e, 0xe2, 0xa4, 0xa1, 0x18, 0xd0, 0x67, 0x50,
-	0x76, 0x71, 0x10, 0xd8, 0x5e, 0xcf, 0x64, 0xf8, 0xd8, 0x21, 0x7a, 0x3a, 0xb9, 0x93, 0x9e, 0x48,
-	0x02, 0xa3, 0xa4, 0x98, 0xda, 0x9c, 0x08, 0x7d, 0x01, 0x15, 0xc7, 0xef, 0x88, 0xb8, 0x28, 0xea,
-	0x8c, 0xa0, 0xbe, 0x9b, 0x84, 0x7a, 0x47, 0x31, 0x18, 0xe5, 0x88, 0x4b, 0x92, 0xdf, 0x84, 0x6a,
-	0x4c, 0x6e, 0x7b, 0x96, 0xdd, 0x21, 0x54, 0x9f, 0xae, 0xa5, 0x1b, 0xd3, 0xc6, 0x4c, 0x24, 0x6f,
-	0x49, 0x31, 0xd7, 0xa3, 0xdb, 0xf7, 0x3a, 0x23, 0x7a, 0x64, 0x93, 0xeb, 0xb1, 0xad, 0x18, 0x8c,
-	0x72, 0xc4, 0x25, 0xf5, 0x38, 0x82, 0x19, 0xcc, 0x58, 0x68, 0x1f, 0xf7, 0x19, 0x51, 0xec, 0x39,
-	0xc1, 0x7e, 0xe3, 0x23, 0x99, 0xfb, 0x98, 0x0c, 0x44, 0x70, 0x55, 0xb6, 0x56, 0x62, 0x16, 0xc9,
-	0x7b, 0x3c, 0xca, 0xdb, 0xf7, 0x6c, 0x46, 0xf5, 0x7c, 0xf2, 0x1a, 0x5d, 0x8f, 0x28, 0x0e, 0x3d,
-	0x9b, 0x8d, 0xdc, 0xc1, 0x97, 0xbc, 0xd6, 0xc0, 0xb1, 0xbd, 0xe7, 0x4a, 0xed, 0x82, 0xa0, 0xbf,
-	0x9d, 0x28, 0x38, 0xb6, 0xf7, 0xdc, 0x28, 0x70, 0x0e, 0xa9, 0xf4, 0x55, 0x28, 0x51, 0x16, 0x0e,
-	0x53, 0x09, 0x6a, 0xe9, 0x46, 0xc1, 0x28, 0x4a, 0x99, 0x84, 0x5c, 0x01, 0x60, 0xb6, 0x4b, 0x4c,
-	0x0f, 0x7b, 0x3e, 0xd5, 0x8b, 0x35, 0xad, 0x91, 0x36, 0x0a, 0x5c, 0xb2, 0xcb, 0x05, 0xe8, 0x3a,
-	0x54, 0xac, 0x7e, 0x28, 0xc3, 0x2a, 0x21, 0x25, 0x01, 0x29, 0x47, 0x52, 0x09, 0x7b, 0x06, 0xc5,
-	0x80, 0x84, 0xb6, 0x6f, 0xc9, 0xc2, 0x2a, 0x8b, 0x5e, 0xf1, 0xe7, 0x0a, 0x4b, 0xf9, 0x1f, 0x24,
-	0x9f, 0x28, 0xaf, 0x79, 0xc8, 0xca, 0x95, 0x5e, 0x11, 0x97, 0xab, 0x15, 0xba, 0x05, 0x88, 0xc7,
-	0x8f, 0x78, 0xcc, 0x14, 0x26, 0xc9, 0xac, 0x9b, 0x11, 0x59, 0x37, 0xab, 0x76, 0x0e, 0xe2, 0x0d,
-	0xf4, 0x5f, 0xf8, 0x9b, 0x45, 0xba, 0xb8, 0xef, 0x30, 0x73, 0xa4, 0x0b, 0xa8, 0xa3, 0xe4, 0x85,
-	0x5e, 0xad, 0x69, 0x8d, 0x69, 0xe3, 0x2f, 0x0a, 0x73, 0x10, 0x97, 0xf7, 0x81, 0x02, 0xa0, 0x63,
-	0x00, 0xa5, 0xbd, 0x69, 0x5b, 0xfa, 0x6c, 0x4d, 0x6b, 0x94, 0x36, 0x36, 0xb9, 0xb6, 0x3f, 0xbe,
-	0x5d, 0xfc, 0x77, 0xcf, 0x3f, 0x63, 0xae, 0xcd, 0x67, 0x9f, 0xe3, 0x90, 0x0e, 0xf3, 0xc3, 0x95,
-	0xc0, 0xc2, 0x0c, 0xaf, 0xd8, 0x1e, 0x23, 0xa1, 0x87, 0x9d, 0x15, 0xbe, 0x8a, 0x5a, 0x59, 0xab,
-	0x69, 0x14, 0x14, 0x6d, 0xcb, 0x42, 0xf7, 0x40, 0xb7, 0x42, 0x3f, 0x08, 0x88, 0x65, 0xc6, 0xd9,
-	0x41, 0xcd, 0x8e, 0xdf, 0xf7, 0x98, 0x7e, 0xa1, 0xa6, 0x35, 0xca, 0xc6, 0xbc, 0xda, 0x8f, 0x73,
-	0x89, 0x6e, 0xf2, 0x5d, 0xf4, 0x2f, 0xb8, 0xe4, 0x87, 0x76, 0xcf, 0xf6, 0xb0, 0x63, 0x06, 0x78,
-	0xe0, 0xf8, 0xd8, 0x32, 0xbb, 0x7e, 0xe8, 0x62, 0xa6, 0xcf, 0x89, 0xa6, 0x78, 0x31, 0xda, 0xde,
-	0x97, 0xbb, 0xdb, 0x62, 0x93, 0x57, 0xee, 0xd9, 0x73, 0xfa, 0x45, 0x6e, 0x9b, 0x31, 0x73, 0xe6,
-	0x00, 0xfa, 0x07, 0xcc, 0x0e, 0x8b, 0x20, 0xf2, 0xf7, 0xbc, 0xf0, 0x77, 0x35, 0xde, 0x50, 0x65,
-	0x5e, 0xff, 0x0a, 0xca, 0x63, 0xe9, 0x8e, 0xee, 0xc2, 0xfc, 0xf0, 0xf4, 0x73, 0x32, 0x18, 0x7a,
-	0x5e, 0x13, 0x9e, 0x9f, 0x8b, 0x77, 0x1f, 0x93, 0x41, 0xec, 0xf4, 0x6b, 0x50, 0xe6, 0xe5, 0x36,
-	0x04, 0xa7, 0x04, 0xb8, 0xc4, 0x85, 0x11, 0xa8, 0xfe, 0xbd, 0x06, 0x19, 0x9e, 0xfc, 0xe8, 0x19,
-	0xe4, 0x59, 0x88, 0x3b, 0x22, 0x40, 0x9a, 0x08, 0xd0, 0xba, 0x0a, 0xd0, 0xfd, 0xe4, 0x01, 0x6a,
-	0x73, 0xa6, 0x56, 0xd3, 0xc8, 0x09, 0xca, 0x96, 0x85, 0x9e, 0x42, 0x8e, 0x06, 0xd8, 0xe3, 0xe4,
-	0x29, 0x41, 0xfe, 0x3f, 0x45, 0x7e, 0x2f, 0x39, 0xf9, 0x41, 0x80, 0xbd, 0x56, 0xd3, 0xc8, 0x72,
-	0xc2, 0x96, 0x55, 0xff, 0x41, 0x83, 0x42, 0x5c, 0x03, 0xdc, 0xe8, 0xf1, 0xdc, 0x94, 0x1e, 0x2a,
-	0xb1, 0xd1, 0x74, 0xfc, 0x14, 0xcf, 0xa0, 0xaf, 0xe1, 0x12, 0xee, 0xf5, 0x42, 0xd2, 0x53, 0x7d,
-	0x9f, 0xb8, 0x81, 0x1f, 0x62, 0xc7, 0x66, 0x03, 0x31, 0x2a, 0x2b, 0x6b, 0x1b, 0x89, 0xfa, 0xd7,
-	0x90, 0xaa, 0x3d, 0x64, 0x32, 0xe6, 0xf1, 0x44, 0x79, 0xfd, 0x65, 0x0a, 0xb2, 0xb2, 0x8e, 0xd0,
-	0x1a, 0x5c, 0x8c, 0xe6, 0x00, 0x35, 0x29, 0xc3, 0x21, 0x33, 0x47, 0x2d, 0xbb, 0x10, 0x6f, 0x1e,
-	0xf0, 0xbd, 0x96, 0xd0, 0x7d, 0x64, 0xa6, 0x50, 0xd3, 0x21, 0x5e, 0x8f, 0x9d, 0x28, 0x1b, 0xe3,
-	0x99, 0x42, 0x77, 0x84, 0x18, 0xcd, 0xc1, 0xf4, 0x29, 0xf7, 0x9e, 0x98, 0x96, 0x69, 0x43, 0x2e,
-	0x26, 0xe7, 0x6b, 0x66, 0x72, 0xbe, 0xa2, 0x45, 0xd5, 0x7d, 0xa5, 0x5a, 0xd3, 0xfc, 0x9e, 0x87,
-	0x53, 0xb2, 0x9b, 0x4a, 0x75, 0x6e, 0xc3, 0x1c, 0x6f, 0x8c, 0x94, 0x61, 0x37, 0xa0, 0x7c, 0x06,
-	0xbc, 0x10, 0x2d, 0x51, 0x4c, 0xaf, 0x8c, 0x81, 0x86, 0x7b, 0x87, 0x9e, 0xfd, 0x82, 0xf7, 0xc5,
-	0x8d, 0x32, 0x14, 0x87, 0x94, 0x66, 0xfd, 0x97, 0x14, 0xe4, 0xd4, 0x68, 0xe6, 0xad, 0xd9, 0x25,
-	0xae, 0x1f, 0x0e, 0xa4, 0x33, 0x84, 0x1b, 0x32, 0x46, 0x51, 0xca, 0x84, 0x0f, 0x46, 0x20, 0x8e,
-	0xed, 0xda, 0x4c, 0x98, 0x1e, 0x43, 0x76, 0xb8, 0x08, 0x2d, 0x42, 0x51, 0xb4, 0x23, 0xbf, 0xdb,
-	0xa5, 0x84, 0x89, 0x88, 0x66, 0x0c, 0xe0, 0xa2, 0x3d, 0x21, 0xe1, 0x1e, 0xe0, 0x2b, 0x0f, 0xbb,
-	0x23, 0xc9, 0x94, 0x11, 0x3e, 0xac, 0x46, 0x1b, 0x71, 0xae, 0x4c, 0x74, 0xd7, 0xf4, 0x39, 0xee,
-	0xba, 0x06, 0xe5, 0x13, 0x4c, 0xcd, 0x68, 0xfa, 0x52, 0x3d, 0x5b, 0xd3, 0x1a, 0x79, 0xa3, 0x74,
-	0x82, 0x69, 0x34, 0x9b, 0x87, 0x20, 0x75, 0x13, 0xd5, 0x73, 0x43, 0x50, 0x24, 0x43, 0x0d, 0xa8,
-	0x72, 0x90, 0x63, 0x7b, 0xc4, 0xf4, 0xfa, 0xee, 0x31, 0x09, 0xf9, 0x6c, 0xe5, 0xb8, 0xca, 0x09,
-	0xa6, 0x3b, 0xb6, 0x47, 0x76, 0xa5, 0x14, 0x2d, 0xc1, 0x2c, 0x47, 0xda, 0x9e, 0xc0, 0x76, 0x43,
-	0x41, 0x59, 0x10, 0xd0, 0x99, 0x13, 0x4c, 0x5b, 0x42, 0xbe, 0x2d, 0xc4, 0xf5, 0x5f, 0x35, 0xc8,
-	0x47, 0x8f, 0x15, 0x74, 0x7d, 0xf8, 0xa8, 0x1a, 0xc9, 0xba, 0x87, 0x53, 0xf1, 0x0b, 0x49, 0x46,
-	0x58, 0x87, 0x1c, 0xb6, 0xac, 0x90, 0x50, 0xaa, 0x9c, 0x1d, 0x2d, 0x51, 0x13, 0x32, 0x9c, 0x5b,
-	0x3d, 0xc6, 0x92, 0x0e, 0x65, 0x62, 0x88, 0xd3, 0xe8, 0xaf, 0x50, 0xb0, 0xa9, 0xd9, 0xf5, 0x1d,
-	0x8b, 0x58, 0x22, 0x0a, 0x79, 0x23, 0x6f, 0xd3, 0x6d, 0xb1, 0x4e, 0xe4, 0xfd, 0x8d, 0x2a, 0x54,
-	0xc6, 0x0c, 0x32, 0xeb, 0x4f, 0x45, 0x07, 0x24, 0x7c, 0x62, 0xc7, 0xaf, 0xab, 0xd1, 0x0a, 0x8b,
-	0xdf, 0x49, 0xd2, 0x54, 0xa4, 0x0c, 0x4a, 0x89, 0x89, 0x2a, 0xd5, 0x9b, 0x87, 0x6c, 0xc7, 0x77,
-	0xfa, 0xae, 0x27, 0x12, 0x29, 0x6d, 0xa8, 0x55, 0xfd, 0x3b, 0x0d, 0xf2, 0x51, 0x4c, 0x79, 0x48,
-	0xc7, 0xb3, 0x49, 0xb5, 0xa6, 0xb1, 0x4c, 0xba, 0x0d, 0x73, 0x74, 0x40, 0x19, 0x71, 0xcd, 0x71,
-	0xac, 0xac, 0x5e, 0x24, 0xf7, 0x76, 0xcf, 0xe4, 0xde, 0x1f, 0x13, 0x35, 0x7d, 0x4e, 0xa2, 0xf2,
-	0x27, 0xbf, 0x68, 0x21, 0xc2, 0x84, 0x8c, 0x7c, 0xb4, 0x08, 0x09, 0x77, 0xc1, 0xd2, 0x4b, 0x0d,
-	0xe6, 0x27, 0x77, 0x2a, 0x74, 0x03, 0xae, 0xad, 0x3f, 0x78, 0x60, 0x6c, 0x3d, 0x58, 0x6f, 0xb7,
-	0xf6, 0x76, 0xcd, 0xf6, 0xd6, 0x93, 0xfd, 0x3d, 0x63, 0x7d, 0xa7, 0xd5, 0x7e, 0x6a, 0x1e, 0xee,
-	0x1e, 0xec, 0x6f, 0x6d, 0xb6, 0xb6, 0x5b, 0x5b, 0xcd, 0xea, 0x14, 0xba, 0x0a, 0x57, 0xce, 0x03,
-	0x36, 0xb7, 0x76, 0xda, 0xeb, 0x55, 0x0d, 0xfd, 0x1d, 0xea, 0xe7, 0x41, 0x36, 0x0f, 0x9f, 0x1c,
-	0xee, 0xac, 0xb7, 0x5b, 0x47, 0x5b, 0xd5, 0xd4, 0xc6, 0x1b, 0xed, 0xd5, 0xbb, 0x05, 0xed, 0xf5,
-	0xbb, 0x05, 0xed, 0xa7, 0x77, 0x0b, 0xda, 0x37, 0xef, 0x17, 0xa6, 0x5e, 0xbf, 0x5f, 0x98, 0x7a,
-	0xf3, 0x7e, 0x61, 0x0a, 0x6e, 0xd9, 0x7e, 0x82, 0x54, 0xda, 0x28, 0x47, 0x3f, 0xcb, 0xf6, 0x39,
-	0x6a, 0x5f, 0xfb, 0xfc, 0xff, 0x89, 0xe7, 0x8e, 0xfc, 0xa5, 0xdd, 0x23, 0xde, 0x39, 0xff, 0x15,
-	0xf8, 0x36, 0xb5, 0xb4, 0x17, 0x10, 0xaf, 0x1d, 0x13, 0x8a, 0xab, 0xa2, 0xb7, 0x0a, 0x5d, 0x3e,
-	0x5a, 0x6d, 0x0e, 0xc1, 0xc7, 0x59, 0xc1, 0x76, 0xe7, 0xf7, 0x00, 0x00, 0x00, 0xff, 0xff, 0xd8,
-	0x20, 0xd9, 0xad, 0x77, 0x10, 0x00, 0x00,
+	// 1475 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x97, 0x5f, 0x6f, 0x13, 0xc7,
+	0x16, 0xc0, 0xb3, 0xf1, 0xbf, 0xf8, 0xd8, 0x4e, 0xcc, 0x88, 0x1b, 0x2c, 0x24, 0x82, 0x31, 0xf7,
+	0x5e, 0x4c, 0xae, 0x48, 0x48, 0xb8, 0xad, 0x40, 0x54, 0x55, 0x9d, 0x38, 0xa0, 0x85, 0x90, 0xa4,
+	0x13, 0x07, 0x95, 0x16, 0x69, 0x3b, 0xf1, 0x4e, 0xdc, 0x55, 0x76, 0x67, 0x57, 0xbb, 0xe3, 0x08,
+	0xab, 0x5f, 0xa1, 0x0f, 0xfd, 0x04, 0xfd, 0x00, 0x95, 0xfa, 0x0d, 0x2a, 0xf5, 0x15, 0xf5, 0x89,
+	0xf6, 0xa1, 0x42, 0x7d, 0xa0, 0x15, 0xbc, 0xd0, 0x6f, 0x51, 0xcd, 0x9f, 0x5d, 0xff, 0x89, 0x23,
+	0xba, 0x55, 0x5f, 0xac, 0x9d, 0x33, 0x67, 0x7e, 0x67, 0xce, 0x99, 0x33, 0x67, 0x8e, 0xe1, 0x8e,
+	0x1f, 0x50, 0xc6, 0xa9, 0x4b, 0x3d, 0xca, 0xc3, 0xc1, 0x6a, 0x10, 0xfa, 0xdc, 0x17, 0xbf, 0x47,
+	0x8e, 0x4b, 0xa3, 0xd5, 0x93, 0x35, 0x9b, 0x9e, 0x50, 0xd7, 0x0f, 0x3c, 0xca, 0x78, 0x22, 0x5e,
+	0x91, 0x5a, 0x68, 0x79, 0x6c, 0xa9, 0x12, 0xae, 0x24, 0x3a, 0x63, 0x4b, 0x2f, 0x9e, 0xef, 0xf9,
+	0x3d, 0x5f, 0xc1, 0xc5, 0x97, 0x52, 0xbe, 0xb8, 0x3c, 0xcd, 0x78, 0xd7, 0xf7, 0x3c, 0x9f, 0xad,
+	0x9e, 0xac, 0xe9, 0x2f, 0xad, 0xbb, 0x32, 0x4d, 0x37, 0xa4, 0x91, 0xdf, 0x0f, 0xbb, 0x54, 0x68,
+	0xc7, 0xdf, 0x4a, 0xbf, 0xf1, 0x4b, 0x16, 0xd0, 0x9e, 0xde, 0x4c, 0xdb, 0xe9, 0x72, 0xc7, 0x67,
+	0x24, 0x1c, 0xa0, 0x4f, 0xa0, 0xe2, 0x91, 0x20, 0x70, 0x58, 0xcf, 0xe2, 0xe4, 0xd0, 0xa5, 0x35,
+	0xa3, 0x9e, 0x69, 0x96, 0xd6, 0x6f, 0xad, 0xfc, 0x75, 0x67, 0x56, 0x1e, 0x29, 0x00, 0x2e, 0x6b,
+	0x52, 0x47, 0x80, 0xd0, 0x67, 0x30, 0xef, 0xfa, 0x5d, 0x22, 0x0c, 0x69, 0xf4, 0xac, 0x44, 0xff,
+	0x3f, 0x0d, 0x7a, 0x5b, 0x13, 0x70, 0x25, 0x66, 0x25, 0xf0, 0xa3, 0x3e, 0xeb, 0x8e, 0xc0, 0x33,
+	0xe9, 0xe1, 0xf7, 0x34, 0x01, 0x57, 0x62, 0x96, 0x82, 0xef, 0x02, 0xb8, 0x0e, 0x3b, 0xd6, 0xe0,
+	0xac, 0x04, 0xdf, 0x4c, 0xb5, 0x6b, 0x87, 0x1d, 0xe3, 0xa2, 0x60, 0x28, 0xe0, 0x15, 0x28, 0x47,
+	0x3c, 0x1c, 0xc6, 0x38, 0x57, 0xcf, 0x34, 0x8b, 0xb8, 0xa4, 0x64, 0x4a, 0xc5, 0x86, 0x05, 0xc2,
+	0x79, 0xe8, 0x1c, 0xf6, 0x39, 0xd5, 0x5a, 0x79, 0x69, 0xf8, 0x6e, 0x1a, 0xc3, 0x0f, 0xe9, 0xe0,
+	0x31, 0x71, 0xfb, 0xb4, 0xc5, 0xec, 0x03, 0xe6, 0x70, 0x3c, 0x9f, 0x30, 0x95, 0x15, 0x0c, 0xa5,
+	0x88, 0x93, 0x6e, 0xec, 0x5a, 0x41, 0x5a, 0x58, 0x4b, 0x63, 0x61, 0x5f, 0x2c, 0xc7, 0x20, 0x29,
+	0x92, 0xd9, 0xf8, 0xcd, 0x80, 0x72, 0x92, 0x58, 0x84, 0x13, 0xe4, 0xc0, 0xb9, 0x38, 0xf7, 0xac,
+	0x98, 0xa2, 0xd3, 0xea, 0x83, 0x34, 0xa6, 0xb0, 0x86, 0xc4, 0x70, 0x5c, 0x0d, 0x27, 0x24, 0xc8,
+	0x06, 0xb0, 0x93, 0x5c, 0xae, 0xcd, 0xd6, 0x8d, 0x66, 0x69, 0xfd, 0xc3, 0x34, 0x36, 0x4e, 0xdf,
+	0x88, 0x8d, 0xec, 0xf3, 0x57, 0x97, 0x67, 0xf0, 0x08, 0xb7, 0xf1, 0xd6, 0x80, 0xea, 0xe4, 0x66,
+	0xd0, 0x43, 0x98, 0x8b, 0xb7, 0x53, 0x33, 0xa4, 0xe1, 0xeb, 0x53, 0x0d, 0x27, 0xd7, 0xf0, 0x64,
+	0x2d, 0xf1, 0x48, 0xdb, 0x48, 0x00, 0xe8, 0x73, 0x98, 0x8f, 0xba, 0x7e, 0x30, 0x12, 0x2f, 0x75,
+	0x57, 0xee, 0xa4, 0x3a, 0x1a, 0x41, 0x48, 0x82, 0x55, 0x89, 0x46, 0x87, 0xe8, 0x12, 0x40, 0xd4,
+	0xfd, 0x82, 0x7a, 0xc4, 0xea, 0x87, 0x6e, 0x2d, 0x53, 0x37, 0x9a, 0x45, 0x5c, 0x54, 0x92, 0x83,
+	0xd0, 0x7d, 0x90, 0x9f, 0x7b, 0x5b, 0xa8, 0xfe, 0x51, 0x68, 0xbc, 0x30, 0xa0, 0x32, 0xc6, 0x41,
+	0xbb, 0x90, 0x93, 0x24, 0xed, 0xe4, 0xf4, 0xc2, 0xa0, 0x2b, 0xd3, 0xc9, 0xda, 0x8a, 0xc9, 0x22,
+	0x1e, 0xf6, 0xc5, 0x7e, 0xe4, 0x6d, 0x95, 0x2c, 0xed, 0xae, 0xe2, 0xa0, 0x5d, 0x98, 0x9b, 0xf0,
+	0xf2, 0xd6, 0xdf, 0x38, 0x31, 0x9c, 0x40, 0xde, 0xe1, 0x5a, 0xe3, 0xa7, 0x1c, 0x14, 0xf4, 0x22,
+	0xf4, 0x14, 0x4a, 0x11, 0xf1, 0x02, 0x97, 0x5a, 0x7c, 0x90, 0xb8, 0xf4, 0x5e, 0x1a, 0xf3, 0xf2,
+	0x7a, 0x75, 0x06, 0x89, 0x53, 0xa0, 0x78, 0x42, 0x82, 0x1e, 0x40, 0x5e, 0x8d, 0xb4, 0x5f, 0xeb,
+	0xa9, 0x4e, 0x4f, 0xae, 0xc4, 0x9a, 0x80, 0xfe, 0x0d, 0xf3, 0xdc, 0xf1, 0xa8, 0xd5, 0x67, 0xce,
+	0x33, 0x8b, 0x11, 0xe6, 0x4b, 0xc7, 0xf2, 0xb8, 0x2c, 0xa4, 0x07, 0xcc, 0x79, 0xb6, 0x43, 0x98,
+	0x8f, 0xae, 0x42, 0xc5, 0xee, 0x87, 0xaa, 0xc6, 0x4a, 0xa5, 0x6c, 0xdd, 0x68, 0x66, 0x71, 0x39,
+	0x16, 0x4a, 0xa5, 0xa7, 0x50, 0x0a, 0x68, 0xe8, 0xf8, 0xb6, 0x72, 0x3a, 0xf7, 0x0f, 0x38, 0xad,
+	0x78, 0xd2, 0xe9, 0x45, 0xc8, 0xab, 0x51, 0x2d, 0x5f, 0x37, 0x9a, 0x19, 0xac, 0x47, 0xe8, 0x06,
+	0x20, 0x91, 0x15, 0x94, 0x71, 0x4b, 0xd6, 0x39, 0xdb, 0xe9, 0xd2, 0x48, 0x56, 0x9c, 0x1c, 0x3e,
+	0xa7, 0x67, 0xf6, 0x93, 0x09, 0x74, 0x08, 0xa0, 0x8d, 0x5b, 0x8e, 0x5d, 0x9b, 0xab, 0x1b, 0xcd,
+	0xf2, 0xc6, 0xa6, 0x30, 0xf6, 0xeb, 0xab, 0xcb, 0x77, 0x7b, 0xfe, 0xc4, 0x6e, 0x1d, 0xf1, 0x2c,
+	0xba, 0x2e, 0xed, 0x72, 0x3f, 0x5c, 0x0d, 0x6c, 0xc2, 0xc9, 0xaa, 0xc3, 0x38, 0x0d, 0x19, 0x71,
+	0x57, 0xc5, 0x28, 0xce, 0x12, 0xb3, 0x8d, 0x8b, 0x1a, 0x6b, 0xda, 0xe8, 0x36, 0xd4, 0xec, 0xd0,
+	0x0f, 0x02, 0x6a, 0x5b, 0x49, 0x5d, 0x8c, 0xac, 0xae, 0xdf, 0x67, 0xbc, 0x56, 0xac, 0x1b, 0xcd,
+	0x0a, 0x5e, 0xd4, 0xf3, 0xad, 0x64, 0x7a, 0x53, 0xcc, 0xa2, 0xf7, 0xe1, 0x82, 0x1f, 0x3a, 0x3d,
+	0x87, 0x11, 0xd7, 0x0a, 0xc8, 0xc0, 0xf5, 0x89, 0x6d, 0x1d, 0xf9, 0xa1, 0x47, 0x78, 0x0d, 0x64,
+	0xbe, 0xfd, 0x2b, 0x9e, 0xde, 0x53, 0xb3, 0xf7, 0xe4, 0x24, 0xba, 0x0e, 0xd5, 0xc9, 0x75, 0xb5,
+	0x92, 0xf0, 0x0d, 0x2f, 0x4c, 0x2c, 0x40, 0xff, 0x83, 0x73, 0xc3, 0x07, 0x20, 0x0e, 0x57, 0x59,
+	0x86, 0xab, 0x9a, 0x4c, 0x98, 0x4a, 0xde, 0xf8, 0xc1, 0x80, 0xac, 0x78, 0x64, 0xd0, 0x53, 0x98,
+	0xe3, 0x21, 0xe9, 0xca, 0xa0, 0x19, 0x32, 0x68, 0x2d, 0x1d, 0xb4, 0x3b, 0xe9, 0x83, 0xd6, 0x11,
+	0x24, 0xb3, 0x8d, 0x0b, 0x12, 0x69, 0xda, 0xe8, 0x09, 0x14, 0xa2, 0x80, 0x30, 0x01, 0x9f, 0x95,
+	0xf0, 0x8f, 0x34, 0xfc, 0x76, 0x7a, 0xf8, 0x7e, 0x40, 0x98, 0xd9, 0xc6, 0x79, 0x01, 0x34, 0xed,
+	0xc6, 0xcf, 0x06, 0x14, 0x93, 0xb4, 0x12, 0x79, 0x2c, 0x72, 0x53, 0x67, 0x0a, 0x7d, 0x26, 0x7d,
+	0xc9, 0xe1, 0xb2, 0x10, 0xee, 0x6b, 0x99, 0x50, 0xea, 0x33, 0x87, 0x0f, 0x95, 0x66, 0x95, 0x92,
+	0x10, 0x26, 0x4a, 0x5f, 0xc2, 0x05, 0xd2, 0xeb, 0x85, 0xb4, 0xa7, 0x1b, 0x0f, 0xea, 0x05, 0x7e,
+	0x48, 0x5c, 0x87, 0x0f, 0xe4, 0x05, 0x9a, 0x5f, 0xdf, 0x48, 0x93, 0xf8, 0xad, 0x21, 0xaa, 0x33,
+	0x24, 0xe1, 0x45, 0x32, 0x55, 0x2e, 0x8e, 0x25, 0xaf, 0xee, 0x31, 0xba, 0x1c, 0xbf, 0xb4, 0xa3,
+	0xfe, 0xa8, 0x67, 0xd3, 0x94, 0x1b, 0x5d, 0x84, 0xfc, 0x89, 0xf0, 0x5f, 0x15, 0xc1, 0x0c, 0xd6,
+	0xa3, 0xe9, 0x79, 0x90, 0x99, 0x9e, 0x07, 0xa2, 0xf4, 0xc9, 0x4e, 0x45, 0x19, 0xc9, 0x4a, 0x23,
+	0xb2, 0xef, 0x50, 0x36, 0x6e, 0xc2, 0x79, 0x51, 0x2e, 0x22, 0x4e, 0xbc, 0x20, 0x1a, 0x29, 0x25,
+	0xa2, 0xff, 0xc8, 0x63, 0x34, 0x9c, 0x8b, 0x0b, 0x4a, 0xe3, 0x47, 0x03, 0x0a, 0xba, 0x9d, 0x13,
+	0x5d, 0x8b, 0x47, 0x3d, 0x3f, 0x1c, 0x58, 0x11, 0x27, 0x21, 0x97, 0x3e, 0x64, 0x71, 0x49, 0xc9,
+	0xf6, 0x85, 0x68, 0x44, 0xc5, 0x75, 0x3c, 0x87, 0xcb, 0x13, 0x49, 0x54, 0xb6, 0x85, 0x48, 0x04,
+	0x42, 0xde, 0x6a, 0xff, 0xe8, 0x28, 0xa2, 0x5c, 0x1e, 0x42, 0x16, 0x83, 0x10, 0xed, 0x4a, 0x89,
+	0x70, 0x58, 0x8c, 0x18, 0xf1, 0x46, 0xce, 0x5f, 0xb9, 0x52, 0x8d, 0x27, 0x92, 0xe3, 0x9d, 0x1a,
+	0x9d, 0xdc, 0x19, 0xb7, 0x64, 0x1d, 0x72, 0xb2, 0x5d, 0x11, 0xd7, 0x30, 0x69, 0x45, 0xe3, 0x45,
+	0x86, 0x5c, 0xb4, 0x10, 0xcb, 0xe3, 0x35, 0xdf, 0x1b, 0x30, 0x17, 0x37, 0x9d, 0x22, 0xe3, 0xe2,
+	0xe6, 0x78, 0x2c, 0x2d, 0xb5, 0x50, 0x05, 0xb9, 0x06, 0x05, 0x62, 0xdb, 0x21, 0x8d, 0x22, 0xed,
+	0x7e, 0x3c, 0x44, 0x6d, 0xc8, 0xba, 0x0e, 0x8b, 0x5b, 0xd3, 0xb4, 0x1d, 0x24, 0xc5, 0x72, 0xf5,
+	0x74, 0x97, 0xb3, 0x67, 0xb8, 0xfc, 0x44, 0xd6, 0x05, 0x8a, 0xfe, 0x33, 0xd2, 0x1f, 0x8f, 0x6e,
+	0x3d, 0xe9, 0x74, 0xd5, 0xde, 0x91, 0xde, 0xe1, 0xac, 0x2c, 0xdd, 0xca, 0xde, 0x22, 0xe4, 0xbb,
+	0xbe, 0xdb, 0xf7, 0x98, 0x3c, 0xab, 0x0c, 0xd6, 0xa3, 0xc6, 0x77, 0x06, 0xcc, 0xc5, 0x1d, 0xb3,
+	0x88, 0xcc, 0xf8, 0x81, 0xe9, 0xc8, 0x8c, 0x1d, 0xd6, 0x4d, 0x38, 0x1f, 0x0d, 0x22, 0x4e, 0x3d,
+	0x6b, 0x5c, 0x57, 0xdd, 0x5b, 0xa4, 0xe6, 0x76, 0x26, 0x8e, 0xf7, 0x74, 0x2e, 0x64, 0xce, 0xc8,
+	0x05, 0xf1, 0xee, 0x8b, 0x2c, 0xb4, 0xa4, 0x0b, 0x59, 0xb9, 0xd9, 0xa2, 0x94, 0x88, 0x10, 0x34,
+	0xbe, 0x31, 0x60, 0x61, 0xa2, 0x1f, 0x16, 0xf9, 0x7a, 0x4c, 0x07, 0x93, 0xbb, 0x2e, 0x1d, 0xd3,
+	0x41, 0x42, 0xdd, 0x84, 0x9c, 0xbc, 0x89, 0xba, 0x9b, 0xbc, 0xf6, 0x8e, 0x7e, 0xa7, 0xc5, 0x94,
+	0x85, 0xb8, 0xc7, 0x91, 0x6b, 0x4f, 0x97, 0xaa, 0xcc, 0xe9, 0x52, 0xb5, 0xfc, 0x95, 0x01, 0x8b,
+	0xd3, 0x0b, 0x0c, 0xba, 0x06, 0x57, 0x5b, 0xf7, 0xef, 0xe3, 0xad, 0xfb, 0xad, 0x8e, 0xb9, 0xbb,
+	0x63, 0x75, 0xb6, 0x1e, 0xed, 0xed, 0xe2, 0xd6, 0xb6, 0xd9, 0x79, 0x62, 0x1d, 0xec, 0xec, 0xef,
+	0x6d, 0x6d, 0x9a, 0xf7, 0xcc, 0xad, 0x76, 0x75, 0x06, 0x5d, 0x81, 0x4b, 0x67, 0x29, 0xb6, 0xb7,
+	0xb6, 0x3b, 0xad, 0xaa, 0x81, 0xfe, 0x0b, 0x8d, 0xb3, 0x54, 0x36, 0x0f, 0x1e, 0x1d, 0x6c, 0xb7,
+	0x3a, 0xe6, 0xe3, 0xad, 0xea, 0xec, 0xc6, 0x4b, 0xe3, 0xf9, 0xeb, 0x25, 0xe3, 0xc5, 0xeb, 0x25,
+	0xe3, 0xf7, 0xd7, 0x4b, 0xc6, 0xd7, 0x6f, 0x96, 0x66, 0x5e, 0xbc, 0x59, 0x9a, 0x79, 0xf9, 0x66,
+	0x69, 0x06, 0x6e, 0x38, 0x7e, 0x8a, 0xe4, 0xdd, 0xa8, 0xc4, 0xcd, 0xe3, 0x9e, 0xd0, 0xda, 0x33,
+	0x3e, 0xfd, 0x38, 0xf5, 0x73, 0xa1, 0xfe, 0xcf, 0xf6, 0x28, 0x3b, 0xe3, 0xbf, 0xf7, 0xb7, 0xb3,
+	0xcb, 0xbb, 0x01, 0x65, 0x9d, 0x04, 0x28, 0x4d, 0x25, 0xed, 0xfc, 0xca, 0xe3, 0xb5, 0xf6, 0x50,
+	0xf9, 0x30, 0x2f, 0x69, 0xb7, 0xfe, 0x0c, 0x00, 0x00, 0xff, 0xff, 0x93, 0x0f, 0x25, 0xda, 0xdd,
+	0x0f, 0x00, 0x00,
+}
+
+func (m *ProfilesDictionary) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ProfilesDictionary) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ProfilesDictionary) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.StackTable) > 0 {
+		for iNdEx := len(m.StackTable) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.StackTable[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintProfiles(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x3a
+		}
+	}
+	if len(m.AttributeTable) > 0 {
+		for iNdEx := len(m.AttributeTable) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.AttributeTable[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintProfiles(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x32
+		}
+	}
+	if len(m.StringTable) > 0 {
+		for iNdEx := len(m.StringTable) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.StringTable[iNdEx])
+			copy(dAtA[i:], m.StringTable[iNdEx])
+			i = encodeVarintProfiles(dAtA, i, uint64(len(m.StringTable[iNdEx])))
+			i--
+			dAtA[i] = 0x2a
+		}
+	}
+	if len(m.LinkTable) > 0 {
+		for iNdEx := len(m.LinkTable) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.LinkTable[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintProfiles(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x22
+		}
+	}
+	if len(m.FunctionTable) > 0 {
+		for iNdEx := len(m.FunctionTable) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.FunctionTable[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintProfiles(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if len(m.LocationTable) > 0 {
+		for iNdEx := len(m.LocationTable) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.LocationTable[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintProfiles(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.MappingTable) > 0 {
+		for iNdEx := len(m.MappingTable) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.MappingTable[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintProfiles(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *ProfilesData) Marshal() (dAtA []byte, err error) {
@@ -1396,6 +1506,16 @@ func (m *ProfilesData) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	{
+		size, err := m.Dictionary.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintProfiles(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x12
 	if len(m.ResourceProfiles) > 0 {
 		for iNdEx := len(m.ResourceProfiles) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -1542,50 +1662,42 @@ func (m *Profile) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	var l int
 	_ = l
 	if len(m.AttributeIndices) > 0 {
-		dAtA4 := make([]byte, len(m.AttributeIndices)*10)
-		var j3 int
+		dAtA5 := make([]byte, len(m.AttributeIndices)*10)
+		var j4 int
 		for _, num1 := range m.AttributeIndices {
 			num := uint64(num1)
 			for num >= 1<<7 {
-				dAtA4[j3] = uint8(uint64(num)&0x7f | 0x80)
+				dAtA5[j4] = uint8(uint64(num)&0x7f | 0x80)
 				num >>= 7
-				j3++
+				j4++
 			}
-			dAtA4[j3] = uint8(num)
-			j3++
+			dAtA5[j4] = uint8(num)
+			j4++
 		}
-		i -= j3
-		copy(dAtA[i:], dAtA4[:j3])
-		i = encodeVarintProfiles(dAtA, i, uint64(j3))
+		i -= j4
+		copy(dAtA[i:], dAtA5[:j4])
+		i = encodeVarintProfiles(dAtA, i, uint64(j4))
 		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xb2
+		dAtA[i] = 0x62
 	}
 	if len(m.OriginalPayload) > 0 {
 		i -= len(m.OriginalPayload)
 		copy(dAtA[i:], m.OriginalPayload)
 		i = encodeVarintProfiles(dAtA, i, uint64(len(m.OriginalPayload)))
 		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xaa
+		dAtA[i] = 0x5a
 	}
 	if len(m.OriginalPayloadFormat) > 0 {
 		i -= len(m.OriginalPayloadFormat)
 		copy(dAtA[i:], m.OriginalPayloadFormat)
 		i = encodeVarintProfiles(dAtA, i, uint64(len(m.OriginalPayloadFormat)))
 		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0xa2
+		dAtA[i] = 0x52
 	}
 	if m.DroppedAttributesCount != 0 {
 		i = encodeVarintProfiles(dAtA, i, uint64(m.DroppedAttributesCount))
 		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0x98
+		dAtA[i] = 0x48
 	}
 	{
 		size := m.ProfileId.Size()
@@ -1596,39 +1708,30 @@ func (m *Profile) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i = encodeVarintProfiles(dAtA, i, uint64(size))
 	}
 	i--
-	dAtA[i] = 0x1
-	i--
-	dAtA[i] = 0x8a
-	if m.DefaultSampleTypeStrindex != 0 {
-		i = encodeVarintProfiles(dAtA, i, uint64(m.DefaultSampleTypeStrindex))
-		i--
-		dAtA[i] = 0x1
-		i--
-		dAtA[i] = 0x80
-	}
+	dAtA[i] = 0x42
 	if len(m.CommentStrindices) > 0 {
-		dAtA6 := make([]byte, len(m.CommentStrindices)*10)
-		var j5 int
+		dAtA7 := make([]byte, len(m.CommentStrindices)*10)
+		var j6 int
 		for _, num1 := range m.CommentStrindices {
 			num := uint64(num1)
 			for num >= 1<<7 {
-				dAtA6[j5] = uint8(uint64(num)&0x7f | 0x80)
+				dAtA7[j6] = uint8(uint64(num)&0x7f | 0x80)
 				num >>= 7
-				j5++
+				j6++
 			}
-			dAtA6[j5] = uint8(num)
-			j5++
+			dAtA7[j6] = uint8(num)
+			j6++
 		}
-		i -= j5
-		copy(dAtA[i:], dAtA6[:j5])
-		i = encodeVarintProfiles(dAtA, i, uint64(j5))
+		i -= j6
+		copy(dAtA[i:], dAtA7[:j6])
+		i = encodeVarintProfiles(dAtA, i, uint64(j6))
 		i--
-		dAtA[i] = 0x7a
+		dAtA[i] = 0x3a
 	}
 	if m.Period != 0 {
 		i = encodeVarintProfiles(dAtA, i, uint64(m.Period))
 		i--
-		dAtA[i] = 0x70
+		dAtA[i] = 0x30
 	}
 	{
 		size, err := m.PeriodType.MarshalToSizedBuffer(dAtA[:i])
@@ -1639,128 +1742,17 @@ func (m *Profile) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i = encodeVarintProfiles(dAtA, i, uint64(size))
 	}
 	i--
-	dAtA[i] = 0x6a
-	if m.DurationNanos != 0 {
-		i = encodeVarintProfiles(dAtA, i, uint64(m.DurationNanos))
+	dAtA[i] = 0x2a
+	if m.DurationNano != 0 {
+		i = encodeVarintProfiles(dAtA, i, uint64(m.DurationNano))
 		i--
-		dAtA[i] = 0x60
+		dAtA[i] = 0x20
 	}
-	if m.TimeNanos != 0 {
-		i = encodeVarintProfiles(dAtA, i, uint64(m.TimeNanos))
+	if m.TimeUnixNano != 0 {
+		i -= 8
+		encoding_binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TimeUnixNano))
 		i--
-		dAtA[i] = 0x58
-	}
-	if len(m.StringTable) > 0 {
-		for iNdEx := len(m.StringTable) - 1; iNdEx >= 0; iNdEx-- {
-			i -= len(m.StringTable[iNdEx])
-			copy(dAtA[i:], m.StringTable[iNdEx])
-			i = encodeVarintProfiles(dAtA, i, uint64(len(m.StringTable[iNdEx])))
-			i--
-			dAtA[i] = 0x52
-		}
-	}
-	if len(m.LinkTable) > 0 {
-		for iNdEx := len(m.LinkTable) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.LinkTable[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintProfiles(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0x4a
-		}
-	}
-	if len(m.AttributeUnits) > 0 {
-		for iNdEx := len(m.AttributeUnits) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.AttributeUnits[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintProfiles(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0x42
-		}
-	}
-	if len(m.AttributeTable) > 0 {
-		for iNdEx := len(m.AttributeTable) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.AttributeTable[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintProfiles(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0x3a
-		}
-	}
-	if len(m.FunctionTable) > 0 {
-		for iNdEx := len(m.FunctionTable) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.FunctionTable[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintProfiles(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0x32
-		}
-	}
-	if len(m.LocationIndices) > 0 {
-		dAtA9 := make([]byte, len(m.LocationIndices)*10)
-		var j8 int
-		for _, num1 := range m.LocationIndices {
-			num := uint64(num1)
-			for num >= 1<<7 {
-				dAtA9[j8] = uint8(uint64(num)&0x7f | 0x80)
-				num >>= 7
-				j8++
-			}
-			dAtA9[j8] = uint8(num)
-			j8++
-		}
-		i -= j8
-		copy(dAtA[i:], dAtA9[:j8])
-		i = encodeVarintProfiles(dAtA, i, uint64(j8))
-		i--
-		dAtA[i] = 0x2a
-	}
-	if len(m.LocationTable) > 0 {
-		for iNdEx := len(m.LocationTable) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.LocationTable[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintProfiles(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0x22
-		}
-	}
-	if len(m.MappingTable) > 0 {
-		for iNdEx := len(m.MappingTable) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.MappingTable[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintProfiles(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0x1a
-		}
+		dAtA[i] = 0x19
 	}
 	if len(m.Sample) > 0 {
 		for iNdEx := len(m.Sample) - 1; iNdEx >= 0; iNdEx-- {
@@ -1776,53 +1768,16 @@ func (m *Profile) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			dAtA[i] = 0x12
 		}
 	}
-	if len(m.SampleType) > 0 {
-		for iNdEx := len(m.SampleType) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.SampleType[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintProfiles(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0xa
+	{
+		size, err := m.SampleType.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
 		}
+		i -= size
+		i = encodeVarintProfiles(dAtA, i, uint64(size))
 	}
-	return len(dAtA) - i, nil
-}
-
-func (m *AttributeUnit) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *AttributeUnit) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *AttributeUnit) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.UnitStrindex != 0 {
-		i = encodeVarintProfiles(dAtA, i, uint64(m.UnitStrindex))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.AttributeKeyStrindex != 0 {
-		i = encodeVarintProfiles(dAtA, i, uint64(m.AttributeKeyStrindex))
-		i--
-		dAtA[i] = 0x8
-	}
+	i--
+	dAtA[i] = 0xa
 	return len(dAtA) - i, nil
 }
 
@@ -1928,9 +1883,24 @@ func (m *Sample) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	var l int
 	_ = l
 	if len(m.TimestampsUnixNano) > 0 {
-		dAtA11 := make([]byte, len(m.TimestampsUnixNano)*10)
+		for iNdEx := len(m.TimestampsUnixNano) - 1; iNdEx >= 0; iNdEx-- {
+			i -= 8
+			encoding_binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TimestampsUnixNano[iNdEx]))
+		}
+		i = encodeVarintProfiles(dAtA, i, uint64(len(m.TimestampsUnixNano)*8))
+		i--
+		dAtA[i] = 0x2a
+	}
+	if m.LinkIndex != 0 {
+		i = encodeVarintProfiles(dAtA, i, uint64(m.LinkIndex))
+		i--
+		dAtA[i] = 0x20
+	}
+	if len(m.AttributeIndices) > 0 {
+		dAtA11 := make([]byte, len(m.AttributeIndices)*10)
 		var j10 int
-		for _, num := range m.TimestampsUnixNano {
+		for _, num1 := range m.AttributeIndices {
+			num := uint64(num1)
 			for num >= 1<<7 {
 				dAtA11[j10] = uint8(uint64(num)&0x7f | 0x80)
 				num >>= 7
@@ -1943,21 +1913,12 @@ func (m *Sample) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		copy(dAtA[i:], dAtA11[:j10])
 		i = encodeVarintProfiles(dAtA, i, uint64(j10))
 		i--
-		dAtA[i] = 0x32
+		dAtA[i] = 0x1a
 	}
-	if m.LinkIndex_ != nil {
-		{
-			size := m.LinkIndex_.Size()
-			i -= size
-			if _, err := m.LinkIndex_.MarshalTo(dAtA[i:]); err != nil {
-				return 0, err
-			}
-		}
-	}
-	if len(m.AttributeIndices) > 0 {
-		dAtA13 := make([]byte, len(m.AttributeIndices)*10)
+	if len(m.Values) > 0 {
+		dAtA13 := make([]byte, len(m.Values)*10)
 		var j12 int
-		for _, num1 := range m.AttributeIndices {
+		for _, num1 := range m.Values {
 			num := uint64(num1)
 			for num >= 1<<7 {
 				dAtA13[j12] = uint8(uint64(num)&0x7f | 0x80)
@@ -1971,52 +1932,16 @@ func (m *Sample) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		copy(dAtA[i:], dAtA13[:j12])
 		i = encodeVarintProfiles(dAtA, i, uint64(j12))
 		i--
-		dAtA[i] = 0x22
+		dAtA[i] = 0x12
 	}
-	if len(m.Value) > 0 {
-		dAtA15 := make([]byte, len(m.Value)*10)
-		var j14 int
-		for _, num1 := range m.Value {
-			num := uint64(num1)
-			for num >= 1<<7 {
-				dAtA15[j14] = uint8(uint64(num)&0x7f | 0x80)
-				num >>= 7
-				j14++
-			}
-			dAtA15[j14] = uint8(num)
-			j14++
-		}
-		i -= j14
-		copy(dAtA[i:], dAtA15[:j14])
-		i = encodeVarintProfiles(dAtA, i, uint64(j14))
-		i--
-		dAtA[i] = 0x1a
-	}
-	if m.LocationsLength != 0 {
-		i = encodeVarintProfiles(dAtA, i, uint64(m.LocationsLength))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.LocationsStartIndex != 0 {
-		i = encodeVarintProfiles(dAtA, i, uint64(m.LocationsStartIndex))
+	if m.StackIndex != 0 {
+		i = encodeVarintProfiles(dAtA, i, uint64(m.StackIndex))
 		i--
 		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
 
-func (m *Sample_LinkIndex) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *Sample_LinkIndex) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i = encodeVarintProfiles(dAtA, i, uint64(m.LinkIndex))
-	i--
-	dAtA[i] = 0x28
-	return len(dAtA) - i, nil
-}
 func (m *Mapping) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -2037,62 +1962,22 @@ func (m *Mapping) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.HasInlineFrames {
-		i--
-		if m.HasInlineFrames {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x48
-	}
-	if m.HasLineNumbers {
-		i--
-		if m.HasLineNumbers {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x40
-	}
-	if m.HasFilenames {
-		i--
-		if m.HasFilenames {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x38
-	}
-	if m.HasFunctions {
-		i--
-		if m.HasFunctions {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x30
-	}
 	if len(m.AttributeIndices) > 0 {
-		dAtA17 := make([]byte, len(m.AttributeIndices)*10)
-		var j16 int
+		dAtA15 := make([]byte, len(m.AttributeIndices)*10)
+		var j14 int
 		for _, num1 := range m.AttributeIndices {
 			num := uint64(num1)
 			for num >= 1<<7 {
-				dAtA17[j16] = uint8(uint64(num)&0x7f | 0x80)
+				dAtA15[j14] = uint8(uint64(num)&0x7f | 0x80)
 				num >>= 7
-				j16++
+				j14++
 			}
-			dAtA17[j16] = uint8(num)
-			j16++
+			dAtA15[j14] = uint8(num)
+			j14++
 		}
-		i -= j16
-		copy(dAtA[i:], dAtA17[:j16])
-		i = encodeVarintProfiles(dAtA, i, uint64(j16))
+		i -= j14
+		copy(dAtA[i:], dAtA15[:j14])
+		i = encodeVarintProfiles(dAtA, i, uint64(j14))
 		i--
 		dAtA[i] = 0x2a
 	}
@@ -2115,6 +2000,48 @@ func (m *Mapping) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i = encodeVarintProfiles(dAtA, i, uint64(m.MemoryStart))
 		i--
 		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *Stack) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *Stack) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Stack) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.LocationIndices) > 0 {
+		dAtA17 := make([]byte, len(m.LocationIndices)*10)
+		var j16 int
+		for _, num1 := range m.LocationIndices {
+			num := uint64(num1)
+			for num >= 1<<7 {
+				dAtA17[j16] = uint8(uint64(num)&0x7f | 0x80)
+				num >>= 7
+				j16++
+			}
+			dAtA17[j16] = uint8(num)
+			j16++
+		}
+		i -= j16
+		copy(dAtA[i:], dAtA17[:j16])
+		i = encodeVarintProfiles(dAtA, i, uint64(j16))
+		i--
+		dAtA[i] = 0xa
 	}
 	return len(dAtA) - i, nil
 }
@@ -2156,17 +2083,7 @@ func (m *Location) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		copy(dAtA[i:], dAtA19[:j18])
 		i = encodeVarintProfiles(dAtA, i, uint64(j18))
 		i--
-		dAtA[i] = 0x2a
-	}
-	if m.IsFolded {
-		i--
-		if m.IsFolded {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x20
+		dAtA[i] = 0x22
 	}
 	if len(m.Line) > 0 {
 		for iNdEx := len(m.Line) - 1; iNdEx >= 0; iNdEx-- {
@@ -2187,30 +2104,14 @@ func (m *Location) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x10
 	}
-	if m.MappingIndex_ != nil {
-		{
-			size := m.MappingIndex_.Size()
-			i -= size
-			if _, err := m.MappingIndex_.MarshalTo(dAtA[i:]); err != nil {
-				return 0, err
-			}
-		}
+	if m.MappingIndex != 0 {
+		i = encodeVarintProfiles(dAtA, i, uint64(m.MappingIndex))
+		i--
+		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
 
-func (m *Location_MappingIndex) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *Location_MappingIndex) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i = encodeVarintProfiles(dAtA, i, uint64(m.MappingIndex))
-	i--
-	dAtA[i] = 0x8
-	return len(dAtA) - i, nil
-}
 func (m *Line) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -2292,6 +2193,49 @@ func (m *Function) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *KeyValueAndUnit) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *KeyValueAndUnit) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *KeyValueAndUnit) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.UnitStrindex != 0 {
+		i = encodeVarintProfiles(dAtA, i, uint64(m.UnitStrindex))
+		i--
+		dAtA[i] = 0x18
+	}
+	{
+		size, err := m.Value.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintProfiles(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x12
+	if m.KeyStrindex != 0 {
+		i = encodeVarintProfiles(dAtA, i, uint64(m.KeyStrindex))
+		i--
+		dAtA[i] = 0x8
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintProfiles(dAtA []byte, offset int, v uint64) int {
 	offset -= sovProfiles(v)
 	base := offset
@@ -2303,6 +2247,57 @@ func encodeVarintProfiles(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	return base
 }
+func (m *ProfilesDictionary) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.MappingTable) > 0 {
+		for _, e := range m.MappingTable {
+			l = e.Size()
+			n += 1 + l + sovProfiles(uint64(l))
+		}
+	}
+	if len(m.LocationTable) > 0 {
+		for _, e := range m.LocationTable {
+			l = e.Size()
+			n += 1 + l + sovProfiles(uint64(l))
+		}
+	}
+	if len(m.FunctionTable) > 0 {
+		for _, e := range m.FunctionTable {
+			l = e.Size()
+			n += 1 + l + sovProfiles(uint64(l))
+		}
+	}
+	if len(m.LinkTable) > 0 {
+		for _, e := range m.LinkTable {
+			l = e.Size()
+			n += 1 + l + sovProfiles(uint64(l))
+		}
+	}
+	if len(m.StringTable) > 0 {
+		for _, s := range m.StringTable {
+			l = len(s)
+			n += 1 + l + sovProfiles(uint64(l))
+		}
+	}
+	if len(m.AttributeTable) > 0 {
+		for _, e := range m.AttributeTable {
+			l = e.Size()
+			n += 1 + l + sovProfiles(uint64(l))
+		}
+	}
+	if len(m.StackTable) > 0 {
+		for _, e := range m.StackTable {
+			l = e.Size()
+			n += 1 + l + sovProfiles(uint64(l))
+		}
+	}
+	return n
+}
+
 func (m *ProfilesData) Size() (n int) {
 	if m == nil {
 		return 0
@@ -2315,6 +2310,8 @@ func (m *ProfilesData) Size() (n int) {
 			n += 1 + l + sovProfiles(uint64(l))
 		}
 	}
+	l = m.Dictionary.Size()
+	n += 1 + l + sovProfiles(uint64(l))
 	return n
 }
 
@@ -2366,72 +2363,19 @@ func (m *Profile) Size() (n int) {
 	}
 	var l int
 	_ = l
-	if len(m.SampleType) > 0 {
-		for _, e := range m.SampleType {
-			l = e.Size()
-			n += 1 + l + sovProfiles(uint64(l))
-		}
-	}
+	l = m.SampleType.Size()
+	n += 1 + l + sovProfiles(uint64(l))
 	if len(m.Sample) > 0 {
 		for _, e := range m.Sample {
 			l = e.Size()
 			n += 1 + l + sovProfiles(uint64(l))
 		}
 	}
-	if len(m.MappingTable) > 0 {
-		for _, e := range m.MappingTable {
-			l = e.Size()
-			n += 1 + l + sovProfiles(uint64(l))
-		}
+	if m.TimeUnixNano != 0 {
+		n += 9
 	}
-	if len(m.LocationTable) > 0 {
-		for _, e := range m.LocationTable {
-			l = e.Size()
-			n += 1 + l + sovProfiles(uint64(l))
-		}
-	}
-	if len(m.LocationIndices) > 0 {
-		l = 0
-		for _, e := range m.LocationIndices {
-			l += sovProfiles(uint64(e))
-		}
-		n += 1 + sovProfiles(uint64(l)) + l
-	}
-	if len(m.FunctionTable) > 0 {
-		for _, e := range m.FunctionTable {
-			l = e.Size()
-			n += 1 + l + sovProfiles(uint64(l))
-		}
-	}
-	if len(m.AttributeTable) > 0 {
-		for _, e := range m.AttributeTable {
-			l = e.Size()
-			n += 1 + l + sovProfiles(uint64(l))
-		}
-	}
-	if len(m.AttributeUnits) > 0 {
-		for _, e := range m.AttributeUnits {
-			l = e.Size()
-			n += 1 + l + sovProfiles(uint64(l))
-		}
-	}
-	if len(m.LinkTable) > 0 {
-		for _, e := range m.LinkTable {
-			l = e.Size()
-			n += 1 + l + sovProfiles(uint64(l))
-		}
-	}
-	if len(m.StringTable) > 0 {
-		for _, s := range m.StringTable {
-			l = len(s)
-			n += 1 + l + sovProfiles(uint64(l))
-		}
-	}
-	if m.TimeNanos != 0 {
-		n += 1 + sovProfiles(uint64(m.TimeNanos))
-	}
-	if m.DurationNanos != 0 {
-		n += 1 + sovProfiles(uint64(m.DurationNanos))
+	if m.DurationNano != 0 {
+		n += 1 + sovProfiles(uint64(m.DurationNano))
 	}
 	l = m.PeriodType.Size()
 	n += 1 + l + sovProfiles(uint64(l))
@@ -2445,43 +2389,25 @@ func (m *Profile) Size() (n int) {
 		}
 		n += 1 + sovProfiles(uint64(l)) + l
 	}
-	if m.DefaultSampleTypeStrindex != 0 {
-		n += 2 + sovProfiles(uint64(m.DefaultSampleTypeStrindex))
-	}
 	l = m.ProfileId.Size()
-	n += 2 + l + sovProfiles(uint64(l))
+	n += 1 + l + sovProfiles(uint64(l))
 	if m.DroppedAttributesCount != 0 {
-		n += 2 + sovProfiles(uint64(m.DroppedAttributesCount))
+		n += 1 + sovProfiles(uint64(m.DroppedAttributesCount))
 	}
 	l = len(m.OriginalPayloadFormat)
 	if l > 0 {
-		n += 2 + l + sovProfiles(uint64(l))
+		n += 1 + l + sovProfiles(uint64(l))
 	}
 	l = len(m.OriginalPayload)
 	if l > 0 {
-		n += 2 + l + sovProfiles(uint64(l))
+		n += 1 + l + sovProfiles(uint64(l))
 	}
 	if len(m.AttributeIndices) > 0 {
 		l = 0
 		for _, e := range m.AttributeIndices {
 			l += sovProfiles(uint64(e))
 		}
-		n += 2 + sovProfiles(uint64(l)) + l
-	}
-	return n
-}
-
-func (m *AttributeUnit) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.AttributeKeyStrindex != 0 {
-		n += 1 + sovProfiles(uint64(m.AttributeKeyStrindex))
-	}
-	if m.UnitStrindex != 0 {
-		n += 1 + sovProfiles(uint64(m.UnitStrindex))
+		n += 1 + sovProfiles(uint64(l)) + l
 	}
 	return n
 }
@@ -2523,15 +2449,12 @@ func (m *Sample) Size() (n int) {
 	}
 	var l int
 	_ = l
-	if m.LocationsStartIndex != 0 {
-		n += 1 + sovProfiles(uint64(m.LocationsStartIndex))
+	if m.StackIndex != 0 {
+		n += 1 + sovProfiles(uint64(m.StackIndex))
 	}
-	if m.LocationsLength != 0 {
-		n += 1 + sovProfiles(uint64(m.LocationsLength))
-	}
-	if len(m.Value) > 0 {
+	if len(m.Values) > 0 {
 		l = 0
-		for _, e := range m.Value {
+		for _, e := range m.Values {
 			l += sovProfiles(uint64(e))
 		}
 		n += 1 + sovProfiles(uint64(l)) + l
@@ -2543,28 +2466,15 @@ func (m *Sample) Size() (n int) {
 		}
 		n += 1 + sovProfiles(uint64(l)) + l
 	}
-	if m.LinkIndex_ != nil {
-		n += m.LinkIndex_.Size()
+	if m.LinkIndex != 0 {
+		n += 1 + sovProfiles(uint64(m.LinkIndex))
 	}
 	if len(m.TimestampsUnixNano) > 0 {
-		l = 0
-		for _, e := range m.TimestampsUnixNano {
-			l += sovProfiles(uint64(e))
-		}
-		n += 1 + sovProfiles(uint64(l)) + l
+		n += 1 + sovProfiles(uint64(len(m.TimestampsUnixNano)*8)) + len(m.TimestampsUnixNano)*8
 	}
 	return n
 }
 
-func (m *Sample_LinkIndex) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 1 + sovProfiles(uint64(m.LinkIndex))
-	return n
-}
 func (m *Mapping) Size() (n int) {
 	if m == nil {
 		return 0
@@ -2590,17 +2500,21 @@ func (m *Mapping) Size() (n int) {
 		}
 		n += 1 + sovProfiles(uint64(l)) + l
 	}
-	if m.HasFunctions {
-		n += 2
+	return n
+}
+
+func (m *Stack) Size() (n int) {
+	if m == nil {
+		return 0
 	}
-	if m.HasFilenames {
-		n += 2
-	}
-	if m.HasLineNumbers {
-		n += 2
-	}
-	if m.HasInlineFrames {
-		n += 2
+	var l int
+	_ = l
+	if len(m.LocationIndices) > 0 {
+		l = 0
+		for _, e := range m.LocationIndices {
+			l += sovProfiles(uint64(e))
+		}
+		n += 1 + sovProfiles(uint64(l)) + l
 	}
 	return n
 }
@@ -2611,8 +2525,8 @@ func (m *Location) Size() (n int) {
 	}
 	var l int
 	_ = l
-	if m.MappingIndex_ != nil {
-		n += m.MappingIndex_.Size()
+	if m.MappingIndex != 0 {
+		n += 1 + sovProfiles(uint64(m.MappingIndex))
 	}
 	if m.Address != 0 {
 		n += 1 + sovProfiles(uint64(m.Address))
@@ -2622,9 +2536,6 @@ func (m *Location) Size() (n int) {
 			l = e.Size()
 			n += 1 + l + sovProfiles(uint64(l))
 		}
-	}
-	if m.IsFolded {
-		n += 2
 	}
 	if len(m.AttributeIndices) > 0 {
 		l = 0
@@ -2636,15 +2547,6 @@ func (m *Location) Size() (n int) {
 	return n
 }
 
-func (m *Location_MappingIndex) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 1 + sovProfiles(uint64(m.MappingIndex))
-	return n
-}
 func (m *Line) Size() (n int) {
 	if m == nil {
 		return 0
@@ -2684,11 +2586,314 @@ func (m *Function) Size() (n int) {
 	return n
 }
 
+func (m *KeyValueAndUnit) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.KeyStrindex != 0 {
+		n += 1 + sovProfiles(uint64(m.KeyStrindex))
+	}
+	l = m.Value.Size()
+	n += 1 + l + sovProfiles(uint64(l))
+	if m.UnitStrindex != 0 {
+		n += 1 + sovProfiles(uint64(m.UnitStrindex))
+	}
+	return n
+}
+
 func sovProfiles(x uint64) (n int) {
 	return (math_bits.Len64(x|1) + 6) / 7
 }
 func sozProfiles(x uint64) (n int) {
 	return sovProfiles(uint64((x << 1) ^ uint64((int64(x) >> 63))))
+}
+func (m *ProfilesDictionary) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowProfiles
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ProfilesDictionary: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ProfilesDictionary: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MappingTable", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowProfiles
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.MappingTable = append(m.MappingTable, &Mapping{})
+			if err := m.MappingTable[len(m.MappingTable)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LocationTable", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowProfiles
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.LocationTable = append(m.LocationTable, &Location{})
+			if err := m.LocationTable[len(m.LocationTable)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FunctionTable", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowProfiles
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.FunctionTable = append(m.FunctionTable, &Function{})
+			if err := m.FunctionTable[len(m.FunctionTable)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field LinkTable", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowProfiles
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.LinkTable = append(m.LinkTable, &Link{})
+			if err := m.LinkTable[len(m.LinkTable)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StringTable", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowProfiles
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.StringTable = append(m.StringTable, string(dAtA[iNdEx:postIndex]))
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field AttributeTable", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowProfiles
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.AttributeTable = append(m.AttributeTable, &KeyValueAndUnit{})
+			if err := m.AttributeTable[len(m.AttributeTable)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StackTable", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowProfiles
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.StackTable = append(m.StackTable, &Stack{})
+			if err := m.StackTable[len(m.StackTable)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipProfiles(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
 }
 func (m *ProfilesData) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
@@ -2750,6 +2955,39 @@ func (m *ProfilesData) Unmarshal(dAtA []byte) error {
 			}
 			m.ResourceProfiles = append(m.ResourceProfiles, &ResourceProfiles{})
 			if err := m.ResourceProfiles[len(m.ResourceProfiles)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Dictionary", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowProfiles
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.Dictionary.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -3130,8 +3368,7 @@ func (m *Profile) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.SampleType = append(m.SampleType, &ValueType{})
-			if err := m.SampleType[len(m.SampleType)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.SampleType.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -3170,44 +3407,20 @@ func (m *Profile) Unmarshal(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MappingTable", wireType)
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TimeUnixNano", wireType)
 			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowProfiles
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthProfiles
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthProfiles
-			}
-			if postIndex > l {
+			m.TimeUnixNano = 0
+			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.MappingTable = append(m.MappingTable, &Mapping{})
-			if err := m.MappingTable[len(m.MappingTable)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
+			m.TimeUnixNano = uint64(encoding_binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LocationTable", wireType)
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DurationNano", wireType)
 			}
-			var msglen int
+			m.DurationNano = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowProfiles
@@ -3217,309 +3430,12 @@ func (m *Profile) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= int(b&0x7F) << shift
+				m.DurationNano |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if msglen < 0 {
-				return ErrInvalidLengthProfiles
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthProfiles
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.LocationTable = append(m.LocationTable, &Location{})
-			if err := m.LocationTable[len(m.LocationTable)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
 		case 5:
-			if wireType == 0 {
-				var v int32
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return ErrIntOverflowProfiles
-					}
-					if iNdEx >= l {
-						return io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					v |= int32(b&0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				m.LocationIndices = append(m.LocationIndices, v)
-			} else if wireType == 2 {
-				var packedLen int
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return ErrIntOverflowProfiles
-					}
-					if iNdEx >= l {
-						return io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					packedLen |= int(b&0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				if packedLen < 0 {
-					return ErrInvalidLengthProfiles
-				}
-				postIndex := iNdEx + packedLen
-				if postIndex < 0 {
-					return ErrInvalidLengthProfiles
-				}
-				if postIndex > l {
-					return io.ErrUnexpectedEOF
-				}
-				var elementCount int
-				var count int
-				for _, integer := range dAtA[iNdEx:postIndex] {
-					if integer < 128 {
-						count++
-					}
-				}
-				elementCount = count
-				if elementCount != 0 && len(m.LocationIndices) == 0 {
-					m.LocationIndices = make([]int32, 0, elementCount)
-				}
-				for iNdEx < postIndex {
-					var v int32
-					for shift := uint(0); ; shift += 7 {
-						if shift >= 64 {
-							return ErrIntOverflowProfiles
-						}
-						if iNdEx >= l {
-							return io.ErrUnexpectedEOF
-						}
-						b := dAtA[iNdEx]
-						iNdEx++
-						v |= int32(b&0x7F) << shift
-						if b < 0x80 {
-							break
-						}
-					}
-					m.LocationIndices = append(m.LocationIndices, v)
-				}
-			} else {
-				return fmt.Errorf("proto: wrong wireType = %d for field LocationIndices", wireType)
-			}
-		case 6:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field FunctionTable", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowProfiles
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthProfiles
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthProfiles
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.FunctionTable = append(m.FunctionTable, &Function{})
-			if err := m.FunctionTable[len(m.FunctionTable)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 7:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AttributeTable", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowProfiles
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthProfiles
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthProfiles
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.AttributeTable = append(m.AttributeTable, v11.KeyValue{})
-			if err := m.AttributeTable[len(m.AttributeTable)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 8:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AttributeUnits", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowProfiles
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthProfiles
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthProfiles
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.AttributeUnits = append(m.AttributeUnits, &AttributeUnit{})
-			if err := m.AttributeUnits[len(m.AttributeUnits)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 9:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LinkTable", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowProfiles
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthProfiles
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthProfiles
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.LinkTable = append(m.LinkTable, &Link{})
-			if err := m.LinkTable[len(m.LinkTable)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 10:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field StringTable", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowProfiles
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthProfiles
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthProfiles
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.StringTable = append(m.StringTable, string(dAtA[iNdEx:postIndex]))
-			iNdEx = postIndex
-		case 11:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TimeNanos", wireType)
-			}
-			m.TimeNanos = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowProfiles
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.TimeNanos |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 12:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DurationNanos", wireType)
-			}
-			m.DurationNanos = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowProfiles
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.DurationNanos |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 13:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field PeriodType", wireType)
 			}
@@ -3552,7 +3468,7 @@ func (m *Profile) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 14:
+		case 6:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Period", wireType)
 			}
@@ -3571,7 +3487,7 @@ func (m *Profile) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		case 15:
+		case 7:
 			if wireType == 0 {
 				var v int32
 				for shift := uint(0); ; shift += 7 {
@@ -3647,26 +3563,7 @@ func (m *Profile) Unmarshal(dAtA []byte) error {
 			} else {
 				return fmt.Errorf("proto: wrong wireType = %d for field CommentStrindices", wireType)
 			}
-		case 16:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DefaultSampleTypeStrindex", wireType)
-			}
-			m.DefaultSampleTypeStrindex = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowProfiles
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.DefaultSampleTypeStrindex |= int32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 17:
+		case 8:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field ProfileId", wireType)
 			}
@@ -3699,7 +3596,7 @@ func (m *Profile) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 19:
+		case 9:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field DroppedAttributesCount", wireType)
 			}
@@ -3718,7 +3615,7 @@ func (m *Profile) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		case 20:
+		case 10:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field OriginalPayloadFormat", wireType)
 			}
@@ -3750,7 +3647,7 @@ func (m *Profile) Unmarshal(dAtA []byte) error {
 			}
 			m.OriginalPayloadFormat = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 21:
+		case 11:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field OriginalPayload", wireType)
 			}
@@ -3784,7 +3681,7 @@ func (m *Profile) Unmarshal(dAtA []byte) error {
 				m.OriginalPayload = []byte{}
 			}
 			iNdEx = postIndex
-		case 22:
+		case 12:
 			if wireType == 0 {
 				var v int32
 				for shift := uint(0); ; shift += 7 {
@@ -3859,94 +3756,6 @@ func (m *Profile) Unmarshal(dAtA []byte) error {
 				}
 			} else {
 				return fmt.Errorf("proto: wrong wireType = %d for field AttributeIndices", wireType)
-			}
-		default:
-			iNdEx = preIndex
-			skippy, err := skipProfiles(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return ErrInvalidLengthProfiles
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *AttributeUnit) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowProfiles
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: AttributeUnit: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AttributeUnit: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AttributeKeyStrindex", wireType)
-			}
-			m.AttributeKeyStrindex = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowProfiles
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.AttributeKeyStrindex |= int32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field UnitStrindex", wireType)
-			}
-			m.UnitStrindex = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowProfiles
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.UnitStrindex |= int32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
 			}
 		default:
 			iNdEx = preIndex
@@ -4223,9 +4032,9 @@ func (m *Sample) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LocationsStartIndex", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field StackIndex", wireType)
 			}
-			m.LocationsStartIndex = 0
+			m.StackIndex = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowProfiles
@@ -4235,31 +4044,12 @@ func (m *Sample) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.LocationsStartIndex |= int32(b&0x7F) << shift
+				m.StackIndex |= int32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LocationsLength", wireType)
-			}
-			m.LocationsLength = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowProfiles
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.LocationsLength |= int32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
 			if wireType == 0 {
 				var v int64
 				for shift := uint(0); ; shift += 7 {
@@ -4276,7 +4066,7 @@ func (m *Sample) Unmarshal(dAtA []byte) error {
 						break
 					}
 				}
-				m.Value = append(m.Value, v)
+				m.Values = append(m.Values, v)
 			} else if wireType == 2 {
 				var packedLen int
 				for shift := uint(0); ; shift += 7 {
@@ -4311,8 +4101,8 @@ func (m *Sample) Unmarshal(dAtA []byte) error {
 					}
 				}
 				elementCount = count
-				if elementCount != 0 && len(m.Value) == 0 {
-					m.Value = make([]int64, 0, elementCount)
+				if elementCount != 0 && len(m.Values) == 0 {
+					m.Values = make([]int64, 0, elementCount)
 				}
 				for iNdEx < postIndex {
 					var v int64
@@ -4330,12 +4120,12 @@ func (m *Sample) Unmarshal(dAtA []byte) error {
 							break
 						}
 					}
-					m.Value = append(m.Value, v)
+					m.Values = append(m.Values, v)
 				}
 			} else {
-				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Values", wireType)
 			}
-		case 4:
+		case 3:
 			if wireType == 0 {
 				var v int32
 				for shift := uint(0); ; shift += 7 {
@@ -4411,11 +4201,11 @@ func (m *Sample) Unmarshal(dAtA []byte) error {
 			} else {
 				return fmt.Errorf("proto: wrong wireType = %d for field AttributeIndices", wireType)
 			}
-		case 5:
+		case 4:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field LinkIndex", wireType)
 			}
-			var v int32
+			m.LinkIndex = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowProfiles
@@ -4425,29 +4215,19 @@ func (m *Sample) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= int32(b&0x7F) << shift
+				m.LinkIndex |= int32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.LinkIndex_ = &Sample_LinkIndex{v}
-		case 6:
-			if wireType == 0 {
+		case 5:
+			if wireType == 1 {
 				var v uint64
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return ErrIntOverflowProfiles
-					}
-					if iNdEx >= l {
-						return io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					v |= uint64(b&0x7F) << shift
-					if b < 0x80 {
-						break
-					}
+				if (iNdEx + 8) > l {
+					return io.ErrUnexpectedEOF
 				}
+				v = uint64(encoding_binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+				iNdEx += 8
 				m.TimestampsUnixNano = append(m.TimestampsUnixNano, v)
 			} else if wireType == 2 {
 				var packedLen int
@@ -4476,32 +4256,17 @@ func (m *Sample) Unmarshal(dAtA []byte) error {
 					return io.ErrUnexpectedEOF
 				}
 				var elementCount int
-				var count int
-				for _, integer := range dAtA[iNdEx:postIndex] {
-					if integer < 128 {
-						count++
-					}
-				}
-				elementCount = count
+				elementCount = packedLen / 8
 				if elementCount != 0 && len(m.TimestampsUnixNano) == 0 {
 					m.TimestampsUnixNano = make([]uint64, 0, elementCount)
 				}
 				for iNdEx < postIndex {
 					var v uint64
-					for shift := uint(0); ; shift += 7 {
-						if shift >= 64 {
-							return ErrIntOverflowProfiles
-						}
-						if iNdEx >= l {
-							return io.ErrUnexpectedEOF
-						}
-						b := dAtA[iNdEx]
-						iNdEx++
-						v |= uint64(b&0x7F) << shift
-						if b < 0x80 {
-							break
-						}
+					if (iNdEx + 8) > l {
+						return io.ErrUnexpectedEOF
 					}
+					v = uint64(encoding_binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+					iNdEx += 8
 					m.TimestampsUnixNano = append(m.TimestampsUnixNano, v)
 				}
 			} else {
@@ -4709,86 +4474,132 @@ func (m *Mapping) Unmarshal(dAtA []byte) error {
 			} else {
 				return fmt.Errorf("proto: wrong wireType = %d for field AttributeIndices", wireType)
 			}
-		case 6:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field HasFunctions", wireType)
+		default:
+			iNdEx = preIndex
+			skippy, err := skipProfiles(dAtA[iNdEx:])
+			if err != nil {
+				return err
 			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowProfiles
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Stack) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowProfiles
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Stack: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Stack: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType == 0 {
+				var v int32
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowProfiles
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					v |= int32(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
 				}
-				if iNdEx >= l {
+				m.LocationIndices = append(m.LocationIndices, v)
+			} else if wireType == 2 {
+				var packedLen int
+				for shift := uint(0); ; shift += 7 {
+					if shift >= 64 {
+						return ErrIntOverflowProfiles
+					}
+					if iNdEx >= l {
+						return io.ErrUnexpectedEOF
+					}
+					b := dAtA[iNdEx]
+					iNdEx++
+					packedLen |= int(b&0x7F) << shift
+					if b < 0x80 {
+						break
+					}
+				}
+				if packedLen < 0 {
+					return ErrInvalidLengthProfiles
+				}
+				postIndex := iNdEx + packedLen
+				if postIndex < 0 {
+					return ErrInvalidLengthProfiles
+				}
+				if postIndex > l {
 					return io.ErrUnexpectedEOF
 				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
+				var elementCount int
+				var count int
+				for _, integer := range dAtA[iNdEx:postIndex] {
+					if integer < 128 {
+						count++
+					}
 				}
+				elementCount = count
+				if elementCount != 0 && len(m.LocationIndices) == 0 {
+					m.LocationIndices = make([]int32, 0, elementCount)
+				}
+				for iNdEx < postIndex {
+					var v int32
+					for shift := uint(0); ; shift += 7 {
+						if shift >= 64 {
+							return ErrIntOverflowProfiles
+						}
+						if iNdEx >= l {
+							return io.ErrUnexpectedEOF
+						}
+						b := dAtA[iNdEx]
+						iNdEx++
+						v |= int32(b&0x7F) << shift
+						if b < 0x80 {
+							break
+						}
+					}
+					m.LocationIndices = append(m.LocationIndices, v)
+				}
+			} else {
+				return fmt.Errorf("proto: wrong wireType = %d for field LocationIndices", wireType)
 			}
-			m.HasFunctions = bool(v != 0)
-		case 7:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field HasFilenames", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowProfiles
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.HasFilenames = bool(v != 0)
-		case 8:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field HasLineNumbers", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowProfiles
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.HasLineNumbers = bool(v != 0)
-		case 9:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field HasInlineFrames", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowProfiles
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.HasInlineFrames = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := skipProfiles(dAtA[iNdEx:])
@@ -4843,7 +4654,7 @@ func (m *Location) Unmarshal(dAtA []byte) error {
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field MappingIndex", wireType)
 			}
-			var v int32
+			m.MappingIndex = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowProfiles
@@ -4853,12 +4664,11 @@ func (m *Location) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= int32(b&0x7F) << shift
+				m.MappingIndex |= int32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.MappingIndex_ = &Location_MappingIndex{v}
 		case 2:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Address", wireType)
@@ -4913,26 +4723,6 @@ func (m *Location) Unmarshal(dAtA []byte) error {
 			}
 			iNdEx = postIndex
 		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field IsFolded", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowProfiles
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.IsFolded = bool(v != 0)
-		case 5:
 			if wireType == 0 {
 				var v int32
 				for shift := uint(0); ; shift += 7 {
@@ -5237,6 +5027,127 @@ func (m *Function) Unmarshal(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.StartLine |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipProfiles(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *KeyValueAndUnit) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowProfiles
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: KeyValueAndUnit: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: KeyValueAndUnit: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field KeyStrindex", wireType)
+			}
+			m.KeyStrindex = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowProfiles
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.KeyStrindex |= int32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowProfiles
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthProfiles
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.Value.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field UnitStrindex", wireType)
+			}
+			m.UnitStrindex = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowProfiles
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.UnitStrindex |= int32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

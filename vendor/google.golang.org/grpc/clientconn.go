@@ -118,12 +118,26 @@ func (dcs *defaultConfigSelector) SelectConfig(rpcInfo iresolver.RPCInfo) (*ires
 
 // NewClient creates a new gRPC "channel" for the target URI provided.  No I/O
 // is performed.  Use of the ClientConn for RPCs will automatically cause it to
-// connect.  Connect may be used to manually create a connection, but for most
-// users this is unnecessary.
+// connect.  The Connect method may be called to manually create a connection,
+// but for most users this should be unnecessary.
 //
 // The target name syntax is defined in
-// https://github.com/grpc/grpc/blob/master/doc/naming.md.  e.g. to use dns
-// resolver, a "dns:///" prefix should be applied to the target.
+// https://github.com/grpc/grpc/blob/master/doc/naming.md.  E.g. to use the dns
+// name resolver, a "dns:///" prefix may be applied to the target.  The default
+// name resolver will be used if no scheme is detected, or if the parsed scheme
+// is not a registered name resolver.  The default resolver is "dns" but can be
+// overridden using the resolver package's SetDefaultScheme.
+//
+// Examples:
+//
+//   - "foo.googleapis.com:8080"
+//   - "dns:///foo.googleapis.com:8080"
+//   - "dns:///foo.googleapis.com"
+//   - "dns:///10.0.0.213:8080"
+//   - "dns:///%5B2001:db8:85a3:8d3:1319:8a2e:370:7348%5D:443"
+//   - "dns://8.8.8.8/foo.googleapis.com:8080"
+//   - "dns://8.8.8.8/foo.googleapis.com"
+//   - "zookeeper://zk.example.com:9900/example_service"
 //
 // The DialOptions returned by WithBlock, WithTimeout,
 // WithReturnConnectionError, and FailOnNonTempDialError are ignored by this
@@ -181,7 +195,7 @@ func NewClient(target string, opts ...DialOption) (conn *ClientConn, err error) 
 		}
 		cc.dopts.defaultServiceConfig, _ = scpr.Config.(*ServiceConfig)
 	}
-	cc.mkp = cc.dopts.copts.KeepaliveParams
+	cc.keepaliveParams = cc.dopts.copts.KeepaliveParams
 
 	if err = cc.initAuthority(); err != nil {
 		return nil, err
@@ -194,7 +208,7 @@ func NewClient(target string, opts ...DialOption) (conn *ClientConn, err error) 
 	channelz.Infof(logger, cc.channelz, "Channel authority set to %q", cc.authority)
 
 	cc.csMgr = newConnectivityStateManager(cc.ctx, cc.channelz)
-	cc.pickerWrapper = newPickerWrapper(cc.dopts.copts.StatsHandlers)
+	cc.pickerWrapper = newPickerWrapper()
 
 	cc.metricsRecorderList = stats.NewMetricsRecorderList(cc.dopts.copts.StatsHandlers)
 
@@ -225,7 +239,12 @@ func Dial(target string, opts ...DialOption) (*ClientConn, error) {
 func DialContext(ctx context.Context, target string, opts ...DialOption) (conn *ClientConn, err error) {
 	// At the end of this method, we kick the channel out of idle, rather than
 	// waiting for the first rpc.
-	opts = append([]DialOption{withDefaultScheme("passthrough")}, opts...)
+	//
+	// WithLocalDNSResolution dial option in `grpc.Dial` ensures that it
+	// preserves behavior: when default scheme passthrough is used, skip
+	// hostname resolution, when "dns" is used for resolution, perform
+	// resolution on the client.
+	opts = append([]DialOption{withDefaultScheme("passthrough"), WithLocalDNSResolution()}, opts...)
 	cc, err := NewClient(target, opts...)
 	if err != nil {
 		return nil, err
@@ -618,7 +637,7 @@ type ClientConn struct {
 	balancerWrapper *ccBalancerWrapper         // Always recreated whenever entering idle to simplify Close.
 	sc              *ServiceConfig             // Latest service config received from the resolver.
 	conns           map[*addrConn]struct{}     // Set to nil on close.
-	mkp             keepalive.ClientParameters // May be updated upon receipt of a GoAway.
+	keepaliveParams keepalive.ClientParameters // May be updated upon receipt of a GoAway.
 	// firstResolveEvent is used to track whether the name resolver sent us at
 	// least one update. RPCs block on this event.  May be accessed without mu
 	// if we know we cannot be asked to enter idle mode while accessing it (e.g.
@@ -670,22 +689,31 @@ func (cc *ClientConn) Connect() {
 	cc.mu.Unlock()
 }
 
-// waitForResolvedAddrs blocks until the resolver has provided addresses or the
-// context expires.  Returns nil unless the context expires first; otherwise
-// returns a status error based on the context.
-func (cc *ClientConn) waitForResolvedAddrs(ctx context.Context) error {
+// waitForResolvedAddrs blocks until the resolver provides addresses or the
+// context expires, whichever happens first.
+//
+// Error is nil unless the context expires first; otherwise returns a status
+// error based on the context.
+//
+// The returned boolean indicates whether it did block or not. If the
+// resolution has already happened once before, it returns false without
+// blocking. Otherwise, it wait for the resolution and return true if
+// resolution has succeeded or return false along with error if resolution has
+// failed.
+func (cc *ClientConn) waitForResolvedAddrs(ctx context.Context) (bool, error) {
 	// This is on the RPC path, so we use a fast path to avoid the
 	// more-expensive "select" below after the resolver has returned once.
 	if cc.firstResolveEvent.HasFired() {
-		return nil
+		return false, nil
 	}
+	internal.NewStreamWaitingForResolver()
 	select {
 	case <-cc.firstResolveEvent.Done():
-		return nil
+		return true, nil
 	case <-ctx.Done():
-		return status.FromContextError(ctx.Err()).Err()
+		return false, status.FromContextError(ctx.Err()).Err()
 	case <-cc.ctx.Done():
-		return ErrClientConnClosing
+		return false, ErrClientConnClosing
 	}
 }
 
@@ -867,7 +895,13 @@ func (cc *ClientConn) Target() string {
 	return cc.target
 }
 
-// CanonicalTarget returns the canonical target string of the ClientConn.
+// CanonicalTarget returns the canonical target string used when creating cc.
+//
+// This always has the form "<scheme>://[authority]/<endpoint>".  For example:
+//
+//   - "dns:///example.com:42"
+//   - "dns://8.8.8.8/example.com:42"
+//   - "unix:///path/to/socket"
 func (cc *ClientConn) CanonicalTarget() string {
 	return cc.parsedTarget.String()
 }
@@ -1042,13 +1076,6 @@ func (cc *ClientConn) healthCheckConfig() *healthCheckConfig {
 	return cc.sc.healthCheckConfig
 }
 
-func (cc *ClientConn) getTransport(ctx context.Context, failfast bool, method string) (transport.ClientTransport, balancer.PickResult, error) {
-	return cc.pickerWrapper.pick(ctx, failfast, balancer.PickInfo{
-		Ctx:            ctx,
-		FullMethodName: method,
-	})
-}
-
 func (cc *ClientConn) applyServiceConfigAndBalancer(sc *ServiceConfig, configSelector iresolver.ConfigSelector) {
 	if sc == nil {
 		// should never reach here.
@@ -1206,12 +1233,11 @@ func (ac *addrConn) updateConnectivityState(s connectivity.State, lastErr error)
 // adjustParams updates parameters used to create transports upon
 // receiving a GoAway.
 func (ac *addrConn) adjustParams(r transport.GoAwayReason) {
-	switch r {
-	case transport.GoAwayTooManyPings:
+	if r == transport.GoAwayTooManyPings {
 		v := 2 * ac.dopts.copts.KeepaliveParams.Time
 		ac.cc.mu.Lock()
-		if v > ac.cc.mkp.Time {
-			ac.cc.mkp.Time = v
+		if v > ac.cc.keepaliveParams.Time {
+			ac.cc.keepaliveParams.Time = v
 		}
 		ac.cc.mu.Unlock()
 	}
@@ -1307,7 +1333,7 @@ func (ac *addrConn) tryAllAddrs(ctx context.Context, addrs []resolver.Address, c
 		ac.mu.Lock()
 
 		ac.cc.mu.RLock()
-		ac.dopts.copts.KeepaliveParams = ac.cc.mkp
+		ac.dopts.copts.KeepaliveParams = ac.cc.keepaliveParams
 		ac.cc.mu.RUnlock()
 
 		copts := ac.dopts.copts
@@ -1798,7 +1824,7 @@ func (cc *ClientConn) initAuthority() error {
 	} else if auth, ok := cc.resolverBuilder.(resolver.AuthorityOverrider); ok {
 		cc.authority = auth.OverrideAuthority(cc.parsedTarget)
 	} else if strings.HasPrefix(endpoint, ":") {
-		cc.authority = "localhost" + endpoint
+		cc.authority = "localhost" + encodeAuthority(endpoint)
 	} else {
 		cc.authority = encodeAuthority(endpoint)
 	}

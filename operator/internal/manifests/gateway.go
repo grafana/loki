@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
+	"dario.cat/mergo"
 	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/imdario/mergo"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -528,8 +528,8 @@ func configureGatewayServerPKI(
 		fmt.Sprintf("--logs.tls.key-file=%s", gatewayUpstreamHTTPTLSKey()),
 	)
 
-	gwContainer.ReadinessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
-	gwContainer.LivenessProbe.ProbeHandler.HTTPGet.Scheme = corev1.URISchemeHTTPS
+	gwContainer.ReadinessProbe.HTTPGet.Scheme = corev1.URISchemeHTTPS
+	gwContainer.LivenessProbe.HTTPGet.Scheme = corev1.URISchemeHTTPS
 	gwContainer.Args = gwArgs
 
 	gwVolumes = append(gwVolumes,

@@ -19,7 +19,7 @@ import (
 
 // unsafeGetString is like yolostring but with a meaningful name
 func unsafeGetString(buf []byte) string {
-	return *((*string)(unsafe.Pointer(&buf))) // #nosec G103 -- we know the string is not mutated
+	return *((*string)(unsafe.Pointer(&buf))) // #nosec G103 -- we know the string is not mutated -- nosemgrep: use-of-unsafe-block
 }
 
 func createChunk(t testing.TB, chunkFormat byte, headBlockFmt chunkenc.HeadBlockFmt, userID string, lbs labels.Labels, from model.Time, through model.Time) chunk.Chunk {

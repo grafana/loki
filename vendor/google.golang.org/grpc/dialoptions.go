@@ -73,7 +73,7 @@ type dialOptions struct {
 	chainUnaryInts  []UnaryClientInterceptor
 	chainStreamInts []StreamClientInterceptor
 
-	cp                          Compressor
+	compressorV0                Compressor
 	dc                          Decompressor
 	bs                          internalbackoff.Strategy
 	block                       bool
@@ -94,6 +94,8 @@ type dialOptions struct {
 	idleTimeout                 time.Duration
 	defaultScheme               string
 	maxCallAttempts             int
+	enableLocalDNSResolution    bool // Specifies if target hostnames should be resolved when proxying is enabled.
+	useProxy                    bool // Specifies if a server should be connected via proxy.
 }
 
 // DialOption configures how we set up the connection.
@@ -211,6 +213,7 @@ func WithReadBufferSize(s int) DialOption {
 func WithInitialWindowSize(s int32) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.copts.InitialWindowSize = s
+		o.copts.StaticWindowSize = true
 	})
 }
 
@@ -220,6 +223,26 @@ func WithInitialWindowSize(s int32) DialOption {
 func WithInitialConnWindowSize(s int32) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.copts.InitialConnWindowSize = s
+		o.copts.StaticWindowSize = true
+	})
+}
+
+// WithStaticStreamWindowSize returns a DialOption which sets the initial
+// stream window size to the value provided and disables dynamic flow control.
+func WithStaticStreamWindowSize(s int32) DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.copts.InitialWindowSize = s
+		o.copts.StaticWindowSize = true
+	})
+}
+
+// WithStaticConnWindowSize returns a DialOption which sets the initial
+// connection window size to the value provided and disables dynamic flow
+// control.
+func WithStaticConnWindowSize(s int32) DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.copts.InitialConnWindowSize = s
+		o.copts.StaticWindowSize = true
 	})
 }
 
@@ -256,7 +279,7 @@ func WithCodec(c Codec) DialOption {
 // Deprecated: use UseCompressor instead.  Will be supported throughout 1.x.
 func WithCompressor(cp Compressor) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
-		o.cp = cp
+		o.compressorV0 = cp
 	})
 }
 
@@ -358,7 +381,7 @@ func WithReturnConnectionError() DialOption {
 //
 // Note that using this DialOption with per-RPC credentials (through
 // WithCredentialsBundle or WithPerRPCCredentials) which require transport
-// security is incompatible and will cause grpc.Dial() to fail.
+// security is incompatible and will cause RPCs to fail.
 //
 // Deprecated: use WithTransportCredentials and insecure.NewCredentials()
 // instead. Will be supported throughout 1.x.
@@ -377,7 +400,22 @@ func WithInsecure() DialOption {
 // later release.
 func WithNoProxy() DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
-		o.copts.UseProxy = false
+		o.useProxy = false
+	})
+}
+
+// WithLocalDNSResolution forces local DNS name resolution even when a proxy is
+// specified in the environment.  By default, the server name is provided
+// directly to the proxy as part of the CONNECT handshake. This is ignored if
+// WithNoProxy is used.
+//
+// # Experimental
+//
+// Notice: This API is EXPERIMENTAL and may be changed or removed in a
+// later release.
+func WithLocalDNSResolution() DialOption {
+	return newFuncDialOption(func(o *dialOptions) {
+		o.enableLocalDNSResolution = true
 	})
 }
 
@@ -570,6 +608,8 @@ func WithChainStreamInterceptor(interceptors ...StreamClientInterceptor) DialOpt
 
 // WithAuthority returns a DialOption that specifies the value to be used as the
 // :authority pseudo-header and as the server name in authentication handshake.
+// This overrides all other ways of setting authority on the channel, but can be
+// overridden per-call by using grpc.CallAuthority.
 func WithAuthority(a string) DialOption {
 	return newFuncDialOption(func(o *dialOptions) {
 		o.authority = a
@@ -667,14 +707,15 @@ func defaultDialOptions() dialOptions {
 		copts: transport.ConnectOptions{
 			ReadBufferSize:  defaultReadBufSize,
 			WriteBufferSize: defaultWriteBufSize,
-			UseProxy:        true,
 			UserAgent:       grpcUA,
 			BufferPool:      mem.DefaultBufferPool(),
 		},
-		bs:              internalbackoff.DefaultExponential,
-		idleTimeout:     30 * time.Minute,
-		defaultScheme:   "dns",
-		maxCallAttempts: defaultMaxCallAttempts,
+		bs:                       internalbackoff.DefaultExponential,
+		idleTimeout:              30 * time.Minute,
+		defaultScheme:            "dns",
+		maxCallAttempts:          defaultMaxCallAttempts,
+		useProxy:                 true,
+		enableLocalDNSResolution: false,
 	}
 }
 

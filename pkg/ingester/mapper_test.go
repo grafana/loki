@@ -1,7 +1,6 @@
 package ingester
 
 import (
-	"sort"
 	"testing"
 
 	"github.com/prometheus/common/model"
@@ -18,41 +17,17 @@ var (
 	fp1  = model.Fingerprint(maxMappedFP + 1)
 	fp2  = model.Fingerprint(maxMappedFP + 2)
 	fp3  = model.Fingerprint(1)
-	cm11 = []labels.Label{
-		{Name: "dings", Value: "bumms"},
-		{Name: "foo", Value: "bar"},
-	}
-	cm12 = []labels.Label{
-		{Name: "bar", Value: "foo"},
-	}
-	cm13 = []labels.Label{
-		{Name: "foo", Value: "bar"},
-	}
-	cm21 = []labels.Label{
-		{Name: "dings", Value: "bar"},
-		{Name: "foo", Value: "bumms"},
-	}
-	cm22 = []labels.Label{
-		{Name: "bar", Value: "bumms"},
-		{Name: "dings", Value: "foo"},
-	}
-	cm31 = []labels.Label{
-		{Name: "bumms", Value: "dings"},
-	}
-	cm32 = []labels.Label{
-		{Name: "bar", Value: "foo"},
-		{Name: "bumms", Value: "dings"},
-	}
+	cm11 = labels.FromStrings("dings", "bumms", "foo", "bar")
+	cm12 = labels.FromStrings("bar", "foo")
+	cm13 = labels.FromStrings("foo", "bar")
+	cm21 = labels.FromStrings("dings", "bar", "foo", "bumms")
+	cm22 = labels.FromStrings("bar", "bumms", "dings", "foo")
+	cm31 = labels.FromStrings("bumms", "dings")
+	cm32 = labels.FromStrings("bar", "foo", "bumms", "dings")
 )
 
-func copyValuesAndSort(a []labels.Label) labels.Labels {
-	c := make(labels.Labels, len(a))
-	for i, pair := range a {
-		c[i].Name = pair.Name
-		c[i].Value = pair.Value
-	}
-	sort.Sort(c)
-	return c
+func copyValuesAndSort(a labels.Labels) labels.Labels {
+	return a.Copy()
 }
 
 func TestFPMapper(t *testing.T) {

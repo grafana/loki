@@ -121,10 +121,10 @@ func main() {
 		if err = (&lokictrl.DashboardsReconciler{
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
-			Log:        logger.WithName("controllers").WithName("lokistack-dashboards"),
+			Log:        logger.WithName("controllers").WithName(lokictrl.ControllerNameLokiDashboards),
 			OperatorNs: ns,
 		}).SetupWithManager(mgr); err != nil {
-			logger.Error(err, "unable to create controller", "controller", "lokistack-dashboards")
+			logger.Error(err, "unable to create controller", "controller", lokictrl.ControllerNameLokiDashboards)
 			os.Exit(1)
 		}
 	}
@@ -138,10 +138,10 @@ func main() {
 	}
 	if err = (&lokictrl.AlertingRuleReconciler{
 		Client: mgr.GetClient(),
-		Log:    logger.WithName("controllers").WithName("alertingrule"),
+		Log:    logger.WithName("controllers").WithName(lokictrl.ControllerNameAlertingRule),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		logger.Error(err, "unable to create controller", "controller", "alertingrule")
+		logger.Error(err, "unable to create controller", "controller", lokictrl.ControllerNameAlertingRule)
 		os.Exit(1)
 	}
 	if ctrlCfg.Gates.AlertingRuleWebhook {
@@ -157,10 +157,10 @@ func main() {
 	}
 	if err = (&lokictrl.RecordingRuleReconciler{
 		Client: mgr.GetClient(),
-		Log:    logger.WithName("controllers").WithName("recordingrule"),
+		Log:    logger.WithName("controllers").WithName(lokictrl.ControllerNameRecordingRule),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		logger.Error(err, "unable to create controller", "controller", "recordingrule")
+		logger.Error(err, "unable to create controller", "controller", lokictrl.ControllerNameRecordingRule)
 		os.Exit(1)
 	}
 	if ctrlCfg.Gates.RecordingRuleWebhook {
@@ -178,7 +178,7 @@ func main() {
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		logger.Error(err, "unable to create controller", "controller", "rulerconfig")
+		logger.Error(err, "unable to create controller", "controller", lokictrl.ControllerNameRulerConfig)
 		os.Exit(1)
 	}
 	if ctrlCfg.Gates.RulerConfigWebhook {
@@ -191,22 +191,22 @@ func main() {
 	if ctrlCfg.Gates.BuiltInCertManagement.Enabled {
 		if err = (&lokictrl.CertRotationReconciler{
 			Client:       mgr.GetClient(),
-			Log:          logger.WithName("controllers").WithName("certrotation"),
+			Log:          logger.WithName("controllers").WithName(lokictrl.ControllerNameCertRotation),
 			Scheme:       mgr.GetScheme(),
 			FeatureGates: ctrlCfg.Gates,
 		}).SetupWithManager(mgr); err != nil {
-			logger.Error(err, "unable to create controller", "controller", "certrotation")
+			logger.Error(err, "unable to create controller", "controller", lokictrl.ControllerNameCertRotation)
 			os.Exit(1)
 		}
 	}
-
 	if err = (&lokictrl.LokiStackZoneAwarePodReconciler{
 		Client: mgr.GetClient(),
-		Log:    logger.WithName("controllers").WithName("lokistack-zoneaware-pod"),
+		Log:    logger.WithName("controllers").WithName(lokictrl.ControllerNameZoneAware),
 	}).SetupWithManager(mgr); err != nil {
-		logger.Error(err, "unable to create controller", "controller", "lokistack-zoneaware-pod")
+		logger.Error(err, "unable to create controller", "controller", lokictrl.ControllerNameZoneAware)
 		os.Exit(1)
 	}
+
 	// +kubebuilder:scaffold:builder
 
 	if err = mgr.AddHealthzCheck("health", healthz.Ping); err != nil {

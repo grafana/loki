@@ -1,44 +1,47 @@
----
 # golangci.com configuration
 # https://golangci-lint.run/usage/configuration/
-linters-settings:
-  copyloopvar:
-    check-alias: true
-  gci:
-    sections:
-    - standard
-    - default
-    - prefix(github.com/grafana/loki/operator)
-    - blank
-    - dot
-  govet:
-    enable:
-    - shadow
-  misspell:
-    locale: US
-  revive:
-    rules:
-      - name: package-comments
-        disabled: true
-
+version: "2"
 linters:
-  enable-all: false
   enable:
-  - copyloopvar
-  - errcheck # Errcheck is a program for checking for unchecked errors in go programs. These unchecked errors can be critical bugs in some cases
-  - gci # Gci controls Go package import order and makes it always deterministic
-  - err113 # checks that errors are wrapped according to go 1.13 error wrapping tools
-  - gofumpt # checks that gofumpt was run on all source code
-  - goimports # checks that goimports was run on all source code
-  - gosimple # Linter for Go source code that specializes in simplifying a code
-  - govet # Vet examines Go source code and reports suspicious constructs, such as Printf calls whose arguments do not align with the format string
-  - ineffassign # Detects when assignments to existing variables are not used
-  - misspell # spell checker
-  - revive
-  - rowserrcheck # checks whether Err of rows is checked successfully
-  - staticcheck # Staticcheck is a go vet on steroids, applying a ton of static analysis checks
-  - typecheck # Like the front-end of a Go compiler, parses and type-checks Go code
-  - unused # Checks Go code for unused constants, variables, functions and types
-
-issues:
-  exclude-use-default: false
+    - copyloopvar
+    - err113 # checks that errors are wrapped according to go 1.13 error wrapping tools
+    - misspell # spell checker
+    - revive
+    - rowserrcheck # checks whether Err of rows is checked successfully
+  settings:
+    copyloopvar:
+      check-alias: true
+    govet:
+      enable:
+        - shadow
+    misspell:
+      locale: US
+    revive:
+      rules:
+        - name: package-comments
+          disabled: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gci # Gci controls Go package import order and makes it always deterministic
+    - gofumpt # checks that gofumpt was run on all source code
+    - goimports # checks that goimports was run on all source code
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/grafana/loki/operator)
+        - blank
+        - dot
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

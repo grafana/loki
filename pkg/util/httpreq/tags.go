@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/middleware"
+
+	"github.com/grafana/loki/v3/pkg/util/constants"
 )
 
 // NOTE(kavi): Why new type?
@@ -100,4 +102,28 @@ func TagsToKeyValues(queryTags string) []interface{} {
 	}
 
 	return res
+}
+
+// IsLogsDrilldownRequest checks if the request comes from Logs Drilldown by examining the X-Query-Tags header
+func IsLogsDrilldownRequest(ctx context.Context) bool {
+	tags := ExtractQueryTagsFromContext(ctx)
+	kvs := TagsToKeyValues(tags)
+
+	// KVs is an []interface{} of key value pairs, so iterate by keys
+	for i := 0; i < len(kvs); i += 2 {
+		current, ok := kvs[i].(string)
+		if !ok {
+			continue
+		}
+
+		next, ok := kvs[i+1].(string)
+		if !ok {
+			continue
+		}
+
+		if current == "source" && strings.EqualFold(next, constants.LogsDrilldownAppName) {
+			return true
+		}
+	}
+	return false
 }

@@ -6,4 +6,4 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 )
 
-type Func func(ts time.Time, s string, structuredMetadata ...labels.Label) bool
+type Func func(ts time.Time, s string, structuredMetadata labels.Labels) bool

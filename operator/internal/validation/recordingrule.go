@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/prometheus/common/model"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -83,7 +83,7 @@ func (v *RecordingRuleValidator) validate(ctx context.Context, obj runtime.Objec
 		for j, r := range g.Rules {
 			// Check if recording rule name is a valid PromQL Label Name
 			if r.Record != "" {
-				if !model.IsValidMetricName(model.LabelValue(r.Record)) {
+				if !model.UTF8Validation.IsValidMetricName(r.Record) {
 					allErrs = append(allErrs, field.Invalid(
 						field.NewPath("spec").Child("groups").Index(i).Child("rules").Index(j).Child("record"),
 						r.Record,

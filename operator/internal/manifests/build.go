@@ -1,8 +1,8 @@
 package manifests
 
 import (
+	"dario.cat/mergo"
 	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/imdario/mergo"
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/library-go/pkg/crypto"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -103,6 +103,11 @@ func BuildAll(opts Options) ([]client.Object, error) {
 		res = append(res, prometheusRuleObjs...)
 	}
 
+	if opts.Stack.NetworkPolicies != nil && !opts.Stack.NetworkPolicies.Disabled {
+		networkPolicyObjs := BuildNetworkPolicies(opts)
+		res = append(res, networkPolicyObjs...)
+	}
+
 	return res, nil
 }
 
@@ -125,7 +130,7 @@ func ApplyDefaultSettings(opts *Options) error {
 	strictOverrides := lokiv1.LokiStackSpec{
 		Template: &lokiv1.LokiTemplateSpec{
 			Compactor: &lokiv1.LokiComponentSpec{
-				// Compactor is a singelton application.
+				// Compactor is a singleton application.
 				// Only one replica allowed!!!
 				Replicas: 1,
 			},
@@ -136,7 +141,11 @@ func ApplyDefaultSettings(opts *Options) error {
 		return kverrors.Wrap(err, "failed to merge strict defaults")
 	}
 
-	opts.ResourceRequirements = internal.ResourceRequirementsTable[opts.Stack.Size]
+	useRequestsAsLimits := false
+	if opts.Stack.Template != nil {
+		useRequestsAsLimits = opts.Stack.Template.UseRequestsAsLimits
+	}
+	opts.ResourceRequirements = internal.ResourceRequirementsForSize(opts.Stack.Size, useRequestsAsLimits)
 	opts.Stack = *spec
 
 	return nil
