@@ -17,7 +17,6 @@ func newExpressionEvaluator() expressionEvaluator {
 }
 
 func (e expressionEvaluator) eval(expr physical.Expression, input arrow.Record) (arrow.Array, error) {
-
 	switch expr := expr.(type) {
 
 	case *physical.LiteralExpr:

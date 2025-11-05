@@ -380,15 +380,21 @@ func (r *projectionPushdown) handleParse(expr *VariadicExpr, projections []Colum
 		panic(err)
 	}
 
-	existingKeys, ok := exprs.requestedKeysExpr.Literal.(types.StringListLiteral)
-	if !ok {
-		panic(fmt.Errorf("expected requested keys to be a list of strings, got %T", exprs.requestedKeysExpr.Literal))
+	requestedKeys := make(map[string]bool)
+
+	// Handle both null and string list literals for requested keys
+	switch keys := exprs.requestedKeysExpr.Literal.(type) {
+	case types.StringListLiteral:
+		for _, k := range keys {
+			requestedKeys[k] = true
+		}
+	case types.NullLiteral:
+		// Start with empty set
+	default:
+		panic(fmt.Errorf("expected requested keys to be a list of strings or null, got %T", exprs.requestedKeysExpr.Literal))
 	}
 
-	requestedKeys := make(map[string]bool)
-	for _, k := range existingKeys {
-		requestedKeys[k] = true
-	}
+	initialKeyCount := len(requestedKeys)
 
 	for _, p := range ambiguousProjections {
 		colExpr, ok := p.(*ColumnExpr)
@@ -402,7 +408,7 @@ func (r *projectionPushdown) handleParse(expr *VariadicExpr, projections []Colum
 		}
 	}
 
-	changed := len(requestedKeys) > len(existingKeys)
+	changed := len(requestedKeys) > initialKeyCount
 	if changed {
 		// Convert back to sorted slice
 		newKeys := slices.Collect(maps.Keys(requestedKeys))
@@ -419,20 +425,20 @@ func (r *projectionPushdown) handleParse(expr *VariadicExpr, projections []Colum
 type parseExprs struct {
 	sourceColumnExpr  *ColumnExpr
 	requestedKeysExpr *LiteralExpr
+	strictExpr        *LiteralExpr
+	keepEmptyExpr     *LiteralExpr
 }
 
 // Unpack unpacks the given expressions into valid expressions for parse.
 // Valid expressions for parse are ones that will evaluate into valid arguments for a [parseFn].
 // The valid signatures for a [parseFn] are:
-// parseFn(sourceCol [arrow.Array])
-// parseFn(sourceCol [arrow.Array], requestedKeys [arrow.Array]).
+// parseFn(sourceCol [arrow.Array], requestedKeys [arrow.Array], strict [arrow.Array], keepEmpty [arrow.Array]).
 //
 // Therefore the valid exprssions are (order matters):
-// [sourceColExpr *ColumnExpr] -> parseFn(sourceColVec arrow.Array)
-// [sourceColExpr *ColumnExpr, requestedKeysExpr *LiteralExpr] -> parseFn(sourceColVec arrow.Array, requestedKeys arrow.Array)
+// [sourceColExpr *ColumnExpr, requestedKeysExpr *LiteralExpr, strictExpr *LiteralExpr, keepEmptyExpr *LiteralExpr] -> parseFn(sourceColVec arrow.Array, requestedKeys arrow.Array, strict arrow.Array, keepEmpty arrow.Array)
 func (a *parseExprs) Unpack(exprs []Expression) error {
-	if len(exprs) < 1 || len(exprs) > 2 {
-		return fmt.Errorf("expected to unpack 1 or 2 expressions, got %d", len(exprs))
+	if len(exprs) != 4 {
+		return fmt.Errorf("expected to unpack 4 expressions, got %d", len(exprs))
 	}
 
 	var ok bool
@@ -441,13 +447,17 @@ func (a *parseExprs) Unpack(exprs []Expression) error {
 		return fmt.Errorf("expected source column to be a column expression, got %T", exprs[0])
 	}
 
-	if len(exprs) == 2 {
-		a.requestedKeysExpr, ok = exprs[1].(*LiteralExpr)
-		if !ok {
-			return fmt.Errorf("expected requested keys to be a literal expression, got %T", exprs[1])
-		}
-	} else {
-		a.requestedKeysExpr = &LiteralExpr{Literal: types.NewLiteral([]string{})}
+	a.requestedKeysExpr, ok = exprs[1].(*LiteralExpr)
+	if !ok {
+		return fmt.Errorf("expected requested keys to be a literal expression, got %T", exprs[1])
+	}
+	a.strictExpr, ok = exprs[2].(*LiteralExpr)
+	if !ok {
+		return fmt.Errorf("expected strict to be a literal expression, got %T", exprs[2])
+	}
+	a.keepEmptyExpr, ok = exprs[3].(*LiteralExpr)
+	if !ok {
+		return fmt.Errorf("expected keepEmpty to be a literal expression, got %T", exprs[3])
 	}
 
 	return nil
@@ -456,15 +466,18 @@ func (a *parseExprs) Unpack(exprs []Expression) error {
 // Pack packs parse specific expressions back into generic expressions.
 // It will resues [dst] if has enough capacity, otherwise it will allocate a new slice.
 func (a *parseExprs) Pack(dst []Expression) []Expression {
-	if cap(dst) >= 2 {
-		dst = dst[:2]
+	if cap(dst) >= 4 {
+		dst = dst[:4]
+		clear(dst[4:])
 	} else {
-		dst = make([]Expression, 2)
+		dst = make([]Expression, 4)
 	}
 
 	// order matters
 	dst[0] = a.sourceColumnExpr
 	dst[1] = a.requestedKeysExpr
+	dst[2] = a.strictExpr
+	dst[3] = a.keepEmptyExpr
 	return dst
 }
 

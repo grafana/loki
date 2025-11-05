@@ -12,8 +12,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
 
-type NullLiteral struct {
-}
+type NullLiteral struct{}
 
 // String implements Literal.
 func (n NullLiteral) String() string {
