@@ -13,6 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [FEATURE] Added the option to configure a dedicated serviceAccount for the ruler. [#16324](https://github.com/grafana/loki/pull/16324)
 
 ## 6.46.0
 
@@ -233,8 +234,6 @@ Before upgrading to v0.32.0, make sure that the CustomResourceDefinitions (CRDs)
 
 - [CHANGE] Add extraContainers parameter for the backend pod
 - [CHANGE] Add `tpl()` support for backend, read, write, and admin-api components
-
-- [FEATURE] Added the option to configure a dedicated serviceAccount for the ruler. [#16324](https://github.com/grafana/loki/pull/16324)
 
 ## 6.27.0
 
