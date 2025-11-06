@@ -3942,7 +3942,7 @@ chunksCache:
       storageClass: null
       # -- Volume attributes class name to be used.
       # If empty or set to null, no volumeAttributesClassName spec is set.
-      # Requires Kubernetes 1.29+ and the VolumeAttributesClass feature gate enabled.
+      # Requires Kubernetes 1.31
       volumeAttributesClassName: null
       # -- Volume mount path
       mountPath: /data
