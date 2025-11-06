@@ -13,7 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
-- [FEATURE] Add full HTTPRoute support (Gateway API v1) for both gateway and component-level routing with filters, multiple parentRefs, and custom rules. [#XXXXX](https://github.com/grafana/loki/pull/XXXXX)
+- [FEATURE] Add full HTTPRoute support (Gateway API v1) for both gateway and component-level routing with filters, multiple parentRefs, and custom rules. [#19729](https://github.com/grafana/loki/pull/19729)
 
 ## 6.46.0
 
