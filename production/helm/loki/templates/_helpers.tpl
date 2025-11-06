@@ -179,7 +179,7 @@ Base template for building docker image reference
 Docker image name for Loki
 */}}
 {{- define "loki.lokiImage" -}}
-{{- $dict := dict "service" .Values.loki.image "global" .Values.global.image "defaultVersion" .Chart.AppVersion -}}
+{{- $dict := dict "service" .Values.loki.image "global" .Values.global "defaultVersion" .Chart.AppVersion -}}
 {{- include "loki.baseImage" $dict -}}
 {{- end -}}
 
