@@ -171,10 +171,11 @@ message TaskStatus {
   TaskState state = 1;
 
   // Error is set only when state is TASK_STATE_FAILED.
-  string error = 2;
+  TaskError error = 2;
+}
 
-// Statistics can be added here in the future if needed.
-// For now, we omit it to keep the proto simple.
+message TaskError {
+  string description = 1;
 }
 
 // TaskState represents the execution state of a task.

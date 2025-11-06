@@ -259,9 +259,9 @@ func (c *protobufCodec) taskStatusFromPbTaskStatus(ts *wirepb.TaskStatus) (workf
 	}
 
 	status := workflow.TaskStatus{State: state}
-
-	if ts.Error != "" {
-		status.Error = errors.New(ts.Error)
+	pbErr := ts.GetError()
+	if pbErr != nil {
+		status.Error = errors.New(pbErr.Description)
 	}
 
 	return status, nil
@@ -511,7 +511,7 @@ func (c *protobufCodec) taskStatusToPbTaskStatus(from workflow.TaskStatus) (*wir
 	}
 
 	if from.Error != nil {
-		ts.Error = from.Error.Error()
+		ts.Error = &wirepb.TaskError{Description: from.Error.Error()}
 	}
 
 	return ts, nil
