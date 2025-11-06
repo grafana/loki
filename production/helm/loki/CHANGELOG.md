@@ -205,7 +205,6 @@ Before upgrading to v0.32.0, make sure that the CustomResourceDefinitions (CRDs)
 - [BUGFIX] Add missing log deletion endpoint to native ingress paths [#14390](https://github.com/grafana/loki/pull/14390)
 - [BUGFIX] Fix indentation in nginx gateway config template handling [#18167](https://github.com/grafana/loki/pull/18167)
 
-
 ## 6.30.1
 
 - [BUGFIX] Add livenessProbe to read pod to go around the issue mentioned [here](https://github.com/grafana/loki/issues/15191#issuecomment-2769843275)
