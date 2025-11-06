@@ -44,7 +44,7 @@ func TestHTTP2BasicConnectivity(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtobufProtocol)
+	clientConn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtoFrameCodec)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -134,7 +134,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtobufProtocol)
+	clientConn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtoFrameCodec)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -256,7 +256,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 	defer peerCancel()
 
 	go func() {
-		for i := 0; i < numClients; i++ {
+		for i := range numClients {
 			conn, err := listener.Accept(peerCtx)
 			if err != nil {
 				if peerCtx.Err() != nil {
@@ -289,7 +289,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 	clientReceivedCounts := make([]int, numClients)
 	var clientReceivedMu sync.Mutex
 
-	for i := 0; i < numClients; i++ {
+	for i := range numClients {
 		clientIdx := i
 		clientWg.Add(1)
 
@@ -297,7 +297,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 			defer clientWg.Done()
 
 			// Connect
-			conn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtobufProtocol)
+			conn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtoFrameCodec)
 			if err != nil {
 				t.Errorf("Client %d dial failed: %v", clientIdx, err)
 				return
@@ -337,7 +337,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 
 			// Send messages
-			for j := 0; j < 3; j++ {
+			for j := range 3 {
 				msg := wire.TaskStatusMessage{}
 				err := peer.SendMessage(ctx, msg)
 				if err != nil {
@@ -408,7 +408,7 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtobufProtocol)
+	clientConn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtoFrameCodec)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -483,7 +483,7 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtobufProtocol)
+	clientConn, err := wire.NewHTTP2Dialer().Dial(ctx, addr, wire.DefaultProtoFrameCodec)
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -562,7 +562,7 @@ func prepareHTTP2Listener(t *testing.T) (*wire.HTTP2Listener, func()) {
 
 	listener := wire.NewHTTP2Listener(
 		l.Addr(),
-		wire.DefaultProtobufProtocol,
+		wire.DefaultProtoFrameCodec,
 		wire.WithHTTP2ListenerConnAcceptTimeout(1*time.Second),
 		wire.WithHTTP2ListenerMaxPendingConns(1),
 		wire.WithHTTP2ListenerLogger(log.NewNopLogger()),

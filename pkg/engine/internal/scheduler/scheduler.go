@@ -15,8 +15,10 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/oklog/ulid/v2"
 	"golang.org/x/sync/errgroup"
+	grpcpeer "google.golang.org/grpc/peer"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v3/pkg/engine/internal/proto/wirepb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
@@ -78,6 +80,60 @@ func (s *Scheduler) Service() services.Service {
 	})
 
 	return s.svc
+}
+
+// Server interface implementation
+func (s *Scheduler) Loop(client wirepb.Transport_LoopServer) error {
+	ctx := client.Context()
+
+	logger := s.logger
+	remote, ok := grpcpeer.FromContext(ctx)
+
+	if ok {
+		logger = log.With(logger, "remote_addr", remote.Addr.String())
+	}
+	level.Info(logger).Log("msg", "handling connection")
+
+	peer := &wire.Peer{
+		Logger: logger,
+		Conn: &wire.GrpcServerAdapter{
+			Conn: client,
+			Peer: remote,
+		},
+
+		// Allow for a backlog of 128 frames before backpressure is applied.
+		Buffer: 128,
+
+		Handler: func(ctx context.Context, peer *wire.Peer, msg wire.Message) error {
+			switch msg := msg.(type) {
+			case wire.StreamDataMessage:
+				return s.handleStreamData(ctx, msg)
+			case wire.WorkerReadyMessage:
+				return s.markWorkerReady(ctx, peer)
+			case wire.TaskStatusMessage:
+				return s.handleTaskStatus(ctx, msg)
+			case wire.StreamStatusMessage:
+				return s.handleStreamStatus(ctx, msg)
+
+			default:
+				return fmt.Errorf("unsupported message kind %q", msg.Kind())
+			}
+		},
+	}
+
+	// Handle communication with the peer until the context is canceled or some
+	// error occurs.
+	err := peer.Serve(ctx)
+	if err != nil && ctx.Err() != nil && !errors.Is(err, wire.ErrConnClosed) {
+		level.Warn(logger).Log("msg", "serve error", "err", err)
+	} else {
+		level.Debug(logger).Log("msg", "connection closed")
+	}
+
+	// If our peer exited, we need to make sure we clean up any tasks still
+	// assigned to it by aborting them.
+	s.abortWorkerTasks(ctx, peer, err)
+	return nil
 }
 
 func (s *Scheduler) run(ctx context.Context) error {

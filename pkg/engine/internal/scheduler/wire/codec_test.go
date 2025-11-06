@@ -36,14 +36,14 @@ func TestProtoMapper_Frames(t *testing.T) {
 		},
 	}
 
-	mapper := &protoMapper{memory.DefaultAllocator}
+	mapper := &Codec{memory.DefaultAllocator}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			pbFrame, err := mapper.frameToPbFrame(tt.frame)
+			pbFrame, err := mapper.FrameToProto(tt.frame)
 			require.NoError(t, err)
 
-			actualFrame, err := mapper.frameFromPbFrame(pbFrame)
+			actualFrame, err := mapper.FrameFromProto(pbFrame)
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.frame, actualFrame)
@@ -167,7 +167,7 @@ func TestProtoMapper_Messages(t *testing.T) {
 		},
 	}
 
-	mapper := &protoMapper{memory.DefaultAllocator}
+	mapper := &Codec{memory.DefaultAllocator}
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -176,10 +176,10 @@ func TestProtoMapper_Messages(t *testing.T) {
 				Message: tt.message,
 			}
 
-			pbFrame, err := mapper.frameToPbFrame(frame)
+			pbFrame, err := mapper.FrameToProto(frame)
 			require.NoError(t, err)
 
-			actualFrame, err := mapper.frameFromPbFrame(pbFrame)
+			actualFrame, err := mapper.FrameFromProto(pbFrame)
 			require.NoError(t, err)
 
 			assert.Equal(t, frame, actualFrame)
@@ -189,7 +189,7 @@ func TestProtoMapper_Messages(t *testing.T) {
 
 func TestProtoMapper_StreamDataMessage(t *testing.T) {
 	streamULID := ulid.Make()
-	mapper := &protoMapper{memory.DefaultAllocator}
+	mapper := &Codec{memory.DefaultAllocator}
 
 	originalRecord := createTestArrowRecord()
 
@@ -203,10 +203,10 @@ func TestProtoMapper_StreamDataMessage(t *testing.T) {
 		Message: message,
 	}
 
-	pbFrame, err := mapper.frameToPbFrame(frame)
+	pbFrame, err := mapper.FrameToProto(frame)
 	require.NoError(t, err)
 
-	actualFrame, err := mapper.frameFromPbFrame(pbFrame)
+	actualFrame, err := mapper.FrameFromProto(pbFrame)
 	require.NoError(t, err)
 
 	actualMessage := actualFrame.(MessageFrame).Message.(StreamDataMessage)
@@ -232,7 +232,7 @@ func TestProtoMapper_TaskStates(t *testing.T) {
 		workflow.TaskStateFailed,
 	}
 
-	mapper := &protoMapper{memory.DefaultAllocator}
+	mapper := &Codec{memory.DefaultAllocator}
 
 	for _, state := range states {
 		t.Run(state.String(), func(t *testing.T) {
@@ -248,10 +248,10 @@ func TestProtoMapper_TaskStates(t *testing.T) {
 				Message: message,
 			}
 
-			pbFrame, err := mapper.frameToPbFrame(frame)
+			pbFrame, err := mapper.FrameToProto(frame)
 			require.NoError(t, err)
 
-			actualFrame, err := mapper.frameFromPbFrame(pbFrame)
+			actualFrame, err := mapper.FrameFromProto(pbFrame)
 			require.NoError(t, err)
 
 			actualMessage := actualFrame.(MessageFrame).Message.(TaskStatusMessage)
@@ -270,7 +270,7 @@ func TestProtoMapper_StreamStates(t *testing.T) {
 		workflow.StreamStateClosed,
 	}
 
-	mapper := &protoMapper{memory.DefaultAllocator}
+	mapper := &Codec{memory.DefaultAllocator}
 
 	for _, state := range states {
 		t.Run(state.String(), func(t *testing.T) {
@@ -284,10 +284,10 @@ func TestProtoMapper_StreamStates(t *testing.T) {
 				Message: message,
 			}
 
-			pbFrame, err := mapper.frameToPbFrame(frame)
+			pbFrame, err := mapper.FrameToProto(frame)
 			require.NoError(t, err)
 
-			actualFrame, err := mapper.frameFromPbFrame(pbFrame)
+			actualFrame, err := mapper.FrameFromProto(pbFrame)
 			require.NoError(t, err)
 
 			actualMessage := actualFrame.(MessageFrame).Message.(StreamStatusMessage)
@@ -297,28 +297,28 @@ func TestProtoMapper_StreamStates(t *testing.T) {
 }
 
 func TestProtoMapper_ErrorCases(t *testing.T) {
-	mapper := &protoMapper{memory.DefaultAllocator}
+	mapper := &Codec{memory.DefaultAllocator}
 
 	t.Run("nil frame to protobuf", func(t *testing.T) {
-		_, err := mapper.frameToPbFrame(nil)
+		_, err := mapper.FrameToProto(nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "nil frame")
 	})
 
 	t.Run("nil frame from protobuf", func(t *testing.T) {
-		_, err := mapper.frameFromPbFrame(nil)
+		_, err := mapper.FrameFromProto(nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "nil frame")
 	})
 
 	t.Run("nil message to protobuf", func(t *testing.T) {
-		_, err := mapper.messageToPbMessage(nil)
+		_, err := mapper.MessageToProto(nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "nil message")
 	})
 
 	t.Run("nil task to protobuf", func(t *testing.T) {
-		_, err := mapper.taskToPbTask(nil)
+		_, err := mapper.TaskToProto(nil)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "nil task")
 	})
@@ -337,7 +337,7 @@ func TestProtoMapper_ErrorCases(t *testing.T) {
 }
 
 func TestProtoMapper_ArrowRecordSerialization(t *testing.T) {
-	mapper := &protoMapper{memory.DefaultAllocator}
+	mapper := &Codec{memory.DefaultAllocator}
 
 	tests := map[string]struct {
 		createRecord func() arrow.Record

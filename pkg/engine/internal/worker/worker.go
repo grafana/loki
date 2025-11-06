@@ -19,7 +19,10 @@ import (
 	"github.com/oklog/ulid/v2"
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	grpcpeer "google.golang.org/grpc/peer"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/proto/wirepb"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
@@ -137,6 +140,138 @@ func (w *Worker) Service() services.Service {
 	})
 
 	return w.svc
+}
+
+// Server interface implementation
+func (w *Worker) Loop(client wirepb.Transport_LoopServer) error {
+	ctx := client.Context()
+
+	logger := w.logger
+	remote, ok := grpcpeer.FromContext(ctx)
+
+	if ok {
+		logger = log.With(logger, "remote_addr", remote.Addr.String())
+	}
+
+	level.Info(logger).Log("msg", "connected to scheduler")
+
+	var (
+		reqsMut   sync.Mutex
+		readyReqs []readyRequest
+	)
+
+	cancelRequests := func(err error) {
+		reqsMut.Lock()
+		defer reqsMut.Unlock()
+
+		for _, req := range readyReqs {
+			req.Response <- readyResponse{Error: err}
+		}
+	}
+
+	handleAssignment := func(peer *wire.Peer, msg wire.TaskAssignMessage) error {
+		reqsMut.Lock()
+		req := readyReqs[0]
+		readyReqs = readyReqs[1:]
+		reqsMut.Unlock()
+
+		job, err := w.newJob(req.Context, peer, logger, msg)
+		if err != nil {
+			return err
+		}
+
+		// Response is guaranteed to be buffered so we don't need to worry about
+		// blocking here.
+		req.Response <- readyResponse{Job: job}
+		return nil
+	}
+
+	failAssignment := func(err error) {
+		reqsMut.Lock()
+		defer reqsMut.Unlock()
+
+		if len(readyReqs) == 0 {
+			// If this hits, the scheduler responded with an assignment after we
+			// marked the SendMessage call as failing. We'll just ignore it
+			// here.
+			return
+		}
+
+		req := readyReqs[0]
+		readyReqs = readyReqs[1:]
+
+		// Response is guaranteed to be buffered so we don't need to worry about
+		// blocking here.
+		req.Response <- readyResponse{Error: err}
+	}
+
+	requestAssignment := func(ctx context.Context, peer *wire.Peer, req readyRequest) {
+		reqsMut.Lock()
+		readyReqs = append(readyReqs, req)
+		reqsMut.Unlock()
+
+		err := peer.SendMessage(ctx, wire.WorkerReadyMessage{})
+		if err != nil {
+			// Fail one of the requests. It really doesn't matter which one, as
+			// long as one of them is told about the error.
+			failAssignment(err)
+			return
+		}
+	}
+
+	peer := &wire.Peer{
+		Logger: logger,
+		Conn: &wire.GrpcServerAdapter{
+			Conn: client,
+			Peer: remote,
+		},
+
+		// Allow for a backlog of 128 frames before backpressure is applied.
+		Buffer: 128,
+
+		Handler: func(ctx context.Context, peer *wire.Peer, msg wire.Message) error {
+			switch msg := msg.(type) {
+			case wire.TaskAssignMessage:
+				return handleAssignment(peer, msg)
+
+			case wire.TaskCancelMessage:
+				return w.handleCancelMessage(ctx, msg)
+
+			case wire.StreamBindMessage:
+				return w.handleBindMessage(ctx, msg)
+
+			case wire.StreamStatusMessage:
+				return w.handleStreamStatusMessage(ctx, msg)
+
+			default:
+				level.Warn(logger).Log("msg", "unsupported message type", "type", reflect.TypeOf(msg).String())
+				return fmt.Errorf("unsupported message type %T", msg)
+			}
+		},
+	}
+
+	g, ctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error { return peer.Serve(ctx) })
+
+	g.Go(func() error {
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case req := <-w.readyCh:
+				requestAssignment(ctx, peer, req)
+			}
+		}
+	})
+
+	// Wait for all worker goroutines to exit. Before we return, we'll clean up
+	// any pending ready requests to tell them that they won't receive a task.
+	err := g.Wait()
+	cancelRequests(err)
+
+	level.Info(logger).Log("msg", "disconnected from scheduler", "err", err)
+	return err
 }
 
 // run starts the worker, running until the provided context is canceled.
@@ -271,8 +406,19 @@ func (w *Worker) dial(ctx context.Context, addr net.Addr) (wire.Conn, error) {
 	case wire.LocalWorker:
 		return w.local.DialFrom(ctx, w.local.Address)
 	default:
-		// TODO(rfratto): Support for network transports
-		return nil, fmt.Errorf("unsupported address %s", addr)
+		client, err := grpc.NewClient(addr.String())
+		if err != nil {
+			return nil, err
+		}
+		remote := &grpcpeer.Peer{}
+		conn, err := wirepb.NewTransportClient(client).Loop(ctx, grpc.Peer(remote))
+		if err != nil {
+			return nil, err
+		}
+		return &wire.GrpcClientAdapter{
+			Conn: conn,
+			Peer: remote,
+		}, nil
 	}
 }
 

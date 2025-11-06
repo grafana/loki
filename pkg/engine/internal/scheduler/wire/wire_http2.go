@@ -24,7 +24,7 @@ type HTTP2Listener struct {
 	connCh            chan Conn
 	closeOnce         sync.Once
 	closed            chan struct{}
-	protocol          FrameProtocol
+	protocol          FrameCodec
 	connAcceptTimeout time.Duration
 }
 
@@ -65,7 +65,7 @@ func WithHTTP2ListenerLogger(logger log.Logger) HTTP2ListenerOptFunc {
 // NewHTTP2Listener creates a new HTTP/2 listener on the specified address.
 func NewHTTP2Listener(
 	addr net.Addr,
-	protocol FrameProtocol,
+	protocol FrameCodec,
 	optFuncs ...HTTP2ListenerOptFunc,
 ) *HTTP2Listener {
 	opts := http2ListenerOpts{
@@ -166,7 +166,7 @@ type HTTP2Conn struct {
 	localAddr  net.Addr
 	remoteAddr net.Addr
 
-	protocol FrameProtocol
+	protocol FrameCodec
 	reader   io.ReadCloser
 	writer   io.Writer
 	flusher  http.Flusher
@@ -187,7 +187,7 @@ func newHTTP2Conn(
 	reader io.ReadCloser,
 	writer io.Writer,
 	flusher http.Flusher,
-	protocol FrameProtocol,
+	protocol FrameCodec,
 ) *HTTP2Conn {
 	c := &HTTP2Conn{
 		localAddr:  localAddr,
@@ -215,7 +215,7 @@ func (c *HTTP2Conn) Send(ctx context.Context, frame Frame) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 
-	if err := c.protocol.WriteFrame(c.writer, frame); err != nil {
+	if err := c.protocol.EncodeTo(c.writer, frame); err != nil {
 		return fmt.Errorf("write frame: %w", err)
 	}
 
@@ -244,7 +244,7 @@ func (c *HTTP2Conn) Recv(ctx context.Context) (Frame, error) {
 	resultCh := make(chan result, 1)
 
 	go func() {
-		frame, err := c.protocol.ReadFrame(c.reader)
+		frame, err := c.protocol.DecodeFrom(c.reader)
 		resultCh <- result{frame: frame, err: err}
 	}()
 
@@ -316,7 +316,7 @@ func NewHTTP2Dialer() *HTTP2Dialer {
 }
 
 // Dial establishes an HTTP/2 connection to the specified address.
-func (d *HTTP2Dialer) Dial(ctx context.Context, addr string, protocol FrameProtocol) (Conn, error) {
+func (d *HTTP2Dialer) Dial(ctx context.Context, addr string, protocol FrameCodec) (Conn, error) {
 	pr, pw := io.Pipe()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://%s/stream", addr), pr)

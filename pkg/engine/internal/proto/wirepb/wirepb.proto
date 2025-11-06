@@ -196,3 +196,8 @@ enum StreamState {
   STREAM_STATE_BLOCKED = 3; // Stream blocked by backpressure.
   STREAM_STATE_CLOSED = 4; // Stream closed, no longer transmitting.
 }
+
+service Transport {
+  rpc Loop(stream Frame) returns (stream Frame) {}
+}
+
