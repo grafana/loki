@@ -4846,6 +4846,76 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>gateway.httproute.annotations</td>
+			<td>object</td>
+			<td>Annotations for the gateway HTTPRoute</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.httproute.enabled</td>
+			<td>bool</td>
+			<td>Specifies whether an HTTPRoute for the gateway should be created</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.httproute.hostnames</td>
+			<td>list</td>
+			<td>Hostnames configuration for the gateway HTTPRoute, passed through the `tpl` function to allow templating</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.httproute.labels</td>
+			<td>object</td>
+			<td>Labels for the gateway HTTPRoute</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.httproute.parentRefs</td>
+			<td>list</td>
+			<td>The list of parent Gateways this HTTPRoute should be attached to, passed through the `tpl` function to allow templating</td>
+			<td><pre lang="json">
+[
+  {
+    "name": "",
+    "namespace": ""
+  }
+]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.httproute.rules</td>
+			<td>list</td>
+			<td>Rules configuration for the gateway HTTPRoute</td>
+			<td><pre lang="json">
+[
+  {
+    "matches": [
+      {
+        "path": {
+          "type": "PathPrefix",
+          "value": "/"
+        }
+      }
+    ]
+  }
+]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.image.digest</td>
 			<td>string</td>
 			<td>Overrides the gateway image tag with an image digest</td>
@@ -5403,6 +5473,49 @@ null
 			<td>Overrides the priorityClassName for all pods</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>httproute</td>
+			<td>object</td>
+			<td>HTTPRoute configuration (Gateway API). Use either this HTTPRoute or the gateway, but not both at once. If you enable this, make sure to disable the gateway. HTTPRoute uses the same path configuration as ingress above.</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "enabled": false,
+  "hostnames": [],
+  "labels": {},
+  "parentRefs": [
+    {
+      "name": "",
+      "namespace": ""
+    }
+  ]
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>httproute.hostnames</td>
+			<td>list</td>
+			<td>Hostnames configuration for the HTTPRoute, passed through the `tpl` function to allow templating</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>httproute.parentRefs</td>
+			<td>list</td>
+			<td>The list of parent Gateways this HTTPRoute should be attached to, passed through the `tpl` function to allow templating</td>
+			<td><pre lang="json">
+[
+  {
+    "name": "",
+    "namespace": ""
+  }
+]
 </pre>
 </td>
 		</tr>

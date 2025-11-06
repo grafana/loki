@@ -1187,6 +1187,32 @@ gateway:
       - secretName: loki-gateway-tls
         hosts:
           - gateway.loki.example.com
+  # HTTPRoute configuration (Gateway API)
+  httproute:
+    # -- Specifies whether an HTTPRoute for the gateway should be created
+    enabled: false
+    # -- Annotations for the gateway HTTPRoute
+    annotations: {}
+    # -- Labels for the gateway HTTPRoute
+    labels: {}
+    # -- The list of parent Gateways this HTTPRoute should be attached to, passed through the `tpl` function to allow templating
+    parentRefs:
+      - name: ""
+        namespace: ""
+        # sectionName: ""
+    # -- Hostnames configuration for the gateway HTTPRoute, passed through the `tpl` function to allow templating
+    hostnames: []
+      # - gateway.loki.example.com
+    # -- Rules configuration for the gateway HTTPRoute
+    rules:
+      - matches:
+          - path:
+              type: PathPrefix
+              value: /
+        # filters: []
+        # backendRefs:
+        #   - name: custom-backend
+        #     port: 8080
   # Basic auth configuration
   basicAuth:
     # -- Enables basic authentication for the gateway
@@ -1409,6 +1435,22 @@ ingress:
 #    - hosts:
 #       - loki.example.com
 #      secretName: loki-distributed-tls
+
+# -- HTTPRoute configuration (Gateway API). Use either this HTTPRoute or the gateway, but not both at once.
+# If you enable this, make sure to disable the gateway.
+# HTTPRoute uses the same path configuration as ingress above.
+httproute:
+  enabled: false
+  annotations: {}
+  labels: {}
+  # -- The list of parent Gateways this HTTPRoute should be attached to, passed through the `tpl` function to allow templating
+  parentRefs:
+    - name: ""
+      namespace: ""
+      # sectionName: ""
+  # -- Hostnames configuration for the HTTPRoute, passed through the `tpl` function to allow templating
+  hostnames: []
+    # - loki.example.com
 
 ######################################################################################################################
 #
