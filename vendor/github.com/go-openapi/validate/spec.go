@@ -32,17 +32,16 @@ import (
 //
 // Returns an error flattening in a single standard error, all validation messages.
 //
-//  - TODO: $ref should not have siblings
-//  - TODO: make sure documentation reflects all checks and warnings
-//  - TODO: check on discriminators
-//  - TODO: explicit message on unsupported keywords (better than "forbidden property"...)
-//  - TODO: full list of unresolved refs
-//  - TODO: validate numeric constraints (issue#581): this should be handled like defaults and examples
-//  - TODO: option to determine if we validate for go-swagger or in a more general context
-//  - TODO: check on required properties to support anyOf, allOf, oneOf
+//   - TODO: $ref should not have siblings
+//   - TODO: make sure documentation reflects all checks and warnings
+//   - TODO: check on discriminators
+//   - TODO: explicit message on unsupported keywords (better than "forbidden property"...)
+//   - TODO: full list of unresolved refs
+//   - TODO: validate numeric constraints (issue#581): this should be handled like defaults and examples
+//   - TODO: option to determine if we validate for go-swagger or in a more general context
+//   - TODO: check on required properties to support anyOf, allOf, oneOf
 //
 // NOTE: SecurityScopes are maps: no need to check uniqueness
-//
 func Spec(doc *loads.Document, formats strfmt.Registry) error {
 	errs, _ /*warns*/ := NewSpecValidator(doc.Schema(), formats).Validate(doc)
 	if errs.HasErrors() {
@@ -456,7 +455,6 @@ func (s *SpecValidator) validateReferenced() *Result {
 	return &res
 }
 
-// nolint: dupl
 func (s *SpecValidator) validateReferencedParameters() *Result {
 	// Each referenceable definition should have references.
 	params := s.spec.Spec().Parameters
@@ -482,7 +480,6 @@ func (s *SpecValidator) validateReferencedParameters() *Result {
 	return result
 }
 
-// nolint: dupl
 func (s *SpecValidator) validateReferencedResponses() *Result {
 	// Each referenceable definition should have references.
 	responses := s.spec.Spec().Responses
@@ -508,7 +505,6 @@ func (s *SpecValidator) validateReferencedResponses() *Result {
 	return result
 }
 
-// nolint: dupl
 func (s *SpecValidator) validateReferencedDefinitions() *Result {
 	// Each referenceable definition must have references.
 	defs := s.spec.Spec().Definitions
@@ -615,7 +611,7 @@ func (s *SpecValidator) validateRequiredProperties(path, in string, v *spec.Sche
 func (s *SpecValidator) validateParameters() *Result {
 	// - for each method, path is unique, regardless of path parameters
 	//   e.g. GET:/petstore/{id}, GET:/petstore/{pet}, GET:/petstore are
-	//   considered duplicate paths
+	//   considered duplicate paths, if StrictPathParamUniqueness is enabled.
 	// - each parameter should have a unique `name` and `type` combination
 	// - each operation should have only 1 parameter of type body
 	// - there must be at most 1 parameter in body
@@ -627,28 +623,30 @@ func (s *SpecValidator) validateParameters() *Result {
 	for method, pi := range s.expandedAnalyzer().Operations() {
 		methodPaths := make(map[string]map[string]string)
 		for path, op := range pi {
-			pathToAdd := pathHelp.stripParametersInPath(path)
+			if s.Options.StrictPathParamUniqueness {
+				pathToAdd := pathHelp.stripParametersInPath(path)
 
-			// Warn on garbled path afer param stripping
-			if rexGarbledPathSegment.MatchString(pathToAdd) {
-				res.AddWarnings(pathStrippedParamGarbledMsg(pathToAdd))
-			}
+				// Warn on garbled path afer param stripping
+				if rexGarbledPathSegment.MatchString(pathToAdd) {
+					res.AddWarnings(pathStrippedParamGarbledMsg(pathToAdd))
+				}
 
-			// Check uniqueness of stripped paths
-			if _, found := methodPaths[method][pathToAdd]; found {
+				// Check uniqueness of stripped paths
+				if _, found := methodPaths[method][pathToAdd]; found {
 
-				// Sort names for stable, testable output
-				if strings.Compare(path, methodPaths[method][pathToAdd]) < 0 {
-					res.AddErrors(pathOverlapMsg(path, methodPaths[method][pathToAdd]))
+					// Sort names for stable, testable output
+					if strings.Compare(path, methodPaths[method][pathToAdd]) < 0 {
+						res.AddErrors(pathOverlapMsg(path, methodPaths[method][pathToAdd]))
+					} else {
+						res.AddErrors(pathOverlapMsg(methodPaths[method][pathToAdd], path))
+					}
 				} else {
-					res.AddErrors(pathOverlapMsg(methodPaths[method][pathToAdd], path))
-				}
-			} else {
-				if _, found := methodPaths[method]; !found {
-					methodPaths[method] = map[string]string{}
-				}
-				methodPaths[method][pathToAdd] = path // Original non stripped path
+					if _, found := methodPaths[method]; !found {
+						methodPaths[method] = map[string]string{}
+					}
+					methodPaths[method][pathToAdd] = path // Original non stripped path
 
+				}
 			}
 
 			var bodyParams []string

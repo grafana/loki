@@ -4,12 +4,28 @@ package sso
 
 import (
 	"context"
+	"fmt"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// Removes the client- and server-side session that is associated with the user.
+// Removes the locally stored SSO tokens from the client-side cache and sends an
+// API call to the IAM Identity Center service to invalidate the corresponding
+// server-side IAM Identity Center sign in session.
+//
+// If a user uses IAM Identity Center to access the AWS CLI, the user’s IAM
+// Identity Center sign in session is used to obtain an IAM session, as specified
+// in the corresponding IAM Identity Center permission set. More specifically, IAM
+// Identity Center assumes an IAM role in the target account on behalf of the user,
+// and the corresponding temporary AWS credentials are returned to the client.
+//
+// After user logout, any existing IAM role sessions that were created by using
+// IAM Identity Center permission sets continue based on the duration configured in
+// the permission set. For more information, see [User authentications]in the IAM Identity Center User
+// Guide.
+//
+// [User authentications]: https://docs.aws.amazon.com/singlesignon/latest/userguide/authconcept.html
 func (c *Client) Logout(ctx context.Context, params *LogoutInput, optFns ...func(*Options)) (*LogoutOutput, error) {
 	if params == nil {
 		params = &LogoutInput{}
@@ -27,10 +43,10 @@ func (c *Client) Logout(ctx context.Context, params *LogoutInput, optFns ...func
 
 type LogoutInput struct {
 
-	// The token issued by the CreateToken API call. For more information, see
-	// CreateToken
-	// (https://docs.aws.amazon.com/singlesignon/latest/OIDCAPIReference/API_CreateToken.html)
-	// in the AWS SSO OIDC API Reference Guide.
+	// The token issued by the CreateToken API call. For more information, see [CreateToken] in the
+	// IAM Identity Center OIDC API Reference Guide.
+	//
+	// [CreateToken]: https://docs.aws.amazon.com/singlesignon/latest/OIDCAPIReference/API_CreateToken.html
 	//
 	// This member is required.
 	AccessToken *string
@@ -46,6 +62,9 @@ type LogoutOutput struct {
 }
 
 func (c *Client) addOperationLogoutMiddlewares(stack *middleware.Stack, options Options) (err error) {
+	if err := stack.Serialize.Add(&setOperationInputMiddleware{}, middleware.After); err != nil {
+		return err
+	}
 	err = stack.Serialize.Add(&awsRestjson1_serializeOpLogout{}, middleware.After)
 	if err != nil {
 		return err
@@ -54,28 +73,38 @@ func (c *Client) addOperationLogoutMiddlewares(stack *middleware.Stack, options 
 	if err != nil {
 		return err
 	}
+	if err := addProtocolFinalizerMiddlewares(stack, options, "Logout"); err != nil {
+		return fmt.Errorf("add protocol finalizers: %v", err)
+	}
+
+	if err = addlegacyEndpointContextSetter(stack, options); err != nil {
+		return err
+	}
 	if err = addSetLoggerMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddClientRequestIDMiddleware(stack); err != nil {
+	if err = addClientRequestID(stack); err != nil {
 		return err
 	}
-	if err = smithyhttp.AddComputeContentLengthMiddleware(stack); err != nil {
+	if err = addComputeContentLength(stack); err != nil {
 		return err
 	}
 	if err = addResolveEndpointMiddleware(stack, options); err != nil {
 		return err
 	}
-	if err = addRetryMiddlewares(stack, options); err != nil {
+	if err = addRetry(stack, options); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRawResponseToMetadata(stack); err != nil {
+	if err = addRawResponseToMetadata(stack); err != nil {
 		return err
 	}
-	if err = awsmiddleware.AddRecordResponseTiming(stack); err != nil {
+	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
-	if err = addClientUserAgent(stack); err != nil {
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
 	if err = smithyhttp.AddErrorCloseResponseBodyMiddleware(stack); err != nil {
@@ -84,10 +113,22 @@ func (c *Client) addOperationLogoutMiddlewares(stack *middleware.Stack, options 
 	if err = smithyhttp.AddCloseResponseBodyMiddleware(stack); err != nil {
 		return err
 	}
+	if err = addSetLegacyContextSigningOptionsMiddleware(stack); err != nil {
+		return err
+	}
+	if err = addTimeOffsetBuild(stack, c); err != nil {
+		return err
+	}
+	if err = addUserAgentRetryMode(stack, options); err != nil {
+		return err
+	}
 	if err = addOpLogoutValidationMiddleware(stack); err != nil {
 		return err
 	}
 	if err = stack.Initialize.Add(newServiceMetadataMiddleware_opLogout(options.Region), middleware.Before); err != nil {
+		return err
+	}
+	if err = addRecursionDetection(stack); err != nil {
 		return err
 	}
 	if err = addRequestIDRetrieverMiddleware(stack); err != nil {
@@ -97,6 +138,21 @@ func (c *Client) addOperationLogoutMiddlewares(stack *middleware.Stack, options 
 		return err
 	}
 	if err = addRequestResponseLogging(stack, options); err != nil {
+		return err
+	}
+	if err = addDisableHTTPSMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addSpanInitializeStart(stack); err != nil {
+		return err
+	}
+	if err = addSpanInitializeEnd(stack); err != nil {
+		return err
+	}
+	if err = addSpanBuildRequestStart(stack); err != nil {
+		return err
+	}
+	if err = addSpanBuildRequestEnd(stack); err != nil {
 		return err
 	}
 	return nil

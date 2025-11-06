@@ -149,6 +149,15 @@ const (
 	// Point in time recovery has not yet been enabled for this source table.
 	ErrCodePointInTimeRecoveryUnavailableException = "PointInTimeRecoveryUnavailableException"
 
+	// ErrCodePolicyNotFoundException for service response error code
+	// "PolicyNotFoundException".
+	//
+	// The operation tried to access a nonexistent resource-based policy.
+	//
+	// If you specified an ExpectedRevisionId, it's possible that a policy is present
+	// for the resource but its revision ID didn't match the expected value.
+	ErrCodePolicyNotFoundException = "PolicyNotFoundException"
+
 	// ErrCodeProvisionedThroughputExceededException for service response error code
 	// "ProvisionedThroughputExceededException".
 	//
@@ -238,6 +247,10 @@ const (
 	//    of changes made by the transaction.
 	//
 	//    * There is a user error, such as an invalid data format.
+	//
+	//    * There is an ongoing TransactWriteItems operation that conflicts with
+	//    a concurrent TransactWriteItems request. In this case the TransactWriteItems
+	//    operation fails with a TransactionCanceledException.
 	//
 	// DynamoDB cancels a TransactGetItems request under the following circumstances:
 	//
@@ -379,6 +392,7 @@ var exceptionFromCode = map[string]func(protocol.ResponseMetadata) error{
 	"ItemCollectionSizeLimitExceededException": newErrorItemCollectionSizeLimitExceededException,
 	"LimitExceededException":                   newErrorLimitExceededException,
 	"PointInTimeRecoveryUnavailableException":  newErrorPointInTimeRecoveryUnavailableException,
+	"PolicyNotFoundException":                  newErrorPolicyNotFoundException,
 	"ProvisionedThroughputExceededException":   newErrorProvisionedThroughputExceededException,
 	"ReplicaAlreadyExistsException":            newErrorReplicaAlreadyExistsException,
 	"ReplicaNotFoundException":                 newErrorReplicaNotFoundException,

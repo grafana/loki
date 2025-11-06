@@ -80,6 +80,9 @@ const (
 	// EC2 IMDS Endpoint
 	ec2MetadataServiceEndpointKey = "ec2_metadata_service_endpoint"
 
+	// ECS IMDSv1 disable fallback
+	ec2MetadataV1DisabledKey = "ec2_metadata_v1_disabled"
+
 	// Use DualStack Endpoint Resolution
 	useDualStackEndpoint = "use_dualstack_endpoint"
 
@@ -178,6 +181,12 @@ type sharedConfig struct {
 	//
 	// ec2_metadata_service_endpoint=http://fd00:ec2::254
 	EC2IMDSEndpoint string
+
+	// Specifies that IMDS clients should not fallback to IMDSv1 if token
+	// requests fail.
+	//
+	// ec2_metadata_v1_disabled=true
+	EC2IMDSv1Disabled *bool
 
 	// Specifies that SDK clients must resolve a dual-stack endpoint for
 	// services.
@@ -340,7 +349,7 @@ func (cfg *sharedConfig) setFromIniFiles(profiles map[string]struct{}, profile s
 	if cfg.hasSSOTokenProviderConfiguration() {
 		skippedFiles = 0
 		for _, f := range files {
-			section, ok := f.IniData.GetSection(fmt.Sprintf(ssoSectionPrefix + strings.TrimSpace(cfg.SSOSessionName)))
+			section, ok := f.IniData.GetSection(ssoSectionPrefix + strings.TrimSpace(cfg.SSOSessionName))
 			if ok {
 				var ssoSession ssoSession
 				ssoSession.setFromIniSection(section)
@@ -389,8 +398,15 @@ func (cfg *sharedConfig) setFromIniFile(profile string, file sharedConfigFile, e
 		updateString(&cfg.Region, section, regionKey)
 		updateString(&cfg.CustomCABundle, section, customCABundleKey)
 
+		// we're retaining a behavioral quirk with this field that existed before
+		// the removal of literal parsing for (aws-sdk-go-v2/#2276):
+		//   - if the key is missing, the config field will not be set
+		//   - if the key is set to a non-numeric, the config field will be set to 0
 		if section.Has(roleDurationSecondsKey) {
-			d := time.Duration(section.Int(roleDurationSecondsKey)) * time.Second
+			var d time.Duration
+			if v, ok := section.Int(roleDurationSecondsKey); ok {
+				d = time.Duration(v) * time.Second
+			}
 			cfg.AssumeRoleDuration = &d
 		}
 
@@ -427,6 +443,7 @@ func (cfg *sharedConfig) setFromIniFile(profile string, file sharedConfigFile, e
 				ec2MetadataServiceEndpointModeKey, file.Filename, err)
 		}
 		updateString(&cfg.EC2IMDSEndpoint, section, ec2MetadataServiceEndpointKey)
+		updateBoolPtr(&cfg.EC2IMDSv1Disabled, section, ec2MetadataV1DisabledKey)
 
 		updateUseDualStackEndpoint(&cfg.UseDualStackEndpoint, section, useDualStackEndpoint)
 
@@ -668,7 +685,10 @@ func updateBool(dst *bool, section ini.Section, key string) {
 	if !section.Has(key) {
 		return
 	}
-	*dst = section.Bool(key)
+
+	// retains pre-(aws-sdk-go-v2#2276) behavior where non-bool value would resolve to false
+	v, _ := section.Bool(key)
+	*dst = v
 }
 
 // updateBoolPtr will only update the dst with the value in the section key,
@@ -677,8 +697,11 @@ func updateBoolPtr(dst **bool, section ini.Section, key string) {
 	if !section.Has(key) {
 		return
 	}
+
+	// retains pre-(aws-sdk-go-v2#2276) behavior where non-bool value would resolve to false
+	v, _ := section.Bool(key)
 	*dst = new(bool)
-	**dst = section.Bool(key)
+	**dst = v
 }
 
 // SharedConfigLoadError is an error for the shared config file failed to load.
@@ -805,7 +828,8 @@ func updateUseDualStackEndpoint(dst *endpoints.DualStackEndpointState, section i
 		return
 	}
 
-	if section.Bool(key) {
+	// retains pre-(aws-sdk-go-v2/#2276) behavior where non-bool value would resolve to false
+	if v, _ := section.Bool(key); v {
 		*dst = endpoints.DualStackEndpointStateEnabled
 	} else {
 		*dst = endpoints.DualStackEndpointStateDisabled
@@ -821,7 +845,8 @@ func updateUseFIPSEndpoint(dst *endpoints.FIPSEndpointState, section ini.Section
 		return
 	}
 
-	if section.Bool(key) {
+	// retains pre-(aws-sdk-go-v2/#2276) behavior where non-bool value would resolve to false
+	if v, _ := section.Bool(key); v {
 		*dst = endpoints.FIPSEndpointStateEnabled
 	} else {
 		*dst = endpoints.FIPSEndpointStateDisabled

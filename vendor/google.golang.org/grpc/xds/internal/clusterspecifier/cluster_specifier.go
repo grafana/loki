@@ -21,7 +21,7 @@
 package clusterspecifier
 
 import (
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 )
 
 // BalancerConfig is the Go Native JSON representation of a balancer

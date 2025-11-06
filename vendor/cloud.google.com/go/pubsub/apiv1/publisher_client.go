@@ -1,4 +1,4 @@
-// Copyright 2023 Google LLC
+// Copyright 2024 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -37,7 +37,6 @@ import (
 	httptransport "google.golang.org/api/transport/http"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -63,7 +62,9 @@ type PublisherCallOptions struct {
 func defaultPublisherGRPCClientOptions() []option.ClientOption {
 	return []option.ClientOption{
 		internaloption.WithDefaultEndpoint("pubsub.googleapis.com:443"),
+		internaloption.WithDefaultEndpointTemplate("pubsub.UNIVERSE_DOMAIN:443"),
 		internaloption.WithDefaultMTLSEndpoint("pubsub.mtls.googleapis.com:443"),
+		internaloption.WithDefaultUniverseDomain("googleapis.com"),
 		internaloption.WithDefaultAudience("https://pubsub.googleapis.com/"),
 		internaloption.WithDefaultScopes(DefaultAuthScopes()...),
 		internaloption.EnableJwtWithScope(),
@@ -112,7 +113,7 @@ func defaultPublisherCallOptions() *PublisherCallOptions {
 				}, gax.Backoff{
 					Initial:    100 * time.Millisecond,
 					Max:        60000 * time.Millisecond,
-					Multiplier: 1.30,
+					Multiplier: 4.00,
 				})
 			}),
 		},
@@ -232,7 +233,7 @@ func defaultPublisherRESTCallOptions() *PublisherCallOptions {
 				return gax.OnHTTPCodes(gax.Backoff{
 					Initial:    100 * time.Millisecond,
 					Max:        60000 * time.Millisecond,
-					Multiplier: 1.30,
+					Multiplier: 4.00,
 				},
 					http.StatusConflict,
 					499,
@@ -379,13 +380,13 @@ func (c *PublisherClient) Connection() *grpc.ClientConn {
 }
 
 // CreateTopic creates the given topic with the given name. See the [resource name rules]
-// (https://cloud.google.com/pubsub/docs/admin#resource_names (at https://cloud.google.com/pubsub/docs/admin#resource_names)).
+// (https://cloud.google.com/pubsub/docs/pubsub-basics#resource_names (at https://cloud.google.com/pubsub/docs/pubsub-basics#resource_names)).
 func (c *PublisherClient) CreateTopic(ctx context.Context, req *pubsubpb.Topic, opts ...gax.CallOption) (*pubsubpb.Topic, error) {
 	return c.internalClient.CreateTopic(ctx, req, opts...)
 }
 
-// UpdateTopic updates an existing topic. Note that certain properties of a
-// topic are not modifiable.
+// UpdateTopic updates an existing topic by updating the fields specified in the update
+// mask. Note that certain properties of a topic are not modifiable.
 func (c *PublisherClient) UpdateTopic(ctx context.Context, req *pubsubpb.UpdateTopicRequest, opts ...gax.CallOption) (*pubsubpb.Topic, error) {
 	return c.internalClient.UpdateTopic(ctx, req, opts...)
 }
@@ -479,7 +480,7 @@ type publisherGRPCClient struct {
 	iamPolicyClient iampb.IAMPolicyClient
 
 	// The x-goog-* metadata to be sent with each request.
-	xGoogMetadata metadata.MD
+	xGoogHeaders []string
 }
 
 // NewPublisherClient creates a new publisher client based on gRPC.
@@ -530,7 +531,9 @@ func (c *publisherGRPCClient) Connection() *grpc.ClientConn {
 func (c *publisherGRPCClient) setGoogleClientInfo(keyval ...string) {
 	kv := append([]string{"gl-go", gax.GoVersion}, keyval...)
 	kv = append(kv, "gapic", getVersionClient(), "gax", gax.Version, "grpc", grpc.Version)
-	c.xGoogMetadata = metadata.Pairs("x-goog-api-client", gax.XGoogHeader(kv...))
+	c.xGoogHeaders = []string{
+		"x-goog-api-client", gax.XGoogHeader(kv...),
+	}
 }
 
 // Close closes the connection to the API service. The user should invoke this when
@@ -547,8 +550,8 @@ type publisherRESTClient struct {
 	// The http client.
 	httpClient *http.Client
 
-	// The x-goog-* metadata to be sent with each request.
-	xGoogMetadata metadata.MD
+	// The x-goog-* headers to be sent with each request.
+	xGoogHeaders []string
 
 	// Points back to the CallOptions field of the containing PublisherClient
 	CallOptions **PublisherCallOptions
@@ -579,7 +582,9 @@ func NewPublisherRESTClient(ctx context.Context, opts ...option.ClientOption) (*
 func defaultPublisherRESTClientOptions() []option.ClientOption {
 	return []option.ClientOption{
 		internaloption.WithDefaultEndpoint("https://pubsub.googleapis.com"),
+		internaloption.WithDefaultEndpointTemplate("https://pubsub.UNIVERSE_DOMAIN"),
 		internaloption.WithDefaultMTLSEndpoint("https://pubsub.mtls.googleapis.com"),
+		internaloption.WithDefaultUniverseDomain("googleapis.com"),
 		internaloption.WithDefaultAudience("https://pubsub.googleapis.com/"),
 		internaloption.WithDefaultScopes(DefaultAuthScopes()...),
 	}
@@ -591,7 +596,9 @@ func defaultPublisherRESTClientOptions() []option.ClientOption {
 func (c *publisherRESTClient) setGoogleClientInfo(keyval ...string) {
 	kv := append([]string{"gl-go", gax.GoVersion}, keyval...)
 	kv = append(kv, "gapic", getVersionClient(), "gax", gax.Version, "rest", "UNKNOWN")
-	c.xGoogMetadata = metadata.Pairs("x-goog-api-client", gax.XGoogHeader(kv...))
+	c.xGoogHeaders = []string{
+		"x-goog-api-client", gax.XGoogHeader(kv...),
+	}
 }
 
 // Close closes the connection to the API service. The user should invoke this when
@@ -609,9 +616,10 @@ func (c *publisherRESTClient) Connection() *grpc.ClientConn {
 	return nil
 }
 func (c *publisherGRPCClient) CreateTopic(ctx context.Context, req *pubsubpb.Topic, opts ...gax.CallOption) (*pubsubpb.Topic, error) {
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName()))}
 
-	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
+	hds = append(c.xGoogHeaders, hds...)
+	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
 	opts = append((*c.CallOptions).CreateTopic[0:len((*c.CallOptions).CreateTopic):len((*c.CallOptions).CreateTopic)], opts...)
 	var resp *pubsubpb.Topic
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
@@ -626,9 +634,10 @@ func (c *publisherGRPCClient) CreateTopic(ctx context.Context, req *pubsubpb.Top
 }
 
 func (c *publisherGRPCClient) UpdateTopic(ctx context.Context, req *pubsubpb.UpdateTopicRequest, opts ...gax.CallOption) (*pubsubpb.Topic, error) {
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "topic.name", url.QueryEscape(req.GetTopic().GetName())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "topic.name", url.QueryEscape(req.GetTopic().GetName()))}
 
-	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
+	hds = append(c.xGoogHeaders, hds...)
+	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
 	opts = append((*c.CallOptions).UpdateTopic[0:len((*c.CallOptions).UpdateTopic):len((*c.CallOptions).UpdateTopic)], opts...)
 	var resp *pubsubpb.Topic
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
@@ -643,9 +652,10 @@ func (c *publisherGRPCClient) UpdateTopic(ctx context.Context, req *pubsubpb.Upd
 }
 
 func (c *publisherGRPCClient) Publish(ctx context.Context, req *pubsubpb.PublishRequest, opts ...gax.CallOption) (*pubsubpb.PublishResponse, error) {
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic()))}
 
-	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
+	hds = append(c.xGoogHeaders, hds...)
+	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
 	opts = append((*c.CallOptions).Publish[0:len((*c.CallOptions).Publish):len((*c.CallOptions).Publish)], opts...)
 	var resp *pubsubpb.PublishResponse
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
@@ -660,9 +670,10 @@ func (c *publisherGRPCClient) Publish(ctx context.Context, req *pubsubpb.Publish
 }
 
 func (c *publisherGRPCClient) GetTopic(ctx context.Context, req *pubsubpb.GetTopicRequest, opts ...gax.CallOption) (*pubsubpb.Topic, error) {
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic()))}
 
-	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
+	hds = append(c.xGoogHeaders, hds...)
+	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
 	opts = append((*c.CallOptions).GetTopic[0:len((*c.CallOptions).GetTopic):len((*c.CallOptions).GetTopic)], opts...)
 	var resp *pubsubpb.Topic
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
@@ -677,9 +688,10 @@ func (c *publisherGRPCClient) GetTopic(ctx context.Context, req *pubsubpb.GetTop
 }
 
 func (c *publisherGRPCClient) ListTopics(ctx context.Context, req *pubsubpb.ListTopicsRequest, opts ...gax.CallOption) *TopicIterator {
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "project", url.QueryEscape(req.GetProject())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "project", url.QueryEscape(req.GetProject()))}
 
-	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
+	hds = append(c.xGoogHeaders, hds...)
+	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
 	opts = append((*c.CallOptions).ListTopics[0:len((*c.CallOptions).ListTopics):len((*c.CallOptions).ListTopics)], opts...)
 	it := &TopicIterator{}
 	req = proto.Clone(req).(*pubsubpb.ListTopicsRequest)
@@ -722,9 +734,10 @@ func (c *publisherGRPCClient) ListTopics(ctx context.Context, req *pubsubpb.List
 }
 
 func (c *publisherGRPCClient) ListTopicSubscriptions(ctx context.Context, req *pubsubpb.ListTopicSubscriptionsRequest, opts ...gax.CallOption) *StringIterator {
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic()))}
 
-	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
+	hds = append(c.xGoogHeaders, hds...)
+	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
 	opts = append((*c.CallOptions).ListTopicSubscriptions[0:len((*c.CallOptions).ListTopicSubscriptions):len((*c.CallOptions).ListTopicSubscriptions)], opts...)
 	it := &StringIterator{}
 	req = proto.Clone(req).(*pubsubpb.ListTopicSubscriptionsRequest)
@@ -767,9 +780,10 @@ func (c *publisherGRPCClient) ListTopicSubscriptions(ctx context.Context, req *p
 }
 
 func (c *publisherGRPCClient) ListTopicSnapshots(ctx context.Context, req *pubsubpb.ListTopicSnapshotsRequest, opts ...gax.CallOption) *StringIterator {
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic()))}
 
-	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
+	hds = append(c.xGoogHeaders, hds...)
+	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
 	opts = append((*c.CallOptions).ListTopicSnapshots[0:len((*c.CallOptions).ListTopicSnapshots):len((*c.CallOptions).ListTopicSnapshots)], opts...)
 	it := &StringIterator{}
 	req = proto.Clone(req).(*pubsubpb.ListTopicSnapshotsRequest)
@@ -812,9 +826,10 @@ func (c *publisherGRPCClient) ListTopicSnapshots(ctx context.Context, req *pubsu
 }
 
 func (c *publisherGRPCClient) DeleteTopic(ctx context.Context, req *pubsubpb.DeleteTopicRequest, opts ...gax.CallOption) error {
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic()))}
 
-	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
+	hds = append(c.xGoogHeaders, hds...)
+	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
 	opts = append((*c.CallOptions).DeleteTopic[0:len((*c.CallOptions).DeleteTopic):len((*c.CallOptions).DeleteTopic)], opts...)
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
@@ -825,9 +840,10 @@ func (c *publisherGRPCClient) DeleteTopic(ctx context.Context, req *pubsubpb.Del
 }
 
 func (c *publisherGRPCClient) DetachSubscription(ctx context.Context, req *pubsubpb.DetachSubscriptionRequest, opts ...gax.CallOption) (*pubsubpb.DetachSubscriptionResponse, error) {
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "subscription", url.QueryEscape(req.GetSubscription())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "subscription", url.QueryEscape(req.GetSubscription()))}
 
-	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
+	hds = append(c.xGoogHeaders, hds...)
+	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
 	opts = append((*c.CallOptions).DetachSubscription[0:len((*c.CallOptions).DetachSubscription):len((*c.CallOptions).DetachSubscription)], opts...)
 	var resp *pubsubpb.DetachSubscriptionResponse
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
@@ -842,9 +858,10 @@ func (c *publisherGRPCClient) DetachSubscription(ctx context.Context, req *pubsu
 }
 
 func (c *publisherGRPCClient) GetIamPolicy(ctx context.Context, req *iampb.GetIamPolicyRequest, opts ...gax.CallOption) (*iampb.Policy, error) {
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "resource", url.QueryEscape(req.GetResource())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "resource", url.QueryEscape(req.GetResource()))}
 
-	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
+	hds = append(c.xGoogHeaders, hds...)
+	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
 	opts = append((*c.CallOptions).GetIamPolicy[0:len((*c.CallOptions).GetIamPolicy):len((*c.CallOptions).GetIamPolicy)], opts...)
 	var resp *iampb.Policy
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
@@ -859,9 +876,10 @@ func (c *publisherGRPCClient) GetIamPolicy(ctx context.Context, req *iampb.GetIa
 }
 
 func (c *publisherGRPCClient) SetIamPolicy(ctx context.Context, req *iampb.SetIamPolicyRequest, opts ...gax.CallOption) (*iampb.Policy, error) {
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "resource", url.QueryEscape(req.GetResource())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "resource", url.QueryEscape(req.GetResource()))}
 
-	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
+	hds = append(c.xGoogHeaders, hds...)
+	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
 	opts = append((*c.CallOptions).SetIamPolicy[0:len((*c.CallOptions).SetIamPolicy):len((*c.CallOptions).SetIamPolicy)], opts...)
 	var resp *iampb.Policy
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
@@ -876,9 +894,10 @@ func (c *publisherGRPCClient) SetIamPolicy(ctx context.Context, req *iampb.SetIa
 }
 
 func (c *publisherGRPCClient) TestIamPermissions(ctx context.Context, req *iampb.TestIamPermissionsRequest, opts ...gax.CallOption) (*iampb.TestIamPermissionsResponse, error) {
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "resource", url.QueryEscape(req.GetResource())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "resource", url.QueryEscape(req.GetResource()))}
 
-	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
+	hds = append(c.xGoogHeaders, hds...)
+	ctx = gax.InsertMetadataIntoOutgoingContext(ctx, hds...)
 	opts = append((*c.CallOptions).TestIamPermissions[0:len((*c.CallOptions).TestIamPermissions):len((*c.CallOptions).TestIamPermissions)], opts...)
 	var resp *iampb.TestIamPermissionsResponse
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
@@ -893,7 +912,7 @@ func (c *publisherGRPCClient) TestIamPermissions(ctx context.Context, req *iampb
 }
 
 // CreateTopic creates the given topic with the given name. See the [resource name rules]
-// (https://cloud.google.com/pubsub/docs/admin#resource_names (at https://cloud.google.com/pubsub/docs/admin#resource_names)).
+// (https://cloud.google.com/pubsub/docs/pubsub-basics#resource_names (at https://cloud.google.com/pubsub/docs/pubsub-basics#resource_names)).
 func (c *publisherRESTClient) CreateTopic(ctx context.Context, req *pubsubpb.Topic, opts ...gax.CallOption) (*pubsubpb.Topic, error) {
 	m := protojson.MarshalOptions{AllowPartial: true, UseEnumNumbers: true}
 	jsonReq, err := m.Marshal(req)
@@ -913,9 +932,11 @@ func (c *publisherRESTClient) CreateTopic(ctx context.Context, req *pubsubpb.Top
 	baseUrl.RawQuery = params.Encode()
 
 	// Build HTTP headers from client and context metadata.
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName()))}
 
-	headers := buildHeaders(ctx, c.xGoogMetadata, md, metadata.Pairs("Content-Type", "application/json"))
+	hds = append(c.xGoogHeaders, hds...)
+	hds = append(hds, "Content-Type", "application/json")
+	headers := gax.BuildHeaders(ctx, hds...)
 	opts = append((*c.CallOptions).CreateTopic[0:len((*c.CallOptions).CreateTopic):len((*c.CallOptions).CreateTopic)], opts...)
 	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
 	resp := &pubsubpb.Topic{}
@@ -957,8 +978,8 @@ func (c *publisherRESTClient) CreateTopic(ctx context.Context, req *pubsubpb.Top
 	return resp, nil
 }
 
-// UpdateTopic updates an existing topic. Note that certain properties of a
-// topic are not modifiable.
+// UpdateTopic updates an existing topic by updating the fields specified in the update
+// mask. Note that certain properties of a topic are not modifiable.
 func (c *publisherRESTClient) UpdateTopic(ctx context.Context, req *pubsubpb.UpdateTopicRequest, opts ...gax.CallOption) (*pubsubpb.Topic, error) {
 	m := protojson.MarshalOptions{AllowPartial: true, UseEnumNumbers: true}
 	jsonReq, err := m.Marshal(req)
@@ -978,9 +999,11 @@ func (c *publisherRESTClient) UpdateTopic(ctx context.Context, req *pubsubpb.Upd
 	baseUrl.RawQuery = params.Encode()
 
 	// Build HTTP headers from client and context metadata.
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "topic.name", url.QueryEscape(req.GetTopic().GetName())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "topic.name", url.QueryEscape(req.GetTopic().GetName()))}
 
-	headers := buildHeaders(ctx, c.xGoogMetadata, md, metadata.Pairs("Content-Type", "application/json"))
+	hds = append(c.xGoogHeaders, hds...)
+	hds = append(hds, "Content-Type", "application/json")
+	headers := gax.BuildHeaders(ctx, hds...)
 	opts = append((*c.CallOptions).UpdateTopic[0:len((*c.CallOptions).UpdateTopic):len((*c.CallOptions).UpdateTopic)], opts...)
 	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
 	resp := &pubsubpb.Topic{}
@@ -1043,9 +1066,11 @@ func (c *publisherRESTClient) Publish(ctx context.Context, req *pubsubpb.Publish
 	baseUrl.RawQuery = params.Encode()
 
 	// Build HTTP headers from client and context metadata.
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic()))}
 
-	headers := buildHeaders(ctx, c.xGoogMetadata, md, metadata.Pairs("Content-Type", "application/json"))
+	hds = append(c.xGoogHeaders, hds...)
+	hds = append(hds, "Content-Type", "application/json")
+	headers := gax.BuildHeaders(ctx, hds...)
 	opts = append((*c.CallOptions).Publish[0:len((*c.CallOptions).Publish):len((*c.CallOptions).Publish)], opts...)
 	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
 	resp := &pubsubpb.PublishResponse{}
@@ -1101,9 +1126,11 @@ func (c *publisherRESTClient) GetTopic(ctx context.Context, req *pubsubpb.GetTop
 	baseUrl.RawQuery = params.Encode()
 
 	// Build HTTP headers from client and context metadata.
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic()))}
 
-	headers := buildHeaders(ctx, c.xGoogMetadata, md, metadata.Pairs("Content-Type", "application/json"))
+	hds = append(c.xGoogHeaders, hds...)
+	hds = append(hds, "Content-Type", "application/json")
+	headers := gax.BuildHeaders(ctx, hds...)
 	opts = append((*c.CallOptions).GetTopic[0:len((*c.CallOptions).GetTopic):len((*c.CallOptions).GetTopic)], opts...)
 	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
 	resp := &pubsubpb.Topic{}
@@ -1178,7 +1205,8 @@ func (c *publisherRESTClient) ListTopics(ctx context.Context, req *pubsubpb.List
 		baseUrl.RawQuery = params.Encode()
 
 		// Build HTTP headers from client and context metadata.
-		headers := buildHeaders(ctx, c.xGoogMetadata, metadata.Pairs("Content-Type", "application/json"))
+		hds := append(c.xGoogHeaders, "Content-Type", "application/json")
+		headers := gax.BuildHeaders(ctx, hds...)
 		e := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 			if settings.Path != "" {
 				baseUrl.Path = settings.Path
@@ -1266,7 +1294,8 @@ func (c *publisherRESTClient) ListTopicSubscriptions(ctx context.Context, req *p
 		baseUrl.RawQuery = params.Encode()
 
 		// Build HTTP headers from client and context metadata.
-		headers := buildHeaders(ctx, c.xGoogMetadata, metadata.Pairs("Content-Type", "application/json"))
+		hds := append(c.xGoogHeaders, "Content-Type", "application/json")
+		headers := gax.BuildHeaders(ctx, hds...)
 		e := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 			if settings.Path != "" {
 				baseUrl.Path = settings.Path
@@ -1358,7 +1387,8 @@ func (c *publisherRESTClient) ListTopicSnapshots(ctx context.Context, req *pubsu
 		baseUrl.RawQuery = params.Encode()
 
 		// Build HTTP headers from client and context metadata.
-		headers := buildHeaders(ctx, c.xGoogMetadata, metadata.Pairs("Content-Type", "application/json"))
+		hds := append(c.xGoogHeaders, "Content-Type", "application/json")
+		headers := gax.BuildHeaders(ctx, hds...)
 		e := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 			if settings.Path != "" {
 				baseUrl.Path = settings.Path
@@ -1431,9 +1461,11 @@ func (c *publisherRESTClient) DeleteTopic(ctx context.Context, req *pubsubpb.Del
 	baseUrl.RawQuery = params.Encode()
 
 	// Build HTTP headers from client and context metadata.
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "topic", url.QueryEscape(req.GetTopic()))}
 
-	headers := buildHeaders(ctx, c.xGoogMetadata, md, metadata.Pairs("Content-Type", "application/json"))
+	hds = append(c.xGoogHeaders, hds...)
+	hds = append(hds, "Content-Type", "application/json")
+	headers := gax.BuildHeaders(ctx, hds...)
 	return gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		if settings.Path != "" {
 			baseUrl.Path = settings.Path
@@ -1474,9 +1506,11 @@ func (c *publisherRESTClient) DetachSubscription(ctx context.Context, req *pubsu
 	baseUrl.RawQuery = params.Encode()
 
 	// Build HTTP headers from client and context metadata.
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "subscription", url.QueryEscape(req.GetSubscription())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "subscription", url.QueryEscape(req.GetSubscription()))}
 
-	headers := buildHeaders(ctx, c.xGoogMetadata, md, metadata.Pairs("Content-Type", "application/json"))
+	hds = append(c.xGoogHeaders, hds...)
+	hds = append(hds, "Content-Type", "application/json")
+	headers := gax.BuildHeaders(ctx, hds...)
 	opts = append((*c.CallOptions).DetachSubscription[0:len((*c.CallOptions).DetachSubscription):len((*c.CallOptions).DetachSubscription)], opts...)
 	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
 	resp := &pubsubpb.DetachSubscriptionResponse{}
@@ -1536,9 +1570,11 @@ func (c *publisherRESTClient) GetIamPolicy(ctx context.Context, req *iampb.GetIa
 	baseUrl.RawQuery = params.Encode()
 
 	// Build HTTP headers from client and context metadata.
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "resource", url.QueryEscape(req.GetResource())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "resource", url.QueryEscape(req.GetResource()))}
 
-	headers := buildHeaders(ctx, c.xGoogMetadata, md, metadata.Pairs("Content-Type", "application/json"))
+	hds = append(c.xGoogHeaders, hds...)
+	hds = append(hds, "Content-Type", "application/json")
+	headers := gax.BuildHeaders(ctx, hds...)
 	opts = append((*c.CallOptions).GetIamPolicy[0:len((*c.CallOptions).GetIamPolicy):len((*c.CallOptions).GetIamPolicy)], opts...)
 	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
 	resp := &iampb.Policy{}
@@ -1604,9 +1640,11 @@ func (c *publisherRESTClient) SetIamPolicy(ctx context.Context, req *iampb.SetIa
 	baseUrl.RawQuery = params.Encode()
 
 	// Build HTTP headers from client and context metadata.
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "resource", url.QueryEscape(req.GetResource())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "resource", url.QueryEscape(req.GetResource()))}
 
-	headers := buildHeaders(ctx, c.xGoogMetadata, md, metadata.Pairs("Content-Type", "application/json"))
+	hds = append(c.xGoogHeaders, hds...)
+	hds = append(hds, "Content-Type", "application/json")
+	headers := gax.BuildHeaders(ctx, hds...)
 	opts = append((*c.CallOptions).SetIamPolicy[0:len((*c.CallOptions).SetIamPolicy):len((*c.CallOptions).SetIamPolicy)], opts...)
 	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
 	resp := &iampb.Policy{}
@@ -1674,9 +1712,11 @@ func (c *publisherRESTClient) TestIamPermissions(ctx context.Context, req *iampb
 	baseUrl.RawQuery = params.Encode()
 
 	// Build HTTP headers from client and context metadata.
-	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "resource", url.QueryEscape(req.GetResource())))
+	hds := []string{"x-goog-request-params", fmt.Sprintf("%s=%v", "resource", url.QueryEscape(req.GetResource()))}
 
-	headers := buildHeaders(ctx, c.xGoogMetadata, md, metadata.Pairs("Content-Type", "application/json"))
+	hds = append(c.xGoogHeaders, hds...)
+	hds = append(hds, "Content-Type", "application/json")
+	headers := gax.BuildHeaders(ctx, hds...)
 	opts = append((*c.CallOptions).TestIamPermissions[0:len((*c.CallOptions).TestIamPermissions):len((*c.CallOptions).TestIamPermissions)], opts...)
 	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
 	resp := &iampb.TestIamPermissionsResponse{}
@@ -1716,98 +1756,4 @@ func (c *publisherRESTClient) TestIamPermissions(ctx context.Context, req *iampb
 		return nil, e
 	}
 	return resp, nil
-}
-
-// StringIterator manages a stream of string.
-type StringIterator struct {
-	items    []string
-	pageInfo *iterator.PageInfo
-	nextFunc func() error
-
-	// Response is the raw response for the current page.
-	// It must be cast to the RPC response type.
-	// Calling Next() or InternalFetch() updates this value.
-	Response interface{}
-
-	// InternalFetch is for use by the Google Cloud Libraries only.
-	// It is not part of the stable interface of this package.
-	//
-	// InternalFetch returns results from a single call to the underlying RPC.
-	// The number of results is no greater than pageSize.
-	// If there are no more results, nextPageToken is empty and err is nil.
-	InternalFetch func(pageSize int, pageToken string) (results []string, nextPageToken string, err error)
-}
-
-// PageInfo supports pagination. See the google.golang.org/api/iterator package for details.
-func (it *StringIterator) PageInfo() *iterator.PageInfo {
-	return it.pageInfo
-}
-
-// Next returns the next result. Its second return value is iterator.Done if there are no more
-// results. Once Next returns Done, all subsequent calls will return Done.
-func (it *StringIterator) Next() (string, error) {
-	var item string
-	if err := it.nextFunc(); err != nil {
-		return item, err
-	}
-	item = it.items[0]
-	it.items = it.items[1:]
-	return item, nil
-}
-
-func (it *StringIterator) bufLen() int {
-	return len(it.items)
-}
-
-func (it *StringIterator) takeBuf() interface{} {
-	b := it.items
-	it.items = nil
-	return b
-}
-
-// TopicIterator manages a stream of *pubsubpb.Topic.
-type TopicIterator struct {
-	items    []*pubsubpb.Topic
-	pageInfo *iterator.PageInfo
-	nextFunc func() error
-
-	// Response is the raw response for the current page.
-	// It must be cast to the RPC response type.
-	// Calling Next() or InternalFetch() updates this value.
-	Response interface{}
-
-	// InternalFetch is for use by the Google Cloud Libraries only.
-	// It is not part of the stable interface of this package.
-	//
-	// InternalFetch returns results from a single call to the underlying RPC.
-	// The number of results is no greater than pageSize.
-	// If there are no more results, nextPageToken is empty and err is nil.
-	InternalFetch func(pageSize int, pageToken string) (results []*pubsubpb.Topic, nextPageToken string, err error)
-}
-
-// PageInfo supports pagination. See the google.golang.org/api/iterator package for details.
-func (it *TopicIterator) PageInfo() *iterator.PageInfo {
-	return it.pageInfo
-}
-
-// Next returns the next result. Its second return value is iterator.Done if there are no more
-// results. Once Next returns Done, all subsequent calls will return Done.
-func (it *TopicIterator) Next() (*pubsubpb.Topic, error) {
-	var item *pubsubpb.Topic
-	if err := it.nextFunc(); err != nil {
-		return item, err
-	}
-	item = it.items[0]
-	it.items = it.items[1:]
-	return item, nil
-}
-
-func (it *TopicIterator) bufLen() int {
-	return len(it.items)
-}
-
-func (it *TopicIterator) takeBuf() interface{} {
-	b := it.items
-	it.items = nil
-	return b
 }

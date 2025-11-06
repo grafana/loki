@@ -136,18 +136,19 @@ var OpcodeToString = map[int]string{
 
 // RcodeToString maps Rcodes to strings.
 var RcodeToString = map[int]string{
-	RcodeSuccess:        "NOERROR",
-	RcodeFormatError:    "FORMERR",
-	RcodeServerFailure:  "SERVFAIL",
-	RcodeNameError:      "NXDOMAIN",
-	RcodeNotImplemented: "NOTIMP",
-	RcodeRefused:        "REFUSED",
-	RcodeYXDomain:       "YXDOMAIN", // See RFC 2136
-	RcodeYXRrset:        "YXRRSET",
-	RcodeNXRrset:        "NXRRSET",
-	RcodeNotAuth:        "NOTAUTH",
-	RcodeNotZone:        "NOTZONE",
-	RcodeBadSig:         "BADSIG", // Also known as RcodeBadVers, see RFC 6891
+	RcodeSuccess:                    "NOERROR",
+	RcodeFormatError:                "FORMERR",
+	RcodeServerFailure:              "SERVFAIL",
+	RcodeNameError:                  "NXDOMAIN",
+	RcodeNotImplemented:             "NOTIMP",
+	RcodeRefused:                    "REFUSED",
+	RcodeYXDomain:                   "YXDOMAIN", // See RFC 2136
+	RcodeYXRrset:                    "YXRRSET",
+	RcodeNXRrset:                    "NXRRSET",
+	RcodeNotAuth:                    "NOTAUTH",
+	RcodeNotZone:                    "NOTZONE",
+	RcodeStatefulTypeNotImplemented: "DSOTYPENI",
+	RcodeBadSig:                     "BADSIG", // Also known as RcodeBadVers, see RFC 6891
 	//	RcodeBadVers:        "BADVERS",
 	RcodeBadKey:    "BADKEY",
 	RcodeBadTime:   "BADTIME",
@@ -501,30 +502,28 @@ func packTxtString(s string, msg []byte, offset int) (int, error) {
 	return offset, nil
 }
 
-func packOctetString(s string, msg []byte, offset int, tmp []byte) (int, error) {
-	if offset >= len(msg) || len(s) > len(tmp) {
+func packOctetString(s string, msg []byte, offset int) (int, error) {
+	if offset >= len(msg) || len(s) > 256*4+1 {
 		return offset, ErrBuf
 	}
-	bs := tmp[:len(s)]
-	copy(bs, s)
-	for i := 0; i < len(bs); i++ {
+	for i := 0; i < len(s); i++ {
 		if len(msg) <= offset {
 			return offset, ErrBuf
 		}
-		if bs[i] == '\\' {
+		if s[i] == '\\' {
 			i++
-			if i == len(bs) {
+			if i == len(s) {
 				break
 			}
 			// check for \DDD
-			if isDDD(bs[i:]) {
-				msg[offset] = dddToByte(bs[i:])
+			if isDDD(s[i:]) {
+				msg[offset] = dddToByte(s[i:])
 				i += 2
 			} else {
-				msg[offset] = bs[i]
+				msg[offset] = s[i]
 			}
 		} else {
-			msg[offset] = bs[i]
+			msg[offset] = s[i]
 		}
 		offset++
 	}
@@ -716,7 +715,7 @@ func (h *MsgHdr) String() string {
 	return s
 }
 
-// Pack packs a Msg: it is converted to to wire format.
+// Pack packs a Msg: it is converted to wire format.
 // If the dns.Compress is true the message will be in compressed wire format.
 func (dns *Msg) Pack() (msg []byte, err error) {
 	return dns.PackBuffer(nil)
@@ -873,10 +872,9 @@ func (dns *Msg) unpack(dh Header, msg []byte, off int) (err error) {
 	// TODO(miek) make this an error?
 	// use PackOpt to let people tell how detailed the error reporting should be?
 	// if off != len(msg) {
-	// 	// println("dns: extra bytes in dns packet", off, "<", len(msg))
+	//	// println("dns: extra bytes in dns packet", off, "<", len(msg))
 	// }
 	return err
-
 }
 
 // Unpack unpacks a binary message to a Msg structure.
@@ -896,23 +894,38 @@ func (dns *Msg) String() string {
 		return "<nil> MsgHdr"
 	}
 	s := dns.MsgHdr.String() + " "
-	s += "QUERY: " + strconv.Itoa(len(dns.Question)) + ", "
-	s += "ANSWER: " + strconv.Itoa(len(dns.Answer)) + ", "
-	s += "AUTHORITY: " + strconv.Itoa(len(dns.Ns)) + ", "
-	s += "ADDITIONAL: " + strconv.Itoa(len(dns.Extra)) + "\n"
+	if dns.MsgHdr.Opcode == OpcodeUpdate {
+		s += "ZONE: " + strconv.Itoa(len(dns.Question)) + ", "
+		s += "PREREQ: " + strconv.Itoa(len(dns.Answer)) + ", "
+		s += "UPDATE: " + strconv.Itoa(len(dns.Ns)) + ", "
+		s += "ADDITIONAL: " + strconv.Itoa(len(dns.Extra)) + "\n"
+	} else {
+		s += "QUERY: " + strconv.Itoa(len(dns.Question)) + ", "
+		s += "ANSWER: " + strconv.Itoa(len(dns.Answer)) + ", "
+		s += "AUTHORITY: " + strconv.Itoa(len(dns.Ns)) + ", "
+		s += "ADDITIONAL: " + strconv.Itoa(len(dns.Extra)) + "\n"
+	}
 	opt := dns.IsEdns0()
 	if opt != nil {
 		// OPT PSEUDOSECTION
 		s += opt.String() + "\n"
 	}
 	if len(dns.Question) > 0 {
-		s += "\n;; QUESTION SECTION:\n"
+		if dns.MsgHdr.Opcode == OpcodeUpdate {
+			s += "\n;; ZONE SECTION:\n"
+		} else {
+			s += "\n;; QUESTION SECTION:\n"
+		}
 		for _, r := range dns.Question {
 			s += r.String() + "\n"
 		}
 	}
 	if len(dns.Answer) > 0 {
-		s += "\n;; ANSWER SECTION:\n"
+		if dns.MsgHdr.Opcode == OpcodeUpdate {
+			s += "\n;; PREREQUISITE SECTION:\n"
+		} else {
+			s += "\n;; ANSWER SECTION:\n"
+		}
 		for _, r := range dns.Answer {
 			if r != nil {
 				s += r.String() + "\n"
@@ -920,7 +933,11 @@ func (dns *Msg) String() string {
 		}
 	}
 	if len(dns.Ns) > 0 {
-		s += "\n;; AUTHORITY SECTION:\n"
+		if dns.MsgHdr.Opcode == OpcodeUpdate {
+			s += "\n;; UPDATE SECTION:\n"
+		} else {
+			s += "\n;; AUTHORITY SECTION:\n"
+		}
 		for _, r := range dns.Ns {
 			if r != nil {
 				s += r.String() + "\n"
@@ -1106,23 +1123,28 @@ func unpackQuestion(msg []byte, off int) (Question, int, error) {
 	)
 	q.Name, off, err = UnpackDomainName(msg, off)
 	if err != nil {
-		return q, off, err
+		return q, off, fmt.Errorf("bad question name: %w", err)
 	}
 	if off == len(msg) {
 		return q, off, nil
 	}
 	q.Qtype, off, err = unpackUint16(msg, off)
 	if err != nil {
-		return q, off, err
+		return q, off, fmt.Errorf("bad question qtype: %w", err)
 	}
 	if off == len(msg) {
 		return q, off, nil
 	}
 	q.Qclass, off, err = unpackUint16(msg, off)
+	if err != nil {
+		return q, off, fmt.Errorf("bad question qclass: %w", err)
+	}
+
 	if off == len(msg) {
 		return q, off, nil
 	}
-	return q, off, err
+
+	return q, off, nil
 }
 
 func (dh *Header) pack(msg []byte, off int, compression compressionMap, compress bool) (int, error) {
@@ -1160,27 +1182,27 @@ func unpackMsgHdr(msg []byte, off int) (Header, int, error) {
 	)
 	dh.Id, off, err = unpackUint16(msg, off)
 	if err != nil {
-		return dh, off, err
+		return dh, off, fmt.Errorf("bad header id: %w", err)
 	}
 	dh.Bits, off, err = unpackUint16(msg, off)
 	if err != nil {
-		return dh, off, err
+		return dh, off, fmt.Errorf("bad header bits: %w", err)
 	}
 	dh.Qdcount, off, err = unpackUint16(msg, off)
 	if err != nil {
-		return dh, off, err
+		return dh, off, fmt.Errorf("bad header question count: %w", err)
 	}
 	dh.Ancount, off, err = unpackUint16(msg, off)
 	if err != nil {
-		return dh, off, err
+		return dh, off, fmt.Errorf("bad header answer count: %w", err)
 	}
 	dh.Nscount, off, err = unpackUint16(msg, off)
 	if err != nil {
-		return dh, off, err
+		return dh, off, fmt.Errorf("bad header ns count: %w", err)
 	}
 	dh.Arcount, off, err = unpackUint16(msg, off)
 	if err != nil {
-		return dh, off, err
+		return dh, off, fmt.Errorf("bad header extra count: %w", err)
 	}
 	return dh, off, nil
 }

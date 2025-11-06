@@ -77,11 +77,3 @@ type InboundListenerConfig struct {
 	// FilterChains is the list of filter chains associated with this listener.
 	FilterChains *FilterChainManager
 }
-
-// ListenerUpdateErrTuple is a tuple with the update and error. It contains the
-// results from unmarshal functions. It's used to pass unmarshal results of
-// multiple resources together, e.g. in maps like `map[string]{Update,error}`.
-type ListenerUpdateErrTuple struct {
-	Update ListenerUpdate
-	Err    error
-}

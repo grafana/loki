@@ -56,9 +56,10 @@ func (c *SSOOIDC) CreateTokenRequest(input *CreateTokenInput) (req *request.Requ
 
 // CreateToken API operation for AWS SSO OIDC.
 //
-// Creates and returns an access token for the authorized client. The access
-// token issued will be used to fetch short-term credentials for the assigned
-// roles in the AWS account.
+// Creates and returns access and refresh tokens for clients that are authenticated
+// using client secrets. The access token can be used to fetch short-term credentials
+// for the assigned AWS accounts or to access application APIs using bearer
+// authentication.
 //
 // Returns awserr.Error for service API and SDK errors. Use runtime type assertions
 // with awserr.Error's Code and Message methods to get detailed information about
@@ -128,6 +129,131 @@ func (c *SSOOIDC) CreateToken(input *CreateTokenInput) (*CreateTokenOutput, erro
 // for more information on using Contexts.
 func (c *SSOOIDC) CreateTokenWithContext(ctx aws.Context, input *CreateTokenInput, opts ...request.Option) (*CreateTokenOutput, error) {
 	req, out := c.CreateTokenRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+const opCreateTokenWithIAM = "CreateTokenWithIAM"
+
+// CreateTokenWithIAMRequest generates a "aws/request.Request" representing the
+// client's request for the CreateTokenWithIAM operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See CreateTokenWithIAM for more information on using the CreateTokenWithIAM
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//	// Example sending a request using the CreateTokenWithIAMRequest method.
+//	req, resp := client.CreateTokenWithIAMRequest(params)
+//
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/sso-oidc-2019-06-10/CreateTokenWithIAM
+func (c *SSOOIDC) CreateTokenWithIAMRequest(input *CreateTokenWithIAMInput) (req *request.Request, output *CreateTokenWithIAMOutput) {
+	op := &request.Operation{
+		Name:       opCreateTokenWithIAM,
+		HTTPMethod: "POST",
+		HTTPPath:   "/token?aws_iam=t",
+	}
+
+	if input == nil {
+		input = &CreateTokenWithIAMInput{}
+	}
+
+	output = &CreateTokenWithIAMOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// CreateTokenWithIAM API operation for AWS SSO OIDC.
+//
+// Creates and returns access and refresh tokens for clients and applications
+// that are authenticated using IAM entities. The access token can be used to
+// fetch short-term credentials for the assigned Amazon Web Services accounts
+// or to access application APIs using bearer authentication.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for AWS SSO OIDC's
+// API operation CreateTokenWithIAM for usage and error information.
+//
+// Returned Error Types:
+//
+//   - InvalidRequestException
+//     Indicates that something is wrong with the input to the request. For example,
+//     a required parameter might be missing or out of range.
+//
+//   - InvalidClientException
+//     Indicates that the clientId or clientSecret in the request is invalid. For
+//     example, this can occur when a client sends an incorrect clientId or an expired
+//     clientSecret.
+//
+//   - InvalidGrantException
+//     Indicates that a request contains an invalid grant. This can occur if a client
+//     makes a CreateToken request with an invalid grant type.
+//
+//   - UnauthorizedClientException
+//     Indicates that the client is not currently authorized to make the request.
+//     This can happen when a clientId is not issued for a public client.
+//
+//   - UnsupportedGrantTypeException
+//     Indicates that the grant type in the request is not supported by the service.
+//
+//   - InvalidScopeException
+//     Indicates that the scope provided in the request is invalid.
+//
+//   - AuthorizationPendingException
+//     Indicates that a request to authorize a client with an access user session
+//     token is pending.
+//
+//   - SlowDownException
+//     Indicates that the client is making the request too frequently and is more
+//     than the service can handle.
+//
+//   - AccessDeniedException
+//     You do not have sufficient access to perform this action.
+//
+//   - ExpiredTokenException
+//     Indicates that the token issued by the service is expired and is no longer
+//     valid.
+//
+//   - InternalServerException
+//     Indicates that an error from the service occurred while trying to process
+//     a request.
+//
+//   - InvalidRequestRegionException
+//     Indicates that a token provided as input to the request was issued by and
+//     is only usable by calling IAM Identity Center endpoints in another region.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/sso-oidc-2019-06-10/CreateTokenWithIAM
+func (c *SSOOIDC) CreateTokenWithIAM(input *CreateTokenWithIAMInput) (*CreateTokenWithIAMOutput, error) {
+	req, out := c.CreateTokenWithIAMRequest(input)
+	return out, req.Send()
+}
+
+// CreateTokenWithIAMWithContext is the same as CreateTokenWithIAM with the addition of
+// the ability to pass a context and additional request options.
+//
+// See CreateTokenWithIAM for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *SSOOIDC) CreateTokenWithIAMWithContext(ctx aws.Context, input *CreateTokenWithIAMInput, opts ...request.Option) (*CreateTokenWithIAMOutput, error) {
+	req, out := c.CreateTokenWithIAMRequest(input)
 	req.SetContext(ctx)
 	req.ApplyOptions(opts...)
 	return out, req.Send()
@@ -204,6 +330,13 @@ func (c *SSOOIDC) RegisterClientRequest(input *RegisterClientInput) (req *reques
 //   - InternalServerException
 //     Indicates that an error from the service occurred while trying to process
 //     a request.
+//
+//   - InvalidRedirectUriException
+//     Indicates that one or more redirect URI in the request is not supported for
+//     this operation.
+//
+//   - UnsupportedGrantTypeException
+//     Indicates that the grant type in the request is not supported by the service.
 //
 // See also, https://docs.aws.amazon.com/goto/WebAPI/sso-oidc-2019-06-10/RegisterClient
 func (c *SSOOIDC) RegisterClient(input *RegisterClientInput) (*RegisterClientOutput, error) {
@@ -331,8 +464,11 @@ type AccessDeniedException struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
 
+	// Single error code. For this exception the value will be access_denied.
 	Error_ *string `locationName:"error" type:"string"`
 
+	// Human-readable text providing additional information, used to assist the
+	// client developer in understanding the error that occurred.
 	Error_description *string `locationName:"error_description" type:"string"`
 
 	Message_ *string `locationName:"message" type:"string"`
@@ -400,8 +536,11 @@ type AuthorizationPendingException struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
 
+	// Single error code. For this exception the value will be authorization_pending.
 	Error_ *string `locationName:"error" type:"string"`
 
+	// Human-readable text providing additional information, used to assist the
+	// client developer in understanding the error that occurred.
 	Error_description *string `locationName:"error_description" type:"string"`
 
 	Message_ *string `locationName:"message" type:"string"`
@@ -466,8 +605,8 @@ func (s *AuthorizationPendingException) RequestID() string {
 type CreateTokenInput struct {
 	_ struct{} `type:"structure"`
 
-	// The unique identifier string for each client. This value should come from
-	// the persisted result of the RegisterClient API.
+	// The unique identifier string for the client or application. This value comes
+	// from the result of the RegisterClient API.
 	//
 	// ClientId is a required field
 	ClientId *string `locationName:"clientId" type:"string" required:"true"`
@@ -475,23 +614,39 @@ type CreateTokenInput struct {
 	// A secret string generated for the client. This value should come from the
 	// persisted result of the RegisterClient API.
 	//
+	// ClientSecret is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by CreateTokenInput's
+	// String and GoString methods.
+	//
 	// ClientSecret is a required field
-	ClientSecret *string `locationName:"clientSecret" type:"string" required:"true"`
+	ClientSecret *string `locationName:"clientSecret" type:"string" required:"true" sensitive:"true"`
 
-	// The authorization code received from the authorization service. This parameter
-	// is required to perform an authorization grant request to get access to a
-	// token.
+	// Used only when calling this API for the Authorization Code grant type. The
+	// short-term code is used to identify this authorization request. This grant
+	// type is currently unsupported for the CreateToken API.
 	Code *string `locationName:"code" type:"string"`
 
-	// Used only when calling this API for the device code grant type. This short-term
-	// code is used to identify this authentication attempt. This should come from
-	// an in-memory reference to the result of the StartDeviceAuthorization API.
+	// Used only when calling this API for the Authorization Code grant type. This
+	// value is generated by the client and presented to validate the original code
+	// challenge value the client passed at authorization time.
+	//
+	// CodeVerifier is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by CreateTokenInput's
+	// String and GoString methods.
+	CodeVerifier *string `locationName:"codeVerifier" type:"string" sensitive:"true"`
+
+	// Used only when calling this API for the Device Code grant type. This short-term
+	// code is used to identify this authorization request. This comes from the
+	// result of the StartDeviceAuthorization API.
 	DeviceCode *string `locationName:"deviceCode" type:"string"`
 
-	// Supports grant types for the authorization code, refresh token, and device
-	// code request. For device code requests, specify the following value:
+	// Supports the following OAuth grant types: Device Code and Refresh Token.
+	// Specify either of the following values, depending on the grant type that
+	// you want:
 	//
-	// urn:ietf:params:oauth:grant-type:device_code
+	// * Device Code - urn:ietf:params:oauth:grant-type:device_code
+	//
+	// * Refresh Token - refresh_token
 	//
 	// For information about how to obtain the device code, see the StartDeviceAuthorization
 	// topic.
@@ -499,21 +654,28 @@ type CreateTokenInput struct {
 	// GrantType is a required field
 	GrantType *string `locationName:"grantType" type:"string" required:"true"`
 
-	// The location of the application that will receive the authorization code.
-	// Users authorize the service to send the request to this location.
+	// Used only when calling this API for the Authorization Code grant type. This
+	// value specifies the location of the client or application that has registered
+	// to receive the authorization code.
 	RedirectUri *string `locationName:"redirectUri" type:"string"`
 
-	// Currently, refreshToken is not yet implemented and is not supported. For
-	// more information about the features and limitations of the current IAM Identity
-	// Center OIDC implementation, see Considerations for Using this Guide in the
-	// IAM Identity Center OIDC API Reference (https://docs.aws.amazon.com/singlesignon/latest/OIDCAPIReference/Welcome.html).
+	// Used only when calling this API for the Refresh Token grant type. This token
+	// is used to refresh short-term tokens, such as the access token, that might
+	// expire.
 	//
-	// The token used to obtain an access token in the event that the access token
-	// is invalid or expired.
-	RefreshToken *string `locationName:"refreshToken" type:"string"`
+	// For more information about the features and limitations of the current IAM
+	// Identity Center OIDC implementation, see Considerations for Using this Guide
+	// in the IAM Identity Center OIDC API Reference (https://docs.aws.amazon.com/singlesignon/latest/OIDCAPIReference/Welcome.html).
+	//
+	// RefreshToken is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by CreateTokenInput's
+	// String and GoString methods.
+	RefreshToken *string `locationName:"refreshToken" type:"string" sensitive:"true"`
 
-	// The list of scopes that is defined by the client. Upon authorization, this
-	// list is used to restrict permissions when granting an access token.
+	// The list of scopes for which authorization is requested. The access token
+	// that is issued is limited to the scopes that are granted. If this value is
+	// not specified, IAM Identity Center authorizes all scopes that are configured
+	// for the client during the call to RegisterClient.
 	Scope []*string `locationName:"scope" type:"list"`
 }
 
@@ -572,6 +734,12 @@ func (s *CreateTokenInput) SetCode(v string) *CreateTokenInput {
 	return s
 }
 
+// SetCodeVerifier sets the CodeVerifier field's value.
+func (s *CreateTokenInput) SetCodeVerifier(v string) *CreateTokenInput {
+	s.CodeVerifier = &v
+	return s
+}
+
 // SetDeviceCode sets the DeviceCode field's value.
 func (s *CreateTokenInput) SetDeviceCode(v string) *CreateTokenInput {
 	s.DeviceCode = &v
@@ -605,31 +773,44 @@ func (s *CreateTokenInput) SetScope(v []*string) *CreateTokenInput {
 type CreateTokenOutput struct {
 	_ struct{} `type:"structure"`
 
-	// An opaque token to access IAM Identity Center resources assigned to a user.
-	AccessToken *string `locationName:"accessToken" type:"string"`
+	// A bearer token to access Amazon Web Services accounts and applications assigned
+	// to a user.
+	//
+	// AccessToken is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by CreateTokenOutput's
+	// String and GoString methods.
+	AccessToken *string `locationName:"accessToken" type:"string" sensitive:"true"`
 
 	// Indicates the time in seconds when an access token will expire.
 	ExpiresIn *int64 `locationName:"expiresIn" type:"integer"`
 
-	// Currently, idToken is not yet implemented and is not supported. For more
-	// information about the features and limitations of the current IAM Identity
-	// Center OIDC implementation, see Considerations for Using this Guide in the
-	// IAM Identity Center OIDC API Reference (https://docs.aws.amazon.com/singlesignon/latest/OIDCAPIReference/Welcome.html).
+	// The idToken is not implemented or supported. For more information about the
+	// features and limitations of the current IAM Identity Center OIDC implementation,
+	// see Considerations for Using this Guide in the IAM Identity Center OIDC API
+	// Reference (https://docs.aws.amazon.com/singlesignon/latest/OIDCAPIReference/Welcome.html).
 	//
-	// The identifier of the user that associated with the access token, if present.
-	IdToken *string `locationName:"idToken" type:"string"`
+	// A JSON Web Token (JWT) that identifies who is associated with the issued
+	// access token.
+	//
+	// IdToken is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by CreateTokenOutput's
+	// String and GoString methods.
+	IdToken *string `locationName:"idToken" type:"string" sensitive:"true"`
 
-	// Currently, refreshToken is not yet implemented and is not supported. For
-	// more information about the features and limitations of the current IAM Identity
-	// Center OIDC implementation, see Considerations for Using this Guide in the
-	// IAM Identity Center OIDC API Reference (https://docs.aws.amazon.com/singlesignon/latest/OIDCAPIReference/Welcome.html).
-	//
 	// A token that, if present, can be used to refresh a previously issued access
 	// token that might have expired.
-	RefreshToken *string `locationName:"refreshToken" type:"string"`
+	//
+	// For more information about the features and limitations of the current IAM
+	// Identity Center OIDC implementation, see Considerations for Using this Guide
+	// in the IAM Identity Center OIDC API Reference (https://docs.aws.amazon.com/singlesignon/latest/OIDCAPIReference/Welcome.html).
+	//
+	// RefreshToken is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by CreateTokenOutput's
+	// String and GoString methods.
+	RefreshToken *string `locationName:"refreshToken" type:"string" sensitive:"true"`
 
 	// Used to notify the client that the returned token is an access token. The
-	// supported type is BearerToken.
+	// supported token type is Bearer.
 	TokenType *string `locationName:"tokenType" type:"string"`
 }
 
@@ -681,14 +862,328 @@ func (s *CreateTokenOutput) SetTokenType(v string) *CreateTokenOutput {
 	return s
 }
 
+type CreateTokenWithIAMInput struct {
+	_ struct{} `type:"structure"`
+
+	// Used only when calling this API for the JWT Bearer grant type. This value
+	// specifies the JSON Web Token (JWT) issued by a trusted token issuer. To authorize
+	// a trusted token issuer, configure the JWT Bearer GrantOptions for the application.
+	//
+	// Assertion is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by CreateTokenWithIAMInput's
+	// String and GoString methods.
+	Assertion *string `locationName:"assertion" type:"string" sensitive:"true"`
+
+	// The unique identifier string for the client or application. This value is
+	// an application ARN that has OAuth grants configured.
+	//
+	// ClientId is a required field
+	ClientId *string `locationName:"clientId" type:"string" required:"true"`
+
+	// Used only when calling this API for the Authorization Code grant type. This
+	// short-term code is used to identify this authorization request. The code
+	// is obtained through a redirect from IAM Identity Center to a redirect URI
+	// persisted in the Authorization Code GrantOptions for the application.
+	Code *string `locationName:"code" type:"string"`
+
+	// Used only when calling this API for the Authorization Code grant type. This
+	// value is generated by the client and presented to validate the original code
+	// challenge value the client passed at authorization time.
+	//
+	// CodeVerifier is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by CreateTokenWithIAMInput's
+	// String and GoString methods.
+	CodeVerifier *string `locationName:"codeVerifier" type:"string" sensitive:"true"`
+
+	// Supports the following OAuth grant types: Authorization Code, Refresh Token,
+	// JWT Bearer, and Token Exchange. Specify one of the following values, depending
+	// on the grant type that you want:
+	//
+	// * Authorization Code - authorization_code
+	//
+	// * Refresh Token - refresh_token
+	//
+	// * JWT Bearer - urn:ietf:params:oauth:grant-type:jwt-bearer
+	//
+	// * Token Exchange - urn:ietf:params:oauth:grant-type:token-exchange
+	//
+	// GrantType is a required field
+	GrantType *string `locationName:"grantType" type:"string" required:"true"`
+
+	// Used only when calling this API for the Authorization Code grant type. This
+	// value specifies the location of the client or application that has registered
+	// to receive the authorization code.
+	RedirectUri *string `locationName:"redirectUri" type:"string"`
+
+	// Used only when calling this API for the Refresh Token grant type. This token
+	// is used to refresh short-term tokens, such as the access token, that might
+	// expire.
+	//
+	// For more information about the features and limitations of the current IAM
+	// Identity Center OIDC implementation, see Considerations for Using this Guide
+	// in the IAM Identity Center OIDC API Reference (https://docs.aws.amazon.com/singlesignon/latest/OIDCAPIReference/Welcome.html).
+	//
+	// RefreshToken is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by CreateTokenWithIAMInput's
+	// String and GoString methods.
+	RefreshToken *string `locationName:"refreshToken" type:"string" sensitive:"true"`
+
+	// Used only when calling this API for the Token Exchange grant type. This value
+	// specifies the type of token that the requester can receive. The following
+	// values are supported:
+	//
+	// * Access Token - urn:ietf:params:oauth:token-type:access_token
+	//
+	// * Refresh Token - urn:ietf:params:oauth:token-type:refresh_token
+	RequestedTokenType *string `locationName:"requestedTokenType" type:"string"`
+
+	// The list of scopes for which authorization is requested. The access token
+	// that is issued is limited to the scopes that are granted. If the value is
+	// not specified, IAM Identity Center authorizes all scopes configured for the
+	// application, including the following default scopes: openid, aws, sts:identity_context.
+	Scope []*string `locationName:"scope" type:"list"`
+
+	// Used only when calling this API for the Token Exchange grant type. This value
+	// specifies the subject of the exchange. The value of the subject token must
+	// be an access token issued by IAM Identity Center to a different client or
+	// application. The access token must have authorized scopes that indicate the
+	// requested application as a target audience.
+	//
+	// SubjectToken is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by CreateTokenWithIAMInput's
+	// String and GoString methods.
+	SubjectToken *string `locationName:"subjectToken" type:"string" sensitive:"true"`
+
+	// Used only when calling this API for the Token Exchange grant type. This value
+	// specifies the type of token that is passed as the subject of the exchange.
+	// The following value is supported:
+	//
+	// * Access Token - urn:ietf:params:oauth:token-type:access_token
+	SubjectTokenType *string `locationName:"subjectTokenType" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s CreateTokenWithIAMInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s CreateTokenWithIAMInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *CreateTokenWithIAMInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "CreateTokenWithIAMInput"}
+	if s.ClientId == nil {
+		invalidParams.Add(request.NewErrParamRequired("ClientId"))
+	}
+	if s.GrantType == nil {
+		invalidParams.Add(request.NewErrParamRequired("GrantType"))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetAssertion sets the Assertion field's value.
+func (s *CreateTokenWithIAMInput) SetAssertion(v string) *CreateTokenWithIAMInput {
+	s.Assertion = &v
+	return s
+}
+
+// SetClientId sets the ClientId field's value.
+func (s *CreateTokenWithIAMInput) SetClientId(v string) *CreateTokenWithIAMInput {
+	s.ClientId = &v
+	return s
+}
+
+// SetCode sets the Code field's value.
+func (s *CreateTokenWithIAMInput) SetCode(v string) *CreateTokenWithIAMInput {
+	s.Code = &v
+	return s
+}
+
+// SetCodeVerifier sets the CodeVerifier field's value.
+func (s *CreateTokenWithIAMInput) SetCodeVerifier(v string) *CreateTokenWithIAMInput {
+	s.CodeVerifier = &v
+	return s
+}
+
+// SetGrantType sets the GrantType field's value.
+func (s *CreateTokenWithIAMInput) SetGrantType(v string) *CreateTokenWithIAMInput {
+	s.GrantType = &v
+	return s
+}
+
+// SetRedirectUri sets the RedirectUri field's value.
+func (s *CreateTokenWithIAMInput) SetRedirectUri(v string) *CreateTokenWithIAMInput {
+	s.RedirectUri = &v
+	return s
+}
+
+// SetRefreshToken sets the RefreshToken field's value.
+func (s *CreateTokenWithIAMInput) SetRefreshToken(v string) *CreateTokenWithIAMInput {
+	s.RefreshToken = &v
+	return s
+}
+
+// SetRequestedTokenType sets the RequestedTokenType field's value.
+func (s *CreateTokenWithIAMInput) SetRequestedTokenType(v string) *CreateTokenWithIAMInput {
+	s.RequestedTokenType = &v
+	return s
+}
+
+// SetScope sets the Scope field's value.
+func (s *CreateTokenWithIAMInput) SetScope(v []*string) *CreateTokenWithIAMInput {
+	s.Scope = v
+	return s
+}
+
+// SetSubjectToken sets the SubjectToken field's value.
+func (s *CreateTokenWithIAMInput) SetSubjectToken(v string) *CreateTokenWithIAMInput {
+	s.SubjectToken = &v
+	return s
+}
+
+// SetSubjectTokenType sets the SubjectTokenType field's value.
+func (s *CreateTokenWithIAMInput) SetSubjectTokenType(v string) *CreateTokenWithIAMInput {
+	s.SubjectTokenType = &v
+	return s
+}
+
+type CreateTokenWithIAMOutput struct {
+	_ struct{} `type:"structure"`
+
+	// A bearer token to access Amazon Web Services accounts and applications assigned
+	// to a user.
+	//
+	// AccessToken is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by CreateTokenWithIAMOutput's
+	// String and GoString methods.
+	AccessToken *string `locationName:"accessToken" type:"string" sensitive:"true"`
+
+	// Indicates the time in seconds when an access token will expire.
+	ExpiresIn *int64 `locationName:"expiresIn" type:"integer"`
+
+	// A JSON Web Token (JWT) that identifies the user associated with the issued
+	// access token.
+	//
+	// IdToken is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by CreateTokenWithIAMOutput's
+	// String and GoString methods.
+	IdToken *string `locationName:"idToken" type:"string" sensitive:"true"`
+
+	// Indicates the type of tokens that are issued by IAM Identity Center. The
+	// following values are supported:
+	//
+	// * Access Token - urn:ietf:params:oauth:token-type:access_token
+	//
+	// * Refresh Token - urn:ietf:params:oauth:token-type:refresh_token
+	IssuedTokenType *string `locationName:"issuedTokenType" type:"string"`
+
+	// A token that, if present, can be used to refresh a previously issued access
+	// token that might have expired.
+	//
+	// For more information about the features and limitations of the current IAM
+	// Identity Center OIDC implementation, see Considerations for Using this Guide
+	// in the IAM Identity Center OIDC API Reference (https://docs.aws.amazon.com/singlesignon/latest/OIDCAPIReference/Welcome.html).
+	//
+	// RefreshToken is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by CreateTokenWithIAMOutput's
+	// String and GoString methods.
+	RefreshToken *string `locationName:"refreshToken" type:"string" sensitive:"true"`
+
+	// The list of scopes for which authorization is granted. The access token that
+	// is issued is limited to the scopes that are granted.
+	Scope []*string `locationName:"scope" type:"list"`
+
+	// Used to notify the requester that the returned token is an access token.
+	// The supported token type is Bearer.
+	TokenType *string `locationName:"tokenType" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s CreateTokenWithIAMOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s CreateTokenWithIAMOutput) GoString() string {
+	return s.String()
+}
+
+// SetAccessToken sets the AccessToken field's value.
+func (s *CreateTokenWithIAMOutput) SetAccessToken(v string) *CreateTokenWithIAMOutput {
+	s.AccessToken = &v
+	return s
+}
+
+// SetExpiresIn sets the ExpiresIn field's value.
+func (s *CreateTokenWithIAMOutput) SetExpiresIn(v int64) *CreateTokenWithIAMOutput {
+	s.ExpiresIn = &v
+	return s
+}
+
+// SetIdToken sets the IdToken field's value.
+func (s *CreateTokenWithIAMOutput) SetIdToken(v string) *CreateTokenWithIAMOutput {
+	s.IdToken = &v
+	return s
+}
+
+// SetIssuedTokenType sets the IssuedTokenType field's value.
+func (s *CreateTokenWithIAMOutput) SetIssuedTokenType(v string) *CreateTokenWithIAMOutput {
+	s.IssuedTokenType = &v
+	return s
+}
+
+// SetRefreshToken sets the RefreshToken field's value.
+func (s *CreateTokenWithIAMOutput) SetRefreshToken(v string) *CreateTokenWithIAMOutput {
+	s.RefreshToken = &v
+	return s
+}
+
+// SetScope sets the Scope field's value.
+func (s *CreateTokenWithIAMOutput) SetScope(v []*string) *CreateTokenWithIAMOutput {
+	s.Scope = v
+	return s
+}
+
+// SetTokenType sets the TokenType field's value.
+func (s *CreateTokenWithIAMOutput) SetTokenType(v string) *CreateTokenWithIAMOutput {
+	s.TokenType = &v
+	return s
+}
+
 // Indicates that the token issued by the service is expired and is no longer
 // valid.
 type ExpiredTokenException struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
 
+	// Single error code. For this exception the value will be expired_token.
 	Error_ *string `locationName:"error" type:"string"`
 
+	// Human-readable text providing additional information, used to assist the
+	// client developer in understanding the error that occurred.
 	Error_description *string `locationName:"error_description" type:"string"`
 
 	Message_ *string `locationName:"message" type:"string"`
@@ -756,8 +1251,11 @@ type InternalServerException struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
 
+	// Single error code. For this exception the value will be server_error.
 	Error_ *string `locationName:"error" type:"string"`
 
+	// Human-readable text providing additional information, used to assist the
+	// client developer in understanding the error that occurred.
 	Error_description *string `locationName:"error_description" type:"string"`
 
 	Message_ *string `locationName:"message" type:"string"`
@@ -826,8 +1324,11 @@ type InvalidClientException struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
 
+	// Single error code. For this exception the value will be invalid_client.
 	Error_ *string `locationName:"error" type:"string"`
 
+	// Human-readable text providing additional information, used to assist the
+	// client developer in understanding the error that occurred.
 	Error_description *string `locationName:"error_description" type:"string"`
 
 	Message_ *string `locationName:"message" type:"string"`
@@ -895,8 +1396,11 @@ type InvalidClientMetadataException struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
 
+	// Single error code. For this exception the value will be invalid_client_metadata.
 	Error_ *string `locationName:"error" type:"string"`
 
+	// Human-readable text providing additional information, used to assist the
+	// client developer in understanding the error that occurred.
 	Error_description *string `locationName:"error_description" type:"string"`
 
 	Message_ *string `locationName:"message" type:"string"`
@@ -964,8 +1468,11 @@ type InvalidGrantException struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
 
+	// Single error code. For this exception the value will be invalid_grant.
 	Error_ *string `locationName:"error" type:"string"`
 
+	// Human-readable text providing additional information, used to assist the
+	// client developer in understanding the error that occurred.
 	Error_description *string `locationName:"error_description" type:"string"`
 
 	Message_ *string `locationName:"message" type:"string"`
@@ -1027,14 +1534,89 @@ func (s *InvalidGrantException) RequestID() string {
 	return s.RespMetadata.RequestID
 }
 
+// Indicates that one or more redirect URI in the request is not supported for
+// this operation.
+type InvalidRedirectUriException struct {
+	_            struct{}                  `type:"structure"`
+	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
+
+	// Single error code. For this exception the value will be invalid_redirect_uri.
+	Error_ *string `locationName:"error" type:"string"`
+
+	// Human-readable text providing additional information, used to assist the
+	// client developer in understanding the error that occurred.
+	Error_description *string `locationName:"error_description" type:"string"`
+
+	Message_ *string `locationName:"message" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s InvalidRedirectUriException) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s InvalidRedirectUriException) GoString() string {
+	return s.String()
+}
+
+func newErrorInvalidRedirectUriException(v protocol.ResponseMetadata) error {
+	return &InvalidRedirectUriException{
+		RespMetadata: v,
+	}
+}
+
+// Code returns the exception type name.
+func (s *InvalidRedirectUriException) Code() string {
+	return "InvalidRedirectUriException"
+}
+
+// Message returns the exception's message.
+func (s *InvalidRedirectUriException) Message() string {
+	if s.Message_ != nil {
+		return *s.Message_
+	}
+	return ""
+}
+
+// OrigErr always returns nil, satisfies awserr.Error interface.
+func (s *InvalidRedirectUriException) OrigErr() error {
+	return nil
+}
+
+func (s *InvalidRedirectUriException) Error() string {
+	return fmt.Sprintf("%s: %s\n%s", s.Code(), s.Message(), s.String())
+}
+
+// Status code returns the HTTP status code for the request's response error.
+func (s *InvalidRedirectUriException) StatusCode() int {
+	return s.RespMetadata.StatusCode
+}
+
+// RequestID returns the service's response RequestID for request.
+func (s *InvalidRedirectUriException) RequestID() string {
+	return s.RespMetadata.RequestID
+}
+
 // Indicates that something is wrong with the input to the request. For example,
 // a required parameter might be missing or out of range.
 type InvalidRequestException struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
 
+	// Single error code. For this exception the value will be invalid_request.
 	Error_ *string `locationName:"error" type:"string"`
 
+	// Human-readable text providing additional information, used to assist the
+	// client developer in understanding the error that occurred.
 	Error_description *string `locationName:"error_description" type:"string"`
 
 	Message_ *string `locationName:"message" type:"string"`
@@ -1096,13 +1678,95 @@ func (s *InvalidRequestException) RequestID() string {
 	return s.RespMetadata.RequestID
 }
 
+// Indicates that a token provided as input to the request was issued by and
+// is only usable by calling IAM Identity Center endpoints in another region.
+type InvalidRequestRegionException struct {
+	_            struct{}                  `type:"structure"`
+	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
+
+	// Indicates the IAM Identity Center endpoint which the requester may call with
+	// this token.
+	Endpoint *string `locationName:"endpoint" type:"string"`
+
+	// Single error code. For this exception the value will be invalid_request.
+	Error_ *string `locationName:"error" type:"string"`
+
+	// Human-readable text providing additional information, used to assist the
+	// client developer in understanding the error that occurred.
+	Error_description *string `locationName:"error_description" type:"string"`
+
+	Message_ *string `locationName:"message" type:"string"`
+
+	// Indicates the region which the requester may call with this token.
+	Region *string `locationName:"region" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s InvalidRequestRegionException) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s InvalidRequestRegionException) GoString() string {
+	return s.String()
+}
+
+func newErrorInvalidRequestRegionException(v protocol.ResponseMetadata) error {
+	return &InvalidRequestRegionException{
+		RespMetadata: v,
+	}
+}
+
+// Code returns the exception type name.
+func (s *InvalidRequestRegionException) Code() string {
+	return "InvalidRequestRegionException"
+}
+
+// Message returns the exception's message.
+func (s *InvalidRequestRegionException) Message() string {
+	if s.Message_ != nil {
+		return *s.Message_
+	}
+	return ""
+}
+
+// OrigErr always returns nil, satisfies awserr.Error interface.
+func (s *InvalidRequestRegionException) OrigErr() error {
+	return nil
+}
+
+func (s *InvalidRequestRegionException) Error() string {
+	return fmt.Sprintf("%s: %s\n%s", s.Code(), s.Message(), s.String())
+}
+
+// Status code returns the HTTP status code for the request's response error.
+func (s *InvalidRequestRegionException) StatusCode() int {
+	return s.RespMetadata.StatusCode
+}
+
+// RequestID returns the service's response RequestID for request.
+func (s *InvalidRequestRegionException) RequestID() string {
+	return s.RespMetadata.RequestID
+}
+
 // Indicates that the scope provided in the request is invalid.
 type InvalidScopeException struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
 
+	// Single error code. For this exception the value will be invalid_scope.
 	Error_ *string `locationName:"error" type:"string"`
 
+	// Human-readable text providing additional information, used to assist the
+	// client developer in understanding the error that occurred.
 	Error_description *string `locationName:"error_description" type:"string"`
 
 	Message_ *string `locationName:"message" type:"string"`
@@ -1178,6 +1842,25 @@ type RegisterClientInput struct {
 	// ClientType is a required field
 	ClientType *string `locationName:"clientType" type:"string" required:"true"`
 
+	// This IAM Identity Center application ARN is used to define administrator-managed
+	// configuration for public client access to resources. At authorization, the
+	// scopes, grants, and redirect URI available to this client will be restricted
+	// by this application resource.
+	EntitledApplicationArn *string `locationName:"entitledApplicationArn" type:"string"`
+
+	// The list of OAuth 2.0 grant types that are defined by the client. This list
+	// is used to restrict the token granting flows available to the client.
+	GrantTypes []*string `locationName:"grantTypes" type:"list"`
+
+	// The IAM Identity Center Issuer URL associated with an instance of IAM Identity
+	// Center. This value is needed for user access to resources through the client.
+	IssuerUrl *string `locationName:"issuerUrl" type:"string"`
+
+	// The list of redirect URI that are defined by the client. At completion of
+	// authorization, this list is used to restrict what locations the user agent
+	// can be redirected back to.
+	RedirectUris []*string `locationName:"redirectUris" type:"list"`
+
 	// The list of scopes that are defined by the client. Upon authorization, this
 	// list is used to restrict permissions when granting an access token.
 	Scopes []*string `locationName:"scopes" type:"list"`
@@ -1229,6 +1912,30 @@ func (s *RegisterClientInput) SetClientType(v string) *RegisterClientInput {
 	return s
 }
 
+// SetEntitledApplicationArn sets the EntitledApplicationArn field's value.
+func (s *RegisterClientInput) SetEntitledApplicationArn(v string) *RegisterClientInput {
+	s.EntitledApplicationArn = &v
+	return s
+}
+
+// SetGrantTypes sets the GrantTypes field's value.
+func (s *RegisterClientInput) SetGrantTypes(v []*string) *RegisterClientInput {
+	s.GrantTypes = v
+	return s
+}
+
+// SetIssuerUrl sets the IssuerUrl field's value.
+func (s *RegisterClientInput) SetIssuerUrl(v string) *RegisterClientInput {
+	s.IssuerUrl = &v
+	return s
+}
+
+// SetRedirectUris sets the RedirectUris field's value.
+func (s *RegisterClientInput) SetRedirectUris(v []*string) *RegisterClientInput {
+	s.RedirectUris = v
+	return s
+}
+
 // SetScopes sets the Scopes field's value.
 func (s *RegisterClientInput) SetScopes(v []*string) *RegisterClientInput {
 	s.Scopes = v
@@ -1238,7 +1945,7 @@ func (s *RegisterClientInput) SetScopes(v []*string) *RegisterClientInput {
 type RegisterClientOutput struct {
 	_ struct{} `type:"structure"`
 
-	// The endpoint where the client can request authorization.
+	// An endpoint that the client can use to request authorization.
 	AuthorizationEndpoint *string `locationName:"authorizationEndpoint" type:"string"`
 
 	// The unique identifier string for each client. This client uses this identifier
@@ -1250,12 +1957,16 @@ type RegisterClientOutput struct {
 
 	// A secret string generated for the client. The client will use this string
 	// to get authenticated by the service in subsequent calls.
-	ClientSecret *string `locationName:"clientSecret" type:"string"`
+	//
+	// ClientSecret is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by RegisterClientOutput's
+	// String and GoString methods.
+	ClientSecret *string `locationName:"clientSecret" type:"string" sensitive:"true"`
 
 	// Indicates the time at which the clientId and clientSecret will become invalid.
 	ClientSecretExpiresAt *int64 `locationName:"clientSecretExpiresAt" type:"long"`
 
-	// The endpoint where the client can get an access token.
+	// An endpoint that the client can use to create tokens.
 	TokenEndpoint *string `locationName:"tokenEndpoint" type:"string"`
 }
 
@@ -1319,8 +2030,11 @@ type SlowDownException struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
 
+	// Single error code. For this exception the value will be slow_down.
 	Error_ *string `locationName:"error" type:"string"`
 
+	// Human-readable text providing additional information, used to assist the
+	// client developer in understanding the error that occurred.
 	Error_description *string `locationName:"error_description" type:"string"`
 
 	Message_ *string `locationName:"message" type:"string"`
@@ -1395,11 +2109,15 @@ type StartDeviceAuthorizationInput struct {
 	// A secret string that is generated for the client. This value should come
 	// from the persisted result of the RegisterClient API operation.
 	//
+	// ClientSecret is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by StartDeviceAuthorizationInput's
+	// String and GoString methods.
+	//
 	// ClientSecret is a required field
-	ClientSecret *string `locationName:"clientSecret" type:"string" required:"true"`
+	ClientSecret *string `locationName:"clientSecret" type:"string" required:"true" sensitive:"true"`
 
-	// The URL for the AWS access portal. For more information, see Using the AWS
-	// access portal (https://docs.aws.amazon.com/singlesignon/latest/userguide/using-the-portal.html)
+	// The URL for the Amazon Web Services access portal. For more information,
+	// see Using the Amazon Web Services access portal (https://docs.aws.amazon.com/singlesignon/latest/userguide/using-the-portal.html)
 	// in the IAM Identity Center User Guide.
 	//
 	// StartUrl is a required field
@@ -1550,8 +2268,11 @@ type UnauthorizedClientException struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
 
+	// Single error code. For this exception the value will be unauthorized_client.
 	Error_ *string `locationName:"error" type:"string"`
 
+	// Human-readable text providing additional information, used to assist the
+	// client developer in understanding the error that occurred.
 	Error_description *string `locationName:"error_description" type:"string"`
 
 	Message_ *string `locationName:"message" type:"string"`
@@ -1618,8 +2339,11 @@ type UnsupportedGrantTypeException struct {
 	_            struct{}                  `type:"structure"`
 	RespMetadata protocol.ResponseMetadata `json:"-" xml:"-"`
 
+	// Single error code. For this exception the value will be unsupported_grant_type.
 	Error_ *string `locationName:"error" type:"string"`
 
+	// Human-readable text providing additional information, used to assist the
+	// client developer in understanding the error that occurred.
 	Error_description *string `locationName:"error_description" type:"string"`
 
 	Message_ *string `locationName:"message" type:"string"`

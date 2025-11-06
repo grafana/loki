@@ -27,17 +27,18 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/golang/protobuf/proto"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer"
 	"google.golang.org/grpc/balancer/leastrequest"
+	"google.golang.org/grpc/balancer/pickfirst"
+	"google.golang.org/grpc/balancer/ringhash"
 	"google.golang.org/grpc/balancer/roundrobin"
 	"google.golang.org/grpc/balancer/weightedroundrobin"
-	"google.golang.org/grpc/internal/envconfig"
+	iringhash "google.golang.org/grpc/internal/ringhash"
 	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
-	"google.golang.org/grpc/xds/internal/balancer/ringhash"
 	"google.golang.org/grpc/xds/internal/balancer/wrrlocality"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdslbregistry"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
 
 	v1xdsudpatypepb "github.com/cncf/xds/go/udpa/type/v1"
 	v3xdsxdstypepb "github.com/cncf/xds/go/xds/type/v3"
@@ -46,7 +47,6 @@ import (
 	v3pickfirstpb "github.com/envoyproxy/go-control-plane/envoy/extensions/load_balancing_policies/pick_first/v3"
 	v3ringhashpb "github.com/envoyproxy/go-control-plane/envoy/extensions/load_balancing_policies/ring_hash/v3"
 	v3wrrlocalitypb "github.com/envoyproxy/go-control-plane/envoy/extensions/load_balancing_policies/wrr_locality/v3"
-	structpb "github.com/golang/protobuf/ptypes/struct"
 )
 
 func init() {
@@ -67,9 +67,6 @@ const (
 )
 
 func convertRingHashProtoToServiceConfig(rawProto []byte, _ int) (json.RawMessage, error) {
-	if !envconfig.XDSRingHash {
-		return nil, nil
-	}
 	rhProto := &v3ringhashpb.RingHash{}
 	if err := proto.Unmarshal(rawProto, rhProto); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal resource: %v", err)
@@ -86,7 +83,7 @@ func convertRingHashProtoToServiceConfig(rawProto []byte, _ int) (json.RawMessag
 		maxSize = max.GetValue()
 	}
 
-	rhCfg := &ringhash.LBConfig{
+	rhCfg := &iringhash.LBConfig{
 		MinRingSize: minSize,
 		MaxRingSize: maxSize,
 	}
@@ -103,9 +100,6 @@ type pfConfig struct {
 }
 
 func convertPickFirstProtoToServiceConfig(rawProto []byte, _ int) (json.RawMessage, error) {
-	if !envconfig.PickFirstLBConfig {
-		return nil, nil
-	}
 	pfProto := &v3pickfirstpb.PickFirst{}
 	if err := proto.Unmarshal(rawProto, pfProto); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal resource: %v", err)
@@ -116,7 +110,7 @@ func convertPickFirstProtoToServiceConfig(rawProto []byte, _ int) (json.RawMessa
 	if err != nil {
 		return nil, fmt.Errorf("error marshaling JSON for type %T: %v", pfCfg, err)
 	}
-	return makeBalancerConfigJSON(grpc.PickFirstBalancerName, js), nil
+	return makeBalancerConfigJSON(pickfirst.Name, js), nil
 }
 
 func convertRoundRobinProtoToServiceConfig([]byte, int) (json.RawMessage, error) {
@@ -182,9 +176,6 @@ func convertWeightedRoundRobinProtoToServiceConfig(rawProto []byte, _ int) (json
 }
 
 func convertLeastRequestProtoToServiceConfig(rawProto []byte, _ int) (json.RawMessage, error) {
-	if !envconfig.LeastRequestLB {
-		return nil, nil
-	}
 	lrProto := &v3leastrequestpb.LeastRequest{}
 	if err := proto.Unmarshal(rawProto, lrProto); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal resource: %v", err)

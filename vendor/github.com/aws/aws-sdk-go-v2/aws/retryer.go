@@ -49,12 +49,12 @@ type Retryer interface {
 	IsErrorRetryable(error) bool
 
 	// MaxAttempts returns the maximum number of attempts that can be made for
-	// a attempt before failing. A value of 0 implies that the attempt should
+	// an attempt before failing. A value of 0 implies that the attempt should
 	// be retried until it succeeds if the errors are retryable.
 	MaxAttempts() int
 
 	// RetryDelay returns the delay that should be used before retrying the
-	// attempt. Will return error if the if the delay could not be determined.
+	// attempt. Will return error if the delay could not be determined.
 	RetryDelay(attempt int, opErr error) (time.Duration, error)
 
 	// GetRetryToken attempts to deduct the retry cost from the retry token pool.
@@ -66,7 +66,7 @@ type Retryer interface {
 	GetInitialToken() (releaseToken func(error) error)
 }
 
-// RetryerV2 is an interface to determine if a given error from a attempt
+// RetryerV2 is an interface to determine if a given error from an attempt
 // should be retried, and if so what backoff delay to apply. The default
 // implementation used by most services is the retry package's Standard type.
 // Which contains basic retry logic using exponential backoff.

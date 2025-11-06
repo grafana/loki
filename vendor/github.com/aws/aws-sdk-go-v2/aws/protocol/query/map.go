@@ -11,10 +11,10 @@ import (
 // the values must all be of the same type, and that map entries are ordered.
 // A serialized map might look like the following:
 //
-//     MapName.entry.1.key=Foo
-//     &MapName.entry.1.value=spam
-//     &MapName.entry.2.key=Bar
-//     &MapName.entry.2.value=eggs
+//	MapName.entry.1.key=Foo
+//	&MapName.entry.1.value=spam
+//	&MapName.entry.2.key=Bar
+//	&MapName.entry.2.value=eggs
 type Map struct {
 	// The query values to add the map to.
 	values url.Values

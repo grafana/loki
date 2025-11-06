@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package api
 
 import (
@@ -64,6 +67,7 @@ type HealthCheckDefinition struct {
 	TLSServerName                          string
 	TLSSkipVerify                          bool
 	TCP                                    string
+	TCPUseTLS                              bool
 	UDP                                    string
 	GRPC                                   string
 	OSService                              string
@@ -71,6 +75,8 @@ type HealthCheckDefinition struct {
 	IntervalDuration                       time.Duration `json:"-"`
 	TimeoutDuration                        time.Duration `json:"-"`
 	DeregisterCriticalServiceAfterDuration time.Duration `json:"-"`
+	// when parent Type is `session`, and if this session is destroyed, the check will be marked as critical
+	SessionName string `json:",omitempty"`
 
 	// DEPRECATED in Consul 1.4.1. Use the above time.Duration fields instead.
 	Interval                       ReadableDuration

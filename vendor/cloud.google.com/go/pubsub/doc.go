@@ -64,7 +64,7 @@ Messages are then consumed from a subscription via callback.
 		log.Printf("Got message: %s", m.Data)
 		m.Ack()
 	 })
-	 if err != nil {
+	 if err != nil && !errors.Is(err, context.Canceled) {
 		// Handle error.
 	 }
 

@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strings"
 
 	iointernal "github.com/aws/smithy-go/transport/http/internal/io"
 )
@@ -31,6 +32,14 @@ func NewStackRequest() interface{} {
 			ContentLength: -1, // default to unknown length
 		},
 	}
+}
+
+// IsHTTPS returns if the request is HTTPS. Returns false if no endpoint URL is set.
+func (r *Request) IsHTTPS() bool {
+	if r.URL == nil {
+		return false
+	}
+	return strings.EqualFold(r.URL.Scheme, "https")
 }
 
 // Clone returns a deep copy of the Request for the new context. A reference to

@@ -27,7 +27,9 @@ import (
 )
 
 const (
-	projectIDSentinel = "*detect-project-id*"
+	// ProjectIDSentinel is the value that users should pass for the project ID
+	// to enable detection.
+	ProjectIDSentinel = "*detect-project-id*"
 	envProjectID      = "GOOGLE_CLOUD_PROJECT"
 )
 
@@ -41,8 +43,8 @@ var (
 //  1. GOOGLE_CLOUD_PROJECT envvar
 //  2. ADC creds.ProjectID
 //  3. A static value if the environment is emulated.
-func ProjectID(ctx context.Context, projectID string, emulatorEnvVar string, opts ...option.ClientOption) (string, error) {
-	if projectID != projectIDSentinel {
+func ProjectID(ctx context.Context, projectID, emulatorEnvVar string, opts ...option.ClientOption) (string, error) {
+	if projectID != ProjectIDSentinel {
 		return projectID, nil
 	}
 	// 1. Try a well known environment variable

@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -31,73 +32,143 @@ var (
 	_ = (*url.URL)(nil)
 	_ = (*mail.Address)(nil)
 	_ = anypb.Any{}
+	_ = sort.Sort
 )
 
 // Validate checks the field values on OrcaLoadReport with the rules defined in
-// the proto definition for this message. If any rules are violated, an error
-// is returned.
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
 func (m *OrcaLoadReport) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on OrcaLoadReport with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in OrcaLoadReportMultiError,
+// or nil if none found.
+func (m *OrcaLoadReport) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *OrcaLoadReport) validate(all bool) error {
 	if m == nil {
 		return nil
 	}
 
+	var errors []error
+
 	if m.GetCpuUtilization() < 0 {
-		return OrcaLoadReportValidationError{
+		err := OrcaLoadReportValidationError{
 			field:  "CpuUtilization",
 			reason: "value must be greater than or equal to 0",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
 	}
 
 	if val := m.GetMemUtilization(); val < 0 || val > 1 {
-		return OrcaLoadReportValidationError{
+		err := OrcaLoadReportValidationError{
 			field:  "MemUtilization",
 			reason: "value must be inside range [0, 1]",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
 	}
 
 	// no validation rules for Rps
 
 	// no validation rules for RequestCost
 
-	for key, val := range m.GetUtilization() {
-		_ = val
-
-		// no validation rules for Utilization[key]
-
-		if val := val; val < 0 || val > 1 {
-			return OrcaLoadReportValidationError{
-				field:  fmt.Sprintf("Utilization[%v]", key),
-				reason: "value must be inside range [0, 1]",
-			}
+	{
+		sorted_keys := make([]string, len(m.GetUtilization()))
+		i := 0
+		for key := range m.GetUtilization() {
+			sorted_keys[i] = key
+			i++
 		}
+		sort.Slice(sorted_keys, func(i, j int) bool { return sorted_keys[i] < sorted_keys[j] })
+		for _, key := range sorted_keys {
+			val := m.GetUtilization()[key]
+			_ = val
 
+			// no validation rules for Utilization[key]
+
+			if val := val; val < 0 || val > 1 {
+				err := OrcaLoadReportValidationError{
+					field:  fmt.Sprintf("Utilization[%v]", key),
+					reason: "value must be inside range [0, 1]",
+				}
+				if !all {
+					return err
+				}
+				errors = append(errors, err)
+			}
+
+		}
 	}
 
 	if m.GetRpsFractional() < 0 {
-		return OrcaLoadReportValidationError{
+		err := OrcaLoadReportValidationError{
 			field:  "RpsFractional",
 			reason: "value must be greater than or equal to 0",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
 	}
 
 	if m.GetEps() < 0 {
-		return OrcaLoadReportValidationError{
+		err := OrcaLoadReportValidationError{
 			field:  "Eps",
 			reason: "value must be greater than or equal to 0",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
 	}
 
 	// no validation rules for NamedMetrics
 
 	if m.GetApplicationUtilization() < 0 {
-		return OrcaLoadReportValidationError{
+		err := OrcaLoadReportValidationError{
 			field:  "ApplicationUtilization",
 			reason: "value must be greater than or equal to 0",
 		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if len(errors) > 0 {
+		return OrcaLoadReportMultiError(errors)
 	}
 
 	return nil
 }
+
+// OrcaLoadReportMultiError is an error wrapping multiple validation errors
+// returned by OrcaLoadReport.ValidateAll() if the designated constraints
+// aren't met.
+type OrcaLoadReportMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m OrcaLoadReportMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m OrcaLoadReportMultiError) AllErrors() []error { return m }
 
 // OrcaLoadReportValidationError is the validation error returned by
 // OrcaLoadReport.Validate if the designated constraints aren't met.

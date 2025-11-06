@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MPL-2.0
+
 package api
 
 import (
@@ -33,7 +36,7 @@ type TxnOps []*TxnOp
 type TxnResult struct {
 	KV      *KVPair
 	Node    *Node
-	Service *CatalogService
+	Service *AgentService
 	Check   *HealthCheck
 }
 
@@ -160,6 +163,13 @@ type CheckTxnOp struct {
 	Verb  CheckOp
 	Check HealthCheck
 }
+
+type CensusOp string
+
+const (
+	CensusPut   CensusOp = "put"
+	CensusPrune CensusOp = "prune"
+)
 
 // Txn is used to apply multiple Consul operations in a single, atomic transaction.
 //

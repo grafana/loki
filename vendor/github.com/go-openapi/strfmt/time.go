@@ -29,6 +29,12 @@ import (
 	"go.mongodb.org/mongo-driver/bson/bsontype"
 )
 
+var (
+	// UnixZero sets the zero unix timestamp we want to compare against.
+	// Unix 0 for an EST timezone is not equivalent to a UTC timezone.
+	UnixZero = time.Unix(0, 0).UTC()
+)
+
 func init() {
 	dt := DateTime{}
 	Default.Add("datetime", &dt, IsDateTime)
@@ -70,6 +76,8 @@ const (
 	ISO8601TimeWithReducedPrecisionLocaltime = "2006-01-02T15:04"
 	// ISO8601TimeUniversalSortableDateTimePattern represents a ISO8601 universal sortable date time pattern.
 	ISO8601TimeUniversalSortableDateTimePattern = "2006-01-02 15:04:05"
+	// short form of ISO8601TimeUniversalSortableDateTimePattern
+	ISO8601TimeUniversalSortableDateTimePatternShortForm = "2006-01-02"
 	// DateTimePattern pattern to match for the date-time format from http://tools.ietf.org/html/rfc3339#section-5.6
 	DateTimePattern = `^([0-9]{2}):([0-9]{2}):([0-9]{2})(.[0-9]+)?(z|([+-][0-9]{2}:[0-9]{2}))$`
 )
@@ -78,7 +86,7 @@ var (
 	rxDateTime = regexp.MustCompile(DateTimePattern)
 
 	// DateTimeFormats is the collection of formats used by ParseDateTime()
-	DateTimeFormats = []string{RFC3339Micro, RFC3339MicroNoColon, RFC3339Millis, RFC3339MillisNoColon, time.RFC3339, time.RFC3339Nano, ISO8601LocalTime, ISO8601TimeWithReducedPrecision, ISO8601TimeWithReducedPrecisionLocaltime, ISO8601TimeUniversalSortableDateTimePattern}
+	DateTimeFormats = []string{RFC3339Micro, RFC3339MicroNoColon, RFC3339Millis, RFC3339MillisNoColon, time.RFC3339, time.RFC3339Nano, ISO8601LocalTime, ISO8601TimeWithReducedPrecision, ISO8601TimeWithReducedPrecisionLocaltime, ISO8601TimeUniversalSortableDateTimePattern, ISO8601TimeUniversalSortableDateTimePatternShortForm}
 
 	// MarshalFormat sets the time resolution format used for marshaling time (set to milliseconds)
 	MarshalFormat = RFC3339Millis
@@ -86,6 +94,9 @@ var (
 	// NormalizeTimeForMarshal provides a normalization function on time befeore marshalling (e.g. time.UTC).
 	// By default, the time value is not changed.
 	NormalizeTimeForMarshal = func(t time.Time) time.Time { return t }
+
+	// DefaultTimeLocation provides a location for a time when the time zone is not encoded in the string (ex: ISO8601 Local variants).
+	DefaultTimeLocation = time.UTC
 )
 
 // ParseDateTime parses a string that represents an ISO8601 time or a unix epoch
@@ -95,7 +106,7 @@ func ParseDateTime(data string) (DateTime, error) {
 	}
 	var lastError error
 	for _, layout := range DateTimeFormats {
-		dd, err := time.Parse(layout, data)
+		dd, err := time.ParseInLocation(layout, data, DefaultTimeLocation)
 		if err != nil {
 			lastError = err
 			continue
@@ -121,6 +132,22 @@ func NewDateTime() DateTime {
 // String converts this time to a string
 func (t DateTime) String() string {
 	return NormalizeTimeForMarshal(time.Time(t)).Format(MarshalFormat)
+}
+
+// IsZero returns whether the date time is a zero value
+func (t *DateTime) IsZero() bool {
+	if t == nil {
+		return true
+	}
+	return time.Time(*t).IsZero()
+}
+
+// IsUnixZerom returns whether the date time is equivalent to time.Unix(0, 0).UTC().
+func (t *DateTime) IsUnixZero() bool {
+	if t == nil {
+		return true
+	}
+	return time.Time(*t).Equal(UnixZero)
 }
 
 // MarshalText implements the text marshaller interface
@@ -220,7 +247,7 @@ func (t DateTime) MarshalBSONValue() (bsontype.Type, []byte, error) {
 	buf := make([]byte, 8)
 	binary.LittleEndian.PutUint64(buf, uint64(i64))
 
-	return bsontype.DateTime, buf, nil
+	return bson.TypeDateTime, buf, nil
 }
 
 // UnmarshalBSONValue is an interface implemented by types that can unmarshal a
@@ -228,7 +255,7 @@ func (t DateTime) MarshalBSONValue() (bsontype.Type, []byte, error) {
 // assumed to be valid. UnmarshalBSONValue must copy the BSON value bytes if it
 // wishes to retain the data after returning.
 func (t *DateTime) UnmarshalBSONValue(tpe bsontype.Type, data []byte) error {
-	if tpe == bsontype.Null {
+	if tpe == bson.TypeNull {
 		*t = DateTime{}
 		return nil
 	}

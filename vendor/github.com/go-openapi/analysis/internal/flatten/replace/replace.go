@@ -318,8 +318,8 @@ type DeepestRefResult struct {
 }
 
 // DeepestRef finds the first definition ref, from a cascade of nested refs which are not definitions.
-//  - if no definition is found, returns the deepest ref.
-//  - pointers to external files are expanded
+//   - if no definition is found, returns the deepest ref.
+//   - pointers to external files are expanded
 //
 // NOTE: all external $ref's are assumed to be already expanded at this stage.
 func DeepestRef(sp *spec.Swagger, opts *spec.ExpandOptions, ref spec.Ref) (*DeepestRefResult, error) {
