@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
-	"reflect"
 	"time"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -107,7 +105,7 @@ func setLeaderElectionConfig(o manager.Options, obj configv1.ControllerManagerCo
 		o.RenewDeadline = ptr.To(107 * time.Second)
 	}
 
-	if o.RetryPeriod == nil && !reflect.DeepEqual(obj.LeaderElection.RetryPeriod, metav1.Duration{}) {
+	if o.RetryPeriod == nil {
 		o.RetryPeriod = ptr.To(26 * time.Second)
 	}
 
