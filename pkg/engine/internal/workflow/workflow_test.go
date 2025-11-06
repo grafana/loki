@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/go-kit/log"
@@ -41,7 +43,7 @@ func Test(t *testing.T) {
 
 	fr := newFakeRunner()
 
-	wf, err := New(log.NewNopLogger(), "", fr, physicalPlan)
+	wf, err := New(Options{}, log.NewNopLogger(), "", fr, physicalPlan)
 	require.NoError(t, err, "workflow should construct properly")
 	require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
@@ -57,6 +59,10 @@ func Test(t *testing.T) {
 	// Run returns an error if any of the methods in our fake runner failed.
 	p, err := wf.Run(t.Context())
 	require.NoError(t, err, "Workflow should start properly")
+
+	require.Eventually(t, func() bool {
+		return len(fr.tasks) == 2
+	}, 100*time.Millisecond, 10*time.Millisecond)
 
 	defer func() {
 		p.Close()
@@ -99,7 +105,7 @@ func TestCancellation(t *testing.T) {
 	for _, state := range terminalStates {
 		t.Run(state.String(), func(t *testing.T) {
 			fr := newFakeRunner()
-			wf, err := New(log.NewNopLogger(), "", fr, physicalPlan)
+			wf, err := New(Options{}, log.NewNopLogger(), "", fr, physicalPlan)
 			require.NoError(t, err, "workflow should construct properly")
 			require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
 
@@ -116,6 +122,10 @@ func TestCancellation(t *testing.T) {
 			p, err := wf.Run(t.Context())
 			require.NoError(t, err, "Workflow should start properly")
 			defer p.Close()
+
+			require.Eventually(t, func() bool {
+				return len(fr.tasks) == 2
+			}, 100*time.Millisecond, 10*time.Millisecond)
 
 			rootTask, err := wf.graph.Root()
 			require.NoError(t, err, "should be able to retrieve singular root task")
@@ -139,9 +149,83 @@ func TestCancellation(t *testing.T) {
 	}
 }
 
+func TestAdmissionControl(t *testing.T) {
+	numScanTasks := 100 // more tasks than the capacity of the token bucket
+	var physicalGraph dag.Graph[physical.Node]
+
+	scanSet := &physical.ScanSet{}
+	for i := range numScanTasks {
+		scanSet.Targets = append(scanSet.Targets, &physical.ScanTarget{
+			Type: physical.ScanTypeDataObject,
+			DataObject: &physical.DataObjScan{
+				Section: i,
+			},
+		})
+	}
+
+	var (
+		rangeAgg = physicalGraph.Add(&physical.RangeAggregation{})
+		parallel = physicalGraph.Add(&physical.Parallelize{})
+		_        = physicalGraph.Add(scanSet)
+	)
+
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: rangeAgg, Child: parallel})
+	_ = physicalGraph.AddEdge(dag.Edge[physical.Node]{Parent: parallel, Child: scanSet})
+
+	physicalPlan := physical.FromGraph(physicalGraph)
+
+	fr := newFakeRunner()
+
+	opts := Options{
+		MaxRunningScanTasks:  32, // less than numScanTasks
+		MaxRunningOtherTasks: 0,  // unlimited
+	}
+	wf, err := New(opts, log.NewNopLogger(), "tenant", fr, physicalPlan)
+	require.NoError(t, err, "workflow should construct properly")
+	require.NotNil(t, wf.resultsStream, "workflow should have created results stream")
+
+	defer func() {
+		if !t.Failed() {
+			return
+		}
+
+		t.Log("Failing workflow:")
+		t.Log(Sprint(wf))
+	}()
+
+	// Run returns an error if any of the methods in our fake runner failed.
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	t.Cleanup(cancel)
+
+	// Run() dispatches task in background goroutine, so it does not block
+	p, err := wf.Run(ctx)
+	require.NoError(t, err, "Workflow should start properly")
+	defer p.Close()
+
+	// Eventually first "batch" of scan tasks has been enqueued
+	require.Eventually(t, func() bool {
+		return opts.MaxRunningScanTasks+1 == len(wf.taskStates) // 32 scan tasks + 1 other task
+	}, time.Second, 10*time.Millisecond)
+
+	// Simulate scan tasks being completed
+	for _, task := range wf.allTasks() {
+		if !isScanTask(task) {
+			continue
+		}
+		time.Sleep(10 * time.Millisecond) // need to make sure that we don't "finish" tasks before they are dispatched
+		wf.onTaskChange(ctx, task, TaskStatus{State: TaskStateCompleted})
+	}
+
+	// Eventually all tasks have been enqeued
+	require.Eventually(t, func() bool {
+		return numScanTasks+1 == len(fr.tasks) // 100 scan tasks + 1 other task
+	}, time.Second, 10*time.Millisecond)
+}
+
 type fakeRunner struct {
-	streams map[ulid.ULID]*runnerStream
-	tasks   map[ulid.ULID]*runnerTask
+	streams  map[ulid.ULID]*runnerStream
+	tasks    map[ulid.ULID]*runnerTask
+	tasksMtx sync.RWMutex
 }
 
 func newFakeRunner() *fakeRunner {
@@ -193,7 +277,10 @@ func (f *fakeRunner) Listen(_ context.Context, stream *Stream) (executor.Pipelin
 
 func (f *fakeRunner) Start(ctx context.Context, handler TaskEventHandler, tasks ...*Task) error {
 	for _, task := range tasks {
+
+		f.tasksMtx.Lock()
 		if _, exist := f.tasks[task.ULID]; exist {
+			f.tasksMtx.Unlock()
 			return fmt.Errorf("task %s already added", task.ULID)
 		}
 
@@ -201,6 +288,7 @@ func (f *fakeRunner) Start(ctx context.Context, handler TaskEventHandler, tasks 
 			task:    task,
 			handler: handler,
 		}
+		f.tasksMtx.Unlock()
 
 		for _, streams := range task.Sinks {
 			for _, stream := range streams {
@@ -240,14 +328,18 @@ func (f *fakeRunner) Cancel(ctx context.Context, tasks ...*Task) error {
 	var errs []error
 
 	for _, task := range tasks {
+		f.tasksMtx.RLock()
 		rt, exist := f.tasks[task.ULID]
+		f.tasksMtx.RUnlock()
 		if !exist {
 			errs = append(errs, fmt.Errorf("task %s not found", task.ULID))
 			continue
 		}
 
 		rt.handler(ctx, task, TaskStatus{State: TaskStateCancelled})
+		f.tasksMtx.Lock()
 		delete(f.tasks, task.ULID)
+		f.tasksMtx.Unlock()
 	}
 
 	return errors.Join(errs...)

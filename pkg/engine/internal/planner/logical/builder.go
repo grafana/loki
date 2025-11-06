@@ -84,6 +84,20 @@ func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 	}
 }
 
+// TopK applies a [TopK] operation to the Builder.
+func (b *Builder) TopK(sortBy *ColumnRef, K int, ascending, nullsFirst bool) *Builder {
+	return &Builder{
+		val: &TopK{
+			Table: b.val,
+
+			SortBy:     sortBy,
+			Ascending:  ascending,
+			NullsFirst: nullsFirst,
+			K:          K,
+		},
+	}
+}
+
 // BinOpRight adds a binary arithmetic operation with a given right value
 func (b *Builder) BinOpRight(op types.BinaryOp, right Value) *Builder {
 	return &Builder{

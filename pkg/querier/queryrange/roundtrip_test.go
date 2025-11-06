@@ -1533,8 +1533,13 @@ func (f fakeLimits) TSDBShardingStrategy(string) string {
 func (f fakeLimits) ShardAggregations(string) []string {
 	return nil
 }
+
 func (f fakeLimits) EnableMultiVariantQueries(_ string) bool {
 	return f.enableMultiVariantQueries
+}
+
+func (f fakeLimits) MaxScanTaskParallelism(_ string) int {
+	return 0
 }
 
 type ingesterQueryOpts struct {

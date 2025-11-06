@@ -29,6 +29,8 @@ func (t *treeFormatter) convert(value Value) *tree.Node {
 		return t.convertLimit(value)
 	case *Sort:
 		return t.convertSort(value)
+	case *TopK:
+		return t.convertTopK(value)
 	case *RangeAggregation:
 		return t.convertRangeAggregation(value)
 	case *VectorAggregation:
@@ -97,6 +99,29 @@ func (t *treeFormatter) convertSort(ast *Sort) *tree.Node {
 		tree.NewProperty("nulls", false, nullsPosition),
 	)
 	node.Comments = append(node.Comments, t.convert(&ast.Column))
+	node.Children = append(node.Children, t.convert(ast.Table))
+	return node
+}
+
+func (t *treeFormatter) convertTopK(ast *TopK) *tree.Node {
+	direction := "asc"
+	if !ast.Ascending {
+		direction = "desc"
+	}
+
+	nullsPosition := "last"
+	if ast.NullsFirst {
+		nullsPosition = "first"
+	}
+
+	node := tree.NewNode("TOPK", ast.Name(),
+		tree.NewProperty("table", false, ast.Table.Name()),
+		tree.NewProperty("sort_by", false, ast.SortBy.Name()),
+		tree.NewProperty("k", false, ast.K),
+		tree.NewProperty("direction", false, direction),
+		tree.NewProperty("nulls", false, nullsPosition),
+	)
+	node.Comments = append(node.Comments, t.convert(ast.SortBy))
 	node.Children = append(node.Children, t.convert(ast.Table))
 	return node
 }
