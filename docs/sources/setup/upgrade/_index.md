@@ -45,6 +45,10 @@ Supported clients should check the configuration options for max send message si
 
 ## Helm Chart Upgrades
 
+### Helm Chart 6.46.1 - Respect the global registry in the sidecar image
+
+If you prefixed the sidecar container with a private registry (`sidecar.image.repository`), this is no longer necessary and is deprecated as the global registry is used starting with Helm chart 6.46.1. Therefore please use `global.imageRegistry` or alternatively, `sidecar.image.registry` for more fine-grained control.
+
 ### Helm Chart 6.34.0 - Zone-aware Ingester Breaking Change
 
 {{< admonition type="warning" >}}

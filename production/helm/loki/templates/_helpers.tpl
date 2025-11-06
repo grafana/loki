@@ -198,6 +198,23 @@ Docker image name
 {{- if .Values.enterprise.enabled -}}{{- include "loki.enterpriseImage" . -}}{{- else -}}{{- include "loki.lokiImage" . -}}{{- end -}}
 {{- end -}}
 
+{{- define "loki.sidecarImage" -}}
+{{- /*
+Determines the final image path for the sidecar, respecting the global registry if defined, unless the local repository
+already contains a full registry (indicated by a dot '.') for backwards-compatibility.
+This is designed to be a drop-in replacement for `loki.baseImage` as long as backwards compatibility has to be guaranteed i.e. next major release.
+*/ -}}
+{{- $registry := .global.imageRegistry | default ((.global.image).registry) | default .global.registry | default .service.registry | default "" -}}
+{{- $repository := .service.repository | default "" -}}
+{{- $ref := ternary (printf ":%s" (.service.tag | default .defaultVersion | toString)) (printf ":%s@sha256:%s" .service.tag .service.sha) (empty .service.sha) -}}
+
+{{- $prefix := "" -}}
+{{- if and $registry (not (contains "." $repository)) -}}
+{{- $prefix = printf "%s/" $registry -}}
+{{- end -}}
+
+{{- printf "%s%s%s" $prefix $repository $ref -}}
+{{- end -}}
 
 {{/*
 Generated storage config for loki common config
