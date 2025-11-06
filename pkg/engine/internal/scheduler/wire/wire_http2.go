@@ -21,10 +21,15 @@ type HTTP2Listener struct {
 	logger log.Logger
 	addr   net.Addr
 
-	connCh    chan Conn
+	connCh    chan *incomingHttp2Conn
 	closeOnce sync.Once
 	closed    chan struct{}
 	codec     *protobufCodec
+}
+
+type incomingHttp2Conn struct {
+	conn *http2Conn
+	w    http.ResponseWriter
 }
 
 var (
@@ -72,7 +77,7 @@ func NewHTTP2Listener(
 		addr:   addr,
 		logger: opts.Logger,
 
-		connCh: make(chan Conn, opts.MaxPendingConns),
+		connCh: make(chan *incomingHttp2Conn, opts.MaxPendingConns),
 		closed: make(chan struct{}),
 		codec:  &protobufCodec{allocator: allocator},
 	}
@@ -104,9 +109,7 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conn := newHTTP2Conn(l.Addr(), remoteAddr, r.Body, w, flusher, l.codec)
-
-	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
+	incomingConn := &incomingHttp2Conn{conn: conn, w: w}
 
 	// Try to enqueue the connection without blocking indefinitely
 	select {
@@ -114,9 +117,12 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		err := conn.Close()
 		if err != nil {
 			level.Error(l.logger).Log("msg", "failed to close connection on listener close", "err", err.Error())
+			http.Error(w, "failed to close connection", http.StatusInternalServerError)
+			return
 		}
-		return
-	case l.connCh <- conn:
+
+		http.Error(w, "listener closed", http.StatusServiceUnavailable)
+	case l.connCh <- incomingConn:
 		// read loop exits if a connection is closed or the context is canceled
 		conn.readLoop(r.Context())
 	}
@@ -129,8 +135,10 @@ func (l *HTTP2Listener) Accept(ctx context.Context) (Conn, error) {
 		return nil, ctx.Err()
 	case <-l.closed:
 		return nil, net.ErrClosed
-	case conn := <-l.connCh:
-		return conn, nil
+	case incomingConn := <-l.connCh:
+		incomingConn.w.WriteHeader(http.StatusOK)
+		incomingConn.conn.flusher.Flush()
+		return incomingConn.conn, nil
 	}
 }
 
