@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/require"
@@ -45,7 +44,7 @@ func TestHTTP2BasicConnectivity(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := wire.NewHTTP2Dialer(memory.DefaultAllocator, "stream").Dial(ctx, addr)
+	clientConn, err := wire.NewHTTP2Dialer("/").Dial(ctx, listener.Addr())
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -135,7 +134,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := wire.NewHTTP2Dialer(memory.DefaultAllocator, "stream").Dial(ctx, addr)
+	clientConn, err := wire.NewHTTP2Dialer("/").Dial(ctx, listener.Addr())
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -298,7 +297,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 			defer clientWg.Done()
 
 			// Connect
-			conn, err := wire.NewHTTP2Dialer(memory.DefaultAllocator, "stream").Dial(ctx, addr)
+			conn, err := wire.NewHTTP2Dialer("/").Dial(ctx, listener.Addr())
 			if err != nil {
 				t.Errorf("Client %d dial failed: %v", clientIdx, err)
 				return
@@ -392,8 +391,6 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	listener, shutdown := prepareHTTP2Listener(t)
 	defer shutdown()
 
-	addr := listener.Addr().String()
-
 	// Handler that returns an error
 	errorHandler := func(_ context.Context, _ *wire.Peer, _ wire.Message) error {
 		return errors.New("simulated error")
@@ -409,7 +406,7 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := wire.NewHTTP2Dialer(memory.DefaultAllocator, "stream").Dial(ctx, addr)
+	clientConn, err := wire.NewHTTP2Dialer("/").Dial(ctx, listener.Addr())
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -472,8 +469,6 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	listener, shutdown := prepareHTTP2Listener(t)
 	defer shutdown()
 
-	addr := listener.Addr().String()
-
 	// Accept connection
 	var serverConn wire.Conn
 	acceptErr := make(chan error, 1)
@@ -484,7 +479,7 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := wire.NewHTTP2Dialer(memory.DefaultAllocator, "stream").Dial(ctx, addr)
+	clientConn, err := wire.NewHTTP2Dialer("/").Dial(ctx, listener.Addr())
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -563,13 +558,12 @@ func prepareHTTP2Listener(t *testing.T) (*wire.HTTP2Listener, func()) {
 
 	listener := wire.NewHTTP2Listener(
 		l.Addr(),
-		memory.DefaultAllocator,
 		wire.WithHTTP2ListenerMaxPendingConns(1),
 		wire.WithHTTP2ListenerLogger(log.NewNopLogger()),
 	)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/stream", listener.ServeHTTP)
+	mux.Handle("/", listener)
 
 	server := &http.Server{
 		Handler: h2c.NewHandler(mux, &http2.Server{}),

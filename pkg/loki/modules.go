@@ -1416,10 +1416,24 @@ func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
 		return nil, nil
 	}
 
-	logger := log.With(util_log.Logger, "component", "query-engine-scheduler")
-	sched, err := engine_v2.NewScheduler(logger)
+	var listenAddr net.Addr
+	if t.Cfg.Querier.EngineV2.Distributed {
+		listenAddr = t.Server.HTTPListenAddr()
+	}
+
+	sched, err := engine_v2.NewScheduler(engine_v2.SchedulerParams{
+		Logger: log.With(util_log.Logger, "component", "query-engine-scheduler"),
+
+		Addr:     listenAddr,
+		Endpoint: "/api/v2/frame",
+	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Only register HTTP handler when running distributed query execution
+	if t.Cfg.Querier.EngineV2.Distributed {
+		sched.RegisterSchedulerServer(t.Server.HTTP)
 	}
 
 	t.queryEngineV2Scheduler = sched
@@ -1429,6 +1443,11 @@ func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
 func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 	if !t.Cfg.Querier.EngineV2.Enable {
 		return nil, nil
+	}
+
+	var listenAddr net.Addr
+	if t.Cfg.Querier.EngineV2.Distributed {
+		listenAddr = t.Server.HTTPListenAddr()
 	}
 
 	store, err := t.getDataObjBucket("query-engine-worker")
@@ -1444,9 +1463,17 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		Executor: t.Cfg.Querier.EngineV2.Executor,
 
 		LocalScheduler: t.queryEngineV2Scheduler,
+
+		Addr:     listenAddr,
+		Endpoint: "/api/v2/frame",
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Only register HTTP handler when running distributed query execution
+	if t.Cfg.Querier.EngineV2.Distributed {
+		worker.RegisterWorkerServer(t.Server.HTTP)
 	}
 
 	return worker.Service(), nil

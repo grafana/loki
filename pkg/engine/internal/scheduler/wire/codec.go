@@ -20,6 +20,8 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
+var DefaultFrameCodec = &protobufCodec{}
+
 // protobufCodec implements a protobuf-based codec for frames.
 // Messages are length-prefixed: [uvarint length][protobuf payload]
 type protobufCodec struct {

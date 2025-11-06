@@ -2,13 +2,16 @@ package engine
 
 import (
 	"flag"
+	"net"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker"
 )
 
@@ -37,6 +40,16 @@ type WorkerParams struct {
 	// Local scheduler to connect to. If LocalScheduler is nil, the worker can
 	// still connect to remote schedulers.
 	LocalScheduler *Scheduler
+
+	// Listen address of the underlying network listener.
+	// This must only be set when the worker runs in remote transport mode
+	// and accepts remote connections.
+	// If nil, the worker only listens for in-process connections.
+	Addr net.Addr
+
+	// Absolute path of the endpoint where the frame handler is registered.
+	// Used for connecting to scheduler and other workers.
+	Endpoint string
 }
 
 // Worker requests tasks from a [Scheduler] and executes them. Task results are
@@ -44,7 +57,8 @@ type WorkerParams struct {
 type Worker struct {
 	// Our public API is a lightweight wrapper around the internal API.
 
-	inner *worker.Worker
+	Endpoint string
+	inner    *worker.Worker
 }
 
 // NewWorker creates a new Worker instance. Use [Worker.Service] to manage the
@@ -54,22 +68,44 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		return nil, errors.New("scheduler lookup interval must be non-zero when a scheduler lookup address is provided")
 	}
 
+	if params.Endpoint == "" {
+		params.Endpoint = "/api/v2/frame"
+	}
+
+	var listener wire.Listener
+	if params.Addr != nil {
+		listener = wire.NewHTTP2Listener(
+			params.Addr,
+			wire.WithHTTP2ListenerLogger(params.Logger),
+			wire.WithHTTP2ListenerMaxPendingConns(10),
+		)
+	}
+
 	inner, err := worker.New(worker.Config{
-		Logger:         params.Logger,
-		Bucket:         params.Bucket,
+		Logger: params.Logger,
+		Bucket: params.Bucket,
+
 		LocalScheduler: params.LocalScheduler.inner,
+		RemoteListener: listener,
 
 		SchedulerLookupAddress:  params.Config.SchedulerLookupAddress,
 		SchedulerLookupInterval: params.Config.SchedulerLookupInterval,
 
 		BatchSize:  int64(params.Executor.BatchSize),
 		NumThreads: params.Config.WorkerThreads,
+
+		Endpoint: params.Endpoint,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return &Worker{inner: inner}, nil
+	return &Worker{Endpoint: params.Endpoint, inner: inner}, nil
+}
+
+// RegisterWorkerServer registers the [wire.Listener] of the inner worker as http.Handler on the privided router.
+func (w *Worker) RegisterWorkerServer(router *mux.Router) {
+	router.Path(w.Endpoint).Methods("POST").Handler(w.inner.Handler())
 }
 
 // Service returns the service used to manage the lifecycle of the Worker.
