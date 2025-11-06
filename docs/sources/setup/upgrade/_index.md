@@ -49,6 +49,11 @@ Supported clients should check the configuration options for max send message si
 
 If you prefixed the sidecar container with a private registry (`sidecar.image.repository`), this is no longer necessary and is deprecated as the global registry is used starting with Helm chart 6.46.1. Therefore please use `global.imageRegistry` or alternatively, `sidecar.image.registry` for more fine-grained control.
 
+### Helm Chart 6.46.1 - Uniform naming for image digest also in the sidecar image
+
+For most images used in the helm chart, a `.digest` is available to pin an image to a specific hash. The sidecar images diverges from this convention by introducing a `.tag`.
+Starting with Helm chart 6.46.1, the `.tag` is deprecated and `.digest` should be used.
+
 ### Helm Chart 6.34.0 - Zone-aware Ingester Breaking Change
 
 {{< admonition type="warning" >}}
