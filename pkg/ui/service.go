@@ -153,14 +153,29 @@ func (s *Service) initGoldfishDB() error {
 	}
 
 	// Create storage configuration
-	storageConfig := goldfish.StorageConfig{
-		Type:             "cloudsql",
-		CloudSQLHost:     s.cfg.Goldfish.CloudSQLHost,
-		CloudSQLPort:     s.cfg.Goldfish.CloudSQLPort,
-		CloudSQLDatabase: s.cfg.Goldfish.CloudSQLDatabase,
-		CloudSQLUser:     s.cfg.Goldfish.CloudSQLUser,
-		MaxConnections:   s.cfg.Goldfish.MaxConnections,
-		MaxIdleTime:      s.cfg.Goldfish.MaxIdleTime,
+	var storageConfig goldfish.StorageConfig
+	switch s.cfg.Goldfish.Storage.Type {
+	case "cloudsql":
+		storageConfig = goldfish.StorageConfig{
+			Type:             "cloudsql",
+			CloudSQLHost:     s.cfg.Goldfish.Storage.CloudSQLHost,
+			CloudSQLPort:     s.cfg.Goldfish.Storage.CloudSQLPort,
+			CloudSQLDatabase: s.cfg.Goldfish.Storage.CloudSQLDatabase,
+			CloudSQLUser:     s.cfg.Goldfish.Storage.CloudSQLUser,
+			MaxConnections:   s.cfg.Goldfish.Storage.MaxConnections,
+			MaxIdleTime:      s.cfg.Goldfish.Storage.MaxIdleTime,
+		}
+	case "rds":
+		storageConfig = goldfish.StorageConfig{
+			Type:           "rds",
+			RDSEndpoint:    s.cfg.Goldfish.Storage.RDSEndpoint,
+			RDSDatabase:    s.cfg.Goldfish.Storage.RDSDatabase,
+			RDSUser:        s.cfg.Goldfish.Storage.RDSUser,
+			MaxConnections: s.cfg.Goldfish.Storage.MaxConnections,
+			MaxIdleTime:    s.cfg.Goldfish.Storage.MaxIdleTime,
+		}
+	default:
+		return fmt.Errorf("unsupported storage type %s", s.cfg.Goldfish.Storage.Type)
 	}
 
 	storage, err := goldfish.NewMySQLStorage(storageConfig, s.logger)
