@@ -3,13 +3,11 @@ package wire
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
@@ -22,11 +20,10 @@ type HTTP2Listener struct {
 	logger log.Logger
 	addr   net.Addr
 
-	connCh            chan Conn
-	closeOnce         sync.Once
-	closed            chan struct{}
-	codec             *protobufCodec
-	connAcceptTimeout time.Duration
+	connCh    chan Conn
+	closeOnce sync.Once
+	closed    chan struct{}
+	codec     *protobufCodec
 }
 
 var (
@@ -35,10 +32,6 @@ var (
 )
 
 type http2ListenerOpts struct {
-	// ConnAcceptTimeout defines how long to wait for a connection to be accepted via .Accept().
-	// The connection is closed if Accept() is too slow.
-	ConnAcceptTimeout time.Duration
-
 	// MaxPendingConns defines the maximum number of pending connections (which are not Accepted yet).
 	MaxPendingConns uint
 
@@ -47,12 +40,6 @@ type http2ListenerOpts struct {
 }
 
 type HTTP2ListenerOptFunc func(*http2ListenerOpts)
-
-func WithHTTP2ListenerConnAcceptTimeout(timeout time.Duration) HTTP2ListenerOptFunc {
-	return func(o *http2ListenerOpts) {
-		o.ConnAcceptTimeout = timeout
-	}
-}
 
 func WithHTTP2ListenerMaxPendingConns(maxPendingConns uint) HTTP2ListenerOptFunc {
 	return func(o *http2ListenerOpts) {
@@ -73,9 +60,8 @@ func NewHTTP2Listener(
 	optFuncs ...HTTP2ListenerOptFunc,
 ) *HTTP2Listener {
 	opts := http2ListenerOpts{
-		ConnAcceptTimeout: 1 * time.Second,
-		MaxPendingConns:   10,
-		Logger:            log.NewNopLogger(),
+		MaxPendingConns: 10,
+		Logger:          log.NewNopLogger(),
 	}
 	for _, optFunc := range optFuncs {
 		optFunc(&opts)
@@ -85,10 +71,9 @@ func NewHTTP2Listener(
 		addr:   addr,
 		logger: opts.Logger,
 
-		connCh:            make(chan Conn, opts.MaxPendingConns),
-		closed:            make(chan struct{}),
-		codec:             &protobufCodec{allocator: allocator},
-		connAcceptTimeout: opts.ConnAcceptTimeout,
+		connCh: make(chan Conn, opts.MaxPendingConns),
+		closed: make(chan struct{}),
+		codec:  &protobufCodec{allocator: allocator},
 	}
 
 	return l
@@ -126,14 +111,8 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	case l.connCh <- conn:
-		// Connection accepted, wait for it to close
-		<-conn.done
-	case <-time.After(l.connAcceptTimeout):
-		// If Accept() is too slow, close the connection
-		err := conn.Close()
-		if err != nil {
-			level.Error(l.logger).Log("msg", "failed to close not accepted connection", "err", err.Error())
-		}
+		// read loop exits if a connection is closed or the context is canceled
+		conn.readLoop(r.Context())
 	}
 }
 
@@ -176,7 +155,13 @@ type http2Conn struct {
 	writeMu   sync.Mutex
 	closeOnce sync.Once
 	closed    chan struct{}
-	done      chan struct{} // Signals when the connection is fully closed
+
+	incomingCh chan incomingFrame
+}
+
+type incomingFrame struct {
+	frame Frame
+	err   error
 }
 
 var _ Conn = (*http2Conn)(nil)
@@ -198,9 +183,23 @@ func newHTTP2Conn(
 		writer:     writer,
 		flusher:    flusher,
 		closed:     make(chan struct{}),
-		done:       make(chan struct{}),
+		incomingCh: make(chan incomingFrame),
 	}
 	return c
+}
+
+func (c *http2Conn) readLoop(ctx context.Context) {
+	for {
+		frame, err := c.codec.DecodeFrom(c.reader)
+		incoming := incomingFrame{frame: frame, err: err}
+		select {
+		case <-ctx.Done():
+			return
+		case <-c.closed:
+			return
+		case c.incomingCh <- incoming:
+		}
+	}
 }
 
 // Send sends a frame over the connection.
@@ -235,36 +234,8 @@ func (c *http2Conn) Recv(ctx context.Context) (Frame, error) {
 		return nil, ctx.Err()
 	case <-c.closed:
 		return nil, ErrConnClosed
-	default:
-	}
-
-	type result struct {
-		frame Frame
-		err   error
-	}
-	resultCh := make(chan result, 1)
-
-	go func() {
-		frame, err := c.codec.DecodeFrom(c.reader)
-		resultCh <- result{frame: frame, err: err}
-	}()
-
-	select {
-	case <-ctx.Done():
-		// Close reader to unblock the reader goroutine
-		c.reader.Close()
-		return nil, ctx.Err()
-	case <-c.closed:
-		return nil, ErrConnClosed
-	case res := <-resultCh:
-		if res.err != nil {
-			if errors.Is(res.err, io.EOF) {
-				c.Close()
-				return nil, ErrConnClosed
-			}
-			return nil, fmt.Errorf("decode frame: %w", res.err)
-		}
-		return res.frame, nil
+	case f := <-c.incomingCh:
+		return f.frame, f.err
 	}
 }
 
@@ -277,7 +248,6 @@ func (c *http2Conn) Close() error {
 		if c.cleanup != nil {
 			c.cleanup()
 		}
-		close(c.done)
 	})
 	return err
 }
@@ -354,9 +324,17 @@ func (d *HTTP2Dialer) Dial(ctx context.Context, addr string) (Conn, error) {
 		d.codec,
 	)
 
-	// when connection is closed, close the pipe writer
+	readLoopWg := sync.WaitGroup{}
+	readLoopWg.Add(1)
+	go func() {
+		defer readLoopWg.Done()
+		conn.readLoop(ctx)
+	}()
+
+	// when the connection is closed, close the pipe writer and wait until the reader loop exits
 	conn.cleanup = func() {
 		_ = pw.Close()
+		readLoopWg.Wait()
 	}
 
 	return conn, nil

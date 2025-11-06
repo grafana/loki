@@ -564,7 +564,6 @@ func prepareHTTP2Listener(t *testing.T) (*wire.HTTP2Listener, func()) {
 	listener := wire.NewHTTP2Listener(
 		l.Addr(),
 		memory.DefaultAllocator,
-		wire.WithHTTP2ListenerConnAcceptTimeout(1*time.Second),
 		wire.WithHTTP2ListenerMaxPendingConns(1),
 		wire.WithHTTP2ListenerLogger(log.NewNopLogger()),
 	)
