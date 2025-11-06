@@ -21,13 +21,13 @@ type HTTP2Listener struct {
 	logger log.Logger
 	addr   net.Addr
 
-	connCh    chan *incomingHttp2Conn
+	connCh    chan *incomingHTTP2Conn
 	closeOnce sync.Once
 	closed    chan struct{}
 	codec     *protobufCodec
 }
 
-type incomingHttp2Conn struct {
+type incomingHTTP2Conn struct {
 	conn *http2Conn
 	w    http.ResponseWriter
 }
@@ -77,7 +77,7 @@ func NewHTTP2Listener(
 		addr:   addr,
 		logger: opts.Logger,
 
-		connCh: make(chan *incomingHttp2Conn, opts.MaxPendingConns),
+		connCh: make(chan *incomingHTTP2Conn, opts.MaxPendingConns),
 		closed: make(chan struct{}),
 		codec:  &protobufCodec{allocator: allocator},
 	}
@@ -109,7 +109,7 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conn := newHTTP2Conn(l.Addr(), remoteAddr, r.Body, w, flusher, l.codec)
-	incomingConn := &incomingHttp2Conn{conn: conn, w: w}
+	incomingConn := &incomingHTTP2Conn{conn: conn, w: w}
 
 	// Try to enqueue the connection without blocking indefinitely
 	select {
