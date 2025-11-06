@@ -158,6 +158,8 @@ func (p *Planner) process(inst logical.Value, ctx *Context) (Node, error) {
 		return p.processSort(inst, ctx)
 	case *logical.Limit:
 		return p.processLimit(inst, ctx)
+	case *logical.TopK:
+		return p.processTopK(inst, ctx)
 	case *logical.RangeAggregation:
 		return p.processRangeAggregation(inst, ctx)
 	case *logical.VectorAggregation:
@@ -287,6 +289,35 @@ func (p *Planner) processSort(lp *logical.Sort, ctx *Context) (Node, error) {
 		// [limitPushdown] optimization pass can update this value based on how
 		// many rows are needed.
 		K: 0,
+	}
+
+	p.plan.graph.Add(node)
+
+	child, err := p.process(lp.Table, ctx.WithDirection(order))
+	if err != nil {
+		return nil, err
+	}
+
+	if err := p.plan.graph.AddEdge(dag.Edge[Node]{Parent: node, Child: child}); err != nil {
+		return nil, err
+	}
+	return node, nil
+}
+
+// processTopK processes a [logical.TopK] node.
+func (p *Planner) processTopK(lp *logical.TopK, ctx *Context) (Node, error) {
+	order := DESC
+	if lp.Ascending {
+		order = ASC
+	}
+
+	node := &TopK{
+		NodeID: ulid.Make(),
+
+		SortBy:     &ColumnExpr{Ref: lp.SortBy.Ref},
+		Ascending:  order == ASC,
+		NullsFirst: lp.NullsFirst,
+		K:          lp.K,
 	}
 
 	p.plan.graph.Add(node)

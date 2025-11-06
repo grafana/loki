@@ -151,46 +151,43 @@ func TestFullQueryPlanning(t *testing.T) {
 			comment: "log: limited query",
 			query:   `{app="foo"}`,
 			expected: `
-Limit offset=0 limit=1000
-└── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
-    └── Parallelize
-        └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
-            └── Compat src=metadata dst=metadata collision=label
-                └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
-                        ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                        └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+└── Parallelize
+    └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+        └── Compat src=metadata dst=metadata collision=label
+            └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
+                    ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
+                    └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
 `,
 		},
 		{
 			comment: "log: filter query",
 			query:   `{app="foo"} | label_foo="bar" |= "baz"`,
 			expected: `
-Limit offset=0 limit=1000
-└── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
-    └── Parallelize
-        └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
-            └── Filter predicate[0]=EQ(ambiguous.label_foo, "bar")
-                └── Compat src=metadata dst=metadata collision=label
-                    └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z) predicate[2]=MATCH_STR(builtin.message, "baz")
-                            ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                            └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+└── Parallelize
+    └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+        └── Filter predicate[0]=EQ(ambiguous.label_foo, "bar")
+            └── Compat src=metadata dst=metadata collision=label
+                └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z) predicate[2]=MATCH_STR(builtin.message, "baz")
+                        ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
+                        └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
 `,
 		},
 		{
 			comment: "log: parse and filter",
 			query:   `{app="foo"} |= "bar" | logfmt | level="error"`,
 			expected: `
-Limit offset=0 limit=1000
-└── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
-    └── Parallelize
-        └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
-            └── Filter predicate[0]=EQ(ambiguous.level, "error")
-                └── Compat src=parsed dst=parsed collision=label
-                    └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [], false, false))
-                        └── Compat src=metadata dst=metadata collision=label
-                            └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z) predicate[2]=MATCH_STR(builtin.message, "bar")
-                                    ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                                    └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+└── Parallelize
+    └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+        └── Filter predicate[0]=EQ(ambiguous.level, "error")
+            └── Compat src=parsed dst=parsed collision=label
+                └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [], false, false))
+                    └── Compat src=metadata dst=metadata collision=label
+                        └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z) predicate[2]=MATCH_STR(builtin.message, "bar")
+                                ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
+                                └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
 `,
 		},
 		{
@@ -269,16 +266,15 @@ VectorAggregation operation=sum group_by=(ambiguous.bar)
 			comment: "parse logfmt",
 			query:   `{app="foo"} | logfmt`,
 			expected: `
-Limit offset=0 limit=1000
-└── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
-    └── Parallelize
-        └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
-            └── Compat src=parsed dst=parsed collision=label
-                └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [], false, false))
-                    └── Compat src=metadata dst=metadata collision=label
-                        └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
-                                ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
-                                └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
+TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+└── Parallelize
+    └── TopK sort_by=builtin.timestamp ascending=false nulls_first=false k=1000
+        └── Compat src=parsed dst=parsed collision=label
+            └── Projection all=true expand=(PARSE_LOGFMT(builtin.message, [], false, false))
+                └── Compat src=metadata dst=metadata collision=label
+                    └── ScanSet num_targets=2 predicate[0]=GTE(builtin.timestamp, 2025-01-01T00:00:00Z) predicate[1]=LT(builtin.timestamp, 2025-01-01T01:00:00Z)
+                            ├── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=1 projections=()
+                            └── @target type=ScanTypeDataObject location=objects/00/0000000000.dataobj streams=5 section_id=0 projections=()
 `,
 		},
 		{
