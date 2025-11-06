@@ -1770,7 +1770,7 @@ read:
   startupProbe:
     httpGet:
       path: /loki/api/v1/labels?since=1h
-      port: 3100
+      port: http-metrics
       scheme: HTTP
     initialDelaySeconds: 60
     timeoutSeconds: 1
