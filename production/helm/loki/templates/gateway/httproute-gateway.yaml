@@ -1,0 +1,203 @@
+{{- if and .Values.gateway.enabled -}}
+{{- if .Values.gateway.httproute.enabled -}}
+apiVersion: {{ include "loki.httproute.apiVersion" . }}
+kind: HTTPRoute
+metadata:
+  name: {{ include "loki.gatewayFullname" . }}
+  namespace: {{ include "loki.namespace" . }}
+  labels:
+    {{- include "loki.httproute.gatewayLabels" . | nindent 4 }}
+    {{- range $labelKey, $labelValue := .Values.gateway.httproute.labels }}
+    {{ $labelKey }}: {{ $labelValue | toYaml }}
+    {{- end }}
+  {{- with .Values.gateway.httproute.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.gateway.httproute.parentRefs }}
+  parentRefs:
+    {{- range . }}
+    - name: {{ tpl .name $ }}
+      {{- if .namespace }}
+      namespace: {{ tpl .namespace $ }}
+      {{- end }}
+      {{- if .sectionName }}
+      sectionName: {{ tpl .sectionName $ }}
+      {{- end }}
+      {{- if .kind }}
+      kind: {{ .kind }}
+      {{- end }}
+      {{- if .group }}
+      group: {{ .group }}
+      {{- end }}
+      {{- if .port }}
+      port: {{ .port }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- with .Values.gateway.httproute.hostnames }}
+  hostnames:
+    {{- range . }}
+    - {{ tpl . $ | quote }}
+    {{- end }}
+  {{- end }}
+  rules:
+    {{- range .Values.gateway.httproute.rules }}
+    - {{- if .matches }}
+      matches:
+        {{- range .matches }}
+        - {{- if .path }}
+          path:
+            type: {{ .path.type | default "PathPrefix" }}
+            value: {{ .path.value }}
+          {{- end }}
+          {{- if .headers }}
+          headers:
+            {{- range .headers }}
+            - type: {{ .type | default "Exact" }}
+              name: {{ .name }}
+              value: {{ .value }}
+            {{- end }}
+          {{- end }}
+          {{- if .queryParams }}
+          queryParams:
+            {{- range .queryParams }}
+            - type: {{ .type | default "Exact" }}
+              name: {{ .name }}
+              value: {{ .value }}
+            {{- end }}
+          {{- end }}
+          {{- if .method }}
+          method: {{ .method }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- if .filters }}
+      filters:
+        {{- range .filters }}
+        - type: {{ .type }}
+          {{- if eq .type "RequestHeaderModifier" }}
+          requestHeaderModifier:
+            {{- if .requestHeaderModifier.set }}
+            set:
+              {{- range .requestHeaderModifier.set }}
+              - name: {{ .name }}
+                value: {{ .value }}
+              {{- end }}
+            {{- end }}
+            {{- if .requestHeaderModifier.add }}
+            add:
+              {{- range .requestHeaderModifier.add }}
+              - name: {{ .name }}
+                value: {{ .value }}
+              {{- end }}
+            {{- end }}
+            {{- if .requestHeaderModifier.remove }}
+            remove:
+              {{- range .requestHeaderModifier.remove }}
+              - {{ . }}
+              {{- end }}
+            {{- end }}
+          {{- else if eq .type "ResponseHeaderModifier" }}
+          responseHeaderModifier:
+            {{- if .responseHeaderModifier.set }}
+            set:
+              {{- range .responseHeaderModifier.set }}
+              - name: {{ .name }}
+                value: {{ .value }}
+              {{- end }}
+            {{- end }}
+            {{- if .responseHeaderModifier.add }}
+            add:
+              {{- range .responseHeaderModifier.add }}
+              - name: {{ .name }}
+                value: {{ .value }}
+              {{- end }}
+            {{- end }}
+            {{- if .responseHeaderModifier.remove }}
+            remove:
+              {{- range .responseHeaderModifier.remove }}
+              - {{ . }}
+              {{- end }}
+            {{- end }}
+          {{- else if eq .type "RequestRedirect" }}
+          requestRedirect:
+            {{- if .requestRedirect.scheme }}
+            scheme: {{ .requestRedirect.scheme }}
+            {{- end }}
+            {{- if .requestRedirect.hostname }}
+            hostname: {{ .requestRedirect.hostname }}
+            {{- end }}
+            {{- if .requestRedirect.path }}
+            path:
+              type: {{ .requestRedirect.path.type }}
+              {{- if .requestRedirect.path.replaceFullPath }}
+              replaceFullPath: {{ .requestRedirect.path.replaceFullPath }}
+              {{- end }}
+              {{- if .requestRedirect.path.replacePrefixMatch }}
+              replacePrefixMatch: {{ .requestRedirect.path.replacePrefixMatch }}
+              {{- end }}
+            {{- end }}
+            {{- if .requestRedirect.port }}
+            port: {{ .requestRedirect.port }}
+            {{- end }}
+            {{- if .requestRedirect.statusCode }}
+            statusCode: {{ .requestRedirect.statusCode }}
+            {{- end }}
+          {{- else if eq .type "URLRewrite" }}
+          urlRewrite:
+            {{- if .urlRewrite.hostname }}
+            hostname: {{ .urlRewrite.hostname }}
+            {{- end }}
+            {{- if .urlRewrite.path }}
+            path:
+              type: {{ .urlRewrite.path.type }}
+              {{- if .urlRewrite.path.replaceFullPath }}
+              replaceFullPath: {{ .urlRewrite.path.replaceFullPath }}
+              {{- end }}
+              {{- if .urlRewrite.path.replacePrefixMatch }}
+              replacePrefixMatch: {{ .urlRewrite.path.replacePrefixMatch }}
+              {{- end }}
+            {{- end }}
+          {{- else if eq .type "RequestMirror" }}
+          requestMirror:
+            backendRef:
+              name: {{ .requestMirror.backendRef.name }}
+              {{- if .requestMirror.backendRef.namespace }}
+              namespace: {{ .requestMirror.backendRef.namespace }}
+              {{- end }}
+              {{- if .requestMirror.backendRef.port }}
+              port: {{ .requestMirror.backendRef.port }}
+              {{- end }}
+          {{- else if eq .type "ExtensionRef" }}
+          extensionRef:
+            group: {{ .extensionRef.group }}
+            kind: {{ .extensionRef.kind }}
+            name: {{ .extensionRef.name }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      backendRefs:
+        {{- if .backendRefs }}
+        {{- range .backendRefs }}
+        - name: {{ .name | default (include "loki.gatewayFullname" $) }}
+          {{- if .namespace }}
+          namespace: {{ .namespace }}
+          {{- end }}
+          port: {{ .port | default $.Values.gateway.service.port }}
+          {{- if .weight }}
+          weight: {{ .weight }}
+          {{- end }}
+          {{- if .filters }}
+          filters:
+            {{- toYaml .filters | nindent 12 }}
+          {{- end }}
+        {{- end }}
+        {{- else }}
+        - name: {{ include "loki.gatewayFullname" $ }}
+          port: {{ $.Values.gateway.service.port }}
+        {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}
