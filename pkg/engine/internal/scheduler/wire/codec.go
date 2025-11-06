@@ -185,9 +185,9 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 		}, nil
 
 	case *wirepb.MessageFrame_StreamBind:
-		addr, err := newTCPAddrFromString(k.StreamBind.Receiver)
+		addr, err := addrPortStrToAddr(k.StreamBind.Receiver)
 		if err != nil {
-			return nil, fmt.Errorf("invalid receiver address: %w", err)
+			return nil, fmt.Errorf("invalid receiver address %s: %w", k.StreamBind.Receiver, err)
 		}
 		return StreamBindMessage{
 			StreamID: ulid.ULID(k.StreamBind.StreamId),

@@ -2,6 +2,8 @@ package wire
 
 import (
 	"errors"
+	"net"
+	"net/netip"
 	"testing"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -54,6 +56,9 @@ func TestProtobufCodec_Frames(t *testing.T) {
 func TestProtobufCodec_Messages(t *testing.T) {
 	taskULID := ulid.Make()
 	streamULID := ulid.Make()
+	addrPort, err := netip.ParseAddrPort("192.168.0.1:12345")
+	require.NoError(t, err)
+	addr := net.TCPAddrFromAddrPort(addrPort)
 
 	tests := map[string]struct {
 		message Message
@@ -138,7 +143,7 @@ func TestProtobufCodec_Messages(t *testing.T) {
 		"StreamBindMessage": {
 			message: StreamBindMessage{
 				StreamID: streamULID,
-				Receiver: &tcpAddr{Addr: "192.168.1.1:8080"},
+				Receiver: addr,
 			},
 		},
 		"StreamStatusMessage with Idle state": {

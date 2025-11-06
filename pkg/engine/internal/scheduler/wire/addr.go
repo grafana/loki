@@ -1,20 +1,15 @@
 package wire
 
 import (
-	"errors"
+	"fmt"
 	"net"
+	"net/netip"
 )
 
-type tcpAddr struct {
-	Addr string
-}
-
-func (a *tcpAddr) Network() string { return "tcp" }
-func (a *tcpAddr) String() string  { return a.Addr }
-
-func newTCPAddrFromString(s string) (net.Addr, error) {
-	if s == "" {
-		return nil, errors.New("empty address")
+func addrPortStrToAddr(addrPortStr string) (*net.TCPAddr, error) {
+	addrPort, err := netip.ParseAddrPort(addrPortStr)
+	if err != nil {
+		return nil, fmt.Errorf("parse addr port from %s: %w", addrPortStr, err)
 	}
-	return &tcpAddr{Addr: s}, nil
+	return net.TCPAddrFromAddrPort(addrPort), nil
 }

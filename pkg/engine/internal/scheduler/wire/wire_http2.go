@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"sync"
 
 	"github.com/apache/arrow-go/v18/arrow/memory"
@@ -97,10 +98,15 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	remoteAddr, err := addrPortStrToAddr(r.RemoteAddr)
+	if err != nil {
+		http.Error(w, "invalid remote addr", http.StatusBadRequest)
+		return
+	}
+	conn := newHTTP2Conn(l.Addr(), remoteAddr, r.Body, w, flusher, l.codec)
+
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
-
-	conn := newHTTP2Conn(l.Addr(), r.RemoteAddr, r.Body, w, flusher, l.codec)
 
 	// Try to enqueue the connection without blocking indefinitely
 	select {
@@ -169,7 +175,7 @@ var _ Conn = (*http2Conn)(nil)
 // newHTTP2Conn creates a new HTTP/2 connection.
 func newHTTP2Conn(
 	localAddr net.Addr,
-	remoteAddr string,
+	remoteAddr net.Addr,
 	reader io.ReadCloser,
 	writer io.Writer,
 	flusher http.Flusher,
@@ -177,7 +183,7 @@ func newHTTP2Conn(
 ) *http2Conn {
 	c := &http2Conn{
 		localAddr:  localAddr,
-		remoteAddr: &tcpAddr{Addr: remoteAddr},
+		remoteAddr: remoteAddr,
 		codec:      codec,
 		reader:     reader,
 		writer:     writer,
@@ -292,10 +298,23 @@ func NewHTTP2Dialer(
 }
 
 // Dial establishes an HTTP/2 connection to the specified address.
-func (d *HTTP2Dialer) Dial(ctx context.Context, addr string) (Conn, error) {
+func (d *HTTP2Dialer) Dial(ctx context.Context, addrStr string) (Conn, error) {
+	addr, err := addrPortStrToAddr(addrStr)
+	if err != nil {
+		return nil, err
+	}
+
 	pr, pw := io.Pipe()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://%s/%s", addr, d.path), pr)
+	var localAddr net.Addr
+	trace := &httptrace.ClientTrace{
+		GotConn: func(info httptrace.GotConnInfo) {
+			localAddr = info.Conn.LocalAddr()
+		},
+	}
+	ctx = httptrace.WithClientTrace(ctx, trace)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://%s/%s", addrStr, d.path), pr)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -316,7 +335,7 @@ func (d *HTTP2Dialer) Dial(ctx context.Context, addr string) (Conn, error) {
 
 	// Create connection
 	conn := newHTTP2Conn(
-		&tcpAddr{Addr: "client"},
+		localAddr,
 		addr,
 		resp.Body,
 		pw,
