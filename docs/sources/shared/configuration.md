@@ -125,35 +125,35 @@ ui:
 
     storage:
       # Storage backend type (cloudsql, rds, or empty for no storage)
-      # CLI flag: -goldfish.storage.type
+      # CLI flag: -ui.goldfish.storage.type
       [type: <string> | default = ""]
 
       # CloudSQL host for Goldfish database.
-      # CLI flag: -ui.goldfish.cloudsql-host
+      # CLI flag: -ui.goldfish.cloudsql.host
       [cloudsql_host: <string> | default = "127.0.0.1"]
 
       # CloudSQL port for Goldfish database.
-      # CLI flag: -ui.goldfish.cloudsql-port
+      # CLI flag: -ui.goldfish.cloudsql.port
       [cloudsql_port: <int> | default = 3306]
 
       # CloudSQL database name for Goldfish.
-      # CLI flag: -ui.goldfish.cloudsql-database
+      # CLI flag: -ui.goldfish.cloudsql.database
       [cloudsql_database: <string> | default = "goldfish"]
 
       # CloudSQL username for Goldfish database.
-      # CLI flag: -ui.goldfish.cloudsql-user
+      # CLI flag: -ui.goldfish.cloudsql.user
       [cloudsql_user: <string> | default = ""]
 
       # RDS endpoint (host:port)
-      # CLI flag: -goldfish.storage.rds.endpoint
+      # CLI flag: -ui.goldfish.storage.rds.endpoint
       [rds_endpoint: <string> | default = ""]
 
       # RDS database name
-      # CLI flag: -goldfish.storage.rds.database
+      # CLI flag: -ui.goldfish.storage.rds.database
       [rds_database: <string> | default = ""]
 
       # RDS database user
-      # CLI flag: -goldfish.storage.rds.user
+      # CLI flag: -ui.goldfish.storage.rds.user
       [rds_user: <string> | default = ""]
 
       # Maximum number of database connections for Goldfish.
