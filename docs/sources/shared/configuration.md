@@ -3117,18 +3117,38 @@ otlp_config:
 # CLI flag: -distributor.ingest-limits-dry-run-enabled
 [ingest_limits_dry_run_enabled: <boolean> | default = false]
 
-dataobj_tee:
-  # Enable data object tee.
-  # CLI flag: -distributor.dataobj-tee.enabled
+segment_topic:
+  # Enable segment topic writer.
+  # CLI flag: -distributor.segment-topic.enabled
   [enabled: <boolean> | default = false]
 
-  # Topic for data object tee.
-  # CLI flag: -distributor.dataobj-tee.topic
-  [topic: <string> | default = ""]
+  # Topic name for segment topic writer.
+  # CLI flag: -distributor.segment-topic.topic
+  [topic: <string> | default = "loki-segments"]
 
-  # Maximum number of bytes to buffer.
-  # CLI flag: -distributor.dataobj-tee.max-buffered-bytes
-  [max_buffered_bytes: <int> | default = 104857600]
+  # Maximum number of bytes that can be buffered before producing to Kafka.
+  # CLI flag: -distributor.segment-topic.max-buffered-bytes
+  [max_buffered_bytes: <int> | default = 100MiB]
+
+  # Maximum size of a single Kafka record.
+  # CLI flag: -distributor.segment-topic.max-record-size-bytes
+  [max_record_size_bytes: <int> | default = 15MiB249KiB]
+
+  # Number of partitions for the segment topic.
+  # CLI flag: -distributor.segment-topic.num-partitions
+  [num_partitions: <int> | default = 10]
+
+  # Volume threshold above which streams get spread across multiple partitions.
+  # CLI flag: -distributor.segment-topic.volume-threshold-bytes
+  [volume_threshold_bytes: <int> | default = 100MiB]
+
+  # How often to check stream volumes for volume-aware partitioning.
+  # CLI flag: -distributor.segment-topic.volume-check-interval
+  [volume_check_interval: <duration> | default = 30s]
+
+  # Target throughput per partition in bytes for shuffle sharding.
+  # CLI flag: -distributor.segment-topic.target-throughput-per-partition
+  [target_throughput_per_partition: <int> | default = 10MiB]
 ```
 
 ### etcd
@@ -4707,6 +4727,12 @@ otlp_config:
 # override is set, the encryption context will not be provided to S3. Ignored if
 # the SSE type override is not set.
 [s3_sse_kms_encryption_context: <string> | default = ""]
+
+# List of segmentation rules for partitioning when writing to the segment topic.
+# Supports both simple keys ('key') and key=value rules with additional keys
+# ('key=value,additional_key1,additional_key2'). Experimental.
+# CLI flag: -distributor.segmentation-rules
+[segmentation_rules: <list of strings> | default = []]
 ```
 
 ### local_storage_config

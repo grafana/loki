@@ -362,30 +362,30 @@ func (s *usageStore) update(i int, tenant string, partition int32, policyBucket 
 		stream.hash = streamHash
 		stream.totalSize = 0
 		stream.policy = policyBucket
-		// stream.rateBuckets = make([]rateBucket, s.numBuckets)
+		stream.rateBuckets = make([]rateBucket, s.numBuckets)
 	}
 	seenAtUnixNano := seenAt.UnixNano()
 	if stream.lastSeenAt <= seenAtUnixNano {
 		stream.lastSeenAt = seenAtUnixNano
 	}
-	// TODO(grobinson): As mentioned above, we will come back and implement
-	// rate limits at a later date in the future.
-	// stream.totalSize += totalSize
+	// Update total size and rate buckets
+	totalSize := metadata.TotalSize
+	stream.totalSize += totalSize
 	// rate buckets are implemented as a circular list. To update a rate
 	// bucket we must first calculate the bucket index.
-	// bucketNum := seenAtUnixNano / int64(s.bucketSize)
-	// bucketIdx := int(bucketNum % int64(s.numBuckets))
-	// bucket := stream.rateBuckets[bucketIdx]
+	bucketNum := seenAtUnixNano / int64(s.bucketSize)
+	bucketIdx := int(bucketNum % int64(s.numBuckets))
+	bucket := stream.rateBuckets[bucketIdx]
 	// Once we have found the bucket, we then need to check if it is an old
 	// bucket outside the rate window. If it is, we must reset it before we
 	// can re-use it.
-	// bucketStart := seenAt.Truncate(s.bucketSize).UnixNano()
-	// if bucket.timestamp < bucketStart {
-	// bucket.timestamp = bucketStart
-	// bucket.size = 0
-	// }
-	// bucket.size += totalSize
-	// stream.rateBuckets[bucketIdx] = bucket
+	bucketStart := seenAt.Truncate(s.bucketSize).UnixNano()
+	if bucket.timestamp < bucketStart {
+		bucket.timestamp = bucketStart
+		bucket.size = 0
+	}
+	bucket.size += totalSize
+	stream.rateBuckets[bucketIdx] = bucket
 	s.stripes[i][tenant][partition][policyBucket][streamHash] = stream
 }
 
@@ -393,6 +393,39 @@ func (s *usageStore) setLastProducedAt(i int, tenant string, partition int32, st
 	stream := s.stripes[i][tenant][partition][policy][streamHash]
 	stream.lastProducedAt = now.UnixNano()
 	s.stripes[i][tenant][partition][policy][streamHash] = stream
+}
+
+// getPartitionForHash returns the partition for a given hash
+func (s *usageStore) getPartitionForHash(hash uint64) int32 {
+	return int32(hash % uint64(s.numPartitions))
+}
+
+// getStreamUsage returns the stream usage for a given tenant, partition, and hash
+func (s *usageStore) getStreamUsage(tenant string, partition int32, streamHash uint64) (streamUsage, bool) {
+	var result streamUsage
+	var found bool
+	s.withRLock(tenant, func(i int) {
+		if s.stripes[i] == nil {
+			return
+		}
+		if s.stripes[i][tenant] == nil {
+			return
+		}
+		if s.stripes[i][tenant][partition] == nil {
+			return
+		}
+		stream, exists := s.stripes[i][tenant][partition][streamHash]
+		if exists {
+			result = stream
+			// Make a defensive copy of the rateBuckets slice to ensure thread safety
+			if len(stream.rateBuckets) > 0 {
+				result.rateBuckets = make([]rateBucket, len(stream.rateBuckets))
+				copy(result.rateBuckets, stream.rateBuckets)
+			}
+			found = true
+		}
+	})
+	return result, found
 }
 
 // forEachRLock executes fn with a shared lock for each stripe.
@@ -434,11 +467,6 @@ func (s *usageStore) getStripe(tenant string) int {
 	h := fnv.New32()
 	_, _ = h.Write([]byte(tenant))
 	return int(h.Sum32() % uint32(len(s.locks)))
-}
-
-// getPartitionForHash returns the partition for the hash.
-func (s *usageStore) getPartitionForHash(hash uint64) int32 {
-	return int32(hash % uint64(s.numPartitions))
 }
 
 // withinActiveWindow returns true if t is within the active window.
@@ -502,4 +530,51 @@ func getActiveRateBuckets(buckets []rateBucket, withinRateWindow func(int64) boo
 		}
 	}
 	return result
+}
+
+// hashString returns a hash of the string for partitioning
+func (s *usageStore) hashString(str string) uint64 {
+	h := fnv.New64()
+	_, _ = h.Write([]byte(str))
+	return h.Sum64()
+}
+
+// updateRateBuckets updates the rate buckets for a stream
+func (s *usageStore) updateRateBuckets(stream *streamUsage, seenAt time.Time, size uint64) {
+	// Calculate bucket index
+	bucketNum := seenAt.UnixNano() / int64(s.bucketSize)
+	bucketIdx := int(bucketNum % int64(s.numBuckets))
+
+	// Get the bucket
+	bucket := stream.rateBuckets[bucketIdx]
+
+	// Check if this is an old bucket outside the rate window
+	bucketStart := seenAt.Truncate(s.bucketSize).UnixNano()
+	if bucket.timestamp < bucketStart {
+		bucket.timestamp = bucketStart
+		bucket.size = 0
+	}
+
+	// Add the size to the bucket
+	bucket.size += size
+	stream.rateBuckets[bucketIdx] = bucket
+}
+
+// calculateCurrentRate calculates the current rate from rate buckets
+func (s *usageStore) calculateCurrentRate(buckets []rateBucket, now time.Time) int64 {
+	rateWindowStart := now.Add(-s.rateWindow).UnixNano()
+	var totalSize uint64
+
+	for _, bucket := range buckets {
+		if bucket.timestamp >= rateWindowStart {
+			totalSize += bucket.size
+		}
+	}
+
+	// Convert to rate (bytes per second)
+	rateWindowSeconds := s.rateWindow.Seconds()
+	if rateWindowSeconds > 0 {
+		return int64(float64(totalSize) / rateWindowSeconds)
+	}
+	return 0
 }

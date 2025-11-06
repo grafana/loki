@@ -188,6 +188,14 @@ func (s *Service) ExceedsLimits(
 	return s.limitsChecker.ExceedsLimits(ctx, req)
 }
 
+// UpdateRate implements the proto.IngestLimitsServer interface.
+func (s *Service) UpdateRate(
+	ctx context.Context,
+	req *proto.UpdateRateRequest,
+) (*proto.UpdateRateResponse, error) {
+	return s.limitsChecker.UpdateRate(ctx, req)
+}
+
 func (s *Service) CheckReady(ctx context.Context) error {
 	if s.State() != services.Running {
 		return fmt.Errorf("service is not running: %v", s.State())
