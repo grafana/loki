@@ -254,6 +254,10 @@ func (l *limiter) EnableMultiVariantQueries(_ string) bool {
 	return false // Multi-variant queries disabled by default for file client
 }
 
+func (l *limiter) MaxScanTaskParallelism(_ string) int {
+	return 0 // This setting for the v2 execution engine is unused in LogCLI
+}
+
 type querier struct {
 	r      io.Reader
 	labels labels.Labels

@@ -108,10 +108,9 @@ func TestConvertAST_Success(t *testing.T) {
 %16 = SELECT %14 [predicate=%15]
 %17 = SELECT %16 [predicate=%6]
 %18 = SELECT %17 [predicate=%11]
-%19 = SORT %18 [column=builtin.timestamp, asc=false, nulls_first=false]
-%20 = LIMIT %19 [skip=0, fetch=1000]
-%21 = LOGQL_COMPAT %20
-RETURN %21
+%19 = TOPK %18 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%20 = LOGQL_COMPAT %19
+RETURN %20
 `
 
 	require.Equal(t, expected, logicalPlan.String())
@@ -437,7 +436,7 @@ func TestPlannerCreatesProjectionWithParseOperation(t *testing.T) {
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = PROJECT %6 [mode=*E, expr=PARSE_LOGFMT(builtin.message)]
+%7 = PROJECT %6 [mode=*E, expr=PARSE_LOGFMT(builtin.message, [], false, false)]
 %8 = EQ ambiguous.level "error"
 %9 = SELECT %7 [predicate=%8]
 %10 = RANGE_AGGREGATION %9 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
@@ -468,13 +467,12 @@ RETURN %12
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = PROJECT %6 [mode=*E, expr=PARSE_LOGFMT(builtin.message)]
+%7 = PROJECT %6 [mode=*E, expr=PARSE_LOGFMT(builtin.message, [], false, false)]
 %8 = EQ ambiguous.level "error"
 %9 = SELECT %7 [predicate=%8]
-%10 = SORT %9 [column=builtin.timestamp, asc=false, nulls_first=false]
-%11 = LIMIT %10 [skip=0, fetch=1000]
-%12 = LOGQL_COMPAT %11
-RETURN %12
+%10 = TOPK %9 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%11 = LOGQL_COMPAT %10
+RETURN %11
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -499,7 +497,7 @@ RETURN %12
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = PROJECT %6 [mode=*E, expr=PARSE_JSON(builtin.message)]
+%7 = PROJECT %6 [mode=*E, expr=PARSE_JSON(builtin.message, [], false, false)]
 %8 = EQ ambiguous.level "error"
 %9 = SELECT %7 [predicate=%8]
 %10 = RANGE_AGGREGATION %9 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
@@ -529,13 +527,12 @@ RETURN %12
 %4 = SELECT %2 [predicate=%3]
 %5 = LT builtin.timestamp 1970-01-01T02:00:00Z
 %6 = SELECT %4 [predicate=%5]
-%7 = PROJECT %6 [mode=*E, expr=PARSE_JSON(builtin.message)]
+%7 = PROJECT %6 [mode=*E, expr=PARSE_JSON(builtin.message, [], false, false)]
 %8 = EQ ambiguous.level "error"
 %9 = SELECT %7 [predicate=%8]
-%10 = SORT %9 [column=builtin.timestamp, asc=false, nulls_first=false]
-%11 = LIMIT %10 [skip=0, fetch=1000]
-%12 = LOGQL_COMPAT %11
-RETURN %12
+%10 = TOPK %9 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%11 = LOGQL_COMPAT %10
+RETURN %11
 `
 		require.Equal(t, expected, plan.String())
 	})
@@ -568,13 +565,12 @@ RETURN %12
 %8 = SELECT %6 [predicate=%7]
 %9 = SELECT %8 [predicate=%2]
 %10 = SELECT %9 [predicate=%3]
-%11 = PROJECT %10 [mode=*E, expr=PARSE_LOGFMT(builtin.message)]
+%11 = PROJECT %10 [mode=*E, expr=PARSE_LOGFMT(builtin.message, [], false, false)]
 %12 = EQ ambiguous.level "debug"
 %13 = SELECT %11 [predicate=%12]
-%14 = SORT %13 [column=builtin.timestamp, asc=false, nulls_first=false]
-%15 = LIMIT %14 [skip=0, fetch=1000]
-%16 = LOGQL_COMPAT %15
-RETURN %16
+%14 = TOPK %13 [sort_by=builtin.timestamp, k=1000, asc=false, nulls_first=false]
+%15 = LOGQL_COMPAT %14
+RETURN %15
 `
 
 		require.Equal(t, expected, plan.String(), "Operations should be in the correct order: LineFilter before Parse, LabelFilter after Parse")
@@ -605,7 +601,7 @@ RETURN %16
 %8 = SELECT %6 [predicate=%7]
 %9 = SELECT %8 [predicate=%2]
 %10 = SELECT %9 [predicate=%3]
-%11 = PROJECT %10 [mode=*E, expr=PARSE_LOGFMT(builtin.message)]
+%11 = PROJECT %10 [mode=*E, expr=PARSE_LOGFMT(builtin.message, [], false, false)]
 %12 = EQ ambiguous.level "debug"
 %13 = SELECT %11 [predicate=%12]
 %14 = RANGE_AGGREGATION %13 [operation=count, start_ts=1970-01-01T01:00:00Z, end_ts=1970-01-01T02:00:00Z, step=0s, range=5m0s]
@@ -642,10 +638,9 @@ func TestPlannerCreatesProjection(t *testing.T) {
 %5 = LT builtin.timestamp 1970-01-01T01:00:00Z
 %6 = SELECT %4 [predicate=%5]
 %7 = PROJECT %6 [mode=*D, expr=ambiguous.level, expr=ambiguous.detected_level]
-%8 = SORT %7 [column=builtin.timestamp, asc=false, nulls_first=false]
-%9 = LIMIT %8 [skip=0, fetch=0]
-%10 = LOGQL_COMPAT %9
-RETURN %10
+%8 = TOPK %7 [sort_by=builtin.timestamp, k=0, asc=false, nulls_first=false]
+%9 = LOGQL_COMPAT %8
+RETURN %9
 `
 		require.Equal(t, expected, plan.String())
 	})

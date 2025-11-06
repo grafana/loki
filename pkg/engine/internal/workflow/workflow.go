@@ -4,6 +4,7 @@ package workflow
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -17,9 +18,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
+type Options struct {
+	MaxRunningScanTasks  int
+	MaxRunningOtherTasks int
+}
+
 // Workflow represents a physical plan that has been partitioned into
 // parallelizable tasks.
 type Workflow struct {
+	opts          Options
 	logger        log.Logger
 	runner        Runner
 	graph         dag.Graph[*Task]
@@ -33,6 +40,8 @@ type Workflow struct {
 
 	streamsMut   sync.RWMutex
 	streamStates map[*Stream]StreamState
+
+	admissionControl *admissionControl
 }
 
 // New creates a new Workflow from a physical plan. New returns an error if the
@@ -40,7 +49,7 @@ type Workflow struct {
 // cannot be partitioned into a Workflow.
 //
 // The provided Runner will be used for Workflow execution.
-func New(logger log.Logger, tenantID string, runner Runner, plan *physical.Plan) (*Workflow, error) {
+func New(opts Options, logger log.Logger, tenantID string, runner Runner, plan *physical.Plan) (*Workflow, error) {
 	graph, err := planWorkflow(tenantID, plan)
 	if err != nil {
 		return nil, err
@@ -53,6 +62,7 @@ func New(logger log.Logger, tenantID string, runner Runner, plan *physical.Plan)
 	}
 
 	return &Workflow{
+		opts:          opts,
 		logger:        logger,
 		runner:        runner,
 		graph:         graph,
@@ -133,17 +143,52 @@ func (wf *Workflow) Run(ctx context.Context) (pipeline executor.Pipeline, err er
 		}
 	}
 
-	// TODO(rfratto): For logs queries, we want a system to limit how many scan
-	// tasks get sent to the runner at once.
-	//
-	// This will limit unnecessary resource consumption of workflows when
-	// there's a lot of compute capacity.
-	if err := wf.runner.Start(ctx, wrappedHandler, tasks...); err != nil {
-		pipeline.Close()
-		return nil, err
-	}
+	// Start dispatching in background goroutine
+	go func() {
+		err := wf.dispatchTasks(ctx, wrappedHandler, tasks)
+		if err != nil {
+			wrapped.SetError(err)
+			wrapped.Close()
+		}
+	}()
 
 	return wrapped, nil
+}
+
+// dispatchTasks groups the slice of tasks by their associated "admission lane" (token bucket)
+// and dispatches them to the runner.
+// Tasks from different admission lanes are dispatched concurrently.
+// The caller needs to wait on the returned error group.
+func (wf *Workflow) dispatchTasks(ctx context.Context, handler TaskEventHandler, tasks []*Task) error {
+	wf.admissionControl = newAdmissionControl(
+		int64(wf.opts.MaxRunningScanTasks),
+		int64(wf.opts.MaxRunningOtherTasks),
+	)
+
+	groups := wf.admissionControl.groupByType(tasks)
+	for _, taskType := range []taskType{
+		taskTypeOther,
+		taskTypeScan,
+	} {
+		lane := wf.admissionControl.get(taskType)
+		tasks := groups[taskType]
+
+		var offset int64
+		total := int64(len(tasks))
+		maxBatchSize := min(total, lane.capacity)
+
+		for ; offset < total; offset += maxBatchSize {
+			batchSize := min(maxBatchSize, total-offset)
+			if err := lane.Acquire(ctx, batchSize); err != nil {
+				return fmt.Errorf("failed to acquire tokens from admission lane %s: %w", taskType, err)
+			}
+			if err := wf.runner.Start(ctx, handler, tasks[offset:offset+batchSize]...); err != nil {
+				return fmt.Errorf("failed to start tasks: %w", err)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (wf *Workflow) allStreams() []*Stream {
@@ -211,11 +256,23 @@ func (wf *Workflow) onTaskChange(ctx context.Context, task *Task, newStatus Task
 	level.Debug(wf.logger).Log("msg", "task state change", "task_id", task.ULID, "new_state", newStatus.State)
 
 	wf.tasksMut.Lock()
+	oldState := wf.taskStates[task]
 	wf.taskStates[task] = newStatus.State
 	wf.tasksMut.Unlock()
 
+	if oldState == newStatus.State {
+		return
+	}
+
 	if !newStatus.State.Terminal() {
 		return
+	}
+
+	if wf.admissionControl == nil {
+		level.Warn(wf.logger).Log("msg", "admission control was not initialised")
+	} else if oldState == TaskStatePending || oldState == TaskStateRunning {
+		// Release tokens only if the task was already enqueued and therefore either pending or running.
+		defer wf.admissionControl.laneFor(task).Release(1)
 	}
 
 	if newStatus.Statistics != nil {
