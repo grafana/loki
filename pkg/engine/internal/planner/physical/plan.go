@@ -1,6 +1,7 @@
 package physical
 
 import (
+	"fmt"
 	"iter"
 
 	"github.com/oklog/ulid/v2"
@@ -163,4 +164,33 @@ func (p *Plan) Leaves() []Node { return p.graph.Leaves() }
 // ([dag.PreOrderWalk]) or after their children ([dag.PostOrderWalk]).
 func (p *Plan) DFSWalk(n Node, f dag.WalkFunc[Node], order dag.WalkOrder) error {
 	return p.graph.Walk(n, f, order)
+}
+
+// CalculateMaxTimeRange calculates max time boundaries for the plan. Boundaries are defined
+// by either the topmost RangeAggregation or by data scans.
+func (p *Plan) CalculateMaxTimeRange() TimeRange {
+	timeRange := TimeRange{}
+
+	for _, root := range p.Roots() {
+		_ = p.DFSWalk(root, func(n Node) error {
+			switch s := n.(type) {
+			case *RangeAggregation:
+				timeRange.Start = s.Start
+				timeRange.End = s.End
+				// Return here. Topmost RangeAggregation node is what defines max time boundaries for that plan, because
+				// DataObjScan below it can cover different ranges overall.
+				return fmt.Errorf("stop after RangeAggregation")
+			case *ScanSet:
+				for _, t := range s.Targets {
+					timeRange = timeRange.Merge(t.DataObject.MaxTimeRange)
+				}
+			case *DataObjScan:
+				timeRange = timeRange.Merge(s.MaxTimeRange)
+			}
+
+			return nil
+		}, dag.PreOrderWalk)
+	}
+
+	return timeRange
 }

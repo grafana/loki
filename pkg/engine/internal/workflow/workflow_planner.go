@@ -162,14 +162,15 @@ func (p *planner) processNode(node physical.Node, splitOnBreaker bool) (*Task, e
 		}
 	}
 
-	planTimeRange := getMaxTimeRangeForPlan(taskPlan)
+	fragment := physical.FromGraph(taskPlan)
+	planTimeRange := fragment.CalculateMaxTimeRange()
 	if !planTimeRange.IsZero() {
 		timeRange = planTimeRange
 	}
 	task := &Task{
 		ULID:         ulid.Make(),
 		TenantID:     p.tenantID,
-		Fragment:     physical.FromGraph(taskPlan),
+		Fragment:     fragment,
 		Sources:      sources,
 		Sinks:        make(map[physical.Node][]*Stream),
 		MaxTimeRange: timeRange,
@@ -235,31 +236,6 @@ func isPipelineBreaker(node physical.Node) bool {
 	}
 
 	return false
-}
-
-func getMaxTimeRangeForPlan(plan dag.Graph[physical.Node]) physical.TimeRange {
-	timeRange := physical.TimeRange{}
-
-	for _, root := range plan.Roots() {
-		_ = plan.Walk(root, func(n physical.Node) error {
-			switch s := n.(type) {
-			case *physical.RangeAggregation:
-				timeRange.Start = s.Start
-				timeRange.End = s.End
-				return fmt.Errorf("stop after RangeAggregation")
-			case *physical.ScanSet:
-				for _, t := range s.Targets {
-					timeRange = timeRange.Merge(t.DataObject.MaxTimeRange)
-				}
-			case *physical.DataObjScan:
-				timeRange = timeRange.Merge(s.MaxTimeRange)
-			}
-
-			return nil
-		}, dag.PreOrderWalk)
-	}
-
-	return timeRange
 }
 
 // processParallelizeNode builds a set of tasks for a Parallelize node.
@@ -361,15 +337,16 @@ func (p *planner) processParallelizeNode(node *physical.Parallelize) ([]*Task, e
 			shardSources[node] = shardStreams
 		}
 
+		fragment := physical.FromGraph(*shardedPlan)
 		partition := &Task{
 			ULID:     ulid.Make(),
 			TenantID: p.tenantID,
 
-			Fragment: physical.FromGraph(*shardedPlan),
+			Fragment: fragment,
 			Sources:  shardSources,
 			Sinks:    make(map[physical.Node][]*Stream),
 			// Recalculate MaxTimeRange because the new injected `shard` node can cover another time range.
-			MaxTimeRange: getMaxTimeRangeForPlan(*shardedPlan),
+			MaxTimeRange: fragment.CalculateMaxTimeRange(),
 		}
 		p.graph.Add(partition)
 

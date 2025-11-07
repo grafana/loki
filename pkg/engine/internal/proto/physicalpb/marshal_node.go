@@ -161,7 +161,7 @@ func marshalTimeRange(timeRange *TimeRange) physical.TimeRange {
 	if timeRange == nil {
 		return physical.TimeRange{}
 	}
-	
+
 	return physical.TimeRange{
 		Start: timeRange.Start,
 		End:   timeRange.End,
