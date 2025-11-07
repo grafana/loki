@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	//nolint:staticcheck // ignore SA1019 - promtail is deprecated
 	"cloud.google.com/go/pubsub"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
