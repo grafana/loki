@@ -74,3 +74,5 @@ mem.prof
 *.pprof
 
 **/.claude/settings.local.json
+
+host-*.json

@@ -14,7 +14,7 @@ func NewLimitPipeline(input Pipeline, skip, fetch uint32) *GenericPipeline {
 		limitRemaining  = int64(fetch)
 	)
 
-	return newGenericPipeline(Local, func(ctx context.Context, inputs []Pipeline) state {
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
 		var length int64
 		var start, end int64
 		var batch arrow.Record
@@ -24,14 +24,14 @@ func NewLimitPipeline(input Pipeline, skip, fetch uint32) *GenericPipeline {
 		for length == 0 {
 			// Stop once we reached the limit
 			if limitRemaining <= 0 {
-				return Exhausted
+				return nil, EOF
 			}
 
 			// Pull the next item from input
 			input := inputs[0]
 			batch, err = input.Read(ctx)
 			if err != nil {
-				return failureState(err)
+				return nil, err
 			}
 
 			// We want to slice batch so it only contains the rows we're looking for
@@ -46,14 +46,13 @@ func NewLimitPipeline(input Pipeline, skip, fetch uint32) *GenericPipeline {
 		}
 
 		if length <= 0 && offsetRemaining <= 0 {
-			return Exhausted
+			return nil, EOF
 		}
 
 		if batch.NumRows() == 0 {
-			return successState(batch)
+			return batch, nil
 		}
 
-		rec := batch.NewSlice(start, end)
-		return successState(rec)
+		return batch.NewSlice(start, end), nil
 	}, input)
 }

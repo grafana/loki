@@ -33,6 +33,9 @@ func (NoopWALReader) Record() []byte { return nil }
 func (NoopWALReader) Close() error   { return nil }
 
 func newCheckpointReader(dir string, logger log.Logger) (WALReader, io.Closer, error) {
+	// Proactively clean up stale checkpoints at startup before recovery
+	cleanupCheckpointsAtStartup(dir, logger)
+
 	lastCheckpointDir, idx, err := lastCheckpoint(dir)
 	if err != nil {
 		return nil, nil, err
@@ -48,6 +51,32 @@ func newCheckpointReader(dir string, logger log.Logger) (WALReader, io.Closer, e
 		return nil, nil, err
 	}
 	return wlog.NewReader(r), r, nil
+}
+
+// cleanupCheckpointsAtStartup performs cleanup of stale checkpoint data at startup.
+// This includes removing incomplete .tmp checkpoint directories from failed attempts, and
+// removing old completed checkpoints that have been superseded. The most recent valid
+// checkpoint is always protected to ensure a recovery point exists.
+func cleanupCheckpointsAtStartup(dir string, logger log.Logger) {
+	// First, clean up any stale .tmp checkpoint directories from failed checkpoint attempts.
+	// These are always safe to delete at startup since they represent incomplete operations.
+	cleanupStaleTmpCheckpoints(dir, logger)
+
+	// Find the most recent valid checkpoint to protect it from deletion
+	_, latestCheckpointIdx, err := lastCheckpoint(dir)
+	if err != nil {
+		level.Error(logger).Log("msg", "unable to find latest checkpoint for startup checkpoint cleanu, this is not expected and could lead to disk space exhaustion and may indicate disk I/O problems or corruption and should be investigated manually", "err", err)
+		return
+	}
+
+	if latestCheckpointIdx < 0 {
+		// No checkpoints exist, nothing to clean up
+		return
+	}
+
+	// Delegate to the shared cleanup function, protecting the latest checkpoint.
+	// This will remove any old checkpoints that are superseded by the latest one.
+	cleanupOldCheckpoints(dir, latestCheckpointIdx, logger)
 }
 
 type Recoverer interface {

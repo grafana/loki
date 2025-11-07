@@ -105,12 +105,10 @@ spec:
           envFrom:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- with .readinessProbe }}
           readinessProbe:
-            httpGet:
-              path: /metrics
-              port: http-metrics
-            initialDelaySeconds: 15
-            timeoutSeconds: 1
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- with .resources}}
           resources:
             {{- toYaml . | nindent 12 }}
