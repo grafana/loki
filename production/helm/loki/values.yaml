@@ -1187,32 +1187,48 @@ gateway:
       - secretName: loki-gateway-tls
         hosts:
           - gateway.loki.example.com
-  # HTTPRoute configuration (Gateway API)
-  httproute:
-    # -- Specifies whether an HTTPRoute for the gateway should be created
+  # Route configuration (Gateway API)
+  route:
+    # -- Enables or disables the route
     enabled: false
-    # -- Annotations for the gateway HTTPRoute
+    # -- Set the route apiVersion, e.g. gateway.networking.k8s.io/v1
+    apiVersion: gateway.networking.k8s.io/v1
+    # -- Set the route kind
+    # Valid options are GRPCRoute, HTTPRoute, TCPRoute, TLSRoute, UDPRoute
+    kind: HTTPRoute
+    # -- Annotations for the gateway route
     annotations: {}
-    # -- Labels for the gateway HTTPRoute
+    # -- Labels for the gateway route
     labels: {}
-    # -- The list of parent Gateways this HTTPRoute should be attached to, passed through the `tpl` function to allow templating
-    parentRefs:
-      - name: ""
-        namespace: ""
-        # sectionName: ""
-    # -- Hostnames configuration for the gateway HTTPRoute, passed through the `tpl` function to allow templating
+    # -- The list of parent Gateways this route should be attached to, passed through the `tpl` function to allow templating
+    parentRefs: []
+      # - name: example-gateway
+      #   namespace: example-gateway-ns
+      #   sectionName: https
+    # -- Hostnames configuration for the gateway route, passed through the `tpl` function to allow templating
     hostnames: []
       # - gateway.loki.example.com
-    # -- Rules configuration for the gateway HTTPRoute
-    rules:
-      - matches:
-          - path:
-              type: PathPrefix
-              value: /
-        # filters: []
-        # backendRefs:
-        #   - name: custom-backend
-        #     port: 8080
+    # -- Matches define the predicates used for matching requests to a given action
+    matches:
+      - path:
+          type: PathPrefix
+          value: /
+    # -- Filters define the filters that are applied to requests that match this rule
+    filters: []
+      # - type: RequestHeaderModifier
+      #   requestHeaderModifier:
+      #     add:
+      #       - name: X-Custom-Header
+      #         value: custom-value
+    # -- Additional custom rules that can be added to the route
+    additionalRules: []
+      # - matches:
+      #     - path:
+      #         type: PathPrefix
+      #         value: /custom
+      #   backendRefs:
+      #     - name: custom-backend
+      #       port: 8080
   # Basic auth configuration
   basicAuth:
     # -- Enables basic authentication for the gateway
@@ -1436,21 +1452,30 @@ ingress:
 #       - loki.example.com
 #      secretName: loki-distributed-tls
 
-# -- HTTPRoute configuration (Gateway API). Use either this HTTPRoute or the gateway, but not both at once.
+# -- Route configuration (Gateway API). Use either this route or the gateway, but not both at once.
 # If you enable this, make sure to disable the gateway.
-# HTTPRoute uses the same path configuration as ingress above.
-httproute:
+# Route uses the same path configuration as ingress above for component-level routing.
+route:
+  # -- Enables or disables the route
   enabled: false
+  # -- Set the route apiVersion, e.g. gateway.networking.k8s.io/v1
+  apiVersion: gateway.networking.k8s.io/v1
+  # -- Set the route kind
+  # Valid options are GRPCRoute, HTTPRoute, TCPRoute, TLSRoute, UDPRoute
+  kind: HTTPRoute
+  # -- Annotations for the route
   annotations: {}
+  # -- Labels for the route
   labels: {}
-  # -- The list of parent Gateways this HTTPRoute should be attached to, passed through the `tpl` function to allow templating
-  parentRefs:
-    - name: ""
-      namespace: ""
-      # sectionName: ""
-  # -- Hostnames configuration for the HTTPRoute, passed through the `tpl` function to allow templating
+  # -- The list of parent Gateways this route should be attached to, passed through the `tpl` function to allow templating
+  parentRefs: []
+    # - name: example-gateway
+    #   namespace: example-gateway-ns
+    #   sectionName: https
+  # -- Hostnames configuration for the route, passed through the `tpl` function to allow templating
   hostnames: []
     # - loki.example.com
+  # Note: matches and filters are not used for component-level routing as rules are generated automatically based on deployment mode
 
 ######################################################################################################################
 #

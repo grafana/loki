@@ -4846,76 +4846,6 @@ true
 </td>
 		</tr>
 		<tr>
-			<td>gateway.httproute.annotations</td>
-			<td>object</td>
-			<td>Annotations for the gateway HTTPRoute</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>gateway.httproute.enabled</td>
-			<td>bool</td>
-			<td>Specifies whether an HTTPRoute for the gateway should be created</td>
-			<td><pre lang="json">
-false
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>gateway.httproute.hostnames</td>
-			<td>list</td>
-			<td>Hostnames configuration for the gateway HTTPRoute, passed through the `tpl` function to allow templating</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>gateway.httproute.labels</td>
-			<td>object</td>
-			<td>Labels for the gateway HTTPRoute</td>
-			<td><pre lang="json">
-{}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>gateway.httproute.parentRefs</td>
-			<td>list</td>
-			<td>The list of parent Gateways this HTTPRoute should be attached to, passed through the `tpl` function to allow templating</td>
-			<td><pre lang="json">
-[
-  {
-    "name": "",
-    "namespace": ""
-  }
-]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>gateway.httproute.rules</td>
-			<td>list</td>
-			<td>Rules configuration for the gateway HTTPRoute</td>
-			<td><pre lang="json">
-[
-  {
-    "matches": [
-      {
-        "path": {
-          "type": "PathPrefix",
-          "value": "/"
-        }
-      }
-    ]
-  }
-]
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>gateway.image.digest</td>
 			<td>string</td>
 			<td>Overrides the gateway image tag with an image digest</td>
@@ -5270,6 +5200,103 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>gateway.route.additionalRules</td>
+			<td>list</td>
+			<td>Additional custom rules that can be added to the route</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.route.annotations</td>
+			<td>object</td>
+			<td>Annotations for the gateway route</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.route.apiVersion</td>
+			<td>string</td>
+			<td>Set the route apiVersion, e.g. gateway.networking.k8s.io/v1</td>
+			<td><pre lang="json">
+"gateway.networking.k8s.io/v1"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.route.enabled</td>
+			<td>bool</td>
+			<td>Enables or disables the route</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.route.filters</td>
+			<td>list</td>
+			<td>Filters define the filters that are applied to requests that match this rule</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.route.hostnames</td>
+			<td>list</td>
+			<td>Hostnames configuration for the gateway route, passed through the `tpl` function to allow templating</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.route.kind</td>
+			<td>string</td>
+			<td>Set the route kind Valid options are GRPCRoute, HTTPRoute, TCPRoute, TLSRoute, UDPRoute</td>
+			<td><pre lang="json">
+"HTTPRoute"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.route.labels</td>
+			<td>object</td>
+			<td>Labels for the gateway route</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.route.matches</td>
+			<td>list</td>
+			<td>Matches define the predicates used for matching requests to a given action</td>
+			<td><pre lang="json">
+[
+  {
+    "path": {
+      "type": "PathPrefix",
+      "value": "/"
+    }
+  }
+]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.route.parentRefs</td>
+			<td>list</td>
+			<td>The list of parent Gateways this route should be attached to, passed through the `tpl` function to allow templating</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.service.annotations</td>
 			<td>object</td>
 			<td>Annotations for the gateway service</td>
@@ -5473,49 +5500,6 @@ null
 			<td>Overrides the priorityClassName for all pods</td>
 			<td><pre lang="json">
 null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>httproute</td>
-			<td>object</td>
-			<td>HTTPRoute configuration (Gateway API). Use either this HTTPRoute or the gateway, but not both at once. If you enable this, make sure to disable the gateway. HTTPRoute uses the same path configuration as ingress above.</td>
-			<td><pre lang="json">
-{
-  "annotations": {},
-  "enabled": false,
-  "hostnames": [],
-  "labels": {},
-  "parentRefs": [
-    {
-      "name": "",
-      "namespace": ""
-    }
-  ]
-}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>httproute.hostnames</td>
-			<td>list</td>
-			<td>Hostnames configuration for the HTTPRoute, passed through the `tpl` function to allow templating</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>httproute.parentRefs</td>
-			<td>list</td>
-			<td>The list of parent Gateways this HTTPRoute should be attached to, passed through the `tpl` function to allow templating</td>
-			<td><pre lang="json">
-[
-  {
-    "name": "",
-    "namespace": ""
-  }
-]
 </pre>
 </td>
 		</tr>
@@ -11902,6 +11886,86 @@ null
     "type": "RuntimeDefault"
   }
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>route</td>
+			<td>object</td>
+			<td>Route configuration (Gateway API). Use either this route or the gateway, but not both at once. If you enable this, make sure to disable the gateway. Route uses the same path configuration as ingress above for component-level routing.</td>
+			<td><pre lang="json">
+{
+  "annotations": {},
+  "apiVersion": "gateway.networking.k8s.io/v1",
+  "enabled": false,
+  "hostnames": [],
+  "kind": "HTTPRoute",
+  "labels": {},
+  "parentRefs": []
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>route.annotations</td>
+			<td>object</td>
+			<td>Annotations for the route</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>route.apiVersion</td>
+			<td>string</td>
+			<td>Set the route apiVersion, e.g. gateway.networking.k8s.io/v1</td>
+			<td><pre lang="json">
+"gateway.networking.k8s.io/v1"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>route.enabled</td>
+			<td>bool</td>
+			<td>Enables or disables the route</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>route.hostnames</td>
+			<td>list</td>
+			<td>Hostnames configuration for the route, passed through the `tpl` function to allow templating</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>route.kind</td>
+			<td>string</td>
+			<td>Set the route kind Valid options are GRPCRoute, HTTPRoute, TCPRoute, TLSRoute, UDPRoute</td>
+			<td><pre lang="json">
+"HTTPRoute"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>route.labels</td>
+			<td>object</td>
+			<td>Labels for the route</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>route.parentRefs</td>
+			<td>list</td>
+			<td>The list of parent Gateways this route should be attached to, passed through the `tpl` function to allow templating</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
