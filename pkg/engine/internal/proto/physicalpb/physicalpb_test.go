@@ -26,6 +26,10 @@ func Test(t *testing.T) {
 			Location:  "test-location",
 			Section:   1,
 			StreamIDs: []int64{100, 200, 300},
+			MaxTimeRange: physical.TimeRange{
+				Start: time.Date(1970, 1, 1, 1, 0, 0, 0, time.UTC),
+				End:   time.Date(1970, 1, 1, 2, 0, 0, 0, time.UTC),
+			},
 		})
 
 		limitNode := graph.Add(&physical.Limit{

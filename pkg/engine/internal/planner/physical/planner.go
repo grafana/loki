@@ -220,9 +220,10 @@ func (p *Planner) processMakeTable(lp *logical.MakeTable, ctx *Context) (Node, e
 				DataObject: &DataObjScan{
 					NodeID: ulid.Make(),
 
-					Location:  desc.Location,
-					StreamIDs: desc.Streams,
-					Section:   section,
+					Location:     desc.Location,
+					StreamIDs:    desc.Streams,
+					Section:      section,
+					MaxTimeRange: desc.TimeRange,
 				},
 			})
 		}

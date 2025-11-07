@@ -218,13 +218,21 @@ func (n *DataObjScan) UnmarshalPhysical(from physical.Node) error {
 	}
 
 	*n = DataObjScan{
-		Location:    string(scan.Location),
-		Section:     int64(scan.Section),
-		StreamIds:   scan.StreamIDs,
-		Projections: projections,
-		Predicates:  predicates,
+		Location:     string(scan.Location),
+		Section:      int64(scan.Section),
+		StreamIds:    scan.StreamIDs,
+		Projections:  projections,
+		Predicates:   predicates,
+		MaxTimeRange: unmarshalTimeRange(scan.MaxTimeRange),
 	}
 	return nil
+}
+
+func unmarshalTimeRange(from physical.TimeRange) *TimeRange {
+	return &TimeRange{
+		Start: from.Start,
+		End:   from.End,
+	}
 }
 
 func unmarshalExpressions(from []physical.Expression) ([]*expressionpb.Expression, error) {
