@@ -1230,7 +1230,8 @@ func newTestScheduler(t *testing.T) *Scheduler {
 	t.Helper()
 
 	sched, err := New(Config{
-		Logger: log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)),
+		Logger:   log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr)),
+		Listener: &wire.Local{Address: wire.LocalScheduler},
 	})
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(t.Context(), sched.Service()))

@@ -7,13 +7,16 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/http/httptrace"
 	"sync"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"golang.org/x/net/http2"
 )
+
+// peerAddressHeader is the header used to advertise the address to connect back
+// to a client.
+const peerAddressHeader = "Loki-Peer-Address"
 
 // HTTP2Listener implements Listener for HTTP/2-based connections.
 type HTTP2Listener struct {
@@ -98,7 +101,13 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	remoteAddr, err := addrPortStrToAddr(r.RemoteAddr)
+	peerAddress := r.Header.Get(peerAddressHeader)
+	if peerAddress == "" {
+		http.Error(w, "missing required Loki-Peer-Address header", http.StatusBadRequest)
+		return
+	}
+
+	remoteAddr, err := addrPortStrToAddr(peerAddress)
 	if err != nil {
 		http.Error(w, "invalid remote addr", http.StatusBadRequest)
 		return
@@ -278,7 +287,10 @@ type HTTP2Dialer struct {
 	path   string
 }
 
-// NewHTTP2Dialer creates a new HTTP/2 dialer that can open HTTP/2 connections to the specified address.
+var _ Dialer = (*HTTP2Dialer)(nil)
+
+// NewHTTP2Dialer creates a [Dialer] that can open HTTP/2 connections to the
+// specified address.
 func NewHTTP2Dialer(path string) *HTTP2Dialer {
 	return &HTTP2Dialer{
 		client: &http.Client{
@@ -298,21 +310,14 @@ func NewHTTP2Dialer(path string) *HTTP2Dialer {
 }
 
 // Dial establishes an HTTP/2 connection to the specified address.
-func (d *HTTP2Dialer) Dial(ctx context.Context, addr net.Addr) (Conn, error) {
+func (d *HTTP2Dialer) Dial(ctx context.Context, from, to net.Addr) (Conn, error) {
 	pr, pw := io.Pipe()
 
-	var localAddr net.Addr
-	trace := &httptrace.ClientTrace{
-		GotConn: func(info httptrace.GotConnInfo) {
-			localAddr = info.Conn.LocalAddr()
-		},
-	}
-	ctx = httptrace.WithClientTrace(ctx, trace)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://%s%s", addr.String(), d.path), pr)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://%s%s", to.String(), d.path), pr)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
+	req.Header.Set(peerAddressHeader, from.String())
 
 	resp, err := d.client.Do(req)
 	if err != nil {
@@ -330,8 +335,8 @@ func (d *HTTP2Dialer) Dial(ctx context.Context, addr net.Addr) (Conn, error) {
 
 	// Create connection
 	conn := newHTTP2Conn(
-		localAddr,
-		addr,
+		from,
+		to,
 		resp.Body,
 		pw,
 		nil, // client doesn't need flusher, it's handled by the pipe writer
