@@ -1,8 +1,8 @@
 package distributor
 
 import (
+	"context"
 	"hash/fnv"
-	"math"
 
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -21,44 +21,66 @@ func GetSegmentationKey(tenant string, stream KeyedStream) (SegmentationKey, err
 	if serviceName := labels.Get("service_name"); serviceName != "" {
 		return SegmentationKey(serviceName), nil
 	}
-	return SegmentationKey(stream.Stream.Labels), nil
+	return SegmentationKey("unknown_service"), nil
 }
 
 // SegmentationPartitionResolver resolves the partition for a segmentation key.
 type SegmentationPartitionResolver struct {
-	cfg        *DataObjTeeConfig
-	limits     Limits
-	ringReader ring.PartitionRingReader
+	cfg          *DataObjTeeConfig
+	limits       Limits
+	ringReader   ring.PartitionRingReader
+	limitsClient *ingestLimits
 }
 
 // NewSegmentationPartitionResolver returns a new SegmentationPartitionResolver.
-func NewSegmentationPartitionResolver(cfg *DataObjTeeConfig, limits Limits, ringReader ring.PartitionRingReader) *SegmentationPartitionResolver {
+func NewSegmentationPartitionResolver(cfg *DataObjTeeConfig, limits Limits, ringReader ring.PartitionRingReader, limitsClient *ingestLimits) *SegmentationPartitionResolver {
 	return &SegmentationPartitionResolver{
-		cfg:        cfg,
-		limits:     limits,
-		ringReader: ringReader,
+		cfg:          cfg,
+		limits:       limits,
+		ringReader:   ringReader,
+		limitsClient: limitsClient,
 	}
 }
 
-func (r *SegmentationPartitionResolver) Resolve(tenant string, key SegmentationKey, _ uint32) (int32, error) {
+func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant string, key SegmentationKey, stream KeyedStream) (int32, error) {
 	ring := r.ringReader.PartitionRing()
-	// Get a subring for the tenant based on the tenant's rate limit and
-	// the maximum rate per tenant per partition in bytes (hardcoded to 1MB/sec).
-	ingestionRateBytes := r.limits.IngestionRateBytes(tenant)
-	partitions := math.Floor(ingestionRateBytes / float64(r.cfg.PerPartitionRateBytes))
-	// Must be at least 1 partition.
-	partitions = math.Max(partitions, 1)
-	// Must not exceed the number of active partitions.
-	partitions = math.Min(partitions, float64(len(ring.ActivePartitionIDs())))
-	subring, err := ring.ShuffleShard(tenant, int(partitions))
-	if err != nil {
-		return 0, err
-	}
-	hash := fnv.New32a()
+
+	// Make an fnv32 hash of the segmentation key.
+	hash := fnv.New32()
+	hash.Write([]byte("__loki_service_name__"))
+	hash.Write([]byte(tenant))
 	hash.Write([]byte(key))
-	partition, err := subring.ActivePartitionForKey(hash.Sum32())
+	segmentationKeyHash := hash.Sum32()
+	segmentationKeyedStream := KeyedStream{
+		HashKey:        segmentationKeyHash,
+		HashKeyNoShard: uint64(segmentationKeyHash),
+		Stream:         stream.Stream,
+	}
+
+	// Update the rates for the segmentation key.
+	results, err := r.limitsClient.UpdateRates(ctx, tenant, []KeyedStream{segmentationKeyedStream})
+	if err != nil || len(results) == 0 {
+		// Fall back to naiive shard on the hash key.
+		partition, err := ring.ActivePartitionForKey(stream.HashKey)
+		if err != nil {
+			return 0, err
+		}
+		return partition, nil
+	}
+
+	// Use the rate of the segmentation key to shuffle shard.
+	res := results[0]
+	// The partitions is the current rate / the expected rate per partition.
+	partitions := res.Rate / uint64(r.cfg.PerPartitionRateBytes)
+	// Must be at least 1 partition.
+	partitions = max(partitions, 1)
+	// Must not exceed the number of active partitions.
+	partitions = min(partitions, uint64(len(ring.ActivePartitionIDs())))
+	// Shuffle shard.
+	subring, err := ring.ShuffleShard(string(key), int(partitions))
 	if err != nil {
 		return 0, err
 	}
-	return partition, nil
+	// Get the partition from this shard.
+	return subring.ActivePartitionForKey(uint32(stream.HashKeyNoShard))
 }

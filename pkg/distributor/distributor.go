@@ -283,6 +283,8 @@ func New(
 		return nil, fmt.Errorf("partition ring is required for kafka writes")
 	}
 
+	ingestLimits := newIngestLimits(limitsFrontendClient, registerer)
+
 	var kafkaWriter KafkaProducer
 	if cfg.KafkaEnabled {
 		kafkaClient, err := kafka_client.NewWriterClient("distributor", cfg.KafkaConfig, 20, logger, registerer)
@@ -294,7 +296,7 @@ func New(
 			kafka_client.WithRecordsInterceptor(validation.IngestionPoliciesKafkaProducerInterceptor),
 		)
 
-		resolver := NewSegmentationPartitionResolver(&cfg.DataObjTeeConfig, overrides, dataObjConsumerPartitionRing)
+		resolver := NewSegmentationPartitionResolver(&cfg.DataObjTeeConfig, overrides, dataObjConsumerPartitionRing, ingestLimits)
 
 		if cfg.DataObjTeeConfig.Enabled {
 			dataObjTee, err := NewDataObjTee(
@@ -381,7 +383,7 @@ func New(
 		writeFailuresManager:  writefailures.NewManager(logger, registerer, cfg.WriteFailuresLogging, configs, "distributor"),
 		kafkaWriter:           kafkaWriter,
 		partitionRing:         partitionRing,
-		ingestLimits:          newIngestLimits(limitsFrontendClient, registerer),
+		ingestLimits:          ingestLimits,
 		numMetadataPartitions: numMetadataPartitions,
 	}
 
@@ -775,7 +777,7 @@ func (d *Distributor) PushWithResolver(ctx context.Context, req *logproto.PushRe
 	// Nil check for performance reasons, to avoid dynamic lookup and/or no-op
 	// function calls that cannot be inlined.
 	if d.tee != nil {
-		d.tee.Duplicate(tenantID, streams)
+		d.tee.Duplicate(context.WithoutCancel(ctx), tenantID, streams)
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck

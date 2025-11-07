@@ -188,6 +188,34 @@ func (s *Service) ExceedsLimits(
 	return s.limitsChecker.ExceedsLimits(ctx, req)
 }
 
+// ExceedsLimits implements the proto.IngestLimitsServer interface.
+func (s *Service) UpdateRates(
+	ctx context.Context,
+	req *proto.UpdateRatesRequest,
+) (*proto.UpdateRatesResponse, error) {
+	accepted, _, err := s.usage.UpdateCond(req.Tenant, req.Streams, s.clock.Now())
+	if err != nil {
+		return nil, err
+	}
+	resp := proto.UpdateRatesResponse{
+		Results: make([]*proto.UpdateRatesResult, len(accepted)),
+	}
+	for i, accepted := range accepted {
+		usage, ok := s.usage.getForTests(req.Tenant, accepted.StreamHash)
+		if ok {
+			var sumRate uint64
+			for _, bucket := range usage.rateBuckets {
+				sumRate += bucket.size
+			}
+			resp.Results[i] = &proto.UpdateRatesResult{
+				StreamHash: accepted.StreamHash,
+				Rate:       uint64(sumRate),
+			}
+		}
+	}
+	return &resp, nil
+}
+
 func (s *Service) CheckReady(ctx context.Context) error {
 	if s.State() != services.Running {
 		return fmt.Errorf("service is not running: %v", s.State())

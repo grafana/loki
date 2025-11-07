@@ -436,8 +436,12 @@ func (s *usageStore) getPartitionForHash(hash uint64) int32 {
 // Used in tests. Is not goroutine-safe.
 func (s *usageStore) getForTests(tenant string, streamHash uint64) (streamUsage, bool) {
 	partition := s.getPartitionForHash(streamHash)
-	i := s.getStripe(tenant)
-	return s.get(i, tenant, partition, streamHash)
+	var result streamUsage
+	var ok bool
+	s.withRLock(tenant, func(i int) {
+		result, ok = s.get(i, tenant, partition, streamHash)
+	})
+	return result, ok
 }
 
 func (s *usageStore) get(i int, tenant string, partition int32, streamHash uint64) (stream streamUsage, ok bool) {
