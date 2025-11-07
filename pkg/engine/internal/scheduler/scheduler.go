@@ -30,7 +30,7 @@ type Config struct {
 	// RemoteListener is the listener used for communication with workers.
 	// Workers can either connect locally within the same process through an in-memory connection
 	// or from remote via a tcp connection.
-	// Leave empty when using local tranport.
+	// Leave empty when using local transport.
 	RemoteListener wire.Listener
 }
 
