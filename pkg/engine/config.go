@@ -6,7 +6,8 @@ import "flag"
 // Query Engine.
 type Config struct {
 	// Enable the next generation Loki Query Engine for supported queries.
-	Enable bool `yaml:"enable" category:"experimental"`
+	Enable      bool `yaml:"enable" category:"experimental"`
+	Distributed bool `yaml:"distributed" category:"experimental"`
 
 	Executor ExecutorConfig `yaml:",inline"`
 	Worker   WorkerConfig   `yaml:",inline"`
@@ -14,6 +15,7 @@ type Config struct {
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.BoolVar(&cfg.Enable, prefix+"enable", false, "Experimental: Enable next generation query engine for supported queries.")
+	f.BoolVar(&cfg.Distributed, prefix+"distributed", false, "Experimental: Enable distributed query execution.")
 
 	cfg.Executor.RegisterFlagsWithPrefix(prefix, f)
 	cfg.Worker.RegisterFlagsWithPrefix(prefix, f)

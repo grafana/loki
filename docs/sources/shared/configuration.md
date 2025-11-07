@@ -5113,6 +5113,10 @@ engine_v2:
   # CLI flag: -querier.engine-v2.enable
   [enable: <boolean> | default = false]
 
+  # Experimental: Enable distributed query execution.
+  # CLI flag: -querier.engine-v2.distributed
+  [distributed: <boolean> | default = false]
+
   # Amount of time until data objects are available.
   # CLI flag: -querier.engine-v2.dataobj-storage-lag
   [dataobj_storage_lag: <duration> | default = 1h]

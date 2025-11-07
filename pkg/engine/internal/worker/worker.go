@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"reflect"
 	"runtime"
 	"sync"
@@ -20,7 +21,6 @@ import (
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
@@ -33,9 +33,13 @@ type Config struct {
 	// Bucket to read stored data from.
 	Bucket objstore.Bucket
 
-	// Local scheduler to connect to. If LocalScheduler is nil, the worker can
-	// still connect to remote schedulers.
-	LocalScheduler *scheduler.Scheduler
+	LocalScheduler wire.Listener
+
+	// RemoteListener is the listener used for communication with workers.
+	// Workers can either connect locally within the same process through an in-memory connection
+	// or from remote via a tcp connection.
+	// Leave empty when using local tranport and set LocalScheduler instead.
+	RemoteListener wire.Listener
 
 	// SchedulerLookupAddress is the address of the remote scheduler to look up.
 	// Scheduler addresses are resolved using DNS SRV records at this address.
@@ -55,6 +59,10 @@ type Config struct {
 	//
 	// If NumThreads is set to 0, NumThreads defaults to [runtime.GOMAXPROCS].
 	NumThreads int
+
+	// Absolute path of the endpoint where the frame handler is registered.
+	// Used for connecting to scheduler and other workers.
+	Endpoint string
 }
 
 // readyRequest is a message sent from a thread to notify the worker that it's
@@ -89,9 +97,8 @@ type Worker struct {
 	initOnce sync.Once
 	svc      services.Service
 
-	// local is the local listener used for communication between worker
-	// threads within the same process.
-	local *wire.Local
+	workerListener wire.Listener // used for local and remote transport
+	localScheduler wire.Listener // only used for local transport
 
 	resourcesMut sync.RWMutex
 	sources      map[ulid.ULID]*streamSource
@@ -109,18 +116,22 @@ func New(config Config) (*Worker, error) {
 	if config.Logger == nil {
 		config.Logger = log.NewNopLogger()
 	}
-
-	// TODO(rfratto): support connecting to a remote scheduler, so that a local
-	// scheduler isn't always required.
-	if config.LocalScheduler == nil {
+	if config.RemoteListener == nil && config.LocalScheduler == nil {
 		return nil, errors.New("local scheduler is required")
+	}
+	if config.RemoteListener != nil && config.SchedulerLookupAddress == "" {
+		return nil, errors.New("remote transport requires scheduler lookup address")
+	}
+	if config.RemoteListener == nil {
+		config.RemoteListener = &wire.Local{Address: wire.LocalWorker}
 	}
 
 	return &Worker{
 		config: config,
 		logger: config.Logger,
 
-		local: &wire.Local{Address: wire.LocalWorker},
+		workerListener: config.RemoteListener,
+		localScheduler: config.LocalScheduler,
 
 		sources: make(map[ulid.ULID]*streamSource),
 		sinks:   make(map[ulid.ULID]*streamSink),
@@ -137,6 +148,20 @@ func (w *Worker) Service() services.Service {
 	})
 
 	return w.svc
+}
+
+func (w *Worker) Listener() wire.Listener {
+	return w.workerListener
+}
+
+// Handler returns the HTTP handler of the scheduler or nil
+// when the worker runs with local transport.
+func (w *Worker) Handler() http.Handler {
+	handler, ok := w.workerListener.(*wire.HTTP2Listener)
+	if ok {
+		return handler
+	}
+	return nil
 }
 
 // run starts the worker, running until the provided context is canceled.
@@ -173,9 +198,7 @@ func (w *Worker) run(ctx context.Context) error {
 				_ = w.schedulerLoop(ctx, addr)
 			})
 		})
-	}
-
-	if w.config.LocalScheduler != nil {
+	} else if w.localScheduler != nil {
 		level.Info(w.logger).Log("msg", "connecting to local scheduler")
 		g.Go(func() error { return w.schedulerLoop(ctx, wire.LocalScheduler) })
 	}
@@ -188,7 +211,7 @@ func (w *Worker) run(ctx context.Context) error {
 // threads within this worker.
 func (w *Worker) runAcceptLoop(ctx context.Context) error {
 	for {
-		conn, err := w.local.Accept(ctx)
+		conn, err := w.workerListener.Accept(ctx)
 		if err != nil && ctx.Err() != nil {
 			return nil
 		} else if err != nil {
@@ -267,12 +290,14 @@ func (w *Worker) schedulerLoop(ctx context.Context, addr net.Addr) error {
 func (w *Worker) dial(ctx context.Context, addr net.Addr) (wire.Conn, error) {
 	switch addr {
 	case wire.LocalScheduler:
-		return w.config.LocalScheduler.DialFrom(ctx, w.local.Address)
+		// Dial from worker to local scheduler
+		return w.localScheduler.(*wire.Local).DialFrom(ctx, w.workerListener.Addr())
 	case wire.LocalWorker:
-		return w.local.DialFrom(ctx, w.local.Address)
+		// Dial from worker to local worker
+		return w.workerListener.(*wire.Local).DialFrom(ctx, w.workerListener.Addr())
 	default:
-		// TODO(rfratto): Support for network transports
-		return nil, fmt.Errorf("unsupported address %s", addr)
+		// Dial from worker to remote scheduler or remote worker
+		return wire.NewHTTP2Dialer(w.config.Endpoint).Dial(ctx, addr)
 	}
 }
 

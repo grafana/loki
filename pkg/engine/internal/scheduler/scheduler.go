@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"sync"
 	"time"
 
@@ -25,6 +26,12 @@ import (
 type Config struct {
 	// Logger for optional log messages.
 	Logger log.Logger
+
+	// RemoteListener is the listener used for communication with workers.
+	// Workers can either connect locally within the same process through an in-memory connection
+	// or from remote via a tcp connection.
+	// Leave empty when using local transport.
+	RemoteListener wire.Listener
 }
 
 // Scheduler is a service that can schedule tasks to connected worker instances.
@@ -34,9 +41,7 @@ type Scheduler struct {
 	initOnce sync.Once
 	svc      services.Service
 
-	// local is the local listener used for communication with workers running
-	// within the same process. May be unused if no workers are running locally.
-	local *wire.Local
+	listener wire.Listener // used for local and remote transport
 
 	resourcesMut sync.RWMutex
 	streams      map[ulid.ULID]*stream             // All known streams (regardless of state)
@@ -59,9 +64,13 @@ func New(config Config) (*Scheduler, error) {
 		config.Logger = log.NewNopLogger()
 	}
 
+	if config.RemoteListener == nil {
+		config.RemoteListener = &wire.Local{Address: wire.LocalScheduler}
+	}
+
 	return &Scheduler{
-		logger: config.Logger,
-		local:  &wire.Local{Address: wire.LocalScheduler},
+		logger:   config.Logger,
+		listener: config.RemoteListener,
 
 		streams:     make(map[ulid.ULID]*stream),
 		tasks:       make(map[ulid.ULID]*task),
@@ -80,6 +89,20 @@ func (s *Scheduler) Service() services.Service {
 	return s.svc
 }
 
+func (s *Scheduler) Listener() wire.Listener {
+	return s.listener
+}
+
+// Handler returns the HTTP handler of the scheduler or nil
+// when the scheduler runs with local transport.
+func (s *Scheduler) Handler() http.Handler {
+	handler, ok := s.listener.(*wire.HTTP2Listener)
+	if ok {
+		return handler
+	}
+	return nil
+}
+
 func (s *Scheduler) run(ctx context.Context) error {
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -91,7 +114,7 @@ func (s *Scheduler) run(ctx context.Context) error {
 
 func (s *Scheduler) runAcceptLoop(ctx context.Context) error {
 	for {
-		conn, err := s.local.Accept(ctx)
+		conn, err := s.listener.Accept(ctx)
 		if err != nil && ctx.Err() != nil {
 			return nil
 		} else if err != nil {
@@ -453,7 +476,7 @@ func (s *Scheduler) tryBind(ctx context.Context, check *stream) {
 		// sender.
 		_ = sendingTask.owner.SendMessageAsync(ctx, wire.StreamBindMessage{
 			StreamID: check.inner.ULID,
-			Receiver: s.local.Address,
+			Receiver: s.listener.Addr(),
 		})
 	}
 }
@@ -461,10 +484,15 @@ func (s *Scheduler) tryBind(ctx context.Context, check *stream) {
 // DialFrom connects to the scheduler using its local transport. The from
 // address denotes the connecting peer.
 func (s *Scheduler) DialFrom(ctx context.Context, from net.Addr) (wire.Conn, error) {
-	if s == nil || s.local == nil {
+	if s == nil || s.listener == nil {
 		return nil, errors.New("scheduler not initialized")
 	}
-	return s.local.DialFrom(ctx, from)
+	local, ok := s.listener.(*wire.Local)
+	if !ok {
+		// This really should not happen. Should we panic instead?
+		return nil, errors.New("not a local scheduler")
+	}
+	return local.DialFrom(ctx, from)
 }
 
 // AddStreams registers a list of Streams that can be used by Tasks.

@@ -10,7 +10,6 @@ import (
 	"net/http/httptrace"
 	"sync"
 
-	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"golang.org/x/net/http2"
@@ -60,11 +59,7 @@ func WithHTTP2ListenerLogger(logger log.Logger) HTTP2ListenerOptFunc {
 }
 
 // NewHTTP2Listener creates a new HTTP/2 listener on the specified address.
-func NewHTTP2Listener(
-	addr net.Addr,
-	allocator memory.Allocator,
-	optFuncs ...HTTP2ListenerOptFunc,
-) *HTTP2Listener {
+func NewHTTP2Listener(addr net.Addr, optFuncs ...HTTP2ListenerOptFunc) *HTTP2Listener {
 	opts := http2ListenerOpts{
 		MaxPendingConns: 10,
 		Logger:          log.NewNopLogger(),
@@ -79,7 +74,7 @@ func NewHTTP2Listener(
 
 		connCh: make(chan *incomingHTTP2Conn, opts.MaxPendingConns),
 		closed: make(chan struct{}),
-		codec:  &protobufCodec{allocator: allocator},
+		codec:  defaultFrameCodec,
 	}
 
 	return l
@@ -284,10 +279,7 @@ type HTTP2Dialer struct {
 }
 
 // NewHTTP2Dialer creates a new HTTP/2 dialer that can open HTTP/2 connections to the specified address.
-func NewHTTP2Dialer(
-	allocator memory.Allocator,
-	path string,
-) *HTTP2Dialer {
+func NewHTTP2Dialer(path string) *HTTP2Dialer {
 	return &HTTP2Dialer{
 		client: &http.Client{
 			Transport: &http2.Transport{
@@ -300,18 +292,13 @@ func NewHTTP2Dialer(
 			// Context is used for cancellation, no timeout
 			Timeout: 0,
 		},
-		codec: &protobufCodec{allocator},
+		codec: defaultFrameCodec,
 		path:  path,
 	}
 }
 
 // Dial establishes an HTTP/2 connection to the specified address.
-func (d *HTTP2Dialer) Dial(ctx context.Context, addrStr string) (Conn, error) {
-	addr, err := addrPortStrToAddr(addrStr)
-	if err != nil {
-		return nil, err
-	}
-
+func (d *HTTP2Dialer) Dial(ctx context.Context, addr net.Addr) (Conn, error) {
 	pr, pw := io.Pipe()
 
 	var localAddr net.Addr
@@ -322,7 +309,7 @@ func (d *HTTP2Dialer) Dial(ctx context.Context, addrStr string) (Conn, error) {
 	}
 	ctx = httptrace.WithClientTrace(ctx, trace)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://%s/%s", addrStr, d.path), pr)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://%s%s", addr.String(), d.path), pr)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
