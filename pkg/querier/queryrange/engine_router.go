@@ -242,3 +242,35 @@ func alignStartEnd(stepNs int64, start, end time.Time) (time.Time, time.Time) {
 
 	return time.Unix(0, startNs), time.Unix(0, endNs)
 }
+
+type v2EngineHandler struct {
+	engine *engine.Engine
+}
+
+var _ queryrangebase.Handler = (*v2EngineHandler)(nil)
+
+func NewV2EngineHandler(engine *engine.Engine) *v2EngineHandler {
+	return &v2EngineHandler{
+		engine: engine,
+	}
+}
+
+// Do implements queryrangebase.Handler.
+func (v *v2EngineHandler) Do(ctx context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
+	_, ok := request.(*LokiRequest)
+	if !ok {
+		return nil, errors.New("expecting *LokiRequest in v2 engine handler")
+	}
+
+	r, err := ParamsFromRequest(request)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := v.engine.Execute(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+
+	return ResultToResponse(result, r)
+}

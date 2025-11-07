@@ -1166,6 +1166,7 @@ func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 		t.Cfg.QueryRange,
 		t.Cfg.Querier.Engine,
 		t.Cfg.Querier.EngineV2,
+		queryrange.NewV2EngineHandler(t.queryEngineV2),
 		ingesterQueryOptions{t.Cfg.Querier},
 		util_log.Logger,
 		t.Overrides,

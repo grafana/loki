@@ -819,7 +819,7 @@ func (t *Loki) setupModuleManager() error {
 		Store:                        {Overrides, IndexGatewayRing},
 		Ingester:                     {Store, Server, MemberlistKV, TenantConfigs, Analytics, PartitionRing, UIRing},
 		Querier:                      {Store, Ring, Server, IngesterQuerier, PatternRingClient, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing, UIRing},
-		QueryFrontendTripperware:     {Server, Overrides, TenantConfigs},
+		QueryFrontendTripperware:     {Server, Overrides, TenantConfigs, QueryEngine},
 		QueryFrontend:                {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing, UIRing},
 		QueryScheduler:               {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing, UIRing},
 		QueryEngine:                  {QueryEngineWorker},
