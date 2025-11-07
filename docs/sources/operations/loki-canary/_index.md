@@ -325,7 +325,7 @@ All options:
   -key-file string
     	Client PEM encoded X.509 key for optional use with TLS connection to Loki
   -labels string
-        Comma-separated string of labels for the query e.g. 'service=loki,app=canary' Overwrites labelname and streamname
+        Comma-separated string of labels for the query e.g. 'service=loki,app=canary'. The parsing logic for this argument is simple, label values must not contain a comma or special characters and should not be quoted. Overwrites labelname and streamname
   -labelname string
     	The label name for this instance of loki-canary to use in the log selector (default "name")
   -labelvalue string
