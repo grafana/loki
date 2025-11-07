@@ -11,6 +11,14 @@ subject:
     - --dependency-update
     - --set
     - "chunksCache.allocatedMemory=1024"
+  preInstallScript: |
+    #!/bin/bash
+    set -e
+    echo "Installing Gateway API CRDs..."
+    kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
+    echo "Waiting for Gateway API CRDs to be established..."
+    kubectl wait --for condition=established --timeout=60s crd/gateways.gateway.networking.k8s.io
+    kubectl wait --for condition=established --timeout=60s crd/httproutes.gateway.networking.k8s.io
 
 cluster:
   type: kind
