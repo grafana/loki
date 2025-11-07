@@ -5,7 +5,7 @@ env:
   GITHUB_APP: "loki-gh-app"
   IMAGE_PREFIX: "grafana"
   PUBLISH_TO_GCS: false
-  RELEASE_LIB_REF: "1dd22f1dbfa671ac40e4a92f1a56bd9821871d44"
+  RELEASE_LIB_REF: "dfe753760ce6ec2f4549fc11d2df24a2aa584e3f"
   RELEASE_REPO: "grafana/loki"
   USE_GITHUB_APP_TOKEN: true
 jobs:
@@ -44,6 +44,7 @@ jobs:
       uses: "actions/setup-node@v4"
       with:
         node-version: 20
+        package-manager-cache: false
     - id: "fetch_gcs_credentials"
       name: "fetch gcs credentials from vault"
       uses: "grafana/shared-workflows/actions/get-vault-secrets@28361cdb22223e5f1e34358c86c20908e7248760"

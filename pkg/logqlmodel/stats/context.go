@@ -50,6 +50,17 @@ type Context struct {
 	store Store
 	// result accumulates results for JoinResult.
 	result Result
+	// recvWaitTime accumulates the time the querier spent waiting on ingester
+	// gRPC Recv() in nanoseconds.
+	// We use an int64 nanoseconds value here because the Ingester RecvWaitTime field
+	// is a double (so that it will pass correctly in json), but there are no
+	// atomic operations on doubles.
+	recvWaitTime int64
+	// querierExecTime accumulates the querier execution time in nanoseconds
+	// We use an int64 nanoseconds value here because the Queriers exec time field
+	// is a double (so that it will pass correctly in json), but there are no
+	// atomic operations on doubles.
+	querierExecTime int64
 
 	mtx sync.Mutex
 }
@@ -95,6 +106,7 @@ func (c *Context) Ingester() Ingester {
 		TotalBatches:       c.ingester.TotalBatches,
 		TotalLinesSent:     c.ingester.TotalLinesSent,
 		Store:              c.store,
+		RecvWaitTime:       time.Duration(c.recvWaitTime).Seconds(),
 	}
 }
 
@@ -140,6 +152,8 @@ func (c *Context) Reset() {
 	c.result.Reset()
 	c.caches.Reset()
 	c.index.Reset()
+	c.recvWaitTime = 0
+	c.querierExecTime = 0
 }
 
 // Result calculates the summary based on store and ingester data.
@@ -147,12 +161,23 @@ func (c *Context) Result(execTime time.Duration, queueTime time.Duration, totalE
 	r := c.result
 
 	r.Merge(Result{
+		// ewelch: I'm not sure why we have a separate store object in the context and we don't use the
+		// store object in the querier object. I didn't try to solve this when adding the querier exec time
+		// but I suspect this could be simplified?
 		Querier: Querier{
-			Store: c.store,
+			Store:           c.store,
+			QuerierExecTime: time.Duration(c.querierExecTime).Seconds(),
 		},
-		Ingester: c.ingester,
-		Caches:   c.caches,
-		Index:    c.index,
+		Ingester: Ingester{
+			TotalReached:       c.ingester.TotalReached,
+			TotalChunksMatched: c.ingester.TotalChunksMatched,
+			TotalBatches:       c.ingester.TotalBatches,
+			TotalLinesSent:     c.ingester.TotalLinesSent,
+			Store:              c.ingester.Store,
+			RecvWaitTime:       time.Duration(c.recvWaitTime).Seconds(),
+		},
+		Caches: c.caches,
+		Index:  c.index,
 	})
 
 	r.ComputeSummary(execTime, queueTime, totalEntriesReturned)
@@ -253,6 +278,7 @@ func (s *Summary) Merge(m Summary) {
 
 func (q *Querier) Merge(m Querier) {
 	q.Store.Merge(m.Store)
+	q.QuerierExecTime += m.QuerierExecTime
 }
 
 func (i *Ingester) Merge(m Ingester) {
@@ -261,12 +287,14 @@ func (i *Ingester) Merge(m Ingester) {
 	i.TotalLinesSent += m.TotalLinesSent
 	i.TotalChunksMatched += m.TotalChunksMatched
 	i.TotalReached += m.TotalReached
+	i.RecvWaitTime += m.RecvWaitTime
 }
 
 func (i *Index) Merge(m Index) {
 	i.TotalChunks += m.TotalChunks
 	i.PostFilterChunks += m.PostFilterChunks
 	i.ShardsDuration += m.ShardsDuration
+	i.TotalStreams += m.TotalStreams
 	if m.UsedBloomFilters {
 		i.UsedBloomFilters = m.UsedBloomFilters
 	}
@@ -315,7 +343,8 @@ func (r *Result) Merge(m Result) {
 	r.Summary.Merge(m.Summary)
 	r.Index.Merge(m.Index)
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
-		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime), int(r.Summary.TotalEntriesReturned))
+		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime),
+		int(r.Summary.TotalEntriesReturned))
 }
 
 // ConvertSecondsToNanoseconds converts time.Duration representation of seconds (float64)
@@ -379,6 +408,12 @@ func (c *Context) AddIngesterTotalChunkMatched(i int64) {
 
 func (c *Context) AddIngesterReached(i int32) {
 	atomic.AddInt32(&c.ingester.TotalReached, i)
+}
+
+// AddIngesterRecvWait accumulates the time the querier spent waiting
+// for batches from ingesters over gRPC Recv().
+func (c *Context) AddIngesterRecvWait(d time.Duration) {
+	atomic.AddInt64(&c.recvWaitTime, int64(d))
 }
 
 func (c *Context) AddHeadChunkLines(i int64) {
@@ -593,6 +628,11 @@ func (c *Context) SetQueryUsedV2Engine() {
 	c.store.QueryUsedV2Engine = true
 }
 
+// AddQuerierExecTime accumulates the querier execution time.
+func (c *Context) AddQuerierExecTime(d time.Duration) {
+	atomic.AddInt64(&c.querierExecTime, int64(d))
+}
+
 func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 	var stats *Cache
 	switch t {
@@ -628,6 +668,7 @@ func (r Result) KVList() []any {
 		"Ingester.TotalChunksMatched", r.Ingester.TotalChunksMatched,
 		"Ingester.TotalBatches", r.Ingester.TotalBatches,
 		"Ingester.TotalLinesSent", r.Ingester.TotalLinesSent,
+		"Ingester.RecvWaitTime", ConvertSecondsToNanoseconds(r.Ingester.RecvWaitTime),
 		"Ingester.TotalChunksRef", r.Ingester.Store.TotalChunksRef,
 		"Ingester.TotalChunksDownloaded", r.Ingester.Store.TotalChunksDownloaded,
 		"Ingester.ChunksDownloadTime", time.Duration(r.Ingester.Store.ChunksDownloadTime),

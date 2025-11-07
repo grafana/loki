@@ -57,10 +57,11 @@ var streamPool = sync.Pool{
 
 // Builder builds a streams section.
 type Builder struct {
-	metrics  *Metrics
-	pageSize int
-	lastID   atomic.Int64
-	lookup   map[uint64][]*Stream
+	metrics      *Metrics
+	pageSize     int
+	pageRowCount int
+	lastID       atomic.Int64
+	lookup       map[uint64][]*Stream
 
 	// The optional tenant that owns the builder. If specified, the section
 	// must only contain streams owned by the tenant, and no other tenants.
@@ -80,15 +81,16 @@ type Builder struct {
 
 // NewBuilder creates a new sterams section builder. The pageSize argument
 // specifies how large pages should be.
-func NewBuilder(metrics *Metrics, pageSize int) *Builder {
+func NewBuilder(metrics *Metrics, pageSize, pageRowCount int) *Builder {
 	if metrics == nil {
 		metrics = NewMetrics()
 	}
 	return &Builder{
-		metrics:  metrics,
-		pageSize: pageSize,
-		lookup:   make(map[uint64][]*Stream, 1024),
-		ordered:  make([]*Stream, 0, 1024),
+		metrics:      metrics,
+		pageSize:     pageSize,
+		pageRowCount: pageRowCount,
+		lookup:       make(map[uint64][]*Stream, 1024),
+		ordered:      make([]*Stream, 0, 1024),
 	}
 }
 
@@ -141,6 +143,26 @@ func (b *Builder) observeRecord(ts time.Time) {
 		b.globalMaxTimestamp = ts
 		b.metrics.maxTimestamp.Set(float64(ts.Unix()))
 	}
+}
+
+// AppendValue may only be used for copying streams from an existing section.
+func (b *Builder) AppendValue(val Stream) {
+	newStream := streamPool.Get().(*Stream)
+	newStream.Reset()
+
+	newStream.ID = val.ID
+	newStream.MinTimestamp, newStream.MaxTimestamp = val.MinTimestamp, val.MaxTimestamp
+	newStream.UncompressedSize = val.UncompressedSize
+	newStream.Labels = val.Labels
+	newStream.Rows = val.Rows
+
+	newStream.Labels.Range(func(l labels.Label) {
+		b.currentLabelsSize += len(l.Value)
+	})
+
+	hash := labels.StableHash(newStream.Labels)
+	b.lookup[hash] = append(b.lookup[hash], newStream)
+	b.ordered = append(b.ordered, newStream)
 }
 
 // EstimatedSize returns the estimated size of the Streams section in bytes.
@@ -255,23 +277,23 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	// 2. Move some columns into an aggregated column which holds multiple label
 	//    keys and values.
 
-	idBuilder, err := numberColumnBuilder(ColumnTypeStreamID, b.pageSize)
+	idBuilder, err := numberColumnBuilder(ColumnTypeStreamID, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating ID column: %w", err)
 	}
-	minTimestampBuilder, err := numberColumnBuilder(ColumnTypeMinTimestamp, b.pageSize)
+	minTimestampBuilder, err := numberColumnBuilder(ColumnTypeMinTimestamp, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating minimum timestamp column: %w", err)
 	}
-	maxTimestampBuilder, err := numberColumnBuilder(ColumnTypeMaxTimestamp, b.pageSize)
+	maxTimestampBuilder, err := numberColumnBuilder(ColumnTypeMaxTimestamp, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating maximum timestamp column: %w", err)
 	}
-	rowsCountBuilder, err := numberColumnBuilder(ColumnTypeRows, b.pageSize)
+	rowsCountBuilder, err := numberColumnBuilder(ColumnTypeRows, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating rows column: %w", err)
 	}
-	uncompressedSizeBuilder, err := numberColumnBuilder(ColumnTypeUncompressedSize, b.pageSize)
+	uncompressedSizeBuilder, err := numberColumnBuilder(ColumnTypeUncompressedSize, b.pageSize, b.pageRowCount)
 	if err != nil {
 		return fmt.Errorf("creating uncompressed size column: %w", err)
 	}
@@ -288,7 +310,8 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 		}
 
 		builder, err := dataset.NewColumnBuilder(name, dataset.BuilderOptions{
-			PageSizeHint: b.pageSize,
+			PageSizeHint:    b.pageSize,
+			PageMaxRowCount: b.pageRowCount,
 			Type: dataset.ColumnType{
 				Physical: datasetmd.PHYSICAL_TYPE_BINARY,
 				Logical:  ColumnTypeLabel.String(),
@@ -359,9 +382,10 @@ func (b *Builder) encodeTo(enc *columnar.Encoder) error {
 	return nil
 }
 
-func numberColumnBuilder(columnType ColumnType, pageSize int) (*dataset.ColumnBuilder, error) {
+func numberColumnBuilder(columnType ColumnType, pageSize, pageRowCount int) (*dataset.ColumnBuilder, error) {
 	return dataset.NewColumnBuilder("", dataset.BuilderOptions{
-		PageSizeHint: pageSize,
+		PageSizeHint:    pageSize,
+		PageMaxRowCount: pageRowCount,
 		Type: dataset.ColumnType{
 			Physical: datasetmd.PHYSICAL_TYPE_INT64,
 			Logical:  columnType.String(),

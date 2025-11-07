@@ -87,3 +87,7 @@ func (m *MockLimits) PatternRateThreshold(_ string) float64 {
 func (m *MockLimits) PersistenceGranularity(_ string) time.Duration {
 	return m.PersistenceGranularityVal
 }
+
+func (m *MockLimits) MaxScanTaskParallelism(_ string) int {
+	return 0
+}

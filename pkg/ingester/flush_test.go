@@ -74,6 +74,7 @@ type fullWAL struct{}
 func (fullWAL) Log(_ *wal.Record) error { return &os.PathError{Err: syscall.ENOSPC} }
 func (fullWAL) Start()                  {}
 func (fullWAL) Stop() error             { return nil }
+func (fullWAL) IsDiskThrottled() bool   { return false }
 
 func Benchmark_FlushLoop(b *testing.B) {
 	var (
@@ -498,6 +499,14 @@ func (s *testStore) GetShards(_ context.Context, _ string, _, _ model.Time, _ ui
 
 func (s *testStore) HasForSeries(_, _ model.Time) (sharding.ForSeries, bool) {
 	return nil, false
+}
+
+func (s *testStore) HasChunkSizingInfo(_, _ model.Time) bool {
+	return false
+}
+
+func (s *testStore) GetChunkRefsWithSizingInfo(_ context.Context, _ string, _, _ model.Time, _ chunk.Predicate) ([]logproto.ChunkRefWithSizingInfo, error) {
+	return nil, nil
 }
 
 func (s *testStore) GetSchemaConfigs() []config.PeriodConfig {

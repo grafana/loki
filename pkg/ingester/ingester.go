@@ -63,6 +63,7 @@ import (
 	util_log "github.com/grafana/loki/v3/pkg/util/log"
 	server_util "github.com/grafana/loki/v3/pkg/util/server"
 	"github.com/grafana/loki/v3/pkg/util/wal"
+	"github.com/grafana/loki/v3/pkg/validation"
 )
 
 const (
@@ -365,7 +366,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 	i.lifecyclerWatcher.WatchService(i.lifecycler)
 
 	if i.cfg.KafkaIngestion.Enabled {
-		i.ingestPartitionID, err = partitionring.ExtractIngesterPartitionID(cfg.LifecyclerConfig.ID)
+		i.ingestPartitionID, err = partitionring.ExtractPartitionID(cfg.LifecyclerConfig.ID)
 		if err != nil {
 			return nil, fmt.Errorf("calculating ingester partition ID: %w", err)
 		}
@@ -391,6 +392,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 			NewKafkaConsumerFactory(i, registerer, cfg.KafkaIngestion.KafkaConfig.MaxConsumerWorkers),
 			logger,
 			registerer,
+			partition.WithHeaderToContextExtractor(validation.IngestionPoliciesKafkaHeadersToContext),
 		)
 		if err != nil {
 			return nil, err
@@ -458,7 +460,7 @@ func (i *Ingester) setupAutoForget() {
 
 	go func() {
 		ctx := context.Background()
-		err := i.Service.AwaitRunning(ctx)
+		err := i.AwaitRunning(ctx)
 		if err != nil {
 			level.Error(i.logger).Log("msg", fmt.Sprintf("autoforget received error %s, autoforget is disabled", err.Error()))
 			return
@@ -997,6 +999,11 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	if err != nil {
 		return nil, err
 	} else if i.readonly {
+		return nil, ErrReadOnly
+	}
+
+	// Check if disk is too full and throttle writes if needed
+	if i.wal.IsDiskThrottled() {
 		return nil, ErrReadOnly
 	}
 

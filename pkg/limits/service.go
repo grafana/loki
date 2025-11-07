@@ -82,7 +82,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 	if err != nil {
 		return nil, fmt.Errorf("failed to create partition manager: %w", err)
 	}
-	s.usage, err = newUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, reg)
+	s.usage, err = newUsageStore(cfg.ActiveWindow, cfg.RateWindow, cfg.BucketSize, cfg.NumPartitions, limits, reg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create usage store: %w", err)
 	}
@@ -123,6 +123,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 		kgo.DisableAutoCommit(),
 		kgo.OnPartitionsAssigned(s.partitionLifecycler.Assign),
 		kgo.OnPartitionsRevoked(s.partitionLifecycler.Revoke),
+		kgo.OnPartitionsLost(s.partitionLifecycler.Lost),
 		// For now these are hardcoded, but we might choose to make them
 		// configurable in the future. We allow up to 100MB to be buffered
 		// in total, and up to 1.5MB per partition. If an instance consumes
@@ -157,7 +158,6 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 		reg,
 	)
 	s.limitsChecker = newLimitsChecker(
-		limits,
 		s.usage,
 		s.producer,
 		s.partitionManager,
@@ -220,7 +220,7 @@ func (s *Service) CheckReady(ctx context.Context) error {
 // partitions or the wait assign period has elapsed. It must not be called
 // without a lock on partitionReadinessMtx.
 func (s *Service) checkPartitionsAssigned(_ context.Context) error {
-	if s.partitionReadinessWaitAssignSince == (time.Time{}) {
+	if s.partitionReadinessWaitAssignSince.IsZero() {
 		s.partitionReadinessWaitAssignSince = s.clock.Now()
 	}
 	if s.clock.Since(s.partitionReadinessWaitAssignSince) < partitionReadinessWaitAssignPeriod {

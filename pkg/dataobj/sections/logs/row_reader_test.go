@@ -37,6 +37,7 @@ func TestRowReader_StreamIDPredicate(t *testing.T) {
 func buildSection(t *testing.T) *Section {
 	logsBuilder := NewBuilder(nil, BuilderOptions{
 		StripeMergeLimit: 2,
+		SortOrder:        SortStreamASC,
 	})
 	logsBuilder.Append(Record{
 		StreamID:  1,

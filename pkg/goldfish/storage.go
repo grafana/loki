@@ -12,6 +12,8 @@ type Storage interface {
 
 	// Read operations (used by UI)
 	GetSampledQueries(ctx context.Context, page, pageSize int, filter QueryFilter) (*APIResponse, error)
+	GetQueryByCorrelationID(ctx context.Context, correlationID string) (*QuerySample, error)
+	GetStatistics(ctx context.Context, filter StatsFilter) (*Statistics, error)
 
 	// Lifecycle
 	Close() error
@@ -20,7 +22,7 @@ type Storage interface {
 // APIResponse represents the paginated API response for UI
 type APIResponse struct {
 	Queries  []QuerySample `json:"queries"`
-	Total    int           `json:"total"`
+	HasMore  bool          `json:"hasMore"`
 	Page     int           `json:"page"`
 	PageSize int           `json:"pageSize"`
 }

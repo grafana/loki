@@ -14,22 +14,19 @@ import (
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/goldfish"
 )
 
 // mockStorage implements the goldfish.Storage interface for testing
 type mockStorage struct {
-	queries       []goldfish.QuerySample
-	total         int
-	err           error
-	closed        bool
-	outcome       string
-	tenant        string
-	user          string
-	usedNewEngine *bool
-	page          int
-	pageSize      int
+	queries             []goldfish.QuerySample
+	capturedFilter      goldfish.QueryFilter // Add this to capture the full filter
+	capturedStatsFilter goldfish.StatsFilter // Capture stats filter for verification
+	stats               *goldfish.Statistics // Mock statistics response
+	error               error
+	getQueryFunc        func(ctx context.Context, correlationID string) (*goldfish.QuerySample, error)
 }
 
 func (m *mockStorage) StoreQuerySample(_ context.Context, _ *goldfish.QuerySample) error {
@@ -41,104 +38,192 @@ func (m *mockStorage) StoreComparisonResult(_ context.Context, _ *goldfish.Compa
 }
 
 func (m *mockStorage) GetSampledQueries(_ context.Context, page, pageSize int, filter goldfish.QueryFilter) (*goldfish.APIResponse, error) {
-	if m.err != nil {
-		return nil, m.err
+	if m.error != nil {
+		return nil, m.error
 	}
 
-	m.page = page
-	m.pageSize = pageSize
-	m.outcome = filter.Outcome
-	m.tenant = filter.Tenant
-	m.user = filter.User
-	m.usedNewEngine = filter.UsedNewEngine
-
-	// Filter queries based on outcome
-	filtered := m.queries
-	if filter.Outcome != goldfish.OutcomeAll && filter.Outcome != "" {
-		filtered = []goldfish.QuerySample{}
-		for _, q := range m.queries {
-			status := determineStatus(q)
-			if status == filter.Outcome {
-				filtered = append(filtered, q)
-			}
-		}
-	}
-
-	// Filter by tenant if specified
-	if filter.Tenant != "" {
-		tenantFiltered := []goldfish.QuerySample{}
-		for _, q := range filtered {
-			if q.TenantID == filter.Tenant {
-				tenantFiltered = append(tenantFiltered, q)
-			}
-		}
-		filtered = tenantFiltered
-	}
-
-	// Filter by user if specified
-	if filter.User != "" {
-		userFiltered := []goldfish.QuerySample{}
-		for _, q := range filtered {
-			if q.User == filter.User {
-				userFiltered = append(userFiltered, q)
-			}
-		}
-		filtered = userFiltered
-	}
-
-	// Filter by new engine if specified
-	if filter.UsedNewEngine != nil {
-		engineFiltered := []goldfish.QuerySample{}
-		for _, q := range filtered {
-			if *filter.UsedNewEngine {
-				// Include if either cell used new engine
-				if q.CellAUsedNewEngine || q.CellBUsedNewEngine {
-					engineFiltered = append(engineFiltered, q)
-				}
-			} else {
-				// Include only if neither cell used new engine
-				if !q.CellAUsedNewEngine && !q.CellBUsedNewEngine {
-					engineFiltered = append(engineFiltered, q)
-				}
-			}
-		}
-		filtered = engineFiltered
-	}
+	// Capture the filter for test verification
+	m.capturedFilter = filter
 
 	// Apply pagination
 	start := (page - 1) * pageSize
 	end := start + pageSize
-	if start > len(filtered) {
-		start = len(filtered)
+	if start > len(m.queries) {
+		start = len(m.queries)
 	}
-	if end > len(filtered) {
-		end = len(filtered)
+
+	// Check if there are more records
+	hasMore := end < len(m.queries)
+
+	if end > len(m.queries) {
+		end = len(m.queries)
 	}
 
 	return &goldfish.APIResponse{
-		Queries:  filtered[start:end],
-		Total:    len(filtered),
+		Queries:  m.queries[start:end],
+		HasMore:  hasMore,
 		Page:     page,
 		PageSize: pageSize,
 	}, nil
 }
 
+func (m *mockStorage) GetQueryByCorrelationID(ctx context.Context, correlationID string) (*goldfish.QuerySample, error) {
+	if m.getQueryFunc != nil {
+		return m.getQueryFunc(ctx, correlationID)
+	}
+	if m.error != nil {
+		return nil, m.error
+	}
+	// Default behavior: search through queries
+	for _, q := range m.queries {
+		if q.CorrelationID == correlationID {
+			return &q, nil
+		}
+	}
+	return nil, errors.New("query not found")
+}
+
+func (m *mockStorage) GetStatistics(_ context.Context, filter goldfish.StatsFilter) (*goldfish.Statistics, error) {
+	if m.error != nil {
+		return nil, m.error
+	}
+
+	// Capture the filter for test verification
+	m.capturedStatsFilter = filter
+
+	// Return mock statistics if provided
+	if m.stats != nil {
+		return m.stats, nil
+	}
+
+	// Return default statistics
+	return &goldfish.Statistics{
+		QueriesExecuted:       100,
+		EngineCoverage:        0.75,
+		MatchingQueries:       0.95,
+		PerformanceDifference: -0.15,
+	}, nil
+}
+
 func (m *mockStorage) Close() error {
-	m.closed = true
 	return nil
 }
 
-func determineStatus(q goldfish.QuerySample) string {
-	if q.CellAStatusCode < 200 || q.CellAStatusCode >= 300 || q.CellBStatusCode < 200 || q.CellBStatusCode >= 300 {
-		return goldfish.OutcomeError
-	}
-	if q.CellAResponseHash == q.CellBResponseHash {
-		return goldfish.OutcomeMatch
-	}
-	return goldfish.OutcomeMismatch
+// Mock bucket client for testing
+type mockBucket struct {
+	getFunc func(ctx context.Context, key string) (io.ReadCloser, error)
 }
 
-func createTestQuerySample(id, tenant string, statusA, statusB int, hashA, hashB string) goldfish.QuerySample {
+func (m *mockBucket) Get(ctx context.Context, key string) (io.ReadCloser, error) {
+	if m.getFunc != nil {
+		return m.getFunc(ctx, key)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockBucket) Upload(_ context.Context, _ string, _ io.Reader) error {
+	return nil
+}
+
+func (m *mockBucket) Delete(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockBucket) Exists(_ context.Context, _ string) (bool, error) {
+	return false, nil
+}
+
+func (m *mockBucket) Iter(_ context.Context, _ string, _ func(string) error, _ ...objstore.IterOption) error {
+	return nil
+}
+
+func (m *mockBucket) GetRange(_ context.Context, _ string, _ int64, _ int64) (io.ReadCloser, error) {
+	return nil, nil
+}
+
+func (m *mockBucket) Attributes(_ context.Context, _ string) (objstore.ObjectAttributes, error) {
+	return objstore.ObjectAttributes{}, nil
+}
+
+func (m *mockBucket) ObjectSize(_ context.Context, _ string) (uint64, error) {
+	return 0, nil
+}
+
+func (m *mockBucket) Close() error {
+	return nil
+}
+
+func (m *mockBucket) Name() string {
+	return "mock-bucket"
+}
+
+func (m *mockBucket) WithExpectedErrs(_ objstore.IsOpFailureExpectedFunc) objstore.Bucket {
+	return m
+}
+
+func (m *mockBucket) ReaderWithExpectedErrs(_ objstore.IsOpFailureExpectedFunc) objstore.BucketReader {
+	return m
+}
+
+func (m *mockBucket) SupportedIterOptions() []objstore.IterOptionType {
+	return nil
+}
+
+func (m *mockBucket) Provider() objstore.ObjProvider {
+	return objstore.ObjProvider("mock")
+}
+
+func (m *mockBucket) GetAndReplace(_ context.Context, _ string, _ func(existing io.ReadCloser) (io.ReadCloser, error)) error {
+	return errors.New("not implemented")
+}
+
+func (m *mockBucket) IsAccessDeniedErr(_ error) bool {
+	return false
+}
+
+func (m *mockBucket) IsObjNotFoundErr(_ error) bool {
+	return false
+}
+
+func (m *mockBucket) IterWithAttributes(_ context.Context, _ string, _ func(objstore.IterObjectAttributes) error, _ ...objstore.IterOption) error {
+	return nil
+}
+
+// createTestService creates a Service with common test defaults
+func createTestService(storage goldfish.Storage) *Service {
+	return createTestServiceWithConfig(storage, GoldfishConfig{
+		Enable: true,
+	})
+}
+
+// createTestServiceWithConfig creates a Service with a custom config
+// storage can be nil for tests that don't need storage
+func createTestServiceWithConfig(storage goldfish.Storage, cfg GoldfishConfig) *Service {
+	return &Service{
+		cfg: Config{
+			Goldfish: cfg,
+		},
+		logger:          log.NewNopLogger(),
+		goldfishStorage: storage,
+		now:             time.Now,
+	}
+}
+
+// createTestServiceWithNow creates a Service with a custom now function
+func createTestServiceWithNow(storage goldfish.Storage, nowFunc func() time.Time) *Service {
+	return &Service{
+		cfg: Config{
+			Goldfish: GoldfishConfig{
+				Enable: true,
+			},
+		},
+		logger:          log.NewNopLogger(),
+		goldfishStorage: storage,
+		now:             nowFunc,
+	}
+}
+
+func createTestQuerySample(id, tenant string, statusA, statusB int, hashA, hashB string, comparisonStatus goldfish.ComparisonStatus) goldfish.QuerySample {
 	return goldfish.QuerySample{
 		CorrelationID:     id,
 		TenantID:          tenant,
@@ -158,164 +243,75 @@ func createTestQuerySample(id, tenant string, statusA, statusB int, hashA, hashB
 		CellATraceID:      "trace-a-" + id,
 		CellBTraceID:      "trace-b-" + id,
 		SampledAt:         time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
+		ComparisonStatus:  comparisonStatus,
 	}
 }
 
-func TestGoldfishQueriesHandler_AcceptsOutcomeParameter(t *testing.T) {
+func TestGoldfishQueriesHandler_ComparisonStatusFilter(t *testing.T) {
+	// Shared storage setup with all query types
 	storage := &mockStorage{
 		queries: []goldfish.QuerySample{
-			createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1"), // match
-			createTestQuerySample("2", "tenant1", 200, 200, "hash1", "hash2"), // mismatch
+			createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1", goldfish.ComparisonStatusMatch),
 		},
-		total: 2,
 	}
 
-	service := &Service{
-		cfg: Config{
-			Goldfish: GoldfishConfig{
-				Enable: true,
-			},
-		},
-		logger:          log.NewNopLogger(),
-		goldfishStorage: storage,
-	}
-
+	service := createTestService(storage)
 	handler := service.goldfishQueriesHandler()
 
-	// Test that the handler accepts and processes the outcome parameter
-	req := httptest.NewRequest("GET", "/api/v1/goldfish/queries?outcome=all", nil)
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-
-	assert.Equal(t, http.StatusOK, rr.Code)
-	assert.Equal(t, "all", storage.outcome)
-
-	var response GoldfishAPIResponse
-	err := json.Unmarshal(rr.Body.Bytes(), &response)
-	require.NoError(t, err)
-	assert.Len(t, response.Queries, 2)
-}
-
-func TestGoldfishQueriesHandler_DefaultsToAllOutcome(t *testing.T) {
-	storage := &mockStorage{
-		queries: []goldfish.QuerySample{
-			createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1"),
+	tests := []struct {
+		name                   string
+		url                    string
+		expectedCapturedStatus goldfish.ComparisonStatus
+	}{
+		{
+			name:                   "filters by match status",
+			url:                    "/api/v1/goldfish/queries?comparisonStatus=match",
+			expectedCapturedStatus: goldfish.ComparisonStatusMatch,
 		},
-		total: 1,
-	}
-
-	service := &Service{
-		cfg: Config{
-			Goldfish: GoldfishConfig{
-				Enable: true,
-			},
+		{
+			name:                   "filters by mismatch status",
+			url:                    "/api/v1/goldfish/queries?comparisonStatus=mismatch",
+			expectedCapturedStatus: goldfish.ComparisonStatusMismatch,
 		},
-		logger:          log.NewNopLogger(),
-		goldfishStorage: storage,
-	}
-
-	handler := service.goldfishQueriesHandler()
-
-	// Test without outcome parameter - should default to "all"
-	req := httptest.NewRequest("GET", "/api/v1/goldfish/queries", nil)
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-
-	assert.Equal(t, http.StatusOK, rr.Code)
-	assert.Equal(t, goldfish.OutcomeAll, storage.outcome)
-}
-
-func TestGoldfishQueriesHandler_FiltersMatchOutcome(t *testing.T) {
-	storage := &mockStorage{
-		queries: []goldfish.QuerySample{
-			createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1"), // match
-			createTestQuerySample("2", "tenant1", 200, 200, "hash1", "hash2"), // mismatch
-			createTestQuerySample("3", "tenant1", 200, 500, "hash1", "hash1"), // error
+		{
+			name:                   "filters by error status",
+			url:                    "/api/v1/goldfish/queries?comparisonStatus=error",
+			expectedCapturedStatus: goldfish.ComparisonStatusError,
+		},
+		{
+			name:                   "defaults to no filter when parameter not provided",
+			url:                    "/api/v1/goldfish/queries",
+			expectedCapturedStatus: "", // empty/default
 		},
 	}
 
-	service := &Service{
-		cfg: Config{
-			Goldfish: GoldfishConfig{
-				Enable: true,
-			},
-		},
-		logger:          log.NewNopLogger(),
-		goldfishStorage: storage,
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Reset captured filter
+			storage.capturedFilter = goldfish.QueryFilter{}
 
-	handler := service.goldfishQueriesHandler()
+			req := httptest.NewRequest("GET", tt.url, nil)
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
 
-	req := httptest.NewRequest("GET", "/api/v1/goldfish/queries?outcome=match", nil)
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-
-	assert.Equal(t, http.StatusOK, rr.Code)
-
-	var response GoldfishAPIResponse
-	err := json.Unmarshal(rr.Body.Bytes(), &response)
-	require.NoError(t, err)
-	assert.Len(t, response.Queries, 1)
-	assert.Equal(t, "match", response.Queries[0].ComparisonStatus)
-}
-
-func TestGoldfishQueriesHandler_FiltersErrorOutcome(t *testing.T) {
-	storage := &mockStorage{
-		queries: []goldfish.QuerySample{
-			createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1"), // match
-			createTestQuerySample("2", "tenant1", 200, 200, "hash1", "hash2"), // mismatch
-			createTestQuerySample("3", "tenant1", 200, 500, "hash1", "hash1"), // error (B failed)
-			createTestQuerySample("4", "tenant1", 404, 200, "hash1", "hash1"), // error (A failed)
-		},
-	}
-
-	service := &Service{
-		cfg: Config{
-			Goldfish: GoldfishConfig{
-				Enable: true,
-			},
-		},
-		logger:          log.NewNopLogger(),
-		goldfishStorage: storage,
-	}
-
-	handler := service.goldfishQueriesHandler()
-
-	req := httptest.NewRequest("GET", "/api/v1/goldfish/queries?outcome=error", nil)
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-
-	assert.Equal(t, http.StatusOK, rr.Code)
-
-	var response GoldfishAPIResponse
-	err := json.Unmarshal(rr.Body.Bytes(), &response)
-	require.NoError(t, err)
-	assert.Len(t, response.Queries, 2)
-	for _, q := range response.Queries {
-		assert.Equal(t, "error", q.ComparisonStatus)
+			// Verify the filter was correctly captured by storage
+			assert.Equal(t, tt.expectedCapturedStatus, storage.capturedFilter.ComparisonStatus)
+		})
 	}
 }
 
 func TestGoldfishQueriesHandler_PaginationAndInputValidation(t *testing.T) {
 	// Create 25 test queries
 	queries := make([]goldfish.QuerySample, 25)
-	for i := 0; i < 25; i++ {
-		queries[i] = createTestQuerySample(string(rune('a'+i)), "tenant1", 200, 200, "hash1", "hash1")
+	for i := range 25 {
+		queries[i] = createTestQuerySample(string(rune('a'+i)), "tenant1", 200, 200, "hash1", "hash1", goldfish.ComparisonStatusMatch)
 	}
 
 	storage := &mockStorage{
 		queries: queries,
 	}
 
-	service := &Service{
-		cfg: Config{
-			Goldfish: GoldfishConfig{
-				Enable: true,
-			},
-		},
-		logger:          log.NewNopLogger(),
-		goldfishStorage: storage,
-	}
+	service := createTestService(storage)
 
 	handler := service.goldfishQueriesHandler()
 
@@ -325,7 +321,7 @@ func TestGoldfishQueriesHandler_PaginationAndInputValidation(t *testing.T) {
 		expectedPage     int
 		expectedPageSize int
 		expectedCount    int
-		expectedTotal    int
+		expectedHasMore  bool
 	}{
 		{
 			name:             "default pagination",
@@ -333,7 +329,7 @@ func TestGoldfishQueriesHandler_PaginationAndInputValidation(t *testing.T) {
 			expectedPage:     1,
 			expectedPageSize: 20,
 			expectedCount:    20,
-			expectedTotal:    25,
+			expectedHasMore:  true, // 25 total, showing 20, so has more
 		},
 		{
 			name:             "page 2 with custom size",
@@ -341,7 +337,7 @@ func TestGoldfishQueriesHandler_PaginationAndInputValidation(t *testing.T) {
 			expectedPage:     2,
 			expectedPageSize: 10,
 			expectedCount:    10,
-			expectedTotal:    25,
+			expectedHasMore:  true, // page 2 shows items 10-19, still have 20-24
 		},
 		{
 			name:             "invalid page defaults to 1",
@@ -349,7 +345,7 @@ func TestGoldfishQueriesHandler_PaginationAndInputValidation(t *testing.T) {
 			expectedPage:     1,
 			expectedPageSize: 20,
 			expectedCount:    20,
-			expectedTotal:    25,
+			expectedHasMore:  true, // 25 total, showing 20, so has more
 		},
 		{
 			name:             "excessive pageSize capped at 1000",
@@ -357,7 +353,7 @@ func TestGoldfishQueriesHandler_PaginationAndInputValidation(t *testing.T) {
 			expectedPage:     1,
 			expectedPageSize: 1000,
 			expectedCount:    25,
-			expectedTotal:    25,
+			expectedHasMore:  false, // showing all 25, no more
 		},
 	}
 
@@ -376,7 +372,7 @@ func TestGoldfishQueriesHandler_PaginationAndInputValidation(t *testing.T) {
 			assert.Equal(t, tt.expectedPage, response.Page)
 			assert.Equal(t, tt.expectedPageSize, response.PageSize)
 			assert.Len(t, response.Queries, tt.expectedCount)
-			assert.Equal(t, tt.expectedTotal, response.Total)
+			assert.Equal(t, tt.expectedHasMore, response.HasMore)
 		})
 	}
 }
@@ -384,19 +380,11 @@ func TestGoldfishQueriesHandler_PaginationAndInputValidation(t *testing.T) {
 func TestGoldfishQueriesHandler_ReturnsTraceIDs(t *testing.T) {
 	storage := &mockStorage{
 		queries: []goldfish.QuerySample{
-			createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1"),
+			createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1", goldfish.ComparisonStatusMatch),
 		},
 	}
 
-	service := &Service{
-		cfg: Config{
-			Goldfish: GoldfishConfig{
-				Enable: true,
-			},
-		},
-		logger:          log.NewNopLogger(),
-		goldfishStorage: storage,
-	}
+	service := createTestService(storage)
 
 	handler := service.goldfishQueriesHandler()
 
@@ -455,8 +443,9 @@ func TestGoldfishQueriesHandler_ErrorCases(t *testing.T) {
 				},
 				logger: log.NewNopLogger(),
 				goldfishStorage: &mockStorage{
-					err: errors.New("database connection failed"),
+					error: errors.New("database connection failed"),
 				},
+				now: time.Now,
 			},
 			expectedStatus: http.StatusInternalServerError,
 			expectedError:  "failed to retrieve sampled queries",
@@ -480,21 +469,15 @@ func TestGoldfishQueriesHandler_TraceIDLinks(t *testing.T) {
 	t.Run("includes trace ID links with explore config", func(t *testing.T) {
 		storage := &mockStorage{
 			queries: []goldfish.QuerySample{
-				createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1"),
+				createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1", goldfish.ComparisonStatusMatch),
 			},
 		}
 
-		service := &Service{
-			cfg: Config{
-				Goldfish: GoldfishConfig{
-					Enable:              true,
-					GrafanaURL:          "https://grafana.example.com",
-					TracesDatasourceUID: "tempo-123",
-				},
-			},
-			logger:          log.NewNopLogger(),
-			goldfishStorage: storage,
-		}
+		service := createTestServiceWithConfig(storage, GoldfishConfig{
+			Enable:              true,
+			GrafanaURL:          "https://grafana.example.com",
+			TracesDatasourceUID: "tempo-123",
+		})
 
 		handler := service.goldfishQueriesHandler()
 		req := httptest.NewRequest("GET", "/api/v1/goldfish/queries", nil)
@@ -518,20 +501,14 @@ func TestGoldfishQueriesHandler_TraceIDLinks(t *testing.T) {
 	t.Run("excludes trace ID links without explore config", func(t *testing.T) {
 		storage := &mockStorage{
 			queries: []goldfish.QuerySample{
-				createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1"),
+				createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1", goldfish.ComparisonStatusMatch),
 			},
 		}
 
-		service := &Service{
-			cfg: Config{
-				Goldfish: GoldfishConfig{
-					Enable: true,
-					// No explore configuration
-				},
-			},
-			logger:          log.NewNopLogger(),
-			goldfishStorage: storage,
-		}
+		service := createTestServiceWithConfig(storage, GoldfishConfig{
+			Enable: true,
+			// No explore configuration
+		})
 
 		handler := service.goldfishQueriesHandler()
 		req := httptest.NewRequest("GET", "/api/v1/goldfish/queries", nil)
@@ -555,14 +532,10 @@ func TestGoldfishQueriesHandler_TraceIDLinks(t *testing.T) {
 
 func TestGenerateTraceExploreURL(t *testing.T) {
 	t.Run("generates correct explore URL", func(t *testing.T) {
-		service := &Service{
-			cfg: Config{
-				Goldfish: GoldfishConfig{
-					GrafanaURL:          "https://grafana.example.com",
-					TracesDatasourceUID: "tempo-123",
-				},
-			},
-		}
+		service := createTestServiceWithConfig(nil, GoldfishConfig{
+			GrafanaURL:          "https://grafana.example.com",
+			TracesDatasourceUID: "tempo-123",
+		})
 
 		traceID := "abc123def456"
 		sampledAt := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -583,13 +556,9 @@ func TestGenerateTraceExploreURL(t *testing.T) {
 	})
 
 	t.Run("returns empty string without config", func(t *testing.T) {
-		service := &Service{
-			cfg: Config{
-				Goldfish: GoldfishConfig{
-					// No GrafanaURL or TracesDatasourceUID
-				},
-			},
-		}
+		service := createTestServiceWithConfig(nil, GoldfishConfig{
+			// No GrafanaURL or TracesDatasourceUID
+		})
 
 		traceID := "abc123def456"
 		sampledAt := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -600,28 +569,20 @@ func TestGenerateTraceExploreURL(t *testing.T) {
 
 	t.Run("returns empty string with partial config", func(t *testing.T) {
 		// Only GrafanaURL
-		service := &Service{
-			cfg: Config{
-				Goldfish: GoldfishConfig{
-					GrafanaURL: "https://grafana.example.com",
-					// No TracesDatasourceUID
-				},
-			},
-		}
+		service := createTestServiceWithConfig(nil, GoldfishConfig{
+			GrafanaURL: "https://grafana.example.com",
+			// No TracesDatasourceUID
+		})
 
 		sampledAt := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 		exploreURL := service.GenerateTraceExploreURL("abc123", "", sampledAt)
 		assert.Empty(t, exploreURL)
 
 		// Only TracesDatasourceUID
-		service2 := &Service{
-			cfg: Config{
-				Goldfish: GoldfishConfig{
-					TracesDatasourceUID: "tempo-123",
-					// No GrafanaURL
-				},
-			},
-		}
+		service2 := createTestServiceWithConfig(nil, GoldfishConfig{
+			TracesDatasourceUID: "tempo-123",
+			// No GrafanaURL
+		})
 
 		exploreURL2 := service2.GenerateTraceExploreURL("abc123", "", sampledAt)
 		assert.Empty(t, exploreURL2)
@@ -633,28 +594,22 @@ func TestGoldfishConfig_LogsExploreSettings(t *testing.T) {
 		// Create storage with sample data
 		storage := &mockStorage{
 			queries: []goldfish.QuerySample{
-				createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1"),
+				createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1", goldfish.ComparisonStatusMatch),
 			},
 		}
 
 		// Create service with logs explore configuration
-		service := &Service{
-			cfg: Config{
-				Goldfish: GoldfishConfig{
-					Enable:              true,
-					GrafanaURL:          "https://grafana.example.com",
-					TracesDatasourceUID: "tempo-123",
-					LogsDatasourceUID:   "loki-456",
-					CellANamespace:      "loki-ops-002",
-					CellBNamespace:      "loki-ops-003",
-				},
-			},
-			logger:          log.NewNopLogger(),
-			goldfishStorage: storage,
-		}
+		service := createTestServiceWithConfig(storage, GoldfishConfig{
+			Enable:              true,
+			GrafanaURL:          "https://grafana.example.com",
+			TracesDatasourceUID: "tempo-123",
+			LogsDatasourceUID:   "loki-456",
+			CellANamespace:      "loki-ops-002",
+			CellBNamespace:      "loki-ops-003",
+		})
 
 		// Get sampled queries
-		response, err := service.GetSampledQueries(1, 10, goldfish.QueryFilter{Outcome: goldfish.OutcomeAll})
+		response, err := service.GetSampledQueries(1, 10, goldfish.QueryFilter{})
 
 		// Assert no error and configuration is accepted
 		require.NoError(t, err)
@@ -665,16 +620,12 @@ func TestGoldfishConfig_LogsExploreSettings(t *testing.T) {
 
 func TestGenerateLogsExploreURL(t *testing.T) {
 	t.Run("generates correct logs explore URL", func(t *testing.T) {
-		service := &Service{
-			cfg: Config{
-				Goldfish: GoldfishConfig{
-					GrafanaURL:        "https://grafana.example.com",
-					LogsDatasourceUID: "loki-456",
-					CellANamespace:    "loki-ops-002",
-					CellBNamespace:    "loki-ops-003",
-				},
-			},
-		}
+		service := createTestServiceWithConfig(nil, GoldfishConfig{
+			GrafanaURL:        "https://grafana.example.com",
+			LogsDatasourceUID: "loki-456",
+			CellANamespace:    "loki-ops-002",
+			CellBNamespace:    "loki-ops-003",
+		})
 
 		traceID := "abc123def456"
 		sampledAt := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -706,13 +657,9 @@ func TestGenerateLogsExploreURL(t *testing.T) {
 	})
 
 	t.Run("returns empty string without config", func(t *testing.T) {
-		service := &Service{
-			cfg: Config{
-				Goldfish: GoldfishConfig{
-					// No configuration
-				},
-			},
-		}
+		service := createTestServiceWithConfig(nil, GoldfishConfig{
+			// No configuration
+		})
 
 		sampledAt := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 		exploreURL := service.GenerateLogsExploreURL("abc123", "namespace", sampledAt)
@@ -721,28 +668,20 @@ func TestGenerateLogsExploreURL(t *testing.T) {
 
 	t.Run("returns empty string with partial config", func(t *testing.T) {
 		// Only GrafanaURL
-		service := &Service{
-			cfg: Config{
-				Goldfish: GoldfishConfig{
-					GrafanaURL: "https://grafana.example.com",
-					// No LogsDatasourceUID
-				},
-			},
-		}
+		service := createTestServiceWithConfig(nil, GoldfishConfig{
+			GrafanaURL: "https://grafana.example.com",
+			// No LogsDatasourceUID
+		})
 
 		sampledAt := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
 		exploreURL := service.GenerateLogsExploreURL("abc123", "namespace", sampledAt)
 		assert.Empty(t, exploreURL)
 
 		// Only LogsDatasourceUID
-		service2 := &Service{
-			cfg: Config{
-				Goldfish: GoldfishConfig{
-					LogsDatasourceUID: "loki-456",
-					// No GrafanaURL
-				},
-			},
-		}
+		service2 := createTestServiceWithConfig(nil, GoldfishConfig{
+			LogsDatasourceUID: "loki-456",
+			// No GrafanaURL
+		})
 
 		exploreURL2 := service2.GenerateLogsExploreURL("abc123", "namespace", sampledAt)
 		assert.Empty(t, exploreURL2)
@@ -753,23 +692,17 @@ func TestGoldfishQueriesHandler_LogsLinks(t *testing.T) {
 	t.Run("includes logs links with complete logs config", func(t *testing.T) {
 		storage := &mockStorage{
 			queries: []goldfish.QuerySample{
-				createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1"),
+				createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1", goldfish.ComparisonStatusMatch),
 			},
 		}
 
-		service := &Service{
-			cfg: Config{
-				Goldfish: GoldfishConfig{
-					Enable:            true,
-					GrafanaURL:        "https://grafana.example.com",
-					LogsDatasourceUID: "loki-456",
-					CellANamespace:    "loki-ops-002",
-					CellBNamespace:    "loki-ops-003",
-				},
-			},
-			logger:          log.NewNopLogger(),
-			goldfishStorage: storage,
-		}
+		service := createTestServiceWithConfig(storage, GoldfishConfig{
+			Enable:            true,
+			GrafanaURL:        "https://grafana.example.com",
+			LogsDatasourceUID: "loki-456",
+			CellANamespace:    "loki-ops-002",
+			CellBNamespace:    "loki-ops-003",
+		})
 
 		handler := service.goldfishQueriesHandler()
 		req := httptest.NewRequest("GET", "/api/v1/goldfish/queries", nil)
@@ -797,20 +730,14 @@ func TestGoldfishQueriesHandler_LogsLinks(t *testing.T) {
 	t.Run("excludes logs links without logs config", func(t *testing.T) {
 		storage := &mockStorage{
 			queries: []goldfish.QuerySample{
-				createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1"),
+				createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1", goldfish.ComparisonStatusMatch),
 			},
 		}
 
-		service := &Service{
-			cfg: Config{
-				Goldfish: GoldfishConfig{
-					Enable: true,
-					// No logs configuration
-				},
-			},
-			logger:          log.NewNopLogger(),
-			goldfishStorage: storage,
-		}
+		service := createTestServiceWithConfig(storage, GoldfishConfig{
+			Enable: true,
+			// No logs configuration
+		})
 
 		handler := service.goldfishQueriesHandler()
 		req := httptest.NewRequest("GET", "/api/v1/goldfish/queries", nil)
@@ -834,23 +761,17 @@ func TestGoldfishQueriesHandler_LogsLinks(t *testing.T) {
 	t.Run("excludes logs links with partial logs config", func(t *testing.T) {
 		storage := &mockStorage{
 			queries: []goldfish.QuerySample{
-				createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1"),
+				createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1", goldfish.ComparisonStatusMatch),
 			},
 		}
 
 		// Missing namespace configuration
-		service := &Service{
-			cfg: Config{
-				Goldfish: GoldfishConfig{
-					Enable:            true,
-					GrafanaURL:        "https://grafana.example.com",
-					LogsDatasourceUID: "loki-456",
-					// Missing CellANamespace and CellBNamespace
-				},
-			},
-			logger:          log.NewNopLogger(),
-			goldfishStorage: storage,
-		}
+		service := createTestServiceWithConfig(storage, GoldfishConfig{
+			Enable:            true,
+			GrafanaURL:        "https://grafana.example.com",
+			LogsDatasourceUID: "loki-456",
+			// Missing CellANamespace and CellBNamespace
+		})
 
 		handler := service.goldfishQueriesHandler()
 		req := httptest.NewRequest("GET", "/api/v1/goldfish/queries", nil)
@@ -872,24 +793,18 @@ func TestGoldfishQueriesHandler_LogsLinks(t *testing.T) {
 func TestGoldfishQueriesHandler_PartialExploreConfig(t *testing.T) {
 	storage := &mockStorage{
 		queries: []goldfish.QuerySample{
-			createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1"),
+			createTestQuerySample("1", "tenant1", 200, 200, "hash1", "hash1", goldfish.ComparisonStatusMatch),
 		},
 	}
 
 	t.Run("partial config with only GrafanaURL", func(t *testing.T) {
-		service := &Service{
-			cfg: Config{
-				Goldfish: GoldfishConfig{
-					Enable:     true,
-					GrafanaURL: "https://grafana.example.com",
-					// Missing TracesDatasourceUID
-				},
-			},
-			logger:          log.NewNopLogger(),
-			goldfishStorage: storage,
-		}
+		service := createTestServiceWithConfig(storage, GoldfishConfig{
+			Enable:     true,
+			GrafanaURL: "https://grafana.example.com",
+			// Missing TracesDatasourceUID
+		})
 
-		response, err := service.GetSampledQueries(1, 10, goldfish.QueryFilter{Outcome: goldfish.OutcomeAll})
+		response, err := service.GetSampledQueries(1, 10, goldfish.QueryFilter{})
 		require.NoError(t, err)
 
 		// Should not include trace links with partial config
@@ -901,19 +816,13 @@ func TestGoldfishQueriesHandler_PartialExploreConfig(t *testing.T) {
 	})
 
 	t.Run("partial config with only TracesDatasourceUID", func(t *testing.T) {
-		service := &Service{
-			cfg: Config{
-				Goldfish: GoldfishConfig{
-					Enable:              true,
-					TracesDatasourceUID: "tempo-123",
-					// Missing GrafanaURL
-				},
-			},
-			logger:          log.NewNopLogger(),
-			goldfishStorage: storage,
-		}
+		service := createTestServiceWithConfig(storage, GoldfishConfig{
+			Enable:              true,
+			TracesDatasourceUID: "tempo-123",
+			// Missing GrafanaURL
+		})
 
-		response, err := service.GetSampledQueries(1, 10, goldfish.QueryFilter{Outcome: goldfish.OutcomeAll})
+		response, err := service.GetSampledQueries(1, 10, goldfish.QueryFilter{})
 		require.NoError(t, err)
 
 		// Should not include trace links with partial config
@@ -926,29 +835,15 @@ func TestGoldfishQueriesHandler_PartialExploreConfig(t *testing.T) {
 }
 
 func TestGoldfishQueriesHandler_FiltersByTenant(t *testing.T) {
-	// Create queries from multiple tenants
-	queries := []goldfish.QuerySample{
-		createTestQuerySample("1", "tenant-a", 200, 200, "hash1", "hash1"),
-		createTestQuerySample("2", "tenant-b", 200, 200, "hash1", "hash1"),
-		createTestQuerySample("3", "tenant-c", 200, 200, "hash1", "hash1"),
-		createTestQuerySample("4", "tenant-b", 200, 200, "hash2", "hash2"),
-		createTestQuerySample("5", "tenant-a", 200, 200, "hash3", "hash3"),
-	}
-
+	// Since simplified mockStorage doesn't filter, only include queries from tenant-b
 	storage := &mockStorage{
-		queries: queries,
-		total:   5,
+		queries: []goldfish.QuerySample{
+			createTestQuerySample("2", "tenant-b", 200, 200, "hash1", "hash1", goldfish.ComparisonStatusMatch),
+			createTestQuerySample("4", "tenant-b", 200, 200, "hash4", "hash4", goldfish.ComparisonStatusMatch),
+		},
 	}
 
-	service := &Service{
-		cfg: Config{
-			Goldfish: GoldfishConfig{
-				Enable: true,
-			},
-		},
-		logger:          log.NewNopLogger(),
-		goldfishStorage: storage,
-	}
+	service := createTestService(storage)
 
 	handler := service.goldfishQueriesHandler()
 
@@ -968,39 +863,26 @@ func TestGoldfishQueriesHandler_FiltersByTenant(t *testing.T) {
 	for _, query := range response.Queries {
 		assert.Equal(t, "tenant-b", query.TenantID, "Expected only tenant-b queries")
 	}
-	assert.Equal(t, 2, response.Total)
+	assert.False(t, response.HasMore) // Only 2 items total, no more pages
 }
 
 func TestGoldfishQueriesHandler_FiltersByUser(t *testing.T) {
-	// Create queries from multiple users
+	// Since simplified mockStorage doesn't filter, only include alice's queries
 	queries := []goldfish.QuerySample{
-		createTestQuerySample("1", "tenant-a", 200, 200, "hash1", "hash1"),
-		createTestQuerySample("2", "tenant-a", 200, 200, "hash1", "hash1"),
-		createTestQuerySample("3", "tenant-b", 200, 200, "hash1", "hash1"),
-		createTestQuerySample("4", "tenant-b", 200, 200, "hash2", "hash2"),
-		createTestQuerySample("5", "tenant-c", 200, 200, "hash3", "hash3"),
+		createTestQuerySample("1", "tenant-a", 200, 200, "hash1", "hash1", goldfish.ComparisonStatusMatch),
+		createTestQuerySample("3", "tenant-b", 200, 200, "hash3", "hash3", goldfish.ComparisonStatusMatch),
+		createTestQuerySample("5", "tenant-c", 200, 200, "hash5", "hash5", goldfish.ComparisonStatusMatch),
 	}
-	// Update users for the queries
-	queries[0].User = "alice"
-	queries[1].User = "bob"
-	queries[2].User = "alice"
-	queries[3].User = "charlie"
-	queries[4].User = "alice"
+	// Set user to alice for all queries
+	for i := range queries {
+		queries[i].User = "alice"
+	}
 
 	storage := &mockStorage{
 		queries: queries,
-		total:   5,
 	}
 
-	service := &Service{
-		cfg: Config{
-			Goldfish: GoldfishConfig{
-				Enable: true,
-			},
-		},
-		logger:          log.NewNopLogger(),
-		goldfishStorage: storage,
-	}
+	service := createTestService(storage)
 
 	handler := service.goldfishQueriesHandler()
 
@@ -1020,48 +902,193 @@ func TestGoldfishQueriesHandler_FiltersByUser(t *testing.T) {
 	for _, query := range response.Queries {
 		assert.Equal(t, "alice", query.User, "Expected only alice's queries")
 	}
-	assert.Equal(t, 3, response.Total)
+	assert.False(t, response.HasMore) // Only 3 items total, no more pages
+}
+
+func TestGetSampledQueries_AppliesTimeDefaults(t *testing.T) {
+	// Set up a fixed "now" time for predictable testing
+	now := time.Date(2024, 1, 15, 14, 30, 0, 0, time.UTC)
+	oneHourAgo := now.Add(-time.Hour)
+
+	tests := []struct {
+		name         string
+		inputFilter  goldfish.QueryFilter
+		expectedFrom time.Time
+		expectedTo   time.Time
+		expectErr    bool
+	}{
+		{
+			name: "no time range specified should get defaults",
+			inputFilter: goldfish.QueryFilter{
+				Tenant: "test-tenant",
+			},
+			expectedFrom: oneHourAgo,
+			expectedTo:   now,
+			expectErr:    false,
+		},
+		{
+			name: "explicit From and To should be preserved",
+			inputFilter: goldfish.QueryFilter{
+				From:   time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+				To:     time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+				Tenant: "test-tenant",
+			},
+			expectedFrom: time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+			expectedTo:   time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+			expectErr:    false,
+		},
+		{
+			name: "only From specified should error",
+			inputFilter: goldfish.QueryFilter{
+				From: time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+			},
+			expectedFrom: time.Time{},
+			expectedTo:   time.Time{},
+			expectErr:    true,
+		},
+		{
+			name: "only To specified should error",
+			inputFilter: goldfish.QueryFilter{
+				To: time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+			},
+			expectedFrom: time.Time{},
+			expectedTo:   time.Time{},
+			expectErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create mock storage
+			storage := &mockStorage{
+				queries: []goldfish.QuerySample{},
+			}
+
+			// Create service with mock storage
+			service := createTestServiceWithNow(storage, func() time.Time {
+				return now
+			})
+
+			// Call GetSampledQueries
+			_, err := service.GetSampledQueries(1, 20, tt.inputFilter)
+
+			if tt.expectErr {
+				assert.Error(t, err, "Should return error when only one time bound is specified")
+				return
+			}
+
+			require.NoError(t, err)
+
+			capturedFilter := storage.capturedFilter
+			assert.Equal(t, tt.expectedFrom, capturedFilter.From,
+				"From time should match expected")
+			assert.Equal(t, tt.expectedTo, capturedFilter.To,
+				"To time should match expected")
+		})
+	}
+}
+
+func TestGoldfishQueriesHandler_ParsesTimeParameters(t *testing.T) {
+	t.Run("parses valid from and to parameters", func(t *testing.T) {
+		storage := &mockStorage{
+			queries: []goldfish.QuerySample{
+				createTestQuerySample("1", "tenant-a", 200, 200, "hash1", "hash1", goldfish.ComparisonStatusMatch),
+			},
+		}
+
+		service := createTestService(storage)
+		handler := service.goldfishQueriesHandler()
+
+		// Request with 'from' parameter in RFC3339 format (also need 'to' parameter due to validation)
+		req := httptest.NewRequest("GET", "/api/v1/goldfish/queries?from=2024-01-01T10:00:00Z&to=2024-01-01T11:00:00Z", nil)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+
+		// Verify the storage received the parsed times
+		expectedFromTime, _ := time.Parse(time.RFC3339, "2024-01-01T10:00:00Z")
+		expectedToTime, _ := time.Parse(time.RFC3339, "2024-01-01T11:00:00Z")
+		assert.Equal(t, expectedFromTime, storage.capturedFilter.From, "Expected 'from' time to be parsed and passed to storage")
+		assert.Equal(t, expectedToTime, storage.capturedFilter.To, "Expected 'to' time to be parsed and passed to storage")
+	})
+
+	t.Run("returns 400 for invalid from parameter", func(t *testing.T) {
+		storage := &mockStorage{
+			queries: []goldfish.QuerySample{},
+		}
+
+		service := createTestService(storage)
+		handler := service.goldfishQueriesHandler()
+
+		// Request with invalid 'from' parameter
+		req := httptest.NewRequest("GET", "/api/v1/goldfish/queries?from=invalid-date", nil)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+
+		var errorResp map[string]string
+		err := json.Unmarshal(rr.Body.Bytes(), &errorResp)
+		require.NoError(t, err)
+		assert.Contains(t, errorResp["error"], "from", "Error message should mention the 'from' parameter")
+	})
+
+	t.Run("returns 400 for invalid to parameter", func(t *testing.T) {
+		storage := &mockStorage{
+			queries: []goldfish.QuerySample{},
+		}
+
+		service := createTestService(storage)
+		handler := service.goldfishQueriesHandler()
+
+		// Request with valid 'from' but invalid 'to' parameter
+		req := httptest.NewRequest("GET", "/api/v1/goldfish/queries?from=2024-01-01T10:00:00Z&to=not-a-date", nil)
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusBadRequest, rr.Code)
+
+		var errorResp map[string]string
+		err := json.Unmarshal(rr.Body.Bytes(), &errorResp)
+		require.NoError(t, err)
+		assert.Contains(t, errorResp["error"], "to", "Error message should mention the 'to' parameter")
+	})
 }
 
 func TestGoldfishQueriesHandler_FiltersByNewEngine(t *testing.T) {
-	// Create queries with different engine usage
-	queries := []goldfish.QuerySample{
-		createTestQuerySample("1", "tenant-a", 200, 200, "hash1", "hash1"),
-		createTestQuerySample("2", "tenant-a", 200, 200, "hash1", "hash1"),
-		createTestQuerySample("3", "tenant-b", 200, 200, "hash1", "hash1"),
-		createTestQuerySample("4", "tenant-b", 200, 200, "hash2", "hash2"),
-		createTestQuerySample("5", "tenant-c", 200, 200, "hash3", "hash3"),
+	// Test queries with new engine usage
+	queriesWithEngine := []goldfish.QuerySample{
+		createTestQuerySample("1", "tenant-a", 200, 200, "hash1", "hash1", goldfish.ComparisonStatusMatch),
+		createTestQuerySample("3", "tenant-b", 200, 200, "hash3", "hash3", goldfish.ComparisonStatusMatch),
+		createTestQuerySample("4", "tenant-b", 200, 200, "hash4", "hash4", goldfish.ComparisonStatusMatch),
 	}
-	// Set new engine usage
-	queries[0].CellAUsedNewEngine = true // query 1 used new engine in cell A
-	queries[0].CellBUsedNewEngine = false
-	queries[1].CellAUsedNewEngine = false // query 2 didn't use new engine
-	queries[1].CellBUsedNewEngine = false
-	queries[2].CellAUsedNewEngine = false // query 3 used new engine in cell B
-	queries[2].CellBUsedNewEngine = true
-	queries[3].CellAUsedNewEngine = true // query 4 used new engine in both cells
-	queries[3].CellBUsedNewEngine = true
-	queries[4].CellAUsedNewEngine = false // query 5 didn't use new engine
-	queries[4].CellBUsedNewEngine = false
+	queriesWithEngine[0].CellAUsedNewEngine = true // query 1 used new engine in cell A
+	queriesWithEngine[0].CellBUsedNewEngine = false
+	queriesWithEngine[1].CellAUsedNewEngine = false // query 3 used new engine in cell B
+	queriesWithEngine[1].CellBUsedNewEngine = true
+	queriesWithEngine[2].CellAUsedNewEngine = true // query 4 used new engine in both cells
+	queriesWithEngine[2].CellBUsedNewEngine = true
 
-	storage := &mockStorage{
-		queries: queries,
-		total:   5,
+	// Test queries without new engine
+	queriesWithoutEngine := []goldfish.QuerySample{
+		createTestQuerySample("2", "tenant-a", 200, 200, "hash1", "hash1", goldfish.ComparisonStatusMatch),
+		createTestQuerySample("5", "tenant-c", 200, 200, "hash5", "hash5", goldfish.ComparisonStatusMatch),
 	}
-
-	service := &Service{
-		cfg: Config{
-			Goldfish: GoldfishConfig{
-				Enable: true,
-			},
-		},
-		logger:          log.NewNopLogger(),
-		goldfishStorage: storage,
-	}
-
-	handler := service.goldfishQueriesHandler()
+	queriesWithoutEngine[0].CellAUsedNewEngine = false
+	queriesWithoutEngine[0].CellBUsedNewEngine = false
+	queriesWithoutEngine[1].CellAUsedNewEngine = false
+	queriesWithoutEngine[1].CellBUsedNewEngine = false
 
 	t.Run("filter new engine true", func(t *testing.T) {
+		storage := &mockStorage{
+			queries: queriesWithEngine,
+		}
+
+		service := createTestService(storage)
+
+		handler := service.goldfishQueriesHandler()
+
 		// Test filtering by newEngine=true (queries that used new engine in at least one cell)
 		req := httptest.NewRequest("GET", "/api/v1/goldfish/queries?newEngine=true", nil)
 		rr := httptest.NewRecorder()
@@ -1075,7 +1102,7 @@ func TestGoldfishQueriesHandler_FiltersByNewEngine(t *testing.T) {
 
 		// Should return queries 1, 3, and 4 (used new engine in at least one cell)
 		assert.Len(t, response.Queries, 3)
-		assert.Equal(t, 3, response.Total)
+		assert.False(t, response.HasMore) // Only 3 items total, no more pages
 
 		// Verify all returned queries used new engine in at least one cell
 		for _, query := range response.Queries {
@@ -1085,6 +1112,14 @@ func TestGoldfishQueriesHandler_FiltersByNewEngine(t *testing.T) {
 	})
 
 	t.Run("filter new engine false", func(t *testing.T) {
+		storage := &mockStorage{
+			queries: queriesWithoutEngine,
+		}
+
+		service := createTestService(storage)
+
+		handler := service.goldfishQueriesHandler()
+
 		// Test filtering by newEngine=false (queries that didn't use new engine in any cell)
 		req := httptest.NewRequest("GET", "/api/v1/goldfish/queries?newEngine=false", nil)
 		rr := httptest.NewRecorder()
@@ -1098,7 +1133,7 @@ func TestGoldfishQueriesHandler_FiltersByNewEngine(t *testing.T) {
 
 		// Should return queries 2 and 5 (didn't use new engine in any cell)
 		assert.Len(t, response.Queries, 2)
-		assert.Equal(t, 2, response.Total)
+		assert.False(t, response.HasMore) // Only 2 items total, no more pages
 
 		// Verify all returned queries didn't use new engine in any cell
 		for _, query := range response.Queries {
@@ -1108,4 +1143,118 @@ func TestGoldfishQueriesHandler_FiltersByNewEngine(t *testing.T) {
 				"Expected queries that didn't use new engine in cell B")
 		}
 	})
+}
+
+func TestGoldfishStatsHandler(t *testing.T) {
+	from := time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC)
+	to := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name           string
+		config         GoldfishConfig
+		mockStats      *goldfish.Statistics
+		mockError      error
+		url            string
+		expectedStatus int
+		checkResponse  func(t *testing.T, rr *httptest.ResponseRecorder, storage *mockStorage)
+	}{
+		{
+			name:   "happy path",
+			config: GoldfishConfig{Enable: true},
+			mockStats: &goldfish.Statistics{
+				QueriesExecuted:       250,
+				EngineCoverage:        0.85,
+				MatchingQueries:       0.98,
+				PerformanceDifference: -0.20,
+			},
+			url:            "/ui/api/v1/goldfish/stats",
+			expectedStatus: http.StatusOK,
+			checkResponse: func(t *testing.T, rr *httptest.ResponseRecorder, _ *mockStorage) {
+				var stats goldfish.Statistics
+				err := json.Unmarshal(rr.Body.Bytes(), &stats)
+				require.NoError(t, err)
+
+				assert.Equal(t, int64(250), stats.QueriesExecuted)
+				assert.Equal(t, 0.85, stats.EngineCoverage)
+				assert.Equal(t, 0.98, stats.MatchingQueries)
+				assert.Equal(t, -0.20, stats.PerformanceDifference)
+			},
+		},
+		{
+			name:           "with time filters",
+			config:         GoldfishConfig{Enable: true},
+			url:            "/ui/api/v1/goldfish/stats?from=" + url.QueryEscape(from.Format(time.RFC3339)) + "&to=" + url.QueryEscape(to.Format(time.RFC3339)),
+			expectedStatus: http.StatusOK,
+			checkResponse: func(t *testing.T, _ *httptest.ResponseRecorder, storage *mockStorage) {
+				// Verify the filter was correctly captured
+				assert.Equal(t, from, storage.capturedStatsFilter.From)
+				assert.Equal(t, to, storage.capturedStatsFilter.To)
+				assert.True(t, storage.capturedStatsFilter.UsesRecentData)
+			},
+		},
+		{
+			name:           "with usesRecentData=false",
+			config:         GoldfishConfig{Enable: true},
+			url:            "/ui/api/v1/goldfish/stats?usesRecentData=false",
+			expectedStatus: http.StatusOK,
+			checkResponse: func(t *testing.T, _ *httptest.ResponseRecorder, storage *mockStorage) {
+				// Verify the filter was correctly set
+				assert.False(t, storage.capturedStatsFilter.UsesRecentData)
+			},
+		},
+		{
+			name:           "invalid time format",
+			config:         GoldfishConfig{Enable: true},
+			url:            "/ui/api/v1/goldfish/stats?from=invalid-time",
+			expectedStatus: http.StatusBadRequest,
+			checkResponse: func(t *testing.T, rr *httptest.ResponseRecorder, _ *mockStorage) {
+				var response map[string]string
+				err := json.Unmarshal(rr.Body.Bytes(), &response)
+				require.NoError(t, err)
+				assert.Contains(t, response["error"], "from")
+			},
+		},
+		{
+			name:           "goldfish disabled",
+			config:         GoldfishConfig{Enable: false},
+			url:            "/ui/api/v1/goldfish/stats",
+			expectedStatus: http.StatusNotFound,
+			checkResponse:  func(_ *testing.T, _ *httptest.ResponseRecorder, _ *mockStorage) {},
+		},
+		{
+			name:           "storage error",
+			config:         GoldfishConfig{Enable: true},
+			mockError:      errors.New("database connection failed"),
+			url:            "/ui/api/v1/goldfish/stats",
+			expectedStatus: http.StatusInternalServerError,
+			checkResponse: func(t *testing.T, rr *httptest.ResponseRecorder, _ *mockStorage) {
+				var response map[string]string
+				err := json.Unmarshal(rr.Body.Bytes(), &response)
+				require.NoError(t, err)
+				assert.Contains(t, response["error"], "failed to retrieve statistics")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			storage := &mockStorage{
+				stats: tt.mockStats,
+				error: tt.mockError,
+			}
+
+			service := createTestServiceWithConfig(storage, tt.config)
+			handler := service.goldfishStatsHandler()
+
+			req := httptest.NewRequest("GET", tt.url, nil)
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+
+			assert.Equal(t, tt.expectedStatus, rr.Code)
+
+			if tt.checkResponse != nil {
+				tt.checkResponse(t, rr, storage)
+			}
+		})
+	}
 }
