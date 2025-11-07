@@ -297,9 +297,11 @@ func (r *Reader) Query(start time.Time, end time.Time) ([]time.Time, error) {
 	if r.labels != "" {
 		var lbls []string
 		for _, label := range strings.Split(r.labels, ",") {
-			k := strings.Split(label, "=")[0]
-			v := strings.Split(label, "=")[1]
-			lbls = append(lbls, fmt.Sprintf("%s=\"%s\"", k, v))
+			labelParts := strings.Split(label, "=")
+			if len(labelParts) != 2 {
+				return nil, fmt.Errorf("invalid label format: %s, expected key=value", label)
+			}
+			lbls = append(lbls, fmt.Sprintf("%s=\"%s\"", labelParts[0], labelParts[1]))
 		}
 		labels = fmt.Sprintf("{%s}", strings.Join(lbls, ","))
 	} else {
