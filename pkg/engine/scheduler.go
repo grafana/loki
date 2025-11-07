@@ -73,3 +73,7 @@ func (s *Scheduler) RegisterSchedulerServer(router *mux.Router) {
 func (s *Scheduler) Service() services.Service {
 	return s.inner.Service()
 }
+
+func (s *Scheduler) Listener() wire.Listener {
+	return s.inner.Listener()
+}

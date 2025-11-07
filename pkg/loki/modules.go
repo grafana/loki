@@ -1462,7 +1462,7 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		Config:   t.Cfg.Querier.EngineV2.Worker,
 		Executor: t.Cfg.Querier.EngineV2.Executor,
 
-		LocalScheduler: t.queryEngineV2Scheduler,
+		LocalSchedulerListener: t.queryEngineV2Scheduler.Listener(),
 
 		Addr:     listenAddr,
 		Endpoint: "/api/v2/frame",

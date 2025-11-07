@@ -41,7 +41,7 @@ type Scheduler struct {
 	initOnce sync.Once
 	svc      services.Service
 
-	workerListener wire.Listener // used for local and remote transport
+	listener wire.Listener // used for local and remote transport
 
 	resourcesMut sync.RWMutex
 	streams      map[ulid.ULID]*stream             // All known streams (regardless of state)
@@ -69,8 +69,8 @@ func New(config Config) (*Scheduler, error) {
 	}
 
 	return &Scheduler{
-		logger:         config.Logger,
-		workerListener: config.RemoteListener,
+		logger:   config.Logger,
+		listener: config.RemoteListener,
 
 		streams:     make(map[ulid.ULID]*stream),
 		tasks:       make(map[ulid.ULID]*task),
@@ -89,10 +89,14 @@ func (s *Scheduler) Service() services.Service {
 	return s.svc
 }
 
+func (s *Scheduler) Listener() wire.Listener {
+	return s.listener
+}
+
 // Handler returns the HTTP handler of the scheduler or nil
 // when the scheduler runs with local transport.
 func (s *Scheduler) Handler() http.Handler {
-	handler, ok := s.workerListener.(*wire.HTTP2Listener)
+	handler, ok := s.listener.(*wire.HTTP2Listener)
 	if ok {
 		return handler
 	}
@@ -110,7 +114,7 @@ func (s *Scheduler) run(ctx context.Context) error {
 
 func (s *Scheduler) runAcceptLoop(ctx context.Context) error {
 	for {
-		conn, err := s.workerListener.Accept(ctx)
+		conn, err := s.listener.Accept(ctx)
 		if err != nil && ctx.Err() != nil {
 			return nil
 		} else if err != nil {
@@ -472,7 +476,7 @@ func (s *Scheduler) tryBind(ctx context.Context, check *stream) {
 		// sender.
 		_ = sendingTask.owner.SendMessageAsync(ctx, wire.StreamBindMessage{
 			StreamID: check.inner.ULID,
-			Receiver: s.workerListener.Addr(),
+			Receiver: s.listener.Addr(),
 		})
 	}
 }
@@ -480,10 +484,10 @@ func (s *Scheduler) tryBind(ctx context.Context, check *stream) {
 // DialFrom connects to the scheduler using its local transport. The from
 // address denotes the connecting peer.
 func (s *Scheduler) DialFrom(ctx context.Context, from net.Addr) (wire.Conn, error) {
-	if s == nil || s.workerListener == nil {
+	if s == nil || s.listener == nil {
 		return nil, errors.New("scheduler not initialized")
 	}
-	local, ok := s.workerListener.(*wire.Local)
+	local, ok := s.listener.(*wire.Local)
 	if !ok {
 		// This really should not happen. Should we panic instead?
 		return nil, errors.New("not a local scheduler")

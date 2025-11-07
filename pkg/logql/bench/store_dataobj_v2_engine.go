@@ -85,10 +85,10 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 	}
 
 	worker, err := engine.NewWorker(engine.WorkerParams{
-		Logger:         logger,
-		Addr:           nil, // set explicitly to nil so local transport is used
-		Bucket:         bucketClient,
-		LocalScheduler: sched,
+		Logger:                 logger,
+		Addr:                   nil, // set explicitly to nil so local transport is used
+		Bucket:                 bucketClient,
+		LocalSchedulerListener: sched.Listener(),
 		Config: engine.WorkerConfig{
 			// Try to create one thread per host CPU core. However, we always
 			// create at least 8 threads. This prevents situations where

@@ -118,7 +118,7 @@ func newTestWorker(t *testing.T, logger log.Logger, loc objtest.Location, sched 
 		Logger:         logger,
 		Bucket:         loc.Bucket,
 		BatchSize:      2048,
-		LocalScheduler: sched,
+		LocalScheduler: sched.Listener(),
 
 		// Create enough threads to guarantee all tasks can be scheduled without
 		// blocking.

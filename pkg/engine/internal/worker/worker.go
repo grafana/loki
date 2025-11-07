@@ -21,7 +21,6 @@ import (
 	"github.com/thanos-io/objstore"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
@@ -34,7 +33,7 @@ type Config struct {
 	// Bucket to read stored data from.
 	Bucket objstore.Bucket
 
-	LocalScheduler *scheduler.Scheduler
+	LocalScheduler wire.Listener
 
 	// RemoteListener is the listener used for communication with workers.
 	// Workers can either connect locally within the same process through an in-memory connection
@@ -98,8 +97,8 @@ type Worker struct {
 	initOnce sync.Once
 	svc      services.Service
 
-	workerListener wire.Listener        // used for local and remote transport
-	localScheduler *scheduler.Scheduler // only used for local transport
+	workerListener wire.Listener // used for local and remote transport
+	localScheduler wire.Listener // only used for local transport
 
 	resourcesMut sync.RWMutex
 	sources      map[ulid.ULID]*streamSource
@@ -149,6 +148,10 @@ func (w *Worker) Service() services.Service {
 	})
 
 	return w.svc
+}
+
+func (w *Worker) Listener() wire.Listener {
+	return w.workerListener
 }
 
 // Handler returns the HTTP handler of the scheduler or nil
@@ -288,7 +291,7 @@ func (w *Worker) dial(ctx context.Context, addr net.Addr) (wire.Conn, error) {
 	switch addr {
 	case wire.LocalScheduler:
 		// Dial from worker to local scheduler
-		return w.localScheduler.DialFrom(ctx, w.workerListener.Addr())
+		return w.localScheduler.(*wire.Local).DialFrom(ctx, w.workerListener.Addr())
 	case wire.LocalWorker:
 		// Dial from worker to local worker
 		return w.workerListener.(*wire.Local).DialFrom(ctx, w.workerListener.Addr())

@@ -37,9 +37,9 @@ type WorkerParams struct {
 	Config   WorkerConfig   // Configuration for the worker.
 	Executor ExecutorConfig // Configuration for task execution.
 
-	// Local scheduler to connect to. If LocalScheduler is nil, the worker can
-	// still connect to remote schedulers.
-	LocalScheduler *Scheduler
+	// Local scheduler to connect to.
+	// If LocalSchedulerListener is nil, the worker can still connect to remote schedulers.
+	LocalSchedulerListener wire.Listener
 
 	// Listen address of the underlying network listener.
 	// This must only be set when the worker runs in remote transport mode
@@ -85,7 +85,7 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		Logger: params.Logger,
 		Bucket: params.Bucket,
 
-		LocalScheduler: params.LocalScheduler.inner,
+		LocalScheduler: params.LocalSchedulerListener,
 		RemoteListener: listener,
 
 		SchedulerLookupAddress:  params.Config.SchedulerLookupAddress,
@@ -111,4 +111,8 @@ func (w *Worker) RegisterWorkerServer(router *mux.Router) {
 // Service returns the service used to manage the lifecycle of the Worker.
 func (w *Worker) Service() services.Service {
 	return w.inner.Service()
+}
+
+func (w *Worker) Listener() wire.Listener {
+	return w.inner.Listener()
 }
