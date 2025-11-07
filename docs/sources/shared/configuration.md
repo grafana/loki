@@ -5117,6 +5117,12 @@ engine_v2:
   # CLI flag: -querier.engine-v2.distributed
   [distributed: <boolean> | default = false]
 
+  # Experimental: Name of network interface to read an advertise address from
+  # for accepting incoming traffic from query-engine-worker instances when
+  # distributed execution is enabled.
+  # CLI flag: -querier.engine-v2.instance-interface-names
+  [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
+
   # Amount of time until data objects are available.
   # CLI flag: -querier.engine-v2.dataobj-storage-lag
   [dataobj_storage_lag: <duration> | default = 1h]
