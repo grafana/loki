@@ -174,7 +174,6 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.Record, error) 
 	r.buf = r.buf[:batchSize]
 
 	builder := array.NewRecordBuilder(r.opts.Allocator, r.schema)
-	defer builder.Release()
 
 	n, readErr := r.inner.Read(ctx, r.buf)
 	for rowIndex := range n {

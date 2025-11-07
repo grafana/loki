@@ -65,13 +65,13 @@ func TestParsingInvalidColumnNames(t *testing.T) {
 func TestScope(t *testing.T) {
 	tc := []struct {
 		name     string
-		expected Scope
+		expected SemanticType
 	}{
-		{"utf8.builtin.message", Scope{Record, Builtin}},
-		{"utf8.label.service_name", Scope{Resource, Attribute}},
-		{"utf8.metadata.service_name", Scope{Record, Attribute}},
-		{"utf8.parsed.level", Scope{Generated, Attribute}},
-		{"utf8.generated.value", Scope{Generated, Builtin}},
+		{"utf8.builtin.message", SemanticType{Record, Builtin}},
+		{"utf8.label.service_name", SemanticType{Resource, Attribute}},
+		{"utf8.metadata.service_name", SemanticType{Record, Attribute}},
+		{"utf8.parsed.level", SemanticType{Generated, Attribute}},
+		{"utf8.generated.value", SemanticType{Generated, Builtin}},
 	}
 
 	for _, tt := range tc {
@@ -79,7 +79,7 @@ func TestScope(t *testing.T) {
 			got, err := ParseFQN(tt.name)
 			require.NoError(t, err)
 			t.Log(got)
-			require.Equal(t, tt.expected, got.Scope())
+			require.Equal(t, tt.expected, got.SemType())
 		})
 	}
 }

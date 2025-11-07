@@ -12,6 +12,8 @@ var (
 		Timestamp DataType
 		Duration  DataType
 		Bytes     DataType
+		Struct    DataType
+		List      DataType
 	}{
 		Null:      tNull{},
 		Bool:      tBool{},
@@ -21,6 +23,8 @@ var (
 		Timestamp: tTimestamp{},
 		Duration:  tDuration{},
 		Bytes:     tBytes{},
+		Struct:    tStruct{},
+		List:      tList{},
 	}
 
 	Arrow = struct {

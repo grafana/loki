@@ -3,15 +3,16 @@ package types //nolint:revive
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/dustin/go-humanize"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/util"
 )
 
-type NullLiteral struct {
-}
+type NullLiteral struct{}
 
 // String implements Literal.
 func (n NullLiteral) String() string {
@@ -179,6 +180,30 @@ func (b BytesLiteral) Value() Bytes {
 	return Bytes(b)
 }
 
+type StringListLiteral []string
+
+// String implements Literal.
+func (l StringListLiteral) String() string {
+	return "[" + strings.Join(l, ", ") + "]"
+}
+
+// Type implements Literal.
+func (l StringListLiteral) Type() DataType {
+	tList := tList{
+		arrowType: arrow.ListOf(arrow.BinaryTypes.String),
+	}
+	return tList
+}
+
+// Any implements Literal.
+func (l StringListLiteral) Any() any {
+	return l.Value()
+}
+
+func (l StringListLiteral) Value() []string {
+	return l
+}
+
 // Literal is holds a value of [any] typed as [DataType].
 type Literal interface {
 	fmt.Stringer
@@ -212,6 +237,8 @@ var (
 	_ TypedLiteral[Duration]  = (*DurationLiteral)(nil)
 	_ Literal                 = (*BytesLiteral)(nil)
 	_ TypedLiteral[Bytes]     = (*BytesLiteral)(nil)
+	_ Literal                 = (*StringListLiteral)(nil)
+	_ TypedLiteral[[]string]  = (*StringListLiteral)(nil)
 )
 
 func NewLiteral[T LiteralType](value T) Literal {
@@ -230,6 +257,8 @@ func NewLiteral[T LiteralType](value T) Literal {
 		return DurationLiteral(val)
 	case Bytes:
 		return BytesLiteral(val)
+	case []string:
+		return StringListLiteral(val)
 	}
 	panic(fmt.Sprintf("invalid literal value type %T", value))
 }

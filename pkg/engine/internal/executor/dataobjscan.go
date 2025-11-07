@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -26,8 +27,6 @@ type dataobjScanOptions struct {
 	StreamIDs      []int64                     // Stream IDs to match from logs sections.
 	Predicates     []logs.Predicate            // Predicate to apply to the logs.
 	Projections    []physical.ColumnExpression // Columns to include. An empty slice means all columns.
-
-	Allocator memory.Allocator // Allocator to use for reading sections and building records.
 
 	BatchSize int64 // The buffer size for reading rows, derived from the engine batch size.
 }
@@ -42,8 +41,6 @@ type dataobjScan struct {
 	streamsInjector *streamInjector
 	reader          *logs.Reader
 	desiredSchema   *arrow.Schema
-
-	state state
 }
 
 var _ Pipeline = (*dataobjScan)(nil)
@@ -53,10 +50,6 @@ var _ Pipeline = (*dataobjScan)(nil)
 // in the returned record are ordered by timestamp in the direction specified
 // by opts.Direction.
 func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger) *dataobjScan {
-	if opts.Allocator == nil {
-		opts.Allocator = memory.DefaultAllocator
-	}
-
 	return &dataobjScan{
 		opts:   opts,
 		logger: logger,
@@ -108,7 +101,7 @@ func (s *dataobjScan) initStreams() error {
 		BatchSize:    int(s.opts.BatchSize),
 	})
 
-	s.streamsInjector = newStreamInjector(s.opts.Allocator, s.streams)
+	s.streamsInjector = newStreamInjector(s.streams)
 	return nil
 }
 
@@ -211,7 +204,7 @@ func (s *dataobjScan) initLogs() error {
 		Columns: columnsToRead,
 
 		Predicates: predicates,
-		Allocator:  s.opts.Allocator,
+		Allocator:  memory.DefaultAllocator,
 	})
 
 	// Create the engine-compatible expected schema for the logs section.
@@ -220,16 +213,9 @@ func (s *dataobjScan) initLogs() error {
 		return fmt.Errorf("logs.Reader returned schema with %d fields, expected %d", got, want)
 	}
 
+	// Convert the logs columns to engine-compatible fields.
 	var desiredFields []arrow.Field
-	for i, col := range columnsToRead {
-		if col.Type == logs.ColumnTypeStreamID {
-			// The stream ID field should be left as-is for use with the streams
-			// injector.
-			desiredFields = append(desiredFields, origSchema.Field(i))
-			continue
-		}
-
-		// Convert the logs column to an engine-compatible field.
+	for _, col := range columnsToRead {
 		field, err := logsColumnToEngineField(col)
 		if err != nil {
 			return err
@@ -254,29 +240,17 @@ func makeScalars[S ~[]E, E any](s S) []scalar.Scalar {
 // engine.
 func logsColumnToEngineField(col *logs.Column) (arrow.Field, error) {
 	switch col.Type {
+	case logs.ColumnTypeStreamID:
+		return semconv.FieldFromIdent(streamInjectorColumnIdent, true), nil
+
 	case logs.ColumnTypeTimestamp:
-		return arrow.Field{
-			Name:     types.ColumnNameBuiltinTimestamp,
-			Type:     types.Arrow.Timestamp,
-			Nullable: true,
-			Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.Timestamp),
-		}, nil
+		return semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, true), nil
 
 	case logs.ColumnTypeMessage:
-		return arrow.Field{
-			Name:     types.ColumnNameBuiltinMessage,
-			Type:     types.Arrow.String,
-			Nullable: true,
-			Metadata: types.ColumnMetadata(types.ColumnTypeBuiltin, types.Loki.String),
-		}, nil
+		return semconv.FieldFromIdent(semconv.ColumnIdentMessage, true), nil
 
 	case logs.ColumnTypeMetadata:
-		return arrow.Field{
-			Name:     col.Name,
-			Type:     types.Arrow.String,
-			Nullable: true,
-			Metadata: types.ColumnMetadata(types.ColumnTypeMetadata, types.Loki.String),
-		}, nil
+		return semconv.FieldFromIdent(semconv.NewIdentifier(col.Name, types.ColumnTypeMetadata, types.Loki.String), true), nil
 	}
 
 	return arrow.Field{}, fmt.Errorf("unsupported logs column type %s", col.Type)
@@ -379,20 +353,15 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.Record, error) {
 	} else if (rec == nil || rec.NumRows() == 0) && errors.Is(err, io.EOF) {
 		return nil, EOF
 	}
-	defer rec.Release()
 
 	// Update the schema of the record to match the schema the engine expects.
 	rec, err = changeSchema(rec, s.desiredSchema)
 	if err != nil {
 		return nil, fmt.Errorf("changing schema: %w", err)
 	}
-	defer rec.Release()
 
 	if s.streamsInjector == nil {
 		// No streams injector needed, so we return the record as-is.
-		// We add an extra retain to counteract the Release() call above (for ease
-		// of readability).
-		rec.Retain()
 		return rec, nil
 	}
 
@@ -417,13 +386,4 @@ func (s *dataobjScan) Close() {
 	s.streams = nil
 	s.streamsInjector = nil
 	s.reader = nil
-
-	s.state = state{}
 }
-
-// Inputs implements [Pipeline] and returns nil, since dataobjScan accepts no
-// pipelines as input.
-func (s *dataobjScan) Inputs() []Pipeline { return nil }
-
-// Transport implements [Pipeline] and returns [Local].
-func (s *dataobjScan) Transport() Transport { return Local }

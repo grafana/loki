@@ -150,3 +150,83 @@ func TestQueryFilter_BuildWhereClause(t *testing.T) {
 func boolPtr(b bool) *bool {
 	return &b
 }
+
+func TestStatsFilter_BuildStatsWhereClause(t *testing.T) {
+	tests := []struct {
+		name          string
+		filter        StatsFilter
+		expectedWhere string
+		expectedArgs  []any
+	}{
+		{
+			name:          "no filters - usesRecentData true by default",
+			filter:        StatsFilter{UsesRecentData: true},
+			expectedWhere: "",
+			expectedArgs:  nil,
+		},
+		{
+			name: "time range only",
+			filter: StatsFilter{
+				From:           time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+				To:             time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+				UsesRecentData: true,
+			},
+			expectedWhere: "WHERE sampled_at >= ? AND sampled_at <= ?",
+			expectedArgs: []any{
+				time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+				time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+			},
+		},
+		{
+			name: "usesRecentData false - adds end_time filter",
+			filter: StatsFilter{
+				UsesRecentData: false,
+			},
+			expectedWhere: "WHERE end_time <= DATE_SUB(NOW(), INTERVAL 3 HOUR)",
+			expectedArgs:  nil,
+		},
+		{
+			name: "time range with usesRecentData false",
+			filter: StatsFilter{
+				From:           time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+				To:             time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+				UsesRecentData: false,
+			},
+			expectedWhere: "WHERE sampled_at >= ? AND sampled_at <= ? AND end_time <= DATE_SUB(NOW(), INTERVAL 3 HOUR)",
+			expectedArgs: []any{
+				time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+				time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+			},
+		},
+		{
+			name: "only From specified",
+			filter: StatsFilter{
+				From:           time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+				UsesRecentData: true,
+			},
+			expectedWhere: "WHERE sampled_at >= ?",
+			expectedArgs: []any{
+				time.Date(2024, 1, 1, 10, 0, 0, 0, time.UTC),
+			},
+		},
+		{
+			name: "only To specified",
+			filter: StatsFilter{
+				To:             time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+				UsesRecentData: true,
+			},
+			expectedWhere: "WHERE sampled_at <= ?",
+			expectedArgs: []any{
+				time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			whereClause, args := buildStatsWhereClause(tt.filter)
+			assert.Equal(t, tt.expectedWhere, whereClause)
+			assert.Equal(t, tt.expectedArgs, args)
+		})
+	}
+}

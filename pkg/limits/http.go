@@ -3,16 +3,16 @@ package limits
 import (
 	"net/http"
 
-	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
 
 	"github.com/grafana/loki/v3/pkg/util"
 )
 
 type httpTenantLimitsResponse struct {
-	Tenant  string  `json:"tenant"`
-	Streams uint64  `json:"streams"`
-	Rate    float64 `json:"rate"`
+	Tenant          string            `json:"tenant"`
+	StreamsTotal    uint64            `json:"streams_total"`
+	StreamsByPolicy map[string]uint64 `json:"streams_by_policy"`
+	Rate            float64           `json:"rate"`
 }
 
 // ServeHTTP implements the http.Handler interface.
@@ -24,28 +24,19 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var streams, sumBuckets uint64
-	s.usage.IterTenant(tenant, func(_ string, _ int32, stream streamUsage) {
+	streamsByPolicy := make(map[string]uint64)
+	for _, stream := range s.usage.TenantActiveStreams(tenant) {
 		streams++
 		for _, bucket := range stream.rateBuckets {
 			sumBuckets += bucket.size
 		}
-	})
+		streamsByPolicy[stream.policy]++
+	}
 	rate := float64(sumBuckets) / s.cfg.ActiveWindow.Seconds()
-
-	// Log the calculated values for debugging
-	level.Debug(s.logger).Log(
-		"msg", "HTTP endpoint calculated stream usage",
-		"tenant", tenant,
-		"streams", streams,
-		"sum_buckets", util.HumanizeBytes(sumBuckets),
-		"rate_window_seconds", s.cfg.RateWindow.Seconds(),
-		"rate", util.HumanizeBytes(uint64(rate)),
-	)
-
-	// Use util.WriteJSONResponse to write the JSON response
 	util.WriteJSONResponse(w, httpTenantLimitsResponse{
-		Tenant:  tenant,
-		Streams: streams,
-		Rate:    rate,
+		Tenant:          tenant,
+		StreamsTotal:    streams,
+		StreamsByPolicy: streamsByPolicy,
+		Rate:            rate,
 	})
 }

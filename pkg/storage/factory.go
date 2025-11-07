@@ -470,7 +470,18 @@ func NewIndexClient(component string, periodCfg config.PeriodConfig, tableRange 
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
-func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaConfig, cc congestion.Controller, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
+func NewChunkClient(name, component string, cfg Config, schemaCfg config.SchemaConfig, p config.PeriodConfig, registerer prometheus.Registerer, clientMetrics ClientMetrics, logger log.Logger) (client.Client, error) {
+	var cc congestion.Controller
+	ccCfg := cfg.CongestionControl
+
+	if ccCfg.Enabled {
+		cc = congestion.NewController(
+			ccCfg,
+			logger,
+			congestion.NewMetrics(fmt.Sprintf("%s-%s", name, p.From.String()), ccCfg),
+		)
+	}
+
 	var storeType = name
 
 	if cfg.UseThanosObjstore {

@@ -1,6 +1,8 @@
 package types //nolint:revive
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // UnaryOp denotes the kind of [UnaryOp] operation to perform.
 type UnaryOp uint32
@@ -10,8 +12,11 @@ const (
 	// UnaryOpKindInvalid indicates an invalid unary operation.
 	UnaryOpInvalid UnaryOp = iota
 
-	UnaryOpNot // Logical NOT operation (!).
-	UnaryOpAbs // Mathematical absolute operation (abs).
+	UnaryOpNot          // Logical NOT operation (!).
+	UnaryOpAbs          // Mathematical absolute operation (abs).
+	UnaryOpCastFloat    // Cast string to float value operation (unwrap).
+	UnaryOpCastBytes    // Cast string bytes to float value operation (unwrap).
+	UnaryOpCastDuration // Cast string duration to float value operation (unwrap).
 )
 
 // String returns the string representation of the UnaryOp.
@@ -21,6 +26,12 @@ func (t UnaryOp) String() string {
 		return "NOT"
 	case UnaryOpAbs:
 		return "ABS"
+	case UnaryOpCastFloat:
+		return "CAST_FLOAT"
+	case UnaryOpCastBytes:
+		return "CAST_BYTES"
+	case UnaryOpCastDuration:
+		return "CAST_DURATION"
 	default:
 		panic(fmt.Sprintf("unknown unary operator %d", t))
 	}
@@ -44,13 +55,13 @@ const (
 	BinaryOpAnd // Logical AND operation (&&).
 	BinaryOpOr  // Logical OR operation (||).
 	BinaryOpXor // Logical XOR operation (^).
-	BinaryOpNot // Logical NOT operation (!).
 
 	BinaryOpAdd // Addition operation (+).
 	BinaryOpSub // Subtraction operation (-).
 	BinaryOpMul // Multiplication operation (*).
 	BinaryOpDiv // Division operation (/).
 	BinaryOpMod // Modulo operation (%).
+	BinaryOpPow // power/exponentiation operation (^).
 
 	BinaryOpMatchSubstr     // Substring matching operation (|=). Used for string match filter.
 	BinaryOpNotMatchSubstr  // Substring non-matching operation (!=). Used for string match filter.
@@ -81,8 +92,6 @@ func (t BinaryOp) String() string {
 		return "OR"
 	case BinaryOpXor:
 		return "XOR"
-	case BinaryOpNot:
-		return "NOT"
 	case BinaryOpAdd:
 		return "ADD"
 	case BinaryOpSub:
@@ -93,6 +102,8 @@ func (t BinaryOp) String() string {
 		return "DIV"
 	case BinaryOpMod:
 		return "MOD"
+	case BinaryOpPow:
+		return "POW"
 	case BinaryOpMatchSubstr:
 		return "MATCH_STR"
 	case BinaryOpNotMatchSubstr:
@@ -107,5 +118,29 @@ func (t BinaryOp) String() string {
 		return "NOT_MATCH_PAT" // convenience for NOT(MATCH_PAT(...))
 	default:
 		panic(fmt.Sprintf("unknown binary operator %d", t))
+	}
+}
+
+// VariadicOp denotes the kind of [VariadicOp] operation to perform.
+type VariadicOp uint32
+
+// Recognized values of [VariadicOp].
+const (
+	// VariadicOpKindInvalid indicates an invalid unary operation.
+	VariadicOpInvalid VariadicOp = iota
+
+	VariadicOpParseLogfmt // Parse logfmt line to set of columns operation (logfmt).
+	VariadicOpParseJSON   // Parse JSON line to set of columns operation (json).
+)
+
+// String returns the string representation of the UnaryOp.
+func (t VariadicOp) String() string {
+	switch t {
+	case VariadicOpParseLogfmt:
+		return "PARSE_LOGFMT"
+	case VariadicOpParseJSON:
+		return "PARSE_JSON"
+	default:
+		panic(fmt.Sprintf("unknown variadic operator %d", t))
 	}
 }

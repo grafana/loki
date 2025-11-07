@@ -53,7 +53,7 @@ func TestWorkerManager(t *testing.T) {
 	}
 
 	// register the job builder with the queue and start the queue
-	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, mockJobBuilder, jobTimeout, jobRetries))
+	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, mockJobBuilder, jobTimeout, jobRetries, nil))
 	go q.Start(context.Background())
 	require.Equal(t, int32(0), mockJobBuilder.jobsSentCount.Load())
 
@@ -126,7 +126,7 @@ func TestWorker_ProcessJob(t *testing.T) {
 	jobRunner.On("Run", mock.Anything, mock.Anything).Return(nil, fmt.Errorf("fail")).Times(jobRetries + 1)
 
 	// register the job builder with the queue and start the queue
-	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, mockJobBuilder, jobTimeout, jobRetries))
+	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, mockJobBuilder, jobTimeout, jobRetries, nil))
 	go q.Start(context.Background())
 	require.Equal(t, int32(0), mockJobBuilder.jobsSentCount.Load())
 
@@ -164,7 +164,7 @@ func TestWorker_StreamClosure(t *testing.T) {
 	defer closer()
 
 	// register a builder and start the queue
-	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}, jobTimeout, jobRetries))
+	require.NoError(t, q.RegisterBuilder(compactor_grpc.JOB_TYPE_DELETION, &mockBuilder{}, jobTimeout, jobRetries, nil))
 	ctx, cancelQueueCtx := context.WithCancel(context.Background())
 	go q.Start(ctx)
 

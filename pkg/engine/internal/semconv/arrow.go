@@ -6,7 +6,7 @@ import (
 
 func FieldFromIdent(ident *Identifier, nullable bool) arrow.Field {
 	return arrow.Field{
-		Name:     ident.columnName,
+		Name:     ident.FQN(),
 		Type:     ident.dataType.ArrowType(),
 		Nullable: nullable,
 	}
