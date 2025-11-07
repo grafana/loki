@@ -4,7 +4,7 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false loki
 
-FROM alpine:3.21.5
+FROM alpine:3.22.2
 
 RUN apk add --no-cache ca-certificates libcap
 
