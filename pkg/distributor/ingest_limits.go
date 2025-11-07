@@ -18,6 +18,7 @@ import (
 // ingestLimitsFrontendClient is used for tests.
 type ingestLimitsFrontendClient interface {
 	ExceedsLimits(context.Context, *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error)
+	UpdateRates(context.Context, *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error)
 }
 
 // ingestLimitsFrontendRingClient uses the ring to query ingest-limits frontends.
@@ -59,6 +60,48 @@ func (c *ingestLimitsFrontendRingClient) ExceedsLimits(ctx context.Context, req 
 		}
 		client := c.(proto.IngestLimitsFrontendClient)
 		resp, err := client.ExceedsLimits(ctx, req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		return resp, nil
+	}
+	return nil, lastErr
+}
+
+// Implements the ingestLimitsFrontendClient interface.
+func (c *ingestLimitsFrontendRingClient) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
+	// We use an FNV-1 of all stream hashes in the request to load balance requests
+	// to limits-frontends instances.
+	h := fnv.New32()
+	for _, stream := range req.Streams {
+		// Add the stream hash to FNV-1.
+		buf := make([]byte, binary.MaxVarintLen64)
+		binary.PutUvarint(buf, stream.StreamHash)
+		_, _ = h.Write(buf)
+	}
+	// Get the limits-frontend instances from the ring.
+	var descs [5]ring.InstanceDesc
+	rs, err := c.ring.Get(h.Sum32(), limits_frontend_client.LimitsRead, descs[0:], nil, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get limits-frontend instances from ring: %w", err)
+	}
+	var lastErr error
+	// Send the request to the limits-frontend to see if it exceeds the tenant
+	// limits. If the RPC fails, failover to the next instance in the ring.
+	for _, instance := range rs.Instances {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+		c, err := c.pool.GetClientFor(instance.Addr)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		client := c.(proto.IngestLimitsFrontendClient)
+		resp, err := client.UpdateRates(ctx, req)
 		if err != nil {
 			lastErr = err
 			continue
@@ -149,6 +192,45 @@ func (l *ingestLimits) ExceedsLimits(
 		return nil, err
 	}
 	return resp.Results, nil
+}
+
+// ExceedsLimits checks all streams against the per-tenant limits. It returns
+// an error if the client failed to send the request or receive a response
+// from the server. Any streams that could not have their limits checked
+// and returned in the results with the reason "ReasonFailed".
+func (l *ingestLimits) UpdateRates(
+	ctx context.Context,
+	tenant string,
+	streams []KeyedStream,
+) ([]*proto.UpdateRatesResult, error) {
+	l.requests.Inc()
+	req, err := newUpdateRatesRequest(tenant, streams)
+	if err != nil {
+		l.requestsFailed.Inc()
+		return nil, err
+	}
+	resp, err := l.client.UpdateRates(ctx, req)
+	if err != nil {
+		l.requestsFailed.Inc()
+		return nil, err
+	}
+	return resp.Results, nil
+}
+
+func newUpdateRatesRequest(tenant string, streams []KeyedStream) (*proto.UpdateRatesRequest, error) {
+	streamMetadata := make([]*proto.StreamMetadata, 0, len(streams))
+	for _, stream := range streams {
+		entriesSize, structuredMetadataSize := calculateStreamSizes(stream.Stream)
+		streamMetadata = append(streamMetadata, &proto.StreamMetadata{
+			StreamHash:      stream.HashKeyNoShard,
+			TotalSize:       entriesSize + structuredMetadataSize,
+			IngestionPolicy: stream.Policy,
+		})
+	}
+	return &proto.UpdateRatesRequest{
+		Tenant:  tenant,
+		Streams: streamMetadata,
+	}, nil
 }
 
 func newExceedsLimitsRequest(tenant string, streams []KeyedStream) (*proto.ExceedsLimitsRequest, error) {

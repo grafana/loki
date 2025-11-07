@@ -79,13 +79,13 @@ func NewDataObjTee(
 }
 
 // Duplicate implements the [Tee] interface.
-func (t *DataObjTee) Duplicate(tenant string, streams []KeyedStream) {
+func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []KeyedStream) {
 	for _, s := range streams {
-		go t.duplicate(tenant, s)
+		go t.duplicate(ctx, tenant, s)
 	}
 }
 
-func (t *DataObjTee) duplicate(tenant string, stream KeyedStream) {
+func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream KeyedStream) {
 	t.total.Inc()
 	segmentationKey, err := GetSegmentationKey(tenant, stream)
 	if err != nil {
@@ -93,7 +93,7 @@ func (t *DataObjTee) duplicate(tenant string, stream KeyedStream) {
 		t.failures.Inc()
 		return
 	}
-	partition, err := t.resolver.Resolve(tenant, segmentationKey, stream.HashKey)
+	partition, err := t.resolver.Resolve(ctx, tenant, segmentationKey, stream)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to get partition", "err", err)
 		t.failures.Inc()
