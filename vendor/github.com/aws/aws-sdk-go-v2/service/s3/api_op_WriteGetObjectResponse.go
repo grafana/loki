@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-// This operation is not supported by directory buckets.
+// This operation is not supported for directory buckets.
 //
 // Passes transformed objects to a GetObject operation when using Object Lambda
 // access points. For information about Object Lambda access points, see [Transforming objects with Object Lambda access points]in the
@@ -108,12 +108,12 @@ type WriteGetObjectResponseInput struct {
 	CacheControl *string
 
 	// This header can be used as a data integrity check to verify that the data
-	// received is the same data that was originally sent. This specifies the
-	// base64-encoded, 32-bit CRC32 checksum of the object returned by the Object
-	// Lambda function. This may not match the checksum for the object stored in Amazon
-	// S3. Amazon S3 will perform validation of the checksum values only when the
-	// original GetObject request required checksum validation. For more information
-	// about checksums, see [Checking object integrity]in the Amazon S3 User Guide.
+	// received is the same data that was originally sent. This specifies the Base64
+	// encoded, 32-bit CRC32 checksum of the object returned by the Object Lambda
+	// function. This may not match the checksum for the object stored in Amazon S3.
+	// Amazon S3 will perform validation of the checksum values only when the original
+	// GetObject request required checksum validation. For more information about
+	// checksums, see [Checking object integrity]in the Amazon S3 User Guide.
 	//
 	// Only one checksum header can be specified at a time. If you supply multiple
 	// checksum headers, this request will fail.
@@ -122,12 +122,12 @@ type WriteGetObjectResponseInput struct {
 	ChecksumCRC32 *string
 
 	// This header can be used as a data integrity check to verify that the data
-	// received is the same data that was originally sent. This specifies the
-	// base64-encoded, 32-bit CRC32C checksum of the object returned by the Object
-	// Lambda function. This may not match the checksum for the object stored in Amazon
-	// S3. Amazon S3 will perform validation of the checksum values only when the
-	// original GetObject request required checksum validation. For more information
-	// about checksums, see [Checking object integrity]in the Amazon S3 User Guide.
+	// received is the same data that was originally sent. This specifies the Base64
+	// encoded, 32-bit CRC32C checksum of the object returned by the Object Lambda
+	// function. This may not match the checksum for the object stored in Amazon S3.
+	// Amazon S3 will perform validation of the checksum values only when the original
+	// GetObject request required checksum validation. For more information about
+	// checksums, see [Checking object integrity]in the Amazon S3 User Guide.
 	//
 	// Only one checksum header can be specified at a time. If you supply multiple
 	// checksum headers, this request will fail.
@@ -136,8 +136,16 @@ type WriteGetObjectResponseInput struct {
 	ChecksumCRC32C *string
 
 	// This header can be used as a data integrity check to verify that the data
-	// received is the same data that was originally sent. This specifies the
-	// base64-encoded, 160-bit SHA-1 digest of the object returned by the Object Lambda
+	// received is the same data that was originally sent. This header specifies the
+	// Base64 encoded, 64-bit CRC64NVME checksum of the part. For more information,
+	// see [Checking object integrity]in the Amazon S3 User Guide.
+	//
+	// [Checking object integrity]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
+	ChecksumCRC64NVME *string
+
+	// This header can be used as a data integrity check to verify that the data
+	// received is the same data that was originally sent. This specifies the Base64
+	// encoded, 160-bit SHA1 digest of the object returned by the Object Lambda
 	// function. This may not match the checksum for the object stored in Amazon S3.
 	// Amazon S3 will perform validation of the checksum values only when the original
 	// GetObject request required checksum validation. For more information about
@@ -150,12 +158,12 @@ type WriteGetObjectResponseInput struct {
 	ChecksumSHA1 *string
 
 	// This header can be used as a data integrity check to verify that the data
-	// received is the same data that was originally sent. This specifies the
-	// base64-encoded, 256-bit SHA-256 digest of the object returned by the Object
-	// Lambda function. This may not match the checksum for the object stored in Amazon
-	// S3. Amazon S3 will perform validation of the checksum values only when the
-	// original GetObject request required checksum validation. For more information
-	// about checksums, see [Checking object integrity]in the Amazon S3 User Guide.
+	// received is the same data that was originally sent. This specifies the Base64
+	// encoded, 256-bit SHA256 digest of the object returned by the Object Lambda
+	// function. This may not match the checksum for the object stored in Amazon S3.
+	// Amazon S3 will perform validation of the checksum values only when the original
+	// GetObject request required checksum validation. For more information about
+	// checksums, see [Checking object integrity]in the Amazon S3 User Guide.
 	//
 	// Only one checksum header can be specified at a time. If you supply multiple
 	// checksum headers, this request will fail.
@@ -184,7 +192,9 @@ type WriteGetObjectResponseInput struct {
 	ContentType *string
 
 	// Specifies whether an object stored in Amazon S3 is ( true ) or is not ( false )
-	// a delete marker.
+	// a delete marker. To learn more about delete markers, see [Working with delete markers].
+	//
+	// [Working with delete markers]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeleteMarker.html
 	DeleteMarker *bool
 
 	// An opaque identifier assigned by a web server to a specific version of a
@@ -247,9 +257,12 @@ type WriteGetObjectResponseInput struct {
 	ReplicationStatus types.ReplicationStatus
 
 	// If present, indicates that the requester was successfully charged for the
-	// request.
+	// request. For more information, see [Using Requester Pays buckets for storage transfers and usage]in the Amazon Simple Storage Service user
+	// guide.
 	//
 	// This functionality is not supported for directory buckets.
+	//
+	// [Using Requester Pays buckets for storage transfers and usage]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/RequesterPaysBuckets.html
 	RequestCharged types.RequestCharged
 
 	// Provides information about object restoration operation and expiration time of
@@ -272,7 +285,10 @@ type WriteGetObjectResponseInput struct {
 	SSEKMSKeyId *string
 
 	//  The server-side encryption algorithm used when storing requested object in
-	// Amazon S3 (for example, AES256, aws:kms ).
+	// Amazon S3 or Amazon FSx.
+	//
+	// When accessing data stored in Amazon FSx file systems using S3 access points,
+	// the only valid server side encryption option is aws:fsx .
 	ServerSideEncryption types.ServerSideEncryption
 
 	// The integer status code for an HTTP response of a corresponding GetObject
@@ -382,6 +398,9 @@ func (c *Client) addOperationWriteGetObjectResponseMiddlewares(stack *middleware
 	if err = addRecordResponseTiming(stack); err != nil {
 		return err
 	}
+	if err = addSpanRetryLoop(stack, options); err != nil {
+		return err
+	}
 	if err = addClientUserAgent(stack, options); err != nil {
 		return err
 	}
@@ -404,6 +423,9 @@ func (c *Client) addOperationWriteGetObjectResponseMiddlewares(stack *middleware
 		return err
 	}
 	if err = addIsExpressUserAgent(stack); err != nil {
+		return err
+	}
+	if err = addCredentialSource(stack, options); err != nil {
 		return err
 	}
 	if err = addEndpointPrefix_opWriteGetObjectResponseMiddleware(stack); err != nil {
@@ -440,6 +462,48 @@ func (c *Client) addOperationWriteGetObjectResponseMiddlewares(stack *middleware
 		return err
 	}
 	if err = addSerializeImmutableHostnameBucketMiddleware(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeRetryLoop(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAttempt(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptExecution(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeSerialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterSerialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeSigning(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterSigning(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptTransmit(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptBeforeDeserialization(stack, options); err != nil {
+		return err
+	}
+	if err = addInterceptAfterDeserialization(stack, options); err != nil {
+		return err
+	}
+	if err = addSpanInitializeStart(stack); err != nil {
+		return err
+	}
+	if err = addSpanInitializeEnd(stack); err != nil {
+		return err
+	}
+	if err = addSpanBuildRequestStart(stack); err != nil {
+		return err
+	}
+	if err = addSpanBuildRequestEnd(stack); err != nil {
 		return err
 	}
 	return nil
