@@ -6,6 +6,13 @@
 * Update dependencies versions to remove CVE ([#13835](https://github.com/grafana/loki/pull/13835)) ([567bef2](https://github.com/grafana/loki/commit/567bef286376663407c54f5da07fa00963ba5485))
 
 
+## [2.9.17](https://github.com/grafana/loki/compare/v2.9.16...v2.9.17) (2025-11-07)
+
+
+### Bug Fixes
+
+* bump alpine version ([#19732](https://github.com/grafana/loki/issues/19732)) ([ffcd570](https://github.com/grafana/loki/commit/ffcd570f815ccf0588bda305659d0d4e925e4ef1))
+
 ## [2.9.16](https://github.com/grafana/loki/compare/v2.9.15...v2.9.16) (2025-11-05)
 
 
