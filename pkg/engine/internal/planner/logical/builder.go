@@ -3,7 +3,7 @@ package logical
 import (
 	"time"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/planner/schema"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
@@ -40,13 +40,35 @@ func (b *Builder) Limit(skip uint32, fetch uint32) *Builder {
 }
 
 // Parse applies a [Parse] operation to the Builder.
-func (b *Builder) Parse(kind ParserKind) *Builder {
-	return &Builder{
-		val: &Parse{
-			Table: b.val,
-			Kind:  kind,
+func (b *Builder) Parse(op types.VariadicOp, strict bool, keepEmpty bool) *Builder {
+	val := &FunctionOp{
+		Op: op,
+		Values: []Value{
+			// source column
+			&ColumnRef{
+				Ref: semconv.ColumnIdentMessage.ColumnRef(),
+			},
+			// nil for requested keys (to be filled in by projection pushdown optimizer)
+			NewLiteral([]string{}),
+			NewLiteral(strict),
+			NewLiteral(keepEmpty),
 		},
 	}
+	return b.ProjectExpand(val)
+}
+
+// Cast applies an [Projection] operation, with an [UnaryOp] cast operation, to the Builder.
+func (b *Builder) Cast(identifier string, op types.UnaryOp) *Builder {
+	val := &UnaryOp{
+		Op: op,
+		Value: &ColumnRef{
+			Ref: types.ColumnRef{
+				Column: identifier,
+				Type:   types.ColumnTypeAmbiguous,
+			},
+		},
+	}
+	return b.ProjectExpand(val)
 }
 
 // Sort applies a [Sort] operation to the Builder.
@@ -58,6 +80,42 @@ func (b *Builder) Sort(column ColumnRef, ascending, nullsFirst bool) *Builder {
 			Column:     column,
 			Ascending:  ascending,
 			NullsFirst: nullsFirst,
+		},
+	}
+}
+
+// TopK applies a [TopK] operation to the Builder.
+func (b *Builder) TopK(sortBy *ColumnRef, K int, ascending, nullsFirst bool) *Builder {
+	return &Builder{
+		val: &TopK{
+			Table: b.val,
+
+			SortBy:     sortBy,
+			Ascending:  ascending,
+			NullsFirst: nullsFirst,
+			K:          K,
+		},
+	}
+}
+
+// BinOpRight adds a binary arithmetic operation with a given right value
+func (b *Builder) BinOpRight(op types.BinaryOp, right Value) *Builder {
+	return &Builder{
+		val: &BinOp{
+			Left:  b.val,
+			Right: right,
+			Op:    op,
+		},
+	}
+}
+
+// BinOpLeft adds a binary arithmetic operation with a given left value
+func (b *Builder) BinOpLeft(op types.BinaryOp, left Value) *Builder {
+	return &Builder{
+		val: &BinOp{
+			Left:  left,
+			Right: b.val,
+			Op:    op,
 		},
 	}
 }
@@ -98,9 +156,40 @@ func (b *Builder) VectorAggregation(
 	}
 }
 
-// Schema returns the schema of the data that will be produced by this Builder.
-func (b *Builder) Schema() *schema.Schema {
-	return b.val.Schema()
+// Compat applies a [LogQLCompat] operation to the Builder, which is a marker to ensure v1 engine compatible results.
+func (b *Builder) Compat(logqlCompatibility bool) *Builder {
+	if logqlCompatibility {
+		return &Builder{
+			val: &LogQLCompat{
+				Value: b.val,
+			},
+		}
+	}
+	return b
+}
+
+func (b *Builder) Project(all, expand, drop bool, expr ...Value) *Builder {
+	return &Builder{
+		val: &Projection{
+			Relation:    b.val,
+			All:         all,
+			Expand:      expand,
+			Drop:        drop,
+			Expressions: expr,
+		},
+	}
+}
+
+func (b *Builder) ProjectAll(expand, drop bool, expr ...Value) *Builder {
+	return b.Project(true, expand, drop, expr...)
+}
+
+func (b *Builder) ProjectDrop(expr ...Value) *Builder {
+	return b.ProjectAll(false, true, expr...)
+}
+
+func (b *Builder) ProjectExpand(expr ...Value) *Builder {
+	return b.ProjectAll(true, false, expr...)
 }
 
 // Value returns the underlying [Value]. This is useful when you need to access

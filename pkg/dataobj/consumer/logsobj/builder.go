@@ -125,7 +125,7 @@ func (cfg *BuilderConfig) Validate() error {
 	if cfg.DataobjSortOrder == "" {
 		cfg.DataobjSortOrder = sortStreamASC // default to [streamID ASC, timestamp DESC] sorting
 	}
-	if !(cfg.DataobjSortOrder == sortStreamASC || cfg.DataobjSortOrder == sortTimestampDESC) {
+	if cfg.DataobjSortOrder != sortStreamASC && cfg.DataobjSortOrder != sortTimestampDESC {
 		errs = append(errs, fmt.Errorf("invalid dataobj sort order. must be one of `stream-asc` or `timestamp-desc`, got: %s", cfg.DataobjSortOrder))
 	}
 
@@ -138,7 +138,7 @@ var sortOrderMapping = map[string]logs.SortOrder{
 }
 
 func parseSortOrder(s string) logs.SortOrder {
-	val, _ := sortOrderMapping[s]
+	val := sortOrderMapping[s]
 	return val
 }
 
@@ -414,6 +414,8 @@ func (b *Builder) Flush() (*dataobj.Object, io.Closer, error) {
 func (b *Builder) CopyAndSort(obj *dataobj.Object) (*dataobj.Object, io.Closer, error) {
 	dur := prometheus.NewTimer(b.metrics.sortDurationSeconds)
 	defer dur.ObserveDuration()
+
+	defer b.Reset() // always reset builder when done
 
 	ctx := context.Background()
 	sort := parseSortOrder(b.cfg.DataobjSortOrder)

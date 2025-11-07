@@ -11,16 +11,17 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
+	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
 
 func TestVectorAggregationPipeline(t *testing.T) {
 	// input schema with timestamp, value and group by columns
 	fields := []arrow.Field{
-		{Name: types.ColumnNameBuiltinTimestamp, Type: types.Arrow.Timestamp, Metadata: types.ColumnMetadataBuiltinTimestamp},
-		{Name: types.ColumnNameGeneratedValue, Type: types.Arrow.Float, Metadata: types.ColumnMetadata(types.ColumnTypeGenerated, types.Loki.Float)},
-		{Name: "env", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeLabel, types.Loki.String)},
-		{Name: "service", Type: types.Arrow.String, Metadata: types.ColumnMetadata(types.ColumnTypeLabel, types.Loki.String)},
+		semconv.FieldFromIdent(semconv.ColumnIdentTimestamp, false),
+		semconv.FieldFromIdent(semconv.ColumnIdentValue, false),
+		semconv.FieldFromFQN("utf8.label.env", true),
+		semconv.FieldFromFQN("utf8.label.service", true),
 	}
 
 	now := time.Now().UTC()
@@ -57,11 +58,9 @@ func TestVectorAggregationPipeline(t *testing.T) {
 
 	input1Record, err := CSVToArrow(fields, input1CSV)
 	require.NoError(t, err)
-	defer input1Record.Release()
 
 	input2Record, err := CSVToArrow(fields, input2CSV)
 	require.NoError(t, err)
-	defer input2Record.Release()
 
 	// Create input pipelines
 	input1 := NewBufferedPipeline(input1Record)
@@ -83,14 +82,13 @@ func TestVectorAggregationPipeline(t *testing.T) {
 		},
 	}
 
-	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, groupBy, expressionEvaluator{}, types.VectorAggregationTypeSum)
+	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, groupBy, newExpressionEvaluator(), types.VectorAggregationTypeSum)
 	require.NoError(t, err)
 	defer pipeline.Close()
 
 	// Read the pipeline output
 	record, err := pipeline.Read(t.Context())
 	require.NoError(t, err)
-	defer record.Release()
 
 	// Define expected results - sum of values for each group at each timestamp
 	expected := map[time.Time]map[string]float64{

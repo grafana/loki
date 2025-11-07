@@ -16,7 +16,8 @@ Goldfish is a feature within QueryTee that enables sampling and comparison of qu
   - Query complexity metrics (splits, shards)
   - Performance variance detection and reporting
 - **Query Engine Version Tracking**: Tracks which queries used the new experimental query engine vs the old engine
-- **Persistent Storage**: MySQL storage via Google Cloud SQL Proxy or Amazon RDS for storing query samples and comparison results
+- **Persistent Metadata Storage**: MySQL storage via Google Cloud SQL Proxy or Amazon RDS for storing query samples and comparison results
+- **Raw Result Persistence**: Optional upload of exact JSON responses to GCS or S3 for deep diffing
 
 ## Configuration
 
@@ -55,6 +56,22 @@ export GOLDFISH_DB_PASSWORD=your-password
 # Performance comparison settings
 -goldfish.performance-tolerance=0.1                             # 10% tolerance for execution time variance
 
+# Result persistence (optional)
+-goldfish.results.enabled=true                                  # store raw responses
+-goldfish.results.mode=mismatch-only                            # or 'all'
+-goldfish.results.backend=gcs                                   # inferred for CloudSQL
+-goldfish.results.bucket.gcs.bucket-name=<bucket>               # required for GCS
+-goldfish.results.bucket.gcs.service-account=<json>             # optional service account JSON
+-goldfish.results.prefix=goldfish/results                       # optional prefix inside the bucket
+-goldfish.results.compression=gzip                              # gzip or none
+
+# S3 example (RDS deployments)
+-goldfish.results.backend=s3
+-goldfish.results.bucket.s3.bucket-name=<bucket>
+-goldfish.results.bucket.s3.region=<region>
+-goldfish.results.bucket.s3.access-key-id=<key>                 # optional when using IAM roles
+-goldfish.results.bucket.s3.secret-access-key=<secret>          # optional when using IAM roles
+
 # Or run without storage (sampling and comparison only, no persistence)
 # Simply omit the storage configuration
 ```
@@ -78,6 +95,17 @@ export GOLDFISH_DB_PASSWORD=your-password
         │          │ │Comparator│ │          │
         └──────────┘ └──────────┘ └──────────┘
 ```
+
+## Result Storage Layout
+
+When result persistence is enabled, Goldfish writes two objects per sampled query under the configured prefix using UTC date partitions and the correlation ID:
+
+```
+<bucket>/<prefix>/<YYYY>/<MM>/<DD>/<correlation-id>/cell-a.json.gz
+<bucket>/<prefix>/<YYYY>/<MM>/<DD>/<correlation-id>/cell-b.json.gz
+```
+
+Metadata includes the tenant, backend name, HTTP status, and original fnv32 hash so you can correlate objects with database entries. Payloads are gzip-compressed by default. Apply lifecycle policies and IAM so raw log data is protected.
 
 ## Database Schema
 

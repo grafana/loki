@@ -335,7 +335,7 @@ docs/operator/feature-gates.md: $(FEATURE_GATES_TARGET) $(GEN_CRD_API_REFERENCE_
 web-pre: docs/operator/api.md docs/operator/feature-gates.md ## Build the markdown API files of the loki-operator.dev website
 	@echo ">> preprocessing docs for website"
 	@git submodule update --init --recursive
-	cd $(WEBSITE_DIR)/themes/doks/ && npm install && rm -rf content
+	cd $(WEBSITE_DIR)/themes/doks/ && npm ci && rm -rf content
 
 .PHONY: web
 web: $(HUGO) | web-pre ## Run production build of the loki-operator.dev website
