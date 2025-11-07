@@ -2,13 +2,17 @@ package engine
 
 import (
 	"flag"
+	"net"
+	"net/http"
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/thanos-io/objstore"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker"
 )
 
@@ -37,6 +41,16 @@ type WorkerParams struct {
 	// Local scheduler to connect to. If LocalScheduler is nil, the worker can
 	// still connect to remote schedulers.
 	LocalScheduler *Scheduler
+
+	// Address to advertise to other workers and schedulers. Must be set when
+	// the worker runs in remote transport mode.
+	//
+	// If nil, the worker only listens for in-process connections.
+	AdvertiseAddr net.Addr
+
+	// Absolute path of the endpoint where the frame handler is registered.
+	// Used for connecting to scheduler and other workers.
+	Endpoint string
 }
 
 // Worker requests tasks from a [Scheduler] and executes them. Task results are
@@ -44,7 +58,9 @@ type WorkerParams struct {
 type Worker struct {
 	// Our public API is a lightweight wrapper around the internal API.
 
-	inner *worker.Worker
+	inner    *worker.Worker
+	endpoint string
+	handler  http.Handler
 }
 
 // NewWorker creates a new Worker instance. Use [Worker.Service] to manage the
@@ -54,22 +70,82 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		return nil, errors.New("scheduler lookup interval must be non-zero when a scheduler lookup address is provided")
 	}
 
-	inner, err := worker.New(worker.Config{
-		Logger:         params.Logger,
-		Bucket:         params.Bucket,
-		LocalScheduler: params.LocalScheduler.inner,
+	if params.Endpoint == "" {
+		params.Endpoint = "/api/v2/frame"
+	}
 
+	var (
+		listener wire.Listener
+		handler  http.Handler
+		dialer   wire.Dialer
+
+		// localSchedulerAddress is the local scheduler to connect to. Left nil
+		// when using remote transport.
+		localSchedulerAddress net.Addr
+	)
+
+	switch {
+	case params.AdvertiseAddr != nil:
+		remoteListener := wire.NewHTTP2Listener(
+			params.AdvertiseAddr,
+			wire.WithHTTP2ListenerLogger(params.Logger),
+			wire.WithHTTP2ListenerMaxPendingConns(10),
+		)
+		listener, handler = remoteListener, remoteListener
+		dialer = wire.NewHTTP2Dialer(params.Endpoint)
+
+	case params.LocalScheduler != nil:
+		localListener := &wire.Local{Address: wire.LocalWorker}
+		listener = localListener
+
+		schedulerListener, ok := params.LocalScheduler.listener.(*wire.Local)
+		if !ok {
+			return nil, errors.New("scheduler is not configured for local traffic")
+		}
+
+		dialer = wire.NewLocalDialer(localListener, schedulerListener)
+		localSchedulerAddress = wire.LocalScheduler
+
+	default:
+		return nil, errors.New("either an advertise address or a local scheduler listener must be provided")
+	}
+
+	inner, err := worker.New(worker.Config{
+		Logger: params.Logger,
+		Bucket: params.Bucket,
+
+		Dialer:   dialer,
+		Listener: listener,
+
+		SchedulerAddress:        localSchedulerAddress,
 		SchedulerLookupAddress:  params.Config.SchedulerLookupAddress,
 		SchedulerLookupInterval: params.Config.SchedulerLookupInterval,
 
 		BatchSize:  int64(params.Executor.BatchSize),
 		NumThreads: params.Config.WorkerThreads,
+
+		Endpoint: params.Endpoint,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return &Worker{inner: inner}, nil
+	return &Worker{
+		inner:    inner,
+		endpoint: params.Endpoint,
+		handler:  handler,
+	}, nil
+}
+
+// RegisterWorkerServer registers the [wire.Listener] of the inner worker as
+// http.Handler on the provided router.
+//
+// RegisterWorkerServer is a no-op if an advertise address is not provided.
+func (w *Worker) RegisterWorkerServer(router *mux.Router) {
+	if w.handler == nil {
+		return
+	}
+	router.Path(w.endpoint).Methods("POST").Handler(w.handler)
 }
 
 // Service returns the service used to manage the lifecycle of the Worker.

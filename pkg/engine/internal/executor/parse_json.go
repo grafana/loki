@@ -143,14 +143,14 @@ func (j *jsonParser) parseLabelValue(key, value []byte, dataType jsonparser.Valu
 
 	// Convert the value to string based on its type
 	parsedValue := parseValue(value, dataType)
-	if parsedValue != "" {
-		// First-wins semantics for duplicates
-		_, exists := result[keyString]
-		if exists {
-			return nil
-		}
-		result[keyString] = parsedValue
+
+	// Empty keys are always kept for json
+	// First-wins semantics for duplicates
+	_, exists := result[keyString]
+	if exists {
+		return nil
 	}
+	result[keyString] = parsedValue
 
 	return nil
 }
