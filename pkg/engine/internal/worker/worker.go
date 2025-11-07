@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/http"
 	"reflect"
 	"runtime"
 	"sync"
@@ -33,13 +32,16 @@ type Config struct {
 	// Bucket to read stored data from.
 	Bucket objstore.Bucket
 
-	LocalScheduler wire.Listener
+	// Dialer to establish connections to scheduler and remote workers.
+	Dialer wire.Dialer
 
-	// RemoteListener is the listener used for communication with workers.
-	// Workers can either connect locally within the same process through an in-memory connection
-	// or from remote via a tcp connection.
-	// Leave empty when using local tranport and set LocalScheduler instead.
-	RemoteListener wire.Listener
+	// Listener for accepting connections from workers.
+	Listener wire.Listener
+
+	// SchedulerAddress is the address of the remote scheduler to connect to.
+	// SchedulerAddress is used when there is exactly one scheduler. Use
+	// SchedulerLookupAddress to discover multiple schedulers by DNS SRV lookup.
+	SchedulerAddress net.Addr
 
 	// SchedulerLookupAddress is the address of the remote scheduler to look up.
 	// Scheduler addresses are resolved using DNS SRV records at this address.
@@ -97,8 +99,8 @@ type Worker struct {
 	initOnce sync.Once
 	svc      services.Service
 
-	workerListener wire.Listener // used for local and remote transport
-	localScheduler wire.Listener // only used for local transport
+	dialer   wire.Dialer
+	listener wire.Listener
 
 	resourcesMut sync.RWMutex
 	sources      map[ulid.ULID]*streamSource
@@ -116,22 +118,22 @@ func New(config Config) (*Worker, error) {
 	if config.Logger == nil {
 		config.Logger = log.NewNopLogger()
 	}
-	if config.RemoteListener == nil && config.LocalScheduler == nil {
-		return nil, errors.New("local scheduler is required")
+	if config.Listener == nil {
+		return nil, errors.New("worker listener is required")
 	}
-	if config.RemoteListener != nil && config.SchedulerLookupAddress == "" {
-		return nil, errors.New("remote transport requires scheduler lookup address")
+	if config.Dialer == nil {
+		return nil, errors.New("dialer is required")
 	}
-	if config.RemoteListener == nil {
-		config.RemoteListener = &wire.Local{Address: wire.LocalWorker}
+	if config.SchedulerAddress == nil && config.SchedulerLookupAddress == "" {
+		return nil, errors.New("at least one of scheduler address or lookup address is required")
 	}
 
 	return &Worker{
 		config: config,
 		logger: config.Logger,
 
-		workerListener: config.RemoteListener,
-		localScheduler: config.LocalScheduler,
+		dialer:   config.Dialer,
+		listener: config.Listener,
 
 		sources: make(map[ulid.ULID]*streamSource),
 		sinks:   make(map[ulid.ULID]*streamSink),
@@ -148,20 +150,6 @@ func (w *Worker) Service() services.Service {
 	})
 
 	return w.svc
-}
-
-func (w *Worker) Listener() wire.Listener {
-	return w.workerListener
-}
-
-// Handler returns the HTTP handler of the scheduler or nil
-// when the worker runs with local transport.
-func (w *Worker) Handler() http.Handler {
-	handler, ok := w.workerListener.(*wire.HTTP2Listener)
-	if ok {
-		return handler
-	}
-	return nil
 }
 
 // run starts the worker, running until the provided context is canceled.
@@ -198,9 +186,11 @@ func (w *Worker) run(ctx context.Context) error {
 				_ = w.schedulerLoop(ctx, addr)
 			})
 		})
-	} else if w.localScheduler != nil {
-		level.Info(w.logger).Log("msg", "connecting to local scheduler")
-		g.Go(func() error { return w.schedulerLoop(ctx, wire.LocalScheduler) })
+	}
+
+	if w.config.SchedulerAddress != nil {
+		level.Info(w.logger).Log("msg", "directly connecting to scheduler", "scheduler_addr", w.config.SchedulerAddress)
+		g.Go(func() error { return w.schedulerLoop(ctx, w.config.SchedulerAddress) })
 	}
 
 	return g.Wait()
@@ -211,7 +201,7 @@ func (w *Worker) run(ctx context.Context) error {
 // threads within this worker.
 func (w *Worker) runAcceptLoop(ctx context.Context) error {
 	for {
-		conn, err := w.workerListener.Accept(ctx)
+		conn, err := w.listener.Accept(ctx)
 		if err != nil && ctx.Err() != nil {
 			return nil
 		} else if err != nil {
@@ -288,17 +278,7 @@ func (w *Worker) schedulerLoop(ctx context.Context, addr net.Addr) error {
 
 // dial opens a connection to the given address.
 func (w *Worker) dial(ctx context.Context, addr net.Addr) (wire.Conn, error) {
-	switch addr {
-	case wire.LocalScheduler:
-		// Dial from worker to local scheduler
-		return w.localScheduler.(*wire.Local).DialFrom(ctx, w.workerListener.Addr())
-	case wire.LocalWorker:
-		// Dial from worker to local worker
-		return w.workerListener.(*wire.Local).DialFrom(ctx, w.workerListener.Addr())
-	default:
-		// Dial from worker to remote scheduler or remote worker
-		return wire.NewHTTP2Dialer(w.config.Endpoint).Dial(ctx, addr)
-	}
+	return w.dialer.Dial(ctx, w.listener.Addr(), addr)
 }
 
 // handleSchedulerConn handles a single connection to a scheduler.

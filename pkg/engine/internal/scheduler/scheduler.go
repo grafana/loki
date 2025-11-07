@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/http"
 	"sync"
 	"time"
 
@@ -27,11 +26,8 @@ type Config struct {
 	// Logger for optional log messages.
 	Logger log.Logger
 
-	// RemoteListener is the listener used for communication with workers.
-	// Workers can either connect locally within the same process through an in-memory connection
-	// or from remote via a tcp connection.
-	// Leave empty when using local transport.
-	RemoteListener wire.Listener
+	// Listener is the listener used for communication with workers.
+	Listener wire.Listener
 }
 
 // Scheduler is a service that can schedule tasks to connected worker instances.
@@ -41,7 +37,7 @@ type Scheduler struct {
 	initOnce sync.Once
 	svc      services.Service
 
-	listener wire.Listener // used for local and remote transport
+	listener wire.Listener
 
 	resourcesMut sync.RWMutex
 	streams      map[ulid.ULID]*stream             // All known streams (regardless of state)
@@ -64,13 +60,13 @@ func New(config Config) (*Scheduler, error) {
 		config.Logger = log.NewNopLogger()
 	}
 
-	if config.RemoteListener == nil {
-		config.RemoteListener = &wire.Local{Address: wire.LocalScheduler}
+	if config.Listener == nil {
+		return nil, errors.New("listener must be provided")
 	}
 
 	return &Scheduler{
 		logger:   config.Logger,
-		listener: config.RemoteListener,
+		listener: config.Listener,
 
 		streams:     make(map[ulid.ULID]*stream),
 		tasks:       make(map[ulid.ULID]*task),
@@ -87,20 +83,6 @@ func (s *Scheduler) Service() services.Service {
 	})
 
 	return s.svc
-}
-
-func (s *Scheduler) Listener() wire.Listener {
-	return s.listener
-}
-
-// Handler returns the HTTP handler of the scheduler or nil
-// when the scheduler runs with local transport.
-func (s *Scheduler) Handler() http.Handler {
-	handler, ok := s.listener.(*wire.HTTP2Listener)
-	if ok {
-		return handler
-	}
-	return nil
 }
 
 func (s *Scheduler) run(ctx context.Context) error {

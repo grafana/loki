@@ -1424,8 +1424,8 @@ func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
 	sched, err := engine_v2.NewScheduler(engine_v2.SchedulerParams{
 		Logger: log.With(util_log.Logger, "component", "query-engine-scheduler"),
 
-		Addr:     listenAddr,
-		Endpoint: "/api/v2/frame",
+		AdvertiseAddr: listenAddr,
+		Endpoint:      "/api/v2/frame",
 	})
 	if err != nil {
 		return nil, err
@@ -1462,10 +1462,10 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		Config:   t.Cfg.Querier.EngineV2.Worker,
 		Executor: t.Cfg.Querier.EngineV2.Executor,
 
-		LocalSchedulerListener: t.queryEngineV2Scheduler.Listener(),
+		LocalScheduler: t.queryEngineV2Scheduler,
 
-		Addr:     listenAddr,
-		Endpoint: "/api/v2/frame",
+		AdvertiseAddr: listenAddr,
+		Endpoint:      "/api/v2/frame",
 	})
 	if err != nil {
 		return nil, err

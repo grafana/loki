@@ -3,6 +3,7 @@ package engine
 import (
 	"flag"
 	"net"
+	"net/http"
 	"time"
 
 	"github.com/go-kit/log"
@@ -37,15 +38,15 @@ type WorkerParams struct {
 	Config   WorkerConfig   // Configuration for the worker.
 	Executor ExecutorConfig // Configuration for task execution.
 
-	// Local scheduler to connect to.
-	// If LocalSchedulerListener is nil, the worker can still connect to remote schedulers.
-	LocalSchedulerListener wire.Listener
+	// Local scheduler to connect to. If LocalScheduler is nil, the worker can
+	// still connect to remote schedulers.
+	LocalScheduler *Scheduler
 
-	// Listen address of the underlying network listener.
-	// This must only be set when the worker runs in remote transport mode
-	// and accepts remote connections.
+	// Address to advertise to other workers and schedulers. Must be set when
+	// the worker runs in remote transport mode.
+	//
 	// If nil, the worker only listens for in-process connections.
-	Addr net.Addr
+	AdvertiseAddr net.Addr
 
 	// Absolute path of the endpoint where the frame handler is registered.
 	// Used for connecting to scheduler and other workers.
@@ -57,8 +58,9 @@ type WorkerParams struct {
 type Worker struct {
 	// Our public API is a lightweight wrapper around the internal API.
 
-	Endpoint string
 	inner    *worker.Worker
+	endpoint string
+	handler  http.Handler
 }
 
 // NewWorker creates a new Worker instance. Use [Worker.Service] to manage the
@@ -72,22 +74,50 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		params.Endpoint = "/api/v2/frame"
 	}
 
-	var listener wire.Listener
-	if params.Addr != nil {
-		listener = wire.NewHTTP2Listener(
-			params.Addr,
+	var (
+		listener wire.Listener
+		handler  http.Handler
+		dialer   wire.Dialer
+
+		// localSchedulerAddress is the local scheduler to connect to. Left nil
+		// when using remote transport.
+		localSchedulerAddress net.Addr
+	)
+
+	switch {
+	case params.AdvertiseAddr != nil:
+		remoteListener := wire.NewHTTP2Listener(
+			params.AdvertiseAddr,
 			wire.WithHTTP2ListenerLogger(params.Logger),
 			wire.WithHTTP2ListenerMaxPendingConns(10),
 		)
+		listener, handler = remoteListener, remoteListener
+		dialer = wire.NewHTTP2Dialer(params.Endpoint)
+
+	case params.LocalScheduler != nil:
+		localListener := &wire.Local{Address: wire.LocalWorker}
+		listener = localListener
+
+		schedulerListener, ok := params.LocalScheduler.listener.(*wire.Local)
+		if !ok {
+			return nil, errors.New("scheduler is not configured for local traffic")
+		}
+
+		dialer = wire.NewLocalDialer(localListener, schedulerListener)
+		localSchedulerAddress = wire.LocalScheduler
+
+	default:
+		return nil, errors.New("either an advertise address or a local scheduler listener must be provided")
 	}
 
 	inner, err := worker.New(worker.Config{
 		Logger: params.Logger,
 		Bucket: params.Bucket,
 
-		LocalScheduler: params.LocalSchedulerListener,
-		RemoteListener: listener,
+		Dialer:   dialer,
+		Listener: listener,
 
+		SchedulerAddress:        localSchedulerAddress,
 		SchedulerLookupAddress:  params.Config.SchedulerLookupAddress,
 		SchedulerLookupInterval: params.Config.SchedulerLookupInterval,
 
@@ -100,19 +130,25 @@ func NewWorker(params WorkerParams) (*Worker, error) {
 		return nil, err
 	}
 
-	return &Worker{Endpoint: params.Endpoint, inner: inner}, nil
+	return &Worker{
+		inner:    inner,
+		endpoint: params.Endpoint,
+		handler:  handler,
+	}, nil
 }
 
-// RegisterWorkerServer registers the [wire.Listener] of the inner worker as http.Handler on the privided router.
+// RegisterWorkerServer registers the [wire.Listener] of the inner worker as
+// http.Handler on the provided router.
+//
+// RegisterWorkerServer is a no-op if an advertise address is not provided.
 func (w *Worker) RegisterWorkerServer(router *mux.Router) {
-	router.Path(w.Endpoint).Methods("POST").Handler(w.inner.Handler())
+	if w.handler == nil {
+		return
+	}
+	router.Path(w.endpoint).Methods("POST").Handler(w.handler)
 }
 
 // Service returns the service used to manage the lifecycle of the Worker.
 func (w *Worker) Service() services.Service {
 	return w.inner.Service()
-}
-
-func (w *Worker) Listener() wire.Listener {
-	return w.inner.Listener()
 }

@@ -44,7 +44,7 @@ func TestHTTP2BasicConnectivity(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := wire.NewHTTP2Dialer("/").Dial(ctx, listener.Addr())
+	clientConn, err := wire.NewHTTP2Dialer("/").Dial(ctx, listener.Addr(), listener.Addr())
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -55,6 +55,7 @@ func TestHTTP2BasicConnectivity(t *testing.T) {
 
 	// Verify addresses
 	require.Equal(t, listener.Addr(), serverConn.LocalAddr())
+	require.Equal(t, listener.Addr(), serverConn.RemoteAddr(), "advertise address not propagated")
 	t.Logf("Client local: %s, remote: %s", clientConn.LocalAddr(), clientConn.RemoteAddr())
 	t.Logf("Server local: %s, remote: %s", serverConn.LocalAddr(), serverConn.RemoteAddr())
 
@@ -134,7 +135,7 @@ func TestHTTP2WithPeers(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := wire.NewHTTP2Dialer("/").Dial(ctx, listener.Addr())
+	clientConn, err := wire.NewHTTP2Dialer("/").Dial(ctx, listener.Addr(), listener.Addr())
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -297,7 +298,7 @@ func TestHTTP2MultipleClients(t *testing.T) {
 			defer clientWg.Done()
 
 			// Connect
-			conn, err := wire.NewHTTP2Dialer("/").Dial(ctx, listener.Addr())
+			conn, err := wire.NewHTTP2Dialer("/").Dial(ctx, listener.Addr(), listener.Addr())
 			if err != nil {
 				t.Errorf("Client %d dial failed: %v", clientIdx, err)
 				return
@@ -406,7 +407,7 @@ func TestHTTP2ErrorHandling(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := wire.NewHTTP2Dialer("/").Dial(ctx, listener.Addr())
+	clientConn, err := wire.NewHTTP2Dialer("/").Dial(ctx, listener.Addr(), listener.Addr())
 	require.NoError(t, err)
 	defer clientConn.Close()
 
@@ -479,7 +480,7 @@ func TestHTTP2MessageFrameSerialization(t *testing.T) {
 	}()
 
 	// Dial from client
-	clientConn, err := wire.NewHTTP2Dialer("/").Dial(ctx, listener.Addr())
+	clientConn, err := wire.NewHTTP2Dialer("/").Dial(ctx, listener.Addr(), listener.Addr())
 	require.NoError(t, err)
 	defer clientConn.Close()
 
