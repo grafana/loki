@@ -1419,8 +1419,9 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 		return nil, err
 	}
 
+	logger := log.With(util_log.Logger, "component", "query-engine")
 	engine, err := engine_v2.New(engine_v2.Params{
-		Logger:     log.With(util_log.Logger, "component", "query-engine"),
+		Logger:     logger,
 		Registerer: prometheus.DefaultRegisterer,
 
 		Config:          t.Cfg.Querier.EngineV2.Executor,
@@ -1432,6 +1433,26 @@ func (t *Loki) initV2QueryEngine() (services.Service, error) {
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// TODO(rfratto): Validate that no other module which responds to these
+	// paths is enabled.
+	if t.Cfg.Querier.EngineV2.Distributed {
+		toMerge := []middleware.Interface{
+			httpreq.ExtractQueryMetricsMiddleware(),
+			httpreq.ExtractQueryTagsMiddleware(),
+			httpreq.PropagateHeadersMiddleware(httpreq.LokiEncodingFlagsHeader, httpreq.LokiDisablePipelineWrappersHeader),
+			serverutil.RecoveryHTTPMiddleware,
+			t.HTTPAuthMiddleware,
+			serverutil.NewPrepopulateMiddleware(),
+			serverutil.ResponseJSONMiddleware(),
+		}
+
+		httpMiddleware := middleware.Merge(toMerge...)
+		handler := httpMiddleware.Wrap(engine_v2.Handler(t.Cfg.Querier.EngineV2.Executor, logger, engine, t.Overrides))
+
+		t.Server.HTTP.Path("/loki/api/v1/query_range").Methods("GET", "POST").Handler(handler)
+		t.Server.HTTP.Path("/loki/api/v1/query").Methods("GET", "POST").Handler(handler)
 	}
 
 	t.queryEngineV2 = engine
