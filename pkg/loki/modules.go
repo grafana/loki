@@ -1416,15 +1416,18 @@ func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
 		return nil, nil
 	}
 
-	var listenAddr net.Addr
-	if t.Cfg.Querier.EngineV2.Distributed {
-		listenAddr = t.Server.HTTPListenAddr()
+	// Determine the advertise address. Results in nil if not running
+	// distributed execution.
+	listenPort := uint16(t.Cfg.Server.HTTPListenPort)
+	advertiseAddr, err := t.Cfg.Querier.EngineV2.AdvertiseAddr(listenPort)
+	if err != nil {
+		return nil, err
 	}
 
 	sched, err := engine_v2.NewScheduler(engine_v2.SchedulerParams{
 		Logger: log.With(util_log.Logger, "component", "query-engine-scheduler"),
 
-		AdvertiseAddr: listenAddr,
+		AdvertiseAddr: advertiseAddr,
 		Endpoint:      "/api/v2/frame",
 	})
 	if err != nil {
@@ -1445,9 +1448,12 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		return nil, nil
 	}
 
-	var listenAddr net.Addr
-	if t.Cfg.Querier.EngineV2.Distributed {
-		listenAddr = t.Server.HTTPListenAddr()
+	// Determine the advertise address. Results in nil if not running
+	// distributed execution.
+	listenPort := uint16(t.Cfg.Server.HTTPListenPort)
+	advertiseAddr, err := t.Cfg.Querier.EngineV2.AdvertiseAddr(listenPort)
+	if err != nil {
+		return nil, err
 	}
 
 	store, err := t.getDataObjBucket("query-engine-worker")
@@ -1464,7 +1470,7 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 
 		LocalScheduler: t.queryEngineV2Scheduler,
 
-		AdvertiseAddr: listenAddr,
+		AdvertiseAddr: advertiseAddr,
 		Endpoint:      "/api/v2/frame",
 	})
 	if err != nil {
