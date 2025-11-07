@@ -1,12 +1,12 @@
 ---
 apiVersion: helm-chart-toolbox.grafana.com/v1
 kind: TestPlan
-name: httproute
+name: route
 subject:
   releaseName: loki
   namespace: loki
   path: ../../..
-  valuesFile: httproute-values.yaml
+  valuesFile: route-values.yaml
   extraArgs:
     - --dependency-update
     - --set

@@ -1,20 +1,20 @@
-{{- if .Values.httproute.enabled }}
-apiVersion: {{ include "loki.httproute.apiVersion" . }}
-kind: HTTPRoute
+{{- if .Values.route.enabled }}
+apiVersion: {{ .Values.route.apiVersion }}
+kind: {{ .Values.route.kind }}
 metadata:
   name: {{ include "loki.fullname" . }}
   namespace: {{ include "loki.namespace" . }}
   labels:
-    {{- include "loki.httproute.labels" . | nindent 4 }}
-    {{- with .Values.httproute.labels }}
+    {{- include "loki.labels" . | nindent 4 }}
+    {{- with .Values.route.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
-  {{- with .Values.httproute.annotations }}
+  {{- with .Values.route.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  {{- with .Values.httproute.parentRefs }}
+  {{- with .Values.route.parentRefs }}
   parentRefs:
     {{- range . }}
     - name: {{ tpl .name $ }}
@@ -35,7 +35,7 @@ spec:
       {{- end }}
     {{- end }}
   {{- end }}
-  {{- with .Values.httproute.hostnames }}
+  {{- with .Values.route.hostnames }}
   hostnames:
     {{- range . }}
     - {{ tpl . $ | quote }}

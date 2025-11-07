@@ -1,18 +1,19 @@
 ---
 gateway:
-  httproute:
+  route:
     enabled: true
+    apiVersion: gateway.networking.k8s.io/v1
+    kind: HTTPRoute
     annotations: {}
     parentRefs:
       - name: loki-gateway
         namespace: loki
     hostnames:
       - gateway.loki.example.com
-    rules:
-      - matches:
-          - path:
-              type: PathPrefix
-              value: /
+    matches:
+      - path:
+          type: PathPrefix
+          value: /
 loki:
   commonConfig:
     replication_factor: 1
