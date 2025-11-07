@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"slices"
 	"time"
 
@@ -10,10 +11,24 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/v3/pkg/engine"
+	"github.com/grafana/dskit/httpgrpc"
+
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/querier/queryrange/queryrangebase"
 )
+
+// RouterConfig configures sending queries to a separate engine.
+type RouterConfig struct {
+	// Start and End time range supported by the engine.
+	Start, End time.Time
+
+	// Validate function to check if the query is supported by the engine.
+	Validate func(params logql.Params) bool
+
+	// Handler to execute queries against the engine.
+	Handler queryrangebase.Handler
+}
 
 // engineReqResp represents a request with its result channel
 type engineReqResp struct {
@@ -29,6 +44,8 @@ type engineRouter struct {
 	v1Next queryrangebase.Handler
 	v2Next queryrangebase.Handler
 
+	checkV2 func(params logql.Params) bool
+
 	merger queryrangebase.Merger
 
 	logger log.Logger
@@ -37,23 +54,23 @@ type engineRouter struct {
 // newEngineRouterMiddleware creates a middleware that splits and routes part of the query
 // to v2 engine if the query is supported by it.
 func newEngineRouterMiddleware(
-	v2Start, v2End time.Time,
-	v2EngineHandler queryrangebase.Handler,
+	v2Config RouterConfig,
 	v1Chain []queryrangebase.Middleware,
 	merger queryrangebase.Merger,
 	metricQuery bool,
 	logger log.Logger,
 ) queryrangebase.Middleware {
-	if v2EngineHandler == nil {
-		panic("v2EngineHandler cannot be nil")
+	if v2Config.Handler == nil {
+		panic("v2 engine handler cannot be nil")
 	}
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &engineRouter{
-			v2Start:        v2Start,
-			v2End:          v2End,
+			v2Start:        v2Config.Start,
+			v2End:          v2Config.End,
 			v1Next:         queryrangebase.MergeMiddlewares(v1Chain...).Wrap(next),
-			v2Next:         v2EngineHandler,
+			v2Next:         v2Config.Handler,
+			checkV2:        v2Config.Validate,
 			merger:         merger,
 			logger:         logger,
 			forMetricQuery: metricQuery,
@@ -74,7 +91,7 @@ func (e *engineRouter) Do(ctx context.Context, r queryrangebase.Request) (queryr
 	}
 
 	// Unsupported queries should be entirely executed by chunks.
-	if !engine.IsQuerySupported(params) {
+	if !e.checkV2(params) {
 		return e.v1Next.Do(ctx, r)
 	}
 
@@ -181,6 +198,11 @@ func (e *engineRouter) handleReq(ctx context.Context, r *engineReqResp) {
 	var resp packedResp
 	if r.isV2Engine {
 		resp.resp, resp.err = e.v2Next.Do(ctx, r.req)
+		if isUnsupportedError(resp.err) {
+			// Our router validates queries beforehand, but we fall back here for safety.
+			level.Warn(e.logger).Log("msg", "falling back to v1 engine", "err", resp.err)
+			resp.resp, resp.err = e.v1Next.Do(ctx, r.req)
+		}
 	} else {
 		resp.resp, resp.err = e.v1Next.Do(ctx, r.req)
 	}
@@ -190,6 +212,17 @@ func (e *engineRouter) handleReq(ctx context.Context, r *engineReqResp) {
 		return
 	case r.ch <- &resp:
 	}
+}
+
+// isUnsupportedError checks whether the provided error corresponds to a
+// [http.StatusNotImplemented] provided via [httpgrpc].
+func isUnsupportedError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	resp, ok := httpgrpc.HTTPResponseFromError(err)
+	return ok && resp.Code == http.StatusNotImplemented
 }
 
 // process executes the inputs in parallel and collects the responses.

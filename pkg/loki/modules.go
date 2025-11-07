@@ -51,6 +51,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/distributor"
+	"github.com/grafana/loki/v3/pkg/engine"
 	engine_v2 "github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -1162,10 +1163,36 @@ func (i ingesterQueryOptions) QueryIngestersWithin() time.Duration {
 func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 	level.Debug(util_log.Logger).Log("msg", "initializing query frontend tripperware")
 
+	var v2Router queryrange.RouterConfig
+
+	if t.Cfg.QueryRange.EnableV2EngineRouter {
+		start, end := t.Cfg.Querier.EngineV2.Executor.ValidQueryRange()
+
+		level.Debug(util_log.Logger).Log(
+			"msg", "initializing v2 engine router",
+			"start_time", start,
+			"end_time", end,
+			"destination", t.Cfg.QueryRange.V2EngineAddress,
+		)
+
+		handler, err := frontend.NewDownstreamRoundTripper(t.Cfg.QueryRange.V2EngineAddress, http.DefaultTransport, queryrange.DefaultCodec)
+		if err != nil {
+			return nil, fmt.Errorf("creating downstream round tripper for v2 engine: %w", err)
+		}
+
+		v2Router = queryrange.RouterConfig{
+			Start: start,
+			End:   end,
+
+			Validate: engine.IsQuerySupported,
+			Handler:  handler,
+		}
+	}
+
 	middleware, stopper, err := queryrange.NewMiddleware(
 		t.Cfg.QueryRange,
 		t.Cfg.Querier.Engine,
-		t.Cfg.Querier.EngineV2,
+		v2Router,
 		ingesterQueryOptions{t.Cfg.Querier},
 		util_log.Logger,
 		t.Overrides,

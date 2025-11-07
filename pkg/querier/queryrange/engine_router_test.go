@@ -11,6 +11,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/loghttp"
 	"github.com/grafana/loki/v3/pkg/logproto"
+	"github.com/grafana/loki/v3/pkg/logql"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/v3/pkg/querier/plan"
@@ -284,9 +285,19 @@ func Test_engineRouter_Do(t *testing.T) {
 	})
 
 	now := time.Now().Truncate(time.Second)
+	routerConfig := RouterConfig{
+		Start:    now.Add(-24 * time.Hour),
+		End:      now.Add(-time.Hour),
+		Validate: func(params logql.Params) bool { return true },
+		Handler:  v2EngineHandler,
+	}
+
 	router := newEngineRouterMiddleware(
-		now.Add(-24*time.Hour), now.Add(-time.Hour), v2EngineHandler,
-		[]queryrangebase.Middleware{newEntrySuffixTestMiddleware(" [v1-chain-processed]")}, DefaultCodec, false, log.NewNopLogger(),
+		routerConfig,
+		[]queryrangebase.Middleware{newEntrySuffixTestMiddleware(" [v1-chain-processed]")},
+		DefaultCodec,
+		false,
+		log.NewNopLogger(),
 	).Wrap(next)
 
 	tests := []struct {
