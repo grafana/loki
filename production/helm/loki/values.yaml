@@ -1772,6 +1772,9 @@ read:
       path: /loki/api/v1/labels?since=1h
       port: http-metrics
       scheme: HTTP
+      httpHeaders:
+      - name: X-Scope-OrgID
+        value: "fake"
     initialDelaySeconds: 60
     timeoutSeconds: 1
     periodSeconds: 30
