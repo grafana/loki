@@ -208,16 +208,14 @@ func (s *usageStore) Update(tenant string, metadata *proto.StreamMetadata, seenA
 	return nil
 }
 
-func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata, seenAt time.Time) ([]*proto.StreamMetadata, []*proto.StreamMetadata, []*proto.StreamMetadata, error) {
+func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata, seenAt time.Time) ([]*proto.StreamMetadata, []*proto.StreamMetadata, error) {
 	if !s.withinActiveWindow(seenAt.UnixNano()) {
-		return nil, nil, nil, errOutsideActiveWindow
+		return nil, nil, errOutsideActiveWindow
 	}
 	var (
-		now       = s.clock.Now()
-		toProduce = make([]*proto.StreamMetadata, 0, len(metadata))
-		accepted  = make([]*proto.StreamMetadata, 0, len(metadata))
-		rejected  = make([]*proto.StreamMetadata, 0, len(metadata))
-		cutoff    = seenAt.Add(-s.activeWindow).UnixNano()
+		accepted = make([]*proto.StreamMetadata, 0, len(metadata))
+		rejected = make([]*proto.StreamMetadata, 0, len(metadata))
+		cutoff   = seenAt.Add(-s.activeWindow).UnixNano()
 	)
 	s.withLock(tenant, func(i int) {
 		for _, m := range metadata {
@@ -257,16 +255,10 @@ func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata,
 				}
 			}
 			s.update(i, tenant, partition, policyBucket, m, seenAt)
-			// Hard-coded produce cutoff of 1 minute.
-			produceCutoff := now.Add(-time.Minute).UnixNano()
-			if stream.lastProducedAt < produceCutoff {
-				s.setLastProducedAt(i, tenant, partition, m.StreamHash, policyBucket, now)
-				toProduce = append(toProduce, m)
-			}
 			accepted = append(accepted, m)
 		}
 	})
-	return toProduce, accepted, rejected, nil
+	return accepted, rejected, nil
 }
 
 // Evict evicts all streams that have not been seen within the window.
@@ -362,7 +354,7 @@ func (s *usageStore) update(i int, tenant string, partition int32, policyBucket 
 		stream.hash = streamHash
 		stream.totalSize = 0
 		stream.policy = policyBucket
-		// stream.rateBuckets = make([]rateBucket, s.numBuckets)
+		stream.rateBuckets = make([]rateBucket, s.numBuckets)
 	}
 	seenAtUnixNano := seenAt.UnixNano()
 	if stream.lastSeenAt <= seenAtUnixNano {
@@ -370,22 +362,22 @@ func (s *usageStore) update(i int, tenant string, partition int32, policyBucket 
 	}
 	// TODO(grobinson): As mentioned above, we will come back and implement
 	// rate limits at a later date in the future.
-	// stream.totalSize += totalSize
+	stream.totalSize += metadata.TotalSize
 	// rate buckets are implemented as a circular list. To update a rate
 	// bucket we must first calculate the bucket index.
-	// bucketNum := seenAtUnixNano / int64(s.bucketSize)
-	// bucketIdx := int(bucketNum % int64(s.numBuckets))
-	// bucket := stream.rateBuckets[bucketIdx]
+	bucketNum := seenAtUnixNano / int64(s.bucketSize)
+	bucketIdx := int(bucketNum % int64(s.numBuckets))
+	bucket := stream.rateBuckets[bucketIdx]
 	// Once we have found the bucket, we then need to check if it is an old
 	// bucket outside the rate window. If it is, we must reset it before we
 	// can re-use it.
-	// bucketStart := seenAt.Truncate(s.bucketSize).UnixNano()
-	// if bucket.timestamp < bucketStart {
-	// bucket.timestamp = bucketStart
-	// bucket.size = 0
-	// }
-	// bucket.size += totalSize
-	// stream.rateBuckets[bucketIdx] = bucket
+	bucketStart := seenAt.Truncate(s.bucketSize).UnixNano()
+	if bucket.timestamp < bucketStart {
+		bucket.timestamp = bucketStart
+		bucket.size = 0
+	}
+	bucket.size += metadata.TotalSize
+	stream.rateBuckets[bucketIdx] = bucket
 	s.stripes[i][tenant][partition][policyBucket][streamHash] = stream
 }
 
@@ -439,6 +431,30 @@ func (s *usageStore) getStripe(tenant string) int {
 // getPartitionForHash returns the partition for the hash.
 func (s *usageStore) getPartitionForHash(hash uint64) int32 {
 	return int32(hash % uint64(s.numPartitions))
+}
+
+// Used in tests. Is not goroutine-safe.
+func (s *usageStore) getForTests(tenant string, streamHash uint64) (streamUsage, bool) {
+	partition := s.getPartitionForHash(streamHash)
+	i := s.getStripe(tenant)
+	return s.get(i, tenant, partition, streamHash)
+}
+
+func (s *usageStore) get(i int, tenant string, partition int32, streamHash uint64) (stream streamUsage, ok bool) {
+	partitions, ok := s.stripes[i][tenant]
+	if !ok {
+		return
+	}
+	policies, ok := partitions[partition]
+	if !ok {
+		return
+	}
+	streams, ok := policies[noPolicy]
+	if !ok {
+		return
+	}
+	stream, ok = streams[streamHash]
+	return
 }
 
 // withinActiveWindow returns true if t is within the active window.

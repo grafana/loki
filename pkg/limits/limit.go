@@ -72,12 +72,12 @@ func (c *limitsChecker) ExceedsLimits(ctx context.Context, req *proto.ExceedsLim
 	}
 	streams = streams[:valid]
 
-	toProduce, accepted, rejected, err := c.store.UpdateCond(req.Tenant, streams, c.clock.Now())
+	accepted, rejected, err := c.store.UpdateCond(req.Tenant, streams, c.clock.Now())
 	if err != nil {
 		return nil, err
 	}
 
-	for _, stream := range toProduce {
+	for _, stream := range accepted {
 		err := c.producer.Produce(context.WithoutCancel(ctx), req.Tenant, stream)
 		if err != nil {
 			level.Error(c.logger).Log("msg", "failed to send streams", "error", err)
