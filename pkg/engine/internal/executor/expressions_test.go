@@ -1521,6 +1521,23 @@ func TestEvaluateParseExpression_JSON(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "keys with empty values as empty strings",
+			schema: arrow.NewSchema([]arrow.Field{
+				semconv.FieldFromFQN("utf8.builtin.message", true),
+			}, nil),
+			input: arrowtest.Rows{
+				{colMsg: `{"level": "error", "namespace": ""}`},
+			},
+			requestedKeys:  nil,
+			expectedFields: 2, // 2 columns: level, namespace
+			expectedOutput: arrowtest.Rows{
+				{
+					"utf8.parsed.level":     "error",
+					"utf8.parsed.namespace": "",
+				},
+			},
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			alloc := memory.DefaultAllocator
