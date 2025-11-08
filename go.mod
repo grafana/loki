@@ -138,7 +138,7 @@ require (
 	github.com/heroku/x v0.5.2
 	github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db
-	github.com/ncw/swift/v2 v2.0.4
+	github.com/ncw/swift/v2 v2.0.5
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/parquet-go/parquet-go v0.25.1
 	github.com/pressly/goose/v3 v3.26.0
