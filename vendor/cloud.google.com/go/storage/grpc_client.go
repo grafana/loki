@@ -26,7 +26,6 @@ import (
 	"sync"
 
 	"cloud.google.com/go/iam/apiv1/iampb"
-	"cloud.google.com/go/internal/trace"
 	gapic "cloud.google.com/go/storage/internal/apiv2"
 	"cloud.google.com/go/storage/internal/apiv2/storagepb"
 	"github.com/googleapis/gax-go/v2"
@@ -143,7 +142,7 @@ func newGRPCStorageClient(ctx context.Context, opts ...storageOption) (*grpcStor
 	s := initSettings(opts...)
 	s.clientOption = append(defaultGRPCOptions(), s.clientOption...)
 	// Disable all gax-level retries in favor of retry logic in the veneer client.
-	s.gax = append(s.gax, gax.WithRetry(nil))
+	s.gax = append(s.gax, gax.WithRetry(nil), gax.WithTimeout(0))
 
 	config := newStorageConfig(s.clientOption...)
 	if config.readAPIWasSet {
@@ -953,14 +952,24 @@ func (c *grpcStorageClient) ComposeObject(ctx context.Context, req *composeObjec
 }
 func (c *grpcStorageClient) RewriteObject(ctx context.Context, req *rewriteObjectRequest, opts ...storageOption) (*rewriteObjectResponse, error) {
 	s := callSettings(c.settings, opts...)
-	obj := req.dstObject.attrs.toProtoObject("")
+
+	var dst *storagepb.Object
+	// If the destination object attributes are not set, do not include them
+	// in the request. This indicates that the object attributes should be
+	// copied from the source object.
+	if req.dstObject.attrs.isZero() {
+		dst = nil
+	} else {
+		dst = req.dstObject.attrs.toProtoObject("")
+	}
+
 	call := &storagepb.RewriteObjectRequest{
 		SourceBucket:              bucketResourceName(globalProjectAlias, req.srcObject.bucket),
 		SourceObject:              req.srcObject.name,
 		RewriteToken:              req.token,
 		DestinationBucket:         bucketResourceName(globalProjectAlias, req.dstObject.bucket),
 		DestinationName:           req.dstObject.name,
-		Destination:               obj,
+		Destination:               dst,
 		DestinationKmsKey:         req.dstObject.keyName,
 		DestinationPredefinedAcl:  req.predefinedACL,
 		CommonObjectRequestParams: toProtoCommonObjectRequestParams(req.dstObject.encryptionKey),
@@ -1069,8 +1078,8 @@ func (c *grpcStorageClient) NewMultiRangeDownloader(ctx context.Context, params 
 		return nil, errors.New("storage: MultiRangeDownloader requires the experimental.WithGRPCBidiReads option")
 	}
 
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.grpcStorageClient.NewMultiRangeDownloader")
-	defer func() { trace.EndSpan(ctx, err) }()
+	ctx, _ = startSpan(ctx, "grpcStorageClient.NewMultiRangeDownloader")
+	defer func() { endSpan(ctx, err) }()
 	s := callSettings(c.settings, opts...)
 	// Force the use of the custom codec to enable zero-copy reads.
 	s.gax = append(s.gax, gax.WithGRPCOptions(
@@ -1614,8 +1623,8 @@ func (c *grpcStorageClient) NewRangeReader(ctx context.Context, params *newRange
 		return c.NewRangeReaderReadObject(ctx, params, opts...)
 	}
 
-	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.grpcStorageClient.NewRangeReader")
-	defer func() { trace.EndSpan(ctx, err) }()
+	ctx, _ = startSpan(ctx, "grpcStorageClient.NewRangeReader")
+	defer func() { endSpan(ctx, err) }()
 
 	s := callSettings(c.settings, opts...)
 
