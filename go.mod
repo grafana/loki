@@ -16,7 +16,7 @@ require (
 	github.com/IBM/sarama v1.46.1
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/NYTimes/gziphandler v1.1.1
-	github.com/Workiva/go-datastructures v1.1.6
+	github.com/Workiva/go-datastructures v1.1.7
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
