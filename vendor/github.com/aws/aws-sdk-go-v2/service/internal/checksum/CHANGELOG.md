@@ -1,3 +1,21 @@
+# v1.9.4 (2025-11-04)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+* **Dependency Update**: Upgrade to smithy-go v1.23.2 which should convey some passive reduction of overall allocations, especially when not using the metrics system.
+
+# v1.9.3 (2025-10-30)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.9.2 (2025-10-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.9.1 (2025-10-16)
+
+* **Dependency Update**: Bump minimum Go version to 1.23.
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.9.0 (2025-10-07)
 
 * **Feature**: Cache first calculated checksum and reuse it in retry, this feature avoids checksum re-calculation and enables request payload consistency check among attempts.

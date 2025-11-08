@@ -15,19 +15,17 @@ import (
 	"time"
 )
 
-// End of support notice: Beginning October 1, 2025, Amazon S3 will discontinue
-// support for creating new Email Grantee Access Control Lists (ACL). Email Grantee
-// ACLs created prior to this date will continue to work and remain accessible
-// through the Amazon Web Services Management Console, Command Line Interface
-// (CLI), SDKs, and REST API. However, you will no longer be able to create new
-// Email Grantee ACLs.
+// Creates a copy of an object that is already stored in Amazon S3.
+//
+// End of support notice: As of October 1, 2025, Amazon S3 has discontinued
+// support for Email Grantee Access Control Lists (ACLs). If you attempt to use an
+// Email Grantee ACL in a request after October 1, 2025, the request will receive
+// an HTTP 405 (Method Not Allowed) error.
 //
 // This change affects the following Amazon Web Services Regions: US East (N.
-// Virginia) Region, US West (N. California) Region, US West (Oregon) Region, Asia
-// Pacific (Singapore) Region, Asia Pacific (Sydney) Region, Asia Pacific (Tokyo)
-// Region, Europe (Ireland) Region, and South America (São Paulo) Region.
-//
-// Creates a copy of an object that is already stored in Amazon S3.
+// Virginia), US West (N. California), US West (Oregon), Asia Pacific (Singapore),
+// Asia Pacific (Sydney), Asia Pacific (Tokyo), Europe (Ireland), and South America
+// (São Paulo).
 //
 // You can store individual objects of up to 5 TB in Amazon S3. You create a copy
 // of your object up to 5 GB in size in a single atomic action using this API.
@@ -163,6 +161,10 @@ import (
 // [PutObject]
 //
 // [GetObject]
+//
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
 //
 // [Concepts for directory buckets in Local Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-lzs-for-directory-buckets.html
 // [Amazon Web Services Identity and Access Management (IAM) identity-based policies for S3 Express One Zone]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-security-iam-identity-policies.html
@@ -517,6 +519,32 @@ type CopyObjectInput struct {
 	//
 	//   - This functionality is not supported for Amazon S3 on Outposts.
 	GrantWriteACP *string
+
+	// Copies the object if the entity tag (ETag) of the destination object matches
+	// the specified tag. If the ETag values do not match, the operation returns a 412
+	// Precondition Failed error. If a concurrent operation occurs during the upload S3
+	// returns a 409 ConditionalRequestConflict response. On a 409 failure you should
+	// fetch the object's ETag and retry the upload.
+	//
+	// Expects the ETag value as a string.
+	//
+	// For more information about conditional requests, see [RFC 7232].
+	//
+	// [RFC 7232]: https://tools.ietf.org/html/rfc7232
+	IfMatch *string
+
+	// Copies the object only if the object key name at the destination does not
+	// already exist in the bucket specified. Otherwise, Amazon S3 returns a 412
+	// Precondition Failed error. If a concurrent operation occurs during the upload S3
+	// returns a 409 ConditionalRequestConflict response. On a 409 failure you should
+	// retry the upload.
+	//
+	// Expects the '*' (asterisk) character.
+	//
+	// For more information about conditional requests, see [RFC 7232].
+	//
+	// [RFC 7232]: https://tools.ietf.org/html/rfc7232
+	IfNoneMatch *string
 
 	// A map of metadata to store with the object in S3.
 	Metadata map[string]string

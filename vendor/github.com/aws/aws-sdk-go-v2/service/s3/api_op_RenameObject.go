@@ -51,6 +51,10 @@ import (
 // HTTP Host header syntax  Directory buckets - The HTTP Host header syntax is
 // Bucket-name.s3express-zone-id.region-code.amazonaws.com .
 //
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
+//
 // [CreateSession]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateSession.html
 // [RFC 7232]: https://datatracker.ietf.org/doc/rfc7232/
 // [Authorizing Zonal endpoint API operations with CreateSession]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-create-session.html

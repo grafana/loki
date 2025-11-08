@@ -13,10 +13,10 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// End of support notice: Beginning October 1, 2025, Amazon S3 will stop returning
-// DisplayName . Update your applications to use canonical IDs (unique identifier
-// for Amazon Web Services accounts), Amazon Web Services account ID (12 digit
-// identifier) or IAM ARNs (full resource naming) as a direct replacement of
+// End of support notice: Beginning November 21, 2025, Amazon S3 will stop
+// returning DisplayName . Update your applications to use canonical IDs (unique
+// identifier for Amazon Web Services accounts), Amazon Web Services account ID (12
+// digit identifier) or IAM ARNs (full resource naming) as a direct replacement of
 // DisplayName .
 //
 // This change affects the following Amazon Web Services Regions: US East (N.
@@ -39,6 +39,10 @@ import (
 // requests to list your account’s buckets. All unpaginated ListBuckets requests
 // will be rejected for Amazon Web Services accounts with a general purpose bucket
 // quota greater than 10,000.
+//
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
 //
 // [Creating, configuring, and working with Amazon S3 buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/creating-buckets-s3.html
 func (c *Client) ListBuckets(ctx context.Context, params *ListBucketsInput, optFns ...func(*Options)) (*ListBucketsOutput, error) {

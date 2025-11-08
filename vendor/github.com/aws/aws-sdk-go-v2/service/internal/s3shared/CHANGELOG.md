@@ -1,3 +1,21 @@
+# v1.19.13 (2025-11-04)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+* **Dependency Update**: Upgrade to smithy-go v1.23.2 which should convey some passive reduction of overall allocations, especially when not using the metrics system.
+
+# v1.19.12 (2025-10-30)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.19.11 (2025-10-23)
+
+* **Dependency Update**: Updated to the latest SDK module versions
+
+# v1.19.10 (2025-10-16)
+
+* **Dependency Update**: Bump minimum Go version to 1.23.
+* **Dependency Update**: Updated to the latest SDK module versions
+
 # v1.19.9 (2025-09-26)
 
 * **Dependency Update**: Updated to the latest SDK module versions

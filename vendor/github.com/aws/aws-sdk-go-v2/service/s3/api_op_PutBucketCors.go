@@ -59,6 +59,10 @@ import (
 //
 // [RESTOPTIONSobject]
 //
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
+//
 // [GetBucketCors]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketCors.html
 // [Enabling Cross-Origin Resource Sharing]: https://docs.aws.amazon.com/AmazonS3/latest/dev/cors.html
 // [RESTOPTIONSobject]: https://docs.aws.amazon.com/AmazonS3/latest/API/RESTOPTIONSobject.html
