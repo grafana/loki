@@ -114,7 +114,7 @@ func (c *Client) createSessionRequest(ctx context.Context, bucketName string, se
 	if h, p, err := net.SplitHostPort(host); err == nil {
 		if targetURL.Scheme == "http" && p == "80" || targetURL.Scheme == "https" && p == "443" {
 			host = h
-			if ip := net.ParseIP(h); ip != nil && ip.To16() != nil {
+			if ip := net.ParseIP(h); ip != nil && ip.To4() == nil {
 				host = "[" + h + "]"
 			}
 		}

@@ -20,6 +20,7 @@ package minio
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"io"
 	"net/http"
@@ -27,17 +28,30 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/minio/minio-go/v7/internal/json"
 	"github.com/minio/minio-go/v7/pkg/replication"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 )
 
-// RemoveBucketReplication removes a replication config on an existing bucket.
+// RemoveBucketReplication removes the replication configuration from an existing bucket.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//
+// Returns an error if the operation fails.
 func (c *Client) RemoveBucketReplication(ctx context.Context, bucketName string) error {
 	return c.removeBucketReplication(ctx, bucketName)
 }
 
-// SetBucketReplication sets a replication config on an existing bucket.
+// SetBucketReplication sets the replication configuration on an existing bucket.
+// If the provided configuration is empty, this method removes the existing replication configuration.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//   - cfg: Replication configuration to apply
+//
+// Returns an error if the operation fails.
 func (c *Client) SetBucketReplication(ctx context.Context, bucketName string, cfg replication.Config) error {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
@@ -108,8 +122,14 @@ func (c *Client) removeBucketReplication(ctx context.Context, bucketName string)
 	return nil
 }
 
-// GetBucketReplication fetches bucket replication configuration.If config is not
-// found, returns empty config with nil error.
+// GetBucketReplication retrieves the bucket replication configuration.
+// If no replication configuration is found, returns an empty config with nil error.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//
+// Returns the replication configuration or an error if the operation fails.
 func (c *Client) GetBucketReplication(ctx context.Context, bucketName string) (cfg replication.Config, err error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
@@ -155,7 +175,13 @@ func (c *Client) getBucketReplication(ctx context.Context, bucketName string) (c
 	return cfg, nil
 }
 
-// GetBucketReplicationMetrics fetches bucket replication status metrics
+// GetBucketReplicationMetrics retrieves bucket replication status metrics.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//
+// Returns the replication metrics or an error if the operation fails.
 func (c *Client) GetBucketReplicationMetrics(ctx context.Context, bucketName string) (s replication.Metrics, err error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
@@ -200,8 +226,15 @@ func mustGetUUID() string {
 	return u.String()
 }
 
-// ResetBucketReplication kicks off replication of previously replicated objects if ExistingObjectReplication
-// is enabled in the replication config
+// ResetBucketReplication initiates replication of previously replicated objects.
+// This requires ExistingObjectReplication to be enabled in the replication configuration.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//   - olderThan: Only replicate objects older than this duration (0 for all objects)
+//
+// Returns a reset ID that can be used to track the operation, or an error if the operation fails.
 func (c *Client) ResetBucketReplication(ctx context.Context, bucketName string, olderThan time.Duration) (rID string, err error) {
 	rID = mustGetUUID()
 	_, err = c.resetBucketReplicationOnTarget(ctx, bucketName, olderThan, "", rID)
@@ -211,8 +244,16 @@ func (c *Client) ResetBucketReplication(ctx context.Context, bucketName string, 
 	return rID, nil
 }
 
-// ResetBucketReplicationOnTarget kicks off replication of previously replicated objects if
-// ExistingObjectReplication is enabled in the replication config
+// ResetBucketReplicationOnTarget initiates replication of previously replicated objects to a specific target.
+// This requires ExistingObjectReplication to be enabled in the replication configuration.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//   - olderThan: Only replicate objects older than this duration (0 for all objects)
+//   - tgtArn: ARN of the target to reset replication for
+//
+// Returns resync target information or an error if the operation fails.
 func (c *Client) ResetBucketReplicationOnTarget(ctx context.Context, bucketName string, olderThan time.Duration, tgtArn string) (replication.ResyncTargetsInfo, error) {
 	return c.resetBucketReplicationOnTarget(ctx, bucketName, olderThan, tgtArn, mustGetUUID())
 }
@@ -222,7 +263,7 @@ func (c *Client) ResetBucketReplicationOnTarget(ctx context.Context, bucketName 
 func (c *Client) resetBucketReplicationOnTarget(ctx context.Context, bucketName string, olderThan time.Duration, tgtArn, resetID string) (rinfo replication.ResyncTargetsInfo, err error) {
 	// Input validation.
 	if err = s3utils.CheckValidBucketName(bucketName); err != nil {
-		return
+		return rinfo, err
 	}
 	// Get resources properly escaped and lined up before
 	// using them in http request.
@@ -256,7 +297,14 @@ func (c *Client) resetBucketReplicationOnTarget(ctx context.Context, bucketName 
 	return rinfo, nil
 }
 
-// GetBucketReplicationResyncStatus gets the status of replication resync
+// GetBucketReplicationResyncStatus retrieves the status of a replication resync operation.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//   - arn: ARN of the replication target (empty string for all targets)
+//
+// Returns resync status information or an error if the operation fails.
 func (c *Client) GetBucketReplicationResyncStatus(ctx context.Context, bucketName, arn string) (rinfo replication.ResyncTargetsInfo, err error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
@@ -290,11 +338,18 @@ func (c *Client) GetBucketReplicationResyncStatus(ctx context.Context, bucketNam
 	return rinfo, nil
 }
 
-// CancelBucketReplicationResync cancels in progress replication resync
+// CancelBucketReplicationResync cancels an in-progress replication resync operation.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//   - tgtArn: ARN of the replication target (empty string for all targets)
+//
+// Returns the ID of the canceled resync operation or an error if the operation fails.
 func (c *Client) CancelBucketReplicationResync(ctx context.Context, bucketName string, tgtArn string) (id string, err error) {
 	// Input validation.
 	if err = s3utils.CheckValidBucketName(bucketName); err != nil {
-		return
+		return id, err
 	}
 	// Get resources properly escaped and lined up before
 	// using them in http request.
@@ -326,7 +381,13 @@ func (c *Client) CancelBucketReplicationResync(ctx context.Context, bucketName s
 	return id, nil
 }
 
-// GetBucketReplicationMetricsV2 fetches bucket replication status metrics
+// GetBucketReplicationMetricsV2 retrieves bucket replication status metrics using the V2 API.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//
+// Returns the V2 replication metrics or an error if the operation fails.
 func (c *Client) GetBucketReplicationMetricsV2(ctx context.Context, bucketName string) (s replication.MetricsV2, err error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
@@ -362,7 +423,13 @@ func (c *Client) GetBucketReplicationMetricsV2(ctx context.Context, bucketName s
 	return s, nil
 }
 
-// CheckBucketReplication validates if replication is set up properly for a bucket
+// CheckBucketReplication validates whether replication is properly configured for a bucket.
+//
+// Parameters:
+//   - ctx: Context for request cancellation and timeout
+//   - bucketName: Name of the bucket
+//
+// Returns nil if replication is valid, or an error describing the validation failure.
 func (c *Client) CheckBucketReplication(ctx context.Context, bucketName string) (err error) {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
