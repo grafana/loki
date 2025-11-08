@@ -450,10 +450,10 @@ func (r *resolver) ResolveEndpoint(
 								SchemeID: "aws.auth#sigv4",
 								SignerProperties: func() smithy.Properties {
 									var sp smithy.Properties
-									smithyhttp.SetSigV4SigningRegion(&sp, "us-east-1")
-
 									smithyhttp.SetSigV4SigningName(&sp, "dynamodb")
 									smithyhttp.SetSigV4ASigningName(&sp, "dynamodb")
+
+									smithyhttp.SetSigV4SigningRegion(&sp, "us-east-1")
 									return sp
 								}(),
 							},
@@ -590,6 +590,13 @@ func (r *resolver) ResolveEndpoint(
 															return smithyendpoints.Endpoint{
 																URI:     *uri,
 																Headers: http.Header{},
+																Properties: func() smithy.Properties {
+																	var out smithy.Properties
+																	out.Set("metricValues", []interface{}{
+																		"O",
+																	})
+																	return out
+																}(),
 															}, nil
 														}
 													}
@@ -639,6 +646,13 @@ func (r *resolver) ResolveEndpoint(
 																return smithyendpoints.Endpoint{
 																	URI:     *uri,
 																	Headers: http.Header{},
+																	Properties: func() smithy.Properties {
+																		var out smithy.Properties
+																		out.Set("metricValues", []interface{}{
+																			"O",
+																		})
+																		return out
+																	}(),
 																}, nil
 															}
 														}
@@ -680,6 +694,13 @@ func (r *resolver) ResolveEndpoint(
 											return smithyendpoints.Endpoint{
 												URI:     *uri,
 												Headers: http.Header{},
+												Properties: func() smithy.Properties {
+													var out smithy.Properties
+													out.Set("metricValues", []interface{}{
+														"O",
+													})
+													return out
+												}(),
 											}, nil
 										}
 										return endpoint, fmt.Errorf("endpoint rule error, %s", "Credentials-sourced account ID parameter is invalid")
@@ -757,6 +778,13 @@ func (r *resolver) ResolveEndpoint(
 													return smithyendpoints.Endpoint{
 														URI:     *uri,
 														Headers: http.Header{},
+														Properties: func() smithy.Properties {
+															var out smithy.Properties
+															out.Set("metricValues", []interface{}{
+																"O",
+															})
+															return out
+														}(),
 													}, nil
 												}
 											}
@@ -806,6 +834,13 @@ func (r *resolver) ResolveEndpoint(
 														return smithyendpoints.Endpoint{
 															URI:     *uri,
 															Headers: http.Header{},
+															Properties: func() smithy.Properties {
+																var out smithy.Properties
+																out.Set("metricValues", []interface{}{
+																	"O",
+																})
+																return out
+															}(),
 														}, nil
 													}
 												}
@@ -847,6 +882,13 @@ func (r *resolver) ResolveEndpoint(
 									return smithyendpoints.Endpoint{
 										URI:     *uri,
 										Headers: http.Header{},
+										Properties: func() smithy.Properties {
+											var out smithy.Properties
+											out.Set("metricValues", []interface{}{
+												"O",
+											})
+											return out
+										}(),
 									}, nil
 								}
 								return endpoint, fmt.Errorf("endpoint rule error, %s", "Credentials-sourced account ID parameter is invalid")

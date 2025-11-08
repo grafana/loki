@@ -484,8 +484,8 @@ github.com/aws/aws-sdk-go-v2/internal/ini
 github.com/aws/aws-sdk-go-v2/internal/v4a
 github.com/aws/aws-sdk-go-v2/internal/v4a/internal/crypto
 github.com/aws/aws-sdk-go-v2/internal/v4a/internal/v4
-# github.com/aws/aws-sdk-go-v2/service/dynamodb v1.51.0
-## explicit; go 1.22
+# github.com/aws/aws-sdk-go-v2/service/dynamodb v1.52.4
+## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/dynamodb
 github.com/aws/aws-sdk-go-v2/service/dynamodb/internal/customizations
 github.com/aws/aws-sdk-go-v2/service/dynamodb/internal/endpoints
@@ -496,8 +496,8 @@ github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding
 # github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.4
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/internal/checksum
-# github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.9
-## explicit; go 1.22
+# github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery v1.11.13
+## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/internal/endpoint-discovery
 # github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.13
 ## explicit; go 1.23
