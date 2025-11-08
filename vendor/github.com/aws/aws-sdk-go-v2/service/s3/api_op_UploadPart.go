@@ -157,6 +157,10 @@ import (
 //
 // [ListMultipartUploads]
 //
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
+//
 // [Concepts for directory buckets in Local Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-lzs-for-directory-buckets.html
 // [ListParts]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListParts.html
 // [Authenticating Requests: Using the Authorization Header (Amazon Web Services Signature Version 4)]: https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-auth-using-authorization-header.html
@@ -371,7 +375,7 @@ type UploadPartOutput struct {
 	BucketKeyEnabled *bool
 
 	// The Base64 encoded, 32-bit CRC32 checksum of the object. This checksum is only
-	// be present if the checksum was uploaded with the object. When you use an API
+	// present if the checksum was uploaded with the object. When you use an API
 	// operation on an object that was uploaded using multipart uploads, this value may
 	// not be a direct checksum value of the full object. Instead, it's a calculation
 	// based on the checksum values of each individual part. For more information about
@@ -400,8 +404,8 @@ type UploadPartOutput struct {
 	// [Checking object integrity]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html
 	ChecksumCRC64NVME *string
 
-	// The Base64 encoded, 160-bit SHA1 digest of the object. This will only be
-	// present if the object was uploaded with the object. When you use the API
+	// The Base64 encoded, 160-bit SHA1 digest of the object. This checksum is only
+	// present if the checksum was uploaded with the object. When you use the API
 	// operation on an object that was uploaded using multipart uploads, this value may
 	// not be a direct checksum value of the full object. Instead, it's a calculation
 	// based on the checksum values of each individual part. For more information about
@@ -411,8 +415,8 @@ type UploadPartOutput struct {
 	// [Checking object integrity]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums
 	ChecksumSHA1 *string
 
-	// The Base64 encoded, 256-bit SHA256 digest of the object. This will only be
-	// present if the object was uploaded with the object. When you use an API
+	// The Base64 encoded, 256-bit SHA256 digest of the object. This checksum is only
+	// present if the checksum was uploaded with the object. When you use an API
 	// operation on an object that was uploaded using multipart uploads, this value may
 	// not be a direct checksum value of the full object. Instead, it's a calculation
 	// based on the checksum values of each individual part. For more information about

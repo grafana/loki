@@ -96,6 +96,14 @@ import (
 //
 // [PutObject]
 //
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
+//
+// The If-Match header is supported for both general purpose and directory
+// buckets. IfMatchLastModifiedTime and IfMatchSize is only supported for
+// directory buckets.
+//
 // [Sample Request]: https://docs.aws.amazon.com/AmazonS3/latest/API/RESTObjectDELETE.html#ExampleVersionObjectDelete
 // [Concepts for directory buckets in Local Zones]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-lzs-for-directory-buckets.html
 // [Deleting objects from versioning-suspended buckets]: https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectsfromVersioningSuspendedBuckets.html
@@ -177,14 +185,14 @@ type DeleteObjectInput struct {
 	// status code 403 Forbidden (access denied).
 	ExpectedBucketOwner *string
 
-	// The If-Match header field makes the request method conditional on ETags. If the
-	// ETag value does not match, the operation returns a 412 Precondition Failed
-	// error. If the ETag matches or if the object doesn't exist, the operation will
-	// return a 204 Success (No Content) response .
+	// Deletes the object if the ETag (entity tag) value provided during the delete
+	// operation matches the ETag of the object in S3. If the ETag values do not match,
+	// the operation returns a 412 Precondition Failed error.
+	//
+	// Expects the ETag value as a string. If-Match does accept a string value of an
+	// '*' (asterisk) character to denote a match of any ETag.
 	//
 	// For more information about conditional requests, see [RFC 7232].
-	//
-	// This functionality is only supported for directory buckets.
 	//
 	// [RFC 7232]: https://tools.ietf.org/html/rfc7232
 	IfMatch *string

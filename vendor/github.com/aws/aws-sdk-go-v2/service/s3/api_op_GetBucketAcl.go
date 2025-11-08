@@ -14,10 +14,10 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-// End of support notice: Beginning October 1, 2025, Amazon S3 will stop returning
-// DisplayName . Update your applications to use canonical IDs (unique identifier
-// for Amazon Web Services accounts), Amazon Web Services account ID (12 digit
-// identifier) or IAM ARNs (full resource naming) as a direct replacement of
+// End of support notice: Beginning November 21, 2025, Amazon S3 will stop
+// returning DisplayName . Update your applications to use canonical IDs (unique
+// identifier for Amazon Web Services accounts), Amazon Web Services account ID (12
+// digit identifier) or IAM ARNs (full resource naming) as a direct replacement of
 // DisplayName .
 //
 // This change affects the following Amazon Web Services Regions: US East (N.
@@ -46,6 +46,10 @@ import (
 // requests to read ACLs are still supported and return the
 // bucket-owner-full-control ACL with the owner being the account that created the
 // bucket. For more information, see [Controlling object ownership and disabling ACLs]in the Amazon S3 User Guide.
+//
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
 //
 // The following operations are related to GetBucketAcl :
 //

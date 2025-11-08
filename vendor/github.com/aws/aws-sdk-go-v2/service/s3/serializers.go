@@ -452,6 +452,16 @@ func awsRestxml_serializeOpHttpBindingsCopyObjectInput(v *CopyObjectInput, encod
 		encoder.SetHeader(locationName).String(*v.GrantWriteACP)
 	}
 
+	if v.IfMatch != nil {
+		locationName := "If-Match"
+		encoder.SetHeader(locationName).String(*v.IfMatch)
+	}
+
+	if v.IfNoneMatch != nil {
+		locationName := "If-None-Match"
+		encoder.SetHeader(locationName).String(*v.IfNoneMatch)
+	}
+
 	if v.Key == nil || len(*v.Key) == 0 {
 		return &smithy.SerializationError{Err: fmt.Errorf("input member Key must not be empty")}
 	}

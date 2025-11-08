@@ -111,6 +111,10 @@ import (
 //
 // [DeleteBucketLifecycle]
 //
+// You must URL encode any signed header values that contain spaces. For example,
+// if your header value is my file.txt , containing two spaces after my , you must
+// URL encode this value to my%20%20file.txt .
+//
 // [Object Lifecycle Management]: https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lifecycle-mgmt.html
 // [Lifecycle Configuration Elements]: https://docs.aws.amazon.com/AmazonS3/latest/dev/intro-lifecycle-rules.html
 // [GetBucketLifecycleConfiguration]: https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketLifecycleConfiguration.html
