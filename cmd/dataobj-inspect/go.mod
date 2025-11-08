@@ -1,8 +1,6 @@
 module github.com/grafana/loki/cmd/index
 
-go 1.24.0
-
-toolchain go1.24.3
+go 1.25.0
 
 replace github.com/grafana/loki/v3 => ../..
 
@@ -10,7 +8,7 @@ require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.18.0
-	github.com/grafana/loki/v3 v3.5.5
+	github.com/grafana/loki/v3 v3.5.8
 	github.com/prometheus/prometheus v0.305.1-0.20250806170547-208187eaa19b
 )
 
@@ -52,7 +50,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.38.0 // indirect
 	go.opentelemetry.io/otel/trace v1.38.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
+	golang.org/x/exp v0.0.0-20250711185948-6ae5c78190dc // indirect
 	golang.org/x/mod v0.27.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.36.0 // indirect
