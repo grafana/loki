@@ -1940,8 +1940,8 @@ github.com/twmb/franz-go/pkg/kadm
 # github.com/twmb/franz-go/pkg/kfake v0.0.0-20250603004440-37eecbb8927f
 ## explicit; go 1.23.8
 github.com/twmb/franz-go/pkg/kfake
-# github.com/twmb/franz-go/pkg/kmsg v1.11.2
-## explicit; go 1.21
+# github.com/twmb/franz-go/pkg/kmsg v1.12.0
+## explicit; go 1.24.0
 github.com/twmb/franz-go/pkg/kmsg
 github.com/twmb/franz-go/pkg/kmsg/internal/kbin
 # github.com/twmb/franz-go/plugin/kotel v1.6.0
