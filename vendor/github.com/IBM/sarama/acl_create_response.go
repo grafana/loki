@@ -14,7 +14,7 @@ func (c *CreateAclsResponse) setVersion(v int16) {
 }
 
 func (c *CreateAclsResponse) encode(pe packetEncoder) error {
-	pe.putInt32(int32(c.ThrottleTime / time.Millisecond))
+	pe.putDurationMs(c.ThrottleTime)
 
 	if err := pe.putArrayLength(len(c.AclCreationResponses)); err != nil {
 		return err
@@ -30,11 +30,10 @@ func (c *CreateAclsResponse) encode(pe packetEncoder) error {
 }
 
 func (c *CreateAclsResponse) decode(pd packetDecoder, version int16) (err error) {
-	throttleTime, err := pd.getInt32()
+	c.ThrottleTime, err = pd.getDurationMs()
 	if err != nil {
 		return err
 	}
-	c.ThrottleTime = time.Duration(throttleTime) * time.Millisecond
 
 	n, err := pd.getArrayLength()
 	if err != nil {
@@ -88,7 +87,7 @@ type AclCreationResponse struct {
 }
 
 func (a *AclCreationResponse) encode(pe packetEncoder) error {
-	pe.putInt16(int16(a.Err))
+	pe.putKError(a.Err)
 
 	if err := pe.putNullableString(a.ErrMsg); err != nil {
 		return err
@@ -98,11 +97,10 @@ func (a *AclCreationResponse) encode(pe packetEncoder) error {
 }
 
 func (a *AclCreationResponse) decode(pd packetDecoder, version int16) (err error) {
-	kerr, err := pd.getInt16()
+	a.Err, err = pd.getKError()
 	if err != nil {
 		return err
 	}
-	a.Err = KError(kerr)
 
 	if a.ErrMsg, err = pd.getNullableString(); err != nil {
 		return err
