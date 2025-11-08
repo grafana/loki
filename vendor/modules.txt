@@ -564,11 +564,12 @@ github.com/axiomhq/hyperloglog
 # github.com/aymanbagabas/go-osc52/v2 v2.0.1
 ## explicit; go 1.16
 github.com/aymanbagabas/go-osc52/v2
-# github.com/baidubce/bce-sdk-go v0.9.245
+# github.com/baidubce/bce-sdk-go v0.9.251
 ## explicit; go 1.11
 github.com/baidubce/bce-sdk-go/auth
 github.com/baidubce/bce-sdk-go/bce
 github.com/baidubce/bce-sdk-go/http
+github.com/baidubce/bce-sdk-go/rate
 github.com/baidubce/bce-sdk-go/services/bos
 github.com/baidubce/bce-sdk-go/services/bos/api
 github.com/baidubce/bce-sdk-go/services/sts
