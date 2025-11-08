@@ -13,6 +13,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## Unreleased
 
+- [FEATURE] Add the now mandatory /tmp volumeMount for sidecar. [#19759](https://github.com/grafana/loki/pull/19759)
 
 ## 6.55.0
 
