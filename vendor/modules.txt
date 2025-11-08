@@ -1378,6 +1378,9 @@ github.com/klauspost/compress/zstd/internal/xxhash
 # github.com/klauspost/cpuid/v2 v2.2.11
 ## explicit; go 1.22
 github.com/klauspost/cpuid/v2
+# github.com/klauspost/crc32 v1.3.0
+## explicit; go 1.23.0
+github.com/klauspost/crc32
 # github.com/klauspost/pgzip v1.2.6
 ## explicit
 github.com/klauspost/pgzip
@@ -1449,23 +1452,21 @@ github.com/mfridman/interpolate
 # github.com/miekg/dns v1.1.68
 ## explicit; go 1.23.0
 github.com/miekg/dns
-# github.com/minio/crc64nvme v1.0.2
+# github.com/minio/crc64nvme v1.1.0
 ## explicit; go 1.22
 github.com/minio/crc64nvme
 # github.com/minio/md5-simd v1.1.2
 ## explicit; go 1.14
 github.com/minio/md5-simd
-# github.com/minio/minio-go/v7 v7.0.95
+# github.com/minio/minio-go/v7 v7.0.97
 ## explicit; go 1.23.0
 github.com/minio/minio-go/v7
-github.com/minio/minio-go/v7/internal/json
 github.com/minio/minio-go/v7/pkg/cors
 github.com/minio/minio-go/v7/pkg/credentials
 github.com/minio/minio-go/v7/pkg/encrypt
 github.com/minio/minio-go/v7/pkg/kvcache
 github.com/minio/minio-go/v7/pkg/lifecycle
 github.com/minio/minio-go/v7/pkg/notification
-github.com/minio/minio-go/v7/pkg/peeker
 github.com/minio/minio-go/v7/pkg/replication
 github.com/minio/minio-go/v7/pkg/s3utils
 github.com/minio/minio-go/v7/pkg/set

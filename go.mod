@@ -69,7 +69,7 @@ require (
 	github.com/klauspost/pgzip v1.2.6
 	github.com/leodido/go-syslog/v4 v4.3.0
 	github.com/mattn/go-ieproxy v0.0.12
-	github.com/minio/minio-go/v7 v7.0.95
+	github.com/minio/minio-go/v7 v7.0.97
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/mitchellh/mapstructure v1.5.1-0.20220423185008-bf980b35cac4
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee
@@ -222,6 +222,7 @@ require (
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/jaegertracing/jaeger-idl v0.5.0 // indirect
 	github.com/kamstrup/intmap v0.5.1 // indirect
+	github.com/klauspost/crc32 v1.3.0 // indirect
 	github.com/knadh/koanf/maps v0.1.2 // indirect
 	github.com/knadh/koanf/providers/confmap v1.0.0 // indirect
 	github.com/knadh/koanf/v2 v2.2.1 // indirect
@@ -232,7 +233,7 @@ require (
 	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/mdlayher/vsock v1.2.1 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
-	github.com/minio/crc64nvme v1.0.2 // indirect
+	github.com/minio/crc64nvme v1.1.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/sys/atomicwriter v0.1.0 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect
