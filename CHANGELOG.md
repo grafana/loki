@@ -6,6 +6,13 @@
 * Update dependencies versions to remove CVE ([#13835](https://github.com/grafana/loki/pull/13835)) ([567bef2](https://github.com/grafana/loki/commit/567bef286376663407c54f5da07fa00963ba5485))
 
 
+## [2.9.18](https://github.com/grafana/loki/compare/v2.9.17...v2.9.18) (2025-11-08)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/docker/docker to v28 [security] (release-2.9.x) ([#19743](https://github.com/grafana/loki/issues/19743)) ([ce5c5a7](https://github.com/grafana/loki/commit/ce5c5a74fa9c273059029758a303821e4358f7d8))
+
 ## [2.9.17](https://github.com/grafana/loki/compare/v2.9.16...v2.9.17) (2025-11-07)
 
 
