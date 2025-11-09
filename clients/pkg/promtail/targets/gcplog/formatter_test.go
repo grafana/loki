@@ -4,8 +4,7 @@ import (
 	"testing"
 	"time"
 
-	//nolint:staticcheck // ignore SA1019 - promtail is deprecated
-	"cloud.google.com/go/pubsub"
+	"cloud.google.com/go/pubsub/v2"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
