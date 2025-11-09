@@ -10,7 +10,7 @@ import (
 
 	"github.com/drone/envsubst"
 	"github.com/pkg/errors"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // JSON returns a Source that opens the supplied `.json` file and loads it.

@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/prometheus/common/model"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	"github.com/grafana/loki/v3/pkg/util"
 )
