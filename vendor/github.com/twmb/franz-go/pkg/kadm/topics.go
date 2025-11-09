@@ -54,7 +54,7 @@ type CreateTopicResponse struct {
 	Configs           map[string]Config // Configs contains the topic configuration (minus config synonyms), if talking to Kafka 2.4+.
 }
 
-// CreateTopicRepsonses contains per-topic responses for created topics.
+// CreateTopicResponses contains per-topic responses for created topics.
 type CreateTopicResponses map[string]CreateTopicResponse
 
 // Sorted returns all create topic responses sorted first by topic ID, then by
@@ -384,9 +384,9 @@ func (ds DeleteRecordsResponses) Each(fn func(DeleteRecordsResponse)) {
 
 // Sorted returns all delete records responses sorted first by topic, then by
 // partition.
-func (rs DeleteRecordsResponses) Sorted() []DeleteRecordsResponse {
+func (ds DeleteRecordsResponses) Sorted() []DeleteRecordsResponse {
 	var s []DeleteRecordsResponse
-	for _, ps := range rs {
+	for _, ps := range ds {
 		for _, d := range ps {
 			s = append(s, d)
 		}
@@ -413,9 +413,9 @@ func (rs DeleteRecordsResponses) Sorted() []DeleteRecordsResponse {
 //
 // If the topic or partition does not exist, this returns
 // kerr.UnknownTopicOrPartition.
-func (rs DeleteRecordsResponses) On(topic string, partition int32, fn func(*DeleteRecordsResponse) error) (DeleteRecordsResponse, error) {
-	if len(rs) > 0 {
-		t, ok := rs[topic]
+func (ds DeleteRecordsResponses) On(topic string, partition int32, fn func(*DeleteRecordsResponse) error) (DeleteRecordsResponse, error) {
+	if len(ds) > 0 {
+		t, ok := ds[topic]
 		if ok {
 			p, ok := t[partition]
 			if ok {
@@ -431,8 +431,8 @@ func (rs DeleteRecordsResponses) On(topic string, partition int32, fn func(*Dele
 
 // Error iterates over all responses and returns the first error
 // encountered, if any.
-func (rs DeleteRecordsResponses) Error() error {
-	for _, ps := range rs {
+func (ds DeleteRecordsResponses) Error() error {
+	for _, ps := range ds {
 		for _, r := range ps {
 			if r.Err != nil {
 				return r.Err
