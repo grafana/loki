@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"runtime/pprof"
 	"slices"
 	"strings"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -85,7 +87,6 @@ func setupBenchmarkWithStore(tb testing.TB, storeType string) logql.Engine {
 // TestStorageEquality ensures that for each test case, all known storages
 // return the same query result.
 func TestStorageEquality(t *testing.T) {
-	ctx := user.InjectOrgID(t.Context(), testTenant)
 
 	if !*slowTests {
 		t.Skip("test skipped because -slow-tests flag is not set")
@@ -142,64 +143,70 @@ func TestStorageEquality(t *testing.T) {
 			}
 
 			t.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", baseCase.Name(), baseCase.Kind(), store.Name), func(t *testing.T) {
-				defer func() {
-					if t.Failed() {
-						t.Logf("Re-run just this test with -test.run='%s'", testNameRegex(t.Name()))
+				ctx := user.InjectOrgID(t.Context(), testTenant)
+
+				labels := pprof.Labels("query", baseCase.Name(), "kind", baseCase.Kind(), "store", store.Name)
+				pprof.Do(ctx, labels, func(ctx context.Context) {
+					defer func() {
+						if t.Failed() {
+							t.Logf("Re-run just this test with -test.run='%s'", testNameRegex(t.Name()))
+						}
+					}()
+
+					t.Logf("Query information:\n%s", baseCase.Description())
+					params, err := logql.NewLiteralParams(
+						baseCase.Query,
+						baseCase.Start,
+						baseCase.End,
+						baseCase.Step,
+						0,
+						baseCase.Direction,
+						1000,
+						nil,
+						nil,
+					)
+					require.NoError(t, err)
+
+					// Find matching test case in other stores and then compare results.
+					idx := slices.IndexFunc(store.Cases, func(tc TestCase) bool {
+						return tc == baseCase
+					})
+					if idx == -1 {
+						t.Logf("Store %s missing test case %s", store.Name, baseCase.Name())
+						return
 					}
-				}()
 
-				t.Logf("Query information:\n%s", baseCase.Description())
-				params, err := logql.NewLiteralParams(
-					baseCase.Query,
-					baseCase.Start,
-					baseCase.End,
-					baseCase.Step,
-					0,
-					baseCase.Direction,
-					1000,
-					nil,
-					nil,
-				)
-				require.NoError(t, err)
+					actual, err := store.Engine.Query(params).Exec(ctx)
+					if err != nil && errors.Is(err, engine.ErrNotSupported) {
+						t.Skipf("Store %s does not support features used in test case %s", store.Name, baseCase.Name())
+					}
+					require.NoError(t, err)
+					t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
+						store.Name,
+						actual.Statistics.Summary.TotalLinesProcessed,
+						actual.Statistics.Summary.TotalEntriesReturned,
+						humanize.Bytes(uint64(actual.Statistics.Summary.TotalBytesProcessed)),
+						uint64(actual.Statistics.Summary.ExecTime),
+						humanize.Bytes(uint64(actual.Statistics.Summary.BytesProcessedPerSecond)),
+					)
 
-				// Find matching test case in other stores and then compare results.
-				idx := slices.IndexFunc(store.Cases, func(tc TestCase) bool {
-					return tc == baseCase
+					dataobjStats, _ := json.Marshal(&actual.Statistics.Querier.Store.Dataobj)
+					t.Log("Dataobj stats:", string(dataobjStats))
+
+					expected, err := baseStore.Engine.Query(params).Exec(ctx)
+					require.NoError(t, err)
+					t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
+						baseStore.Name,
+						expected.Statistics.Summary.TotalLinesProcessed,
+						expected.Statistics.Summary.TotalEntriesReturned,
+						humanize.Bytes(uint64(expected.Statistics.Summary.TotalBytesProcessed)),
+						uint64(expected.Statistics.Summary.ExecTime),
+						humanize.Bytes(uint64(expected.Statistics.Summary.BytesProcessedPerSecond)),
+					)
+
+					// Use tolerance-based comparison for floating point precision issues
+					assertDataEqualWithTolerance(t, expected.Data, actual.Data, 1e-5)
 				})
-				if idx == -1 {
-					t.Logf("Store %s missing test case %s", store.Name, baseCase.Name())
-					return
-				}
-
-				actual, err := store.Engine.Query(params).Exec(ctx)
-				if err != nil && errors.Is(err, engine.ErrNotSupported) {
-					t.Skipf("Store %s does not support features used in test case %s", store.Name, baseCase.Name())
-				}
-				require.NoError(t, err)
-				t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
-					store.Name,
-					actual.Statistics.Summary.TotalLinesProcessed,
-					actual.Statistics.Summary.TotalEntriesReturned,
-					humanize.Bytes(uint64(actual.Statistics.Summary.TotalBytesProcessed)),
-					uint64(actual.Statistics.Summary.ExecTime),
-					humanize.Bytes(uint64(actual.Statistics.Summary.BytesProcessedPerSecond)),
-				)
-
-				dataobjStats, _ := json.Marshal(&actual.Statistics.Querier.Store.Dataobj)
-				t.Log("Dataobj stats:", string(dataobjStats))
-
-				expected, err := baseStore.Engine.Query(params).Exec(ctx)
-				require.NoError(t, err)
-				t.Logf(`Summary stats: store=%s lines_processed=%d, entries_returned=%d, bytes_processed=%s, execution_time_in_secs=%d, bytes_processed_per_sec=%s`,
-					baseStore.Name,
-					expected.Statistics.Summary.TotalLinesProcessed,
-					expected.Statistics.Summary.TotalEntriesReturned,
-					humanize.Bytes(uint64(expected.Statistics.Summary.TotalBytesProcessed)),
-					uint64(expected.Statistics.Summary.ExecTime),
-					humanize.Bytes(uint64(expected.Statistics.Summary.BytesProcessedPerSecond)),
-				)
-
-				assert.Equal(t, expected.Data, actual.Data, "store %q results do not match base store %q", store.Name, baseStore.Name)
 			})
 		}
 	}
@@ -318,34 +325,40 @@ func BenchmarkLogQL(b *testing.B) {
 
 		for _, c := range cases {
 			b.Run(fmt.Sprintf("query=%s/kind=%s/store=%s", c.Name(), c.Kind(), storeType), func(b *testing.B) {
-				ctx := user.InjectOrgID(context.Background(), testTenant)
-				params, err := logql.NewLiteralParams(
-					c.Query,
-					c.Start,
-					c.End,
-					c.Step,
-					0,
-					c.Direction,
-					1000,
-					nil,
-					nil,
-				)
-				require.NoError(b, err)
+				ctx := user.InjectOrgID(b.Context(), testTenant)
 
-				q := engine.Query(params)
+				labels := pprof.Labels("query", c.Name(), "kind", c.Kind(), "store", storeType)
 
-				b.ReportAllocs()
-				b.ResetTimer()
-
-				for i := 0; i < b.N; i++ {
-					ctx, cancel := context.WithTimeout(ctx, time.Minute)
-					defer cancel()
-					r, err := q.Exec(ctx)
+				pprof.Do(ctx, labels, func(ctx context.Context) {
+					params, err := logql.NewLiteralParams(
+						c.Query,
+						c.Start,
+						c.End,
+						c.Step,
+						0,
+						c.Direction,
+						1000,
+						nil,
+						nil,
+					)
 					require.NoError(b, err)
-					b.ReportMetric(float64(r.Statistics.Summary.TotalLinesProcessed), "linesProcessed")
-					b.ReportMetric(float64(r.Statistics.Summary.TotalPostFilterLines), "postFilterLines")
-					b.ReportMetric(float64(r.Statistics.Summary.TotalBytesProcessed)/1024, "kilobytesProcessed")
-				}
+
+					q := engine.Query(params)
+
+					b.ReportAllocs()
+
+					for b.Loop() {
+						ctx, cancel := context.WithTimeout(ctx, time.Minute)
+						defer cancel()
+
+						r, err := q.Exec(ctx)
+						require.NoError(b, err)
+
+						b.ReportMetric(float64(r.Statistics.Summary.TotalLinesProcessed), "linesProcessed")
+						b.ReportMetric(float64(r.Statistics.Summary.TotalPostFilterLines), "postFilterLines")
+						b.ReportMetric(float64(r.Statistics.Summary.TotalBytesProcessed)/1024, "kilobytesProcessed")
+					}
+				})
 			})
 		}
 	}
@@ -396,4 +409,77 @@ func TestStoresGenerateData(t *testing.T) {
 	builder := NewBuilder(dir, DefaultOpt(), chunkStore, dataObjStore)
 	err = builder.Generate(context.Background(), 1024)
 	require.NoError(t, err)
+}
+
+// assertDataEqualWithTolerance compares two parser.Value instances with floating point tolerance
+func assertDataEqualWithTolerance(t *testing.T, expected, actual parser.Value, tolerance float64) {
+	switch expectedType := expected.(type) {
+	case promql.Vector:
+		actualVector, ok := actual.(promql.Vector)
+		require.True(t, ok, "expected Vector but got %T", actual)
+		assertVectorEqualWithTolerance(t, expectedType, actualVector, tolerance)
+	case promql.Matrix:
+		actualMatrix, ok := actual.(promql.Matrix)
+		require.True(t, ok, "expected Matrix but got %T", actual)
+		assertMatrixEqualWithTolerance(t, expectedType, actualMatrix, tolerance)
+	case promql.Scalar:
+		actualScalar, ok := actual.(promql.Scalar)
+		require.True(t, ok, "expected Scalar but got %T", actual)
+		assertScalarEqualWithTolerance(t, expectedType, actualScalar, tolerance)
+	default:
+		assert.Equal(t, expected, actual)
+	}
+}
+
+// assertVectorEqualWithTolerance compares two Vector instances with floating point tolerance
+func assertVectorEqualWithTolerance(t *testing.T, expected, actual promql.Vector, tolerance float64) {
+	require.Len(t, actual, len(expected))
+
+	for i := range expected {
+		e := expected[i]
+		a := actual[i]
+		require.Equal(t, e.Metric, a.Metric, "metric labels differ at index %d", i)
+		require.Equal(t, e.T, a.T, "timestamp differs at index %d", i)
+
+		if tolerance > 0 {
+			require.InDelta(t, e.F, a.F, tolerance, "float value differs at index %d", i)
+		} else {
+			require.Equal(t, e.F, a.F, "float value differs at index %d", i)
+		}
+	}
+}
+
+// assertMatrixEqualWithTolerance compares two Matrix instances with floating point tolerance
+func assertMatrixEqualWithTolerance(t *testing.T, expected, actual promql.Matrix, tolerance float64) {
+	require.Len(t, actual, len(expected))
+
+	for i := range expected {
+		e := expected[i]
+		a := actual[i]
+		require.Equal(t, e.Metric, a.Metric, "metric labels differ at series %d", i)
+		require.Len(t, a.Floats, len(e.Floats), "float points count differs at series %d", i)
+
+		for j := range e.Floats {
+			ePoint := e.Floats[j]
+			aPoint := a.Floats[j]
+			require.Equal(t, ePoint.T, aPoint.T, "timestamp differs at series %d, point %d", i, j)
+
+			if tolerance > 0 {
+				require.InDelta(t, ePoint.F, aPoint.F, tolerance, "float value differs at series %d, point %d", i, j)
+			} else {
+				require.Equal(t, ePoint.F, aPoint.F, "float value differs at series %d, point %d", i, j)
+			}
+		}
+	}
+}
+
+// assertScalarEqualWithTolerance compares two Scalar instances with floating point tolerance
+func assertScalarEqualWithTolerance(t *testing.T, expected, actual promql.Scalar, tolerance float64) {
+	require.Equal(t, expected.T, actual.T, "scalar timestamp differs")
+
+	if tolerance > 0 {
+		require.InDelta(t, expected.V, actual.V, tolerance, "scalar value differs")
+	} else {
+		require.Equal(t, expected.V, actual.V, "scalar value differs")
+	}
 }

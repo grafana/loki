@@ -74,6 +74,23 @@ func NewMySQLStorage(config StorageConfig, logger log.Logger) (*MySQLStorage, er
 	}, nil
 }
 
+// computeComparisonStatus determines the comparison status based on response codes and hashes
+func computeComparisonStatus(sample *QuerySample) ComparisonStatus {
+	// If either cell has a non-2xx status code, it's an error
+	if sample.CellAStatusCode < 200 || sample.CellAStatusCode >= 300 ||
+		sample.CellBStatusCode < 200 || sample.CellBStatusCode >= 300 {
+		return ComparisonStatusError
+	}
+
+	// If response hashes match, queries produced identical results
+	if sample.CellAResponseHash == sample.CellBResponseHash {
+		return ComparisonStatusMatch
+	}
+
+	// Otherwise, responses differ
+	return ComparisonStatusMismatch
+}
+
 // StoreQuerySample stores a sampled query with performance statistics
 func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample) error {
 	query := `
@@ -92,11 +109,15 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 			cell_a_response_hash, cell_b_response_hash,
 			cell_a_response_size, cell_b_response_size,
 			cell_a_status_code, cell_b_status_code,
+			cell_a_result_uri, cell_b_result_uri,
+			cell_a_result_size_bytes, cell_b_result_size_bytes,
+			cell_a_result_compression, cell_b_result_compression,
 			cell_a_trace_id, cell_b_trace_id,
 			cell_a_span_id, cell_b_span_id,
 			cell_a_used_new_engine, cell_b_used_new_engine,
-			sampled_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			sampled_at,
+			comparison_status
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	// Convert empty span IDs to NULL for database storage
@@ -107,6 +128,28 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 	if sample.CellBSpanID != "" {
 		cellBSpanID = sample.CellBSpanID
 	}
+
+	// Prepare nullable result storage metadata
+	var cellAResultURI, cellBResultURI any
+	var cellAResultSize, cellBResultSize any
+	var cellAResultCompression, cellBResultCompression any
+	if sample.CellAResultURI != "" {
+		cellAResultURI = sample.CellAResultURI
+		cellAResultSize = sample.CellAResultSize
+		if sample.CellAResultCompression != "" {
+			cellAResultCompression = sample.CellAResultCompression
+		}
+	}
+	if sample.CellBResultURI != "" {
+		cellBResultURI = sample.CellBResultURI
+		cellBResultSize = sample.CellBResultSize
+		if sample.CellBResultCompression != "" {
+			cellBResultCompression = sample.CellBResultCompression
+		}
+	}
+
+	// Compute the comparison status before storing
+	comparisonStatus := computeComparisonStatus(sample)
 
 	_, err := s.db.ExecContext(ctx, query,
 		sample.CorrelationID,
@@ -142,6 +185,12 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 		sample.CellBResponseSize,
 		sample.CellAStatusCode,
 		sample.CellBStatusCode,
+		cellAResultURI,
+		cellBResultURI,
+		cellAResultSize,
+		cellBResultSize,
+		cellAResultCompression,
+		cellBResultCompression,
 		sample.CellATraceID,
 		sample.CellBTraceID,
 		cellASpanID,
@@ -149,6 +198,7 @@ func (s *MySQLStorage) StoreQuerySample(ctx context.Context, sample *QuerySample
 		sample.CellAUsedNewEngine,
 		sample.CellBUsedNewEngine,
 		sample.SampledAt,
+		comparisonStatus,
 	)
 
 	return err
@@ -168,7 +218,7 @@ func (s *MySQLStorage) StoreComparisonResult(ctx context.Context, result *Compar
 
 	query := `
 		INSERT INTO comparison_outcomes (
-			correlation_id, comparison_status, 
+			correlation_id, comparison_status,
 			difference_details, performance_metrics,
 			compared_at
 		) VALUES (?, ?, ?, ?, ?)
@@ -214,13 +264,17 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 			cell_a_entries_returned, cell_b_entries_returned, cell_a_splits, cell_b_splits,
 			cell_a_shards, cell_b_shards, cell_a_response_hash, cell_b_response_hash,
 			cell_a_response_size, cell_b_response_size, cell_a_status_code, cell_b_status_code,
+			cell_a_result_uri, cell_b_result_uri,
+			cell_a_result_size_bytes, cell_b_result_size_bytes,
+			cell_a_result_compression, cell_b_result_compression,
 			cell_a_trace_id, cell_b_trace_id,
 			cell_a_span_id, cell_b_span_id,
 			cell_a_used_new_engine, cell_b_used_new_engine,
-			sampled_at, created_at
+			sampled_at, created_at,
+			comparison_status
 		FROM sampled_queries
 		` + whereClause + `
-		ORDER BY sampled_at DESC 
+		ORDER BY sampled_at DESC
 		LIMIT ? OFFSET ?
 	`
 
@@ -245,6 +299,9 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 		var createdAt time.Time
 		// Use sql.NullString for nullable span ID columns
 		var cellASpanID, cellBSpanID sql.NullString
+		var cellAResultURI, cellBResultURI sql.NullString
+		var cellAResultCompression, cellBResultCompression sql.NullString
+		var cellAResultSize, cellBResultSize sql.NullInt64
 
 		err := rows.Scan(
 			&q.CorrelationID, &q.TenantID, &q.User, &q.Query, &q.QueryType, &q.StartTime, &q.EndTime, &stepDurationMs,
@@ -254,10 +311,14 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 			&q.CellAStats.TotalEntriesReturned, &q.CellBStats.TotalEntriesReturned, &q.CellAStats.Splits, &q.CellBStats.Splits,
 			&q.CellAStats.Shards, &q.CellBStats.Shards, &q.CellAResponseHash, &q.CellBResponseHash,
 			&q.CellAResponseSize, &q.CellBResponseSize, &q.CellAStatusCode, &q.CellBStatusCode,
+			&cellAResultURI, &cellBResultURI,
+			&cellAResultSize, &cellBResultSize,
+			&cellAResultCompression, &cellBResultCompression,
 			&q.CellATraceID, &q.CellBTraceID,
 			&cellASpanID, &cellBSpanID,
 			&q.CellAUsedNewEngine, &q.CellBUsedNewEngine,
 			&q.SampledAt, &createdAt,
+			&q.ComparisonStatus,
 		)
 		if err != nil {
 			return nil, err
@@ -269,6 +330,24 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 		}
 		if cellBSpanID.Valid {
 			q.CellBSpanID = cellBSpanID.String
+		}
+		if cellAResultURI.Valid {
+			q.CellAResultURI = cellAResultURI.String
+		}
+		if cellBResultURI.Valid {
+			q.CellBResultURI = cellBResultURI.String
+		}
+		if cellAResultSize.Valid {
+			q.CellAResultSize = cellAResultSize.Int64
+		}
+		if cellBResultSize.Valid {
+			q.CellBResultSize = cellBResultSize.Int64
+		}
+		if cellAResultCompression.Valid {
+			q.CellAResultCompression = cellAResultCompression.String
+		}
+		if cellBResultCompression.Valid {
+			q.CellBResultCompression = cellBResultCompression.String
 		}
 
 		// Convert step duration from milliseconds to Duration
@@ -295,6 +374,168 @@ func (s *MySQLStorage) GetSampledQueries(ctx context.Context, page, pageSize int
 		Page:     page,
 		PageSize: pageSize,
 	}, nil
+}
+
+// GetQueryByCorrelationID retrieves a single query sample by correlation ID
+func (s *MySQLStorage) GetQueryByCorrelationID(ctx context.Context, correlationID string) (*QuerySample, error) {
+	query := `
+		SELECT
+			correlation_id, tenant_id, user, query, query_type, start_time, end_time, step_duration,
+			cell_a_exec_time_ms, cell_b_exec_time_ms, cell_a_queue_time_ms, cell_b_queue_time_ms,
+			cell_a_bytes_processed, cell_b_bytes_processed, cell_a_lines_processed, cell_b_lines_processed,
+			cell_a_bytes_per_second, cell_b_bytes_per_second, cell_a_lines_per_second, cell_b_lines_per_second,
+			cell_a_entries_returned, cell_b_entries_returned, cell_a_splits, cell_b_splits,
+			cell_a_shards, cell_b_shards, cell_a_response_hash, cell_b_response_hash,
+			cell_a_response_size, cell_b_response_size, cell_a_status_code, cell_b_status_code,
+			cell_a_result_uri, cell_b_result_uri,
+			cell_a_result_size_bytes, cell_b_result_size_bytes,
+			cell_a_result_compression, cell_b_result_compression,
+			cell_a_trace_id, cell_b_trace_id,
+			cell_a_span_id, cell_b_span_id,
+			cell_a_used_new_engine, cell_b_used_new_engine,
+			sampled_at, created_at, comparison_status
+		FROM sampled_queries
+		WHERE correlation_id = ?
+	`
+
+	var q QuerySample
+	var stepDurationMs int64
+	var createdAt time.Time
+	var cellASpanID, cellBSpanID sql.NullString
+	var cellAResultURI, cellBResultURI sql.NullString
+	var cellAResultCompression, cellBResultCompression sql.NullString
+	var cellAResultSize, cellBResultSize sql.NullInt64
+
+	err := s.db.QueryRowContext(ctx, query, correlationID).Scan(
+		&q.CorrelationID, &q.TenantID, &q.User, &q.Query, &q.QueryType, &q.StartTime, &q.EndTime, &stepDurationMs,
+		&q.CellAStats.ExecTimeMs, &q.CellBStats.ExecTimeMs, &q.CellAStats.QueueTimeMs, &q.CellBStats.QueueTimeMs,
+		&q.CellAStats.BytesProcessed, &q.CellBStats.BytesProcessed, &q.CellAStats.LinesProcessed, &q.CellBStats.LinesProcessed,
+		&q.CellAStats.BytesPerSecond, &q.CellBStats.BytesPerSecond, &q.CellAStats.LinesPerSecond, &q.CellBStats.LinesPerSecond,
+		&q.CellAStats.TotalEntriesReturned, &q.CellBStats.TotalEntriesReturned, &q.CellAStats.Splits, &q.CellBStats.Splits,
+		&q.CellAStats.Shards, &q.CellBStats.Shards, &q.CellAResponseHash, &q.CellBResponseHash,
+		&q.CellAResponseSize, &q.CellBResponseSize, &q.CellAStatusCode, &q.CellBStatusCode,
+		&cellAResultURI, &cellBResultURI,
+		&cellAResultSize, &cellBResultSize,
+		&cellAResultCompression, &cellBResultCompression,
+		&q.CellATraceID, &q.CellBTraceID,
+		&cellASpanID, &cellBSpanID,
+		&q.CellAUsedNewEngine, &q.CellBUsedNewEngine,
+		&q.SampledAt, &createdAt, &q.ComparisonStatus,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("query with correlation ID %s not found", correlationID)
+		}
+		return nil, fmt.Errorf("failed to query by correlation ID: %w", err)
+	}
+
+	// Convert nullable strings to regular strings
+	if cellASpanID.Valid {
+		q.CellASpanID = cellASpanID.String
+	}
+	if cellBSpanID.Valid {
+		q.CellBSpanID = cellBSpanID.String
+	}
+	if cellAResultURI.Valid {
+		q.CellAResultURI = cellAResultURI.String
+	}
+	if cellBResultURI.Valid {
+		q.CellBResultURI = cellBResultURI.String
+	}
+	if cellAResultSize.Valid {
+		q.CellAResultSize = cellAResultSize.Int64
+	}
+	if cellBResultSize.Valid {
+		q.CellBResultSize = cellBResultSize.Int64
+	}
+	if cellAResultCompression.Valid {
+		q.CellAResultCompression = cellAResultCompression.String
+	}
+	if cellBResultCompression.Valid {
+		q.CellBResultCompression = cellBResultCompression.String
+	}
+
+	// Convert step duration from milliseconds to Duration
+	q.Step = time.Duration(stepDurationMs) * time.Millisecond
+
+	return &q, nil
+}
+
+// GetStatistics retrieves aggregated statistics from the database
+func (s *MySQLStorage) GetStatistics(ctx context.Context, filter StatsFilter) (*Statistics, error) {
+	stats := &Statistics{}
+
+	// Build WHERE clause for time and uses_recent_data filters
+	whereClause, whereArgs := buildStatsWhereClause(filter)
+
+	// #nosec G201 nosemgrep: string-formatted-query
+	// Safe: buildStatsWhereClause() uses parameterized queries for user inputs
+	queriesExecutedQuery := `
+		SELECT COUNT(sampled_at) as value
+		FROM sampled_queries
+		` + whereClause + `
+		AND cell_b_used_new_engine = 1
+	`
+	err := s.db.QueryRowContext(ctx, queriesExecutedQuery, whereArgs...).Scan(&stats.QueriesExecuted)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get queries executed: %w", err)
+	}
+
+	// #nosec G201 nosemgrep: string-formatted-query
+	// Safe: buildStatsWhereClause() uses parameterized queries for user inputs
+	engineCoverageQuery := `
+		SELECT
+			CASE
+				WHEN COUNT(sampled_at) = 0 THEN 0
+				ELSE SUM(cell_b_used_new_engine) / COUNT(sampled_at)
+			END as value
+		FROM sampled_queries
+		` + whereClause
+	err = s.db.QueryRowContext(ctx, engineCoverageQuery, whereArgs...).Scan(&stats.EngineCoverage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get engine coverage: %w", err)
+	}
+
+	// Matching Queries (average of matching hashes for successful queries with new engine)
+	// #nosec G201 nosemgrep: string-formatted-query
+	// Safe: buildStatsWhereClause() uses parameterized queries for user inputs
+	matchingQueriesQuery := `
+		SELECT
+			COALESCE(AVG(cell_a_response_hash = cell_b_response_hash), 0) as value
+		FROM sampled_queries
+		` + whereClause + `
+		AND cell_a_status_code = 200
+		AND cell_b_status_code = 200
+		AND cell_b_used_new_engine = 1
+	`
+	err = s.db.QueryRowContext(ctx, matchingQueriesQuery, whereArgs...).Scan(&stats.MatchingQueries)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get matching queries: %w", err)
+	}
+
+	// Performance Difference (geometric mean of performance ratio for matching queries)
+	// Only calculate for queries that match and have valid data
+	// #nosec G201 nosemgrep: string-formatted-query
+	// Safe: buildStatsWhereClause() uses parameterized queries for user inputs
+	perfDifferenceQuery := `
+		SELECT
+			COALESCE(EXP(AVG(LN(cell_b_exec_time_ms / cell_a_exec_time_ms))) - 1, 0) as value
+		FROM sampled_queries
+		` + whereClause + `
+		AND cell_a_response_hash = cell_b_response_hash
+		AND cell_b_used_new_engine = 1
+		AND cell_a_exec_time_ms > 0
+		AND cell_b_exec_time_ms > 0
+		AND (cell_a_bytes_processed > 0 OR cell_a_entries_returned = 0)
+		AND (cell_b_bytes_processed > 0 OR cell_b_entries_returned = 0)
+	`
+	err = s.db.QueryRowContext(ctx, perfDifferenceQuery, whereArgs...).Scan(&stats.PerformanceDifference)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get performance difference: %w", err)
+	}
+
+	return stats, nil
 }
 
 // Close closes the storage connection
@@ -345,6 +586,41 @@ func buildWhereClause(filter QueryFilter) (string, []any) {
 			// Neither cell used new engine
 			conditions = append(conditions, "cell_a_used_new_engine = 0 AND cell_b_used_new_engine = 0")
 		}
+	}
+
+	// Add comparison status filter
+	if filter.ComparisonStatus != "" {
+		conditions = append(conditions, "comparison_status = ?")
+		args = append(args, filter.ComparisonStatus)
+	}
+
+	// Combine conditions
+	if len(conditions) == 0 {
+		return "", nil
+	}
+
+	whereClause := "WHERE " + strings.Join(conditions, " AND ")
+	return whereClause, args
+}
+
+// buildStatsWhereClause constructs a WHERE clause for statistics queries
+func buildStatsWhereClause(filter StatsFilter) (string, []any) {
+	var conditions []string
+	var args []any
+
+	if !filter.From.IsZero() {
+		conditions = append(conditions, "sampled_at >= ?")
+		args = append(args, filter.From)
+	}
+
+	if !filter.To.IsZero() {
+		conditions = append(conditions, "sampled_at <= ?")
+		args = append(args, filter.To)
+	}
+
+	// When UsesRecentData is false, exclude queries that touch data within the last 3 hours
+	if !filter.UsesRecentData {
+		conditions = append(conditions, "end_time <= DATE_SUB(NOW(), INTERVAL 3 HOUR)")
 	}
 
 	// Combine conditions

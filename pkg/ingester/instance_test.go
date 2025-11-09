@@ -581,7 +581,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	chunkfmt, headfmt, err := inst.chunkFormatAt(model.Now())
 	require.NoError(b, err)
 	retentionHours := util.RetentionHours(tenantsRetention.RetentionPeriodFor("test", lbs))
-	policy := inst.resolvePolicyForStream(lbs)
+	policy := inst.resolvePolicyForStream(context.Background(), lbs)
 
 	b.Run("addTailersToNewStream", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {

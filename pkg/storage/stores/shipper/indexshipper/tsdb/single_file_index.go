@@ -14,6 +14,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/v3/pkg/logproto"
 	"github.com/grafana/loki/v3/pkg/storage/chunk"
 	"github.com/grafana/loki/v3/pkg/storage/stores/index/seriesvolume"
 	shipperindex "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/index"
@@ -211,7 +212,7 @@ func (i *TSDBIndex) forPostings(
 	return fn(p)
 }
 
-func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []logproto.ChunkRefWithSizingInfo, fpFilter index.FingerprintFilter, matchers ...*labels.Matcher) ([]logproto.ChunkRefWithSizingInfo, error) {
 	if res == nil {
 		res = ChunkRefsPool.Get()
 	}
@@ -219,13 +220,16 @@ func (i *TSDBIndex) GetChunkRefs(ctx context.Context, userID string, from, throu
 
 	if err := i.ForSeries(ctx, "", fpFilter, from, through, func(_ labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) (stop bool) {
 		for _, chk := range chks {
-
-			res = append(res, ChunkRef{
-				User:        userID, // assumed to be the same, will be enforced by caller.
-				Fingerprint: fp,
-				Start:       chk.From(),
-				End:         chk.Through(),
-				Checksum:    chk.Checksum,
+			res = append(res, logproto.ChunkRefWithSizingInfo{
+				ChunkRef: logproto.ChunkRef{
+					UserID:      userID, // assumed to be the same, will be enforced by caller.
+					Fingerprint: uint64(fp),
+					From:        chk.From(),
+					Through:     chk.Through(),
+					Checksum:    chk.Checksum,
+				},
+				KB:      chk.KB,
+				Entries: chk.Entries,
 			})
 		}
 		return false

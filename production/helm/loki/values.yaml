@@ -5,8 +5,10 @@
 kubeVersionOverride: null
 
 global:
+  # -- Overrides the Docker registry globally for all images (standard format)
+  imageRegistry: null
   image:
-    # -- Overrides the Docker registry globally for all images
+    # -- Overrides the Docker registry globally for all images (deprecated, use global.imageRegistry)
     registry: null
   # -- Overrides the priorityClassName for all pods
   priorityClassName: null
@@ -71,7 +73,10 @@ loki:
     httpGet:
       path: /ready
       port: http-metrics
-    initialDelaySeconds: 30
+    periodSeconds: 10
+    initialDelaySeconds: 15
+    successThreshold: 1
+    failureThreshold: 3
     timeoutSeconds: 1
   # Configures the startup probe for all of the Loki pods
   startupProbe: {}
@@ -81,7 +86,7 @@ loki:
     # -- Docker image repository
     repository: grafana/loki
     # -- Overrides the image tag whose default is the chart's appVersion
-    tag: 3.5.3
+    tag: 3.5.7
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -176,7 +181,7 @@ loki:
     {{- toYaml .Values.loki.extraMemberlistConfig | nindent 2}}
     {{- end }}
       join_members:
-        - {{ include "loki.memberlist" . }}
+        - {{ include "loki.memberlist" . }}.{{ include "loki.namespace" $ }}.svc.{{ .Values.global.clusterDomain }}
         {{- with .Values.migrate.fromDistributed }}
         {{- if .enabled }}
         - {{ .memberlistService }}
@@ -332,9 +337,6 @@ loki:
     {{- if .Values.loki.ui.enabled }}
     ui:
       enabled: true
-      discovery:
-        join_peers:
-          - '{{ include "loki.queryFrontendFullname" . }}.{{ include "loki.namespace" . }}.svc.{{ .Values.global.clusterDomain }}'
     {{- end }}
     {{- with .Values.loki.querier }}
     querier:
@@ -622,8 +624,8 @@ loki:
 enterprise:
   # Enable enterprise features, license must be provided
   enabled: false
-  # Default verion of GEL to deploy
-  version: 3.5.2
+  # Default version of GEL to deploy
+  version: 3.5.4
   # -- Optional name of the GEL cluster, otherwise will use .Release.Name
   # The cluster name must match what is in your GEL license
   cluster_name: null
@@ -665,7 +667,7 @@ enterprise:
     # -- Docker image repository
     repository: grafana/enterprise-logs
     # -- Docker image tag
-    tag: 3.5.3
+    tag: 3.5.4
     # -- Overrides the image tag with an image digest
     digest: null
     # -- Docker image pull policy
@@ -744,7 +746,7 @@ test:
   enabled: true
   # -- Used to directly query the metrics endpoint of the canary for testing, this approach avoids needing prometheus for testing.
   # This in a newer approach to using prometheusAddress such that tests do not have a dependency on prometheus
-  canaryServiceAddress: "http://loki-canary:3500/metrics"
+  canaryServiceAddress: 'http://{{ include "loki-canary.fullname" $ }}.{{ include "loki.namespace" $ }}.svc.{{ .Values.global.clusterDomain }}:3500/metrics'
   # -- Address of the prometheus server to query for the test. This overrides any value set for canaryServiceAddress.
   # This is kept for backward compatibility and may be removed in future releases. Previous value was 'http://prometheus:9090'
   prometheusAddress: ""
@@ -826,11 +828,20 @@ lokiCanary:
     digest: null
     # -- Docker image pull policy
     pullPolicy: IfNotPresent
+  # -- Readiness probe
+  readinessProbe:
+    httpGet:
+      path: /metrics
+      port: http-metrics
+    initialDelaySeconds: 15
+    timeoutSeconds: 1
   # -- Update strategy for the `loki-canary` Daemonset pods
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 1
+  # -- Replicas for `loki-canary` when using a Deployment
+  replicas: 1
 ######################################################################################################################
 #
 # Service Accounts and Kubernetes RBAC
@@ -1206,6 +1217,8 @@ gateway:
       {{- end }}
     # -- Existing basic auth secret to use. Must contain '.htpasswd'
     existingSecret: null
+  # -- liveness probe for the nginx container in the gateway pods.
+  livenessProbe: {}
   # Configures the readiness probe for the gateway
   readinessProbe:
     httpGet:
@@ -1213,6 +1226,8 @@ gateway:
       port: http-metrics
     initialDelaySeconds: 15
     timeoutSeconds: 1
+  # -- startup probe for the nginx container in the gateway pods.
+  startupProbe: {}
   nginxConfig:
     # -- Which schema to be used when building URLs. Can be 'http' or 'https'.
     schema: http
@@ -1491,6 +1506,9 @@ singleBinary:
               app.kubernetes.io/name: '{{ include "loki.name" . }}'
               app.kubernetes.io/instance: '{{ .Release.Name }}'
           topologyKey: kubernetes.io/hostname
+  # -- Topology Spread Constraints for single binary pods
+  # The value will be passed through tpl.
+  topologySpreadConstraints: []
   # -- DNS config for single binary pods
   dnsConfig: {}
   # -- Node selector for single binary pods
@@ -1498,8 +1516,16 @@ singleBinary:
   # -- Tolerations for single binary pods
   tolerations: []
   persistence:
+    # -- What to do with the volume when the StatefulSet is scaled down.
+    whenScaled: Delete
+    # -- What to do with the volumes when the StatefulSet is deleted.
+    whenDeleted: Delete
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: true
+    # -- Enable StatefulSetRecreation for changes to PVC size.
+    # This means that the StatefulSet will be deleted, recreated (with the same name) and rolled when a change to the
+    # PVC size is detected. That way the PVC can be resized without manual intervention.
+    enableStatefulSetRecreationForSizeChange: false
     # -- Enable persistent disk
     enabled: true
     # -- Set access modes on the PersistentVolumeClaim
@@ -2456,6 +2482,9 @@ queryFrontend:
   appProtocol:
     # -- Set the optional grpc service protocol. Ex: "grpc", "http2" or "https"
     grpc: ""
+  # -- Enable load balancer port for query-frontend
+  loadBalancer:
+    enabled: true
 # -- Configuration for the query-scheduler
 queryScheduler:
   # -- Number of replicas for the query-scheduler.
@@ -2582,6 +2611,8 @@ indexGateway:
   initContainers: []
   # -- Grace period to allow the index-gateway to shutdown before it is killed.
   terminationGracePeriodSeconds: 300
+  # -- Lifecycle for the index-gateway container
+  lifecycle: {}
   # -- Affinity for index-gateway pods.
   # @default -- Hard node anti-affinity
   # The value will be passed through tpl.
@@ -2715,14 +2746,6 @@ compactor:
   persistence:
     # -- Enable creating PVCs for the compactor
     enabled: false
-    # -- Size of persistent disk
-    size: 10Gi
-    # -- Storage class to be used.
-    # If defined, storageClassName: <storageClass>.
-    # If set to "-", storageClassName: "", which disables dynamic provisioning.
-    # If empty or set to null, no storageClassName spec is
-    # set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).
-    storageClass: null
     # -- List of the compactor PVCs
     # @notationType -- list
     claims:
@@ -3460,7 +3483,7 @@ memcached:
     # -- Memcached Docker image repository
     repository: memcached
     # -- Memcached Docker image tag
-    tag: 1.6.38-alpine
+    tag: 1.6.39-alpine
     # -- Memcached Docker image pull policy
     pullPolicy: IfNotPresent
   # -- The SecurityContext override for memcached pods
@@ -3493,6 +3516,8 @@ memcached:
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
+  # -- Startup probe for memcached pods
+  startupProbe: {}
 
 memcachedExporter:
   # -- Whether memcached metrics should be exported
@@ -3538,12 +3563,14 @@ memcachedExporter:
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
+  # -- Startup probe for memcached exporter
+  startupProbe: {}
 
 resultsCache:
   # -- Specifies whether memcached based results-cache should be enabled
   enabled: true
   # -- Comma separated addresses list in DNS Service Discovery format
-  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "results-cache") }}.{{ include "loki.namespace" $ }}.svc
+  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "results-cache") }}.{{ include "loki.namespace" $ }}.svc.{{ .Values.global.clusterDomain }}
   # -- Specify how long cached results should be stored in the results-cache before being expired
   defaultValidity: 12h
   # -- Memcached operation timeout
@@ -3650,7 +3677,7 @@ chunksCache:
   # -- Specifies whether memcached based chunks-cache should be enabled
   enabled: true
   # -- Comma separated addresses list in DNS Service Discovery format
-  addresses: dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.suffix ) }}.{{ include "loki.namespace" $ }}.svc
+  addresses: 'dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.suffix ) }}.{{ include "loki.namespace" $ }}.svc.{{ .Values.global.clusterDomain }}'
   # -- Batchsize for sending and receiving chunks from chunks cache
   batchSize: 4
   # -- Parallel threads for sending and receiving chunks from chunks cache
@@ -3764,7 +3791,7 @@ chunksCache:
     # -- Specifies whether memcached based chunks-cache-l2 should be enabled
     enabled: false
     # -- Comma separated addresses list in DNS Service Discovery format
-    addresses: 'dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.l2.suffix ) }}.{{ include "loki.namespace" $ }}.svc'
+    addresses: 'dnssrvnoa+_memcached-client._tcp.{{ include "loki.resourceName" (dict "ctx" $ "component" "chunks-cache" "suffix" $.Values.chunksCache.l2.suffix ) }}.{{ include "loki.namespace" $ }}.svc.{{ .Values.global.clusterDomain }}'
     # -- Batchsize for sending and receiving chunks from chunks cache
     batchSize: 4
     # -- Parallel threads for sending and receiving chunks from chunks cache
@@ -3971,9 +3998,9 @@ extraObjects: null
 sidecar:
   image:
     # -- The Docker registry and image for the k8s sidecar
-    repository: kiwigrid/k8s-sidecar
+    repository: docker.io/kiwigrid/k8s-sidecar
     # -- Docker image tag
-    tag: 1.30.7
+    tag: 1.30.10
     # -- Docker image sha. If empty, no sha will be used
     sha: ""
     # -- Docker image pull policy
@@ -4060,15 +4087,52 @@ monitoring:
     # -- Specify which individual alerts should be disabled
     # -- Instead of turning off each alert one by one, set the .monitoring.rules.alerting value to false instead.
     # -- If you disable all the alerts and keep .monitoring.rules.alerting set to true, the chart will fail to render.
+    #
+    # -- DEPRECATED: use monitoring.rules.configs.*.enabled instead
     disabled: {}
     #  LokiRequestErrors: true
     #  LokiRequestPanics: true
+
+    configs:
+      LokiRequestErrors:
+        enabled: true
+        for: 15m
+        lookbackPeriod: 2m
+        severity: critical
+        threshold: 10
+      LokiRequestPanics:
+        enabled: true
+        lookbackPeriod: 10m
+        severity: critical
+        threshold: 0
+      LokiRequestLatency:
+        enabled: true
+        for: 15m
+        severity: critical
+        threshold: 1
+      LokiTooManyCompactorsRunning:
+        enabled: true
+        for: 5m
+        severity: warning
+      LokiCanaryLatency:
+        enabled: true
+        for: 15m
+        lookbackPeriod: 5m
+        severity: warning
+        threshold: 5
+
     # -- Alternative namespace to create PrometheusRule resources in
     namespace: null
     # -- Additional annotations for the rules PrometheusRule resource
     annotations: {}
     # -- Additional labels for the rules PrometheusRule resource
     labels: {}
+    # -- Additional annotations for PrometheusRule alerts
+    additionalRuleAnnotations: {}
+    # e.g.:
+    # additionalRuleAnnotations:
+    #   runbook_url: "https://runbooks.example.com/oncall/loki"
+    #   summary: "What this alert means and how to respond"
     # -- Additional labels for PrometheusRule alerts
     additionalRuleLabels: {}
     # -- Additional groups to add to the rules file

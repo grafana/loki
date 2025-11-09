@@ -13,14 +13,13 @@ import (
 	"time"
 
 	ibm "github.com/IBM/ibm-cos-sdk-go/aws"
-	"github.com/IBM/ibm-cos-sdk-go/aws/awserr"
 	"github.com/IBM/ibm-cos-sdk-go/aws/credentials"
 	"github.com/IBM/ibm-cos-sdk-go/aws/credentials/ibmiam"
 	"github.com/IBM/ibm-cos-sdk-go/aws/session"
 	cos "github.com/IBM/ibm-cos-sdk-go/service/s3"
 	cosiface "github.com/IBM/ibm-cos-sdk-go/service/s3/s3iface"
 
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
@@ -490,11 +489,8 @@ func (c *COSObjectClient) List(ctx context.Context, prefix, delimiter string) ([
 
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
 func (c *COSObjectClient) IsObjectNotFoundErr(err error) bool {
-	if aerr, ok := errors.Cause(err).(awserr.Error); ok && aerr.Code() == s3.ErrCodeNoSuchKey {
-		return true
-	}
-
-	return false
+	var awsErr types.NoSuchKey
+	return errors.As(err, &awsErr)
 }
 
 // TODO(dannyk): implement for client

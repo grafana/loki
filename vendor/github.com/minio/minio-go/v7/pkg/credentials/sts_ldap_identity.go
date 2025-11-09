@@ -74,6 +74,9 @@ type LDAPIdentity struct {
 	// requested from LDAP.
 	RequestedExpiry time.Duration
 
+	// Optional, if empty applies to default config
+	ConfigName string
+
 	// Optional, used for token revokation
 	TokenRevokeType string
 }
@@ -107,6 +110,13 @@ func LDAPIdentityPolicyOpt(policy string) LDAPIdentityOpt {
 func LDAPIdentityExpiryOpt(d time.Duration) LDAPIdentityOpt {
 	return func(k *LDAPIdentity) {
 		k.RequestedExpiry = d
+	}
+}
+
+// LDAPIdentityConfigNameOpt sets the config name for requested credentials.
+func LDAPIdentityConfigNameOpt(name string) LDAPIdentityOpt {
+	return func(k *LDAPIdentity) {
+		k.ConfigName = name
 	}
 }
 
@@ -158,6 +168,9 @@ func (k *LDAPIdentity) RetrieveWithCredContext(cc *CredContext) (value Value, er
 	if k.TokenRevokeType != "" {
 		v.Set("TokenRevokeType", k.TokenRevokeType)
 	}
+	if k.ConfigName != "" {
+		v.Set("ConfigName", k.ConfigName)
+	}
 
 	req, err := http.NewRequest(http.MethodPost, u.String(), strings.NewReader(v.Encode()))
 	if err != nil {
@@ -201,7 +214,7 @@ func (k *LDAPIdentity) RetrieveWithCredContext(cc *CredContext) (value Value, er
 
 	r := AssumeRoleWithLDAPResponse{}
 	if err = xml.NewDecoder(resp.Body).Decode(&r); err != nil {
-		return
+		return value, err
 	}
 
 	cr := r.Result.Credentials

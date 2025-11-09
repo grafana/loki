@@ -14,7 +14,7 @@ import (
 
 // sortMergeIterator returns an iterator that performs a k-way merge of records from multiple logs sections.
 // It requires that the input sections are sorted sorted by the same order.
-func sortMergeIterator(ctx context.Context, sections []*dataobj.Section) (result.Seq[logs.Record], error) {
+func sortMergeIterator(ctx context.Context, sections []*dataobj.Section, sort logs.SortOrder) (result.Seq[logs.Record], error) {
 	sequences := make([]*sectionSequence, 0, len(sections))
 	for _, s := range sections {
 		sec, err := logs.Open(ctx, s)
@@ -52,7 +52,7 @@ func sortMergeIterator(ctx context.Context, sections []*dataobj.Section) (result
 		},
 	})
 
-	tree := loser.New(sequences, maxValue, sectionSequenceAt, rowResultLess, sectionSequenceClose)
+	tree := loser.New(sequences, maxValue, sectionSequenceAt, logs.CompareForSortOrder(sort), sectionSequenceClose)
 
 	return result.Iter(
 		func(yield func(logs.Record) bool) error {
@@ -84,7 +84,3 @@ var _ loser.Sequence = (*sectionSequence)(nil)
 
 func sectionSequenceAt(seq *sectionSequence) result.Result[dataset.Row] { return seq.At() }
 func sectionSequenceClose(seq *sectionSequence)                         { seq.Close() }
-
-func rowResultLess(a, b result.Result[dataset.Row]) bool {
-	return result.Compare(a, b, logs.CompareRows) < 0
-}
