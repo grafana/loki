@@ -19,8 +19,12 @@ linters:
     - gosmopolitan
     - inamedparam
     - interfacebloat
+    # Seems unstable. It will sometimes fire and other times not.
+    - ireturn
+    - lll
     - mnd
     - nlreturn
+    - noinlineerr
     - nonamedreturns
     - paralleltest
     # Seems to conflict with golines or one of the formatters.
@@ -32,6 +36,9 @@ linters:
     - wsl
     - wsl_v5
   settings:
+    errcheck:
+      exclude-functions:
+        - (*github.com/oschwald/geoip2-golang/v2.Reader).Close
     errorlint:
       errorf: true
       asserts: true
@@ -63,6 +70,9 @@ linters:
     gosec:
       excludes:
         - G115
+        # Potential file inclusion via variable - we only open files asked by
+        # the user of the API.
+        - G304
     govet:
       disable:
         - shadow
@@ -124,6 +134,10 @@ linters:
           disabled: true
         - name: unhandled-error
           disabled: true
+        - name: package-directory-mismatch
+          arguments:
+            - ignore-directories:
+                - geoip2-golang
     tagliatelle:
       case:
         rules:
@@ -138,22 +152,7 @@ linters:
     unparam:
       check-exported: true
   exclusions:
-    generated: lax
-    presets:
-      - comments
-      - common-false-positives
-      - legacy
-      - std-error-handling
-    rules:
-      - linters:
-          - govet
-          - revive
-        path: _test.go
-        text: 'fieldalignment:'
-    paths:
-      - third_party$
-      - builtin$
-      - examples$
+    warn-unused: true
 formatters:
   enable:
     - gci
@@ -166,12 +165,6 @@ formatters:
       sections:
         - standard
         - default
-        - prefix(github.com/oschwald/geoip2-golang)
+        - prefix(github.com/oschwald/maxminddb-golang)
     gofumpt:
       extra-rules: true
-  exclusions:
-    generated: lax
-    paths:
-      - third_party$
-      - builtin$
-      - examples$
