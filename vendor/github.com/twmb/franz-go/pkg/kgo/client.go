@@ -13,11 +13,13 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"maps"
 	"math"
 	"math/rand"
 	"net"
 	"reflect"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -358,6 +360,8 @@ func (cl *Client) OptValues(opt any) []any {
 		return []any{cfg.decompressor}
 	case namefn(ConsumeRegex):
 		return []any{cfg.regex}
+	case namefn(ConsumeExcludeTopics):
+		return []any{slices.Collect(maps.Keys(cfg.excludeTopics))}
 	case namefn(ConsumeStartOffset):
 		return []any{cfg.startOffset}
 	case namefn(ConsumeResetOffset):
@@ -424,6 +428,8 @@ func (cl *Client) OptValues(opt any) []any {
 		return []any{cfg.onLost}
 	case namefn(OnPartitionsRevoked):
 		return []any{cfg.onRevoked}
+	case namefn(OnPartitionsCallbackBlocked):
+		return []any{cfg.onBlocked}
 	case namefn(RebalanceTimeout):
 		return []any{cfg.rebalanceTimeout}
 	case namefn(RequireStableFetchOffsets):
@@ -596,7 +602,7 @@ func (cl *Client) Ping(ctx context.Context) error {
 	req.Topics = []kmsg.MetadataRequestTopic{}
 
 	cl.brokersMu.RLock()
-	brokers := append([]*broker(nil), cl.brokers...)
+	brokers := slices.Clone(cl.brokers)
 	cl.brokersMu.RUnlock()
 
 	var lastErr error
@@ -1187,6 +1193,8 @@ func (cl *Client) close(ctx context.Context) (rerr error) {
 	// safely stop sinks and sources, as no more will be made.
 	<-cl.metadone
 
+	// We do not need a lock in `sink` and `source` access because,
+	// with the metadata loop done, partition migration will not occur.
 	for _, sns := range cl.sinksAndSources {
 		sns.sink.maybeDrain()     // awaken anything in backoff
 		sns.source.maybeConsume() // same
@@ -1248,6 +1256,8 @@ func (cl *Client) close(ctx context.Context) (rerr error) {
 //	DescribeProducers
 //	DescribeTransactions
 //	ListTransactions
+//	ConsumerGroupDescribe
+//	ShareGroupDescribe
 //
 // Kafka 3.0 introduced batch OffsetFetch and batch FindCoordinator requests.
 // This function is forward and backward compatible: old requests will be
@@ -1293,7 +1303,10 @@ func (cl *Client) Request(ctx context.Context, req kmsg.Request) (kmsg.Response,
 // set to true. This function cannot be used to request topics via TopicID;
 // the direct topic name must be used.
 func (cl *Client) RequestCachedMetadata(ctx context.Context, req *kmsg.MetadataRequest, limit time.Duration) (*kmsg.MetadataResponse, error) {
-	topics := make([]string, 0, len(req.Topics))
+	var topics []string
+	if req.Topics != nil {
+		topics = make([]string, 0, len(req.Topics))
+	}
 	for _, t := range req.Topics {
 		if t.Topic == nil || *t.Topic == "" {
 			return nil, errors.New("unable to request cached metadata with a missing topic name (topic IDs are not supported)")
@@ -1316,9 +1329,9 @@ func (cl *Client) RequestCachedMetadata(ctx context.Context, req *kmsg.MetadataR
 	}
 	dupp := func(p kmsg.MetadataResponseTopicPartition) kmsg.MetadataResponseTopicPartition {
 		p2 := p
-		p2.Replicas = append([]int32(nil), p2.Replicas...)
-		p2.ISR = append([]int32(nil), p2.ISR...)
-		p2.OfflineReplicas = append([]int32(nil), p2.OfflineReplicas...)
+		p2.Replicas = slices.Clone(p2.Replicas)
+		p2.ISR = slices.Clone(p2.ISR)
+		p2.OfflineReplicas = slices.Clone(p2.OfflineReplicas)
 		p2.UnknownTags = kmsg.Tags{}
 		return p2
 	}
@@ -1571,7 +1584,9 @@ func (cl *Client) shardedRequest(ctx context.Context, req kmsg.Request) ([]Respo
 		*kmsg.IncrementalAlterConfigsRequest, // key 44
 		*kmsg.DescribeProducersRequest,       // key 61
 		*kmsg.DescribeTransactionsRequest,    // key 65
-		*kmsg.ListTransactionsRequest:        // key 66
+		*kmsg.ListTransactionsRequest,        // key 66
+		*kmsg.ConsumerGroupDescribeRequest,   // key 69
+		*kmsg.ShareGroupDescribeRequest:      // key 77
 		return cl.handleShardedReq(ctx, req)
 
 	case *kmsg.MetadataRequest:
@@ -2386,6 +2401,10 @@ func (cl *Client) handleShardedReq(ctx context.Context, req kmsg.Request) ([]Res
 		sharder = &describeTransactionsSharder{cl}
 	case *kmsg.ListTransactionsRequest:
 		sharder = &listTransactionsSharder{cl}
+	case *kmsg.ConsumerGroupDescribeRequest:
+		sharder = &consumerGroupDescribeSharder{cl}
+	case *kmsg.ShareGroupDescribeRequest:
+		sharder = &shareGroupDescribeSharder{cl}
 	}
 
 	// If a request fails, we re-shard it (in case it needs to be split
@@ -2610,7 +2629,7 @@ type mappedMetadataTopic struct {
 // exist.
 func (cl *Client) maybeDeleteMappedMetadata(unknownTopic bool, ts ...string) (shouldRetry bool) {
 	if len(ts) == 0 {
-		return
+		return shouldRetry
 	}
 
 	var min time.Duration
@@ -2643,7 +2662,7 @@ func (cl *Client) maybeDeleteMappedMetadata(unknownTopic bool, ts ...string) (sh
 func (cl *Client) fetchCachedMappedMetadata(limit time.Duration, ts ...string) (map[string]mappedMetadataTopic, []string) {
 	cl.mappedMetaMu.Lock()
 	defer cl.mappedMetaMu.Unlock()
-	if cl.mappedMeta == nil {
+	if len(cl.mappedMeta) == 0 {
 		return nil, ts
 	}
 	cached := make(map[string]mappedMetadataTopic)
@@ -2673,7 +2692,12 @@ func (cl *Client) fetchMappedMetadata(ctx context.Context, topics []string, useC
 	needed := topics
 	if useCache {
 		intoMapped, needed = cl.fetchCachedMappedMetadata(limit, topics...)
-		if len(needed) == 0 {
+		// If intoMapped is nil, we have no cached topics at all and
+		// need to force a metadata load to satisfy broker/controller
+		// aspects of the metadata response. We have either never
+		// issued a metadata request, or the cached data (of no topics)
+		// could be super old. Cache age is only tracked per topic.
+		if intoMapped != nil && len(needed) == 0 {
 			return intoMapped, nil
 		}
 	}
@@ -2681,7 +2705,7 @@ func (cl *Client) fetchMappedMetadata(ctx context.Context, topics []string, useC
 		intoMapped = make(map[string]mappedMetadataTopic)
 	}
 
-	_, _, err := cl.fetchMetadataForTopics(ctx, false, needed, intoMapped)
+	_, _, err := cl.fetchMetadataForTopics(ctx, topics == nil, needed, intoMapped)
 	return intoMapped, err
 }
 
@@ -2780,7 +2804,7 @@ func (l *unknownErrShards) err(err error, topic string, partition any) {
 // partitions is a slice where each element has type of arg1 of l.fn.
 func (l *unknownErrShards) errs(err error, topic string, partitions any) {
 	v := reflect.ValueOf(partitions)
-	for i := 0; i < v.Len(); i++ {
+	for i := range v.Len() {
 		l.err(err, topic, v.Index(i).Interface())
 	}
 }
@@ -4790,4 +4814,168 @@ func (*listTransactionsSharder) merge(sresps []ResponseShard) (kmsg.Response, er
 	}
 
 	return merged, firstErr
+}
+
+// handles sharding ConsumerGroupDescribeRequest
+type consumerGroupDescribeSharder struct{ *Client }
+
+func (cl *consumerGroupDescribeSharder) shard(ctx context.Context, kreq kmsg.Request, _ error) ([]issueShard, bool, error) {
+	req := kreq.(*kmsg.ConsumerGroupDescribeRequest)
+	coordinators := cl.loadCoordinators(ctx, coordinatorTypeGroup, req.Groups...)
+	type unkerr struct {
+		err   error
+		group string
+	}
+	var (
+		brokerReqs = make(map[int32]*kmsg.ConsumerGroupDescribeRequest)
+		kerrs      = make(map[*kerr.Error][]string)
+		unkerrs    []unkerr
+	)
+	newReq := func(groups ...string) *kmsg.ConsumerGroupDescribeRequest {
+		newReq := kmsg.NewPtrConsumerGroupDescribeRequest()
+		newReq.IncludeAuthorizedOperations = req.IncludeAuthorizedOperations
+		newReq.Groups = groups
+		return newReq
+	}
+	for _, group := range req.Groups {
+		berr := coordinators[group]
+		var ke *kerr.Error
+		switch {
+		case berr.err == nil:
+			brokerReq := brokerReqs[berr.b.meta.NodeID]
+			if brokerReq == nil {
+				brokerReq = newReq()
+				brokerReqs[berr.b.meta.NodeID] = brokerReq
+			}
+			brokerReq.Groups = append(brokerReq.Groups, group)
+		case errors.As(berr.err, &ke):
+			kerrs[ke] = append(kerrs[ke], group)
+		default:
+			unkerrs = append(unkerrs, unkerr{berr.err, group})
+		}
+	}
+	var issues []issueShard
+	for id, req := range brokerReqs {
+		issues = append(issues, issueShard{
+			req:    req,
+			broker: id,
+		})
+	}
+	for _, unkerr := range unkerrs {
+		issues = append(issues, issueShard{
+			req: newReq(unkerr.group),
+			err: unkerr.err,
+		})
+	}
+	for kerr, groups := range kerrs {
+		issues = append(issues, issueShard{
+			req: newReq(groups...),
+			err: kerr,
+		})
+	}
+	return issues, true, nil // reshardable to load correct coordinators
+}
+
+func (cl *consumerGroupDescribeSharder) onResp(_ kmsg.Request, kresp kmsg.Response) error {
+	resp := kresp.(*kmsg.ConsumerGroupDescribeResponse)
+	var retErr error
+	for i := range resp.Groups {
+		group := &resp.Groups[i]
+		err := kerr.ErrorForCode(group.ErrorCode)
+		cl.maybeDeleteStaleCoordinator(group.Group, coordinatorTypeGroup, err)
+		onRespShardErr(&retErr, err)
+	}
+	return retErr
+}
+
+func (*consumerGroupDescribeSharder) merge(sresps []ResponseShard) (kmsg.Response, error) {
+	merged := kmsg.NewPtrConsumerGroupDescribeResponse()
+	return merged, firstErrMerger(sresps, func(kresp kmsg.Response) {
+		resp := kresp.(*kmsg.ConsumerGroupDescribeResponse)
+		merged.Version = resp.Version
+		merged.ThrottleMillis = resp.ThrottleMillis
+		merged.Groups = append(merged.Groups, resp.Groups...)
+	})
+}
+
+// handles sharding ShareGroupDescribeRequest
+type shareGroupDescribeSharder struct{ *Client }
+
+func (cl *shareGroupDescribeSharder) shard(ctx context.Context, kreq kmsg.Request, _ error) ([]issueShard, bool, error) {
+	req := kreq.(*kmsg.ShareGroupDescribeRequest)
+	coordinators := cl.loadCoordinators(ctx, coordinatorTypeGroup, req.GroupIDs...)
+	type unkerr struct {
+		err     error
+		groupID string
+	}
+	var (
+		brokerReqs = make(map[int32]*kmsg.ShareGroupDescribeRequest)
+		kerrs      = make(map[*kerr.Error][]string)
+		unkerrs    []unkerr
+	)
+	newReq := func(groupIDs ...string) *kmsg.ShareGroupDescribeRequest {
+		newReq := kmsg.NewPtrShareGroupDescribeRequest()
+		newReq.IncludeAuthorizedOperations = req.IncludeAuthorizedOperations
+		newReq.GroupIDs = groupIDs
+		return newReq
+	}
+	for _, groupID := range req.GroupIDs {
+		berr := coordinators[groupID]
+		var ke *kerr.Error
+		switch {
+		case berr.err == nil:
+			brokerReq := brokerReqs[berr.b.meta.NodeID]
+			if brokerReq == nil {
+				brokerReq = newReq()
+				brokerReqs[berr.b.meta.NodeID] = brokerReq
+			}
+			brokerReq.GroupIDs = append(brokerReq.GroupIDs, groupID)
+		case errors.As(berr.err, &ke):
+			kerrs[ke] = append(kerrs[ke], groupID)
+		default:
+			unkerrs = append(unkerrs, unkerr{berr.err, groupID})
+		}
+	}
+	var issues []issueShard
+	for id, req := range brokerReqs {
+		issues = append(issues, issueShard{
+			req:    req,
+			broker: id,
+		})
+	}
+	for _, unkerr := range unkerrs {
+		issues = append(issues, issueShard{
+			req: newReq(unkerr.groupID),
+			err: unkerr.err,
+		})
+	}
+	for kerr, groupIDs := range kerrs {
+		issues = append(issues, issueShard{
+			req: newReq(groupIDs...),
+			err: kerr,
+		})
+	}
+	return issues, true, nil // reshardable to load correct coordinators
+}
+
+func (cl *shareGroupDescribeSharder) onResp(_ kmsg.Request, kresp kmsg.Response) error {
+	resp := kresp.(*kmsg.ShareGroupDescribeResponse)
+	var retErr error
+	for i := range resp.Groups {
+		group := &resp.Groups[i]
+		err := kerr.ErrorForCode(group.ErrorCode)
+		cl.maybeDeleteStaleCoordinator(group.GroupID, coordinatorTypeGroup, err)
+		onRespShardErr(&retErr, err)
+	}
+	return retErr
+}
+
+func (*shareGroupDescribeSharder) merge(sresps []ResponseShard) (kmsg.Response, error) {
+	merged := kmsg.NewPtrShareGroupDescribeResponse()
+	return merged, firstErrMerger(sresps, func(kresp kmsg.Response) {
+		resp := kresp.(*kmsg.ShareGroupDescribeResponse)
+		merged.Version = resp.Version
+		merged.ThrottleMillis = resp.ThrottleMillis
+		merged.Groups = append(merged.Groups, resp.Groups...)
+	})
 }
