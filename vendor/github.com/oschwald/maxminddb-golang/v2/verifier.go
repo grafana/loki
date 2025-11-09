@@ -1,17 +1,32 @@
 package maxminddb
 
 import (
-	"reflect"
 	"runtime"
+
+	"github.com/oschwald/maxminddb-golang/v2/internal/mmdberrors"
 )
 
 type verifier struct {
 	reader *Reader
 }
 
-// Verify checks that the database is valid. It validates the search tree,
-// the data section, and the metadata section. This verifier is stricter than
-// the specification and may return errors on databases that are readable.
+// Verify performs comprehensive validation of the MaxMind DB file.
+//
+// This method validates:
+//   - Metadata section: format versions, required fields, and value constraints
+//   - Search tree: traverses all networks to verify tree structure integrity
+//   - Data section separator: validates the 16-byte separator between tree and data
+//   - Data section: verifies all data records referenced by the search tree
+//
+// The verifier is stricter than the MaxMind DB specification and may return
+// errors on some databases that are still readable by normal operations.
+// This method is useful for:
+//   - Validating database files after download or generation
+//   - Debugging database corruption issues
+//   - Ensuring database integrity in critical applications
+//
+// Note: Verification traverses the entire database and may be slow on large files.
+// The method is thread-safe and can be called on an active Reader.
 func (r *Reader) Verify() error {
 	v := verifier{r}
 	if err := v.verifyMetadata(); err != nil {
@@ -53,7 +68,7 @@ func (v *verifier) verifyMetadata() error {
 	if len(metadata.Description) == 0 {
 		return testError(
 			"description",
-			"non-empty slice",
+			"non-empty map",
 			metadata.Description,
 		)
 	}
@@ -96,22 +111,17 @@ func (v *verifier) verifyDatabase() error {
 		return err
 	}
 
-	return v.verifyDataSection(offsets)
+	return v.reader.decoder.VerifyDataSection(offsets)
 }
 
 func (v *verifier) verifySearchTree() (map[uint]bool, error) {
 	offsets := make(map[uint]bool)
 
-	it := v.reader.Networks()
-	for it.Next() {
-		offset, err := v.reader.resolveDataPointer(it.lastNode.pointer)
-		if err != nil {
+	for result := range v.reader.Networks() {
+		if err := result.Err(); err != nil {
 			return nil, err
 		}
-		offsets[uint(offset)] = true
-	}
-	if err := it.Err(); err != nil {
-		return nil, err
+		offsets[result.offset] = true
 	}
 	return offsets, nil
 }
@@ -123,66 +133,11 @@ func (v *verifier) verifyDataSectionSeparator() error {
 
 	for _, b := range separator {
 		if b != 0 {
-			return newInvalidDatabaseError("unexpected byte in data separator: %v", separator)
-		}
-	}
-	return nil
-}
-
-func (v *verifier) verifyDataSection(offsets map[uint]bool) error {
-	pointerCount := len(offsets)
-
-	decoder := v.reader.decoder
-
-	var offset uint
-	bufferLen := uint(len(decoder.buffer))
-	for offset < bufferLen {
-		var data any
-		rv := reflect.ValueOf(&data)
-		newOffset, err := decoder.decode(offset, rv, 0)
-		if err != nil {
-			return newInvalidDatabaseError(
-				"received decoding error (%v) at offset of %v",
-				err,
-				offset,
+			return mmdberrors.NewInvalidDatabaseError(
+				"unexpected byte in data separator: %v",
+				separator,
 			)
 		}
-		if newOffset <= offset {
-			return newInvalidDatabaseError(
-				"data section offset unexpectedly went from %v to %v",
-				offset,
-				newOffset,
-			)
-		}
-
-		pointer := offset
-
-		if _, ok := offsets[pointer]; !ok {
-			return newInvalidDatabaseError(
-				"found data (%v) at %v that the search tree does not point to",
-				data,
-				pointer,
-			)
-		}
-		delete(offsets, pointer)
-
-		offset = newOffset
-	}
-
-	if offset != bufferLen {
-		return newInvalidDatabaseError(
-			"unexpected data at the end of the data section (last offset: %v, end: %v)",
-			offset,
-			bufferLen,
-		)
-	}
-
-	if len(offsets) != 0 {
-		return newInvalidDatabaseError(
-			"found %v pointers (of %v) in the search tree that we did not see in the data section",
-			len(offsets),
-			pointerCount,
-		)
 	}
 	return nil
 }
@@ -192,7 +147,7 @@ func testError(
 	expected any,
 	actual any,
 ) error {
-	return newInvalidDatabaseError(
+	return mmdberrors.NewInvalidDatabaseError(
 		"%v - Expected: %v Actual: %v",
 		field,
 		expected,

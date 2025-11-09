@@ -1579,12 +1579,14 @@ github.com/opentracing-contrib/go-stdlib/nethttp
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
-# github.com/oschwald/geoip2-golang v1.13.0
-## explicit; go 1.21
-github.com/oschwald/geoip2-golang
-# github.com/oschwald/maxminddb-golang v1.13.0
-## explicit; go 1.21
-github.com/oschwald/maxminddb-golang
+# github.com/oschwald/geoip2-golang/v2 v2.0.0
+## explicit; go 1.24.0
+github.com/oschwald/geoip2-golang/v2
+# github.com/oschwald/maxminddb-golang/v2 v2.0.0
+## explicit; go 1.24.0
+github.com/oschwald/maxminddb-golang/v2
+github.com/oschwald/maxminddb-golang/v2/internal/decoder
+github.com/oschwald/maxminddb-golang/v2/internal/mmdberrors
 # github.com/parquet-go/parquet-go v0.25.1
 ## explicit; go 1.22
 github.com/parquet-go/parquet-go
