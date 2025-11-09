@@ -29,18 +29,18 @@ import (
 type Reader interface {
 	// Read reads the current record from the underlying stream and an error, if any.
 	// When the Reader reaches the end of the underlying stream, it returns (nil, io.EOF).
-	Read() (arrow.Record, error)
+	Read() (arrow.RecordBatch, error)
 }
 
 // ReaderAt is the interface that wraps the ReadAt method.
 type ReaderAt interface {
 	// ReadAt reads the i-th record from the underlying stream and an error, if any.
-	ReadAt(i int64) (arrow.Record, error)
+	ReadAt(i int64) (arrow.RecordBatch, error)
 }
 
 // Writer is the interface that wraps the Write method.
 type Writer interface {
-	Write(rec arrow.Record) error
+	Write(rec arrow.RecordBatch) error
 }
 
 // Copy copies all the records available from src to dst.
