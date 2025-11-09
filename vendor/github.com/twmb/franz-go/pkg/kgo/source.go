@@ -577,10 +577,7 @@ func (s *source) takeNBuffered(paused pausedTopics, n int) (Fetch, int, bool) {
 			rt.Partitions = append(rt.Partitions, *p)
 			rp := &rt.Partitions[len(rt.Partitions)-1]
 
-			take := n
-			if take > len(p.Records) {
-				take = len(p.Records)
-			}
+			take := min(n, len(p.Records))
 
 			rp.Records = p.Records[:take:take]
 			p.Records = p.Records[take:]
@@ -662,7 +659,7 @@ func (s *source) createReq() *fetchRequest {
 	defer s.cursorsMu.Unlock()
 
 	cursorIdx := s.cursorsStart
-	for i := 0; i < len(s.cursors); i++ {
+	for range s.cursors {
 		c := s.cursors[cursorIdx]
 		cursorIdx = (cursorIdx + 1) % len(s.cursors)
 		if !c.usable() || paused.has(c.topic, c.partition) {
@@ -820,7 +817,7 @@ func (s *source) fetch(consumerSession *consumerSession, doneFetch chan<- struct
 	}()
 
 	if req.numOffsets == 0 { // cursors could have been set unusable
-		return
+		return fetched
 	}
 
 	// If our fetch is killed, we want to cancel waiting for the response.
@@ -845,11 +842,11 @@ func (s *source) fetch(consumerSession *consumerSession, doneFetch chan<- struct
 	case <-requested:
 		fetched = true
 	case <-ctx.Done():
-		return
+		return fetched
 	}
 
 	var didBackoff bool
-	backoff := func(why interface{}) {
+	backoff := func(why any) {
 		// We preemptively allow more fetches (since we are not buffering)
 		// and reset our session because of the error (who knows if kafka
 		// processed the request but the client failed to receive it).
@@ -878,7 +875,7 @@ func (s *source) fetch(consumerSession *consumerSession, doneFetch chan<- struct
 	// another backoff.
 	if err != nil {
 		backoff(err)
-		return
+		return fetched
 	}
 
 	// The logic below here should be relatively quick.
@@ -939,17 +936,17 @@ func (s *source) fetch(consumerSession *consumerSession, doneFetch chan<- struct
 			s.cl.cfg.logger.Log(LogLevelInfo, "received SessionIDNotFound from our in use session, our session was likely evicted; resetting session", "broker", logID(s.nodeID))
 			s.session.reset()
 		}
-		return
+		return fetched
 	case kerr.InvalidFetchSessionEpoch:
 		s.cl.cfg.logger.Log(LogLevelInfo, "resetting fetch session", "broker", logID(s.nodeID), "err", err)
 		s.session.reset()
-		return
+		return fetched
 
 	case kerr.FetchSessionTopicIDError, kerr.InconsistentTopicID:
 		s.cl.cfg.logger.Log(LogLevelInfo, "topic id issues, resetting session and updating metadata", "broker", logID(s.nodeID), "err", err)
 		s.session.reset()
 		s.cl.triggerUpdateMetadataNow("topic id issues")
-		return
+		return fetched
 	}
 
 	// At this point, we have successfully processed the response. Even if
@@ -1003,7 +1000,7 @@ func (s *source) fetch(consumerSession *consumerSession, doneFetch chan<- struct
 		// deleted topics.
 		backoff("empty fetch response due to all partitions having retryable errors")
 	}
-	return
+	return fetched
 }
 
 // Parses a fetch response into a Fetch, offsets to reload, and whether
@@ -1344,7 +1341,7 @@ type ProcessFetchPartitionOpts struct {
 	// Topic is used to populate the Topic field of each Record.
 	Topic string
 
-	// Topic is used to populate the Partition field of each Record.
+	// Partition is used to populate the Partition field of each Record.
 	Partition int32
 
 	// Pools contain potential pools to use for memory pooling.
@@ -1561,7 +1558,7 @@ func (a aborter) trackAbortedPID(producerID int64) {
 // readRawRecordsInto reads records from in and returns them, returning early
 // if there were partial records.
 func readRawRecordsInto(rs []kmsg.Record, in []byte) []kmsg.Record {
-	for i := 0; i < len(rs); i++ {
+	for i := range rs {
 		length, used := kbin.Varint(in)
 		total := used + int(length)
 		if used == 0 || length < 0 || len(in) < total {
@@ -2214,7 +2211,7 @@ func (f *fetchRequest) adjustPreferringLag() {
 	}
 	pall := make(map[string][]int32, len(f.porder))
 	for t, ps := range f.porder {
-		pall[t] = append([]int32(nil), ps...)
+		pall[t] = slices.Clone(ps)
 	}
 
 	lag := make(map[string]map[int32]int64, len(f.torder))
@@ -2222,10 +2219,7 @@ func (f *fetchRequest) adjustPreferringLag() {
 		plag := make(map[int32]int64, len(ps))
 		lag[t] = plag
 		for p, c := range ps {
-			hwm := c.hwm
-			if c.hwm < 0 {
-				hwm = 0
-			}
+			hwm := max(c.hwm, 0)
 			lag := hwm - c.offset
 			if c.offset <= 0 {
 				lag = hwm
@@ -2251,7 +2245,7 @@ func (f *fetchRequest) adjustPreferringLag() {
 		for i := 0; i < len(torder); i++ {
 			t := torder[i]
 			if _, exists := tall[t]; !exists {
-				torder = append(torder[:i], torder[i+1:]...) // user gave topic we were not fetching
+				torder = slices.Delete(torder, i, i+1) // user gave topic we were not fetching
 				i--
 			}
 			delete(tall, t)
@@ -2282,7 +2276,7 @@ func (f *fetchRequest) adjustPreferringLag() {
 		for i := 0; i < len(order); i++ {
 			p := order[i]
 			if _, exists := pused[p]; !exists {
-				order = append(order[:i], order[i+1:]...)
+				order = slices.Delete(order, i, i+1)
 				i--
 			}
 			delete(pused, p)
@@ -2302,7 +2296,7 @@ func (f *fetchRequest) MaxVersion() int16 {
 	if f.disableIDs || f.session.disableIDs {
 		return 12
 	}
-	return 17
+	return 18
 }
 func (f *fetchRequest) SetVersion(v int16) { f.version = v }
 func (f *fetchRequest) GetVersion() int16  { return f.version }
