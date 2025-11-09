@@ -1,6 +1,6 @@
 module github.com/grafana/loki/v3
 
-go 1.25.0
+go 1.25.3
 
 toolchain go1.25.4
 
@@ -59,7 +59,7 @@ require (
 	github.com/grafana/regexp v0.0.0-20240518133315-a468a5bfb3bc
 	github.com/grafana/tail v0.0.0-20230510142333-77b18831edf0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3
-	github.com/hashicorp/consul/api v1.32.1
+	github.com/hashicorp/consul/api v1.33.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/influxdata/telegraf v1.34.1
 	github.com/jmespath/go-jmespath v0.4.0
@@ -298,7 +298,7 @@ require (
 	go.opentelemetry.io/otel/sdk/log v0.12.2 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.38.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.6.0 // indirect
-	golang.org/x/exp v0.0.0-20250711185948-6ae5c78190dc // indirect
+	golang.org/x/exp v0.0.0-20250808145144-a408d31f581a // indirect
 	golang.org/x/telemetry v0.0.0-20250908211612-aef8a434d053 // indirect
 	golang.org/x/tools/godoc v0.1.0-deprecated // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect

@@ -1213,8 +1213,8 @@ github.com/grpc-ecosystem/grpc-gateway/v2/utilities
 # github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed
 ## explicit
 github.com/hailocab/go-hostpool
-# github.com/hashicorp/consul/api v1.32.1
-## explicit; go 1.23.8
+# github.com/hashicorp/consul/api v1.33.0
+## explicit; go 1.25.3
 github.com/hashicorp/consul/api
 # github.com/hashicorp/errwrap v1.1.0
 ## explicit
@@ -2319,7 +2319,7 @@ golang.org/x/crypto/pkcs12
 golang.org/x/crypto/pkcs12/internal/rc2
 golang.org/x/crypto/scrypt
 golang.org/x/crypto/sha3
-# golang.org/x/exp v0.0.0-20250711185948-6ae5c78190dc
+# golang.org/x/exp v0.0.0-20250808145144-a408d31f581a
 ## explicit; go 1.23.0
 golang.org/x/exp/constraints
 golang.org/x/exp/slices
