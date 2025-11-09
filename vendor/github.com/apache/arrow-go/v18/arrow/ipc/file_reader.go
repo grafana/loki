@@ -159,7 +159,7 @@ type FileReader struct {
 	memo dictutils.Memo
 
 	schema *arrow.Schema
-	record arrow.Record
+	record arrow.RecordBatch
 
 	irec int   // current record index. used for the arrio.Reader interface
 	err  error // last error
@@ -355,11 +355,11 @@ func (f *FileReader) Close() error {
 	return nil
 }
 
-// Record returns the i-th record from the file.
-// The returned value is valid until the next call to Record.
-// Users need to call Retain on that Record to keep it valid for longer.
-func (f *FileReader) Record(i int) (arrow.Record, error) {
-	record, err := f.RecordAt(i)
+// RecordBatch returns the i-th record batch from the file.
+// The returned value is valid until the next call to RecordBatch.
+// Users need to call Retain on that RecordBatch to keep it valid for longer.
+func (f *FileReader) RecordBatch(i int) (arrow.RecordBatch, error) {
+	record, err := f.RecordBatchAt(i)
 	if err != nil {
 		return nil, err
 	}
@@ -372,10 +372,19 @@ func (f *FileReader) Record(i int) (arrow.Record, error) {
 	return record, nil
 }
 
-// Record returns the i-th record from the file. Ownership is transferred to the
+// Record returns the i-th record from the file.
+// The returned value is valid until the next call to Record.
+// Users need to call Retain on that Record to keep it valid for longer.
+//
+// Deprecated: Use [RecordBatch] instead.
+func (f *FileReader) Record(i int) (arrow.Record, error) {
+	return f.RecordBatch(i)
+}
+
+// RecordBatchAt returns the i-th record batch from the file. Ownership is transferred to the
 // caller and must call Release() to free the memory. This method is safe to
 // call concurrently.
-func (f *FileReader) RecordAt(i int) (arrow.Record, error) {
+func (f *FileReader) RecordBatchAt(i int) (arrow.RecordBatch, error) {
 	if i < 0 || i > f.NumRecords() {
 		panic("arrow/ipc: record index out of bounds")
 	}
@@ -400,32 +409,41 @@ func (f *FileReader) RecordAt(i int) (arrow.Record, error) {
 	defer msg.Release()
 
 	if msg.Type() != MessageRecordBatch {
-		return nil, fmt.Errorf("arrow/ipc: message %d is not a Record", i)
+		return nil, fmt.Errorf("arrow/ipc: message %d is not a RecordBatch", i)
 	}
 
-	return newRecord(f.schema, &f.memo, msg.meta, msg.body, f.swapEndianness, f.mem), nil
+	return newRecordBatch(f.schema, &f.memo, msg.meta, msg.body, f.swapEndianness, f.mem), nil
 }
 
-// Read reads the current record from the underlying stream and an error, if any.
+// RecordAt returns the i-th record from the file. Ownership is transferred to the
+// caller and must call Release() to free the memory. This method is safe to
+// call concurrently.
+//
+// Deprecated: Use [RecordBatchAt] instead.
+func (f *FileReader) RecordAt(i int) (arrow.Record, error) {
+	return f.RecordBatchAt(i)
+}
+
+// Read reads the current record batch from the underlying stream and an error, if any.
 // When the Reader reaches the end of the underlying stream, it returns (nil, io.EOF).
 //
-// The returned record value is valid until the next call to Read.
-// Users need to call Retain on that Record to keep it valid for longer.
-func (f *FileReader) Read() (rec arrow.Record, err error) {
+// The returned record batch value is valid until the next call to Read.
+// Users need to call Retain on that RecordBatch to keep it valid for longer.
+func (f *FileReader) Read() (rec arrow.RecordBatch, err error) {
 	if f.irec == f.NumRecords() {
 		return nil, io.EOF
 	}
-	rec, f.err = f.Record(f.irec)
+	rec, f.err = f.RecordBatch(f.irec)
 	f.irec++
 	return rec, f.err
 }
 
-// ReadAt reads the i-th record from the underlying stream and an error, if any.
-func (f *FileReader) ReadAt(i int64) (arrow.Record, error) {
-	return f.Record(int(i))
+// ReadAt reads the i-th record batch from the underlying stream and an error, if any.
+func (f *FileReader) ReadAt(i int64) (arrow.RecordBatch, error) {
+	return f.RecordBatch(int(i))
 }
 
-func newRecord(schema *arrow.Schema, memo *dictutils.Memo, meta *memory.Buffer, body *memory.Buffer, swapEndianness bool, mem memory.Allocator) arrow.Record {
+func newRecordBatch(schema *arrow.Schema, memo *dictutils.Memo, meta *memory.Buffer, body *memory.Buffer, swapEndianness bool, mem memory.Allocator) arrow.RecordBatch {
 	var (
 		msg   = flatbuf.GetRootAsMessage(meta.Bytes(), 0)
 		md    flatbuf.RecordBatch

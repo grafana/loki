@@ -112,10 +112,7 @@ func (cl *Client) pushMetrics() {
 
 	push:
 		for i := 0; !terminating; i++ {
-			wait := time.Duration(gresp.PushIntervalMillis) * time.Millisecond
-			if wait < time.Second {
-				wait = time.Second
-			}
+			wait := max(time.Duration(gresp.PushIntervalMillis)*time.Millisecond, time.Second)
 			if i == 0 { // for the first request, jitter 0.5 <= wait <= 1.5
 				cl.rng(func(r *rand.Rand) {
 					wait = time.Duration(float64(wait) * (0.5 + r.Float64()))

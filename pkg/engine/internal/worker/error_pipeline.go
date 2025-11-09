@@ -13,7 +13,7 @@ type errorPipeline []error
 
 var _ executor.Pipeline = errorPipeline(nil)
 
-func (ep errorPipeline) Read(_ context.Context) (arrow.Record, error) {
+func (ep errorPipeline) Read(_ context.Context) (arrow.RecordBatch, error) {
 	return nil, errors.Join(ep...)
 }
 

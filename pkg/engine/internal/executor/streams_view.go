@@ -168,7 +168,7 @@ func (v *streamsView) init(ctx context.Context) (err error) {
 
 	r := streams.NewReader(readerOptions)
 
-	var records []arrow.Record
+	var records []arrow.RecordBatch
 
 	for {
 		rec, err := r.Read(ctx, v.batchSize)

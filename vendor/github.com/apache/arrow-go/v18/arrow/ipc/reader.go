@@ -40,7 +40,7 @@ type Reader struct {
 	schema *arrow.Schema
 
 	refCount atomic.Int64
-	rec      arrow.Record
+	rec      arrow.RecordBatch
 	err      error
 
 	// types dictTypeMap
@@ -164,7 +164,7 @@ func (r *Reader) Release() {
 	}
 }
 
-// Next returns whether a Record could be extracted from the underlying stream.
+// Next returns whether a RecordBatch could be extracted from the underlying stream.
 func (r *Reader) Next() bool {
 	if r.rec != nil {
 		r.rec.Release()
@@ -252,20 +252,29 @@ func (r *Reader) next() bool {
 		return false
 	}
 
-	r.rec = newRecord(r.schema, &r.memo, msg.meta, msg.body, r.swapEndianness, r.mem)
+	r.rec = newRecordBatch(r.schema, &r.memo, msg.meta, msg.body, r.swapEndianness, r.mem)
 	return true
+}
+
+// RecordBatch returns the current record batch that has been extracted from the
+// underlying stream.
+// It is valid until the next call to Next.
+func (r *Reader) RecordBatch() arrow.RecordBatch {
+	return r.rec
 }
 
 // Record returns the current record that has been extracted from the
 // underlying stream.
 // It is valid until the next call to Next.
+//
+// Deprecated: Use [RecordBatch] instead.
 func (r *Reader) Record() arrow.Record {
-	return r.rec
+	return r.RecordBatch()
 }
 
-// Read reads the current record from the underlying stream and an error, if any.
+// Read reads the current record batch from the underlying stream and an error, if any.
 // When the Reader reaches the end of the underlying stream, it returns (nil, io.EOF).
-func (r *Reader) Read() (arrow.Record, error) {
+func (r *Reader) Read() (arrow.RecordBatch, error) {
 	if r.rec != nil {
 		r.rec.Release()
 		r.rec = nil
