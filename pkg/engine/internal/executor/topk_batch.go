@@ -50,7 +50,7 @@ type topkBatch struct {
 	nextID      int
 	mapper      *arrowagg.Mapper
 	heap        *topk.Heap[*topkReference]
-	usedCount   map[arrow.Record]int
+	usedCount   map[arrow.RecordBatch]int
 	usedSchemas map[*arrow.Schema]int
 }
 
@@ -137,7 +137,7 @@ func (b *topkBatch) init() {
 		},
 	}
 	b.mapper = arrowagg.NewMapper(b.Fields)
-	b.usedCount = make(map[arrow.Record]int)
+	b.usedCount = make(map[arrow.RecordBatch]int)
 	b.usedSchemas = make(map[*arrow.Schema]int)
 	b.ready = true
 }

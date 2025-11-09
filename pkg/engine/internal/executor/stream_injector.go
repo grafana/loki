@@ -138,5 +138,5 @@ func (si *streamInjector) Inject(ctx context.Context, in arrow.RecordBatch) (arr
 	}
 
 	schema := arrow.NewSchemaWithEndian(fields, &md, in.Schema().Endianness())
-	return array.NewRecord(schema, arrs, in.NumRows()), nil
+	return array.NewRecordBatch(schema, arrs, in.NumRows()), nil
 }

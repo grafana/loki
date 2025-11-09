@@ -212,7 +212,7 @@ func (r *Reader) Read(ctx context.Context, batchSize int) (arrow.RecordBatch, er
 
 	// We only return readErr after processing n so that we properly handle n>0
 	// while also getting an error such as io.EOF.
-	return builder.NewRecord(), readErr
+	return builder.NewRecordBatch(), readErr
 }
 
 func (r *Reader) init(ctx context.Context) error {

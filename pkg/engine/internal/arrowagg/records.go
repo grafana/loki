@@ -149,7 +149,7 @@ func (r *Records) Aggregate() (arrow.RecordBatch, error) {
 	}
 
 	combinedSchema := arrow.NewSchema(r.fields, nil)
-	return array.NewRecord(combinedSchema, columns, r.rows), nil
+	return array.NewRecordBatch(combinedSchema, columns, r.rows), nil
 }
 
 // Reset releases all resources held by r and clears its state, allowing it to

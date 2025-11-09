@@ -168,6 +168,6 @@ func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator,
 
 		metadata := schema.Metadata()
 		outputSchema := arrow.NewSchema(outputFields, &metadata)
-		return array.NewRecord(outputSchema, outputCols, batch.NumRows()), nil
+		return array.NewRecordBatch(outputSchema, outputCols, batch.NumRows()), nil
 	}, input), nil
 }

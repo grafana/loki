@@ -280,7 +280,7 @@ func batch(n int, now time.Time) arrow.RecordBatch {
 
 	// Create the record
 	columns := []arrow.Array{logArray, tsArray}
-	record := array.NewRecord(schema, columns, int64(n))
+	record := array.NewRecordBatch(schema, columns, int64(n))
 
 	return record
 }
@@ -604,7 +604,7 @@ func structToRows(structArr *array.Struct) (arrowtest.Rows, error) {
 	}
 
 	// Create and return the record
-	record := array.NewRecord(schema, columns, int64(structArr.Len()))
+	record := array.NewRecordBatch(schema, columns, int64(structArr.Len()))
 	defer record.Release()
 	return arrowtest.RecordRows(record)
 }

@@ -109,7 +109,7 @@ func newPrefetchingPipeline(p Pipeline) *prefetchWrapper {
 }
 
 // Read implements [Pipeline].
-func (p *prefetchWrapper) Read(ctx context.Context) (arrow.Record, error) {
+func (p *prefetchWrapper) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	p.init(ctx)
 	return p.read(ctx)
 }
@@ -194,7 +194,7 @@ func tracePipeline(name string, pipeline Pipeline) *tracedPipeline {
 	}
 }
 
-func (p *tracedPipeline) Read(ctx context.Context) (arrow.Record, error) {
+func (p *tracedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	ctx, span := tracer.Start(ctx, p.name+".Read")
 	defer span.End()
 

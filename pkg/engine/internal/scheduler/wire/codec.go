@@ -645,6 +645,6 @@ func (c *protobufCodec) deserializeArrowRecord(data []byte) (arrow.RecordBatch, 
 		return nil, errors.New("no record in arrow data")
 	}
 
-	rec := reader.Record()
+	rec := reader.RecordBatch()
 	return rec, nil
 }

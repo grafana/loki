@@ -46,7 +46,7 @@ func CSVToArrowWithAllocator(allocator memory.Allocator, fields []arrow.Field, c
 		return nil, errors.New("failed to read CSV data")
 	}
 
-	return reader.Record(), nil
+	return reader.RecordBatch(), nil
 }
 
 func TestCSVPipeline(t *testing.T) {

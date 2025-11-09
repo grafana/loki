@@ -133,5 +133,5 @@ func filterBatch(batch arrow.RecordBatch, include func(int) bool) arrow.RecordBa
 		arrays[i] = builder.NewArray()
 	}
 
-	return array.NewRecord(schema, arrays, ct)
+	return array.NewRecordBatch(schema, arrays, ct)
 }
