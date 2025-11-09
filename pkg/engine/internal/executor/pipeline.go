@@ -13,9 +13,9 @@ import (
 // Pipeline represents a data processing pipeline that can read Arrow records.
 // It provides methods to read data, access the current record, and close resources.
 type Pipeline interface {
-	// Read collects the next value ([arrow.Record]) from the pipeline and returns it to the caller.
+	// Read collects the next value ([arrow.RecordBatch]) from the pipeline and returns it to the caller.
 	// It returns an error if reading fails or when the pipeline is exhausted. In this case, the function returns EOF.
-	Read(context.Context) (arrow.Record, error)
+	Read(context.Context) (arrow.RecordBatch, error)
 	// Close closes the resources of the pipeline.
 	// The implementation must close all the of the pipeline's inputs.
 	Close()
@@ -27,11 +27,11 @@ var (
 )
 
 type state struct {
-	batch arrow.Record
+	batch arrow.RecordBatch
 	err   error
 }
 
-type readFunc func(context.Context, []Pipeline) (arrow.Record, error)
+type readFunc func(context.Context, []Pipeline) (arrow.RecordBatch, error)
 
 type GenericPipeline struct {
 	inputs []Pipeline
@@ -48,7 +48,7 @@ func newGenericPipeline(read readFunc, inputs ...Pipeline) *GenericPipeline {
 var _ Pipeline = (*GenericPipeline)(nil)
 
 // Read implements Pipeline.
-func (p *GenericPipeline) Read(ctx context.Context) (arrow.Record, error) {
+func (p *GenericPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if p.read == nil {
 		return nil, EOF
 	}
@@ -67,13 +67,13 @@ func errorPipeline(ctx context.Context, err error) Pipeline {
 	span.RecordError(err)
 	span.SetStatus(codes.Error, err.Error())
 
-	return newGenericPipeline(func(_ context.Context, _ []Pipeline) (arrow.Record, error) {
+	return newGenericPipeline(func(_ context.Context, _ []Pipeline) (arrow.RecordBatch, error) {
 		return nil, fmt.Errorf("failed to execute pipeline: %w", err)
 	})
 }
 
 func emptyPipeline() Pipeline {
-	return newGenericPipeline(func(_ context.Context, _ []Pipeline) (arrow.Record, error) {
+	return newGenericPipeline(func(_ context.Context, _ []Pipeline) (arrow.RecordBatch, error) {
 		return nil, EOF
 	})
 }
@@ -152,7 +152,7 @@ func (p prefetchWrapper) prefetch(ctx context.Context) error {
 	}
 }
 
-func (p *prefetchWrapper) read(_ context.Context) (arrow.Record, error) {
+func (p *prefetchWrapper) read(_ context.Context) (arrow.RecordBatch, error) {
 	state := <-p.ch
 
 	// Reading from a channel that is closed while waiting yields a zero-value.
@@ -234,7 +234,7 @@ var _ Pipeline = (*lazyPipeline)(nil)
 
 // Read reads the next value from the inner pipeline. If this is the first call
 // to Read, the inner  pipeline will be constructed using the provided context.
-func (lp *lazyPipeline) Read(ctx context.Context) (arrow.Record, error) {
+func (lp *lazyPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	if lp.built == nil {
 		lp.built = lp.ctor(ctx, lp.inputs)
 	}

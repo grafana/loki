@@ -83,7 +83,7 @@ func NewProjectPipeline(input Pipeline, proj *physical.Projection, evaluator *ex
 }
 
 func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef, *semconv.Identifier) bool, input Pipeline) (*GenericPipeline, error) {
-	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
 		}
@@ -109,12 +109,12 @@ func newKeepPipeline(colRefs []types.ColumnRef, keepFunc func([]types.ColumnRef,
 
 		metadata := batch.Schema().Metadata()
 		schema := arrow.NewSchema(fields, &metadata)
-		return array.NewRecord(schema, columns, batch.NumRows()), nil
+		return array.NewRecordBatch(schema, columns, batch.NumRows()), nil
 	}, input), nil
 }
 
 func newExpandPipeline(expr physical.Expression, evaluator *expressionEvaluator, input Pipeline) (*GenericPipeline, error) {
-	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.Record, error) {
+	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		if len(inputs) != 1 {
 			return nil, fmt.Errorf("expected 1 input, got %d", len(inputs))
 		}

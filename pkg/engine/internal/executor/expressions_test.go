@@ -247,7 +247,7 @@ func collectBooleanArray(arr *array.Boolean) []bool {
 
 var words = []string{"one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"}
 
-func batch(n int, now time.Time) arrow.Record {
+func batch(n int, now time.Time) arrow.RecordBatch {
 	// Define the schema
 	schema := arrow.NewSchema(
 		[]arrow.Field{

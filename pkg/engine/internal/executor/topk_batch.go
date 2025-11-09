@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/util/topk"
 )
 
-// topkBatch calculates the top K rows from a stream of [arrow.Record]s, where
+// topkBatch calculates the top K rows from a stream of [arrow.RecordBatch]s, where
 // rows are ranked by the specified Fields.
 //
 // Rows with equal values for all the fields are ranked by the order in which
@@ -61,7 +61,7 @@ type topkReference struct {
 	// are otherwise equal in the sort order.
 	ID int
 
-	Record arrow.Record // Record contributing to the top K.
+	Record arrow.RecordBatch // Record contributing to the top K.
 	Row    int
 }
 
@@ -73,7 +73,7 @@ type topkReference struct {
 // contribute towards the total unused rows in b. Once the number of unused
 // rows exceeds MaxUnused, Put calls [topkBatch.Compact] to clean up record
 // references.
-func (b *topkBatch) Put(rec arrow.Record) {
+func (b *topkBatch) Put(rec arrow.RecordBatch) {
 	b.put(rec)
 
 	// Compact if adding this record pushed us over the limit of unused rows.
@@ -84,7 +84,7 @@ func (b *topkBatch) Put(rec arrow.Record) {
 }
 
 // put adds rows from rec into b without checking the number of unused rows.
-func (b *topkBatch) put(rec arrow.Record) {
+func (b *topkBatch) put(rec arrow.RecordBatch) {
 	if !b.ready {
 		b.init()
 	}
@@ -179,7 +179,7 @@ func (b *topkBatch) less(left, right *topkReference) bool {
 // findRecordArray finds the array for the given [b.Fields] field index from
 // the mapper cache. findRecordArray returns nil if the field is not present in
 // rec.
-func (b *topkBatch) findRecordArray(rec arrow.Record, mapper *arrowagg.Mapper, fieldIndex int) arrow.Array {
+func (b *topkBatch) findRecordArray(rec arrow.RecordBatch, mapper *arrowagg.Mapper, fieldIndex int) arrow.Array {
 	columnIndex := mapper.FieldIndex(rec.Schema(), fieldIndex)
 	if columnIndex < 0 || columnIndex >= int(rec.NumCols()) {
 		return nil // No such field in the record.
@@ -215,7 +215,7 @@ func (b *topkBatch) Size() (rows int, unused int) {
 // combined fields will be filled with null values for those fields.
 //
 // Compact returns nil if no rows are in the top K.
-func (b *topkBatch) Compact() arrow.Record {
+func (b *topkBatch) Compact() arrow.RecordBatch {
 	if len(b.usedCount) == 0 {
 		return nil
 	}
@@ -224,7 +224,7 @@ func (b *topkBatch) Compact() arrow.Record {
 	// Get all row references to compact.
 	rowRefs := b.heap.PopAll()
 
-	recordRows := make(map[arrow.Record][]int, len(b.usedCount))
+	recordRows := make(map[arrow.RecordBatch][]int, len(b.usedCount))
 	for _, ref := range rowRefs {
 		recordRows[ref.Record] = append(recordRows[ref.Record], ref.Row)
 	}

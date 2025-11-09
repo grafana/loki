@@ -601,7 +601,7 @@ func (c *protobufCodec) nodeStreamMapToPbNodeStreamList(nodeMap map[physical.Nod
 }
 
 // serializeArrowRecord serializes an Arrow record to bytes using IPC format.
-func (c *protobufCodec) serializeArrowRecord(record arrow.Record) ([]byte, error) {
+func (c *protobufCodec) serializeArrowRecord(record arrow.RecordBatch) ([]byte, error) {
 	if record == nil {
 		return nil, errors.New("nil arrow record")
 	}
@@ -625,7 +625,7 @@ func (c *protobufCodec) serializeArrowRecord(record arrow.Record) ([]byte, error
 }
 
 // deserializeArrowRecord deserializes an Arrow record from bytes using IPC format.
-func (c *protobufCodec) deserializeArrowRecord(data []byte) (arrow.Record, error) {
+func (c *protobufCodec) deserializeArrowRecord(data []byte) (arrow.RecordBatch, error) {
 	if len(data) == 0 {
 		return nil, errors.New("empty arrow data")
 	}
