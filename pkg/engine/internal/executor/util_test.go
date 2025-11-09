@@ -21,7 +21,7 @@ var (
 			semconv.FieldFromFQN("int64.builtin.id", false),
 		}, nil),
 
-		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record {
+		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.RecordBatch {
 			builder := array.NewInt64Builder(memory.DefaultAllocator)
 
 			rows := int64(0)
@@ -32,7 +32,7 @@ var (
 			data := builder.NewArray()
 
 			columns := []arrow.Array{data}
-			return array.NewRecord(schema, columns, rows)
+			return array.NewRecordBatch(schema, columns, rows)
 		},
 	)
 )
@@ -57,7 +57,7 @@ func timestampPipeline(start time.Time, order time.Duration) *recordGenerator {
 			semconv.FieldFromFQN("timestamp_ns.builtin.timestamp", false),
 		}, nil),
 
-		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record {
+		func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.RecordBatch {
 			idColBuilder := array.NewInt64Builder(memory.DefaultAllocator)
 			tsColBuilder := array.NewTimestampBuilder(memory.DefaultAllocator, arrow.FixedWidthTypes.Timestamp_ns.(*arrow.TimestampType))
 
@@ -71,12 +71,12 @@ func timestampPipeline(start time.Time, order time.Duration) *recordGenerator {
 			tsData := tsColBuilder.NewArray()
 
 			columns := []arrow.Array{idData, tsData}
-			return array.NewRecord(schema, columns, rows)
+			return array.NewRecordBatch(schema, columns, rows)
 		},
 	)
 }
 
-type batchFunc func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.Record
+type batchFunc func(offset, maxRows, batchSize int64, schema *arrow.Schema) arrow.RecordBatch
 
 type recordGenerator struct {
 	schema *arrow.Schema
@@ -93,7 +93,7 @@ func newRecordGenerator(schema *arrow.Schema, batch batchFunc) *recordGenerator 
 func (p *recordGenerator) Pipeline(batchSize int64, rows int64) Pipeline {
 	var pos int64
 	return newGenericPipeline(
-		func(_ context.Context, _ []Pipeline) (arrow.Record, error) {
+		func(_ context.Context, _ []Pipeline) (arrow.RecordBatch, error) {
 			if pos >= rows {
 				return nil, EOF
 			}
@@ -147,9 +147,9 @@ func NewArrowtestPipeline(schema *arrow.Schema, rows ...arrowtest.Rows) *Arrowte
 }
 
 // Read implements [Pipeline], converting the next [arrowtest.Rows] into a
-// [arrow.Record] and storing it in the pipeline's state. The state can then be
+// [arrow.RecordBatch] and storing it in the pipeline's state. The state can then be
 // accessed via [ArrowtestPipeline.Value].
-func (p *ArrowtestPipeline) Read(_ context.Context) (arrow.Record, error) {
+func (p *ArrowtestPipeline) Read(_ context.Context) (arrow.RecordBatch, error) {
 	if p.cur >= len(p.rows) {
 		return nil, EOF
 	}

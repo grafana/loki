@@ -197,7 +197,7 @@ func buildWorkflow(ctx context.Context, t *testing.T, logger log.Logger, loc obj
 }
 
 func readTable(ctx context.Context, t *testing.T, p executor.Pipeline) arrow.Table {
-	var recs []arrow.Record
+	var recs []arrow.RecordBatch
 
 	for {
 		rec, err := p.Read(ctx)

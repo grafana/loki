@@ -23,14 +23,14 @@ type nodeSource struct {
 	streamCount atomic.Int64
 
 	closed  chan struct{}
-	records chan arrow.Record
+	records chan arrow.RecordBatch
 }
 
 var _ executor.Pipeline = (*nodeSource)(nil)
 
 // Read returns the next record of the node data. Blocks until results are
 // available or until the provided ctx is canceled.
-func (src *nodeSource) Read(ctx context.Context) (arrow.Record, error) {
+func (src *nodeSource) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	src.lazyInit()
 
 	select {
@@ -46,13 +46,13 @@ func (src *nodeSource) Read(ctx context.Context) (arrow.Record, error) {
 func (src *nodeSource) lazyInit() {
 	src.initOnce.Do(func() {
 		src.closed = make(chan struct{})
-		src.records = make(chan arrow.Record)
+		src.records = make(chan arrow.RecordBatch)
 	})
 }
 
 // Write writes a record to the read end of the node source. Write blocks until
 // the record has been read or the context is canceled.
-func (src *nodeSource) Write(ctx context.Context, rec arrow.Record) error {
+func (src *nodeSource) Write(ctx context.Context, rec arrow.RecordBatch) error {
 	src.lazyInit()
 
 	select {

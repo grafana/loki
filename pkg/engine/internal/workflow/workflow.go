@@ -333,7 +333,7 @@ type wrappedPipeline struct {
 	onClose func()
 }
 
-func (p *wrappedPipeline) Read(ctx context.Context) (arrow.Record, error) {
+func (p *wrappedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	p.lazyInit()
 
 	rec, err := p.inner.Read(ctx)
