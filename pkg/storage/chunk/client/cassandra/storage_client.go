@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
+	gocql "github.com/apache/cassandra-gocql-driver/v2"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/gocql/gocql"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -110,7 +110,44 @@ func (cfg *Config) Validate() error {
 	return nil
 }
 
-func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Session, *gocql.ClusterConfig, error) {
+// gocqlLogger adapts go-kit log.Logger to gocql.StructuredLogger
+type gocqlLogger struct {
+	logger log.Logger
+}
+
+func (g *gocqlLogger) Debug(msg string, fields ...gocql.LogField) {
+	keyvals := []interface{}{"msg", msg}
+	for _, field := range fields {
+		keyvals = append(keyvals, field.Name, field.Value.Any())
+	}
+	level.Debug(g.logger).Log(keyvals...)
+}
+
+func (g *gocqlLogger) Info(msg string, fields ...gocql.LogField) {
+	keyvals := []interface{}{"msg", msg}
+	for _, field := range fields {
+		keyvals = append(keyvals, field.Name, field.Value.Any())
+	}
+	level.Info(g.logger).Log(keyvals...)
+}
+
+func (g *gocqlLogger) Warning(msg string, fields ...gocql.LogField) {
+	keyvals := []interface{}{"msg", msg}
+	for _, field := range fields {
+		keyvals = append(keyvals, field.Name, field.Value.Any())
+	}
+	level.Warn(g.logger).Log(keyvals...)
+}
+
+func (g *gocqlLogger) Error(msg string, fields ...gocql.LogField) {
+	keyvals := []interface{}{"msg", msg}
+	for _, field := range fields {
+		keyvals = append(keyvals, field.Name, field.Value.Any())
+	}
+	level.Error(g.logger).Log(keyvals...)
+}
+
+func (cfg *Config) session(name string, _ prometheus.Registerer) (*gocql.Session, *gocql.ClusterConfig, error) {
 	cluster := gocql.NewCluster(strings.Split(cfg.Addresses, ",")...)
 	cluster.Port = cfg.Port
 	cluster.Keyspace = cfg.Keyspace
@@ -120,9 +157,7 @@ func (cfg *Config) session(name string, reg prometheus.Registerer) (*gocql.Sessi
 	cluster.ConnectTimeout = cfg.ConnectTimeout
 	cluster.ReconnectInterval = cfg.ReconnectInterval
 	cluster.NumConns = cfg.NumConnections
-	cluster.Logger = log.With(util_log.Logger, "module", "gocql", "client", name)
-	cluster.Registerer = prometheus.WrapRegistererWith(
-		prometheus.Labels{"client": name}, reg)
+	cluster.Logger = &gocqlLogger{logger: log.With(util_log.Logger, "module", "gocql", "client", name)}
 	if cfg.Retries > 0 {
 		cluster.RetryPolicy = &gocql.ExponentialBackoffRetryPolicy{
 			NumRetries: cfg.Retries,
