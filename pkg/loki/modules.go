@@ -51,7 +51,6 @@ import (
 	"github.com/grafana/loki/v3/pkg/dataobj/explorer"
 	dataobjindex "github.com/grafana/loki/v3/pkg/dataobj/index"
 	"github.com/grafana/loki/v3/pkg/distributor"
-	"github.com/grafana/loki/v3/pkg/engine"
 	engine_v2 "github.com/grafana/loki/v3/pkg/engine"
 	"github.com/grafana/loki/v3/pkg/indexgateway"
 	"github.com/grafana/loki/v3/pkg/ingester"
@@ -1184,7 +1183,7 @@ func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 			Start: start,
 			End:   end,
 
-			Validate: engine.IsQuerySupported,
+			Validate: engine_v2.IsQuerySupported,
 			Handler:  handler,
 		}
 	}

@@ -288,7 +288,7 @@ func Test_engineRouter_Do(t *testing.T) {
 	routerConfig := RouterConfig{
 		Start:    now.Add(-24 * time.Hour),
 		End:      now.Add(-time.Hour),
-		Validate: func(params logql.Params) bool { return true },
+		Validate: func(_ logql.Params) bool { return true },
 		Handler:  v2EngineHandler,
 	}
 
