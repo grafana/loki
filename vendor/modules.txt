@@ -1208,13 +1208,8 @@ github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery
 github.com/grpc-ecosystem/grpc-gateway/v2/internal/httprule
 github.com/grpc-ecosystem/grpc-gateway/v2/runtime
 github.com/grpc-ecosystem/grpc-gateway/v2/utilities
-# github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed
-## explicit
-github.com/hailocab/go-hostpool
 # github.com/hashicorp/consul/api v1.33.0
 ## explicit; go 1.25.3
-# github.com/hashicorp/consul/api v1.32.1
-## explicit; go 1.23.8
 github.com/hashicorp/consul/api
 # github.com/hashicorp/errwrap v1.1.0
 ## explicit
