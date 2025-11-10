@@ -54,7 +54,8 @@ func (c clearedValidations) apply(cbs []func(string, interface{})) {
 //
 // Some callbacks may be set by the caller to capture changed values.
 func (v *CommonValidations) ClearNumberValidations(cbs ...func(string, interface{})) {
-	done := make(clearedValidations, 0, 5)
+	const maxNumberValidations = 5
+	done := make(clearedValidations, 0, maxNumberValidations)
 	defer func() {
 		done.apply(cbs)
 	}()
@@ -85,7 +86,8 @@ func (v *CommonValidations) ClearNumberValidations(cbs ...func(string, interface
 //
 // Some callbacks may be set by the caller to capture changed values.
 func (v *CommonValidations) ClearStringValidations(cbs ...func(string, interface{})) {
-	done := make(clearedValidations, 0, 3)
+	const maxStringValidations = 3
+	done := make(clearedValidations, 0, maxStringValidations)
 	defer func() {
 		done.apply(cbs)
 	}()
@@ -108,7 +110,8 @@ func (v *CommonValidations) ClearStringValidations(cbs ...func(string, interface
 //
 // Some callbacks may be set by the caller to capture changed values.
 func (v *CommonValidations) ClearArrayValidations(cbs ...func(string, interface{})) {
-	done := make(clearedValidations, 0, 3)
+	const maxArrayValidations = 3
+	done := make(clearedValidations, 0, maxArrayValidations)
 	defer func() {
 		done.apply(cbs)
 	}()
@@ -195,7 +198,8 @@ func (v SchemaValidations) Validations() SchemaValidations {
 //
 // Some callbacks may be set by the caller to capture changed values.
 func (v *SchemaValidations) ClearObjectValidations(cbs ...func(string, interface{})) {
-	done := make(clearedValidations, 0, 3)
+	const maxObjectValidations = 3
+	done := make(clearedValidations, 0, maxObjectValidations)
 	defer func() {
 		done.apply(cbs)
 	}()
