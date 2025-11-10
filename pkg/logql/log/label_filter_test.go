@@ -431,6 +431,9 @@ func TestStringLabelFilter_FullyAnchored_Regexp(t *testing.T) {
 		{"explicit_anchors", `^1234$`, true},
 		{"wildcard_around", `.*234.*`, true},
 		{"special_char_dot", `1234[.]`, false},
+		{"dotstar_all", `.*`, true},
+		{"half_anchor_caret_only", `^12`, false},
+		{"half_anchor_dollar_only", `34$`, false},
 	}
 
 	for _, tc := range cases {
@@ -459,6 +462,10 @@ func TestStringLabelFilter_FullyAnchored_NotRegexp(t *testing.T) {
 		{"not_substring_suffix", `.*23`, true},
 		{"not_explicit_anchors", `^1234$`, false},
 		{"not_wildcard_around", `.*234.*`, false},
+		{"not_dotstar_all", `.*`, false},
+		{"not_half_anchor_caret_only", `^12`, true},
+		{"not_half_anchor_dollar_only", `34$`, true},
+		{"not_special_char_dot", `1234[.]`, true},
 	}
 
 	for _, tc := range cases {
@@ -487,6 +494,9 @@ func TestStringLabelFilter_MissingLabel_AnchoredSemantics(t *testing.T) {
 		{"re_dotstar_matches_empty", labels.MatchRegexp, `.*`, true},
 		{"re_literal_1234_not_empty", labels.MatchRegexp, `1234`, false},
 		{"not_re_empty_on_empty", labels.MatchNotRegexp, ``, false},
+		{"not_re_dotstar_on_empty", labels.MatchNotRegexp, `.*`, false},
+		{"re_explicit_empty_anchors", labels.MatchRegexp, `^$`, true},
+		{"not_re_explicit_empty_anchors", labels.MatchNotRegexp, `^$`, false},
 	}
 
 	for _, tc := range cases {
