@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	"go.etcd.io/bbolt"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/v3/pkg/storage/chunk/client"
 	shipper_util "github.com/grafana/loki/v3/pkg/storage/stores/shipper/indexshipper/util"
@@ -256,7 +257,7 @@ func (r *markerProcessor) processFile(name string, deleteFunc func(ctx context.C
 	var (
 		wg               sync.WaitGroup
 		queue            = make(chan *keyPair)
-		allChunksDeleted = true
+		allChunksDeleted = atomic.NewBool(true)
 	)
 
 	tempFile, err := os.CreateTemp("", name)
@@ -299,7 +300,7 @@ func (r *markerProcessor) processFile(name string, deleteFunc func(ctx context.C
 			defer wg.Done()
 			for key := range queue {
 				if err := deleteFunc(r.ctx, key.value.Bytes()); err != nil {
-					allChunksDeleted = false
+					allChunksDeleted.Store(false)
 					level.Warn(util_log.Logger).Log("msg", "failed to delete key", "key", key.key.String(), "value", key.value.String(), "err", err)
 				}
 				putKeyBuffer(key)
@@ -337,7 +338,7 @@ func (r *markerProcessor) processFile(name string, deleteFunc func(ctx context.C
 		return false, err
 	}
 
-	return allChunksDeleted, nil
+	return allChunksDeleted.Load(), nil
 }
 
 func (r *markerProcessor) deleteMarksFile(name string) error {
