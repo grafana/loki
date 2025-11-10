@@ -14,7 +14,7 @@
   baseBranchPatterns: [
     'main',
     'release-3.5.x', // Update when a new release is out, 2 minors, 1 major.
-    'release-3.4.x', // Also ensure to update the 'packageRules' section to match
+    //'release-3.4.x', // Also ensure to update the 'packageRules' section to match
     'release-2.9.x',
   ],
   packageRules: [
@@ -34,7 +34,7 @@
     // global 'vulnerabilityAlerts' for this scope.
     matchBaseBranches: [
       'release-2.9.x', 
-      'release-3.4.x', 
+      //'release-3.4.x', 
       'release-3.5.x'
     ],
     matchFileNames: ['operator/**'],

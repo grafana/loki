@@ -15,7 +15,7 @@ func (t *TxnOffsetCommitResponse) setVersion(v int16) {
 }
 
 func (t *TxnOffsetCommitResponse) encode(pe packetEncoder) error {
-	pe.putInt32(int32(t.ThrottleTime / time.Millisecond))
+	pe.putDurationMs(t.ThrottleTime)
 	if err := pe.putArrayLength(len(t.Topics)); err != nil {
 		return err
 	}

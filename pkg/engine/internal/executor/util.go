@@ -8,15 +8,15 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 )
 
-// columnForIdent returns the column ([arrow.Array]) and its column index in the schema of the given input batch ([arrow.Record]).
+// columnForIdent returns the column ([arrow.Array]) and its column index in the schema of the given input batch ([arrow.RecordBatch]).
 // It returns an optional error in case the column with the fully qualified name of the identifier could not be found,
 // or there are where multiple columns with the same name in the schema.
 // In case of an error, the returned column index is -1.
-func columnForIdent(ident *semconv.Identifier, batch arrow.Record) (arrow.Array, int, error) {
+func columnForIdent(ident *semconv.Identifier, batch arrow.RecordBatch) (arrow.Array, int, error) {
 	return columnForFQN(ident.FQN(), batch)
 }
 
-func columnForFQN(fqn string, batch arrow.Record) (arrow.Array, int, error) {
+func columnForFQN(fqn string, batch arrow.RecordBatch) (arrow.Array, int, error) {
 	indices := batch.Schema().FieldIndices(fqn)
 	if len(indices) == 0 {
 		return nil, -1, fmt.Errorf("column not found for %s", fqn)
