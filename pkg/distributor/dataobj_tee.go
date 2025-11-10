@@ -47,9 +47,10 @@ type DataObjTee struct {
 	logger   log.Logger
 
 	// Metrics.
-	failures prometheus.Counter
-	total    prometheus.Counter
-	produces *prometheus.CounterVec
+	failures        prometheus.Counter
+	total           prometheus.Counter
+	producedStreams *prometheus.CounterVec
+	producedBytes   *prometheus.CounterVec
 }
 
 // NewDataObjTee returns a new DataObjTee.
@@ -73,8 +74,12 @@ func NewDataObjTee(
 			Name: "loki_distributor_dataobj_tee_duplicate_streams_total",
 			Help: "Total number of streams duplicated.",
 		}),
-		produces: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+		producedStreams: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "loki_distributor_dataobj_tee_produced_streams_total",
+			Help: "Total number of streams produced.",
+		}, []string{"partition", "tenant", "segmentation_key"}),
+		producedBytes: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "loki_distributor_dataobj_tee_produced_bytes_total",
 			Help: "Total number of streams produced.",
 		}, []string{"partition", "tenant", "segmentation_key"}),
 	}, nil
@@ -112,5 +117,6 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream KeyedS
 		level.Error(t.logger).Log("msg", "failed to produce records", "err", err)
 		t.failures.Inc()
 	}
-	t.produces.WithLabelValues(strconv.Itoa(int(partition)), tenant, string(segmentationKey)).Inc()
+	t.producedStreams.WithLabelValues(strconv.Itoa(int(partition)), tenant, string(segmentationKey)).Inc()
+	t.producedBytes.WithLabelValues(strconv.Itoa(int(partition)), tenant, string(segmentationKey)).Add(float64(stream.Stream.Size()))
 }
