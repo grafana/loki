@@ -433,6 +433,30 @@ func (s *usageStore) getPartitionForHash(hash uint64) int32 {
 	return int32(hash % uint64(s.numPartitions))
 }
 
+func (s *usageStore) Get(tenant string, streamHash uint64) (streamUsage, bool) {
+	var (
+		now                = s.clock.Now()
+		withinActiveWindow = s.newActiveWindowFunc(now)
+		withinRateWindow   = s.newRateWindowFunc(now)
+		stream             streamUsage
+		ok                 bool
+	)
+	partition := s.getPartitionForHash(streamHash)
+	s.withRLock(tenant, func(i int) {
+		stream, ok = s.get(i, tenant, partition, streamHash)
+		if ok {
+			ok = withinActiveWindow(stream.lastSeenAt)
+			if ok {
+				stream.rateBuckets = getActiveRateBuckets(
+					stream.rateBuckets,
+					withinRateWindow,
+				)
+			}
+		}
+	})
+	return stream, ok
+}
+
 // Used in tests. Is not goroutine-safe.
 func (s *usageStore) getForTests(tenant string, streamHash uint64) (streamUsage, bool) {
 	partition := s.getPartitionForHash(streamHash)

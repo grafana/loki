@@ -201,15 +201,16 @@ func (s *Service) UpdateRates(
 		Results: make([]*proto.UpdateRatesResult, len(accepted)),
 	}
 	for i, accepted := range accepted {
-		usage, ok := s.usage.getForTests(req.Tenant, accepted.StreamHash)
+		usage, ok := s.usage.Get(req.Tenant, accepted.StreamHash)
 		if ok {
-			var sumRate uint64
+			var totalSize uint64
 			for _, bucket := range usage.rateBuckets {
-				sumRate += bucket.size
+				totalSize += bucket.size
 			}
+			averageRate := totalSize / (uint64(s.cfg.BucketSize.Seconds()) * uint64(len(usage.rateBuckets)))
 			resp.Results[i] = &proto.UpdateRatesResult{
 				StreamHash: accepted.StreamHash,
-				Rate:       uint64(sumRate),
+				Rate:       averageRate,
 			}
 		}
 	}
