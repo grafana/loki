@@ -402,6 +402,7 @@ This is the generated reference for the Loki Helm Chart values.
     "selector": null,
     "size": "10Gi",
     "storageClass": null,
+    "volumeAttributesClassName": null,
     "volumeClaimsEnabled": true
   },
   "podAnnotations": {},
@@ -684,6 +685,15 @@ null
 			<td>backend.persistence.storageClass</td>
 			<td>string</td>
 			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -1280,7 +1290,8 @@ null
         ],
         "name": "data",
         "size": "10Gi",
-        "storageClass": null
+        "storageClass": null,
+        "volumeAttributesClassName": null
       }
     ],
     "enableStatefulSetAutoDeletePVC": false,
@@ -1514,6 +1525,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>bloomGateway.persistence.claims[0].volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>bloomGateway.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -1728,7 +1748,8 @@ null
         "labels": {},
         "name": "data",
         "size": "10Gi",
-        "storageClass": null
+        "storageClass": null,
+        "volumeAttributesClassName": null
       }
     ],
     "enableStatefulSetAutoDeletePVC": false,
@@ -1966,6 +1987,15 @@ null
 			<td>Size of persistent disk</td>
 			<td><pre lang="json">
 "10Gi"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>bloomPlanner.persistence.claims[0].volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -2298,7 +2328,8 @@ true
     "labels": {},
     "mountPath": "/data",
     "storageClass": null,
-    "storageSize": "10G"
+    "storageSize": "10G",
+    "volumeAttributesClassName": null
   },
   "podAnnotations": {},
   "podLabels": {},
@@ -2525,7 +2556,8 @@ false
   "labels": {},
   "mountPath": "/data",
   "storageClass": null,
-  "storageSize": "10G"
+  "storageSize": "10G",
+  "volumeAttributesClassName": null
 }
 </pre>
 </td>
@@ -2563,6 +2595,15 @@ null
 			<td>Size of persistent disk, must be in G or Gi</td>
 			<td><pre lang="json">
 "10G"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.l2.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -2770,7 +2811,8 @@ null
   "labels": {},
   "mountPath": "/data",
   "storageClass": null,
-  "storageSize": "10G"
+  "storageSize": "10G",
+  "volumeAttributesClassName": null
 }
 </pre>
 </td>
@@ -2808,6 +2850,15 @@ null
 			<td>Size of persistent disk, must be in G or Gi</td>
 			<td><pre lang="json">
 "10G"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>chunksCache.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -3031,7 +3082,8 @@ null
         "labels": {},
         "name": "data",
         "size": "10Gi",
-        "storageClass": null
+        "storageClass": null,
+        "volumeAttributesClassName": null
       }
     ],
     "enableStatefulSetAutoDeletePVC": false,
@@ -3260,6 +3312,15 @@ null
 			<td>Labels for compactor PVCs</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>compactor.persistence.claims[0].volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -5470,6 +5531,7 @@ null
     "labels": {},
     "size": "10Gi",
     "storageClass": null,
+    "volumeAttributesClassName": null,
     "whenDeleted": "Retain",
     "whenScaled": "Retain"
   },
@@ -5739,6 +5801,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>indexGateway.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>indexGateway.podAnnotations</td>
 			<td>object</td>
 			<td>Annotations for index-gateway pods</td>
@@ -5925,7 +5996,8 @@ null
         ],
         "name": "data",
         "size": "10Gi",
-        "storageClass": null
+        "storageClass": null,
+        "volumeAttributesClassName": null
       }
     ],
     "enableStatefulSetAutoDeletePVC": false,
@@ -6284,6 +6356,15 @@ null
 [
   "ReadWriteOnce"
 ]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingester.persistence.claims[0].volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -9234,7 +9315,8 @@ null
         "labels": {},
         "name": "data",
         "size": "10Gi",
-        "storageClass": null
+        "storageClass": null,
+        "volumeAttributesClassName": null
       }
     ],
     "enableStatefulSetAutoDeletePVC": false,
@@ -9474,6 +9556,15 @@ null
 			<td>Labels for pattern ingester PVCs</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>patternIngester.persistence.claims[0].volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -10927,7 +11018,8 @@ false
     "labels": {},
     "selector": null,
     "size": "10Gi",
-    "storageClass": null
+    "storageClass": null,
+    "volumeAttributesClassName": null
   },
   "podAnnotations": {},
   "podLabels": {},
@@ -11179,7 +11271,8 @@ false
   "labels": {},
   "selector": null,
   "size": "10Gi",
-  "storageClass": null
+  "storageClass": null,
+  "volumeAttributesClassName": null
 }
 </pre>
 </td>
@@ -11244,6 +11337,15 @@ null
 			<td>read.persistence.storageClass</td>
 			<td>string</td>
 			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -11547,7 +11649,8 @@ true
   "labels": {},
   "mountPath": "/data",
   "storageClass": null,
-  "storageSize": "10G"
+  "storageSize": "10G",
+  "volumeAttributesClassName": null
 }
 </pre>
 </td>
@@ -11594,6 +11697,15 @@ null
 			<td>Size of persistent disk, must be in G or Gi</td>
 			<td><pre lang="json">
 "10G"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>resultsCache.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -11845,7 +11957,8 @@ null
     "enabled": false,
     "labels": {},
     "size": "10Gi",
-    "storageClass": null
+    "storageClass": null,
+    "volumeAttributesClassName": null
   },
   "podAnnotations": {},
   "podLabels": {},
@@ -12095,6 +12208,15 @@ false
 			<td>ruler.persistence.storageClass</td>
 			<td>string</td>
 			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ruler.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -13608,6 +13730,15 @@ null
 			<td>write.persistence.storageClass</td>
 			<td>string</td>
 			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.volumeAttributesClassName</td>
+			<td>string</td>
+			<td>Volume attributes class name to be used. If empty or set to null, no volumeAttributesClassName spec is set. Requires Kubernetes 1.31</td>
 			<td><pre lang="json">
 null
 </pre>
