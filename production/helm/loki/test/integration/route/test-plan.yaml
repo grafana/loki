@@ -16,7 +16,7 @@ cluster:
   type: kind
 
 dependencies:
-  - file: https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
+  - url: https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/standard-install.yaml
 
 tests:
   - type: kubernetes-objects-test
