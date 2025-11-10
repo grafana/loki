@@ -1416,10 +1416,27 @@ func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
 		return nil, nil
 	}
 
-	logger := log.With(util_log.Logger, "component", "query-engine-scheduler")
-	sched, err := engine_v2.NewScheduler(logger)
+	// Determine the advertise address. Results in nil if not running
+	// distributed execution.
+	listenPort := uint16(t.Cfg.Server.HTTPListenPort)
+	advertiseAddr, err := t.Cfg.Querier.EngineV2.AdvertiseAddr(listenPort)
 	if err != nil {
 		return nil, err
+	}
+
+	sched, err := engine_v2.NewScheduler(engine_v2.SchedulerParams{
+		Logger: log.With(util_log.Logger, "component", "query-engine-scheduler"),
+
+		AdvertiseAddr: advertiseAddr,
+		Endpoint:      "/api/v2/frame",
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Only register HTTP handler when running distributed query execution
+	if t.Cfg.Querier.EngineV2.Distributed {
+		sched.RegisterSchedulerServer(t.Server.HTTP)
 	}
 
 	t.queryEngineV2Scheduler = sched
@@ -1429,6 +1446,14 @@ func (t *Loki) initV2QueryEngineScheduler() (services.Service, error) {
 func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 	if !t.Cfg.Querier.EngineV2.Enable {
 		return nil, nil
+	}
+
+	// Determine the advertise address. Results in nil if not running
+	// distributed execution.
+	listenPort := uint16(t.Cfg.Server.HTTPListenPort)
+	advertiseAddr, err := t.Cfg.Querier.EngineV2.AdvertiseAddr(listenPort)
+	if err != nil {
+		return nil, err
 	}
 
 	store, err := t.getDataObjBucket("query-engine-worker")
@@ -1444,9 +1469,17 @@ func (t *Loki) initV2QueryEngineWorker() (services.Service, error) {
 		Executor: t.Cfg.Querier.EngineV2.Executor,
 
 		LocalScheduler: t.queryEngineV2Scheduler,
+
+		AdvertiseAddr: advertiseAddr,
+		Endpoint:      "/api/v2/frame",
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Only register HTTP handler when running distributed query execution
+	if t.Cfg.Querier.EngineV2.Distributed {
+		worker.RegisterWorkerServer(t.Server.HTTP)
 	}
 
 	return worker.Service(), nil
@@ -2314,8 +2347,8 @@ func (t *Loki) initDataObjConsumer() (services.Service, error) {
 	httpMiddleware := middleware.Merge(
 		serverutil.RecoveryHTTPMiddleware,
 	)
-	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/dataobj-consumer/prepare_partition_downscale").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.dataObjConsumer.PreparePartitionDownscaleHandler)),
+	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/dataobj-consumer/prepare-delayed-downscale").Handler(
+		httpMiddleware.Wrap(http.HandlerFunc(t.dataObjConsumer.PrepareDelayedDownscaleHandler)),
 	)
 
 	return t.dataObjConsumer, nil

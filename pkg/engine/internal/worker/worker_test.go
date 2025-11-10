@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler"
+	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/objtest"
 	"github.com/grafana/loki/v3/pkg/engine/internal/worker"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
@@ -40,8 +41,9 @@ func Test(t *testing.T) {
 		logger = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 	}
 
-	sched := newTestScheduler(t, logger)
-	_ = newTestWorker(t, logger, builder.Location(), sched)
+	net := newTestNetwork()
+	sched := newTestScheduler(t, logger, net)
+	_ = newTestWorker(t, logger, builder.Location(), net)
 
 	ctx := user.InjectOrgID(t.Context(), objtest.Tenant)
 
@@ -94,10 +96,30 @@ func Test(t *testing.T) {
 	require.Equal(t, expected, actual)
 }
 
-func newTestScheduler(t *testing.T, logger log.Logger) *scheduler.Scheduler {
+type testNetwork struct {
+	schedulerListener *wire.Local
+	workerListener    *wire.Local
+	dialer            wire.Dialer
+}
+
+func newTestNetwork() *testNetwork {
+	schedulerListener := &wire.Local{Address: wire.LocalScheduler}
+	workerListener := &wire.Local{Address: wire.LocalWorker}
+
+	return &testNetwork{
+		schedulerListener: schedulerListener,
+		workerListener:    workerListener,
+		dialer:            wire.NewLocalDialer(schedulerListener, workerListener),
+	}
+}
+
+func newTestScheduler(t *testing.T, logger log.Logger, net *testNetwork) *scheduler.Scheduler {
 	t.Helper()
 
-	sched, err := scheduler.New(scheduler.Config{Logger: logger})
+	sched, err := scheduler.New(scheduler.Config{
+		Logger:   logger,
+		Listener: net.schedulerListener,
+	})
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(t.Context(), sched.Service()))
 
@@ -111,14 +133,17 @@ func newTestScheduler(t *testing.T, logger log.Logger) *scheduler.Scheduler {
 	return sched
 }
 
-func newTestWorker(t *testing.T, logger log.Logger, loc objtest.Location, sched *scheduler.Scheduler) *worker.Worker {
+func newTestWorker(t *testing.T, logger log.Logger, loc objtest.Location, net *testNetwork) *worker.Worker {
 	t.Helper()
 
 	w, err := worker.New(worker.Config{
-		Logger:         logger,
-		Bucket:         loc.Bucket,
-		LocalScheduler: sched,
-		BatchSize:      2048,
+		Logger:    logger,
+		Bucket:    loc.Bucket,
+		BatchSize: 2048,
+
+		Dialer:           net.dialer,
+		Listener:         net.workerListener,
+		SchedulerAddress: wire.LocalScheduler,
 
 		// Create enough threads to guarantee all tasks can be scheduled without
 		// blocking.
@@ -172,7 +197,7 @@ func buildWorkflow(ctx context.Context, t *testing.T, logger log.Logger, loc obj
 }
 
 func readTable(ctx context.Context, t *testing.T, p executor.Pipeline) arrow.Table {
-	var recs []arrow.Record
+	var recs []arrow.RecordBatch
 
 	for {
 		rec, err := p.Read(ctx)

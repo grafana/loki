@@ -365,7 +365,7 @@ type runnerTask struct {
 
 type noopPipeline struct{}
 
-func (noopPipeline) Read(ctx context.Context) (arrow.Record, error) {
+func (noopPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
 }

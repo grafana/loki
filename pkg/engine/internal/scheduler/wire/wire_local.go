@@ -2,6 +2,7 @@ package wire
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"sync"
 )
@@ -172,3 +173,31 @@ func (c *localConn) LocalAddr() net.Addr { return c.localAddr }
 
 // RemoteAddr returns the address of the remote side of the connection.
 func (c *localConn) RemoteAddr() net.Addr { return c.remoteAddr }
+
+// LocalDialer is a [Dialer] that can open local connections to one or more
+// [Local] listeners.
+type LocalDialer struct {
+	listeners map[net.Addr]*Local
+}
+
+var _ Dialer = (*LocalDialer)(nil)
+
+// NewLocalDialer creates a new [LocalDialer] that can open connections to the
+// provided listeners.
+func NewLocalDialer(listeners ...*Local) *LocalDialer {
+	listenerMap := make(map[net.Addr]*Local, len(listeners))
+	for _, listener := range listeners {
+		listenerMap[listener.Addr()] = listener
+	}
+	return &LocalDialer{listeners: listenerMap}
+}
+
+// Dial opens a connection to the provided address. Returns an error if the
+// address was not registered.
+func (d *LocalDialer) Dial(ctx context.Context, from, to net.Addr) (Conn, error) {
+	listener, ok := d.listeners[to]
+	if !ok {
+		return nil, fmt.Errorf("address %s not found", to)
+	}
+	return listener.DialFrom(ctx, from)
+}

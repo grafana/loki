@@ -137,7 +137,7 @@ func buildSection(t *testing.T, recs []logs.Record) *logs.Section {
 func unixTime(sec int64) time.Time { return time.Unix(sec, 0) }
 
 func readTable(ctx context.Context, r *logs.Reader) (arrow.Table, error) {
-	var recs []arrow.Record
+	var recs []arrow.RecordBatch
 
 	for {
 		rec, err := r.Read(ctx, 128)

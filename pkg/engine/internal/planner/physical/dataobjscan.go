@@ -32,6 +32,12 @@ type DataObjScan struct {
 	// returned. Predicates would almost always contain a time range filter to
 	// only read the logs for the requested time range.
 	Predicates []Expression
+	// The maximum boundary of timestamps that scanning the
+	// data object can possibly emit. Does not account for
+	// predicates.
+	// MaxTimeRange is not read when executing a scan.
+	// It can be used as metadata to control physical plan execution.
+	MaxTimeRange TimeRange
 }
 
 // ID implements the [Node] interface.
@@ -43,11 +49,12 @@ func (s *DataObjScan) Clone() Node {
 	return &DataObjScan{
 		NodeID: ulid.Make(),
 
-		Location:    s.Location,
-		Section:     s.Section,
-		StreamIDs:   slices.Clone(s.StreamIDs),
-		Projections: cloneExpressions(s.Projections),
-		Predicates:  cloneExpressions(s.Predicates),
+		Location:     s.Location,
+		Section:      s.Section,
+		StreamIDs:    slices.Clone(s.StreamIDs),
+		Projections:  cloneExpressions(s.Projections),
+		Predicates:   cloneExpressions(s.Predicates),
+		MaxTimeRange: s.MaxTimeRange,
 	}
 }
 

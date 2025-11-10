@@ -19,7 +19,7 @@ type streamPipe struct {
 	closeOnce sync.Once
 
 	closed  chan struct{}
-	results chan arrow.Record
+	results chan arrow.RecordBatch
 }
 
 var _ executor.Pipeline = (*streamPipe)(nil)
@@ -28,13 +28,13 @@ var _ executor.Pipeline = (*streamPipe)(nil)
 func newStreamPipe() *streamPipe {
 	return &streamPipe{
 		closed:  make(chan struct{}),
-		results: make(chan arrow.Record),
+		results: make(chan arrow.RecordBatch),
 	}
 }
 
 // Read returns the next record of the stream data. Blocks until results are
 // available or until the provided ctx is canceled.
-func (pipe *streamPipe) Read(ctx context.Context) (arrow.Record, error) {
+func (pipe *streamPipe) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -47,7 +47,7 @@ func (pipe *streamPipe) Read(ctx context.Context) (arrow.Record, error) {
 
 // Write writes a record to the read end of the pipe. Write blocks until the
 // record has been read or the context is canceled.
-func (pipe *streamPipe) Write(ctx context.Context, rec arrow.Record) error {
+func (pipe *streamPipe) Write(ctx context.Context, rec arrow.RecordBatch) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

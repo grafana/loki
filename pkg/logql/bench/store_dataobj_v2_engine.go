@@ -74,7 +74,10 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 		return nil, fmt.Errorf("failed to create filesystem bucket for DataObjV2EngineStore: %w", err)
 	}
 
-	sched, err := engine.NewScheduler(logger)
+	sched, err := engine.NewScheduler(engine.SchedulerParams{
+		Logger:        logger,
+		AdvertiseAddr: nil, // set explicitly to nil so local transport is used
+	})
 	if err != nil {
 		return nil, fmt.Errorf("creating scheduler: %w", err)
 	} else if err := services.StartAndAwaitRunning(context.Background(), sched.Service()); err != nil {
@@ -83,6 +86,7 @@ func dataobjV2StoreWithOpts(dataDir string, tenantID string, cfg engine.Executor
 
 	worker, err := engine.NewWorker(engine.WorkerParams{
 		Logger:         logger,
+		AdvertiseAddr:  nil, // set explicitly to nil so local transport is used
 		Bucket:         bucketClient,
 		LocalScheduler: sched,
 		Config: engine.WorkerConfig{
