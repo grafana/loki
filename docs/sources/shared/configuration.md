@@ -2864,8 +2864,9 @@ jobs_config:
     # CLI flag: -compactor.jobs.deletion.max-retries
     [max_retries: <int> | default = 3]
 
-# Object storage path prefix for storing deletion markers. Leave empty to store
-# deletion markers on local disk.
+# Object storage path prefix for storing deletion markers. The prefix must end
+# with a forward slash(/). Leave empty to store deletion markers on the local
+# disk.
 # CLI flag: -compactor.deletion-marker-object-store-prefix
 [deletion_marker_object_store_prefix: <string> | default = ""]
 ```

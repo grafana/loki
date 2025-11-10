@@ -84,7 +84,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 			HorizontalScalingModeDisabled, HorizontalScalingModeMain, HorizontalScalingModeWorker))
 	cfg.WorkerConfig.RegisterFlagsWithPrefix("compactor.worker.", f)
 	cfg.JobsConfig.RegisterFlagsWithPrefix("compactor.jobs.", f)
-	f.StringVar(&cfg.DeletionMarkerObjectStorePrefix, "compactor.deletion-marker-object-store-prefix", "", "Object storage path prefix for storing deletion markers. Leave empty to store deletion markers on local disk.")
+	f.StringVar(&cfg.DeletionMarkerObjectStorePrefix, "compactor.deletion-marker-object-store-prefix", "", "Object storage path prefix for storing deletion markers. The prefix must end with a forward slash(/). Leave empty to continue to store deletion markers on the local disk.")
 }
 
 // Validate verifies the config does not contain inappropriate values
