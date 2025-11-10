@@ -150,7 +150,7 @@ require (
 	github.com/schollz/progressbar/v3 v3.18.0
 	github.com/shirou/gopsutil/v4 v4.25.10
 	github.com/thanos-io/objstore v0.0.0-20250115091151-a54d0f04b42a
-	github.com/tjhop/slog-gokit v0.1.4
+	github.com/tjhop/slog-gokit v0.1.5
 	github.com/twmb/franz-go v1.20.3
 	github.com/twmb/franz-go/pkg/kadm v1.17.1
 	github.com/twmb/franz-go/pkg/kfake v0.0.0-20250603004440-37eecbb8927f
