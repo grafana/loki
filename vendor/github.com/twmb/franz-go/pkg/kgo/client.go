@@ -1442,6 +1442,17 @@ start:
 		}
 	}
 
+	log := func(backoff time.Duration) {
+		r.cl.cfg.logger.Log(LogLevelDebug, "retrying request",
+			"request", kmsg.NameForKey(req.Key()),
+			"tries", tries,
+			"backoff", backoff,
+			"time_since_start", time.Since(tryStart),
+			"request_error", err,
+			"response_error", retryErr,
+		)
+	}
+
 	if err != nil || retryErr != nil {
 		if r.limitRetries == 0 || tries <= r.limitRetries {
 			backoff := r.cl.cfg.retryBackoff(tries)
@@ -1451,19 +1462,13 @@ start:
 				// is a broker-specific network error, and the next
 				// broker is different than the current, we also retry.
 				if r.cl.shouldRetry(tries, err) || r.cl.shouldRetry(tries, retryErr) {
-					r.cl.cfg.logger.Log(LogLevelDebug, "retrying request",
-						"request", kmsg.NameForKey(req.Key()),
-						"tries", tries,
-						"backoff", backoff,
-						"time_since_start", time.Since(tryStart),
-						"request_error", err,
-						"response_error", retryErr,
-					)
+					log(backoff)
 					if r.cl.waitTries(ctx, backoff) {
 						next, nextErr = r.br()
 						goto start
 					}
 				} else if r.cl.shouldRetryNext(tries, err) {
+					log(backoff)
 					next, nextErr = r.br()
 					if next != br && r.cl.waitTries(ctx, backoff) {
 						goto start
@@ -2430,7 +2435,7 @@ func (cl *Client) handleShardedReq(ctx context.Context, req kmsg.Request) ([]Res
 		retryTimeout = cl.cfg.retryTimeout(req.Key())
 
 		wg    sync.WaitGroup
-		issue func(reqTry)
+		issue func(reqTry, int32)
 	)
 
 	l := cl.cfg.logger
@@ -2441,7 +2446,7 @@ func (cl *Client) handleShardedReq(ctx context.Context, req kmsg.Request) ([]Res
 	//
 	// This recursively calls itself if a request fails and can be retried.
 	// We avoid stack problems because this calls itself in a goroutine.
-	issue = func(try reqTry) {
+	issue = func(try reqTry, avoidBroker int32) {
 		issues, reshardable, err := sharder.shard(ctx, try.req, try.lastErr)
 		if err != nil {
 			l.Log(LogLevelDebug, "unable to shard request", "req", kmsg.Key(try.req.Key()).Name(), "previous_tries", try.tries, "err", err)
@@ -2496,17 +2501,21 @@ func (cl *Client) handleShardedReq(ctx context.Context, req kmsg.Request) ([]Res
 			start:
 				tries++
 
-				broker := cl.broker()
+				br := cl.broker()
 				var err error
 				if !myIssue.any {
-					broker, err = cl.brokerOrErr(ctx, myIssue.broker, errUnknownBroker)
+					br, err = cl.brokerOrErr(ctx, myIssue.broker, errUnknownBroker)
+				} else if avoidBroker != -1 {
+					for i := 0; i < 3 && br.meta.NodeID == avoidBroker; i++ {
+						br = cl.broker()
+					}
 				}
 				if err != nil {
 					addShard(shard(nil, myIssue.req, nil, err)) // failure to load a broker is a failure to issue a request
 					return
 				}
 
-				resp, err := broker.waitResp(ctx, myIssue.req)
+				resp, err := br.waitResp(ctx, myIssue.req)
 				var errIsFromResp bool
 				if err == nil {
 					err = sharder.onResp(myIssue.req, resp) // perform some potential cleanup, and potentially receive an error to retry
@@ -2523,10 +2532,36 @@ func (cl *Client) handleShardedReq(ctx context.Context, req kmsg.Request) ([]Res
 				// immediately. The request was not even issued. However, as a
 				// safety, we only do this 3 times to avoid some super weird
 				// pathological spin loop.
-				backoff := cl.cfg.retryBackoff(tries)
+				//
+				// We do retry on pinnedOld even if noRetries==true because
+				// the request was not issued; the sharder may handle
+				// errBrokerTooOld by pinning / splitting differently next try.
+				var (
+					backoff         = cl.cfg.retryBackoff(tries)
+					pinnedOld       = reshardable && isPinned && errors.Is(err, errBrokerTooOld) && tries <= 3
+					notTimedOut     = retryTimeout == 0 || time.Now().Add(backoff).Sub(start) <= retryTimeout
+					shouldRetry     = cl.shouldRetry(tries, err)
+					shouldRetryNext = myIssue.any && cl.shouldRetryNext(tries, err)
+				)
+
+				// If we retried on a "next" broker, but we randomly chose
+				// that same broker 3x, then we avoid retrying again on a
+				// "next" broker.
+				//
+				// If we retry at all, we need to clear `avoidBroker` in
+				// case it's already set. however, if we *do* need to retry
+				// on a different broker, then we set it.
+				if avoidBroker != -1 && br.meta.NodeID == avoidBroker {
+					shouldRetryNext = false
+				}
+				avoidBroker = -1
+				if shouldRetryNext {
+					avoidBroker = br.meta.NodeID
+				}
+
 				if err != nil &&
-					(reshardable && isPinned && errors.Is(err, errBrokerTooOld) && tries <= 3) ||
-					(retryTimeout == 0 || time.Now().Add(backoff).Sub(start) <= retryTimeout) && cl.shouldRetry(tries, err) && cl.waitTries(ctx, backoff) && !noRetries {
+					(pinnedOld ||
+						!noRetries && notTimedOut && (shouldRetry || shouldRetryNext) && cl.waitTries(ctx, backoff)) {
 					// Non-reshardable re-requests just jump back to the
 					// top where the broker is loaded. This is the case on
 					// requests where the original request is split to
@@ -2536,7 +2571,7 @@ func (cl *Client) handleShardedReq(ctx context.Context, req kmsg.Request) ([]Res
 						goto start
 					}
 					l.Log(LogLevelDebug, "sharded request failed, resharding and reissuing", "req", kmsg.Key(myIssue.req.Key()).Name(), "time_since_start", time.Since(start), "tries", tries, "err", err)
-					issue(reqTry{tries, myIssue.req, err})
+					issue(reqTry{tries, myIssue.req, err}, avoidBroker)
 					return
 				}
 
@@ -2548,12 +2583,12 @@ func (cl *Client) handleShardedReq(ctx context.Context, req kmsg.Request) ([]Res
 				if errIsFromResp {
 					err = nil
 				}
-				addShard(shard(broker, myIssue.req, resp, err)) // the error was not retryable
+				addShard(shard(br, myIssue.req, resp, err)) // the error was not retryable
 			}()
 		}
 	}
 
-	issue(reqTry{0, req, nil})
+	issue(reqTry{0, req, nil}, -1)
 	wg.Wait()
 
 	return shards, sharder.merge

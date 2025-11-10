@@ -26,7 +26,7 @@ type sink struct {
 	// response, we check what version was set in the request. If it is at
 	// least 4, which 1.0 introduced, we upgrade the sem size.
 	inflightSem    atomic.Value
-	produceVersion atomicI32 // negative is unset, positive is version
+	produceVersion atomic.Int32 // negative is unset, positive is version
 
 	drainState workLoop
 
@@ -43,7 +43,7 @@ type sink struct {
 	// successful response. For simplicity, if we have a good response
 	// following an error response before the error response's backoff
 	// occurs, the backoff is not cleared.
-	consecutiveFailures atomicU32
+	consecutiveFailures atomic.Uint32
 
 	recBufsMu    sync.Mutex // guards the following
 	recBufs      []*recBuf  // contains all partition records for batch building
@@ -1252,11 +1252,11 @@ type recBuf struct {
 
 	// addedToTxn, for transactions only, signifies whether this partition
 	// has been added to the transaction yet or not.
-	addedToTxn atomicBool
+	addedToTxn atomic.Bool
 
 	// For LoadTopicPartitioner partitioning; atomically tracks the number
 	// of records buffered in total on this recBuf.
-	buffered atomicI64
+	buffered atomic.Int64
 
 	mu sync.Mutex // guards r/w access to all fields below
 
