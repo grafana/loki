@@ -2865,8 +2865,8 @@ jobs_config:
     [max_retries: <int> | default = 3]
 
 # Object storage path prefix for storing deletion markers. The prefix must end
-# with a forward slash(/). Leave empty to store deletion markers on the local
-# disk.
+# with a forward slash(/). Leave empty to continue to store deletion markers on
+# the local disk.
 # CLI flag: -compactor.deletion-marker-object-store-prefix
 [deletion_marker_object_store_prefix: <string> | default = ""]
 ```
