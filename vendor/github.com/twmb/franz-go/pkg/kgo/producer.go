@@ -44,16 +44,16 @@ type producer struct {
 	unknownTopics   map[string]*unknownTopicProduces
 
 	id           atomic.Value
-	producingTxn atomicBool
+	producingTxn atomic.Bool
 
 	// We must have a producer field for flushing; we cannot just have a
 	// field on recBufs that is toggled on flush. If we did, then a new
 	// recBuf could be created and records sent to while we are flushing.
-	flushing     atomicI32 // >0 if flushing, can Flush many times concurrently
-	blocked      atomicI32 // >0 if over max recs or bytes
+	flushing     atomic.Int32 // >0 if flushing, can Flush many times concurrently
+	blocked      atomic.Int32 // >0 if over max recs or bytes
 	blockedBytes int64
 
-	aborting atomicI32 // >0 if aborting, can abort many times concurrently
+	aborting atomic.Int32 // >0 if aborting, can abort many times concurrently
 
 	idMu      sync.Mutex
 	idVersion int16
@@ -344,7 +344,7 @@ func (cl *Client) ProduceSync(ctx context.Context, rs ...*Record) ProduceResults
 // This is similar to using ProduceResult's FirstErr function.
 type FirstErrPromise struct {
 	wg   sync.WaitGroup
-	once atomicBool
+	once atomic.Bool
 	err  error
 	cl   *Client
 }
