@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"hash/fnv"
+	"math/rand"
 
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/loki/v3/pkg/logql/syntax"
@@ -82,5 +83,10 @@ func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 		return 0, err
 	}
 	// Get the partition from this shard.
+	if r.cfg.RandomWithinShard {
+		activePartitionIDs := subring.ActivePartitionIDs()
+		idx := rand.Intn(len(activePartitionIDs))
+		return activePartitionIDs[idx], nil
+	}
 	return subring.ActivePartitionForKey(uint32(stream.HashKeyNoShard))
 }
