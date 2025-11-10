@@ -663,7 +663,7 @@ func RequestTimeoutOverhead(overhead time.Duration) Opt {
 }
 
 // ConnIdleTimeout is a rough amount of time to allow connections to idle
-// before they are closed, overriding the default 20.
+// before they are closed, overriding the default 20s.
 //
 // In the worst case, a connection can be allowed to idle for up to 2x this
 // time, while the average is expected to be 1.5x (essentially, a uniform
@@ -773,7 +773,7 @@ func RetryBackoffFn(backoff func(int) time.Duration) Opt {
 }
 
 // RequestRetries sets the number of tries that retryable requests are allowed,
-// overriding the default of 20s.
+// overriding the default of 20.
 //
 // This option does not apply to produce requests; to limit produce request
 // retries / record retries, see RecordRetries.
