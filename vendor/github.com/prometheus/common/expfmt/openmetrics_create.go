@@ -208,6 +208,8 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 		n, err = w.WriteString(" unknown\n")
 	case dto.MetricType_HISTOGRAM:
 		n, err = w.WriteString(" histogram\n")
+	case dto.MetricType_GAUGE_HISTOGRAM:
+		n, err = w.WriteString(" gaugehistogram\n")
 	default:
 		return written, fmt.Errorf("unknown metric type %s", metricType.String())
 	}
@@ -325,7 +327,7 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 				createdTsBytesWritten, err = writeOpenMetricsCreated(w, compliantName, "", metric, "", 0, metric.Summary.GetCreatedTimestamp())
 				n += createdTsBytesWritten
 			}
-		case dto.MetricType_HISTOGRAM:
+		case dto.MetricType_HISTOGRAM, dto.MetricType_GAUGE_HISTOGRAM:
 			if metric.Histogram == nil {
 				return written, fmt.Errorf(
 					"expected histogram in metric %s %s", compliantName, metric,
@@ -333,6 +335,12 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 			}
 			infSeen := false
 			for _, b := range metric.Histogram.Bucket {
+				if b.GetCumulativeCountFloat() > 0 {
+					return written, fmt.Errorf(
+						"OpenMetrics v1.0 does not support float histogram %s %s",
+						compliantName, metric,
+					)
+				}
 				n, err = writeOpenMetricsSample(
 					w, compliantName, "_bucket", metric,
 					model.BucketLabel, b.GetUpperBound(),
@@ -354,6 +362,9 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 					0, metric.Histogram.GetSampleCount(), true,
 					nil,
 				)
+				// We do not check for a float sample count here
+				// because we will check for it below (and error
+				// out if needed).
 				written += n
 				if err != nil {
 					return
@@ -367,6 +378,12 @@ func MetricFamilyToOpenMetrics(out io.Writer, in *dto.MetricFamily, options ...E
 			written += n
 			if err != nil {
 				return
+			}
+			if metric.Histogram.GetSampleCountFloat() > 0 {
+				return written, fmt.Errorf(
+					"OpenMetrics v1.0 does not support float histogram %s %s",
+					compliantName, metric,
+				)
 			}
 			n, err = writeOpenMetricsSample(
 				w, compliantName, "_count", metric, "", 0,

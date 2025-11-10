@@ -9,8 +9,9 @@ import (
 
 // OrderSchemaItem holds a named schema (e.g. from a property of an object)
 type OrderSchemaItem struct {
-	Name string
 	Schema
+
+	Name string
 }
 
 // OrderSchemaItems is a sortable slice of named schemas.
