@@ -20,6 +20,7 @@ type DataObjTeeConfig struct {
 	Topic                 string `yaml:"topic"`
 	MaxBufferedBytes      int    `yaml:"max_buffered_bytes"`
 	PerPartitionRateBytes int    `yaml:"per_partition_rate_bytes"`
+	RandomWithinShard     bool   `yaml:"random_within_shard"`
 }
 
 func (c *DataObjTeeConfig) RegisterFlags(f *flag.FlagSet) {
@@ -27,6 +28,7 @@ func (c *DataObjTeeConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&c.Topic, "distributor.dataobj-tee.topic", "", "Topic for data object tee.")
 	f.IntVar(&c.MaxBufferedBytes, "distributor.dataobj-tee.max-buffered-bytes", 100<<20, "Maximum number of bytes to buffer.")
 	f.IntVar(&c.PerPartitionRateBytes, "distributor.dataobj-tee.per-partition-rate-bytes", 1024*1024, "The per-tenant partition rate (bytes/sec).")
+	f.BoolVar(&c.RandomWithinShard, "distributor.dataobj-tee.random-within-shard", false, "Randomize within shard.")
 }
 
 func (c *DataObjTeeConfig) Validate() error {
