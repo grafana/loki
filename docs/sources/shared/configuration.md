@@ -5353,6 +5353,10 @@ label_results_cache:
 # configured time range.
 # CLI flag: -querier.enable-v2-engine-router
 [enable_v2_engine_router: <boolean> | default = false]
+
+# Address for executing V2 engine queries.
+# CLI flag: -querier.v2-engine-address
+[v2_engine_address: <string> | default = ""]
 ```
 
 ### query_scheduler
