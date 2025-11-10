@@ -60,7 +60,7 @@ func validateEventLogMessageConfig(c *EventLogMessageConfig) error {
 	if c == nil {
 		return errors.New(ErrEmptyEvtLogMsgStageConfig)
 	}
-	if c.Source != nil && !model.LegacyValidation.IsValidLabelName(string(*c.Source)) {
+	if c.Source != nil && !model.LegacyValidation.IsValidLabelName(*c.Source) {
 		return fmt.Errorf(ErrInvalidLabelName, *c.Source)
 	}
 	return nil

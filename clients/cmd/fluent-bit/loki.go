@@ -191,7 +191,7 @@ func mapLabels(records map[string]interface{}, mapping map[string]interface{}, r
 			if value, ok := getRecordValue(k, records); ok {
 				lName := model.LabelName(nextKey)
 				lValue := model.LabelValue(value)
-				if lValue.IsValid() && model.LegacyValidation.IsValidLabelName(string(lName)) {
+				if lValue.IsValid() && model.UTF8Validation.IsValidLabelName(string(lName)) {
 					res[lName] = lValue
 				}
 			}
