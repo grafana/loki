@@ -196,7 +196,7 @@ spec:
           value: /var/lib/provisioning
         - name: GF_SECURITY_ADMIN_USER
           value: kube:admin
-        image: docker.io/grafana/grafana:8.5.27
+        image: docker.io/grafana/grafana:11.6
         imagePullPolicy: IfNotPresent
         livenessProbe:
           failureThreshold: 3

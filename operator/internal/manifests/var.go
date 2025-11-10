@@ -99,6 +99,8 @@ const (
 	LabelRulerComponent string = "ruler"
 	// LabelGatewayComponent is the label value for the lokiStack-gateway component
 	LabelGatewayComponent string = "lokistack-gateway"
+	// LabelPatternIngesterComponent is the label value for the pattern-ingester component
+	LabelPatternIngesterComponent string = "pattern-ingester"
 
 	// httpTLSDir is the path that is mounted from the secret for TLS
 	httpTLSDir = "/var/run/tls/http"
@@ -253,6 +255,11 @@ func PrometheusRuleName(stackName string) string {
 	return fmt.Sprintf("%s-prometheus-rule", stackName)
 }
 
+// PatternIngesterName is the name of the pattern-ingester deployment
+func PatternIngesterName(stackName string) string {
+	return fmt.Sprintf("%s-pattern-ingester", stackName)
+}
+
 func lokiConfigMapName(stackName string) string {
 	return fmt.Sprintf("%s-config", stackName)
 }
@@ -383,6 +390,14 @@ func serviceNameGatewayHTTP(stackName string) string {
 
 func serviceMonitorName(componentName string) string {
 	return fmt.Sprintf("%s-monitor", componentName)
+}
+
+func serviceNamePatternIngesterGRPC(stackName string) string {
+	return fmt.Sprintf("%s-pattern-ingester-grpc", stackName)
+}
+
+func serviceNamePatternIngesterHTTP(stackName string) string {
+	return fmt.Sprintf("%s-pattern-ingester-http", stackName)
 }
 
 func signingCABundleName(stackName string) string {
