@@ -20,9 +20,13 @@ import (
 	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
 )
 
+type engine interface {
+	Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error)
+}
+
 // Handler returns an [http.Handler] for serving queries. Unsupported queries
 // will result in an error.
-func Handler(cfg ExecutorConfig, logger log.Logger, engine *Engine, limits querier_limits.Limits) http.Handler {
+func Handler(cfg ExecutorConfig, logger log.Logger, engine engine, limits querier_limits.Limits) http.Handler {
 	h := &queryHandler{
 		cfg:    cfg,
 		logger: logger,
@@ -35,7 +39,7 @@ func Handler(cfg ExecutorConfig, logger log.Logger, engine *Engine, limits queri
 type queryHandler struct {
 	cfg    ExecutorConfig
 	logger log.Logger
-	engine *Engine
+	engine engine
 	limits querier_limits.Limits
 }
 
