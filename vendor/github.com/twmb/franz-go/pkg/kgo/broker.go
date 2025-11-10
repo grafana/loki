@@ -162,7 +162,7 @@ type broker struct {
 	// reqs manages incoming message requests.
 	reqs ring[promisedReq]
 	// dead is an atomic so a backed up reqs cannot block broker stoppage.
-	dead atomicBool
+	dead atomic.Bool
 }
 
 // brokerVersions is loaded once (and potentially a few times concurrently if
@@ -701,7 +701,7 @@ func (b *broker) connect(ctx context.Context) (net.Conn, error) {
 // brokerCxn manages an actual connection to a Kafka broker. This is separate
 // the broker struct to allow lazy connection (re)creation.
 type brokerCxn struct {
-	throttleUntil atomicI64 // atomic nanosec
+	throttleUntil atomic.Int64 // atomic nanosec
 
 	conn net.Conn
 
@@ -718,17 +718,17 @@ type brokerCxn struct {
 	// The following four fields are used for connection reaping.
 	// Write is only updated in one location; read is updated in three
 	// due to readConn, readConnAsync, and discard.
-	lastWrite atomicI64
-	lastRead  atomicI64
-	writing   atomicBool
-	reading   atomicBool
+	lastWrite atomic.Int64
+	lastRead  atomic.Int64
+	writing   atomic.Bool
+	reading   atomic.Bool
 
 	successes uint64
 
 	// resps manages reading kafka responses.
 	resps ring[promisedResp]
 	// dead is an atomic so that a backed up resps cannot block cxn death.
-	dead atomicBool
+	dead atomic.Bool
 	// closed in cloneConn; allows throttle waiting to quit
 	deadCh chan struct{}
 }

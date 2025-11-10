@@ -227,6 +227,8 @@ github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric
 # github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.53.0
 ## explicit; go 1.23.0
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping
+# github.com/HdrHistogram/hdrhistogram-go v1.1.2
+## explicit; go 1.14
 # github.com/IBM/go-sdk-core/v5 v5.21.0
 ## explicit; go 1.23.0
 github.com/IBM/go-sdk-core/v5/core
@@ -331,7 +333,7 @@ github.com/aliyun/aliyun-oss-go-sdk/oss
 ## explicit; go 1.22
 github.com/andybalholm/brotli
 github.com/andybalholm/brotli/matchfinder
-# github.com/apache/arrow-go/v18 v18.4.0
+# github.com/apache/arrow-go/v18 v18.4.1
 ## explicit; go 1.23.0
 github.com/apache/arrow-go/v18/arrow
 github.com/apache/arrow-go/v18/arrow/array
@@ -357,6 +359,12 @@ github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
+# github.com/apache/cassandra-gocql-driver/v2 v2.0.0
+## explicit; go 1.19
+github.com/apache/cassandra-gocql-driver/v2
+github.com/apache/cassandra-gocql-driver/v2/internal/lru
+github.com/apache/cassandra-gocql-driver/v2/internal/murmur
+github.com/apache/cassandra-gocql-driver/v2/internal/streams
 # github.com/armon/go-metrics v0.4.1
 ## explicit; go 1.12
 github.com/armon/go-metrics
@@ -890,10 +898,6 @@ github.com/go-ini/ini
 github.com/go-jose/go-jose/v4
 github.com/go-jose/go-jose/v4/cipher
 github.com/go-jose/go-jose/v4/json
-# github.com/go-kit/kit v0.12.0
-## explicit; go 1.17
-github.com/go-kit/kit/log
-github.com/go-kit/kit/log/level
 # github.com/go-kit/log v0.2.1
 ## explicit; go 1.17
 github.com/go-kit/log
@@ -987,12 +991,6 @@ github.com/goccy/go-json/internal/encoder/vm_color_indent
 github.com/goccy/go-json/internal/encoder/vm_indent
 github.com/goccy/go-json/internal/errors
 github.com/goccy/go-json/internal/runtime
-# github.com/gocql/gocql v1.7.0 => github.com/grafana/gocql v0.0.0-20200605141915-ba5dc39ece85
-## explicit; go 1.13
-github.com/gocql/gocql
-github.com/gocql/gocql/internal/lru
-github.com/gocql/gocql/internal/murmur
-github.com/gocql/gocql/internal/streams
 # github.com/gofrs/flock v0.8.1
 ## explicit
 github.com/gofrs/flock
@@ -1215,6 +1213,8 @@ github.com/grpc-ecosystem/grpc-gateway/v2/utilities
 github.com/hailocab/go-hostpool
 # github.com/hashicorp/consul/api v1.33.0
 ## explicit; go 1.25.3
+# github.com/hashicorp/consul/api v1.32.1
+## explicit; go 1.23.8
 github.com/hashicorp/consul/api
 # github.com/hashicorp/errwrap v1.1.0
 ## explicit
@@ -1368,7 +1368,7 @@ github.com/klauspost/compress/snappy
 github.com/klauspost/compress/zlib
 github.com/klauspost/compress/zstd
 github.com/klauspost/compress/zstd/internal/xxhash
-# github.com/klauspost/cpuid/v2 v2.2.11
+# github.com/klauspost/cpuid/v2 v2.3.0
 ## explicit; go 1.22
 github.com/klauspost/cpuid/v2
 # github.com/klauspost/crc32 v1.3.0
@@ -1579,12 +1579,14 @@ github.com/opentracing-contrib/go-stdlib/nethttp
 github.com/opentracing/opentracing-go
 github.com/opentracing/opentracing-go/ext
 github.com/opentracing/opentracing-go/log
-# github.com/oschwald/geoip2-golang v1.13.0
-## explicit; go 1.21
-github.com/oschwald/geoip2-golang
-# github.com/oschwald/maxminddb-golang v1.13.0
-## explicit; go 1.21
-github.com/oschwald/maxminddb-golang
+# github.com/oschwald/geoip2-golang/v2 v2.0.0
+## explicit; go 1.24.0
+github.com/oschwald/geoip2-golang/v2
+# github.com/oschwald/maxminddb-golang/v2 v2.0.0
+## explicit; go 1.24.0
+github.com/oschwald/maxminddb-golang/v2
+github.com/oschwald/maxminddb-golang/v2/internal/decoder
+github.com/oschwald/maxminddb-golang/v2/internal/mmdberrors
 # github.com/parquet-go/parquet-go v0.25.1
 ## explicit; go 1.22
 github.com/parquet-go/parquet-go
@@ -1917,7 +1919,7 @@ github.com/tklauser/go-sysconf
 # github.com/tklauser/numcpus v0.10.0
 ## explicit; go 1.23.0
 github.com/tklauser/numcpus
-# github.com/twmb/franz-go v1.20.2
+# github.com/twmb/franz-go v1.20.3
 ## explicit; go 1.24.0
 github.com/twmb/franz-go/pkg/kbin
 github.com/twmb/franz-go/pkg/kerr
@@ -1926,8 +1928,8 @@ github.com/twmb/franz-go/pkg/kgo/internal/sticky
 github.com/twmb/franz-go/pkg/kversion
 github.com/twmb/franz-go/pkg/sasl
 github.com/twmb/franz-go/pkg/sasl/plain
-# github.com/twmb/franz-go/pkg/kadm v1.16.1
-## explicit; go 1.23.8
+# github.com/twmb/franz-go/pkg/kadm v1.17.1
+## explicit; go 1.24.0
 github.com/twmb/franz-go/pkg/kadm
 # github.com/twmb/franz-go/pkg/kfake v0.0.0-20250603004440-37eecbb8927f
 ## explicit; go 1.23.8

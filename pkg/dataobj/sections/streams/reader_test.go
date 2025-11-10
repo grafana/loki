@@ -185,7 +185,7 @@ func TestReader_ColumnSubset(t *testing.T) {
 }
 
 func readTable(ctx context.Context, r *streams.Reader) (arrow.Table, error) {
-	var recs []arrow.Record
+	var recs []arrow.RecordBatch
 
 	for {
 		rec, err := r.Read(ctx, 128)
