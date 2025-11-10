@@ -163,48 +163,11 @@ Create the name of the service account to use
 
 {{/*
 Base template for building docker image reference
-*/}}
-{{- define "loki.baseImage" }}
-{{- $registry := .global.imageRegistry | default ((.global.image).registry) | default .global.registry | default .service.registry | default "" -}}
-{{- $repository := .service.repository | default "" -}}
-{{- $ref := ternary (printf ":%s" (.service.tag | default .defaultVersion | toString)) (printf "@%s" .service.digest) (empty .service.digest) -}}
-{{- if and $registry $repository -}}
-  {{- printf "%s/%s%s" $registry $repository $ref -}}
-{{- else -}}
-  {{- printf "%s%s%s" $registry $repository $ref -}}
-{{- end -}}
-{{- end -}}
-
-{{/*
-Docker image name for Loki
-*/}}
-{{- define "loki.lokiImage" -}}
-{{- $dict := dict "service" .Values.loki.image "global" .Values.global.image "defaultVersion" .Chart.AppVersion -}}
-{{- include "loki.baseImage" $dict -}}
-{{- end -}}
-
-{{/*
-Docker image name for enterprise logs
-*/}}
-{{- define "loki.enterpriseImage" -}}
-{{- $dict := dict "service" .Values.enterprise.image "global" .Values.global.image "defaultVersion" .Values.enterprise.version -}}
-{{- include "loki.baseImage" $dict -}}
-{{- end -}}
-
-{{/*
-Docker image name
-*/}}
-{{- define "loki.image" -}}
-{{- if .Values.enterprise.enabled -}}{{- include "loki.enterpriseImage" . -}}{{- else -}}{{- include "loki.lokiImage" . -}}{{- end -}}
-{{- end -}}
-
-{{- define "loki.sidecarImage" -}}
-{{- /*
-Determines the final image path for the sidecar, respecting the global registry if defined, unless the local repository
+Determines the final image name, respecting the global registry if defined, unless the local repository
 already contains a full registry (indicated by a dot '.') for backwards-compatibility.
 It also respects `.digest` as well as `.sha` (deprecated).
-This is designed to be a drop-in replacement for `loki.baseImage` as long as backwards compatibility has to be guaranteed i.e. next major release.
-*/ -}}
+*/}}
+{{- define "loki.baseImage" }}
 {{- $registry := .global.imageRegistry | default ((.global.image).registry) | default .global.registry | default .service.registry | default "" -}}
 {{- $repository := .service.repository | default "" -}}
 {{- $sha := and .service.sha (printf "@sha256:%s" .service.sha) | default "" -}}
@@ -217,6 +180,29 @@ This is designed to be a drop-in replacement for `loki.baseImage` as long as bac
 {{- end -}}
 
 {{- printf "%s%s%s" $prefix $repository $ref -}}
+{{- end -}}
+
+{{/*
+Docker image name for Loki
+*/}}
+{{- define "loki.lokiImage" -}}
+{{- $dict := dict "service" .Values.loki.image "global" .Values.global "defaultVersion" .Chart.AppVersion -}}
+{{- include "loki.baseImage" $dict -}}
+{{- end -}}
+
+{{/*
+Docker image name for enterprise logs
+*/}}
+{{- define "loki.enterpriseImage" -}}
+{{- $dict := dict "service" .Values.enterprise.image "global" .Values.global "defaultVersion" .Values.enterprise.version -}}
+{{- include "loki.baseImage" $dict -}}
+{{- end -}}
+
+{{/*
+Docker image name
+*/}}
+{{- define "loki.image" -}}
+{{- if .Values.enterprise.enabled -}}{{- include "loki.enterpriseImage" . -}}{{- else -}}{{- include "loki.lokiImage" . -}}{{- end -}}
 {{- end -}}
 
 {{/*
@@ -530,7 +516,7 @@ configMap:
 Memcached Docker image
 */}}
 {{- define "loki.memcachedImage" -}}
-{{- $dict := dict "service" .Values.memcached.image "global" .Values.global.image -}}
+{{- $dict := dict "service" .Values.memcached.image "global" .Values.global -}}
 {{- include "loki.image" $dict -}}
 {{- end }}
 
@@ -538,7 +524,7 @@ Memcached Docker image
 Memcached Exporter Docker image
 */}}
 {{- define "loki.memcachedExporterImage" -}}
-{{- $dict := dict "service" .Values.memcachedExporter.image "global" .Values.global.image -}}
+{{- $dict := dict "service" .Values.memcachedExporter.image "global" .Values.global -}}
 {{- include "loki.image" $dict -}}
 {{- end }}
 

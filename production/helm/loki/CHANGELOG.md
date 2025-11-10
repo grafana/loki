@@ -15,6 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Respect global registry in sidecar image [#19347](https://github.com/grafana/loki/pull/19347).
 - [BUGFIX] Uniform naming for image digest also in the sidecar image [#19347](https://github.com/grafana/loki/pull/19347).
+- [BUGFIX] Pass full global values to image helper to respect new image standardization. [#19715](https://github.com/grafana/loki/pull/19715)
 
 ## 6.46.0
 

@@ -158,7 +158,7 @@ spec:
         {{- if .Values.sidecar.rules.enabled }}
         - name: loki-sc-rules
           {{- $dict := dict "service" .Values.sidecar.image "global" .Values.global }}
-          image: {{ include "loki.sidecarImage" $dict }}
+          image: {{ include "loki.baseImage" $dict }}
           imagePullPolicy: {{ .Values.sidecar.image.pullPolicy }}
           env:
             - name: METHOD
