@@ -1001,16 +1001,7 @@ func (m *RuntimeUInt32) validate(all bool) error {
 
 	// no validation rules for DefaultValue
 
-	if utf8.RuneCountInString(m.GetRuntimeKey()) < 1 {
-		err := RuntimeUInt32ValidationError{
-			field:  "RuntimeKey",
-			reason: "value length must be at least 1 runes",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+	// no validation rules for RuntimeKey
 
 	if len(errors) > 0 {
 		return RuntimeUInt32MultiError(errors)
@@ -1141,16 +1132,7 @@ func (m *RuntimePercent) validate(all bool) error {
 		}
 	}
 
-	if utf8.RuneCountInString(m.GetRuntimeKey()) < 1 {
-		err := RuntimePercentValidationError{
-			field:  "RuntimeKey",
-			reason: "value length must be at least 1 runes",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+	// no validation rules for RuntimeKey
 
 	if len(errors) > 0 {
 		return RuntimePercentMultiError(errors)
@@ -1254,16 +1236,7 @@ func (m *RuntimeDouble) validate(all bool) error {
 
 	// no validation rules for DefaultValue
 
-	if utf8.RuneCountInString(m.GetRuntimeKey()) < 1 {
-		err := RuntimeDoubleValidationError{
-			field:  "RuntimeKey",
-			reason: "value length must be at least 1 runes",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+	// no validation rules for RuntimeKey
 
 	if len(errors) > 0 {
 		return RuntimeDoubleMultiError(errors)
@@ -1405,16 +1378,7 @@ func (m *RuntimeFeatureFlag) validate(all bool) error {
 		}
 	}
 
-	if utf8.RuneCountInString(m.GetRuntimeKey()) < 1 {
-		err := RuntimeFeatureFlagValidationError{
-			field:  "RuntimeKey",
-			reason: "value length must be at least 1 runes",
-		}
-		if !all {
-			return err
-		}
-		errors = append(errors, err)
-	}
+	// no validation rules for RuntimeKey
 
 	if len(errors) > 0 {
 		return RuntimeFeatureFlagMultiError(errors)

@@ -332,7 +332,9 @@ type limitAppender struct {
 }
 
 func (app *limitAppender) Append(ref storage.SeriesRef, lset labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
-	if !value.IsStaleNaN(v) {
+	// Bypass sample_limit checks only if we have a staleness marker for a known series (ref value is non-zero).
+	// This ensures that if a series is already in TSDB then we always write the marker.
+	if ref == 0 || !value.IsStaleNaN(v) {
 		app.i++
 		if app.i > app.limit {
 			return 0, errSampleLimit
@@ -412,12 +414,12 @@ type maxSchemaAppender struct {
 
 func (app *maxSchemaAppender) AppendHistogram(ref storage.SeriesRef, lset labels.Labels, t int64, h *histogram.Histogram, fh *histogram.FloatHistogram) (storage.SeriesRef, error) {
 	if h != nil {
-		if histogram.IsExponentialSchema(h.Schema) && h.Schema > app.maxSchema {
+		if histogram.IsExponentialSchemaReserved(h.Schema) && h.Schema > app.maxSchema {
 			h = h.ReduceResolution(app.maxSchema)
 		}
 	}
 	if fh != nil {
-		if histogram.IsExponentialSchema(fh.Schema) && fh.Schema > app.maxSchema {
+		if histogram.IsExponentialSchemaReserved(fh.Schema) && fh.Schema > app.maxSchema {
 			fh = fh.ReduceResolution(app.maxSchema)
 		}
 	}

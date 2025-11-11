@@ -1,3 +1,52 @@
+## v2.8.0 (2025-08-18)
+
+* [GH-3348](https://github.com/gophercloud/gophercloud/pull/3348) [v2] [networking] add ExtractRoutersInto func helper to routers
+* [GH-3354](https://github.com/gophercloud/gophercloud/pull/3354) [v2] Fix a small typo
+* [GH-3358](https://github.com/gophercloud/gophercloud/pull/3358) [v2] tests: fix devstack master branch tests
+* [GH-3361](https://github.com/gophercloud/gophercloud/pull/3361) [v2] octavia: fix http_version type to float
+* [GH-3362](https://github.com/gophercloud/gophercloud/pull/3362) [v2] tests: fix containerinfra template creation
+* [GH-3367](https://github.com/gophercloud/gophercloud/pull/3367) [v2] Use Makefile for CI jobs
+* [GH-3375](https://github.com/gophercloud/gophercloud/pull/3375) [v2] core: add missing Builder interfaces
+* [GH-3378](https://github.com/gophercloud/gophercloud/pull/3378) [v2] tests: fix failing rabbitmq service
+* [GH-3379](https://github.com/gophercloud/gophercloud/pull/3379) [v2] CI: Remove Bobcat
+* [GH-3384](https://github.com/gophercloud/gophercloud/pull/3384) [v2] Move master CI jobs to Ubuntu 24.04
+* [GH-3386](https://github.com/gophercloud/gophercloud/pull/3386) [v2] tests: Fix TestBGPAgentCRUD
+* [GH-3387](https://github.com/gophercloud/gophercloud/pull/3387) [v2] Update the doc of openstack.AuthOptionsFromEnv function
+* [GH-3389](https://github.com/gophercloud/gophercloud/pull/3389) [v2] networking: add constants for statuses
+* [GH-3391](https://github.com/gophercloud/gophercloud/pull/3391) [v2] CI: Add Epoxy
+* [GH-3393](https://github.com/gophercloud/gophercloud/pull/3393) [v2] dns: implement shared zones list
+* [GH-3394](https://github.com/gophercloud/gophercloud/pull/3394) [v2] acceptance: Prevent 409 when bulk-creating secgroup rules
+* [GH-3396](https://github.com/gophercloud/gophercloud/pull/3396) [v2] identity: add support for string boolean in users' enabled member
+* [GH-3397](https://github.com/gophercloud/gophercloud/pull/3397) [v2] Adjust List func to accept a Builder in tenants, routers and security groups packages
+* [GH-3399](https://github.com/gophercloud/gophercloud/pull/3399) [v2] blockstorage: add manage-existing and unmanage api call
+* [GH-3401](https://github.com/gophercloud/gophercloud/pull/3401) [v2] Added address groups to Networking extensions, with tests.
+* [GH-3407](https://github.com/gophercloud/gophercloud/pull/3407) [v2] neutron: add segment_id support to subnets
+* [GH-3413](https://github.com/gophercloud/gophercloud/pull/3413) [v2] build(deps): bump joelanford/go-apidiff from 0.8.2 to 0.8.3
+* [GH-3416](https://github.com/gophercloud/gophercloud/pull/3416) [v2] tests: bump devstack-action
+* [GH-3422](https://github.com/gophercloud/gophercloud/pull/3422) [v2] Fix documentation for gateway_ip in subnet update
+* [GH-3431](https://github.com/gophercloud/gophercloud/pull/3431) [v2] Use container-infra for OpenStack-API-Version
+* [GH-3433](https://github.com/gophercloud/gophercloud/pull/3433) [v2] make: Use fixed version of gotestsum
+* [GH-3434](https://github.com/gophercloud/gophercloud/pull/3434) [v2] Randomize test order for unit tests
+* [GH-3435](https://github.com/gophercloud/gophercloud/pull/3435) [v2] Add versioned endpoint discovery
+* [GH-3438](https://github.com/gophercloud/gophercloud/pull/3438) [v2] dns: add support for /v2/quotas
+* [GH-3439](https://github.com/gophercloud/gophercloud/pull/3439) [v2] neutron: add segments extension package
+* [GH-3446](https://github.com/gophercloud/gophercloud/pull/3446) nova: add support for hostname updates
+* [GH-3452](https://github.com/gophercloud/gophercloud/pull/3452) [v2] neutron: allow omission of subnet_id for IP address
+* [GH-3454](https://github.com/gophercloud/gophercloud/pull/3454) [v2] blockstorage: add isPublic query option for volume types
+* [GH-3458](https://github.com/gophercloud/gophercloud/pull/3458) [v2] Fix pagination for messaging client
+* [GH-3465](https://github.com/gophercloud/gophercloud/pull/3465) [v2] tests: Fix TestVLANTransparentCRUD test
+* [GH-3466](https://github.com/gophercloud/gophercloud/pull/3466) [v2] tests: fix tests for recent PR backports
+* [GH-3469](https://github.com/gophercloud/gophercloud/pull/3469) [v2] tests: shorten GH-A job names
+* [GH-3473](https://github.com/gophercloud/gophercloud/pull/3473) [v2] core: clone service type aliases instead of referencing global slice
+* [GH-3475](https://github.com/gophercloud/gophercloud/pull/3475) [v2] Implement update & delete traits on resource provider
+* [GH-3476](https://github.com/gophercloud/gophercloud/pull/3476) [v2] tests: fix volumetypes unit tests
+* [GH-3477](https://github.com/gophercloud/gophercloud/pull/3477) [v2] script: Improve getenvvar helper
+* [GH-3481](https://github.com/gophercloud/gophercloud/pull/3481) [v2] Implement hypervisors.GetExt: Get with Query parameter
+* [GH-3487](https://github.com/gophercloud/gophercloud/pull/3487) [v2] Add networking taas tapmirror suite
+* [GH-3489](https://github.com/gophercloud/gophercloud/pull/3489) [v2] Fix incorrect ICMP field description in PortRangeMax comment
+* [GH-3494](https://github.com/gophercloud/gophercloud/pull/3494) [v2] Networking v2: Support two time formats for subnet, router, SG rule (#3492)
+* [GH-3495](https://github.com/gophercloud/gophercloud/pull/3495) [v2] build(deps): bump actions/checkout from 4 to 5
+
 ## v2.7.0 (2025-04-03)
 
 * [GH-3306](https://github.com/gophercloud/gophercloud/pull/3306) [v2] identity: Add Get endpoint by ID
