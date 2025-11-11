@@ -208,6 +208,39 @@ func (s *usageStore) Update(tenant string, metadata *proto.StreamMetadata, seenA
 	return nil
 }
 
+func (s *usageStore) UpdateRates(tenant string, metadata []*proto.StreamMetadata, seenAt time.Time) ([]*proto.StreamMetadata, error) {
+	if !s.withinActiveWindow(seenAt.UnixNano()) {
+		return nil, errOutsideActiveWindow
+	}
+	var (
+		accepted = make([]*proto.StreamMetadata, 0, len(metadata))
+		cutoff   = seenAt.Add(-s.activeWindow).UnixNano()
+	)
+	s.withLock(tenant, func(i int) {
+		for _, m := range metadata {
+			partition := s.getPartitionForHash(m.StreamHash)
+
+			s.checkInitMap(i, tenant, partition, noPolicy)
+			streams := s.stripes[i][tenant][partition][noPolicy]
+			stream, ok := streams[m.StreamHash]
+
+			// If the stream does not exist, or exists but has expired,
+			// we need to check if accepting it would exceed the maximum
+			// stream limit.
+			if !ok || stream.lastSeenAt < cutoff {
+				if ok {
+					// The stream has expired, delete it so it doesn't count
+					// towards the active streams.
+					delete(streams, m.StreamHash)
+				}
+			}
+			s.update(i, tenant, partition, noPolicy, m, seenAt)
+			accepted = append(accepted, m)
+		}
+	})
+	return accepted, nil
+}
+
 func (s *usageStore) UpdateCond(tenant string, metadata []*proto.StreamMetadata, seenAt time.Time) ([]*proto.StreamMetadata, []*proto.StreamMetadata, error) {
 	if !s.withinActiveWindow(seenAt.UnixNano()) {
 		return nil, nil, errOutsideActiveWindow

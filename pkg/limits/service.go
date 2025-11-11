@@ -200,25 +200,25 @@ func (s *Service) UpdateRates(
 	ctx context.Context,
 	req *proto.UpdateRatesRequest,
 ) (*proto.UpdateRatesResponse, error) {
-	accepted, _, err := s.usage.UpdateCond(req.Tenant, req.Streams, s.clock.Now())
+	accepted, err := s.usage.UpdateRates(req.Tenant, req.Streams, s.clock.Now())
 	if err != nil {
 		return nil, err
 	}
 	resp := proto.UpdateRatesResponse{
 		Results: make([]*proto.UpdateRatesResult, len(accepted)),
 	}
-	for i, accepted := range accepted {
-		usage, ok := s.usage.Get(req.Tenant, accepted.StreamHash)
+	for i, stream := range accepted {
+		usage, ok := s.usage.Get(req.Tenant, stream.StreamHash)
 		if ok {
 			var totalSize uint64
 			for _, bucket := range usage.rateBuckets {
 				totalSize += bucket.size
 			}
 			averageRate := totalSize / (uint64(s.cfg.BucketSize.Seconds()) * uint64(len(usage.rateBuckets)))
-			s.segmentationKeyRateBytes.WithLabelValues(req.Tenant, strconv.FormatUint(accepted.StreamHash, 10)).Set(float64(averageRate))
+			s.segmentationKeyRateBytes.WithLabelValues(req.Tenant, strconv.FormatUint(stream.StreamHash, 10)).Set(float64(averageRate))
 
 			resp.Results[i] = &proto.UpdateRatesResult{
-				StreamHash: accepted.StreamHash,
+				StreamHash: stream.StreamHash,
 				Rate:       averageRate,
 			}
 		}
