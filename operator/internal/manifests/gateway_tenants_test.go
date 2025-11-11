@@ -269,14 +269,15 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				},
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
-						LokiStackName:        "lokistack-ocp",
-						LokiStackNamespace:   "stack-ns",
-						GatewayName:          "lokistack-ocp-gateway",
-						GatewaySvcName:       "lokistack-ocp-gateway-http",
-						GatewaySvcTargetPort: "public",
-						GatewayRouteTimeout:  75 * time.Second,
-						RulerName:            "lokistack-ocp-ruler",
-						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+						LokiStackName:         "lokistack-ocp",
+						LokiStackNamespace:    "stack-ns",
+						GatewayName:           "lokistack-ocp-gateway",
+						GatewaySvcName:        "lokistack-ocp-gateway-http",
+						GatewaySvcTargetPort:  "public",
+						GatewayRouteTimeout:   75 * time.Second,
+						RulerName:             "lokistack-ocp-ruler",
+						Labels:                ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+						ExternalAccessEnabled: true,
 					},
 					Authentication: []openshift.AuthenticationSpec{
 						{
@@ -365,14 +366,15 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				},
 				OpenShiftOptions: openshift.Options{
 					BuildOpts: openshift.BuildOptions{
-						LokiStackName:        "lokistack-ocp",
-						LokiStackNamespace:   "stack-ns",
-						GatewayName:          "lokistack-ocp-gateway",
-						GatewaySvcName:       "lokistack-ocp-gateway-http",
-						GatewaySvcTargetPort: "public",
-						GatewayRouteTimeout:  75 * time.Second,
-						RulerName:            "lokistack-ocp-ruler",
-						Labels:               ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+						LokiStackName:         "lokistack-ocp",
+						LokiStackNamespace:    "stack-ns",
+						GatewayName:           "lokistack-ocp-gateway",
+						GatewaySvcName:        "lokistack-ocp-gateway-http",
+						GatewaySvcTargetPort:  "public",
+						GatewayRouteTimeout:   75 * time.Second,
+						RulerName:             "lokistack-ocp-ruler",
+						Labels:                ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+						ExternalAccessEnabled: true,
 					},
 					Authentication: []openshift.AuthenticationSpec{
 						{
@@ -380,6 +382,87 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 							TenantID:       "",
 							ServiceAccount: "lokistack-ocp-gateway",
 							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/network/callback",
+						},
+					},
+					Authorization: openshift.AuthorizationSpec{
+						OPAUrl: "http://localhost:8082/v1/data/lokistack/allow",
+					},
+				},
+			},
+		},
+		{
+			desc: "openshift-logging mode with external access disabled",
+			opts: &Options{
+				Name:              "lokistack-ocp",
+				Namespace:         "stack-ns",
+				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode:           lokiv1.OpenshiftLogging,
+						DisableIngress: true,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
+					},
+				},
+			},
+			want: &Options{
+				Name:              "lokistack-ocp",
+				Namespace:         "stack-ns",
+				GatewayBaseDomain: "example.com",
+				Gates: configv1.FeatureGates{
+					OpenShift: configv1.OpenShiftFeatureGates{
+						Enabled: true,
+					},
+				},
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode:           lokiv1.OpenshiftLogging,
+						DisableIngress: true,
+					},
+				},
+				Timeouts: TimeoutConfig{
+					Gateway: GatewayTimeoutConfig{
+						WriteTimeout: 1 * time.Minute,
+					},
+				},
+				OpenShiftOptions: openshift.Options{
+					BuildOpts: openshift.BuildOptions{
+						LokiStackName:         "lokistack-ocp",
+						LokiStackNamespace:    "stack-ns",
+						GatewayName:           "lokistack-ocp-gateway",
+						GatewaySvcName:        "lokistack-ocp-gateway-http",
+						GatewaySvcTargetPort:  "public",
+						GatewayRouteTimeout:   75 * time.Second,
+						RulerName:             "lokistack-ocp-ruler",
+						Labels:                ComponentLabels(LabelGatewayComponent, "lokistack-ocp"),
+						ExternalAccessEnabled: false,
+					},
+					Authentication: []openshift.AuthenticationSpec{
+						{
+							TenantName:     "application",
+							TenantID:       "",
+							ServiceAccount: "lokistack-ocp-gateway",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/application/callback",
+						},
+						{
+							TenantName:     "infrastructure",
+							TenantID:       "",
+							ServiceAccount: "lokistack-ocp-gateway",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/infrastructure/callback",
+						},
+						{
+							TenantName:     "audit",
+							TenantID:       "",
+							ServiceAccount: "lokistack-ocp-gateway",
+							RedirectURL:    "https://lokistack-ocp-stack-ns.apps.example.com/openshift/audit/callback",
 						},
 					},
 					Authorization: openshift.AuthorizationSpec{
