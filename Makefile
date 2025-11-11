@@ -893,3 +893,13 @@ update-loki-release-sha:
 	mv .github/jsonnetfile.json.tmp .github/jsonnetfile.json
 	@echo "Updated successfully"
 	@$(MAKE) release-workflows
+
+.PHONY: flake-update
+flake-update:
+	@docker run -v $(CURDIR):/loki \
+		--workdir /loki \
+		nixos/nix \
+		nix \
+		--extra-experimental-features nix-command \
+		--extra-experimental-features flakes \
+		flake update

@@ -13,6 +13,7 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1201,7 +1202,7 @@ func getValueFromMetricFamilyWithFunc[R any](mf *dto.MetricFamily, lbs *dto.Labe
 }
 
 func assertCacheState(t *testing.T, metrics string, e *expectedCacheState) {
-	var parser expfmt.TextParser
+	parser := expfmt.NewTextParser(model.UTF8Validation)
 	mfs, err := parser.TextToMetricFamilies(strings.NewReader(metrics))
 	require.NoError(t, err)
 

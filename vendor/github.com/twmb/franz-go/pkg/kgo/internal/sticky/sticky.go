@@ -138,7 +138,7 @@ func (b *balancer) into() Plan {
 		// partOwners is created by topic, and partNums refers to
 		// indices in partOwners. If we sort by partNum, we have sorted
 		// topics and partitions.
-		sortPartNums(partNums)
+		slices.Sort(partNums)
 
 		// We can reuse partNums for our topic partitions.
 		topicParts := partNums[:0]
@@ -389,6 +389,24 @@ func deserializeUserData(userdata []byte, base []topicPartition) (memberPlan []t
 		memberPlan = memberPlan[:0]
 	}
 	return memberPlan, generation
+}
+
+func (b *balancer) sortMemberByLiteralPartNum(memberNum int) {
+	partNums := b.plan[memberNum]
+	slices.SortFunc(partNums, func(lpNum, rpNum int32) int {
+		ltNum, rtNum := b.partOwners[lpNum], b.partOwners[rpNum]
+		li, ri := b.topicInfos[ltNum], b.topicInfos[rtNum]
+		lt, rt := li.topic, ri.topic
+		lp, rp := lpNum-li.partNum, rpNum-ri.partNum
+		if lp < rp {
+			return -1
+		} else if lp > rp {
+			return 1
+		} else if lt < rt {
+			return -1
+		}
+		return 1
+	})
 }
 
 // assignUnassignedAndInitGraph is a long function that assigns unassigned

@@ -217,7 +217,7 @@ func (e *messageParser) getLabels(logRecord *azureMonitorResourceLog, relabelCon
 			return // (will continue Range loop, not abort)
 		}
 		// ignore invalid labels
-		if !model.LabelName(lbl.Name).IsValid() || !model.LabelValue(lbl.Value).IsValid() {
+		if !model.UTF8Validation.IsValidLabelName(lbl.Name) || !model.LabelValue(lbl.Value).IsValid() {
 			return // (will continue Range loop, not abort)
 		}
 		resultLabels[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
