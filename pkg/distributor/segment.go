@@ -43,7 +43,7 @@ func NewSegmentationPartitionResolver(cfg *DataObjTeeConfig, limits Limits, ring
 	}
 }
 
-func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant string, key SegmentationKey, stream KeyedStream) (int32, error) {
+func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant string, key SegmentationKey, stream KeyedStream) (int32, bool, error) {
 	ring := r.ringReader.PartitionRing()
 
 	// Make an fnv32 hash of the segmentation key.
@@ -64,9 +64,9 @@ func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 		// Fall back to naiive shard on the hash key.
 		partition, err := ring.ActivePartitionForKey(stream.HashKey)
 		if err != nil {
-			return 0, err
+			return 0, false, err
 		}
-		return partition, nil
+		return partition, true, nil
 	}
 
 	// Use the rate of the segmentation key to shuffle shard.
@@ -80,13 +80,14 @@ func (r *SegmentationPartitionResolver) Resolve(ctx context.Context, tenant stri
 	// Shuffle shard.
 	subring, err := ring.ShuffleShard(string(key), int(partitions))
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	// Get the partition from this shard.
 	if r.cfg.RandomWithinShard {
 		activePartitionIDs := subring.ActivePartitionIDs()
 		idx := rand.Intn(len(activePartitionIDs))
-		return activePartitionIDs[idx], nil
+		return activePartitionIDs[idx], false, nil
 	}
-	return subring.ActivePartitionForKey(uint32(stream.HashKeyNoShard))
+	partition, err := subring.ActivePartitionForKey(uint32(stream.HashKeyNoShard))
+	return partition, false, err
 }
