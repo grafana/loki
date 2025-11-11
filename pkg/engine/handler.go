@@ -20,17 +20,22 @@ import (
 	util_validation "github.com/grafana/loki/v3/pkg/util/validation"
 )
 
-type engine interface {
+// Handler returns an [http.Handler] for serving queries. Unsupported queries
+// will result in an error.
+func Handler(cfg ExecutorConfig, logger log.Logger, engine *Engine, limits querier_limits.Limits) http.Handler {
+	return executorHandler(cfg, logger, engine, limits)
+}
+
+// queryExecutor is an interface implemented by [Engine] for mocking in tests.
+type queryExecutor interface {
 	Execute(ctx context.Context, params logql.Params) (logqlmodel.Result, error)
 }
 
-// Handler returns an [http.Handler] for serving queries. Unsupported queries
-// will result in an error.
-func Handler(cfg ExecutorConfig, logger log.Logger, engine engine, limits querier_limits.Limits) http.Handler {
+func executorHandler(cfg ExecutorConfig, logger log.Logger, exec queryExecutor, limits querier_limits.Limits) http.Handler {
 	h := &queryHandler{
 		cfg:    cfg,
 		logger: logger,
-		engine: engine,
+		exec:   exec,
 		limits: limits,
 	}
 	return queryrange.NewSerializeHTTPHandler(h, queryrange.DefaultCodec)
@@ -39,7 +44,7 @@ func Handler(cfg ExecutorConfig, logger log.Logger, engine engine, limits querie
 type queryHandler struct {
 	cfg    ExecutorConfig
 	logger log.Logger
-	engine engine
+	exec   queryExecutor
 	limits querier_limits.Limits
 }
 
@@ -117,7 +122,7 @@ func (h *queryHandler) execute(ctx context.Context, logger log.Logger, params lo
 		return logqlmodel.Result{}, httpgrpc.Errorf(http.StatusNotImplemented, "query outside of acceptable time range")
 	}
 
-	res, err := h.engine.Execute(ctx, params)
+	res, err := h.exec.Execute(ctx, params)
 	if err != nil && errors.Is(err, ErrNotSupported) {
 		level.Warn(logger).Log("msg", "unsupported query", "err", err)
 		return res, httpgrpc.Error(http.StatusNotImplemented, "unsupported query")
