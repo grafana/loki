@@ -113,6 +113,8 @@ func (l *HTTP2Listener) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conn := newHTTP2Conn(l.Addr(), remoteAddr, r.Body, w, flusher, l.codec)
+	defer conn.Close()
+
 	incomingConn := &incomingHTTP2Conn{conn: conn, w: w}
 
 	// Try to enqueue the connection without blocking indefinitely
