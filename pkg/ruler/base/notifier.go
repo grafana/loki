@@ -54,7 +54,7 @@ type rulerNotifier struct {
 func newRulerNotifier(o *notifier.Options, l gklog.Logger) *rulerNotifier {
 	sdCtx, sdCancel := context.WithCancel(context.Background())
 	return &rulerNotifier{
-		notifier:  notifier.NewManager(o, util_log.SlogFromGoKit(l)),
+		notifier:  notifier.NewManager(o, model.UTF8Validation, util_log.SlogFromGoKit(l)),
 		sdCancel:  sdCancel,
 		sdManager: discovery.NewManager(sdCtx, util_log.SlogFromGoKit(l), util.NoopRegistry{}, sdMetrics),
 		logger:    l,

@@ -208,7 +208,7 @@ func (opts UpdateOpts) ToLoadBalancerUpdateMap() (map[string]any, error) {
 
 // Update is an operation which modifies the attributes of the specified
 // LoadBalancer.
-func Update(ctx context.Context, c *gophercloud.ServiceClient, id string, opts UpdateOpts) (r UpdateResult) {
+func Update(ctx context.Context, c *gophercloud.ServiceClient, id string, opts UpdateOptsBuilder) (r UpdateResult) {
 	b, err := opts.ToLoadBalancerUpdateMap()
 	if err != nil {
 		r.Err = err
