@@ -144,7 +144,7 @@ require (
 	github.com/pressly/goose/v3 v3.26.0
 	github.com/prometheus/alertmanager v0.29.0
 	github.com/prometheus/common/sigv4 v0.1.0
-	github.com/prometheus/otlptranslator v0.0.2
+	github.com/prometheus/otlptranslator v1.0.0
 	github.com/prometheus/sigv4 v0.3.0
 	github.com/richardartoul/molecule v1.0.0
 	github.com/schollz/progressbar/v3 v3.18.0

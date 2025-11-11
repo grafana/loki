@@ -1,6 +1,6 @@
 # OTLP Prometheus Translator
 
-A Go library for converting [OpenTelemetry Protocol (OTLP)](https://opentelemetry.io/docs/specs/otlp/) metric and attribute names to [Prometheus](https://prometheus.io/)-compliant formats.
+A Go library for converting [OpenTelemetry Protocol (OTLP)](https://opentelemetry.io/docs/specs/otlp/) metric and attribute names to [Prometheus](https://prometheus.io/)-compliant formats. This is an internal library for both Prometheus and Open Telemetry, without any stability guarantees for external usage.
 
 Part of the [Prometheus](https://prometheus.io/) ecosystem, following the [OpenTelemetry to Prometheus compatibility specification](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/compatibility/prometheus_and_openmetrics.md).
 
