@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"hash/fnv"
 	"strconv"
 
 	"github.com/go-kit/log"
@@ -41,10 +42,11 @@ func (c *DataObjTeeConfig) Validate() error {
 // DataObjTee is a tee that duplicates streams to the data object topic.
 // It is a temporary solution while we work on segmentation keys.
 type DataObjTee struct {
-	cfg      *DataObjTeeConfig
-	client   *kgo.Client
-	resolver *SegmentationPartitionResolver
-	logger   log.Logger
+	cfg          *DataObjTeeConfig
+	client       *kgo.Client
+	resolver     *SegmentationPartitionResolver
+	limitsClient *ingestLimits
+	logger       log.Logger
 
 	// Metrics.
 	failures        prometheus.Counter
@@ -52,7 +54,6 @@ type DataObjTee struct {
 	producedEntries *prometheus.CounterVec
 	producedStreams *prometheus.CounterVec
 	producedBytes   *prometheus.CounterVec
-	fallback        *prometheus.CounterVec
 }
 
 // NewDataObjTee returns a new DataObjTee.
@@ -60,14 +61,16 @@ func NewDataObjTee(
 	cfg *DataObjTeeConfig,
 	client *kgo.Client,
 	resolver *SegmentationPartitionResolver,
+	limitsClient *ingestLimits,
 	logger log.Logger,
 	reg prometheus.Registerer,
 ) (*DataObjTee, error) {
 	return &DataObjTee{
-		cfg:      cfg,
-		client:   client,
-		resolver: resolver,
-		logger:   logger,
+		cfg:          cfg,
+		client:       client,
+		resolver:     resolver,
+		logger:       logger,
+		limitsClient: limitsClient,
 		failures: promauto.With(reg).NewCounter(prometheus.CounterOpts{
 			Name: "loki_distributor_dataobj_tee_duplicate_stream_failures_total",
 			Help: "Total number of streams that could not be duplicated.",
@@ -93,20 +96,51 @@ func NewDataObjTee(
 
 // Duplicate implements the [Tee] interface.
 func (t *DataObjTee) Duplicate(ctx context.Context, tenant string, streams []KeyedStream) {
+	segmentationKeyStreams := make([]KeyedStream, 0, len(streams))
+	segmentationKeysToHashes := make(map[SegmentationKey]uint32)
+	for _, stream := range streams {
+		segmentationKey, err := GetSegmentationKey(tenant, stream)
+		if err != nil {
+			level.Error(t.logger).Log("msg", "failed to get segmentation key", "err", err)
+			t.failures.Inc()
+			return
+		}
+		// Make an fnv32 hash of the segmentation key.
+		hash := fnv.New32()
+		hash.Write([]byte("__loki_service_name__"))
+		hash.Write([]byte(tenant))
+		hash.Write([]byte(segmentationKey))
+		segmentationKeyHash := hash.Sum32()
+		segmentationKeysToHashes[segmentationKey] = segmentationKeyHash
+		segmentationKeyStreams = append(segmentationKeyStreams, KeyedStream{
+			HashKey:        segmentationKeyHash,
+			HashKeyNoShard: uint64(segmentationKeyHash),
+			Stream:         stream.Stream,
+		})
+	}
+
+	rates, err := t.limitsClient.UpdateRates(ctx, tenant, segmentationKeyStreams)
+	if err != nil {
+		level.Error(t.logger).Log("msg", "failed to update rates", "err", err)
+	}
+
+	ratesBySegmentationKeyHash := make(map[uint64]uint64, len(rates))
+	for _, rate := range rates {
+		ratesBySegmentationKeyHash[rate.StreamHash] = rate.Rate
+	}
+
 	for _, s := range streams {
-		go t.duplicate(ctx, tenant, s)
+		segmentationKey, _ := GetSegmentationKey(tenant, s)
+		segmentationKeyHash := segmentationKeysToHashes[segmentationKey]
+		rate := ratesBySegmentationKeyHash[uint64(segmentationKeyHash)]
+		go t.duplicate(ctx, tenant, s, segmentationKey, rate)
 	}
 }
 
-func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream KeyedStream) {
+func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream KeyedStream, key SegmentationKey, rate uint64) {
 	t.total.Inc()
-	segmentationKey, err := GetSegmentationKey(tenant, stream)
-	if err != nil {
-		level.Error(t.logger).Log("msg", "failed to get segmentation key", "err", err)
-		t.failures.Inc()
-		return
-	}
-	partition, err := t.resolver.Resolve(ctx, tenant, segmentationKey, stream)
+
+	partition, err := t.resolver.Resolve(ctx, tenant, key, stream, rate)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to get partition", "err", err)
 		t.failures.Inc()
@@ -125,5 +159,5 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream KeyedS
 	}
 	// t.producedEntries.WithLabelValues(strconv.Itoa(int(partition)), tenant, string(segmentationKey)).Add(float64(len(stream.Stream.Entries)))
 	// t.producedStreams.WithLabelValues(strconv.Itoa(int(partition)), tenant, string(segmentationKey)).Inc()
-	t.producedBytes.WithLabelValues(strconv.Itoa(int(partition)), tenant, string(segmentationKey)).Add(float64(stream.Stream.Size()))
+	t.producedBytes.WithLabelValues(strconv.Itoa(int(partition)), tenant, string(key)).Add(float64(stream.Stream.Size()))
 }

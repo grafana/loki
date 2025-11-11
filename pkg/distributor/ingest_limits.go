@@ -36,22 +36,7 @@ func newIngestLimitsFrontendRingClient(ring ring.ReadRing, pool *ring_client.Poo
 
 // Implements the ingestLimitsFrontendClient interface.
 func (c *ingestLimitsFrontendRingClient) ExceedsLimits(ctx context.Context, req *proto.ExceedsLimitsRequest) (*proto.ExceedsLimitsResponse, error) {
-<<<<<<< HEAD
 	rs, err := c.ring.GetAllHealthy(limits_frontend_client.LimitsRead)
-=======
-	// We use an FNV-1 of all stream hashes in the request to load balance requests
-	// to limits-frontends instances.
-	h := fnv.New32()
-	for _, stream := range req.Streams {
-		// Add the stream hash to FNV-1.
-		buf := make([]byte, binary.MaxVarintLen64)
-		binary.PutUvarint(buf, stream.StreamHash)
-		_, _ = h.Write(buf)
-	}
-	// Get the limits-frontend instances from the ring.
-	var descs [5]ring.InstanceDesc
-	rs, err := c.ring.Get(h.Sum32(), limits_frontend_client.LimitsRead, descs[0:], nil, nil)
->>>>>>> 610f3d4b1a (Fix randomness)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get limits-frontend instances from ring: %w", err)
 	}
@@ -86,26 +71,7 @@ func (c *ingestLimitsFrontendRingClient) ExceedsLimits(ctx context.Context, req 
 
 // Implements the ingestLimitsFrontendClient interface.
 func (c *ingestLimitsFrontendRingClient) UpdateRates(ctx context.Context, req *proto.UpdateRatesRequest) (*proto.UpdateRatesResponse, error) {
-<<<<<<< HEAD
 	rs, err := c.ring.GetAllHealthy(limits_frontend_client.LimitsRead)
-=======
-	// We use an FNV-1 of all stream hashes in the request to load balance requests
-	// to limits-frontends instances.
-	h := fnv.New32()
-	for _, stream := range req.Streams {
-		// Add the stream hash to FNV-1.
-		buf := make([]byte, binary.MaxVarintLen64)
-		binary.PutUvarint(buf, stream.StreamHash)
-		_, _ = h.Write(buf)
-	}
-	// Add a random number to the FNV-1 to better distribute requests.
-	buf := make([]byte, binary.MaxVarintLen64)
-	binary.PutVarint(buf, int64(rand.Intn(1000)))
-	_, _ = h.Write(buf)
-	// Get the limits-frontend instances from the ring.
-	var descs [5]ring.InstanceDesc
-	rs, err := c.ring.Get(h.Sum32(), limits_frontend_client.LimitsRead, descs[0:], nil, nil)
->>>>>>> 610f3d4b1a (Fix randomness)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get limits-frontend instances from ring: %w", err)
 	}
