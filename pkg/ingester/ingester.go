@@ -630,12 +630,13 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 	i.loopDone.Add(1)
 	go i.loop()
 
-	// When kafka ingestion is enabled, we have to make sure that reader catches up replaying the partition
-	// BEFORE the ingester ring lifecycler is started, because once the ingester ring lifecycler will start
-	// it will switch the ingester state in the ring to ACTIVE.
-	if i.partitionReader != nil {
-		if err := services.StartAndAwaitRunning(ctx, i.partitionReader); err != nil {
-			return fmt.Errorf("failed to start partition reader: %w", err)
+	// When kafka ingestion is enabled, start the partition ring lifecycler first so the partition
+	// enters PENDING state. The partition reader will catch up asynchronously in the background,
+	// and the partition will automatically transition to ACTIVE once catch-up completes.
+	// PENDING partitions do not serve queries, ensuring query consistency during catch-up.
+	if i.partitionRingLifecycler != nil {
+		if err := services.StartAndAwaitRunning(ctx, i.partitionRingLifecycler); err != nil {
+			return fmt.Errorf("failed to start partition ring lifecycler: %w", err)
 		}
 	}
 
@@ -660,13 +661,53 @@ func (i *Ingester) starting(ctx context.Context) (err error) {
 		return fmt.Errorf("can not ensure recalculate owned streams service is running: %w", err)
 	}
 
-	if i.partitionRingLifecycler != nil {
-		if err := services.StartAndAwaitRunning(ctx, i.partitionRingLifecycler); err != nil {
-			return fmt.Errorf("failed to start partition ring lifecycler: %w", err)
+	// Start partition reader asynchronously to allow fast pod startup.
+	// The partition reader will catch up in the background while the partition remains in PENDING state.
+	// Once catch-up completes, autoActivatePartitionAfterCatchup() will transition the partition to ACTIVE.
+	//
+	// IMPORTANT: To prevent the partition from being prematurely activated by the dskit reconciliation
+	// loop before catch-up completes, you MUST configure a high min-partition-owners-duration:
+	//   -ingester.partition-ring.min-partition-owners-duration=24h
+	// This ensures the partition stays in PENDING state until catch-up finishes, maintaining query consistency.
+	if i.partitionReader != nil {
+		if err := i.partitionReader.StartAsync(context.Background()); err != nil {
+			return fmt.Errorf("failed to start partition reader: %w", err)
 		}
+
+		// Watch for catch-up completion and automatically activate the partition
+		go i.autoActivatePartitionAfterCatchup()
 	}
 
 	return nil
+}
+
+// autoActivatePartitionAfterCatchup waits for the partition reader to complete
+// catch-up, then automatically transitions the partition from PENDING to ACTIVE.
+// This runs in a background goroutine and only applies when Kafka ingestion is enabled.
+func (i *Ingester) autoActivatePartitionAfterCatchup() {
+	ctx := context.Background()
+	logger := log.With(i.logger, "partition", i.ingestPartitionID)
+
+	level.Info(logger).Log("msg", "waiting for partition reader to catch up before activating partition")
+
+	// Wait for partition reader to finish "starting" phase (catch-up complete).
+	// AwaitRunning blocks until the service reaches services.Running state, which
+	// happens after processConsumerLagAtStartup completes in reader_service.go.
+	if err := i.partitionReader.AwaitRunning(ctx); err != nil {
+		level.Error(logger).Log("msg", "partition reader failed during catch-up, partition will remain in PENDING state", "err", err)
+		return
+	}
+
+	level.Info(logger).Log("msg", "partition reader caught up, transitioning partition to ACTIVE")
+
+	// Automatically transition from PENDING to ACTIVE.
+	// This allows the partition to start serving queries now that it's caught up.
+	if err := i.partitionRingLifecycler.ChangePartitionState(ctx, ring.PartitionActive); err != nil {
+		level.Error(logger).Log("msg", "failed to change partition state to ACTIVE", "err", err)
+		return
+	}
+
+	level.Info(logger).Log("msg", "partition is now ACTIVE and serving queries")
 }
 
 func (i *Ingester) running(ctx context.Context) error {
