@@ -182,6 +182,8 @@ ingester_client:
 # Values for not exposed fields are taken from the grafana/loki production
 # configuration manifests.
 # (See https://github.com/grafana/loki/blob/main/production/ksonnet/loki/config.libsonnet)
+pattern_ingester:
+  enabled: {{ .Stack.PatternIngesterSpec.Enabled }}
 limits_config:
   ingestion_rate_strategy: global
   ingestion_rate_mb: {{ .Stack.Limits.Global.IngestionLimits.IngestionRate }}
