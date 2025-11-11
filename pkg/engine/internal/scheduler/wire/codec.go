@@ -292,7 +292,7 @@ func (c *protobufCodec) taskStatusFromPbTaskStatus(ts *wirepb.TaskStatus) (workf
 	}
 
 	if capture := ts.GetCapture(); capture != nil {
-		cap, err := xcap.UnmarshalCapture(capture)
+		cap, err := xcap.ToCapture(capture)
 		if err != nil {
 			return workflow.TaskStatus{}, fmt.Errorf("failed to unmarshal capture: %w", err)
 		}
@@ -552,7 +552,7 @@ func (c *protobufCodec) taskStatusToPbTaskStatus(from workflow.TaskStatus) (*wir
 	}
 
 	if from.Capture != nil {
-		capture, err := xcap.MarshalCapture(from.Capture)
+		capture, err := xcap.ToPbCapture(from.Capture)
 		if err != nil {
 			return nil, err
 		}

@@ -24,9 +24,6 @@ message Region {
   // Name is the name of the region.
   string name = 1;
 
-  // Attributes are the attributes associated with this region.
-  repeated Attribute attributes = 2;
-
   // StartTime is when the region was created.
   google.protobuf.Timestamp start_time = 3 [
     (gogoproto.nullable) = false,
@@ -39,30 +36,8 @@ message Region {
     (gogoproto.stdtime) = true
   ];
 
-  // Ended indicates whether End() has been called.
-  bool ended = 5;
-
   // Observations are all observations recorded in this region.
   repeated Observation observations = 6;
-}
-
-// Attribute represents an OpenTelemetry attribute KeyValue.
-message Attribute {
-  // Key is the attribute key.
-  string key = 1;
-
-  // Value is the attribute value.
-  AttributeValue value = 2;
-}
-
-// AttributeValue represents an OpenTelemetry attribute value.
-message AttributeValue {
-  oneof kind {
-    int64 int_value = 1;
-    double float_value = 2;
-    bool bool_value = 3;
-    string string_value = 4;
-  }
 }
 
 // Statistic represents a statistic definition.
@@ -70,8 +45,11 @@ message Statistic {
   // Name is the name of the statistic.
   string name = 1;
 
+  // DataType is the data type of the statistic's values.
+  DataType data_type = 2;
+
   // AggregationType is how multiple observations are aggregated.
-  AggregationType aggregation_type = 2;
+  AggregationType aggregation_type = 3;
 }
 
 // Observation represents an aggregated observation value for a statistic.
@@ -93,6 +71,14 @@ message ObservationValue {
     double float_value = 2;
     bool bool_value = 3;
   }
+}
+
+// DataType specifies the data type of a statistic's values.
+enum DataType {
+  DATA_TYPE_INVALID = 0;  // Invalid/unspecified data type.
+  DATA_TYPE_INT64 = 1;    // Signed 64-bit integer statistic.
+  DATA_TYPE_FLOAT64 = 2;  // Double precision floating point statistic.
+  DATA_TYPE_BOOL = 3;     // Boolean statistic (flag).
 }
 
 // AggregationType specifies how to combine multiple observations of the

@@ -88,8 +88,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		// which wraps the pipeline with a topk/limit without reintroducing
 		// planning cost for thousands of scan nodes.
 
-		var region *xcap.Region
-		ctx, region = xcap.StartRegion(ctx, regionName(n), xcap.WithRegionAttributes(
+		region := xcap.StartRegion(ctx, regionName(n), xcap.WithRegionAttributes(
 			attribute.String("location", string(n.Location)),
 			attribute.Int("section", n.Section),
 			attribute.Int("num_stream_ids", len(n.StreamIDs)),
@@ -104,8 +103,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 		}
 
 	case *physical.TopK:
-		var region *xcap.Region
-		ctx, region = xcap.StartRegion(ctx, regionName(n), xcap.WithRegionAttributes(
+		region := xcap.StartRegion(ctx, regionName(n), xcap.WithRegionAttributes(
 			attribute.Int("k", n.K),
 			attribute.Bool("ascending", n.Ascending),
 			attribute.Bool("nulls_first", n.NullsFirst),
@@ -115,8 +113,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 			return newObservedPipeline(c.executeTopK(ctx, n, inputs, region))
 		}
 	case *physical.Limit:
-		var region *xcap.Region
-		ctx, region = xcap.StartRegion(ctx, regionName(n), xcap.WithRegionAttributes(
+		region := xcap.StartRegion(ctx, regionName(n), xcap.WithRegionAttributes(
 			attribute.Int("skip", int(n.Skip)),
 			attribute.Int("fetch", int(n.Fetch)),
 		))
@@ -125,8 +122,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 			return newObservedPipeline(c.executeLimit(ctx, n, inputs, region))
 		}
 	case *physical.Filter:
-		var region *xcap.Region
-		ctx, region = xcap.StartRegion(ctx, regionName(n), xcap.WithRegionAttributes(
+		region := xcap.StartRegion(ctx, regionName(n), xcap.WithRegionAttributes(
 			attribute.Int("num_predicates", len(n.Predicates)),
 		))
 
@@ -134,8 +130,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 			return newObservedPipeline(c.executeFilter(ctx, n, inputs, region))
 		}
 	case *physical.Projection:
-		var region *xcap.Region
-		ctx, region = xcap.StartRegion(ctx, regionName(n), xcap.WithRegionAttributes(
+		region := xcap.StartRegion(ctx, regionName(n), xcap.WithRegionAttributes(
 			attribute.Int("num_expressions", len(n.Expressions)),
 			attribute.Bool("all", n.All),
 			attribute.Bool("drop", n.Drop),
@@ -146,8 +141,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 			return newObservedPipeline(c.executeProjection(ctx, n, inputs, region))
 		}
 	case *physical.RangeAggregation:
-		var region *xcap.Region
-		ctx, region = xcap.StartRegion(ctx, regionName(n), xcap.WithRegionAttributes(
+		region := xcap.StartRegion(ctx, regionName(n), xcap.WithRegionAttributes(
 			attribute.String("operation", string(n.Operation)),
 			attribute.Int64("start_ts", n.Start.UnixNano()),
 			attribute.Int64("end_ts", n.End.UnixNano()),
@@ -160,8 +154,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 			return newObservedPipeline(c.executeRangeAggregation(ctx, n, inputs, region))
 		}
 	case *physical.VectorAggregation:
-		var region *xcap.Region
-		ctx, region = xcap.StartRegion(ctx, regionName(n), xcap.WithRegionAttributes(
+		region := xcap.StartRegion(ctx, regionName(n), xcap.WithRegionAttributes(
 			attribute.String("operation", string(n.Operation)),
 			attribute.Int("num_group_by", len(n.GroupBy)),
 		))
@@ -170,8 +163,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 			return newObservedPipeline(c.executeVectorAggregation(ctx, n, inputs, region))
 		}
 	case *physical.ColumnCompat:
-		var region *xcap.Region
-		ctx, region = xcap.StartRegion(ctx, regionName(n), xcap.WithRegionAttributes(
+		region := xcap.StartRegion(ctx, regionName(n), xcap.WithRegionAttributes(
 			attribute.String("src", n.Source.String()),
 			attribute.String("dst", n.Destination.String()),
 			attribute.String("collision", n.Collision.String()),
@@ -185,8 +177,7 @@ func (c *Context) execute(ctx context.Context, node physical.Node) Pipeline {
 			return newObservedPipeline(c.executeParallelize(ctx, n, inputs))
 		}
 	case *physical.ScanSet:
-		var region *xcap.Region
-		ctx, region = xcap.StartRegion(ctx, regionName(n), xcap.WithRegionAttributes(
+		region := xcap.StartRegion(ctx, regionName(n), xcap.WithRegionAttributes(
 			attribute.Int("num_targets", len(n.Targets)),
 			attribute.Int("num_predicates", len(n.Predicates)),
 			attribute.Int("num_projections", len(n.Projections)),
@@ -511,8 +502,7 @@ func (c *Context) executeScanSet(ctx context.Context, set *physical.ScanSet, reg
 			partition.Projections = set.Projections
 
 			targets = append(targets, newLazyPipeline(func(ctx context.Context, _ []Pipeline) Pipeline {
-				var dataObjRegion *xcap.Region
-				ctx, dataObjRegion = xcap.StartRegion(ctx, regionName(partition), xcap.WithRegionAttributes(
+				dataObjRegion := xcap.StartRegion(ctx, regionName(partition), xcap.WithRegionAttributes(
 					attribute.String("location", string(partition.Location)),
 					attribute.Int("section", partition.Section),
 					attribute.Int("num_stream_ids", len(partition.StreamIDs)),

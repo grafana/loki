@@ -1,66 +1,65 @@
 package xcap
 
-// observationValue holds an aggregated value for a statistic within a region.
-type observationValue struct {
-	statistic Statistic
-	value     interface{}
-	count     int // number of observations aggregated
+// AggregatedObservation holds an aggregated value for a statistic within a region.
+type AggregatedObservation struct {
+	Statistic Statistic
+	Value     any
+	Count     int // number of observations aggregated
 }
 
-// aggregateObservation aggregates a new observation with an existing aggregated value.
-// It returns the updated observationValue with the new value aggregated according to
-// the statistic's aggregation type.
-func aggregateObservation(existing observationValue, newObs Observation) observationValue {
-	stat := newObs.statistic()
-	newVal := newObs.value()
+// Record aggregates a new observation into this aggregated observation.
+// It updates the value according to the statistic's aggregation type.
+func (a *AggregatedObservation) Record(obs Observation) {
+	stat := obs.statistic()
+	val := obs.value()
 
 	switch stat.Aggregation() {
 	case AggregationTypeSum:
-		switch v := newVal.(type) {
+		switch v := val.(type) {
 		case int64:
-			existing.value = existing.value.(int64) + v
+			a.Value = a.Value.(int64) + v
 		case float64:
-			existing.value = existing.value.(float64) + v
+			a.Value = a.Value.(float64) + v
 		}
 
 	case AggregationTypeMin:
-		switch v := newVal.(type) {
+		switch v := val.(type) {
 		case int64:
-			if v < existing.value.(int64) {
-				existing.value = v
+			if v < a.Value.(int64) {
+				a.Value = v
 			}
 		case float64:
-			if v < existing.value.(float64) {
-				existing.value = v
+			if v < a.Value.(float64) {
+				a.Value = v
 			}
 		}
 
 	case AggregationTypeMax:
-		switch v := newVal.(type) {
+		switch v := val.(type) {
 		case int64:
-			if v > existing.value.(int64) {
-				existing.value = v
+			if v > a.Value.(int64) {
+				a.Value = v
 			}
 		case float64:
-			if v > existing.value.(float64) {
-				existing.value = v
+			if v > a.Value.(float64) {
+				a.Value = v
 			}
 		case bool:
 			// For flags, true > false
 			if v {
-				existing.value = v
+				a.Value = v
 			}
 		}
 
 	case AggregationTypeLast:
 		// Last value overwrites
-		existing.value = newVal
+		a.Value = val
 
 	case AggregationTypeFirst:
-		// First value is kept, do nothing
+		if a.Value == nil {
+			a.Value = val
+		}
 	}
 
-	existing.count++
-	return existing
+	a.Count++
 }
-

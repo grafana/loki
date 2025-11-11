@@ -1,5 +1,19 @@
 package xcap
 
+import "fmt"
+
+// DataType specifies the data type of a statistic's values.
+type DataType int
+
+const (
+	// DataTypeInt64 represents a signed 64-bit integer statistic.
+	DataTypeInt64 DataType = iota
+	// DataTypeFloat64 represents a double precision floating point statistic.
+	DataTypeFloat64
+	// DataTypeBool represents a boolean statistic (flag).
+	DataTypeBool
+)
+
 // AggregationType specifies how to combine multiple observations of the
 // same statistic.
 type AggregationType int
@@ -20,39 +34,47 @@ const (
 
 // Statistic is the interface that all statistic types implement.
 type Statistic interface {
-	// Name returns the name of the statistic.
 	Name() string
-	// Aggregation returns the aggregation type for this statistic.
+	DataType() DataType
 	Aggregation() AggregationType
+	UniqueIdentifier() string
 }
 
-// StatisticInt64 tracks a numerical statistic as a signed integer.
-type StatisticInt64 struct {
+// statistic holds the common definition of a statistic.
+type statistic struct {
 	name        string
+	dataType    DataType
 	aggregation AggregationType
 }
 
-// NewStatisticInt64 creates a new numeric statistic holding signed
-// integers.
-func NewStatisticInt64(name string, agg AggregationType) *StatisticInt64 {
-	return &StatisticInt64{
-		name:        name,
-		aggregation: agg,
-	}
-}
-
 // Name returns the name of the statistic.
-func (s *StatisticInt64) Name() string {
+func (s *statistic) Name() string {
 	return s.name
 }
 
+// DataType returns the data type of the statistic.
+func (s *statistic) DataType() DataType {
+	return s.dataType
+}
+
 // Aggregation returns the aggregation type for this statistic.
-func (s *StatisticInt64) Aggregation() AggregationType {
+func (s *statistic) Aggregation() AggregationType {
 	return s.aggregation
 }
 
-// Observe creates a new observation for the statistic with the given value.
-// Observations have no effect until recorded into a Region with [Region.Record].
+// UniqueIdentifier returns a unique string identifier for this statistic
+// based on its definition (name, data type, and aggregation).
+// Statistics with the same definition will have the same identifier.
+func (s *statistic) UniqueIdentifier() string {
+	return fmt.Sprintf("%s:%d:%d", s.name, s.dataType, s.aggregation)
+}
+
+// StatisticInt64 is a statistic for int64 values.
+type StatisticInt64 struct {
+	statistic
+}
+
+// Observe creates an observation with an int64 value.
 func (s *StatisticInt64) Observe(value int64) Observation {
 	return &observation{
 		stat: s,
@@ -60,34 +82,12 @@ func (s *StatisticInt64) Observe(value int64) Observation {
 	}
 }
 
-// StatisticFloat64 tracks a numerical statistic as a double
-// precision floating point value.
+// StatisticFloat64 is a statistic for float64 values.
 type StatisticFloat64 struct {
-	name        string
-	aggregation AggregationType
+	statistic
 }
 
-// NewStatisticFloat64 creates a new numeric statistic holding double
-// precision floating point values.
-func NewStatisticFloat64(name string, agg AggregationType) *StatisticFloat64 {
-	return &StatisticFloat64{
-		name:        name,
-		aggregation: agg,
-	}
-}
-
-// Name returns the name of the statistic.
-func (s *StatisticFloat64) Name() string {
-	return s.name
-}
-
-// Aggregation returns the aggregation type for this statistic.
-func (s *StatisticFloat64) Aggregation() AggregationType {
-	return s.aggregation
-}
-
-// Observe creates a new observation for the statistic with the given value.
-// Observations have no effect until recorded into a Region with [Region.Record].
+// Observe creates an observation with a float64 value.
 func (s *StatisticFloat64) Observe(value float64) Observation {
 	return &observation{
 		stat: s,
@@ -95,36 +95,49 @@ func (s *StatisticFloat64) Observe(value float64) Observation {
 	}
 }
 
-// StatisticFlag tracks a boolean condition. When aggregating across
-// Regions, a StatisticFlag will be true if any Region recorded an
-// observation with a value of true.
+// StatisticFlag is a statistic for bool values.
 type StatisticFlag struct {
-	name string
+	statistic
 }
 
-// NewStatisticFlag creates a new statistic holding a boolean condition.
-func NewStatisticFlag(name string) *StatisticFlag {
-	return &StatisticFlag{
-		name: name,
-	}
-}
-
-// Name returns the name of the statistic.
-func (s *StatisticFlag) Name() string {
-	return s.name
-}
-
-// Aggregation returns the aggregation type for this statistic.
-// Flags always use MAX aggregation (true > false).
-func (s *StatisticFlag) Aggregation() AggregationType {
-	return AggregationTypeMax
-}
-
-// Observe creates a new observation for the statistic with the given value.
-// Observations have no effect until recorded into a Region with [Region.Record].
+// Observe creates an observation with a bool value.
 func (s *StatisticFlag) Observe(value bool) Observation {
 	return &observation{
 		stat: s,
 		val:  value,
+	}
+}
+
+// NewStatisticInt64 creates a new int64 statistic with the given name and aggregation.
+func NewStatisticInt64(name string, aggregation AggregationType) *StatisticInt64 {
+	return &StatisticInt64{
+		statistic: statistic{
+			name:        name,
+			dataType:    DataTypeInt64,
+			aggregation: aggregation,
+		},
+	}
+}
+
+// NewStatisticFloat64 creates a new float64 statistic with the given name and aggregation.
+func NewStatisticFloat64(name string, aggregation AggregationType) *StatisticFloat64 {
+	return &StatisticFloat64{
+		statistic: statistic{
+			name:        name,
+			dataType:    DataTypeFloat64,
+			aggregation: aggregation,
+		},
+	}
+}
+
+// NewStatisticFlag creates a new bool statistic (flag) with the given name.
+// Flags always use AggregationTypeMax (true > false).
+func NewStatisticFlag(name string) *StatisticFlag {
+	return &StatisticFlag{
+		statistic: statistic{
+			name:        name,
+			dataType:    DataTypeBool,
+			aggregation: AggregationTypeMax,
+		},
 	}
 }

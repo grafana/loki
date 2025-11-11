@@ -31,6 +31,34 @@ var _ = time.Kitchen
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
+// DataType specifies the data type of a statistic's values.
+type DataType int32
+
+const (
+	DATA_TYPE_INVALID DataType = 0
+	DATA_TYPE_INT64   DataType = 1
+	DATA_TYPE_FLOAT64 DataType = 2
+	DATA_TYPE_BOOL    DataType = 3
+)
+
+var DataType_name = map[int32]string{
+	0: "DATA_TYPE_INVALID",
+	1: "DATA_TYPE_INT64",
+	2: "DATA_TYPE_FLOAT64",
+	3: "DATA_TYPE_BOOL",
+}
+
+var DataType_value = map[string]int32{
+	"DATA_TYPE_INVALID": 0,
+	"DATA_TYPE_INT64":   1,
+	"DATA_TYPE_FLOAT64": 2,
+	"DATA_TYPE_BOOL":    3,
+}
+
+func (DataType) EnumDescriptor() ([]byte, []int) {
+	return fileDescriptor_e11432bdac587d56, []int{0}
+}
+
 // AggregationType specifies how to combine multiple observations of the
 // same statistic.
 type AggregationType int32
@@ -63,7 +91,7 @@ var AggregationType_value = map[string]int32{
 }
 
 func (AggregationType) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_e11432bdac587d56, []int{0}
+	return fileDescriptor_e11432bdac587d56, []int{1}
 }
 
 // Capture captures the lifetime of a query.
@@ -126,14 +154,10 @@ func (m *Capture) GetStatistics() []*Statistic {
 type Region struct {
 	// Name is the name of the region.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// Attributes are the attributes associated with this region.
-	Attributes []*Attribute `protobuf:"bytes,2,rep,name=attributes,proto3" json:"attributes,omitempty"`
 	// StartTime is when the region was created.
 	StartTime time.Time `protobuf:"bytes,3,opt,name=start_time,json=startTime,proto3,stdtime" json:"start_time"`
 	// EndTime is when the region ended. Zero if not ended.
 	EndTime time.Time `protobuf:"bytes,4,opt,name=end_time,json=endTime,proto3,stdtime" json:"end_time"`
-	// Ended indicates whether End() has been called.
-	Ended bool `protobuf:"varint,5,opt,name=ended,proto3" json:"ended,omitempty"`
 	// Observations are all observations recorded in this region.
 	Observations []*Observation `protobuf:"bytes,6,rep,name=observations,proto3" json:"observations,omitempty"`
 }
@@ -177,13 +201,6 @@ func (m *Region) GetName() string {
 	return ""
 }
 
-func (m *Region) GetAttributes() []*Attribute {
-	if m != nil {
-		return m.Attributes
-	}
-	return nil
-}
-
 func (m *Region) GetStartTime() time.Time {
 	if m != nil {
 		return m.StartTime
@@ -198,13 +215,6 @@ func (m *Region) GetEndTime() time.Time {
 	return time.Time{}
 }
 
-func (m *Region) GetEnded() bool {
-	if m != nil {
-		return m.Ended
-	}
-	return false
-}
-
 func (m *Region) GetObservations() []*Observation {
 	if m != nil {
 		return m.Observations
@@ -212,185 +222,20 @@ func (m *Region) GetObservations() []*Observation {
 	return nil
 }
 
-// Attribute represents an OpenTelemetry attribute KeyValue.
-type Attribute struct {
-	// Key is the attribute key.
-	Key string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	// Value is the attribute value.
-	Value *AttributeValue `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
-}
-
-func (m *Attribute) Reset()      { *m = Attribute{} }
-func (*Attribute) ProtoMessage() {}
-func (*Attribute) Descriptor() ([]byte, []int) {
-	return fileDescriptor_e11432bdac587d56, []int{2}
-}
-func (m *Attribute) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *Attribute) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_Attribute.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *Attribute) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Attribute.Merge(m, src)
-}
-func (m *Attribute) XXX_Size() int {
-	return m.Size()
-}
-func (m *Attribute) XXX_DiscardUnknown() {
-	xxx_messageInfo_Attribute.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_Attribute proto.InternalMessageInfo
-
-func (m *Attribute) GetKey() string {
-	if m != nil {
-		return m.Key
-	}
-	return ""
-}
-
-func (m *Attribute) GetValue() *AttributeValue {
-	if m != nil {
-		return m.Value
-	}
-	return nil
-}
-
-// AttributeValue represents an OpenTelemetry attribute value.
-type AttributeValue struct {
-	// Types that are valid to be assigned to Kind:
-	//
-	//	*AttributeValue_IntValue
-	//	*AttributeValue_FloatValue
-	//	*AttributeValue_BoolValue
-	//	*AttributeValue_StringValue
-	Kind isAttributeValue_Kind `protobuf_oneof:"kind"`
-}
-
-func (m *AttributeValue) Reset()      { *m = AttributeValue{} }
-func (*AttributeValue) ProtoMessage() {}
-func (*AttributeValue) Descriptor() ([]byte, []int) {
-	return fileDescriptor_e11432bdac587d56, []int{3}
-}
-func (m *AttributeValue) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *AttributeValue) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_AttributeValue.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *AttributeValue) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_AttributeValue.Merge(m, src)
-}
-func (m *AttributeValue) XXX_Size() int {
-	return m.Size()
-}
-func (m *AttributeValue) XXX_DiscardUnknown() {
-	xxx_messageInfo_AttributeValue.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_AttributeValue proto.InternalMessageInfo
-
-type isAttributeValue_Kind interface {
-	isAttributeValue_Kind()
-	Equal(interface{}) bool
-	MarshalTo([]byte) (int, error)
-	Size() int
-}
-
-type AttributeValue_IntValue struct {
-	IntValue int64 `protobuf:"varint,1,opt,name=int_value,json=intValue,proto3,oneof"`
-}
-type AttributeValue_FloatValue struct {
-	FloatValue float64 `protobuf:"fixed64,2,opt,name=float_value,json=floatValue,proto3,oneof"`
-}
-type AttributeValue_BoolValue struct {
-	BoolValue bool `protobuf:"varint,3,opt,name=bool_value,json=boolValue,proto3,oneof"`
-}
-type AttributeValue_StringValue struct {
-	StringValue string `protobuf:"bytes,4,opt,name=string_value,json=stringValue,proto3,oneof"`
-}
-
-func (*AttributeValue_IntValue) isAttributeValue_Kind()    {}
-func (*AttributeValue_FloatValue) isAttributeValue_Kind()  {}
-func (*AttributeValue_BoolValue) isAttributeValue_Kind()   {}
-func (*AttributeValue_StringValue) isAttributeValue_Kind() {}
-
-func (m *AttributeValue) GetKind() isAttributeValue_Kind {
-	if m != nil {
-		return m.Kind
-	}
-	return nil
-}
-
-func (m *AttributeValue) GetIntValue() int64 {
-	if x, ok := m.GetKind().(*AttributeValue_IntValue); ok {
-		return x.IntValue
-	}
-	return 0
-}
-
-func (m *AttributeValue) GetFloatValue() float64 {
-	if x, ok := m.GetKind().(*AttributeValue_FloatValue); ok {
-		return x.FloatValue
-	}
-	return 0
-}
-
-func (m *AttributeValue) GetBoolValue() bool {
-	if x, ok := m.GetKind().(*AttributeValue_BoolValue); ok {
-		return x.BoolValue
-	}
-	return false
-}
-
-func (m *AttributeValue) GetStringValue() string {
-	if x, ok := m.GetKind().(*AttributeValue_StringValue); ok {
-		return x.StringValue
-	}
-	return ""
-}
-
-// XXX_OneofWrappers is for the internal use of the proto package.
-func (*AttributeValue) XXX_OneofWrappers() []interface{} {
-	return []interface{}{
-		(*AttributeValue_IntValue)(nil),
-		(*AttributeValue_FloatValue)(nil),
-		(*AttributeValue_BoolValue)(nil),
-		(*AttributeValue_StringValue)(nil),
-	}
-}
-
 // Statistic represents a statistic definition.
 type Statistic struct {
 	// Name is the name of the statistic.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// DataType is the data type of the statistic's values.
+	DataType DataType `protobuf:"varint,2,opt,name=data_type,json=dataType,proto3,enum=loki.xcap.DataType" json:"data_type,omitempty"`
 	// AggregationType is how multiple observations are aggregated.
-	AggregationType AggregationType `protobuf:"varint,2,opt,name=aggregation_type,json=aggregationType,proto3,enum=loki.xcap.AggregationType" json:"aggregation_type,omitempty"`
+	AggregationType AggregationType `protobuf:"varint,3,opt,name=aggregation_type,json=aggregationType,proto3,enum=loki.xcap.AggregationType" json:"aggregation_type,omitempty"`
 }
 
 func (m *Statistic) Reset()      { *m = Statistic{} }
 func (*Statistic) ProtoMessage() {}
 func (*Statistic) Descriptor() ([]byte, []int) {
-	return fileDescriptor_e11432bdac587d56, []int{4}
+	return fileDescriptor_e11432bdac587d56, []int{2}
 }
 func (m *Statistic) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -426,6 +271,13 @@ func (m *Statistic) GetName() string {
 	return ""
 }
 
+func (m *Statistic) GetDataType() DataType {
+	if m != nil {
+		return m.DataType
+	}
+	return DATA_TYPE_INVALID
+}
+
 func (m *Statistic) GetAggregationType() AggregationType {
 	if m != nil {
 		return m.AggregationType
@@ -446,7 +298,7 @@ type Observation struct {
 func (m *Observation) Reset()      { *m = Observation{} }
 func (*Observation) ProtoMessage() {}
 func (*Observation) Descriptor() ([]byte, []int) {
-	return fileDescriptor_e11432bdac587d56, []int{5}
+	return fileDescriptor_e11432bdac587d56, []int{3}
 }
 func (m *Observation) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -509,7 +361,7 @@ type ObservationValue struct {
 func (m *ObservationValue) Reset()      { *m = ObservationValue{} }
 func (*ObservationValue) ProtoMessage() {}
 func (*ObservationValue) Descriptor() ([]byte, []int) {
-	return fileDescriptor_e11432bdac587d56, []int{6}
+	return fileDescriptor_e11432bdac587d56, []int{4}
 }
 func (m *ObservationValue) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -597,11 +449,10 @@ func (*ObservationValue) XXX_OneofWrappers() []interface{} {
 }
 
 func init() {
+	proto.RegisterEnum("loki.xcap.DataType", DataType_name, DataType_value)
 	proto.RegisterEnum("loki.xcap.AggregationType", AggregationType_name, AggregationType_value)
 	proto.RegisterType((*Capture)(nil), "loki.xcap.Capture")
 	proto.RegisterType((*Region)(nil), "loki.xcap.Region")
-	proto.RegisterType((*Attribute)(nil), "loki.xcap.Attribute")
-	proto.RegisterType((*AttributeValue)(nil), "loki.xcap.AttributeValue")
 	proto.RegisterType((*Statistic)(nil), "loki.xcap.Statistic")
 	proto.RegisterType((*Observation)(nil), "loki.xcap.Observation")
 	proto.RegisterType((*ObservationValue)(nil), "loki.xcap.ObservationValue")
@@ -612,53 +463,59 @@ func init() {
 }
 
 var fileDescriptor_e11432bdac587d56 = []byte{
-	// 703 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xbc, 0x94, 0x3f, 0x6f, 0x1a, 0x49,
-	0x18, 0xc6, 0x77, 0xf8, 0x67, 0xf6, 0xc5, 0x7f, 0xf6, 0x46, 0x9c, 0xb5, 0xe6, 0xee, 0x16, 0xcc,
-	0x35, 0xdc, 0x9d, 0xb4, 0xab, 0xb3, 0xd3, 0x24, 0x4d, 0x84, 0x1d, 0xc7, 0x20, 0xd9, 0x38, 0x1a,
-	0x88, 0x95, 0xa4, 0x41, 0x0b, 0x0c, 0x9b, 0x15, 0xb0, 0x83, 0x96, 0xc1, 0x0a, 0x45, 0xa4, 0x7c,
-	0x04, 0x7f, 0x84, 0x94, 0x51, 0xea, 0x7c, 0x08, 0x97, 0x2e, 0x5d, 0x25, 0x31, 0x6e, 0x52, 0xfa,
-	0x23, 0x44, 0x33, 0x03, 0x36, 0xd8, 0x28, 0x52, 0x9a, 0x34, 0x68, 0xf6, 0x7d, 0x7e, 0xf3, 0xcc,
-	0xfb, 0x3e, 0x33, 0x02, 0xfe, 0xe9, 0x77, 0x3c, 0x87, 0x06, 0x9e, 0x1f, 0x50, 0xc7, 0x0f, 0x38,
-	0x0d, 0x03, 0xb7, 0xeb, 0xf4, 0x43, 0xc6, 0x99, 0xf3, 0xa6, 0xe9, 0xf6, 0xe5, 0x8f, 0x2d, 0xbf,
-	0xb1, 0xde, 0x65, 0x1d, 0xdf, 0x16, 0x85, 0x4c, 0xda, 0x63, 0x1e, 0x53, 0x94, 0x58, 0x29, 0x20,
-	0x93, 0xf5, 0x18, 0xf3, 0xba, 0x54, 0x6d, 0x6f, 0x0c, 0xdb, 0x0e, 0xf7, 0x7b, 0x74, 0xc0, 0xdd,
-	0xde, 0xc4, 0x21, 0xdf, 0x85, 0xa5, 0x5d, 0xb7, 0xcf, 0x87, 0x21, 0xc5, 0xff, 0xc1, 0x52, 0x48,
-	0x3d, 0x9f, 0x05, 0x03, 0x13, 0xe5, 0xa2, 0x85, 0xd4, 0xd6, 0x6f, 0xf6, 0x8d, 0xbd, 0x4d, 0xa4,
-	0x42, 0xa6, 0x04, 0x7e, 0x00, 0x30, 0xe0, 0x2e, 0xf7, 0x07, 0xdc, 0x6f, 0x0e, 0xcc, 0x88, 0xe4,
-	0xd3, 0x33, 0x7c, 0x75, 0x2a, 0x92, 0x19, 0x2e, 0xff, 0x31, 0x02, 0x09, 0xe5, 0x84, 0x31, 0xc4,
-	0x02, 0xb7, 0x47, 0x4d, 0x94, 0x43, 0x05, 0x9d, 0xc8, 0xb5, 0x30, 0x75, 0x39, 0x0f, 0xfd, 0xc6,
-	0x90, 0xd3, 0x45, 0xa6, 0xc5, 0xa9, 0x48, 0x66, 0x38, 0xbc, 0x2b, 0x5b, 0x09, 0x79, 0x5d, 0xcc,
-	0x66, 0x46, 0x73, 0xa8, 0x90, 0xda, 0xca, 0xd8, 0x6a, 0x70, 0x7b, 0x3a, 0xb8, 0x5d, 0x9b, 0x0e,
-	0xbe, 0x93, 0x3c, 0xfb, 0x9c, 0xd5, 0x4e, 0xbf, 0x64, 0x11, 0xd1, 0xe5, 0x3e, 0xa1, 0xe0, 0xc7,
-	0x90, 0xa4, 0x41, 0x4b, 0x59, 0xc4, 0x7e, 0xc2, 0x62, 0x89, 0x06, 0x2d, 0x69, 0x90, 0x86, 0x38,
-	0x0d, 0x5a, 0xb4, 0x65, 0xc6, 0x73, 0xa8, 0x90, 0x24, 0xea, 0x03, 0x3f, 0x82, 0x65, 0xd6, 0x18,
-	0xd0, 0xf0, 0xc4, 0xe5, 0x32, 0xd8, 0x84, 0x9c, 0x69, 0x7d, 0x66, 0xa6, 0xa3, 0x5b, 0x99, 0xcc,
-	0xb1, 0xf9, 0x0a, 0xe8, 0x37, 0x03, 0x63, 0x03, 0xa2, 0x1d, 0x3a, 0x9a, 0xa4, 0x25, 0x96, 0xd8,
-	0x81, 0xf8, 0x89, 0xdb, 0x1d, 0x52, 0x33, 0x22, 0xdb, 0xdd, 0x58, 0x94, 0xd3, 0xb1, 0x00, 0x88,
-	0xe2, 0xf2, 0xef, 0x11, 0xac, 0xce, 0x2b, 0xf8, 0x2f, 0xd0, 0xfd, 0x80, 0xd7, 0x95, 0x8f, 0xf0,
-	0x8e, 0x96, 0x34, 0x92, 0xf4, 0x03, 0xae, 0xe4, 0x4d, 0x48, 0xb5, 0xbb, 0xcc, 0x9d, 0x02, 0xe2,
-	0x20, 0x54, 0xd2, 0x08, 0xc8, 0xa2, 0x42, 0xb2, 0x00, 0x0d, 0xc6, 0xba, 0x13, 0x42, 0x84, 0x9f,
-	0x2c, 0x69, 0x44, 0x17, 0x35, 0x05, 0xfc, 0x0d, 0xcb, 0x03, 0x1e, 0xfa, 0x81, 0x37, 0x41, 0x44,
-	0xb8, 0x7a, 0x49, 0x23, 0x29, 0x55, 0x95, 0xd0, 0x4e, 0x02, 0x62, 0x1d, 0x3f, 0x68, 0xe5, 0xdb,
-	0xa0, 0xdf, 0x3c, 0x9c, 0x85, 0x2f, 0x64, 0x0f, 0x0c, 0xd7, 0xf3, 0x42, 0xea, 0xc9, 0x8c, 0xea,
-	0x7c, 0xd4, 0x57, 0x6d, 0xad, 0x6e, 0x65, 0x66, 0xe7, 0xbf, 0x45, 0x6a, 0xa3, 0x3e, 0x25, 0x6b,
-	0xee, 0x7c, 0x21, 0x3f, 0x82, 0xd4, 0x4c, 0xee, 0x78, 0x53, 0xf4, 0x38, 0x39, 0xb6, 0xee, 0xb7,
-	0xe4, 0x89, 0x2b, 0xa2, 0xc3, 0x49, 0xad, 0xdc, 0xc2, 0xff, 0xcf, 0xa7, 0xfd, 0xc7, 0xe2, 0x1b,
-	0x9c, 0xcd, 0x5b, 0xbc, 0x88, 0x26, 0x1b, 0x06, 0x5c, 0xa6, 0xb2, 0x42, 0xd4, 0x47, 0xfe, 0x2d,
-	0x18, 0x77, 0x37, 0xfc, 0x82, 0x6b, 0x98, 0x26, 0xfc, 0xef, 0x27, 0x04, 0x6b, 0x77, 0xe2, 0xc1,
-	0x7f, 0x82, 0x59, 0xdc, 0xdf, 0x27, 0x7b, 0xfb, 0xc5, 0x5a, 0xf9, 0xa8, 0x52, 0xaf, 0xbd, 0x7c,
-	0xb6, 0x57, 0x2f, 0x57, 0x8e, 0x8b, 0x07, 0xe5, 0x27, 0x86, 0x86, 0x4d, 0x48, 0xdf, 0x53, 0xab,
-	0xcf, 0x0f, 0x0d, 0xb4, 0x50, 0x39, 0x2c, 0x57, 0x8c, 0xc8, 0x62, 0xa5, 0xf8, 0xc2, 0x88, 0xe2,
-	0x0d, 0xf8, 0xfd, 0x9e, 0x72, 0x50, 0xac, 0xd6, 0x8c, 0x18, 0xce, 0xc0, 0xfa, 0x3d, 0xe9, 0x69,
-	0x99, 0x54, 0x6b, 0x46, 0x7c, 0x87, 0x9d, 0x5f, 0x5a, 0xda, 0xc5, 0xa5, 0xa5, 0x5d, 0x5f, 0x5a,
-	0xe8, 0xdd, 0xd8, 0x42, 0x1f, 0xc6, 0x16, 0x3a, 0x1b, 0x5b, 0xe8, 0x7c, 0x6c, 0xa1, 0xaf, 0x63,
-	0x0b, 0x7d, 0x1b, 0x5b, 0xda, 0xf5, 0xd8, 0x42, 0xa7, 0x57, 0x96, 0x76, 0x7e, 0x65, 0x69, 0x17,
-	0x57, 0x96, 0xf6, 0xea, 0xa1, 0xe7, 0xf3, 0xd7, 0xc3, 0x86, 0xdd, 0x64, 0x3d, 0xc7, 0x0b, 0xdd,
-	0xb6, 0x1b, 0xb8, 0x8e, 0xb8, 0x37, 0xe7, 0x64, 0xdb, 0xf9, 0xf1, 0x9f, 0x6c, 0x23, 0x21, 0xd7,
-	0xdb, 0xdf, 0x03, 0x00, 0x00, 0xff, 0xff, 0x80, 0x03, 0x32, 0xa0, 0x8d, 0x05, 0x00, 0x00,
+	// 683 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x94, 0xcf, 0x6e, 0xda, 0x4a,
+	0x14, 0xc6, 0x3d, 0x40, 0x08, 0x1c, 0xf2, 0xc7, 0x99, 0x90, 0x88, 0xcb, 0xbd, 0xd7, 0x10, 0x56,
+	0x34, 0x95, 0xec, 0x96, 0x44, 0x95, 0xda, 0x4d, 0x65, 0xf2, 0x17, 0x89, 0x84, 0x6a, 0x70, 0xa3,
+	0xb6, 0x1b, 0x34, 0xc0, 0xc4, 0xb5, 0x02, 0x1e, 0x64, 0x86, 0xa8, 0x59, 0x54, 0xea, 0x23, 0x64,
+	0xd9, 0x47, 0xe8, 0x03, 0xf4, 0x21, 0xb2, 0xcc, 0x32, 0xab, 0xb4, 0x21, 0x9b, 0x2e, 0xf3, 0x08,
+	0x95, 0xc7, 0x81, 0x38, 0x09, 0xaa, 0xd4, 0x0d, 0x1a, 0x7f, 0xdf, 0xef, 0x7c, 0xe7, 0x9c, 0x31,
+	0x32, 0x3c, 0xe9, 0x1d, 0xd9, 0x06, 0x73, 0x6d, 0xc7, 0x65, 0x86, 0xe3, 0x0a, 0xe6, 0xb9, 0xb4,
+	0x63, 0xf4, 0x3c, 0x2e, 0xb8, 0xf1, 0xa9, 0x45, 0x7b, 0xf2, 0x47, 0x97, 0xcf, 0x38, 0xd9, 0xe1,
+	0x47, 0x8e, 0xee, 0x0b, 0xd9, 0xb4, 0xcd, 0x6d, 0x1e, 0x50, 0xfe, 0x29, 0x00, 0xb2, 0x39, 0x9b,
+	0x73, 0xbb, 0xc3, 0x82, 0xf2, 0xe6, 0xe0, 0xd0, 0x10, 0x4e, 0x97, 0xf5, 0x05, 0xed, 0xde, 0x26,
+	0x14, 0x3a, 0x30, 0xbd, 0x41, 0x7b, 0x62, 0xe0, 0x31, 0xfc, 0x14, 0xa6, 0x3d, 0x66, 0x3b, 0xdc,
+	0xed, 0x67, 0x50, 0x3e, 0x5a, 0x4c, 0x95, 0x16, 0xf4, 0x71, 0xbc, 0x4e, 0xa4, 0x43, 0x46, 0x04,
+	0x5e, 0x07, 0xe8, 0x0b, 0x2a, 0x9c, 0xbe, 0x70, 0x5a, 0xfd, 0x4c, 0x44, 0xf2, 0xe9, 0x10, 0x5f,
+	0x1f, 0x99, 0x24, 0xc4, 0x15, 0x2e, 0x11, 0xc4, 0x83, 0x24, 0x8c, 0x21, 0xe6, 0xd2, 0x2e, 0xcb,
+	0xa0, 0x3c, 0x2a, 0x26, 0x89, 0x3c, 0xe3, 0x0d, 0x19, 0xea, 0x89, 0x86, 0x3f, 0x65, 0x26, 0x9a,
+	0x47, 0xc5, 0x54, 0x29, 0xab, 0x07, 0x2b, 0xe8, 0xa3, 0x15, 0x74, 0x6b, 0xb4, 0x42, 0x39, 0x71,
+	0x76, 0x99, 0x53, 0x4e, 0x7f, 0xe4, 0x10, 0x49, 0xca, 0x3a, 0xdf, 0xc1, 0xaf, 0x21, 0xc1, 0xdc,
+	0x76, 0x10, 0x11, 0xfb, 0x8b, 0x88, 0x69, 0xe6, 0xb6, 0x65, 0xc0, 0x2b, 0x98, 0xe1, 0xcd, 0x3e,
+	0xf3, 0x8e, 0xa9, 0x90, 0x97, 0x11, 0x97, 0xcb, 0x2d, 0x87, 0x96, 0xab, 0xdd, 0xd9, 0xe4, 0x1e,
+	0x5b, 0xf8, 0x8a, 0x20, 0x39, 0x5e, 0x7d, 0xe2, 0x8e, 0xcf, 0x20, 0xd9, 0xa6, 0x82, 0x36, 0xc4,
+	0x49, 0x8f, 0x65, 0x22, 0x79, 0x54, 0x9c, 0x2b, 0x2d, 0x86, 0xa2, 0x37, 0xa9, 0xa0, 0xd6, 0x49,
+	0x8f, 0x91, 0x44, 0xfb, 0xf6, 0x84, 0xb7, 0x40, 0xa5, 0xb6, 0xed, 0x31, 0x5b, 0xf6, 0x08, 0x0a,
+	0xa3, 0xb2, 0x30, 0x1b, 0x2a, 0x34, 0xef, 0x10, 0x59, 0x3f, 0x4f, 0xef, 0x0b, 0x85, 0x13, 0x48,
+	0x85, 0xe6, 0xc6, 0x2b, 0x30, 0x33, 0x7e, 0x31, 0x0d, 0xa7, 0x2d, 0x67, 0x9c, 0x25, 0xa9, 0xb1,
+	0x56, 0x69, 0xe3, 0xe7, 0x30, 0x75, 0x4c, 0x3b, 0x83, 0x60, 0xcc, 0x54, 0xe9, 0xdf, 0xc9, 0x37,
+	0x70, 0xe0, 0x23, 0x24, 0x20, 0x71, 0x1a, 0xa6, 0x5a, 0x7c, 0xe0, 0x0a, 0x39, 0xe0, 0x2c, 0x09,
+	0x1e, 0x0a, 0x9f, 0x41, 0x7d, 0x58, 0x80, 0xff, 0x87, 0xa4, 0xe3, 0x8a, 0x46, 0xd0, 0xc0, 0x6f,
+	0x1e, 0xdd, 0x55, 0x48, 0xc2, 0x71, 0x45, 0x60, 0xaf, 0x40, 0xea, 0xb0, 0xc3, 0xe9, 0x08, 0xf0,
+	0x27, 0x40, 0xbb, 0x0a, 0x01, 0x29, 0x06, 0x48, 0x0e, 0xa0, 0xc9, 0x79, 0xe7, 0x96, 0xf0, 0x1b,
+	0x26, 0x76, 0x15, 0x92, 0xf4, 0x35, 0x09, 0x94, 0xe3, 0x10, 0x3b, 0x72, 0xdc, 0xf6, 0x2a, 0x85,
+	0xc4, 0xe8, 0x5a, 0xf1, 0x12, 0x2c, 0x6c, 0x9a, 0x96, 0xd9, 0xb0, 0xde, 0xbf, 0xd9, 0x6a, 0x54,
+	0xf6, 0x0f, 0xcc, 0x6a, 0x65, 0x53, 0x55, 0xf0, 0x22, 0xcc, 0x87, 0x65, 0xeb, 0xc5, 0xba, 0x8a,
+	0xee, 0xb3, 0xdb, 0xd5, 0x9a, 0xe9, 0xcb, 0x11, 0x8c, 0x61, 0xee, 0x4e, 0x2e, 0xd7, 0x6a, 0x55,
+	0x35, 0xba, 0xfa, 0x1d, 0xc1, 0xfc, 0x83, 0x37, 0x80, 0xff, 0x83, 0x8c, 0xb9, 0xb3, 0x43, 0xb6,
+	0x76, 0x4c, 0xab, 0x52, 0xdb, 0x7f, 0xd8, 0x31, 0x03, 0xe9, 0x47, 0x6e, 0xfd, 0xed, 0x9e, 0x8a,
+	0x26, 0x3a, 0x7b, 0x95, 0x7d, 0x35, 0x32, 0xd9, 0x31, 0xdf, 0xa9, 0x51, 0xfc, 0x0f, 0x2c, 0x3d,
+	0x72, 0xaa, 0x66, 0xdd, 0x52, 0x63, 0x38, 0x0b, 0xcb, 0x8f, 0xac, 0xed, 0x0a, 0xa9, 0x5b, 0xea,
+	0x54, 0x99, 0x9f, 0x5f, 0x69, 0xca, 0xc5, 0x95, 0xa6, 0xdc, 0x5c, 0x69, 0xe8, 0xcb, 0x50, 0x43,
+	0xdf, 0x86, 0x1a, 0x3a, 0x1b, 0x6a, 0xe8, 0x7c, 0xa8, 0xa1, 0x9f, 0x43, 0x0d, 0xfd, 0x1a, 0x6a,
+	0xca, 0xcd, 0x50, 0x43, 0xa7, 0xd7, 0x9a, 0x72, 0x7e, 0xad, 0x29, 0x17, 0xd7, 0x9a, 0xf2, 0xe1,
+	0xa5, 0xed, 0x88, 0x8f, 0x83, 0xa6, 0xde, 0xe2, 0x5d, 0xc3, 0xf6, 0xe8, 0x21, 0x75, 0xa9, 0xe1,
+	0xff, 0x35, 0x8c, 0xe3, 0x35, 0xe3, 0xcf, 0xdf, 0xae, 0x66, 0x5c, 0x9e, 0xd7, 0x7e, 0x07, 0x00,
+	0x00, 0xff, 0xff, 0x71, 0x65, 0xae, 0x4d, 0xe4, 0x04, 0x00, 0x00,
 }
 
+func (x DataType) String() string {
+	s, ok := DataType_name[int32(x)]
+	if ok {
+		return s
+	}
+	return strconv.Itoa(int(x))
+}
 func (x AggregationType) String() string {
 	s, ok := AggregationType_name[int32(x)]
 	if ok {
@@ -725,21 +582,10 @@ func (this *Region) Equal(that interface{}) bool {
 	if this.Name != that1.Name {
 		return false
 	}
-	if len(this.Attributes) != len(that1.Attributes) {
-		return false
-	}
-	for i := range this.Attributes {
-		if !this.Attributes[i].Equal(that1.Attributes[i]) {
-			return false
-		}
-	}
 	if !this.StartTime.Equal(that1.StartTime) {
 		return false
 	}
 	if !this.EndTime.Equal(that1.EndTime) {
-		return false
-	}
-	if this.Ended != that1.Ended {
 		return false
 	}
 	if len(this.Observations) != len(that1.Observations) {
@@ -749,159 +595,6 @@ func (this *Region) Equal(that interface{}) bool {
 		if !this.Observations[i].Equal(that1.Observations[i]) {
 			return false
 		}
-	}
-	return true
-}
-func (this *Attribute) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*Attribute)
-	if !ok {
-		that2, ok := that.(Attribute)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if this.Key != that1.Key {
-		return false
-	}
-	if !this.Value.Equal(that1.Value) {
-		return false
-	}
-	return true
-}
-func (this *AttributeValue) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*AttributeValue)
-	if !ok {
-		that2, ok := that.(AttributeValue)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if that1.Kind == nil {
-		if this.Kind != nil {
-			return false
-		}
-	} else if this.Kind == nil {
-		return false
-	} else if !this.Kind.Equal(that1.Kind) {
-		return false
-	}
-	return true
-}
-func (this *AttributeValue_IntValue) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*AttributeValue_IntValue)
-	if !ok {
-		that2, ok := that.(AttributeValue_IntValue)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if this.IntValue != that1.IntValue {
-		return false
-	}
-	return true
-}
-func (this *AttributeValue_FloatValue) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*AttributeValue_FloatValue)
-	if !ok {
-		that2, ok := that.(AttributeValue_FloatValue)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if this.FloatValue != that1.FloatValue {
-		return false
-	}
-	return true
-}
-func (this *AttributeValue_BoolValue) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*AttributeValue_BoolValue)
-	if !ok {
-		that2, ok := that.(AttributeValue_BoolValue)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if this.BoolValue != that1.BoolValue {
-		return false
-	}
-	return true
-}
-func (this *AttributeValue_StringValue) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*AttributeValue_StringValue)
-	if !ok {
-		that2, ok := that.(AttributeValue_StringValue)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if this.StringValue != that1.StringValue {
-		return false
 	}
 	return true
 }
@@ -925,6 +618,9 @@ func (this *Statistic) Equal(that interface{}) bool {
 		return false
 	}
 	if this.Name != that1.Name {
+		return false
+	}
+	if this.DataType != that1.DataType {
 		return false
 	}
 	if this.AggregationType != that1.AggregationType {
@@ -1083,85 +779,25 @@ func (this *Region) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 10)
+	s := make([]string, 0, 8)
 	s = append(s, "&xcap.Region{")
 	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
-	if this.Attributes != nil {
-		s = append(s, "Attributes: "+fmt.Sprintf("%#v", this.Attributes)+",\n")
-	}
 	s = append(s, "StartTime: "+fmt.Sprintf("%#v", this.StartTime)+",\n")
 	s = append(s, "EndTime: "+fmt.Sprintf("%#v", this.EndTime)+",\n")
-	s = append(s, "Ended: "+fmt.Sprintf("%#v", this.Ended)+",\n")
 	if this.Observations != nil {
 		s = append(s, "Observations: "+fmt.Sprintf("%#v", this.Observations)+",\n")
 	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *Attribute) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := make([]string, 0, 6)
-	s = append(s, "&xcap.Attribute{")
-	s = append(s, "Key: "+fmt.Sprintf("%#v", this.Key)+",\n")
-	if this.Value != nil {
-		s = append(s, "Value: "+fmt.Sprintf("%#v", this.Value)+",\n")
-	}
-	s = append(s, "}")
-	return strings.Join(s, "")
-}
-func (this *AttributeValue) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := make([]string, 0, 8)
-	s = append(s, "&xcap.AttributeValue{")
-	if this.Kind != nil {
-		s = append(s, "Kind: "+fmt.Sprintf("%#v", this.Kind)+",\n")
-	}
-	s = append(s, "}")
-	return strings.Join(s, "")
-}
-func (this *AttributeValue_IntValue) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&xcap.AttributeValue_IntValue{` +
-		`IntValue:` + fmt.Sprintf("%#v", this.IntValue) + `}`}, ", ")
-	return s
-}
-func (this *AttributeValue_FloatValue) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&xcap.AttributeValue_FloatValue{` +
-		`FloatValue:` + fmt.Sprintf("%#v", this.FloatValue) + `}`}, ", ")
-	return s
-}
-func (this *AttributeValue_BoolValue) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&xcap.AttributeValue_BoolValue{` +
-		`BoolValue:` + fmt.Sprintf("%#v", this.BoolValue) + `}`}, ", ")
-	return s
-}
-func (this *AttributeValue_StringValue) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&xcap.AttributeValue_StringValue{` +
-		`StringValue:` + fmt.Sprintf("%#v", this.StringValue) + `}`}, ", ")
-	return s
-}
 func (this *Statistic) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 6)
+	s := make([]string, 0, 7)
 	s = append(s, "&xcap.Statistic{")
 	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
+	s = append(s, "DataType: "+fmt.Sprintf("%#v", this.DataType)+",\n")
 	s = append(s, "AggregationType: "+fmt.Sprintf("%#v", this.AggregationType)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
@@ -1309,16 +945,6 @@ func (m *Region) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			dAtA[i] = 0x32
 		}
 	}
-	if m.Ended {
-		i--
-		if m.Ended {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x28
-	}
 	n1, err1 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.EndTime, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.EndTime):])
 	if err1 != nil {
 		return 0, err1
@@ -1335,20 +961,6 @@ func (m *Region) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i = encodeVarintXcap(dAtA, i, uint64(n2))
 	i--
 	dAtA[i] = 0x1a
-	if len(m.Attributes) > 0 {
-		for iNdEx := len(m.Attributes) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.Attributes[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintXcap(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0x12
-		}
-	}
 	if len(m.Name) > 0 {
 		i -= len(m.Name)
 		copy(dAtA[i:], m.Name)
@@ -1359,132 +971,6 @@ func (m *Region) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *Attribute) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *Attribute) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *Attribute) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.Value != nil {
-		{
-			size, err := m.Value.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintXcap(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x12
-	}
-	if len(m.Key) > 0 {
-		i -= len(m.Key)
-		copy(dAtA[i:], m.Key)
-		i = encodeVarintXcap(dAtA, i, uint64(len(m.Key)))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *AttributeValue) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *AttributeValue) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *AttributeValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.Kind != nil {
-		{
-			size := m.Kind.Size()
-			i -= size
-			if _, err := m.Kind.MarshalTo(dAtA[i:]); err != nil {
-				return 0, err
-			}
-		}
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *AttributeValue_IntValue) MarshalTo(dAtA []byte) (int, error) {
-	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
-}
-
-func (m *AttributeValue_IntValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i = encodeVarintXcap(dAtA, i, uint64(m.IntValue))
-	i--
-	dAtA[i] = 0x8
-	return len(dAtA) - i, nil
-}
-func (m *AttributeValue_FloatValue) MarshalTo(dAtA []byte) (int, error) {
-	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
-}
-
-func (m *AttributeValue_FloatValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i -= 8
-	encoding_binary.LittleEndian.PutUint64(dAtA[i:], uint64(math.Float64bits(float64(m.FloatValue))))
-	i--
-	dAtA[i] = 0x11
-	return len(dAtA) - i, nil
-}
-func (m *AttributeValue_BoolValue) MarshalTo(dAtA []byte) (int, error) {
-	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
-}
-
-func (m *AttributeValue_BoolValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i--
-	if m.BoolValue {
-		dAtA[i] = 1
-	} else {
-		dAtA[i] = 0
-	}
-	i--
-	dAtA[i] = 0x18
-	return len(dAtA) - i, nil
-}
-func (m *AttributeValue_StringValue) MarshalTo(dAtA []byte) (int, error) {
-	return m.MarshalToSizedBuffer(dAtA[:m.Size()])
-}
-
-func (m *AttributeValue_StringValue) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	i -= len(m.StringValue)
-	copy(dAtA[i:], m.StringValue)
-	i = encodeVarintXcap(dAtA, i, uint64(len(m.StringValue)))
-	i--
-	dAtA[i] = 0x22
-	return len(dAtA) - i, nil
-}
 func (m *Statistic) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -1507,6 +993,11 @@ func (m *Statistic) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = l
 	if m.AggregationType != 0 {
 		i = encodeVarintXcap(dAtA, i, uint64(m.AggregationType))
+		i--
+		dAtA[i] = 0x18
+	}
+	if m.DataType != 0 {
+		i = encodeVarintXcap(dAtA, i, uint64(m.DataType))
 		i--
 		dAtA[i] = 0x10
 	}
@@ -1678,19 +1169,10 @@ func (m *Region) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovXcap(uint64(l))
 	}
-	if len(m.Attributes) > 0 {
-		for _, e := range m.Attributes {
-			l = e.Size()
-			n += 1 + l + sovXcap(uint64(l))
-		}
-	}
 	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.StartTime)
 	n += 1 + l + sovXcap(uint64(l))
 	l = github_com_gogo_protobuf_types.SizeOfStdTime(m.EndTime)
 	n += 1 + l + sovXcap(uint64(l))
-	if m.Ended {
-		n += 2
-	}
 	if len(m.Observations) > 0 {
 		for _, e := range m.Observations {
 			l = e.Size()
@@ -1700,72 +1182,6 @@ func (m *Region) Size() (n int) {
 	return n
 }
 
-func (m *Attribute) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	l = len(m.Key)
-	if l > 0 {
-		n += 1 + l + sovXcap(uint64(l))
-	}
-	if m.Value != nil {
-		l = m.Value.Size()
-		n += 1 + l + sovXcap(uint64(l))
-	}
-	return n
-}
-
-func (m *AttributeValue) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Kind != nil {
-		n += m.Kind.Size()
-	}
-	return n
-}
-
-func (m *AttributeValue_IntValue) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 1 + sovXcap(uint64(m.IntValue))
-	return n
-}
-func (m *AttributeValue_FloatValue) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 9
-	return n
-}
-func (m *AttributeValue_BoolValue) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	n += 2
-	return n
-}
-func (m *AttributeValue_StringValue) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	l = len(m.StringValue)
-	n += 1 + l + sovXcap(uint64(l))
-	return n
-}
 func (m *Statistic) Size() (n int) {
 	if m == nil {
 		return 0
@@ -1775,6 +1191,9 @@ func (m *Statistic) Size() (n int) {
 	l = len(m.Name)
 	if l > 0 {
 		n += 1 + l + sovXcap(uint64(l))
+	}
+	if m.DataType != 0 {
+		n += 1 + sovXcap(uint64(m.DataType))
 	}
 	if m.AggregationType != 0 {
 		n += 1 + sovXcap(uint64(m.AggregationType))
@@ -1872,11 +1291,6 @@ func (this *Region) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForAttributes := "[]*Attribute{"
-	for _, f := range this.Attributes {
-		repeatedStringForAttributes += strings.Replace(f.String(), "Attribute", "Attribute", 1) + ","
-	}
-	repeatedStringForAttributes += "}"
 	repeatedStringForObservations := "[]*Observation{"
 	for _, f := range this.Observations {
 		repeatedStringForObservations += strings.Replace(f.String(), "Observation", "Observation", 1) + ","
@@ -1884,72 +1298,9 @@ func (this *Region) String() string {
 	repeatedStringForObservations += "}"
 	s := strings.Join([]string{`&Region{`,
 		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
-		`Attributes:` + repeatedStringForAttributes + `,`,
 		`StartTime:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.StartTime), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`EndTime:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.EndTime), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
-		`Ended:` + fmt.Sprintf("%v", this.Ended) + `,`,
 		`Observations:` + repeatedStringForObservations + `,`,
-		`}`,
-	}, "")
-	return s
-}
-func (this *Attribute) String() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&Attribute{`,
-		`Key:` + fmt.Sprintf("%v", this.Key) + `,`,
-		`Value:` + strings.Replace(this.Value.String(), "AttributeValue", "AttributeValue", 1) + `,`,
-		`}`,
-	}, "")
-	return s
-}
-func (this *AttributeValue) String() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&AttributeValue{`,
-		`Kind:` + fmt.Sprintf("%v", this.Kind) + `,`,
-		`}`,
-	}, "")
-	return s
-}
-func (this *AttributeValue_IntValue) String() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&AttributeValue_IntValue{`,
-		`IntValue:` + fmt.Sprintf("%v", this.IntValue) + `,`,
-		`}`,
-	}, "")
-	return s
-}
-func (this *AttributeValue_FloatValue) String() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&AttributeValue_FloatValue{`,
-		`FloatValue:` + fmt.Sprintf("%v", this.FloatValue) + `,`,
-		`}`,
-	}, "")
-	return s
-}
-func (this *AttributeValue_BoolValue) String() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&AttributeValue_BoolValue{`,
-		`BoolValue:` + fmt.Sprintf("%v", this.BoolValue) + `,`,
-		`}`,
-	}, "")
-	return s
-}
-func (this *AttributeValue_StringValue) String() string {
-	if this == nil {
-		return "nil"
-	}
-	s := strings.Join([]string{`&AttributeValue_StringValue{`,
-		`StringValue:` + fmt.Sprintf("%v", this.StringValue) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1960,6 +1311,7 @@ func (this *Statistic) String() string {
 	}
 	s := strings.Join([]string{`&Statistic{`,
 		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
+		`DataType:` + fmt.Sprintf("%v", this.DataType) + `,`,
 		`AggregationType:` + fmt.Sprintf("%v", this.AggregationType) + `,`,
 		`}`,
 	}, "")
@@ -2207,40 +1559,6 @@ func (m *Region) Unmarshal(dAtA []byte) error {
 			}
 			m.Name = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Attributes", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowXcap
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthXcap
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthXcap
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Attributes = append(m.Attributes, &Attribute{})
-			if err := m.Attributes[len(m.Attributes)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field StartTime", wireType)
@@ -2307,26 +1625,6 @@ func (m *Region) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 5:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ended", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowXcap
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Ended = bool(v != 0)
 		case 6:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Observations", wireType)
@@ -2360,264 +1658,6 @@ func (m *Region) Unmarshal(dAtA []byte) error {
 			if err := m.Observations[len(m.Observations)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipXcap(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthXcap
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthXcap
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *Attribute) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowXcap
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: Attribute: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Attribute: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Key", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowXcap
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthXcap
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthXcap
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Key = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowXcap
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthXcap
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthXcap
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Value == nil {
-				m.Value = &AttributeValue{}
-			}
-			if err := m.Value.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipXcap(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthXcap
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthXcap
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *AttributeValue) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowXcap
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: AttributeValue: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AttributeValue: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field IntValue", wireType)
-			}
-			var v int64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowXcap
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Kind = &AttributeValue_IntValue{v}
-		case 2:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field FloatValue", wireType)
-			}
-			var v uint64
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			v = uint64(encoding_binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-			m.Kind = &AttributeValue_FloatValue{float64(math.Float64frombits(v))}
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BoolValue", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowXcap
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			b := bool(v != 0)
-			m.Kind = &AttributeValue_BoolValue{b}
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field StringValue", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowXcap
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthXcap
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthXcap
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Kind = &AttributeValue_StringValue{string(dAtA[iNdEx:postIndex])}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -2705,6 +1745,25 @@ func (m *Statistic) Unmarshal(dAtA []byte) error {
 			m.Name = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DataType", wireType)
+			}
+			m.DataType = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowXcap
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.DataType |= DataType(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field AggregationType", wireType)
 			}

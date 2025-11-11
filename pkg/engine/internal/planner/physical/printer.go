@@ -35,7 +35,6 @@ func toTree(p *Plan, n Node, capture *xcap.Capture) *tree.Node {
 func toTreeNode(n Node, capture *xcap.Capture) *tree.Node {
 	treeNode := tree.NewNode(n.Type().String(), "")
 	treeNode.Context = n
-	regionName := fmt.Sprintf("%s-%s", n.Type().String(), n.ID().String())
 
 	switch node := n.(type) {
 	case *DataObjScan:
@@ -130,13 +129,14 @@ func toTreeNode(n Node, capture *xcap.Capture) *tree.Node {
 
 	}
 
-	treeNode.Properties = append(treeNode.Properties, tree.NewProperty("id", false, regionName))
-
+	// include metrics if capture is provided
 	if capture != nil {
+		regionName := fmt.Sprintf("%s-%s", n.Type().String(), n.ID().String())
 		if region := capture.GetRegion(regionName); region != nil {
-			props := make([]tree.Property, 0, len(region.Observations()))
-			for name, value := range region.Observations() {
-				props = append(props, tree.NewProperty(name, false, value))
+			observations := region.GetObservations()
+			props := make([]tree.Property, 0, len(observations))
+			for _, observation := range observations {
+				props = append(props, tree.NewProperty(observation.Statistic.Name(), false, observation.Value))
 			}
 			treeNode.AddComment("@metrics", "", props)
 		}

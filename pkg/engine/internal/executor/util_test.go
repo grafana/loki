@@ -167,4 +167,3 @@ func (p *ArrowtestPipeline) Read(_ context.Context) (arrow.RecordBatch, error) {
 
 // Close implements [Pipeline], immediately exhausting the pipeline.
 func (p *ArrowtestPipeline) Close() { p.cur = math.MaxInt64 }
-

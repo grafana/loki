@@ -1,22 +1,31 @@
+// Package xcap provides a utility to capture statistical information about the
+// lifetime of a query.
+//
+// Basic usage:
+//
+//	ctx, capture := xcap.NewCapture(context.Background(), nil)
+//	defer capture.End()
+//
+//	ctx, region := xcap.StartRegion(ctx, "work")
+//	defer region.End()
+//
+//	region.Record(bytesRead.Observe(1024))
+
 package xcap
 
 import (
 	"context"
 	"sync"
-	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 )
 
-// Capture captures the lifetime of a query.
+// Capture captures statistical information about the lifetime of a query.
 type Capture struct {
 	mu sync.RWMutex
 
 	// attributes are the attributes associated with this capture.
 	attributes []attribute.KeyValue
-
-	// startTime is when the capture was created.
-	startTime time.Time
 
 	// regions are all regions created within this capture.
 	regions []*Region
@@ -26,14 +35,9 @@ type Capture struct {
 }
 
 // NewCapture creates a new Capture and attaches it to the provided [context.Context]
-//
-// If NewCapture is called from within the context of an existing Capture,
-// a link to the parent Capture will be created but the two captures are
-// otherwise treated as separate.
 func NewCapture(ctx context.Context, attributes []attribute.KeyValue) (context.Context, *Capture) {
 	capture := &Capture{
 		attributes: attributes,
-		startTime:  time.Now(),
 		regions:    make([]*Region, 0),
 	}
 
@@ -64,14 +68,7 @@ func (c *Capture) Attributes() []attribute.KeyValue {
 	return attrs
 }
 
-// StartTime returns when the capture was created.
-func (c *Capture) StartTime() time.Time {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.startTime
-}
-
+// GetRegion returns the region with the given name, or nil if no such region exists.
 func (c *Capture) GetRegion(name string) *Region {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -85,9 +82,9 @@ func (c *Capture) GetRegion(name string) *Region {
 	return nil
 }
 
-// addRegion adds a region to this capture. This is called by Region
+// AddRegion adds a region to this capture. This is called by Region
 // when it is created.
-func (c *Capture) addRegion(r *Region) {
+func (c *Capture) AddRegion(r *Region) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -108,72 +105,49 @@ func (c *Capture) Regions() []*Region {
 	return regions
 }
 
-// IsEnded returns whether End() has been called on this capture.
-func (c *Capture) IsEnded() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	return c.ended
-}
-
-// GetAllStatistics returns all unique statistics used across all regions
-// in this capture. Statistics are deduplicated by name.
+// GetAllStatistics returns statistics used across all regions
+// in this capture.
 func (c *Capture) GetAllStatistics() []Statistic {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	statMap := make(map[string]Statistic)
+	statistics := make(map[string]Statistic)
 	for _, region := range c.regions {
 		region.mu.RLock()
-		for _, obs := range region.observations {
-			stat := obs.statistic
-			statName := stat.Name()
-			// Deduplicate by name - first occurrence wins
-			if _, exists := statMap[statName]; !exists {
-				statMap[statName] = stat
+		for id, obs := range region.observations {
+			// Statistics with the same definition will have the same identifier.
+			if _, exists := statistics[id]; !exists {
+				statistics[id] = obs.Statistic
 			}
 		}
 		region.mu.RUnlock()
 	}
 
-	result := make([]Statistic, 0, len(statMap))
-	for _, stat := range statMap {
+	result := make([]Statistic, 0, len(statistics))
+	for _, stat := range statistics {
 		result = append(result, stat)
 	}
+
 	return result
 }
 
-// Merge appends all regions from other into this capture. Regions are appended,
-// not merged. If this capture has been ended, Merge does nothing.
+// Merge appends all regions from other into this capture.
 func (c *Capture) Merge(other *Capture) {
 	if other == nil {
 		return
 	}
 
+	// TODO: This does not merge attributes, handle it if required.
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// Get regions from other capture while holding its read lock
-	other.mu.RLock()
-	otherRegions := make([]*Region, len(other.regions))
-	copy(otherRegions, other.regions)
-	other.mu.RUnlock()
-
-	// Append regions to this capture
-	c.regions = append(c.regions, otherRegions...)
+	c.regions = append(c.regions, other.Regions()...)
 }
 
-// NoopCapture is a no-operation capture that can be used in tests.
-// All methods on NoopCapture are safe to call and do nothing.
+// NoopCapture is a noop capture that can be used in tests.
 var NoopCapture = &Capture{
 	attributes: nil,
-	startTime:  time.Time{},
 	regions:    nil,
 	ended:      true, // Already ended so no regions can be added
-}
-
-// NewNoopCapture returns a no-operation capture that can be used in tests.
-// All methods on the returned capture are safe to call and do nothing.
-func NewNoopCapture() *Capture {
-	return NoopCapture
 }

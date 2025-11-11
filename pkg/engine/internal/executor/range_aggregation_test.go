@@ -8,7 +8,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -166,7 +165,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
 		inputB := NewArrowtestPipeline(schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts, xcap.NoopRegion)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts, nil)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -213,7 +212,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
 		inputB := NewArrowtestPipeline(schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts, xcap.NoopRegion)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts, nil)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -274,7 +273,7 @@ func TestRangeAggregationPipeline(t *testing.T) {
 
 		inputA := NewArrowtestPipeline(schema, rowsPipelineA...)
 		inputB := NewArrowtestPipeline(schema, rowsPiplelineB...)
-		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts, xcap.NoopRegion)
+		pipeline, err := newRangeAggregationPipeline([]Pipeline{inputA, inputB}, newExpressionEvaluator(), opts, nil)
 		require.NoError(t, err)
 		defer pipeline.Close()
 

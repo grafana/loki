@@ -10,7 +10,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -83,7 +82,7 @@ func TestVectorAggregationPipeline(t *testing.T) {
 		},
 	}
 
-	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, groupBy, newExpressionEvaluator(), types.VectorAggregationTypeSum, xcap.NoopRegion)
+	pipeline, err := newVectorAggregationPipeline([]Pipeline{input1, input2}, groupBy, newExpressionEvaluator(), types.VectorAggregationTypeSum, nil)
 	require.NoError(t, err)
 	defer pipeline.Close()
 

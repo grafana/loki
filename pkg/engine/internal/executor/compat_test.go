@@ -11,7 +11,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -486,7 +485,7 @@ func TestNewColumnCompatibilityPipeline(t *testing.T) {
 			}
 
 			// Create compatibility pipeline
-			pipeline := newColumnCompatibilityPipeline(tt.compat, input, xcap.NoopRegion)
+			pipeline := newColumnCompatibilityPipeline(tt.compat, input, nil)
 			defer pipeline.Close()
 
 			if tt.expectError {
@@ -552,7 +551,7 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 			{"invalid-field-name": "test"},
 		})
 
-		pipeline := newColumnCompatibilityPipeline(compat, input, xcap.NoopRegion)
+		pipeline := newColumnCompatibilityPipeline(compat, input, nil)
 		defer pipeline.Close()
 
 		_, err := pipeline.Read(t.Context())
@@ -571,7 +570,7 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 		expectedErr := errors.New("test error")
 		input := errorPipeline(t.Context(), expectedErr)
 
-		pipeline := newColumnCompatibilityPipeline(compat, input, xcap.NoopRegion)
+		pipeline := newColumnCompatibilityPipeline(compat, input, nil)
 		defer pipeline.Close()
 
 		_, err := pipeline.Read(t.Context())
@@ -596,7 +595,7 @@ func TestNewColumnCompatibilityPipeline_ErrorCases(t *testing.T) {
 			{"utf8.label.status": "200", "int64.metadata.status": int64(200)},
 		})
 
-		pipeline := newColumnCompatibilityPipeline(compat, input, xcap.NoopRegion)
+		pipeline := newColumnCompatibilityPipeline(compat, input, nil)
 		defer pipeline.Close()
 
 		// This should panic with "invalid column type: only string columns can be checked for collisions"

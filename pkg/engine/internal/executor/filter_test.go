@@ -6,7 +6,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -45,7 +44,7 @@ func TestNewFilterPipeline(t *testing.T) {
 
 		// Create filter pipeline
 		e := newExpressionEvaluator()
-		pipeline := NewFilterPipeline(filter, input, e, xcap.NoopRegion)
+		pipeline := NewFilterPipeline(filter, input, e, nil)
 		defer pipeline.Close()
 
 		// Read the pipeline output
@@ -83,7 +82,7 @@ func TestNewFilterPipeline(t *testing.T) {
 
 		// Create filter pipeline
 		e := newExpressionEvaluator()
-		pipeline := NewFilterPipeline(filter, input, e, xcap.NoopRegion)
+		pipeline := NewFilterPipeline(filter, input, e, nil)
 		defer pipeline.Close()
 
 		// Read the pipeline output
@@ -119,7 +118,7 @@ func TestNewFilterPipeline(t *testing.T) {
 
 		// Create filter pipeline
 		e := newExpressionEvaluator()
-		pipeline := NewFilterPipeline(filter, input, e, xcap.NoopRegion)
+		pipeline := NewFilterPipeline(filter, input, e, nil)
 		defer pipeline.Close()
 
 		// Create expected output (only rows where valid=true)
@@ -171,7 +170,7 @@ func TestNewFilterPipeline(t *testing.T) {
 
 		// Create filter pipeline
 		e := newExpressionEvaluator()
-		pipeline := NewFilterPipeline(filter, input, e, xcap.NoopRegion)
+		pipeline := NewFilterPipeline(filter, input, e, nil)
 		defer pipeline.Close()
 
 		// Create expected output (only rows where name=="Bob" AND valid!=false)
@@ -210,7 +209,7 @@ func TestNewFilterPipeline(t *testing.T) {
 
 		// Create filter pipeline
 		e := newExpressionEvaluator()
-		pipeline := NewFilterPipeline(filter, input, e, xcap.NoopRegion)
+		pipeline := NewFilterPipeline(filter, input, e, nil)
 		defer pipeline.Close()
 
 		record, err := pipeline.Read(t.Context())
@@ -250,7 +249,7 @@ func TestNewFilterPipeline(t *testing.T) {
 
 		// Create filter pipeline
 		e := newExpressionEvaluator()
-		pipeline := NewFilterPipeline(filter, input, e, xcap.NoopRegion)
+		pipeline := NewFilterPipeline(filter, input, e, nil)
 		defer pipeline.Close()
 
 		// Create expected output (only rows where valid=true)
@@ -306,7 +305,7 @@ func TestNewFilterPipeline(t *testing.T) {
 
 		// Create filter pipeline
 		e := newExpressionEvaluator()
-		pipeline := NewFilterPipeline(filter, input, e, xcap.NoopRegion)
+		pipeline := NewFilterPipeline(filter, input, e, nil)
 		defer pipeline.Close()
 
 		// Create expected output (only rows where valid=true, including null name)
