@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -52,7 +53,8 @@ type Service struct {
 	logger              log.Logger
 
 	// Metrics.
-	streamEvictionsTotal *prometheus.CounterVec
+	streamEvictionsTotal     *prometheus.CounterVec
+	segmentationKeyRateBytes *prometheus.GaugeVec
 
 	// Readiness check, see [Service.CheckReady].
 	partitionReadinessPassed          bool
@@ -76,6 +78,11 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 			Name:      "ingest_limits_stream_evictions_total",
 			Help:      "The total number of streams evicted due to age per tenant. This is not a global total, as tenants can be sharded over multiple pods.",
 		}, []string{"tenant"}),
+		segmentationKeyRateBytes: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: constants.Loki,
+			Name:      "ingest_limits_segmentation_key_rate_bytes_total",
+			Help:      "The current rate of bytes ingested per segmentation key.",
+		}, []string{"segmentation_key"}),
 		clock: quartz.NewReal(),
 	}
 	s.partitionManager, err = newPartitionManager(reg)
@@ -208,6 +215,8 @@ func (s *Service) UpdateRates(
 				totalSize += bucket.size
 			}
 			averageRate := totalSize / (uint64(s.cfg.BucketSize.Seconds()) * uint64(len(usage.rateBuckets)))
+			s.segmentationKeyRateBytes.WithLabelValues(strconv.FormatUint(accepted.StreamHash, 10)).Set(float64(averageRate))
+
 			resp.Results[i] = &proto.UpdateRatesResult{
 				StreamHash: accepted.StreamHash,
 				Rate:       averageRate,
