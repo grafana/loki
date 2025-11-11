@@ -82,7 +82,7 @@ func New(cfg Config, limits Limits, logger log.Logger, reg prometheus.Registerer
 			Namespace: constants.Loki,
 			Name:      "ingest_limits_segmentation_key_rate_bytes_total",
 			Help:      "The current rate of bytes ingested per segmentation key.",
-		}, []string{"segmentation_key"}),
+		}, []string{"tenant", "segmentation_key"}),
 		clock: quartz.NewReal(),
 	}
 	s.partitionManager, err = newPartitionManager(reg)
@@ -215,7 +215,7 @@ func (s *Service) UpdateRates(
 				totalSize += bucket.size
 			}
 			averageRate := totalSize / (uint64(s.cfg.BucketSize.Seconds()) * uint64(len(usage.rateBuckets)))
-			s.segmentationKeyRateBytes.WithLabelValues(strconv.FormatUint(accepted.StreamHash, 10)).Set(float64(averageRate))
+			s.segmentationKeyRateBytes.WithLabelValues(req.Tenant, strconv.FormatUint(accepted.StreamHash, 10)).Set(float64(averageRate))
 
 			resp.Results[i] = &proto.UpdateRatesResult{
 				StreamHash: accepted.StreamHash,
