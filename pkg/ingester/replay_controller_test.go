@@ -113,7 +113,7 @@ func TestReplayControllerConcurrentFlushes(t *testing.T) {
 
 		for i := 0; i < numGoroutines; i++ {
 			wg.Add(1)
-			go func(id int) {
+			go func() {
 				defer wg.Done()
 				<-start
 
@@ -122,7 +122,7 @@ func TestReplayControllerConcurrentFlushes(t *testing.T) {
 					return nil
 				})
 				require.NoError(t, err)
-			}(i)
+			}()
 		}
 
 		// Start all goroutines at the same time
@@ -133,5 +133,71 @@ func TestReplayControllerConcurrentFlushes(t *testing.T) {
 		// All goroutines should have shared a single flush
 		require.Equal(t, int32(1), flushesStarted.Load(),
 			"Singleflight should coalesce all flush requests into one")
+	})
+}
+
+// Benchmark for replay controller with and without backpressure
+func BenchmarkReplayControllerBackpressure(b *testing.B) {
+	// Scenario 1: Without backpressure triggered (no memory limit reached)
+	b.Run("without-backpressure", func(b *testing.B) {
+		var flushCount atomic.Int64
+
+		flusher := newDumbFlusher(func() {
+			flushCount.Add(1)
+			time.Sleep(10 * time.Microsecond)
+		})
+
+		// Set high memory ceiling so we never trigger backpressure
+		rc := newReplayController(nilMetrics(), WALConfig{ReplayMemoryCeiling: 10000}, flusher)
+
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				_ = rc.WithBackPressure(func() error {
+
+					rc.Add(100)
+					time.Sleep(time.Microsecond)
+					rc.Sub(100)
+					return nil
+				})
+			}
+		})
+
+		b.ReportMetric(float64(flushCount.Load()), "total_flushes")
+		if flushCount.Load() > 0 {
+			b.ReportMetric(float64(b.N)/float64(flushCount.Load()), "ops_per_flush")
+		}
+	})
+
+	// Scenario 2: With backpressure triggered (memory limit reached, causing flushes)
+	b.Run("with-backpressure", func(b *testing.B) {
+		var flushCount atomic.Int64
+
+		var rc *replayController
+		flusher := newDumbFlusher(func() {
+			flushCount.Add(1)
+
+			time.Sleep(50 * time.Microsecond)
+
+			current := rc.Cur()
+			rc.Sub(int64(current))
+		})
+
+		// Set low memory ceiling to frequently trigger backpressure
+		rc = newReplayController(nilMetrics(), WALConfig{ReplayMemoryCeiling: 100}, flusher)
+
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				_ = rc.WithBackPressure(func() error {
+					rc.Add(95)
+					time.Sleep(time.Microsecond)
+					return nil
+				})
+			}
+		})
+
+		b.ReportMetric(float64(flushCount.Load()), "total_flushes")
+		b.ReportMetric(float64(b.N)/float64(flushCount.Load()), "ops_per_flush")
 	})
 }

@@ -78,7 +78,7 @@ func (c *replayController) Cur() int {
 
 func (c *replayController) Flush() {
 	// Use singleflight to ensure only one flush happens at a time
-	c.flushSF.Do("flush", func() (interface{}, error) {
+	_, _, _ = c.flushSF.Do("flush", func() (interface{}, error) {
 		c.flush()
 		return nil, nil
 	})
