@@ -289,10 +289,10 @@ func Test_engineRouter_Do(t *testing.T) {
 	now := clock.Now().Truncate(time.Second)
 
 	routerConfig := RouterConfig{
-		V2EngineStart: now.Add(-24 * time.Hour),
-		V2EngineLag:   time.Hour,
-		Validate:      func(_ logql.Params) bool { return true },
-		Handler:       v2EngineHandler,
+		Start:    now.Add(-24 * time.Hour),
+		Lag:      time.Hour,
+		Validate: func(_ logql.Params) bool { return true },
+		Handler:  v2EngineHandler,
 	}
 
 	router := newEngineRouterMiddleware(

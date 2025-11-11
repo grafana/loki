@@ -21,8 +21,8 @@ import (
 
 // RouterConfig configures sending queries to a separate engine.
 type RouterConfig struct {
-	V2EngineStart time.Time     // Start time of the v2 engine
-	V2EngineLag   time.Duration // Lag after which v2 engine has data
+	Start time.Time     // Start time of the v2 engine
+	Lag   time.Duration // Lag after which v2 engine has data
 
 	// Validate function to check if the query is supported by the engine.
 	Validate func(params logql.Params) bool
@@ -72,8 +72,8 @@ func newEngineRouterMiddleware(
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &engineRouter{
-			v2Start:        v2Config.V2EngineStart,
-			v2Lag:          v2Config.V2EngineLag,
+			v2Start:        v2Config.Start,
+			v2Lag:          v2Config.Lag,
 			v1Next:         queryrangebase.MergeMiddlewares(v1Chain...).Wrap(next),
 			v2Next:         v2Config.Handler,
 			checkV2:        v2Config.Validate,
