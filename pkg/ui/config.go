@@ -67,15 +67,15 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Goldfish.Storage.Type, "ui.goldfish.storage.type", "", "Storage backend type (cloudsql, rds, or empty for no storage)")
 
 	// CloudSQL flags
-	f.StringVar(&cfg.Goldfish.Storage.CloudSQLUser, "ui.goldfish.cloudsql.user", "", "CloudSQL username for Goldfish database.")
-	f.StringVar(&cfg.Goldfish.Storage.CloudSQLHost, "ui.goldfish.cloudsql.host", "127.0.0.1", "CloudSQL host for Goldfish database.")
-	f.IntVar(&cfg.Goldfish.Storage.CloudSQLPort, "ui.goldfish.cloudsql.port", 3306, "CloudSQL port for Goldfish database.")
-	f.StringVar(&cfg.Goldfish.Storage.CloudSQLDatabase, "ui.goldfish.cloudsql.database", "goldfish", "CloudSQL database name for Goldfish.")
+	f.StringVar(&cfg.Goldfish.Storage.CloudSQLUser, "ui.goldfish.storage.cloudsql-user", "", "CloudSQL username for Goldfish database.")
+	f.StringVar(&cfg.Goldfish.Storage.CloudSQLHost, "ui.goldfish.storage.cloudsql-host", "127.0.0.1", "CloudSQL host for Goldfish database.")
+	f.IntVar(&cfg.Goldfish.Storage.CloudSQLPort, "ui.goldfish.storage.cloudsql-port", 3306, "CloudSQL port for Goldfish database.")
+	f.StringVar(&cfg.Goldfish.Storage.CloudSQLDatabase, "ui.goldfish.storage.cloudsql-database", "goldfish", "CloudSQL database name for Goldfish.")
 
 	// RDS flags
-	f.StringVar(&cfg.Goldfish.Storage.RDSEndpoint, "ui.goldfish.storage.rds.endpoint", "", "RDS endpoint (host:port)")
-	f.StringVar(&cfg.Goldfish.Storage.RDSDatabase, "ui.goldfish.storage.rds.database", "", "RDS database name")
-	f.StringVar(&cfg.Goldfish.Storage.RDSUser, "ui.goldfish.storage.rds.user", "", "RDS database user")
+	f.StringVar(&cfg.Goldfish.Storage.RDSEndpoint, "ui.goldfish.storage.rds-endpoint", "", "RDS endpoint (host:port)")
+	f.StringVar(&cfg.Goldfish.Storage.RDSDatabase, "ui.goldfish.storage.rds-database", "", "RDS database name")
+	f.StringVar(&cfg.Goldfish.Storage.RDSUser, "ui.goldfish.storage.rds-user", "", "RDS database user")
 
 	f.StringVar(&cfg.Goldfish.GrafanaURL, "ui.goldfish.grafana-url", "", "Base URL of Grafana instance for explore links.")
 	f.StringVar(&cfg.Goldfish.TracesDatasourceUID, "ui.goldfish.traces-datasource-uid", "", "UID of the traces datasource in Grafana.")
