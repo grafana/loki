@@ -1181,7 +1181,7 @@ func (t *Loki) initQueryFrontendMiddleware() (_ services.Service, err error) {
 
 		v2Router = queryrange.RouterConfig{
 			Start: start,
-			End:   end,
+			Lag:   t.Cfg.Querier.DataobjStorageLag,
 
 			Validate: engine_v2.IsQuerySupported,
 			Handler:  handler,
