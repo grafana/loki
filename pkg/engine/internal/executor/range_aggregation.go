@@ -11,6 +11,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -67,13 +68,15 @@ type rangeAggregationPipeline struct {
 	windowsForTimestamp timestampMatchingWindowsFunc // function to find matching time windows for a given timestamp
 	evaluator           expressionEvaluator          // used to evaluate column expressions
 	opts                rangeAggregationOptions
+	region              *xcap.Region
 }
 
-func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions) (*rangeAggregationPipeline, error) {
+func newRangeAggregationPipeline(inputs []Pipeline, evaluator expressionEvaluator, opts rangeAggregationOptions, region *xcap.Region) (*rangeAggregationPipeline, error) {
 	r := &rangeAggregationPipeline{
 		inputs:    inputs,
 		evaluator: evaluator,
 		opts:      opts,
+		region:    region,
 	}
 	r.init()
 	return r, nil
@@ -219,9 +222,17 @@ func (r *rangeAggregationPipeline) read(ctx context.Context) (arrow.RecordBatch,
 // Close closes the resources of the pipeline.
 // The implementation must close all the of the pipeline's inputs.
 func (r *rangeAggregationPipeline) Close() {
+	if r.region != nil {
+		r.region.End()
+	}
 	for _, input := range r.inputs {
 		input.Close()
 	}
+}
+
+// Region implements Pipeline.
+func (r *rangeAggregationPipeline) Region() *xcap.Region {
+	return r.region
 }
 
 func newMatcherFactoryFromOpts(opts rangeAggregationOptions) *matcherFactory {

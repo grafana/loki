@@ -9,6 +9,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
 
@@ -62,7 +63,7 @@ func TestMerge(t *testing.T) {
 				inputs[i] = NewArrowtestPipeline(schema, inputRows[i]...)
 			}
 
-			m, err := newMergePipeline(inputs, maxPrefetch)
+			m, err := newMergePipeline(inputs, maxPrefetch, xcap.NoopRegion)
 			require.NoError(t, err)
 			defer m.Close()
 
@@ -96,7 +97,7 @@ func TestMerge(t *testing.T) {
 				inputs[i] = NewArrowtestPipeline(schema, inputRows[i]...)
 			}
 
-			m, err := newMergePipeline(inputs, maxPrefetch)
+			m, err := newMergePipeline(inputs, maxPrefetch, xcap.NoopRegion)
 			require.NoError(t, err)
 			defer m.Close()
 

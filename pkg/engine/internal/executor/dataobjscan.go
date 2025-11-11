@@ -16,6 +16,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/logs"
 	"github.com/grafana/loki/v3/pkg/dataobj/sections/streams"
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -34,6 +35,7 @@ type dataobjScanOptions struct {
 type dataobjScan struct {
 	opts   dataobjScanOptions
 	logger log.Logger
+	region *xcap.Region
 
 	initialized     bool
 	initializedAt   time.Time
@@ -49,10 +51,11 @@ var _ Pipeline = (*dataobjScan)(nil)
 // [arrow.RecordBatch] composed of the requested log section in a data object. Rows
 // in the returned record are ordered by timestamp in the direction specified
 // by opts.Direction.
-func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger) *dataobjScan {
+func newDataobjScanPipeline(opts dataobjScanOptions, logger log.Logger, region *xcap.Region) *dataobjScan {
 	return &dataobjScan{
 		opts:   opts,
 		logger: logger,
+		region: region,
 	}
 }
 
@@ -370,11 +373,10 @@ func (s *dataobjScan) read(ctx context.Context) (arrow.RecordBatch, error) {
 
 // Close closes s and releases all resources.
 func (s *dataobjScan) Close() {
-	if s.reader != nil {
-		// TODO(ashwanth): remove this once we have stats collection via executor
-		s.reader.Stats().LogSummary(s.logger, time.Since(s.initializedAt))
+	if s.region != nil && s.reader != nil {
+		s.recordReaderStats()
+		s.region.End()
 	}
-
 	if s.streams != nil {
 		s.streams.Close()
 	}
@@ -386,4 +388,67 @@ func (s *dataobjScan) Close() {
 	s.streams = nil
 	s.streamsInjector = nil
 	s.reader = nil
+	s.region = nil
+}
+
+// recordReaderStats records statistics from the [logs.Reader] to the xcap region.
+func (s *dataobjScan) recordReaderStats() {
+	if s.region == nil || s.reader == nil {
+		return
+	}
+
+	stats := s.reader.Stats()
+	if stats == nil {
+		return
+	}
+
+	// Define statistics for dataset reader metrics
+	statPrimaryColumns := xcap.NewStatisticInt64("dataset_primary_columns", xcap.AggregationTypeSum)
+	statSecondaryColumns := xcap.NewStatisticInt64("dataset_secondary_columns", xcap.AggregationTypeSum)
+	statPrimaryColumnPages := xcap.NewStatisticInt64("dataset_primary_column_pages", xcap.AggregationTypeSum)
+	statSecondaryColumnPages := xcap.NewStatisticInt64("dataset_secondary_column_pages", xcap.AggregationTypeSum)
+	statMaxRows := xcap.NewStatisticInt64("dataset_max_rows", xcap.AggregationTypeSum)
+
+	statRowsToReadAfterPruning := xcap.NewStatisticInt64("rows_to_read_after_pruning", xcap.AggregationTypeSum)
+	statPrimaryRowsRead := xcap.NewStatisticInt64("primary_rows_read", xcap.AggregationTypeSum)
+	statSecondaryRowsRead := xcap.NewStatisticInt64("secondary_rows_read", xcap.AggregationTypeSum)
+	statPrimaryRowBytes := xcap.NewStatisticInt64("primary_row_bytes_read", xcap.AggregationTypeSum)
+	statSecondaryRowBytes := xcap.NewStatisticInt64("secondary_row_bytes_read", xcap.AggregationTypeSum)
+
+	statPagesScanned := xcap.NewStatisticInt64("pages_scanned", xcap.AggregationTypeSum)
+	statPagesFoundInCache := xcap.NewStatisticInt64("pages_found_in_cache", xcap.AggregationTypeSum)
+	statBatchDownloadRequests := xcap.NewStatisticInt64("batch_download_requests", xcap.AggregationTypeSum)
+	statPageDownloadTime := xcap.NewStatisticInt64("page_download_time_nanos", xcap.AggregationTypeSum)
+	statPrimaryColumnBytes := xcap.NewStatisticInt64("primary_column_bytes", xcap.AggregationTypeSum)
+	statSecondaryColumnBytes := xcap.NewStatisticInt64("secondary_column_bytes", xcap.AggregationTypeSum)
+	statPrimaryColumnUncompressedBytes := xcap.NewStatisticInt64("primary_column_uncompressed_bytes", xcap.AggregationTypeSum)
+	statSecondaryColumnUncompressedBytes := xcap.NewStatisticInt64("secondary_column_uncompressed_bytes", xcap.AggregationTypeSum)
+
+	// Record basic stats
+	s.region.Record(statPrimaryColumns.Observe(int64(stats.PrimaryColumns)))
+	s.region.Record(statSecondaryColumns.Observe(int64(stats.SecondaryColumns)))
+	s.region.Record(statPrimaryColumnPages.Observe(int64(stats.PrimaryColumnPages)))
+	s.region.Record(statSecondaryColumnPages.Observe(int64(stats.SecondaryColumnPages)))
+	s.region.Record(statMaxRows.Observe(int64(stats.MaxRows)))
+	s.region.Record(statRowsToReadAfterPruning.Observe(int64(stats.RowsToReadAfterPruning)))
+	s.region.Record(statPrimaryRowsRead.Observe(int64(stats.PrimaryRowsRead)))
+	s.region.Record(statSecondaryRowsRead.Observe(int64(stats.SecondaryRowsRead)))
+	s.region.Record(statPrimaryRowBytes.Observe(int64(stats.PrimaryRowBytes)))
+	s.region.Record(statSecondaryRowBytes.Observe(int64(stats.SecondaryRowBytes)))
+
+	// Record download stats
+	downloadStats := stats.DownloadStats
+	s.region.Record(statPagesScanned.Observe(int64(downloadStats.PagesScanned)))
+	s.region.Record(statPagesFoundInCache.Observe(int64(downloadStats.PagesFoundInCache)))
+	s.region.Record(statBatchDownloadRequests.Observe(int64(downloadStats.BatchDownloadRequests)))
+	s.region.Record(statPageDownloadTime.Observe(downloadStats.PageDownloadTime.Nanoseconds()))
+	s.region.Record(statPrimaryColumnBytes.Observe(int64(downloadStats.PrimaryColumnBytes)))
+	s.region.Record(statSecondaryColumnBytes.Observe(int64(downloadStats.SecondaryColumnBytes)))
+	s.region.Record(statPrimaryColumnUncompressedBytes.Observe(int64(downloadStats.PrimaryColumnUncompressedBytes)))
+	s.region.Record(statSecondaryColumnUncompressedBytes.Observe(int64(downloadStats.SecondaryColumnUncompressedBytes)))
+}
+
+// Region implements Pipeline.
+func (s *dataobjScan) Region() *xcap.Region {
+	return s.region
 }

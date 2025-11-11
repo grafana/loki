@@ -7,6 +7,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 )
@@ -17,14 +18,14 @@ func TestExecuteLimit(t *testing.T) {
 
 	t.Run("with no inputs", func(t *testing.T) {
 		ctx := t.Context()
-		pipeline := c.executeLimit(ctx, &physical.Limit{}, nil)
+		pipeline := c.executeLimit(ctx, &physical.Limit{}, nil, xcap.NoopRegion)
 		_, err := pipeline.Read(ctx)
 		require.Equal(t, EOF, err)
 	})
 
 	t.Run("with multiple inputs", func(t *testing.T) {
 		ctx := t.Context()
-		pipeline := c.executeLimit(ctx, &physical.Limit{}, []Pipeline{emptyPipeline(), emptyPipeline()})
+		pipeline := c.executeLimit(ctx, &physical.Limit{}, []Pipeline{emptyPipeline(), emptyPipeline()}, xcap.NoopRegion)
 		_, err := pipeline.Read(ctx)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "limit expects exactly one input, got 2")
@@ -44,7 +45,7 @@ func TestExecuteLimit(t *testing.T) {
 
 		// Execute limit with skip=1 and fetch=1
 		limit := &physical.Limit{Skip: 1, Fetch: 1}
-		pipeline := c.executeLimit(ctx, limit, []Pipeline{source})
+		pipeline := c.executeLimit(ctx, limit, []Pipeline{source}, xcap.NoopRegion)
 		defer pipeline.Close()
 
 		// Read from the pipeline
@@ -87,7 +88,7 @@ func TestExecuteLimit(t *testing.T) {
 		// Create limit pipeline that skips 2 and fetches 3
 		// Should return C from batch1, and D,E from batch2
 		limit := &physical.Limit{Skip: 2, Fetch: 3}
-		pipeline := c.executeLimit(ctx, limit, []Pipeline{source})
+		pipeline := c.executeLimit(ctx, limit, []Pipeline{source}, xcap.NoopRegion)
 		defer pipeline.Close()
 
 		// First read should give us C from batch1
@@ -124,7 +125,7 @@ func TestLimitPipeline_Skip_Fetch(t *testing.T) {
 	source := NewBufferedPipeline(record)
 
 	// Test with skip=3, fetch=4 (should return 4,5,6,7)
-	limit := NewLimitPipeline(source, 3, 4)
+		limit := NewLimitPipeline(source, 3, 4, xcap.NoopRegion)
 	defer limit.Close()
 
 	ctx := t.Context()
@@ -166,7 +167,7 @@ func TestLimitPipeline_MultipleBatches(t *testing.T) {
 	source := NewBufferedPipeline(record1, record2)
 
 	// Test with skip=3, fetch=5 (should return 4,5,6,7,8)
-	limit := NewLimitPipeline(source, 3, 5)
+		limit := NewLimitPipeline(source, 3, 5, xcap.NoopRegion)
 	defer limit.Close()
 
 	expectedFields := []arrow.Field{
@@ -229,7 +230,7 @@ func TestLimit(t *testing.T) {
 				incrementingIntPipeline.Pipeline(tt.batchSize, 1000),
 			}
 
-			pipeline := c.executeLimit(context.Background(), limit, inputs)
+			pipeline := c.executeLimit(context.Background(), limit, inputs, xcap.NoopRegion)
 			batches, rows := collect(t, pipeline)
 
 			require.Equal(t, tt.expectedBatches, batches)

@@ -1,0 +1,108 @@
+// xcap.proto holds types for serializing xcap via protobuf.
+syntax = "proto3";
+
+package loki.xcap;
+
+import "gogoproto/gogo.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/grafana/loki/v3/pkg/engine/internal/proto/xcap";
+
+// Capture captures the lifetime of a query.
+message Capture {
+  // A list of Regions recorded in the Capture.
+  repeated Region regions = 1;
+
+  // A list of statistic definitions used in the Capture across all
+  // Regions. The index into this list is used as the statistic_id field
+  // in Observation.
+  repeated Statistic statistics = 2;
+}
+
+// Region captures the lifetime of a specific operation within a capture.
+message Region {
+  // Name is the name of the region.
+  string name = 1;
+
+  // Attributes are the attributes associated with this region.
+  repeated Attribute attributes = 2;
+
+  // StartTime is when the region was created.
+  google.protobuf.Timestamp start_time = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdtime) = true
+  ];
+
+  // EndTime is when the region ended. Zero if not ended.
+  google.protobuf.Timestamp end_time = 4 [
+    (gogoproto.nullable) = false,
+    (gogoproto.stdtime) = true
+  ];
+
+  // Ended indicates whether End() has been called.
+  bool ended = 5;
+
+  // Observations are all observations recorded in this region.
+  repeated Observation observations = 6;
+}
+
+// Attribute represents an OpenTelemetry attribute KeyValue.
+message Attribute {
+  // Key is the attribute key.
+  string key = 1;
+
+  // Value is the attribute value.
+  AttributeValue value = 2;
+}
+
+// AttributeValue represents an OpenTelemetry attribute value.
+message AttributeValue {
+  oneof kind {
+    int64 int_value = 1;
+    double float_value = 2;
+    bool bool_value = 3;
+    string string_value = 4;
+  }
+}
+
+// Statistic represents a statistic definition.
+message Statistic {
+  // Name is the name of the statistic.
+  string name = 1;
+
+  // AggregationType is how multiple observations are aggregated.
+  AggregationType aggregation_type = 2;
+}
+
+// Observation represents an aggregated observation value for a statistic.
+message Observation {
+  // StatisticId is the index into the statistics list in Capture.
+  uint32 statistic_id = 1;
+
+  // Value is the aggregated observation value.
+  ObservationValue value = 2;
+
+  // Count is the number of observations aggregated.
+  uint32 count = 3;
+}
+
+// ObservationValue represents a single observation value.
+message ObservationValue {
+  oneof kind {
+    int64 int_value = 1;
+    double float_value = 2;
+    bool bool_value = 3;
+  }
+}
+
+// AggregationType specifies how to combine multiple observations of the
+// same statistic.
+enum AggregationType {
+  AGGREGATION_TYPE_INVALID = 0; // Invalid/unspecified aggregation type.
+  AGGREGATION_TYPE_SUM = 1;     // Sum all observations together.
+  AGGREGATION_TYPE_MIN = 2;     // Use the smallest value.
+  AGGREGATION_TYPE_MAX = 3;     // Use the largest value.
+  AGGREGATION_TYPE_LAST = 4;    // Use the last recorded value.
+  AGGREGATION_TYPE_FIRST = 5;   // Use the first recorded value.
+}
+

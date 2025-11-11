@@ -18,6 +18,7 @@ import (
 
 	"github.com/grafana/loki/v3/pkg/dataobj/metastore"
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/logical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/logql"
@@ -190,6 +191,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		return logqlmodel.Result{}, err
 	}
 
+	ctx, capture := xcap.NewCapture(ctx, nil)
 	builder, err := func() (ResultBuilder, error) {
 		ctx, span := tracer.Start(ctx, "QueryEngine.Execute.Process")
 		defer span.End()
@@ -203,6 +205,7 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 			MergePrefetchCount: e.cfg.MergePrefetchCount,
 			Bucket:             e.bucket,
 		}
+
 		pipeline := executor.Run(ctx, cfg, physicalPlan, logger)
 		defer pipeline.Close()
 
@@ -238,6 +241,9 @@ func (e *Basic) Execute(ctx context.Context, params logql.Params) (logqlmodel.Re
 		span.SetStatus(codes.Error, "failed to build results")
 		return logqlmodel.Result{}, err
 	}
+	capture.End()
+
+	level.Info(logger).Log("execution capture", physical.PrintAsTreeWithMetrics(physicalPlan, capture))
 
 	durFull := time.Since(startTime)
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)

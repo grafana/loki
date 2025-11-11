@@ -17,6 +17,7 @@ import (
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/physicalpb"
 	protoUlid "github.com/grafana/loki/v3/pkg/engine/internal/proto/ulid"
 	"github.com/grafana/loki/v3/pkg/engine/internal/proto/wirepb"
+	"github.com/grafana/loki/v3/pkg/engine/internal/proto/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
 )
 
@@ -204,6 +205,7 @@ func (c *protobufCodec) messageFromPbMessage(mf *wirepb.MessageFrame) (Message, 
 		if err != nil {
 			return nil, err
 		}
+
 		return TaskStatusMessage{
 			ID:     ulid.ULID(k.TaskStatus.Id),
 			Status: status,
@@ -287,6 +289,15 @@ func (c *protobufCodec) taskStatusFromPbTaskStatus(ts *wirepb.TaskStatus) (workf
 	pbErr := ts.GetError()
 	if pbErr != nil {
 		status.Error = errors.New(pbErr.Description)
+	}
+
+	if capture := ts.GetCapture(); capture != nil {
+		cap, err := xcap.UnmarshalCapture(capture)
+		if err != nil {
+			return workflow.TaskStatus{}, fmt.Errorf("failed to unmarshal capture: %w", err)
+		}
+
+		status.Capture = cap
 	}
 
 	return status, nil
@@ -458,6 +469,7 @@ func (c *protobufCodec) messageToPbMessage(from Message) (*wirepb.MessageFrame, 
 		if err != nil {
 			return nil, err
 		}
+
 		mf.Kind = &wirepb.MessageFrame_TaskStatus{
 			TaskStatus: &wirepb.TaskStatusMessage{
 				Id:     protoUlid.ULID(v.ID),
@@ -537,6 +549,15 @@ func (c *protobufCodec) taskStatusToPbTaskStatus(from workflow.TaskStatus) (*wir
 
 	if from.Error != nil {
 		ts.Error = &wirepb.TaskError{Description: from.Error.Error()}
+	}
+
+	if from.Capture != nil {
+		capture, err := xcap.MarshalCapture(from.Capture)
+		if err != nil {
+			return nil, err
+		}
+
+		ts.Capture = capture
 	}
 
 	return ts, nil

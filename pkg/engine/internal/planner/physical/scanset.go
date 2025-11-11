@@ -95,7 +95,7 @@ func (s *ScanSet) Shards() iter.Seq[Node] {
 		for _, target := range s.Targets {
 			switch target.Type {
 			case ScanTypeDataObject:
-				node := target.DataObject.Clone().(*DataObjScan)
+				node := target.DataObject
 				node.Projections = cloneExpressions(s.Projections)
 				node.Predicates = cloneExpressions(s.Predicates)
 

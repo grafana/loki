@@ -4,10 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
 )
 
 // Pipeline represents a data processing pipeline that can read Arrow records.
@@ -19,6 +22,15 @@ type Pipeline interface {
 	// Close closes the resources of the pipeline.
 	// The implementation must close all the of the pipeline's inputs.
 	Close()
+}
+
+// PipelineWithRegion is an optional interface that pipelines can implement
+// to expose their associated xcap region for statistics collection.
+type PipelineWithRegion interface {
+	Pipeline
+	// Region returns the xcap region associated with this pipeline node, if any.
+	// Returns nil if no region is associated with this pipeline.
+	Region() *xcap.Region
 }
 
 var (
@@ -36,12 +48,21 @@ type readFunc func(context.Context, []Pipeline) (arrow.RecordBatch, error)
 type GenericPipeline struct {
 	inputs []Pipeline
 	read   readFunc
+	region *xcap.Region
 }
 
 func newGenericPipeline(read readFunc, inputs ...Pipeline) *GenericPipeline {
 	return &GenericPipeline{
 		read:   read,
 		inputs: inputs,
+	}
+}
+
+func newGenericPipelineWithRegion(read readFunc, region *xcap.Region, inputs ...Pipeline) *GenericPipeline {
+	return &GenericPipeline{
+		read:   read,
+		inputs: inputs,
+		region: region,
 	}
 }
 
@@ -57,9 +78,17 @@ func (p *GenericPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 
 // Close implements Pipeline.
 func (p *GenericPipeline) Close() {
+	if p.region != nil {
+		p.region.End()
+	}
 	for _, inp := range p.inputs {
 		inp.Close()
 	}
+}
+
+// Region implements Pipeline.
+func (p *GenericPipeline) Region() *xcap.Region {
+	return p.region
 }
 
 func errorPipeline(ctx context.Context, err error) Pipeline {
@@ -179,6 +208,14 @@ func (p *prefetchWrapper) Close() {
 	p.Pipeline.Close()
 }
 
+// Region implements PipelineWithRegion.
+func (p *prefetchWrapper) Region() *xcap.Region {
+	if withRegion, ok := p.Pipeline.(PipelineWithRegion); ok {
+		return withRegion.Region()
+	}
+	return nil
+}
+
 type tracedPipeline struct {
 	name  string
 	inner Pipeline
@@ -247,4 +284,71 @@ func (lp *lazyPipeline) Close() {
 		lp.built.Close()
 	}
 	lp.built = nil
+}
+
+// Region implements PipelineWithRegion.
+func (lp *lazyPipeline) Region() *xcap.Region {
+	if lp.built != nil {
+		if withRegion, ok := lp.built.(PipelineWithRegion); ok {
+			return withRegion.Region()
+		}
+	}
+	return nil
+}
+
+// Common statistics that are tracked for all pipeline nodes.
+var (
+	statRowsOut      = xcap.NewStatisticInt64("rows_out", xcap.AggregationTypeSum)
+	statReadCalls    = xcap.NewStatisticInt64("read_calls", xcap.AggregationTypeSum)
+	statExecDuration = xcap.NewStatisticInt64("exec_duration_ns", xcap.AggregationTypeSum)
+)
+
+// observedPipeline wraps a Pipeline to automatically collect common statistics
+// and record them to the pipeline's region.
+type observedPipeline struct {
+	inner  Pipeline
+	region *xcap.Region
+}
+
+var _ Pipeline = (*observedPipeline)(nil)
+
+// newObservedPipeline wraps a pipeline to automatically collect common statistics.
+// If the pipeline has a region, statistics will be recorded to it.
+func newObservedPipeline(inner Pipeline) *observedPipeline {
+	p := &observedPipeline{
+		inner: inner,
+	}
+
+	if withRegion, ok := inner.(PipelineWithRegion); ok {
+		p.region = withRegion.Region()
+	}
+
+	return p
+}
+
+// Read implements Pipeline.
+func (p *observedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
+	start := time.Now()
+
+	if p.region != nil {
+		p.region.Record(statReadCalls.Observe(1))
+	}
+
+	rec, err := p.inner.Read(ctx)
+	duration := time.Since(start)
+
+	if p.region != nil {
+		if rec != nil {
+			p.region.Record(statRowsOut.Observe(int64(rec.NumRows())))
+		}
+
+		p.region.Record(statExecDuration.Observe(duration.Nanoseconds()))
+	}
+
+	return rec, err
+}
+
+// Close implements Pipeline.
+func (p *observedPipeline) Close() {
+	p.inner.Close()
 }

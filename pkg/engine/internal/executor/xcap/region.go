@@ -289,6 +289,53 @@ func FromRegionContext(ctx context.Context) *Region {
 	return v
 }
 
+// NoopRegion is a no-operation region that can be used in tests.
+// All methods on NoopRegion are safe to call and do nothing.
+var NoopRegion = &Region{
+	capture:      nil,
+	name:         "",
+	attributes:   nil,
+	startTime:    time.Time{},
+	endTime:      time.Time{},
+	observations: nil,
+	ended:        true, // Already ended so no observations can be recorded
+	span:         nil,
+}
+
+// NewNoopRegion returns a no-operation region that can be used in tests.
+// All methods on the returned region are safe to call and do nothing.
+func NewNoopRegion() *Region {
+	return NoopRegion
+}
+
+// ObservationDetails holds detailed information about an observation.
+type ObservationDetails struct {
+	Statistic Statistic
+	Value     interface{}
+	Count     int
+}
+
+// GetObservationDetails returns detailed information about all observations
+// recorded in this region.
+func (r *Region) GetObservationDetails() map[string]ObservationDetails {
+	if r == nil {
+		return nil
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	result := make(map[string]ObservationDetails, len(r.observations))
+	for name, obs := range r.observations {
+		result[name] = ObservationDetails{
+			Statistic: obs.statistic,
+			Value:     obs.value,
+			Count:     obs.count,
+		}
+	}
+	return result
+}
+
 // observationsToAttributes converts observations to OpenTelemetry span attributes.
 func (r *Region) observationsToAttributes() []attribute.KeyValue {
 	if r == nil || len(r.observations) == 0 {

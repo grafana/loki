@@ -8,11 +8,12 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 )
 
-func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expressionEvaluator) *GenericPipeline {
-	return newGenericPipeline(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
+func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expressionEvaluator, region *xcap.Region) *GenericPipeline {
+	return newGenericPipelineWithRegion(func(ctx context.Context, inputs []Pipeline) (arrow.RecordBatch, error) {
 		// Pull the next item from the input pipeline
 		input := inputs[0]
 		batch, err := input.Read(ctx)
@@ -43,7 +44,7 @@ func NewFilterPipeline(filter *physical.Filter, input Pipeline, evaluator expres
 			}
 			return true
 		}), nil
-	}, input)
+	}, region, input)
 }
 
 // This is a very inefficient approach which creates a new filtered batch from a

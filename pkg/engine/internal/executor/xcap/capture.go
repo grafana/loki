@@ -72,6 +72,19 @@ func (c *Capture) StartTime() time.Time {
 	return c.startTime
 }
 
+func (c *Capture) GetRegion(name string) *Region {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	for _, region := range c.regions {
+		if region.name == name {
+			return region
+		}
+	}
+
+	return nil
+}
+
 // addRegion adds a region to this capture. This is called by Region
 // when it is created.
 func (c *Capture) addRegion(r *Region) {
@@ -101,4 +114,66 @@ func (c *Capture) IsEnded() bool {
 	defer c.mu.RUnlock()
 
 	return c.ended
+}
+
+// GetAllStatistics returns all unique statistics used across all regions
+// in this capture. Statistics are deduplicated by name.
+func (c *Capture) GetAllStatistics() []Statistic {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	statMap := make(map[string]Statistic)
+	for _, region := range c.regions {
+		region.mu.RLock()
+		for _, obs := range region.observations {
+			stat := obs.statistic
+			statName := stat.Name()
+			// Deduplicate by name - first occurrence wins
+			if _, exists := statMap[statName]; !exists {
+				statMap[statName] = stat
+			}
+		}
+		region.mu.RUnlock()
+	}
+
+	result := make([]Statistic, 0, len(statMap))
+	for _, stat := range statMap {
+		result = append(result, stat)
+	}
+	return result
+}
+
+// Merge appends all regions from other into this capture. Regions are appended,
+// not merged. If this capture has been ended, Merge does nothing.
+func (c *Capture) Merge(other *Capture) {
+	if other == nil {
+		return
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Get regions from other capture while holding its read lock
+	other.mu.RLock()
+	otherRegions := make([]*Region, len(other.regions))
+	copy(otherRegions, other.regions)
+	other.mu.RUnlock()
+
+	// Append regions to this capture
+	c.regions = append(c.regions, otherRegions...)
+}
+
+// NoopCapture is a no-operation capture that can be used in tests.
+// All methods on NoopCapture are safe to call and do nothing.
+var NoopCapture = &Capture{
+	attributes: nil,
+	startTime:  time.Time{},
+	regions:    nil,
+	ended:      true, // Already ended so no regions can be added
+}
+
+// NewNoopCapture returns a no-operation capture that can be used in tests.
+// All methods on the returned capture are safe to call and do nothing.
+func NewNoopCapture() *Capture {
+	return NoopCapture
 }

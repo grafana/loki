@@ -12,6 +12,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
 	"github.com/grafana/loki/v3/pkg/util/arrowtest"
 )
@@ -116,6 +117,14 @@ func (i *instrumentedPipeline) Close() {
 func (i *instrumentedPipeline) Read(ctx context.Context) (arrow.RecordBatch, error) {
 	i.callCount["Read"]++
 	return i.inner.Read(ctx)
+}
+
+// Region implements PipelineWithRegion.
+func (i *instrumentedPipeline) Region() *xcap.Region {
+	if withRegion, ok := i.inner.(PipelineWithRegion); ok {
+		return withRegion.Region()
+	}
+	return nil
 }
 
 var _ Pipeline = (*instrumentedPipeline)(nil)

@@ -7,6 +7,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/semconv"
 	"github.com/grafana/loki/v3/pkg/engine/internal/types"
@@ -38,7 +39,7 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, xcap.NoopRegion)
 		require.NoError(t, err)
 
 		// Create expected output
@@ -76,7 +77,7 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, xcap.NoopRegion)
 		require.NoError(t, err)
 
 		// Create expected output
@@ -120,7 +121,7 @@ func TestNewProjectPipeline(t *testing.T) {
 
 		// Create project pipeline
 		e := newExpressionEvaluator()
-		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e)
+		projectPipeline, err := NewProjectPipeline(inputPipeline, &physical.Projection{Expressions: columns}, &e, xcap.NoopRegion)
 		require.NoError(t, err)
 
 		// Create expected output also split across multiple records
@@ -225,7 +226,7 @@ Dave,40
 					All:         true,
 					Drop:        true,
 				}
-				pipeline, err := NewProjectPipeline(input, proj, &expressionEvaluator{})
+				pipeline, err := NewProjectPipeline(input, proj, &expressionEvaluator{}, xcap.NoopRegion)
 				require.NoError(t, err)
 
 				ctx := t.Context()
@@ -491,7 +492,8 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithCast(t *testing.T) {
 					Expand:      true,
 					All:         true,
 				},
-				&e)
+				&e,
+				nil)
 			require.NoError(t, err)
 			defer pipeline.Close()
 
@@ -554,7 +556,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 			Expand: true,
 		}
 
-		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{})
+		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{}, xcap.NoopRegion)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -624,7 +626,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 			Expand: true,
 		}
 
-		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{})
+		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{}, xcap.NoopRegion)
 		require.NoError(t, err)
 		defer pipeline.Close()
 
@@ -694,7 +696,7 @@ func TestNewProjectPipeline_ProjectionFunction_ExpandWithBinOn(t *testing.T) {
 			Expand: true,
 		}
 
-		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{})
+		pipeline, err := NewProjectPipeline(input1, projection, &expressionEvaluator{}, xcap.NoopRegion)
 		require.NoError(t, err)
 		defer pipeline.Close()
 

@@ -219,6 +219,10 @@ func (e *Engine) Execute(ctx context.Context, params logql.Params) (logqlmodel.R
 		"duration_full", durFull,
 	)
 
+	if xcap := wf.Capture(); xcap != nil {
+		level.Info(logger).Log("physical plan with metrics", physical.PrintAsTreeWithMetrics(physicalPlan, xcap))
+	}
+
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 	statsCtx := stats.FromContext(ctx)
 	statsCtx.AddQuerierExecTime(durFull)

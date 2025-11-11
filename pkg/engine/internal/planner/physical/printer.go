@@ -6,28 +6,36 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/util/tree"
 )
 
 // BuildTree converts a physical plan node and its children into a tree structure
 // that can be used for visualization and debugging purposes.
 func BuildTree(p *Plan, n Node) *tree.Node {
-	return toTree(p, n)
+	return BuildTreeWithMetrics(p, n, nil)
 }
 
-func toTree(p *Plan, n Node) *tree.Node {
-	root := toTreeNode(n)
+// BuildTreeWithMetrics converts a physical plan node and its children into a tree structure,
+// optionally including execution metrics from the provided execution capture.
+func BuildTreeWithMetrics(p *Plan, n Node, capture *xcap.Capture) *tree.Node {
+	return toTree(p, n, capture)
+}
+
+func toTree(p *Plan, n Node, capture *xcap.Capture) *tree.Node {
+	root := toTreeNode(n, capture)
 	for _, child := range p.Children(n) {
-		if ch := toTree(p, child); ch != nil {
+		if ch := toTree(p, child, capture); ch != nil {
 			root.Children = append(root.Children, ch)
 		}
 	}
 	return root
 }
 
-func toTreeNode(n Node) *tree.Node {
+func toTreeNode(n Node, capture *xcap.Capture) *tree.Node {
 	treeNode := tree.NewNode(n.Type().String(), "")
 	treeNode.Context = n
+	regionName := fmt.Sprintf("%s-%s", n.Type().String(), n.ID().String())
 
 	switch node := n.(type) {
 	case *DataObjScan:
@@ -112,20 +120,28 @@ func toTreeNode(n Node) *tree.Node {
 		}
 
 		for _, target := range node.Targets {
-			properties := []tree.Property{
-				tree.NewProperty("type", false, target.Type.String()),
-			}
-
 			switch target.Type {
 			case ScanTypeDataObject:
 				// Create a child node to extract the properties of the target.
-				childNode := toTreeNode(target.DataObject)
-				properties = append(properties, childNode.Properties...)
+				childNode := toTreeNode(target.DataObject, capture)
+				treeNode.Children = append(treeNode.Children, childNode)
 			}
+		}
 
-			treeNode.AddComment("@target", "", properties)
+	}
+
+	treeNode.Properties = append(treeNode.Properties, tree.NewProperty("id", false, regionName))
+
+	if capture != nil {
+		if region := capture.GetRegion(regionName); region != nil {
+			props := make([]tree.Property, 0, len(region.Observations()))
+			for name, value := range region.Observations() {
+				props = append(props, tree.NewProperty(name, false, value))
+			}
+			treeNode.AddComment("@metrics", "", props)
 		}
 	}
+
 	return treeNode
 }
 
@@ -141,12 +157,18 @@ func toAnySlice[T any](s []T) []any {
 // It processes each root node in the plan graph, and returns the combined
 // string output of all trees joined by newlines.
 func PrintAsTree(p *Plan) string {
+	return PrintAsTreeWithMetrics(p, nil)
+}
+
+// PrintAsTreeWithMetrics converts a physical [Plan] into a human-readable tree representation,
+// optionally including metrics from the provided execution capture.
+func PrintAsTreeWithMetrics(p *Plan, capture *xcap.Capture) string {
 	results := make([]string, 0, len(p.Roots()))
 
 	for _, root := range p.Roots() {
 		sb := &strings.Builder{}
 		printer := tree.NewPrinter(sb)
-		node := BuildTree(p, root)
+		node := BuildTreeWithMetrics(p, root, capture)
 		printer.Print(node)
 		results = append(results, sb.String())
 	}

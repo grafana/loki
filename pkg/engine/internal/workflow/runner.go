@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
 	"github.com/grafana/loki/v3/pkg/logqlmodel/stats"
 )
 
@@ -101,6 +102,8 @@ type TaskStatus struct {
 	// Error holds the error that occurred during task execution, if any. Only
 	// set when State is [TaskStateFailed].
 	Error error
+
+	Capture *xcap.Capture
 
 	// Statistics report analytics about the lifetime of a task. Only set
 	// for terminal task states (see [TaskState.Terminal]).

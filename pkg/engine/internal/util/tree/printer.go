@@ -85,7 +85,8 @@ func (tp *Printer) printChildren(comments, children []*Node, prefix string) {
 	// They have extended indentation compared to regular child nodes
 	// and depending if there are child nodes, also have a | as prefix.
 	for i, node := range comments {
-		isLast := i == len(comments)-1
+		// A comment is "last" only if it's the last comment AND there are no children
+		isLast := i == len(comments)-1 && !hasChildren
 
 		// Choose indentation symbols based on whether the node we're printing has
 		// any children to print.

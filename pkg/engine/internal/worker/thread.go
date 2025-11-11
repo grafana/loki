@@ -13,6 +13,7 @@ import (
 	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/v3/pkg/engine/internal/executor"
+	"github.com/grafana/loki/v3/pkg/engine/internal/executor/xcap"
 	"github.com/grafana/loki/v3/pkg/engine/internal/planner/physical"
 	"github.com/grafana/loki/v3/pkg/engine/internal/scheduler/wire"
 	"github.com/grafana/loki/v3/pkg/engine/internal/workflow"
@@ -157,6 +158,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 	statsCtx, ctx := stats.NewContext(ctx)
 	ctx = user.InjectOrgID(ctx, job.Task.TenantID)
 
+	ctx, capture := xcap.NewCapture(ctx, nil)
 	pipeline := executor.Run(ctx, cfg, job.Task.Fragment, logger)
 	defer pipeline.Close()
 
@@ -208,6 +210,9 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 		}
 	}
 
+	capture.End()
+	// level.Info(logger).Log("execution capture", physical.PrintAsTreeWithMetrics(job.Task.Fragment, capture))
+
 	// Finally, close all sinks.
 	for _, sink := range job.Sinks {
 		err := sink.Close(ctx)
@@ -222,7 +227,7 @@ func (t *thread) runJob(ctx context.Context, job *threadJob) {
 
 	err = job.Scheduler.SendMessageAsync(ctx, wire.TaskStatusMessage{
 		ID:     job.Task.ULID,
-		Status: workflow.TaskStatus{State: workflow.TaskStateCompleted, Statistics: &result},
+		Status: workflow.TaskStatus{State: workflow.TaskStateCompleted, Statistics: &result, Capture: capture},
 	})
 	if err != nil {
 		level.Warn(logger).Log("msg", "failed to inform scheduler of task status", "err", err)

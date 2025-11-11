@@ -38,3 +38,4 @@ func (p *BufferedPipeline) Read(_ context.Context) (arrow.RecordBatch, error) {
 func (p *BufferedPipeline) Close() {
 	p.records = nil
 }
+
