@@ -88,10 +88,6 @@ func NewDataObjTee(
 			Name: "loki_distributor_dataobj_tee_produced_bytes_total",
 			Help: "Total number of streams produced.",
 		}, []string{"partition", "tenant", "segmentation_key"}),
-		fallback: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Name: "loki_distributor_dataobj_tee_fallback_total",
-			Help: "Total number of streams that could not be duplicated.",
-		}, []string{"tenant", "segmentation_key"}),
 	}, nil
 }
 
@@ -110,14 +106,11 @@ func (t *DataObjTee) duplicate(ctx context.Context, tenant string, stream KeyedS
 		t.failures.Inc()
 		return
 	}
-	partition, fallback, err := t.resolver.Resolve(ctx, tenant, segmentationKey, stream)
+	partition, err := t.resolver.Resolve(ctx, tenant, segmentationKey, stream)
 	if err != nil {
 		level.Error(t.logger).Log("msg", "failed to get partition", "err", err)
 		t.failures.Inc()
 		return
-	}
-	if fallback {
-		t.fallback.WithLabelValues(tenant, string(segmentationKey)).Inc()
 	}
 	records, err := kafka.EncodeWithTopic(t.cfg.Topic, partition, tenant, stream.Stream, t.cfg.MaxBufferedBytes)
 	if err != nil {
